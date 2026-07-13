@@ -1,0 +1,11 @@
+{
+  "official": {
+    "name": "OpenAI Official via Headroom",
+    "base_url": "http://10.0.0.103:15021/v1"
+  },
+  "aigocode": {
+    "name": "AIGocode via Headroom",
+    "base_url": "http://10.0.0.103:15022/v1",
+    "bearer_token": "CHANGE_ME"
+  }
+}
