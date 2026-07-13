@@ -1,11 +1,29 @@
 {
-  "official": {
-    "name": "OpenAI Official via Headroom",
-    "base_url": "http://10.0.0.103:15021/v1"
+  "providers": {
+    "official": {
+      "host": "http://10.0.0.103:15021",
+      "cost_multiplier": 1,
+      "codex": { "auth": "openai_login" },
+      "claude": { "enabled": false }
+    },
+    "aigocode": {
+      "host": "http://10.0.0.103:15022",
+      "cost_multiplier": 1,
+      "codex": { "auth": "bearer", "keys": [] },
+      "claude": { "auth": "bearer", "keys": [] }
+    },
+    "sssaicode": {
+      "host": "http://10.0.0.103:15023",
+      "cost_multiplier": 1,
+      "codex": { "auth": "bearer", "keys": [] },
+      "claude": { "auth": "bearer", "keys": [] }
+    },
+    "cubence": {
+      "host": "http://10.0.0.103:15023",
+      "cost_multiplier": 1,
+      "codex": { "auth": "bearer", "keys": [] },
+      "claude": { "auth": "bearer", "keys": [] }
+    }
   },
-  "aigocode": {
-    "name": "AIGocode via Headroom",
-    "base_url": "http://10.0.0.103:15022/v1",
-    "bearer_token": "CHANGE_ME"
-  }
+  "keys": {}
 }

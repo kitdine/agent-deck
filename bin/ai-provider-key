@@ -1,0 +1,64 @@
+#!/usr/bin/env python3
+import getpass
+import sys
+
+from ai_provider_common import fail, key_name, load_config, save_config, service
+
+
+def usage():
+    print("Usage: ai-provider-key add <provider> <codex|claude> <alias> [--default]")
+    print("       ai-provider-key bind|unbind <provider> <codex|claude> <alias> [--default]")
+    print("       ai-provider-key update|remove <full-key-name>")
+    print("       ai-provider-key list")
+
+
+def binding(data, provider, client, alias, add, default):
+    _, selected = service(data, provider, client)
+    if selected.get("auth") == "openai_login": fail("login-auth services do not use keys")
+    keys = selected.setdefault("keys", [])
+    if add and alias not in keys: keys.append(alias)
+    if not add and alias in keys: keys.remove(alias)
+    if default: selected["default_key"] = alias
+    elif selected.get("default_key") == alias and not add: selected.pop("default_key")
+
+
+def main():
+    values = sys.argv[1:]
+    if values == ["list"]:
+        data = load_config()
+        for provider, config in data["providers"].items():
+            if not isinstance(config, dict): continue
+            for client in ("codex", "claude"):
+                selected = config.get(client)
+                if isinstance(selected, dict): print(f"{provider}/{client}: {', '.join(selected.get('keys', [])) or '-'} default={selected.get('default_key', '-')}")
+        return
+    if not values: usage(); raise SystemExit(1)
+    command, data = values[0], load_config()
+    if command == "add" and len(values) in (4, 5):
+        provider, client, alias = values[1:4]; default = values[4:] == ["--default"]
+        alias = key_name(provider, client, alias)
+        if alias in data["keys"]: fail(f"key already exists: {alias}")
+        token = getpass.getpass("Token (hidden): ").strip()
+        if not token: fail("empty token")
+        data["keys"][alias] = {"value": token}; binding(data, provider, client, alias, True, default); save_config(data); return
+    if command in ("bind", "unbind") and len(values) in (4, 5):
+        provider, client, alias = values[1:4]; default = values[4:] == ["--default"]
+        alias = key_name(provider, client, alias)
+        if alias not in data["keys"]: fail(f"unknown key: {alias}")
+        binding(data, provider, client, alias, command == "bind", default); save_config(data); return
+    if command == "update" and len(values) == 2:
+        alias = values[1]
+        if alias not in data["keys"]: fail(f"unknown key: {alias}")
+        token = getpass.getpass("Token (hidden): ").strip()
+        if not token: fail("empty token")
+        data["keys"][alias]["value"] = token; save_config(data); return
+    if command == "remove" and len(values) == 2:
+        alias = values[1]
+        for config in data["providers"].values():
+            if isinstance(config, dict) and any(alias in config.get(client, {}).get("keys", []) for client in ("codex", "claude")): fail(f"key is still bound: {alias}")
+        if alias not in data["keys"]: fail(f"unknown key: {alias}")
+        del data["keys"][alias]; save_config(data); return
+    usage(); raise SystemExit(1)
+
+
+if __name__ == "__main__": main()

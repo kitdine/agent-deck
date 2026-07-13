@@ -1,0 +1,185 @@
+#!/usr/bin/env python3
+"""Switch Codex or Claude through one named local provider."""
+
+import json
+import os
+import re
+import stat
+import subprocess
+import sys
+import tempfile
+import tomllib
+from pathlib import Path
+
+from ai_provider_common import backup, cost_multiplier, fail, load_config, selected_key, service
+from ai_provider_usage import record_provider_selection
+
+
+def usage():
+    print("Usage: ai-provider-mode codex <provider> [--key <alias>] [--restart]")
+    print("       ai-provider-mode claude <provider> [--key <alias>] [--restart]")
+    print("       ai-provider-mode status")
+
+
+def parse():
+    values = sys.argv[1:]
+    if values == ["status"]:
+        return "status", None, None, False
+    if len(values) < 2 or values[0] not in ("codex", "claude"):
+        usage(); raise SystemExit(1)
+    client, provider, alias, restart = values[0], values[1], None, False
+    index = 2
+    while index < len(values):
+        if values[index] == "--restart": restart = True
+        elif values[index] == "--key" and index + 1 < len(values): alias = values[index + 1]; index += 1
+        else: usage(); raise SystemExit(1)
+        index += 1
+    return client, provider, alias, restart
+
+
+def parse_codex_config(text):
+    try:
+        parsed = tomllib.loads(text)
+    except tomllib.TOMLDecodeError as exc:
+        fail(f"cannot parse Codex config: {exc}")
+    providers = parsed.get("model_providers")
+    if providers is not None and not isinstance(providers, dict):
+        fail("Codex model_providers must be a table")
+    custom = providers.get("custom") if isinstance(providers, dict) else None
+    if custom is not None and not isinstance(custom, dict):
+        fail("Codex model_providers.custom must be a table")
+    return parsed
+
+
+def advance_multiline_state(line, delimiter):
+    index = 0
+    while index < len(line):
+        if delimiter is not None:
+            close = line.find(delimiter, index)
+            if close < 0:
+                return delimiter
+            delimiter = None
+            index = close + 3
+            continue
+        if line[index] == "#":
+            break
+        if line.startswith(('"""', "'''"), index):
+            delimiter = line[index:index + 3]
+            index += 3
+            continue
+        if line[index] in ('"', "'"):
+            quote = line[index]
+            index += 1
+            while index < len(line):
+                if quote == '"' and line[index] == "\\":
+                    index += 2
+                    continue
+                if line[index] == quote:
+                    index += 1
+                    break
+                index += 1
+            continue
+        index += 1
+    return delimiter
+
+
+def table_headers(text):
+    headers = []
+    delimiter = None
+    offset = 0
+    pattern = re.compile(r"^\s*\[\[?[^\n]+?\]\]?\s*(?:#.*)?$")
+    for line in text.splitlines(keepends=True):
+        if delimiter is None and pattern.match(line.rstrip("\r\n")):
+            headers.append((offset, offset + len(line), line.rstrip("\r\n")))
+        delimiter = advance_multiline_state(line, delimiter)
+        offset += len(line)
+    return headers
+
+
+def replace_custom(text, block):
+    headers = table_headers(text)
+    target = re.compile(r"^\s*\[model_providers\.(?:custom|\"custom\")\]\s*(?:#.*)?$")
+    for index, (start, _, header) in enumerate(headers):
+        if target.match(header):
+            end = headers[index + 1][0] if index + 1 < len(headers) else len(text)
+            return text[:start] + block + "\n\n" + text[end:].lstrip("\n")
+    return text.rstrip() + "\n\n" + block + "\n"
+
+
+def set_codex_provider(text):
+    headers = table_headers(text)
+    top_level_end = headers[0][0] if headers else len(text)
+    top_level = text[:top_level_end]
+    pattern = re.compile(r"(?m)^\s*model_provider\s*=.*$")
+    if pattern.search(top_level):
+        return pattern.sub('model_provider = "custom"', text, count=1)
+    return 'model_provider = "custom"\n\n' + text
+
+
+def status(data):
+    codex = Path.home() / ".codex" / "config.toml"
+    if codex.exists():
+        parsed = parse_codex_config(codex.read_text())
+        custom = parsed.get("model_providers", {}).get("custom", {})
+        endpoint = custom.get("base_url") if isinstance(custom, dict) else None
+        active = next((name for name, item in data["providers"].items() if isinstance(item, dict) and isinstance(endpoint, str) and endpoint.rstrip("/") == str(item.get("host", "")).rstrip("/") + "/v1"), "unknown")
+        print(f"codex: {active} ({endpoint if isinstance(endpoint, str) else 'unknown'})")
+    claude = Path.home() / ".claude" / "settings.json"
+    if claude.exists():
+        env = json.loads(claude.read_text()).get("env", {})
+        active = next((name for name, item in data["providers"].items() if isinstance(item, dict) and item.get("host") == env.get("ANTHROPIC_BASE_URL")), "unknown")
+        print(f"claude: {active} ({env.get('ANTHROPIC_BASE_URL', 'unknown')})")
+
+
+def switch_codex(data, provider, requested_alias, restart):
+    config = Path.home() / ".codex" / "config.toml"
+    if not config.is_file(): fail(f"Codex config not found: {config}")
+    host, _ = service(data, provider, "codex")
+    alias, token = selected_key(data, provider, "codex", requested_alias)
+    lines = ["[model_providers.custom]", f"name = {json.dumps(provider)}", f"base_url = {json.dumps(host + '/v1')}", "requires_openai_auth = true"]
+    if token: lines.append(f"experimental_bearer_token = {json.dumps(token)}")
+    lines += ["supports_websockets = true", 'wire_api = "responses"']
+    old = config.read_text()
+    parse_codex_config(old)
+    new = replace_custom(set_codex_provider(old), "\n".join(lines)).rstrip() + "\n"
+    parse_codex_config(new)
+    if new != old:
+        backup(config, "codex", old)
+        mode = stat.S_IMODE(config.stat().st_mode)
+        fd, temporary = tempfile.mkstemp(prefix=".config.", dir=config.parent)
+        with os.fdopen(fd, "w") as handle: handle.write(new)
+        os.chmod(temporary, mode); os.replace(temporary, config)
+    record_provider_selection("codex", provider, cost_multiplier(data, provider))
+    print(f"Codex provider: {provider}; key: {alias or 'ChatGPT login'}")
+    if restart:
+        subprocess.run(["osascript", "-e", 'quit app "Codex"'], check=False)
+        subprocess.run(["open", "-a", "Codex"], check=False)
+
+
+def switch_claude(data, provider, requested_alias, restart):
+    settings = Path.home() / ".claude" / "settings.json"
+    current = json.loads(settings.read_text()) if settings.exists() else {}
+    host, _ = service(data, provider, "claude")
+    alias, token = selected_key(data, provider, "claude", requested_alias)
+    env = current.setdefault("env", {})
+    if env.get("ANTHROPIC_BASE_URL") != host or env.get("ANTHROPIC_AUTH_TOKEN") != token:
+        settings.parent.mkdir(parents=True, exist_ok=True)
+        if settings.exists(): backup(settings, "claude", settings.read_text())
+        env["ANTHROPIC_BASE_URL"], env["ANTHROPIC_AUTH_TOKEN"] = host, token
+        settings.write_text(json.dumps(current, indent=2, ensure_ascii=False) + "\n")
+    record_provider_selection("claude", provider, cost_multiplier(data, provider))
+    print(f"Claude provider: {provider}; key: {alias}")
+    if restart:
+        subprocess.run(["osascript", "-e", 'quit app "Claude"'], check=False)
+        subprocess.run(["open", "-a", "Claude"], check=False)
+
+
+def main():
+    client, provider, alias, restart = parse()
+    data = load_config()
+    if client == "status": status(data)
+    elif client == "codex": switch_codex(data, provider, alias, restart)
+    else: switch_claude(data, provider, alias, restart)
+
+
+if __name__ == "__main__": main()
