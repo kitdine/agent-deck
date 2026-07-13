@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "catalog_version": "2026-07-13-openai-standard-v1",
+  "currency": "USD",
+  "sources": [{"url":"bundled://config/model-prices.json","retrieved_at":"2026-07-13T00:00:00Z"}],
+  "models": {
+    "gpt-5.4": {"provider":"openai","effective_from":"2026-07-13T00:00:00Z","prices_per_million":{"input":"2.5","cached_input":"0.25","output":"15"}},
+    "claude-sonnet-4-6": {"provider":"anthropic","aliases":["claude-sonnet-4.6"],"effective_from":"2026-07-13T00:00:00Z","prices_per_million":{"input":"3","cache_write_5m":"3.75","cache_write_1h":"6","cache_read":"0.3","output":"15"}}
+  }
+}
