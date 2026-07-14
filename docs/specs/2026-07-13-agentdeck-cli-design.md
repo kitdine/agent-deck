@@ -1,7 +1,7 @@
 # AgentDeck CLI Design
 
-**Status:** active, implementation and independent review complete; release
-preparation pending
+**Status:** active, phase-one and version/installation baseline implementation
+and independent review complete; release preparation pending
 
 ## Product Definition
 
@@ -25,6 +25,9 @@ The first CLI release will:
 - discover and diagnose plugins, MCP servers, and skills through native
   client adapters;
 - create an encrypted portable backup of AgentDeck state and credentials;
+- identify every binary build with a version, commit, build time, and Go
+  version suitable for support diagnostics;
+- provide explicit user-local install and ownership-checked uninstall targets;
 - expose stable JSON for a future Swift menubar application;
 - remain on-demand by default, with an optional foreground watcher.
 
@@ -39,6 +42,8 @@ The first release will not:
 - support custom model prices;
 - install, update, uninstall, or resolve dependencies for extensions;
 - merge a backup into an existing AgentDeck database;
+- publish Homebrew formulae, release archives, checksums, or system-wide
+  installers as part of the version and installation baseline;
 - maintain compatibility aliases for the legacy Python and Bash commands.
 
 ## User Interface
@@ -54,6 +59,8 @@ agentdeck run ...
 agentdeck watch ...
 agentdeck backup ...
 agentdeck doctor
+agentdeck version
+agentdeck --version
 ```
 
 The command groups are:
@@ -77,20 +84,22 @@ agentdeck watch [--interval <duration>]
 
 agentdeck backup create|list|inspect|restore
 agentdeck doctor [--full]
+agentdeck version
 ```
 
 Global flags are:
 
 ```text
---format text|json
+--format text|json|ndjson
 --no-color
 --state-dir <path>
 --quiet
+--version
 ```
 
 `--state-dir` exists for tests and portable isolated execution. It does not
 change Codex or Claude source paths unless their adapter-specific test paths are
-also explicitly overridden.
+also explicitly overridden. NDJSON remains valid only for `watch`.
 
 ## Architecture
 
@@ -108,6 +117,7 @@ internal/doctor
 internal/store
 internal/platform
 internal/output
+internal/buildinfo
 ```
 
 The canonical module is `github.com/kitdine/agent-deck`. Dependencies are
@@ -171,6 +181,82 @@ backup configuration.
 
 No `providers.json` is used by AgentDeck. Legacy files are not imported or
 modified automatically.
+
+The state root is AgentDeck's persistent working directory, but the process
+does not change its current working directory to the state root. Project-scoped
+extension discovery and full diagnostics continue to observe the directory from
+which the user invoked AgentDeck. The following locations have separate
+ownership and lifecycles:
+
+```text
+~/.local/bin/agentdeck                 # installed executable by default
+~/.local/share/agentdeck/              # installation ownership manifest
+~/.agentdeck/                          # persistent AgentDeck user state
+<invocation directory>/                # project context, never owned by AgentDeck
+~/.codex/ and ~/.claude/               # client state, accessed only by contract
+```
+
+Uninstall removes only validated installation artifacts. It never removes the
+state root, backups, Keychain credentials, client files, or project files.
+
+## Build Identity and Installation
+
+`internal/buildinfo` is the single source of binary identity. It exposes string
+variables with safe development defaults and a value object used by the CLI and
+backup service:
+
+```text
+version    dev
+commit     unknown
+build_time unknown
+go_version runtime.Version()
+```
+
+Make builds inject `VERSION`, `COMMIT`, and `BUILD_TIME` with `-ldflags -X`.
+Release values use a semantic version, the full Git commit SHA, and an RFC3339
+UTC timestamp. Local builds keep the stable defaults unless the caller supplies
+values; they do not inject the current clock automatically, preserving
+reproducible local builds.
+
+Both `agentdeck version` and `agentdeck --version` emit the same build identity.
+Text output is concise and human-readable. `--format json` uses the existing
+versioned envelope with command `version` and a data object containing exactly
+`version`, `commit`, `build_time`, and `go_version`. `--version` is a root-only
+flag and accepts the same global output flags as the `version` command. NDJSON
+remains exclusive to `watch`.
+
+Backup creation records the same `buildinfo.Version` in
+`manifest.agentdeck_version`; it no longer supplies a separate hard-coded
+development value. Inspect and restore continue treating that field as archive
+provenance rather than an instruction to replace the running binary.
+
+The Make installation contract is user-local and opt-in:
+
+```text
+PREFIX  defaults to $HOME/.local
+BINDIR  defaults to $PREFIX/bin
+DATADIR defaults to $PREFIX/share/agentdeck
+```
+
+`make install` builds the binary, creates owner-writable destination
+directories, stages the executable in `BINDIR`, sets mode `0755`, verifies its
+SHA-256, and atomically renames it into place. It writes an ownership manifest
+containing the canonical installed path and SHA-256. It refuses an existing
+destination by default. `FORCE=1` explicitly authorizes replacement at that one
+path and refreshes the manifest; it does not authorize changes to any other
+executable or legacy alias. An interrupted install may leave only recognizable
+temporary files or a manifest mismatch that makes uninstall fail closed.
+
+`make uninstall` reads the manifest and removes the executable only when the
+requested install path and current SHA-256 both match. A missing, malformed,
+path-mismatched, or hash-mismatched manifest fails closed. It then removes the
+manifest and installation metadata directory only when safe and empty. It
+never uses a broad or recursive removal and never touches `~/.agentdeck/`.
+
+Development and automated tests use an isolated temporary `PREFIX`; they do not
+execute install or uninstall against the real user home. Homebrew, signed
+archives, checksums, shell completion installation, and system-wide privileged
+installation remain later release work.
 
 ## Provider and Credential Management
 
@@ -579,3 +665,11 @@ import the legacy `providers.json`, usage database, or real client settings.
     hidden reasoning, or attachments.
 16. No daemon, GUI, provider usage API, extension installation, or custom model
     price enters phase one.
+17. Text and JSON version commands report one build identity, and injected
+    release metadata is also recorded in newly created backup manifests.
+18. User-local install refuses implicit replacement; uninstall removes only an
+    unchanged binary proven by its ownership manifest and preserves all user
+    state.
+19. Release verification covers development defaults, injected metadata,
+    isolated install, forced upgrade, tamper refusal, and cleanup without
+    writing to the real user home.

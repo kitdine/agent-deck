@@ -1,7 +1,7 @@
 # AgentDeck CLI Phase-One Implementation Plan
 
-**Status:** active, implementation and independent review complete; release
-preparation pending
+**Status:** active, phase-one and version/installation baseline implementation
+and independent review complete; release preparation pending
 
 **Specification:**
 `docs/specs/2026-07-13-agentdeck-cli-design.md`
@@ -15,7 +15,9 @@ stable JSON boundary for the future macOS application.
 
 - Implement one `agentdeck` executable and focused internal Go packages.
 - Target macOS first while keeping core domain interfaces cross-platform.
-- Do not install, remove, or overwrite anything under the real user home.
+- Do not execute install, uninstall, or overwrite operations against the real
+  user home during development or automated verification. Install targets are
+  validated only with an isolated temporary `PREFIX`.
 - Do not add a daemon, LaunchAgent, GUI, provider usage API, custom pricing, or
   extension installation/update/removal.
 - Do not add legacy command aliases or automatically import legacy state.
@@ -213,6 +215,44 @@ removed without touching real user scripts.
 - [x] Synchronize the specification, documentation index, `AGENTS.md`, and this
       plan with the reviewed implementation state.
 
+## Phase 8: Version and Installation Baseline
+
+**Implementation status (2026-07-15):** implemented, full release verification
+passed, and independent re-review passed; release preparation is pending. This
+phase adds binary identity and a safe source-install workflow without publishing
+Homebrew formulae or release artifacts. The executable installation,
+installation ownership metadata, AgentDeck state root, caller working directory,
+and Codex/Claude state remain separate ownership boundaries.
+
+- [x] Remove the local empty `bin/`, `config/`, and `tests/` directories left by
+      legacy cleanup. Git does not track these directories, so this is workspace
+      hygiene rather than a repository content change.
+- [x] Add `internal/buildinfo` with stable development defaults for version,
+      commit, and build time plus the runtime Go version.
+- [x] Add `agentdeck version` and root-only `agentdeck --version` with matching
+      text output and the existing JSON envelope contract.
+- [x] Inject `VERSION`, `COMMIT`, and `BUILD_TIME` through Make `-ldflags`; do
+      not inject a changing local timestamp unless the caller supplies it.
+- [x] Pass the shared binary version into backup creation so
+      `manifest.agentdeck_version` is not independently hard-coded.
+- [x] Add user-local `make install` and `make uninstall` targets. Default to
+      `PREFIX=$(HOME)/.local`, refuse implicit overwrite, require `FORCE=1` for
+      replacement, and record the installed path and SHA-256 under
+      `$(PREFIX)/share/agentdeck/`.
+- [x] Make uninstall fail closed unless the manifest path and installed binary
+      hash match. Never remove `~/.agentdeck/`, Keychain credentials, backups,
+      client configuration, project files, or unrelated executables.
+- [x] Add tests for development defaults, injected identity, text/JSON parity,
+      backup provenance, isolated install, overwrite refusal, forced upgrade,
+      tampered-binary refusal, and successful ownership-checked uninstall.
+- [x] Update `README.md` and `README_zh.md` in place with the state-directory
+      distinction, current source installation, version diagnostics, upgrade,
+      uninstall, and the explicit absence of Homebrew availability.
+- [x] Run targeted version, backup, and installation tests followed by the full
+      `make release-verify` gate. All install tests use a temporary `PREFIX`.
+- [x] Complete independent review, address the version flag/format and test
+      coverage findings, and pass independent re-review.
+
 ## Required Verification
 
 Once Go source exists, the release gate includes:
@@ -233,8 +273,10 @@ from source inspection.
 
 ## Completion Gate
 
-Phase one implementation and independent review are complete. All sixteen
-specification acceptance criteria have fresh evidence, and the superseded
-repository-local entrypoints have been removed. Release preparation remains a
-separate stage; review approval does not authorize commit, installation, push,
-release, or modification of real user state.
+Phase one and Phase 8 implementation and independent review are complete. All
+phase-one specification acceptance criteria have fresh evidence, the superseded
+repository-local entrypoints have been removed, and the version/installation
+baseline has passed full release verification and independent re-review. Release
+preparation remains a separate stage; review approval does not authorize
+installation into the real user home, push, release, or modification of real
+user state.

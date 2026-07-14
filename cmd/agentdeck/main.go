@@ -19,6 +19,7 @@ import (
 	"golang.org/x/term"
 
 	"github.com/kitdine/agent-deck/internal/backup"
+	"github.com/kitdine/agent-deck/internal/buildinfo"
 	"github.com/kitdine/agent-deck/internal/doctor"
 	"github.com/kitdine/agent-deck/internal/extension"
 	"github.com/kitdine/agent-deck/internal/output"
@@ -179,16 +180,27 @@ func isCobraSyntaxError(err error) bool {
 
 func newRootCommand(stdin io.Reader, stdout io.Writer) *cobra.Command {
 	opts := &commandOptions{format: "text", stdin: stdin, stdout: stdout}
+	showVersion := false
 	root := &cobra.Command{
 		Use:           "agentdeck",
 		Short:         "Manage local AI provider, usage, and session data",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		PersistentPreRunE: func(command *cobra.Command, _ []string) error {
+			if err := opts.validateFormat(); err != nil {
+				return err
+			}
 			if opts.format == "ndjson" && command.Name() != "watch" {
 				return &inputError{err: fmt.Errorf("ndjson format is supported only by watch")}
 			}
 			return nil
+		},
+		Args: exactArgs(0),
+		RunE: func(command *cobra.Command, _ []string) error {
+			if showVersion {
+				return writeBuildIdentity(opts)
+			}
+			return command.Help()
 		},
 	}
 	root.SetIn(stdin)
@@ -199,9 +211,30 @@ func newRootCommand(stdin io.Reader, stdout io.Writer) *cobra.Command {
 	flags.StringVar(&opts.format, "format", "text", "Output format: text, json, or ndjson for watch")
 	flags.BoolVar(&opts.noColor, "no-color", false, "Disable color output")
 	flags.BoolVar(&opts.quiet, "quiet", false, "Suppress non-essential output")
-	root.AddCommand(newProviderCommand(opts), newUsageCommand(opts), newSessionCommand(opts), newExtensionCommand(opts), newWatchCommand(opts), newBackupCommand(opts), newDoctorCommand(opts), newRunCommand(opts))
+	root.Flags().BoolVar(&showVersion, "version", false, "Print build identity")
+	root.AddCommand(newProviderCommand(opts), newUsageCommand(opts), newSessionCommand(opts), newExtensionCommand(opts), newWatchCommand(opts), newBackupCommand(opts), newDoctorCommand(opts), newRunCommand(opts), newVersionCommand(opts))
 	wrapArgumentValidators(root)
 	return root
+}
+
+func newVersionCommand(opts *commandOptions) *cobra.Command {
+	return &cobra.Command{
+		Use:   "version",
+		Short: "Print build identity",
+		Args:  exactArgs(0),
+		RunE: func(_ *cobra.Command, _ []string) error {
+			return writeBuildIdentity(opts)
+		},
+	}
+}
+
+func writeBuildIdentity(opts *commandOptions) error {
+	identity := buildinfo.Current()
+	if opts.format == "json" {
+		return writeResult(opts.stdout, opts.format, "version", identity)
+	}
+	_, err := fmt.Fprintf(opts.stdout, "agentdeck %s commit=%s build_time=%s go_version=%s\n", identity.Version, identity.Commit, identity.BuildTime, identity.GoVersion)
+	return err
 }
 
 func wrapArgumentValidators(command *cobra.Command) {
@@ -221,8 +254,8 @@ func wrapArgumentValidators(command *cobra.Command) {
 }
 
 func (o *commandOptions) stateRoot() (string, error) {
-	if o.format != "text" && o.format != "json" && o.format != "ndjson" {
-		return "", &inputError{err: fmt.Errorf("invalid format %q", o.format)}
+	if err := o.validateFormat(); err != nil {
+		return "", err
 	}
 	if o.stateDir != "" {
 		return o.stateDir, nil
@@ -232,6 +265,13 @@ func (o *commandOptions) stateRoot() (string, error) {
 		return "", err
 	}
 	return platform.StateRoot("", home), nil
+}
+
+func (o *commandOptions) validateFormat() error {
+	if o.format != "text" && o.format != "json" && o.format != "ndjson" {
+		return &inputError{err: fmt.Errorf("invalid format %q", o.format)}
+	}
+	return nil
 }
 
 func (o *commandOptions) openStore(ctx context.Context) (*store.Store, string, error) {
@@ -607,7 +647,7 @@ func newBackupCommand(opts *commandOptions) *cobra.Command {
 		} else {
 			destination = filepath.Join(stateDir, "backups", "portable", time.Now().UTC().Format("20060102T150405Z")+".adb")
 		}
-		manifest, err := (backup.Service{Core: database, StateRoot: stateDir, Secrets: newSecretStore(), Version: "dev"}).Create(command.Context(), destination, passphrase, includeSessions)
+		manifest, err := (backup.Service{Core: database, StateRoot: stateDir, Secrets: newSecretStore(), Version: buildinfo.Version}).Create(command.Context(), destination, passphrase, includeSessions)
 		if err != nil {
 			return err
 		}

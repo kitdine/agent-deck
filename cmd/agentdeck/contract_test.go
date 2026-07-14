@@ -71,7 +71,9 @@ func leafCommands(root *cobra.Command) []*cobra.Command {
 			visit(child)
 		}
 	}
-	visit(root)
+	for _, child := range root.Commands() {
+		visit(child)
+	}
 	return leaves
 }
 
@@ -280,6 +282,7 @@ func TestJSONCommandsUseSyntheticStateAndDoNotExposeSecrets(t *testing.T) {
 		{[]string{"extension", "doctor"}, "extension.doctor"},
 		{[]string{"backup", "list"}, "backup.list"},
 		{[]string{"doctor", "--full"}, "doctor"},
+		{[]string{"version"}, "version"},
 	}
 	for _, test := range cases {
 		t.Run(test.command, func(t *testing.T) {

@@ -1,41 +1,67 @@
 # AgentDeck
 
-> Pre-release: AgentDeck is under active development and is not yet published
-> through Homebrew.
+[English](README.md) | [简体中文](README_zh.md)
 
-AgentDeck is a local macOS-first CLI for managing Codex and Claude provider
-configuration, inspecting locally recorded usage, and searching selected visible
-session text. It keeps provider definitions in local SQLite state, stores
-credentials in macOS Keychain, and reads client session logs without modifying
-them.
+> A local, macOS-first CLI for managing Codex and Claude providers, usage,
+> sessions, extensions, diagnostics, and encrypted backups from one place.
 
-## Current capabilities
+AgentDeck is for developers who use multiple Codex or Claude providers and want
+one local control plane without moving credentials or session data to a hosted
+service. Provider definitions live in SQLite, credentials stay in macOS
+Keychain, and client session logs remain read-only source data.
 
-- `agentdeck provider`: manage providers, credentials, selection, status, and
-  recovery.
-- `agentdeck usage`: scan local usage records and inspect usage summaries and
-  price catalogs.
-- `agentdeck session`: scan, search, exclude, rebuild, and purge the local
-  session index.
-- `agentdeck extension`: discover and inspect native plugins, MCP servers, and
-  skills; explicitly adopt or release AgentDeck management state. Phase 5
-  re-review passed.
-- `agentdeck watch`: run foreground incremental usage, session, and extension
-  scans with versioned NDJSON events.
-- `agentdeck backup`: create, list, authenticate, inspect, and empty-root restore
-  age-encrypted portable backups.
-- `agentdeck doctor`: run quick or full read-only state diagnostics with explicit
-  recovery guidance.
-- `agentdeck run`: associate a Codex or Claude process with an exact usage run.
+> **Pre-release:** Phase One and the version/installation baseline have completed
+> implementation and independent review. Release preparation is pending, and
+> AgentDeck is not yet available through Homebrew.
 
-Native extension enable/disable remains read-only until an adapter has an
-unambiguous native toggle. Phase 6 and Phase 7 re-reviews passed, and the
-superseded repository-local Python and Bash entrypoints have been removed.
+```bash
+make build
+./dist/agentdeck --help
+```
 
-## Build from source
+## Why AgentDeck
 
-Requirements: Go `1.26.0` and GNU Make. Dependencies are committed under
-`vendor/`, so normal builds do not download modules.
+- **One CLI:** manage provider selection, usage, sessions, extensions,
+  diagnostics, and backups through a single command tree.
+- **Local by default:** normal commands do not require a hosted AgentDeck
+  service or expose a network port.
+- **Credential isolation:** provider secrets are stored in macOS Keychain, not
+  in AgentDeck databases or client configuration backups.
+- **Recoverable changes:** provider configuration writes use journals and
+  redacted backups so interrupted operations can be diagnosed and recovered.
+- **Scriptable output:** commands support text and JSON output; `watch` also
+  supports versioned NDJSON events.
+
+## Current Capabilities
+
+| Command | What it does |
+| --- | --- |
+| `agentdeck provider` | Manage providers, Keychain credential references, provider selection, status, and recovery. |
+| `agentdeck usage` | Scan local usage records, summarize cost and token data, diagnose attribution, and manage price catalogs. |
+| `agentdeck session` | Scan and search approved visible session text, manage exclusions, rebuild the index, or purge it independently. |
+| `agentdeck extension` | Discover plugins, MCP servers, and skills; inspect health; explicitly adopt or release management state. |
+| `agentdeck watch` | Run foreground incremental usage, session, and extension scans with versioned NDJSON events. |
+| `agentdeck backup` | Create, list, authenticate, inspect, and restore age-encrypted portable backups. |
+| `agentdeck doctor` | Run quick or full read-only diagnostics with actionable recovery guidance. |
+| `agentdeck run` | Associate an exact Codex or Claude subprocess execution with its usage record. |
+| `agentdeck version` | Report version, commit, build time, and Go runtime identity for diagnostics. |
+
+Native extension enable and disable remain read-only unless an adapter exposes
+an unambiguous native toggle. Portable restore only targets an absent or empty
+AgentDeck state root.
+
+## Requirements
+
+- macOS for the current Keychain-backed credential implementation
+- Go `1.26.0`
+- GNU Make
+
+Dependencies are committed under `vendor/`, so normal builds and tests do not
+download Go modules.
+
+## Build From Source
+
+Build the local development binary:
 
 ```bash
 make build
@@ -48,47 +74,220 @@ Build both supported macOS architectures:
 make build-all
 ```
 
-This creates:
+The binaries are written to:
 
 ```text
 dist/agentdeck_darwin_arm64
 dist/agentdeck_darwin_amd64
 ```
 
-Run the full release verification suite, including the legacy behavior-reference
-tests, both macOS builds, the arm64 size gate, and a privacy scan of tracked and
-untracked non-ignored files:
+## Install From Source
+
+Install the current source build for the local user:
 
 ```bash
+make install
+export PATH="$HOME/.local/bin:$PATH"
+agentdeck version
+```
+
+The default installation paths are separate from AgentDeck user state:
+
+```text
+~/.local/bin/agentdeck                  # executable
+~/.local/share/agentdeck/               # ownership manifest
+~/.agentdeck/                           # databases, indexes, and backups
+```
+
+Use a different user-local prefix when needed:
+
+```bash
+make install PREFIX="$HOME/tools/agentdeck"
+```
+
+Keep using the same `PREFIX` for that installation's upgrade and uninstall:
+
+```bash
+make install PREFIX="$HOME/tools/agentdeck" FORCE=1
+make uninstall PREFIX="$HOME/tools/agentdeck"
+```
+
+Installation refuses to overwrite an existing binary or manifest. After
+reviewing the binary identity, explicitly authorize an upgrade with:
+
+```bash
+make install FORCE=1
+agentdeck version
+```
+
+Safely remove an unchanged installation with:
+
+```bash
+make uninstall
+```
+
+Uninstall verifies the recorded path and SHA-256 before removing the binary.
+It fails closed if the binary or manifest changed and never deletes
+`~/.agentdeck/`, Keychain credentials, client configuration, or backups.
+
+## Quick Start
+
+Start with read-only diagnostics and command discovery:
+
+```bash
+./dist/agentdeck doctor
+./dist/agentdeck provider --help
+./dist/agentdeck usage --help
+```
+
+Scan and inspect local usage and sessions:
+
+```bash
+./dist/agentdeck usage scan
+./dist/agentdeck usage summary
+./dist/agentdeck session scan
+./dist/agentdeck session search "project name"
+```
+
+Discover local extensions:
+
+```bash
+./dist/agentdeck extension scan
+./dist/agentdeck extension list
+```
+
+Use JSON for automation or NDJSON for the foreground watcher:
+
+```bash
+./dist/agentdeck --format json provider list
+./dist/agentdeck --format ndjson watch
+```
+
+Run `agentdeck <command> --help` before a state-changing operation to inspect
+its exact arguments and safety constraints.
+
+## Build Identity
+
+Include the build identity when reporting a problem:
+
+```bash
+agentdeck version
+agentdeck --version
+agentdeck --format json version
+```
+
+Source builds report `dev`, `unknown`, and `unknown` unless `VERSION`, `COMMIT`,
+and `BUILD_TIME` are explicitly supplied to Make. Release tooling can inject
+those values without changing the runtime contract.
+
+## Provider Setup Example
+
+The following example uses a fake endpoint and credential reference. The
+credential value is entered through the terminal and stored in macOS Keychain.
+
+```bash
+./dist/agentdeck provider credential add work-codex
+./dist/agentdeck provider add work https://api.example.com/v1 work-codex 1 codex
+./dist/agentdeck provider show work
+```
+
+Selecting a provider requires the client configuration path and a destination
+for the redacted backup:
+
+```bash
+./dist/agentdeck provider use \
+  work codex \
+  "$HOME/.codex/config.toml" \
+  "$HOME/.agentdeck/codex-config.redacted.toml"
+```
+
+AgentDeck modifies only documented provider fields and preserves unrelated
+client configuration.
+
+## Local Data and Privacy
+
+By default, AgentDeck uses `~/.agentdeck/` as its persistent state directory:
+
+```text
+~/.agentdeck/
+├── agentdeck.sqlite3   # provider, usage, extension, and backup metadata
+└── sessions.sqlite3    # separately purgeable visible session index
+```
+
+Use `--state-dir <path>` for isolated state. AgentDeck keeps the caller's
+current directory as project context for extension discovery; it does not use
+the installation directory or change into `~/.agentdeck/` while running.
+
+- Provider credential values stay in macOS Keychain.
+- Codex and Claude session logs are read-only inputs.
+- The session index stores only approved visible conversation fields.
+- Purging the session index does not delete client source logs.
+- Normal commands do not probe provider hosts or access the network.
+- Network access is reserved for the explicit `agentdeck usage price update`
+  command.
+- Automated tests use temporary homes, synthetic logs, and fake secret stores.
+
+## Development and Verification
+
+Run targeted checks while developing, then use the complete release gate before
+delivery:
+
+```bash
+make test
+make test-race
+make vet
 make release-verify
 ```
 
-## Planned Homebrew distribution
+`make release-verify` runs the Go test suite, race detector, `go vet`, both
+macOS builds, the stripped arm64 size gate, and the repository privacy scan.
 
-Homebrew integration will begin only after the first versioned release provides
-signed or checksummed macOS archives for both architectures. The planned user
-workflow is:
+Clean generated binaries with:
+
+```bash
+make clean
+```
+
+## Project Structure
+
+```text
+cmd/agentdeck/   Cobra CLI entrypoint and end-to-end contract tests
+internal/        Provider, usage, session, extension, backup, and platform code
+scripts/         Release privacy checks
+docs/specs/      Approved behavior and architecture contracts
+docs/plans/      Execution status and completion gates
+vendor/          Committed Go dependencies
+```
+
+## Documentation and Status
+
+- [Documentation index](docs/README.md)
+- [Phase One implementation plan](docs/plans/2026-07-13-agentdeck-cli.md)
+- [CLI design and contracts](docs/specs/2026-07-13-agentdeck-cli-design.md)
+
+The repository code, tests, configuration, Git history, and active documents
+above are the sources of truth.
+
+## Distribution Roadmap
+
+Homebrew integration begins only after the first versioned release provides
+signed or checksummed macOS archives for arm64 and amd64. The planned workflow
+is:
 
 ```bash
 brew tap kitdine/tap
 brew install agentdeck
 ```
 
-The future `kitdine/homebrew-tap` formula will install release archives rather
-than build from a moving Git branch. Each release must provide a semantic
-version, arm64 and amd64 archive URLs, SHA-256 values, and a smoke test based on
-`agentdeck --help`.
+These commands are not available yet. The future formula will install immutable
+release archives rather than build from a moving branch.
 
-## Documentation and status
+## Contributing
 
-- [Documentation index](docs/README.md)
-- [Phase-one implementation plan](docs/plans/2026-07-13-agentdeck-cli.md)
-- [CLI design](docs/specs/2026-07-13-agentdeck-cli-design.md)
+Keep changes scoped to the active design and plan, preserve privacy boundaries,
+and run `make release-verify` before proposing delivery. See [AGENTS.md](AGENTS.md)
+for repository-specific development and authorization rules.
 
-## Privacy and safety
+## License
 
-- Provider credentials are kept in macOS Keychain, not in AgentDeck databases.
-- Client logs are read-only source data.
-- The session index stores only approved visible conversation fields and can be
-  purged without deleting source logs.
-- Network access is reserved for the explicit usage-price update command.
+This repository does not currently include a license file.

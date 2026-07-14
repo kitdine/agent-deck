@@ -161,6 +161,7 @@ func TestIsolatedEndToEndFlow(t *testing.T) {
 	runJSON("backup.list", "", "backup", "list")
 	runJSON("backup.inspect", "passphrase\n", "backup", "inspect", archive)
 	runJSON("doctor", "", "doctor", "--full")
+	runJSON("version", "", "version")
 	activeSecrets = restoredSecrets
 	var restoredOutput bytes.Buffer
 	if err := run([]string{"--state-dir", restoredState, "--format", "json", "backup", "restore", archive}, bytes.NewBufferString("passphrase\n"), &restoredOutput); err != nil {

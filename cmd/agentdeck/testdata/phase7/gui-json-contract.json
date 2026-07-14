@@ -60,6 +60,7 @@
     "usage.scan",
     "usage.sessions",
     "usage.summary",
+    "version",
     "watch"
   ],
   "contracts": {
@@ -1493,6 +1494,35 @@
       },
       "error_code": "invalid_argument",
       "error_command": "usage.summary"
+    },
+    "version": {
+      "success_schema": {
+        "command": "string",
+        "data": {
+          "build_time": "string",
+          "commit": "string",
+          "go_version": "string",
+          "version": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "version"
     },
     "watch": {
       "success_schema": {

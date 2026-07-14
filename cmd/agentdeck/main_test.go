@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/kitdine/agent-deck/internal/buildinfo"
 )
 
 func TestRootCommandRegistersGlobalFlags(t *testing.T) {
@@ -28,6 +30,67 @@ func TestRootCommandRegistersGlobalFlags(t *testing.T) {
 	for _, name := range []string{"extension", "watch", "backup", "doctor"} {
 		if !commands[name] {
 			t.Fatalf("command %q missing", name)
+		}
+	}
+	if root.Flags().Lookup("version") == nil {
+		t.Fatal("missing root-only version flag")
+	}
+}
+
+func TestVersionCommandAndFlagShareTextAndJSONContract(t *testing.T) {
+	oldVersion, oldCommit, oldBuildTime := buildinfo.Version, buildinfo.Commit, buildinfo.BuildTime
+	buildinfo.Version, buildinfo.Commit, buildinfo.BuildTime = "v1.2.3", "0123456789abcdef", "2026-07-15T00:00:00Z"
+	t.Cleanup(func() {
+		buildinfo.Version, buildinfo.Commit, buildinfo.BuildTime = oldVersion, oldCommit, oldBuildTime
+	})
+
+	var commandText, flagText bytes.Buffer
+	if err := run([]string{"version"}, bytes.NewReader(nil), &commandText); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{
+		{"--version"},
+		{"--version=true"},
+		{"--no-color=true", "--quiet=false", "--version=true"},
+	} {
+		flagText.Reset()
+		if err := run(args, bytes.NewReader(nil), &flagText); err != nil {
+			t.Fatalf("run %v: %v", args, err)
+		}
+		if commandText.String() != flagText.String() || !bytes.Contains(commandText.Bytes(), []byte("v1.2.3")) || !bytes.Contains(commandText.Bytes(), []byte("0123456789abcdef")) {
+			t.Fatalf("version text command=%q flag %v=%q", commandText.String(), args, flagText.String())
+		}
+	}
+
+	for _, args := range [][]string{{"--format", "json", "version"}, {"--format", "json", "--version"}, {"--format=json", "--no-color=true", "--version=true"}} {
+		var encoded bytes.Buffer
+		if err := run(args, bytes.NewReader(nil), &encoded); err != nil {
+			t.Fatalf("run %v: %v", args, err)
+		}
+		var envelope struct {
+			SchemaVersion int                `json:"schema_version"`
+			Command       string             `json:"command"`
+			Data          buildinfo.Identity `json:"data"`
+		}
+		if err := json.Unmarshal(encoded.Bytes(), &envelope); err != nil {
+			t.Fatalf("decode %v: %q: %v", args, encoded.String(), err)
+		}
+		if envelope.SchemaVersion != 1 || envelope.Command != "version" || envelope.Data.Version != "v1.2.3" || envelope.Data.Commit != "0123456789abcdef" || envelope.Data.BuildTime != "2026-07-15T00:00:00Z" || envelope.Data.GoVersion == "" {
+			t.Fatalf("version envelope for %v = %#v", args, envelope)
+		}
+	}
+	var stdout, stderr bytes.Buffer
+	if exit := execute([]string{"provider", "--version"}, bytes.NewReader(nil), &stdout, &stderr); exit != 2 {
+		t.Fatalf("subcommand --version exit = %d, stdout=%q stderr=%q", exit, stdout.String(), stderr.String())
+	}
+	for _, args := range [][]string{{"--format", "yaml", "version"}, {"--format=yaml", "--version"}} {
+		stdout.Reset()
+		stderr.Reset()
+		if exit := execute(args, bytes.NewReader(nil), &stdout, &stderr); exit != 2 {
+			t.Fatalf("invalid format %v exit = %d, stdout=%q stderr=%q", args, exit, stdout.String(), stderr.String())
+		}
+		if stdout.Len() != 0 || !bytes.Contains(stderr.Bytes(), []byte("invalid format")) {
+			t.Fatalf("invalid format %v stdout=%q stderr=%q", args, stdout.String(), stderr.String())
 		}
 	}
 }
@@ -149,6 +212,10 @@ func TestUsageCommandTextAndJSONContracts(t *testing.T) {
 }
 
 func TestPhase6BackupAndDoctorCLIContracts(t *testing.T) {
+	oldVersion := buildinfo.Version
+	buildinfo.Version = "v1.2.3-backup"
+	t.Cleanup(func() { buildinfo.Version = oldVersion })
+
 	ctx := context.Background()
 	source := filepath.Join(t.TempDir(), "source")
 	database, err := store.Open(ctx, source)
@@ -180,6 +247,16 @@ func TestPhase6BackupAndDoctorCLIContracts(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertCommandEnvelope(t, output.Bytes(), "backup.create")
+	var created struct {
+		Data struct {
+			Manifest struct {
+				AgentDeckVersion string `json:"agentdeck_version"`
+			} `json:"manifest"`
+		} `json:"data"`
+	}
+	if err = json.Unmarshal(output.Bytes(), &created); err != nil || created.Data.Manifest.AgentDeckVersion != "v1.2.3-backup" {
+		t.Fatalf("backup build provenance = %#v, %v", created, err)
+	}
 	var failedOutput, failedError bytes.Buffer
 	if exit := execute([]string{"--state-dir", source, "--format", "json", "backup", "create", archive}, bytes.NewBufferString("passphrase\n"), &failedOutput, &failedError); exit != 1 {
 		t.Fatalf("existing backup exit = %d, stdout=%s stderr=%s", exit, failedOutput.String(), failedError.String())
