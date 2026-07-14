@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jobshen/agentdeck/internal/platform"
+	"github.com/kitdine/agent-deck/internal/platform"
 	_ "modernc.org/sqlite"
 )
 

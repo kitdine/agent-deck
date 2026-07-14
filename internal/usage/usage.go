@@ -22,7 +22,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jobshen/agentdeck/internal/store"
+	"github.com/kitdine/agent-deck/internal/store"
 )
 
 //go:embed model-prices.json

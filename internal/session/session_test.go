@@ -2,7 +2,7 @@ package session
 
 import (
 	"context"
-	"github.com/jobshen/agentdeck/internal/store"
+	"github.com/kitdine/agent-deck/internal/store"
 	"os"
 	"path/filepath"
 	"testing"

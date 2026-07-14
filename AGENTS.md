@@ -40,11 +40,15 @@ Do not bypass RTK merely for convenience.
 
 ## Project Overview / 项目概览
 
-- Project name / 项目名称: `local-tools`
-- Purpose / 项目目标: Local command-line tools for managing Codex and Claude AI provider configuration.
-- Primary stack / 主要技术栈: Python 3, Bash, and JSON configuration.
-- Supported environments / 支持环境: Local macOS user environments with Codex and/or Claude installed.
-- Primary entry document / 项目入口文档: `docs/superpowers/specs/2026-07-13-ai-provider-mode-design.md`
+- Project name / 项目名称: `AgentDeck`
+- Purpose / 项目目标: One local CLI for Codex and Claude provider switching,
+  usage cost, session search, extension inventory, and portable backup.
+- Primary stack / 主要技术栈: Go and SQLite. The committed Python 3 and Bash
+  implementation remains a temporary behavioral reference during migration.
+- Supported environments / 支持环境: macOS first, with portable core contracts
+  for later Windows and Linux support.
+- Primary entry document / 项目入口文档:
+  `docs/specs/2026-07-13-agentdeck-cli-design.md`
 
 Authoritative project facts live in code, tests, configuration, repository
 history, and the documents explicitly identified below. Chat history is not a
@@ -57,10 +61,10 @@ source of truth.
 
 The workspace may contain one or more independent repositories:
 
-| Path | Repository or unit | Responsibility | Release unit |
-| --- | --- | --- | --- |
-| `.` | `local-tools` | Local AI provider configuration tools | Yes |
-| Not applicable | Not applicable | No sibling repository is in scope | No |
+| Path           | Repository or unit | Responsibility                                               | Release unit |
+| -------------- | ------------------ | ------------------------------------------------------------ | ------------ |
+| `.`            | `AgentDeck`        | Local AI provider, usage, session, extension, and backup CLI | Yes          |
+| Not applicable | Not applicable     | No sibling repository is in scope                            | No           |
 
 - Treat each listed repository as an independent ownership and release unit.
 - Run Git commands from the repository they target, or use `git -C <path>`.
@@ -208,7 +212,7 @@ Do not collapse "fix implemented" and "review passed" into the same state.
 
 ## Testing and Verification / 测试与验证
 
-Define the project's required commands:
+Until the Go replacement exists, the committed legacy implementation uses:
 
 ```bash
 # Unit and integration tests / 单元与集成测试
@@ -224,6 +228,21 @@ rtk lint python3 -m py_compile bin/ai-provider-mode bin/ai-provider-key bin/ai_p
 # End-to-end or runtime verification / 端到端或运行态验证
 rtk test bash tests/test-ai-provider-aliases.sh
 rtk test bash tests/test-ai-provider-mode.sh
+```
+
+Once Go source is introduced, affected AgentDeck work also uses:
+
+In the managed sandbox, set `GOCACHE=/private/tmp/agent-deck-go-build` for
+every Go test, vet, and build command. If a first cross-build also needs to
+download modules, set `GOMODCACHE=/private/tmp/agent-deck-go-mod` for that
+command rather than writing to the user Go module cache.
+
+```bash
+rtk test env GOCACHE=/private/tmp/agent-deck-go-build go test -mod=vendor ./...
+rtk test env GOCACHE=/private/tmp/agent-deck-go-build go test -mod=vendor -race ./...
+rtk lint env GOCACHE=/private/tmp/agent-deck-go-build go vet -mod=vendor ./...
+rtk test env GOCACHE=/private/tmp/agent-deck-go-build GOOS=darwin GOARCH=arm64 go build -mod=vendor -trimpath ./cmd/agentdeck
+rtk test env GOCACHE=/private/tmp/agent-deck-go-build GOOS=darwin GOARCH=amd64 go build -mod=vendor -trimpath ./cmd/agentdeck
 ```
 
 - Scale verification to the risk and blast radius of the change.
@@ -305,9 +324,8 @@ Dependency changes must be intentional and isolated.
 - Document the required commands:
 
 ```bash
-rtk proxy true # No dependency synchronization is required.
-rtk proxy true # This project has no vendored dependencies.
-rtk proxy true # Dependencies are Python standard library and Bash only.
+rtk proxy env GOCACHE=/private/tmp/agent-deck-go-build GOMODCACHE=/private/tmp/agent-deck-go-mod go mod tidy
+rtk proxy env GOCACHE=/private/tmp/agent-deck-go-build GOMODCACHE=/private/tmp/agent-deck-go-mod go mod vendor
 ```
 
 Delete this section if the project has no vendoring or dependency lock policy.
@@ -351,12 +369,22 @@ labeled as examples.
 
 Define project-specific runtime constraints here:
 
-- Runtime topology / 运行拓扑: Local user commands that update `~/.codex/config.toml`, `~/.claude/settings.json`, and `~/.config/ai-provider-mode/`.
-- Allowed connectivity / 允许的连接方式: No network connection is required to run the tools or their tests; configured provider hosts are consumed by Codex or Claude.
+- Runtime topology / 运行拓扑: One on-demand `agentdeck` binary uses
+  `~/.agentdeck/`, macOS Keychain, `~/.codex/config.toml`, and
+  `~/.claude/settings.json`. The optional watcher is foreground-only.
+- Allowed connectivity / 允许的连接方式: Normal commands and tests require no
+  network. Only an explicit `agentdeck usage price update` downloads the
+  configured public price catalog; provider hosts are consumed by Codex or
+  Claude, not probed by AgentDeck.
 - Prohibited exposure / 禁止的暴露方式: The tools must not expose network ports or alter host network configuration.
-- Test-data policy / 测试数据策略: Tests use temporary directories and synthetic tokens only; real tokens remain in the local mode-0600 provider configuration.
-- Deployment command / 部署命令: Not applicable; this repository contains local scripts, not a deployable service.
-- Rollback procedure / 回滚方式: Restore the redacted configuration backup only after supplying the required credential again, or manually restore the prior local configuration.
+- Test-data policy / 测试数据策略: Tests use temporary homes, synthetic session
+  logs, fake credentials, and isolated secret-store adapters. Real credentials
+  and real session sources are not used by automated tests.
+- Deployment command / 部署命令: Not applicable; this repository produces a
+  local binary, not a deployed service.
+- Rollback procedure / 回滚方式: Use the operation journal and redacted client
+  backup for interrupted configuration changes. Portable restore targets an
+  empty AgentDeck state root and never automatically rewrites client config.
 
 - Do not change network exposure, persistent volumes, shared databases, or
   production-like data merely to simplify validation.
@@ -370,14 +398,14 @@ Define project-specific runtime constraints here:
 
 Authoritative documents:
 
-| Purpose | Path |
-| --- | --- |
-| Documentation index / 文档索引 | `docs/superpowers/` |
-| Current execution status / 当前执行状态 | `docs/superpowers/plans/2026-07-13-ai-provider-mode.md` |
-| Requirements catalog / 需求目录 | `docs/superpowers/specs/2026-07-13-ai-provider-mode-design.md` |
-| Architecture or API contract / 架构或 API 契约 | `docs/superpowers/specs/2026-07-13-ai-provider-mode-design.md` |
-| Development guide / 开发指南 | `AGENTS.md` |
-| Deployment guide / 部署指南 | Not applicable; this repository has no deployment process. |
+| Purpose                                        | Path                                                       |
+| ---------------------------------------------- | ---------------------------------------------------------- |
+| Documentation index / 文档索引                 | `docs/`                                                    |
+| Current execution status / 当前执行状态        | `docs/plans/2026-07-13-agentdeck-cli.md`                   |
+| Requirements catalog / 需求目录                | `docs/specs/2026-07-13-agentdeck-cli-design.md`            |
+| Architecture or API contract / 架构或 API 契约 | `docs/specs/2026-07-13-agentdeck-cli-design.md`            |
+| Development guide / 开发指南                   | `AGENTS.md`                                                |
+| Deployment guide / 部署指南                    | Not applicable; this repository has no deployment process. |
 
 - Treat code, tests, configuration, and repository history as current truth.
 - Update the closest living document when behavior, contracts, requirements, or
@@ -399,8 +427,10 @@ The handoff file is a pointer to authoritative state, not a duplicate narrative
 store.
 
 - Handoff file / 交接文件: Not applicable; no dedicated handoff file exists.
-- Authoritative status source / 权威状态来源: `docs/superpowers/plans/2026-07-13-ai-provider-mode.md`
-- Requirements source / 需求来源: `docs/superpowers/specs/2026-07-13-ai-provider-mode-design.md`
+- Authoritative status source / 权威状态来源:
+  `docs/plans/2026-07-13-agentdeck-cli.md`
+- Requirements source / 需求来源:
+  `docs/specs/2026-07-13-agentdeck-cli-design.md`
 - Repository history / 仓库历史: `.` (`.git`)
 
 At the start of resumed work:
@@ -453,6 +483,8 @@ data handling, or release sequencing.
 
 ### Required Commands / 必需命令
 
+Run the legacy checks while the reference implementation remains:
+
 ```bash
 rtk test bash tests/test-ai-provider-aliases.sh
 rtk test bash tests/test-ai-provider-mode.sh
@@ -464,10 +496,34 @@ rtk test bash tests/test-ai-provider-mode.sh
 rtk test python3 -m unittest tests/test_ai_provider_usage.py
 ```
 
+After Go packages are added, run the affected targeted tests followed by:
+
+Use `GOCACHE=/private/tmp/agent-deck-go-build` for every Go command. Add
+`GOMODCACHE=/private/tmp/agent-deck-go-mod` to a first cross-build when module
+downloads would otherwise write to the user cache.
+
+```bash
+rtk test env GOCACHE=/private/tmp/agent-deck-go-build go test -mod=vendor ./...
+rtk test env GOCACHE=/private/tmp/agent-deck-go-build go test -mod=vendor -race ./...
+rtk lint env GOCACHE=/private/tmp/agent-deck-go-build go vet -mod=vendor ./...
+rtk test env GOCACHE=/private/tmp/agent-deck-go-build GOOS=darwin GOARCH=arm64 go build -mod=vendor -trimpath ./cmd/agentdeck
+rtk test env GOCACHE=/private/tmp/agent-deck-go-build GOOS=darwin GOARCH=amd64 go build -mod=vendor -trimpath ./cmd/agentdeck
+```
+
 ### Domain Constraints / 领域约束
 
-- Store credentials only in `~/.config/ai-provider-mode/providers.json` with mode `0600`.
-- Preserve Codex session and authentication files; modify only the documented provider configuration fields.
+- Store AgentDeck provider definitions in `~/.agentdeck/agentdeck.sqlite3` and
+  credential values in macOS Keychain. Never store credential values in the
+  database.
+- Keep `~/.agentdeck/` directories mode `0700` and databases, sidecars,
+  backups, locks, and temporary files mode `0600`.
+- Preserve Codex and Claude session and authentication files; source logs are
+  read-only and provider switching modifies only documented configuration
+  fields.
+- Keep usage metadata in the core database and approved visible session text in
+  the separately purgeable `sessions.sqlite3` database.
+- Do not delete, overwrite, or reinstall existing legacy scripts under the
+  real user's `~/.local/bin/`.
 
 ### Prohibited Actions / 禁止事项
 
@@ -476,8 +532,8 @@ rtk test python3 -m unittest tests/test_ai_provider_usage.py
 
 ### Workflow Triggers / 工作流触发词
 
-| Trigger | Required workflow | Commit/push authority |
-| --- | --- | --- |
+| Trigger        | Required workflow                       | Commit/push authority            |
+| -------------- | --------------------------------------- | -------------------------------- |
 | Not applicable | No project-specific trigger is defined. | Explicit authorization required. |
 | Not applicable | No project-specific trigger is defined. | Explicit authorization required. |
 

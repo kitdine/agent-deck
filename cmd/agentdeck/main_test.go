@@ -4,16 +4,18 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"github.com/jobshen/agentdeck/internal/store"
+	"github.com/kitdine/agent-deck/internal/store"
 	"os"
 	"path/filepath"
 	"testing"
 )
 
-func TestGlobals(t *testing.T) {
-	state, format, args, err := globals([]string{"--state-dir", "/tmp/state", "--format", "json", "provider", "list"})
-	if err != nil || state != "/tmp/state" || format != "json" || len(args) != 2 {
-		t.Fatalf("globals = %q, %q, %#v, %v", state, format, args, err)
+func TestRootCommandRegistersGlobalFlags(t *testing.T) {
+	root := newRootCommand(bytes.NewReader(nil), &bytes.Buffer{})
+	for _, name := range []string{"state-dir", "format", "no-color", "quiet"} {
+		if root.PersistentFlags().Lookup(name) == nil {
+			t.Fatalf("missing global flag %q", name)
+		}
 	}
 }
 

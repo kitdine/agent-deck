@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jobshen/agentdeck/internal/store"
+	"github.com/kitdine/agent-deck/internal/store"
 )
 
 func TestCalculateSeparatesCachedAndClaudeTTLComponents(t *testing.T) {

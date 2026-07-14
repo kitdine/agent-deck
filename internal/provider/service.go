@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/jobshen/agentdeck/internal/platform"
-	"github.com/jobshen/agentdeck/internal/store"
+	"github.com/kitdine/agent-deck/internal/platform"
+	"github.com/kitdine/agent-deck/internal/store"
 )
 
 type Service struct {

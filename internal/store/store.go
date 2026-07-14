@@ -13,7 +13,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/jobshen/agentdeck/internal/platform"
+	"github.com/kitdine/agent-deck/internal/platform"
 	"modernc.org/sqlite"
 )
 

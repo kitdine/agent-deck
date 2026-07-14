@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/jobshen/agentdeck/internal/platform"
+	"github.com/kitdine/agent-deck/internal/platform"
 	"github.com/pelletier/go-toml/v2"
 )
 

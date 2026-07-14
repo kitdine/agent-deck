@@ -11,17 +11,26 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jobshen/agentdeck/internal/output"
-	"github.com/jobshen/agentdeck/internal/platform"
-	"github.com/jobshen/agentdeck/internal/provider"
-	"github.com/jobshen/agentdeck/internal/session"
-	"github.com/jobshen/agentdeck/internal/store"
-	"github.com/jobshen/agentdeck/internal/usage"
+	"github.com/spf13/cobra"
+
+	"github.com/kitdine/agent-deck/internal/output"
+	"github.com/kitdine/agent-deck/internal/platform"
+	"github.com/kitdine/agent-deck/internal/provider"
+	"github.com/kitdine/agent-deck/internal/session"
+	"github.com/kitdine/agent-deck/internal/store"
+	"github.com/kitdine/agent-deck/internal/usage"
 )
 
-// userHomeDir is injectable so command tests never traverse a real user's
-// Codex or Claude logs.
 var userHomeDir = os.UserHomeDir
+
+type commandOptions struct {
+	stateDir string
+	format   string
+	quiet    bool
+	noColor  bool
+	stdin    io.Reader
+	stdout   io.Writer
+}
 
 func main() {
 	if err := run(os.Args[1:], os.Stdin, os.Stdout); err != nil {
@@ -31,355 +40,379 @@ func main() {
 }
 
 func run(args []string, stdin io.Reader, stdout io.Writer) error {
-	stateDir, format, args, err := globals(args)
+	root := newRootCommand(stdin, stdout)
+	root.SetArgs(args)
+	return root.Execute()
+}
+
+func newRootCommand(stdin io.Reader, stdout io.Writer) *cobra.Command {
+	opts := &commandOptions{format: "text", stdin: stdin, stdout: stdout}
+	root := &cobra.Command{
+		Use:           "agentdeck",
+		Short:         "Manage local AI provider, usage, and session data",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+	root.SetIn(stdin)
+	root.SetOut(stdout)
+	root.SetErr(os.Stderr)
+	flags := root.PersistentFlags()
+	flags.StringVar(&opts.stateDir, "state-dir", "", "AgentDeck state directory")
+	flags.StringVar(&opts.format, "format", "text", "Output format: text or json")
+	flags.BoolVar(&opts.noColor, "no-color", false, "Disable color output")
+	flags.BoolVar(&opts.quiet, "quiet", false, "Suppress non-essential output")
+	root.AddCommand(newProviderCommand(opts), newUsageCommand(opts), newSessionCommand(opts), newRunCommand(opts))
+	return root
+}
+
+func (o *commandOptions) stateRoot() (string, error) {
+	if o.format != "text" && o.format != "json" {
+		return "", fmt.Errorf("invalid format %q", o.format)
+	}
+	if o.stateDir != "" {
+		return o.stateDir, nil
+	}
+	home, err := userHomeDir()
 	if err != nil {
-		return err
+		return "", err
 	}
-	if len(args) < 1 {
-		return fmt.Errorf("usage: agentdeck <provider|usage|session|run> <command>")
+	return platform.StateRoot("", home), nil
+}
+
+func (o *commandOptions) openStore(ctx context.Context) (*store.Store, string, error) {
+	stateDir, err := o.stateRoot()
+	if err != nil {
+		return nil, "", err
 	}
-	if stateDir == "" {
-		home, err := userHomeDir()
+	database, err := store.Open(ctx, stateDir)
+	return database, stateDir, err
+}
+
+func newProviderCommand(opts *commandOptions) *cobra.Command {
+	providerCmd := &cobra.Command{Use: "provider", Short: "Manage providers"}
+	withService := func(run func(context.Context, provider.Service, []string) (any, error)) func(*cobra.Command, []string) error {
+		return func(cmd *cobra.Command, args []string) error {
+			database, _, err := opts.openStore(cmd.Context())
+			if err != nil {
+				return err
+			}
+			defer database.Close()
+			data, err := run(cmd.Context(), provider.Service{Store: database, Secrets: platform.NewKeychainSecretStore("com.agentdeck.provider")}, args)
+			if err != nil {
+				return err
+			}
+			return writeResult(opts.stdout, opts.format, "provider."+cmd.Name(), data)
+		}
+	}
+	providerCmd.AddCommand(
+		&cobra.Command{Use: "list", Args: cobra.NoArgs, RunE: withService(func(ctx context.Context, s provider.Service, _ []string) (any, error) { return s.List(ctx) })},
+		&cobra.Command{Use: "status", Args: cobra.NoArgs, RunE: withService(func(ctx context.Context, s provider.Service, _ []string) (any, error) { return s.List(ctx) })},
+		&cobra.Command{Use: "show <name>", Args: cobra.ExactArgs(1), RunE: withService(func(ctx context.Context, s provider.Service, args []string) (any, error) {
+			statuses, err := s.List(ctx)
+			if err != nil {
+				return nil, err
+			}
+			for _, status := range statuses {
+				if status.Definition.Name == args[0] {
+					return status, nil
+				}
+			}
+			return nil, fmt.Errorf("provider not found")
+		})},
+		&cobra.Command{Use: "add <name> <endpoint> <credential-ref> <multiplier> <codex|claude>", Args: cobra.ExactArgs(5), RunE: withService(func(ctx context.Context, s provider.Service, args []string) (any, error) {
+			credential, err := readCredential(opts.stdin)
+			if err != nil {
+				return nil, err
+			}
+			return s.Add(ctx, provider.Definition{Name: args[0], Endpoint: args[1], CredentialRef: args[2], Multiplier: args[3], Clients: []provider.Client{provider.Client(args[4])}}, credential)
+		})},
+		&cobra.Command{Use: "edit <name> <endpoint> <credential-ref> <multiplier> <codex|claude>", Args: cobra.ExactArgs(5), RunE: withService(func(ctx context.Context, s provider.Service, args []string) (any, error) {
+			return s.Edit(ctx, provider.Definition{Name: args[0], Endpoint: args[1], CredentialRef: args[2], Multiplier: args[3], Clients: []provider.Client{provider.Client(args[4])}}, "")
+		})},
+		&cobra.Command{Use: "remove <name> <credential-ref>", Args: cobra.ExactArgs(2), RunE: withService(func(ctx context.Context, s provider.Service, args []string) (any, error) {
+			return nil, s.Remove(ctx, args[0], args[1])
+		})},
+		&cobra.Command{Use: "use <name> <codex|claude> <config-path> <redacted-backup-path>", Args: cobra.ExactArgs(4), RunE: withService(func(ctx context.Context, s provider.Service, args []string) (any, error) {
+			return nil, s.Use(ctx, args[0], provider.Client(args[1]), args[2], args[3])
+		})},
+		&cobra.Command{Use: "recover", Args: cobra.NoArgs, RunE: withService(func(ctx context.Context, s provider.Service, _ []string) (any, error) { return s.Recover(ctx) })},
+	)
+	credentials := &cobra.Command{Use: "credential", Short: "Manage provider credentials"}
+	credentials.AddCommand(
+		&cobra.Command{Use: "list", Args: cobra.NoArgs, RunE: withService(func(ctx context.Context, s provider.Service, _ []string) (any, error) { return s.List(ctx) })},
+		&cobra.Command{Use: "add <reference>", Args: cobra.ExactArgs(1), RunE: withService(func(ctx context.Context, s provider.Service, args []string) (any, error) {
+			value, err := readCredential(opts.stdin)
+			if err != nil {
+				return nil, err
+			}
+			return nil, s.UpdateCredential(ctx, args[0], value)
+		})},
+		&cobra.Command{Use: "update <reference>", Args: cobra.ExactArgs(1), RunE: withService(func(ctx context.Context, s provider.Service, args []string) (any, error) {
+			value, err := readCredential(opts.stdin)
+			if err != nil {
+				return nil, err
+			}
+			return nil, s.UpdateCredential(ctx, args[0], value)
+		})},
+		&cobra.Command{Use: "remove <reference>", Args: cobra.ExactArgs(1), RunE: withService(func(ctx context.Context, s provider.Service, args []string) (any, error) {
+			return nil, s.RemoveCredential(ctx, args[0])
+		})},
+	)
+	providerCmd.AddCommand(credentials)
+	return providerCmd
+}
+
+func newSessionCommand(opts *commandOptions) *cobra.Command {
+	cmd := &cobra.Command{Use: "session", Short: "Search local sessions"}
+	withSessions := func(run func(context.Context, *store.Store, string, []string) (any, error)) func(*cobra.Command, []string) error {
+		return func(command *cobra.Command, args []string) error {
+			stateDir, err := opts.stateRoot()
+			if err != nil {
+				return err
+			}
+			if err = platform.EnsureStateRoot(stateDir); err != nil {
+				return err
+			}
+			lock, err := store.AcquireLock(command.Context(), stateDir, 5*time.Second)
+			if err != nil {
+				return err
+			}
+			defer lock.Release()
+			sessions, err := store.OpenSessions(command.Context(), stateDir)
+			if err != nil {
+				return err
+			}
+			defer sessions.Close()
+			home, err := userHomeDir()
+			if err != nil {
+				return err
+			}
+			data, err := run(command.Context(), sessions, home, args)
+			if err != nil {
+				return err
+			}
+			return writeResult(opts.stdout, opts.format, "session."+command.Name(), data)
+		}
+	}
+	cmd.AddCommand(
+		&cobra.Command{Use: "scan", Args: cobra.NoArgs, RunE: withSessions(func(ctx context.Context, s *store.Store, home string, _ []string) (any, error) {
+			return session.Scan(ctx, s.DB, home)
+		})},
+		&cobra.Command{Use: "list", Args: cobra.NoArgs, RunE: withSessions(func(ctx context.Context, s *store.Store, _ string, _ []string) (any, error) {
+			return session.List(ctx, s.DB)
+		})},
+		&cobra.Command{Use: "search <query>", Args: cobra.ExactArgs(1), RunE: withSessions(func(ctx context.Context, s *store.Store, _ string, args []string) (any, error) {
+			return session.Search(ctx, s.DB, args[0])
+		})},
+		&cobra.Command{Use: "show <codex|claude> <session-id>", Args: cobra.ExactArgs(2), RunE: withSessions(func(ctx context.Context, s *store.Store, _ string, args []string) (any, error) {
+			return session.Show(ctx, s.DB, args[0], args[1])
+		})},
+		&cobra.Command{Use: "exclude <project|path|session|client> <value>", Args: cobra.ExactArgs(2), RunE: withSessions(func(ctx context.Context, s *store.Store, _ string, args []string) (any, error) {
+			err := session.Exclude(ctx, s.DB, args[0], args[1])
+			return map[string]any{"excluded": err == nil}, err
+		})},
+		&cobra.Command{Use: "rebuild", Args: cobra.NoArgs, RunE: withSessions(func(ctx context.Context, s *store.Store, home string, _ []string) (any, error) {
+			return session.Rebuild(ctx, s.DB, home)
+		})},
+		newSessionPurgeCommand(opts),
+	)
+	return cmd
+}
+
+func newSessionPurgeCommand(opts *commandOptions) *cobra.Command {
+	return &cobra.Command{Use: "purge-index", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		stateDir, err := opts.stateRoot()
 		if err != nil {
 			return err
 		}
-		stateDir = platform.StateRoot("", home)
-	}
-	if args[0] == "session" {
-		return runSession(context.Background(), stateDir, format, args[1:], stdout)
-	}
-	database, err := store.Open(context.Background(), stateDir)
-	if err != nil {
-		return err
-	}
-	defer database.Close()
-	if args[0] == "usage" {
-		return runUsage(context.Background(), database, stateDir, format, args[1:], stdout)
-	}
-	if args[0] == "run" {
-		return runClient(context.Background(), database, format, args[1:], stdout)
-	}
-	if len(args) < 2 {
-		return fmt.Errorf("usage: agentdeck <provider|usage|session|run> <command>")
-	}
-	if args[0] != "provider" {
-		return fmt.Errorf("usage: agentdeck <provider|usage|session> <command>")
-	}
-	service := provider.Service{Store: database, Secrets: platform.NewKeychainSecretStore("com.agentdeck.provider")}
-	command := args[1]
-	values := args[2:]
-	var data any
-	switch command {
-	case "list", "status":
-		data, err = service.List(context.Background())
-	case "show":
-		if len(values) != 1 {
-			return fmt.Errorf("usage: provider show <name>")
+		if err = platform.EnsureStateRoot(stateDir); err != nil {
+			return err
 		}
-		var statuses []provider.Status
-		statuses, err = service.List(context.Background())
-		for _, status := range statuses {
-			if status.Definition.Name == values[0] {
-				data = status
-				break
-			}
+		lock, err := store.AcquireLock(cmd.Context(), stateDir, 5*time.Second)
+		if err != nil {
+			return err
 		}
-		if data == nil && err == nil {
-			return fmt.Errorf("provider not found")
-		}
-	case "add":
-		if len(values) < 5 {
-			return fmt.Errorf("usage: provider add <name> <endpoint> <credential-ref> <multiplier> <codex|claude>")
-		}
-		credential, readErr := readCredential(stdin)
-		if readErr != nil {
-			return readErr
-		}
-		data, err = service.Add(context.Background(), provider.Definition{Name: values[0], Endpoint: values[1], CredentialRef: values[2], Multiplier: values[3], Clients: []provider.Client{provider.Client(values[4])}}, credential)
-	case "edit":
-		if len(values) < 5 {
-			return fmt.Errorf("usage: provider edit <name> <endpoint> <credential-ref> <multiplier> <codex|claude>")
-		}
-		data, err = service.Edit(context.Background(), provider.Definition{Name: values[0], Endpoint: values[1], CredentialRef: values[2], Multiplier: values[3], Clients: []provider.Client{provider.Client(values[4])}}, "")
-	case "remove":
-		if len(values) != 2 {
-			return fmt.Errorf("usage: provider remove <name> <credential-ref>")
-		}
-		err = service.Remove(context.Background(), values[0], values[1])
-	case "credential":
-		if len(values) < 1 || (values[0] != "add" && values[0] != "update" && values[0] != "remove" && values[0] != "list") {
-			return fmt.Errorf("usage: provider credential <add|update|remove|list> [reference]")
-		}
-		if values[0] == "list" {
-			if len(values) != 1 {
-				return fmt.Errorf("usage: provider credential list")
-			}
-			data, err = service.List(context.Background())
-		} else if len(values) != 2 {
-			return fmt.Errorf("credential reference is required")
-		} else if values[0] == "remove" {
-			err = service.RemoveCredential(context.Background(), values[1])
-		} else {
-			var credential string
-			credential, err = readCredential(stdin)
-			if err == nil {
-				err = service.UpdateCredential(context.Background(), values[1], credential)
-			}
-		}
-	case "use":
-		if len(values) != 4 {
-			return fmt.Errorf("usage: provider use <name> <codex|claude> <config-path> <redacted-backup-path>")
-		}
-		err = service.Use(context.Background(), values[0], provider.Client(values[1]), values[2], values[3])
-	case "recover":
-		data, err = service.Recover(context.Background())
-	default:
-		return fmt.Errorf("unknown provider command %q", command)
-	}
-	if err != nil {
-		return err
-	}
-	if format == "json" {
-		return json.NewEncoder(stdout).Encode(output.New("provider."+command, data, time.Now()))
-	}
-	if data != nil {
-		return json.NewEncoder(stdout).Encode(data)
-	}
-	return nil
-}
-
-func runSession(ctx context.Context, stateDir, format string, args []string, stdout io.Writer) error {
-	if len(args) == 0 {
-		return fmt.Errorf("usage: agentdeck session <scan|list|search|show|exclude|rebuild|purge-index>")
-	}
-	if err := platform.EnsureStateRoot(stateDir); err != nil {
-		return err
-	}
-	lock, err := store.AcquireLock(ctx, stateDir, 5*time.Second)
-	if err != nil {
-		return err
-	}
-	defer lock.Release()
-	command := args[0]
-	if command == "purge-index" {
+		defer lock.Release()
 		for _, suffix := range []string{"", "-wal", "-shm", "-journal"} {
-			if err := os.Remove(filepath.Join(stateDir, "sessions.sqlite3") + suffix); err != nil && !os.IsNotExist(err) {
+			if err = os.Remove(filepath.Join(stateDir, "sessions.sqlite3") + suffix); err != nil && !os.IsNotExist(err) {
 				return err
 			}
 		}
-		return writeSession(stdout, format, command, map[string]any{"purged": true})
-	}
-	sessions, err := store.OpenSessions(ctx, stateDir)
-	if err != nil {
-		return err
-	}
-	defer sessions.Close()
-	home, err := userHomeDir()
-	if err != nil {
-		return err
-	}
-	var data any
-	switch command {
-	case "scan":
-		data, err = session.Scan(ctx, sessions.DB, home)
-	case "list":
-		data, err = session.List(ctx, sessions.DB)
-	case "search":
-		if len(args) != 2 {
-			return fmt.Errorf("usage: agentdeck session search <query>")
-		}
-		data, err = session.Search(ctx, sessions.DB, args[1])
-	case "show":
-		if len(args) != 3 {
-			return fmt.Errorf("usage: agentdeck session show <codex|claude> <session-id>")
-		}
-		data, err = session.Show(ctx, sessions.DB, args[1], args[2])
-	case "exclude":
-		if len(args) != 3 {
-			return fmt.Errorf("usage: agentdeck session exclude <project|path|session|client> <value>")
-		}
-		err = session.Exclude(ctx, sessions.DB, args[1], args[2])
-		data = map[string]any{"excluded": err == nil}
-	case "rebuild":
-		data, err = session.Rebuild(ctx, sessions.DB, home)
-	default:
-		return fmt.Errorf("usage: agentdeck session <scan|list|search|show|exclude|rebuild|purge-index>")
-	}
-	if err != nil {
-		return err
-	}
-	return writeSession(stdout, format, command, data)
+		return writeResult(opts.stdout, opts.format, "session.purge-index", map[string]any{"purged": true})
+	}}
 }
 
-func writeSession(w io.Writer, format, command string, data any) error {
-	if format == "json" {
-		return json.NewEncoder(w).Encode(output.New("session."+command, data, time.Now()))
+func newUsageCommand(opts *commandOptions) *cobra.Command {
+	cmd := &cobra.Command{Use: "usage", Short: "Inspect usage and pricing"}
+	withUsage := func(run func(context.Context, *usage.Service, *store.Store, []string) (any, bool, []string, error)) func(*cobra.Command, []string) error {
+		return func(command *cobra.Command, args []string) error {
+			database, _, err := opts.openStore(command.Context())
+			if err != nil {
+				return err
+			}
+			defer database.Close()
+			home, err := userHomeDir()
+			if err != nil {
+				return err
+			}
+			data, partial, warnings, err := run(command.Context(), usage.New(database, home), database, args)
+			if err != nil {
+				return err
+			}
+			return writeEnvelope(opts.stdout, opts.format, "usage."+command.Name(), data, partial, warnings)
+		}
 	}
-	return json.NewEncoder(w).Encode(data)
+	cmd.AddCommand(
+		&cobra.Command{Use: "scan", Args: cobra.NoArgs, RunE: withUsage(func(ctx context.Context, s *usage.Service, _ *store.Store, _ []string) (any, bool, []string, error) {
+			data, err := s.Scan(ctx)
+			return data, false, nil, err
+		})},
+		&cobra.Command{Use: "summary", Args: cobra.NoArgs, RunE: withUsage(func(ctx context.Context, s *usage.Service, _ *store.Store, _ []string) (any, bool, []string, error) {
+			_, scanErr := s.Scan(ctx)
+			data, err := s.Summary(ctx)
+			return data, scanErr != nil, map[bool][]string{true: {"scan_incomplete"}}[scanErr != nil], err
+		})},
+		&cobra.Command{Use: "sessions", Args: cobra.NoArgs, RunE: withUsage(func(ctx context.Context, s *usage.Service, _ *store.Store, _ []string) (any, bool, []string, error) {
+			data, err := s.Sessions(ctx)
+			return data, false, nil, err
+		})},
+		&cobra.Command{Use: "diagnose", Args: cobra.NoArgs, RunE: withUsage(func(ctx context.Context, s *usage.Service, _ *store.Store, _ []string) (any, bool, []string, error) {
+			data, err := s.Diagnose(ctx)
+			return data, false, nil, err
+		})},
+		&cobra.Command{Use: "rebuild", Args: cobra.NoArgs, RunE: withUsage(func(ctx context.Context, s *usage.Service, database *store.Store, _ []string) (any, bool, []string, error) {
+			if _, err := database.Exec(ctx, "DELETE FROM usage_events; DELETE FROM usage_sessions; DELETE FROM usage_source_files"); err != nil {
+				return nil, false, nil, err
+			}
+			data, err := s.Scan(ctx)
+			return data, false, nil, err
+		})},
+		newPriceCommand(opts, withUsage),
+	)
+	return cmd
 }
 
-func runUsage(ctx context.Context, database *store.Store, stateDir, format string, args []string, stdout io.Writer) error {
-	if len(args) == 0 {
-		return fmt.Errorf("usage: agentdeck usage <scan|diagnose|rebuild|price>")
-	}
-	home, err := userHomeDir()
-	if err != nil {
-		return err
-	}
-	service := usage.New(database, home)
-	command := args[0]
-	var data any
-	partial := false
-	warnings := []string{}
-	switch command {
-	case "scan":
-		data, err = service.Scan(ctx)
-	case "summary":
-		// Reports opportunistically refresh their local log view. An unreadable
-		// source preserves the last committed report but is never hidden.
-		if _, scanErr := service.Scan(ctx); scanErr != nil {
-			partial, warnings = true, []string{"scan_incomplete"}
+func newPriceCommand(opts *commandOptions, withUsage func(func(context.Context, *usage.Service, *store.Store, []string) (any, bool, []string, error)) func(*cobra.Command, []string) error) *cobra.Command {
+	price := &cobra.Command{Use: "price", Short: "Manage price catalogs"}
+	price.AddCommand(
+		&cobra.Command{Use: "history", Args: cobra.NoArgs, RunE: withUsage(func(ctx context.Context, s *usage.Service, _ *store.Store, _ []string) (any, bool, []string, error) {
+			data, err := s.PriceHistory(ctx)
+			return data, false, nil, err
+		})},
+		&cobra.Command{Use: "status", Args: cobra.NoArgs, RunE: withUsage(func(ctx context.Context, s *usage.Service, _ *store.Store, _ []string) (any, bool, []string, error) {
+			data, err := s.PriceStatus(ctx)
+			return data, false, nil, err
+		})},
+	)
+	var update *cobra.Command
+	update = &cobra.Command{Use: "update", Args: cobra.NoArgs, RunE: withUsage(func(ctx context.Context, s *usage.Service, _ *store.Store, _ []string) (any, bool, []string, error) {
+		url, _ := update.Flags().GetString("url")
+		commit, _ := update.Flags().GetString("commit")
+		data, err := s.UpdateLiteLLM(ctx, url, commit, nil)
+		return data, false, nil, err
+	})}
+	update.Flags().String("url", "", "Pinned LiteLLM catalog URL")
+	update.Flags().String("commit", "", "Pinned LiteLLM commit SHA")
+	_ = update.MarkFlagRequired("url")
+	_ = update.MarkFlagRequired("commit")
+	price.AddCommand(update)
+	var override *cobra.Command
+	override = &cobra.Command{Use: "override", Args: cobra.NoArgs, RunE: withUsage(func(ctx context.Context, s *usage.Service, _ *store.Store, _ []string) (any, bool, []string, error) {
+		file, _ := override.Flags().GetString("file")
+		contents, err := os.ReadFile(file)
+		if err != nil {
+			return nil, false, nil, err
 		}
-		data, err = service.Summary(ctx)
-	case "sessions":
-		data, err = service.Sessions(ctx)
-	case "diagnose":
-		data, err = service.Diagnose(ctx)
-	case "rebuild":
-		if _, err = database.Exec(ctx, "DELETE FROM usage_events; DELETE FROM usage_sessions; DELETE FROM usage_source_files"); err == nil {
-			data, err = service.Scan(ctx)
+		var values []usage.OfficialOverride
+		if err = json.Unmarshal(contents, &values); err != nil {
+			return nil, false, nil, err
 		}
-	case "price":
-		if len(args) < 2 {
-			return fmt.Errorf("usage: agentdeck usage price <status|update|history|override>")
+		err = s.ImportOfficialOverrides(ctx, values)
+		return map[string]any{"overrides": len(values)}, false, nil, err
+	})}
+	override.Flags().String("file", "", "Official component override JSON")
+	_ = override.MarkFlagRequired("file")
+	price.AddCommand(override)
+	return price
+}
+
+func newRunCommand(opts *commandOptions) *cobra.Command {
+	return &cobra.Command{Use: "run <codex|claude> -- <client arguments>", Args: cobra.MinimumNArgs(2), DisableFlagParsing: true, RunE: func(cmd *cobra.Command, args []string) error {
+		if (args[0] != "codex" && args[0] != "claude") || args[1] != "--" {
+			return fmt.Errorf("usage: agentdeck run <codex|claude> -- <client arguments>")
 		}
-		switch args[1] {
-		case "history":
-			if len(args) != 2 {
-				return fmt.Errorf("usage: agentdeck usage price history")
-			}
-			data, err = service.PriceHistory(ctx)
-		case "status":
-			if len(args) != 2 {
-				return fmt.Errorf("usage: agentdeck usage price status")
-			}
-			data, err = service.PriceStatus(ctx)
-		case "update":
-			if len(args) != 6 || args[2] != "--url" || args[4] != "--commit" {
-				return fmt.Errorf("usage: agentdeck usage price update --url <pinned-url> --commit <sha>")
-			}
-			data, err = service.UpdateLiteLLM(ctx, args[3], args[5], nil)
-		case "override":
-			if len(args) != 4 || args[2] != "--file" {
-				return fmt.Errorf("usage: agentdeck usage price override --file <official-components.json>")
-			}
-			contents, readErr := os.ReadFile(args[3])
-			if readErr != nil {
-				return readErr
-			}
-			var overrides []usage.OfficialOverride
-			if err = json.Unmarshal(contents, &overrides); err == nil {
-				err = service.ImportOfficialOverrides(ctx, overrides)
-			}
-			if err == nil {
-				data = map[string]any{"overrides": len(overrides)}
-			}
-		default:
-			return fmt.Errorf("usage: agentdeck usage price <status|update|history|override>")
+		database, _, err := opts.openStore(cmd.Context())
+		if err != nil {
+			return err
 		}
-	default:
-		return fmt.Errorf("usage commands currently available: scan, summary, sessions, diagnose, rebuild, price status|update|history|override")
-	}
-	if err != nil {
-		return err
-	}
+		defer database.Close()
+		service := usage.New(database, "")
+		runID, start, err := service.StartRun(cmd.Context(), args[0], 0)
+		if err != nil {
+			return err
+		}
+		child := exec.CommandContext(cmd.Context(), args[0], args[2:]...)
+		child.Stdin, child.Stdout, child.Stderr = os.Stdin, opts.stdout, os.Stderr
+		if err = child.Start(); err != nil {
+			_ = service.EndRun(cmd.Context(), runID, args[0], start)
+			return err
+		}
+		if err = service.SetRunPID(cmd.Context(), runID, child.Process.Pid); err != nil {
+			return err
+		}
+		waitErr := child.Wait()
+		if home, homeErr := userHomeDir(); homeErr == nil {
+			service.Home = home
+			if _, err = service.Scan(cmd.Context()); err != nil {
+				return err
+			}
+		}
+		if err = service.EndRun(cmd.Context(), runID, args[0], start); err != nil {
+			return err
+		}
+		exact, reason, err := service.RunStatus(cmd.Context(), runID)
+		if err != nil {
+			return err
+		}
+		if opts.format == "json" {
+			return writeResult(opts.stdout, opts.format, "run."+args[0], map[string]any{"run_id": runID, "exact": exact, "attribution": map[bool]string{true: "exact", false: "estimated"}[exact], "reason": reason})
+		}
+		return waitErr
+	}}
+}
+
+func writeResult(w io.Writer, format, command string, data any) error {
 	if format == "json" {
-		envelope := output.New("usage."+command, data, time.Now())
+		return json.NewEncoder(w).Encode(output.New(command, data, time.Now()))
+	}
+	if data != nil {
+		return json.NewEncoder(w).Encode(data)
+	}
+	return nil
+}
+func writeEnvelope(w io.Writer, format, command string, data any, partial bool, warnings []string) error {
+	if format == "json" {
+		envelope := output.New(command, data, time.Now())
 		envelope.Partial, envelope.Warnings = partial, warnings
-		return json.NewEncoder(stdout).Encode(envelope)
+		return json.NewEncoder(w).Encode(envelope)
 	}
-	return renderUsageText(stdout, command, data)
+	return renderUsageText(w, command, data)
 }
-
 func renderUsageText(w io.Writer, command string, data any) error {
 	switch v := data.(type) {
 	case usage.Summary:
-		_, e := fmt.Fprintf(w, "events: %d\ntokens: %v\ncatalog base cost: %v\nprovider cost: %v\nwarnings: %v\nunpriced: %v\n", v.Counts["events"], v.Tokens, v.CatalogBaseCost, v.ProviderCost, v.Warnings, v.Unpriced)
-		return e
+		_, err := fmt.Fprintf(w, "events: %d\ntokens: %v\ncatalog base cost: %v\nprovider cost: %v\nwarnings: %v\nunpriced: %v\n", v.Counts["events"], v.Tokens, v.CatalogBaseCost, v.ProviderCost, v.Warnings, v.Unpriced)
+		return err
 	case []usage.SessionSummary:
 		for _, x := range v {
-			if _, e := fmt.Fprintf(w, "%s %s %s..%s tokens=%v base=%v provider=%v warnings=%v unpriced=%v\n", x.Client, x.SessionID, x.FirstAt, x.LastAt, x.Tokens, x.CatalogBaseCost, x.ProviderCost, x.Warnings, x.Unpriced); e != nil {
-				return e
+			if _, err := fmt.Fprintf(w, "%s %s %s..%s tokens=%v base=%v provider=%v warnings=%v unpriced=%v\n", x.Client, x.SessionID, x.FirstAt, x.LastAt, x.Tokens, x.CatalogBaseCost, x.ProviderCost, x.Warnings, x.Unpriced); err != nil {
+				return err
 			}
 		}
 		return nil
 	default:
 		return json.NewEncoder(w).Encode(data)
 	}
-}
-func runClient(ctx context.Context, database *store.Store, format string, args []string, stdout io.Writer) error {
-	if len(args) < 3 || (args[0] != "codex" && args[0] != "claude") || args[1] != "--" {
-		return fmt.Errorf("usage: agentdeck run <codex|claude> -- <client arguments>")
-	}
-	service := usage.New(database, "")
-	runID, start, err := service.StartRun(ctx, args[0], 0)
-	if err != nil {
-		return err
-	}
-	child := exec.CommandContext(ctx, args[0], args[2:]...)
-	child.Stdin = os.Stdin
-	child.Stdout = stdout
-	child.Stderr = os.Stderr
-	if err = child.Start(); err != nil {
-		_ = service.EndRun(ctx, runID, args[0], start)
-		return err
-	}
-	if err = service.SetRunPID(ctx, runID, child.Process.Pid); err != nil {
-		return err
-	}
-	waitErr := child.Wait()
-	scanErr := error(nil)
-	if home, homeErr := userHomeDir(); homeErr == nil {
-		service.Home = home
-		_, scanErr = service.Scan(ctx)
-	}
-	endErr := service.EndRun(ctx, runID, args[0], start)
-	if scanErr != nil {
-		return scanErr
-	}
-	if endErr != nil {
-		return endErr
-	}
-	exact, reason, statusErr := service.RunStatus(ctx, runID)
-	if statusErr != nil {
-		return statusErr
-	}
-	if format == "json" {
-		_ = json.NewEncoder(stdout).Encode(output.New("run."+args[0], map[string]any{"run_id": runID, "exact": exact, "attribution": map[bool]string{true: "exact", false: "estimated"}[exact], "reason": reason}, time.Now()))
-	}
-	return waitErr
-}
-
-func globals(args []string) (string, string, []string, error) {
-	stateDir, format := "", "text"
-	for len(args) > 0 && strings.HasPrefix(args[0], "--") {
-		if len(args) < 2 {
-			return "", "", nil, fmt.Errorf("missing value for %s", args[0])
-		}
-		switch args[0] {
-		case "--state-dir":
-			stateDir = args[1]
-		case "--format":
-			format = args[1]
-		default:
-			return "", "", nil, fmt.Errorf("unknown flag %s", args[0])
-		}
-		args = args[2:]
-	}
-	if format != "text" && format != "json" {
-		return "", "", nil, fmt.Errorf("invalid format")
-	}
-	return stateDir, format, args, nil
 }
 func readCredential(reader io.Reader) (string, error) {
 	if file, ok := reader.(*os.File); ok {
