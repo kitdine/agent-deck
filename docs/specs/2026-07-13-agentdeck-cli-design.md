@@ -101,6 +101,9 @@ internal/provider
 internal/usage
 internal/session
 internal/extension
+internal/watch
+internal/backup
+internal/doctor
 internal/store
 internal/platform
 internal/output
@@ -123,6 +126,12 @@ focused internal services; domain packages do not depend on Cobra.
   local FTS index.
 - `extension` defines the common inventory and capability model while native
   Codex and Claude adapters preserve their own formats.
+- `watch` coordinates non-blocking incremental scans and emits versioned change
+  events without owning domain data.
+- `backup` creates, authenticates, inspects, and restores encrypted portable
+  archives without persisting plaintext credentials.
+- `doctor` coordinates read-only checks through narrow store and domain
+  interfaces rather than parsing another domain's tables directly.
 - `store` owns SQLite schemas, migrations, transactions, locks, permissions,
   and backups.
 - `platform` owns state paths, filesystem replacement, process discovery,
@@ -242,6 +251,10 @@ the logical session ID matches.
 
 Overlapping or ambiguous client lifetimes are downgraded to `estimated`; the
 tool never silently claims exact attribution.
+The wrapper waits for every started child and propagates a failed client exit
+as a runtime failure in text and JSON modes. If wrapper bookkeeping or scanning
+cannot prove the source range, it closes the run as `estimated` rather than
+leaving an incomplete or falsely exact run.
 
 Incremental import tracks inode or platform file identity, path, cursor,
 partial line state, size, modification time, and prefix hashes. It detects
@@ -353,20 +366,30 @@ mutation, or dependency resolution.
 ## Foreground Watch
 
 There is no daemon or LaunchAgent. `agentdeck watch` is a foreground process
-that performs incremental scans at a configurable interval and exits when the
-process is stopped. With `--format ndjson`, it emits versioned change events for
-future GUI consumption.
+that performs incremental usage, session, and extension scans at a configurable
+interval and exits when the process is stopped. With `--format ndjson`, it emits
+versioned change events for future GUI consumption. Events identify the changed
+domain and scan result but never include native configuration content or session
+text.
 
-When no source changed, watch does not write SQLite. If another process owns a
-scan write lock, it skips that interval instead of blocking provider or query
+Watch persists only source metadata fingerprints. On process restart it reads
+those fingerprints through the core database's read-only path and opens write
+databases only after a source changed. When no source changed, watch does not
+write SQLite or refresh extension inventory timestamps. If another process owns
+a scan write lock, it skips that interval instead of blocking provider or query
 commands.
 
 ## Backup and Device Migration
 
 `agentdeck backup create` produces one passphrase-encrypted `.adb` bundle. The
-bundle uses the age scrypt recipient format rather than a custom cipher.
-Passphrases are read without terminal echo and never accepted as command-line
-arguments.
+bundle is an age-encrypted tar stream created with the maintained
+`filippo.io/age` library and its scrypt recipient format rather than a custom
+cipher.
+Backup creation never replaces an existing destination; callers must select a
+new path when the requested `.adb` already exists.
+Passphrases are read without terminal echo when stdin is a terminal and as one
+line from stdin for non-interactive automation. They are never accepted as
+command-line arguments or environment variables.
 
 The encrypted archive contains:
 
@@ -387,12 +410,18 @@ Normal backups exclude the rebuildable session database. They never include
 original client JSONL, authentication files, attachments, environment data, or
 internal rollback backups.
 
+`backup list` reports only local `.adb` file metadata. `backup inspect` requires
+the passphrase and authenticates the encrypted stream, manifest, entry allowlist,
+and recorded hashes before returning archive metadata.
+
 Phase-one restore accepts only an absent or empty state root. It streams and
 validates the complete archive, stages only database entries in a private
 temporary directory, and keeps the decrypted credential entry in memory. It
 refuses unknown schemas or secret-store conflicts, imports credentials into the
 target platform store, and commits database files with owner-only permissions.
-A failed restore removes only state created by that restore.
+An existing empty root is committed at mode `0700`; a failed restore restores
+its original mode and reports a failed permission rollback. A failed restore
+removes only state created by that restore.
 
 Restore does not modify Codex or Claude configuration. The user explicitly
 runs `agentdeck provider use` after checking the restored providers.
@@ -442,6 +471,12 @@ Token counts are integers, money is a decimal string, timestamps are UTC RFC
 3339, and enums and IDs are stable strings. JSON contains no color codes,
 progress animation, localized field names, or sensitive fields.
 
+Stable JSON fixtures enumerate every Cobra leaf command and verify real success
+and error envelopes, including complete command paths, data field names, empty
+arrays, typed error codes, and exit codes. NDJSON fixtures compare actual watch
+event serialization and pin the event field allowlist without recording session
+text, native configuration, paths, or credentials.
+
 Exit codes are:
 
 ```text
@@ -463,7 +498,8 @@ unknown models, unpriced components, and incomplete scans.
 
 `agentdeck doctor` is read-only. It checks state permissions, database schema,
 pending operations, stale locks, credential references, provider/client
-configuration drift, price provenance, unpriced models, source readability,
+configuration drift, complete price provenance (including LiteLLM pinned commit,
+canonical URL, and SHA-256), distinct unpriced models, source readability,
 usage cursors, incomplete exact runs, session FTS availability, extension
 fingerprints, duplicate IDs, and missing paths.
 

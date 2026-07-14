@@ -70,8 +70,8 @@ stable JSON boundary for the future macOS application.
 
 ## Phase 3: Port Usage, Pricing, and Run Attribution
 
-**Implementation status (2026-07-13):** implemented; independent review and
-Phase 7 contract hardening remain separate gates. Usage records use completed
+**Implementation status (2026-07-13):** implemented; contract hardening and
+independent review completed in Phase 7. Usage records use completed
 source-byte snapshots rather than timestamps for exact bindings; external
 client observation downgrades ambiguous runs to estimated attribution. Catalog
 overrides retain official provenance and effective times, while JSON reports
@@ -102,8 +102,8 @@ make incomplete automatic scans explicit.
 
 ## Phase 4: Add Local Session Search
 
-**Implementation status (2026-07-14):** implemented; independent review remains
-a separate gate. `session_documents` and `session_metadata`
+**Implementation status (2026-07-14):** implemented; independent review
+completed in Phase 7. `session_documents` and `session_metadata`
 now retain source ownership. `session_sources` persists stable identity, cursor,
 raw partial-line bytes, size, modification time, and prefix hash. `list`,
 `show`, and `search` materialize one session view with active sources preferred
@@ -129,56 +129,86 @@ provider/usage database.
 
 ## Phase 5: Add Native Extension Adapters
 
-- [ ] Define canonical extension IDs, kinds, scopes, capabilities, diagnostics,
+- **Implementation status (2026-07-14):** re-review passed. The completed
+  remediation separates native Codex and Claude plugin, MCP, and skill sources,
+  compares live fingerprints
+  during read-only diagnosis, preserves prior inventory when discovery fails,
+  and completes stable JSON success and error contracts. Current sources expose
+  no unambiguous native enable/disable toggle, so those commands refuse mutation
+  as `extension_read_only` rather than changing client configuration.
+
+- [x] Define canonical extension IDs, kinds, scopes, capabilities, diagnostics,
       fingerprints, and management state.
-- [ ] Implement Codex discovery adapters for plugins, MCP servers, and skills.
-- [ ] Implement Claude discovery adapters for plugins, MCP servers, and skills.
-- [ ] Preserve native source formats and store inventory metadata rather than
+- [x] Implement Codex discovery adapters for plugins, MCP servers, and skills.
+- [x] Implement Claude discovery adapters for plugins, MCP servers, and skills.
+- [x] Preserve native source formats and store inventory metadata rather than
       extension content.
-- [ ] Implement scan, list, show, and doctor before mutation commands.
-- [ ] Implement adopt, supported enable/disable operations, fingerprint conflict
-      refusal, and release.
-- [ ] Mark unsupported native toggles read-only and test that no mutation is
+- [x] Implement scan, list, show, and doctor before mutation commands.
+- [x] Implement adopt and release; retain enable/disable commands only for a
+      future unambiguous adapter toggle and refuse them otherwise.
+- [x] Mark unsupported native toggles read-only and test that no mutation is
       attempted.
-- [ ] Verify diagnostics redact environment values, credentials, and private
+- [x] Verify diagnostics redact environment values, credentials, and private
       extension configuration.
 
 ## Phase 6: Add Watch, Backup, and Doctor
 
-- [ ] Implement the foreground watcher with incremental polling and versioned
+- **Implementation status (2026-07-14):** implementation and both review-fix
+  passes are complete; re-review remains a separate gate. Watch persists source
+  fingerprints and leaves unchanged restarts read-only, restore preserves or
+  compensates state-root permissions, and doctor validates complete catalog
+  provenance and distinct unpriced models. Backup passphrases use hidden terminal
+  input or one-line stdin input for automation and are never accepted through
+  arguments or environment variables.
+
+- [x] Implement the foreground watcher with incremental polling and versioned
       NDJSON events.
-- [ ] Ensure unchanged watch iterations do not write the database and busy
+- [x] Ensure unchanged watch iterations do not write the database and busy
       scans do not block other commands.
-- [ ] Implement age passphrase encryption using a maintained library and a
+- [x] Implement age passphrase encryption using a maintained library and a
       versioned `.adb` manifest.
-- [ ] Snapshot SQLite through the online backup API and stream credentials into
+- [x] Snapshot SQLite through the online backup API and stream credentials into
       the encrypted archive without plaintext temporary files.
-- [ ] Exclude sessions by default and include them only with an explicit flag.
-- [ ] Implement list, authenticated inspect, and restore to an empty state root.
-- [ ] Roll back only credentials and files created by a failed restore.
-- [ ] Implement quick and full read-only doctor checks across state, provider,
+- [x] Exclude sessions by default and include them only with an explicit flag.
+- [x] Implement list, authenticated inspect, and restore to an empty state root.
+- [x] Roll back only credentials and files created by a failed restore.
+- [x] Implement quick and full read-only doctor checks across state, provider,
       usage, prices, sessions, extensions, locks, and pending operations.
-- [ ] Add explicit recovery command guidance without a generic auto-fix mode.
+- [x] Add explicit recovery command guidance without a generic auto-fix mode.
 
 ## Phase 7: Contract and Release Hardening
 
-- [ ] Add stable JSON schema fixtures for every command consumed by the future
+**Implementation status (2026-07-14):** re-review passed. The completed
+remediation adds snake_case
+override and recovery DTOs, empty recovery arrays, real offline price update and
+override goldens, both run clients, per-command success and typed-error schema
+goldens driven by actual Cobra executions, actual watch event goldens, exact-run
+restore assertions, a single HTTP adapter, and executable privacy regressions
+for tracked and untracked non-ignored files plus generated artifacts. Privacy
+enumeration and scanning now fail closed without echoing matched content, and
+the command tests are separated by contract, release-gate, and end-to-end
+responsibility. Final review remediation also propagates failed client exits,
+closes unprovable wrapper runs as estimated, and refuses to overwrite an
+existing portable backup. The Go replacement has passed independent review;
+legacy entrypoint removal remains pending and is not authorized by Phase 7.
+
+- [x] Add stable JSON schema fixtures for every command consumed by the future
       GUI and NDJSON fixtures for watch events.
-- [ ] Run unit, integration, race, permission, interruption, privacy, and
+- [x] Run unit, integration, race, permission, interruption, privacy, and
       end-to-end tests using temporary homes and synthetic client binaries.
-- [ ] Build macOS arm64 and amd64 and verify the stripped arm64 size target.
-- [ ] Verify no command except explicit price update accesses the network.
-- [ ] Scan tracked files, fixtures, databases, backups, and captured output for
+- [x] Build macOS arm64 and amd64 and verify the stripped arm64 size target.
+- [x] Verify no command except explicit price update accesses the network.
+- [x] Scan tracked files, fixtures, databases, backups, and captured output for
       credentials and prohibited session content.
-- [ ] Run an isolated end-to-end flow covering provider selection, exact run,
+- [x] Run an isolated end-to-end flow covering provider selection, exact run,
       usage scan, session search, extension inventory, backup, and empty-root
       restore.
-- [ ] Independently review the Go replacement before removing any legacy
+- [x] Independently review the Go replacement before removing any legacy
       repository entrypoint.
 - [ ] Remove legacy repository entrypoints and obsolete fixtures only after
       their replacement contracts are proven; leave real `~/.local/bin/` scripts
       untouched.
-- [ ] Synchronize the specification, documentation index, `AGENTS.md`, and this
+- [x] Synchronize the specification, documentation index, `AGENTS.md`, and this
       plan with the reviewed implementation state.
 
 ## Required Verification
@@ -191,6 +221,7 @@ rtk test go test -race ./...
 rtk lint go vet ./...
 rtk test env GOOS=darwin GOARCH=arm64 go build -trimpath ./cmd/agentdeck
 rtk test env GOOS=darwin GOARCH=amd64 go build -trimpath ./cmd/agentdeck
+rtk test make release-verify
 ```
 
 Targeted package and integration tests run before the full gate. The final

@@ -17,10 +17,20 @@ them.
   price catalogs.
 - `agentdeck session`: scan, search, exclude, rebuild, and purge the local
   session index.
+- `agentdeck extension`: discover and inspect native plugins, MCP servers, and
+  skills; explicitly adopt or release AgentDeck management state. Phase 5
+  re-review passed.
+- `agentdeck watch`: run foreground incremental usage, session, and extension
+  scans with versioned NDJSON events.
+- `agentdeck backup`: create, list, authenticate, inspect, and empty-root restore
+  age-encrypted portable backups.
+- `agentdeck doctor`: run quick or full read-only state diagnostics with explicit
+  recovery guidance.
 - `agentdeck run`: associate a Codex or Claude process with an exact usage run.
 
-Native extension inventory, watch mode, encrypted backup, and doctor commands
-are planned but are not available in this pre-release build.
+Native extension enable/disable remains read-only until an adapter has an
+unambiguous native toggle. Phase 7 re-review passed; legacy entrypoints remain
+reference behavior and their removal is still pending and unauthorized.
 
 ## Build from source
 
@@ -45,11 +55,12 @@ dist/agentdeck_darwin_arm64
 dist/agentdeck_darwin_amd64
 ```
 
-Run the full local verification suite, including the legacy behavior-reference
-tests:
+Run the full release verification suite, including the legacy behavior-reference
+tests, both macOS builds, the arm64 size gate, and a privacy scan of tracked and
+untracked non-ignored files:
 
 ```bash
-make verify
+make release-verify
 ```
 
 ## Planned Homebrew distribution

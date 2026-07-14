@@ -11,7 +11,7 @@ disagree with a document.
 
 | Feature | Specification | Plan | State |
 | --- | --- | --- | --- |
-| AgentDeck CLI phase one | [spec](specs/2026-07-13-agentdeck-cli-design.md) | [plan](plans/2026-07-13-agentdeck-cli.md) | active; Go CLI foundation, provider, usage, and session phases implemented; extension inventory next |
+| AgentDeck CLI phase one | [spec](specs/2026-07-13-agentdeck-cli-design.md) | [plan](plans/2026-07-13-agentdeck-cli.md) | active; Phase 7 re-review passed; legacy entrypoint removal remains pending and unauthorized |
 
 ## Reference and Historical Work
 
