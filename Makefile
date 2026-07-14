@@ -3,8 +3,9 @@ GOCACHE ?= /private/tmp/agent-deck-go-build
 GOMODCACHE ?= /private/tmp/agent-deck-go-mod
 DIST_DIR ?= dist
 PACKAGE := ./cmd/agentdeck
+ARM64_MAX_BYTES ?= 26214400
 
-.PHONY: build build-all clean test test-race vet verify verify-legacy
+.PHONY: build build-all build-arm64-stripped check-arm64-size check-privacy release-verify clean test test-race vet verify verify-legacy
 
 build:
 	mkdir -p $(DIST_DIR)
@@ -14,6 +15,13 @@ build-all:
 	mkdir -p $(DIST_DIR)
 	env GOCACHE=$(GOCACHE) GOMODCACHE=$(GOMODCACHE) GOOS=darwin GOARCH=arm64 $(GO) build -mod=vendor -trimpath -o $(DIST_DIR)/agentdeck_darwin_arm64 $(PACKAGE)
 	env GOCACHE=$(GOCACHE) GOMODCACHE=$(GOMODCACHE) GOOS=darwin GOARCH=amd64 $(GO) build -mod=vendor -trimpath -o $(DIST_DIR)/agentdeck_darwin_amd64 $(PACKAGE)
+
+build-arm64-stripped:
+	mkdir -p $(DIST_DIR)
+	env GOCACHE=$(GOCACHE) GOMODCACHE=$(GOMODCACHE) GOOS=darwin GOARCH=arm64 $(GO) build -mod=vendor -trimpath -ldflags='-s -w' -o $(DIST_DIR)/agentdeck_darwin_arm64_stripped $(PACKAGE)
+
+check-arm64-size: build-arm64-stripped
+	test $$(wc -c < $(DIST_DIR)/agentdeck_darwin_arm64_stripped) -le $(ARM64_MAX_BYTES)
 
 test:
 	env GOCACHE=$(GOCACHE) $(GO) test -mod=vendor -count=1 ./...
@@ -31,6 +39,11 @@ verify-legacy:
 	python3 -m py_compile bin/ai-provider-mode bin/ai-provider-key bin/ai_provider_common.py bin/ai_provider_usage.py bin/ai-provider-usage bin/ai-provider-run bin/ai-provider-price-update
 
 verify: test test-race vet verify-legacy
+
+check-privacy:
+	@bash scripts/check-privacy.sh
+
+release-verify: verify build-all check-arm64-size check-privacy
 
 clean:
 	rm -rf $(DIST_DIR)

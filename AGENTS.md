@@ -243,6 +243,8 @@ rtk test env GOCACHE=/private/tmp/agent-deck-go-build go test -mod=vendor -race 
 rtk lint env GOCACHE=/private/tmp/agent-deck-go-build go vet -mod=vendor ./...
 rtk test env GOCACHE=/private/tmp/agent-deck-go-build GOOS=darwin GOARCH=arm64 go build -mod=vendor -trimpath ./cmd/agentdeck
 rtk test env GOCACHE=/private/tmp/agent-deck-go-build GOOS=darwin GOARCH=amd64 go build -mod=vendor -trimpath ./cmd/agentdeck
+rtk test make check-arm64-size
+rtk test make release-verify
 ```
 
 - Scale verification to the risk and blast radius of the change.
