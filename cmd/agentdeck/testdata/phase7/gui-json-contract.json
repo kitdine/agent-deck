@@ -1,0 +1,1522 @@
+{
+  "schema_version": 1,
+  "success_fields": [
+    "schema_version",
+    "command",
+    "generated_at",
+    "data",
+    "warnings",
+    "partial"
+  ],
+  "error_fields": [
+    "schema_version",
+    "command",
+    "generated_at",
+    "data",
+    "warnings",
+    "partial",
+    "error"
+  ],
+  "leaf_commands": [
+    "backup.create",
+    "backup.inspect",
+    "backup.list",
+    "backup.restore",
+    "doctor",
+    "extension.adopt",
+    "extension.disable",
+    "extension.doctor",
+    "extension.enable",
+    "extension.list",
+    "extension.release",
+    "extension.scan",
+    "extension.show",
+    "provider.add",
+    "provider.credential.add",
+    "provider.credential.list",
+    "provider.credential.remove",
+    "provider.credential.update",
+    "provider.edit",
+    "provider.list",
+    "provider.recover",
+    "provider.remove",
+    "provider.show",
+    "provider.status",
+    "provider.use",
+    "run",
+    "session.exclude",
+    "session.list",
+    "session.purge-index",
+    "session.rebuild",
+    "session.scan",
+    "session.search",
+    "session.show",
+    "usage.diagnose",
+    "usage.price.history",
+    "usage.price.override",
+    "usage.price.status",
+    "usage.price.update",
+    "usage.rebuild",
+    "usage.scan",
+    "usage.sessions",
+    "usage.summary",
+    "watch"
+  ],
+  "contracts": {
+    "backup.create": {
+      "success_schema": {
+        "command": "string",
+        "data": {
+          "manifest": {
+            "agentdeck_version": "string",
+            "created_at": "string",
+            "database_schemas": {
+              "agentdeck.sqlite3": "number"
+            },
+            "entries": [
+              {
+                "name": "string",
+                "sha256": "string",
+                "size": "number"
+              }
+            ],
+            "included": [
+              "string"
+            ],
+            "schema_version": "number",
+            "source_platform": "string"
+          },
+          "path": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "backup.create"
+    },
+    "backup.inspect": {
+      "success_schema": {
+        "command": "string",
+        "data": {
+          "agentdeck_version": "string",
+          "created_at": "string",
+          "database_schemas": {
+            "agentdeck.sqlite3": "number"
+          },
+          "entries": [
+            {
+              "name": "string",
+              "sha256": "string",
+              "size": "number"
+            }
+          ],
+          "included": [
+            "string"
+          ],
+          "schema_version": "number",
+          "source_platform": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "backup.inspect"
+    },
+    "backup.list": {
+      "success_schema": {
+        "command": "string",
+        "data": [
+          {
+            "modified_at": "string",
+            "path": "string",
+            "size": "number"
+          }
+        ],
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "backup.list"
+    },
+    "backup.restore": {
+      "success_schema": {
+        "command": "string",
+        "data": {
+          "agentdeck_version": "string",
+          "created_at": "string",
+          "database_schemas": {
+            "agentdeck.sqlite3": "number"
+          },
+          "entries": [
+            {
+              "name": "string",
+              "sha256": "string",
+              "size": "number"
+            }
+          ],
+          "included": [
+            "string"
+          ],
+          "schema_version": "number",
+          "source_platform": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "backup.restore"
+    },
+    "doctor": {
+      "success_schema": {
+        "command": "string",
+        "data": {
+          "checks": [
+            {
+              "code": "string",
+              "count": "number",
+              "name": "string",
+              "recovery_command": "string",
+              "status": "string"
+            },
+            {
+              "count": "number",
+              "name": "string",
+              "status": "string"
+            },
+            {
+              "name": "string",
+              "status": "string"
+            }
+          ],
+          "healthy": "boolean",
+          "mode": "string",
+          "problems": "number"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "doctor"
+    },
+    "extension.adopt": {
+      "success_schema": {
+        "command": "string",
+        "data": {
+          "capabilities": [
+            "string"
+          ],
+          "client": "string",
+          "diagnostics": [],
+          "drift": "boolean",
+          "enabled": "string",
+          "fingerprint": "string",
+          "id": "string",
+          "kind": "string",
+          "managed": "boolean",
+          "native_id": "string",
+          "scope": "string",
+          "source_path": "string",
+          "version": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "extension.adopt"
+    },
+    "extension.disable": {
+      "success_schema": null,
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "extension_read_only",
+      "error_command": "extension.disable"
+    },
+    "extension.doctor": {
+      "success_schema": {
+        "command": "string",
+        "data": {
+          "diagnostics": [],
+          "drifted_ids": [],
+          "duplicate_ids": [],
+          "management_anomalies": [],
+          "missing_paths": []
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "extension.doctor"
+    },
+    "extension.enable": {
+      "success_schema": null,
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "extension_read_only",
+      "error_command": "extension.enable"
+    },
+    "extension.list": {
+      "success_schema": {
+        "command": "string",
+        "data": [
+          {
+            "capabilities": [
+              "string"
+            ],
+            "client": "string",
+            "diagnostics": [],
+            "drift": "boolean",
+            "enabled": "string",
+            "fingerprint": "string",
+            "id": "string",
+            "kind": "string",
+            "managed": "boolean",
+            "native_id": "string",
+            "scope": "string",
+            "source_path": "string",
+            "version": "string"
+          }
+        ],
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "extension.list"
+    },
+    "extension.release": {
+      "success_schema": {
+        "command": "string",
+        "data": null,
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "extension.release"
+    },
+    "extension.scan": {
+      "success_schema": {
+        "command": "string",
+        "data": {
+          "diagnostics": [],
+          "found": "number"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "extension.scan"
+    },
+    "extension.show": {
+      "success_schema": {
+        "command": "string",
+        "data": {
+          "capabilities": [
+            "string"
+          ],
+          "client": "string",
+          "diagnostics": [],
+          "drift": "boolean",
+          "enabled": "string",
+          "fingerprint": "string",
+          "id": "string",
+          "kind": "string",
+          "managed": "boolean",
+          "native_id": "string",
+          "scope": "string",
+          "source_path": "string",
+          "version": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "extension.show"
+    },
+    "provider.add": {
+      "success_schema": {
+        "command": "string",
+        "data": {
+          "clients": [
+            {
+              "client": "string",
+              "native_model": "string",
+              "provider_model": "string"
+            }
+          ],
+          "created_at": "string",
+          "credential_ref": "string",
+          "endpoint": "string",
+          "id": "number",
+          "multiplier": "string",
+          "name": "string",
+          "updated_at": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "provider.add"
+    },
+    "provider.credential.add": {
+      "success_schema": {
+        "command": "string",
+        "data": null,
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "provider.credential.add"
+    },
+    "provider.credential.list": {
+      "success_schema": {
+        "command": "string",
+        "data": [
+          {
+            "credential": {
+              "present": "boolean",
+              "reference": "string"
+            },
+            "definition": {
+              "clients": [
+                {
+                  "client": "string",
+                  "native_model": "string",
+                  "provider_model": "string"
+                }
+              ],
+              "created_at": "string",
+              "credential_ref": "string",
+              "endpoint": "string",
+              "id": "number",
+              "multiplier": "string",
+              "name": "string",
+              "updated_at": "string"
+            }
+          }
+        ],
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "provider.credential.list"
+    },
+    "provider.credential.remove": {
+      "success_schema": {
+        "command": "string",
+        "data": null,
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "provider.credential.remove"
+    },
+    "provider.credential.update": {
+      "success_schema": {
+        "command": "string",
+        "data": null,
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "provider.credential.update"
+    },
+    "provider.edit": {
+      "success_schema": {
+        "command": "string",
+        "data": {
+          "clients": [
+            {
+              "client": "string",
+              "native_model": "string",
+              "provider_model": "string"
+            }
+          ],
+          "created_at": "string",
+          "credential_ref": "string",
+          "endpoint": "string",
+          "id": "number",
+          "multiplier": "string",
+          "name": "string",
+          "updated_at": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "provider.edit"
+    },
+    "provider.list": {
+      "success_schema": {
+        "command": "string",
+        "data": [
+          {
+            "credential": {
+              "present": "boolean",
+              "reference": "string"
+            },
+            "definition": {
+              "clients": [
+                {
+                  "client": "string",
+                  "native_model": "string",
+                  "provider_model": "string"
+                }
+              ],
+              "created_at": "string",
+              "credential_ref": "string",
+              "endpoint": "string",
+              "id": "number",
+              "multiplier": "string",
+              "name": "string",
+              "updated_at": "string"
+            }
+          }
+        ],
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "provider.list"
+    },
+    "provider.recover": {
+      "success_schema": {
+        "command": "string",
+        "data": [
+          {
+            "client": "string",
+            "config_fingerprint": "string",
+            "error_code": "string",
+            "id": "string",
+            "kind": "string",
+            "provider_id": null,
+            "redacted_backup_path": "string",
+            "started_at": "string",
+            "state": "string",
+            "updated_at": "string"
+          }
+        ],
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "provider.recover"
+    },
+    "provider.remove": {
+      "success_schema": {
+        "command": "string",
+        "data": null,
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "provider.remove"
+    },
+    "provider.show": {
+      "success_schema": {
+        "command": "string",
+        "data": {
+          "credential": {
+            "present": "boolean",
+            "reference": "string"
+          },
+          "definition": {
+            "clients": [
+              {
+                "client": "string",
+                "native_model": "string",
+                "provider_model": "string"
+              }
+            ],
+            "created_at": "string",
+            "credential_ref": "string",
+            "endpoint": "string",
+            "id": "number",
+            "multiplier": "string",
+            "name": "string",
+            "updated_at": "string"
+          }
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "provider.show"
+    },
+    "provider.status": {
+      "success_schema": {
+        "command": "string",
+        "data": [
+          {
+            "credential": {
+              "present": "boolean",
+              "reference": "string"
+            },
+            "definition": {
+              "clients": [
+                {
+                  "client": "string",
+                  "native_model": "string",
+                  "provider_model": "string"
+                }
+              ],
+              "created_at": "string",
+              "credential_ref": "string",
+              "endpoint": "string",
+              "id": "number",
+              "multiplier": "string",
+              "name": "string",
+              "updated_at": "string"
+            }
+          }
+        ],
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "provider.status"
+    },
+    "provider.use": {
+      "success_schema": {
+        "command": "string",
+        "data": null,
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "provider.use"
+    },
+    "run.claude": {
+      "success_schema": {
+        "command": "string",
+        "data": {
+          "attribution": "string",
+          "exact": "boolean",
+          "reason": "string",
+          "run_id": "number"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "run"
+    },
+    "run.codex": {
+      "success_schema": {
+        "command": "string",
+        "data": {
+          "attribution": "string",
+          "exact": "boolean",
+          "reason": "string",
+          "run_id": "number"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "run"
+    },
+    "session.exclude": {
+      "success_schema": {
+        "command": "string",
+        "data": {
+          "excluded": "boolean"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "session.exclude"
+    },
+    "session.list": {
+      "success_schema": {
+        "command": "string",
+        "data": [
+          {
+            "client": "string",
+            "first_at": "string",
+            "last_at": "string",
+            "model": "string",
+            "project": "string",
+            "session_id": "string",
+            "source_path": "string"
+          }
+        ],
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "session.list"
+    },
+    "session.purge-index": {
+      "success_schema": {
+        "command": "string",
+        "data": {
+          "purged": "boolean"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "session.purge-index"
+    },
+    "session.rebuild": {
+      "success_schema": {
+        "command": "string",
+        "data": {
+          "documents": "number",
+          "skipped": "number",
+          "sources": "number"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "session.rebuild"
+    },
+    "session.scan": {
+      "success_schema": {
+        "command": "string",
+        "data": {
+          "documents": "number",
+          "skipped": "number",
+          "sources": "number"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "session.scan"
+    },
+    "session.search": {
+      "success_schema": {
+        "command": "string",
+        "data": [
+          {
+            "client": "string",
+            "kind": "string",
+            "session_id": "string",
+            "text": "string"
+          }
+        ],
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "session.search"
+    },
+    "session.show": {
+      "success_schema": {
+        "command": "string",
+        "data": {
+          "client": "string",
+          "documents": [
+            {
+              "client": "string",
+              "kind": "string",
+              "session_id": "string",
+              "text": "string"
+            }
+          ],
+          "first_at": "string",
+          "last_at": "string",
+          "model": "string",
+          "project": "string",
+          "session_id": "string",
+          "source_path": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "session.show"
+    },
+    "usage.diagnose": {
+      "success_schema": {
+        "command": "string",
+        "data": {
+          "events": "number",
+          "exact_runs": "number",
+          "files": "number",
+          "sessions": "number"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "usage.diagnose"
+    },
+    "usage.price.history": {
+      "success_schema": {
+        "command": "string",
+        "data": [
+          {
+            "content_sha256": "string",
+            "effective_from": "string",
+            "source_kind": "string",
+            "source_url": "string",
+            "version": "string"
+          }
+        ],
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "usage.price.history"
+    },
+    "usage.price.override": {
+      "success_schema": {
+        "command": "string",
+        "data": {
+          "overrides": "number"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "usage.price.override"
+    },
+    "usage.price.status": {
+      "success_schema": {
+        "command": "string",
+        "data": {
+          "aggregated_reference": "boolean",
+          "available": "boolean",
+          "commit_sha": "string",
+          "content_sha256": "string",
+          "effective_from": "string",
+          "source_kind": "string",
+          "source_url": "string",
+          "version": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "usage.price.status"
+    },
+    "usage.price.update": {
+      "success_schema": {
+        "command": "string",
+        "data": {
+          "commit_sha": "string",
+          "content_sha256": "string",
+          "models": "number",
+          "version": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "usage.price.update"
+    },
+    "usage.rebuild": {
+      "success_schema": {
+        "command": "string",
+        "data": {
+          "files": "number",
+          "imported": "number",
+          "malformed": "number",
+          "replaced": "number",
+          "unsupported": "number"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "usage.rebuild"
+    },
+    "usage.scan": {
+      "success_schema": {
+        "command": "string",
+        "data": {
+          "files": "number",
+          "imported": "number",
+          "malformed": "number",
+          "replaced": "number",
+          "unsupported": "number"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "usage.scan"
+    },
+    "usage.sessions": {
+      "success_schema": {
+        "command": "string",
+        "data": [
+          {
+            "catalog_base_cost": "string",
+            "client": "string",
+            "first_at": "string",
+            "last_at": "string",
+            "provider_cost": "string",
+            "session_id": "string",
+            "tokens": {
+              "cache_creation_tokens": "number",
+              "cache_read_tokens": "number",
+              "cache_write_1h_tokens": "number",
+              "cache_write_5m_tokens": "number",
+              "cached_input_tokens": "number",
+              "input_tokens": "number",
+              "output_tokens": "number"
+            },
+            "unpriced_components": [],
+            "warnings": []
+          }
+        ],
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "usage.sessions"
+    },
+    "usage.summary": {
+      "success_schema": {
+        "command": "string",
+        "data": {
+          "catalog_base_cost": "string",
+          "counts": {
+            "estimated": "number",
+            "events": "number",
+            "exact": "number",
+            "historical": "number"
+          },
+          "provider_cost": "string",
+          "tokens": {
+            "cache_creation_tokens": "number",
+            "cache_read_tokens": "number",
+            "cache_write_1h_tokens": "number",
+            "cache_write_5m_tokens": "number",
+            "cached_input_tokens": "number",
+            "input_tokens": "number",
+            "output_tokens": "number"
+          },
+          "unpriced_components": [],
+          "warnings": []
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "usage.summary"
+    },
+    "watch": {
+      "success_schema": {
+        "changes": "number",
+        "domain": "string",
+        "generated_at": "string",
+        "schema_version": "number",
+        "skipped": "boolean",
+        "type": "string"
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "watch"
+    }
+  }
+}

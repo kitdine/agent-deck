@@ -1,0 +1,2 @@
+{"schema_version":1,"type":"scan_completed","domain":"usage","generated_at":"2026-07-14T00:00:00Z","changes":2,"skipped":false}
+{"schema_version":1,"type":"scan_skipped","domain":"all","generated_at":"2026-07-14T00:00:00Z","changes":0,"skipped":true,"reason":"state_busy"}
