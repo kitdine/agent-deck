@@ -14,6 +14,9 @@ type KeychainSecretStore struct{ Service string }
 func NewKeychainSecretStore(service string) *KeychainSecretStore {
 	return &KeychainSecretStore{Service: service}
 }
+func (s *KeychainSecretStore) Create(context.Context, string, string) error {
+	return ErrKeychainUnsupported
+}
 func (s *KeychainSecretStore) Put(context.Context, string, string) error {
 	return ErrKeychainUnsupported
 }

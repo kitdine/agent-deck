@@ -17,7 +17,7 @@ import (
 	"modernc.org/sqlite"
 )
 
-const CurrentSchemaVersion = 5
+const CurrentSchemaVersion = 6
 
 // OpenSessions opens the separately purgeable session-search database. It is
 // deliberately not part of the core schema so deleting the index can never
@@ -116,8 +116,9 @@ func (e *Error) Error() string {
 func (e *Error) Unwrap() error { return e.Err }
 
 type Store struct {
-	DB   *sql.DB
-	path string
+	DB       *sql.DB
+	path     string
+	readOnly bool
 }
 
 type stateLock interface {
@@ -132,6 +133,26 @@ func Open(ctx context.Context, stateRoot string) (*Store, error) {
 	return open(ctx, stateRoot, func(ctx context.Context, stateRoot string, timeout time.Duration) (stateLock, error) {
 		return AcquireLock(ctx, stateRoot, timeout)
 	})
+}
+
+// OpenReadOnly opens an existing core database without creating state,
+// applying migrations, changing permissions, or enabling WAL.
+func OpenReadOnly(ctx context.Context, stateRoot string) (*Store, error) {
+	path := filepath.Join(stateRoot, "agentdeck.sqlite3")
+	db, err := sql.Open("sqlite", "file:"+path+"?mode=ro&_pragma=foreign_keys(1)")
+	if err != nil {
+		return nil, err
+	}
+	var version int
+	if err = db.QueryRowContext(ctx, "SELECT version FROM schema_metadata").Scan(&version); err != nil {
+		db.Close()
+		return nil, err
+	}
+	if version > CurrentSchemaVersion {
+		db.Close()
+		return nil, ErrUnknownSchema
+	}
+	return &Store{DB: db, path: path, readOnly: true}, nil
 }
 
 func open(ctx context.Context, stateRoot string, acquire lockAcquirer) (store *Store, err error) {
@@ -180,6 +201,9 @@ func open(ctx context.Context, stateRoot string, acquire lockAcquirer) (store *S
 
 func (s *Store) Close() error {
 	err := s.DB.Close()
+	if s.readOnly {
+		return err
+	}
 	if secureErr := s.secureFiles(); err == nil {
 		err = secureErr
 	}
@@ -196,11 +220,40 @@ func (s *Store) Exec(ctx context.Context, query string, args ...any) (sql.Result
 	return result, s.secureFiles()
 }
 
+func (s *Store) Setting(ctx context.Context, key string) (string, bool, error) {
+	var value string
+	err := s.DB.QueryRowContext(ctx, "SELECT value FROM settings WHERE key=?", key).Scan(&value)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", false, nil
+	}
+	return value, err == nil, err
+}
+
+func (s *Store) SetSetting(ctx context.Context, key, value string) error {
+	_, err := s.Exec(ctx, `INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value WHERE settings.value IS NOT excluded.value`, key, value)
+	return err
+}
+
 func (s *Store) Backup(ctx context.Context, destination string) error {
+	return backupDatabase(ctx, s.DB, destination)
+}
+
+// BackupSQLiteFile snapshots an existing SQLite database through the online
+// backup API. It never copies a live database or its WAL sidecars directly.
+func BackupSQLiteFile(ctx context.Context, source, destination string) error {
+	db, err := sql.Open("sqlite", "file:"+source+"?mode=ro")
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	return backupDatabase(ctx, db, destination)
+}
+
+func backupDatabase(ctx context.Context, db *sql.DB, destination string) error {
 	if err := preparePrivateSQLiteFiles(destination); err != nil {
 		return err
 	}
-	conn, err := s.DB.Conn(ctx)
+	conn, err := db.Conn(ctx)
 	if err != nil {
 		return err
 	}
@@ -228,6 +281,20 @@ func (s *Store) Backup(ctx context.Context, destination string) error {
 		return err
 	}
 	return os.Chmod(destination, platform.FileMode)
+}
+
+// SchemaVersion returns the on-disk core schema version without changing it.
+func (s *Store) SchemaVersion(ctx context.Context) (int, error) {
+	var version int
+	err := s.DB.QueryRowContext(ctx, "SELECT version FROM schema_metadata").Scan(&version)
+	return version, err
+}
+
+// IntegrityCheck runs SQLite's read-only integrity check.
+func (s *Store) IntegrityCheck(ctx context.Context) (string, error) {
+	var result string
+	err := s.DB.QueryRowContext(ctx, "PRAGMA integrity_check").Scan(&result)
+	return result, err
 }
 
 func preparePrivateSQLiteFiles(path string) error {
@@ -262,7 +329,17 @@ type Lock struct {
 }
 
 func AcquireLock(ctx context.Context, stateRoot string, timeout time.Duration) (*Lock, error) {
-	path := filepath.Join(stateRoot, "state.lock")
+	return acquireNamedLock(ctx, stateRoot, "state.lock", timeout)
+}
+
+// AcquireScanLock serializes foreground scans without blocking state mutations
+// or read commands that use the short-lived state lock.
+func AcquireScanLock(ctx context.Context, stateRoot string, timeout time.Duration) (*Lock, error) {
+	return acquireNamedLock(ctx, stateRoot, "scan.lock", timeout)
+}
+
+func acquireNamedLock(ctx context.Context, stateRoot, name string, timeout time.Duration) (*Lock, error) {
+	path := filepath.Join(stateRoot, name)
 	token, err := newLockToken()
 	if err != nil {
 		return nil, err

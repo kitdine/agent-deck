@@ -47,6 +47,34 @@ func TestWriteClaudeConfigPreservesUnmanagedFields(t *testing.T) {
 	}
 }
 
+func TestConfigMatchesEndpointWithoutReturningPrivateContent(t *testing.T) {
+	root := t.TempDir()
+	codex := filepath.Join(root, "config.toml")
+	claude := filepath.Join(root, "settings.json")
+	if err := os.WriteFile(codex, []byte("model_provider='custom'\n[model_providers.custom]\nbase_url='https://provider.example/v1'\nprivate='do-not-return'\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(claude, []byte(`{"env":{"ANTHROPIC_BASE_URL":"https://provider.example","PRIVATE":"do-not-return"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		client Client
+		path   string
+	}{
+		{ClientCodex, codex},
+		{ClientClaude, claude},
+	} {
+		matches, err := ConfigMatchesEndpoint(test.client, test.path, "https://provider.example")
+		if err != nil || !matches {
+			t.Fatalf("ConfigMatchesEndpoint(%s) = %t, %v", test.client, matches, err)
+		}
+		matches, err = ConfigMatchesEndpoint(test.client, test.path, "https://other.example")
+		if err != nil || matches {
+			t.Fatalf("drift ConfigMatchesEndpoint(%s) = %t, %v", test.client, matches, err)
+		}
+	}
+}
+
 func TestWriteRedactedBackupOmitsCredential(t *testing.T) {
 	root := t.TempDir()
 	source, destination := filepath.Join(root, "config.toml"), filepath.Join(root, "backups", "config.toml")

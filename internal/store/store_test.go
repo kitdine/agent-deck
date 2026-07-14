@@ -76,6 +76,66 @@ func TestPreparePrivateSQLiteFiles(t *testing.T) {
 	}
 }
 
+func TestAdoptExtensionReturnsMatchingFingerprint(t *testing.T) {
+	ctx := context.Background()
+	state, err := Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	value := Extension{
+		ID:           "codex:skill:user:sample",
+		Client:       "codex",
+		Kind:         "skill",
+		Scope:        "user",
+		NativeID:     "sample",
+		SourcePath:   "/synthetic/sample",
+		Version:      "unknown",
+		Enabled:      "unknown",
+		Capabilities: []string{"read_only"},
+		Diagnostics:  []string{},
+		Fingerprint:  "synthetic-fingerprint",
+	}
+	if err = state.ReplaceExtensions(ctx, []Extension{value}); err != nil {
+		t.Fatal(err)
+	}
+	adopted, err := state.AdoptExtension(ctx, value.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !adopted.Managed || adopted.AdoptedFingerprint != adopted.Fingerprint {
+		t.Fatalf("AdoptExtension = %#v", adopted)
+	}
+}
+
+func TestReplaceExtensionsDoesNotRefreshUnchangedInventory(t *testing.T) {
+	ctx := context.Background()
+	state, err := Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	value := Extension{ID: "codex:skill:user:sample", Client: "codex", Kind: "skill", Scope: "user", NativeID: "sample", SourcePath: "/synthetic/sample", Version: "unknown", Enabled: "unknown", Capabilities: []string{"read_only"}, Diagnostics: []string{}, Fingerprint: "stable"}
+	if err = state.ReplaceExtensions(ctx, []Extension{value}); err != nil {
+		t.Fatal(err)
+	}
+	var before string
+	if err = state.DB.QueryRowContext(ctx, "SELECT updated_at FROM extensions WHERE id=?", value.ID).Scan(&before); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(time.Millisecond)
+	if err = state.ReplaceExtensions(ctx, []Extension{value}); err != nil {
+		t.Fatal(err)
+	}
+	var after string
+	if err = state.DB.QueryRowContext(ctx, "SELECT updated_at FROM extensions WHERE id=?", value.ID).Scan(&after); err != nil {
+		t.Fatal(err)
+	}
+	if after != before {
+		t.Fatalf("unchanged extension updated_at changed: %q -> %q", before, after)
+	}
+}
+
 func TestOpenSessionsAddsSourceCursorColumnsToExistingIndex(t *testing.T) {
 	ctx := context.Background()
 	root := filepath.Join(t.TempDir(), "state")
@@ -113,7 +173,7 @@ func TestMigrationsRejectUnknownNewerSchema(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	if _, err := db.ExecContext(ctx, "CREATE TABLE schema_metadata (version INTEGER NOT NULL); INSERT INTO schema_metadata VALUES (6)"); err != nil {
+	if _, err := db.ExecContext(ctx, "CREATE TABLE schema_metadata (version INTEGER NOT NULL); INSERT INTO schema_metadata VALUES (?)", CurrentSchemaVersion+1); err != nil {
 		t.Fatal(err)
 	}
 	if err := migrate(ctx, db, migrations); !errors.Is(err, ErrUnknownSchema) {

@@ -10,10 +10,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"math/big"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -83,9 +81,11 @@ type modelPrice struct {
 // OfficialOverride is a vendor-published component correction.  Its provenance
 // and effective time are mandatory so it cannot masquerade as invoice data.
 type OfficialOverride struct {
-	Model, Provider, SourceURL string
-	EffectiveFrom              time.Time
-	Prices                     map[string]string
+	Model         string            `json:"model"`
+	Provider      string            `json:"provider"`
+	SourceURL     string            `json:"source_url"`
+	EffectiveFrom time.Time         `json:"effective_from"`
+	Prices        map[string]string `json:"prices"`
 }
 
 func New(s *store.Store, home string) *Service { return &Service{Store: s, Home: home, Now: time.Now} }
@@ -495,6 +495,32 @@ func (s *Service) Diagnose(ctx context.Context) (map[string]any, error) {
 	}
 	return out, nil
 }
+
+// CheckSourceReadability verifies indexed source handles without reading or
+// returning their contents or paths.
+func (s *Service) CheckSourceReadability(ctx context.Context) (int, error) {
+	rows, err := s.Store.DB.QueryContext(ctx, "SELECT path FROM usage_source_files ORDER BY path")
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+	unreadable := 0
+	for rows.Next() {
+		var path string
+		if err = rows.Scan(&path); err != nil {
+			return 0, err
+		}
+		file, openErr := os.Open(path)
+		if openErr != nil {
+			unreadable++
+			continue
+		}
+		if closeErr := file.Close(); closeErr != nil {
+			unreadable++
+		}
+	}
+	return unreadable, rows.Err()
+}
 func (s *Service) PriceHistory(ctx context.Context) ([]map[string]string, error) {
 	rows, err := s.Store.DB.QueryContext(ctx, "SELECT version,source_kind,source_url,content_sha256,effective_from FROM price_catalogs ORDER BY effective_from")
 	if err != nil {
@@ -523,6 +549,84 @@ func (s *Service) PriceStatus(ctx context.Context) (map[string]any, error) {
 		return nil, err
 	}
 	return map[string]any{"available": true, "version": version, "source_kind": kind, "source_url": source, "commit_sha": commit, "content_sha256": hash, "effective_from": effective, "aggregated_reference": kind == "litellm"}, nil
+}
+
+// PriceDiagnostics returns only aggregate catalog health counts. It never
+// exposes catalog contents or contacts the network.
+func (s *Service) PriceDiagnostics(ctx context.Context) (invalidProvenance, unpricedModels int, err error) {
+	rows, err := s.Store.DB.QueryContext(ctx, `SELECT source_kind,source_url,COALESCE(commit_sha,''),content_sha256,schema_version FROM price_catalogs`)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var kind, url, commit, content string
+		var schema int
+		if err = rows.Scan(&kind, &url, &commit, &content, &schema); err != nil {
+			return 0, 0, err
+		}
+		if !validPriceProvenance(kind, url, commit, content, schema) {
+			invalidProvenance++
+		}
+	}
+	if err = rows.Err(); err != nil {
+		return 0, 0, err
+	}
+	events, err := s.events(ctx, "", "")
+	if err != nil {
+		return 0, 0, err
+	}
+	unpriced := make(map[string]bool)
+	for _, event := range events {
+		price, mult, _, priceErr := s.priceForEvent(ctx, event)
+		if priceErr != nil {
+			return 0, 0, priceErr
+		}
+		result, calculateErr := Calculate(event.Client, event.Model, event.Tokens, price, mult)
+		if calculateErr != nil {
+			return 0, 0, calculateErr
+		}
+		if result.CatalogBaseCost == nil {
+			unpriced[event.Model] = true
+		}
+	}
+	return invalidProvenance, len(unpriced), nil
+}
+
+func validPriceProvenance(kind, url, commit, content string, schema int) bool {
+	if schema != 1 || !validSHA256(content) {
+		return false
+	}
+	switch kind {
+	case "bundled":
+		return url == "bundled://config/model-prices.json" && commit == ""
+	case "official":
+		return url != "" && commit == ""
+	case "litellm":
+		return validLiteLLMCommit(commit) && url == "https://raw.githubusercontent.com/BerriAI/litellm/"+commit+"/model_prices_and_context_window.json"
+	default:
+		return false
+	}
+}
+
+func validLiteLLMCommit(commit string) bool {
+	if len(commit) != 40 {
+		return false
+	}
+	for _, character := range commit {
+		if !((character >= '0' && character <= '9') || (character >= 'a' && character <= 'f')) {
+			return false
+		}
+	}
+	return true
+}
+
+func validSHA256(value string) bool {
+	if len(value) != 64 {
+		return false
+	}
+	_, err := hex.DecodeString(value)
+	return err == nil
 }
 
 // StartRun snapshots every known source's completed byte boundary before the
@@ -611,6 +715,15 @@ func (s *Service) EndRun(ctx context.Context, runID int64, client string, start 
 	return tx.Commit()
 }
 
+// FailRun closes a wrapper whose exact source range could not be proven.
+func (s *Service) FailRun(ctx context.Context, runID int64, reason string) error {
+	if reason == "" {
+		reason = "wrapper_cleanup_failed"
+	}
+	_, err := s.Store.Exec(ctx, "UPDATE usage_runs SET ended_at=?,exact=0,ambiguity_reason=? WHERE id=? AND ended_at IS NULL", s.now().Format(time.RFC3339Nano), reason, runID)
+	return err
+}
+
 func (s *Service) clientProcesses(client string) ([]int, error) {
 	if s.ClientProcesses != nil {
 		return s.ClientProcesses(client)
@@ -681,49 +794,6 @@ func (s *Service) RecoverStaleRuns(ctx context.Context) (int64, error) {
 
 func processAlive(pid int) bool {
 	return exec.Command("ps", "-p", strconv.Itoa(pid), "-o", "pid=").Run() == nil
-}
-
-// UpdateLiteLLM imports only direct OpenAI and Anthropic records from a pinned
-// LiteLLM document. The caller supplies the immutable commit SHA used in url.
-func (s *Service) UpdateLiteLLM(ctx context.Context, url, commit string, client *http.Client) (map[string]any, error) {
-	if len(commit) < 7 || strings.ContainsAny(commit, " /\\") {
-		return nil, errors.New("price update requires a pinned LiteLLM commit SHA")
-	}
-	expectedURL := "https://raw.githubusercontent.com/BerriAI/litellm/" + commit + "/model_prices_and_context_window.json"
-	if url != expectedURL {
-		return nil, fmt.Errorf("price update URL must be the canonical pinned LiteLLM URL: %s", expectedURL)
-	}
-	if client == nil {
-		client = http.DefaultClient
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, err
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("price update: %s", resp.Status)
-	}
-	data, err := io.ReadAll(io.LimitReader(resp.Body, 32<<20))
-	if err != nil {
-		return nil, err
-	}
-	c, kept, err := liteLLMCatalog(data, commit, s.now())
-	if err != nil {
-		return nil, err
-	}
-	encoded, err := json.Marshal(c)
-	if err != nil {
-		return nil, err
-	}
-	if err = s.importCatalog(ctx, encoded, "litellm", url, commit, s.now()); err != nil {
-		return nil, err
-	}
-	return map[string]any{"version": c.Version, "models": kept, "commit_sha": commit, "content_sha256": hash(data)}, nil
 }
 
 func liteLLMCatalog(data []byte, commit string, now time.Time) (catalog, int, error) {
@@ -808,7 +878,7 @@ func (s *Service) Sessions(ctx context.Context) ([]SessionSummary, error) {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []SessionSummary
+	out := make([]SessionSummary, 0)
 	for rows.Next() {
 		var item SessionSummary
 		if err := rows.Scan(&item.Client, &item.SessionID, &item.FirstAt, &item.LastAt); err != nil {

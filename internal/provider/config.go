@@ -21,6 +21,39 @@ func ConfigFingerprint(path string) (string, error) {
 	return fmt.Sprintf("%x", digest), nil
 }
 
+// ConfigMatchesEndpoint checks only the AgentDeck-owned endpoint selection and
+// never returns native configuration contents.
+func ConfigMatchesEndpoint(client Client, path, endpoint string) (bool, error) {
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		return false, err
+	}
+	expected := strings.TrimRight(endpoint, "/")
+	if client == ClientCodex {
+		var document map[string]any
+		if err = toml.Unmarshal(contents, &document); err != nil {
+			return false, err
+		}
+		if document["model_provider"] != "custom" {
+			return false, nil
+		}
+		providers, _ := document["model_providers"].(map[string]any)
+		custom, _ := providers["custom"].(map[string]any)
+		baseURL, _ := custom["base_url"].(string)
+		return strings.TrimRight(baseURL, "/") == expected+"/v1", nil
+	}
+	if client == ClientClaude {
+		var document map[string]any
+		if err = json.Unmarshal(contents, &document); err != nil {
+			return false, err
+		}
+		environment, _ := document["env"].(map[string]any)
+		baseURL, _ := environment["ANTHROPIC_BASE_URL"].(string)
+		return strings.TrimRight(baseURL, "/") == expected, nil
+	}
+	return false, fmt.Errorf("unsupported client %q", client)
+}
+
 type ClientConfig struct{ Name, Endpoint, Credential string }
 
 func WriteCodexConfig(path string, config ClientConfig) error {

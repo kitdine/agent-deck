@@ -19,6 +19,10 @@ static OSStatus putSecret(const char* service, unsigned long serviceLen, const c
 	return SecKeychainAddGenericPassword(NULL, serviceLen, service, accountLen, account, valueLen, value, NULL);
 }
 
+static OSStatus createSecret(const char* service, unsigned long serviceLen, const char* account, unsigned long accountLen, const char* value, unsigned long valueLen) {
+	return SecKeychainAddGenericPassword(NULL, serviceLen, service, accountLen, account, valueLen, value, NULL);
+}
+
 static OSStatus getSecret(const char* service, unsigned long serviceLen, const char* account, unsigned long accountLen, char** value, unsigned long* valueLen) {
 	UInt32 n = 0; void* data = NULL;
 	OSStatus status = SecKeychainFindGenericPassword(NULL, serviceLen, service, accountLen, account, &n, &data, NULL);
@@ -54,6 +58,13 @@ func (s *KeychainSecretStore) Put(_ context.Context, reference, value string) er
 	defer C.free(unsafe.Pointer(secret))
 	return keychainError(C.putSecret(service, C.ulong(len(s.Service)), account, C.ulong(len(reference)), secret, C.ulong(len(value))))
 }
+func (s *KeychainSecretStore) Create(_ context.Context, reference, value string) error {
+	service, account, secret := C.CString(s.Service), C.CString(reference), C.CString(value)
+	defer C.free(unsafe.Pointer(service))
+	defer C.free(unsafe.Pointer(account))
+	defer C.free(unsafe.Pointer(secret))
+	return keychainError(C.createSecret(service, C.ulong(len(s.Service)), account, C.ulong(len(reference)), secret, C.ulong(len(value))))
+}
 func (s *KeychainSecretStore) Get(_ context.Context, reference string) (string, error) {
 	service, account := C.CString(s.Service), C.CString(reference)
 	defer C.free(unsafe.Pointer(service))
@@ -82,6 +93,9 @@ func (s *KeychainSecretStore) Exists(ctx context.Context, reference string) (boo
 func keychainError(status C.OSStatus) error {
 	if status == C.errSecItemNotFound {
 		return ErrSecretNotFound
+	}
+	if status == C.errSecDuplicateItem {
+		return ErrSecretExists
 	}
 	if status != C.errSecSuccess {
 		return errors.New("keychain_error")

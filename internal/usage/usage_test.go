@@ -84,8 +84,9 @@ func TestUpdateLiteLLMFiltersAndPinsDirectProviders(t *testing.T) {
 	client := &http.Client{Transport: roundTrip(func(*http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: 200, Status: "200 OK", Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
 	})}
-	url := "https://raw.githubusercontent.com/BerriAI/litellm/abcdef123/model_prices_and_context_window.json"
-	got, err := service.UpdateLiteLLM(context.Background(), url, "abcdef123", client)
+	commit := "abcdefabcdefabcdefabcdefabcdefabcdefabcd"
+	url := "https://raw.githubusercontent.com/BerriAI/litellm/" + commit + "/model_prices_and_context_window.json"
+	got, err := service.UpdateLiteLLM(context.Background(), url, commit, client)
 	if err != nil || got["models"].(int) != 2 {
 		t.Fatalf("update=%v err=%v", got, err)
 	}
@@ -93,8 +94,30 @@ func TestUpdateLiteLLMFiltersAndPinsDirectProviders(t *testing.T) {
 		t.Fatal("expected short commit rejection")
 	}
 	history, err := service.PriceHistory(context.Background())
-	if err != nil || len(history) != 1 || history[0]["version"] != "litellm-abcdef123" {
+	if err != nil || len(history) != 1 || history[0]["version"] != "litellm-"+commit {
 		t.Fatalf("history=%v err=%v", history, err)
+	}
+}
+
+func TestPriceDiagnosticsValidatesLiteLLMProvenanceAndCountsDistinctModels(t *testing.T) {
+	ctx := context.Background()
+	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	commit := "abcdefabcdefabcdefabcdefabcdefabcdefabcd"
+	hash := strings.Repeat("a", 64)
+	validURL := "https://raw.githubusercontent.com/BerriAI/litellm/" + commit + "/model_prices_and_context_window.json"
+	if _, err = s.Exec(ctx, `INSERT INTO price_catalogs(version,source_kind,source_url,commit_sha,content_sha256,imported_at,effective_from,currency,schema_version) VALUES('good','litellm',?,?,?,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z','USD',1),('bad-commit','litellm',?,?,?,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z','USD',1),('bad-url','litellm',?,?,?,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z','USD',1),('bad-hash','official','https://example.invalid','','short','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z','USD',1)`, validURL, commit, hash, validURL, "short", hash, "https://example.invalid/not-pinned", commit, hash); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.Exec(ctx, `INSERT INTO usage_events(event_key,client,session_id,event_id,event_at,model,input_tokens,cached_input_tokens,output_tokens,source_path,source_offset) VALUES('one','codex','s','one','2026-01-01T00:00:00Z','missing-model',1,0,1,'fixture',0),('two','codex','s','two','2026-01-01T00:00:00Z','missing-model',2,0,2,'fixture',1)`); err != nil {
+		t.Fatal(err)
+	}
+	invalid, unpriced, err := New(s, "").PriceDiagnostics(ctx)
+	if err != nil || invalid != 3 || unpriced != 1 {
+		t.Fatalf("PriceDiagnostics = invalid:%d unpriced:%d err:%v", invalid, unpriced, err)
 	}
 }
 

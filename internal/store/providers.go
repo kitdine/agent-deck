@@ -7,20 +7,20 @@ import (
 )
 
 type Provider struct {
-	ID            int64
-	Name          string
-	Endpoint      string
-	CredentialRef string
-	Multiplier    string
-	Clients       []ClientMapping
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
+	ID            int64           `json:"id"`
+	Name          string          `json:"name"`
+	Endpoint      string          `json:"endpoint"`
+	CredentialRef string          `json:"credential_ref"`
+	Multiplier    string          `json:"multiplier"`
+	Clients       []ClientMapping `json:"clients"`
+	CreatedAt     time.Time       `json:"created_at"`
+	UpdatedAt     time.Time       `json:"updated_at"`
 }
 
 type ClientMapping struct {
-	Client        string
-	NativeModel   string
-	ProviderModel string
+	Client        string `json:"client"`
+	NativeModel   string `json:"native_model"`
+	ProviderModel string `json:"provider_model"`
 }
 
 type Selection struct {
@@ -31,16 +31,16 @@ type Selection struct {
 }
 
 type Operation struct {
-	ID                 string
-	Kind               string
-	State              string
-	ProviderID         *int64
-	Client             string
-	StartedAt          time.Time
-	UpdatedAt          time.Time
-	RedactedBackupPath string
-	ErrorCode          string
-	ConfigFingerprint  string
+	ID                 string    `json:"id"`
+	Kind               string    `json:"kind"`
+	State              string    `json:"state"`
+	ProviderID         *int64    `json:"provider_id"`
+	Client             string    `json:"client"`
+	StartedAt          time.Time `json:"started_at"`
+	UpdatedAt          time.Time `json:"updated_at"`
+	RedactedBackupPath string    `json:"redacted_backup_path"`
+	ErrorCode          string    `json:"error_code"`
+	ConfigFingerprint  string    `json:"config_fingerprint"`
 }
 
 func (s *Store) CreateProvider(ctx context.Context, provider Provider) (Provider, error) {
@@ -207,7 +207,7 @@ func (s *Store) PendingOperations(ctx context.Context) ([]Operation, error) {
 		return nil, err
 	}
 	defer rows.Close()
-	var operations []Operation
+	operations := make([]Operation, 0)
 	for rows.Next() {
 		var operation Operation
 		var started, updated string

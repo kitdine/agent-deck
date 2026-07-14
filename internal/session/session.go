@@ -26,13 +26,30 @@ const (
 	replaceDocumentsSourceIdentity = "synthetic:replace-documents"
 )
 
-type Document struct{ Client, SessionID, Kind, Text string }
-type Metadata struct{ Client, SessionID, Project, SourcePath, Model, FirstAt, LastAt string }
+type Document struct {
+	Client    string `json:"client"`
+	SessionID string `json:"session_id"`
+	Kind      string `json:"kind"`
+	Text      string `json:"text"`
+}
+type Metadata struct {
+	Client     string `json:"client"`
+	SessionID  string `json:"session_id"`
+	Project    string `json:"project"`
+	SourcePath string `json:"source_path"`
+	Model      string `json:"model"`
+	FirstAt    string `json:"first_at"`
+	LastAt     string `json:"last_at"`
+}
 type Result struct {
 	Metadata
-	Documents []Document
+	Documents []Document `json:"documents"`
 }
-type ScanResult struct{ Sources, Documents, Skipped int }
+type ScanResult struct {
+	Sources   int `json:"sources"`
+	Documents int `json:"documents"`
+	Skipped   int `json:"skipped"`
+}
 
 // ApprovedDocument is the privacy boundary: only text already classified by a
 // client-specific allowlist as a visible user prompt or final assistant reply
@@ -617,7 +634,7 @@ func Search(ctx context.Context, db *sql.DB, query string) ([]Document, error) {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []Document
+	out := make([]Document, 0)
 	for rows.Next() {
 		var d Document
 		if err := rows.Scan(&d.Client, &d.SessionID, &d.Kind, &d.Text); err != nil {
@@ -633,7 +650,7 @@ func List(ctx context.Context, db *sql.DB) ([]Metadata, error) {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []Metadata
+	out := make([]Metadata, 0)
 	for rows.Next() {
 		var m Metadata
 		if err = rows.Scan(&m.Client, &m.SessionID, &m.Project, &m.SourcePath, &m.Model, &m.FirstAt, &m.LastAt); err != nil {

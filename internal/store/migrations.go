@@ -45,6 +45,11 @@ var migrations = []migration{
 		`ALTER TABLE usage_runs ADD COLUMN ambiguity_reason TEXT NOT NULL DEFAULT ''`,
 		`CREATE TABLE usage_run_sources (run_id INTEGER NOT NULL REFERENCES usage_runs(id) ON DELETE CASCADE, path TEXT NOT NULL, start_offset INTEGER NOT NULL, end_offset INTEGER, start_hash TEXT NOT NULL, end_hash TEXT, PRIMARY KEY(run_id,path))`,
 	}},
+	{version: 6, statements: []string{
+		`CREATE TABLE extensions (id TEXT PRIMARY KEY, client TEXT NOT NULL, kind TEXT NOT NULL, scope TEXT NOT NULL, native_id TEXT NOT NULL, source_path TEXT NOT NULL, version TEXT NOT NULL DEFAULT 'unknown', enabled TEXT NOT NULL DEFAULT 'unknown', capabilities_json TEXT NOT NULL, diagnostics_json TEXT NOT NULL, fingerprint TEXT NOT NULL, updated_at TEXT NOT NULL)`,
+		`CREATE TABLE extension_management (extension_id TEXT PRIMARY KEY REFERENCES extensions(id) ON DELETE CASCADE, fingerprint TEXT NOT NULL, adopted_at TEXT NOT NULL)`,
+		`CREATE INDEX extensions_client_kind ON extensions(client, kind, scope, native_id)`,
+	}},
 }
 
 func migrate(ctx context.Context, db *sql.DB, ordered []migration) error {

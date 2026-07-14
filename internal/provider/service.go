@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/kitdine/agent-deck/internal/platform"
@@ -17,13 +18,39 @@ type Service struct {
 }
 
 type Credential struct {
-	Reference string
-	Present   bool
+	Reference string `json:"reference"`
+	Present   bool   `json:"present"`
 }
 
 type Status struct {
-	Definition store.Provider
-	Credential Credential
+	Definition store.Provider `json:"definition"`
+	Credential Credential     `json:"credential"`
+}
+
+// ConfigDrift counts selected clients whose native endpoint no longer matches
+// the recorded provider. It does not expose native configuration values.
+func (s Service) ConfigDrift(ctx context.Context, home string) (int, error) {
+	rows, err := s.Store.DB.QueryContext(ctx, `SELECT ps.client,p.endpoint FROM provider_selections ps JOIN providers p ON p.id=ps.provider_id WHERE ps.id IN (SELECT MAX(id) FROM provider_selections GROUP BY client) ORDER BY ps.client`)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+	drift := 0
+	for rows.Next() {
+		var client, endpoint string
+		if err = rows.Scan(&client, &endpoint); err != nil {
+			return 0, err
+		}
+		path := map[string]string{
+			string(ClientCodex):  filepath.Join(home, ".codex", "config.toml"),
+			string(ClientClaude): filepath.Join(home, ".claude", "settings.json"),
+		}[client]
+		matches, checkErr := ConfigMatchesEndpoint(Client(client), path, endpoint)
+		if checkErr != nil || !matches {
+			drift++
+		}
+	}
+	return drift, rows.Err()
 }
 
 func (s Service) Add(ctx context.Context, definition Definition, credential string) (store.Provider, error) {
