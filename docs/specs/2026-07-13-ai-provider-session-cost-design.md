@@ -3,10 +3,11 @@
 **Status:** reference, superseded by
 `docs/specs/2026-07-13-agentdeck-cli-design.md`
 
-This document remains the detailed behavioral reference for the committed
-legacy usage implementation and its fixtures. The AgentDeck specification is
-the active architecture and changes the privacy boundary for the separate,
-opt-in session search database.
+This document remains the detailed behavioral reference for the former legacy
+usage implementation and fixtures. The repository implementation was removed
+after the AgentDeck replacement passed independent review. The AgentDeck
+specification is the active architecture and changes the privacy boundary for
+the separate, opt-in session search database.
 
 ## Goal
 

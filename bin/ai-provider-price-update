@@ -1,5 +1,0 @@
-#!/usr/bin/env python3
-from ai_provider_usage import price_update_main
-
-if __name__ == "__main__":
-    raise SystemExit(price_update_main())

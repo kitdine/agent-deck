@@ -3,8 +3,10 @@
 **Status:** historical, superseded by
 `docs/plans/2026-07-13-agentdeck-cli.md`
 
-The legacy implementation is present in commit `3fcc121`. This unchecked plan
-is retained for context and is not the current execution tracker.
+The legacy implementation remains available in historical commit `3fcc121` but
+has been removed from the current tree after the AgentDeck replacement passed
+independent review. This unchecked plan is retained for context and is not the
+current execution tracker.
 
 **Goal:** Replace the old per-tool mode files with one provider JSON, two
 small switchers, and one interactive key manager.

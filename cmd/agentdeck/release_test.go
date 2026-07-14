@@ -98,6 +98,23 @@ func TestPrivacyGateScansRepositoryAndGeneratedArtifacts(t *testing.T) {
 			t.Fatalf("privacy gate scanned ignored file: %v: %s", err, output)
 		}
 	})
+
+	t.Run("deleted tracked file", func(t *testing.T) {
+		repository := initPrivacyTestRepository(t)
+		path := filepath.Join(repository, "removed.txt")
+		if err := os.WriteFile(path, []byte("synthetic public content"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		runTestGit(t, repository, "add", "removed.txt")
+		if err := os.Remove(path); err != nil {
+			t.Fatal(err)
+		}
+		command := exec.Command("bash", script)
+		command.Dir = repository
+		if output, err := command.CombinedOutput(); err != nil {
+			t.Fatalf("privacy gate rejected a deleted tracked file: %v: %s", err, output)
+		}
+	})
 }
 
 func TestPrivacyGateFailsClosed(t *testing.T) {

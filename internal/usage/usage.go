@@ -26,6 +26,11 @@ import (
 //go:embed model-prices.json
 var bundledCatalog []byte
 
+const (
+	bundledCatalogSourceURL       = "bundled://agentdeck/model-prices.json"
+	legacyBundledCatalogSourceURL = "bundled://config/model-prices.json"
+)
+
 var tokenNames = []string{"input_tokens", "cached_input_tokens", "output_tokens", "cache_read_tokens", "cache_creation_tokens", "cache_write_5m_tokens", "cache_write_1h_tokens"}
 
 type Event struct {
@@ -201,7 +206,7 @@ func (s *Service) ImportBundledCatalog(ctx context.Context) error {
 			effective = at
 		}
 	}
-	return s.importCatalog(ctx, bundledCatalog, "bundled", "bundled://config/model-prices.json", "", effective)
+	return s.importCatalog(ctx, bundledCatalog, "bundled", bundledCatalogSourceURL, "", effective)
 }
 func (s *Service) importCatalog(ctx context.Context, data []byte, kind, url, commit string, effective time.Time) error {
 	c, err := parseCatalog(data)
@@ -599,7 +604,7 @@ func validPriceProvenance(kind, url, commit, content string, schema int) bool {
 	}
 	switch kind {
 	case "bundled":
-		return url == "bundled://config/model-prices.json" && commit == ""
+		return (url == bundledCatalogSourceURL || url == legacyBundledCatalogSourceURL) && commit == ""
 	case "official":
 		return url != "" && commit == ""
 	case "litellm":

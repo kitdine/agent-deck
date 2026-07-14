@@ -73,6 +73,57 @@ func TestSummarySessionsAndEventTimeCatalogSelection(t *testing.T) {
 	}
 }
 
+func TestBundledCatalogUsesStableProvenanceAndAcceptsLegacy(t *testing.T) {
+	const stableSource = "bundled://agentdeck/model-prices.json"
+	const legacySource = "bundled://config/model-prices.json"
+
+	var metadata struct {
+		Sources []struct {
+			URL string `json:"url"`
+		} `json:"sources"`
+	}
+	if err := json.Unmarshal(bundledCatalog, &metadata); err != nil {
+		t.Fatal(err)
+	}
+	if len(metadata.Sources) != 1 || metadata.Sources[0].URL != stableSource {
+		t.Fatalf("bundled catalog source = %#v, want %q", metadata.Sources, stableSource)
+	}
+
+	ctx := context.Background()
+	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err = New(s, "").ImportBundledCatalog(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var importedSource string
+	if err = s.DB.QueryRowContext(ctx, "SELECT source_url FROM price_catalogs").Scan(&importedSource); err != nil {
+		t.Fatal(err)
+	}
+	if importedSource != stableSource {
+		t.Fatalf("imported bundled source = %q, want %q", importedSource, stableSource)
+	}
+
+	hash := strings.Repeat("a", 64)
+	for _, test := range []struct {
+		name string
+		url  string
+		want bool
+	}{
+		{name: "stable", url: stableSource, want: true},
+		{name: "legacy", url: legacySource, want: true},
+		{name: "unknown", url: "bundled://other/model-prices.json", want: false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := validPriceProvenance("bundled", test.url, "", hash, 1); got != test.want {
+				t.Fatalf("validPriceProvenance(%q) = %t, want %t", test.url, got, test.want)
+			}
+		})
+	}
+}
+
 func TestUpdateLiteLLMFiltersAndPinsDirectProviders(t *testing.T) {
 	body := `{"gpt":{"litellm_provider":"openai","input_cost_per_token":0.000002,"output_cost_per_token":0.00001,"cache_read_input_token_cost":0.0000002},"bedrock":{"litellm_provider":"bedrock","input_cost_per_token":1,"output_cost_per_token":1},"claude":{"litellm_provider":"anthropic","input_cost_per_token":0.000003,"output_cost_per_token":0.000015,"cache_read_input_token_cost":0.0000003,"cache_creation_input_token_cost":0.00000375,"cache_creation_input_token_cost_above_1hr":0.000006}}`
 	s, err := store.Open(context.Background(), filepath.Join(t.TempDir(), "state"))

@@ -43,8 +43,8 @@ Do not bypass RTK merely for convenience.
 - Project name / 项目名称: `AgentDeck`
 - Purpose / 项目目标: One local CLI for Codex and Claude provider switching,
   usage cost, session search, extension inventory, and portable backup.
-- Primary stack / 主要技术栈: Go and SQLite. The committed Python 3 and Bash
-  implementation remains a temporary behavioral reference during migration.
+- Primary stack / 主要技术栈: Go and SQLite. Superseded Python 3 and Bash
+  behavior remains available only through historical documents and Git history.
 - Supported environments / 支持环境: macOS first, with portable core contracts
   for later Windows and Linux support.
 - Primary entry document / 项目入口文档:
@@ -212,25 +212,7 @@ Do not collapse "fix implemented" and "review passed" into the same state.
 
 ## Testing and Verification / 测试与验证
 
-Until the Go replacement exists, the committed legacy implementation uses:
-
-```bash
-# Unit and integration tests / 单元与集成测试
-rtk test bash tests/test-ai-provider-aliases.sh
-rtk test bash tests/test-ai-provider-mode.sh
-
-# Build / 构建
-rtk test python3 -m py_compile bin/ai-provider-mode bin/ai-provider-key bin/ai_provider_common.py bin/ai_provider_usage.py bin/ai-provider-usage bin/ai-provider-run bin/ai-provider-price-update
-
-# Lint and static analysis / Lint 与静态检查
-rtk lint python3 -m py_compile bin/ai-provider-mode bin/ai-provider-key bin/ai_provider_common.py bin/ai_provider_usage.py bin/ai-provider-usage bin/ai-provider-run bin/ai-provider-price-update
-
-# End-to-end or runtime verification / 端到端或运行态验证
-rtk test bash tests/test-ai-provider-aliases.sh
-rtk test bash tests/test-ai-provider-mode.sh
-```
-
-Once Go source is introduced, affected AgentDeck work also uses:
+AgentDeck work uses the Go verification suite below:
 
 In the managed sandbox, set `GOCACHE=/private/tmp/agent-deck-go-build` for
 every Go test, vet, and build command. If a first cross-build also needs to
@@ -485,20 +467,7 @@ data handling, or release sequencing.
 
 ### Required Commands / 必需命令
 
-Run the legacy checks while the reference implementation remains:
-
-```bash
-rtk test bash tests/test-ai-provider-aliases.sh
-rtk test bash tests/test-ai-provider-mode.sh
-rtk test python3 -m unittest tests/test_ai_provider_usage.py
-rtk test python3 -m py_compile bin/ai-provider-mode bin/ai-provider-key bin/ai_provider_common.py bin/ai_provider_usage.py bin/ai-provider-usage bin/ai-provider-run bin/ai-provider-price-update
-rtk lint python3 -m py_compile bin/ai-provider-mode bin/ai-provider-key bin/ai_provider_common.py bin/ai_provider_usage.py bin/ai-provider-usage bin/ai-provider-run bin/ai-provider-price-update
-rtk test bash tests/test-ai-provider-aliases.sh
-rtk test bash tests/test-ai-provider-mode.sh
-rtk test python3 -m unittest tests/test_ai_provider_usage.py
-```
-
-After Go packages are added, run the affected targeted tests followed by:
+Run affected targeted tests followed by:
 
 Use `GOCACHE=/private/tmp/agent-deck-go-build` for every Go command. Add
 `GOMODCACHE=/private/tmp/agent-deck-go-mod` to a first cross-build when module

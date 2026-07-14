@@ -1,6 +1,7 @@
 # AgentDeck CLI Design
 
-**Status:** active, approved for development
+**Status:** active, implementation and independent review complete; release
+preparation pending
 
 ## Product Definition
 
@@ -539,10 +540,11 @@ Keychain and process/config paths are platform adapters.
 
 ## Legacy Transition
 
-The committed Python and Bash implementation remains a behavioral reference
-and fixture source during Go development. After each equivalent Go command has
-passed its tests and independent review, legacy repository entrypoints may be
-removed. AgentDeck does not provide compatibility aliases.
+The Python and Bash implementation served as a behavioral reference and fixture
+source during Go development. After equivalent Go commands passed their tests
+and independent review, the superseded repository-local entrypoints and legacy
+fixtures were removed. Their historical specifications and plans remain as the
+durable record. AgentDeck does not provide compatibility aliases.
 
 Development and cleanup must not delete, overwrite, or reinstall existing
 scripts under the user's `~/.local/bin/`. AgentDeck does not automatically

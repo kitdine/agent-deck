@@ -16,6 +16,9 @@ fi
 found=0
 failed=0
 while IFS= read -r -d '' path; do
+	if [ ! -e "$path" ] && [ ! -L "$path" ]; then
+		continue
+	fi
 	grep -q -E -- "$pattern" "$path" 2>/dev/null
 	status=$?
 	case "$status" in

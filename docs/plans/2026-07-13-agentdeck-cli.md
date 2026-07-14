@@ -1,6 +1,7 @@
 # AgentDeck CLI Phase-One Implementation Plan
 
-**Status:** active, approved for development
+**Status:** active, implementation and independent review complete; release
+preparation pending
 
 **Specification:**
 `docs/specs/2026-07-13-agentdeck-cli-design.md`
@@ -18,8 +19,8 @@ stable JSON boundary for the future macOS application.
 - Do not add a daemon, LaunchAgent, GUI, provider usage API, custom pricing, or
   extension installation/update/removal.
 - Do not add legacy command aliases or automatically import legacy state.
-- Do not remove repository legacy entrypoints until equivalent Go behavior,
-  tests, and review are complete.
+- Remove repository legacy entrypoints only after equivalent Go behavior,
+  tests, and independent review are complete.
 - Keep implementation, review, fix, re-review, and delivery as separate stages.
 - Do not commit or push without explicit authorization.
 
@@ -153,8 +154,8 @@ provider/usage database.
 
 ## Phase 6: Add Watch, Backup, and Doctor
 
-- **Implementation status (2026-07-14):** implementation and both review-fix
-  passes are complete; re-review remains a separate gate. Watch persists source
+- **Implementation status (2026-07-14):** implementation, review remediation,
+  and re-review are complete. Watch persists source
   fingerprints and leaves unchanged restarts read-only, restore preserves or
   compensates state-root permissions, and doctor validates complete catalog
   provenance and distinct unpriced models. Backup passphrases use hidden terminal
@@ -189,8 +190,9 @@ enumeration and scanning now fail closed without echoing matched content, and
 the command tests are separated by contract, release-gate, and end-to-end
 responsibility. Final review remediation also propagates failed client exits,
 closes unprovable wrapper runs as estimated, and refuses to overwrite an
-existing portable backup. The Go replacement has passed independent review;
-legacy entrypoint removal remains pending and is not authorized by Phase 7.
+existing portable backup. The Go replacement has passed independent review,
+and the superseded repository-local legacy entrypoints and fixtures have been
+removed without touching real user scripts.
 
 - [x] Add stable JSON schema fixtures for every command consumed by the future
       GUI and NDJSON fixtures for watch events.
@@ -205,7 +207,7 @@ legacy entrypoint removal remains pending and is not authorized by Phase 7.
       restore.
 - [x] Independently review the Go replacement before removing any legacy
       repository entrypoint.
-- [ ] Remove legacy repository entrypoints and obsolete fixtures only after
+- [x] Remove legacy repository entrypoints and obsolete fixtures only after
       their replacement contracts are proven; leave real `~/.local/bin/` scripts
       untouched.
 - [x] Synchronize the specification, documentation index, `AGENTS.md`, and this
@@ -231,7 +233,8 @@ from source inspection.
 
 ## Completion Gate
 
-Phase one is implementation-complete only when all sixteen specification
-acceptance criteria have fresh evidence. Implementation completion does not
-mean review passed. Review approval does not authorize commit, installation,
-push, release, or modification of real user state.
+Phase one implementation and independent review are complete. All sixteen
+specification acceptance criteria have fresh evidence, and the superseded
+repository-local entrypoints have been removed. Release preparation remains a
+separate stage; review approval does not authorize commit, installation, push,
+release, or modification of real user state.

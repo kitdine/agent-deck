@@ -3,9 +3,10 @@
 **Status:** historical, superseded by
 `docs/plans/2026-07-13-agentdeck-cli.md`
 
-The legacy implementation and review remediation are present in commit
-`3fcc121`. This plan remains a reference for porting fixtures and contracts; it
-is not the current execution tracker.
+The legacy implementation and review remediation remain available in
+historical commit `3fcc121` but have been removed from the current tree after
+the AgentDeck replacement passed independent review. This plan remains a
+historical contract and is not the current execution tracker.
 
 **Specification:**
 `docs/specs/2026-07-13-ai-provider-session-cost-design.md`
@@ -156,7 +157,7 @@ home-directory changes require their own authorization.
 - Regression coverage includes interrupted wrappers, active-run contention,
   stale-run recovery, database and sidecar permissions, invalid schema versions,
   same-inode rewrites, historical price lookup, and Claude TTL-only usage.
-- The obsolete `tests/test-codex-provider-mode.sh` suite has been migrated to
-  `tests/test-ai-provider-mode.sh`. It now exercises the unified entrypoint and
-  current provider schema while retaining TOML, backup-redaction, permission,
-  and atomic-failure coverage.
+- The obsolete `tests/test-codex-provider-mode.sh` suite was migrated to
+  `tests/test-ai-provider-mode.sh` during legacy development. That replacement
+  coverage was retained until the AgentDeck contracts passed independent review,
+  then removed with the rest of the superseded legacy fixtures.

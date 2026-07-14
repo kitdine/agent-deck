@@ -11,14 +11,14 @@ disagree with a document.
 
 | Feature | Specification | Plan | State |
 | --- | --- | --- | --- |
-| AgentDeck CLI phase one | [spec](specs/2026-07-13-agentdeck-cli-design.md) | [plan](plans/2026-07-13-agentdeck-cli.md) | active; Phase 7 re-review passed; legacy entrypoint removal remains pending and unauthorized |
+| AgentDeck CLI phase one | [spec](specs/2026-07-13-agentdeck-cli-design.md) | [plan](plans/2026-07-13-agentdeck-cli.md) | active; implementation and independent review complete; release preparation pending |
 
 ## Reference and Historical Work
 
 | Feature | Specification | Plan | State |
 | --- | --- | --- | --- |
-| Legacy AI provider mode | [spec](specs/2026-07-13-ai-provider-mode-design.md) | [plan](plans/2026-07-13-ai-provider-mode.md) | reference implementation; superseded by AgentDeck architecture |
-| Legacy local session cost tracking | [spec](specs/2026-07-13-ai-provider-session-cost-design.md) | [plan](plans/2026-07-13-ai-provider-session-cost.md) | reference behavior and fixtures; superseded by AgentDeck architecture |
+| Legacy AI provider mode | [spec](specs/2026-07-13-ai-provider-mode-design.md) | [plan](plans/2026-07-13-ai-provider-mode.md) | historical contract; repository implementation removed after AgentDeck review |
+| Legacy local session cost tracking | [spec](specs/2026-07-13-ai-provider-session-cost-design.md) | [plan](plans/2026-07-13-ai-provider-session-cost.md) | historical contract; repository implementation and fixtures removed after AgentDeck review |
 
 ## Document Lifecycle
 

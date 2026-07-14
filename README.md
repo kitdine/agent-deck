@@ -29,8 +29,8 @@ them.
 - `agentdeck run`: associate a Codex or Claude process with an exact usage run.
 
 Native extension enable/disable remains read-only until an adapter has an
-unambiguous native toggle. Phase 7 re-review passed; legacy entrypoints remain
-reference behavior and their removal is still pending and unauthorized.
+unambiguous native toggle. Phase 6 and Phase 7 re-reviews passed, and the
+superseded repository-local Python and Bash entrypoints have been removed.
 
 ## Build from source
 

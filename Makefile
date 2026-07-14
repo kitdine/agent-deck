@@ -5,7 +5,7 @@ DIST_DIR ?= dist
 PACKAGE := ./cmd/agentdeck
 ARM64_MAX_BYTES ?= 26214400
 
-.PHONY: build build-all build-arm64-stripped check-arm64-size check-privacy release-verify clean test test-race vet verify verify-legacy
+.PHONY: build build-all build-arm64-stripped check-arm64-size check-privacy release-verify clean test test-race vet verify
 
 build:
 	mkdir -p $(DIST_DIR)
@@ -32,13 +32,7 @@ test-race:
 vet:
 	env GOCACHE=$(GOCACHE) $(GO) vet -mod=vendor ./...
 
-verify-legacy:
-	bash tests/test-ai-provider-aliases.sh
-	bash tests/test-ai-provider-mode.sh
-	python3 -m unittest tests/test_ai_provider_usage.py
-	python3 -m py_compile bin/ai-provider-mode bin/ai-provider-key bin/ai_provider_common.py bin/ai_provider_usage.py bin/ai-provider-usage bin/ai-provider-run bin/ai-provider-price-update
-
-verify: test test-race vet verify-legacy
+verify: test test-race vet
 
 check-privacy:
 	@bash scripts/check-privacy.sh

@@ -3,9 +3,10 @@
 **Status:** reference, superseded by
 `docs/specs/2026-07-13-agentdeck-cli-design.md`
 
-This document describes the committed legacy Python and Bash behavior. It
-remains a reference during the Go replacement and is not the active product
-architecture.
+This document describes the former legacy Python and Bash behavior. The
+repository implementation was removed after the AgentDeck replacement passed
+independent review; this document remains a historical contract and is not the
+active product architecture.
 
 ## Goal
 
