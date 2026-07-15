@@ -8,7 +8,8 @@ files="$(mktemp "${TMPDIR:-/tmp}/agentdeck-privacy.XXXXXX")" || {
 }
 trap 'rm -f "$files"' EXIT
 
-if ! git ls-files --cached --others --exclude-standard -z >"$files" 2>/dev/null; then
+if ! git ls-files --cached -z >"$files" 2>/dev/null ||
+	! git ls-files --others --exclude-standard -z -- ':!.vscode' ':!.vscode/**' >>"$files" 2>/dev/null; then
 	printf '%s\n' 'privacy scan failed: unable to enumerate repository files' >&2
 	exit 2
 fi

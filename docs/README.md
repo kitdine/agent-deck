@@ -11,7 +11,7 @@ disagree with a document.
 
 | Feature | Specification | Plan | State |
 | --- | --- | --- | --- |
-| AgentDeck CLI phase one and release baseline | [spec](specs/2026-07-13-agentdeck-cli-design.md) | [plan](plans/2026-07-13-agentdeck-cli.md) | active; phase one and version/installation baseline reviewed; release preparation pending |
+| AgentDeck CLI phase one and release baseline | [spec](specs/2026-07-13-agentdeck-cli-design.md) | [plan](plans/2026-07-13-agentdeck-cli.md) | active; Phase 8 and Phase 9 implementation, release verification, and independent review complete |
 
 ## Reference and Historical Work
 

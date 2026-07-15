@@ -33,6 +33,8 @@ import (
 
 var userHomeDir = os.UserHomeDir
 var newSecretStore = func() platform.SecretStore { return platform.NewKeychainSecretStore("com.agentdeck.provider") }
+var credentialIsTerminal = func(file *os.File) bool { return term.IsTerminal(int(file.Fd())) }
+var credentialReadPassword = term.ReadPassword
 
 type commandOptions struct {
 	stateDir string
@@ -41,6 +43,7 @@ type commandOptions struct {
 	noColor  bool
 	stdin    io.Reader
 	stdout   io.Writer
+	stderr   io.Writer
 }
 
 type inputError struct {
@@ -60,7 +63,7 @@ func main() {
 }
 
 func execute(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
-	command, err := executeCommand(args, stdin, stdout)
+	command, err := executeCommand(args, stdin, stdout, stderr)
 	if err == nil {
 		return 0
 	}
@@ -154,12 +157,12 @@ func rangeArgs(minimum, maximum int) cobra.PositionalArgs {
 }
 
 func run(args []string, stdin io.Reader, stdout io.Writer) error {
-	_, err := executeCommand(args, stdin, stdout)
+	_, err := executeCommand(args, stdin, stdout, io.Discard)
 	return err
 }
 
-func executeCommand(args []string, stdin io.Reader, stdout io.Writer) (*cobra.Command, error) {
-	root := newRootCommand(stdin, stdout)
+func executeCommand(args []string, stdin io.Reader, stdout, stderr io.Writer) (*cobra.Command, error) {
+	root := newRootCommandWithError(stdin, stdout, stderr)
 	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error { return &inputError{err: err} })
 	root.SetArgs(args)
 	command, err := root.ExecuteC()
@@ -179,7 +182,11 @@ func isCobraSyntaxError(err error) bool {
 }
 
 func newRootCommand(stdin io.Reader, stdout io.Writer) *cobra.Command {
-	opts := &commandOptions{format: "text", stdin: stdin, stdout: stdout}
+	return newRootCommandWithError(stdin, stdout, io.Discard)
+}
+
+func newRootCommandWithError(stdin io.Reader, stdout, stderr io.Writer) *cobra.Command {
+	opts := &commandOptions{format: "text", stdin: stdin, stdout: stdout, stderr: stderr}
 	showVersion := false
 	root := &cobra.Command{
 		Use:           "agentdeck",
@@ -205,7 +212,7 @@ func newRootCommand(stdin io.Reader, stdout io.Writer) *cobra.Command {
 	}
 	root.SetIn(stdin)
 	root.SetOut(stdout)
-	root.SetErr(os.Stderr)
+	root.SetErr(stderr)
 	flags := root.PersistentFlags()
 	flags.StringVar(&opts.stateDir, "state-dir", "", "AgentDeck state directory")
 	flags.StringVar(&opts.format, "format", "text", "Output format: text, json, or ndjson for watch")
@@ -315,11 +322,15 @@ func newProviderCommand(opts *commandOptions) *cobra.Command {
 			return nil, fmt.Errorf("provider not found")
 		})},
 		&cobra.Command{Use: "add <name> <endpoint> <credential-ref> <multiplier> <codex|claude>", Args: cobra.ExactArgs(5), RunE: withService(func(ctx context.Context, s provider.Service, args []string) (any, error) {
-			credential, err := readCredential(opts.stdin)
+			definition, err := provider.Validate(provider.Definition{Name: args[0], Endpoint: args[1], CredentialRef: args[2], Multiplier: args[3], Clients: []provider.Client{provider.Client(args[4])}})
 			if err != nil {
 				return nil, err
 			}
-			return s.Add(ctx, provider.Definition{Name: args[0], Endpoint: args[1], CredentialRef: args[2], Multiplier: args[3], Clients: []provider.Client{provider.Client(args[4])}}, credential)
+			credential, err := readCredential(opts.stdin, opts.stderr, args[2])
+			if err != nil {
+				return nil, err
+			}
+			return s.Add(ctx, definition, credential)
 		})},
 		&cobra.Command{Use: "edit <name> <endpoint> <credential-ref> <multiplier> <codex|claude>", Args: cobra.ExactArgs(5), RunE: withService(func(ctx context.Context, s provider.Service, args []string) (any, error) {
 			return s.Edit(ctx, provider.Definition{Name: args[0], Endpoint: args[1], CredentialRef: args[2], Multiplier: args[3], Clients: []provider.Client{provider.Client(args[4])}}, "")
@@ -336,14 +347,14 @@ func newProviderCommand(opts *commandOptions) *cobra.Command {
 	credentials.AddCommand(
 		&cobra.Command{Use: "list", Args: cobra.NoArgs, RunE: withService(func(ctx context.Context, s provider.Service, _ []string) (any, error) { return s.List(ctx) })},
 		&cobra.Command{Use: "add <reference>", Args: cobra.ExactArgs(1), RunE: withService(func(ctx context.Context, s provider.Service, args []string) (any, error) {
-			value, err := readCredential(opts.stdin)
+			value, err := readCredential(opts.stdin, opts.stderr, args[0])
 			if err != nil {
 				return nil, err
 			}
 			return nil, s.UpdateCredential(ctx, args[0], value)
 		})},
 		&cobra.Command{Use: "update <reference>", Args: cobra.ExactArgs(1), RunE: withService(func(ctx context.Context, s provider.Service, args []string) (any, error) {
-			value, err := readCredential(opts.stdin)
+			value, err := readCredential(opts.stdin, opts.stderr, args[0])
 			if err != nil {
 				return nil, err
 			}
@@ -914,23 +925,32 @@ func renderUsageText(w io.Writer, command string, data any) error {
 		return json.NewEncoder(w).Encode(data)
 	}
 }
-func readCredential(reader io.Reader) (string, error) {
-	if file, ok := reader.(*os.File); ok {
-		info, err := file.Stat()
+func readCredential(reader io.Reader, prompt io.Writer, reference string) (string, error) {
+	if strings.TrimSpace(reference) == "" || strings.ContainsAny(reference, "\r\n") {
+		return "", &inputError{err: fmt.Errorf("invalid credential reference")}
+	}
+	var value string
+	if file, ok := reader.(*os.File); ok && credentialIsTerminal(file) {
+		if _, err := fmt.Fprintf(prompt, "Credential for %s: ", reference); err != nil {
+			return "", err
+		}
+		contents, err := credentialReadPassword(int(file.Fd()))
+		if _, promptErr := fmt.Fprintln(prompt); err == nil && promptErr != nil {
+			err = promptErr
+		}
 		if err != nil {
 			return "", err
 		}
-		if info.Mode()&os.ModeCharDevice != 0 {
-			return "", fmt.Errorf("credential must be supplied through non-interactive stdin")
+		value = strings.TrimRight(string(contents), "\r\n")
+	} else {
+		line, err := bufio.NewReader(reader).ReadString('\n')
+		if err != nil && !errors.Is(err, io.EOF) {
+			return "", err
 		}
+		value = strings.TrimRight(line, "\r\n")
 	}
-	contents, err := io.ReadAll(reader)
-	if err != nil {
-		return "", err
-	}
-	value := strings.TrimSpace(string(contents))
-	if value == "" {
-		return "", fmt.Errorf("credential is empty")
+	if strings.TrimSpace(value) == "" {
+		return "", &inputError{err: fmt.Errorf("credential is empty")}
 	}
 	return value, nil
 }

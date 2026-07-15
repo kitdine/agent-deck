@@ -10,6 +10,7 @@ import (
 	"github.com/kitdine/agent-deck/internal/store"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -481,9 +482,80 @@ func assertExtensionCLIErrorArgs(t *testing.T, args []string, wantExit int, comm
 }
 
 func TestReadCredentialFromPipe(t *testing.T) {
-	value, err := readCredential(bytes.NewBufferString("synthetic-secret\n"))
+	var prompt bytes.Buffer
+	value, err := readCredential(bytes.NewBufferString("synthetic-secret\nignored\n"), &prompt, "agentdeck:test")
 	if err != nil || value != "synthetic-secret" {
 		t.Fatalf("readCredential = %q, %v", value, err)
+	}
+	if prompt.Len() != 0 {
+		t.Fatalf("non-interactive prompt = %q", prompt.String())
+	}
+	if _, err = readCredential(bytes.NewReader(nil), &prompt, "agentdeck:test"); !isInputError(err) {
+		t.Fatalf("empty credential error = %v", err)
+	}
+}
+
+func TestReadCredentialFromTerminalWithoutEcho(t *testing.T) {
+	terminal, err := os.CreateTemp(t.TempDir(), "terminal")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer terminal.Close()
+
+	oldIsTerminal, oldReadPassword := credentialIsTerminal, credentialReadPassword
+	credentialIsTerminal = func(*os.File) bool { return true }
+	credentialReadPassword = func(fd int) ([]byte, error) {
+		if fd != int(terminal.Fd()) {
+			t.Fatalf("read password fd = %d", fd)
+		}
+		return []byte("terminal-secret"), nil
+	}
+	t.Cleanup(func() {
+		credentialIsTerminal, credentialReadPassword = oldIsTerminal, oldReadPassword
+	})
+
+	var prompt bytes.Buffer
+	value, err := readCredential(terminal, &prompt, "codex-pro")
+	if err != nil || value != "terminal-secret" {
+		t.Fatalf("readCredential = %q, %v", value, err)
+	}
+	if prompt.String() != "Credential for codex-pro: \n" || strings.Contains(prompt.String(), value) {
+		t.Fatalf("terminal prompt = %q", prompt.String())
+	}
+}
+
+func TestProviderAddReadsTerminalCredentialWithoutDisclosure(t *testing.T) {
+	terminal, err := os.CreateTemp(t.TempDir(), "terminal")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer terminal.Close()
+
+	secrets := platform.NewMemorySecretStore()
+	oldFactory := newSecretStore
+	oldIsTerminal, oldReadPassword := credentialIsTerminal, credentialReadPassword
+	newSecretStore = func() platform.SecretStore { return secrets }
+	credentialIsTerminal = func(*os.File) bool { return true }
+	credentialReadPassword = func(int) ([]byte, error) { return []byte("terminal-secret"), nil }
+	t.Cleanup(func() {
+		newSecretStore = oldFactory
+		credentialIsTerminal, credentialReadPassword = oldIsTerminal, oldReadPassword
+	})
+
+	state := filepath.Join(t.TempDir(), "state")
+	var stdout, stderr bytes.Buffer
+	exit := execute([]string{"--state-dir", state, "provider", "add", "work", "https://example.invalid", "codex-pro", "1", "codex"}, terminal, &stdout, &stderr)
+	if exit != 0 {
+		t.Fatalf("provider add exit = %d, stdout=%q stderr=%q", exit, stdout.String(), stderr.String())
+	}
+	if strings.Contains(stdout.String(), "terminal-secret") || strings.Contains(stderr.String(), "terminal-secret") {
+		t.Fatalf("credential disclosed: stdout=%q stderr=%q", stdout.String(), stderr.String())
+	}
+	if stderr.String() != "Credential for codex-pro: \n" {
+		t.Fatalf("credential prompt = %q", stderr.String())
+	}
+	if value, getErr := secrets.Get(context.Background(), "codex-pro"); getErr != nil || value != "terminal-secret" {
+		t.Fatalf("stored credential = %q, %v", value, getErr)
 	}
 }
 

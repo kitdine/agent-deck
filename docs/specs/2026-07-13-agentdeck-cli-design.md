@@ -1,7 +1,8 @@
 # AgentDeck CLI Design
 
 **Status:** active, phase-one and version/installation baseline implementation
-and independent review complete; release preparation pending
+and independent review complete; interactive CLI and shell completion usability
+implementation, release verification, and independent review complete
 
 ## Product Definition
 
@@ -249,14 +250,72 @@ temporary files or a manifest mismatch that makes uninstall fail closed.
 
 `make uninstall` reads the manifest and removes the executable only when the
 requested install path and current SHA-256 both match. A missing, malformed,
-path-mismatched, or hash-mismatched manifest fails closed. It then removes the
-manifest and installation metadata directory only when safe and empty. It
-never uses a broad or recursive removal and never touches `~/.agentdeck/`.
+path-mismatched, or hash-mismatched manifest fails closed. It removes the
+manifest but leaves unrecorded installation directories in place. It never uses
+a broad or recursive removal and never touches `~/.agentdeck/`.
 
 Development and automated tests use an isolated temporary `PREFIX`; they do not
 execute install or uninstall against the real user home. Homebrew, signed
-archives, checksums, shell completion installation, and system-wide privileged
-installation remain later release work.
+archives, release checksums, and system-wide privileged installation remain
+later release work. Managed shell completion installation is the next
+user-local usability phase defined below.
+
+### Managed Shell Completion Installation
+
+`agentdeck completion fish|zsh|bash` remains a standard output-only generator.
+It never edits shell configuration by itself. `make install` owns the persistent
+installation workflow and generates exactly one completion script under:
+
+```text
+$PREFIX/share/agentdeck/completions/agentdeck.<shell>
+```
+
+The installer walks its process ancestry to identify the actual invoking
+`fish`, `zsh`, or `bash` process rather than trusting Make's recipe shell or the
+login-shell-only `SHELL` variable. `COMPLETION_SHELL=fish|zsh|bash|none`
+provides a deterministic override; `none` explicitly opts out. Detection
+failure stops before any installation change. `COMPLETION_RC=<path>` overrides
+the default configuration path. Defaults are:
+
+```text
+fish  ${XDG_CONFIG_HOME:-$HOME/.config}/fish/config.fish
+zsh   ${ZDOTDIR:-$HOME}/.zshrc
+bash  $HOME/.bash_profile for a detected login shell, otherwise $HOME/.bashrc
+```
+
+The installer atomically inserts one exact managed block while preserving all
+unrelated bytes and the existing file mode. It records whether a separator
+newline was required for an rc file that lacked a trailing newline, so forced
+upgrade and uninstall can remove exactly the bytes owned by AgentDeck:
+
+```text
+# >>> agentdeck completion >>>
+source "<shell-escaped canonical completion path>"
+# <<< agentdeck completion <<<
+```
+
+Paths containing a newline or NUL are rejected, and the source path is escaped
+for the detected shell. A symlinked rc path is accepted only when its canonical
+target is a regular file owned by the current user; the symlink itself remains
+unchanged. Missing rc files are created only at the resolved per-user default or
+an explicit `COMPLETION_RC` path. Duplicate, partial, foreign, or modified
+AgentDeck markers fail closed.
+
+The install ownership manifest advances to version 2 and records canonical
+paths plus SHA-256 values for the binary, generated completion, and exact
+managed block, along with the selected shell, rc path, and separator ownership.
+Installation stages all artifacts before changing the rc file and restores the
+original rc on any later failure. `FORCE=1` upgrades only an existing AgentDeck
+installation whose version 1 or version 2 manifest and owned artifacts validate;
+it is not generic permission to replace unrelated files.
+
+Uninstall validates every version 2 artifact and the exact managed block before
+removing anything. Changes outside the block are allowed. A missing, duplicated,
+or edited block, a path mismatch, or an artifact hash mismatch removes nothing.
+After validation, uninstall atomically removes only the managed block, generated
+completion, binary, and manifest, leaving the rc file and all unrelated content
+in place. Binary-only version 1 manifests remain readable for upgrade and
+uninstall compatibility.
 
 ## Provider and Credential Management
 
@@ -279,6 +338,21 @@ Provider records store credential references, never credential values. On
 macOS, credentials are stored in Keychain under AgentDeck-owned service names.
 Future Windows and Linux implementations will use Credential Manager and
 Secret Service through the same platform interface.
+
+`provider add` is the primary one-step setup flow. After validating its
+non-secret arguments, it reads one credential and creates both the Keychain
+entry and provider definition through the existing rollback-safe service path.
+`provider credential add` and `provider credential update` use the same reader
+for independent pre-provisioning and rotation; initial setup documentation does
+not require a redundant `credential add` before `provider add`.
+
+When stdin is a terminal, credential commands print a reference-specific prompt
+to stderr, read with terminal echo disabled, and emit a newline after input.
+When stdin is not a terminal, they read exactly one line for automation and do
+not print a prompt. Empty credentials are `invalid_argument` failures. Secret
+values are never accepted as command-line arguments or environment variables
+and never appear in stdout, stderr, JSON envelopes, logs, databases, fixtures,
+or shell history.
 
 A provider switch validates the provider, client mapping, multiplier, and
 credential before changing client state. It creates a redacted backup, records
@@ -673,3 +747,12 @@ import the legacy `providers.json`, usage database, or real client settings.
 19. Release verification covers development defaults, injected metadata,
     isolated install, forced upgrade, tamper refusal, and cleanup without
     writing to the real user home.
+20. Provider creation and credential rotation accept no-echo terminal input and
+    one-line non-interactive stdin without exposing credential values.
+21. Source installation detects or explicitly selects fish, zsh, or bash,
+    installs its generated completion, and activates it through one managed rc
+    block without changing unrelated shell configuration.
+22. Version 2 uninstall validates the binary, completion, and managed block
+    before removing any artifact, while version 1 manifests remain compatible.
+23. Usability tests run against temporary homes, fake secret stores, and real
+    shell processes without modifying the real user Keychain or rc files.

@@ -15,10 +15,37 @@ import (
 
 func TestNetworkImportsAreLimitedToPriceUpdate(t *testing.T) {
 	root := filepath.Join("..", "..")
+	if err := auditNetworkImports(root); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestNetworkImportAuditSkipsUntrackedEditorState(t *testing.T) {
+	root := t.TempDir()
+	editorState := filepath.Join(root, ".vscode")
+	if err := os.Mkdir(editorState, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(editorState, "settings.json"), []byte("private editor state"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(editorState, 0000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(editorState, 0700) })
+	if err := auditNetworkImports(root); err != nil {
+		t.Fatalf("network import audit accessed editor state: %v", err)
+	}
+}
+
+func auditNetworkImports(root string) error {
 	allowed := filepath.Clean(filepath.Join(root, "internal", "usage", "price_update.go"))
-	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+	return filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
+		}
+		if entry.IsDir() && filepath.Clean(path) == filepath.Join(root, ".vscode") {
+			return filepath.SkipDir
 		}
 		if entry.IsDir() || (!strings.HasPrefix(path, filepath.Join(root, "cmd")+string(os.PathSeparator)) && !strings.HasPrefix(path, filepath.Join(root, "internal")+string(os.PathSeparator))) || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
 			return nil
@@ -37,9 +64,6 @@ func TestNetworkImportsAreLimitedToPriceUpdate(t *testing.T) {
 		}
 		return nil
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
 }
 
 func TestPrivacyGateScansRepositoryAndGeneratedArtifacts(t *testing.T) {
@@ -96,6 +120,40 @@ func TestPrivacyGateScansRepositoryAndGeneratedArtifacts(t *testing.T) {
 		command.Dir = repository
 		if output, err := command.CombinedOutput(); err != nil {
 			t.Fatalf("privacy gate scanned ignored file: %v: %s", err, output)
+		}
+	})
+
+	t.Run("untracked editor state", func(t *testing.T) {
+		repository := initPrivacyTestRepository(t)
+		path := filepath.Join(repository, ".vscode", "settings.json")
+		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(secret), 0000); err != nil {
+			t.Fatal(err)
+		}
+		command := exec.Command("bash", script)
+		command.Dir = repository
+		if output, err := command.CombinedOutput(); err != nil {
+			t.Fatalf("privacy gate accessed untracked editor state: %v: %s", err, output)
+		}
+	})
+
+	t.Run("tracked editor state", func(t *testing.T) {
+		repository := initPrivacyTestRepository(t)
+		path := filepath.Join(repository, ".vscode", "settings.json")
+		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(secret), 0600); err != nil {
+			t.Fatal(err)
+		}
+		runTestGit(t, repository, "add", ".vscode/settings.json")
+		command := exec.Command("bash", script)
+		command.Dir = repository
+		output, err := command.CombinedOutput()
+		if err == nil || !bytes.Contains(output, []byte(".vscode/settings.json")) {
+			t.Fatalf("privacy gate accepted tracked editor-state secret: err=%v output=%q", err, output)
 		}
 	})
 

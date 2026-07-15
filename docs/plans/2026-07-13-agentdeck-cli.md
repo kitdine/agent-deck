@@ -1,7 +1,8 @@
 # AgentDeck CLI Phase-One Implementation Plan
 
 **Status:** active, phase-one and version/installation baseline implementation
-and independent review complete; release preparation pending
+and independent review complete; interactive CLI and shell completion usability
+implementation, release verification, and independent review complete
 
 **Specification:**
 `docs/specs/2026-07-13-agentdeck-cli-design.md`
@@ -253,6 +254,54 @@ and Codex/Claude state remain separate ownership boundaries.
 - [x] Complete independent review, address the version flag/format and test
       coverage findings, and pass independent re-review.
 
+## Phase 9: Interactive CLI and Shell Completion Usability
+
+**Implementation status (2026-07-15):** implementation, targeted credential,
+installer, and real-shell tests, the complete release gate, and independent
+re-review are complete. This phase closes the
+real-terminal usability gaps found after Phase 8 without adding a package
+manager, modifying real user
+state during tests, or expanding provider domain behavior beyond credential
+input and initial setup ergonomics.
+
+- [x] Replace the credential reader's terminal rejection with a shared,
+      injectable no-echo reader used by `provider add` and `provider credential
+      add|update`; retain exactly one-line stdin input for automation.
+- [x] Keep `provider add` as the one-step initial setup command that creates the
+      provider and Keychain credential together. Retain credential subcommands
+      for independent pre-provisioning and rotation, and remove the redundant
+      two-command setup sequence from user documentation.
+- [x] Keep `agentdeck completion fish|zsh|bash` output-only. Extend `make
+      install` to detect the actual invoking shell through process ancestry,
+      with `COMPLETION_SHELL=fish|zsh|bash|none` and `COMPLETION_RC=<path>`
+      overrides.
+- [x] Generate one shell-specific completion under
+      `$PREFIX/share/agentdeck/completions/` and atomically add one marked source
+      block to the selected shell rc without changing unrelated content or file
+      mode.
+- [x] Reject unsafe paths, foreign or duplicate markers, and unowned symlink
+      targets. Roll back the rc file and staged artifacts if installation cannot
+      complete coherently.
+- [x] Upgrade the ownership manifest to version 2 with binary, completion, rc,
+      managed-block, and SHA-256 provenance. Keep version 1 upgrade/uninstall
+      compatibility, and require validated ownership before `FORCE=1` replaces
+      an existing installation.
+- [x] Make uninstall validate every owned artifact and the exact managed block
+      before removing anything; preserve the rc file, all content outside the
+      block, AgentDeck state, Keychain data, backups, and client configuration.
+- [x] Add fake-TTY credential tests, secret non-disclosure tests, shell detection
+      and override tests, marker/symlink/rollback/tamper tests, and real
+      fish/zsh/bash completion smoke tests under temporary homes and prefixes.
+- [x] Update `README.md` and `README_zh.md` with the one-step provider flow,
+      output-only completion generator, automatic installation behavior,
+      overrides, safe uninstall, and troubleshooting guidance.
+- [x] Run targeted credential and installer tests, real temporary-shell smoke
+      tests, `git diff --check`, and the complete `make release-verify` gate;
+      clean generated artifacts and do not install into the real user home.
+- [x] Complete independent review, address login-shell detection, dangling rc
+      symlink, exact rc restoration, and directory-ownership findings, and pass
+      independent re-review.
+
 ## Required Verification
 
 Once Go source exists, the release gate includes:
@@ -276,7 +325,8 @@ from source inspection.
 Phase one and Phase 8 implementation and independent review are complete. All
 phase-one specification acceptance criteria have fresh evidence, the superseded
 repository-local entrypoints have been removed, and the version/installation
-baseline has passed full release verification and independent re-review. Release
-preparation remains a separate stage; review approval does not authorize
-installation into the real user home, push, release, or modification of real
-user state.
+baseline has passed full release verification and independent re-review. Phase 9
+interactive usability has passed full release verification and independent
+re-review. Release preparation remains a separate stage; implementation and
+review approval do not authorize installation into the real user home, push,
+release, or modification of real user state.

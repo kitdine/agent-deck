@@ -11,7 +11,9 @@ service. Provider definitions live in SQLite, credentials stay in macOS
 Keychain, and client session logs remain read-only source data.
 
 > **Pre-release:** Phase One and the version/installation baseline have completed
-> implementation and independent review. Release preparation is pending, and
+> implementation and independent review. Interactive credential input and
+> managed shell completion installation have passed full release verification;
+> initial review findings are addressed and independent re-review has passed.
 > AgentDeck is not yet available through Homebrew.
 
 ```bash
@@ -91,6 +93,20 @@ export PATH="$HOME/.local/bin:$PATH"
 agentdeck version
 ```
 
+Installation detects the fish, zsh, or bash process that invoked Make, generates
+that shell's completion, and adds one marked AgentDeck source block to its user
+rc file. Override detection or the rc path when needed:
+
+```bash
+make install COMPLETION_SHELL=fish
+make install COMPLETION_SHELL=zsh COMPLETION_RC="$HOME/.config/zsh/.zshrc"
+make install COMPLETION_SHELL=none
+```
+
+`COMPLETION_SHELL=none` explicitly installs only the binary. Detection failure,
+an unsafe rc path, or a conflicting managed block stops installation without
+leaving a partial binary or rc change.
+
 The default installation paths are separate from AgentDeck user state:
 
 ```text
@@ -126,9 +142,12 @@ Safely remove an unchanged installation with:
 make uninstall
 ```
 
-Uninstall verifies the recorded path and SHA-256 before removing the binary.
-It fails closed if the binary or manifest changed and never deletes
+Uninstall verifies the binary, generated completion, and exact managed rc block
+before removing anything. Changes outside the block are preserved. It fails
+closed if an owned artifact or block changed and never deletes the rc file,
 `~/.agentdeck/`, Keychain credentials, client configuration, or backups.
+Empty installation directories may remain because they are not manifest-owned
+artifacts and uninstall does not claim ownership of them.
 
 ## Quick Start
 
@@ -180,16 +199,38 @@ Source builds report `dev`, `unknown`, and `unknown` unless `VERSION`, `COMMIT`,
 and `BUILD_TIME` are explicitly supplied to Make. Release tooling can inject
 those values without changing the runtime contract.
 
-## Provider Setup Example
+## Shell Completion
 
-The following example uses a fake endpoint and credential reference. The
-credential value is entered through the terminal and stored in macOS Keychain.
+The completion command is an output-only generator. `make install` handles
+persistent activation; use the generator directly for a temporary shell or a
+custom completion manager:
 
 ```bash
-./dist/agentdeck provider credential add work-codex
+agentdeck completion fish | source
+agentdeck completion zsh > /tmp/_agentdeck
+agentdeck completion bash > /tmp/agentdeck.bash
+```
+
+If persistent completion is missing, inspect the managed block between
+`# >>> agentdeck completion >>>` and `# <<< agentdeck completion <<<` in the
+selected rc file. Do not hand-edit that block: install and uninstall deliberately
+fail closed when it no longer matches the ownership manifest.
+
+## Provider Setup Example
+
+The following example uses a fake endpoint and credential reference. `provider
+add` prompts once without terminal echo and stores the value in macOS Keychain
+while creating the provider:
+
+```bash
 ./dist/agentdeck provider add work https://api.example.com/v1 work-codex 1 codex
 ./dist/agentdeck provider show work
 ```
+
+`provider credential add` and `provider credential update` remain available for
+independent pre-provisioning and rotation. Automation may supply exactly one
+credential line through stdin; credentials are never accepted as CLI arguments
+or environment variables.
 
 Selecting a provider requires the client configuration path and a destination
 for the redacted backup:
