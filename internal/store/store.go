@@ -17,7 +17,7 @@ import (
 	"modernc.org/sqlite"
 )
 
-const CurrentSchemaVersion = 6
+const CurrentSchemaVersion = 9
 
 // OpenSessions opens the separately purgeable session-search database. It is
 // deliberately not part of the core schema so deleting the index can never
@@ -135,6 +135,19 @@ func Open(ctx context.Context, stateRoot string) (*Store, error) {
 	})
 }
 
+type alreadyHeldLock struct{}
+
+func (alreadyHeldLock) Release() error { return nil }
+
+// OpenWithLockHeld opens and migrates the core store when the caller already
+// owns the state lock. It exists for compound operations that must update the
+// core database and another state file under one lock.
+func OpenWithLockHeld(ctx context.Context, stateRoot string) (*Store, error) {
+	return open(ctx, stateRoot, func(context.Context, string, time.Duration) (stateLock, error) {
+		return alreadyHeldLock{}, nil
+	})
+}
+
 // OpenReadOnly opens an existing core database without creating state,
 // applying migrations, changing permissions, or enabling WAL.
 func OpenReadOnly(ctx context.Context, stateRoot string) (*Store, error) {
@@ -231,6 +244,11 @@ func (s *Store) Setting(ctx context.Context, key string) (string, bool, error) {
 
 func (s *Store) SetSetting(ctx context.Context, key, value string) error {
 	_, err := s.Exec(ctx, `INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value WHERE settings.value IS NOT excluded.value`, key, value)
+	return err
+}
+
+func (s *Store) DeleteSetting(ctx context.Context, key string) error {
+	_, err := s.Exec(ctx, "DELETE FROM settings WHERE key=?", key)
 	return err
 }
 

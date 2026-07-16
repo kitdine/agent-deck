@@ -24,6 +24,43 @@ valid_hash() {
   [[ $1 =~ ^[0-9a-f]{64}$ ]]
 }
 
+read_binary_identity() {
+  local binary=$1 label=$2 output=$3 raw="$3.raw" lines identity version commit branch build_time go_version
+  "$binary" version >"$raw" 2>/dev/null || fail "$label does not provide a valid AgentDeck version command: $binary"
+  [ "$(tail -c 1 "$raw" | od -An -tuC | tr -d '[:space:]')" = 10 ] || fail "$label returned an invalid AgentDeck build identity: $binary"
+  lines=$(wc -l <"$raw" | tr -d ' ')
+  if [ "$lines" = 5 ]; then
+    version=$(sed -n '1s/^Release Version: //p' "$raw")
+    commit=$(sed -n '2s/^Git Commit Hash: //p' "$raw")
+    branch=$(sed -n '3s/^Git Branch: //p' "$raw")
+    go_version=$(sed -n '4s/^Go Version: //p' "$raw")
+    build_time=$(sed -n '5s/^UTC Build Time: //p' "$raw")
+    [[ $version =~ ^[^[:space:]]+$ ]] && [[ $commit =~ ^[^[:space:]]+$ ]] && [[ $branch =~ ^[^[:space:]]+$ ]] &&
+      [[ $go_version =~ ^go[^[:space:]]+$ ]] &&
+      [[ $build_time =~ ^([^[:space:]]+|[0-9]{4}-[0-9]{2}-[0-9]{2}[[:space:]][0-9]{2}:[0-9]{2}:[0-9]{2})$ ]] || fail "$label returned an invalid AgentDeck build identity: $binary"
+    cp "$raw" "$output"
+    return
+  fi
+  [ "$lines" = 1 ] || fail "$label returned an invalid AgentDeck build identity: $binary"
+  identity=$(sed -n '1p' "$raw")
+  if [[ $identity =~ ^agentdeck[[:space:]][^[:space:]]+[[:space:]]commit=[^[:space:]]+[[:space:]]branch=[^[:space:]]+[[:space:]]build_time=([^[:space:]]+|[0-9]{4}-[0-9]{2}-[0-9]{2}[[:space:]][0-9]{2}:[0-9]{2}:[0-9]{2})[[:space:]]go_version=go[^[:space:]]+$ ]]; then
+    branch=${identity#* branch=}
+    branch=${branch%% *}
+  elif [[ $identity =~ ^agentdeck[[:space:]][^[:space:]]+[[:space:]]commit=[^[:space:]]+[[:space:]]build_time=[^[:space:]]+[[:space:]]go_version=go[^[:space:]]+$ ]]; then
+    branch=unknown
+  else
+    fail "$label returned an invalid AgentDeck build identity: $binary"
+  fi
+  version=${identity#agentdeck }
+  version=${version%% *}
+  commit=${identity#* commit=}
+  commit=${commit%% *}
+  build_time=${identity#* build_time=}
+  build_time=${build_time% go_version=*}
+  go_version=${identity##* go_version=}
+  printf 'Release Version: %s\nGit Commit Hash: %s\nGit Branch: %s\nGo Version: %s\nUTC Build Time: %s\n' "$version" "$commit" "$branch" "$go_version" "$build_time" >"$output"
+}
+
 canonical_path() {
   local path=$1 directory base
   directory=$(dirname "$path")
@@ -378,6 +415,7 @@ install_agentdeck() {
     [ "${FORCE:-0}" = 1 ] || fail "refusing to overwrite existing AgentDeck installation; rerun with FORCE=1"
     load_manifest "$manifest"
     validate_loaded_manifest "$target" "$work/validated-block"
+		read_binary_identity "$target" "installed binary" "$work/old-identity"
     cp -p "$target" "$work/old-binary"
     cp -p "$manifest" "$work/old-manifest"
     old_binary_exists=1
@@ -392,6 +430,7 @@ install_agentdeck() {
 
   install -m 0755 "$source" "$work/new-binary"
   new_binary_sha=$(hash_file "$work/new-binary")
+	read_binary_identity "$work/new-binary" "built binary" "$work/new-identity"
   if [ "$detected_shell" != none ]; then
     ensure_directory "$data_dir/completions"
     new_completion="$data_dir/completions/agentdeck.$detected_shell"
@@ -438,6 +477,15 @@ install_agentdeck() {
     printf 'rc_separator_added=%s\n' "$new_rc_separator_added"
   } >"$work/new-manifest"
   chmod 0644 "$work/new-manifest"
+
+	if [ "$old_binary_exists" = 1 ]; then
+		printf 'upgrade from:\n'
+		cat "$work/old-identity"
+		printf 'SHA-256: %s\n' "$binary_sha"
+		printf 'upgrade to:\n'
+		cat "$work/new-identity"
+		printf 'SHA-256: %s\n' "$new_binary_sha"
+	fi
 
 	commit_started=1
 	atomic_copy "$work/new-binary" "$target"

@@ -5,10 +5,16 @@ DIST_DIR ?= dist
 PACKAGE := ./cmd/agentdeck
 ARM64_MAX_BYTES ?= 26214400
 BUILDINFO_PACKAGE := github.com/kitdine/agent-deck/internal/buildinfo
-VERSION ?= dev
-COMMIT ?= unknown
-BUILD_TIME ?= unknown
-BUILD_LDFLAGS := -X $(BUILDINFO_PACKAGE).Version=$(VERSION) -X $(BUILDINFO_PACKAGE).Commit=$(COMMIT) -X $(BUILDINFO_PACKAGE).BuildTime=$(BUILD_TIME)
+VERSION_TAG := $(shell git describe --tags --abbrev=0 2>/dev/null || echo v0.0.0)
+VERSION_SUFFIX := $(shell if git describe --exact-match --tags HEAD >/dev/null 2>&1 && git diff --quiet && git diff --cached --quiet; then echo ""; else echo "-dev"; fi)
+VERSION ?= $(VERSION_TAG)$(VERSION_SUFFIX)
+COMMIT ?= $(shell git rev-parse HEAD 2>/dev/null || echo unknown)
+BRANCH ?= $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)
+BUILD_TIME ?= $(shell date -u '+%Y-%m-%d %H:%M:%S')
+BUILD_LDFLAGS := -X "$(BUILDINFO_PACKAGE).Version=$(VERSION)"
+BUILD_LDFLAGS += -X "$(BUILDINFO_PACKAGE).Commit=$(COMMIT)"
+BUILD_LDFLAGS += -X "$(BUILDINFO_PACKAGE).Branch=$(BRANCH)"
+BUILD_LDFLAGS += -X "$(BUILDINFO_PACKAGE).BuildTime=$(BUILD_TIME)"
 PREFIX ?= $(HOME)/.local
 BINDIR ?= $(PREFIX)/bin
 DATADIR ?= $(PREFIX)/share/agentdeck
@@ -20,16 +26,16 @@ COMPLETION_RC ?=
 
 build:
 	mkdir -p $(DIST_DIR)
-	env GOCACHE=$(GOCACHE) GOMODCACHE=$(GOMODCACHE) $(GO) build -mod=vendor -trimpath -ldflags="$(BUILD_LDFLAGS)" -o $(DIST_DIR)/agentdeck $(PACKAGE)
+	env GOCACHE=$(GOCACHE) GOMODCACHE=$(GOMODCACHE) $(GO) build -mod=vendor -trimpath -ldflags='$(BUILD_LDFLAGS)' -o $(DIST_DIR)/agentdeck $(PACKAGE)
 
 build-all:
 	mkdir -p $(DIST_DIR)
-	env GOCACHE=$(GOCACHE) GOMODCACHE=$(GOMODCACHE) GOOS=darwin GOARCH=arm64 $(GO) build -mod=vendor -trimpath -ldflags="$(BUILD_LDFLAGS)" -o $(DIST_DIR)/agentdeck_darwin_arm64 $(PACKAGE)
-	env GOCACHE=$(GOCACHE) GOMODCACHE=$(GOMODCACHE) GOOS=darwin GOARCH=amd64 $(GO) build -mod=vendor -trimpath -ldflags="$(BUILD_LDFLAGS)" -o $(DIST_DIR)/agentdeck_darwin_amd64 $(PACKAGE)
+	env GOCACHE=$(GOCACHE) GOMODCACHE=$(GOMODCACHE) GOOS=darwin GOARCH=arm64 $(GO) build -mod=vendor -trimpath -ldflags='$(BUILD_LDFLAGS)' -o $(DIST_DIR)/agentdeck_darwin_arm64 $(PACKAGE)
+	env GOCACHE=$(GOCACHE) GOMODCACHE=$(GOMODCACHE) GOOS=darwin GOARCH=amd64 $(GO) build -mod=vendor -trimpath -ldflags='$(BUILD_LDFLAGS)' -o $(DIST_DIR)/agentdeck_darwin_amd64 $(PACKAGE)
 
 build-arm64-stripped:
 	mkdir -p $(DIST_DIR)
-	env GOCACHE=$(GOCACHE) GOMODCACHE=$(GOMODCACHE) GOOS=darwin GOARCH=arm64 $(GO) build -mod=vendor -trimpath -ldflags="-s -w $(BUILD_LDFLAGS)" -o $(DIST_DIR)/agentdeck_darwin_arm64_stripped $(PACKAGE)
+	env GOCACHE=$(GOCACHE) GOMODCACHE=$(GOMODCACHE) GOOS=darwin GOARCH=arm64 $(GO) build -mod=vendor -trimpath -ldflags='-s -w $(BUILD_LDFLAGS)' -o $(DIST_DIR)/agentdeck_darwin_arm64_stripped $(PACKAGE)
 
 check-arm64-size: build-arm64-stripped
 	test $$(wc -c < $(DIST_DIR)/agentdeck_darwin_arm64_stripped) -le $(ARM64_MAX_BYTES)

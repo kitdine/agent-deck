@@ -11,7 +11,8 @@ disagree with a document.
 
 | Feature | Specification | Plan | State |
 | --- | --- | --- | --- |
-| AgentDeck CLI phase one and release baseline | [spec](specs/2026-07-13-agentdeck-cli-design.md) | [plan](plans/2026-07-13-agentdeck-cli.md) | active; Phase 8 and Phase 9 implementation, release verification, and independent review complete |
+| AgentDeck CLI phase one and release baseline | [spec](specs/2026-07-13-agentdeck-cli-design.md) | [plan](plans/2026-07-13-agentdeck-cli.md) | active; reviewed baselines complete; unified ASCII tables and machine-bound encrypted SQLite credential storage release-verified, awaiting independent review |
+| CLI command manual and usability audit | [manual](cli-manual.md) | [Phase 9 follow-up](plans/2026-07-13-agentdeck-cli.md) | active implemented contract synchronized with the current table and credential-storage implementation |
 
 ## Reference and Historical Work
 

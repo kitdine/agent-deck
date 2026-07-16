@@ -3,6 +3,7 @@ package usage
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -36,6 +37,92 @@ func TestParserRejectsMalformedTokenCounts(t *testing.T) {
 	_, ok = parse("claude", map[string]any{"type": "assistant", "sessionId": "s", "message": map[string]any{"id": "m", "model": "claude-sonnet-4-6", "usage": map[string]any{"input_tokens": "not-a-number"}}}, &parseState{}, "fixture", 0)
 	if ok {
 		t.Fatal("non-numeric Claude token count must be rejected")
+	}
+}
+
+type countingSourceFile struct {
+	*os.File
+	bytes *int64
+}
+
+func (f countingSourceFile) Read(p []byte) (int, error) {
+	n, err := f.File.Read(p)
+	*f.bytes += int64(n)
+	return n, err
+}
+func (f countingSourceFile) ReadAt(p []byte, off int64) (int, error) {
+	n, err := f.File.ReadAt(p, off)
+	*f.bytes += int64(n)
+	return n, err
+}
+
+func TestIncrementalScanReadsNoUnchangedContentAndOnlyAppendSuffix(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	home := filepath.Join(root, "home")
+	source := filepath.Join(home, ".codex", "sessions", "2026", "fixture.jsonl")
+	if err := os.MkdirAll(filepath.Dir(source), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	prefix := `{"type":"session_meta","payload":{"session_id":"s"}}` + "\n" + `{"type":"turn_context","payload":{"turn_id":"t","model":"gpt-5.4"}}` + "\n" + `{"type":"event_msg","timestamp":"2026-07-15T00:00:00Z","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":10,"cached_input_tokens":1,"output_tokens":2}}}}` + "\n"
+	if err := os.WriteFile(source, []byte(prefix), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	database, err := store.Open(ctx, filepath.Join(root, "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	service := New(database, home)
+	var readBytes int64
+	var opens int
+	service.Open = func(path string) (SourceFile, error) {
+		opens++
+		file, err := os.Open(path)
+		if err != nil {
+			return nil, err
+		}
+		return countingSourceFile{File: file, bytes: &readBytes}, nil
+	}
+	if _, err = service.Scan(ctx); err != nil {
+		t.Fatal(err)
+	}
+	readBytes = 0
+	opens = 0
+	if _, err = service.Scan(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if opens != 0 || readBytes != 0 {
+		t.Fatalf("unchanged scan opens=%d bytes=%d", opens, readBytes)
+	}
+	appendix := `{"type":"turn_context","payload":{"turn_id":"t2","model":"gpt-5.4"}}` + "\n" + `{"type":"event_msg","timestamp":"2026-07-15T00:01:00Z","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":20,"cached_input_tokens":2,"output_tokens":3}}}}` + "\n"
+	file, err := os.OpenFile(source, os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = file.WriteString(appendix); err != nil {
+		file.Close()
+		t.Fatal(err)
+	}
+	if err = file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	readBytes = 0
+	opens = 0
+	result, err := service.Scan(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result["imported"] != 1 || opens != 1 || readBytes > int64(len(appendix)+8192) {
+		t.Fatalf("append result=%v opens=%d bytes=%d suffix=%d", result, opens, readBytes, len(appendix))
+	}
+	fingerprint, err := service.InventoryFingerprint()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored, found, err := database.Setting(ctx, "watch.fingerprint.usage")
+	if err != nil || !found || stored != fingerprint {
+		t.Fatalf("checkpoint=%q found=%t err=%v want=%q", stored, found, err, fingerprint)
 	}
 }
 
@@ -182,7 +269,7 @@ func TestExactRunBindsOnlyItsTimeRangeAndStaleRecovery(t *testing.T) {
 	service := New(s, "")
 	now := time.Date(2026, 7, 13, 2, 0, 0, 0, time.UTC)
 	service.Now = func() time.Time { return now }
-	_, err = s.Exec(ctx, `INSERT INTO providers(id,name,endpoint,credential_ref,multiplier,created_at,updated_at) VALUES(1,'p','https://fixture.invalid','ref','2','2026-07-13T00:00:00Z','2026-07-13T00:00:00Z'); INSERT INTO provider_selections(provider_id,client,multiplier_snapshot,selected_at) VALUES(1,'codex','2','2026-07-13T00:00:00Z')`)
+	_, err = s.Exec(ctx, `INSERT INTO providers(id,name,endpoint,credential_ref,multiplier,created_at,updated_at) VALUES(1,'p','https://fixture.invalid','ref','2','2026-07-13T00:00:00Z','2026-07-13T00:00:00Z'); INSERT INTO provider_selections(provider_id,client,provider_name_snapshot,endpoint_snapshot,multiplier_snapshot,selected_at) VALUES(1,'codex','p','https://fixture.invalid','2','2026-07-13T00:00:00Z')`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -214,6 +301,53 @@ func TestExactRunBindsOnlyItsTimeRangeAndStaleRecovery(t *testing.T) {
 	}
 }
 
+func TestStartRunUsesCompletedOfficialSwitch(t *testing.T) {
+	for _, withPriorBearer := range []bool{false, true} {
+		name := "clean"
+		if withPriorBearer {
+			name = "after-bearer"
+		}
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+			s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer s.Close()
+			base := time.Date(2026, 7, 15, 0, 0, 0, 0, time.UTC)
+			if withPriorBearer {
+				created, createErr := s.CreateProvider(ctx, store.Provider{Name: "bearer", Endpoint: "https://provider.example", CredentialRef: "ref", Multiplier: "7", Clients: []store.ClientMapping{{Client: "codex"}}})
+				if createErr != nil {
+					t.Fatal(createErr)
+				}
+				providerID := created.ID
+				if err := s.CreateOperation(ctx, store.Operation{ID: "bearer", Kind: "provider.use", State: "completed", ProviderID: &providerID, Client: "codex", StartedAt: base, UpdatedAt: base.Add(time.Second)}); err != nil {
+					t.Fatal(err)
+				}
+				if err := s.RecordSelection(ctx, store.Selection{ProviderID: created.ID, Client: "codex", MultiplierSnapshot: "7", SelectedAt: base.Add(500 * time.Millisecond)}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := s.CreateOperation(ctx, store.Operation{ID: "official", Kind: "provider.use", State: "completed", Client: "codex", StartedAt: base.Add(2 * time.Second), UpdatedAt: base.Add(3 * time.Second)}); err != nil {
+				t.Fatal(err)
+			}
+			service := New(s, "")
+			service.Now = func() time.Time { return base.Add(4 * time.Second) }
+			runID, _, err := service.StartRun(ctx, "codex", 123)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var providerName, multiplier string
+			if err := s.DB.QueryRowContext(ctx, "SELECT provider,multiplier FROM usage_runs WHERE id=?", runID).Scan(&providerName, &multiplier); err != nil {
+				t.Fatal(err)
+			}
+			if providerName != "official" || multiplier != "1" {
+				t.Fatalf("official run provider=%q multiplier=%q", providerName, multiplier)
+			}
+		})
+	}
+}
+
 func TestExactRunUsesByteRangeAndExternalOverlapDowngrades(t *testing.T) {
 	ctx := context.Background()
 	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state"))
@@ -225,7 +359,7 @@ func TestExactRunUsesByteRangeAndExternalOverlapDowngrades(t *testing.T) {
 	now := time.Date(2026, 7, 13, 2, 0, 0, 0, time.UTC)
 	service.Now = func() time.Time { return now }
 	service.ClientProcesses = func(string) ([]int, error) { return []int{777}, nil }
-	_, err = s.Exec(ctx, `INSERT INTO providers(id,name,endpoint,credential_ref,multiplier,created_at,updated_at) VALUES(1,'p','x','r','2','2026-07-13T00:00:00Z','2026-07-13T00:00:00Z'); INSERT INTO provider_selections(provider_id,client,multiplier_snapshot,selected_at) VALUES(1,'codex','2','2026-07-13T00:00:00Z'); INSERT INTO usage_source_files(path,identity,size,cursor,prefix_hash) VALUES('f','i',9,5,'start')`)
+	_, err = s.Exec(ctx, `INSERT INTO providers(id,name,endpoint,credential_ref,multiplier,created_at,updated_at) VALUES(1,'p','x','r','2','2026-07-13T00:00:00Z','2026-07-13T00:00:00Z'); INSERT INTO provider_selections(provider_id,client,provider_name_snapshot,endpoint_snapshot,multiplier_snapshot,selected_at) VALUES(1,'codex','p','x','2','2026-07-13T00:00:00Z'); INSERT INTO usage_source_files(path,identity,size,cursor,prefix_hash) VALUES('f','i',9,5,'start')`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -385,5 +519,148 @@ func TestScanSourceMutationScenarios(t *testing.T) {
 	var n int
 	if err := s.DB.QueryRowContext(ctx, "SELECT count(*) FROM usage_events").Scan(&n); err != nil || n != 1 {
 		t.Fatalf("events=%d err=%v", n, err)
+	}
+}
+
+func TestRemovedSourceCleansStateEventsRunsAndSessionAggregation(t *testing.T) {
+	ctx := context.Background()
+	root, home := t.TempDir(), filepath.Join(t.TempDir(), "home")
+	database, err := store.Open(ctx, filepath.Join(root, "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	path := filepath.Join(home, ".codex", "sessions", "removed.jsonl")
+	if err = os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	contents := `{"type":"session_meta","payload":{"session_id":"removed"}}` + "\n" + `{"type":"turn_context","payload":{"turn_id":"turn","model":"gpt-5.4"}}` + "\n" + `{"type":"event_msg","timestamp":"2026-07-15T00:00:00Z","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":10}}}}` + "\n"
+	if err = os.WriteFile(path, []byte(contents), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	service := New(database, home)
+	if _, err = service.Scan(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = database.Exec(ctx, `INSERT INTO usage_runs(id,client,provider,multiplier,started_at,ended_at,exact,ambiguity_reason) VALUES(99,'codex','official','1','2026-07-15T00:00:00Z','2026-07-15T00:01:00Z',1,''); INSERT INTO usage_run_sources(run_id,path,start_offset,start_hash) VALUES(99,?,0,'')`, path); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	inventory, err := service.Inventory(ctx)
+	if err != nil || len(inventory.Removed) != 1 || inventory.Removed[0] != path {
+		t.Fatalf("removed inventory = %#v, %v", inventory, err)
+	}
+	if _, err = service.ScanInventory(ctx, inventory); err != nil {
+		t.Fatal(err)
+	}
+	for table, query := range map[string]string{
+		"source":     "SELECT count(*) FROM usage_source_files",
+		"event":      "SELECT count(*) FROM usage_events",
+		"session":    "SELECT count(*) FROM usage_sessions",
+		"run source": "SELECT count(*) FROM usage_run_sources",
+	} {
+		var count int
+		if err = database.DB.QueryRowContext(ctx, query).Scan(&count); err != nil || count != 0 {
+			t.Fatalf("%s count = %d, %v", table, count, err)
+		}
+	}
+}
+
+func TestStableInventoryCheckpointDoesNotSwallowConcurrentAppend(t *testing.T) {
+	ctx := context.Background()
+	root, home := t.TempDir(), filepath.Join(t.TempDir(), "home")
+	database, err := store.Open(ctx, filepath.Join(root, "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	path := filepath.Join(home, ".codex", "sessions", "race.jsonl")
+	if err = os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	prefix := `{"type":"session_meta","payload":{"session_id":"race"}}` + "\n" + `{"type":"turn_context","payload":{"turn_id":"one","model":"gpt-5.4"}}` + "\n" + `{"type":"event_msg","timestamp":"2026-07-15T00:00:00Z","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":1}}}}` + "\n"
+	if err = os.WriteFile(path, []byte(prefix), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	service := New(database, home)
+	if _, err = service.Scan(ctx); err != nil {
+		t.Fatal(err)
+	}
+	inventory, err := service.Inventory(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	appendix := `{"type":"turn_context","payload":{"turn_id":"two","model":"gpt-5.4"}}` + "\n" + `{"type":"event_msg","timestamp":"2026-07-15T00:01:00Z","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":2}}}}` + "\n"
+	file, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = file.WriteString(appendix); err != nil {
+		file.Close()
+		t.Fatal(err)
+	}
+	if err = file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = service.ScanInventory(ctx, inventory); err != nil {
+		t.Fatal(err)
+	}
+	current, err := service.InventoryFingerprint()
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkpoint, _, err := database.Setting(ctx, "watch.fingerprint.usage")
+	if err != nil || checkpoint == current {
+		t.Fatalf("checkpoint swallowed append: checkpoint=%q current=%q err=%v", checkpoint, current, err)
+	}
+	result, err := service.Scan(ctx)
+	if err != nil || result["imported"] != 1 {
+		t.Fatalf("follow-up scan = %#v, %v", result, err)
+	}
+}
+
+func TestSourceResetFailureRollsBackEntireSourceRebuild(t *testing.T) {
+	ctx := context.Background()
+	root, home := t.TempDir(), filepath.Join(t.TempDir(), "home")
+	database, err := store.Open(ctx, filepath.Join(root, "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	path := filepath.Join(home, ".codex", "sessions", "reset.jsonl")
+	if err = os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	makeContents := func(tokens int) string {
+		return `{"type":"session_meta","payload":{"session_id":"reset"}}` + "\n" + `{"type":"turn_context","payload":{"turn_id":"turn","model":"gpt-5.4"}}` + "\n" + fmt.Sprintf(`{"type":"event_msg","timestamp":"2026-07-15T00:00:00Z","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":%d}}}}`, tokens) + "\n"
+	}
+	if err = os.WriteFile(path, []byte(makeContents(1)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	service := New(database, home)
+	if _, err = service.Scan(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var oldCursor int64
+	if err = database.DB.QueryRowContext(ctx, "SELECT cursor FROM usage_source_files WHERE path=?", path).Scan(&oldCursor); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(path, []byte(makeContents(999)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = database.Exec(ctx, `CREATE TRIGGER fail_usage_rebuild BEFORE INSERT ON usage_events BEGIN SELECT RAISE(FAIL,'injected usage rebuild failure'); END`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = service.Scan(ctx); err == nil {
+		t.Fatal("source rebuild succeeded")
+	}
+	var tokens, cursor int64
+	if err = database.DB.QueryRowContext(ctx, "SELECT input_tokens FROM usage_events WHERE event_key='codex:reset:turn'").Scan(&tokens); err != nil || tokens != 1 {
+		t.Fatalf("event after rollback = %d, %v", tokens, err)
+	}
+	if err = database.DB.QueryRowContext(ctx, "SELECT cursor FROM usage_source_files WHERE path=?", path).Scan(&cursor); err != nil || cursor != oldCursor {
+		t.Fatalf("source cursor after rollback = %d, %v want %d", cursor, err, oldCursor)
 	}
 }

@@ -5,17 +5,30 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/kitdine/agent-deck/internal/extension"
-	"github.com/kitdine/agent-deck/internal/platform"
-	"github.com/kitdine/agent-deck/internal/store"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/spf13/cobra"
+
 	"github.com/kitdine/agent-deck/internal/buildinfo"
+	"github.com/kitdine/agent-deck/internal/credentialvault"
+	"github.com/kitdine/agent-deck/internal/doctor"
+	"github.com/kitdine/agent-deck/internal/extension"
+	"github.com/kitdine/agent-deck/internal/output"
+	"github.com/kitdine/agent-deck/internal/provider"
+	"github.com/kitdine/agent-deck/internal/session"
+	"github.com/kitdine/agent-deck/internal/store"
+	"github.com/kitdine/agent-deck/internal/usage"
 )
+
+func TestMain(m *testing.M) {
+	machineIdentity = func(context.Context) (string, error) { return "synthetic-machine", nil }
+	os.Exit(m.Run())
+}
 
 func TestRootCommandRegistersGlobalFlags(t *testing.T) {
 	root := newRootCommand(bytes.NewReader(nil), &bytes.Buffer{})
@@ -38,16 +51,375 @@ func TestRootCommandRegistersGlobalFlags(t *testing.T) {
 	}
 }
 
+type accessCountingCredentialVault struct{ calls int }
+
+func (s *accessCountingCredentialVault) called() error {
+	s.calls++
+	return errors.New("unexpected credential vault access")
+}
+func (s *accessCountingCredentialVault) Seal(context.Context, string, string) (credentialvault.Sealed, error) {
+	return credentialvault.Sealed{}, s.called()
+}
+func (s *accessCountingCredentialVault) SealExisting(context.Context, string, string) (credentialvault.Sealed, error) {
+	return credentialvault.Sealed{}, s.called()
+}
+func (s *accessCountingCredentialVault) Open(context.Context, string, credentialvault.Sealed) (string, error) {
+	return "", s.called()
+}
+func (s *accessCountingCredentialVault) InspectKey(context.Context) (string, error) {
+	return "", s.called()
+}
+
+func TestProviderListAndShowOfficialDoNotAccessSecretsOrLeakCredentials(t *testing.T) {
+	state := filepath.Join(t.TempDir(), "state")
+	vault := &accessCountingCredentialVault{}
+	oldFactory := newCredentialVault
+	newCredentialVault = func(string) provider.CredentialVault { return vault }
+	t.Cleanup(func() { newCredentialVault = oldFactory })
+
+	for _, format := range []string{"text", "json"} {
+		for _, args := range [][]string{{"provider", "list"}, {"provider", "show", "official"}} {
+			var stdout bytes.Buffer
+			commandArgs := append([]string{"--state-dir", state, "--format", format}, args...)
+			if err := run(commandArgs, bytes.NewReader(nil), &stdout); err != nil {
+				t.Fatalf("%s %v: %v", format, args, err)
+			}
+			if !strings.Contains(stdout.String(), "official") || strings.Contains(stdout.String(), "experimental_bearer_token") || strings.Contains(stdout.String(), "synthetic-secret") {
+				t.Fatalf("%s %v output = %s", format, args, stdout.String())
+			}
+		}
+	}
+	if vault.calls != 0 {
+		t.Fatalf("provider list/show accessed credential vault %d times", vault.calls)
+	}
+}
+
+func TestProviderStatusReportsZeroCredentialsNotReadyInTextAndJSON(t *testing.T) {
+	ctx := context.Background()
+	state := filepath.Join(t.TempDir(), "state")
+	database, err := store.Open(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := provider.Service{Store: database, Vault: newCredentialVault(state)}
+	if _, err = service.Add(ctx, provider.Definition{Name: "empty", Endpoint: "https://example.invalid", CredentialRef: "empty-ref", Clients: []provider.Client{provider.ClientCodex}}, "synthetic-secret"); err != nil {
+		database.Close()
+		t.Fatal(err)
+	}
+	if err = service.RemoveNamedCredential(ctx, "empty", "default"); err != nil {
+		database.Close()
+		t.Fatal(err)
+	}
+	if err = database.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	var textOutput bytes.Buffer
+	if err = run([]string{"--state-dir", state, "provider", "status", "empty"}, bytes.NewReader(nil), &textOutput); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(textOutput.String(), "credentials: none") || !strings.Contains(textOutput.String(), "ready: false") {
+		t.Fatalf("text status = %s", textOutput.String())
+	}
+	var jsonOutput bytes.Buffer
+	if err = run([]string{"--state-dir", state, "--format", "json", "provider", "status", "empty"}, bytes.NewReader(nil), &jsonOutput); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(jsonOutput.String(), `"ready":false`) || strings.Contains(jsonOutput.String(), `"present":true`) {
+		t.Fatalf("json status = %s", jsonOutput.String())
+	}
+}
+
+func TestProviderStatusCollectionUsesIndependentActivationColumns(t *testing.T) {
+	values := []provider.Status{
+		{Definition: provider.Provider{Name: "official", BuiltIn: true}, Ready: true, Active: []provider.ActiveSelection{{Client: "codex"}}},
+		{Definition: provider.Provider{Name: "custom"}, Credentials: []provider.Credential{{}, {}}, Active: []provider.ActiveSelection{{Client: "claude"}}},
+	}
+	var output bytes.Buffer
+	if err := renderProviderStatuses(&output, values); err != nil {
+		t.Fatal(err)
+	}
+	want := "" +
+		"+----------+----------+-------------+-------+--------------+---------------+\n" +
+		"| NAME     | TYPE     | CREDENTIALS | READY | CODEX ACTIVE | CLAUDE ACTIVE |\n" +
+		"+----------+----------+-------------+-------+--------------+---------------+\n" +
+		"| official | built-in | 0           | true  | true         | false         |\n" +
+		"+----------+----------+-------------+-------+--------------+---------------+\n" +
+		"| custom   | custom   | 2           | false | false        | true          |\n" +
+		"+----------+----------+-------------+-------+--------------+---------------+\n"
+	if output.String() != want {
+		t.Fatalf("provider status table =\n%s", output.String())
+	}
+}
+
+func TestDoctorDiagnosesProviderUseExternalStateInTextAndJSON(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	state, home := filepath.Join(root, "state"), filepath.Join(root, "home")
+	database, err := store.Open(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := filepath.Join(root, "config.toml")
+	if err = os.WriteFile(config, []byte("before\n"), 0o600); err != nil {
+		database.Close()
+		t.Fatal(err)
+	}
+	fingerprint, err := provider.ConfigFingerprint(config)
+	if err != nil {
+		database.Close()
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(config, []byte("after\n"), 0o600); err != nil {
+		database.Close()
+		t.Fatal(err)
+	}
+	operations := []store.Operation{
+		{ID: "external-transition", Kind: "provider.use", State: "failed", ErrorCode: "external_written_transition_failed", Client: "codex"},
+		{ID: "completed-transition", Kind: "provider.use", State: "failed", ErrorCode: "selection_commit_failed", Client: "codex"},
+		{ID: "failure-recording", Kind: "provider.use", State: "prepared", Client: "codex", ConfigFingerprint: fingerprint, DetailsJSON: fmt.Sprintf(`{"config_path":%q}`, config)},
+	}
+	for _, operation := range operations {
+		if err = database.CreateOperation(ctx, operation); err != nil {
+			database.Close()
+			t.Fatal(err)
+		}
+	}
+	if err = database.Close(); err != nil {
+		t.Fatal(err)
+	}
+	oldHome := userHomeDir
+	userHomeDir = func() (string, error) { return home, nil }
+	t.Cleanup(func() { userHomeDir = oldHome })
+	for _, format := range []string{"text", "json"} {
+		var output bytes.Buffer
+		if err = run([]string{"--state-dir", state, "--format", format, "doctor"}, bytes.NewReader(nil), &output); err != nil {
+			t.Fatalf("doctor %s: %v", format, err)
+		}
+		for _, code := range []string{"external_written_transition_failed", "selection_commit_failed", "interrupted_after_external_write"} {
+			if !strings.Contains(output.String(), code) {
+				t.Fatalf("doctor %s missing %s: %s", format, code, output.String())
+			}
+		}
+	}
+}
+
+func TestEveryLeafCommandHasActionableHelp(t *testing.T) {
+	root := newRootCommand(bytes.NewReader(nil), &bytes.Buffer{})
+	for _, command := range leafCommands(root) {
+		if strings.TrimSpace(command.Short) == "" {
+			t.Errorf("%s has no short help", command.CommandPath())
+		}
+		if strings.Contains(command.Use, "<") || strings.Contains(command.Use, "[") {
+			if !strings.Contains(command.Long, "Arguments:") {
+				t.Errorf("%s has no argument help", command.CommandPath())
+			}
+			if strings.TrimSpace(command.Example) == "" {
+				t.Errorf("%s has no example", command.CommandPath())
+			}
+		}
+	}
+
+	use, _, err := root.Find([]string{"provider", "use"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var help bytes.Buffer
+	use.SetOut(&help)
+	if err := use.Help(); err != nil {
+		t.Fatal(err)
+	}
+	for _, expected := range []string{
+		"use <name>",
+		"inferring unique choices",
+		"--config-path",
+		"agentdeck provider use aigocode --client codex",
+	} {
+		if !strings.Contains(help.String(), expected) {
+			t.Errorf("provider use help missing %q:\n%s", expected, help.String())
+		}
+	}
+}
+
+func TestHelpOmitsLegacyProviderCredentialAndSessionExamples(t *testing.T) {
+	root := newRootCommand(bytes.NewReader(nil), &bytes.Buffer{})
+	var rendered strings.Builder
+	for _, command := range append([]*cobra.Command{root}, leafCommands(root)...) {
+		var help bytes.Buffer
+		command.SetOut(&help)
+		if err := command.Help(); err != nil {
+			t.Fatal(err)
+		}
+		rendered.Write(help.Bytes())
+	}
+	for _, legacy := range []string{
+		"agentdeck provider credential",
+		"keep-keychain",
+		"Keychain",
+		"agentdeck session show codex ",
+		"agentdeck session show claude ",
+		"agentdeck session exclude project ",
+		"agentdeck session exclude session ",
+	} {
+		if strings.Contains(rendered.String(), legacy) {
+			t.Fatalf("legacy help example %q remains", legacy)
+		}
+	}
+	for _, current := range []string{
+		"agentdeck credential add aigocode",
+		"agentdeck session show 019abc123 --client codex",
+		"agentdeck session exclude --kind client --value claude",
+	} {
+		if !strings.Contains(rendered.String(), current) {
+			t.Fatalf("current help example %q missing", current)
+		}
+	}
+}
+
+func TestPhase9TextAndJSONGoldenContracts(t *testing.T) {
+	baseCost := "1.250000000"
+	summary := usage.Summary{
+		Counts:          map[string]int64{"events": 2},
+		Tokens:          map[string]int64{"input_tokens": 3, "output_tokens": 4},
+		CatalogBaseCost: &baseCost,
+		Warnings:        []string{"scan_incomplete"},
+		Unpriced:        []string{"model-x"},
+	}
+	var textOutput bytes.Buffer
+	if err := writeEnvelope(&textOutput, "text", "usage.summary", summary, true, summary.Warnings); err != nil {
+		t.Fatal(err)
+	}
+	wantUsage := "events: 2\ntokens: input_tokens=3,output_tokens=4\ncatalog base cost: 1.250000000\nprovider cost: unavailable\nwarnings: scan_incomplete\nunpriced: model-x\n"
+	if textOutput.String() != wantUsage || strings.Contains(textOutput.String(), "0x") {
+		t.Fatalf("usage text golden = %q, want %q", textOutput.String(), wantUsage)
+	}
+
+	providerData := provider.DefinitionResult{Definition: provider.Provider{
+		Name:            "example",
+		Clients:         []store.ClientMapping{{Client: "codex"}},
+		CredentialCount: 1,
+	}}
+	textOutput.Reset()
+	if err := writeResult(&textOutput, "text", "provider.show", providerData); err != nil {
+		t.Fatal(err)
+	}
+	wantProvider := "name: example\ntype: custom\nclients: codex\ncredentials: 1\n"
+	if textOutput.String() != wantProvider {
+		t.Fatalf("provider detail golden = %q, want %q", textOutput.String(), wantProvider)
+	}
+
+	report := doctor.Report{Mode: "quick", Status: "degraded", Warnings: 1, Checks: []doctor.Check{{Name: "credential", Status: "warning", Code: "credential_missing"}}}
+	textOutput.Reset()
+	if err := writeResult(&textOutput, "text", "doctor", report); err != nil {
+		t.Fatal(err)
+	}
+	wantDoctor := "status: degraded\nmode: quick\nwarnings: 1\nerrors: 0\ncredential: warning (credential_missing)\n"
+	if textOutput.String() != wantDoctor {
+		t.Fatalf("doctor text golden = %q, want %q", textOutput.String(), wantDoctor)
+	}
+
+	var jsonOutput bytes.Buffer
+	if err := writeEnvelope(&jsonOutput, "json", "usage.summary", summary, true, summary.Warnings, true); err != nil {
+		t.Fatal(err)
+	}
+	var envelope map[string]any
+	if err := json.Unmarshal(jsonOutput.Bytes(), &envelope); err != nil {
+		t.Fatal(err)
+	}
+	if envelope["schema_version"] != float64(output.SchemaVersion) || envelope["command"] != "usage.summary" || envelope["partial"] != true {
+		t.Fatalf("usage JSON golden = %#v", envelope)
+	}
+	data, ok := envelope["data"].(map[string]any)
+	if !ok || data["catalog_base_cost"] != baseCost || data["provider_cost"] != nil || strings.Contains(jsonOutput.String(), "synthetic-secret") {
+		t.Fatalf("usage JSON data = %#v", envelope["data"])
+	}
+}
+
+func TestQuietSuppressesOnlySuccessfulTextMutations(t *testing.T) {
+	textState := filepath.Join(t.TempDir(), "text-state")
+	var stdout, stderr bytes.Buffer
+	if exit := execute([]string{"--state-dir", textState, "--quiet", "provider", "add", "quiet-provider", "--endpoint", "https://example.invalid", "--clients", "codex"}, bytes.NewBufferString("quiet-secret\n"), &stdout, &stderr); exit != 0 {
+		t.Fatalf("quiet text exit=%d stderr=%s", exit, stderr.String())
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("quiet text output = %q", stdout.String())
+	}
+
+	jsonState := filepath.Join(t.TempDir(), "json-state")
+	stdout.Reset()
+	stderr.Reset()
+	if exit := execute([]string{"--state-dir", jsonState, "--format", "json", "--quiet", "provider", "add", "json-provider", "--endpoint", "https://example.invalid", "--clients", "codex"}, bytes.NewBufferString("json-secret\n"), &stdout, &stderr); exit != 0 {
+		t.Fatalf("quiet JSON exit=%d stderr=%s", exit, stderr.String())
+	}
+	var envelope map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil || envelope["command"] != "provider.add" || envelope["schema_version"] != float64(output.SchemaVersion) {
+		t.Fatalf("quiet JSON envelope = %#v err=%v", envelope, err)
+	}
+	if strings.Contains(stdout.String(), "json-secret") {
+		t.Fatalf("quiet JSON leaked credential: %s", stdout.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if exit := execute([]string{"--state-dir", textState, "--quiet", "provider", "add"}, bytes.NewReader(nil), &stdout, &stderr); exit != 2 || stderr.Len() == 0 {
+		t.Fatalf("quiet error exit=%d stdout=%s stderr=%s", exit, stdout.String(), stderr.String())
+	}
+}
+
+func TestProviderUseAutomaticallyResolvesClientAndBackupPaths(t *testing.T) {
+	home, state := t.TempDir(), filepath.Join(t.TempDir(), "state")
+	config := filepath.Join(home, ".codex", "config.toml")
+	if err := os.MkdirAll(filepath.Dir(config), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(config, []byte("model = 'keep'\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	oldHome := userHomeDir
+	userHomeDir = func() (string, error) { return home, nil }
+	t.Cleanup(func() { userHomeDir = oldHome })
+
+	if err := run([]string{"--state-dir", state, "provider", "add", "aigocode", "--endpoint", "https://example.invalid", "--clients", "codex"}, bytes.NewBufferString("synthetic-secret\n"), &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := run([]string{"--state-dir", state, "provider", "use", "aigocode"}, bytes.NewReader(nil), &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+	contents, err := os.ReadFile(config)
+	if err != nil || !strings.Contains(string(contents), "https://example.invalid/v1") {
+		t.Fatalf("auto-resolved config = %q, %v", contents, err)
+	}
+	backups, err := filepath.Glob(filepath.Join(state, "client-backups", "codex", "*.redacted.toml"))
+	if err != nil || len(backups) != 1 {
+		t.Fatalf("auto-managed backups = %v, %v", backups, err)
+	}
+	customConfig := filepath.Join(t.TempDir(), "custom-config.toml")
+	if err := os.WriteFile(customConfig, []byte("model = 'custom'\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := run([]string{"--state-dir", state, "provider", "use", "aigocode", "--client", "codex", "--config-path", customConfig}, bytes.NewReader(nil), &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+	customContents, err := os.ReadFile(customConfig)
+	if err != nil || !strings.Contains(string(customContents), "https://example.invalid/v1") {
+		t.Fatalf("overridden config = %q, %v", customContents, err)
+	}
+}
+
 func TestVersionCommandAndFlagShareTextAndJSONContract(t *testing.T) {
-	oldVersion, oldCommit, oldBuildTime := buildinfo.Version, buildinfo.Commit, buildinfo.BuildTime
-	buildinfo.Version, buildinfo.Commit, buildinfo.BuildTime = "v1.2.3", "0123456789abcdef", "2026-07-15T00:00:00Z"
+	oldVersion, oldCommit, oldBranch, oldBuildTime := buildinfo.Version, buildinfo.Commit, buildinfo.Branch, buildinfo.BuildTime
+	buildinfo.Version, buildinfo.Commit, buildinfo.Branch, buildinfo.BuildTime = "v1.2.3", "0123456789abcdef", "main", "2026-07-15 00:00:00"
 	t.Cleanup(func() {
-		buildinfo.Version, buildinfo.Commit, buildinfo.BuildTime = oldVersion, oldCommit, oldBuildTime
+		buildinfo.Version, buildinfo.Commit, buildinfo.Branch, buildinfo.BuildTime = oldVersion, oldCommit, oldBranch, oldBuildTime
 	})
 
 	var commandText, flagText bytes.Buffer
 	if err := run([]string{"version"}, bytes.NewReader(nil), &commandText); err != nil {
 		t.Fatal(err)
+	}
+	wantText := fmt.Sprintf("Release Version: v1.2.3\nGit Commit Hash: 0123456789abcdef\nGit Branch: main\nGo Version: %s\nUTC Build Time: 2026-07-15 00:00:00\n", buildinfo.Current().GoVersion)
+	if commandText.String() != wantText {
+		t.Fatalf("version text = %q, want %q", commandText.String(), wantText)
 	}
 	for _, args := range [][]string{
 		{"--version"},
@@ -58,7 +430,7 @@ func TestVersionCommandAndFlagShareTextAndJSONContract(t *testing.T) {
 		if err := run(args, bytes.NewReader(nil), &flagText); err != nil {
 			t.Fatalf("run %v: %v", args, err)
 		}
-		if commandText.String() != flagText.String() || !bytes.Contains(commandText.Bytes(), []byte("v1.2.3")) || !bytes.Contains(commandText.Bytes(), []byte("0123456789abcdef")) {
+		if commandText.String() != flagText.String() {
 			t.Fatalf("version text command=%q flag %v=%q", commandText.String(), args, flagText.String())
 		}
 	}
@@ -76,7 +448,7 @@ func TestVersionCommandAndFlagShareTextAndJSONContract(t *testing.T) {
 		if err := json.Unmarshal(encoded.Bytes(), &envelope); err != nil {
 			t.Fatalf("decode %v: %q: %v", args, encoded.String(), err)
 		}
-		if envelope.SchemaVersion != 1 || envelope.Command != "version" || envelope.Data.Version != "v1.2.3" || envelope.Data.Commit != "0123456789abcdef" || envelope.Data.BuildTime != "2026-07-15T00:00:00Z" || envelope.Data.GoVersion == "" {
+		if envelope.SchemaVersion != 1 || envelope.Command != "version" || envelope.Data.Version != "v1.2.3" || envelope.Data.Commit != "0123456789abcdef" || envelope.Data.Branch != "main" || envelope.Data.BuildTime != "2026-07-15 00:00:00" || envelope.Data.GoVersion == "" {
 			t.Fatalf("version envelope for %v = %#v", args, envelope)
 		}
 	}
@@ -196,7 +568,7 @@ func TestUsageCommandTextAndJSONContracts(t *testing.T) {
 	if err := run([]string{"--state-dir", state, "usage", "diagnose"}, bytes.NewReader(nil), &text); err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Contains(text.Bytes(), []byte(`"events":0`)) {
+	if !bytes.Contains(text.Bytes(), []byte(`events: 0`)) {
 		t.Fatalf("text output = %s", text.String())
 	}
 	var encoded bytes.Buffer
@@ -212,6 +584,29 @@ func TestUsageCommandTextAndJSONContracts(t *testing.T) {
 	}
 }
 
+func TestUsageSessionsTextUsesSharedASCIITable(t *testing.T) {
+	baseCost, providerCost := "0.100000000", "0.200000000"
+	values := []usage.SessionSummary{{
+		Client:          "codex",
+		SessionID:       "session-1",
+		FirstAt:         "2026-07-16T00:00:00Z",
+		LastAt:          "2026-07-16T00:01:00Z",
+		Tokens:          map[string]int64{"input_tokens": 10, "output_tokens": 2},
+		CatalogBaseCost: &baseCost,
+		ProviderCost:    &providerCost,
+		Warnings:        []string{"estimated"},
+		Unpriced:        []string{"cache_read_tokens"},
+	}}
+	var rendered bytes.Buffer
+	if err := renderUsageText(&rendered, "usage.sessions", values); err != nil {
+		t.Fatal(err)
+	}
+	text := rendered.String()
+	if !strings.HasPrefix(text, "+") || !strings.Contains(text, "| CLIENT | SESSION") || !strings.Contains(text, "| codex  | session-1") {
+		t.Fatalf("usage sessions are not rendered as the shared ASCII table:\n%s", text)
+	}
+}
+
 func TestPhase6BackupAndDoctorCLIContracts(t *testing.T) {
 	oldVersion := buildinfo.Version
 	buildinfo.Version = "v1.2.3-backup"
@@ -223,20 +618,14 @@ func TestPhase6BackupAndDoctorCLIContracts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = database.CreateProvider(ctx, store.Provider{Name: "synthetic", Endpoint: "https://example.invalid", CredentialRef: "agentdeck:test", Multiplier: "1", Clients: []store.ClientMapping{{Client: "codex"}}}); err != nil {
+	sourceVault := credentialvault.New(source, machineIdentity)
+	providerService := provider.Service{Store: database, Vault: sourceVault}
+	if _, err = providerService.Add(ctx, provider.Definition{Name: "synthetic", Endpoint: "https://example.invalid", Clients: []provider.Client{provider.ClientCodex}}, "synthetic-secret"); err != nil {
 		t.Fatal(err)
 	}
 	if err = database.Close(); err != nil {
 		t.Fatal(err)
 	}
-	sourceSecrets := platform.NewMemorySecretStore()
-	if err = sourceSecrets.Put(ctx, "agentdeck:test", "synthetic-secret"); err != nil {
-		t.Fatal(err)
-	}
-	activeSecrets := platform.SecretStore(sourceSecrets)
-	oldFactory := newSecretStore
-	newSecretStore = func() platform.SecretStore { return activeSecrets }
-	t.Cleanup(func() { newSecretStore = oldFactory })
 	home := t.TempDir()
 	oldHome := userHomeDir
 	userHomeDir = func() (string, error) { return home, nil }
@@ -281,18 +670,33 @@ func TestPhase6BackupAndDoctorCLIContracts(t *testing.T) {
 	assertCommandEnvelope(t, output.Bytes(), "backup.inspect")
 
 	target := filepath.Join(t.TempDir(), "target")
-	restoredSecrets := platform.NewMemorySecretStore()
-	activeSecrets = restoredSecrets
 	output.Reset()
 	if err = run([]string{"--state-dir", target, "--format", "json", "backup", "restore", archive}, bytes.NewBufferString("passphrase\n"), &output); err != nil {
 		t.Fatal(err)
 	}
 	assertCommandEnvelope(t, output.Bytes(), "backup.restore")
-	if value, err := restoredSecrets.Get(ctx, "agentdeck:test"); err != nil || value != "synthetic-secret" {
+	restored, err := store.OpenReadOnly(ctx, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	credential, err := restored.ProviderCredential(ctx, "synthetic", "default")
+	if err != nil {
+		restored.Close()
+		t.Fatal(err)
+	}
+	secret, err := restored.CredentialSecret(ctx, credential.ID)
+	if err != nil {
+		restored.Close()
+		t.Fatal(err)
+	}
+	value, err := credentialvault.New(target, machineIdentity).Open(ctx, credential.CredentialRef, credentialvault.Sealed{Algorithm: secret.Algorithm, KeyVersion: secret.KeyVersion, KeyID: secret.KeyID, Nonce: secret.Nonce, Ciphertext: secret.Ciphertext})
+	if closeErr := restored.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil || value != "synthetic-secret" {
 		t.Fatalf("restored secret = %q, %v", value, err)
 	}
 
-	activeSecrets = sourceSecrets
 	output.Reset()
 	if err = run([]string{"--state-dir", source, "--format", "json", "doctor", "--full"}, bytes.NewReader(nil), &output); err != nil {
 		t.Fatal(err)
@@ -531,31 +935,91 @@ func TestProviderAddReadsTerminalCredentialWithoutDisclosure(t *testing.T) {
 	}
 	defer terminal.Close()
 
-	secrets := platform.NewMemorySecretStore()
-	oldFactory := newSecretStore
 	oldIsTerminal, oldReadPassword := credentialIsTerminal, credentialReadPassword
-	newSecretStore = func() platform.SecretStore { return secrets }
 	credentialIsTerminal = func(*os.File) bool { return true }
 	credentialReadPassword = func(int) ([]byte, error) { return []byte("terminal-secret"), nil }
 	t.Cleanup(func() {
-		newSecretStore = oldFactory
 		credentialIsTerminal, credentialReadPassword = oldIsTerminal, oldReadPassword
 	})
 
 	state := filepath.Join(t.TempDir(), "state")
 	var stdout, stderr bytes.Buffer
-	exit := execute([]string{"--state-dir", state, "provider", "add", "work", "https://example.invalid", "codex-pro", "1", "codex"}, terminal, &stdout, &stderr)
+	exit := execute([]string{"--state-dir", state, "provider", "add", "work", "--endpoint", "https://example.invalid", "--clients", "codex", "--credential", "pro"}, terminal, &stdout, &stderr)
 	if exit != 0 {
 		t.Fatalf("provider add exit = %d, stdout=%q stderr=%q", exit, stdout.String(), stderr.String())
 	}
 	if strings.Contains(stdout.String(), "terminal-secret") || strings.Contains(stderr.String(), "terminal-secret") {
 		t.Fatalf("credential disclosed: stdout=%q stderr=%q", stdout.String(), stderr.String())
 	}
-	if stderr.String() != "Credential for codex-pro: \n" {
+	if stderr.String() != "Credential for work-pro-ref: \n" {
 		t.Fatalf("credential prompt = %q", stderr.String())
 	}
-	if value, getErr := secrets.Get(context.Background(), "codex-pro"); getErr != nil || value != "terminal-secret" {
+	database, getErr := store.OpenReadOnly(context.Background(), state)
+	if getErr != nil {
+		t.Fatal(getErr)
+	}
+	credential, getErr := database.ProviderCredential(context.Background(), "work", "pro")
+	if getErr != nil {
+		database.Close()
+		t.Fatal(getErr)
+	}
+	secret, getErr := database.CredentialSecret(context.Background(), credential.ID)
+	if getErr != nil {
+		database.Close()
+		t.Fatal(getErr)
+	}
+	value, getErr := credentialvault.New(state, machineIdentity).Open(context.Background(), credential.CredentialRef, credentialvault.Sealed{Algorithm: secret.Algorithm, KeyVersion: secret.KeyVersion, KeyID: secret.KeyID, Nonce: secret.Nonce, Ciphertext: secret.Ciphertext})
+	if closeErr := database.Close(); getErr == nil {
+		getErr = closeErr
+	}
+	if getErr != nil || value != "terminal-secret" {
 		t.Fatalf("stored credential = %q, %v", value, getErr)
+	}
+}
+
+func TestProviderAddExistingProviderAddsCredentialAndIdenticalRetryDoesNotPrompt(t *testing.T) {
+	state := filepath.Join(t.TempDir(), "state")
+
+	runAdd := func(stdin string, args ...string) (string, string, int) {
+		t.Helper()
+		var stdout, stderr bytes.Buffer
+		exit := execute(append([]string{"--state-dir", state, "provider", "add", "sssaicode"}, args...), bytes.NewBufferString(stdin), &stdout, &stderr)
+		return stdout.String(), stderr.String(), exit
+	}
+	if _, stderr, exit := runAdd("claude-secret\n", "--credential", "claude", "--endpoint", "https://claude.example/v1", "--clients", "claude"); exit != 0 {
+		t.Fatalf("initial add exit=%d stderr=%s", exit, stderr)
+	}
+	if _, stderr, exit := runAdd("codex-secret\n", "--credential", "codex", "--endpoint", "https://codex.example/api/v1", "--clients", "codex", "--multiplier", "0.4"); exit != 0 {
+		t.Fatalf("credential add exit=%d stderr=%s", exit, stderr)
+	}
+	if _, stderr, exit := runAdd("", "--credential", "codex", "--endpoint", "https://codex.example/api", "--clients", "codex", "--multiplier", "0.4"); exit != 0 || stderr != "" {
+		t.Fatalf("idempotent add exit=%d stderr=%q", exit, stderr)
+	}
+
+	var list bytes.Buffer
+	if err := run([]string{"--state-dir", state, "credential", "list"}, bytes.NewReader(nil), &list); err != nil {
+		t.Fatal(err)
+	}
+	text := list.String()
+	for _, want := range []string{"PROVIDER", "ENDPOINT", "MULTIPLIER", "sssaicode", "sssaicode-codex-ref", "https://codex.example/api", "0.400000000000"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("credential list missing %q:\n%s", want, text)
+		}
+	}
+	root := newRootCommand(bytes.NewReader(nil), &bytes.Buffer{})
+	providerAdd, _, err := root.Find([]string{"provider", "add"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if providerAdd.Flags().Lookup("credential-ref") != nil || providerAdd.Flags().Lookup("credential-clients") != nil {
+		t.Fatalf("legacy credential flags remain in provider add")
+	}
+	credentialFlag := providerAdd.Flags().Lookup("credential")
+	if credentialFlag == nil || !strings.Contains(credentialFlag.Usage, "shorthand, not a reference") {
+		t.Fatalf("provider add --credential help does not identify the shorthand: %#v", credentialFlag)
+	}
+	if !strings.Contains(providerAdd.Long, "--credential is the short name") || !strings.Contains(providerAdd.Long, "<provider>-<credential>-ref") {
+		t.Fatalf("provider add help does not explain shorthand/reference generation: %q", providerAdd.Long)
 	}
 }
 
@@ -626,13 +1090,13 @@ func TestSessionCommandsPreserveSourcesAndDoNotExposeProhibitedContent(t *testin
 	if output := runSession("list"); !bytes.Contains([]byte(output), []byte(`"session_id":"s"`)) {
 		t.Fatalf("session list omitted metadata: %s", output)
 	}
-	for _, args := range [][]string{{"search", "approved"}, {"show", "codex", "s"}} {
+	for _, args := range [][]string{{"search", "approved"}, {"show", "s", "--client", "codex"}} {
 		if output := runSession(args...); !bytes.Contains([]byte(output), []byte("approved")) {
 			t.Fatalf("session %v omitted approved content: %s", args, output)
 		}
 	}
 	runSession("search", `"forbidden-secret"`)
-	runSession("exclude", "session", "s")
+	runSession("exclude", "--kind", "session", "--value", "s")
 	if output := runSession("search", "approved"); bytes.Contains([]byte(output), []byte("approved")) {
 		t.Fatalf("excluded session remained visible: %s", output)
 	}
@@ -646,5 +1110,215 @@ func TestSessionCommandsPreserveSourcesAndDoNotExposeProhibitedContent(t *testin
 	runSession("purge-index")
 	if _, err := os.Stat(filepath.Join(state, "sessions.sqlite3")); !os.IsNotExist(err) {
 		t.Fatalf("purge-index left database: %v", err)
+	}
+}
+
+func TestSessionShowReportsCrossClientAmbiguityAndClientFlagsValidate(t *testing.T) {
+	ctx := context.Background()
+	state := filepath.Join(t.TempDir(), "state")
+	sessions, err := store.OpenSessions(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, client := range []string{"codex", "claude"} {
+		doc, docErr := session.ApprovedDocument(client, "shared", "user_prompt", client+" visible")
+		if docErr != nil {
+			t.Fatal(docErr)
+		}
+		if docErr = session.ReplaceDocuments(ctx, sessions.DB, client, "shared", []session.Document{doc}); docErr != nil {
+			t.Fatal(docErr)
+		}
+	}
+	if err = sessions.Close(); err != nil {
+		t.Fatal(err)
+	}
+	oldHome := userHomeDir
+	userHomeDir = func() (string, error) { return t.TempDir(), nil }
+	t.Cleanup(func() { userHomeDir = oldHome })
+	var stdout, stderr bytes.Buffer
+	if exit := execute([]string{"--state-dir", state, "--format", "json", "session", "show", "shared"}, bytes.NewReader(nil), &stdout, &stderr); exit != 2 {
+		t.Fatalf("ambiguous show exit=%d stdout=%s stderr=%s", exit, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "ambiguous") || !strings.Contains(stderr.String(), `"code":"invalid_argument"`) {
+		t.Fatalf("ambiguous error = %s", stderr.String())
+	}
+	for _, args := range [][]string{
+		{"session", "list", "--client", "invalid"},
+		{"session", "search", "visible", "--client", "invalid"},
+		{"session", "show", "shared", "--client", "invalid"},
+		{"credential", "list", "--client", "invalid"},
+	} {
+		stdout.Reset()
+		stderr.Reset()
+		full := append([]string{"--state-dir", state, "--format", "json"}, args...)
+		if exit := execute(full, bytes.NewReader(nil), &stdout, &stderr); exit != 2 || !strings.Contains(stderr.String(), `"code":"invalid_argument"`) {
+			t.Fatalf("invalid client %v exit=%d stderr=%s", args, exit, stderr.String())
+		}
+	}
+}
+
+func TestSessionPurgeClearsOnlySessionCheckpointAndWatchBootstraps(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	state, home := filepath.Join(root, "state"), filepath.Join(root, "home")
+	core, err := store.Open(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for domain, value := range map[string]string{"usage": "usage-stable", "session": "session-stale", "extension": "extension-stable"} {
+		if err = core.SetSetting(ctx, "watch.fingerprint."+domain, value); err != nil {
+			core.Close()
+			t.Fatal(err)
+		}
+	}
+	if err = core.Close(); err != nil {
+		t.Fatal(err)
+	}
+	source := filepath.Join(home, ".codex", "sessions", "bootstrap.jsonl")
+	if err = os.MkdirAll(filepath.Dir(source), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(source, []byte("{\"type\":\"visible_user_prompt\",\"session_id\":\"bootstrap\",\"payload\":{\"text\":\"rebuilt\"}}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	oldHome := userHomeDir
+	userHomeDir = func() (string, error) { return home, nil }
+	t.Cleanup(func() { userHomeDir = oldHome })
+	if err = run([]string{"--state-dir", state, "session", "purge-index"}, bytes.NewReader(nil), &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+	core, err = store.OpenReadOnly(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, found, settingErr := core.Setting(ctx, "watch.fingerprint.session"); settingErr != nil || found {
+		core.Close()
+		t.Fatalf("session checkpoint found=%t err=%v", found, settingErr)
+	}
+	for _, domain := range []string{"usage", "extension"} {
+		if _, found, settingErr := core.Setting(ctx, "watch.fingerprint."+domain); settingErr != nil || !found {
+			core.Close()
+			t.Fatalf("%s checkpoint found=%t err=%v", domain, found, settingErr)
+		}
+	}
+	if err = core.Close(); err != nil {
+		t.Fatal(err)
+	}
+	watchCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	writer := &cancelAfterLineWriter{cancel: cancel}
+	command := newRootCommand(bytes.NewReader(nil), writer)
+	command.SetContext(watchCtx)
+	command.SetArgs([]string{"--state-dir", state, "--format", "ndjson", "watch", "--domains", "session", "--interval", "10ms"})
+	if err = command.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(writer.String(), `"domain":"session"`) {
+		t.Fatalf("watch output = %s", writer.String())
+	}
+	var output bytes.Buffer
+	if err = run([]string{"--state-dir", state, "--format", "json", "session", "show", "bootstrap"}, bytes.NewReader(nil), &output); err != nil || !strings.Contains(output.String(), "rebuilt") {
+		t.Fatalf("bootstrapped session = %s, %v", output.String(), err)
+	}
+}
+
+func TestSessionPurgeFailureOrdering(t *testing.T) {
+	for _, stage := range []string{"core open", "checkpoint delete", "index delete"} {
+		t.Run(stage, func(t *testing.T) {
+			ctx := context.Background()
+			state := filepath.Join(t.TempDir(), "state")
+			core, err := store.Open(ctx, state)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = core.SetSetting(ctx, "watch.fingerprint.session", "stale"); err != nil {
+				core.Close()
+				t.Fatal(err)
+			}
+			if err = core.SetSetting(ctx, "watch.fingerprint.usage", "stable"); err != nil {
+				core.Close()
+				t.Fatal(err)
+			}
+			if err = core.Close(); err != nil {
+				t.Fatal(err)
+			}
+			index := filepath.Join(state, "sessions.sqlite3")
+			if err = os.WriteFile(index, []byte("rebuildable"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+
+			openCore := store.Open
+			remove := os.Remove
+			switch stage {
+			case "core open":
+				openCore = func(context.Context, string) (*store.Store, error) {
+					return nil, errors.New("injected core open failure")
+				}
+			case "checkpoint delete":
+				openCore = func(ctx context.Context, state string) (*store.Store, error) {
+					database, openErr := store.Open(ctx, state)
+					if openErr != nil {
+						return nil, openErr
+					}
+					if _, triggerErr := database.Exec(ctx, `CREATE TRIGGER fail_checkpoint_delete BEFORE DELETE ON settings WHEN OLD.key='watch.fingerprint.session' BEGIN SELECT RAISE(FAIL,'injected checkpoint delete failure'); END`); triggerErr != nil {
+						database.Close()
+						return nil, triggerErr
+					}
+					return database, nil
+				}
+			case "index delete":
+				remove = func(path string) error {
+					if path == index {
+						return errors.New("injected index delete failure")
+					}
+					return os.Remove(path)
+				}
+			}
+			if err = purgeSessionIndex(ctx, state, openCore, remove); err == nil {
+				t.Fatal("purge unexpectedly succeeded")
+			}
+			if _, statErr := os.Stat(index); statErr != nil {
+				t.Fatalf("index should remain after %s failure: %v", stage, statErr)
+			}
+			core, err = store.OpenReadOnly(ctx, state)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, sessionFound, sessionErr := core.Setting(ctx, "watch.fingerprint.session")
+			_, usageFound, usageErr := core.Setting(ctx, "watch.fingerprint.usage")
+			core.Close()
+			if sessionErr != nil || usageErr != nil || !usageFound {
+				t.Fatalf("checkpoint state session=%t usage=%t errors=%v/%v", sessionFound, usageFound, sessionErr, usageErr)
+			}
+			if stage == "index delete" && sessionFound {
+				t.Fatal("session checkpoint survived index deletion failure")
+			}
+			if stage != "index delete" && !sessionFound {
+				t.Fatal("session checkpoint changed before index deletion stage")
+			}
+		})
+	}
+}
+
+func TestUsageOnlyWatchNeverCreatesSessionStore(t *testing.T) {
+	root := t.TempDir()
+	state, home := filepath.Join(root, "state"), filepath.Join(root, "home")
+	if err := os.MkdirAll(home, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	oldHome := userHomeDir
+	userHomeDir = func() (string, error) { return home, nil }
+	t.Cleanup(func() { userHomeDir = oldHome })
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	writer := &cancelAfterLineWriter{cancel: cancel}
+	command := newRootCommand(bytes.NewReader(nil), writer)
+	command.SetContext(ctx)
+	command.SetArgs([]string{"--state-dir", state, "--format", "ndjson", "watch", "--domains", "usage", "--interval", "10ms"})
+	if err := command.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(state, "sessions.sqlite3")); !os.IsNotExist(err) {
+		t.Fatalf("usage-only watch created session store: %v", err)
 	}
 }

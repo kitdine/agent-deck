@@ -4,11 +4,14 @@ package doctor
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"time"
 
+	"github.com/kitdine/agent-deck/internal/credentialvault"
 	"github.com/kitdine/agent-deck/internal/extension"
 	"github.com/kitdine/agent-deck/internal/platform"
 	"github.com/kitdine/agent-deck/internal/provider"
@@ -27,21 +30,24 @@ type Check struct {
 
 type Report struct {
 	Mode     string  `json:"mode"`
+	Status   string  `json:"status"`
 	Healthy  bool    `json:"healthy"`
 	Checks   []Check `json:"checks"`
 	Problems int     `json:"problems"`
+	Warnings int     `json:"warnings"`
+	Errors   int     `json:"errors"`
 }
 
 type Service struct {
 	StateRoot string
 	Home      string
 	Workdir   string
-	Secrets   platform.SecretStore
+	Vault     provider.CredentialVault
 	Now       func() time.Time
 }
 
 func (s Service) Check(ctx context.Context, full bool) (Report, error) {
-	report := Report{Mode: map[bool]string{false: "quick", true: "full"}[full], Healthy: true, Checks: []Check{}}
+	report := Report{Mode: map[bool]string{false: "quick", true: "full"}[full], Status: "healthy", Healthy: true, Checks: []Check{}}
 	stateInfo, err := os.Stat(s.StateRoot)
 	if errors.Is(err, fs.ErrNotExist) {
 		report.add(Check{Name: "state", Status: "warning", Code: "state_missing"})
@@ -89,10 +95,24 @@ func (s Service) Check(ctx context.Context, full bool) (Report, error) {
 	}
 	if len(operations) > 0 {
 		report.add(Check{Name: "pending_operations", Status: "warning", Code: "pending_operations", Count: len(operations), Recovery: "agentdeck provider recover"})
+		providerUseDiagnostics := map[string]int{}
+		for _, operation := range operations {
+			if code := provider.DiagnoseProviderUseOperation(operation); code != "" {
+				providerUseDiagnostics[code]++
+			}
+		}
+		codes := make([]string, 0, len(providerUseDiagnostics))
+		for code := range providerUseDiagnostics {
+			codes = append(codes, code)
+		}
+		sort.Strings(codes)
+		for _, code := range codes {
+			report.add(Check{Name: "provider_operation_state", Status: "warning", Code: code, Count: providerUseDiagnostics[code], Recovery: "agentdeck provider recover"})
+		}
 	} else {
 		report.add(Check{Name: "pending_operations", Status: "ok"})
 	}
-	if err = s.checkProviders(ctx, database, &report); err != nil {
+	if err = s.checkProviders(ctx, database, &report, full); err != nil {
 		return Report{}, err
 	}
 	if err = s.checkUsage(ctx, database, &report); err != nil {
@@ -150,22 +170,130 @@ func (s Service) checkLock(report *Report) {
 	report.add(Check{Name: "state_lock", Status: "warning", Code: "state_busy"})
 }
 
-func (s Service) checkProviders(ctx context.Context, database *store.Store, report *Report) error {
-	service := provider.Service{Store: database, Secrets: s.Secrets}
-	statuses, err := service.List(ctx)
+func (s Service) checkProviders(ctx context.Context, database *store.Store, report *Report, full bool) error {
+	service := provider.Service{Store: database, Vault: s.Vault}
+	statuses, err := service.Status(ctx)
 	if err != nil {
 		return err
 	}
 	missing := 0
 	for _, status := range statuses {
-		if !status.Credential.Present {
+		if status.Definition.BuiltIn {
+			continue
+		}
+		if len(status.Credentials) == 0 {
 			missing++
+			continue
+		}
+		for _, credential := range status.Credentials {
+			if !credential.Present {
+				missing++
+			}
 		}
 	}
 	if missing > 0 {
-		report.add(Check{Name: "provider_credentials", Status: "error", Code: "credential_missing", Count: missing, Recovery: "agentdeck provider credential add"})
+		report.add(Check{Name: "provider_credentials", Status: "error", Code: "credential_missing", Count: missing, Recovery: "agentdeck credential add"})
 	} else {
 		report.add(Check{Name: "provider_credentials", Status: "ok"})
+	}
+	credentials, listErr := database.ListProviderCredentials(ctx, "")
+	if listErr != nil {
+		return listErr
+	}
+	type ownedSecret struct {
+		providerName   string
+		credentialName string
+		reference      string
+		sealed         credentialvault.Sealed
+		loaded         bool
+		problemCode    string
+	}
+	owned := make([]ownedSecret, 0, len(credentials))
+	quickProblems := credentialProblems{}
+	var orphanSecrets int
+	if orphanErr := database.DB.QueryRowContext(ctx, `SELECT count(*) FROM credential_secrets cs LEFT JOIN provider_credentials pc ON pc.id=cs.credential_id WHERE pc.id IS NULL`).Scan(&orphanSecrets); orphanErr != nil {
+		return orphanErr
+	}
+	if orphanSecrets > 0 {
+		quickProblems.add(credentialvault.ErrCiphertextInvalid.Error(), "", orphanSecrets)
+	}
+	secretRows := orphanSecrets
+	for _, credential := range credentials {
+		if !credential.SecretPresent {
+			continue
+		}
+		secretRows++
+		item := ownedSecret{providerName: credential.ProviderName, credentialName: credential.Name, reference: credential.CredentialRef}
+		secret, secretErr := database.CredentialSecret(ctx, credential.ID)
+		if secretErr != nil {
+			item.problemCode = credentialvault.ErrCiphertextInvalid.Error()
+			owned = append(owned, item)
+			continue
+		}
+		item.loaded = true
+		item.sealed = credentialvault.Sealed{Algorithm: secret.Algorithm, KeyVersion: secret.KeyVersion, KeyID: secret.KeyID, Nonce: secret.Nonce, Ciphertext: secret.Ciphertext}
+		switch {
+		case item.sealed.Algorithm != credentialvault.AlgorithmAES256GCM || item.sealed.KeyVersion != credentialvault.KeyVersion:
+			item.problemCode = credentialvault.ErrKeyVersionUnsupported.Error()
+		case len(item.sealed.Nonce) != 12 || len(item.sealed.Ciphertext) < 16:
+			item.problemCode = credentialvault.ErrCiphertextInvalid.Error()
+		}
+		owned = append(owned, item)
+	}
+	authCandidates := make([]ownedSecret, 0, len(owned))
+	keyReady, rotationReady := false, false
+	var keyID string
+	if secretRows > 0 {
+		if s.Vault == nil {
+			quickProblems.add(credentialvault.ErrKeyMissing.Error(), "", secretRows)
+		} else {
+			var inspectErr error
+			keyID, inspectErr = s.Vault.InspectKey(ctx)
+			if inspectErr != nil {
+				quickProblems.add(credentialErrorCode(inspectErr), "", secretRows)
+			} else {
+				keyReady = true
+				keyIDs, keyIDsErr := database.CredentialSecretKeyIDs(ctx)
+				if keyIDsErr != nil {
+					return keyIDsErr
+				}
+				rotationReady = len(keyIDs) == 1 && keyIDs[0] != "" && keyIDs[0] == keyID
+			}
+		}
+	}
+	for _, item := range owned {
+		if item.problemCode != "" {
+			recovery := ""
+			if item.problemCode == credentialvault.ErrCiphertextInvalid.Error() && rotationReady {
+				recovery = fmt.Sprintf("agentdeck credential update %s --credential %s --rotate", item.providerName, item.credentialName)
+			}
+			quickProblems.add(item.problemCode, recovery, 1)
+		}
+		if !keyReady || !item.loaded {
+			continue
+		}
+		if item.sealed.KeyID == "" || item.sealed.KeyID != keyID {
+			quickProblems.add(credentialvault.ErrKeyMachineMismatch.Error(), "", 1)
+			continue
+		}
+		if item.problemCode == "" {
+			authCandidates = append(authCandidates, item)
+		}
+	}
+	addCredentialProblems(report, "provider_credential_key", quickProblems)
+	if full && keyReady && len(authCandidates) > 0 {
+		authProblems := credentialProblems{}
+		for _, item := range authCandidates {
+			if _, openErr := s.Vault.Open(ctx, item.reference, item.sealed); openErr != nil {
+				code := credentialErrorCode(openErr)
+				recovery := ""
+				if code == credentialvault.ErrCiphertextInvalid.Error() && rotationReady {
+					recovery = fmt.Sprintf("agentdeck credential update %s --credential %s --rotate", item.providerName, item.credentialName)
+				}
+				authProblems.add(code, recovery, 1)
+			}
+		}
+		addCredentialProblems(report, "provider_credential_authentication", authProblems)
 	}
 	drift, err := service.ConfigDrift(ctx, s.Home)
 	if err != nil {
@@ -177,6 +305,53 @@ func (s Service) checkProviders(ctx context.Context, database *store.Store, repo
 		report.add(Check{Name: "provider_configuration", Status: "ok"})
 	}
 	return nil
+}
+
+func credentialErrorCode(err error) string {
+	for _, target := range []error{
+		credentialvault.ErrKeyMissing,
+		credentialvault.ErrKeyPermissions,
+		credentialvault.ErrKeyMachineMismatch,
+		credentialvault.ErrKeyVersionUnsupported,
+		credentialvault.ErrCiphertextInvalid,
+		credentialvault.ErrMachineIdentityMissing,
+	} {
+		if errors.Is(err, target) {
+			return target.Error()
+		}
+	}
+	return credentialvault.ErrCiphertextInvalid.Error()
+}
+
+type credentialProblem struct {
+	code     string
+	recovery string
+}
+
+type credentialProblems map[credentialProblem]int
+
+func (problems credentialProblems) add(code, recovery string, count int) {
+	problems[credentialProblem{code: code, recovery: recovery}] += count
+}
+
+func addCredentialProblems(report *Report, name string, problems credentialProblems) {
+	if len(problems) == 0 {
+		report.add(Check{Name: name, Status: "ok"})
+		return
+	}
+	ordered := make([]credentialProblem, 0, len(problems))
+	for problem := range problems {
+		ordered = append(ordered, problem)
+	}
+	sort.Slice(ordered, func(i, j int) bool {
+		if ordered[i].code == ordered[j].code {
+			return ordered[i].recovery < ordered[j].recovery
+		}
+		return ordered[i].code < ordered[j].code
+	})
+	for _, problem := range ordered {
+		report.add(Check{Name: name, Status: "error", Code: problem.code, Count: problems[problem], Recovery: problem.recovery})
+	}
 }
 
 func (s Service) checkUsage(ctx context.Context, database *store.Store, report *Report) error {
@@ -208,7 +383,7 @@ func (s Service) checkUsage(ctx context.Context, database *store.Store, report *
 	}
 	available, _ := prices["available"].(bool)
 	if !available {
-		report.add(Check{Name: "prices", Status: "warning", Code: "price_catalog_missing", Recovery: "agentdeck usage price status"})
+		report.add(Check{Name: "prices", Status: "warning", Code: "price_catalog_missing", Recovery: "agentdeck price status"})
 	} else {
 		report.add(Check{Name: "prices", Status: "ok"})
 	}
@@ -217,12 +392,12 @@ func (s Service) checkUsage(ctx context.Context, database *store.Store, report *
 		return err
 	}
 	if invalidProvenance > 0 {
-		report.add(Check{Name: "price_provenance", Status: "warning", Code: "price_provenance_invalid", Count: invalidProvenance, Recovery: "agentdeck usage price status"})
+		report.add(Check{Name: "price_provenance", Status: "warning", Code: "price_provenance_invalid", Count: invalidProvenance, Recovery: "agentdeck price status"})
 	} else {
 		report.add(Check{Name: "price_provenance", Status: "ok"})
 	}
 	if unpricedModels > 0 {
-		report.add(Check{Name: "unpriced_models", Status: "warning", Code: "unpriced_models", Count: unpricedModels, Recovery: "agentdeck usage price status"})
+		report.add(Check{Name: "unpriced_models", Status: "warning", Code: "unpriced_models", Count: unpricedModels, Recovery: "agentdeck price status"})
 	} else {
 		report.add(Check{Name: "unpriced_models", Status: "ok"})
 	}
@@ -241,5 +416,14 @@ func (r *Report) add(check Check) {
 	if check.Status != "ok" {
 		r.Healthy = false
 		r.Problems++
+		if check.Status == "error" {
+			r.Errors++
+			r.Status = "unhealthy"
+		} else {
+			r.Warnings++
+			if r.Status != "unhealthy" {
+				r.Status = "degraded"
+			}
+		}
 	}
 }

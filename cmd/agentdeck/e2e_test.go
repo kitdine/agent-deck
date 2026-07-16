@@ -12,14 +12,18 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/kitdine/agent-deck/internal/credentialvault"
 	"github.com/kitdine/agent-deck/internal/output"
-	"github.com/kitdine/agent-deck/internal/platform"
 	"github.com/kitdine/agent-deck/internal/store"
 	"github.com/kitdine/agent-deck/internal/usage"
 )
 
 func TestIsolatedEndToEndFlow(t *testing.T) {
+	previousProcesses := runClientProcesses
+	runClientProcesses = func(string) ([]int, error) { return nil, nil }
+	t.Cleanup(func() { runClientProcesses = previousProcesses })
 	fixture := loadGUIContract(t)
 	observed := make(map[string]guiCommandContract, len(fixture.Contracts))
 	root := t.TempDir()
@@ -46,16 +50,13 @@ func TestIsolatedEndToEndFlow(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	oldHome, oldSecrets := userHomeDir, newSecretStore
+	oldHome := userHomeDir
 	oldPriceHTTPClient := usage.PriceHTTPClient
 	userHomeDir = func() (string, error) { return home, nil }
-	sourceSecrets, restoredSecrets := platform.NewMemorySecretStore(), platform.NewMemorySecretStore()
-	activeSecrets := platform.SecretStore(sourceSecrets)
-	newSecretStore = func() platform.SecretStore { return activeSecrets }
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Setenv("AGENTDECK_PHASE7_LOG", log)
 	t.Cleanup(func() {
-		userHomeDir, newSecretStore = oldHome, oldSecrets
+		userHomeDir = oldHome
 		usage.PriceHTTPClient = oldPriceHTTPClient
 	})
 	runJSON := func(command string, stdin string, args ...string) []byte {
@@ -70,17 +71,21 @@ func TestIsolatedEndToEndFlow(t *testing.T) {
 		observed[command] = contract
 		return stdout.Bytes()
 	}
-	runJSON("provider.add", "phase7-e2e-secret\n", "provider", "add", "phase7", "https://example.invalid", "phase7:e2e", "1", "codex")
-	runJSON("provider.add", "disposable-secret\n", "provider", "add", "disposable", "https://example.invalid", "phase7:disposable", "1", "codex")
-	runJSON("provider.remove", "", "provider", "remove", "disposable", "phase7:disposable")
-	runJSON("provider.list", "", "provider", "list")
-	runJSON("provider.status", "", "provider", "status")
-	runJSON("provider.show", "", "provider", "show", "phase7")
-	runJSON("provider.credential.list", "", "provider", "credential", "list")
-	runJSON("provider.credential.update", "phase7-e2e-secret\n", "provider", "credential", "update", "phase7:e2e")
-	runJSON("provider.credential.add", "temporary-secret\n", "provider", "credential", "add", "phase7:temporary")
-	runJSON("provider.credential.remove", "", "provider", "credential", "remove", "phase7:temporary")
-	runJSON("provider.edit", "", "provider", "edit", "phase7", "https://example.invalid", "phase7:e2e", "1", "codex")
+	runJSON("provider.add", "phase7-e2e-secret\n", "provider", "add", "phase7", "--endpoint", "https://example.invalid", "--clients", "codex")
+	runJSON("provider.add", "disposable-secret\n", "provider", "add", "disposable", "--endpoint", "https://example.invalid", "--clients", "codex")
+	runJSON("provider.remove", "", "provider", "remove", "disposable")
+	providerList := runJSON("provider.list", "", "provider", "list")
+	assertProviderDefinitionsExcludeCredentialMetadata(t, providerList)
+	providerStatus := runJSON("provider.status", "", "provider", "status")
+	assertProviderDefinitionsExcludeCredentialMetadata(t, providerStatus)
+	providerShow := runJSON("provider.show", "", "provider", "show", "phase7")
+	assertProviderDefinitionsExcludeCredentialMetadata(t, providerShow)
+	runJSON("credential.list", "", "credential", "list")
+	runJSON("credential.show", "", "credential", "show", "phase7")
+	runJSON("credential.update", "phase7-e2e-secret\n", "credential", "update", "phase7", "--rotate")
+	runJSON("credential.add", "temporary-secret\n", "credential", "add", "phase7", "--credential", "temporary", "--endpoint", "https://example.invalid", "--clients", "codex")
+	runJSON("credential.remove", "", "credential", "remove", "phase7", "--credential", "temporary")
+	runJSON("provider.update", "", "provider", "update", "phase7", "--multiplier", "1")
 	pendingStore, err := store.Open(context.Background(), state)
 	if err != nil {
 		t.Fatal(err)
@@ -93,7 +98,7 @@ func TestIsolatedEndToEndFlow(t *testing.T) {
 		t.Fatal(err)
 	}
 	runJSON("provider.recover", "", "provider", "recover")
-	runJSON("provider.use", "", "provider", "use", "phase7", "codex", config, filepath.Join(root, "config.backup"))
+	runJSON("provider.use", "", "provider", "use", "phase7")
 	claudeConfig := filepath.Join(home, ".claude", "settings.json")
 	if err := os.MkdirAll(filepath.Dir(claudeConfig), 0700); err != nil {
 		t.Fatal(err)
@@ -101,8 +106,8 @@ func TestIsolatedEndToEndFlow(t *testing.T) {
 	if err := os.WriteFile(claudeConfig, []byte(`{}`), 0600); err != nil {
 		t.Fatal(err)
 	}
-	runJSON("provider.add", "phase7-claude-secret\n", "provider", "add", "phase7-claude", "https://example.invalid", "phase7:claude", "1", "claude")
-	runJSON("provider.use", "", "provider", "use", "phase7-claude", "claude", claudeConfig, filepath.Join(root, "claude-config.backup"))
+	runJSON("provider.add", "phase7-claude-secret\n", "provider", "add", "phase7-claude", "--endpoint", "https://example.invalid", "--clients", "claude")
+	runJSON("provider.use", "", "provider", "use", "phase7-claude")
 	runResult := runJSON("run.codex", "", "run", "codex", "--", "phase7")
 	var runEnvelope struct {
 		Data struct {
@@ -119,24 +124,23 @@ func TestIsolatedEndToEndFlow(t *testing.T) {
 	runJSON("usage.sessions", "", "usage", "sessions")
 	runJSON("usage.diagnose", "", "usage", "diagnose")
 	commit := "abcdefabcdefabcdefabcdefabcdefabcdefabcd"
-	url := "https://raw.githubusercontent.com/BerriAI/litellm/" + commit + "/model_prices_and_context_window.json"
 	usage.PriceHTTPClient = func() *http.Client {
 		return &http.Client{Transport: contractRoundTrip(func(*http.Request) (*http.Response, error) {
 			body := `{"gpt":{"litellm_provider":"openai","input_cost_per_token":0.000002,"output_cost_per_token":0.00001,"cache_read_input_token_cost":0.0000002}}`
 			return &http.Response{StatusCode: http.StatusOK, Status: "200 OK", Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
 		})}
 	}
-	runJSON("usage.price.update", "", "usage", "price", "update", "--url", url, "--commit", commit)
+	runJSON("price.update", "", "price", "update", "--commit", commit)
 	overridePath := filepath.Join(root, "official-overrides.json")
 	if err := os.WriteFile(overridePath, []byte(`[{"model":"gpt-5.4","provider":"openai","source_url":"https://example.invalid/pricing","effective_from":"2026-07-14T00:00:00Z","prices":{"output":"9"}}]`), 0600); err != nil {
 		t.Fatal(err)
 	}
-	runJSON("usage.price.override", "", "usage", "price", "override", "--file", overridePath)
-	runJSON("usage.price.history", "", "usage", "price", "history")
-	runJSON("usage.price.status", "", "usage", "price", "status")
+	runJSON("price.override", "", "price", "override", "--file", overridePath)
+	runJSON("price.history", "", "price", "history")
+	runJSON("price.status", "", "price", "status")
 	runJSON("session.scan", "", "session", "scan")
 	runJSON("session.list", "", "session", "list")
-	runJSON("session.show", "", "session", "show", "codex", "phase7-run")
+	runJSON("session.show", "", "session", "show", "phase7-run")
 	search := runJSON("session.search", "", "session", "search", "phase7")
 	if !bytes.Contains(search, []byte("phase7 visible prompt")) {
 		t.Fatalf("session search did not return approved synthetic content: %s", search)
@@ -162,7 +166,6 @@ func TestIsolatedEndToEndFlow(t *testing.T) {
 	runJSON("backup.inspect", "passphrase\n", "backup", "inspect", archive)
 	runJSON("doctor", "", "doctor", "--full")
 	runJSON("version", "", "version")
-	activeSecrets = restoredSecrets
 	var restoredOutput bytes.Buffer
 	if err := run([]string{"--state-dir", restoredState, "--format", "json", "backup", "restore", archive}, bytes.NewBufferString("passphrase\n"), &restoredOutput); err != nil {
 		t.Fatal(err)
@@ -171,7 +174,25 @@ func TestIsolatedEndToEndFlow(t *testing.T) {
 	restoreContract := observed["backup.restore"]
 	restoreContract.Success = jsonSchema(t, restoredOutput.Bytes())
 	observed["backup.restore"] = restoreContract
-	if value, err := restoredSecrets.Get(context.Background(), "phase7:e2e"); err != nil || value != "phase7-e2e-secret" {
+	restoredCredentials, err := store.OpenReadOnly(context.Background(), restoredState)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restoredCredential, err := restoredCredentials.ProviderCredential(context.Background(), "phase7", "default")
+	if err != nil {
+		restoredCredentials.Close()
+		t.Fatal(err)
+	}
+	restoredSecret, err := restoredCredentials.CredentialSecret(context.Background(), restoredCredential.ID)
+	if err != nil {
+		restoredCredentials.Close()
+		t.Fatal(err)
+	}
+	value, err := credentialvault.New(restoredState, machineIdentity).Open(context.Background(), restoredCredential.CredentialRef, credentialvault.Sealed{Algorithm: restoredSecret.Algorithm, KeyVersion: restoredSecret.KeyVersion, KeyID: restoredSecret.KeyID, Nonce: restoredSecret.Nonce, Ciphertext: restoredSecret.Ciphertext})
+	if closeErr := restoredCredentials.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil || value != "phase7-e2e-secret" {
 		t.Fatalf("restored synthetic credential = %q, %v", value, err)
 	}
 	source, err := store.OpenReadOnly(context.Background(), state)
@@ -200,7 +221,7 @@ func TestIsolatedEndToEndFlow(t *testing.T) {
 	if _, err = os.Stat(filepath.Join(restoredState, "sessions.sqlite3")); !os.IsNotExist(err) {
 		t.Fatalf("default restore sessions database = %v", err)
 	}
-	runJSON("session.exclude", "", "session", "exclude", "session", "phase7-run")
+	runJSON("session.exclude", "", "session", "exclude", "--kind", "session", "--value", "phase7-run")
 	runJSON("session.rebuild", "", "session", "rebuild")
 	runJSON("session.purge-index", "", "session", "purge-index")
 	watchSchema := runWatchCommandSchema(t, state)
@@ -208,10 +229,58 @@ func TestIsolatedEndToEndFlow(t *testing.T) {
 	watchContract.Success = watchSchema
 	observed["watch"] = watchContract
 	captureCommandErrorContracts(t, state, observed)
+	if os.Getenv("UPDATE_AGENTDECK_GOLDEN") == "1" {
+		fixture.LeafCommands = leafCommandPaths(newRootCommand(bytes.NewReader(nil), &bytes.Buffer{}))
+		fixture.Contracts = observed
+		encoded, err := json.MarshalIndent(fixture, "", "  ")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = os.WriteFile(filepath.Join("testdata", "phase7", "gui-json-contract.json"), append(encoded, '\n'), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
 	assertCommandContracts(t, fixture.Contracts, observed)
 	for _, contents := range [][]byte{search, restoredOutput.Bytes()} {
 		if bytes.Contains(contents, []byte("phase7-e2e-secret")) {
 			t.Fatal("end-to-end output exposed credential")
+		}
+	}
+}
+
+func assertProviderDefinitionsExcludeCredentialMetadata(t *testing.T, encoded []byte) {
+	t.Helper()
+	var envelope struct {
+		Data json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(encoded, &envelope); err != nil {
+		t.Fatal(err)
+	}
+	var items []map[string]json.RawMessage
+	if len(envelope.Data) > 0 && envelope.Data[0] == '[' {
+		if err := json.Unmarshal(envelope.Data, &items); err != nil {
+			t.Fatal(err)
+		}
+	} else {
+		var item map[string]json.RawMessage
+		if err := json.Unmarshal(envelope.Data, &item); err != nil {
+			t.Fatal(err)
+		}
+		items = []map[string]json.RawMessage{item}
+	}
+	for _, item := range items {
+		if _, exists := item["credential"]; exists {
+			t.Fatalf("provider status contains deprecated singular credential field: %s", encoded)
+		}
+		var definition map[string]json.RawMessage
+		if err := json.Unmarshal(item["definition"], &definition); err != nil {
+			t.Fatal(err)
+		}
+		for _, field := range []string{"credential_ref", "endpoint", "multiplier", "credentials"} {
+			if _, exists := definition[field]; exists {
+				t.Fatalf("provider definition contains credential-owned field %q: %s", field, encoded)
+			}
 		}
 	}
 }
@@ -231,12 +300,12 @@ func (w *cancelAfterLineWriter) Write(data []byte) (int, error) {
 
 func runWatchCommandSchema(t *testing.T, state string) any {
 	t.Helper()
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	writer := &cancelAfterLineWriter{cancel: cancel}
 	root := newRootCommand(bytes.NewReader(nil), writer)
 	root.SetContext(ctx)
-	root.SetArgs([]string{"--state-dir", state, "--format", "ndjson", "watch", "--interval", "1h"})
+	root.SetArgs([]string{"--state-dir", state, "--format", "ndjson", "watch", "--interval", "10ms"})
 	if err := root.Execute(); err != nil {
 		t.Fatalf("watch command: %v", err)
 	}
@@ -369,20 +438,28 @@ func assertCommandContracts(t *testing.T, expected, actual map[string]guiCommand
 
 func TestProviderRemoveGolden(t *testing.T) {
 	state := filepath.Join(t.TempDir(), "state")
-	secrets := platform.NewMemorySecretStore()
-	oldSecrets := newSecretStore
-	newSecretStore = func() platform.SecretStore { return secrets }
-	t.Cleanup(func() { newSecretStore = oldSecrets })
-	if err := run([]string{"--state-dir", state, "provider", "add", "disposable", "https://example.invalid", "phase7:disposable", "1", "codex"}, bytes.NewBufferString("disposable-secret\n"), &bytes.Buffer{}); err != nil {
+	if err := run([]string{"--state-dir", state, "provider", "add", "disposable", "--endpoint", "https://example.invalid", "--clients", "codex"}, bytes.NewBufferString("disposable-secret\n"), &bytes.Buffer{}); err != nil {
 		t.Fatal(err)
 	}
 	var stdout bytes.Buffer
-	if err := run([]string{"--state-dir", state, "--format", "json", "provider", "remove", "disposable", "phase7:disposable"}, bytes.NewReader(nil), &stdout); err != nil {
+	if err := run([]string{"--state-dir", state, "--format", "json", "provider", "remove", "disposable"}, bytes.NewReader(nil), &stdout); err != nil {
 		t.Fatal(err)
 	}
 	assertJSONEnvelope(t, stdout.Bytes(), "provider.remove")
-	if exists, err := secrets.Exists(context.Background(), "phase7:disposable"); err != nil || exists {
-		t.Fatalf("removed credential exists=%t err=%v", exists, err)
+	database, err := store.OpenReadOnly(context.Background(), state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var secrets int
+	if err = database.DB.QueryRowContext(context.Background(), `SELECT count(*) FROM credential_secrets`).Scan(&secrets); err != nil {
+		database.Close()
+		t.Fatal(err)
+	}
+	if closeErr := database.Close(); closeErr != nil {
+		t.Fatal(closeErr)
+	}
+	if secrets != 0 {
+		t.Fatalf("removed credential ciphertext count = %d", secrets)
 	}
 }
 

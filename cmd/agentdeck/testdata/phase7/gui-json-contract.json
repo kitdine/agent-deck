@@ -22,6 +22,11 @@
     "backup.inspect",
     "backup.list",
     "backup.restore",
+    "credential.add",
+    "credential.list",
+    "credential.remove",
+    "credential.show",
+    "credential.update",
     "doctor",
     "extension.adopt",
     "extension.disable",
@@ -31,17 +36,17 @@
     "extension.release",
     "extension.scan",
     "extension.show",
+    "price.history",
+    "price.override",
+    "price.status",
+    "price.update",
     "provider.add",
-    "provider.credential.add",
-    "provider.credential.list",
-    "provider.credential.remove",
-    "provider.credential.update",
-    "provider.edit",
     "provider.list",
     "provider.recover",
     "provider.remove",
     "provider.show",
     "provider.status",
+    "provider.update",
     "provider.use",
     "run",
     "session.exclude",
@@ -52,10 +57,6 @@
     "session.search",
     "session.show",
     "usage.diagnose",
-    "usage.price.history",
-    "usage.price.override",
-    "usage.price.status",
-    "usage.price.update",
     "usage.rebuild",
     "usage.scan",
     "usage.sessions",
@@ -223,6 +224,170 @@
       "error_code": "invalid_argument",
       "error_command": "backup.restore"
     },
+    "credential.add": {
+      "success_schema": {
+        "command": "string",
+        "data": {
+          "clients": [
+            "string"
+          ],
+          "created_at": "string",
+          "credential_ref": "string",
+          "endpoint": "string",
+          "id": "number",
+          "multiplier": "string",
+          "name": "string",
+          "provider": "string",
+          "updated_at": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "credential.add"
+    },
+    "credential.list": {
+      "success_schema": {
+        "command": "string",
+        "data": [
+          {
+            "clients": [
+              "string"
+            ],
+            "endpoint": "string",
+            "multiplier": "string",
+            "name": "string",
+            "present": "boolean",
+            "provider": "string",
+            "reference": "string"
+          }
+        ],
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "credential.list"
+    },
+    "credential.remove": {
+      "success_schema": {
+        "command": "string",
+        "data": null,
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "credential.remove"
+    },
+    "credential.show": {
+      "success_schema": {
+        "command": "string",
+        "data": {
+          "clients": [
+            "string"
+          ],
+          "endpoint": "string",
+          "multiplier": "string",
+          "name": "string",
+          "present": "boolean",
+          "provider": "string",
+          "reference": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "credential.show"
+    },
+    "credential.update": {
+      "success_schema": {
+        "command": "string",
+        "data": {
+          "clients": [
+            "string"
+          ],
+          "endpoint": "string",
+          "multiplier": "string",
+          "name": "string",
+          "present": "boolean",
+          "provider": "string",
+          "reference": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "credential.update"
+    },
     "doctor": {
       "success_schema": {
         "command": "string",
@@ -245,9 +410,12 @@
               "status": "string"
             }
           ],
+          "errors": "number",
           "healthy": "boolean",
           "mode": "string",
-          "problems": "number"
+          "problems": "number",
+          "status": "string",
+          "warnings": "number"
         },
         "generated_at": "string",
         "partial": "boolean",
@@ -506,6 +674,126 @@
       "error_code": "invalid_argument",
       "error_command": "extension.show"
     },
+    "price.history": {
+      "success_schema": {
+        "command": "string",
+        "data": [
+          {
+            "content_sha256": "string",
+            "effective_from": "string",
+            "source_kind": "string",
+            "source_url": "string",
+            "version": "string"
+          }
+        ],
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "price.history"
+    },
+    "price.override": {
+      "success_schema": {
+        "command": "string",
+        "data": {
+          "overrides": "number"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "price.override"
+    },
+    "price.status": {
+      "success_schema": {
+        "command": "string",
+        "data": {
+          "aggregated_reference": "boolean",
+          "available": "boolean",
+          "commit_sha": "string",
+          "content_sha256": "string",
+          "effective_from": "string",
+          "source_kind": "string",
+          "source_url": "string",
+          "version": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "price.status"
+    },
+    "price.update": {
+      "success_schema": {
+        "command": "string",
+        "data": {
+          "commit_sha": "string",
+          "content_sha256": "string",
+          "models": "number",
+          "version": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "price.update"
+    },
     "provider.add": {
       "success_schema": {
         "command": "string",
@@ -518,10 +806,8 @@
             }
           ],
           "created_at": "string",
-          "credential_ref": "string",
-          "endpoint": "string",
+          "credential_count": "number",
           "id": "number",
-          "multiplier": "string",
           "name": "string",
           "updated_at": "string"
         },
@@ -545,173 +831,26 @@
       "error_code": "invalid_argument",
       "error_command": "provider.add"
     },
-    "provider.credential.add": {
-      "success_schema": {
-        "command": "string",
-        "data": null,
-        "generated_at": "string",
-        "partial": "boolean",
-        "schema_version": "number",
-        "warnings": []
-      },
-      "error_schema": {
-        "command": "string",
-        "data": null,
-        "error": {
-          "code": "string",
-          "message": "string"
-        },
-        "generated_at": "string",
-        "partial": "boolean",
-        "schema_version": "number",
-        "warnings": []
-      },
-      "error_code": "invalid_argument",
-      "error_command": "provider.credential.add"
-    },
-    "provider.credential.list": {
-      "success_schema": {
-        "command": "string",
-        "data": [
-          {
-            "credential": {
-              "present": "boolean",
-              "reference": "string"
-            },
-            "definition": {
-              "clients": [
-                {
-                  "client": "string",
-                  "native_model": "string",
-                  "provider_model": "string"
-                }
-              ],
-              "created_at": "string",
-              "credential_ref": "string",
-              "endpoint": "string",
-              "id": "number",
-              "multiplier": "string",
-              "name": "string",
-              "updated_at": "string"
-            }
-          }
-        ],
-        "generated_at": "string",
-        "partial": "boolean",
-        "schema_version": "number",
-        "warnings": []
-      },
-      "error_schema": {
-        "command": "string",
-        "data": null,
-        "error": {
-          "code": "string",
-          "message": "string"
-        },
-        "generated_at": "string",
-        "partial": "boolean",
-        "schema_version": "number",
-        "warnings": []
-      },
-      "error_code": "invalid_argument",
-      "error_command": "provider.credential.list"
-    },
-    "provider.credential.remove": {
-      "success_schema": {
-        "command": "string",
-        "data": null,
-        "generated_at": "string",
-        "partial": "boolean",
-        "schema_version": "number",
-        "warnings": []
-      },
-      "error_schema": {
-        "command": "string",
-        "data": null,
-        "error": {
-          "code": "string",
-          "message": "string"
-        },
-        "generated_at": "string",
-        "partial": "boolean",
-        "schema_version": "number",
-        "warnings": []
-      },
-      "error_code": "invalid_argument",
-      "error_command": "provider.credential.remove"
-    },
-    "provider.credential.update": {
-      "success_schema": {
-        "command": "string",
-        "data": null,
-        "generated_at": "string",
-        "partial": "boolean",
-        "schema_version": "number",
-        "warnings": []
-      },
-      "error_schema": {
-        "command": "string",
-        "data": null,
-        "error": {
-          "code": "string",
-          "message": "string"
-        },
-        "generated_at": "string",
-        "partial": "boolean",
-        "schema_version": "number",
-        "warnings": []
-      },
-      "error_code": "invalid_argument",
-      "error_command": "provider.credential.update"
-    },
-    "provider.edit": {
-      "success_schema": {
-        "command": "string",
-        "data": {
-          "clients": [
-            {
-              "client": "string",
-              "native_model": "string",
-              "provider_model": "string"
-            }
-          ],
-          "created_at": "string",
-          "credential_ref": "string",
-          "endpoint": "string",
-          "id": "number",
-          "multiplier": "string",
-          "name": "string",
-          "updated_at": "string"
-        },
-        "generated_at": "string",
-        "partial": "boolean",
-        "schema_version": "number",
-        "warnings": []
-      },
-      "error_schema": {
-        "command": "string",
-        "data": null,
-        "error": {
-          "code": "string",
-          "message": "string"
-        },
-        "generated_at": "string",
-        "partial": "boolean",
-        "schema_version": "number",
-        "warnings": []
-      },
-      "error_code": "invalid_argument",
-      "error_command": "provider.edit"
-    },
     "provider.list": {
       "success_schema": {
         "command": "string",
         "data": [
           {
-            "credential": {
-              "present": "boolean",
-              "reference": "string"
-            },
+            "definition": {
+              "authentication": "string",
+              "built_in": "boolean",
+              "clients": [
+                {
+                  "client": "string",
+                  "native_model": "string",
+                  "provider_model": "string"
+                }
+              ],
+              "credential_count": "number",
+              "name": "string"
+            }
+          },
+          {
             "definition": {
               "clients": [
                 {
@@ -721,10 +860,8 @@
                 }
               ],
               "created_at": "string",
-              "credential_ref": "string",
-              "endpoint": "string",
+              "credential_count": "number",
               "id": "number",
-              "multiplier": "string",
               "name": "string",
               "updated_at": "string"
             }
@@ -815,10 +952,6 @@
       "success_schema": {
         "command": "string",
         "data": {
-          "credential": {
-            "present": "boolean",
-            "reference": "string"
-          },
           "definition": {
             "clients": [
               {
@@ -828,10 +961,8 @@
               }
             ],
             "created_at": "string",
-            "credential_ref": "string",
-            "endpoint": "string",
+            "credential_count": "number",
             "id": "number",
-            "multiplier": "string",
             "name": "string",
             "updated_at": "string"
           }
@@ -861,10 +992,19 @@
         "command": "string",
         "data": [
           {
-            "credential": {
-              "present": "boolean",
-              "reference": "string"
-            },
+            "credentials": [
+              {
+                "clients": [
+                  "string"
+                ],
+                "endpoint": "string",
+                "multiplier": "string",
+                "name": "string",
+                "present": "boolean",
+                "provider": "string",
+                "reference": "string"
+              }
+            ],
             "definition": {
               "clients": [
                 {
@@ -874,13 +1014,28 @@
                 }
               ],
               "created_at": "string",
-              "credential_ref": "string",
-              "endpoint": "string",
+              "credential_count": "number",
               "id": "number",
-              "multiplier": "string",
               "name": "string",
               "updated_at": "string"
-            }
+            },
+            "ready": "boolean"
+          },
+          {
+            "definition": {
+              "authentication": "string",
+              "built_in": "boolean",
+              "clients": [
+                {
+                  "client": "string",
+                  "native_model": "string",
+                  "provider_model": "string"
+                }
+              ],
+              "credential_count": "number",
+              "name": "string"
+            },
+            "ready": "boolean"
           }
         ],
         "generated_at": "string",
@@ -902,6 +1057,43 @@
       },
       "error_code": "invalid_argument",
       "error_command": "provider.status"
+    },
+    "provider.update": {
+      "success_schema": {
+        "command": "string",
+        "data": {
+          "clients": [
+            {
+              "client": "string",
+              "native_model": "string",
+              "provider_model": "string"
+            }
+          ],
+          "created_at": "string",
+          "credential_count": "number",
+          "id": "number",
+          "name": "string",
+          "updated_at": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "provider.update"
     },
     "provider.use": {
       "success_schema": {
@@ -1227,135 +1419,19 @@
       "error_code": "invalid_argument",
       "error_command": "usage.diagnose"
     },
-    "usage.price.history": {
-      "success_schema": {
-        "command": "string",
-        "data": [
-          {
-            "content_sha256": "string",
-            "effective_from": "string",
-            "source_kind": "string",
-            "source_url": "string",
-            "version": "string"
-          }
-        ],
-        "generated_at": "string",
-        "partial": "boolean",
-        "schema_version": "number",
-        "warnings": []
-      },
-      "error_schema": {
-        "command": "string",
-        "data": null,
-        "error": {
-          "code": "string",
-          "message": "string"
-        },
-        "generated_at": "string",
-        "partial": "boolean",
-        "schema_version": "number",
-        "warnings": []
-      },
-      "error_code": "invalid_argument",
-      "error_command": "usage.price.history"
-    },
-    "usage.price.override": {
-      "success_schema": {
-        "command": "string",
-        "data": {
-          "overrides": "number"
-        },
-        "generated_at": "string",
-        "partial": "boolean",
-        "schema_version": "number",
-        "warnings": []
-      },
-      "error_schema": {
-        "command": "string",
-        "data": null,
-        "error": {
-          "code": "string",
-          "message": "string"
-        },
-        "generated_at": "string",
-        "partial": "boolean",
-        "schema_version": "number",
-        "warnings": []
-      },
-      "error_code": "invalid_argument",
-      "error_command": "usage.price.override"
-    },
-    "usage.price.status": {
-      "success_schema": {
-        "command": "string",
-        "data": {
-          "aggregated_reference": "boolean",
-          "available": "boolean",
-          "commit_sha": "string",
-          "content_sha256": "string",
-          "effective_from": "string",
-          "source_kind": "string",
-          "source_url": "string",
-          "version": "string"
-        },
-        "generated_at": "string",
-        "partial": "boolean",
-        "schema_version": "number",
-        "warnings": []
-      },
-      "error_schema": {
-        "command": "string",
-        "data": null,
-        "error": {
-          "code": "string",
-          "message": "string"
-        },
-        "generated_at": "string",
-        "partial": "boolean",
-        "schema_version": "number",
-        "warnings": []
-      },
-      "error_code": "invalid_argument",
-      "error_command": "usage.price.status"
-    },
-    "usage.price.update": {
-      "success_schema": {
-        "command": "string",
-        "data": {
-          "commit_sha": "string",
-          "content_sha256": "string",
-          "models": "number",
-          "version": "string"
-        },
-        "generated_at": "string",
-        "partial": "boolean",
-        "schema_version": "number",
-        "warnings": []
-      },
-      "error_schema": {
-        "command": "string",
-        "data": null,
-        "error": {
-          "code": "string",
-          "message": "string"
-        },
-        "generated_at": "string",
-        "partial": "boolean",
-        "schema_version": "number",
-        "warnings": []
-      },
-      "error_code": "invalid_argument",
-      "error_command": "usage.price.update"
-    },
     "usage.rebuild": {
       "success_schema": {
         "command": "string",
         "data": {
           "files": "number",
+          "ignored_non_usage": "number",
           "imported": "number",
           "malformed": "number",
           "replaced": "number",
-          "unsupported": "number"
+          "source_resets": "number",
+          "unsupported": "number",
+          "unsupported_usage": "number",
+          "updated": "number"
         },
         "generated_at": "string",
         "partial": "boolean",
@@ -1382,10 +1458,14 @@
         "command": "string",
         "data": {
           "files": "number",
+          "ignored_non_usage": "number",
           "imported": "number",
           "malformed": "number",
           "replaced": "number",
-          "unsupported": "number"
+          "source_resets": "number",
+          "unsupported": "number",
+          "unsupported_usage": "number",
+          "updated": "number"
         },
         "generated_at": "string",
         "partial": "boolean",
@@ -1499,6 +1579,7 @@
       "success_schema": {
         "command": "string",
         "data": {
+          "branch": "string",
           "build_time": "string",
           "commit": "string",
           "go_version": "string",

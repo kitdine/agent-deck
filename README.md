@@ -7,13 +7,20 @@
 
 AgentDeck is for developers who use multiple Codex or Claude providers and want
 one local control plane without moving credentials or session data to a hosted
-service. Provider definitions live in SQLite, credentials stay in macOS
-Keychain, and client session logs remain read-only source data.
+service. Custom provider definitions and authenticated credential ciphertext
+live in SQLite, protected by a private machine-bound key file; client session
+logs remain read-only source data. The built-in Codex `official` provider uses
+Codex's existing OpenAI or ChatGPT login.
 
 > **Pre-release:** Phase One and the version/installation baseline have completed
-> implementation and independent review. Interactive credential input and
-> managed shell completion installation have passed full release verification;
-> initial review findings are addressed and independent re-review has passed.
+> implementation and independent review. The consolidated Phase 9 CLI usability,
+> multi-credential, incremental usage/watch, and Codex `official` provider
+> baseline have also passed implementation, release verification, and independent
+> re-review. Independent review of the credential-owned provider configuration
+> follow-up found issues; their remediation has passed implementation, release
+> verification, and independent re-review. Unified ASCII collection tables and
+> machine-bound encrypted SQLite credential storage are implemented,
+> release-verified, and awaiting independent review.
 > AgentDeck is not yet available through Homebrew.
 
 ```bash
@@ -27,8 +34,9 @@ make build
   diagnostics, and backups through a single command tree.
 - **Local by default:** normal commands do not require a hosted AgentDeck
   service or expose a network port.
-- **Credential isolation:** provider secrets are stored in macOS Keychain, not
-  in AgentDeck databases or client configuration backups.
+- **Credential isolation:** AgentDeck stores custom provider secrets only as
+  AES-256-GCM ciphertext in SQLite; a private random seed and stable machine
+  identity derive the local encryption key.
 - **Recoverable changes:** provider configuration writes use journals and
   redacted backups so interrupted operations can be diagnosed and recovered.
 - **Scriptable output:** commands support text and JSON output; `watch` also
@@ -38,8 +46,10 @@ make build
 
 | Command | What it does |
 | --- | --- |
-| `agentdeck provider` | Manage providers, Keychain credential references, provider selection, status, and recovery. |
-| `agentdeck usage` | Scan local usage records, summarize cost and token data, diagnose attribution, and manage price catalogs. |
+| `agentdeck provider` | Manage providers, completed-operation selection snapshots, status, and recovery. |
+| `agentdeck credential` | Manage multiple named encrypted credentials and their provider/client bindings without exposing values. |
+| `agentdeck usage` | Incrementally scan local usage records, summarize cost and token data, and diagnose attribution. |
+| `agentdeck price` | Inspect, update, and override local price catalogs. |
 | `agentdeck session` | Scan and search approved visible session text, manage exclusions, rebuild the index, or purge it independently. |
 | `agentdeck extension` | Discover plugins, MCP servers, and skills; inspect health; explicitly adopt or release management state. |
 | `agentdeck watch` | Run foreground incremental usage, session, and extension scans with versioned NDJSON events. |
@@ -54,7 +64,7 @@ AgentDeck state root.
 
 ## Requirements
 
-- macOS for the current Keychain-backed credential implementation
+- macOS for the current stable machine-identity adapter
 - Go `1.26.0`
 - GNU Make
 
@@ -136,6 +146,12 @@ make install FORCE=1
 agentdeck version
 ```
 
+For a forced upgrade, the manifest hash first proves that the installed file is
+unchanged, then the installer verifies that both executables implement the
+AgentDeck version contract. It prints the old and new build identities and
+SHA-256 values before replacing anything. The manifest is ownership and tamper
+evidence, not release authenticity; source installs are not signed releases.
+
 Safely remove an unchanged installation with:
 
 ```bash
@@ -145,7 +161,7 @@ make uninstall
 Uninstall verifies the binary, generated completion, and exact managed rc block
 before removing anything. Changes outside the block are preserved. It fails
 closed if an owned artifact or block changed and never deletes the rc file,
-`~/.agentdeck/`, Keychain credentials, client configuration, or backups.
+`~/.agentdeck/`, encrypted credentials, client configuration, or backups.
 Empty installation directories may remain because they are not manifest-owned
 artifacts and uninstall does not claim ownership of them.
 
@@ -195,9 +211,21 @@ agentdeck --version
 agentdeck --format json version
 ```
 
-Source builds report `dev`, `unknown`, and `unknown` unless `VERSION`, `COMMIT`,
-and `BUILD_TIME` are explicitly supplied to Make. Release tooling can inject
-those values without changing the runtime contract.
+Text output is split into support-friendly labeled lines:
+
+```text
+Release Version: v0.0.0-dev
+Git Commit Hash: <full commit SHA>
+Git Branch: main
+Go Version: go1.26.5
+UTC Build Time: 2026-07-15 08:33:55
+```
+
+Make derives build identity from the nearest Git tag (or `v0.0.0`) plus `-dev`
+unless HEAD is an exact clean tag, the full commit SHA, the current branch, and
+the actual UTC build time. `VERSION`, `COMMIT`, `BRANCH`, and `BUILD_TIME`
+remain explicitly overridable. Direct `go build` outside Make retains the safe
+`dev`/`unknown` defaults.
 
 ## Shell Completion
 
@@ -218,29 +246,76 @@ fail closed when it no longer matches the ownership manifest.
 
 ## Provider Setup Example
 
-The following example uses a fake endpoint and credential reference. `provider
-add` prompts once without terminal echo and stores the value in macOS Keychain
-while creating the provider:
+Codex `official` is built in and appears in `provider list` and `provider show`
+without a database record or AgentDeck credential. It reuses Codex's existing
+OpenAI or ChatGPT login state:
 
 ```bash
-./dist/agentdeck provider add work https://api.example.com/v1 work-codex 1 codex
+./dist/agentdeck provider show official
+./dist/agentdeck provider use official
+```
+
+AgentDeck sets `[model_providers.custom].name = "official"` and removes the
+custom base URL and bearer token in `~/.codex/config.toml`; it never reads,
+modifies, or deletes `~/.codex/auth.json`. There is no Claude `official`
+provider.
+
+The following example uses a fake endpoint. `provider add` prompts once without
+terminal echo, generates the complete `work-default-ref`, stores authenticated
+ciphertext in SQLite, and binds the same credential to both clients:
+
+```bash
+./dist/agentdeck provider add work --endpoint https://api.example.com --clients codex,claude
 ./dist/agentdeck provider show work
 ```
 
-`provider credential add` and `provider credential update` remain available for
-independent pre-provisioning and rotation. Automation may supply exactly one
+`--credential` is the only credential shorthand flag; it is not a reference.
+AgentDeck always generates `<provider>-<credential>-ref`, including the
+`default` component, and never adds a client component. Running `provider add`
+again for an existing provider adds a missing named credential:
+
+```bash
+./dist/agentdeck provider add work --credential codex --endpoint https://api.example.com/v1 --clients codex --multiplier 0.4
+```
+
+Endpoint, multiplier, and client bindings belong to each credential. A final
+`/v1` is accepted for a Codex-bound credential and removed from the stored base;
+Codex configuration adds exactly one `/v1`. A Claude-only endpoint ending in
+`/v1` is preserved. Endpoints with userinfo, a query string, or a fragment are
+rejected. An identical existing credential is a no-prompt successful no-op;
+changed metadata must use `credential update`.
+
+Top-level `credential add` is the explicit existing-provider entry point, and
+`credential update --rotate` rotates one through the same credential service.
+Validation and encryption complete before one SQLite transaction commits
+credential metadata and ciphertext together. Automation may supply exactly one
 credential line through stdin; credentials are never accepted as CLI arguments
 or environment variables.
 
-Selecting a provider requires the client configuration path and a destination
-for the redacted backup:
+Selecting a provider requires only its name and client. AgentDeck resolves
+`~/.codex/config.toml` or `~/.claude/settings.json` automatically and creates a
+unique redacted backup under the active AgentDeck state directory:
 
 ```bash
-./dist/agentdeck provider use \
-  work codex \
-  "$HOME/.codex/config.toml" \
-  "$HOME/.agentdeck/codex-config.redacted.toml"
+./dist/agentdeck provider use work --client codex
+./dist/agentdeck credential add work --credential personal --endpoint https://api.example.com --clients codex
+./dist/agentdeck provider use work --client codex --credential personal
 ```
+
+Only a completed provider-use operation becomes active attribution. Deleting a
+used custom provider removes its live definition, credential metadata, and
+ciphertext while retaining immutable historical usage snapshots.
+
+For a non-standard client installation, override only the configuration path:
+
+```bash
+./dist/agentdeck provider use work --client codex --config-path /custom/codex/config.toml
+```
+
+Managed backups use
+`<state-dir>/client-backups/<client>/<operation-id>.redacted.toml|json`, mode
+`0600`, and are recorded in the operation journal. Users do not choose or reuse
+backup paths.
 
 AgentDeck modifies only documented provider fields and preserves unrelated
 client configuration.
@@ -252,21 +327,32 @@ By default, AgentDeck uses `~/.agentdeck/` as its persistent state directory:
 ```text
 ~/.agentdeck/
 ├── agentdeck.sqlite3   # provider, usage, extension, and backup metadata
-└── sessions.sqlite3    # separately purgeable visible session index
+├── credential.key      # private machine-bound credential seed, mode 0600
+├── sessions.sqlite3    # separately purgeable visible session index
+└── client-backups/     # managed redacted provider-switch backups
 ```
 
 Use `--state-dir <path>` for isolated state. AgentDeck keeps the caller's
 current directory as project context for extension discovery; it does not use
 the installation directory or change into `~/.agentdeck/` while running.
 
-- Provider credential values stay in macOS Keychain.
+- Within AgentDeck state, custom provider credential values exist persistently
+  only as authenticated ciphertext in SQLite; `credential.key` is never included
+  in portable backups. Codex `official` needs no AgentDeck credential.
+- AgentDeck never manages Codex `auth.json`.
 - Codex and Claude session logs are read-only inputs.
 - The session index stores only approved visible conversation fields.
-- Purging the session index does not delete client source logs.
+- Purging the session index does not delete client source logs; it clears only
+  the session watch checkpoint so the next session watch bootstraps the index.
+- Usage/watch inventory processes only added, appended, mutated, or removed
+  sources. `watch --domains usage` does not open the session store.
+- Default text uses explicit human renderers; `--quiet` suppresses only
+  successful non-essential text output and never suppresses JSON or errors.
 - Normal commands do not probe provider hosts or access the network.
-- Network access is reserved for the explicit `agentdeck usage price update`
+- Network access is reserved for the explicit `agentdeck price update`
   command.
-- Automated tests use temporary homes, synthetic logs, and fake secret stores.
+- Automated tests use temporary homes, synthetic machine identities, synthetic
+  logs, and isolated encrypted credential stores.
 
 ## Development and Verification
 

@@ -17,7 +17,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/kitdine/agent-deck/internal/output"
-	"github.com/kitdine/agent-deck/internal/platform"
 	"github.com/kitdine/agent-deck/internal/store"
 	"github.com/kitdine/agent-deck/internal/usage"
 	"github.com/kitdine/agent-deck/internal/watch"
@@ -64,7 +63,7 @@ func leafCommands(root *cobra.Command) []*cobra.Command {
 	var leaves []*cobra.Command
 	var visit func(*cobra.Command)
 	visit = func(command *cobra.Command) {
-		if command.RunE != nil || command.Run != nil {
+		if (command.RunE != nil || command.Run != nil) && command.Name() != "completion" {
 			leaves = append(leaves, command)
 		}
 		for _, child := range command.Commands() {
@@ -250,14 +249,10 @@ func TestJSONCommandsUseSyntheticStateAndDoNotExposeSecrets(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(home, ".codex", "config.toml"), []byte("[mcp_servers.synthetic]\ncommand = 'synthetic'\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	oldHome, oldSecrets := userHomeDir, newSecretStore
-	secrets := platform.NewMemorySecretStore()
+	oldHome := userHomeDir
 	userHomeDir = func() (string, error) { return home, nil }
-	newSecretStore = func() platform.SecretStore { return secrets }
-	t.Cleanup(func() {
-		userHomeDir, newSecretStore = oldHome, oldSecrets
-	})
-	if err := run([]string{"--state-dir", state, "provider", "add", "synthetic", "https://example.invalid", "phase7:fixture", "1", "codex"}, bytes.NewBufferString("synthetic-secret\n"), &bytes.Buffer{}); err != nil {
+	t.Cleanup(func() { userHomeDir = oldHome })
+	if err := run([]string{"--state-dir", state, "provider", "add", "synthetic", "--endpoint", "https://example.invalid", "--clients", "codex"}, bytes.NewBufferString("synthetic-secret\n"), &bytes.Buffer{}); err != nil {
 		t.Fatal(err)
 	}
 	cases := []struct {
@@ -267,13 +262,13 @@ func TestJSONCommandsUseSyntheticStateAndDoNotExposeSecrets(t *testing.T) {
 		{[]string{"provider", "list"}, "provider.list"},
 		{[]string{"provider", "status"}, "provider.status"},
 		{[]string{"provider", "show", "synthetic"}, "provider.show"},
-		{[]string{"provider", "credential", "list"}, "provider.credential.list"},
+		{[]string{"credential", "list"}, "credential.list"},
 		{[]string{"usage", "scan"}, "usage.scan"},
 		{[]string{"usage", "summary"}, "usage.summary"},
 		{[]string{"usage", "sessions"}, "usage.sessions"},
 		{[]string{"usage", "diagnose"}, "usage.diagnose"},
-		{[]string{"usage", "price", "history"}, "usage.price.history"},
-		{[]string{"usage", "price", "status"}, "usage.price.status"},
+		{[]string{"price", "history"}, "price.history"},
+		{[]string{"price", "status"}, "price.status"},
 		{[]string{"session", "scan"}, "session.scan"},
 		{[]string{"session", "list"}, "session.list"},
 		{[]string{"session", "search", "synthetic"}, "session.search"},
@@ -337,12 +332,8 @@ func assertNoExportedJSONFields(t *testing.T, encoded []byte) {
 func TestBackupOutputAndArchiveKeepCredentialEncrypted(t *testing.T) {
 	ctx := context.Background()
 	state := filepath.Join(t.TempDir(), "state")
-	secrets := platform.NewMemorySecretStore()
-	oldSecrets := newSecretStore
-	newSecretStore = func() platform.SecretStore { return secrets }
-	t.Cleanup(func() { newSecretStore = oldSecrets })
 	var stdout bytes.Buffer
-	if err := run([]string{"--state-dir", state, "provider", "add", "synthetic", "https://example.invalid", "phase7:synthetic", "1", "codex"}, bytes.NewBufferString("phase7-secret\n"), &stdout); err != nil {
+	if err := run([]string{"--state-dir", state, "provider", "add", "synthetic", "--endpoint", "https://example.invalid", "--clients", "codex"}, bytes.NewBufferString("phase7-secret\n"), &stdout); err != nil {
 		t.Fatal(err)
 	}
 	archive := filepath.Join(t.TempDir(), "phase7.adb")
@@ -360,8 +351,16 @@ func TestBackupOutputAndArchiveKeepCredentialEncrypted(t *testing.T) {
 			t.Fatalf("backup output or archive exposes %q", prohibited)
 		}
 	}
-	if exists, err := secrets.Exists(ctx, "phase7:synthetic"); err != nil || !exists {
-		t.Fatalf("source secret missing: exists=%t err=%v", exists, err)
+	database, err := store.OpenReadOnly(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	credential, err := database.ProviderCredential(ctx, "synthetic", "default")
+	if closeErr := database.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil || !credential.SecretPresent {
+		t.Fatalf("source credential = %#v, %v", credential, err)
 	}
 }
 
@@ -376,10 +375,10 @@ func TestPriceOverrideGoldenUsesSnakeCaseInput(t *testing.T) {
 	userHomeDir = func() (string, error) { return home, nil }
 	t.Cleanup(func() { userHomeDir = oldHome })
 	var stdout bytes.Buffer
-	if err := run([]string{"--state-dir", state, "--format", "json", "usage", "price", "override", "--file", fixture}, bytes.NewReader(nil), &stdout); err != nil {
+	if err := run([]string{"--state-dir", state, "--format", "json", "price", "override", "--file", fixture}, bytes.NewReader(nil), &stdout); err != nil {
 		t.Fatal(err)
 	}
-	assertNonNullJSONEnvelope(t, stdout.Bytes(), "usage.price.override")
+	assertNonNullJSONEnvelope(t, stdout.Bytes(), "price.override")
 	var envelope struct {
 		Data map[string]any `json:"data"`
 	}
@@ -387,7 +386,7 @@ func TestPriceOverrideGoldenUsesSnakeCaseInput(t *testing.T) {
 		t.Fatalf("override golden = %#v, %v", envelope, err)
 	}
 	var ignored, stderr bytes.Buffer
-	if exit := execute([]string{"--state-dir", state, "--format", "json", "usage", "price", "override", "--file", filepath.Join(t.TempDir(), "missing.json")}, bytes.NewReader(nil), &ignored, &stderr); exit != 1 {
+	if exit := execute([]string{"--state-dir", state, "--format", "json", "price", "override", "--file", filepath.Join(t.TempDir(), "missing.json")}, bytes.NewReader(nil), &ignored, &stderr); exit != 1 {
 		t.Fatalf("missing override exit = %d", exit)
 	}
 	assertJSONFields(t, stderr.Bytes(), loadGUIContract(t).ErrorFields)
@@ -442,7 +441,6 @@ func TestProviderRecoverGoldenUsesEmptyArrayAndStableOperationDTO(t *testing.T) 
 
 func TestPriceUpdateGoldenUsesInjectedTransport(t *testing.T) {
 	commit := "abcdefabcdefabcdefabcdefabcdefabcdefabcd"
-	url := "https://raw.githubusercontent.com/BerriAI/litellm/" + commit + "/model_prices_and_context_window.json"
 	body := `{"gpt":{"litellm_provider":"openai","input_cost_per_token":0.000002,"output_cost_per_token":0.00001,"cache_read_input_token_cost":0.0000002}}`
 	previous := usage.PriceHTTPClient
 	usage.PriceHTTPClient = func() *http.Client {
@@ -452,10 +450,10 @@ func TestPriceUpdateGoldenUsesInjectedTransport(t *testing.T) {
 	}
 	t.Cleanup(func() { usage.PriceHTTPClient = previous })
 	var stdout bytes.Buffer
-	if err := run([]string{"--state-dir", filepath.Join(t.TempDir(), "state"), "--format", "json", "usage", "price", "update", "--url", url, "--commit", commit}, bytes.NewReader(nil), &stdout); err != nil {
+	if err := run([]string{"--state-dir", filepath.Join(t.TempDir(), "state"), "--format", "json", "price", "update", "--commit", commit}, bytes.NewReader(nil), &stdout); err != nil {
 		t.Fatal(err)
 	}
-	assertNonNullJSONEnvelope(t, stdout.Bytes(), "usage.price.update")
+	assertNonNullJSONEnvelope(t, stdout.Bytes(), "price.update")
 	var envelope struct {
 		Data map[string]any `json:"data"`
 	}
@@ -465,6 +463,9 @@ func TestPriceUpdateGoldenUsesInjectedTransport(t *testing.T) {
 }
 
 func TestRunClaudeGolden(t *testing.T) {
+	previousProcesses := runClientProcesses
+	runClientProcesses = func(string) ([]int, error) { return nil, nil }
+	t.Cleanup(func() { runClientProcesses = previousProcesses })
 	root := t.TempDir()
 	state, home, bin := filepath.Join(root, "state"), filepath.Join(root, "home"), filepath.Join(root, "bin")
 	if err := os.MkdirAll(bin, 0700); err != nil {
@@ -482,13 +483,11 @@ func TestRunClaudeGolden(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(bin, "claude"), []byte(script), 0700); err != nil {
 		t.Fatal(err)
 	}
-	oldHome, oldSecrets := userHomeDir, newSecretStore
-	secrets := platform.NewMemorySecretStore()
+	oldHome := userHomeDir
 	userHomeDir = func() (string, error) { return home, nil }
-	newSecretStore = func() platform.SecretStore { return secrets }
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Setenv("AGENTDECK_PHASE7_CLAUDE_LOG", log)
-	t.Cleanup(func() { userHomeDir, newSecretStore = oldHome, oldSecrets })
+	t.Cleanup(func() { userHomeDir = oldHome })
 	invoke := func(stdin string, args ...string) []byte {
 		t.Helper()
 		var stdout bytes.Buffer
@@ -497,8 +496,8 @@ func TestRunClaudeGolden(t *testing.T) {
 		}
 		return stdout.Bytes()
 	}
-	invoke("phase7-claude-secret\n", "provider", "add", "phase7-claude", "https://example.invalid", "phase7:claude", "1", "claude")
-	invoke("", "provider", "use", "phase7-claude", "claude", config, filepath.Join(root, "settings.backup"))
+	invoke("phase7-claude-secret\n", "provider", "add", "phase7-claude", "--endpoint", "https://example.invalid", "--clients", "claude")
+	invoke("", "provider", "use", "phase7-claude")
 	result := invoke("", "run", "claude", "--", "phase7")
 	assertNonNullJSONEnvelope(t, result, "run.claude")
 	var envelope struct {

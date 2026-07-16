@@ -6,6 +6,7 @@ import "runtime"
 var (
 	Version   = "dev"
 	Commit    = "unknown"
+	Branch    = "unknown"
 	BuildTime = "unknown"
 )
 
@@ -13,6 +14,7 @@ var (
 type Identity struct {
 	Version   string `json:"version"`
 	Commit    string `json:"commit"`
+	Branch    string `json:"branch"`
 	BuildTime string `json:"build_time"`
 	GoVersion string `json:"go_version"`
 }
@@ -22,6 +24,7 @@ func Current() Identity {
 	return Identity{
 		Version:   Version,
 		Commit:    Commit,
+		Branch:    Branch,
 		BuildTime: BuildTime,
 		GoVersion: runtime.Version(),
 	}

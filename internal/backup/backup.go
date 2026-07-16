@@ -22,6 +22,7 @@ import (
 
 	"filippo.io/age"
 
+	"github.com/kitdine/agent-deck/internal/credentialvault"
 	"github.com/kitdine/agent-deck/internal/platform"
 	"github.com/kitdine/agent-deck/internal/store"
 )
@@ -37,8 +38,11 @@ const (
 var (
 	ErrInvalidArchive    = errors.New("invalid_backup")
 	ErrTargetNotEmpty    = errors.New("restore_target_not_empty")
-	ErrSecretConflict    = errors.New("credential_conflict")
 	ErrDestinationExists = errors.New("backup_exists")
+
+	initializeRestoreCredentialKey = func(ctx context.Context, vault *credentialvault.Vault) (bool, error) {
+		return vault.InitializeNew(ctx)
+	}
 )
 
 type Entry struct {
@@ -69,15 +73,21 @@ type Credential struct {
 }
 
 type Service struct {
-	Core      *store.Store
-	StateRoot string
-	Secrets   platform.SecretStore
-	Version   string
-	Now       func() time.Time
+	Core              *store.Store
+	StateRoot         string
+	Vault             CredentialVault
+	Version           string
+	Now               func() time.Time
+	AfterCoreSnapshot func()
+}
+
+type CredentialVault interface {
+	Seal(context.Context, string, string) (credentialvault.Sealed, error)
+	Open(context.Context, string, credentialvault.Sealed) (string, error)
 }
 
 func (s Service) Create(ctx context.Context, destination, passphrase string, includeSessions bool) (Manifest, error) {
-	if s.Core == nil || s.Secrets == nil || passphrase == "" {
+	if s.Core == nil || s.Vault == nil || passphrase == "" {
 		return Manifest{}, fmt.Errorf("%w: missing backup input", ErrInvalidArchive)
 	}
 	staging, err := os.MkdirTemp("", "agentdeck-backup-")
@@ -92,14 +102,31 @@ func (s Service) Create(ctx context.Context, destination, passphrase string, inc
 	if err = s.Core.Backup(ctx, coreSnapshot); err != nil {
 		return Manifest{}, fmt.Errorf("snapshot core database: %w", err)
 	}
+	if s.AfterCoreSnapshot != nil {
+		s.AfterCoreSnapshot()
+	}
 
 	entries := make(map[string][]byte)
 	if entries[coreName], err = os.ReadFile(coreSnapshot); err != nil {
 		return Manifest{}, err
 	}
-	if entries[credentialsName], err = s.credentials(ctx); err != nil {
-		return Manifest{}, err
+	snapshot, err := store.OpenReadOnly(ctx, staging)
+	if err != nil {
+		return Manifest{}, fmt.Errorf("open core snapshot: %w", err)
 	}
+	credentials, credentialErr := s.credentials(ctx, snapshot)
+	version, versionErr := snapshot.SchemaVersion(ctx)
+	closeErr := snapshot.Close()
+	if credentialErr != nil {
+		return Manifest{}, credentialErr
+	}
+	if versionErr != nil {
+		return Manifest{}, versionErr
+	}
+	if closeErr != nil {
+		return Manifest{}, closeErr
+	}
+	entries[credentialsName] = credentials
 	if includeSessions {
 		source := filepath.Join(s.StateRoot, sessionsName)
 		if _, statErr := os.Stat(source); statErr == nil {
@@ -118,10 +145,6 @@ func (s Service) Create(ctx context.Context, destination, passphrase string, inc
 		}
 	}
 
-	version, err := s.Core.SchemaVersion(ctx)
-	if err != nil {
-		return Manifest{}, err
-	}
 	manifest := Manifest{
 		SchemaVersion:    ManifestSchemaVersion,
 		AgentDeckVersion: s.Version,
@@ -148,28 +171,29 @@ func (s Service) Create(ctx context.Context, destination, passphrase string, inc
 	return manifest, nil
 }
 
-func (s Service) credentials(ctx context.Context) ([]byte, error) {
-	providers, err := s.Core.ListProviders(ctx)
+func (s Service) credentials(ctx context.Context, core *store.Store) ([]byte, error) {
+	providers, err := core.ListProviders(ctx)
 	if err != nil {
 		return nil, err
 	}
-	references := make(map[string]struct{})
+	credentials := make([]Credential, 0)
 	for _, provider := range providers {
-		references[provider.CredentialRef] = struct{}{}
-	}
-	ordered := make([]string, 0, len(references))
-	for reference := range references {
-		ordered = append(ordered, reference)
-	}
-	sort.Strings(ordered)
-	credentials := make([]Credential, 0, len(ordered))
-	for _, reference := range ordered {
-		value, err := s.Secrets.Get(ctx, reference)
-		if err != nil {
-			return nil, fmt.Errorf("read credential reference: %w", err)
+		for _, item := range provider.Credentials {
+			if !item.SecretPresent {
+				continue
+			}
+			secret, secretErr := core.CredentialSecret(ctx, item.ID)
+			if secretErr != nil {
+				return nil, secretErr
+			}
+			value, openErr := s.Vault.Open(ctx, item.CredentialRef, credentialvault.Sealed{Algorithm: secret.Algorithm, KeyVersion: secret.KeyVersion, KeyID: secret.KeyID, Nonce: secret.Nonce, Ciphertext: secret.Ciphertext})
+			if openErr != nil {
+				return nil, fmt.Errorf("read credential reference: %w", openErr)
+			}
+			credentials = append(credentials, Credential{Reference: item.CredentialRef, Value: value})
 		}
-		credentials = append(credentials, Credential{Reference: reference, Value: value})
 	}
+	sort.Slice(credentials, func(i, j int) bool { return credentials[i].Reference < credentials[j].Reference })
 	return json.Marshal(credentials)
 }
 
@@ -203,8 +227,8 @@ func List(directory string) ([]FileInfo, error) {
 
 const sessionSnapshotSchemaVersion = 1
 
-func Restore(ctx context.Context, archivePath, targetRoot, passphrase string, secrets platform.SecretStore) (manifest Manifest, err error) {
-	if secrets == nil || passphrase == "" {
+func Restore(ctx context.Context, archivePath, targetRoot, passphrase string, machineIdentity credentialvault.MachineIdentity) (manifest Manifest, err error) {
+	if machineIdentity == nil || passphrase == "" {
 		return Manifest{}, fmt.Errorf("%w: missing restore input", ErrInvalidArchive)
 	}
 	manifest, entries, err := readEncrypted(archivePath, passphrase)
@@ -215,23 +239,11 @@ func Restore(ctx context.Context, archivePath, targetRoot, passphrase string, se
 	if err = json.Unmarshal(entries[credentialsName], &credentials); err != nil {
 		return Manifest{}, fmt.Errorf("%w: credentials", ErrInvalidArchive)
 	}
-	for _, credential := range credentials {
-		if credential.Reference == "" || credential.Value == "" {
-			return Manifest{}, fmt.Errorf("%w: credential entry", ErrInvalidArchive)
-		}
-		exists, checkErr := secrets.Exists(ctx, credential.Reference)
-		if checkErr != nil {
-			return Manifest{}, checkErr
-		}
-		if exists {
-			return Manifest{}, ErrSecretConflict
-		}
-	}
-	references, err := validateCoreSnapshot(ctx, entries[coreName], manifest.DatabaseSchemas[coreName])
+	referenceOwners, err := validateCoreSnapshot(ctx, entries[coreName], manifest.DatabaseSchemas[coreName])
 	if err != nil {
 		return Manifest{}, err
 	}
-	if err = validateCredentials(credentials, references); err != nil {
+	if err = validateCredentials(credentials, sortedReferenceOwners(referenceOwners)); err != nil {
 		return Manifest{}, err
 	}
 	if sessionData, included := entries[sessionsName]; included {
@@ -244,41 +256,49 @@ func Restore(ctx context.Context, archivePath, targetRoot, passphrase string, se
 	if err != nil {
 		return Manifest{}, err
 	}
-	if !createdRoot && originalMode.Perm() != platform.DirectoryMode {
-		if err = os.Chmod(targetRoot, platform.DirectoryMode); err != nil {
-			return Manifest{}, err
-		}
-	}
-	createdFiles := make([]string, 0, 2)
-	createdSecrets := make([]string, 0, len(credentials))
+	var lock *store.Lock
+	ownedPaths := make([]string, 0, 8)
 	defer func() {
-		if err == nil {
-			return
-		}
+		failed := err != nil
 		var rollbackErrs []error
-		for index := len(createdSecrets) - 1; index >= 0; index-- {
-			if deleteErr := secrets.Delete(ctx, createdSecrets[index]); deleteErr != nil && !errors.Is(deleteErr, platform.ErrSecretNotFound) {
-				rollbackErrs = append(rollbackErrs, fmt.Errorf("rollback credential %q: %w", createdSecrets[index], deleteErr))
+		if failed {
+			for index := len(ownedPaths) - 1; index >= 0; index-- {
+				if removeErr := os.Remove(ownedPaths[index]); removeErr != nil && !errors.Is(removeErr, fs.ErrNotExist) {
+					rollbackErrs = append(rollbackErrs, fmt.Errorf("rollback file %q: %w", ownedPaths[index], removeErr))
+				}
+			}
+			if !createdRoot && originalMode.Perm() != platform.DirectoryMode {
+				if chmodErr := os.Chmod(targetRoot, originalMode.Perm()); chmodErr != nil {
+					rollbackErrs = append(rollbackErrs, fmt.Errorf("rollback state root permissions: %w", chmodErr))
+				}
 			}
 		}
-		for _, path := range createdFiles {
-			if removeErr := os.Remove(path); removeErr != nil && !errors.Is(removeErr, fs.ErrNotExist) {
-				rollbackErrs = append(rollbackErrs, fmt.Errorf("rollback file %q: %w", path, removeErr))
+		if lock != nil {
+			if releaseErr := lock.Release(); releaseErr != nil {
+				rollbackErrs = append(rollbackErrs, fmt.Errorf("release restore state lock: %w", releaseErr))
 			}
 		}
-		if createdRoot {
-			if removeErr := os.Remove(targetRoot); removeErr != nil && !errors.Is(removeErr, fs.ErrNotExist) {
+		if failed && createdRoot {
+			if removeErr := removeEmptyRestoreRoot(targetRoot); removeErr != nil {
 				rollbackErrs = append(rollbackErrs, fmt.Errorf("rollback state root: %w", removeErr))
-			}
-		} else if originalMode.Perm() != platform.DirectoryMode {
-			if chmodErr := os.Chmod(targetRoot, originalMode.Perm()); chmodErr != nil {
-				rollbackErrs = append(rollbackErrs, fmt.Errorf("rollback state root permissions: %w", chmodErr))
 			}
 		}
 		if len(rollbackErrs) > 0 {
 			err = errors.Join(append([]error{err}, rollbackErrs...)...)
 		}
 	}()
+	if !createdRoot && originalMode.Perm() != platform.DirectoryMode {
+		if err = os.Chmod(targetRoot, platform.DirectoryMode); err != nil {
+			return Manifest{}, err
+		}
+	}
+	lock, err = store.AcquireLock(ctx, targetRoot, 5*time.Second)
+	if err != nil {
+		return Manifest{}, err
+	}
+	if err = validateReservedTarget(targetRoot); err != nil {
+		return Manifest{}, err
+	}
 	for _, name := range []string{coreName, sessionsName} {
 		data, ok := entries[name]
 		if !ok {
@@ -287,21 +307,80 @@ func Restore(ctx context.Context, archivePath, targetRoot, passphrase string, se
 		path := filepath.Join(targetRoot, name)
 		created, writeErr := writeNewPrivateFile(path, data)
 		if created {
-			createdFiles = append(createdFiles, path)
+			ownedPaths = append(ownedPaths, path)
 		}
 		if writeErr != nil {
 			err = writeErr
 			return Manifest{}, err
 		}
 	}
-	for _, credential := range credentials {
-		if err = secrets.Create(ctx, credential.Reference, credential.Value); err != nil {
-			if errors.Is(err, platform.ErrSecretExists) {
-				err = ErrSecretConflict
+	corePath := filepath.Join(targetRoot, coreName)
+	for _, suffix := range []string{"-wal", "-shm", "-journal"} {
+		path := corePath + suffix
+		created, reserveErr := writeNewPrivateFile(path, nil)
+		if created {
+			ownedPaths = append(ownedPaths, path)
+		}
+		if reserveErr != nil {
+			err = reserveErr
+			return Manifest{}, err
+		}
+	}
+	database, openErr := store.OpenWithLockHeld(ctx, targetRoot)
+	if openErr != nil {
+		err = openErr
+		return Manifest{}, err
+	}
+	vault := credentialvault.New(targetRoot, machineIdentity)
+	if len(credentials) > 0 {
+		keyCreated, keyErr := initializeRestoreCredentialKey(ctx, vault)
+		if keyCreated {
+			ownedPaths = append(ownedPaths, vault.KeyPath())
+		}
+		if keyErr != nil {
+			_ = database.Close()
+			if errors.Is(keyErr, fs.ErrExist) {
+				err = fmt.Errorf("%w: credential key already exists", ErrTargetNotEmpty)
+			} else {
+				err = keyErr
 			}
 			return Manifest{}, err
 		}
-		createdSecrets = append(createdSecrets, credential.Reference)
+	}
+	targetOwners := make(map[string]int64)
+	targetProviders, listErr := database.ListProviders(ctx)
+	if listErr != nil {
+		_ = database.Close()
+		err = listErr
+		return Manifest{}, err
+	}
+	for _, provider := range targetProviders {
+		for _, credential := range provider.Credentials {
+			targetOwners[credential.CredentialRef] = credential.ID
+		}
+	}
+	sealed := make([]store.CredentialSecret, 0, len(credentials))
+	for _, credential := range credentials {
+		credentialID, ok := targetOwners[credential.Reference]
+		if !ok {
+			_ = database.Close()
+			err = fmt.Errorf("%w: credential ownership", ErrInvalidArchive)
+			return Manifest{}, err
+		}
+		payload, sealErr := vault.SealExisting(ctx, credential.Reference, credential.Value)
+		if sealErr != nil {
+			_ = database.Close()
+			err = sealErr
+			return Manifest{}, err
+		}
+		sealed = append(sealed, store.CredentialSecret{CredentialID: credentialID, Algorithm: payload.Algorithm, KeyVersion: payload.KeyVersion, KeyID: payload.KeyID, Nonce: payload.Nonce, Ciphertext: payload.Ciphertext})
+	}
+	if err = database.ReplaceCredentialSecrets(ctx, sealed); err != nil {
+		_ = database.Close()
+		return Manifest{}, err
+	}
+	if err = database.Close(); err != nil {
+		return Manifest{}, err
 	}
 	return manifest, nil
 }
@@ -450,7 +529,7 @@ func readEncrypted(path, passphrase string) (Manifest, map[string][]byte, error)
 	return manifest, entries, nil
 }
 
-func validateCoreSnapshot(ctx context.Context, data []byte, expected int) ([]string, error) {
+func validateCoreSnapshot(ctx context.Context, data []byte, expected int) (map[string]int64, error) {
 	root, err := os.MkdirTemp("", "agentdeck-restore-validate-")
 	if err != nil {
 		return nil, err
@@ -466,25 +545,40 @@ func validateCoreSnapshot(ctx context.Context, data []byte, expected int) ([]str
 	if err != nil {
 		return nil, fmt.Errorf("%w: core database", ErrInvalidArchive)
 	}
-	defer database.Close()
 	version, err := database.SchemaVersion(ctx)
 	if err != nil || version != expected || version > store.CurrentSchemaVersion {
 		return nil, fmt.Errorf("%w: database schema", ErrInvalidArchive)
 	}
+	if err = database.Close(); err != nil {
+		return nil, err
+	}
+	database, err = store.Open(ctx, root)
+	if err != nil {
+		return nil, fmt.Errorf("%w: core database migration", ErrInvalidArchive)
+	}
+	defer database.Close()
 	providers, err := database.ListProviders(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("%w: provider records", ErrInvalidArchive)
 	}
-	referenceSet := make(map[string]struct{}, len(providers))
+	referenceSet := make(map[string]int64, len(providers))
 	for _, provider := range providers {
-		referenceSet[provider.CredentialRef] = struct{}{}
+		for _, credential := range provider.Credentials {
+			if credential.SecretPresent {
+				referenceSet[credential.CredentialRef] = credential.ID
+			}
+		}
 	}
-	references := make([]string, 0, len(referenceSet))
-	for reference := range referenceSet {
+	return referenceSet, nil
+}
+
+func sortedReferenceOwners(values map[string]int64) []string {
+	references := make([]string, 0, len(values))
+	for reference := range values {
 		references = append(references, reference)
 	}
 	sort.Strings(references)
-	return references, nil
+	return references
 }
 
 func validateSessionSnapshot(ctx context.Context, data []byte, expected int) error {
@@ -564,6 +658,34 @@ func reserveEmptyTarget(path string) (bool, os.FileMode, error) {
 		return false, 0, ErrTargetNotEmpty
 	}
 	return false, info.Mode(), nil
+}
+
+func validateReservedTarget(path string) error {
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if entry.Name() != "state.lock" {
+			return ErrTargetNotEmpty
+		}
+	}
+	return nil
+}
+
+func removeEmptyRestoreRoot(path string) error {
+	if err := os.Remove(path); err == nil || errors.Is(err, fs.ErrNotExist) {
+		return nil
+	} else {
+		entries, readErr := os.ReadDir(path)
+		if readErr == nil && len(entries) > 0 {
+			return nil
+		}
+		if readErr != nil {
+			return errors.Join(err, readErr)
+		}
+		return err
+	}
 }
 
 func writeNewPrivateFile(path string, data []byte) (bool, error) {

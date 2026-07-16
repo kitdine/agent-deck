@@ -354,16 +354,18 @@ labeled as examples.
 Define project-specific runtime constraints here:
 
 - Runtime topology / 运行拓扑: One on-demand `agentdeck` binary uses
-  `~/.agentdeck/`, macOS Keychain, `~/.codex/config.toml`, and
+  `~/.agentdeck/agentdeck.sqlite3`, a machine-bound private
+  `~/.agentdeck/credential.key`, `~/.codex/config.toml`, and
   `~/.claude/settings.json`. The optional watcher is foreground-only.
 - Allowed connectivity / 允许的连接方式: Normal commands and tests require no
   network. Only an explicit `agentdeck usage price update` downloads the
   configured public price catalog; provider hosts are consumed by Codex or
   Claude, not probed by AgentDeck.
 - Prohibited exposure / 禁止的暴露方式: The tools must not expose network ports or alter host network configuration.
-- Test-data policy / 测试数据策略: Tests use temporary homes, synthetic session
-  logs, fake credentials, and isolated secret-store adapters. Real credentials
-  and real session sources are not used by automated tests.
+- Test-data policy / 测试数据策略: Tests use temporary homes, synthetic machine
+  identities, synthetic session logs, fake credentials, and isolated encrypted
+  credential stores. Real credentials, real key files, and real session sources
+  are not used by automated tests.
 - Deployment command / 部署命令: Not applicable; this repository produces a
   local binary, not a deployed service.
 - Rollback procedure / 回滚方式: Use the operation journal and redacted client
@@ -483,11 +485,15 @@ rtk test env GOCACHE=/private/tmp/agent-deck-go-build GOOS=darwin GOARCH=amd64 g
 
 ### Domain Constraints / 领域约束
 
-- Store AgentDeck provider definitions in `~/.agentdeck/agentdeck.sqlite3` and
-  credential values in macOS Keychain. Never store credential values in the
-  database.
-- Keep `~/.agentdeck/` directories mode `0700` and databases, sidecars,
-  backups, locks, and temporary files mode `0600`.
+- Store AgentDeck provider definitions, credential metadata, and only
+  authenticated credential ciphertext in `~/.agentdeck/agentdeck.sqlite3`.
+  Never persist plaintext credential values.
+- Derive the credential encryption key from a private random seed in
+  `~/.agentdeck/credential.key` plus the stable machine identity. Never include
+  the key file in portable backups or silently regenerate it when ciphertext
+  already exists.
+- Keep `~/.agentdeck/` directories mode `0700` and databases, key files,
+  sidecars, backups, locks, and temporary files mode `0600`.
 - Preserve Codex and Claude session and authentication files; source logs are
   read-only and provider switching modifies only documented configuration
   fields.

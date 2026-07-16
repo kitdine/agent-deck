@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"math/big"
 	"os"
@@ -18,6 +19,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/kitdine/agent-deck/internal/store"
@@ -63,12 +65,37 @@ type SessionSummary struct {
 	Unpriced        []string         `json:"unpriced_components"`
 	Warnings        []string         `json:"warnings"`
 }
+type SourceFile interface {
+	io.Reader
+	io.ReaderAt
+	io.Seeker
+	io.Closer
+}
+
+type InventoryEntry struct {
+	Path       string `json:"path"`
+	Client     string `json:"client"`
+	Identity   string `json:"identity"`
+	Size       int64  `json:"size"`
+	ModifiedAt int64  `json:"modified_at"`
+}
+
+type Inventory struct {
+	Fingerprint string           `json:"fingerprint"`
+	Entries     []InventoryEntry `json:"entries"`
+	Added       []string         `json:"added"`
+	Appended    []string         `json:"appended"`
+	Mutated     []string         `json:"mutated"`
+	Removed     []string         `json:"removed"`
+}
 type Service struct {
 	Store *store.Store
 	Home  string
 	Now   func() time.Time
 	// ClientProcesses is injectable so overlap handling has deterministic tests.
 	ClientProcesses func(string) ([]int, error)
+	Stat            func(string) (os.FileInfo, error)
+	Open            func(string) (SourceFile, error)
 }
 type catalog struct {
 	SchemaVersion int                   `json:"schema_version"`
@@ -93,7 +120,21 @@ type OfficialOverride struct {
 	Prices        map[string]string `json:"prices"`
 }
 
-func New(s *store.Store, home string) *Service { return &Service{Store: s, Home: home, Now: time.Now} }
+func New(s *store.Store, home string) *Service {
+	return &Service{Store: s, Home: home, Now: time.Now, Stat: os.Stat, Open: func(path string) (SourceFile, error) { return os.Open(path) }}
+}
+func (s *Service) stat(path string) (os.FileInfo, error) {
+	if s.Stat != nil {
+		return s.Stat(path)
+	}
+	return os.Stat(path)
+}
+func (s *Service) open(path string) (SourceFile, error) {
+	if s.Open != nil {
+		return s.Open(path)
+	}
+	return os.Open(path)
+}
 func (s *Service) now() time.Time {
 	if s.Now != nil {
 		return s.Now().UTC()
@@ -282,27 +323,128 @@ func earliestOverride(items []OfficialOverride) time.Time {
 }
 
 func (s *Service) Scan(ctx context.Context) (map[string]int, error) {
+	inventory, err := s.Inventory(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return s.ScanInventory(ctx, inventory)
+}
+
+func (s *Service) ScanInventory(ctx context.Context, inventory Inventory) (map[string]int, error) {
 	if err := s.ImportBundledCatalog(ctx); err != nil {
 		return nil, err
 	}
-	out := map[string]int{"files": 0, "imported": 0, "replaced": 0, "malformed": 0, "unsupported": 0}
+	out := map[string]int{"files": 0, "imported": 0, "updated": 0, "ignored_non_usage": 0, "unsupported_usage": 0, "malformed": 0, "source_resets": 0, "replaced": 0, "unsupported": 0}
+	out["files"] = len(inventory.Entries)
+	for _, path := range inventory.Removed {
+		if err := s.removeSource(ctx, path); err != nil {
+			return nil, err
+		}
+	}
+	changed := make(map[string]bool, len(inventory.Added)+len(inventory.Appended)+len(inventory.Mutated))
+	for _, paths := range [][]string{inventory.Added, inventory.Appended, inventory.Mutated} {
+		for _, path := range paths {
+			changed[path] = true
+		}
+	}
+	for _, entry := range inventory.Entries {
+		if !changed[entry.Path] {
+			continue
+		}
+		stats, err := s.scanFile(ctx, entry)
+		if err != nil {
+			return nil, err
+		}
+		for key, value := range stats {
+			out[key] += value
+		}
+	}
+	if err := s.Store.SetSetting(ctx, "watch.fingerprint.usage", inventory.Fingerprint); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (s *Service) InventoryFingerprint() (string, error) {
+	entries, err := s.inventoryEntries()
+	if err != nil {
+		return "", err
+	}
+	return inventoryFingerprint(entries), nil
+}
+
+func (s *Service) Inventory(ctx context.Context) (Inventory, error) {
+	entries, err := s.inventoryEntries()
+	if err != nil {
+		return Inventory{}, err
+	}
+	inventory := Inventory{Entries: entries, Fingerprint: inventoryFingerprint(entries)}
+	rows, err := s.Store.DB.QueryContext(ctx, "SELECT path,identity,size,cursor,modified_at FROM usage_source_files")
+	if err != nil {
+		return Inventory{}, err
+	}
+	defer rows.Close()
+	type storedEntry struct {
+		identity               string
+		size, cursor, modified int64
+	}
+	stored := map[string]storedEntry{}
+	for rows.Next() {
+		var path string
+		var item storedEntry
+		if err = rows.Scan(&path, &item.identity, &item.size, &item.cursor, &item.modified); err != nil {
+			return Inventory{}, err
+		}
+		stored[path] = item
+	}
+	if err = rows.Err(); err != nil {
+		return Inventory{}, err
+	}
+	for _, entry := range entries {
+		previous, found := stored[entry.Path]
+		delete(stored, entry.Path)
+		switch {
+		case !found:
+			inventory.Added = append(inventory.Added, entry.Path)
+		case previous.identity == entry.Identity && previous.size == entry.Size && previous.modified == entry.ModifiedAt:
+		case previous.identity == entry.Identity && entry.Size > previous.size && entry.Size >= previous.cursor:
+			inventory.Appended = append(inventory.Appended, entry.Path)
+		default:
+			inventory.Mutated = append(inventory.Mutated, entry.Path)
+		}
+	}
+	for path := range stored {
+		inventory.Removed = append(inventory.Removed, path)
+	}
+	sort.Strings(inventory.Removed)
+	return inventory, nil
+}
+
+func (s *Service) inventoryEntries() ([]InventoryEntry, error) {
+	var entries []InventoryEntry
 	for _, client := range []string{"codex", "claude"} {
 		paths, err := s.sourcePaths(client)
 		if err != nil {
 			return nil, err
 		}
-		for _, p := range paths {
-			out["files"]++
-			stats, err := s.scanFile(ctx, p, client)
+		for _, path := range paths {
+			info, err := s.stat(path)
 			if err != nil {
 				return nil, err
 			}
-			for k, v := range stats {
-				out[k] += v
-			}
+			entries = append(entries, InventoryEntry{Path: path, Client: client, Identity: usageFileIdentity(info), Size: info.Size(), ModifiedAt: info.ModTime().UnixNano()})
 		}
 	}
-	return out, nil
+	sort.Slice(entries, func(i, j int) bool { return entries[i].Path < entries[j].Path })
+	return entries, nil
+}
+
+func inventoryFingerprint(entries []InventoryEntry) string {
+	records := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		records = append(records, strings.Join([]string{entry.Path, entry.Identity, fmt.Sprint(entry.Size), fmt.Sprint(entry.ModifiedAt)}, "\x00"))
+	}
+	return hash([]byte(strings.Join(records, "\n")))
 }
 func (s *Service) sourcePaths(client string) ([]string, error) {
 	var patterns []string
@@ -336,33 +478,48 @@ func (s *Service) sourcePaths(client string) ([]string, error) {
 	sort.Strings(ret)
 	return ret, nil
 }
-func (s *Service) scanFile(ctx context.Context, path, client string) (map[string]int, error) {
-	r := map[string]int{"imported": 0, "replaced": 0, "malformed": 0, "unsupported": 0}
-	info, err := os.Stat(path)
-	if err != nil {
-		return r, err
-	}
-	identity := fmt.Sprintf("%d:%d", info.ModTime().UnixNano(), info.Size())
-	var cursor int64
+func (s *Service) scanFile(ctx context.Context, entry InventoryEntry) (map[string]int, error) {
+	r := map[string]int{"imported": 0, "updated": 0, "ignored_non_usage": 0, "unsupported_usage": 0, "malformed": 0, "source_resets": 0, "replaced": 0, "unsupported": 0}
+	path, client := entry.Path, entry.Client
+	var cursor, oldSize, oldModified int64
 	var oldIdentity, oldHash string
 	state := parseState{}
-	row := s.Store.DB.QueryRowContext(ctx, "SELECT cursor,identity,prefix_hash,COALESCE(session_id,''),COALESCE(turn_id,''),COALESCE(model,'') FROM usage_source_files WHERE path=?", path)
-	_ = row.Scan(&cursor, &oldIdentity, &oldHash, &state.session, &state.turn, &state.model)
-	data, err := os.ReadFile(path)
+	row := s.Store.DB.QueryRowContext(ctx, "SELECT cursor,identity,size,modified_at,prefix_hash,COALESCE(session_id,''),COALESCE(turn_id,''),COALESCE(model,'') FROM usage_source_files WHERE path=?", path)
+	loadErr := row.Scan(&cursor, &oldIdentity, &oldSize, &oldModified, &oldHash, &state.session, &state.turn, &state.model)
+	found := loadErr == nil
+	if loadErr != nil && !errors.Is(loadErr, sql.ErrNoRows) {
+		return r, loadErr
+	}
+	if found && oldIdentity == entry.Identity && oldSize == entry.Size && oldModified == entry.ModifiedAt {
+		return r, nil
+	}
+	file, err := s.open(path)
 	if err != nil {
 		return r, err
 	}
-	if cursor > int64(len(data)) || (cursor > 0 && hash(data[:cursor]) != oldHash) {
-		if _, err = s.Store.Exec(ctx, "DELETE FROM usage_events WHERE source_path=?", path); err != nil {
+	defer file.Close()
+	appendOnly := found && oldIdentity == entry.Identity && entry.Size >= cursor
+	if appendOnly && cursor > 0 {
+		start := max(int64(0), cursor-4096)
+		anchor := make([]byte, cursor-start)
+		if _, err = io.ReadFull(io.NewSectionReader(file, start, int64(len(anchor))), anchor); err != nil {
 			return r, err
 		}
-		if _, err = s.Store.Exec(ctx, "DELETE FROM usage_source_files WHERE path=?", path); err != nil {
-			return r, err
-		}
+		appendOnly = hash(anchor) == oldHash
+	}
+	reset := !appendOnly && found
+	if reset {
 		cursor = 0
+		state = parseState{}
+		r["source_resets"]++
 		r["replaced"]++
 	}
-	offset, line := int64(0), data
+	data, err := io.ReadAll(io.NewSectionReader(file, cursor, entry.Size-cursor))
+	if err != nil {
+		return r, err
+	}
+	events := make([]Event, 0)
+	offset, line := cursor, data
 	for len(line) > 0 {
 		idx := strings.IndexByte(string(line), '\n')
 		if idx < 0 {
@@ -370,11 +527,6 @@ func (s *Service) scanFile(ctx context.Context, path, client string) (map[string
 		}
 		raw := line[:idx]
 		next := int64(idx + 1)
-		if offset+next <= cursor {
-			offset += next
-			line = line[idx+1:]
-			continue
-		}
 		var value map[string]any
 		if err := json.Unmarshal(raw, &value); err != nil {
 			r["malformed"]++
@@ -384,26 +536,91 @@ func (s *Service) scanFile(ctx context.Context, path, client string) (map[string
 		}
 		ev, ok := parse(client, value, &state, path, offset)
 		if !ok {
-			r["unsupported"]++
-		} else {
-			inserted, err := s.upsert(ctx, ev)
-			if err != nil {
-				return r, err
-			}
-			if inserted {
-				r["imported"]++
+			if looksLikeUsage(client, value) {
+				r["unsupported_usage"]++
+				r["unsupported"]++
 			} else {
-				r["replaced"]++
+				r["ignored_non_usage"]++
 			}
+		} else {
+			events = append(events, ev)
 		}
 		offset += next
 		line = line[idx+1:]
 	}
+	latest, err := s.stat(path)
+	if err != nil {
+		return r, err
+	}
+	if usageFileIdentity(latest) != entry.Identity || latest.Size() != entry.Size || latest.ModTime().UnixNano() != entry.ModifiedAt {
+		return r, errors.New("usage source changed during inventory scan")
+	}
 	// A cursor is always the end of a complete record.  The unfinished suffix is
 	// deliberately re-read next time, so an interrupted write cannot be skipped.
 	cursor = offset
-	_, err = s.Store.Exec(ctx, `INSERT INTO usage_source_files(path,identity,size,cursor,prefix_hash,session_id,turn_id,model,imported,replaced,malformed,unsupported) VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(path) DO UPDATE SET identity=excluded.identity,size=excluded.size,cursor=excluded.cursor,prefix_hash=excluded.prefix_hash,session_id=excluded.session_id,turn_id=excluded.turn_id,model=excluded.model,imported=usage_source_files.imported+excluded.imported,replaced=usage_source_files.replaced+excluded.replaced,malformed=usage_source_files.malformed+excluded.malformed,unsupported=usage_source_files.unsupported+excluded.unsupported`, path, identity, len(data), cursor, hash(data[:cursor]), state.session, state.turn, state.model, r["imported"], r["replaced"], r["malformed"], r["unsupported"])
-	return r, err
+	anchorStart := max(int64(0), cursor-4096)
+	anchor := make([]byte, cursor-anchorStart)
+	if len(anchor) > 0 {
+		if _, err = io.ReadFull(io.NewSectionReader(file, anchorStart, int64(len(anchor))), anchor); err != nil {
+			return r, err
+		}
+	}
+	tx, err := s.Store.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return r, err
+	}
+	defer tx.Rollback()
+	affected, err := affectedSessions(ctx, tx, path)
+	if err != nil {
+		return r, err
+	}
+	if reset {
+		if _, err = tx.ExecContext(ctx, "DELETE FROM usage_events WHERE source_path=?", path); err != nil {
+			return r, err
+		}
+		if _, err = tx.ExecContext(ctx, "DELETE FROM usage_run_sources WHERE path=?", path); err != nil {
+			return r, err
+		}
+	}
+	for _, event := range events {
+		affected[event.Client+"\x00"+event.SessionID] = [2]string{event.Client, event.SessionID}
+		inserted, upsertErr := upsertTx(ctx, tx, event)
+		if upsertErr != nil {
+			return r, upsertErr
+		}
+		if inserted {
+			r["imported"]++
+		} else {
+			r["updated"]++
+			r["replaced"]++
+		}
+	}
+	_, err = tx.ExecContext(ctx, `INSERT INTO usage_source_files(path,identity,size,cursor,prefix_hash,session_id,turn_id,model,imported,replaced,malformed,unsupported,modified_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(path) DO UPDATE SET identity=excluded.identity,size=excluded.size,cursor=excluded.cursor,prefix_hash=excluded.prefix_hash,session_id=excluded.session_id,turn_id=excluded.turn_id,model=excluded.model,imported=usage_source_files.imported+excluded.imported,replaced=usage_source_files.replaced+excluded.replaced,malformed=usage_source_files.malformed+excluded.malformed,unsupported=usage_source_files.unsupported+excluded.unsupported,modified_at=excluded.modified_at`, path, entry.Identity, entry.Size, cursor, hash(anchor), state.session, state.turn, state.model, r["imported"], r["replaced"], r["malformed"], r["unsupported"], entry.ModifiedAt)
+	if err != nil {
+		return r, err
+	}
+	if err = rebuildSessions(ctx, tx, affected); err != nil {
+		return r, err
+	}
+	return r, tx.Commit()
+}
+func usageFileIdentity(info os.FileInfo) string {
+	if stat, ok := info.Sys().(*syscall.Stat_t); ok {
+		return fmt.Sprintf("%d:%d", stat.Dev, stat.Ino)
+	}
+	return info.Name()
+}
+func looksLikeUsage(client string, value map[string]any) bool {
+	if client == "codex" {
+		p, _ := value["payload"].(map[string]any)
+		return value["type"] == "event_msg" && p["type"] == "token_count"
+	}
+	if value["type"] != "assistant" {
+		return false
+	}
+	m, _ := value["message"].(map[string]any)
+	_, ok := m["usage"]
+	return ok
 }
 func hash(b []byte) string { sum := sha256.Sum256(b); return hex.EncodeToString(sum[:]) }
 
@@ -478,16 +695,68 @@ func parse(client string, v map[string]any, state *parseState, path string, offs
 	return Event{Key: "claude:" + sid + ":" + id, Client: client, SessionID: sid, EventID: id, EventAt: stringValue(v, "timestamp"), Model: model, SourcePath: path, SourceOffset: offset, Tokens: t}, true
 }
 func stringValue(v map[string]any, k string) string { x, _ := v[k].(string); return x }
-func (s *Service) upsert(ctx context.Context, e Event) (bool, error) {
+func upsertTx(ctx context.Context, tx *sql.Tx, e Event) (bool, error) {
 	var exists int
-	_ = s.Store.DB.QueryRowContext(ctx, "SELECT 1 FROM usage_events WHERE event_key=?", e.Key).Scan(&exists)
-	_, err := s.Store.Exec(ctx, `INSERT INTO usage_sessions(client,session_id,first_at,last_at)VALUES(?,?,?,?) ON CONFLICT(client,session_id) DO UPDATE SET first_at=MIN(first_at,excluded.first_at),last_at=MAX(last_at,excluded.last_at)`, e.Client, e.SessionID, e.EventAt, e.EventAt)
-	if err != nil {
+	if err := tx.QueryRowContext(ctx, "SELECT 1 FROM usage_events WHERE event_key=?", e.Key).Scan(&exists); err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return false, err
 	}
 	vals := []any{e.Key, e.Client, e.SessionID, e.EventID, e.EventAt, e.Model, e.Tokens["input_tokens"], e.Tokens["cached_input_tokens"], e.Tokens["output_tokens"], e.Tokens["cache_read_tokens"], e.Tokens["cache_creation_tokens"], e.Tokens["cache_write_5m_tokens"], e.Tokens["cache_write_1h_tokens"], e.SourcePath, e.SourceOffset}
-	_, err = s.Store.Exec(ctx, `INSERT INTO usage_events(event_key,client,session_id,event_id,event_at,model,input_tokens,cached_input_tokens,output_tokens,cache_read_tokens,cache_creation_tokens,cache_write_5m_tokens,cache_write_1h_tokens,source_path,source_offset)VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(event_key) DO UPDATE SET event_at=excluded.event_at,model=excluded.model,input_tokens=excluded.input_tokens,cached_input_tokens=excluded.cached_input_tokens,output_tokens=excluded.output_tokens,cache_read_tokens=excluded.cache_read_tokens,cache_creation_tokens=excluded.cache_creation_tokens,cache_write_5m_tokens=excluded.cache_write_5m_tokens,cache_write_1h_tokens=excluded.cache_write_1h_tokens,source_path=excluded.source_path,source_offset=excluded.source_offset`, vals...)
+	_, err := tx.ExecContext(ctx, `INSERT INTO usage_events(event_key,client,session_id,event_id,event_at,model,input_tokens,cached_input_tokens,output_tokens,cache_read_tokens,cache_creation_tokens,cache_write_5m_tokens,cache_write_1h_tokens,source_path,source_offset)VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(event_key) DO UPDATE SET event_at=excluded.event_at,model=excluded.model,input_tokens=excluded.input_tokens,cached_input_tokens=excluded.cached_input_tokens,output_tokens=excluded.output_tokens,cache_read_tokens=excluded.cache_read_tokens,cache_creation_tokens=excluded.cache_creation_tokens,cache_write_5m_tokens=excluded.cache_write_5m_tokens,cache_write_1h_tokens=excluded.cache_write_1h_tokens,source_path=excluded.source_path,source_offset=excluded.source_offset`, vals...)
 	return exists == 0, err
+}
+
+func affectedSessions(ctx context.Context, tx *sql.Tx, path string) (map[string][2]string, error) {
+	rows, err := tx.QueryContext(ctx, "SELECT DISTINCT client,session_id FROM usage_events WHERE source_path=?", path)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	affected := map[string][2]string{}
+	for rows.Next() {
+		var client, sessionID string
+		if err = rows.Scan(&client, &sessionID); err != nil {
+			return nil, err
+		}
+		affected[client+"\x00"+sessionID] = [2]string{client, sessionID}
+	}
+	return affected, rows.Err()
+}
+
+func rebuildSessions(ctx context.Context, tx *sql.Tx, affected map[string][2]string) error {
+	for _, pair := range affected {
+		if _, err := tx.ExecContext(ctx, "DELETE FROM usage_sessions WHERE client=? AND session_id=?", pair[0], pair[1]); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO usage_sessions(client,session_id,first_at,last_at) SELECT client,session_id,MIN(event_at),MAX(event_at) FROM usage_events WHERE client=? AND session_id=? GROUP BY client,session_id`, pair[0], pair[1]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Service) removeSource(ctx context.Context, path string) error {
+	tx, err := s.Store.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	affected, err := affectedSessions(ctx, tx, path)
+	if err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, "DELETE FROM usage_run_sources WHERE path=?", path); err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, "DELETE FROM usage_events WHERE source_path=?", path); err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, "DELETE FROM usage_source_files WHERE path=?", path); err != nil {
+		return err
+	}
+	if err = rebuildSessions(ctx, tx, affected); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 func (s *Service) Diagnose(ctx context.Context) (map[string]any, error) {
 	out := map[string]any{}
@@ -644,14 +913,14 @@ func (s *Service) StartRun(ctx context.Context, client string, pid int) (int64, 
 	if _, err := s.RecoverStaleRuns(ctx); err != nil {
 		return 0, time.Time{}, err
 	}
-	var name, mult string
-	err := s.Store.DB.QueryRowContext(ctx, `SELECT p.name,ps.multiplier_snapshot FROM provider_selections ps JOIN providers p ON p.id=ps.provider_id WHERE ps.client=? ORDER BY ps.selected_at DESC,ps.id DESC LIMIT 1`, client).Scan(&name, &mult)
+	snapshot, err := s.Store.CurrentProviderSnapshot(ctx, client)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, time.Time{}, errors.New("no provider selection for client")
 	}
 	if err != nil {
 		return 0, time.Time{}, err
 	}
+	name, mult := snapshot.Name, snapshot.Multiplier
 	start := s.now()
 	exact, reason := 1, ""
 	if pids, observeErr := s.clientProcesses(client); observeErr == nil {
@@ -998,8 +1267,13 @@ func (s *Service) priceForEvent(ctx context.Context, e storedEvent) (modelPrice,
 		if sessionStart == "" {
 			sessionStart = e.EventAt
 		}
-		err := s.Store.DB.QueryRowContext(ctx, `SELECT multiplier_snapshot FROM provider_selections WHERE client=? AND selected_at<=? ORDER BY selected_at DESC,id DESC LIMIT 1`, e.Client, sessionStart).Scan(&mult)
+		at, parseErr := time.Parse(time.RFC3339Nano, sessionStart)
+		if parseErr != nil {
+			return modelPrice{}, "", "", parseErr
+		}
+		snapshot, err := s.Store.ProviderSnapshotAt(ctx, e.Client, at)
 		if err == nil {
+			mult = snapshot.Multiplier
 			quality = "estimated"
 		}
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {

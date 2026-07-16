@@ -4,9 +4,9 @@ package provider
 import (
 	"errors"
 	"fmt"
-	"math/big"
-	"net/url"
 	"strings"
+
+	"github.com/kitdine/agent-deck/internal/providermeta"
 )
 
 type Client string
@@ -41,16 +41,17 @@ func Validate(definition Definition) (Definition, error) {
 	if definition.Name == "" || definition.CredentialRef == "" || len(definition.Clients) == 0 {
 		return Definition{}, fmt.Errorf("%w: name, credential reference, and clients are required", ErrInvalidProvider)
 	}
-	parsed, err := url.ParseRequestURI(definition.Endpoint)
-	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
-		return Definition{}, fmt.Errorf("%w: endpoint", ErrInvalidProvider)
-	}
 	seen := map[Client]bool{}
 	for _, client := range definition.Clients {
 		if client != ClientCodex && client != ClientClaude || seen[client] {
 			return Definition{}, fmt.Errorf("%w: client", ErrInvalidProvider)
 		}
 		seen[client] = true
+	}
+	var err error
+	definition.Endpoint, err = NormalizeCredentialEndpoint(definition.Endpoint, seen[ClientCodex])
+	if err != nil {
+		return Definition{}, err
 	}
 	multiplier, err := NormalizeMultiplier(definition.Multiplier)
 	if err != nil {
@@ -60,13 +61,18 @@ func Validate(definition Definition) (Definition, error) {
 	return definition, nil
 }
 
-func NormalizeMultiplier(value string) (string, error) {
-	if strings.TrimSpace(value) == "" {
-		return "1", nil
+func NormalizeCredentialEndpoint(value string, codex bool) (string, error) {
+	normalized, err := providermeta.NormalizeEndpoint(value, codex)
+	if err != nil {
+		return "", fmt.Errorf("%w: endpoint", ErrInvalidProvider)
 	}
-	rational, ok := new(big.Rat).SetString(value)
-	if !ok || rational.Sign() < 0 {
+	return normalized, nil
+}
+
+func NormalizeMultiplier(value string) (string, error) {
+	normalized, err := providermeta.NormalizeMultiplier(value)
+	if err != nil {
 		return "", ErrInvalidMultiplier
 	}
-	return rational.FloatString(12), nil
+	return normalized, nil
 }

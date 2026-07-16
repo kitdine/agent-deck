@@ -5,11 +5,14 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+
+	"github.com/kitdine/agent-deck/internal/providermeta"
 )
 
 type migration struct {
 	version    int
 	statements []string
+	apply      func(context.Context, *sql.Tx) error
 }
 
 var migrations = []migration{
@@ -50,6 +53,76 @@ var migrations = []migration{
 		`CREATE TABLE extension_management (extension_id TEXT PRIMARY KEY REFERENCES extensions(id) ON DELETE CASCADE, fingerprint TEXT NOT NULL, adopted_at TEXT NOT NULL)`,
 		`CREATE INDEX extensions_client_kind ON extensions(client, kind, scope, native_id)`,
 	}},
+	{version: 7, statements: []string{
+		`CREATE TABLE provider_credentials (id INTEGER PRIMARY KEY, provider_id INTEGER NOT NULL REFERENCES providers(id) ON DELETE CASCADE, name TEXT NOT NULL, credential_ref TEXT NOT NULL UNIQUE, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(provider_id,name))`,
+		`CREATE TABLE provider_credential_clients (credential_id INTEGER NOT NULL REFERENCES provider_credentials(id) ON DELETE CASCADE, client TEXT NOT NULL, PRIMARY KEY(credential_id,client))`,
+		`INSERT INTO provider_credentials(provider_id,name,credential_ref,created_at,updated_at) SELECT id,'default',credential_ref,created_at,updated_at FROM providers`,
+		`INSERT INTO provider_credential_clients(credential_id,client) SELECT pc.id,pcl.client FROM provider_credentials pc JOIN provider_clients pcl ON pcl.provider_id=pc.provider_id GROUP BY pc.id,pcl.client`,
+		`CREATE TABLE operations_v7 (id TEXT PRIMARY KEY, kind TEXT NOT NULL, state TEXT NOT NULL, provider_id INTEGER REFERENCES providers(id) ON DELETE SET NULL, client TEXT, started_at TEXT NOT NULL, updated_at TEXT NOT NULL, redacted_backup_path TEXT, error_code TEXT, config_fingerprint TEXT, resource_name TEXT NOT NULL DEFAULT '', details_json TEXT NOT NULL DEFAULT '{}')`,
+		`INSERT INTO operations_v7(id,kind,state,provider_id,client,started_at,updated_at,redacted_backup_path,error_code,config_fingerprint) SELECT id,kind,state,provider_id,client,started_at,updated_at,redacted_backup_path,error_code,config_fingerprint FROM operations`,
+		`DROP TABLE operations`,
+		`ALTER TABLE operations_v7 RENAME TO operations`,
+		`CREATE TABLE provider_selections_v7 (id INTEGER PRIMARY KEY, provider_id INTEGER REFERENCES providers(id) ON DELETE SET NULL, client TEXT NOT NULL, provider_name_snapshot TEXT NOT NULL, endpoint_snapshot TEXT NOT NULL DEFAULT '', multiplier_snapshot TEXT NOT NULL, credential_id INTEGER REFERENCES provider_credentials(id) ON DELETE SET NULL, credential_name_snapshot TEXT NOT NULL DEFAULT '', operation_id TEXT REFERENCES operations(id) ON DELETE SET NULL, selected_at TEXT NOT NULL)`,
+		`INSERT INTO provider_selections_v7(id,provider_id,client,provider_name_snapshot,endpoint_snapshot,multiplier_snapshot,credential_id,credential_name_snapshot,operation_id,selected_at) SELECT ps.id,ps.provider_id,ps.client,p.name,p.endpoint,ps.multiplier_snapshot,pc.id,COALESCE(pc.name,''),(SELECT o.id FROM operations o WHERE o.kind='provider.use' AND o.state='completed' AND o.provider_id=ps.provider_id AND o.client=ps.client AND o.started_at<=ps.selected_at AND o.updated_at>=ps.selected_at ORDER BY o.updated_at,o.id LIMIT 1),ps.selected_at FROM provider_selections ps JOIN providers p ON p.id=ps.provider_id LEFT JOIN provider_credentials pc ON pc.provider_id=ps.provider_id AND pc.name='default' WHERE EXISTS (SELECT 1 FROM operations o WHERE o.kind='provider.use' AND o.state='completed' AND o.provider_id=ps.provider_id AND o.client=ps.client AND o.started_at<=ps.selected_at AND o.updated_at>=ps.selected_at) OR NOT EXISTS (SELECT 1 FROM operations o WHERE o.kind='provider.use' AND o.provider_id=ps.provider_id AND o.client=ps.client AND o.started_at<=ps.selected_at AND o.updated_at>=ps.selected_at)`,
+		`DROP TABLE provider_selections`,
+		`ALTER TABLE provider_selections_v7 RENAME TO provider_selections`,
+		`CREATE UNIQUE INDEX provider_selections_completed_operation ON provider_selections(operation_id) WHERE operation_id IS NOT NULL`,
+		`ALTER TABLE usage_source_files ADD COLUMN modified_at INTEGER NOT NULL DEFAULT 0`,
+	}},
+	{version: 8, statements: []string{
+		`ALTER TABLE provider_credentials ADD COLUMN logical_ref TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE provider_credentials ADD COLUMN endpoint TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE provider_credentials ADD COLUMN multiplier TEXT NOT NULL DEFAULT '1'`,
+	}, apply: backfillCredentialMetadata},
+	{version: 9, statements: []string{
+		`CREATE TABLE credential_secrets (credential_id INTEGER PRIMARY KEY REFERENCES provider_credentials(id) ON DELETE CASCADE, algorithm TEXT NOT NULL, key_version INTEGER NOT NULL, key_id TEXT NOT NULL, nonce BLOB NOT NULL, ciphertext BLOB NOT NULL, updated_at TEXT NOT NULL)`,
+	}},
+}
+
+func backfillCredentialMetadata(ctx context.Context, tx *sql.Tx) error {
+	type credentialMetadata struct {
+		id             int64
+		providerName   string
+		credentialName string
+		endpoint       string
+		multiplier     string
+		codex          bool
+	}
+	rows, err := tx.QueryContext(ctx, `SELECT pc.id,p.name,pc.name,p.endpoint,p.multiplier,EXISTS(SELECT 1 FROM provider_credential_clients pcc WHERE pcc.credential_id=pc.id AND pcc.client='codex') FROM provider_credentials pc JOIN providers p ON p.id=pc.provider_id ORDER BY pc.id`)
+	if err != nil {
+		return err
+	}
+	var credentials []credentialMetadata
+	for rows.Next() {
+		var item credentialMetadata
+		if err = rows.Scan(&item.id, &item.providerName, &item.credentialName, &item.endpoint, &item.multiplier, &item.codex); err != nil {
+			rows.Close()
+			return err
+		}
+		credentials = append(credentials, item)
+	}
+	if err = rows.Close(); err != nil {
+		return err
+	}
+	for _, item := range credentials {
+		reference, normalizeErr := providermeta.CredentialReference(item.providerName, item.credentialName)
+		if normalizeErr != nil {
+			return normalizeErr
+		}
+		endpoint, normalizeErr := providermeta.NormalizeEndpoint(item.endpoint, item.codex)
+		if normalizeErr != nil {
+			return normalizeErr
+		}
+		multiplier, normalizeErr := providermeta.NormalizeMultiplier(item.multiplier)
+		if normalizeErr != nil {
+			return normalizeErr
+		}
+		if _, err = tx.ExecContext(ctx, `UPDATE provider_credentials SET logical_ref=?,endpoint=?,multiplier=? WHERE id=?`, reference, endpoint, multiplier, item.id); err != nil {
+			return err
+		}
+	}
+	_, err = tx.ExecContext(ctx, `CREATE UNIQUE INDEX provider_credentials_logical_ref ON provider_credentials(logical_ref)`)
+	return err
 }
 
 func migrate(ctx context.Context, db *sql.DB, ordered []migration) error {
@@ -80,6 +153,12 @@ func migrate(ctx context.Context, db *sql.DB, ordered []migration) error {
 		}
 		for _, statement := range migration.statements {
 			if _, err := tx.ExecContext(ctx, statement); err != nil {
+				_ = tx.Rollback()
+				return fmt.Errorf("migration %d: %w", migration.version, err)
+			}
+		}
+		if migration.apply != nil {
+			if err := migration.apply(ctx, tx); err != nil {
 				_ = tx.Rollback()
 				return fmt.Errorf("migration %d: %w", migration.version, err)
 			}
@@ -130,6 +209,12 @@ func bootstrapAndMigrate(ctx context.Context, db *sql.DB, ordered []migration) e
 		}
 		for _, statement := range migration.statements {
 			if _, err := tx.ExecContext(ctx, statement); err != nil {
+				_ = tx.Rollback()
+				return fmt.Errorf("migration %d: %w", migration.version, err)
+			}
+		}
+		if migration.apply != nil {
+			if err := migration.apply(ctx, tx); err != nil {
 				_ = tx.Rollback()
 				return fmt.Errorf("migration %d: %w", migration.version, err)
 			}

@@ -1,8 +1,10 @@
 # AgentDeck CLI Design
 
-**Status:** active, phase-one and version/installation baseline implementation
-and independent review complete; interactive CLI and shell completion usability
-implementation, release verification, and independent review complete
+**Status:** active; phase-one, version/installation baseline, consolidated Phase
+9 CLI usability, and credential-owned provider configuration implementation,
+release verification, and independent review complete; unified ASCII list-table
+output and machine-bound encrypted SQLite credential storage implemented and
+release-verified, awaiting independent review
 
 ## Product Definition
 
@@ -67,12 +69,11 @@ agentdeck --version
 The command groups are:
 
 ```text
-agentdeck provider list|show|add|edit|remove|use|status
-agentdeck provider credential add|update|remove|list
-agentdeck provider recover
+agentdeck provider list|show|status|add|update|remove|use|recover
+agentdeck credential list|show|add|update|remove
 
 agentdeck usage scan|summary|sessions|diagnose|rebuild
-agentdeck usage price status|update|history
+agentdeck price status|update|history|override
 
 agentdeck session scan|list|search|show
 agentdeck session exclude|rebuild|purge-index
@@ -81,7 +82,7 @@ agentdeck extension scan|list|show|doctor
 agentdeck extension adopt|enable|disable|release
 
 agentdeck run codex|claude -- <client arguments>
-agentdeck watch [--interval <duration>]
+agentdeck watch [--interval <duration>] [--domains usage,session,extension]
 
 agentdeck backup create|list|inspect|restore
 agentdeck doctor [--full]
@@ -101,6 +102,14 @@ Global flags are:
 `--state-dir` exists for tests and portable isolated execution. It does not
 change Codex or Claude source paths unless their adapter-specific test paths are
 also explicitly overridden. NDJSON remains valid only for `watch`.
+
+Default `text` output is a human-facing interactive contract, not a serialized
+representation of internal DTOs. List commands use aligned, scannable columns;
+single-resource commands use labeled fields; empty results state that no items
+were found; mutation commands report the completed action without exposing
+secrets or internal envelope fields. Raw JSON objects or arrays must appear only
+when the caller explicitly selects `--format json`. The JSON envelope and field
+names remain stable independently of text presentation.
 
 ## Architecture
 
@@ -146,8 +155,10 @@ focused internal services; domain packages do not depend on Cobra.
   interfaces rather than parsing another domain's tables directly.
 - `store` owns SQLite schemas, migrations, transactions, locks, permissions,
   and backups.
-- `platform` owns state paths, filesystem replacement, process discovery,
-  Keychain access, and future OS-specific secret-store adapters.
+- `credentialvault` owns private key-file lifecycle, machine-bound key
+  derivation, authenticated encryption, and non-disclosure errors.
+- `platform` owns state paths, stable machine identity, filesystem replacement,
+  process discovery, and OS-specific client paths.
 - `output` owns stable JSON envelopes, text rendering, warnings, and errors.
 
 Domain packages do not parse another domain's database tables directly. Shared
@@ -161,6 +172,7 @@ The default state root is:
 ~/.agentdeck/
 ├── agentdeck.sqlite3
 ├── sessions.sqlite3
+├── credential.key
 └── backups/
     ├── codex/
     ├── claude/
@@ -168,12 +180,14 @@ The default state root is:
 ```
 
 The root and subdirectories use mode `0700`. SQLite databases, WAL and journal
-sidecars, backups, locks, and temporary files use mode `0600`.
+sidecars, the credential key file, backups, locks, and temporary files use mode
+`0600`.
 
 `agentdeck.sqlite3` stores provider definitions, client mappings, credential
-references, multiplier snapshots, provider selections, exact runs, usage
-events, model prices, extension inventory, managed-extension state, settings,
-schema metadata, and operation journal records.
+metadata and authenticated ciphertext, multiplier snapshots, provider
+selections, exact runs, usage events, model prices, extension inventory,
+managed-extension state, settings, schema metadata, and operation journal
+records. Credential plaintext is never stored in SQLite.
 
 `sessions.sqlite3` stores the separately purgeable and rebuildable session
 metadata and FTS5 index. Keeping visible conversation text out of the core
@@ -198,7 +212,7 @@ ownership and lifecycles:
 ```
 
 Uninstall removes only validated installation artifacts. It never removes the
-state root, backups, Keychain credentials, client files, or project files.
+state root, credential key file, backups, client files, or project files.
 
 ## Build Identity and Installation
 
@@ -209,22 +223,33 @@ backup service:
 ```text
 version    dev
 commit     unknown
+branch     unknown
 build_time unknown
 go_version runtime.Version()
 ```
 
-Make builds inject `VERSION`, `COMMIT`, and `BUILD_TIME` with `-ldflags -X`.
-Release values use a semantic version, the full Git commit SHA, and an RFC3339
-UTC timestamp. Local builds keep the stable defaults unless the caller supplies
-values; they do not inject the current clock automatically, preserving
-reproducible local builds.
+Make builds inject `VERSION`, `COMMIT`, `BRANCH`, and `BUILD_TIME` with
+`-ldflags -X`. Version is the nearest Git tag, falling back to `v0.0.0`, with a
+`-dev` suffix unless HEAD is exactly at a clean tag. Commit is the full Git SHA,
+branch is the current Git branch, and build time is the actual UTC build time in
+`YYYY-MM-DD HH:MM:SS` form. Callers may explicitly override every injected
+value. Direct Go builds outside Make retain the stable development defaults.
 
 Both `agentdeck version` and `agentdeck --version` emit the same build identity.
-Text output is concise and human-readable. `--format json` uses the existing
-versioned envelope with command `version` and a data object containing exactly
-`version`, `commit`, `build_time`, and `go_version`. `--version` is a root-only
-flag and accepts the same global output flags as the `version` command. NDJSON
-remains exclusive to `watch`.
+Text output uses five fixed support-facing lines in this order:
+
+```text
+Release Version: <version>
+Git Commit Hash: <commit>
+Git Branch: <branch>
+Go Version: <go_version>
+UTC Build Time: <build_time>
+```
+
+`--format json` uses the existing versioned envelope with command `version` and
+a data object containing exactly `version`, `commit`, `branch`, `build_time`,
+and `go_version`. `--version` is a root-only flag and accepts the same global
+output flags as the `version` command. NDJSON remains exclusive to `watch`.
 
 Backup creation records the same `buildinfo.Version` in
 `manifest.agentdeck_version`; it no longer supplies a separate hard-coded
@@ -306,8 +331,12 @@ paths plus SHA-256 values for the binary, generated completion, and exact
 managed block, along with the selected shell, rc path, and separator ownership.
 Installation stages all artifacts before changing the rc file and restores the
 original rc on any later failure. `FORCE=1` upgrades only an existing AgentDeck
-installation whose version 1 or version 2 manifest and owned artifacts validate;
-it is not generic permission to replace unrelated files.
+installation whose version 1 or version 2 manifest and owned artifacts validate.
+That manifest check proves ownership and absence of post-install tampering, not
+binary provenance. Before replacement, the installer also executes both the
+installed and staged binaries, requires a valid AgentDeck text version contract,
+and prints their identities and SHA-256 values. It is not generic permission to
+replace unrelated files and does not substitute for signed release provenance.
 
 Uninstall validates every version 2 artifact and the exact managed block before
 removing anything. Changes outside the block are allowed. A missing, duplicated,
@@ -319,10 +348,15 @@ uninstall compatibility.
 
 ## Provider and Credential Management
 
-A provider definition contains its name, endpoint, supported clients,
-authentication mode, model mapping, and one non-negative decimal cost
-multiplier. An absent multiplier means `1`. Boolean, negative, non-finite, and
-non-numeric values are invalid.
+A custom provider is a named logical group for one or more credentials, its
+aggregate supported clients, authentication mode, and client-specific model
+mappings. Each credential owns its base endpoint, client bindings, and one
+non-negative decimal cost multiplier. An absent multiplier means `1`. Boolean,
+negative, non-finite, and non-numeric values are invalid. Codex additionally
+exposes an immutable built-in provider named `official`. It is always visible to
+`provider list|show`, is not stored in the `providers` table, has no endpoint or
+credential reference, and never initializes or accesses the encrypted
+credential store.
 
 The multiplier applies only after base price calculation:
 
@@ -332,37 +366,177 @@ provider_cost = catalog_base_cost * multiplier_snapshot
 
 Raw tokens and catalog base cost never change when a multiplier changes. Each
 successful provider selection and exact run stores its own multiplier snapshot,
-so later provider edits do not rewrite historical cost.
+so later credential edits do not rewrite historical cost.
 
-Provider records store credential references, never credential values. On
-macOS, credentials are stored in Keychain under AgentDeck-owned service names.
-Future Windows and Linux implementations will use Credential Manager and
-Secret Service through the same platform interface.
+Custom providers may have multiple named credentials. A credential name is
+unique within its provider, one credential may bind to Codex and Claude, and a
+provider/client may have multiple credentials. Users select by provider name and
+credential short name. `--credential` is the only user-facing shorthand flag.
+The immutable logical reference is always
+`<provider>-<credential>-ref`, including `<provider>-default-ref`; client
+bindings do not participate in the reference. `--credential-ref` and
+`--credential-clients` are not part of the public CLI. Credential records store
+references and metadata in `provider_credentials` and authenticated ciphertext
+in the one-to-one `credential_secrets` table. The secret table stores the
+credential ID, algorithm version, key version, random nonce, ciphertext, and
+update time. It never stores plaintext.
 
-`provider add` is the primary one-step setup flow. After validating its
-non-secret arguments, it reads one credential and creates both the Keychain
-entry and provider definition through the existing rollback-safe service path.
-`provider credential add` and `provider credential update` use the same reader
-for independent pre-provisioning and rotation; initial setup documentation does
-not require a redundant `credential add` before `provider add`.
+The first credential write lazily creates `<state-dir>/credential.key` through
+an exclusive atomic `0600` write. The versioned key file contains a 256-bit
+random seed. AgentDeck combines that seed with a stable platform machine
+identity through HKDF-SHA256 and derives an AES-256-GCM key; macOS uses
+`IOPlatformUUID`, not hostname or a boot-scoped identifier. The raw machine
+identity is never persisted. A derived key ID in SQLite detects a different
+machine before decryption. Each credential uses a fresh random nonce and binds
+its logical reference and format version as authenticated associated data.
+
+This model protects a copied database when the private key file or machine
+identity is absent. It does not claim to protect against a process running as
+the same OS user that can read both the database and key file. Obfuscating a
+salt or deriving a key from public machine data alone is not considered
+encryption-key protection.
+
+Credential endpoints use one stored base form. URL parsing and trailing-slash
+normalization happen before persistence. When the credential binds Codex and
+the normalized URL path ends in `/v1`, AgentDeck removes that final segment
+before storing it. Codex configuration always appends exactly one `/v1` to the
+stored base; Claude configuration uses the stored base unchanged. A
+Claude-only credential therefore preserves a user-supplied final `/v1`, while a
+credential bound to both clients follows the Codex-aware normalization rule.
+Endpoints must be absolute URLs with a scheme and host. Userinfo, query strings,
+and fragments are rejected so credentials cannot be embedded in endpoint
+metadata and client configuration cannot receive ambiguous suffixes.
+
+`provider add` is the primary one-step setup flow for both provider creation and
+later credential addition:
+
+```text
+agentdeck provider add <provider> --credential <short-name> \
+  --endpoint <base-endpoint> --clients <clients> [--multiplier <decimal>]
+```
+
+If the provider does not exist, the command creates its logical definition and
+the credential. If the provider exists and the named credential does not, the
+command merges the new client bindings into the provider's aggregate clients
+and adds the credential. If the named credential already has identical
+endpoint, multiplier, and bindings and its secret is present, the command is a
+successful no-op and does not read another secret. Different metadata is an
+`invalid_provider` error directing the user to `credential update`. Existing
+metadata with a missing secret directs the user to `credential update --rotate`
+instead of repairing it implicitly. Provider and credential existence,
+normalized metadata, bindings, logical reference, database collisions, and
+encrypted-secret row collisions are checked before prompting for a new value.
+
+Top-level `credential add|update` use the same credential service,
+normalization, collision checks, reader, encryption path, and SQLite
+transactions as `provider add`. `credential add` accepts the same
+credential-owned metadata. `provider update` infers the credential when exactly
+one exists and otherwise requires `--credential`; it updates the same
+credential metadata as `credential update`. Provider/credential creation,
+metadata updates with optional secret rotation, and removal commit metadata and
+ciphertext atomically in one SQLite transaction. They require no external
+secret-store compensation or recovery journal.
 
 When stdin is a terminal, credential commands print a reference-specific prompt
 to stderr, read with terminal echo disabled, and emit a newline after input.
 When stdin is not a terminal, they read exactly one line for automation and do
 not print a prompt. Empty credentials are `invalid_argument` failures. Secret
 values are never accepted as command-line arguments or environment variables
-and never appear in stdout, stderr, JSON envelopes, logs, databases, fixtures,
-or shell history.
+and never appear in plaintext in stdout, stderr, JSON envelopes, logs,
+databases, fixtures, or shell history.
 
-A provider switch validates the provider, client mapping, multiplier, and
-credential before changing client state. It creates a redacted backup, records
-a pending operation, atomically replaces only the documented Codex or Claude
-configuration fields, records the provider selection, and completes the
-operation. A successful no-op selection is still recorded because it expresses
-operator intent for sessions started afterward.
+A custom provider switch validates the provider, selected credential, client
+binding, endpoint, and multiplier before changing client state. Its primary CLI
+is:
 
-Codex authentication/session files and unrelated Claude settings are never
-modified. Provider switching performs no endpoint health check.
+```text
+agentdeck provider use <name> [--client codex|claude] [--credential <name>]
+```
+
+Unique client and credential choices are inferred. Codex resolves to
+`~/.codex/config.toml` and Claude resolves to `~/.claude/settings.json`; an
+advanced `--config-path` flag supports non-standard installations. The CLI
+never asks users to choose a backup path. Each switch creates a unique private
+backup at
+`<state-dir>/client-backups/<client>/<operation-id>.redacted.toml|json`, records
+that path in the pending operation, atomically replaces only the documented
+client configuration fields, and commits the completed operation plus an
+immutable selection snapshot in one database transaction. Endpoint and
+multiplier come from the selected credential, not the provider group. Provider,
+credential, client, endpoint, and multiplier attribution always come from that
+same completed operation. A failed or incomplete selection leaves the prior
+completed selection authoritative. A successful no-op selection is still
+recorded because it expresses operator intent for sessions started afterward.
+
+Selecting `official` is Codex-only and uses Codex's existing OpenAI or ChatGPT
+login state. AgentDeck keeps `model_provider = "custom"`, sets
+`[model_providers.custom].name = "official"`, and removes `base_url` and
+`experimental_bearer_token` from that table. If the custom table or its `name`
+field is absent, AgentDeck creates the missing structure. Existing `name`
+spacing and inline comments are preserved while its value changes; all other
+TOML fields, comments, ordering, and formatting remain unchanged. Missing
+transport fields are a successful no-op.
+AgentDeck never reads, checks, writes, backs up, or deletes
+`~/.codex/auth.json`; Codex alone owns authentication. The built-in provider
+does not create a provider record, credential reference, encrypted secret row,
+or credential key file. It does create the same operation-linked immutable
+selection snapshot as custom
+providers, containing `official`, Codex, no credential, and multiplier `1`.
+Historical attribution treats the completed transaction time as the switch
+boundary. Claude has no built-in `official` provider.
+
+Deleting a custom provider is allowed after use. The live definition and all
+credential metadata and ciphertext are removed in one SQLite transaction,
+while selection snapshots retain historical name, endpoint, credential name,
+client, and multiplier attribution. Provider and credential deletion no longer
+create external-secret recovery entries.
+
+`provider list` and `provider show` read provider definitions without accessing
+or decrypting credential ciphertext. Because endpoint and multiplier are
+credential-owned, `provider list` shows provider name, type, aggregate clients,
+and credential count rather than a single endpoint or multiplier. Credential
+readiness belongs to `provider status` and top-level `credential` commands and
+checks secret-row presence without decrypting values. Text `credential list`
+contains `PROVIDER`, `NAME`, `REFERENCE`, `ENDPOINT`, `MULTIPLIER`, `CLIENTS`,
+and `READY`; credential detail and JSON expose the same non-secret metadata. Output
+never reports credential values or private compatibility references. Provider
+definition JSON contains aggregate `clients` and `credential_count`, but no
+endpoint, multiplier, credential reference, or nested credential details.
+Provider status exposes credential detail only through the plural `credentials`
+collection and has no deprecated singular `credential` projection.
+
+Every collection-shaped `text` result uses one shared ASCII grid renderer. This
+includes provider list/status/recovery collections, credential lists, session
+list/search/document collections, extension lists, backup lists, and price
+history. The renderer uses only `+`, `-`, and `|`, adds one space of horizontal
+cell padding, and draws a horizontal separator around the header and every data
+row. It does not use Unicode box-drawing characters. Empty collections keep
+their existing concise prose instead of rendering an empty grid, and detail
+views keep their labeled-field layout.
+
+Grid column widths are calculated from terminal display width rather than byte
+length so CJK and other wide text remain aligned. Cells are left-aligned and are
+not truncated or wrapped. The implementation uses one small width-focused
+dependency rather than a full table UI framework, vendors it through the normal
+dependency workflow, and must continue to pass the release size gate. JSON and
+NDJSON contracts are unchanged.
+
+Text `provider status` replaces the ambiguous `ACTIVE` list with the columns
+`CODEX ACTIVE` and `CLAUDE ACTIVE`. Each cell is `true` when that provider owns
+the current completed selection for the named client and `false` otherwise.
+The JSON `active` collection remains authoritative and unchanged.
+
+Every leaf command has a concise action description. Commands with positional
+arguments additionally provide an `Arguments` section defining every value and
+an `Examples` section with copyable invocations. `provider add` help explicitly
+shows both first-provider creation and later credential addition, defines
+`--credential` as the short name, and documents client-aware `/v1`
+normalization. Help must expose defaults, managed paths, safety effects, and
+advanced overrides without requiring users to consult source code.
+
+Codex authentication/session files, including `auth.json`, and unrelated Claude
+settings are never modified. Provider switching performs no endpoint health
+check.
 
 ## Usage Collection and Attribution
 
@@ -423,6 +597,14 @@ append, equal-length prefix rewrite, growing rewrite, truncate, replacement,
 archive move, and interrupted final lines. Stable event keys prevent duplicate
 counting when files move or snapshots repeat.
 
+Each inventory classifies paths as added, appended, mutated, or removed. Normal
+scan and watch pass only classified paths to the content scanner; an unchanged
+historical file is not opened. Processing and checkpointing use the same stable
+inventory so an append concurrent with scan remains visible to the next poll.
+Reset/replacement and removed-source cleanup are source-level transactions that
+atomically update source state, events, exact-run source metadata, and session
+aggregation. `watch --domains usage` does not create or open the session store.
+
 ## Price Catalog
 
 The default operational source is the LiteLLM catalog displayed by
@@ -437,7 +619,7 @@ LiteLLM is an aggregated reference source, not an official invoice source.
 User-facing output therefore calls the pre-multiplier amount
 `catalog_base_cost`, not `official_base_cost`.
 
-An explicit `agentdeck usage price update` is the only normal command in this
+An explicit `agentdeck price update` is the only normal command in this
 domain that accesses the network. Runtime scans and reports use the latest
 validated local catalog.
 
@@ -466,7 +648,7 @@ earlier than every compatible version is unpriced. Missing components preserve
 their token counts and produce `unpriced` output instead of a partial-looking
 complete total.
 
-`agentdeck usage price override --file <official-components.json>` imports a
+`agentdeck price override --file <official-components.json>` imports a
 local JSON array of official overrides. Each item requires `model`, direct
 `provider`, `source_url`, UTC `effective_from`, and a non-empty decimal
 `prices` component map. It never accesses the network; provenance is retained
@@ -494,6 +676,9 @@ Users can exclude a project, path, session, or client. Exclusions apply during
 incremental scan and rebuild. `purge-index` removes the session database without
 changing source logs. The index is local, mode `0600`, and excluded from normal
 portable backups unless `--include-sessions` is requested.
+Purging also clears only the session watch checkpoint, so the next session watch
+bootstraps the deleted index without invalidating usage or extension checkpoints.
+Session IDs shared by Codex and Claude are ambiguous unless `--client` is given.
 
 ## Extension Management
 
@@ -566,6 +751,16 @@ live database or WAL files. The manifest records backup schema, AgentDeck
 version, creation time, source platform, database schema versions, included
 components, and SHA-256 for every entry. Credential plaintext exists only in
 the encrypted stream and memory, not in a temporary plaintext file.
+`credentials.json` is derived exclusively from current `provider_credentials`
+rows joined to their `credential_secrets` rows. A provider with zero
+credentials or a credential without ciphertext contributes no secret. The
+machine-bound `credential.key` file is never included in a portable backup.
+The legacy provider-level credential column is never used as a fallback
+ownership source.
+
+A raw state-directory copy is usable only with the same stable machine identity.
+Cross-machine transfer uses portable backup/restore so credential values are
+authenticated inside the age stream and re-encrypted for the target machine.
 
 Normal backups exclude the rebuildable session database. They never include
 original client JSONL, authentication files, attachments, environment data, or
@@ -578,11 +773,12 @@ and recorded hashes before returning archive metadata.
 Phase-one restore accepts only an absent or empty state root. It streams and
 validates the complete archive, stages only database entries in a private
 temporary directory, and keeps the decrypted credential entry in memory. It
-refuses unknown schemas or secret-store conflicts, imports credentials into the
-target platform store, and commits database files with owner-only permissions.
+refuses unknown schemas, creates a new target-machine credential key, replaces
+snapshot ciphertext with target-machine AES-GCM ciphertext in one transaction,
+and commits database and key files with owner-only permissions.
 An existing empty root is committed at mode `0700`; a failed restore restores
 its original mode and reports a failed permission rollback. A failed restore
-removes only state created by that restore.
+removes only state and key material created by that restore.
 
 Restore does not modify Codex or Claude configuration. The user explicitly
 runs `agentdeck provider use` after checking the restored providers.
@@ -593,13 +789,28 @@ SQLite-only mutations use short transactions. Filesystem mutations use an
 operation journal with these states:
 
 ```text
-prepared -> external_written -> database_committed -> completed
+prepared -> external_written -> completed
+        \-> failed
 ```
 
-Recovery removes unused temporary files, restores redacted client backups when
-an external write was not committed, or completes an operation whose database
-and client state already agree. An ambiguous operation blocks new writes and
-is reported by `agentdeck doctor`.
+For `provider.use`, `prepared` persists the target configuration path, its
+pre-write fingerprint, and the redacted backup path before the client file is
+changed. If recording `external_written` fails, failure recording is attempted;
+after a process restart `provider recover` compares the persisted fingerprint
+with the real client file and distinguishes an interruption before the write
+from one after the write. Because the backup is intentionally redacted and
+cannot recreate a bearer credential, recovery diagnoses an external write
+rather than claiming to restore the client file automatically. Failed and
+`external_written` operations remain visible to doctor with explicit recovery
+guidance. Doctor uses the same read-only fingerprint classifier as recovery and
+reports transition/failure codes without changing the operation journal.
+
+Provider and credential creation, rotation, and deletion mutate credential
+metadata and ciphertext together in short SQLite transactions. Provider removal
+uses foreign-key cascades for live credential metadata and ciphertext while
+selection snapshots retain historical attribution. These operations no longer
+use external-secret operation journals. The `provider.use` journal remains
+because native client configuration is still external filesystem state.
 
 The database uses WAL. One state root permits only one migration, provider
 switch, extension mutation, restore, or rebuild at a time. Reads may run while
@@ -608,12 +819,40 @@ never killed to acquire a lock.
 
 Migrations are explicit and ordered. Known older schemas migrate
 transactionally. Unknown newer schemas are rejected. Migration or rebuild
-failure preserves the last usable database.
+failure preserves the last usable database. The v6-to-v7 provider selection
+backfill associates a selection only with a completed `provider.use` whose
+started/updated time window contains `selected_at`. A selection inside any
+failed or incomplete `provider.use` window is discarded instead of becoming an
+authoritative `operation_id = NULL` fallback. Only a historical selection that
+belongs to no `provider.use` window retains that compatibility fallback. The
+backfill enforces at most one selection per completed operation before provider
+IDs can become `NULL` on definition deletion.
+
+Schema v8 adds base endpoint, normalized multiplier, and canonical logical
+reference to every credential. Its transaction determines Codex ownership from
+credential client bindings, removes a final `/v1` for Codex-bound credentials,
+preserves it for Claude-only credentials, lowercases the provider and credential
+components of `<provider>-<credential>-ref`, and rewrites valid multipliers to
+the canonical 12-decimal representation. The logical-reference unique index is
+created only after every row is backfilled, so canonical collisions fail the
+whole migration without leaving a partial schema.
+
+Schema v9 creates `credential_secrets` and the derived-key metadata used by the
+machine-bound encrypted store. It never reads or migrates Keychain values. This
+is an unreleased development transition: existing local development state is
+reset out of band with explicit user approval, and AgentDeck adds no migration
+or reset CLI. Known older database schemas may still migrate their non-secret
+metadata, but no credential is ready until it receives a new encrypted secret.
+Installation and source upgrades never delete the state root automatically.
 
 ## Output and Errors
 
-Human-readable text is the default and may improve over time. JSON is the
-stable automation and GUI contract. Watch uses NDJSON.
+Human-readable text is the default. Each collection, detail, empty result,
+mutation, doctor report, and usage report has an explicit renderer; internal Go
+DTO reflection is not a user-facing contract. Optional costs print their decimal
+value or `unavailable`, never pointer representations. `--quiet` suppresses only
+successful non-essential text mutation output. JSON and errors are unaffected.
+JSON is the stable automation and GUI contract. Watch uses NDJSON.
 
 Normal JSON uses:
 
@@ -667,6 +906,19 @@ fingerprints, duplicate IDs, and missing paths.
 `--full` additionally performs full SQLite integrity checks and traverses all
 indexed sources. Neither mode accesses the network, prints credentials, or
 prints session text.
+Credential readiness checks enumerate every applicable named credential and
+client binding rather than stopping after the first credential.
+Quick diagnostics check credential-key existence, exact `0600` permissions,
+derived key ID, supported algorithm/key versions, nonce shape, and secret-row
+ownership without decrypting values. `doctor --full` additionally authenticates
+every credential ciphertext without printing plaintext. Missing key material,
+machine mismatch, unsupported format, and AEAD authentication failure report
+`credential_key_missing`, `credential_key_machine_mismatch`,
+`credential_key_version_unsupported`, or `credential_ciphertext_invalid` and
+never trigger automatic key replacement.
+Pending `provider.use` checks distinguish external-write transition failure,
+selection completion failure, and a prepared journal whose client file
+fingerprint proves that the external write already occurred.
 
 There is no generic `doctor --fix` in phase one. Recovery uses explicit
 commands such as `provider recover`, `usage rebuild`, `session rebuild`, or
@@ -677,8 +929,11 @@ commands such as `provider recover`, `usage rebuild`, `session rebuild`, or
 - Open Codex and Claude session sources read-only.
 - Use parameterized SQL and structured TOML/JSON parsing.
 - Validate source identities and configuration fingerprints before mutation.
-- Never print or persist credential values outside Keychain and encrypted
-  backup streams.
+- Persist credential values only as authenticated ciphertext in SQLite or
+  inside the passphrase-encrypted portable backup stream; never persist
+  plaintext.
+- Keep the machine-bound credential seed private at mode `0600`, never include
+  it in portable backups, and never regenerate it while ciphertext exists.
 - Never place prompts or responses in the usage database.
 - Keep indexed visible conversation text isolated in `sessions.sqlite3`.
 - Redact credentials from rollback backups and diagnostics.
@@ -696,7 +951,7 @@ business implementation expands.
 
 With no process running, AgentDeck has zero idle resource use. Watch avoids
 database writes when inputs are unchanged. Core packages avoid macOS-only types;
-Keychain and process/config paths are platform adapters.
+stable machine identity and process/config paths are platform adapters.
 
 ## Legacy Transition
 
@@ -716,8 +971,9 @@ import the legacy `providers.json`, usage database, or real client settings.
 2. macOS arm64 and amd64 builds pass with FTS5 and SQLite online backup.
 3. Provider switching preserves unrelated native settings and recovers from an
    interrupted external write.
-4. Credentials remain in Keychain and do not appear in databases, output,
-   rollback backups, logs, or process arguments.
+4. Credential plaintext never appears in databases, output, rollback backups,
+   logs, or process arguments; SQLite stores only machine-bound authenticated
+   ciphertext.
 5. Usage import is incremental and idempotent across append, rewrite,
    truncate, replacement, and archive move.
 6. Multipliers change only final money, never tokens or catalog base cost.
@@ -754,5 +1010,43 @@ import the legacy `providers.json`, usage database, or real client settings.
     block without changing unrelated shell configuration.
 22. Version 2 uninstall validates the binary, completion, and managed block
     before removing any artifact, while version 1 manifests remain compatible.
-23. Usability tests run against temporary homes, fake secret stores, and real
-    shell processes without modifying the real user Keychain or rc files.
+23. Usability tests run against temporary homes, synthetic machine identities,
+    isolated encrypted credential stores, and real shell processes without
+    modifying real user key files or rc files.
+24. Make builds report tag-derived version, full commit, branch, actual UTC
+    build time, and Go runtime; forced upgrades validate and display both binary
+    identities and hashes before replacement.
+25. Provider add creates a missing provider or adds a missing named credential
+    to an existing provider, while an identical existing credential is a
+    no-prompt successful no-op.
+26. Credential endpoint, multiplier, and client bindings are credential-owned;
+    completed selections snapshot the selected credential's values.
+27. Credential references always use `<provider>-<credential>-ref`, never a
+    caller-supplied storage name or client component.
+28. Codex-bound endpoint input accepts either the base or a final `/v1`, stores
+    one canonical base, and writes exactly one `/v1` to Codex configuration.
+29. Endpoint validation rejects userinfo, query strings, and fragments before
+    provider or credential persistence.
+30. Provider definition JSON exposes aggregate clients and credential count;
+    credential detail appears only in credential resources and the plural
+    provider-status collection.
+31. Portable backup includes only credentials owned by current credential rows;
+    providers with zero credentials and retained orphan secrets add nothing.
+32. Schema v8 transactionally canonicalizes logical references, endpoints, and
+    multiplier precision before enforcing logical-reference uniqueness.
+33. Every collection-shaped text result uses the shared `+`, `-`, and `|` ASCII
+    grid with per-row separators and terminal-display-width alignment, while
+    prose empty states, labeled details, JSON, and NDJSON remain unchanged.
+34. Text provider status reports independent boolean `CODEX ACTIVE` and
+    `CLAUDE ACTIVE` columns while JSON retains the existing `active` collection.
+35. Schema v9 stores one AES-256-GCM ciphertext row per credential and commits
+    metadata, rotation, and deletion atomically without external-secret
+    compensation.
+36. The lazily created `0600` credential key combines a random 256-bit seed with
+    stable machine identity through HKDF-SHA256 and is excluded from portable
+    backups.
+37. Missing, mismatched, permissive, unknown-version, or authentication-failing
+    key material fails closed without overwriting ciphertext or exposing secret
+    material.
+38. Portable restore generates a target-machine key and re-encrypts credentials;
+    install and upgrade paths never reset state automatically.
