@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -124,13 +125,22 @@ func TestIsolatedEndToEndFlow(t *testing.T) {
 	runJSON("usage.sessions", "", "usage", "sessions")
 	runJSON("usage.diagnose", "", "usage", "diagnose")
 	commit := "abcdefabcdefabcdefabcdefabcdefabcdefabcd"
+	latestURL := "https://api.github.com/repos/BerriAI/litellm/commits/main"
+	priceURL := "https://raw.githubusercontent.com/BerriAI/litellm/" + commit + "/model_prices_and_context_window.json"
 	usage.PriceHTTPClient = func() *http.Client {
-		return &http.Client{Transport: contractRoundTrip(func(*http.Request) (*http.Response, error) {
-			body := `{"gpt":{"litellm_provider":"openai","input_cost_per_token":0.000002,"output_cost_per_token":0.00001,"cache_read_input_token_cost":0.0000002}}`
-			return &http.Response{StatusCode: http.StatusOK, Status: "200 OK", Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
+		return &http.Client{Transport: contractRoundTrip(func(request *http.Request) (*http.Response, error) {
+			switch request.URL.String() {
+			case latestURL:
+				return &http.Response{StatusCode: http.StatusOK, Status: "200 OK", Body: io.NopCloser(strings.NewReader(`{"sha":"` + commit + `"}`)), Header: make(http.Header)}, nil
+			case priceURL:
+				body := `{"gpt":{"litellm_provider":"openai","input_cost_per_token":0.000002,"output_cost_per_token":0.00001,"cache_read_input_token_cost":0.0000002}}`
+				return &http.Response{StatusCode: http.StatusOK, Status: "200 OK", Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
+			default:
+				return nil, fmt.Errorf("unexpected URL %s", request.URL)
+			}
 		})}
 	}
-	runJSON("price.update", "", "price", "update", "--commit", commit)
+	runJSON("price.update", "", "price", "update")
 	overridePath := filepath.Join(root, "official-overrides.json")
 	if err := os.WriteFile(overridePath, []byte(`[{"model":"gpt-5.4","provider":"openai","source_url":"https://example.invalid/pricing","effective_from":"2026-07-14T00:00:00Z","prices":{"output":"9"}}]`), 0600); err != nil {
 		t.Fatal(err)

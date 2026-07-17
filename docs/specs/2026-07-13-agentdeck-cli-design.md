@@ -623,6 +623,15 @@ An explicit `agentdeck price update` is the only normal command in this
 domain that accesses the network. Runtime scans and reports use the latest
 validated local catalog.
 
+Without `--commit`, the updater resolves the current LiteLLM `main` commit
+through the GitHub API, validates the returned 40-character SHA, and downloads
+the catalog from the canonical raw URL pinned to that SHA. An optional
+`--commit` skips discovery for reproducible imports and rollback. The importer
+never records a mutable `main` URL as catalog provenance. Explicit invalid
+commit overrides fail before AgentDeck opens state or initializes the HTTP
+client. The production HTTP client applies a 60-second total timeout while
+still honoring request-context cancellation.
+
 The importer:
 
 - accepts only direct `openai` and `anthropic` records for the default catalog;
@@ -639,7 +648,9 @@ Official vendor data may supplement or override a LiteLLM component when its
 source and effective date are explicitly recorded. Every imported catalog
 version stores source kind, source URL, LiteLLM Git commit SHA when applicable,
 retrieval timestamp, content SHA-256, currency, schema version, and effective
-time. Versions are immutable and older prices remain available.
+time. For LiteLLM, `content_sha256` hashes the exact downloaded raw catalog and
+the same value is returned by update, status, and history. Versions are
+immutable and older prices remain available.
 
 When a source provides no verified price effective date, a newly imported
 version becomes effective at retrieval time and is never backdated. Events use

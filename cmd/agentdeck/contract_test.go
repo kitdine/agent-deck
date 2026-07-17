@@ -3,7 +3,9 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -442,23 +444,84 @@ func TestProviderRecoverGoldenUsesEmptyArrayAndStableOperationDTO(t *testing.T) 
 func TestPriceUpdateGoldenUsesInjectedTransport(t *testing.T) {
 	commit := "abcdefabcdefabcdefabcdefabcdefabcdefabcd"
 	body := `{"gpt":{"litellm_provider":"openai","input_cost_per_token":0.000002,"output_cost_per_token":0.00001,"cache_read_input_token_cost":0.0000002}}`
+	latestURL := "https://api.github.com/repos/BerriAI/litellm/commits/main"
+	priceURL := "https://raw.githubusercontent.com/BerriAI/litellm/" + commit + "/model_prices_and_context_window.json"
+	var requests []string
 	previous := usage.PriceHTTPClient
 	usage.PriceHTTPClient = func() *http.Client {
-		return &http.Client{Transport: contractRoundTrip(func(*http.Request) (*http.Response, error) {
-			return &http.Response{StatusCode: http.StatusOK, Status: "200 OK", Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
+		return &http.Client{Transport: contractRoundTrip(func(request *http.Request) (*http.Response, error) {
+			requests = append(requests, request.URL.String())
+			switch request.URL.String() {
+			case latestURL:
+				return &http.Response{StatusCode: http.StatusOK, Status: "200 OK", Body: io.NopCloser(strings.NewReader(`{"sha":"` + commit + `"}`)), Header: make(http.Header)}, nil
+			case priceURL:
+				return &http.Response{StatusCode: http.StatusOK, Status: "200 OK", Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
+			default:
+				return nil, fmt.Errorf("unexpected URL %s", request.URL)
+			}
 		})}
 	}
 	t.Cleanup(func() { usage.PriceHTTPClient = previous })
+	state := filepath.Join(t.TempDir(), "state")
 	var stdout bytes.Buffer
-	if err := run([]string{"--state-dir", filepath.Join(t.TempDir(), "state"), "--format", "json", "price", "update", "--commit", commit}, bytes.NewReader(nil), &stdout); err != nil {
+	if err := run([]string{"--state-dir", state, "--format", "json", "price", "update"}, bytes.NewReader(nil), &stdout); err != nil {
 		t.Fatal(err)
 	}
 	assertNonNullJSONEnvelope(t, stdout.Bytes(), "price.update")
 	var envelope struct {
 		Data map[string]any `json:"data"`
 	}
-	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil || envelope.Data["models"] != float64(1) || envelope.Data["commit_sha"] != commit {
+	wantHash := fmt.Sprintf("%x", sha256.Sum256([]byte(body)))
+	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil || envelope.Data["models"] != float64(1) || envelope.Data["commit_sha"] != commit || envelope.Data["content_sha256"] != wantHash {
 		t.Fatalf("price update golden = %#v, %v", envelope, err)
+	}
+	var statusOutput bytes.Buffer
+	if err := run([]string{"--state-dir", state, "--format", "json", "price", "status"}, bytes.NewReader(nil), &statusOutput); err != nil {
+		t.Fatal(err)
+	}
+	var statusEnvelope struct {
+		Data map[string]any `json:"data"`
+	}
+	if err := json.Unmarshal(statusOutput.Bytes(), &statusEnvelope); err != nil || statusEnvelope.Data["content_sha256"] != envelope.Data["content_sha256"] {
+		t.Fatalf("price status golden = %#v, %v", statusEnvelope, err)
+	}
+	requests = nil
+	stdout.Reset()
+	if err := run([]string{"--state-dir", filepath.Join(t.TempDir(), "pinned-state"), "--format", "json", "price", "update", "--commit", commit}, bytes.NewReader(nil), &stdout); err != nil {
+		t.Fatal(err)
+	}
+	if len(requests) != 1 || requests[0] != priceURL {
+		t.Fatalf("pinned price update requests = %v", requests)
+	}
+}
+
+func TestPriceUpdateRejectsInvalidCommitBeforeStateOrNetwork(t *testing.T) {
+	previous := usage.PriceHTTPClient
+	networkCalled := false
+	usage.PriceHTTPClient = func() *http.Client {
+		networkCalled = true
+		return &http.Client{}
+	}
+	t.Cleanup(func() { usage.PriceHTTPClient = previous })
+	state := filepath.Join(t.TempDir(), "state")
+	var stdout, stderr bytes.Buffer
+	exit := execute([]string{"--state-dir", state, "--format", "json", "price", "update", "--commit", "bad"}, bytes.NewReader(nil), &stdout, &stderr)
+	if exit != 2 || stdout.Len() != 0 {
+		t.Fatalf("invalid commit exit=%d stdout=%q stderr=%q", exit, stdout.String(), stderr.String())
+	}
+	var envelope struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(stderr.Bytes(), &envelope); err != nil || envelope.Error.Code != "invalid_argument" {
+		t.Fatalf("invalid commit envelope = %#v, %v", envelope, err)
+	}
+	if networkCalled {
+		t.Fatal("invalid commit initialized the HTTP client")
+	}
+	if _, err := os.Stat(state); !os.IsNotExist(err) {
+		t.Fatalf("invalid commit created state: %v", err)
 	}
 }
 

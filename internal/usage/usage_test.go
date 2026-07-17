@@ -3,6 +3,7 @@ package usage
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -219,21 +220,118 @@ func TestUpdateLiteLLMFiltersAndPinsDirectProviders(t *testing.T) {
 	}
 	defer s.Close()
 	service := New(s, "")
-	client := &http.Client{Transport: roundTrip(func(*http.Request) (*http.Response, error) {
-		return &http.Response{StatusCode: 200, Status: "200 OK", Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
-	})}
 	commit := "abcdefabcdefabcdefabcdefabcdefabcdefabcd"
 	url := "https://raw.githubusercontent.com/BerriAI/litellm/" + commit + "/model_prices_and_context_window.json"
-	got, err := service.UpdateLiteLLM(context.Background(), url, commit, client)
-	if err != nil || got["models"].(int) != 2 {
+	var requests []string
+	client := &http.Client{Transport: roundTrip(func(request *http.Request) (*http.Response, error) {
+		requests = append(requests, request.URL.String())
+		switch request.URL.String() {
+		case liteLLMLatestCommitURL:
+			return &http.Response{StatusCode: 200, Status: "200 OK", Body: io.NopCloser(strings.NewReader(`{"sha":"` + commit + `"}`)), Header: make(http.Header)}, nil
+		case url:
+			return &http.Response{StatusCode: 200, Status: "200 OK", Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
+		default:
+			return nil, fmt.Errorf("unexpected URL %s", request.URL)
+		}
+	})}
+	got, err := service.UpdateLiteLLM(context.Background(), "", client)
+	wantHash := hash([]byte(body))
+	if err != nil || got["models"].(int) != 2 || got["commit_sha"] != commit || got["content_sha256"] != wantHash {
 		t.Fatalf("update=%v err=%v", got, err)
 	}
-	if _, err := service.UpdateLiteLLM(context.Background(), url, "bad", client); err == nil {
+	if len(requests) != 2 || requests[0] != liteLLMLatestCommitURL || requests[1] != url {
+		t.Fatalf("automatic update requests = %v", requests)
+	}
+	if _, err = service.UpdateLiteLLM(context.Background(), commit, client); err != nil {
+		t.Fatalf("pinned update: %v", err)
+	}
+	if len(requests) != 3 || requests[2] != url {
+		t.Fatalf("pinned update requests = %v", requests)
+	}
+	if _, err := service.UpdateLiteLLM(context.Background(), "bad", client); err == nil {
 		t.Fatal("expected short commit rejection")
 	}
 	history, err := service.PriceHistory(context.Background())
-	if err != nil || len(history) != 1 || history[0]["version"] != "litellm-"+commit {
+	if err != nil || len(history) != 1 || history[0]["version"] != "litellm-"+commit || history[0]["content_sha256"] != wantHash {
 		t.Fatalf("history=%v err=%v", history, err)
+	}
+	status, err := service.PriceStatus(context.Background())
+	if err != nil || status["content_sha256"] != wantHash {
+		t.Fatalf("status=%v err=%v", status, err)
+	}
+}
+
+func TestPriceHTTPClientUsesBoundedTimeout(t *testing.T) {
+	client := PriceHTTPClient()
+	if client == nil || client.Timeout != 60*time.Second {
+		t.Fatalf("price HTTP client = %#v, want timeout %s", client, 60*time.Second)
+	}
+}
+
+func TestUpdateLiteLLMReportsLatestCommitFailures(t *testing.T) {
+	tests := []struct {
+		name      string
+		transport roundTrip
+		want      string
+	}{
+		{name: "transport", transport: func(*http.Request) (*http.Response, error) { return nil, errors.New("offline") }, want: "offline"},
+		{name: "status", transport: func(*http.Request) (*http.Response, error) {
+			return &http.Response{StatusCode: http.StatusForbidden, Status: "403 Forbidden", Body: io.NopCloser(strings.NewReader("denied")), Header: make(http.Header)}, nil
+		}, want: "resolve latest LiteLLM commit: 403 Forbidden"},
+		{name: "malformed", transport: func(*http.Request) (*http.Response, error) {
+			return &http.Response{StatusCode: http.StatusOK, Status: "200 OK", Body: io.NopCloser(strings.NewReader("{")), Header: make(http.Header)}, nil
+		}, want: "resolve latest LiteLLM commit:"},
+		{name: "invalid SHA", transport: func(*http.Request) (*http.Response, error) {
+			return &http.Response{StatusCode: http.StatusOK, Status: "200 OK", Body: io.NopCloser(strings.NewReader(`{"sha":"main"}`)), Header: make(http.Header)}, nil
+		}, want: "invalid SHA"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			s, err := store.Open(context.Background(), filepath.Join(t.TempDir(), "state"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer s.Close()
+			_, err = New(s, "").UpdateLiteLLM(context.Background(), "", &http.Client{Transport: test.transport})
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("latest commit error = %v, want %q", err, test.want)
+			}
+			history, historyErr := New(s, "").PriceHistory(context.Background())
+			if historyErr != nil || len(history) != 0 {
+				t.Fatalf("history after failed update = %v, %v", history, historyErr)
+			}
+		})
+	}
+}
+
+func TestUpdateLiteLLMReportsPinnedCatalogFailures(t *testing.T) {
+	commit := "abcdefabcdefabcdefabcdefabcdefabcdefabcd"
+	tests := []struct {
+		name      string
+		transport roundTrip
+		want      string
+	}{
+		{name: "transport", transport: func(*http.Request) (*http.Response, error) { return nil, errors.New("offline") }, want: "offline"},
+		{name: "status", transport: func(*http.Request) (*http.Response, error) {
+			return &http.Response{StatusCode: http.StatusBadGateway, Status: "502 Bad Gateway", Body: io.NopCloser(strings.NewReader("unavailable")), Header: make(http.Header)}, nil
+		}, want: "price update: 502 Bad Gateway"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			s, err := store.Open(context.Background(), filepath.Join(t.TempDir(), "state"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer s.Close()
+			_, err = New(s, "").UpdateLiteLLM(context.Background(), commit, &http.Client{Transport: test.transport})
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("pinned catalog error = %v, want %q", err, test.want)
+			}
+			history, historyErr := New(s, "").PriceHistory(context.Background())
+			if historyErr != nil || len(history) != 0 {
+				t.Fatalf("history after failed update = %v, %v", history, historyErr)
+			}
+		})
 	}
 }
 

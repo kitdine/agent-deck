@@ -370,7 +370,7 @@ func applyHelpCatalog(root *cobra.Command) {
 		"usage rebuild":  {short: "Rebuild usage metadata from local sources"},
 		"price history":  {short: "List price catalog provenance history"},
 		"price status":   {short: "Show active price catalog provenance"},
-		"price update":   {short: "Download a pinned LiteLLM price catalog"},
+		"price update":   {short: "Download the latest LiteLLM price catalog"},
 		"price override": {short: "Apply a local structured price override"},
 		"run": {
 			short:   "Run Codex or Claude with usage attribution",
@@ -1338,12 +1338,17 @@ func newPriceCommand(opts *commandOptions) *cobra.Command {
 	var update *cobra.Command
 	update = &cobra.Command{Use: "update", Args: cobra.NoArgs, RunE: withUsage(func(ctx context.Context, s *usage.Service, _ *store.Store, _ []string) (any, bool, []string, error) {
 		commit, _ := update.Flags().GetString("commit")
-		url := "https://raw.githubusercontent.com/BerriAI/litellm/" + commit + "/model_prices_and_context_window.json"
-		data, err := s.UpdateLiteLLM(ctx, url, commit, usage.PriceHTTPClient())
+		data, err := s.UpdateLiteLLM(ctx, commit, usage.PriceHTTPClient())
 		return data, false, nil, err
 	})}
-	update.Flags().String("commit", "", "Pinned LiteLLM commit SHA")
-	_ = update.MarkFlagRequired("commit")
+	update.PreRunE = func(command *cobra.Command, _ []string) error {
+		commit, _ := command.Flags().GetString("commit")
+		if err := usage.ValidateLiteLLMCommit(commit); err != nil {
+			return &inputError{err: err}
+		}
+		return nil
+	}
+	update.Flags().String("commit", "", "Optional pinned LiteLLM commit SHA")
 	price.AddCommand(update)
 	var override *cobra.Command
 	override = &cobra.Command{Use: "override", Args: cobra.NoArgs, RunE: withUsage(func(ctx context.Context, s *usage.Service, _ *store.Store, _ []string) (any, bool, []string, error) {

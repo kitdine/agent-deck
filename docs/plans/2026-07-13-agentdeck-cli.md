@@ -474,6 +474,22 @@ auth.json, or credential key files.
       transaction rollback, corruption, cross-machine restore, zero Keychain
       access, and credential non-disclosure before the complete release gate.
 
+### Automatic Price Update Follow-Up (2026-07-17)
+
+- [x] Make `agentdeck price update` resolve the current LiteLLM `main` commit
+      through the GitHub API and download the canonical raw catalog pinned to
+      that validated SHA.
+- [x] Keep `--commit` as an optional reproducibility and rollback override,
+      preserve immutable commit and content-hash provenance, and cover both
+      automatic and pinned request paths with isolated HTTP tests and a live
+      temporary-state smoke test.
+- [x] Address independent review findings: persist the exact downloaded raw
+      SHA-256 consistently across update, status, and history; reject invalid
+      commit overrides before state or network access; apply a bounded
+      production HTTP timeout; and cover API/raw failures and zero-side-effect
+      CLI validation.
+- [ ] Complete independent review of the automatic price update follow-up.
+
 ## Required Verification
 
 Once Go source exists, the release gate includes:
@@ -496,6 +512,7 @@ risk rather than inferred from source inspection.
 
 Phase one, Phase 8, and the consolidated Phase 9 implementation and independent
 review are complete. Phase 9 is accepted and its CLI manual is active. Release
-preparation remains a separate stage; implementation or review approval does
-not authorize installation into the real user home, push, release, or
-modification of real user state.
+preparation remains a separate stage. The automatic price update follow-up is
+implemented, review-remediated, and verified but awaits independent re-review.
+Implementation or review approval does not authorize installation into the real
+user home, push, release, or modification of real user state.

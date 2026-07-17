@@ -247,20 +247,22 @@ func (s *Service) ImportBundledCatalog(ctx context.Context) error {
 			effective = at
 		}
 	}
-	return s.importCatalog(ctx, bundledCatalog, "bundled", bundledCatalogSourceURL, "", effective)
+	return s.importCatalog(ctx, bundledCatalog, "bundled", bundledCatalogSourceURL, "", effective, hash(bundledCatalog))
 }
-func (s *Service) importCatalog(ctx context.Context, data []byte, kind, url, commit string, effective time.Time) error {
+func (s *Service) importCatalog(ctx context.Context, data []byte, kind, url, commit string, effective time.Time, contentHash string) error {
 	c, err := parseCatalog(data)
 	if err != nil {
 		return err
 	}
-	hash := sha256.Sum256(data)
+	if !validSHA256(contentHash) {
+		return errors.New("invalid catalog content SHA-256")
+	}
 	tx, err := s.Store.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	_, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO price_catalogs(version,source_kind,source_url,commit_sha,content_sha256,imported_at,effective_from,currency,schema_version) VALUES(?,?,?,?,?,?,?,?,?)`, c.Version, kind, url, commit, hex.EncodeToString(hash[:]), s.now().Format(time.RFC3339Nano), effective.Format(time.RFC3339Nano), c.Currency, c.SchemaVersion)
+	_, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO price_catalogs(version,source_kind,source_url,commit_sha,content_sha256,imported_at,effective_from,currency,schema_version) VALUES(?,?,?,?,?,?,?,?,?)`, c.Version, kind, url, commit, contentHash, s.now().Format(time.RFC3339Nano), effective.Format(time.RFC3339Nano), c.Currency, c.SchemaVersion)
 	if err != nil {
 		return err
 	}
@@ -310,7 +312,7 @@ func (s *Service) ImportOfficialOverrides(ctx context.Context, overrides []Offic
 	if err != nil {
 		return err
 	}
-	return s.importCatalog(ctx, encoded, "official", source, "", earliestOverride(overrides))
+	return s.importCatalog(ctx, encoded, "official", source, "", earliestOverride(overrides), hash(encoded))
 }
 func earliestOverride(items []OfficialOverride) time.Time {
 	at := items[0].EffectiveFrom.UTC()

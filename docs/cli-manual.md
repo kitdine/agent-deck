@@ -213,10 +213,16 @@ personal -> aigocode-personal-ref
 | --- | --- | --- | --- | --- |
 | `price status` | 查看 active price catalogs、覆盖和 provenance；不联网 | 无 | 无 | `agentdeck price status` |
 | `price history` | 查看 immutable catalog 历史 | 无 | 无 | `agentdeck price history` |
-| `price update` | 从 pinned LiteLLM commit 下载 canonical raw catalog | `--commit <40-char-sha>` | `--commit` 必填 | `agentdeck price update --commit 0123456789abcdef0123456789abcdef01234567` |
+| `price update` | 自动解析并下载最新 LiteLLM canonical raw catalog | `--commit <40-char-sha>` | 无；`--commit` 为可选复现入口 | `agentdeck price update` |
 | `price override` | 导入本地 official component override | `--file <json>` | `--file` 必填 | `agentdeck price override --file prices.json` |
 
-`price update` 不再接受 `--url`；URL 由 commit 唯一推导，避免 URL/commit 不一致。
+默认执行 `price update` 时，AgentDeck 先通过 GitHub API 解析 LiteLLM `main`
+的最新 commit，再从该 commit 对应的 canonical raw URL 下载并记录 provenance。
+指定 `--commit` 会跳过最新版本解析，用于复现或回滚。命令不接受 `--url`；实际下载
+URL 始终由已验证的 commit 唯一推导，避免 URL、commit 与内容不一致。显式非法
+commit 会在访问状态目录或初始化 HTTP client 前以 `invalid_argument` 拒绝。生产
+HTTP client 的总超时为 60 秒；失败不会写入 catalog。`content_sha256` 始终表示下载
+原文的 SHA-256，并在 update、status 和 history 中保持一致。
 
 ## Session
 
