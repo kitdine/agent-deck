@@ -69,11 +69,11 @@ agentdeck --version
 The command groups are:
 
 ```text
-agentdeck provider list|show|status|add|update|remove|use|recover
+agentdeck provider list|show|status|current|add|update|remove|use|recover
 agentdeck credential list|show|add|update|remove
 
-agentdeck usage scan|summary|sessions|diagnose|rebuild
-agentdeck price status|update|history|override
+agentdeck usage scan|summary|stats|sessions|diagnose|rebuild
+agentdeck price status|list|update|history|override
 
 agentdeck session scan|list|search|show
 agentdeck session exclude|rebuild|purge-index
@@ -104,12 +104,21 @@ change Codex or Claude source paths unless their adapter-specific test paths are
 also explicitly overridden. NDJSON remains valid only for `watch`.
 
 Default `text` output is a human-facing interactive contract, not a serialized
-representation of internal DTOs. List commands use aligned, scannable columns;
+representation of internal DTOs. List and metric collections use the shared
+bordered ASCII grid with aligned, scannable columns;
 single-resource commands use labeled fields; empty results state that no items
 were found; mutation commands report the completed action without exposing
 secrets or internal envelope fields. Raw JSON objects or arrays must appear only
 when the caller explicitly selects `--format json`. The JSON envelope and field
 names remain stable independently of text presentation.
+
+Usage text may use sparse Emoji section titles to separate the summary, token
+totals, model coverage, and session table. Session token components remain
+separate columns rather than a packed cell. If one or more events cannot be
+priced, the complete `catalog_base_cost` and `provider_cost` remain unavailable;
+the output separately labels known priced subtotals, priced/unpriced event
+counts, and per-model coverage. This exposes verified priced work without
+presenting a partial amount as a complete total.
 
 ## Architecture
 
@@ -521,10 +530,16 @@ dependency rather than a full table UI framework, vendors it through the normal
 dependency workflow, and must continue to pass the release size gate. JSON and
 NDJSON contracts are unchanged.
 
-Text `provider status` replaces the ambiguous `ACTIVE` list with the columns
-`CODEX ACTIVE` and `CLAUDE ACTIVE`. Each cell is `true` when that provider owns
-the current completed selection for the named client and `false` otherwise.
-The JSON `active` collection remains authoritative and unchanged.
+Text `provider status` uses the columns `CODEX ACTIVE` and `CLAUDE ACTIVE`.
+Each active cell contains the selected credential shorthand; inactive cells and
+the built-in `official` credential display `-`. Detail status includes one row
+per client with active state, shorthand, and selection time. The additive JSON
+`active[].selected_at` field retains the selection timestamp.
+
+`provider current` returns the latest completed selection for each client as
+`client`, `provider`, optional credential shorthand, and `selected_at`.
+`official` has no credential. Current/status reporting reads only selection and
+credential metadata and never reads or decrypts credential values.
 
 Every leaf command has a concise action description. Commands with positional
 arguments additionally provide an `Arguments` section defining every value and
@@ -553,9 +568,22 @@ IDs, token components, source identity, byte ranges, parser version, and
 attribution metadata. It does not retain prompt text, response text, tool data,
 attachments, environment data, or credentials in the usage database.
 
-Codex uses current-turn usage rather than cumulative totals. Cached input is a
-subset of input and is subtracted before ordinary input pricing. Reasoning
-output is diagnostic and is not added to output twice.
+Codex treats `total_token_usage` as a cumulative snapshot and imports the
+non-negative component-wise delta from the previous valid cumulative snapshot
+as one model-invocation usage event. Multiple invocations inside the same logical turn remain separate even
+when they share a timestamp; the stable event identity combines the session,
+turn, model, timestamp, and canonical last/total usage snapshots rather than
+collapsing the turn to one row. The retained `event_id` remains the logical turn
+ID so invocation events can still be grouped by turn. The previous cumulative
+input, cached-input, and output values are persisted per source/session in the
+source cursor, so append scans and process restarts continue the same delta.
+A missing/first/reset cumulative snapshot safely falls back to a valid
+`last_token_usage`; a missing total invalidates the baseline until a new valid
+total establishes it. An unchanged cumulative snapshot emits no usage event.
+Cached input is a subset of input and is subtracted
+before ordinary input pricing. Reasoning output is diagnostic and is not added
+to output twice. Current Codex `session_meta.payload.id` and the legacy
+`payload.session_id` are both accepted.
 
 Claude retains these components independently:
 
@@ -597,13 +625,108 @@ append, equal-length prefix rewrite, growing rewrite, truncate, replacement,
 archive move, and interrupted final lines. Stable event keys prevent duplicate
 counting when files move or snapshots repeat.
 
+Usage source cursors record a parser version. Schema v11 initializes existing
+sources to an outdated version so the next normal usage scan atomically rebuilds
+each source with invocation-level Codex events; new sources record the current
+parser version immediately. A parser-only rebuild preserves completed exact-run
+attribution by reapplying the recorded source byte ranges to the new event keys.
+If one source cannot be rebuilt, its previous cursor, events, sessions, and run
+bindings remain usable.
+
+Schema v12 adds the persisted Codex cumulative cursor. Parser version 2 forces
+source-atomic rebuilds so source rebuild, mutation, and parser invalidation all
+restart cumulative state from byte zero. Stable Codex event identity uses the
+logical session/turn/model/timestamp and canonical usage snapshots, never the
+source path, so archived copies do not duplicate cost.
+
+When an event-owning source disappears, its events remain temporarily orphaned
+until the same scan can re-home matching stable keys. Recovery combines each
+inventory entry's client with its persisted source-session cursor and force
+rebuilds only unchanged sources for affected client/session pairs. Added,
+appended, and mutated paths continue through their normal incremental
+classification, unrelated unchanged sources are never opened, and a source
+with no candidate copy is removed without scanning unrelated history. A failed
+candidate read preserves the orphan events, run bindings, session aggregation,
+and cumulative cursor state for retry and prevents checkpoint advancement.
+
 Each inventory classifies paths as added, appended, mutated, or removed. Normal
 scan and watch pass only classified paths to the content scanner; an unchanged
 historical file is not opened. Processing and checkpointing use the same stable
-inventory so an append concurrent with scan remains visible to the next poll.
+inventory. If the same source identity grows while it is being scanned, the
+scanner revalidates the bounded snapshot bytes and cursor anchor, commits that
+stable prefix, and leaves the later suffix visible to the next poll. Truncate,
+replacement, identity change, or changes inside the validated snapshot remain
+hard mutations rather than being accepted as append-only growth. Byte
+revalidation applies even when the final size and modification time match the
+inventory entry, while remaining bounded to the cursor anchor and the snapshot
+suffix instead of rereading the complete historical prefix.
 Reset/replacement and removed-source cleanup are source-level transactions that
 atomically update source state, events, exact-run source metadata, and session
 aggregation. `watch --domains usage` does not create or open the session store.
+
+`usage rebuild` also operates one source transaction at a time instead of
+deleting all rebuildable usage tables before scanning. A failed source keeps
+its prior events, cursor, event-to-run bindings, exact-run source ranges, and
+session aggregation; successful sources may still complete. Duplicate stable
+event keys use deterministic canonical-path ownership. Rebuild processes the
+same priority from highest to lowest, and a lower-priority source cannot update
+an event still owned by a higher-priority source whose transaction failed.
+The command returns success with
+`partial: true` and a stable `usage_source_unstable` or
+`usage_source_rebuild_failed` warning, and does not advance the usage watch
+checkpoint until every source succeeds. A forced rebuild of unchanged content
+does not increment `source_resets` and preserves valid event-to-run bindings and
+exact-run source ranges, while a detected mutation continues to invalidate
+bindings whose byte ranges can no longer be trusted. Text `--quiet` still emits
+partial rebuild warnings and suppresses only a complete warning-free success.
+
+`usage summary` without an argument covers all history. The `daily`, `weekly`,
+and `monthly` shortcuts cover today, the current Monday-based week, and the
+current month in the machine timezone.
+
+`usage stats` defaults to `period=7d`, `group-by=auto`, and `metric=tokens`.
+It accepts `today`, `7d`, `30d`, `week`, `month`, `6m`, and `all`, or an
+inclusive local-date `--from/--to` pair. Explicit grouping supports hour, day,
+Monday-based week, and month; `period=week` is the current local Monday 00:00
+through now and remains distinct from rolling `7d`. Filters accept client and exact model. One indexed
+`event_at` range query loads filtered events once, then one aggregation pass
+produces totals, trend buckets, model ranking, client share, averages, peak,
+pricing coverage, and activity. Schema v10 adds the time-range index and does
+not add a persistent statistics table. Migration and all new writes canonicalize
+`usage_events.event_at` to UTC RFC3339Nano and recompute session first/last from
+those canonical events. Summary ranges, stats ranges, earliest-event lookup, and
+session boundaries therefore compare absolute time rather than raw RFC3339 text
+that may contain different offsets. The range report performs one event load,
+one effective-price load, and one metadata-only provider-timeline load; run
+multiplier, session attribution, provider snapshots, and price selection are
+resolved during the single in-memory aggregation without per-event SQL or
+credential-value access.
+
+The stable stats JSON data object contains `range`, `timezone`, `totals`,
+`buckets`, `models`, `clients`, `activity`, `peak`, `coverage`, and sorted
+`unpriced_models`. Totals, buckets, models, and clients expose input, output,
+cached-read, and cache-write components. Codex model/client cache read rate is
+cached input divided by input. Claude logical input is ordinary input plus
+cache read plus cache write, with separate read and write rates. Mixed totals
+and buckets expose components without inventing one cross-client cache rate.
+Text always
+uses the approved responsive Balanced layout: compact token/cost/session KPIs,
+bar-based trend and top-model sections, client share, and an average/peak/priced
+footer. Wide terminals use two columns; narrow terminals stack the same
+sections without exceeding the detected width. Ranges spanning at least seven
+local calendar days include a full-width 7-by-24 activity heatmap at the bottom;
+hour ranges omit it. TTY color is optional and `--no-color` or redirected output
+contains no ANSI escapes. `timezone` is a stable IANA identifier when the
+machine zone can be resolved and otherwise an explicit `UTC+HH:MM` offset. Hour
+bucket boundaries retain their RFC3339 offsets so both hours in a DST fold
+remain distinct.
+
+For `metric=cost`, complete average, metric, share, and peak values are nullable.
+They are present only when the applicable events are fully priced; the parallel
+`known_average_cost_per_session`, `known_metric_value`, `known_share`, and
+`known_value` fields always describe the known priced subtotal. Stats text marks
+known partial values with `*` and one report-level explanation instead of
+repeating `(partial)` in every row; it uses unavailable when no amount is known.
 
 ## Price Catalog
 
@@ -630,7 +753,11 @@ the catalog from the canonical raw URL pinned to that SHA. An optional
 never records a mutable `main` URL as catalog provenance. Explicit invalid
 commit overrides fail before AgentDeck opens state or initializes the HTTP
 client. The production HTTP client applies a 60-second total timeout while
-still honoring request-context cancellation.
+still honoring request-context cancellation. Commit discovery and pinned raw
+catalog retrieval make at most three attempts for transient transport/read
+failures, HTTP 408/429/5xx responses, and truncated JSON. Invalid non-transient
+responses fail without importing state, and a catalog is persisted only after a
+complete response passes parsing and direct-provider validation.
 
 The importer:
 
@@ -654,10 +781,19 @@ immutable and older prices remain available.
 
 When a source provides no verified price effective date, a newly imported
 version becomes effective at retrieval time and is never backdated. Events use
-the latest catalog whose `effective_from` is not later than the event. An event
-earlier than every compatible version is unpriced. Missing components preserve
+the latest catalog whose `effective_from` is not later than the event. If that
+historical result lacks a compatible model or one price component, the current
+effective merged catalog fills only the missing values. Components already
+calculable at event time are never overwritten or repriced, and this fallback
+adds no estimate/fallback marker. A model absent from both historical and
+current local catalogs remains unpriced. Missing components preserve
 their token counts and produce `unpriced` output instead of a partial-looking
-complete total.
+complete total. Summary and session JSON preserve those nullable complete
+totals and additionally expose `known_catalog_base_cost` and
+`known_provider_cost`; summary JSON also exposes priced/unpriced event counts
+and deterministic per-client/model coverage. Claude catalog matching accepts
+dot-versus-hyphen version punctuation only when both names begin with
+`claude-`; other model names still require exact or explicit alias matching.
 
 `agentdeck price override --file <official-components.json>` imports a
 local JSON array of official overrides. Each item requires `model`, direct
@@ -669,6 +805,18 @@ the compatible catalog components.
 All prices use decimal USD per one million tokens. Calculations avoid binary
 floating point; SQLite stores monetary totals as integer USD nanounits and JSON
 renders decimal strings.
+
+`price list [model] [--provider openai|anthropic]` renders the current
+component-wise merged effective catalog with the explicit unit `USD / 1M
+tokens`. Default status, history, list, update, and override text use readable
+tables and omit long URLs and complete digests. JSON and `--verbose` text retain
+full component provenance, including source URL, catalog version, commit, hash,
+and effective time. Status determines top-level provenance, active catalogs,
+availability, model count, and component count from the same current absolute
+time. A future-only catalog is unavailable; when current and future catalogs
+coexist, every status field describes only the current effective set. Catalog
+and model RFC3339 timestamps are parsed before filtering and precedence sorting,
+so valid offsets cannot change effective-time semantics.
 
 ## Session Search
 
@@ -1048,8 +1196,9 @@ import the legacy `providers.json`, usage database, or real client settings.
 33. Every collection-shaped text result uses the shared `+`, `-`, and `|` ASCII
     grid with per-row separators and terminal-display-width alignment, while
     prose empty states, labeled details, JSON, and NDJSON remain unchanged.
-34. Text provider status reports independent boolean `CODEX ACTIVE` and
-    `CLAUDE ACTIVE` columns while JSON retains the existing `active` collection.
+34. Text provider status reports credential shorthand in independent `CODEX
+    ACTIVE` and `CLAUDE ACTIVE` columns, using `-` for inactive or built-in
+    official credentials, while JSON retains the `active` collection.
 35. Schema v9 stores one AES-256-GCM ciphertext row per credential and commits
     metadata, rotation, and deletion atomically without external-secret
     compensation.
@@ -1061,3 +1210,24 @@ import the legacy `providers.json`, usage database, or real client settings.
     material.
 38. Portable restore generates a target-machine key and re-encrypts credentials;
     install and upgrade paths never reset state automatically.
+39. Historical pricing fills only absent compatible model/components from the
+    current catalog and never replaces a component available at event time.
+40. Provider current/status expose credential shorthand and selection time
+    without reading or decrypting credential values.
+41. Price status/history/list/update/override have dedicated text tables; JSON
+    and verbose text retain complete provenance.
+42. Usage summary local-calendar shortcuts preserve the all-history default.
+43. Usage stats uses the event-time index, one event range scan, and one
+    aggregation pass to produce the stable balanced report and JSON contract.
+44. Codex usage retains every invocation-level `token_count` event inside a
+    logical turn and deduplicates stable copies without using the source path as
+    event identity.
+45. Schema v11 parser-version invalidation automatically rebuilds legacy usage
+    sources while preserving source-atomic rollback and exact byte-range run
+    attribution.
+46. Schema v12 persists Codex cumulative snapshots per source/session; parser
+    rebuilds and mutations restart the baseline, while append scans and process
+    restarts continue component-wise deltas without archive-copy duplication.
+47. Usage stats preserves token components and nullable cost completeness,
+    reports client-specific cache semantics, and deterministically lists
+    unpriced models and missing components.

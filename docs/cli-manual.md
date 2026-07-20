@@ -37,6 +37,7 @@ credential-owned provider configuration 的正式命令契约。执行状态以
 | `--state-dir <path>` | 覆盖 AgentDeck 状态根目录 | 否，默认 `~/.agentdeck` | `agentdeck doctor --state-dir /tmp/ad-state` |
 | `--no-color` | 禁用终端颜色 | 否 | `agentdeck doctor --no-color` |
 | `--quiet` | 抑制非必要 text 输出；错误和机器输出不受影响 | 否 | `agentdeck usage scan --quiet` |
+| `--verbose` | 在 text 输出中保留完整技术 provenance；JSON 始终保留 | 否 | `agentdeck price history --verbose` |
 | `--version` | 输出构建身份并退出 | 否 | `agentdeck --version` |
 | `-h, --help` | 显示当前命令帮助 | 否 | `agentdeck provider add --help` |
 
@@ -51,6 +52,7 @@ multiplier、reference 或 credential 明细；`provider status` 只通过复数
 | 命令 | 含义与典型用例 | 参数与 Flags | 必填规则 | 示例 |
 | --- | --- | --- | --- | --- |
 | `provider list` | 列出 custom 与内置 provider definition；不读取 credential ciphertext | 无命令专属参数 | 无 | `agentdeck provider list` |
+| `provider current` | 按 client 显示当前 provider、credential shorthand 和选择时间；不读取或解密 credential value | 无 | 无 | `agentdeck provider current` |
 | `provider show <name>` | 显示一个 provider definition；不检查 credential readiness | `name`：provider name | `name` 必填 | `agentdeck provider show official` |
 | `provider status [name]` | 检查全部或指定 provider 的 client、credential readiness 和 active selection；readiness 只检查 secret row 是否存在，不解密 | `name`：可选过滤 | 否 | `agentdeck provider status aigocode` |
 | `provider add <name>` | Provider 不存在时原子创建 provider 和 credential；provider 已存在时新增该 credential；相同 metadata 和 secret 已存在时无提示成功 | `--endpoint <url>`；`--clients <list>`；`--multiplier <decimal>`；`--credential <shorthand>` | `name`、`--endpoint`、`--clients` 必填；其余可选 | `agentdeck provider add aigocode --credential codex --endpoint https://api.example.com/v1 --clients codex` |
@@ -58,6 +60,10 @@ multiplier、reference 或 credential 明细；`provider status` 只通过复数
 | `provider remove <name>` | 在一个 SQLite transaction 中删除 custom provider、credential metadata 与 ciphertext | 无 | `name` 必填 | `agentdeck provider remove aigocode` |
 | `provider use <name>` | 切换 client 到 provider；client 或 credential 唯一时自动推断 | `--client codex\|claude`；`--credential <short-name>`；`--config-path <path>` | `name` 必填；client/credential 仅在无法唯一推断时必填 | `agentdeck provider use aigocode --client codex --credential work` |
 | `provider recover` | 检查中断的 `provider use` operations；credential/provider 删除不需要外部 recovery | 无 | 无 | `agentdeck provider recover` |
+
+`provider status` 的 `CODEX ACTIVE` / `CLAUDE ACTIVE` 单元格直接显示 credential
+shorthand；未激活以及内置 `official` credential 显示 `-`。指定 provider 的 detail
+额外显示逐 client 的 active、credential 和 selected-at 信息。
 
 ### `provider add` Flags
 
@@ -168,10 +174,11 @@ personal -> aigocode-personal-ref
 | 命令 | 含义与典型用例 | 参数与 Flags | 必填规则 | 示例 |
 | --- | --- | --- | --- | --- |
 | `usage scan` | 增量扫描本地 Codex/Claude usage sources | 无 | 无 | `agentdeck usage scan` |
-| `usage summary` | 扫描后汇总 token、catalog base cost 和 provider cost | 无 | 无 | `agentdeck usage summary` |
-| `usage sessions` | 按 session 展示 usage 和成本 | 无 | 无 | `agentdeck usage sessions` |
+| `usage summary [daily\|weekly\|monthly]` | 扫描后汇总全部历史，或按本机时区快捷查看今天、本周（周一开始）、本月 | 可选周期位置参数 | 否 | `agentdeck usage summary weekly` |
+| `usage stats` | 输出 KPI、趋势、模型排行、client 占比、均值、峰值、计价覆盖和 activity | `--period`、`--from/--to`、`--group-by`、`--metric`、`--client`、`--model` | 无；默认 `7d/auto/tokens`；日期必须成对 | `agentdeck usage stats --period 30d --metric cost` |
+| `usage sessions` | 按 session 分列展示各类 token、成本和计价状态 | 无 | 无 | `agentdeck usage sessions` |
 | `usage diagnose` | 展示 source、event、session、run、价格覆盖和 attribution 诊断 | 无 | 无 | `agentdeck usage diagnose` |
-| `usage rebuild` | 删除可重建 usage metadata 后全量重扫；不删除源日志、provider 或 credential | 无 | 无 | `agentdeck usage rebuild` |
+| `usage rebuild` | 逐 source 原子重建 usage metadata；失败 source 保留旧数据并返回 partial warning | 无 | 无 | `agentdeck usage rebuild` |
 
 `usage scan` 目标计数：
 
@@ -183,7 +190,54 @@ personal -> aigocode-personal-ref
 | `ignored_non_usage` | 合法且正常、但本来就不是 usage 的消息、工具和元数据事件 |
 | `unsupported_usage` | 看似 usage 记录但缺少必要 ID、model、session 或 token 字段 |
 | `malformed` | 无法解析的完整 JSON 行 |
-| `source_resets` | truncate、replacement 或 identity change 引发的 source 重扫次数 |
+| `source_resets` | truncate、replacement、identity change 或 validated anchor mismatch 引发的 source 重扫次数；内容未变化的显式 rebuild 不计入 |
+
+### Usage 默认输出
+
+- 不指定 `--format` 时输出 text；`usage scan`、`rebuild`、`diagnose`、`summary`
+  和 `sessions` 的集合或指标均使用统一 ASCII grid，只有显式
+  `--format json` 才输出稳定 JSON envelope。
+- `usage summary` 以稀疏 Emoji 标题区分总览、token totals 和 model coverage。
+  `catalog_base_cost`、`provider_cost` 仍只在所有 event 都能完整计价时提供；存在
+  unknown model 或缺失价格组件时保持 unavailable，同时通过明确标注的
+  `known_catalog_base_cost`、`known_provider_cost`、priced/unpriced event 数和逐 model
+  coverage 展示可验证的已知小计，不能把已计价工作隐藏掉。
+- `usage sessions` 将 input、cached input、output、cache read、cache creation、5m
+  write 和 1h write token 分成独立列。无法形成完整成本时，已知小计显示为
+  `(partial)`，status 列列出 warning 和 unpriced component。
+- Claude model 只在两侧都为 `claude-` 名称时把点号与连字符视为等价版本标点；
+  Codex 名称和其他不相等的 model 不做模糊匹配。
+- `usage stats --period` 支持 `today|7d|30d|week|month|6m|all`；`week` 仍表示本机
+  时区从本周一 00:00 到当前时刻的当前自然周，与滚动 `7d` 明确区分。也可用本机日期
+  `--from YYYY-MM-DD --to YYYY-MM-DD`（to 当日包含在范围内）。`group-by` 支持
+  `auto|hour|day|week|month`，`metric` 支持 `tokens|cost|sessions`。JSON 稳定包含
+  `range`、`timezone`、`totals`、`buckets`、`models`、`clients`、`activity`、`peak`、
+  `coverage` 和确定排序的 `unpriced_models`。totals、bucket、model、client 均保留
+  input、output、cached-read、cache-write 分量。默认 text 使用响应式 Balanced 报告：
+  compact KPI、比例条 Trend、同时显示 token/share/known cost/pricing status 的 Top
+  Models、client 占比、分 client cache 分析和底部摘要；宽终端为双栏，窄终端自动
+  堆叠并缩短数字。
+  至少覆盖 7 个自然日且不是 hour buckets 时，底部显示全宽 7x24 Activity Heatmap。
+  真实 TTY 可使用克制颜色，`--no-color`、重定向和机器格式不输出 ANSI 控制码。
+- Stats 的 `timezone` 是稳定的 IANA zone 名称；无法解析本机 zoneinfo 名称时使用
+  `UTC+HH:MM` offset 标识。Hour buckets 使用带 offset 的 RFC3339 边界，因此 DST
+  回拨时两个同名本地小时仍是两个独立 bucket。
+- Codex cache read rate 定义为 `cached_input_tokens / input_tokens`。Claude 的 logical
+  input 定义为 ordinary input + cache read + cache write，并分别报告 cache read rate
+  与 cache write rate；totals 和混合 bucket 不生成语义不一致的跨 client 单一比率。
+- `metric=cost` 只在对应范围全部计价时提供 `metric_value`、`share`、peak `value`
+  和 `average_cost_per_session`。混合 priced/unpriced 数据将这些完整值设为 `null`，
+  另由 `known_metric_value`、`known_share`、`known_value` 和
+  `known_average_cost_per_session` 返回已知小计；Stats text 仅在相邻费用字段标记
+  `KNOWN`，并以紧凑 `UNPRICED MODELS` 区块列出 model 与缺失组件，不再输出通用
+  partial 脚注。完全无可用金额时显示 `unavailable`，JSON 用 `null` 保留未知状态，
+  不以 `$0.00` 冒充完整费用。
+- Schema v10 将已有和新写入的 `usage_events.event_at` 统一为 UTC RFC3339Nano，
+  并从规范化事件重算 session `first_at/last_at`。SummaryRange、Stats、最早事件和
+  session 边界均按绝对时间工作，不对保留 offset 的原始文本做范围比较。
+- Stats 对范围事件只做一次索引扫描，并分别批量加载价格层与 metadata-only provider
+  timeline；run multiplier、session attribution、历史 provider snapshot 和有效价格
+  在内存中一次聚合，不按 event 追加 SQL，也不读取 credential value。
 
 ### Usage Scan 性能契约
 
@@ -194,6 +248,12 @@ personal -> aigocode-personal-ref
 - Unchanged file 只比较 metadata/checkpoint，不能打开或读取文件内容，也不能写数据库。
 - Append-only file 从持久化 cursor 附近的校验 anchor 开始，只读取必要 overlap 与新增
   suffix；不能重新读取、hash 或逐行跳过完整历史前缀。
+- 如果活跃日志在 inventory 之后继续纯追加，scanner 会验证已读取快照范围和 cursor
+  anchor 未变化，提交该稳定前缀，并让后续 scan 从旧 checkpoint 补齐新增 suffix；
+  不把正常追加报告为 source mutation。
+- Scanner 在提交前重新读取并比较本次 bounded snapshot bytes 和 cursor anchor；即使
+  size、mtime 与 inventory 相同，扫描期间发生的 in-place rewrite 也不能通过仅比较
+  metadata 被接受。该验证仍只读取 anchor 与本次 suffix，不回读完整历史前缀。
 - Truncate、replacement、identity change 或 anchor mismatch 只重建受影响 source，不能
   让一个文件的变化触发全部 usage sources 全量重扫。
 - Source reset/replacement 在单个 source transaction 内删除旧 events/run bindings、写入
@@ -201,7 +261,15 @@ personal -> aigocode-personal-ref
   run-source metadata 和 session aggregation；失败时不得留下 partial rebuild。
 - Scanner 保留 partial-line、stable event key、source mutation 和 exact run byte-range
   契约。性能优化不能通过跳过必要 mutation detection 获得。
-- `usage rebuild` 是显式全量验证/重建入口；普通 `usage scan` 和 watch 使用增量路径。
+- `usage rebuild` 是显式全量验证/重建入口；它不再全局先删后扫，而是逐 source 在单个
+  transaction 内替换旧 metadata。单个 source 不稳定或重建失败时保留该 source 的旧
+  events、cursor、event-to-run binding、run-source byte-range metadata 和 session
+  aggregation。相同 stable event key 出现在多个 source 时，canonical path 的确定性
+  优先级决定 event owner；rebuild 按同一优先级处理，低优先级 source 不得跨 transaction
+  改写尚未成功重建的 owner。命令以 `partial: true` 返回
+  `usage_source_unstable` 或 `usage_source_rebuild_failed` warning，并且不推进 watch
+  checkpoint。`--quiet` 仍必须显示该 partial warning，只能静默没有 warning 的完整
+  text 成功。普通 `usage scan` 和 watch 使用增量路径。
 - 增加可注入 file reader/inventory 和性能回归测试，证明 unchanged scan 读取 0 个内容
   bytes、append scan 的读取量与新增 suffix 近似线性，而不是与历史文件总大小成正比。
 
@@ -213,6 +281,7 @@ personal -> aigocode-personal-ref
 | --- | --- | --- | --- | --- |
 | `price status` | 查看 active price catalogs、覆盖和 provenance；不联网 | 无 | 无 | `agentdeck price status` |
 | `price history` | 查看 immutable catalog 历史 | 无 | 无 | `agentdeck price history` |
+| `price list [model]` | 查看当前组件级合并后的有效费率，单位 USD / 1M tokens | `model`：可选精确过滤；`--provider openai\|anthropic` | 无 | `agentdeck price list gpt-5.6-sol` |
 | `price update` | 自动解析并下载最新 LiteLLM canonical raw catalog | `--commit <40-char-sha>` | 无；`--commit` 为可选复现入口 | `agentdeck price update` |
 | `price override` | 导入本地 official component override | `--file <json>` | `--file` 必填 | `agentdeck price override --file prices.json` |
 
@@ -222,7 +291,21 @@ personal -> aigocode-personal-ref
 URL 始终由已验证的 commit 唯一推导，避免 URL、commit 与内容不一致。显式非法
 commit 会在访问状态目录或初始化 HTTP client 前以 `invalid_argument` 拒绝。生产
 HTTP client 的总超时为 60 秒；失败不会写入 catalog。`content_sha256` 始终表示下载
-原文的 SHA-256，并在 update、status 和 history 中保持一致。
+原文的 SHA-256，并在 update、status 和 history 中保持一致。Commit discovery 和
+pinned raw catalog 下载对 transient transport/read error、HTTP 408/429/5xx 以及可识别的
+truncated JSON 最多尝试三次；非 retryable 错误立即返回，只有完整 catalog 通过解析与
+校验后才会导入状态。
+
+`price status` 以当前绝对时间同时确定 top-level provenance、active catalogs、
+`available`、model 和 component 数量；future-only catalog 返回 unavailable，当前与
+future 并存时所有这些字段只描述当前有效集合。合法 RFC3339 offset 会先解析为绝对
+时间，不参与字符串范围排序。
+
+事件成本优先使用事件时间有效的历史费率；历史模型或单个组件缺失时仅从当前有效
+费率补缺，绝不覆盖已可计算的历史组件，也不增加 fallback/estimate 标记。历史和
+当前本地目录都不存在的模型继续 unpriced。默认 text 的 status/history/list/update/
+override 使用可读表格并隐藏长 URL、完整 commit/SHA；JSON 和 `--verbose` 保留完整
+provenance。
 
 ## Session
 
@@ -296,7 +379,8 @@ restore 为目标机器创建新 key，并在一个 transaction 中替换 snapsh
 ## 默认 Text 输出
 
 - collections：统一的 `+`、`-`、`|` ASCII grid，单空格 padding、逐行 separator，并按终端显示宽度对齐。
-- `provider status` collection：独立布尔列 `CODEX ACTIVE` 与 `CLAUDE ACTIVE`。
+- `provider status` collection：`CODEX ACTIVE` 与 `CLAUDE ACTIVE` 直接显示当前
+  credential shorthand，未激活和内置 official credential 显示 `-`。
 - detail：标签字段，不输出 Go DTO 或 JSON。
 - empty：明确说明没有结果。
 - mutation：说明完成的动作和资源名，不输出 credential value。

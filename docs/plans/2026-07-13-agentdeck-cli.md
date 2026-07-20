@@ -490,6 +490,73 @@ auth.json, or credential key files.
       CLI validation.
 - [ ] Complete independent review of the automatic price update follow-up.
 
+### Active Usage Log Rebuild Follow-Up (2026-07-17)
+
+- [x] Treat same-identity append-only growth during a scan as a validated stable
+      prefix while keeping the appended suffix visible to the next inventory.
+- [x] Keep truncate, replacement, identity change, and validated-range mutation
+      detection strict; cover repeated concurrent append and real mutation
+      paths with deterministic injected filesystem tests.
+- [x] Replace the global delete-before-scan rebuild with per-source atomic
+      replacement. Preserve prior source events, cursors, run bindings, and
+      session aggregation on failure; return partial warnings without advancing
+      the watch checkpoint.
+- [x] Synchronize the usage specification, CLI manual, output coverage, and
+      failure rollback tests, then run targeted and complete release verification.
+- [x] Address independent review findings: preserve unchanged event-to-run
+      attribution, isolate duplicate event ownership across source transactions,
+      revalidate same-metadata snapshot bytes, keep partial warnings visible
+      under `--quiet`, and cover checkpoint and bounded-read behavior.
+- [ ] Complete independent re-review of the active usage log rebuild follow-up.
+
+### Usage Output Readability Follow-Up (2026-07-20)
+
+- [x] Keep default terminal output as text and render usage metric/list results
+      with the shared ASCII grid, using sparse Emoji section titles only for
+      navigation.
+- [x] Split session token components into separate columns and expose known
+      priced subtotals plus deterministic model coverage without changing the
+      nullable complete-total contract.
+- [x] Treat only Claude dot/hyphen version punctuation as equivalent, keep
+      unknown Codex models unpriced, and retry bounded transient/truncated price
+      catalog responses without importing partial state.
+- [x] Cover default text, explicit JSON, table rendering, partial price totals,
+      model matching, and retry behavior with isolated regression tests.
+- [ ] Complete independent re-review of the usage output readability follow-up.
+
+### Usage Analytics and Current State Follow-Up (2026-07-20)
+
+- [x] Fill missing historical model/component prices from the current effective
+      catalog without repricing already-known components or changing provider
+      attribution and multiplier rules.
+- [x] Add `provider current`, credential shorthand active cells, and per-client
+      provider detail activation without reading credential values.
+- [x] Give price status/history/list/update/override dedicated readable tables,
+      current effective price filtering, explicit units, and verbose/JSON full
+      provenance.
+- [x] Add local-calendar usage summary shortcuts and a balanced indexed usage
+      stats report with one range scan/aggregation, filters, stable GUI-ready
+      JSON, and conditional activity heatmap.
+- [x] Add schema v10 event-time indexing and focused service/CLI regression
+      coverage; synchronize the active specification and CLI manual.
+- [x] Remediate review findings for absolute-time event/session ranges, nullable
+      complete versus known partial stats cost, fixed bulk stats metadata loads,
+      stable timezone/DST output, and same-time price status semantics.
+- [x] Repair Codex usage collection so every model invocation inside one turn is
+      retained, accept current session metadata IDs, and use schema v11 parser
+      invalidation to rebuild legacy sources without losing exact run attribution.
+- [x] Remediate the usage re-review findings with schema v12/parser v2 persisted
+      Codex cumulative deltas, restart/reset/archive-copy regression coverage,
+      component-complete stats, client-specific cache rates, nullable partial
+      cost JSON, deterministic unpriced models, compact text output, and stable
+      fixtures. Keep `--period week` as the current local Monday-based week.
+- [x] Scope orphan event recovery to persisted client/session candidate sources,
+      preserve retryable ownership and attribution state, and prove unrelated
+      unchanged histories remain unopened when either duplicate or final sources
+      are removed.
+- [x] Complete independent re-review of the usage analytics and current state
+      follow-up.
+
 ## Required Verification
 
 Once Go source exists, the release gate includes:
@@ -500,7 +567,9 @@ rtk test env GOCACHE=/private/tmp/agent-deck-go-build go test -mod=vendor -race 
 rtk lint env GOCACHE=/private/tmp/agent-deck-go-build go vet -mod=vendor ./...
 rtk test env GOCACHE=/private/tmp/agent-deck-go-build GOOS=darwin GOARCH=arm64 go build -mod=vendor -trimpath ./cmd/agentdeck
 rtk test env GOCACHE=/private/tmp/agent-deck-go-build GOOS=darwin GOARCH=amd64 go build -mod=vendor -trimpath ./cmd/agentdeck
+rtk test make check-arm64-size
 rtk test make release-verify
+rtk git diff --check
 ```
 
 Targeted package and integration tests run before the full gate. The final
@@ -514,5 +583,11 @@ Phase one, Phase 8, and the consolidated Phase 9 implementation and independent
 review are complete. Phase 9 is accepted and its CLI manual is active. Release
 preparation remains a separate stage. The automatic price update follow-up is
 implemented, review-remediated, and verified but awaits independent re-review.
+The active usage log rebuild follow-up is review-remediated but awaits
+independent re-review.
+The usage output readability follow-up is implemented but awaits independent
+re-review.
+The usage analytics and current state follow-up is review-remediated but awaits
+independent re-review.
 Implementation or review approval does not authorize installation into the real
 user home, push, release, or modification of real user state.
