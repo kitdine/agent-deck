@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -46,6 +47,7 @@ type commandOptions struct {
 	stateDir string
 	format   string
 	quiet    bool
+	verbose  bool
 	noColor  bool
 	stdin    io.Reader
 	stdout   io.Writer
@@ -234,6 +236,7 @@ func newRootCommandWithError(stdin io.Reader, stdout, stderr io.Writer) *cobra.C
 	flags.StringVar(&opts.format, "format", "text", "Output format: text, json, or ndjson for watch")
 	flags.BoolVar(&opts.noColor, "no-color", false, "Disable color output")
 	flags.BoolVar(&opts.quiet, "quiet", false, "Suppress non-essential output")
+	flags.BoolVar(&opts.verbose, "verbose", false, "Include technical provenance in text output")
 	root.Flags().BoolVar(&showVersion, "version", false, "Print build identity")
 	root.CompletionOptions.DisableDefaultCmd = true
 	root.AddCommand(newProviderCommand(opts), newCredentialCommand(opts), newUsageCommand(opts), newPriceCommand(opts), newSessionCommand(opts), newExtensionCommand(opts), newWatchCommand(opts), newBackupCommand(opts), newDoctorCommand(opts), newRunCommand(opts), newVersionCommand(opts), newCompletionCommand(opts))
@@ -365,11 +368,13 @@ func applyHelpCatalog(root *cobra.Command) {
 			example: "  agentdeck --state-dir /new/state backup restore /secure/agentdeck.adb",
 		},
 		"usage scan":     {short: "Incrementally import local usage events"},
-		"usage summary":  {short: "Summarize local usage and cost"},
+		"usage summary":  {short: "Summarize local usage and cost", long: argumentHelp("Summarize all history or a local calendar period.", "  period  Optional daily, weekly, or monthly shortcut."), example: "  agentdeck usage summary weekly"},
+		"usage stats":    {short: "Show usage trends and activity"},
 		"usage sessions": {short: "List session-level usage and cost"},
 		"usage diagnose": {short: "Diagnose usage attribution and source coverage"},
 		"usage rebuild":  {short: "Rebuild usage metadata from local sources"},
 		"price history":  {short: "List price catalog provenance history"},
+		"price list":     {short: "List current effective model prices", long: argumentHelp("List component-wise merged prices in USD per one million tokens.", "  model  Optional exact model filter."), example: "  agentdeck price list gpt-5.6-sol"},
 		"price status":   {short: "Show active price catalog provenance"},
 		"price update":   {short: "Download the latest LiteLLM price catalog"},
 		"price override": {short: "Apply a local structured price override"},
@@ -1275,19 +1280,64 @@ func newUsageCommand(opts *commandOptions) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return writeEnvelope(opts.stdout, opts.format, commandOutputName(command), data, partial, warnings, opts.quiet)
+			return writeUsageEnvelope(opts.stdout, opts.format, commandOutputName(command), data, partial, warnings, opts.quiet, newUsageTextRenderOptions(opts.stdout, opts.noColor))
 		}
 	}
+	summary := &cobra.Command{Use: "summary [daily|weekly|monthly]", Args: cobra.MaximumNArgs(1), RunE: withUsage(func(ctx context.Context, s *usage.Service, _ *store.Store, args []string) (any, bool, []string, error) {
+		_, scanErr := s.Scan(ctx)
+		if len(args) == 0 {
+			data, err := s.Summary(ctx)
+			return data, scanErr != nil, map[bool][]string{true: {"scan_incomplete"}}[scanErr != nil], err
+		}
+		period := map[string]string{"daily": "today", "weekly": "week", "monthly": "month"}[args[0]]
+		if period == "" {
+			return nil, false, nil, &inputError{err: fmt.Errorf("usage summary period must be daily, weekly, or monthly")}
+		}
+		from, to, err := resolveUsageRange(ctx, s, period, "", "", time.Now(), time.Local)
+		if err != nil {
+			return nil, false, nil, err
+		}
+		data, err := s.SummaryRange(ctx, from, to)
+		return data, scanErr != nil, map[bool][]string{true: {"scan_incomplete"}}[scanErr != nil], err
+	})}
+	var statsPeriod, statsFrom, statsTo, statsGroup, statsMetric, statsClient, statsModel string
+	stats := &cobra.Command{Use: "stats", Args: cobra.NoArgs, RunE: withUsage(func(ctx context.Context, s *usage.Service, _ *store.Store, _ []string) (any, bool, []string, error) {
+		if statsClient != "" && statsClient != "codex" && statsClient != "claude" {
+			return nil, false, nil, &inputError{err: fmt.Errorf("usage stats client must be codex or claude")}
+		}
+		if statsMetric != "tokens" && statsMetric != "cost" && statsMetric != "sessions" {
+			return nil, false, nil, &inputError{err: fmt.Errorf("usage stats metric must be tokens, cost, or sessions")}
+		}
+		_, scanErr := s.Scan(ctx)
+		now := time.Now()
+		from, to, err := resolveUsageRange(ctx, s, statsPeriod, statsFrom, statsTo, now, time.Local)
+		if err != nil {
+			return nil, false, nil, err
+		}
+		group := statsGroup
+		if group == "auto" {
+			group = automaticUsageGroup(from, to)
+		}
+		if group != "hour" && group != "day" && group != "week" && group != "month" {
+			return nil, false, nil, &inputError{err: fmt.Errorf("usage stats group-by must be auto, hour, day, week, or month")}
+		}
+		data, err := s.Stats(ctx, usage.StatsOptions{From: from, To: to, GroupBy: group, Metric: statsMetric, Client: statsClient, Model: statsModel, Timezone: usageTimezoneName(time.Local, now), Location: time.Local})
+		return data, scanErr != nil, map[bool][]string{true: {"scan_incomplete"}}[scanErr != nil], err
+	})}
+	stats.Flags().StringVar(&statsPeriod, "period", "7d", "Range: today, 7d, 30d, week, month, 6m, or all")
+	stats.Flags().StringVar(&statsFrom, "from", "", "Local start date in YYYY-MM-DD")
+	stats.Flags().StringVar(&statsTo, "to", "", "Inclusive local end date in YYYY-MM-DD")
+	stats.Flags().StringVar(&statsGroup, "group-by", "auto", "Buckets: auto, hour, day, week, or month")
+	stats.Flags().StringVar(&statsMetric, "metric", "tokens", "Trend metric: tokens, cost, or sessions")
+	stats.Flags().StringVar(&statsClient, "client", "", "Filter by codex or claude")
+	stats.Flags().StringVar(&statsModel, "model", "", "Filter by exact model name")
 	cmd.AddCommand(
 		&cobra.Command{Use: "scan", Args: cobra.NoArgs, RunE: withUsage(func(ctx context.Context, s *usage.Service, _ *store.Store, _ []string) (any, bool, []string, error) {
 			data, err := s.Scan(ctx)
 			return data, false, nil, err
 		})},
-		&cobra.Command{Use: "summary", Args: cobra.NoArgs, RunE: withUsage(func(ctx context.Context, s *usage.Service, _ *store.Store, _ []string) (any, bool, []string, error) {
-			_, scanErr := s.Scan(ctx)
-			data, err := s.Summary(ctx)
-			return data, scanErr != nil, map[bool][]string{true: {"scan_incomplete"}}[scanErr != nil], err
-		})},
+		summary,
+		stats,
 		&cobra.Command{Use: "sessions", Args: cobra.NoArgs, RunE: withUsage(func(ctx context.Context, s *usage.Service, _ *store.Store, _ []string) (any, bool, []string, error) {
 			data, err := s.Sessions(ctx)
 			return data, false, nil, err
@@ -1296,15 +1346,129 @@ func newUsageCommand(opts *commandOptions) *cobra.Command {
 			data, err := s.Diagnose(ctx)
 			return data, false, nil, err
 		})},
-		&cobra.Command{Use: "rebuild", Args: cobra.NoArgs, RunE: withUsage(func(ctx context.Context, s *usage.Service, database *store.Store, _ []string) (any, bool, []string, error) {
-			if _, err := database.Exec(ctx, "DELETE FROM usage_events; DELETE FROM usage_sessions; DELETE FROM usage_source_files"); err != nil {
-				return nil, false, nil, err
-			}
-			data, err := s.Scan(ctx)
-			return data, false, nil, err
+		&cobra.Command{Use: "rebuild", Args: cobra.NoArgs, RunE: withUsage(func(ctx context.Context, s *usage.Service, _ *store.Store, _ []string) (any, bool, []string, error) {
+			data, warnings, err := s.Rebuild(ctx)
+			return data, len(warnings) > 0, warnings, err
 		})},
 	)
 	return cmd
+}
+
+func resolveUsageRange(ctx context.Context, service *usage.Service, period, fromText, toText string, now time.Time, location *time.Location) (time.Time, time.Time, error) {
+	if location == nil {
+		location = time.Local
+	}
+	now = now.In(location)
+	if fromText != "" || toText != "" {
+		if fromText == "" || toText == "" {
+			return time.Time{}, time.Time{}, &inputError{err: fmt.Errorf("usage stats --from and --to must be provided together")}
+		}
+		from, err := time.ParseInLocation("2006-01-02", fromText, location)
+		if err != nil {
+			return time.Time{}, time.Time{}, &inputError{err: fmt.Errorf("invalid --from date %q", fromText)}
+		}
+		to, err := time.ParseInLocation("2006-01-02", toText, location)
+		if err != nil {
+			return time.Time{}, time.Time{}, &inputError{err: fmt.Errorf("invalid --to date %q", toText)}
+		}
+		to = to.AddDate(0, 0, 1)
+		if !from.Before(to) {
+			return time.Time{}, time.Time{}, &inputError{err: errors.New("usage stats --from must not be after --to")}
+		}
+		return from, to, nil
+	}
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, location)
+	var from time.Time
+	switch period {
+	case "today":
+		from = today
+	case "7d":
+		from = today.AddDate(0, 0, -6)
+	case "30d":
+		from = today.AddDate(0, 0, -29)
+	case "week":
+		from = today.AddDate(0, 0, -((int(today.Weekday()) + 6) % 7))
+	case "month":
+		from = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, location)
+	case "6m":
+		from = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, location).AddDate(0, -5, 0)
+	case "all":
+		earliest, err := service.EarliestEventAt(ctx)
+		if err != nil {
+			return time.Time{}, time.Time{}, err
+		}
+		if earliest == nil {
+			from = today
+		} else {
+			from = earliest.In(location)
+		}
+	default:
+		return time.Time{}, time.Time{}, &inputError{err: fmt.Errorf("usage stats period must be today, 7d, 30d, week, month, 6m, or all")}
+	}
+	to := now
+	if !from.Before(to) {
+		to = from.AddDate(0, 0, 1)
+	}
+	return from, to, nil
+}
+
+func automaticUsageGroup(from, to time.Time) string {
+	days := to.Sub(from).Hours() / 24
+	switch {
+	case days <= 2:
+		return "hour"
+	case days <= 90:
+		return "day"
+	case days <= 366:
+		return "week"
+	default:
+		return "month"
+	}
+}
+
+func usageTimezoneName(location *time.Location, now time.Time) string {
+	if location == nil {
+		location = time.Local
+	}
+	if name := location.String(); name != "" && name != "Local" {
+		return name
+	}
+	if value, exists := os.LookupEnv("TZ"); exists {
+		value = strings.TrimPrefix(value, ":")
+		if value == "" {
+			return "UTC"
+		}
+		if name := timezoneNameFromPath(value); name != "" {
+			return name
+		}
+		if !filepath.IsAbs(value) {
+			if _, err := time.LoadLocation(value); err == nil {
+				return value
+			}
+		}
+	}
+	if resolved, err := filepath.EvalSymlinks("/etc/localtime"); err == nil {
+		if name := timezoneNameFromPath(resolved); name != "" {
+			return name
+		}
+	}
+	_, offset := now.In(location).Zone()
+	sign := '+'
+	if offset < 0 {
+		sign = '-'
+		offset = -offset
+	}
+	return fmt.Sprintf("UTC%c%02d:%02d", sign, offset/3600, offset%3600/60)
+}
+
+func timezoneNameFromPath(path string) string {
+	path = filepath.ToSlash(path)
+	marker := "/zoneinfo/"
+	index := strings.LastIndex(path, marker)
+	if index < 0 || index+len(marker) == len(path) {
+		return ""
+	}
+	return path[index+len(marker):]
 }
 
 func newPriceCommand(opts *commandOptions) *cobra.Command {
@@ -1323,10 +1487,23 @@ func newPriceCommand(opts *commandOptions) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return writeEnvelope(opts.stdout, opts.format, commandOutputName(command), data, partial, warnings, opts.quiet)
+			return writePriceEnvelope(opts.stdout, opts.format, commandOutputName(command), data, partial, warnings, opts.quiet, opts.verbose)
 		}
 	}
 	price := &cobra.Command{Use: "price", Short: "Manage price catalogs"}
+	var listProvider string
+	list := &cobra.Command{Use: "list [model]", Args: cobra.MaximumNArgs(1), RunE: withUsage(func(ctx context.Context, s *usage.Service, _ *store.Store, args []string) (any, bool, []string, error) {
+		if listProvider != "" && listProvider != "openai" && listProvider != "anthropic" {
+			return nil, false, nil, &inputError{err: fmt.Errorf("price provider must be openai or anthropic")}
+		}
+		model := ""
+		if len(args) == 1 {
+			model = args[0]
+		}
+		data, err := s.PriceList(ctx, listProvider, model)
+		return data, false, nil, err
+	})}
+	list.Flags().StringVar(&listProvider, "provider", "", "Filter by openai or anthropic")
 	price.AddCommand(
 		&cobra.Command{Use: "history", Args: cobra.NoArgs, RunE: withUsage(func(ctx context.Context, s *usage.Service, _ *store.Store, _ []string) (any, bool, []string, error) {
 			data, err := s.PriceHistory(ctx)
@@ -1336,6 +1513,7 @@ func newPriceCommand(opts *commandOptions) *cobra.Command {
 			data, err := s.PriceStatus(ctx)
 			return data, false, nil, err
 		})},
+		list,
 	)
 	var update *cobra.Command
 	update = &cobra.Command{Use: "update", Args: cobra.NoArgs, RunE: withUsage(func(ctx context.Context, s *usage.Service, _ *store.Store, _ []string) (any, bool, []string, error) {
@@ -1456,6 +1634,11 @@ func writeResult(w io.Writer, format, command string, data any, quiet ...bool) e
 	return nil
 }
 func writeEnvelope(w io.Writer, format, command string, data any, partial bool, warnings []string, quiet ...bool) error {
+	quietOutput := len(quiet) > 0 && quiet[0]
+	return writeUsageEnvelope(w, format, command, data, partial, warnings, quietOutput, usageTextRenderOptions{})
+}
+
+func writeUsageEnvelope(w io.Writer, format, command string, data any, partial bool, warnings []string, quiet bool, renderOptions usageTextRenderOptions) error {
 	data, resource := unwrapTextResource(data)
 	if format == "json" {
 		if warnings == nil {
@@ -1466,14 +1649,97 @@ func writeEnvelope(w io.Writer, format, command string, data any, partial bool, 
 		return json.NewEncoder(w).Encode(envelope)
 	}
 	if isMutationCommand(command) {
-		if len(quiet) > 0 && quiet[0] {
+		if quiet && !partial && len(warnings) == 0 {
 			return nil
 		}
 		if command != "usage.scan" && command != "usage.rebuild" {
 			return renderMutationText(w, command, mutationResource(data, resource))
 		}
 	}
-	return renderUsageText(w, command, data)
+	if err := renderUsageTextWithOptions(w, command, data, renderOptions); err != nil {
+		return err
+	}
+	if command == "usage.rebuild" && partial && len(warnings) > 0 {
+		_, err := fmt.Fprintf(w, "warnings: %s\n", textList(warnings))
+		return err
+	}
+	return nil
+}
+
+func writePriceEnvelope(w io.Writer, format, command string, data any, partial bool, warnings []string, quiet, verbose bool) error {
+	if format == "json" {
+		if warnings == nil {
+			warnings = []string{}
+		}
+		envelope := output.New(command, data, time.Now())
+		envelope.Partial, envelope.Warnings = partial, warnings
+		return json.NewEncoder(w).Encode(envelope)
+	}
+	if format == "ndjson" {
+		return &inputError{err: fmt.Errorf("ndjson format is supported only by watch")}
+	}
+	if quiet && (command == "price.update" || command == "price.override") && !partial && len(warnings) == 0 {
+		return nil
+	}
+	if err := renderPriceText(w, command, data, verbose); err != nil {
+		return err
+	}
+	if len(warnings) > 0 {
+		_, err := fmt.Fprintf(w, "warnings: %s\n", textList(warnings))
+		return err
+	}
+	return nil
+}
+
+func renderPriceText(w io.Writer, command string, data any, verbose bool) error {
+	switch command {
+	case "price.history":
+		values, ok := data.([]usage.PriceCatalog)
+		if !ok {
+			return fmt.Errorf("unexpected price.history result %T", data)
+		}
+		return renderPriceHistory(w, values, verbose)
+	case "price.status":
+		value, ok := data.(map[string]any)
+		if !ok {
+			return fmt.Errorf("unexpected price.status result %T", data)
+		}
+		return renderPriceStatus(w, value, verbose)
+	case "price.list":
+		values, ok := data.([]usage.EffectivePrice)
+		if !ok {
+			return fmt.Errorf("unexpected price.list result %T", data)
+		}
+		return renderPriceList(w, values, verbose)
+	case "price.update", "price.override":
+		value, ok := data.(map[string]any)
+		if !ok {
+			return fmt.Errorf("unexpected %s result %T", command, data)
+		}
+		keys := []string{"version", "models", "overrides", "commit_sha", "content_sha256"}
+		rows := make([][]string, 0, len(keys))
+		for _, key := range keys {
+			raw, exists := value[key]
+			if !exists {
+				continue
+			}
+			textValue := fmt.Sprint(raw)
+			if !verbose && (key == "commit_sha" || key == "content_sha256") {
+				textValue = shortDigest(textValue)
+			}
+			rows = append(rows, []string{strings.ReplaceAll(key, "_", " "), textValue})
+		}
+		return output.WriteASCIITable(w, []string{"RESULT", "VALUE"}, rows)
+	default:
+		return fmt.Errorf("no price text renderer for %s (%T)", command, data)
+	}
+}
+
+func shortDigest(value string) string {
+	if len(value) <= 12 {
+		return value
+	}
+	return value[:12]
 }
 
 type textResource struct {
@@ -1696,17 +1962,17 @@ func renderCommandText(w io.Writer, command string, data any) error {
 		}
 		return renderDoctorText(w, value)
 	case "price.history":
-		value, ok := data.([]map[string]string)
+		value, ok := data.([]usage.PriceCatalog)
 		if !ok {
 			return fmt.Errorf("unexpected price.history result %T", data)
 		}
-		return renderPriceHistory(w, value)
+		return renderPriceHistory(w, value, false)
 	case "price.status":
 		value, ok := data.(map[string]any)
 		if !ok {
 			return fmt.Errorf("unexpected price.status result %T", data)
 		}
-		return renderPriceStatus(w, value)
+		return renderPriceStatus(w, value, false)
 	default:
 		return fmt.Errorf("no text renderer for %s (%T)", command, data)
 	}
@@ -1845,26 +2111,88 @@ func renderBackupManifest(w io.Writer, value backup.Manifest) error {
 	return err
 }
 
-func renderPriceHistory(w io.Writer, values []map[string]string) error {
+func renderPriceHistory(w io.Writer, values []usage.PriceCatalog, verbose bool) error {
 	if len(values) == 0 {
 		_, err := fmt.Fprintln(w, "No price catalogs.")
 		return err
 	}
 	rows := make([][]string, 0, len(values))
 	for _, value := range values {
-		rows = append(rows, []string{value["version"], value["source_kind"], value["effective_from"], value["source_url"], value["content_sha256"]})
+		row := []string{value.Version, value.SourceKind, value.EffectiveFrom, strconv.FormatInt(value.Models, 10), strconv.FormatInt(value.Components, 10)}
+		if verbose {
+			row = append(row, value.CommitSHA, value.ContentSHA256, value.SourceURL)
+		}
+		rows = append(rows, row)
 	}
-	return output.WriteASCIITable(w, []string{"VERSION", "SOURCE", "EFFECTIVE", "URL", "SHA256"}, rows)
+	headers := []string{"VERSION", "SOURCE", "EFFECTIVE", "MODELS", "COMPONENTS"}
+	if verbose {
+		headers = append(headers, "COMMIT", "SHA256", "URL")
+	}
+	return output.WriteASCIITable(w, headers, rows)
 }
 
-func renderPriceStatus(w io.Writer, value map[string]any) error {
+func renderPriceStatus(w io.Writer, value map[string]any, verbose bool) error {
 	available, _ := value["available"].(bool)
 	if !available {
 		_, err := fmt.Fprintln(w, "No price catalog is available.")
 		return err
 	}
-	_, err := fmt.Fprintf(w, "available: true\nversion: %v\nsource: %v\neffective: %v\ncommit: %v\nsha256: %v\n", value["version"], value["source_kind"], value["effective_from"], value["commit_sha"], value["content_sha256"])
-	return err
+	if err := output.WriteASCIITable(w, []string{"STATUS", "MODELS", "COMPONENTS"}, [][]string{{"available", fmt.Sprint(value["models"]), fmt.Sprint(value["components"])}}); err != nil {
+		return err
+	}
+	catalogs, _ := value["catalogs"].([]usage.PriceCatalog)
+	if len(catalogs) == 0 {
+		return nil
+	}
+	if _, err := fmt.Fprintln(w); err != nil {
+		return err
+	}
+	return renderPriceHistory(w, catalogs, verbose)
+}
+
+func renderPriceList(w io.Writer, values []usage.EffectivePrice, verbose bool) error {
+	if len(values) == 0 {
+		_, err := fmt.Fprintln(w, "No effective prices.")
+		return err
+	}
+	components := []string{"input", "cached_input", "output", "cache_read", "cache_write_5m", "cache_write_1h"}
+	rows := make([][]string, 0, len(values))
+	for _, value := range values {
+		row := []string{value.Provider, value.Model}
+		for _, component := range components {
+			price := value.Prices[component]
+			if price == "" {
+				price = "-"
+			}
+			row = append(row, price)
+		}
+		rows = append(rows, row)
+	}
+	if _, err := fmt.Fprintln(w, "USD / 1M tokens"); err != nil {
+		return err
+	}
+	if err := output.WriteASCIITable(w, []string{"PROVIDER", "MODEL", "INPUT", "CACHED INPUT", "OUTPUT", "CACHE READ", "WRITE 5M", "WRITE 1H"}, rows); err != nil {
+		return err
+	}
+	if !verbose {
+		return nil
+	}
+	if _, err := fmt.Fprintln(w, "\nPROVENANCE"); err != nil {
+		return err
+	}
+	var provenanceRows [][]string
+	for _, value := range values {
+		keys := make([]string, 0, len(value.Provenance))
+		for component := range value.Provenance {
+			keys = append(keys, component)
+		}
+		sort.Strings(keys)
+		for _, component := range keys {
+			provenance := value.Provenance[component]
+			provenanceRows = append(provenanceRows, []string{value.Provider, value.Model, component, provenance.SourceKind, provenance.CatalogVersion, provenance.EffectiveFrom, provenance.CommitSHA, provenance.ContentSHA256, provenance.SourceURL})
+		}
+	}
+	return output.WriteASCIITable(w, []string{"PROVIDER", "MODEL", "COMPONENT", "SOURCE", "VERSION", "EFFECTIVE", "COMMIT", "SHA256", "URL"}, provenanceRows)
 }
 
 func renderDoctorText(w io.Writer, report doctor.Report) error {
@@ -1887,35 +2215,156 @@ func renderDoctorText(w io.Writer, report doctor.Report) error {
 	return nil
 }
 func renderUsageText(w io.Writer, command string, data any) error {
+	return renderUsageTextWithOptions(w, command, data, usageTextRenderOptions{})
+}
+
+func renderUsageTextWithOptions(w io.Writer, command string, data any, renderOptions usageTextRenderOptions) error {
 	if values, ok := data.(map[string]int); ok && (command == "usage.scan" || command == "usage.rebuild") {
-		_, err := fmt.Fprintf(w, "files: %d\nimported: %d\nupdated: %d\nignored non-usage: %d\nunsupported usage: %d\nmalformed: %d\nsource resets: %d\n", values["files"], values["imported"], values["updated"], values["ignored_non_usage"], values["unsupported_usage"], values["malformed"], values["source_resets"])
-		return err
+		return renderUsageMetricTable(w, "📥 USAGE "+strings.ToUpper(strings.TrimPrefix(command, "usage.")), [][]string{
+			{"files", strconv.Itoa(values["files"])},
+			{"imported", strconv.Itoa(values["imported"])},
+			{"updated", strconv.Itoa(values["updated"])},
+			{"ignored non-usage", strconv.Itoa(values["ignored_non_usage"])},
+			{"unsupported usage", strconv.Itoa(values["unsupported_usage"])},
+			{"malformed", strconv.Itoa(values["malformed"])},
+			{"source resets", strconv.Itoa(values["source_resets"])},
+		})
 	}
 	if values, ok := data.(map[string]any); ok && command == "usage.diagnose" {
+		rows := make([][]string, 0, 4)
 		for _, key := range []string{"files", "events", "sessions", "exact_runs"} {
-			if _, err := fmt.Fprintf(w, "%s: %v\n", key, values[key]); err != nil {
-				return err
-			}
+			rows = append(rows, []string{key, fmt.Sprint(values[key])})
 		}
-		return nil
+		return renderUsageMetricTable(w, "🩺 USAGE DIAGNOSTICS", rows)
 	}
 	switch v := data.(type) {
+	case usage.StatsReport:
+		return renderUsageStatsWithOptions(w, v, renderOptions)
 	case usage.Summary:
-		_, err := fmt.Fprintf(w, "events: %d\ntokens: %s\ncatalog base cost: %s\nprovider cost: %s\nwarnings: %s\nunpriced: %s\n", v.Counts["events"], formatTokens(v.Tokens), optionalCost(v.CatalogBaseCost), optionalCost(v.ProviderCost), textList(v.Warnings), textList(v.Unpriced))
-		return err
+		if err := renderUsageMetricTable(w, "📊 USAGE SUMMARY", [][]string{
+			{"events", strconv.FormatInt(v.Counts["events"], 10)},
+			{"exact attribution", strconv.FormatInt(v.Counts["exact"], 10)},
+			{"estimated attribution", strconv.FormatInt(v.Counts["estimated"], 10)},
+			{"historical attribution", strconv.FormatInt(v.Counts["historical"], 10)},
+			{"priced events", strconv.FormatInt(v.Counts["priced"], 10)},
+			{"unpriced events", strconv.FormatInt(v.Counts["unpriced"], 10)},
+			{"catalog base total", optionalCost(v.CatalogBaseCost)},
+			{"provider total", optionalCost(v.ProviderCost)},
+			{"known catalog subtotal", optionalCost(v.KnownCatalogBaseCost)},
+			{"known provider subtotal", optionalCost(v.KnownProviderCost)},
+			{"warnings", textList(v.Warnings)},
+			{"unpriced", textList(v.Unpriced)},
+		}); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintln(w, "\n🪙 TOKEN TOTALS"); err != nil {
+			return err
+		}
+		tokenRows := make([][]string, 0, len(usageTokenNames))
+		for _, token := range usageTokenNames {
+			tokenRows = append(tokenRows, []string{token.label, strconv.FormatInt(v.Tokens[token.key], 10)})
+		}
+		if err := output.WriteASCIITable(w, []string{"TOKEN", "COUNT"}, tokenRows); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintln(w, "\n🧾 MODEL COVERAGE"); err != nil {
+			return err
+		}
+		modelRows := make([][]string, 0, len(v.Models))
+		for _, model := range v.Models {
+			modelRows = append(modelRows, []string{model.Client, model.Model, strconv.FormatInt(model.Events, 10), strconv.FormatInt(model.PricedEvents, 10), strconv.FormatInt(model.UnpricedEvents, 10), modelCoverageStatus(model)})
+		}
+		return output.WriteASCIITable(w, []string{"CLIENT", "MODEL", "EVENTS", "PRICED", "UNPRICED", "STATUS"}, modelRows)
 	case []usage.SessionSummary:
 		if len(v) == 0 {
 			_, err := fmt.Fprintln(w, "No usage sessions.")
 			return err
 		}
+		if _, err := fmt.Fprintln(w, "📚 USAGE SESSIONS"); err != nil {
+			return err
+		}
 		rows := make([][]string, 0, len(v))
 		for _, x := range v {
-			rows = append(rows, []string{x.Client, x.SessionID, x.FirstAt, x.LastAt, formatTokens(x.Tokens), optionalCost(x.CatalogBaseCost), optionalCost(x.ProviderCost), textList(x.Warnings), textList(x.Unpriced)})
+			row := []string{x.Client, x.SessionID, x.FirstAt, x.LastAt}
+			for _, token := range usageTokenNames {
+				row = append(row, strconv.FormatInt(x.Tokens[token.key], 10))
+			}
+			row = append(row, sessionCostText(x.CatalogBaseCost, x.KnownCatalogBaseCost), sessionCostText(x.ProviderCost, x.KnownProviderCost), usageSessionStatus(x))
+			rows = append(rows, row)
 		}
-		return output.WriteASCIITable(w, []string{"CLIENT", "SESSION", "FIRST", "LAST", "TOKENS", "BASE COST", "PROVIDER COST", "WARNINGS", "UNPRICED"}, rows)
+		return output.WriteASCIITable(w, []string{"CLIENT", "SESSION", "FIRST", "LAST", "INPUT", "CACHED", "OUTPUT", "CACHE READ", "CACHE CREATE", "WRITE 5M", "WRITE 1H", "BASE COST", "PROVIDER COST", "STATUS"}, rows)
 	default:
 		return fmt.Errorf("no usage text renderer for %s (%T)", command, data)
 	}
+}
+
+var usageTokenNames = []struct {
+	key   string
+	label string
+}{
+	{key: "input_tokens", label: "input"},
+	{key: "cached_input_tokens", label: "cached input"},
+	{key: "output_tokens", label: "output"},
+	{key: "cache_read_tokens", label: "cache read"},
+	{key: "cache_creation_tokens", label: "cache create"},
+	{key: "cache_write_5m_tokens", label: "write 5m"},
+	{key: "cache_write_1h_tokens", label: "write 1h"},
+}
+
+func renderUsageMetricTable(w io.Writer, title string, rows [][]string) error {
+	if _, err := fmt.Fprintln(w, title); err != nil {
+		return err
+	}
+	return output.WriteASCIITable(w, []string{"METRIC", "VALUE"}, rows)
+}
+
+func modelCoverageStatus(model usage.ModelCoverage) string {
+	switch {
+	case model.UnpricedEvents == 0:
+		return "priced"
+	case model.PricedEvents == 0:
+		return "unpriced"
+	default:
+		return "partial"
+	}
+}
+
+func sessionCostText(total, known *string) string {
+	if total != nil {
+		return *total
+	}
+	if known != nil {
+		return *known + " (partial)"
+	}
+	return "unavailable"
+}
+
+func statsValueText(complete *string, known string) string {
+	if complete != nil {
+		return *complete
+	}
+	if known != "" {
+		return known + " (partial)"
+	}
+	return "unavailable"
+}
+
+func statsPercentText(complete *string, known string) string {
+	if complete != nil {
+		return *complete + "%"
+	}
+	if known != "" {
+		return known + "% (partial)"
+	}
+	return "unavailable"
+}
+
+func usageSessionStatus(value usage.SessionSummary) string {
+	parts := append([]string{}, value.Warnings...)
+	if len(value.Unpriced) > 0 {
+		parts = append(parts, "partial cost: "+textList(value.Unpriced))
+	}
+	return textList(parts)
 }
 
 func optionalCost(value *string) string {
@@ -1923,16 +2372,6 @@ func optionalCost(value *string) string {
 		return "unavailable"
 	}
 	return *value
-}
-
-func formatTokens(values map[string]int64) string {
-	parts := make([]string, 0, len(values))
-	for _, name := range []string{"input_tokens", "cached_input_tokens", "output_tokens", "cache_read_tokens", "cache_creation_tokens", "cache_write_5m_tokens", "cache_write_1h_tokens"} {
-		if value, found := values[name]; found {
-			parts = append(parts, fmt.Sprintf("%s=%d", name, value))
-		}
-	}
-	return textList(parts)
 }
 
 func textList(values []string) string {

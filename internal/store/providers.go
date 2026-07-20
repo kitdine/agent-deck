@@ -75,6 +75,144 @@ type ProviderSnapshot struct {
 	Official   bool
 }
 
+type providerTimelineOperation struct {
+	id         string
+	providerID sql.NullInt64
+	client     string
+	state      string
+	startedAt  time.Time
+	updatedAt  time.Time
+}
+
+type providerTimelineSelection struct {
+	id          int64
+	providerID  sql.NullInt64
+	client      string
+	operationID sql.NullString
+	snapshot    ProviderSnapshot
+}
+
+// ProviderTimeline is a metadata-only snapshot used by range reports. It loads
+// provider history once and applies the same completed-operation compatibility
+// rules as ProviderSnapshotAt without reading credential secrets.
+type ProviderTimeline struct {
+	operations      []providerTimelineOperation
+	selections      []providerTimelineSelection
+	operationStates map[string]string
+}
+
+func (s *Store) LoadProviderTimeline(ctx context.Context) (ProviderTimeline, error) {
+	timeline := ProviderTimeline{operationStates: map[string]string{}}
+	operationRows, err := s.DB.QueryContext(ctx, `SELECT id,provider_id,COALESCE(client,''),state,started_at,updated_at FROM operations WHERE kind='provider.use'`)
+	if err != nil {
+		return ProviderTimeline{}, err
+	}
+	for operationRows.Next() {
+		var item providerTimelineOperation
+		var started, updated string
+		if err = operationRows.Scan(&item.id, &item.providerID, &item.client, &item.state, &started, &updated); err != nil {
+			operationRows.Close()
+			return ProviderTimeline{}, err
+		}
+		item.startedAt, err = time.Parse(time.RFC3339Nano, started)
+		if err != nil {
+			operationRows.Close()
+			return ProviderTimeline{}, err
+		}
+		item.updatedAt, err = time.Parse(time.RFC3339Nano, updated)
+		if err != nil {
+			operationRows.Close()
+			return ProviderTimeline{}, err
+		}
+		timeline.operations = append(timeline.operations, item)
+		timeline.operationStates[item.id] = item.state
+	}
+	if err = operationRows.Close(); err != nil {
+		return ProviderTimeline{}, err
+	}
+	selectionRows, err := s.DB.QueryContext(ctx, `SELECT id,provider_id,client,provider_name_snapshot,endpoint_snapshot,multiplier_snapshot,credential_name_snapshot,operation_id,selected_at FROM provider_selections`)
+	if err != nil {
+		return ProviderTimeline{}, err
+	}
+	for selectionRows.Next() {
+		var item providerTimelineSelection
+		var selected string
+		if err = selectionRows.Scan(&item.id, &item.providerID, &item.client, &item.snapshot.Name, &item.snapshot.Endpoint, &item.snapshot.Multiplier, &item.snapshot.Credential, &item.operationID, &selected); err != nil {
+			selectionRows.Close()
+			return ProviderTimeline{}, err
+		}
+		item.snapshot.SelectedAt, err = time.Parse(time.RFC3339Nano, selected)
+		if err != nil {
+			selectionRows.Close()
+			return ProviderTimeline{}, err
+		}
+		item.snapshot.Official = item.snapshot.Name == "official"
+		timeline.selections = append(timeline.selections, item)
+	}
+	if err = selectionRows.Close(); err != nil {
+		return ProviderTimeline{}, err
+	}
+	return timeline, nil
+}
+
+func (t ProviderTimeline) SnapshotAt(client string, at time.Time) (ProviderSnapshot, error) {
+	at = at.UTC()
+	var latestOperation *providerTimelineOperation
+	for index := range t.operations {
+		candidate := &t.operations[index]
+		if candidate.client != client || candidate.state != "completed" || candidate.updatedAt.After(at) {
+			continue
+		}
+		if latestOperation == nil || candidate.updatedAt.After(latestOperation.updatedAt) || candidate.updatedAt.Equal(latestOperation.updatedAt) && candidate.id > latestOperation.id {
+			latestOperation = candidate
+		}
+	}
+	if latestOperation != nil {
+		for _, selection := range t.selections {
+			if selection.operationID.Valid && selection.operationID.String == latestOperation.id {
+				return selection.snapshot, nil
+			}
+		}
+		if !latestOperation.providerID.Valid {
+			return ProviderSnapshot{Name: "official", Multiplier: "1", SelectedAt: latestOperation.updatedAt, Official: true}, nil
+		}
+		if snapshot, ok := t.latestSelection(client, &latestOperation.providerID.Int64, &latestOperation.startedAt, &latestOperation.updatedAt); ok {
+			return snapshot, nil
+		}
+	}
+	if snapshot, ok := t.latestSelection(client, nil, nil, &at); ok {
+		return snapshot, nil
+	}
+	return ProviderSnapshot{}, sql.ErrNoRows
+}
+
+func (t ProviderTimeline) latestSelection(client string, providerID *int64, notBefore, notAfter *time.Time) (ProviderSnapshot, bool) {
+	var latest *providerTimelineSelection
+	for index := range t.selections {
+		candidate := &t.selections[index]
+		if candidate.client != client {
+			continue
+		}
+		if candidate.operationID.Valid && t.operationStates[candidate.operationID.String] != "completed" {
+			continue
+		}
+		if providerID != nil && (!candidate.providerID.Valid || candidate.providerID.Int64 != *providerID) {
+			continue
+		}
+		selected := candidate.snapshot.SelectedAt
+		if notBefore != nil && selected.Before(notBefore.UTC()) || notAfter != nil && selected.After(notAfter.UTC()) {
+			continue
+		}
+		if latest == nil || selected.After(latest.snapshot.SelectedAt) || selected.Equal(latest.snapshot.SelectedAt) && candidate.id > latest.id {
+			latest = candidate
+		}
+	}
+	if latest == nil {
+		return ProviderSnapshot{}, false
+	}
+	return latest.snapshot, true
+}
+
 type Operation struct {
 	ID                 string    `json:"id"`
 	Kind               string    `json:"kind"`

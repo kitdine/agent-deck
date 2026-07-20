@@ -277,21 +277,28 @@ func TestHelpOmitsLegacyProviderCredentialAndSessionExamples(t *testing.T) {
 }
 
 func TestPhase9TextAndJSONGoldenContracts(t *testing.T) {
-	baseCost := "1.250000000"
+	baseCost, knownProvider := "1.250000000", "1.500000000"
 	summary := usage.Summary{
-		Counts:          map[string]int64{"events": 2},
-		Tokens:          map[string]int64{"input_tokens": 3, "output_tokens": 4},
-		CatalogBaseCost: &baseCost,
-		Warnings:        []string{"scan_incomplete"},
-		Unpriced:        []string{"model-x"},
+		Counts:               map[string]int64{"events": 2, "exact": 1, "estimated": 1, "priced": 1, "unpriced": 1},
+		Tokens:               map[string]int64{"input_tokens": 3, "output_tokens": 4},
+		CatalogBaseCost:      &baseCost,
+		KnownCatalogBaseCost: &baseCost,
+		KnownProviderCost:    &knownProvider,
+		Warnings:             []string{"scan_incomplete"},
+		Unpriced:             []string{"unknown_model"},
+		Models:               []usage.ModelCoverage{{Client: "codex", Model: "gpt-5.4", Events: 1, PricedEvents: 1}, {Client: "codex", Model: "model-x", Events: 1, UnpricedEvents: 1}},
 	}
 	var textOutput bytes.Buffer
 	if err := writeEnvelope(&textOutput, "text", "usage.summary", summary, true, summary.Warnings); err != nil {
 		t.Fatal(err)
 	}
-	wantUsage := "events: 2\ntokens: input_tokens=3,output_tokens=4\ncatalog base cost: 1.250000000\nprovider cost: unavailable\nwarnings: scan_incomplete\nunpriced: model-x\n"
-	if textOutput.String() != wantUsage || strings.Contains(textOutput.String(), "0x") {
-		t.Fatalf("usage text golden = %q, want %q", textOutput.String(), wantUsage)
+	for _, want := range []string{"📊 USAGE SUMMARY", "🪙 TOKEN TOTALS", "🧾 MODEL COVERAGE", "| known catalog subtotal", "| input", "| codex  | model-x"} {
+		if !strings.Contains(textOutput.String(), want) {
+			t.Fatalf("usage text golden missing %q:\n%s", want, textOutput.String())
+		}
+	}
+	if strings.Contains(textOutput.String(), "0x") || strings.Contains(textOutput.String(), "input_tokens=") {
+		t.Fatalf("usage text golden contains internal formatting:\n%s", textOutput.String())
 	}
 
 	providerData := provider.DefinitionResult{Definition: provider.Provider{
@@ -332,6 +339,36 @@ func TestPhase9TextAndJSONGoldenContracts(t *testing.T) {
 	data, ok := envelope["data"].(map[string]any)
 	if !ok || data["catalog_base_cost"] != baseCost || data["provider_cost"] != nil || strings.Contains(jsonOutput.String(), "synthetic-secret") {
 		t.Fatalf("usage JSON data = %#v", envelope["data"])
+	}
+}
+
+func TestUsageRebuildPartialWarningsAreVisible(t *testing.T) {
+	stats := map[string]int{"files": 2, "imported": 1, "updated": 0, "ignored_non_usage": 0, "unsupported_usage": 0, "malformed": 0, "source_resets": 1}
+	warnings := []string{"usage_source_rebuild_failed"}
+	var textOutput bytes.Buffer
+	if err := writeEnvelope(&textOutput, "text", "usage.rebuild", stats, true, warnings); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(textOutput.String(), "warnings: usage_source_rebuild_failed\n") {
+		t.Fatalf("usage rebuild text = %q", textOutput.String())
+	}
+	var jsonOutput bytes.Buffer
+	if err := writeEnvelope(&jsonOutput, "json", "usage.rebuild", stats, true, warnings); err != nil {
+		t.Fatal(err)
+	}
+	var envelope output.Envelope
+	if err := json.Unmarshal(jsonOutput.Bytes(), &envelope); err != nil {
+		t.Fatal(err)
+	}
+	if !envelope.Partial || len(envelope.Warnings) != 1 || envelope.Warnings[0] != warnings[0] {
+		t.Fatalf("usage rebuild envelope = %#v", envelope)
+	}
+	var quietOutput bytes.Buffer
+	if err := writeEnvelope(&quietOutput, "text", "usage.rebuild", stats, true, warnings, true); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(quietOutput.String(), "warnings: usage_source_rebuild_failed\n") {
+		t.Fatalf("quiet partial rebuild text = %q", quietOutput.String())
 	}
 }
 
@@ -568,7 +605,7 @@ func TestUsageCommandTextAndJSONContracts(t *testing.T) {
 	if err := run([]string{"--state-dir", state, "usage", "diagnose"}, bytes.NewReader(nil), &text); err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Contains(text.Bytes(), []byte(`events: 0`)) {
+	if !bytes.Contains(text.Bytes(), []byte("USAGE DIAGNOSTICS")) || !bytes.Contains(text.Bytes(), []byte("| events")) || bytes.HasPrefix(bytes.TrimSpace(text.Bytes()), []byte("{")) {
 		t.Fatalf("text output = %s", text.String())
 	}
 	var encoded bytes.Buffer
@@ -584,25 +621,48 @@ func TestUsageCommandTextAndJSONContracts(t *testing.T) {
 	}
 }
 
-func TestUsageSessionsTextUsesSharedASCIITable(t *testing.T) {
+func TestUsageSummaryAndSessionsUseReadableASCIITables(t *testing.T) {
 	baseCost, providerCost := "0.100000000", "0.200000000"
-	values := []usage.SessionSummary{{
-		Client:          "codex",
-		SessionID:       "session-1",
-		FirstAt:         "2026-07-16T00:00:00Z",
-		LastAt:          "2026-07-16T00:01:00Z",
-		Tokens:          map[string]int64{"input_tokens": 10, "output_tokens": 2},
-		CatalogBaseCost: &baseCost,
-		ProviderCost:    &providerCost,
-		Warnings:        []string{"estimated"},
-		Unpriced:        []string{"cache_read_tokens"},
-	}}
+	summary := usage.Summary{
+		Tokens:               map[string]int64{"input_tokens": 10, "cached_input_tokens": 3, "output_tokens": 2},
+		Counts:               map[string]int64{"events": 2, "exact": 1, "estimated": 1, "historical": 0, "priced": 1, "unpriced": 1},
+		KnownCatalogBaseCost: &baseCost,
+		KnownProviderCost:    &providerCost,
+		Warnings:             []string{"estimated attribution"},
+		Unpriced:             []string{"unknown_model"},
+		Models:               []usage.ModelCoverage{{Client: "codex", Model: "gpt-5.4", Events: 1, PricedEvents: 1}, {Client: "codex", Model: "codex-auto-review", Events: 1, UnpricedEvents: 1}},
+	}
 	var rendered bytes.Buffer
-	if err := renderUsageText(&rendered, "usage.sessions", values); err != nil {
+	if err := renderUsageText(&rendered, "usage.summary", summary); err != nil {
 		t.Fatal(err)
 	}
 	text := rendered.String()
-	if !strings.HasPrefix(text, "+") || !strings.Contains(text, "| CLIENT | SESSION") || !strings.Contains(text, "| codex  | session-1") {
+	for _, want := range []string{"📊 USAGE SUMMARY", "🪙 TOKEN TOTALS", "🧾 MODEL COVERAGE", "| METRIC", "| TOKEN", "| CLIENT | MODEL", "known catalog subtotal", "codex-auto-review"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("usage summary missing %q:\n%s", want, text)
+		}
+	}
+	if strings.Contains(text, "input_tokens=") {
+		t.Fatalf("usage summary retained packed token text:\n%s", text)
+	}
+
+	values := []usage.SessionSummary{{
+		Client:               "codex",
+		SessionID:            "session-1",
+		FirstAt:              "2026-07-16T00:00:00Z",
+		LastAt:               "2026-07-16T00:01:00Z",
+		Tokens:               map[string]int64{"input_tokens": 10, "cached_input_tokens": 3, "output_tokens": 2},
+		KnownCatalogBaseCost: &baseCost,
+		KnownProviderCost:    &providerCost,
+		Warnings:             []string{"estimated"},
+		Unpriced:             []string{"unknown_model"},
+	}}
+	rendered.Reset()
+	if err := renderUsageText(&rendered, "usage.sessions", values); err != nil {
+		t.Fatal(err)
+	}
+	text = rendered.String()
+	if !strings.HasPrefix(text, "📚 USAGE SESSIONS\n+") || !strings.Contains(text, "| CLIENT | SESSION") || !strings.Contains(text, "| INPUT") || !strings.Contains(text, "| CACHED") || !strings.Contains(text, "| OUTPUT") || strings.Contains(text, "input_tokens=") {
 		t.Fatalf("usage sessions are not rendered as the shared ASCII table:\n%s", text)
 	}
 }
@@ -1380,3 +1440,224 @@ func TestProviderCurrentAndStatusRenderCredentialShorthand(t *testing.T) {
 	}
 }
 
+func TestPriceCommandsUseReadableDedicatedRenderers(t *testing.T) {
+	ctx := context.Background()
+	state := filepath.Join(t.TempDir(), "state")
+	database, err := store.Open(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const digest = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	_, err = database.Exec(ctx, `INSERT INTO price_catalogs(version,source_kind,source_url,content_sha256,imported_at,effective_from,currency,schema_version) VALUES
+('fixture','official','https://example.invalid/pricing','`+digest+`','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z','USD',1),
+('future','official','https://example.invalid/future','`+digest+`','2099-01-01T00:00:00Z','2099-01-01T00:00:00Z','USD',1);
+INSERT INTO model_prices(catalog_version,model,provider,effective_from,prices_json,aliases_json) VALUES
+('fixture','gpt-fixture','openai','2026-01-01T00:00:00Z','{"input":"1","cached_input":"0.5","output":"2"}','[]'),
+('future','gpt-future','openai','2099-01-01T00:00:00Z','{"input":"9","cached_input":"9","output":"9"}','[]')`)
+	if err != nil {
+		database.Close()
+		t.Fatal(err)
+	}
+	if err = database.Close(); err != nil {
+		t.Fatal(err)
+	}
+	home := t.TempDir()
+	oldHome := userHomeDir
+	userHomeDir = func() (string, error) { return home, nil }
+	t.Cleanup(func() { userHomeDir = oldHome })
+
+	for _, command := range [][]string{{"price", "status"}, {"price", "history"}, {"price", "list"}, {"price", "list", "gpt-fixture"}, {"price", "list", "--provider", "openai"}} {
+		var output bytes.Buffer
+		args := append([]string{"--state-dir", state}, command...)
+		if err = run(args, bytes.NewReader(nil), &output); err != nil {
+			t.Fatalf("%v: %v", command, err)
+		}
+		if strings.Contains(output.String(), "no usage text renderer") || strings.Contains(output.String(), digest) || strings.Contains(output.String(), "https://example.invalid/pricing") {
+			t.Fatalf("default price output for %v leaked technical provenance or used usage renderer:\n%s", command, output.String())
+		}
+	}
+	var verbose bytes.Buffer
+	if err = run([]string{"--state-dir", state, "--verbose", "price", "list", "gpt-fixture"}, bytes.NewReader(nil), &verbose); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(verbose.String(), digest) || !strings.Contains(verbose.String(), "https://example.invalid/pricing") || !strings.Contains(verbose.String(), "USD / 1M tokens") {
+		t.Fatalf("verbose price provenance = %s", verbose.String())
+	}
+	var mutation bytes.Buffer
+	if err = writePriceEnvelope(&mutation, "text", "price.update", map[string]any{"version": "fixture", "models": 1, "commit_sha": digest[:40], "content_sha256": digest}, false, nil, false, false); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(mutation.String(), "| RESULT") || strings.Contains(mutation.String(), digest) {
+		t.Fatalf("price update result = %s", mutation.String())
+	}
+	var currentJSON bytes.Buffer
+	if err = run([]string{"--state-dir", state, "--format", "json", "price", "status"}, bytes.NewReader(nil), &currentJSON); err != nil {
+		t.Fatal(err)
+	}
+	var currentEnvelope struct {
+		Data struct {
+			Available bool                 `json:"available"`
+			Version   string               `json:"version"`
+			Catalogs  []usage.PriceCatalog `json:"catalogs"`
+			Models    int                  `json:"models"`
+		} `json:"data"`
+	}
+	if err = json.Unmarshal(currentJSON.Bytes(), &currentEnvelope); err != nil || !currentEnvelope.Data.Available || currentEnvelope.Data.Version != "fixture" || currentEnvelope.Data.Models != 1 || len(currentEnvelope.Data.Catalogs) != 1 {
+		t.Fatalf("current plus future price status = %#v, %v", currentEnvelope, err)
+	}
+
+	futureOnlyState := filepath.Join(t.TempDir(), "future-only")
+	futureOnly, err := store.Open(ctx, futureOnlyState)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = futureOnly.Exec(ctx, `INSERT INTO price_catalogs(version,source_kind,source_url,content_sha256,imported_at,effective_from,currency,schema_version) VALUES('future','official','https://example.invalid/future','`+digest+`','2099-01-01T00:00:00Z','2099-01-01T00:00:00Z','USD',1); INSERT INTO model_prices(catalog_version,model,provider,effective_from,prices_json,aliases_json) VALUES('future','gpt-future','openai','2099-01-01T00:00:00Z','{"input":"9"}','[]')`); err != nil {
+		futureOnly.Close()
+		t.Fatal(err)
+	}
+	if err = futureOnly.Close(); err != nil {
+		t.Fatal(err)
+	}
+	var futureText, futureJSON bytes.Buffer
+	if err = run([]string{"--state-dir", futureOnlyState, "price", "status"}, bytes.NewReader(nil), &futureText); err != nil {
+		t.Fatal(err)
+	}
+	if err = run([]string{"--state-dir", futureOnlyState, "--format", "json", "price", "status"}, bytes.NewReader(nil), &futureJSON); err != nil {
+		t.Fatal(err)
+	}
+	var futureEnvelope struct {
+		Data struct {
+			Available bool `json:"available"`
+		} `json:"data"`
+	}
+	if err = json.Unmarshal(futureJSON.Bytes(), &futureEnvelope); err != nil || futureEnvelope.Data.Available || !strings.Contains(futureText.String(), "No price catalog is available.") {
+		t.Fatalf("future-only price status text=%q json=%#v err=%v", futureText.String(), futureEnvelope, err)
+	}
+}
+
+func TestUsageSummaryShortcutsAndStatsJSONContract(t *testing.T) {
+	state := filepath.Join(t.TempDir(), "state")
+	home := t.TempDir()
+	oldHome := userHomeDir
+	userHomeDir = func() (string, error) { return home, nil }
+	t.Cleanup(func() { userHomeDir = oldHome })
+	for _, period := range []string{"daily", "weekly", "monthly"} {
+		var output bytes.Buffer
+		if err := run([]string{"--state-dir", state, "usage", "summary", period}, bytes.NewReader(nil), &output); err != nil {
+			t.Fatalf("summary %s: %v", period, err)
+		}
+		if !strings.Contains(output.String(), "USAGE SUMMARY") {
+			t.Fatalf("summary %s = %s", period, output.String())
+		}
+	}
+	var encoded bytes.Buffer
+	if err := run([]string{"--state-dir", state, "--format", "json", "usage", "stats", "--from", "2026-07-01", "--to", "2026-07-07"}, bytes.NewReader(nil), &encoded); err != nil {
+		t.Fatal(err)
+	}
+	var envelope map[string]any
+	if err := json.Unmarshal(encoded.Bytes(), &envelope); err != nil {
+		t.Fatal(err)
+	}
+	data, ok := envelope["data"].(map[string]any)
+	if !ok || envelope["command"] != "usage.stats" {
+		t.Fatalf("stats envelope = %#v", envelope)
+	}
+	if timezone, _ := data["timezone"].(string); timezone == "" || timezone == "Local" {
+		t.Fatalf("stats timezone = %q", timezone)
+	}
+	for _, key := range []string{"range", "timezone", "totals", "buckets", "models", "clients", "activity", "peak", "coverage", "unpriced_models"} {
+		if _, exists := data[key]; !exists {
+			t.Fatalf("stats JSON missing %s: %#v", key, data)
+		}
+	}
+	totals, ok := data["totals"].(map[string]any)
+	if !ok {
+		t.Fatalf("stats totals = %#v", data["totals"])
+	}
+	for _, key := range []string{"input_tokens", "output_tokens", "cached_read_tokens", "cache_write_tokens", "catalog_base_cost", "provider_cost", "known_catalog_base_cost", "known_provider_cost"} {
+		if _, exists := totals[key]; !exists {
+			t.Fatalf("stats totals JSON missing %s: %#v", key, totals)
+		}
+	}
+	if activity, ok := data["activity"].([]any); !ok || len(activity) != 168 {
+		t.Fatalf("stats activity = %#v", data["activity"])
+	}
+	var textOutput bytes.Buffer
+	if err := run([]string{"--state-dir", state, "usage", "stats", "--from", "2026-07-01", "--to", "2026-07-07"}, bytes.NewReader(nil), &textOutput); err != nil {
+		t.Fatal(err)
+	}
+	for _, section := range []string{"USAGE STATS", "TREND", "TOP MODELS", "CLIENTS", "ACTIVITY BY WEEKDAY / HOUR"} {
+		if !strings.Contains(textOutput.String(), section) {
+			t.Fatalf("stats text missing %q:\n%s", section, textOutput.String())
+		}
+	}
+	if !strings.Contains(textOutput.String(), "Jul 01, 2026 - Jul 07, 2026") || strings.Contains(textOutput.String(), "Jul 08, 2026") {
+		t.Fatalf("stats text range is not inclusive:\n%s", textOutput.String())
+	}
+}
+
+func TestResolveUsageRangeWeekIsCurrentLocalWeekAcrossBoundaries(t *testing.T) {
+	location, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name             string
+		now              time.Time
+		from             time.Time
+		crossesDSTOffset bool
+	}{
+		{name: "monday", now: time.Date(2026, 3, 2, 0, 15, 0, 0, location), from: time.Date(2026, 3, 2, 0, 0, 0, 0, location)},
+		{name: "midweek", now: time.Date(2026, 3, 4, 12, 0, 0, 0, location), from: time.Date(2026, 3, 2, 0, 0, 0, 0, location)},
+		{name: "sunday across DST transition", now: time.Date(2026, 3, 8, 23, 59, 0, 0, location), from: time.Date(2026, 3, 2, 0, 0, 0, 0, location), crossesDSTOffset: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			from, to, rangeErr := resolveUsageRange(context.Background(), nil, "week", "", "", test.now, location)
+			if rangeErr != nil {
+				t.Fatal(rangeErr)
+			}
+			if !from.Equal(test.from) || !to.Equal(test.now) {
+				t.Fatalf("range = [%s,%s), want current week [%s,%s)", from, to, test.from, test.now)
+			}
+			if from.Weekday() != time.Monday || from.Hour() != 0 || from.Location() != location {
+				t.Fatalf("week start = %s", from)
+			}
+			if test.crossesDSTOffset {
+				_, fromOffset := from.Zone()
+				_, toOffset := to.Zone()
+				if fromOffset == toOffset {
+					t.Fatalf("range offsets = %d and %d, want DST transition", fromOffset, toOffset)
+				}
+			}
+		})
+	}
+}
+
+func TestUsageTimezoneNameHonorsExplicitTZ(t *testing.T) {
+	t.Setenv("TZ", "America/New_York")
+	local := time.FixedZone("Local", -5*60*60)
+	if got := usageTimezoneName(local, time.Date(2026, 1, 1, 0, 0, 0, 0, local)); got != "America/New_York" {
+		t.Fatalf("explicit timezone = %q", got)
+	}
+	if got := timezoneNameFromPath("/var/db/timezone/zoneinfo/Asia/Shanghai"); got != "Asia/Shanghai" {
+		t.Fatalf("macOS localtime path = %q", got)
+	}
+}
+
+func TestUsageStatsTextMarksPartialAverageAndPeakCost(t *testing.T) {
+	var output bytes.Buffer
+	known := "1.250000000"
+	report := usage.StatsReport{
+		Range: usage.StatsRange{From: "2026-07-01T00:00:00Z", To: "2026-07-02T00:00:00Z"}, Timezone: "UTC", GroupBy: "day", Metric: "cost",
+		Totals:  usage.StatsTotals{KnownProviderCost: known, KnownAverageCost: known},
+		Buckets: []usage.StatsBucket{}, Models: []usage.StatsDimension{}, Clients: []usage.StatsDimension{}, Activity: []usage.StatsActivity{},
+		Peak: usage.StatsPeak{KnownValue: known}, Coverage: usage.StatsCoverage{Percent: "50.00"},
+	}
+	if err := renderUsageStats(&output, report); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(output.String(), "$1.25 KNOWN") < 2 || strings.Contains(output.String(), "Known priced subtotal") || strings.Contains(output.String(), "(partial)") {
+		t.Fatalf("partial stats text = %s", output.String())
+	}
+}

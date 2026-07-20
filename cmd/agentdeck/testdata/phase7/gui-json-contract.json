@@ -37,6 +37,7 @@
     "extension.scan",
     "extension.show",
     "price.history",
+    "price.list",
     "price.override",
     "price.status",
     "price.update",
@@ -61,6 +62,7 @@
     "usage.rebuild",
     "usage.scan",
     "usage.sessions",
+    "usage.stats",
     "usage.summary",
     "version",
     "watch"
@@ -680,8 +682,14 @@
         "command": "string",
         "data": [
           {
+            "commit_sha": "string",
+            "components": "number",
             "content_sha256": "string",
+            "currency": "string",
             "effective_from": "string",
+            "imported_at": "string",
+            "models": "number",
+            "schema_version": "number",
             "source_kind": "string",
             "source_url": "string",
             "version": "string"
@@ -706,6 +714,121 @@
       },
       "error_code": "invalid_argument",
       "error_command": "price.history"
+    },
+    "price.list": {
+      "success_schema": {
+        "command": "string",
+        "data": [
+          {
+            "model": "string",
+            "prices": {
+              "cache_read": "string",
+              "cache_write_1h": "string",
+              "cache_write_5m": "string",
+              "input": "string",
+              "output": "string"
+            },
+            "provenance": {
+              "cache_read": {
+                "catalog_version": "string",
+                "commit_sha": "string",
+                "content_sha256": "string",
+                "effective_from": "string",
+                "source_kind": "string",
+                "source_url": "string"
+              },
+              "cache_write_1h": {
+                "catalog_version": "string",
+                "commit_sha": "string",
+                "content_sha256": "string",
+                "effective_from": "string",
+                "source_kind": "string",
+                "source_url": "string"
+              },
+              "cache_write_5m": {
+                "catalog_version": "string",
+                "commit_sha": "string",
+                "content_sha256": "string",
+                "effective_from": "string",
+                "source_kind": "string",
+                "source_url": "string"
+              },
+              "input": {
+                "catalog_version": "string",
+                "commit_sha": "string",
+                "content_sha256": "string",
+                "effective_from": "string",
+                "source_kind": "string",
+                "source_url": "string"
+              },
+              "output": {
+                "catalog_version": "string",
+                "commit_sha": "string",
+                "content_sha256": "string",
+                "effective_from": "string",
+                "source_kind": "string",
+                "source_url": "string"
+              }
+            },
+            "provider": "string",
+            "unit": "string"
+          },
+          {
+            "model": "string",
+            "prices": {
+              "cached_input": "string",
+              "input": "string",
+              "output": "string"
+            },
+            "provenance": {
+              "cached_input": {
+                "catalog_version": "string",
+                "commit_sha": "string",
+                "content_sha256": "string",
+                "effective_from": "string",
+                "source_kind": "string",
+                "source_url": "string"
+              },
+              "input": {
+                "catalog_version": "string",
+                "commit_sha": "string",
+                "content_sha256": "string",
+                "effective_from": "string",
+                "source_kind": "string",
+                "source_url": "string"
+              },
+              "output": {
+                "catalog_version": "string",
+                "commit_sha": "string",
+                "content_sha256": "string",
+                "effective_from": "string",
+                "source_kind": "string",
+                "source_url": "string"
+              }
+            },
+            "provider": "string",
+            "unit": "string"
+          }
+        ],
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "price.list"
     },
     "price.override": {
       "success_schema": {
@@ -739,9 +862,26 @@
         "data": {
           "aggregated_reference": "boolean",
           "available": "boolean",
+          "catalogs": [
+            {
+              "commit_sha": "string",
+              "components": "number",
+              "content_sha256": "string",
+              "currency": "string",
+              "effective_from": "string",
+              "imported_at": "string",
+              "models": "number",
+              "schema_version": "number",
+              "source_kind": "string",
+              "source_url": "string",
+              "version": "string"
+            }
+          ],
           "commit_sha": "string",
+          "components": "number",
           "content_sha256": "string",
           "effective_from": "string",
+          "models": "number",
           "source_kind": "string",
           "source_url": "string",
           "version": "string"
@@ -1527,6 +1667,8 @@
             "catalog_base_cost": "string",
             "client": "string",
             "first_at": "string",
+            "known_catalog_base_cost": "string",
+            "known_provider_cost": "string",
             "last_at": "string",
             "provider_cost": "string",
             "session_id": "string",
@@ -1563,6 +1705,143 @@
       "error_code": "invalid_argument",
       "error_command": "usage.sessions"
     },
+    "usage.stats": {
+      "success_schema": {
+        "command": "string",
+        "data": {
+          "activity": [
+            {
+              "events": "number",
+              "hour": "number",
+              "known_metric_value": "string",
+              "known_provider_cost": "string",
+              "metric_value": "string",
+              "sessions": "number",
+              "tokens": "number",
+              "weekday": "number"
+            }
+          ],
+          "buckets": [
+            {
+              "cache_write_tokens": "number",
+              "cached_read_tokens": "number",
+              "coverage": "string",
+              "end": "string",
+              "events": "number",
+              "input_tokens": "number",
+              "known_metric_value": "string",
+              "known_provider_cost": "string",
+              "metric_value": "string",
+              "output_tokens": "number",
+              "provider_cost": "string",
+              "sessions": "number",
+              "start": "string",
+              "tokens": "number"
+            }
+          ],
+          "clients": [
+            {
+              "cache_read_rate": "string",
+              "cache_write_rate": null,
+              "cache_write_tokens": "number",
+              "cached_read_tokens": "number",
+              "coverage": "string",
+              "events": "number",
+              "input_tokens": "number",
+              "known_metric_value": "string",
+              "known_provider_cost": "string",
+              "known_share": "string",
+              "logical_input_tokens": "number",
+              "metric_value": "string",
+              "name": "string",
+              "output_tokens": "number",
+              "provider_cost": "string",
+              "sessions": "number",
+              "share": "string",
+              "tokens": "number"
+            }
+          ],
+          "coverage": {
+            "percent": "string",
+            "priced_events": "number",
+            "total_events": "number",
+            "unpriced_events": "number"
+          },
+          "group_by": "string",
+          "metric": "string",
+          "models": [
+            {
+              "cache_read_rate": "string",
+              "cache_write_rate": null,
+              "cache_write_tokens": "number",
+              "cached_read_tokens": "number",
+              "client": "string",
+              "coverage": "string",
+              "events": "number",
+              "input_tokens": "number",
+              "known_metric_value": "string",
+              "known_provider_cost": "string",
+              "known_share": "string",
+              "logical_input_tokens": "number",
+              "metric_value": "string",
+              "name": "string",
+              "output_tokens": "number",
+              "provider_cost": "string",
+              "sessions": "number",
+              "share": "string",
+              "tokens": "number"
+            }
+          ],
+          "peak": {
+            "coverage": "string",
+            "end": "string",
+            "known_value": "string",
+            "start": "string",
+            "value": "string"
+          },
+          "range": {
+            "from": "string",
+            "to": "string"
+          },
+          "timezone": "string",
+          "totals": {
+            "average_cost_per_session": "string",
+            "average_tokens_per_session": "string",
+            "cache_write_tokens": "number",
+            "cached_read_tokens": "number",
+            "catalog_base_cost": "string",
+            "events": "number",
+            "input_tokens": "number",
+            "known_average_cost_per_session": "string",
+            "known_catalog_base_cost": "string",
+            "known_provider_cost": "string",
+            "output_tokens": "number",
+            "provider_cost": "string",
+            "sessions": "number",
+            "tokens": "number"
+          },
+          "unpriced_models": []
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "usage.stats"
+    },
     "usage.summary": {
       "success_schema": {
         "command": "string",
@@ -1572,8 +1851,21 @@
             "estimated": "number",
             "events": "number",
             "exact": "number",
-            "historical": "number"
+            "historical": "number",
+            "priced": "number",
+            "unpriced": "number"
           },
+          "known_catalog_base_cost": "string",
+          "known_provider_cost": "string",
+          "model_coverage": [
+            {
+              "client": "string",
+              "events": "number",
+              "model": "string",
+              "priced_events": "number",
+              "unpriced_events": "number"
+            }
+          ],
           "provider_cost": "string",
           "tokens": {
             "cache_creation_tokens": "number",

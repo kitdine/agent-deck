@@ -356,6 +356,17 @@ func TestProviderSnapshotTracksBearerOfficialBearerOperations(t *testing.T) {
 	if err != nil || current.Official || current.Name != "bearer" || current.Multiplier != "3" {
 		t.Fatalf("current bearer snapshot = %#v, %v", current, err)
 	}
+	timeline, err := s.LoadProviderTimeline(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, at := range []time.Time{base.Add(time.Second), base.Add(2500 * time.Millisecond), base.Add(3 * time.Second), base.Add(6 * time.Second)} {
+		want, wantErr := s.ProviderSnapshotAt(ctx, "codex", at)
+		got, gotErr := timeline.SnapshotAt("codex", at)
+		if wantErr != nil || gotErr != nil || got.Name != want.Name || got.Endpoint != want.Endpoint || got.Multiplier != want.Multiplier || got.Credential != want.Credential || got.Official != want.Official || !got.SelectedAt.Equal(want.SelectedAt) {
+			t.Fatalf("timeline snapshot at %s = %#v, %v want %#v, %v", at, got, gotErr, want, wantErr)
+		}
+	}
 }
 
 func TestProviderSnapshotComparesParsedTimesAcrossRFC3339NanoPrecision(t *testing.T) {

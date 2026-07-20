@@ -60,6 +60,9 @@ make_at_root install VERSION=v1.2.3 COMMIT=0123456789abcdef BRANCH=main BUILD_TI
 test -x "$binary"
 test -f "$manifest"
 "$binary" version | grep -F 'v1.2.3' >/dev/null
+week_stats=$(HOME="$home" "$binary" --state-dir "$temporary/week-state" --format json usage stats --period week)
+printf '%s\n' "$week_stats" | grep -F '"command":"usage.stats"' >/dev/null
+printf '%s\n' "$week_stats" | grep -F '"range":' >/dev/null
 
 if make_at_root install VERSION=v1.2.3 COMMIT=0123456789abcdef BRANCH=main BUILD_TIME='2026-07-15 00:00:00' >/dev/null 2>&1; then
   echo "install unexpectedly overwrote an existing binary" >&2

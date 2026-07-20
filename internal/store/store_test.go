@@ -181,6 +181,100 @@ func TestMigrationsRejectUnknownNewerSchema(t *testing.T) {
 	}
 }
 
+func TestV10MigrationCanonicalizesUsageEventAndSessionTimes(t *testing.T) {
+	ctx := context.Background()
+	state := filepath.Join(t.TempDir(), "state")
+	if err := os.MkdirAll(state, platform.DirectoryMode); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(state, "agentdeck.sqlite3")
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture, err := os.ReadFile(filepath.Join("testdata", "agentdeck-v6.sql"))
+	if err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	if _, err = db.ExecContext(ctx, string(fixture)); err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	if _, err = db.ExecContext(ctx, `INSERT INTO usage_events(event_key,client,session_id,event_id,event_at,model,source_path,source_offset) VALUES
+('positive','codex','offsets','positive','2026-07-01T01:00:00+08:00','missing','fixture',1),
+('negative','codex','offsets','negative','2026-06-30T20:00:00-05:00','missing','fixture',2);
+INSERT INTO usage_sessions(client,session_id,first_at,last_at) VALUES('codex','offsets','2026-06-30T20:00:00-05:00','2026-07-01T01:00:00+08:00')`); err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	if err = db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	migrated, err := Open(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer migrated.Close()
+	var first, last string
+	if err = migrated.DB.QueryRowContext(ctx, `SELECT first_at,last_at FROM usage_sessions WHERE client='codex' AND session_id='offsets'`).Scan(&first, &last); err != nil {
+		t.Fatal(err)
+	}
+	if first != "2026-06-30T17:00:00Z" || last != "2026-07-01T01:00:00Z" {
+		t.Fatalf("migrated session range = %q to %q", first, last)
+	}
+	var canonical int
+	if err = migrated.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM usage_events WHERE event_at IN ('2026-06-30T17:00:00Z','2026-07-01T01:00:00Z')`).Scan(&canonical); err != nil || canonical != 2 {
+		t.Fatalf("canonical event times = %d, %v", canonical, err)
+	}
+}
+
+func TestV12MigrationMarksUsageSourcesForParserRebuildAndAddsCumulativeCursor(t *testing.T) {
+	ctx := context.Background()
+	state := filepath.Join(t.TempDir(), "state")
+	if err := os.MkdirAll(state, platform.DirectoryMode); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(state, "agentdeck.sqlite3")
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture, err := os.ReadFile(filepath.Join("testdata", "agentdeck-v6.sql"))
+	if err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	if _, err = db.ExecContext(ctx, string(fixture)); err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	if _, err = db.ExecContext(ctx, `INSERT INTO usage_source_files(path,identity,size,cursor,prefix_hash) VALUES('fixture','identity',10,10,'hash')`); err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	if err = db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	migrated, err := Open(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer migrated.Close()
+	var parserVersion int
+	var cumulativeJSON string
+	if err = migrated.DB.QueryRowContext(ctx, `SELECT parser_version,codex_cumulative_json FROM usage_source_files WHERE path='fixture'`).Scan(&parserVersion, &cumulativeJSON); err != nil {
+		t.Fatal(err)
+	}
+	if parserVersion != 0 || cumulativeJSON != "{}" {
+		t.Fatalf("parser version = %d cumulative cursor = %q", parserVersion, cumulativeJSON)
+	}
+	version, err := migrated.SchemaVersion(ctx)
+	if err != nil || version != 12 {
+		t.Fatalf("schema version = %d, %v", version, err)
+	}
+}
+
 func TestMigrationsRejectExistingDatabaseWithoutMetadata(t *testing.T) {
 	ctx := context.Background()
 	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "state.sqlite3"))

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/kitdine/agent-deck/internal/providermeta"
 )
@@ -77,6 +78,53 @@ var migrations = []migration{
 	{version: 9, statements: []string{
 		`CREATE TABLE credential_secrets (credential_id INTEGER PRIMARY KEY REFERENCES provider_credentials(id) ON DELETE CASCADE, algorithm TEXT NOT NULL, key_version INTEGER NOT NULL, key_id TEXT NOT NULL, nonce BLOB NOT NULL, ciphertext BLOB NOT NULL, updated_at TEXT NOT NULL)`,
 	}},
+	{version: 10, statements: []string{
+		`CREATE INDEX usage_events_event_at ON usage_events(event_at)`,
+	}, apply: normalizeUsageEventTimes},
+	{version: 11, statements: []string{
+		`ALTER TABLE usage_source_files ADD COLUMN parser_version INTEGER NOT NULL DEFAULT 0`,
+	}},
+	{version: 12, statements: []string{
+		`ALTER TABLE usage_source_files ADD COLUMN codex_cumulative_json TEXT NOT NULL DEFAULT '{}'`,
+	}},
+}
+
+func normalizeUsageEventTimes(ctx context.Context, tx *sql.Tx) error {
+	rows, err := tx.QueryContext(ctx, `SELECT event_key,event_at FROM usage_events`)
+	if err != nil {
+		return err
+	}
+	type update struct{ key, at string }
+	var updates []update
+	for rows.Next() {
+		var key, raw string
+		if err = rows.Scan(&key, &raw); err != nil {
+			rows.Close()
+			return err
+		}
+		at, parseErr := time.Parse(time.RFC3339Nano, raw)
+		if parseErr != nil {
+			rows.Close()
+			return fmt.Errorf("usage event %q has invalid timestamp: %w", key, parseErr)
+		}
+		canonical := at.UTC().Format(time.RFC3339Nano)
+		if canonical != raw {
+			updates = append(updates, update{key: key, at: canonical})
+		}
+	}
+	if err = rows.Close(); err != nil {
+		return err
+	}
+	for _, item := range updates {
+		if _, err = tx.ExecContext(ctx, `UPDATE usage_events SET event_at=? WHERE event_key=?`, item.at, item.key); err != nil {
+			return err
+		}
+	}
+	_, err = tx.ExecContext(ctx, `UPDATE usage_sessions SET
+		first_at=(SELECT MIN(e.event_at) FROM usage_events e WHERE e.client=usage_sessions.client AND e.session_id=usage_sessions.session_id),
+		last_at=(SELECT MAX(e.event_at) FROM usage_events e WHERE e.client=usage_sessions.client AND e.session_id=usage_sessions.session_id)
+		WHERE EXISTS (SELECT 1 FROM usage_events e WHERE e.client=usage_sessions.client AND e.session_id=usage_sessions.session_id)`)
+	return err
 }
 
 func backfillCredentialMetadata(ctx context.Context, tx *sql.Tx) error {

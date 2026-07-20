@@ -123,6 +123,7 @@ func TestIsolatedEndToEndFlow(t *testing.T) {
 	runJSON("run.claude", "", "run", "claude", "--", "phase7")
 	runJSON("usage.scan", "", "usage", "scan")
 	runJSON("usage.summary", "", "usage", "summary")
+	runJSON("usage.stats", "", "usage", "stats", "--from", "2026-07-14", "--to", "2026-07-20")
 	runJSON("usage.sessions", "", "usage", "sessions")
 	runJSON("usage.diagnose", "", "usage", "diagnose")
 	commit := "abcdefabcdefabcdefabcdefabcdefabcdefabcd"
@@ -149,6 +150,7 @@ func TestIsolatedEndToEndFlow(t *testing.T) {
 	runJSON("price.override", "", "price", "override", "--file", overridePath)
 	runJSON("price.history", "", "price", "history")
 	runJSON("price.status", "", "price", "status")
+	runJSON("price.list", "", "price", "list")
 	runJSON("session.scan", "", "session", "scan")
 	runJSON("session.list", "", "session", "list")
 	runJSON("session.show", "", "session", "show", "phase7-run")

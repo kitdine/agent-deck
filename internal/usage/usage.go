@@ -2,6 +2,7 @@
 package usage
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"database/sql"
@@ -31,9 +32,12 @@ var bundledCatalog []byte
 const (
 	bundledCatalogSourceURL       = "bundled://agentdeck/model-prices.json"
 	legacyBundledCatalogSourceURL = "bundled://config/model-prices.json"
+	usageParserVersion            = 2
 )
 
 var tokenNames = []string{"input_tokens", "cached_input_tokens", "output_tokens", "cache_read_tokens", "cache_creation_tokens", "cache_write_5m_tokens", "cache_write_1h_tokens"}
+
+var errUsageSourceChanged = errors.New("usage source changed during inventory scan")
 
 type Event struct {
 	Key, Client, SessionID, EventID, EventAt, Model, SourcePath string
@@ -41,29 +45,164 @@ type Event struct {
 	Tokens                                                      map[string]int64
 }
 type Result struct {
-	Tokens          map[string]int64 `json:"tokens"`
-	CatalogBaseCost *string          `json:"catalog_base_cost"`
-	ProviderCost    *string          `json:"provider_cost"`
-	Unpriced        []string         `json:"unpriced_components"`
+	Tokens               map[string]int64 `json:"tokens"`
+	CatalogBaseCost      *string          `json:"catalog_base_cost"`
+	ProviderCost         *string          `json:"provider_cost"`
+	KnownCatalogBaseCost string           `json:"known_catalog_base_cost"`
+	KnownProviderCost    string           `json:"known_provider_cost"`
+	Unpriced             []string         `json:"unpriced_components"`
 }
 type Summary struct {
-	Tokens          map[string]int64 `json:"tokens"`
-	Counts          map[string]int64 `json:"counts"`
-	CatalogBaseCost *string          `json:"catalog_base_cost"`
-	ProviderCost    *string          `json:"provider_cost"`
-	Unpriced        []string         `json:"unpriced_components"`
-	Warnings        []string         `json:"warnings"`
+	Tokens               map[string]int64 `json:"tokens"`
+	Counts               map[string]int64 `json:"counts"`
+	CatalogBaseCost      *string          `json:"catalog_base_cost"`
+	ProviderCost         *string          `json:"provider_cost"`
+	KnownCatalogBaseCost *string          `json:"known_catalog_base_cost"`
+	KnownProviderCost    *string          `json:"known_provider_cost"`
+	Models               []ModelCoverage  `json:"model_coverage"`
+	Unpriced             []string         `json:"unpriced_components"`
+	Warnings             []string         `json:"warnings"`
 }
+
+type ModelCoverage struct {
+	Client         string `json:"client"`
+	Model          string `json:"model"`
+	Events         int64  `json:"events"`
+	PricedEvents   int64  `json:"priced_events"`
+	UnpricedEvents int64  `json:"unpriced_events"`
+}
+
 type SessionSummary struct {
-	Client          string           `json:"client"`
-	SessionID       string           `json:"session_id"`
-	FirstAt         string           `json:"first_at"`
-	LastAt          string           `json:"last_at"`
-	Tokens          map[string]int64 `json:"tokens"`
-	CatalogBaseCost *string          `json:"catalog_base_cost"`
-	ProviderCost    *string          `json:"provider_cost"`
-	Unpriced        []string         `json:"unpriced_components"`
-	Warnings        []string         `json:"warnings"`
+	Client               string           `json:"client"`
+	SessionID            string           `json:"session_id"`
+	FirstAt              string           `json:"first_at"`
+	LastAt               string           `json:"last_at"`
+	Tokens               map[string]int64 `json:"tokens"`
+	CatalogBaseCost      *string          `json:"catalog_base_cost"`
+	ProviderCost         *string          `json:"provider_cost"`
+	KnownCatalogBaseCost *string          `json:"known_catalog_base_cost"`
+	KnownProviderCost    *string          `json:"known_provider_cost"`
+	Unpriced             []string         `json:"unpriced_components"`
+	Warnings             []string         `json:"warnings"`
+}
+
+type StatsOptions struct {
+	From     time.Time
+	To       time.Time
+	GroupBy  string
+	Metric   string
+	Client   string
+	Model    string
+	Timezone string
+	Location *time.Location
+}
+
+type StatsRange struct {
+	From string `json:"from"`
+	To   string `json:"to"`
+}
+
+type StatsTotals struct {
+	Tokens               int64   `json:"tokens"`
+	InputTokens          int64   `json:"input_tokens"`
+	OutputTokens         int64   `json:"output_tokens"`
+	CachedReadTokens     int64   `json:"cached_read_tokens"`
+	CacheWriteTokens     int64   `json:"cache_write_tokens"`
+	Sessions             int64   `json:"sessions"`
+	Events               int64   `json:"events"`
+	CatalogBaseCost      *string `json:"catalog_base_cost"`
+	ProviderCost         *string `json:"provider_cost"`
+	KnownCatalogBaseCost string  `json:"known_catalog_base_cost"`
+	KnownProviderCost    string  `json:"known_provider_cost"`
+	AverageTokens        string  `json:"average_tokens_per_session"`
+	AverageCost          *string `json:"average_cost_per_session"`
+	KnownAverageCost     string  `json:"known_average_cost_per_session"`
+}
+
+type StatsBucket struct {
+	Start             string  `json:"start"`
+	End               string  `json:"end"`
+	Tokens            int64   `json:"tokens"`
+	InputTokens       int64   `json:"input_tokens"`
+	OutputTokens      int64   `json:"output_tokens"`
+	CachedReadTokens  int64   `json:"cached_read_tokens"`
+	CacheWriteTokens  int64   `json:"cache_write_tokens"`
+	Sessions          int64   `json:"sessions"`
+	Events            int64   `json:"events"`
+	ProviderCost      *string `json:"provider_cost"`
+	KnownProviderCost string  `json:"known_provider_cost"`
+	MetricValue       *string `json:"metric_value"`
+	KnownMetricValue  string  `json:"known_metric_value"`
+	Coverage          string  `json:"coverage"`
+}
+
+type StatsDimension struct {
+	Name               string  `json:"name"`
+	Client             string  `json:"client,omitempty"`
+	Tokens             int64   `json:"tokens"`
+	InputTokens        int64   `json:"input_tokens"`
+	OutputTokens       int64   `json:"output_tokens"`
+	CachedReadTokens   int64   `json:"cached_read_tokens"`
+	CacheWriteTokens   int64   `json:"cache_write_tokens"`
+	LogicalInputTokens int64   `json:"logical_input_tokens"`
+	CacheReadRate      *string `json:"cache_read_rate"`
+	CacheWriteRate     *string `json:"cache_write_rate"`
+	Sessions           int64   `json:"sessions"`
+	Events             int64   `json:"events"`
+	ProviderCost       *string `json:"provider_cost"`
+	KnownProviderCost  string  `json:"known_provider_cost"`
+	MetricValue        *string `json:"metric_value"`
+	KnownMetricValue   string  `json:"known_metric_value"`
+	Share              *string `json:"share"`
+	KnownShare         string  `json:"known_share"`
+	Coverage           string  `json:"coverage"`
+}
+
+type StatsActivity struct {
+	Weekday          int     `json:"weekday"`
+	Hour             int     `json:"hour"`
+	Tokens           int64   `json:"tokens"`
+	Sessions         int64   `json:"sessions"`
+	Events           int64   `json:"events"`
+	KnownCost        string  `json:"known_provider_cost"`
+	MetricValue      *string `json:"metric_value"`
+	KnownMetricValue string  `json:"known_metric_value"`
+}
+
+type StatsPeak struct {
+	Start      string  `json:"start"`
+	End        string  `json:"end"`
+	Value      *string `json:"value"`
+	KnownValue string  `json:"known_value"`
+	Coverage   string  `json:"coverage"`
+}
+
+type StatsCoverage struct {
+	PricedEvents   int64  `json:"priced_events"`
+	UnpricedEvents int64  `json:"unpriced_events"`
+	TotalEvents    int64  `json:"total_events"`
+	Percent        string `json:"percent"`
+}
+
+type StatsReport struct {
+	Range          StatsRange           `json:"range"`
+	Timezone       string               `json:"timezone"`
+	GroupBy        string               `json:"group_by"`
+	Metric         string               `json:"metric"`
+	Totals         StatsTotals          `json:"totals"`
+	Buckets        []StatsBucket        `json:"buckets"`
+	Models         []StatsDimension     `json:"models"`
+	Clients        []StatsDimension     `json:"clients"`
+	Activity       []StatsActivity      `json:"activity"`
+	Peak           StatsPeak            `json:"peak"`
+	Coverage       StatsCoverage        `json:"coverage"`
+	UnpricedModels []StatsUnpricedModel `json:"unpriced_models"`
+}
+
+type StatsUnpricedModel struct {
+	Client     string   `json:"client"`
+	Model      string   `json:"model"`
+	Components []string `json:"missing_components"`
 }
 type SourceFile interface {
 	io.Reader
@@ -120,6 +259,58 @@ type OfficialOverride struct {
 	Prices        map[string]string `json:"prices"`
 }
 
+type PriceCatalog struct {
+	Version       string `json:"version"`
+	SourceKind    string `json:"source_kind"`
+	SourceURL     string `json:"source_url"`
+	CommitSHA     string `json:"commit_sha"`
+	ContentSHA256 string `json:"content_sha256"`
+	ImportedAt    string `json:"imported_at"`
+	EffectiveFrom string `json:"effective_from"`
+	Currency      string `json:"currency"`
+	SchemaVersion int    `json:"schema_version"`
+	Models        int64  `json:"models"`
+	Components    int64  `json:"components"`
+}
+
+type PriceProvenance struct {
+	CatalogVersion string `json:"catalog_version"`
+	SourceKind     string `json:"source_kind"`
+	SourceURL      string `json:"source_url"`
+	CommitSHA      string `json:"commit_sha"`
+	ContentSHA256  string `json:"content_sha256"`
+	EffectiveFrom  string `json:"effective_from"`
+}
+
+type EffectivePrice struct {
+	Provider   string                     `json:"provider"`
+	Model      string                     `json:"model"`
+	Unit       string                     `json:"unit"`
+	Prices     map[string]string          `json:"prices"`
+	Provenance map[string]PriceProvenance `json:"provenance"`
+}
+
+type priceLayerOrder struct {
+	sourceKind       string
+	catalogEffective time.Time
+	importedAt       time.Time
+	version          string
+}
+
+func priceLayerBefore(left, right priceLayerOrder) bool {
+	leftOfficial, rightOfficial := left.sourceKind == "official", right.sourceKind == "official"
+	if leftOfficial != rightOfficial {
+		return leftOfficial
+	}
+	if !left.catalogEffective.Equal(right.catalogEffective) {
+		return left.catalogEffective.After(right.catalogEffective)
+	}
+	if !left.importedAt.Equal(right.importedAt) {
+		return left.importedAt.After(right.importedAt)
+	}
+	return left.version > right.version
+}
+
 func New(s *store.Store, home string) *Service {
 	return &Service{Store: s, Home: home, Now: time.Now, Stat: os.Stat, Open: func(path string) (SourceFile, error) { return os.Open(path) }}
 }
@@ -160,7 +351,7 @@ func Calculate(client, model string, tokens map[string]int64, prices modelPrice,
 	}
 	expected := map[string]string{"codex": "openai", "claude": "anthropic"}[client]
 	if expected == "" || prices.Provider != expected {
-		return Result{Tokens: tokens, Unpriced: []string{"unknown_model"}}, nil
+		return Result{Tokens: tokens, KnownCatalogBaseCost: "0.000000000", KnownProviderCost: "0.000000000", Unpriced: []string{"unknown_model"}}, nil
 	}
 	m, err := multiplier(mult)
 	if err != nil {
@@ -213,12 +404,14 @@ func Calculate(client, model string, tokens map[string]int64, prices modelPrice,
 			}
 		}
 	}
-	if len(unpriced) > 0 {
-		return Result{Tokens: tokens, Unpriced: unpriced}, nil
-	}
 	b := money(base)
 	f := money(new(big.Rat).Mul(base, m))
-	return Result{Tokens: tokens, CatalogBaseCost: &b, ProviderCost: &f}, nil
+	result := Result{Tokens: tokens, KnownCatalogBaseCost: b, KnownProviderCost: f, Unpriced: unpriced}
+	if len(unpriced) == 0 {
+		result.CatalogBaseCost = &b
+		result.ProviderCost = &f
+	}
+	return result, nil
 }
 
 func parseCatalog(data []byte) (catalog, error) {
@@ -336,12 +529,15 @@ func (s *Service) ScanInventory(ctx context.Context, inventory Inventory) (map[s
 	if err := s.ImportBundledCatalog(ctx); err != nil {
 		return nil, err
 	}
-	out := map[string]int{"files": 0, "imported": 0, "updated": 0, "ignored_non_usage": 0, "unsupported_usage": 0, "malformed": 0, "source_resets": 0, "replaced": 0, "unsupported": 0}
-	out["files"] = len(inventory.Entries)
+	out := newScanResult(len(inventory.Entries))
 	for _, path := range inventory.Removed {
-		if err := s.removeSource(ctx, path); err != nil {
+		if err := s.detachSource(ctx, path); err != nil {
 			return nil, err
 		}
+	}
+	recovering, recoveryCandidates, err := s.orphanRecoveryCandidates(ctx, inventory.Entries)
+	if err != nil {
+		return nil, err
 	}
 	changed := make(map[string]bool, len(inventory.Added)+len(inventory.Appended)+len(inventory.Mutated))
 	for _, paths := range [][]string{inventory.Added, inventory.Appended, inventory.Mutated} {
@@ -350,10 +546,11 @@ func (s *Service) ScanInventory(ctx context.Context, inventory Inventory) (map[s
 		}
 	}
 	for _, entry := range inventory.Entries {
-		if !changed[entry.Path] {
+		candidate := recoveryCandidates[entry.Path]
+		if !candidate && !changed[entry.Path] {
 			continue
 		}
-		stats, err := s.scanFile(ctx, entry)
+		stats, err := s.scanFileMode(ctx, entry, candidate)
 		if err != nil {
 			return nil, err
 		}
@@ -361,10 +558,72 @@ func (s *Service) ScanInventory(ctx context.Context, inventory Inventory) (map[s
 			out[key] += value
 		}
 	}
+	if recovering {
+		if err = s.cleanupOrphanedEvents(ctx); err != nil {
+			return nil, err
+		}
+	}
 	if err := s.Store.SetSetting(ctx, "watch.fingerprint.usage", inventory.Fingerprint); err != nil {
 		return nil, err
 	}
 	return out, nil
+}
+
+func (s *Service) Rebuild(ctx context.Context) (map[string]int, []string, error) {
+	if err := s.ImportBundledCatalog(ctx); err != nil {
+		return nil, nil, err
+	}
+	inventory, err := s.Inventory(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	out := newScanResult(len(inventory.Entries))
+	warningSet := map[string]bool{}
+	for _, path := range inventory.Removed {
+		if err = s.detachSource(ctx, path); err != nil {
+			warningSet["usage_source_rebuild_failed"] = true
+		}
+	}
+	// Rebuild higher-priority paths first. Event ownership uses the same path
+	// ordering, so a failed owner remains authoritative and a lower-priority
+	// duplicate cannot take its row in a separately committed transaction.
+	for index := len(inventory.Entries) - 1; index >= 0; index-- {
+		entry := inventory.Entries[index]
+		stats, rebuildErr := s.scanFileMode(ctx, entry, true)
+		if rebuildErr != nil {
+			warning := "usage_source_rebuild_failed"
+			if errors.Is(rebuildErr, errUsageSourceChanged) {
+				warning = "usage_source_unstable"
+			}
+			warningSet[warning] = true
+			continue
+		}
+		mergeScanResult(out, stats)
+	}
+	warnings := make([]string, 0, len(warningSet))
+	for warning := range warningSet {
+		warnings = append(warnings, warning)
+	}
+	sort.Strings(warnings)
+	if len(warnings) == 0 {
+		if err = s.cleanupOrphanedEvents(ctx); err != nil {
+			return nil, nil, err
+		}
+		if err = s.Store.SetSetting(ctx, "watch.fingerprint.usage", inventory.Fingerprint); err != nil {
+			return nil, nil, err
+		}
+	}
+	return out, warnings, nil
+}
+
+func newScanResult(files int) map[string]int {
+	return map[string]int{"files": files, "imported": 0, "updated": 0, "ignored_non_usage": 0, "unsupported_usage": 0, "malformed": 0, "source_resets": 0, "replaced": 0, "unsupported": 0}
+}
+
+func mergeScanResult(total, stats map[string]int) {
+	for key, value := range stats {
+		total[key] += value
+	}
 }
 
 func (s *Service) InventoryFingerprint() (string, error) {
@@ -381,7 +640,7 @@ func (s *Service) Inventory(ctx context.Context) (Inventory, error) {
 		return Inventory{}, err
 	}
 	inventory := Inventory{Entries: entries, Fingerprint: inventoryFingerprint(entries)}
-	rows, err := s.Store.DB.QueryContext(ctx, "SELECT path,identity,size,cursor,modified_at FROM usage_source_files")
+	rows, err := s.Store.DB.QueryContext(ctx, "SELECT path,identity,size,cursor,modified_at,parser_version FROM usage_source_files")
 	if err != nil {
 		return Inventory{}, err
 	}
@@ -389,12 +648,13 @@ func (s *Service) Inventory(ctx context.Context) (Inventory, error) {
 	type storedEntry struct {
 		identity               string
 		size, cursor, modified int64
+		parserVersion          int
 	}
 	stored := map[string]storedEntry{}
 	for rows.Next() {
 		var path string
 		var item storedEntry
-		if err = rows.Scan(&path, &item.identity, &item.size, &item.cursor, &item.modified); err != nil {
+		if err = rows.Scan(&path, &item.identity, &item.size, &item.cursor, &item.modified, &item.parserVersion); err != nil {
 			return Inventory{}, err
 		}
 		stored[path] = item
@@ -408,6 +668,8 @@ func (s *Service) Inventory(ctx context.Context) (Inventory, error) {
 		switch {
 		case !found:
 			inventory.Added = append(inventory.Added, entry.Path)
+		case previous.parserVersion != usageParserVersion:
+			inventory.Mutated = append(inventory.Mutated, entry.Path)
 		case previous.identity == entry.Identity && previous.size == entry.Size && previous.modified == entry.ModifiedAt:
 		case previous.identity == entry.Identity && entry.Size > previous.size && entry.Size >= previous.cursor:
 			inventory.Appended = append(inventory.Appended, entry.Path)
@@ -481,18 +743,31 @@ func (s *Service) sourcePaths(client string) ([]string, error) {
 	return ret, nil
 }
 func (s *Service) scanFile(ctx context.Context, entry InventoryEntry) (map[string]int, error) {
+	return s.scanFileMode(ctx, entry, false)
+}
+
+func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceRebuild bool) (map[string]int, error) {
 	r := map[string]int{"imported": 0, "updated": 0, "ignored_non_usage": 0, "unsupported_usage": 0, "malformed": 0, "source_resets": 0, "replaced": 0, "unsupported": 0}
 	path, client := entry.Path, entry.Client
 	var cursor, oldSize, oldModified int64
 	var oldIdentity, oldHash string
-	state := parseState{}
-	row := s.Store.DB.QueryRowContext(ctx, "SELECT cursor,identity,size,modified_at,prefix_hash,COALESCE(session_id,''),COALESCE(turn_id,''),COALESCE(model,'') FROM usage_source_files WHERE path=?", path)
-	loadErr := row.Scan(&cursor, &oldIdentity, &oldSize, &oldModified, &oldHash, &state.session, &state.turn, &state.model)
+	var cumulativeJSON string
+	var parserVersion int
+	state := parseState{codexCumulative: map[string]map[string]int64{}}
+	row := s.Store.DB.QueryRowContext(ctx, "SELECT cursor,identity,size,modified_at,prefix_hash,COALESCE(session_id,''),COALESCE(turn_id,''),COALESCE(model,''),parser_version,codex_cumulative_json FROM usage_source_files WHERE path=?", path)
+	loadErr := row.Scan(&cursor, &oldIdentity, &oldSize, &oldModified, &oldHash, &state.session, &state.turn, &state.model, &parserVersion, &cumulativeJSON)
 	found := loadErr == nil
 	if loadErr != nil && !errors.Is(loadErr, sql.ErrNoRows) {
 		return r, loadErr
 	}
-	if found && oldIdentity == entry.Identity && oldSize == entry.Size && oldModified == entry.ModifiedAt {
+	if found && client == "codex" {
+		if err := json.Unmarshal([]byte(cumulativeJSON), &state.codexCumulative); err != nil {
+			return r, fmt.Errorf("invalid Codex cumulative usage cursor for %q: %w", path, err)
+		}
+	}
+	parserOutdated := found && parserVersion != usageParserVersion
+	stableMetadata := found && !parserOutdated && oldIdentity == entry.Identity && oldSize == entry.Size && oldModified == entry.ModifiedAt
+	if !forceRebuild && stableMetadata {
 		return r, nil
 	}
 	file, err := s.open(path)
@@ -501,19 +776,24 @@ func (s *Service) scanFile(ctx context.Context, entry InventoryEntry) (map[strin
 	}
 	defer file.Close()
 	appendOnly := found && oldIdentity == entry.Identity && entry.Size >= cursor
+	var previousAnchor []byte
+	var previousAnchorStart int64
 	if appendOnly && cursor > 0 {
-		start := max(int64(0), cursor-4096)
-		anchor := make([]byte, cursor-start)
-		if _, err = io.ReadFull(io.NewSectionReader(file, start, int64(len(anchor))), anchor); err != nil {
+		previousAnchorStart = max(int64(0), cursor-4096)
+		previousAnchor = make([]byte, cursor-previousAnchorStart)
+		if _, err = io.ReadFull(io.NewSectionReader(file, previousAnchorStart, int64(len(previousAnchor))), previousAnchor); err != nil {
 			return r, err
 		}
-		appendOnly = hash(anchor) == oldHash
+		appendOnly = hash(previousAnchor) == oldHash
 	}
-	reset := !appendOnly && found
+	sourceMutated := !appendOnly && found
+	reset := sourceMutated || parserOutdated || (forceRebuild && found)
 	if reset {
 		cursor = 0
-		state = parseState{}
-		r["source_resets"]++
+		state = parseState{codexCumulative: map[string]map[string]int64{}}
+		if sourceMutated {
+			r["source_resets"]++
+		}
 		r["replaced"]++
 	}
 	data, err := io.ReadAll(io.NewSectionReader(file, cursor, entry.Size-cursor))
@@ -544,18 +824,14 @@ func (s *Service) scanFile(ctx context.Context, entry InventoryEntry) (map[strin
 			} else {
 				r["ignored_non_usage"]++
 			}
-		} else {
+		} else if ev.Key != "" {
 			events = append(events, ev)
 		}
 		offset += next
 		line = line[idx+1:]
 	}
-	latest, err := s.stat(path)
-	if err != nil {
+	if err = s.validateSnapshot(path, file, entry, cursor, data, previousAnchorStart, previousAnchor); err != nil {
 		return r, err
-	}
-	if usageFileIdentity(latest) != entry.Identity || latest.Size() != entry.Size || latest.ModTime().UnixNano() != entry.ModifiedAt {
-		return r, errors.New("usage source changed during inventory scan")
 	}
 	// A cursor is always the end of a complete record.  The unfinished suffix is
 	// deliberately re-read next time, so an interrupted write cannot be skipped.
@@ -576,19 +852,31 @@ func (s *Service) scanFile(ctx context.Context, entry InventoryEntry) (map[strin
 	if err != nil {
 		return r, err
 	}
+	var preservedBindings []eventRunBinding
+	if reset && !sourceMutated {
+		preservedBindings, err = eventRunBindingsForSource(ctx, tx, path)
+		if err != nil {
+			return r, err
+		}
+	}
 	if reset {
 		if _, err = tx.ExecContext(ctx, "DELETE FROM usage_events WHERE source_path=?", path); err != nil {
 			return r, err
 		}
-		if _, err = tx.ExecContext(ctx, "DELETE FROM usage_run_sources WHERE path=?", path); err != nil {
-			return r, err
+		if sourceMutated {
+			if _, err = tx.ExecContext(ctx, "DELETE FROM usage_run_sources WHERE path=?", path); err != nil {
+				return r, err
+			}
 		}
 	}
 	for _, event := range events {
 		affected[event.Client+"\x00"+event.SessionID] = [2]string{event.Client, event.SessionID}
-		inserted, upsertErr := upsertTx(ctx, tx, event)
+		inserted, changed, upsertErr := upsertTx(ctx, tx, event)
 		if upsertErr != nil {
 			return r, upsertErr
+		}
+		if !changed {
+			continue
 		}
 		if inserted {
 			r["imported"]++
@@ -597,7 +885,19 @@ func (s *Service) scanFile(ctx context.Context, entry InventoryEntry) (map[strin
 			r["replaced"]++
 		}
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO usage_source_files(path,identity,size,cursor,prefix_hash,session_id,turn_id,model,imported,replaced,malformed,unsupported,modified_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(path) DO UPDATE SET identity=excluded.identity,size=excluded.size,cursor=excluded.cursor,prefix_hash=excluded.prefix_hash,session_id=excluded.session_id,turn_id=excluded.turn_id,model=excluded.model,imported=usage_source_files.imported+excluded.imported,replaced=usage_source_files.replaced+excluded.replaced,malformed=usage_source_files.malformed+excluded.malformed,unsupported=usage_source_files.unsupported+excluded.unsupported,modified_at=excluded.modified_at`, path, entry.Identity, entry.Size, cursor, hash(anchor), state.session, state.turn, state.model, r["imported"], r["replaced"], r["malformed"], r["unsupported"], entry.ModifiedAt)
+	if err = restoreEventRunBindings(ctx, tx, path, preservedBindings); err != nil {
+		return r, err
+	}
+	if reset && !sourceMutated {
+		if err = restoreEventRunBindingsForSourceRange(ctx, tx, path); err != nil {
+			return r, err
+		}
+	}
+	cumulativeBytes, err := json.Marshal(state.codexCumulative)
+	if err != nil {
+		return r, err
+	}
+	_, err = tx.ExecContext(ctx, `INSERT INTO usage_source_files(path,identity,size,cursor,prefix_hash,session_id,turn_id,model,parser_version,codex_cumulative_json,imported,replaced,malformed,unsupported,modified_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(path) DO UPDATE SET identity=excluded.identity,size=excluded.size,cursor=excluded.cursor,prefix_hash=excluded.prefix_hash,session_id=excluded.session_id,turn_id=excluded.turn_id,model=excluded.model,parser_version=excluded.parser_version,codex_cumulative_json=excluded.codex_cumulative_json,imported=usage_source_files.imported+excluded.imported,replaced=usage_source_files.replaced+excluded.replaced,malformed=usage_source_files.malformed+excluded.malformed,unsupported=usage_source_files.unsupported+excluded.unsupported,modified_at=excluded.modified_at`, path, entry.Identity, entry.Size, cursor, hash(anchor), state.session, state.turn, state.model, usageParserVersion, string(cumulativeBytes), r["imported"], r["replaced"], r["malformed"], r["unsupported"], entry.ModifiedAt)
 	if err != nil {
 		return r, err
 	}
@@ -605,6 +905,38 @@ func (s *Service) scanFile(ctx context.Context, entry InventoryEntry) (map[strin
 		return r, err
 	}
 	return r, tx.Commit()
+}
+
+func (s *Service) validateSnapshot(path string, file SourceFile, entry InventoryEntry, cursor int64, data []byte, previousAnchorStart int64, previousAnchor []byte) error {
+	latest, err := s.stat(path)
+	if err != nil {
+		return err
+	}
+	if usageFileIdentity(latest) != entry.Identity || latest.Size() < entry.Size {
+		return errUsageSourceChanged
+	}
+	current := make([]byte, len(data))
+	if len(current) > 0 {
+		if _, err = io.ReadFull(io.NewSectionReader(file, cursor, int64(len(current))), current); err != nil {
+			return err
+		}
+		if !bytes.Equal(current, data) {
+			return errUsageSourceChanged
+		}
+	}
+	if len(previousAnchor) > 0 {
+		currentAnchor := make([]byte, len(previousAnchor))
+		if _, err = io.ReadFull(io.NewSectionReader(file, previousAnchorStart, int64(len(currentAnchor))), currentAnchor); err != nil {
+			return err
+		}
+		if !bytes.Equal(currentAnchor, previousAnchor) {
+			return errUsageSourceChanged
+		}
+	}
+	if latest.Size() == entry.Size && latest.ModTime().UnixNano() != entry.ModifiedAt {
+		return errUsageSourceChanged
+	}
+	return nil
 }
 func usageFileIdentity(info os.FileInfo) string {
 	if stat, ok := info.Sys().(*syscall.Stat_t); ok {
@@ -626,7 +958,62 @@ func looksLikeUsage(client string, value map[string]any) bool {
 }
 func hash(b []byte) string { sum := sha256.Sum256(b); return hex.EncodeToString(sum[:]) }
 
-type parseState struct{ session, turn, model string }
+type parseState struct {
+	session, turn, model string
+	codexCumulative      map[string]map[string]int64
+}
+
+func tokenUsage(value any) (map[string]int64, bool) {
+	raw, _ := value.(map[string]any)
+	if raw == nil || !validTokenFields(raw, "input_tokens", "cached_input_tokens", "output_tokens") {
+		return nil, false
+	}
+	return map[string]int64{
+		"input_tokens":        integer(raw["input_tokens"]),
+		"cached_input_tokens": integer(raw["cached_input_tokens"]),
+		"output_tokens":       integer(raw["output_tokens"]),
+	}, true
+}
+
+func codexUsageDelta(state *parseState, lastValue, totalValue any) (map[string]int64, bool) {
+	last, lastOK := tokenUsage(lastValue)
+	total, totalOK := tokenUsage(totalValue)
+	if state.codexCumulative == nil {
+		state.codexCumulative = map[string]map[string]int64{}
+	}
+	previous, previousOK := state.codexCumulative[state.session]
+	if !totalOK {
+		delete(state.codexCumulative, state.session)
+		return last, lastOK
+	}
+	state.codexCumulative[state.session] = total
+	if previousOK {
+		delta := map[string]int64{}
+		for _, name := range []string{"input_tokens", "cached_input_tokens", "output_tokens"} {
+			if total[name] < previous[name] {
+				return last, lastOK
+			}
+			delta[name] = total[name] - previous[name]
+		}
+		return delta, true
+	}
+	return last, lastOK
+}
+
+func codexEventKey(state parseState, timestamp string, lastUsage map[string]any, totalUsage any) string {
+	identity, _ := json.Marshal(struct {
+		Timestamp  string         `json:"timestamp"`
+		Model      string         `json:"model"`
+		LastUsage  map[string]any `json:"last_token_usage"`
+		TotalUsage any            `json:"total_token_usage,omitempty"`
+	}{
+		Timestamp:  timestamp,
+		Model:      state.model,
+		LastUsage:  lastUsage,
+		TotalUsage: totalUsage,
+	})
+	return "codex:" + state.session + ":" + state.turn + ":" + hash(identity)
+}
 
 func integer(v any) int64 {
 	f, ok := v.(float64)
@@ -654,6 +1041,9 @@ func parse(client string, v map[string]any, state *parseState, path string, offs
 		typ, _ := v["type"].(string)
 		if typ == "session_meta" {
 			state.session, _ = p["session_id"].(string)
+			if state.session == "" {
+				state.session, _ = p["id"].(string)
+			}
 			return Event{}, false
 		}
 		if typ == "turn_context" {
@@ -668,11 +1058,16 @@ func parse(client string, v map[string]any, state *parseState, path string, offs
 			return Event{}, false
 		}
 		info, _ := p["info"].(map[string]any)
-		u, _ := info["last_token_usage"].(map[string]any)
-		if u == nil || !validTokenFields(u, "input_tokens", "cached_input_tokens", "output_tokens") {
+		u, ok := codexUsageDelta(state, info["last_token_usage"], info["total_token_usage"])
+		if !ok {
 			return Event{}, false
 		}
-		return Event{Key: "codex:" + state.session + ":" + state.turn, Client: client, SessionID: state.session, EventID: state.turn, EventAt: stringValue(v, "timestamp"), Model: state.model, SourcePath: path, SourceOffset: offset, Tokens: map[string]int64{"input_tokens": integer(u["input_tokens"]), "cached_input_tokens": integer(u["cached_input_tokens"]), "output_tokens": integer(u["output_tokens"])}}, true
+		if u["input_tokens"] == 0 && u["cached_input_tokens"] == 0 && u["output_tokens"] == 0 {
+			return Event{}, true
+		}
+		timestamp := stringValue(v, "timestamp")
+		lastUsage, _ := info["last_token_usage"].(map[string]any)
+		return Event{Key: codexEventKey(*state, timestamp, lastUsage, info["total_token_usage"]), Client: client, SessionID: state.session, EventID: state.turn, EventAt: timestamp, Model: state.model, SourcePath: path, SourceOffset: offset, Tokens: u}, true
 	}
 	if v["type"] != "assistant" {
 		return Event{}, false
@@ -697,14 +1092,67 @@ func parse(client string, v map[string]any, state *parseState, path string, offs
 	return Event{Key: "claude:" + sid + ":" + id, Client: client, SessionID: sid, EventID: id, EventAt: stringValue(v, "timestamp"), Model: model, SourcePath: path, SourceOffset: offset, Tokens: t}, true
 }
 func stringValue(v map[string]any, k string) string { x, _ := v[k].(string); return x }
-func upsertTx(ctx context.Context, tx *sql.Tx, e Event) (bool, error) {
-	var exists int
-	if err := tx.QueryRowContext(ctx, "SELECT 1 FROM usage_events WHERE event_key=?", e.Key).Scan(&exists); err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return false, err
+func upsertTx(ctx context.Context, tx *sql.Tx, e Event) (inserted, changed bool, err error) {
+	at, err := time.Parse(time.RFC3339Nano, e.EventAt)
+	if err != nil {
+		return false, false, fmt.Errorf("invalid usage event timestamp %q: %w", e.EventAt, err)
+	}
+	e.EventAt = at.UTC().Format(time.RFC3339Nano)
+	var existingPath string
+	var existingSourceIndexed int
+	lookupErr := tx.QueryRowContext(ctx, `SELECT e.source_path,CASE WHEN f.path IS NULL THEN 0 ELSE 1 END FROM usage_events e LEFT JOIN usage_source_files f ON f.path=e.source_path WHERE e.event_key=?`, e.Key).Scan(&existingPath, &existingSourceIndexed)
+	exists := lookupErr == nil
+	if lookupErr != nil && !errors.Is(lookupErr, sql.ErrNoRows) {
+		return false, false, lookupErr
+	}
+	if exists && existingSourceIndexed == 1 && existingPath > e.SourcePath {
+		return false, false, nil
 	}
 	vals := []any{e.Key, e.Client, e.SessionID, e.EventID, e.EventAt, e.Model, e.Tokens["input_tokens"], e.Tokens["cached_input_tokens"], e.Tokens["output_tokens"], e.Tokens["cache_read_tokens"], e.Tokens["cache_creation_tokens"], e.Tokens["cache_write_5m_tokens"], e.Tokens["cache_write_1h_tokens"], e.SourcePath, e.SourceOffset}
-	_, err := tx.ExecContext(ctx, `INSERT INTO usage_events(event_key,client,session_id,event_id,event_at,model,input_tokens,cached_input_tokens,output_tokens,cache_read_tokens,cache_creation_tokens,cache_write_5m_tokens,cache_write_1h_tokens,source_path,source_offset)VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(event_key) DO UPDATE SET event_at=excluded.event_at,model=excluded.model,input_tokens=excluded.input_tokens,cached_input_tokens=excluded.cached_input_tokens,output_tokens=excluded.output_tokens,cache_read_tokens=excluded.cache_read_tokens,cache_creation_tokens=excluded.cache_creation_tokens,cache_write_5m_tokens=excluded.cache_write_5m_tokens,cache_write_1h_tokens=excluded.cache_write_1h_tokens,source_path=excluded.source_path,source_offset=excluded.source_offset`, vals...)
-	return exists == 0, err
+	_, err = tx.ExecContext(ctx, `INSERT INTO usage_events(event_key,client,session_id,event_id,event_at,model,input_tokens,cached_input_tokens,output_tokens,cache_read_tokens,cache_creation_tokens,cache_write_5m_tokens,cache_write_1h_tokens,source_path,source_offset)VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(event_key) DO UPDATE SET event_at=excluded.event_at,model=excluded.model,input_tokens=excluded.input_tokens,cached_input_tokens=excluded.cached_input_tokens,output_tokens=excluded.output_tokens,cache_read_tokens=excluded.cache_read_tokens,cache_creation_tokens=excluded.cache_creation_tokens,cache_write_5m_tokens=excluded.cache_write_5m_tokens,cache_write_1h_tokens=excluded.cache_write_1h_tokens,source_path=excluded.source_path,source_offset=excluded.source_offset`, vals...)
+	return !exists, err == nil, err
+}
+
+type eventRunBinding struct {
+	eventKey string
+	runID    int64
+}
+
+func eventRunBindingsForSource(ctx context.Context, tx *sql.Tx, path string) ([]eventRunBinding, error) {
+	rows, err := tx.QueryContext(ctx, `SELECT e.event_key,COALESCE(b.run_id,e.run_id) FROM usage_events e LEFT JOIN usage_run_bindings b ON b.event_key=e.event_key WHERE e.source_path=? AND COALESCE(b.run_id,e.run_id) IS NOT NULL ORDER BY e.event_key`, path)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var bindings []eventRunBinding
+	for rows.Next() {
+		var binding eventRunBinding
+		if err = rows.Scan(&binding.eventKey, &binding.runID); err != nil {
+			return nil, err
+		}
+		bindings = append(bindings, binding)
+	}
+	return bindings, rows.Err()
+}
+
+func restoreEventRunBindings(ctx context.Context, tx *sql.Tx, path string, bindings []eventRunBinding) error {
+	for _, binding := range bindings {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO usage_run_bindings(event_key,run_id) SELECT ?,? WHERE EXISTS (SELECT 1 FROM usage_events WHERE event_key=? AND source_path=?)`, binding.eventKey, binding.runID, binding.eventKey, path); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func restoreEventRunBindingsForSourceRange(ctx context.Context, tx *sql.Tx, path string) error {
+	_, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO usage_run_bindings(event_key,run_id)
+		SELECT e.event_key,r.run_id
+		FROM usage_events e
+		JOIN usage_run_sources r ON r.path=e.source_path
+		JOIN usage_runs u ON u.id=r.run_id AND u.client=e.client
+		WHERE e.source_path=? AND r.end_offset IS NOT NULL AND e.source_offset>=r.start_offset AND e.source_offset<r.end_offset
+		ORDER BY r.run_id,e.source_offset,e.event_key`, path)
+	return err
 }
 
 func affectedSessions(ctx context.Context, tx *sql.Tx, path string) (map[string][2]string, error) {
@@ -736,23 +1184,90 @@ func rebuildSessions(ctx context.Context, tx *sql.Tx, affected map[string][2]str
 	return nil
 }
 
-func (s *Service) removeSource(ctx context.Context, path string) error {
+func (s *Service) detachSource(ctx context.Context, path string) error {
 	tx, err := s.Store.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	affected, err := affectedSessions(ctx, tx, path)
-	if err != nil {
-		return err
-	}
 	if _, err = tx.ExecContext(ctx, "DELETE FROM usage_run_sources WHERE path=?", path); err != nil {
 		return err
 	}
-	if _, err = tx.ExecContext(ctx, "DELETE FROM usage_events WHERE source_path=?", path); err != nil {
+	if _, err = tx.ExecContext(ctx, "DELETE FROM usage_source_files WHERE path=?", path); err != nil {
 		return err
 	}
-	if _, err = tx.ExecContext(ctx, "DELETE FROM usage_source_files WHERE path=?", path); err != nil {
+	return tx.Commit()
+}
+
+func (s *Service) orphanRecoveryCandidates(ctx context.Context, entries []InventoryEntry) (bool, map[string]bool, error) {
+	rows, err := s.Store.DB.QueryContext(ctx, `SELECT DISTINCT e.client,e.session_id FROM usage_events e LEFT JOIN usage_source_files f ON f.path=e.source_path WHERE f.path IS NULL`)
+	if err != nil {
+		return false, nil, err
+	}
+	type sessionKey struct{ client, session string }
+	orphanSessions := map[sessionKey]bool{}
+	for rows.Next() {
+		var key sessionKey
+		if err = rows.Scan(&key.client, &key.session); err != nil {
+			rows.Close()
+			return false, nil, err
+		}
+		orphanSessions[key] = true
+	}
+	if err = rows.Close(); err != nil {
+		return false, nil, err
+	}
+	if len(orphanSessions) == 0 {
+		return false, map[string]bool{}, nil
+	}
+	entryClients := make(map[string]string, len(entries))
+	for _, entry := range entries {
+		entryClients[entry.Path] = entry.Client
+	}
+	candidates := map[string]bool{}
+	rows, err = s.Store.DB.QueryContext(ctx, `SELECT path,COALESCE(session_id,'') FROM usage_source_files WHERE COALESCE(session_id,'')<>''`)
+	if err != nil {
+		return false, nil, err
+	}
+	for rows.Next() {
+		var path, sessionID string
+		if err = rows.Scan(&path, &sessionID); err != nil {
+			rows.Close()
+			return false, nil, err
+		}
+		if orphanSessions[sessionKey{client: entryClients[path], session: sessionID}] {
+			candidates[path] = true
+		}
+	}
+	if err = rows.Close(); err != nil {
+		return false, nil, err
+	}
+	return true, candidates, nil
+}
+
+func (s *Service) cleanupOrphanedEvents(ctx context.Context) error {
+	tx, err := s.Store.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	rows, err := tx.QueryContext(ctx, `SELECT DISTINCT e.client,e.session_id FROM usage_events e LEFT JOIN usage_source_files f ON f.path=e.source_path WHERE f.path IS NULL`)
+	if err != nil {
+		return err
+	}
+	affected := map[string][2]string{}
+	for rows.Next() {
+		var client, sessionID string
+		if err = rows.Scan(&client, &sessionID); err != nil {
+			rows.Close()
+			return err
+		}
+		affected[client+"\x00"+sessionID] = [2]string{client, sessionID}
+	}
+	if err = rows.Close(); err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, `DELETE FROM usage_events WHERE NOT EXISTS (SELECT 1 FROM usage_source_files f WHERE f.path=usage_events.source_path)`); err != nil {
 		return err
 	}
 	if err = rebuildSessions(ctx, tx, affected); err != nil {
@@ -797,34 +1312,197 @@ func (s *Service) CheckSourceReadability(ctx context.Context) (int, error) {
 	}
 	return unreadable, rows.Err()
 }
-func (s *Service) PriceHistory(ctx context.Context) ([]map[string]string, error) {
-	rows, err := s.Store.DB.QueryContext(ctx, "SELECT version,source_kind,source_url,content_sha256,effective_from FROM price_catalogs ORDER BY effective_from")
+func (s *Service) PriceHistory(ctx context.Context) ([]PriceCatalog, error) {
+	return s.priceHistoryPortable(ctx)
+}
+
+func (s *Service) priceHistoryPortable(ctx context.Context) ([]PriceCatalog, error) {
+	rows, err := s.Store.DB.QueryContext(ctx, `SELECT c.version,c.source_kind,c.source_url,COALESCE(c.commit_sha,''),c.content_sha256,c.imported_at,c.effective_from,c.currency,c.schema_version,COUNT(mp.model) FROM price_catalogs c LEFT JOIN model_prices mp ON mp.catalog_version=c.version GROUP BY c.version`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []map[string]string
+	var out []PriceCatalog
 	for rows.Next() {
-		var version, kind, url, content, effective string
-		if err := rows.Scan(&version, &kind, &url, &content, &effective); err != nil {
+		var item PriceCatalog
+		if err = rows.Scan(&item.Version, &item.SourceKind, &item.SourceURL, &item.CommitSHA, &item.ContentSHA256, &item.ImportedAt, &item.EffectiveFrom, &item.Currency, &item.SchemaVersion, &item.Models); err != nil {
 			return nil, err
 		}
-		out = append(out, map[string]string{"version": version, "source_kind": kind, "source_url": url, "content_sha256": content, "effective_from": effective})
+		out = append(out, item)
 	}
-	return out, rows.Err()
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+	var sortErr error
+	sort.SliceStable(out, func(i, j int) bool {
+		leftEffective, leftErr := time.Parse(time.RFC3339Nano, out[i].EffectiveFrom)
+		rightEffective, rightErr := time.Parse(time.RFC3339Nano, out[j].EffectiveFrom)
+		leftImported, leftImportedErr := time.Parse(time.RFC3339Nano, out[i].ImportedAt)
+		rightImported, rightImportedErr := time.Parse(time.RFC3339Nano, out[j].ImportedAt)
+		if leftErr != nil || rightErr != nil || leftImportedErr != nil || rightImportedErr != nil {
+			sortErr = errors.Join(leftErr, rightErr, leftImportedErr, rightImportedErr)
+			return false
+		}
+		if !leftEffective.Equal(rightEffective) {
+			return leftEffective.Before(rightEffective)
+		}
+		if !leftImported.Equal(rightImported) {
+			return leftImported.Before(rightImported)
+		}
+		return out[i].Version < out[j].Version
+	})
+	if sortErr != nil {
+		return nil, fmt.Errorf("invalid price catalog time: %w", sortErr)
+	}
+	for index := range out {
+		priceRows, queryErr := s.Store.DB.QueryContext(ctx, `SELECT prices_json FROM model_prices WHERE catalog_version=?`, out[index].Version)
+		if queryErr != nil {
+			return nil, queryErr
+		}
+		for priceRows.Next() {
+			var raw string
+			if queryErr = priceRows.Scan(&raw); queryErr != nil {
+				priceRows.Close()
+				return nil, queryErr
+			}
+			var values map[string]string
+			if queryErr = json.Unmarshal([]byte(raw), &values); queryErr != nil {
+				priceRows.Close()
+				return nil, queryErr
+			}
+			out[index].Components += int64(len(values))
+		}
+		if queryErr = priceRows.Close(); queryErr != nil {
+			return nil, queryErr
+		}
+	}
+	return out, nil
 }
 
 // PriceStatus reports the locally available catalog; it never accesses the network.
 func (s *Service) PriceStatus(ctx context.Context) (map[string]any, error) {
-	var version, kind, source, commit, hash, effective string
-	err := s.Store.DB.QueryRowContext(ctx, `SELECT version,source_kind,source_url,COALESCE(commit_sha,''),content_sha256,effective_from FROM price_catalogs ORDER BY effective_from DESC, imported_at DESC LIMIT 1`).Scan(&version, &kind, &source, &commit, &hash, &effective)
-	if errors.Is(err, sql.ErrNoRows) {
-		return map[string]any{"available": false}, nil
-	}
+	history, err := s.PriceHistory(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return map[string]any{"available": true, "version": version, "source_kind": kind, "source_url": source, "commit_sha": commit, "content_sha256": hash, "effective_from": effective, "aggregated_reference": kind == "litellm"}, nil
+	if len(history) == 0 {
+		return map[string]any{"available": false}, nil
+	}
+	now := s.now()
+	active := make([]PriceCatalog, 0, len(history))
+	for _, item := range history {
+		effective, parseErr := time.Parse(time.RFC3339Nano, item.EffectiveFrom)
+		if parseErr != nil {
+			return nil, fmt.Errorf("invalid catalog effective time %q: %w", item.EffectiveFrom, parseErr)
+		}
+		if !effective.After(now) {
+			active = append(active, item)
+		}
+	}
+	if len(active) == 0 {
+		return map[string]any{"available": false}, nil
+	}
+	latest := active[len(active)-1]
+	prices, err := s.priceListAt(ctx, "", "", now)
+	if err != nil {
+		return nil, err
+	}
+	components := 0
+	for _, price := range prices {
+		components += len(price.Prices)
+	}
+	return map[string]any{
+		"available": true, "version": latest.Version, "source_kind": latest.SourceKind,
+		"source_url": latest.SourceURL, "commit_sha": latest.CommitSHA,
+		"content_sha256": latest.ContentSHA256, "effective_from": latest.EffectiveFrom,
+		"aggregated_reference": latest.SourceKind == "litellm", "catalogs": active,
+		"models": len(prices), "components": components,
+	}, nil
+}
+
+// PriceList returns the current component-wise merged effective prices. Every
+// component retains the provenance of the catalog row that supplied it.
+func (s *Service) PriceList(ctx context.Context, providerFilter, modelFilter string) ([]EffectivePrice, error) {
+	return s.priceListAt(ctx, providerFilter, modelFilter, s.now())
+}
+
+func (s *Service) priceListAt(ctx context.Context, providerFilter, modelFilter string, at time.Time) ([]EffectivePrice, error) {
+	rows, err := s.Store.DB.QueryContext(ctx, `SELECT mp.model,mp.provider,mp.prices_json,c.version,c.source_kind,c.source_url,COALESCE(c.commit_sha,''),c.content_sha256,mp.effective_from,c.effective_from,c.imported_at FROM model_prices mp JOIN price_catalogs c ON c.version=mp.catalog_version`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	type row struct {
+		model, providerName, raw string
+		provenance               PriceProvenance
+		modelEffective           time.Time
+		order                    priceLayerOrder
+	}
+	var priceRows []row
+	at = at.UTC()
+	for rows.Next() {
+		var item row
+		var modelText, catalogText, importedText string
+		if err = rows.Scan(&item.model, &item.providerName, &item.raw, &item.provenance.CatalogVersion, &item.provenance.SourceKind, &item.provenance.SourceURL, &item.provenance.CommitSHA, &item.provenance.ContentSHA256, &modelText, &catalogText, &importedText); err != nil {
+			return nil, err
+		}
+		item.provenance.EffectiveFrom = modelText
+		item.modelEffective, err = time.Parse(time.RFC3339Nano, modelText)
+		if err != nil {
+			return nil, fmt.Errorf("invalid model effective time %q: %w", modelText, err)
+		}
+		item.order = priceLayerOrder{sourceKind: item.provenance.SourceKind, version: item.provenance.CatalogVersion}
+		item.order.catalogEffective, err = time.Parse(time.RFC3339Nano, catalogText)
+		if err != nil {
+			return nil, fmt.Errorf("invalid catalog effective time %q: %w", catalogText, err)
+		}
+		item.order.importedAt, err = time.Parse(time.RFC3339Nano, importedText)
+		if err != nil {
+			return nil, fmt.Errorf("invalid catalog import time %q: %w", importedText, err)
+		}
+		if item.order.catalogEffective.After(at) || item.modelEffective.After(at) {
+			continue
+		}
+		priceRows = append(priceRows, item)
+	}
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+	sort.SliceStable(priceRows, func(i, j int) bool { return priceLayerBefore(priceRows[i].order, priceRows[j].order) })
+	byKey := map[string]*EffectivePrice{}
+	for _, priceRow := range priceRows {
+		if providerFilter != "" && priceRow.providerName != providerFilter || modelFilter != "" && priceRow.model != modelFilter {
+			continue
+		}
+		var components map[string]string
+		if err = json.Unmarshal([]byte(priceRow.raw), &components); err != nil {
+			return nil, err
+		}
+		key := priceRow.providerName + "\x00" + priceRow.model
+		item := byKey[key]
+		if item == nil {
+			item = &EffectivePrice{Provider: priceRow.providerName, Model: priceRow.model, Unit: "USD / 1M tokens", Prices: map[string]string{}, Provenance: map[string]PriceProvenance{}}
+			byKey[key] = item
+		}
+		for component, value := range components {
+			if _, exists := item.Prices[component]; exists {
+				continue
+			}
+			item.Prices[component] = value
+			item.Provenance[component] = priceRow.provenance
+		}
+	}
+	out := make([]EffectivePrice, 0, len(byKey))
+	for _, item := range byKey {
+		out = append(out, *item)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Provider == out[j].Provider {
+			return out[i].Model < out[j].Model
+		}
+		return out[i].Provider < out[j].Provider
+	})
+	return out, nil
 }
 
 // PriceDiagnostics returns only aggregate catalog health counts. It never
@@ -1137,8 +1815,10 @@ func liteLLMCatalog(data []byte, commit string, now time.Time) (catalog, int, er
 
 type storedEvent struct {
 	Event
-	runID    sql.NullInt64
-	runExact sql.NullInt64
+	runID         sql.NullInt64
+	runExact      sql.NullInt64
+	runMultiplier sql.NullString
+	sessionStart  sql.NullString
 }
 
 func (s *Service) Summary(ctx context.Context) (Summary, error) {
@@ -1147,6 +1827,532 @@ func (s *Service) Summary(ctx context.Context) (Summary, error) {
 		return Summary{}, err
 	}
 	return s.summarize(ctx, events)
+}
+
+func (s *Service) SummaryRange(ctx context.Context, from, to time.Time) (Summary, error) {
+	events, err := s.eventsRange(ctx, from, to, "", "")
+	if err != nil {
+		return Summary{}, err
+	}
+	return s.summarize(ctx, events)
+}
+
+func (s *Service) EarliestEventAt(ctx context.Context) (*time.Time, error) {
+	var raw sql.NullString
+	if err := s.Store.DB.QueryRowContext(ctx, `SELECT MIN(event_at) FROM usage_events`).Scan(&raw); err != nil {
+		return nil, err
+	}
+	if !raw.Valid {
+		return nil, nil
+	}
+	at, err := time.Parse(time.RFC3339Nano, raw.String)
+	if err != nil {
+		return nil, err
+	}
+	return &at, nil
+}
+
+type statsAccumulator struct {
+	tokens, input, output, cachedRead, cacheWrite int64
+	events, priced, unpriced                      int64
+	base, provider                                *big.Rat
+	complete                                      bool
+	sessions                                      map[string]struct{}
+	missing                                       map[string]struct{}
+}
+
+func newStatsAccumulator() *statsAccumulator {
+	return &statsAccumulator{base: new(big.Rat), provider: new(big.Rat), complete: true, sessions: map[string]struct{}{}, missing: map[string]struct{}{}}
+}
+
+func (a *statsAccumulator) add(event storedEvent, result Result) error {
+	a.tokens += eventTokenTotal(event.Client, event.Tokens)
+	a.input += event.Tokens["input_tokens"]
+	a.output += event.Tokens["output_tokens"]
+	if event.Client == "codex" {
+		a.cachedRead += event.Tokens["cached_input_tokens"]
+	} else {
+		a.cachedRead += event.Tokens["cache_read_tokens"]
+		cacheWrite := event.Tokens["cache_write_5m_tokens"] + event.Tokens["cache_write_1h_tokens"]
+		if cacheWrite == 0 {
+			cacheWrite = event.Tokens["cache_creation_tokens"]
+		}
+		a.cacheWrite += cacheWrite
+	}
+	a.events++
+	a.sessions[event.Client+"\x00"+event.SessionID] = struct{}{}
+	for _, component := range result.Unpriced {
+		a.missing[component] = struct{}{}
+	}
+	base, err := decimal(result.KnownCatalogBaseCost)
+	if err != nil {
+		return err
+	}
+	providerCost, err := decimal(result.KnownProviderCost)
+	if err != nil {
+		return err
+	}
+	a.base.Add(a.base, base)
+	a.provider.Add(a.provider, providerCost)
+	if result.CatalogBaseCost == nil {
+		a.complete = false
+		a.unpriced++
+		return nil
+	}
+	a.priced++
+	return nil
+}
+
+func eventTokenTotal(client string, tokens map[string]int64) int64 {
+	if client == "codex" {
+		return tokens["input_tokens"] + tokens["output_tokens"]
+	}
+	cacheWrite := tokens["cache_write_5m_tokens"] + tokens["cache_write_1h_tokens"]
+	if cacheWrite == 0 {
+		cacheWrite = tokens["cache_creation_tokens"]
+	}
+	return tokens["input_tokens"] + tokens["output_tokens"] + tokens["cache_read_tokens"] + cacheWrite
+}
+
+func statsCoverage(priced, unpriced int64) string {
+	total := priced + unpriced
+	if total == 0 {
+		return "0.00"
+	}
+	return new(big.Rat).Mul(big.NewRat(priced, total), big.NewRat(100, 1)).FloatString(2)
+}
+
+func statsCost(value *statsAccumulator) (*string, string) {
+	known := money(value.provider)
+	if !value.complete {
+		return nil, known
+	}
+	complete := known
+	return &complete, known
+}
+
+func statsMetricValue(metric string, value *statsAccumulator) string {
+	switch metric {
+	case "cost":
+		return money(value.provider)
+	case "sessions":
+		return strconv.Itoa(len(value.sessions))
+	default:
+		return strconv.FormatInt(value.tokens, 10)
+	}
+}
+
+func statsMetricValues(metric string, value *statsAccumulator) (*string, string) {
+	known := statsMetricValue(metric, value)
+	if metric == "cost" && !value.complete {
+		return nil, known
+	}
+	complete := known
+	return &complete, known
+}
+
+func bucketStart(at time.Time, group string, location *time.Location) time.Time {
+	local := at.In(location)
+	switch group {
+	case "hour":
+		elapsed := time.Duration(local.Minute())*time.Minute + time.Duration(local.Second())*time.Second + time.Duration(local.Nanosecond())
+		return local.Add(-elapsed)
+	case "week":
+		day := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, location)
+		offset := (int(day.Weekday()) + 6) % 7
+		return day.AddDate(0, 0, -offset)
+	case "month":
+		return time.Date(local.Year(), local.Month(), 1, 0, 0, 0, 0, location)
+	default:
+		return time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, location)
+	}
+}
+
+func nextBucket(at time.Time, group string) time.Time {
+	switch group {
+	case "hour":
+		return at.Add(time.Hour)
+	case "week":
+		return at.AddDate(0, 0, 7)
+	case "month":
+		return at.AddDate(0, 1, 0)
+	default:
+		return at.AddDate(0, 0, 1)
+	}
+}
+
+func statsMetricRat(metric string, value *statsAccumulator) *big.Rat {
+	switch metric {
+	case "cost":
+		return new(big.Rat).Set(value.provider)
+	case "sessions":
+		return big.NewRat(int64(len(value.sessions)), 1)
+	default:
+		return big.NewRat(value.tokens, 1)
+	}
+}
+
+func statsDimension(name, client, metric string, value *statsAccumulator, total *big.Rat, totalComplete bool) StatsDimension {
+	cost, known := statsCost(value)
+	knownShare := "0.00"
+	metricValue := statsMetricRat(metric, value)
+	if total.Sign() > 0 {
+		knownShare = new(big.Rat).Mul(new(big.Rat).Quo(metricValue, total), big.NewRat(100, 1)).FloatString(2)
+	}
+	metricComplete, metricKnown := statsMetricValues(metric, value)
+	var share *string
+	if metric != "cost" || value.complete && totalComplete {
+		value := knownShare
+		share = &value
+	}
+	clientName := client
+	if clientName == "" {
+		clientName = name
+	}
+	logicalInput := value.input
+	var cacheReadRate, cacheWriteRate *string
+	if clientName == "codex" {
+		cacheReadRate = percentPointer(value.cachedRead, value.input)
+	} else if clientName == "claude" {
+		logicalInput += value.cachedRead + value.cacheWrite
+		cacheReadRate = percentPointer(value.cachedRead, logicalInput)
+		cacheWriteRate = percentPointer(value.cacheWrite, logicalInput)
+	}
+	return StatsDimension{Name: name, Client: client, Tokens: value.tokens, InputTokens: value.input, OutputTokens: value.output, CachedReadTokens: value.cachedRead, CacheWriteTokens: value.cacheWrite, LogicalInputTokens: logicalInput, CacheReadRate: cacheReadRate, CacheWriteRate: cacheWriteRate, Sessions: int64(len(value.sessions)), Events: value.events, ProviderCost: cost, KnownProviderCost: known, MetricValue: metricComplete, KnownMetricValue: metricKnown, Share: share, KnownShare: knownShare, Coverage: statsCoverage(value.priced, value.unpriced)}
+}
+
+func percentPointer(numerator, denominator int64) *string {
+	value := "0.00"
+	if denominator > 0 {
+		value = new(big.Rat).Mul(big.NewRat(numerator, denominator), big.NewRat(100, 1)).FloatString(2)
+	}
+	return &value
+}
+
+type statsPriceRow struct {
+	catalogEffective time.Time
+	modelEffective   time.Time
+	order            priceLayerOrder
+	price            modelPrice
+}
+
+type statsPriceResolver struct {
+	current time.Time
+	byModel map[string][]statsPriceRow
+}
+
+func (s *Service) loadStatsPriceResolver(ctx context.Context, current time.Time) (statsPriceResolver, error) {
+	rows, err := s.Store.DB.QueryContext(ctx, `SELECT mp.model,mp.provider,c.effective_from,mp.effective_from,mp.prices_json,mp.aliases_json,c.source_kind,c.imported_at,c.version FROM model_prices mp JOIN price_catalogs c ON c.version=mp.catalog_version`)
+	if err != nil {
+		return statsPriceResolver{}, err
+	}
+	defer rows.Close()
+	resolver := statsPriceResolver{current: current, byModel: map[string][]statsPriceRow{}}
+	for rows.Next() {
+		var model, providerName, catalogText, modelText, pricesText, aliasesText, sourceKind, importedText, version string
+		if err = rows.Scan(&model, &providerName, &catalogText, &modelText, &pricesText, &aliasesText, &sourceKind, &importedText, &version); err != nil {
+			return statsPriceResolver{}, err
+		}
+		catalogEffective, parseErr := time.Parse(time.RFC3339Nano, catalogText)
+		if parseErr != nil {
+			return statsPriceResolver{}, parseErr
+		}
+		modelEffective, parseErr := time.Parse(time.RFC3339Nano, modelText)
+		if parseErr != nil {
+			return statsPriceResolver{}, parseErr
+		}
+		importedAt, parseErr := time.Parse(time.RFC3339Nano, importedText)
+		if parseErr != nil {
+			return statsPriceResolver{}, parseErr
+		}
+		price := modelPrice{Provider: providerName, Prices: map[string]string{}}
+		if err = json.Unmarshal([]byte(pricesText), &price.Prices); err != nil {
+			return statsPriceResolver{}, err
+		}
+		var aliases []string
+		if aliasesText != "" && aliasesText != "null" {
+			if err = json.Unmarshal([]byte(aliasesText), &aliases); err != nil {
+				return statsPriceResolver{}, err
+			}
+		}
+		client := map[string]string{"openai": "codex", "anthropic": "claude"}[providerName]
+		if client == "" {
+			continue
+		}
+		seen := map[string]bool{}
+		for _, candidate := range append([]string{model}, aliases...) {
+			key := providerName + "\x00" + statsPriceModelKey(client, candidate)
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			resolver.byModel[key] = append(resolver.byModel[key], statsPriceRow{
+				catalogEffective: catalogEffective,
+				modelEffective:   modelEffective,
+				order:            priceLayerOrder{sourceKind: sourceKind, catalogEffective: catalogEffective, importedAt: importedAt, version: version},
+				price:            price,
+			})
+		}
+	}
+	if err = rows.Err(); err != nil {
+		return statsPriceResolver{}, err
+	}
+	for key := range resolver.byModel {
+		priceRows := resolver.byModel[key]
+		sort.SliceStable(priceRows, func(i, j int) bool { return priceLayerBefore(priceRows[i].order, priceRows[j].order) })
+		resolver.byModel[key] = priceRows
+	}
+	return resolver, nil
+}
+
+func statsPriceModelKey(client, model string) string {
+	if client == "claude" && strings.HasPrefix(model, "claude-") {
+		return strings.ReplaceAll(model, ".", "-")
+	}
+	return model
+}
+
+func (r statsPriceResolver) priceAt(client, model string, at time.Time) (modelPrice, bool) {
+	providerName := map[string]string{"codex": "openai", "claude": "anthropic"}[client]
+	merged := modelPrice{Provider: providerName, Prices: map[string]string{}}
+	rows := r.byModel[providerName+"\x00"+statsPriceModelKey(client, model)]
+	for _, row := range rows {
+		if row.catalogEffective.After(at) || row.modelEffective.After(at) {
+			continue
+		}
+		for component, value := range row.price.Prices {
+			if _, exists := merged.Prices[component]; !exists {
+				merged.Prices[component] = value
+			}
+		}
+	}
+	return merged, len(merged.Prices) > 0
+}
+
+func (r statsPriceResolver) priceForEvent(event storedEvent, timeline store.ProviderTimeline) (modelPrice, string, string, error) {
+	quality, multiplierValue := "historical", "1"
+	if event.runID.Valid && event.runExact.Valid && event.runExact.Int64 == 1 {
+		if !event.runMultiplier.Valid {
+			return modelPrice{}, "", "", errors.New("exact usage run has no multiplier")
+		}
+		quality, multiplierValue = "exact", event.runMultiplier.String
+	} else {
+		sessionStart := event.EventAt
+		if event.sessionStart.Valid && event.sessionStart.String != "" {
+			sessionStart = event.sessionStart.String
+		}
+		at, err := time.Parse(time.RFC3339Nano, sessionStart)
+		if err != nil {
+			return modelPrice{}, "", "", err
+		}
+		snapshot, err := timeline.SnapshotAt(event.Client, at)
+		if err == nil {
+			quality, multiplierValue = "estimated", snapshot.Multiplier
+		} else if !errors.Is(err, sql.ErrNoRows) {
+			return modelPrice{}, "", "", err
+		}
+	}
+	eventAt, err := time.Parse(time.RFC3339Nano, event.EventAt)
+	if err != nil {
+		return modelPrice{}, "", "", err
+	}
+	historical, historicalFound := r.priceAt(event.Client, event.Model, eventAt)
+	current, currentFound := r.priceAt(event.Client, event.Model, r.current)
+	if !historicalFound && !currentFound {
+		return modelPrice{Provider: "unknown", Prices: map[string]string{}}, multiplierValue, quality, nil
+	}
+	if !historicalFound {
+		return current, multiplierValue, quality, nil
+	}
+	for component, value := range current.Prices {
+		if _, exists := historical.Prices[component]; !exists {
+			historical.Prices[component] = value
+		}
+	}
+	return historical, multiplierValue, quality, nil
+}
+
+func (s *Service) Stats(ctx context.Context, options StatsOptions) (StatsReport, error) {
+	location := options.Location
+	if location == nil {
+		location = time.Local
+	}
+	if !options.From.Before(options.To) {
+		return StatsReport{}, errors.New("usage stats range must have from before to")
+	}
+	if options.GroupBy != "hour" && options.GroupBy != "day" && options.GroupBy != "week" && options.GroupBy != "month" {
+		return StatsReport{}, fmt.Errorf("invalid usage stats group-by %q", options.GroupBy)
+	}
+	if options.Metric != "tokens" && options.Metric != "cost" && options.Metric != "sessions" {
+		return StatsReport{}, fmt.Errorf("invalid usage stats metric %q", options.Metric)
+	}
+	events, err := s.eventsRange(ctx, options.From, options.To, options.Client, options.Model)
+	if err != nil {
+		return StatsReport{}, err
+	}
+	resolver, err := s.loadStatsPriceResolver(ctx, s.now())
+	if err != nil {
+		return StatsReport{}, err
+	}
+	timeline, err := s.Store.LoadProviderTimeline(ctx)
+	if err != nil {
+		return StatsReport{}, err
+	}
+	total := newStatsAccumulator()
+	buckets := map[string]*statsAccumulator{}
+	models := map[string]*statsAccumulator{}
+	clients := map[string]*statsAccumulator{}
+	activity := map[[2]int]*statsAccumulator{}
+	for _, event := range events {
+		at, parseErr := time.Parse(time.RFC3339Nano, event.EventAt)
+		if parseErr != nil {
+			return StatsReport{}, parseErr
+		}
+		price, multiplierValue, _, priceErr := resolver.priceForEvent(event, timeline)
+		if priceErr != nil {
+			return StatsReport{}, priceErr
+		}
+		result, calculateErr := Calculate(event.Client, event.Model, event.Tokens, price, multiplierValue)
+		if calculateErr != nil {
+			return StatsReport{}, calculateErr
+		}
+		start := bucketStart(at, options.GroupBy, location)
+		key := start.Format(time.RFC3339Nano)
+		if buckets[key] == nil {
+			buckets[key] = newStatsAccumulator()
+		}
+		modelKey := event.Client + "\x00" + event.Model
+		if models[modelKey] == nil {
+			models[modelKey] = newStatsAccumulator()
+		}
+		if clients[event.Client] == nil {
+			clients[event.Client] = newStatsAccumulator()
+		}
+		local := at.In(location)
+		activityKey := [2]int{(int(local.Weekday()) + 6) % 7, local.Hour()}
+		if activity[activityKey] == nil {
+			activity[activityKey] = newStatsAccumulator()
+		}
+		for _, accumulator := range []*statsAccumulator{total, buckets[key], models[modelKey], clients[event.Client], activity[activityKey]} {
+			if err = accumulator.add(event, result); err != nil {
+				return StatsReport{}, err
+			}
+		}
+	}
+	timezone := options.Timezone
+	if timezone == "" {
+		timezone = location.String()
+	}
+	report := StatsReport{
+		Range:    StatsRange{From: options.From.In(location).Format(time.RFC3339Nano), To: options.To.In(location).Format(time.RFC3339Nano)},
+		Timezone: timezone, GroupBy: options.GroupBy, Metric: options.Metric,
+		Buckets: []StatsBucket{}, Models: []StatsDimension{}, Clients: []StatsDimension{}, Activity: []StatsActivity{}, UnpricedModels: []StatsUnpricedModel{},
+		Coverage: StatsCoverage{PricedEvents: total.priced, UnpricedEvents: total.unpriced, TotalEvents: total.events, Percent: statsCoverage(total.priced, total.unpriced)},
+	}
+	completeProvider, _ := statsCost(total)
+	knownBase := money(total.base)
+	var completeBase *string
+	if total.complete {
+		value := knownBase
+		completeBase = &value
+	}
+	zeroCost := "0.000000000"
+	report.Totals = StatsTotals{Tokens: total.tokens, InputTokens: total.input, OutputTokens: total.output, CachedReadTokens: total.cachedRead, CacheWriteTokens: total.cacheWrite, Sessions: int64(len(total.sessions)), Events: total.events, CatalogBaseCost: completeBase, ProviderCost: completeProvider, KnownCatalogBaseCost: knownBase, KnownProviderCost: money(total.provider), AverageTokens: "0.00", AverageCost: &zeroCost, KnownAverageCost: zeroCost}
+	if len(total.sessions) > 0 {
+		report.Totals.AverageTokens = new(big.Rat).Quo(big.NewRat(total.tokens, 1), big.NewRat(int64(len(total.sessions)), 1)).FloatString(2)
+		report.Totals.KnownAverageCost = money(new(big.Rat).Quo(total.provider, big.NewRat(int64(len(total.sessions)), 1)))
+		if total.complete {
+			value := report.Totals.KnownAverageCost
+			report.Totals.AverageCost = &value
+		} else {
+			report.Totals.AverageCost = nil
+		}
+	}
+	start := bucketStart(options.From, options.GroupBy, location)
+	if start.Before(options.From) && options.GroupBy == "hour" {
+		// Keep the first partial hour; its start is useful to chart consumers.
+	}
+	peakValue := new(big.Rat)
+	for count := 0; start.Before(options.To); count++ {
+		if count >= 10000 {
+			return StatsReport{}, errors.New("usage stats range produces too many buckets")
+		}
+		end := nextBucket(start, options.GroupBy)
+		value := buckets[start.Format(time.RFC3339Nano)]
+		if value == nil {
+			value = newStatsAccumulator()
+		}
+		cost, known := statsCost(value)
+		metricComplete, metricKnown := statsMetricValues(options.Metric, value)
+		bucket := StatsBucket{Start: start.Format(time.RFC3339Nano), End: end.Format(time.RFC3339Nano), Tokens: value.tokens, InputTokens: value.input, OutputTokens: value.output, CachedReadTokens: value.cachedRead, CacheWriteTokens: value.cacheWrite, Sessions: int64(len(value.sessions)), Events: value.events, ProviderCost: cost, KnownProviderCost: known, MetricValue: metricComplete, KnownMetricValue: metricKnown, Coverage: statsCoverage(value.priced, value.unpriced)}
+		report.Buckets = append(report.Buckets, bucket)
+		candidate := statsMetricRat(options.Metric, value)
+		if len(report.Buckets) == 1 || candidate.Cmp(peakValue) > 0 {
+			peakValue.Set(candidate)
+			report.Peak = StatsPeak{Start: bucket.Start, End: bucket.End, Value: bucket.MetricValue, KnownValue: bucket.KnownMetricValue, Coverage: bucket.Coverage}
+		}
+		start = end
+	}
+	totalMetric := statsMetricRat(options.Metric, total)
+	for key, value := range models {
+		parts := strings.SplitN(key, "\x00", 2)
+		report.Models = append(report.Models, statsDimension(parts[1], parts[0], options.Metric, value, totalMetric, total.complete))
+		if len(value.missing) > 0 {
+			missing := make([]string, 0, len(value.missing))
+			for component := range value.missing {
+				missing = append(missing, component)
+			}
+			sort.Strings(missing)
+			report.UnpricedModels = append(report.UnpricedModels, StatsUnpricedModel{Client: parts[0], Model: parts[1], Components: missing})
+		}
+	}
+	for name, value := range clients {
+		report.Clients = append(report.Clients, statsDimension(name, "", options.Metric, value, totalMetric, total.complete))
+	}
+	sort.Slice(report.Models, func(i, j int) bool {
+		left, _ := decimal(report.Models[i].KnownMetricValue)
+		right, _ := decimal(report.Models[j].KnownMetricValue)
+		if comparison := left.Cmp(right); comparison != 0 {
+			return comparison > 0
+		}
+		if report.Models[i].Client == report.Models[j].Client {
+			return report.Models[i].Name < report.Models[j].Name
+		}
+		return report.Models[i].Client < report.Models[j].Client
+	})
+	sort.Slice(report.Clients, func(i, j int) bool { return report.Clients[i].Name < report.Clients[j].Name })
+	sort.Slice(report.UnpricedModels, func(i, j int) bool {
+		if report.UnpricedModels[i].Client == report.UnpricedModels[j].Client {
+			return report.UnpricedModels[i].Model < report.UnpricedModels[j].Model
+		}
+		return report.UnpricedModels[i].Client < report.UnpricedModels[j].Client
+	})
+	if options.GroupBy != "hour" && naturalDayCount(options.From, options.To, location) >= 7 {
+		for weekday := 0; weekday < 7; weekday++ {
+			for hour := 0; hour < 24; hour++ {
+				value := activity[[2]int{weekday, hour}]
+				if value == nil {
+					value = newStatsAccumulator()
+				}
+				metricComplete, metricKnown := statsMetricValues(options.Metric, value)
+				report.Activity = append(report.Activity, StatsActivity{Weekday: weekday, Hour: hour, Tokens: value.tokens, Sessions: int64(len(value.sessions)), Events: value.events, KnownCost: money(value.provider), MetricValue: metricComplete, KnownMetricValue: metricKnown})
+			}
+		}
+	}
+	return report, nil
+}
+
+func naturalDayCount(from, to time.Time, location *time.Location) int {
+	start := from.In(location)
+	end := to.Add(-time.Nanosecond).In(location)
+	startDate := time.Date(start.Year(), start.Month(), start.Day(), 0, 0, 0, 0, location)
+	endDate := time.Date(end.Year(), end.Month(), end.Day(), 0, 0, 0, 0, location)
+	days := 1
+	for startDate.Before(endDate) {
+		startDate = startDate.AddDate(0, 0, 1)
+		days++
+	}
+	return days
 }
 func (s *Service) Sessions(ctx context.Context) ([]SessionSummary, error) {
 	rows, err := s.Store.DB.QueryContext(ctx, `SELECT client,session_id,first_at,last_at FROM usage_sessions ORDER BY first_at DESC, client, session_id`)
@@ -1168,13 +2374,19 @@ func (s *Service) Sessions(ctx context.Context) ([]SessionSummary, error) {
 		if e != nil {
 			return nil, e
 		}
-		item.Tokens, item.CatalogBaseCost, item.ProviderCost, item.Unpriced, item.Warnings = total.Tokens, total.CatalogBaseCost, total.ProviderCost, total.Unpriced, total.Warnings
+		item.Tokens = total.Tokens
+		item.CatalogBaseCost = total.CatalogBaseCost
+		item.ProviderCost = total.ProviderCost
+		item.KnownCatalogBaseCost = total.KnownCatalogBaseCost
+		item.KnownProviderCost = total.KnownProviderCost
+		item.Unpriced = total.Unpriced
+		item.Warnings = total.Warnings
 		out = append(out, item)
 	}
 	return out, rows.Err()
 }
 func (s *Service) events(ctx context.Context, client, session string) ([]storedEvent, error) {
-	q := `SELECT e.event_key,e.client,e.session_id,e.event_id,e.event_at,e.model,e.input_tokens,e.cached_input_tokens,e.output_tokens,e.cache_read_tokens,e.cache_creation_tokens,e.cache_write_5m_tokens,e.cache_write_1h_tokens,e.source_path,e.source_offset,COALESCE(b.run_id, e.run_id),r.exact FROM usage_events e LEFT JOIN usage_run_bindings b ON b.event_key=e.event_key LEFT JOIN usage_runs r ON r.id=COALESCE(b.run_id,e.run_id)`
+	q := `SELECT e.event_key,e.client,e.session_id,e.event_id,e.event_at,e.model,e.input_tokens,e.cached_input_tokens,e.output_tokens,e.cache_read_tokens,e.cache_creation_tokens,e.cache_write_5m_tokens,e.cache_write_1h_tokens,e.source_path,e.source_offset,COALESCE(b.run_id,e.run_id),r.exact,r.multiplier,us.first_at FROM usage_events e LEFT JOIN usage_run_bindings b ON b.event_key=e.event_key LEFT JOIN usage_runs r ON r.id=COALESCE(b.run_id,e.run_id) LEFT JOIN usage_sessions us ON us.client=e.client AND us.session_id=e.session_id`
 	args := []any{}
 	where := []string{}
 	if client != "" {
@@ -1198,7 +2410,7 @@ func (s *Service) events(ctx context.Context, client, session string) ([]storedE
 	for rows.Next() {
 		var e storedEvent
 		var in, cached, outTokens, read, creation, write5, write1 int64
-		err = rows.Scan(&e.Key, &e.Client, &e.SessionID, &e.EventID, &e.EventAt, &e.Model, &in, &cached, &outTokens, &read, &creation, &write5, &write1, &e.SourcePath, &e.SourceOffset, &e.runID, &e.runExact)
+		err = rows.Scan(&e.Key, &e.Client, &e.SessionID, &e.EventID, &e.EventAt, &e.Model, &in, &cached, &outTokens, &read, &creation, &write5, &write1, &e.SourcePath, &e.SourceOffset, &e.runID, &e.runExact, &e.runMultiplier, &e.sessionStart)
 		if err != nil {
 			return nil, err
 		}
@@ -1207,14 +2419,53 @@ func (s *Service) events(ctx context.Context, client, session string) ([]storedE
 	}
 	return out, rows.Err()
 }
+
+func (s *Service) eventsRange(ctx context.Context, from, to time.Time, client, model string) ([]storedEvent, error) {
+	query := `SELECT e.event_key,e.client,e.session_id,e.event_id,e.event_at,e.model,e.input_tokens,e.cached_input_tokens,e.output_tokens,e.cache_read_tokens,e.cache_creation_tokens,e.cache_write_5m_tokens,e.cache_write_1h_tokens,e.source_path,e.source_offset,COALESCE(b.run_id,e.run_id),r.exact,r.multiplier,us.first_at FROM usage_events e LEFT JOIN usage_run_bindings b ON b.event_key=e.event_key LEFT JOIN usage_runs r ON r.id=COALESCE(b.run_id,e.run_id) LEFT JOIN usage_sessions us ON us.client=e.client AND us.session_id=e.session_id WHERE e.event_at>=? AND e.event_at<?`
+	args := []any{from.UTC().Format(time.RFC3339Nano), to.UTC().Format(time.RFC3339Nano)}
+	if client != "" {
+		query += ` AND e.client=?`
+		args = append(args, client)
+	}
+	if model != "" {
+		query += ` AND e.model=?`
+		args = append(args, model)
+	}
+	query += ` ORDER BY e.event_at,e.event_key`
+	rows, err := s.Store.DB.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []storedEvent{}
+	for rows.Next() {
+		var event storedEvent
+		var input, cached, output, read, creation, write5, write1 int64
+		if err = rows.Scan(&event.Key, &event.Client, &event.SessionID, &event.EventID, &event.EventAt, &event.Model, &input, &cached, &output, &read, &creation, &write5, &write1, &event.SourcePath, &event.SourceOffset, &event.runID, &event.runExact, &event.runMultiplier, &event.sessionStart); err != nil {
+			return nil, err
+		}
+		event.Tokens = map[string]int64{"input_tokens": input, "cached_input_tokens": cached, "output_tokens": output, "cache_read_tokens": read, "cache_creation_tokens": creation, "cache_write_5m_tokens": write5, "cache_write_1h_tokens": write1}
+		out = append(out, event)
+	}
+	return out, rows.Err()
+}
+
 func (s *Service) summarize(ctx context.Context, events []storedEvent) (Summary, error) {
-	out := Summary{Tokens: map[string]int64{}, Counts: map[string]int64{"events": int64(len(events)), "exact": 0, "estimated": 0, "historical": 0}, Unpriced: []string{}, Warnings: []string{}}
+	out := Summary{Tokens: map[string]int64{}, Counts: map[string]int64{"events": int64(len(events)), "exact": 0, "estimated": 0, "historical": 0, "priced": 0, "unpriced": 0}, Models: []ModelCoverage{}, Unpriced: []string{}, Warnings: []string{}}
 	base := new(big.Rat)
 	provider := new(big.Rat)
 	complete := true
 	warned := map[string]bool{}
 	unpriced := map[string]bool{}
+	coverage := map[string]*ModelCoverage{}
 	for _, e := range events {
+		coverageKey := e.Client + "\x00" + e.Model
+		model := coverage[coverageKey]
+		if model == nil {
+			model = &ModelCoverage{Client: e.Client, Model: e.Model}
+			coverage[coverageKey] = model
+		}
+		model.Events++
 		for k, v := range e.Tokens {
 			out.Tokens[k] += v
 		}
@@ -1231,27 +2482,42 @@ func (s *Service) summarize(ctx context.Context, events []storedEvent) (Summary,
 		if err != nil {
 			return out, err
 		}
+		knownBase, _ := decimal(r.KnownCatalogBaseCost)
+		knownProvider, _ := decimal(r.KnownProviderCost)
+		base.Add(base, knownBase)
+		provider.Add(provider, knownProvider)
 		if r.CatalogBaseCost == nil {
 			complete = false
+			out.Counts["unpriced"]++
+			model.UnpricedEvents++
 			for _, u := range r.Unpriced {
 				unpriced[u] = true
 			}
 			continue
 		}
-		b, _ := decimal(*r.CatalogBaseCost)
-		p, _ := decimal(*r.ProviderCost)
-		base.Add(base, b)
-		provider.Add(provider, p)
+		out.Counts["priced"]++
+		model.PricedEvents++
 	}
+	knownBase, knownProvider := money(base), money(provider)
+	out.KnownCatalogBaseCost = &knownBase
+	out.KnownProviderCost = &knownProvider
 	if complete {
-		b, p := money(base), money(provider)
-		out.CatalogBaseCost = &b
-		out.ProviderCost = &p
+		out.CatalogBaseCost = &knownBase
+		out.ProviderCost = &knownProvider
 	}
 	for u := range unpriced {
 		out.Unpriced = append(out.Unpriced, u)
 	}
 	sort.Strings(out.Unpriced)
+	for _, model := range coverage {
+		out.Models = append(out.Models, *model)
+	}
+	sort.Slice(out.Models, func(i, j int) bool {
+		if out.Models[i].Client == out.Models[j].Client {
+			return out.Models[i].Model < out.Models[j].Model
+		}
+		return out.Models[i].Client < out.Models[j].Client
+	})
 	return out, nil
 }
 func (s *Service) priceForEvent(ctx context.Context, e storedEvent) (modelPrice, string, string, error) {
@@ -1282,32 +2548,91 @@ func (s *Service) priceForEvent(ctx context.Context, e storedEvent) (modelPrice,
 			return modelPrice{}, "", "", err
 		}
 	}
-	rows, err := s.Store.DB.QueryContext(ctx, `SELECT mp.model,mp.provider,mp.effective_from,mp.prices_json,mp.aliases_json FROM model_prices mp JOIN price_catalogs c ON c.version=mp.catalog_version WHERE c.effective_from<=? AND mp.effective_from<=? ORDER BY CASE c.source_kind WHEN 'official' THEN 0 ELSE 1 END, c.effective_from DESC, c.imported_at DESC`, e.EventAt, e.EventAt)
+	historical, historicalFound, err := s.mergedPriceAt(ctx, e.Client, e.Model, e.EventAt)
 	if err != nil {
 		return modelPrice{}, "", "", err
 	}
-	defer rows.Close()
-	expected := map[string]string{"codex": "openai", "claude": "anthropic"}[e.Client]
-	merged := modelPrice{Provider: expected, Prices: map[string]string{}}
-	found := false
-	for rows.Next() {
-		var model string
-		var p modelPrice
-		var raw, aliases string
-		if err = rows.Scan(&model, &p.Provider, &p.EffectiveFrom, &raw, &aliases); err != nil {
-			return p, "", "", err
+	current, currentFound, err := s.mergedPriceAt(ctx, e.Client, e.Model, s.now().Format(time.RFC3339Nano))
+	if err != nil {
+		return modelPrice{}, "", "", err
+	}
+	if !historicalFound && !currentFound {
+		return modelPrice{Provider: "unknown", Prices: map[string]string{}}, mult, quality, nil
+	}
+	if !historicalFound {
+		return current, mult, quality, nil
+	}
+	// Current prices fill only components missing from the historical result.
+	// A component that was calculable at event time is never repriced.
+	for component, value := range current.Prices {
+		if _, exists := historical.Prices[component]; !exists {
+			historical.Prices[component] = value
 		}
-		if p.Provider != expected {
+	}
+	return historical, mult, quality, nil
+}
+
+func (s *Service) mergedPriceAt(ctx context.Context, client, eventModel, at string) (modelPrice, bool, error) {
+	target, err := time.Parse(time.RFC3339Nano, at)
+	if err != nil {
+		return modelPrice{}, false, err
+	}
+	rows, err := s.Store.DB.QueryContext(ctx, `SELECT mp.model,mp.provider,mp.effective_from,mp.prices_json,mp.aliases_json,c.source_kind,c.effective_from,c.imported_at,c.version FROM model_prices mp JOIN price_catalogs c ON c.version=mp.catalog_version`)
+	if err != nil {
+		return modelPrice{}, false, err
+	}
+	defer rows.Close()
+	type row struct {
+		model, aliases string
+		price          modelPrice
+		modelEffective time.Time
+		order          priceLayerOrder
+	}
+	var priceRows []row
+	for rows.Next() {
+		var item row
+		var raw, modelText, sourceKind, catalogText, importedText, version string
+		if err = rows.Scan(&item.model, &item.price.Provider, &modelText, &raw, &item.aliases, &sourceKind, &catalogText, &importedText, &version); err != nil {
+			return modelPrice{}, false, err
+		}
+		item.price.EffectiveFrom = modelText
+		item.modelEffective, err = time.Parse(time.RFC3339Nano, modelText)
+		if err != nil {
+			return modelPrice{}, false, err
+		}
+		item.order = priceLayerOrder{sourceKind: sourceKind, version: version}
+		item.order.catalogEffective, err = time.Parse(time.RFC3339Nano, catalogText)
+		if err != nil {
+			return modelPrice{}, false, err
+		}
+		item.order.importedAt, err = time.Parse(time.RFC3339Nano, importedText)
+		if err != nil {
+			return modelPrice{}, false, err
+		}
+		if item.order.catalogEffective.After(target) || item.modelEffective.After(target) {
 			continue
 		}
-		if err = json.Unmarshal([]byte(raw), &p.Prices); err != nil {
-			return p, "", "", err
+		if err = json.Unmarshal([]byte(raw), &item.price.Prices); err != nil {
+			return modelPrice{}, false, err
 		}
-		matches := model == e.Model
+		priceRows = append(priceRows, item)
+	}
+	if err = rows.Err(); err != nil {
+		return modelPrice{}, false, err
+	}
+	sort.SliceStable(priceRows, func(i, j int) bool { return priceLayerBefore(priceRows[i].order, priceRows[j].order) })
+	expected := map[string]string{"codex": "openai", "claude": "anthropic"}[client]
+	merged := modelPrice{Provider: expected, Prices: map[string]string{}}
+	found := false
+	for _, priceRow := range priceRows {
+		if priceRow.price.Provider != expected {
+			continue
+		}
+		matches := usageModelMatches(client, priceRow.model, eventModel)
 		var a []string
-		_ = json.Unmarshal([]byte(aliases), &a)
+		_ = json.Unmarshal([]byte(priceRow.aliases), &a)
 		for _, x := range a {
-			if x == e.Model {
+			if usageModelMatches(client, x, eventModel) {
 				matches = true
 			}
 		}
@@ -1316,20 +2641,24 @@ func (s *Service) priceForEvent(ctx context.Context, e storedEvent) (modelPrice,
 		}
 		// Rows are newest-first. Preserve the first value of each component so an
 		// official layer can override only one verified component.
-		for k, v := range p.Prices {
+		for k, v := range priceRow.price.Prices {
 			if _, ok := merged.Prices[k]; !ok {
 				merged.Prices[k] = v
 			}
 		}
 		found = true
 	}
-	if err := rows.Err(); err != nil {
-		return modelPrice{}, "", "", err
+	return merged, found, nil
+}
+
+func usageModelMatches(client, catalogModel, eventModel string) bool {
+	if catalogModel == eventModel {
+		return true
 	}
-	if found {
-		return merged, mult, quality, nil
+	if client != "claude" || !strings.HasPrefix(catalogModel, "claude-") || !strings.HasPrefix(eventModel, "claude-") {
+		return false
 	}
-	return modelPrice{Provider: "unknown", Prices: map[string]string{}}, mult, quality, nil
+	return strings.ReplaceAll(catalogModel, ".", "-") == strings.ReplaceAll(eventModel, ".", "-")
 }
 func ParseMultiplier(v string) (string, error) {
 	r, e := decimal(v)
