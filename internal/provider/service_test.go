@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kitdine/agent-deck/internal/credentialvault"
 	"github.com/kitdine/agent-deck/internal/store"
@@ -711,5 +712,45 @@ func TestProviderAddExistingCredentialRejectsMetadataDriftBeforeSecretRead(t *te
 	definition.Multiplier = "2"
 	if _, err = service.PlanProviderCredential(ctx, definition, "default"); !errors.Is(err, ErrInvalidProvider) {
 		t.Fatalf("metadata drift error = %v", err)
+	}
+}
+
+func TestCurrentAndStatusReportCredentialShorthandWithoutOpeningSecrets(t *testing.T) {
+	ctx := context.Background()
+	database, err := store.Open(ctx, filepath.Join(t.TempDir(), "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	service := Service{Store: database, Vault: testCredentialVault(t)}
+	created, err := service.AddProvider(ctx, Definition{Name: "example", Endpoint: "https://provider.example", Clients: []Client{ClientCodex}, Multiplier: "1.25"}, "work", "synthetic-secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	selectedAt := time.Date(2026, 7, 20, 1, 2, 3, 0, time.UTC)
+	if err = database.RecordSelection(ctx, store.Selection{ProviderID: created.ID, Client: "codex", ProviderName: "example", EndpointSnapshot: "https://provider.example/v1", MultiplierSnapshot: "1.25", CredentialName: "work", SelectedAt: selectedAt}); err != nil {
+		t.Fatal(err)
+	}
+	rejecting := &rejectingCredentialVault{}
+	service.Vault = rejecting
+	current, err := service.Current(ctx)
+	if err != nil || len(current) != 1 || current[0].Client != "codex" || current[0].Provider != "example" || current[0].Credential != "work" || current[0].SelectedAt != selectedAt.Format(time.RFC3339Nano) {
+		t.Fatalf("current = %#v, %v", current, err)
+	}
+	statuses, err := service.Status(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var active []ActiveSelection
+	for _, status := range statuses {
+		if status.Definition.Name == "example" {
+			active = status.Active
+		}
+	}
+	if len(active) != 1 || active[0].Client != "codex" || active[0].Credential != "work" || active[0].SelectedAt != selectedAt.Format(time.RFC3339Nano) {
+		t.Fatalf("active status = %#v", active)
+	}
+	if rejecting.calls != 0 {
+		t.Fatalf("read-only selection reporting opened credential secrets %d time(s)", rejecting.calls)
 	}
 }

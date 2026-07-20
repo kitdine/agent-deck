@@ -41,6 +41,7 @@
     "price.status",
     "price.update",
     "provider.add",
+    "provider.current",
     "provider.list",
     "provider.recover",
     "provider.remove",
@@ -830,6 +831,37 @@
       },
       "error_code": "invalid_argument",
       "error_command": "provider.add"
+    },
+    "provider.current": {
+      "success_schema": {
+        "command": "string",
+        "data": [
+          {
+            "client": "string",
+            "credential": "string",
+            "provider": "string",
+            "selected_at": "string"
+          }
+        ],
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "provider.current"
     },
     "provider.list": {
       "success_schema": {

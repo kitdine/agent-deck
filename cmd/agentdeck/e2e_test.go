@@ -109,6 +109,7 @@ func TestIsolatedEndToEndFlow(t *testing.T) {
 	}
 	runJSON("provider.add", "phase7-claude-secret\n", "provider", "add", "phase7-claude", "--endpoint", "https://example.invalid", "--clients", "claude")
 	runJSON("provider.use", "", "provider", "use", "phase7-claude")
+	runJSON("provider.current", "", "provider", "current")
 	runResult := runJSON("run.codex", "", "run", "codex", "--", "phase7")
 	var runEnvelope struct {
 		Data struct {

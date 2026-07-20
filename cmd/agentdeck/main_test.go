@@ -133,7 +133,7 @@ func TestProviderStatusReportsZeroCredentialsNotReadyInTextAndJSON(t *testing.T)
 func TestProviderStatusCollectionUsesIndependentActivationColumns(t *testing.T) {
 	values := []provider.Status{
 		{Definition: provider.Provider{Name: "official", BuiltIn: true}, Ready: true, Active: []provider.ActiveSelection{{Client: "codex"}}},
-		{Definition: provider.Provider{Name: "custom"}, Credentials: []provider.Credential{{}, {}}, Active: []provider.ActiveSelection{{Client: "claude"}}},
+		{Definition: provider.Provider{Name: "custom"}, Credentials: []provider.Credential{{}, {}}, Active: []provider.ActiveSelection{{Client: "claude", Credential: "personal"}}},
 	}
 	var output bytes.Buffer
 	if err := renderProviderStatuses(&output, values); err != nil {
@@ -143,9 +143,9 @@ func TestProviderStatusCollectionUsesIndependentActivationColumns(t *testing.T) 
 		"+----------+----------+-------------+-------+--------------+---------------+\n" +
 		"| NAME     | TYPE     | CREDENTIALS | READY | CODEX ACTIVE | CLAUDE ACTIVE |\n" +
 		"+----------+----------+-------------+-------+--------------+---------------+\n" +
-		"| official | built-in | 0           | true  | true         | false         |\n" +
+		"| official | built-in | 0           | true  | -            | -             |\n" +
 		"+----------+----------+-------------+-------+--------------+---------------+\n" +
-		"| custom   | custom   | 2           | false | false        | true          |\n" +
+		"| custom   | custom   | 2           | false | -            | personal      |\n" +
 		"+----------+----------+-------------+-------+--------------+---------------+\n"
 	if output.String() != want {
 		t.Fatalf("provider status table =\n%s", output.String())
@@ -1322,3 +1322,61 @@ func TestUsageOnlyWatchNeverCreatesSessionStore(t *testing.T) {
 		t.Fatalf("usage-only watch created session store: %v", err)
 	}
 }
+
+func TestProviderCurrentAndStatusRenderCredentialShorthand(t *testing.T) {
+	ctx := context.Background()
+	state := filepath.Join(t.TempDir(), "state")
+	database, err := store.Open(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	vault := credentialvault.New(state, func(context.Context) (string, error) { return "synthetic-machine", nil })
+	service := provider.Service{Store: database, Vault: vault}
+	created, err := service.AddProvider(ctx, provider.Definition{Name: "example", Endpoint: "https://provider.example", Clients: []provider.Client{provider.ClientCodex}, Multiplier: "1"}, "work", "synthetic-secret")
+	if err != nil {
+		database.Close()
+		t.Fatal(err)
+	}
+	selectedAt := time.Date(2026, 7, 20, 1, 2, 3, 0, time.UTC)
+	if err = database.RecordSelection(ctx, store.Selection{ProviderID: created.ID, Client: "codex", ProviderName: "example", EndpointSnapshot: "https://provider.example/v1", MultiplierSnapshot: "1", CredentialName: "work", SelectedAt: selectedAt}); err != nil {
+		database.Close()
+		t.Fatal(err)
+	}
+	if err = database.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, test := range []struct {
+		args []string
+		want []string
+	}{
+		{args: []string{"provider", "current"}, want: []string{"| CLIENT | PROVIDER | CREDENTIAL | SELECTED AT", "| codex", "| example", "| work"}},
+		{args: []string{"provider", "status"}, want: []string{"CODEX ACTIVE", "| example", "| work"}},
+		{args: []string{"provider", "status", "example"}, want: []string{"| CLIENT | ACTIVE | CREDENTIAL | SELECTED AT", "| codex", "| true", "| work"}},
+	} {
+		var output bytes.Buffer
+		args := append([]string{"--state-dir", state}, test.args...)
+		if err = run(args, bytes.NewReader(nil), &output); err != nil {
+			t.Fatalf("%v: %v", test.args, err)
+		}
+		for _, want := range test.want {
+			if !strings.Contains(output.String(), want) {
+				t.Fatalf("%v missing %q:\n%s", test.args, want, output.String())
+			}
+		}
+		if strings.Contains(output.String(), "synthetic-secret") {
+			t.Fatalf("%v exposed credential value", test.args)
+		}
+	}
+	var encoded bytes.Buffer
+	if err = run([]string{"--state-dir", state, "--format", "json", "provider", "current"}, bytes.NewReader(nil), &encoded); err != nil {
+		t.Fatal(err)
+	}
+	var envelope struct {
+		Data []provider.CurrentSelection `json:"data"`
+	}
+	if err = json.Unmarshal(encoded.Bytes(), &envelope); err != nil || len(envelope.Data) != 1 || envelope.Data[0].Credential != "work" {
+		t.Fatalf("provider current JSON = %#v, %v", envelope, err)
+	}
+}
+

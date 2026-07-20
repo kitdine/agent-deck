@@ -255,6 +255,7 @@ func argumentHelp(summary, arguments string) string {
 func applyHelpCatalog(root *cobra.Command) {
 	entries := map[string]helpEntry{
 		"provider list":    {short: "List provider definitions"},
+		"provider current": {short: "Show current provider selections"},
 		"provider status":  {short: "Show provider and credential readiness", long: argumentHelp("Show active selection and credential readiness.", "  name  Optional provider filter."), example: "  agentdeck provider status aigocode"},
 		"provider recover": {short: "Inspect and recover interrupted provider switches"},
 		"provider show": {
@@ -602,6 +603,7 @@ func newProviderCommand(opts *commandOptions) *cobra.Command {
 	})}
 	providerCmd.AddCommand(
 		&cobra.Command{Use: "list", Args: cobra.NoArgs, RunE: withService(func(ctx context.Context, s provider.Service, _ []string) (any, error) { return s.List(ctx) })},
+		&cobra.Command{Use: "current", Args: cobra.NoArgs, RunE: withService(func(ctx context.Context, s provider.Service, _ []string) (any, error) { return s.Current(ctx) })},
 		&cobra.Command{Use: "status [name]", Args: cobra.MaximumNArgs(1), RunE: withService(func(ctx context.Context, s provider.Service, args []string) (any, error) {
 			values, err := s.Status(ctx)
 			if err != nil || len(args) == 0 {
@@ -1574,6 +1576,24 @@ func renderCommandText(w io.Writer, command string, data any) error {
 		default:
 			return fmt.Errorf("unexpected provider.status result %T", data)
 		}
+	case "provider.current":
+		value, ok := data.([]provider.CurrentSelection)
+		if !ok {
+			return fmt.Errorf("unexpected provider.current result %T", data)
+		}
+		if len(value) == 0 {
+			_, err := fmt.Fprintln(w, "No current provider selections.")
+			return err
+		}
+		rows := make([][]string, 0, len(value))
+		for _, item := range value {
+			credential := item.Credential
+			if credential == "" {
+				credential = "-"
+			}
+			rows = append(rows, []string{item.Client, item.Provider, credential, item.SelectedAt})
+		}
+		return output.WriteASCIITable(w, []string{"CLIENT", "PROVIDER", "CREDENTIAL", "SELECTED AT"}, rows)
 	case "provider.recover":
 		value, ok := data.([]store.Operation)
 		if !ok {
@@ -1722,13 +1742,17 @@ func renderProviderStatuses(w io.Writer, values []provider.Status) error {
 		if value.Definition.BuiltIn {
 			kind, ready = "built-in", true
 		}
-		codexActive, claudeActive := false, false
+		codexActive, claudeActive := "-", "-"
 		for _, selection := range value.Active {
+			credential := selection.Credential
+			if credential == "" {
+				credential = "-"
+			}
 			switch selection.Client {
 			case string(provider.ClientCodex):
-				codexActive = true
+				codexActive = credential
 			case string(provider.ClientClaude):
-				claudeActive = true
+				claudeActive = credential
 			}
 		}
 		rows = append(rows, []string{
@@ -1736,8 +1760,8 @@ func renderProviderStatuses(w io.Writer, values []provider.Status) error {
 			kind,
 			strconv.Itoa(len(value.Credentials)),
 			strconv.FormatBool(ready),
-			strconv.FormatBool(codexActive),
-			strconv.FormatBool(claudeActive),
+			codexActive,
+			claudeActive,
 		})
 	}
 	return output.WriteASCIITable(w, []string{"NAME", "TYPE", "CREDENTIALS", "READY", "CODEX ACTIVE", "CLAUDE ACTIVE"}, rows)
@@ -1748,15 +1772,31 @@ func renderProviderStatus(w io.Writer, value provider.Status) error {
 		return err
 	}
 	if value.Definition.BuiltIn {
-		_, err := fmt.Fprintln(w, "credential readiness: not applicable")
+		if _, err := fmt.Fprintln(w, "credential readiness: not applicable"); err != nil {
+			return err
+		}
+	} else if len(value.Credentials) == 0 {
+		if _, err := fmt.Fprintln(w, "credentials: none\nready: false"); err != nil {
+			return err
+		}
+	} else if _, err := fmt.Fprintf(w, "credentials: %d\nready: %t\n", len(value.Credentials), value.Ready); err != nil {
 		return err
 	}
-	if len(value.Credentials) == 0 {
-		_, err := fmt.Fprintln(w, "credentials: none\nready: false")
-		return err
+	rows := make([][]string, 0, 2)
+	for _, client := range []provider.Client{provider.ClientCodex, provider.ClientClaude} {
+		active, credential, selectedAt := "false", "-", "-"
+		for _, selection := range value.Active {
+			if selection.Client != string(client) {
+				continue
+			}
+			active, selectedAt = "true", selection.SelectedAt
+			if selection.Credential != "" {
+				credential = selection.Credential
+			}
+		}
+		rows = append(rows, []string{string(client), active, credential, selectedAt})
 	}
-	_, err := fmt.Fprintf(w, "credentials: %d\nready: %t\n", len(value.Credentials), value.Ready)
-	return err
+	return output.WriteASCIITable(w, []string{"CLIENT", "ACTIVE", "CREDENTIAL", "SELECTED AT"}, rows)
 }
 
 func renderSessionMetadata(w io.Writer, values []session.Metadata) error {

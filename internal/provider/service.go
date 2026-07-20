@@ -75,6 +75,14 @@ type Status struct {
 type ActiveSelection struct {
 	Client     string `json:"client"`
 	Credential string `json:"credential,omitempty"`
+	SelectedAt string `json:"selected_at"`
+}
+
+type CurrentSelection struct {
+	Client     string `json:"client"`
+	Provider   string `json:"provider"`
+	Credential string `json:"credential,omitempty"`
+	SelectedAt string `json:"selected_at"`
 }
 
 const OfficialProviderName = "official"
@@ -472,7 +480,7 @@ func (s Service) Status(ctx context.Context) ([]Status, error) {
 			if snapshot.Name != definition.Name {
 				continue
 			}
-			active := ActiveSelection{Client: string(client)}
+			active := ActiveSelection{Client: string(client), SelectedAt: snapshot.SelectedAt.Format(time.RFC3339Nano)}
 			if !definition.BuiltIn {
 				active.Credential = snapshot.Credential
 			}
@@ -481,6 +489,31 @@ func (s Service) Status(ctx context.Context) ([]Status, error) {
 		statuses = append(statuses, status)
 	}
 	return statuses, nil
+}
+
+// Current returns the latest completed selection for each client without
+// reading or decrypting credential values.
+func (s Service) Current(ctx context.Context) ([]CurrentSelection, error) {
+	selections := make([]CurrentSelection, 0, 2)
+	for _, client := range []Client{ClientCodex, ClientClaude} {
+		snapshot, err := s.Store.CurrentProviderSnapshot(ctx, string(client))
+		if errors.Is(err, sql.ErrNoRows) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		selection := CurrentSelection{
+			Client:     string(client),
+			Provider:   snapshot.Name,
+			SelectedAt: snapshot.SelectedAt.Format(time.RFC3339Nano),
+		}
+		if !snapshot.Official {
+			selection.Credential = snapshot.Credential
+		}
+		selections = append(selections, selection)
+	}
+	return selections, nil
 }
 
 func (s Service) Use(ctx context.Context, name string, client Client, configPath, backupPath string) error {
