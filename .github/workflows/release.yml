@@ -23,6 +23,11 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - name: Install fish
+        # scripts/test-completion-install.sh (via make release-verify ->
+        # check-install) exercises fish completion install/uninstall; the
+        # macos-15 runner image does not ship fish by default.
+        run: brew install fish
       - name: Verify release
         run: make release-verify
       - name: Build release archives
