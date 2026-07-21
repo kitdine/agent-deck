@@ -1849,6 +1849,28 @@
             "start": "string",
             "value": "string"
           },
+          "providers": [
+            {
+              "cache_hit_rate": "string",
+              "cache_write_tokens": "number",
+              "cached_read_tokens": "number",
+              "client": "string",
+              "coverage": "string",
+              "events": "number",
+              "input_tokens": "number",
+              "known_metric_value": "string",
+              "known_provider_cost": "string",
+              "known_share": "string",
+              "logical_input_tokens": "number",
+              "metric_value": "string",
+              "name": "string",
+              "output_tokens": "number",
+              "provider_cost": "string",
+              "sessions": "number",
+              "share": "string",
+              "tokens": "number"
+            }
+          ],
           "range": {
             "from": "string",
             "to": "string"

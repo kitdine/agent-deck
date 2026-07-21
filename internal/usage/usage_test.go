@@ -1958,6 +1958,9 @@ INSERT INTO usage_events(event_key,client,session_id,event_id,event_at,model,inp
 	if report.Peak.Start != "2026-07-01T00:00:00+08:00" || report.Peak.Value == nil || *report.Peak.Value != "450" || len(report.Models) != 2 || report.Models[0].Name != "gpt-a" || report.Coverage.Percent != "100.00" {
 		t.Fatalf("stats report = %#v", report)
 	}
+	if len(report.Providers) != 1 || report.Providers[0].Client != "codex" || report.Providers[0].Name != "unknown" || report.Providers[0].Tokens != 750 {
+		t.Fatalf("stats providers = %#v", report.Providers)
+	}
 	if got := queries.Load(); got != 5 {
 		t.Fatalf("stats SQL queries for 3 events = %d, want 5", got)
 	}
@@ -2308,5 +2311,108 @@ INSERT INTO usage_sessions(client,session_id,first_at,last_at) VALUES
 	}
 	if len(payload.Clients) != 1 || payload.Clients[0].Share != nil || payload.Clients[0].KnownShare == "" {
 		t.Fatalf("partial client share JSON = %s", encoded)
+	}
+}
+
+func TestStatsAttributesRuntimeProvidersWithoutMergingClients(t *testing.T) {
+	ctx := context.Background()
+	database, err := store.Open(ctx, filepath.Join(t.TempDir(), "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if err = database.RecordSelection(ctx, store.Selection{
+		Client:             "codex",
+		ProviderName:       "relay",
+		MultiplierSnapshot: "1",
+		SelectedAt:         time.Date(2026, 7, 20, 1, 30, 0, 0, time.UTC),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err = database.RecordSelection(ctx, store.Selection{
+		Client:             "claude",
+		ProviderName:       "relay",
+		MultiplierSnapshot: "1",
+		SelectedAt:         time.Date(2026, 7, 20, 1, 0, 0, 0, time.UTC),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	_, err = database.Exec(ctx, `
+INSERT INTO usage_sessions(client,session_id,first_at,last_at) VALUES
+ ('codex','unknown-session','2026-07-20T00:30:00Z','2026-07-20T00:30:00Z'),
+ ('codex','estimated-session','2026-07-20T02:00:00Z','2026-07-20T02:00:00Z'),
+ ('codex','exact-session','2026-07-20T03:00:00Z','2026-07-20T03:00:00Z'),
+ ('claude','claude-session','2026-07-20T02:30:00Z','2026-07-20T02:30:00Z');
+INSERT INTO usage_events(event_key,client,session_id,event_id,event_at,model,input_tokens,cached_input_tokens,source_path,source_offset) VALUES
+	 ('unknown','codex','unknown-session','unknown','2026-07-20T00:30:00Z','gpt-test',10,2,'fixture',0),
+	 ('estimated','codex','estimated-session','estimated','2026-07-20T02:00:00Z','gpt-test',20,5,'fixture',1),
+	 ('exact','codex','exact-session','exact','2026-07-20T03:00:00Z','gpt-test',30,7,'fixture',2),
+	 ('claude','claude','claude-session','claude','2026-07-20T02:30:00Z','claude-test',40,0,'fixture',3);
+INSERT INTO usage_runs(id,client,provider,multiplier,started_at,ended_at,exact) VALUES
+	 (1,'codex','exact-relay','1','2026-07-20T02:59:00Z','2026-07-20T03:01:00Z',1);
+INSERT INTO usage_run_bindings(event_key,run_id) VALUES ('exact',1);
+INSERT INTO usage_tool_calls(activity_key,client,session_id,model,tool_name,started_at,status,source_path,source_offset) VALUES
+	 ('unknown-tool','codex','unknown-session','gpt-test','unknown_tool','2026-07-20T00:30:01Z','completed','fixture',4),
+	 ('estimated-tool','codex','estimated-session','gpt-test','estimated_tool','2026-07-20T02:00:01Z','completed','fixture',5),
+	 ('exact-tool','codex','exact-session','gpt-test','session_approximation_tool','2026-07-20T03:00:01Z','completed','fixture',6)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	report, err := New(database, "").Stats(ctx, StatsOptions{
+		From:    time.Date(2026, 7, 20, 0, 0, 0, 0, time.UTC),
+		To:      time.Date(2026, 7, 21, 0, 0, 0, 0, time.UTC),
+		GroupBy: "day", Metric: "tokens", Location: time.UTC, Timezone: "UTC",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(report)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var data map[string]any
+	if err = json.Unmarshal(encoded, &data); err != nil {
+		t.Fatal(err)
+	}
+	providers, ok := data["providers"].([]any)
+	if !ok {
+		t.Fatalf("stats providers missing from JSON: %s", encoded)
+	}
+	got := map[string]float64{}
+	for _, item := range providers {
+		provider := item.(map[string]any)
+		got[provider["client"].(string)+"/"+provider["name"].(string)] = provider["tokens"].(float64)
+	}
+	want := map[string]float64{
+		"codex/unknown":     10,
+		"codex/relay":       20,
+		"codex/exact-relay": 30,
+		"claude/relay":      40,
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("runtime provider dimensions = %#v, want %#v", got, want)
+	}
+	filtered, err := New(database, "").Stats(ctx, StatsOptions{
+		From:    time.Date(2026, 7, 20, 0, 0, 0, 0, time.UTC),
+		To:      time.Date(2026, 7, 21, 0, 0, 0, 0, time.UTC),
+		GroupBy: "day", Metric: "tokens", Provider: "relay", Location: time.UTC, Timezone: "UTC",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filtered.Totals.Tokens != 60 || filtered.Totals.Sessions != 2 || filtered.Totals.Events != 2 || len(filtered.Buckets) != 1 || filtered.Buckets[0].Tokens != 60 || len(filtered.Clients) != 2 || len(filtered.Providers) != 2 || filtered.Coverage.TotalEvents != 2 || filtered.Peak.Value == nil || *filtered.Peak.Value != "60" {
+		t.Fatalf("provider-filtered report was not globally narrowed: %#v", filtered)
+	}
+	if len(filtered.CacheSessions) != 1 || filtered.CacheSessions[0].SessionID != "estimated-session" {
+		t.Fatalf("provider-filtered cache sessions = %#v", filtered.CacheSessions)
+	}
+	models := map[string]StatsDimension{}
+	for _, model := range filtered.Models {
+		models[model.Client+"/"+model.Name] = model
+	}
+	// Tool calls have no run binding. The exact-session call therefore follows
+	// its session-start snapshot (relay), while its exact-relay token event does not.
+	if models["codex/gpt-test"].Activity == nil || models["codex/gpt-test"].Activity.ToolCalls != 2 {
+		t.Fatalf("provider-filtered tool activity = %#v", models["codex/gpt-test"].Activity)
 	}
 }

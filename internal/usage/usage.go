@@ -94,6 +94,7 @@ type StatsOptions struct {
 	Metric   string
 	Client   string
 	Model    string
+	Provider string
 	Timezone string
 	Location *time.Location
 	Activity bool
@@ -229,6 +230,7 @@ type StatsReport struct {
 	Buckets           []StatsBucket        `json:"buckets"`
 	Models            []StatsDimension     `json:"models"`
 	Clients           []StatsDimension     `json:"clients"`
+	Providers         []StatsDimension     `json:"providers"`
 	CacheSessions     []StatsCacheSession  `json:"cache_sessions"`
 	Activity          []StatsActivity      `json:"activity"`
 	Peak              StatsPeak            `json:"peak"`
@@ -1912,6 +1914,7 @@ type storedEvent struct {
 	runID         sql.NullInt64
 	runExact      sql.NullInt64
 	runMultiplier sql.NullString
+	runProvider   sql.NullString
 	sessionStart  sql.NullString
 }
 
@@ -2140,6 +2143,14 @@ func statsMetricRat(metric string, value *statsAccumulator) *big.Rat {
 	}
 }
 
+func statsKnownMetricRat(value string) *big.Rat {
+	parsed, err := decimal(value)
+	if err != nil {
+		return new(big.Rat)
+	}
+	return parsed
+}
+
 func statsDimension(name, client, metric string, value *statsAccumulator, total *big.Rat, totalComplete bool) StatsDimension {
 	cost, known := statsCost(value)
 	knownShare := "0.00"
@@ -2276,47 +2287,74 @@ func (r statsPriceResolver) priceAt(client, model string, at time.Time) (modelPr
 	return merged, len(merged.Prices) > 0
 }
 
-func (r statsPriceResolver) priceForEvent(event storedEvent, timeline store.ProviderTimeline) (modelPrice, string, string, error) {
-	quality, multiplierValue := "historical", "1"
+func runtimeProviderName(value string) string {
+	if value == "" {
+		return "unknown"
+	}
+	return value
+}
+
+func runtimeProviderAt(timeline store.ProviderTimeline, client string, atValue sql.NullString) (string, error) {
+	if !atValue.Valid || atValue.String == "" {
+		return "unknown", nil
+	}
+	at, err := time.Parse(time.RFC3339Nano, atValue.String)
+	if err != nil {
+		return "", err
+	}
+	snapshot, err := timeline.SnapshotAt(client, at)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "unknown", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return runtimeProviderName(snapshot.Name), nil
+}
+
+func (r statsPriceResolver) priceForEvent(event storedEvent, timeline store.ProviderTimeline) (modelPrice, string, string, string, error) {
+	quality, multiplierValue, runtimeProvider := "historical", "1", "unknown"
 	if event.runID.Valid && event.runExact.Valid && event.runExact.Int64 == 1 {
 		if !event.runMultiplier.Valid {
-			return modelPrice{}, "", "", errors.New("exact usage run has no multiplier")
+			return modelPrice{}, "", "", "", errors.New("exact usage run has no multiplier")
 		}
 		quality, multiplierValue = "exact", event.runMultiplier.String
+		if event.runProvider.Valid {
+			runtimeProvider = runtimeProviderName(event.runProvider.String)
+		}
 	} else {
-		sessionStart := event.EventAt
 		if event.sessionStart.Valid && event.sessionStart.String != "" {
-			sessionStart = event.sessionStart.String
-		}
-		at, err := time.Parse(time.RFC3339Nano, sessionStart)
-		if err != nil {
-			return modelPrice{}, "", "", err
-		}
-		snapshot, err := timeline.SnapshotAt(event.Client, at)
-		if err == nil {
-			quality, multiplierValue = "estimated", snapshot.Multiplier
-		} else if !errors.Is(err, sql.ErrNoRows) {
-			return modelPrice{}, "", "", err
+			at, parseErr := time.Parse(time.RFC3339Nano, event.sessionStart.String)
+			if parseErr != nil {
+				return modelPrice{}, "", "", "", parseErr
+			}
+			snapshot, snapshotErr := timeline.SnapshotAt(event.Client, at)
+			if snapshotErr == nil {
+				runtimeProvider = runtimeProviderName(snapshot.Name)
+				quality, multiplierValue = "estimated", snapshot.Multiplier
+			} else if !errors.Is(snapshotErr, sql.ErrNoRows) {
+				return modelPrice{}, "", "", "", snapshotErr
+			}
 		}
 	}
 	eventAt, err := time.Parse(time.RFC3339Nano, event.EventAt)
 	if err != nil {
-		return modelPrice{}, "", "", err
+		return modelPrice{}, "", "", "", err
 	}
 	historical, historicalFound := r.priceAt(event.Client, event.Model, eventAt)
 	current, currentFound := r.priceAt(event.Client, event.Model, r.current)
 	if !historicalFound && !currentFound {
-		return modelPrice{Provider: "unknown", Prices: map[string]string{}}, multiplierValue, quality, nil
+		return modelPrice{Provider: "unknown", Prices: map[string]string{}}, multiplierValue, quality, runtimeProvider, nil
 	}
 	if !historicalFound {
-		return current, multiplierValue, quality, nil
+		return current, multiplierValue, quality, runtimeProvider, nil
 	}
 	for component, value := range current.Prices {
 		if _, exists := historical.Prices[component]; !exists {
 			historical.Prices[component] = value
 		}
 	}
-	return historical, multiplierValue, quality, nil
+	return historical, multiplierValue, quality, runtimeProvider, nil
 }
 
 func (s *Service) Stats(ctx context.Context, options StatsOptions) (StatsReport, error) {
@@ -2349,6 +2387,7 @@ func (s *Service) Stats(ctx context.Context, options StatsOptions) (StatsReport,
 	buckets := map[string]*statsAccumulator{}
 	models := map[string]*statsAccumulator{}
 	clients := map[string]*statsAccumulator{}
+	providers := map[string]*statsAccumulator{}
 	sessions := map[string]*statsSessionAccumulator{}
 	modelActivity := map[string]*statsModelActivityAccumulator{}
 	activity := map[[2]int]*statsAccumulator{}
@@ -2357,9 +2396,12 @@ func (s *Service) Stats(ctx context.Context, options StatsOptions) (StatsReport,
 		if parseErr != nil {
 			return StatsReport{}, parseErr
 		}
-		price, multiplierValue, _, priceErr := resolver.priceForEvent(event, timeline)
+		price, multiplierValue, _, runtimeProvider, priceErr := resolver.priceForEvent(event, timeline)
 		if priceErr != nil {
 			return StatsReport{}, priceErr
+		}
+		if options.Provider != "" && runtimeProvider != options.Provider {
+			continue
 		}
 		result, calculateErr := Calculate(event.Client, event.Model, event.Tokens, price, multiplierValue)
 		if calculateErr != nil {
@@ -2377,6 +2419,10 @@ func (s *Service) Stats(ctx context.Context, options StatsOptions) (StatsReport,
 		if clients[event.Client] == nil {
 			clients[event.Client] = newStatsAccumulator()
 		}
+		providerKey := event.Client + "\x00" + runtimeProvider
+		if providers[providerKey] == nil {
+			providers[providerKey] = newStatsAccumulator()
+		}
 		sessionKey := event.Client + "\x00" + event.SessionID
 		if sessions[sessionKey] == nil {
 			sessions[sessionKey] = &statsSessionAccumulator{statsAccumulator: newStatsAccumulator(), models: map[string]struct{}{}}
@@ -2389,7 +2435,7 @@ func (s *Service) Stats(ctx context.Context, options StatsOptions) (StatsReport,
 		if activity[activityKey] == nil {
 			activity[activityKey] = newStatsAccumulator()
 		}
-		for _, accumulator := range []*statsAccumulator{total, buckets[key], models[modelKey], clients[event.Client], activity[activityKey]} {
+		for _, accumulator := range []*statsAccumulator{total, buckets[key], models[modelKey], clients[event.Client], providers[providerKey], activity[activityKey]} {
 			if err = accumulator.add(event, result); err != nil {
 				return StatsReport{}, err
 			}
@@ -2408,17 +2454,17 @@ func (s *Service) Stats(ctx context.Context, options StatsOptions) (StatsReport,
 			return StatsReport{}, err
 		}
 	}
-	toolQuery := `SELECT client,session_id,model,tool_name,started_at,status,duration_ms FROM usage_tool_calls WHERE started_at>=? AND started_at<?`
+	toolQuery := `SELECT t.client,t.session_id,t.model,t.tool_name,t.started_at,t.status,t.duration_ms,us.first_at FROM usage_tool_calls t LEFT JOIN usage_sessions us ON us.client=t.client AND us.session_id=t.session_id WHERE t.started_at>=? AND t.started_at<?`
 	toolArgs := []any{options.From.UTC().Format(time.RFC3339Nano), options.To.UTC().Format(time.RFC3339Nano)}
 	if options.Client != "" {
-		toolQuery += ` AND client=?`
+		toolQuery += ` AND t.client=?`
 		toolArgs = append(toolArgs, options.Client)
 	}
 	if options.Model != "" {
-		toolQuery += ` AND model=?`
+		toolQuery += ` AND t.model=?`
 		toolArgs = append(toolArgs, options.Model)
 	}
-	toolQuery += ` ORDER BY started_at,activity_key`
+	toolQuery += ` ORDER BY t.started_at,t.activity_key`
 	toolRows, err := s.Store.DB.QueryContext(ctx, toolQuery, toolArgs...)
 	if err != nil {
 		return StatsReport{}, err
@@ -2426,12 +2472,24 @@ func (s *Service) Stats(ctx context.Context, options StatsOptions) (StatsReport,
 	for toolRows.Next() {
 		var client, sessionID, model, tool, startedAt, status string
 		var duration sql.NullInt64
-		if err = toolRows.Scan(&client, &sessionID, &model, &tool, &startedAt, &status, &duration); err != nil {
+		var sessionStart sql.NullString
+		if err = toolRows.Scan(&client, &sessionID, &model, &tool, &startedAt, &status, &duration, &sessionStart); err != nil {
 			toolRows.Close()
 			return StatsReport{}, err
 		}
 		if model == "" {
 			continue
+		}
+		if options.Provider != "" {
+			// Unlike token events, tool calls have no run binding; use the session-start snapshot as a session-level approximation.
+			provider, providerErr := runtimeProviderAt(timeline, client, sessionStart)
+			if providerErr != nil {
+				toolRows.Close()
+				return StatsReport{}, providerErr
+			}
+			if provider != options.Provider {
+				continue
+			}
 		}
 		modelKey := client + "\x00" + model
 		if models[modelKey] == nil {
@@ -2472,7 +2530,7 @@ func (s *Service) Stats(ctx context.Context, options StatsOptions) (StatsReport,
 	report := StatsReport{
 		Range:    StatsRange{From: options.From.In(location).Format(time.RFC3339Nano), To: options.To.In(location).Format(time.RFC3339Nano)},
 		Timezone: timezone, GroupBy: options.GroupBy, Metric: options.Metric,
-		Buckets: []StatsBucket{}, Models: []StatsDimension{}, Clients: []StatsDimension{}, CacheSessions: []StatsCacheSession{}, Activity: []StatsActivity{}, UnpricedModels: []StatsUnpricedModel{}, ShowModelActivity: options.Activity,
+		Buckets: []StatsBucket{}, Models: []StatsDimension{}, Clients: []StatsDimension{}, Providers: []StatsDimension{}, CacheSessions: []StatsCacheSession{}, Activity: []StatsActivity{}, UnpricedModels: []StatsUnpricedModel{}, ShowModelActivity: options.Activity,
 		Coverage: StatsCoverage{PricedEvents: total.priced, UnpricedEvents: total.unpriced, TotalEvents: total.events, Percent: statsCoverage(total.priced, total.unpriced)},
 	}
 	completeProvider, _ := statsCost(total)
@@ -2540,6 +2598,10 @@ func (s *Service) Stats(ctx context.Context, options StatsOptions) (StatsReport,
 	for name, value := range clients {
 		report.Clients = append(report.Clients, statsDimension(name, "", options.Metric, value, totalMetric, total.complete))
 	}
+	for key, value := range providers {
+		parts := strings.SplitN(key, "\x00", 2)
+		report.Providers = append(report.Providers, statsDimension(parts[1], parts[0], options.Metric, value, totalMetric, total.complete))
+	}
 	for key, value := range sessions {
 		if value.cachedRead == 0 && value.cacheWrite == 0 {
 			continue
@@ -2557,8 +2619,8 @@ func (s *Service) Stats(ctx context.Context, options StatsOptions) (StatsReport,
 		report.CacheSessions = append(report.CacheSessions, StatsCacheSession{Client: parts[0], SessionID: parts[1], Models: models, InputTokens: value.input, OutputTokens: value.output, CachedReadTokens: value.cachedRead, CacheWriteTokens: value.cacheWrite, LogicalInputTokens: logicalInput, CacheHitRate: percentPointer(value.cachedRead, logicalInput), Events: value.events, FirstAt: value.firstAt, LastAt: value.lastAt, DetailCommand: fmt.Sprintf("agentdeck session show %s --client %s --activity", parts[1], parts[0])})
 	}
 	sort.Slice(report.Models, func(i, j int) bool {
-		left, _ := decimal(report.Models[i].KnownMetricValue)
-		right, _ := decimal(report.Models[j].KnownMetricValue)
+		left := statsKnownMetricRat(report.Models[i].KnownMetricValue)
+		right := statsKnownMetricRat(report.Models[j].KnownMetricValue)
 		if comparison := left.Cmp(right); comparison != 0 {
 			return comparison > 0
 		}
@@ -2566,6 +2628,17 @@ func (s *Service) Stats(ctx context.Context, options StatsOptions) (StatsReport,
 			return report.Models[i].Name < report.Models[j].Name
 		}
 		return report.Models[i].Client < report.Models[j].Client
+	})
+	sort.Slice(report.Providers, func(i, j int) bool {
+		left := statsKnownMetricRat(report.Providers[i].KnownMetricValue)
+		right := statsKnownMetricRat(report.Providers[j].KnownMetricValue)
+		if comparison := left.Cmp(right); comparison != 0 {
+			return comparison > 0
+		}
+		if report.Providers[i].Client == report.Providers[j].Client {
+			return report.Providers[i].Name < report.Providers[j].Name
+		}
+		return report.Providers[i].Client < report.Providers[j].Client
 	})
 	sort.Slice(report.Clients, func(i, j int) bool { return report.Clients[i].Name < report.Clients[j].Name })
 	sort.Slice(report.CacheSessions, func(i, j int) bool {
@@ -2680,7 +2753,7 @@ func (s *Service) events(ctx context.Context, client, session string) ([]storedE
 }
 
 func (s *Service) eventsRange(ctx context.Context, from, to time.Time, client, model string) ([]storedEvent, error) {
-	query := `SELECT e.event_key,e.client,e.session_id,e.event_id,e.event_at,e.model,e.input_tokens,e.cached_input_tokens,e.output_tokens,e.cache_read_tokens,e.cache_creation_tokens,e.cache_write_5m_tokens,e.cache_write_1h_tokens,e.source_path,e.source_offset,COALESCE(b.run_id,e.run_id),r.exact,r.multiplier,us.first_at FROM usage_events e LEFT JOIN usage_run_bindings b ON b.event_key=e.event_key LEFT JOIN usage_runs r ON r.id=COALESCE(b.run_id,e.run_id) LEFT JOIN usage_sessions us ON us.client=e.client AND us.session_id=e.session_id WHERE e.event_at>=? AND e.event_at<?`
+	query := `SELECT e.event_key,e.client,e.session_id,e.event_id,e.event_at,e.model,e.input_tokens,e.cached_input_tokens,e.output_tokens,e.cache_read_tokens,e.cache_creation_tokens,e.cache_write_5m_tokens,e.cache_write_1h_tokens,e.source_path,e.source_offset,COALESCE(b.run_id,e.run_id),r.exact,r.multiplier,r.provider,us.first_at FROM usage_events e LEFT JOIN usage_run_bindings b ON b.event_key=e.event_key LEFT JOIN usage_runs r ON r.id=COALESCE(b.run_id,e.run_id) LEFT JOIN usage_sessions us ON us.client=e.client AND us.session_id=e.session_id WHERE e.event_at>=? AND e.event_at<?`
 	args := []any{from.UTC().Format(time.RFC3339Nano), to.UTC().Format(time.RFC3339Nano)}
 	if client != "" {
 		query += ` AND e.client=?`
@@ -2700,7 +2773,7 @@ func (s *Service) eventsRange(ctx context.Context, from, to time.Time, client, m
 	for rows.Next() {
 		var event storedEvent
 		var input, cached, output, read, creation, write5, write1 int64
-		if err = rows.Scan(&event.Key, &event.Client, &event.SessionID, &event.EventID, &event.EventAt, &event.Model, &input, &cached, &output, &read, &creation, &write5, &write1, &event.SourcePath, &event.SourceOffset, &event.runID, &event.runExact, &event.runMultiplier, &event.sessionStart); err != nil {
+		if err = rows.Scan(&event.Key, &event.Client, &event.SessionID, &event.EventID, &event.EventAt, &event.Model, &input, &cached, &output, &read, &creation, &write5, &write1, &event.SourcePath, &event.SourceOffset, &event.runID, &event.runExact, &event.runMultiplier, &event.runProvider, &event.sessionStart); err != nil {
 			return nil, err
 		}
 		event.Tokens = map[string]int64{"input_tokens": input, "cached_input_tokens": cached, "output_tokens": output, "cache_read_tokens": read, "cache_creation_tokens": creation, "cache_write_5m_tokens": write5, "cache_write_1h_tokens": write1}

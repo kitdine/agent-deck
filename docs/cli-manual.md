@@ -175,7 +175,7 @@ personal -> aigocode-personal-ref
 | --- | --- | --- | --- | --- |
 | `usage scan` | 增量扫描本地 Codex/Claude usage sources | 无 | 无 | `agentdeck usage scan` |
 | `usage summary [daily\|weekly\|monthly]` | 扫描后汇总全部历史，或按本机时区快捷查看今天、本周（周一开始）、本月 | 可选周期位置参数 | 否 | `agentdeck usage summary weekly` |
-| `usage stats` | 输出 KPI、趋势、完整模型列表、cache hit、client 占比、均值、峰值、计价覆盖和 activity | `--period`、`--from/--to`、`--group-by`、`--metric`、`--client`、`--model`、`--activity` | 默认 `7d/auto/tokens`；日期必须成对；`--activity` 必须与 `--model` 同用 | `agentdeck usage stats --model gpt-5.4 --activity` |
+| `usage stats` | 输出 KPI、趋势、完整模型列表、cache hit、client/provider 占比、均值、峰值、计价覆盖和 activity | `--period`、`--from/--to`、`--group-by`、`--metric`、`--client`、`--model`、`--provider`、`--activity` | 默认 `7d/auto/tokens`；日期必须成对；`--provider` 接受精确 runtime provider 名称且不做枚举校验；`--activity` 必须与 `--model` 同用 | `agentdeck usage stats --provider official` |
 | `usage sessions` | 按 session 分列展示各类 token、成本和计价状态 | 无 | 无 | `agentdeck usage sessions` |
 | `usage diagnose` | 展示 source、event、session、run、价格覆盖和 attribution 诊断 | 无 | 无 | `agentdeck usage diagnose` |
 | `usage rebuild` | 逐 source 原子重建 usage metadata；失败 source 保留旧数据并返回 partial warning | 无 | 无 | `agentdeck usage rebuild` |
@@ -211,11 +211,17 @@ personal -> aigocode-personal-ref
   时区从本周一 00:00 到当前时刻的当前自然周，与滚动 `7d` 明确区分。也可用本机日期
   `--from YYYY-MM-DD --to YYYY-MM-DD`（to 当日包含在范围内）。`group-by` 支持
   `auto|hour|day|week|month`，`metric` 支持 `tokens|cost|sessions`。JSON 稳定包含
-  `range`、`timezone`、`totals`、`buckets`、`models`、`clients`、`cache_sessions`、`activity`、`peak`、
+  `range`、`timezone`、`totals`、`buckets`、`models`、`clients`、`providers`、`cache_sessions`、`activity`、`peak`、
   `coverage` 和确定排序的 `unpriced_models`。totals、bucket、model、client 均保留
-  input、output、cached-read、cache-write 分量。默认 text 使用响应式 Balanced 报告：
+  input、output、cached-read、cache-write 分量。`providers` 按 client + runtime provider
+  分组：exact event 使用 run snapshot，estimated event 使用 session-start provider timeline，
+  无法归属的 event 进入明确的 `unknown` bucket；同名 provider 不跨 Codex/Claude 合并，
+  `--provider unknown` 只选择该 bucket。provider filter 在内存派生后收窄整个报告；工具
+  activity 没有 run binding，因此过滤时仅按 session-start snapshot 做 session 级近似。
+  默认 text 使用响应式 Balanced 报告：
   compact KPI、比例条 Trend、同时显示 token/share/known cost/pricing status/session/tool
-  摘要的完整 `MODELS`、client 占比、按 model/session 的 cache hit 分析和底部摘要；
+  摘要的完整 `MODELS`、client 占比、紧随其后的 `PROVIDERS` 排名、按 model/session 的
+  cache hit 分析和底部摘要；
   cache session 文本最多显示 10 个并报告省略数量，JSON 返回全部，且每行给出
   `session show ... --activity` 入口。宽终端为双栏，窄终端自动堆叠并缩短数字。
   至少覆盖 7 个自然日且不是 hour buckets 时，底部显示全宽 7x24 Activity Heatmap。

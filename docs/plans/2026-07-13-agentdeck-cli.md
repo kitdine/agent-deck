@@ -591,6 +591,39 @@ commit, or push was made.
 - [x] Complete independent re-review of the usage analytics and current state
       follow-up.
 
+### Usage Stats Runtime Provider Dimension Follow-Up (2026-07-21)
+
+Design approved; implementation and L2 verification complete. Contract updates
+live in the specification's usage stats section (runtime provider dimension,
+`providers` JSON field, `--provider` global filter, PROVIDERS text ranking).
+
+- [x] Carry the runtime provider name through stats attribution: add
+      `runProvider` to the stored event scan (`eventsRange` already left-joins
+      `usage_runs`; select `r.provider` without adding a query), and return the
+      provider name from the stats price resolver alongside price, multiplier,
+      and quality — exact events use the run provider, estimated events use the
+      session-start timeline snapshot, and unattributable events normalize to
+      `unknown`.
+- [x] Aggregate a client-scoped provider dimension (`client + provider` key,
+      materialized as name plus client like models) in the single stats pass,
+      sorted like models, exposed as an always-present `providers` array in the
+      stats JSON and initialized empty.
+- [x] Add the `--provider` flag to `usage stats` as a global in-memory filter
+      applied after provider derivation and before every accumulator (totals,
+      buckets, models, clients, providers, cache sessions, activity, peak,
+      coverage), with no enumeration validation; under a provider filter,
+      attribute tool-call rows by their session-start snapshot and document
+      that session-level approximation.
+- [x] Render the PROVIDERS ranking between CLIENTS and the cache section in the
+      balanced text layout with `Client/name` labels, proportional bars, share
+      and detail lines, and an empty-state message.
+- [x] Cover the new behavior with service tests (exact, estimated, and unknown
+      attribution; provider grouping; global filter narrowing; unchanged
+      five-query stats profile), text fixture and golden updates, and an e2e
+      `--provider` filter call with regenerated JSON contract goldens.
+- [x] Synchronize the CLI manual usage stats section (flag row, stable JSON
+      field list, provider semantics, and the unknown bucket).
+
 ## Required Verification
 
 Once Go source exists, the release gate includes:

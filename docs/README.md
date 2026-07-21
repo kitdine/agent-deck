@@ -13,6 +13,7 @@ disagree with a document.
 | --- | --- | --- | --- |
 | AgentDeck CLI phase one and release baseline | [spec](specs/2026-07-13-agentdeck-cli-design.md) | [plan](plans/2026-07-13-agentdeck-cli.md) | active; reviewed baselines complete; unified ASCII tables and machine-bound encrypted SQLite credential storage release-verified, awaiting independent review |
 | CLI command manual and usability audit | [manual](cli-manual.md) | [Phase 9 follow-up](plans/2026-07-13-agentdeck-cli.md) | active implemented contract synchronized with the current tables, usage cost coverage, credential storage, automatic price update, and active-log-safe usage rebuild; price, usage rebuild, and output readability re-reviews remain pending |
+| Usage stats runtime provider dimension | [spec](specs/2026-07-13-agentdeck-cli-design.md) | [follow-up](plans/2026-07-13-agentdeck-cli.md) | implemented and L2 verified 2026-07-21; independent review pending |
 
 ## Reference and Historical Work
 

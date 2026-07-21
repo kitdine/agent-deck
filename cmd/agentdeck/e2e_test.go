@@ -125,6 +125,21 @@ func TestIsolatedEndToEndFlow(t *testing.T) {
 	runJSON("usage.scan", "", "usage", "scan")
 	runJSON("usage.summary", "", "usage", "summary")
 	runJSON("usage.stats", "", "usage", "stats", "--from", "2026-07-14", "--to", "2026-07-20")
+	providerStats := runJSON("usage.stats", "", "usage", "stats", "--from", "2026-07-14", "--to", "2026-07-20", "--provider", "phase7")
+	var providerStatsEnvelope struct {
+		Data struct {
+			Totals struct {
+				Events int64 `json:"events"`
+			} `json:"totals"`
+			Providers []struct {
+				Name   string `json:"name"`
+				Client string `json:"client"`
+			} `json:"providers"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(providerStats, &providerStatsEnvelope); err != nil || providerStatsEnvelope.Data.Totals.Events == 0 || len(providerStatsEnvelope.Data.Providers) != 1 || providerStatsEnvelope.Data.Providers[0].Name != "phase7" || providerStatsEnvelope.Data.Providers[0].Client != "codex" {
+		t.Fatalf("provider-filtered stats = %#v, %v", providerStatsEnvelope.Data, err)
+	}
 	runJSON("usage.sessions", "", "usage", "sessions")
 	runJSON("usage.diagnose", "", "usage", "diagnose")
 	commit := "abcdefabcdefabcdefabcdefabcdefabcdefabcd"

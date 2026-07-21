@@ -288,6 +288,42 @@ func (r statsTextRenderer) rankingLines(width int) []string {
 		bar := r.style(strings.Repeat("█", filled), "36") + strings.Repeat("░", barWidth-filled)
 		lines = append(lines, statsPad(statsTitle(client.Name), nameWidth)+" "+bar+" "+statsPadLeft(shareLabel, shareWidth))
 	}
+	providerLabel := "PROVIDERS"
+	if r.report.Metric == "cost" {
+		switch {
+		case r.hasPartialCost():
+			providerLabel += " · KNOWN COST"
+		case !r.hasKnownProviderCost():
+			providerLabel += " · COST UNAVAILABLE"
+		}
+	}
+	lines = append(lines, "", r.sectionTitle(providerLabel, width, "1;34"))
+	for _, provider := range r.report.Providers {
+		share, _ := strconv.ParseFloat(provider.KnownShare, 64)
+		shareLabel := formatPercent(share)
+		if r.report.Metric == "cost" && !knownCostAvailable(provider.MetricValue, provider.KnownMetricValue, provider.Coverage) {
+			share = 0
+			shareLabel = "unavailable"
+		}
+		nameWidth := min(23, max(14, width/2))
+		shareWidth := max(6, statsVisibleWidth(shareLabel))
+		barWidth := min(36, max(6, width-nameWidth-shareWidth-3))
+		filled := scaledBar(share, 100, barWidth)
+		bar := r.style(strings.Repeat("█", filled), "34") + strings.Repeat("░", barWidth-filled)
+		name := statsTitle(provider.Client) + "/" + provider.Name
+		lines = append(lines, statsPad(statsFit(name, nameWidth), nameWidth)+" "+bar+" "+statsPadLeft(shareLabel, shareWidth))
+		cost := compactCost(provider.ProviderCost, provider.KnownProviderCost, knownCostAvailable(provider.ProviderCost, provider.KnownProviderCost, provider.Coverage))
+		detail := fmt.Sprintf("%s tokens · %s · %s · %s · %s sessions", compactNumber(float64(provider.Tokens)), shareLabel, cost, modelPricingStatus(provider), groupedInt(provider.Sessions))
+		if provider.CacheHitRate != nil && (provider.CachedReadTokens > 0 || provider.CacheWriteTokens > 0) {
+			detail += " · " + *provider.CacheHitRate + "% hit"
+		}
+		for _, detailLine := range statsWrap(detail, width) {
+			lines = append(lines, r.style(detailLine, "2"))
+		}
+	}
+	if len(r.report.Providers) == 0 {
+		lines = append(lines, r.style("No providers in this range.", "2"))
+	}
 	cacheLines := r.cacheLines(width)
 	if len(cacheLines) > 0 {
 		lines = append(lines, "", r.sectionTitle("CACHE HIT RATE", width, "1;33"))

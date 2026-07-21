@@ -2061,10 +2061,14 @@ func TestUsageSummaryShortcutsAndStatsJSONContract(t *testing.T) {
 	if timezone, _ := data["timezone"].(string); timezone == "" || timezone == "Local" {
 		t.Fatalf("stats timezone = %q", timezone)
 	}
-	for _, key := range []string{"range", "timezone", "totals", "buckets", "models", "clients", "cache_sessions", "activity", "peak", "coverage", "unpriced_models"} {
+	for _, key := range []string{"range", "timezone", "totals", "buckets", "models", "clients", "providers", "cache_sessions", "activity", "peak", "coverage", "unpriced_models"} {
 		if _, exists := data[key]; !exists {
 			t.Fatalf("stats JSON missing %s: %#v", key, data)
 		}
+	}
+	var providerFiltered bytes.Buffer
+	if err := run([]string{"--state-dir", state, "--format", "json", "usage", "stats", "--from", "2026-07-01", "--to", "2026-07-07", "--provider", "not-enumerated"}, bytes.NewReader(nil), &providerFiltered); err != nil {
+		t.Fatalf("open-set provider filter: %v", err)
 	}
 	totals, ok := data["totals"].(map[string]any)
 	if !ok {
@@ -2095,7 +2099,7 @@ func TestUsageSummaryShortcutsAndStatsJSONContract(t *testing.T) {
 	if err := run([]string{"--state-dir", state, "usage", "stats", "--from", "2026-07-01", "--to", "2026-07-07"}, bytes.NewReader(nil), &textOutput); err != nil {
 		t.Fatal(err)
 	}
-	for _, section := range []string{"USAGE STATS", "TREND", "MODELS", "CLIENTS", "ACTIVITY BY WEEKDAY / HOUR"} {
+	for _, section := range []string{"USAGE STATS", "TREND", "MODELS", "CLIENTS", "PROVIDERS", "No providers in this range.", "ACTIVITY BY WEEKDAY / HOUR"} {
 		if !strings.Contains(textOutput.String(), section) {
 			t.Fatalf("stats text missing %q:\n%s", section, textOutput.String())
 		}

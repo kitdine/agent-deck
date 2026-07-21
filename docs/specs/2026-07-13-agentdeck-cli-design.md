@@ -701,9 +701,11 @@ current month in the machine timezone.
 It accepts `today`, `7d`, `30d`, `week`, `month`, `6m`, and `all`, or an
 inclusive local-date `--from/--to` pair. Explicit grouping supports hour, day,
 Monday-based week, and month; `period=week` is the current local Monday 00:00
-through now and remains distinct from rolling `7d`. Filters accept client and exact model. One indexed
+through now and remains distinct from rolling `7d`. Filters accept client,
+exact model, and exact runtime provider name. One indexed
 `event_at` range query loads filtered events once, then one aggregation pass
-produces totals, trend buckets, model ranking, client share, averages, peak,
+produces totals, trend buckets, model ranking, client share, runtime provider
+ranking, averages, peak,
 pricing coverage, and activity. Schema v10 adds the time-range index and does
 not add a persistent statistics table. Migration and all new writes canonicalize
 `usage_events.event_at` to UTC RFC3339Nano and recompute session first/last from
@@ -715,10 +717,34 @@ multiplier, session attribution, provider snapshots, and price selection are
 resolved during the single in-memory aggregation without per-event SQL or
 credential-value access.
 
+The runtime provider dimension groups events by the provider configuration
+selected through AgentDeck (for example `official` or a custom relay), not by
+the price-catalog vendor. Each event's provider name is derived during the same
+in-memory aggregation, mirroring the existing attribution quality branches: an
+exact run-bound event uses the recorded `usage_runs.provider`; an estimated
+event uses the provider-timeline snapshot at its session start; an event whose
+session predates every recorded provider selection is grouped as `unknown`.
+`unknown` is an explicit unattributed bucket, never silently mapped to
+`official`, and `--provider unknown` selects exactly those events. Provider
+dimensions are keyed per client — the same provider name under Codex and
+Claude denotes different vendors and different cache-rate semantics, so they
+are never merged across clients. No schema change stores provider on events;
+the dimension is derived, and `usage_events` stays as is. The `--provider`
+value is an open set and is not enumerated at parse time; a non-empty value
+filters the whole report — totals, buckets, models, clients, providers, cache
+sessions, activity, peak, and coverage all reflect only matching events, the
+same global-filter semantics as `--client` and `--model`. Tool-call activity
+rows carry no run binding, so under a provider filter they are attributed by
+the session-start snapshot alone; this session-level approximation is the only
+attribution difference from token events and applies only when `--provider` is
+set.
+
 The stable stats JSON data object contains `range`, `timezone`, `totals`,
-`buckets`, `models`, `clients`, all cache-relevant `cache_sessions`, `activity`,
+`buckets`, `models`, `clients`, `providers`, all cache-relevant
+`cache_sessions`, `activity`,
 `peak`, `coverage`, and sorted `unpriced_models`. Totals, buckets, models,
-clients, and cache sessions expose input, output, cached-read, and cache-write
+clients, providers, and cache sessions expose input, output, cached-read, and
+cache-write
 components. Codex model/session cache hit rate is cached input divided by
 input. Claude logical input is ordinary input plus cache read plus cache write,
 and its model/session hit rate is cache read divided by that logical input;
@@ -726,12 +752,18 @@ cache writes remain a token volume rather than a second hit-rate percentage.
 Mixed totals and buckets expose components without inventing one cross-client
 cache rate. Pricing completeness affects only cost fields and cost ranking:
 unpriced models continue to participate in tokens, shares, sessions, events,
-cache, activity, and tool counts.
+cache, activity, and tool counts. `providers` entries are client-scoped
+dimensions sorted like models (known metric value descending, then client,
+then name) and expose the same share, cost, cache, session, and event fields.
 
 Text always
 uses the approved responsive Balanced layout: compact token/cost/session KPIs,
-bar-based trend and all-model sections, client share, model/session cache hit
-analysis, and an average/peak/priced footer. Cache text shows all relevant
+bar-based trend and all-model sections, client share, a PROVIDERS ranking
+directly after the client share section, model/session cache hit
+analysis, and an average/peak/priced footer. PROVIDERS rows are labeled
+`<Client>/<provider>` with the same proportional bars and share labels as the
+client section and an empty-state line when the range has no providers. Cache
+text shows all relevant
 models and the first ten deterministically sorted sessions, reports the omitted
 count, and gives each session a copyable
 `agentdeck session show <id> --client <client> --activity` command. Wide

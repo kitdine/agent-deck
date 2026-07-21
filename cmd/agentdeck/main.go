@@ -1442,7 +1442,7 @@ func newUsageCommand(opts *commandOptions) *cobra.Command {
 		data, err := s.SummaryRange(ctx, from, to)
 		return data, scanErr != nil, map[bool][]string{true: {"scan_incomplete"}}[scanErr != nil], err
 	})}
-	var statsPeriod, statsFrom, statsTo, statsGroup, statsMetric, statsClient, statsModel string
+	var statsPeriod, statsFrom, statsTo, statsGroup, statsMetric, statsClient, statsModel, statsProvider string
 	var statsActivity bool
 	stats := &cobra.Command{Use: "stats", Args: cobra.NoArgs, RunE: withUsage(func(ctx context.Context, s *usage.Service, _ *store.Store, _ []string) (any, bool, []string, error) {
 		if statsClient != "" && statsClient != "codex" && statsClient != "claude" {
@@ -1467,7 +1467,7 @@ func newUsageCommand(opts *commandOptions) *cobra.Command {
 		if group != "hour" && group != "day" && group != "week" && group != "month" {
 			return nil, false, nil, &inputError{err: fmt.Errorf("usage stats group-by must be auto, hour, day, week, or month")}
 		}
-		data, err := s.Stats(ctx, usage.StatsOptions{From: from, To: to, GroupBy: group, Metric: statsMetric, Client: statsClient, Model: statsModel, Timezone: usageTimezoneName(time.Local, now), Location: time.Local, Activity: statsActivity})
+		data, err := s.Stats(ctx, usage.StatsOptions{From: from, To: to, GroupBy: group, Metric: statsMetric, Client: statsClient, Model: statsModel, Provider: statsProvider, Timezone: usageTimezoneName(time.Local, now), Location: time.Local, Activity: statsActivity})
 		return data, scanErr != nil, map[bool][]string{true: {"scan_incomplete"}}[scanErr != nil], err
 	})}
 	stats.Flags().StringVar(&statsPeriod, "period", "7d", "Range: today, 7d, 30d, week, month, 6m, or all")
@@ -1477,6 +1477,7 @@ func newUsageCommand(opts *commandOptions) *cobra.Command {
 	stats.Flags().StringVar(&statsMetric, "metric", "tokens", "Trend metric: tokens, cost, or sessions")
 	stats.Flags().StringVar(&statsClient, "client", "", "Filter by codex or claude")
 	stats.Flags().StringVar(&statsModel, "model", "", "Filter by exact model name")
+	stats.Flags().StringVar(&statsProvider, "provider", "", "Open-set exact runtime provider; values are not enumerated; unknown selects unattributed events")
 	stats.Flags().BoolVar(&statsActivity, "activity", false, "Show safe activity and tool summaries for the selected model")
 	cmd.AddCommand(
 		&cobra.Command{Use: "scan", Args: cobra.NoArgs, RunE: withUsage(func(ctx context.Context, s *usage.Service, _ *store.Store, _ []string) (any, bool, []string, error) {

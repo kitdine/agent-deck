@@ -28,6 +28,7 @@ func TestUsageStatsBalancedTextLayout(t *testing.T) {
 				"🗓 TREND · TOKENS",
 				"🤖 MODELS", "claude-opus-4-8", "codex-auto-review",
 				"CLIENTS", "Claude", "Codex",
+				"PROVIDERS", "Claude/relay", "Codex/official",
 				"CACHE HIT RATE", "MODEL Claude/claude-opus-4-8", "SESSION Codex/codex-session", "--activity",
 				"AVG COST", "PEAK", "PRICED  87.69%",
 				"▦ ACTIVITY BY WEEKDAY / HOUR · TOKENS",
@@ -419,6 +420,10 @@ func usageStatsTextFixture() usage.StatsReport {
 		{Name: "claude", KnownShare: "82.89", LogicalInputTokens: 1000000, CacheHitRate: &read},
 		{Name: "codex", KnownShare: "17.11", CacheHitRate: &codexRead},
 	}
+	providers := []usage.StatsDimension{
+		{Name: "relay", Client: "claude", Tokens: 304000000, Sessions: 24, KnownShare: "82.89", KnownProviderCost: "266.832730700", Coverage: "87.00", LogicalInputTokens: 1000000, CacheHitRate: &read},
+		{Name: "official", Client: "codex", Tokens: 62924859, Sessions: 10, KnownShare: "17.11", ProviderCost: &gptCost, KnownProviderCost: gptCost, Coverage: "100.00", CacheHitRate: &codexRead},
+	}
 	cacheSessions := []usage.StatsCacheSession{
 		{Client: "claude", SessionID: "claude-session", Models: []string{"claude-opus-4-8"}, CachedReadTokens: 600000, CacheWriteTokens: 200000, LogicalInputTokens: 1000000, CacheHitRate: &read, DetailCommand: "agentdeck session show claude-session --client claude --activity"},
 		{Client: "codex", SessionID: "codex-session", Models: []string{"gpt-5.6-sol"}, CachedReadTokens: 200000, LogicalInputTokens: 500000, CacheHitRate: &codexRead, DetailCommand: "agentdeck session show codex-session --client codex --activity"},
@@ -440,6 +445,7 @@ func usageStatsTextFixture() usage.StatsReport {
 		Buckets:        buckets,
 		Models:         models,
 		Clients:        clients,
+		Providers:      providers,
 		CacheSessions:  cacheSessions,
 		Activity:       activity,
 		Peak:           usage.StatsPeak{KnownValue: "201278072"},
