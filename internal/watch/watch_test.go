@@ -92,6 +92,28 @@ func TestFingerprintRootsChangesWithMetadata(t *testing.T) {
 	}
 }
 
+func TestFingerprintRootsHandlesBrokenAndCyclicSkillLinks(t *testing.T) {
+	root := t.TempDir()
+	link := filepath.Join(root, "skill-link")
+	if err := os.Symlink(filepath.Join(root, "missing"), link); err != nil {
+		t.Fatal(err)
+	}
+	broken, err := FingerprintRoots(root)
+	if err != nil || broken == "" {
+		t.Fatalf("broken link fingerprint = %q, %v", broken, err)
+	}
+	if err = os.Remove(link); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Symlink(link, link); err != nil {
+		t.Fatal(err)
+	}
+	cyclic, err := FingerprintRoots(root)
+	if err != nil || cyclic == "" {
+		t.Fatalf("cyclic link fingerprint = %q, %v", cyclic, err)
+	}
+}
+
 func TestScanLockDoesNotBlockStateLock(t *testing.T) {
 	root := t.TempDir()
 	scan, err := store.AcquireScanLock(t.Context(), root, 0)

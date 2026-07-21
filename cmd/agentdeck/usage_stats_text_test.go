@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
@@ -25,8 +26,9 @@ func TestUsageStatsBalancedTextLayout(t *testing.T) {
 				"COST", "$316.83", "KNOWN",
 				"SESSIONS", "34",
 				"🗓 TREND · TOKENS",
-				"🤖 TOP MODELS", "claude-opus-4-8",
+				"🤖 MODELS", "claude-opus-4-8", "codex-auto-review",
 				"CLIENTS", "Claude", "Codex",
+				"CACHE HIT RATE", "MODEL Claude/claude-opus-4-8", "SESSION Codex/codex-session", "--activity",
 				"AVG COST", "PEAK", "PRICED  87.69%",
 				"▦ ACTIVITY BY WEEKDAY / HOUR · TOKENS",
 				"LESS  · ░ ▒ ▓ █  MORE",
@@ -36,7 +38,7 @@ func TestUsageStatsBalancedTextLayout(t *testing.T) {
 					t.Fatalf("%d-column stats missing %q:\n%s", width, want, text)
 				}
 			}
-			for _, noisy := range []string{"366924859", "316.832730700", "(partial)", "codex-auto-review"} {
+			for _, noisy := range []string{"366924859", "316.832730700", "(partial)"} {
 				if strings.Contains(text, noisy) {
 					t.Fatalf("%d-column stats retained noisy value %q:\n%s", width, noisy, text)
 				}
@@ -71,7 +73,7 @@ func TestUsageStatsWideLayoutAndColorAreDeterministic(t *testing.T) {
 	}
 	var paired bool
 	for _, line := range strings.Split(plainText, "\n") {
-		if strings.Contains(line, "TREND · TOKENS") && strings.Contains(line, "TOP MODELS") {
+		if strings.Contains(line, "TREND · TOKENS") && strings.Contains(line, "🤖 MODELS") {
 			paired = true
 		}
 		if statsVisibleWidth(line) > 140 {
@@ -81,6 +83,42 @@ func TestUsageStatsWideLayoutAndColorAreDeterministic(t *testing.T) {
 	if !paired {
 		t.Fatalf("wide layout did not pair trend and ranking:\n%s", plainText)
 	}
+}
+
+func TestUsageStatsCacheSessionsAreCappedOnlyInText(t *testing.T) {
+	report := usageStatsTextFixture()
+	report.CacheSessions = make([]usage.StatsCacheSession, 0, 11)
+	rate := "50.00"
+	for index := 0; index < 11; index++ {
+		report.CacheSessions = append(report.CacheSessions, usage.StatsCacheSession{Client: "codex", SessionID: fmt.Sprintf("session-%02d", index), Models: []string{"gpt-5.6-sol"}, CachedReadTokens: int64(100 - index), LogicalInputTokens: 200, CacheHitRate: &rate, DetailCommand: fmt.Sprintf("agentdeck session show session-%02d --client codex --activity", index)})
+	}
+	var output bytes.Buffer
+	if err := renderUsageStatsWithOptions(&output, report, usageTextRenderOptions{width: 48}); err != nil {
+		t.Fatal(err)
+	}
+	text := output.String()
+	if strings.Count(text, "SESSION Codex/") != 10 || !strings.Contains(text, "+1 more cache sessions in JSON") || len(report.CacheSessions) != 11 {
+		t.Fatalf("cache session text cap =\n%s", text)
+	}
+	assertUsageStatsWidth(t, text, 48)
+}
+
+func TestUsageStatsModelActivityDetailIsOptIn(t *testing.T) {
+	report := usageStatsTextFixture()
+	report.Models = report.Models[:1]
+	report.ShowModelActivity = true
+	average := int64(250)
+	report.Models[0].Activity = &usage.StatsModelActivity{ActiveSessions: 3, ActiveDays: 2, FirstAt: "2026-07-19T00:00:00Z", LastAt: "2026-07-20T00:00:00Z", ToolCalls: 7, CompletedCalls: 5, FailedCalls: 1, TotalDurationMS: 1500, AverageDuration: &average, Tools: []usage.StatsToolCount{{Name: "exec_command", Calls: 5}, {Name: "apply_patch", Calls: 2}}}
+	var output bytes.Buffer
+	if err := renderUsageStatsWithOptions(&output, report, usageTextRenderOptions{width: 72}); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"MODEL ACTIVITY · claude-opus-4-8", "3 sessions", "2 active days", "exec_command", "apply_patch", "250 ms average"} {
+		if !strings.Contains(output.String(), want) {
+			t.Fatalf("model activity missing %q:\n%s", want, output.String())
+		}
+	}
+	assertUsageStatsWidth(t, output.String(), 72)
 }
 
 func TestUsageStatsBalancedGolden(t *testing.T) {
@@ -361,6 +399,7 @@ func usageStatsTextFixture() usage.StatsReport {
 	knownAverage := "9.318609726"
 	opusCost := "240.000000000"
 	gptCost := "50.000000000"
+	read, codexRead := "60.00", "40.00"
 	buckets := []usage.StatsBucket{
 		{Start: "2026-07-14T00:00:00+08:00", Tokens: 13402755, Sessions: 11, KnownMetricValue: "13402755"},
 		{Start: "2026-07-15T00:00:00+08:00", Tokens: 86444030, Sessions: 8, KnownMetricValue: "86444030"},
@@ -371,15 +410,18 @@ func usageStatsTextFixture() usage.StatsReport {
 		{Start: "2026-07-20T00:00:00+08:00", Tokens: 62888663, Sessions: 8, KnownMetricValue: "62888663"},
 	}
 	models := []usage.StatsDimension{
-		{Name: "claude-opus-4-8", Client: "claude", Tokens: 266116000, KnownShare: "72.53", ProviderCost: &opusCost, KnownProviderCost: opusCost, Coverage: "100.00"},
-		{Name: "gpt-5.6-sol", Client: "codex", Tokens: 43480000, KnownShare: "11.85", ProviderCost: &gptCost, KnownProviderCost: gptCost, Coverage: "100.00"},
-		{Name: "claude-fable-5", Client: "claude", Tokens: 32544000, KnownShare: "8.87", KnownProviderCost: "26.832730700", Coverage: "50.00"},
-		{Name: "codex-auto-review", Client: "codex", KnownShare: "2.62"},
+		{Name: "claude-opus-4-8", Client: "claude", Tokens: 266116000, CachedReadTokens: 600000, CacheWriteTokens: 200000, LogicalInputTokens: 1000000, CacheHitRate: &read, Sessions: 20, KnownShare: "72.53", ProviderCost: &opusCost, KnownProviderCost: opusCost, Coverage: "100.00", Activity: &usage.StatsModelActivity{ToolCalls: 80}},
+		{Name: "gpt-5.6-sol", Client: "codex", Tokens: 43480000, CachedReadTokens: 200000, LogicalInputTokens: 500000, CacheHitRate: &codexRead, Sessions: 8, KnownShare: "11.85", ProviderCost: &gptCost, KnownProviderCost: gptCost, Coverage: "100.00", Activity: &usage.StatsModelActivity{ToolCalls: 30}},
+		{Name: "claude-fable-5", Client: "claude", Tokens: 32544000, Sessions: 4, KnownShare: "8.87", KnownProviderCost: "26.832730700", Coverage: "50.00", Activity: &usage.StatsModelActivity{ToolCalls: 12}},
+		{Name: "codex-auto-review", Client: "codex", Sessions: 2, KnownShare: "2.62", Activity: &usage.StatsModelActivity{ToolCalls: 3}},
 	}
-	read, write, codexRead := "60.00", "20.00", "40.00"
 	clients := []usage.StatsDimension{
-		{Name: "claude", KnownShare: "82.89", LogicalInputTokens: 1000000, CacheReadRate: &read, CacheWriteRate: &write},
-		{Name: "codex", KnownShare: "17.11", CacheReadRate: &codexRead},
+		{Name: "claude", KnownShare: "82.89", LogicalInputTokens: 1000000, CacheHitRate: &read},
+		{Name: "codex", KnownShare: "17.11", CacheHitRate: &codexRead},
+	}
+	cacheSessions := []usage.StatsCacheSession{
+		{Client: "claude", SessionID: "claude-session", Models: []string{"claude-opus-4-8"}, CachedReadTokens: 600000, CacheWriteTokens: 200000, LogicalInputTokens: 1000000, CacheHitRate: &read, DetailCommand: "agentdeck session show claude-session --client claude --activity"},
+		{Client: "codex", SessionID: "codex-session", Models: []string{"gpt-5.6-sol"}, CachedReadTokens: 200000, LogicalInputTokens: 500000, CacheHitRate: &codexRead, DetailCommand: "agentdeck session show codex-session --client codex --activity"},
 	}
 	activity := make([]usage.StatsActivity, 0, 168)
 	for weekday := 0; weekday < 7; weekday++ {
@@ -398,6 +440,7 @@ func usageStatsTextFixture() usage.StatsReport {
 		Buckets:        buckets,
 		Models:         models,
 		Clients:        clients,
+		CacheSessions:  cacheSessions,
 		Activity:       activity,
 		Peak:           usage.StatsPeak{KnownValue: "201278072"},
 		Coverage:       usage.StatsCoverage{Percent: "87.69"},

@@ -130,6 +130,9 @@ provider/usage database.
 - [x] Implement source-level incremental scan, stable document replacement,
       project/path normalization, and source mutation handling.
 - [x] Implement list, search, show, exclude, rebuild, and purge-index.
+- [x] Add an opt-in `session show --activity` source reader that exposes only
+      allowlisted tool name/time/status/duration metadata and stores none of it
+      in the purgeable session index.
 - [x] Verify source logs remain read-only and normal output never exposes
       excluded or prohibited content.
 
@@ -276,6 +279,30 @@ SQLite credential storage are approved and pending implementation.
 persistence; Claude official is not implemented. Tests use temporary homes,
 synthetic machine identities, and isolated encrypted stores, never real HOME,
 auth.json, or credential key files.
+
+**Follow-up implementation status (2026-07-21):** The remaining re-review
+remediation is implemented and has passed the required targeted and complete
+verification; independent re-review remains pending. Usage/session watch
+deletion counts now use logical records/documents, Doctor has an exact
+four-state schema contract and a working
+text/JSON `state migrate`, and Session has CLI-level text/JSON pagination
+coverage. Ordinary, `.system` child, and `.system` directory links now have a
+full target-change/switch, dangling, recovery, cycle, inventory, drift, and
+adoption lifecycle matrix. No install, commit, or push has been made.
+The latest constrained re-review repair replaces positional Session document
+comparison with deterministic logical sequence counting and adds real
+Session/Usage scan-to-Watch output coverage plus activity next-page regression
+coverage. Affected targeted tests, full Go test/race/vet, Darwin arm64/amd64
+builds, `check-arm64-size`, `release-verify`, and `git diff --check` passed on
+2026-07-21. No Doctor or Extension behavior was changed, and no real-HOME
+install, commit, or push was made.
+The second re-review follow-up now trims common Session document prefixes and
+suffixes before exact differencing and adds deterministic 10,000-document
+window tests plus non-gating benchmarks. Affected targeted tests, full Go
+test/race/vet, Darwin arm64/amd64 builds, `check-arm64-size`, `release-verify`,
+and `git diff --check` passed on 2026-07-21. Doctor, Extension, activity
+pagination, and Watch output contracts remain unchanged; no real-HOME install,
+commit, or push was made.
 
 - [x] Replace the credential reader's terminal rejection with a shared,
       injectable no-echo reader used by `provider add` and top-level `credential
@@ -554,6 +581,13 @@ auth.json, or credential key files.
       preserve retryable ownership and attribution state, and prove unrelated
       unchanged histories remain unopened when either duplicate or final sources
       are removed.
+- [x] Add schema v13/parser v3 safe tool metadata, model/session cache-hit
+      analysis, all-model text ranking, complete cache-session JSON, opt-in
+      model activity detail, and source-owned duplicate/removal recovery without
+      retaining tool inputs, outputs, commands, environment, or reasoning.
+- [x] Keep unpriced models in every non-cost aggregation and replace client
+      read/write percentages with model/session cache hit rates plus cache-write
+      token volume.
 - [x] Complete independent re-review of the usage analytics and current state
       follow-up.
 

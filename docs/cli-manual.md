@@ -175,7 +175,7 @@ personal -> aigocode-personal-ref
 | --- | --- | --- | --- | --- |
 | `usage scan` | 增量扫描本地 Codex/Claude usage sources | 无 | 无 | `agentdeck usage scan` |
 | `usage summary [daily\|weekly\|monthly]` | 扫描后汇总全部历史，或按本机时区快捷查看今天、本周（周一开始）、本月 | 可选周期位置参数 | 否 | `agentdeck usage summary weekly` |
-| `usage stats` | 输出 KPI、趋势、模型排行、client 占比、均值、峰值、计价覆盖和 activity | `--period`、`--from/--to`、`--group-by`、`--metric`、`--client`、`--model` | 无；默认 `7d/auto/tokens`；日期必须成对 | `agentdeck usage stats --period 30d --metric cost` |
+| `usage stats` | 输出 KPI、趋势、完整模型列表、cache hit、client 占比、均值、峰值、计价覆盖和 activity | `--period`、`--from/--to`、`--group-by`、`--metric`、`--client`、`--model`、`--activity` | 默认 `7d/auto/tokens`；日期必须成对；`--activity` 必须与 `--model` 同用 | `agentdeck usage stats --model gpt-5.4 --activity` |
 | `usage sessions` | 按 session 分列展示各类 token、成本和计价状态 | 无 | 无 | `agentdeck usage sessions` |
 | `usage diagnose` | 展示 source、event、session、run、价格覆盖和 attribution 诊断 | 无 | 无 | `agentdeck usage diagnose` |
 | `usage rebuild` | 逐 source 原子重建 usage metadata；失败 source 保留旧数据并返回 partial warning | 无 | 无 | `agentdeck usage rebuild` |
@@ -211,20 +211,26 @@ personal -> aigocode-personal-ref
   时区从本周一 00:00 到当前时刻的当前自然周，与滚动 `7d` 明确区分。也可用本机日期
   `--from YYYY-MM-DD --to YYYY-MM-DD`（to 当日包含在范围内）。`group-by` 支持
   `auto|hour|day|week|month`，`metric` 支持 `tokens|cost|sessions`。JSON 稳定包含
-  `range`、`timezone`、`totals`、`buckets`、`models`、`clients`、`activity`、`peak`、
+  `range`、`timezone`、`totals`、`buckets`、`models`、`clients`、`cache_sessions`、`activity`、`peak`、
   `coverage` 和确定排序的 `unpriced_models`。totals、bucket、model、client 均保留
   input、output、cached-read、cache-write 分量。默认 text 使用响应式 Balanced 报告：
-  compact KPI、比例条 Trend、同时显示 token/share/known cost/pricing status 的 Top
-  Models、client 占比、分 client cache 分析和底部摘要；宽终端为双栏，窄终端自动
-  堆叠并缩短数字。
+  compact KPI、比例条 Trend、同时显示 token/share/known cost/pricing status/session/tool
+  摘要的完整 `MODELS`、client 占比、按 model/session 的 cache hit 分析和底部摘要；
+  cache session 文本最多显示 10 个并报告省略数量，JSON 返回全部，且每行给出
+  `session show ... --activity` 入口。宽终端为双栏，窄终端自动堆叠并缩短数字。
   至少覆盖 7 个自然日且不是 hour buckets 时，底部显示全宽 7x24 Activity Heatmap。
   真实 TTY 可使用克制颜色，`--no-color`、重定向和机器格式不输出 ANSI 控制码。
 - Stats 的 `timezone` 是稳定的 IANA zone 名称；无法解析本机 zoneinfo 名称时使用
   `UTC+HH:MM` offset 标识。Hour buckets 使用带 offset 的 RFC3339 边界，因此 DST
   回拨时两个同名本地小时仍是两个独立 bucket。
-- Codex cache read rate 定义为 `cached_input_tokens / input_tokens`。Claude 的 logical
-  input 定义为 ordinary input + cache read + cache write，并分别报告 cache read rate
-  与 cache write rate；totals 和混合 bucket 不生成语义不一致的跨 client 单一比率。
+- Codex cache hit rate 定义为 `cached_input_tokens / input_tokens`。Claude 的 logical
+  input 定义为 ordinary input + cache read + cache write，cache hit rate 定义为
+  `cache_read / logical_input`；cache write 只显示 token 量，不显示成第二种“命中率”。
+  totals 和混合 bucket 不生成语义不一致的跨 client 单一比率。
+- 未计价 model 只排除在费用计算之外，仍正常参与 token/share/session/event/cache/
+  activity/tool 汇总。`usage stats --model <model> --activity` 展示 active session/day、
+  时间范围、工具总数、完成/失败、可用耗时和按安全工具名的分布；usage DB 只保存工具名、
+  时间、状态、耗时及来源所有权，不保存参数、结果、命令文本、环境或 reasoning。
 - `metric=cost` 只在对应范围全部计价时提供 `metric_value`、`share`、peak `value`
   和 `average_cost_per_session`。混合 priced/unpriced 数据将这些完整值设为 `null`，
   另由 `known_metric_value`、`known_share`、`known_value` 和
@@ -312,9 +318,9 @@ provenance。
 | 命令 | 含义与典型用例 | 参数与 Flags | 必填规则 | 示例 |
 | --- | --- | --- | --- | --- |
 | `session scan` | 增量建立可清除的 session 搜索索引 | 无 | 无 | `agentdeck session scan` |
-| `session list` | 列出索引中的 sessions | `--client codex\|claude`：可选过滤 | 无 | `agentdeck session list --client codex` |
+| `session list` | 列出索引中的 sessions | `--client codex\|claude`；`--page`、`--limit`、`--all` | 无 | `agentdeck session list --client codex --page 2` |
 | `session search <query>` | 搜索 approved visible session text | `query`：搜索文本；`--client`：可选过滤 | `query` 必填 | `agentdeck session search "provider timeout" --client codex` |
-| `session show <session-id>` | 显示一个 session；ID 唯一时自动推断 client | `--client codex\|claude` | `session-id` 必填；跨 client 冲突时 `--client` 条件必填 | `agentdeck session show 019abc --client codex` |
+| `session show <session-id>` | 显示一个 session；可按需读取安全 activity/tool 元数据 | `--client codex\|claude`、`--activity`、`--page`、`--limit`、`--all` | `session-id` 必填；跨 client 冲突时 `--client` 条件必填 | `agentdeck session show 019abc --client codex --activity --page 2` |
 | `session exclude` | 持久化索引排除规则 | `--kind project\|path\|session\|client`；`--value <value>` | 两个 flags 均必填 | `agentdeck session exclude --kind client --value claude` |
 | `session rebuild` | 重建 purgeable index，不删除源日志 | 无 | 无 | `agentdeck session rebuild` |
 | `session purge-index` | 删除 sessions.sqlite3，不删除源日志或 core DB | 无 | 无 | `agentdeck session purge-index` |
@@ -323,6 +329,8 @@ provenance。
 下次 session watch 会 bootstrap 重建索引。`session show` 在同一 ID 同时存在于 Codex 和
 Claude 时返回歧义错误并要求 `--client`。Session 与 credential 的 `--client` 都只接受
 `codex|claude`。
+`session show --activity` 只在调用时读取所选 source，显示工具名、时间、状态和可用耗时；
+这些数据不写入 `sessions.sqlite3`，参数、结果、命令文本、环境和 reasoning 始终不显示。Text 默认每页 20 条并显示总数与可复制的下一页命令（保留 `--state-dir`、`--client`、`--activity` 与 limit）；`--limit` 必须为 1 至 1000。JSON 仅在显式分页时加入确定的 `pagination`，否则保持完整集合。`--activity` 始终先输出完整 session 的调用、状态、时长与按工具汇总，再分页显示安全明细。
 
 ## Extension
 
@@ -330,7 +338,7 @@ Extension ID 是稳定资源标识，继续使用位置参数。
 
 | 命令 | 含义与典型用例 | 参数与 Flags | 必填规则 | 示例 |
 | --- | --- | --- | --- | --- |
-| `extension scan` | 扫描 Codex/Claude 原生 plugin、MCP 和 skill | 无 | 无 | `agentdeck extension scan` |
+| `extension scan` | 扫描 Codex/Claude 原生 plugin、MCP 和 skill；报告 found/added/updated/removed/unchanged 和排序汇总 | 无 | 无 | `agentdeck extension scan` |
 | `extension list` | 列出发现的 extensions | `--client`、`--kind`：可选过滤 | 无 | `agentdeck extension list --client codex --kind skill` |
 | `extension show <id>` | 显示 extension metadata 和 diagnostics | `id`：extension ID | `id` 必填 | `agentdeck extension show codex:skill:user:sample` |
 | `extension doctor` | 检查 drift、duplicate 和 missing path | 无 | 无 | `agentdeck extension doctor` |
@@ -338,6 +346,15 @@ Extension ID 是稳定资源标识，继续使用位置参数。
 | `extension release <id>` | 释放管理 metadata，不删除原生 extension | `id` | `id` 必填 | `agentdeck extension release codex:skill:user:sample` |
 | `extension enable <id>` | 请求启用；adapter 无可靠写入契约时返回 `extension_read_only` | `id` | `id` 必填 | `agentdeck extension enable codex:skill:user:sample` |
 | `extension disable <id>` | 请求禁用；adapter 无可靠写入契约时返回 `extension_read_only` | `id` | `id` 必填 | `agentdeck extension disable codex:skill:user:sample` |
+
+Skill discovery follows valid directory links for ordinary skills, `.system`
+child skills, and a linked `.system` directory. Link target content changes and
+target switches retain the canonical extension ID and produce deterministic
+`updated`/drift results. A broken or cyclic link fails the scan atomically:
+the prior inventory, managed flag, and adopted fingerprint remain unchanged.
+After the link becomes valid again, scanning resumes without losing adoption.
+Hidden skill directories remain excluded except for the explicit `.system`
+namespace, and watch fingerprints never recursively follow link cycles.
 
 ## Backup
 
@@ -357,11 +374,20 @@ restore 为目标机器创建新 key，并在一个 transaction 中替换 snapsh
 | 命令 | 含义与典型用例 | 参数与 Flags | 必填规则 | 示例 |
 | --- | --- | --- | --- | --- |
 | `doctor` | quick read-only diagnostics；检查 key 权限、key ID、算法/版本、nonce 和 secret ownership，不解密 | `--full`：额外认证全部 credential ciphertext，并增加 usage、session、extension 和价格深度检查 | 无 | `agentdeck doctor --full` |
+| `state migrate` | 显式将本地 core state 迁移到当前 schema；doctor 永不自动迁移 | 无 | 无 | `agentdeck state migrate` |
 | `watch` | 前台监控 local sources；复用各 domain 已成功 scan 的 checkpoint，不重复 bootstrap 已完成的扫描 | `--interval <duration>`；`--domains <list>` | 均可选；interval 默认 `1m`，domains 默认 `usage,session,extension` | `agentdeck watch --interval 30s --domains usage --format ndjson` |
 | `run <codex\|claude> [-- <args...>]` | 启动客户端并建立 exact/estimated usage attribution；允许无 child args | client：位置参数；dash 后参数可为空 | client 必填 | `agentdeck run codex --` |
 | `version` | 输出 release、commit、branch、Go version 和 UTC build time | 无 | 无 | `agentdeck version --format json` |
 | `help [command-path]` | 显示 root 或指定命令帮助 | command path 可选 | 无 | `agentdeck help credential update` |
 | `completion <bash\|fish\|zsh>` | 只输出指定 shell completion script | shell | shell 必填；PowerShell 不支持且不出现在 help/completion 中 | `agentdeck completion zsh` |
+
+Doctor 对 core schema 使用四态契约：schema 12 quick/full 报告
+`schema_outdated`、`count=12` 和 `agentdeck state migrate`；完整 schema 13
+报告 `ok`、`count=13`；schema 13 缺 `usage_tool_calls` 只报告
+`schema_incompatible`，不再附加旧 schema warning；未来 schema 报告
+`unknown_schema` 且不提供虚假 recovery。Text 和 JSON 都不输出原始 SQL、
+SQLite 查询或驱动错误。`state migrate` 的 text 成功信息明确确认完成，JSON
+返回 `migrated: true`。
 
 ### Watch 扫描规则
 
@@ -369,6 +395,8 @@ restore 为目标机器创建新 key，并在一个 transaction 中替换 snapsh
   后，watch 启动不能再次扫描该 domain 的 unchanged backlog。
 - 某个 domain 没有 checkpoint 时，watch 只对该 domain 执行首次 bootstrap；例如只运行
   过 `usage scan` 时，usage 不重复扫描，但尚未建立的 session index 仍可首次扫描。
+- `watch` text 以本地时间和领域语义显示完成/跳过摘要；NDJSON 保持版本化、机器可读事件。各 domain 的 changes 都表示真实 added+updated+removed 逻辑变化，extension 不使用 found 总数。Usage 以逻辑 events/records、session 以当前可见 documents 为单位；删除重复 source 且仍有副本接管时为 0，删除最后来源时为实际消失的逻辑行数，而不是 source path 数。
+- Session 的可见 document 序列按 kind/text 内容做确定性差分，不按数组位置或 source path 识别：开头、中间或末尾插入/删除一条只计一个逻辑变化，单条内容替换计一个 updated，重复文本仍保持确定对齐。
 - `--domains` 允许只监控需要的 domain。`--domains usage` 不得隐式运行 session 或
   extension scanner，也不得创建或打开 `sessions.sqlite3`。
 - 后续 poll 先比较廉价 inventory，仅把新增、append、mutated、removed paths 交给对应

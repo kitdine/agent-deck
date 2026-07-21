@@ -2,6 +2,8 @@ package session
 
 import (
 	"context"
+	"fmt"
+	"github.com/kitdine/agent-deck/internal/activity"
 	"github.com/kitdine/agent-deck/internal/store"
 	"os"
 	"path/filepath"
@@ -193,11 +195,207 @@ func TestScanKeepsActiveSourceAuthoritativeAndFallsBackToArchive(t *testing.T) {
 	if err := os.Remove(active); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Scan(context.Background(), s.DB, home); err != nil {
+	if result, err := Scan(context.Background(), s.DB, home); err != nil {
 		t.Fatal(err)
+	} else if result.Removed != 0 {
+		t.Fatalf("duplicate owner removal removed %d logical documents", result.Removed)
 	}
 	if docs, err := Search(context.Background(), s.DB, "archive"); err != nil || len(docs) != 1 {
 		t.Fatalf("archive did not replace removed active source: docs=%v err=%v", docs, err)
+	}
+	if err := os.Remove(archive); err != nil {
+		t.Fatal(err)
+	}
+	if result, err := Scan(context.Background(), s.DB, home); err != nil {
+		t.Fatal(err)
+	} else if result.Removed != 1 {
+		t.Fatalf("last source removal removed %d logical documents, want 1", result.Removed)
+	}
+}
+
+func TestScanLastSourceRemovalCountsAllLogicalDocuments(t *testing.T) {
+	root, home := t.TempDir(), t.TempDir()
+	path := filepath.Join(home, ".codex", "sessions", "many.jsonl")
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	contents := "{\"type\":\"visible_user_prompt\",\"session_id\":\"many\",\"payload\":{\"text\":\"one\"}}\n" +
+		"{\"type\":\"visible_assistant_final\",\"session_id\":\"many\",\"payload\":{\"text\":\"two\"}}\n" +
+		"{\"type\":\"visible_user_prompt\",\"session_id\":\"many\",\"payload\":{\"text\":\"three\"}}\n"
+	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	database, err := store.OpenSessions(context.Background(), filepath.Join(root, "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if result, scanErr := Scan(context.Background(), database.DB, home); scanErr != nil || result.Documents != 3 {
+		t.Fatalf("initial scan = %#v, %v", result, scanErr)
+	}
+	if err = os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if result, scanErr := Scan(context.Background(), database.DB, home); scanErr != nil || result.Removed != 3 {
+		t.Fatalf("removal scan = %#v, %v", result, scanErr)
+	}
+}
+
+func TestScanDuplicateSourceRemovalCountsOnlyVisibleLogicalChanges(t *testing.T) {
+	root, home := t.TempDir(), t.TempDir()
+	active := filepath.Join(home, ".codex", "sessions", "duplicate.jsonl")
+	archive := filepath.Join(home, ".codex", "archived_sessions", "duplicate.jsonl")
+	contents := "{\"type\":\"visible_user_prompt\",\"session_id\":\"duplicate\",\"payload\":{\"text\":\"same\"}}\n" +
+		"{\"type\":\"visible_assistant_final\",\"session_id\":\"duplicate\",\"payload\":{\"text\":\"same reply\"}}\n"
+	for _, path := range []string{active, archive} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	database, err := store.OpenSessions(context.Background(), filepath.Join(root, "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if result, scanErr := Scan(context.Background(), database.DB, home); scanErr != nil || result.Documents != 2 || result.Removed != 0 {
+		t.Fatalf("initial duplicate scan = %#v, %v", result, scanErr)
+	}
+	if err = os.Remove(active); err != nil {
+		t.Fatal(err)
+	}
+	if result, scanErr := Scan(context.Background(), database.DB, home); scanErr != nil || result.Documents != 0 || result.Removed != 0 {
+		t.Fatalf("duplicate owner removal = %#v, %v", result, scanErr)
+	}
+	if err = os.Remove(archive); err != nil {
+		t.Fatal(err)
+	}
+	if result, scanErr := Scan(context.Background(), database.DB, home); scanErr != nil || result.Documents != 0 || result.Removed != 2 {
+		t.Fatalf("final duplicate removal = %#v, %v", result, scanErr)
+	}
+}
+
+func TestVisibleDocumentChangesCountsLogicalSequenceEdits(t *testing.T) {
+	document := func(text string) visibleDocument {
+		return visibleDocument{kind: "user_prompt", text: text}
+	}
+	sequence := func(values ...string) map[string][]visibleDocument {
+		documents := make([]visibleDocument, 0, len(values))
+		for _, value := range values {
+			documents = append(documents, document(value))
+		}
+		return map[string][]visibleDocument{"codex\x00session": documents}
+	}
+	tests := []struct {
+		name                     string
+		before, after            map[string][]visibleDocument
+		wantChanged, wantRemoved int
+	}{
+		{name: "insert at start", before: sequence("one", "two", "three"), after: sequence("zero", "one", "two", "three"), wantChanged: 1},
+		{name: "insert in middle", before: sequence("one", "two", "three"), after: sequence("one", "inserted", "two", "three"), wantChanged: 1},
+		{name: "insert at end", before: sequence("one", "two", "three"), after: sequence("one", "two", "three", "four"), wantChanged: 1},
+		{name: "delete at start", before: sequence("one", "two", "three"), after: sequence("two", "three"), wantRemoved: 1},
+		{name: "delete in middle", before: sequence("one", "two", "three"), after: sequence("one", "three"), wantRemoved: 1},
+		{name: "delete at end", before: sequence("one", "two", "three"), after: sequence("one", "two"), wantRemoved: 1},
+		{name: "replace one", before: sequence("one", "two", "three"), after: sequence("one", "replacement", "three"), wantChanged: 1},
+		{name: "delete repeated text", before: sequence("same", "middle", "same"), after: sequence("same", "same"), wantRemoved: 1},
+		{name: "insert repeated text", before: sequence("same", "same"), after: sequence("same", "middle", "same"), wantChanged: 1},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			changed, removed := visibleDocumentChanges(test.before, test.after)
+			if changed != test.wantChanged || removed != test.wantRemoved {
+				t.Fatalf("visibleDocumentChanges = (%d, %d), want (%d, %d)", changed, removed, test.wantChanged, test.wantRemoved)
+			}
+		})
+	}
+}
+
+func TestTrimCommonDocumentWindowBoundsLargeSingleEdits(t *testing.T) {
+	const documentCount = 10_000
+	documents := make([]visibleDocument, documentCount)
+	for index := range documents {
+		documents[index] = visibleDocument{kind: "user_prompt", text: fmt.Sprintf("document-%05d", index)}
+	}
+	insertAt := func(index int) []visibleDocument {
+		values := append([]visibleDocument{}, documents[:index]...)
+		values = append(values, visibleDocument{kind: "assistant_final", text: "inserted"})
+		return append(values, documents[index:]...)
+	}
+	deleteAt := func(index int) []visibleDocument {
+		values := append([]visibleDocument{}, documents[:index]...)
+		return append(values, documents[index+1:]...)
+	}
+	replaceAt := func(index int) []visibleDocument {
+		values := append([]visibleDocument{}, documents...)
+		values[index] = visibleDocument{kind: "assistant_final", text: "replacement"}
+		return values
+	}
+	for _, test := range []struct {
+		name                     string
+		before, after            []visibleDocument
+		wantBefore, wantAfter    int
+		wantChanged, wantRemoved int
+	}{
+		{name: "unchanged", before: documents, after: documents},
+		{name: "insert at start", before: documents, after: insertAt(0), wantAfter: 1, wantChanged: 1},
+		{name: "insert in middle", before: documents, after: insertAt(documentCount / 2), wantAfter: 1, wantChanged: 1},
+		{name: "insert at end", before: documents, after: insertAt(documentCount), wantAfter: 1, wantChanged: 1},
+		{name: "delete at start", before: documents, after: deleteAt(0), wantBefore: 1, wantRemoved: 1},
+		{name: "delete in middle", before: documents, after: deleteAt(documentCount / 2), wantBefore: 1, wantRemoved: 1},
+		{name: "delete at end", before: documents, after: deleteAt(documentCount - 1), wantBefore: 1, wantRemoved: 1},
+		{name: "replace at start", before: documents, after: replaceAt(0), wantBefore: 1, wantAfter: 1, wantChanged: 1},
+		{name: "replace in middle", before: documents, after: replaceAt(documentCount / 2), wantBefore: 1, wantAfter: 1, wantChanged: 1},
+		{name: "replace at end", before: documents, after: replaceAt(documentCount - 1), wantBefore: 1, wantAfter: 1, wantChanged: 1},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			before, after := trimCommonDocumentWindow(test.before, test.after)
+			if len(before) != test.wantBefore || len(after) != test.wantAfter {
+				t.Fatalf("trimmed window = (%d, %d), want (%d, %d)", len(before), len(after), test.wantBefore, test.wantAfter)
+			}
+			changed, removed := logicalDocumentChanges(test.before, test.after)
+			if changed != test.wantChanged || removed != test.wantRemoved {
+				t.Fatalf("logical changes = (%d, %d), want (%d, %d)", changed, removed, test.wantChanged, test.wantRemoved)
+			}
+		})
+	}
+}
+
+func BenchmarkVisibleDocumentChangesLargeSequences(b *testing.B) {
+	const documentCount = 10_000
+	documents := make([]visibleDocument, documentCount)
+	for index := range documents {
+		documents[index] = visibleDocument{kind: "user_prompt", text: fmt.Sprintf("document-%05d", index)}
+	}
+	middle := documentCount / 2
+	inserted := append([]visibleDocument{}, documents[:middle]...)
+	inserted = append(inserted, visibleDocument{kind: "assistant_final", text: "inserted"})
+	inserted = append(inserted, documents[middle:]...)
+	deleted := append([]visibleDocument{}, documents[:middle]...)
+	deleted = append(deleted, documents[middle+1:]...)
+	replaced := append([]visibleDocument{}, documents...)
+	replaced[middle] = visibleDocument{kind: "assistant_final", text: "replacement"}
+
+	for _, benchmark := range []struct {
+		name          string
+		before, after []visibleDocument
+	}{
+		{name: "unchanged", before: documents, after: documents},
+		{name: "middle_insert", before: documents, after: inserted},
+		{name: "middle_delete", before: documents, after: deleted},
+		{name: "middle_replace", before: documents, after: replaced},
+	} {
+		b.Run(benchmark.name, func(b *testing.B) {
+			before := map[string][]visibleDocument{"codex\x00session": benchmark.before}
+			after := map[string][]visibleDocument{"codex\x00session": benchmark.after}
+			b.ReportAllocs()
+			b.ResetTimer()
+			for range b.N {
+				visibleDocumentChanges(before, after)
+			}
+		})
 	}
 }
 
@@ -344,5 +542,27 @@ func TestReplaceDocumentsUsesSyntheticSource(t *testing.T) {
 	}
 	if docs, err := Search(context.Background(), s.DB, "synthetic"); err != nil || len(docs) != 1 {
 		t.Fatalf("scan removed synthetic docs=%v err=%v", docs, err)
+	}
+}
+
+func TestPaginateAndSummarizeActivity(t *testing.T) {
+	values := []int{1, 2, 3}
+	page, pagination, err := Paginate(values, 2, 2, false)
+	if err != nil || len(page) != 1 || page[0] != 3 || pagination.Total != 3 || pagination.HasMore {
+		t.Fatalf("Paginate = %#v %#v %v", page, pagination, err)
+	}
+	first, second := int64(10), int64(30)
+	summary := SummarizeActivity([]activity.Detail{{Tool: "read", Status: "completed", DurationMS: &first}, {Tool: "exec", Status: "failed", DurationMS: &second}, {Tool: "read", Status: "started"}})
+	if summary.Total != 3 || summary.Completed != 1 || summary.Failed != 1 || summary.Incomplete != 1 || summary.TotalDurationMS != 40 || summary.AverageDurationMS == nil || *summary.AverageDurationMS != 20 || len(summary.ByTool) != 2 || summary.ByTool[0].Tool != "exec" {
+		t.Fatalf("summary = %#v", summary)
+	}
+}
+
+func TestPaginateRejectsUnsafeLimitsAndOverflowingPages(t *testing.T) {
+	if _, _, err := Paginate([]int{1}, 1, MaxPageLimit+1, false); err == nil {
+		t.Fatal("accepted excessive limit")
+	}
+	if page, metadata, err := Paginate([]int{1}, int(^uint(0)>>1), 1, false); err != nil || len(page) != 0 || metadata.Total != 1 {
+		t.Fatalf("overflow page = %#v %#v %v", page, metadata, err)
 	}
 }

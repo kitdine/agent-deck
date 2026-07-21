@@ -86,6 +86,7 @@ agentdeck watch [--interval <duration>] [--domains usage,session,extension]
 
 agentdeck backup create|list|inspect|restore
 agentdeck doctor [--full]
+agentdeck state migrate
 agentdeck version
 ```
 
@@ -564,9 +565,12 @@ Usage scanning reads existing JSONL files read-only:
 ```
 
 The importer retains timestamps, logical session and event identifiers, model
-IDs, token components, source identity, byte ranges, parser version, and
-attribution metadata. It does not retain prompt text, response text, tool data,
-attachments, environment data, or credentials in the usage database.
+IDs, token components, source identity, byte ranges, parser version,
+attribution metadata, and an allowlisted tool-call record containing only tool
+name, start/completion time, terminal status, and duration when derivable. It
+does not retain prompt text, response text, tool arguments or results, command
+text, attachments, environment data, reasoning, or credentials in the usage
+database.
 
 Codex treats `total_token_usage` as a cumulative snapshot and imports the
 non-negative component-wise delta from the previous valid cumulative snapshot
@@ -639,6 +643,15 @@ restart cumulative state from byte zero. Stable Codex event identity uses the
 logical session/turn/model/timestamp and canonical usage snapshots, never the
 source path, so archived copies do not duplicate cost.
 
+Schema v13 adds source-owned safe tool-call metadata. Parser version 3 rebuilds
+each source atomically to populate it. Tool-call identity uses the logical
+client/session call ID, never the source path; duplicate archives therefore do
+not duplicate activity, and candidate-only orphan recovery re-homes tool
+ownership when an original or archive disappears. The last real source removal
+deletes its tool metadata. Source mutation, parser-version rebuild, and failed
+candidate retry retain the same atomicity and unchanged-source isolation
+guarantees as usage events.
+
 When an event-owning source disappears, its events remain temporarily orphaned
 until the same scan can re-home matching stable keys. Recovery combines each
 inventory entry's client with its persisted source-session cursor and force
@@ -703,17 +716,27 @@ resolved during the single in-memory aggregation without per-event SQL or
 credential-value access.
 
 The stable stats JSON data object contains `range`, `timezone`, `totals`,
-`buckets`, `models`, `clients`, `activity`, `peak`, `coverage`, and sorted
-`unpriced_models`. Totals, buckets, models, and clients expose input, output,
-cached-read, and cache-write components. Codex model/client cache read rate is
-cached input divided by input. Claude logical input is ordinary input plus
-cache read plus cache write, with separate read and write rates. Mixed totals
-and buckets expose components without inventing one cross-client cache rate.
+`buckets`, `models`, `clients`, all cache-relevant `cache_sessions`, `activity`,
+`peak`, `coverage`, and sorted `unpriced_models`. Totals, buckets, models,
+clients, and cache sessions expose input, output, cached-read, and cache-write
+components. Codex model/session cache hit rate is cached input divided by
+input. Claude logical input is ordinary input plus cache read plus cache write,
+and its model/session hit rate is cache read divided by that logical input;
+cache writes remain a token volume rather than a second hit-rate percentage.
+Mixed totals and buckets expose components without inventing one cross-client
+cache rate. Pricing completeness affects only cost fields and cost ranking:
+unpriced models continue to participate in tokens, shares, sessions, events,
+cache, activity, and tool counts.
+
 Text always
 uses the approved responsive Balanced layout: compact token/cost/session KPIs,
-bar-based trend and top-model sections, client share, and an average/peak/priced
-footer. Wide terminals use two columns; narrow terminals stack the same
-sections without exceeding the detected width. Ranges spanning at least seven
+bar-based trend and all-model sections, client share, model/session cache hit
+analysis, and an average/peak/priced footer. Cache text shows all relevant
+models and the first ten deterministically sorted sessions, reports the omitted
+count, and gives each session a copyable
+`agentdeck session show <id> --client <client> --activity` command. Wide
+terminals use two columns; narrow terminals stack the same sections without
+exceeding the detected width. Ranges spanning at least seven
 local calendar days include a full-width 7-by-24 activity heatmap at the bottom;
 hour ranges omit it. TTY color is optional and `--no-color` or redirected output
 contains no ANSI escapes. `timezone` is a stable IANA identifier when the
@@ -721,12 +744,18 @@ machine zone can be resolved and otherwise an explicit `UTC+HH:MM` offset. Hour
 bucket boundaries retain their RFC3339 offsets so both hours in a DST fold
 remain distinct.
 
+`usage stats --model <model> --activity` adds that model's active session/day
+range, safe tool-call totals, completion/failure counts, available durations,
+and deterministic tool-name distribution. No tool arguments or results are
+read into the report.
+
 For `metric=cost`, complete average, metric, share, and peak values are nullable.
 They are present only when the applicable events are fully priced; the parallel
 `known_average_cost_per_session`, `known_metric_value`, `known_share`, and
 `known_value` fields always describe the known priced subtotal. Stats text marks
-known partial values with `*` and one report-level explanation instead of
-repeating `(partial)` in every row; it uses unavailable when no amount is known.
+known partial values with `KNOWN` only beside the affected cost and lists
+deterministic model/component gaps in `UNPRICED MODELS`; it uses unavailable
+when no amount is known and has no generic partial-cost footnote.
 
 ## Price Catalog
 
@@ -838,6 +867,34 @@ portable backups unless `--include-sessions` is requested.
 Purging also clears only the session watch checkpoint, so the next session watch
 bootstraps the deleted index without invalidating usage or extension checkpoints.
 Session IDs shared by Codex and Claude are ambiguous unless `--client` is given.
+`session show <id> --client <client> --activity` opens the selected source only
+on demand and displays the same allowlisted tool name, timestamps, status, and
+duration metadata. It never persists activity in `sessions.sqlite3` and never
+returns tool arguments, results, command text, environment, or reasoning.
+
+Session text collections are bounded for readable terminal use. `session list`
+and the document and activity-detail collections in `session show` default to
+page one with 20 rows in text mode. They accept positive `--page` and `--limit`
+values plus `--all`; `--all` is mutually exclusive with explicit paging. Client
+filters apply before pagination. Ordering remains deterministic: sessions use
+descending last activity followed by client and session ID, documents retain
+source order, and activity detail uses start time followed by stable call
+identity. Session metadata is always shown even when its document page is empty.
+
+Each text collection ends with `Showing <first>-<last> of <total>` and, when
+more rows exist, a copyable command for the next page. `session show --activity`
+first displays an aggregate over the complete selected session: total,
+completed, failed, and incomplete calls; total and average known duration; and
+deterministically sorted per-tool counts. Only the activity detail rows are
+paged. Model-level activity remains available through
+`usage stats --model <model> --activity`.
+
+JSON without paging flags retains the complete existing data collections for
+compatibility. Explicit paging applies the same query limits as text and adds
+an optional top-level `pagination` object keyed by collection (`sessions`,
+`documents`, or `activity`). Each entry contains page, limit, total, shown,
+has-more, and next-page values. The additive pagination metadata never contains
+source paths or session content.
 
 ## Extension Management
 
@@ -865,6 +922,16 @@ still matches. Skills without a native enable/disable mechanism are reported
 as `read-only`. `release` removes AgentDeck management state without modifying
 or deleting the extension.
 
+Skill discovery follows valid directory symlinks for an ordinary skill, a
+child of `.system`, and the `.system` directory itself. The logical extension
+ID is derived from its native namespace rather than the resolved target path.
+Target content changes or target switches update the live fingerprint and
+managed drift deterministically. A dangling link or cycle fails discovery
+before inventory replacement, preserving the previous inventory row, managed
+state, and adopted fingerprint. Recovery resumes discovery with adoption still
+intact. Other hidden skill directories remain excluded. Watch fingerprinting
+records broken or cyclic links without recursively traversing a cycle.
+
 Phase one performs no extension installation, update, uninstall, marketplace
 mutation, or dependency resolution.
 
@@ -883,6 +950,19 @@ databases only after a source changed. When no source changed, watch does not
 write SQLite or refresh extension inventory timestamps. If another process owns
 a scan write lock, it skips that interval instead of blocking provider or query
 commands.
+
+Watch `changes` uses the same logical unit for additions, updates, and removals.
+Usage reports logical usage events or records; session reports currently visible
+documents; extension reports inventory entries. Removing one duplicate source
+while another source owns or takes over the same logical data emits zero
+changes. Removing the final source emits the number of logical records or
+documents that actually disappear, never the number of removed source paths.
+Session document sequences are compared deterministically by approved kind and
+text rather than array position or source path. Inserting or deleting one
+document at any position emits one logical change, replacing one document emits
+one update, and repeated text does not turn a single edit into shifted updates.
+Before exact sequence differencing, identical prefixes and suffixes are removed
+so unchanged and isolated-edit scans process only the changed document window.
 
 ## Backup and Device Migration
 
@@ -1062,6 +1142,26 @@ canonical URL, and SHA-256), distinct unpriced models, source readability,
 usage cursors, incomplete exact runs, session FTS availability, extension
 fingerprints, duplicate IDs, and missing paths.
 
+Doctor must remain usable before an upgrade migration has run. It reads the
+stored schema version before domain queries, reports `schema_outdated` with the
+stored and supported versions, and runs only checks whose tables and columns
+exist at that version. A table introduced by a later schema, including
+`usage_tool_calls` in schema v13, is reported as not yet applicable rather than
+queried. Doctor never migrates, creates, chmods, or otherwise repairs state; its
+schema warning gives an explicit current-version state command as the recovery
+path. A schema newer than the binary remains an `unknown_schema` error. Raw SQL
+errors caused only by a known older schema must never escape from quick or full
+doctor output.
+
+Quick and full mode share the exact schema-state matrix: schema 12 reports one
+`schema_outdated` schema check with count 12 and recovery command
+`agentdeck state migrate`; complete schema 13 reports one `ok` schema check with
+count 13; schema 13 without `usage_tool_calls` reports only
+`schema_incompatible`; and a future schema reports `unknown_schema` without a
+recovery command. Text and JSON never expose raw SQL, SQLite query text, or
+driver errors. A successful explicit migration has normal text output and JSON
+`migrated: true`, and upgrades both the stored version and required tables.
+
 `--full` additionally performs full SQLite integrity checks and traverses all
 indexed sources. Neither mode accesses the network, prints credentials, or
 prints session text.
@@ -1079,7 +1179,10 @@ Pending `provider.use` checks distinguish external-write transition failure,
 selection completion failure, and a prepared journal whose client file
 fingerprint proves that the external write already occurred.
 
-There is no generic `doctor --fix` in phase one. Recovery uses explicit
+There is no generic `doctor --fix` in phase one. An older compatible core
+schema reports `schema_outdated` and directs users to explicit `state migrate`;
+a current-version database with a missing required table reports
+`schema_incompatible` without an invented recovery command. Recovery uses explicit
 commands such as `provider recover`, `usage rebuild`, `session rebuild`, or
 `extension release`.
 
@@ -1229,5 +1332,12 @@ import the legacy `providers.json`, usage database, or real client settings.
     rebuilds and mutations restart the baseline, while append scans and process
     restarts continue component-wise deltas without archive-copy duplication.
 47. Usage stats preserves token components and nullable cost completeness,
-    reports client-specific cache semantics, and deterministically lists
-    unpriced models and missing components.
+    reports model/session cache-hit semantics, and deterministically lists
+    unpriced models and missing components without excluding them from non-cost
+    analytics.
+48. Schema v13/parser v3 stores only allowlisted source-owned tool metadata,
+    deduplicates archives by stable logical call identity, and follows the same
+    candidate-only orphan recovery and final-source cleanup as usage events.
+49. Text lists all models and at most ten cache sessions while JSON returns all;
+    model and session activity detail exposes no arguments, results, command
+    text, environment, or reasoning.

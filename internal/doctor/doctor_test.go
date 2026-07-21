@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -25,6 +26,102 @@ func TestCheckMissingStateIsReadOnly(t *testing.T) {
 	}
 	if _, err = os.Stat(root); !os.IsNotExist(err) {
 		t.Fatalf("doctor created state: %v", err)
+	}
+}
+
+func TestCheckOlderAndFutureSchemasAreSafeAndReadable(t *testing.T) {
+	ctx := context.Background()
+	state := filepath.Join(t.TempDir(), "state")
+	database, err := store.Open(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = database.Exec(ctx, "DROP TABLE usage_tool_calls; UPDATE schema_metadata SET version=12"); err != nil {
+		database.Close()
+		t.Fatal(err)
+	}
+	if err = database.Close(); err != nil {
+		t.Fatal(err)
+	}
+	report, err := (Service{StateRoot: state, Home: t.TempDir(), Workdir: t.TempDir(), Vault: doctorVault(state)}).Check(ctx, true)
+	if err != nil || !hasCode(report, "schema_outdated") {
+		t.Fatalf("schema 12 report = %#v, %v", report, err)
+	}
+	future := filepath.Join(t.TempDir(), "future")
+	database, err = store.Open(ctx, future)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = database.Exec(ctx, "UPDATE schema_metadata SET version=99"); err != nil {
+		database.Close()
+		t.Fatal(err)
+	}
+	if err = database.Close(); err != nil {
+		t.Fatal(err)
+	}
+	report, err = (Service{StateRoot: future}).Check(ctx, false)
+	if err != nil || !hasCode(report, store.ErrUnknownSchema.Code) {
+		t.Fatalf("future schema report = %#v, %v", report, err)
+	}
+}
+
+func TestCheckUsageSchemaMatrixNeverLeaksSQL(t *testing.T) {
+	ctx := context.Background()
+	for _, test := range []struct {
+		name, checkName, status, code, recovery string
+		version, count                          int
+		drop                                    bool
+	}{
+		{"schema12", "schema", "warning", "schema_outdated", "agentdeck state migrate", 12, 12, true},
+		{"schema13", "schema", "ok", "", "", 13, 13, false},
+		{"schema13_missing_tool_calls", "schema", "error", "schema_incompatible", "", 13, 13, true},
+		{"future", "database", "error", "unknown_schema", "", 99, 0, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			for _, full := range []bool{false, true} {
+				state := filepath.Join(t.TempDir(), "state")
+				database, err := store.Open(ctx, state)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if test.drop {
+					if _, err = database.Exec(ctx, "DROP TABLE usage_tool_calls"); err != nil {
+						database.Close()
+						t.Fatal(err)
+					}
+				}
+				if test.version != store.CurrentSchemaVersion {
+					if _, err = database.Exec(ctx, "UPDATE schema_metadata SET version=?", test.version); err != nil {
+						database.Close()
+						t.Fatal(err)
+					}
+				}
+				database.Close()
+				report, err := (Service{StateRoot: state, Home: t.TempDir(), Workdir: t.TempDir(), Vault: doctorVault(state)}).Check(ctx, full)
+				if err != nil || len(report.Checks) == 0 {
+					t.Fatalf("full=%t report=%#v err=%v", full, report, err)
+				}
+				var matched *Check
+				for _, check := range report.Checks {
+					if strings.Contains(strings.ToLower(check.Code), "sql") {
+						t.Fatalf("leaked sql check %#v", check)
+					}
+					if check.Name == "usage_tool_calls" {
+						t.Fatalf("full=%t emitted contradictory usage_tool_calls check: %#v", full, report.Checks)
+					}
+					if check.Name == test.checkName {
+						copy := check
+						matched = &copy
+					}
+				}
+				if matched == nil || matched.Status != test.status || matched.Code != test.code || matched.Count != test.count || matched.Recovery != test.recovery {
+					t.Fatalf("full=%t check=%#v, want name=%s status=%s code=%s count=%d recovery=%q", full, matched, test.checkName, test.status, test.code, test.count, test.recovery)
+				}
+				if test.name == "schema13" && (hasCode(report, "schema_outdated") || hasCode(report, "schema_incompatible")) {
+					t.Fatalf("full=%t normal schema report=%#v", full, report)
+				}
+			}
+		})
 	}
 }
 

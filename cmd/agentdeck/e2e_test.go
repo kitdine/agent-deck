@@ -72,6 +72,7 @@ func TestIsolatedEndToEndFlow(t *testing.T) {
 		observed[command] = contract
 		return stdout.Bytes()
 	}
+	runJSON("state.migrate", "", "state", "migrate")
 	runJSON("provider.add", "phase7-e2e-secret\n", "provider", "add", "phase7", "--endpoint", "https://example.invalid", "--clients", "codex")
 	runJSON("provider.add", "disposable-secret\n", "provider", "add", "disposable", "--endpoint", "https://example.invalid", "--clients", "codex")
 	runJSON("provider.remove", "", "provider", "remove", "disposable")

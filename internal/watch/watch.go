@@ -158,6 +158,34 @@ func FingerprintRoots(roots ...string) (string, error) {
 				return err
 			}
 			records = append(records, strings.Join([]string{root, relative, fmt.Sprint(info.Mode()), fmt.Sprint(info.Size()), fmt.Sprint(info.ModTime().UnixNano())}, "\x00"))
+			// WalkDir intentionally does not follow links.  For extension roots we
+			// still need a linked skill's target changes to trigger a scan, while
+			// avoiding recursive link traversal and cycles.
+			if entry.Type()&fs.ModeSymlink != 0 {
+				target, linkErr := filepath.EvalSymlinks(path)
+				if linkErr != nil {
+					records = append(records, root+"\x00"+relative+"\x00broken-link")
+					return nil
+				}
+				linkErr = filepath.WalkDir(target, func(targetPath string, targetEntry fs.DirEntry, targetWalkErr error) error {
+					if targetWalkErr != nil {
+						return targetWalkErr
+					}
+					targetInfo, infoErr := targetEntry.Info()
+					if infoErr != nil {
+						return infoErr
+					}
+					targetRelative, relErr := filepath.Rel(target, targetPath)
+					if relErr != nil {
+						return relErr
+					}
+					records = append(records, strings.Join([]string{root, relative, "target", targetRelative, fmt.Sprint(targetInfo.Mode()), fmt.Sprint(targetInfo.Size()), fmt.Sprint(targetInfo.ModTime().UnixNano())}, "\x00"))
+					return nil
+				})
+				if linkErr != nil {
+					return linkErr
+				}
+			}
 			return nil
 		})
 		if err != nil && !errors.Is(err, os.ErrNotExist) {

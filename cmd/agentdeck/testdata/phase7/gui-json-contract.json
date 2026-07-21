@@ -58,6 +58,7 @@
     "session.scan",
     "session.search",
     "session.show",
+    "state.migrate",
     "usage.diagnose",
     "usage.rebuild",
     "usage.scan",
@@ -614,8 +615,15 @@
       "success_schema": {
         "command": "string",
         "data": {
+          "added": "number",
           "diagnostics": [],
-          "found": "number"
+          "found": "number",
+          "removed": "number",
+          "summary": {
+            "codex:mcp:user": "number"
+          },
+          "unchanged": "number",
+          "updated": "number"
         },
         "generated_at": "string",
         "partial": "boolean",
@@ -1440,6 +1448,7 @@
         "command": "string",
         "data": {
           "documents": "number",
+          "removed": "number",
           "skipped": "number",
           "sources": "number"
         },
@@ -1468,6 +1477,7 @@
         "command": "string",
         "data": {
           "documents": "number",
+          "removed": "number",
           "skipped": "number",
           "sources": "number"
         },
@@ -1562,6 +1572,32 @@
       "error_code": "invalid_argument",
       "error_command": "session.show"
     },
+    "state.migrate": {
+      "success_schema": {
+        "command": "string",
+        "data": {
+          "migrated": "boolean"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "state.migrate"
+    },
     "usage.diagnose": {
       "success_schema": {
         "command": "string",
@@ -1569,7 +1605,8 @@
           "events": "number",
           "exact_runs": "number",
           "files": "number",
-          "sessions": "number"
+          "sessions": "number",
+          "tool_calls": "number"
         },
         "generated_at": "string",
         "partial": "boolean",
@@ -1599,6 +1636,7 @@
           "ignored_non_usage": "number",
           "imported": "number",
           "malformed": "number",
+          "removed": "number",
           "replaced": "number",
           "source_resets": "number",
           "unsupported": "number",
@@ -1633,6 +1671,7 @@
           "ignored_non_usage": "number",
           "imported": "number",
           "malformed": "number",
+          "removed": "number",
           "replaced": "number",
           "source_resets": "number",
           "unsupported": "number",
@@ -1739,10 +1778,10 @@
               "tokens": "number"
             }
           ],
+          "cache_sessions": [],
           "clients": [
             {
-              "cache_read_rate": "string",
-              "cache_write_rate": null,
+              "cache_hit_rate": "string",
               "cache_write_tokens": "number",
               "cached_read_tokens": "number",
               "coverage": "string",
@@ -1771,8 +1810,19 @@
           "metric": "string",
           "models": [
             {
-              "cache_read_rate": "string",
-              "cache_write_rate": null,
+              "activity": {
+                "active_days": "number",
+                "active_sessions": "number",
+                "average_duration_ms": null,
+                "completed_calls": "number",
+                "failed_calls": "number",
+                "first_at": "string",
+                "last_at": "string",
+                "tool_calls": "number",
+                "tools": [],
+                "total_duration_ms": "number"
+              },
+              "cache_hit_rate": "string",
               "cache_write_tokens": "number",
               "cached_read_tokens": "number",
               "client": "string",

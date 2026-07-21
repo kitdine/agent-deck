@@ -23,6 +23,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/kitdine/agent-deck/internal/activity"
 	"github.com/kitdine/agent-deck/internal/store"
 )
 
@@ -32,7 +33,7 @@ var bundledCatalog []byte
 const (
 	bundledCatalogSourceURL       = "bundled://agentdeck/model-prices.json"
 	legacyBundledCatalogSourceURL = "bundled://config/model-prices.json"
-	usageParserVersion            = 2
+	usageParserVersion            = 3
 )
 
 var tokenNames = []string{"input_tokens", "cached_input_tokens", "output_tokens", "cache_read_tokens", "cache_creation_tokens", "cache_write_5m_tokens", "cache_write_1h_tokens"}
@@ -95,6 +96,7 @@ type StatsOptions struct {
 	Model    string
 	Timezone string
 	Location *time.Location
+	Activity bool
 }
 
 type StatsRange struct {
@@ -137,25 +139,59 @@ type StatsBucket struct {
 }
 
 type StatsDimension struct {
-	Name               string  `json:"name"`
-	Client             string  `json:"client,omitempty"`
-	Tokens             int64   `json:"tokens"`
-	InputTokens        int64   `json:"input_tokens"`
-	OutputTokens       int64   `json:"output_tokens"`
-	CachedReadTokens   int64   `json:"cached_read_tokens"`
-	CacheWriteTokens   int64   `json:"cache_write_tokens"`
-	LogicalInputTokens int64   `json:"logical_input_tokens"`
-	CacheReadRate      *string `json:"cache_read_rate"`
-	CacheWriteRate     *string `json:"cache_write_rate"`
-	Sessions           int64   `json:"sessions"`
-	Events             int64   `json:"events"`
-	ProviderCost       *string `json:"provider_cost"`
-	KnownProviderCost  string  `json:"known_provider_cost"`
-	MetricValue        *string `json:"metric_value"`
-	KnownMetricValue   string  `json:"known_metric_value"`
-	Share              *string `json:"share"`
-	KnownShare         string  `json:"known_share"`
-	Coverage           string  `json:"coverage"`
+	Name               string              `json:"name"`
+	Client             string              `json:"client,omitempty"`
+	Tokens             int64               `json:"tokens"`
+	InputTokens        int64               `json:"input_tokens"`
+	OutputTokens       int64               `json:"output_tokens"`
+	CachedReadTokens   int64               `json:"cached_read_tokens"`
+	CacheWriteTokens   int64               `json:"cache_write_tokens"`
+	LogicalInputTokens int64               `json:"logical_input_tokens"`
+	CacheHitRate       *string             `json:"cache_hit_rate"`
+	Sessions           int64               `json:"sessions"`
+	Events             int64               `json:"events"`
+	ProviderCost       *string             `json:"provider_cost"`
+	KnownProviderCost  string              `json:"known_provider_cost"`
+	MetricValue        *string             `json:"metric_value"`
+	KnownMetricValue   string              `json:"known_metric_value"`
+	Share              *string             `json:"share"`
+	KnownShare         string              `json:"known_share"`
+	Coverage           string              `json:"coverage"`
+	Activity           *StatsModelActivity `json:"activity,omitempty"`
+}
+
+type StatsToolCount struct {
+	Name  string `json:"name"`
+	Calls int64  `json:"calls"`
+}
+
+type StatsModelActivity struct {
+	ActiveSessions  int64            `json:"active_sessions"`
+	ActiveDays      int64            `json:"active_days"`
+	FirstAt         string           `json:"first_at,omitempty"`
+	LastAt          string           `json:"last_at,omitempty"`
+	ToolCalls       int64            `json:"tool_calls"`
+	CompletedCalls  int64            `json:"completed_calls"`
+	FailedCalls     int64            `json:"failed_calls"`
+	TotalDurationMS int64            `json:"total_duration_ms"`
+	AverageDuration *int64           `json:"average_duration_ms"`
+	Tools           []StatsToolCount `json:"tools"`
+}
+
+type StatsCacheSession struct {
+	Client             string   `json:"client"`
+	SessionID          string   `json:"session_id"`
+	Models             []string `json:"models"`
+	InputTokens        int64    `json:"input_tokens"`
+	OutputTokens       int64    `json:"output_tokens"`
+	CachedReadTokens   int64    `json:"cached_read_tokens"`
+	CacheWriteTokens   int64    `json:"cache_write_tokens"`
+	LogicalInputTokens int64    `json:"logical_input_tokens"`
+	CacheHitRate       *string  `json:"cache_hit_rate"`
+	Events             int64    `json:"events"`
+	FirstAt            string   `json:"first_at"`
+	LastAt             string   `json:"last_at"`
+	DetailCommand      string   `json:"detail_command"`
 }
 
 type StatsActivity struct {
@@ -185,18 +221,20 @@ type StatsCoverage struct {
 }
 
 type StatsReport struct {
-	Range          StatsRange           `json:"range"`
-	Timezone       string               `json:"timezone"`
-	GroupBy        string               `json:"group_by"`
-	Metric         string               `json:"metric"`
-	Totals         StatsTotals          `json:"totals"`
-	Buckets        []StatsBucket        `json:"buckets"`
-	Models         []StatsDimension     `json:"models"`
-	Clients        []StatsDimension     `json:"clients"`
-	Activity       []StatsActivity      `json:"activity"`
-	Peak           StatsPeak            `json:"peak"`
-	Coverage       StatsCoverage        `json:"coverage"`
-	UnpricedModels []StatsUnpricedModel `json:"unpriced_models"`
+	Range             StatsRange           `json:"range"`
+	Timezone          string               `json:"timezone"`
+	GroupBy           string               `json:"group_by"`
+	Metric            string               `json:"metric"`
+	Totals            StatsTotals          `json:"totals"`
+	Buckets           []StatsBucket        `json:"buckets"`
+	Models            []StatsDimension     `json:"models"`
+	Clients           []StatsDimension     `json:"clients"`
+	CacheSessions     []StatsCacheSession  `json:"cache_sessions"`
+	Activity          []StatsActivity      `json:"activity"`
+	Peak              StatsPeak            `json:"peak"`
+	Coverage          StatsCoverage        `json:"coverage"`
+	UnpricedModels    []StatsUnpricedModel `json:"unpriced_models"`
+	ShowModelActivity bool                 `json:"-"`
 }
 
 type StatsUnpricedModel struct {
@@ -559,9 +597,11 @@ func (s *Service) ScanInventory(ctx context.Context, inventory Inventory) (map[s
 		}
 	}
 	if recovering {
-		if err = s.cleanupOrphanedEvents(ctx); err != nil {
-			return nil, err
+		removed, cleanupErr := s.cleanupOrphanedEvents(ctx)
+		if cleanupErr != nil {
+			return nil, cleanupErr
 		}
+		out["removed"] += removed
 	}
 	if err := s.Store.SetSetting(ctx, "watch.fingerprint.usage", inventory.Fingerprint); err != nil {
 		return nil, err
@@ -606,7 +646,7 @@ func (s *Service) Rebuild(ctx context.Context) (map[string]int, []string, error)
 	}
 	sort.Strings(warnings)
 	if len(warnings) == 0 {
-		if err = s.cleanupOrphanedEvents(ctx); err != nil {
+		if _, err = s.cleanupOrphanedEvents(ctx); err != nil {
 			return nil, nil, err
 		}
 		if err = s.Store.SetSetting(ctx, "watch.fingerprint.usage", inventory.Fingerprint); err != nil {
@@ -617,7 +657,7 @@ func (s *Service) Rebuild(ctx context.Context) (map[string]int, []string, error)
 }
 
 func newScanResult(files int) map[string]int {
-	return map[string]int{"files": files, "imported": 0, "updated": 0, "ignored_non_usage": 0, "unsupported_usage": 0, "malformed": 0, "source_resets": 0, "replaced": 0, "unsupported": 0}
+	return map[string]int{"files": files, "imported": 0, "updated": 0, "removed": 0, "ignored_non_usage": 0, "unsupported_usage": 0, "malformed": 0, "source_resets": 0, "replaced": 0, "unsupported": 0}
 }
 
 func mergeScanResult(total, stats map[string]int) {
@@ -765,6 +805,8 @@ func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceR
 			return r, fmt.Errorf("invalid Codex cumulative usage cursor for %q: %w", path, err)
 		}
 	}
+	activityParser := activity.NewParser(client, path)
+	activityParser.SetContext(state.session, state.turn, state.model)
 	parserOutdated := found && parserVersion != usageParserVersion
 	stableMetadata := found && !parserOutdated && oldIdentity == entry.Identity && oldSize == entry.Size && oldModified == entry.ModifiedAt
 	if !forceRebuild && stableMetadata {
@@ -791,6 +833,7 @@ func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceR
 	if reset {
 		cursor = 0
 		state = parseState{codexCumulative: map[string]map[string]int64{}}
+		activityParser = activity.NewParser(client, path)
 		if sourceMutated {
 			r["source_resets"]++
 		}
@@ -801,6 +844,7 @@ func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceR
 		return r, err
 	}
 	events := make([]Event, 0)
+	toolActivities := make([]activity.Record, 0)
 	offset, line := cursor, data
 	for len(line) > 0 {
 		idx := strings.IndexByte(string(line), '\n')
@@ -817,6 +861,7 @@ func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceR
 			continue
 		}
 		ev, ok := parse(client, value, &state, path, offset)
+		toolActivities = append(toolActivities, activityParser.Parse(value, offset)...)
 		if !ok {
 			if looksLikeUsage(client, value) {
 				r["unsupported_usage"]++
@@ -863,6 +908,9 @@ func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceR
 		if _, err = tx.ExecContext(ctx, "DELETE FROM usage_events WHERE source_path=?", path); err != nil {
 			return r, err
 		}
+		if _, err = tx.ExecContext(ctx, "DELETE FROM usage_tool_calls WHERE source_path=?", path); err != nil {
+			return r, err
+		}
 		if sourceMutated {
 			if _, err = tx.ExecContext(ctx, "DELETE FROM usage_run_sources WHERE path=?", path); err != nil {
 				return r, err
@@ -883,6 +931,11 @@ func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceR
 		} else {
 			r["updated"]++
 			r["replaced"]++
+		}
+	}
+	for _, item := range toolActivities {
+		if err = upsertToolActivityTx(ctx, tx, item); err != nil {
+			return r, err
 		}
 	}
 	if err = restoreEventRunBindings(ctx, tx, path, preservedBindings); err != nil {
@@ -1098,9 +1151,10 @@ func upsertTx(ctx context.Context, tx *sql.Tx, e Event) (inserted, changed bool,
 		return false, false, fmt.Errorf("invalid usage event timestamp %q: %w", e.EventAt, err)
 	}
 	e.EventAt = at.UTC().Format(time.RFC3339Nano)
-	var existingPath string
+	var existingPath, existingEventAt, existingModel string
 	var existingSourceIndexed int
-	lookupErr := tx.QueryRowContext(ctx, `SELECT e.source_path,CASE WHEN f.path IS NULL THEN 0 ELSE 1 END FROM usage_events e LEFT JOIN usage_source_files f ON f.path=e.source_path WHERE e.event_key=?`, e.Key).Scan(&existingPath, &existingSourceIndexed)
+	var existingInput, existingCachedInput, existingOutput, existingCacheRead, existingCacheCreation, existingCacheWrite5m, existingCacheWrite1h int64
+	lookupErr := tx.QueryRowContext(ctx, `SELECT e.source_path,CASE WHEN f.path IS NULL THEN 0 ELSE 1 END,e.event_at,e.model,e.input_tokens,e.cached_input_tokens,e.output_tokens,e.cache_read_tokens,e.cache_creation_tokens,e.cache_write_5m_tokens,e.cache_write_1h_tokens FROM usage_events e LEFT JOIN usage_source_files f ON f.path=e.source_path WHERE e.event_key=?`, e.Key).Scan(&existingPath, &existingSourceIndexed, &existingEventAt, &existingModel, &existingInput, &existingCachedInput, &existingOutput, &existingCacheRead, &existingCacheCreation, &existingCacheWrite5m, &existingCacheWrite1h)
 	exists := lookupErr == nil
 	if lookupErr != nil && !errors.Is(lookupErr, sql.ErrNoRows) {
 		return false, false, lookupErr
@@ -1110,7 +1164,36 @@ func upsertTx(ctx context.Context, tx *sql.Tx, e Event) (inserted, changed bool,
 	}
 	vals := []any{e.Key, e.Client, e.SessionID, e.EventID, e.EventAt, e.Model, e.Tokens["input_tokens"], e.Tokens["cached_input_tokens"], e.Tokens["output_tokens"], e.Tokens["cache_read_tokens"], e.Tokens["cache_creation_tokens"], e.Tokens["cache_write_5m_tokens"], e.Tokens["cache_write_1h_tokens"], e.SourcePath, e.SourceOffset}
 	_, err = tx.ExecContext(ctx, `INSERT INTO usage_events(event_key,client,session_id,event_id,event_at,model,input_tokens,cached_input_tokens,output_tokens,cache_read_tokens,cache_creation_tokens,cache_write_5m_tokens,cache_write_1h_tokens,source_path,source_offset)VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(event_key) DO UPDATE SET event_at=excluded.event_at,model=excluded.model,input_tokens=excluded.input_tokens,cached_input_tokens=excluded.cached_input_tokens,output_tokens=excluded.output_tokens,cache_read_tokens=excluded.cache_read_tokens,cache_creation_tokens=excluded.cache_creation_tokens,cache_write_5m_tokens=excluded.cache_write_5m_tokens,cache_write_1h_tokens=excluded.cache_write_1h_tokens,source_path=excluded.source_path,source_offset=excluded.source_offset`, vals...)
-	return !exists, err == nil, err
+	logicalChanged := !exists || existingEventAt != e.EventAt || existingModel != e.Model || existingInput != e.Tokens["input_tokens"] || existingCachedInput != e.Tokens["cached_input_tokens"] || existingOutput != e.Tokens["output_tokens"] || existingCacheRead != e.Tokens["cache_read_tokens"] || existingCacheCreation != e.Tokens["cache_creation_tokens"] || existingCacheWrite5m != e.Tokens["cache_write_5m_tokens"] || existingCacheWrite1h != e.Tokens["cache_write_1h_tokens"]
+	return !exists, err == nil && logicalChanged, err
+}
+
+func upsertToolActivityTx(ctx context.Context, tx *sql.Tx, record activity.Record) error {
+	var existingPath, startedAt string
+	var existingSourceIndexed int
+	lookupErr := tx.QueryRowContext(ctx, `SELECT a.source_path,a.started_at,CASE WHEN f.path IS NULL THEN 0 ELSE 1 END FROM usage_tool_calls a LEFT JOIN usage_source_files f ON f.path=a.source_path WHERE a.activity_key=?`, record.Key).Scan(&existingPath, &startedAt, &existingSourceIndexed)
+	exists := lookupErr == nil
+	if lookupErr != nil && !errors.Is(lookupErr, sql.ErrNoRows) {
+		return lookupErr
+	}
+	if exists && existingSourceIndexed == 1 && existingPath > record.SourcePath {
+		return nil
+	}
+	if record.StartedAt != "" {
+		_, err := tx.ExecContext(ctx, `INSERT INTO usage_tool_calls(activity_key,client,session_id,model,tool_name,started_at,completed_at,status,duration_ms,source_path,source_offset) VALUES(?,?,?,?,?,?,NULL,'started',NULL,?,?) ON CONFLICT(activity_key) DO UPDATE SET client=excluded.client,session_id=excluded.session_id,model=excluded.model,tool_name=excluded.tool_name,started_at=excluded.started_at,completed_at=NULL,status='started',duration_ms=NULL,source_path=excluded.source_path,source_offset=excluded.source_offset`, record.Key, record.Client, record.SessionID, record.Model, record.Tool, record.StartedAt, record.SourcePath, record.SourceOffset)
+		return err
+	}
+	if !exists || record.CompletedAt == "" {
+		return nil
+	}
+	var duration any
+	started, startErr := time.Parse(time.RFC3339Nano, startedAt)
+	completed, completeErr := time.Parse(time.RFC3339Nano, record.CompletedAt)
+	if startErr == nil && completeErr == nil && !completed.Before(started) {
+		duration = completed.Sub(started).Milliseconds()
+	}
+	_, err := tx.ExecContext(ctx, `UPDATE usage_tool_calls SET completed_at=?,status=?,duration_ms=?,source_path=? WHERE activity_key=?`, record.CompletedAt, record.Status, duration, record.SourcePath, record.Key)
+	return err
 }
 
 type eventRunBinding struct {
@@ -1200,7 +1283,7 @@ func (s *Service) detachSource(ctx context.Context, path string) error {
 }
 
 func (s *Service) orphanRecoveryCandidates(ctx context.Context, entries []InventoryEntry) (bool, map[string]bool, error) {
-	rows, err := s.Store.DB.QueryContext(ctx, `SELECT DISTINCT e.client,e.session_id FROM usage_events e LEFT JOIN usage_source_files f ON f.path=e.source_path WHERE f.path IS NULL`)
+	rows, err := s.Store.DB.QueryContext(ctx, `SELECT client,session_id FROM (SELECT DISTINCT e.client,e.session_id FROM usage_events e LEFT JOIN usage_source_files f ON f.path=e.source_path WHERE f.path IS NULL UNION SELECT DISTINCT a.client,a.session_id FROM usage_tool_calls a LEFT JOIN usage_source_files f ON f.path=a.source_path WHERE f.path IS NULL)`)
 	if err != nil {
 		return false, nil, err
 	}
@@ -1245,39 +1328,50 @@ func (s *Service) orphanRecoveryCandidates(ctx context.Context, entries []Invent
 	return true, candidates, nil
 }
 
-func (s *Service) cleanupOrphanedEvents(ctx context.Context) error {
+func (s *Service) cleanupOrphanedEvents(ctx context.Context) (int, error) {
 	tx, err := s.Store.DB.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer tx.Rollback()
 	rows, err := tx.QueryContext(ctx, `SELECT DISTINCT e.client,e.session_id FROM usage_events e LEFT JOIN usage_source_files f ON f.path=e.source_path WHERE f.path IS NULL`)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	affected := map[string][2]string{}
 	for rows.Next() {
 		var client, sessionID string
 		if err = rows.Scan(&client, &sessionID); err != nil {
 			rows.Close()
-			return err
+			return 0, err
 		}
 		affected[client+"\x00"+sessionID] = [2]string{client, sessionID}
 	}
 	if err = rows.Close(); err != nil {
-		return err
+		return 0, err
 	}
-	if _, err = tx.ExecContext(ctx, `DELETE FROM usage_events WHERE NOT EXISTS (SELECT 1 FROM usage_source_files f WHERE f.path=usage_events.source_path)`); err != nil {
-		return err
+	deleted, err := tx.ExecContext(ctx, `DELETE FROM usage_events WHERE NOT EXISTS (SELECT 1 FROM usage_source_files f WHERE f.path=usage_events.source_path)`)
+	if err != nil {
+		return 0, err
+	}
+	if _, err = tx.ExecContext(ctx, `DELETE FROM usage_tool_calls WHERE NOT EXISTS (SELECT 1 FROM usage_source_files f WHERE f.path=usage_tool_calls.source_path)`); err != nil {
+		return 0, err
 	}
 	if err = rebuildSessions(ctx, tx, affected); err != nil {
-		return err
+		return 0, err
 	}
-	return tx.Commit()
+	removed, err := deleted.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+	if err = tx.Commit(); err != nil {
+		return 0, err
+	}
+	return int(removed), nil
 }
 func (s *Service) Diagnose(ctx context.Context) (map[string]any, error) {
 	out := map[string]any{}
-	for k, q := range map[string]string{"files": "SELECT COUNT(*) FROM usage_source_files", "events": "SELECT COUNT(*) FROM usage_events", "sessions": "SELECT COUNT(*) FROM usage_sessions", "exact_runs": "SELECT COUNT(*) FROM usage_runs WHERE ended_at IS NULL"} {
+	for k, q := range map[string]string{"files": "SELECT COUNT(*) FROM usage_source_files", "events": "SELECT COUNT(*) FROM usage_events", "sessions": "SELECT COUNT(*) FROM usage_sessions", "tool_calls": "SELECT COUNT(*) FROM usage_tool_calls", "exact_runs": "SELECT COUNT(*) FROM usage_runs WHERE ended_at IS NULL"} {
 		var n int
 		if err := s.Store.DB.QueryRowContext(ctx, q).Scan(&n); err != nil {
 			return nil, err
@@ -1861,6 +1955,60 @@ type statsAccumulator struct {
 	missing                                       map[string]struct{}
 }
 
+type statsSessionAccumulator struct {
+	*statsAccumulator
+	models          map[string]struct{}
+	firstAt, lastAt string
+}
+
+type statsModelActivityAccumulator struct {
+	sessions                                  map[string]struct{}
+	days                                      map[string]struct{}
+	tools                                     map[string]int64
+	firstAt, lastAt                           string
+	calls, completed, failed, timed, duration int64
+}
+
+func newStatsModelActivityAccumulator() *statsModelActivityAccumulator {
+	return &statsModelActivityAccumulator{sessions: map[string]struct{}{}, days: map[string]struct{}{}, tools: map[string]int64{}}
+}
+
+func (a *statsModelActivityAccumulator) observe(client, sessionID, at string, location *time.Location) error {
+	parsed, err := time.Parse(time.RFC3339Nano, at)
+	if err != nil {
+		return err
+	}
+	canonical := parsed.UTC().Format(time.RFC3339Nano)
+	a.sessions[client+"\x00"+sessionID] = struct{}{}
+	a.days[parsed.In(location).Format("2006-01-02")] = struct{}{}
+	if a.firstAt == "" || canonical < a.firstAt {
+		a.firstAt = canonical
+	}
+	if canonical > a.lastAt {
+		a.lastAt = canonical
+	}
+	return nil
+}
+
+func (a *statsModelActivityAccumulator) summary() StatsModelActivity {
+	tools := make([]StatsToolCount, 0, len(a.tools))
+	for name, calls := range a.tools {
+		tools = append(tools, StatsToolCount{Name: name, Calls: calls})
+	}
+	sort.Slice(tools, func(i, j int) bool {
+		if tools[i].Calls != tools[j].Calls {
+			return tools[i].Calls > tools[j].Calls
+		}
+		return tools[i].Name < tools[j].Name
+	})
+	var average *int64
+	if a.timed > 0 {
+		value := a.duration / a.timed
+		average = &value
+	}
+	return StatsModelActivity{ActiveSessions: int64(len(a.sessions)), ActiveDays: int64(len(a.days)), FirstAt: a.firstAt, LastAt: a.lastAt, ToolCalls: a.calls, CompletedCalls: a.completed, FailedCalls: a.failed, TotalDurationMS: a.duration, AverageDuration: average, Tools: tools}
+}
+
 func newStatsAccumulator() *statsAccumulator {
 	return &statsAccumulator{base: new(big.Rat), provider: new(big.Rat), complete: true, sessions: map[string]struct{}{}, missing: map[string]struct{}{}}
 }
@@ -2010,15 +2158,14 @@ func statsDimension(name, client, metric string, value *statsAccumulator, total 
 		clientName = name
 	}
 	logicalInput := value.input
-	var cacheReadRate, cacheWriteRate *string
+	var cacheHitRate *string
 	if clientName == "codex" {
-		cacheReadRate = percentPointer(value.cachedRead, value.input)
+		cacheHitRate = percentPointer(value.cachedRead, value.input)
 	} else if clientName == "claude" {
 		logicalInput += value.cachedRead + value.cacheWrite
-		cacheReadRate = percentPointer(value.cachedRead, logicalInput)
-		cacheWriteRate = percentPointer(value.cacheWrite, logicalInput)
+		cacheHitRate = percentPointer(value.cachedRead, logicalInput)
 	}
-	return StatsDimension{Name: name, Client: client, Tokens: value.tokens, InputTokens: value.input, OutputTokens: value.output, CachedReadTokens: value.cachedRead, CacheWriteTokens: value.cacheWrite, LogicalInputTokens: logicalInput, CacheReadRate: cacheReadRate, CacheWriteRate: cacheWriteRate, Sessions: int64(len(value.sessions)), Events: value.events, ProviderCost: cost, KnownProviderCost: known, MetricValue: metricComplete, KnownMetricValue: metricKnown, Share: share, KnownShare: knownShare, Coverage: statsCoverage(value.priced, value.unpriced)}
+	return StatsDimension{Name: name, Client: client, Tokens: value.tokens, InputTokens: value.input, OutputTokens: value.output, CachedReadTokens: value.cachedRead, CacheWriteTokens: value.cacheWrite, LogicalInputTokens: logicalInput, CacheHitRate: cacheHitRate, Sessions: int64(len(value.sessions)), Events: value.events, ProviderCost: cost, KnownProviderCost: known, MetricValue: metricComplete, KnownMetricValue: metricKnown, Share: share, KnownShare: knownShare, Coverage: statsCoverage(value.priced, value.unpriced)}
 }
 
 func percentPointer(numerator, denominator int64) *string {
@@ -2202,6 +2349,8 @@ func (s *Service) Stats(ctx context.Context, options StatsOptions) (StatsReport,
 	buckets := map[string]*statsAccumulator{}
 	models := map[string]*statsAccumulator{}
 	clients := map[string]*statsAccumulator{}
+	sessions := map[string]*statsSessionAccumulator{}
+	modelActivity := map[string]*statsModelActivityAccumulator{}
 	activity := map[[2]int]*statsAccumulator{}
 	for _, event := range events {
 		at, parseErr := time.Parse(time.RFC3339Nano, event.EventAt)
@@ -2228,6 +2377,13 @@ func (s *Service) Stats(ctx context.Context, options StatsOptions) (StatsReport,
 		if clients[event.Client] == nil {
 			clients[event.Client] = newStatsAccumulator()
 		}
+		sessionKey := event.Client + "\x00" + event.SessionID
+		if sessions[sessionKey] == nil {
+			sessions[sessionKey] = &statsSessionAccumulator{statsAccumulator: newStatsAccumulator(), models: map[string]struct{}{}}
+		}
+		if modelActivity[modelKey] == nil {
+			modelActivity[modelKey] = newStatsModelActivityAccumulator()
+		}
 		local := at.In(location)
 		activityKey := [2]int{(int(local.Weekday()) + 6) % 7, local.Hour()}
 		if activity[activityKey] == nil {
@@ -2238,6 +2394,76 @@ func (s *Service) Stats(ctx context.Context, options StatsOptions) (StatsReport,
 				return StatsReport{}, err
 			}
 		}
+		if err = sessions[sessionKey].add(event, result); err != nil {
+			return StatsReport{}, err
+		}
+		sessions[sessionKey].models[event.Model] = struct{}{}
+		if sessions[sessionKey].firstAt == "" || event.EventAt < sessions[sessionKey].firstAt {
+			sessions[sessionKey].firstAt = event.EventAt
+		}
+		if event.EventAt > sessions[sessionKey].lastAt {
+			sessions[sessionKey].lastAt = event.EventAt
+		}
+		if err = modelActivity[modelKey].observe(event.Client, event.SessionID, event.EventAt, location); err != nil {
+			return StatsReport{}, err
+		}
+	}
+	toolQuery := `SELECT client,session_id,model,tool_name,started_at,status,duration_ms FROM usage_tool_calls WHERE started_at>=? AND started_at<?`
+	toolArgs := []any{options.From.UTC().Format(time.RFC3339Nano), options.To.UTC().Format(time.RFC3339Nano)}
+	if options.Client != "" {
+		toolQuery += ` AND client=?`
+		toolArgs = append(toolArgs, options.Client)
+	}
+	if options.Model != "" {
+		toolQuery += ` AND model=?`
+		toolArgs = append(toolArgs, options.Model)
+	}
+	toolQuery += ` ORDER BY started_at,activity_key`
+	toolRows, err := s.Store.DB.QueryContext(ctx, toolQuery, toolArgs...)
+	if err != nil {
+		return StatsReport{}, err
+	}
+	for toolRows.Next() {
+		var client, sessionID, model, tool, startedAt, status string
+		var duration sql.NullInt64
+		if err = toolRows.Scan(&client, &sessionID, &model, &tool, &startedAt, &status, &duration); err != nil {
+			toolRows.Close()
+			return StatsReport{}, err
+		}
+		if model == "" {
+			continue
+		}
+		modelKey := client + "\x00" + model
+		if models[modelKey] == nil {
+			models[modelKey] = newStatsAccumulator()
+		}
+		if modelActivity[modelKey] == nil {
+			modelActivity[modelKey] = newStatsModelActivityAccumulator()
+		}
+		value := modelActivity[modelKey]
+		if err = value.observe(client, sessionID, startedAt, location); err != nil {
+			toolRows.Close()
+			return StatsReport{}, err
+		}
+		value.calls++
+		value.tools[tool]++
+		switch status {
+		case "completed":
+			value.completed++
+		case "failed":
+			value.failed++
+		}
+		if duration.Valid {
+			value.timed++
+			value.duration += duration.Int64
+		}
+	}
+	if err = toolRows.Err(); err != nil {
+		toolRows.Close()
+		return StatsReport{}, err
+	}
+	if err = toolRows.Close(); err != nil {
+		return StatsReport{}, err
 	}
 	timezone := options.Timezone
 	if timezone == "" {
@@ -2246,7 +2472,7 @@ func (s *Service) Stats(ctx context.Context, options StatsOptions) (StatsReport,
 	report := StatsReport{
 		Range:    StatsRange{From: options.From.In(location).Format(time.RFC3339Nano), To: options.To.In(location).Format(time.RFC3339Nano)},
 		Timezone: timezone, GroupBy: options.GroupBy, Metric: options.Metric,
-		Buckets: []StatsBucket{}, Models: []StatsDimension{}, Clients: []StatsDimension{}, Activity: []StatsActivity{}, UnpricedModels: []StatsUnpricedModel{},
+		Buckets: []StatsBucket{}, Models: []StatsDimension{}, Clients: []StatsDimension{}, CacheSessions: []StatsCacheSession{}, Activity: []StatsActivity{}, UnpricedModels: []StatsUnpricedModel{}, ShowModelActivity: options.Activity,
 		Coverage: StatsCoverage{PricedEvents: total.priced, UnpricedEvents: total.unpriced, TotalEvents: total.events, Percent: statsCoverage(total.priced, total.unpriced)},
 	}
 	completeProvider, _ := statsCost(total)
@@ -2296,7 +2522,12 @@ func (s *Service) Stats(ctx context.Context, options StatsOptions) (StatsReport,
 	totalMetric := statsMetricRat(options.Metric, total)
 	for key, value := range models {
 		parts := strings.SplitN(key, "\x00", 2)
-		report.Models = append(report.Models, statsDimension(parts[1], parts[0], options.Metric, value, totalMetric, total.complete))
+		dimension := statsDimension(parts[1], parts[0], options.Metric, value, totalMetric, total.complete)
+		if modelActivity[key] != nil {
+			summary := modelActivity[key].summary()
+			dimension.Activity = &summary
+		}
+		report.Models = append(report.Models, dimension)
 		if len(value.missing) > 0 {
 			missing := make([]string, 0, len(value.missing))
 			for component := range value.missing {
@@ -2308,6 +2539,22 @@ func (s *Service) Stats(ctx context.Context, options StatsOptions) (StatsReport,
 	}
 	for name, value := range clients {
 		report.Clients = append(report.Clients, statsDimension(name, "", options.Metric, value, totalMetric, total.complete))
+	}
+	for key, value := range sessions {
+		if value.cachedRead == 0 && value.cacheWrite == 0 {
+			continue
+		}
+		parts := strings.SplitN(key, "\x00", 2)
+		models := make([]string, 0, len(value.models))
+		for model := range value.models {
+			models = append(models, model)
+		}
+		sort.Strings(models)
+		logicalInput := value.input
+		if parts[0] == "claude" {
+			logicalInput += value.cachedRead + value.cacheWrite
+		}
+		report.CacheSessions = append(report.CacheSessions, StatsCacheSession{Client: parts[0], SessionID: parts[1], Models: models, InputTokens: value.input, OutputTokens: value.output, CachedReadTokens: value.cachedRead, CacheWriteTokens: value.cacheWrite, LogicalInputTokens: logicalInput, CacheHitRate: percentPointer(value.cachedRead, logicalInput), Events: value.events, FirstAt: value.firstAt, LastAt: value.lastAt, DetailCommand: fmt.Sprintf("agentdeck session show %s --client %s --activity", parts[1], parts[0])})
 	}
 	sort.Slice(report.Models, func(i, j int) bool {
 		left, _ := decimal(report.Models[i].KnownMetricValue)
@@ -2321,6 +2568,18 @@ func (s *Service) Stats(ctx context.Context, options StatsOptions) (StatsReport,
 		return report.Models[i].Client < report.Models[j].Client
 	})
 	sort.Slice(report.Clients, func(i, j int) bool { return report.Clients[i].Name < report.Clients[j].Name })
+	sort.Slice(report.CacheSessions, func(i, j int) bool {
+		if report.CacheSessions[i].CachedReadTokens != report.CacheSessions[j].CachedReadTokens {
+			return report.CacheSessions[i].CachedReadTokens > report.CacheSessions[j].CachedReadTokens
+		}
+		if report.CacheSessions[i].LogicalInputTokens != report.CacheSessions[j].LogicalInputTokens {
+			return report.CacheSessions[i].LogicalInputTokens > report.CacheSessions[j].LogicalInputTokens
+		}
+		if report.CacheSessions[i].Client != report.CacheSessions[j].Client {
+			return report.CacheSessions[i].Client < report.CacheSessions[j].Client
+		}
+		return report.CacheSessions[i].SessionID < report.CacheSessions[j].SessionID
+	})
 	sort.Slice(report.UnpricedModels, func(i, j int) bool {
 		if report.UnpricedModels[i].Client == report.UnpricedModels[j].Client {
 			return report.UnpricedModels[i].Model < report.UnpricedModels[j].Model

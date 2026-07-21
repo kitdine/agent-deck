@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -23,6 +25,7 @@ import (
 	"github.com/kitdine/agent-deck/internal/session"
 	"github.com/kitdine/agent-deck/internal/store"
 	"github.com/kitdine/agent-deck/internal/usage"
+	"github.com/kitdine/agent-deck/internal/watch"
 )
 
 func TestMain(m *testing.M) {
@@ -91,6 +94,120 @@ func TestProviderListAndShowOfficialDoNotAccessSecretsOrLeakCredentials(t *testi
 	}
 	if vault.calls != 0 {
 		t.Fatalf("provider list/show accessed credential vault %d times", vault.calls)
+	}
+}
+
+func TestSessionCLIListAndShowPaginationContracts(t *testing.T) {
+	state := filepath.Join(t.TempDir(), "state with quote ' and space")
+	home := t.TempDir()
+	oldHome := userHomeDir
+	userHomeDir = func() (string, error) { return home, nil }
+	t.Cleanup(func() { userHomeDir = oldHome })
+	database, err := store.OpenSessions(context.Background(), state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range []struct {
+		client, id string
+		docs       []session.Document
+	}{
+		{"codex", "a", []session.Document{{Client: "codex", SessionID: "a", Kind: "user_prompt", Text: "a1"}, {Client: "codex", SessionID: "a", Kind: "assistant_final", Text: "a2"}, {Client: "codex", SessionID: "a", Kind: "user_prompt", Text: "a3"}}},
+		{"codex", "b", []session.Document{{Client: "codex", SessionID: "b", Kind: "user_prompt", Text: "b"}}},
+		{"codex", "c", []session.Document{{Client: "codex", SessionID: "c", Kind: "user_prompt", Text: "c"}}},
+		{"claude", "d", []session.Document{{Client: "claude", SessionID: "d", Kind: "user_prompt", Text: "d"}}},
+	} {
+		if err = session.ReplaceDocuments(context.Background(), database.DB, item.client, item.id, item.docs); err != nil {
+			database.Close()
+			t.Fatal(err)
+		}
+	}
+	if err = database.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	var listJSON bytes.Buffer
+	if err = run([]string{"--state-dir", state, "--format", "json", "session", "list", "--client", "codex", "--page", "1", "--limit", "2"}, bytes.NewReader(nil), &listJSON); err != nil {
+		t.Fatal(err)
+	}
+	var listEnvelope struct {
+		Data struct {
+			Sessions   []session.Metadata            `json:"sessions"`
+			Pagination map[string]session.Pagination `json:"pagination"`
+		} `json:"data"`
+	}
+	if err = json.Unmarshal(listJSON.Bytes(), &listEnvelope); err != nil {
+		t.Fatal(err)
+	}
+	listPage := listEnvelope.Data.Pagination["sessions"]
+	if len(listEnvelope.Data.Sessions) != 2 || listPage.Total != 3 || listPage.Shown != 2 || !listPage.HasMore || listPage.NextPage != 2 {
+		t.Fatalf("filtered list pagination = %s", listJSON.String())
+	}
+
+	var listText bytes.Buffer
+	if err = run([]string{"--state-dir", state, "session", "list", "--client", "codex", "--page", "1", "--limit", "2"}, bytes.NewReader(nil), &listText); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"Showing 1-2 of 3", "--state-dir " + shellQuote(state), "--client 'codex'", "--page 2", "--limit 2"} {
+		if !strings.Contains(listText.String(), want) {
+			t.Fatalf("list text missing %q: %s", want, listText.String())
+		}
+	}
+
+	var legacy bytes.Buffer
+	if err = run([]string{"--state-dir", state, "--format", "json", "session", "list", "--client", "codex"}, bytes.NewReader(nil), &legacy); err != nil {
+		t.Fatal(err)
+	}
+	var legacyEnvelope struct {
+		Data json.RawMessage `json:"data"`
+	}
+	if err = json.Unmarshal(legacy.Bytes(), &legacyEnvelope); err != nil || len(legacyEnvelope.Data) == 0 || legacyEnvelope.Data[0] != '[' || bytes.Contains(legacyEnvelope.Data, []byte(`"pagination"`)) {
+		t.Fatalf("legacy list JSON = %s, %v", legacy.String(), err)
+	}
+
+	var showJSON bytes.Buffer
+	if err = run([]string{"--state-dir", state, "--format", "json", "session", "show", "a", "--page", "1", "--limit", "2"}, bytes.NewReader(nil), &showJSON); err != nil {
+		t.Fatal(err)
+	}
+	var showEnvelope struct {
+		Data struct {
+			Client     string                        `json:"client"`
+			Documents  []session.Document            `json:"documents"`
+			Pagination map[string]session.Pagination `json:"pagination"`
+		} `json:"data"`
+	}
+	if err = json.Unmarshal(showJSON.Bytes(), &showEnvelope); err != nil {
+		t.Fatal(err)
+	}
+	showPage := showEnvelope.Data.Pagination["documents"]
+	if showEnvelope.Data.Client != "codex" || len(showEnvelope.Data.Documents) != 2 || showPage.Total != 3 || showPage.NextPage != 2 {
+		t.Fatalf("show pagination = %s", showJSON.String())
+	}
+	var showText bytes.Buffer
+	if err = run([]string{"--state-dir", state, "session", "show", "a", "--page", "1", "--limit", "2"}, bytes.NewReader(nil), &showText); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"Showing 1-2 of 3", "--client 'codex'", "--page 2", "--limit 2"} {
+		if !strings.Contains(showText.String(), want) {
+			t.Fatalf("show text missing %q: %s", want, showText.String())
+		}
+	}
+
+	for _, args := range [][]string{
+		{"--state-dir", state, "session", "list", "--all", "--limit", "2"},
+		{"--state-dir", state, "session", "show", "a", "--all", "--page", "2"},
+		{"--state-dir", state, "session", "list", "--limit", "1001"},
+	} {
+		var stdout, stderr bytes.Buffer
+		if exit := execute(args, bytes.NewReader(nil), &stdout, &stderr); exit != 2 {
+			t.Fatalf("args=%v exit=%d stderr=%s", args, exit, stderr.String())
+		}
+	}
+	var hugePage bytes.Buffer
+	if err = run([]string{"--state-dir", state, "--format", "json", "session", "list", "--page", strconv.FormatInt(math.MaxInt64, 10), "--limit", "1"}, bytes.NewReader(nil), &hugePage); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(hugePage.String(), `"shown":0`) || !strings.Contains(hugePage.String(), `"total":4`) {
+		t.Fatalf("huge page JSON = %s", hugePage.String())
 	}
 }
 
@@ -272,6 +389,101 @@ func TestHelpOmitsLegacyProviderCredentialAndSessionExamples(t *testing.T) {
 	} {
 		if !strings.Contains(rendered.String(), current) {
 			t.Fatalf("current help example %q missing", current)
+		}
+	}
+}
+
+func TestSessionShowActivityReadsOnlySafeMetadataOnDemand(t *testing.T) {
+	home := t.TempDir()
+	state := filepath.Join(t.TempDir(), "state")
+	oldHome := userHomeDir
+	userHomeDir = func() (string, error) { return home, nil }
+	t.Cleanup(func() { userHomeDir = oldHome })
+	source := filepath.Join(home, ".codex", "sessions", "2026", "07", "20", "session.jsonl")
+	if err := os.MkdirAll(filepath.Dir(source), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	contents := strings.Join([]string{
+		`{"type":"session_meta","timestamp":"2026-07-20T00:00:00Z","payload":{"session_id":"activity-session"}}`,
+		`{"type":"turn_context","payload":{"turn_id":"turn-1","model":"gpt-5.4"}}`,
+		`{"type":"response_item","timestamp":"2026-07-20T00:00:00Z","payload":{"item":{"type":"message","role":"user","content":[{"type":"input_text","text":"visible prompt"}]}}}`,
+		`{"type":"response_item","timestamp":"2026-07-20T00:00:01Z","payload":{"item":{"type":"function_call","call_id":"call-1","name":"exec_command","arguments":"credential=secret"}}}`,
+		`{"type":"response_item","timestamp":"2026-07-20T00:00:03Z","payload":{"item":{"type":"function_call_output","call_id":"call-1","output":"private result"}}}`,
+		`{"type":"response_item","timestamp":"2026-07-20T00:00:04Z","payload":{"item":{"type":"function_call","call_id":"call-2","name":"exec_command","arguments":"credential=second-secret"}}}`,
+		`{"type":"response_item","timestamp":"2026-07-20T00:00:05Z","payload":{"item":{"type":"function_call_output","call_id":"call-2","output":"second private result"}}}`,
+		`{"type":"event_msg","timestamp":"2026-07-20T00:00:06Z","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":10,"cached_input_tokens":4,"output_tokens":1}}}}`,
+	}, "\n") + "\n"
+	if err := os.WriteFile(source, []byte(contents), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := run([]string{"--state-dir", state, "session", "scan"}, bytes.NewReader(nil), &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+	for _, format := range []string{"text", "json"} {
+		var output bytes.Buffer
+		args := []string{"--state-dir", state}
+		if format == "json" {
+			args = append(args, "--format", "json")
+		}
+		args = append(args, "session", "show", "activity-session", "--client", "codex", "--activity")
+		if err := run(args, bytes.NewReader(nil), &output); err != nil {
+			t.Fatal(err)
+		}
+		text := output.String()
+		for _, want := range []string{"exec_command", "completed", "2000"} {
+			if !strings.Contains(text, want) {
+				t.Fatalf("%s activity missing %q: %s", format, want, text)
+			}
+		}
+		for _, secret := range []string{"credential=secret", "credential=second-secret", "private result", "second private result", "arguments", "output"} {
+			if strings.Contains(text, secret) {
+				t.Fatalf("%s activity leaked %q: %s", format, secret, text)
+			}
+		}
+	}
+	var pagedText bytes.Buffer
+	if err := run([]string{"--state-dir", state, "session", "show", "activity-session", "--activity", "--page", "1", "--limit", "1"}, bytes.NewReader(nil), &pagedText); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"activity: total=2 completed=2 failed=0 incomplete=0 total_duration_ms=3000 average_duration_ms=1500",
+		"Showing 1-1 of 2",
+		fmt.Sprintf("Next page: agentdeck --state-dir '%s' session show 'activity-session' --client 'codex' --activity --page 2 --limit 1", state),
+	} {
+		if !strings.Contains(pagedText.String(), want) {
+			t.Fatalf("paged activity text missing %q: %s", want, pagedText.String())
+		}
+	}
+	var paged bytes.Buffer
+	if err := run([]string{"--state-dir", state, "--format", "json", "session", "show", "activity-session", "--activity", "--page", "1", "--limit", "1"}, bytes.NewReader(nil), &paged); err != nil {
+		t.Fatal(err)
+	}
+	var pagedEnvelope struct {
+		Data struct {
+			Activity        []json.RawMessage             `json:"activity"`
+			ActivitySummary *session.ActivitySummary      `json:"activity_summary"`
+			Pagination      map[string]session.Pagination `json:"pagination"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(paged.Bytes(), &pagedEnvelope); err != nil {
+		t.Fatal(err)
+	}
+	activityPage := pagedEnvelope.Data.Pagination["activity"]
+	if _, ok := pagedEnvelope.Data.Pagination["documents"]; !ok || len(pagedEnvelope.Data.Activity) != 1 || activityPage.Total != 2 || activityPage.Shown != 1 || !activityPage.HasMore || activityPage.NextPage != 2 || pagedEnvelope.Data.ActivitySummary == nil || pagedEnvelope.Data.ActivitySummary.Total != 2 {
+		t.Fatalf("show activity pagination = %s", paged.String())
+	}
+	var stats bytes.Buffer
+	if err := run([]string{"--state-dir", state, "usage", "stats", "--from", "2026-07-20", "--to", "2026-07-20", "--model", "gpt-5.4", "--activity"}, bytes.NewReader(nil), &stats); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"MODEL ACTIVITY · gpt-5.4", "exec_command", "2 tools", "2 completed"} {
+		if !strings.Contains(stats.String(), want) {
+			t.Fatalf("model activity missing %q: %s", want, stats.String())
+		}
+	}
+	for _, secret := range []string{"credential=secret", "credential=second-secret", "private result", "second private result"} {
+		if strings.Contains(stats.String(), secret) {
+			t.Fatalf("model activity leaked %q: %s", secret, stats.String())
 		}
 	}
 }
@@ -792,6 +1004,148 @@ func TestPhase6RejectsNDJSONBeforeAnyBackupOrDoctorSideEffect(t *testing.T) {
 	}
 	if _, err := os.Stat(archive); !os.IsNotExist(err) {
 		t.Fatalf("ndjson rejection created archive: %v", err)
+	}
+}
+
+func TestDoctorCLIReportsExactSchemaMatrixWithoutSQLLeakage(t *testing.T) {
+	ctx := context.Background()
+	tests := []struct {
+		name, checkName, status, code, recovery string
+		version, count                          int
+		drop                                    bool
+	}{
+		{"schema12", "schema", "warning", "schema_outdated", "agentdeck state migrate", 12, 12, true},
+		{"schema13", "schema", "ok", "", "", store.CurrentSchemaVersion, store.CurrentSchemaVersion, false},
+		{"schema13_missing_tool_calls", "schema", "error", "schema_incompatible", "", store.CurrentSchemaVersion, store.CurrentSchemaVersion, true},
+		{"future", "database", "error", "unknown_schema", "", 99, 0, false},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			for _, full := range []bool{false, true} {
+				state := filepath.Join(t.TempDir(), "state")
+				database, err := store.Open(ctx, state)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if test.drop {
+					if _, err = database.Exec(ctx, "DROP TABLE usage_tool_calls"); err != nil {
+						database.Close()
+						t.Fatal(err)
+					}
+				}
+				if test.version != store.CurrentSchemaVersion {
+					if _, err = database.Exec(ctx, "UPDATE schema_metadata SET version=?", test.version); err != nil {
+						database.Close()
+						t.Fatal(err)
+					}
+				}
+				if err = database.Close(); err != nil {
+					t.Fatal(err)
+				}
+				args := []string{"--state-dir", state}
+				if full {
+					args = append(args, "doctor", "--full")
+				} else {
+					args = append(args, "doctor")
+				}
+				var textOutput bytes.Buffer
+				if err = run(args, bytes.NewReader(nil), &textOutput); err != nil {
+					t.Fatal(err)
+				}
+				text := strings.ToLower(textOutput.String())
+				for _, forbidden := range []string{"select ", "no such table", "sqlite", "driver error"} {
+					if strings.Contains(text, forbidden) {
+						t.Fatalf("full=%t text leaked %q: %s", full, forbidden, textOutput.String())
+					}
+				}
+				if !strings.Contains(textOutput.String(), test.checkName+": "+test.status) || !strings.Contains(textOutput.String(), test.code) || (test.count != 0 && !strings.Contains(textOutput.String(), fmt.Sprintf("count=%d", test.count))) || !strings.Contains(textOutput.String(), test.recovery) {
+					t.Fatalf("full=%t text schema output = %s", full, textOutput.String())
+				}
+				jsonArgs := append([]string{"--format", "json"}, args...)
+				var jsonOutput bytes.Buffer
+				if err = run(jsonArgs, bytes.NewReader(nil), &jsonOutput); err != nil {
+					t.Fatal(err)
+				}
+				jsonText := strings.ToLower(jsonOutput.String())
+				for _, forbidden := range []string{"select ", "no such table", "sqlite", "driver error"} {
+					if strings.Contains(jsonText, forbidden) {
+						t.Fatalf("full=%t JSON leaked %q: %s", full, forbidden, jsonOutput.String())
+					}
+				}
+				var envelope struct {
+					Data doctor.Report `json:"data"`
+				}
+				if err = json.Unmarshal(jsonOutput.Bytes(), &envelope); err != nil {
+					t.Fatal(err)
+				}
+				var matched *doctor.Check
+				for i := range envelope.Data.Checks {
+					check := &envelope.Data.Checks[i]
+					if check.Name == "usage_tool_calls" {
+						t.Fatalf("full=%t contradictory JSON check: %#v", full, envelope.Data.Checks)
+					}
+					if check.Name == test.checkName {
+						matched = check
+					}
+				}
+				if matched == nil || matched.Status != test.status || matched.Code != test.code || matched.Count != test.count || matched.Recovery != test.recovery {
+					t.Fatalf("full=%t JSON check=%#v", full, matched)
+				}
+			}
+		})
+	}
+}
+
+func TestStateMigrateTextAndJSONUpgradeSchema12(t *testing.T) {
+	ctx := context.Background()
+	state := filepath.Join(t.TempDir(), "state")
+	database, err := store.Open(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = database.Exec(ctx, "DROP TABLE usage_tool_calls; UPDATE schema_metadata SET version=12"); err != nil {
+		database.Close()
+		t.Fatal(err)
+	}
+	if err = database.Close(); err != nil {
+		t.Fatal(err)
+	}
+	var textOutput bytes.Buffer
+	if err = run([]string{"--state-dir", state, "state", "migrate"}, bytes.NewReader(nil), &textOutput); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(textOutput.String(), "Completed state.migrate.") {
+		t.Fatalf("state migrate text = %s", textOutput.String())
+	}
+	database, err = store.OpenReadOnly(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	version, err := database.SchemaVersion(ctx)
+	if err != nil {
+		database.Close()
+		t.Fatal(err)
+	}
+	var tableCount int
+	if err = database.DB.QueryRowContext(ctx, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='usage_tool_calls'").Scan(&tableCount); err != nil {
+		database.Close()
+		t.Fatal(err)
+	}
+	if err = database.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if version != store.CurrentSchemaVersion || tableCount != 1 {
+		t.Fatalf("migrated schema version=%d tool table count=%d", version, tableCount)
+	}
+	var jsonOutput bytes.Buffer
+	if err = run([]string{"--state-dir", state, "--format", "json", "state", "migrate"}, bytes.NewReader(nil), &jsonOutput); err != nil {
+		t.Fatal(err)
+	}
+	var envelope struct {
+		Data map[string]bool `json:"data"`
+	}
+	if err = json.Unmarshal(jsonOutput.Bytes(), &envelope); err != nil || !envelope.Data["migrated"] {
+		t.Fatalf("state migrate JSON = %s, %v", jsonOutput.String(), err)
 	}
 }
 
@@ -1383,6 +1737,148 @@ func TestUsageOnlyWatchNeverCreatesSessionStore(t *testing.T) {
 	}
 }
 
+func TestDeleteOnlyWatchTextAndNDJSONUseLogicalUnitsFromRealScans(t *testing.T) {
+	at := time.Date(2026, 7, 21, 1, 2, 3, 0, time.UTC)
+	assertOutput := func(t *testing.T, event watch.Event, label string, wantChanges int) {
+		t.Helper()
+		if event.Type != "scan_completed" || event.SchemaVersion != watch.EventSchemaVersion || event.Changes != wantChanges {
+			t.Fatalf("watch event = %#v, want %d changes", event, wantChanges)
+		}
+		var textOutput bytes.Buffer
+		if err := renderWatchText(&textOutput, event); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(textOutput.String(), fmt.Sprintf("%d %s changed", wantChanges, label)) {
+			t.Fatalf("%s watch text = %s", event.Domain, textOutput.String())
+		}
+		var ndjson bytes.Buffer
+		if err := json.NewEncoder(&ndjson).Encode(event); err != nil {
+			t.Fatal(err)
+		}
+		var decoded watch.Event
+		if err := json.Unmarshal(ndjson.Bytes(), &decoded); err != nil || decoded.Domain != event.Domain || decoded.Changes != event.Changes || decoded.Type != event.Type || decoded.SchemaVersion != event.SchemaVersion {
+			t.Fatalf("%s watch NDJSON = %s, %#v, %v", event.Domain, ndjson.String(), decoded, err)
+		}
+	}
+
+	t.Run("session middle deletion", func(t *testing.T) {
+		ctx := context.Background()
+		root := t.TempDir()
+		home := filepath.Join(root, "home")
+		path := filepath.Join(home, ".codex", "sessions", "delete.jsonl")
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		writeDocuments := func(values ...string) {
+			t.Helper()
+			var contents strings.Builder
+			for _, value := range values {
+				fmt.Fprintf(&contents, "{\"type\":\"visible_user_prompt\",\"session_id\":\"delete\",\"payload\":{\"text\":%q}}\n", value)
+			}
+			if err := os.WriteFile(path, []byte(contents.String()), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		writeDocuments("one", "two", "three")
+		database, err := store.OpenSessions(ctx, filepath.Join(root, "state"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer database.Close()
+		if result, scanErr := session.Scan(ctx, database.DB, home); scanErr != nil || result.Documents != 3 {
+			t.Fatalf("initial session scan = %#v, %v", result, scanErr)
+		}
+		initialFingerprint, err := watch.FingerprintRoots(sessionWatchRoots(home)...)
+		if err != nil {
+			t.Fatal(err)
+		}
+		writeDocuments("one", "three")
+		var scanResult session.ScanResult
+		service := watch.Service{
+			InitialFingerprints: map[string]string{"session": initialFingerprint},
+			Sources: watch.SourceSet{{
+				Domain:   "session",
+				Snapshot: func(context.Context) (string, error) { return watch.FingerprintRoots(sessionWatchRoots(home)...) },
+				Scan: func(ctx context.Context) (int, error) {
+					var scanErr error
+					scanResult, scanErr = session.Scan(ctx, database.DB, home)
+					return scanResult.Documents + scanResult.Removed, scanErr
+				},
+			}},
+			Lock: func(context.Context) (func() error, error) { return func() error { return nil }, nil },
+			Now:  func() time.Time { return at },
+		}
+		events, err := service.Poll(ctx)
+		if err != nil || len(events) != 1 {
+			t.Fatalf("session watch Poll = %#v, %v", events, err)
+		}
+		if scanResult.Documents != 0 || scanResult.Removed != 1 {
+			t.Fatalf("middle deletion scan result = %#v", scanResult)
+		}
+		assertOutput(t, events[0], "session documents", 1)
+	})
+
+	t.Run("usage source deletion", func(t *testing.T) {
+		ctx := context.Background()
+		root := t.TempDir()
+		home := filepath.Join(root, "home")
+		path := filepath.Join(home, ".codex", "sessions", "usage.jsonl")
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		contents := `{"type":"session_meta","payload":{"session_id":"usage-delete"}}` + "\n" +
+			`{"type":"turn_context","payload":{"turn_id":"turn","model":"gpt-5.4"}}` + "\n" +
+			`{"type":"event_msg","timestamp":"2026-07-20T00:00:00Z","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":10}}}}` + "\n"
+		if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		database, err := store.Open(ctx, filepath.Join(root, "state"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer database.Close()
+		usageService := usage.New(database, home)
+		if result, scanErr := usageService.Scan(ctx); scanErr != nil || result["imported"] != 1 {
+			t.Fatalf("initial usage scan = %#v, %v", result, scanErr)
+		}
+		initialInventory, err := usageService.Inventory(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = os.Remove(path); err != nil {
+			t.Fatal(err)
+		}
+		var inventory usage.Inventory
+		var scanResult map[string]int
+		service := watch.Service{
+			InitialFingerprints: map[string]string{"usage": initialInventory.Fingerprint},
+			Sources: watch.SourceSet{{
+				Domain: "usage",
+				Snapshot: func(ctx context.Context) (string, error) {
+					var inventoryErr error
+					inventory, inventoryErr = usageService.Inventory(ctx)
+					return inventory.Fingerprint, inventoryErr
+				},
+				Scan: func(ctx context.Context) (int, error) {
+					var scanErr error
+					scanResult, scanErr = usageService.ScanInventory(ctx, inventory)
+					return scanResult["imported"] + scanResult["updated"] + scanResult["removed"], scanErr
+				},
+			}},
+			Lock: func(context.Context) (func() error, error) { return func() error { return nil }, nil },
+			Now:  func() time.Time { return at },
+		}
+		events, err := service.Poll(ctx)
+		if err != nil || len(events) != 1 {
+			t.Fatalf("usage watch Poll = %#v, %v", events, err)
+		}
+		if scanResult["imported"] != 0 || scanResult["updated"] != 0 || scanResult["removed"] != 1 {
+			t.Fatalf("usage deletion scan result = %#v", scanResult)
+		}
+		assertOutput(t, events[0], "usage records", 1)
+	})
+}
+
 func TestProviderCurrentAndStatusRenderCredentialShorthand(t *testing.T) {
 	ctx := context.Background()
 	state := filepath.Join(t.TempDir(), "state")
@@ -1565,7 +2061,7 @@ func TestUsageSummaryShortcutsAndStatsJSONContract(t *testing.T) {
 	if timezone, _ := data["timezone"].(string); timezone == "" || timezone == "Local" {
 		t.Fatalf("stats timezone = %q", timezone)
 	}
-	for _, key := range []string{"range", "timezone", "totals", "buckets", "models", "clients", "activity", "peak", "coverage", "unpriced_models"} {
+	for _, key := range []string{"range", "timezone", "totals", "buckets", "models", "clients", "cache_sessions", "activity", "peak", "coverage", "unpriced_models"} {
 		if _, exists := data[key]; !exists {
 			t.Fatalf("stats JSON missing %s: %#v", key, data)
 		}
@@ -1582,11 +2078,24 @@ func TestUsageSummaryShortcutsAndStatsJSONContract(t *testing.T) {
 	if activity, ok := data["activity"].([]any); !ok || len(activity) != 168 {
 		t.Fatalf("stats activity = %#v", data["activity"])
 	}
+	models, ok := data["models"].([]any)
+	if !ok {
+		t.Fatalf("stats models = %#v", data["models"])
+	}
+	if len(models) > 0 {
+		firstModel, _ := models[0].(map[string]any)
+		if _, exists := firstModel["cache_hit_rate"]; !exists {
+			t.Fatalf("model cache hit rate missing: %#v", firstModel)
+		}
+		if _, exists := firstModel["cache_read_rate"]; exists {
+			t.Fatalf("legacy cache read rate remains: %#v", firstModel)
+		}
+	}
 	var textOutput bytes.Buffer
 	if err := run([]string{"--state-dir", state, "usage", "stats", "--from", "2026-07-01", "--to", "2026-07-07"}, bytes.NewReader(nil), &textOutput); err != nil {
 		t.Fatal(err)
 	}
-	for _, section := range []string{"USAGE STATS", "TREND", "TOP MODELS", "CLIENTS", "ACTIVITY BY WEEKDAY / HOUR"} {
+	for _, section := range []string{"USAGE STATS", "TREND", "MODELS", "CLIENTS", "ACTIVITY BY WEEKDAY / HOUR"} {
 		if !strings.Contains(textOutput.String(), section) {
 			t.Fatalf("stats text missing %q:\n%s", section, textOutput.String())
 		}

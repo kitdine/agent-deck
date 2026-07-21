@@ -229,7 +229,7 @@ INSERT INTO usage_sessions(client,session_id,first_at,last_at) VALUES('codex','o
 	}
 }
 
-func TestV12MigrationMarksUsageSourcesForParserRebuildAndAddsCumulativeCursor(t *testing.T) {
+func TestV13MigrationAddsSafeToolActivityStorage(t *testing.T) {
 	ctx := context.Background()
 	state := filepath.Join(t.TempDir(), "state")
 	if err := os.MkdirAll(state, platform.DirectoryMode); err != nil {
@@ -269,8 +269,15 @@ func TestV12MigrationMarksUsageSourcesForParserRebuildAndAddsCumulativeCursor(t 
 	if parserVersion != 0 || cumulativeJSON != "{}" {
 		t.Fatalf("parser version = %d cumulative cursor = %q", parserVersion, cumulativeJSON)
 	}
+	if _, err = migrated.DB.ExecContext(ctx, `INSERT INTO usage_tool_calls(activity_key,client,session_id,model,tool_name,started_at,status,source_path,source_offset) VALUES('call','codex','session','gpt-5.4','exec_command','2026-07-20T00:00:00Z','started','fixture',1)`); err != nil {
+		t.Fatal(err)
+	}
+	var toolName, status string
+	if err = migrated.DB.QueryRowContext(ctx, `SELECT tool_name,status FROM usage_tool_calls WHERE activity_key='call'`).Scan(&toolName, &status); err != nil || toolName != "exec_command" || status != "started" {
+		t.Fatalf("tool activity = %q %q, %v", toolName, status, err)
+	}
 	version, err := migrated.SchemaVersion(ctx)
-	if err != nil || version != 12 {
+	if err != nil || version != 13 {
 		t.Fatalf("schema version = %d, %v", version, err)
 	}
 }

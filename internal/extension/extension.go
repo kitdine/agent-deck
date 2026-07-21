@@ -27,8 +27,15 @@ const (
 var ErrReadOnly = errors.New("extension_read_only")
 
 type Result struct {
-	Found       int      `json:"found"`
-	Diagnostics []string `json:"diagnostics"`
+	Found       int            `json:"found"`
+	Added       int            `json:"added"`
+	Updated     int            `json:"updated"`
+	Removed     int            `json:"removed"`
+	Unchanged   int            `json:"unchanged"`
+	Summary     map[string]int `json:"summary"`
+	Roots       []string       `json:"roots,omitempty"`
+	Workdir     string         `json:"workdir,omitempty"`
+	Diagnostics []string       `json:"diagnostics"`
 }
 
 type DTO struct {
@@ -83,10 +90,31 @@ func Scan(ctx context.Context, db *store.Store, home, workdir string) (Result, e
 	if err != nil {
 		return Result{}, err
 	}
+	previous, err := db.ListExtensions(ctx)
+	if err != nil {
+		return Result{}, err
+	}
+	old := make(map[string]store.Extension, len(previous))
+	for _, item := range previous {
+		old[item.ID] = item
+	}
+	result := Result{Found: len(values), Diagnostics: nonNil(diagnostics), Summary: map[string]int{}}
+	for _, item := range values {
+		result.Summary[item.Client+":"+item.Kind+":"+item.Scope]++
+		if before, found := old[item.ID]; !found {
+			result.Added++
+		} else if before.Fingerprint != item.Fingerprint || before.SourcePath != item.SourcePath || before.Version != item.Version || before.Enabled != item.Enabled {
+			result.Updated++
+		} else {
+			result.Unchanged++
+		}
+		delete(old, item.ID)
+	}
+	result.Removed = len(old)
 	if err = db.ReplaceExtensions(ctx, values); err != nil {
 		return Result{}, err
 	}
-	return Result{Found: len(values), Diagnostics: nonNil(diagnostics)}, nil
+	return result, nil
 }
 
 func List(ctx context.Context, db *store.Store) ([]DTO, error) {
@@ -270,9 +298,70 @@ func scanSkills(client, scope, path string) ([]nativeExtension, error) {
 	}
 	values := make([]nativeExtension, 0, len(entries))
 	for _, entry := range entries {
-		if entry.IsDir() {
-			values = append(values, nativeExtension{client, "skill", scope, entry.Name(), filepath.Join(path, entry.Name()), unknown, unknown})
+		name, candidate := entry.Name(), filepath.Join(path, entry.Name())
+		if name == ".system" {
+			system, systemErr := scanSystemSkills(client, scope, candidate)
+			if systemErr != nil {
+				return nil, systemErr
+			}
+			values = append(values, system...)
+			continue
 		}
+		if strings.HasPrefix(name, ".") {
+			continue
+		}
+		info, statErr := os.Stat(candidate)
+		if statErr != nil {
+			if entry.Type()&fs.ModeSymlink != 0 {
+				return nil, fmt.Errorf("%s skill link unavailable", client)
+			}
+			return nil, fmt.Errorf("%s skills unreadable", client)
+		}
+		if !info.IsDir() {
+			continue
+		}
+		if _, skillErr := os.Stat(filepath.Join(candidate, "SKILL.md")); skillErr != nil {
+			if entry.Type()&fs.ModeSymlink != 0 {
+				return nil, fmt.Errorf("%s skill link unavailable", client)
+			}
+			continue
+		}
+		values = append(values, nativeExtension{client, "skill", scope, name, candidate, unknown, unknown})
+	}
+	return values, nil
+}
+
+func scanSystemSkills(client, scope, path string) ([]nativeExtension, error) {
+	entries, err := os.ReadDir(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		if info, linkErr := os.Lstat(path); linkErr == nil && info.Mode()&fs.ModeSymlink != 0 {
+			return nil, fmt.Errorf("%s skill link unavailable", client)
+		}
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("%s skills unreadable", client)
+	}
+	values := make([]nativeExtension, 0, len(entries))
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), ".") {
+			continue
+		}
+		candidate := filepath.Join(path, entry.Name())
+		info, statErr := os.Stat(candidate)
+		if statErr != nil || !info.IsDir() {
+			if entry.Type()&fs.ModeSymlink != 0 {
+				return nil, fmt.Errorf("%s skill link unavailable", client)
+			}
+			continue
+		}
+		if _, skillErr := os.Stat(filepath.Join(candidate, "SKILL.md")); skillErr != nil {
+			if entry.Type()&fs.ModeSymlink != 0 {
+				return nil, fmt.Errorf("%s skill link unavailable", client)
+			}
+			continue
+		}
+		values = append(values, nativeExtension{client, "skill", scope, ".system/" + entry.Name(), candidate, unknown, unknown})
 	}
 	return values, nil
 }
@@ -457,6 +546,11 @@ func scanClaudeMCP(scope, path string) ([]nativeExtension, error) {
 
 func fingerprint(path string) (string, error) {
 	hash := sha256.New()
+	resolved, resolveErr := filepath.EvalSymlinks(path)
+	if resolveErr != nil {
+		return "", fmt.Errorf("source unavailable")
+	}
+	path = resolved
 	info, err := os.Stat(path)
 	if err != nil {
 		return "", fmt.Errorf("source unavailable")

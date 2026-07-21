@@ -18,6 +18,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/kitdine/agent-deck/internal/activity"
 )
 
 const (
@@ -25,6 +27,8 @@ const (
 	replaceDocumentsSourcePath     = "agentdeck://replace-documents"
 	replaceDocumentsSourceIdentity = "synthetic:replace-documents"
 )
+
+const MaxPageLimit = 1000
 
 type Document struct {
 	Client    string `json:"client"`
@@ -43,12 +47,94 @@ type Metadata struct {
 }
 type Result struct {
 	Metadata
-	Documents []Document `json:"documents"`
+	Documents       []Document        `json:"documents"`
+	Activity        []activity.Detail `json:"activity,omitempty"`
+	ActivitySummary *ActivitySummary  `json:"activity_summary,omitempty"`
 }
+type Pagination struct {
+	Page     int  `json:"page"`
+	Limit    int  `json:"limit"`
+	Total    int  `json:"total"`
+	Shown    int  `json:"shown"`
+	HasMore  bool `json:"has_more"`
+	NextPage int  `json:"next_page,omitempty"`
+}
+type ActivitySummary struct {
+	Total             int         `json:"total"`
+	Completed         int         `json:"completed"`
+	Failed            int         `json:"failed"`
+	Incomplete        int         `json:"incomplete"`
+	TotalDurationMS   int64       `json:"total_duration_ms"`
+	AverageDurationMS *int64      `json:"average_duration_ms,omitempty"`
+	ByTool            []ToolCount `json:"by_tool"`
+}
+type ToolCount struct {
+	Tool  string `json:"tool"`
+	Count int    `json:"count"`
+}
+
+func Paginate[T any](values []T, page, limit int, all bool) ([]T, Pagination, error) {
+	if page < 1 || limit < 1 || limit > MaxPageLimit {
+		return nil, Pagination{}, fmt.Errorf("page must be positive and limit must be between 1 and %d", MaxPageLimit)
+	}
+	p := Pagination{Page: page, Limit: limit, Total: len(values)}
+	if all {
+		p.Page, p.Limit, p.Shown = 1, len(values), len(values)
+		return values, p, nil
+	}
+	// Check the quotient first: page may be a user-supplied max-int value.
+	if page-1 > len(values)/limit {
+		return []T{}, p, nil
+	}
+	start := (page - 1) * limit
+	end := start + limit
+	if end > len(values) {
+		end = len(values)
+	}
+	p.Shown, p.HasMore = end-start, end < len(values)
+	if p.HasMore {
+		p.NextPage = page + 1
+	}
+	return values[start:end], p, nil
+}
+
+func SummarizeActivity(values []activity.Detail) *ActivitySummary {
+	s := &ActivitySummary{Total: len(values), ByTool: []ToolCount{}}
+	tools := map[string]int{}
+	known := int64(0)
+	knownCount := int64(0)
+	for _, v := range values {
+		tools[v.Tool]++
+		switch v.Status {
+		case "completed":
+			s.Completed++
+		case "failed":
+			s.Failed++
+		default:
+			s.Incomplete++
+		}
+		if v.DurationMS != nil {
+			known += *v.DurationMS
+			knownCount++
+		}
+	}
+	s.TotalDurationMS = known
+	if knownCount > 0 {
+		average := known / knownCount
+		s.AverageDurationMS = &average
+	}
+	for tool, count := range tools {
+		s.ByTool = append(s.ByTool, ToolCount{tool, count})
+	}
+	sort.Slice(s.ByTool, func(i, j int) bool { return s.ByTool[i].Tool < s.ByTool[j].Tool })
+	return s
+}
+
 type ScanResult struct {
 	Sources   int `json:"sources"`
 	Documents int `json:"documents"`
 	Skipped   int `json:"skipped"`
+	Removed   int `json:"removed"`
 }
 
 // ApprovedDocument is the privacy boundary: only text already classified by a
@@ -70,6 +156,10 @@ func ApprovedDocument(client, sessionID, kind, text string) (Document, error) {
 // Scan reads only known JSONL shapes. Unknown records and content types are
 // deliberately ignored, so a client format change fails closed.
 func Scan(ctx context.Context, db *sql.DB, home string) (ScanResult, error) {
+	before, err := visibleDocuments(ctx, db)
+	if err != nil {
+		return ScanResult{}, err
+	}
 	var paths []source
 	for _, root := range []struct {
 		client, path string
@@ -79,7 +169,7 @@ func Scan(ctx context.Context, db *sql.DB, home string) (ScanResult, error) {
 		{"claude", filepath.Join(home, ".claude", "projects"), 0},
 		{"codex", filepath.Join(home, ".codex", "sessions"), 1},
 	} {
-		err := filepath.WalkDir(root.path, func(path string, d fs.DirEntry, err error) error {
+		err = filepath.WalkDir(root.path, func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
 				return err
 			}
@@ -102,7 +192,7 @@ func Scan(ctx context.Context, db *sql.DB, home string) (ScanResult, error) {
 	seen := make(map[string]bool, len(paths))
 	for _, p := range paths {
 		seen[filepath.Clean(p.path)] = true
-		changed, docs, err := scanSource(ctx, db, p)
+		changed, _, err := scanSource(ctx, db, p)
 		if err != nil {
 			return result, err
 		}
@@ -111,11 +201,15 @@ func Scan(ctx context.Context, db *sql.DB, home string) (ScanResult, error) {
 			continue
 		}
 		result.Sources++
-		result.Documents += docs
 	}
-	if err := removeMissingSources(ctx, db, seen); err != nil {
+	if err = removeMissingSources(ctx, db, seen); err != nil {
 		return result, err
 	}
+	after, err := visibleDocuments(ctx, db)
+	if err != nil {
+		return result, err
+	}
+	result.Documents, result.Removed = visibleDocumentChanges(before, after)
 	return result, nil
 }
 
@@ -294,6 +388,111 @@ func removeMissingSources(ctx context.Context, db *sql.DB, seen map[string]bool)
 		}
 	}
 	return tx.Commit()
+}
+
+type visibleDocument struct {
+	kind string
+	text string
+}
+
+func visibleDocuments(ctx context.Context, db *sql.DB) (map[string][]visibleDocument, error) {
+	rows, err := db.QueryContext(ctx, `WITH visible AS (SELECT m.source_path,m.client,m.session_id,row_number() OVER (PARTITION BY m.client,m.session_id ORDER BY s.priority DESC,m.source_path) AS n FROM session_metadata m JOIN session_sources s ON s.source_path=m.source_path) SELECT d.client,d.session_id,d.kind,d.text FROM session_documents d JOIN visible v ON v.source_path=d.source_path AND v.client=d.client AND v.session_id=d.session_id WHERE v.n=1 ORDER BY d.client,d.session_id,d.rowid`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string][]visibleDocument{}
+	for rows.Next() {
+		var client, sessionID string
+		var document visibleDocument
+		if err = rows.Scan(&client, &sessionID, &document.kind, &document.text); err != nil {
+			return nil, err
+		}
+		key := client + "\x00" + sessionID
+		out[key] = append(out[key], document)
+	}
+	return out, rows.Err()
+}
+
+func visibleDocumentChanges(before, after map[string][]visibleDocument) (changed, removed int) {
+	keys := make(map[string]bool, len(before)+len(after))
+	for key := range before {
+		keys[key] = true
+	}
+	for key := range after {
+		keys[key] = true
+	}
+	for key := range keys {
+		keyChanged, keyRemoved := logicalDocumentChanges(before[key], after[key])
+		changed += keyChanged
+		removed += keyRemoved
+	}
+	return changed, removed
+}
+
+type documentChangeCount struct {
+	changed int
+	removed int
+}
+
+func logicalDocumentChanges(before, after []visibleDocument) (changed, removed int) {
+	before, after = trimCommonDocumentWindow(before, after)
+	if len(before) == 0 {
+		return len(after), 0
+	}
+	if len(after) == 0 {
+		return 0, len(before)
+	}
+	previous := make([]documentChangeCount, len(after)+1)
+	current := make([]documentChangeCount, len(after)+1)
+	for index := 1; index <= len(after); index++ {
+		previous[index].changed = index
+	}
+	for beforeIndex, oldDocument := range before {
+		current[0] = documentChangeCount{removed: beforeIndex + 1}
+		for afterIndex, newDocument := range after {
+			if oldDocument == newDocument {
+				current[afterIndex+1] = previous[afterIndex]
+				continue
+			}
+			replaced := previous[afterIndex]
+			replaced.changed++
+			inserted := current[afterIndex]
+			inserted.changed++
+			deleted := previous[afterIndex+1]
+			deleted.removed++
+			current[afterIndex+1] = bestDocumentChange(replaced, inserted, deleted)
+		}
+		previous, current = current, previous
+	}
+	result := previous[len(after)]
+	return result.changed, result.removed
+}
+
+func trimCommonDocumentWindow(before, after []visibleDocument) ([]visibleDocument, []visibleDocument) {
+	prefix := 0
+	for prefix < len(before) && prefix < len(after) && before[prefix] == after[prefix] {
+		prefix++
+	}
+	before, after = before[prefix:], after[prefix:]
+	suffix := 0
+	for suffix < len(before) && suffix < len(after) && before[len(before)-1-suffix] == after[len(after)-1-suffix] {
+		suffix++
+	}
+	return before[:len(before)-suffix], after[:len(after)-suffix]
+}
+
+func bestDocumentChange(candidates ...documentChangeCount) documentChangeCount {
+	// Equal-cost rewrites prefer update semantics over a remove-plus-add split.
+	best := candidates[0]
+	for _, candidate := range candidates[1:] {
+		candidateTotal := candidate.changed + candidate.removed
+		bestTotal := best.changed + best.removed
+		if candidateTotal < bestTotal || (candidateTotal == bestTotal && candidate.removed < best.removed) {
+			best = candidate
+		}
+	}
+	return best
 }
 func prefixHash(path string, limit int64) (string, error) {
 	f, err := os.Open(path)
@@ -661,6 +860,10 @@ func List(ctx context.Context, db *sql.DB) ([]Metadata, error) {
 	return out, rows.Err()
 }
 func Show(ctx context.Context, db *sql.DB, client, id string) (Result, error) {
+	return ShowWithActivity(ctx, db, client, id, false)
+}
+
+func ShowWithActivity(ctx context.Context, db *sql.DB, client, id string, includeActivity bool) (Result, error) {
 	var r Result
 	if err := db.QueryRowContext(ctx, `SELECT m.client,m.session_id,m.project,m.source_path,m.model,m.first_at,m.last_at FROM session_metadata m JOIN session_sources s ON s.source_path=m.source_path WHERE m.client=? AND m.session_id=? ORDER BY s.priority DESC,m.source_path LIMIT 1`, client, id).Scan(&r.Client, &r.SessionID, &r.Project, &r.SourcePath, &r.Model, &r.FirstAt, &r.LastAt); err != nil {
 		return r, err
@@ -677,7 +880,16 @@ func Show(ctx context.Context, db *sql.DB, client, id string) (Result, error) {
 		}
 		r.Documents = append(r.Documents, d)
 	}
-	return r, docs.Err()
+	if err = docs.Err(); err != nil {
+		return r, err
+	}
+	if includeActivity {
+		r.Activity, err = activity.ReadDetails(r.SourcePath, client, id)
+		if err == nil {
+			r.ActivitySummary = SummarizeActivity(r.Activity)
+		}
+	}
+	return r, err
 }
 func Exclude(ctx context.Context, db *sql.DB, kind, value string) error {
 	if kind != "project" && kind != "path" && kind != "session" && kind != "client" {

@@ -340,7 +340,7 @@ func TestDuplicateSourceOwnershipSurvivesEitherCopyRemoval(t *testing.T) {
 			}
 		}
 	}
-	copyToArchive := func() {
+	copyToArchive := func() map[string]int {
 		t.Helper()
 		if err := os.MkdirAll(filepath.Dir(archive), 0o700); err != nil {
 			t.Fatal(err)
@@ -348,22 +348,30 @@ func TestDuplicateSourceOwnershipSurvivesEitherCopyRemoval(t *testing.T) {
 		if err := os.WriteFile(archive, []byte(contents), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := service.Scan(ctx); err != nil {
-			t.Fatal(err)
+		result, scanErr := service.Scan(ctx)
+		if scanErr != nil {
+			t.Fatal(scanErr)
 		}
+		return result
 	}
 
-	copyToArchive()
+	if result := copyToArchive(); result["imported"] != 0 || result["updated"] != 0 || result["removed"] != 0 {
+		t.Fatalf("archive duplicate logical changes = %#v", result)
+	}
 	assertUsage("after archive copy", source, 2, 1)
 	if err = os.Remove(archive); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = service.Scan(ctx); err != nil {
-		t.Fatal(err)
+	if result, scanErr := service.Scan(ctx); scanErr != nil {
+		t.Fatal(scanErr)
+	} else if result["imported"] != 0 || result["updated"] != 0 || result["removed"] != 0 {
+		t.Fatalf("archive duplicate removal logical changes = %#v", result)
 	}
 	assertUsage("after archive removal", source, 2, 1)
 
-	copyToArchive()
+	if result := copyToArchive(); result["imported"] != 0 || result["updated"] != 0 || result["removed"] != 0 {
+		t.Fatalf("archive duplicate logical changes = %#v", result)
+	}
 	var unrelatedOpens int
 	var unrelatedReadBytes int64
 	service.Open = func(path string) (SourceFile, error) {
@@ -401,8 +409,10 @@ func TestDuplicateSourceOwnershipSurvivesEitherCopyRemoval(t *testing.T) {
 		t.Fatalf("failed recovery orphaned events=%d bindings=%d", orphanedEvents, preservedBindings)
 	}
 	service.Open = originalOpen
-	if _, err = service.Scan(ctx); err != nil {
-		t.Fatal(err)
+	if result, scanErr := service.Scan(ctx); scanErr != nil {
+		t.Fatal(scanErr)
+	} else if result["imported"] != 0 || result["updated"] != 0 || result["removed"] != 0 {
+		t.Fatalf("owner transfer logical changes = %#v", result)
 	}
 	assertUsage("after original removal", archive, 2, 1)
 	if unrelatedOpens != 0 || unrelatedReadBytes != 0 {
@@ -413,8 +423,10 @@ func TestDuplicateSourceOwnershipSurvivesEitherCopyRemoval(t *testing.T) {
 	if err = os.Remove(archive); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = service.Scan(ctx); err != nil {
-		t.Fatal(err)
+	if result, scanErr := service.Scan(ctx); scanErr != nil {
+		t.Fatal(scanErr)
+	} else if result["imported"] != 0 || result["updated"] != 0 || result["removed"] != 2 {
+		t.Fatalf("final source removal logical changes = %#v", result)
 	}
 	assertUsage("after final source removal", "", 0, 0)
 	if unrelatedOpens != 0 || unrelatedReadBytes != 0 {
@@ -1940,14 +1952,14 @@ INSERT INTO usage_events(event_key,client,session_id,event_id,event_at,model,inp
 	if report.Totals.Tokens != 750 || report.Totals.Sessions != 2 || report.Totals.Events != 3 || len(report.Buckets) != 7 || len(report.Activity) != 168 {
 		t.Fatalf("stats totals = %#v buckets=%d activity=%d", report.Totals, len(report.Buckets), len(report.Activity))
 	}
-	if report.Totals.InputTokens != 600 || report.Totals.OutputTokens != 150 || report.Totals.CachedReadTokens != 150 || report.Totals.CacheWriteTokens != 0 || report.Clients[0].CacheReadRate == nil || *report.Clients[0].CacheReadRate != "25.00" {
+	if report.Totals.InputTokens != 600 || report.Totals.OutputTokens != 150 || report.Totals.CachedReadTokens != 150 || report.Totals.CacheWriteTokens != 0 || report.Clients[0].CacheHitRate == nil || *report.Clients[0].CacheHitRate != "25.00" {
 		t.Fatalf("stats token components = totals:%#v clients:%#v", report.Totals, report.Clients)
 	}
 	if report.Peak.Start != "2026-07-01T00:00:00+08:00" || report.Peak.Value == nil || *report.Peak.Value != "450" || len(report.Models) != 2 || report.Models[0].Name != "gpt-a" || report.Coverage.Percent != "100.00" {
 		t.Fatalf("stats report = %#v", report)
 	}
-	if got := queries.Load(); got != 4 {
-		t.Fatalf("stats SQL queries for 3 events = %d, want 4", got)
+	if got := queries.Load(); got != 5 {
+		t.Fatalf("stats SQL queries for 3 events = %d, want 5", got)
 	}
 	queries.Store(0)
 	tx, err := countedStore.DB.BeginTx(ctx, nil)
@@ -1983,8 +1995,8 @@ INSERT INTO usage_events(event_key,client,session_id,event_id,event_at,model,inp
 	if large.Totals.Events != 1003 {
 		t.Fatalf("large stats events = %d, want 1003", large.Totals.Events)
 	}
-	if got := queries.Load(); got != 4 {
-		t.Fatalf("stats SQL queries for 1003 events = %d, want 4", got)
+	if got := queries.Load(); got != 5 {
+		t.Fatalf("stats SQL queries for 1003 events = %d, want 5", got)
 	}
 	queries.Store(0)
 	today, err := service.Stats(ctx, StatsOptions{From: from, To: from.Add(24 * time.Hour), GroupBy: "hour", Metric: "cost", Location: location, Timezone: "Asia/Shanghai"})
@@ -2028,7 +2040,9 @@ INSERT INTO model_prices(catalog_version,model,provider,effective_from,prices_js
 INSERT INTO usage_events(event_key,client,session_id,event_id,event_at,model,input_tokens,cached_input_tokens,output_tokens,cache_read_tokens,cache_write_5m_tokens,source_path,source_offset) VALUES
  ('codex','codex','c','c','2026-07-20T01:00:00Z','gpt-priced',100,40,10,0,0,'fixture',0),
  ('claude','claude','a','a','2026-07-20T02:00:00Z','claude-priced',20,0,5,60,20,'fixture',1),
- ('unknown','codex','u','u','2026-07-20T03:00:00Z','zzz-unknown',3,0,0,0,0,'fixture',2)`)
+ ('unknown','codex','u','u','2026-07-20T03:00:00Z','zzz-unknown',3,0,0,0,0,'fixture',2);
+INSERT INTO usage_tool_calls(activity_key,client,session_id,model,tool_name,started_at,completed_at,status,duration_ms,source_path,source_offset) VALUES
+ ('unknown-tool','codex','u','zzz-unknown','apply_patch','2026-07-20T03:00:01Z','2026-07-20T03:00:02Z','completed',1000,'fixture',3)`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2047,10 +2061,10 @@ INSERT INTO usage_events(event_key,client,session_id,event_id,event_at,model,inp
 	for _, client := range report.Clients {
 		clients[client.Name] = client
 	}
-	if clients["codex"].CacheReadRate == nil || *clients["codex"].CacheReadRate != "38.83" || clients["codex"].CacheWriteRate != nil {
+	if clients["codex"].CacheHitRate == nil || *clients["codex"].CacheHitRate != "38.83" || clients["codex"].CacheWriteTokens != 0 {
 		t.Fatalf("Codex cache analysis = %#v", clients["codex"])
 	}
-	if clients["claude"].LogicalInputTokens != 100 || clients["claude"].CacheReadRate == nil || *clients["claude"].CacheReadRate != "60.00" || clients["claude"].CacheWriteRate == nil || *clients["claude"].CacheWriteRate != "20.00" {
+	if clients["claude"].LogicalInputTokens != 100 || clients["claude"].CacheHitRate == nil || *clients["claude"].CacheHitRate != "60.00" || clients["claude"].CacheWriteTokens != 20 {
 		t.Fatalf("Claude cache analysis = %#v", clients["claude"])
 	}
 	if len(report.UnpricedModels) != 1 || report.UnpricedModels[0].Client != "codex" || report.UnpricedModels[0].Model != "zzz-unknown" || !reflect.DeepEqual(report.UnpricedModels[0].Components, []string{"unknown_model"}) {
@@ -2059,6 +2073,79 @@ INSERT INTO usage_events(event_key,client,session_id,event_id,event_at,model,inp
 	if report.Totals.ProviderCost != nil || report.Totals.KnownProviderCost == "0.000000000" {
 		t.Fatalf("partial cost state = %#v", report.Totals)
 	}
+	if len(report.CacheSessions) != 2 || report.CacheSessions[0].SessionID != "a" || report.CacheSessions[0].CacheHitRate == nil || *report.CacheSessions[0].CacheHitRate != "60.00" || report.CacheSessions[1].SessionID != "c" || *report.CacheSessions[1].CacheHitRate != "40.00" {
+		t.Fatalf("cache sessions = %#v", report.CacheSessions)
+	}
+	models := map[string]StatsDimension{}
+	for _, model := range report.Models {
+		models[model.Name] = model
+	}
+	if models["zzz-unknown"].Tokens != 3 || models["zzz-unknown"].Events != 1 || models["zzz-unknown"].Sessions != 1 || models["zzz-unknown"].KnownShare == "0.00" || models["zzz-unknown"].Activity == nil || models["zzz-unknown"].Activity.ToolCalls != 1 || models["zzz-unknown"].Activity.CompletedCalls != 1 || len(models["zzz-unknown"].Activity.Tools) != 1 || models["zzz-unknown"].Activity.Tools[0].Name != "apply_patch" {
+		t.Fatalf("unpriced model participation = %#v", models["zzz-unknown"])
+	}
+}
+
+func TestUsageToolActivityFollowsDuplicateSourceOwnership(t *testing.T) {
+	ctx := context.Background()
+	home := t.TempDir()
+	database, err := store.Open(ctx, filepath.Join(t.TempDir(), "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	service := New(database, home)
+	original := filepath.Join(home, ".codex", "sessions", "2026", "07", "20", "session.jsonl")
+	archive := filepath.Join(home, ".codex", "archived_sessions", "session.jsonl")
+	if err = os.MkdirAll(filepath.Dir(original), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	contents := strings.Join([]string{
+		`{"type":"session_meta","payload":{"session_id":"tool-session"}}`,
+		`{"type":"turn_context","payload":{"turn_id":"turn-1","model":"gpt-5.4"}}`,
+		`{"type":"response_item","timestamp":"2026-07-20T00:00:01Z","payload":{"item":{"type":"function_call","call_id":"call-1","name":"exec_command","arguments":"credential=secret"}}}`,
+		`{"type":"response_item","timestamp":"2026-07-20T00:00:03Z","payload":{"item":{"type":"function_call_output","call_id":"call-1","output":"private result"}}}`,
+		`{"type":"event_msg","timestamp":"2026-07-20T00:00:04Z","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":10,"cached_input_tokens":4,"output_tokens":1}}}}`,
+	}, "\n") + "\n"
+	if err = os.WriteFile(original, []byte(contents), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	assertToolActivity := func(wantPath string, wantCount int) {
+		t.Helper()
+		if _, scanErr := service.Scan(ctx); scanErr != nil {
+			t.Fatal(scanErr)
+		}
+		var count int
+		if err = database.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM usage_tool_calls`).Scan(&count); err != nil || count != wantCount {
+			t.Fatalf("tool calls = %d, want %d: %v", count, wantCount, err)
+		}
+		if wantCount == 0 {
+			return
+		}
+		var tool, status, source string
+		var duration int64
+		if err = database.DB.QueryRowContext(ctx, `SELECT tool_name,status,duration_ms,source_path FROM usage_tool_calls`).Scan(&tool, &status, &duration, &source); err != nil {
+			t.Fatal(err)
+		}
+		if tool != "exec_command" || status != "completed" || duration != 2000 || source != wantPath {
+			t.Fatalf("tool activity = %q %q %d %q", tool, status, duration, source)
+		}
+	}
+	assertToolActivity(original, 1)
+	if err = os.MkdirAll(filepath.Dir(archive), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(archive, []byte(contents), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	assertToolActivity(original, 1)
+	if err = os.Remove(original); err != nil {
+		t.Fatal(err)
+	}
+	assertToolActivity(archive, 1)
+	if err = os.Remove(archive); err != nil {
+		t.Fatal(err)
+	}
+	assertToolActivity("", 0)
 }
 
 func TestRangeQueriesUseAbsoluteTimeForOffsetEvents(t *testing.T) {

@@ -21,6 +21,7 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
+	"github.com/kitdine/agent-deck/internal/activity"
 	"github.com/kitdine/agent-deck/internal/backup"
 	"github.com/kitdine/agent-deck/internal/buildinfo"
 	"github.com/kitdine/agent-deck/internal/credentialvault"
@@ -196,6 +197,7 @@ func isCobraSyntaxError(err error) bool {
 		strings.HasPrefix(message, "required flag(s) ") ||
 		strings.HasPrefix(message, "unknown flag ") ||
 		strings.Contains(message, "flag needs an argument") ||
+		strings.Contains(message, "if any flags in the group") ||
 		strings.HasPrefix(message, "invalid argument ")
 }
 
@@ -239,7 +241,7 @@ func newRootCommandWithError(stdin io.Reader, stdout, stderr io.Writer) *cobra.C
 	flags.BoolVar(&opts.verbose, "verbose", false, "Include technical provenance in text output")
 	root.Flags().BoolVar(&showVersion, "version", false, "Print build identity")
 	root.CompletionOptions.DisableDefaultCmd = true
-	root.AddCommand(newProviderCommand(opts), newCredentialCommand(opts), newUsageCommand(opts), newPriceCommand(opts), newSessionCommand(opts), newExtensionCommand(opts), newWatchCommand(opts), newBackupCommand(opts), newDoctorCommand(opts), newRunCommand(opts), newVersionCommand(opts), newCompletionCommand(opts))
+	root.AddCommand(newProviderCommand(opts), newCredentialCommand(opts), newUsageCommand(opts), newPriceCommand(opts), newSessionCommand(opts), newExtensionCommand(opts), newWatchCommand(opts), newBackupCommand(opts), newDoctorCommand(opts), newStateCommand(opts), newRunCommand(opts), newVersionCommand(opts), newCompletionCommand(opts))
 	applyHelpCatalog(root)
 	wrapArgumentValidators(root)
 	return root
@@ -315,8 +317,8 @@ func applyHelpCatalog(root *cobra.Command) {
 		},
 		"session show": {
 			short:   "Show one indexed session",
-			long:    argumentHelp("Show indexed metadata and approved visible text; use --client when the ID is ambiguous.", "  session-id  Session identifier returned by session list or search."),
-			example: "  agentdeck session show 019abc123 --client codex",
+			long:    argumentHelp("Show indexed metadata and approved visible text; --activity reads only safe tool metadata from the selected source on demand.", "  session-id  Session identifier returned by session list or search."),
+			example: "  agentdeck session show 019abc123 --client codex --activity",
 		},
 		"session exclude": {
 			short:   "Exclude a session source from indexing",
@@ -324,6 +326,7 @@ func applyHelpCatalog(root *cobra.Command) {
 			example: "  agentdeck session exclude --kind client --value claude\n  agentdeck session exclude --kind path --value /private/project",
 		},
 		"extension scan":   {short: "Scan native Codex and Claude extensions"},
+		"state migrate":    {short: "Migrate the local AgentDeck state schema"},
 		"extension list":   {short: "List discovered extensions"},
 		"extension doctor": {short: "Diagnose extension drift and duplicates"},
 		"extension show": {
@@ -369,7 +372,7 @@ func applyHelpCatalog(root *cobra.Command) {
 		},
 		"usage scan":     {short: "Incrementally import local usage events"},
 		"usage summary":  {short: "Summarize local usage and cost", long: argumentHelp("Summarize all history or a local calendar period.", "  period  Optional daily, weekly, or monthly shortcut."), example: "  agentdeck usage summary weekly"},
-		"usage stats":    {short: "Show usage trends and activity"},
+		"usage stats":    {short: "Show usage, cache hits, models, and activity", long: "Show responsive usage analytics. Use --model with --activity for safe model-level tool summaries.", example: "  agentdeck usage stats --model gpt-5.4 --activity"},
 		"usage sessions": {short: "List session-level usage and cost"},
 		"usage diagnose": {short: "Diagnose usage attribution and source coverage"},
 		"usage rebuild":  {short: "Rebuild usage metadata from local sources"},
@@ -765,6 +768,17 @@ func newCredentialCommand(opts *commandOptions) *cobra.Command {
 	return cmd
 }
 
+type sessionListPage struct {
+	Sessions    []session.Metadata            `json:"sessions"`
+	Pagination  map[string]session.Pagination `json:"pagination"`
+	NextCommand string                        `json:"-"`
+}
+type sessionShowPage struct {
+	session.Result
+	Pagination  map[string]session.Pagination `json:"pagination"`
+	NextCommand string                        `json:"-"`
+}
+
 func newSessionCommand(opts *commandOptions) *cobra.Command {
 	cmd := &cobra.Command{Use: "session", Short: "Search local sessions"}
 	withSessions := func(run func(context.Context, *store.Store, string, []string) (any, error)) func(*cobra.Command, []string) error {
@@ -818,7 +832,11 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 		}
 	}
 	var listClient, searchClient, showClient, excludeKind, excludeValue string
-	list := &cobra.Command{Use: "list", Args: cobra.NoArgs, RunE: withSessions(func(ctx context.Context, s *store.Store, _ string, _ []string) (any, error) {
+	var listPage, listLimit, showPage, showLimit int
+	var listAll, showAll bool
+	var showActivity bool
+	var list *cobra.Command
+	list = &cobra.Command{Use: "list", Args: cobra.NoArgs, RunE: withSessions(func(ctx context.Context, s *store.Store, _ string, _ []string) (any, error) {
 		if err := validateOptionalClient(listClient); err != nil {
 			return nil, err
 		}
@@ -826,18 +844,28 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 		if err != nil {
 			return nil, err
 		}
-		if listClient == "" {
-			return items, nil
-		}
 		out := items[:0]
 		for _, item := range items {
-			if item.Client == listClient {
+			if listClient == "" || item.Client == listClient {
 				out = append(out, item)
 			}
 		}
-		return out, nil
+		explicit := list.Flags().Changed("page") || list.Flags().Changed("limit") || list.Flags().Changed("all")
+		if opts.format == "json" && !explicit {
+			return out, nil
+		}
+		paged, pagination, pageErr := session.Paginate(out, listPage, listLimit, listAll)
+		if pageErr != nil {
+			return nil, &inputError{err: pageErr}
+		}
+		return sessionListPage{Sessions: paged, Pagination: map[string]session.Pagination{"sessions": pagination}, NextCommand: sessionNextCommand(opts.stateDir, "list", listClient, "", false, pagination)}, nil
 	})}
 	list.Flags().StringVar(&listClient, "client", "", "Filter by client")
+	list.Flags().IntVar(&listPage, "page", 1, "Page number")
+	list.Flags().IntVar(&listLimit, "limit", 20, "Rows per page")
+	list.Flags().BoolVar(&listAll, "all", false, "Show all rows")
+	list.MarkFlagsMutuallyExclusive("all", "page")
+	list.MarkFlagsMutuallyExclusive("all", "limit")
 	search := &cobra.Command{Use: "search <query>", Args: cobra.ExactArgs(1), RunE: withSessions(func(ctx context.Context, s *store.Store, _ string, args []string) (any, error) {
 		if err := validateOptionalClient(searchClient); err != nil {
 			return nil, err
@@ -858,7 +886,8 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 		return out, nil
 	})}
 	search.Flags().StringVar(&searchClient, "client", "", "Filter by client")
-	show := &cobra.Command{Use: "show <session-id>", Args: cobra.ExactArgs(1), RunE: withSessions(func(ctx context.Context, s *store.Store, _ string, args []string) (any, error) {
+	var show *cobra.Command
+	show = &cobra.Command{Use: "show <session-id>", Args: cobra.ExactArgs(1), RunE: withSessions(func(ctx context.Context, s *store.Store, _ string, args []string) (any, error) {
 		if err := validateOptionalClient(showClient); err != nil {
 			return nil, err
 		}
@@ -880,9 +909,41 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 				return nil, sql.ErrNoRows
 			}
 		}
-		return session.Show(ctx, s.DB, client, args[0])
+		result, err := session.ShowWithActivity(ctx, s.DB, client, args[0], showActivity)
+		if err != nil {
+			return nil, err
+		}
+		explicit := show.Flags().Changed("page") || show.Flags().Changed("limit") || show.Flags().Changed("all")
+		if opts.format == "json" && !explicit {
+			return result, nil
+		}
+		docs, documentsPagination, pageErr := session.Paginate(result.Documents, showPage, showLimit, showAll)
+		if pageErr != nil {
+			return nil, &inputError{err: pageErr}
+		}
+		result.Documents = docs
+		pagination := map[string]session.Pagination{"documents": documentsPagination}
+		nextPagination := documentsPagination
+		if showActivity {
+			activityRows, activityPagination, activityErr := session.Paginate(result.Activity, showPage, showLimit, showAll)
+			if activityErr != nil {
+				return nil, &inputError{err: activityErr}
+			}
+			result.Activity = activityRows
+			pagination["activity"] = activityPagination
+			if activityPagination.HasMore {
+				nextPagination = activityPagination
+			}
+		}
+		return sessionShowPage{Result: result, Pagination: pagination, NextCommand: sessionNextCommand(opts.stateDir, "show", client, args[0], showActivity, nextPagination)}, nil
 	})}
 	show.Flags().StringVar(&showClient, "client", "", "Session client")
+	show.Flags().BoolVar(&showActivity, "activity", false, "Show safe tool activity metadata from the source log")
+	show.Flags().IntVar(&showPage, "page", 1, "Page number")
+	show.Flags().IntVar(&showLimit, "limit", 20, "Rows per page")
+	show.Flags().BoolVar(&showAll, "all", false, "Show all rows")
+	show.MarkFlagsMutuallyExclusive("all", "page")
+	show.MarkFlagsMutuallyExclusive("all", "limit")
 	exclude := &cobra.Command{Use: "exclude", Args: cobra.NoArgs, RunE: withSessions(func(ctx context.Context, s *store.Store, _ string, _ []string) (any, error) {
 		err := session.Exclude(ctx, s.DB, excludeKind, excludeValue)
 		return withTextResource(map[string]any{"excluded": err == nil}, excludeKind+":"+excludeValue), err
@@ -902,6 +963,32 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 		newSessionPurgeCommand(opts),
 	)
 	return cmd
+}
+
+func sessionNextCommand(stateDir, action, client, id string, activity bool, p session.Pagination) string {
+	if !p.HasMore {
+		return ""
+	}
+	parts := []string{"agentdeck"}
+	if stateDir != "" {
+		parts = append(parts, "--state-dir", shellQuote(stateDir))
+	}
+	parts = append(parts, "session", action)
+	if id != "" {
+		parts = append(parts, shellQuote(id))
+	}
+	if client != "" {
+		parts = append(parts, "--client", shellQuote(client))
+	}
+	if activity {
+		parts = append(parts, "--activity")
+	}
+	parts = append(parts, "--page", strconv.Itoa(p.NextPage), "--limit", strconv.Itoa(p.Limit))
+	return strings.Join(parts, " ")
+}
+
+func shellQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "'\\\"'\\\"'") + "'"
 }
 
 func newSessionPurgeCommand(opts *commandOptions) *cobra.Command {
@@ -927,6 +1014,23 @@ func newSessionPurgeCommand(opts *commandOptions) *cobra.Command {
 		}
 		return writeResult(opts.stdout, opts.format, "session.purge-index", map[string]any{"purged": true}, opts.quiet)
 	}}
+}
+
+func newStateCommand(opts *commandOptions) *cobra.Command {
+	cmd := &cobra.Command{Use: "state", Short: "Maintain AgentDeck state"}
+	cmd.AddCommand(&cobra.Command{Use: "migrate", Args: exactArgs(0), RunE: func(command *cobra.Command, _ []string) error {
+		stateDir, err := opts.stateRoot()
+		if err != nil {
+			return err
+		}
+		database, err := store.Open(command.Context(), stateDir)
+		if err != nil {
+			return err
+		}
+		defer database.Close()
+		return writeResult(opts.stdout, opts.format, "state.migrate", map[string]any{"migrated": true}, opts.quiet)
+	}})
+	return cmd
 }
 
 func purgeSessionIndex(ctx context.Context, stateDir string, openCore func(context.Context, string) (*store.Store, error), remove func(string) error) error {
@@ -988,13 +1092,37 @@ func newExtensionCommand(opts *commandOptions) *cobra.Command {
 			return writeResult(opts.stdout, opts.format, commandOutputName(command), data, opts.quiet)
 		}
 	}
-	cmd.AddCommand(
-		&cobra.Command{Use: "scan", Args: exactArgs(0), RunE: withExtensions(func(ctx context.Context, s *store.Store, home, workdir string, _ []string) (any, error) {
-			return extension.Scan(ctx, s, home, workdir)
-		})},
-		&cobra.Command{Use: "list", Args: exactArgs(0), RunE: withExtensions(func(ctx context.Context, s *store.Store, _, _ string, _ []string) (any, error) {
-			return extension.List(ctx, s)
-		})},
+	var listClient, listKind string
+	var list *cobra.Command
+	scan := &cobra.Command{Use: "scan", Args: exactArgs(0), RunE: withExtensions(func(ctx context.Context, s *store.Store, home, workdir string, _ []string) (any, error) {
+		result, err := extension.Scan(ctx, s, home, workdir)
+		if err == nil && opts.verbose {
+			result.Roots, result.Workdir = extensionWatchRoots(home, workdir), workdir
+		}
+		return result, err
+	})}
+	list = &cobra.Command{Use: "list", Args: exactArgs(0), RunE: withExtensions(func(ctx context.Context, s *store.Store, _, _ string, _ []string) (any, error) {
+		if listClient != "" && listClient != "codex" && listClient != "claude" {
+			return nil, &inputError{err: fmt.Errorf("invalid extension client %q", listClient)}
+		}
+		if listKind != "" && listKind != "plugin" && listKind != "mcp" && listKind != "skill" {
+			return nil, &inputError{err: fmt.Errorf("invalid extension kind %q", listKind)}
+		}
+		values, err := extension.List(ctx, s)
+		if err != nil {
+			return nil, err
+		}
+		filtered := values[:0]
+		for _, value := range values {
+			if (listClient == "" || value.Client == listClient) && (listKind == "" || value.Kind == listKind) {
+				filtered = append(filtered, value)
+			}
+		}
+		return filtered, nil
+	})}
+	list.Flags().StringVar(&listClient, "client", "", "Filter inventory by client")
+	list.Flags().StringVar(&listKind, "kind", "", "Filter inventory by kind")
+	cmd.AddCommand(scan, list,
 		&cobra.Command{Use: "show <id>", Args: exactArgs(1), RunE: withExtensions(func(ctx context.Context, s *store.Store, _, _ string, args []string) (any, error) {
 			return extension.Show(ctx, s, args[0])
 		})},
@@ -1087,7 +1215,7 @@ func newWatchCommand(opts *commandOptions) *cobra.Command {
 				return usageInventory.Fingerprint, err
 			}, Scan: func(ctx context.Context) (int, error) {
 				result, scanErr := usage.New(database, home).ScanInventory(ctx, usageInventory)
-				return result["imported"] + result["updated"], scanErr
+				return result["imported"] + result["updated"] + result["removed"], scanErr
 			}})
 		}
 		if requested["session"] {
@@ -1096,7 +1224,7 @@ func newWatchCommand(opts *commandOptions) *cobra.Command {
 					return 0, err
 				}
 				result, scanErr := session.Scan(ctx, sessions.DB, home)
-				return result.Documents, scanErr
+				return result.Documents + result.Removed, scanErr
 			}})
 		}
 		if requested["extension"] {
@@ -1105,7 +1233,7 @@ func newWatchCommand(opts *commandOptions) *cobra.Command {
 					return 0, err
 				}
 				result, scanErr := extension.Scan(ctx, database, home, workdir)
-				return result.Found, scanErr
+				return result.Added + result.Updated + result.Removed, scanErr
 			}})
 		}
 		service := watch.Service{
@@ -1132,13 +1260,27 @@ func newWatchCommand(opts *commandOptions) *cobra.Command {
 			if opts.format == "ndjson" {
 				return encoder.Encode(event)
 			}
-			_, err := fmt.Fprintf(opts.stdout, "%s domain=%s changes=%d skipped=%t reason=%s\n", event.Type, event.Domain, event.Changes, event.Skipped, event.Reason)
-			return err
+			return renderWatchText(opts.stdout, event)
 		})
 	}}
 	command.Flags().DurationVar(&interval, "interval", time.Minute, "Polling interval")
 	command.Flags().StringVar(&domainsValue, "domains", "usage,session,extension", "Comma-separated domains to watch")
 	return command
+}
+
+func renderWatchText(w io.Writer, event watch.Event) error {
+	at := event.GeneratedAt.Local().Format("2006-01-02 15:04:05")
+	if event.Skipped {
+		_, err := fmt.Fprintf(w, "%s Watch scan skipped: %s.\n", at, strings.ReplaceAll(event.Reason, "_", " "))
+		return err
+	}
+	labels := map[string]string{"usage": "usage records", "session": "session documents", "extension": "extension inventory entries"}
+	label := labels[event.Domain]
+	if label == "" {
+		label = event.Domain
+	}
+	_, err := fmt.Fprintf(w, "%s %s scan completed: %d %s changed.\n", at, strings.Title(event.Domain), event.Changes, label)
+	return err
 }
 
 func sessionWatchRoots(home string) []string {
@@ -1301,12 +1443,16 @@ func newUsageCommand(opts *commandOptions) *cobra.Command {
 		return data, scanErr != nil, map[bool][]string{true: {"scan_incomplete"}}[scanErr != nil], err
 	})}
 	var statsPeriod, statsFrom, statsTo, statsGroup, statsMetric, statsClient, statsModel string
+	var statsActivity bool
 	stats := &cobra.Command{Use: "stats", Args: cobra.NoArgs, RunE: withUsage(func(ctx context.Context, s *usage.Service, _ *store.Store, _ []string) (any, bool, []string, error) {
 		if statsClient != "" && statsClient != "codex" && statsClient != "claude" {
 			return nil, false, nil, &inputError{err: fmt.Errorf("usage stats client must be codex or claude")}
 		}
 		if statsMetric != "tokens" && statsMetric != "cost" && statsMetric != "sessions" {
 			return nil, false, nil, &inputError{err: fmt.Errorf("usage stats metric must be tokens, cost, or sessions")}
+		}
+		if statsActivity && statsModel == "" {
+			return nil, false, nil, &inputError{err: fmt.Errorf("usage stats --activity requires --model")}
 		}
 		_, scanErr := s.Scan(ctx)
 		now := time.Now()
@@ -1321,7 +1467,7 @@ func newUsageCommand(opts *commandOptions) *cobra.Command {
 		if group != "hour" && group != "day" && group != "week" && group != "month" {
 			return nil, false, nil, &inputError{err: fmt.Errorf("usage stats group-by must be auto, hour, day, week, or month")}
 		}
-		data, err := s.Stats(ctx, usage.StatsOptions{From: from, To: to, GroupBy: group, Metric: statsMetric, Client: statsClient, Model: statsModel, Timezone: usageTimezoneName(time.Local, now), Location: time.Local})
+		data, err := s.Stats(ctx, usage.StatsOptions{From: from, To: to, GroupBy: group, Metric: statsMetric, Client: statsClient, Model: statsModel, Timezone: usageTimezoneName(time.Local, now), Location: time.Local, Activity: statsActivity})
 		return data, scanErr != nil, map[bool][]string{true: {"scan_incomplete"}}[scanErr != nil], err
 	})}
 	stats.Flags().StringVar(&statsPeriod, "period", "7d", "Range: today, 7d, 30d, week, month, 6m, or all")
@@ -1331,6 +1477,7 @@ func newUsageCommand(opts *commandOptions) *cobra.Command {
 	stats.Flags().StringVar(&statsMetric, "metric", "tokens", "Trend metric: tokens, cost, or sessions")
 	stats.Flags().StringVar(&statsClient, "client", "", "Filter by codex or claude")
 	stats.Flags().StringVar(&statsModel, "model", "", "Filter by exact model name")
+	stats.Flags().BoolVar(&statsActivity, "activity", false, "Show safe activity and tool summaries for the selected model")
 	cmd.AddCommand(
 		&cobra.Command{Use: "scan", Args: cobra.NoArgs, RunE: withUsage(func(ctx context.Context, s *usage.Service, _ *store.Store, _ []string) (any, bool, []string, error) {
 			data, err := s.Scan(ctx)
@@ -1794,8 +1941,8 @@ func isMutationCommand(command string) bool {
 		"credential.add", "credential.update", "credential.remove",
 		"usage.scan", "usage.rebuild", "price.update", "price.override",
 		"session.scan", "session.exclude", "session.rebuild", "session.purge-index",
-		"extension.scan", "extension.adopt", "extension.release", "extension.enable", "extension.disable",
-		"backup.create", "backup.restore":
+		"extension.adopt", "extension.release", "extension.enable", "extension.disable",
+		"backup.create", "backup.restore", "state.migrate":
 		return true
 	default:
 		return false
@@ -1896,11 +2043,17 @@ func renderCommandText(w io.Writer, command string, data any) error {
 		_, err := fmt.Fprintf(w, "provider: %s\nname: %s\nreference: %s\nendpoint: %s\nmultiplier: %s\nclients: %s\nready: %t\n", value.Provider, value.Name, value.Reference, value.Endpoint, value.Multiplier, textList(value.Clients), value.Present)
 		return err
 	case "session.list":
-		value, ok := data.([]session.Metadata)
-		if !ok {
+		switch value := data.(type) {
+		case []session.Metadata:
+			return renderSessionMetadata(w, value)
+		case sessionListPage:
+			if err := renderSessionMetadata(w, value.Sessions); err != nil {
+				return err
+			}
+			return renderPagination(w, value.Pagination["sessions"], value.NextCommand)
+		default:
 			return fmt.Errorf("unexpected session.list result %T", data)
 		}
-		return renderSessionMetadata(w, value)
 	case "session.search":
 		value, ok := data.([]session.Document)
 		if !ok {
@@ -1908,20 +2061,75 @@ func renderCommandText(w io.Writer, command string, data any) error {
 		}
 		return renderSessionDocuments(w, value)
 	case "session.show":
-		value, ok := data.(session.Result)
+		value, pagination, nextCommand, ok := session.Result{}, map[string]session.Pagination(nil), "", false
+		switch typed := data.(type) {
+		case session.Result:
+			value, ok = typed, true
+		case sessionShowPage:
+			value, pagination, nextCommand, ok = typed.Result, typed.Pagination, typed.NextCommand, true
+		}
 		if !ok {
 			return fmt.Errorf("unexpected session.show result %T", data)
 		}
 		if _, err := fmt.Fprintf(w, "client: %s\nsession: %s\nproject: %s\nmodel: %s\nfirst: %s\nlast: %s\n", value.Client, value.SessionID, value.Project, value.Model, value.FirstAt, value.LastAt); err != nil {
 			return err
 		}
-		return renderSessionDocuments(w, value.Documents)
+		if err := renderSessionDocuments(w, value.Documents); err != nil {
+			return err
+		}
+		if p, found := pagination["documents"]; found {
+			if err := renderPagination(w, p, nextCommand); err != nil {
+				return err
+			}
+		}
+		if value.ActivitySummary != nil || len(value.Activity) > 0 {
+			if err := renderSessionActivitySummary(w, value.ActivitySummary); err != nil {
+				return err
+			}
+			if err := renderSessionActivity(w, value.Activity); err != nil {
+				return err
+			}
+			if p, found := pagination["activity"]; found {
+				return renderPagination(w, p, nextCommand)
+			}
+			return nil
+		}
+		return nil
 	case "extension.list":
 		value, ok := data.([]extension.DTO)
 		if !ok {
 			return fmt.Errorf("unexpected extension.list result %T", data)
 		}
+		if _, err := fmt.Fprintln(w, "Inventory from the most recent extension scan (not a live scan). "); err != nil {
+			return err
+		}
 		return renderExtensions(w, value)
+	case "extension.scan":
+		value, ok := data.(extension.Result)
+		if !ok {
+			return fmt.Errorf("unexpected extension.scan result %T", data)
+		}
+		if _, err := fmt.Fprintf(w, "found: %d\nadded: %d\nupdated: %d\nremoved: %d\nunchanged: %d\n", value.Found, value.Added, value.Updated, value.Removed, value.Unchanged); err != nil {
+			return err
+		}
+		keys := make([]string, 0, len(value.Summary))
+		for key := range value.Summary {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		rows := make([][]string, 0, len(keys))
+		for _, key := range keys {
+			rows = append(rows, []string{key, strconv.Itoa(value.Summary[key])})
+		}
+		if err := output.WriteASCIITable(w, []string{"CLIENT:KIND:SCOPE", "FOUND"}, rows); err != nil {
+			return err
+		}
+		if len(value.Roots) > 0 {
+			if _, err := fmt.Fprintf(w, "scan roots: %s\nproject cwd: %s\n", strings.Join(value.Roots, ", "), value.Workdir); err != nil {
+				return err
+			}
+		}
+		return nil
 	case "extension.show":
 		value, ok := data.(extension.DTO)
 		if !ok {
@@ -2089,6 +2297,52 @@ func renderSessionDocuments(w io.Writer, values []session.Document) error {
 	return output.WriteASCIITable(w, []string{"CLIENT", "SESSION", "KIND", "TEXT"}, rows)
 }
 
+func renderSessionActivity(w io.Writer, values []activity.Detail) error {
+	rows := make([][]string, 0, len(values))
+	for _, value := range values {
+		duration := "-"
+		if value.DurationMS != nil {
+			duration = strconv.FormatInt(*value.DurationMS, 10)
+		}
+		rows = append(rows, []string{value.StartedAt, value.Tool, value.Model, value.Status, duration})
+	}
+	return output.WriteASCIITable(w, []string{"STARTED", "TOOL", "MODEL", "STATUS", "DURATION MS"}, rows)
+}
+
+func renderSessionActivitySummary(w io.Writer, summary *session.ActivitySummary) error {
+	if summary == nil {
+		return nil
+	}
+	average := "-"
+	if summary.AverageDurationMS != nil {
+		average = strconv.FormatInt(*summary.AverageDurationMS, 10)
+	}
+	if _, err := fmt.Fprintf(w, "activity: total=%d completed=%d failed=%d incomplete=%d total_duration_ms=%d average_duration_ms=%s\n", summary.Total, summary.Completed, summary.Failed, summary.Incomplete, summary.TotalDurationMS, average); err != nil {
+		return err
+	}
+	rows := make([][]string, 0, len(summary.ByTool))
+	for _, item := range summary.ByTool {
+		rows = append(rows, []string{item.Tool, strconv.Itoa(item.Count)})
+	}
+	return output.WriteASCIITable(w, []string{"TOOL", "CALLS"}, rows)
+}
+
+func renderPagination(w io.Writer, p session.Pagination, nextCommand string) error {
+	first, last := 0, 0
+	if p.Shown > 0 {
+		first = (p.Page-1)*p.Limit + 1
+		last = first + p.Shown - 1
+	}
+	if _, err := fmt.Fprintf(w, "Showing %d-%d of %d\n", first, last, p.Total); err != nil {
+		return err
+	}
+	if p.HasMore && nextCommand != "" {
+		_, err := fmt.Fprintf(w, "Next page: %s\n", nextCommand)
+		return err
+	}
+	return nil
+}
+
 func renderExtensions(w io.Writer, values []extension.DTO) error {
 	if len(values) == 0 {
 		_, err := fmt.Fprintln(w, "No extensions.")
@@ -2203,13 +2457,25 @@ func renderDoctorText(w io.Writer, report doctor.Report) error {
 		if _, err := fmt.Fprintf(w, "%s: %s", check.Name, check.Status); err != nil {
 			return err
 		}
+		details := make([]string, 0, 2)
 		if check.Code != "" {
-			if _, err := fmt.Fprintf(w, " (%s)", check.Code); err != nil {
+			details = append(details, check.Code)
+		}
+		if check.Count != 0 {
+			details = append(details, "count="+strconv.Itoa(check.Count))
+		}
+		if len(details) > 0 {
+			if _, err := fmt.Fprintf(w, " (%s)", strings.Join(details, "; ")); err != nil {
 				return err
 			}
 		}
 		if _, err := fmt.Fprintln(w); err != nil {
 			return err
+		}
+		if check.Recovery != "" {
+			if _, err := fmt.Fprintf(w, "  recovery: %s\n", check.Recovery); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

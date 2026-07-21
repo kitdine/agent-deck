@@ -73,8 +73,13 @@ func (s Service) Check(ctx context.Context, full bool) (Report, error) {
 	if err != nil {
 		return Report{}, err
 	}
-	if version != store.CurrentSchemaVersion {
-		report.add(Check{Name: "schema", Status: "warning", Code: "schema_outdated", Count: version})
+	hasToolCalls, schemaErr := databaseHasTable(ctx, database, "usage_tool_calls")
+	if schemaErr != nil {
+		report.add(Check{Name: "schema", Status: "error", Code: "schema_incompatible", Count: version})
+	} else if version == store.CurrentSchemaVersion && !hasToolCalls {
+		report.add(Check{Name: "schema", Status: "error", Code: "schema_incompatible", Count: version})
+	} else if version != store.CurrentSchemaVersion {
+		report.add(Check{Name: "schema", Status: "warning", Code: "schema_outdated", Count: version, Recovery: "agentdeck state migrate"})
 	} else {
 		report.add(Check{Name: "schema", Status: "ok", Count: version})
 	}
@@ -115,8 +120,13 @@ func (s Service) Check(ctx context.Context, full bool) (Report, error) {
 	if err = s.checkProviders(ctx, database, &report, full); err != nil {
 		return Report{}, err
 	}
-	if err = s.checkUsage(ctx, database, &report); err != nil {
-		return Report{}, err
+	// Version labels describe a migration boundary, not the physical schema. A
+	// partially restored database can claim schema 13 while lacking its new
+	// table, so probe the read-only catalog before running table-specific SQL.
+	if schemaErr != nil {
+		report.add(Check{Name: "database", Status: "error", Code: "schema_incompatible"})
+	} else if err = s.checkUsage(ctx, database, &report, hasToolCalls); err != nil {
+		report.add(Check{Name: "usage", Status: "error", Code: "schema_incompatible"})
 	}
 	sessionHealth, err := session.CheckHealth(ctx, s.StateRoot, full)
 	if err != nil {
@@ -354,13 +364,18 @@ func addCredentialProblems(report *Report, name string, problems credentialProbl
 	}
 }
 
-func (s Service) checkUsage(ctx context.Context, database *store.Store, report *Report) error {
+func databaseHasTable(ctx context.Context, database *store.Store, name string) (bool, error) {
+	var count int
+	err := database.DB.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?", name).Scan(&count)
+	return count == 1, err
+}
+
+func (s Service) checkUsage(ctx context.Context, database *store.Store, report *Report, hasToolCalls bool) error {
 	service := usage.New(database, s.Home)
-	diagnostics, err := service.Diagnose(ctx)
-	if err != nil {
+	var incomplete int
+	if err := database.DB.QueryRowContext(ctx, "SELECT COUNT(*) FROM usage_runs WHERE ended_at IS NULL").Scan(&incomplete); err != nil {
 		return err
 	}
-	incomplete, _ := diagnostics["exact_runs"].(int)
 	if incomplete > 0 {
 		report.add(Check{Name: "usage", Status: "warning", Code: "incomplete_runs", Count: incomplete, Recovery: "agentdeck usage diagnose"})
 	} else {

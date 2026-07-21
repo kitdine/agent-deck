@@ -103,6 +103,13 @@ func (r statsTextRenderer) render() string {
 		out.WriteString(line)
 		out.WriteByte('\n')
 	}
+	if r.report.ShowModelActivity && len(r.report.Models) == 1 {
+		out.WriteByte('\n')
+		for _, line := range r.modelActivityLines(r.report.Models[0]) {
+			out.WriteString(line)
+			out.WriteByte('\n')
+		}
+	}
 	if len(r.report.Activity) > 0 {
 		out.WriteByte('\n')
 		for _, line := range r.activityLines() {
@@ -205,7 +212,7 @@ func (r statsTextRenderer) trendLines(width int) []string {
 }
 
 func (r statsTextRenderer) rankingLines(width int) []string {
-	rankingLabel := "🤖 TOP MODELS"
+	rankingLabel := "🤖 MODELS"
 	if r.report.Metric == "cost" {
 		switch {
 		case r.hasPartialCost():
@@ -216,7 +223,7 @@ func (r statsTextRenderer) rankingLines(width int) []string {
 	}
 	lines := []string{r.sectionTitle(rankingLabel, width, "1;35")}
 	maximum := float64(0)
-	limit := min(3, len(r.report.Models))
+	limit := len(r.report.Models)
 	shares := make([]float64, limit)
 	shareLabels := make([]string, limit)
 	for index := 0; index < limit; index++ {
@@ -243,12 +250,13 @@ func (r statsTextRenderer) rankingLines(width int) []string {
 		filled := scaledBar(shares[index], maximum, barWidth)
 		bar := r.style(strings.Repeat("█", filled), "35") + strings.Repeat("░", barWidth-filled)
 		lines = append(lines, statsPad(name, nameWidth)+" "+bar+" "+statsPadLeft(shareLabels[index], shareWidth))
-		if r.report.Metric == "tokens" {
-			cost := compactCost(model.ProviderCost, model.KnownProviderCost, knownCostAvailable(model.ProviderCost, model.KnownProviderCost, model.Coverage))
-			detail := fmt.Sprintf("%s tokens · %s · %s · %s", compactNumber(float64(model.Tokens)), shareLabels[index], cost, modelPricingStatus(model))
-			for _, detailLine := range statsWrap(detail, width) {
-				lines = append(lines, r.style(detailLine, "2"))
-			}
+		cost := compactCost(model.ProviderCost, model.KnownProviderCost, knownCostAvailable(model.ProviderCost, model.KnownProviderCost, model.Coverage))
+		detail := fmt.Sprintf("%s tokens · %s · %s · %s · %s sessions · %s tools", compactNumber(float64(model.Tokens)), shareLabels[index], cost, modelPricingStatus(model), groupedInt(model.Sessions), groupedInt(modelToolCalls(model)))
+		if model.CacheHitRate != nil && (model.CachedReadTokens > 0 || model.CacheWriteTokens > 0) {
+			detail += " · " + *model.CacheHitRate + "% hit"
+		}
+		for _, detailLine := range statsWrap(detail, width) {
+			lines = append(lines, r.style(detailLine, "2"))
 		}
 	}
 	if limit == 0 {
@@ -282,7 +290,7 @@ func (r statsTextRenderer) rankingLines(width int) []string {
 	}
 	cacheLines := r.cacheLines(width)
 	if len(cacheLines) > 0 {
-		lines = append(lines, "", r.sectionTitle("CACHE BY CLIENT", width, "1;33"))
+		lines = append(lines, "", r.sectionTitle("CACHE HIT RATE", width, "1;33"))
 		lines = append(lines, cacheLines...)
 	}
 	return lines
@@ -300,23 +308,64 @@ func modelPricingStatus(model usage.StatsDimension) string {
 
 func (r statsTextRenderer) cacheLines(width int) []string {
 	var lines []string
-	for _, client := range r.report.Clients {
-		var detail string
-		switch client.Name {
-		case "codex":
-			if client.CacheReadRate != nil {
-				detail = fmt.Sprintf("CODEX  read %s%% · cached input / input", *client.CacheReadRate)
-			}
-		case "claude":
-			if client.CacheReadRate != nil && client.CacheWriteRate != nil {
-				detail = fmt.Sprintf("CLAUDE read %s%% · write %s%% · logical input %s", *client.CacheReadRate, *client.CacheWriteRate, groupedInt(client.LogicalInputTokens))
-			}
+	for _, model := range r.report.Models {
+		if model.CacheHitRate == nil || model.CachedReadTokens == 0 && model.CacheWriteTokens == 0 {
+			continue
 		}
-		if detail != "" {
-			lines = append(lines, statsWrap(detail, width)...)
+		detail := fmt.Sprintf("MODEL %s/%s  %s%% hit · read %s · write %s", statsTitle(model.Client), model.Name, *model.CacheHitRate, compactNumber(float64(model.CachedReadTokens)), compactNumber(float64(model.CacheWriteTokens)))
+		if model.Client == "claude" {
+			detail += " · logical input " + compactNumber(float64(model.LogicalInputTokens))
+		}
+		lines = append(lines, statsWrap(detail, width)...)
+	}
+	limit := min(10, len(r.report.CacheSessions))
+	for index := 0; index < limit; index++ {
+		session := r.report.CacheSessions[index]
+		rate := "0.00"
+		if session.CacheHitRate != nil {
+			rate = *session.CacheHitRate
+		}
+		models := strings.Join(session.Models, ",")
+		detail := fmt.Sprintf("SESSION %s/%s  %s%% hit · read %s · write %s · %s", statsTitle(session.Client), session.SessionID, rate, compactNumber(float64(session.CachedReadTokens)), compactNumber(float64(session.CacheWriteTokens)), models)
+		lines = append(lines, statsWrap(detail, width)...)
+		for _, commandLine := range statsWrap(session.DetailCommand, width) {
+			lines = append(lines, r.style(commandLine, "2"))
 		}
 	}
+	if omitted := len(r.report.CacheSessions) - limit; omitted > 0 {
+		lines = append(lines, r.style(fmt.Sprintf("+%d more cache sessions in JSON", omitted), "2"))
+	}
 	return lines
+}
+
+func (r statsTextRenderer) modelActivityLines(model usage.StatsDimension) []string {
+	activity := usage.StatsModelActivity{}
+	if model.Activity != nil {
+		activity = *model.Activity
+	}
+	lines := []string{r.sectionTitle("MODEL ACTIVITY · "+model.Name, r.width, "1;33")}
+	summary := fmt.Sprintf("%s sessions · %s active days · %s tools · %s completed · %s failed", groupedInt(activity.ActiveSessions), groupedInt(activity.ActiveDays), groupedInt(activity.ToolCalls), groupedInt(activity.CompletedCalls), groupedInt(activity.FailedCalls))
+	lines = append(lines, statsWrap(summary, r.width)...)
+	if activity.FirstAt != "" {
+		lines = append(lines, statsWrap("range "+activity.FirstAt+" - "+activity.LastAt, r.width)...)
+	}
+	if activity.AverageDuration != nil {
+		lines = append(lines, fmt.Sprintf("timed duration %s ms total · %s ms average", groupedInt(activity.TotalDurationMS), groupedInt(*activity.AverageDuration)))
+	}
+	for _, tool := range activity.Tools {
+		lines = append(lines, statsWrap(fmt.Sprintf("%s  %s calls", tool.Name, groupedInt(tool.Calls)), r.width)...)
+	}
+	if len(activity.Tools) == 0 {
+		lines = append(lines, r.style("No tool activity in this range.", "2"))
+	}
+	return lines
+}
+
+func modelToolCalls(model usage.StatsDimension) int64 {
+	if model.Activity == nil {
+		return 0
+	}
+	return model.Activity.ToolCalls
 }
 
 func (r statsTextRenderer) unpricedLines() []string {

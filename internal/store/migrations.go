@@ -87,6 +87,11 @@ var migrations = []migration{
 	{version: 12, statements: []string{
 		`ALTER TABLE usage_source_files ADD COLUMN codex_cumulative_json TEXT NOT NULL DEFAULT '{}'`,
 	}},
+	{version: 13, statements: []string{
+		`CREATE TABLE usage_tool_calls (activity_key TEXT PRIMARY KEY, client TEXT NOT NULL, session_id TEXT NOT NULL, model TEXT NOT NULL, tool_name TEXT NOT NULL, started_at TEXT NOT NULL, completed_at TEXT, status TEXT NOT NULL, duration_ms INTEGER, source_path TEXT NOT NULL, source_offset INTEGER NOT NULL)`,
+		`CREATE INDEX usage_tool_calls_source ON usage_tool_calls(source_path)`,
+		`CREATE INDEX usage_tool_calls_started_at ON usage_tool_calls(started_at)`,
+	}},
 }
 
 func normalizeUsageEventTimes(ctx context.Context, tx *sql.Tx) error {
