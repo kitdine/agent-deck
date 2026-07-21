@@ -31,14 +31,22 @@ jobs:
         run: make release-archive VERSION="$GITHUB_REF_NAME"
       - name: Publish GitHub Release
         # --notes-from-tag requires an annotated tag carrying a message; push
-        # v* tags with `git tag -a`/a message, not lightweight tags.
+        # v* tags with `git tag -a`/a message, not lightweight tags. A tag with
+        # a semver prerelease identifier (e.g. v0.1.0-rc.1) is published as a
+        # GitHub prerelease so it never displays as the repository's "Latest
+        # release" ahead of the stable tag it validates.
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          prerelease_flag=()
+          if [[ "$GITHUB_REF_NAME" == *-* ]]; then
+            prerelease_flag=(--prerelease)
+          fi
           gh release create "$GITHUB_REF_NAME" \
             "dist/agentdeck_${GITHUB_REF_NAME}_darwin_arm64.tar.gz" \
             "dist/agentdeck_${GITHUB_REF_NAME}_darwin_amd64.tar.gz" \
             "dist/agentdeck_${GITHUB_REF_NAME}_checksums.txt" \
             --verify-tag \
             --title "AgentDeck $GITHUB_REF_NAME" \
-            --notes-from-tag
+            --notes-from-tag \
+            "${prerelease_flag[@]}"
