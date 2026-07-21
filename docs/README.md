@@ -16,19 +16,44 @@ disagree with a document.
 | Usage stats runtime provider dimension | [spec](specs/2026-07-13-agentdeck-cli-design.md) | [follow-up](plans/2026-07-13-agentdeck-cli.md) | implemented and L2 verified 2026-07-21; independent review pending |
 | GitHub release v0.1.0 and Homebrew tap distribution | [spec](specs/2026-07-13-agentdeck-cli-design.md) | [follow-up](plans/2026-07-13-agentdeck-cli.md) | v0.1.0 published 2026-07-21; future-tag notes hardening, completion-aware formula rendering, isolated brew verification, automated tap PRs, and a v0.1.0 migration dispatch are implemented and release-verified; independent review and external delivery remain |
 
-## Reference and Historical Work
+## Archived Work
 
-| Feature | Specification | Plan | State |
-| --- | --- | --- | --- |
-| Legacy AI provider mode | [spec](specs/2026-07-13-ai-provider-mode-design.md) | [plan](plans/2026-07-13-ai-provider-mode.md) | historical contract; repository implementation removed after AgentDeck review |
-| Legacy local session cost tracking | [spec](specs/2026-07-13-ai-provider-session-cost-design.md) | [plan](plans/2026-07-13-ai-provider-session-cost.md) | historical contract; repository implementation and fixtures removed after AgentDeck review |
+Superseded and one-off documents live under `docs/archive/`, not in this
+index. Open `docs/archive/README.md` only when you need historical context —
+why a decision was made, what a removed feature's contract looked like, or
+the background of a superseded plan. Do not start new work from that
+directory, and do not re-list its individual files here.
 
 ## Document Lifecycle
 
 - `active`: current requirements or unfinished implementation work.
 - `reference`: implemented behavior retained as a durable contract.
-- `historical`: superseded material kept only for context.
+- `historical`: superseded material kept only for context; archive it (see
+  `docs/archive/README.md`) rather than leaving it active in `docs/plans/` or
+  `docs/specs/`.
 
 Update the closest active specification and plan when behavior or execution
 state changes. Do not create review snapshots when an active document can hold
 the result.
+
+## Naming Convention
+
+- `docs/specs/YYYY-MM-DD-<topic>-design.md` — requirements and architecture
+  contract for a feature. `YYYY-MM-DD` is the date the contract was first
+  approved, not a per-revision timestamp; keep updating the same file as the
+  contract evolves.
+- `docs/plans/YYYY-MM-DD-<topic>.md` — the execution tracker for that
+  feature: phased checklists plus dated `### <Topic> Follow-Up (YYYY-MM-DD)`
+  subsections for later remediation/review passes. Add a new dated
+  subsection to the existing plan instead of creating a new plan file when
+  follow-up work lands on an already-planned feature — this is how
+  `docs/plans/2026-07-13-agentdeck-cli.md` has stayed the single execution
+  tracker across multiple release and review cycles rather than
+  fragmenting into one file per follow-up.
+- Untriaged future ideas that do not yet have an approved spec go in that
+  same living plan's `## Backlog / Future Feature Ideas` section as
+  unchecked items, not in a new file. Promote a backlog item to its own
+  `_design.md` / plan entry only once it is actually being scoped.
+- `docs/archive/<original-filename-with-plan-or-design-suffix>.md` — where
+  superseded or one-off documents move once archived; see
+  `docs/archive/README.md` for the criteria and process.

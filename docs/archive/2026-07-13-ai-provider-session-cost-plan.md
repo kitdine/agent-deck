@@ -9,7 +9,7 @@ the AgentDeck replacement passed independent review. This plan remains a
 historical contract and is not the current execution tracker.
 
 **Specification:**
-`docs/specs/2026-07-13-ai-provider-session-cost-design.md`
+`docs/archive/2026-07-13-ai-provider-session-cost-design.md`
 
 **Goal:** Add private, incremental, session-aware local cost reporting for
 Codex and Claude without changing or uploading their session content.

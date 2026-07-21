@@ -422,6 +422,14 @@ Authoritative documents:
 | Architecture or API contract / 架构或 API 契约 | `docs/specs/2026-07-13-agentdeck-cli-design.md`            |
 | Development guide / 开发指南                   | `AGENTS.md`                                                |
 | Deployment guide / 部署指南                    | Not applicable; this repository has no deployment process. |
+| Archived / superseded documents / 归档文档      | `docs/archive/` (see `docs/archive/README.md`)              |
+
+Naming and lifecycle rules are documented once, in `docs/README.md`'s "Naming
+Convention" and "Document Lifecycle" sections — read there for the filename
+patterns (`docs/specs/YYYY-MM-DD-<topic>-design.md`,
+`docs/plans/YYYY-MM-DD-<topic>.md` with dated Follow-Up subsections, and the
+plan's `Backlog / Future Feature Ideas` section for unscoped ideas). Do not
+duplicate that index here; it changes as documents are added or archived.
 
 - Treat code, tests, configuration, and repository history as current truth.
 - Update the closest living document when behavior, contracts, requirements, or
@@ -429,9 +437,11 @@ Authoritative documents:
 - Prefer updating a living document over creating a dated review or record.
 - Create a one-off document only for a genuinely temporary investigation,
   incident, or phased plan.
-- Archive superseded documents instead of deleting them. Record why they were
-  archived and where their conclusions now live.
-- Keep the documentation index synchronized with active documents.
+- Archive superseded documents into `docs/archive/` instead of deleting them
+  (`git mv`, not `rm`). Record why they were archived and where their
+  conclusions now live in `docs/archive/README.md`.
+- Keep the documentation index (`docs/README.md`) synchronized with active
+  documents; do not re-list archived files there.
 - Mark substantial documents with a status such as `active`, `reference`, or
   `historical`.
 - Do not leave completed one-off plans marked active.

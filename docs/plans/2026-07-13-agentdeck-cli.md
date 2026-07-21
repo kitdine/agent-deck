@@ -680,10 +680,41 @@ formula automation:
       after this workflow reaches `main`.
 - [x] Add repository-local regression coverage and pass the L4
       `make release-verify` gate for the final content state.
-- [ ] After independent review and delivery to `main`, configure the
-      fine-grained `HOMEBREW_TAP_TOKEN`, dispatch the Release workflow for
-      `v0.1.0`, review/merge the generated tap PR, and confirm a normal
+- [x] Configure the fine-grained `HOMEBREW_TAP_TOKEN` repo secret on
+      `kitdine/agent-deck` (scoped to `kitdine/homebrew-tap`, Contents +
+      Pull requests read/write). Done 2026-07-22.
+- [ ] Dispatch the Release workflow for the next stable tag (v0.1.1+; v0.1.0
+      already shipped via the pre-automation manual tap push and is not being
+      retagged), confirm it opens an `agentdeck-<tag>` PR against
+      `kitdine/homebrew-tap` (not a direct push, and never for prerelease
+      tags), review/merge that PR, and confirm a normal
       `brew reinstall kitdine/tap/agentdeck` exposes all three completions.
+      This is the first real exercise of the automated tap-PR flow added
+      above — it has not run end-to-end yet.
+
+## Backlog / Future Feature Ideas (2026-07-22, not yet scoped or approved)
+
+Raised by the maintainer as candidate future work. None of these have an
+approved specification yet; each needs its own design/plan document before
+implementation starts.
+
+- [ ] Add unit and integration test coverage across the full repository,
+      using the project's `test-driven-development` / `golang-testing` skill
+      workflow rather than retrofitting tests ad hoc.
+- [ ] Add the ability to switch Claude subscription/account (analogous to the
+      existing AI provider switching, but for Claude account/plan selection
+      rather than API base URL/token).
+- [ ] Continue improving usage-stats display readability: current output
+      degrades once any single section grows large (wide tables / long lists
+      become hard to scan).
+- [ ] Implement a GUI, including a persistent menu-bar (menubar) presence, as
+      an alternative front end to the CLI.
+- [ ] Investigate and fix `agentdeck usage`-family command performance: runs
+      get noticeably slower after the local usage/session history has
+      accumulated for a while (likely re-scanning or re-aggregating more data
+      than necessary on each invocation). Until the underlying scan/aggregate
+      path is fast again, add a progress indicator for long-running
+      compute/load phases so the command does not appear hung.
 
 ## Required Verification
 
