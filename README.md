@@ -21,7 +21,6 @@ Codex's existing OpenAI or ChatGPT login.
 > verification, and independent re-review. Unified ASCII collection tables and
 > machine-bound encrypted SQLite credential storage are implemented,
 > release-verified, and awaiting independent review.
-> AgentDeck is not yet available through Homebrew.
 
 ```bash
 make build
@@ -92,6 +91,21 @@ The binaries are written to:
 dist/agentdeck_darwin_arm64
 dist/agentdeck_darwin_amd64
 ```
+
+## Install With Homebrew
+
+> Available once the `v0.1.0` release and the `kitdine/homebrew-tap` repository
+> are published. Until then, use Install From Source below.
+
+Install the latest versioned macOS release from the AgentDeck tap:
+
+```bash
+brew install kitdine/tap/agentdeck
+agentdeck version
+```
+
+The formula installs the release binary only. Shell completion installation
+remains available through the source-based `make install` workflow below.
 
 ## Install From Source
 
@@ -395,19 +409,12 @@ vendor/          Committed Go dependencies
 The repository code, tests, configuration, Git history, and active documents
 above are the sources of truth.
 
-## Distribution Roadmap
+## Release Distribution
 
-Homebrew integration begins only after the first versioned release provides
-signed or checksummed macOS archives for arm64 and amd64. The planned workflow
-is:
-
-```bash
-brew tap kitdine/tap
-brew install agentdeck
-```
-
-These commands are not available yet. The future formula will install immutable
-release archives rather than build from a moving branch.
+Versioned GitHub Releases provide checksum-protected macOS archives for arm64
+and amd64. The `kitdine/tap/agentdeck` formula installs those immutable
+artifacts rather than building from a moving branch. Formula URLs and checksums
+are updated manually for each release; automated tap updates are later work.
 
 ## Contributing
 

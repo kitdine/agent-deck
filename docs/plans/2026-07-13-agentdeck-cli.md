@@ -624,6 +624,39 @@ live in the specification's usage stats section (runtime provider dimension,
 - [x] Synchronize the CLI manual usage stats section (flag row, stable JSON
       field list, provider semantics, and the unknown bucket).
 
+### GitHub Release v0.1.0 and Homebrew Tap Follow-Up (2026-07-21)
+
+Design approved; repository-local packaging, workflows, and installation
+documentation are implemented and release-verified. Repository push, tags,
+GitHub Releases, and the tap repository remain pending external actions that
+each require explicit authorization at execution time. Distribution contract
+lives in the specification's Release and Distribution section.
+
+- [x] Add `make release-archive` packaging stripped `build-all` outputs into
+      per-architecture `tar.gz` archives plus a SHA-256 checksum file under
+      `dist/`, reusing the existing version derivation and requiring no
+      network.
+- [x] Add `.github/workflows/release.yml` triggered by `v*` tags on a macOS
+      arm64 runner: full-history checkout, Go from `go.mod`,
+      `make release-verify`, `make release-archive`, then create the GitHub
+      Release with both archives and the checksum file (`contents: write`
+      only). Add a minimal CI workflow running `make verify` on pushes and
+      pull requests.
+- [ ] Prepare and push the public `kitdine/agent-deck` repository: resolve
+      uncommitted worktree content, add the remote, and push `main`.
+- [ ] Publish v0.1.0: pass `make release-verify` locally, optionally validate
+      the workflow with a `v0.1.0-rc.1` prerelease tag first, then tag
+      `v0.1.0` with release notes following the repository release-note
+      structure (features, compatibility, known limitations, key commits).
+- [ ] Create `kitdine/homebrew-tap` with `Formula/agentdeck.rb` installing the
+      prebuilt release binaries (`on_arm`/`on_intel` URL + SHA-256,
+      `bin.install`, version-contract `test` block); verify
+      `brew install kitdine/tap/agentdeck` reports the tag version.
+- [x] Update `README.md` and `README_zh.md` installation sections with the
+      Homebrew channel and remove the "not yet available through Homebrew"
+      notice; keep formula bumping manual for now and record automated tap
+      updates as later work.
+
 ## Required Verification
 
 Once Go source exists, the release gate includes:

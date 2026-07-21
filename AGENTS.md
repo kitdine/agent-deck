@@ -196,6 +196,9 @@ separate:
    extent explicitly authorized.
 
 Do not collapse "fix implemented" and "review passed" into the same state.
+Stage boundaries do not invalidate verification evidence by themselves. Bind
+evidence to the exact content state and risk; do not rerun the same full suite
+merely because work moved from development to review, re-review, or delivery.
 
 ## Change Discipline / 修改纪律
 
@@ -212,7 +215,8 @@ Do not collapse "fix implemented" and "review passed" into the same state.
 
 ## Testing and Verification / 测试与验证
 
-AgentDeck work uses the Go verification suite below:
+AgentDeck has the verification command catalog below. It is not an
+unconditional checklist for every stage or every change:
 
 In the managed sandbox, set `GOCACHE=/private/tmp/agent-deck-go-build` for
 every Go test, vet, and build command. If a first cross-build also needs to
@@ -230,14 +234,35 @@ rtk test make release-verify
 ```
 
 - Scale verification to the risk and blast radius of the change.
-- Start with targeted checks, then run the required full validation suite when
-  shared contracts, production paths, or release behavior are affected.
+- Select the smallest complete evidence set from this risk matrix:
+
+| Level | Typical change | Required evidence |
+| ----- | -------------- | ----------------- |
+| L0 | Documentation, comments, ignore rules | Relevant format/link/discovery checks and `git diff --check` |
+| L1 | Localized package or renderer behavior | Affected targeted tests |
+| L2 | Shared CLI, parser, SQLite schema, persisted or JSON/text contract | Targeted tests plus `go test -mod=vendor ./...` |
+| L3 | Concurrency, credentials/privacy, migration execution, build or installer behavior | L2 plus only the relevant race, vet, cross-build, size, install, or privacy checks |
+| L4 | Release artifact readiness or explicit full release validation | `make release-verify` as the aggregate gate |
+
+- Path-based routing is a hint; assess actual behavior and failure modes.
+- During development, run fast targeted checks. Run the selected broader level
+  once after the final relevant edit, not once per workflow stage.
+- Review and re-review may add independent targeted evidence while reusing a
+  broader result bound to the same unchanged content state.
+- A prior result may be reused only when its command/result is available in the
+  current continuous workflow and a fresh status/diff/tree check proves relevant
+  content, dependencies, toolchain, configuration, generated files, and relevant
+  environment are unchanged. If any premise is unknown, rerun the relevant check.
+- Do not run every component and then `release-verify`, which already contains
+  those components, unless diagnosing a failing aggregate gate.
+- Commit and push of an already verified unchanged tree require staged/commit
+  tree and hook-effect checks, not another product test run.
 - Verify behavior at the source of truth. Browser-visible behavior requires
   browser verification; database behavior requires database checks; deployment
   behavior requires a real runtime or documented equivalent.
 - A successful build does not prove runtime correctness.
-- Do not claim success based on stale output, source inspection alone, or tests
-  run before the final edit.
+- Do not claim success based on unverifiable historical output, source inspection
+  alone, or tests run before the final relevant edit without an exact-state check.
 - Record commands that could not be run and state the remaining risk.
 - Remove generated caches and temporary artifacts before delivery:
 
@@ -285,6 +310,11 @@ rtk git diff --cached --stat
 rtk git diff --cached --name-only
 rtk git diff --cached
 ```
+
+- When the staged tree is the exact tree already verified, committing does not
+  trigger product verification again. After commit, verify the commit tree,
+  repository status, and whether hooks rewrote files; rerun affected checks only
+  if content changed.
 
 - Before pushing, verify the target repository, branch, remote, commit range,
   and required checks.
@@ -467,21 +497,12 @@ data handling, or release sequencing.
 仅在此处补充项目特有规则，例如领域安全边界、仓库专用命令、固定触发词、网络策略、
 数据处理要求或发布顺序。不要重复上文已经定义的通用规则。
 
-### Required Commands / 必需命令
+### Verification Routing / 验证路由
 
-Run affected targeted tests followed by:
-
-Use `GOCACHE=/private/tmp/agent-deck-go-build` for every Go command. Add
-`GOMODCACHE=/private/tmp/agent-deck-go-mod` to a first cross-build when module
-downloads would otherwise write to the user cache.
-
-```bash
-rtk test env GOCACHE=/private/tmp/agent-deck-go-build go test -mod=vendor ./...
-rtk test env GOCACHE=/private/tmp/agent-deck-go-build go test -mod=vendor -race ./...
-rtk lint env GOCACHE=/private/tmp/agent-deck-go-build go vet -mod=vendor ./...
-rtk test env GOCACHE=/private/tmp/agent-deck-go-build GOOS=darwin GOARCH=arm64 go build -mod=vendor -trimpath ./cmd/agentdeck
-rtk test env GOCACHE=/private/tmp/agent-deck-go-build GOOS=darwin GOARCH=amd64 go build -mod=vendor -trimpath ./cmd/agentdeck
-```
+Use the L0-L4 matrix in **Testing and Verification**. The commands listed there
+are the project catalog; only the commands selected by the current risk level are
+required. `release-verify` is L4 and is not a default development, review,
+re-review, commit, or push check.
 
 ### Domain Constraints / 领域约束
 

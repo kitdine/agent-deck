@@ -1,0 +1,44 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Require an arm64 runner
+        run: test "$(uname -m)" = arm64
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Verify release
+        run: make release-verify
+      - name: Build release archives
+        # Pin archive names to the tag so they always match the files uploaded
+        # below, independent of the Makefile's git-describe version derivation.
+        run: make release-archive VERSION="$GITHUB_REF_NAME"
+      - name: Publish GitHub Release
+        # --notes-from-tag requires an annotated tag carrying a message; push
+        # v* tags with `git tag -a`/a message, not lightweight tags.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            "dist/agentdeck_${GITHUB_REF_NAME}_darwin_arm64.tar.gz" \
+            "dist/agentdeck_${GITHUB_REF_NAME}_darwin_amd64.tar.gz" \
+            "dist/agentdeck_${GITHUB_REF_NAME}_checksums.txt" \
+            --verify-tag \
+            --title "AgentDeck $GITHUB_REF_NAME" \
+            --notes-from-tag

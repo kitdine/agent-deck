@@ -45,8 +45,9 @@ The first release will not:
 - support custom model prices;
 - install, update, uninstall, or resolve dependencies for extensions;
 - merge a backup into an existing AgentDeck database;
-- publish Homebrew formulae, release archives, checksums, or system-wide
-  installers as part of the version and installation baseline;
+- publish to homebrew-core, sign or notarize archives, or provide system-wide
+  privileged installers; binary distribution starts with GitHub Releases and a
+  personal Homebrew tap as defined in Release and Distribution;
 - maintain compatibility aliases for the legacy Python and Bash commands.
 
 ## User Interface
@@ -290,10 +291,54 @@ manifest but leaves unrecorded installation directories in place. It never uses
 a broad or recursive removal and never touches `~/.agentdeck/`.
 
 Development and automated tests use an isolated temporary `PREFIX`; they do not
-execute install or uninstall against the real user home. Homebrew, signed
-archives, release checksums, and system-wide privileged installation remain
-later release work. Managed shell completion installation is the next
-user-local usability phase defined below.
+execute install or uninstall against the real user home. Release archives,
+checksums, and Homebrew tap distribution are defined in Release and
+Distribution below. Signed or notarized archives and system-wide privileged
+installation remain later release work. Managed shell completion installation
+is the next user-local usability phase defined below.
+
+### Release and Distribution
+
+The binary distribution channel is GitHub Releases on the public
+`github.com/kitdine/agent-deck` repository plus a personal Homebrew tap.
+`homebrew-core` submission is out of scope for now.
+
+`make release-archive` packages the existing `build-all` outputs after
+stripping. For version `<ver>` (from the same Git-tag derivation as build
+identity) it produces exactly:
+
+```text
+dist/agentdeck_<ver>_darwin_arm64.tar.gz    (contains one file: agentdeck)
+dist/agentdeck_<ver>_darwin_amd64.tar.gz    (contains one file: agentdeck)
+dist/agentdeck_<ver>_checksums.txt          (SHA-256 per archive)
+```
+
+Archives contain the stripped binary — the same artifact class the
+`check-arm64-size` gate measures. Packaging is deterministic and local; it
+performs no network access and no uploads.
+
+A GitHub Actions release workflow (`.github/workflows/release.yml`) triggers on
+pushed `v*` tags. It runs on a macOS arm64 runner with full Git history so tag
+derivation works, builds with the vendored module set, runs
+`make release-verify` as the gate, then `make release-archive`, and creates the
+GitHub Release with the two archives and the checksum file attached. Release
+notes follow the repository release-note structure and are finalized at tag
+time. The workflow needs only `contents: write` permission. A separate minimal
+CI workflow runs `make verify` on pushes and pull requests. Pushing tags and
+publishing releases remain explicitly authorized manual decisions; the
+workflow only automates the mechanics after a tag is pushed.
+
+The Homebrew tap lives in the separate repository `kitdine/homebrew-tap` with
+`Formula/agentdeck.rb`. The formula installs prebuilt binaries: `on_arm` and
+`on_intel` blocks reference the release archives by URL with their SHA-256
+values, installation is `bin.install "agentdeck"`, and the formula `test`
+block asserts the text version contract. Users install with
+`brew install kitdine/tap/agentdeck`. A tap-installed binary reports the tag
+version, not `dev`. Formula version and checksums are updated manually per
+release; automated tap bumping from the release workflow is later work.
+Completion-script installation through the formula is later work; tap installs
+provide the bare binary and `make install` remains the completion-managed
+source path.
 
 ### Managed Shell Completion Installation
 

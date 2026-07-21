@@ -22,23 +22,26 @@ FORCE ?= 0
 COMPLETION_SHELL ?= auto
 COMPLETION_RC ?=
 
-.PHONY: build build-all build-arm64-stripped check-arm64-size check-install check-privacy install uninstall release-verify clean test test-race vet verify
+.PHONY: build build-all release-archive check-arm64-size check-install check-privacy install uninstall release-verify clean test test-race vet verify
 
 build:
 	mkdir -p $(DIST_DIR)
 	env GOCACHE=$(GOCACHE) GOMODCACHE=$(GOMODCACHE) $(GO) build -mod=vendor -trimpath -ldflags='$(BUILD_LDFLAGS)' -o $(DIST_DIR)/agentdeck $(PACKAGE)
 
+# Release binaries link with -s -w so the archived artifact is the stripped
+# binary the size gate measures; no post-link strip diverges ship from gate.
 build-all:
 	mkdir -p $(DIST_DIR)
-	env GOCACHE=$(GOCACHE) GOMODCACHE=$(GOMODCACHE) GOOS=darwin GOARCH=arm64 $(GO) build -mod=vendor -trimpath -ldflags='$(BUILD_LDFLAGS)' -o $(DIST_DIR)/agentdeck_darwin_arm64 $(PACKAGE)
-	env GOCACHE=$(GOCACHE) GOMODCACHE=$(GOMODCACHE) GOOS=darwin GOARCH=amd64 $(GO) build -mod=vendor -trimpath -ldflags='$(BUILD_LDFLAGS)' -o $(DIST_DIR)/agentdeck_darwin_amd64 $(PACKAGE)
+	env GOCACHE=$(GOCACHE) GOMODCACHE=$(GOMODCACHE) GOOS=darwin GOARCH=arm64 $(GO) build -mod=vendor -trimpath -ldflags='-s -w $(BUILD_LDFLAGS)' -o $(DIST_DIR)/agentdeck_darwin_arm64 $(PACKAGE)
+	env GOCACHE=$(GOCACHE) GOMODCACHE=$(GOMODCACHE) GOOS=darwin GOARCH=amd64 $(GO) build -mod=vendor -trimpath -ldflags='-s -w $(BUILD_LDFLAGS)' -o $(DIST_DIR)/agentdeck_darwin_amd64 $(PACKAGE)
 
-build-arm64-stripped:
-	mkdir -p $(DIST_DIR)
-	env GOCACHE=$(GOCACHE) GOMODCACHE=$(GOMODCACHE) GOOS=darwin GOARCH=arm64 $(GO) build -mod=vendor -trimpath -ldflags='-s -w $(BUILD_LDFLAGS)' -o $(DIST_DIR)/agentdeck_darwin_arm64_stripped $(PACKAGE)
+release-archive: build-all
+	bash scripts/release-archive.sh "$(DIST_DIR)" "$(VERSION)"
 
-check-arm64-size: build-arm64-stripped
-	test $$(wc -c < $(DIST_DIR)/agentdeck_darwin_arm64_stripped) -le $(ARM64_MAX_BYTES)
+# Measures the exact arm64 binary release-archive packages, so the gate covers
+# the shipped artifact rather than a separately stripped build.
+check-arm64-size: build-all
+	test $$(wc -c < $(DIST_DIR)/agentdeck_darwin_arm64) -le $(ARM64_MAX_BYTES)
 
 test:
 	env GOCACHE=$(GOCACHE) $(GO) test -mod=vendor -count=1 ./...
