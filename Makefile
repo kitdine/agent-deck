@@ -22,7 +22,7 @@ FORCE ?= 0
 COMPLETION_SHELL ?= auto
 COMPLETION_RC ?=
 
-.PHONY: build build-all release-archive check-arm64-size check-install check-privacy install uninstall release-verify clean test test-race vet verify
+.PHONY: build build-all release-tag release-archive check-arm64-size check-install check-privacy check-release-distribution install uninstall release-verify clean test test-race vet verify
 
 build:
 	mkdir -p $(DIST_DIR)
@@ -34,6 +34,11 @@ build-all:
 	mkdir -p $(DIST_DIR)
 	env GOCACHE=$(GOCACHE) GOMODCACHE=$(GOMODCACHE) GOOS=darwin GOARCH=arm64 $(GO) build -mod=vendor -trimpath -ldflags='-s -w $(BUILD_LDFLAGS)' -o $(DIST_DIR)/agentdeck_darwin_arm64 $(PACKAGE)
 	env GOCACHE=$(GOCACHE) GOMODCACHE=$(GOMODCACHE) GOOS=darwin GOARCH=amd64 $(GO) build -mod=vendor -trimpath -ldflags='-s -w $(BUILD_LDFLAGS)' -o $(DIST_DIR)/agentdeck_darwin_amd64 $(PACKAGE)
+
+release-tag:
+	@test -n "$(TAG)" || { echo "TAG is required" >&2; exit 2; }
+	@test -n "$(RELEASE_NOTES)" || { echo "RELEASE_NOTES is required" >&2; exit 2; }
+	bash scripts/create-release-tag.sh "$(TAG)" "$(RELEASE_NOTES)"
 
 release-archive: build-all
 	bash scripts/release-archive.sh "$(DIST_DIR)" "$(VERSION)"
@@ -67,7 +72,10 @@ check-install:
 check-privacy:
 	@bash scripts/check-privacy.sh
 
-release-verify: verify build-all check-arm64-size check-install check-privacy
+check-release-distribution:
+	bash scripts/test-release-distribution.sh
+
+release-verify: verify build-all check-arm64-size check-install check-privacy check-release-distribution
 
 clean:
 	rm -rf $(DIST_DIR)

@@ -94,9 +94,6 @@ dist/agentdeck_darwin_amd64
 
 ## Install With Homebrew
 
-> Available once the `v0.1.0` release and the `kitdine/homebrew-tap` repository
-> are published. Until then, use Install From Source below.
-
 Install the latest versioned macOS release from the AgentDeck tap:
 
 ```bash
@@ -104,8 +101,10 @@ brew install kitdine/tap/agentdeck
 agentdeck version
 ```
 
-The formula installs the release binary only. Shell completion installation
-remains available through the source-based `make install` workflow below.
+The current v0.1.0 formula installs the release binary only. A verified formula
+update is prepared to add bash, zsh, and fish completion scripts in Homebrew's
+standard completion directories without editing shell rc files. The
+source-based workflow below additionally supports managed rc-file activation.
 
 ## Install From Source
 
@@ -413,8 +412,10 @@ above are the sources of truth.
 
 Versioned GitHub Releases provide checksum-protected macOS archives for arm64
 and amd64. The `kitdine/tap/agentdeck` formula installs those immutable
-artifacts rather than building from a moving branch. Formula URLs and checksums
-are updated manually for each release; automated tap updates are later work.
+artifacts rather than building from a moving branch. Each stable release
+validates a rendered formula and its bash, zsh, and fish completions, then opens
+an update pull request in the tap repository. The existing v0.1.0 formula will
+gain completion support after its Homebrew-only migration run and tap PR merge.
 
 ## Contributing
 

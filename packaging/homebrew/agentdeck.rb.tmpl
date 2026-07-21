@@ -1,0 +1,34 @@
+# typed: strict
+# frozen_string_literal: true
+
+# Installs the versioned AgentDeck macOS binary and shell completions.
+class Agentdeck < Formula
+  desc "CLI for managing multiple Codex/Claude providers, usage, and credentials"
+  homepage "https://github.com/kitdine/agent-deck"
+  url "https://github.com/kitdine/agent-deck/releases/download/@TAG@/" \
+      "agentdeck_@TAG@_darwin_#{on_arch_conditional arm: "arm64", intel: "amd64"}.tar.gz"
+  version "@VERSION@"
+  sha256 on_arch_conditional(
+    arm:   "@ARM64_SHA256@",
+    intel: "@AMD64_SHA256@",
+  )
+  license "MIT"
+
+  def install
+    bin.install "agentdeck"
+    generate_completions_from_executable(
+      bin/"agentdeck",
+      shell_parameter_format: :cobra,
+      shells:                 [:bash, :zsh, :fish],
+    )
+  end
+
+  test do
+    output = shell_output("#{bin}/agentdeck version")
+    assert_match "Release Version: v@VERSION@", output
+    refute_match "dev", output
+    assert_path_exists bash_completion/"agentdeck"
+    assert_path_exists zsh_completion/"_agentdeck"
+    assert_path_exists fish_completion/"agentdeck.fish"
+  end
+end

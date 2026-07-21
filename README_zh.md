@@ -83,9 +83,6 @@ dist/agentdeck_darwin_amd64
 
 ## 使用 Homebrew 安装
 
-> 需在 `v0.1.0` release 与 `kitdine/homebrew-tap` 仓库发布后方可使用；在此之前请使用
-> 下方的从源码安装。
-
 从 AgentDeck tap 安装最新的 macOS 版本化 release：
 
 ```bash
@@ -93,8 +90,9 @@ brew install kitdine/tap/agentdeck
 agentdeck version
 ```
 
-Formula 仅安装 release binary。Shell completion 的持久安装仍使用下方源码方式的
-`make install` 流程。
+当前 v0.1.0 formula 仍只安装 release binary。已准备并验证的 formula 更新会在
+Homebrew 标准目录下增加 bash、zsh、fish completion 脚本，但不会修改 shell rc
+文件。下方源码安装流程还支持由 AgentDeck 管理 rc 文件中的启用配置。
 
 ## 从源码安装
 
@@ -383,7 +381,9 @@ vendor/          已提交的 Go 依赖
 
 版本化 GitHub Release 为 arm64 和 amd64 提供带 checksum 的 macOS 归档。
 `kitdine/tap/agentdeck` formula 安装这些不可变 artifact，而不是从持续变化的 Git
-分支构建。每次 release 仍手工更新 formula URL 与 checksum；自动更新 tap 属于后续工作。
+分支构建。每个稳定版 release 都会验证渲染后的 formula 及 bash、zsh、fish
+completion，然后在 tap 仓库创建更新 PR。现有 v0.1.0 formula 将在 Homebrew-only
+迁移任务运行并合并 tap PR 后获得 completion 支持。
 
 ## 参与贡献
 

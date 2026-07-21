@@ -323,22 +323,42 @@ derivation works, builds with the vendored module set, runs
 `make release-verify` as the gate, then `make release-archive`, and creates the
 GitHub Release with the two archives and the checksum file attached. Release
 notes follow the repository release-note structure and are finalized at tag
-time. The workflow needs only `contents: write` permission. A separate minimal
-CI workflow runs `make verify` on pushes and pull requests. Pushing tags and
-publishing releases remain explicitly authorized manual decisions; the
-workflow only automates the mechanics after a tag is pushed.
+time. `make release-tag TAG=<tag> RELEASE_NOTES=<file>` creates the annotated
+tag with `--cleanup=verbatim` and verifies that its message exactly matches the
+source file, preserving Markdown headings. In Actions, release-note extraction
+force-fetches the remote annotated tag object into a private ref, verifies that
+it resolves to `GITHUB_SHA`, and supplies the extracted message through
+`gh release create --notes-file`. It does not use `--notes-from-tag`, because
+tag-event checkout may leave the public local tag ref pointing at the peeled
+commit and make GitHub CLI fall back to that commit message. The release job
+needs only `contents: write` permission. A separate minimal CI workflow runs
+`make verify` on pushes and pull requests. Pushing tags and publishing releases
+remain explicitly authorized manual decisions; the workflow only automates the
+mechanics after a tag is pushed.
 
 The Homebrew tap lives in the separate repository `kitdine/homebrew-tap` with
-`Formula/agentdeck.rb`. The formula installs prebuilt binaries: `on_arm` and
-`on_intel` blocks reference the release archives by URL with their SHA-256
-values, installation is `bin.install "agentdeck"`, and the formula `test`
-block asserts the text version contract. Users install with
-`brew install kitdine/tap/agentdeck`. A tap-installed binary reports the tag
-version, not `dev`. Formula version and checksums are updated manually per
-release; automated tap bumping from the release workflow is later work.
-Completion-script installation through the formula is later work; tap installs
-provide the bare binary and `make install` remains the completion-managed
-source path.
+`Formula/agentdeck.rb`. The formula installs prebuilt binaries: Homebrew's
+`on_arch_conditional` selects the arm64 or amd64 release archive URL and
+SHA-256 value, installation uses `bin.install "agentdeck"`, and Homebrew's Cobra
+completion generator installs bash, zsh, and fish scripts into their standard
+Homebrew completion directories. It does not edit user shell rc files. The
+formula `test` block asserts the text version contract and all three completion
+paths. Users install with `brew install kitdine/tap/agentdeck`. A tap-installed
+binary reports the tag version, not `dev`. The already-published v0.1.0 formula
+remains binary-only until the Homebrew-only migration job creates a tap PR and
+that PR is merged.
+
+After a stable release is published, a dependent macOS job renders the formula
+from the released checksum asset, installs it from an isolated temporary tap,
+runs `brew test`, and smoke-loads each generated completion. Only after those
+checks pass does it use the repository secret `HOMEBREW_TAP_TOKEN` to push an
+`agentdeck-<tag>` branch and open a pull request in `kitdine/homebrew-tap`.
+The token must be fine-grained to that repository with Contents and Pull
+requests write access. Prerelease tags publish GitHub prereleases but never
+update the tap. A manual `workflow_dispatch` accepts an existing stable tag and
+runs only this Homebrew verification/PR job; it does not recreate or edit the
+GitHub Release. This provides the migration path for v0.1.0 after the hardened
+workflow reaches `main`.
 
 ### Managed Shell Completion Installation
 

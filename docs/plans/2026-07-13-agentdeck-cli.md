@@ -627,10 +627,11 @@ live in the specification's usage stats section (runtime provider dimension,
 ### GitHub Release v0.1.0 and Homebrew Tap Follow-Up (2026-07-21)
 
 Design approved; repository-local packaging, workflows, and installation
-documentation are implemented and release-verified. Repository push, tags,
-GitHub Releases, and the tap repository remain pending external actions that
-each require explicit authorization at execution time. Distribution contract
-lives in the specification's Release and Distribution section.
+documentation were implemented and release-verified. The public repository,
+v0.1.0 GitHub Release, and Homebrew tap were published on 2026-07-21, and the
+binary-only v0.1.0 formula passed local installation and version verification.
+Distribution contract lives in the specification's Release and Distribution
+section.
 
 - [x] Add `make release-archive` packaging stripped `build-all` outputs into
       per-architecture `tar.gz` archives plus a SHA-256 checksum file under
@@ -642,20 +643,47 @@ lives in the specification's Release and Distribution section.
       Release with both archives and the checksum file (`contents: write`
       only). Add a minimal CI workflow running `make verify` on pushes and
       pull requests.
-- [ ] Prepare and push the public `kitdine/agent-deck` repository: resolve
+- [x] Prepare and push the public `kitdine/agent-deck` repository: resolve
       uncommitted worktree content, add the remote, and push `main`.
-- [ ] Publish v0.1.0: pass `make release-verify` locally, optionally validate
+- [x] Publish v0.1.0: pass `make release-verify` locally, optionally validate
       the workflow with a `v0.1.0-rc.1` prerelease tag first, then tag
       `v0.1.0` with release notes following the repository release-note
       structure (features, compatibility, known limitations, key commits).
-- [ ] Create `kitdine/homebrew-tap` with `Formula/agentdeck.rb` installing the
+- [x] Create `kitdine/homebrew-tap` with `Formula/agentdeck.rb` installing the
       prebuilt release binaries (`on_arm`/`on_intel` URL + SHA-256,
       `bin.install`, version-contract `test` block); verify
       `brew install kitdine/tap/agentdeck` reports the tag version.
 - [x] Update `README.md` and `README_zh.md` installation sections with the
       Homebrew channel and remove the "not yet available through Homebrew"
-      notice; keep formula bumping manual for now and record automated tap
-      updates as later work.
+      notice; the initial formula used a manual version/checksum bump, superseded
+      by the automation follow-up below.
+
+### Release Notes and Automated Tap Follow-Up (2026-07-21)
+
+Design approved after v0.1.0 publication. The published v0.1.0 release body was
+corrected through the GitHub API; its immutable historical tag annotation is
+not rewritten. The following hardens future releases and adds completion-aware
+formula automation:
+
+- [x] Add a release-tag helper that preserves Markdown headings with
+      `--cleanup=verbatim` and verifies the annotated message byte-for-byte.
+- [x] Replace `gh release create --notes-from-tag` with validated extraction
+      from the remote annotated tag object, covering the tag-event checkout
+      behavior that can leave the local public tag ref lightweight.
+- [x] Render the stable Homebrew formula from release checksums, install bash,
+      zsh, and fish completions through Homebrew's standard Cobra completion
+      generator, and verify all three completion paths and smoke-load behavior.
+- [x] After stable-release formula verification, use a fine-grained
+      `HOMEBREW_TAP_TOKEN` to open an `agentdeck-<tag>` update PR in
+      `kitdine/homebrew-tap`; never update the tap for prereleases. Provide a
+      Homebrew-only manual dispatch for migrating the existing v0.1.0 formula
+      after this workflow reaches `main`.
+- [x] Add repository-local regression coverage and pass the L4
+      `make release-verify` gate for the final content state.
+- [ ] After independent review and delivery to `main`, configure the
+      fine-grained `HOMEBREW_TAP_TOKEN`, dispatch the Release workflow for
+      `v0.1.0`, review/merge the generated tap PR, and confirm a normal
+      `brew reinstall kitdine/tap/agentdeck` exposes all three completions.
 
 ## Required Verification
 
