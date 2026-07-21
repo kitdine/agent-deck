@@ -3,8 +3,8 @@
 **Status:** active; phase-one, version/installation baseline, consolidated Phase
 9 CLI usability, and credential-owned provider configuration implementation,
 release verification, and independent review complete; unified ASCII list-table
-output and machine-bound encrypted SQLite credential storage implemented and
-release-verified, awaiting independent review
+output and machine-bound encrypted SQLite credential storage implemented,
+release-verified, and independent-review complete as of 2026-07-22
 
 ## Product Definition
 
@@ -667,6 +667,14 @@ cache_read_input_tokens
 Aggregate cache creation without a TTL breakdown remains visible but unpriced.
 The scanner never guesses whether it was a five-minute or one-hour write.
 
+Claude Code's own internal auxiliary model calls — for example automatic
+session-title generation, recorded in the project JSONL only as a bare
+`"type":"ai-title"` entry — carry no `usage` object at all. These calls are
+invisible to this scanner and never appear in `agentdeck usage` output; their
+cost is visible only in Claude Code's own in-process `/status` display. This
+is a completeness gap in the upstream transcript file, not an importer
+defect, and no local parsing change can recover it.
+
 Attribution has three explicit qualities:
 
 - `exact`: `agentdeck run` owns an unambiguous client process lifetime and
@@ -867,6 +875,19 @@ model_prices_and_context_window.json
 LiteLLM is an aggregated reference source, not an official invoice source.
 User-facing output therefore calls the pre-multiplier amount
 `catalog_base_cost`, not `official_base_cost`.
+
+Time-limited introductory pricing (a lower rate that reverts to a higher
+standard rate on a published future date) is imported as whatever component
+LiteLLM currently reports and used as-is; the catalog does not track or warn
+about a scheduled future rate change. A first-party surface such as Claude
+Code's own `/status` panel computes its own estimate from its own local price
+table and can disagree with `agentdeck usage`/`agentdeck price list` even
+when both are nominally using "current" Anthropic pricing — for example,
+`/status` was observed applying Claude Sonnet 5's post-introductory standard
+rate before that rate took effect, overstating session cost by roughly 30%
+relative to the LiteLLM-sourced introductory rate this catalog held for the
+same period. Treat catalog-derived costs as the LiteLLM-sourced reference,
+not as a guaranteed match for any other tool's on-screen estimate.
 
 An explicit `agentdeck price update` is the only normal command in this
 domain that accesses the network. Runtime scans and reports use the latest

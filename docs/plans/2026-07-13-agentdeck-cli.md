@@ -4,7 +4,10 @@
 and independent review complete; interactive CLI and shell completion usability
 implementation, release verification, and independent review complete; unified
 ASCII collection tables and machine-bound encrypted SQLite credential storage
-implemented and release-verified, awaiting independent review
+implemented, release-verified, and independent-review complete as of
+2026-07-22. Every follow-up in this plan has now passed independent review;
+the only open items are the release-automation verification bound to the next
+stable tag and the unscoped backlog at the end of this document.
 
 **Specification:**
 `docs/specs/2026-07-13-agentdeck-cli-design.md`
@@ -500,6 +503,25 @@ commit, or push was made.
       synthetic machine identities, key permissions and concurrency,
       transaction rollback, corruption, cross-machine restore, zero Keychain
       access, and credential non-disclosure before the complete release gate.
+- [x] Complete independent security review of the machine-bound encrypted
+      credential storage follow-up. Passed 2026-07-22 at L3 with `-race`
+      evidence for credentialvault/provider/backup/doctor; this checklist item
+      was missing until then, which is why the plan header and
+      `docs/README.md` still described the review as pending. Confirmed:
+      `os.Link` gives atomic exclusive key creation so an existing key can
+      never be overwritten, with the `fs.ErrExist` loser falling back to
+      reading the winner's key; `Lstat` plus an exact `0600` match blocks
+      symlink substitution and fails closed; `sealCredential` requires exactly
+      one distinct stored key ID matching the current machine key before
+      re-sealing, so a database carried from another machine cannot silently
+      re-key; AEAD associated data binds the `UNIQUE` `credential_ref`, making
+      cross-credential ciphertext substitution structurally impossible;
+      `credential.key` is absent from the backup entry map and restore
+      re-seals under a freshly generated target-machine key. The
+      unsupported-version and malformed-nonce fail-closed branches are covered
+      from `internal/doctor` rather than `internal/credentialvault` — they are
+      tested, despite not appearing in the vault package's own tests. Two
+      non-blocking defense-in-depth findings are recorded in the backlog.
 
 ### Automatic Price Update Follow-Up (2026-07-17)
 
@@ -515,7 +537,13 @@ commit, or push was made.
       commit overrides before state or network access; apply a bounded
       production HTTP timeout; and cover API/raw failures and zero-side-effect
       CLI validation.
-- [ ] Complete independent review of the automatic price update follow-up.
+- [x] Complete independent review of the automatic price update follow-up.
+      Passed 2026-07-22: all four remediated findings confirmed closed
+      (raw-byte `content_sha256` consistent across update/status/history,
+      `PreRunE` commit validation proven side-effect-free by
+      `TestPriceUpdateRejectsInvalidCommitBeforeStateOrNetwork`, bounded
+      60s client timeout, API/raw failure coverage). Two non-blocking
+      low-severity observations recorded in the backlog below.
 
 ### Active Usage Log Rebuild Follow-Up (2026-07-17)
 
@@ -534,7 +562,14 @@ commit, or push was made.
       attribution, isolate duplicate event ownership across source transactions,
       revalidate same-metadata snapshot bytes, keep partial warnings visible
       under `--quiet`, and cover checkpoint and bounded-read behavior.
-- [ ] Complete independent re-review of the active usage log rebuild follow-up.
+- [x] Complete independent re-review of the active usage log rebuild follow-up.
+      Passed 2026-07-22: all five remediated findings confirmed closed.
+      Verified that `Rebuild`'s reverse path iteration and `upsertTx`'s
+      `existingPath > e.SourcePath` ownership rule are mutually consistent,
+      so a rolled-back owner transaction keeps its rows and a lower-priority
+      duplicate source cannot claim them; `validateSnapshot` rejects
+      same-size/same-metadata mutation before any state write; the watch
+      checkpoint advances only when the rebuild produced no warnings.
 
 ### Usage Output Readability Follow-Up (2026-07-20)
 
@@ -549,7 +584,13 @@ commit, or push was made.
       catalog responses without importing partial state.
 - [x] Cover default text, explicit JSON, table rendering, partial price totals,
       model matching, and retry behavior with isolated regression tests.
-- [ ] Complete independent re-review of the usage output readability follow-up.
+- [x] Complete independent re-review of the usage output readability follow-up.
+      Passed 2026-07-22: ASCII grid rendering (including terminal control
+      sequence sanitization for untrusted model names), split session token
+      columns with known priced subtotals, and the deliberately narrow
+      Claude-only dot/hyphen model matching were all confirmed, with
+      `usageModelMatches` and `statsPriceModelKey` agreeing on the same
+      normalization and unknown Codex models correctly left unpriced.
 
 ### Usage Analytics and Current State Follow-Up (2026-07-20)
 
@@ -623,6 +664,20 @@ live in the specification's usage stats section (runtime provider dimension,
       `--provider` filter call with regenerated JSON contract goldens.
 - [x] Synchronize the CLI manual usage stats section (flag row, stable JSON
       field list, provider semantics, and the unknown bucket).
+- [x] Complete independent review of the usage stats runtime provider dimension
+      follow-up. Passed 2026-07-22 (this checklist item was missing until then,
+      which is why `docs/README.md` still listed the review as pending).
+      Confirmed: `eventsRange` gained `r.provider` and `us.first_at` on joins
+      that already existed, so the stats profile stays at exactly five queries
+      — asserted for both 3 events and 1003 events, a real N+1 guard;
+      `priceForEvent` derives exact from the run provider, estimated from the
+      session-start timeline snapshot, and leaves everything else `unknown`
+      without ever mapping it to `official`; `--provider` filters after
+      derivation and before every accumulator including `total`; `providers`
+      is initialized as an empty slice so the JSON field is never null;
+      tool-call rows use the documented session-start approximation, and
+      `ProviderTimeline.SnapshotAt` is an in-memory scan over a
+      once-loaded timeline, so the filter adds no per-row query.
 
 ### GitHub Release v0.1.0 and Homebrew Tap Follow-Up (2026-07-21)
 
@@ -709,6 +764,50 @@ implementation starts.
       become hard to scan).
 - [ ] Implement a GUI, including a persistent menu-bar (menubar) presence, as
       an alternative front end to the CLI.
+- [ ] Broaden the bundled fallback price catalog. `internal/usage/model-prices.json`
+      currently ships exactly two models — `gpt-5.4` (openai) and
+      `claude-sonnet-4-6` (anthropic) — so a fresh install cannot price most
+      real usage until the first successful `agentdeck price update` reaches
+      the network. Carry a reasonably complete current model set for **both**
+      vendors, and define how that bundled set is refreshed over time (who
+      regenerates it, from which reviewed source, and on what cadence — most
+      plausibly a release-time regeneration step rather than a hand-edited
+      file). Note the catalog version string `2026-07-13-openai-standard-v1`
+      already misdescribes its contents now that it carries an Anthropic
+      model; rename it as part of this work. Keep the existing provenance and
+      immutability contract intact — bundled entries must remain an explicit
+      reviewed layer, never a silent guess.
+- [ ] Address two defense-in-depth findings from the 2026-07-22 credential
+      vault security review. Neither is exploitable today; take them the next
+      time `internal/credentialvault/vault.go` is opened.
+      (a) **Durability, higher priority despite lower likelihood**
+      (`vault.go:244`): `os.Link` is not followed by a parent-directory
+      `Sync()`, so the key file's contents are durable but its directory entry
+      is not. A crash in that window, after SQLite has already committed
+      ciphertext, leaves ciphertext with no recoverable key — and the design
+      deliberately refuses to regenerate a key when encrypted rows exist, so
+      the credentials are permanently lost. One `Sync()` on the state root
+      closes it.
+      (b) **Cryptographic hygiene** (`vault.go:181-182`): the persisted key ID
+      is `SHA-256` of the live AES key truncated to 16 bytes, which publishes
+      a hash of the key and gives an offline oracle for verifying guesses at
+      key material. Not exploitable against a 256-bit random seed, but
+      avoidable: expand HKDF to 48 bytes and take bytes 32..48 as the ID so it
+      is derived alongside the key rather than from it. Requires a key-version
+      increment; existing ciphertext must keep verifying under version 1.
+      Note that plaintext and key bytes are not zeroed after use. That is an
+      accepted residual risk, not a task — Go's copying GC makes wiping
+      unreliable, and `Open` returns an immutable `string`.
+- [ ] Address two low-severity findings from the 2026-07-22 price update
+      review, ideally folded into the next change that already touches
+      `internal/usage/price_update.go`:
+      (a) `price_update.go:68` treats every catalog parse failure as
+      retryable, so a genuinely malformed (non-transient) catalog burns three
+      attempts before failing — distinguish truncation from validation
+      failure; (b) `price_update.go:143-148` checks the byte-size cap before
+      the HTTP status, so an oversized 5xx body is reported as
+      non-retryable "response exceeds N bytes" instead of a retryable
+      transient failure.
 - [ ] Investigate and fix `agentdeck usage`-family command performance: runs
       get noticeably slower after the local usage/session history has
       accumulated for a while (likely re-scanning or re-aggregating more data
@@ -740,13 +839,19 @@ risk rather than inferred from source inspection.
 
 Phase one, Phase 8, and the consolidated Phase 9 implementation and independent
 review are complete. Phase 9 is accepted and its CLI manual is active. Release
-preparation remains a separate stage. The automatic price update follow-up is
-implemented, review-remediated, and verified but awaits independent re-review.
-The active usage log rebuild follow-up is review-remediated but awaits
-independent re-review.
-The usage output readability follow-up is implemented but awaits independent
-re-review.
-The usage analytics and current state follow-up is review-remediated but awaits
-independent re-review.
+preparation remains a separate stage. The automatic price update, active usage
+log rebuild, and usage output readability follow-ups all passed independent
+review on 2026-07-22 against content state `b95c48c`, with evidence bound to a
+full `go test -mod=vendor ./...` and `go vet -mod=vendor ./...` pass; their two
+non-blocking low-severity observations are recorded in the backlog rather than
+held as open review findings.
+The usage analytics and current state follow-up completed its independent
+re-review earlier; this paragraph previously claimed otherwise and was stale.
+The usage stats runtime provider dimension and the machine-bound encrypted
+credential storage follow-ups also passed independent review on 2026-07-22, the
+latter at L3 with race evidence, so no follow-up in this plan is awaiting
+review. Three of those reviews had no checklist item of their own beforehand;
+when adding a follow-up section, add its review item at the same time so the
+gate and the checklist cannot drift apart again.
 Implementation or review approval does not authorize installation into the real
 user home, push, release, or modification of real user state.
