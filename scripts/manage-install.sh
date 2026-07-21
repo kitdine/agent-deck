@@ -76,12 +76,17 @@ file_mode() {
   stat -f '%Lp' "$1" 2>/dev/null || stat -c '%a' "$1"
 }
 
+# Locals are prefixed to avoid colliding with globals like $target and
+# $manifest: bash 3.2 (still the macOS system bash) does not restore a
+# function's `local` variables when `set -e` aborts the function mid-body, so a
+# collision would leak this function's value into the global and misdirect the
+# rollback that runs from the EXIT trap.
 atomic_copy() {
-	local source=$1 target=$2 directory temporary
-	directory=$(dirname "$target")
-	temporary=$(mktemp "$directory/.agentdeck.replace.XXXXXX")
-	cp -p "$source" "$temporary"
-	mv -f "$temporary" "$target"
+	local ac_source=$1 ac_target=$2 ac_directory ac_temporary
+	ac_directory=$(dirname "$ac_target")
+	ac_temporary=$(mktemp "$ac_directory/.agentdeck.replace.XXXXXX")
+	cp -p "$ac_source" "$ac_temporary"
+	mv -f "$ac_temporary" "$ac_target"
 }
 
 ensure_directory() {
