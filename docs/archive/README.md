@@ -15,9 +15,9 @@ implementation rationale, superseded contracts, or one-off investigation
 records.
 
 It mirrors the live structure: retired execution trackers go under
-`plans/`, retired contracts under `specs/`. Filenames keep the topic only;
-`status: historical` and `retired:` in each document's frontmatter carry the
-rest.
+`plans/`, retired contracts under `specs/`, and a retired plan's review records
+under `reviews/<plan-topic>/`. Filenames keep the topic only; `status:
+historical` and `retired:` in each document's frontmatter carry the rest.
 
 ## Criteria for archiving a document
 

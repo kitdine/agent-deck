@@ -34,6 +34,7 @@ historical detail; it is not a current tracker.
 | [specs/cli-manual.md](specs/cli-manual.md) | The implemented command surface, flags, and output shapes. |
 | [plans/usage-scan-performance.md](plans/usage-scan-performance.md) | Make a full usage re-read fast and visible. Design approved with a profiled baseline. active — 0/6 done. |
 | [plans/test-coverage.md](plans/test-coverage.md) | Repository test coverage queue from the 2026-07-22 gap scan. active — 0/5 done (tasks 1 and 2 implemented, in review). |
+| [reviews/](reviews/README.md) | Per-task review records that back each plan's ticked `Review` cell. |
 | [archive/](archive/README.md) | Retired plans and superseded contracts. Not a starting point for new work. |
 
 ## Open Tasks Not Owned by a Plan
@@ -127,7 +128,8 @@ Filenames are lowercase and hyphenated, with no date and no type suffix:
 | --- | --- | --- |
 | `docs/specs/` | Contracts — what the system does and must keep doing | Revised in place; stays active as long as the system stands |
 | `docs/plans/` | Execution — how and when finite work gets done | Retires to `docs/archive/` once delivered and reviewed |
-| `docs/archive/` | Retired documents, mirroring `plans/` and `specs/` | Historical; never a starting point |
+| `docs/reviews/` | Per-task review records, mirroring `plans/` by topic | Archived alongside the plan it belongs to |
+| `docs/archive/` | Retired documents, mirroring `plans/`, `specs/`, and `reviews/` | Historical; never a starting point |
 | `docs/README.md` | This file: the document map and the execution state | Updated in place |
 
 **Specs additionally carry a version and changelog.** Raise the version and add
@@ -145,7 +147,8 @@ belong in this file.
   existing plan when that plan's work is still in flight and the follow-up is
   genuinely part of finishing it.
 - Retire a plan once every task's final gate is ticked (all done): move it under
-  `docs/archive/plans/`, set `status: historical` and `retired:`, record why in
+  `docs/archive/plans/`, move its `docs/reviews/<plan-topic>/` directory into
+  `docs/archive/reviews/`, set `status: historical` and `retired:`, record why in
   `docs/archive/README.md`, and collapse it into one line of "Current State"
   above.
 - Watch the size. A plan past a few hundred lines, or one whose sections no
@@ -163,6 +166,8 @@ plan needs them), and a tick when that gate passes for that task. The
 implementer ticks `Dev` when the task is built and its own targeted
 verification passes; an independent reviewer ticks `Review` when findings are
 closed, and reopens the task rather than ticking it when review finds problems.
+Each `Review` tick is backed by a `Verdict: PASS` round recorded in
+`docs/reviews/<plan-topic>/<task-anchor>.md`; see `docs/reviews/README.md`.
 A task is *done* when its last required gate is ticked. This file records only
 `active — X/N done` per plan, where N is the task count and X counts done
 tasks. Never copy the per-task grid here — that duplicate is how a status
