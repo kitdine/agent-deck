@@ -19,11 +19,144 @@ const (
 	statsMinWidth     = 48
 	statsDefaultWidth = 100
 	statsMaxWidth     = 160
+
+	statsModelsCap        = 8
+	statsProvidersCap     = 8
+	statsUnpricedCap      = 12
+	statsModelCacheCap    = 8
+	statsCacheSessionsCap = 10
+	statsTrendCap         = 48
+
+	// statsRankingMinWidth matches detail-compaction's single-line guarantee:
+	// statsCompactDetail keeps a model/provider detail on one line for
+	// realistic field values once its column is at least this wide. The
+	// two-column layout must never hand rankingLines less than this, or the
+	// "single line at width >= 80" contract silently breaks for wide
+	// terminals even though the terminal itself is far past 80.
+	statsRankingMinWidth = 80
+
+	// statsTrendDefaultLabelWidth and statsTrendDefaultValueWidth are
+	// trendLines' own starting column widths before it widens either to fit
+	// the report's actual labels/values. statsTrendLabelValueWidths reuses
+	// these same starting points so the two never disagree about what a
+	// "default" bucket row needs.
+	statsTrendDefaultLabelWidth = 7
+	statsTrendDefaultValueWidth = 9
+
+	// statsTrendMinBarWidth is trendLines' own floor on bar width
+	// (`max(8, ...)`); a column narrower than label+2+8+2+value cannot show a
+	// bucket row without truncating something even before the bar shrinks
+	// further.
+	statsTrendMinBarWidth = 8
 )
+
+// statsTrendLabelValueWidths computes the widest bucket label and value width
+// trendLines would need to render every (cap-windowed) bucket in this report
+// without truncating either, using the report's actual labels and values —
+// not a static per-format guess. A prior fix used a fixed 7/9-column
+// assumption and was reopened because compact formats can be wider than that
+// (a known-but-partial cost value like "$13.4M KNOWN" is 12 columns, and so
+// is a DST-disambiguated hour label like "15:04 +08:00"); computing the real
+// widths from this report's own data, the same way trendLines itself will,
+// closes that class of mismatch instead of chasing one more format.
+// trendLines and the two-column layout decision both call this so they can
+// never disagree about what trend actually needs.
+func (r statsTextRenderer) statsTrendLabelValueWidths() (labelWidth, valueWidth int) {
+	total := len(r.report.Buckets)
+	buckets := r.report.Buckets
+	if total > statsTrendCap {
+		buckets = r.report.Buckets[total-statsTrendCap:]
+	}
+	labelWidth = statsTrendDefaultLabelWidth
+	for _, label := range compactBucketLabels(buckets, r.report.GroupBy) {
+		labelWidth = max(labelWidth, statsVisibleWidth(label))
+	}
+	valueWidth = statsTrendDefaultValueWidth
+	for _, bucket := range buckets {
+		valueLabel := compactMetric(statsBucketMetric(bucket, r.report.Metric), r.report.Metric)
+		if r.report.Metric == "cost" {
+			valueLabel = compactCost(bucket.MetricValue, bucket.KnownMetricValue, knownCostAvailable(bucket.MetricValue, bucket.KnownMetricValue, bucket.Coverage))
+		}
+		valueWidth = max(valueWidth, statsVisibleWidth(valueLabel))
+	}
+	return labelWidth, valueWidth
+}
+
+// statsTwoColumnFits reports whether the terminal is wide enough for both the
+// ranking column's single-line detail guarantee and this report's actual
+// trend label/value width, with the 4-column gap joinStatsColumns uses
+// between them. render falls back to the stacked single-column layout when
+// this is false, rather than splitting into a two-column layout that would
+// have to truncate one side below what it needs to stay meaningful.
+func (r statsTextRenderer) statsTwoColumnFits() bool {
+	labelWidth, valueWidth := r.statsTrendLabelValueWidths()
+	trendMinWidth := labelWidth + 2 + statsTrendMinBarWidth + 2 + valueWidth
+	return r.width-4 >= statsRankingMinWidth+trendMinWidth
+}
+
+// statsTwoColumnWidths splits the two-column layout's available inner width
+// (terminal width minus the 4-column gap used by joinStatsColumns) between
+// the trend column and the ranking column. The ranking column is floored at
+// statsRankingMinWidth so MODELS/PROVIDERS detail keeps its single-line
+// guarantee regardless of how the split ratio would otherwise divide a wide
+// terminal; trend takes whatever remains. Callers must check
+// statsTwoColumnFits first — this function assumes there is enough room for
+// both minimums and does not itself protect trend from being squeezed below
+// statsTrendMinWidth.
+func statsTwoColumnWidths(width int) (leftWidth, rightWidth int) {
+	inner := width - 4
+	rightWidth = max(statsRankingMinWidth, inner*2/5)
+	leftWidth = inner - rightWidth
+	return leftWidth, rightWidth
+}
+
+// statsTopN returns the leading limit items of items, in their existing
+// order, or items unchanged if limit is non-positive or not exceeded. Callers
+// pair it with topNFooterLine so the text output stays a fixed size while
+// --format json keeps every row.
+func statsTopN[T any](items []T, limit int) []T {
+	if limit <= 0 || len(items) <= limit {
+		return items
+	}
+	return items[:limit]
+}
+
+// topNFooterLine reports how many rows were left out of a capped text list,
+// or nil if none were.
+func (r statsTextRenderer) topNFooterLine(total, shown int, label string) []string {
+	if omitted := total - shown; omitted > 0 {
+		return []string{r.style(fmt.Sprintf("+%d more %s in JSON", omitted, label), "2")}
+	}
+	return nil
+}
+
+// statsCompactDetail appends secondary fields to base, in priority order,
+// joined by " · ", keeping only as many as still let the line fit within
+// width. It stops at the first secondary that would not fit, rather than
+// skipping ahead to a later one, so omission is predictable. High-value
+// fields belong in base and are never dropped; the full field set is always
+// present in JSON regardless of what this trims from the text line.
+func statsCompactDetail(base string, width int, secondaries ...string) string {
+	detail := base
+	for _, secondary := range secondaries {
+		candidate := detail + " · " + secondary
+		if statsVisibleWidth(candidate) > width {
+			break
+		}
+		detail = candidate
+	}
+	return detail
+}
 
 type usageTextRenderOptions struct {
 	width int
 	color bool
+	// top overrides the shared-topn text caps (MODELS, PROVIDERS, UNPRICED
+	// MODELS, per-model CACHE, cache sessions) when non-nil: 0 shows every row
+	// (matching JSON), a positive value uses that as the cap for all of them.
+	// nil (the default) keeps each section's own default cap. TREND and
+	// CLIENTS are never affected.
+	top *int
 }
 
 func newUsageTextRenderOptions(w io.Writer, noColor bool) usageTextRenderOptions {
@@ -56,7 +189,7 @@ func renderUsageStatsWithOptions(w io.Writer, report usage.StatsReport, options 
 		options.width = statsDefaultWidth
 	}
 	options.width = min(max(options.width, statsMinWidth), statsMaxWidth)
-	renderer := statsTextRenderer{report: report, width: options.width, color: options.color}
+	renderer := statsTextRenderer{report: report, width: options.width, color: options.color, top: options.top}
 	_, err := io.WriteString(w, renderer.render())
 	return err
 }
@@ -65,6 +198,18 @@ type statsTextRenderer struct {
 	report usage.StatsReport
 	width  int
 	color  bool
+	top    *int
+}
+
+// capFor resolves a shared-topn section's effective cap: the section's own
+// default unless --top was explicitly given, in which case --top's value
+// wins outright (0 falls through to statsTopN's own "limit <= 0 means no
+// cap" rule, so explicit --top 0 naturally restores the full list).
+func (r statsTextRenderer) capFor(defaultCap int) int {
+	if r.top == nil {
+		return defaultCap
+	}
+	return *r.top
 }
 
 func (r statsTextRenderer) render() string {
@@ -79,9 +224,8 @@ func (r statsTextRenderer) render() string {
 		out.WriteByte('\n')
 	}
 	out.WriteByte('\n')
-	if r.width >= 104 {
-		leftWidth := (r.width - 4) * 3 / 5
-		rightWidth := r.width - 4 - leftWidth
+	if r.statsTwoColumnFits() {
+		leftWidth, rightWidth := statsTwoColumnWidths(r.width)
 		for _, line := range joinStatsColumns(r.trendLines(leftWidth), leftWidth, r.rankingLines(rightWidth), rightWidth, 4) {
 			out.WriteString(line)
 			out.WriteByte('\n')
@@ -177,11 +321,18 @@ func (r statsTextRenderer) kpiLines() []string {
 func (r statsTextRenderer) trendLines(width int) []string {
 	metricLabel := strings.ToUpper(r.report.Metric)
 	lines := []string{r.sectionTitle("🗓 TREND · "+metricLabel, width, "1;34")}
-	labels := compactBucketLabels(r.report.Buckets, r.report.GroupBy)
+	total := len(r.report.Buckets)
+	omitted := 0
+	buckets := r.report.Buckets
+	if total > statsTrendCap {
+		omitted = total - statsTrendCap
+		buckets = r.report.Buckets[omitted:]
+	}
+	labels := compactBucketLabels(buckets, r.report.GroupBy)
 	maximum := float64(0)
-	values := make([]float64, len(r.report.Buckets))
-	valueLabels := make([]string, len(r.report.Buckets))
-	for index, bucket := range r.report.Buckets {
+	values := make([]float64, len(buckets))
+	valueLabels := make([]string, len(buckets))
+	for index, bucket := range buckets {
 		values[index] = statsBucketMetric(bucket, r.report.Metric)
 		valueLabels[index] = compactMetric(values[index], r.report.Metric)
 		if r.report.Metric == "cost" {
@@ -189,24 +340,20 @@ func (r statsTextRenderer) trendLines(width int) []string {
 		}
 		maximum = math.Max(maximum, values[index])
 	}
-	labelWidth := 7
-	for _, label := range labels {
-		labelWidth = max(labelWidth, statsVisibleWidth(label))
-	}
-	valueWidth := 9
-	for _, value := range valueLabels {
-		valueWidth = max(valueWidth, statsVisibleWidth(value))
-	}
-	labelWidth = min(labelWidth, max(7, width-valueWidth-12))
-	barWidth := min(52, max(8, width-labelWidth-valueWidth-4))
-	for index := range r.report.Buckets {
+	labelWidth, valueWidth := r.statsTrendLabelValueWidths()
+	labelWidth = min(labelWidth, max(statsTrendDefaultLabelWidth, width-valueWidth-12))
+	barWidth := min(52, max(statsTrendMinBarWidth, width-labelWidth-valueWidth-4))
+	for index := range buckets {
 		label := labels[index]
 		filled := scaledBar(values[index], maximum, barWidth)
 		bar := r.style(strings.Repeat("█", filled), "34") + strings.Repeat("░", barWidth-filled)
 		lines = append(lines, statsPad(label, labelWidth)+"  "+bar+"  "+statsPadLeft(valueLabels[index], valueWidth))
 	}
-	if len(r.report.Buckets) == 0 {
+	if total == 0 {
 		lines = append(lines, r.style("No activity in this range.", "2"))
+	}
+	if omitted > 0 {
+		lines = append(lines, r.style(fmt.Sprintf("+%d earlier buckets in JSON", omitted), "2"))
 	}
 	return lines
 }
@@ -222,12 +369,13 @@ func (r statsTextRenderer) rankingLines(width int) []string {
 		}
 	}
 	lines := []string{r.sectionTitle(rankingLabel, width, "1;35")}
+	shownModels := statsTopN(r.report.Models, r.capFor(statsModelsCap))
 	maximum := float64(0)
-	limit := len(r.report.Models)
+	limit := len(shownModels)
 	shares := make([]float64, limit)
 	shareLabels := make([]string, limit)
 	for index := 0; index < limit; index++ {
-		model := r.report.Models[index]
+		model := shownModels[index]
 		shares[index], _ = strconv.ParseFloat(model.KnownShare, 64)
 		shareLabels[index] = formatPercent(shares[index])
 		if r.report.Metric == "cost" {
@@ -245,16 +393,18 @@ func (r statsTextRenderer) rankingLines(width int) []string {
 	}
 	barWidth := min(36, max(6, width-nameWidth-shareWidth-5))
 	for index := 0; index < limit; index++ {
-		model := r.report.Models[index]
+		model := shownModels[index]
 		name := statsFit(model.Name, nameWidth)
 		filled := scaledBar(shares[index], maximum, barWidth)
 		bar := r.style(strings.Repeat("█", filled), "35") + strings.Repeat("░", barWidth-filled)
 		lines = append(lines, statsPad(name, nameWidth)+" "+bar+" "+statsPadLeft(shareLabels[index], shareWidth))
 		cost := compactCost(model.ProviderCost, model.KnownProviderCost, knownCostAvailable(model.ProviderCost, model.KnownProviderCost, model.Coverage))
-		detail := fmt.Sprintf("%s tokens · %s · %s · %s · %s sessions · %s tools", compactNumber(float64(model.Tokens)), shareLabels[index], cost, modelPricingStatus(model), groupedInt(model.Sessions), groupedInt(modelToolCalls(model)))
+		detail := fmt.Sprintf("%s tokens · %s · %s · %s · %s sessions", compactNumber(float64(model.Tokens)), shareLabels[index], cost, modelPricingStatus(model), groupedInt(model.Sessions))
+		secondaries := []string{groupedInt(modelToolCalls(model)) + " tools"}
 		if model.CacheHitRate != nil && (model.CachedReadTokens > 0 || model.CacheWriteTokens > 0) {
-			detail += " · " + *model.CacheHitRate + "% hit"
+			secondaries = append(secondaries, *model.CacheHitRate+"% hit")
 		}
+		detail = statsCompactDetail(detail, width, secondaries...)
 		for _, detailLine := range statsWrap(detail, width) {
 			lines = append(lines, r.style(detailLine, "2"))
 		}
@@ -262,6 +412,7 @@ func (r statsTextRenderer) rankingLines(width int) []string {
 	if limit == 0 {
 		lines = append(lines, r.style("No models in this range.", "2"))
 	}
+	lines = append(lines, r.topNFooterLine(len(r.report.Models), limit, "models")...)
 	clientLabel := "CLIENTS"
 	if r.report.Metric == "cost" {
 		switch {
@@ -298,7 +449,8 @@ func (r statsTextRenderer) rankingLines(width int) []string {
 		}
 	}
 	lines = append(lines, "", r.sectionTitle(providerLabel, width, "1;34"))
-	for _, provider := range r.report.Providers {
+	shownProviders := statsTopN(r.report.Providers, r.capFor(statsProvidersCap))
+	for _, provider := range shownProviders {
 		share, _ := strconv.ParseFloat(provider.KnownShare, 64)
 		shareLabel := formatPercent(share)
 		if r.report.Metric == "cost" && !knownCostAvailable(provider.MetricValue, provider.KnownMetricValue, provider.Coverage) {
@@ -314,9 +466,11 @@ func (r statsTextRenderer) rankingLines(width int) []string {
 		lines = append(lines, statsPad(statsFit(name, nameWidth), nameWidth)+" "+bar+" "+statsPadLeft(shareLabel, shareWidth))
 		cost := compactCost(provider.ProviderCost, provider.KnownProviderCost, knownCostAvailable(provider.ProviderCost, provider.KnownProviderCost, provider.Coverage))
 		detail := fmt.Sprintf("%s tokens · %s · %s · %s · %s sessions", compactNumber(float64(provider.Tokens)), shareLabel, cost, modelPricingStatus(provider), groupedInt(provider.Sessions))
+		var secondaries []string
 		if provider.CacheHitRate != nil && (provider.CachedReadTokens > 0 || provider.CacheWriteTokens > 0) {
-			detail += " · " + *provider.CacheHitRate + "% hit"
+			secondaries = append(secondaries, *provider.CacheHitRate+"% hit")
 		}
+		detail = statsCompactDetail(detail, width, secondaries...)
 		for _, detailLine := range statsWrap(detail, width) {
 			lines = append(lines, r.style(detailLine, "2"))
 		}
@@ -324,6 +478,7 @@ func (r statsTextRenderer) rankingLines(width int) []string {
 	if len(r.report.Providers) == 0 {
 		lines = append(lines, r.style("No providers in this range.", "2"))
 	}
+	lines = append(lines, r.topNFooterLine(len(r.report.Providers), len(shownProviders), "providers")...)
 	cacheLines := r.cacheLines(width)
 	if len(cacheLines) > 0 {
 		lines = append(lines, "", r.sectionTitle("CACHE HIT RATE", width, "1;33"))
@@ -344,19 +499,24 @@ func modelPricingStatus(model usage.StatsDimension) string {
 
 func (r statsTextRenderer) cacheLines(width int) []string {
 	var lines []string
+	var cacheModels []usage.StatsDimension
 	for _, model := range r.report.Models {
 		if model.CacheHitRate == nil || model.CachedReadTokens == 0 && model.CacheWriteTokens == 0 {
 			continue
 		}
+		cacheModels = append(cacheModels, model)
+	}
+	shownCacheModels := statsTopN(cacheModels, r.capFor(statsModelCacheCap))
+	for _, model := range shownCacheModels {
 		detail := fmt.Sprintf("MODEL %s/%s  %s%% hit · read %s · write %s", statsTitle(model.Client), model.Name, *model.CacheHitRate, compactNumber(float64(model.CachedReadTokens)), compactNumber(float64(model.CacheWriteTokens)))
 		if model.Client == "claude" {
 			detail += " · logical input " + compactNumber(float64(model.LogicalInputTokens))
 		}
 		lines = append(lines, statsWrap(detail, width)...)
 	}
-	limit := min(10, len(r.report.CacheSessions))
-	for index := 0; index < limit; index++ {
-		session := r.report.CacheSessions[index]
+	lines = append(lines, r.topNFooterLine(len(cacheModels), len(shownCacheModels), "cache models")...)
+	shownSessions := statsTopN(r.report.CacheSessions, r.capFor(statsCacheSessionsCap))
+	for _, session := range shownSessions {
 		rate := "0.00"
 		if session.CacheHitRate != nil {
 			rate = *session.CacheHitRate
@@ -368,9 +528,7 @@ func (r statsTextRenderer) cacheLines(width int) []string {
 			lines = append(lines, r.style(commandLine, "2"))
 		}
 	}
-	if omitted := len(r.report.CacheSessions) - limit; omitted > 0 {
-		lines = append(lines, r.style(fmt.Sprintf("+%d more cache sessions in JSON", omitted), "2"))
-	}
+	lines = append(lines, r.topNFooterLine(len(r.report.CacheSessions), len(shownSessions), "cache sessions")...)
 	return lines
 }
 
@@ -406,10 +564,12 @@ func modelToolCalls(model usage.StatsDimension) int64 {
 
 func (r statsTextRenderer) unpricedLines() []string {
 	lines := []string{r.sectionTitle("UNPRICED MODELS", r.width, "1;33")}
-	for _, model := range r.report.UnpricedModels {
+	shown := statsTopN(r.report.UnpricedModels, r.capFor(statsUnpricedCap))
+	for _, model := range shown {
 		entry := fmt.Sprintf("%s/%s · %s", statsTitle(model.Client), model.Model, strings.Join(model.Components, ", "))
 		lines = append(lines, statsWrap(entry, r.width)...)
 	}
+	lines = append(lines, r.topNFooterLine(len(r.report.UnpricedModels), len(shown), "unpriced models")...)
 	return lines
 }
 

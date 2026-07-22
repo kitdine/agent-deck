@@ -1582,7 +1582,13 @@ func newUsageCommand(opts *commandOptions) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return writeUsageEnvelope(opts.stdout, opts.format, commandOutputName(command), data, partial, warnings, opts.quiet, newUsageTextRenderOptions(opts.stdout, opts.noColor))
+			renderOptions := newUsageTextRenderOptions(opts.stdout, opts.noColor)
+			if command.Name() == "stats" && command.Flags().Changed("top") {
+				if top, err := command.Flags().GetInt("top"); err == nil {
+					renderOptions.top = &top
+				}
+			}
+			return writeUsageEnvelope(opts.stdout, opts.format, commandOutputName(command), data, partial, warnings, opts.quiet, renderOptions)
 		}
 	}
 	var summaryNoScan bool
@@ -1609,6 +1615,7 @@ func newUsageCommand(opts *commandOptions) *cobra.Command {
 	summary.Flags().BoolVar(&summaryNoScan, "no-scan", false, "Use stored aggregate without scanning sources")
 	var statsPeriod, statsFrom, statsTo, statsGroup, statsMetric, statsClient, statsModel, statsProvider string
 	var statsActivity, statsNoScan bool
+	var statsTop int
 	stats := &cobra.Command{Use: "stats", Args: cobra.NoArgs, RunE: withUsage(func(ctx context.Context, s *usage.Service, _ *store.Store, _ []string) (any, bool, []string, error) {
 		if statsClient != "" && statsClient != "codex" && statsClient != "claude" {
 			return nil, false, nil, &inputError{err: fmt.Errorf("usage stats client must be codex or claude")}
@@ -1618,6 +1625,9 @@ func newUsageCommand(opts *commandOptions) *cobra.Command {
 		}
 		if statsActivity && statsModel == "" {
 			return nil, false, nil, &inputError{err: fmt.Errorf("usage stats --activity requires --model")}
+		}
+		if statsTop < 0 {
+			return nil, false, nil, &inputError{err: fmt.Errorf("usage stats --top must be zero or positive")}
 		}
 		var scanErr error
 		if !statsNoScan {
@@ -1648,6 +1658,7 @@ func newUsageCommand(opts *commandOptions) *cobra.Command {
 	stats.Flags().StringVar(&statsProvider, "provider", "", "Open-set exact runtime provider; values are not enumerated; unknown selects unattributed events")
 	stats.Flags().BoolVar(&statsActivity, "activity", false, "Show safe activity and tool summaries for the selected model")
 	stats.Flags().BoolVar(&statsNoScan, "no-scan", false, "Use stored aggregate without scanning sources")
+	stats.Flags().IntVar(&statsTop, "top", 0, "Text-list cap for MODELS/PROVIDERS/UNPRICED/per-model CACHE/cache sessions: unset keeps each section's default cap, 0 shows every row, N overrides the cap to N. TREND and CLIENTS are unaffected; --format json always has every row.")
 	cmd.AddCommand(
 		&cobra.Command{Use: "scan", Args: cobra.NoArgs, RunE: withUsage(func(ctx context.Context, s *usage.Service, _ *store.Store, _ []string) (any, bool, []string, error) {
 			data, err := s.Scan(ctx)

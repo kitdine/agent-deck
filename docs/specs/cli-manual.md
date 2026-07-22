@@ -178,7 +178,7 @@ personal -> aigocode-personal-ref
 | --- | --- | --- | --- | --- |
 | `usage scan` | 增量扫描本地 Codex/Claude usage sources | 无 | 无 | `agentdeck usage scan` |
 | `usage summary [daily\|weekly\|monthly]` | 默认扫描后汇总全部历史，或按本机时区快捷查看今天、本周（周一开始）、本月 | 可选周期位置参数、`--no-scan` | 否；`--no-scan` 直接使用已存聚合 | `agentdeck usage summary weekly --no-scan` |
-| `usage stats` | 默认扫描后输出 KPI、趋势、完整模型列表、cache hit、client/provider 占比、均值、峰值、计价覆盖和 activity | `--period`、`--from/--to`、`--group-by`、`--metric`、`--client`、`--model`、`--provider`、`--activity`、`--no-scan` | 默认 `7d/auto/tokens`；日期必须成对；`--provider` 接受精确 runtime provider 名称且不做枚举校验；`--activity` 必须与 `--model` 同用；`--no-scan` 直接使用已存聚合 | `agentdeck usage stats --provider official --no-scan` |
+| `usage stats` | 默认扫描后输出 KPI、趋势、封顶模型列表、cache hit、client/provider 占比、均值、峰值、计价覆盖和 activity | `--period`、`--from/--to`、`--group-by`、`--metric`、`--client`、`--model`、`--provider`、`--activity`、`--no-scan`、`--top` | 默认 `7d/auto/tokens`；日期必须成对；`--provider` 接受精确 runtime provider 名称且不做枚举校验；`--activity` 必须与 `--model` 同用；`--no-scan` 直接使用已存聚合；`--top` 必须为非负整数，不传使用各区块默认封顶，`0` 还原未封顶完整文本列表，正整数 N 统一覆盖该次输出的封顶值 | `agentdeck usage stats --provider official --no-scan` |
 | `usage sessions` | 按 session 分列展示各类 token、成本和计价状态 | 无 | 无 | `agentdeck usage sessions` |
 | `usage diagnose` | 展示 source、event、session、run、价格覆盖和 attribution 诊断 | 无 | 无 | `agentdeck usage diagnose` |
 | `usage rebuild` | 逐 source 原子重建 usage metadata；失败 source 保留旧数据并返回 partial warning | 无 | 无 | `agentdeck usage rebuild` |
@@ -224,10 +224,18 @@ personal -> aigocode-personal-ref
   activity 没有 run binding，因此过滤时仅按 session-start snapshot 做 session 级近似。
   默认 text 使用响应式 Balanced 报告：
   compact KPI、比例条 Trend、同时显示 token/share/known cost/pricing status/session/tool
-  摘要的完整 `MODELS`、client 占比、紧随其后的 `PROVIDERS` 排名、按 model/session 的
+  摘要的 `MODELS`、client 占比、紧随其后的 `PROVIDERS` 排名、按 model/session 的
   cache hit 分析和底部摘要；
-  cache session 文本最多显示 10 个并报告省略数量，JSON 返回全部，且每行给出
-  `session show ... --activity` 入口。宽终端为双栏，窄终端自动堆叠并缩短数字。
+  `MODELS`、`PROVIDERS`、`UNPRICED MODELS`、按 model 的 cache 明细和 cache session 文本
+  各自按现有排序（模型/provider 按占比降序，其余保持原顺序）只显示前若干行——默认
+  上限分别为 8、8、12、8、10——并在被截断时追加 `+K more <区块> in JSON` 提示；JSON
+  始终包含全部行。`CLIENTS` 天然很小，不封顶。`--top N` 覆盖这五个区块当次输出的上限：
+  不传保留各自默认值，`--top 0` 还原未截断的完整文本列表（等同 JSON 的行数），正整数
+  `--top N` 把五个上限统一改成 N；无论 `--top` 取值如何，`--format json` 都不受影响。
+  `TREND` 是时间序列，遵循独立的“最近连续窗口”规则（默认最多 48 个 bucket，超出时
+  只保留最新的连续窗口并追加 `+K earlier buckets in JSON`），不参与排名式截断，也不受
+  `--top` 影响。cache session 每行给出 `session show ... --activity` 入口。宽终端为
+  双栏，窄终端自动堆叠并缩短数字。
   至少覆盖 7 个自然日且不是 hour buckets 时，底部显示全宽 7x24 Activity Heatmap。
   真实 TTY 可使用克制颜色，`--no-color`、重定向和机器格式不输出 ANSI 控制码。
 - Stats 的 `timezone` 是稳定的 IANA zone 名称；无法解析本机 zoneinfo 名称时使用

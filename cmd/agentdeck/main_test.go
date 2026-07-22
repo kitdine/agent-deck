@@ -2523,6 +2523,98 @@ func TestUsageSummaryShortcutsAndStatsJSONContract(t *testing.T) {
 	}
 }
 
+// TestUsageStatsTopFlagOverridesTextCapsButNotJSON exercises `--top` through
+// the real CLI flag-parsing path (cobra Changed/GetInt in the `usage stats`
+// withUsage wrapper), not just the renderer's capFor logic directly, so it
+// proves the flag is actually wired end to end.
+func TestUsageStatsTopFlagOverridesTextCapsButNotJSON(t *testing.T) {
+	ctx := context.Background()
+	state := filepath.Join(t.TempDir(), "state")
+	database, err := store.Open(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const modelCount = 9
+	var sessionRows, eventRows []string
+	for index := 0; index < modelCount; index++ {
+		model := fmt.Sprintf("model-%02d", index)
+		session := fmt.Sprintf("s%02d", index)
+		at := fmt.Sprintf("2026-07-%02dT00:00:00Z", index+1)
+		sessionRows = append(sessionRows, fmt.Sprintf("('codex','%s','%s','%s')", session, at, at))
+		eventRows = append(eventRows, fmt.Sprintf("('e%d','codex','%s','e%d','%s','%s',%d,0,0,'fixture',%d)", index, session, index, at, model, 1000-index, index))
+	}
+	insert := "INSERT INTO usage_sessions(client,session_id,first_at,last_at) VALUES " + strings.Join(sessionRows, ",") + ";" +
+		"INSERT INTO usage_events(event_key,client,session_id,event_id,event_at,model,input_tokens,cached_input_tokens,output_tokens,source_path,source_offset) VALUES " + strings.Join(eventRows, ",")
+	if _, err := database.Exec(ctx, insert); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+	runStats := func(extra ...string) string {
+		t.Helper()
+		args := append([]string{"--state-dir", state, "usage", "stats", "--no-scan", "--period", "all"}, extra...)
+		var out bytes.Buffer
+		if err := run(args, bytes.NewReader(nil), &out); err != nil {
+			t.Fatalf("run(%v) = %v", args, err)
+		}
+		return out.String()
+	}
+	// modelsSection isolates the MODELS block: the seeded models are also all
+	// unpriced, so they additionally appear (uncapped, unaffected by --top)
+	// in the UNPRICED MODELS section, which would otherwise double-count.
+	modelsSection := func(t *testing.T, text string) string {
+		t.Helper()
+		start := strings.Index(text, "🤖 MODELS")
+		if start < 0 {
+			t.Fatalf("stats text missing MODELS section:\n%s", text)
+		}
+		end := strings.Index(text[start:], "\nCLIENTS")
+		if end < 0 {
+			t.Fatalf("stats text missing CLIENTS section after MODELS:\n%s", text)
+		}
+		return text[start : start+end]
+	}
+	// omitted/default: no --top given, shared-topn's default cap (8) applies.
+	if text := runStats(); strings.Count(modelsSection(t, text), "model-") != 8 || !strings.Contains(modelsSection(t, text), "+1 more models in JSON") {
+		t.Fatalf("default --top text cap =\n%s", text)
+	}
+	// positive N: overrides the default cap to exactly N.
+	if text := runStats("--top", "3"); strings.Count(modelsSection(t, text), "model-") != 3 || !strings.Contains(modelsSection(t, text), "+6 more models in JSON") {
+		t.Fatalf("--top 3 text cap =\n%s", text)
+	}
+	// explicit 0: restores the full, uncapped list.
+	if text := runStats("--top", "0"); strings.Count(modelsSection(t, text), "model-") != modelCount || strings.Contains(modelsSection(t, text), "more models in JSON") {
+		t.Fatalf("--top 0 text cap =\n%s", text)
+	}
+	// negative: rejected as invalid input.
+	if err := run([]string{"--state-dir", state, "usage", "stats", "--no-scan", "--top", "-1"}, bytes.NewReader(nil), io.Discard); err == nil {
+		t.Fatal("--top -1 did not error")
+	}
+	// JSON always carries every row, regardless of --top.
+	for _, top := range []string{"", "3", "0"} {
+		args := []string{"--state-dir", state, "--format", "json", "usage", "stats", "--no-scan", "--period", "all"}
+		if top != "" {
+			args = append(args, "--top", top)
+		}
+		var encoded bytes.Buffer
+		if err := run(args, bytes.NewReader(nil), &encoded); err != nil {
+			t.Fatalf("run(%v) = %v", args, err)
+		}
+		var envelope struct {
+			Data struct {
+				Models []any `json:"models"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(encoded.Bytes(), &envelope); err != nil {
+			t.Fatal(err)
+		}
+		if len(envelope.Data.Models) != modelCount {
+			t.Fatalf("--top %q JSON models = %d, want %d\n%s", top, len(envelope.Data.Models), modelCount, encoded.String())
+		}
+	}
+}
+
 func TestResolveUsageRangeWeekIsCurrentLocalWeekAcrossBoundaries(t *testing.T) {
 	location, err := time.LoadLocation("America/New_York")
 	if err != nil {

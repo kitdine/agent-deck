@@ -2,11 +2,13 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kitdine/agent-deck/internal/usage"
 )
@@ -86,6 +88,25 @@ func TestUsageStatsWideLayoutAndColorAreDeterministic(t *testing.T) {
 	}
 }
 
+// usageStatsJSONReport exercises the real `--format json` output path
+// (writeUsageEnvelope -> json.NewEncoder) on the same report value used for
+// the paired text assertion, so JSON completeness is proven against actual
+// serialized output rather than the caller-side Go slice length.
+func usageStatsJSONReport(t *testing.T, report usage.StatsReport) usage.StatsReport {
+	t.Helper()
+	var buf bytes.Buffer
+	if err := writeUsageEnvelope(&buf, "json", "usage.stats", report, false, nil, false, usageTextRenderOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	var envelope struct {
+		Data usage.StatsReport `json:"data"`
+	}
+	if err := json.Unmarshal(buf.Bytes(), &envelope); err != nil {
+		t.Fatalf("decode usage stats JSON: %v\n%s", err, buf.String())
+	}
+	return envelope.Data
+}
+
 func TestUsageStatsCacheSessionsAreCappedOnlyInText(t *testing.T) {
 	report := usageStatsTextFixture()
 	report.CacheSessions = make([]usage.StatsCacheSession, 0, 11)
@@ -102,6 +123,765 @@ func TestUsageStatsCacheSessionsAreCappedOnlyInText(t *testing.T) {
 		t.Fatalf("cache session text cap =\n%s", text)
 	}
 	assertUsageStatsWidth(t, text, 48)
+	jsonReport := usageStatsJSONReport(t, report)
+	if len(jsonReport.CacheSessions) != 11 || jsonReport.CacheSessions[10].SessionID != "session-10" {
+		t.Fatalf("cache sessions JSON incomplete: %d rows, want 11 including text-omitted tail\n%#v", len(jsonReport.CacheSessions), jsonReport.CacheSessions)
+	}
+}
+
+func TestUsageStatsModelsAreCappedOnlyInText(t *testing.T) {
+	report := usageStatsTextFixture()
+	report.Models = make([]usage.StatsDimension, 0, 9)
+	for index := 0; index < 9; index++ {
+		share := strconv.FormatFloat(10-float64(index)*0.5, 'f', 2, 64)
+		report.Models = append(report.Models, usage.StatsDimension{Name: fmt.Sprintf("model-%02d", index), Client: "codex", Tokens: int64(1000 - index), Sessions: int64(index + 1), KnownShare: share})
+	}
+	var output bytes.Buffer
+	if err := renderUsageStatsWithOptions(&output, report, usageTextRenderOptions{width: 100}); err != nil {
+		t.Fatal(err)
+	}
+	text := output.String()
+	if strings.Count(text, "model-") != 8 || !strings.Contains(text, "+1 more models in JSON") || len(report.Models) != 9 {
+		t.Fatalf("models text cap =\n%s", text)
+	}
+	for index := 0; index < 8; index++ {
+		if name := fmt.Sprintf("model-%02d", index); !strings.Contains(text, name) {
+			t.Fatalf("models text missing retained-order row %q:\n%s", name, text)
+		}
+	}
+	if strings.Contains(text, "model-08") {
+		t.Fatalf("models text retained the row past the cap boundary:\n%s", text)
+	}
+	assertUsageStatsWidth(t, text, 100)
+	jsonReport := usageStatsJSONReport(t, report)
+	if len(jsonReport.Models) != 9 || jsonReport.Models[8].Name != "model-08" {
+		t.Fatalf("models JSON incomplete: %d rows, want 9 including text-omitted tail\n%#v", len(jsonReport.Models), jsonReport.Models)
+	}
+}
+
+func TestUsageStatsProvidersAreCappedOnlyInText(t *testing.T) {
+	report := usageStatsTextFixture()
+	report.Providers = make([]usage.StatsDimension, 0, 9)
+	for index := 0; index < 9; index++ {
+		share := strconv.FormatFloat(10-float64(index)*0.5, 'f', 2, 64)
+		report.Providers = append(report.Providers, usage.StatsDimension{Name: fmt.Sprintf("prov-%02d", index), Client: "codex", Tokens: int64(1000 - index), Sessions: int64(index + 1), KnownShare: share})
+	}
+	var output bytes.Buffer
+	if err := renderUsageStatsWithOptions(&output, report, usageTextRenderOptions{width: 100}); err != nil {
+		t.Fatal(err)
+	}
+	text := output.String()
+	if strings.Count(text, "prov-") != 8 || !strings.Contains(text, "+1 more providers in JSON") || len(report.Providers) != 9 {
+		t.Fatalf("providers text cap =\n%s", text)
+	}
+	for index := 0; index < 8; index++ {
+		if name := fmt.Sprintf("prov-%02d", index); !strings.Contains(text, name) {
+			t.Fatalf("providers text missing retained-order row %q:\n%s", name, text)
+		}
+	}
+	if strings.Contains(text, "prov-08") {
+		t.Fatalf("providers text retained the row past the cap boundary:\n%s", text)
+	}
+	assertUsageStatsWidth(t, text, 100)
+	jsonReport := usageStatsJSONReport(t, report)
+	if len(jsonReport.Providers) != 9 || jsonReport.Providers[8].Name != "prov-08" {
+		t.Fatalf("providers JSON incomplete: %d rows, want 9 including text-omitted tail\n%#v", len(jsonReport.Providers), jsonReport.Providers)
+	}
+}
+
+func TestUsageStatsUnpricedModelsAreCappedOnlyInText(t *testing.T) {
+	report := usageStatsTextFixture()
+	report.UnpricedModels = make([]usage.StatsUnpricedModel, 0, 13)
+	for index := 0; index < 13; index++ {
+		report.UnpricedModels = append(report.UnpricedModels, usage.StatsUnpricedModel{Client: "codex", Model: fmt.Sprintf("unpriced-%02d", index), Components: []string{"output"}})
+	}
+	var output bytes.Buffer
+	if err := renderUsageStatsWithOptions(&output, report, usageTextRenderOptions{width: 100}); err != nil {
+		t.Fatal(err)
+	}
+	text := output.String()
+	if strings.Count(text, "unpriced-") != 12 || !strings.Contains(text, "+1 more unpriced models in JSON") || len(report.UnpricedModels) != 13 {
+		t.Fatalf("unpriced models text cap =\n%s", text)
+	}
+	for index := 0; index < 12; index++ {
+		if name := fmt.Sprintf("unpriced-%02d", index); !strings.Contains(text, name) {
+			t.Fatalf("unpriced models text missing retained-order row %q:\n%s", name, text)
+		}
+	}
+	if strings.Contains(text, "unpriced-12") {
+		t.Fatalf("unpriced models text retained the row past the cap boundary:\n%s", text)
+	}
+	assertUsageStatsWidth(t, text, 100)
+	jsonReport := usageStatsJSONReport(t, report)
+	if len(jsonReport.UnpricedModels) != 13 || jsonReport.UnpricedModels[12].Model != "unpriced-12" {
+		t.Fatalf("unpriced models JSON incomplete: %d rows, want 13 including text-omitted tail\n%#v", len(jsonReport.UnpricedModels), jsonReport.UnpricedModels)
+	}
+}
+
+func TestUsageStatsModelCacheRowsAreCappedOnlyInText(t *testing.T) {
+	report := usageStatsTextFixture()
+	rate := "50.00"
+	report.Models = make([]usage.StatsDimension, 0, 9)
+	for index := 0; index < 9; index++ {
+		share := strconv.FormatFloat(10-float64(index)*0.5, 'f', 2, 64)
+		report.Models = append(report.Models, usage.StatsDimension{Name: fmt.Sprintf("cache-%02d", index), Client: "codex", Tokens: int64(1000 - index), Sessions: int64(index + 1), KnownShare: share, CachedReadTokens: int64(100 - index), LogicalInputTokens: 200, CacheHitRate: &rate})
+	}
+	var output bytes.Buffer
+	if err := renderUsageStatsWithOptions(&output, report, usageTextRenderOptions{width: 100}); err != nil {
+		t.Fatal(err)
+	}
+	text := output.String()
+	if strings.Count(text, "MODEL Codex/cache-") != 8 || !strings.Contains(text, "+1 more cache models in JSON") || len(report.Models) != 9 {
+		t.Fatalf("model cache text cap =\n%s", text)
+	}
+	for index := 0; index < 8; index++ {
+		if name := fmt.Sprintf("MODEL Codex/cache-%02d", index); !strings.Contains(text, name) {
+			t.Fatalf("model cache text missing retained-order row %q:\n%s", name, text)
+		}
+	}
+	if strings.Contains(text, "MODEL Codex/cache-08") {
+		t.Fatalf("model cache text retained the row past the cap boundary:\n%s", text)
+	}
+	assertUsageStatsWidth(t, text, 100)
+	jsonReport := usageStatsJSONReport(t, report)
+	if len(jsonReport.Models) != 9 || jsonReport.Models[8].Name != "cache-08" {
+		t.Fatalf("model cache JSON incomplete: %d rows, want 9 including text-omitted tail\n%#v", len(jsonReport.Models), jsonReport.Models)
+	}
+}
+
+// TestUsageStatsTrendBucketsAreCappedToRecentWindowOnlyInText covers the
+// `--group-by hour --period 30d` shape that produced the 709-bucket, 822-line
+// wall in the baseline: an hour-grouped trend spanning multiple days.
+func TestUsageStatsTrendBucketsAreCappedToRecentWindowOnlyInText(t *testing.T) {
+	report := usageStatsTextFixture()
+	report.GroupBy = "hour"
+	const total = 60
+	base := time.Date(2026, 6, 21, 0, 0, 0, 0, time.UTC)
+	report.Buckets = make([]usage.StatsBucket, 0, total)
+	for index := 0; index < total; index++ {
+		start := base.Add(time.Duration(index) * time.Hour)
+		report.Buckets = append(report.Buckets, usage.StatsBucket{Start: start.Format(time.RFC3339Nano), Tokens: int64(1000 + index), Sessions: 1, KnownMetricValue: strconv.FormatInt(int64(1000+index), 10)})
+	}
+	var output bytes.Buffer
+	if err := renderUsageStatsWithOptions(&output, report, usageTextRenderOptions{width: 100}); err != nil {
+		t.Fatal(err)
+	}
+	text := output.String()
+	if !strings.Contains(text, "+12 earlier buckets in JSON") {
+		t.Fatalf("trend text missing overflow note:\n%s", text)
+	}
+	if got := strings.Count(text, "Jun "); got != statsTrendCap {
+		t.Fatalf("trend bar-row count = %d, want bounded at %d:\n%s", got, statsTrendCap, text)
+	}
+	// omitted = total - statsTrendCap = 12: buckets 0..11 must be gone, the
+	// most recent contiguous window 12..59 must all still be present in order.
+	for index := 0; index < total-statsTrendCap; index++ {
+		if label := base.Add(time.Duration(index) * time.Hour).Format("Jan 02 15:04"); strings.Contains(text, label) {
+			t.Fatalf("trend text retained an earlier bucket %q that should have been windowed out:\n%s", label, text)
+		}
+	}
+	previousPosition := -1
+	for index := total - statsTrendCap; index < total; index++ {
+		label := base.Add(time.Duration(index) * time.Hour).Format("Jan 02 15:04")
+		position := strings.Index(text, label)
+		if position < 0 {
+			t.Fatalf("trend text missing retained recent bucket %q:\n%s", label, text)
+		}
+		if position <= previousPosition {
+			t.Fatalf("trend text reordered retained bucket %q at position %d after position %d:\n%s", label, position, previousPosition, text)
+		}
+		previousPosition = position
+	}
+	assertUsageStatsWidth(t, text, 100)
+	jsonReport := usageStatsJSONReport(t, report)
+	if len(jsonReport.Buckets) != total || jsonReport.Buckets[0].Start != report.Buckets[0].Start {
+		t.Fatalf("trend JSON incomplete: %d buckets, want %d including the text-omitted earliest bucket\n%#v", len(jsonReport.Buckets), total, jsonReport.Buckets)
+	}
+}
+
+// TestUsageStatsTopFlagDoesNotAffectTrendOrClients closes a gap the prior
+// top-flag tests left open: they never combined a positive --top with more
+// than statsTrendCap buckets or more than a handful of clients, so an
+// implementation that mistakenly ran capFor over TREND or CLIENTS could still
+// pass. This mirrors TestUsageStatsTrendBucketsAreCappedToRecentWindowOnlyInText's
+// bucket construction and assertions verbatim (same window, same overflow
+// note, same retained-order check), but renders with --top 3 and a
+// five-client fixture, so both negative contracts are proven together.
+func TestUsageStatsTopFlagDoesNotAffectTrendOrClients(t *testing.T) {
+	report := usageStatsTextFixture()
+	report.GroupBy = "hour"
+	const totalBuckets = 60
+	base := time.Date(2026, 6, 21, 0, 0, 0, 0, time.UTC)
+	report.Buckets = make([]usage.StatsBucket, 0, totalBuckets)
+	for index := 0; index < totalBuckets; index++ {
+		start := base.Add(time.Duration(index) * time.Hour)
+		report.Buckets = append(report.Buckets, usage.StatsBucket{Start: start.Format(time.RFC3339Nano), Tokens: int64(1000 + index), Sessions: 1, KnownMetricValue: strconv.FormatInt(int64(1000+index), 10)})
+	}
+	const totalClients = 5
+	report.Clients = make([]usage.StatsDimension, 0, totalClients)
+	for index := 0; index < totalClients; index++ {
+		report.Clients = append(report.Clients, usage.StatsDimension{Name: fmt.Sprintf("client-%02d", index), KnownShare: "20.00"})
+	}
+	top := 3
+	var output bytes.Buffer
+	if err := renderUsageStatsWithOptions(&output, report, usageTextRenderOptions{width: 100, top: &top}); err != nil {
+		t.Fatal(err)
+	}
+	text := output.String()
+
+	// CLIENTS: --top 3 must not truncate a 5-client list.
+	for index := 0; index < totalClients; index++ {
+		if name := fmt.Sprintf("Client-%02d", index); !strings.Contains(text, name) {
+			t.Fatalf("--top 3 dropped client %q that CLIENTS must never cap:\n%s", name, text)
+		}
+	}
+
+	// TREND: unaffected by --top, same as with no --top at all.
+	if !strings.Contains(text, "+12 earlier buckets in JSON") {
+		t.Fatalf("--top 3 changed trend's own overflow note:\n%s", text)
+	}
+	if got := strings.Count(text, "Jun "); got != statsTrendCap {
+		t.Fatalf("--top 3 changed trend bar-row count = %d, want bounded at %d:\n%s", got, statsTrendCap, text)
+	}
+	for index := 0; index < totalBuckets-statsTrendCap; index++ {
+		if label := base.Add(time.Duration(index) * time.Hour).Format("Jan 02 15:04"); strings.Contains(text, label) {
+			t.Fatalf("--top 3 retained an earlier bucket %q that trend-cap should still windowed out:\n%s", label, text)
+		}
+	}
+	previousPosition := -1
+	for index := totalBuckets - statsTrendCap; index < totalBuckets; index++ {
+		label := base.Add(time.Duration(index) * time.Hour).Format("Jan 02 15:04")
+		position := strings.Index(text, label)
+		if position < 0 {
+			t.Fatalf("--top 3 dropped retained recent bucket %q:\n%s", label, text)
+		}
+		if position <= previousPosition {
+			t.Fatalf("--top 3 reordered retained bucket %q at position %d after position %d:\n%s", label, position, previousPosition, text)
+		}
+		previousPosition = position
+	}
+	assertUsageStatsWidth(t, text, 100)
+}
+
+// topFlagFixture builds a report whose MODELS, PROVIDERS, UNPRICED MODELS,
+// and cache-session lists all exceed their shared-topn defaults (8, 8, 12,
+// 10), so --top's effect on each is independently observable via disjoint
+// name prefixes. Models deliberately carry no cache data so the MODELS
+// section's bare "model-NN" names cannot also be counted inside the
+// per-model CACHE section (that cap gets its own fixture and test below,
+// mirroring how shared-topn kept those two fixtures separate). TREND and
+// CLIENTS are left at the small fixture defaults since --top must never
+// affect them.
+func topFlagFixture() usage.StatsReport {
+	report := usageStatsTextFixture()
+	rate := "50.00"
+	report.Models = make([]usage.StatsDimension, 0, 9)
+	for index := 0; index < 9; index++ {
+		share := strconv.FormatFloat(10-float64(index)*0.5, 'f', 2, 64)
+		report.Models = append(report.Models, usage.StatsDimension{Name: fmt.Sprintf("model-%02d", index), Client: "codex", Tokens: int64(1000 - index), Sessions: int64(index + 1), KnownShare: share})
+	}
+	report.Providers = make([]usage.StatsDimension, 0, 9)
+	for index := 0; index < 9; index++ {
+		share := strconv.FormatFloat(10-float64(index)*0.5, 'f', 2, 64)
+		report.Providers = append(report.Providers, usage.StatsDimension{Name: fmt.Sprintf("prov-%02d", index), Client: "codex", Tokens: int64(1000 - index), Sessions: int64(index + 1), KnownShare: share})
+	}
+	report.UnpricedModels = make([]usage.StatsUnpricedModel, 0, 13)
+	for index := 0; index < 13; index++ {
+		report.UnpricedModels = append(report.UnpricedModels, usage.StatsUnpricedModel{Client: "codex", Model: fmt.Sprintf("unpriced-%02d", index), Components: []string{"output"}})
+	}
+	report.CacheSessions = make([]usage.StatsCacheSession, 0, 11)
+	for index := 0; index < 11; index++ {
+		report.CacheSessions = append(report.CacheSessions, usage.StatsCacheSession{Client: "codex", SessionID: fmt.Sprintf("session-%02d", index), Models: []string{"gpt-5.6-sol"}, CachedReadTokens: int64(100 - index), LogicalInputTokens: 200, CacheHitRate: &rate, DetailCommand: fmt.Sprintf("agentdeck session show session-%02d --client codex --activity", index)})
+	}
+	return report
+}
+
+// topFlagModelCacheFixture isolates the per-model CACHE cap from the MODELS
+// cap: unlike topFlagFixture's models, these carry cache data, and "cache-NN"
+// is a name prefix distinct from "model-NN"/"prov-NN"/"unpriced-NN" above.
+func topFlagModelCacheFixture() usage.StatsReport {
+	report := usageStatsTextFixture()
+	rate := "50.00"
+	report.Models = make([]usage.StatsDimension, 0, 9)
+	for index := 0; index < 9; index++ {
+		share := strconv.FormatFloat(10-float64(index)*0.5, 'f', 2, 64)
+		report.Models = append(report.Models, usage.StatsDimension{Name: fmt.Sprintf("cache-%02d", index), Client: "codex", Tokens: int64(1000 - index), Sessions: int64(index + 1), KnownShare: share, CachedReadTokens: int64(100 - index), LogicalInputTokens: 200, CacheHitRate: &rate})
+	}
+	return report
+}
+
+func TestUsageStatsTopFlagOmittedKeepsSharedTopNDefaults(t *testing.T) {
+	report := topFlagFixture()
+	var output bytes.Buffer
+	if err := renderUsageStatsWithOptions(&output, report, usageTextRenderOptions{width: 100}); err != nil {
+		t.Fatal(err)
+	}
+	text := output.String()
+	if strings.Count(text, "model-") != 8 || strings.Count(text, "prov-") != 8 || strings.Count(text, "unpriced-") != 12 || strings.Count(text, "SESSION Codex/") != 10 {
+		t.Fatalf("unset --top did not keep shared-topn defaults:\n%s", text)
+	}
+	assertUsageStatsWidth(t, text, 100)
+
+	cacheReport := topFlagModelCacheFixture()
+	var cacheOutput bytes.Buffer
+	if err := renderUsageStatsWithOptions(&cacheOutput, cacheReport, usageTextRenderOptions{width: 100}); err != nil {
+		t.Fatal(err)
+	}
+	cacheText := cacheOutput.String()
+	if strings.Count(cacheText, "MODEL Codex/cache-") != 8 || !strings.Contains(cacheText, "+1 more cache models in JSON") {
+		t.Fatalf("unset --top did not keep per-model cache default:\n%s", cacheText)
+	}
+}
+
+func TestUsageStatsTopFlagPositiveOverridesAllListedCaps(t *testing.T) {
+	top := 3
+	report := topFlagFixture()
+	var output bytes.Buffer
+	if err := renderUsageStatsWithOptions(&output, report, usageTextRenderOptions{width: 100, top: &top}); err != nil {
+		t.Fatal(err)
+	}
+	text := output.String()
+	if strings.Count(text, "model-") != 3 || !strings.Contains(text, "+6 more models in JSON") {
+		t.Fatalf("--top 3 models cap =\n%s", text)
+	}
+	if strings.Count(text, "prov-") != 3 || !strings.Contains(text, "+6 more providers in JSON") {
+		t.Fatalf("--top 3 providers cap =\n%s", text)
+	}
+	if strings.Count(text, "unpriced-") != 3 || !strings.Contains(text, "+10 more unpriced models in JSON") {
+		t.Fatalf("--top 3 unpriced cap =\n%s", text)
+	}
+	if strings.Count(text, "SESSION Codex/") != 3 || !strings.Contains(text, "+8 more cache sessions in JSON") {
+		t.Fatalf("--top 3 cache sessions cap =\n%s", text)
+	}
+	assertUsageStatsWidth(t, text, 100)
+	jsonReport := usageStatsJSONReport(t, report)
+	if len(jsonReport.Models) != 9 || len(jsonReport.Providers) != 9 || len(jsonReport.UnpricedModels) != 13 || len(jsonReport.CacheSessions) != 11 {
+		t.Fatalf("--top 3 JSON incomplete: %#v", jsonReport)
+	}
+
+	cacheReport := topFlagModelCacheFixture()
+	var cacheOutput bytes.Buffer
+	if err := renderUsageStatsWithOptions(&cacheOutput, cacheReport, usageTextRenderOptions{width: 100, top: &top}); err != nil {
+		t.Fatal(err)
+	}
+	cacheText := cacheOutput.String()
+	if strings.Count(cacheText, "MODEL Codex/cache-") != 3 || !strings.Contains(cacheText, "+6 more cache models in JSON") {
+		t.Fatalf("--top 3 per-model cache cap =\n%s", cacheText)
+	}
+	cacheJSONReport := usageStatsJSONReport(t, cacheReport)
+	if len(cacheJSONReport.Models) != 9 {
+		t.Fatalf("--top 3 per-model cache JSON incomplete: %#v", cacheJSONReport.Models)
+	}
+}
+
+func TestUsageStatsTopFlagExplicitZeroRestoresFullText(t *testing.T) {
+	top := 0
+	report := topFlagFixture()
+	var output bytes.Buffer
+	if err := renderUsageStatsWithOptions(&output, report, usageTextRenderOptions{width: 100, top: &top}); err != nil {
+		t.Fatal(err)
+	}
+	text := output.String()
+	if strings.Count(text, "model-") != 9 || strings.Contains(text, "more models in JSON") {
+		t.Fatalf("--top 0 models cap =\n%s", text)
+	}
+	if strings.Count(text, "prov-") != 9 || strings.Contains(text, "more providers in JSON") {
+		t.Fatalf("--top 0 providers cap =\n%s", text)
+	}
+	if strings.Count(text, "unpriced-") != 13 || strings.Contains(text, "more unpriced models in JSON") {
+		t.Fatalf("--top 0 unpriced cap =\n%s", text)
+	}
+	if strings.Count(text, "SESSION Codex/") != 11 || strings.Contains(text, "more cache sessions in JSON") {
+		t.Fatalf("--top 0 cache sessions cap =\n%s", text)
+	}
+	assertUsageStatsWidth(t, text, 100)
+
+	cacheReport := topFlagModelCacheFixture()
+	var cacheOutput bytes.Buffer
+	if err := renderUsageStatsWithOptions(&cacheOutput, cacheReport, usageTextRenderOptions{width: 100, top: &top}); err != nil {
+		t.Fatal(err)
+	}
+	cacheText := cacheOutput.String()
+	if strings.Count(cacheText, "MODEL Codex/cache-") != 9 || strings.Contains(cacheText, "more cache models in JSON") {
+		t.Fatalf("--top 0 per-model cache cap =\n%s", cacheText)
+	}
+}
+
+// modelDetailBlock returns every consecutive non-blank line following the
+// bar row that starts with barPrefix, up to (not including) the next blank
+// line. statsWrap silently wraps an over-width line onto a visually similar
+// second line with no indentation or other marker, so a test must check the
+// full block length — not just inspect the first line's content — to tell a
+// genuinely single-line compacted detail from a two-line wrap whose first
+// fragment happens to look the same.
+func modelDetailBlock(t *testing.T, text, barPrefix string) []string {
+	t.Helper()
+	lines := strings.Split(text, "\n")
+	for index, line := range lines {
+		if !strings.HasPrefix(line, barPrefix) {
+			continue
+		}
+		var block []string
+		for _, follow := range lines[index+1:] {
+			if follow == "" {
+				return block
+			}
+			block = append(block, follow)
+		}
+		t.Fatalf("bar row %q detail block ran off the end of output:\n%s", barPrefix, text)
+	}
+	t.Fatalf("no bar row starting with %q:\n%s", barPrefix, text)
+	return nil
+}
+
+// modelDetailLine is modelDetailBlock for the common case where the caller
+// only wants to assert the detail is exactly one line and inspect it.
+func modelDetailLine(t *testing.T, text, barPrefix string) string {
+	t.Helper()
+	block := modelDetailBlock(t, text, barPrefix)
+	if len(block) != 1 {
+		t.Fatalf("bar row %q detail was %d lines, want exactly 1 (wrapped instead of compacted): %#v", barPrefix, len(block), block)
+	}
+	return block[0]
+}
+
+func TestUsageStatsModelDetailCompactsSecondaryFieldsByWidth(t *testing.T) {
+	report := usageStatsTextFixture()
+	rate := "88.14"
+	report.Metric = "tokens"
+	report.Models = []usage.StatsDimension{{
+		Name: "wide-model", Client: "codex", Tokens: 84_900_000, Sessions: 69,
+		KnownShare: "1.6", CacheHitRate: &rate, CachedReadTokens: 1, LogicalInputTokens: 2,
+		Activity: &usage.StatsModelActivity{ToolCalls: 57},
+	}}
+	// Full detail at these values is 82 chars: high-value (58) + " · 57 tools"
+	// (11) + " · 88.14% hit" (13). This is the exact example from the plan's
+	// root-cause note (`84.9M tokens · 1.6% · unavailable · UNPRICED · 69
+	// sessions · 57 tools · 88.14% hit`), just with a priced-but-cost-nil
+	// model swapped for an explicitly unavailable one is not needed here:
+	// tokens metric never marks share "unavailable", so cost is what's
+	// unavailable (no ProviderCost/KnownProviderCost set -> UNPRICED).
+	for _, tc := range []struct {
+		name         string
+		width        int
+		wantTools    bool
+		wantCacheHit bool
+	}{
+		{name: "width 80 drops only cache-hit", width: 80, wantTools: true, wantCacheHit: false},
+		{name: "width 100 keeps everything", width: 100, wantTools: true, wantCacheHit: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var output bytes.Buffer
+			if err := renderUsageStatsWithOptions(&output, report, usageTextRenderOptions{width: tc.width}); err != nil {
+				t.Fatal(err)
+			}
+			text := output.String()
+			// modelDetailLine itself requires exactly one line, so a
+			// regression that stops compacting (falls back to statsWrap's
+			// two-line wrap) fails here regardless of the two field checks
+			// below.
+			detail := modelDetailLine(t, text, "wide-model")
+			if !strings.Contains(detail, "84.9M tokens") || !strings.Contains(detail, "1.6%") || !strings.Contains(detail, "UNPRICED") || !strings.Contains(detail, "69 sessions") {
+				t.Fatalf("width %d dropped a high-value field:\n%s", tc.width, detail)
+			}
+			if strings.Contains(detail, "tools") != tc.wantTools {
+				t.Fatalf("width %d tools presence = %v, want %v:\n%s", tc.width, strings.Contains(detail, "tools"), tc.wantTools, detail)
+			}
+			if strings.Contains(detail, "hit") != tc.wantCacheHit {
+				t.Fatalf("width %d cache-hit presence = %v, want %v:\n%s", tc.width, strings.Contains(detail, "hit"), tc.wantCacheHit, detail)
+			}
+			if tc.wantCacheHit && !strings.Contains(detail, "88.14% hit") {
+				t.Fatalf("cache-hit percentage was rounded or reformatted, want unrounded 88.14%%:\n%s", detail)
+			}
+			assertUsageStatsWidth(t, text, tc.width)
+			jsonReport := usageStatsJSONReport(t, report)
+			if len(jsonReport.Models) != 1 || jsonReport.Models[0].Activity == nil || jsonReport.Models[0].Activity.ToolCalls != 57 || jsonReport.Models[0].CacheHitRate == nil || *jsonReport.Models[0].CacheHitRate != "88.14" {
+				t.Fatalf("width %d JSON lost a field text compaction trimmed: %#v", tc.width, jsonReport.Models)
+			}
+		})
+	}
+}
+
+func TestUsageStatsModelDetailDropsToolsWhenHighValueAloneFillsTheLine(t *testing.T) {
+	report := usageStatsTextFixture()
+	report.Metric = "cost"
+	report.Models = []usage.StatsDimension{{
+		Name: "huge-model", Client: "codex", Tokens: 999_900_000_000_000, Sessions: 999_999_999,
+		KnownShare: "0", Coverage: "0", Activity: &usage.StatsModelActivity{ToolCalls: 999},
+	}}
+	// metric=cost with no known cost/coverage makes both share and cost render
+	// "unavailable" (11 chars each). High-value alone is 75 chars; adding
+	// " · 999 tools" (12) would push it to 87, over width 80, so even tools
+	// must be dropped, leaving only the always-present high-value fields.
+	width := 80
+	var output bytes.Buffer
+	if err := renderUsageStatsWithOptions(&output, report, usageTextRenderOptions{width: width}); err != nil {
+		t.Fatal(err)
+	}
+	text := output.String()
+	detail := modelDetailLine(t, text, "huge-model")
+	if !strings.Contains(detail, "999,999,999 sessions") || !strings.Contains(detail, "UNPRICED") {
+		t.Fatalf("width %d dropped a high-value field:\n%s", width, detail)
+	}
+	if strings.Contains(detail, "tools") {
+		t.Fatalf("width %d kept tools even though high-value fields alone fill the line:\n%s", width, detail)
+	}
+	if statsVisibleWidth(detail) > width {
+		t.Fatalf("width %d detail line still overflowed at %d:\n%s", width, statsVisibleWidth(detail), detail)
+	}
+	jsonReport := usageStatsJSONReport(t, report)
+	if len(jsonReport.Models) != 1 || jsonReport.Models[0].Activity == nil || jsonReport.Models[0].Activity.ToolCalls != 999 {
+		t.Fatalf("JSON lost the tool-call count text compaction trimmed: %#v", jsonReport.Models)
+	}
+}
+
+func TestUsageStatsProviderDetailCompactsCacheHitByWidth(t *testing.T) {
+	report := usageStatsTextFixture()
+	rate := "88.14"
+	report.Metric = "cost"
+	report.Providers = []usage.StatsDimension{{
+		Name: "wide-provider", Client: "codex", Tokens: 999_900_000_000_000, Sessions: 999_999_999,
+		KnownShare: "0", Coverage: "0", CacheHitRate: &rate, CachedReadTokens: 1, LogicalInputTokens: 2,
+	}}
+	// Same 75-char "unavailable"/"unavailable" high-value line as the model
+	// case above; adding " · 88.14% hit" (13) reaches 88, over width 80 but
+	// under 100.
+	for _, tc := range []struct {
+		name         string
+		width        int
+		wantCacheHit bool
+	}{
+		{name: "width 80 drops cache-hit", width: 80, wantCacheHit: false},
+		{name: "width 100 keeps cache-hit", width: 100, wantCacheHit: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var output bytes.Buffer
+			if err := renderUsageStatsWithOptions(&output, report, usageTextRenderOptions{width: tc.width}); err != nil {
+				t.Fatal(err)
+			}
+			text := output.String()
+			detail := modelDetailLine(t, text, "Codex/wide-provider")
+			if !strings.Contains(detail, "999,999,999 sessions") || !strings.Contains(detail, "UNPRICED") {
+				t.Fatalf("width %d dropped a high-value field:\n%s", tc.width, detail)
+			}
+			if strings.Contains(detail, "hit") != tc.wantCacheHit {
+				t.Fatalf("width %d cache-hit presence = %v, want %v:\n%s", tc.width, strings.Contains(detail, "hit"), tc.wantCacheHit, detail)
+			}
+			if tc.wantCacheHit && !strings.Contains(detail, "88.14% hit") {
+				t.Fatalf("cache-hit percentage was rounded or reformatted, want unrounded 88.14%%:\n%s", detail)
+			}
+			if statsVisibleWidth(detail) > tc.width {
+				t.Fatalf("width %d detail line overflowed at %d:\n%s", tc.width, statsVisibleWidth(detail), detail)
+			}
+			assertUsageStatsWidth(t, text, tc.width)
+			jsonReport := usageStatsJSONReport(t, report)
+			if len(jsonReport.Providers) != 1 || jsonReport.Providers[0].CacheHitRate == nil || *jsonReport.Providers[0].CacheHitRate != "88.14" {
+				t.Fatalf("width %d JSON lost cache-hit data text compaction trimmed: %#v", tc.width, jsonReport.Providers)
+			}
+		})
+	}
+}
+
+// TestUsageStatsModelProviderDetailStaysOneLineInTwoColumnLayout closes a gap
+// the single-column 80/100 detail-compaction tests left open: at terminal
+// width >= 104, render() switches to a two-column layout and passes only a
+// fraction of the terminal width to rankingLines (MODELS/PROVIDERS), not the
+// full width — e.g. the pre-fix split gave the ranking column just 40 columns
+// at terminal width 104, well under the 80-column single-line contract, even
+// though 104 itself comfortably clears it. This exercises 104/140/160 (the
+// two-column band up to statsMaxWidth) with fields sized so the full detail
+// does not fit, proving the actual available column width, not just the raw
+// terminal width, respects the single-line contract.
+func TestUsageStatsModelProviderDetailStaysOneLineInTwoColumnLayout(t *testing.T) {
+	rate := "88.14"
+	report := usageStatsTextFixture()
+	report.Metric = "cost"
+	report.Models = []usage.StatsDimension{{
+		Name: "wide-model", Client: "codex", Tokens: 84_900_000, Sessions: 69,
+		KnownShare: "0", Coverage: "0", CacheHitRate: &rate, CachedReadTokens: 1, LogicalInputTokens: 2,
+		Activity: &usage.StatsModelActivity{ToolCalls: 57},
+	}}
+	report.Providers = []usage.StatsDimension{{
+		Name: "wide-provider", Client: "codex", Tokens: 84_900_000, Sessions: 69,
+		KnownShare: "0", Coverage: "0", CacheHitRate: &rate, CachedReadTokens: 1, LogicalInputTokens: 2,
+	}}
+	// Under metric=cost with no known cost/coverage, both share and cost
+	// render "unavailable" (11 chars each). High-value alone is 65 chars:
+	// "84.9M tokens · unavailable · unavailable · UNPRICED · 69 sessions".
+	// +" · 57 tools" (11) = 76, still fits an 80-column ranking width, so the
+	// model keeps tools. +" · 88.14% hit" (13) = 89, over 80, so the model
+	// drops cache-hit. The provider has no tools field, so its full detail is
+	// 65+13 = 78, which fits 80 outright and keeps cache-hit — showing the
+	// two sections compact independently, not in lockstep.
+	// A two-column joined row interleaves the trend column, a gap, and the
+	// ranking column, so a wrapped continuation line does not start at column
+	// 0 the way it would in single-column mode, and it is not globally blank
+	// either while trend still has rows on the same line — the row-scanning
+	// modelDetailLine helper (built for single-column detail blocks) cannot
+	// reliably isolate the ranking column's lines here. Instead, assert that
+	// each field run appears as one *contiguous* substring: statsWrap only
+	// ever breaks at a space between two of these fields, so if the run from
+	// the first high-value field through the last kept secondary field
+	// appears unbroken in the full text, no wrap occurred within it — proof
+	// of a single line — without needing to isolate the column at all.
+	const modelHighValue = "84.9M tokens · unavailable · unavailable · UNPRICED · 69 sessions"
+	const providerHighValue = modelHighValue // identical fixture values, no tools field
+	// The fixture's first bucket (2026-07-14, day-grouped) renders as label
+	// "Jul 14" and, under metric=cost with a known-but-not-complete value,
+	// value "$13.4M KNOWN" — both must stay visible at every width: below
+	// statsTwoColumnFits' threshold trend gets the full stacked width, at or
+	// above it trend gets its own floored column (statsTrendMinWidth), never
+	// a column truncated below what its own label+value need.
+	for _, tc := range []struct {
+		width             int
+		wantModelCacheHit bool
+	}{
+		// width 104 is below statsTwoColumnFits' threshold (needs inner >=
+		// 80+28=108, i.e. width >= 112), so it now stacks: rankingLines gets
+		// the full 104-column width, comfortably fitting the model's full
+		// 89-column detail (cache-hit included) as well as the provider's.
+		{width: 104, wantModelCacheHit: true},
+		// 140/160 clear the threshold and stay two-column with the ranking
+		// column floored at 80, reproducing the original Round 1 scenario
+		// where the model (but not the shorter, tools-free provider) has to
+		// drop cache-hit.
+		{width: 140, wantModelCacheHit: false},
+		{width: 160, wantModelCacheHit: false},
+	} {
+		t.Run(fmt.Sprintf("width %d", tc.width), func(t *testing.T) {
+			var output bytes.Buffer
+			if err := renderUsageStatsWithOptions(&output, report, usageTextRenderOptions{width: tc.width}); err != nil {
+				t.Fatal(err)
+			}
+			text := output.String()
+
+			if !strings.Contains(text, modelHighValue+" · 57 tools") {
+				t.Fatalf("width %d model detail did not keep high-value+tools contiguous on one line (wrapped, or tools dropped):\n%s", tc.width, text)
+			}
+			if hasModelCacheHit := strings.Contains(text, modelHighValue+" · 57 tools · 88.14% hit"); hasModelCacheHit != tc.wantModelCacheHit {
+				t.Fatalf("width %d model cache-hit contiguous-on-one-line = %v, want %v:\n%s", tc.width, hasModelCacheHit, tc.wantModelCacheHit, text)
+			}
+
+			if !strings.Contains(text, providerHighValue+" · 88.14% hit") {
+				t.Fatalf("width %d provider detail did not keep high-value+cache-hit contiguous on one line (wrapped, cache-hit dropped, or rounded):\n%s", tc.width, text)
+			}
+
+			if !strings.Contains(text, "Jul 14") {
+				t.Fatalf("width %d trend bucket label was truncated or dropped:\n%s", tc.width, text)
+			}
+			if !strings.Contains(text, "$13.4M KNOWN") {
+				t.Fatalf("width %d trend bucket value was truncated or dropped:\n%s", tc.width, text)
+			}
+
+			assertUsageStatsWidth(t, text, tc.width)
+			jsonReport := usageStatsJSONReport(t, report)
+			if len(jsonReport.Models) != 1 || jsonReport.Models[0].Activity == nil || jsonReport.Models[0].Activity.ToolCalls != 57 || jsonReport.Models[0].CacheHitRate == nil || *jsonReport.Models[0].CacheHitRate != "88.14" {
+				t.Fatalf("width %d JSON lost model fields text compaction trimmed: %#v", tc.width, jsonReport.Models)
+			}
+			if len(jsonReport.Providers) != 1 || jsonReport.Providers[0].CacheHitRate == nil || *jsonReport.Providers[0].CacheHitRate != "88.14" {
+				t.Fatalf("width %d JSON lost provider fields text compaction trimmed: %#v", tc.width, jsonReport.Providers)
+			}
+			if len(jsonReport.Buckets) == 0 || jsonReport.Buckets[0].Tokens != 13402755 {
+				t.Fatalf("width %d JSON lost the trend bucket: %#v", tc.width, jsonReport.Buckets)
+			}
+		})
+	}
+}
+
+// isTwoColumnStatsLayout reports whether text was rendered in the two-column
+// layout, by checking whether joinStatsColumns paired the TREND and MODELS
+// section titles onto the same line — the same signal
+// TestUsageStatsWideLayoutAndColorAreDeterministic already uses.
+func isTwoColumnStatsLayout(text string) bool {
+	for _, line := range strings.Split(text, "\n") {
+		if strings.Contains(line, "TREND") && strings.Contains(line, "MODELS") {
+			return true
+		}
+	}
+	return false
+}
+
+// TestUsageStatsTwoColumnThresholdCoversWidestSupportedTrendFormats closes a
+// gap the round-2 repair's static statsTrendMinWidth=28 left open: 28 assumes
+// trendLines' 7/9-column *defaults*, but compact label/value formats can be
+// wider than that — a known-but-partial cost value like "$13.4M KNOWN" is 12
+// columns, and so is a multi-date hour label like "Jul 14 09:00" (the format
+// compactBucketLabels switches to whenever buckets span more than one
+// calendar date under hour grouping). At width 112 (the old static
+// threshold's exact activation point), a report using both wide formats
+// still needs 36 trend columns (12 label + 2 + 8 min-bar + 2 + 12 value), not
+// 28, so two-column mode would still truncate at that width. This asserts
+// the layout instead stacks until the terminal is actually wide enough for
+// this report's real content — not a fixed guess — and that model/provider
+// detail stays single-line throughout.
+func TestUsageStatsTwoColumnThresholdCoversWidestSupportedTrendFormats(t *testing.T) {
+	rate := "88.14"
+	report := usageStatsTextFixture()
+	report.Metric = "cost"
+	report.GroupBy = "hour"
+	// Two different calendar dates under hour grouping forces
+	// compactBucketLabels' "Jan 02 15:04" (12-column) format for every label.
+	// KnownMetricValue with no MetricValue/Coverage renders as a 12-column
+	// "$13.4M KNOWN" partial-cost value, matching the fixture value used
+	// elsewhere in this file for the same reason.
+	report.Buckets = []usage.StatsBucket{
+		{Start: "2026-07-14T09:00:00Z", Tokens: 13402755, Sessions: 3, KnownMetricValue: "13402755"},
+		{Start: "2026-07-15T09:00:00Z", Tokens: 13402755, Sessions: 3, KnownMetricValue: "13402755"},
+	}
+	report.Models = []usage.StatsDimension{{
+		Name: "wide-model", Client: "codex", Tokens: 84_900_000, Sessions: 69,
+		KnownShare: "0", Coverage: "0", CacheHitRate: &rate, CachedReadTokens: 1, LogicalInputTokens: 2,
+		Activity: &usage.StatsModelActivity{ToolCalls: 57},
+	}}
+	report.Providers = []usage.StatsDimension{{
+		Name: "wide-provider", Client: "codex", Tokens: 84_900_000, Sessions: 69,
+		KnownShare: "0", Coverage: "0", CacheHitRate: &rate, CachedReadTokens: 1, LogicalInputTokens: 2,
+	}}
+	const modelHighValue = "84.9M tokens · unavailable · unavailable · UNPRICED · 69 sessions"
+	const trendLabel = "Jul 14 09:00"
+	const trendValue = "$13.4M KNOWN"
+	// trendMinWidth = 12 (label) + 2 + 8 (min bar) + 2 + 12 (value) = 36.
+	// Two-column needs inner (width-4) >= statsRankingMinWidth(80) + 36 = 116,
+	// i.e. width >= 120.
+	for _, tc := range []struct {
+		width         int
+		wantStacked   bool
+		wantTwoColumn bool
+	}{
+		{width: 112, wantStacked: true, wantTwoColumn: false}, // the old static-28 threshold's own activation point
+		{width: 119, wantStacked: true, wantTwoColumn: false}, // one column short of fitting this report's real content
+		{width: 120, wantStacked: false, wantTwoColumn: true}, // first width that truly fits ranking + this trend + gap
+	} {
+		t.Run(fmt.Sprintf("width %d", tc.width), func(t *testing.T) {
+			var output bytes.Buffer
+			if err := renderUsageStatsWithOptions(&output, report, usageTextRenderOptions{width: tc.width}); err != nil {
+				t.Fatal(err)
+			}
+			text := output.String()
+
+			if got := isTwoColumnStatsLayout(text); got != tc.wantTwoColumn {
+				t.Fatalf("width %d two-column layout = %v, want %v:\n%s", tc.width, got, tc.wantTwoColumn, text)
+			}
+			if !strings.Contains(text, trendLabel) {
+				t.Fatalf("width %d trend bucket label %q was truncated or dropped:\n%s", tc.width, trendLabel, text)
+			}
+			if !strings.Contains(text, trendValue) {
+				t.Fatalf("width %d trend bucket value %q was truncated or dropped:\n%s", tc.width, trendValue, text)
+			}
+			if !strings.Contains(text, modelHighValue+" · 57 tools") {
+				t.Fatalf("width %d model detail did not keep high-value+tools contiguous on one line (wrapped, or tools dropped):\n%s", tc.width, text)
+			}
+
+			assertUsageStatsWidth(t, text, tc.width)
+			jsonReport := usageStatsJSONReport(t, report)
+			if len(jsonReport.Buckets) != 2 {
+				t.Fatalf("width %d JSON lost a trend bucket: %#v", tc.width, jsonReport.Buckets)
+			}
+			if len(jsonReport.Models) != 1 || jsonReport.Models[0].CacheHitRate == nil || *jsonReport.Models[0].CacheHitRate != "88.14" {
+				t.Fatalf("width %d JSON lost model fields: %#v", tc.width, jsonReport.Models)
+			}
+		})
+	}
 }
 
 func TestUsageStatsModelActivityDetailIsOptIn(t *testing.T) {
