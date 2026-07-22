@@ -1167,6 +1167,70 @@ func TestScanSourceMutationScenarios(t *testing.T) {
 	}
 }
 
+// Regression coverage for a fixed accidental quadratic: the line-splitting
+// loop in scanFileMode used to call strings.IndexByte(string(line), '\n'),
+// and converting the remaining buffer to a string copies it on every
+// iteration, making cost O(lines^2) rather than O(fileSize). A wall-clock
+// threshold would be flaky in CI, so this asserts the growth ratio instead:
+// quadrupling the line count should cost close to 4x (linear), not the ~16x+
+// a quadratic algorithm would produce.
+func TestScanCostScalesLinearlyNotQuadraticallyWithLineCount(t *testing.T) {
+	ctx := context.Background()
+	const baseLines = 2000
+	const scaleFactor = 4
+	const padLen = 100
+
+	// Cross-package parallelism under `go test ./...` can stall any single
+	// sample, so each size is measured a few times and the minimum kept — the
+	// standard fix for scheduler noise in wall-clock microbenchmarks, since a
+	// contended run can only inflate a sample, never deflate it below the
+	// uncontended cost.
+	const samples = 3
+	measure := func(lineCount int) time.Duration {
+		root := t.TempDir()
+		home := filepath.Join(root, "home")
+		path := filepath.Join(home, ".codex", "sessions", "scale.jsonl")
+		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+			t.Fatal(err)
+		}
+		var data []byte
+		for i := 0; i < lineCount; i++ {
+			b, _ := json.Marshal(map[string]any{"type": "irrelevant", "index": i, "pad": strings.Repeat("x", padLen)})
+			data = append(data, append(b, '\n')...)
+		}
+		if err := os.WriteFile(path, data, 0600); err != nil {
+			t.Fatal(err)
+		}
+		var best time.Duration
+		for attempt := 0; attempt < samples; attempt++ {
+			state := filepath.Join(root, fmt.Sprintf("state-%d", attempt))
+			s, err := store.Open(ctx, state)
+			if err != nil {
+				t.Fatal(err)
+			}
+			service := New(s, home)
+			start := time.Now()
+			if _, err := service.Scan(ctx); err != nil {
+				s.Close()
+				t.Fatal(err)
+			}
+			if elapsed := time.Since(start); best == 0 || elapsed < best {
+				best = elapsed
+			}
+			s.Close()
+		}
+		return best
+	}
+
+	base := measure(baseLines)
+	scaled := measure(baseLines * scaleFactor)
+	ratio := float64(scaled) / float64(base)
+	const maxRatio = scaleFactor * 2 // linear predicts ~4x; quadratic predicts ~16x+
+	if ratio > maxRatio {
+		t.Fatalf("scan cost scaled %.1fx for a %dx larger file (base=%v, scaled=%v); expected roughly linear growth (<= %.1fx) — check for a reintroduced quadratic cost in the line-splitting loop", ratio, scaleFactor, base, scaled, float64(maxRatio))
+	}
+}
+
 func TestRemovedSourceCleansStateEventsRunsAndSessionAggregation(t *testing.T) {
 	ctx := context.Background()
 	root, home := t.TempDir(), filepath.Join(t.TempDir(), "home")

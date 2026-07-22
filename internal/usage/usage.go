@@ -849,7 +849,7 @@ func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceR
 	toolActivities := make([]activity.Record, 0)
 	offset, line := cursor, data
 	for len(line) > 0 {
-		idx := strings.IndexByte(string(line), '\n')
+		idx := bytes.IndexByte(line, '\n')
 		if idx < 0 {
 			break
 		}
