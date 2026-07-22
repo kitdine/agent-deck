@@ -20,7 +20,10 @@ management; usage collection, pricing, and run attribution; local session
 search; extension inventory; encrypted backup and device migration; unified
 ASCII table output; machine-bound encrypted SQLite credential storage;
 automatic LiteLLM price updates; active-log-safe usage rebuild; the usage stats
-runtime provider dimension; and GitHub release plus Homebrew tap distribution.
+runtime provider dimension; a measured 5.40x mean cold-scan speedup; delayed
+stderr progress with parser-reread context; stored-aggregate `--no-scan`
+reporting for stats and summary; and GitHub release plus Homebrew tap
+distribution.
 
 Per-task history lives in
 [the retired phase-one plan](archive/plans/agentdeck-cli.md). Read it only for
@@ -32,7 +35,6 @@ historical detail; it is not a current tracker.
 | --- | --- |
 | [specs/cli-design.md](specs/cli-design.md) | What the system does and must keep doing: provider, credential, usage, pricing, session, backup, and distribution behavior. Currently version 10; see its changelog. |
 | [specs/cli-manual.md](specs/cli-manual.md) | The implemented command surface, flags, and output shapes. |
-| [plans/usage-scan-performance.md](plans/usage-scan-performance.md) | Make a full usage re-read fast and visible. Design approved with a profiled baseline. active — 0/6 done. |
 | [plans/usage-stats-readability.md](plans/usage-stats-readability.md) | Keep `usage stats` text scannable as data grows. Design approved with a profiled baseline. active — 0/5 done. |
 | [plans/test-coverage.md](plans/test-coverage.md) | Repository test coverage queue from the 2026-07-22 gap scan. active — 1/5 done (task 1 passed Round 2 review; task 2 reopened for test repairs). |
 | [reviews/](reviews/README.md) | Per-task review records that back each plan's ticked `Review` cell. |

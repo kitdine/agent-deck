@@ -92,3 +92,17 @@ match that status and establishes this archive directory.
 Current conclusions and requirements for the functionality these described
 now live in `docs/README.md` and
 `docs/specs/cli-design.md`.
+
+## 2026-07-22 retirement: usage scan performance and progress
+
+`plans/usage-scan-performance.md` and
+`reviews/usage-scan-performance/` were retired together after all six tasks
+passed independent review. The plan delivered the linear line-splitting fix,
+the `(client, session_id)` usage-event index, delayed stderr progress,
+parser-version reread context, stored-aggregate `--no-scan` reporting for stats
+and summary, and a controlled same-fixture A/B remeasurement.
+
+The final paired measurement recorded a 5.40x mean cold-scan improvement on the
+same frozen fixture. Current behavior remains authoritative in
+`docs/specs/cli-design.md` and `docs/specs/cli-manual.md`; the completed plan and
+its review rounds remain here only as implementation and measurement history.
