@@ -106,3 +106,17 @@ The final paired measurement recorded a 5.40x mean cold-scan improvement on the
 same frozen fixture. Current behavior remains authoritative in
 `docs/specs/cli-design.md` and `docs/specs/cli-manual.md`; the completed plan and
 its review rounds remain here only as implementation and measurement history.
+
+## 2026-07-22 retirement: usage stats display readability
+
+`plans/usage-stats-readability.md` and
+`reviews/usage-stats-readability/` were retired together after all five tasks
+passed independent review. The plan delivered bounded text rankings, a recent
+48-bucket trend window, the shared `--top` override, width-aware one-line
+detail compaction, and a controlled same-snapshot A/B remeasurement.
+
+The final paired measurement reduced `usage stats --period all` from 139 to
+120 lines and `usage stats --period 30d --group-by hour` from 832 to 142 lines.
+Current output contracts remain authoritative in `docs/specs/cli-design.md`
+and `docs/specs/cli-manual.md`; the completed plan and review rounds remain
+here only as implementation and measurement history.

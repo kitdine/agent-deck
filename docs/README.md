@@ -29,13 +29,18 @@ Per-task history lives in
 [the retired phase-one plan](archive/plans/agentdeck-cli.md). Read it only for
 historical detail; it is not a current tracker.
 
+Usage-stats text readability is delivered and independently reviewed: bounded
+rankings, a recent 48-bucket trend window, the shared `--top` override, and
+width-aware detail compaction reduced the controlled fixtures from 139 to 120
+lines and from 832 to 142 lines. Measurement and review history lives in the
+[retired readability plan](archive/plans/usage-stats-readability.md).
+
 ## Documents
 
 | Document | Purpose |
 | --- | --- |
 | [specs/cli-design.md](specs/cli-design.md) | What the system does and must keep doing: provider, credential, usage, pricing, session, backup, and distribution behavior. Currently version 10; see its changelog. |
 | [specs/cli-manual.md](specs/cli-manual.md) | The implemented command surface, flags, and output shapes. |
-| [plans/usage-stats-readability.md](plans/usage-stats-readability.md) | Keep `usage stats` text scannable as data grows. Design approved with a profiled baseline. active — 0/5 done. |
 | [plans/test-coverage.md](plans/test-coverage.md) | Repository test coverage queue from the 2026-07-22 gap scan. active — 1/5 done (task 1 passed Round 2 review; task 2 reopened for test repairs). |
 | [reviews/](reviews/README.md) | Per-task review records that back each plan's ticked `Review` cell. |
 | [archive/](archive/README.md) | Retired plans and superseded contracts. Not a starting point for new work. |
