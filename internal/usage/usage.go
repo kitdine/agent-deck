@@ -40,6 +40,8 @@ var tokenNames = []string{"input_tokens", "cached_input_tokens", "output_tokens"
 
 var errUsageSourceChanged = errors.New("usage source changed during inventory scan")
 
+const ParserVersionRereadReason = "re-reading after parser update"
+
 type Event struct {
 	Key, Client, SessionID, EventID, EventAt, Model, SourcePath string
 	SourceOffset                                                int64
@@ -260,13 +262,33 @@ type InventoryEntry struct {
 }
 
 type Inventory struct {
-	Fingerprint string           `json:"fingerprint"`
-	Entries     []InventoryEntry `json:"entries"`
-	Added       []string         `json:"added"`
-	Appended    []string         `json:"appended"`
-	Mutated     []string         `json:"mutated"`
-	Removed     []string         `json:"removed"`
+	Fingerprint         string           `json:"fingerprint"`
+	Entries             []InventoryEntry `json:"entries"`
+	Added               []string         `json:"added"`
+	Appended            []string         `json:"appended"`
+	Mutated             []string         `json:"mutated"`
+	Removed             []string         `json:"removed"`
+	ParserVersionReread bool             `json:"-"`
 }
+
+// ScanProgress is the source-file progress for one scan or rebuild operation.
+// Processed counts entries whose scan decision has completed, including entries
+// that were checked and found unchanged.
+type ScanProgress struct {
+	Processed int
+	Total     int
+	Reason    string
+}
+
+// ScanProgressReporter receives lifecycle and source-file progress for a scan
+// or rebuild. Implementations must return promptly because they run in the
+// scanner's synchronous path.
+type ScanProgressReporter interface {
+	Start()
+	Update(ScanProgress)
+	Stop()
+}
+
 type Service struct {
 	Store *store.Store
 	Home  string
@@ -275,6 +297,7 @@ type Service struct {
 	ClientProcesses func(string) ([]int, error)
 	Stat            func(string) (os.FileInfo, error)
 	Open            func(string) (SourceFile, error)
+	Progress        ScanProgressReporter
 }
 type catalog struct {
 	SchemaVersion int                   `json:"schema_version"`
@@ -558,18 +581,33 @@ func earliestOverride(items []OfficialOverride) time.Time {
 }
 
 func (s *Service) Scan(ctx context.Context) (map[string]int, error) {
+	if s.Progress != nil {
+		s.Progress.Start()
+		defer s.Progress.Stop()
+	}
 	inventory, err := s.Inventory(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return s.ScanInventory(ctx, inventory)
+	return s.scanInventory(ctx, inventory, s.Progress)
 }
 
 func (s *Service) ScanInventory(ctx context.Context, inventory Inventory) (map[string]int, error) {
+	return s.scanInventory(ctx, inventory, nil)
+}
+
+func (s *Service) scanInventory(ctx context.Context, inventory Inventory, progress ScanProgressReporter) (map[string]int, error) {
 	if err := s.ImportBundledCatalog(ctx); err != nil {
 		return nil, err
 	}
 	out := newScanResult(len(inventory.Entries))
+	reason := ""
+	if inventory.ParserVersionReread {
+		reason = ParserVersionRereadReason
+	}
+	if progress != nil {
+		progress.Update(ScanProgress{Total: len(inventory.Entries), Reason: reason})
+	}
 	for _, path := range inventory.Removed {
 		if err := s.detachSource(ctx, path); err != nil {
 			return nil, err
@@ -585,12 +623,18 @@ func (s *Service) ScanInventory(ctx context.Context, inventory Inventory) (map[s
 			changed[path] = true
 		}
 	}
-	for _, entry := range inventory.Entries {
+	for index, entry := range inventory.Entries {
 		candidate := recoveryCandidates[entry.Path]
 		if !candidate && !changed[entry.Path] {
+			if progress != nil {
+				progress.Update(ScanProgress{Processed: index + 1, Total: len(inventory.Entries), Reason: reason})
+			}
 			continue
 		}
 		stats, err := s.scanFileMode(ctx, entry, candidate)
+		if progress != nil {
+			progress.Update(ScanProgress{Processed: index + 1, Total: len(inventory.Entries), Reason: reason})
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -612,6 +656,10 @@ func (s *Service) ScanInventory(ctx context.Context, inventory Inventory) (map[s
 }
 
 func (s *Service) Rebuild(ctx context.Context) (map[string]int, []string, error) {
+	if s.Progress != nil {
+		s.Progress.Start()
+		defer s.Progress.Stop()
+	}
 	if err := s.ImportBundledCatalog(ctx); err != nil {
 		return nil, nil, err
 	}
@@ -620,6 +668,9 @@ func (s *Service) Rebuild(ctx context.Context) (map[string]int, []string, error)
 		return nil, nil, err
 	}
 	out := newScanResult(len(inventory.Entries))
+	if s.Progress != nil {
+		s.Progress.Update(ScanProgress{Total: len(inventory.Entries)})
+	}
 	warningSet := map[string]bool{}
 	for _, path := range inventory.Removed {
 		if err = s.detachSource(ctx, path); err != nil {
@@ -632,6 +683,9 @@ func (s *Service) Rebuild(ctx context.Context) (map[string]int, []string, error)
 	for index := len(inventory.Entries) - 1; index >= 0; index-- {
 		entry := inventory.Entries[index]
 		stats, rebuildErr := s.scanFileMode(ctx, entry, true)
+		if s.Progress != nil {
+			s.Progress.Update(ScanProgress{Processed: len(inventory.Entries) - index, Total: len(inventory.Entries)})
+		}
 		if rebuildErr != nil {
 			warning := "usage_source_rebuild_failed"
 			if errors.Is(rebuildErr, errUsageSourceChanged) {
@@ -704,6 +758,7 @@ func (s *Service) Inventory(ctx context.Context) (Inventory, error) {
 	if err = rows.Err(); err != nil {
 		return Inventory{}, err
 	}
+	parserVersionRereads := 0
 	for _, entry := range entries {
 		previous, found := stored[entry.Path]
 		delete(stored, entry.Path)
@@ -712,6 +767,9 @@ func (s *Service) Inventory(ctx context.Context) (Inventory, error) {
 			inventory.Added = append(inventory.Added, entry.Path)
 		case previous.parserVersion != usageParserVersion:
 			inventory.Mutated = append(inventory.Mutated, entry.Path)
+			if previous.identity == entry.Identity && previous.size == entry.Size && previous.modified == entry.ModifiedAt {
+				parserVersionRereads++
+			}
 		case previous.identity == entry.Identity && previous.size == entry.Size && previous.modified == entry.ModifiedAt:
 		case previous.identity == entry.Identity && entry.Size > previous.size && entry.Size >= previous.cursor:
 			inventory.Appended = append(inventory.Appended, entry.Path)
@@ -722,6 +780,7 @@ func (s *Service) Inventory(ctx context.Context) (Inventory, error) {
 	for path := range stored {
 		inventory.Removed = append(inventory.Removed, path)
 	}
+	inventory.ParserVersionReread = parserVersionRereads > 0 && len(inventory.Added) == 0 && len(inventory.Appended) == 0 && len(inventory.Mutated) == parserVersionRereads
 	sort.Strings(inventory.Removed)
 	return inventory, nil
 }

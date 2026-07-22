@@ -177,8 +177,8 @@ personal -> aigocode-personal-ref
 | 命令 | 含义与典型用例 | 参数与 Flags | 必填规则 | 示例 |
 | --- | --- | --- | --- | --- |
 | `usage scan` | 增量扫描本地 Codex/Claude usage sources | 无 | 无 | `agentdeck usage scan` |
-| `usage summary [daily\|weekly\|monthly]` | 扫描后汇总全部历史，或按本机时区快捷查看今天、本周（周一开始）、本月 | 可选周期位置参数 | 否 | `agentdeck usage summary weekly` |
-| `usage stats` | 输出 KPI、趋势、完整模型列表、cache hit、client/provider 占比、均值、峰值、计价覆盖和 activity | `--period`、`--from/--to`、`--group-by`、`--metric`、`--client`、`--model`、`--provider`、`--activity` | 默认 `7d/auto/tokens`；日期必须成对；`--provider` 接受精确 runtime provider 名称且不做枚举校验；`--activity` 必须与 `--model` 同用 | `agentdeck usage stats --provider official` |
+| `usage summary [daily\|weekly\|monthly]` | 默认扫描后汇总全部历史，或按本机时区快捷查看今天、本周（周一开始）、本月 | 可选周期位置参数、`--no-scan` | 否；`--no-scan` 直接使用已存聚合 | `agentdeck usage summary weekly --no-scan` |
+| `usage stats` | 默认扫描后输出 KPI、趋势、完整模型列表、cache hit、client/provider 占比、均值、峰值、计价覆盖和 activity | `--period`、`--from/--to`、`--group-by`、`--metric`、`--client`、`--model`、`--provider`、`--activity`、`--no-scan` | 默认 `7d/auto/tokens`；日期必须成对；`--provider` 接受精确 runtime provider 名称且不做枚举校验；`--activity` 必须与 `--model` 同用；`--no-scan` 直接使用已存聚合 | `agentdeck usage stats --provider official --no-scan` |
 | `usage sessions` | 按 session 分列展示各类 token、成本和计价状态 | 无 | 无 | `agentdeck usage sessions` |
 | `usage diagnose` | 展示 source、event、session、run、价格覆盖和 attribution 诊断 | 无 | 无 | `agentdeck usage diagnose` |
 | `usage rebuild` | 逐 source 原子重建 usage metadata；失败 source 保留旧数据并返回 partial warning | 无 | 无 | `agentdeck usage rebuild` |
@@ -205,6 +205,7 @@ personal -> aigocode-personal-ref
   unknown model 或缺失价格组件时保持 unavailable，同时通过明确标注的
   `known_catalog_base_cost`、`known_provider_cost`、priced/unpriced event 数和逐 model
   coverage 展示可验证的已知小计，不能把已计价工作隐藏掉。
+- `usage summary` 和 `usage stats` 默认在输出前同步扫描；`--no-scan` 跳过该扫描并立即使用已存聚合，不会将扫描移到后台。
 - `usage sessions` 将 input、cached input、output、cache read、cache creation、5m
   write 和 1h write token 分成独立列。无法形成完整成本时，已知小计显示为
   `(partial)`，status 列列出 warning 和 unpriced component。

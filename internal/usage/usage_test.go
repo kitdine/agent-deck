@@ -484,6 +484,8 @@ func TestUsageParserVersionRebuildsUnchangedSource(t *testing.T) {
 	if _, err = database.Exec(ctx, `INSERT INTO usage_run_bindings(event_key,run_id) VALUES('codex:session:turn',200)`); err != nil {
 		t.Fatal(err)
 	}
+	progress := &scanProgressRecorder{}
+	service.Progress = progress
 	result, err := service.Scan(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -501,6 +503,90 @@ func TestUsageParserVersionRebuildsUnchangedSource(t *testing.T) {
 	}
 	if result["replaced"] == 0 || events != 2 || input != 30 || parserVersion != usageParserVersion || bindings != 2 {
 		t.Fatalf("result=%v events=%d input=%d parser_version=%d bindings=%d", result, events, input, parserVersion, bindings)
+	}
+	wantProgress := []ScanProgress{{Total: 1, Reason: ParserVersionRereadReason}, {Processed: 1, Total: 1, Reason: ParserVersionRereadReason}}
+	if !reflect.DeepEqual(progress.updates, wantProgress) {
+		t.Fatalf("parser-version progress=%#v want=%#v", progress.updates, wantProgress)
+	}
+}
+
+func TestRebuildDoesNotLabelUnchangedOldParserSource(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	home := filepath.Join(root, "home")
+	source := filepath.Join(home, ".codex", "sessions", "fixture.jsonl")
+	if err := os.MkdirAll(filepath.Dir(source), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(source, []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	database, err := store.Open(ctx, filepath.Join(root, "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	service := New(database, home)
+	if _, err = service.Scan(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = database.Exec(ctx, `UPDATE usage_source_files SET parser_version=0 WHERE path=?`, source); err != nil {
+		t.Fatal(err)
+	}
+	inventory, err := service.Inventory(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !inventory.ParserVersionReread {
+		t.Fatalf("inventory=%#v did not identify unchanged old parser source", inventory)
+	}
+	progress := &scanProgressRecorder{}
+	service.Progress = progress
+	if _, _, err = service.Rebuild(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if len(progress.updates) == 0 {
+		t.Fatal("rebuild emitted no progress updates")
+	}
+	for _, update := range progress.updates {
+		if update.Reason != "" {
+			t.Fatalf("rebuild progress=%#v unexpectedly labeled parser reread", progress.updates)
+		}
+	}
+}
+
+func TestInventoryWithNewDataDoesNotClaimParserVersionReread(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	home := filepath.Join(root, "home")
+	source := filepath.Join(home, ".codex", "sessions", "fixture.jsonl")
+	if err := os.MkdirAll(filepath.Dir(source), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(source, []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	database, err := store.Open(ctx, filepath.Join(root, "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	service := New(database, home)
+	if _, err = service.Scan(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = database.Exec(ctx, `UPDATE usage_source_files SET parser_version=0 WHERE path=?`, source); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(source, []byte("{}\n{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	inventory, err := service.Inventory(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inventory.ParserVersionReread {
+		t.Fatalf("inventory=%#v labeled new data as parser-version reread", inventory)
 	}
 }
 
@@ -1103,6 +1189,59 @@ func TestScanDeduplicatesAndKeepsPartialLineForNextScan(t *testing.T) {
 	third, err := service.Scan(context.Background())
 	if err != nil || third["imported"] != 0 {
 		t.Fatalf("third = %#v, %v", third, err)
+	}
+}
+
+type scanProgressRecorder struct {
+	starts  int
+	stops   int
+	updates []ScanProgress
+}
+
+func (r *scanProgressRecorder) Start()                       { r.starts++ }
+func (r *scanProgressRecorder) Update(progress ScanProgress) { r.updates = append(r.updates, progress) }
+func (r *scanProgressRecorder) Stop()                        { r.stops++ }
+
+func TestScanAndRebuildReportProcessedAndTotalSourceFiles(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	home := filepath.Join(root, "home")
+	database, err := store.Open(ctx, filepath.Join(root, "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	for _, name := range []string{"one.jsonl", "two.jsonl"} {
+		path := filepath.Join(home, ".codex", "sessions", name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("{}\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	service := New(database, home)
+	progress := &scanProgressRecorder{}
+	service.Progress = progress
+	if _, err := service.Scan(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if progress.starts != 1 || progress.stops != 1 {
+		t.Fatalf("scan progress lifecycle starts=%d stops=%d", progress.starts, progress.stops)
+	}
+	want := []ScanProgress{{Total: 2}, {Processed: 1, Total: 2}, {Processed: 2, Total: 2}}
+	if !reflect.DeepEqual(progress.updates, want) {
+		t.Fatalf("scan progress=%#v want=%#v", progress.updates, want)
+	}
+	progress.starts, progress.stops, progress.updates = 0, 0, nil
+	if _, _, err := service.Rebuild(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if progress.starts != 1 || progress.stops != 1 {
+		t.Fatalf("rebuild progress lifecycle starts=%d stops=%d", progress.starts, progress.stops)
+	}
+	if !reflect.DeepEqual(progress.updates, want) {
+		t.Fatalf("rebuild progress=%#v want=%#v", progress.updates, want)
 	}
 }
 

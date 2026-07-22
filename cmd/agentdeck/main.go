@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -43,6 +44,13 @@ var newCredentialVault = func(stateRoot string) provider.CredentialVault {
 }
 var credentialIsTerminal = func(file *os.File) bool { return term.IsTerminal(int(file.Fd())) }
 var credentialReadPassword = term.ReadPassword
+var usageProgressIsTerminal = func(w io.Writer) bool {
+	file, ok := w.(*os.File)
+	return ok && term.IsTerminal(int(file.Fd()))
+}
+var newUsageProgress = func(stderr io.Writer, quiet bool) usage.ScanProgressReporter {
+	return newUsageProgressOutput(stderr, quiet, usageProgressIsTerminal(stderr))
+}
 
 type commandOptions struct {
 	stateDir string
@@ -57,6 +65,156 @@ type commandOptions struct {
 
 type inputError struct {
 	err error
+}
+
+const (
+	usageProgressInitialDelay = time.Second
+	usageProgressRefresh      = 250 * time.Millisecond
+)
+
+type usageProgressTimer interface {
+	Chan() <-chan time.Time
+	Stop()
+}
+
+type usageProgressTicker interface {
+	Chan() <-chan time.Time
+	Stop()
+}
+
+type usageProgressClock interface {
+	NewTimer(time.Duration) usageProgressTimer
+	NewTicker(time.Duration) usageProgressTicker
+}
+
+type realUsageProgressClock struct{}
+
+type realUsageProgressTimer struct{ *time.Timer }
+
+func (timer realUsageProgressTimer) Chan() <-chan time.Time { return timer.C }
+func (timer realUsageProgressTimer) Stop()                  { timer.Timer.Stop() }
+
+type realUsageProgressTicker struct{ *time.Ticker }
+
+func (ticker realUsageProgressTicker) Chan() <-chan time.Time { return ticker.C }
+func (ticker realUsageProgressTicker) Stop()                  { ticker.Ticker.Stop() }
+
+func (realUsageProgressClock) NewTimer(delay time.Duration) usageProgressTimer {
+	return realUsageProgressTimer{Timer: time.NewTimer(delay)}
+}
+
+func (realUsageProgressClock) NewTicker(interval time.Duration) usageProgressTicker {
+	return realUsageProgressTicker{Ticker: time.NewTicker(interval)}
+}
+
+type usageProgressOutput struct {
+	stderr   io.Writer
+	quiet    bool
+	terminal bool
+	clock    usageProgressClock
+
+	mu       sync.Mutex
+	progress usage.ScanProgress
+	emitted  bool
+	done     chan struct{}
+	wg       sync.WaitGroup
+}
+
+func newUsageProgressOutput(stderr io.Writer, quiet, terminal bool) *usageProgressOutput {
+	return newUsageProgressOutputWithClock(stderr, quiet, terminal, realUsageProgressClock{})
+}
+
+func newUsageProgressOutputWithClock(stderr io.Writer, quiet, terminal bool, clock usageProgressClock) *usageProgressOutput {
+	return &usageProgressOutput{stderr: stderr, quiet: quiet, terminal: terminal, clock: clock}
+}
+
+func (p *usageProgressOutput) Start() {
+	if p.quiet {
+		return
+	}
+	p.mu.Lock()
+	if p.done != nil {
+		p.mu.Unlock()
+		return
+	}
+	p.done = make(chan struct{})
+	done := p.done
+	timer := p.clock.NewTimer(usageProgressInitialDelay)
+	p.wg.Add(1)
+	p.mu.Unlock()
+	go func() {
+		defer p.wg.Done()
+		defer timer.Stop()
+		select {
+		case <-done:
+			return
+		case <-timer.Chan():
+		}
+		p.writeProgress()
+		ticker := p.clock.NewTicker(usageProgressRefresh)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.Chan():
+				p.writeProgress()
+			}
+		}
+	}()
+}
+
+func (p *usageProgressOutput) Update(progress usage.ScanProgress) {
+	p.mu.Lock()
+	p.progress = progress
+	p.mu.Unlock()
+}
+
+func (p *usageProgressOutput) Stop() {
+	if p.quiet {
+		return
+	}
+	p.mu.Lock()
+	done := p.done
+	if done == nil {
+		p.mu.Unlock()
+		return
+	}
+	p.done = nil
+	close(done)
+	p.mu.Unlock()
+	p.wg.Wait()
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if !p.emitted {
+		return
+	}
+	p.writeProgressLocked()
+	if p.terminal {
+		_, _ = io.WriteString(p.stderr, "\n")
+	}
+}
+
+func (p *usageProgressOutput) writeProgress() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.writeProgressLocked()
+}
+
+func (p *usageProgressOutput) writeProgressLocked() {
+	if p.progress.Total == 0 {
+		return
+	}
+	message := fmt.Sprintf("usage scan: %d/%d source files", p.progress.Processed, p.progress.Total)
+	if p.progress.Reason != "" {
+		message += " (" + p.progress.Reason + ")"
+	}
+	if p.terminal {
+		_, _ = fmt.Fprintf(p.stderr, "\r\x1b[2K%s", message)
+	} else {
+		_, _ = fmt.Fprintf(p.stderr, "%s\n", message)
+	}
+	p.emitted = true
 }
 
 func (e *inputError) Error() string {
@@ -1418,15 +1576,21 @@ func newUsageCommand(opts *commandOptions) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			data, partial, warnings, err := run(command.Context(), usage.New(database, home), database, args)
+			service := usage.New(database, home)
+			service.Progress = newUsageProgress(opts.stderr, opts.quiet)
+			data, partial, warnings, err := run(command.Context(), service, database, args)
 			if err != nil {
 				return err
 			}
 			return writeUsageEnvelope(opts.stdout, opts.format, commandOutputName(command), data, partial, warnings, opts.quiet, newUsageTextRenderOptions(opts.stdout, opts.noColor))
 		}
 	}
+	var summaryNoScan bool
 	summary := &cobra.Command{Use: "summary [daily|weekly|monthly]", Args: cobra.MaximumNArgs(1), RunE: withUsage(func(ctx context.Context, s *usage.Service, _ *store.Store, args []string) (any, bool, []string, error) {
-		_, scanErr := s.Scan(ctx)
+		var scanErr error
+		if !summaryNoScan {
+			_, scanErr = s.Scan(ctx)
+		}
 		if len(args) == 0 {
 			data, err := s.Summary(ctx)
 			return data, scanErr != nil, map[bool][]string{true: {"scan_incomplete"}}[scanErr != nil], err
@@ -1442,8 +1606,9 @@ func newUsageCommand(opts *commandOptions) *cobra.Command {
 		data, err := s.SummaryRange(ctx, from, to)
 		return data, scanErr != nil, map[bool][]string{true: {"scan_incomplete"}}[scanErr != nil], err
 	})}
+	summary.Flags().BoolVar(&summaryNoScan, "no-scan", false, "Use stored aggregate without scanning sources")
 	var statsPeriod, statsFrom, statsTo, statsGroup, statsMetric, statsClient, statsModel, statsProvider string
-	var statsActivity bool
+	var statsActivity, statsNoScan bool
 	stats := &cobra.Command{Use: "stats", Args: cobra.NoArgs, RunE: withUsage(func(ctx context.Context, s *usage.Service, _ *store.Store, _ []string) (any, bool, []string, error) {
 		if statsClient != "" && statsClient != "codex" && statsClient != "claude" {
 			return nil, false, nil, &inputError{err: fmt.Errorf("usage stats client must be codex or claude")}
@@ -1454,7 +1619,10 @@ func newUsageCommand(opts *commandOptions) *cobra.Command {
 		if statsActivity && statsModel == "" {
 			return nil, false, nil, &inputError{err: fmt.Errorf("usage stats --activity requires --model")}
 		}
-		_, scanErr := s.Scan(ctx)
+		var scanErr error
+		if !statsNoScan {
+			_, scanErr = s.Scan(ctx)
+		}
 		now := time.Now()
 		from, to, err := resolveUsageRange(ctx, s, statsPeriod, statsFrom, statsTo, now, time.Local)
 		if err != nil {
@@ -1479,6 +1647,7 @@ func newUsageCommand(opts *commandOptions) *cobra.Command {
 	stats.Flags().StringVar(&statsModel, "model", "", "Filter by exact model name")
 	stats.Flags().StringVar(&statsProvider, "provider", "", "Open-set exact runtime provider; values are not enumerated; unknown selects unattributed events")
 	stats.Flags().BoolVar(&statsActivity, "activity", false, "Show safe activity and tool summaries for the selected model")
+	stats.Flags().BoolVar(&statsNoScan, "no-scan", false, "Use stored aggregate without scanning sources")
 	cmd.AddCommand(
 		&cobra.Command{Use: "scan", Args: cobra.NoArgs, RunE: withUsage(func(ctx context.Context, s *usage.Service, _ *store.Store, _ []string) (any, bool, []string, error) {
 			data, err := s.Scan(ctx)

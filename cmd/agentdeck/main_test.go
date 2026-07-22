@@ -6,11 +6,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -830,6 +832,418 @@ func TestUsageCommandTextAndJSONContracts(t *testing.T) {
 	}
 	if envelope["command"] != "usage.summary" || envelope["schema_version"] != float64(1) {
 		t.Fatalf("envelope = %#v", envelope)
+	}
+}
+
+type recordingUsageProgress struct {
+	starts, stops int
+	updates       []usage.ScanProgress
+	stderr        io.Writer
+}
+
+func (r *recordingUsageProgress) Start() { r.starts++ }
+func (r *recordingUsageProgress) Update(progress usage.ScanProgress) {
+	r.updates = append(r.updates, progress)
+}
+func (r *recordingUsageProgress) Stop() { r.stops++ }
+
+func TestUsageCommandsUseProgressForExplicitAndImplicitScans(t *testing.T) {
+	state := filepath.Join(t.TempDir(), "state")
+	home := t.TempDir()
+	oldHome := userHomeDir
+	userHomeDir = func() (string, error) { return home, nil }
+	t.Cleanup(func() { userHomeDir = oldHome })
+	oldFactory := newUsageProgress
+	var reporters []*recordingUsageProgress
+	var quietValues []bool
+	newUsageProgress = func(stderr io.Writer, quiet bool) usage.ScanProgressReporter {
+		reporter := &recordingUsageProgress{stderr: stderr}
+		reporters = append(reporters, reporter)
+		quietValues = append(quietValues, quiet)
+		return reporter
+	}
+	t.Cleanup(func() { newUsageProgress = oldFactory })
+	for _, args := range [][]string{
+		{"--state-dir", state, "usage", "scan"},
+		{"--state-dir", state, "usage", "rebuild"},
+		{"--state-dir", state, "usage", "stats"},
+		{"--state-dir", state, "usage", "summary"},
+		{"--state-dir", state, "usage", "stats", "--no-scan"},
+		{"--state-dir", state, "usage", "summary", "--no-scan"},
+		{"--state-dir", state, "--quiet", "usage", "scan"},
+	} {
+		var stdout, stderr bytes.Buffer
+		if exit := execute(args, bytes.NewReader(nil), &stdout, &stderr); exit != 0 {
+			t.Fatalf("args=%v exit=%d stdout=%q stderr=%q", args, exit, stdout.String(), stderr.String())
+		}
+	}
+	if len(reporters) != 7 {
+		t.Fatalf("reporters=%d want 7", len(reporters))
+	}
+	for _, index := range []int{0, 1, 2, 3, 6} {
+		reporter := reporters[index]
+		if reporter.starts != 1 || reporter.stops != 1 || len(reporter.updates) == 0 {
+			t.Fatalf("command %d progress starts=%d stops=%d updates=%#v", index, reporter.starts, reporter.stops, reporter.updates)
+		}
+	}
+	if got := reporters[2].updates[0]; got != (usage.ScanProgress{}) {
+		t.Fatalf("usage stats did not run its pre-scan: first progress=%#v", got)
+	}
+	if got := reporters[3].updates[0]; got != (usage.ScanProgress{}) {
+		t.Fatalf("usage summary did not run its pre-scan: first progress=%#v", got)
+	}
+	for _, index := range []int{4, 5} {
+		reporter := reporters[index]
+		if reporter.starts != 0 || reporter.stops != 0 || len(reporter.updates) != 0 {
+			t.Fatalf("command %d --no-scan progress starts=%d stops=%d updates=%#v", index, reporter.starts, reporter.stops, reporter.updates)
+		}
+	}
+	if quietValues[6] != true {
+		t.Fatalf("--quiet did not reach progress output: %v", quietValues)
+	}
+}
+
+func TestUsageNoScanUsesStoredAggregateUntilDefaultScan(t *testing.T) {
+	initial := []byte(`{"type":"session_meta","payload":{"session_id":"no-scan"}}` + "\n" +
+		`{"type":"turn_context","payload":{"turn_id":"first","model":"gpt-5.4"}}` + "\n" +
+		`{"type":"event_msg","timestamp":"2026-07-20T00:00:00Z","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":10}}}}` + "\n")
+	appended := []byte(`{"type":"turn_context","payload":{"turn_id":"second","model":"gpt-5.4"}}` + "\n" +
+		`{"type":"event_msg","timestamp":"2026-07-20T00:01:00Z","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":20}}}}` + "\n")
+	tests := []struct {
+		name   string
+		args   func(state string, noScan bool) []string
+		decode func(t *testing.T, data []byte) (int64, int64, bool, []string)
+	}{
+		{
+			name: "stats",
+			args: func(state string, noScan bool) []string {
+				args := []string{"--state-dir", state, "--format", "json", "usage", "stats", "--period", "all"}
+				if noScan {
+					args = append(args, "--no-scan")
+				}
+				return args
+			},
+			decode: func(t *testing.T, data []byte) (int64, int64, bool, []string) {
+				t.Helper()
+				var envelope struct {
+					Data     usage.StatsReport `json:"data"`
+					Partial  bool              `json:"partial"`
+					Warnings []string          `json:"warnings"`
+				}
+				if err := json.Unmarshal(data, &envelope); err != nil {
+					t.Fatal(err)
+				}
+				return envelope.Data.Totals.Events, envelope.Data.Totals.InputTokens, envelope.Partial, envelope.Warnings
+			},
+		},
+		{
+			name: "summary",
+			args: func(state string, noScan bool) []string {
+				args := []string{"--state-dir", state, "--format", "json", "usage", "summary"}
+				if noScan {
+					args = append(args, "--no-scan")
+				}
+				return args
+			},
+			decode: func(t *testing.T, data []byte) (int64, int64, bool, []string) {
+				t.Helper()
+				var envelope struct {
+					Data     usage.Summary `json:"data"`
+					Partial  bool          `json:"partial"`
+					Warnings []string      `json:"warnings"`
+				}
+				if err := json.Unmarshal(data, &envelope); err != nil {
+					t.Fatal(err)
+				}
+				return envelope.Data.Counts["events"], envelope.Data.Tokens["input_tokens"], envelope.Partial, envelope.Warnings
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			root := t.TempDir()
+			state := filepath.Join(root, "state")
+			home := filepath.Join(root, "home")
+			source := filepath.Join(home, ".codex", "sessions", "fixture.jsonl")
+			if err := os.MkdirAll(filepath.Dir(source), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(source, initial, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			database, err := store.Open(context.Background(), state)
+			if err != nil {
+				t.Fatal(err)
+			}
+			service := usage.New(database, home)
+			if result, err := service.Scan(context.Background()); err != nil || result["imported"] != 1 {
+				database.Close()
+				t.Fatalf("initial scan=%#v err=%v", result, err)
+			}
+			if err := database.Close(); err != nil {
+				t.Fatal(err)
+			}
+			file, err := os.OpenFile(source, os.O_APPEND|os.O_WRONLY, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := file.Write(appended); err != nil {
+				file.Close()
+				t.Fatal(err)
+			}
+			if err := file.Close(); err != nil {
+				t.Fatal(err)
+			}
+			oldHome := userHomeDir
+			userHomeDir = func() (string, error) { return home, nil }
+			t.Cleanup(func() { userHomeDir = oldHome })
+			runJSON := func(noScan bool) (int64, int64, bool, []string) {
+				t.Helper()
+				var stdout, stderr bytes.Buffer
+				if exit := execute(test.args(state, noScan), bytes.NewReader(nil), &stdout, &stderr); exit != 0 {
+					t.Fatalf("args=%v exit=%d stdout=%q stderr=%q", test.args(state, noScan), exit, stdout.String(), stderr.String())
+				}
+				return test.decode(t, stdout.Bytes())
+			}
+			assertReport := func(label string, wantEvents, wantTokens int64) {
+				t.Helper()
+				events, tokens, partial, warnings := runJSON(label == "no-scan")
+				if events != wantEvents || tokens != wantTokens || partial || len(warnings) != 0 {
+					t.Fatalf("%s events=%d tokens=%d partial=%t warnings=%#v; want events=%d tokens=%d partial=false warnings=[]", label, events, tokens, partial, warnings, wantEvents, wantTokens)
+				}
+			}
+			assertReport("no-scan", 1, 10)
+			assertReport("default", 2, 30)
+		})
+	}
+}
+
+type stderrProbeProgress struct{ stderr io.Writer }
+
+func (p *stderrProbeProgress) Start()                    { _, _ = io.WriteString(p.stderr, "progress-probe\n") }
+func (p *stderrProbeProgress) Update(usage.ScanProgress) {}
+func (p *stderrProbeProgress) Stop()                     {}
+
+func TestUsageProgressReporterUsesStderrAndPreservesJSONStdout(t *testing.T) {
+	state := filepath.Join(t.TempDir(), "state")
+	home := t.TempDir()
+	oldHome := userHomeDir
+	userHomeDir = func() (string, error) { return home, nil }
+	t.Cleanup(func() { userHomeDir = oldHome })
+	oldFactory := newUsageProgress
+	var reporter *stderrProbeProgress
+	newUsageProgress = func(stderr io.Writer, quiet bool) usage.ScanProgressReporter {
+		if quiet {
+			t.Fatal("JSON usage scan unexpectedly requested quiet progress")
+		}
+		reporter = &stderrProbeProgress{stderr: stderr}
+		return reporter
+	}
+	t.Cleanup(func() { newUsageProgress = oldFactory })
+	var stdout, stderr bytes.Buffer
+	if exit := execute([]string{"--state-dir", state, "--format", "json", "usage", "scan"}, bytes.NewReader(nil), &stdout, &stderr); exit != 0 {
+		t.Fatalf("exit=%d stdout=%q stderr=%q", exit, stdout.String(), stderr.String())
+	}
+	if reporter == nil || reporter.stderr != io.Writer(&stderr) {
+		t.Fatalf("progress reporter stderr=%#v want command stderr=%#v", reporter, &stderr)
+	}
+	if got := stderr.String(); got != "progress-probe\n" {
+		t.Fatalf("stderr=%q", got)
+	}
+	if strings.Contains(stdout.String(), "progress-probe") {
+		t.Fatalf("JSON stdout was polluted by progress: %q", stdout.String())
+	}
+	var envelope map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil || envelope["command"] != "usage.scan" {
+		t.Fatalf("JSON stdout=%q envelope=%#v err=%v", stdout.String(), envelope, err)
+	}
+}
+
+type manualUsageProgressTimer struct{ channel chan time.Time }
+
+func (timer *manualUsageProgressTimer) Chan() <-chan time.Time { return timer.channel }
+func (timer *manualUsageProgressTimer) Stop()                  {}
+
+type manualUsageProgressTicker struct{ channel chan time.Time }
+
+func (ticker *manualUsageProgressTicker) Chan() <-chan time.Time { return ticker.channel }
+func (ticker *manualUsageProgressTicker) Stop()                  {}
+
+type manualUsageProgressClock struct {
+	mu            sync.Mutex
+	timer         *manualUsageProgressTimer
+	ticker        *manualUsageProgressTicker
+	tickerCreated chan struct{}
+}
+
+func newManualUsageProgressClock() *manualUsageProgressClock {
+	return &manualUsageProgressClock{tickerCreated: make(chan struct{})}
+}
+
+func (clock *manualUsageProgressClock) NewTimer(time.Duration) usageProgressTimer {
+	clock.mu.Lock()
+	defer clock.mu.Unlock()
+	clock.timer = &manualUsageProgressTimer{channel: make(chan time.Time, 1)}
+	return clock.timer
+}
+
+func (clock *manualUsageProgressClock) NewTicker(time.Duration) usageProgressTicker {
+	clock.mu.Lock()
+	defer clock.mu.Unlock()
+	clock.ticker = &manualUsageProgressTicker{channel: make(chan time.Time, 1)}
+	close(clock.tickerCreated)
+	return clock.ticker
+}
+
+func (clock *manualUsageProgressClock) fireTimer(t *testing.T) {
+	t.Helper()
+	clock.mu.Lock()
+	timer := clock.timer
+	clock.mu.Unlock()
+	if timer == nil {
+		t.Fatal("progress timer was not created")
+	}
+	timer.channel <- time.Time{}
+}
+
+func (clock *manualUsageProgressClock) waitForTicker(t *testing.T) {
+	t.Helper()
+	select {
+	case <-clock.tickerCreated:
+	case <-time.After(time.Second):
+		t.Fatal("progress ticker was not created")
+	}
+}
+
+func (clock *manualUsageProgressClock) fireTicker(t *testing.T) {
+	t.Helper()
+	clock.mu.Lock()
+	ticker := clock.ticker
+	clock.mu.Unlock()
+	if ticker == nil {
+		t.Fatal("progress ticker was not created")
+	}
+	ticker.channel <- time.Time{}
+}
+
+type synchronizedProgressWriter struct {
+	mu       sync.Mutex
+	contents string
+	writes   chan struct{}
+}
+
+func newSynchronizedProgressWriter() *synchronizedProgressWriter {
+	return &synchronizedProgressWriter{writes: make(chan struct{}, 8)}
+}
+
+func (writer *synchronizedProgressWriter) Write(data []byte) (int, error) {
+	writer.mu.Lock()
+	writer.contents += string(data)
+	writer.mu.Unlock()
+	select {
+	case writer.writes <- struct{}{}:
+	default:
+	}
+	return len(data), nil
+}
+
+func (writer *synchronizedProgressWriter) String() string {
+	writer.mu.Lock()
+	defer writer.mu.Unlock()
+	return writer.contents
+}
+
+func (writer *synchronizedProgressWriter) waitForWrite(t *testing.T) {
+	t.Helper()
+	select {
+	case <-writer.writes:
+	case <-time.After(time.Second):
+		t.Fatal("progress output was not written")
+	}
+}
+
+func TestUsageProgressOutputUsesControllableTimerAndTicker(t *testing.T) {
+	clock := newManualUsageProgressClock()
+	writer := newSynchronizedProgressWriter()
+	progress := newUsageProgressOutputWithClock(writer, false, false, clock)
+	progress.Start()
+	progress.Update(usage.ScanProgress{Processed: 1, Total: 3})
+	if got := writer.String(); got != "" {
+		t.Fatalf("progress emitted before timer: %q", got)
+	}
+	clock.fireTimer(t)
+	writer.waitForWrite(t)
+	clock.waitForTicker(t)
+	progress.Update(usage.ScanProgress{Processed: 2, Total: 3})
+	clock.fireTicker(t)
+	writer.waitForWrite(t)
+	progress.Update(usage.ScanProgress{Processed: 3, Total: 3})
+	progress.Stop()
+	if got, want := writer.String(), "usage scan: 1/3 source files\nusage scan: 2/3 source files\nusage scan: 3/3 source files\n"; got != want || strings.Contains(got, "\x1b[") {
+		t.Fatalf("non-TTY progress=%q want=%q", got, want)
+	}
+}
+
+func TestUsageProgressOutputTTYFinalRedrawAndQuiet(t *testing.T) {
+	clock := newManualUsageProgressClock()
+	writer := newSynchronizedProgressWriter()
+	progress := newUsageProgressOutputWithClock(writer, false, true, clock)
+	progress.Start()
+	progress.Update(usage.ScanProgress{Processed: 1, Total: 2})
+	clock.fireTimer(t)
+	writer.waitForWrite(t)
+	progress.Update(usage.ScanProgress{Processed: 2, Total: 2})
+	progress.Stop()
+	if got, want := writer.String(), "\r\x1b[2Kusage scan: 1/2 source files\r\x1b[2Kusage scan: 2/2 source files\n"; got != want {
+		t.Fatalf("TTY progress=%q want=%q", got, want)
+	}
+	quietClock := newManualUsageProgressClock()
+	quietWriter := newSynchronizedProgressWriter()
+	quiet := newUsageProgressOutputWithClock(quietWriter, true, false, quietClock)
+	quiet.Start()
+	quiet.Update(usage.ScanProgress{Processed: 1, Total: 2})
+	quiet.Stop()
+	if got := quietWriter.String(); got != "" {
+		t.Fatalf("quiet progress=%q", got)
+	}
+	quietClock.mu.Lock()
+	timerCreated := quietClock.timer != nil
+	quietClock.mu.Unlock()
+	if timerCreated {
+		t.Fatal("quiet progress created a timer")
+	}
+}
+
+func TestUsageProgressOutputFastStopBeforeInitialTimerStaysSilent(t *testing.T) {
+	clock := newManualUsageProgressClock()
+	writer := newSynchronizedProgressWriter()
+	progress := newUsageProgressOutputWithClock(writer, false, false, clock)
+	progress.Start()
+	progress.Update(usage.ScanProgress{Processed: 1, Total: 2})
+	progress.Stop()
+	if got := writer.String(); got != "" {
+		t.Fatalf("fast-stop progress=%q", got)
+	}
+	clock.mu.Lock()
+	tickerCreated := clock.ticker != nil
+	clock.mu.Unlock()
+	if tickerCreated {
+		t.Fatal("fast-stop progress created a refresh ticker")
+	}
+}
+
+func TestUsageProgressOutputShowsParserVersionRereadReason(t *testing.T) {
+	clock := newManualUsageProgressClock()
+	writer := newSynchronizedProgressWriter()
+	progress := newUsageProgressOutputWithClock(writer, false, false, clock)
+	progress.Start()
+	progress.Update(usage.ScanProgress{Processed: 1, Total: 1, Reason: usage.ParserVersionRereadReason})
+	clock.fireTimer(t)
+	writer.waitForWrite(t)
+	progress.Stop()
+	want := "usage scan: 1/1 source files (re-reading after parser update)\nusage scan: 1/1 source files (re-reading after parser update)\n"
+	if got := writer.String(); got != want {
+		t.Fatalf("parser-version progress=%q want=%q", got, want)
 	}
 }
 
