@@ -1,7 +1,10 @@
-# AI Provider Mode Switch Design
+---
+status: historical
+created: 2026-07-13
+retired: 2026-07-22
+---
 
-**Status:** reference, superseded by
-`docs/specs/2026-07-13-agentdeck-cli-design.md`
+# AI Provider Mode Switch Design
 
 This document describes the former legacy Python and Bash behavior. The
 repository implementation was removed after the AgentDeck replacement passed

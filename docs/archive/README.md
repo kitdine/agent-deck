@@ -1,4 +1,7 @@
-**Status:** reference
+---
+status: active
+created: 2026-07-22
+---
 
 # Archived Documents
 
@@ -8,8 +11,13 @@ Last updated: 2026-07-22
 
 This directory holds documents that are no longer the current entry point for
 development, but are not deleted because they still carry useful history:
-implementation rationale, superseded designs, or one-off investigation
+implementation rationale, superseded contracts, or one-off investigation
 records.
+
+It mirrors the live structure: retired execution trackers go under
+`plans/`, retired contracts under `specs/`. Filenames keep the topic only;
+`status: historical` and `retired:` in each document's frontmatter carry the
+rest.
 
 ## Criteria for archiving a document
 
@@ -37,6 +45,36 @@ Move a document here instead of leaving it `active` in `docs/plans/` or
   the index for archived material so the main doc index doesn't need to grow
   for documents nobody should open by default.
 
+## 2026-07-22 retirement: the phase-one CLI plan
+
+`plans/agentdeck-cli.md` (was `docs/plans/2026-07-13-agentdeck-cli.md`)
+
+This was the project's single execution tracker from the initial Go rewrite
+through v0.1.0 and ten follow-up rounds. It was retired at roughly 950 lines,
+with every task complete and independently reviewed.
+
+It was retired for size, not for being wrong. A tracker that spans phase-one
+bootstrapping, credential encryption, price catalogs, release automation, and
+unscoped future ideas makes "is this still current?" expensive to answer, and
+the convention that kept appending follow-up sections to it was the direct
+cause. That convention has been changed — see `docs/README.md`.
+
+Its role is now split:
+
+- `docs/README.md` — the documentation index and execution baseline: what is
+  active, what is open, what is deferred.
+- `docs/plans/usage-scan-performance.md` — the one design that was
+  still unimplemented when the plan was retired.
+- `docs/plans/test-coverage.md` — test coverage work.
+
+Delivered contracts described by the retired plan remain active in
+`docs/specs/cli-design.md`, which was **not** retired: a
+specification describes the currently-standing system and stays active as long
+as that system stands, whereas a plan tracks finite work and retires when the
+work is done. That spec also dropped its date prefix in the same pass — a date
+implies a snapshot, but a contract is revised in place, so it now carries a
+version and changelog instead.
+
 ## 2026-07-22 archive batch
 
 **Legacy AI provider mode and session cost tracking** — superseded by
@@ -46,11 +84,11 @@ marked `historical` in `docs/README.md` but had not actually been moved out
 of `docs/plans/` and `docs/specs/`; this batch physically relocates them to
 match that status and establishes this archive directory.
 
-- `2026-07-13-ai-provider-mode-plan.md` (was `docs/plans/2026-07-13-ai-provider-mode.md`)
-- `2026-07-13-ai-provider-mode-design.md` (was `docs/specs/2026-07-13-ai-provider-mode-design.md`)
-- `2026-07-13-ai-provider-session-cost-plan.md` (was `docs/plans/2026-07-13-ai-provider-session-cost.md`)
-- `2026-07-13-ai-provider-session-cost-design.md` (was `docs/specs/2026-07-13-ai-provider-session-cost-design.md`)
+- `plans/ai-provider-mode.md` (was `docs/plans/2026-07-13-ai-provider-mode.md`)
+- `specs/ai-provider-mode.md` (was `docs/specs/2026-07-13-ai-provider-mode-design.md`)
+- `plans/ai-provider-session-cost.md` (was `docs/plans/2026-07-13-ai-provider-session-cost.md`)
+- `specs/ai-provider-session-cost.md` (was `docs/specs/2026-07-13-ai-provider-session-cost-design.md`)
 
 Current conclusions and requirements for the functionality these described
-now live in `docs/plans/2026-07-13-agentdeck-cli.md` and
-`docs/specs/2026-07-13-agentdeck-cli-design.md`.
+now live in `docs/README.md` and
+`docs/specs/cli-design.md`.

@@ -1,7 +1,10 @@
-# Local AI Provider Session Cost Tracking Design
+---
+status: historical
+created: 2026-07-13
+retired: 2026-07-22
+---
 
-**Status:** reference, superseded by
-`docs/specs/2026-07-13-agentdeck-cli-design.md`
+# Local AI Provider Session Cost Tracking Design
 
 This document remains the detailed behavioral reference for the former legacy
 usage implementation and fixtures. The repository implementation was removed

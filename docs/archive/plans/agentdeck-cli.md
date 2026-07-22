@@ -1,16 +1,25 @@
+---
+status: historical
+created: 2026-07-13
+retired: 2026-07-22
+---
+
 # AgentDeck CLI Phase-One Implementation Plan
 
-**Status:** active, phase-one and version/installation baseline implementation
-and independent review complete; interactive CLI and shell completion usability
-implementation, release verification, and independent review complete; unified
-ASCII collection tables and machine-bound encrypted SQLite credential storage
-implemented, release-verified, and independent-review complete as of
-2026-07-22. Every follow-up in this plan has now passed independent review;
-the only open items are the release-automation verification bound to the next
-stable tag and the unscoped backlog at the end of this document.
+This plan tracked AgentDeck from the initial Go rewrite through v0.1.0 and ten
+follow-up rounds. Every task in it is complete and independently reviewed. It
+was retired because it had grown to roughly 950 lines spanning unrelated
+concerns, which made "is this still current?" expensive to answer.
+
+Current execution state lives in
+`docs/README.md`. Work that was still open when this
+plan was retired was carried forward there and into
+`docs/plans/usage-scan-performance.md`. Read this file only for
+historical detail: why a decision was made, or what a delivered contract looked
+like when it was built.
 
 **Specification:**
-`docs/specs/2026-07-13-agentdeck-cli-design.md`
+`docs/specs/cli-design.md`
 
 **Goal:** Replace the repository's separate Python and Bash entrypoints with
 one small Go CLI while preserving the approved provider and usage contracts and
@@ -277,7 +286,7 @@ the subsequent credential-owned provider configuration follow-up have passed
 their complete verification gates and independent re-reviews. Unified ASCII
 grid output for collection-shaped text results and machine-bound encrypted
 SQLite credential storage are approved and pending implementation.
-`docs/cli-manual.md` remains the active implemented command contract. The Codex
+`docs/specs/cli-manual.md` remains the active implemented command contract. The Codex
 `official` baseline remains built in and outside provider/credential
 persistence; Claude official is not implemented. Tests use temporary homes,
 synthetic machine identities, and isolated encrypted stores, never real HOME,
@@ -417,7 +426,7 @@ commit, or push was made.
       selections, and verify attribution before, during, and after an
       interrupted switch even after custom-provider deletion.
 - [x] Pass independent re-review of the consolidated Phase 9 fixes and promote
-      `docs/cli-manual.md` to the active command contract after that approval.
+      `docs/specs/cli-manual.md` to the active command contract after that approval.
 
 ### Credential-Owned Provider Configuration Follow-Up (2026-07-16)
 
@@ -747,15 +756,107 @@ formula automation:
       This is the first real exercise of the automated tap-PR flow added
       above — it has not run end-to-end yet.
 
+### Usage Scan Performance and Progress Follow-Up (2026-07-22)
+
+Design approved 2026-07-22. Implementation not started. Contract additions
+belong in the specification's usage collection and output sections.
+
+**Measured baseline.** An isolated fake `HOME` holding a copy of the real
+sources (471 JSONL files, 622 MB, 221,661 lines, producing 35,234 usage events
+and 39,365 tool-call rows) was scanned into a fresh state directory:
+
+| Scenario | Time |
+| --- | --- |
+| Cold scan (first run, or any full re-read) | 108.7 s, no output at all |
+| `usage stats` after a realistic 3-hour gap (3 new sessions, 6.07 MB) | 1.73 s |
+| `usage stats` with nothing new | 0.57 s |
+
+**The original backlog guess was wrong and is recorded here so it is not
+re-attempted.** The scan is already correctly incremental — per-source cursors
+plus append detection mean unchanged files are never re-read, and the whole
+471-file inventory stat is only part of the 0.57 s floor. Reports are not slow
+either: `Stats`/`Summary` aggregation is a five-query profile asserted by test.
+Nothing is redundantly re-scanned or re-aggregated.
+
+**Profiled root causes of the 108.7 s full re-read**, in order of cost:
+
+1. **`internal/usage/usage.go:852` is accidentally quadratic — 70.9 s, 65% of
+   the total.** The line loop calls
+   `strings.IndexByte(string(line), '\n')`, and `string(line)` copies the
+   entire remaining file buffer on **every line iteration**, so one file of
+   size `S` with `L` lines copies about `L x S/2` bytes. Replaying just this
+   loop over the same 622 MB takes 70.9 s; `bytes.IndexByte(line, '\n')` over
+   identical input takes 0.32 s — a 218x difference for a semantically
+   identical operation. Because the cost is quadratic in **individual file
+   size**, it degrades superlinearly as single sessions grow, which is the
+   real reason the tool feels like it gets slower the longer it is used. It is
+   not correlated with elapsed time since the last scan.
+2. **`usage_events` has no index on `(client, session_id)` — about 13 s, 12%.**
+   `rebuildSessions` runs
+   `INSERT INTO usage_sessions ... SELECT ... WHERE client=? AND session_id=?`
+   once per affected session per file; `EXPLAIN QUERY PLAN` reports `SCAN
+   usage_events` for it, against a table that grows throughout the scan. The
+   sibling queries are already indexed (`usage_events_source` for
+   `affectedSessions`, the `event_key` autoindex for `upsertTx`). Measured by
+   A/B: adding only this index took the same cold scan from 108.7 s to 95.6 s.
+3. JSON parsing is **not** a bottleneck — 5.7 s, 5% — even though 79% of lines
+   are discarded as non-usage. A substring pre-filter before unmarshaling was
+   measured at 2.3 s versus 5.7 s, saving about 3 s; **do not implement it**,
+   the complexity is not worth 3% and it risks diverging from the parser's
+   real acceptance rules.
+4. The remaining ~19 s is legitimate work: event and tool-call upserts,
+   per-file transactions, snapshot revalidation, and activity parsing.
+
+Fixing 1 and 2 should bring the full re-read to roughly 25 s without changing
+any output contract. `internal/session` already uses `bytes.LastIndexByte` and
+`bytes.Split`, so it does not share the defect; `usage.go:1786`'s
+`strings.Split(string(out), "\n")` is a one-shot split outside any loop and is
+fine.
+
+**A full re-read is not rare.** `scanFileMode` sets `reset` when
+`parserVersion != usageParserVersion`, so every release that bumps the parser
+version silently re-reads every source on the next scan. The parser has already
+gone v1 -> v2 -> v3, meaning users have paid this cost after upgrades without
+any indication of why the command suddenly took two minutes.
+
+- [ ] Replace `strings.IndexByte(string(line), '\n')` at
+      `internal/usage/usage.go:852` with `bytes.IndexByte(line, '\n')`. The two
+      are semantically identical, so no output contract changes. Add coverage
+      that would actually fail on a regression — assert scan cost scales
+      roughly linearly with file size rather than asserting a wall-clock
+      threshold, which would be flaky in CI.
+- [ ] Add schema v14 with
+      `CREATE INDEX usage_events_client_session ON usage_events(client, session_id)`
+      and confirm with `EXPLAIN QUERY PLAN` that `rebuildSessions` no longer
+      reports `SCAN usage_events`. Migration only; no data rewrite.
+- [ ] Report progress for long scans on **stderr**, never stdout, so JSON and
+      NDJSON stay machine-parseable. Emit nothing for the first second so the
+      common 0.6-2 s path stays silent, then report processed/total source
+      files. Honor `--quiet` by suppressing entirely, emit no ANSI escapes when
+      stderr is not a TTY, and cover the implicit pre-scan inside
+      `usage stats` and `usage summary`, not just explicit `usage scan` and
+      `usage rebuild`.
+- [ ] When a scan is triggered by a parser version change rather than by new
+      data, say so in that progress output. A two-minute wait after an upgrade
+      is acceptable if it is explained; an unexplained one reads as a hang.
+- [ ] Add `--no-scan` to `usage stats` and `usage summary` for callers who want
+      the stored aggregate immediately. Keep the synchronous pre-scan as the
+      default: reporting silently stale numbers is worse than waiting, and the
+      existing `scan_incomplete` partial-warning contract assumes a scan was
+      attempted. Do not move the scan to a background goroutine — that would
+      make report output depend on a race.
+- [ ] Re-measure the cold scan against the same fixture and record the result
+      here. Run L2 verification; the schema migration additionally requires the
+      migration and rollback tests.
+
 ## Backlog / Future Feature Ideas (2026-07-22, not yet scoped or approved)
 
 Raised by the maintainer as candidate future work. None of these have an
 approved specification yet; each needs its own design/plan document before
 implementation starts.
 
-- [ ] Add unit and integration test coverage across the full repository,
-      using the project's `test-driven-development` / `golang-testing` skill
-      workflow rather than retrofitting tests ad hoc.
+- [ ] Execute the direct test implementation queue in
+      [2026-07-22-agentdeck-test-coverage.md](../../plans/test-coverage.md).
 - [ ] Add the ability to switch Claude subscription/account (analogous to the
       existing AI provider switching, but for Claude account/plan selection
       rather than API base URL/token).
@@ -808,12 +909,11 @@ implementation starts.
       the HTTP status, so an oversized 5xx body is reported as
       non-retryable "response exceeds N bytes" instead of a retryable
       transient failure.
-- [ ] Investigate and fix `agentdeck usage`-family command performance: runs
-      get noticeably slower after the local usage/session history has
-      accumulated for a while (likely re-scanning or re-aggregating more data
-      than necessary on each invocation). Until the underlying scan/aggregate
-      path is fast again, add a progress indicator for long-running
-      compute/load phases so the command does not appear hung.
+Promoted out of this backlog on 2026-07-22: usage scan performance and
+progress reporting now has an approved design and its own follow-up section
+above ("Usage Scan Performance and Progress Follow-Up"). The original backlog
+wording guessed the cause was redundant re-scanning or re-aggregation; profiling
+disproved that and is recorded in that section.
 
 ## Required Verification
 

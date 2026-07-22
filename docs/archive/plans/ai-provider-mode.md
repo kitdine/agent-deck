@@ -1,7 +1,10 @@
-# AI Provider Mode Implementation Plan
+---
+status: historical
+created: 2026-07-13
+retired: 2026-07-22
+---
 
-**Status:** historical, superseded by
-`docs/plans/2026-07-13-agentdeck-cli.md`
+# AI Provider Mode Implementation Plan
 
 The legacy implementation remains available in historical commit `3fcc121` but
 has been removed from the current tree after the AgentDeck replacement passed

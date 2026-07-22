@@ -1,7 +1,10 @@
-# Local AI Provider Session Cost Tracking Implementation Plan
+---
+status: historical
+created: 2026-07-13
+retired: 2026-07-22
+---
 
-**Status:** historical, superseded by
-`docs/plans/2026-07-13-agentdeck-cli.md`
+# Local AI Provider Session Cost Tracking Implementation Plan
 
 The legacy implementation and review remediation remain available in
 historical commit `3fcc121` but have been removed from the current tree after
@@ -9,7 +12,7 @@ the AgentDeck replacement passed independent review. This plan remains a
 historical contract and is not the current execution tracker.
 
 **Specification:**
-`docs/archive/2026-07-13-ai-provider-session-cost-design.md`
+`docs/archive/specs/ai-provider-session-cost.md`
 
 **Goal:** Add private, incremental, session-aware local cost reporting for
 Codex and Claude without changing or uploading their session content.

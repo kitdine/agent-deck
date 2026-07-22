@@ -1,10 +1,13 @@
-# AgentDeck CLI 目标命令手册
+---
+status: active
+created: 2026-07-16
+---
 
-**Status:** active
+# AgentDeck CLI 目标命令手册
 
 本文档定义 Phase 9 CLI usability、Codex `official` provider baseline，以及
 credential-owned provider configuration 的正式命令契约。执行状态以
-`docs/plans/2026-07-13-agentdeck-cli.md` 为准。
+`docs/README.md` 为准。
 
 ## 设计原则
 

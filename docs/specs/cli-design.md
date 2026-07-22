@@ -1,10 +1,15 @@
+---
+status: active
+version: 10
+created: 2026-07-14
+---
+
 # AgentDeck CLI Design
 
-**Status:** active; phase-one, version/installation baseline, consolidated Phase
-9 CLI usability, and credential-owned provider configuration implementation,
-release verification, and independent review complete; unified ASCII list-table
-output and machine-bound encrypted SQLite credential storage implemented,
-release-verified, and independent-review complete as of 2026-07-22
+This document describes what the system does and must keep doing. It is revised
+in place as the contract changes and is not superseded by a dated replacement.
+Execution state — what is built, in flight, or deferred — lives in
+`docs/README.md`, not here.
 
 ## Product Definition
 
@@ -674,6 +679,29 @@ invisible to this scanner and never appear in `agentdeck usage` output; their
 cost is visible only in Claude Code's own in-process `/status` display. This
 is a completeness gap in the upstream transcript file, not an importer
 defect, and no local parsing change can recover it.
+
+Scanning is incremental per source: a stable per-file cursor plus append
+verification means unchanged content is never re-read. A full re-read happens
+only when a source is mutated, when a rebuild is forced, or when the stored
+parser version differs from the current one — the last of which makes the first
+scan after a parser-version release cost as much as a first-ever scan.
+
+Because that full re-read is expensive on real histories, long scans report
+progress on standard error. Progress never goes to standard output, so JSON and
+NDJSON output stays machine-parseable. Nothing is emitted for the first second,
+leaving the common fast path silent; after that the scan reports processed and
+total source files. `--quiet` suppresses progress entirely, and output that is
+not an interactive terminal carries no ANSI escapes. Progress covers the
+implicit scan performed by `usage stats` and `usage summary` as well as
+explicit `usage scan` and `usage rebuild`. When a scan is triggered by a parser
+version change rather than by new data, the progress output says so, because an
+unexplained multi-minute wait after an upgrade is indistinguishable from a hang.
+
+`usage stats` and `usage summary` scan synchronously before reporting so a
+report always reflects current sources; `--no-scan` returns the stored
+aggregate immediately for callers that prefer staleness to waiting. The scan is
+never moved to the background, which would make report contents depend on a
+race.
 
 Attribution has three explicit qualities:
 
@@ -1459,3 +1487,22 @@ import the legacy `providers.json`, usage database, or real client settings.
 49. Text lists all models and at most ten cache sessions while JSON returns all;
     model and session activity detail exposes no arguments, results, command
     text, environment, or reasoning.
+
+## Changelog
+
+Every entry is a change to the contract this document defines, not a record of
+implementation work. Add a row and raise the version whenever behavior promised
+here changes; do not create a dated copy of this file.
+
+| Version | Date | Contract change |
+| --- | --- | --- |
+| 10 | 2026-07-22 | Long scans report progress on stderr with a one-second delay, honor `--quiet`, emit no ANSI escapes off-TTY, and name a parser-version-triggered re-read. `usage stats` and `usage summary` gain `--no-scan` and keep scanning synchronously by default. Record two upstream measurement limits: Claude Code `ai-title` calls carry no usage object, and a first-party `/status` estimate may disagree with the catalog during introductory pricing. |
+| 9 | 2026-07-21 | Release and distribution contract: tag-annotation notes extraction, completion-aware Homebrew formula rendering, isolated brew verification, and automated tap pull requests for stable tags only. |
+| 8 | 2026-07-21 | Usage stats runtime provider dimension: derived per-client `providers` array, `--provider` global filter over an open value set, `unknown` as an explicit unattributed bucket, and the PROVIDERS text ranking. |
+| 7 | 2026-07-20 | Usage output readability and analytics: shared ASCII grid for collection output, split session token components, nullable complete versus known partial cost, deterministic unpriced-model reporting, and Claude-only dot/hyphen model matching. |
+| 6 | 2026-07-17 | Active-log-safe usage rebuild: per-source atomic replacement, preserved run bindings, partial warnings without advancing the watch checkpoint, and same-metadata snapshot revalidation. |
+| 5 | 2026-07-17 | Automatic price updates: LiteLLM `main` commit resolution through the GitHub API, pinned raw catalog download, immutable commit and content-hash provenance, and bounded retry. |
+| 4 | 2026-07-16 | Machine-bound encrypted credential storage: schema v9 `credential_secrets`, AES-256-GCM with reference-bound associated data, HKDF machine binding, and fail-closed key handling. Replaces the macOS Keychain adapter. |
+| 3 | 2026-07-16 | Credential-owned provider configuration and the unified ASCII list-table output contract. |
+| 2 | 2026-07-14 | Local session search: separate purgeable session database, extraction allowlists, and source-level incremental scan. |
+| 1 | 2026-07-13 | Initial contract: provider and credential management, usage collection and attribution, price catalog, extensions, backup, output envelopes, and doctor. |

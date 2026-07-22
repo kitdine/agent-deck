@@ -48,7 +48,7 @@ Do not bypass RTK merely for convenience.
 - Supported environments / 支持环境: macOS first, with portable core contracts
   for later Windows and Linux support.
 - Primary entry document / 项目入口文档:
-  `docs/specs/2026-07-13-agentdeck-cli-design.md`
+  `docs/specs/cli-design.md`
 
 Authoritative project facts live in code, tests, configuration, repository
 history, and the documents explicitly identified below. Chat history is not a
@@ -416,10 +416,9 @@ Authoritative documents:
 
 | Purpose                                        | Path                                                       |
 | ---------------------------------------------- | ---------------------------------------------------------- |
-| Documentation index / 文档索引                 | `docs/`                                                    |
-| Current execution status / 当前执行状态        | `docs/plans/2026-07-13-agentdeck-cli.md`                   |
-| Requirements catalog / 需求目录                | `docs/specs/2026-07-13-agentdeck-cli-design.md`            |
-| Architecture or API contract / 架构或 API 契约 | `docs/specs/2026-07-13-agentdeck-cli-design.md`            |
+| Documentation index and execution status / 文档索引与执行状态 | `docs/README.md`                              |
+| Requirements catalog / 需求目录                | `docs/specs/cli-design.md`                       |
+| Architecture or API contract / 架构或 API 契约 | `docs/specs/cli-design.md`                       |
 | Development guide / 开发指南                   | `AGENTS.md`                                                |
 | Deployment guide / 部署指南                    | Not applicable; this repository has no deployment process. |
 | Archived / superseded documents / 归档文档      | `docs/archive/` (see `docs/archive/README.md`)              |
@@ -454,9 +453,9 @@ store.
 
 - Handoff file / 交接文件: Not applicable; no dedicated handoff file exists.
 - Authoritative status source / 权威状态来源:
-  `docs/plans/2026-07-13-agentdeck-cli.md`
+  `docs/README.md`
 - Requirements source / 需求来源:
-  `docs/specs/2026-07-13-agentdeck-cli-design.md`
+  `docs/specs/cli-design.md`
 - Repository history / 仓库历史: `.` (`.git`)
 
 At the start of resumed work:

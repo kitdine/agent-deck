@@ -372,8 +372,8 @@ vendor/          已提交的 Go 依赖
 ## 文档与状态
 
 - [文档索引](docs/README.md)
-- [Phase One 实施计划](docs/plans/2026-07-13-agentdeck-cli.md)
-- [CLI 设计与契约](docs/specs/2026-07-13-agentdeck-cli-design.md)
+- [执行状态](docs/README.md)
+- [CLI 设计与契约](docs/specs/cli-design.md)
 
 仓库代码、测试、配置、Git 历史和以上 active 文档共同构成项目事实来源。
 

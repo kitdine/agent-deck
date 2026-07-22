@@ -402,8 +402,8 @@ vendor/          Committed Go dependencies
 ## Documentation and Status
 
 - [Documentation index](docs/README.md)
-- [Phase One implementation plan](docs/plans/2026-07-13-agentdeck-cli.md)
-- [CLI design and contracts](docs/specs/2026-07-13-agentdeck-cli-design.md)
+- [Execution status](docs/README.md)
+- [CLI design and contracts](docs/specs/cli-design.md)
 
 The repository code, tests, configuration, Git history, and active documents
 above are the sources of truth.
