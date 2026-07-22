@@ -33,7 +33,8 @@ historical detail; it is not a current tracker.
 | [specs/cli-design.md](specs/cli-design.md) | What the system does and must keep doing: provider, credential, usage, pricing, session, backup, and distribution behavior. Currently version 10; see its changelog. |
 | [specs/cli-manual.md](specs/cli-manual.md) | The implemented command surface, flags, and output shapes. |
 | [plans/usage-scan-performance.md](plans/usage-scan-performance.md) | Make a full usage re-read fast and visible. Design approved with a profiled baseline. active — 0/6 done. |
-| [plans/test-coverage.md](plans/test-coverage.md) | Repository test coverage queue from the 2026-07-22 gap scan. active — 0/5 done (tasks 1 and 2 implemented, in review). |
+| [plans/usage-stats-readability.md](plans/usage-stats-readability.md) | Keep `usage stats` text scannable as data grows. Design approved with a profiled baseline. active — 0/5 done. |
+| [plans/test-coverage.md](plans/test-coverage.md) | Repository test coverage queue from the 2026-07-22 gap scan. active — 1/5 done (task 1 passed Round 2 review; task 2 reopened for test repairs). |
 | [reviews/](reviews/README.md) | Per-task review records that back each plan's ticked `Review` cell. |
 | [archive/](archive/README.md) | Retired plans and superseded contracts. Not a starting point for new work. |
 
@@ -58,9 +59,6 @@ than expanding the entry in place.
 - [ ] Add the ability to switch Claude subscription/account — analogous to the
       existing AI provider switching, but selecting a Claude account or plan
       rather than an API base URL and token.
-- [ ] Continue improving usage-stats display readability. Current output
-      degrades once any single section grows large; wide tables and long lists
-      become hard to scan.
 - [ ] Implement a GUI, including a persistent menu-bar presence, as an
       alternative front end to the CLI.
 - [ ] Broaden the bundled fallback price catalog. `internal/usage/model-prices.json`
@@ -157,6 +155,16 @@ belong in this file.
   existing plan; that grew one file to roughly 950 lines spanning phase-one
   bootstrapping through release automation, and it was retired on 2026-07-22
   for exactly that reason.
+- End a plan with a **Starting a task** recipe: a single hit-method that turns
+  any Status-matrix anchor into a scoped `进入开发` instruction, so a task can be
+  handed to a developer (human or agent) without hand-writing a fresh prompt.
+  The recipe names what to read (`AGENTS.md`, the task's own section and its
+  named files, the verification routing) and what to do on completion (tick
+  `Dev`, record evidence, leave the review trail). One recipe per plan, keyed by
+  anchor, rather than a duplicated instruction under every task — per-task
+  specifics already live in each task's section. A plan whose tasks are already
+  governed by an equivalent execution contract satisfies this without a second
+  section.
 
 **Each plan tracks its own tasks in a status matrix; this file records only a
 coarse rollup.** A plan's task content lives in its prose (a `## Tasks` list or

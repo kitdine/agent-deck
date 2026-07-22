@@ -132,6 +132,22 @@ verification passes; an independent reviewer ticks **Review** once findings are
 closed, and reopens the task rather than ticking it when review finds problems.
 A task is done only when Review is ticked.
 
+## Starting a task
+
+Turn any row of the Status matrix into a scoped development instruction through
+its anchor — no fresh prompt needs to be written by hand:
+
+> **进入开发:usage-scan 性能与进度 / `<task-anchor>`**
+> 阅读 `AGENTS.md`、本 plan `## Tasks` 中 `<task-anchor>` 一条及它命名的文件、本
+> plan 的 `## Profiled Root Causes` 与 `## Required Verification`,以及
+> `docs/README.md` 的验证路由。只在该 task 的范围内实现并自测。完成后在
+> `## Status` 勾上该行的 `Dev`,把命令与结果记进该 task 的完成注记;评审留痕到
+> `docs/reviews/usage-scan-performance/<task-anchor>.md`。
+
+Example — `line-slice`: 阅读 `internal/usage/usage.go:852` 附近的行循环与既有
+usage 扫描测试;把 `strings.IndexByte(string(line), '\n')` 换成
+`bytes.IndexByte(line, '\n')`,并加一个断言扫描成本随文件大小近似线性的回归测试。
+
 ## Required Verification
 
 L2 for the scan path and output contract. The schema v14 migration
