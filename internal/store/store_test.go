@@ -4,8 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -277,8 +279,68 @@ func TestV13MigrationAddsSafeToolActivityStorage(t *testing.T) {
 		t.Fatalf("tool activity = %q %q, %v", toolName, status, err)
 	}
 	version, err := migrated.SchemaVersion(ctx)
-	if err != nil || version != 13 {
+	if err != nil || version != CurrentSchemaVersion {
 		t.Fatalf("schema version = %d, %v", version, err)
+	}
+}
+
+// The rebuildSessions query in internal/usage groups usage_events by
+// (client, session_id) once per affected session per scanned file; without an
+// index matching that pair, SQLite falls back to a full table scan that grows
+// with the table's size on every scan. This confirms schema v14 adds the
+// index and that the planner actually uses it.
+func TestV14MigrationAddsUsageEventsClientSessionIndex(t *testing.T) {
+	ctx := context.Background()
+	state := filepath.Join(t.TempDir(), "state")
+	if err := os.MkdirAll(state, platform.DirectoryMode); err != nil {
+		t.Fatal(err)
+	}
+	migrated, err := Open(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer migrated.Close()
+	version, err := migrated.SchemaVersion(ctx)
+	if err != nil || version != CurrentSchemaVersion {
+		t.Fatalf("schema version = %d, %v", version, err)
+	}
+	// Insert enough rows across enough distinct sessions that the planner's
+	// choice of index is unambiguous — a two-row table could plausibly still
+	// get scanned under some future SQLite cost-estimation heuristic even
+	// with the index present, which would make this test fragile without
+	// actually losing coverage of the index itself.
+	insert := `INSERT INTO usage_events(event_key,client,session_id,event_id,event_at,model,source_path,source_offset) VALUES(?,?,?,?,?,?,?,0)`
+	for i := 0; i < 60; i++ {
+		session := fmt.Sprintf("session-%02d", i)
+		key := fmt.Sprintf("e%02d", i)
+		if _, err = migrated.DB.ExecContext(ctx, insert, key, "codex", session, key, "2026-07-22T00:00:00Z", "gpt-5.4", "fixture"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rows, err := migrated.DB.QueryContext(ctx, `EXPLAIN QUERY PLAN SELECT client,session_id,MIN(event_at),MAX(event_at) FROM usage_events WHERE client=? AND session_id=? GROUP BY client,session_id`, "codex", "session-00")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var usesIndex bool
+	for rows.Next() {
+		var id, parent, notused int
+		var detail string
+		if err = rows.Scan(&id, &parent, &notused, &detail); err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(detail, "SCAN usage_events") {
+			t.Fatalf("rebuildSessions query plan still scans usage_events: %q", detail)
+		}
+		if strings.Contains(detail, "usage_events_client_session") {
+			usesIndex = true
+		}
+	}
+	if err = rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if !usesIndex {
+		t.Fatal("rebuildSessions query plan does not report using usage_events_client_session")
 	}
 }
 

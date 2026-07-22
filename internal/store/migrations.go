@@ -92,6 +92,9 @@ var migrations = []migration{
 		`CREATE INDEX usage_tool_calls_source ON usage_tool_calls(source_path)`,
 		`CREATE INDEX usage_tool_calls_started_at ON usage_tool_calls(started_at)`,
 	}},
+	{version: 14, statements: []string{
+		`CREATE INDEX usage_events_client_session ON usage_events(client, session_id)`,
+	}},
 }
 
 func normalizeUsageEventTimes(ctx context.Context, tx *sql.Tx) error {

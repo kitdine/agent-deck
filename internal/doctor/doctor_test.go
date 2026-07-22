@@ -36,7 +36,7 @@ func TestCheckOlderAndFutureSchemasAreSafeAndReadable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = database.Exec(ctx, "DROP TABLE usage_tool_calls; UPDATE schema_metadata SET version=12"); err != nil {
+	if _, err = database.Exec(ctx, "DROP TABLE usage_tool_calls; DROP INDEX usage_events_client_session; UPDATE schema_metadata SET version=12"); err != nil {
 		database.Close()
 		t.Fatal(err)
 	}
@@ -73,8 +73,8 @@ func TestCheckUsageSchemaMatrixNeverLeaksSQL(t *testing.T) {
 		drop                                    bool
 	}{
 		{"schema12", "schema", "warning", "schema_outdated", "agentdeck state migrate", 12, 12, true},
-		{"schema13", "schema", "ok", "", "", 13, 13, false},
-		{"schema13_missing_tool_calls", "schema", "error", "schema_incompatible", "", 13, 13, true},
+		{"schema_current", "schema", "ok", "", "", store.CurrentSchemaVersion, store.CurrentSchemaVersion, false},
+		{"schema_current_missing_tool_calls", "schema", "error", "schema_incompatible", "", store.CurrentSchemaVersion, store.CurrentSchemaVersion, true},
 		{"future", "database", "error", "unknown_schema", "", 99, 0, false},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -117,7 +117,7 @@ func TestCheckUsageSchemaMatrixNeverLeaksSQL(t *testing.T) {
 				if matched == nil || matched.Status != test.status || matched.Code != test.code || matched.Count != test.count || matched.Recovery != test.recovery {
 					t.Fatalf("full=%t check=%#v, want name=%s status=%s code=%s count=%d recovery=%q", full, matched, test.checkName, test.status, test.code, test.count, test.recovery)
 				}
-				if test.name == "schema13" && (hasCode(report, "schema_outdated") || hasCode(report, "schema_incompatible")) {
+				if test.name == "schema_current" && (hasCode(report, "schema_outdated") || hasCode(report, "schema_incompatible")) {
 					t.Fatalf("full=%t normal schema report=%#v", full, report)
 				}
 			}

@@ -17,7 +17,7 @@ import (
 	"modernc.org/sqlite"
 )
 
-const CurrentSchemaVersion = 13
+const CurrentSchemaVersion = 14
 
 // OpenSessions opens the separately purgeable session-search database. It is
 // deliberately not part of the core schema so deleting the index can never
