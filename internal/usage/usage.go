@@ -351,6 +351,13 @@ type EffectivePrice struct {
 	Unit       string                     `json:"unit"`
 	Prices     map[string]string          `json:"prices"`
 	Provenance map[string]PriceProvenance `json:"provenance"`
+	// PriceKind, BasisModel, and PricingNote are set only when an effective
+	// component still comes from a curated bundled entry marked as an
+	// equivalent estimate. They are omitted otherwise, so a published vendor
+	// rate keeps exactly the shape it always had.
+	PriceKind   string `json:"price_kind,omitempty"`
+	BasisModel  string `json:"basis_model,omitempty"`
+	PricingNote string `json:"pricing_note,omitempty"`
 }
 
 type priceLayerOrder struct {
@@ -492,16 +499,29 @@ func parseCatalog(data []byte) (catalog, error) {
 	}
 	return c, nil
 }
+
+// ImportBundledCatalog installs the catalog compiled into this binary.
+//
+// The catalog's own effective time comes from the stable
+// BundledCatalogEffectiveFrom, never from the models it happens to carry.
+// Deriving it from the minimum model date used to look harmless but coupled a
+// precedence key to catalog contents: priceLayerBefore ranks same-layer
+// catalogs by catalog_effective, so one curated model with an early date
+// dragged the whole catalog's date back and let a *previously installed*
+// bundled catalog outrank the newer one on every model they share — exactly
+// the "upgrade silently keeps stale prices" failure the content-derived
+// version guard exists to prevent. Each model still carries its own
+// effective_from, so historical gating is unaffected.
+//
+// The clock still caps it, so a catalog can never be recorded as effective in
+// the future on a machine whose time predates the build.
 func (s *Service) ImportBundledCatalog(ctx context.Context) error {
-	c, err := parseCatalog(bundledCatalog)
-	if err != nil {
+	if _, err := parseCatalog(bundledCatalog); err != nil {
 		return err
 	}
 	effective := s.now()
-	for _, model := range c.Models {
-		if at, parseErr := time.Parse(time.RFC3339Nano, model.EffectiveFrom); parseErr == nil && at.Before(effective) {
-			effective = at
-		}
+	if at, parseErr := time.Parse(time.RFC3339Nano, BundledCatalogEffectiveFrom); parseErr == nil && at.Before(effective) {
+		effective = at
 	}
 	return s.importCatalog(ctx, bundledCatalog, "bundled", bundledCatalogSourceURL, "", effective, hash(bundledCatalog))
 }
@@ -1651,6 +1671,9 @@ func (s *Service) priceListAt(ctx context.Context, providerFilter, modelFilter s
 	for _, item := range byKey {
 		out = append(out, *item)
 	}
+	if err = markEstimatedPrices(out); err != nil {
+		return nil, err
+	}
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Provider == out[j].Provider {
 			return out[i].Model < out[j].Model
@@ -1658,6 +1681,57 @@ func (s *Service) priceListAt(ctx context.Context, providerFilter, modelFilter s
 		return out[i].Provider < out[j].Provider
 	})
 	return out, nil
+}
+
+// markEstimatedPrices discloses, on price-list rows only, that an effective
+// price is a curated equivalent estimate rather than a published vendor rate.
+//
+// The marker is derived rather than stored: a row qualifies only while at
+// least one component that actually won still comes from the exact compiled
+// catalog that carries the estimate. As soon as a fresher litellm or official
+// catalog supplies every component, normal provenance has taken over and the
+// estimate stops describing what the user is being charged, so the marker
+// disappears without anyone editing the curated file. Matching on the catalog
+// version rather than on the bundled layer matters because a database can hold
+// bundled catalogs from several releases, and a price served by a different
+// one of them is not this estimate.
+//
+// It returns an error if the compiled gap-fill or catalog cannot be parsed.
+// Both are embedded at build time and guarded by tests, so this cannot happen
+// in a shipped binary; failing loudly is deliberate, since silently dropping
+// the disclosure would present an estimate as a published rate.
+func markEstimatedPrices(prices []EffectivePrice) error {
+	estimates, err := bundledEstimateEntries()
+	if err != nil {
+		return err
+	}
+	if len(estimates) == 0 {
+		return nil
+	}
+	version, err := compiledBundledCatalogVersion()
+	if err != nil {
+		return err
+	}
+	for i := range prices {
+		entry, curated := estimates[prices[i].Provider+"\x00"+prices[i].Model]
+		if !curated {
+			continue
+		}
+		fromBundled := false
+		for _, provenance := range prices[i].Provenance {
+			if provenance.SourceKind == "bundled" && provenance.CatalogVersion == version {
+				fromBundled = true
+				break
+			}
+		}
+		if !fromBundled {
+			continue
+		}
+		prices[i].PriceKind = GapfillKindEquivalentEstimate
+		prices[i].BasisModel = entry.BasisModel
+		prices[i].PricingNote = entry.PricingNote
+	}
+	return nil
 }
 
 // PriceDiagnostics returns only aggregate catalog health counts. It never

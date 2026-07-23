@@ -728,6 +728,45 @@
         "command": "string",
         "data": [
           {
+            "basis_model": "string",
+            "model": "string",
+            "price_kind": "string",
+            "prices": {
+              "cached_input": "string",
+              "input": "string",
+              "output": "string"
+            },
+            "pricing_note": "string",
+            "provenance": {
+              "cached_input": {
+                "catalog_version": "string",
+                "commit_sha": "string",
+                "content_sha256": "string",
+                "effective_from": "string",
+                "source_kind": "string",
+                "source_url": "string"
+              },
+              "input": {
+                "catalog_version": "string",
+                "commit_sha": "string",
+                "content_sha256": "string",
+                "effective_from": "string",
+                "source_kind": "string",
+                "source_url": "string"
+              },
+              "output": {
+                "catalog_version": "string",
+                "commit_sha": "string",
+                "content_sha256": "string",
+                "effective_from": "string",
+                "source_kind": "string",
+                "source_url": "string"
+              }
+            },
+            "provider": "string",
+            "unit": "string"
+          },
+          {
             "model": "string",
             "prices": {
               "cache_read": "string",

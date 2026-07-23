@@ -22,7 +22,7 @@ FORCE ?= 0
 COMPLETION_SHELL ?= auto
 COMPLETION_RC ?=
 
-.PHONY: build build-all release-tag release-archive check-arm64-size check-install check-privacy check-release-distribution install uninstall release-verify clean test test-race vet verify
+.PHONY: build build-all release-tag release-archive check-arm64-size check-install check-privacy check-release-distribution install uninstall release-verify clean test test-race vet verify prices-regen check-prices-reproducible
 
 build:
 	mkdir -p $(DIST_DIR)
@@ -56,6 +56,19 @@ test-race:
 
 vet:
 	env GOCACHE=$(GOCACHE) $(GO) vet -mod=vendor ./...
+
+# Regenerate the bundled price catalog from a pinned LiteLLM commit, merging
+# the curated gap-fill over it. Network-using and release-time only; normal
+# builds and tests never run it. Pass LITELLM_COMMIT=<sha> to pin explicitly;
+# omitting it resolves current LiteLLM main and reports the sha it pinned.
+prices-regen:
+	env GOCACHE=$(GOCACHE) GOMODCACHE=$(GOMODCACHE) $(GO) run -mod=vendor ./tools/genprices -commit "$(LITELLM_COMMIT)"
+
+# Verify the committed catalog is exactly what regeneration from its recorded
+# pinned commit produces, so a hand-edit cannot slip in. Requires network, so
+# it stays out of `verify`/`release-verify` and is run deliberately.
+check-prices-reproducible:
+	env GOCACHE=$(GOCACHE) GOMODCACHE=$(GOMODCACHE) $(GO) run -mod=vendor ./tools/genprices -check
 
 verify: test test-race vet
 
