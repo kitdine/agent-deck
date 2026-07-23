@@ -5,7 +5,7 @@ created: 2026-07-22
 
 # Archived Documents
 
-Last updated: 2026-07-22
+Last updated: 2026-07-23
 
 ## Why this directory exists
 
@@ -120,3 +120,43 @@ The final paired measurement reduced `usage stats --period all` from 139 to
 Current output contracts remain authoritative in `docs/specs/cli-design.md`
 and `docs/specs/cli-manual.md`; the completed plan and review rounds remain
 here only as implementation and measurement history.
+
+## 2026-07-23 retirement: price catalog coverage
+
+`plans/price-coverage.md` and `reviews/price-coverage/` were retired together
+after all five tasks passed review. The plan delivered the content-derived
+bundled `catalog_version` guard, the curated gap-fill as a separate input that
+regeneration cannot drop, release-time regeneration from a pinned LiteLLM
+commit with a reproducibility check, a no-network cold-start coverage test, and
+an explicitly disclosed equivalent-estimate price for `gpt-5.3-codex-spark`.
+
+Cold-start coverage on the same frozen snapshot went from **7.4% to 95.1%** of
+tokens fully priced (2 models to 112). The residual is deliberate:
+`codex-auto-review` stays unpriced as a probable pseudo-model, and the
+`cache_creation_tokens` gap on the dotted Claude spellings is a
+token-classification concern, not a catalog one. Both are carried forward in
+the Backlog of `docs/README.md`, since archiving this plan would otherwise be
+the only place they were written down.
+
+Two things are worth reading here rather than rediscovering:
+
+- **Why Spark is priced by an estimate rather than a vendor rate.** OpenAI
+  publishes no rate for it, and every aggregator carrying a figure traces back
+  to one unconfirmed row. The plan's `## Price Confidence` section records that
+  analysis; the accepted resolution is the `equivalent_estimate` contract, whose
+  standing rules now live in `docs/specs/cli-design.md`.
+- **Why the bundled catalog's own effective date is a constant.** A curated
+  model dated earlier than the catalog dragged the catalog's date back, and
+  since same-layer catalogs are ranked by that date, a previously installed
+  catalog then outranked the newer one on every shared model. Round-4 of
+  `reviews/price-coverage/spark-gapfill.md` records the reproduction and the
+  fix.
+
+Review independence is documented unevenly and deliberately: tasks 1 and 3–5
+were reviewed by a separate reviewer, while task 2's later rounds (4–6) were
+performed in the same session as the implementation at the user's direction.
+Each of those rounds states that caveat inline.
+
+Current behavior remains authoritative in `docs/specs/cli-design.md` (version
+14); the completed plan and its review rounds remain here only as
+implementation, measurement, and decision history.

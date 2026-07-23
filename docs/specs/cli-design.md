@@ -1,6 +1,6 @@
 ---
 status: active
-version: 10
+version: 14
 created: 2026-07-14
 ---
 
@@ -970,6 +970,99 @@ and deterministic per-client/model coverage. Claude catalog matching accepts
 dot-versus-hyphen version punctuation only when both names begin with
 `claude-`; other model names still require exact or explicit alias matching.
 
+### Bundled Catalog
+
+A `bundled` catalog compiled into the binary prices usage on a fresh install
+before any network call. It is the lowest-precedence layer: any `litellm` or
+`official` catalog with a later `catalog_effective` outranks it, so shipping a
+bundled price can never suppress fresher upstream data.
+
+The bundled catalog is a **generated, reviewed build artifact and is never
+hand-edited**. `tools/genprices` (invoked as `make prices-regen`, optionally
+`LITELLM_COMMIT=<sha>`) rebuilds it by downloading a LiteLLM snapshot pinned to
+an explicit commit SHA, applying the same direct-provider filter and component
+mapping the network importer uses, merging the curated gap-fill described
+below, and writing the result. Generation is a pure function of its inputs: the
+artifact records the pinned commit rather than a wall-clock retrieval time, so
+`make check-prices-reproducible` can prove the committed file is exactly what
+its recorded inputs produce and a hand-edit cannot pass unnoticed. Regeneration
+is a release-time step owned by the release preparer; ordinary builds, tests,
+and commands never run it and never reach the network for it.
+
+Every generated bundled model carries a stable effective date rather than the
+generation time. The bundled layer is the period-agnostic fallback of last
+resort, and dating it at build time would leave all pre-build usage unpriced on
+a fresh install, which is the gap the layer exists to close.
+
+**The bundled catalog's own effective date is that same stable date and is
+never derived from the models it carries.** Catalogs in one layer are ranked by
+effective date, and installed catalogs are outranked rather than deleted, so a
+catalog date that moved with its contents would let one early-dated model hand
+every shared model back to a previously installed bundled catalog on upgrade.
+Model rows keep their own effective dates, which gate history; the catalog date
+is a precedence key. The current clock still caps it, so a catalog is never
+recorded as effective in the future.
+
+**The bundled `catalog_version` carries a digest of the catalog's own
+contents.** Catalog import is keyed on the version string, so reusing a version
+after changing prices would silently retain stale prices and a stale
+`content_sha256` on every already-installed copy. The digest covers the
+semantic catalog (models, providers, prices, aliases, effective dates) and
+ignores both formatting and the version field itself; a content change without
+a regenerated version fails a shipped guard rather than reaching users.
+
+### Curated Gap-Fill
+
+Some models are never priced upstream — LiteLLM's `chatgpt/` namespace, for
+example, lists subscription-surface entries carrying no cost fields at all, so
+widening the direct-provider filter to admit them would import models with no
+prices and change nothing. A separate curated gap-fill input therefore carries
+vendor prices for such models and is merged over the generated catalog, so
+regenerating from upstream cannot drop an entry upstream has no priced row for.
+
+Curated entries join the **`bundled`** layer, never `official`. A fresher
+`litellm` catalog outranks `bundled`, so if upstream later starts pricing the
+model, upstream wins automatically and the curated row stops mattering; an
+`official` entry would outrank upstream indefinitely and freeze a stale price.
+
+The curation bar is enforced, not advisory. A normal `vendor_rate` entry
+requires a real `https` vendor rate-card `source_url`, a confirmed rate, a
+named human verifier with the date checked, a parseable effective date, and at
+least one valid decimal component. A model that is absent, unreleased, or
+cannot be identified confidently stays pending and unpriced; agreement among
+aggregators that all derive from one another is not confirmation.
+
+A narrower `equivalent_estimate` entry is allowed for a real, released
+subscription-only model that has no separately published API rate. It must name
+the vendor-priced predecessor or basis model in `basis_model`, carry an
+explicit `pricing_note`, and use that basis model's vendor rate rather than
+inventing an unrelated figure. The estimate is an equivalent token-cost value,
+not the user's subscription invoice. For an estimate, `verified_by` and
+`verified_on` record who approved the estimate and its basis and when; unlike
+a `vendor_rate` entry, which attests to a rate a named person read off a vendor
+rate card, this may be a project role, because what is being attested is a
+disclosed derivation rather than an observed vendor figure.
+
+Estimated metadata does not change `usage stats`, summaries, sessions, or their
+JSON contracts. It is exposed only by `price list` (including an exact-model
+filter): text marks the effective price `ESTIMATED` and names its basis, while
+price-list JSON returns the machine-readable price kind, basis model, and note.
+The marker applies only while at least one effective component comes from the
+estimated bundled entry. If a fresher `litellm` or `official` catalog supplies
+all components, normal provenance wins and the estimate marker disappears.
+This metadata is derived from the compiled gap-fill plus effective component
+provenance and does not require a database migration.
+
+**The disclosure therefore travels with the binary, not with the database.**
+Price rows live in the core database and move with a portable backup; the
+estimate marker, basis, and note exist only in the running binary's compiled
+gap-fill. Reading such a database with a binary whose gap-fill does not carry
+that entry — an older release, or a later one that retired the entry because
+upstream began publishing a rate — renders the price as an ordinary price with
+no marker and no note. This is the accepted cost of deriving the metadata
+instead of storing it, not a defect; storing it would require the migration
+this contract deliberately avoids.
+
 `agentdeck price override --file <official-components.json>` imports a
 local JSON array of official overrides. Each item requires `model`, direct
 `provider`, `source_url`, UTC `effective_from`, and a non-empty decimal
@@ -1496,6 +1589,10 @@ here changes; do not create a dated copy of this file.
 
 | Version | Date | Contract change |
 | --- | --- | --- |
+| 14 | 2026-07-23 | Record that equivalent-estimate disclosure travels with the binary rather than the database: price rows move with a portable backup while the marker, basis, and note come from the running binary's compiled gap-fill, so a binary without that entry renders the price undisclosed. Accepted cost of deriving the metadata instead of storing it. The price-list estimate marker occupies its own column so the model column stays a copy-pasteable identifier. |
+| 13 | 2026-07-23 | The bundled catalog's own effective date is the stable fallback date rather than the earliest date among its models, so a curated early-dated entry cannot lower the catalog's precedence and hand shared models back to a previously installed bundled catalog on upgrade. Model rows keep their own effective dates. An equivalent estimate is disclosed only for prices served by the catalog compiled into the running binary, and its `verified_by` may name a project role because it attests to a derivation rather than an observed vendor rate. |
+| 12 | 2026-07-23 | Curated gap-fill may carry an explicitly marked equivalent estimate for a real released subscription-only model that has no published API rate. The estimate must name its vendor-priced basis model and explain that it is not an actual subscription invoice; only `price list` exposes the marker and basis, and fresher upstream pricing automatically removes it. Absent, unreleased, or unidentified models remain unpriced. |
+| 11 | 2026-07-23 | Bundled price catalog becomes a generated, reproducible build artifact rebuilt from a pinned LiteLLM commit and never hand-edited, with a content-derived `catalog_version` so a price change cannot ship under a reused version and silently keep stale prices on installed copies, and a stable fallback effective date so a fresh install prices pre-build usage. Adds a curated gap-fill input for models upstream never prices: merged over the generated catalog so regeneration cannot drop it, held in the `bundled` layer so future upstream pricing automatically wins, and gated on a real vendor rate-card URL plus a named human verifier — an unconfirmed rate stays unpriced. |
 | 10 | 2026-07-22 | Long scans report progress on stderr with a one-second delay, honor `--quiet`, emit no ANSI escapes off-TTY, and name a parser-version-triggered re-read. `usage stats` and `usage summary` gain `--no-scan` and keep scanning synchronously by default. Record two upstream measurement limits: Claude Code `ai-title` calls carry no usage object, and a first-party `/status` estimate may disagree with the catalog during introductory pricing. |
 | 9 | 2026-07-21 | Release and distribution contract: tag-annotation notes extraction, completion-aware Homebrew formula rendering, isolated brew verification, and automated tap pull requests for stable tags only. |
 | 8 | 2026-07-21 | Usage stats runtime provider dimension: derived per-client `providers` array, `--provider` global filter over an open value set, `unknown` as an explicit unattributed bucket, and the PROVIDERS text ranking. |

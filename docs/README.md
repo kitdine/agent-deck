@@ -9,7 +9,7 @@ This is both the documentation index and the execution baseline. Decide what to
 work on next from this file. Repository code, tests, configuration, and Git
 history remain the source of truth when they disagree with any document.
 
-## Current State (2026-07-22)
+## Current State (2026-07-23)
 
 v0.1.0 is published and installable through `kitdine/homebrew-tap`. Every
 follow-up in the retired phase-one plan passed independent review, so there is
@@ -35,11 +35,21 @@ width-aware detail compaction reduced the controlled fixtures from 139 to 120
 lines and from 832 to 142 lines. Measurement and review history lives in the
 [retired readability plan](archive/plans/usage-stats-readability.md).
 
+Price catalog coverage is delivered and reviewed: the bundled catalog is now a
+generated, reproducible artifact rebuilt from a pinned LiteLLM commit, carries a
+content-derived version so a price change cannot ship under a reused version,
+and merges a curated gap-fill that regeneration cannot drop. Cold-start coverage
+on the same frozen snapshot went from 7.4% to 95.1% of tokens fully priced, and
+`gpt-5.3-codex-spark` ships an explicitly disclosed equivalent estimate rather
+than an invented or absent price. Measurement, the estimate's rationale, and
+review history live in the
+[retired price-coverage plan](archive/plans/price-coverage.md).
+
 ## Documents
 
 | Document | Purpose |
 | --- | --- |
-| [specs/cli-design.md](specs/cli-design.md) | What the system does and must keep doing: provider, credential, usage, pricing, session, backup, and distribution behavior. Currently version 10; see its changelog. |
+| [specs/cli-design.md](specs/cli-design.md) | What the system does and must keep doing: provider, credential, usage, pricing, session, backup, and distribution behavior. Currently version 14; see its changelog. |
 | [specs/cli-manual.md](specs/cli-manual.md) | The implemented command surface, flags, and output shapes. |
 | [plans/test-coverage.md](plans/test-coverage.md) | Repository test coverage queue from the 2026-07-22 gap scan. active — 1/5 done (task 1 passed Round 2 review; task 2 reopened for test repairs). |
 | [reviews/](reviews/README.md) | Per-task review records that back each plan's ticked `Review` cell. |
@@ -63,24 +73,26 @@ Candidate work with no approved specification. Each item needs its own plan
 before implementation starts; promote it out of this list at that point rather
 than expanding the entry in place.
 
+- [ ] Classify `codex-auto-review`, which accounts for roughly 85 M tokens of
+      real usage and is unpriced on purpose. It is absent from every pricing
+      source checked and is most likely a Codex-internal pseudo-model rather
+      than a billable one, so it needs classification — suppress it, or
+      attribute it to its real underlying model — not a price. This is a
+      usage-attribution question, not a catalog-coverage one; the price-coverage
+      plan deliberately left it out of scope and a shipped test asserts it stays
+      unpriced, so any change here must update that fixture too.
+- [ ] Close the `cache_creation_tokens` gap on the dotted Claude spellings.
+      `claude-haiku-4.5` and `claude-opus-4.8` report
+      `missing_components: [cache_creation_tokens]`, which is why cold-start
+      coverage reads 95.1% fully priced against 98.4% model-matched. Their
+      models *are* matched and priced by the bundled catalog; this is a
+      token-classification issue in event parsing, not a catalog one.
+
 - [ ] Add the ability to switch Claude subscription/account — analogous to the
       existing AI provider switching, but selecting a Claude account or plan
       rather than an API base URL and token.
 - [ ] Implement a GUI, including a persistent menu-bar presence, as an
       alternative front end to the CLI.
-- [ ] Broaden the bundled fallback price catalog. `internal/usage/model-prices.json`
-      currently ships exactly two models — `gpt-5.4` (openai) and
-      `claude-sonnet-4-6` (anthropic) — so a fresh install cannot price most
-      real usage until the first successful `agentdeck price update` reaches the
-      network. Carry a reasonably complete current model set for **both**
-      vendors, and define how that bundled set is refreshed over time: who
-      regenerates it, from which reviewed source, and on what cadence, most
-      plausibly a release-time regeneration step rather than a hand-edited file.
-      The catalog version string `2026-07-13-openai-standard-v1` already
-      misdescribes its contents now that it carries an Anthropic model; rename
-      it as part of this work. Keep the existing provenance and immutability
-      contract intact — bundled entries must remain an explicit reviewed layer,
-      never a silent guess.
 - [ ] Address two defense-in-depth findings from the 2026-07-22 credential
       vault security review. Neither is exploitable today; take them the next
       time `internal/credentialvault/vault.go` is opened.
