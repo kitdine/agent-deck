@@ -8,6 +8,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -470,6 +472,128 @@ func TestProviderRemovalRollsBackMetadataAndCiphertextOnDatabaseFailure(t *testi
 	}
 }
 
+func TestUpdateDefinitionResolvesCredentialAndRejectsAmbiguityOrBuiltInProvider(t *testing.T) {
+	ctx := context.Background()
+	database, err := store.Open(ctx, filepath.Join(t.TempDir(), "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	service := Service{Store: database, Vault: testCredentialVault(t)}
+
+	if _, err = service.Add(ctx, Definition{Name: "example", Endpoint: "https://provider.example", Clients: []Client{ClientCodex}, Multiplier: "1"}, "default-secret"); err != nil {
+		t.Fatal(err)
+	}
+
+	endpoint := "https://resolved.example"
+	multiplier := "3"
+	if _, err = service.UpdateDefinition(ctx, "example", "", &endpoint, nil, &multiplier); err != nil {
+		t.Fatal(err)
+	}
+	defaultCredential, err := database.ProviderCredential(ctx, "example", "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if defaultCredential.Endpoint != endpoint || defaultCredential.Multiplier != "3.000000000000" || !strings.EqualFold(defaultCredential.CredentialRef, "example-default-ref") {
+		t.Fatalf("resolved update credential = %#v", defaultCredential)
+	}
+
+	if _, err = service.AddCredential(ctx, "example", "work", "https://provider.example", "1", []Client{ClientCodex}, "work-secret"); err != nil {
+		t.Fatal(err)
+	}
+	explicitEndpoint := "https://work.example"
+	if _, err = service.UpdateDefinition(ctx, "example", "work", &explicitEndpoint, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	workCredential, err := database.ProviderCredential(ctx, "example", "work")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if workCredential.Endpoint != explicitEndpoint {
+		t.Fatalf("explicit update endpoint = %q", workCredential.Endpoint)
+	}
+	if _, err = service.AddCredential(ctx, "example", "extra", "https://extra.example", "1", []Client{ClientCodex}, "extra-secret"); err != nil {
+		t.Fatal(err)
+	}
+	// UpdateDefinition resolves the credential *before* mutating anything, and
+	// that ordering is the whole protection here: an implementation that wrote
+	// to the default or work credential and only then discovered the ambiguity
+	// would leave `extra` untouched, so checking `extra` alone cannot tell the
+	// two apart. Snapshot every credential and require exact equality after the
+	// call fails.
+	before, err := credentialSnapshot(ctx, database, "example")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ambiguousEndpoint := "https://ambiguous.example"
+	if _, err = service.UpdateDefinition(ctx, "example", "", &ambiguousEndpoint, nil, nil); !errors.Is(err, ErrInvalidProvider) {
+		t.Fatalf("ambiguity not rejected: %v", err)
+	}
+	after, err := credentialSnapshot(ctx, database, "example")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(before, after) {
+		t.Fatalf("a rejected ambiguous update mutated stored credentials:\nbefore %#v\nafter  %#v", before, after)
+	}
+
+	officialEndpoint := "https://official.example"
+	if _, err = service.UpdateDefinition(ctx, OfficialProviderName, "", &officialEndpoint, nil, nil); !errors.Is(err, ErrInvalidProvider) {
+		t.Fatal("official provider update succeeded")
+	}
+	official, err := service.Show(ctx, OfficialProviderName)
+	if err != nil || !official.Definition.BuiltIn || official.Definition.Name != OfficialProviderName {
+		t.Fatalf("official provider visibility = %#v, %v", official, err)
+	}
+}
+
+func TestResolveCredentialNameAndShowCredentialProtectsSecretsAndAmbiguity(t *testing.T) {
+	ctx := context.Background()
+	database, err := store.Open(ctx, filepath.Join(t.TempDir(), "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	service := Service{Store: database, Vault: testCredentialVault(t)}
+
+	if _, err = service.Add(ctx, Definition{Name: "single", Endpoint: "https://single.invalid", Clients: []Client{ClientCodex}, Multiplier: "1"}, "single-secret"); err != nil {
+		t.Fatal(err)
+	}
+	credential, err := service.ResolveCredentialName(ctx, "single", "")
+	if err != nil || credential != "default" {
+		t.Fatalf("unique resolve = %q, %v", credential, err)
+	}
+	if _, err = service.AddCredential(ctx, "single", "other", "https://other.invalid", "1", []Client{ClientCodex}, "other-secret"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = service.ResolveCredentialName(ctx, "single", ""); !errors.Is(err, ErrInvalidProvider) {
+		t.Fatalf("multiple credentials not rejected: %v", err)
+	}
+
+	exposed, err := service.ResolveCredentialName(ctx, "single", "missing")
+	if exposed != "" || !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("missing credential lookup = %q, %v", exposed, err)
+	}
+	show, err := service.ShowCredential(ctx, "single", "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	serialized, err := json.Marshal(show)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(serialized), "single-secret") {
+		t.Fatalf("showed credential secret = %q", serialized)
+	}
+	if show.Provider != "single" || show.Name != "default" || show.Reference == "" || !show.Present || len(show.Clients) != 1 {
+		t.Fatalf("show credential metadata = %#v", show)
+	}
+
+	if _, err = service.ShowCredential(ctx, "single", "missing"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("show missing credential = %v", err)
+	}
+}
+
 func TestRemovingLastNamedCredentialMakesProviderUnavailable(t *testing.T) {
 	ctx := context.Background()
 	root := t.TempDir()
@@ -753,4 +877,28 @@ func TestCurrentAndStatusReportCredentialShorthandWithoutOpeningSecrets(t *testi
 	if rejecting.calls != 0 {
 		t.Fatalf("read-only selection reporting opened credential secrets %d time(s)", rejecting.calls)
 	}
+}
+
+// credentialSnapshot captures every field of every credential of a provider
+// that a mutation could plausibly touch: endpoint, multiplier, client mapping,
+// and the credential reference. Tests use it to assert that a call which
+// returns an error changed nothing at all, rather than that one credential the
+// test happened to look at is unchanged.
+func credentialSnapshot(ctx context.Context, database *store.Store, provider string) (map[string][]string, error) {
+	items, err := database.ListProviderCredentials(ctx, provider)
+	if err != nil {
+		return nil, err
+	}
+	snapshot := make(map[string][]string, len(items))
+	for _, item := range items {
+		clients := append([]string(nil), item.Clients...)
+		sort.Strings(clients)
+		snapshot[item.Name] = []string{
+			item.Endpoint,
+			item.Multiplier,
+			item.CredentialRef,
+			strings.Join(clients, ","),
+		}
+	}
+	return snapshot, nil
 }

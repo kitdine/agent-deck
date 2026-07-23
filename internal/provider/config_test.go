@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -283,6 +284,118 @@ func TestWriteRedactedBackupOmitsCredential(t *testing.T) {
 	}
 	if strings.Contains(string(contents), "synthetic-secret") {
 		t.Fatalf("backup contains credential: %s", contents)
+	}
+}
+
+func TestWriteRedactedBackupForCodexAndClaudeCreatesParentAndRedactsCredential(t *testing.T) {
+	root := t.TempDir()
+	codexSource, codexDestination := filepath.Join(root, "config.toml"), filepath.Join(root, "parent", "deep", "config.toml.redacted")
+	// Carry representative non-secret configuration alongside the secret. A
+	// redactor that emitted an empty document would satisfy every
+	// plaintext-absence and file-mode assertion while silently discarding the
+	// configuration the backup exists to preserve, so the backup has to be
+	// checked for what it keeps, not only for what it drops.
+	codexConfig := "model_provider = \"custom\"\nmodel = \"gpt-5\"\n\n" +
+		"[model_providers.custom]\nname = \"Custom\"\nbase_url = \"https://provider.example/v1\"\n" +
+		"experimental_bearer_token = 'synthetic-secret'\nwire_api = \"responses\"\n\n" +
+		"[features]\nmemories = true\n"
+	if err := os.WriteFile(codexSource, []byte(codexConfig), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteRedactedBackup(ClientCodex, codexSource, codexDestination); err != nil {
+		t.Fatal(err)
+	}
+	codexContents, err := os.ReadFile(codexDestination)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(codexContents), "synthetic-secret") {
+		t.Fatalf("codex backup contains credential: %s", codexContents)
+	}
+	if info, statErr := os.Stat(codexDestination); statErr != nil || info.Mode().Perm() != 0o600 {
+		t.Fatalf("codex backup mode = %#v, %v", info, statErr)
+	}
+	var codexBackup struct {
+		ModelProvider  string `toml:"model_provider"`
+		Model          string `toml:"model"`
+		ModelProviders map[string]struct {
+			Name    string `toml:"name"`
+			BaseURL string `toml:"base_url"`
+			WireAPI string `toml:"wire_api"`
+			Token   string `toml:"experimental_bearer_token"`
+		} `toml:"model_providers"`
+		Features map[string]any `toml:"features"`
+	}
+	if err = toml.Unmarshal(codexContents, &codexBackup); err != nil {
+		t.Fatalf("codex backup is not parseable TOML: %v\n%s", err, codexContents)
+	}
+	custom, ok := codexBackup.ModelProviders["custom"]
+	if !ok {
+		t.Fatalf("codex backup dropped the custom provider entirely: %s", codexContents)
+	}
+	if codexBackup.ModelProvider != "custom" || codexBackup.Model != "gpt-5" ||
+		custom.Name != "Custom" || custom.WireAPI != "responses" || codexBackup.Features["memories"] != true {
+		t.Fatalf("codex backup dropped restorable configuration: %#v\n%s", codexBackup, codexContents)
+	}
+	if custom.Token != "" {
+		t.Fatalf("codex backup retained the bearer token: %q", custom.Token)
+	}
+
+	claudeSource, claudeDestination := filepath.Join(root, "settings.json"), filepath.Join(root, "backup", "claude", "settings.json.redacted")
+	if err := os.WriteFile(claudeSource, []byte(`{"env":{"ANTHROPIC_AUTH_TOKEN":"synthetic-secret","OTHER":"keep"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteRedactedBackup(ClientClaude, claudeSource, claudeDestination); err != nil {
+		t.Fatal(err)
+	}
+	claudeContents, err := os.ReadFile(claudeDestination)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(claudeContents), "synthetic-secret") {
+		t.Fatalf("claude backup contains credential: %s", claudeContents)
+	}
+	if info, statErr := os.Stat(claudeDestination); statErr != nil || info.Mode().Perm() != 0o600 {
+		t.Fatalf("claude backup mode = %#v, %v", info, statErr)
+	}
+	var claudeBackup struct {
+		Env map[string]string `json:"env"`
+	}
+	if err = json.Unmarshal(claudeContents, &claudeBackup); err != nil {
+		t.Fatalf("claude backup is not parseable JSON: %v\n%s", err, claudeContents)
+	}
+	if claudeBackup.Env["OTHER"] != "keep" {
+		t.Fatalf("claude backup dropped restorable env configuration: %#v\n%s", claudeBackup, claudeContents)
+	}
+	if _, present := claudeBackup.Env["ANTHROPIC_AUTH_TOKEN"]; present {
+		t.Fatalf("claude backup retained the auth token key: %#v", claudeBackup)
+	}
+}
+
+func TestWriteRedactedBackupRejectsUnsupportedClient(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "config.toml")
+	if err := os.WriteFile(source, []byte(""), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteRedactedBackup(Client("unsupported"), source, filepath.Join(root, "unsupported.redacted.toml")); err == nil {
+		t.Fatal("unsupported client backup succeeded")
+	}
+}
+
+func TestWriteRedactedBackupWriteFailure(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "config.toml")
+	if err := os.WriteFile(source, []byte("[model_providers.custom]\nexperimental_bearer_token = 'synthetic-secret'\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	blockedDir := filepath.Join(root, "blocked")
+	if err := os.Mkdir(blockedDir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	destination := filepath.Join(blockedDir, "redacted.toml")
+	if err := WriteRedactedBackup(ClientCodex, source, destination); err == nil {
+		t.Fatal("write succeeded on read-only destination parent")
 	}
 }
 

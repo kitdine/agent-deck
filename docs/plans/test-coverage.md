@@ -64,11 +64,11 @@ Task content lives in the queue below; per-gate status lives here.
 | 1 | store-boundaries | ✅ | ✅ |
 | 2 | provider-persistence | ✅ | ✅ |
 | 3 | usage-runstate | ✅ | ✅ |
-| 4 | provider-backup | ⬜ | ⬜ |
+| 4 | provider-backup | ✅ | ✅ |
 | 5 | vault-init | ⬜ | ⬜ |
 | 6 | session-health | ⬜ | ⬜ |
 
-Done: 3/6. Tasks 1 through 3 passed independent review. The implementer ticks
+Done: 4/6. Tasks 1 through 3 passed independent review; task 4 passed a same-session re-review on 2026-07-23 after its round-1 assertion repairs, with that caveat recorded in its review log. The implementer ticks
 **Dev** once a task's targeted L2/L3 evidence passes; a reviewer ticks
 **Review** once findings are closed. A task is done only when Review is ticked.
 
@@ -229,6 +229,32 @@ Done: 3/6. Tasks 1 through 3 passed independent review. The implementer ticks
   ambiguous-update case does not prove every existing credential remains
   unchanged, and redacted-backup cases do not prove safe configuration fields
   are retained. See `docs/reviews/test-coverage/provider-backup.md`.
+- **Round 1 repair (2026-07-23):** both closed.
+  The ambiguous-update case now snapshots *every* credential of the provider —
+  endpoint, multiplier, sorted client mapping, credential reference — right
+  before the ambiguous call and requires exact equality after it fails, through
+  a new `credentialSnapshot` helper. The point is ordering: `UpdateDefinition`
+  resolves the credential before mutating anything, so an implementation that
+  wrote first and detected the ambiguity second would leave the one credential
+  the old test inspected untouched. RED confirms that reading — injecting
+  exactly that defect fails with a before/after diff showing `default` moving
+  to the ambiguous endpoint, and the pre-repair assertion passed the same
+  injected defect.
+  The redacted-backup case now parses both outputs and asserts what survives,
+  not only what is absent: the Codex source carries `model_provider`, `model`,
+  the custom provider's `name` and `wire_api`, and a `[features]` table, all of
+  which must still be present; the Claude backup must still carry `env.OTHER`.
+  Plaintext-absence and file-mode checks are retained, and each side also
+  asserts the secret *key* is gone rather than just its value. RED on both
+  halves independently: an empty-document redactor fails with `codex backup
+  dropped the custom provider entirely`, and one deleting the whole `env` map
+  fails with `claude backup dropped restorable env configuration` — both of
+  which satisfied every pre-repair assertion.
+  L3 verification at the repaired state: `gofmt -l` clean,
+  `go vet -mod=vendor ./...` clean, `go test -mod=vendor -count=1 ./...` all 15
+  packages ok, `go test -mod=vendor -race ./internal/provider` ok,
+  `git diff --check` clean. Re-reviewed the same day (round 2, PASS) in the same
+  session as the repair; that caveat is recorded in the review log.
 - **Fixtures and boundary:** fake credential-vault implementation, temporary
   TOML/JSON files and destinations, existing config mutation helpers. Use
   synthetic credential strings only to prove absence from output.
