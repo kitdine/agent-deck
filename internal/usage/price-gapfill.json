@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "comment": "Curated prices for models the upstream LiteLLM catalog does not price. Merged into the generated bundled catalog by tools/genprices; never overwritten by regeneration. Entries stay in the 'bundled' layer on purpose: a fresher 'litellm' catalog outranks bundled on catalog_effective, so if upstream ever starts pricing a model here, upstream wins automatically and the curated row stops mattering. Promoting an entry to 'official' would outrank upstream forever and freeze a stale price.",
+  "curation_bar": "A 'vendor_rate' entry needs a real vendor rate-card source_url, a confirmed rate, and a named human verifier with the date they checked. An 'equivalent_estimate' entry is the single narrower exception, for a real released subscription-only model the vendor prices nowhere: it must name a vendor-priced basis_model, carry that basis model's exact rate (enforced against the upstream catalog at generation time), and state in pricing_note that the value is an equivalent token cost rather than an actual subscription invoice; verified_by/verified_on then name who approved the estimate and its basis. A model that is absent, unreleased, or cannot be identified confidently stays unpriced and belongs in 'pending' below. UNPRICED is a correct answer; a silent guess is not.",
+  "entries": [
+    {
+      "model": "gpt-5.3-codex-spark",
+      "provider": "openai",
+      "kind": "equivalent_estimate",
+      "basis_model": "gpt-5.3-codex",
+      "effective_from": "2026-02-12T00:00:00Z",
+      "source_url": "https://openai.com/api/pricing/",
+      "verified_by": "AgentDeck product owner",
+      "verified_on": "2026-07-23",
+      "pricing_note": "Equivalent token-cost estimate, not an OpenAI price for this model and not what a Pro subscription actually bills. Spark is a released Pro-subscription-only successor to gpt-5.3-codex that OpenAI exposes through no API and prices on no rate card, so this row carries the vendor rate of its predecessor gpt-5.3-codex to answer 'what would these tokens have cost' instead of leaving the usage unpriced. It disappears the moment upstream publishes a real rate.",
+      "prices_per_million": {"input": "1.75", "cached_input": "0.175", "output": "14"}
+    }
+  ],
+  "pending": []
+}
