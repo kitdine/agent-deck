@@ -2592,7 +2592,11 @@ func renderPriceList(w io.Writer, values []usage.EffectivePrice, verbose bool) e
 	}
 	components := []string{"input", "cached_input", "output", "cache_read", "cache_write_5m", "cache_write_1h"}
 	rows := make([][]string, 0, len(values))
+	var estimated []usage.EffectivePrice
 	for _, value := range values {
+		if value.PriceKind == usage.GapfillKindEquivalentEstimate {
+			estimated = append(estimated, value)
+		}
 		row := []string{value.Provider, value.Model}
 		for _, component := range components {
 			price := value.Prices[component]
@@ -2603,10 +2607,29 @@ func renderPriceList(w io.Writer, values []usage.EffectivePrice, verbose bool) e
 		}
 		rows = append(rows, row)
 	}
+	headers := []string{"PROVIDER", "MODEL", "INPUT", "CACHED INPUT", "OUTPUT", "CACHE READ", "WRITE 5M", "WRITE 1H"}
+	// The estimate marker gets its own column rather than being appended to
+	// the model name: MODEL is the value the user passes back to
+	// `price list <model>`, so decorating it hands them a name that does not
+	// resolve. The column appears only when something is actually estimated,
+	// so an ordinary listing keeps exactly the shape it always had.
+	if len(estimated) > 0 {
+		headers = append(headers, estimatedPriceMarkerColumn)
+		for index, value := range values {
+			marker := ""
+			if value.PriceKind == usage.GapfillKindEquivalentEstimate {
+				marker = estimatedPriceMarker
+			}
+			rows[index] = append(rows[index], marker)
+		}
+	}
 	if _, err := fmt.Fprintln(w, "USD / 1M tokens"); err != nil {
 		return err
 	}
-	if err := output.WriteASCIITable(w, []string{"PROVIDER", "MODEL", "INPUT", "CACHED INPUT", "OUTPUT", "CACHE READ", "WRITE 5M", "WRITE 1H"}, rows); err != nil {
+	if err := output.WriteASCIITable(w, headers, rows); err != nil {
+		return err
+	}
+	if err := renderEstimatedPriceNotes(w, estimated); err != nil {
 		return err
 	}
 	if !verbose {
@@ -2628,6 +2651,51 @@ func renderPriceList(w io.Writer, values []usage.EffectivePrice, verbose bool) e
 		}
 	}
 	return output.WriteASCIITable(w, []string{"PROVIDER", "MODEL", "COMPONENT", "SOURCE", "VERSION", "EFFECTIVE", "COMMIT", "SHA256", "URL"}, provenanceRows)
+}
+
+// estimatedPriceNoteWidth wraps the disclosure paragraph narrower than the
+// price table it follows, which already runs past 110 columns with its eight
+// fixed columns. A fixed width keeps the note reflowing identically whether or
+// not the output is a TTY, so captured price-list output stays comparable.
+//
+// statsWrap breaks on spaces and never splits a word, so a pricing_note must
+// not contain a single token longer than this width or that line will overflow.
+// Hard-folding instead would mean changing statsWrap, which the usage stats
+// renderer shares, so the constraint is enforced on the data rather than in the
+// shared helper: TestEstimatePricingNotesFitTheDisclosureWidth checks every
+// shipped note. Keep URLs and other long tokens out of a pricing_note.
+const estimatedPriceNoteWidth = 96
+
+// estimatedPriceMarkerColumn is a marker-only column added to the price table
+// when a listing contains an estimate; estimatedPriceMarker is what it carries,
+// and the note block below the table repeats it.
+const (
+	estimatedPriceMarkerColumn = "EST"
+	estimatedPriceMarker       = "*"
+)
+
+// renderEstimatedPriceNotes names, below the table, what each ESTIMATED row is
+// estimated from and why. The marker alone would tell a reader the number is
+// not a published rate without telling them what it is, which is the part that
+// keeps the disclosure honest.
+func renderEstimatedPriceNotes(w io.Writer, estimated []usage.EffectivePrice) error {
+	if len(estimated) == 0 {
+		return nil
+	}
+	if _, err := fmt.Fprintln(w, "\nESTIMATED PRICES"); err != nil {
+		return err
+	}
+	for _, value := range estimated {
+		note := fmt.Sprintf("%s %s (%s): equivalent estimate based on %s. %s", estimatedPriceMarker, value.Model, value.Provider, value.BasisModel, value.PricingNote)
+		// statsWrap is a plain word wrapper; the disclosure is a paragraph, and
+		// an unwrapped one would be a single several-hundred-column line.
+		for _, line := range statsWrap(note, estimatedPriceNoteWidth) {
+			if _, err := fmt.Fprintln(w, line); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func renderDoctorText(w io.Writer, report doctor.Report) error {

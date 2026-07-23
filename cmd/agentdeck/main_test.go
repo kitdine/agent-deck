@@ -2680,3 +2680,135 @@ func TestUsageStatsTextMarksPartialAverageAndPeakCost(t *testing.T) {
 		t.Fatalf("partial stats text = %s", output.String())
 	}
 }
+
+// TestPriceListMarksEstimatedPricesAndNamesTheirBasis is the user-facing half
+// of the estimate disclosure: someone reading `price list` must be able to see
+// that a number is not a published rate, and what it is derived from, without
+// passing --verbose or reading JSON. Usage cost output deliberately carries
+// none of this, which the second half asserts.
+func TestPriceListMarksEstimatedPricesAndNamesTheirBasis(t *testing.T) {
+	ctx := context.Background()
+	state := filepath.Join(t.TempDir(), "state")
+	database, err := store.Open(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := usage.New(database, "")
+	service.Now = func() time.Time { return time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC) }
+	if err = service.ImportBundledCatalog(ctx); err != nil {
+		database.Close()
+		t.Fatal(err)
+	}
+	if err = database.Close(); err != nil {
+		t.Fatal(err)
+	}
+	home := t.TempDir()
+	oldHome := userHomeDir
+	userHomeDir = func() (string, error) { return home, nil }
+	t.Cleanup(func() { userHomeDir = oldHome })
+
+	var estimated bytes.Buffer
+	if err = run([]string{"--state-dir", state, "price", "list", "gpt-5.3-codex-spark"}, bytes.NewReader(nil), &estimated); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"ESTIMATED PRICES", "based on gpt-5.3-codex", "subscription"} {
+		if !strings.Contains(estimated.String(), want) {
+			t.Fatalf("price list text is missing %q:\n%s", want, estimated.String())
+		}
+	}
+	// The marker is visible in the table itself, in its own column, so a
+	// reader scanning rows sees it without reading the note block.
+	markerRow := priceTableRow(t, estimated.String(), "gpt-5.3-codex-spark")
+	if markerRow[len(markerRow)-1] != estimatedPriceMarker {
+		t.Fatalf("estimated row carries no %q marker in the %s column: %v", estimatedPriceMarker, estimatedPriceMarkerColumn, markerRow)
+	}
+	// ...and the MODEL cell stays exactly the name the user passes back to
+	// `price list <model>`. Decorating it would hand them a name that does not
+	// resolve.
+	if got := markerRow[1]; got != "gpt-5.3-codex-spark" {
+		t.Fatalf("MODEL cell is %q, want the bare model name; it must stay copy-pasteable", got)
+	}
+
+	// A published vendor rate is not decorated, so the marker keeps meaning
+	// something when it does appear.
+	var published bytes.Buffer
+	if err = run([]string{"--state-dir", state, "price", "list", "gpt-5.3-codex"}, bytes.NewReader(nil), &published); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(published.String(), "ESTIMATED") {
+		t.Fatalf("a published vendor rate was marked ESTIMATED:\n%s", published.String())
+	}
+	// A listing with nothing estimated keeps the table it always had, so the
+	// marker column is not permanent noise.
+	if strings.Contains(published.String(), estimatedPriceMarkerColumn) {
+		t.Fatalf("the %s column appears in a listing with no estimate:\n%s", estimatedPriceMarkerColumn, published.String())
+	}
+
+	var encoded bytes.Buffer
+	if err = run([]string{"--state-dir", state, "--format", "json", "price", "list", "gpt-5.3-codex-spark"}, bytes.NewReader(nil), &encoded); err != nil {
+		t.Fatal(err)
+	}
+	var envelope struct {
+		Data []usage.EffectivePrice `json:"data"`
+	}
+	if err = json.Unmarshal(encoded.Bytes(), &envelope); err != nil || len(envelope.Data) != 1 {
+		t.Fatalf("price list JSON = %s, %v", encoded.String(), err)
+	}
+	if envelope.Data[0].PriceKind != usage.GapfillKindEquivalentEstimate || envelope.Data[0].BasisModel != "gpt-5.3-codex" || envelope.Data[0].PricingNote == "" {
+		t.Fatalf("price list JSON does not disclose the estimate: %#v", envelope.Data[0])
+	}
+}
+
+// priceTableRow pulls one ASCII-table data row out of price-list text and
+// returns its trimmed cells, so assertions can talk about a specific cell
+// rather than about whether a substring appears somewhere in the output.
+func priceTableRow(t *testing.T, out, model string) []string {
+	t.Helper()
+	for _, line := range strings.Split(out, "\n") {
+		if !strings.HasPrefix(line, "|") {
+			continue
+		}
+		cells := strings.Split(strings.Trim(line, "|"), "|")
+		for index := range cells {
+			cells[index] = strings.TrimSpace(cells[index])
+		}
+		if len(cells) > 1 && cells[1] == model {
+			return cells
+		}
+	}
+	t.Fatalf("no table row for model %q in:\n%s", model, out)
+	return nil
+}
+
+// TestEstimatePricingNotesFitTheDisclosureWidth enforces the constraint
+// documented on estimatedPriceNoteWidth. statsWrap breaks on spaces and never
+// splits a word, and it is shared with the usage stats renderer, so rather than
+// hard-folding there the constraint is kept on the data: a pricing_note must
+// not contain a token that cannot fit on one wrapped line. A URL dropped into
+// a note is the realistic way this breaks.
+func TestEstimatePricingNotesFitTheDisclosureWidth(t *testing.T) {
+	gapfill, err := usage.BundledGapfill()
+	if err != nil {
+		t.Fatal(err)
+	}
+	checked := 0
+	for _, entry := range gapfill.Entries {
+		if entry.PriceKind() != usage.GapfillKindEquivalentEstimate {
+			continue
+		}
+		checked++
+		// The rendered line is "* <model> (<provider>): equivalent estimate
+		// based on <basis>. <note>", so every one of those tokens has to fit.
+		rendered := fmt.Sprintf("%s %s (%s): equivalent estimate based on %s. %s",
+			estimatedPriceMarker, entry.Model, entry.Provider, entry.BasisModel, entry.PricingNote)
+		for _, token := range strings.Fields(rendered) {
+			if len(token) > estimatedPriceNoteWidth {
+				t.Errorf("%s disclosure contains a %d-character token %q, which statsWrap cannot break; it would overflow the %d-column note",
+					entry.Model, len(token), token, estimatedPriceNoteWidth)
+			}
+		}
+	}
+	if checked == 0 {
+		t.Skip("no equivalent estimates are shipped")
+	}
+}
