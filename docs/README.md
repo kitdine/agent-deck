@@ -45,13 +45,23 @@ than an invented or absent price. Measurement, the estimate's rationale, and
 review history live in the
 [retired price-coverage plan](archive/plans/price-coverage.md).
 
+High-value test coverage is delivered and reviewed: focused regression tests
+now pin the evidenced high-risk gaps — store open/backup/scan-lock boundaries,
+provider configuration persistence, usage run-state attribution, provider
+backup redaction and config retention, credential-vault initialization and
+recovery, and read-only `session.CheckHealth` diagnostics. All six tasks passed
+review; tasks 4 through 6 had their round-1 findings repaired in the same
+session after the implementer subagents hit a session limit, a caveat recorded
+inline in each review round. One low-risk behavior deviation is carried into
+the Backlog below. History lives in the
+[retired test-coverage plan](archive/plans/test-coverage.md).
+
 ## Documents
 
 | Document | Purpose |
 | --- | --- |
 | [specs/cli-design.md](specs/cli-design.md) | What the system does and must keep doing: provider, credential, usage, pricing, session, backup, and distribution behavior. Currently version 14; see its changelog. |
 | [specs/cli-manual.md](specs/cli-manual.md) | The implemented command surface, flags, and output shapes. |
-| [plans/test-coverage.md](plans/test-coverage.md) | Repository test coverage queue from the 2026-07-22 gap scans. active — 4/6 done (tasks 1 through 3 passed independent review; task 4's assertion repairs passed a same-session re-review). Tasks 5 and 6 are not started. |
 | [reviews/](reviews/README.md) | Per-task review records that back each plan's ticked `Review` cell. |
 | [archive/](archive/README.md) | Retired plans and superseded contracts. Not a starting point for new work. |
 
@@ -122,6 +132,18 @@ than expanding the entry in place.
       the byte-size cap before the HTTP status, so an oversized 5xx body is
       reported as non-retryable "response exceeds N bytes" instead of a
       retryable transient failure.
+- [ ] Decide whether `agentdeck doctor`'s `session.CheckHealth` should avoid
+      creating `sessions.sqlite3-wal`/`-shm` sidecars when it inspects the index
+      (e.g. `immutable=1`/`nolock` handling, weighing the concurrent-watcher
+      trade-off), or whether its "without creating, migrating, or changing it"
+      doc comment should be corrected to describe sidecar creation as expected.
+      Surfaced by the retired test-coverage plan (task 6): `CheckHealth` opens
+      the WAL-mode index read-only yet still materializes both sidecars. The
+      committed database bytes are unchanged and the sidecars are `0600` inside
+      the `0700` state root, so no privacy or data-integrity boundary breaks —
+      this is a doc-vs-behavior accuracy fix, not a security fix. A shipped test
+      in `internal/session/doctor_test.go` pins the current sidecar behavior, so
+      any change here must update that test too.
 
 ## Document Conventions
 

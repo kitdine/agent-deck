@@ -1,8 +1,9 @@
 ---
-status: active
+status: historical
 created: 2026-07-22
 plan: test-coverage
 task: store-boundaries
+retired: 2026-07-23
 ---
 
 # Review log — test-coverage / store-boundaries

@@ -160,3 +160,34 @@ Each of those rounds states that caveat inline.
 Current behavior remains authoritative in `docs/specs/cli-design.md` (version
 14); the completed plan and its review rounds remain here only as
 implementation, measurement, and decision history.
+
+## 2026-07-23 retirement: high-value test coverage
+
+`plans/test-coverage.md` and `reviews/test-coverage/` were retired together
+after all six tasks passed review. The plan added focused regression tests for
+evidenced high-risk gaps rather than chasing a coverage number: store open,
+backup, and scan-lock boundaries; provider configuration persistence; usage
+run-state attribution; provider backup redaction and config retention;
+credential-vault initialization, non-overwrite, and recovery; and the read-only
+`session.CheckHealth` diagnostic.
+
+Review independence is documented deliberately: tasks 1–3 were reviewed by a
+separate cold-context reviewer. Tasks 4–6 had their round-1 findings repaired in
+the same session as the review, because the implementer subagents hit a session
+limit before the fix round; each of those review rounds states that caveat
+inline. Tasks 5 and 6 each drew a genuine `REOPEN` first (a recovery test that
+proved "the vault works" rather than "it recovered *this* key", and a missing
+sidecar assertion), both independently reproduced before repair.
+
+One finding is carried forward rather than fixed, because this was a test-only
+queue: `session.CheckHealth` opens the WAL-mode session index read-only yet
+still materializes `sessions.sqlite3-wal`/`-shm` sidecars in the state root,
+contradicting its "without creating, migrating, or changing it" doc comment. No
+privacy or data-integrity boundary breaks — committed bytes are unchanged and
+the sidecars are `0600` inside the `0700` root — so it lives in the Backlog of
+`docs/README.md`, and a shipped test in `internal/session/doctor_test.go` pins
+the current behavior so a future fix cannot land silently.
+
+Current behavior remains authoritative in `docs/specs/cli-design.md` and
+`docs/specs/cli-manual.md`; the completed plan and its review rounds remain here
+only as implementation and decision history.

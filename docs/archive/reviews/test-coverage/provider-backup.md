@@ -1,7 +1,8 @@
 ---
-status: active
+status: historical
 plan: test-coverage
 task: provider-backup
+retired: 2026-07-23
 ---
 
 # Review log — test-coverage / provider-backup

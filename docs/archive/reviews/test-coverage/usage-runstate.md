@@ -1,7 +1,8 @@
 ---
-status: active
+status: historical
 plan: test-coverage
 task: usage-runstate
+retired: 2026-07-23
 ---
 
 # Review log — test-coverage / usage-runstate
