@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -75,6 +76,217 @@ func TestPreparePrivateSQLiteFiles(t *testing.T) {
 	}
 	for _, candidate := range []string{path, path + "-wal", path + "-shm", path + "-journal"} {
 		assertMode(t, candidate, platform.FileMode)
+	}
+}
+
+func TestOpenReadOnlyCompatibleDBSkipsMigrationAndDoesNotCreateWriteSidecars(t *testing.T) {
+	ctx := context.Background()
+	state := filepath.Join(t.TempDir(), "state")
+	if err := os.MkdirAll(state, platform.DirectoryMode); err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("sqlite", filepath.Join(state, "agentdeck.sqlite3"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture, err := os.ReadFile(filepath.Join("testdata", "agentdeck-v6.sql"))
+	if err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	if _, err = db.ExecContext(ctx, string(fixture)); err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	if err = db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	dbPath := filepath.Join(state, "agentdeck.sqlite3")
+	if err = os.Chmod(dbPath, 0644); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.Stat(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	originalMode := before.Mode().Perm()
+
+	store, err := OpenReadOnly(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	version, err := store.SchemaVersion(ctx)
+	if err != nil || version != 6 {
+		t.Fatalf("schema version = %d, %v", version, err)
+	}
+	var hasToolCalls int
+	if err = store.DB.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='usage_tool_calls'").Scan(&hasToolCalls); err != nil {
+		t.Fatal(err)
+	}
+	if hasToolCalls != 0 {
+		t.Fatalf("usage_tool_calls table = %d, want 0 (no migration expected)", hasToolCalls)
+	}
+	for _, path := range []string{
+		filepath.Join(state, "agentdeck.sqlite3-wal"),
+		filepath.Join(state, "agentdeck.sqlite3-shm"),
+		filepath.Join(state, "agentdeck.sqlite3-journal"),
+	} {
+		assertNotExist(t, path)
+	}
+	if err = store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	after, err := os.Stat(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := after.Mode().Perm(); got != originalMode {
+		t.Fatalf("%s mode changed: %#o, want %#o", dbPath, got, originalMode)
+	}
+}
+
+func TestOpenReadOnlyDoesNotCreateMissingDatabase(t *testing.T) {
+	ctx := context.Background()
+	state := filepath.Join(t.TempDir(), "state")
+	if err := os.MkdirAll(state, platform.DirectoryMode); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := OpenReadOnly(ctx, state); err == nil {
+		t.Fatal("OpenReadOnly unexpectedly succeeded")
+	}
+	for _, path := range []string{
+		filepath.Join(state, "agentdeck.sqlite3"),
+		filepath.Join(state, "agentdeck.sqlite3-wal"),
+		filepath.Join(state, "agentdeck.sqlite3-shm"),
+		filepath.Join(state, "agentdeck.sqlite3-journal"),
+	} {
+		assertNotExist(t, path)
+	}
+}
+
+func TestOpenReadOnlyRejectsFutureSchema(t *testing.T) {
+	ctx := context.Background()
+	state := filepath.Join(t.TempDir(), "state")
+	if err := os.MkdirAll(state, platform.DirectoryMode); err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("sqlite", filepath.Join(state, "agentdeck.sqlite3"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, "CREATE TABLE schema_metadata (singleton INTEGER PRIMARY KEY CHECK(singleton = 1), version INTEGER NOT NULL CHECK(version >= 0)); INSERT INTO schema_metadata(singleton, version) VALUES (1, ?)", CurrentSchemaVersion+1); err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	if err = db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := OpenReadOnly(ctx, state); !errors.Is(err, ErrUnknownSchema) {
+		t.Fatalf("OpenReadOnly error = %v, want unknown_schema", err)
+	}
+	for _, path := range []string{
+		filepath.Join(state, "agentdeck.sqlite3-wal"),
+		filepath.Join(state, "agentdeck.sqlite3-shm"),
+		filepath.Join(state, "agentdeck.sqlite3-journal"),
+	} {
+		assertNotExist(t, path)
+	}
+}
+
+func TestBackupSQLiteFileCopiesWALCommittedDataAndCanReopen(t *testing.T) {
+	ctx := context.Background()
+	state := filepath.Join(t.TempDir(), "state")
+	if err := os.MkdirAll(state, platform.DirectoryMode); err != nil {
+		t.Fatal(err)
+	}
+	source := filepath.Join(state, "source.sqlite3")
+	sourceDB, err := sql.Open("sqlite", source+"?_pragma=journal_mode(WAL)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sourceDB.Close()
+	if _, err = sourceDB.ExecContext(ctx, "CREATE TABLE records(id INTEGER PRIMARY KEY, value TEXT);"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = sourceDB.ExecContext(ctx, "INSERT INTO records(value) VALUES ('value')"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = os.Stat(source + "-wal"); err != nil {
+		t.Fatalf("WAL file: %v", err)
+	}
+	if err = BackupSQLiteFile(ctx, source, filepath.Join(state, "snapshot.sqlite3")); err != nil {
+		t.Fatal(err)
+	}
+
+	snapshot, err := sql.Open("sqlite", filepath.Join(state, "snapshot.sqlite3"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer snapshot.Close()
+	var count int
+	if err = snapshot.QueryRowContext(ctx, "SELECT count(*) FROM records").Scan(&count); err != nil {
+		t.Fatalf("snapshot query: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("snapshot count = %d, want 1", count)
+	}
+	assertMode(t, filepath.Join(state, "snapshot.sqlite3"), platform.FileMode)
+}
+
+func TestIntegrityCheckForHealthyAndCorruptDatabases(t *testing.T) {
+	ctx := context.Background()
+	state := filepath.Join(t.TempDir(), "state")
+	if err := os.MkdirAll(state, platform.DirectoryMode); err != nil {
+		t.Fatal(err)
+	}
+	store, err := Open(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := store.Exec(ctx, "CREATE TABLE checks(id INTEGER PRIMARY KEY, value TEXT);"); err != nil {
+		t.Fatal(err)
+	}
+	if result, err := store.IntegrityCheck(ctx); err != nil || result != "ok" {
+		t.Fatalf("IntegrityCheck healthy = %q, %v", result, err)
+	}
+	if err = store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	dbPath := filepath.Join(state, "agentdeck.sqlite3")
+	raw, err := os.ReadFile(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(raw) <= 20 {
+		t.Fatal("database file too small to corrupt")
+	}
+	corruptState := filepath.Join(t.TempDir(), "corrupt")
+	if err := os.MkdirAll(corruptState, platform.DirectoryMode); err != nil {
+		t.Fatal(err)
+	}
+	corruptPath := filepath.Join(corruptState, "agentdeck.sqlite3")
+	corruptRaw := append([]byte(nil), raw...)
+	corruptRaw[20] ^= 0xff
+	if err := os.WriteFile(corruptPath, corruptRaw, platform.FileMode); err != nil {
+		t.Fatal(err)
+	}
+	corrupt, openErr := OpenReadOnly(ctx, corruptState)
+	if openErr != nil {
+		t.Fatalf("OpenReadOnly on corrupted DB: %v", openErr)
+	}
+	result, checkErr := corrupt.IntegrityCheck(ctx)
+	if closeErr := corrupt.Close(); closeErr != nil && err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	if checkErr != nil {
+		t.Fatalf("IntegrityCheck unexpectedly failed: %v", checkErr)
+	}
+	if result == "ok" {
+		t.Fatalf("IntegrityCheck result on corrupted database = %q", result)
 	}
 }
 
@@ -468,6 +680,69 @@ func TestLockReleaseDoesNotDeleteNewOwner(t *testing.T) {
 	}
 }
 
+func TestAcquireScanLockIsIndependentFromStateLock(t *testing.T) {
+	root := t.TempDir()
+	stateLock, err := AcquireLock(context.Background(), root, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stateLock.Release()
+	scanLock, err := AcquireScanLock(context.Background(), root, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := scanLock.Release(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAcquireScanLockBusyAndContextHandling(t *testing.T) {
+	root := t.TempDir()
+	owner, err := AcquireScanLock(context.Background(), root, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := AcquireScanLock(context.Background(), root, 0); !errors.Is(err, ErrStateBusy) {
+		t.Fatalf("AcquireScanLock error = %v, want state_busy", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := AcquireScanLock(ctx, root, time.Second); !errors.Is(err, context.Canceled) {
+		t.Fatalf("AcquireScanLock context cancel error = %v, want context.Canceled", err)
+	}
+	deadlineCtx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	if _, err := AcquireScanLock(deadlineCtx, root, time.Second); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("AcquireScanLock context deadline error = %v, want context.DeadlineExceeded", err)
+	}
+	if err := owner.Release(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAcquireScanLockReleaseOwnsOnlyCurrentLock(t *testing.T) {
+	root := t.TempDir()
+	first, err := AcquireScanLock(context.Background(), root, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "scan.lock")
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	second, err := AcquireScanLock(context.Background(), root, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer second.Release()
+	if err := first.Release(); !errors.Is(err, ErrLockLost) {
+		t.Fatalf("first release error = %v, want lock_lost", err)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("new owner's lock was removed: %v", err)
+	}
+}
+
 func TestOpenRespectsMigrationLock(t *testing.T) {
 	root := t.TempDir()
 	if err := platform.EnsureStateRoot(root); err != nil {
@@ -508,5 +783,14 @@ func assertMode(t *testing.T, path string, want os.FileMode) {
 	}
 	if got := info.Mode().Perm(); got != want.Perm() {
 		t.Fatalf("%s mode = %#o, want %#o", path, got, want)
+	}
+}
+
+func assertNotExist(t *testing.T, path string) {
+	t.Helper()
+	if _, err := os.Stat(path); err == nil {
+		t.Fatalf("expected %s to not exist", path)
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		t.Fatal(err)
 	}
 }

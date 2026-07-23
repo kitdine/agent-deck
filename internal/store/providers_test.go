@@ -1,8 +1,10 @@
 package store
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -436,4 +438,331 @@ func TestDeleteMissingProvider(t *testing.T) {
 	if err := s.DeleteProvider(context.Background(), "missing"); err != sql.ErrNoRows {
 		t.Fatalf("DeleteProvider error = %v", err)
 	}
+}
+
+func TestCompleteProviderUseCompletesOperationAndPersistsSelection(t *testing.T) {
+	ctx := context.Background()
+	s, err := Open(ctx, filepath.Join(t.TempDir(), "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	provider, err := s.CreateProviderWithCredential(ctx,
+		Provider{Name: "provider", Endpoint: "https://provider.example", CredentialRef: "provider-ref", Multiplier: "1.25", Clients: []ClientMapping{{Client: "codex"}, {Client: "claude"}}},
+		ProviderCredential{Name: "default", CredentialRef: "provider-ref", Endpoint: "https://provider.example", Multiplier: "1.25", Clients: []string{"codex"}},
+		CredentialSecret{Algorithm: "aes-256-gcm", KeyVersion: 1, KeyID: "provider-key", Nonce: []byte("123456789012"), Ciphertext: []byte("sealed-bytes")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	credential, err := s.ProviderCredential(ctx, provider.Name, "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	selectionAt := time.Date(2026, 7, 22, 1, 2, 3, 0, time.UTC)
+	base := time.Date(2026, 7, 22, 0, 0, 0, 0, time.UTC)
+	candidateCredentialID := credential.ID
+	if err = s.CreateOperation(ctx, Operation{
+		ID:         "provider-use-success",
+		Kind:       "provider.use",
+		State:      "external_written",
+		ProviderID: &provider.ID,
+		Client:     "codex",
+		StartedAt:  base,
+		UpdatedAt:  base,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err = s.CompleteProviderUse(ctx, "provider-use-success", Selection{
+		ProviderID:         provider.ID,
+		Client:             "codex",
+		ProviderName:       "provider",
+		EndpointSnapshot:   "https://provider.example",
+		MultiplierSnapshot: "2",
+		CredentialName:     "default",
+		CredentialID:       &candidateCredentialID,
+		SelectedAt:         selectionAt,
+	}); err != nil {
+		t.Fatalf("CompleteProviderUse error = %v", err)
+	}
+
+	var state, errorCode string
+	if err = s.DB.QueryRowContext(ctx, "SELECT state, error_code FROM operations WHERE id='provider-use-success'").Scan(&state, &errorCode); err != nil {
+		t.Fatal(err)
+	}
+	if state != "completed" || errorCode != "" {
+		t.Fatalf("operation = state=%q error_code=%q", state, errorCode)
+	}
+
+	var operationID string
+	var providerID int64
+	var selectionClient, providerName, endpointSnapshot, multiplierSnapshot, credentialName, selectedText string
+	var selectionCredentialID int64
+	if err = s.DB.QueryRowContext(ctx, `SELECT operation_id, provider_id, client, provider_name_snapshot, endpoint_snapshot, multiplier_snapshot, credential_id, credential_name_snapshot, selected_at
+		FROM provider_selections WHERE operation_id='provider-use-success' LIMIT 1`).Scan(&operationID, &providerID, &selectionClient, &providerName, &endpointSnapshot, &multiplierSnapshot, &selectionCredentialID, &credentialName, &selectedText); err != nil {
+		t.Fatal(err)
+	}
+	selectedAt, err := time.Parse(time.RFC3339Nano, selectedText)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if operationID != "provider-use-success" || providerID != provider.ID || selectionClient != "codex" || providerName != "provider" || endpointSnapshot != "https://provider.example" || multiplierSnapshot != "2" || selectionCredentialID != credential.ID || credentialName != "default" || !selectedAt.Equal(selectionAt) {
+		t.Fatalf("selection = op=%q provider_id=%d client=%q provider=%q endpoint=%q multiplier=%q credential_id=%d credential=%q selected_at=%s", operationID, providerID, selectionClient, providerName, endpointSnapshot, multiplierSnapshot, selectionCredentialID, credentialName, selectedAt.Format(time.RFC3339Nano))
+	}
+
+	if err = s.CompleteProviderUse(ctx, "missing-provider-use", Selection{ProviderID: provider.ID, Client: "codex"}); !isErrNoRows(err) {
+		t.Fatalf("CompleteProviderUse missing error = %v", err)
+	}
+}
+
+func TestUpdateProviderCredentialWithSecretFailureDoesNotPartiallyPersist(t *testing.T) {
+	ctx := context.Background()
+	s, err := Open(ctx, filepath.Join(t.TempDir(), "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	provider, err := s.CreateProviderWithCredential(ctx,
+		Provider{Name: "provider", Endpoint: "https://provider.example", CredentialRef: "provider-ref", Multiplier: "1", Clients: []ClientMapping{{Client: "codex"}, {Client: "claude"}}},
+		ProviderCredential{Name: "default", CredentialRef: "provider-ref", Endpoint: "https://provider.example", Multiplier: "1", Clients: []string{"codex", "claude"}},
+		CredentialSecret{Algorithm: "aes-256-gcm", KeyVersion: 1, KeyID: "key-id", Nonce: []byte("stable-nonce-1"), Ciphertext: []byte("sealed-bytes")},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	beforeCredential, err := s.ProviderCredential(ctx, provider.Name, "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	beforeRows, err := queryCredentialClients(ctx, s.DB, beforeCredential.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	beforeProviders, err := queryProviderClients(ctx, s.DB, provider.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	beforeSecret, err := queryCredentialSecret(ctx, s.DB, beforeCredential.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err = s.Exec(ctx, `CREATE TRIGGER reject_secret BEFORE UPDATE ON credential_secrets BEGIN SELECT RAISE(FAIL,'reject secret'); END`); err != nil {
+		t.Fatal(err)
+	}
+	_, err = s.UpdateProviderCredentialWithSecret(ctx,
+		ProviderCredential{
+			ID:            beforeCredential.ID,
+			ProviderID:    provider.ID,
+			Name:          "default",
+			SecretRef:     "new-ref",
+			CredentialRef: "new-ref",
+			Endpoint:      "https://provider-alt.example",
+			Multiplier:    "2",
+			Clients:       []string{"codex"},
+		},
+		CredentialSecret{
+			CredentialID: beforeCredential.ID,
+			Algorithm:    "aes-256-gcm",
+			KeyVersion:   2,
+			KeyID:        "rotated-key-id",
+			Nonce:        []byte("rotated-nonce-2"),
+			Ciphertext:   []byte("rotated-secret-bytes"),
+		},
+	)
+	if err == nil {
+		t.Fatal("UpdateProviderCredentialWithSecret unexpectedly succeeded")
+	}
+
+	afterCredential, err := s.ProviderCredential(ctx, provider.Name, "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	afterRows, err := queryCredentialClients(ctx, s.DB, afterCredential.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	afterProviders, err := queryProviderClients(ctx, s.DB, provider.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	afterSecret, err := queryCredentialSecret(ctx, s.DB, afterCredential.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !credentialMetadataEqual(beforeCredential, afterCredential) || !bytes.Equal(beforeSecret.Ciphertext, afterSecret.Ciphertext) || !bytes.Equal(beforeSecret.Nonce, afterSecret.Nonce) || !beforeRows.Equal(afterRows) || !beforeProviders.Equal(afterProviders) || !beforeCredential.UpdatedAt.Equal(afterCredential.UpdatedAt) || beforeSecret.Algorithm != afterSecret.Algorithm || beforeSecret.KeyVersion != afterSecret.KeyVersion || beforeSecret.KeyID != afterSecret.KeyID {
+		t.Fatalf("credential metadata persisted after failure")
+	}
+}
+
+func TestPendingOperationsExcludesCompletedAndRespectsOrdering(t *testing.T) {
+	ctx := context.Background()
+	s, err := Open(ctx, filepath.Join(t.TempDir(), "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	base := time.Date(2026, 7, 22, 0, 0, 0, 0, time.UTC)
+	if err := s.CreateOperation(ctx, Operation{ID: "completed-older", Kind: "provider.use", State: "completed", Client: "codex", StartedAt: base, UpdatedAt: base.Add(time.Minute)}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.CreateOperation(ctx, Operation{ID: "pending-newer", Kind: "provider.use", State: "prepared", Client: "codex", StartedAt: base.Add(2 * time.Minute), UpdatedAt: base.Add(2 * time.Minute)}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.CreateOperation(ctx, Operation{ID: "pending-latest", Kind: "provider.use", State: "running", Client: "codex", StartedAt: base.Add(3 * time.Minute), UpdatedAt: base.Add(3 * time.Minute)}); err != nil {
+		t.Fatal(err)
+	}
+
+	pending, err := s.PendingOperations(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pending) != 2 {
+		t.Fatalf("pending length = %d, want 2", len(pending))
+	}
+	if pending[0].ID != "pending-newer" || pending[1].ID != "pending-latest" {
+		t.Fatalf("pending ordering = %#v", pending)
+	}
+}
+
+func TestUpdateOperationDetailsPersistsAndRollsBackOnWriteFailure(t *testing.T) {
+	ctx := context.Background()
+	s, err := Open(ctx, filepath.Join(t.TempDir(), "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	base := time.Date(2026, 7, 22, 0, 0, 0, 0, time.UTC)
+	if err := s.CreateOperation(ctx, Operation{ID: "op-updated", Kind: "provider.use", State: "prepared", Client: "codex", StartedAt: base, UpdatedAt: base, DetailsJSON: `{"phase":"queued"}`}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.UpdateOperationDetails(ctx, "op-updated", "running", "retryable", `{"phase":"running"}`); err != nil {
+		t.Fatal(err)
+	}
+	var updatedState, updatedErrorCode, updatedDetails string
+	if err := s.DB.QueryRowContext(ctx, "SELECT state, error_code, details_json FROM operations WHERE id='op-updated'").Scan(&updatedState, &updatedErrorCode, &updatedDetails); err != nil {
+		t.Fatal(err)
+	}
+	if updatedState != "running" || updatedErrorCode != "retryable" || updatedDetails != `{"phase":"running"}` {
+		t.Fatalf("operation = state=%q error=%q details=%q", updatedState, updatedErrorCode, updatedDetails)
+	}
+
+	if err := s.CreateOperation(ctx, Operation{ID: "op-fail", Kind: "provider.use", State: "prepared", Client: "codex", StartedAt: base.Add(time.Minute), UpdatedAt: base.Add(time.Minute), DetailsJSON: `{"phase":"queued"}`}); err != nil {
+		t.Fatal(err)
+	}
+	beforeState, beforeDetails, beforeErrorCode, beforeUpdatedAt := getOperationState(ctx, t, s, "op-fail")
+	if _, err = s.Exec(ctx, `CREATE TRIGGER reject_operation BEFORE UPDATE ON operations BEGIN SELECT RAISE(FAIL,'reject operation update'); END`); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpdateOperationDetails(ctx, "op-fail", "running", "retryable", `{"phase":"failed"}`); err == nil {
+		t.Fatal("UpdateOperationDetails unexpectedly succeeded")
+	}
+	afterState, afterDetails, afterErrorCode, afterUpdatedAt := getOperationState(ctx, t, s, "op-fail")
+	if beforeState != afterState || beforeDetails != afterDetails || beforeErrorCode != afterErrorCode || !beforeUpdatedAt.Equal(afterUpdatedAt) {
+		t.Fatalf("operation mutated on failure: before=%s %s %s %s after=%s %s %s %s", beforeState, beforeDetails, beforeErrorCode, beforeUpdatedAt, afterState, afterDetails, afterErrorCode, afterUpdatedAt)
+	}
+}
+
+func (p clientList) Equal(other clientList) bool {
+	if len(p) != len(other) {
+		return false
+	}
+	for index, value := range p {
+		if value != other[index] {
+			return false
+		}
+	}
+	return true
+}
+
+type clientList []string
+
+func queryCredentialClients(ctx context.Context, db *sql.DB, credentialID int64) (clientList, error) {
+	rows, err := db.QueryContext(ctx, `SELECT client FROM provider_credential_clients WHERE credential_id=? ORDER BY client`, credentialID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var clients clientList
+	for rows.Next() {
+		var client string
+		if err = rows.Scan(&client); err != nil {
+			return nil, err
+		}
+		clients = append(clients, client)
+	}
+	return clients, rows.Err()
+}
+
+func queryProviderClients(ctx context.Context, db *sql.DB, providerID int64) (clientMappingList, error) {
+	rows, err := db.QueryContext(ctx, "SELECT client, COALESCE(native_model, ''), COALESCE(provider_model, '') FROM provider_clients WHERE provider_id=? ORDER BY client", providerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var mappings clientMappingList
+	for rows.Next() {
+		var mapping ClientMapping
+		if err := rows.Scan(&mapping.Client, &mapping.NativeModel, &mapping.ProviderModel); err != nil {
+			return nil, err
+		}
+		mappings = append(mappings, mapping)
+	}
+	return mappings, rows.Err()
+}
+
+func credentialMetadataEqual(a, b ProviderCredential) bool {
+	return a.Name == b.Name && a.CredentialRef == b.CredentialRef && a.Endpoint == b.Endpoint && a.Multiplier == b.Multiplier && a.ProviderID == b.ProviderID && a.SecretRef == b.SecretRef && a.ID == b.ID && a.CreatedAt.Equal(b.CreatedAt) && a.UpdatedAt.Equal(b.UpdatedAt)
+}
+
+type clientMappingList []ClientMapping
+
+func (m clientMappingList) Equal(other clientMappingList) bool {
+	if len(m) != len(other) {
+		return false
+	}
+	for index, value := range m {
+		if value != other[index] {
+			return false
+		}
+	}
+	return true
+}
+
+func queryCredentialSecret(ctx context.Context, db *sql.DB, credentialID int64) (CredentialSecret, error) {
+	var secret CredentialSecret
+	var updatedText string
+	err := db.QueryRowContext(ctx, "SELECT algorithm,key_version,key_id,nonce,ciphertext,updated_at FROM credential_secrets WHERE credential_id=?", credentialID).Scan(
+		&secret.Algorithm, &secret.KeyVersion, &secret.KeyID, &secret.Nonce, &secret.Ciphertext, &updatedText,
+	)
+	if err != nil {
+		return CredentialSecret{}, err
+	}
+	secret.CredentialID = credentialID
+	secret.UpdatedAt, err = time.Parse(time.RFC3339Nano, updatedText)
+	return secret, err
+}
+
+func isErrNoRows(err error) bool {
+	return errors.Is(err, sql.ErrNoRows)
+}
+
+func getOperationState(ctx context.Context, t *testing.T, s *Store, id string) (string, string, string, time.Time) {
+	t.Helper()
+	var state, details, errorCode, updatedText string
+	if err := s.DB.QueryRowContext(ctx, "SELECT state, details_json, error_code, updated_at FROM operations WHERE id=?", id).Scan(&state, &details, &errorCode, &updatedText); err != nil {
+		t.Fatal(err)
+	}
+	updatedAt, err := time.Parse(time.RFC3339Nano, updatedText)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return state, details, errorCode, updatedAt
 }

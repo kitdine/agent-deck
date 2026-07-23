@@ -606,6 +606,14 @@ func (f countingSourceFile) ReadAt(p []byte, off int64) (int, error) {
 	return n, err
 }
 
+type syntheticReadFailingSourceFile struct {
+	*os.File
+}
+
+func (f syntheticReadFailingSourceFile) ReadAt(p []byte, off int64) (int, error) {
+	return 0, errors.New("synthetic scan read failure")
+}
+
 func TestIncrementalScanReadsNoUnchangedContentAndOnlyAppendSuffix(t *testing.T) {
 	ctx := context.Background()
 	root := t.TempDir()
@@ -2617,5 +2625,327 @@ INSERT INTO usage_tool_calls(activity_key,client,session_id,model,tool_name,star
 	// its session-start snapshot (relay), while its exact-relay token event does not.
 	if models["codex/gpt-test"].Activity == nil || models["codex/gpt-test"].Activity.ToolCalls != 2 {
 		t.Fatalf("provider-filtered tool activity = %#v", models["codex/gpt-test"].Activity)
+	}
+}
+
+func TestFailRunSetsFailureStateAndReason(t *testing.T) {
+	ctx := context.Background()
+	database, err := store.Open(ctx, filepath.Join(t.TempDir(), "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	service := New(database, "")
+	now := time.Date(2026, 7, 20, 0, 0, 0, 0, time.UTC)
+	service.Now = func() time.Time { return now }
+	if _, err = database.Exec(ctx, `INSERT INTO usage_runs(id,client,provider,multiplier,started_at,ended_at,exact,ambiguity_reason) VALUES
+		(701,'codex','official','1','2026-07-01T00:00:00Z',NULL,1,'seed'),
+		(702,'claude','official','1','2026-07-01T00:00:00Z',NULL,1,'seed'),
+		(703,'claude','official','1','2026-07-01T00:00:00Z','2026-07-01T00:10:00Z',1,'terminal-done')`); err != nil {
+		t.Fatal(err)
+	}
+	if err = service.FailRun(ctx, 701, ""); err != nil {
+		t.Fatal(err)
+	}
+	var exact int
+	var reason string
+	var endedAt sql.NullString
+	if err = database.DB.QueryRowContext(ctx, "SELECT exact,ambiguity_reason,ended_at FROM usage_runs WHERE id=?", 701).Scan(&exact, &reason, &endedAt); err != nil || endedAt.String != now.Format(time.RFC3339Nano) || exact != 0 || reason != "wrapper_cleanup_failed" {
+		t.Fatalf("run=701 exact=%d reason=%q ended=%q expected=%s err=%v", exact, reason, endedAt.String, now.Format(time.RFC3339Nano), err)
+	}
+	var endedExact int
+	var endedReason string
+	var endedEndedAt string
+	if err = database.DB.QueryRowContext(ctx, "SELECT exact,ambiguity_reason,ended_at FROM usage_runs WHERE id=?", 703).Scan(&endedExact, &endedReason, &endedEndedAt); err != nil {
+		t.Fatal(err)
+	}
+	if err = service.FailRun(ctx, 703, "synthetic failure"); err != nil {
+		t.Fatal(err)
+	}
+	if err = database.DB.QueryRowContext(ctx, "SELECT exact,ambiguity_reason,ended_at FROM usage_runs WHERE id=?", 703).Scan(&exact, &reason, &endedAt); err != nil || endedAt.String != endedEndedAt || exact != endedExact || reason != endedReason {
+		t.Fatalf("run=703 exact=%d reason=%q ended=%q expected_exact=%d expected_reason=%q expected_ended=%q err=%v", exact, reason, endedAt.String, endedExact, endedReason, endedEndedAt, err)
+	}
+	if err = service.FailRun(ctx, 702, "synthetic failure"); err != nil {
+		t.Fatal(err)
+	}
+	if err = database.DB.QueryRowContext(ctx, "SELECT exact,ambiguity_reason,ended_at FROM usage_runs WHERE id=?", 702).Scan(&exact, &reason, &endedAt); err != nil || endedAt.String != now.Format(time.RFC3339Nano) || exact != 0 || reason != "synthetic failure" {
+		t.Fatalf("run=702 exact=%d reason=%q ended=%q expected=%s reason=synthetic failure err=%v", exact, reason, endedAt.String, now.Format(time.RFC3339Nano), err)
+	}
+}
+
+func TestSetRunPIDAndRunStatus(t *testing.T) {
+	ctx := context.Background()
+	database, err := store.Open(ctx, filepath.Join(t.TempDir(), "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	service := New(database, "")
+	if _, err = database.Exec(ctx, `INSERT INTO usage_runs(id,client,provider,multiplier,started_at,exact,ambiguity_reason) VALUES
+		(801,'codex','official','1','2026-07-01T00:00:00Z',1,'')`); err != nil {
+		t.Fatal(err)
+	}
+	if err = service.SetRunPID(ctx, 801, 1234); err != nil {
+		t.Fatal(err)
+	}
+	var pid int
+	if err = database.DB.QueryRowContext(ctx, "SELECT process_pid FROM usage_runs WHERE id=?", 801).Scan(&pid); err != nil || pid != 1234 {
+		t.Fatalf("process_pid=%d err=%v", pid, err)
+	}
+	exact, reason, err := service.RunStatus(ctx, 801)
+	if err != nil || !exact || reason != "" {
+		t.Fatalf("status exact=%t reason=%q err=%v", exact, reason, err)
+	}
+	if _, _, err = service.RunStatus(ctx, 999); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("missing run status expected sql.ErrNoRows, got err=%v", err)
+	}
+}
+
+func TestDiagnoseSummarizesStateAndFailsOnQueryError(t *testing.T) {
+	ctx := context.Background()
+	database, err := store.Open(ctx, filepath.Join(t.TempDir(), "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	service := New(database, "")
+	if _, err = database.Exec(ctx, `
+INSERT INTO usage_source_files(path,identity,size,cursor,prefix_hash) VALUES ('fixture-a','1',1,0,''),('fixture-b','2',1,0,'');
+INSERT INTO usage_runs(id,client,provider,multiplier,started_at,ended_at,exact,ambiguity_reason) VALUES (900,'codex','official','1','2026-07-01T00:00:00Z',NULL,1,''), (901,'codex','official','1','2026-07-01T00:00:00Z','2026-07-01T00:10:00Z',1,'');
+INSERT INTO usage_events(event_key,client,session_id,event_id,event_at,model,source_path,source_offset) VALUES ('e1','codex','s1','e1','2026-07-01T00:00:00Z','gpt-5.4','fixture-a',0),('e2','codex','s1','e2','2026-07-01T00:00:01Z','gpt-5.4','fixture-b',0),('e3','codex','s2','e3','2026-07-01T00:00:02Z','gpt-5.4','fixture-a',0),('e4','codex','s2','e4','2026-07-01T00:00:03Z','gpt-5.4','fixture-b',0),('e5','codex','s3','e5','2026-07-01T00:00:04Z','gpt-5.4','fixture-b',0);
+INSERT INTO usage_sessions(client,session_id,first_at,last_at) VALUES ('codex','s1','2026-07-01T00:00:00Z','2026-07-01T00:00:01Z'),('codex','s2','2026-07-01T00:00:02Z','2026-07-01T00:00:03Z'),('codex','s3','2026-07-01T00:00:04Z','2026-07-01T00:00:04Z');
+	INSERT INTO usage_tool_calls(activity_key,client,session_id,model,tool_name,started_at,status,source_path,source_offset) VALUES
+	('a','codex','s1','gpt-5.4','exec_command','2026-07-01T00:00:01Z','completed','fixture-a',0),
+	('b','codex','s2','gpt-5.4','list_files','2026-07-01T00:00:02Z','failed','fixture-b',1);`); err != nil {
+		t.Fatal(err)
+	}
+	report, err := service.Diagnose(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected := map[string]int{
+		"files":      2,
+		"events":     5,
+		"sessions":   3,
+		"tool_calls": 2,
+		"exact_runs": 1,
+	}
+	for key, want := range expected {
+		got, _ := report[key]
+		if got != want {
+			t.Fatalf("diagnose[%s] = %#v want %d", key, got, want)
+		}
+	}
+	if _, err = database.Exec(ctx, `DROP TABLE usage_tool_calls`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = service.Diagnose(ctx); err == nil || !strings.Contains(err.Error(), "no such table: usage_tool_calls") {
+		t.Fatalf("diagnose with dropped table err=%v", err)
+	}
+}
+
+func TestCheckSourceReadabilityCountsMissingAndUnreadableSources(t *testing.T) {
+	ctx := context.Background()
+	database, err := store.Open(ctx, filepath.Join(t.TempDir(), "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	root := t.TempDir()
+	missing := filepath.Join(root, "missing.jsonl")
+	unreadable := filepath.Join(root, "unreadable.jsonl")
+	readable := filepath.Join(root, "readable.jsonl")
+	if err = os.WriteFile(readable, []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(unreadable, []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Chmod(unreadable, 0); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = database.Exec(ctx, `INSERT INTO usage_source_files(path,identity,size,cursor,prefix_hash) VALUES (?, 'id-read', 10, 0, 'r'), (?, 'id-missing', 10, 0, 'm'), (?, 'id-unreadable', 10, 0, 'u')`, readable, missing, unreadable); err != nil {
+		t.Fatal(err)
+	}
+	unreadableCount, err := New(database, "").CheckSourceReadability(ctx)
+	if err != nil || unreadableCount != 2 {
+		t.Fatalf("unreadable=%d err=%v", unreadableCount, err)
+	}
+}
+
+func TestScanFileReadFailurePreservesPriorState(t *testing.T) {
+	ctx := context.Background()
+	database, err := store.Open(ctx, filepath.Join(t.TempDir(), "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	home := filepath.Join(t.TempDir(), "home")
+	source := filepath.Join(home, ".codex", "sessions", "2026", "fixture.jsonl")
+	if err = os.MkdirAll(filepath.Dir(source), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	contents := []byte(`{"type":"session_meta","payload":{"session_id":"session"}}` + "\n" +
+		`{"type":"turn_context","payload":{"turn_id":"turn","model":"gpt-5.4"}}` + "\n" +
+		`{"type":"event_msg","timestamp":"2026-07-20T00:00:01Z","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":10,"cached_input_tokens":4,"output_tokens":1}}}}` + "\n")
+	if err = os.WriteFile(source, contents, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	service := New(database, home)
+	if _, err = service.Scan(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var eventKey string
+	if err = database.DB.QueryRowContext(ctx, "SELECT event_key FROM usage_events WHERE source_path=?", source).Scan(&eventKey); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = database.DB.ExecContext(ctx, `INSERT INTO usage_runs(id,client,provider,multiplier,started_at,ended_at,exact,ambiguity_reason) VALUES
+		(950,'codex','official','1','2026-07-20T00:00:00Z','2026-07-20T00:00:30Z',1,'')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = database.DB.ExecContext(ctx, `INSERT INTO usage_run_sources(run_id,path,start_offset,end_offset,start_hash,end_hash) VALUES(950,?,0,?,'','')`, source, len(contents)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = database.DB.ExecContext(ctx, `INSERT INTO usage_run_bindings(event_key,run_id) VALUES(?,950)`, eventKey); err != nil {
+		t.Fatal(err)
+	}
+	var beforeEvents, beforeBindings, beforeSourceRows, beforeRunSources int
+	var beforeBindingsByRun int
+	var beforeRunBindingsEvent string
+	var beforeCursor, beforeSize int64
+	var beforeImported int
+	if err = database.DB.QueryRowContext(ctx, "SELECT COUNT(*),COALESCE(SUM(input_tokens),0) FROM usage_events").Scan(&beforeEvents, new(int64)); err != nil {
+		t.Fatal(err)
+	}
+	if err = database.DB.QueryRowContext(ctx, "SELECT cursor,size FROM usage_source_files WHERE path=?", source).Scan(&beforeCursor, &beforeSize); err != nil {
+		t.Fatal(err)
+	}
+	if err = database.DB.QueryRowContext(ctx, "SELECT imported FROM usage_source_files WHERE path=?", source).Scan(&beforeImported); err != nil {
+		t.Fatal(err)
+	}
+	if err = database.DB.QueryRowContext(ctx, "SELECT COUNT(*),COALESCE(SUM(length(event_key)),0) FROM usage_run_bindings WHERE run_id=950").Scan(&beforeBindings, &beforeBindingsByRun); err != nil {
+		t.Fatal(err)
+	}
+	if err = database.DB.QueryRowContext(ctx, "SELECT event_key FROM usage_run_bindings WHERE run_id=950 LIMIT 1").Scan(&beforeRunBindingsEvent); err != nil {
+		t.Fatal(err)
+	}
+	if err = database.DB.QueryRowContext(ctx, "SELECT COUNT(*) FROM usage_run_sources WHERE run_id=950").Scan(&beforeRunSources); err != nil {
+		t.Fatal(err)
+	}
+	if err = database.DB.QueryRowContext(ctx, "SELECT COUNT(*) FROM usage_source_files").Scan(&beforeSourceRows); err != nil {
+		t.Fatal(err)
+	}
+	f, err := os.OpenFile(source, os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.WriteString(`{"type":"event_msg"}` + "\n"); err != nil {
+		if closeErr := f.Close(); closeErr != nil {
+			t.Logf("failed to close source file: %v", closeErr)
+		}
+		t.Fatal(err)
+	}
+	if err = f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	inventory, err := service.Inventory(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var entry InventoryEntry
+	for _, item := range inventory.Entries {
+		if item.Path == source {
+			entry = item
+			break
+		}
+	}
+	if entry.Path == "" {
+		t.Fatal("missing fixture source entry in inventory")
+	}
+	service.Open = func(path string) (SourceFile, error) {
+		base, err := os.Open(path)
+		if err != nil {
+			return nil, err
+		}
+		return syntheticReadFailingSourceFile{File: base}, nil
+	}
+	if _, err = service.scanFile(ctx, entry); err == nil || !strings.Contains(err.Error(), "synthetic scan read failure") {
+		t.Fatalf("scanFile error = %v", err)
+	}
+	var afterEvents, afterBindings, afterSourceRows, afterRunSources int
+	var afterBindingsByRun int
+	var afterCursor, afterSize int64
+	var afterImported int
+	var afterRunBindingsEvent string
+	if err = database.DB.QueryRowContext(ctx, "SELECT COUNT(*),COALESCE(SUM(input_tokens),0) FROM usage_events").Scan(&afterEvents, new(int64)); err != nil {
+		t.Fatal(err)
+	}
+	if err = database.DB.QueryRowContext(ctx, "SELECT cursor,size FROM usage_source_files WHERE path=?", source).Scan(&afterCursor, &afterSize); err != nil {
+		t.Fatal(err)
+	}
+	if err = database.DB.QueryRowContext(ctx, "SELECT imported FROM usage_source_files WHERE path=?", source).Scan(&afterImported); err != nil {
+		t.Fatal(err)
+	}
+	if err = database.DB.QueryRowContext(ctx, "SELECT COUNT(*),COALESCE(SUM(length(event_key)),0) FROM usage_run_bindings WHERE run_id=950").Scan(&afterBindings, &afterBindingsByRun); err != nil {
+		t.Fatal(err)
+	}
+	if err = database.DB.QueryRowContext(ctx, "SELECT event_key FROM usage_run_bindings WHERE run_id=950 LIMIT 1").Scan(&afterRunBindingsEvent); err != nil {
+		t.Fatal(err)
+	}
+	if err = database.DB.QueryRowContext(ctx, "SELECT COUNT(*) FROM usage_run_sources WHERE run_id=950").Scan(&afterRunSources); err != nil {
+		t.Fatal(err)
+	}
+	if err = database.DB.QueryRowContext(ctx, "SELECT COUNT(*) FROM usage_source_files").Scan(&afterSourceRows); err != nil {
+		t.Fatal(err)
+	}
+	if beforeEvents != afterEvents || beforeBindings != afterBindings || beforeRunSources != afterRunSources || beforeSourceRows != afterSourceRows || beforeCursor != afterCursor || beforeSize != afterSize || beforeImported != afterImported || beforeBindingsByRun != afterBindingsByRun || beforeRunBindingsEvent != afterRunBindingsEvent {
+		t.Fatalf("scanFile failure changed state: before=%+v after=%+v", map[string]any{"events": beforeEvents, "bindings": beforeBindings, "run_sources": beforeRunSources, "source_rows": beforeSourceRows, "cursor": beforeCursor, "size": beforeSize, "imported": beforeImported, "binding_signature": beforeBindingsByRun, "binding_event": beforeRunBindingsEvent}, map[string]any{"events": afterEvents, "bindings": afterBindings, "run_sources": afterRunSources, "source_rows": afterSourceRows, "cursor": afterCursor, "size": afterSize, "imported": afterImported, "binding_signature": afterBindingsByRun, "binding_event": afterRunBindingsEvent})
+	}
+}
+
+func TestParseMultiplierAndParseIntBoundaries(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		input        string
+		want         string
+		wantErr      bool
+		parseInt     bool
+		intWant      int64
+		intWantErr   bool
+		shouldReject bool
+	}{
+		{name: "multiplier accepts decimals", input: "2.5", want: "2.500000000"},
+		{name: "multiplier accepts integer", input: "3", want: "3.000000000"},
+		{name: "multiplier rejects negative", input: "-1", wantErr: true},
+		{name: "multiplier rejects malformed", input: "bad", wantErr: true},
+		{name: "int accepts integer", input: "123", parseInt: true, intWant: 123},
+		{name: "int rejects malformed", input: "bad", parseInt: true, intWantErr: true},
+		{name: "int rejects overflow", input: "9223372036854775808", parseInt: true, intWantErr: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.parseInt {
+				_, err := ParseInt(tc.input)
+				if tc.intWantErr && err == nil {
+					t.Fatalf("ParseInt(%q) did not error", tc.input)
+				}
+				if !tc.intWantErr {
+					got, _ := ParseInt(tc.input)
+					if got != tc.intWant {
+						t.Fatalf("ParseInt(%q)=%d want %d", tc.input, got, tc.intWant)
+					}
+				}
+				return
+			}
+			got, err := ParseMultiplier(tc.input)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("ParseMultiplier(%q) did not error", tc.input)
+				}
+				return
+			}
+			if err != nil || got != tc.want {
+				t.Fatalf("ParseMultiplier(%q)=%q err=%v want %q", tc.input, got, err, tc.want)
+			}
+		})
 	}
 }

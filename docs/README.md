@@ -51,7 +51,7 @@ review history live in the
 | --- | --- |
 | [specs/cli-design.md](specs/cli-design.md) | What the system does and must keep doing: provider, credential, usage, pricing, session, backup, and distribution behavior. Currently version 14; see its changelog. |
 | [specs/cli-manual.md](specs/cli-manual.md) | The implemented command surface, flags, and output shapes. |
-| [plans/test-coverage.md](plans/test-coverage.md) | Repository test coverage queue from the 2026-07-22 gap scan. active — 1/5 done (task 1 passed Round 2 review; task 2 reopened for test repairs). |
+| [plans/test-coverage.md](plans/test-coverage.md) | Repository test coverage queue from the 2026-07-22 gap scans. active — 3/6 done (tasks 1 through 3 passed independent review; task 4 is reopened for assertion repairs). |
 | [reviews/](reviews/README.md) | Per-task review records that back each plan's ticked `Review` cell. |
 | [archive/](archive/README.md) | Retired plans and superseded contracts. Not a starting point for new work. |
 

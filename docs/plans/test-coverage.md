@@ -61,16 +61,16 @@ Task content lives in the queue below; per-gate status lives here.
 
 | # | Task | Dev | Review |
 |---|------|:---:|:------:|
-| 1 | store-boundaries | ✅ | ⬜ |
-| 2 | provider-persistence | ✅ | ⬜ |
-| 3 | usage-runstate | ⬜ | ⬜ |
+| 1 | store-boundaries | ✅ | ✅ |
+| 2 | provider-persistence | ✅ | ✅ |
+| 3 | usage-runstate | ✅ | ✅ |
 | 4 | provider-backup | ⬜ | ⬜ |
 | 5 | vault-init | ⬜ | ⬜ |
+| 6 | session-health | ⬜ | ⬜ |
 
-Done: 0/5. Tasks 1 and 2 are implemented (Dev ✅) and awaiting independent
-review. The implementer ticks **Dev** once a task's targeted L2/L3 evidence
-passes; a reviewer ticks **Review** once findings are closed. A task is done
-only when Review is ticked.
+Done: 3/6. Tasks 1 through 3 passed independent review. The implementer ticks
+**Dev** once a task's targeted L2/L3 evidence passes; a reviewer ticks
+**Review** once findings are closed. A task is done only when Review is ticked.
 
 ## Direct implementation queue
 
@@ -161,6 +161,10 @@ only when Review is ticked.
 
 ### 3. Usage run-state wrappers and diagnostics (P1)
 
+- Completion note (2026-07-22): `FailRun` now preserves closed exact-run state while
+  asserting open-run default and custom failure reasons; scan-file `ReadAt` failure
+  path still preserves prior attribution state.
+
 - **Target files:** add cases to `internal/usage/usage_test.go`; inspect
   `internal/usage/usage.go` and the adjacent exact-run/rebuild tests.
 - **Behavior at risk:** usage attribution must expose a truthful terminal run
@@ -221,6 +225,10 @@ only when Review is ticked.
   3. write redacted Codex and Claude backups, including destination-parent
      creation, unsupported client, write failure, and rename failure; assert
      preservation/redaction plus `0600` output mode.
+- **Round 1 repair note (2026-07-22):** task 4 is reopened because the
+  ambiguous-update case does not prove every existing credential remains
+  unchanged, and redacted-backup cases do not prove safe configuration fields
+  are retained. See `docs/reviews/test-coverage/provider-backup.md`.
 - **Fixtures and boundary:** fake credential-vault implementation, temporary
   TOML/JSON files and destinations, existing config mutation helpers. Use
   synthetic credential strings only to prove absence from output.
@@ -271,9 +279,57 @@ only when Review is ticked.
   rtk lint env GOCACHE=/private/tmp/agent-deck-go-build go vet -mod=vendor ./...
   ```
 
+### 6. Session-index health is read-only and privacy-safe (P1)
+
+- **Target files:** add cases to `internal/session/session_test.go` (or a
+  focused `internal/session/doctor_test.go` if that is the local convention);
+  inspect `internal/session/doctor.go` and the existing doctor integration
+  coverage in `internal/doctor/doctor_test.go`.
+- **Behavior at risk:** `agentdeck doctor` must accurately report whether the
+  separately purgeable session index is usable without creating, migrating, or
+  changing that database. In full mode it must count inaccessible source files
+  without reading or returning their contents or paths.
+- **Verified gap evidence:** the follow-up atomic coverage profile collected
+  on 2026-07-22 shows `session.CheckHealth` at 0.0% direct function coverage.
+  `TestFullCheckReportsProblemsWithoutChangingDatabases` exercises its caller
+  with a missing source, but does not assert the session database's own
+  read-only/no-sidecar behavior or the direct missing/FTS/full-mode contracts.
+  This is distinct from the already-covered session scanning, privacy allowlist,
+  source-move, exclusion, and pagination behavior.
+- **Add these cases:**
+  1. a missing `sessions.sqlite3` returns `Present=false` and
+     `Integrity="not_requested"` without creating any database, sidecar, or
+     directory entry;
+  2. an existing compatible temporary session index returns `Present=true`,
+     `FTSAvailable=true`, and `Integrity="ok"` in non-full mode while its
+     file mode, digest, and absence of new `-wal`/`-shm` sidecars are preserved;
+  3. a temporary SQLite file with no `session_documents` table reports
+     `FTSAvailable=false` rather than a healthy index;
+  4. full mode returns SQLite integrity status and counts one missing and one
+     permission-denied synthetic source alongside a readable source. Assert
+     only the count and health fields: no test failure, result, or helper may
+     include source contents or paths.
+- **Fixtures and boundary:** create temporary session databases via the
+  existing `store.OpenSessions` helper, plus a raw temporary SQLite fixture
+  only for the missing-FTS-table case. Use fake source text and local temporary
+  paths. Do not open the real session index, real Codex/Claude logs, or HOME;
+  do not change `CheckHealth` or add an OS/filesystem seam.
+- **Stop rule:** stop if a permission-denied fixture is not portable on the
+  supported test runner (for example, a privileged runner can still open a
+  `0000` file). Report that environment limitation instead of adding sleeps,
+  platform-specific production logic, or a fake filesystem abstraction.
+- **Verification:** L3 because the diagnostic reads privacy-sensitive local
+  session state and its no-mutation contract is security-relevant.
+
+  ```bash
+  rtk test env GOCACHE=/private/tmp/agent-deck-go-build go test -mod=vendor ./internal/session
+  rtk test env GOCACHE=/private/tmp/agent-deck-go-build go test -mod=vendor ./...
+  rtk lint env GOCACHE=/private/tmp/agent-deck-go-build go vet -mod=vendor ./...
+  ```
+
 ## Completion and follow-up
 
-When every task's Review gate is ticked (all five done), run one final L3
+When every task's Review gate is ticked (all six done), run one final L3
 evidence set against that unchanged content state. Record any remaining high-risk behavior as a newly
 scoped backlog item; do not turn low coverage alone into another plan.
 
@@ -295,10 +351,18 @@ existing representative store, usage, provider, and credential-vault tests;
 and focused implementation/function-coverage inspection of those three module
 groups.
 
-**Confidence:** high for the five direct tasks: each is anchored in observed
+**Confidence:** high for the six direct tasks: each is anchored in observed
 uncovered function behavior and differentiated from nearby existing tests.
 
+**Follow-up scan (2026-07-22):** a fresh atomic profile and focused inspection
+of `internal/session`, `internal/backup`, and `internal/watch` added task 6.
+`session.CheckHealth` was selected over the zero-covered `backup.List` because
+the latter is a low-risk sorted directory listing, and over `watch.Run` because
+the current timer-only loop has no deterministic timing seam for a test-only
+task. Confidence is high for task 6's direct read-only and health-state cases;
+the permission-denied fixture remains runner-dependent as documented above.
+
 **Open questions deliberately left out of this queue:** lower-coverage watch,
-backup, session, CLI, and platform packages were not promoted because this scan
-did not inspect enough behavior to specify tests without guessing. Reassess
-them only through a separately scoped gap analysis after this queue is complete.
+backup, CLI, and platform packages were not promoted because this scan did not
+inspect enough behavior to specify tests without guessing. Reassess them only
+through a separately scoped gap analysis after this queue is complete.
