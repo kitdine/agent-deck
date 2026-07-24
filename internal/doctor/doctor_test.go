@@ -3,6 +3,7 @@ package doctor
 import (
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"os"
 	"path/filepath"
 	"strings"
@@ -26,6 +27,276 @@ func TestCheckMissingStateIsReadOnly(t *testing.T) {
 	}
 	if _, err = os.Stat(root); !os.IsNotExist(err) {
 		t.Fatalf("doctor created state: %v", err)
+	}
+}
+
+func TestCheckReportsStateLockLifecycleUsingInjectedClock(t *testing.T) {
+	ctx := context.Background()
+	state := filepath.Join(t.TempDir(), "state")
+	database, err := store.Open(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = database.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	now := time.Date(2026, time.July, 23, 12, 0, 0, 0, time.UTC)
+	service := Service{StateRoot: state, Home: t.TempDir(), Workdir: t.TempDir(), Now: func() time.Time { return now }}
+	lock := filepath.Join(state, "state.lock")
+	for _, test := range []struct {
+		name       string
+		modifiedAt time.Time
+		status     string
+		code       string
+		problems   int
+	}{
+		{name: "absent", status: "ok", problems: 2},
+		{name: "live", modifiedAt: now.Add(-9 * time.Minute), status: "warning", code: "state_busy", problems: 3},
+		{name: "stale", modifiedAt: now.Add(-11 * time.Minute), status: "warning", code: "stale_lock", problems: 3},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if err := os.Remove(lock); err != nil && !os.IsNotExist(err) {
+				t.Fatal(err)
+			}
+			if !test.modifiedAt.IsZero() {
+				if err := os.WriteFile(lock, []byte("synthetic-lock"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Chtimes(lock, test.modifiedAt, test.modifiedAt); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var beforeLock [32]byte
+			var beforeLockMode os.FileMode
+			var beforeLockModTime time.Time
+			if !test.modifiedAt.IsZero() {
+				beforeLock, beforeLockMode = fileDigest(t, lock), fileMode(t, lock)
+				beforeLockModTime = fileModTime(t, lock)
+			}
+			report, err := service.Check(ctx, false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertDiagnosticReport(t, report,
+				Check{Name: "state_lock", Status: test.status, Code: test.code},
+				reportContract{Mode: "quick", Status: "degraded", Healthy: false, Problems: test.problems, Warnings: test.problems},
+			)
+			if test.modifiedAt.IsZero() {
+				if _, err := os.Stat(lock); !os.IsNotExist(err) {
+					t.Fatalf("doctor created absent state lock: %v", err)
+				}
+			} else if fileDigest(t, lock) != beforeLock || fileMode(t, lock) != beforeLockMode || !fileModTime(t, lock).Equal(beforeLockModTime) {
+				t.Fatal("doctor changed the observed state lock bytes, mode, or modification time")
+			}
+		})
+	}
+}
+
+func TestCheckReportsInsecureStatePermissionsWithoutRepairingThem(t *testing.T) {
+	ctx := context.Background()
+	state := filepath.Join(t.TempDir(), "state")
+	database, err := store.Open(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = database.Close(); err != nil {
+		t.Fatal(err)
+	}
+	core := filepath.Join(state, "agentdeck.sqlite3")
+	before := fileDigest(t, core)
+	if err := os.Chmod(state, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := (Service{StateRoot: state, Home: t.TempDir(), Workdir: t.TempDir()}).Check(ctx, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertDiagnosticReport(t, report,
+		Check{Name: "state_permissions", Status: "error", Code: "insecure_permissions"},
+		reportContract{Mode: "quick", Status: "unhealthy", Healthy: false, Problems: 3, Warnings: 2, Errors: 1},
+	)
+	if after := fileDigest(t, core); before != after {
+		t.Fatal("doctor changed core database while reporting insecure state permissions")
+	}
+	info, err := os.Stat(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0o755 {
+		t.Fatalf("doctor repaired state mode to %o, want 755", got)
+	}
+}
+
+func TestCheckClassifiesDatabaseFailuresWithoutMutatingPersistentState(t *testing.T) {
+	ctx := context.Background()
+	for _, test := range []struct {
+		name  string
+		setup func(t *testing.T, state string)
+		code  string
+	}{
+		{
+			name: "missing",
+			setup: func(t *testing.T, state string) {
+				t.Helper()
+				if err := os.Mkdir(state, 0o700); err != nil {
+					t.Fatal(err)
+				}
+			},
+			code: "database_unreadable",
+		},
+		{
+			name: "malformed",
+			setup: func(t *testing.T, state string) {
+				t.Helper()
+				if err := os.Mkdir(state, 0o700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(state, "agentdeck.sqlite3"), []byte("not a sqlite database"), 0o640); err != nil {
+					t.Fatal(err)
+				}
+			},
+			code: "database_unreadable",
+		},
+		{
+			name: "future_schema",
+			setup: func(t *testing.T, state string) {
+				t.Helper()
+				database, err := store.Open(ctx, state)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err = database.Exec(ctx, "UPDATE schema_metadata SET version=99"); err != nil {
+					database.Close()
+					t.Fatal(err)
+				}
+				if err = database.Close(); err != nil {
+					t.Fatal(err)
+				}
+			},
+			code: store.ErrUnknownSchema.Code,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			state := filepath.Join(t.TempDir(), "state")
+			test.setup(t, state)
+			note := filepath.Join(state, "persistent-note")
+			if err := os.WriteFile(note, []byte("preserve this synthetic entry"), 0o640); err != nil {
+				t.Fatal(err)
+			}
+			beforeNote, beforeNoteMode := fileDigest(t, note), fileMode(t, note)
+			core := filepath.Join(state, "agentdeck.sqlite3")
+			var beforeCore [32]byte
+			var beforeCoreMode os.FileMode
+			corePresent := true
+			if _, err := os.Stat(core); os.IsNotExist(err) {
+				corePresent = false
+			} else if err != nil {
+				t.Fatal(err)
+			} else {
+				beforeCore, beforeCoreMode = fileDigest(t, core), fileMode(t, core)
+			}
+
+			report, err := (Service{StateRoot: state}).Check(ctx, false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertDiagnosticReport(t, report,
+				Check{Name: "database", Status: "error", Code: test.code},
+				reportContract{Mode: "quick", Status: "unhealthy", Healthy: false, Problems: 1, Errors: 1},
+			)
+			if afterNote := fileDigest(t, note); beforeNote != afterNote || fileMode(t, note) != beforeNoteMode {
+				t.Fatal("doctor changed persistent note while reporting database failure")
+			}
+			if !corePresent {
+				if _, err := os.Stat(core); !os.IsNotExist(err) {
+					t.Fatalf("doctor created missing core database: %v", err)
+				}
+				return
+			}
+			if afterCore := fileDigest(t, core); beforeCore != afterCore || fileMode(t, core) != beforeCoreMode {
+				t.Fatal("doctor changed existing core database while reporting database failure")
+			}
+		})
+	}
+}
+
+func TestCheckQuickAndFullPreserveExistingDatabasesAndEntries(t *testing.T) {
+	ctx := context.Background()
+	state := filepath.Join(t.TempDir(), "state")
+	database, err := store.Open(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = database.SetSetting(ctx, "doctor-preservation", "synthetic-value"); err != nil {
+		database.Close()
+		t.Fatal(err)
+	}
+	if err = database.Close(); err != nil {
+		t.Fatal(err)
+	}
+	sessions, err := store.OpenSessions(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := filepath.Join(t.TempDir(), "source.jsonl")
+	if err = os.WriteFile(source, []byte("synthetic source"), 0o600); err != nil {
+		sessions.Close()
+		t.Fatal(err)
+	}
+	if _, err = sessions.DB.ExecContext(ctx, `INSERT INTO session_sources(source_path,identity,cursor,size,modified_at,prefix_hash,priority,parser_version,scanned_at) VALUES(?,?,?,?,?,?,?,?,?)`, source, "synthetic", 0, 0, 0, "", 0, 1, "2026-01-01T00:00:00Z"); err != nil {
+		sessions.Close()
+		t.Fatal(err)
+	}
+	if err = sessions.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	core, sessionDB := filepath.Join(state, "agentdeck.sqlite3"), filepath.Join(state, "sessions.sqlite3")
+	for _, full := range []bool{false, true} {
+		t.Run(map[bool]string{false: "quick", true: "full"}[full], func(t *testing.T) {
+			beforeCore, beforeSession := fileDigest(t, core), fileDigest(t, sessionDB)
+			beforeCoreMode, beforeSessionMode := fileMode(t, core), fileMode(t, sessionDB)
+			report, err := (Service{StateRoot: state, Home: t.TempDir(), Workdir: t.TempDir()}).Check(ctx, full)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if after := fileDigest(t, core); beforeCore != after || fileMode(t, core) != beforeCoreMode {
+				t.Fatalf("full=%t doctor changed core database bytes or mode", full)
+			}
+			if after := fileDigest(t, sessionDB); beforeSession != after || fileMode(t, sessionDB) != beforeSessionMode {
+				t.Fatalf("full=%t doctor changed session database bytes or mode", full)
+			}
+			assertDiagnosticReport(t, report,
+				Check{Name: "sessions", Status: "ok"},
+				reportContract{Mode: map[bool]string{false: "quick", true: "full"}[full], Status: "degraded", Healthy: false, Problems: 1, Warnings: 1},
+			)
+		})
+	}
+
+	readOnly, err := store.OpenReadOnly(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	value, found, err := readOnly.Setting(ctx, "doctor-preservation")
+	if closeErr := readOnly.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil || !found || value != "synthetic-value" {
+		t.Fatalf("preserved core setting = %q, found=%t, err=%v", value, found, err)
+	}
+	indexed, err := sql.Open("sqlite", "file:"+sessionDB+"?mode=ro")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer indexed.Close()
+	var sourceCount int
+	if err = indexed.QueryRowContext(ctx, "SELECT count(*) FROM session_sources WHERE source_path=?", source).Scan(&sourceCount); err != nil {
+		t.Fatal(err)
+	}
+	if sourceCount != 1 {
+		t.Fatalf("preserved session source count = %d, want 1", sourceCount)
 	}
 }
 
@@ -452,6 +723,71 @@ func fileDigest(t *testing.T, path string) [32]byte {
 		t.Fatal(err)
 	}
 	return sha256.Sum256(contents)
+}
+
+func fileMode(t *testing.T, path string) os.FileMode {
+	t.Helper()
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return info.Mode().Perm()
+}
+
+func fileModTime(t *testing.T, path string) time.Time {
+	t.Helper()
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return info.ModTime()
+}
+
+type reportContract struct {
+	Mode     string
+	Status   string
+	Healthy  bool
+	Problems int
+	Warnings int
+	Errors   int
+}
+
+func assertDiagnosticReport(t *testing.T, report Report, wantCheck Check, wantReport reportContract) {
+	t.Helper()
+	var matches []Check
+	problems, warnings, errors := 0, 0, 0
+	for _, check := range report.Checks {
+		if check.Name == wantCheck.Name {
+			matches = append(matches, check)
+		}
+		switch check.Status {
+		case "ok":
+		case "warning":
+			problems++
+			warnings++
+		case "error":
+			problems++
+			errors++
+		default:
+			t.Fatalf("check has unknown status: %#v", check)
+		}
+	}
+	if len(matches) != 1 || matches[0] != wantCheck {
+		t.Fatalf("diagnostic %q = %#v, want exactly %#v in %#v", wantCheck.Name, matches, wantCheck, report)
+	}
+	computedStatus := "healthy"
+	if errors > 0 {
+		computedStatus = "unhealthy"
+	} else if warnings > 0 {
+		computedStatus = "degraded"
+	}
+	if report.Problems != problems || report.Warnings != warnings || report.Errors != errors || report.Healthy != (problems == 0) || report.Status != computedStatus {
+		t.Fatalf("report aggregates do not reconcile with checks: report=%#v computed status=%q healthy=%t problems=%d warnings=%d errors=%d", report, computedStatus, problems == 0, problems, warnings, errors)
+	}
+	gotReport := reportContract{Mode: report.Mode, Status: report.Status, Healthy: report.Healthy, Problems: report.Problems, Warnings: report.Warnings, Errors: report.Errors}
+	if gotReport != wantReport {
+		t.Fatalf("report contract = %#v, want %#v", gotReport, wantReport)
+	}
 }
 
 func hasCode(report Report, code string) bool {
