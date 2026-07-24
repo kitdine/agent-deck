@@ -156,7 +156,24 @@ func ApprovedDocument(client, sessionID, kind, text string) (Document, error) {
 // Scan reads only known JSONL shapes. Unknown records and content types are
 // deliberately ignored, so a client format change fails closed.
 func Scan(ctx context.Context, db *sql.DB, home string) (ScanResult, error) {
-	before, err := visibleDocuments(ctx, db)
+	return scan(ctx, db, home,
+		func(src source) (bool, int, error) {
+			return scanSource(ctx, db, src)
+		},
+		func(seen map[string]bool) error {
+			return removeMissingSources(ctx, db, seen)
+		},
+	)
+}
+
+func scan(
+	ctx context.Context,
+	executor sessionExecutor,
+	home string,
+	scanOne func(source) (bool, int, error),
+	removeMissing func(map[string]bool) error,
+) (ScanResult, error) {
+	before, err := visibleDocuments(ctx, executor)
 	if err != nil {
 		return ScanResult{}, err
 	}
@@ -192,7 +209,7 @@ func Scan(ctx context.Context, db *sql.DB, home string) (ScanResult, error) {
 	seen := make(map[string]bool, len(paths))
 	for _, p := range paths {
 		seen[filepath.Clean(p.path)] = true
-		changed, _, err := scanSource(ctx, db, p)
+		changed, _, err := scanOne(p)
 		if err != nil {
 			return result, err
 		}
@@ -202,10 +219,10 @@ func Scan(ctx context.Context, db *sql.DB, home string) (ScanResult, error) {
 		}
 		result.Sources++
 	}
-	if err = removeMissingSources(ctx, db, seen); err != nil {
+	if err = removeMissing(seen); err != nil {
 		return result, err
 	}
-	after, err := visibleDocuments(ctx, db)
+	after, err := visibleDocuments(ctx, executor)
 	if err != nil {
 		return result, err
 	}
@@ -224,34 +241,86 @@ type sourceState struct {
 	partial                                           []byte
 }
 
+type sessionExecutor interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
+type sourceUpdate struct {
+	movedFrom  string
+	path       string
+	appendOnly bool
+	writeState bool
+	state      sourceState
+	results    []Result
+}
+
 func scanSource(ctx context.Context, db *sql.DB, src source) (bool, int, error) {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, 0, err
+	}
+	defer tx.Rollback()
+	update, changed, err := prepareSourceUpdate(ctx, tx, src)
+	if err != nil {
+		return false, 0, err
+	}
+	if !changed && update.movedFrom == "" {
+		return false, 0, nil
+	}
+	docs, err := applySourceUpdate(ctx, tx, update)
+	if err != nil {
+		return false, 0, err
+	}
+	if err = tx.Commit(); err != nil {
+		return false, 0, err
+	}
+	return changed, docs, nil
+}
+
+func scanSourceExec(ctx context.Context, executor sessionExecutor, src source) (bool, int, error) {
+	update, changed, err := prepareSourceUpdate(ctx, executor, src)
+	if err != nil {
+		return false, 0, err
+	}
+	if !changed && update.movedFrom == "" {
+		return false, 0, nil
+	}
+	docs, err := applySourceUpdate(ctx, executor, update)
+	if err != nil {
+		return false, 0, err
+	}
+	return changed, docs, nil
+}
+
+func prepareSourceUpdate(ctx context.Context, executor sessionExecutor, src source) (sourceUpdate, bool, error) {
 	path := filepath.Clean(src.path)
 	info, err := os.Stat(path)
 	if err != nil {
-		return false, 0, err
+		return sourceUpdate{}, false, err
 	}
 	identity, err := fileIdentity(info)
 	if err != nil {
-		return false, 0, err
+		return sourceUpdate{}, false, err
 	}
 	prefix, err := prefixHash(path, info.Size())
 	if err != nil {
-		return false, 0, err
+		return sourceUpdate{}, false, err
 	}
-	state, found, err := loadSource(ctx, db, path)
+	state, found, err := loadSource(ctx, executor, path)
 	if err != nil {
-		return false, 0, err
+		return sourceUpdate{}, false, err
 	}
+	update := sourceUpdate{path: path}
 	if !found {
 		// A rename preserves source ownership and avoids a full index rebuild.
-		state, found, err = loadSourceByIdentity(ctx, db, identity)
+		state, found, err = loadSourceByIdentity(ctx, executor, identity)
 		if err != nil {
-			return false, 0, err
+			return sourceUpdate{}, false, err
 		}
 		if found {
-			if err = moveSource(ctx, db, state.path, path); err != nil {
-				return false, 0, err
-			}
+			update.movedFrom = state.path
 			state.path = path
 		}
 	}
@@ -259,104 +328,119 @@ func scanSource(ctx context.Context, db *sql.DB, src source) (bool, int, error) 
 	if found {
 		oldPrefix, err = prefixHash(path, state.cursor)
 		if err != nil {
-			return false, 0, err
+			return sourceUpdate{}, false, err
 		}
 	}
 	unchanged := found && state.identity == identity && state.parserVersion == ParserVersion && info.Size() == state.size && state.modifiedAt == info.ModTime().UnixNano() && prefix == state.prefixHash && state.priority == int64(src.priority)
 	if unchanged {
-		return false, 0, nil
+		return update, false, nil
 	}
-	appendOnly := found && state.identity == identity && state.parserVersion == ParserVersion && info.Size() > state.cursor && oldPrefix == state.prefixHash
-	var results []Result
+	update.appendOnly = found && state.identity == identity && state.parserVersion == ParserVersion && info.Size() > state.cursor && oldPrefix == state.prefixHash
 	var partial []byte
-	if appendOnly {
-		results, partial, err = parseRange(src.client, path, state.cursor, state.partial)
+	if update.appendOnly {
+		update.results, partial, err = parseRange(src.client, path, state.cursor, state.partial)
 	} else {
-		results, partial, err = parseRange(src.client, path, 0, nil)
+		update.results, partial, err = parseRange(src.client, path, 0, nil)
 	}
 	if err != nil {
-		return false, 0, err
-	}
-	tx, err := db.BeginTx(ctx, nil)
-	if err != nil {
-		return false, 0, err
-	}
-	defer tx.Rollback()
-	if !appendOnly {
-		if err = deleteSource(ctx, tx, path); err != nil {
-			return false, 0, err
-		}
+		return sourceUpdate{}, false, err
 	}
 	if partial == nil {
 		partial = []byte{}
 	}
-	newState := sourceState{path: path, identity: identity, cursor: info.Size(), size: info.Size(), modifiedAt: info.ModTime().UnixNano(), prefixHash: prefix, priority: int64(src.priority), parserVersion: ParserVersion, partial: partial}
-	if err = saveSourceTx(ctx, tx, newState); err != nil {
-		return false, 0, err
+	update.writeState = true
+	update.state = sourceState{path: path, identity: identity, cursor: info.Size(), size: info.Size(), modifiedAt: info.ModTime().UnixNano(), prefixHash: prefix, priority: int64(src.priority), parserVersion: ParserVersion, partial: partial}
+	return update, true, nil
+}
+
+func applySourceUpdate(ctx context.Context, executor sessionExecutor, update sourceUpdate) (int, error) {
+	if update.movedFrom != "" {
+		if err := moveSource(ctx, executor, update.movedFrom, update.path); err != nil {
+			return 0, err
+		}
+	}
+	if !update.writeState {
+		return 0, nil
+	}
+	if !update.appendOnly {
+		if err := deleteSource(ctx, executor, update.path); err != nil {
+			return 0, err
+		}
+	}
+	if err := saveSource(ctx, executor, update.state); err != nil {
+		return 0, err
 	}
 	docs := 0
-	for _, r := range results {
-		r.SourcePath = path
-		if excluded(ctx, db, r.Metadata) {
+	for _, r := range update.results {
+		r.SourcePath = update.path
+		excluded, err := excluded(ctx, executor, r.Metadata)
+		if err != nil {
+			return 0, err
+		}
+		if excluded {
 			continue
 		}
-		if err = insertResult(ctx, tx, r); err != nil {
-			return false, 0, err
+		if err = insertResult(ctx, executor, r); err != nil {
+			return 0, err
 		}
 		docs += len(r.Documents)
 	}
-	if err = tx.Commit(); err != nil {
-		return false, 0, err
-	}
-	return true, docs, nil
+	return docs, nil
 }
 
-func loadSource(ctx context.Context, db *sql.DB, path string) (sourceState, bool, error) {
+func loadSource(ctx context.Context, executor sessionExecutor, path string) (sourceState, bool, error) {
 	var s sourceState
 	s.path = path
-	err := db.QueryRowContext(ctx, "SELECT identity,cursor,partial_line,size,modified_at,prefix_hash,priority,parser_version FROM session_sources WHERE source_path=?", path).Scan(&s.identity, &s.cursor, &s.partial, &s.size, &s.modifiedAt, &s.prefixHash, &s.priority, &s.parserVersion)
+	err := executor.QueryRowContext(ctx, "SELECT identity,cursor,partial_line,size,modified_at,prefix_hash,priority,parser_version FROM session_sources WHERE source_path=?", path).Scan(&s.identity, &s.cursor, &s.partial, &s.size, &s.modifiedAt, &s.prefixHash, &s.priority, &s.parserVersion)
 	if errors.Is(err, sql.ErrNoRows) {
 		return s, false, nil
 	}
 	return s, err == nil, err
 }
-func loadSourceByIdentity(ctx context.Context, db *sql.DB, identity string) (sourceState, bool, error) {
+func loadSourceByIdentity(ctx context.Context, executor sessionExecutor, identity string) (sourceState, bool, error) {
 	var s sourceState
-	err := db.QueryRowContext(ctx, "SELECT source_path,identity,cursor,partial_line,size,modified_at,prefix_hash,priority,parser_version FROM session_sources WHERE identity=?", identity).Scan(&s.path, &s.identity, &s.cursor, &s.partial, &s.size, &s.modifiedAt, &s.prefixHash, &s.priority, &s.parserVersion)
+	err := executor.QueryRowContext(ctx, "SELECT source_path,identity,cursor,partial_line,size,modified_at,prefix_hash,priority,parser_version FROM session_sources WHERE identity=?", identity).Scan(&s.path, &s.identity, &s.cursor, &s.partial, &s.size, &s.modifiedAt, &s.prefixHash, &s.priority, &s.parserVersion)
 	if errors.Is(err, sql.ErrNoRows) {
 		return s, false, nil
 	}
 	return s, err == nil, err
 }
-func moveSource(ctx context.Context, db *sql.DB, old, new string) error {
+func moveSource(ctx context.Context, executor sessionExecutor, old, new string) error {
+	if _, err := executor.ExecContext(ctx, "INSERT INTO session_sources(source_path,identity,cursor,partial_line,size,modified_at,prefix_hash,priority,parser_version,scanned_at) SELECT ?,identity,cursor,partial_line,size,modified_at,prefix_hash,priority,parser_version,scanned_at FROM session_sources WHERE source_path=?", new, old); err != nil {
+		return err
+	}
+	if _, err := executor.ExecContext(ctx, "UPDATE session_documents SET source_path=? WHERE source_path=?; UPDATE session_metadata SET source_path=? WHERE source_path=?; DELETE FROM session_sources WHERE source_path=?", new, old, new, old, old); err != nil {
+		return err
+	}
+	return nil
+}
+func deleteSource(ctx context.Context, executor sessionExecutor, path string) error {
+	if _, err := executor.ExecContext(ctx, "DELETE FROM session_documents WHERE source_path=?", path); err != nil {
+		return err
+	}
+	if _, err := executor.ExecContext(ctx, "DELETE FROM session_metadata WHERE source_path=?", path); err != nil {
+		return err
+	}
+	return nil
+}
+func saveSource(ctx context.Context, executor sessionExecutor, s sourceState) error {
+	_, err := executor.ExecContext(ctx, "INSERT INTO session_sources(source_path,identity,cursor,partial_line,size,modified_at,prefix_hash,priority,parser_version,scanned_at) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(source_path) DO UPDATE SET identity=excluded.identity,cursor=excluded.cursor,partial_line=excluded.partial_line,size=excluded.size,modified_at=excluded.modified_at,prefix_hash=excluded.prefix_hash,priority=excluded.priority,parser_version=excluded.parser_version,scanned_at=excluded.scanned_at", s.path, s.identity, s.cursor, s.partial, s.size, s.modifiedAt, s.prefixHash, s.priority, s.parserVersion, time.Now().UTC().Format(time.RFC3339Nano))
+	return err
+}
+func removeMissingSources(ctx context.Context, db *sql.DB, seen map[string]bool) error {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	if _, err = tx.ExecContext(ctx, "INSERT INTO session_sources(source_path,identity,cursor,partial_line,size,modified_at,prefix_hash,priority,parser_version,scanned_at) SELECT ?,identity,cursor,partial_line,size,modified_at,prefix_hash,priority,parser_version,scanned_at FROM session_sources WHERE source_path=?", new, old); err != nil {
-		return err
-	}
-	if _, err = tx.ExecContext(ctx, "UPDATE session_documents SET source_path=? WHERE source_path=?; UPDATE session_metadata SET source_path=? WHERE source_path=?; DELETE FROM session_sources WHERE source_path=?", new, old, new, old, old); err != nil {
+	if err = removeMissingSourcesExec(ctx, tx, seen); err != nil {
 		return err
 	}
 	return tx.Commit()
 }
-func deleteSource(ctx context.Context, tx *sql.Tx, path string) error {
-	if _, err := tx.ExecContext(ctx, "DELETE FROM session_documents WHERE source_path=?", path); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, "DELETE FROM session_metadata WHERE source_path=?", path); err != nil {
-		return err
-	}
-	return nil
-}
-func saveSourceTx(ctx context.Context, tx *sql.Tx, s sourceState) error {
-	_, err := tx.ExecContext(ctx, "INSERT INTO session_sources(source_path,identity,cursor,partial_line,size,modified_at,prefix_hash,priority,parser_version,scanned_at) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(source_path) DO UPDATE SET identity=excluded.identity,cursor=excluded.cursor,partial_line=excluded.partial_line,size=excluded.size,modified_at=excluded.modified_at,prefix_hash=excluded.prefix_hash,priority=excluded.priority,parser_version=excluded.parser_version,scanned_at=excluded.scanned_at", s.path, s.identity, s.cursor, s.partial, s.size, s.modifiedAt, s.prefixHash, s.priority, s.parserVersion, time.Now().UTC().Format(time.RFC3339Nano))
-	return err
-}
-func removeMissingSources(ctx context.Context, db *sql.DB, seen map[string]bool) error {
-	rows, err := db.QueryContext(ctx, "SELECT source_path FROM session_sources WHERE identity != ?", replaceDocumentsSourceIdentity)
+
+func removeMissingSourcesExec(ctx context.Context, executor sessionExecutor, seen map[string]bool) error {
+	rows, err := executor.QueryContext(ctx, "SELECT source_path FROM session_sources WHERE identity != ?", replaceDocumentsSourceIdentity)
 	if err != nil {
 		return err
 	}
@@ -374,20 +458,18 @@ func removeMissingSources(ctx context.Context, db *sql.DB, seen map[string]bool)
 	if err = rows.Err(); err != nil {
 		return err
 	}
-	tx, err := db.BeginTx(ctx, nil)
-	if err != nil {
+	if err = rows.Close(); err != nil {
 		return err
 	}
-	defer tx.Rollback()
 	for _, p := range missing {
-		if err = deleteSource(ctx, tx, p); err != nil {
+		if err = deleteSource(ctx, executor, p); err != nil {
 			return err
 		}
-		if _, err = tx.ExecContext(ctx, "DELETE FROM session_sources WHERE source_path=?", p); err != nil {
+		if _, err = executor.ExecContext(ctx, "DELETE FROM session_sources WHERE source_path=?", p); err != nil {
 			return err
 		}
 	}
-	return tx.Commit()
+	return nil
 }
 
 type visibleDocument struct {
@@ -395,8 +477,8 @@ type visibleDocument struct {
 	text string
 }
 
-func visibleDocuments(ctx context.Context, db *sql.DB) (map[string][]visibleDocument, error) {
-	rows, err := db.QueryContext(ctx, `WITH visible AS (SELECT m.source_path,m.client,m.session_id,row_number() OVER (PARTITION BY m.client,m.session_id ORDER BY s.priority DESC,m.source_path) AS n FROM session_metadata m JOIN session_sources s ON s.source_path=m.source_path) SELECT d.client,d.session_id,d.kind,d.text FROM session_documents d JOIN visible v ON v.source_path=d.source_path AND v.client=d.client AND v.session_id=d.session_id WHERE v.n=1 ORDER BY d.client,d.session_id,d.rowid`)
+func visibleDocuments(ctx context.Context, executor sessionExecutor) (map[string][]visibleDocument, error) {
+	rows, err := executor.QueryContext(ctx, `WITH visible AS (SELECT m.source_path,m.client,m.session_id,row_number() OVER (PARTITION BY m.client,m.session_id ORDER BY s.priority DESC,m.source_path) AS n FROM session_metadata m JOIN session_sources s ON s.source_path=m.source_path) SELECT d.client,d.session_id,d.kind,d.text FROM session_documents d JOIN visible v ON v.source_path=d.source_path AND v.client=d.client AND v.session_id=d.session_id WHERE v.n=1 ORDER BY d.client,d.session_id,d.rowid`)
 	if err != nil {
 		return nil, err
 	}
@@ -801,28 +883,39 @@ func replace(ctx context.Context, db *sql.DB, r Result) error {
 		return err
 	}
 	defer tx.Rollback()
-	if _, err = tx.ExecContext(ctx, "DELETE FROM session_documents WHERE source_path=? AND client=? AND session_id=?", r.SourcePath, r.Client, r.SessionID); err != nil {
-		return err
-	}
-	if err = insertResult(ctx, tx, r); err != nil {
+	if err = replaceExec(ctx, tx, r); err != nil {
 		return err
 	}
 	return tx.Commit()
 }
-func insertResult(ctx context.Context, tx *sql.Tx, r Result) error {
+func replaceExec(ctx context.Context, executor sessionExecutor, r Result) error {
+	if _, err := executor.ExecContext(ctx, "DELETE FROM session_documents WHERE source_path=? AND client=? AND session_id=?", r.SourcePath, r.Client, r.SessionID); err != nil {
+		return err
+	}
+	return insertResult(ctx, executor, r)
+}
+func insertResult(ctx context.Context, executor sessionExecutor, r Result) error {
 	for _, d := range r.Documents {
-		if _, err := tx.ExecContext(ctx, "INSERT INTO session_documents(source_path,client,session_id,kind,text) VALUES(?,?,?,?,?)", r.SourcePath, d.Client, d.SessionID, d.Kind, d.Text); err != nil {
+		if _, err := executor.ExecContext(ctx, "INSERT INTO session_documents(source_path,client,session_id,kind,text) VALUES(?,?,?,?,?)", r.SourcePath, d.Client, d.SessionID, d.Kind, d.Text); err != nil {
 			return err
 		}
 	}
-	_, err := tx.ExecContext(ctx, "INSERT INTO session_metadata(source_path,client,session_id,project,model,parser_version,first_at,last_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(source_path,client,session_id) DO UPDATE SET project=CASE WHEN excluded.project='' THEN session_metadata.project ELSE excluded.project END,model=CASE WHEN excluded.model='' THEN session_metadata.model ELSE excluded.model END,parser_version=excluded.parser_version,first_at=CASE WHEN session_metadata.first_at='' OR excluded.first_at<session_metadata.first_at THEN excluded.first_at ELSE session_metadata.first_at END,last_at=CASE WHEN excluded.last_at>session_metadata.last_at THEN excluded.last_at ELSE session_metadata.last_at END", r.SourcePath, r.Client, r.SessionID, r.Project, r.Model, ParserVersion, r.FirstAt, r.LastAt)
+	_, err := executor.ExecContext(ctx, "INSERT INTO session_metadata(source_path,client,session_id,project,model,parser_version,first_at,last_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(source_path,client,session_id) DO UPDATE SET project=CASE WHEN excluded.project='' THEN session_metadata.project ELSE excluded.project END,model=CASE WHEN excluded.model='' THEN session_metadata.model ELSE excluded.model END,parser_version=excluded.parser_version,first_at=CASE WHEN session_metadata.first_at='' OR excluded.first_at<session_metadata.first_at THEN excluded.first_at ELSE session_metadata.first_at END,last_at=CASE WHEN excluded.last_at>session_metadata.last_at THEN excluded.last_at ELSE session_metadata.last_at END", r.SourcePath, r.Client, r.SessionID, r.Project, r.Model, ParserVersion, r.FirstAt, r.LastAt)
 	return err
 }
 func ReplaceDocuments(ctx context.Context, db *sql.DB, client, sessionID string, docs []Document) error {
-	if _, err := db.ExecContext(ctx, "INSERT OR IGNORE INTO session_sources(source_path,identity,cursor,partial_line,size,modified_at,prefix_hash,priority,parser_version,scanned_at) VALUES(?,?,?,?,?,?,?,?,?,?)", replaceDocumentsSourcePath, replaceDocumentsSourceIdentity, 0, []byte{}, 0, 0, "", 1, ParserVersion, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
 		return err
 	}
-	return replace(ctx, db, Result{Metadata: Metadata{Client: client, SessionID: sessionID, SourcePath: replaceDocumentsSourcePath}, Documents: docs})
+	defer tx.Rollback()
+	if _, err = tx.ExecContext(ctx, "INSERT OR IGNORE INTO session_sources(source_path,identity,cursor,partial_line,size,modified_at,prefix_hash,priority,parser_version,scanned_at) VALUES(?,?,?,?,?,?,?,?,?,?)", replaceDocumentsSourcePath, replaceDocumentsSourceIdentity, 0, []byte{}, 0, 0, "", 1, ParserVersion, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+		return err
+	}
+	if err = replaceExec(ctx, tx, Result{Metadata: Metadata{Client: client, SessionID: sessionID, SourcePath: replaceDocumentsSourcePath}, Documents: docs}); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 func Search(ctx context.Context, db *sql.DB, query string) ([]Document, error) {
 	if strings.TrimSpace(query) == "" {
@@ -898,54 +991,85 @@ func Exclude(ctx context.Context, db *sql.DB, kind, value string) error {
 	if strings.TrimSpace(value) == "" {
 		return errors.New("exclusion value is required")
 	}
-	_, err := db.ExecContext(ctx, "INSERT OR IGNORE INTO session_exclusions(kind,value) VALUES(?,?)", kind, filepath.Clean(value))
+	if kind == "project" || kind == "path" {
+		value = filepath.Clean(value)
+	}
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err = tx.ExecContext(ctx, "INSERT OR IGNORE INTO session_exclusions(kind,value) VALUES(?,?)", kind, value); err != nil {
 		return err
 	}
 	switch kind {
 	case "project":
-		_, err = db.ExecContext(ctx, "DELETE FROM session_documents WHERE (client,session_id) IN (SELECT client,session_id FROM session_metadata WHERE project=?)", filepath.Clean(value))
+		_, err = tx.ExecContext(ctx, "DELETE FROM session_documents WHERE (source_path,client,session_id) IN (SELECT source_path,client,session_id FROM session_metadata WHERE project=?)", value)
 		if err == nil {
-			_, err = db.ExecContext(ctx, "DELETE FROM session_metadata WHERE project=?", filepath.Clean(value))
+			_, err = tx.ExecContext(ctx, "DELETE FROM session_metadata WHERE project=?", value)
 		}
 	case "path":
-		_, err = db.ExecContext(ctx, "DELETE FROM session_documents WHERE (client,session_id) IN (SELECT client,session_id FROM session_metadata WHERE source_path=?)", filepath.Clean(value))
+		_, err = tx.ExecContext(ctx, "DELETE FROM session_documents WHERE source_path=?", value)
 		if err == nil {
-			_, err = db.ExecContext(ctx, "DELETE FROM session_metadata WHERE source_path=?", filepath.Clean(value))
+			_, err = tx.ExecContext(ctx, "DELETE FROM session_metadata WHERE source_path=?", value)
 		}
 	case "session":
-		_, err = db.ExecContext(ctx, "DELETE FROM session_documents WHERE session_id=?", value)
+		_, err = tx.ExecContext(ctx, "DELETE FROM session_documents WHERE session_id=?", value)
 		if err == nil {
-			_, err = db.ExecContext(ctx, "DELETE FROM session_metadata WHERE session_id=?", value)
+			_, err = tx.ExecContext(ctx, "DELETE FROM session_metadata WHERE session_id=?", value)
 		}
 	case "client":
-		_, err = db.ExecContext(ctx, "DELETE FROM session_documents WHERE client=?", value)
+		_, err = tx.ExecContext(ctx, "DELETE FROM session_documents WHERE client=?", value)
 		if err == nil {
-			_, err = db.ExecContext(ctx, "DELETE FROM session_metadata WHERE client=?", value)
+			_, err = tx.ExecContext(ctx, "DELETE FROM session_metadata WHERE client=?", value)
 		}
 	}
-	return err
-}
-func excluded(ctx context.Context, db *sql.DB, m Metadata) bool {
-	rows, err := db.QueryContext(ctx, "SELECT kind,value FROM session_exclusions")
 	if err != nil {
-		return true
+		return err
+	}
+	return tx.Commit()
+}
+func excluded(ctx context.Context, executor sessionExecutor, m Metadata) (bool, error) {
+	rows, err := executor.QueryContext(ctx, "SELECT kind,value FROM session_exclusions")
+	if err != nil {
+		return false, err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var k, v string
-		_ = rows.Scan(&k, &v)
+		if err = rows.Scan(&k, &v); err != nil {
+			return false, err
+		}
 		if (k == "project" && m.Project == v) || (k == "path" && m.SourcePath == v) || (k == "session" && m.SessionID == v) || (k == "client" && m.Client == v) {
-			return true
+			return true, nil
 		}
 	}
-	return false
+	return false, rows.Err()
 }
 func Rebuild(ctx context.Context, db *sql.DB, home string) (ScanResult, error) {
-	if _, err := db.ExecContext(ctx, "DELETE FROM session_documents; DELETE FROM session_metadata; DELETE FROM session_sources"); err != nil {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
 		return ScanResult{}, err
 	}
-	return Scan(ctx, db, home)
+	defer tx.Rollback()
+	if _, err = tx.ExecContext(ctx, "DELETE FROM session_documents; DELETE FROM session_metadata; DELETE FROM session_sources"); err != nil {
+		return ScanResult{}, err
+	}
+	result, err := scan(ctx, tx, home,
+		func(src source) (bool, int, error) {
+			return scanSourceExec(ctx, tx, src)
+		},
+		func(seen map[string]bool) error {
+			return removeMissingSourcesExec(ctx, tx, seen)
+		},
+	)
+	if err != nil {
+		return result, err
+	}
+	if err = tx.Commit(); err != nil {
+		return ScanResult{}, err
+	}
+	return result, nil
 }
 
 // ScanCodexFixture remains a small test adapter for the explicit fixture
