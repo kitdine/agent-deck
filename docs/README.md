@@ -103,6 +103,12 @@ repository coverage, and diff checking. Atomic statement coverage is 81.3%
 versus the 80.5% authorized baseline; the delivery profile SHA-256 is
 `da6988dbc2be08428fcbc604ba5ef1b33e0ae10bfaa26da1f9e0e7d1d0452ecf`.
 
+The four production repairs are now designed and tracked in the active
+[repository test-gap production-fix plan](plans/repository-test-gap-production-fixes.md).
+Its four task reviews remain open; it does not authorize push or bypass the
+separate `new-baseline` authorization required after local `main` receives the
+reviewed fixes.
+
 ## Documents
 
 | Document | Purpose |
