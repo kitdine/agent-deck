@@ -1,6 +1,7 @@
 package backup
 
 import (
+	"archive/tar"
 	"bytes"
 	"context"
 	"database/sql"
@@ -8,8 +9,11 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
+
+	"filippo.io/age"
 
 	"github.com/kitdine/agent-deck/internal/credentialvault"
 	"github.com/kitdine/agent-deck/internal/platform"
@@ -451,6 +455,226 @@ func TestRestoreRejectsNonEmptyTargetWithoutChangingIt(t *testing.T) {
 	}
 	if contents, readErr := os.ReadFile(marker); readErr != nil || string(contents) != "unchanged" {
 		t.Fatalf("target changed after rejection: %q, %v", contents, readErr)
+	}
+}
+
+func TestRestoreRejectsInvalidArchivesBeforeTouchingTarget(t *testing.T) {
+	ctx := context.Background()
+	stateRoot := filepath.Join(t.TempDir(), "state")
+	database, err := store.Open(ctx, stateRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	const sourceCredential = "synthetic-restore-boundary-value"
+	const archivePassphrase = "synthetic-archive-passphrase"
+	vault := testBackupVault(t, "source-machine")
+	providers := providerpkg.Service{Store: database, Vault: vault}
+	if _, err = providers.Add(ctx, providerpkg.Definition{Name: "restore-boundary", Endpoint: "https://example.invalid", Clients: []providerpkg.Client{providerpkg.ClientCodex}}, sourceCredential); err != nil {
+		t.Fatal(err)
+	}
+	archive := filepath.Join(t.TempDir(), "valid.adb")
+	if _, err = (Service{Core: database, StateRoot: stateRoot, Vault: vault, Version: "test"}).Create(ctx, archive, archivePassphrase, false); err != nil {
+		t.Fatal(err)
+	}
+
+	writeMalformedArchive := func(t *testing.T, name string, mutate func(*Manifest, map[string][]byte)) string {
+		t.Helper()
+		manifest, entries, readErr := readEncrypted(archive, archivePassphrase)
+		if readErr != nil {
+			t.Fatal(readErr)
+		}
+		mutate(&manifest, entries)
+		manifestBytes, marshalErr := json.Marshal(manifest)
+		if marshalErr != nil {
+			t.Fatal(marshalErr)
+		}
+		entries[manifestName] = manifestBytes
+		path := filepath.Join(t.TempDir(), name+".adb")
+		if writeErr := writeEncrypted(path, archivePassphrase, entries, time.Unix(1, 0)); writeErr != nil {
+			t.Fatal(writeErr)
+		}
+		return path
+	}
+
+	cases := []struct {
+		name           string
+		existingTarget bool
+		unusableTarget bool
+		prepare        func(*testing.T) (string, string)
+	}{
+		{
+			name: "wrong passphrase leaves nonexistent target absent",
+			prepare: func(t *testing.T) (string, string) {
+				return archive, "wrong-passphrase"
+			},
+		},
+		{
+			name:           "truncated archive preserves empty target mode",
+			existingTarget: true,
+			prepare: func(t *testing.T) (string, string) {
+				ciphertext, readErr := os.ReadFile(archive)
+				if readErr != nil {
+					t.Fatal(readErr)
+				}
+				path := filepath.Join(t.TempDir(), "truncated.adb")
+				if writeErr := os.WriteFile(path, ciphertext[:len(ciphertext)/2], platform.FileMode); writeErr != nil {
+					t.Fatal(writeErr)
+				}
+				return path, archivePassphrase
+			},
+		},
+		{
+			name: "missing required entry leaves target absent",
+			prepare: func(t *testing.T) (string, string) {
+				return writeMalformedArchive(t, "missing-core", func(_ *Manifest, entries map[string][]byte) {
+					delete(entries, coreName)
+				}), archivePassphrase
+			},
+		},
+		{
+			name: "hash mismatch leaves target absent without exposing sensitive input",
+			prepare: func(t *testing.T) (string, string) {
+				return writeMalformedArchive(t, "hash-mismatch", func(manifest *Manifest, _ map[string][]byte) {
+					manifest.Entries[0].SHA256 = "0000000000000000000000000000000000000000000000000000000000000000"
+				}), archivePassphrase
+			},
+		},
+		{
+			name: "unexpected path leaves target absent",
+			prepare: func(t *testing.T) (string, string) {
+				return writeMalformedArchive(t, "unexpected-entry", func(_ *Manifest, entries map[string][]byte) {
+					entries["unexpected"] = []byte("synthetic")
+				}), archivePassphrase
+			},
+		},
+		{
+			name: "duplicate entry leaves target absent",
+			prepare: func(t *testing.T) (string, string) {
+				manifest, entries, readErr := readEncrypted(archive, archivePassphrase)
+				if readErr != nil {
+					t.Fatal(readErr)
+				}
+				path := filepath.Join(t.TempDir(), "duplicate.adb")
+				writeEncryptedArchiveWithDuplicate(t, path, archivePassphrase, entries, manifest.CreatedAt, coreName)
+				return path, archivePassphrase
+			},
+		},
+		{
+			name:           "invalid archive is rejected before unusable target",
+			unusableTarget: true,
+			prepare: func(t *testing.T) (string, string) {
+				return writeMalformedArchive(t, "ordering-probe", func(_ *Manifest, entries map[string][]byte) {
+					delete(entries, coreName)
+				}), archivePassphrase
+			},
+		},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			archivePath, passphrase := test.prepare(t)
+			target := filepath.Join(t.TempDir(), "target")
+			if test.unusableTarget {
+				parent := filepath.Join(t.TempDir(), "regular-file")
+				if writeErr := os.WriteFile(parent, []byte("unchanged"), platform.FileMode); writeErr != nil {
+					t.Fatal(writeErr)
+				}
+				target = filepath.Join(parent, "target")
+			} else if test.existingTarget {
+				if mkdirErr := os.Mkdir(target, 0o755); mkdirErr != nil {
+					t.Fatal(mkdirErr)
+				}
+				if chmodErr := os.Chmod(target, 0o755); chmodErr != nil {
+					t.Fatal(chmodErr)
+				}
+			}
+
+			_, restoreErr := Restore(ctx, archivePath, target, passphrase, syntheticMachineIdentity("target-machine"))
+			if restoreErr == nil {
+				t.Fatal("Restore succeeded, want invalid archive")
+			}
+			if strings.Contains(restoreErr.Error(), sourceCredential) || strings.Contains(restoreErr.Error(), archivePassphrase) || strings.Contains(restoreErr.Error(), passphrase) {
+				t.Fatal("restore error exposed sensitive test input")
+			}
+			if !errors.Is(restoreErr, ErrInvalidArchive) {
+				t.Fatal("Restore returned a non-invalid-archive error")
+			}
+			if test.unusableTarget {
+				contents, readErr := os.ReadFile(filepath.Dir(target))
+				if readErr != nil || string(contents) != "unchanged" {
+					t.Fatalf("unusable target parent changed: %v", readErr)
+				}
+				return
+			}
+			assertRestoreTargetUnchanged(t, target, test.existingTarget)
+		})
+	}
+}
+
+func writeEncryptedArchiveWithDuplicate(t *testing.T, destination, passphrase string, entries map[string][]byte, createdAt time.Time, duplicate string) {
+	t.Helper()
+	file, err := os.OpenFile(destination, os.O_WRONLY|os.O_CREATE|os.O_EXCL, platform.FileMode)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	recipient, err := age.NewScryptRecipient(passphrase)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encrypted, err := age.Encrypt(file, recipient)
+	if err != nil {
+		t.Fatal(err)
+	}
+	archive := tar.NewWriter(encrypted)
+	for _, name := range sortedKeys(entries) {
+		data := entries[name]
+		header := &tar.Header{Name: name, Mode: int64(platform.FileMode), Size: int64(len(data)), ModTime: createdAt}
+		if err = archive.WriteHeader(header); err != nil {
+			t.Fatal(err)
+		}
+		if _, err = archive.Write(data); err != nil {
+			t.Fatal(err)
+		}
+		if name == duplicate {
+			if err = archive.WriteHeader(header); err != nil {
+				t.Fatal(err)
+			}
+			if _, err = archive.Write(data); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if err = archive.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err = encrypted.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func assertRestoreTargetUnchanged(t *testing.T, target string, existed bool) {
+	t.Helper()
+	info, err := os.Stat(target)
+	if !existed {
+		if !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("target exists after invalid archive: %v", err)
+		}
+		return
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o755 {
+		t.Fatalf("target mode = %v, want 0755", info.Mode())
+	}
+	entries, err := os.ReadDir(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("target entries = %v, want none", entries)
 	}
 }
 
