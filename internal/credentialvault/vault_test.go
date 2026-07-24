@@ -119,6 +119,214 @@ func TestVaultFailsClosed(t *testing.T) {
 	})
 }
 
+func TestVaultRejectsMalformedPayloadBeforeCreatingOrUsingKey(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("empty reference before key creation", func(t *testing.T) {
+		vault := New(t.TempDir(), fixedMachine("machine-a"))
+		_, err := vault.Seal(ctx, "", "")
+		if err != ErrCredentialReferenceEmpty {
+			t.Fatalf("Seal() error = %v, want ErrCredentialReferenceEmpty", err)
+		}
+		if _, statErr := os.Stat(vault.KeyPath()); !os.IsNotExist(statErr) {
+			t.Fatalf("Seal() created a key for an empty reference: %v", statErr)
+		}
+	})
+
+	t.Run("SealExisting empty reference before missing key", func(t *testing.T) {
+		vault := New(t.TempDir(), fixedMachine("machine-a"))
+		_, err := vault.SealExisting(ctx, "", "")
+		if err != ErrCredentialReferenceEmpty {
+			t.Fatalf("SealExisting() error = %v, want ErrCredentialReferenceEmpty", err)
+		}
+		if _, statErr := os.Stat(vault.KeyPath()); !os.IsNotExist(statErr) {
+			t.Fatalf("SealExisting() created a key for an empty reference: %v", statErr)
+		}
+	})
+
+	t.Run("unsupported metadata before key creation", func(t *testing.T) {
+		cases := []struct {
+			name   string
+			sealed Sealed
+		}{
+			{
+				name: "algorithm",
+				sealed: Sealed{
+					Algorithm:  "unsupported",
+					KeyVersion: KeyVersion,
+				},
+			},
+			{
+				name: "key version",
+				sealed: Sealed{
+					Algorithm:  AlgorithmAES256GCM,
+					KeyVersion: KeyVersion + 1,
+				},
+			},
+		}
+
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				vault := New(t.TempDir(), fixedMachine("machine-a"))
+				value, err := vault.Open(ctx, "synthetic-reference", tc.sealed)
+				if err != ErrKeyVersionUnsupported {
+					t.Fatalf("Open() error = %v, want ErrKeyVersionUnsupported", err)
+				}
+				if value != "" {
+					t.Fatal("Open() returned data for unsupported payload metadata")
+				}
+				if _, statErr := os.Stat(vault.KeyPath()); !os.IsNotExist(statErr) {
+					t.Fatalf("Open() created a key for unsupported payload metadata: %v", statErr)
+				}
+			})
+		}
+	})
+
+	root := t.TempDir()
+	vault := New(root, fixedMachine("machine-a"))
+	vault.random = bytes.NewReader(syntheticSeedA)
+	if created, err := vault.InitializeNew(ctx); !created || err != nil {
+		t.Fatalf("InitializeNew() = %v, %v", created, err)
+	}
+	keyID, err := vault.InspectKey(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyBefore, err := os.ReadFile(vault.KeyPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	invalidCiphertext := []byte{0xD3, 0x41, 0x7E, 0x02}
+	validNonceLength := bytes.Repeat([]byte{0x5C}, 12)
+	cases := []struct {
+		name   string
+		sealed Sealed
+		err    error
+	}{
+		{
+			name: "empty key ID",
+			sealed: Sealed{
+				Algorithm: AlgorithmAES256GCM, KeyVersion: KeyVersion,
+				Nonce: validNonceLength, Ciphertext: invalidCiphertext,
+			},
+			err: ErrKeyMachineMismatch,
+		},
+		{
+			name: "wrong key ID",
+			sealed: Sealed{
+				Algorithm: AlgorithmAES256GCM, KeyVersion: KeyVersion, KeyID: keyID + "-other",
+				Nonce: validNonceLength, Ciphertext: invalidCiphertext,
+			},
+			err: ErrKeyMachineMismatch,
+		},
+		{
+			name: "short nonce",
+			sealed: Sealed{
+				Algorithm: AlgorithmAES256GCM, KeyVersion: KeyVersion, KeyID: keyID,
+				Nonce: validNonceLength[:len(validNonceLength)-1], Ciphertext: invalidCiphertext,
+			},
+			err: ErrCiphertextInvalid,
+		},
+		{
+			name: "long nonce",
+			sealed: Sealed{
+				Algorithm: AlgorithmAES256GCM, KeyVersion: KeyVersion, KeyID: keyID,
+				Nonce: append(append([]byte(nil), validNonceLength...), 0x01), Ciphertext: invalidCiphertext,
+			},
+			err: ErrCiphertextInvalid,
+		},
+		{
+			name: "truncated ciphertext",
+			sealed: Sealed{
+				Algorithm: AlgorithmAES256GCM, KeyVersion: KeyVersion, KeyID: keyID,
+				Nonce: validNonceLength, Ciphertext: invalidCiphertext[:1],
+			},
+			err: ErrCiphertextInvalid,
+		},
+		{
+			name: "nil ciphertext",
+			sealed: Sealed{
+				Algorithm: AlgorithmAES256GCM, KeyVersion: KeyVersion, KeyID: keyID,
+				Nonce: validNonceLength, Ciphertext: nil,
+			},
+			err: ErrCiphertextInvalid,
+		},
+		{
+			name: "zero-length ciphertext",
+			sealed: Sealed{
+				Algorithm: AlgorithmAES256GCM, KeyVersion: KeyVersion, KeyID: keyID,
+				Nonce: validNonceLength, Ciphertext: []byte{},
+			},
+			err: ErrCiphertextInvalid,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			value, err := vault.Open(ctx, "synthetic-reference", tc.sealed)
+			if err != tc.err {
+				t.Fatalf("Open() error = %v, want %v", err, tc.err)
+			}
+			if value != "" {
+				t.Fatal("Open() returned data for an unauthenticated payload")
+			}
+			assertKeyBytesUnchanged(t, vault.KeyPath(), keyBefore)
+		})
+	}
+}
+
+func TestVaultRejectsMalformedKeyFilesWithoutReplacement(t *testing.T) {
+	ctx := context.Background()
+	valid := append(append([]byte(nil), []byte(keyMagic)...), byte(KeyVersion))
+	valid = append(valid, syntheticSeedA...)
+
+	badMagic := append([]byte(nil), valid...)
+	badMagic[0] ^= 0xff
+	badVersion := append([]byte(nil), valid...)
+	badVersion[len(keyMagic)] = byte(KeyVersion + 1)
+	oversized := append(append([]byte(nil), valid...), 0xC4)
+	cases := []struct {
+		name     string
+		contents []byte
+	}{
+		{name: "truncated key", contents: valid[:len(valid)-1]},
+		{name: "oversized key", contents: oversized},
+		{name: "bad magic", contents: badMagic},
+		{name: "unsupported key version", contents: badVersion},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			vault := New(root, fixedMachine("machine-a"))
+			if err := os.WriteFile(vault.KeyPath(), tc.contents, platform.FileMode); err != nil {
+				t.Fatal(err)
+			}
+			before, err := os.ReadFile(vault.KeyPath())
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			_, err = vault.Seal(ctx, "synthetic-reference", "")
+			if err != ErrKeyVersionUnsupported {
+				t.Fatalf("Seal() error = %v, want ErrKeyVersionUnsupported", err)
+			}
+			assertKeyBytesUnchanged(t, vault.KeyPath(), before)
+		})
+	}
+}
+
+func assertKeyBytesUnchanged(t *testing.T, path string, before []byte) {
+	t.Helper()
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(before, after) {
+		t.Fatal("credential key bytes changed after a rejected operation")
+	}
+}
+
 func TestVaultConcurrentInitializationUsesOneKey(t *testing.T) {
 	ctx := context.Background()
 	root := t.TempDir()
