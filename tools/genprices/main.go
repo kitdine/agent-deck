@@ -97,6 +97,9 @@ func run(commit, out, gapfillPath string, check bool, get fetcher) error {
 			fmt.Fprintf(os.Stderr, "genprices: pinned current LiteLLM main to %s\n", commit)
 		}
 	}
+	if err := usage.ValidateLiteLLMCommit(commit); err != nil {
+		return err
+	}
 
 	snapshot, err := get(ctx, fmt.Sprintf(liteLLMPriceURL, commit), nil)
 	if err != nil {
@@ -134,16 +137,19 @@ func latestCommit(ctx context.Context, get fetcher) (string, error) {
 		"User-Agent":           "agentdeck-genprices",
 	})
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("resolve latest LiteLLM commit: %w", err)
 	}
 	var result struct {
 		SHA string `json:"sha"`
 	}
 	if err = json.Unmarshal(data, &result); err != nil {
-		return "", err
+		return "", fmt.Errorf("resolve latest LiteLLM commit: %w", err)
 	}
 	if result.SHA == "" {
 		return "", errors.New("resolve latest LiteLLM commit: empty SHA in response")
+	}
+	if err = usage.ValidateLiteLLMCommit(result.SHA); err != nil {
+		return "", errors.New("resolve latest LiteLLM commit: response contained an invalid SHA")
 	}
 	return result.SHA, nil
 }
