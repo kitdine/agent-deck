@@ -6,6 +6,7 @@ import (
 	"errors"
 	"math/big"
 	"net/url"
+	"regexp"
 	"strings"
 )
 
@@ -15,6 +16,8 @@ var (
 	ErrInvalidProviderName   = errors.New("invalid provider name")
 	ErrInvalidMultiplier     = errors.New("invalid multiplier")
 )
+
+var multiplierLiteral = regexp.MustCompile(`^[0-9]+(?:\.[0-9]+)?$`)
 
 func NormalizeCredentialName(value string) (string, error) {
 	value = strings.TrimSpace(strings.ToLower(value))
@@ -59,8 +62,11 @@ func NormalizeMultiplier(value string) (string, error) {
 	if strings.TrimSpace(value) == "" {
 		return "1", nil
 	}
+	if !multiplierLiteral.MatchString(value) {
+		return "", ErrInvalidMultiplier
+	}
 	rational, ok := new(big.Rat).SetString(value)
-	if !ok || rational.Sign() < 0 {
+	if !ok {
 		return "", ErrInvalidMultiplier
 	}
 	return rational.FloatString(12), nil
