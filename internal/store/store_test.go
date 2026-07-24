@@ -578,10 +578,19 @@ func TestMigrationFailurePreservesLastUsableSchema(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	if _, err := db.ExecContext(ctx, "CREATE TABLE schema_metadata (singleton INTEGER PRIMARY KEY CHECK(singleton = 1), version INTEGER NOT NULL); INSERT INTO schema_metadata VALUES (1, 1); CREATE TABLE preserved (id INTEGER PRIMARY KEY)"); err != nil {
+	if _, err := db.ExecContext(ctx, "CREATE TABLE schema_metadata (singleton INTEGER PRIMARY KEY CHECK(singleton = 1), version INTEGER NOT NULL); INSERT INTO schema_metadata VALUES (1, 1); CREATE TABLE preserved (id INTEGER PRIMARY KEY, value TEXT NOT NULL); INSERT INTO preserved VALUES (1, 'committed')"); err != nil {
 		t.Fatal(err)
 	}
-	broken := []migration{{version: 2, statements: []string{"CREATE TABLE should_not_exist (", "CREATE TABLE never_reached (id INTEGER)"}}}
+	broken := []migration{
+		{version: 2, statements: []string{
+			"CREATE TABLE committed_v2 (id INTEGER PRIMARY KEY, value TEXT NOT NULL)",
+			"INSERT INTO committed_v2 VALUES (1, 'migration-2')",
+		}},
+		{version: 3, statements: []string{
+			"CREATE TABLE should_not_exist (id INTEGER PRIMARY KEY)",
+			"CREATE TABLE invalid (",
+		}},
+	}
 	if err := migrate(ctx, db, broken); err == nil {
 		t.Fatal("migrate succeeded with broken migration")
 	}
@@ -589,21 +598,28 @@ func TestMigrationFailurePreservesLastUsableSchema(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if version != 1 {
-		t.Fatalf("schema version = %d, want 1", version)
+	if version != 2 {
+		t.Fatalf("schema version = %d, want 2", version)
 	}
-	for _, table := range []string{"preserved", "should_not_exist", "never_reached"} {
+	for _, table := range []string{"preserved", "committed_v2", "should_not_exist"} {
 		var count int
 		if err := db.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = ?", table).Scan(&count); err != nil {
 			t.Fatal(err)
 		}
 		want := 0
-		if table == "preserved" {
+		if table == "preserved" || table == "committed_v2" {
 			want = 1
 		}
 		if count != want {
 			t.Fatalf("table %s count = %d, want %d", table, count, want)
 		}
+	}
+	var value string
+	if err := db.QueryRowContext(ctx, "SELECT value FROM preserved WHERE id = 1").Scan(&value); err != nil || value != "committed" {
+		t.Fatalf("preserved committed value = %q, %v", value, err)
+	}
+	if err := db.QueryRowContext(ctx, "SELECT value FROM committed_v2 WHERE id = 1").Scan(&value); err != nil || value != "migration-2" {
+		t.Fatalf("committed v2 value = %q, %v", value, err)
 	}
 }
 
@@ -614,7 +630,10 @@ func TestBootstrapMigrationFailureLeavesNoPartialSchema(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	broken := []migration{{version: 1, statements: []string{"CREATE TABLE incomplete ("}}}
+	broken := []migration{
+		{version: 1, statements: []string{"CREATE TABLE first_bootstrap_table (id INTEGER PRIMARY KEY)"}},
+		{version: 2, statements: []string{"CREATE TABLE second_bootstrap_table (id INTEGER PRIMARY KEY)", "CREATE TABLE invalid ("}},
+	}
 	if err := migrate(ctx, db, broken); err == nil {
 		t.Fatal("migrate succeeded with broken bootstrap migration")
 	}
@@ -624,6 +643,47 @@ func TestBootstrapMigrationFailureLeavesNoPartialSchema(t *testing.T) {
 	}
 	if count != 0 {
 		t.Fatalf("bootstrap left %d tables, want 0", count)
+	}
+}
+
+func TestMigrationApplyFailureRollsBackDDLAndPreservesCommittedSchema(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "state.sqlite3"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.ExecContext(ctx, "CREATE TABLE schema_metadata (singleton INTEGER PRIMARY KEY CHECK(singleton = 1), version INTEGER NOT NULL); INSERT INTO schema_metadata VALUES (1, 1); CREATE TABLE preserved (id INTEGER PRIMARY KEY, value TEXT NOT NULL); INSERT INTO preserved VALUES (1, 'committed')"); err != nil {
+		t.Fatal(err)
+	}
+	sentinel := errors.New("apply failed")
+	broken := []migration{{
+		version:    2,
+		statements: []string{"CREATE TABLE apply_rolled_back (id INTEGER PRIMARY KEY)"},
+		apply: func(context.Context, *sql.Tx) error {
+			return sentinel
+		},
+	}}
+	if err := migrate(ctx, db, broken); !errors.Is(err, sentinel) {
+		t.Fatalf("migrate error = %v, want apply sentinel", err)
+	}
+	version, err := schemaVersion(ctx, db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if version != 1 {
+		t.Fatalf("schema version = %d, want 1", version)
+	}
+	var tableCount int
+	if err := db.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'apply_rolled_back'").Scan(&tableCount); err != nil {
+		t.Fatal(err)
+	}
+	if tableCount != 0 {
+		t.Fatalf("apply failure left %d apply_rolled_back tables, want 0", tableCount)
+	}
+	var value string
+	if err := db.QueryRowContext(ctx, "SELECT value FROM preserved WHERE id = 1").Scan(&value); err != nil || value != "committed" {
+		t.Fatalf("preserved committed value = %q, %v", value, err)
 	}
 }
 
