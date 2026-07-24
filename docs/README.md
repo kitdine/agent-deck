@@ -56,6 +56,53 @@ inline in each review round. One low-risk behavior deviation is carried into
 the Backlog below. History lives in the
 [retired test-coverage plan](archive/plans/test-coverage.md).
 
+Repository-wide test-gap closure is partially delivered and remains active.
+Eleven independently reviewed test tasks were projected from the reviewed audit
+state as separate final-state commits; production code was not changed:
+
+| Task | Delivery commit |
+| --- | --- |
+| Invalid backup archives cannot mutate restore targets | `e9540f85ecf8dbf267d26a0095450eb68e100126` |
+| Malformed credential-vault inputs fail closed | `2e577d2113b70a384a3cf8bee1edc3dc1bba85e2` |
+| Store migrations roll back atomically | `2354534275f9b3ec98aa24148690cb714f0f4f6a` |
+| Doctor state diagnostics remain read-only | `c66753929be212ec78ebabdec9f2ffcff0fd72a1` |
+| Activity details tolerate malformed logs without privacy leaks | `f2f60963b69f49079e1ec5419b4eab4d9fccfd58` |
+| Watch cancellation and scan-lock cleanup are bounded | `87a57263548a28dd090c20199a2477017399d1f8` |
+| Provider failures remain isolated across clients | `6f9289cb29c9ed0a619e1d5a23ea1471acf9d5c8` |
+| Platform state and machine-identity failures keep stable boundaries | `33805f6bfc48249c1435975a8f1e670ef5947672` |
+| Wrapped CLI errors retain stable JSON codes and exit classes | `e879b6dfa10d79a7aea7f3841a6762a3f18045b3` |
+| Extension and backup text/JSON renderers keep exact contracts | `9e7488d069a2f69c2b8b53e1e5bcc6ecd90b17d3` |
+| Terminal controls and Unicode table alignment keep safe boundaries | `2e81291a81835f0a7780327339c752bed7663d78` |
+
+The reviewed audit integration head is
+`5b68942b664cf538a52daf153e0b0a466ad473a1`; the active plan and complete
+review trail remain on `audit/repository-test-gaps-20260723` at
+`docs/plans/repository-test-gaps.md` and
+`docs/reviews/repository-test-gaps/`. They are deliberately not archived or
+retired. Four task-local production defects still block their regression tests:
+
+- `internal/usage`: permanent price-catalog validation failures are retried
+  three times instead of returning after one request
+  (`usage-price-refresh-permanent-validation-retried`).
+- `internal/providermeta`: rational syntax such as `1/3` is accepted where only
+  non-negative finite decimal multipliers are valid
+  (`providermeta-non-decimal-rational-accepted`).
+- `tools/genprices`: malformed latest-commit JSON is not classified at the
+  resolver boundary, and a non-SHA revision reaches catalog fetch
+  (`genprices-latest-commit-resolver-validation-001`).
+- `internal/session`: failed replace, exclude, and rebuild transitions can
+  partially mutate the searchable index, and exact source/project exclusion
+  boundaries can remove a fallback document
+  (`session-index-atomic-transitions-and-source-boundaries`).
+
+Each blocker requires a separately authorized production fix delivered to
+`main`, followed by a `new-baseline` restart with a fresh coverage baseline,
+authorization package, reconstructed test candidate, verification, and review.
+The partial delivery passed full tests, the race detector, `go vet`, atomic
+repository coverage, and diff checking. Atomic statement coverage is 81.3%
+versus the 80.5% authorized baseline; the delivery profile SHA-256 is
+`da6988dbc2be08428fcbc604ba5ef1b33e0ae10bfaa26da1f9e0e7d1d0452ecf`.
+
 ## Documents
 
 | Document | Purpose |
