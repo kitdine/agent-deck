@@ -16,6 +16,7 @@ import (
 
 	"github.com/kitdine/agent-deck/internal/credentialvault"
 	"github.com/kitdine/agent-deck/internal/store"
+	"modernc.org/sqlite"
 )
 
 func testCredentialVault(t *testing.T) *credentialvault.Vault {
@@ -669,6 +670,105 @@ func TestUsedProviderRemovalDeletesLiveMetadataAndPreservesAttributionSnapshot(t
 	}
 }
 
+func TestServiceFailedProviderSelectionIsIsolatedAcrossClients(t *testing.T) {
+	tests := []struct {
+		name             string
+		failJournalWrite bool
+		wantState        string
+		wantCode         string
+	}{
+		{name: "selection persistence failure", wantState: "failed", wantCode: "selection_commit_failed"},
+		{name: "selection and failure journal errors", failJournalWrite: true, wantState: "external_written"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			fixture := newProviderSelectionIsolationFixture(t)
+			if _, err := fixture.database.Exec(context.Background(), `CREATE TRIGGER fail_later_selection BEFORE INSERT ON provider_selections BEGIN SELECT RAISE(FAIL,'synthetic later selection failure'); END`); err != nil {
+				t.Fatal(err)
+			}
+			if test.failJournalWrite {
+				if _, err := fixture.database.Exec(context.Background(), `CREATE TRIGGER fail_failure_journal BEFORE UPDATE OF state ON operations WHEN NEW.state='failed' BEGIN SELECT RAISE(FAIL,'synthetic failed-transition failure'); END`); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			useErr := fixture.service.UseCredential(context.Background(), "next", ClientCodex, "shared", fixture.codexConfig, filepath.Join(fixture.root, "next-codex.backup.toml"))
+			if useErr == nil || !strings.Contains(useErr.Error(), "synthetic later selection failure") {
+				t.Fatalf("later Codex selection error = %v", useErr)
+			}
+			claudeBytes, err := os.ReadFile(fixture.claudeConfig)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(claudeBytes, fixture.claudeBytes) {
+				t.Fatalf("completed Claude config changed:\nbefore %q\nafter  %q", fixture.claudeBytes, claudeBytes)
+			}
+			claudeSelection, err := fixture.database.CurrentProviderSnapshot(context.Background(), string(ClientClaude))
+			if err != nil || !reflect.DeepEqual(claudeSelection, fixture.claudeSelection) {
+				t.Fatalf("completed Claude selection changed:\nbefore %#v\nafter  %#v\nerror  %v", fixture.claudeSelection, claudeSelection, err)
+			}
+			codexSelection, err := fixture.database.CurrentProviderSnapshot(context.Background(), string(ClientCodex))
+			if err != nil || !reflect.DeepEqual(codexSelection, fixture.codexSelection) {
+				t.Fatalf("failed Codex selection replaced prior state:\nbefore %#v\nafter  %#v\nerror  %v", fixture.codexSelection, codexSelection, err)
+			}
+			codexBytes, err := os.ReadFile(fixture.codexConfig)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if bytes.Equal(codexBytes, fixture.codexBytes) {
+				t.Fatal("Codex config did not retain the externally written provider")
+			}
+			matches, err := ConfigMatchesEndpoint(ClientCodex, fixture.codexConfig, "https://next.invalid")
+			if err != nil || !matches {
+				t.Fatalf("Codex external state = %q, matches=%t, error=%v", codexBytes, matches, err)
+			}
+
+			pending, err := fixture.database.PendingOperations(context.Background())
+			if err != nil || len(pending) != 1 {
+				t.Fatalf("pending operations = %#v, %v", pending, err)
+			}
+			operation := pending[0]
+			if operation.ID == "" || operation.Kind != "provider.use" || operation.ProviderID == nil || *operation.ProviderID != fixture.nextProviderID || operation.Client != string(ClientCodex) || operation.ResourceName != "next" || operation.State != test.wantState || operation.ErrorCode != test.wantCode {
+				t.Fatalf("failed Codex journal = %#v", operation)
+			}
+			var details providerUseDetails
+			if err := json.Unmarshal([]byte(operation.DetailsJSON), &details); err != nil || details.ConfigPath != fixture.codexConfig {
+				t.Fatalf("failed Codex journal = %#v", pending[0])
+			}
+		})
+	}
+}
+
+func TestServiceFailOperationJoinsPrimaryCauseAndSQLiteJournalError(t *testing.T) {
+	ctx := context.Background()
+	database, err := store.Open(ctx, filepath.Join(t.TempDir(), "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	service := Service{Store: database}
+	const operationID = "fail-operation"
+	if err := database.CreateOperation(ctx, store.Operation{ID: operationID, Kind: "provider.use", State: "prepared"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(ctx, `CREATE TRIGGER fail_operation_update BEFORE UPDATE OF state ON operations WHEN NEW.state='failed' BEGIN SELECT RAISE(FAIL,'synthetic failed-transition failure'); END`); err != nil {
+		t.Fatal(err)
+	}
+
+	primarySentinel := errors.New("primary provider use failure")
+	result := service.failOperation(ctx, operationID, "selection_commit_failed", primarySentinel)
+	if !errors.Is(result, primarySentinel) {
+		t.Fatalf("joined failure does not preserve primary cause: %v", result)
+	}
+	if !strings.Contains(result.Error(), "record operation failure") {
+		t.Fatalf("failure journal wrapper missing: %v", result)
+	}
+	var sqliteErr *sqlite.Error
+	if !errors.As(result, &sqliteErr) || !strings.Contains(sqliteErr.Error(), "synthetic failed-transition failure") {
+		t.Fatalf("joined failure does not expose SQLite journal cause: %v", result)
+	}
+}
+
 func TestFailedFinalSelectionOperationDoesNotReplaceCompletedCredentialAttribution(t *testing.T) {
 	ctx := context.Background()
 	root := t.TempDir()
@@ -901,4 +1001,85 @@ func credentialSnapshot(ctx context.Context, database *store.Store, provider str
 		}
 	}
 	return snapshot, nil
+}
+
+type providerSelectionIsolationFixture struct {
+	root            string
+	database        *store.Store
+	service         Service
+	codexConfig     string
+	claudeConfig    string
+	codexBytes      []byte
+	claudeBytes     []byte
+	codexSelection  store.ProviderSnapshot
+	claudeSelection store.ProviderSnapshot
+	nextProviderID  int64
+}
+
+func newProviderSelectionIsolationFixture(t *testing.T) providerSelectionIsolationFixture {
+	t.Helper()
+	ctx := context.Background()
+	root := t.TempDir()
+	database, err := store.Open(ctx, filepath.Join(root, "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if closeErr := database.Close(); closeErr != nil {
+			t.Errorf("close provider isolation store: %v", closeErr)
+		}
+	})
+	service := Service{Store: database, Vault: testCredentialVault(t)}
+	clients := []Client{ClientCodex, ClientClaude}
+	if _, err = service.AddProvider(ctx, Definition{Name: "stable", Endpoint: "https://stable.invalid", Clients: clients, Multiplier: "1"}, "shared", "stable-synthetic-value"); err != nil {
+		t.Fatal(err)
+	}
+	nextProvider, err := service.AddProvider(ctx, Definition{Name: "next", Endpoint: "https://next.invalid", Clients: clients, Multiplier: "2"}, "shared", "next-synthetic-value")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	codexConfig := filepath.Join(root, "config.toml")
+	claudeConfig := filepath.Join(root, "settings.json")
+	if err = os.WriteFile(codexConfig, []byte("model = 'keep'\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(claudeConfig, []byte("{\"theme\":\"keep\"}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err = service.UseCredential(ctx, "stable", ClientClaude, "shared", claudeConfig, filepath.Join(root, "stable-claude.backup.json")); err != nil {
+		t.Fatal(err)
+	}
+	if err = service.UseCredential(ctx, "stable", ClientCodex, "shared", codexConfig, filepath.Join(root, "stable-codex.backup.toml")); err != nil {
+		t.Fatal(err)
+	}
+
+	codexBytes, err := os.ReadFile(codexConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	claudeBytes, err := os.ReadFile(claudeConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	codexSelection, err := database.CurrentProviderSnapshot(ctx, string(ClientCodex))
+	if err != nil {
+		t.Fatal(err)
+	}
+	claudeSelection, err := database.CurrentProviderSnapshot(ctx, string(ClientClaude))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return providerSelectionIsolationFixture{
+		root:            root,
+		database:        database,
+		service:         service,
+		codexConfig:     codexConfig,
+		claudeConfig:    claudeConfig,
+		codexBytes:      codexBytes,
+		claudeBytes:     claudeBytes,
+		codexSelection:  codexSelection,
+		claudeSelection: claudeSelection,
+		nextProviderID:  nextProvider.ID,
+	}
 }
