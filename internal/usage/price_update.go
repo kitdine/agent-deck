@@ -65,7 +65,7 @@ func (s *Service) UpdateLiteLLM(ctx context.Context, commit string, client *http
 			c, kept, lastErr = liteLLMCatalog(data, commit, s.now())
 			// A truncated 200 response can be readable at the HTTP layer but invalid
 			// JSON. Retrying the immutable URL is safe and leaves state untouched.
-			retryable = lastErr != nil
+			retryable = retryableTruncatedJSON(lastErr)
 		}
 		if lastErr == nil {
 			break
@@ -107,7 +107,7 @@ func latestLiteLLMCommit(ctx context.Context, client *http.Client) (string, erro
 				}
 				return result.SHA, nil
 			}
-			retryable = true
+			retryable = retryableTruncatedJSON(err)
 		}
 		lastErr = err
 		if !retryable || attempt == priceHTTPAttempts {
@@ -118,6 +118,11 @@ func latestLiteLLMCommit(ctx context.Context, client *http.Client) (string, erro
 		}
 	}
 	return "", fmt.Errorf("resolve latest LiteLLM commit: %w", lastErr)
+}
+
+func retryableTruncatedJSON(err error) bool {
+	var syntaxErr *json.SyntaxError
+	return errors.As(err, &syntaxErr) && syntaxErr.Error() == "unexpected end of JSON input"
 }
 
 func fetchPriceBody(ctx context.Context, client *http.Client, url string, headers map[string]string, maxBytes int64) ([]byte, bool, error) {
