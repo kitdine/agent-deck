@@ -5,7 +5,7 @@ created: 2026-07-22
 
 # Archived Documents
 
-Last updated: 2026-07-23
+Last updated: 2026-07-24
 
 ## Why this directory exists
 
@@ -191,3 +191,24 @@ the current behavior so a future fix cannot land silently.
 Current behavior remains authoritative in `docs/specs/cli-design.md` and
 `docs/specs/cli-manual.md`; the completed plan and its review rounds remain here
 only as implementation and decision history.
+
+## 2026-07-24 retirement: repository test-gap production fixes
+
+`plans/repository-test-gap-production-fixes.md` and
+`reviews/repository-test-gap-production-fixes/` were retired together after all
+four production blockers exposed by the active repository-wide test-gap
+workflow were repaired and independently reviewed.
+
+The signed commits stop retries for permanent LiteLLM catalog validation
+failures (`571a0e3`), reject non-decimal multiplier syntax (`e934f00`), validate
+resolved and explicit generator commits before catalog fetch (`c4abf87`), and
+make session index transitions atomic with exact source ownership
+(`3c80e4a`). Full tests, the relevant race suites, `go vet`, and diff checking
+passed after the final production edit.
+
+This retirement closes only the separate production-fix workflow. The original
+repository-wide test-gap plan and its review trail remain active on
+`audit/repository-test-gaps-20260723`. Resuming those four regression-test tasks
+requires a fresh `new-baseline` authorization package; the old-baseline task and
+audit commits must not be rebased or treated as authoritative delivery inputs.
+No push was performed.

@@ -1,6 +1,7 @@
 ---
-status: active
+status: historical
 created: 2026-07-24
+retired: 2026-07-24
 ---
 
 # Repository test-gap production fixes
@@ -186,10 +187,10 @@ contract.
 
 | Task | Production paths | Dev | Review |
 | --- | --- | --- | --- |
-| Bound permanent catalog failures | `internal/usage/price_update.go` and directly required parsing helpers | ⬜ | ⬜ |
-| Reject non-decimal multipliers | `internal/providermeta/metadata.go` | ⬜ | ⬜ |
-| Validate generator commit resolution | `tools/genprices/main.go` | ⬜ | ⬜ |
-| Make session transitions atomic and exact | `internal/session/session.go` | ⬜ | ⬜ |
+| Bound permanent catalog failures | `internal/usage/price_update.go` and directly required parsing helpers | ✅ | ✅ |
+| Reject non-decimal multipliers | `internal/providermeta/metadata.go` | ✅ | ✅ |
+| Validate generator commit resolution | `tools/genprices/main.go` | ✅ | ✅ |
+| Make session transitions atomic and exact | `internal/session/session.go` | ✅ | ✅ |
 
 The planned production commit titles are:
 
@@ -283,6 +284,40 @@ must resume in `new-baseline` mode:
 
 The current approval does not authorize those future new-baseline branches,
 worktrees, target delivery, plan retirement, cleanup, or push.
+
+## Completion evidence
+
+The four production candidates passed independent read-only review before their
+signed commits:
+
+| Task | Commit | Reviewed manifest |
+| --- | --- | --- |
+| Usage retry classification | `571a0e3ba454e9789c0dae3932dc2e296bb684d8` | `51a32e0aa1db01d98653f53d6767080b409cd3b3e9b2b7b408d6273cf4837c8d` |
+| Multiplier decimal grammar | `e934f0042de5d7c7eeb945727b4fd655675d6efd` | `5e874019fb01083b7d65485ac179962a19f2bc32114f7876fd51bf1ef64b38ed` |
+| Generator commit resolution | `c4abf8700757c5429b6c24d139b077dde01a0183` | `4480337d6f2b229d7464f49dd01ff7e4a6a4a52b5ed3bb55fe80cff8b366c877` |
+| Session transition atomicity | `3c80e4a9ad025375d337a7ef8f9cda065bc797f5` | `ef203c258b800da65b2b32a55afc3ccd8988e1c4441d84b0087633eedd04b98c` |
+
+The usage implementation differs narrowly from the proposed typed-or-sentinel
+classification. It first requires `*json.SyntaxError` through `errors.As`, then
+recognizes truncation by exact equality with Go's
+`unexpected end of JSON input` text. The independent task review accepted this
+bounded check because complete malformed JSON and semantic failures remain
+non-retryable; the residual compatibility risk is dependence on that standard
+library error text.
+
+After the last production edit, the authorized L3 gate passed:
+
+```text
+go test -mod=vendor -count=1 ./...
+go test -mod=vendor -race -count=1 ./internal/session ./internal/usage ./internal/providermeta ./tools/genprices
+go vet -mod=vendor ./...
+git diff --check
+```
+
+The four blocker-test manifests were reverified before their temporary copies
+were removed. The production-fix worktree was clean afterward. Push, tag,
+release, deployment, and creation of the later `new-baseline` test-gap branches
+were not performed.
 
 ## Starting a task
 

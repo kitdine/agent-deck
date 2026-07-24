@@ -9,7 +9,7 @@ This is both the documentation index and the execution baseline. Decide what to
 work on next from this file. Repository code, tests, configuration, and Git
 history remain the source of truth when they disagree with any document.
 
-## Current State (2026-07-23)
+## Current State (2026-07-24)
 
 v0.1.0 is published and installable through `kitdine/homebrew-tap`. Every
 follow-up in the retired phase-one plan passed independent review, so there is
@@ -79,35 +79,33 @@ The reviewed audit integration head is
 review trail remain on `audit/repository-test-gaps-20260723` at
 `docs/plans/repository-test-gaps.md` and
 `docs/reviews/repository-test-gaps/`. They are deliberately not archived or
-retired. Four task-local production defects still block their regression tests:
+retired. Four task-local regression-test tasks remain paused until a
+`new-baseline` restart, but their production defects are repaired:
 
-- `internal/usage`: permanent price-catalog validation failures are retried
-  three times instead of returning after one request
-  (`usage-price-refresh-permanent-validation-retried`).
-- `internal/providermeta`: rational syntax such as `1/3` is accepted where only
-  non-negative finite decimal multipliers are valid
-  (`providermeta-non-decimal-rational-accepted`).
-- `tools/genprices`: malformed latest-commit JSON is not classified at the
-  resolver boundary, and a non-SHA revision reaches catalog fetch
-  (`genprices-latest-commit-resolver-validation-001`).
-- `internal/session`: failed replace, exclude, and rebuild transitions can
-  partially mutate the searchable index, and exact source/project exclusion
-  boundaries can remove a fallback document
-  (`session-index-atomic-transitions-and-source-boundaries`).
+- `internal/usage`: permanent catalog validation now returns after one request
+  (`571a0e3`; former blocker
+  `usage-price-refresh-permanent-validation-retried`).
+- `internal/providermeta`: non-decimal syntax such as `1/3` now fails closed
+  (`e934f00`; former blocker
+  `providermeta-non-decimal-rational-accepted`).
+- `tools/genprices`: latest-commit errors are classified at the resolver
+  boundary and invalid pins fail before catalog fetch (`c4abf87`; former
+  blocker `genprices-latest-commit-resolver-validation-001`).
+- `internal/session`: replace, exclude, and rebuild transitions are atomic and
+  project/path deletion respects exact source ownership (`3c80e4a`; former
+  blocker `session-index-atomic-transitions-and-source-boundaries`).
 
-Each blocker requires a separately authorized production fix delivered to
-`main`, followed by a `new-baseline` restart with a fresh coverage baseline,
-authorization package, reconstructed test candidate, verification, and review.
+Resuming these four test tasks requires a fresh coverage baseline,
+authorization package, reconstructed test candidates, verification, and review.
 The partial delivery passed full tests, the race detector, `go vet`, atomic
 repository coverage, and diff checking. Atomic statement coverage is 81.3%
 versus the 80.5% authorized baseline; the delivery profile SHA-256 is
 `da6988dbc2be08428fcbc604ba5ef1b33e0ae10bfaa26da1f9e0e7d1d0452ecf`.
 
-The four production repairs are now designed and tracked in the active
-[repository test-gap production-fix plan](plans/repository-test-gap-production-fixes.md).
-Its four task reviews remain open; it does not authorize push or bypass the
-separate `new-baseline` authorization required after local `main` receives the
-reviewed fixes.
+The completed production-fix plan and review records are retired under
+`docs/archive/`. No push was performed. The active repository-wide test-gap
+plan still requires a separately approved `new-baseline` authorization package
+before its four paused test tasks can be reconstructed or delivered.
 
 ## Documents
 
@@ -176,15 +174,12 @@ than expanding the entry in place.
       Plaintext and key bytes are not zeroed after use. That is an accepted
       residual risk, not a task — Go's copying GC makes wiping unreliable and
       `Open` returns an immutable `string`.
-- [ ] Address two low-severity findings from the 2026-07-22 price update
-      review, ideally folded into the next change that already touches
-      `internal/usage/price_update.go`: (a) `price_update.go:68` treats every
-      catalog parse failure as retryable, so a genuinely malformed
-      non-transient catalog burns three attempts before failing — distinguish
-      truncation from validation failure; (b) `price_update.go:143-148` checks
-      the byte-size cap before the HTTP status, so an oversized 5xx body is
-      reported as non-retryable "response exceeds N bytes" instead of a
-      retryable transient failure.
+- [ ] Address the remaining low-severity finding from the 2026-07-22 price
+      update review, ideally folded into the next change that already touches
+      `internal/usage/price_update.go`: `price_update.go:143-148` checks the
+      byte-size cap before the HTTP status, so an oversized 5xx body is reported
+      as non-retryable "response exceeds N bytes" instead of a retryable
+      transient failure.
 - [ ] Decide whether `agentdeck doctor`'s `session.CheckHealth` should avoid
       creating `sessions.sqlite3-wal`/`-shm` sidecars when it inspects the index
       (e.g. `immutable=1`/`nolock` handling, weighing the concurrent-watcher
