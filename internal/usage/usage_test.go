@@ -976,6 +976,135 @@ func TestUpdateLiteLLMReportsPinnedCatalogFailures(t *testing.T) {
 	}
 }
 
+func TestUpdateLiteLLMRetryPolicyAndFailureStateBoundaries(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		status   int
+		response string
+		attempts int
+	}{
+		{name: "ordinary client error is not retried", status: http.StatusNotFound, response: "404 Not Found", attempts: 1},
+		{name: "request timeout is retried", status: http.StatusRequestTimeout, response: "408 Request Timeout", attempts: 3},
+		{name: "rate limit is retried", status: http.StatusTooManyRequests, response: "429 Too Many Requests", attempts: 3},
+		{name: "server error is retried", status: http.StatusServiceUnavailable, response: "503 Service Unavailable", attempts: 3},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := context.Background()
+			service, before := seedPriceState(t)
+
+			requests := 0
+			_, err := service.UpdateLiteLLM(ctx, strings.Repeat("b", 40), &http.Client{Transport: roundTrip(func(request *http.Request) (*http.Response, error) {
+				requests++
+				return &http.Response{StatusCode: test.status, Status: test.response, Body: io.NopCloser(strings.NewReader("unavailable")), Header: make(http.Header)}, nil
+			})})
+			if err == nil || !strings.Contains(err.Error(), test.response) {
+				t.Fatalf("update error = %v, want %q", err, test.response)
+			}
+			if requests != test.attempts {
+				t.Fatalf("requests = %d, want %d", requests, test.attempts)
+			}
+			requirePriceState(t, service, before)
+		})
+	}
+}
+
+func TestRetryablePriceStatusCoversAllHTTPFailureStatuses(t *testing.T) {
+	for status := 400; status <= 499; status++ {
+		want := status == http.StatusRequestTimeout || status == http.StatusTooManyRequests
+		if got := retryablePriceStatus(status); got != want {
+			t.Fatalf("retryablePriceStatus(%d) = %t, want %t", status, got, want)
+		}
+	}
+	for status := 500; status <= 599; status++ {
+		if !retryablePriceStatus(status) {
+			t.Fatalf("retryablePriceStatus(%d) = false, want true", status)
+		}
+	}
+}
+
+func TestUpdateLiteLLMRejectsOversizedCatalogWithoutRetry(t *testing.T) {
+	ctx := context.Background()
+	service, before := seedPriceState(t)
+	requests := 0
+	_, err := service.UpdateLiteLLM(ctx, strings.Repeat("b", 40), &http.Client{Transport: roundTrip(func(*http.Request) (*http.Response, error) {
+		requests++
+		return &http.Response{StatusCode: http.StatusOK, Status: "200 OK", Body: io.NopCloser(&repeatedByteReader{remaining: priceCatalogMaxBytes + 1}), Header: make(http.Header)}, nil
+	})})
+	if err == nil || !strings.Contains(err.Error(), "response exceeds") {
+		t.Fatalf("oversized catalog error = %v", err)
+	}
+	if requests != 1 {
+		t.Fatalf("oversized catalog requests = %d, want 1", requests)
+	}
+	requirePriceState(t, service, before)
+}
+
+func TestUpdateLiteLLMCancellationStopsRetry(t *testing.T) {
+	service, before := seedPriceState(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	requests := 0
+	result := make(chan error, 1)
+	go func() {
+		_, err := service.UpdateLiteLLM(ctx, strings.Repeat("b", 40), &http.Client{Transport: roundTrip(func(*http.Request) (*http.Response, error) {
+			requests++
+			cancel()
+			return &http.Response{StatusCode: http.StatusServiceUnavailable, Status: "503 Service Unavailable", Body: io.NopCloser(strings.NewReader("unavailable")), Header: make(http.Header)}, nil
+		})})
+		result <- err
+	}()
+	deadline := time.NewTimer(time.Second)
+	defer deadline.Stop()
+	var err error
+	select {
+	case err = <-result:
+	case <-deadline.C:
+		t.Fatal("canceled price update did not return within 1 second")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled retry error = %v, want context.Canceled", err)
+	}
+	if requests != 1 {
+		t.Fatalf("canceled retry requests = %d, want 1", requests)
+	}
+	requirePriceState(t, service, before)
+}
+
+func TestUpdateLiteLLMDoesNotRetryValidCatalogWithoutDirectProviders(t *testing.T) {
+	ctx := context.Background()
+	service, before := seedPriceState(t)
+	requests := 0
+	body := `{"bedrock-model":{"litellm_provider":"bedrock","input_cost_per_token":0.000002,"output_cost_per_token":0.00001}}`
+	_, err := service.UpdateLiteLLM(ctx, strings.Repeat("b", 40), &http.Client{Transport: roundTrip(func(*http.Request) (*http.Response, error) {
+		requests++
+		return &http.Response{StatusCode: http.StatusOK, Status: "200 OK", Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
+	})})
+	if err == nil || !strings.Contains(err.Error(), "no validated direct-provider records") {
+		t.Fatalf("catalog without direct providers error = %v", err)
+	}
+	requirePriceState(t, service, before)
+	if requests != 1 {
+		t.Fatalf("catalog without direct providers requests = %d, want 1", requests)
+	}
+}
+
+func TestUpdateLiteLLMDoesNotRetryCompleteMalformedCatalog(t *testing.T) {
+	ctx := context.Background()
+	service, before := seedPriceState(t)
+	requests := 0
+	_, err := service.UpdateLiteLLM(ctx, strings.Repeat("b", 40), &http.Client{Transport: roundTrip(func(*http.Request) (*http.Response, error) {
+		requests++
+		return &http.Response{StatusCode: http.StatusOK, Status: "200 OK", Body: io.NopCloser(strings.NewReader("}")), Header: make(http.Header)}, nil
+	})})
+	if err == nil || !strings.Contains(err.Error(), "invalid character '}'") {
+		t.Fatalf("complete malformed catalog error = %v", err)
+	}
+	if requests != 1 {
+		t.Fatalf("complete malformed catalog requests = %d, want 1", requests)
+	}
+	requirePriceState(t, service, before)
+}
+
 func TestPriceDiagnosticsValidatesLiteLLMProvenanceAndCountsDistinctModels(t *testing.T) {
 	ctx := context.Background()
 	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state"))
@@ -1158,6 +1287,77 @@ func TestOfficialOverridesRetainCatalogComponentsAndProvenance(t *testing.T) {
 type roundTrip func(*http.Request) (*http.Response, error)
 
 func (f roundTrip) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+type priceStateSnapshot struct {
+	history []PriceCatalog
+	status  map[string]any
+	prices  []EffectivePrice
+}
+
+func seedPriceState(t *testing.T) (*Service, priceStateSnapshot) {
+	t.Helper()
+	ctx := context.Background()
+	database, err := store.Open(ctx, filepath.Join(t.TempDir(), "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := database.Close(); err != nil {
+			t.Errorf("close price state: %v", err)
+		}
+	})
+	service := New(database, "")
+	service.Now = func() time.Time { return time.Date(2026, 7, 23, 0, 0, 0, 0, time.UTC) }
+	body := `{"gpt-existing":{"litellm_provider":"openai","input_cost_per_token":0.000002,"output_cost_per_token":0.00001,"cache_read_input_token_cost":0.0000002}}`
+	if _, err = service.UpdateLiteLLM(ctx, strings.Repeat("a", 40), &http.Client{Transport: roundTrip(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusOK, Status: "200 OK", Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
+	})}); err != nil {
+		t.Fatalf("seed price state: %v", err)
+	}
+	return service, capturePriceState(t, service)
+}
+
+func capturePriceState(t *testing.T, service *Service) priceStateSnapshot {
+	t.Helper()
+	ctx := context.Background()
+	history, err := service.PriceHistory(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	status, err := service.PriceStatus(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prices, err := service.PriceList(ctx, "openai", "gpt-existing")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return priceStateSnapshot{history: history, status: status, prices: prices}
+}
+
+func requirePriceState(t *testing.T, service *Service, before priceStateSnapshot) {
+	t.Helper()
+	after := capturePriceState(t, service)
+	if !reflect.DeepEqual(after, before) {
+		t.Fatalf("failed refresh changed price state: before=%#v after=%#v", before, after)
+	}
+}
+
+type repeatedByteReader struct{ remaining int64 }
+
+func (r *repeatedByteReader) Read(p []byte) (int, error) {
+	if r.remaining == 0 {
+		return 0, io.EOF
+	}
+	if int64(len(p)) > r.remaining {
+		p = p[:r.remaining]
+	}
+	for i := range p {
+		p[i] = 'x'
+	}
+	r.remaining -= int64(len(p))
+	return len(p), nil
+}
 
 func TestScanDeduplicatesAndKeepsPartialLineForNextScan(t *testing.T) {
 	root := t.TempDir()
