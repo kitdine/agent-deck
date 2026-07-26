@@ -11,9 +11,18 @@ history remain the source of truth when they disagree with any document.
 
 ## Current State (2026-07-26)
 
-v0.1.0 is published and installable through `kitdine/homebrew-tap`. Every
+v0.1.1 is published and installable through `kitdine/homebrew-tap`. Every
 follow-up in the retired phase-one plan passed independent review, so there is
 no outstanding review debt.
+
+The v0.1.1 release exercised the automated Homebrew tap-PR flow end to end for
+the first time: pushing the annotated tag ran the `Release` workflow to success,
+published the GitHub Release, and opened `kitdine/homebrew-tap#1` as an
+`agentdeck-v0.1.1` pull request (not a direct push) whose runner step verified
+bash, zsh, and fish completion install. After that PR merged, a local
+`brew reinstall kitdine/tap/agentdeck` upgraded to v0.1.1 with all three
+completions present. This closes the previously open tap-automation
+verification task.
 
 Delivered and reviewed: the Go CLI baseline; provider and credential
 management; usage collection, pricing, and run attribution; local session
@@ -123,15 +132,13 @@ only the `main` worktree and branch.
 
 ## Open Tasks Not Owned by a Plan
 
-- [ ] Dispatch the Release workflow for the next stable tag (v0.1.1+) and
-      confirm the automated Homebrew tap flow works end to end: it must open an
-      `agentdeck-<tag>` pull request against `kitdine/homebrew-tap` rather than
-      pushing directly, must never fire for prerelease tags, and after the PR
-      merges a normal `brew reinstall kitdine/tap/agentdeck` must expose bash,
-      zsh, and fish completions. `HOMEBREW_TAP_TOKEN` was configured
-      2026-07-22, but this automation has never run end to end — v0.1.0 shipped
-      through a manual tap push and is not being retagged, so this can only be
-      verified on the next real release.
+- None. The tap-automation verification task was closed by the v0.1.1 release
+      (see "Current State" above). One minor residual remains unexercised by a
+      real release: the prerelease-skip branch (a `v*-rc.*` tag must publish a
+      GitHub prerelease and must not open a tap PR) is covered only by the
+      workflow `if` condition and `scripts/test-release-distribution.sh`, not by
+      an actual prerelease tag since v0.1.1 shipped as a stable tag. Confirm it
+      opportunistically the next time a real prerelease is cut.
 
 ## Backlog
 
