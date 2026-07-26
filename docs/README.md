@@ -9,7 +9,7 @@ This is both the documentation index and the execution baseline. Decide what to
 work on next from this file. Repository code, tests, configuration, and Git
 history remain the source of truth when they disagree with any document.
 
-## Current State (2026-07-24)
+## Current State (2026-07-26)
 
 v0.1.0 is published and installable through `kitdine/homebrew-tap`. Every
 follow-up in the retired phase-one plan passed independent review, so there is
@@ -56,56 +56,56 @@ inline in each review round. One low-risk behavior deviation is carried into
 the Backlog below. History lives in the
 [retired test-coverage plan](archive/plans/test-coverage.md).
 
-Repository-wide test-gap closure is partially delivered and remains active.
-Eleven independently reviewed test tasks were projected from the reviewed audit
-state as separate final-state commits; production code was not changed:
+Repository-wide behavioral test-gap closure is complete at the staged
+final-state delivery gate. Fifteen independently reviewed logical tasks protect
+all 16 deterministic first-party modules; there are no exclusions, unconfirmed
+modules, remaining `needs-tests` entries, or open/awaiting-human blockers.
+Production code was unchanged by the test-only workflow.
 
-| Task | Delivery commit |
+Eleven safe task commits were delivered in the earlier authorized partial
+delivery. After the four separately reviewed production fixes landed on local
+`main`, the workflow resumed from baseline
+`4f614d34d09260a52df6bd333f6dad26134e96ac`. The four reconstructed regression
+tasks were independently reviewed on the audit branch and projected as fresh
+signed replacement-delivery commits:
+
+| Task | Replacement delivery commit |
 | --- | --- |
-| Invalid backup archives cannot mutate restore targets | `e9540f85ecf8dbf267d26a0095450eb68e100126` |
-| Malformed credential-vault inputs fail closed | `2e577d2113b70a384a3cf8bee1edc3dc1bba85e2` |
-| Store migrations roll back atomically | `2354534275f9b3ec98aa24148690cb714f0f4f6a` |
-| Doctor state diagnostics remain read-only | `c66753929be212ec78ebabdec9f2ffcff0fd72a1` |
-| Activity details tolerate malformed logs without privacy leaks | `f2f60963b69f49079e1ec5419b4eab4d9fccfd58` |
-| Watch cancellation and scan-lock cleanup are bounded | `87a57263548a28dd090c20199a2477017399d1f8` |
-| Provider failures remain isolated across clients | `6f9289cb29c9ed0a619e1d5a23ea1471acf9d5c8` |
-| Platform state and machine-identity failures keep stable boundaries | `33805f6bfc48249c1435975a8f1e670ef5947672` |
-| Wrapped CLI errors retain stable JSON codes and exit classes | `e879b6dfa10d79a7aea7f3841a6762a3f18045b3` |
-| Extension and backup text/JSON renderers keep exact contracts | `9e7488d069a2f69c2b8b53e1e5bcc6ecd90b17d3` |
-| Terminal controls and Unicode table alignment keep safe boundaries | `2e81291a81835f0a7780327339c752bed7663d78` |
+| Price refresh permanent failures, cancellation, and request counts | `39650636fc92f884ecda5081f5d28ec22b583153` |
+| Canonical provider multiplier syntax | `3968d703fc5ed94378fbb917c187543655a1ffbb` |
+| Generator commit resolution and output preservation | `02eec76513929fb321361858a00cc71d9ecad387` |
+| Atomic session index transitions and exact source ownership | `7168079230adf8bb1fdf05b2d563f1f1782023e1` |
 
-The reviewed audit integration head is
-`5b68942b664cf538a52daf153e0b0a466ad473a1`; the active plan and complete
-review trail remain on `audit/repository-test-gaps-20260723` at
-`docs/plans/repository-test-gaps.md` and
-`docs/reviews/repository-test-gaps/`. They are deliberately not archived or
-retired. Four task-local regression-test tasks remain paused until a
-`new-baseline` restart, but their production defects are repaired:
+The frozen reviewed audit integration head is
+`2571307d8410c2b4874bc1f8fb53fef91707c129`. Aggregate Review Round 3 passed
+with exact 21-path scope, all source-to-audit manifest/message/signature
+mappings, 16-module/15-task truth, and immutable failed-evidence retention.
+The failed first delivery remains preserved at
+`725ab5aed94c3a38d7f9c8d7ebc8016e63569b33`; it was not amended, reset,
+reused, or cleaned.
 
-- `internal/usage`: permanent catalog validation now returns after one request
-  (`571a0e3`; former blocker
-  `usage-price-refresh-permanent-validation-retried`).
-- `internal/providermeta`: non-decimal syntax such as `1/3` now fails closed
-  (`e934f00`; former blocker
-  `providermeta-non-decimal-rational-accepted`).
-- `tools/genprices`: latest-commit errors are classified at the resolver
-  boundary and invalid pins fail before catalog fetch (`c4abf87`; former
-  blocker `genprices-latest-commit-resolver-validation-001`).
-- `internal/session`: replace, exclude, and rebuild transitions are atomic and
-  project/path deletion respects exact source ownership (`3c80e4a`; former
-  blocker `session-index-atomic-transitions-and-source-boundaries`).
+Complete verification at replacement task head
+`7168079230adf8bb1fdf05b2d563f1f1782023e1` passed full tests, the full race
+suite, `go vet`, and atomic repository coverage. Total statement coverage is
+81.9%; the delivery coverage profile SHA-256 is
+`0ae5afc81ecbcae30fb747ea60b41f16e3570c1a3ea13722093660751627f54b`.
 
-Resuming these four test tasks requires a fresh coverage baseline,
-authorization package, reconstructed test candidates, verification, and review.
-The partial delivery passed full tests, the race detector, `go vet`, atomic
-repository coverage, and diff checking. Atomic statement coverage is 81.3%
-versus the 80.5% authorized baseline; the delivery profile SHA-256 is
-`da6988dbc2be08428fcbc604ba5ef1b33e0ae10bfaa26da1f9e0e7d1d0452ecf`.
+The completed plan and all fifteen task review records are staged under
+`docs/archive/`. Archive Review Round 1 found and closed two documentation-only
+accuracy issues: the state snapshot date and wording that prematurely implied
+pending gates had proceeded. Delivery Aggregate Review Round 1 passed its
+candidate, but those corrections changed final content identity, so fresh
+Round 2 reviews ran. Archive Review Round 2 passed; Delivery Aggregate Review
+Round 2 found that the now-completed replacement work was still dated
+2026-07-25 even though the commits and delivery coverage were created on
+2026-07-26 Asia/Shanghai. The final-state, replacement-review, and retirement
+dates are now consistently 2026-07-26.
 
-The completed production-fix plan and review records are retired under
-`docs/archive/`. No push was performed. The active repository-wide test-gap
-plan still requires a separately approved `new-baseline` authorization package
-before its four paused test tasks can be reconstructed or delivered.
+Fresh Archive Review and Delivery Aggregate Review Round 3 remain pending. The
+final documentation commit, plan retirement, local `main --ff-only`, and
+replacement-delivery cleanup are allowed only if both reviews PASS and the
+reviewed delivery-state resolver emits those actions. No push was performed or
+authorized.
 
 ## Documents
 

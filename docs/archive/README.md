@@ -5,7 +5,7 @@ created: 2026-07-22
 
 # Archived Documents
 
-Last updated: 2026-07-24
+Last updated: 2026-07-26
 
 ## Why this directory exists
 
@@ -212,3 +212,44 @@ repository-wide test-gap plan and its review trail remain active on
 requires a fresh `new-baseline` authorization package; the old-baseline task and
 audit commits must not be rebased or treated as authoritative delivery inputs.
 No push was performed.
+
+## 2026-07-26 retirement candidate: repository-wide test-gap closure
+
+`plans/repository-test-gaps.md` and
+`reviews/repository-test-gaps/` preserve the complete fifteen-task behavioral
+test-gap workflow. Eleven tasks were delivered in the earlier reviewed partial
+delivery. Four production defects exposed by the remaining tests were repaired
+in a separate workflow, after which the test-only work resumed from clean
+baseline `4f614d34d09260a52df6bd333f6dad26134e96ac`.
+
+The new-baseline audit completed at frozen reviewed head
+`2571307d8410c2b4874bc1f8fb53fef91707c129`. Aggregate Review Round 3 passed
+with 16 adequately protected modules, 15 independently reviewed tasks, no
+exclusions or unresolved ledger entries, and no blocker. The four final
+replacement-delivery task commits are, in order:
+
+- usage `39650636fc92f884ecda5081f5d28ec22b583153`
+- providermeta `3968d703fc5ed94378fbb917c187543655a1ffbb`
+- genprices `02eec76513929fb321361858a00cc71d9ecad387`
+- session `7168079230adf8bb1fdf05b2d563f1f1782023e1`
+
+Full tests, full race, `go vet`, and atomic coverage passed at the replacement
+task head. Total statement coverage is 81.9%; profile SHA-256
+`0ae5afc81ecbcae30fb747ea60b41f16e3570c1a3ea13722093660751627f54b`.
+Production code is unchanged.
+
+Archive Review Round 1 found two documentation-only accuracy issues: the
+current-state date and a sentence that prematurely implied pending gates had
+proceeded. Both are corrected. Delivery Aggregate Review Round 1 passed the
+pre-correction candidate, but the corrected content requires fresh Archive and
+Delivery Aggregate Review Round 2 before retirement. Archive Review Round 2
+passed; Delivery Aggregate Review Round 2 then found that the replacement
+delivery and retirement dates still preceded the actual 2026-07-26
+Asia/Shanghai commit and coverage evidence. All final-state and retirement
+dates are now consistently 2026-07-26, while the 2026-07-25 audit events remain
+historically unchanged.
+
+This remains a staged retirement candidate until fresh Archive and Delivery
+Aggregate Review Round 3 PASS and the delivery-state resolver emits the
+authorized retirement and delivery actions. The audit branch and all failed
+audit/delivery evidence remain retained. No push was performed or authorized.
