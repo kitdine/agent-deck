@@ -213,7 +213,7 @@ requires a fresh `new-baseline` authorization package; the old-baseline task and
 audit commits must not be rebased or treated as authoritative delivery inputs.
 No push was performed.
 
-## 2026-07-26 retirement candidate: repository-wide test-gap closure
+## 2026-07-26 retirement: repository-wide test-gap closure
 
 `plans/repository-test-gaps.md` and
 `reviews/repository-test-gaps/` preserve the complete fifteen-task behavioral
@@ -249,7 +249,10 @@ Asia/Shanghai commit and coverage evidence. All final-state and retirement
 dates are now consistently 2026-07-26, while the 2026-07-25 audit events remain
 historically unchanged.
 
-This remains a staged retirement candidate until fresh Archive and Delivery
-Aggregate Review Round 3 PASS and the delivery-state resolver emits the
-authorized retirement and delivery actions. The audit branch and all failed
-audit/delivery evidence remain retained. No push was performed or authorized.
+Archive and Delivery Aggregate Review Round 3 both passed, and the reviewed
+delivery-state resolver authorized the final documentation commit, plan
+retirement, target fast-forward, and cleanup. Final commit
+`9bb88477c9655a08a0dfd26bb00e20d433db251e` was pushed to `origin/main`.
+After the push was verified, the temporary task, repair, delivery, and audit
+worktrees and refs were removed. The archived plan, task review records, and
+authorization-package identities remain the durable workflow record.

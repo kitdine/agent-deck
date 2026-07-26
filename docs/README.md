@@ -56,11 +56,12 @@ inline in each review round. One low-risk behavior deviation is carried into
 the Backlog below. History lives in the
 [retired test-coverage plan](archive/plans/test-coverage.md).
 
-Repository-wide behavioral test-gap closure is complete at the staged
-final-state delivery gate. Fifteen independently reviewed logical tasks protect
-all 16 deterministic first-party modules; there are no exclusions, unconfirmed
-modules, remaining `needs-tests` entries, or open/awaiting-human blockers.
-Production code was unchanged by the test-only workflow.
+Repository-wide behavioral test-gap closure is complete and delivered on
+`main` at `9bb88477c9655a08a0dfd26bb00e20d433db251e`. Fifteen independently
+reviewed logical tasks protect all 16 deterministic first-party modules; there
+are no exclusions, unconfirmed modules, remaining `needs-tests` entries, or
+open/awaiting-human blockers. Production code was unchanged by the test-only
+workflow.
 
 Eleven safe task commits were delivered in the earlier authorized partial
 delivery. After the four separately reviewed production fixes landed on local
@@ -80,9 +81,11 @@ The frozen reviewed audit integration head is
 `2571307d8410c2b4874bc1f8fb53fef91707c129`. Aggregate Review Round 3 passed
 with exact 21-path scope, all source-to-audit manifest/message/signature
 mappings, 16-module/15-task truth, and immutable failed-evidence retention.
-The failed first delivery remains preserved at
-`725ab5aed94c3a38d7f9c8d7ebc8016e63569b33`; it was not amended, reset,
-reused, or cleaned.
+The failed first delivery was preserved at
+`725ab5aed94c3a38d7f9c8d7ebc8016e63569b33` through final review and
+retirement; it was not amended, reset, or reused. Its temporary recovery
+worktree and ref were removed only after the final archive reached `main` and
+the push was verified.
 
 Complete verification at replacement task head
 `7168079230adf8bb1fdf05b2d563f1f1782023e1` passed full tests, the full race
@@ -90,7 +93,7 @@ suite, `go vet`, and atomic repository coverage. Total statement coverage is
 81.9%; the delivery coverage profile SHA-256 is
 `0ae5afc81ecbcae30fb747ea60b41f16e3570c1a3ea13722093660751627f54b`.
 
-The completed plan and all fifteen task review records are staged under
+The completed plan and all fifteen task review records are committed under
 `docs/archive/`. Archive Review Round 1 found and closed two documentation-only
 accuracy issues: the state snapshot date and wording that prematurely implied
 pending gates had proceeded. Delivery Aggregate Review Round 1 passed its
@@ -101,11 +104,13 @@ Round 2 found that the now-completed replacement work was still dated
 2026-07-26 Asia/Shanghai. The final-state, replacement-review, and retirement
 dates are now consistently 2026-07-26.
 
-Fresh Archive Review and Delivery Aggregate Review Round 3 remain pending. The
-final documentation commit, plan retirement, local `main --ff-only`, and
-replacement-delivery cleanup are allowed only if both reviews PASS and the
-reviewed delivery-state resolver emits those actions. No push was performed or
-authorized.
+Archive Review and Delivery Aggregate Review Round 3 both passed, and the
+reviewed delivery-state resolver authorized the final documentation commit,
+plan retirement, target fast-forward, and cleanup. Final commit
+`9bb88477c9655a08a0dfd26bb00e20d433db251e` is present on both local `main`
+and `origin/main`. After the verified push, all temporary task, repair,
+delivery, and audit worktrees and refs were removed; the repository now has
+only the `main` worktree and branch.
 
 ## Documents
 
