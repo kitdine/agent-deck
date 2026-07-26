@@ -2,12 +2,17 @@ package session
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
-	"github.com/kitdine/agent-deck/internal/activity"
-	"github.com/kitdine/agent-deck/internal/store"
 	"os"
 	"path/filepath"
+	"reflect"
+	"sort"
+	"strings"
 	"testing"
+
+	"github.com/kitdine/agent-deck/internal/activity"
+	"github.com/kitdine/agent-deck/internal/store"
 )
 
 func TestApprovedDocumentRejectsProhibitedContent(t *testing.T) {
@@ -108,6 +113,27 @@ func TestScanClaudeAllowlistAndExclusion(t *testing.T) {
 	}
 }
 
+func assertSessionSourceOwnership(t *testing.T, database *sql.DB, path string, wantSources, wantMetadata, wantDocuments int) {
+	t.Helper()
+	for _, check := range []struct {
+		table string
+		want  int
+	}{
+		{table: "session_sources", want: wantSources},
+		{table: "session_metadata", want: wantMetadata},
+		{table: "session_documents", want: wantDocuments},
+	} {
+		var got int
+		query := fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE source_path = ?", check.table)
+		if err := database.QueryRow(query, filepath.Clean(path)).Scan(&got); err != nil {
+			t.Fatalf("count %s ownership for %q: %v", check.table, path, err)
+		}
+		if got != check.want {
+			t.Fatalf("%s ownership for %q = %d rows, want %d", check.table, path, got, check.want)
+		}
+	}
+}
+
 func TestScanRemovesDocumentsDeletedFromOrAlongWithSource(t *testing.T) {
 	root := t.TempDir()
 	home := filepath.Join(root, "home")
@@ -153,6 +179,7 @@ func TestScanRemovesDocumentsDeletedFromOrAlongWithSource(t *testing.T) {
 	if entries, err := List(context.Background(), s.DB); err != nil || len(entries) != 0 {
 		t.Fatalf("removed source left metadata=%v err=%v", entries, err)
 	}
+	assertSessionSourceOwnership(t, s.DB, path, 0, 0, 0)
 }
 
 func TestScanKeepsActiveSourceAuthoritativeAndFallsBackToArchive(t *testing.T) {
@@ -203,6 +230,8 @@ func TestScanKeepsActiveSourceAuthoritativeAndFallsBackToArchive(t *testing.T) {
 	if docs, err := Search(context.Background(), s.DB, "archive"); err != nil || len(docs) != 1 {
 		t.Fatalf("archive did not replace removed active source: docs=%v err=%v", docs, err)
 	}
+	assertSessionSourceOwnership(t, s.DB, active, 0, 0, 0)
+	assertSessionSourceOwnership(t, s.DB, archive, 1, 1, 1)
 	if err := os.Remove(archive); err != nil {
 		t.Fatal(err)
 	}
@@ -211,6 +240,7 @@ func TestScanKeepsActiveSourceAuthoritativeAndFallsBackToArchive(t *testing.T) {
 	} else if result.Removed != 1 {
 		t.Fatalf("last source removal removed %d logical documents, want 1", result.Removed)
 	}
+	assertSessionSourceOwnership(t, s.DB, archive, 0, 0, 0)
 }
 
 func TestScanLastSourceRemovalCountsAllLogicalDocuments(t *testing.T) {
@@ -269,11 +299,20 @@ func TestScanDuplicateSourceRemovalCountsOnlyVisibleLogicalChanges(t *testing.T)
 	if result, scanErr := Scan(context.Background(), database.DB, home); scanErr != nil || result.Documents != 0 || result.Removed != 0 {
 		t.Fatalf("duplicate owner removal = %#v, %v", result, scanErr)
 	}
+	assertSessionSourceOwnership(t, database.DB, active, 0, 0, 0)
+	assertSessionSourceOwnership(t, database.DB, archive, 1, 1, 2)
+	if docs, searchErr := Search(context.Background(), database.DB, "same"); searchErr != nil || len(docs) != 2 {
+		t.Fatalf("duplicate fallback search = %#v, %v; want two archived documents", docs, searchErr)
+	}
 	if err = os.Remove(archive); err != nil {
 		t.Fatal(err)
 	}
 	if result, scanErr := Scan(context.Background(), database.DB, home); scanErr != nil || result.Documents != 0 || result.Removed != 2 {
 		t.Fatalf("final duplicate removal = %#v, %v", result, scanErr)
+	}
+	assertSessionSourceOwnership(t, database.DB, archive, 0, 0, 0)
+	if docs, searchErr := Search(context.Background(), database.DB, "same"); searchErr != nil || len(docs) != 0 {
+		t.Fatalf("final duplicate removal left searchable documents = %#v, %v", docs, searchErr)
 	}
 }
 
@@ -478,8 +517,13 @@ func TestScanRebuildsEqualLengthRewriteAndTracksMove(t *testing.T) {
 		t.Fatal(err)
 	}
 	shown, err := Show(context.Background(), s.DB, "codex", "s")
-	if err != nil || shown.SourcePath != archive {
+	if err != nil || shown.SourcePath != archive || len(shown.Documents) != 1 || shown.Documents[0].Text != "after!" {
 		t.Fatalf("move show=%+v err=%v", shown, err)
+	}
+	assertSessionSourceOwnership(t, s.DB, active, 0, 0, 0)
+	assertSessionSourceOwnership(t, s.DB, archive, 1, 1, 1)
+	if docs, searchErr := Search(context.Background(), s.DB, "after"); searchErr != nil || len(docs) != 1 || docs[0].Text != "after!" {
+		t.Fatalf("move search=%+v err=%v", docs, searchErr)
 	}
 }
 
@@ -542,6 +586,373 @@ func TestReplaceDocumentsUsesSyntheticSource(t *testing.T) {
 	}
 	if docs, err := Search(context.Background(), s.DB, "synthetic"); err != nil || len(docs) != 1 {
 		t.Fatalf("scan removed synthetic docs=%v err=%v", docs, err)
+	}
+}
+
+type sessionIndexSnapshot struct {
+	sources    []string
+	metadata   []string
+	documents  []string
+	exclusions []string
+}
+
+func snapshotSessionRows(t *testing.T, database *sql.DB, query string) []string {
+	t.Helper()
+	rows, err := database.Query(query)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	columns, err := rows.Columns()
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := []string{}
+	for rows.Next() {
+		values := make([]any, len(columns))
+		pointers := make([]any, len(columns))
+		for index := range values {
+			pointers[index] = &values[index]
+		}
+		if err = rows.Scan(pointers...); err != nil {
+			t.Fatal(err)
+		}
+		parts := make([]string, len(values))
+		for index, value := range values {
+			switch typed := value.(type) {
+			case []byte:
+				parts[index] = fmt.Sprintf("bytes:%x", typed)
+			default:
+				parts[index] = fmt.Sprintf("%T:%v", value, value)
+			}
+		}
+		out = append(out, strings.Join(parts, "|"))
+	}
+	if err = rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+func captureSessionIndex(t *testing.T, database *sql.DB) sessionIndexSnapshot {
+	t.Helper()
+	return sessionIndexSnapshot{
+		sources:    snapshotSessionRows(t, database, `SELECT source_path,identity,cursor,partial_line,size,modified_at,prefix_hash,priority,parser_version,scanned_at FROM session_sources ORDER BY source_path`),
+		metadata:   snapshotSessionRows(t, database, `SELECT source_path,client,session_id,project,model,parser_version,first_at,last_at FROM session_metadata ORDER BY source_path,client,session_id`),
+		documents:  snapshotSessionRows(t, database, `SELECT rowid,source_path,client,session_id,kind,text FROM session_documents ORDER BY rowid`),
+		exclusions: snapshotSessionRows(t, database, `SELECT kind,value FROM session_exclusions ORDER BY kind,value`),
+	}
+}
+
+type sessionPublicSnapshot struct {
+	metadata  []Metadata
+	documents []Document
+}
+
+func captureSessionPublicState(t *testing.T, database *sql.DB, query string) sessionPublicSnapshot {
+	t.Helper()
+	metadata, err := List(context.Background(), database)
+	if err != nil {
+		t.Fatal(err)
+	}
+	documents, err := Search(context.Background(), database, query)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return sessionPublicSnapshot{metadata: metadata, documents: documents}
+}
+
+func TestReplaceDocumentsFirstInsertFailureIsAtomic(t *testing.T) {
+	ctx := context.Background()
+	database, err := store.OpenSessions(ctx, filepath.Join(t.TempDir(), "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if _, err = database.DB.Exec(`CREATE TRIGGER fail_first_replacement BEFORE INSERT ON session_documents_content WHEN new.c4='freshreplacement' BEGIN SELECT RAISE(ABORT,'synthetic first document insert failure'); END`); err != nil {
+		t.Fatal(err)
+	}
+	beforeTables := captureSessionIndex(t, database.DB)
+	beforePublic := captureSessionPublicState(t, database.DB, "freshreplacement")
+	document, err := ApprovedDocument("codex", "fresh-atomic", "user_prompt", "freshreplacement")
+	if err != nil {
+		t.Fatalf("ApprovedDocument: %v", err)
+	}
+
+	err = ReplaceDocuments(ctx, database.DB, "codex", "fresh-atomic", []Document{document})
+	if err == nil || err.Error() != "constraint failed (1811)" {
+		t.Fatalf("ReplaceDocuments error = %v, want injected first insert failure", err)
+	}
+	afterTables := captureSessionIndex(t, database.DB)
+	afterPublic := captureSessionPublicState(t, database.DB, "freshreplacement")
+	if len(afterTables.sources) != 0 {
+		t.Errorf("ReplaceDocuments first-insert failure left %d synthetic source rows, want 0", len(afterTables.sources))
+	}
+	if !reflect.DeepEqual(afterTables, beforeTables) {
+		t.Fatalf("ReplaceDocuments first-insert failure changed table state: before=%#v after=%#v", beforeTables, afterTables)
+	}
+	if !reflect.DeepEqual(afterPublic, beforePublic) {
+		t.Fatalf("ReplaceDocuments first-insert failure changed Search/List: before=%#v after=%#v", beforePublic, afterPublic)
+	}
+}
+
+func TestReplaceDocumentsFailureIsAtomic(t *testing.T) {
+	ctx := context.Background()
+	database, err := store.OpenSessions(ctx, filepath.Join(t.TempDir(), "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	oldOne, err := ApprovedDocument("codex", "atomic", "user_prompt", "oldone")
+	if err != nil {
+		t.Fatalf("ApprovedDocument oldOne: %v", err)
+	}
+	oldTwo, err := ApprovedDocument("codex", "atomic", "assistant_final", "oldtwo")
+	if err != nil {
+		t.Fatalf("ApprovedDocument oldTwo: %v", err)
+	}
+	if err = ReplaceDocuments(ctx, database.DB, "codex", "atomic", []Document{oldOne, oldTwo}); err != nil {
+		t.Fatalf("seed ReplaceDocuments: %v", err)
+	}
+	if docs, searchErr := Search(ctx, database.DB, "oldone OR oldtwo"); searchErr != nil || len(docs) != 2 {
+		t.Fatalf("seed search = %#v, %v", docs, searchErr)
+	}
+	if _, err = database.DB.Exec(`CREATE TRIGGER fail_second_replacement BEFORE INSERT ON session_documents_content WHEN new.c4='replacementtwo' BEGIN SELECT RAISE(ABORT,'synthetic later document insert failure'); END`); err != nil {
+		t.Fatal(err)
+	}
+	beforeTables := captureSessionIndex(t, database.DB)
+	beforePublic := captureSessionPublicState(t, database.DB, "oldone OR oldtwo OR replacementone OR replacementtwo")
+	replacementOne, err := ApprovedDocument("codex", "atomic", "user_prompt", "replacementone")
+	if err != nil {
+		t.Fatalf("ApprovedDocument replacementOne: %v", err)
+	}
+	replacementTwo, err := ApprovedDocument("codex", "atomic", "assistant_final", "replacementtwo")
+	if err != nil {
+		t.Fatalf("ApprovedDocument replacementTwo: %v", err)
+	}
+
+	err = ReplaceDocuments(ctx, database.DB, "codex", "atomic", []Document{replacementOne, replacementTwo})
+	if err == nil || err.Error() != "constraint failed (1811)" {
+		t.Fatalf("ReplaceDocuments error = %v, want injected later insert failure", err)
+	}
+	afterTables := captureSessionIndex(t, database.DB)
+	afterPublic := captureSessionPublicState(t, database.DB, "oldone OR oldtwo OR replacementone OR replacementtwo")
+	if !reflect.DeepEqual(afterTables, beforeTables) {
+		t.Fatalf("ReplaceDocuments failure changed table state: before=%#v after=%#v", beforeTables, afterTables)
+	}
+	if !reflect.DeepEqual(afterPublic, beforePublic) {
+		t.Fatalf("ReplaceDocuments failure changed Search/List: before=%#v after=%#v", beforePublic, afterPublic)
+	}
+}
+
+type testSessionRecord struct {
+	source, client, sessionID, project, text string
+	priority                                 int
+}
+
+func seedSessionRecord(t *testing.T, database *sql.DB, record testSessionRecord) {
+	t.Helper()
+	ctx := context.Background()
+	if _, err := database.ExecContext(ctx, `INSERT INTO session_sources(source_path,identity,cursor,partial_line,size,modified_at,prefix_hash,priority,parser_version,scanned_at) VALUES(?,?,0,X'',0,0,'',?,?,?)`, record.source, "fixture:"+record.source, record.priority, ParserVersion, "2026-07-23T00:00:00Z"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.ExecContext(ctx, `INSERT INTO session_metadata(source_path,client,session_id,project,model,parser_version,first_at,last_at) VALUES(?,?,?,?,?,?,?,?)`, record.source, record.client, record.sessionID, record.project, "synthetic-model", ParserVersion, "2026-07-23T00:00:00Z", "2026-07-23T00:01:00Z"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.ExecContext(ctx, `INSERT INTO session_documents(source_path,client,session_id,kind,text) VALUES(?,?,?,?,?)`, record.source, record.client, record.sessionID, "user_prompt", record.text); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func sqlQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "''") + "'"
+}
+
+func TestExcludeFailureIsAtomic(t *testing.T) {
+	ctx := context.Background()
+	database, err := store.OpenSessions(ctx, filepath.Join(t.TempDir(), "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	project := filepath.Join(t.TempDir(), "blocked-project")
+	seedSessionRecord(t, database.DB, testSessionRecord{source: filepath.Join(t.TempDir(), "blocked.jsonl"), client: "codex", sessionID: "blocked", project: project, text: "blockedvisible", priority: 1})
+	seedSessionRecord(t, database.DB, testSessionRecord{source: filepath.Join(t.TempDir(), "unrelated.jsonl"), client: "claude", sessionID: "unrelated", project: filepath.Join(t.TempDir(), "other-project"), text: "unrelatedvisible", priority: 1})
+	if _, err = database.DB.Exec(`CREATE TRIGGER fail_exclusion_metadata_delete BEFORE DELETE ON session_metadata WHEN old.project=` + sqlQuote(project) + ` BEGIN SELECT RAISE(ABORT,'synthetic metadata delete failure'); END`); err != nil {
+		t.Fatal(err)
+	}
+	beforeTables := captureSessionIndex(t, database.DB)
+	beforePublic := captureSessionPublicState(t, database.DB, "blockedvisible OR unrelatedvisible")
+
+	err = Exclude(ctx, database.DB, "project", project)
+	if err == nil || err.Error() != "constraint failed: synthetic metadata delete failure (1811)" {
+		t.Fatalf("Exclude error = %v, want injected metadata delete failure", err)
+	}
+	afterTables := captureSessionIndex(t, database.DB)
+	afterPublic := captureSessionPublicState(t, database.DB, "blockedvisible OR unrelatedvisible")
+	if !reflect.DeepEqual(afterTables, beforeTables) {
+		t.Fatalf("Exclude failure changed table state: before=%#v after=%#v", beforeTables, afterTables)
+	}
+	if !reflect.DeepEqual(afterPublic, beforePublic) {
+		t.Fatalf("Exclude failure changed Search/List: before=%#v after=%#v", beforePublic, afterPublic)
+	}
+}
+
+func TestRebuildFailurePreservesIndex(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	home := filepath.Join(root, "home")
+	sourceRoot := filepath.Join(home, ".codex", "sessions")
+	earlierSource := filepath.Join(sourceRoot, "01-earlier.jsonl")
+	laterSource := filepath.Join(sourceRoot, "02-later.jsonl")
+	if !(earlierSource < laterSource) {
+		t.Fatalf("fixture paths are not deterministically ordered: earlier=%q later=%q", earlierSource, laterSource)
+	}
+	if err := os.MkdirAll(sourceRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	earlierData := "{\"type\":\"visible_user_prompt\",\"session_id\":\"rebuild-earlier\",\"payload\":{\"text\":\"earlierrebuild\"}}\n"
+	laterData := "{\"type\":\"visible_user_prompt\",\"session_id\":\"rebuild-later\",\"payload\":{\"text\":\"laterrebuild\"}}\n"
+	if err := os.WriteFile(earlierSource, []byte(earlierData), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(laterSource, []byte(laterData), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	database, err := store.OpenSessions(ctx, filepath.Join(root, "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if result, scanErr := Scan(ctx, database.DB, home); scanErr != nil || result.Sources != 2 || result.Documents != 2 {
+		t.Fatalf("seed Scan = %#v, %v", result, scanErr)
+	}
+	if err = Exclude(ctx, database.DB, "client", "unrelated-client"); err != nil {
+		t.Fatalf("seed unrelated exclusion: %v", err)
+	}
+	trigger := `CREATE TRIGGER fail_later_rebuild_metadata_insert
+		BEFORE INSERT ON session_metadata
+		WHEN new.source_path=` + sqlQuote(laterSource) + `
+			AND EXISTS(SELECT 1 FROM session_metadata WHERE source_path=` + sqlQuote(earlierSource) + `)
+		BEGIN SELECT RAISE(ABORT,'synthetic later rebuild insert failure'); END`
+	if _, err = database.DB.Exec(trigger); err != nil {
+		t.Fatal(err)
+	}
+	beforeTables := captureSessionIndex(t, database.DB)
+	beforePublic := captureSessionPublicState(t, database.DB, "earlierrebuild OR laterrebuild")
+
+	_, err = Rebuild(ctx, database.DB, home)
+	if err == nil || err.Error() != "constraint failed: synthetic later rebuild insert failure (1811)" {
+		t.Fatalf("Rebuild error = %v, want later-source failure after earlier metadata insertion", err)
+	}
+	afterTables := captureSessionIndex(t, database.DB)
+	afterPublic := captureSessionPublicState(t, database.DB, "earlierrebuild OR laterrebuild")
+	if !reflect.DeepEqual(afterTables, beforeTables) {
+		t.Fatalf("Rebuild failure changed table state: before=%#v after=%#v", beforeTables, afterTables)
+	}
+	if !reflect.DeepEqual(afterPublic, beforePublic) {
+		t.Fatalf("Rebuild failure changed Search/List: before=%#v after=%#v", beforePublic, afterPublic)
+	}
+}
+
+func storedSessionTexts(t *testing.T, database *sql.DB) []string {
+	t.Helper()
+	rows, err := database.Query(`SELECT text FROM session_documents ORDER BY text`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	values := []string{}
+	for rows.Next() {
+		var value string
+		if err = rows.Scan(&value); err != nil {
+			t.Fatal(err)
+		}
+		values = append(values, value)
+	}
+	if err = rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	return values
+}
+
+func TestExcludeExactBoundaries(t *testing.T) {
+	query := "targetvisible OR fallbackvisible OR codexother OR claudeshared OR claudeother"
+	for _, test := range []struct {
+		name         string
+		kind         string
+		value        func(project, targetSource string) string
+		wantTexts    []string
+		wantSessions []string
+	}{
+		{name: "project", kind: "project", value: func(project, _ string) string { return project }, wantTexts: []string{"claudeother", "claudeshared", "codexother", "fallbackvisible"}, wantSessions: []string{"claude/claude-other", "claude/shared", "codex/other", "codex/shared"}},
+		{name: "path", kind: "path", value: func(_, targetSource string) string { return targetSource }, wantTexts: []string{"claudeother", "claudeshared", "codexother", "fallbackvisible"}, wantSessions: []string{"claude/claude-other", "claude/shared", "codex/other", "codex/shared"}},
+		{name: "session", kind: "session", value: func(_, _ string) string { return "shared" }, wantTexts: []string{"claudeother", "codexother"}, wantSessions: []string{"claude/claude-other", "codex/other"}},
+		{name: "client", kind: "client", value: func(_, _ string) string { return "codex" }, wantTexts: []string{"claudeother", "claudeshared"}, wantSessions: []string{"claude/claude-other", "claude/shared"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := context.Background()
+			root := t.TempDir()
+			database, err := store.OpenSessions(ctx, filepath.Join(root, "state"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer database.Close()
+			project := filepath.Join(root, "project-target")
+			targetSource := filepath.Join(root, "target.jsonl")
+			for _, record := range []testSessionRecord{
+				{source: targetSource, client: "codex", sessionID: "shared", project: project, text: "targetvisible", priority: 2},
+				{source: filepath.Join(root, "fallback.jsonl"), client: "codex", sessionID: "shared", project: filepath.Join(root, "other-project"), text: "fallbackvisible", priority: 1},
+				{source: filepath.Join(root, "codex-other.jsonl"), client: "codex", sessionID: "other", project: filepath.Join(root, "other-project"), text: "codexother", priority: 1},
+				{source: filepath.Join(root, "claude-shared.jsonl"), client: "claude", sessionID: "shared", project: filepath.Join(root, "other-project"), text: "claudeshared", priority: 1},
+				{source: filepath.Join(root, "claude-other.jsonl"), client: "claude", sessionID: "claude-other", project: filepath.Join(root, "other-project"), text: "claudeother", priority: 1},
+			} {
+				seedSessionRecord(t, database.DB, record)
+			}
+			beforeSources := captureSessionIndex(t, database.DB).sources
+			value := test.value(project, targetSource)
+			if err = Exclude(ctx, database.DB, test.kind, value); err != nil {
+				t.Fatal(err)
+			}
+			after := captureSessionIndex(t, database.DB)
+			if !reflect.DeepEqual(after.sources, beforeSources) {
+				t.Fatalf("Exclude(%s) changed source controls: before=%#v after=%#v", test.kind, beforeSources, after.sources)
+			}
+			if len(after.metadata) != len(test.wantTexts) || len(after.documents) != len(test.wantTexts) {
+				t.Fatalf("Exclude(%s) rows metadata=%d documents=%d, want %d each", test.kind, len(after.metadata), len(after.documents), len(test.wantTexts))
+			}
+			if got := storedSessionTexts(t, database.DB); !reflect.DeepEqual(got, test.wantTexts) {
+				t.Fatalf("Exclude(%s) stored texts = %#v, want %#v", test.kind, got, test.wantTexts)
+			}
+			var exclusionKind, exclusionValue string
+			if err = database.DB.QueryRow(`SELECT kind,value FROM session_exclusions`).Scan(&exclusionKind, &exclusionValue); err != nil || exclusionKind != test.kind || exclusionValue != filepath.Clean(value) {
+				t.Fatalf("Exclude(%s) control = (%q,%q), %v; want (%q,%q)", test.kind, exclusionKind, exclusionValue, err, test.kind, filepath.Clean(value))
+			}
+			listed, err := List(ctx, database.DB)
+			if err != nil {
+				t.Fatal(err)
+			}
+			gotSessions := make([]string, 0, len(listed))
+			for _, item := range listed {
+				gotSessions = append(gotSessions, item.Client+"/"+item.SessionID)
+			}
+			sort.Strings(gotSessions)
+			if !reflect.DeepEqual(gotSessions, test.wantSessions) {
+				t.Fatalf("Exclude(%s) List sessions = %#v, want %#v", test.kind, gotSessions, test.wantSessions)
+			}
+			found, err := Search(ctx, database.DB, query)
+			if err != nil {
+				t.Fatal(err)
+			}
+			gotTexts := make([]string, 0, len(found))
+			for _, document := range found {
+				gotTexts = append(gotTexts, document.Text)
+			}
+			sort.Strings(gotTexts)
+			if !reflect.DeepEqual(gotTexts, test.wantTexts) {
+				t.Fatalf("Exclude(%s) Search texts = %#v, want %#v", test.kind, gotTexts, test.wantTexts)
+			}
+		})
 	}
 }
 
