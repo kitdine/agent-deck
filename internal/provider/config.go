@@ -81,7 +81,9 @@ type ClientConfig struct{ Name, Endpoint, Credential string }
 var (
 	tomlTablePattern         = regexp.MustCompile(`^\s*\[\[?\s*([^]]+?)\s*]]?\s*(?:#.*)?$`)
 	tomlCustomFieldPattern   = regexp.MustCompile(`^\s*(base_url|experimental_bearer_token)\s*=`)
+	tomlCustomBearerPattern  = regexp.MustCompile(`^\s*experimental_bearer_token\s*=`)
 	tomlCustomNamePattern    = regexp.MustCompile(`^(\s*name\s*=\s*)(?:"(?:\\.|[^"\\])*"|'[^']*')(\s*(?:#.*)?)$`)
+	tomlCustomBaseURLPattern = regexp.MustCompile(`^(\s*base_url\s*=\s*)(?:"(?:\\.|[^"\\])*"|'[^']*')(\s*(?:#.*)?)$`)
 	tomlModelProviderPattern = regexp.MustCompile(`^(\s*model_provider\s*=\s*)([^#\r\n]*?)(\s*(?:#.*)?)$`)
 	replaceFile              = os.Rename
 )
@@ -109,20 +111,26 @@ func WriteCodexConfig(path string, config ClientConfig) error {
 	return atomicPrivateReplace(path, encoded)
 }
 
-// WriteOfficialCodexConfig restores Codex's built-in OpenAI transport while
-// leaving authentication entirely under Codex's ownership. It selects the
-// custom provider, sets its managed name to official, and removes the two
-// AgentDeck-managed custom transport fields.
-func WriteOfficialCodexConfig(path string) error {
-	contents, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
-	var document map[string]any
-	if err := toml.Unmarshal(contents, &document); err != nil {
-		return fmt.Errorf("invalid codex toml: %w", err)
-	}
-
+// rewriteCodexCustomTable performs the line-by-line rewrite shared by every
+// Codex writer that must select [model_providers.custom] while preserving
+// every unrelated TOML field, comment, and ordering. onLine may rewrite or
+// drop a line inside the custom table; returning handled=false leaves the
+// line untouched. onEnter runs once per occurrence of the custom table
+// (including an array-of-tables source with more than one occurrence),
+// before any of its lines are processed, so the caller can reset the
+// per-occurrence owed-field state flush and onLine close over. flush
+// appends any custom-table fields the caller still owes once that
+// occurrence ends, on leaving it for another table or at end of file; it
+// does not run for a table that was never present, which is what
+// ensureTable is for — it supplies the lines that create the table when
+// the source never had one.
+func rewriteCodexCustomTable(
+	contents []byte,
+	onEnter func(),
+	onLine func(body []byte) (rewritten []byte, handled bool),
+	flush func(result []byte, lineEnding []byte) []byte,
+	ensureTable func(result []byte, lineEnding []byte) []byte,
+) []byte {
 	lines := bytes.SplitAfter(contents, []byte("\n"))
 	result := make([]byte, 0, len(contents)+32)
 	lineEnding := []byte("\n")
@@ -132,13 +140,6 @@ func WriteOfficialCodexConfig(path string) error {
 	table := ""
 	modelProviderSeen := false
 	customTableSeen := false
-	customNameSeen := false
-	appendMissingCustomName := func() {
-		if table == "model_providers.custom" && !customNameSeen {
-			result = appendTOMLLine(result, `name = "official"`, lineEnding)
-			customNameSeen = true
-		}
-	}
 	for _, line := range lines {
 		body := bytes.TrimSuffix(line, []byte("\n"))
 		ending := line[len(body):]
@@ -148,25 +149,23 @@ func WriteOfficialCodexConfig(path string) error {
 		}
 		trimmed := strings.TrimSpace(string(body))
 		if matches := tomlTablePattern.FindStringSubmatch(string(body)); matches != nil {
-			appendMissingCustomName()
+			if table == "model_providers.custom" {
+				result = flush(result, lineEnding)
+			}
 			table = strings.TrimSpace(matches[1])
 			if table == "model_providers.custom" {
 				customTableSeen = true
-				customNameSeen = false
+				onEnter()
 			}
 			result = append(result, line...)
 			continue
 		}
-		if table == "model_providers.custom" && tomlCustomFieldPattern.Match(body) {
-			continue
-		}
 		if table == "model_providers.custom" {
-			if matches := tomlCustomNamePattern.FindSubmatch(body); matches != nil {
-				customNameSeen = true
-				result = append(result, matches[1]...)
-				result = append(result, `"official"`...)
-				result = append(result, matches[2]...)
-				result = append(result, ending...)
+			if rewritten, handled := onLine(body); handled {
+				if rewritten != nil {
+					result = append(result, rewritten...)
+					result = append(result, ending...)
+				}
 				continue
 			}
 		}
@@ -188,18 +187,120 @@ func WriteOfficialCodexConfig(path string) error {
 		}
 		result = append(result, line...)
 	}
-	appendMissingCustomName()
+	if table == "model_providers.custom" {
+		result = flush(result, lineEnding)
+	}
 	if !customTableSeen {
-		result = appendTOMLLine(result, "[model_providers.custom]", lineEnding)
-		result = appendTOMLLine(result, `name = "official"`, lineEnding)
+		result = ensureTable(result, lineEnding)
 	}
 	if !modelProviderSeen {
 		prefix := append([]byte(`model_provider = "custom"`), lineEnding...)
 		result = append(prefix, result...)
 	}
+	return result
+}
+
+// WriteOfficialCodexConfig restores Codex's built-in OpenAI transport while
+// leaving authentication entirely under Codex's ownership. It selects the
+// custom provider, sets its managed name to official, and removes the two
+// AgentDeck-managed custom transport fields.
+func WriteOfficialCodexConfig(path string) error {
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	var document map[string]any
+	if err := toml.Unmarshal(contents, &document); err != nil {
+		return fmt.Errorf("invalid codex toml: %w", err)
+	}
+
+	nameSeen := false
+	onEnter := func() { nameSeen = false }
+	onLine := func(body []byte) (rewritten []byte, handled bool) {
+		if tomlCustomFieldPattern.Match(body) {
+			return nil, true
+		}
+		if matches := tomlCustomNamePattern.FindSubmatch(body); matches != nil {
+			nameSeen = true
+			return append(append(append([]byte{}, matches[1]...), `"official"`...), matches[2]...), true
+		}
+		return nil, false
+	}
+	flush := func(result []byte, lineEnding []byte) []byte {
+		if !nameSeen {
+			result = appendTOMLLine(result, `name = "official"`, lineEnding)
+			nameSeen = true
+		}
+		return result
+	}
+	ensureTable := func(result []byte, lineEnding []byte) []byte {
+		result = appendTOMLLine(result, "[model_providers.custom]", lineEnding)
+		return appendTOMLLine(result, `name = "official"`, lineEnding)
+	}
+	result := rewriteCodexCustomTable(contents, onEnter, onLine, flush, ensureTable)
+
 	var updated map[string]any
 	if err := toml.Unmarshal(result, &updated); err != nil {
 		return fmt.Errorf("invalid codex toml after official provider update: %w", err)
+	}
+	return atomicPrivateReplace(path, result)
+}
+
+// WriteCodexWrapperConfig routes Codex through a wrapper URL without a
+// credential: it writes base_url, removes experimental_bearer_token, keeps
+// requires_openai_auth and wire_api untouched, and leaves every other TOML
+// field, comment, and ordering unchanged.
+func WriteCodexWrapperConfig(path, name, endpoint string) error {
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	var document map[string]any
+	if err := toml.Unmarshal(contents, &document); err != nil {
+		return fmt.Errorf("invalid codex toml: %w", err)
+	}
+
+	baseURL := strings.TrimRight(endpoint, "/") + "/v1"
+	quotedName := fmt.Sprintf("%q", name)
+	quotedBaseURL := fmt.Sprintf("%q", baseURL)
+	nameSeen := false
+	baseURLSeen := false
+	onEnter := func() { nameSeen = false; baseURLSeen = false }
+	onLine := func(body []byte) (rewritten []byte, handled bool) {
+		if tomlCustomBearerPattern.Match(body) {
+			return nil, true
+		}
+		if matches := tomlCustomNamePattern.FindSubmatch(body); matches != nil {
+			nameSeen = true
+			return append(append(append([]byte{}, matches[1]...), quotedName...), matches[2]...), true
+		}
+		if matches := tomlCustomBaseURLPattern.FindSubmatch(body); matches != nil {
+			baseURLSeen = true
+			return append(append(append([]byte{}, matches[1]...), quotedBaseURL...), matches[2]...), true
+		}
+		return nil, false
+	}
+	flush := func(result []byte, lineEnding []byte) []byte {
+		if !nameSeen {
+			result = appendTOMLLine(result, "name = "+quotedName, lineEnding)
+			nameSeen = true
+		}
+		if !baseURLSeen {
+			result = appendTOMLLine(result, "base_url = "+quotedBaseURL, lineEnding)
+			baseURLSeen = true
+		}
+		return result
+	}
+	ensureTable := func(result []byte, lineEnding []byte) []byte {
+		result = appendTOMLLine(result, "[model_providers.custom]", lineEnding)
+		result = appendTOMLLine(result, "name = "+quotedName, lineEnding)
+		return appendTOMLLine(result, "base_url = "+quotedBaseURL, lineEnding)
+	}
+	result := rewriteCodexCustomTable(contents, onEnter, onLine, flush, ensureTable)
+
+	var updated map[string]any
+	if err := toml.Unmarshal(result, &updated); err != nil {
+		return fmt.Errorf("invalid codex toml after wrapper config update: %w", err)
 	}
 	return atomicPrivateReplace(path, result)
 }

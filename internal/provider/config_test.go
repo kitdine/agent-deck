@@ -198,6 +198,139 @@ func TestWriteCodexConfigPreservesUnmanagedFields(t *testing.T) {
 	}
 }
 
+func TestWriteCodexWrapperConfigPreservesUnmanagedTOML(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	before := "# leading comment\nmodel_provider = 'custom' # keep selector formatting\nmodel = \"gpt-5\"\n\n[model_providers.custom]\nname = \"Keep Name\" # keep field comment\nbase_url = \"https://old.example/v1\"\nexperimental_bearer_token = \"synthetic-secret\"\nrequires_openai_auth = true\nwire_api = \"responses\"\ncustom_flag = true\n\n[features] # keep table comment\nmemories = true\n\n[[tools]]\nbase_url = \"keep-outside-custom\"\n"
+	want := "# leading comment\nmodel_provider = 'custom' # keep selector formatting\nmodel = \"gpt-5\"\n\n[model_providers.custom]\nname = \"official\" # keep field comment\nbase_url = \"https://wrapper.example/v1\"\nrequires_openai_auth = true\nwire_api = \"responses\"\ncustom_flag = true\n\n[features] # keep table comment\nmemories = true\n\n[[tools]]\nbase_url = \"keep-outside-custom\"\n"
+	if err := os.WriteFile(path, []byte(before), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteCodexWrapperConfig(path, OfficialProviderName, "https://wrapper.example/"); err != nil {
+		t.Fatal(err)
+	}
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(contents) != want {
+		t.Fatalf("wrapper config:\n%s\nwant:\n%s", contents, want)
+	}
+	if err := WriteCodexWrapperConfig(path, OfficialProviderName, "https://wrapper.example/"); err != nil {
+		t.Fatal(err)
+	}
+	again, err := os.ReadFile(path)
+	if err != nil || string(again) != want {
+		t.Fatalf("idempotent wrapper config = %q, %v", again, err)
+	}
+}
+
+func TestWriteCodexWrapperConfigRemovesExactlyTheBearerToken(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	before := "model_provider = \"custom\"\n[model_providers.custom]\nname = \"official\"\nbase_url = \"https://old.example/v1\"\nexperimental_bearer_token = \"synthetic-secret\"\n"
+	if err := os.WriteFile(path, []byte(before), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteCodexWrapperConfig(path, OfficialProviderName, "https://wrapper.example"); err != nil {
+		t.Fatal(err)
+	}
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(contents), "experimental_bearer_token") {
+		t.Fatalf("bearer token not removed: %s", contents)
+	}
+	if !strings.Contains(string(contents), `base_url = "https://wrapper.example/v1"`) {
+		t.Fatalf("wrapper base_url missing: %s", contents)
+	}
+}
+
+func TestWriteCodexWrapperConfigWithoutBearerTokenIsByteIdenticalApartFromNamedFields(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	before := "model_provider = \"custom\"\n[model_providers.custom]\nname = \"official\"\nbase_url = \"https://old.example/v1\"\nrequires_openai_auth = true\nwire_api = \"responses\"\n"
+	want := "model_provider = \"custom\"\n[model_providers.custom]\nname = \"official\"\nbase_url = \"https://wrapper.example/v1\"\nrequires_openai_auth = true\nwire_api = \"responses\"\n"
+	if err := os.WriteFile(path, []byte(before), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteCodexWrapperConfig(path, OfficialProviderName, "https://wrapper.example"); err != nil {
+		t.Fatal(err)
+	}
+	contents, err := os.ReadFile(path)
+	if err != nil || string(contents) != want {
+		t.Fatalf("wrapper config = %q, %v, want %q", contents, err, want)
+	}
+}
+
+func TestWriteCodexWrapperConfigCreatesCustomTable(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	before := "model = 'keep'\n[features]\nmemories = true\n"
+	if err := os.WriteFile(path, []byte(before), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteCodexWrapperConfig(path, OfficialProviderName, "https://wrapper.example"); err != nil {
+		t.Fatal(err)
+	}
+	contents, custom := readCodexCustomProvider(t, path)
+	if custom["name"] != OfficialProviderName || custom["base_url"] != "https://wrapper.example/v1" {
+		t.Fatalf("wrapper custom provider = %#v", custom)
+	}
+	for _, expected := range []string{before, "[model_providers.custom]\nname = \"official\"\nbase_url = \"https://wrapper.example/v1\"\n"} {
+		if !strings.Contains(string(contents), expected) {
+			t.Fatalf("wrapper config missing %q: %s", expected, contents)
+		}
+	}
+}
+
+func TestWriteCodexWrapperConfigFailureLeavesOriginalBytes(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	before := []byte("model_provider = \"custom\"\n[model_providers.custom]\nbase_url = \"https://old.example/v1\"\n")
+	if err := os.WriteFile(path, before, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	oldReplace := replaceFile
+	replaceFile = func(string, string) error { return errors.New("synthetic replace failure") }
+	t.Cleanup(func() { replaceFile = oldReplace })
+	if err := WriteCodexWrapperConfig(path, OfficialProviderName, "https://wrapper.example"); err == nil {
+		t.Fatal("WriteCodexWrapperConfig succeeded during replace failure")
+	}
+	after, err := os.ReadFile(path)
+	if err != nil || string(after) != string(before) {
+		t.Fatalf("config after failed replace = %q, %v", after, err)
+	}
+}
+
+func TestWriteOfficialCodexConfigResetsOwedNameAcrossArrayOfTablesOccurrences(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	before := "model_provider = \"custom\"\n[[model_providers.custom]]\nbase_url = \"https://a.example/v1\"\n[[model_providers.custom]]\nbase_url = \"https://b.example/v1\"\n"
+	want := "model_provider = \"custom\"\n[[model_providers.custom]]\nname = \"official\"\n[[model_providers.custom]]\nname = \"official\"\n"
+	if err := os.WriteFile(path, []byte(before), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteOfficialCodexConfig(path); err != nil {
+		t.Fatal(err)
+	}
+	contents, err := os.ReadFile(path)
+	if err != nil || string(contents) != want {
+		t.Fatalf("official config = %q, %v, want %q", contents, err, want)
+	}
+}
+
+func TestWriteCodexWrapperConfigResetsOwedFieldsAcrossArrayOfTablesOccurrences(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	before := "model_provider = \"custom\"\n[[model_providers.custom]]\nbase_url = \"https://a.example/v1\"\n[[model_providers.custom]]\nbase_url = \"https://b.example/v1\"\n"
+	want := "model_provider = \"custom\"\n[[model_providers.custom]]\nbase_url = \"https://wrapper.example/v1\"\nname = \"official\"\n[[model_providers.custom]]\nbase_url = \"https://wrapper.example/v1\"\nname = \"official\"\n"
+	if err := os.WriteFile(path, []byte(before), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteCodexWrapperConfig(path, OfficialProviderName, "https://wrapper.example"); err != nil {
+		t.Fatal(err)
+	}
+	contents, err := os.ReadFile(path)
+	if err != nil || string(contents) != want {
+		t.Fatalf("wrapper config = %q, %v, want %q", contents, err, want)
+	}
+}
+
 func TestWriteClaudeConfigPreservesUnmanagedFields(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "settings.json")
 	if err := os.WriteFile(path, []byte(`{"keep":true,"env":{"OTHER":"preserved"}}`), 0o600); err != nil {
