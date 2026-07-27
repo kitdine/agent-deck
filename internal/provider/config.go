@@ -313,6 +313,18 @@ func appendTOMLLine(contents []byte, line string, ending []byte) []byte {
 	return append(contents, ending...)
 }
 
+// WriteClaudeConfig expresses all three intents AgentDeck may write for
+// Claude's two owned env keys through one empty-string sentinel: a non-empty
+// config.Endpoint/config.Credential sets the corresponding key, an empty one
+// removes it. This lets one call site express "endpoint and credential",
+// "endpoint without credential" (a wrapper-routed official selection), and
+// "neither field" (a direct official selection) without three functions.
+// It only creates the env object when an owned key is actually being
+// written; a source with no env key and the neither-field intent is left
+// byte-for-byte unowned apart from re-serialization, and a source whose env
+// key holds something other than a JSON object is left untouched unless an
+// owned key must be written into it, matching the pre-existing overwrite
+// behavior for that write case.
 func WriteClaudeConfig(path string, config ClientConfig) error {
 	contents, err := os.ReadFile(path)
 	if err != nil {
@@ -322,13 +334,24 @@ func WriteClaudeConfig(path string, config ClientConfig) error {
 	if err := json.Unmarshal(contents, &document); err != nil {
 		return fmt.Errorf("invalid claude json: %w", err)
 	}
-	env, _ := document["env"].(map[string]any)
-	if env == nil {
-		env = map[string]any{}
-		document["env"] = env
+	env, isMap := document["env"].(map[string]any)
+	writesOwnedKey := config.Endpoint != "" || config.Credential != ""
+	if isMap || writesOwnedKey {
+		if !isMap {
+			env = map[string]any{}
+			document["env"] = env
+		}
+		if config.Endpoint == "" {
+			delete(env, "ANTHROPIC_BASE_URL")
+		} else {
+			env["ANTHROPIC_BASE_URL"] = strings.TrimRight(config.Endpoint, "/")
+		}
+		if config.Credential == "" {
+			delete(env, "ANTHROPIC_AUTH_TOKEN")
+		} else {
+			env["ANTHROPIC_AUTH_TOKEN"] = config.Credential
+		}
 	}
-	env["ANTHROPIC_BASE_URL"] = strings.TrimRight(config.Endpoint, "/")
-	env["ANTHROPIC_AUTH_TOKEN"] = config.Credential
 	encoded, err := json.MarshalIndent(document, "", "  ")
 	if err != nil {
 		return err

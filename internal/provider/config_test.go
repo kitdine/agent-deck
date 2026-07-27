@@ -351,6 +351,149 @@ func TestWriteClaudeConfigPreservesUnmanagedFields(t *testing.T) {
 	}
 }
 
+func TestWriteClaudeConfigEndpointWithoutCredentialRemovesTokenKeepsUnrelated(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+	before := `{"keep":true,"env":{"OTHER":"preserved","ANTHROPIC_BASE_URL":"https://old.example","ANTHROPIC_AUTH_TOKEN":"old-secret"}}`
+	if err := os.WriteFile(path, []byte(before), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteClaudeConfig(path, ClientConfig{Endpoint: "https://wrapper.example/"}); err != nil {
+		t.Fatal(err)
+	}
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document map[string]any
+	if err := json.Unmarshal(contents, &document); err != nil {
+		t.Fatal(err)
+	}
+	if document["keep"] != true {
+		t.Fatalf("unrelated top-level key not preserved: %s", contents)
+	}
+	env, _ := document["env"].(map[string]any)
+	if env == nil {
+		t.Fatalf("env object missing: %s", contents)
+	}
+	if env["OTHER"] != "preserved" {
+		t.Fatalf("unrelated env key not preserved: %s", contents)
+	}
+	if env["ANTHROPIC_BASE_URL"] != "https://wrapper.example" {
+		t.Fatalf("endpoint not written: %s", contents)
+	}
+	if _, hasToken := env["ANTHROPIC_AUTH_TOKEN"]; hasToken {
+		t.Fatalf("credential field not removed: %s", contents)
+	}
+}
+
+func TestWriteClaudeConfigNeitherFieldRemovesBothKeepsEnvObjectAndUnrelated(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+	before := `{"keep":true,"env":{"OTHER":"preserved","ANTHROPIC_BASE_URL":"https://old.example","ANTHROPIC_AUTH_TOKEN":"old-secret"}}`
+	if err := os.WriteFile(path, []byte(before), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteClaudeConfig(path, ClientConfig{}); err != nil {
+		t.Fatal(err)
+	}
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document map[string]any
+	if err := json.Unmarshal(contents, &document); err != nil {
+		t.Fatal(err)
+	}
+	if document["keep"] != true {
+		t.Fatalf("unrelated top-level key not preserved: %s", contents)
+	}
+	env, _ := document["env"].(map[string]any)
+	if env == nil {
+		t.Fatalf("env object missing: %s", contents)
+	}
+	if env["OTHER"] != "preserved" {
+		t.Fatalf("unrelated env key not preserved: %s", contents)
+	}
+	if _, hasEndpoint := env["ANTHROPIC_BASE_URL"]; hasEndpoint {
+		t.Fatalf("endpoint field not removed: %s", contents)
+	}
+	if _, hasToken := env["ANTHROPIC_AUTH_TOKEN"]; hasToken {
+		t.Fatalf("credential field not removed: %s", contents)
+	}
+}
+
+func TestWriteClaudeConfigNeitherFieldKeepsEnvObjectWhenEnvHeldOnlyOwnedKeys(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+	before := `{"keep":true,"env":{"ANTHROPIC_BASE_URL":"https://old.example","ANTHROPIC_AUTH_TOKEN":"old-secret"}}`
+	if err := os.WriteFile(path, []byte(before), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteClaudeConfig(path, ClientConfig{}); err != nil {
+		t.Fatal(err)
+	}
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document map[string]any
+	if err := json.Unmarshal(contents, &document); err != nil {
+		t.Fatal(err)
+	}
+	env, ok := document["env"].(map[string]any)
+	if !ok {
+		t.Fatalf("env object removed entirely: %s", contents)
+	}
+	if len(env) != 0 {
+		t.Fatalf("env object not empty: %s", contents)
+	}
+}
+
+func TestWriteClaudeConfigNeitherFieldWithoutExistingEnvLeavesDocumentUnchanged(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+	before := `{"keep":true,"model":"opus"}`
+	if err := os.WriteFile(path, []byte(before), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteClaudeConfig(path, ClientConfig{}); err != nil {
+		t.Fatal(err)
+	}
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document map[string]any
+	if err := json.Unmarshal(contents, &document); err != nil {
+		t.Fatal(err)
+	}
+	if _, hasEnv := document["env"]; hasEnv {
+		t.Fatalf("env object gratuitously created: %s", contents)
+	}
+	if document["keep"] != true || document["model"] != "opus" {
+		t.Fatalf("unrelated top-level keys not preserved: %s", contents)
+	}
+}
+
+func TestWriteClaudeConfigNeitherFieldLeavesNonObjectEnvUntouched(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+	before := `{"keep":true,"env":"user-string-value"}`
+	if err := os.WriteFile(path, []byte(before), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteClaudeConfig(path, ClientConfig{}); err != nil {
+		t.Fatal(err)
+	}
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document map[string]any
+	if err := json.Unmarshal(contents, &document); err != nil {
+		t.Fatal(err)
+	}
+	if document["env"] != "user-string-value" {
+		t.Fatalf("non-object env value destroyed by a no-owned-key write: %s", contents)
+	}
+}
+
 func TestConfigMatchesEndpointWithoutReturningPrivateContent(t *testing.T) {
 	root := t.TempDir()
 	codex := filepath.Join(root, "config.toml")
