@@ -121,12 +121,23 @@ and `origin/main`. After the verified push, all temporary task, repair,
 delivery, and audit worktrees and refs were removed; the repository now has
 only the `main` worktree and branch.
 
+Next up is the only active plan,
+[provider-wrapper-routing](plans/provider-wrapper-routing.md), opened 2026-07-26
+with its design approved into `specs/cli-design.md` v15; its first three tasks
+are built and reviewed, and `route-composition` is next. It
+gives every provider an optional wrapper URL and `provider use --via` to route
+one switch through it, so a compression proxy can front a relay while still
+writing that relay's own credential, and it gives Claude the built-in `official`
+restore that only Codex has today — which is also what puts a proxy in front of
+a subscription without handing AgentDeck a token.
+
 ## Documents
 
 | Document | Purpose |
 | --- | --- |
-| [specs/cli-design.md](specs/cli-design.md) | What the system does and must keep doing: provider, credential, usage, pricing, session, backup, and distribution behavior. Currently version 14; see its changelog. |
+| [specs/cli-design.md](specs/cli-design.md) | What the system does and must keep doing: provider, credential, usage, pricing, session, backup, and distribution behavior. Currently version 15; see its changelog. |
 | [specs/cli-manual.md](specs/cli-manual.md) | The implemented command surface, flags, and output shapes. |
+| [plans/provider-wrapper-routing.md](plans/provider-wrapper-routing.md) | An optional provider wrapper URL and a per-switch `--via`, so a proxy can front a relay or the vendor without duplicating credentials. `active — 3/7 done`. |
 | [reviews/](reviews/README.md) | Per-task review records that back each plan's ticked `Review` cell. |
 | [archive/](archive/README.md) | Retired plans and superseded contracts. Not a starting point for new work. |
 
@@ -163,7 +174,12 @@ than expanding the entry in place.
 
 - [ ] Add the ability to switch Claude subscription/account — analogous to the
       existing AI provider switching, but selecting a Claude account or plan
-      rather than an API base URL and token.
+      rather than an API base URL and token. Not addressed by the
+      provider-wrapper-routing plan: selecting `official` there returns a client
+      to whatever login it already holds and deliberately never enumerates,
+      selects, stores, or refreshes an account, plan, or OAuth token. This item
+      is what would cross that line, so it needs its own plan and its own
+      security review.
 - [ ] Implement a GUI, including a persistent menu-bar presence, as an
       alternative front end to the CLI.
 - [ ] Address two defense-in-depth findings from the 2026-07-22 credential

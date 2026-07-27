@@ -1,0 +1,522 @@
+---
+status: active
+created: 2026-07-26
+---
+
+# Provider Wrapper Routing Plan
+
+Let any provider carry an optional wrapper URL and let one switch choose whether
+to route through it, so a compression proxy can sit in front of a relay or in
+front of the vendor without duplicating credentials or inventing provider names.
+Contract: `docs/specs/cli-design.md` v15, sections "Provider Wrappers", "Owned
+Client Configuration Fields", and "Selecting the Built-in Provider".
+
+## Why
+
+Two capabilities are missing, and they are the same shape.
+
+A user running a local or LAN proxy in front of a third-party relay has to point
+the client at the proxy while still sending the relay's own token, because the
+proxy forwards that token verbatim to the upstream that issued it. Today the
+endpoint and the credential are written together from one credential record, so
+the only way to express the proxied route is a second credential holding a
+duplicate of the same secret — and, since the multiplier is credential-owned, a
+second multiplier that can silently drift away from the first for what is one
+billed account.
+
+A user with a subscription has the same need against the vendor itself: point
+the client at the proxy, write no credential, let the client's own login ride
+through. AgentDeck cannot express that either. Its built-in `official` provider
+is Codex-only, and its Claude writer always writes a token, which per Anthropic's
+documentation replaces the subscription and moves billing to whoever owns that
+token.
+
+Both are one missing dimension: **where the request is sent** is independent of
+**who is billed**. A wrapper changes the first and nothing else.
+
+## Evidence
+
+Verified on `main` at `ea1df47`, and against the proxy this is designed for:
+
+- `internal/provider/config.go:229-230` — `WriteClaudeConfig` writes
+  `ANTHROPIC_BASE_URL` and `ANTHROPIC_AUTH_TOKEN` unconditionally.
+- `internal/provider/service.go:579-581` — every switch resolves a credential.
+- `internal/provider/service.go:535-538`, `service.go:795-802` — `official` is
+  hard-coded to Codex, so Claude has no path back to its own login.
+- Headroom's `headroom/backends/litellm.py` forwards the client's credential to
+  the upstream (`Authorization: Bearer` matched first, `x-api-key` as fallback),
+  and skips forwarding only for the env-authenticated backends (Bedrock, Vertex,
+  SageMaker) that hold their own upstream credentials. Its
+  `headroom/proxy/cc_switch_reconciler.py` states the same rule in prose: "The
+  token rides in the request … passed through verbatim; Headroom never reads or
+  stores it."
+- Headroom's proxy serves `/v1/messages` and `/v1/responses` plus the Codex
+  alias paths on one address, so one wrapper URL covers both clients.
+- Headroom's upstream is fixed at startup by `--anthropic-api-url` /
+  `--openai-api-url` / `--backend`, so one instance fronts one upstream — which
+  is why the URL belongs to a provider rather than to a credential or a client.
+- `internal/store/migrations.go` — versioned migrations exist, so the new column
+  lands through the normal sequence.
+
+## Tasks
+
+### `wrapper-schema`
+
+Add the persisted model in one migration: a nullable `providers.wrapper_url`, a
+place to hold the built-in provider's wrapper URL without giving it a provider
+definition row, credential, or ciphertext, and the route field on the selection
+snapshot. Wrapper URLs reuse the existing endpoint parser, validation, and
+client-aware `/v1` normalization rather than a second implementation.
+
+Files: `internal/store/migrations.go`, `internal/store/providers.go`,
+`internal/provider/service.go` (validation only).
+
+Acceptance: an existing database opens with every provider reading back with no
+wrapper and unchanged behavior; the same URL normalizes identically whether
+stored as an endpoint or as a wrapper, for each client; setting a wrapper on
+`official` creates no credential, secret row, or key file.
+
+Done (2026-07-26): migration 15 adds nullable `providers.wrapper_url` and
+`provider_selections.via_wrapper` (route snapshot, default `0`); the built-in
+`official` wrapper URL reuses the existing generic `settings` table via new
+`Store.OfficialWrapperURL`/`SetOfficialWrapperURL` rather than a provider
+definition row. `Store.SetProviderWrapper` is pure storage (no normalization,
+no vault access). `provider.NormalizeWrapperURL` in `service.go` is the one
+validation addition, delegating to the existing `NormalizeCredentialEndpoint`
+with `codex=true` so a wrapper normalizes exactly like a Codex-bound
+credential endpoint. `CurrentSchemaVersion` bumped 14→15 in `store.go` (not
+separately listed in Files, but required for the migration to take effect).
+`cmd/agentdeck/main_test.go`'s `TestStateMigrateTextAndJSONUpgradeSchema12`
+fixture needed a matching rollback of the two new columns before re-running
+migrations from a simulated v12 state; updated alongside.
+
+Verification: `go test -mod=vendor ./internal/store/... ./internal/provider/...
+-run 'Wrapper|V15'` (new targeted tests, all pass) plus
+`go test -mod=vendor ./...` (710 passed, 0 failed) and `go vet -mod=vendor
+./...` (clean) — both run once after the final edit. Migration-execution
+check (L3): `TestV15MigrationAddsProviderWrapperURLAndSelectionRouteWithoutSideEffects`
+replays `testdata/agentdeck-v6.sql` through `Open`, asserting unchanged
+provider/snapshot reads, then exercises `SetProviderWrapper` and
+`Set/OfficialWrapperURL` round-trips with `provider_credentials`/
+`credential_secrets` row counts and `credential.key` absence checked before
+and after.
+
+Review Round 1 (2026-07-26): `REOPEN`, five findings, no correctness or
+security defect. `Dev` unticked until they close.
+Review Round 2 (2026-07-27): `PASS` — all five closed with tests that fail on
+regression; two non-blocking nits carried forward (`json:"-"` on
+`store.Provider.WrapperURL`, folded into `cli-route-surface`; a stale
+`docs/README.md` sentence, folded into the next status-doc sync). See
+`docs/reviews/provider-wrapper-routing/wrapper-schema.md`.
+
+Fix round (2026-07-26), closing all five Round 1 findings:
+- [P2] Documented the normalization obligation directly on
+  `SetProviderWrapper`, `SetOfficialWrapperURL` (`providers.go`), and
+  `NormalizeWrapperURL` (`service.go`): all three now say in the doc comment
+  that the store setters are pure storage with no normalization of their own,
+  so every caller must normalize a non-empty `url` through
+  `NormalizeWrapperURL` first. Added the matching acceptance clause to
+  `cli-route-surface`.
+- [P2] Corrected `cli-design.md`'s "Provider Wrappers" section and its v15
+  changelog row from "normalized exactly like credential endpoints" to
+  "always normalized like a Codex-bound credential endpoint, regardless of
+  which clients the provider actually serves" (v15 is unreleased, so the row
+  was revised in place rather than adding a new version). Added
+  `TestNormalizeWrapperURLDiffersFromClaudeOnlyCredentialEndpointOnV1Input` in
+  `provider_test.go`, pinning that a `/v1`-suffixed wrapper URL diverges from
+  `NormalizeCredentialEndpoint(url, false)` (the Claude-only form, which keeps
+  the trailing `/v1`).
+- [P3] `TestV15MigrationAddsProviderWrapperURLAndSelectionRouteWithoutSideEffects`
+  now asserts the migrated `codex` snapshot's concrete
+  `Name`/`Endpoint`/`Multiplier`/`Credential` (`legacy` /
+  `https://legacy.example` / `1.5` / `default`) alongside `ViaWrapper`, so the
+  six reordered `provider_selections` SELECT/`Scan` pairs are pinned, not just
+  the new column.
+- [nit] Removed the inert `json:"wrapper_url,omitempty"` tag from
+  `store.Provider.WrapperURL`; `cli-route-surface` owns the real output field
+  on `provider.Provider`.
+- [nit] `NormalizeWrapperURL`'s doc comment now states the `--clear` bypass
+  explicitly: a clearing caller must skip normalization and pass `""`
+  straight through, since `""` is not a valid endpoint.
+
+Verification: `go test -mod=vendor ./internal/store/... ./internal/provider/...`
+(all pass, including the two new tests) plus `go test -mod=vendor ./...` (711
+passed, 0 failed — one more than the prior round's 710, from the new
+divergence test) and `go vet -mod=vendor ./...` (clean), run once after the
+final edit. Doc changes: `git diff --check` clean on `cli-design.md` and this
+plan file; manual link check on every `Provider Wrappers` / wrapper-routing
+cross-reference in `docs/` found no broken relative path or stale anchor.
+
+### `codex-writer-routes`
+
+Teach the Codex writer the endpoint-only intent: write `base_url`, remove
+`experimental_bearer_token`, keep `requires_openai_auth` and `wire_api`, and
+leave every other TOML field, comment, and ordering untouched. Removing an
+already-absent field is a successful no-op.
+
+Files: `internal/provider/config.go`.
+
+Acceptance: a config that had a bearer token loses exactly that key; a config
+that never had one is byte-identical apart from the fields the intent names.
+
+Done (2026-07-27): added `WriteCodexWrapperConfig(path, name, endpoint string)
+error`, the endpoint-only intent: it writes `base_url`, removes
+`experimental_bearer_token`, and leaves `requires_openai_auth`, `wire_api`,
+and every other TOML field, comment, and ordering untouched — matching the
+general "Codex keeps `model_provider = custom`, sets `.name`" rule from
+`docs/specs/cli-design.md`'s "Owned Client Configuration Fields" section.
+Extracted the line-preserving rewrite loop shared with
+`WriteOfficialCodexConfig` into `rewriteCodexCustomTable`, parameterized by
+per-line rewrite/drop, end-of-table flush, and missing-table creation
+callbacks, so the two writers share one tested traversal instead of
+duplicating ~90 lines of comment-preserving TOML editing.
+`WriteOfficialCodexConfig`'s own behavior and tests are unchanged — the
+extraction is a pure refactor. Fixed a bug caught by the pre-existing
+`WriteOfficialCodexConfig` tests during that refactor: the generic line loop
+initially appended a line's trailing newline even when the per-line callback
+dropped the line outright, inserting a spurious blank line after
+`[model_providers.custom]`; fixed by only appending the ending when the
+callback returns a non-nil replacement.
+
+Verification: `go test -mod=vendor ./internal/provider/... -run Codex -v`
+(all `WriteOfficialCodexConfig`/`WriteCodexConfig`/`WriteCodexWrapperConfig`
+tests pass, including five new `WriteCodexWrapperConfig` tests covering
+comment/ordering preservation, idempotency, bearer-token-only removal,
+byte-identical output apart from named fields when no bearer token was
+present, custom-table creation, and atomic-replace failure leaving original
+bytes) plus `go test -mod=vendor ./...` (all packages pass) and
+`go vet -mod=vendor ./...` (clean), run once after the final edit. `gofmt -l`
+clean on the changed files.
+
+Review Round 1 (2026-07-27): `REOPEN`, one P2 + one P3 + one nit. The new
+wrapper writer is correct and well covered, but the accompanying extraction is
+not the "pure refactor" this note claims: the old loop's per-occurrence
+owed-`name` reset was dropped, so on an array-of-tables source
+`WriteOfficialCodexConfig` now leaves the second `[[model_providers.custom]]`
+without a `name` where it previously wrote one — and the helper's own doc
+comment states the contract that was dropped. `Dev` unticked until that
+closes. See `docs/reviews/provider-wrapper-routing/codex-writer-routes.md`.
+
+Fix round (2026-07-27), closing the Round 1 findings:
+- [P2] Restored the dropped per-occurrence reset: `rewriteCodexCustomTable`
+  now takes an `onEnter func()` callback, invoked once per occurrence of
+  `[model_providers.custom]` (including each element of an array-of-tables
+  source) before any of that occurrence's lines are processed. Both callers'
+  `onEnter` closures reset their owed-field flags (`nameSeen` in
+  `WriteOfficialCodexConfig`; `nameSeen` and `baseURLSeen` in
+  `WriteCodexWrapperConfig`), matching the pre-refactor behavior the task
+  note incorrectly claimed was already preserved. Added
+  `TestWriteOfficialCodexConfigResetsOwedNameAcrossArrayOfTablesOccurrences`
+  and
+  `TestWriteCodexWrapperConfigResetsOwedFieldsAcrossArrayOfTablesOccurrences`,
+  both reproducing the reviewer's two-element array-of-tables probe and
+  asserting every occurrence gets its own owed field.
+- [P3] Deferred, as the reviewer allowed: recorded here rather than fixed in
+  this task. `WriteCodexConfig` (the direct, credentialed path) still
+  rewrites the whole file through `toml.Marshal`, so a provider switched
+  between direct and `--via` produces very different diffs in `config.toml`
+  even though both paths are supposed to leave unrelated fields, comments,
+  and ordering untouched per `docs/specs/cli-design.md`'s "Owned Client
+  Configuration Fields". `route-composition` (task 4) is the next task that
+  touches this call path and should decide whether to move `WriteCodexConfig`
+  onto `rewriteCodexCustomTable` or record a further-deferred decision.
+- [nit] Corrected `rewriteCodexCustomTable`'s doc comment: `flush` does not
+  run for a table that was never present (`ensureTable` does), and the
+  comment now describes `onEnter`'s role instead of the wrong "or because the
+  table was absent" clause on `flush`.
+
+Verification: `go test -mod=vendor ./internal/provider/... -run Codex -v`
+(all 17 Codex tests pass, including the two new array-of-tables regression
+tests and the full pre-existing `WriteOfficialCodexConfig` suite) plus
+`go test -mod=vendor ./...` (all packages pass) and `go vet -mod=vendor
+./...` (clean), run once after the final edit. `gofmt -l` clean on the
+changed files.
+
+Review Round 2 (2026-07-27): `PASS`. The `onEnter` reset is invoked in the
+right place relative to the previous occurrence's `flush`, both callers reset
+their owed-field state, and the two new tests fail if the reset is dropped
+again; the doc-comment nit is closed; the P3 is deferred onto
+`route-composition` with both outcomes named. A nine-shape probe (multiple
+occurrences, mixed owed states, CRLF, no trailing newline, no custom table)
+matched pre-refactor behavior throughout. Two out-of-scope observations
+recorded in the review log, neither introduced here: two *singular*
+`[model_providers.custom]` tables are rejected by the upfront `toml.Unmarshal`
+guard before the rewrite runs, and a prepended `model_provider = "custom"`
+lands above a leading comment. See
+`docs/reviews/provider-wrapper-routing/codex-writer-routes.md`.
+
+### `claude-writer-routes`
+
+Teach the Claude writer the two intents it lacks: endpoint without credential,
+and neither field. The `env` object survives as an empty object when its last
+owned key goes, and every unowned key inside and outside `env` is carried
+through unchanged.
+
+Files: `internal/provider/config.go`.
+
+Acceptance: a settings file carrying unrelated `env` entries and unrelated
+top-level settings keeps all of them across every intent. This is the task that
+protects against a whole-`env` rewrite.
+
+Done (2026-07-27): `WriteClaudeConfig` now treats an empty `ClientConfig.Endpoint`
+or `ClientConfig.Credential` as "remove this owned key" rather than writing an
+empty string, so the same function expresses all three intents (endpoint +
+credential, endpoint without credential, neither field) purely from the fields
+the caller passes. `document["env"]` is still assigned by reference before any
+key is deleted, so the `env` object survives as `{}` when its last owned key is
+removed, and every unowned key inside and outside `env` is untouched because
+only the two owned keys are ever deleted or set.
+
+Verification: `go test -mod=vendor ./internal/provider/... -run Claude` (new
+`TestWriteClaudeConfigEndpointWithoutCredentialRemovesTokenKeepsUnrelated`,
+`TestWriteClaudeConfigNeitherFieldRemovesBothKeepsEnvObjectAndUnrelated`,
+`TestWriteClaudeConfigNeitherFieldKeepsEnvObjectWhenLastOwnedKeyGoesAndEnvWasEmpty`,
+plus the existing `TestWriteClaudeConfigPreservesUnmanagedFields`, all pass)
+plus `go test -mod=vendor ./...` (all packages pass) and `go vet -mod=vendor
+./...` (clean), run once after the final edit. `gofmt -l` clean on the changed
+files.
+
+Review Round 1 (2026-07-27): `REOPEN`, two P2 + two P3 + one nit, no
+correctness or security defect on any currently reachable path. `Dev` unticked
+until the two P2 items close: `WriteClaudeConfig` still creates `env: {}` in a
+settings file that never had an `env` key (contradicts the spec's "never writes
+any other field" and is untested), and the empty-string-means-remove sentinel is
+undocumented on the function.
+Review Round 2 (2026-07-27): `PASS` — both P2 findings closed with tests that
+fail on regression, the closed P3 goes beyond what was asked (a `null` and an
+array `env` also survive now), and the deferred P3 landed on
+`route-composition` with a required test. Three non-blocking nits carried
+forward: the one documented destructive case (non-map `env` replaced when an
+owned key must be written) has no test, `config.go:321` says "unowned" where it
+means "untouched", and this task's original Verification paragraph still names
+the pre-rename test. See
+`docs/reviews/provider-wrapper-routing/claude-writer-routes.md`.
+
+Fix round (2026-07-27), closing both Round 1 P2 findings and disposing the two
+P3s and the nit:
+- [P2] `WriteClaudeConfig` no longer creates `document["env"]` when it is
+  absent and neither owned key is being written: the write now only touches
+  `env` when it is already a `map[string]any` or an owned key must be set,
+  so the "neither field" intent on a source with no `env` key leaves the
+  document unchanged apart from re-serialization. Added
+  `TestWriteClaudeConfigNeitherFieldWithoutExistingEnvLeavesDocumentUnchanged`
+  pinning that no `env` key is created and unrelated top-level keys survive.
+- [P2] Documented the empty-string-means-remove sentinel directly on
+  `WriteClaudeConfig`'s doc comment, naming all three intents it expresses
+  and matching the documentation style already used on
+  `WriteOfficialCodexConfig`/`WriteCodexWrapperConfig`.
+- [P3, closed] The non-`map` `env` value is no longer destroyed by a
+  no-owned-key write: the same absent-or-non-map guard that fixes the P2
+  above also leaves a non-object `env` (e.g. a string) untouched when
+  neither owned key is being written, closing the "loss is now total" gap
+  Round 1 flagged. A write that does set an owned key still overwrites a
+  non-object `env` with a fresh map, unchanged from the pre-existing
+  behavior Round 1 confirmed was not newly introduced. Added
+  `TestWriteClaudeConfigNeitherFieldLeavesNonObjectEnvUntouched`.
+- [P3, deferred] Design asymmetry between the two writer tasks (Codex names
+  its wrapper intent as a separate function; Claude overloads one function
+  on empty-string sentinels) is not closed here — Round 1 confirmed no live
+  caller can reach the new semantics by accident today, so this stays a
+  `route-composition` decision: that task must decide each write's intent
+  explicitly rather than letting a zero-value lookup decide it, and must
+  carry a test for that. Recorded as a `route-composition` acceptance
+  consideration, not a `claude-writer-routes` defect.
+- [nit] Renamed
+  `TestWriteClaudeConfigNeitherFieldKeepsEnvObjectWhenLastOwnedKeyGoesAndEnvWasEmpty`
+  to `TestWriteClaudeConfigNeitherFieldKeepsEnvObjectWhenEnvHeldOnlyOwnedKeys`,
+  matching what the fixture actually holds.
+
+Verification: `go test -mod=vendor ./internal/provider/... -run Claude -v`
+(all seven `WriteClaudeConfig` tests pass, including the two new ones) plus
+`go test -mod=vendor ./...` (all packages pass) and `go vet -mod=vendor
+./...` (clean), run once after the final edit. `gofmt -l` and
+`git diff --check` clean on both changed files.
+
+### `route-composition`
+
+Compose the two rules at switch time: the credential field comes from the
+selected provider alone, the endpoint field from the route. `--via` writes the
+provider's wrapper URL; without it the switch is direct. `official` dispatches
+to both clients' restore paths and skips credential resolution. The selection
+snapshot records the route taken and the endpoint actually written.
+
+Files: `internal/provider/service.go`, `internal/provider/config.go`.
+
+Acceptance: switching a custom provider between direct and `--via` changes only
+the endpoint field and leaves the written credential byte-identical;
+`provider use official --client claude` completes and records a snapshot;
+`--client codex` behavior is unchanged when no wrapper is set.
+
+Carried from `claude-writer-routes` Round 1 (P3, deferred, not closed there):
+every call into `WriteClaudeConfig` must decide its endpoint/credential intent
+explicitly — an empty `ClientConfig` field is the writer's "remove this key"
+sentinel, so a credential or endpoint lookup that can return `""` for a reason
+other than "this field should be absent" must not be passed through directly.
+Cover this with a test.
+
+### `cli-route-surface`
+
+Surface it on the existing nouns: `provider set-wrapper <provider>
+--url <url>|--clear`, `provider use --via`, the wrapper URL in
+`provider list|show` and their JSON as an additive `wrapper_url`, the route and
+written endpoint in `provider current` and `provider status`, and the effective
+route line on every successful switch. Update `docs/specs/cli-manual.md` in the
+same task, since it documents the implemented surface.
+
+Files: `internal/cli/` provider commands, `docs/specs/cli-manual.md`.
+
+Acceptance: `--via` without a configured wrapper fails before any client file is
+touched; every existing invocation without a new flag behaves exactly as before;
+`provider set-wrapper --url` must normalize through `NormalizeWrapperURL`
+before any write reaches `SetProviderWrapper`/`SetOfficialWrapperURL`, since
+those store methods perform no normalization themselves — `--clear` is the
+one path that skips `NormalizeWrapperURL` and writes `""` straight through.
+
+### `switch-advisories`
+
+Two stderr advisories on a successful Claude switch: running Claude sessions
+should be restarted, and any conflicting credential source AgentDeck does not
+own (`env.ANTHROPIC_API_KEY`, `apiKeyHelper`) that would override an `official`
+selection. Advisory only — no exit-status or JSON-envelope change, and no
+removal of unowned fields.
+
+Files: `internal/provider/service.go`, `internal/cli/`.
+
+Acceptance: the advisory appears on stderr, the JSON envelope is byte-identical
+to a run without it, and no unowned field is written or deleted.
+
+### `usage-route-metadata`
+
+Carry the route into attribution as reported metadata. The provider dimension
+keys on provider name only, so `--provider <name>` selects an account's events
+whether the route was wrapped or direct, and subscription traffic through a
+proxy stays under `official` at multiplier `1`.
+
+Files: `internal/store/providers.go`, `internal/usage/usage.go`.
+
+Acceptance: every existing stats and summary contract is unchanged for
+selections with no wrapper.
+
+## Out of Scope
+
+- Account, plan, or subscription switching, and any OAuth token handling. The
+  backlog item about switching a Claude account stays open and is not addressed
+  here; selecting `official` returns the client to whatever login it already
+  holds.
+- Validating that a wrapper reaches the upstream its provider names, or that a
+  relay forwards what a client's own authentication needs. AgentDeck writes
+  configuration; it does not probe endpoints.
+- A chain of proxies, a wrapper record shared across providers, or a per-client
+  wrapper URL. The client holds one address, one instance fronts one upstream,
+  and one instance serves both client protocols.
+- Client settings beyond the two owned transport fields per client. A proxy
+  backend that needs extra client variables, such as the Bedrock recipe's
+  `CLAUDE_CODE_USE_BEDROCK=0`, is outside this plan.
+- A credential written to `x-api-key` instead of `Authorization: Bearer`. The
+  proxy this is designed for matches Bearer first.
+
+## Status
+
+| # | Task | Dev | Review |
+|---|------|:---:|:------:|
+| 1 | wrapper-schema | ✓ | ✓ |
+| 2 | codex-writer-routes | ✓ | ✓ |
+| 3 | claude-writer-routes | ✓ | ✓ |
+| 4 | route-composition | | |
+| 5 | cli-route-surface | | |
+| 6 | switch-advisories | | |
+| 7 | usage-route-metadata | | |
+
+Done: **3/7 reviewed.** The implementer ticks **Dev** once a task is built and
+its targeted verification passes; an independent reviewer ticks **Review** once
+findings are closed, recording the round in
+`docs/reviews/provider-wrapper-routing/<task-anchor>.md`. A task is done only
+when Review is ticked.
+
+Sequencing: task 1 gates everything. Tasks 2 and 3 are independent writer tasks
+and both gate task 4. Task 5 lands after task 4 so no flag can expose an
+unreachable state. Tasks 6 and 7 are independent tails; task 7 is the only one
+that may be deferred without leaving the feature half-usable.
+
+A usable vertical slice for the reported deployment is tasks 1, 3, 4, 5: Claude,
+with a wrapper in front of either the subscription or an existing relay
+credential. Task 2 extends the same model to Codex.
+
+## Invariants
+
+- **AgentDeck owns exactly two fields per client.** Codex
+  `[model_providers.custom].base_url` and `.experimental_bearer_token`; Claude
+  `env.ANTHROPIC_BASE_URL` and `env.ANTHROPIC_AUTH_TOKEN`. No task may write,
+  clear, or reorder anything else — including `env.ANTHROPIC_API_KEY`, which
+  overrides an `official` selection but is the user's field, to be reported and
+  never removed.
+- **A wrapper overrides the endpoint field and nothing else.** It never changes
+  which credential is written, which multiplier applies, or which provider name
+  an event is attributed to. A proxy that needs its own credential is a
+  provider, not a wrapper.
+- **The route is per switch, never stored as an attachment.** A configured
+  wrapper must not route a switch that did not pass `--via`. Do not add a sticky
+  attachment, a default-on rule, or a client-level toggle.
+- **The wrapper stays provider-owned.** One nullable column. Do not promote it
+  to a shared record, a chain, an ordered list, or a per-client value.
+- **Default behavior is unchanged.** Every existing provider has no wrapper, and
+  every existing invocation without a new flag keeps its exact current behavior,
+  output, and error text.
+
+## Starting a task
+
+Turn any row of the Status matrix into a scoped development instruction through
+its anchor:
+
+> **进入开发:provider wrapper routing / `<task-anchor>`**
+> 阅读 `AGENTS.md`、本 plan `## Tasks` 中 `<task-anchor>` 一条及它命名的文件、本
+> plan 的 `## Invariants` 与 `## Required Verification`,以及
+> `docs/specs/cli-design.md` v15 的 "Provider Wrappers"、"Owned Client
+> Configuration Fields"、"Selecting the Built-in Provider" 三节。只在该 task 的范围
+> 内实现并自测。完成后在 `## Status` 勾上该行的 `Dev`,把命令与结果记进该 task 的
+> 完成注记;评审留痕到 `docs/reviews/provider-wrapper-routing/<task-anchor>.md`。
+
+Example — `claude-writer-routes`: 阅读 `internal/provider/config.go` 的
+`WriteClaudeConfig`/`WriteRedactedBackup`/`atomicPrivateReplace`,先写一个持有无关
+`env` 键与无关顶层键的 fixture,再实现三种意图,确保未拥有的键在三种意图下逐字保留。
+
+## Required Verification
+
+L2 for tasks 1-5 and 7: they change SQLite schema, persisted provider state, or
+a JSON/text output contract. Run the affected targeted tests plus
+`go test -mod=vendor ./...` once after the final edit of each task.
+
+L1 for task 6: stderr advisory only, no persisted or envelope contract change.
+Targeted tests are sufficient.
+
+Task 1 executes a migration against existing databases, which is an L3 trigger
+under `AGENTS.md`; it adds the migration-execution check on an existing-database
+fixture on top of L2.
+
+No task touches concurrency, credential ciphertext formats, or the build and
+installer path, so no race, cross-build, size, or `release-verify` gate is
+required by this plan. Commands are listed in `AGENTS.md` under "Testing and
+Verification".
+
+## External constraints
+
+Facts about the surrounding clients and proxy, recorded so they are not
+misdiagnosed as AgentDeck defects. None of them is something AgentDeck
+validates:
+
+- A proxy carrying subscription traffic must forward `anthropic-beta` verbatim;
+  it carries the OAuth capability the upstream requires, and stripping it fails
+  those requests with `401`.
+- With `ANTHROPIC_BASE_URL` set to a non-first-party host, Claude Code disables
+  MCP tool search by default; `ENABLE_TOOL_SEARCH=true` re-enables it only if the
+  proxy forwards `tool_reference` blocks.
+- From Claude Code v2.1.196, a custom `ANTHROPIC_BASE_URL` disables Remote
+  Control.
+- Claude Code re-reads `~/.claude/settings.json` while running. Changing owned
+  keys mid-session can invalidate capabilities already negotiated in that
+  session, which is why task 6 exists.
+- Headroom ships an opt-in watcher (`HEADROOM_CC_SWITCH_RECONCILE=1`, off by
+  default) that rewrites `ANTHROPIC_BASE_URL` back to itself after another
+  switcher writes the file, capturing the written endpoint as its own upstream.
+  With it enabled, two tools own the same field; AgentDeck does not coordinate
+  with it.
