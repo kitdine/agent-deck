@@ -1,6 +1,6 @@
 ---
 status: active
-version: 14
+version: 15
 created: 2026-07-14
 ---
 
@@ -46,6 +46,10 @@ The first release will not:
 - run a daemon or install a LaunchAgent;
 - implement a GUI;
 - query provider billing, subscription, or usage APIs;
+- select, store, or refresh a client account, plan, or OAuth token; probe a
+  configured endpoint to verify that a relay or wrapper reaches the upstream its
+  provider names or forwards whatever a client's own authentication requires; or
+  model a chain of proxies behind the one address a client can be pointed at;
 - reconcile estimates against invoices;
 - support custom model prices;
 - install, update, uninstall, or resolve dependencies for extensions;
@@ -429,14 +433,23 @@ uninstall compatibility.
 ## Provider and Credential Management
 
 A custom provider is a named logical group for one or more credentials, its
-aggregate supported clients, authentication mode, and client-specific model
-mappings. Each credential owns its base endpoint, client bindings, and one
-non-negative decimal cost multiplier. An absent multiplier means `1`. Boolean,
-negative, non-finite, and non-numeric values are invalid. Codex additionally
-exposes an immutable built-in provider named `official`. It is always visible to
-`provider list|show`, is not stored in the `providers` table, has no endpoint or
-credential reference, and never initializes or accesses the encrypted
-credential store.
+aggregate supported clients, authentication mode, an optional wrapper URL, and
+client-specific model mappings. Each credential owns its base endpoint, client
+bindings, and one non-negative decimal cost multiplier. An absent multiplier
+means `1`. Boolean, negative, non-finite, and non-numeric values are invalid.
+AgentDeck additionally exposes an immutable built-in provider named `official`,
+selectable for Codex and Claude. It is always visible to `provider list|show`,
+has no endpoint or credential reference, and never initializes or accesses the
+encrypted credential store. Its only stored state is an optional wrapper URL;
+it holds no provider definition row, credential, or ciphertext.
+
+Authentication is decided by which provider is selected, not by a separate
+setting. A custom provider always writes its selected credential into client
+configuration; the built-in provider never writes one and leaves the client on
+the login it already owns — Codex's own OpenAI or ChatGPT login, or Claude's
+own subscription login. There is no third combination: a custom upstream
+without a credential cannot authenticate, and a client's own login is only
+meaningful against that client's own vendor.
 
 The multiplier applies only after base price calculation:
 
@@ -447,6 +460,58 @@ provider_cost = catalog_base_cost * multiplier_snapshot
 Raw tokens and catalog base cost never change when a multiplier changes. Each
 successful provider selection and exact run stores its own multiplier snapshot,
 so later credential edits do not rewrite historical cost.
+
+### Provider Wrappers
+
+A wrapper is a proxy the user runs in front of one upstream — a local or LAN
+compression, logging, or routing layer. It is an optional provider-owned URL,
+not an entity of its own, and any provider may carry one, including the built-in
+`official`.
+
+The URL is stored once per provider, not per credential and not per client. Per
+provider, because a wrapper instance is configured with one upstream address, so
+it aligns with the service a provider names rather than with one of that
+provider's keys; every credential under that provider reaches the same upstream
+through it. Not per client, because one wrapper instance serves both client
+protocols on one address, and the existing client-aware `/v1` rule already
+resolves both forms from one stored base — Codex appends exactly one `/v1`,
+Claude uses the base unchanged. Wrapper URLs are otherwise validated and
+always normalized like a Codex-bound credential endpoint, regardless of which
+clients the provider actually serves: a trailing `/v1` is stripped
+unconditionally, never preserved the way a Claude-only credential's endpoint
+would be.
+
+The route is chosen per switch and never stored as an attachment:
+
+```text
+agentdeck provider set-wrapper <provider> --url <url>
+agentdeck provider set-wrapper <provider> --clear
+agentdeck provider use <name> [--via]
+```
+
+`--via` writes the provider's wrapper URL as the endpoint field; without it the
+switch is direct. Both directions are ordinary switches, so inserting or
+removing a proxy changes no stored configuration, and a wrapper configured once
+can never silently route a later switch that did not ask for it. The route is
+recorded in the selection snapshot and reported as part of the effective route,
+because once written, `--via` and a direct switch are indistinguishable in the
+client file.
+
+A wrapper overrides the endpoint field alone. Provider identity, credential,
+multiplier, and usage attribution are unchanged by it, because inserting a layer
+in front of an account does not change which account is billed. This holds for
+`official` too: subscription usage routed through a proxy stays attributed to
+`official` instead of splitting one subscription into a second provider name.
+
+AgentDeck cannot see a wrapper's own upstream configuration and never probes it.
+A wrapper must front the upstream its provider names; nothing validates that,
+and a wrapper pointed elsewhere misattributes every event it carries. The same
+limit applies when a provider's credentials do not share one endpoint: one
+wrapper cannot front two upstreams, and AgentDeck does not check for it.
+
+AgentDeck models one override and no chain: a client can be pointed at exactly
+one address, and any further hop behind it is configured inside the proxies
+themselves.
 
 Custom providers may have multiple named credentials. A credential name is
 unique within its provider, one credential may bind to Codex and Claude, and a
@@ -495,6 +560,10 @@ agentdeck provider add <provider> --credential <short-name> \
   --endpoint <base-endpoint> --clients <clients> [--multiplier <decimal>]
 ```
 
+A provider's wrapper URL is not part of this flow; it is set separately with
+`provider set-wrapper` so that adding or rotating a credential never changes
+routing, and changing routing never touches a secret.
+
 If the provider does not exist, the command creates its logical definition and
 the credential. If the provider exists and the named credential does not, the
 command merges the new client bindings into the provider's aggregate clients
@@ -530,7 +599,8 @@ binding, endpoint, and multiplier before changing client state. Its primary CLI
 is:
 
 ```text
-agentdeck provider use <name> [--client codex|claude] [--credential <name>]
+agentdeck provider use <name> [--client codex|claude] [--credential <name>] \
+  [--via]
 ```
 
 Unique client and credential choices are inferred. Codex resolves to
@@ -548,22 +618,83 @@ same completed operation. A failed or incomplete selection leaves the prior
 completed selection authoritative. A successful no-op selection is still
 recorded because it expresses operator intent for sessions started afterward.
 
-Selecting `official` is Codex-only and uses Codex's existing OpenAI or ChatGPT
-login state. AgentDeck keeps `model_provider = "custom"`, sets
-`[model_providers.custom].name = "official"`, and removes `base_url` and
-`experimental_bearer_token` from that table. If the custom table or its `name`
-field is absent, AgentDeck creates the missing structure. Existing `name`
-spacing and inline comments are preserved while its value changes; all other
-TOML fields, comments, ordering, and formatting remain unchanged. Missing
-transport fields are a successful no-op.
-AgentDeck never reads, checks, writes, backs up, or deletes
-`~/.codex/auth.json`; Codex alone owns authentication. The built-in provider
-does not create a provider record, credential reference, encrypted secret row,
-or credential key file. It does create the same operation-linked immutable
-selection snapshot as custom
-providers, containing `official`, Codex, no credential, and multiplier `1`.
-Historical attribution treats the completed transaction time as the switch
-boundary. Claude has no built-in `official` provider.
+### Owned Client Configuration Fields
+
+AgentDeck owns exactly two transport fields per client and never writes,
+clears, or reorders any other field:
+
+| Client | Endpoint field | Credential field |
+| --- | --- | --- |
+| Codex | `[model_providers.custom].base_url` | `[model_providers.custom].experimental_bearer_token` |
+| Claude | `env.ANTHROPIC_BASE_URL` | `env.ANTHROPIC_AUTH_TOKEN` |
+
+Two independent rules decide what those two fields receive, symmetrically for
+both clients. The selected provider decides the credential field; the route
+decides the endpoint field:
+
+```text
+credential field = the decrypted secret, for a custom provider
+                   else removed, for the built-in provider
+
+endpoint field   = the provider's wrapper URL, with --via
+                   else the selected credential's endpoint, for a custom provider
+                   else removed, for the built-in provider
+```
+
+All four combinations are valid:
+
+| | Direct | `--via` |
+| --- | --- | --- |
+| Built-in `official` | Both fields removed; the client uses its own login against its own vendor | Wrapper URL written, credential field removed; the client's own login reaches the vendor through the proxy |
+| Custom provider | Credential's endpoint and its secret written | Wrapper URL written, the same secret still written; the proxy forwards it to the upstream that issued it |
+
+Switching a custom provider between direct and `--via` changes the endpoint
+field alone and leaves the written credential byte-identical.
+
+Removing a field that is already absent is a successful no-op. Codex keeps
+`model_provider = "custom"`, sets `[model_providers.custom].name` to the
+provider name, and creates the custom table or its `name` field when either is
+missing; existing `name` spacing and inline comments are preserved while its
+value changes, and all other TOML fields, comments, ordering, and formatting
+remain unchanged. Claude keeps its `env` object even when the last owned key is
+removed, and every unowned key inside and outside `env` is carried through
+unchanged. AgentDeck never reads, checks, writes, backs up, or deletes
+`~/.codex/auth.json`, and never reads or writes Claude's stored login
+credentials; each client alone owns its authentication.
+
+Claude recognizes credential sources AgentDeck does not own, and any of them
+overrides a built-in-provider selection without changing a field AgentDeck may
+touch. When a Claude switch selects `official` and `env.ANTHROPIC_API_KEY` or an
+`apiKeyHelper` setting is present, AgentDeck completes the switch and reports
+the conflicting source on stderr. It never removes a field it does not own to
+force its own selection to win.
+
+A Claude client reads `~/.claude/settings.json` while it runs, so a switch that
+changes owned keys takes effect in an already-running session without a
+restart and can reset that session's negotiated capabilities mid-conversation.
+A successful Claude switch therefore reports on stderr that running Claude
+sessions should be restarted. The advisory is informational; it does not change
+the exit status or the JSON envelope.
+
+### Selecting the Built-in Provider
+
+Selecting `official` returns the client to its own login state: Codex's
+existing OpenAI or ChatGPT login, or Claude's existing subscription login. It
+accepts `--client codex` and `--client claude`, takes no `--credential`, and
+always removes the owned credential field. It removes the owned endpoint field
+too on a direct switch; with `--via` the endpoint field carries the built-in
+provider's own wrapper URL, which is how a client reaches its vendor under its
+own login through a user-run proxy. The built-in provider does not create a
+credential reference, encrypted secret row, or credential key file, and its
+wrapper URL is the only state stored for it. It does create the same
+operation-linked immutable selection snapshot as custom providers, containing
+`official`, the selected client, no credential, the route taken, and multiplier
+`1`. Historical attribution treats the completed
+transaction time as the switch boundary.
+
+Selecting `official` is not account or subscription management. AgentDeck
+returns the client to whatever login that client already holds and never
+enumerates, selects, stores, or refreshes an account, plan, or OAuth token.
 
 Deleting a custom provider is allowed after use. The live definition and all
 credential metadata and ciphertext are removed in one SQLite transaction,
@@ -578,7 +709,9 @@ and credential count rather than a single endpoint or multiplier. Credential
 readiness belongs to `provider status` and top-level `credential` commands and
 checks secret-row presence without decrypting values. Text `credential list`
 contains `PROVIDER`, `NAME`, `REFERENCE`, `ENDPOINT`, `MULTIPLIER`, `CLIENTS`,
-and `READY`; credential detail and JSON expose the same non-secret metadata. Output
+and `READY`; credential detail and JSON expose the same non-secret metadata. A
+wrapper URL is provider-owned, so it appears in `provider list|show` and an
+additive `wrapper_url` JSON field rather than on any credential. Output
 never reports credential values or private compatibility references. Provider
 definition JSON contains aggregate `clients` and `credential_count`, but no
 endpoint, multiplier, credential reference, or nested credential details.
@@ -608,8 +741,11 @@ per client with active state, shorthand, and selection time. The additive JSON
 `active[].selected_at` field retains the selection timestamp.
 
 `provider current` returns the latest completed selection for each client as
-`client`, `provider`, optional credential shorthand, and `selected_at`.
-`official` has no credential. Current/status reporting reads only selection and
+`client`, `provider`, optional credential shorthand, whether the route went
+through the provider's wrapper, the endpoint actually written, and
+`selected_at`. `official` has no credential. Reporting the route and the written
+endpoint is what keeps a wrapped selection distinguishable from a direct one
+after the fact. Current/status reporting reads only selection and
 credential metadata and never reads or decrypts credential values.
 
 Every leaf command has a concise action description. Commands with positional
@@ -826,7 +962,14 @@ exact run-bound event uses the recorded `usage_runs.provider`; an estimated
 event uses the provider-timeline snapshot at its session start; an event whose
 session predates every recorded provider selection is grouped as `unknown`.
 `unknown` is an explicit unattributed bucket, never silently mapped to
-`official`, and `--provider unknown` selects exactly those events. Provider
+`official`, and `--provider unknown` selects exactly those events. Each
+selection snapshot also records whether the route went through the provider's
+wrapper. That route is reported metadata and never a grouping key: a wrapper
+carries no billing relationship, so events routed through one stay under their
+provider's name and `--provider <name>` selects them whether the route was
+wrapped or direct. Subscription traffic routed through a proxy therefore stays
+under `official` at multiplier `1` rather than appearing as a separate
+provider. Provider
 dimensions are keyed per client — the same provider name under Codex and
 Claude denotes different vendors and different cache-rate semantics, so they
 are never merged across clients. No schema change stores provider on events;
@@ -1589,6 +1732,7 @@ here changes; do not create a dated copy of this file.
 
 | Version | Date | Contract change |
 | --- | --- | --- |
+| 15 | 2026-07-26 | Any provider, including the built-in `official`, may carry an optional wrapper URL, and `provider use --via` routes one switch through it. The wrapper overrides the endpoint field alone, so a proxy in front of a relay still writes and forwards that relay's own credential, and subscription traffic through a proxy stays attributed to `official` at multiplier `1` instead of splitting into a second provider name. The URL is provider-owned rather than credential-owned because a wrapper instance is configured with one upstream address, and is not per client because one instance serves both client protocols on one address, always normalized like a Codex-bound credential endpoint regardless of which clients the provider actually serves. The route is chosen per switch rather than stored as an attachment, so inserting or removing a proxy changes no stored configuration and a configured wrapper never silently routes a switch that did not ask for it; the selection snapshot records which route was written. The built-in `official` provider becomes selectable for Claude as well as Codex. Owned client fields are enumerated per client, with everything else carried through unchanged. A Claude switch reports a running-session restart advisory and any conflicting credential source it does not own, rather than deleting fields it never wrote. |
 | 14 | 2026-07-23 | Record that equivalent-estimate disclosure travels with the binary rather than the database: price rows move with a portable backup while the marker, basis, and note come from the running binary's compiled gap-fill, so a binary without that entry renders the price undisclosed. Accepted cost of deriving the metadata instead of storing it. The price-list estimate marker occupies its own column so the model column stays a copy-pasteable identifier. |
 | 13 | 2026-07-23 | The bundled catalog's own effective date is the stable fallback date rather than the earliest date among its models, so a curated early-dated entry cannot lower the catalog's precedence and hand shared models back to a previously installed bundled catalog on upgrade. Model rows keep their own effective dates. An equivalent estimate is disclosed only for prices served by the catalog compiled into the running binary, and its `verified_by` may name a project role because it attests to a derivation rather than an observed vendor rate. |
 | 12 | 2026-07-23 | Curated gap-fill may carry an explicitly marked equivalent estimate for a real released subscription-only model that has no published API rate. The estimate must name its vendor-priced basis model and explain that it is not an actual subscription invoice; only `price list` exposes the marker and basis, and fresher upstream pricing automatically removes it. Absent, unreleased, or unidentified models remain unpriced. |
