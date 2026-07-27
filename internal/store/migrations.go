@@ -95,6 +95,10 @@ var migrations = []migration{
 	{version: 14, statements: []string{
 		`CREATE INDEX usage_events_client_session ON usage_events(client, session_id)`,
 	}},
+	{version: 15, statements: []string{
+		`ALTER TABLE providers ADD COLUMN wrapper_url TEXT`,
+		`ALTER TABLE provider_selections ADD COLUMN via_wrapper INTEGER NOT NULL DEFAULT 0`,
+	}},
 }
 
 func normalizeUsageEventTimes(ctx context.Context, tx *sql.Tx) error {

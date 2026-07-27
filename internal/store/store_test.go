@@ -556,6 +556,104 @@ func TestV14MigrationAddsUsageEventsClientSessionIndex(t *testing.T) {
 	}
 }
 
+// wrapper-schema: an existing pre-v15 database must open with every provider
+// reading back with no wrapper and unchanged snapshot behavior, and the new
+// provider/official wrapper storage must never create a credential,
+// ciphertext row, or the vault key file.
+func TestV15MigrationAddsProviderWrapperURLAndSelectionRouteWithoutSideEffects(t *testing.T) {
+	ctx := context.Background()
+	state := filepath.Join(t.TempDir(), "state")
+	if err := os.MkdirAll(state, platform.DirectoryMode); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(state, "agentdeck.sqlite3")
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture, err := os.ReadFile(filepath.Join("testdata", "agentdeck-v6.sql"))
+	if err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	if _, err = db.ExecContext(ctx, string(fixture)); err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	if err = db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	migrated, err := Open(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer migrated.Close()
+	if version, err := migrated.SchemaVersion(ctx); err != nil || version != CurrentSchemaVersion {
+		t.Fatalf("schema version = %d, %v", version, err)
+	}
+
+	providers, err := migrated.ListProviders(ctx)
+	if err != nil || len(providers) != 1 || providers[0].Name != "legacy" || providers[0].WrapperURL != "" {
+		t.Fatalf("providers = %#v, %v", providers, err)
+	}
+	// The migration must add via_wrapper without disturbing any other
+	// snapshot field already covered by the v6 fixture's completed selection.
+	snapshot, err := migrated.CurrentProviderSnapshot(ctx, "codex")
+	if err != nil || snapshot.ViaWrapper || snapshot.Name != "legacy" || snapshot.Endpoint != "https://legacy.example" || snapshot.Multiplier != "1.5" || snapshot.Credential != "default" {
+		t.Fatalf("pre-existing selection route = %#v, %v", snapshot, err)
+	}
+
+	// SetProviderWrapper is pure storage; normalization is a service-layer
+	// concern (provider.NormalizeWrapperURL), so the stored value round-trips
+	// exactly as given.
+	updated, err := migrated.SetProviderWrapper(ctx, "legacy", "https://proxy.example")
+	if err != nil || updated.WrapperURL != "https://proxy.example" {
+		t.Fatalf("SetProviderWrapper = %#v, %v", updated, err)
+	}
+	reread, err := migrated.ProviderByName(ctx, "legacy")
+	if err != nil || reread.WrapperURL != "https://proxy.example" {
+		t.Fatalf("reread wrapper = %#v, %v", reread, err)
+	}
+	cleared, err := migrated.SetProviderWrapper(ctx, "legacy", "")
+	if err != nil || cleared.WrapperURL != "" {
+		t.Fatalf("cleared wrapper = %#v, %v", cleared, err)
+	}
+	if _, err = migrated.SetProviderWrapper(ctx, "does-not-exist", "https://proxy.example"); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("SetProviderWrapper on unknown provider error = %v, want sql.ErrNoRows", err)
+	}
+
+	if url, err := migrated.OfficialWrapperURL(ctx); err != nil || url != "" {
+		t.Fatalf("official wrapper before set = %q, %v", url, err)
+	}
+	if err = migrated.SetOfficialWrapperURL(ctx, "https://proxy.example"); err != nil {
+		t.Fatal(err)
+	}
+	if url, err := migrated.OfficialWrapperURL(ctx); err != nil || url != "https://proxy.example" {
+		t.Fatalf("official wrapper after set = %q, %v", url, err)
+	}
+	if err = migrated.SetOfficialWrapperURL(ctx, ""); err != nil {
+		t.Fatal(err)
+	}
+	if url, err := migrated.OfficialWrapperURL(ctx); err != nil || url != "" {
+		t.Fatalf("official wrapper after clear = %q, %v", url, err)
+	}
+
+	var credentialCount, secretCount int
+	if err = migrated.DB.QueryRowContext(ctx, `SELECT count(*) FROM provider_credentials`).Scan(&credentialCount); err != nil {
+		t.Fatal(err)
+	}
+	if err = migrated.DB.QueryRowContext(ctx, `SELECT count(*) FROM credential_secrets`).Scan(&secretCount); err != nil {
+		t.Fatal(err)
+	}
+	if credentialCount != 1 || secretCount != 0 {
+		t.Fatalf("credential rows = %d, secret rows = %d, want unchanged 1 and 0", credentialCount, secretCount)
+	}
+	if _, err = os.Stat(filepath.Join(state, "credential.key")); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("credential.key stat error = %v, want not-exist", err)
+	}
+}
+
 func TestMigrationsRejectExistingDatabaseWithoutMetadata(t *testing.T) {
 	ctx := context.Background()
 	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "state.sqlite3"))

@@ -8,11 +8,12 @@ import (
 )
 
 type Provider struct {
-	ID            int64                `json:"id"`
-	Name          string               `json:"name"`
-	Endpoint      string               `json:"endpoint"`
-	CredentialRef string               `json:"credential_ref"`
-	Multiplier    string               `json:"multiplier"`
+	ID            int64  `json:"id"`
+	Name          string `json:"name"`
+	Endpoint      string `json:"endpoint"`
+	CredentialRef string `json:"credential_ref"`
+	Multiplier    string `json:"multiplier"`
+	WrapperURL    string
 	Clients       []ClientMapping      `json:"clients"`
 	CreatedAt     time.Time            `json:"created_at"`
 	UpdatedAt     time.Time            `json:"updated_at"`
@@ -60,6 +61,7 @@ type Selection struct {
 	ProviderName       string
 	EndpointSnapshot   string
 	MultiplierSnapshot string
+	ViaWrapper         bool
 	SelectedAt         time.Time
 	CredentialID       *int64
 	CredentialName     string
@@ -71,6 +73,7 @@ type ProviderSnapshot struct {
 	Endpoint   string
 	Multiplier string
 	Credential string
+	ViaWrapper bool
 	SelectedAt time.Time
 	Official   bool
 }
@@ -130,17 +133,19 @@ func (s *Store) LoadProviderTimeline(ctx context.Context) (ProviderTimeline, err
 	if err = operationRows.Close(); err != nil {
 		return ProviderTimeline{}, err
 	}
-	selectionRows, err := s.DB.QueryContext(ctx, `SELECT id,provider_id,client,provider_name_snapshot,endpoint_snapshot,multiplier_snapshot,credential_name_snapshot,operation_id,selected_at FROM provider_selections`)
+	selectionRows, err := s.DB.QueryContext(ctx, `SELECT id,provider_id,client,provider_name_snapshot,endpoint_snapshot,multiplier_snapshot,credential_name_snapshot,via_wrapper,operation_id,selected_at FROM provider_selections`)
 	if err != nil {
 		return ProviderTimeline{}, err
 	}
 	for selectionRows.Next() {
 		var item providerTimelineSelection
 		var selected string
-		if err = selectionRows.Scan(&item.id, &item.providerID, &item.client, &item.snapshot.Name, &item.snapshot.Endpoint, &item.snapshot.Multiplier, &item.snapshot.Credential, &item.operationID, &selected); err != nil {
+		var viaWrapper int64
+		if err = selectionRows.Scan(&item.id, &item.providerID, &item.client, &item.snapshot.Name, &item.snapshot.Endpoint, &item.snapshot.Multiplier, &item.snapshot.Credential, &viaWrapper, &item.operationID, &selected); err != nil {
 			selectionRows.Close()
 			return ProviderTimeline{}, err
 		}
+		item.snapshot.ViaWrapper = viaWrapper != 0
 		item.snapshot.SelectedAt, err = time.Parse(time.RFC3339Nano, selected)
 		if err != nil {
 			selectionRows.Close()
@@ -304,7 +309,7 @@ func (s *Store) CreateProviderWithCredential(ctx context.Context, provider Provi
 }
 
 func (s *Store) ListProviders(ctx context.Context) ([]Provider, error) {
-	rows, err := s.DB.QueryContext(ctx, "SELECT id, name, endpoint, credential_ref, multiplier, created_at, updated_at FROM providers ORDER BY name")
+	rows, err := s.DB.QueryContext(ctx, "SELECT id, name, endpoint, credential_ref, multiplier, COALESCE(wrapper_url,''), created_at, updated_at FROM providers ORDER BY name")
 	if err != nil {
 		return nil, err
 	}
@@ -313,7 +318,7 @@ func (s *Store) ListProviders(ctx context.Context) ([]Provider, error) {
 	for rows.Next() {
 		var provider Provider
 		var created, updated string
-		if err := rows.Scan(&provider.ID, &provider.Name, &provider.Endpoint, &provider.CredentialRef, &provider.Multiplier, &created, &updated); err != nil {
+		if err := rows.Scan(&provider.ID, &provider.Name, &provider.Endpoint, &provider.CredentialRef, &provider.Multiplier, &provider.WrapperURL, &created, &updated); err != nil {
 			return nil, err
 		}
 		provider.CreatedAt, err = time.Parse(time.RFC3339Nano, created)
@@ -350,6 +355,56 @@ func (s *Store) ProviderByName(ctx context.Context, name string) (Provider, erro
 	return Provider{}, sql.ErrNoRows
 }
 
+// SetProviderWrapper stores or clears a provider's wrapper URL. It is pure
+// storage and performs no validation or normalization itself: the caller
+// must normalize a non-empty url through provider.NormalizeWrapperURL before
+// calling. An empty url clears the wrapper and must be passed through
+// unnormalized — a clearing caller (e.g. --clear) skips
+// NormalizeWrapperURL entirely, since "" is not a valid endpoint and
+// normalizing it would fail. SetProviderWrapper touches only the providers
+// table; it never creates, modifies, or reads a credential, ciphertext row,
+// or the vault key file.
+func (s *Store) SetProviderWrapper(ctx context.Context, name, url string) (Provider, error) {
+	result, err := s.DB.ExecContext(ctx, `UPDATE providers SET wrapper_url=?,updated_at=? WHERE name=?`, nullableString(url), time.Now().UTC().Format(time.RFC3339Nano), name)
+	if err != nil {
+		return Provider{}, err
+	}
+	if affected, err := result.RowsAffected(); err != nil {
+		return Provider{}, err
+	} else if affected == 0 {
+		return Provider{}, sql.ErrNoRows
+	}
+	if err := s.secureFiles(); err != nil {
+		return Provider{}, err
+	}
+	return s.ProviderByName(ctx, name)
+}
+
+const officialWrapperSettingKey = "official.wrapper_url"
+
+// OfficialWrapperURL returns the built-in official provider's wrapper URL, or
+// "" when none is set. The built-in provider holds no provider definition
+// row, credential, or ciphertext; its wrapper URL lives in the generic
+// settings table instead.
+func (s *Store) OfficialWrapperURL(ctx context.Context) (string, error) {
+	value, _, err := s.Setting(ctx, officialWrapperSettingKey)
+	return value, err
+}
+
+// SetOfficialWrapperURL stores or clears the built-in official provider's
+// wrapper URL. Like SetProviderWrapper, it is pure storage: the caller must
+// normalize a non-empty url through provider.NormalizeWrapperURL before
+// calling, and must skip that call when clearing (an empty url), since ""
+// both signals "clear" and would fail NormalizeWrapperURL's endpoint
+// validation. It never creates a provider definition row, credential,
+// ciphertext row, or the vault key file.
+func (s *Store) SetOfficialWrapperURL(ctx context.Context, url string) error {
+	if url == "" {
+		return s.DeleteSetting(ctx, officialWrapperSettingKey)
+	}
+	return s.SetSetting(ctx, officialWrapperSettingKey, url)
+}
+
 func (s *Store) DeleteProvider(ctx context.Context, name string) error {
 	result, err := s.DB.ExecContext(ctx, "DELETE FROM providers WHERE name = ?", name)
 	if err != nil {
@@ -372,7 +427,7 @@ func (s *Store) RecordSelection(ctx context.Context, selection Selection) error 
 			return err
 		}
 	}
-	_, err := s.DB.ExecContext(ctx, "INSERT INTO provider_selections(provider_id,client,provider_name_snapshot,endpoint_snapshot,multiplier_snapshot,credential_id,credential_name_snapshot,operation_id,selected_at) VALUES (?,?,?,?,?,?,?,?,?)", nullableProviderID(selection.ProviderID), selection.Client, selection.ProviderName, selection.EndpointSnapshot, selection.MultiplierSnapshot, selection.CredentialID, selection.CredentialName, nullableString(selection.OperationID), selection.SelectedAt.Format(time.RFC3339Nano))
+	_, err := s.DB.ExecContext(ctx, "INSERT INTO provider_selections(provider_id,client,provider_name_snapshot,endpoint_snapshot,multiplier_snapshot,via_wrapper,credential_id,credential_name_snapshot,operation_id,selected_at) VALUES (?,?,?,?,?,?,?,?,?,?)", nullableProviderID(selection.ProviderID), selection.Client, selection.ProviderName, selection.EndpointSnapshot, selection.MultiplierSnapshot, boolToInt(selection.ViaWrapper), selection.CredentialID, selection.CredentialName, nullableString(selection.OperationID), selection.SelectedAt.Format(time.RFC3339Nano))
 	if err != nil {
 		return err
 	}
@@ -401,7 +456,7 @@ func (s *Store) CompleteProviderUse(ctx context.Context, operationID string, sel
 	} else if n != 1 {
 		return sql.ErrNoRows
 	}
-	_, err = tx.ExecContext(ctx, "INSERT INTO provider_selections(provider_id,client,provider_name_snapshot,endpoint_snapshot,multiplier_snapshot,credential_id,credential_name_snapshot,operation_id,selected_at) VALUES(?,?,?,?,?,?,?,?,?)", nullableProviderID(selection.ProviderID), selection.Client, selection.ProviderName, selection.EndpointSnapshot, selection.MultiplierSnapshot, selection.CredentialID, selection.CredentialName, operationID, completedAt.Format(time.RFC3339Nano))
+	_, err = tx.ExecContext(ctx, "INSERT INTO provider_selections(provider_id,client,provider_name_snapshot,endpoint_snapshot,multiplier_snapshot,via_wrapper,credential_id,credential_name_snapshot,operation_id,selected_at) VALUES(?,?,?,?,?,?,?,?,?,?)", nullableProviderID(selection.ProviderID), selection.Client, selection.ProviderName, selection.EndpointSnapshot, selection.MultiplierSnapshot, boolToInt(selection.ViaWrapper), selection.CredentialID, selection.CredentialName, operationID, completedAt.Format(time.RFC3339Nano))
 	if err != nil {
 		return err
 	}
@@ -423,6 +478,13 @@ func nullableString(value string) any {
 		return nil
 	}
 	return value
+}
+
+func boolToInt(value bool) int {
+	if value {
+		return 1
+	}
+	return 0
 }
 
 func (s *Store) LatestSelectionCredential(ctx context.Context, providerID int64, client string) (string, error) {
@@ -735,10 +797,12 @@ func (s *Store) providerSnapshot(ctx context.Context, client string, at *time.Ti
 func (s *Store) providerSelectionForOperation(ctx context.Context, operationID string) (ProviderSnapshot, error) {
 	var snapshot ProviderSnapshot
 	var selected string
-	err := s.DB.QueryRowContext(ctx, `SELECT provider_name_snapshot,endpoint_snapshot,multiplier_snapshot,credential_name_snapshot,selected_at FROM provider_selections WHERE operation_id=?`, operationID).Scan(&snapshot.Name, &snapshot.Endpoint, &snapshot.Multiplier, &snapshot.Credential, &selected)
+	var viaWrapper int64
+	err := s.DB.QueryRowContext(ctx, `SELECT provider_name_snapshot,endpoint_snapshot,multiplier_snapshot,credential_name_snapshot,via_wrapper,selected_at FROM provider_selections WHERE operation_id=?`, operationID).Scan(&snapshot.Name, &snapshot.Endpoint, &snapshot.Multiplier, &snapshot.Credential, &viaWrapper, &selected)
 	if err != nil {
 		return ProviderSnapshot{}, err
 	}
+	snapshot.ViaWrapper = viaWrapper != 0
 	snapshot.SelectedAt, err = time.Parse(time.RFC3339Nano, selected)
 	snapshot.Official = snapshot.Name == "official"
 	return snapshot, err
@@ -791,7 +855,7 @@ func (s *Store) latestCompletedProviderOperation(ctx context.Context, client str
 }
 
 func (s *Store) latestProviderSelection(ctx context.Context, client string, providerID *int64, notBefore, notAfter *time.Time) (ProviderSnapshot, error) {
-	query := `SELECT ps.id,ps.provider_name_snapshot,ps.endpoint_snapshot,ps.multiplier_snapshot,ps.credential_name_snapshot,ps.selected_at FROM provider_selections ps LEFT JOIN operations o ON o.id=ps.operation_id WHERE ps.client=? AND (ps.operation_id IS NULL OR o.state='completed')`
+	query := `SELECT ps.id,ps.provider_name_snapshot,ps.endpoint_snapshot,ps.multiplier_snapshot,ps.credential_name_snapshot,ps.via_wrapper,ps.selected_at FROM provider_selections ps LEFT JOIN operations o ON o.id=ps.operation_id WHERE ps.client=? AND (ps.operation_id IS NULL OR o.state='completed')`
 	args := []any{client}
 	if providerID != nil {
 		query += ` AND ps.provider_id=?`
@@ -809,9 +873,11 @@ func (s *Store) latestProviderSelection(ctx context.Context, client string, prov
 		var candidate ProviderSnapshot
 		var id int64
 		var selectedText string
-		if err := rows.Scan(&id, &candidate.Name, &candidate.Endpoint, &candidate.Multiplier, &candidate.Credential, &selectedText); err != nil {
+		var viaWrapper int64
+		if err := rows.Scan(&id, &candidate.Name, &candidate.Endpoint, &candidate.Multiplier, &candidate.Credential, &viaWrapper, &selectedText); err != nil {
 			return ProviderSnapshot{}, err
 		}
+		candidate.ViaWrapper = viaWrapper != 0
 		candidate.SelectedAt, err = time.Parse(time.RFC3339Nano, selectedText)
 		if err != nil {
 			return ProviderSnapshot{}, err

@@ -87,6 +87,24 @@ type CurrentSelection struct {
 
 const OfficialProviderName = "official"
 
+// NormalizeWrapperURL validates and normalizes a non-empty provider wrapper
+// URL. One wrapper instance serves both client protocols from a single
+// stored base, so it always reuses the Codex-bound-credential-endpoint
+// normalization (NormalizeCredentialEndpoint with codex=true), never the
+// codex=false form a Claude-only credential would get, rather than a second
+// implementation: a trailing /v1 is stripped so the Codex writer can
+// re-append exactly one /v1 while the Claude writer uses the stored base
+// unchanged. Every caller that persists a wrapper URL through
+// store.Store.SetProviderWrapper or store.Store.SetOfficialWrapperURL must
+// call NormalizeWrapperURL first, since those store methods perform no
+// validation or normalization themselves. A clearing caller (e.g. --clear)
+// must skip this call and pass "" straight through instead: "" is not a
+// valid endpoint, so normalizing it would fail even though it is the
+// correct value to clear a wrapper.
+func NormalizeWrapperURL(value string) (string, error) {
+	return NormalizeCredentialEndpoint(value, true)
+}
+
 // ConfigDrift counts selected clients whose native endpoint no longer matches
 // the recorded provider. It does not expose native configuration values.
 func (s Service) ConfigDrift(ctx context.Context, home string) (int, error) {

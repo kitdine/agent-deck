@@ -80,6 +80,67 @@ func TestValidateRejectsUnsafeDefinitions(t *testing.T) {
 	}
 }
 
+// wrapper-schema: a wrapper URL must normalize identically to a Codex-bound
+// credential endpoint, since one wrapper instance serves both client
+// protocols from the same stored base and reuses that normalization rather
+// than a second implementation.
+func TestNormalizeWrapperURLReusesCodexAwareCredentialEndpointNormalization(t *testing.T) {
+	tests := []struct {
+		name string
+		url  string
+	}{
+		{name: "base", url: "https://proxy.example"},
+		{name: "trailing slash", url: "https://proxy.example/"},
+		{name: "path with v1", url: "https://proxy.example/api/v1/"},
+		{name: "bare v1", url: "https://proxy.example/v1"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			wrapper, err := NormalizeWrapperURL(test.url)
+			if err != nil {
+				t.Fatal(err)
+			}
+			credentialEndpoint, err := NormalizeCredentialEndpoint(test.url, true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if wrapper != credentialEndpoint {
+				t.Fatalf("NormalizeWrapperURL(%q) = %q, want match with Codex-bound credential endpoint %q", test.url, wrapper, credentialEndpoint)
+			}
+		})
+	}
+}
+
+// review fix: wrapper normalization is always the Codex-bound form, never a
+// generic "same as credential endpoints" rule — on a /v1-suffixed input it
+// must differ from the codex=false (Claude-only) credential endpoint form,
+// which preserves that trailing /v1 instead of stripping it.
+func TestNormalizeWrapperURLDiffersFromClaudeOnlyCredentialEndpointOnV1Input(t *testing.T) {
+	url := "https://proxy.example/api/v1/"
+	wrapper, err := NormalizeWrapperURL(url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	claudeOnlyEndpoint, err := NormalizeCredentialEndpoint(url, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if wrapper == claudeOnlyEndpoint {
+		t.Fatalf("NormalizeWrapperURL(%q) = %q, want it to differ from the Claude-only (codex=false) credential endpoint form %q", url, wrapper, claudeOnlyEndpoint)
+	}
+	if wrapper != "https://proxy.example/api" || claudeOnlyEndpoint != "https://proxy.example/api/v1" {
+		t.Fatalf("wrapper = %q, claude-only endpoint = %q", wrapper, claudeOnlyEndpoint)
+	}
+}
+
+func TestNormalizeWrapperURLRejectsInvalidEndpoints(t *testing.T) {
+	for _, url := range []string{"", "not-a-url", "https://token@proxy.example", "https://proxy.example?x=1", "https://proxy.example#frag"} {
+		if _, err := NormalizeWrapperURL(url); !errors.Is(err, ErrInvalidProvider) {
+			t.Fatalf("NormalizeWrapperURL(%q) error = %v, want ErrInvalidProvider", url, err)
+		}
+	}
+}
+
 func TestNormalizeMultiplier(t *testing.T) {
 	for _, value := range []string{"-1", "NaN", "true", "not-a-number"} {
 		if _, err := NormalizeMultiplier(value); !errors.Is(err, ErrInvalidMultiplier) {
