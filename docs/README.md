@@ -172,6 +172,22 @@ than expanding the entry in place.
       models *are* matched and priced by the bundled catalog; this is a
       token-classification issue in event parsing, not a catalog one.
 
+- [ ] Decide and document one rule for how stored instants are displayed.
+      Storage is already settled and is not the gap: every persisted timestamp
+      is normalized to UTC RFC3339Nano at the boundary (`usage.go` event
+      ingest, `activity.go`, the `store` writers, session sources, backups,
+      price catalogs), range queries always compare against `.UTC()`-formatted
+      arguments, and schema v10 migrated existing `usage_events.event_at` and
+      recomputed session bounds — see the CLI manual's schema v10 paragraph.
+      Display is what is inconsistent: `usage stats`/`summary` localize through
+      the machine zone and name the IANA zone in their output, while
+      `provider current|status`, `session list|show`, `backup list`, and
+      `usage sessions` print the raw UTC instant in both text and JSON. The
+      likely rule is text localizes and JSON stays UTC, since JSON is a machine
+      contract that localization would make incomparable, but that is a
+      contract change: update the output section of `docs/specs/cli-design.md`
+      first, then implement. Discovered while fixing the two timezone-dependent
+      `cmd/agentdeck` tests, which this item is deliberately separate from.
 - [ ] Add the ability to switch Claude subscription/account — analogous to the
       existing AI provider switching, but selecting a Claude account or plan
       rather than an API base URL and token. Not addressed by the

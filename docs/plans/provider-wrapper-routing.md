@@ -805,6 +805,33 @@ entries merged by hand during `cli-route-surface` — already matches observed
 output exactly, and that the earlier refusal to bake the empty `usage.stats`
 entry into it was right. Fixing the fixtures is a separate task, not this one.
 
+Fixed (2026-07-27, outside this plan): both tests now pin the reporting zone
+through `useUTCReportingClock` in `cmd/agentdeck/reporting_clock_test.go`, which
+swaps `time.Local` for the test and restores it — `TZ` is read once, when the
+process first resolves `time.Local`, so setting it from inside a test is too
+late. `TestUsageStatsResolvesRangeDatesInTheMachineZone` was added alongside to
+pin the behavior that made them fragile, so the local-date semantics stay a
+deliberate contract rather than a trap. `./cmd/agentdeck` now passes in the
+machine's own zone and was verified across `UTC`, `America/Los_Angeles`,
+`Asia/Shanghai`, `Pacific/Kiritimati` (UTC+14), and `Pacific/Midway` (UTC-11).
+
+Review (2026-07-27, two rounds): Round 1 found that the first cut swapped
+`time.Local` directly — safe today but inconsistent with this package's own
+`userHomeDir`-style seams and dependent on no test ever calling `t.Parallel` —
+and that the guard test's sample instant fell on the same date in both frames,
+so it passed under UTC semantics too and guarded nothing. Both were fixed: the
+five zone reads in `cmd/agentdeck/main.go` now go through a `reportLocation`
+seam that tests swap, and the sample moved to `2026-07-20T16:00:00Z`, which is
+the 21st locally in UTC+8 and the 20th in UTC. Because pinning the seam hides
+changes to its default, `TestReportLocationDefaultsToTheMachineZone` covers
+that half. Round 2 confirmed each half fails only for its own mutation —
+changing the default fails the default test alone, forcing UTC interpretation
+fails the range test alone — and that `usageTimezoneName` and `StatsOptions
+.Location` now read one shared variable, with no other zone call site left.
+The display-side question this surfaced (only usage reports localize; provider,
+session, and backup surfaces print raw UTC) is in the backlog in
+`docs/README.md`, not here.
+
 ## Out of Scope
 
 - Account, plan, or subscription switching, and any OAuth token handling. The
