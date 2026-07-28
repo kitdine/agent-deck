@@ -625,6 +625,99 @@ Files: `internal/provider/service.go`, `cmd/agentdeck/main.go`.
 Acceptance: the advisory appears on stderr, the JSON envelope is byte-identical
 to a run without it, and no unowned field is written or deleted.
 
+Done (2026-07-27): `provider.ClaudeCredentialConflicts(path)` names the unowned
+sources present in a Claude settings file — `env.ANTHROPIC_API_KEY` and
+`apiKeyHelper`, in that fixed order — returning key names only, because one of
+the two holds a credential. A key set to `null` or to a blank string configures
+no credential and is not reported, so the advisory never fires on something
+that overrides nothing. `Service.SwitchAdvisories(client, name, configPath)`
+composes what a completed switch carries: nothing for Codex, the restart note
+for every Claude switch, and the conflict notes ahead of it only when the
+selection is `official`, which is the selection an unowned source overrides. It
+resolves the managed settings path itself when the CLI passed no
+`--config-path`, and it never fails a switch that already succeeded — an
+unreadable, unparsable, or unresolvable settings file drops the conflict note
+and keeps the restart note. `cmd/agentdeck/main.go` prints them through
+`reportSwitchAdvisories` with an `advisory: ` prefix under exactly the rules
+the effective-route line already follows: stderr only, never the JSON envelope,
+no exit-status effect, suppressed by `--quiet`. Nothing removes or rewrites an
+unowned field; the writer behavior from `claude-writer-routes` is untouched.
+
+Review Round 1 (2026-07-27): no blocking finding; the three acceptance criteria
+hold and three independent revert checks confirmed the new tests fail without
+their fix. One code finding (the value test reported malformed non-string
+values) and two scope findings, fixed and recorded below.
+
+Fix round (2026-07-27):
+- [value test] `configuresCredential` now reports exactly one shape: a
+  non-empty string. Both keys are string-valued to Claude — an env value and a
+  helper command line — so `null`, `""`, a bool, a number, an object, and an
+  array either configure nothing or are malformed for the key they sit on, and
+  Claude can derive no credential from any of them; the previous
+  `default: true` contradicted the function's own stated rule. The blank
+  string `" "` is now **reported** rather than trimmed away: it is non-empty to
+  Claude, which will use it and fail to authenticate, which is exactly the
+  confusing state the advisory explains. Twelve table cases cover the silent
+  shapes and one test covers the blank-but-present one; all of them were
+  confirmed to fail against the pre-fix `default: true`/`TrimSpace` shape.
+- [docs] `cli-manual.md` now states the detection boundary explicitly, so a
+  missing advisory is not read as "no conflict".
+
+Scope decisions (recorded, deliberately not implemented this round):
+- **A custom-provider selection is not checked for `env.ANTHROPIC_API_KEY`.**
+  `cli-design.md:665-670` scopes the conflict advisory to a switch that selects
+  `official`, and this task implements that scope exactly. The risk on the
+  custom route is real but different: AgentDeck writes `ANTHROPIC_AUTH_TOKEN`
+  (`Authorization: Bearer`) while a leftover `ANTHROPIC_API_KEY` travels as
+  `x-api-key`, so both reach the upstream and which one wins is the upstream's
+  decision — see `## Out of Scope`, which already records that this design
+  matches Bearer first. Advising on it would mean claiming an override that
+  AgentDeck cannot actually predict. Extending it would be a spec change to
+  that paragraph first, not an implementation change here.
+- **A credential exported into the shell environment is not detected.**
+  `export ANTHROPIC_API_KEY=...` overrides an `official` selection just as a
+  settings entry does, but the spec sentence names the settings key, and the
+  environment AgentDeck's own process sees is not necessarily the environment
+  the user's Claude client will run under, so reading `os.Getenv` here would
+  produce both false positives and false negatives. Documented as a boundary in
+  `cli-manual.md` instead.
+- **Only the settings file AgentDeck manages is inspected.** Claude resolves
+  settings from more than the one user-level file this project models, so a
+  credential parked in another scope is invisible to the advisory for the same
+  reason the shell environment is: AgentDeck writes exactly one Claude file and
+  reads exactly that file back. Widening detection would mean adopting Claude's
+  whole settings-resolution order, which is a client behavior this project does
+  not track and which would go stale. Documented as a boundary in
+  `cli-manual.md`, worded without pinning a file list.
+
+Decision on `--quiet`: advisories are suppressed, like the effective-route
+line. They are informational by specification, the JSON envelope a script reads
+is unchanged either way, and a script can detect the same conflict itself. A
+`--quiet` run that stayed noisy for one of the two stderr lines would be the
+odd one out.
+
+Verification: new `internal/provider/switch_advisories_test.go` (detector
+naming both sources without revealing either value, the four
+"configures nothing" shapes, Claude-only scope with conflicts scoped to
+`official`, survival of an unreadable/unparsable/unresolvable settings file,
+and default-path resolution) and
+`cmd/agentdeck/provider_switch_advisories_test.go` (the acceptance case:
+advisories on stderr while both unowned sources and both unrelated fields
+survive byte-for-byte and both owned keys are gone; the JSON envelope of a
+conflicted switch compared field-for-field against a clean one, differing only
+in `generated_at`; and advisory scope plus `--quiet` suppression across custom
+Claude, Codex, and official switches). Plus `go test -mod=vendor ./...` and
+`go vet -mod=vendor ./...` after the final edit; the two known pre-existing
+`./cmd/agentdeck` failures are unchanged.
+
+Review Rounds 2-3 (2026-07-27): Round 2 closed all three Round 1 findings and
+opened one documentation finding (the boundary list named the shell environment
+as the only unchecked source); Round 3 closed it and ticked `Review`. The
+converged detection rule was independently reproduced in its RED state, and
+neither the Claude writers nor `ConfigMatchesOfficialClaude` was disturbed —
+they test disjoint keys with deliberately different predicates. See
+`docs/reviews/provider-wrapper-routing/switch-advisories.md`.
+
 ### `usage-route-metadata`
 
 Carry the route into attribution as reported metadata. The provider dimension
@@ -664,7 +757,7 @@ selections with no wrapper.
 | 3 | claude-writer-routes | ✓ | ✓ |
 | 4 | route-composition | ✓ | ✓ |
 | 5 | cli-route-surface | ✓ | ✓ |
-| 6 | switch-advisories | | |
+| 6 | switch-advisories | ✓ | ✓ |
 | 7 | usage-route-metadata | | |
 
 Done: **3/7 reviewed.** The implementer ticks **Dev** once a task is built and

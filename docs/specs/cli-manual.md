@@ -108,6 +108,38 @@ agentdeck provider use official --client claude --via
 agentdeck provider set-wrapper aigocode --clear
 ```
 
+### Claude 切换提示（stderr）
+
+Claude 切换成功后，除 effective route 外还会在 stderr 打印提示行，前缀 `advisory:`：
+
+- **重启提示（每次 Claude 切换都有）**：运行中的 Claude client 会实时读取
+  `~/.claude/settings.json`，因此切换会在不重启的情况下影响正在进行的会话，并可能
+  重置该会话已协商的能力。提示建议重启正在运行的 Claude 会话。
+- **冲突凭据源提示（仅在切换到 `official` 时）**：`env.ANTHROPIC_API_KEY` 与
+  `apiKeyHelper` 是 AgentDeck **不拥有**的字段，但 Claude 会优先采用它们，从而覆盖
+  `official` 选择。存在其中任意一个时，AgentDeck 照常完成切换，并报告是哪个字段
+  造成冲突——只报告字段名和文件路径，**永远不打印字段值**，也**绝不删除**这些字段
+  来让自己的选择"获胜"。哪些取值才算"配置了凭据"见下方检测边界。
+
+这些提示与 effective route 行遵循同一套规则：只走 stderr，不进入 stdout 的 JSON
+envelope，不改变 exit code，`--quiet` 下不输出。设置文件读不到或不是合法 JSON 时，
+只丢掉冲突提示，不会让已经成功的切换失败。
+
+**检测边界（没有提示 ≠ 没有冲突）**：
+
+- **只检查 AgentDeck 管理的那一个 Claude settings 文件**——`~/.claude/settings.json`，
+  或 `--config-path` 指定的文件——里的 `env.ANTHROPIC_API_KEY` 与 `apiKeyHelper`
+  两个字段。**其它来源一概不在检测范围**，包括：shell 导出的环境变量
+  （`export ANTHROPIC_API_KEY=...` 同样会被 Claude 采用并覆盖 `official` 选择）；
+  以及 Claude 可能读取的其它 settings 作用域（具体清单以 Claude 官方文档为准）。
+  AgentDeck 只写、也只读它管理的这一个文件。
+- 冲突提示**只针对切换到 `official`**。切换到 custom provider 时，即使
+  `env.ANTHROPIC_API_KEY` 与 AgentDeck 写入的 `env.ANTHROPIC_AUTH_TOKEN` 同时存在
+  也不提示；两者会以不同的 header 一起发出，最终哪个生效取决于上游服务。
+- 只有**非空字符串**才算配置了凭据。`null`、空字符串、布尔、数字、对象、数组都不
+  提示：这两个字段对 Claude 都是字符串语义，其他形态要么为空、要么是错误配置，
+  取不出凭据。纯空白（如 `" "`）算非空，会提示——Claude 会真的拿它去认证并失败。
+
 ### `provider add` Flags
 
 | Flag | 含义 | 是否必填 | 默认值或推断 | 示例 |
