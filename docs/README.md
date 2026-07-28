@@ -52,8 +52,16 @@ endpoint, `provider use --via` wrote the wrapper route and reported
 `via_wrapper: true`, and a subsequent direct switch restored the upstream
 endpoint with `via_wrapper: false` while preserving unrelated Codex history
 configuration. This closes the first-install and released-wrapper validation.
-A future `rc.2` is still needed to exercise a literal RC-to-RC `brew upgrade`;
-the installed `rc.1` leaves the machine ready for that later validation.
+The second live validation is also complete: annotated `v0.2.0-rc.2` points to
+`c3abda13467ebea4792f262057148bfea1c205f5`; the
+[tag-triggered Release run](https://github.com/kitdine/agent-deck/actions/runs/30352721360)
+published the GitHub prerelease and passed both release and Homebrew jobs; and
+[tap PR #4](https://github.com/kitdine/homebrew-tap/pull/4) updated only
+`Formula/agentdeck-rc.rb`. A literal `brew upgrade kitdine/tap/agentdeck-rc`
+upgraded the installed formula from `0.2.0-rc.1` to `0.2.0-rc.2`; `brew test`
+passed, and the installed binary reports release version `v0.2.0-rc.2`, commit
+`c3abda13467ebea4792f262057148bfea1c205f5`. This closes the RC-to-RC upgrade
+validation.
 
 Delivered and reviewed: the Go CLI baseline; provider and credential
 management; usage collection, pricing, and run attribution; local session
