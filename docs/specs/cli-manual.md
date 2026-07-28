@@ -5,7 +5,7 @@ created: 2026-07-16
 
 # AgentDeck CLI 目标命令手册
 
-本文档定义 Phase 9 CLI usability、Codex `official` provider baseline，以及
+本文档定义 Phase 9 CLI usability、内置 `official` provider baseline，以及
 credential-owned provider configuration 的正式命令契约。执行状态以
 `docs/README.md` 为准。
 
@@ -542,8 +542,8 @@ SQLite 查询或驱动错误。`state migrate` 的 text 成功信息明确确认
   implementation；`provider add` 仅负责编排首次设置或已有 provider 的 credential 新增。
 - Usage/watch 性能修复必须保留 source mutation 与 byte-range attribution 契约，并覆盖
   standalone scan 后启动 watch 不重复扫描的回归测试。
-- `official` 不参与 credential 模型，不写 providers 表或 credential references。
-- 不实现 Claude official。
+- `official` 同时内置于 Codex 与 Claude，不参与 credential 模型，不写 providers
+  表或 credential references。
 - 不读取、修改或测试真实 HOME、auth.json、credential key file 或 `.vscode/`。
 - 实现后必须更新 CLI spec、Phase 9、README 双语、JSON/text golden，并运行 targeted
   tests、`git diff --check`、完整 `make release-verify`，最后清理生成产物。

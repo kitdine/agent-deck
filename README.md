@@ -276,19 +276,24 @@ fail closed when it no longer matches the ownership manifest.
 
 ## Provider Setup Example
 
-Codex `official` is built in and appears in `provider list` and `provider show`
-without a database record or AgentDeck credential. It reuses Codex's existing
-OpenAI or ChatGPT login state:
+`official` is built in for both Codex and Claude and appears in `provider list`
+and `provider show` without a database record or AgentDeck credential. It
+reuses each client's existing vendor login state:
 
 ```bash
 ./dist/agentdeck provider show official
 ./dist/agentdeck provider use official
+./dist/agentdeck provider use official --client claude
 ```
 
 AgentDeck sets `[model_providers.custom].name = "official"` and removes the
 custom base URL and bearer token in `~/.codex/config.toml`; it never reads,
-modifies, or deletes `~/.codex/auth.json`. There is no Claude `official`
-provider.
+modifies, or deletes `~/.codex/auth.json`. For Claude, a direct `official`
+switch removes only AgentDeck-owned endpoint and token fields from the managed
+settings file, preserves all other fields, and never reads or writes Claude's
+stored login credentials. It reports a restart advisory and any detected
+unmanaged credential source that would override the selection without deleting
+that source.
 
 The following example uses a fake endpoint. `provider add` prompts once without
 terminal echo, generates the complete `work-default-ref`, stores authenticated

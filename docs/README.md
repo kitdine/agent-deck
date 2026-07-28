@@ -28,17 +28,32 @@ The repository now defines an opt-in Homebrew release-candidate channel at
 `kitdine/tap/agentdeck-rc`. Stable releases continue to update only
 `agentdeck`; strict `vX.Y.Z-rc.N` tags render and install-test
 `agentdeck-rc` before proposing a tap PR that leaves the stable formula
-unchanged. The first live validation uses `v0.2.0-rc.1` and remains open until
-its corrected tap formula installs through Homebrew and the released binary
-exercises provider wrapper routing.
+unchanged. The first live validation is complete: the annotated
+`v0.2.0-rc.1` tag points to `1a7a8424a204b8c3413da08ac454122e1b3250cf`;
+the [tag-triggered Release run](https://github.com/kitdine/agent-deck/actions/runs/30340790652)
+published a GitHub prerelease with both Darwin archives and their checksum
+asset; and [tap PR #2](https://github.com/kitdine/homebrew-tap/pull/2) added only
+`Formula/agentdeck-rc.rb`.
 
-That validation published the prerelease and passed the workflow's isolated
-Homebrew install, but the first real channel switch exposed a Homebrew 6 trust
-interaction: `conflicts_with "agentdeck"` loads the uninstalled stable formula,
-which direct RC installation has not trusted. CLI design v18 removes that DSL
-declaration and keeps the already-documented explicit uninstall/install switch;
-the correction must pass verification and replace the tap formula before the
-live task can close.
+The first real channel switch then exposed a Homebrew 6 trust interaction:
+`conflicts_with "agentdeck"` loaded the uninstalled stable formula, which
+direct RC installation had not trusted. CLI design v18 removed that DSL
+declaration while retaining the explicit uninstall/install switch. The
+[correction run](https://github.com/kitdine/agent-deck/actions/runs/30344631360)
+passed and [tap PR #3](https://github.com/kitdine/homebrew-tap/pull/3) merged the
+one-line formula correction without changing the stable formula. After
+uninstalling stable, a real `brew install kitdine/tap/agentdeck-rc` installed
+`agentdeck-rc 0.2.0-rc.1`; `brew test kitdine/tap/agentdeck-rc` passed, and the
+bash, zsh, and fish completions were present under Homebrew's standard paths.
+
+The installed release binary also exercised provider wrapper routing in an
+isolated home: a wrapper input ending in `/v1/` stored as the normalized
+endpoint, `provider use --via` wrote the wrapper route and reported
+`via_wrapper: true`, and a subsequent direct switch restored the upstream
+endpoint with `via_wrapper: false` while preserving unrelated Codex history
+configuration. This closes the first-install and released-wrapper validation.
+A future `rc.2` is still needed to exercise a literal RC-to-RC `brew upgrade`;
+the installed `rc.1` leaves the machine ready for that later validation.
 
 Delivered and reviewed: the Go CLI baseline; provider and credential
 management; usage collection, pricing, and run attribution; local session
@@ -179,9 +194,7 @@ localize the provider and session timestamps a person reads.
 
 ## Open Tasks Not Owned by a Plan
 
-- Publish and validate `v0.2.0-rc.1` through the new opt-in
-  `kitdine/tap/agentdeck-rc` channel, then close this item with the GitHub
-  prerelease, tap PR/merge, Homebrew install, and released-wrapper evidence.
+None.
 
 ## Backlog
 
