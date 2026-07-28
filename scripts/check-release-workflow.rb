@@ -62,6 +62,7 @@ end
 
 tap_checkout = step(homebrew, "Check out Homebrew tap")
 raise "tap checkout must use HOMEBREW_TAP_TOKEN" unless tap_checkout.dig("with", "token") == "${{ secrets.HOMEBREW_TAP_TOKEN }}"
+raise "tap checkout must fetch full history for safe branch reuse" unless tap_checkout.dig("with", "fetch-depth") == 0
 update_run = step(homebrew, "Open formula update pull request").fetch("run")
 require_text(update_run, "scripts/update-homebrew-tap-pr.sh", "tap PR update")
 require_text(update_run, "steps.formula.outputs.name", "tap PR update")

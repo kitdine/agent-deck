@@ -142,6 +142,7 @@ jobs:
           repository: kitdine/homebrew-tap
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
           path: homebrew-tap
+          fetch-depth: 0
       - name: Open formula update pull request
         env:
           GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
