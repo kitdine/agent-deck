@@ -5,7 +5,7 @@ created: 2026-07-22
 
 # Archived Documents
 
-Last updated: 2026-07-26
+Last updated: 2026-07-27
 
 ## Why this directory exists
 
@@ -44,6 +44,36 @@ Move a document here instead of leaving it `active` in `docs/plans/` or
 - `docs/README.md` must not re-list individual archived files — this file is
   the index for archived material so the main doc index doesn't need to grow
   for documents nobody should open by default.
+
+## 2026-07-27 retirement: the provider wrapper routing plan
+
+`plans/provider-wrapper-routing.md` and `reviews/provider-wrapper-routing/`
+
+All seven tasks are delivered and independently reviewed, so the tracker has no
+remaining work to track. Its conclusions already live in documents that stay
+active: the contract in `docs/specs/cli-design.md` v15 ("Provider Wrappers",
+"Owned Client Configuration Fields", "Selecting the Built-in Provider", and the
+runtime provider dimension's route sentence), and the implemented surface in
+`docs/specs/cli-manual.md` (`provider set-wrapper`, `provider use --via`, the
+Claude switch advisories and their detection boundary, and the route metadata on
+the provider dimension).
+
+What shipped: every provider, including the built-in `official`, may carry one
+wrapper URL; `provider use --via` routes a single switch through it without
+storing an attachment; the built-in provider became selectable for Claude as
+well as Codex; a completed Claude switch reports a restart advisory and any
+unowned credential source that would override an `official` selection; and the
+route travels into usage attribution as reported metadata that never becomes a
+grouping key.
+
+The review directory holds every round, including three reopened tasks —
+`claude-writer-routes`, `route-composition` (a `doctor` drift regression found
+end to end), and `switch-advisories` — plus the fix and re-review rounds that
+closed them.
+
+Two follow-ups deliberately left the plan rather than expanding it: the Claude
+subscription/account switching idea and the display-side timezone decision, both
+in `docs/README.md`'s Backlog.
 
 ## 2026-07-22 retirement: the phase-one CLI plan
 

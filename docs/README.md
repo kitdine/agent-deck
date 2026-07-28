@@ -9,7 +9,7 @@ This is both the documentation index and the execution baseline. Decide what to
 work on next from this file. Repository code, tests, configuration, and Git
 history remain the source of truth when they disagree with any document.
 
-## Current State (2026-07-26)
+## Current State (2026-07-27)
 
 v0.1.1 is published and installable through `kitdine/homebrew-tap`. Every
 follow-up in the retired phase-one plan passed independent review, so there is
@@ -121,23 +121,43 @@ and `origin/main`. After the verified push, all temporary task, repair,
 delivery, and audit worktrees and refs were removed; the repository now has
 only the `main` worktree and branch.
 
+Provider wrapper routing is delivered and reviewed, and its plan retired on
+2026-07-27. Every provider, including the built-in `official`, may now carry one
+wrapper URL (`provider set-wrapper`), and `provider use --via` routes a single
+switch through it without storing an attachment — so a compression proxy can
+front a relay while still writing that relay's own credential, or front a
+subscription without handing AgentDeck a token. `official` became selectable for
+Claude as well as Codex; a completed Claude switch reports on stderr that
+running sessions should be restarted, plus any credential source AgentDeck does
+not own that would override an `official` selection; and the route reaches usage
+attribution as reported metadata that never becomes a grouping key. All seven
+tasks passed independent review, three of them after a reopen — including a
+`doctor` config-drift regression caught end to end. History lives in the
+[retired plan](archive/plans/provider-wrapper-routing.md).
+
+Two `cmd/agentdeck` tests that had failed for months on any host west of UTC
+were diagnosed and fixed in the same session: their fixtures sat at the start of
+a UTC day while `usage stats --from/--to` resolve local dates, so the local-day
+window opened hours later and dropped them. Both now pin the zone through a
+`reportLocation` seam, and two guards keep the contract honest — that dates are
+read in the configured zone, and that the configured zone defaults to the
+machine's. `go test ./...` is green in the machine's own zone, verified across
+UTC, UTC+14, and UTC-11.
+
 Next up is the only active plan,
-[provider-wrapper-routing](plans/provider-wrapper-routing.md), opened 2026-07-26
-with its design approved into `specs/cli-design.md` v15; its first three tasks
-are built and reviewed, and `route-composition` is next. It
-gives every provider an optional wrapper URL and `provider use --via` to route
-one switch through it, so a compression proxy can front a relay while still
-writing that relay's own credential, and it gives Claude the built-in `official`
-restore that only Codex has today — which is also what puts a proxy in front of
-a subscription without handing AgentDeck a token.
+[display-timezone](plans/display-timezone.md), opened 2026-07-27 with its design
+approved into `specs/cli-design.md` v16. Storage already carries UTC everywhere
+and keeps doing so; the plan localizes the surfaces a person reads — provider,
+session, backup, and price timestamps — and leaves JSON untouched, so an
+automation envelope stays comparable across machines.
 
 ## Documents
 
 | Document | Purpose |
 | --- | --- |
-| [specs/cli-design.md](specs/cli-design.md) | What the system does and must keep doing: provider, credential, usage, pricing, session, backup, and distribution behavior. Currently version 15; see its changelog. |
+| [specs/cli-design.md](specs/cli-design.md) | What the system does and must keep doing: provider, credential, usage, pricing, session, backup, and distribution behavior. Currently version 16; see its changelog. |
 | [specs/cli-manual.md](specs/cli-manual.md) | The implemented command surface, flags, and output shapes. |
-| [plans/provider-wrapper-routing.md](plans/provider-wrapper-routing.md) | An optional provider wrapper URL and a per-switch `--via`, so a proxy can front a relay or the vendor without duplicating credentials. `active — 3/7 done`. |
+| [plans/display-timezone.md](plans/display-timezone.md) | Render instants in the machine's zone in text only; storage and JSON stay UTC. `active — 0/3 done`. |
 | [reviews/](reviews/README.md) | Per-task review records that back each plan's ticked `Review` cell. |
 | [archive/](archive/README.md) | Retired plans and superseded contracts. Not a starting point for new work. |
 
@@ -172,22 +192,6 @@ than expanding the entry in place.
       models *are* matched and priced by the bundled catalog; this is a
       token-classification issue in event parsing, not a catalog one.
 
-- [ ] Decide and document one rule for how stored instants are displayed.
-      Storage is already settled and is not the gap: every persisted timestamp
-      is normalized to UTC RFC3339Nano at the boundary (`usage.go` event
-      ingest, `activity.go`, the `store` writers, session sources, backups,
-      price catalogs), range queries always compare against `.UTC()`-formatted
-      arguments, and schema v10 migrated existing `usage_events.event_at` and
-      recomputed session bounds — see the CLI manual's schema v10 paragraph.
-      Display is what is inconsistent: `usage stats`/`summary` localize through
-      the machine zone and name the IANA zone in their output, while
-      `provider current|status`, `session list|show`, `backup list`, and
-      `usage sessions` print the raw UTC instant in both text and JSON. The
-      likely rule is text localizes and JSON stays UTC, since JSON is a machine
-      contract that localization would make incomparable, but that is a
-      contract change: update the output section of `docs/specs/cli-design.md`
-      first, then implement. Discovered while fixing the two timezone-dependent
-      `cmd/agentdeck` tests, which this item is deliberately separate from.
 - [ ] Add the ability to switch Claude subscription/account — analogous to the
       existing AI provider switching, but selecting a Claude account or plan
       rather than an API base URL and token. Not addressed by the

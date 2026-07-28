@@ -1,5 +1,5 @@
 ---
-status: active
+status: historical
 plan: provider-wrapper-routing
 task: claude-writer-routes
 ---

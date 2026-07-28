@@ -1,6 +1,7 @@
 ---
-status: active
+status: historical
 created: 2026-07-26
+retired: 2026-07-27
 ---
 
 # Provider Wrapper Routing Plan
