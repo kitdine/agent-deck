@@ -470,6 +470,13 @@ func (r statsTextRenderer) rankingLines(width int) []string {
 		if provider.CacheHitRate != nil && (provider.CachedReadTokens > 0 || provider.CacheWriteTokens > 0) {
 			secondaries = append(secondaries, *provider.CacheHitRate+"% hit")
 		}
+		// The route is reported metadata, so it only ever appends to a row
+		// that already exists, and only when a wrapper actually carried
+		// events. A provider that was never selected through one renders
+		// exactly as before.
+		if provider.WrapperEvents > 0 {
+			secondaries = append(secondaries, groupedInt(provider.WrapperEvents)+" via wrapper")
+		}
 		detail = statsCompactDetail(detail, width, secondaries...)
 		for _, detailLine := range statsWrap(detail, width) {
 			lines = append(lines, r.style(detailLine, "2"))

@@ -161,6 +161,13 @@ type StatsDimension struct {
 	KnownShare         string              `json:"known_share"`
 	Coverage           string              `json:"coverage"`
 	Activity           *StatsModelActivity `json:"activity,omitempty"`
+	// WrapperEvents counts events whose selection was routed through the
+	// provider's wrapper. It is reported metadata on the provider dimension
+	// and never a grouping key: a wrapper carries no billing relationship, so
+	// wrapped and direct events stay in one row under the provider's name.
+	// Omitted when zero, which is every dimension other than providers and
+	// every provider that was never selected through a wrapper.
+	WrapperEvents int64 `json:"wrapper_events,omitempty"`
 }
 
 type StatsToolCount struct {
@@ -2048,7 +2055,11 @@ type storedEvent struct {
 	runExact      sql.NullInt64
 	runMultiplier sql.NullString
 	runProvider   sql.NullString
-	sessionStart  sql.NullString
+	// runStart is the instant the run pinned its provider, so an exact
+	// run-bound event reads its route from the same moment its provider came
+	// from rather than from the session start, which may predate a switch.
+	runStart     sql.NullString
+	sessionStart sql.NullString
 }
 
 func (s *Service) Summary(ctx context.Context) (Summary, error) {
@@ -2085,10 +2096,13 @@ func (s *Service) EarliestEventAt(ctx context.Context) (*time.Time, error) {
 type statsAccumulator struct {
 	tokens, input, output, cachedRead, cacheWrite int64
 	events, priced, unpriced                      int64
-	base, provider                                *big.Rat
-	complete                                      bool
-	sessions                                      map[string]struct{}
-	missing                                       map[string]struct{}
+	// wrapperEvents is only counted on the provider dimension, where the
+	// route is reported metadata; every other dimension leaves it zero.
+	wrapperEvents  int64
+	base, provider *big.Rat
+	complete       bool
+	sessions       map[string]struct{}
+	missing        map[string]struct{}
 }
 
 type statsSessionAccumulator struct {
@@ -2309,7 +2323,7 @@ func statsDimension(name, client, metric string, value *statsAccumulator, total 
 		logicalInput += value.cachedRead + value.cacheWrite
 		cacheHitRate = percentPointer(value.cachedRead, logicalInput)
 	}
-	return StatsDimension{Name: name, Client: client, Tokens: value.tokens, InputTokens: value.input, OutputTokens: value.output, CachedReadTokens: value.cachedRead, CacheWriteTokens: value.cacheWrite, LogicalInputTokens: logicalInput, CacheHitRate: cacheHitRate, Sessions: int64(len(value.sessions)), Events: value.events, ProviderCost: cost, KnownProviderCost: known, MetricValue: metricComplete, KnownMetricValue: metricKnown, Share: share, KnownShare: knownShare, Coverage: statsCoverage(value.priced, value.unpriced)}
+	return StatsDimension{Name: name, Client: client, Tokens: value.tokens, InputTokens: value.input, OutputTokens: value.output, CachedReadTokens: value.cachedRead, CacheWriteTokens: value.cacheWrite, LogicalInputTokens: logicalInput, CacheHitRate: cacheHitRate, Sessions: int64(len(value.sessions)), Events: value.events, ProviderCost: cost, KnownProviderCost: known, MetricValue: metricComplete, KnownMetricValue: metricKnown, Share: share, KnownShare: knownShare, Coverage: statsCoverage(value.priced, value.unpriced), WrapperEvents: value.wrapperEvents}
 }
 
 func percentPointer(numerator, denominator int64) *string {
@@ -2445,49 +2459,94 @@ func runtimeProviderAt(timeline store.ProviderTimeline, client string, atValue s
 	return runtimeProviderName(snapshot.Name), nil
 }
 
-func (r statsPriceResolver) priceForEvent(event storedEvent, timeline store.ProviderTimeline) (modelPrice, string, string, string, error) {
-	quality, multiplierValue, runtimeProvider := "historical", "1", "unknown"
+// runtimeRouteWasWrapped reports whether the selection in effect at atValue
+// routed provider through its wrapper. The route is reported metadata, never
+// part of the key an event is grouped or filtered by, so this answer only ever
+// adds a count to a row that already exists.
+//
+// It is asked at the instant the event's provider was pinned — the run start
+// for an exact run-bound event, whose run records a provider but no route — so
+// the route and the provider always come from the same moment. When the
+// snapshot at that instant names a different provider than the event is
+// attributed to, the route is left unreported rather than guessed: an
+// unreported route is recoverable, a route attributed to the wrong provider is
+// not. An estimated event needs no second lookup at all; its route comes from
+// the same snapshot that already decided its provider.
+func runtimeRouteWasWrapped(timeline store.ProviderTimeline, client, provider string, atValue sql.NullString) bool {
+	if provider == "" || provider == "unknown" || !atValue.Valid || atValue.String == "" {
+		return false
+	}
+	at, err := time.Parse(time.RFC3339Nano, atValue.String)
+	if err != nil {
+		return false
+	}
+	snapshot, err := timeline.SnapshotAt(client, at)
+	if err != nil {
+		return false
+	}
+	return runtimeProviderName(snapshot.Name) == provider && snapshot.ViaWrapper
+}
+
+// eventAttribution is everything one pass over the provider timeline decides
+// about an event. Keeping the route here rather than resolving it again at the
+// aggregation site is what holds the aggregation to a single SnapshotAt per
+// event: an estimated event reuses the snapshot that chose its provider, and
+// an exact one spends its single lookup at the run start.
+type eventAttribution struct {
+	price      modelPrice
+	multiplier string
+	quality    string
+	provider   string
+	viaWrapper bool
+}
+
+func (r statsPriceResolver) priceForEvent(event storedEvent, timeline store.ProviderTimeline) (eventAttribution, error) {
+	attribution := eventAttribution{multiplier: "1", quality: "historical", provider: "unknown"}
 	if event.runID.Valid && event.runExact.Valid && event.runExact.Int64 == 1 {
 		if !event.runMultiplier.Valid {
-			return modelPrice{}, "", "", "", errors.New("exact usage run has no multiplier")
+			return eventAttribution{}, errors.New("exact usage run has no multiplier")
 		}
-		quality, multiplierValue = "exact", event.runMultiplier.String
+		attribution.quality, attribution.multiplier = "exact", event.runMultiplier.String
 		if event.runProvider.Valid {
-			runtimeProvider = runtimeProviderName(event.runProvider.String)
+			attribution.provider = runtimeProviderName(event.runProvider.String)
 		}
+		attribution.viaWrapper = runtimeRouteWasWrapped(timeline, event.Client, attribution.provider, event.runStart)
 	} else {
 		if event.sessionStart.Valid && event.sessionStart.String != "" {
 			at, parseErr := time.Parse(time.RFC3339Nano, event.sessionStart.String)
 			if parseErr != nil {
-				return modelPrice{}, "", "", "", parseErr
+				return eventAttribution{}, parseErr
 			}
 			snapshot, snapshotErr := timeline.SnapshotAt(event.Client, at)
 			if snapshotErr == nil {
-				runtimeProvider = runtimeProviderName(snapshot.Name)
-				quality, multiplierValue = "estimated", snapshot.Multiplier
+				attribution.provider = runtimeProviderName(snapshot.Name)
+				attribution.quality, attribution.multiplier = "estimated", snapshot.Multiplier
+				attribution.viaWrapper = attribution.provider != "unknown" && snapshot.ViaWrapper
 			} else if !errors.Is(snapshotErr, sql.ErrNoRows) {
-				return modelPrice{}, "", "", "", snapshotErr
+				return eventAttribution{}, snapshotErr
 			}
 		}
 	}
 	eventAt, err := time.Parse(time.RFC3339Nano, event.EventAt)
 	if err != nil {
-		return modelPrice{}, "", "", "", err
+		return eventAttribution{}, err
 	}
 	historical, historicalFound := r.priceAt(event.Client, event.Model, eventAt)
 	current, currentFound := r.priceAt(event.Client, event.Model, r.current)
-	if !historicalFound && !currentFound {
-		return modelPrice{Provider: "unknown", Prices: map[string]string{}}, multiplierValue, quality, runtimeProvider, nil
-	}
-	if !historicalFound {
-		return current, multiplierValue, quality, runtimeProvider, nil
-	}
-	for component, value := range current.Prices {
-		if _, exists := historical.Prices[component]; !exists {
-			historical.Prices[component] = value
+	switch {
+	case !historicalFound && !currentFound:
+		attribution.price = modelPrice{Provider: "unknown", Prices: map[string]string{}}
+	case !historicalFound:
+		attribution.price = current
+	default:
+		for component, value := range current.Prices {
+			if _, exists := historical.Prices[component]; !exists {
+				historical.Prices[component] = value
+			}
 		}
+		attribution.price = historical
 	}
-	return historical, multiplierValue, quality, runtimeProvider, nil
+	return attribution, nil
 }
 
 func (s *Service) Stats(ctx context.Context, options StatsOptions) (StatsReport, error) {
@@ -2529,14 +2588,15 @@ func (s *Service) Stats(ctx context.Context, options StatsOptions) (StatsReport,
 		if parseErr != nil {
 			return StatsReport{}, parseErr
 		}
-		price, multiplierValue, _, runtimeProvider, priceErr := resolver.priceForEvent(event, timeline)
+		attribution, priceErr := resolver.priceForEvent(event, timeline)
 		if priceErr != nil {
 			return StatsReport{}, priceErr
 		}
+		runtimeProvider := attribution.provider
 		if options.Provider != "" && runtimeProvider != options.Provider {
 			continue
 		}
-		result, calculateErr := Calculate(event.Client, event.Model, event.Tokens, price, multiplierValue)
+		result, calculateErr := Calculate(event.Client, event.Model, event.Tokens, attribution.price, attribution.multiplier)
 		if calculateErr != nil {
 			return StatsReport{}, calculateErr
 		}
@@ -2555,6 +2615,9 @@ func (s *Service) Stats(ctx context.Context, options StatsOptions) (StatsReport,
 		providerKey := event.Client + "\x00" + runtimeProvider
 		if providers[providerKey] == nil {
 			providers[providerKey] = newStatsAccumulator()
+		}
+		if attribution.viaWrapper {
+			providers[providerKey].wrapperEvents++
 		}
 		sessionKey := event.Client + "\x00" + event.SessionID
 		if sessions[sessionKey] == nil {
@@ -2886,7 +2949,7 @@ func (s *Service) events(ctx context.Context, client, session string) ([]storedE
 }
 
 func (s *Service) eventsRange(ctx context.Context, from, to time.Time, client, model string) ([]storedEvent, error) {
-	query := `SELECT e.event_key,e.client,e.session_id,e.event_id,e.event_at,e.model,e.input_tokens,e.cached_input_tokens,e.output_tokens,e.cache_read_tokens,e.cache_creation_tokens,e.cache_write_5m_tokens,e.cache_write_1h_tokens,e.source_path,e.source_offset,COALESCE(b.run_id,e.run_id),r.exact,r.multiplier,r.provider,us.first_at FROM usage_events e LEFT JOIN usage_run_bindings b ON b.event_key=e.event_key LEFT JOIN usage_runs r ON r.id=COALESCE(b.run_id,e.run_id) LEFT JOIN usage_sessions us ON us.client=e.client AND us.session_id=e.session_id WHERE e.event_at>=? AND e.event_at<?`
+	query := `SELECT e.event_key,e.client,e.session_id,e.event_id,e.event_at,e.model,e.input_tokens,e.cached_input_tokens,e.output_tokens,e.cache_read_tokens,e.cache_creation_tokens,e.cache_write_5m_tokens,e.cache_write_1h_tokens,e.source_path,e.source_offset,COALESCE(b.run_id,e.run_id),r.exact,r.multiplier,r.provider,r.started_at,us.first_at FROM usage_events e LEFT JOIN usage_run_bindings b ON b.event_key=e.event_key LEFT JOIN usage_runs r ON r.id=COALESCE(b.run_id,e.run_id) LEFT JOIN usage_sessions us ON us.client=e.client AND us.session_id=e.session_id WHERE e.event_at>=? AND e.event_at<?`
 	args := []any{from.UTC().Format(time.RFC3339Nano), to.UTC().Format(time.RFC3339Nano)}
 	if client != "" {
 		query += ` AND e.client=?`
@@ -2906,7 +2969,7 @@ func (s *Service) eventsRange(ctx context.Context, from, to time.Time, client, m
 	for rows.Next() {
 		var event storedEvent
 		var input, cached, output, read, creation, write5, write1 int64
-		if err = rows.Scan(&event.Key, &event.Client, &event.SessionID, &event.EventID, &event.EventAt, &event.Model, &input, &cached, &output, &read, &creation, &write5, &write1, &event.SourcePath, &event.SourceOffset, &event.runID, &event.runExact, &event.runMultiplier, &event.runProvider, &event.sessionStart); err != nil {
+		if err = rows.Scan(&event.Key, &event.Client, &event.SessionID, &event.EventID, &event.EventAt, &event.Model, &input, &cached, &output, &read, &creation, &write5, &write1, &event.SourcePath, &event.SourceOffset, &event.runID, &event.runExact, &event.runMultiplier, &event.runProvider, &event.runStart, &event.sessionStart); err != nil {
 			return nil, err
 		}
 		event.Tokens = map[string]int64{"input_tokens": input, "cached_input_tokens": cached, "output_tokens": output, "cache_read_tokens": read, "cache_creation_tokens": creation, "cache_write_5m_tokens": write5, "cache_write_1h_tokens": write1}
