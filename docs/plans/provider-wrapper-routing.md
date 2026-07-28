@@ -509,7 +509,9 @@ written endpoint in `provider current` and `provider status`, and the effective
 route line on every successful switch. Update `docs/specs/cli-manual.md` in the
 same task, since it documents the implemented surface.
 
-Files: `internal/cli/` provider commands, `docs/specs/cli-manual.md`.
+Files: `cmd/agentdeck/main.go` provider commands, `internal/provider/service.go`,
+`docs/specs/cli-manual.md`. (There is no `internal/cli` package; the provider
+subcommands live in `cmd/agentdeck/main.go`.)
 
 Acceptance: `--via` without a configured wrapper fails before any client file is
 touched; every existing invocation without a new flag behaves exactly as before;
@@ -517,6 +519,98 @@ touched; every existing invocation without a new flag behaves exactly as before;
 before any write reaches `SetProviderWrapper`/`SetOfficialWrapperURL`, since
 those store methods perform no normalization themselves — `--clear` is the
 one path that skips `NormalizeWrapperURL` and writes `""` straight through.
+
+Done (2026-07-27): `provider set-wrapper <name> --url|--clear` and
+`provider use --via` are on `providerCmd` in `cmd/agentdeck/main.go`. The
+command layer decides the intent (`--url` and `--clear` are mutually exclusive
+and one is required, both rejected as `inputError`/exit 2) and
+`Service.SetWrapper(ctx, name, url, clear)` performs the write, taking `clear`
+as its own argument rather than overloading an empty url: `NormalizeWrapperURL`
+runs on the `--url` path before any store call, and `--clear` writes `""`
+straight through, which is the one value normalization would reject.
+`official` routes to `SetOfficialWrapperURL`, every other name to
+`SetProviderWrapper`. Reporting is additive: `Provider.WrapperURL`
+(`wrapper_url`, omitempty) is filled from the stored row for custom providers
+and from `Store.OfficialWrapperURL` for the built-in one, so `provider
+list|show|status` all carry it; `CurrentSelection` and `ActiveSelection` gained
+`via_wrapper` and `endpoint` (omitempty) straight from the selection snapshot,
+which is the only place the route survives a write. Text output follows the
+existing renderers: a `WRAPPER` column on `provider list`, a `wrapper:` line on
+`provider show` only when one is configured, and `ROUTE`/`ENDPOINT` columns
+appended after `SELECTED AT` on `provider current` and the per-client table of
+`provider status <name>` (appended, so the existing header-prefix assertions
+still hold). A successful switch prints one `effective route: <client>
+direct|via wrapper, endpoint <url>` line — `no endpoint written` for a direct
+official switch — to stderr, read back from the recorded selection rather than
+from the requested flag, suppressed by `--quiet`, absent from the JSON envelope,
+and dropped rather than failing the command if the read-back errors.
+
+Verification: new `cmd/agentdeck/provider_route_surface_test.go` (7 tests:
+normalize/store/clear, the two rejected intent combinations, official's separate
+storage, `--via` endpoint-only switching with route read-back in JSON and text,
+the acceptance criterion that `--via` without a wrapper fails before touching
+the client file, stderr/`--quiet`/JSON boundaries, and the official-Claude
+`no endpoint written` line) plus `go test -mod=vendor ./...` and `go vet
+-mod=vendor ./...`. `cmd/agentdeck/testdata/phase7/gui-json-contract.json`
+gained the `provider.set-wrapper` leaf command and contract and the two new
+`provider.current` fields; both hand-written schemas were verified against real
+command output, because `TestIsolatedEndToEndFlow` fails earlier for an
+unrelated pre-existing reason (`e2e_test.go:141`, provider-filtered stats return
+0 events) and never reaches its contract comparison, so
+`UPDATE_AGENTDECK_GOLDEN=1` cannot regenerate the fixture today. The e2e flow
+does now call `provider set-wrapper`, so regeneration will cover it once that
+failure is fixed. The two known pre-existing `./cmd/agentdeck` failures are
+unchanged.
+
+Review Round 1 (2026-07-27): no blocking finding; the three named acceptance
+criteria hold and three independent revert checks confirmed the new tests fail
+without their fix. Three improvement findings (coverage of the new JSON fields,
+a stale column enumeration in `cli-design.md`, and silent normalization in
+`set-wrapper`'s text output) plus one recorded P3.
+
+Fix round (2026-07-27):
+- [coverage] The golden flow now sets the wrapper *before* the definition reads
+  and re-reads `provider status` after both switches, so `wrapper_url` and the
+  selection's `via_wrapper`/`endpoint` are captured rather than structurally
+  excluded; the switch it captures is now `provider use phase7 --via`. Added
+  `TestProviderDefinitionJSONCarriesWrapperURLForBothProviderKinds` (custom and
+  built-in wrapper reporting across `show`/`list`/`status` JSON, plus the field
+  disappearing on `--clear` without touching the other provider) and
+  `TestProviderStatusJSONReportsSelectionRoute` (the active-selection struct,
+  which carries the route through different code than `provider current`).
+  `gui-json-contract.json` was regenerated with `UPDATE_AGENTDECK_GOLDEN=1` in
+  an out-of-tree copy whose only patch was neutering the pre-existing
+  `e2e_test.go` stats assertion that aborts the flow early; only the four
+  changed `provider.*` entries were merged back. The regenerated `usage.stats`
+  entry was deliberately **not** taken: it collapses to empty `clients`,
+  `models`, and `providers` arrays because of that same pre-existing failure,
+  and taking it would bake the breakage into the golden. Re-running the golden
+  comparison against the merged fixture leaves exactly one differing entry,
+  `usage.stats`, which is that known failure and not this task's.
+- [spec] `cli-design.md`'s `provider list` column enumeration now includes the
+  wrapper URL, matching the same section's existing statement that a wrapper
+  appears in `provider list|show`.
+- [text output] Kept the mutation text as-is instead of echoing the stored
+  wrapper. `provider add --endpoint` and `provider update --endpoint` normalize
+  exactly as silently and also print only the action and resource name, so
+  echoing here would make `set-wrapper` the single exception to the documented
+  mutation-text shape for a rule that applies to three commands. Documented the
+  rewrite in `cli-manual.md` instead, pointing at `provider show` and
+  `--format json`, both of which return the stored value.
+- [P3, recorded not fixed] The effective-route line reads the completed
+  selection back through `Service.Current` rather than having `UseCredential`
+  return the route it wrote, so a concurrent switch of the same client by
+  another process could make the line describe that other selection. The window
+  is tiny for a single-user local CLI, the line is informational, and closing it
+  means changing a `UseCredential` signature that `route-composition` already
+  passed re-review, so it is left as a known trade-off.
+
+Review Round 2 (2026-07-27): `PASS`, `Review` ticked. All three findings closed;
+the golden was independently regenerated and matches real output on every
+`provider.*` entry, with `usage.stats` confirmed byte-identical to `HEAD` so the
+pre-existing failure keeps its signal, and two of the new tests were confirmed
+RED against a reverted implementation. Four nits recorded, none requiring
+action. See `docs/reviews/provider-wrapper-routing/cli-route-surface.md`.
 
 ### `switch-advisories`
 
@@ -526,7 +620,7 @@ own (`env.ANTHROPIC_API_KEY`, `apiKeyHelper`) that would override an `official`
 selection. Advisory only — no exit-status or JSON-envelope change, and no
 removal of unowned fields.
 
-Files: `internal/provider/service.go`, `internal/cli/`.
+Files: `internal/provider/service.go`, `cmd/agentdeck/main.go`.
 
 Acceptance: the advisory appears on stderr, the JSON envelope is byte-identical
 to a run without it, and no unowned field is written or deleted.
@@ -569,7 +663,7 @@ selections with no wrapper.
 | 2 | codex-writer-routes | ✓ | ✓ |
 | 3 | claude-writer-routes | ✓ | ✓ |
 | 4 | route-composition | ✓ | ✓ |
-| 5 | cli-route-surface | | |
+| 5 | cli-route-surface | ✓ | ✓ |
 | 6 | switch-advisories | | |
 | 7 | usage-route-metadata | | |
 

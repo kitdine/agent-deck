@@ -55,18 +55,58 @@ multiplier、reference 或 credential 明细；`provider status` 只通过复数
 | 命令 | 含义与典型用例 | 参数与 Flags | 必填规则 | 示例 |
 | --- | --- | --- | --- | --- |
 | `provider list` | 列出 custom 与内置 provider definition；不读取 credential ciphertext | 无命令专属参数 | 无 | `agentdeck provider list` |
-| `provider current` | 按 client 显示当前 provider、credential shorthand 和选择时间；不读取或解密 credential value | 无 | 无 | `agentdeck provider current` |
+| `provider current` | 按 client 显示当前 provider、credential shorthand、选择时间、路由（直连还是经 wrapper）和实际写入的 endpoint；不读取或解密 credential value | 无 | 无 | `agentdeck provider current` |
 | `provider show <name>` | 显示一个 provider definition；不检查 credential readiness | `name`：provider name | `name` 必填 | `agentdeck provider show official` |
 | `provider status [name]` | 检查全部或指定 provider 的 client、credential readiness 和 active selection；readiness 只检查 secret row 是否存在，不解密 | `name`：可选过滤 | 否 | `agentdeck provider status aigocode` |
 | `provider add <name>` | Provider 不存在时原子创建 provider 和 credential；provider 已存在时新增该 credential；相同 metadata 和 secret 已存在时无提示成功 | `--endpoint <url>`；`--clients <list>`；`--multiplier <decimal>`；`--credential <shorthand>` | `name`、`--endpoint`、`--clients` 必填；其余可选 | `agentdeck provider add aigocode --credential codex --endpoint https://api.example.com/v1 --clients codex` |
 | `provider update <name>` | 更新一个 credential 的 endpoint、multiplier 或 bindings；未指定字段保持不变，不处理 credential value | `--credential <shorthand>`；`--endpoint <url>`；`--clients <list>`；`--multiplier <decimal>` | `name` 必填；metadata flag 至少一个；credential 唯一时可省略 shorthand | `agentdeck provider update aigocode --credential codex --multiplier 1.2` |
 | `provider remove <name>` | 在一个 SQLite transaction 中删除 custom provider、credential metadata 与 ciphertext | 无 | `name` 必填 | `agentdeck provider remove aigocode` |
-| `provider use <name>` | 切换 client 到 provider；client 或 credential 唯一时自动推断 | `--client codex\|claude`；`--credential <short-name>`；`--config-path <path>` | `name` 必填；client/credential 仅在无法唯一推断时必填 | `agentdeck provider use aigocode --client codex --credential work` |
+| `provider use <name>` | 切换 client 到 provider；client 或 credential 唯一时自动推断；`--via` 让本次切换走 provider 的 wrapper URL | `--client codex\|claude`；`--credential <short-name>`；`--config-path <path>`；`--via` | `name` 必填；client/credential 仅在无法唯一推断时必填 | `agentdeck provider use aigocode --client codex --credential work` |
+| `provider set-wrapper <name>` | 设置或清除 provider 的 wrapper URL；只写存储，不切换任何 client | `--url <url>`；`--clear` | `name` 必填；`--url` 与 `--clear` 互斥且必须二选一 | `agentdeck provider set-wrapper aigocode --url https://127.0.0.1:8788` |
 | `provider recover` | 检查中断的 `provider use` operations；credential/provider 删除不需要外部 recovery | 无 | 无 | `agentdeck provider recover` |
 
 `provider status` 的 `CODEX ACTIVE` / `CLAUDE ACTIVE` 单元格直接显示 credential
 shorthand；未激活以及内置 `official` credential 显示 `-`。指定 provider 的 detail
-额外显示逐 client 的 active、credential 和 selected-at 信息。
+额外显示逐 client 的 active、credential、selected-at、`ROUTE` 与实际写入的
+`ENDPOINT`。`provider list` 增加 `WRAPPER` 列，`provider show` 在配置了 wrapper 时
+增加 `wrapper:` 行，`provider current` 增加 `ROUTE` 与 `ENDPOINT` 列；JSON 侧对应
+新增可选 `wrapper_url` 字段，以及 selection 上的 `via_wrapper` 与 `endpoint`。
+
+### Provider Wrapper 与 `--via`
+
+Wrapper 是用户自己运行在 upstream 前面的代理（本地或局域网的压缩、日志、路由层）。
+它是 provider 拥有的一个可选 URL，不是独立实体，内置 `official` 同样可以配置。
+
+- **每 provider 一个，不按 credential、不按 client 存储**：一个 wrapper 实例对应一个
+  upstream 地址；同一实例同时服务两种 client 协议，Codex 追加一次 `/v1`，Claude 直接
+  使用 base。
+- **归一化规则与 Codex-bound credential endpoint 完全一致**：无论该 provider 实际绑定
+  哪些 client，末尾 `/v1` 一律去除，不保留 Claude-only credential 那种末尾 `/v1`。
+  归一化会改写你输入的值，而 text 成功输出与 `provider add`/`provider update` 一样
+  只说明完成的动作和资源名，不回显存储值；用 `provider show <name>` 或 `--format
+  json` 确认实际存下来的 URL。
+- **`--clear` 是唯一跳过归一化的路径**：它写入空值表示"没有 wrapper"，而空字符串本身
+  不是合法 endpoint。
+- **存了 wrapper 不等于会走 wrapper**：路由按每次切换选择，只有 `provider use --via`
+  才把 wrapper URL 写进 client 配置。因此插入或移除代理不改变任何存储状态，已配置的
+  wrapper 也不会静默影响没有要求它的切换。
+- **wrapper 只覆盖 endpoint 字段**：provider 身份、credential、multiplier 和用量归属都
+  不变。custom provider 走 `--via` 时仍然写入同一个 credential；`official` 走 `--via`
+  时依旧不写 credential，只是让 client 用自己的登录态经代理访问原厂。
+- **切换成功后 stderr 打印一行 effective route**（`effective route: <client>
+  direct|via wrapper, endpoint <url>`；`official` 直连时为 `no endpoint written`）。
+  它只是提示信息：不改变 exit status，不进入 stdout 的 JSON envelope，`--quiet` 下不
+  输出。因为写入之后，client 配置本身无法区分直连与经过代理。
+- **`--via` 但该 provider 没有配置 wrapper 时命令失败**，且在触及任何 client 配置文件
+  之前就失败。
+
+```bash
+agentdeck provider set-wrapper aigocode --url https://127.0.0.1:8788
+agentdeck provider use aigocode --client codex --via
+agentdeck provider set-wrapper official --url https://127.0.0.1:8788
+agentdeck provider use official --client claude --via
+agentdeck provider set-wrapper aigocode --clear
+```
 
 ### `provider add` Flags
 
@@ -117,10 +157,13 @@ host；带 userinfo、query string 或 fragment 的地址会被拒绝，避免�
 
 ### `provider use` 推断规则
 
-1. `official` 固定为 Codex，不接受 `--credential`；切换时设置
+1. `official` 支持 `--client codex` 与 `--client claude`，不接受 `--credential`；省略
+   `--client` 时默认 Codex。Codex 直连切换时设置
    `[model_providers.custom].name = "official"`，并移除 `base_url` 与
    `experimental_bearer_token`。缺少 custom table 或 `name` 时自动补齐，其他 TOML
-   字段、注释和顺序保持不变。
+   字段、注释和顺序保持不变。Claude 直连切换移除 `env.ANTHROPIC_BASE_URL` 与
+   `env.ANTHROPIC_AUTH_TOKEN`，保留 `env` 对象和其余所有字段。两个 client 走 `--via`
+   时写入 wrapper URL，仍然不写 credential。
 2. Custom provider 只支持一个 client 时省略 `--client`；支持多个时必须指定。
 3. 指定 client 只有一个适用 credential 时省略 `--credential`。
 4. 同一 provider/client 有多个 credential 时必须填写短名称。

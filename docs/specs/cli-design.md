@@ -705,7 +705,8 @@ create external-secret recovery entries.
 `provider list` and `provider show` read provider definitions without accessing
 or decrypting credential ciphertext. Because endpoint and multiplier are
 credential-owned, `provider list` shows provider name, type, aggregate clients,
-and credential count rather than a single endpoint or multiplier. Credential
+credential count, and the provider's optional wrapper URL rather than a single
+endpoint or multiplier. Credential
 readiness belongs to `provider status` and top-level `credential` commands and
 checks secret-row presence without decrypting values. Text `credential list`
 contains `PROVIDER`, `NAME`, `REFERENCE`, `ENDPOINT`, `MULTIPLIER`, `CLIENTS`,
