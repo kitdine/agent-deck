@@ -175,7 +175,8 @@ run_tap_case() (
   checkout="$case_root/checkout"
   desired="$case_root/desired.rb"
   gh_log="$case_root/gh.log"
-  branch="$formula_name-$tag"
+  release_branch="$formula_name-$tag"
+  branch="$release_branch"
   formula_path="Formula/$formula_name.rb"
   version=${tag#v}
   class_name=Agentdeck
@@ -216,7 +217,15 @@ run_tap_case() (
     git -C "$seed" add --all
     git -C "$seed" commit --quiet -m "$formula_name $tag"
     git -C "$seed" push --quiet --set-upstream origin "$branch"
-    before_commits=$(git --git-dir="$bare" rev-list --count "refs/heads/main..refs/heads/$branch")
+    if [[ $branch_formula == merged ]]; then
+      git -C "$seed" switch main >/dev/null
+      git -C "$seed" merge --quiet --no-ff "$release_branch" -m "merge $release_branch"
+      git -C "$seed" push --quiet origin main
+      formula_hash=$(git -C "$seed" hash-object "$desired")
+      branch="$release_branch-${formula_hash:0:12}"
+    else
+      before_commits=$(git --git-dir="$bare" rev-list --count "refs/heads/main..refs/heads/$branch")
+    fi
   fi
 
   git clone --quiet "$bare" "$checkout"
@@ -249,6 +258,7 @@ run_tap_case() (
   test "$(wc -l <"$gh_log" | tr -d ' ')" -eq "$expected_pr_creates"
   if [[ $expected_pr_creates -eq 1 ]]; then
     grep -F -- "--title $formula_name $tag" "$gh_log" >/dev/null
+    grep -F -- "--head $branch" "$gh_log" >/dev/null
   fi
 )
 
@@ -261,5 +271,6 @@ run_tap_case unsafe-stale-branch v1.2.3 agentdeck unsafe "" 0 0 failure
 run_tap_case unsafe-matching-open-pr v1.2.3 agentdeck unsafe-matching 42 0 0 failure
 run_tap_case rc-no-branch v1.2.3-rc.1 agentdeck-rc none "" 1 1
 run_tap_case rc-stale-open-pr v1.2.3-rc.1 agentdeck-rc stale 84 1 0
+run_tap_case rc-merged-branch v1.2.3-rc.1 agentdeck-rc merged "" 1 1
 run_tap_case rc-unsafe-branch v1.2.3-rc.1 agentdeck-rc unsafe "" 0 0 failure
 run_tap_case invalid-prerelease v1.2.3-beta.1 agentdeck-beta none "" 0 0 failure

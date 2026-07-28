@@ -46,17 +46,27 @@ cd "$tap_repository"
 git config user.name "$bot_name"
 git config user.email "$bot_email"
 
+if cmp -s "$formula" "$formula_path"; then
+  echo "Homebrew formula already matches $tag"
+  exit 0
+fi
+
+if git ls-remote --exit-code --heads "$remote" "$branch" >/dev/null; then
+  git fetch --force --no-tags "$remote" \
+    "refs/heads/$branch:$remote_branch" >/dev/null
+  if git merge-base --is-ancestor "$remote_branch" "$remote/$base_branch"; then
+    formula_hash=$(git hash-object "$formula")
+    branch="$branch-${formula_hash:0:12}"
+    remote_branch="refs/remotes/$remote/$branch"
+  fi
+fi
+
 existing_pr=$(gh pr list \
   --repo "$repository" \
   --state open \
   --head "kitdine:$branch" \
   --json number \
   --jq '.[0].number // empty')
-
-if [[ -z $existing_pr ]] && cmp -s "$formula" "$formula_path"; then
-  echo "Homebrew formula already matches $tag"
-  exit 0
-fi
 
 branch_exists=0
 if git ls-remote --exit-code --heads "$remote" "$branch" >/dev/null; then
