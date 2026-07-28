@@ -1,6 +1,6 @@
 ---
 status: active
-version: 16
+version: 17
 created: 2026-07-14
 ---
 
@@ -345,29 +345,34 @@ needs only `contents: write` permission. A separate minimal CI workflow runs
 remain explicitly authorized manual decisions; the workflow only automates the
 mechanics after a tag is pushed.
 
-The Homebrew tap lives in the separate repository `kitdine/homebrew-tap` with
-`Formula/agentdeck.rb`. The formula installs prebuilt binaries: Homebrew's
-`on_arch_conditional` selects the arm64 or amd64 release archive URL and
-SHA-256 value, installation uses `bin.install "agentdeck"`, and Homebrew's Cobra
-completion generator installs bash, zsh, and fish scripts into their standard
-Homebrew completion directories. It does not edit user shell rc files. The
-formula `test` block asserts the text version contract and all three completion
-paths. Users install with `brew install kitdine/tap/agentdeck`. A tap-installed
-binary reports the tag version, not `dev`. The already-published v0.1.0 formula
-remains binary-only until the Homebrew-only migration job creates a tap PR and
-that PR is merged.
+The Homebrew tap lives in the separate repository `kitdine/homebrew-tap` and
+keeps stable and release-candidate channels under distinct formula identities.
+`Formula/agentdeck.rb` is the stable channel, installed with
+`brew install kitdine/tap/agentdeck`. `Formula/agentdeck-rc.rb` is the opt-in RC
+channel, installed with `brew install kitdine/tap/agentdeck-rc`; it accepts only
+strict `v<major>.<minor>.<patch>-rc.<number>` tags. Both formulae install the
+released binary as `agentdeck` and generate bash, zsh, and fish completions under
+the standard Homebrew paths, so the RC formula declares a conflict with the
+stable formula. Switching channels is an explicit uninstall/install operation;
+Homebrew removes only its Cellar and linked artifacts and does not remove
+AgentDeck state under `~/.agentdeck/`. Once the RC formula is installed,
+`brew update && brew upgrade kitdine/tap/agentdeck-rc` follows later candidates.
 
-After a stable release is published, a dependent macOS job renders the formula
-from the released checksum asset, installs it from an isolated temporary tap,
-runs `brew test`, and smoke-loads each generated completion. Only after those
-checks pass does it use the repository secret `HOMEBREW_TAP_TOKEN` to push an
-`agentdeck-<tag>` branch and open a pull request in `kitdine/homebrew-tap`.
+For either a stable or supported RC release, a dependent macOS job renders the
+matching formula from the released checksum asset, installs it from an isolated
+temporary tap, runs `brew test`, and smoke-loads each generated completion.
+Only after those checks pass does it use the repository secret
+`HOMEBREW_TAP_TOKEN` to push a formula-specific branch and open a pull request
+in `kitdine/homebrew-tap`: stable tags target `Formula/agentdeck.rb` on
+`agentdeck-<tag>`, while RC tags target `Formula/agentdeck-rc.rb` on
+`agentdeck-rc-<tag>`. The RC pull request does not change the stable formula.
 The token must be fine-grained to that repository with Contents and Pull
-requests write access. Prerelease tags publish GitHub prereleases but never
-update the tap. A manual `workflow_dispatch` accepts an existing stable tag and
-runs only this Homebrew verification/PR job; it does not recreate or edit the
-GitHub Release. This provides the migration path for v0.1.0 after the hardened
-workflow reaches `main`.
+requests write access. Other prerelease identifiers remain GitHub-only. A
+manual `workflow_dispatch` accepts an existing stable or RC tag and runs only
+this Homebrew verification/PR job; it does not recreate or edit the GitHub
+Release. A tap-installed binary reports the selected tag version, not `dev`,
+and each formula's `test` block asserts that contract plus all three completion
+paths.
 
 ### Managed Shell Completion Installation
 
@@ -1768,6 +1773,7 @@ here changes; do not create a dated copy of this file.
 
 | Version | Date | Contract change |
 | --- | --- | --- |
+| 17 | 2026-07-28 | Homebrew distribution gains an opt-in `agentdeck-rc` formula in the existing tap. Stable users remain on `agentdeck`; strict `vX.Y.Z-rc.N` tags render, install-test, and propose only `Formula/agentdeck-rc.rb`, while other prereleases remain GitHub-only. Because both channels install the same binary and completion paths, switching is an explicit uninstall/install operation; subsequent RCs use normal `brew update` and `brew upgrade`. |
 | 16 | 2026-07-27 | Time representation is one boundary: instants are stored and transported in UTC RFC 3339 with nanoseconds, normalized where a value enters AgentDeck, and rendered in the machine's zone only in human-readable text, to the second, with every text output naming the zone it used. JSON and NDJSON keep the stored UTC instant, because an envelope whose timestamps shift with the producing host cannot be compared across machines. Command inputs are unchanged: `usage stats --from/--to` still name local dates. No stored value changes and no migration is required. |
 | 15 | 2026-07-26 | Any provider, including the built-in `official`, may carry an optional wrapper URL, and `provider use --via` routes one switch through it. The wrapper overrides the endpoint field alone, so a proxy in front of a relay still writes and forwards that relay's own credential, and subscription traffic through a proxy stays attributed to `official` at multiplier `1` instead of splitting into a second provider name. The URL is provider-owned rather than credential-owned because a wrapper instance is configured with one upstream address, and is not per client because one instance serves both client protocols on one address, always normalized like a Codex-bound credential endpoint regardless of which clients the provider actually serves. The route is chosen per switch rather than stored as an attachment, so inserting or removing a proxy changes no stored configuration and a configured wrapper never silently routes a switch that did not ask for it; the selection snapshot records which route was written. The built-in `official` provider becomes selectable for Claude as well as Codex. Owned client fields are enumerated per client, with everything else carried through unchanged. A Claude switch reports a running-session restart advisory and any conflicting credential source it does not own, rather than deleting fields it never wrote. |
 | 14 | 2026-07-23 | Record that equivalent-estimate disclosure travels with the binary rather than the database: price rows move with a portable backup while the marker, basis, and note come from the running binary's compiled gap-fill, so a binary without that entry renders the price undisclosed. Accepted cost of deriving the metadata instead of storing it. The price-list estimate marker occupies its own column so the model column stays a copy-pasteable identifier. |

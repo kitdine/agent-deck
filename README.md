@@ -101,10 +101,25 @@ brew install kitdine/tap/agentdeck
 agentdeck version
 ```
 
-The current v0.1.0 formula installs the release binary only. A verified formula
-update is prepared to add bash, zsh, and fish completion scripts in Homebrew's
-standard completion directories without editing shell rc files. The
-source-based workflow below additionally supports managed rc-file activation.
+The stable formula installs bash, zsh, and fish completion scripts in
+Homebrew's standard completion directories without editing shell rc files.
+
+After a release-candidate tap PR is merged, opt into that channel with:
+
+```bash
+brew uninstall kitdine/tap/agentdeck
+brew install kitdine/tap/agentdeck-rc
+agentdeck version
+```
+
+Stable and RC formulae conflict because both install the same executable and
+completion paths. AgentDeck state under `~/.agentdeck/` is not managed or
+removed by Homebrew. Later candidates upgrade normally with
+`brew update && brew upgrade kitdine/tap/agentdeck-rc`; switch back by
+uninstalling `agentdeck-rc` and reinstalling `agentdeck`.
+
+The source-based workflow below additionally supports managed rc-file
+activation.
 
 ## Install From Source
 
@@ -411,11 +426,12 @@ above are the sources of truth.
 ## Release Distribution
 
 Versioned GitHub Releases provide checksum-protected macOS archives for arm64
-and amd64. The `kitdine/tap/agentdeck` formula installs those immutable
-artifacts rather than building from a moving branch. Each stable release
-validates a rendered formula and its bash, zsh, and fish completions, then opens
-an update pull request in the tap repository. The existing v0.1.0 formula will
-gain completion support after its Homebrew-only migration run and tap PR merge.
+and amd64. The stable `kitdine/tap/agentdeck` formula and opt-in
+`kitdine/tap/agentdeck-rc` formula install those immutable artifacts rather than
+building from a moving branch. Each supported stable or strict `vX.Y.Z-rc.N`
+release validates its rendered formula plus bash, zsh, and fish completions,
+then opens a formula-specific update pull request in the tap repository. An RC
+pull request never changes the stable formula.
 
 ## Contributing
 

@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Stable release tag whose Homebrew formula should be verified and proposed
+        description: Stable or rc.N release tag whose Homebrew formula should be verified and proposed
         required: true
         type: string
 
@@ -74,7 +74,8 @@ jobs:
   homebrew:
     if: >-
       ${{ always() &&
-          ((github.event_name == 'push' && needs.release.result == 'success' && !contains(github.ref_name, '-')) ||
+          ((github.event_name == 'push' && needs.release.result == 'success' &&
+            (!contains(github.ref_name, '-') || contains(github.ref_name, '-rc.'))) ||
            github.event_name == 'workflow_dispatch') }}
     needs: release
     permissions:
@@ -96,22 +97,35 @@ jobs:
           gh release download "$RELEASE_TAG" \
             --pattern "agentdeck_${RELEASE_TAG}_checksums.txt" \
             --dir "$RUNNER_TEMP"
+      - name: Select Homebrew formula
+        id: formula
+        run: |
+          if [[ "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            formula_name=agentdeck
+          elif [[ "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-rc\.(0|[1-9][0-9]*)$ ]]; then
+            formula_name=agentdeck-rc
+          else
+            echo "unsupported Homebrew release tag: $RELEASE_TAG" >&2
+            exit 2
+          fi
+          echo "name=$formula_name" >>"$GITHUB_OUTPUT"
       - name: Render Homebrew formula
         run: |
           bash scripts/render-homebrew-formula.sh \
             packaging/homebrew/agentdeck.rb.tmpl \
             "$RELEASE_TAG" \
             "$RUNNER_TEMP/agentdeck_${RELEASE_TAG}_checksums.txt" \
-            "$RUNNER_TEMP/agentdeck.rb"
+            "$RUNNER_TEMP/${{ steps.formula.outputs.name }}.rb"
       - name: Verify Homebrew install and completions
         run: |
+          formula_name="${{ steps.formula.outputs.name }}"
           test_tap="agentdeck/release-${GITHUB_RUN_ID}"
           brew tap-new "$test_tap"
-          cp "$RUNNER_TEMP/agentdeck.rb" "$(brew --repository "$test_tap")/Formula/agentdeck.rb"
-          brew install "$test_tap/agentdeck"
-          brew test "$test_tap/agentdeck"
+          cp "$RUNNER_TEMP/$formula_name.rb" "$(brew --repository "$test_tap")/Formula/$formula_name.rb"
+          brew install "$test_tap/$formula_name"
+          brew test "$test_tap/$formula_name"
 
-          formula_prefix=$(brew --prefix "$test_tap/agentdeck")
+          formula_prefix=$(brew --prefix "$test_tap/$formula_name")
           bash_completion="$formula_prefix/etc/bash_completion.d/agentdeck"
           zsh_completion="$formula_prefix/share/zsh/site-functions/_agentdeck"
           fish_completion="$formula_prefix/share/fish/vendor_completions.d/agentdeck.fish"
@@ -133,4 +147,4 @@ jobs:
           GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
         run: |
           bash scripts/update-homebrew-tap-pr.sh \
-            homebrew-tap "$RUNNER_TEMP/agentdeck.rb" "$RELEASE_TAG"
+            homebrew-tap "$RUNNER_TEMP/${{ steps.formula.outputs.name }}.rb" "$RELEASE_TAG"

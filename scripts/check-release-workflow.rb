@@ -40,14 +40,23 @@ reject_text(File.read(ARGV.fetch(0)), "--notes-from-tag", "release workflow")
 condition = homebrew.fetch("if").gsub(/\s+/, " ").strip
 expected_condition = "${{ always() && " \
   "((github.event_name == 'push' && needs.release.result == 'success' && " \
-  "!contains(github.ref_name, '-')) || github.event_name == 'workflow_dispatch') }}"
-raise "Homebrew job condition must allow only successful stable pushes or manual dispatch" unless condition == expected_condition
+  "(!contains(github.ref_name, '-') || contains(github.ref_name, '-rc.'))) || " \
+  "github.event_name == 'workflow_dispatch') }}"
+raise "Homebrew job condition must allow only successful stable/RC pushes or manual dispatch" unless condition == expected_condition
 raise "Homebrew job must depend on release" unless homebrew.fetch("needs") == "release"
+
+select_formula = step(homebrew, "Select Homebrew formula")
+raise "formula selection step must expose outputs" unless select_formula["id"] == "formula"
+select_run = select_formula.fetch("run")
+%w[formula_name=agentdeck formula_name=agentdeck-rc GITHUB_OUTPUT].each do |expected|
+  require_text(select_run, expected, "formula selection")
+end
 
 render_run = step(homebrew, "Render Homebrew formula").fetch("run")
 require_text(render_run, "scripts/render-homebrew-formula.sh", "formula rendering")
+require_text(render_run, "steps.formula.outputs.name", "formula rendering")
 verify_run = step(homebrew, "Verify Homebrew install and completions").fetch("run")
-%w[brew\ install brew\ test bash\ --noprofile zsh\ -f fish\ --no-config].each do |expected|
+%w[formula_name brew\ install brew\ test bash\ --noprofile zsh\ -f fish\ --no-config].each do |expected|
   require_text(verify_run, expected, "Homebrew verification")
 end
 
@@ -55,3 +64,4 @@ tap_checkout = step(homebrew, "Check out Homebrew tap")
 raise "tap checkout must use HOMEBREW_TAP_TOKEN" unless tap_checkout.dig("with", "token") == "${{ secrets.HOMEBREW_TAP_TOKEN }}"
 update_run = step(homebrew, "Open formula update pull request").fetch("run")
 require_text(update_run, "scripts/update-homebrew-tap-pr.sh", "tap PR update")
+require_text(update_run, "steps.formula.outputs.name", "tap PR update")

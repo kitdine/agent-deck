@@ -15,8 +15,14 @@ repository=${HOMEBREW_TAP_REPOSITORY:-kitdine/homebrew-tap}
 bot_name=github-actions[bot]
 bot_email=41898282+github-actions[bot]@users.noreply.github.com
 
-if [[ ! $tag =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
-  echo "Homebrew tap updates require a stable semantic version tag: $tag" >&2
+if [[ $tag =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+  formula_name=agentdeck
+  pr_body="Update AgentDeck to $tag and install bash, zsh, and fish completions."
+elif [[ $tag =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-rc\.(0|[1-9][0-9]*)$ ]]; then
+  formula_name=agentdeck-rc
+  pr_body="Update the opt-in AgentDeck RC channel to $tag and install bash, zsh, and fish completions. The stable formula remains unchanged."
+else
+  echo "Homebrew tap updates require a stable or rc.N semantic version tag: $tag" >&2
   exit 2
 fi
 if [[ ! -d $tap_repository/.git ]]; then
@@ -30,8 +36,8 @@ fi
 
 tap_repository=$(cd "$tap_repository" && pwd)
 formula=$(cd "$(dirname "$formula")" && pwd)/$(basename "$formula")
-branch="agentdeck-$tag"
-formula_path=Formula/agentdeck.rb
+branch="$formula_name-$tag"
+formula_path="Formula/$formula_name.rb"
 remote_branch="refs/remotes/$remote/$branch"
 temporary=$(mktemp "${TMPDIR:-/tmp}/agentdeck-tap-formula.XXXXXX")
 trap 'rm -f "$temporary"' EXIT
@@ -91,7 +97,7 @@ if [[ $branch_exists -eq 1 && $formula_matches_remote_branch -eq 0 ]]; then
     echo "remote formula comparison changed during update" >&2
     exit 1
   fi
-  git commit -m "agentdeck $tag" >/dev/null
+  git commit -m "$formula_name $tag" >/dev/null
   git push "$remote" "HEAD:refs/heads/$branch"
   formula_matches_remote_branch=1
 fi
@@ -104,7 +110,7 @@ if [[ $branch_exists -eq 0 ]]; then
   git switch --create "$branch" >/dev/null
   cp "$formula" "$formula_path"
   git add "$formula_path"
-  git commit -m "agentdeck $tag" >/dev/null
+  git commit -m "$formula_name $tag" >/dev/null
   git push --set-upstream "$remote" "$branch"
   branch_exists=1
   formula_matches_remote_branch=1
@@ -123,5 +129,5 @@ gh pr create \
   --repo "$repository" \
   --base "$base_branch" \
   --head "$branch" \
-  --title "agentdeck $tag" \
-  --body "Update AgentDeck to $tag and install bash, zsh, and fish completions."
+  --title "$formula_name $tag" \
+  --body "$pr_body"

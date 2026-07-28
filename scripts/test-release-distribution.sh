@@ -58,7 +58,12 @@ printf '%s  %s\n%s  %s\n' \
 "$root/scripts/render-homebrew-formula.sh" \
   "$root/packaging/homebrew/agentdeck.rb.tmpl" v1.2.3 "$checksums" "$formula"
 ruby -c "$formula" >/dev/null
+grep -F 'class Agentdeck < Formula' "$formula" >/dev/null
 grep -F 'version "1.2.3"' "$formula" >/dev/null
+if grep -F 'conflicts_with "agentdeck"' "$formula" >/dev/null; then
+  echo "stable formula unexpectedly conflicts with itself" >&2
+  exit 1
+fi
 grep -F "arm:   \"$arm64_sha\"" "$formula" >/dev/null
 grep -F "intel: \"$amd64_sha\"" "$formula" >/dev/null
 grep -F 'on_arch_conditional arm: "arm64", intel: "amd64"' "$formula" >/dev/null
@@ -68,6 +73,29 @@ grep -F 'assert_path_exists bash_completion/"agentdeck"' "$formula" >/dev/null
 grep -F 'assert_path_exists zsh_completion/"_agentdeck"' "$formula" >/dev/null
 grep -F 'assert_path_exists fish_completion/"agentdeck.fish"' "$formula" >/dev/null
 test "$(stat -f '%Lp' "$formula")" = 644
+
+rc_tag=v1.2.3-rc.1
+rc_checksums="$temporary/rc-checksums.txt"
+rc_formula="$temporary/agentdeck-rc.rb"
+printf '%s  %s\n%s  %s\n' \
+  "$arm64_sha" "agentdeck_${rc_tag}_darwin_arm64.tar.gz" \
+  "$amd64_sha" "agentdeck_${rc_tag}_darwin_amd64.tar.gz" >"$rc_checksums"
+"$root/scripts/render-homebrew-formula.sh" \
+  "$root/packaging/homebrew/agentdeck.rb.tmpl" "$rc_tag" "$rc_checksums" "$rc_formula"
+ruby -c "$rc_formula" >/dev/null
+grep -F 'class AgentdeckRc < Formula' "$rc_formula" >/dev/null
+grep -F 'version "1.2.3-rc.1"' "$rc_formula" >/dev/null
+grep -F 'conflicts_with "agentdeck"' "$rc_formula" >/dev/null
+grep -F "releases/download/$rc_tag/" "$rc_formula" >/dev/null
+grep -F 'assert_match "Release Version: v1.2.3-rc.1", output' "$rc_formula" >/dev/null
+test "$(stat -f '%Lp' "$rc_formula")" = 644
+
+if "$root/scripts/render-homebrew-formula.sh" \
+     "$root/packaging/homebrew/agentdeck.rb.tmpl" \
+     v1.2.3-beta.1 "$rc_checksums" "$temporary/agentdeck-beta.rb" >/dev/null 2>&1; then
+  echo "formula renderer accepted a non-RC prerelease tag" >&2
+  exit 1
+fi
 
 ruby "$root/scripts/check-release-workflow.rb" "$root/.github/workflows/release.yml"
 
@@ -95,11 +123,19 @@ if ruby "$root/scripts/check-release-workflow.rb" "$workflow_without_tap_helper"
   exit 1
 fi
 
-workflow_without_stable_filter="$temporary/release-without-stable-filter.yml"
-sed "s/ && !contains(github.ref_name, '-')//" \
-  "$root/.github/workflows/release.yml" >"$workflow_without_stable_filter"
-if ruby "$root/scripts/check-release-workflow.rb" "$workflow_without_stable_filter" >/dev/null 2>&1; then
-  echo "workflow check accepted a missing stable-release filter" >&2
+workflow_without_rc_filter="$temporary/release-without-rc-filter.yml"
+sed "s/ || contains(github.ref_name, '-rc.')//" \
+  "$root/.github/workflows/release.yml" >"$workflow_without_rc_filter"
+if ruby "$root/scripts/check-release-workflow.rb" "$workflow_without_rc_filter" >/dev/null 2>&1; then
+  echo "workflow check accepted a missing RC-release filter" >&2
+  exit 1
+fi
+
+workflow_without_rc_formula="$temporary/release-without-rc-formula.yml"
+sed 's/formula_name=agentdeck-rc/formula_name=agentdeck-preview/' \
+  "$root/.github/workflows/release.yml" >"$workflow_without_rc_formula"
+if ruby "$root/scripts/check-release-workflow.rb" "$workflow_without_rc_formula" >/dev/null 2>&1; then
+  echo "workflow check accepted a missing RC formula selection" >&2
   exit 1
 fi
 
@@ -123,18 +159,26 @@ chmod 0755 "$fake_bin/gh"
 
 run_tap_case() (
   case_name=$1
-  branch_formula=$2
-  pr_number=$3
-  expected_new_commits=$4
-  expected_pr_creates=$5
-  expected_result=${6:-success}
+  tag=$2
+  formula_name=$3
+  branch_formula=$4
+  pr_number=$5
+  expected_new_commits=$6
+  expected_pr_creates=$7
+  expected_result=${8:-success}
   case_root="$temporary/tap-$case_name"
   bare="$case_root/origin.git"
   seed="$case_root/seed"
   checkout="$case_root/checkout"
   desired="$case_root/desired.rb"
   gh_log="$case_root/gh.log"
-  branch=agentdeck-v1.2.3
+  branch="$formula_name-$tag"
+  formula_path="Formula/$formula_name.rb"
+  version=${tag#v}
+  class_name=Agentdeck
+  if [[ $formula_name == agentdeck-rc ]]; then
+    class_name=AgentdeckRc
+  fi
 
   mkdir -p "$case_root"
   git init --bare --quiet "$bare"
@@ -149,7 +193,8 @@ run_tap_case() (
   git -C "$seed" remote add origin "$bare"
   git -C "$seed" push --quiet --set-upstream origin main
   git --git-dir="$bare" symbolic-ref HEAD refs/heads/main
-  printf 'class Agentdeck < Formula\n  version "1.2.3"\nend\n' >"$desired"
+  printf 'class %s < Formula\n  version "%s"\nend\n' \
+    "$class_name" "$version" >"$desired"
 
   before_commits=0
   if [[ $branch_formula != none ]]; then
@@ -157,15 +202,16 @@ run_tap_case() (
     git -C "$seed" config user.name "github-actions[bot]"
     git -C "$seed" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
     if [[ $branch_formula == matching || $branch_formula == unsafe-matching ]]; then
-      cp "$desired" "$seed/Formula/agentdeck.rb"
+      cp "$desired" "$seed/$formula_path"
     else
-      printf 'class Agentdeck < Formula\n  version "1.2.2"\nend\n' >"$seed/Formula/agentdeck.rb"
+      printf 'class %s < Formula\n  version "0.0.0"\nend\n' \
+        "$class_name" >"$seed/$formula_path"
     fi
     if [[ $branch_formula == unsafe || $branch_formula == unsafe-matching ]]; then
       printf 'unrelated branch content\n' >"$seed/README.md"
     fi
     git -C "$seed" add --all
-    git -C "$seed" commit --quiet -m "agentdeck v1.2.3"
+    git -C "$seed" commit --quiet -m "$formula_name $tag"
     git -C "$seed" push --quiet --set-upstream origin "$branch"
     before_commits=$(git --git-dir="$bare" rev-list --count "refs/heads/main..refs/heads/$branch")
   fi
@@ -176,7 +222,7 @@ run_tap_case() (
        TEST_PR_NUMBER="$pr_number" \
        TEST_GH_LOG="$gh_log" \
        HOMEBREW_TAP_REPOSITORY=kitdine/homebrew-tap \
-       bash "$root/scripts/update-homebrew-tap-pr.sh" "$checkout" "$desired" v1.2.3 >/dev/null 2>&1; then
+       bash "$root/scripts/update-homebrew-tap-pr.sh" "$checkout" "$desired" "$tag" >/dev/null 2>&1; then
     actual_result=success
   else
     actual_result=failure
@@ -184,23 +230,33 @@ run_tap_case() (
   test "$actual_result" = "$expected_result"
 
   if [[ $expected_result == failure ]]; then
-    after_commits=$(git --git-dir="$bare" rev-list --count "refs/heads/main..refs/heads/$branch")
+    after_commits=0
+    if git --git-dir="$bare" show-ref --verify --quiet "refs/heads/$branch"; then
+      after_commits=$(git --git-dir="$bare" rev-list --count "refs/heads/main..refs/heads/$branch")
+    fi
     test "$after_commits" -eq "$before_commits"
     test ! -s "$gh_log"
     exit 0
   fi
 
-  git --git-dir="$bare" show "refs/heads/$branch:Formula/agentdeck.rb" >"$case_root/remote.rb"
+  git --git-dir="$bare" show "refs/heads/$branch:$formula_path" >"$case_root/remote.rb"
   cmp "$desired" "$case_root/remote.rb"
   after_commits=$(git --git-dir="$bare" rev-list --count "refs/heads/main..refs/heads/$branch")
   test "$((after_commits - before_commits))" -eq "$expected_new_commits"
   test "$(wc -l <"$gh_log" | tr -d ' ')" -eq "$expected_pr_creates"
+  if [[ $expected_pr_creates -eq 1 ]]; then
+    grep -F -- "--title $formula_name $tag" "$gh_log" >/dev/null
+  fi
 )
 
-run_tap_case no-branch none "" 1 1
-run_tap_case matching-branch matching "" 0 1
-run_tap_case stale-branch stale "" 1 1
-run_tap_case matching-open-pr matching 42 0 0
-run_tap_case stale-open-pr stale 42 1 0
-run_tap_case unsafe-stale-branch unsafe "" 0 0 failure
-run_tap_case unsafe-matching-open-pr unsafe-matching 42 0 0 failure
+run_tap_case no-branch v1.2.3 agentdeck none "" 1 1
+run_tap_case matching-branch v1.2.3 agentdeck matching "" 0 1
+run_tap_case stale-branch v1.2.3 agentdeck stale "" 1 1
+run_tap_case matching-open-pr v1.2.3 agentdeck matching 42 0 0
+run_tap_case stale-open-pr v1.2.3 agentdeck stale 42 1 0
+run_tap_case unsafe-stale-branch v1.2.3 agentdeck unsafe "" 0 0 failure
+run_tap_case unsafe-matching-open-pr v1.2.3 agentdeck unsafe-matching 42 0 0 failure
+run_tap_case rc-no-branch v1.2.3-rc.1 agentdeck-rc none "" 1 1
+run_tap_case rc-stale-open-pr v1.2.3-rc.1 agentdeck-rc stale 84 1 0
+run_tap_case rc-unsafe-branch v1.2.3-rc.1 agentdeck-rc unsafe "" 0 0 failure
+run_tap_case invalid-prerelease v1.2.3-beta.1 agentdeck-beta none "" 0 0 failure

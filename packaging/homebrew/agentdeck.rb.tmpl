@@ -2,7 +2,7 @@
 # frozen_string_literal: true
 
 # Installs the versioned AgentDeck macOS binary and shell completions.
-class Agentdeck < Formula
+class @FORMULA_CLASS@ < Formula
   desc "CLI for managing multiple Codex/Claude providers, usage, and credentials"
   homepage "https://github.com/kitdine/agent-deck"
   url "https://github.com/kitdine/agent-deck/releases/download/@TAG@/" \
@@ -13,6 +13,7 @@ class Agentdeck < Formula
     intel: "@AMD64_SHA256@",
   )
   license "MIT"
+@CHANNEL_POLICY@
 
   def install
     bin.install "agentdeck"
