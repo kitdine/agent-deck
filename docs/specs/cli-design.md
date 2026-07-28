@@ -1,6 +1,6 @@
 ---
 status: active
-version: 15
+version: 16
 created: 2026-07-14
 ---
 
@@ -1516,6 +1516,41 @@ returns no potentially misleading summary.
 Text and JSON must explicitly report estimated attribution, historical data,
 unknown models, unpriced components, and incomplete scans.
 
+### Time Representation
+
+Instants cross one boundary and only one: they are stored and transported in
+UTC, and rendered in the machine's zone only when the audience is a person.
+
+Storage is UTC RFC 3339 with nanoseconds, normalized at the boundary where a
+value enters AgentDeck rather than wherever it is later read — a client log
+timestamp is parsed and converted on ingest, and every generated timestamp is
+taken in UTC. Range queries compare UTC-formatted arguments against those
+stored values, so no comparison depends on the offset a source happened to
+write. Schema v10 already migrated `usage_events.event_at` and recomputed
+session bounds under this rule; it holds for every table, not only that one.
+
+JSON and NDJSON keep the stored UTC instant unchanged. They are the automation
+and GUI contract, and an envelope whose timestamps shifted with the host that
+produced it could not be compared, cached, or replayed across machines.
+
+Human-readable text renders instants in the machine's zone, to the second;
+sub-second precision is retained in JSON and dropped in text, where it is never
+actionable. Every text output that shows an instant names the zone it used:
+grid columns carry it in the header cell, detail fields carry it after the
+value, and usage reports keep the zone name they already print in their header.
+An output that shows no instant gains nothing. A value that cannot be parsed as
+an instant is rendered unchanged rather than failing the command, because a
+read command must not fail over presentation.
+
+The zone is the machine's, resolved once per process, with no per-invocation
+override; `TZ` selects it the way it selects any program's local zone. Command
+*inputs* are unaffected: `usage stats --from/--to` continue to name local dates,
+which is what makes "yesterday" mean the user's yesterday.
+
+This is a presentation contract. It changes no stored value, requires no
+migration, and leaves every JSON field byte-identical to what the same state
+produced before.
+
 ## Doctor
 
 `agentdeck doctor` is read-only. It checks state permissions, database schema,
@@ -1733,6 +1768,7 @@ here changes; do not create a dated copy of this file.
 
 | Version | Date | Contract change |
 | --- | --- | --- |
+| 16 | 2026-07-27 | Time representation is one boundary: instants are stored and transported in UTC RFC 3339 with nanoseconds, normalized where a value enters AgentDeck, and rendered in the machine's zone only in human-readable text, to the second, with every text output naming the zone it used. JSON and NDJSON keep the stored UTC instant, because an envelope whose timestamps shift with the producing host cannot be compared across machines. Command inputs are unchanged: `usage stats --from/--to` still name local dates. No stored value changes and no migration is required. |
 | 15 | 2026-07-26 | Any provider, including the built-in `official`, may carry an optional wrapper URL, and `provider use --via` routes one switch through it. The wrapper overrides the endpoint field alone, so a proxy in front of a relay still writes and forwards that relay's own credential, and subscription traffic through a proxy stays attributed to `official` at multiplier `1` instead of splitting into a second provider name. The URL is provider-owned rather than credential-owned because a wrapper instance is configured with one upstream address, and is not per client because one instance serves both client protocols on one address, always normalized like a Codex-bound credential endpoint regardless of which clients the provider actually serves. The route is chosen per switch rather than stored as an attachment, so inserting or removing a proxy changes no stored configuration and a configured wrapper never silently routes a switch that did not ask for it; the selection snapshot records which route was written. The built-in `official` provider becomes selectable for Claude as well as Codex. Owned client fields are enumerated per client, with everything else carried through unchanged. A Claude switch reports a running-session restart advisory and any conflicting credential source it does not own, rather than deleting fields it never wrote. |
 | 14 | 2026-07-23 | Record that equivalent-estimate disclosure travels with the binary rather than the database: price rows move with a portable backup while the marker, basis, and note come from the running binary's compiled gap-fill, so a binary without that entry renders the price undisclosed. Accepted cost of deriving the metadata instead of storing it. The price-list estimate marker occupies its own column so the model column stays a copy-pasteable identifier. |
 | 13 | 2026-07-23 | The bundled catalog's own effective date is the stable fallback date rather than the earliest date among its models, so a curated early-dated entry cannot lower the catalog's precedence and hand shared models back to a previously installed bundled catalog on upgrade. Model rows keep their own effective dates. An equivalent estimate is disclosed only for prices served by the catalog compiled into the running binary, and its `verified_by` may name a project role because it attests to a derivation rather than an observed vendor rate. |
