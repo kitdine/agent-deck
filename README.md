@@ -112,11 +112,13 @@ brew install kitdine/tap/agentdeck-rc
 agentdeck version
 ```
 
-Stable and RC formulae conflict because both install the same executable and
-completion paths. AgentDeck state under `~/.agentdeck/` is not managed or
-removed by Homebrew. Later candidates upgrade normally with
-`brew update && brew upgrade kitdine/tap/agentdeck-rc`; switch back by
-uninstalling `agentdeck-rc` and reinstalling `agentdeck`.
+Stable and RC formulae install the same executable and completion paths, so
+they must not be installed together. The explicit uninstall/install sequence
+above enforces that switch without making Homebrew load or trust the other
+channel's formula. AgentDeck state under `~/.agentdeck/` is not managed or
+removed by Homebrew. Later candidates upgrade normally with `brew update &&
+brew upgrade kitdine/tap/agentdeck-rc`; switch back by uninstalling
+`agentdeck-rc` and reinstalling `agentdeck`.
 
 The source-based workflow below additionally supports managed rc-file
 activation.

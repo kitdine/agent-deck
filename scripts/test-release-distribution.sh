@@ -85,7 +85,10 @@ printf '%s  %s\n%s  %s\n' \
 ruby -c "$rc_formula" >/dev/null
 grep -F 'class AgentdeckRc < Formula' "$rc_formula" >/dev/null
 grep -F 'version "1.2.3-rc.1"' "$rc_formula" >/dev/null
-grep -F 'conflicts_with "agentdeck"' "$rc_formula" >/dev/null
+if grep -F 'conflicts_with "agentdeck"' "$rc_formula" >/dev/null; then
+  echo "RC formula unexpectedly loads the stable formula through conflicts_with" >&2
+  exit 1
+fi
 grep -F "releases/download/$rc_tag/" "$rc_formula" >/dev/null
 grep -F 'assert_match "Release Version: v1.2.3-rc.1", output' "$rc_formula" >/dev/null
 test "$(stat -f '%Lp' "$rc_formula")" = 644

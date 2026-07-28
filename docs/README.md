@@ -28,9 +28,17 @@ The repository now defines an opt-in Homebrew release-candidate channel at
 `kitdine/tap/agentdeck-rc`. Stable releases continue to update only
 `agentdeck`; strict `vX.Y.Z-rc.N` tags render and install-test
 `agentdeck-rc` before proposing a tap PR that leaves the stable formula
-unchanged. The first live validation is pending `v0.2.0-rc.1`: publish the
-GitHub prerelease, merge its reviewed tap PR, install through Homebrew, and
-exercise provider wrapper routing from the released binary.
+unchanged. The first live validation uses `v0.2.0-rc.1` and remains open until
+its corrected tap formula installs through Homebrew and the released binary
+exercises provider wrapper routing.
+
+That validation published the prerelease and passed the workflow's isolated
+Homebrew install, but the first real channel switch exposed a Homebrew 6 trust
+interaction: `conflicts_with "agentdeck"` loads the uninstalled stable formula,
+which direct RC installation has not trusted. CLI design v18 removes that DSL
+declaration and keeps the already-documented explicit uninstall/install switch;
+the correction must pass verification and replace the tap formula before the
+live task can close.
 
 Delivered and reviewed: the Go CLI baseline; provider and credential
 management; usage collection, pricing, and run attribution; local session
@@ -156,14 +164,14 @@ The first task in the only active plan,
 reviewed. `display-clock` extracted the shared zone, timezone-name, and
 RFC3339/`time.Time` rendering helpers without wiring them into a renderer, so
 no command output changed. Storage and JSON remain UTC under
-`specs/cli-design.md` v17. Next is `provider-and-session-surfaces`, which will
+`specs/cli-design.md` v18. Next is `provider-and-session-surfaces`, which will
 localize the provider and session timestamps a person reads.
 
 ## Documents
 
 | Document | Purpose |
 | --- | --- |
-| [specs/cli-design.md](specs/cli-design.md) | What the system does and must keep doing: provider, credential, usage, pricing, session, backup, and distribution behavior. Currently version 17; see its changelog. |
+| [specs/cli-design.md](specs/cli-design.md) | What the system does and must keep doing: provider, credential, usage, pricing, session, backup, and distribution behavior. Currently version 18; see its changelog. |
 | [specs/cli-manual.md](specs/cli-manual.md) | The implemented command surface, flags, and output shapes. |
 | [plans/display-timezone.md](plans/display-timezone.md) | Render instants in the machine's zone in text only; storage and JSON stay UTC. `active — 1/3 done`. |
 | [reviews/](reviews/README.md) | Per-task review records that back each plan's ticked `Review` cell. |

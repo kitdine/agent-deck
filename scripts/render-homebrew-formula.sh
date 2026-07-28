@@ -12,10 +12,8 @@ checksums=$3
 output=$4
 if [[ $tag =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
   formula_class=Agentdeck
-  channel_policy=
 elif [[ $tag =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-rc\.(0|[1-9][0-9]*)$ ]]; then
   formula_class=AgentdeckRc
-  channel_policy='  conflicts_with "agentdeck", because: "both formulae install the agentdeck binary and shell completions"'
 else
   echo "Homebrew formula requires a stable or rc.N semantic version tag: $tag" >&2
   exit 2
@@ -62,14 +60,9 @@ awk \
   -v tag="$tag" \
   -v version="$version" \
   -v formula_class="$formula_class" \
-  -v channel_policy="$channel_policy" \
   -v arm64_sha="$arm64_sha" \
   -v amd64_sha="$amd64_sha" \
   '{
-    if ($0 == "@CHANNEL_POLICY@") {
-      if (channel_policy != "") print channel_policy
-      next
-    }
     gsub(/@TAG@/, tag)
     gsub(/@VERSION@/, version)
     gsub(/@FORMULA_CLASS@/, formula_class)
@@ -78,7 +71,7 @@ awk \
     print
   }' \
   "$template" >"$temporary"
-if grep -Eq '@(TAG|VERSION|FORMULA_CLASS|CHANNEL_POLICY|ARM64_SHA256|AMD64_SHA256)@' "$temporary"; then
+if grep -Eq '@(TAG|VERSION|FORMULA_CLASS|ARM64_SHA256|AMD64_SHA256)@' "$temporary"; then
   echo "formula template contains unresolved placeholders" >&2
   exit 1
 fi

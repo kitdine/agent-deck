@@ -1,6 +1,6 @@
 ---
 status: active
-version: 17
+version: 18
 created: 2026-07-14
 ---
 
@@ -352,8 +352,11 @@ keeps stable and release-candidate channels under distinct formula identities.
 channel, installed with `brew install kitdine/tap/agentdeck-rc`; it accepts only
 strict `v<major>.<minor>.<patch>-rc.<number>` tags. Both formulae install the
 released binary as `agentdeck` and generate bash, zsh, and fish completions under
-the standard Homebrew paths, so the RC formula declares a conflict with the
-stable formula. Switching channels is an explicit uninstall/install operation;
+the standard Homebrew paths, so they must not be installed together. The RC
+formula deliberately does not use `conflicts_with`: under Homebrew's formula
+trust model that declaration loads the stable formula even after it has been
+uninstalled, while direct installation trusts only the requested RC formula.
+Switching channels is therefore an explicit uninstall/install operation.
 Homebrew removes only its Cellar and linked artifacts and does not remove
 AgentDeck state under `~/.agentdeck/`. Once the RC formula is installed,
 `brew update && brew upgrade kitdine/tap/agentdeck-rc` follows later candidates.
@@ -1773,6 +1776,7 @@ here changes; do not create a dated copy of this file.
 
 | Version | Date | Contract change |
 | --- | --- | --- |
+| 18 | 2026-07-28 | The RC formula relies on the documented uninstall/install channel switch instead of Homebrew's `conflicts_with` DSL. Homebrew 6 loads the referenced stable formula while resolving that declaration, but direct formula installation trusts only the requested RC formula, so a user who correctly removed stable could still be blocked by tap trust. Omitting the declaration avoids broad tap trust without weakening the explicit no-coexistence rule. |
 | 17 | 2026-07-28 | Homebrew distribution gains an opt-in `agentdeck-rc` formula in the existing tap. Stable users remain on `agentdeck`; strict `vX.Y.Z-rc.N` tags render, install-test, and propose only `Formula/agentdeck-rc.rb`, while other prereleases remain GitHub-only. Because both channels install the same binary and completion paths, switching is an explicit uninstall/install operation; subsequent RCs use normal `brew update` and `brew upgrade`. |
 | 16 | 2026-07-27 | Time representation is one boundary: instants are stored and transported in UTC RFC 3339 with nanoseconds, normalized where a value enters AgentDeck, and rendered in the machine's zone only in human-readable text, to the second, with every text output naming the zone it used. JSON and NDJSON keep the stored UTC instant, because an envelope whose timestamps shift with the producing host cannot be compared across machines. Command inputs are unchanged: `usage stats --from/--to` still name local dates. No stored value changes and no migration is required. |
 | 15 | 2026-07-26 | Any provider, including the built-in `official`, may carry an optional wrapper URL, and `provider use --via` routes one switch through it. The wrapper overrides the endpoint field alone, so a proxy in front of a relay still writes and forwards that relay's own credential, and subscription traffic through a proxy stays attributed to `official` at multiplier `1` instead of splitting into a second provider name. The URL is provider-owned rather than credential-owned because a wrapper instance is configured with one upstream address, and is not per client because one instance serves both client protocols on one address, always normalized like a Codex-bound credential endpoint regardless of which clients the provider actually serves. The route is chosen per switch rather than stored as an attachment, so inserting or removing a proxy changes no stored configuration and a configured wrapper never silently routes a switch that did not ask for it; the selection snapshot records which route was written. The built-in `official` provider becomes selectable for Claude as well as Codex. Owned client fields are enumerated per client, with everything else carried through unchanged. A Claude switch reports a running-session restart advisory and any conflicting credential source it does not own, rather than deleting fields it never wrote. |
