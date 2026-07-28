@@ -354,6 +354,152 @@ sentinel, so a credential or endpoint lookup that can return `""` for a reason
 other than "this field should be absent" must not be passed through directly.
 Cover this with a test.
 
+Done (2026-07-27): `Service.UseCredential` gained a trailing `via bool`
+parameter (`Service.Use` still defaults to `false`, so its one caller in
+`cmd/agentdeck/main.go` is unaffected until `cli-route-surface` adds the
+flag). `official` no longer rejects `--client claude`; `officialProvider()`'s
+`Clients` now lists both `codex` and `claude`, and the codex-only guard was
+replaced with a guard that rejects a credential name for `official` instead
+(official never resolves one). Endpoint composition is one small block per
+name/client/route combination, each naming its own intent at its own call:
+for `official`, direct calls the unchanged `WriteOfficialCodexConfig` or
+`WriteClaudeConfig(ClientConfig{})` (both fields removed) and `--via` calls
+`WriteCodexWrapperConfig` or `WriteClaudeConfig(ClientConfig{Endpoint: wrapper})`
+(endpoint only, credential vault never touched — asserted with
+`rejectingCredentialVault`); for a custom provider, both routes call the
+existing `WriteCodexConfig`/`WriteClaudeConfig` with the selected credential
+unchanged and only the `Endpoint` argument switched between the credential's
+own endpoint and the provider's `wrapper_url`, so credential and endpoint
+never come from two different code paths. `via` is validated before any
+config read: requesting it with no wrapper configured on the resolved route
+(the provider's `wrapper_url` for a custom provider, `Store.OfficialWrapperURL`
+for `official`) fails with `ErrInvalidProvider` before the fingerprint check or
+redacted backup, so no client file is touched. The completed selection
+snapshot now always carries `ViaWrapper` and `EndpointSnapshot` from the
+endpoint actually written (previously `EndpointSnapshot` was only set for a
+non-`official` selection and there was no route field at all), covering
+`official --via`'s snapshot too.
+
+Decision on the P3 carried from `codex-writer-routes` (whether `WriteCodexConfig`
+should move onto `rewriteCodexCustomTable`): deferred again, not migrated.
+The stated acceptance — direct vs. `--via` on a custom provider changes only
+the endpoint and leaves the credential byte-identical — is met structurally,
+because both routes now call the exact same `WriteCodexConfig` with only the
+`Endpoint` argument differing, which trivially keeps `experimental_bearer_token`
+identical without needing comment/ordering preservation. `WriteCodexConfig`
+still reserializes the whole file via `toml.Marshal` (unlike the line-preserving
+`rewriteCodexCustomTable` path `WriteCodexWrapperConfig`/`WriteOfficialCodexConfig`
+use), so a custom-provider switch still produces a different `config.toml` diff
+shape than an `official` switch touching the same file. Migrating it is a
+larger refactor (it currently forces five fields — `name`, `base_url`,
+`requires_openai_auth`, `experimental_bearer_token`, `wire_api` — where the
+shared helper's existing callers only ever force two) and isn't required by
+this task's acceptance or invariants, so it is left as an explicitly-recorded
+open decision rather than attempted here.
+
+Verification: `go test -mod=vendor ./internal/provider/... -run
+'RouteComposition|UseCustomProvider|UseOfficial|UseViaWrapper' -v` (new
+`TestUseCustomProviderCodexViaWrapperChangesOnlyEndpointKeepsCredentialByteIdentical`,
+`TestUseCustomProviderClaudeViaWrapperChangesOnlyEndpointKeepsCredentialByteIdentical`,
+`TestUseOfficialCodexViaWrapperWritesEndpointRemovesCredentialAndRecordsSnapshot`,
+`TestUseOfficialClaudeDirectAndViaWrapperDecideIntentExplicitly` (closes the
+carried Claude-intent P3),
+`TestUseViaWrapperWithoutConfiguredWrapperFailsBeforeWritingClientFile`, all
+pass) plus `go test -mod=vendor ./internal/provider/...` (all pass, including
+the updated `TestOfficialProviderIsBuiltInAndDefinitionReadsDoNotAccessSecrets`
+and the nine existing `UseCredential` call sites updated for the new trailing
+argument) plus `go test -mod=vendor ./...` and `go vet -mod=vendor ./...`, run
+once after the final edit. `go test -mod=vendor ./cmd/agentdeck/...` has two
+pre-existing failures unrelated to this change
+(`TestIsolatedEndToEndFlow`, `TestSessionShowActivityReadsOnlySafeMetadataOnDemand`),
+confirmed present on the unmodified tree via `git stash`/rerun before this
+task began. `gofmt -l` and `git diff --check` clean on every changed file.
+
+Review Round 1 (2026-07-27): `REOPEN`, one P1 + one P2 + three P3 + one nit.
+`Dev` unticked. The three named acceptance criteria are met on the write path;
+the gap is on the read-back path this task's new states made reachable.
+`Service.ConfigDrift` (`service.go:127-131`) branches on `snapshot.Official`
+alone and calls the TOML-parsing `ConfigMatchesOfficialCodex` for every
+official selection, so `provider use official --client claude` — reachable
+from the CLI today and correct in the file it writes — makes `agentdeck doctor`
+report permanent `provider_config_drift` whose offered recovery cannot clear
+it (reproduced end to end), and `official --via` on Codex will drift the same
+way once task 5 exposes the flag, because that matcher requires no `base_url`.
+See `docs/reviews/provider-wrapper-routing/route-composition.md`.
+
+Fix round (2026-07-27), closing the P1 and P2 and disposing the three P3s and
+the nit:
+- [P1 + P2] `ConfigDrift` now branches on client and route, not on
+  `snapshot.Official` alone. Two matchers were added next to the existing
+  `ConfigMatchesOfficialCodex`: `ConfigMatchesOfficialClaude` (neither owned
+  `env` key present, which is what a direct official Claude switch writes) and
+  `ConfigMatchesOfficialWrapper` (the wrapper endpoint written and no
+  credential, for either client). They are separate functions rather than one
+  matcher taking a possibly-empty endpoint, because "no endpoint at all" and
+  "exactly this wrapper endpoint" are two different states to prove. The four
+  routes now map one-to-one onto the four branches of one `switch`, and the
+  custom branch is unchanged. Added
+  `TestOfficialClaudeSelectionIsNotReportedAsConfigDrift`,
+  `TestOfficialCodexViaWrapperSelectionIsNotReportedAsConfigDrift`,
+  `TestOfficialClaudeViaWrapperSelectionIsNotReportedAsConfigDrift`, and
+  `TestCustomProviderViaWrapperSelectionIsNotReportedAsConfigDrift`. Each of
+  the first three asserts drift `0` after the switch and drift `1` after an
+  external edit, so none can be satisfied by a matcher that accepts anything;
+  all three were confirmed to fail with `drift = 1, want 0` against the
+  pre-fix branch.
+- [P3, closed] The custom route no longer passes a possibly-empty lookup into a
+  writer whose empty field means "remove this owned key": `UseCredential` now
+  rejects an empty written endpoint or empty decrypted secret for a custom
+  provider, before the operation row, the redacted backup, and any client
+  write. Added `TestUseCustomProviderWithEmptyStoredEndpointFailsBeforeTouching
+  ClientFile`, which forces the unreachable row directly through SQL and
+  asserts `ErrInvalidProvider`, a byte-identical client file, and no recorded
+  selection; without the guard it fails with a silent success.
+- [P3, closed] The wrapper lookup no longer tests `err` outside the branch that
+  assigns it. Official wrapper resolution uses its own `wrapperErr`, and the
+  written endpoint is now resolved once, before the operation begins, instead
+  of being recomputed inside the write block.
+- [P3, closed] `officialProvider()` now reports
+  `authentication: client_existing_login` instead of `codex_existing_login`,
+  with a doc comment recording why the built-in provider's authentication mode
+  is client-neutral. This changes one user-visible field of
+  `provider show official` — deliberately, because the same task made that
+  provider selectable for Claude, and the plan's "default behavior is
+  unchanged" invariant covers unchanged providers and invocations, not the
+  built-in provider's own description. No spec or manual text names the value.
+- [nit] Corrected this task's Done note: the Claude official branch is now two
+  explicit calls (`ClientConfig{}` for direct, `ClientConfig{Endpoint: wrapper}`
+  for `--via`) rather than one call whose intent came from a zero value, which
+  is what the note already claimed.
+
+Verification: `go test -mod=vendor ./internal/provider/... -run Drift -v`
+(four new drift tests pass) and `-run
+TestUseCustomProviderWithEmptyStoredEndpointFailsBeforeTouchingClientFile`
+(passes), each also run against a temporarily reverted fix to confirm it fails
+without it; plus `go test -mod=vendor ./...` and `go vet -mod=vendor ./...`,
+run once after the final edit. The two pre-existing `./cmd/agentdeck/...`
+failures recorded above (`TestIsolatedEndToEndFlow`,
+`TestSessionShowActivityReadsOnlySafeMetadataOnDemand`) are still present and
+still unrelated. `gofmt -l` and `git diff --check` clean on every changed file.
+The P1 reproduction from Round 1 was re-run against a rebuilt binary: the same
+`provider use official --client claude` now leaves `agentdeck doctor` reporting
+`provider_configuration: ok`.
+
+Review Round 2 (2026-07-27): `PASS`, `Review` ticked. The P1 and P2 are closed
+at the root cause, all three P3s and the nit are closed rather than deferred,
+and no new finding at or above nit level was found. The re-review re-derived
+each finding from source rather than from this note, reproduced the RED state
+of every new test by reverting the corresponding fix in an out-of-tree copy
+(three drift tests and the empty-endpoint test all fail without their fix; the
+custom `--via` drift test passes either way and is a pin by design, as its own
+comment states), confirmed the four `ConfigDrift` branches map one-to-one onto
+the four route combinations in `cli-design.md:646-649` with no gap and no new
+false positive, and confirmed the `client_existing_login` rename breaks no
+output contract — the value appears in no spec, manual, or fixture, and the one
+JSON fixture naming the field declares only its type. The two `./cmd/agentdeck`
+failures were independently confirmed pre-existing at `00b6803` via `git stash`
+in the copy. See `docs/reviews/provider-wrapper-routing/route-composition.md`.
+
 ### `cli-route-surface`
 
 Surface it on the existing nouns: `provider set-wrapper <provider>
@@ -422,7 +568,7 @@ selections with no wrapper.
 | 1 | wrapper-schema | ✓ | ✓ |
 | 2 | codex-writer-routes | ✓ | ✓ |
 | 3 | claude-writer-routes | ✓ | ✓ |
-| 4 | route-composition | | |
+| 4 | route-composition | ✓ | ✓ |
 | 5 | cli-route-surface | | |
 | 6 | switch-advisories | | |
 | 7 | usage-route-metadata | | |
