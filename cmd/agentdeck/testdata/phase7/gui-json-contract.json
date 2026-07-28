@@ -2000,7 +2000,8 @@
               "provider_cost": "string",
               "sessions": "number",
               "share": "string",
-              "tokens": "number"
+              "tokens": "number",
+              "wrapper_events": "number"
             }
           ],
           "range": {

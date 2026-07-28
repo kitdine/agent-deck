@@ -297,6 +297,16 @@ personal -> aigocode-personal-ref
   无法归属的 event 进入明确的 `unknown` bucket；同名 provider 不跨 Codex/Claude 合并，
   `--provider unknown` 只选择该 bucket。provider filter 在内存派生后收窄整个报告；工具
   activity 没有 run binding，因此过滤时仅按 session-start snapshot 做 session 级近似。
+  **路由是上报元数据，不是分组键**：经 wrapper 的 event 与直连 event 同属一个
+  provider 行，`--provider <name>` 两者都选中，经代理的订阅流量仍记在 `official`
+  且 multiplier 仍为 `1`。provider 行附加可选 JSON 字段 `wrapper_events`（该 provider
+  下经 wrapper 的 event 数），没有 wrapper 时该字段整个不出现，text 的 `PROVIDERS`
+  行也不加任何后缀；有 wrapper 时 text 在该行明细后追加 `N via wrapper`。路由与
+  provider 始终取自同一时刻：estimated event 用 session-start snapshot（provider 本来
+  就来自它），exact run-bound event 用 **run 起始时刻**的 snapshot——run 记录了
+  provider 名却没记录路由，按 run 起始取快照才能保证会话中途换路由时不会报错方向。
+  若该时刻的 snapshot 指向另一个 provider（run 跨越了一次 provider 切换），该 event
+  的路由不上报，宁可少报也不把路由算到别的 provider 头上。
   默认 text 使用响应式 Balanced 报告：
   compact KPI、比例条 Trend、同时显示 token/share/known cost/pricing status/session/tool
   摘要的 `MODELS`、client 占比、紧随其后的 `PROVIDERS` 排名、按 model/session 的

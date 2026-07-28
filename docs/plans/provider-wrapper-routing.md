@@ -730,6 +730,81 @@ Files: `internal/store/providers.go`, `internal/usage/usage.go`.
 Acceptance: every existing stats and summary contract is unchanged for
 selections with no wrapper.
 
+Done (2026-07-27): the route reaches attribution as one additive count on the
+provider dimension, `StatsDimension.WrapperEvents` (`wrapper_events`,
+omitempty), and nothing else. The route and the provider always come from the
+same instant: an estimated event takes both from the session-start snapshot
+that already chose its provider, and an exact run-bound event — whose run
+records a provider name but no route — takes its route from the snapshot at
+the **run start**, the moment the run pinned that provider. If the snapshot at
+that instant names a different provider (the run spanned a provider switch),
+the route is left unreported instead of guessed: under-reporting is
+recoverable, mis-attributing a route is not. The grouping
+key is untouched: the provider dimension still keys on client plus provider
+name, so wrapped and direct events share one row, `--provider <name>` selects
+both, and wrapped `official` traffic stays under `official` at multiplier `1`.
+`internal/store/providers.go` needed no change — `ProviderSnapshot.ViaWrapper`
+and `SnapshotAt` already carried the route from `wrapper-schema`. Text follows
+the same additive rule: `PROVIDERS` rows gain a `N via wrapper` secondary only
+when a wrapper carried events, so a report with no wrapper renders exactly as
+before. `Summary` has no provider dimension and is unchanged.
+
+Review Round 1 (2026-07-27) and its fix round: the review reproduced a case the
+first cut got wrong — a session spanning a route change on one provider. The
+route was read from the session start while the provider came from the run, so
+a session that opened wrapped and ran direct **over-reported**, contradicting
+the "under-report only" guarantee the code claimed. Fixed by selecting
+`usage_runs.started_at` into `storedEvent.runStart` and reading an exact
+event's route there. The review also found the route cost a second
+`SnapshotAt` per event (a linear scan over operations and selections), doubling
+the timeline work and adding it to exact events that previously did none;
+`priceForEvent` now returns one `eventAttribution` carrying price, multiplier,
+quality, provider, and route, so the aggregation reuses what it already
+resolved and every event costs at most one lookup.
+
+Verification: new `internal/usage/route_metadata_test.go` (one row spanning
+both routes with only the count distinguishing them; `--provider` selecting
+both routes; wrapped `official` staying one row at multiplier `1`;
+`wrapper_events` absent from every dimension's JSON when no wrapper is in play;
+both directions of a session that spans a route change, each confirmed to fail
+when the route is read from the session start again; and the deliberate
+under-report when a run and the snapshot at its start name different providers)
+plus `cmd/agentdeck/usage_route_text_test.go`, which
+asserts the text annotation appears only with wrapped events and that removing
+it recovers the original rendering byte for byte. Plus
+`go test -mod=vendor ./...` and `go vet -mod=vendor ./...` after the final edit.
+
+The golden's `usage.stats` provider element gained `wrapper_events: "number"`.
+That is the fix confirming itself end to end: the flow's `provider use phase7
+--via` now reaches an exact run-bound event through the run-start snapshot,
+where the first cut — reading the session start, which predates the switch —
+reported nothing. `TZ=UTC go test ./cmd/agentdeck/` passes with that one entry
+updated, contract comparison included.
+
+Review Rounds 1-2 (2026-07-27): Round 1 found the route-precision defect and
+the duplicated timeline scan recorded above; Round 2 confirmed both closed,
+re-derived the scan alignment of both event queries, checked the
+`eventAttribution` refactor for semantic drift, and reproduced the `TZ=UTC`
+pass with `-count=1`. `Review` ticked. Two nits recorded, neither actionable.
+See `docs/reviews/provider-wrapper-routing/usage-route-metadata.md`.
+
+Diagnosis of the two long-standing `./cmd/agentdeck` failures (recorded here
+because they sit in this task's area and were repeatedly excluded as
+"pre-existing"): they are **timezone-dependent test fixtures, not product
+bugs**. `usage sessions` in the end-to-end flow reports the synthetic event at
+`2026-07-14T00:00:01Z`, but `usage stats --from 2026-07-14` resolves the range
+in the machine's local zone, so on a `America/Los_Angeles` host the window
+starts at `2026-07-14T07:00:00Z` and excludes it, leaving every dimension
+empty. Running `TZ=UTC go test ./cmd/agentdeck/ -run
+'TestIsolatedEndToEndFlow|TestSessionShowActivityReadsOnlySafeMetadataOnDemand'`
+passes both. The provider dimension and the `--provider` filter are not
+implicated. The `TZ=UTC` run is stronger evidence than "the fixture could be
+regenerated": `TestIsolatedEndToEndFlow` ends in `assertCommandContracts`, so
+passing under `TZ=UTC` proves the committed golden — including the `provider.*`
+entries merged by hand during `cli-route-surface` — already matches observed
+output exactly, and that the earlier refusal to bake the empty `usage.stats`
+entry into it was right. Fixing the fixtures is a separate task, not this one.
+
 ## Out of Scope
 
 - Account, plan, or subscription switching, and any OAuth token handling. The
@@ -758,7 +833,7 @@ selections with no wrapper.
 | 4 | route-composition | ✓ | ✓ |
 | 5 | cli-route-surface | ✓ | ✓ |
 | 6 | switch-advisories | ✓ | ✓ |
-| 7 | usage-route-metadata | | |
+| 7 | usage-route-metadata | ✓ | ✓ |
 
 Done: **3/7 reviewed.** The implementer ticks **Dev** once a task is built and
 its targeted verification passes; an independent reviewer ticks **Review** once
