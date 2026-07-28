@@ -59,6 +59,10 @@ type Provider struct {
 	UpdatedAt       *time.Time            `json:"updated_at,omitempty"`
 	BuiltIn         bool                  `json:"built_in,omitempty"`
 	Authentication  string                `json:"authentication,omitempty"`
+	// WrapperURL is provider-owned rather than credential-owned, so it is
+	// reported here and never on a credential. It is empty when the provider
+	// has no wrapper configured, which is also the state --clear restores.
+	WrapperURL string `json:"wrapper_url,omitempty"`
 }
 
 type DefinitionResult struct {
@@ -76,6 +80,13 @@ type ActiveSelection struct {
 	Client     string `json:"client"`
 	Credential string `json:"credential,omitempty"`
 	SelectedAt string `json:"selected_at"`
+	// ViaWrapper and Endpoint report the route the recorded switch actually
+	// wrote. Once written, a wrapped and a direct selection are
+	// indistinguishable in the client file, so the snapshot is the only place
+	// the route survives. Endpoint is empty for a direct built-in-provider
+	// selection, which writes no endpoint at all.
+	ViaWrapper bool   `json:"via_wrapper"`
+	Endpoint   string `json:"endpoint,omitempty"`
 }
 
 type CurrentSelection struct {
@@ -83,6 +94,8 @@ type CurrentSelection struct {
 	Provider   string `json:"provider"`
 	Credential string `json:"credential,omitempty"`
 	SelectedAt string `json:"selected_at"`
+	ViaWrapper bool   `json:"via_wrapper"`
+	Endpoint   string `json:"endpoint,omitempty"`
 }
 
 const OfficialProviderName = "official"
@@ -458,8 +471,12 @@ func (s Service) List(ctx context.Context) ([]DefinitionResult, error) {
 	if err != nil {
 		return nil, err
 	}
+	official, err := s.officialDefinition(ctx)
+	if err != nil {
+		return nil, err
+	}
 	providers := make([]DefinitionResult, 0, len(stored)+1)
-	providers = append(providers, DefinitionResult{Definition: officialProvider()})
+	providers = append(providers, DefinitionResult{Definition: official})
 	for _, definition := range stored {
 		providers = append(providers, DefinitionResult{Definition: storedProvider(definition)})
 	}
@@ -468,13 +485,54 @@ func (s Service) List(ctx context.Context) ([]DefinitionResult, error) {
 
 func (s Service) Show(ctx context.Context, name string) (DefinitionResult, error) {
 	if name == OfficialProviderName {
-		return DefinitionResult{Definition: officialProvider()}, nil
+		official, err := s.officialDefinition(ctx)
+		return DefinitionResult{Definition: official}, err
 	}
 	definition, err := s.Store.ProviderByName(ctx, name)
 	if err != nil {
 		return DefinitionResult{}, err
 	}
 	return DefinitionResult{Definition: storedProvider(definition)}, nil
+}
+
+// officialDefinition describes the built-in provider with the only state
+// AgentDeck stores for it: its optional wrapper URL. Reading it here keeps
+// the wrapper reported the same way for every provider, without giving the
+// built-in provider a stored definition row.
+func (s Service) officialDefinition(ctx context.Context) (Provider, error) {
+	definition := officialProvider()
+	wrapperURL, err := s.Store.OfficialWrapperURL(ctx)
+	if err != nil {
+		return Provider{}, err
+	}
+	definition.WrapperURL = wrapperURL
+	return definition, nil
+}
+
+// SetWrapper stores or clears a provider's wrapper URL. clear is a separate
+// argument rather than an empty url, because "" is the stored value that
+// means "no wrapper" and NormalizeWrapperURL rejects it as an endpoint, so a
+// caller that means to clear must say so instead of relying on a lookup that
+// happened to come back empty.
+func (s Service) SetWrapper(ctx context.Context, name, url string, clear bool) (DefinitionResult, error) {
+	stored := ""
+	if !clear {
+		normalized, err := NormalizeWrapperURL(url)
+		if err != nil {
+			return DefinitionResult{}, err
+		}
+		stored = normalized
+	}
+	if name == OfficialProviderName {
+		if err := s.Store.SetOfficialWrapperURL(ctx, stored); err != nil {
+			return DefinitionResult{}, err
+		}
+		return s.Show(ctx, name)
+	}
+	if _, err := s.Store.SetProviderWrapper(ctx, name, stored); err != nil {
+		return DefinitionResult{}, err
+	}
+	return s.Show(ctx, name)
 }
 
 func (s Service) Status(ctx context.Context) ([]Status, error) {
@@ -508,7 +566,12 @@ func (s Service) Status(ctx context.Context) ([]Status, error) {
 			if snapshot.Name != definition.Name {
 				continue
 			}
-			active := ActiveSelection{Client: string(client), SelectedAt: snapshot.SelectedAt.Format(time.RFC3339Nano)}
+			active := ActiveSelection{
+				Client:     string(client),
+				SelectedAt: snapshot.SelectedAt.Format(time.RFC3339Nano),
+				ViaWrapper: snapshot.ViaWrapper,
+				Endpoint:   snapshot.Endpoint,
+			}
 			if !definition.BuiltIn {
 				active.Credential = snapshot.Credential
 			}
@@ -535,6 +598,8 @@ func (s Service) Current(ctx context.Context) ([]CurrentSelection, error) {
 			Client:     string(client),
 			Provider:   snapshot.Name,
 			SelectedAt: snapshot.SelectedAt.Format(time.RFC3339Nano),
+			ViaWrapper: snapshot.ViaWrapper,
+			Endpoint:   snapshot.Endpoint,
 		}
 		if !snapshot.Official {
 			selection.Credential = snapshot.Credential
@@ -891,5 +956,6 @@ func storedProvider(definition store.Provider) Provider {
 		CredentialCount: len(definition.Credentials),
 		CreatedAt:       &createdAt,
 		UpdatedAt:       &updatedAt,
+		WrapperURL:      definition.WrapperURL,
 	}
 }

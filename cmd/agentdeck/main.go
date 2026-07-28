@@ -443,9 +443,17 @@ func applyHelpCatalog(root *cobra.Command) {
 			example: "  agentdeck provider remove aigocode",
 		},
 		"provider use": {
-			short:   "Switch a client to a provider",
-			long:    argumentHelp("Switch a client to a provider and named credential, inferring unique choices. Codex official sets [model_providers.custom].name to official and removes the custom base URL and bearer token.", "  name  Existing provider name."),
-			example: "  agentdeck provider use aigocode --client codex --credential work",
+			short: "Switch a client to a provider",
+			long:  argumentHelp("Switch a client to a provider and named credential, inferring unique choices. Codex official sets [model_providers.custom].name to official and removes the custom base URL and bearer token. --via writes the provider's configured wrapper URL as the endpoint for this switch only; the credential written is unchanged either way, and the effective route is reported on stderr.", "  name  Existing provider name, or official for the built-in provider."),
+			example: "  agentdeck provider use aigocode --client codex --credential work\n" +
+				"  agentdeck provider use aigocode --client codex --via\n" +
+				"  agentdeck provider use official --client claude",
+		},
+		"provider set-wrapper": {
+			short: "Set or clear a provider's wrapper URL",
+			long:  argumentHelp("Store one wrapper URL per provider, including official. The URL is normalized like a Codex-bound credential endpoint, so a final /v1 is removed; Codex adds it back and Claude uses the base unchanged. Storing a wrapper never routes a switch by itself: only 'provider use --via' writes it. Exactly one of --url and --clear is required.", "  name  Existing provider name, or official for the built-in provider."),
+			example: "  agentdeck provider set-wrapper aigocode --url https://127.0.0.1:8788\n" +
+				"  agentdeck provider set-wrapper aigocode --clear",
 		},
 		"credential list": {short: "List credential readiness without revealing values", long: argumentHelp("List named credential metadata and readiness.", "  provider  Optional provider filter."), example: "  agentdeck credential list aigocode --client codex"},
 		"credential show": {short: "Show one named credential", long: argumentHelp("Show non-secret metadata and readiness for a named credential.", "  provider  Existing provider name."), example: "  agentdeck credential show aigocode --credential work"},
@@ -659,6 +667,7 @@ func newProviderCommand(opts *commandOptions) *cobra.Command {
 		}
 	}
 	var configPath, useClient, useCredential string
+	var useVia bool
 	use := &cobra.Command{Use: "use <name>", Args: cobra.ExactArgs(1), RunE: withService(func(ctx context.Context, s provider.Service, args []string) (any, error) {
 		client := provider.Client(useClient)
 		if args[0] == provider.OfficialProviderName {
@@ -692,12 +701,35 @@ func newProviderCommand(opts *commandOptions) *cobra.Command {
 			}
 			s.Home = home
 		}
-		err := s.UseCredential(ctx, args[0], client, useCredential, configPath, "", false)
-		return withTextResource(nil, args[0]), err
+		if err := s.UseCredential(ctx, args[0], client, useCredential, configPath, "", useVia); err != nil {
+			return nil, err
+		}
+		reportEffectiveRoute(ctx, s, opts, client)
+		return withTextResource(nil, args[0]), nil
 	})}
 	use.Flags().StringVar(&configPath, "config-path", "", "Override the automatically resolved client configuration path")
 	use.Flags().StringVar(&useClient, "client", "", "Client to switch: codex or claude")
 	use.Flags().StringVar(&useCredential, "credential", "", "Credential shorthand, not the generated reference")
+	use.Flags().BoolVar(&useVia, "via", false, "Route this switch through the provider's configured wrapper URL")
+	var wrapperURL string
+	var clearWrapper bool
+	var setWrapper *cobra.Command
+	setWrapper = &cobra.Command{Use: "set-wrapper <name>", Args: cobra.ExactArgs(1), RunE: withService(func(ctx context.Context, s provider.Service, args []string) (any, error) {
+		urlGiven := setWrapper.Flags().Changed("url")
+		if urlGiven == clearWrapper {
+			if clearWrapper {
+				return nil, &inputError{err: fmt.Errorf("--url and --clear are mutually exclusive")}
+			}
+			return nil, &inputError{err: fmt.Errorf("--url or --clear is required")}
+		}
+		result, err := s.SetWrapper(ctx, args[0], wrapperURL, clearWrapper)
+		if err != nil {
+			return nil, err
+		}
+		return withTextResource(result.Definition, args[0]), nil
+	})}
+	setWrapper.Flags().StringVar(&wrapperURL, "url", "", "Wrapper base URL; a final /v1 is removed like a Codex-bound endpoint")
+	setWrapper.Flags().BoolVar(&clearWrapper, "clear", false, "Remove the provider's wrapper URL")
 	var endpoint, clientsValue, multiplierValue, credentialName string
 	add := &cobra.Command{Use: "add <name>", Args: cobra.ExactArgs(1), RunE: withService(func(ctx context.Context, s provider.Service, args []string) (any, error) {
 		clients, err := parseClients(clientsValue)
@@ -786,10 +818,42 @@ func newProviderCommand(opts *commandOptions) *cobra.Command {
 			return s.Show(ctx, args[0])
 		})},
 		add, update, remove,
-		use,
+		use, setWrapper,
 		&cobra.Command{Use: "recover", Args: cobra.NoArgs, RunE: withService(func(ctx context.Context, s provider.Service, _ []string) (any, error) { return s.Recover(ctx) })},
 	)
 	return providerCmd
+}
+
+// reportEffectiveRoute prints the route a completed switch actually wrote to
+// stderr, because --via and a direct switch are indistinguishable in the
+// client file once written. It reads the recorded selection rather than the
+// requested flag so the line describes what was written, not what was asked
+// for. The line is informational: it never changes the exit status, never
+// enters the JSON envelope on stdout, and a read-back failure drops the line
+// instead of failing a switch that already succeeded.
+func reportEffectiveRoute(ctx context.Context, s provider.Service, opts *commandOptions, client provider.Client) {
+	if opts.quiet || opts.stderr == nil {
+		return
+	}
+	selections, err := s.Current(ctx)
+	if err != nil {
+		return
+	}
+	for _, selection := range selections {
+		if selection.Client != string(client) {
+			continue
+		}
+		route := "direct"
+		if selection.ViaWrapper {
+			route = "via wrapper"
+		}
+		if selection.Endpoint == "" {
+			_, _ = fmt.Fprintf(opts.stderr, "effective route: %s %s, no endpoint written\n", selection.Client, route)
+			return
+		}
+		_, _ = fmt.Fprintf(opts.stderr, "effective route: %s %s, endpoint %s\n", selection.Client, route, selection.Endpoint)
+		return
+	}
 }
 
 func parseClients(value string) ([]provider.Client, error) {
@@ -2118,7 +2182,7 @@ func renderMutationText(w io.Writer, command, resource string) error {
 
 func isMutationCommand(command string) bool {
 	switch command {
-	case "provider.add", "provider.update", "provider.remove", "provider.use",
+	case "provider.add", "provider.update", "provider.remove", "provider.use", "provider.set-wrapper",
 		"credential.add", "credential.update", "credential.remove",
 		"usage.scan", "usage.rebuild", "price.update", "price.override",
 		"session.scan", "session.exclude", "session.rebuild", "session.purge-index",
@@ -2152,9 +2216,9 @@ func renderCommandText(w io.Writer, command string, data any) error {
 			for _, client := range definition.Clients {
 				clients = append(clients, client.Client)
 			}
-			rows = append(rows, []string{definition.Name, kind, strings.Join(clients, ","), strconv.Itoa(definition.CredentialCount)})
+			rows = append(rows, []string{definition.Name, kind, strings.Join(clients, ","), strconv.Itoa(definition.CredentialCount), textOrDash(definition.WrapperURL)})
 		}
-		return output.WriteASCIITable(w, []string{"NAME", "TYPE", "CLIENTS", "CREDENTIALS"}, rows)
+		return output.WriteASCIITable(w, []string{"NAME", "TYPE", "CLIENTS", "CREDENTIALS", "WRAPPER"}, rows)
 	case "provider.show":
 		value, ok := data.(provider.DefinitionResult)
 		if !ok {
@@ -2185,9 +2249,9 @@ func renderCommandText(w io.Writer, command string, data any) error {
 			if credential == "" {
 				credential = "-"
 			}
-			rows = append(rows, []string{item.Client, item.Provider, credential, item.SelectedAt})
+			rows = append(rows, []string{item.Client, item.Provider, credential, item.SelectedAt, routeLabel(item.ViaWrapper), textOrDash(item.Endpoint)})
 		}
-		return output.WriteASCIITable(w, []string{"CLIENT", "PROVIDER", "CREDENTIAL", "SELECTED AT"}, rows)
+		return output.WriteASCIITable(w, []string{"CLIENT", "PROVIDER", "CREDENTIAL", "SELECTED AT", "ROUTE", "ENDPOINT"}, rows)
 	case "provider.recover":
 		value, ok := data.([]store.Operation)
 		if !ok {
@@ -2379,11 +2443,32 @@ func renderProviderDetail(w io.Writer, value provider.Provider) error {
 	if _, err := fmt.Fprintf(w, "name: %s\ntype: %s\nclients: %s\ncredentials: %d\n", value.Name, kind, textList(clients), value.CredentialCount); err != nil {
 		return err
 	}
+	if value.WrapperURL != "" {
+		if _, err := fmt.Fprintf(w, "wrapper: %s\n", value.WrapperURL); err != nil {
+			return err
+		}
+	}
 	if value.Authentication != "" {
 		_, err := fmt.Fprintf(w, "authentication: %s\n", value.Authentication)
 		return err
 	}
 	return nil
+}
+
+// routeLabel names the route a recorded selection took. The two labels are
+// the same words the effective-route line uses on a switch.
+func routeLabel(viaWrapper bool) string {
+	if viaWrapper {
+		return "via wrapper"
+	}
+	return "direct"
+}
+
+func textOrDash(value string) string {
+	if value == "" {
+		return "-"
+	}
+	return value
 }
 
 func renderProviderStatuses(w io.Writer, values []provider.Status) error {
@@ -2440,18 +2525,20 @@ func renderProviderStatus(w io.Writer, value provider.Status) error {
 	rows := make([][]string, 0, 2)
 	for _, client := range []provider.Client{provider.ClientCodex, provider.ClientClaude} {
 		active, credential, selectedAt := "false", "-", "-"
+		route, endpoint := "-", "-"
 		for _, selection := range value.Active {
 			if selection.Client != string(client) {
 				continue
 			}
 			active, selectedAt = "true", selection.SelectedAt
+			route, endpoint = routeLabel(selection.ViaWrapper), textOrDash(selection.Endpoint)
 			if selection.Credential != "" {
 				credential = selection.Credential
 			}
 		}
-		rows = append(rows, []string{string(client), active, credential, selectedAt})
+		rows = append(rows, []string{string(client), active, credential, selectedAt, route, endpoint})
 	}
-	return output.WriteASCIITable(w, []string{"CLIENT", "ACTIVE", "CREDENTIAL", "SELECTED AT"}, rows)
+	return output.WriteASCIITable(w, []string{"CLIENT", "ACTIVE", "CREDENTIAL", "SELECTED AT", "ROUTE", "ENDPOINT"}, rows)
 }
 
 func renderSessionMetadata(w io.Writer, values []session.Metadata) error {

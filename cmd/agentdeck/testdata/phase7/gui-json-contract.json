@@ -46,6 +46,7 @@
     "provider.list",
     "provider.recover",
     "provider.remove",
+    "provider.set-wrapper",
     "provider.show",
     "provider.status",
     "provider.update",
@@ -1026,8 +1027,10 @@
           {
             "client": "string",
             "credential": "string",
+            "endpoint": "string",
             "provider": "string",
-            "selected_at": "string"
+            "selected_at": "string",
+            "via_wrapper": "boolean"
           }
         ],
         "generated_at": "string",
@@ -1082,7 +1085,8 @@
               "credential_count": "number",
               "id": "number",
               "name": "string",
-              "updated_at": "string"
+              "updated_at": "string",
+              "wrapper_url": "string"
             }
           }
         ],
@@ -1167,6 +1171,44 @@
       "error_code": "invalid_argument",
       "error_command": "provider.remove"
     },
+    "provider.set-wrapper": {
+      "success_schema": {
+        "command": "string",
+        "data": {
+          "clients": [
+            {
+              "client": "string",
+              "native_model": "string",
+              "provider_model": "string"
+            }
+          ],
+          "created_at": "string",
+          "credential_count": "number",
+          "id": "number",
+          "name": "string",
+          "updated_at": "string",
+          "wrapper_url": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "provider.set-wrapper"
+    },
     "provider.show": {
       "success_schema": {
         "command": "string",
@@ -1183,7 +1225,8 @@
             "credential_count": "number",
             "id": "number",
             "name": "string",
-            "updated_at": "string"
+            "updated_at": "string",
+            "wrapper_url": "string"
           }
         },
         "generated_at": "string",
@@ -1211,6 +1254,55 @@
         "command": "string",
         "data": [
           {
+            "active": [
+              {
+                "client": "string",
+                "credential": "string",
+                "endpoint": "string",
+                "selected_at": "string",
+                "via_wrapper": "boolean"
+              }
+            ],
+            "credentials": [
+              {
+                "clients": [
+                  "string"
+                ],
+                "endpoint": "string",
+                "multiplier": "string",
+                "name": "string",
+                "present": "boolean",
+                "provider": "string",
+                "reference": "string"
+              }
+            ],
+            "definition": {
+              "clients": [
+                {
+                  "client": "string",
+                  "native_model": "string",
+                  "provider_model": "string"
+                }
+              ],
+              "created_at": "string",
+              "credential_count": "number",
+              "id": "number",
+              "name": "string",
+              "updated_at": "string",
+              "wrapper_url": "string"
+            },
+            "ready": "boolean"
+          },
+          {
+            "active": [
+              {
+                "client": "string",
+                "credential": "string",
+                "endpoint": "string",
+                "selected_at": "string",
+                "via_wrapper": "boolean"
+              }
+            ],
             "credentials": [
               {
                 "clients": [
@@ -1292,7 +1384,8 @@
           "credential_count": "number",
           "id": "number",
           "name": "string",
-          "updated_at": "string"
+          "updated_at": "string",
+          "wrapper_url": "string"
         },
         "generated_at": "string",
         "partial": "boolean",

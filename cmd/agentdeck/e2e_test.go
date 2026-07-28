@@ -76,6 +76,10 @@ func TestIsolatedEndToEndFlow(t *testing.T) {
 	runJSON("provider.add", "phase7-e2e-secret\n", "provider", "add", "phase7", "--endpoint", "https://example.invalid", "--clients", "codex")
 	runJSON("provider.add", "disposable-secret\n", "provider", "add", "disposable", "--endpoint", "https://example.invalid", "--clients", "codex")
 	runJSON("provider.remove", "", "provider", "remove", "disposable")
+	// Set the wrapper before the definition reads so their captured schemas
+	// carry the additive wrapper_url field; the route fields on a selection
+	// are captured by the second provider.status call after the switches.
+	runJSON("provider.set-wrapper", "", "provider", "set-wrapper", "phase7", "--url", "https://wrapper.invalid")
 	providerList := runJSON("provider.list", "", "provider", "list")
 	assertProviderDefinitionsExcludeCredentialMetadata(t, providerList)
 	providerStatus := runJSON("provider.status", "", "provider", "status")
@@ -100,7 +104,7 @@ func TestIsolatedEndToEndFlow(t *testing.T) {
 		t.Fatal(err)
 	}
 	runJSON("provider.recover", "", "provider", "recover")
-	runJSON("provider.use", "", "provider", "use", "phase7")
+	runJSON("provider.use", "", "provider", "use", "phase7", "--via")
 	claudeConfig := filepath.Join(home, ".claude", "settings.json")
 	if err := os.MkdirAll(filepath.Dir(claudeConfig), 0700); err != nil {
 		t.Fatal(err)
@@ -111,6 +115,9 @@ func TestIsolatedEndToEndFlow(t *testing.T) {
 	runJSON("provider.add", "phase7-claude-secret\n", "provider", "add", "phase7-claude", "--endpoint", "https://example.invalid", "--clients", "claude")
 	runJSON("provider.use", "", "provider", "use", "phase7-claude")
 	runJSON("provider.current", "", "provider", "current")
+	// Re-read status after both switches so the captured schema covers an
+	// active selection, including the route fields a selection carries.
+	assertProviderDefinitionsExcludeCredentialMetadata(t, runJSON("provider.status", "", "provider", "status"))
 	runResult := runJSON("run.codex", "", "run", "codex", "--", "phase7")
 	var runEnvelope struct {
 		Data struct {
