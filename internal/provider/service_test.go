@@ -203,7 +203,11 @@ func TestOfficialProviderIsBuiltInAndDefinitionReadsDoNotAccessSecrets(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(providers) != 1 || providers[0].Definition.Name != OfficialProviderName || !providers[0].Definition.BuiltIn || providers[0].Definition.Authentication != "codex_existing_login" || providers[0].Definition.CredentialCount != 0 || len(providers[0].Definition.Clients) != 1 || providers[0].Definition.Clients[0].Client != string(ClientCodex) {
+	officialClients := map[string]bool{}
+	for _, mapping := range providers[0].Definition.Clients {
+		officialClients[mapping.Client] = true
+	}
+	if len(providers) != 1 || providers[0].Definition.Name != OfficialProviderName || !providers[0].Definition.BuiltIn || providers[0].Definition.Authentication != "client_existing_login" || providers[0].Definition.CredentialCount != 0 || len(officialClients) != 2 || !officialClients[string(ClientCodex)] || !officialClients[string(ClientClaude)] {
 		t.Fatalf("providers = %#v", providers)
 	}
 	shown, err := service.Show(ctx, OfficialProviderName)
@@ -435,10 +439,10 @@ func TestNamedCredentialsCanShareClientsAndRequireExplicitSelectionWhenAmbiguous
 	if err = os.WriteFile(config, []byte("model='keep'\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err = service.UseCredential(ctx, "shared", ClientCodex, "", config, filepath.Join(root, "ambiguous.toml")); err == nil {
+	if err = service.UseCredential(ctx, "shared", ClientCodex, "", config, filepath.Join(root, "ambiguous.toml"), false); err == nil {
 		t.Fatal("ambiguous credential selection succeeded")
 	}
-	if err = service.UseCredential(ctx, "shared", ClientCodex, "work", config, filepath.Join(root, "work.toml")); err != nil {
+	if err = service.UseCredential(ctx, "shared", ClientCodex, "work", config, filepath.Join(root, "work.toml"), false); err != nil {
 		t.Fatal(err)
 	}
 	contents, err := os.ReadFile(config)
@@ -647,7 +651,7 @@ func TestUsedProviderRemovalDeletesLiveMetadataAndPreservesAttributionSnapshot(t
 	if err = os.WriteFile(config, []byte("model='keep'\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err = service.UseCredential(ctx, "used", ClientCodex, "work", config, filepath.Join(root, "backup.toml")); err != nil {
+	if err = service.UseCredential(ctx, "used", ClientCodex, "work", config, filepath.Join(root, "backup.toml"), false); err != nil {
 		t.Fatal(err)
 	}
 	if err = service.RemoveProvider(ctx, "used"); err != nil {
@@ -692,7 +696,7 @@ func TestServiceFailedProviderSelectionIsIsolatedAcrossClients(t *testing.T) {
 				}
 			}
 
-			useErr := fixture.service.UseCredential(context.Background(), "next", ClientCodex, "shared", fixture.codexConfig, filepath.Join(fixture.root, "next-codex.backup.toml"))
+			useErr := fixture.service.UseCredential(context.Background(), "next", ClientCodex, "shared", fixture.codexConfig, filepath.Join(fixture.root, "next-codex.backup.toml"), false)
 			if useErr == nil || !strings.Contains(useErr.Error(), "synthetic later selection failure") {
 				t.Fatalf("later Codex selection error = %v", useErr)
 			}
@@ -789,13 +793,13 @@ func TestFailedFinalSelectionOperationDoesNotReplaceCompletedCredentialAttributi
 	if err = os.WriteFile(config, []byte("model='keep'\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err = service.UseCredential(ctx, "example", ClientCodex, "default", config, filepath.Join(root, "default.backup")); err != nil {
+	if err = service.UseCredential(ctx, "example", ClientCodex, "default", config, filepath.Join(root, "default.backup"), false); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = database.Exec(ctx, `CREATE TRIGGER fail_completed_selection BEFORE INSERT ON provider_selections BEGIN SELECT RAISE(FAIL,'injected final selection failure'); END`); err != nil {
 		t.Fatal(err)
 	}
-	if err = service.UseCredential(ctx, "example", ClientCodex, "work", config, filepath.Join(root, "work.backup")); err == nil {
+	if err = service.UseCredential(ctx, "example", ClientCodex, "work", config, filepath.Join(root, "work.backup"), false); err == nil {
 		t.Fatal("selection unexpectedly completed")
 	}
 	snapshot, err := database.CurrentProviderSnapshot(ctx, "codex")
@@ -853,7 +857,7 @@ func TestProviderAddPlansAndAddsCredentialToExistingProvider(t *testing.T) {
 	if err = os.WriteFile(config, []byte("model='keep'\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err = service.UseCredential(ctx, "sssaicode", ClientCodex, "codex", config, filepath.Join(t.TempDir(), "backup.toml")); err != nil {
+	if err = service.UseCredential(ctx, "sssaicode", ClientCodex, "codex", config, filepath.Join(t.TempDir(), "backup.toml"), false); err != nil {
 		t.Fatal(err)
 	}
 	contents, err := os.ReadFile(config)
@@ -1047,10 +1051,10 @@ func newProviderSelectionIsolationFixture(t *testing.T) providerSelectionIsolati
 	if err = os.WriteFile(claudeConfig, []byte("{\"theme\":\"keep\"}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err = service.UseCredential(ctx, "stable", ClientClaude, "shared", claudeConfig, filepath.Join(root, "stable-claude.backup.json")); err != nil {
+	if err = service.UseCredential(ctx, "stable", ClientClaude, "shared", claudeConfig, filepath.Join(root, "stable-claude.backup.json"), false); err != nil {
 		t.Fatal(err)
 	}
-	if err = service.UseCredential(ctx, "stable", ClientCodex, "shared", codexConfig, filepath.Join(root, "stable-codex.backup.toml")); err != nil {
+	if err = service.UseCredential(ctx, "stable", ClientCodex, "shared", codexConfig, filepath.Join(root, "stable-codex.backup.toml"), false); err != nil {
 		t.Fatal(err)
 	}
 

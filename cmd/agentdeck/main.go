@@ -692,7 +692,7 @@ func newProviderCommand(opts *commandOptions) *cobra.Command {
 			}
 			s.Home = home
 		}
-		err := s.UseCredential(ctx, args[0], client, useCredential, configPath, "")
+		err := s.UseCredential(ctx, args[0], client, useCredential, configPath, "", false)
 		return withTextResource(nil, args[0]), err
 	})}
 	use.Flags().StringVar(&configPath, "config-path", "", "Override the automatically resolved client configuration path")

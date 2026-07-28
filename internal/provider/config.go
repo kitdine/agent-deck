@@ -76,6 +76,67 @@ func ConfigMatchesOfficialCodex(path string) (bool, error) {
 	return name == OfficialProviderName && !hasBaseURL && !hasBearerToken, nil
 }
 
+// ConfigMatchesOfficialClaude is the Claude counterpart of
+// ConfigMatchesOfficialCodex: it reports whether the settings carry neither
+// owned transport field, which is exactly what a direct built-in-provider
+// selection writes for Claude. An absent env object and an env object holding
+// only unowned keys both match, because AgentDeck owns no endpoint and no
+// credential under that selection.
+func ConfigMatchesOfficialClaude(path string) (bool, error) {
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		return false, err
+	}
+	var document map[string]any
+	if err := json.Unmarshal(contents, &document); err != nil {
+		return false, err
+	}
+	environment, _ := document["env"].(map[string]any)
+	_, hasBaseURL := environment["ANTHROPIC_BASE_URL"]
+	_, hasToken := environment["ANTHROPIC_AUTH_TOKEN"]
+	return !hasBaseURL && !hasToken, nil
+}
+
+// ConfigMatchesOfficialWrapper reports whether the client configuration carries
+// the built-in provider's wrapper endpoint and no credential, which is what a
+// --via built-in-provider selection writes. It is separate from the two direct
+// official matchers rather than folded into them through a possibly-empty
+// endpoint argument, because "no endpoint at all" and "exactly this wrapper
+// endpoint" are two different states to prove, not one comparison.
+func ConfigMatchesOfficialWrapper(client Client, path, endpoint string) (bool, error) {
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		return false, err
+	}
+	expected := strings.TrimRight(endpoint, "/")
+	if client == ClientCodex {
+		var document map[string]any
+		if err := toml.Unmarshal(contents, &document); err != nil {
+			return false, err
+		}
+		if document["model_provider"] != "custom" {
+			return false, nil
+		}
+		providers, _ := document["model_providers"].(map[string]any)
+		custom, _ := providers["custom"].(map[string]any)
+		name, _ := custom["name"].(string)
+		baseURL, _ := custom["base_url"].(string)
+		_, hasBearerToken := custom["experimental_bearer_token"]
+		return name == OfficialProviderName && strings.TrimRight(baseURL, "/") == expected+"/v1" && !hasBearerToken, nil
+	}
+	if client == ClientClaude {
+		var document map[string]any
+		if err := json.Unmarshal(contents, &document); err != nil {
+			return false, err
+		}
+		environment, _ := document["env"].(map[string]any)
+		baseURL, _ := environment["ANTHROPIC_BASE_URL"].(string)
+		_, hasToken := environment["ANTHROPIC_AUTH_TOKEN"]
+		return strings.TrimRight(baseURL, "/") == expected && !hasToken, nil
+	}
+	return false, fmt.Errorf("unsupported client %q", client)
+}
+
 type ClientConfig struct{ Name, Endpoint, Credential string }
 
 var (

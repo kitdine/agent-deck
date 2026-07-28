@@ -106,7 +106,12 @@ func NormalizeWrapperURL(value string) (string, error) {
 }
 
 // ConfigDrift counts selected clients whose native endpoint no longer matches
-// the recorded provider. It does not expose native configuration values.
+// the recorded provider. The comparison is per client and per route, because
+// each combination writes a different shape: a direct built-in-provider
+// selection restores that client's own transport, a --via selection writes the
+// wrapper endpoint with no credential, and a custom selection writes the
+// endpoint its snapshot recorded. It does not expose native configuration
+// values.
 func (s Service) ConfigDrift(ctx context.Context, home string) (int, error) {
 	drift := 0
 	for _, client := range []Client{ClientCodex, ClientClaude} {
@@ -124,9 +129,14 @@ func (s Service) ConfigDrift(ctx context.Context, home string) (int, error) {
 		}
 		var matches bool
 		var checkErr error
-		if snapshot.Official {
+		switch {
+		case snapshot.Official && snapshot.ViaWrapper:
+			matches, checkErr = ConfigMatchesOfficialWrapper(client, path, snapshot.Endpoint)
+		case snapshot.Official && client == ClientClaude:
+			matches, checkErr = ConfigMatchesOfficialClaude(path)
+		case snapshot.Official:
 			matches, checkErr = ConfigMatchesOfficialCodex(path)
-		} else {
+		default:
 			matches, checkErr = ConfigMatchesEndpoint(client, path, snapshot.Endpoint)
 		}
 		if checkErr != nil || !matches {
@@ -535,10 +545,15 @@ func (s Service) Current(ctx context.Context) ([]CurrentSelection, error) {
 }
 
 func (s Service) Use(ctx context.Context, name string, client Client, configPath, backupPath string) error {
-	return s.UseCredential(ctx, name, client, "", configPath, backupPath)
+	return s.UseCredential(ctx, name, client, "", configPath, backupPath, false)
 }
 
-func (s Service) UseCredential(ctx context.Context, name string, client Client, credentialName, configPath, backupPath string) error {
+// UseCredential switches a client's configuration. via chooses the route: the
+// selected provider's wrapper URL becomes the written endpoint field when
+// true, the credential's own endpoint (or, for official, no endpoint at all)
+// otherwise. The selected credential alone decides the credential field in
+// both cases; a wrapper never changes which secret is written.
+func (s Service) UseCredential(ctx context.Context, name string, client Client, credentialName, configPath, backupPath string, via bool) error {
 	var (
 		definition             *store.Provider
 		credential             string
@@ -551,8 +566,8 @@ func (s Service) UseCredential(ctx context.Context, name string, client Client, 
 		return fmt.Errorf("%w: client", ErrInvalidProvider)
 	}
 	if name == OfficialProviderName {
-		if client != ClientCodex {
-			return fmt.Errorf("%w: provider does not support client", ErrInvalidProvider)
+		if credentialName != "" {
+			return fmt.Errorf("%w: official does not accept a credential", ErrInvalidProvider)
 		}
 	} else {
 		stored, lookupErr := s.Store.ProviderByName(ctx, name)
@@ -613,6 +628,35 @@ func (s Service) UseCredential(ctx context.Context, name string, client Client, 
 		selectedCredentialName = selected.Name
 		selectedCredential = selected
 	}
+	var writtenEndpoint string
+	if via {
+		wrapperURL := ""
+		if name == OfficialProviderName {
+			officialWrapper, wrapperErr := s.Store.OfficialWrapperURL(ctx)
+			if wrapperErr != nil {
+				return wrapperErr
+			}
+			wrapperURL = officialWrapper
+		} else {
+			wrapperURL = definition.WrapperURL
+		}
+		if wrapperURL == "" {
+			return fmt.Errorf("%w: provider has no configured wrapper", ErrInvalidProvider)
+		}
+		writtenEndpoint = wrapperURL
+	} else if definition != nil {
+		writtenEndpoint = selectedCredential.Endpoint
+	}
+	// A custom provider must supply both owned fields. The writers read an
+	// empty ClientConfig field as "remove this owned key", so an endpoint or
+	// secret that came back empty would silently downgrade the switch to a
+	// deletion instead of failing. Credential creation and update already
+	// reject both (AddProviderWithCredential, UpdateNamedCredential), so this
+	// only fires on a row that reached the database another way — but it fires
+	// before any operation, backup, or client write, not after.
+	if definition != nil && (writtenEndpoint == "" || credential == "") {
+		return fmt.Errorf("%w: credential is missing an endpoint or secret", ErrInvalidProvider)
+	}
 	opID, err := operationID()
 	if err != nil {
 		return err
@@ -655,15 +699,30 @@ func (s Service) UseCredential(ctx context.Context, name string, client Client, 
 		return s.failOperation(ctx, opID, "config_fingerprint_conflict", fmt.Errorf("config_fingerprint_conflict"))
 	}
 	if name == OfficialProviderName {
-		err = WriteOfficialCodexConfig(configPath)
-	} else if client == ClientCodex {
-		config := ClientConfig{Name: definition.Name, Endpoint: selectedCredential.Endpoint, Credential: credential}
-		err = WriteCodexConfig(configPath, config)
-	} else if client == ClientClaude {
-		config := ClientConfig{Name: definition.Name, Endpoint: selectedCredential.Endpoint, Credential: credential}
-		err = WriteClaudeConfig(configPath, config)
+		if client == ClientCodex {
+			if via {
+				err = WriteCodexWrapperConfig(configPath, OfficialProviderName, writtenEndpoint)
+			} else {
+				err = WriteOfficialCodexConfig(configPath)
+			}
+		} else if client == ClientClaude {
+			if via {
+				err = WriteClaudeConfig(configPath, ClientConfig{Endpoint: writtenEndpoint})
+			} else {
+				err = WriteClaudeConfig(configPath, ClientConfig{})
+			}
+		} else {
+			err = fmt.Errorf("%w: client", ErrInvalidProvider)
+		}
 	} else {
-		err = fmt.Errorf("%w: client", ErrInvalidProvider)
+		config := ClientConfig{Name: definition.Name, Endpoint: writtenEndpoint, Credential: credential}
+		if client == ClientCodex {
+			err = WriteCodexConfig(configPath, config)
+		} else if client == ClientClaude {
+			err = WriteClaudeConfig(configPath, config)
+		} else {
+			err = fmt.Errorf("%w: client", ErrInvalidProvider)
+		}
 	}
 	if err != nil {
 		return s.failOperation(ctx, opID, "config_write_failed", err)
@@ -671,10 +730,9 @@ func (s Service) UseCredential(ctx context.Context, name string, client Client, 
 	if err := s.Store.UpdateOperation(ctx, opID, "external_written", ""); err != nil {
 		return s.failOperation(ctx, opID, "external_written_transition_failed", err)
 	}
-	selection := store.Selection{Client: string(client), ProviderName: name, MultiplierSnapshot: "1", CredentialID: credentialID, CredentialName: selectedCredentialName, OperationID: opID}
+	selection := store.Selection{Client: string(client), ProviderName: name, MultiplierSnapshot: "1", CredentialID: credentialID, CredentialName: selectedCredentialName, OperationID: opID, EndpointSnapshot: writtenEndpoint, ViaWrapper: via}
 	if definition != nil {
 		selection.ProviderID = definition.ID
-		selection.EndpointSnapshot = selectedCredential.Endpoint
 		selection.MultiplierSnapshot = selectedCredential.Multiplier
 	}
 	if err := s.Store.CompleteProviderUse(ctx, opID, selection); err != nil {
@@ -810,12 +868,17 @@ func mappings(definition Definition) []store.ClientMapping {
 	return mappings
 }
 
+// officialProvider describes the immutable built-in provider. It is selectable
+// for both clients and holds no endpoint, credential reference, or ciphertext,
+// so its authentication mode names the client's own login rather than any one
+// client's: Codex's OpenAI or ChatGPT login for Codex, Claude's subscription
+// login for Claude.
 func officialProvider() Provider {
 	return Provider{
 		Name:           OfficialProviderName,
-		Clients:        []store.ClientMapping{{Client: string(ClientCodex)}},
+		Clients:        []store.ClientMapping{{Client: string(ClientCodex)}, {Client: string(ClientClaude)}},
 		BuiltIn:        true,
-		Authentication: "codex_existing_login",
+		Authentication: "client_existing_login",
 	}
 }
 
