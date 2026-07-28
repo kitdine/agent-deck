@@ -108,9 +108,17 @@ agentdeck provider use official --client claude --via
 agentdeck provider set-wrapper aigocode --clear
 ```
 
-### Claude 切换提示（stderr）
+### 客户端切换提示（stderr）
 
-Claude 切换成功后，除 effective route 外还会在 stderr 打印提示行，前缀 `advisory:`：
+切换成功后，除 effective route 外还会在 stderr 打印客户端对应的提示行，前缀
+`advisory:`。
+
+- **Codex 生效提示（每次 Codex 切换都有）**：AgentDeck 只修改磁盘上的 Codex
+  配置文件，无法更新运行中 client 已经加载的配置。提示建议新建 Codex 会话或重启
+  正在运行的会话，以确保本次切换生效。它不声称 Codex 会实时重载 provider 配置，
+  也不套用下述 Claude 特有的实时读取或冲突凭据语义。
+
+Claude 切换还会打印：
 
 - **重启提示（每次 Claude 切换都有）**：运行中的 Claude client 会实时读取
   `~/.claude/settings.json`，因此切换会在不重启的情况下影响正在进行的会话，并可能
@@ -121,9 +129,9 @@ Claude 切换成功后，除 effective route 外还会在 stderr 打印提示行
   造成冲突——只报告字段名和文件路径，**永远不打印字段值**，也**绝不删除**这些字段
   来让自己的选择"获胜"。哪些取值才算"配置了凭据"见下方检测边界。
 
-这些提示与 effective route 行遵循同一套规则：只走 stderr，不进入 stdout 的 JSON
-envelope，不改变 exit code，`--quiet` 下不输出。设置文件读不到或不是合法 JSON 时，
-只丢掉冲突提示，不会让已经成功的切换失败。
+所有提示与 effective route 行遵循同一套规则：只走 stderr，不进入 stdout 的 JSON
+envelope，不改变 exit code，`--quiet` 下不输出。Claude 设置文件读不到或不是合法
+JSON 时，只丢掉冲突提示，不会让已经成功的切换失败。
 
 **检测边界（没有提示 ≠ 没有冲突）**：
 

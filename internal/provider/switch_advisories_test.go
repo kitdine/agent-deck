@@ -81,16 +81,18 @@ func TestClaudeCredentialConflictsReportsBlankButNonEmptyValues(t *testing.T) {
 	}
 }
 
-// TestSwitchAdvisoriesAreClaudeOnlyAndScopeConflictsToOfficial pins which
-// advisories a completed switch carries. The restart note applies to every
-// Claude switch; the conflict note only to a built-in-provider selection,
+// TestSwitchAdvisoriesAreClientSpecificAndScopeConflictsToClaudeOfficial pins
+// advisories a completed switch carries. Codex gets its application-boundary
+// note. The Claude restart note applies to every Claude switch; the conflict
+// note only to a built-in-provider selection,
 // which is the selection an unowned credential source overrides.
-func TestSwitchAdvisoriesAreClaudeOnlyAndScopeConflictsToOfficial(t *testing.T) {
+func TestSwitchAdvisoriesAreClientSpecificAndScopeConflictsToClaudeOfficial(t *testing.T) {
 	settings := writeClaudeSettingsForTest(t, `{"env":{"ANTHROPIC_API_KEY":"synthetic-secret"},"apiKeyHelper":"/bin/echo helper"}`)
 	service := Service{}
 
-	if advisories := service.SwitchAdvisories(ClientCodex, OfficialProviderName, settings); advisories != nil {
-		t.Fatalf("codex switch advisories = %#v, want none", advisories)
+	if advisories := service.SwitchAdvisories(ClientCodex, OfficialProviderName, settings); len(advisories) != 1 ||
+		!strings.Contains(advisories[0], "start a new or restart the running Codex session") {
+		t.Fatalf("codex switch advisories = %#v", advisories)
 	}
 
 	custom := service.SwitchAdvisories(ClientClaude, "example", settings)

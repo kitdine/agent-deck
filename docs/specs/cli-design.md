@@ -1,6 +1,6 @@
 ---
 status: active
-version: 18
+version: 19
 created: 2026-07-14
 ---
 
@@ -683,6 +683,16 @@ restart and can reset that session's negotiated capabilities mid-conversation.
 A successful Claude switch therefore reports on stderr that running Claude
 sessions should be restarted. The advisory is informational; it does not change
 the exit status or the JSON envelope.
+
+
+AgentDeck changes Codex provider configuration on disk but cannot update
+configuration already loaded by a running Codex client. Every successful Codex
+switch therefore reports on stderr that the operator should start a new Codex
+session or restart the running one to ensure the switch is applied. This
+application-boundary advisory does not claim that Codex live-reloads provider
+configuration, and it does not copy Claude's live-settings or conflicting-source
+language. It follows the same informational, `--quiet`, exit-status, and JSON
+envelope rules as the Claude advisories and effective-route line.
 
 ### Selecting the Built-in Provider
 
@@ -1776,6 +1786,7 @@ here changes; do not create a dated copy of this file.
 
 | Version | Date | Contract change |
 | --- | --- | --- |
+| 19 | 2026-07-28 | Every successful Codex provider switch reports a stderr advisory to start a new session or restart the running one, because AgentDeck updates the configuration file but cannot update configuration already loaded by a running client. The note deliberately differs from Claude's live-settings and conflicting-credential advisories, remains informational, and is suppressed by `--quiet`. |
 | 18 | 2026-07-28 | The RC formula relies on the documented uninstall/install channel switch instead of Homebrew's `conflicts_with` DSL. Homebrew 6 loads the referenced stable formula while resolving that declaration, but direct formula installation trusts only the requested RC formula, so a user who correctly removed stable could still be blocked by tap trust. Omitting the declaration avoids broad tap trust without weakening the explicit no-coexistence rule. |
 | 17 | 2026-07-28 | Homebrew distribution gains an opt-in `agentdeck-rc` formula in the existing tap. Stable users remain on `agentdeck`; strict `vX.Y.Z-rc.N` tags render, install-test, and propose only `Formula/agentdeck-rc.rb`, while other prereleases remain GitHub-only. Because both channels install the same binary and completion paths, switching is an explicit uninstall/install operation; subsequent RCs use normal `brew update` and `brew upgrade`. |
 | 16 | 2026-07-27 | Time representation is one boundary: instants are stored and transported in UTC RFC 3339 with nanoseconds, normalized where a value enters AgentDeck, and rendered in the machine's zone only in human-readable text, to the second, with every text output naming the zone it used. JSON and NDJSON keep the stored UTC instant, because an envelope whose timestamps shift with the producing host cannot be compared across machines. Command inputs are unchanged: `usage stats --from/--to` still name local dates. No stored value changes and no migration is required. |

@@ -119,9 +119,9 @@ func jsonEqual(t *testing.T, left, right any) bool {
 	return bytes.Equal(encodedLeft, encodedRight)
 }
 
-// TestSwitchAdvisoryScopeAndQuietSuppression covers which switches carry which
-// advisory, and that --quiet silences them like every other stderr note this
-// command prints.
+// TestSwitchAdvisoryScopeAndQuietSuppression covers which client-specific
+// advisory a switch carries and that --quiet silences it like every other
+// stderr note this command prints.
 func TestSwitchAdvisoryScopeAndQuietSuppression(t *testing.T) {
 	state, settings := newClaudeAdvisoryFixture(t, conflictingClaudeSettings)
 
@@ -141,8 +141,12 @@ func TestSwitchAdvisoryScopeAndQuietSuppression(t *testing.T) {
 	if exit != 0 {
 		t.Fatalf("codex switch exit = %d: %s", exit, codexStderr)
 	}
-	if strings.Contains(codexStderr, "advisory") {
-		t.Fatalf("codex switch carried a Claude advisory: %q", codexStderr)
+	if !strings.Contains(codexStderr, "advisory: start a new or restart the running Codex session to ensure this switch is applied") {
+		t.Fatalf("codex switch missing application-boundary advisory: %q", codexStderr)
+	}
+	if strings.Contains(codexStderr, "running client reads its settings file live") ||
+		strings.Contains(codexStderr, "overrides the official selection") {
+		t.Fatalf("codex switch carried a Claude-only advisory: %q", codexStderr)
 	}
 
 	_, quietStderr, exit := runRouteCommand(t, "--state-dir", state, "--quiet", "provider", "use", "official", "--client", "claude", "--config-path", settings)
@@ -151,5 +155,13 @@ func TestSwitchAdvisoryScopeAndQuietSuppression(t *testing.T) {
 	}
 	if quietStderr != "" {
 		t.Fatalf("--quiet still printed an advisory: %q", quietStderr)
+	}
+
+	_, quietCodexStderr, exit := runRouteCommand(t, "--state-dir", codexState, "--quiet", "provider", "use", "example", "--config-path", codexConfig)
+	if exit != 0 {
+		t.Fatalf("quiet codex switch exit = %d: %s", exit, quietCodexStderr)
+	}
+	if quietCodexStderr != "" {
+		t.Fatalf("--quiet codex switch still printed an advisory: %q", quietCodexStderr)
 	}
 }

@@ -610,16 +610,22 @@ func (s Service) Current(ctx context.Context) ([]CurrentSelection, error) {
 }
 
 // SwitchAdvisories reports informational notes about a switch that already
-// completed. Both notes are Claude-only: a Claude client reads its settings
-// file while it runs, so a switch reaches a live session without a restart and
-// can reset its negotiated capabilities mid-conversation; and Claude honors
-// credential sources AgentDeck does not own, which override a built-in-provider
-// selection that AgentDeck may not "win" by deleting a field it never wrote.
+// completed. Codex receives an application-boundary note because AgentDeck
+// changes only the configuration file and cannot update configuration already
+// loaded by a running client. Claude receives a different restart note because
+// it reads its settings file while it runs, so a switch reaches a live session
+// without a restart and can reset its negotiated capabilities mid-conversation.
+// Claude also honors credential sources AgentDeck does not own, which override
+// a built-in-provider selection AgentDeck may not "win" by deleting a field it
+// never wrote.
 //
 // It never fails a switch that already succeeded: an unreadable or unparsable
 // settings file drops the conflict note rather than returning an error, and
 // the notes carry key names only, never a credential value.
 func (s Service) SwitchAdvisories(client Client, name, configPath string) []string {
+	if client == ClientCodex {
+		return []string{codexRestartAdvisory}
+	}
 	if client != ClientClaude {
 		return nil
 	}
@@ -643,6 +649,7 @@ func (s Service) SwitchAdvisories(client Client, name, configPath string) []stri
 	return append(advisories, claudeRestartAdvisory)
 }
 
+const codexRestartAdvisory = "start a new or restart the running Codex session to ensure this switch is applied; AgentDeck cannot update configuration already loaded by a running client"
 const claudeRestartAdvisory = "restart running Claude sessions: a running client reads its settings file live, so this switch can reach a session mid-conversation"
 
 func (s Service) Use(ctx context.Context, name string, client Client, configPath, backupPath string) error {

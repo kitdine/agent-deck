@@ -451,7 +451,7 @@ func applyHelpCatalog(root *cobra.Command) {
 		},
 		"provider use": {
 			short: "Switch a client to a provider",
-			long:  argumentHelp("Switch a client to a provider and named credential, inferring unique choices. Codex official sets [model_providers.custom].name to official and removes the custom base URL and bearer token. --via writes the provider's configured wrapper URL as the endpoint for this switch only; the credential written is unchanged either way, and the effective route is reported on stderr. A Claude switch also reports on stderr that running sessions should be restarted, and, when selecting official, any credential source AgentDeck does not own that overrides it.", "  name  Existing provider name, or official for the built-in provider."),
+			long:  argumentHelp("Switch a client to a provider and named credential, inferring unique choices. Codex official sets [model_providers.custom].name to official and removes the custom base URL and bearer token. --via writes the provider's configured wrapper URL as the endpoint for this switch only; the credential written is unchanged either way, and the effective route is reported on stderr. A Codex switch advises starting a new or restarting the running session so the file change is applied. A Claude switch advises restarting running sessions because it reads settings live, and, when selecting official, reports any credential source AgentDeck does not own that overrides the selection.", "  name  Existing provider name, or official for the built-in provider."),
 			example: "  agentdeck provider use aigocode --client codex --credential work\n" +
 				"  agentdeck provider use aigocode --client codex --via\n" +
 				"  agentdeck provider use official --client claude",

@@ -179,7 +179,7 @@ The first task in the only active plan,
 reviewed. `display-clock` extracted the shared zone, timezone-name, and
 RFC3339/`time.Time` rendering helpers without wiring them into a renderer, so
 no command output changed. Storage and JSON remain UTC under
-`specs/cli-design.md` v18. Next is `provider-and-session-surfaces`, which will
+`specs/cli-design.md` v19. Next is `provider-and-session-surfaces`, which will
 localize the provider and session timestamps a person reads.
 
 ## Documents
