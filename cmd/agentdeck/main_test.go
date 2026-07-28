@@ -396,6 +396,9 @@ func TestHelpOmitsLegacyProviderCredentialAndSessionExamples(t *testing.T) {
 }
 
 func TestSessionShowActivityReadsOnlySafeMetadataOnDemand(t *testing.T) {
+	// The fixture's tool calls sit at 2026-07-20T00:00:0xZ and the model
+	// activity assertion asks for the 2026-07-20 range, which is a local date.
+	useUTCReportingClock(t)
 	home := t.TempDir()
 	state := filepath.Join(t.TempDir(), "state")
 	oldHome := userHomeDir

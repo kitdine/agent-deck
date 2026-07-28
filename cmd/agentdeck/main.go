@@ -38,6 +38,13 @@ import (
 )
 
 var userHomeDir = os.UserHomeDir
+
+// reportLocation is the zone usage reports resolve their local dates and
+// buckets in. It is a seam for the same reason userHomeDir is: tests need a
+// fixed frame, and the machine zone cannot be pinned any other way once the
+// process is running, because TZ is read only on the first resolution of
+// time.Local.
+var reportLocation = func() *time.Location { return time.Local }
 var machineIdentity credentialvault.MachineIdentity = platform.MachineIdentity
 var newCredentialVault = func(stateRoot string) provider.CredentialVault {
 	return credentialvault.New(stateRoot, machineIdentity)
@@ -1683,7 +1690,7 @@ func newUsageCommand(opts *commandOptions) *cobra.Command {
 		if period == "" {
 			return nil, false, nil, &inputError{err: fmt.Errorf("usage summary period must be daily, weekly, or monthly")}
 		}
-		from, to, err := resolveUsageRange(ctx, s, period, "", "", time.Now(), time.Local)
+		from, to, err := resolveUsageRange(ctx, s, period, "", "", time.Now(), reportLocation())
 		if err != nil {
 			return nil, false, nil, err
 		}
@@ -1712,7 +1719,8 @@ func newUsageCommand(opts *commandOptions) *cobra.Command {
 			_, scanErr = s.Scan(ctx)
 		}
 		now := time.Now()
-		from, to, err := resolveUsageRange(ctx, s, statsPeriod, statsFrom, statsTo, now, time.Local)
+		location := reportLocation()
+		from, to, err := resolveUsageRange(ctx, s, statsPeriod, statsFrom, statsTo, now, location)
 		if err != nil {
 			return nil, false, nil, err
 		}
@@ -1723,7 +1731,7 @@ func newUsageCommand(opts *commandOptions) *cobra.Command {
 		if group != "hour" && group != "day" && group != "week" && group != "month" {
 			return nil, false, nil, &inputError{err: fmt.Errorf("usage stats group-by must be auto, hour, day, week, or month")}
 		}
-		data, err := s.Stats(ctx, usage.StatsOptions{From: from, To: to, GroupBy: group, Metric: statsMetric, Client: statsClient, Model: statsModel, Provider: statsProvider, Timezone: usageTimezoneName(time.Local, now), Location: time.Local, Activity: statsActivity})
+		data, err := s.Stats(ctx, usage.StatsOptions{From: from, To: to, GroupBy: group, Metric: statsMetric, Client: statsClient, Model: statsModel, Provider: statsProvider, Timezone: usageTimezoneName(location, now), Location: location, Activity: statsActivity})
 		return data, scanErr != nil, map[bool][]string{true: {"scan_incomplete"}}[scanErr != nil], err
 	})}
 	stats.Flags().StringVar(&statsPeriod, "period", "7d", "Range: today, 7d, 30d, week, month, 6m, or all")
@@ -1762,7 +1770,7 @@ func newUsageCommand(opts *commandOptions) *cobra.Command {
 
 func resolveUsageRange(ctx context.Context, service *usage.Service, period, fromText, toText string, now time.Time, location *time.Location) (time.Time, time.Time, error) {
 	if location == nil {
-		location = time.Local
+		location = reportLocation()
 	}
 	now = now.In(location)
 	if fromText != "" || toText != "" {
@@ -1834,7 +1842,7 @@ func automaticUsageGroup(from, to time.Time) string {
 
 func usageTimezoneName(location *time.Location, now time.Time) string {
 	if location == nil {
-		location = time.Local
+		location = reportLocation()
 	}
 	if name := location.String(); name != "" && name != "Local" {
 		return name
