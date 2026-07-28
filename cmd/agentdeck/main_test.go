@@ -398,7 +398,7 @@ func TestHelpOmitsLegacyProviderCredentialAndSessionExamples(t *testing.T) {
 func TestSessionShowActivityReadsOnlySafeMetadataOnDemand(t *testing.T) {
 	// The fixture's tool calls sit at 2026-07-20T00:00:0xZ and the model
 	// activity assertion asks for the 2026-07-20 range, which is a local date.
-	useUTCReportingClock(t)
+	useUTCDisplayClock(t)
 	home := t.TempDir()
 	state := filepath.Join(t.TempDir(), "state")
 	oldHome := userHomeDir
@@ -2656,10 +2656,10 @@ func TestResolveUsageRangeWeekIsCurrentLocalWeekAcrossBoundaries(t *testing.T) {
 	}
 }
 
-func TestUsageTimezoneNameHonorsExplicitTZ(t *testing.T) {
+func TestDisplayTimezoneNameHonorsExplicitTZ(t *testing.T) {
 	t.Setenv("TZ", "America/New_York")
 	local := time.FixedZone("Local", -5*60*60)
-	if got := usageTimezoneName(local, time.Date(2026, 1, 1, 0, 0, 0, 0, local)); got != "America/New_York" {
+	if got := displayTimezoneName(local, time.Date(2026, 1, 1, 0, 0, 0, 0, local)); got != "America/New_York" {
 		t.Fatalf("explicit timezone = %q", got)
 	}
 	if got := timezoneNameFromPath("/var/db/timezone/zoneinfo/Asia/Shanghai"); got != "Asia/Shanghai" {

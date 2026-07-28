@@ -136,20 +136,20 @@ tasks passed independent review, three of them after a reopen — including a
 [retired plan](archive/plans/provider-wrapper-routing.md).
 
 Two `cmd/agentdeck` tests that had failed for months on any host west of UTC
-were diagnosed and fixed in the same session: their fixtures sat at the start of
-a UTC day while `usage stats --from/--to` resolve local dates, so the local-day
-window opened hours later and dropped them. Both now pin the zone through a
-`reportLocation` seam, and two guards keep the contract honest — that dates are
-read in the configured zone, and that the configured zone defaults to the
-machine's. `go test ./...` is green in the machine's own zone, verified across
-UTC, UTC+14, and UTC-11.
+were diagnosed and fixed in the same session: their fixtures sat at the start
+of a UTC day while `usage stats --from/--to` resolve local dates, so the
+local-day window opened hours later and dropped them. Both now pin the zone
+through the display-neutral `displayLocation` seam, and two guards keep the
+contract honest — that dates are read in the configured zone, and that the
+configured zone defaults to the machine's.
 
-Next up is the only active plan,
-[display-timezone](plans/display-timezone.md), opened 2026-07-27 with its design
-approved into `specs/cli-design.md` v16. Storage already carries UTC everywhere
-and keeps doing so; the plan localizes the surfaces a person reads — provider,
-session, backup, and price timestamps — and leaves JSON untouched, so an
-automation envelope stays comparable across machines.
+The first task in the only active plan,
+[display-timezone](plans/display-timezone.md), is implemented and independently
+reviewed. `display-clock` extracted the shared zone, timezone-name, and
+RFC3339/`time.Time` rendering helpers without wiring them into a renderer, so
+no command output changed. Storage and JSON remain UTC under
+`specs/cli-design.md` v16. Next is `provider-and-session-surfaces`, which will
+localize the provider and session timestamps a person reads.
 
 ## Documents
 
@@ -157,7 +157,7 @@ automation envelope stays comparable across machines.
 | --- | --- |
 | [specs/cli-design.md](specs/cli-design.md) | What the system does and must keep doing: provider, credential, usage, pricing, session, backup, and distribution behavior. Currently version 16; see its changelog. |
 | [specs/cli-manual.md](specs/cli-manual.md) | The implemented command surface, flags, and output shapes. |
-| [plans/display-timezone.md](plans/display-timezone.md) | Render instants in the machine's zone in text only; storage and JSON stay UTC. `active — 0/3 done`. |
+| [plans/display-timezone.md](plans/display-timezone.md) | Render instants in the machine's zone in text only; storage and JSON stay UTC. `active — 1/3 done`. |
 | [reviews/](reviews/README.md) | Per-task review records that back each plan's ticked `Review` cell. |
 | [archive/](archive/README.md) | Retired plans and superseded contracts. Not a starting point for new work. |
 

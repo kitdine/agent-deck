@@ -12,8 +12,8 @@ import (
 	"github.com/kitdine/agent-deck/internal/store"
 )
 
-// usePinnedReportingZone fixes the zone usage reports resolve their local
-// dates in, for one test.
+// usePinnedDisplayZone fixes the zone human-readable output uses, including the
+// zone usage reports resolve their local dates in, for one test.
 //
 // `usage stats --from/--to` take local dates by design (cli-manual.md: 本机
 // 日期), so the window they resolve to depends on where the machine is. Tests
@@ -22,24 +22,24 @@ import (
 // hours later and drops those events, and the test fails for a reason that has
 // nothing to do with what it asserts.
 //
-// It swaps the reportLocation seam rather than time.Local, matching how this
+// It swaps the displayLocation seam rather than time.Local, matching how this
 // package already pins userHomeDir and runClientProcesses. The seam exists
 // because there is no other in-process way to pin the zone: TZ is read once,
 // the first time the process resolves time.Local, so setting the environment
 // variable from inside a test is too late.
-func usePinnedReportingZone(t *testing.T, location *time.Location) {
+func usePinnedDisplayZone(t *testing.T, location *time.Location) {
 	t.Helper()
-	previous := reportLocation
-	reportLocation = func() *time.Location { return location }
-	t.Cleanup(func() { reportLocation = previous })
+	previous := displayLocation
+	displayLocation = func() *time.Location { return location }
+	t.Cleanup(func() { displayLocation = previous })
 }
 
-func useUTCReportingClock(t *testing.T) {
+func useUTCDisplayClock(t *testing.T) {
 	t.Helper()
-	usePinnedReportingZone(t, time.UTC)
+	usePinnedDisplayZone(t, time.UTC)
 }
 
-// TestUsageStatsResolvesRangeDatesInTheMachineZone pins the behavior that made
+// TestUsageStatsResolvesRangeDatesInTheDisplayZone pins the behavior that made
 // the two tests above zone-sensitive, so it stays a deliberate contract rather
 // than a trap: --from/--to name local dates, not UTC dates.
 //
@@ -49,8 +49,8 @@ func useUTCReportingClock(t *testing.T) {
 // 21st's window and leave the 20th's empty. An instant that landed on the same
 // date in both frames — 15:00Z, say — would pass under either reading and
 // guard nothing.
-func TestUsageStatsResolvesRangeDatesInTheMachineZone(t *testing.T) {
-	usePinnedReportingZone(t, time.FixedZone("UTC+8", 8*60*60))
+func TestUsageStatsResolvesRangeDatesInTheDisplayZone(t *testing.T) {
+	usePinnedDisplayZone(t, time.FixedZone("UTC+8", 8*60*60))
 
 	state := filepath.Join(t.TempDir(), "state")
 	if err := run([]string{"--state-dir", state, "state", "migrate"}, bytes.NewReader(nil), &bytes.Buffer{}); err != nil {
@@ -68,15 +68,50 @@ func TestUsageStatsResolvesRangeDatesInTheMachineZone(t *testing.T) {
 	}
 }
 
-// TestReportLocationDefaultsToTheMachineZone covers the half of the contract
+// TestDisplayLocationDefaultsToTheMachineZone covers the half of the contract
 // the test above cannot: that one pins the seam, so it proves dates are read
 // in whatever zone is configured, not that the configured zone is the
-// machine's. Reports are local by design, so the default is part of the
-// contract and not an implementation detail.
-func TestReportLocationDefaultsToTheMachineZone(t *testing.T) {
-	if reportLocation() != time.Local {
-		t.Fatalf("reportLocation() = %v, want the machine zone", reportLocation())
+// machine's. Human-readable output is local by design, so the default is part
+// of the contract and not an implementation detail.
+func TestDisplayLocationDefaultsToTheMachineZone(t *testing.T) {
+	if displayLocation() != time.Local {
+		t.Fatalf("displayLocation() = %v, want the machine zone", displayLocation())
 	}
+}
+
+func TestRenderDisplayTime(t *testing.T) {
+	usePinnedDisplayZone(t, time.FixedZone("UTC+8", 8*60*60))
+
+	t.Run("UTC input", func(t *testing.T) {
+		for _, input := range []struct {
+			name string
+			got  string
+		}{
+			{name: "stored string", got: renderDisplayTime("2026-07-20T16:00:00Z")},
+			{name: "time.Time", got: renderDisplayTime(time.Date(2026, 7, 20, 16, 0, 0, 0, time.UTC))},
+		} {
+			if input.got != "2026-07-21 00:00:00" {
+				t.Errorf("%s = %q", input.name, input.got)
+			}
+		}
+	})
+	t.Run("fractional-second input", func(t *testing.T) {
+		input := "2026-07-20T16:00:00.123456789Z"
+		if got := renderDisplayTime(input); got != "2026-07-21 00:00:00" {
+			t.Fatalf("renderDisplayTime(%q) = %q", input, got)
+		}
+	})
+	t.Run("empty string", func(t *testing.T) {
+		if got := renderDisplayTime(""); got != "" {
+			t.Fatalf("renderDisplayTime(empty) = %q", got)
+		}
+	})
+	t.Run("non-timestamp string", func(t *testing.T) {
+		input := "not-a-timestamp"
+		if got := renderDisplayTime(input); got != input {
+			t.Fatalf("renderDisplayTime(%q) = %q", input, got)
+		}
+	})
 }
 
 func seedUsageEventForRangeTest(t *testing.T, state, at string) {

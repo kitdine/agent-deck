@@ -30,8 +30,9 @@ same. A user reading those has to convert UTC in their head while the usage
 report two commands away already localized for them.
 
 Found while fixing two `cmd/agentdeck` tests that failed on any host west of
-UTC. That fix introduced the seam this plan builds on: `reportLocation()` in
-`cmd/agentdeck/main.go`, which resolves the zone once and which tests swap.
+UTC. That fix introduced the seam this plan builds on, now named
+`displayLocation()` in `cmd/agentdeck/main.go`, which resolves the zone once
+and which tests swap.
 
 ## Invariants
 
@@ -108,6 +109,6 @@ stays UTC.
 
 | # | Task | Dev | Review |
 |---|------|:---:|:------:|
-| 1 | display-clock | | |
+| 1 | display-clock | ✓ | ✓ |
 | 2 | provider-and-session-surfaces | | |
 | 3 | backup-and-price-surfaces | | |

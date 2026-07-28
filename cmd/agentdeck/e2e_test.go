@@ -25,7 +25,7 @@ func TestIsolatedEndToEndFlow(t *testing.T) {
 	// The synthetic client log is written at 2026-07-14T00:00:0xZ and the
 	// stats assertions ask for the 2026-07-14..2026-07-20 range, which is a
 	// pair of local dates.
-	useUTCReportingClock(t)
+	useUTCDisplayClock(t)
 	previousProcesses := runClientProcesses
 	runClientProcesses = func(string) ([]int, error) { return nil, nil }
 	t.Cleanup(func() { runClientProcesses = previousProcesses })

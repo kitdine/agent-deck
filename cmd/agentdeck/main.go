@@ -39,12 +39,12 @@ import (
 
 var userHomeDir = os.UserHomeDir
 
-// reportLocation is the zone usage reports resolve their local dates and
-// buckets in. It is a seam for the same reason userHomeDir is: tests need a
-// fixed frame, and the machine zone cannot be pinned any other way once the
-// process is running, because TZ is read only on the first resolution of
-// time.Local.
-var reportLocation = func() *time.Location { return time.Local }
+// displayLocation is the zone human-readable output uses. Usage reports also
+// resolve their local dates and buckets in it. It is a seam for the same reason
+// userHomeDir is: tests need a fixed frame, and the machine zone cannot be
+// pinned any other way once the process is running, because TZ is read only on
+// the first resolution of time.Local.
+var displayLocation = func() *time.Location { return time.Local }
 var machineIdentity credentialvault.MachineIdentity = platform.MachineIdentity
 var newCredentialVault = func(stateRoot string) provider.CredentialVault {
 	return credentialvault.New(stateRoot, machineIdentity)
@@ -1690,7 +1690,7 @@ func newUsageCommand(opts *commandOptions) *cobra.Command {
 		if period == "" {
 			return nil, false, nil, &inputError{err: fmt.Errorf("usage summary period must be daily, weekly, or monthly")}
 		}
-		from, to, err := resolveUsageRange(ctx, s, period, "", "", time.Now(), reportLocation())
+		from, to, err := resolveUsageRange(ctx, s, period, "", "", time.Now(), displayLocation())
 		if err != nil {
 			return nil, false, nil, err
 		}
@@ -1719,7 +1719,7 @@ func newUsageCommand(opts *commandOptions) *cobra.Command {
 			_, scanErr = s.Scan(ctx)
 		}
 		now := time.Now()
-		location := reportLocation()
+		location := displayLocation()
 		from, to, err := resolveUsageRange(ctx, s, statsPeriod, statsFrom, statsTo, now, location)
 		if err != nil {
 			return nil, false, nil, err
@@ -1731,7 +1731,7 @@ func newUsageCommand(opts *commandOptions) *cobra.Command {
 		if group != "hour" && group != "day" && group != "week" && group != "month" {
 			return nil, false, nil, &inputError{err: fmt.Errorf("usage stats group-by must be auto, hour, day, week, or month")}
 		}
-		data, err := s.Stats(ctx, usage.StatsOptions{From: from, To: to, GroupBy: group, Metric: statsMetric, Client: statsClient, Model: statsModel, Provider: statsProvider, Timezone: usageTimezoneName(location, now), Location: location, Activity: statsActivity})
+		data, err := s.Stats(ctx, usage.StatsOptions{From: from, To: to, GroupBy: group, Metric: statsMetric, Client: statsClient, Model: statsModel, Provider: statsProvider, Timezone: displayTimezoneName(location, now), Location: location, Activity: statsActivity})
 		return data, scanErr != nil, map[bool][]string{true: {"scan_incomplete"}}[scanErr != nil], err
 	})}
 	stats.Flags().StringVar(&statsPeriod, "period", "7d", "Range: today, 7d, 30d, week, month, 6m, or all")
@@ -1770,7 +1770,7 @@ func newUsageCommand(opts *commandOptions) *cobra.Command {
 
 func resolveUsageRange(ctx context.Context, service *usage.Service, period, fromText, toText string, now time.Time, location *time.Location) (time.Time, time.Time, error) {
 	if location == nil {
-		location = reportLocation()
+		location = displayLocation()
 	}
 	now = now.In(location)
 	if fromText != "" || toText != "" {
@@ -1840,9 +1840,30 @@ func automaticUsageGroup(from, to time.Time) string {
 	}
 }
 
-func usageTimezoneName(location *time.Location, now time.Time) string {
+type displayTimeValue interface {
+	string | time.Time
+}
+
+// renderDisplayTime localizes stored instants for human-readable output.
+// Unparseable strings stay unchanged so presentation cannot fail a command.
+func renderDisplayTime[T displayTimeValue](value T) string {
+	var instant time.Time
+	switch value := any(value).(type) {
+	case string:
+		parsed, err := time.Parse(time.RFC3339Nano, value)
+		if err != nil {
+			return value
+		}
+		instant = parsed
+	case time.Time:
+		instant = value
+	}
+	return instant.In(displayLocation()).Format("2006-01-02 15:04:05")
+}
+
+func displayTimezoneName(location *time.Location, now time.Time) string {
 	if location == nil {
-		location = reportLocation()
+		location = displayLocation()
 	}
 	if name := location.String(); name != "" && name != "Local" {
 		return name
