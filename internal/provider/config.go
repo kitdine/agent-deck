@@ -137,6 +137,61 @@ func ConfigMatchesOfficialWrapper(client Client, path, endpoint string) (bool, e
 	return false, fmt.Errorf("unsupported client %q", client)
 }
 
+// ClaudeConflictAPIKey and ClaudeConflictAPIKeyHelper name the two credential
+// sources Claude honors that AgentDeck never writes, clears, or reorders. Both
+// override a built-in-provider selection, so a switch to official reports them
+// instead of removing a field it does not own.
+const (
+	ClaudeConflictAPIKey       = "env.ANTHROPIC_API_KEY"
+	ClaudeConflictAPIKeyHelper = "apiKeyHelper"
+)
+
+// ClaudeCredentialConflicts names the unowned credential sources present in a
+// Claude settings file, in a stable order. It returns key names only and never
+// a value, because one of the two keys holds a credential. A key that
+// configures no usable credential is not reported, so the advisory never fires
+// on something that overrides nothing.
+//
+// Detection is scoped to this file. A credential exported into the shell
+// environment is also honored by Claude and is not visible here; see the
+// scope decisions recorded with the switch-advisories task.
+func ClaudeCredentialConflicts(path string) ([]string, error) {
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var document map[string]any
+	if err := json.Unmarshal(contents, &document); err != nil {
+		return nil, err
+	}
+	conflicts := make([]string, 0, 2)
+	environment, _ := document["env"].(map[string]any)
+	if configuresCredential(environment["ANTHROPIC_API_KEY"]) {
+		conflicts = append(conflicts, ClaudeConflictAPIKey)
+	}
+	if configuresCredential(document["apiKeyHelper"]) {
+		conflicts = append(conflicts, ClaudeConflictAPIKeyHelper)
+	}
+	return conflicts, nil
+}
+
+// configuresCredential reports whether a settings value can actually supply a
+// credential to Claude. Both keys are string-valued to Claude — an env value
+// and a helper command line — so exactly one shape configures anything: a
+// non-empty string. Every other shape (null, an empty string, a bool, a
+// number, an object, an array) either configures nothing or is malformed for
+// the key it sits on, and Claude cannot derive a credential from it, so
+// reporting it would train users to ignore the advisory.
+//
+// A blank-but-not-empty string such as " " is reported. It is a non-empty
+// value to Claude, which will use it and fail to authenticate — precisely the
+// confusing state the advisory exists to explain — so it is deliberately not
+// trimmed away.
+func configuresCredential(value any) bool {
+	text, ok := value.(string)
+	return ok && text != ""
+}
+
 type ClientConfig struct{ Name, Endpoint, Credential string }
 
 var (

@@ -444,7 +444,7 @@ func applyHelpCatalog(root *cobra.Command) {
 		},
 		"provider use": {
 			short: "Switch a client to a provider",
-			long:  argumentHelp("Switch a client to a provider and named credential, inferring unique choices. Codex official sets [model_providers.custom].name to official and removes the custom base URL and bearer token. --via writes the provider's configured wrapper URL as the endpoint for this switch only; the credential written is unchanged either way, and the effective route is reported on stderr.", "  name  Existing provider name, or official for the built-in provider."),
+			long:  argumentHelp("Switch a client to a provider and named credential, inferring unique choices. Codex official sets [model_providers.custom].name to official and removes the custom base URL and bearer token. --via writes the provider's configured wrapper URL as the endpoint for this switch only; the credential written is unchanged either way, and the effective route is reported on stderr. A Claude switch also reports on stderr that running sessions should be restarted, and, when selecting official, any credential source AgentDeck does not own that overrides it.", "  name  Existing provider name, or official for the built-in provider."),
 			example: "  agentdeck provider use aigocode --client codex --credential work\n" +
 				"  agentdeck provider use aigocode --client codex --via\n" +
 				"  agentdeck provider use official --client claude",
@@ -705,6 +705,7 @@ func newProviderCommand(opts *commandOptions) *cobra.Command {
 			return nil, err
 		}
 		reportEffectiveRoute(ctx, s, opts, client)
+		reportSwitchAdvisories(s, opts, client, args[0], configPath)
 		return withTextResource(nil, args[0]), nil
 	})}
 	use.Flags().StringVar(&configPath, "config-path", "", "Override the automatically resolved client configuration path")
@@ -853,6 +854,19 @@ func reportEffectiveRoute(ctx context.Context, s provider.Service, opts *command
 		}
 		_, _ = fmt.Fprintf(opts.stderr, "effective route: %s %s, endpoint %s\n", selection.Client, route, selection.Endpoint)
 		return
+	}
+}
+
+// reportSwitchAdvisories prints the informational notes a completed switch
+// carries to stderr, under the same rules as the effective-route line: never
+// on stdout, never in the JSON envelope, never affecting the exit status, and
+// suppressed by --quiet.
+func reportSwitchAdvisories(s provider.Service, opts *commandOptions, client provider.Client, name, configPath string) {
+	if opts.quiet || opts.stderr == nil {
+		return
+	}
+	for _, advisory := range s.SwitchAdvisories(client, name, configPath) {
+		_, _ = fmt.Fprintf(opts.stderr, "advisory: %s\n", advisory)
 	}
 }
 

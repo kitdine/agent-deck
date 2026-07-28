@@ -609,6 +609,42 @@ func (s Service) Current(ctx context.Context) ([]CurrentSelection, error) {
 	return selections, nil
 }
 
+// SwitchAdvisories reports informational notes about a switch that already
+// completed. Both notes are Claude-only: a Claude client reads its settings
+// file while it runs, so a switch reaches a live session without a restart and
+// can reset its negotiated capabilities mid-conversation; and Claude honors
+// credential sources AgentDeck does not own, which override a built-in-provider
+// selection that AgentDeck may not "win" by deleting a field it never wrote.
+//
+// It never fails a switch that already succeeded: an unreadable or unparsable
+// settings file drops the conflict note rather than returning an error, and
+// the notes carry key names only, never a credential value.
+func (s Service) SwitchAdvisories(client Client, name, configPath string) []string {
+	if client != ClientClaude {
+		return nil
+	}
+	advisories := make([]string, 0, 3)
+	if name == OfficialProviderName {
+		path := configPath
+		if path == "" {
+			resolved, err := defaultConfigPath(s.Home, client)
+			if err != nil {
+				return append(advisories, claudeRestartAdvisory)
+			}
+			path = resolved
+		}
+		conflicts, err := ClaudeCredentialConflicts(path)
+		if err == nil {
+			for _, conflict := range conflicts {
+				advisories = append(advisories, fmt.Sprintf("%s in %s overrides the official selection; AgentDeck does not own it and left it unchanged", conflict, path))
+			}
+		}
+	}
+	return append(advisories, claudeRestartAdvisory)
+}
+
+const claudeRestartAdvisory = "restart running Claude sessions: a running client reads its settings file live, so this switch can reach a session mid-conversation"
+
 func (s Service) Use(ctx context.Context, name string, client Client, configPath, backupPath string) error {
 	return s.UseCredential(ctx, name, client, "", configPath, backupPath, false)
 }
