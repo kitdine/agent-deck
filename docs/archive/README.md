@@ -45,6 +45,30 @@ Move a document here instead of leaving it `active` in `docs/plans/` or
   the index for archived material so the main doc index doesn't need to grow
   for documents nobody should open by default.
 
+## 2026-07-29 retirement: display timezone
+
+`plans/display-timezone.md` and `reviews/display-timezone/`
+
+All three tasks delivered and independently reviewed: `display-clock` extracted
+the shared display zone, timezone-name, and instant-rendering helpers;
+`provider-and-session-surfaces` localized provider selection times, session
+bounds, and safe activity start times; and `backup-and-price-surfaces`
+localized backup and price timestamps and completed the renderer sweep across
+price-list provenance, usage session bounds, watch text, and the
+`usage stats --activity` model range.
+
+The rule the plan implemented stays active in `docs/specs/cli-design.md`
+version 20 under "Time Representation", and the per-surface behavior stays
+active in `docs/specs/cli-manual.md`. Text meant for a person renders instants
+in the machine's zone to the second and names that zone; storage, JSON, and
+NDJSON keep UTC RFC 3339. Two decisions are recorded in the archived plan
+rather than the live contract: `version`'s `UTC Build Time` stays UTC because
+it is immutable build identity, and `session search` gained no timestamp
+because its result contract carries no instant. The possible search redesign
+moved to the Backlog in `docs/README.md`. Three P3 review observations were
+consciously left open and are described in
+`reviews/display-timezone/backup-and-price-surfaces.md`.
+
 ## 2026-07-29 retirement: project attribution
 
 `plans/project-attribution.md` and `reviews/project-attribution/`

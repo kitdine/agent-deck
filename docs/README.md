@@ -220,13 +220,21 @@ shipped behavior in specification version 20.
 AgentDeck writes no file it does not already own; the app questions sit in the
 Backlog below.
 
-The first task in the older active plan,
-[display-timezone](plans/display-timezone.md), is implemented and independently
-reviewed. `display-clock` extracted the shared zone, timezone-name, and
-RFC3339/`time.Time` rendering helpers without wiring them into a renderer, so
-no command output changed. Storage and JSON remain UTC under
-`specs/cli-design.md` v20. Next is `provider-and-session-surfaces`, which will
-localize the provider and session timestamps a person reads.
+Display timezone rendering is delivered and independently reviewed under the
+[CLI contract](specs/cli-design.md)'s "Time Representation" rule and the
+[manual](specs/cli-manual.md). Text meant for a person renders instants in the
+machine's zone to the second and always names that zone; storage, JSON, and
+NDJSON keep UTC RFC 3339, and an unparseable value renders unchanged rather
+than failing a read. All three tasks are delivered and reviewed:
+`display-clock` extracted the shared zone, timezone-name, and
+RFC3339/`time.Time` rendering helpers; `provider-and-session-surfaces`
+localized provider selection times, session bounds, and safe activity start
+times, leaving `session search` unchanged because its result contract carries
+no instant; and `backup-and-price-surfaces` localized backup and price
+timestamps and completed the renderer sweep across price-list provenance,
+usage session bounds, watch text, and the `usage stats --activity` model range.
+`version`'s `UTC Build Time` stays UTC by decision, because it is immutable
+build identity rather than a runtime instant.
 
 ## Documents
 
@@ -234,7 +242,6 @@ localize the provider and session timestamps a person reads.
 | --- | --- |
 | [specs/cli-design.md](specs/cli-design.md) | What the system does and must keep doing: provider, credential, usage, pricing, session, backup, and distribution behavior. Currently version 20; see its changelog. |
 | [specs/cli-manual.md](specs/cli-manual.md) | The implemented command surface, flags, and output shapes. |
-| [plans/display-timezone.md](plans/display-timezone.md) | Render instants in the machine's zone in text only; storage and JSON stay UTC. `active — 1/3 done`. |
 | [reviews/](reviews/README.md) | Per-task review records that back each plan's ticked `Review` cell. |
 | [archive/](archive/README.md) | Retired plans and superseded contracts. Not a starting point for new work. |
 
@@ -247,6 +254,16 @@ None.
 Candidate work with no approved specification. Each item needs its own plan
 before implementation starts; promote it out of this list at that point rather
 than expanding the entry in place.
+
+- [ ] Redesign `session search` results to carry an instant before adding any
+      timezone presentation. Carried over from the retired display-timezone
+      plan, which localized every other instant-bearing text surface but left
+      search alone because `session.Document` is only `CLIENT`, `SESSION`,
+      `KIND`, and `TEXT`. A plan must decide whether that instant is the
+      matched entry time or the session's `FIRST`/`LAST` bounds, then define
+      the text and JSON contracts, sorting, and pagination compatibility. If
+      approved, text renders the new instant in the machine zone while JSON
+      keeps UTC.
 
 - [ ] Make the copyable
       `agentdeck session show <id> --client <client> --activity` commands emitted

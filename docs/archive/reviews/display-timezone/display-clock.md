@@ -1,5 +1,5 @@
 ---
-status: active
+status: historical
 plan: display-timezone
 task: display-clock
 ---
