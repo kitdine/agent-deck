@@ -9,7 +9,7 @@ This is both the documentation index and the execution baseline. Decide what to
 work on next from this file. Repository code, tests, configuration, and Git
 history remain the source of truth when they disagree with any document.
 
-## Current State (2026-07-28)
+## Current State (2026-07-29)
 
 `v0.2.0` is now the current stable release. Its annotated tag points to
 `8c053c9df53f9aad0797d3e9bf2d307fd203ab8a`; the tagged tree differs from
@@ -27,6 +27,23 @@ remains unchanged. The local channel transition was also completed:
 binary reports `v0.2.0` at commit
 `8c053c9df53f9aad0797d3e9bf2d307fd203ab8a`, and the bash, zsh, and fish
 completion files are all present in Homebrew's standard paths.
+
+`v0.2.1-rc.1` is the current opt-in release candidate. Its annotated tag
+points to `aaab1c2076e3685dcd3c9d548c1c4bfccc4c0f6c`; the
+[tag-triggered Release run](https://github.com/kitdine/agent-deck/actions/runs/30488817055)
+passed both release and Homebrew jobs, published a GitHub prerelease with both
+Darwin archives and the checksum asset, and verified the RC formula through an
+isolated install plus bash, zsh, and fish completion loading.
+[Homebrew tap PR #6](https://github.com/kitdine/homebrew-tap/pull/6) merged the
+checked formula into `Formula/agentdeck-rc.rb` without changing the stable
+formula. The local stable-to-RC transition also passed:
+`brew uninstall kitdine/tap/agentdeck` removed `0.2.0`,
+`brew install kitdine/tap/agentdeck-rc` installed `0.2.1-rc.1`, and
+`brew test kitdine/tap/agentdeck-rc` succeeded. The installed binary reports
+`v0.2.1-rc.1` at commit
+`aaab1c2076e3685dcd3c9d548c1c4bfccc4c0f6c`; all three completion files load
+successfully, and the released `shell-init` command emits the expected
+project-aware wrapper.
 
 v0.1.1 is published and installable through `kitdine/homebrew-tap`. Every
 follow-up in the retired phase-one plan passed independent review, so there is
