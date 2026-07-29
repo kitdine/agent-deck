@@ -2020,6 +2020,15 @@ func renderDisplayTime[T displayTimeValue](value T) string {
 	return instant.In(displayLocation()).Format("2006-01-02 15:04:05")
 }
 
+func renderDisplayTimeWithZone[T displayTimeValue](value T) string {
+	if text, ok := any(value).(string); ok {
+		if _, err := time.Parse(time.RFC3339Nano, text); err != nil {
+			return text
+		}
+	}
+	return renderDisplayTime(value) + " " + displayZoneName()
+}
+
 func displayTimezoneName(location *time.Location, now time.Time) string {
 	if location == nil {
 		location = displayLocation()
@@ -2053,6 +2062,11 @@ func displayTimezoneName(location *time.Location, now time.Time) string {
 		offset = -offset
 	}
 	return fmt.Sprintf("UTC%c%02d:%02d", sign, offset/3600, offset%3600/60)
+}
+
+func displayZoneName() string {
+	location := displayLocation()
+	return displayTimezoneName(location, time.Now())
 }
 
 func timezoneNameFromPath(path string) string {
@@ -2457,9 +2471,9 @@ func renderCommandText(w io.Writer, command string, data any) error {
 			if credential == "" {
 				credential = "-"
 			}
-			rows = append(rows, []string{item.Client, item.Provider, credential, item.SelectedAt, routeLabel(item.ViaWrapper), textOrDash(item.Endpoint)})
+			rows = append(rows, []string{item.Client, item.Provider, credential, renderDisplayTime(item.SelectedAt), routeLabel(item.ViaWrapper), textOrDash(item.Endpoint)})
 		}
-		return output.WriteASCIITable(w, []string{"CLIENT", "PROVIDER", "CREDENTIAL", "SELECTED AT", "ROUTE", "ENDPOINT"}, rows)
+		return output.WriteASCIITable(w, []string{"CLIENT", "PROVIDER", "CREDENTIAL", fmt.Sprintf("SELECTED AT (%s)", displayZoneName()), "ROUTE", "ENDPOINT"}, rows)
 	case "provider.recover":
 		value, ok := data.([]store.Operation)
 		if !ok {
@@ -2524,7 +2538,7 @@ func renderCommandText(w io.Writer, command string, data any) error {
 		if !ok {
 			return fmt.Errorf("unexpected session.show result %T", data)
 		}
-		if _, err := fmt.Fprintf(w, "client: %s\nsession: %s\nproject: %s\nmodel: %s\nfirst: %s\nlast: %s\n", value.Client, value.SessionID, value.Project, value.Model, value.FirstAt, value.LastAt); err != nil {
+		if _, err := fmt.Fprintf(w, "client: %s\nsession: %s\nproject: %s\nmodel: %s\nfirst: %s\nlast: %s\n", value.Client, value.SessionID, value.Project, value.Model, renderDisplayTimeWithZone(value.FirstAt), renderDisplayTimeWithZone(value.LastAt)); err != nil {
 			return err
 		}
 		if err := renderSessionDocuments(w, value.Documents); err != nil {
@@ -2749,7 +2763,7 @@ func renderProviderStatus(w io.Writer, value provider.Status) error {
 			if selection.Client != string(client) {
 				continue
 			}
-			active, selectedAt = "true", selection.SelectedAt
+			active, selectedAt = "true", renderDisplayTime(selection.SelectedAt)
 			route, endpoint = routeLabel(selection.ViaWrapper), textOrDash(selection.Endpoint)
 			if selection.Credential != "" {
 				credential = selection.Credential
@@ -2757,7 +2771,7 @@ func renderProviderStatus(w io.Writer, value provider.Status) error {
 		}
 		rows = append(rows, []string{string(client), active, credential, selectedAt, route, endpoint})
 	}
-	return output.WriteASCIITable(w, []string{"CLIENT", "ACTIVE", "CREDENTIAL", "SELECTED AT", "ROUTE", "ENDPOINT"}, rows)
+	return output.WriteASCIITable(w, []string{"CLIENT", "ACTIVE", "CREDENTIAL", fmt.Sprintf("SELECTED AT (%s)", displayZoneName()), "ROUTE", "ENDPOINT"}, rows)
 }
 
 func renderSessionMetadata(w io.Writer, values []session.Metadata) error {
@@ -2767,9 +2781,10 @@ func renderSessionMetadata(w io.Writer, values []session.Metadata) error {
 	}
 	rows := make([][]string, 0, len(values))
 	for _, value := range values {
-		rows = append(rows, []string{value.Client, value.SessionID, value.Project, value.Model, value.FirstAt, value.LastAt})
+		rows = append(rows, []string{value.Client, value.SessionID, value.Project, value.Model, renderDisplayTime(value.FirstAt), renderDisplayTime(value.LastAt)})
 	}
-	return output.WriteASCIITable(w, []string{"CLIENT", "SESSION", "PROJECT", "MODEL", "FIRST", "LAST"}, rows)
+	zone := displayZoneName()
+	return output.WriteASCIITable(w, []string{"CLIENT", "SESSION", "PROJECT", "MODEL", fmt.Sprintf("FIRST (%s)", zone), fmt.Sprintf("LAST (%s)", zone)}, rows)
 }
 
 func renderSessionDocuments(w io.Writer, values []session.Document) error {
@@ -2791,9 +2806,9 @@ func renderSessionActivity(w io.Writer, values []activity.Detail) error {
 		if value.DurationMS != nil {
 			duration = strconv.FormatInt(*value.DurationMS, 10)
 		}
-		rows = append(rows, []string{value.StartedAt, value.Tool, value.Model, value.Status, duration})
+		rows = append(rows, []string{renderDisplayTime(value.StartedAt), value.Tool, value.Model, value.Status, duration})
 	}
-	return output.WriteASCIITable(w, []string{"STARTED", "TOOL", "MODEL", "STATUS", "DURATION MS"}, rows)
+	return output.WriteASCIITable(w, []string{fmt.Sprintf("STARTED (%s)", displayZoneName()), "TOOL", "MODEL", "STATUS", "DURATION MS"}, rows)
 }
 
 func renderSessionActivitySummary(w io.Writer, summary *session.ActivitySummary) error {

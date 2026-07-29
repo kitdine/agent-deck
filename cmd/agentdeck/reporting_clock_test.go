@@ -9,6 +9,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kitdine/agent-deck/internal/activity"
+	"github.com/kitdine/agent-deck/internal/provider"
+	"github.com/kitdine/agent-deck/internal/session"
 	"github.com/kitdine/agent-deck/internal/store"
 )
 
@@ -112,6 +115,154 @@ func TestRenderDisplayTime(t *testing.T) {
 			t.Fatalf("renderDisplayTime(%q) = %q", input, got)
 		}
 	})
+}
+
+func TestProviderAndSessionTextSurfacesUseDisplayZone(t *testing.T) {
+	location := time.FixedZone("UTC+8", 8*60*60)
+	usePinnedDisplayZone(t, location)
+
+	const (
+		stored    = "2026-07-20T16:00:00Z"
+		localized = "2026-07-21 00:00:00"
+	)
+	cases := []struct {
+		name    string
+		command string
+		data    any
+		want    []string
+	}{
+		{
+			name:    "provider current",
+			command: "provider.current",
+			data: []provider.CurrentSelection{{
+				Client:     "codex",
+				Provider:   "example",
+				SelectedAt: stored,
+			}},
+			want: []string{"SELECTED AT (UTC+8)", localized},
+		},
+		{
+			name:    "provider status detail",
+			command: "provider.status",
+			data: provider.Status{
+				Definition: provider.Provider{Name: "example"},
+				Active: []provider.ActiveSelection{{
+					Client:     "codex",
+					SelectedAt: stored,
+				}},
+			},
+			want: []string{"SELECTED AT (UTC+8)", localized},
+		},
+		{
+			name:    "session list",
+			command: "session.list",
+			data: []session.Metadata{{
+				Client:    "codex",
+				SessionID: "session-1",
+				FirstAt:   stored,
+				LastAt:    stored,
+			}},
+			want: []string{"FIRST (UTC+8)", "LAST (UTC+8)", localized},
+		},
+		{
+			name:    "session show and activity",
+			command: "session.show",
+			data: session.Result{
+				Metadata: session.Metadata{
+					Client:    "codex",
+					SessionID: "session-1",
+					FirstAt:   stored,
+					LastAt:    stored,
+				},
+				Activity: []activity.Detail{{
+					StartedAt: stored,
+					Tool:      "exec_command",
+					Status:    "completed",
+				}},
+			},
+			want: []string{
+				"first: " + localized + " UTC+8",
+				"last: " + localized + " UTC+8",
+				"STARTED (UTC+8)",
+				localized,
+			},
+		},
+	}
+
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			var text bytes.Buffer
+			if err := writeResult(&text, "text", test.command, test.data); err != nil {
+				t.Fatal(err)
+			}
+			for _, want := range test.want {
+				if !strings.Contains(text.String(), want) {
+					t.Errorf("text output missing %q:\n%s", want, text.String())
+				}
+			}
+			if strings.Contains(text.String(), stored) {
+				t.Errorf("text output kept stored UTC instant:\n%s", text.String())
+			}
+
+			var encoded bytes.Buffer
+			if err := writeResult(&encoded, "json", test.command, test.data); err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(encoded.String(), stored) {
+				t.Errorf("JSON output changed stored instant:\n%s", encoded.String())
+			}
+			if strings.Contains(encoded.String(), localized) {
+				t.Errorf("JSON output contains localized instant:\n%s", encoded.String())
+			}
+		})
+	}
+}
+
+func TestSessionSearchTextHasNoInstantToLocalize(t *testing.T) {
+	usePinnedDisplayZone(t, time.FixedZone("UTC+8", 8*60*60))
+
+	var text bytes.Buffer
+	if err := writeResult(&text, "text", "session.search", []session.Document{{
+		Client:    "codex",
+		SessionID: "session-1",
+		Kind:      "user_prompt",
+		Text:      "visible search result",
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"CLIENT", "SESSION", "KIND", "TEXT", "visible search result"} {
+		if !strings.Contains(text.String(), want) {
+			t.Errorf("search text missing %q:\n%s", want, text.String())
+		}
+	}
+	if strings.Contains(text.String(), "UTC+8") {
+		t.Errorf("search text named a zone without an instant:\n%s", text.String())
+	}
+}
+
+func TestSessionShowLeavesInvalidDisplayTimesUnchanged(t *testing.T) {
+	usePinnedDisplayZone(t, time.FixedZone("UTC+8", 8*60*60))
+
+	var text bytes.Buffer
+	if err := writeResult(&text, "text", "session.show", session.Result{
+		Metadata: session.Metadata{
+			Client:    "codex",
+			SessionID: "session-1",
+			FirstAt:   "not-a-timestamp",
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"first: not-a-timestamp\n", "last: \n"} {
+		if !strings.Contains(text.String(), want) {
+			t.Errorf("session show missing unchanged value %q:\n%s", want, text.String())
+		}
+	}
+	for _, unwanted := range []string{"not-a-timestamp UTC+8", "last:  UTC+8"} {
+		if strings.Contains(text.String(), unwanted) {
+			t.Errorf("session show added a zone to invalid value %q:\n%s", unwanted, text.String())
+		}
+	}
 }
 
 func seedUsageEventForRangeTest(t *testing.T, state, at string) {
