@@ -134,6 +134,9 @@ func NormalizeWrapperURL(value string) (string, error) {
 const (
 	WrapperKindPlain    = "plain"
 	WrapperKindHeadroom = "headroom"
+
+	ProjectAttributionGuideURL = "https://github.com/kitdine/agent-deck/blob/main/docs/specs/cli-manual.md#project-attribution"
+	ProjectAttributionAdvisory = "agentdeck run attributes launches by project through this wrapper; launches outside agentdeck run are not attributed; see " + ProjectAttributionGuideURL
 )
 
 // NormalizeWrapperKind validates a declared wrapper protocol and resolves the
@@ -716,6 +719,24 @@ func (s Service) RunProjectEnvironment(ctx context.Context, client Client, cwd s
 		return nil, false
 	}
 	return injectProjectEnvironment(client, environ, ProjectWireValue(cwd))
+}
+
+// ProjectAttributionGuidance reports the advisory for a completed selection
+// only while it still resolves through the provider's current Headroom
+// wrapper. Read-back failures suppress this informational output rather than
+// changing the status of a switch that already succeeded.
+func (s Service) ProjectAttributionGuidance(ctx context.Context, client Client) string {
+	snapshot, err := s.Store.CurrentProviderSnapshot(ctx, string(client))
+	if err != nil || !snapshot.ViaWrapper {
+		return ""
+	}
+	definition, err := s.Show(ctx, snapshot.Name)
+	if err != nil ||
+		definition.Definition.WrapperURL != snapshot.Endpoint ||
+		definition.Definition.WrapperKind != WrapperKindHeadroom {
+		return ""
+	}
+	return ProjectAttributionAdvisory
 }
 
 // SwitchAdvisories reports informational notes about a switch that already

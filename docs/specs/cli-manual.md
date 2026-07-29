@@ -126,6 +126,44 @@ agentdeck provider use official --client claude --via
 agentdeck provider set-wrapper aigocode --clear
 ```
 
+### Project Attribution
+
+把 wrapper 声明为 `headroom` 只是允许项目归属；只有经该 wrapper 发出的请求才会携带
+`X-Headroom-Project`。AgentDeck 不从 URL 或 provider 名称猜协议，也不探测实际代理。
+项目值是当前目录的 safely percent-encoded basename，不会写入 AgentDeck 数据库或
+client 配置。
+
+有三种应用方式：
+
+1. **AgentDeck 启动的进程**：`agentdeck run codex -- ...` 和
+   `agentdeck run claude -- ...` 自动按启动目录归属。Codex 通过
+   `HEADROOM_PROJECT` 与受管 `env_http_headers` mapping 发出 header；Claude 通过
+   `ANTHROPIC_CUSTOM_HEADERS` 发出同一 header。用户已经设置的值优先。
+2. **shell function 启动的进程**：用户可以自行维护 shell function，在直接调用
+   `codex` 或 `claude` 前设置同样的每次启动环境。AgentDeck 不创建该函数，也不编辑
+   shell profile。
+3. **用户维护的 project-scoped settings**：适合不经过 AgentDeck 或 shell function
+   的启动。AgentDeck 只提供 recipe，不创建或修改 repository 文件。例如由用户自己
+   创建 `.claude/settings.local.json`：
+
+   ```json
+   {
+     "env": {
+       "ANTHROPIC_CUSTOM_HEADERS": "X-Headroom-Project: my%20project"
+     }
+   }
+   ```
+
+   `my%20project` 应替换为项目目录 basename 的 percent-encoded 值；已有 custom
+   headers 必须保留，并以换行分隔追加这一行。Claude app 是否读取 project-scoped
+   settings、何时需要重启由 Claude 决定，AgentDeck 不作保证。
+
+协议背景见 Headroom 的
+[project attribution issue](https://github.com/headroomlabs-ai/headroom/issues/802)
+以及
+[v0.27.0 release note](https://github.com/headroomlabs-ai/headroom/releases/tag/v0.27.0)。
+这些第三方链接只出现在本手册；命令 advisory 只链接 AgentDeck 自己的文档。
+
 ### 客户端切换提示（stderr）
 
 切换成功后，除 effective route 外还会在 stderr 打印客户端对应的提示行，前缀

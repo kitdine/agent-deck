@@ -194,8 +194,8 @@ func TestSetWrapperAdvisoryStaysSilentWhenNothingIsLost(t *testing.T) {
 			if exit != 0 {
 				t.Fatalf("exit = %d: %s", exit, stderr)
 			}
-			if strings.Contains(stderr, "advisory") {
-				t.Fatalf("advisory fired with nothing dropped: %q", stderr)
+			if strings.Contains(stderr, "wrapper kind reset") {
+				t.Fatalf("wrapper reset advisory fired with nothing dropped: %q", stderr)
 			}
 		})
 	}

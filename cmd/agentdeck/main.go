@@ -714,6 +714,7 @@ func newProviderCommand(opts *commandOptions) *cobra.Command {
 		}
 		reportEffectiveRoute(ctx, s, opts, client)
 		reportSwitchAdvisories(s, opts, client, args[0], configPath)
+		reportProjectAttributionGuidance(opts, s.ProjectAttributionGuidance(ctx, client))
 		return withTextResource(nil, args[0]), nil
 	})}
 	use.Flags().StringVar(&configPath, "config-path", "", "Override the automatically resolved client configuration path")
@@ -742,6 +743,9 @@ func newProviderCommand(opts *commandOptions) *cobra.Command {
 			return nil, err
 		}
 		reportDroppedWrapperKind(opts, dropped)
+		if result.Definition.WrapperKind == provider.WrapperKindHeadroom {
+			reportProjectAttributionGuidance(opts, provider.ProjectAttributionAdvisory)
+		}
 		return withTextResource(result.Definition, args[0]), nil
 	})}
 	setWrapper.Flags().StringVar(&wrapperURL, "url", "", "Wrapper base URL; a final /v1 is removed like a Codex-bound endpoint")
@@ -884,6 +888,13 @@ func reportSwitchAdvisories(s provider.Service, opts *commandOptions, client pro
 	for _, advisory := range s.SwitchAdvisories(client, name, configPath) {
 		_, _ = fmt.Fprintf(opts.stderr, "advisory: %s\n", advisory)
 	}
+}
+
+func reportProjectAttributionGuidance(opts *commandOptions, advisory string) {
+	if advisory == "" || opts.quiet || opts.stderr == nil {
+		return
+	}
+	_, _ = fmt.Fprintf(opts.stderr, "advisory: %s\n", advisory)
 }
 
 // reportDroppedWrapperKind names a non-default wrapper declaration that a

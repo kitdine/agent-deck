@@ -434,6 +434,68 @@ project's own repository; the JSON envelope of a guided command is byte-identica
 to an unguided one apart from `generated_at`; `--quiet` suppresses it; the manual
 section covers all three mechanisms.
 
+Dev complete (2026-07-29): successful explicit `--kind headroom`
+`set-wrapper` calls now emit one short project-attribution advisory, as do
+successful `provider use --via` switches whose completed selection still
+matches the provider's current Headroom wrapper URL and kind. Read-back
+failures, stale routes, direct routes, and plain wrappers produce no guidance.
+The advisory has one AgentDeck manual URL from a single production constant,
+contains no upstream issue or release content, goes only to stderr, and is
+suppressed by `--quiet` without changing command status or JSON data.
+
+`docs/specs/cli-manual.md` now explains the three application mechanisms,
+includes the user-owned `.claude/settings.local.json` recipe, and keeps
+Headroom protocol references in documentation only. Behavioral coverage in
+`cmd/agentdeck/project_attribution_guidance_test.go` exercises both named
+commands, negative route cases, exactly one project link, JSON isolation,
+byte-identical JSON serialization apart from `generated_at`, successful exit
+status, and quiet suppression. The older wrapper-reset test now names only the
+reset advisory it owns, so the new guidance does not weaken that contract.
+
+RED was compilable: before production changes,
+`go test -count=1 -mod=vendor ./cmd/agentdeck -run ProjectAttributionGuidance`
+failed both new tests with guidance count `0` on successful Headroom
+`set-wrapper`. After implementation the same command passed. Final targeted
+verification: `go test -count=1 -mod=vendor ./cmd/agentdeck` (exit 0) and
+`go test -count=1 -mod=vendor ./internal/provider` (exit 0).
+`gofmt -l` on the four affected Go files produced no output, and
+`git diff --check` exited 0.
+
+Review-fix complete (2026-07-29): the JSON/quiet contract now compares the
+outputs of two real `provider use --via` CLI invocations after removing only
+`generated_at`; the previous synthetic `writeResult` comparison was removed.
+The stderr assertion now extracts the actual project-attribution advisory,
+requires exactly one matching line and one URL equal to the production
+`ProjectAttributionGuideURL`, and checks that actual line for third-party
+hostname, issue, and release content. The test no longer carries a second
+hard-coded documentation URL. The manual continues to describe all three
+mechanisms and the Claude settings recipe, but now accurately presents the
+shell-function path as user-maintained rather than advertising the unimplemented
+`agentdeck shell-init`.
+
+Mutation evidence was compilable and behavioral: temporarily appending
+`https://third-party.example/issues/1` to the production advisory made both
+`ProjectAttributionGuidance` tests fail with `project attribution advisory URLs
+= 2`; restoring the advisory returned the targeted test to GREEN. Final
+verification:
+
+- `rtk test env GOCACHE=/private/tmp/agent-deck-go-build go test -count=1
+  -mod=vendor ./cmd/agentdeck -run ProjectAttributionGuidance` passed.
+- `rtk test env GOCACHE=/private/tmp/agent-deck-go-build go test -count=1
+  -mod=vendor ./cmd/agentdeck` passed.
+- `rtk proxy gofmt -l cmd/agentdeck/main.go
+  cmd/agentdeck/provider_wrapper_kind_test.go
+  cmd/agentdeck/project_attribution_guidance_test.go
+  internal/provider/service.go` produced no output.
+- `rtk git diff --check` exited 0.
+
+Review complete (2026-07-29): Round 3 independently confirmed all three Round
+1 findings closed. The real CLI JSON comparison, actual stderr advisory
+validation, two-URL mutation evidence, and corrected user-maintained
+shell-function documentation all satisfy the task contract. The focused test,
+Go formatting check, and diff check passed; the unchanged full package result
+was reused. Verdict: PASS.
+
 ### `shell-helpers`
 
 Ship the environment recipe as something installable rather than something to
@@ -520,11 +582,11 @@ behavior described is shipped.
 | 1 | headroom-wrapper-kind | ✓ | ✓ |
 | 2 | project-identity | ✓ | ✓ |
 | 3 | run-env-injection | ✓ | ✓ |
-| 4 | attribution-guidance | | |
+| 4 | attribution-guidance | ✓ | ✓ |
 | 5 | shell-helpers | | |
 | 6 | attribution-contract | | |
 
-Done: **3/6 reviewed.** The implementer ticks **Dev** once a task is built and
+Done: **4/6 reviewed; next task is shell-helpers.** The implementer ticks **Dev** once a task is built and
 its targeted verification passes; an independent reviewer ticks **Review** once
 findings are closed, recording the round in
 `docs/reviews/project-attribution/<task-anchor>.md`. A task is done only when
