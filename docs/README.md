@@ -182,7 +182,17 @@ through the display-neutral `displayLocation` seam, and two guards keep the
 contract honest — that dates are read in the configured zone, and that the
 configured zone defaults to the machine's.
 
-The first task in the only active plan,
+A second plan, [project-attribution](plans/project-attribution.md), is written
+and approved but not started: it lets a user mark a wrapper URL as speaking
+Headroom's protocol and have `agentdeck run` label each launch with the project
+it happened in, with an installable shell helper and a documented settings-file
+recipe covering launches AgentDeck does not make. Its first task,
+`headroom-wrapper-kind`, is delivered and independently reviewed: Round 1 reopened
+it over one P2 and two P3, the fix round closed all three, and Round 3 passed.
+Nothing else is implemented. AgentDeck writes no file it does not already own; the app questions
+sit in the Backlog below.
+
+The first task in the older active plan,
 [display-timezone](plans/display-timezone.md), is implemented and independently
 reviewed. `display-clock` extracted the shared zone, timezone-name, and
 RFC3339/`time.Time` rendering helpers without wiring them into a renderer, so
@@ -197,6 +207,7 @@ localize the provider and session timestamps a person reads.
 | [specs/cli-design.md](specs/cli-design.md) | What the system does and must keep doing: provider, credential, usage, pricing, session, backup, and distribution behavior. Currently version 18; see its changelog. |
 | [specs/cli-manual.md](specs/cli-manual.md) | The implemented command surface, flags, and output shapes. |
 | [plans/display-timezone.md](plans/display-timezone.md) | Render instants in the machine's zone in text only; storage and JSON stay UTC. `active — 1/3 done`. |
+| [plans/project-attribution.md](plans/project-attribution.md) | Tell a Headroom-marked wrapper which project a launch belongs to, delivered through `agentdeck run` plus an installable shell helper. `active — 1/6 done`. |
 | [reviews/](reviews/README.md) | Per-task review records that back each plan's ticked `Review` cell. |
 | [archive/](archive/README.md) | Retired plans and superseded contracts. Not a starting point for new work. |
 
@@ -210,6 +221,23 @@ Candidate work with no approved specification. Each item needs its own plan
 before implementation starts; promote it out of this list at that point rather
 than expanding the entry in place.
 
+- [ ] Confirm whether a Claude **app** picks up a project-scoped
+      `.claude/settings.local.json` without a restart.
+      [project-attribution](plans/project-attribution.md) documents that file as a
+      recipe the user applies themselves, but does not claim it reaches an app.
+      The doubt is concrete: Claude Code's `env` block is injected when the
+      process starts, and the `CLAUDE_ENV_FILE` available to `SessionStart`,
+      `Setup`, `CwdChanged` and `FileChanged` hooks is sourced before each Bash
+      tool command, so it reaches subprocesses rather than the layer that attaches
+      request headers. Settle it by observing real requests through a proxy;
+      documentation inference is not enough. The answer only changes what the
+      manual promises — AgentDeck still would not write that file.
+- [ ] Attribute ChatGPT **app** launches to a project. **Low priority, not
+      implemented for now.** The reason is that the app exposes no provider
+      configuration AgentDeck can reach, and Codex has no project-level
+      configuration to scope a value to, so there is currently no mechanism to
+      document or to build against — unlike the Claude app, where at least a
+      candidate file exists. Revisit if the app gains a configuration surface.
 - [ ] Classify `codex-auto-review`, which accounts for roughly 85 M tokens of
       real usage and is unpriced on purpose. It is absent from every pricing
       source checked and is most likely a Codex-internal pseudo-model rather
