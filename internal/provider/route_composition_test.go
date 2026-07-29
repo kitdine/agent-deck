@@ -18,7 +18,7 @@ func setProviderWrapperForTest(t *testing.T, database *store.Store, ctx context.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := database.SetProviderWrapper(ctx, name, normalized); err != nil {
+	if _, err := database.SetProviderWrapper(ctx, name, normalized, ""); err != nil {
 		t.Fatal(err)
 	}
 	return normalized
@@ -30,7 +30,7 @@ func setOfficialWrapperForTest(t *testing.T, database *store.Store, ctx context.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.SetOfficialWrapperURL(ctx, normalized); err != nil {
+	if err := database.SetOfficialWrapperURL(ctx, normalized, ""); err != nil {
 		t.Fatal(err)
 	}
 	return normalized

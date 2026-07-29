@@ -63,6 +63,12 @@ type Provider struct {
 	// reported here and never on a credential. It is empty when the provider
 	// has no wrapper configured, which is also the state --clear restores.
 	WrapperURL string `json:"wrapper_url,omitempty"`
+	// WrapperKind reports the wrapper's protocol only when it is not the
+	// default. A plain wrapper omits the field rather than spelling out
+	// WrapperKindPlain, so every command's output for a wrapper that predates
+	// this field, or that declared no protocol, is byte-identical to what it
+	// was before the field existed.
+	WrapperKind string `json:"wrapper_kind,omitempty"`
 }
 
 type DefinitionResult struct {
@@ -116,6 +122,55 @@ const OfficialProviderName = "official"
 // correct value to clear a wrapper.
 func NormalizeWrapperURL(value string) (string, error) {
 	return NormalizeCredentialEndpoint(value, true)
+}
+
+// WrapperKindPlain and WrapperKindHeadroom are the protocols a wrapper may be
+// declared to speak. Plain is the default and means AgentDeck sends a wrapper
+// nothing beyond the request the client would have sent anyway; it is what every
+// wrapper configured before this field existed reads back as. Headroom opts the
+// wrapper into that proxy's own conventions, which is why it must be stated
+// rather than guessed from a URL: AgentDeck cannot see what a wrapper is and
+// never probes it.
+const (
+	WrapperKindPlain    = "plain"
+	WrapperKindHeadroom = "headroom"
+)
+
+// NormalizeWrapperKind validates a declared wrapper protocol and resolves the
+// stored default. An empty value is the default rather than an error, because
+// it is what both an omitted flag and a row written before the field existed
+// carry. Unlike NormalizeWrapperURL, a clearing caller has nothing to skip: ""
+// is already the value that means "no declaration".
+func NormalizeWrapperKind(value string) (string, error) {
+	switch value {
+	case "", WrapperKindPlain:
+		return WrapperKindPlain, nil
+	case WrapperKindHeadroom:
+		return WrapperKindHeadroom, nil
+	}
+	return "", fmt.Errorf("%w: wrapper kind must be %s or %s", ErrInvalidProvider, WrapperKindPlain, WrapperKindHeadroom)
+}
+
+// reportedWrapperKind maps a stored kind onto the reported one. Plain and
+// unset are both reported as absent, so adding this field changed no existing
+// output; only an explicit non-default declaration appears.
+func reportedWrapperKind(stored string) string {
+	if stored == WrapperKindPlain {
+		return ""
+	}
+	return stored
+}
+
+// storedWrapperKind maps a normalized kind onto what is persisted. The default
+// is stored as absence rather than as the literal "plain", so one logical state
+// has one on-disk encoding: a wrapper configured before this field existed and
+// one configured without a declaration today read back identically. It is the
+// write-side counterpart of reportedWrapperKind.
+func storedWrapperKind(normalized string) string {
+	if normalized == WrapperKindPlain {
+		return ""
+	}
+	return normalized
 }
 
 // ConfigDrift counts selected clients whose native endpoint no longer matches
@@ -505,7 +560,12 @@ func (s Service) officialDefinition(ctx context.Context) (Provider, error) {
 	if err != nil {
 		return Provider{}, err
 	}
+	wrapperKind, err := s.Store.OfficialWrapperKind(ctx)
+	if err != nil {
+		return Provider{}, err
+	}
 	definition.WrapperURL = wrapperURL
+	definition.WrapperKind = reportedWrapperKind(wrapperKind)
 	return definition, nil
 }
 
@@ -514,25 +574,56 @@ func (s Service) officialDefinition(ctx context.Context) (Provider, error) {
 // means "no wrapper" and NormalizeWrapperURL rejects it as an endpoint, so a
 // caller that means to clear must say so instead of relying on a lookup that
 // happened to come back empty.
-func (s Service) SetWrapper(ctx context.Context, name, url string, clear bool) (DefinitionResult, error) {
-	stored := ""
+// kind declares the protocol the URL speaks and is validated through
+// NormalizeWrapperKind on the same path that normalizes the URL, so a rejected
+// declaration reaches no store call. Clearing writes an empty kind with the
+// empty URL: a protocol without an address describes nothing.
+//
+// set-wrapper replaces the whole wrapper rather than patching it — omitting
+// --kind returns the declaration to the default, exactly as omitting it on a
+// first call would. That is deliberate: provider update is this CLI's partial
+// update, and set-wrapper has no partial form. The second return value names a
+// non-default declaration this call replaced, so the command layer can say so;
+// it is empty whenever nothing was dropped, and it never enters the JSON
+// envelope. Clearing reports nothing, because removing the wrapper outright is
+// already what the user asked for.
+func (s Service) SetWrapper(ctx context.Context, name, url, kind string, clear bool) (DefinitionResult, string, error) {
+	stored, normalizedKind := "", ""
 	if !clear {
 		normalized, err := NormalizeWrapperURL(url)
 		if err != nil {
-			return DefinitionResult{}, err
+			return DefinitionResult{}, "", err
+		}
+		normalizedKind, err = NormalizeWrapperKind(kind)
+		if err != nil {
+			return DefinitionResult{}, "", err
 		}
 		stored = normalized
 	}
-	if name == OfficialProviderName {
-		if err := s.Store.SetOfficialWrapperURL(ctx, stored); err != nil {
-			return DefinitionResult{}, err
+	// Read before the write, since the replaced declaration exists only until
+	// then. A failure here is not this call's business: the write path reports
+	// a missing provider on its own, and an unreadable definition only costs
+	// the advisory.
+	previous := ""
+	if !clear {
+		if existing, err := s.Show(ctx, name); err == nil {
+			previous = existing.Definition.WrapperKind
 		}
-		return s.Show(ctx, name)
 	}
-	if _, err := s.Store.SetProviderWrapper(ctx, name, stored); err != nil {
-		return DefinitionResult{}, err
+	storedKind := storedWrapperKind(normalizedKind)
+	if name == OfficialProviderName {
+		if err := s.Store.SetOfficialWrapperURL(ctx, stored, storedKind); err != nil {
+			return DefinitionResult{}, "", err
+		}
+	} else if _, err := s.Store.SetProviderWrapper(ctx, name, stored, storedKind); err != nil {
+		return DefinitionResult{}, "", err
 	}
-	return s.Show(ctx, name)
+	dropped := ""
+	if previous != "" && previous != reportedWrapperKind(normalizedKind) {
+		dropped = previous
+	}
+	result, err := s.Show(ctx, name)
+	return result, dropped, err
 }
 
 func (s Service) Status(ctx context.Context) ([]Status, error) {
@@ -1000,5 +1091,6 @@ func storedProvider(definition store.Provider) Provider {
 		CreatedAt:       &createdAt,
 		UpdatedAt:       &updatedAt,
 		WrapperURL:      definition.WrapperURL,
+		WrapperKind:     reportedWrapperKind(definition.WrapperKind),
 	}
 }

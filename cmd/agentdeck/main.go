@@ -458,8 +458,9 @@ func applyHelpCatalog(root *cobra.Command) {
 		},
 		"provider set-wrapper": {
 			short: "Set or clear a provider's wrapper URL",
-			long:  argumentHelp("Store one wrapper URL per provider, including official. The URL is normalized like a Codex-bound credential endpoint, so a final /v1 is removed; Codex adds it back and Claude uses the base unchanged. Storing a wrapper never routes a switch by itself: only 'provider use --via' writes it. Exactly one of --url and --clear is required.", "  name  Existing provider name, or official for the built-in provider."),
+			long:  argumentHelp("Store one wrapper URL per provider, including official. The URL is normalized like a Codex-bound credential endpoint, so a final /v1 is removed; Codex adds it back and Claude uses the base unchanged. Storing a wrapper never routes a switch by itself: only 'provider use --via' writes it. Exactly one of --url and --clear is required. --kind declares which protocol the wrapper speaks; it describes the stored URL, so it cannot be combined with --clear.", "  name  Existing provider name, or official for the built-in provider."),
 			example: "  agentdeck provider set-wrapper aigocode --url https://127.0.0.1:8788\n" +
+				"  agentdeck provider set-wrapper aigocode --url https://127.0.0.1:8788 --kind headroom\n" +
 				"  agentdeck provider set-wrapper aigocode --clear",
 		},
 		"credential list": {short: "List credential readiness without revealing values", long: argumentHelp("List named credential metadata and readiness.", "  provider  Optional provider filter."), example: "  agentdeck credential list aigocode --client codex"},
@@ -719,7 +720,7 @@ func newProviderCommand(opts *commandOptions) *cobra.Command {
 	use.Flags().StringVar(&useClient, "client", "", "Client to switch: codex or claude")
 	use.Flags().StringVar(&useCredential, "credential", "", "Credential shorthand, not the generated reference")
 	use.Flags().BoolVar(&useVia, "via", false, "Route this switch through the provider's configured wrapper URL")
-	var wrapperURL string
+	var wrapperURL, wrapperKind string
 	var clearWrapper bool
 	var setWrapper *cobra.Command
 	setWrapper = &cobra.Command{Use: "set-wrapper <name>", Args: cobra.ExactArgs(1), RunE: withService(func(ctx context.Context, s provider.Service, args []string) (any, error) {
@@ -730,14 +731,22 @@ func newProviderCommand(opts *commandOptions) *cobra.Command {
 			}
 			return nil, &inputError{err: fmt.Errorf("--url or --clear is required")}
 		}
-		result, err := s.SetWrapper(ctx, args[0], wrapperURL, clearWrapper)
+		// --kind describes the URL being stored, so it has nothing to describe
+		// while clearing. Rejecting the combination is clearer than silently
+		// dropping a flag the user typed.
+		if clearWrapper && setWrapper.Flags().Changed("kind") {
+			return nil, &inputError{err: fmt.Errorf("--kind cannot be combined with --clear")}
+		}
+		result, dropped, err := s.SetWrapper(ctx, args[0], wrapperURL, wrapperKind, clearWrapper)
 		if err != nil {
 			return nil, err
 		}
+		reportDroppedWrapperKind(opts, dropped)
 		return withTextResource(result.Definition, args[0]), nil
 	})}
 	setWrapper.Flags().StringVar(&wrapperURL, "url", "", "Wrapper base URL; a final /v1 is removed like a Codex-bound endpoint")
 	setWrapper.Flags().BoolVar(&clearWrapper, "clear", false, "Remove the provider's wrapper URL")
+	setWrapper.Flags().StringVar(&wrapperKind, "kind", "", "Protocol the wrapper speaks: plain (default) or headroom")
 	var endpoint, clientsValue, multiplierValue, credentialName string
 	add := &cobra.Command{Use: "add <name>", Args: cobra.ExactArgs(1), RunE: withService(func(ctx context.Context, s provider.Service, args []string) (any, error) {
 		clients, err := parseClients(clientsValue)
@@ -875,6 +884,20 @@ func reportSwitchAdvisories(s provider.Service, opts *commandOptions, client pro
 	for _, advisory := range s.SwitchAdvisories(client, name, configPath) {
 		_, _ = fmt.Fprintf(opts.stderr, "advisory: %s\n", advisory)
 	}
+}
+
+// reportDroppedWrapperKind names a non-default wrapper declaration that a
+// set-wrapper call replaced. set-wrapper sets the whole wrapper rather than
+// patching it, so omitting --kind legitimately returns the declaration to the
+// default — but a user who only meant to move a proxy to a new address would
+// otherwise get no sign that attribution stopped. It follows the same rules as
+// every other advisory: stderr only, never in the JSON envelope, no effect on
+// the exit status, and suppressed by --quiet.
+func reportDroppedWrapperKind(opts *commandOptions, dropped string) {
+	if dropped == "" || opts.quiet || opts.stderr == nil {
+		return
+	}
+	_, _ = fmt.Fprintf(opts.stderr, "advisory: wrapper kind reset to %s (was %s); pass --kind %s to keep it\n", provider.WrapperKindPlain, dropped, dropped)
 }
 
 func parseClients(value string) ([]provider.Client, error) {
@@ -2259,7 +2282,7 @@ func renderCommandText(w io.Writer, command string, data any) error {
 			for _, client := range definition.Clients {
 				clients = append(clients, client.Client)
 			}
-			rows = append(rows, []string{definition.Name, kind, strings.Join(clients, ","), strconv.Itoa(definition.CredentialCount), textOrDash(definition.WrapperURL)})
+			rows = append(rows, []string{definition.Name, kind, strings.Join(clients, ","), strconv.Itoa(definition.CredentialCount), textOrDash(wrapperCell(definition))})
 		}
 		return output.WriteASCIITable(w, []string{"NAME", "TYPE", "CLIENTS", "CREDENTIALS", "WRAPPER"}, rows)
 	case "provider.show":
@@ -2474,6 +2497,17 @@ func renderCommandText(w io.Writer, command string, data any) error {
 	}
 }
 
+// wrapperCell renders a wrapper URL with its declared protocol appended, and
+// the bare URL when none is declared. The protocol is an annotation rather than
+// its own column or line so that a wrapper with no declaration — every wrapper
+// that predates the field — renders exactly as it did before.
+func wrapperCell(value provider.Provider) string {
+	if value.WrapperURL == "" || value.WrapperKind == "" {
+		return value.WrapperURL
+	}
+	return value.WrapperURL + " (" + value.WrapperKind + ")"
+}
+
 func renderProviderDetail(w io.Writer, value provider.Provider) error {
 	kind := "custom"
 	if value.BuiltIn {
@@ -2487,7 +2521,7 @@ func renderProviderDetail(w io.Writer, value provider.Provider) error {
 		return err
 	}
 	if value.WrapperURL != "" {
-		if _, err := fmt.Fprintf(w, "wrapper: %s\n", value.WrapperURL); err != nil {
+		if _, err := fmt.Fprintf(w, "wrapper: %s\n", wrapperCell(value)); err != nil {
 			return err
 		}
 	}

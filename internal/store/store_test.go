@@ -607,7 +607,7 @@ func TestV15MigrationAddsProviderWrapperURLAndSelectionRouteWithoutSideEffects(t
 	// SetProviderWrapper is pure storage; normalization is a service-layer
 	// concern (provider.NormalizeWrapperURL), so the stored value round-trips
 	// exactly as given.
-	updated, err := migrated.SetProviderWrapper(ctx, "legacy", "https://proxy.example")
+	updated, err := migrated.SetProviderWrapper(ctx, "legacy", "https://proxy.example", "")
 	if err != nil || updated.WrapperURL != "https://proxy.example" {
 		t.Fatalf("SetProviderWrapper = %#v, %v", updated, err)
 	}
@@ -615,24 +615,24 @@ func TestV15MigrationAddsProviderWrapperURLAndSelectionRouteWithoutSideEffects(t
 	if err != nil || reread.WrapperURL != "https://proxy.example" {
 		t.Fatalf("reread wrapper = %#v, %v", reread, err)
 	}
-	cleared, err := migrated.SetProviderWrapper(ctx, "legacy", "")
+	cleared, err := migrated.SetProviderWrapper(ctx, "legacy", "", "")
 	if err != nil || cleared.WrapperURL != "" {
 		t.Fatalf("cleared wrapper = %#v, %v", cleared, err)
 	}
-	if _, err = migrated.SetProviderWrapper(ctx, "does-not-exist", "https://proxy.example"); !errors.Is(err, sql.ErrNoRows) {
+	if _, err = migrated.SetProviderWrapper(ctx, "does-not-exist", "https://proxy.example", ""); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("SetProviderWrapper on unknown provider error = %v, want sql.ErrNoRows", err)
 	}
 
 	if url, err := migrated.OfficialWrapperURL(ctx); err != nil || url != "" {
 		t.Fatalf("official wrapper before set = %q, %v", url, err)
 	}
-	if err = migrated.SetOfficialWrapperURL(ctx, "https://proxy.example"); err != nil {
+	if err = migrated.SetOfficialWrapperURL(ctx, "https://proxy.example", ""); err != nil {
 		t.Fatal(err)
 	}
 	if url, err := migrated.OfficialWrapperURL(ctx); err != nil || url != "https://proxy.example" {
 		t.Fatalf("official wrapper after set = %q, %v", url, err)
 	}
-	if err = migrated.SetOfficialWrapperURL(ctx, ""); err != nil {
+	if err = migrated.SetOfficialWrapperURL(ctx, "", ""); err != nil {
 		t.Fatal(err)
 	}
 	if url, err := migrated.OfficialWrapperURL(ctx); err != nil || url != "" {

@@ -1520,7 +1520,7 @@ func TestStateMigrateTextAndJSONUpgradeSchema12(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = database.Exec(ctx, "DROP TABLE usage_tool_calls; DROP INDEX usage_events_client_session; ALTER TABLE providers DROP COLUMN wrapper_url; ALTER TABLE provider_selections DROP COLUMN via_wrapper; UPDATE schema_metadata SET version=12"); err != nil {
+	if _, err = database.Exec(ctx, "DROP TABLE usage_tool_calls; DROP INDEX usage_events_client_session; ALTER TABLE providers DROP COLUMN wrapper_url; ALTER TABLE providers DROP COLUMN wrapper_kind; ALTER TABLE provider_selections DROP COLUMN via_wrapper; UPDATE schema_metadata SET version=12"); err != nil {
 		database.Close()
 		t.Fatal(err)
 	}

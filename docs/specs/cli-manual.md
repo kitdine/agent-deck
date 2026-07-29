@@ -62,7 +62,7 @@ multiplier、reference 或 credential 明细；`provider status` 只通过复数
 | `provider update <name>` | 更新一个 credential 的 endpoint、multiplier 或 bindings；未指定字段保持不变，不处理 credential value | `--credential <shorthand>`；`--endpoint <url>`；`--clients <list>`；`--multiplier <decimal>` | `name` 必填；metadata flag 至少一个；credential 唯一时可省略 shorthand | `agentdeck provider update aigocode --credential codex --multiplier 1.2` |
 | `provider remove <name>` | 在一个 SQLite transaction 中删除 custom provider、credential metadata 与 ciphertext | 无 | `name` 必填 | `agentdeck provider remove aigocode` |
 | `provider use <name>` | 切换 client 到 provider；client 或 credential 唯一时自动推断；`--via` 让本次切换走 provider 的 wrapper URL | `--client codex\|claude`；`--credential <short-name>`；`--config-path <path>`；`--via` | `name` 必填；client/credential 仅在无法唯一推断时必填 | `agentdeck provider use aigocode --client codex --credential work` |
-| `provider set-wrapper <name>` | 设置或清除 provider 的 wrapper URL；只写存储，不切换任何 client | `--url <url>`；`--clear` | `name` 必填；`--url` 与 `--clear` 互斥且必须二选一 | `agentdeck provider set-wrapper aigocode --url https://127.0.0.1:8788` |
+| `provider set-wrapper <name>` | 设置或清除 provider 的 wrapper URL 及其协议声明；只写存储，不切换任何 client | `--url <url>`；`--clear`；`--kind plain\|headroom` | `name` 必填；`--url` 与 `--clear` 互斥且必须二选一；`--kind` 不能与 `--clear` 同用 | `agentdeck provider set-wrapper aigocode --url https://127.0.0.1:8788 --kind headroom` |
 | `provider recover` | 检查中断的 `provider use` operations；credential/provider 删除不需要外部 recovery | 无 | 无 | `agentdeck provider recover` |
 
 `provider status` 的 `CODEX ACTIVE` / `CLAUDE ACTIVE` 单元格直接显示 credential
@@ -99,9 +99,27 @@ Wrapper 是用户自己运行在 upstream 前面的代理（本地或局域网�
   输出。因为写入之后，client 配置本身无法区分直连与经过代理。
 - **`--via` 但该 provider 没有配置 wrapper 时命令失败**，且在触及任何 client 配置文件
   之前就失败。
+- **`--kind` 声明这个 wrapper 说什么协议**：`plain`（默认）或 `headroom`。AgentDeck
+  看不到 wrapper 到底是什么、也从不去探测它，所以协议只能由你明说，不会从 URL 猜。
+  声明为 `plain` 与不声明完全等价，在任何命令的输出里都无法区分——`wrapper_kind`
+  只在非默认时出现在 JSON 里，文本里也只在非默认时以 `wrapper: <url> (headroom)`
+  的形式标注。
+- **`set-wrapper` 是整体设置，不是部分更新**。它没有部分更新形式（本 CLI 里承担
+  修改语义的是 `provider update`），因此省略 `--kind` 等同于把声明设回默认，和第一次
+  设置时省略它是同一回事。当这次调用因此覆盖掉了一个**非默认**的既有声明时，stderr
+  会打印一行提示，点明被替换掉的旧值：
+
+  ```text
+  advisory: wrapper kind reset to plain (was headroom); pass --kind headroom to keep it
+  ```
+
+  它遵循与其它 advisory 相同的规则：只进 stderr，不进 JSON envelope，不改 exit
+  status，`--quiet` 下不输出。首次设置、`plain` → `plain`、`headroom` → `headroom`
+  以及 `--clear` 都不触发——`--clear` 本来就是你明确要求移除整个 wrapper。
 
 ```bash
 agentdeck provider set-wrapper aigocode --url https://127.0.0.1:8788
+agentdeck provider set-wrapper aigocode --url https://127.0.0.1:8788 --kind headroom
 agentdeck provider use aigocode --client codex --via
 agentdeck provider set-wrapper official --url https://127.0.0.1:8788
 agentdeck provider use official --client claude --via

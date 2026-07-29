@@ -14,10 +14,15 @@ type Provider struct {
 	CredentialRef string `json:"credential_ref"`
 	Multiplier    string `json:"multiplier"`
 	WrapperURL    string
-	Clients       []ClientMapping      `json:"clients"`
-	CreatedAt     time.Time            `json:"created_at"`
-	UpdatedAt     time.Time            `json:"updated_at"`
-	Credentials   []ProviderCredential `json:"credentials,omitempty"`
+	// WrapperKind names the protocol the wrapper speaks. It is stored beside
+	// the URL because it describes that URL, and it is empty for every wrapper
+	// that predates the field and for every provider with no wrapper at all;
+	// provider.NormalizeWrapperKind reads empty as the default.
+	WrapperKind string
+	Clients     []ClientMapping      `json:"clients"`
+	CreatedAt   time.Time            `json:"created_at"`
+	UpdatedAt   time.Time            `json:"updated_at"`
+	Credentials []ProviderCredential `json:"credentials,omitempty"`
 }
 
 type ProviderCredential struct {
@@ -309,7 +314,7 @@ func (s *Store) CreateProviderWithCredential(ctx context.Context, provider Provi
 }
 
 func (s *Store) ListProviders(ctx context.Context) ([]Provider, error) {
-	rows, err := s.DB.QueryContext(ctx, "SELECT id, name, endpoint, credential_ref, multiplier, COALESCE(wrapper_url,''), created_at, updated_at FROM providers ORDER BY name")
+	rows, err := s.DB.QueryContext(ctx, "SELECT id, name, endpoint, credential_ref, multiplier, COALESCE(wrapper_url,''), COALESCE(wrapper_kind,''), created_at, updated_at FROM providers ORDER BY name")
 	if err != nil {
 		return nil, err
 	}
@@ -318,7 +323,7 @@ func (s *Store) ListProviders(ctx context.Context) ([]Provider, error) {
 	for rows.Next() {
 		var provider Provider
 		var created, updated string
-		if err := rows.Scan(&provider.ID, &provider.Name, &provider.Endpoint, &provider.CredentialRef, &provider.Multiplier, &provider.WrapperURL, &created, &updated); err != nil {
+		if err := rows.Scan(&provider.ID, &provider.Name, &provider.Endpoint, &provider.CredentialRef, &provider.Multiplier, &provider.WrapperURL, &provider.WrapperKind, &created, &updated); err != nil {
 			return nil, err
 		}
 		provider.CreatedAt, err = time.Parse(time.RFC3339Nano, created)
@@ -364,8 +369,12 @@ func (s *Store) ProviderByName(ctx context.Context, name string) (Provider, erro
 // normalizing it would fail. SetProviderWrapper touches only the providers
 // table; it never creates, modifies, or reads a credential, ciphertext row,
 // or the vault key file.
-func (s *Store) SetProviderWrapper(ctx context.Context, name, url string) (Provider, error) {
-	result, err := s.DB.ExecContext(ctx, `UPDATE providers SET wrapper_url=?,updated_at=? WHERE name=?`, nullableString(url), time.Now().UTC().Format(time.RFC3339Nano), name)
+// kind is written in the same statement as the URL because it describes that
+// URL: a wrapper cannot have a protocol without an address, and clearing the
+// address must not leave a protocol behind. Callers pass "" for kind alongside
+// an empty url, and a validated value otherwise; this method validates neither.
+func (s *Store) SetProviderWrapper(ctx context.Context, name, url, kind string) (Provider, error) {
+	result, err := s.DB.ExecContext(ctx, `UPDATE providers SET wrapper_url=?,wrapper_kind=?,updated_at=? WHERE name=?`, nullableString(url), nullableString(kind), time.Now().UTC().Format(time.RFC3339Nano), name)
 	if err != nil {
 		return Provider{}, err
 	}
@@ -380,7 +389,19 @@ func (s *Store) SetProviderWrapper(ctx context.Context, name, url string) (Provi
 	return s.ProviderByName(ctx, name)
 }
 
-const officialWrapperSettingKey = "official.wrapper_url"
+const (
+	officialWrapperSettingKey     = "official.wrapper_url"
+	officialWrapperKindSettingKey = "official.wrapper_kind"
+)
+
+// OfficialWrapperKind returns the protocol declared for the built-in provider's
+// wrapper, or "" when none is declared. Like the URL it accompanies, it lives in
+// the generic settings table because the built-in provider has no definition row
+// to carry a column.
+func (s *Store) OfficialWrapperKind(ctx context.Context) (string, error) {
+	value, _, err := s.Setting(ctx, officialWrapperKindSettingKey)
+	return value, err
+}
 
 // OfficialWrapperURL returns the built-in official provider's wrapper URL, or
 // "" when none is set. The built-in provider holds no provider definition
@@ -397,12 +418,38 @@ func (s *Store) OfficialWrapperURL(ctx context.Context) (string, error) {
 // calling, and must skip that call when clearing (an empty url), since ""
 // both signals "clear" and would fail NormalizeWrapperURL's endpoint
 // validation. It never creates a provider definition row, credential,
-// ciphertext row, or the vault key file.
-func (s *Store) SetOfficialWrapperURL(ctx context.Context, url string) error {
-	if url == "" {
-		return s.DeleteSetting(ctx, officialWrapperSettingKey)
+// ciphertext row, or the vault key file. kind travels with the URL for the same
+// reason it does on a stored provider: it describes that URL, so clearing the
+// URL clears it too. An empty kind stores no declaration at all, which is the
+// same absence a wrapper configured before the field existed reads back as.
+//
+// The built-in provider's wrapper needs two settings rows where a stored
+// provider needs one column update, so both rows move in one transaction. A
+// declaration left behind by a half-applied write would describe a URL that is
+// no longer there, which is the one state this pair must never produce.
+func (s *Store) SetOfficialWrapperURL(ctx context.Context, url, kind string) error {
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
 	}
-	return s.SetSetting(ctx, officialWrapperSettingKey, url)
+	defer tx.Rollback()
+	if _, err = tx.ExecContext(ctx, "DELETE FROM settings WHERE key IN (?,?)", officialWrapperSettingKey, officialWrapperKindSettingKey); err != nil {
+		return err
+	}
+	if url != "" {
+		if _, err = tx.ExecContext(ctx, "INSERT INTO settings(key,value) VALUES(?,?)", officialWrapperSettingKey, url); err != nil {
+			return err
+		}
+		if kind != "" {
+			if _, err = tx.ExecContext(ctx, "INSERT INTO settings(key,value) VALUES(?,?)", officialWrapperKindSettingKey, kind); err != nil {
+				return err
+			}
+		}
+	}
+	if err = tx.Commit(); err != nil {
+		return err
+	}
+	return s.secureFiles()
 }
 
 func (s *Store) DeleteProvider(ctx context.Context, name string) error {

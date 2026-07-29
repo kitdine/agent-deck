@@ -99,6 +99,9 @@ var migrations = []migration{
 		`ALTER TABLE providers ADD COLUMN wrapper_url TEXT`,
 		`ALTER TABLE provider_selections ADD COLUMN via_wrapper INTEGER NOT NULL DEFAULT 0`,
 	}},
+	{version: 16, statements: []string{
+		`ALTER TABLE providers ADD COLUMN wrapper_kind TEXT`,
+	}},
 }
 
 func normalizeUsageEventTimes(ctx context.Context, tx *sql.Tx) error {
