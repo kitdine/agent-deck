@@ -1671,7 +1671,7 @@ func newWatchCommand(opts *commandOptions) *cobra.Command {
 }
 
 func renderWatchText(w io.Writer, event watch.Event) error {
-	at := event.GeneratedAt.Local().Format("2006-01-02 15:04:05")
+	at := renderDisplayTimeWithZone(event.GeneratedAt)
 	if event.Skipped {
 		_, err := fmt.Fprintf(w, "%s Watch scan skipped: %s.\n", at, strings.ReplaceAll(event.Reason, "_", " "))
 		return err
@@ -2236,6 +2236,12 @@ func writeResult(w io.Writer, format, command string, data any, quiet ...bool) e
 	if format == "ndjson" {
 		return &inputError{err: fmt.Errorf("ndjson format is supported only by watch")}
 	}
+	if command == "backup.create" {
+		if len(quiet) > 0 && quiet[0] {
+			return nil
+		}
+		return renderBackupCreateText(w, data, mutationResource(data, resource))
+	}
 	if isMutationCommand(command) {
 		if len(quiet) > 0 && quiet[0] {
 			return nil
@@ -2621,9 +2627,9 @@ func renderCommandText(w io.Writer, command string, data any) error {
 		}
 		rows := make([][]string, 0, len(value))
 		for _, item := range value {
-			rows = append(rows, []string{item.Path, strconv.FormatInt(item.Size, 10), item.ModifiedAt.Format(time.RFC3339Nano)})
+			rows = append(rows, []string{item.Path, strconv.FormatInt(item.Size, 10), renderDisplayTime(item.ModifiedAt)})
 		}
-		return output.WriteASCIITable(w, []string{"PATH", "SIZE", "MODIFIED"}, rows)
+		return output.WriteASCIITable(w, []string{"PATH", "SIZE", fmt.Sprintf("MODIFIED (%s)", displayZoneName())}, rows)
 	case "backup.inspect":
 		value, ok := data.(backup.Manifest)
 		if !ok {
@@ -2863,7 +2869,23 @@ func renderExtensionDetail(w io.Writer, value extension.DTO) error {
 }
 
 func renderBackupManifest(w io.Writer, value backup.Manifest) error {
-	_, err := fmt.Fprintf(w, "schema version: %d\nagentdeck version: %s\ncreated: %s\nsource platform: %s\nincluded: %s\nentries: %d\n", value.SchemaVersion, value.AgentDeckVersion, value.CreatedAt.Format(time.RFC3339Nano), value.SourcePlatform, textList(value.Included), len(value.Entries))
+	_, err := fmt.Fprintf(w, "schema version: %d\nagentdeck version: %s\ncreated: %s\nsource platform: %s\nincluded: %s\nentries: %d\n", value.SchemaVersion, value.AgentDeckVersion, renderDisplayTimeWithZone(value.CreatedAt), value.SourcePlatform, textList(value.Included), len(value.Entries))
+	return err
+}
+
+func renderBackupCreateText(w io.Writer, data any, resource string) error {
+	value, ok := data.(map[string]any)
+	if !ok {
+		return fmt.Errorf("unexpected backup.create result %T", data)
+	}
+	manifest, ok := value["manifest"].(backup.Manifest)
+	if !ok {
+		return fmt.Errorf("unexpected backup.create manifest %T", value["manifest"])
+	}
+	if err := renderMutationText(w, "backup.create", resource); err != nil {
+		return err
+	}
+	_, err := fmt.Fprintf(w, "created: %s\n", renderDisplayTimeWithZone(manifest.CreatedAt))
 	return err
 }
 
@@ -2874,13 +2896,13 @@ func renderPriceHistory(w io.Writer, values []usage.PriceCatalog, verbose bool) 
 	}
 	rows := make([][]string, 0, len(values))
 	for _, value := range values {
-		row := []string{value.Version, value.SourceKind, value.EffectiveFrom, strconv.FormatInt(value.Models, 10), strconv.FormatInt(value.Components, 10)}
+		row := []string{value.Version, value.SourceKind, renderDisplayTime(value.EffectiveFrom), strconv.FormatInt(value.Models, 10), strconv.FormatInt(value.Components, 10)}
 		if verbose {
 			row = append(row, value.CommitSHA, value.ContentSHA256, value.SourceURL)
 		}
 		rows = append(rows, row)
 	}
-	headers := []string{"VERSION", "SOURCE", "EFFECTIVE", "MODELS", "COMPONENTS"}
+	headers := []string{"VERSION", "SOURCE", fmt.Sprintf("EFFECTIVE (%s)", displayZoneName()), "MODELS", "COMPONENTS"}
 	if verbose {
 		headers = append(headers, "COMMIT", "SHA256", "URL")
 	}
@@ -2968,10 +2990,10 @@ func renderPriceList(w io.Writer, values []usage.EffectivePrice, verbose bool) e
 		sort.Strings(keys)
 		for _, component := range keys {
 			provenance := value.Provenance[component]
-			provenanceRows = append(provenanceRows, []string{value.Provider, value.Model, component, provenance.SourceKind, provenance.CatalogVersion, provenance.EffectiveFrom, provenance.CommitSHA, provenance.ContentSHA256, provenance.SourceURL})
+			provenanceRows = append(provenanceRows, []string{value.Provider, value.Model, component, provenance.SourceKind, provenance.CatalogVersion, renderDisplayTime(provenance.EffectiveFrom), provenance.CommitSHA, provenance.ContentSHA256, provenance.SourceURL})
 		}
 	}
-	return output.WriteASCIITable(w, []string{"PROVIDER", "MODEL", "COMPONENT", "SOURCE", "VERSION", "EFFECTIVE", "COMMIT", "SHA256", "URL"}, provenanceRows)
+	return output.WriteASCIITable(w, []string{"PROVIDER", "MODEL", "COMPONENT", "SOURCE", "VERSION", fmt.Sprintf("EFFECTIVE (%s)", displayZoneName()), "COMMIT", "SHA256", "URL"}, provenanceRows)
 }
 
 // estimatedPriceNoteWidth wraps the disclosure paragraph narrower than the
@@ -3121,14 +3143,15 @@ func renderUsageTextWithOptions(w io.Writer, command string, data any, renderOpt
 		}
 		rows := make([][]string, 0, len(v))
 		for _, x := range v {
-			row := []string{x.Client, x.SessionID, x.FirstAt, x.LastAt}
+			row := []string{x.Client, x.SessionID, renderDisplayTime(x.FirstAt), renderDisplayTime(x.LastAt)}
 			for _, token := range usageTokenNames {
 				row = append(row, strconv.FormatInt(x.Tokens[token.key], 10))
 			}
 			row = append(row, sessionCostText(x.CatalogBaseCost, x.KnownCatalogBaseCost), sessionCostText(x.ProviderCost, x.KnownProviderCost), usageSessionStatus(x))
 			rows = append(rows, row)
 		}
-		return output.WriteASCIITable(w, []string{"CLIENT", "SESSION", "FIRST", "LAST", "INPUT", "CACHED", "OUTPUT", "CACHE READ", "CACHE CREATE", "WRITE 5M", "WRITE 1H", "BASE COST", "PROVIDER COST", "STATUS"}, rows)
+		zone := displayZoneName()
+		return output.WriteASCIITable(w, []string{"CLIENT", "SESSION", fmt.Sprintf("FIRST (%s)", zone), fmt.Sprintf("LAST (%s)", zone), "INPUT", "CACHED", "OUTPUT", "CACHE READ", "CACHE CREATE", "WRITE 5M", "WRITE 1H", "BASE COST", "PROVIDER COST", "STATUS"}, rows)
 	default:
 		return fmt.Errorf("no usage text renderer for %s (%T)", command, data)
 	}

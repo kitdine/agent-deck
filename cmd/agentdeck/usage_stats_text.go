@@ -548,7 +548,7 @@ func (r statsTextRenderer) modelActivityLines(model usage.StatsDimension) []stri
 	summary := fmt.Sprintf("%s sessions · %s active days · %s tools · %s completed · %s failed", groupedInt(activity.ActiveSessions), groupedInt(activity.ActiveDays), groupedInt(activity.ToolCalls), groupedInt(activity.CompletedCalls), groupedInt(activity.FailedCalls))
 	lines = append(lines, statsWrap(summary, r.width)...)
 	if activity.FirstAt != "" {
-		lines = append(lines, statsWrap("range "+activity.FirstAt+" - "+activity.LastAt, r.width)...)
+		lines = append(lines, statsWrap("range "+statsActivityRange(activity.FirstAt, activity.LastAt), r.width)...)
 	}
 	if activity.AverageDuration != nil {
 		lines = append(lines, fmt.Sprintf("timed duration %s ms total · %s ms average", groupedInt(activity.TotalDurationMS), groupedInt(*activity.AverageDuration)))
@@ -560,6 +560,18 @@ func (r statsTextRenderer) modelActivityLines(model usage.StatsDimension) []stri
 		lines = append(lines, r.style("No tool activity in this range.", "2"))
 	}
 	return lines
+}
+
+// statsActivityRange localizes the model activity bounds and names the zone
+// once for the pair. Both values must parse before either is rewritten, so a
+// half-localized range can never claim a zone it does not describe.
+func statsActivityRange(firstAt, lastAt string) string {
+	_, firstErr := time.Parse(time.RFC3339Nano, firstAt)
+	_, lastErr := time.Parse(time.RFC3339Nano, lastAt)
+	if firstErr != nil || lastErr != nil {
+		return firstAt + " - " + lastAt
+	}
+	return renderDisplayTime(firstAt) + " - " + renderDisplayTime(lastAt) + " " + displayZoneName()
 }
 
 func modelToolCalls(model usage.StatsDimension) int64 {

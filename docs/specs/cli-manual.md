@@ -29,6 +29,10 @@ credential-owned provider configuration 的正式命令契约。执行状态以
   flag 或环境变量。
 - 默认 text collection 使用统一的 `+`、`-`、`|` ASCII grid；显式
   `--format json` 才输出稳定 envelope。
+- 面向人的 text 输出把 instant 渲染为本机时区、精确到秒，并明确标出时区：表格时间
+  列在 header 中使用 `FIELD (<zone>)`，detail 与行首时间在值后追加 `<zone>`。JSON、
+  NDJSON 和存储继续使用 UTC RFC 3339；不含 instant 的输出不虚构时区，无法解析的
+  时间值原样保留。
 - `official` 是 Codex 内置 provider，不存入 providers 表，不创建 credential，不访问
   credential vault 或 `auth.json`。
 
@@ -335,8 +339,8 @@ personal -> aigocode-personal-ref
 | --- | --- | --- | --- | --- |
 | `usage scan` | 增量扫描本地 Codex/Claude usage sources | 无 | 无 | `agentdeck usage scan` |
 | `usage summary [daily\|weekly\|monthly]` | 默认扫描后汇总全部历史，或按本机时区快捷查看今天、本周（周一开始）、本月 | 可选周期位置参数、`--no-scan` | 否；`--no-scan` 直接使用已存聚合 | `agentdeck usage summary weekly --no-scan` |
-| `usage stats` | 默认扫描后输出 KPI、趋势、封顶模型列表、cache hit、client/provider 占比、均值、峰值、计价覆盖和 activity | `--period`、`--from/--to`、`--group-by`、`--metric`、`--client`、`--model`、`--provider`、`--activity`、`--no-scan`、`--top` | 默认 `7d/auto/tokens`；日期必须成对；`--provider` 接受精确 runtime provider 名称且不做枚举校验；`--activity` 必须与 `--model` 同用；`--no-scan` 直接使用已存聚合；`--top` 必须为非负整数，不传使用各区块默认封顶，`0` 还原未封顶完整文本列表，正整数 N 统一覆盖该次输出的封顶值 | `agentdeck usage stats --provider official --no-scan` |
-| `usage sessions` | 按 session 分列展示各类 token、成本和计价状态 | 无 | 无 | `agentdeck usage sessions` |
+| `usage stats` | 默认扫描后输出 KPI、趋势、封顶模型列表、cache hit、client/provider 占比、均值、峰值、计价覆盖和 activity；`--activity` 的 `MODEL ACTIVITY` range 在 text 中使用本机时区并在值后标出 | `--period`、`--from/--to`、`--group-by`、`--metric`、`--client`、`--model`、`--provider`、`--activity`、`--no-scan`、`--top` | 默认 `7d/auto/tokens`；日期必须成对；`--provider` 接受精确 runtime provider 名称且不做枚举校验；`--activity` 必须与 `--model` 同用；`--no-scan` 直接使用已存聚合；`--top` 必须为非负整数，不传使用各区块默认封顶，`0` 还原未封顶完整文本列表，正整数 N 统一覆盖该次输出的封顶值 | `agentdeck usage stats --provider official --no-scan` |
+| `usage sessions` | 按 session 分列展示各类 token、成本和计价状态；`FIRST`/`LAST` 在 text 中使用本机时区并在列名标出 | 无 | 无 | `agentdeck usage sessions` |
 | `usage diagnose` | 展示 source、event、session、run、价格覆盖和 attribution 诊断 | 无 | 无 | `agentdeck usage diagnose` |
 | `usage rebuild` | 逐 source 原子重建 usage metadata；失败 source 保留旧数据并返回 partial warning | 无 | 无 | `agentdeck usage rebuild` |
 
@@ -476,6 +480,10 @@ personal -> aigocode-personal-ref
 | `price update` | 自动解析并下载最新 LiteLLM canonical raw catalog | `--commit <40-char-sha>` | 无；`--commit` 为可选复现入口 | `agentdeck price update` |
 | `price override` | 导入本地 official component override | `--file <json>` | `--file` 必填 | `agentdeck price override --file prices.json` |
 
+`price history` 的 `EFFECTIVE`、`price status` 中嵌入的 catalog 历史，以及
+`price list --verbose` provenance 的 `EFFECTIVE` 在 text 中使用本机时区并在列名标出；
+对应 JSON 始终保留 UTC RFC 3339。
+
 默认执行 `price update` 时，AgentDeck 先通过 GitHub API 解析 LiteLLM `main`
 的最新 commit，再从该 commit 对应的 canonical raw URL 下载并记录 provenance。
 指定 `--commit` 会跳过最新版本解析，用于复现或回滚。命令不接受 `--url`；实际下载
@@ -545,9 +553,9 @@ namespace, and watch fingerprints never recursively follow link cycles.
 
 | 命令 | 含义与典型用例 | 参数与 Flags | 必填规则 | 示例 |
 | --- | --- | --- | --- | --- |
-| `backup create [path]` | 创建加密 `.adb` backup；passphrase 不进入参数或环境变量 | `path`：可选；`--include-sessions` | 无；path 默认受管 backup 目录 | `agentdeck backup create --include-sessions` |
-| `backup list` | 列出默认 portable backup 目录 | 无 | 无 | `agentdeck backup list` |
-| `backup inspect <path>` | 解密、校验并显示 manifest，不恢复 | `path` | `path` 必填 | `agentdeck backup inspect backup.adb` |
+| `backup create [path]` | 创建加密 `.adb` backup；passphrase 不进入参数或环境变量；text 成功信息追加本机时区的 `created` | `path`：可选；`--include-sessions` | 无；path 默认受管 backup 目录 | `agentdeck backup create --include-sessions` |
+| `backup list` | 列出默认 portable backup 目录；`MODIFIED` 在 text 中使用本机时区并在列名标出 | 无 | 无 | `agentdeck backup list` |
+| `backup inspect <path>` | 解密、校验并显示 manifest，不恢复；`created` 在 text 中使用本机时区并在值后标出 | `path` | `path` 必填 | `agentdeck backup inspect backup.adb` |
 | `backup restore <path>` | 恢复到空 state root；失败时补偿本次创建内容 | `path` | `path` 必填；目标 state root 必须为空 | `agentdeck backup restore backup.adb --state-dir /tmp/restored` |
 
 Portable backup 只导出 `provider_credentials` 与 `credential_secrets` 当前 join 到的
@@ -560,11 +568,15 @@ restore 为目标机器创建新 key，并在一个 transaction 中替换 snapsh
 | --- | --- | --- | --- | --- |
 | `doctor` | quick read-only diagnostics；检查 key 权限、key ID、算法/版本、nonce 和 secret ownership，不解密 | `--full`：额外认证全部 credential ciphertext，并增加 usage、session、extension 和价格深度检查 | 无 | `agentdeck doctor --full` |
 | `state migrate` | 显式将本地 core state 迁移到当前 schema；doctor 永不自动迁移 | 无 | 无 | `agentdeck state migrate` |
-| `watch` | 前台监控 local sources；复用各 domain 已成功 scan 的 checkpoint，不重复 bootstrap 已完成的扫描 | `--interval <duration>`；`--domains <list>` | 均可选；interval 默认 `1m`，domains 默认 `usage,session,extension` | `agentdeck watch --interval 30s --domains usage --format ndjson` |
+| `watch` | 前台监控 local sources；复用各 domain 已成功 scan 的 checkpoint，不重复 bootstrap 已完成的扫描；text 行首时间使用本机时区并在值后标出，NDJSON 保持 UTC | `--interval <duration>`；`--domains <list>` | 均可选；interval 默认 `1m`，domains 默认 `usage,session,extension` | `agentdeck watch --interval 30s --domains usage --format ndjson` |
 | `run <codex\|claude> [-- <args...>]` | 启动客户端并建立 exact/estimated usage attribution；允许无 child args | client：位置参数；dash 后参数可为空 | client 必填 | `agentdeck run codex --` |
 | `version` | 输出 release、commit、branch、Go version 和 UTC build time | 无 | 无 | `agentdeck version --format json` |
 | `help [command-path]` | 显示 root 或指定命令帮助 | command path 可选 | 无 | `agentdeck help credential update` |
 | `completion <bash\|fish\|zsh>` | 只输出指定 shell completion script | shell | shell 必填；PowerShell 不支持且不出现在 help/completion 中 | `agentdeck completion zsh` |
+
+`version` 的 `UTC Build Time` 是例外：它是构建时注入、用于跨机器比较的 immutable
+release/support identity，不是运行时领域 instant，因此保持固定 UTC 格式，并在字段名中
+明确标出 UTC。
 
 Doctor 对 core schema 使用四态契约：schema 12 quick/full 报告
 `schema_outdated`、`count=12` 和 `agentdeck state migrate`；完整 schema 13

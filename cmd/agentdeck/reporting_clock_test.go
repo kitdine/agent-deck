@@ -10,9 +10,12 @@ import (
 	"time"
 
 	"github.com/kitdine/agent-deck/internal/activity"
+	"github.com/kitdine/agent-deck/internal/backup"
 	"github.com/kitdine/agent-deck/internal/provider"
 	"github.com/kitdine/agent-deck/internal/session"
 	"github.com/kitdine/agent-deck/internal/store"
+	"github.com/kitdine/agent-deck/internal/usage"
+	"github.com/kitdine/agent-deck/internal/watch"
 )
 
 // usePinnedDisplayZone fixes the zone human-readable output uses, including the
@@ -263,6 +266,237 @@ func TestSessionShowLeavesInvalidDisplayTimesUnchanged(t *testing.T) {
 			t.Errorf("session show added a zone to invalid value %q:\n%s", unwanted, text.String())
 		}
 	}
+}
+
+func TestBackupAndPriceTextSurfacesUseDisplayZone(t *testing.T) {
+	usePinnedDisplayZone(t, time.FixedZone("UTC+8", 8*60*60))
+
+	instant := time.Date(2026, 7, 20, 16, 0, 0, 123456789, time.UTC)
+	stored := instant.Format(time.RFC3339Nano)
+	const localized = "2026-07-21 00:00:00"
+	manifest := backup.Manifest{
+		SchemaVersion:    3,
+		AgentDeckVersion: "v1.2.3",
+		CreatedAt:        instant,
+		SourcePlatform:   "darwin/arm64",
+	}
+	catalogs := []usage.PriceCatalog{{
+		Version:       "catalog-1",
+		SourceKind:    "official",
+		EffectiveFrom: stored,
+		Models:        1,
+		Components:    2,
+	}}
+	cases := []struct {
+		name    string
+		command string
+		data    any
+		want    []string
+	}{
+		{
+			name:    "backup create",
+			command: "backup.create",
+			data:    map[string]any{"path": "/tmp/backup.adb", "manifest": manifest},
+			want: []string{
+				`Completed backup.create for "/tmp/backup.adb".`,
+				"created: " + localized + " UTC+8",
+			},
+		},
+		{
+			name:    "backup list",
+			command: "backup.list",
+			data: []backup.FileInfo{{
+				Path:       "/tmp/backup.adb",
+				Size:       123,
+				ModifiedAt: instant,
+			}},
+			want: []string{"MODIFIED (UTC+8)", localized},
+		},
+		{
+			name:    "backup inspect",
+			command: "backup.inspect",
+			data:    manifest,
+			want:    []string{"created: " + localized + " UTC+8"},
+		},
+		{
+			name:    "price history",
+			command: "price.history",
+			data:    catalogs,
+			want:    []string{"EFFECTIVE (UTC+8)", localized},
+		},
+		{
+			name:    "price status catalogs",
+			command: "price.status",
+			data: map[string]any{
+				"available":  true,
+				"models":     1,
+				"components": 2,
+				"catalogs":   catalogs,
+			},
+			want: []string{"EFFECTIVE (UTC+8)", localized},
+		},
+	}
+
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			var text bytes.Buffer
+			if err := writeResult(&text, "text", test.command, test.data); err != nil {
+				t.Fatal(err)
+			}
+			for _, want := range test.want {
+				if !strings.Contains(text.String(), want) {
+					t.Errorf("text output missing %q:\n%s", want, text.String())
+				}
+			}
+			if strings.Contains(text.String(), stored) {
+				t.Errorf("text output kept stored UTC instant:\n%s", text.String())
+			}
+
+			var encoded bytes.Buffer
+			if err := writeResult(&encoded, "json", test.command, test.data); err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(encoded.String(), stored) {
+				t.Errorf("JSON output changed stored instant:\n%s", encoded.String())
+			}
+			if strings.Contains(encoded.String(), localized) {
+				t.Errorf("JSON output contains localized instant:\n%s", encoded.String())
+			}
+		})
+	}
+}
+
+func TestInstantBearingTextRendererSweepUsesDisplayZone(t *testing.T) {
+	usePinnedDisplayZone(t, time.FixedZone("UTC+8", 8*60*60))
+
+	instant := time.Date(2026, 7, 20, 16, 0, 0, 123456789, time.UTC)
+	stored := instant.Format(time.RFC3339Nano)
+	const localized = "2026-07-21 00:00:00"
+
+	t.Run("price list verbose provenance", func(t *testing.T) {
+		prices := []usage.EffectivePrice{{
+			Provider: "openai",
+			Model:    "gpt-test",
+			Unit:     "USD / 1M tokens",
+			Prices:   map[string]string{"input": "1"},
+			Provenance: map[string]usage.PriceProvenance{
+				"input": {
+					CatalogVersion: "catalog-1",
+					SourceKind:     "official",
+					EffectiveFrom:  stored,
+				},
+			},
+		}}
+		var text bytes.Buffer
+		if err := writePriceEnvelope(&text, "text", "price.list", prices, false, nil, false, true); err != nil {
+			t.Fatal(err)
+		}
+		for _, want := range []string{"EFFECTIVE (UTC+8)", localized} {
+			if !strings.Contains(text.String(), want) {
+				t.Errorf("price list verbose text missing %q:\n%s", want, text.String())
+			}
+		}
+		if strings.Contains(text.String(), stored) {
+			t.Errorf("price list verbose text kept stored UTC instant:\n%s", text.String())
+		}
+
+		var encoded bytes.Buffer
+		if err := writePriceEnvelope(&encoded, "json", "price.list", prices, false, nil, false, true); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(encoded.String(), stored) || strings.Contains(encoded.String(), localized) {
+			t.Errorf("price list JSON changed stored instant:\n%s", encoded.String())
+		}
+	})
+
+	t.Run("usage sessions", func(t *testing.T) {
+		sessions := []usage.SessionSummary{{
+			Client:    "codex",
+			SessionID: "session-1",
+			FirstAt:   stored,
+			LastAt:    stored,
+			Tokens:    map[string]int64{},
+		}}
+		var text bytes.Buffer
+		if err := writeUsageEnvelope(&text, "text", "usage.sessions", sessions, false, nil, false, usageTextRenderOptions{}); err != nil {
+			t.Fatal(err)
+		}
+		for _, want := range []string{"FIRST (UTC+8)", "LAST (UTC+8)", localized} {
+			if !strings.Contains(text.String(), want) {
+				t.Errorf("usage sessions text missing %q:\n%s", want, text.String())
+			}
+		}
+		if strings.Contains(text.String(), stored) {
+			t.Errorf("usage sessions text kept stored UTC instant:\n%s", text.String())
+		}
+
+		var encoded bytes.Buffer
+		if err := writeUsageEnvelope(&encoded, "json", "usage.sessions", sessions, false, nil, false, usageTextRenderOptions{}); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(encoded.String(), stored) || strings.Contains(encoded.String(), localized) {
+			t.Errorf("usage sessions JSON changed stored instant:\n%s", encoded.String())
+		}
+	})
+
+	t.Run("watch", func(t *testing.T) {
+		event := watch.Event{
+			SchemaVersion: watch.EventSchemaVersion,
+			Type:          "scan_completed",
+			Domain:        "session",
+			GeneratedAt:   instant,
+			Changes:       1,
+		}
+		var text bytes.Buffer
+		if err := renderWatchText(&text, event); err != nil {
+			t.Fatal(err)
+		}
+		if want := localized + " UTC+8"; !strings.Contains(text.String(), want) {
+			t.Errorf("watch text missing %q:\n%s", want, text.String())
+		}
+		if strings.Contains(text.String(), stored) {
+			t.Errorf("watch text kept stored UTC instant:\n%s", text.String())
+		}
+
+		var encoded bytes.Buffer
+		if err := json.NewEncoder(&encoded).Encode(event); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(encoded.String(), stored) || strings.Contains(encoded.String(), localized) {
+			t.Errorf("watch NDJSON changed stored instant:\n%s", encoded.String())
+		}
+	})
+
+	t.Run("usage stats model activity range", func(t *testing.T) {
+		last := "2026-07-20T18:30:00.987654321Z"
+		report := usage.StatsReport{Models: []usage.StatsDimension{{
+			Name:     "gpt-test",
+			Activity: &usage.StatsModelActivity{FirstAt: stored, LastAt: last},
+		}}}
+		renderer := statsTextRenderer{report: report, width: 120}
+		text := strings.Join(renderer.modelActivityLines(report.Models[0]), "\n")
+		if want := "range " + localized + " - 2026-07-21 02:30:00 UTC+8"; !strings.Contains(text, want) {
+			t.Errorf("model activity range missing %q:\n%s", want, text)
+		}
+		if strings.Contains(text, stored) || strings.Contains(text, last) {
+			t.Errorf("model activity range kept a stored UTC instant:\n%s", text)
+		}
+	})
+
+	t.Run("usage stats model activity keeps unparseable range unchanged", func(t *testing.T) {
+		report := usage.StatsReport{Models: []usage.StatsDimension{{
+			Name:     "gpt-test",
+			Activity: &usage.StatsModelActivity{FirstAt: "not-a-timestamp", LastAt: stored},
+		}}}
+		renderer := statsTextRenderer{report: report, width: 120}
+		text := strings.Join(renderer.modelActivityLines(report.Models[0]), "\n")
+		if want := "range not-a-timestamp - " + stored; !strings.Contains(text, want) {
+			t.Errorf("model activity range changed an unparseable value:\n%s", text)
+		}
+		if strings.Contains(text, "UTC+8") {
+			t.Errorf("model activity range named a zone for an unparseable value:\n%s", text)
+		}
+	})
 }
 
 func seedUsageEventForRangeTest(t *testing.T, state, at string) {

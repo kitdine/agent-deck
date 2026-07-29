@@ -13,6 +13,8 @@ import (
 )
 
 func TestExtensionAndBackupTextContracts(t *testing.T) {
+	usePinnedDisplayZone(t, time.FixedZone("UTC+8", 8*60*60))
+
 	extensionValue := rendererExtensionFixture()
 	manifest := rendererBackupManifestFixture()
 
@@ -54,7 +56,7 @@ func TestExtensionAndBackupTextContracts(t *testing.T) {
 			want: []string{
 				"schema version: 3",
 				"agentdeck version: v1.2.3",
-				"created: " + manifest.CreatedAt.Format(time.RFC3339Nano),
+				"created: 2026-07-24 09:02:03 UTC+8",
 				"source platform: darwin/arm64",
 				"included: core,sessions",
 				"entries: 2",
