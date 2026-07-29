@@ -199,36 +199,42 @@ through the display-neutral `displayLocation` seam, and two guards keep the
 contract honest — that dates are read in the configured zone, and that the
 configured zone defaults to the machine's.
 
-A second active plan, [project-attribution](plans/project-attribution.md), lets a
+Project attribution is delivered and independently reviewed under the
+[CLI contract](specs/cli-design.md#project-attribution) and
+[manual](specs/cli-manual.md#project-attribution). It lets a
 user mark a wrapper URL as speaking Headroom's protocol and have
 `agentdeck run` label a launch with the project it happened in, with an
 installable shell helper and a documented settings-file recipe covering
-launches AgentDeck does not make. Its first four tasks are delivered and
-independently reviewed: `headroom-wrapper-kind` adds the explicit protocol
+launches AgentDeck does not make. All six tasks are delivered and independently
+reviewed: `headroom-wrapper-kind` adds the explicit protocol
 declaration, and `project-identity` shares the session parser's cleaned
 full-path identity while exposing only a safely encoded base name on the wire;
 `run-env-injection` attributes eligible AgentDeck-launched Codex and Claude
-processes; and `attribution-guidance` points successful Headroom wrapper actions
-to the project-owned manual without changing JSON or quiet output. Two tasks
-remain, starting with `shell-helpers`. AgentDeck writes no file it does not
-already own; the app questions sit in the Backlog below.
+processes; `attribution-guidance` points successful Headroom wrapper actions
+to the project-owned manual without changing JSON or quiet output; and
+`shell-helpers` adds `agentdeck shell-init <bash|fish|zsh>`, which emits `codex`
+and `claude` wrapper functions that resolve attribution through the same route
+check that `agentdeck run` uses, so a helper sourced under a direct route or a
+non-Headroom wrapper injects nothing. `attribution-contract` records the
+shipped behavior in specification version 20.
+AgentDeck writes no file it does not already own; the app questions sit in the
+Backlog below.
 
 The first task in the older active plan,
 [display-timezone](plans/display-timezone.md), is implemented and independently
 reviewed. `display-clock` extracted the shared zone, timezone-name, and
 RFC3339/`time.Time` rendering helpers without wiring them into a renderer, so
 no command output changed. Storage and JSON remain UTC under
-`specs/cli-design.md` v19. Next is `provider-and-session-surfaces`, which will
+`specs/cli-design.md` v20. Next is `provider-and-session-surfaces`, which will
 localize the provider and session timestamps a person reads.
 
 ## Documents
 
 | Document | Purpose |
 | --- | --- |
-| [specs/cli-design.md](specs/cli-design.md) | What the system does and must keep doing: provider, credential, usage, pricing, session, backup, and distribution behavior. Currently version 18; see its changelog. |
+| [specs/cli-design.md](specs/cli-design.md) | What the system does and must keep doing: provider, credential, usage, pricing, session, backup, and distribution behavior. Currently version 20; see its changelog. |
 | [specs/cli-manual.md](specs/cli-manual.md) | The implemented command surface, flags, and output shapes. |
 | [plans/display-timezone.md](plans/display-timezone.md) | Render instants in the machine's zone in text only; storage and JSON stay UTC. `active — 1/3 done`. |
-| [plans/project-attribution.md](plans/project-attribution.md) | Tell a Headroom-marked wrapper which project a launch belongs to, delivered through `agentdeck run` plus an installable shell helper. `active — 4/6 done`. |
 | [reviews/](reviews/README.md) | Per-task review records that back each plan's ticked `Review` cell. |
 | [archive/](archive/README.md) | Retired plans and superseded contracts. Not a starting point for new work. |
 
@@ -301,7 +307,8 @@ than expanding the entry in place.
 
 - [ ] Confirm whether a Claude **app** picks up a project-scoped
       `.claude/settings.local.json` without a restart.
-      [project-attribution](plans/project-attribution.md) documents that file as a
+      The [CLI manual's Project Attribution
+      section](specs/cli-manual.md#project-attribution) documents that file as a
       recipe the user applies themselves, but does not claim it reaches an app.
       The doubt is concrete: Claude Code's `env` block is injected when the
       process starts, and the `CLAUDE_ENV_FILE` available to `SessionStart`,

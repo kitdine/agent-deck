@@ -5,7 +5,7 @@ created: 2026-07-22
 
 # Archived Documents
 
-Last updated: 2026-07-27
+Last updated: 2026-07-29
 
 ## Why this directory exists
 
@@ -44,6 +44,23 @@ Move a document here instead of leaving it `active` in `docs/plans/` or
 - `docs/README.md` must not re-list individual archived files — this file is
   the index for archived material so the main doc index doesn't need to grow
   for documents nobody should open by default.
+
+## 2026-07-29 retirement: project attribution
+
+`plans/project-attribution.md` and `reviews/project-attribution/`
+
+All six tasks were delivered and independently reviewed: wrapper protocol
+declaration, project identity, `agentdeck run` environment injection, operator
+guidance, installable shell helpers, and the final attribution contract.
+`shell-helpers` passed in review Round 7 after its shell-level harness was
+repaired and exercised without a pipeline; `attribution-contract` passed in
+Round 2 after its delivery-path and wrapper-kind contracts were reconciled.
+
+The current contract remains active in `docs/specs/cli-design.md` version 20,
+and the implemented command surface and user guidance remain active in
+`docs/specs/cli-manual.md`. The unresolved question of whether the Claude app
+loads project-scoped settings without restart remains an explicit Backlog item
+in `docs/README.md`; it is not unfinished plan work.
 
 ## 2026-07-27 retirement: the provider wrapper routing plan
 

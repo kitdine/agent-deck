@@ -1,6 +1,7 @@
 ---
-status: active
+status: historical
 created: 2026-07-28
+retired: 2026-07-29
 ---
 
 # Project Attribution Plan
@@ -526,6 +527,202 @@ shell's own syntax check; sourcing it and launching a client produces the same
 header value that `agentdeck run` would have produced from the same directory,
 proven by comparing both against one fixture directory.
 
+Dev complete (2026-07-29): added `agentdeck shell-init <bash|fish|zsh>` as a
+stdout-only command that emits fail-open `codex` and `claude` wrapper functions.
+The functions call back into a hidden resolver at each launch, so project
+identity and percent encoding stay in the existing Go helper; the shared
+route-independent environment helper also keeps the same Codex/Claude
+user-value precedence and Claude unrelated-header preservation as
+`agentdeck run`. Emission neither opens AgentDeck state nor requires a
+configured wrapper, and the generated text contains no project, endpoint, or
+credential. The manual now explains how to source each shell's output and that
+Codex needs the managed `env_http_headers` mapping written by a Headroom
+`provider use --via` switch.
+
+Behavioral RED was
+`rtk test env GOCACHE=/private/tmp/agent-deck-go-build go test -count=1
+-mod=vendor ./cmd/agentdeck -run ShellInit`: all supported-shell cases failed
+with `accepts 0 arg(s), received 2`, and the unsupported-shell assertion failed
+against that same missing-command behavior. After implementation:
+
+- `rtk test env GOCACHE=/private/tmp/agent-deck-go-build go test -count=1
+  -mod=vendor ./cmd/agentdeck -run ShellInit` passed.
+- `rtk test env GOCACHE=/private/tmp/agent-deck-go-build go test -count=1
+  -mod=vendor ./cmd/agentdeck -run GUIJSONContractFixture` passed.
+- `rtk test env GOCACHE=/private/tmp/agent-deck-go-build go test -count=1
+  -mod=vendor ./internal/provider -run Project` passed.
+- The originally recorded `scripts/test-completion-install.sh` result was
+  invalidated by review round 5: the script had exited before its helper and
+  completion-install assertions. After the round 5 harness repair, a bare,
+  unpiped run exited 0 and verified the real built binary, all three shells,
+  helper route/fail-open assertions, and the subsequent completion
+  install/uninstall/rollback checks.
+- `rtk proxy gofmt -l cmd/agentdeck/main.go
+  cmd/agentdeck/contract_test.go cmd/agentdeck/shell_init_test.go
+  internal/provider/project.go internal/provider/service.go` printed nothing.
+- `rtk git diff --check` exited 0.
+
+Review round 1 (2026-07-29): **REOPEN**. The helpers attribute every launch
+regardless of wrapper kind, so a sourced Claude helper sends
+`X-Headroom-Project` to whatever upstream is currently selected — proven with an
+empty state directory and no provider configured — which contradicts
+"Attribution is opt-in and wrapper-scoped" and makes the acceptance comparison
+against `agentdeck run` hold only in the one configured state the install test
+exercises. Four P2 findings also remain: the new `leafCommands` exclusion drops
+`shell-init` from three contract tests and the GUI fixture even though its error
+envelope already conforms; the help catalog entry uses one-space indentation
+where every other command uses two; and the recorded evidence covers only three
+`-run` selections for a change that edits a helper shared by five call sites.
+Findings and independent verification live in
+`docs/reviews/project-attribution/shell-helpers.md`.
+
+Fix round (2026-07-29): closed the seven recorded findings without changing
+the public `shell-init <bash|fish|zsh>` surface. The hidden runtime resolver now
+accepts no shell positional argument, opens existing AgentDeck state read-only,
+and delegates to `RunProjectEnvironment`; missing state, unreadable state,
+missing selection, stale route, and non-Headroom wrapper all produce no value
+and leave client launch fail-open. This preserves the plan's opt-in
+wrapper-scoped decision rather than documenting a Claude-specific deviation.
+
+`completion` and `shell-init` are intentionally classified together as commands
+that emit sourceable shell programs rather than GUI JSON data. A named,
+commented predicate now owns that contract-test exclusion, and a dedicated test
+pins `shell-init`'s JSON syntax-error envelope (`command: shell-init`,
+`code: invalid_argument`). The help entry is back inside the catalog map
+literal with the standard two-space argument/example indentation. Generated
+fish output and the manual record fish 3.4 as the minimum version.
+
+Regression coverage added:
+
+- behavioral RED:
+  `rtk proxy env GOCACHE=/private/tmp/agent-deck-go-build go test -count=1
+  -mod=vendor ./cmd/agentdeck -run
+  TestShellInitProjectEnvironmentRequiresHeadroomSelection -v` failed because
+  an empty state still resolved `my%2Bproject`; it passed after the route-aware
+  resolver change;
+- the install test now compares both Codex and Claude helpers with
+  `agentdeck run` in a state with no provider selection and confirms both inject
+  nothing, then repeats the existing Headroom-route equality checks;
+- bash, fish, and zsh each prove the real client still starts when `agentdeck`
+  is absent, exits non-zero, or exits successfully with empty output.
+
+Final verification after the fix:
+
+- `rtk test env GOCACHE=/private/tmp/agent-deck-go-build go test -count=1
+  -mod=vendor ./cmd/agentdeck ./internal/provider ./internal/session` passed.
+- The install-script result recorded in this round was later invalidated by
+  review round 5 because the script had aborted before those assertions. The
+  repaired script was subsequently run bare without a pipeline and exited 0;
+  that current result covers every shell's `-n`, configured/unconfigured route
+  comparisons, fail-open cases, and the original completion-install suite.
+- `rtk proxy gofmt -l cmd/agentdeck/main.go
+  cmd/agentdeck/contract_test.go cmd/agentdeck/shell_init_test.go
+  internal/provider/project.go internal/provider/service.go` printed nothing.
+- `rtk git diff --check` exited 0.
+
+The pre-existing `AGENTS.md` workflow-policy change was not modified for this
+repair and remains a separate logical change that must be committed separately
+from shell-helpers. No commit was made in this fix round.
+
+Review round 3 (2026-07-29): **REOPEN**. The P1 is closed by construction —
+the resolver now delegates to the same `RunProjectEnvironment` predicate as
+`agentdeck run`, and the route-independent export was removed rather than left
+as a parallel path. Probing a built binary confirmed all three selection states
+agree, including a stale `via` selection whose wrapper kind was reset to
+`plain`. Three of the four P2 findings are closed; the help-shape finding is
+partially fixed (leading indentation corrected, one space of description offset
+remains) and is downgraded to P3. One new P2 remains:
+`docs/specs/cli-manual.md:145` still promises the helper "不要求预先配置
+wrapper", which the fix made untrue, so a user would source it, see no header,
+and find no documented reason. Findings and evidence live in
+`docs/reviews/project-attribution/shell-helpers.md`.
+
+Fix after review round 3 (2026-07-29): corrected the manual to distinguish
+script generation from attribution activation. Generating or sourcing the
+script requires no wrapper configuration; runtime attribution activates only
+when the current selection uses a wrapper declared `headroom`, otherwise the
+helper silently launches without injection. The adjacent Codex paragraph now
+states only its additional `env_http_headers` mapping requirement without
+repeating the `provider use --via` instruction.
+
+The completion-install test now adds the missing configured-provider/direct-
+switch state before the existing `--via` state. Real `agentdeck run` and
+sourced bash, fish, and zsh helpers all launch successfully and produce empty
+Codex and Claude attribution values. This was a coverage gap over already
+correct behavior, so the new assertion was GREEN before any production
+behavior change rather than a defect RED. The optional help-shape cleanup also
+aligns the description column with `completion`.
+
+Verification after the final edit:
+
+- `rtk test env GOCACHE=/private/tmp/agent-deck-go-build go test -count=1
+  -mod=vendor ./cmd/agentdeck` passed in 24.703s.
+- This round's install-script pass claim was invalidated by review round 5:
+  the script had stopped before the direct-switch comparison. After creating
+  both client config fixtures and neutralizing the expected no-selection
+  failures, the bare unpiped script run exited 0 and executed the direct-switch
+  comparison plus all later completion-install checks.
+- `rtk proxy gofmt -l cmd/agentdeck/main.go
+  cmd/agentdeck/contract_test.go cmd/agentdeck/shell_init_test.go` printed
+  nothing.
+- `rtk git diff --check` exited 0.
+
+No commit was made.
+
+Review round 5 (2026-07-29): **REOPEN**. Both round 3 findings are closed —
+the manual now separates script generation from attribution activation, and the
+configured-provider/direct-switch state is written into the install test — but
+that install test has never run any of its assertions. Measured without a pipe,
+`scripts/test-completion-install.sh` exits 1: under `set -euo pipefail` the
+no-selection `agentdeck run` substitution aborts the script, and behind it
+`provider use --config-path` fails because `test_shell_helpers` declares
+`codex_config` and `claude_config` without ever creating those files. Since the
+function runs before `install_for`, the abort also skips the completion install,
+uninstall, and rollback checks that worked before this task. Every shell-level
+claim recorded across the Dev note and rounds 2 through 4 — including my own
+round 3 line, which misread a piped exit status — is therefore unsupported; the
+Go-level assertions in `cmd/agentdeck/shell_init_test.go` did run and did pass.
+A patched scratch copy creating both config files and tolerating the
+no-selection failures exits 0, so both defects are in the harness and no
+production behavior needs to change. Findings and evidence live in
+`docs/reviews/project-attribution/shell-helpers.md`.
+
+Fix after review round 5 (2026-07-29): repaired only
+`scripts/test-completion-install.sh`. `test_shell_helpers` now creates
+`config.toml` with `model = "synthetic"` and `settings.json` with `{}` before
+the first provider switch, matching the Go fixture. The no-selection
+substitutions remain as a narrow empty-output/fail-open check and explicitly
+tolerate the expected failed `agentdeck run`; they are not treated as launch
+equivalence evidence. The configured-provider/direct-switch case remains the
+strong proof that both real `agentdeck run` and every sourced helper launch
+successfully without injection.
+
+Verification was rerun without a pipeline:
+
+- `rtk proxy bash scripts/test-completion-install.sh` reached process
+  completion with the tool reporting raw exit code 0. Because
+  `test_shell_helpers` runs first under `set -euo pipefail`, this also confirms
+  every later completion install/uninstall, tamper rejection, rollback, and
+  interruption-cleanup check executed successfully.
+- `rtk test env GOCACHE=/private/tmp/agent-deck-go-build go test -count=1
+  -mod=vendor ./cmd/agentdeck` passed in 25.035s.
+- `rtk git diff --check` exited 0.
+
+All earlier install-script pass claims in this task note have been corrected to
+record their invalidation and this current bare exit-0 result. No product code
+was changed and no commit was made.
+
+Review complete (2026-07-29): Round 7 independently confirmed every finding from
+rounds 1, 3 and 5 closed. A bare, unpiped run of the install script exits 0, and
+`bash -x` shows 77 executed `test` assertions comparing real values — the
+`my%2Bproject` wire value and the newline-bearing Claude header across
+`agentdeck run` and all three shells, nine fail-open cases, and the
+direct-switch and no-selection equalities — followed by the previously blocked
+completion install, rollback, interruption, and tamper checks. Go sources are
+unchanged since round 5; the full affected packages, `gofmt`, and
+`git diff --check` all pass. The unrelated `AGENTS.md` workflow-policy diff
+remains in the worktree and must be committed separately. Verdict: PASS.
+
 ### `attribution-contract`
 
 Write the contract down. Raise `docs/specs/cli-design.md`'s version, add the
@@ -541,6 +738,73 @@ wrapper that is not marked `headroom` is never sent an attribution header.
 
 Acceptance: every behavior the other tasks shipped is described, and every
 behavior described is shipped.
+
+Dev complete (2026-07-29): raised `docs/specs/cli-design.md` to version 20,
+added the "Project Attribution" contract, and extended "Owned Client
+Configuration Fields" with the Codex
+`env_http_headers["X-Headroom-Project"] = "HEADROOM_PROJECT"` mapping and its
+preservation boundary. The contract records the shipped identity, route
+eligibility, fail-open, user-value precedence, transport, delivery, advisory,
+and persistence behavior. It explicitly limits non-`agentdeck run` attribution
+to a user-installed shell helper or user-written settings, excludes GUI app
+launches, and forbids AgentDeck-generated attribution headers for wrappers not
+declared `headroom`. `docs/specs/cli-manual.md` and `docs/README.md` now match
+the delivered behavior and review state.
+
+L0 verification after the final documentation edit:
+
+- The following local-link check passed with
+  `local Markdown links OK (4 files)`; every relative Markdown target exists
+  (the checked files contain no local-anchor links):
+
+  ```bash
+  rtk proxy ruby -e 'ARGV.each { |src| File.read(src).scan(/\[[^\]]*\]\(([^)]+)\)/).flatten.each { |target| next if target.match?(/\A(?:https?:|mailto:|#)/); path = File.expand_path(target.split("#", 2).first, File.dirname(src)); abort("#{src}: missing #{target}") unless File.exist?(path) } }; puts "local Markdown links OK (#{ARGV.length} files)"' docs/specs/cli-design.md docs/specs/cli-manual.md docs/README.md docs/plans/project-attribution.md
+  ```
+- `rtk git diff --check` exited 0.
+
+Review round 1 (2026-07-29): **REOPEN**. Two P2 findings. The fail-open sentence
+in `cli-design.md:709-712` promises that no completed selection "never blocks
+client launch", but `agentdeck run codex --` in that state exits 1 with
+`no provider selection for client` and never launches the client — the guarantee
+holds only for the `shell-init` helper, so one half of the described behavior is
+not shipped. Separately, "Provider Wrappers" still lists only
+`set-wrapper --url`, `--clear`, and `use --via`, omitting the `--kind
+headroom|plain` declaration, its `plain` default, its removal by `--clear`, and
+its additive reporting — all shipped by `headroom-wrapper-kind` — even though the
+new section relies on the phrase "declared `headroom`" throughout. Two P3 items:
+the `docs/README.md` rollup departs from the file's own `active — X/N done`
+format, and the contract does not record `shell-init`'s stdout-only output
+boundary. The Codex mapping preservation rule and the Claude launch-environment-
+only cell were both confirmed correct end to end. Findings and evidence live in
+`docs/reviews/project-attribution/attribution-contract.md`.
+
+Review fix round 1 (2026-07-29): split the fail-open contract by delivery path.
+`agentdeck run` now documents completed selection as a launch precondition and
+limits attribution fail-open behavior to a process it has already decided to
+start; `shell-init` documents silent no-injection plus real-client execution for
+every lookup failure or ineligible route. "Provider Wrappers" now defines
+`--kind headroom|plain`, the `plain` default, `--clear` removal of URL and kind,
+and additive kind reporting in `provider list|show|status`. The documentation
+index again uses its prescribed `active — 5/6 done` rollup. The spec records the
+intentional output-contract decision: `shell-init`, like `completion`, emits a
+sourceable program on stdout and is outside the GUI JSON data contract, while
+argument failures retain the standard error envelope.
+
+L0 verification after the round 1 fixes:
+
+- The local Markdown link command recorded above, extended with
+  `docs/reviews/project-attribution/attribution-contract.md`, printed
+  `local Markdown links OK (5 files)` and exited 0.
+- `rtk proxy ruby -e 'old_ref = /specs\/cli-design\.md`?\s+v19/i;
+  current = "Currently version " + "19"; hits = Dir.glob("docs/**/*.md")
+  .flat_map { |path| File.readlines(path, chomp: true).each_with_index
+  .filter_map { |line, i| "#{path}:#{i + 1}:#{line}" if line.match?(old_ref) ||
+  line.include?(current) } }; design = File.read("docs/specs/cli-design.md");
+  abort("cli-design frontmatter is not version 20") unless
+  design.match?(/^version: 20$/); abort(hits.join("\n")) unless hits.empty?;
+  puts "cli-design version 20; no live references to v19"'` printed
+  `cli-design version 20; no live references to v19` and exited 0.
+- `rtk git diff --check` exited 0.
 
 ## Out of Scope
 
@@ -583,10 +847,10 @@ behavior described is shipped.
 | 2 | project-identity | ✓ | ✓ |
 | 3 | run-env-injection | ✓ | ✓ |
 | 4 | attribution-guidance | ✓ | ✓ |
-| 5 | shell-helpers | | |
-| 6 | attribution-contract | | |
+| 5 | shell-helpers | ✓ | ✓ |
+| 6 | attribution-contract | ✓ | ✓ |
 
-Done: **4/6 reviewed; next task is shell-helpers.** The implementer ticks **Dev** once a task is built and
+Done: **6/6 reviewed; every task is complete and this plan is ready to retire.** The implementer ticks **Dev** once a task is built and
 its targeted verification passes; an independent reviewer ticks **Review** once
 findings are closed, recording the round in
 `docs/reviews/project-attribution/<task-anchor>.md`. A task is done only when

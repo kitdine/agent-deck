@@ -1,6 +1,6 @@
 ---
 status: active
-version: 19
+version: 20
 created: 2026-07-14
 ---
 
@@ -492,10 +492,14 @@ would be.
 The route is chosen per switch and never stored as an attachment:
 
 ```text
-agentdeck provider set-wrapper <provider> --url <url>
+agentdeck provider set-wrapper <provider> --url <url> [--kind headroom|plain]
 agentdeck provider set-wrapper <provider> --clear
 agentdeck provider use <name> [--via]
 ```
+
+Wrapper kind defaults to `plain`; `--clear` removes both the wrapper URL and its
+kind declaration. `provider list`, `provider show`, and `provider status` report
+the kind as additive wrapper metadata.
 
 `--via` writes the provider's wrapper URL as the endpoint field; without it the
 switch is direct. Both directions are ordinary switches, so inserting or
@@ -628,13 +632,20 @@ recorded because it expresses operator intent for sessions started afterward.
 
 ### Owned Client Configuration Fields
 
-AgentDeck owns exactly two transport fields per client and never writes,
-clears, or reorders any other field:
+AgentDeck owns exactly two transport fields per client. For Codex it also owns
+one project-attribution mapping entry and never writes, clears, or reorders any
+other field or header mapping:
 
-| Client | Endpoint field | Credential field |
-| --- | --- | --- |
-| Codex | `[model_providers.custom].base_url` | `[model_providers.custom].experimental_bearer_token` |
-| Claude | `env.ANTHROPIC_BASE_URL` | `env.ANTHROPIC_AUTH_TOKEN` |
+| Client | Endpoint field | Credential field | Project-attribution mapping |
+| --- | --- | --- | --- |
+| Codex | `[model_providers.custom].base_url` | `[model_providers.custom].experimental_bearer_token` | `[model_providers.custom].env_http_headers["X-Headroom-Project"] = "HEADROOM_PROJECT"` |
+| Claude | `env.ANTHROPIC_BASE_URL` | `env.ANTHROPIC_AUTH_TOKEN` | None; attribution is launch-environment only |
+
+The Codex mapping stores an environment-variable name, never a project value.
+A successful `--via` switch writes it only when the selected wrapper is
+declared `headroom`; every other switch removes only
+`X-Headroom-Project` from the managed mapping while preserving all unrelated
+header mappings.
 
 Two independent rules decide what those two fields receive, symmetrically for
 both clients. The selected provider decides the credential field; the route
@@ -693,6 +704,71 @@ application-boundary advisory does not claim that Codex live-reloads provider
 configuration, and it does not copy Claude's live-settings or conflicting-source
 language. It follows the same informational, `--quiet`, exit-status, and JSON
 envelope rules as the Claude advisories and effective-route line.
+
+### Project Attribution
+
+Project attribution is opt-in and scoped to an explicitly declared Headroom
+wrapper. AgentDeck injects attribution only when the latest completed client
+selection used `--via`, its recorded endpoint still equals that provider's
+current wrapper URL, and the wrapper kind is still `headroom`.
+
+For `agentdeck run`, a completed selection for the requested client is also a
+precondition for launching it: without one, the command exits with an error and
+does not start the client. Once `agentdeck run` has decided to launch, failure
+to derive or inject attribution does not block that process. The shell helper
+is fail-open across the wider set of lookup outcomes: unreadable state, no
+completed selection, a direct selection, a stale wrapper URL, or any other
+ineligible route silently omits attribution and still executes the real client.
+
+The project identity is the same cleaned full working-directory path used by
+session indexing. Only its basename reaches the wire, percent-encoded as a URL
+path segment; a literal `+` is encoded as `%2B` so path-style and form-style
+decoders agree. Empty or nameless directory references produce no value.
+AgentDeck never persists the full identity or wire value in its database or in
+client configuration.
+
+Eligible launches use one header and client-specific environment transport:
+
+| Client | Launch environment | Request header |
+| --- | --- | --- |
+| Codex | `HEADROOM_PROJECT=<wire-value>` | `X-Headroom-Project`, through the managed `env_http_headers` mapping |
+| Claude | `ANTHROPIC_CUSTOM_HEADERS`, preserving unrelated lines and appending `X-Headroom-Project: <wire-value>` | `X-Headroom-Project` |
+
+A user-supplied value always wins. Codex leaves an existing
+`HEADROOM_PROJECT` unchanged. Claude leaves an existing
+`X-Headroom-Project` header unchanged, matched case-insensitively, and
+preserves every unrelated custom-header line.
+
+There are three delivery mechanisms:
+
+1. `agentdeck run <codex|claude> -- ...` applies attribution to the child
+   process it launches.
+2. `agentdeck shell-init <bash|fish|zsh>` emits sourceable wrapper functions to
+   stdout. Each invocation resolves the current directory and current
+   Headroom-route eligibility through AgentDeck state; lookup failure or an
+   ineligible route silently launches the real client without injection.
+   Emission writes no file and requires no configured wrapper. Like
+   `completion`, this source-producing command is deliberately outside the GUI
+   JSON data contract because stdout is the shell program; argument errors
+   still use the standard error envelope (`exit 2`, `command: shell-init`,
+   `code: invalid_argument`).
+3. A user may maintain project-scoped settings, such as
+   `.claude/settings.local.json`, with a static header value. AgentDeck
+   documents this recipe but never creates or modifies the file.
+
+Outside `agentdeck run`, a client is attributed only when the user has sourced
+or otherwise installed the emitted shell helper, or has written an applicable
+settings file. AgentDeck does not attribute GUI app launches and makes no claim
+that a GUI app reads project-scoped settings. Within AgentDeck-managed
+injection, a wrapper not declared `headroom` never receives a project
+attribution header; independently user-supplied headers remain outside
+AgentDeck's control.
+
+Successful Headroom wrapper operations may print one informational advisory on
+stderr linking this project's manual. It is suppressed by `--quiet`, never
+enters JSON stdout, never changes exit status, contains exactly one
+project-owned URL, and contains no third-party issue, release, or hostname
+content.
 
 ### Selecting the Built-in Provider
 
@@ -1777,6 +1853,10 @@ import the legacy `providers.json`, usage database, or real client settings.
 49. Text lists all models and at most ten cache sessions while JSON returns all;
     model and session activity detail exposes no arguments, results, command
     text, environment, or reasoning.
+50. Project attribution is emitted only for a current completed `--via`
+    selection whose endpoint still matches a wrapper declared `headroom`.
+    Outside `agentdeck run`, attribution requires a user-installed shell helper
+    or user-written settings; GUI app launches are not attributed by AgentDeck.
 
 ## Changelog
 
@@ -1786,6 +1866,7 @@ here changes; do not create a dated copy of this file.
 
 | Version | Date | Contract change |
 | --- | --- | --- |
+| 20 | 2026-07-29 | Project attribution is opt-in and Headroom-wrapper-scoped. Eligible launches derive the cleaned full-path identity used by session indexing, expose only its safely encoded basename, and use client-specific environment transport without persisting the value. Codex owns only the `X-Headroom-Project` to `HEADROOM_PROJECT` mapping while preserving unrelated mappings. Outside `agentdeck run`, users must install the emitted shell helper or write settings themselves; AgentDeck does not attribute GUI app launches, and wrappers not declared `headroom` never receive AgentDeck-generated attribution headers. |
 | 19 | 2026-07-28 | Every successful Codex provider switch reports a stderr advisory to start a new session or restart the running one, because AgentDeck updates the configuration file but cannot update configuration already loaded by a running client. The note deliberately differs from Claude's live-settings and conflicting-credential advisories, remains informational, and is suppressed by `--quiet`. |
 | 18 | 2026-07-28 | The RC formula relies on the documented uninstall/install channel switch instead of Homebrew's `conflicts_with` DSL. Homebrew 6 loads the referenced stable formula while resolving that declaration, but direct formula installation trusts only the requested RC formula, so a user who correctly removed stable could still be blocked by tap trust. Omitting the declaration avoids broad tap trust without weakening the explicit no-coexistence rule. |
 | 17 | 2026-07-28 | Homebrew distribution gains an opt-in `agentdeck-rc` formula in the existing tap. Stable users remain on `agentdeck`; strict `vX.Y.Z-rc.N` tags render, install-test, and propose only `Formula/agentdeck-rc.rb`, while other prereleases remain GitHub-only. Because both channels install the same binary and completion paths, switching is an explicit uninstall/install operation; subsequent RCs use normal `brew update` and `brew upgrade`. |
