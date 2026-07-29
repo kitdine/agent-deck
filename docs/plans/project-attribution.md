@@ -332,6 +332,79 @@ by a test that runs them against each other's output — TOML cannot hold both a
 sub-table and an inline key for one field, and `toml.Unmarshal` rejects the
 combination with `key env_http_headers should be a table, not a value`.
 
+Dev complete (2026-07-28): `agentdeck run` now resolves the completed provider
+selection immediately before starting the child and adds attribution only when
+that selection used a wrapper whose current declaration is `headroom`. Route,
+provider, wrapper-kind, and working-directory lookup failures all leave
+`exec.Cmd.Env` unset, so the child inherits the original environment and still
+launches. Codex receives `HEADROOM_PROJECT=<encoded-base-name>`; Claude receives
+an appended `X-Headroom-Project: <encoded-base-name>` line in
+`ANTHROPIC_CUSTOM_HEADERS`. An existing Codex variable or case-insensitive
+Claude project header wins, while unrelated Claude custom headers and every
+other environment entry are preserved.
+
+Codex provider selection now carries a `ProjectAttribution` intent into all
+three writers. The canonical representation is the inline
+`env_http_headers = { "X-Headroom-Project" = "HEADROOM_PROJECT" }` field.
+Headroom `--via` writes it for custom and built-in providers; direct and plain
+routes remove it. A pre-existing sub-table representation is removed before the
+canonical field is written, preventing the invalid TOML state where the same
+key is both a table and an inline value. The writer test runs wrapper, custom,
+and built-in writers over each other's output and validates TOML plus exact
+presence or absence after every transition.
+
+Targeted coverage in `internal/provider/project_test.go` exercises direct,
+plain-wrapper, Headroom-wrapper, and Headroom-to-direct transitions; custom and
+built-in wrapper storage; Codex and Claude injection; user-value precedence;
+nameless directories; unrelated environment preservation; and the service-to-
+writer mapping decision. `internal/provider/config_test.go` covers the shared
+canonical representation and sub-table normalization. Verification after the
+final code edit: `go test -count=1 -mod=vendor ./internal/provider -run Project`
+(exit 0), `go test -mod=vendor ./...` (exit 0, 16 packages), and `gofmt` on the
+touched Go files (clean).
+
+Fix round (2026-07-28): launch-time attribution now requires the completed
+selection's endpoint to equal the provider's current wrapper URL in addition to
+the current `headroom` declaration. A replaced custom or built-in wrapper
+therefore leaves both Codex and Claude child environments untouched. Codex
+project-header rewriting now reads the existing `env_http_headers` mapping,
+changes only `X-Headroom-Project`, preserves every unrelated string mapping,
+and writes one canonical inline field across wrapper, custom, and built-in
+transitions. A disabled rewrite with no project key is a byte-for-byte no-op for
+the unrelated field. Sub-table removal validates the table path through the
+TOML parser, so basic-quoted, literal-quoted, and whitespace-separated dotted
+paths normalize without producing a table/inline conflict.
+
+Behavioral RED was recorded before the production fix with
+`go test -count=1 -mod=vendor ./internal/provider -run Project`: all four
+custom/built-in × Codex/Claude stale-route cases injected attribution, the
+cross-writer fixture lost `X-Unrelated`, and all three equivalent sub-table
+spellings failed with `key env_http_headers should be a table, not a value`.
+After the fix the same targeted command passed, as did
+`go test -count=1 -mod=vendor ./internal/provider`. Final verification:
+`go test -mod=vendor ./...` (exit 0), `go vet -mod=vendor ./...` (exit 0),
+`gofmt -l` on the six run-env-injection Go files (no output), and
+`git diff --check` (exit 0).
+
+Second fix round (2026-07-29): the shared Codex custom-table writer now uses the
+same TOML-semantic path test as sub-table removal, so quoted or
+whitespace-separated `model_providers.custom` spellings enter the managed table
+without creating a duplicate canonical table. The probe also recognizes the
+last element of an array-of-tables, retaining that writer behavior. Project
+header field removal now parses the individual key/value line and recognizes
+bare, basic-quoted, and literal-quoted `env_http_headers` keys before emitting
+the canonical inline field.
+
+Behavioral RED covered a fully quoted outer table plus sub-table
+(`table custom already exists`) and both quoted inline key forms
+(`key env_http_headers already defined`). After the semantic matcher change all
+three cases passed with `X-Unrelated` preserved, as did the existing
+array-of-tables tests in the complete provider package. Final verification:
+`go test -count=1 -mod=vendor ./internal/provider -run Project` (exit 0),
+`go test -mod=vendor ./...` (exit 0), `go vet -mod=vendor ./...` (exit 0),
+`gofmt -l` on the six run-env-injection Go files (no output), and
+`git diff --check` (exit 0).
+
 ### `attribution-guidance`
 
 Tell the user that there is something for them to do, and where it is written
@@ -446,12 +519,12 @@ behavior described is shipped.
 |---|------|:---:|:------:|
 | 1 | headroom-wrapper-kind | ✓ | ✓ |
 | 2 | project-identity | ✓ | ✓ |
-| 3 | run-env-injection | | |
+| 3 | run-env-injection | ✓ | ✓ |
 | 4 | attribution-guidance | | |
 | 5 | shell-helpers | | |
 | 6 | attribution-contract | | |
 
-Done: **2/6 reviewed.** The implementer ticks **Dev** once a task is built and
+Done: **3/6 reviewed.** The implementer ticks **Dev** once a task is built and
 its targeted verification passes; an independent reviewer ticks **Review** once
 findings are closed, recording the round in
 `docs/reviews/project-attribution/<task-anchor>.md`. A task is done only when

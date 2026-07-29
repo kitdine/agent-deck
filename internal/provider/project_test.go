@@ -94,3 +94,178 @@ func TestProjectWireValueAttributesNamelessDirectoriesToNothing(t *testing.T) {
 		})
 	}
 }
+
+func TestRunProjectEnvironmentRequiresAHeadroomViaRouteAndHonorsUserValues(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	database, err := store.Open(ctx, filepath.Join(root, "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	service := Service{Store: database, Vault: testCredentialVault(t)}
+	if _, err := service.Add(ctx, Definition{
+		Name:          "example",
+		Endpoint:      "https://provider.example",
+		Clients:       []Client{ClientCodex, ClientClaude},
+		CredentialRef: "ref",
+	}, "synthetic-secret"); err != nil {
+		t.Fatal(err)
+	}
+
+	codexConfig := filepath.Join(root, "config.toml")
+	if err := os.WriteFile(codexConfig, []byte("model_provider = \"custom\"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	useCodex := func(name string, via bool) {
+		t.Helper()
+		if err := service.UseCredential(ctx, "example", ClientCodex, "", codexConfig, filepath.Join(root, name+".backup.toml"), via); err != nil {
+			t.Fatal(err)
+		}
+	}
+	assertCodexMapping := func(want bool) {
+		t.Helper()
+		contents, err := os.ReadFile(codexConfig)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := strings.Contains(string(contents), codexProjectHeadersMappingTOML); got != want {
+			t.Fatalf("Codex project mapping present = %v, want %v\n%s", got, want, contents)
+		}
+	}
+	assertNoChange := func(client Client, cwd string, environ []string) {
+		t.Helper()
+		if got, changed := service.RunProjectEnvironment(ctx, client, cwd, environ); changed || got != nil {
+			t.Fatalf("RunProjectEnvironment(%s) = %#v, %v, want nil, false", client, got, changed)
+		}
+	}
+
+	useCodex("direct", false)
+	assertCodexMapping(false)
+	assertNoChange(ClientCodex, filepath.Join(root, "project"), []string{"KEEP=value"})
+
+	if _, _, err := service.SetWrapper(ctx, "example", "https://wrapper.example", WrapperKindPlain, false); err != nil {
+		t.Fatal(err)
+	}
+	useCodex("plain", true)
+	assertCodexMapping(false)
+	assertNoChange(ClientCodex, filepath.Join(root, "project"), []string{"KEEP=value"})
+
+	if _, _, err := service.SetWrapper(ctx, "example", "https://wrapper.example", WrapperKindHeadroom, false); err != nil {
+		t.Fatal(err)
+	}
+	useCodex("headroom", true)
+	assertCodexMapping(true)
+	cwd := filepath.Join(root, "my+project")
+	environment, changed := service.RunProjectEnvironment(ctx, ClientCodex, cwd, []string{"KEEP=value"})
+	if !changed {
+		t.Fatal("Codex Headroom route did not inject project environment")
+	}
+	if got, found := environmentValue(environment, HeadroomProjectEnvironment); !found || got != "my%2Bproject" {
+		t.Fatalf("%s = %q, %v, want encoded project", HeadroomProjectEnvironment, got, found)
+	}
+	if got, found := environmentValue(environment, "KEEP"); !found || got != "value" {
+		t.Fatalf("unrelated environment changed: KEEP = %q, %v", got, found)
+	}
+	assertNoChange(ClientCodex, cwd, []string{HeadroomProjectEnvironment + "=user-value"})
+	assertNoChange(ClientCodex, ".", []string{"KEEP=value"})
+	useCodex("headroom-to-direct", false)
+	assertCodexMapping(false)
+	assertNoChange(ClientCodex, cwd, []string{"KEEP=value"})
+
+	if _, _, err := service.SetWrapper(ctx, OfficialProviderName, "https://official-wrapper.example", WrapperKindHeadroom, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.UseCredential(ctx, OfficialProviderName, ClientCodex, "", codexConfig, filepath.Join(root, "official-headroom.backup.toml"), true); err != nil {
+		t.Fatal(err)
+	}
+	assertCodexMapping(true)
+	if _, changed := service.RunProjectEnvironment(ctx, ClientCodex, filepath.Join(root, "official-project"), []string{"KEEP=value"}); !changed {
+		t.Fatal("official Headroom route did not inject project environment")
+	}
+
+	claudeConfig := filepath.Join(root, "settings.json")
+	if err := os.WriteFile(claudeConfig, []byte("{\"env\":{\"KEEP\":\"value\"}}\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.UseCredential(ctx, "example", ClientClaude, "", claudeConfig, filepath.Join(root, "claude.backup.json"), true); err != nil {
+		t.Fatal(err)
+	}
+	environment, changed = service.RunProjectEnvironment(ctx, ClientClaude, filepath.Join(root, "project"), []string{
+		"KEEP=value",
+		ClaudeCustomHeadersEnvironment + "=Other-Header: keep",
+	})
+	if !changed {
+		t.Fatal("Claude Headroom route did not inject project header")
+	}
+	if got, found := environmentValue(environment, ClaudeCustomHeadersEnvironment); !found || got != "Other-Header: keep\n"+HeadroomProjectHeader+": project" {
+		t.Fatalf("%s = %q, %v", ClaudeCustomHeadersEnvironment, got, found)
+	}
+	assertNoChange(ClientClaude, filepath.Join(root, "project"), []string{
+		ClaudeCustomHeadersEnvironment + "=Other-Header: keep\nx-headroom-project: user-value",
+	})
+}
+
+func TestRunProjectEnvironmentRejectsStaleWrapperEndpoints(t *testing.T) {
+	for _, providerName := range []string{"example", OfficialProviderName} {
+		for _, client := range []Client{ClientCodex, ClientClaude} {
+			t.Run(providerName+"/"+string(client), func(t *testing.T) {
+				ctx := context.Background()
+				root := t.TempDir()
+				database, err := store.Open(ctx, filepath.Join(root, "state"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer database.Close()
+
+				service := Service{Store: database, Vault: testCredentialVault(t)}
+				if providerName != OfficialProviderName {
+					if _, err := service.Add(ctx, Definition{
+						Name:          providerName,
+						Endpoint:      "https://provider.example",
+						Clients:       []Client{ClientCodex, ClientClaude},
+						CredentialRef: "ref",
+					}, "synthetic-secret"); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if _, _, err := service.SetWrapper(ctx, providerName, "https://wrapper-a.example", WrapperKindHeadroom, false); err != nil {
+					t.Fatal(err)
+				}
+
+				configPath := filepath.Join(root, "settings.json")
+				initialConfig := []byte("{}\n")
+				if client == ClientCodex {
+					configPath = filepath.Join(root, "config.toml")
+					initialConfig = []byte("model_provider = \"custom\"\n")
+				}
+				if err := os.WriteFile(configPath, initialConfig, 0600); err != nil {
+					t.Fatal(err)
+				}
+				if err := service.UseCredential(
+					ctx,
+					providerName,
+					client,
+					"",
+					configPath,
+					filepath.Join(root, "backup"),
+					true,
+				); err != nil {
+					t.Fatal(err)
+				}
+				if _, _, err := service.SetWrapper(ctx, providerName, "https://wrapper-b.example", WrapperKindHeadroom, false); err != nil {
+					t.Fatal(err)
+				}
+
+				if environment, changed := service.RunProjectEnvironment(
+					ctx,
+					client,
+					filepath.Join(root, "project"),
+					[]string{"KEEP=value"},
+				); changed || environment != nil {
+					t.Fatalf("stale wrapper route received project attribution: %#v, %v", environment, changed)
+				}
+			})
+		}
+	}
+}

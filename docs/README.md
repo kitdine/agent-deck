@@ -203,11 +203,12 @@ A second active plan, [project-attribution](plans/project-attribution.md), lets 
 user mark a wrapper URL as speaking Headroom's protocol and have
 `agentdeck run` label a launch with the project it happened in, with an
 installable shell helper and a documented settings-file recipe covering
-launches AgentDeck does not make. Its first two tasks are delivered and
+launches AgentDeck does not make. Its first three tasks are delivered and
 independently reviewed: `headroom-wrapper-kind` adds the explicit protocol
 declaration, and `project-identity` shares the session parser's cleaned
-full-path identity while exposing only a safely encoded base name on the wire.
-Four tasks remain. AgentDeck writes no file it does not already own; the app
+full-path identity while exposing only a safely encoded base name on the wire;
+`run-env-injection` attributes eligible AgentDeck-launched Codex and Claude
+processes. Three tasks remain. AgentDeck writes no file it does not already own; the app
 questions sit in the Backlog below.
 
 The first task in the older active plan,
@@ -225,7 +226,7 @@ localize the provider and session timestamps a person reads.
 | [specs/cli-design.md](specs/cli-design.md) | What the system does and must keep doing: provider, credential, usage, pricing, session, backup, and distribution behavior. Currently version 18; see its changelog. |
 | [specs/cli-manual.md](specs/cli-manual.md) | The implemented command surface, flags, and output shapes. |
 | [plans/display-timezone.md](plans/display-timezone.md) | Render instants in the machine's zone in text only; storage and JSON stay UTC. `active — 1/3 done`. |
-| [plans/project-attribution.md](plans/project-attribution.md) | Tell a Headroom-marked wrapper which project a launch belongs to, delivered through `agentdeck run` plus an installable shell helper. `active — 2/6 done`. |
+| [plans/project-attribution.md](plans/project-attribution.md) | Tell a Headroom-marked wrapper which project a launch belongs to, delivered through `agentdeck run` plus an installable shell helper. `active — 3/6 done`. |
 | [reviews/](reviews/README.md) | Per-task review records that back each plan's ticked `Review` cell. |
 | [archive/](archive/README.md) | Retired plans and superseded contracts. Not a starting point for new work. |
 

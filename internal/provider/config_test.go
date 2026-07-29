@@ -205,7 +205,7 @@ func TestWriteCodexWrapperConfigPreservesUnmanagedTOML(t *testing.T) {
 	if err := os.WriteFile(path, []byte(before), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := WriteCodexWrapperConfig(path, OfficialProviderName, "https://wrapper.example/"); err != nil {
+	if err := WriteCodexWrapperConfig(path, OfficialProviderName, "https://wrapper.example/", false); err != nil {
 		t.Fatal(err)
 	}
 	contents, err := os.ReadFile(path)
@@ -215,7 +215,7 @@ func TestWriteCodexWrapperConfigPreservesUnmanagedTOML(t *testing.T) {
 	if string(contents) != want {
 		t.Fatalf("wrapper config:\n%s\nwant:\n%s", contents, want)
 	}
-	if err := WriteCodexWrapperConfig(path, OfficialProviderName, "https://wrapper.example/"); err != nil {
+	if err := WriteCodexWrapperConfig(path, OfficialProviderName, "https://wrapper.example/", false); err != nil {
 		t.Fatal(err)
 	}
 	again, err := os.ReadFile(path)
@@ -230,7 +230,7 @@ func TestWriteCodexWrapperConfigRemovesExactlyTheBearerToken(t *testing.T) {
 	if err := os.WriteFile(path, []byte(before), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := WriteCodexWrapperConfig(path, OfficialProviderName, "https://wrapper.example"); err != nil {
+	if err := WriteCodexWrapperConfig(path, OfficialProviderName, "https://wrapper.example", false); err != nil {
 		t.Fatal(err)
 	}
 	contents, err := os.ReadFile(path)
@@ -252,7 +252,7 @@ func TestWriteCodexWrapperConfigWithoutBearerTokenIsByteIdenticalApartFromNamedF
 	if err := os.WriteFile(path, []byte(before), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := WriteCodexWrapperConfig(path, OfficialProviderName, "https://wrapper.example"); err != nil {
+	if err := WriteCodexWrapperConfig(path, OfficialProviderName, "https://wrapper.example", false); err != nil {
 		t.Fatal(err)
 	}
 	contents, err := os.ReadFile(path)
@@ -267,7 +267,7 @@ func TestWriteCodexWrapperConfigCreatesCustomTable(t *testing.T) {
 	if err := os.WriteFile(path, []byte(before), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := WriteCodexWrapperConfig(path, OfficialProviderName, "https://wrapper.example"); err != nil {
+	if err := WriteCodexWrapperConfig(path, OfficialProviderName, "https://wrapper.example", false); err != nil {
 		t.Fatal(err)
 	}
 	contents, custom := readCodexCustomProvider(t, path)
@@ -290,13 +290,235 @@ func TestWriteCodexWrapperConfigFailureLeavesOriginalBytes(t *testing.T) {
 	oldReplace := replaceFile
 	replaceFile = func(string, string) error { return errors.New("synthetic replace failure") }
 	t.Cleanup(func() { replaceFile = oldReplace })
-	if err := WriteCodexWrapperConfig(path, OfficialProviderName, "https://wrapper.example"); err == nil {
+	if err := WriteCodexWrapperConfig(path, OfficialProviderName, "https://wrapper.example", false); err == nil {
 		t.Fatal("WriteCodexWrapperConfig succeeded during replace failure")
 	}
 	after, err := os.ReadFile(path)
 	if err != nil || string(after) != string(before) {
 		t.Fatalf("config after failed replace = %q, %v", after, err)
 	}
+}
+
+func TestCodexProjectHeadersMappingIsCanonicalAcrossWriters(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	initial := `model_provider = "custom"
+
+[model_providers.custom]
+name = "initial"
+base_url = "https://initial.example/v1"
+
+[model_providers.custom.env_http_headers]
+X-Headroom-Project = "HEADROOM_PROJECT"
+X-Unrelated = "OTHER_ENV"
+`
+	if err := os.WriteFile(path, []byte(initial), 0600); err != nil {
+		t.Fatal(err)
+	}
+	assertMapping := func(want bool) {
+		t.Helper()
+		contents, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var document map[string]any
+		if err := toml.Unmarshal(contents, &document); err != nil {
+			t.Fatalf("invalid TOML after writer: %v\n%s", err, contents)
+		}
+		providers, _ := document["model_providers"].(map[string]any)
+		custom, _ := providers["custom"].(map[string]any)
+		headers, found := custom["env_http_headers"].(map[string]any)
+		if !found {
+			t.Fatalf("env_http_headers missing\n%s", contents)
+		}
+		projectEnvironment, projectFound := headers[HeadroomProjectHeader]
+		if projectFound != want {
+			t.Fatalf("project header presence = %v, want %v: %#v", projectFound, want, headers)
+		}
+		if want && projectEnvironment != HeadroomProjectEnvironment {
+			t.Fatalf("project header mapping = %#v", headers)
+		}
+		if headers["X-Unrelated"] != "OTHER_ENV" {
+			t.Fatalf("unrelated header mapping = %#v, want it preserved", headers)
+		}
+		if got := strings.Count(string(contents), `"X-Headroom-Project" = "HEADROOM_PROJECT"`); got != boolCount(want) {
+			t.Fatalf("canonical mapping count = %d, want %d\n%s", got, boolCount(want), contents)
+		}
+		if strings.Contains(string(contents), "[model_providers.custom.env_http_headers]") {
+			t.Fatalf("sub-table representation survived normalization:\n%s", contents)
+		}
+	}
+
+	if err := WriteCodexWrapperConfig(path, OfficialProviderName, "https://wrapper.example", true); err != nil {
+		t.Fatal(err)
+	}
+	assertMapping(true)
+	if err := WriteCodexWrapperConfig(path, OfficialProviderName, "https://wrapper.example", false); err != nil {
+		t.Fatal(err)
+	}
+	assertMapping(false)
+	if err := WriteCodexWrapperConfig(path, OfficialProviderName, "https://wrapper.example", true); err != nil {
+		t.Fatal(err)
+	}
+	assertMapping(true)
+	if err := WriteCodexConfig(path, ClientConfig{Name: "example", Endpoint: "https://provider.example", Credential: "synthetic-secret", ProjectAttribution: true}); err != nil {
+		t.Fatal(err)
+	}
+	assertMapping(true)
+	if err := WriteOfficialCodexConfig(path); err != nil {
+		t.Fatal(err)
+	}
+	assertMapping(false)
+	if err := WriteCodexWrapperConfig(path, OfficialProviderName, "https://wrapper.example", true); err != nil {
+		t.Fatal(err)
+	}
+	assertMapping(true)
+	if err := WriteCodexConfig(path, ClientConfig{Name: "example", Endpoint: "https://provider.example", Credential: "synthetic-secret"}); err != nil {
+		t.Fatal(err)
+	}
+	assertMapping(false)
+}
+
+func TestCodexProjectHeadersNormalizeEquivalentSubtableSyntax(t *testing.T) {
+	for _, header := range []string{
+		`[model_providers.custom."env_http_headers"]`,
+		`[model_providers.custom.'env_http_headers']`,
+		`[ model_providers . custom . env_http_headers ]`,
+	} {
+		t.Run(header, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.toml")
+			initial := `model_provider = "custom"
+
+[model_providers.custom]
+name = "initial"
+base_url = "https://initial.example/v1"
+
+` + header + `
+X-Headroom-Project = "OLD_ENV"
+X-Unrelated = "OTHER_ENV"
+`
+			if err := os.WriteFile(path, []byte(initial), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if err := WriteCodexWrapperConfig(path, OfficialProviderName, "https://wrapper.example", true); err != nil {
+				t.Fatal(err)
+			}
+
+			_, custom := readCodexCustomProvider(t, path)
+			headers, ok := custom["env_http_headers"].(map[string]any)
+			if !ok {
+				t.Fatalf("env_http_headers = %#v, want mapping", custom["env_http_headers"])
+			}
+			if headers[HeadroomProjectHeader] != HeadroomProjectEnvironment {
+				t.Fatalf("project header mapping = %#v", headers)
+			}
+			if headers["X-Unrelated"] != "OTHER_ENV" {
+				t.Fatalf("unrelated header mapping = %#v, want it preserved", headers)
+			}
+		})
+	}
+}
+
+func TestCodexProjectHeadersNormalizeQuotedOuterTablesAndInlineKeys(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		initial string
+	}{
+		{
+			name: "fully quoted table path",
+			initial: `model_provider = "custom"
+
+["model_providers".'custom']
+name = "initial"
+base_url = "https://initial.example/v1"
+
+["model_providers".'custom'."env_http_headers"]
+X-Headroom-Project = "OLD_ENV"
+X-Unrelated = "OTHER_ENV"
+`,
+		},
+		{
+			name: "basic quoted inline key",
+			initial: `model_provider = "custom"
+
+[model_providers.custom]
+name = "initial"
+base_url = "https://initial.example/v1"
+"env_http_headers" = { X-Headroom-Project = "OLD_ENV", X-Unrelated = "OTHER_ENV" }
+`,
+		},
+		{
+			name: "literal quoted inline key",
+			initial: `model_provider = "custom"
+
+[model_providers.custom]
+name = "initial"
+base_url = "https://initial.example/v1"
+'env_http_headers' = { X-Headroom-Project = "OLD_ENV", X-Unrelated = "OTHER_ENV" }
+`,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.toml")
+			if err := os.WriteFile(path, []byte(test.initial), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if err := WriteCodexWrapperConfig(path, OfficialProviderName, "https://wrapper.example", true); err != nil {
+				t.Fatal(err)
+			}
+
+			_, custom := readCodexCustomProvider(t, path)
+			headers, ok := custom["env_http_headers"].(map[string]any)
+			if !ok {
+				t.Fatalf("env_http_headers = %#v, want mapping", custom["env_http_headers"])
+			}
+			if headers[HeadroomProjectHeader] != HeadroomProjectEnvironment {
+				t.Fatalf("project header mapping = %#v", headers)
+			}
+			if headers["X-Unrelated"] != "OTHER_ENV" {
+				t.Fatalf("unrelated header mapping = %#v, want it preserved", headers)
+			}
+		})
+	}
+}
+
+func TestCodexProjectHeadersDisabledLeavesUnrelatedInlineFieldUntouched(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	const unrelated = `env_http_headers   = { "Z-Unrelated" = "Z_ENV", "A-Unrelated" = "A_ENV" } # keep formatting`
+	initial := `model_provider = "custom"
+
+[model_providers.custom]
+name = "initial"
+base_url = "https://initial.example/v1"
+` + unrelated + "\n"
+	if err := os.WriteFile(path, []byte(initial), 0600); err != nil {
+		t.Fatal(err)
+	}
+	assertUnrelatedLine := func() {
+		t.Helper()
+		contents, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(contents), unrelated) {
+			t.Fatalf("unrelated inline field was rewritten:\n%s", contents)
+		}
+	}
+
+	if err := WriteCodexWrapperConfig(path, OfficialProviderName, "https://wrapper.example", false); err != nil {
+		t.Fatal(err)
+	}
+	assertUnrelatedLine()
+	if err := WriteOfficialCodexConfig(path); err != nil {
+		t.Fatal(err)
+	}
+	assertUnrelatedLine()
+}
+
+func boolCount(value bool) int {
+	if value {
+		return 1
+	}
+	return 0
 }
 
 func TestWriteOfficialCodexConfigResetsOwedNameAcrossArrayOfTablesOccurrences(t *testing.T) {
@@ -322,7 +544,7 @@ func TestWriteCodexWrapperConfigResetsOwedFieldsAcrossArrayOfTablesOccurrences(t
 	if err := os.WriteFile(path, []byte(before), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := WriteCodexWrapperConfig(path, OfficialProviderName, "https://wrapper.example"); err != nil {
+	if err := WriteCodexWrapperConfig(path, OfficialProviderName, "https://wrapper.example", false); err != nil {
 		t.Fatal(err)
 	}
 	contents, err := os.ReadFile(path)

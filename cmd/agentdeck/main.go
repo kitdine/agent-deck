@@ -2033,6 +2033,12 @@ func newRunCommand(opts *commandOptions) *cobra.Command {
 		}
 		child := exec.CommandContext(cmd.Context(), args[0], args[1:]...)
 		child.Stdin, child.Stdout, child.Stderr = os.Stdin, opts.stdout, os.Stderr
+		if cwd, cwdErr := os.Getwd(); cwdErr == nil {
+			projectService := provider.Service{Store: database}
+			if environment, changed := projectService.RunProjectEnvironment(cmd.Context(), provider.Client(args[0]), cwd, os.Environ()); changed {
+				child.Env = environment
+			}
+		}
 		if err = child.Start(); err != nil {
 			finishErr := service.FailRun(context.WithoutCancel(cmd.Context()), runID, "client_start_failed")
 			return errors.Join(err, finishErr)

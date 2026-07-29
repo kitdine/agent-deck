@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/kitdine/agent-deck/internal/platform"
@@ -192,7 +194,10 @@ func configuresCredential(value any) bool {
 	return ok && text != ""
 }
 
-type ClientConfig struct{ Name, Endpoint, Credential string }
+type ClientConfig struct {
+	Name, Endpoint, Credential string
+	ProjectAttribution         bool
+}
 
 var (
 	tomlTablePattern         = regexp.MustCompile(`^\s*\[\[?\s*([^]]+?)\s*]]?\s*(?:#.*)?$`)
@@ -218,11 +223,27 @@ func WriteCodexConfig(path string, config ClientConfig) error {
 		providers = map[string]any{}
 		document["model_providers"] = providers
 	}
+	headers, err := codexEnvironmentHeaders(document)
+	if err != nil {
+		return fmt.Errorf("invalid codex env_http_headers: %w", err)
+	}
 	document["model_provider"] = "custom"
-	providers["custom"] = map[string]any{"name": config.Name, "base_url": strings.TrimRight(config.Endpoint, "/") + "/v1", "requires_openai_auth": true, "experimental_bearer_token": config.Credential, "wire_api": "responses"}
+	custom := map[string]any{"name": config.Name, "base_url": strings.TrimRight(config.Endpoint, "/") + "/v1", "requires_openai_auth": true, "experimental_bearer_token": config.Credential, "wire_api": "responses"}
+	if len(headers) > 0 {
+		custom["env_http_headers"] = headers
+	}
+	providers["custom"] = custom
 	encoded, err := toml.Marshal(document)
 	if err != nil {
 		return err
+	}
+	encoded, err = rewriteCodexProjectHeaders(encoded, config.ProjectAttribution)
+	if err != nil {
+		return fmt.Errorf("rewrite codex project headers: %w", err)
+	}
+	var updated map[string]any
+	if err := toml.Unmarshal(encoded, &updated); err != nil {
+		return fmt.Errorf("invalid codex toml after config update: %w", err)
 	}
 	return atomicPrivateReplace(path, encoded)
 }
@@ -253,7 +274,8 @@ func rewriteCodexCustomTable(
 	if firstNewline := bytes.IndexByte(contents, '\n'); firstNewline > 0 && contents[firstNewline-1] == '\r' {
 		lineEnding = []byte("\r\n")
 	}
-	table := ""
+	inTable := false
+	inCustomTable := false
 	modelProviderSeen := false
 	customTableSeen := false
 	for _, line := range lines {
@@ -265,18 +287,19 @@ func rewriteCodexCustomTable(
 		}
 		trimmed := strings.TrimSpace(string(body))
 		if matches := tomlTablePattern.FindStringSubmatch(string(body)); matches != nil {
-			if table == "model_providers.custom" {
+			if inCustomTable {
 				result = flush(result, lineEnding)
 			}
-			table = strings.TrimSpace(matches[1])
-			if table == "model_providers.custom" {
+			inTable = true
+			inCustomTable = tomlTableMatches(body, "model_providers.custom")
+			if inCustomTable {
 				customTableSeen = true
 				onEnter()
 			}
 			result = append(result, line...)
 			continue
 		}
-		if table == "model_providers.custom" {
+		if inCustomTable {
 			if rewritten, handled := onLine(body); handled {
 				if rewritten != nil {
 					result = append(result, rewritten...)
@@ -285,7 +308,7 @@ func rewriteCodexCustomTable(
 				continue
 			}
 		}
-		if table == "" && strings.HasPrefix(trimmed, "model_provider") {
+		if !inTable && strings.HasPrefix(trimmed, "model_provider") {
 			matches := tomlModelProviderPattern.FindSubmatch(body)
 			if matches != nil {
 				modelProviderSeen = true
@@ -303,7 +326,7 @@ func rewriteCodexCustomTable(
 		}
 		result = append(result, line...)
 	}
-	if table == "model_providers.custom" {
+	if inCustomTable {
 		result = flush(result, lineEnding)
 	}
 	if !customTableSeen {
@@ -316,10 +339,159 @@ func rewriteCodexCustomTable(
 	return result
 }
 
+func rewriteCodexProjectHeaders(contents []byte, enabled bool) ([]byte, error) {
+	var document map[string]any
+	if err := toml.Unmarshal(contents, &document); err != nil {
+		return nil, err
+	}
+	headers, err := codexEnvironmentHeaders(document)
+	if err != nil {
+		return nil, err
+	}
+	_, projectFound := headers[HeadroomProjectHeader]
+	if !enabled && !projectFound {
+		return contents, nil
+	}
+	if enabled {
+		headers[HeadroomProjectHeader] = HeadroomProjectEnvironment
+	} else {
+		delete(headers, HeadroomProjectHeader)
+	}
+
+	contents = dropTOMLTable(contents, "model_providers.custom.env_http_headers")
+	mapping := codexEnvironmentHeadersTOML(headers)
+	onEnter := func() {}
+	onLine := func(body []byte) ([]byte, bool) {
+		if tomlKeyMatches(body, "env_http_headers") {
+			return nil, true
+		}
+		return nil, false
+	}
+	flush := func(result []byte, lineEnding []byte) []byte {
+		if mapping != "" {
+			result = appendTOMLLine(result, mapping, lineEnding)
+		}
+		return result
+	}
+	ensureTable := func(result []byte, lineEnding []byte) []byte {
+		result = appendTOMLLine(result, "[model_providers.custom]", lineEnding)
+		return flush(result, lineEnding)
+	}
+	return rewriteCodexCustomTable(contents, onEnter, onLine, flush, ensureTable), nil
+}
+
+func codexEnvironmentHeaders(document map[string]any) (map[string]string, error) {
+	result := map[string]string{}
+	providers, _ := document["model_providers"].(map[string]any)
+	custom, _ := providers["custom"].(map[string]any)
+	raw, found := custom["env_http_headers"]
+	if !found {
+		return result, nil
+	}
+	headers, ok := raw.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("expected table, got %T", raw)
+	}
+	for name, value := range headers {
+		environment, ok := value.(string)
+		if !ok {
+			return nil, fmt.Errorf("%s: expected string, got %T", name, value)
+		}
+		result[name] = environment
+	}
+	return result, nil
+}
+
+func codexEnvironmentHeadersTOML(headers map[string]string) string {
+	if len(headers) == 0 {
+		return ""
+	}
+	names := make([]string, 0, len(headers))
+	for name := range headers {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	mappings := make([]string, 0, len(names))
+	for _, name := range names {
+		mappings = append(mappings, strconv.Quote(name)+" = "+strconv.Quote(headers[name]))
+	}
+	return "env_http_headers = { " + strings.Join(mappings, ", ") + " }"
+}
+
+func dropTOMLTable(contents []byte, name string) []byte {
+	lines := bytes.SplitAfter(contents, []byte("\n"))
+	result := make([]byte, 0, len(contents))
+	dropping := false
+	for _, line := range lines {
+		body := bytes.TrimSuffix(line, []byte("\n"))
+		body = bytes.TrimSuffix(body, []byte("\r"))
+		if matches := tomlTablePattern.FindStringSubmatch(string(body)); matches != nil {
+			dropping = tomlTableMatches(body, name)
+			if dropping {
+				continue
+			}
+		}
+		if !dropping {
+			result = append(result, line...)
+		}
+	}
+	return result
+}
+
+func tomlTableMatches(header []byte, name string) bool {
+	const probe = "__agentdeck_table_probe__"
+	candidate := append(append([]byte{}, header...), '\n')
+	candidate = append(candidate, probe+" = true\n"...)
+	var document map[string]any
+	if err := toml.Unmarshal(candidate, &document); err != nil {
+		return false
+	}
+	var current any = document
+	for _, part := range strings.Split(name, ".") {
+		table, ok := tomlLastTable(current)
+		if !ok {
+			return false
+		}
+		current, ok = table[part]
+		if !ok {
+			return false
+		}
+	}
+	table, ok := tomlLastTable(current)
+	value, found := table[probe]
+	return ok && found && value == true
+}
+
+func tomlLastTable(value any) (map[string]any, bool) {
+	switch typed := value.(type) {
+	case map[string]any:
+		return typed, true
+	case []map[string]any:
+		if len(typed) > 0 {
+			return typed[len(typed)-1], true
+		}
+	case []any:
+		if len(typed) > 0 {
+			table, ok := typed[len(typed)-1].(map[string]any)
+			return table, ok
+		}
+	}
+	return nil, false
+}
+
+func tomlKeyMatches(line []byte, name string) bool {
+	var document map[string]any
+	if err := toml.Unmarshal(line, &document); err != nil || len(document) != 1 {
+		return false
+	}
+	_, found := document[name]
+	return found
+}
+
 // WriteOfficialCodexConfig restores Codex's built-in OpenAI transport while
 // leaving authentication entirely under Codex's ownership. It selects the
-// custom provider, sets its managed name to official, and removes the two
-// AgentDeck-managed custom transport fields.
+// custom provider, sets its managed name to official, and removes the
+// AgentDeck-managed custom transport and project-header fields.
 func WriteOfficialCodexConfig(path string) error {
 	contents, err := os.ReadFile(path)
 	if err != nil {
@@ -354,6 +526,10 @@ func WriteOfficialCodexConfig(path string) error {
 		return appendTOMLLine(result, `name = "official"`, lineEnding)
 	}
 	result := rewriteCodexCustomTable(contents, onEnter, onLine, flush, ensureTable)
+	result, err = rewriteCodexProjectHeaders(result, false)
+	if err != nil {
+		return fmt.Errorf("rewrite codex project headers: %w", err)
+	}
 
 	var updated map[string]any
 	if err := toml.Unmarshal(result, &updated); err != nil {
@@ -364,9 +540,10 @@ func WriteOfficialCodexConfig(path string) error {
 
 // WriteCodexWrapperConfig routes Codex through a wrapper URL without a
 // credential: it writes base_url, removes experimental_bearer_token, keeps
-// requires_openai_auth and wire_api untouched, and leaves every other TOML
-// field, comment, and ordering unchanged.
-func WriteCodexWrapperConfig(path, name, endpoint string) error {
+// requires_openai_auth and wire_api untouched, manages the project-header
+// mapping according to projectAttribution, and leaves every other TOML field,
+// comment, and ordering unchanged.
+func WriteCodexWrapperConfig(path, name, endpoint string, projectAttribution bool) error {
 	contents, err := os.ReadFile(path)
 	if err != nil {
 		return err
@@ -413,6 +590,10 @@ func WriteCodexWrapperConfig(path, name, endpoint string) error {
 		return appendTOMLLine(result, "base_url = "+quotedBaseURL, lineEnding)
 	}
 	result := rewriteCodexCustomTable(contents, onEnter, onLine, flush, ensureTable)
+	result, err = rewriteCodexProjectHeaders(result, projectAttribution)
+	if err != nil {
+		return fmt.Errorf("rewrite codex project headers: %w", err)
+	}
 
 	var updated map[string]any
 	if err := toml.Unmarshal(result, &updated); err != nil {

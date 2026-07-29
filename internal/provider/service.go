@@ -700,6 +700,24 @@ func (s Service) Current(ctx context.Context) ([]CurrentSelection, error) {
 	return selections, nil
 }
 
+// RunProjectEnvironment resolves the completed route best-effort and returns
+// an environment only when a Headroom-routed launch needs AgentDeck to add
+// project attribution. Every lookup or identity failure leaves the child
+// environment untouched so attribution can never prevent a launch.
+func (s Service) RunProjectEnvironment(ctx context.Context, client Client, cwd string, environ []string) ([]string, bool) {
+	snapshot, err := s.Store.CurrentProviderSnapshot(ctx, string(client))
+	if err != nil || !snapshot.ViaWrapper {
+		return nil, false
+	}
+	definition, err := s.Show(ctx, snapshot.Name)
+	if err != nil ||
+		definition.Definition.WrapperURL != snapshot.Endpoint ||
+		definition.Definition.WrapperKind != WrapperKindHeadroom {
+		return nil, false
+	}
+	return injectProjectEnvironment(client, environ, ProjectWireValue(cwd))
+}
+
 // SwitchAdvisories reports informational notes about a switch that already
 // completed. Codex receives an application-boundary note because AgentDeck
 // changes only the configuration file and cannot update configuration already
@@ -828,6 +846,7 @@ func (s Service) UseCredential(ctx context.Context, name string, client Client, 
 		selectedCredential = selected
 	}
 	var writtenEndpoint string
+	projectAttribution := false
 	if via {
 		wrapperURL := ""
 		if name == OfficialProviderName {
@@ -835,9 +854,15 @@ func (s Service) UseCredential(ctx context.Context, name string, client Client, 
 			if wrapperErr != nil {
 				return wrapperErr
 			}
+			wrapperKind, wrapperErr := s.Store.OfficialWrapperKind(ctx)
+			if wrapperErr != nil {
+				return wrapperErr
+			}
 			wrapperURL = officialWrapper
+			projectAttribution = wrapperKind == WrapperKindHeadroom
 		} else {
 			wrapperURL = definition.WrapperURL
+			projectAttribution = definition.WrapperKind == WrapperKindHeadroom
 		}
 		if wrapperURL == "" {
 			return fmt.Errorf("%w: provider has no configured wrapper", ErrInvalidProvider)
@@ -900,7 +925,7 @@ func (s Service) UseCredential(ctx context.Context, name string, client Client, 
 	if name == OfficialProviderName {
 		if client == ClientCodex {
 			if via {
-				err = WriteCodexWrapperConfig(configPath, OfficialProviderName, writtenEndpoint)
+				err = WriteCodexWrapperConfig(configPath, OfficialProviderName, writtenEndpoint, projectAttribution)
 			} else {
 				err = WriteOfficialCodexConfig(configPath)
 			}
@@ -914,7 +939,7 @@ func (s Service) UseCredential(ctx context.Context, name string, client Client, 
 			err = fmt.Errorf("%w: client", ErrInvalidProvider)
 		}
 	} else {
-		config := ClientConfig{Name: definition.Name, Endpoint: writtenEndpoint, Credential: credential}
+		config := ClientConfig{Name: definition.Name, Endpoint: writtenEndpoint, Credential: credential, ProjectAttribution: projectAttribution}
 		if client == ClientCodex {
 			err = WriteCodexConfig(configPath, config)
 		} else if client == ClientClaude {
