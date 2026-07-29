@@ -660,7 +660,7 @@ func parseRange(client, path string, offset int64, previous []byte) ([]Result, [
 	out := make([]Result, 0, len(byID))
 	for _, r := range byID {
 		if r.Project == "" {
-			r.Project = normalizeProject(filepath.Dir(path))
+			r.Project = NormalizeProject(filepath.Dir(path))
 		}
 		out = append(out, *r)
 	}
@@ -715,7 +715,7 @@ func parseFile(client, path string) ([]Result, error) {
 	out := make([]Result, 0, len(byID))
 	for _, r := range byID {
 		if r.Metadata.Project == "" {
-			r.Metadata.Project = normalizeProject(filepath.Dir(path))
+			r.Metadata.Project = NormalizeProject(filepath.Dir(path))
 		}
 		out = append(out, *r)
 	}
@@ -845,7 +845,7 @@ func textContent(raw any, want string) (string, bool) {
 	return b.String(), b.Len() > 0
 }
 func meta(client, id string, a, b map[string]any) Metadata {
-	return Metadata{Client: client, SessionID: id, Project: normalizeProject(first(str(a["cwd"]), str(a["project"]), str(b["cwd"]), str(b["project"]))), Model: first(str(a["model"]), str(b["model"])), FirstAt: first(str(a["timestamp"]), str(b["timestamp"])), LastAt: first(str(a["timestamp"]), str(b["timestamp"]))}
+	return Metadata{Client: client, SessionID: id, Project: NormalizeProject(first(str(a["cwd"]), str(a["project"]), str(b["cwd"]), str(b["project"]))), Model: first(str(a["model"]), str(b["model"])), FirstAt: first(str(a["timestamp"]), str(b["timestamp"])), LastAt: first(str(a["timestamp"]), str(b["timestamp"]))}
 }
 func first(v ...string) string {
 	for _, s := range v {
@@ -856,7 +856,9 @@ func first(v ...string) string {
 	return ""
 }
 func str(v any) string { s, _ := v.(string); return s }
-func normalizeProject(v string) string {
+
+// NormalizeProject returns the project identity stored for a client session.
+func NormalizeProject(v string) string {
 	if v == "" {
 		return ""
 	}

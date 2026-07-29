@@ -268,6 +268,45 @@ directory with no name of its own attributes nothing; a name containing a
 newline, a quote, or non-ASCII round-trips through the wrapper's documented
 decode.
 
+Dev complete (2026-07-28): `session.NormalizeProject` is now the exported single
+definition of the cleaned full-path identity already stored by the session
+parser. `provider.ProjectIdentity` reuses it directly, while
+`provider.ProjectWireValue` exposes only the base name through
+`url.PathEscape`; empty paths, filesystem roots, and relative directory
+references `.` and `..` produce no attribution value. No project identity or
+wire value is persisted.
+
+The new `internal/provider` → `internal/session` package dependency is
+intentional: this task chose to export the rule from the package that already
+owns and stores the session project identity rather than lift a second
+definition elsewhere. If later attribution tasks cause this dependency to
+spread, the shared rule can be moved down into a neutral lower-level package;
+this task does not pre-emptively change that structure.
+
+Targeted coverage in `internal/provider/project_test.go` scans a synthetic Claude
+session and compares its stored project with the launch-directory identity,
+checks that only the base name reaches the wire, locks newline and quote escaping
+plus non-ASCII UTF-8 encoding, decodes each value with `url.PathUnescape`, and
+proves nameless directories attribute nothing. The targeted test was observed
+RED before implementation with undefined `ProjectIdentity` and
+`ProjectWireValue`, then passed after implementation. Verification after the
+final code edit: `go test -mod=vendor ./internal/provider -run TestProject`
+(exit 0), `go test -mod=vendor ./...` (exit 0, 16 packages), and `gofmt -l` on
+the three touched Go files (no output).
+
+Fix round (2026-07-28): `ProjectWireValue` now replaces the bare `+` that
+`url.PathEscape` permits with `%2B`, so both path-style `unquote` and form-style
+`unquote_plus` decoders recover the same project name. Coverage adds
+`my+project`, `c++`, an explicit no-bare-plus assertion, and `..` as a nameless
+directory reference while retaining every `url.PathUnescape` round trip and the
+full-path `ProjectIdentity` comparison. A behavioral mutation replaced `%2B`
+with `+` while keeping the code compilable; the two new plus cases failed with
+their unescaped values, then passed after the fix was restored. Final fix
+verification: `go test -mod=vendor ./internal/provider -run TestProject` (exit
+0), `go test -mod=vendor ./...` (exit 0, 16 packages),
+`go vet -mod=vendor ./...` (clean), and `gofmt -l` on the three touched Go files
+(no output).
+
 ### `run-env-injection`
 
 Supply the value to the client process AgentDeck launches, and manage the Codex
@@ -406,13 +445,13 @@ behavior described is shipped.
 | # | Task | Dev | Review |
 |---|------|:---:|:------:|
 | 1 | headroom-wrapper-kind | ✓ | ✓ |
-| 2 | project-identity | | |
+| 2 | project-identity | ✓ | ✓ |
 | 3 | run-env-injection | | |
 | 4 | attribution-guidance | | |
 | 5 | shell-helpers | | |
 | 6 | attribution-contract | | |
 
-Done: **1/6 reviewed.** The implementer ticks **Dev** once a task is built and
+Done: **2/6 reviewed.** The implementer ticks **Dev** once a task is built and
 its targeted verification passes; an independent reviewer ticks **Review** once
 findings are closed, recording the round in
 `docs/reviews/project-attribution/<task-anchor>.md`. A task is done only when
