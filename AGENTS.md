@@ -292,6 +292,25 @@ Do not patch symptoms blindly or claim a root cause without evidence.
 Commits and pushes require explicit authorization unless the user has invoked a
 documented workflow that explicitly grants that authority.
 
+- Every commit materially produced with Codex assistance must include this
+  exact trailer, including documentation-only, review-artifact, plan-retirement,
+  fixup, and release-preparation commits:
+
+```text
+Co-Authored-By: Codex <noreply@openai.com>
+```
+
+- Do not substitute another agent's identity for Codex. If another AI agent
+  materially contributed, use that agent's established identity in an
+  additional trailer.
+- Before creating a commit, inspect the complete proposed commit message and
+  confirm the required trailer is present. After creating it, inspect the
+  committed message and verify the trailer and signature before reporting the
+  commit complete.
+- If a required trailer is missing from an existing commit, report it
+  explicitly. Do not amend, rebase, force-push, or otherwise rewrite history
+  without explicit authorization.
+
 - Use English Conventional Commit messages:
 
 ```text
