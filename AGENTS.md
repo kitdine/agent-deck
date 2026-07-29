@@ -187,8 +187,11 @@ separate:
 2. **Development / 开发**: implement only the approved scope and add
    proportionate tests.
 3. **Review / 评审**: inspect correctness, regressions, security, deployment
-   behavior, data risk, and missing coverage. Review is read-only unless fixes
-   are explicitly authorized.
+   behavior, data risk, and missing coverage. Review is read-only with respect
+   to product code, tests, configuration, and behavior unless fixes are
+   explicitly authorized. Project-mandated review logs, plan status fields, and
+   authoritative documentation indexes are review artifacts and must still be
+   updated when the active workflow requires them.
 4. **Fix / 修改**: address only approved findings and rerun relevant checks.
 5. **Re-review / 复评**: independently confirm previous findings are closed and
    no new regressions were introduced.
@@ -546,3 +549,20 @@ re-review, commit, or push check.
 
 Never infer commit or push authorization from a workflow trigger unless this
 table explicitly grants it.
+
+### Review Artifact Finalization / 评审产物收口
+
+For an active plan that defines per-task review records and a Status matrix,
+`进入评审...` and `进入复评...` authorize only the review-artifact updates
+required by that plan:
+
+- append the current round and verdict under `docs/reviews/`;
+- keep Review unchecked while medium-or-higher findings remain, or tick it when
+  the task passes;
+- synchronize the plan summary and `docs/README.md` when their status changes;
+- derive the next workflow instruction from the authoritative Status matrix.
+
+These triggers do not authorize product changes, commits, pushes, releases, or
+environment updates. Before reporting a review or re-review complete, confirm
+that the latest verdict, Review cell, documentation index, and next instruction
+agree.
