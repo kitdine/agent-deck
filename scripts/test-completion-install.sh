@@ -11,6 +11,224 @@ manager="$root/scripts/manage-install.sh"
 
 make -C "$root" DIST_DIR="$dist" build >/dev/null
 
+test_shell_helpers() {
+  local helper_root="$temporary/shell-helpers"
+  local fixture="$helper_root/my+project"
+  local fake_bin="$helper_root/bin"
+  local state="$helper_root/home/.agentdeck"
+  local unconfigured_home="$helper_root/unconfigured-home"
+  local unconfigured_state="$unconfigured_home/.agentdeck"
+  local codex_config="$helper_root/config.toml"
+  local claude_config="$helper_root/settings.json"
+  local fail_root="$helper_root/fail-open"
+  local shell script shell_path actual actual_claude expected
+  local unconfigured_codex unconfigured_claude direct_codex direct_claude
+  local actual_unconfigured_codex actual_unconfigured_claude mode
+
+  mkdir -p "$fixture" "$fake_bin" "$fail_root/unavailable" "$fail_root/nonzero" "$fail_root/empty"
+  cat >"$fake_bin/codex" <<'EOF'
+#!/bin/sh
+printf '%s\n' "${HEADROOM_PROJECT-}"
+EOF
+  cat >"$fake_bin/claude" <<'EOF'
+#!/bin/sh
+printf '%s\n' "${ANTHROPIC_CUSTOM_HEADERS-}"
+EOF
+  chmod 0755 "$fake_bin/codex" "$fake_bin/claude"
+  printf 'model = "synthetic"\n' >"$codex_config"
+  printf '{}\n' >"$claude_config"
+  chmod 0600 "$codex_config" "$claude_config"
+
+  for mode in unavailable nonzero empty; do
+    cat >"$fail_root/$mode/codex" <<'EOF'
+#!/bin/sh
+printf '%s\n' client-started
+EOF
+    chmod 0755 "$fail_root/$mode/codex"
+  done
+  cat >"$fail_root/nonzero/agentdeck" <<'EOF'
+#!/bin/sh
+exit 23
+EOF
+  cat >"$fail_root/empty/agentdeck" <<'EOF'
+#!/bin/sh
+exit 0
+EOF
+  chmod 0755 "$fail_root/nonzero/agentdeck" "$fail_root/empty/agentdeck"
+
+  unconfigured_codex=$(
+    cd "$fixture"
+    env -u HEADROOM_PROJECT HOME="$unconfigured_home" PATH="$fake_bin:$dist:$PATH" \
+      "$binary" --state-dir "$unconfigured_state" run codex --
+  ) || true
+  unconfigured_claude=$(
+    cd "$fixture"
+    env -u ANTHROPIC_CUSTOM_HEADERS HOME="$unconfigured_home" PATH="$fake_bin:$dist:$PATH" \
+      "$binary" --state-dir "$unconfigured_state" run claude --
+  ) || true
+  test -z "$unconfigured_codex"
+  test -z "$unconfigured_claude"
+
+  printf 'synthetic-secret\n' |
+    HOME="$helper_root/home" "$binary" --state-dir "$state" provider add helper \
+      --endpoint https://provider.example --clients codex,claude >/dev/null
+  HOME="$helper_root/home" "$binary" --state-dir "$state" provider set-wrapper helper \
+    --url https://wrapper.example --kind headroom >/dev/null
+  HOME="$helper_root/home" "$binary" --state-dir "$state" provider use helper \
+    --client codex --config-path "$codex_config" >/dev/null 2>&1
+  HOME="$helper_root/home" "$binary" --state-dir "$state" provider use helper \
+    --client claude --config-path "$claude_config" >/dev/null 2>&1
+
+  direct_codex=$(
+    cd "$fixture"
+    env -u HEADROOM_PROJECT HOME="$helper_root/home" PATH="$fake_bin:$dist:$PATH" \
+      "$binary" --state-dir "$state" run codex --
+  )
+  direct_claude=$(
+    cd "$fixture"
+    env -u ANTHROPIC_CUSTOM_HEADERS HOME="$helper_root/home" PATH="$fake_bin:$dist:$PATH" \
+      "$binary" --state-dir "$state" run claude --
+  )
+  test -z "$direct_codex"
+  test -z "$direct_claude"
+
+  for shell in bash fish zsh; do
+    script="$helper_root/agentdeck.$shell"
+    shell_path=$(command -v "$shell")
+    "$binary" shell-init "$shell" >"$script"
+    "$shell_path" -n "$script"
+    case "$shell" in
+      fish)
+        actual=$(
+          cd "$fixture"
+          env -u HEADROOM_PROJECT HOME="$helper_root/home" PATH="$fake_bin:$dist:$PATH" \
+            "$shell_path" -c 'source "$argv[1]"; codex' "$script"
+        )
+        actual_claude=$(
+          cd "$fixture"
+          env -u ANTHROPIC_CUSTOM_HEADERS HOME="$helper_root/home" PATH="$fake_bin:$dist:$PATH" \
+            "$shell_path" -c 'source "$argv[1]"; claude' "$script"
+        )
+        ;;
+      *)
+        actual=$(
+          cd "$fixture"
+          env -u HEADROOM_PROJECT HOME="$helper_root/home" PATH="$fake_bin:$dist:$PATH" \
+            "$shell_path" -c 'source "$1"; codex' _ "$script"
+        )
+        actual_claude=$(
+          cd "$fixture"
+          env -u ANTHROPIC_CUSTOM_HEADERS HOME="$helper_root/home" PATH="$fake_bin:$dist:$PATH" \
+            "$shell_path" -c 'source "$1"; claude' _ "$script"
+        )
+        ;;
+    esac
+    test "$actual" = "$direct_codex"
+    test "$actual_claude" = "$direct_claude"
+  done
+
+  HOME="$helper_root/home" "$binary" --state-dir "$state" provider use helper \
+    --client codex --config-path "$codex_config" --via >/dev/null 2>&1
+  HOME="$helper_root/home" "$binary" --state-dir "$state" provider use helper \
+    --client claude --config-path "$claude_config" --via >/dev/null 2>&1
+
+  expected=$(
+    cd "$fixture"
+    env -u HEADROOM_PROJECT HOME="$helper_root/home" PATH="$fake_bin:$dist:$PATH" \
+      "$binary" --state-dir "$state" run codex --
+  )
+  test "$expected" = "my%2Bproject"
+
+  local existing_headers='Other-Header: keep'
+  local expected_claude
+  expected_claude=$(
+    cd "$fixture"
+    env ANTHROPIC_CUSTOM_HEADERS="$existing_headers" HOME="$helper_root/home" \
+      PATH="$fake_bin:$dist:$PATH" "$binary" --state-dir "$state" run claude --
+  )
+  test "$expected_claude" = "$(printf '%s\n%s' "$existing_headers" 'X-Headroom-Project: my%2Bproject')"
+
+  for shell in bash fish zsh; do
+    script="$helper_root/agentdeck.$shell"
+    shell_path=$(command -v "$shell")
+    "$binary" shell-init "$shell" >"$script"
+    "$shell_path" -n "$script"
+
+    case "$shell" in
+      fish)
+        actual=$(
+          cd "$fixture"
+          env -u HEADROOM_PROJECT HOME="$helper_root/home" PATH="$fake_bin:$dist:$PATH" \
+            fish -c 'source "$argv[1]"; codex' "$script"
+        )
+        actual_claude=$(
+          cd "$fixture"
+          env ANTHROPIC_CUSTOM_HEADERS="$existing_headers" HOME="$helper_root/home" \
+            PATH="$fake_bin:$dist:$PATH" fish -c 'source "$argv[1]"; claude' "$script"
+        )
+        actual_unconfigured_codex=$(
+          cd "$fixture"
+          env -u HEADROOM_PROJECT HOME="$unconfigured_home" PATH="$fake_bin:$dist:$PATH" \
+            "$shell_path" -c 'source "$argv[1]"; codex' "$script"
+        )
+        actual_unconfigured_claude=$(
+          cd "$fixture"
+          env -u ANTHROPIC_CUSTOM_HEADERS HOME="$unconfigured_home" PATH="$fake_bin:$dist:$PATH" \
+            "$shell_path" -c 'source "$argv[1]"; claude' "$script"
+        )
+        ;;
+      *)
+        actual=$(
+          cd "$fixture"
+          env -u HEADROOM_PROJECT HOME="$helper_root/home" PATH="$fake_bin:$dist:$PATH" \
+            "$shell" -c 'source "$1"; codex' _ "$script"
+        )
+        actual_claude=$(
+          cd "$fixture"
+          env ANTHROPIC_CUSTOM_HEADERS="$existing_headers" HOME="$helper_root/home" \
+            PATH="$fake_bin:$dist:$PATH" "$shell" -c 'source "$1"; claude' _ "$script"
+        )
+        actual_unconfigured_codex=$(
+          cd "$fixture"
+          env -u HEADROOM_PROJECT HOME="$unconfigured_home" PATH="$fake_bin:$dist:$PATH" \
+            "$shell_path" -c 'source "$1"; codex' _ "$script"
+        )
+        actual_unconfigured_claude=$(
+          cd "$fixture"
+          env -u ANTHROPIC_CUSTOM_HEADERS HOME="$unconfigured_home" PATH="$fake_bin:$dist:$PATH" \
+            "$shell_path" -c 'source "$1"; claude' _ "$script"
+        )
+        ;;
+    esac
+    test "$actual" = "$expected"
+    test "$actual_claude" = "$expected_claude"
+    test "$actual_unconfigured_codex" = "$unconfigured_codex"
+    test "$actual_unconfigured_claude" = "$unconfigured_claude"
+
+    for mode in unavailable nonzero empty; do
+      case "$shell" in
+        fish)
+          actual=$(
+            cd "$fixture"
+            HOME="$helper_root/fail-home" PATH="$fail_root/$mode:/usr/bin:/bin" \
+              "$shell_path" -c 'source "$argv[1]"; codex' "$script"
+          )
+          ;;
+        *)
+          actual=$(
+            cd "$fixture"
+            HOME="$helper_root/fail-home" PATH="$fail_root/$mode:/usr/bin:/bin" \
+              "$shell_path" -c 'source "$1"; codex' _ "$script"
+          )
+          ;;
+      esac
+      test "$actual" = "client-started"
+    done
+  done
+}
+
+test_shell_helpers
+
 install_for() {
   local shell=$1 home=$2 prefix=$3 rc=$4
   HOME="$home" PREFIX="$prefix" COMPLETION_SHELL="$shell" COMPLETION_RC="$rc" TMPDIR=/private/tmp \

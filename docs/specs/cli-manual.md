@@ -133,15 +133,33 @@ agentdeck provider set-wrapper aigocode --clear
 项目值是当前目录的 safely percent-encoded basename，不会写入 AgentDeck 数据库或
 client 配置。
 
+`agentdeck run` 之外直接启动的 client，只有用户自己 source/安装了 shell helper，
+或自己写了适用的 settings 文件时才会被归属。AgentDeck 不归属 GUI app 启动；在
+AgentDeck 管理的注入路径中，未声明为 `headroom` 的 wrapper 永远不会收到归属
+header。
+
 有三种应用方式：
 
 1. **AgentDeck 启动的进程**：`agentdeck run codex -- ...` 和
    `agentdeck run claude -- ...` 自动按启动目录归属。Codex 通过
    `HEADROOM_PROJECT` 与受管 `env_http_headers` mapping 发出 header；Claude 通过
    `ANTHROPIC_CUSTOM_HEADERS` 发出同一 header。用户已经设置的值优先。
-2. **shell function 启动的进程**：用户可以自行维护 shell function，在直接调用
-   `codex` 或 `claude` 前设置同样的每次启动环境。AgentDeck 不创建该函数，也不编辑
-   shell profile。
+2. **shell function 启动的进程**：`agentdeck shell-init <bash|fish|zsh>` 向
+   stdout 输出包装 `codex` 与 `claude` 的函数。函数在每次启动时按当前目录动态计算
+   project 值；用户决定是否以及如何 source 输出，AgentDeck 不写文件、不编辑 shell
+   profile。生成脚本不需要配置 wrapper；归属生效则要求当前选择经由声明为
+   `headroom` 的 wrapper，即已对该 provider 执行 `provider use --via`。未满足时
+   helper 静默不注入且不影响客户端启动。例如：
+
+   ```bash
+   source <(agentdeck shell-init bash)
+   ```
+
+   zsh 同样可以 source 命令输出；fish 3.4 或更新版本使用
+   `agentdeck shell-init fish | source`。用户已经设置的 attribution 值仍然优先。
+   Codex 还要求受管 `env_http_headers` mapping 将 `HEADROOM_PROJECT` 映射为
+   `X-Headroom-Project` header；该 mapping 只随上述合格 Headroom route 写入，
+   普通 direct switch 或非 Headroom wrapper 不会写入。
 3. **用户维护的 project-scoped settings**：适合不经过 AgentDeck 或 shell function
    的启动。AgentDeck 只提供 recipe，不创建或修改 repository 文件。例如由用户自己
    创建 `.claude/settings.local.json`：
