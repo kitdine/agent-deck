@@ -11,6 +11,23 @@ history remain the source of truth when they disagree with any document.
 
 ## Current State (2026-07-28)
 
+`v0.2.0` is now the current stable release. Its annotated tag points to
+`8c053c9df53f9aad0797d3e9bf2d307fd203ab8a`; the tagged tree differs from
+`v0.2.0-rc.2` only by the RC validation documentation commit, with no
+product-code change after RC2. The
+[tag-triggered Release run](https://github.com/kitdine/agent-deck/actions/runs/30423888201)
+passed both release and Homebrew jobs, published a non-prerelease GitHub Release
+with both Darwin archives and the checksum asset, and verified the stable
+formula through an isolated install, `brew test`, and bash, zsh, and fish
+completion loading. [Homebrew tap PR #5](https://github.com/kitdine/homebrew-tap/pull/5)
+merged the checked formula into `Formula/agentdeck.rb`; the separate RC formula
+remains unchanged. The local channel transition was also completed:
+`brew uninstall kitdine/tap/agentdeck-rc` removed `0.2.0-rc.2`, and
+`brew install kitdine/tap/agentdeck` installed stable `0.2.0`. The installed
+binary reports `v0.2.0` at commit
+`8c053c9df53f9aad0797d3e9bf2d307fd203ab8a`, and the bash, zsh, and fish
+completion files are all present in Homebrew's standard paths.
+
 v0.1.1 is published and installable through `kitdine/homebrew-tap`. Every
 follow-up in the retired phase-one plan passed independent review, so there is
 no outstanding review debt.
@@ -220,6 +237,63 @@ None.
 Candidate work with no approved specification. Each item needs its own plan
 before implementation starts; promote it out of this list at that point rather
 than expanding the entry in place.
+
+- [ ] Make the copyable
+      `agentdeck session show <id> --client <client> --activity` commands emitted
+      by usage statistics robust when the core usage database is newer than the
+      separately purgeable session index. Reproduced on `v0.2.0-rc.2`: the
+      selected Claude session, its usage events, safe tool calls, and source
+      ownership were present in `agentdeck.sqlite3`, while `sessions.sqlite3`
+      contained no metadata, documents, or source row for that session because
+      its last scan predated the source log. `session show` therefore returned
+      the raw `sql: no rows in result set` from its initial metadata query before
+      on-demand activity parsing began. A plan must decide whether activity
+      detail resolves through core usage state when available, the generated
+      command synchronizes or verifies the session index, or the CLI reports an
+      actionable stale-index error. Acceptance must cover a regression where
+      usage state is newer than the session index and preserve the privacy
+      contract: no tool arguments, results, command text, environment, or
+      reasoning may be exposed.
+
+- [ ] Add visible progress to `agentdeck session scan`. A real scan can walk
+      enough Claude and Codex JSONL sources to leave an interactive terminal
+      apparently idle until the single final `Completed session.scan.` line.
+      Follow the established delayed usage-scan progress pattern: show processed
+      and total source counts after a short anti-flicker delay, update in place
+      on a TTY, remain deterministic on non-TTY output, honor `--quiet`, and
+      never print source paths or session content. Keep the final scan summary
+      after progress closes and cover cancellation and zero-source behavior.
+- [ ] Redesign the human-facing `session show` text layout. The current metadata,
+      approved documents, full activity summary, and activity rows form a dense
+      stream that is difficult to scan even when the requested information is
+      present. A plan must define a compact session header, clearly separated
+      document/activity/token sections, stable column priorities for narrow and
+      wide terminals, readable timestamps and durations, and explicit empty and
+      partial states. JSON compatibility and the existing activity privacy
+      boundary remain unchanged.
+- [ ] Add an interactive session viewer with keyboard navigation instead of
+      requiring a new shell command for every `--page` transition. It should let
+      a user move up and down, page forward and backward, switch among session
+      overview, approved documents, tool activity, and token-detail sections,
+      and quit without changing source data. A plan must decide whether this is
+      an explicit `--interactive` mode or the TTY default, preserve the current
+      non-interactive `--page`/`--limit`/`--all` and JSON contracts for scripts,
+      handle terminal resize and interruption, and avoid loading an unbounded
+      session into the terminal UI.
+- [ ] Expose invocation-level token details as part of session inspection.
+      AgentDeck already retains each supported usage event in
+      `agentdeck.sqlite3`, including its session, event time, model, input,
+      cached-input, output, Claude cache-read/cache-creation/cache-write
+      components, source ownership, and attribution inputs. Today
+      `usage sessions` collapses those events into one session total, while
+      `session show` exposes no token detail at all. Add a session-scoped view
+      of each invocation or logical turn, with token components, model, time,
+      pricing completeness, and attributable cost where valid, then make it
+      available to the interactive session viewer. The design must define Codex
+      cumulative snapshot/delta semantics, Claude cache components, event
+      ordering, pagination, duplicate-source ownership, unavailable components,
+      and the boundary between safe usage metadata and prohibited raw session
+      content.
 
 - [ ] Confirm whether a Claude **app** picks up a project-scoped
       `.claude/settings.local.json` without a restart.
