@@ -1004,7 +1004,28 @@ Verification: L1 formula-rendering, installer-output, and documentation checks.
 
 Extend isolated installation coverage for bash, zsh, and fish.
 
+This task also carries one product fix folded in on 2026-07-30, because its
+acceptance is what would have caught it: the generated wrappers omit step 1 of
+the resolution order under "Eligibility, Activation, and Cost" — the
+`agentdeck`-on-`PATH` test before forking. The fish bodies
+(`cmd/agentdeck/main.go:1074`, `:1084`) call
+`command agentdeck shell-init --project-environment <client>` inside a command
+substitution with no `type -q agentdeck` guard, so with the block installed and
+`agentdeck` off `PATH` — the state after a bare `brew uninstall` — every `codex`
+invocation prints `Unknown command` and a source excerpt to stderr before running
+the real client. The bash and zsh bodies (`:1098`, `:1107`) are silent only
+because their `2>/dev/null` catches the shell's own error, so all three get the
+explicit guard rather than only fish. Recorded in
+`docs/reviews/shell-integration/installation-onboarding.md` Round 1.
+
 Acceptance for every supported shell:
+
+- each generated wrapper tests for `agentdeck` on `PATH` before forking it, and
+  invoking a wrapped client with `agentdeck` absent produces empty stderr as well
+  as an unchanged client launch;
+- `scripts/test-completion-install.sh`'s `unavailable` mode captures stderr and
+  asserts it is empty, so the guard cannot regress behind a stdout-only
+  assertion;
 
 - setup writes the expected block, and a single no-argument `shell setup` in a
   home configured for two shells configures both and leaves the third alone;
@@ -1035,6 +1056,18 @@ AgentDeck fork plus one read-only database open — on a real machine, for an
 eligible route, an ineligible route with the marker present, and an ineligible
 route gated by an absent marker, and records the numbers in this plan. The
 measurement is evidence for the disclosure in task 4, not a performance gate.
+
+The disclosure follow-up is mandatory:
+
+- when task 6 lands the negative-gate marker, it must revise the cost wording
+  from "on each invocation" to marker-dependent behavior in the Homebrew
+  formula caveat, `scripts/manage-install.sh`, `README.md`, and
+  `docs/specs/cli-manual.md`, and update the matching assertions in
+  `scripts/test-completion-install.sh` and
+  `scripts/test-release-distribution.sh`;
+- after this task measures the three paths above, it must backfill those
+  measured figures into the same four user-facing texts and both assertion
+  sets. Qualitative disclosure alone does not satisfy task 4 acceptance item 4.
 
 Verification: L3 isolated-home integration tests. The final release candidate
 uses the project L4 `make release-verify` aggregate gate once after the last
@@ -1228,9 +1261,9 @@ and contracts stay as specified either way.
 | Task | Dev | Review |
 | --- | --- | --- |
 | 1. `shell-command-surface` | [x] | [x] |
-| 2. `managed-shell-config` | [ ] | [ ] |
-| 3. `activation-and-eligibility-status` | [ ] | [ ] |
-| 4. `installation-onboarding` | [ ] | [ ] |
+| 2. `managed-shell-config` | [x] | [x] |
+| 3. `activation-and-eligibility-status` | [x] | [x] |
+| 4. `installation-onboarding` | [x] | [x] |
 | 5. `cross-shell-acceptance` | [ ] | [ ] |
 | 6. `route-change-advisories` | [ ] | [ ] |
 | 7. `switch-time-setup` | [ ] | [ ] |
