@@ -25,7 +25,7 @@ const (
 )
 
 const (
-	managedVersion = 1
+	managedVersion = 2
 	startMarker    = "# >>> agentdeck shell integration >>>"
 	endMarker      = "# <<< agentdeck shell integration <<<"
 )
@@ -39,6 +39,7 @@ type Environment struct {
 	Home          string
 	ZDOTDir       string
 	XDGConfigHome string
+	StateRoot     string
 	Invocation    Invocation
 }
 
@@ -157,6 +158,287 @@ func (m *Manager) Setup(request Request) (Summary, error) {
 		summary.Results = append(summary.Results, result)
 	}
 	return summary, nil
+}
+
+// SetupIfUnconfigured installs every selected target as one operation only
+// when none already carries the current managed block. All replacement and
+// rollback work stays inside the editor so callers never compensate with raw
+// startup-file operations.
+func (m *Manager) SetupIfUnconfigured(request Request) (Summary, error) {
+	targets, err := m.targets(request, true)
+	if err != nil {
+		return Summary{}, err
+	}
+	summary := Summary{Results: make([]Result, 0, len(targets))}
+	changes := make([]*preparedSetupChange, 0, len(targets))
+	currentBlockPresent := false
+	preparationFailed := false
+	for _, target := range targets {
+		result := Result{Shell: target.shell, Path: target.path}
+		if !target.selected {
+			result.Outcome = OutcomeSkipped
+			summary.Results = append(summary.Results, result)
+			continue
+		}
+		change, outcome, prepareErr := m.prepareSetupChange(target, len(summary.Results))
+		result.Outcome = outcome
+		if prepareErr != nil {
+			result.Outcome = OutcomeFailed
+			result.Error = prepareErr.Error()
+			preparationFailed = true
+		} else if outcome == OutcomeUnchanged {
+			currentBlockPresent = true
+		} else {
+			changes = append(changes, change)
+		}
+		summary.Results = append(summary.Results, result)
+	}
+	defer m.cleanupPreparedSetup(changes)
+
+	if preparationFailed || currentBlockPresent {
+		for _, change := range changes {
+			summary.Results[change.resultIndex].Outcome = OutcomeSkipped
+		}
+		return summary, nil
+	}
+	for _, change := range changes {
+		if err := m.targetUnchanged(change.path, change.expected); err != nil {
+			transactionErr := fmt.Errorf("verify shell startup transaction: %w", err)
+			m.failPreparedSetup(&summary, changes, transactionErr)
+			return summary, transactionErr
+		}
+	}
+
+	committed := make([]*preparedSetupChange, 0, len(changes))
+	for _, change := range changes {
+		if err := m.files.rename(change.temporaryPath, change.path); err != nil {
+			transactionErr := fmt.Errorf("replace shell startup file: %w", err)
+			rollbackErr := m.rollbackPreparedSetup(committed)
+			combined := errors.Join(transactionErr, rollbackErr)
+			m.failPreparedSetup(&summary, changes, combined)
+			return summary, combined
+		}
+		installed, inspectErr := m.files.lstat(change.path)
+		if inspectErr != nil {
+			transactionErr := fmt.Errorf("inspect replaced shell startup file: %w", inspectErr)
+			rollbackErr := m.rollbackPreparedSetup(committed)
+			combined := errors.Join(transactionErr, rollbackErr)
+			m.failPreparedSetup(&summary, changes, combined)
+			return summary, combined
+		}
+		if !sameSnapshot(m.files.sameFile, change.replacement, installed) {
+			transactionErr := errors.New(
+				"preserve concurrent shell startup change: replacement changed during transaction commit",
+			)
+			rollbackErr := m.rollbackPreparedSetup(committed)
+			combined := errors.Join(transactionErr, rollbackErr)
+			m.failPreparedSetup(&summary, changes, combined)
+			return summary, combined
+		}
+		change.installed = installed
+		committed = append(committed, change)
+		if err := m.syncDirectory(filepath.Dir(change.path)); err != nil {
+			transactionErr := fmt.Errorf("finalize shell startup file: %w", err)
+			rollbackErr := m.rollbackPreparedSetup(committed)
+			combined := errors.Join(transactionErr, rollbackErr)
+			m.failPreparedSetup(&summary, changes, combined)
+			return summary, combined
+		}
+	}
+	return summary, nil
+}
+
+type preparedSetupChange struct {
+	resultIndex    int
+	shell          Shell
+	path           string
+	original       []byte
+	updated        []byte
+	expected       fs.FileInfo
+	replacement    fs.FileInfo
+	installed      fs.FileInfo
+	temporaryPath  string
+	backupPath     string
+	restored       bool
+	rollbackFailed bool
+}
+
+func (m *Manager) prepareSetupChange(target target, resultIndex int) (*preparedSetupChange, Outcome, error) {
+	if err := m.files.mkdirAll(filepath.Dir(target.path), 0o700); err != nil {
+		return nil, OutcomeFailed, fmt.Errorf("create shell startup directory: %w", err)
+	}
+	contents, info, err := m.readStartup(target.path)
+	if errors.Is(err, fs.ErrNotExist) {
+		contents, info = nil, nil
+	} else if err != nil {
+		return nil, OutcomeFailed, err
+	}
+	block := inspectManagedBlock(contents)
+	if block.state == blockInvalid {
+		return nil, OutcomeFailed, block.err
+	}
+	if block.state == blockValid {
+		if err := m.validateManagedBlock(block, target.shell); err != nil {
+			return nil, OutcomeFailed, err
+		}
+		if block.version == managedVersion && bytes.Equal(block.body, m.managedBody(target.shell)) {
+			return nil, OutcomeUnchanged, nil
+		}
+		contents = replaceBytes(
+			contents,
+			block.start,
+			block.end,
+			m.buildManagedBlock(target.shell, block.separatorAdded),
+		)
+	} else {
+		separatorAdded := len(contents) > 0 && contents[len(contents)-1] != '\n'
+		updated := append([]byte(nil), contents...)
+		if separatorAdded {
+			updated = append(updated, '\n')
+		}
+		contents = append(updated, m.buildManagedBlock(target.shell, separatorAdded)...)
+	}
+
+	mode := fs.FileMode(0o600)
+	if info != nil {
+		mode = info.Mode().Perm()
+	}
+	change := &preparedSetupChange{
+		resultIndex: resultIndex,
+		shell:       target.shell,
+		path:        target.path,
+		original:    nil,
+		updated:     contents,
+		expected:    info,
+	}
+	if info != nil {
+		original, readInfo, readErr := m.readStartup(target.path)
+		if readErr != nil {
+			return nil, OutcomeFailed, readErr
+		}
+		if !sameSnapshot(m.files.sameFile, info, readInfo) {
+			return nil, OutcomeFailed, errors.New("shell startup file changed during transaction preparation")
+		}
+		change.original = original
+	}
+	change.temporaryPath, err = m.writeTemporary(
+		filepath.Dir(target.path),
+		".agentdeck-shell-*",
+		change.updated,
+		mode,
+	)
+	if err != nil {
+		return nil, OutcomeFailed, err
+	}
+	change.replacement, err = m.files.lstat(change.temporaryPath)
+	if err != nil {
+		_ = m.files.remove(change.temporaryPath)
+		return nil, OutcomeFailed, fmt.Errorf("inspect prepared shell startup replacement: %w", err)
+	}
+	if info != nil {
+		change.backupPath, err = m.writeTemporary(
+			filepath.Dir(target.path),
+			".agentdeck-shell-backup-*",
+			change.original,
+			mode,
+		)
+		if err != nil {
+			_ = m.files.remove(change.temporaryPath)
+			return nil, OutcomeFailed, fmt.Errorf("prepare shell startup rollback: %w", err)
+		}
+	}
+	return change, OutcomeConfigured, nil
+}
+
+func (m *Manager) cleanupPreparedSetup(changes []*preparedSetupChange) {
+	for _, change := range changes {
+		if change.rollbackFailed && !change.restored {
+			continue
+		}
+		if change.temporaryPath != "" {
+			_ = m.files.remove(change.temporaryPath)
+		}
+		if change.backupPath != "" {
+			_ = m.files.remove(change.backupPath)
+		}
+	}
+}
+
+func (m *Manager) failPreparedSetup(summary *Summary, changes []*preparedSetupChange, err error) {
+	for _, change := range changes {
+		result := &summary.Results[change.resultIndex]
+		result.Outcome = OutcomeFailed
+		result.Error = err.Error()
+	}
+}
+
+func (m *Manager) rollbackPreparedSetup(changes []*preparedSetupChange) error {
+	var rollbackErr error
+	for index := len(changes) - 1; index >= 0; index-- {
+		change := changes[index]
+		if err := m.restorePreparedSetup(change); err != nil {
+			change.rollbackFailed = true
+			rollbackErr = errors.Join(
+				rollbackErr,
+				fmt.Errorf("rollback shell startup file %s: %w", change.path, err),
+			)
+		}
+	}
+	return rollbackErr
+}
+
+func (m *Manager) restorePreparedSetup(change *preparedSetupChange) error {
+	installed := change.installed
+	if installed == nil {
+		contents, info, err := m.readStartup(change.path)
+		if err != nil {
+			return err
+		}
+		if !bytes.Equal(contents, change.updated) {
+			return errors.New("shell startup file changed before rollback")
+		}
+		installed = info
+	}
+	if err := m.targetUnchanged(change.path, installed); err != nil {
+		return fmt.Errorf("preserve concurrent shell startup change: %w", err)
+	}
+	directory := filepath.Dir(change.path)
+	if change.expected == nil {
+		if change.temporaryPath == "" {
+			return errors.New("rollback path for missing shell startup file is unavailable")
+		}
+		if err := m.files.rename(change.path, change.temporaryPath); err != nil {
+			if unchangedErr := m.targetUnchanged(change.path, installed); unchangedErr != nil {
+				return fmt.Errorf("preserve concurrent shell startup change: %w", unchangedErr)
+			}
+			return fmt.Errorf("restore missing shell startup file: %w", err)
+		}
+		change.restored = true
+		if err := m.syncDirectory(directory); err != nil {
+			return err
+		}
+		if err := m.files.remove(change.temporaryPath); err != nil {
+			return fmt.Errorf("remove rolled-back shell startup temporary file: %w", err)
+		}
+		change.temporaryPath = ""
+	} else if err := m.files.rename(change.backupPath, change.path); err != nil {
+		if unchangedErr := m.targetUnchanged(change.path, installed); unchangedErr != nil {
+			return fmt.Errorf("preserve concurrent shell startup change: %w", unchangedErr)
+		}
+		latest, inspectErr := m.files.lstat(change.path)
+		if inspectErr != nil {
+			return errors.Join(err, inspectErr)
+		}
+		if replaceErr := m.atomicReplace(change.path, change.original, change.updated, latest); replaceErr != nil {
+			return errors.Join(err, replaceErr)
+		}
+		change.restored = true
+		return errors.Join(err, m.syncDirectory(directory))
+	} else {
+		change.backupPath = ""
+		change.restored = true
+	}
+	return m.syncDirectory(directory)
 }
 
 func (m *Manager) Remove(request Request) (Summary, error) {
@@ -356,13 +638,13 @@ func (m *Manager) setupFile(path string, shell Shell) (Outcome, error) {
 		return OutcomeFailed, block.err
 	}
 	if block.state == blockValid {
-		if err := validateManagedBlock(block, shell); err != nil {
+		if err := m.validateManagedBlock(block, shell); err != nil {
 			return OutcomeFailed, err
 		}
-		if block.version == managedVersion && bytes.Equal(block.body, managedBody(shell)) {
+		if block.version == managedVersion && bytes.Equal(block.body, m.managedBody(shell)) {
 			return OutcomeUnchanged, nil
 		}
-		replacement := buildManagedBlock(shell, block.separatorAdded)
+		replacement := m.buildManagedBlock(shell, block.separatorAdded)
 		updated := replaceBytes(contents, block.start, block.end, replacement)
 		if err := m.atomicReplace(path, updated, contents, info); err != nil {
 			return OutcomeFailed, err
@@ -375,7 +657,7 @@ func (m *Manager) setupFile(path string, shell Shell) (Outcome, error) {
 	if separatorAdded {
 		updated = append(updated, '\n')
 	}
-	updated = append(updated, buildManagedBlock(shell, separatorAdded)...)
+	updated = append(updated, m.buildManagedBlock(shell, separatorAdded)...)
 	if err := m.atomicReplace(path, updated, contents, info); err != nil {
 		return OutcomeFailed, err
 	}
@@ -397,7 +679,7 @@ func (m *Manager) removeFile(path string, shell Shell) (Outcome, error) {
 	if block.state == blockInvalid {
 		return OutcomeFailed, block.err
 	}
-	if err := validateManagedBlock(block, shell); err != nil {
+	if err := m.validateManagedBlock(block, shell); err != nil {
 		return OutcomeFailed, err
 	}
 	start := block.start
@@ -658,8 +940,15 @@ func invalidBlock(message string) managedBlock {
 	return managedBlock{state: blockInvalid, err: errors.New(message)}
 }
 
-func validateManagedBlock(block managedBlock, shell Shell) error {
-	if block.version == managedVersion && !bytes.Equal(block.body, managedBody(shell)) {
+func (m *Manager) validateManagedBlock(block managedBlock, shell Shell) error {
+	valid := false
+	switch block.version {
+	case 1:
+		valid = bytes.Equal(block.body, legacyManagedBody(shell))
+	case managedVersion:
+		valid = validManagedBodyForShell(block.body, shell)
+	}
+	if !valid {
 		return errors.New("managed shell block content does not match its shell")
 	}
 	return nil
@@ -696,12 +985,12 @@ func lineSpans(contents []byte) []lineSpan {
 	return lines
 }
 
-func buildManagedBlock(shell Shell, separatorAdded bool) []byte {
+func (m *Manager) buildManagedBlock(shell Shell, separatorAdded bool) []byte {
 	payload := []byte(fmt.Sprintf(
 		"# managed-version: %d\n# managed-separator-added: %t\n%s",
 		managedVersion,
 		separatorAdded,
-		managedBody(shell),
+		m.managedBody(shell),
 	))
 	hash := sha256.Sum256(payload)
 	return []byte(fmt.Sprintf(
@@ -713,16 +1002,63 @@ func buildManagedBlock(shell Shell, separatorAdded bool) []byte {
 	))
 }
 
-func managedBody(shell Shell) []byte {
+func (m *Manager) managedBody(shell Shell) []byte {
+	agentdeck := "command agentdeck"
+	if m.environment.StateRoot != "" {
+		agentdeck += " --state-dir " + quoteShellArgument(m.environment.StateRoot)
+	}
+	return managedBodyForCommand(shell, agentdeck)
+}
+
+func legacyManagedBody(shell Shell) []byte {
+	return managedBodyForCommand(shell, "command agentdeck")
+}
+
+func managedBodyForCommand(shell Shell, agentdeck string) []byte {
 	if shell == ShellFish {
 		return []byte("if type -q agentdeck\n" +
-			"    command agentdeck shell-init fish | source\n" +
+			"    " + agentdeck + " shell-init fish | source\n" +
 			"end\n")
 	}
 	return []byte(fmt.Sprintf(
-		"command -v agentdeck >/dev/null 2>&1 && eval \"$(command agentdeck shell-init %s)\"\n",
+		"command -v agentdeck >/dev/null 2>&1 && eval \"$(%s shell-init %s)\"\n",
+		agentdeck,
 		shell,
 	))
+}
+
+func validManagedBodyForShell(body []byte, shell Shell) bool {
+	text := string(body)
+	var prefix, suffix string
+	if shell == ShellFish {
+		prefix = "if type -q agentdeck\n    "
+		suffix = " shell-init fish | source\nend\n"
+	} else {
+		prefix = "command -v agentdeck >/dev/null 2>&1 && eval \"$("
+		suffix = fmt.Sprintf(" shell-init %s)\"\n", shell)
+	}
+	if !strings.HasPrefix(text, prefix) || !strings.HasSuffix(text, suffix) {
+		return false
+	}
+	command := strings.TrimSuffix(strings.TrimPrefix(text, prefix), suffix)
+	if command == "command agentdeck" {
+		return true
+	}
+	const statePrefix = "command agentdeck --state-dir "
+	if !strings.HasPrefix(command, statePrefix) {
+		return false
+	}
+	quoted := strings.TrimPrefix(command, statePrefix)
+	if len(quoted) < 2 || quoted[0] != '\'' || quoted[len(quoted)-1] != '\'' {
+		return false
+	}
+	inner := quoted[1 : len(quoted)-1]
+	decoded := strings.ReplaceAll(inner, "'\"'\"'", "'")
+	return quoteShellArgument(decoded) == quoted
+}
+
+func quoteShellArgument(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
 }
 
 func replaceBytes(contents []byte, start, end int, replacement []byte) []byte {

@@ -237,6 +237,9 @@ func TestEncryptedBackupInspectAndEmptyRootRestore(t *testing.T) {
 	if _, err = providers.Add(ctx, providerpkg.Definition{Name: "synthetic", Endpoint: "https://example.invalid", Clients: []providerpkg.Client{providerpkg.ClientCodex}}, "synthetic-secret-value"); err != nil {
 		t.Fatal(err)
 	}
+	if err = os.WriteFile(providerpkg.ProjectAttributionGatePath(stateRoot), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	archive := filepath.Join(stateRoot, "backups", "portable", "sample.adb")
 	service := Service{Core: database, StateRoot: stateRoot, Vault: vault, Version: "test", Now: func() time.Time { return time.Unix(1, 0) }}
 	manifest, err := service.Create(ctx, archive, "correct horse battery staple", false)
@@ -266,6 +269,9 @@ func TestEncryptedBackupInspectAndEmptyRootRestore(t *testing.T) {
 	}
 	if _, included := archiveEntries["credential.key"]; included {
 		t.Fatal("portable backup included credential.key")
+	}
+	if _, included := archiveEntries[providerpkg.ProjectAttributionGateFilename]; included {
+		t.Fatal("portable backup included project-attribution eligibility marker")
 	}
 	tampered := filepath.Join(t.TempDir(), "tampered.adb")
 	corrupted := append([]byte(nil), ciphertext...)

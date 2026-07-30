@@ -120,6 +120,7 @@ func (s Service) Check(ctx context.Context, full bool) (Report, error) {
 	if err = s.checkProviders(ctx, database, &report, full); err != nil {
 		return Report{}, err
 	}
+	s.checkProjectAttributionGate(ctx, database, &report)
 	// Version labels describe a migration boundary, not the physical schema. A
 	// partially restored database can claim schema 13 while lacking its new
 	// table, so probe the read-only catalog before running table-specific SQL.
@@ -157,6 +158,40 @@ func (s Service) Check(ctx context.Context, full bool) (Report, error) {
 		report.add(Check{Name: "extensions", Status: "ok"})
 	}
 	return report, nil
+}
+
+func (s Service) checkProjectAttributionGate(
+	ctx context.Context,
+	database *store.Store,
+	report *Report,
+) {
+	status, err := (provider.Service{
+		Store:     database,
+		StateRoot: s.StateRoot,
+	}).ProjectAttributionGateStatus(ctx)
+	if err != nil {
+		report.add(Check{
+			Name:     "project_attribution_gate",
+			Status:   "warning",
+			Code:     "project_attribution_gate_unreadable",
+			Recovery: "rerun the intended agentdeck provider use command",
+		})
+		return
+	}
+	if status.Consistent {
+		report.add(Check{Name: "project_attribution_gate", Status: "ok"})
+		return
+	}
+	code := "project_attribution_gate_stale"
+	if status.Required {
+		code = "project_attribution_gate_missing"
+	}
+	report.add(Check{
+		Name:     "project_attribution_gate",
+		Status:   "warning",
+		Code:     code,
+		Recovery: "rerun the intended agentdeck provider use command",
+	})
 }
 
 func (s Service) checkLock(report *Report) {

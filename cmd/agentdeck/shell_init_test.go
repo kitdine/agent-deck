@@ -39,6 +39,10 @@ func TestShellInitEmitsDynamicClientWrappersForSupportedShells(t *testing.T) {
 			if marker := shellconfig.ActivationMarkerName(shellconfig.Shell(shell)); !strings.Contains(script, marker) {
 				t.Errorf("shell-init %s does not set activation marker %s:\n%s", shell, marker, script)
 			}
+			gatePath := provider.ProjectAttributionGatePath(stateDir)
+			if !strings.Contains(script, shellQuote(gatePath)) {
+				t.Errorf("shell-init %s does not guard on %s:\n%s", shell, gatePath, script)
+			}
 			for _, forbidden := range []string{
 				"my+project",
 				"https://wrapper.example",
@@ -55,6 +59,134 @@ func TestShellInitEmitsDynamicClientWrappersForSupportedShells(t *testing.T) {
 	}
 }
 
+func TestShellInitQuotesGatePathAndDefinesBothWrappers(t *testing.T) {
+	root := t.TempDir()
+	stateDir := filepath.Join(root, "state'o")
+	gatePath := provider.ProjectAttributionGatePath(stateDir)
+
+	for _, shell := range []string{"bash", "fish", "zsh"} {
+		t.Run(shell, func(t *testing.T) {
+			shellPath, err := exec.LookPath(shell)
+			if err != nil {
+				t.Skipf("%s not installed", shell)
+			}
+			var stdout bytes.Buffer
+			if err := run(
+				[]string{"--state-dir", stateDir, "shell-init", shell},
+				strings.NewReader(""),
+				&stdout,
+			); err != nil {
+				t.Fatalf("generate %s shell-init: %v", shell, err)
+			}
+			scriptPath := filepath.Join(root, "agentdeck-"+shell)
+			if err := os.WriteFile(scriptPath, stdout.Bytes(), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			syntax := exec.Command(shellPath, "-n", scriptPath)
+			if output, err := syntax.CombinedOutput(); err != nil {
+				t.Fatalf("%s -n rejected generated script: %v\n%s", shell, err, output)
+			}
+
+			script := stdout.String()
+			var gateExpressions []string
+			for _, line := range strings.Split(script, "\n") {
+				line = strings.TrimSpace(line)
+				if shell == "fish" && strings.HasPrefix(line, "if test -f ") {
+					gateExpressions = append(
+						gateExpressions,
+						strings.TrimPrefix(line, "if test -f "),
+					)
+					continue
+				}
+				if shell != "fish" && strings.HasPrefix(line, "if [ -f ") {
+					expression := strings.TrimPrefix(line, "if [ -f ")
+					end := strings.Index(expression, " ] &&")
+					if end < 0 {
+						t.Fatalf("bash gate line has no closing test: %q", line)
+					}
+					gateExpressions = append(gateExpressions, expression[:end])
+				}
+			}
+			if len(gateExpressions) != 2 {
+				t.Fatalf("%s gate expressions = %#v, want codex and claude", shell, gateExpressions)
+			}
+			for _, expression := range gateExpressions {
+				var evaluate *exec.Cmd
+				if shell == "fish" {
+					evaluate = exec.Command(
+						shellPath,
+						"--no-config",
+						"-c",
+						`printf '%s' `+expression,
+					)
+				} else if shell == "zsh" {
+					evaluate = exec.Command(
+						shellPath,
+						"-f",
+						"-c",
+						`printf '%s' `+expression,
+					)
+				} else {
+					evaluate = exec.Command(
+						shellPath,
+						"--noprofile",
+						"--norc",
+						"-c",
+						`printf '%s' `+expression,
+					)
+				}
+				output, err := evaluate.CombinedOutput()
+				if err != nil {
+					t.Fatalf("evaluate %s gate expression %q: %v\n%s", shell, expression, err, output)
+				}
+				if string(output) != gatePath {
+					t.Fatalf("%s embedded gate path = %q, want %q", shell, output, gatePath)
+				}
+			}
+
+			var inspect *exec.Cmd
+			if shell == "fish" {
+				inspect = exec.Command(
+					shellPath,
+					"--no-config",
+					"-c",
+					`source $argv[1]
+functions -q codex; or exit 20
+functions -q claude; or exit 21`,
+					scriptPath,
+				)
+			} else if shell == "zsh" {
+				inspect = exec.Command(
+					shellPath,
+					"-f",
+					"-c",
+					`source "$1"
+whence -w codex >/dev/null || exit 20
+whence -w claude >/dev/null || exit 21`,
+					"_",
+					scriptPath,
+				)
+			} else {
+				inspect = exec.Command(
+					shellPath,
+					"--noprofile",
+					"--norc",
+					"-c",
+					`source "$1"
+declare -F codex >/dev/null || exit 20
+declare -F claude >/dev/null || exit 21`,
+					"_",
+					scriptPath,
+				)
+			}
+			output, err := inspect.CombinedOutput()
+			if err != nil {
+				t.Fatalf("source and inspect %s script: %v\n%s", shell, err, output)
+			}
+		})
+	}
+}
+
 func TestShellInitScriptsMarkTheEvaluatingShellProcess(t *testing.T) {
 	for _, shell := range []string{"bash", "fish", "zsh"} {
 		t.Run(shell, func(t *testing.T) {
@@ -63,7 +195,11 @@ func TestShellInitScriptsMarkTheEvaluatingShellProcess(t *testing.T) {
 				t.Skipf("%s not installed", shell)
 			}
 			scriptPath := filepath.Join(t.TempDir(), "agentdeck-"+shell)
-			if err := os.WriteFile(scriptPath, []byte(shellInitScript(shell)), 0o600); err != nil {
+			if err := os.WriteFile(
+				scriptPath,
+				[]byte(shellInitScript(shell, "", filepath.Join(t.TempDir(), "project-attribution.enabled"))),
+				0o600,
+			); err != nil {
 				t.Fatal(err)
 			}
 			marker := shellconfig.ActivationMarkerName(shellconfig.Shell(shell))
@@ -106,6 +242,74 @@ func TestShellInitScriptsMarkTheEvaluatingShellProcess(t *testing.T) {
 				t.Fatalf("%s marker and shell PID = %q, want equal values", shell, output)
 			}
 		})
+	}
+}
+
+func TestShellInitNegativeGateControlsForkButNotAttributionDecision(t *testing.T) {
+	unsetEnvironmentForTest(t, provider.HeadroomProjectEnvironment)
+	root := t.TempDir()
+	bin := filepath.Join(root, "bin")
+	if err := os.Mkdir(bin, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	logPath := filepath.Join(root, "agentdeck.log")
+	agentdeckPath := filepath.Join(bin, "agentdeck")
+	codexPath := filepath.Join(bin, "codex")
+	if err := os.WriteFile(agentdeckPath, []byte(`#!/bin/sh
+printf 'called\n' >>"$AGENTDECK_TEST_LOG"
+printf '%s' "${FAKE_PROJECT_VALUE-}"
+`), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(codexPath, []byte(`#!/bin/sh
+printf '%s\n' "${HEADROOM_PROJECT-}"
+`), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	gatePath := filepath.Join(root, provider.ProjectAttributionGateFilename)
+	scriptPath := filepath.Join(root, "agentdeck.bash")
+	if err := os.WriteFile(scriptPath, []byte(shellInitScript("bash", "", gatePath)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	runCodex := func(projectValue string) string {
+		t.Helper()
+		command := exec.Command("bash", "--noprofile", "--norc", "-c", `source "$1"; codex`, "_", scriptPath)
+		command.Env = append(
+			os.Environ(),
+			"PATH="+bin+":"+os.Getenv("PATH"),
+			"AGENTDECK_TEST_LOG="+logPath,
+			"FAKE_PROJECT_VALUE="+projectValue,
+		)
+		output, err := command.CombinedOutput()
+		if err != nil {
+			t.Fatalf("run gated wrapper: %v\n%s", err, output)
+		}
+		return string(output)
+	}
+
+	if output := runCodex("project"); output != "\n" {
+		t.Fatalf("missing gate output = %q, want unchanged client", output)
+	}
+	if _, err := os.Stat(logPath); !os.IsNotExist(err) {
+		t.Fatalf("missing gate agentdeck log = %v, want no fork", err)
+	}
+
+	if err := os.WriteFile(gatePath, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if output := runCodex(""); output != "\n" {
+		t.Fatalf("stale gate output = %q, want resolver to decide no attribution", output)
+	}
+	if calls, err := os.ReadFile(logPath); err != nil || string(calls) != "called\n" {
+		t.Fatalf("stale gate calls = %q, %v", calls, err)
+	}
+
+	if output := runCodex("project"); output != "project\n" {
+		t.Fatalf("eligible gate output = %q, want attributed client", output)
+	}
+	if calls, err := os.ReadFile(logPath); err != nil || string(calls) != "called\ncalled\n" {
+		t.Fatalf("eligible gate calls = %q, %v", calls, err)
 	}
 }
 
@@ -432,14 +636,14 @@ func TestShellStatusTextAndJSONReportConfigurationActivationAndEligibilityOnce(t
 	if err := os.Mkdir(home, 0o700); err != nil {
 		t.Fatal(err)
 	}
+	stateDir := filepath.Join(root, "state")
 	rc := filepath.Join(home, ".zshrc")
-	manager := shellconfig.New(shellconfig.Environment{Home: home})
+	manager := shellconfig.New(shellconfig.Environment{Home: home, StateRoot: stateDir})
 	if summary, err := manager.Setup(shellconfig.Request{Shell: shellconfig.ShellZsh, RC: rc}); err != nil {
 		t.Fatal(err)
 	} else if summary.HasFailures() {
 		t.Fatalf("setup failed: %#v", summary.Results)
 	}
-	stateDir := filepath.Join(root, "state")
 	configureHeadroomSelections(t, stateDir)
 
 	oldHome := userHomeDir
@@ -500,6 +704,12 @@ func TestShellStatusTextAndJSONReportConfigurationActivationAndEligibilityOnce(t
 		if eligibility.Reason != provider.ProjectRouteEligible {
 			t.Errorf("%s eligibility = %#v", eligibility.Client, eligibility)
 		}
+	}
+	if !envelope.Data.Gate.Required ||
+		!envelope.Data.Gate.Present ||
+		!envelope.Data.Gate.Consistent ||
+		envelope.Data.Gate.Error != "" {
+		t.Fatalf("JSON attribution gate = %#v, want ready", envelope.Data.Gate)
 	}
 
 	fishRC := filepath.Join(home, ".config", "fish", "config.fish")
@@ -576,6 +786,7 @@ func TestShellStatusTextAndJSONReportConfigurationActivationAndEligibilityOnce(t
 	if strings.Count(textOut.String(), "Attribution:") != 1 ||
 		!strings.Contains(textOut.String(), "codex eligible") ||
 		!strings.Contains(textOut.String(), "claude eligible") ||
+		!strings.Contains(textOut.String(), "Attribution gate: ready") ||
 		!strings.Contains(textOut.String(), "session: active") {
 		t.Fatalf("text status = %q", textOut.String())
 	}
@@ -599,16 +810,98 @@ func TestShellStatusReportsUnreadableStateAsUndeterminedWithoutCreatingIt(t *tes
 	if exit != 0 {
 		t.Fatalf("exit = %d, want 0; stdout=%s stderr=%s", exit, stdout.String(), stderr.String())
 	}
-	if strings.Count(stdout.String(), "undetermined (") != 2 {
-		t.Fatalf("status = %q, want per-client undetermined diagnostics", stdout.String())
+	if strings.Count(stdout.String(), "undetermined (") != 3 ||
+		!strings.Contains(stdout.String(), "Attribution gate: undetermined (") {
+		t.Fatalf("status = %q, want per-client and gate undetermined diagnostics", stdout.String())
 	}
 	if _, err := os.Stat(stateDir); !os.IsNotExist(err) {
 		t.Fatalf("status created missing state root: %v", err)
 	}
 }
 
+func TestShellStatusReportsProjectAttributionGateMismatch(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		prepare func(*testing.T, string)
+		want    string
+	}{
+		{
+			name: "missing while eligible",
+			prepare: func(t *testing.T, stateDir string) {
+				t.Helper()
+				configureHeadroomSelections(t, stateDir)
+				if err := os.Remove(provider.ProjectAttributionGatePath(stateDir)); err != nil {
+					t.Fatal(err)
+				}
+			},
+			want: "Attribution gate: missing (eligible route exists;",
+		},
+		{
+			name: "stale while ineligible",
+			prepare: func(t *testing.T, stateDir string) {
+				t.Helper()
+				database, err := store.Open(context.Background(), stateDir)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := database.Close(); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(
+					provider.ProjectAttributionGatePath(stateDir),
+					nil,
+					0o600,
+				); err != nil {
+					t.Fatal(err)
+				}
+			},
+			want: "Attribution gate: stale (no eligible route remains;",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			root := t.TempDir()
+			home := filepath.Join(root, "home")
+			if err := os.Mkdir(home, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			stateDir := filepath.Join(root, "state")
+			test.prepare(t, stateDir)
+
+			oldHome := userHomeDir
+			oldDetect := detectInvokingShell
+			userHomeDir = func() (string, error) { return home, nil }
+			detectInvokingShell = func() (shellconfig.Invocation, error) {
+				return shellconfig.Invocation{Shell: shellconfig.ShellZsh}, nil
+			}
+			t.Cleanup(func() {
+				userHomeDir = oldHome
+				detectInvokingShell = oldDetect
+			})
+
+			var stdout, stderr bytes.Buffer
+			exit := execute(
+				[]string{
+					"--state-dir", stateDir,
+					"shell", "status", "zsh",
+					"--rc", filepath.Join(home, ".zshrc"),
+				},
+				strings.NewReader(""),
+				&stdout,
+				&stderr,
+			)
+			if exit != 0 {
+				t.Fatalf("exit = %d; stdout=%s stderr=%s", exit, stdout.String(), stderr.String())
+			}
+			if !strings.Contains(stdout.String(), test.want) {
+				t.Fatalf("status = %q, want %q", stdout.String(), test.want)
+			}
+		})
+	}
+}
+
 func TestShellSetupAndRemoveManageOnlyOwnedBlock(t *testing.T) {
 	home := t.TempDir()
+	stateDir := filepath.Join(home, "state")
 	rc := filepath.Join(home, ".zshrc")
 	original := []byte("export USER_SETTING=kept")
 	if err := os.WriteFile(rc, original, 0o640); err != nil {
@@ -616,7 +909,7 @@ func TestShellSetupAndRemoveManageOnlyOwnedBlock(t *testing.T) {
 	}
 
 	var setupOutput bytes.Buffer
-	if err := run([]string{"shell", "setup", "zsh", "--rc", rc}, strings.NewReader(""), &setupOutput); err != nil {
+	if err := run([]string{"--state-dir", stateDir, "shell", "setup", "zsh", "--rc", rc}, strings.NewReader(""), &setupOutput); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(setupOutput.String(), "zsh: configured "+rc) {
@@ -632,7 +925,7 @@ func TestShellSetupAndRemoveManageOnlyOwnedBlock(t *testing.T) {
 	}
 
 	var jsonOutput bytes.Buffer
-	if err := run([]string{"--format", "json", "shell", "setup", "--shell", "zsh", "--rc", rc}, strings.NewReader(""), &jsonOutput); err != nil {
+	if err := run([]string{"--state-dir", stateDir, "--format", "json", "shell", "setup", "--shell", "zsh", "--rc", rc}, strings.NewReader(""), &jsonOutput); err != nil {
 		t.Fatal(err)
 	}
 	var envelope struct {
@@ -649,7 +942,7 @@ func TestShellSetupAndRemoveManageOnlyOwnedBlock(t *testing.T) {
 	}
 
 	var removeOutput bytes.Buffer
-	if err := run([]string{"shell", "remove", "zsh", "--rc", rc}, strings.NewReader(""), &removeOutput); err != nil {
+	if err := run([]string{"--state-dir", stateDir, "shell", "remove", "zsh", "--rc", rc}, strings.NewReader(""), &removeOutput); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(removeOutput.String(), "zsh: removed "+rc) {
@@ -824,7 +1117,7 @@ func configureHeadroomSelections(t *testing.T, stateDir string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	service := provider.Service{Store: database}
+	service := provider.Service{Store: database, StateRoot: stateDir}
 	if _, _, err = service.SetWrapper(ctx, provider.OfficialProviderName, "https://wrapper.example", provider.WrapperKindHeadroom, false); err != nil {
 		t.Fatal(err)
 	}

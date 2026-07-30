@@ -481,6 +481,107 @@ func TestProviderCheckAcceptsOfficialAfterBearer(t *testing.T) {
 	}
 }
 
+func TestProjectAttributionGateDiagnostics(t *testing.T) {
+	ctx := context.Background()
+	for _, test := range []struct {
+		name  string
+		setup func(*testing.T, string, *store.Store)
+		code  string
+	}{
+		{
+			name: "eligible route missing marker",
+			setup: func(t *testing.T, state string, database *store.Store) {
+				t.Helper()
+				home := t.TempDir()
+				service := provider.Service{
+					Store:     database,
+					Vault:     doctorVault(state),
+					Home:      home,
+					StateRoot: state,
+				}
+				if _, err := service.Add(ctx, provider.Definition{
+					Name:          "headroom",
+					Endpoint:      "https://provider.example",
+					Clients:       []provider.Client{provider.ClientCodex},
+					CredentialRef: "synthetic-ref",
+				}, "synthetic-secret"); err != nil {
+					t.Fatal(err)
+				}
+				if _, _, err := service.SetWrapper(
+					ctx,
+					"headroom",
+					"https://wrapper.example",
+					provider.WrapperKindHeadroom,
+					false,
+				); err != nil {
+					t.Fatal(err)
+				}
+				config := filepath.Join(home, "config.toml")
+				if err := os.WriteFile(config, []byte("model = 'keep'\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				if err := service.UseCredential(
+					ctx,
+					"headroom",
+					provider.ClientCodex,
+					"",
+					config,
+					"",
+					true,
+				); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Remove(provider.ProjectAttributionGatePath(state)); err != nil {
+					t.Fatal(err)
+				}
+			},
+			code: "project_attribution_gate_missing",
+		},
+		{
+			name: "marker remains without eligible route",
+			setup: func(t *testing.T, state string, _ *store.Store) {
+				t.Helper()
+				if err := os.WriteFile(
+					provider.ProjectAttributionGatePath(state),
+					nil,
+					0o600,
+				); err != nil {
+					t.Fatal(err)
+				}
+			},
+			code: "project_attribution_gate_stale",
+		},
+		{
+			name: "marker is invalid",
+			setup: func(t *testing.T, state string, _ *store.Store) {
+				t.Helper()
+				if err := os.Mkdir(provider.ProjectAttributionGatePath(state), 0o700); err != nil {
+					t.Fatal(err)
+				}
+			},
+			code: "project_attribution_gate_unreadable",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			state := filepath.Join(t.TempDir(), "state")
+			database, err := store.Open(ctx, state)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer database.Close()
+			test.setup(t, state, database)
+
+			report := Report{}
+			(Service{StateRoot: state}).checkProjectAttributionGate(ctx, database, &report)
+			check := findCheck(report, "project_attribution_gate", test.code)
+			if check == nil || check.Status != "warning" ||
+				check.Recovery != "rerun the intended agentdeck provider use command" {
+				t.Fatalf("project attribution gate diagnostic = %#v, want warning %q", report, test.code)
+			}
+		})
+	}
+}
+
 func TestProviderCheckValidatesEveryNamedCredential(t *testing.T) {
 	ctx := context.Background()
 	state := filepath.Join(t.TempDir(), "state")

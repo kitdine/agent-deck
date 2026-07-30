@@ -2,7 +2,10 @@ package shellconfig
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -78,6 +81,87 @@ func TestSetupIsIdempotentAndRemoveRestoresUnrelatedBytesAndMode(t *testing.T) {
 	}
 }
 
+func TestSetupUpgradesCompatibleManagedBlocksToRequestedStateRoot(t *testing.T) {
+	tests := []struct {
+		name    string
+		prepare func(t *testing.T, path string)
+	}{
+		{
+			name: "version one",
+			prepare: func(t *testing.T, path string) {
+				t.Helper()
+				payload := []byte(fmt.Sprintf(
+					"# managed-version: 1\n# managed-separator-added: false\n%s",
+					legacyManagedBody(ShellZsh),
+				))
+				hash := sha256.Sum256(payload)
+				block := []byte(fmt.Sprintf(
+					"%s\n# managed-hash: %s\n%s%s\n",
+					startMarker,
+					hex.EncodeToString(hash[:]),
+					payload,
+					endMarker,
+				))
+				if err := os.WriteFile(path, block, 0o600); err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
+		{
+			name: "different version two state root",
+			prepare: func(t *testing.T, path string) {
+				t.Helper()
+				old := New(Environment{
+					Home:      filepath.Dir(path),
+					StateRoot: filepath.Join(filepath.Dir(path), "old-state"),
+					Invocation: Invocation{
+						Shell: ShellZsh,
+					},
+				})
+				summary, err := old.Setup(Request{Shell: ShellZsh, RC: path})
+				if err != nil {
+					t.Fatal(err)
+				}
+				assertSingleOutcome(t, summary, OutcomeConfigured)
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			home := t.TempDir()
+			path := filepath.Join(home, ".zshrc")
+			test.prepare(t, path)
+			stateRoot := filepath.Join(home, "state'custom")
+			manager := New(Environment{
+				Home:      home,
+				StateRoot: stateRoot,
+				Invocation: Invocation{
+					Shell: ShellZsh,
+				},
+			})
+
+			summary, err := manager.Setup(Request{Shell: ShellZsh, RC: path})
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertSingleOutcome(t, summary, OutcomeConfigured)
+			contents, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(contents, manager.buildManagedBlock(ShellZsh, false)) {
+				t.Fatalf("upgraded managed block does not bind requested state root:\n%s", contents)
+			}
+
+			summary, err = manager.Setup(Request{Shell: ShellZsh, RC: path})
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertSingleOutcome(t, summary, OutcomeUnchanged)
+		})
+	}
+}
+
 func TestSetupCreatesMissingStartupFileAndParentsPrivately(t *testing.T) {
 	home := t.TempDir()
 	path := filepath.Join(home, ".config", "fish", "config.fish")
@@ -99,7 +183,7 @@ func TestSetupCreatesMissingStartupFileAndParentsPrivately(t *testing.T) {
 func TestSetupRefusesInvalidManagedBlocksWithoutChangingFiles(t *testing.T) {
 	home := t.TempDir()
 	manager := New(Environment{Home: home, Invocation: Invocation{Shell: ShellZsh}})
-	valid := append([]byte("before\n"), buildManagedBlock(ShellZsh, false)...)
+	valid := append([]byte("before\n"), manager.buildManagedBlock(ShellZsh, false)...)
 	tests := map[string][]byte{
 		"duplicate marker": append(append([]byte(nil), valid...), []byte(startMarker+"\n")...),
 		"truncated":        bytes.Replace(valid, []byte(endMarker), nil, 1),
@@ -512,6 +596,240 @@ func TestMultiShellSetupContinuesAfterOneRefusal(t *testing.T) {
 	}
 	if string(contents) != "fish\n" {
 		t.Fatalf("refused fish target changed to %q", contents)
+	}
+}
+
+func TestSetupIfUnconfiguredPreparesEveryTargetBeforeCommit(t *testing.T) {
+	home := t.TempDir()
+	zshPath := filepath.Join(home, ".zshrc")
+	bashPath := filepath.Join(home, ".bashrc")
+	if err := os.WriteFile(zshPath, []byte("zsh-original\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(bashPath, []byte("bash-original\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	manager := New(Environment{Home: home, Invocation: Invocation{Shell: ShellBash}})
+	create := manager.files.createTemp
+	replacements := 0
+	manager.files.createTemp = func(dir, pattern string) (temporaryFile, error) {
+		if pattern == ".agentdeck-shell-*" {
+			replacements++
+			if replacements == 2 {
+				return nil, errors.New("synthetic later target preparation failure")
+			}
+		}
+		return create(dir, pattern)
+	}
+
+	summary, err := manager.SetupIfUnconfigured(Request{})
+	if err != nil {
+		t.Fatalf("SetupIfUnconfigured returned request error: %v", err)
+	}
+	if !summary.HasFailures() {
+		t.Fatalf("SetupIfUnconfigured summary = %#v, want failure", summary.Results)
+	}
+	for path, want := range map[string]string{
+		zshPath:  "zsh-original\n",
+		bashPath: "bash-original\n",
+	} {
+		contents, readErr := os.ReadFile(path)
+		if readErr != nil {
+			t.Fatal(readErr)
+		}
+		if string(contents) != want {
+			t.Fatalf("%s = %q, want %q", path, contents, want)
+		}
+	}
+	assertNoShellTemporaryArtifacts(t, home)
+}
+
+func TestSetupIfUnconfiguredRollsBackCommittedMissingTarget(t *testing.T) {
+	home := t.TempDir()
+	zshPath := filepath.Join(home, ".zshrc")
+	fishPath := filepath.Join(home, ".config", "fish", "config.fish")
+	if err := os.MkdirAll(filepath.Dir(fishPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(fishPath, []byte("fish-original\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	manager := New(Environment{Home: home, Invocation: Invocation{Shell: ShellZsh}})
+	rename := manager.files.rename
+	manager.files.rename = func(source, destination string) error {
+		if destination == fishPath {
+			return errors.New("synthetic later target commit failure")
+		}
+		return rename(source, destination)
+	}
+
+	summary, err := manager.SetupIfUnconfigured(Request{})
+	if err == nil || !summary.HasFailures() {
+		t.Fatalf("SetupIfUnconfigured = %#v, %v; want transaction failure", summary.Results, err)
+	}
+	if _, statErr := os.Lstat(zshPath); !errors.Is(statErr, fs.ErrNotExist) {
+		t.Fatalf("missing zsh target not restored: %v", statErr)
+	}
+	contents, readErr := os.ReadFile(fishPath)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if string(contents) != "fish-original\n" {
+		t.Fatalf("fish target = %q, want original", contents)
+	}
+	assertNoShellTemporaryArtifacts(t, home)
+}
+
+func TestSetupIfUnconfiguredReportsRollbackCleanupFailureAfterRestoringTargets(t *testing.T) {
+	home := t.TempDir()
+	zshPath := filepath.Join(home, ".zshrc")
+	fishPath := filepath.Join(home, ".config", "fish", "config.fish")
+	if err := os.MkdirAll(filepath.Dir(fishPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(fishPath, []byte("fish-original\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	manager := New(Environment{Home: home, Invocation: Invocation{Shell: ShellZsh}})
+	rename := manager.files.rename
+	manager.files.rename = func(source, destination string) error {
+		if destination == fishPath {
+			return errors.New("synthetic later target commit failure")
+		}
+		return rename(source, destination)
+	}
+	remove := manager.files.remove
+	rollbackAttempts := 0
+	manager.files.remove = func(path string) error {
+		if strings.Contains(filepath.Base(path), ".agentdeck-shell-") {
+			rollbackAttempts++
+			if rollbackAttempts == 1 {
+				return errors.New("synthetic rollback cleanup failure")
+			}
+		}
+		return remove(path)
+	}
+
+	summary, err := manager.SetupIfUnconfigured(Request{})
+	if err == nil || !summary.HasFailures() ||
+		!strings.Contains(err.Error(), "synthetic rollback cleanup failure") {
+		t.Fatalf("SetupIfUnconfigured = %#v, %v; want surfaced rollback failure", summary.Results, err)
+	}
+	if rollbackAttempts == 0 {
+		t.Fatal("rollback cleanup failure was not exercised")
+	}
+	if _, statErr := os.Lstat(zshPath); !errors.Is(statErr, fs.ErrNotExist) {
+		t.Fatalf("missing zsh target was not restored before cleanup failure: %v", statErr)
+	}
+	assertNoShellTemporaryArtifacts(t, home)
+}
+
+func TestSetupIfUnconfiguredReportsRollbackReplacementFailureAfterFallbackRestore(t *testing.T) {
+	home := t.TempDir()
+	zshPath := filepath.Join(home, ".zshrc")
+	fishPath := filepath.Join(home, ".config", "fish", "config.fish")
+	const zshOriginal = "zsh-original\n"
+	if err := os.WriteFile(zshPath, []byte(zshOriginal), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(fishPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(fishPath, []byte("fish-original\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	manager := New(Environment{Home: home, Invocation: Invocation{Shell: ShellZsh}})
+	rename := manager.files.rename
+	manager.files.rename = func(source, destination string) error {
+		if destination == fishPath {
+			return errors.New("synthetic later target commit failure")
+		}
+		if destination == zshPath &&
+			strings.HasPrefix(filepath.Base(source), ".agentdeck-shell-backup-") {
+			return errors.New("synthetic rollback replacement failure")
+		}
+		return rename(source, destination)
+	}
+
+	summary, err := manager.SetupIfUnconfigured(Request{})
+	if err == nil || !summary.HasFailures() ||
+		!strings.Contains(err.Error(), "synthetic rollback replacement failure") {
+		t.Fatalf("SetupIfUnconfigured = %#v, %v; want surfaced rollback replacement failure", summary.Results, err)
+	}
+	contents, readErr := os.ReadFile(zshPath)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if string(contents) != zshOriginal {
+		t.Fatalf("zsh target = %q, want fallback-restored original", contents)
+	}
+	assertNoShellTemporaryArtifacts(t, home)
+}
+
+func TestSetupIfUnconfiguredPreservesConcurrentReplacement(t *testing.T) {
+	home := t.TempDir()
+	zshPath := filepath.Join(home, ".zshrc")
+	fishPath := filepath.Join(home, ".config", "fish", "config.fish")
+	if err := os.MkdirAll(filepath.Dir(fishPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(fishPath, []byte("fish-original\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	manager := New(Environment{Home: home, Invocation: Invocation{Shell: ShellZsh}})
+	rename := manager.files.rename
+	manager.files.rename = func(source, destination string) error {
+		if destination == zshPath {
+			if err := rename(source, destination); err != nil {
+				return err
+			}
+			replacement := filepath.Join(home, "concurrent-zshrc")
+			if err := os.WriteFile(replacement, []byte("concurrent-user-change\n"), 0o600); err != nil {
+				return err
+			}
+			return os.Rename(replacement, destination)
+		}
+		if destination == fishPath {
+			return errors.New("synthetic later target commit failure")
+		}
+		return rename(source, destination)
+	}
+
+	summary, err := manager.SetupIfUnconfigured(Request{})
+	if err == nil || !summary.HasFailures() ||
+		!strings.Contains(err.Error(), "preserve concurrent shell startup change") {
+		t.Fatalf("SetupIfUnconfigured = %#v, %v; want preserved concurrent change", summary.Results, err)
+	}
+	contents, readErr := os.ReadFile(zshPath)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if string(contents) != "concurrent-user-change\n" {
+		t.Fatalf("zsh target = %q, want concurrent replacement", contents)
+	}
+	fishContents, readErr := os.ReadFile(fishPath)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if string(fishContents) != "fish-original\n" {
+		t.Fatalf("fish target = %q, want original", fishContents)
+	}
+	assertNoShellTemporaryArtifacts(t, home)
+}
+
+func assertNoShellTemporaryArtifacts(t *testing.T, root string) {
+	t.Helper()
+	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if strings.HasPrefix(entry.Name(), ".agentdeck-shell-") {
+			t.Errorf("temporary shell artifact remains: %s", path)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 

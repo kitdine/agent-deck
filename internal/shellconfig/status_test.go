@@ -2,10 +2,31 @@ package shellconfig
 
 import (
 	"bytes"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"testing"
 )
+
+func TestStatusRejectsStartupFileNotOwnedByCurrentUser(t *testing.T) {
+	home := t.TempDir()
+	path := filepath.Join(home, ".zshrc")
+	if err := os.WriteFile(path, []byte("export KEEP=1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	manager := New(Environment{Home: home, Invocation: Invocation{Shell: ShellZsh}})
+	manager.ownsFile = func(fs.FileInfo) bool { return false }
+
+	status, err := manager.Status(Request{Shell: ShellZsh, RC: path}, nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(status.Results) != 1 ||
+		status.Results[0].Configuration != ConfigurationInvalid ||
+		status.Results[0].Error != "shell startup file is not owned by the current user" {
+		t.Fatalf("wrong-ownership status = %#v", status.Results)
+	}
+}
 
 func TestStatusReportsConfigurationAndActivationWithoutExposingModifiedBytes(t *testing.T) {
 	home := t.TempDir()

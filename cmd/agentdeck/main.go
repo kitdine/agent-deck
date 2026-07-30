@@ -59,6 +59,10 @@ var usageProgressIsTerminal = func(w io.Writer) bool {
 	file, ok := w.(*os.File)
 	return ok && term.IsTerminal(int(file.Fd()))
 }
+var shellSetupIsTerminal = func(w io.Writer) bool {
+	file, ok := w.(*os.File)
+	return ok && term.IsTerminal(int(file.Fd()))
+}
 var newUsageProgress = func(stderr io.Writer, quiet bool) usage.ScanProgressReporter {
 	return newUsageProgressOutput(stderr, quiet, usageProgressIsTerminal(stderr))
 }
@@ -643,6 +647,7 @@ type shellTarget struct {
 }
 
 const shellLifecycleSurfaceOnlyAnnotation = "agentdeck.shell-lifecycle-surface-only"
+const shellSetupDeclinedSetting = "shell.setup.declined"
 
 func newShellCommand(opts *commandOptions) *cobra.Command {
 	command := &cobra.Command{
@@ -700,6 +705,7 @@ func runShellLifecycle(ctx context.Context, opts *commandOptions, operation stri
 	if err != nil {
 		return fmt.Errorf("resolve home directory: %w", err)
 	}
+	shellStateRoot := opts.shellStateRoot()
 	invocation := shellconfig.Invocation{}
 	needsInvocation := ((operation == "setup" || operation == "status") && target.shell == "") ||
 		(target.shell == string(shellconfig.ShellBash) && target.rc == "")
@@ -718,16 +724,23 @@ func runShellLifecycle(ctx context.Context, opts *commandOptions, operation stri
 		Home:          home,
 		ZDOTDir:       os.Getenv("ZDOTDIR"),
 		XDGConfigHome: os.Getenv("XDG_CONFIG_HOME"),
+		StateRoot:     shellStateRoot,
 		Invocation:    invocation,
 	})
 	request := shellconfig.Request{Shell: shellconfig.Shell(target.shell), RC: target.rc}
 	var summary shellconfig.Summary
 	switch operation {
 	case "setup":
+		if err := setShellSetupDeclined(ctx, opts, false); err != nil {
+			return err
+		}
 		summary, err = manager.Setup(request)
 	case "status":
 		return runShellStatus(ctx, opts, manager, request, invocation, target)
 	case "remove":
+		if err := setShellSetupDeclined(ctx, opts, true); err != nil {
+			return err
+		}
 		summary, err = manager.Remove(request)
 	default:
 		return fmt.Errorf("shell %s is not available in this build", operation)
@@ -744,15 +757,37 @@ func runShellLifecycle(ctx context.Context, opts *commandOptions, operation stri
 	return nil
 }
 
+func setShellSetupDeclined(ctx context.Context, opts *commandOptions, declined bool) error {
+	database, _, err := opts.openStore(ctx)
+	if err != nil {
+		return err
+	}
+	var preferenceErr error
+	if declined {
+		preferenceErr = database.SetSetting(ctx, shellSetupDeclinedSetting, "1")
+	} else {
+		preferenceErr = database.DeleteSetting(ctx, shellSetupDeclinedSetting)
+	}
+	return errors.Join(preferenceErr, database.Close())
+}
+
 type shellEligibilityStatus struct {
 	Client provider.Client                  `json:"client"`
 	Reason provider.ProjectRouteEligibility `json:"reason"`
 	Error  string                           `json:"error,omitempty"`
 }
 
+type shellGateStatus struct {
+	Required   bool   `json:"required"`
+	Present    bool   `json:"present"`
+	Consistent bool   `json:"consistent"`
+	Error      string `json:"error,omitempty"`
+}
+
 type shellStatusOutput struct {
 	Shells      []shellconfig.StatusResult `json:"shells"`
 	Eligibility []shellEligibilityStatus   `json:"eligibility"`
+	Gate        shellGateStatus            `json:"negative_gate"`
 }
 
 func runShellStatus(
@@ -778,11 +813,38 @@ func runShellStatus(
 	output := shellStatusOutput{
 		Shells:      status.Results,
 		Eligibility: shellEligibility(ctx, opts),
+		Gate:        shellAttributionGate(ctx, opts),
 	}
 	if opts.format == "json" {
 		return writeResult(opts.stdout, opts.format, "shell.status", output)
 	}
 	return writeShellStatusText(opts, output, invocation, target)
+}
+
+func shellAttributionGate(ctx context.Context, opts *commandOptions) shellGateStatus {
+	stateDir, err := opts.stateRoot()
+	if err != nil {
+		return shellGateStatus{Error: err.Error()}
+	}
+	database, err := store.OpenReadOnly(ctx, stateDir)
+	if err != nil {
+		return shellGateStatus{Error: err.Error()}
+	}
+	defer database.Close()
+
+	status, err := (provider.Service{
+		Store:     database,
+		StateRoot: stateDir,
+	}).ProjectAttributionGateStatus(ctx)
+	result := shellGateStatus{
+		Required:   status.Required,
+		Present:    status.Present,
+		Consistent: status.Consistent,
+	}
+	if err != nil {
+		result.Error = err.Error()
+	}
+	return result
 }
 
 func shellEligibility(ctx context.Context, opts *commandOptions) []shellEligibilityStatus {
@@ -889,6 +951,13 @@ func writeShellStatusText(
 	if _, err := fmt.Fprintln(opts.stdout); err != nil {
 		return err
 	}
+	if _, err := fmt.Fprintf(
+		opts.stdout,
+		"Attribution gate: %s\n",
+		shellGateDescription(status.Gate),
+	); err != nil {
+		return err
+	}
 
 	nextShell := shellconfig.Shell(target.shell)
 	if nextShell == "" {
@@ -908,6 +977,22 @@ func writeShellStatusText(
 		return err
 	}
 	return nil
+}
+
+func shellGateDescription(status shellGateStatus) string {
+	if status.Error != "" {
+		return "undetermined (" + status.Error + ")"
+	}
+	if status.Consistent {
+		if status.Present {
+			return "ready"
+		}
+		return "not required"
+	}
+	if status.Required {
+		return "missing (eligible route exists; rerun the intended provider use command)"
+	}
+	return "stale (no eligible route remains; rerun the intended provider use command)"
 }
 
 func shellEligibilityDescription(status shellEligibilityStatus) string {
@@ -1008,7 +1093,18 @@ func newShellInitCommand(opts *commandOptions) *cobra.Command {
 			if err := requireTextFormat(opts, "shell-init"); err != nil {
 				return err
 			}
-			_, err := io.WriteString(opts.stdout, shellInitScript(shell))
+			stateDir, err := opts.stateRoot()
+			if err != nil {
+				return err
+			}
+			_, err = io.WriteString(
+				opts.stdout,
+				shellInitScript(
+					shell,
+					opts.shellStateRoot(),
+					provider.ProjectAttributionGatePath(stateDir),
+				),
+			)
 			return err
 		},
 	}
@@ -1064,15 +1160,24 @@ func environmentVariableValue(environment []string, name string) (string, bool) 
 	return "", false
 }
 
-func shellInitScript(shell string) string {
+func shellInitScript(shell, stateRoot, gatePath string) string {
 	marker := shellconfig.ActivationMarkerName(shellconfig.Shell(shell))
+	quotedGatePath := shellQuote(gatePath)
+	agentdeck := "command agentdeck"
+	if stateRoot != "" {
+		agentdeck += " --state-dir " + shellQuote(stateRoot)
+	}
 	if shell == "fish" {
 		return fmt.Sprintf(`# Generated by agentdeck shell-init fish.
 # Requires fish 3.4 or newer.
 set -gx %s $fish_pid
 function codex
-    set -l _agentdeck_project_value "$(command agentdeck shell-init --project-environment codex 2>/dev/null)"
-    set -l _agentdeck_project_status $status
+    set -l _agentdeck_project_value
+    set -l _agentdeck_project_status 1
+    if test -f %s
+        set _agentdeck_project_value "$(%s shell-init --project-environment codex 2>/dev/null)"
+        set _agentdeck_project_status $status
+    end
     if test $_agentdeck_project_status -eq 0; and test -n "$_agentdeck_project_value"
         env HEADROOM_PROJECT="$_agentdeck_project_value" codex $argv
     else
@@ -1081,21 +1186,25 @@ function codex
 end
 
 function claude
-    set -l _agentdeck_project_value "$(command agentdeck shell-init --project-environment claude 2>/dev/null)"
-    set -l _agentdeck_project_status $status
+    set -l _agentdeck_project_value
+    set -l _agentdeck_project_status 1
+    if test -f %s
+        set _agentdeck_project_value "$(%s shell-init --project-environment claude 2>/dev/null)"
+        set _agentdeck_project_status $status
+    end
     if test $_agentdeck_project_status -eq 0; and test -n "$_agentdeck_project_value"
         env ANTHROPIC_CUSTOM_HEADERS="$_agentdeck_project_value" claude $argv
     else
         command claude $argv
     end
 end
-`, marker)
+`, marker, quotedGatePath, agentdeck, quotedGatePath, agentdeck)
 	}
 	return fmt.Sprintf(`# Generated by agentdeck shell-init %s.
 export %s="$$"
 codex() {
     local _agentdeck_project_value
-    if _agentdeck_project_value="$(command agentdeck shell-init --project-environment codex 2>/dev/null)" && [ -n "$_agentdeck_project_value" ]; then
+    if [ -f %s ] && _agentdeck_project_value="$(%s shell-init --project-environment codex 2>/dev/null)" && [ -n "$_agentdeck_project_value" ]; then
         HEADROOM_PROJECT="$_agentdeck_project_value" command codex "$@"
     else
         command codex "$@"
@@ -1104,13 +1213,13 @@ codex() {
 
 claude() {
     local _agentdeck_project_value
-    if _agentdeck_project_value="$(command agentdeck shell-init --project-environment claude 2>/dev/null)" && [ -n "$_agentdeck_project_value" ]; then
+    if [ -f %s ] && _agentdeck_project_value="$(%s shell-init --project-environment claude 2>/dev/null)" && [ -n "$_agentdeck_project_value" ]; then
         ANTHROPIC_CUSTOM_HEADERS="$_agentdeck_project_value" command claude "$@"
     else
         command claude "$@"
     fi
 }
-`, shell, marker)
+`, shell, marker, quotedGatePath, agentdeck, quotedGatePath, agentdeck)
 }
 
 func writeBuildIdentity(opts *commandOptions) error {
@@ -1152,6 +1261,10 @@ func (o *commandOptions) stateRoot() (string, error) {
 	return platform.StateRoot("", home), nil
 }
 
+func (o *commandOptions) shellStateRoot() string {
+	return o.stateDir
+}
+
 func (o *commandOptions) validateFormat() error {
 	if o.format != "text" && o.format != "json" && o.format != "ndjson" {
 		return &inputError{err: fmt.Errorf("invalid format %q", o.format)}
@@ -1185,7 +1298,7 @@ func newProviderCommand(opts *commandOptions) *cobra.Command {
 		}
 	}
 	var configPath, useClient, useCredential string
-	var useVia bool
+	var useVia, noShellSetup bool
 	use := &cobra.Command{Use: "use <name>", Args: cobra.ExactArgs(1), RunE: withService(func(ctx context.Context, s provider.Service, args []string) (any, error) {
 		client := provider.Client(useClient)
 		if args[0] == provider.OfficialProviderName {
@@ -1219,18 +1332,23 @@ func newProviderCommand(opts *commandOptions) *cobra.Command {
 			}
 			s.Home = home
 		}
+		previousEligibility, _ := s.ProjectRouteEligibility(ctx, client)
 		if err := s.UseCredential(ctx, args[0], client, useCredential, configPath, "", useVia); err != nil {
 			return nil, err
 		}
 		reportEffectiveRoute(ctx, s, opts, client)
 		reportSwitchAdvisories(s, opts, client, args[0], configPath)
-		reportProjectAttributionGuidance(opts, s.ProjectAttributionGuidance(ctx, client))
+		configured := maybeSetupShellIntegration(ctx, opts, s, useVia, noShellSetup)
+		if !configured {
+			reportRouteChangeAttributionGuidance(ctx, opts, s, client, previousEligibility)
+		}
 		return withTextResource(nil, args[0]), nil
 	})}
 	use.Flags().StringVar(&configPath, "config-path", "", "Override the automatically resolved client configuration path")
 	use.Flags().StringVar(&useClient, "client", "", "Client to switch: codex or claude")
 	use.Flags().StringVar(&useCredential, "credential", "", "Credential shorthand, not the generated reference")
 	use.Flags().BoolVar(&useVia, "via", false, "Route this switch through the provider's configured wrapper URL")
+	use.Flags().BoolVar(&noShellSetup, "no-shell-setup", false, "Do not configure shell integration for this switch")
 	var wrapperURL, wrapperKind string
 	var clearWrapper bool
 	var setWrapper *cobra.Command
@@ -1405,6 +1523,167 @@ func reportProjectAttributionGuidance(opts *commandOptions, advisory string) {
 		return
 	}
 	_, _ = fmt.Fprintf(opts.stderr, "advisory: %s\n", advisory)
+}
+
+func maybeSetupShellIntegration(
+	ctx context.Context,
+	opts *commandOptions,
+	s provider.Service,
+	via, suppressed bool,
+) bool {
+	if !via ||
+		suppressed ||
+		opts.quiet ||
+		opts.format != "text" ||
+		opts.stderr == nil ||
+		!shellSetupIsTerminal(opts.stderr) {
+		return false
+	}
+	if _, found, err := s.Store.Setting(ctx, shellSetupDeclinedSetting); err != nil || found {
+		return false
+	}
+	eligible := false
+	for _, client := range []provider.Client{provider.ClientCodex, provider.ClientClaude} {
+		status, err := s.ProjectRouteEligibility(ctx, client)
+		if err == nil && status == provider.ProjectRouteEligible {
+			eligible = true
+			break
+		}
+	}
+	if !eligible {
+		return false
+	}
+
+	home, err := userHomeDir()
+	if err != nil {
+		return false
+	}
+	shellStateRoot := opts.shellStateRoot()
+	invocation, err := detectInvokingShell()
+	if err != nil {
+		return false
+	}
+	manager := newShellConfigManager(shellconfig.Environment{
+		Home:          home,
+		ZDOTDir:       os.Getenv("ZDOTDIR"),
+		XDGConfigHome: os.Getenv("XDG_CONFIG_HOME"),
+		StateRoot:     shellStateRoot,
+		Invocation:    invocation,
+	})
+	summary, err := manager.SetupIfUnconfigured(shellconfig.Request{})
+	if err != nil || summary.HasFailures() {
+		return false
+	}
+	if !summaryHasOutcome(summary, shellconfig.OutcomeConfigured) {
+		return false
+	}
+
+	automatic := *opts
+	automatic.format = "text"
+	automatic.quiet = false
+	automatic.stdout = opts.stderr
+	configured := shellconfig.Summary{Results: make([]shellconfig.Result, 0, len(summary.Results))}
+	for _, result := range summary.Results {
+		if result.Outcome == shellconfig.OutcomeConfigured {
+			configured.Results = append(configured.Results, result)
+		}
+	}
+	_ = writeShellLifecycleSummary(&automatic, "setup", configured)
+	_, _ = fmt.Fprintf(
+		opts.stderr,
+		"new shell sessions are covered; activate current %s session: %s\n",
+		invocation.Shell,
+		shellActivationCommand(invocation.Shell, shellStateRoot),
+	)
+	return true
+}
+
+func summaryHasOutcome(summary shellconfig.Summary, outcome shellconfig.Outcome) bool {
+	for _, result := range summary.Results {
+		if result.Outcome == outcome {
+			return true
+		}
+	}
+	return false
+}
+
+func reportRouteChangeAttributionGuidance(
+	ctx context.Context,
+	opts *commandOptions,
+	s provider.Service,
+	client provider.Client,
+	previous provider.ProjectRouteEligibility,
+) {
+	if opts.quiet || opts.stderr == nil {
+		return
+	}
+	current, err := s.ProjectRouteEligibility(ctx, client)
+	if err != nil {
+		return
+	}
+	configured, invocation, shellStateRoot := shellIntegrationConfigured(opts)
+	advisory := ""
+	switch {
+	case current == provider.ProjectRouteEligible && configured:
+		advisory = fmt.Sprintf(
+			"project attribution is in effect; configured shell startup files carry it in new sessions; activate this %s session: %s; see %s",
+			invocation.Shell,
+			shellActivationCommand(invocation.Shell, shellStateRoot),
+			provider.ProjectAttributionGuideURL,
+		)
+	case current == provider.ProjectRouteEligible:
+		advisory = "project attribution needs one-time shell integration setup: agentdeck shell setup; see " +
+			provider.ProjectAttributionGuideURL
+	case previous == provider.ProjectRouteEligible && configured:
+		advisory = "managed shell wrappers remain installed but stop injecting project attribution now; see " +
+			provider.ProjectAttributionGuideURL
+	}
+	if advisory == "" {
+		return
+	}
+	_, _ = fmt.Fprintf(opts.stderr, "advisory: %s\n", advisory)
+}
+
+func shellIntegrationConfigured(opts *commandOptions) (bool, shellconfig.Invocation, string) {
+	home, err := userHomeDir()
+	if err != nil {
+		return false, shellconfig.Invocation{}, ""
+	}
+	shellStateRoot := opts.shellStateRoot()
+	invocation, err := detectInvokingShell()
+	if err != nil {
+		return false, shellconfig.Invocation{}, shellStateRoot
+	}
+	manager := newShellConfigManager(shellconfig.Environment{
+		Home:          home,
+		ZDOTDir:       os.Getenv("ZDOTDIR"),
+		XDGConfigHome: os.Getenv("XDG_CONFIG_HOME"),
+		StateRoot:     shellStateRoot,
+		Invocation:    invocation,
+	})
+	status, err := manager.Status(shellconfig.Request{}, nil, parentProcessID())
+	if err != nil {
+		return false, invocation, shellStateRoot
+	}
+	configured := false
+	for _, result := range status.Results {
+		if result.Error != "" {
+			return false, invocation, shellStateRoot
+		}
+		configured = configured || result.Configuration == shellconfig.ConfigurationConfigured
+	}
+	return configured, invocation, shellStateRoot
+}
+
+func shellActivationCommand(shell shellconfig.Shell, stateRoot string) string {
+	agentdeck := "agentdeck"
+	if stateRoot != "" {
+		agentdeck += " --state-dir " + shellQuote(stateRoot)
+	}
+	if shell == shellconfig.ShellFish {
+		return agentdeck + " shell-init fish | source"
+	}
+	return fmt.Sprintf(`eval "$(%s shell-init %s)"`, agentdeck, shell)
 }
 
 // reportDroppedWrapperKind names a non-default wrapper declaration that a
@@ -1775,7 +2054,7 @@ func sessionNextCommand(stateDir, action, client, id string, activity bool, p se
 }
 
 func shellQuote(value string) string {
-	return "'" + strings.ReplaceAll(value, "'", "'\\\"'\\\"'") + "'"
+	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
 }
 
 func newSessionPurgeCommand(opts *commandOptions) *cobra.Command {

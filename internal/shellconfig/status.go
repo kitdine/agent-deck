@@ -1,6 +1,7 @@
 package shellconfig
 
 import (
+	"bytes"
 	"errors"
 	"io/fs"
 	"strconv"
@@ -108,8 +109,11 @@ func (m *Manager) configurationState(path string, shell Shell) (ConfigurationSta
 		}
 		return ConfigurationInvalid, block.err
 	case blockValid:
-		if err := validateManagedBlock(block, shell); err != nil {
+		if err := m.validateManagedBlock(block, shell); err != nil {
 			return ConfigurationInvalid, err
+		}
+		if block.version != managedVersion || !bytes.Equal(block.body, m.managedBody(shell)) {
+			return ConfigurationModified, nil
 		}
 		return ConfigurationConfigured, nil
 	default:

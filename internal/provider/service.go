@@ -146,7 +146,7 @@ const (
 	WrapperKindHeadroom = "headroom"
 
 	ProjectAttributionGuideURL = "https://github.com/kitdine/agent-deck/blob/main/docs/specs/cli-manual.md#project-attribution"
-	ProjectAttributionAdvisory = "agentdeck run attributes launches by project through this wrapper; launches outside agentdeck run are not attributed; see " + ProjectAttributionGuideURL
+	ProjectAttributionAdvisory = "project attribution requires an eligible Headroom wrapper route, its eligibility marker, and configured shell integration; see " + ProjectAttributionGuideURL
 )
 
 // NormalizeWrapperKind validates a declared wrapper protocol and resolves the
@@ -1007,6 +1007,7 @@ func (s Service) UseCredential(ctx context.Context, name string, client Client, 
 	if err := s.Store.CompleteProviderUse(ctx, opID, selection); err != nil {
 		return s.failOperation(ctx, opID, "selection_commit_failed", err)
 	}
+	_ = s.RefreshProjectAttributionGate(ctx)
 	return nil
 }
 

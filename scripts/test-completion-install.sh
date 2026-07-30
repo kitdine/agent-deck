@@ -95,7 +95,7 @@ EOF
   for shell in bash fish zsh; do
     script="$helper_root/agentdeck.$shell"
     shell_path=$(command -v "$shell")
-    "$binary" shell-init "$shell" >"$script"
+    HOME="$helper_root/home" "$binary" shell-init "$shell" >"$script"
     "$shell_path" -n "$script"
     case "$shell" in
       fish)
@@ -151,7 +151,7 @@ EOF
   for shell in bash fish zsh; do
     script="$helper_root/agentdeck.$shell"
     shell_path=$(command -v "$shell")
-    "$binary" shell-init "$shell" >"$script"
+    HOME="$helper_root/home" "$binary" shell-init "$shell" >"$script"
     "$shell_path" -n "$script"
 
     case "$shell" in
