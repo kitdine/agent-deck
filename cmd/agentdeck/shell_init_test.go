@@ -161,6 +161,257 @@ func TestShellInitProjectEnvironmentUsesCurrentDirectoryAndHonorsUserValues(t *t
 	})
 }
 
+func TestShellCommandSurfaceAndHiddenCompatibility(t *testing.T) {
+	var rootHelp bytes.Buffer
+	if err := run([]string{"--help"}, strings.NewReader(""), &rootHelp); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(rootHelp.String(), "shell-init") {
+		t.Fatalf("root help exposes hidden shell-init:\n%s", rootHelp.String())
+	}
+	if !strings.Contains(rootHelp.String(), "shell ") {
+		t.Fatalf("root help does not expose shell lifecycle:\n%s", rootHelp.String())
+	}
+
+	var shellHelp bytes.Buffer
+	if err := run([]string{"shell", "--help"}, strings.NewReader(""), &shellHelp); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"setup",
+		"status",
+		"remove",
+		"env",
+		"every shell in use by default",
+	} {
+		if !strings.Contains(shellHelp.String(), want) {
+			t.Errorf("shell help missing %q:\n%s", want, shellHelp.String())
+		}
+	}
+	for _, operation := range []string{"setup", "status", "remove"} {
+		var help bytes.Buffer
+		if err := run([]string{"shell", operation, "--help"}, strings.NewReader(""), &help); err != nil {
+			t.Fatal(err)
+		}
+		for _, want := range []string{"--shell", "--rc", "Arguments:"} {
+			if !strings.Contains(help.String(), want) {
+				t.Errorf("shell %s help missing %q:\n%s", operation, want, help.String())
+			}
+		}
+	}
+
+	var initHelp bytes.Buffer
+	if err := run([]string{"shell-init", "--help"}, strings.NewReader(""), &initHelp); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"stdout",
+		"changes no shell state",
+		"writes no file",
+		"eligible Headroom route",
+		"invoke the real client unchanged",
+		"agentdeck shell setup",
+		`eval "$(agentdeck shell-init bash)"`,
+		"agentdeck shell-init fish | source",
+		`eval "$(agentdeck shell-init zsh)"`,
+	} {
+		if !strings.Contains(initHelp.String(), want) {
+			t.Errorf("shell-init help missing %q:\n%s", want, initHelp.String())
+		}
+	}
+}
+
+func TestShellInitAndEnvironmentResolverRejectNonTextOutput(t *testing.T) {
+	for _, args := range [][]string{
+		{"--format", "json", "shell-init", "zsh"},
+		{"--format", "json", "shell", "env", "codex"},
+	} {
+		var stdout, stderr bytes.Buffer
+		if exit := execute(args, strings.NewReader(""), &stdout, &stderr); exit != 2 {
+			t.Fatalf("%v exit = %d, want 2", args, exit)
+		}
+		if stdout.Len() != 0 {
+			t.Fatalf("%v stdout = %q, want empty", args, stdout.String())
+		}
+		var envelope struct {
+			Command string `json:"command"`
+			Error   struct {
+				Code    string `json:"code"`
+				Message string `json:"message"`
+			} `json:"error"`
+		}
+		if err := json.Unmarshal(stderr.Bytes(), &envelope); err != nil {
+			t.Fatalf("decode %v JSON error %q: %v", args, stderr.String(), err)
+		}
+		if envelope.Error.Code != "invalid_argument" || !strings.Contains(envelope.Error.Message, "requires text format") {
+			t.Fatalf("%v JSON error = %#v", args, envelope)
+		}
+	}
+}
+
+func TestShellEnvMatchesHiddenProjectEnvironmentResolver(t *testing.T) {
+	fixture := filepath.Join(t.TempDir(), "c++")
+	if err := os.Mkdir(fixture, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(fixture)
+	unsetEnvironmentForTest(t, provider.HeadroomProjectEnvironment)
+	unsetEnvironmentForTest(t, provider.ClaudeCustomHeadersEnvironment)
+
+	stateDir := filepath.Join(t.TempDir(), "state")
+	configureHeadroomSelections(t, stateDir)
+	for _, client := range []string{"codex", "claude"} {
+		t.Run(client, func(t *testing.T) {
+			var public, compatibility bytes.Buffer
+			if err := run([]string{"--state-dir", stateDir, "shell", "env", client}, strings.NewReader(""), &public); err != nil {
+				t.Fatal(err)
+			}
+			if err := run([]string{"--state-dir", stateDir, "shell-init", "--project-environment", client}, strings.NewReader(""), &compatibility); err != nil {
+				t.Fatal(err)
+			}
+			if public.String() != compatibility.String() {
+				t.Fatalf("shell env = %q, compatibility resolver = %q", public.String(), compatibility.String())
+			}
+			if public.Len() == 0 {
+				t.Fatal("eligible resolver returned no value")
+			}
+		})
+	}
+}
+
+func TestShellEnvUnsupportedClientUsesStableJSONEnvelope(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	exit := execute([]string{"--format", "json", "shell", "env", "cursor"}, strings.NewReader(""), &stdout, &stderr)
+	if exit != 2 {
+		t.Fatalf("shell env unsupported client exit = %d, want 2", exit)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("shell env unsupported client stdout = %q, want empty", stdout.String())
+	}
+	var envelope struct {
+		Command string `json:"command"`
+		Error   struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(stderr.Bytes(), &envelope); err != nil {
+		t.Fatalf("decode shell env JSON error %q: %v", stderr.String(), err)
+	}
+	if envelope.Command != "shell.env" || envelope.Error.Code != "invalid_argument" {
+		t.Fatalf("shell env JSON error = %#v", envelope)
+	}
+}
+
+func TestResolveShellTarget(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		args      []string
+		shellFlag string
+		rc        string
+		want      shellTarget
+		wantError string
+	}{
+		{name: "all shells", want: shellTarget{}},
+		{name: "positional", args: []string{"zsh"}, want: shellTarget{shell: "zsh"}},
+		{name: "flag", shellFlag: "zsh", want: shellTarget{shell: "zsh"}},
+		{name: "custom rc", shellFlag: "fish", rc: "/tmp/config.fish", want: shellTarget{shell: "fish", rc: "/tmp/config.fish"}},
+		{name: "both forms", args: []string{"zsh"}, shellFlag: "zsh", wantError: "not both"},
+		{name: "unsupported", args: []string{"powershell"}, wantError: `unsupported shell "powershell"`},
+		{name: "rc without shell", rc: "/tmp/rc", wantError: "--rc requires exactly one shell"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := resolveShellTarget(test.args, test.shellFlag, test.rc)
+			if test.wantError != "" {
+				if err == nil || !strings.Contains(err.Error(), test.wantError) {
+					t.Fatalf("resolveShellTarget() error = %v, want %q", err, test.wantError)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != test.want {
+				t.Fatalf("resolveShellTarget() = %#v, want %#v", got, test.want)
+			}
+		})
+	}
+}
+
+func TestShellLifecycleSelectionErrorsAreInvalidArguments(t *testing.T) {
+	for _, args := range [][]string{
+		{"shell", "setup", "--rc", "/tmp/rc"},
+		{"shell", "status", "zsh", "--shell", "zsh"},
+		{"shell", "remove", "powershell"},
+	} {
+		var stdout, stderr bytes.Buffer
+		exit := execute(append([]string{"--format", "json"}, args...), strings.NewReader(""), &stdout, &stderr)
+		if exit != 2 {
+			t.Fatalf("%v exit = %d, want 2", args, exit)
+		}
+		if stdout.Len() != 0 {
+			t.Fatalf("%v stdout = %q, want empty", args, stdout.String())
+		}
+		var envelope struct {
+			Error struct {
+				Code string `json:"code"`
+			} `json:"error"`
+		}
+		if err := json.Unmarshal(stderr.Bytes(), &envelope); err != nil {
+			t.Fatalf("decode %v JSON error %q: %v", args, stderr.String(), err)
+		}
+		if envelope.Error.Code != "invalid_argument" {
+			t.Fatalf("%v JSON error = %#v", args, envelope)
+		}
+	}
+}
+
+func TestShellLifecycleSurfaceDoesNotReportSuccessBeforeHandlersExist(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		command string
+		args    []string
+	}{
+		{name: "setup", command: "shell.setup", args: []string{"shell", "setup", "--shell", "zsh"}},
+		{name: "status", command: "shell.status", args: []string{"shell", "status", "zsh"}},
+		{name: "remove", command: "shell.remove", args: []string{"shell", "remove"}},
+	} {
+		for _, format := range []string{"text", "json"} {
+			t.Run(test.name+"/"+format, func(t *testing.T) {
+				args := append([]string{"--format", format}, test.args...)
+				var stdout, stderr bytes.Buffer
+				exit := execute(args, strings.NewReader(""), &stdout, &stderr)
+				if exit != 1 {
+					t.Fatalf("%v exit = %d, want 1", args, exit)
+				}
+				if stdout.Len() != 0 {
+					t.Fatalf("%v stdout = %q, want empty", args, stdout.String())
+				}
+				if format == "text" {
+					if !strings.Contains(stderr.String(), "not available in this build") {
+						t.Fatalf("%v stderr = %q, want unavailable error", args, stderr.String())
+					}
+					return
+				}
+				var envelope struct {
+					Command string `json:"command"`
+					Error   struct {
+						Code    string `json:"code"`
+						Message string `json:"message"`
+					} `json:"error"`
+				}
+				if err := json.Unmarshal(stderr.Bytes(), &envelope); err != nil {
+					t.Fatalf("decode %v JSON error %q: %v", args, stderr.String(), err)
+				}
+				if envelope.Command != test.command ||
+					envelope.Error.Code != "runtime_error" ||
+					!strings.Contains(envelope.Error.Message, "not available in this build") {
+					t.Fatalf("%v JSON error = %#v", args, envelope)
+				}
+			})
+		}
+	}
+}
+
 func configureHeadroomSelections(t *testing.T, stateDir string) {
 	t.Helper()
 	ctx := context.Background()

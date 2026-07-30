@@ -509,3 +509,61 @@ Only two values, matching the frontmatter above:
 - `active`: a current contract, or unfinished work.
 - `historical`: superseded or completed material kept only for context. It
   lives under `docs/archive/`, never in `docs/specs/` or `docs/plans/`.
+Stable `v0.2.1` promotion is paused. RC1 proves wrapper generation but neither
+a coherent installation lifecycle nor an observable reason for the wrappers to
+act: `shell-init` writes functions to stdout without installing or activating
+them, Homebrew installs completion only, and nothing reports whether a client
+currently routes through a wrapper declared `headroom` — the condition
+`Service.RunProjectEnvironment` requires before any attribution is injected. A
+design review on 2026-07-29 added that second gap to the plan, along with the
+finding that an exported constant activation marker would misreport child
+shells as active because environment variables are inherited while shell
+functions are not. A second review round the same day settled three questions
+about how invisible this can be made: `shell-init` cannot be deleted, because a
+released managed block and already-configured RC users depend on it, so it
+becomes hidden instead; package installation must not write the block, because
+`brew uninstall` would leave an orphan that breaks every later shell startup and
+no installer can activate a running shell anyway; and `provider use` should
+announce attribution changes on both entering and leaving an eligible route,
+which also corrects an advisory that still promises launches outside
+`agentdeck run` are unattributed. A third round then settled how the wrappers
+survive AgentDeck's own removal: the managed block guards on `agentdeck` being
+on `PATH`, so a block left behind by `brew uninstall` is inert rather than
+fatal — a Homebrew formula has no uninstall hook, unlike a cask, so nothing can
+clean it up automatically. The resolver the wrappers call became the documented
+`agentdeck shell env <codex|claude>` rather than a `provider current` parse,
+because `CurrentSelection` carries no `wrapper_kind` and the wire encoding must
+stay in Go. The same round also made the lifecycle commands cover every shell in
+use by default rather than only the invoking one, since one person commonly uses
+more than one shell; that capability belongs to the authorized command, not to
+package installation. The negative-gate marker is confirmed as part of the
+delivery, so a user with no Headroom route pays one `test -e` per client launch
+instead of a fork. The plan also records why this work belongs to `v0.2.1`
+rather than `v0.2.2`: `shell-init` has never shipped in a stable release, so
+hiding it and moving the recommended path is an internal rearrangement only
+until stable `v0.2.1` ships it.
+
+Writing startup files from `brew install` was re-examined and rejected again, but
+on narrower grounds than before — two earlier objections are recorded as
+retracted, since `post_install` does have a correct `$HOME` and neither approach
+can activate a running shell. What stands is that an upgrade would silently undo
+a deliberate removal, an uninstall would leave a block the user never agreed to,
+and CI or container builds would be written to as well. The same convenience was then adopted at a
+different moment: `provider use --via` configures the shell itself on the first
+switch that makes a client eligible, because that is when the user's intent is
+unambiguous and only users who need the integration are touched. It writes
+nothing when the invocation is not interactive — a non-TTY stderr, JSON or NDJSON
+output, `--quiet`, or `--no-shell-setup` — which is what keeps the CI objection
+from returning through another door, and nothing after `agentdeck shell remove`,
+which records the refusal until `shell setup` reverses it. `shell setup` therefore
+stops being the ordinary path and becomes the explicit one, for configuring ahead
+of any route, repairing a block, or following a non-interactive switch.
+
+[The shell integration plan](plans/shell-integration.md) owns that lifecycle,
+per-client eligibility reporting, route-change advisories, switch-time setup,
+cross-shell verification, and the `v0.2.1-rc.2` release gate. All eight of its
+tasks were decided to ship in `v0.2.1` rather than being split, accepting a later
+release in exchange for not shipping the interface twice. The `v0.2.2` hardening
+batch is paused behind it.
+
+| [plans/shell-integration.md](plans/shell-integration.md) | The `v0.2.1-rc.2` shell integration lifecycle: interactive `provider use --via` configuring every shell in use, `shell setup`/`status`/`remove`/`env` as the explicit surface, a presence-guarded managed startup-file block, per-client route-eligibility reporting, route-change advisories, hidden compatibility `shell-init`, and cross-shell acceptance. `active — 1/8 done`. |

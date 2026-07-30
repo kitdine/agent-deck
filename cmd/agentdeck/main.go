@@ -406,7 +406,7 @@ func newRootCommandWithError(stdin io.Reader, stdout, stderr io.Writer) *cobra.C
 	flags.BoolVar(&opts.verbose, "verbose", false, "Include technical provenance in text output")
 	root.Flags().BoolVar(&showVersion, "version", false, "Print build identity")
 	root.CompletionOptions.DisableDefaultCmd = true
-	root.AddCommand(newProviderCommand(opts), newCredentialCommand(opts), newUsageCommand(opts), newPriceCommand(opts), newSessionCommand(opts), newExtensionCommand(opts), newWatchCommand(opts), newBackupCommand(opts), newDoctorCommand(opts), newStateCommand(opts), newRunCommand(opts), newVersionCommand(opts), newCompletionCommand(opts), newShellInitCommand(opts))
+	root.AddCommand(newProviderCommand(opts), newCredentialCommand(opts), newUsageCommand(opts), newPriceCommand(opts), newSessionCommand(opts), newExtensionCommand(opts), newWatchCommand(opts), newBackupCommand(opts), newDoctorCommand(opts), newStateCommand(opts), newRunCommand(opts), newVersionCommand(opts), newCompletionCommand(opts), newShellCommand(opts), newShellInitCommand(opts))
 	applyHelpCatalog(root)
 	wrapArgumentValidators(root)
 	return root
@@ -562,9 +562,34 @@ func applyHelpCatalog(root *cobra.Command) {
 		},
 		"completion": {short: "Generate shell completion", long: argumentHelp("Generate completion for a supported shell.", "  bash|fish|zsh  Supported shell."), example: "  agentdeck completion zsh"},
 		"shell-init": {
-			short:   "Generate project attribution shell helpers",
-			long:    argumentHelp("Generate codex and claude wrapper functions that derive project attribution at launch time.", "  bash|fish|zsh  Supported shell."),
-			example: "  agentdeck shell-init zsh",
+			short: "Print shell wrapper functions to stdout; does not install or activate them",
+			long: argumentHelp(
+				"Print sourceable codex and claude wrapper functions to stdout. Running this command alone changes no shell state and writes no file. The wrappers inject attribution only for an eligible Headroom route; otherwise they invoke the real client unchanged. Use 'agentdeck shell setup' for persistent installation.",
+				"  bash|fish|zsh  Supported shell.",
+			),
+			example: "  eval \"$(agentdeck shell-init bash)\"\n" +
+				"  agentdeck shell-init fish | source\n" +
+				"  eval \"$(agentdeck shell-init zsh)\"",
+		},
+		"shell env": {
+			short:   "Resolve one client's project attribution environment",
+			long:    argumentHelp("Print the current project attribution value for an eligible Headroom route. Ineligible or unreadable state produces no output so shell wrappers fail open.", "  codex|claude  Supported client."),
+			example: "  agentdeck shell env codex\n  agentdeck shell env claude",
+		},
+		"shell setup": {
+			short:   "Install project attribution shell integration",
+			long:    argumentHelp("Configure project attribution wrappers persistently. With no shell selection, every shell in use is covered by default.", "  bash|fish|zsh  Optional shell; equivalent to --shell."),
+			example: "  agentdeck shell setup\n  agentdeck shell setup zsh\n  agentdeck shell setup --shell fish",
+		},
+		"shell status": {
+			short:   "Inspect project attribution shell integration",
+			long:    argumentHelp("Inspect persistent configuration, current-session activation, and route eligibility. With no shell selection, every shell in use is covered by default.", "  bash|fish|zsh  Optional shell; equivalent to --shell."),
+			example: "  agentdeck shell status\n  agentdeck shell status --shell zsh",
+		},
+		"shell remove": {
+			short:   "Remove project attribution shell integration",
+			long:    argumentHelp("Remove AgentDeck-owned project attribution blocks. With no shell selection, every configured shell is covered by default.", "  bash|fish|zsh  Optional shell; equivalent to --shell."),
+			example: "  agentdeck shell remove\n  agentdeck shell remove fish",
 		},
 	}
 	for path, entry := range entries {
@@ -608,11 +633,89 @@ func newCompletionCommand(opts *commandOptions) *cobra.Command {
 	}}
 }
 
+type shellTarget struct {
+	shell string
+	rc    string
+}
+
+const shellLifecycleSurfaceOnlyAnnotation = "agentdeck.shell-lifecycle-surface-only"
+
+func newShellCommand(opts *commandOptions) *cobra.Command {
+	command := &cobra.Command{
+		Use:   "shell",
+		Short: "Manage project attribution shell integration",
+		Long: "Set up, inspect, or remove project attribution shell integration. " +
+			"Setup, status, and remove cover every shell in use by default.",
+		Args: exactArgs(0),
+	}
+	command.AddCommand(
+		newShellLifecycleCommand("setup"),
+		newShellLifecycleCommand("status"),
+		newShellLifecycleCommand("remove"),
+		&cobra.Command{
+			Use:  "env <codex|claude>",
+			Args: exactArgs(1),
+			RunE: func(command *cobra.Command, args []string) error {
+				return writeProjectEnvironment(command.Context(), opts, provider.Client(args[0]))
+			},
+		},
+	)
+	return command
+}
+
+func newShellLifecycleCommand(operation string) *cobra.Command {
+	var shellFlag string
+	var rc string
+	command := &cobra.Command{
+		Use:         operation + " [bash|fish|zsh]",
+		Args:        rangeArgs(0, 1),
+		Annotations: map[string]string{shellLifecycleSurfaceOnlyAnnotation: "true"},
+		PreRunE: func(_ *cobra.Command, args []string) error {
+			_, err := resolveShellTarget(args, shellFlag, rc)
+			return err
+		},
+		RunE: func(_ *cobra.Command, _ []string) error {
+			return fmt.Errorf("shell %s is not available in this build", operation)
+		},
+	}
+	command.Flags().StringVar(&shellFlag, "shell", "", "Restrict the operation to one shell")
+	command.Flags().StringVar(&rc, "rc", "", "Use a non-default startup file for one shell")
+	return command
+}
+
+func resolveShellTarget(args []string, shellFlag, rc string) (shellTarget, error) {
+	if len(args) > 1 {
+		return shellTarget{}, &inputError{err: fmt.Errorf("accepts between 0 and 1 arg(s), received %d", len(args))}
+	}
+	if len(args) == 1 && shellFlag != "" {
+		return shellTarget{}, &inputError{err: fmt.Errorf("specify a shell either positionally or with --shell, not both")}
+	}
+	shell := shellFlag
+	if len(args) == 1 {
+		shell = args[0]
+	}
+	if shell != "" && shell != "bash" && shell != "fish" && shell != "zsh" {
+		return shellTarget{}, &inputError{err: fmt.Errorf("unsupported shell %q", shell)}
+	}
+	if rc != "" && shell == "" {
+		return shellTarget{}, &inputError{err: fmt.Errorf("--rc requires exactly one shell, specified positionally or with --shell")}
+	}
+	return shellTarget{shell: shell, rc: rc}, nil
+}
+
+func requireTextFormat(opts *commandOptions, command string) error {
+	if opts.format != "text" {
+		return &inputError{err: fmt.Errorf("%s requires text format", command)}
+	}
+	return nil
+}
+
 func newShellInitCommand(opts *commandOptions) *cobra.Command {
 	var projectEnvironment string
 	command := &cobra.Command{
-		Use:   "shell-init <bash|fish|zsh>",
-		Short: "Generate project attribution shell helpers",
+		Use:    "shell-init <bash|fish|zsh>",
+		Short:  "Print shell wrapper functions to stdout; does not install or activate them",
+		Hidden: true,
 		Args: func(command *cobra.Command, args []string) error {
 			// The hidden resolver is shell-independent; only public script
 			// generation takes a shell positional argument.
@@ -629,6 +732,9 @@ func newShellInitCommand(opts *commandOptions) *cobra.Command {
 			if shell != "bash" && shell != "fish" && shell != "zsh" {
 				return &inputError{err: fmt.Errorf("unsupported shell %q", shell)}
 			}
+			if err := requireTextFormat(opts, "shell-init"); err != nil {
+				return err
+			}
 			_, err := io.WriteString(opts.stdout, shellInitScript(shell))
 			return err
 		},
@@ -641,6 +747,9 @@ func newShellInitCommand(opts *commandOptions) *cobra.Command {
 func writeProjectEnvironment(ctx context.Context, opts *commandOptions, client provider.Client) error {
 	if client != provider.ClientCodex && client != provider.ClientClaude {
 		return &inputError{err: fmt.Errorf("unsupported client %q", client)}
+	}
+	if err := requireTextFormat(opts, "shell project environment resolver"); err != nil {
+		return err
 	}
 	cwd, err := os.Getwd()
 	if err != nil {

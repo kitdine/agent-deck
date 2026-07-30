@@ -65,7 +65,9 @@ func leafCommands(root *cobra.Command) []*cobra.Command {
 	var leaves []*cobra.Command
 	var visit func(*cobra.Command)
 	visit = func(command *cobra.Command) {
-		if (command.RunE != nil || command.Run != nil) && !emitsShellScript(command) {
+		if (command.RunE != nil || command.Run != nil) &&
+			!emitsShellScript(command) &&
+			command.Annotations[shellLifecycleSurfaceOnlyAnnotation] != "true" {
 			leaves = append(leaves, command)
 		}
 		for _, child := range command.Commands() {
@@ -78,10 +80,13 @@ func leafCommands(root *cobra.Command) []*cobra.Command {
 	return leaves
 }
 
-// Completion and shell-init intentionally emit sourceable shell programs
-// instead of the JSON data contract represented by the GUI fixture.
+// Completion and shell-init emit sourceable shell programs, while shell env
+// emits the raw value consumed by those programs. None use the GUI JSON data
+// contract represented by the fixture.
 func emitsShellScript(command *cobra.Command) bool {
-	return command.Name() == "completion" || command.Name() == "shell-init"
+	return command.Name() == "completion" ||
+		command.Name() == "shell-init" ||
+		commandOutputName(command) == "shell.env"
 }
 
 func leafCommandPaths(root *cobra.Command) []string {
