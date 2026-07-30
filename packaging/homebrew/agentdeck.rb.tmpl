@@ -23,6 +23,23 @@ class @FORMULA_CLASS@ < Formula
     )
   end
 
+  def caveats
+    <<~EOS
+      Project-attribution wrappers are optional and only act when a provider
+      routes through a declared Headroom wrapper. If you use one and accept one
+      extra AgentDeck process plus a read-only database access on each `codex`
+      or `claude` invocation, configure every shell you use with:
+        agentdeck shell setup
+
+      To undo it later:
+        agentdeck shell remove
+
+      Command completion is already installed and needs no further action.
+      Skipping shell setup leaves shell-based project attribution disabled and
+      does not affect normal AgentDeck use.
+    EOS
+  end
+
   test do
     output = shell_output("#{bin}/agentdeck version")
     assert_match "Release Version: v@VERSION@", output

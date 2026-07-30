@@ -140,7 +140,29 @@ client 配置。
 `agentdeck run` 之外直接启动的 client，只有用户自己 source/安装了 shell helper，
 或自己写了适用的 settings 文件时才会被归属。AgentDeck 不归属 GUI app 启动；在
 AgentDeck 管理的注入路径中，未声明为 `headroom` 的 wrapper 永远不会收到归属
-header。
+header。安装 binary 或 command completion 不会自动启用 attribution wrapper。
+
+持久 shell integration 的前提是至少一个 `codex` 或 `claude` provider route 已通过
+`provider use --via` 选择，并且该 provider 的 wrapper 已通过
+`provider set-wrapper --kind headroom` 明确声明为 Headroom。满足前提且接受每次
+`codex` 或 `claude` 调用多启动一个 AgentDeck 进程并执行一次只读数据库访问时，
+可选运行：
+
+```bash
+agentdeck shell setup
+```
+
+setup 后可选运行 `agentdeck shell status` 自检。该命令分别报告持久配置、当前会话
+激活状态，以及每个 client 的 route 资格。
+
+`agentdeck shell setup` 为所有当前使用中的 shell 写入 attribution wrapper；它不是安装必需步骤。
+拒绝或跳过不会影响 AgentDeck 的普通功能，只会让 shell-based project attribution
+保持未启用。command completion 与此流程独立，`shell setup` 不负责安装命令补全。
+撤销时运行：
+
+```bash
+agentdeck shell remove
+```
 
 有三种应用方式：
 
@@ -148,10 +170,11 @@ header。
    `agentdeck run claude -- ...` 自动按启动目录归属。Codex 通过
    `HEADROOM_PROJECT` 与受管 `env_http_headers` mapping 发出 header；Claude 通过
    `ANTHROPIC_CUSTOM_HEADERS` 发出同一 header。用户已经设置的值优先。
-2. **shell function 启动的进程**：`agentdeck shell-init <bash|fish|zsh>` 向
-   stdout 输出包装 `codex` 与 `claude` 的函数。函数在每次启动时按当前目录动态计算
-   project 值；用户决定是否以及如何 source 输出，AgentDeck 不写文件、不编辑 shell
-   profile。生成脚本不需要配置 wrapper；归属生效则要求当前选择经由声明为
+2. **shell function 启动的进程**：`agentdeck shell-init <bash|fish|zsh>` 只向
+   stdout 输出包装 `codex` 与 `claude` 的 shell program；单独运行该命令既不激活，
+   也不持久安装任何内容。兼容场景下 source 该输出只激活当前 shell；持久配置使用上面的
+   `agentdeck shell setup`。函数在每次启动时按当前目录动态计算 project 值。生成脚本
+   不需要配置 wrapper；归属生效则要求当前选择经由声明为
    `headroom` 的 wrapper，即已对该 provider 执行 `provider use --via`。未满足时
    helper 静默不注入且不影响客户端启动。例如：
 

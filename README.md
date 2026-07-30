@@ -103,6 +103,8 @@ agentdeck version
 
 The stable formula installs bash, zsh, and fish completion scripts in
 Homebrew's standard completion directories without editing shell rc files.
+Command completion is separate from the optional project-attribution wrappers
+described below.
 
 After a release-candidate tap PR is merged, opt into that channel with:
 
@@ -120,8 +122,8 @@ removed by Homebrew. Later candidates upgrade normally with `brew update &&
 brew upgrade kitdine/tap/agentdeck-rc`; switch back by uninstalling
 `agentdeck-rc` and reinstalling `agentdeck`.
 
-The source-based workflow below additionally supports managed rc-file
-activation.
+The source-based workflow below additionally supports a managed rc-file block
+for command completion. It does not install project-attribution wrappers.
 
 ## Install From Source
 
@@ -134,8 +136,8 @@ agentdeck version
 ```
 
 Installation detects the fish, zsh, or bash process that invoked Make, generates
-that shell's completion, and adds one marked AgentDeck source block to its user
-rc file. Override detection or the rc path when needed:
+that shell's command completion, and adds one marked completion-only AgentDeck
+source block to its user rc file. Override detection or the rc path when needed:
 
 ```bash
 make install COMPLETION_SHELL=fish
@@ -146,6 +148,45 @@ make install COMPLETION_SHELL=none
 `COMPLETION_SHELL=none` explicitly installs only the binary. Detection failure,
 an unsafe rc path, or a conflicting managed block stops installation without
 leaving a partial binary or rc change.
+
+## Optional Project Attribution
+
+Installing AgentDeck never installs project-attribution wrappers. The
+prerequisite for attribution is a `codex` or `claude` provider route selected
+with `provider use --via` whose wrapper was explicitly declared as Headroom
+with `provider set-wrapper --kind headroom`. Without that route, shell
+integration provides no attribution benefit.
+
+If you use such a wrapper and accept one extra AgentDeck process plus a
+read-only database access on each `codex` or `claude` invocation, configure
+every shell you use with:
+
+```bash
+agentdeck shell setup
+```
+
+After setup, optionally verify the three independent states with:
+
+```bash
+agentdeck shell status
+```
+
+The status output distinguishes persistent configuration, activation in the
+current shell session, and per-client route eligibility.
+
+Setup is optional. Skipping it leaves shell-based project attribution
+disabled and does not affect normal AgentDeck use. Command completion is
+handled separately and never requires `shell setup`. To undo the integration
+later:
+
+```bash
+agentdeck shell remove
+```
+
+`agentdeck shell-init <bash|fish|zsh>` only prints a shell program to stdout.
+Running it by itself neither activates integration nor installs anything.
+Sourcing that output can activate wrappers for the current shell only; use the
+explicit `shell setup` command for persistent configuration.
 
 The default installation paths are separate from AgentDeck user state:
 

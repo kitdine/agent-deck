@@ -506,6 +506,27 @@ install_agentdeck() {
     printf ' with %s completion via %s' "$detected_shell" "$new_rc"
   fi
   printf '\n'
+  printf '%s\n' \
+    'Project-attribution wrappers are optional and only act when a provider' \
+    'routes through a declared Headroom wrapper. If you use one and accept one' \
+    'extra AgentDeck process plus a read-only database access on each `codex`' \
+    'or `claude` invocation, configure every shell you use with:' \
+    '  agentdeck shell setup' \
+    '' \
+    'To undo it later:' \
+    '  agentdeck shell remove' \
+    ''
+  if [ "$detected_shell" = none ]; then
+    printf '%s\n' \
+      'Command completion was explicitly skipped and remains separate from' \
+      'project attribution.'
+  else
+    printf '%s\n' \
+      'Command completion is already installed and needs no further action.'
+  fi
+  printf '%s\n' \
+    'Skipping shell setup leaves shell-based project attribution disabled and' \
+    'does not affect normal AgentDeck use.'
 }
 
 rollback_uninstall() {

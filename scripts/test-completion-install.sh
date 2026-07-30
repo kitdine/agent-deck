@@ -230,9 +230,9 @@ EOF
 test_shell_helpers
 
 install_for() {
-  local shell=$1 home=$2 prefix=$3 rc=$4
+  local shell=$1 home=$2 prefix=$3 rc=$4 output=${5:-/dev/null}
   HOME="$home" PREFIX="$prefix" COMPLETION_SHELL="$shell" COMPLETION_RC="$rc" TMPDIR=/private/tmp \
-    bash "$manager" install "$binary" >/dev/null
+    bash "$manager" install "$binary" >"$output"
 }
 
 uninstall_from() {
@@ -268,7 +268,19 @@ for shell in fish zsh bash; do
   mkdir -p "$(dirname "$rc")"
   printf '# user configuration\n' >"$rc"
   chmod 0640 "$rc"
-  install_for "$shell" "$home" "$prefix" "$rc"
+  install_output="$case_root/install.out"
+  install_for "$shell" "$home" "$prefix" "$rc" "$install_output"
+  grep -F 'Project-attribution wrappers are optional and only act when a provider' "$install_output" >/dev/null
+  grep -F 'routes through a declared Headroom wrapper.' "$install_output" >/dev/null
+  grep -F 'extra AgentDeck process plus a read-only database access' "$install_output" >/dev/null
+  grep -F '  agentdeck shell setup' "$install_output" >/dev/null
+  grep -F '  agentdeck shell remove' "$install_output" >/dev/null
+  grep -F 'Command completion is already installed and needs no further action.' "$install_output" >/dev/null
+  grep -F 'Skipping shell setup leaves shell-based project attribution disabled' "$install_output" >/dev/null
+  if grep -F '# >>> agentdeck shell integration >>>' "$rc" >/dev/null; then
+    echo 'completion installation unexpectedly installed attribution integration' >&2
+    exit 1
+  fi
   completion="$prefix/share/agentdeck/completions/agentdeck.$shell"
   manifest="$prefix/share/agentdeck/install-manifest"
   expected_rc="$case_root/expected.rc"
@@ -295,6 +307,42 @@ for shell in fish zsh bash; do
     exit 1
   fi
 done
+
+none_root="$temporary/none"
+none_home="$none_root/home"
+none_prefix="$none_root/prefix"
+none_rc="$none_home/.zshrc"
+none_expected="$none_root/expected.rc"
+none_output="$none_root/install.out"
+mkdir -p "$none_home"
+printf '# user configuration\n' >"$none_rc"
+cp -p "$none_rc" "$none_expected"
+install_for none "$none_home" "$none_prefix" "$none_rc" "$none_output"
+grep -F 'Project-attribution wrappers are optional and only act when a provider' "$none_output" >/dev/null
+grep -F 'routes through a declared Headroom wrapper. If you use one and accept one' "$none_output" >/dev/null
+grep -F 'extra AgentDeck process plus a read-only database access on each `codex`' "$none_output" >/dev/null
+grep -F 'or `claude` invocation, configure every shell you use with:' "$none_output" >/dev/null
+grep -F '  agentdeck shell setup' "$none_output" >/dev/null
+grep -F 'To undo it later:' "$none_output" >/dev/null
+grep -F '  agentdeck shell remove' "$none_output" >/dev/null
+grep -F 'Command completion was explicitly skipped and remains separate from' "$none_output" >/dev/null
+grep -F 'project attribution.' "$none_output" >/dev/null
+grep -F 'Skipping shell setup leaves shell-based project attribution disabled and' "$none_output" >/dev/null
+grep -F 'does not affect normal AgentDeck use.' "$none_output" >/dev/null
+grep -F 'completion_shell=none' "$none_prefix/share/agentdeck/install-manifest" >/dev/null
+test ! -e "$none_prefix/share/agentdeck/completions"
+cmp "$none_expected" "$none_rc"
+if grep -F \
+  -e '# >>> agentdeck completion >>>' \
+  -e '# <<< agentdeck completion <<<' \
+  -e '# >>> agentdeck shell integration >>>' \
+  -e '# <<< agentdeck shell integration <<<' \
+  "$none_rc" >/dev/null; then
+  echo 'COMPLETION_SHELL=none unexpectedly modified shell integration' >&2
+  exit 1
+fi
+uninstall_from "$none_home" "$none_prefix"
+cmp "$none_expected" "$none_rc"
 
 tamper_root="$temporary/tamper"
 tamper_home="$tamper_root/home"
