@@ -1265,8 +1265,8 @@ and contracts stay as specified either way.
 | 3. `activation-and-eligibility-status` | [x] | [x] |
 | 4. `installation-onboarding` | [x] | [x] |
 | 5. `cross-shell-acceptance` | [ ] | [ ] |
-| 6. `route-change-advisories` | [ ] | [ ] |
-| 7. `switch-time-setup` | [ ] | [ ] |
+| 6. `route-change-advisories` | [x] | [x] |
+| 7. `switch-time-setup` | [x] | [x] |
 | 8. `contract-and-release` | [ ] | [ ] |
 
 Order: tasks 1-3 define the command and persistence contract. Task 4 may start
