@@ -310,12 +310,45 @@ usage session bounds, watch text, and the `usage stats --activity` model range.
 `version`'s `UTC Build Time` stays UTC by decision, because it is immutable
 build identity rather than a runtime instant.
 
+The next release is `v0.2.2`, with two active plans designed on 2026-07-29.
+[The credential and pricing hardening
+plan](plans/credential-and-pricing-hardening.md) promotes five aged Backlog
+entries into six tasks: credential key directory durability, key-ID derivation
+with a second supported sealed key version, price-retry ordering,
+session-health documentation accuracy, Claude cache-creation TTL defaulting,
+and the contract record. [The runtime provider attribution
+plan](plans/runtime-provider-attribution.md) replaces client-wide run ownership
+with Codex and Claude lifecycle Hooks, makes concurrent runs non-blocking, and
+splits resumed or hot-reloaded sessions at observed runtime boundaries without
+changing project-attribution shell functions. Nothing in either plan is
+implemented yet.
+
+Pulling the runtime attribution work into `v0.2.1` was considered on 2026-07-29
+and rejected: unlike `shell-init`, none of it has an expiring interface window —
+the `usage hook` group and the session-route table are additions, and dropping
+`one_active_usage_run_per_client` relaxes behavior rather than tightening it —
+while it does carry a schema migration, two external client Hook contracts, and a
+Codex trust step AgentDeck cannot automate. Two dependencies on `v0.2.1` were
+recorded instead: its `shell-init` byte-identity acceptance is now pinned to the
+post-shell-integration output rather than today's, and its `usage hook`
+lifecycle must follow the `shell` lifecycle conventions that `v0.2.1` establishes,
+since the two cannot share code but should not diverge. Two design findings from the credential plan matter outside
+it: the affected
+cache-creation events all carry a `cache_creation` object whose two TTL fields
+are zero rather than a missing object, so dotted model spelling is a
+coincidence and no implementation may branch on a model name; and treating such
+a total as a five-minute write contradicts an explicit specification rule, so
+that task is a contract change to specification version 21 rather than a
+defect fix.
+
 ## Documents
 
 | Document | Purpose |
 | --- | --- |
 | [specs/cli-design.md](specs/cli-design.md) | What the system does and must keep doing: provider, credential, usage, pricing, session, backup, and distribution behavior. Currently version 20; see its changelog. |
 | [plans/shell-integration.md](plans/shell-integration.md) | The `v0.2.1-rc.2` shell integration lifecycle: interactive `provider use --via` configuring every shell in use, `shell setup`/`status`/`remove`/`env` as the explicit surface, a presence-guarded managed startup-file block, per-client route-eligibility reporting, route-change advisories, hidden compatibility `shell-init`, and cross-shell acceptance. `active — 4/8 done`. |
+| [plans/credential-and-pricing-hardening.md](plans/credential-and-pricing-hardening.md) | The `v0.2.2` hardening batch: credential key durability and key-ID derivation, price-retry ordering, session-health doc accuracy, and Claude cache-creation TTL defaulting. Paused on 2026-07-29 behind the shell integration plan; `active — 0/6 done`. |
+| [plans/runtime-provider-attribution.md](plans/runtime-provider-attribution.md) | The `v0.2.2` Hook-first runtime attribution work: reversible Codex/Claude Hook setup, resumed-session and Claude reload boundaries, non-blocking concurrent runs, and unchanged project-attribution shell functions. `active — 0/4 done`. |
 | [specs/cli-manual.md](specs/cli-manual.md) | The implemented command surface, flags, and output shapes. |
 | [reviews/](reviews/README.md) | Per-task review records that back each plan's ticked `Review` cell. |
 | [archive/](archive/README.md) | Retired plans and superseded contracts. Not a starting point for new work. |
@@ -423,13 +456,6 @@ than expanding the entry in place.
       usage-attribution question, not a catalog-coverage one; the price-coverage
       plan deliberately left it out of scope and a shipped test asserts it stays
       unpriced, so any change here must update that fixture too.
-- [ ] Close the `cache_creation_tokens` gap on the dotted Claude spellings.
-      `claude-haiku-4.5` and `claude-opus-4.8` report
-      `missing_components: [cache_creation_tokens]`, which is why cold-start
-      coverage reads 95.1% fully priced against 98.4% model-matched. Their
-      models *are* matched and priced by the bundled catalog; this is a
-      token-classification issue in event parsing, not a catalog one.
-
 - [ ] Add the ability to switch Claude subscription/account — analogous to the
       existing AI provider switching, but selecting a Claude account or plan
       rather than an API base URL and token. Not addressed by the
@@ -440,44 +466,10 @@ than expanding the entry in place.
       security review.
 - [ ] Implement a GUI, including a persistent menu-bar presence, as an
       alternative front end to the CLI.
-- [ ] Address two defense-in-depth findings from the 2026-07-22 credential
-      vault security review. Neither is exploitable today; take them the next
-      time `internal/credentialvault/vault.go` is opened.
-      (a) **Durability, higher priority despite lower likelihood**
-      (`vault.go:244`): `os.Link` is not followed by a parent-directory
-      `Sync()`, so the key file's contents are durable but its directory entry
-      is not. A crash in that window, after SQLite has already committed
-      ciphertext, leaves ciphertext with no recoverable key — and the design
-      deliberately refuses to regenerate a key when encrypted rows exist, so the
-      credentials are permanently lost. One `Sync()` on the state root closes it.
-      (b) **Cryptographic hygiene** (`vault.go:181-182`): the persisted key ID
-      is SHA-256 of the live AES key truncated to 16 bytes, which publishes a
-      hash of the key and gives an offline oracle for verifying guesses at key
-      material. Not exploitable against a 256-bit random seed, but avoidable:
-      expand HKDF to 48 bytes and take bytes 32..48 as the ID so it is derived
-      alongside the key rather than from it. Requires a key-version increment;
-      existing ciphertext must keep verifying under version 1.
-      Plaintext and key bytes are not zeroed after use. That is an accepted
-      residual risk, not a task — Go's copying GC makes wiping unreliable and
-      `Open` returns an immutable `string`.
-- [ ] Address the remaining low-severity finding from the 2026-07-22 price
-      update review, ideally folded into the next change that already touches
-      `internal/usage/price_update.go`: `price_update.go:143-148` checks the
-      byte-size cap before the HTTP status, so an oversized 5xx body is reported
-      as non-retryable "response exceeds N bytes" instead of a retryable
-      transient failure.
-- [ ] Decide whether `agentdeck doctor`'s `session.CheckHealth` should avoid
-      creating `sessions.sqlite3-wal`/`-shm` sidecars when it inspects the index
-      (e.g. `immutable=1`/`nolock` handling, weighing the concurrent-watcher
-      trade-off), or whether its "without creating, migrating, or changing it"
-      doc comment should be corrected to describe sidecar creation as expected.
-      Surfaced by the retired test-coverage plan (task 6): `CheckHealth` opens
-      the WAL-mode index read-only yet still materializes both sidecars. The
-      committed database bytes are unchanged and the sidecars are `0600` inside
-      the `0700` state root, so no privacy or data-integrity boundary breaks —
-      this is a doc-vs-behavior accuracy fix, not a security fix. A shipped test
-      in `internal/session/doctor_test.go` pins the current sidecar behavior, so
-      any change here must update that test too.
+Plaintext and credential key bytes are not zeroed after use. That is an
+accepted residual risk rather than a Backlog item: Go's copying garbage
+collector makes wiping unreliable, and `credentialvault.Open` returns an
+immutable `string`.
 
 ## Document Conventions
 
