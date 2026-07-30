@@ -206,6 +206,59 @@ func TestRunProjectEnvironmentRequiresAHeadroomViaRouteAndHonorsUserValues(t *te
 	})
 }
 
+func TestProjectRouteEligibilityExplainsEveryRouteState(t *testing.T) {
+	ctx := context.Background()
+	database, err := store.Open(ctx, filepath.Join(t.TempDir(), "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := Service{Store: database}
+
+	assertEligibility := func(want ProjectRouteEligibility) {
+		t.Helper()
+		got, eligibilityErr := service.ProjectRouteEligibility(ctx, ClientCodex)
+		if eligibilityErr != nil {
+			t.Fatal(eligibilityErr)
+		}
+		if got != want {
+			t.Fatalf("eligibility = %q, want %q", got, want)
+		}
+	}
+
+	assertEligibility(ProjectRouteNoWrapper)
+	if err := database.SetOfficialWrapperURL(ctx, "https://plain.example", string(WrapperKindPlain)); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.RecordSelection(ctx, store.Selection{
+		Client:             string(ClientCodex),
+		ProviderName:       OfficialProviderName,
+		EndpointSnapshot:   "https://plain.example",
+		MultiplierSnapshot: "1",
+		ViaWrapper:         true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	assertEligibility(ProjectRouteWrapperNotHeadroom)
+
+	if err := database.SetOfficialWrapperURL(ctx, "https://plain.example", string(WrapperKindHeadroom)); err != nil {
+		t.Fatal(err)
+	}
+	assertEligibility(ProjectRouteEligible)
+
+	if err := database.SetOfficialWrapperURL(ctx, "https://new.example", string(WrapperKindHeadroom)); err != nil {
+		t.Fatal(err)
+	}
+	assertEligibility(ProjectRouteEndpointDrifted)
+
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+	got, eligibilityErr := service.ProjectRouteEligibility(ctx, ClientCodex)
+	if got != ProjectRouteUndetermined || eligibilityErr == nil {
+		t.Fatalf("closed-store eligibility = %q, %v, want undetermined error", got, eligibilityErr)
+	}
+}
+
 func TestRunProjectEnvironmentRejectsStaleWrapperEndpoints(t *testing.T) {
 	for _, providerName := range []string{"example", OfficialProviderName} {
 		for _, client := range []Client{ClientCodex, ClientClaude} {

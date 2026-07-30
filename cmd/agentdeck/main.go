@@ -32,12 +32,16 @@ import (
 	"github.com/kitdine/agent-deck/internal/platform"
 	"github.com/kitdine/agent-deck/internal/provider"
 	"github.com/kitdine/agent-deck/internal/session"
+	"github.com/kitdine/agent-deck/internal/shellconfig"
 	"github.com/kitdine/agent-deck/internal/store"
 	"github.com/kitdine/agent-deck/internal/usage"
 	"github.com/kitdine/agent-deck/internal/watch"
 )
 
 var userHomeDir = os.UserHomeDir
+var detectInvokingShell = shellconfig.DetectInvokingShell
+var newShellConfigManager = shellconfig.New
+var parentProcessID = os.Getppid
 
 // displayLocation is the zone human-readable output uses. Usage reports also
 // resolve their local dates and buckets in it. It is a seam for the same reason
@@ -649,9 +653,9 @@ func newShellCommand(opts *commandOptions) *cobra.Command {
 		Args: exactArgs(0),
 	}
 	command.AddCommand(
-		newShellLifecycleCommand("setup"),
-		newShellLifecycleCommand("status"),
-		newShellLifecycleCommand("remove"),
+		newShellLifecycleCommand(opts, "setup"),
+		newShellLifecycleCommand(opts, "status"),
+		newShellLifecycleCommand(opts, "remove"),
 		&cobra.Command{
 			Use:  "env <codex|claude>",
 			Args: exactArgs(1),
@@ -663,24 +667,293 @@ func newShellCommand(opts *commandOptions) *cobra.Command {
 	return command
 }
 
-func newShellLifecycleCommand(operation string) *cobra.Command {
+func newShellLifecycleCommand(opts *commandOptions, operation string) *cobra.Command {
 	var shellFlag string
 	var rc string
+	var target shellTarget
 	command := &cobra.Command{
 		Use:         operation + " [bash|fish|zsh]",
 		Args:        rangeArgs(0, 1),
 		Annotations: map[string]string{shellLifecycleSurfaceOnlyAnnotation: "true"},
 		PreRunE: func(_ *cobra.Command, args []string) error {
-			_, err := resolveShellTarget(args, shellFlag, rc)
+			resolved, err := resolveShellTarget(args, shellFlag, rc)
+			if err != nil {
+				return err
+			}
+			if opts.format != "text" && opts.format != "json" {
+				return &inputError{err: fmt.Errorf("shell %s supports only text or json format", operation)}
+			}
+			target = resolved
 			return err
 		},
-		RunE: func(_ *cobra.Command, _ []string) error {
-			return fmt.Errorf("shell %s is not available in this build", operation)
+		RunE: func(command *cobra.Command, _ []string) error {
+			return runShellLifecycle(command.Context(), opts, operation, target)
 		},
 	}
 	command.Flags().StringVar(&shellFlag, "shell", "", "Restrict the operation to one shell")
 	command.Flags().StringVar(&rc, "rc", "", "Use a non-default startup file for one shell")
 	return command
+}
+
+func runShellLifecycle(ctx context.Context, opts *commandOptions, operation string, target shellTarget) error {
+	home, err := userHomeDir()
+	if err != nil {
+		return fmt.Errorf("resolve home directory: %w", err)
+	}
+	invocation := shellconfig.Invocation{}
+	needsInvocation := ((operation == "setup" || operation == "status") && target.shell == "") ||
+		(target.shell == string(shellconfig.ShellBash) && target.rc == "")
+	shouldDetectInvocation := operation == "status" || needsInvocation
+	if shouldDetectInvocation {
+		detected, detectErr := detectInvokingShell()
+		if detectErr != nil {
+			if needsInvocation {
+				return detectErr
+			}
+		} else {
+			invocation = detected
+		}
+	}
+	manager := newShellConfigManager(shellconfig.Environment{
+		Home:          home,
+		ZDOTDir:       os.Getenv("ZDOTDIR"),
+		XDGConfigHome: os.Getenv("XDG_CONFIG_HOME"),
+		Invocation:    invocation,
+	})
+	request := shellconfig.Request{Shell: shellconfig.Shell(target.shell), RC: target.rc}
+	var summary shellconfig.Summary
+	switch operation {
+	case "setup":
+		summary, err = manager.Setup(request)
+	case "status":
+		return runShellStatus(ctx, opts, manager, request, invocation, target)
+	case "remove":
+		summary, err = manager.Remove(request)
+	default:
+		return fmt.Errorf("shell %s is not available in this build", operation)
+	}
+	if err != nil {
+		return err
+	}
+	if err := writeShellLifecycleSummary(opts, operation, summary); err != nil {
+		return err
+	}
+	if summary.HasFailures() {
+		return fmt.Errorf("shell %s failed for one or more startup files", operation)
+	}
+	return nil
+}
+
+type shellEligibilityStatus struct {
+	Client provider.Client                  `json:"client"`
+	Reason provider.ProjectRouteEligibility `json:"reason"`
+	Error  string                           `json:"error,omitempty"`
+}
+
+type shellStatusOutput struct {
+	Shells      []shellconfig.StatusResult `json:"shells"`
+	Eligibility []shellEligibilityStatus   `json:"eligibility"`
+}
+
+func runShellStatus(
+	ctx context.Context,
+	opts *commandOptions,
+	manager *shellconfig.Manager,
+	request shellconfig.Request,
+	invocation shellconfig.Invocation,
+	target shellTarget,
+) error {
+	markers := map[shellconfig.Shell]string{}
+	for _, shell := range []shellconfig.Shell{
+		shellconfig.ShellBash,
+		shellconfig.ShellFish,
+		shellconfig.ShellZsh,
+	} {
+		markers[shell] = os.Getenv(shellconfig.ActivationMarkerName(shell))
+	}
+	status, err := manager.Status(request, markers, parentProcessID())
+	if err != nil {
+		return err
+	}
+	output := shellStatusOutput{
+		Shells:      status.Results,
+		Eligibility: shellEligibility(ctx, opts),
+	}
+	if opts.format == "json" {
+		return writeResult(opts.stdout, opts.format, "shell.status", output)
+	}
+	return writeShellStatusText(opts, output, invocation, target)
+}
+
+func shellEligibility(ctx context.Context, opts *commandOptions) []shellEligibilityStatus {
+	results := []shellEligibilityStatus{
+		{Client: provider.ClientCodex},
+		{Client: provider.ClientClaude},
+	}
+	stateDir, err := opts.stateRoot()
+	if err != nil {
+		return undeterminedShellEligibility(results, err)
+	}
+	database, err := store.OpenReadOnly(ctx, stateDir)
+	if err != nil {
+		return undeterminedShellEligibility(results, err)
+	}
+	defer database.Close()
+
+	service := provider.Service{Store: database}
+	for index := range results {
+		reason, eligibilityErr := service.ProjectRouteEligibility(ctx, results[index].Client)
+		results[index].Reason = reason
+		if eligibilityErr != nil {
+			results[index].Error = eligibilityErr.Error()
+		}
+	}
+	return results
+}
+
+func undeterminedShellEligibility(results []shellEligibilityStatus, err error) []shellEligibilityStatus {
+	for index := range results {
+		results[index].Reason = provider.ProjectRouteUndetermined
+		results[index].Error = err.Error()
+	}
+	return results
+}
+
+func writeShellStatusText(
+	opts *commandOptions,
+	status shellStatusOutput,
+	invocation shellconfig.Invocation,
+	target shellTarget,
+) error {
+	if opts.quiet {
+		for _, result := range status.Shells {
+			if result.Error != "" {
+				if _, err := fmt.Fprintf(opts.stdout, "%s: %s\n", result.Shell, result.Error); err != nil {
+					return err
+				}
+			}
+		}
+		for _, eligibility := range status.Eligibility {
+			if eligibility.Error != "" {
+				if _, err := fmt.Fprintf(opts.stdout, "%s: %s\n", eligibility.Client, eligibility.Error); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	}
+
+	for _, result := range status.Shells {
+		activation := string(result.Activation)
+		if result.Activation == shellconfig.ActivationInherited {
+			activation = "inactive (marker inherited from an ancestor shell)"
+		}
+		if _, err := fmt.Fprintf(
+			opts.stdout,
+			"%s  %s  %s  session: %s",
+			result.Shell,
+			result.Path,
+			result.Configuration,
+			activation,
+		); err != nil {
+			return err
+		}
+		if result.Error != "" {
+			if _, err := fmt.Fprintf(opts.stdout, " (%s)", result.Error); err != nil {
+				return err
+			}
+		}
+		if _, err := fmt.Fprintln(opts.stdout); err != nil {
+			return err
+		}
+	}
+
+	if _, err := fmt.Fprint(opts.stdout, "Attribution: "); err != nil {
+		return err
+	}
+	for index, eligibility := range status.Eligibility {
+		if index > 0 {
+			if _, err := fmt.Fprint(opts.stdout, "; "); err != nil {
+				return err
+			}
+		}
+		if _, err := fmt.Fprintf(
+			opts.stdout,
+			"%s %s",
+			eligibility.Client,
+			shellEligibilityDescription(eligibility),
+		); err != nil {
+			return err
+		}
+	}
+	if _, err := fmt.Fprintln(opts.stdout); err != nil {
+		return err
+	}
+
+	nextShell := shellconfig.Shell(target.shell)
+	if nextShell == "" {
+		nextShell = invocation.Shell
+	}
+	for _, result := range status.Shells {
+		if result.Shell == nextShell && result.Activation == shellconfig.ActivationActive {
+			return nil
+		}
+	}
+	if nextShell == shellconfig.ShellFish {
+		_, err := fmt.Fprintln(opts.stdout, "Next action: agentdeck shell-init fish | source")
+		return err
+	}
+	if nextShell == shellconfig.ShellBash || nextShell == shellconfig.ShellZsh {
+		_, err := fmt.Fprintf(opts.stdout, "Next action: eval \"$(agentdeck shell-init %s)\"\n", nextShell)
+		return err
+	}
+	return nil
+}
+
+func shellEligibilityDescription(status shellEligibilityStatus) string {
+	switch status.Reason {
+	case provider.ProjectRouteEligible:
+		return "eligible"
+	case provider.ProjectRouteNoWrapper:
+		return "has no wrapper route"
+	case provider.ProjectRouteWrapperNotHeadroom:
+		return "wrapper is not declared headroom"
+	case provider.ProjectRouteEndpointDrifted:
+		return "wrapper endpoint has drifted"
+	case provider.ProjectRouteUndetermined:
+		if status.Error != "" {
+			return "undetermined (" + status.Error + ")"
+		}
+		return "undetermined"
+	default:
+		return string(status.Reason)
+	}
+}
+
+func writeShellLifecycleSummary(opts *commandOptions, operation string, summary shellconfig.Summary) error {
+	if opts.format == "json" {
+		return writeResult(opts.stdout, opts.format, "shell."+operation, summary)
+	}
+	for _, result := range summary.Results {
+		if opts.quiet && result.Outcome != shellconfig.OutcomeFailed {
+			continue
+		}
+		switch result.Outcome {
+		case shellconfig.OutcomeSkipped:
+			if _, err := fmt.Fprintf(opts.stdout, "%s: skipped %s (no startup file and not the invoking shell)\n", result.Shell, result.Path); err != nil {
+				return err
+			}
+		case shellconfig.OutcomeFailed:
+			if _, err := fmt.Fprintf(opts.stdout, "%s: failed %s: %s\n", result.Shell, result.Path, result.Error); err != nil {
+				return err
+			}
+		default:
+			if _, err := fmt.Fprintf(opts.stdout, "%s: %s %s\n", result.Shell, result.Outcome, result.Path); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func resolveShellTarget(args []string, shellFlag, rc string) (shellTarget, error) {
@@ -792,9 +1065,11 @@ func environmentVariableValue(environment []string, name string) (string, bool) 
 }
 
 func shellInitScript(shell string) string {
+	marker := shellconfig.ActivationMarkerName(shellconfig.Shell(shell))
 	if shell == "fish" {
-		return `# Generated by agentdeck shell-init fish.
+		return fmt.Sprintf(`# Generated by agentdeck shell-init fish.
 # Requires fish 3.4 or newer.
+set -gx %s $fish_pid
 function codex
     set -l _agentdeck_project_value "$(command agentdeck shell-init --project-environment codex 2>/dev/null)"
     set -l _agentdeck_project_status $status
@@ -814,9 +1089,10 @@ function claude
         command claude $argv
     end
 end
-`
+`, marker)
 	}
 	return fmt.Sprintf(`# Generated by agentdeck shell-init %s.
+export %s="$$"
 codex() {
     local _agentdeck_project_value
     if _agentdeck_project_value="$(command agentdeck shell-init --project-environment codex 2>/dev/null)" && [ -n "$_agentdeck_project_value" ]; then
@@ -834,7 +1110,7 @@ claude() {
         command claude "$@"
     fi
 }
-`, shell)
+`, shell, marker)
 }
 
 func writeBuildIdentity(opts *commandOptions) error {

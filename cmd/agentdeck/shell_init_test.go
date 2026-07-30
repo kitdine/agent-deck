@@ -4,12 +4,16 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/kitdine/agent-deck/internal/provider"
+	"github.com/kitdine/agent-deck/internal/shellconfig"
 	"github.com/kitdine/agent-deck/internal/store"
 )
 
@@ -32,6 +36,9 @@ func TestShellInitEmitsDynamicClientWrappersForSupportedShells(t *testing.T) {
 			if !strings.Contains(script, "agentdeck shell-init") {
 				t.Errorf("shell-init %s does not derive attribution dynamically:\n%s", shell, script)
 			}
+			if marker := shellconfig.ActivationMarkerName(shellconfig.Shell(shell)); !strings.Contains(script, marker) {
+				t.Errorf("shell-init %s does not set activation marker %s:\n%s", shell, marker, script)
+			}
 			for _, forbidden := range []string{
 				"my+project",
 				"https://wrapper.example",
@@ -43,6 +50,60 @@ func TestShellInitEmitsDynamicClientWrappersForSupportedShells(t *testing.T) {
 			}
 			if _, err := os.Stat(stateDir); !os.IsNotExist(err) {
 				t.Errorf("shell-init %s state directory = %v, want not created", shell, err)
+			}
+		})
+	}
+}
+
+func TestShellInitScriptsMarkTheEvaluatingShellProcess(t *testing.T) {
+	for _, shell := range []string{"bash", "fish", "zsh"} {
+		t.Run(shell, func(t *testing.T) {
+			shellPath, err := exec.LookPath(shell)
+			if err != nil {
+				t.Skipf("%s not installed", shell)
+			}
+			scriptPath := filepath.Join(t.TempDir(), "agentdeck-"+shell)
+			if err := os.WriteFile(scriptPath, []byte(shellInitScript(shell)), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			marker := shellconfig.ActivationMarkerName(shellconfig.Shell(shell))
+			var command *exec.Cmd
+			if shell == "fish" {
+				command = exec.Command(
+					shellPath,
+					"--no-config",
+					"-c",
+					fmt.Sprintf(`source $argv[1]; printf '%%s\n%%s\n' "$%s" "$fish_pid"`, marker),
+					scriptPath,
+				)
+			} else {
+				command = exec.Command(
+					shellPath,
+					"--noprofile",
+					"--norc",
+					"-c",
+					fmt.Sprintf(`source "$1"; printf '%%s\n%%s\n' "$%s" "$$"`, marker),
+					"_",
+					scriptPath,
+				)
+				if shell == "zsh" {
+					command = exec.Command(
+						shellPath,
+						"-f",
+						"-c",
+						fmt.Sprintf(`source "$1"; printf '%%s\n%%s\n' "$%s" "$$"`, marker),
+						"_",
+						scriptPath,
+					)
+				}
+			}
+			output, err := command.CombinedOutput()
+			if err != nil {
+				t.Fatalf("source %s script: %v\n%s", shell, err, output)
+			}
+			lines := strings.Fields(string(output))
+			if len(lines) != 2 || lines[0] != lines[1] {
+				t.Fatalf("%s marker and shell PID = %q, want equal values", shell, output)
 			}
 		})
 	}
@@ -365,49 +426,393 @@ func TestShellLifecycleSelectionErrorsAreInvalidArguments(t *testing.T) {
 	}
 }
 
-func TestShellLifecycleSurfaceDoesNotReportSuccessBeforeHandlersExist(t *testing.T) {
-	for _, test := range []struct {
-		name    string
-		command string
-		args    []string
+func TestShellStatusTextAndJSONReportConfigurationActivationAndEligibilityOnce(t *testing.T) {
+	root := t.TempDir()
+	home := filepath.Join(root, "home")
+	if err := os.Mkdir(home, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	rc := filepath.Join(home, ".zshrc")
+	manager := shellconfig.New(shellconfig.Environment{Home: home})
+	if summary, err := manager.Setup(shellconfig.Request{Shell: shellconfig.ShellZsh, RC: rc}); err != nil {
+		t.Fatal(err)
+	} else if summary.HasFailures() {
+		t.Fatalf("setup failed: %#v", summary.Results)
+	}
+	stateDir := filepath.Join(root, "state")
+	configureHeadroomSelections(t, stateDir)
+
+	oldHome := userHomeDir
+	oldDetect := detectInvokingShell
+	oldParentPID := parentProcessID
+	userHomeDir = func() (string, error) { return home, nil }
+	detectInvokingShell = func() (shellconfig.Invocation, error) {
+		return shellconfig.Invocation{Shell: shellconfig.ShellZsh}, nil
+	}
+	parentProcessID = func() int { return 4242 }
+	t.Cleanup(func() {
+		userHomeDir = oldHome
+		detectInvokingShell = oldDetect
+		parentProcessID = oldParentPID
+	})
+	t.Setenv(shellconfig.ActivationMarkerName(shellconfig.ShellZsh), "4242")
+	t.Setenv(provider.HeadroomProjectEnvironment, "secret-project-value")
+
+	var jsonOut, jsonErr bytes.Buffer
+	exit := execute(
+		[]string{"--state-dir", stateDir, "--format", "json", "shell", "status"},
+		strings.NewReader(""),
+		&jsonOut,
+		&jsonErr,
+	)
+	if exit != 0 {
+		t.Fatalf("JSON exit = %d; stdout=%s stderr=%s", exit, jsonOut.String(), jsonErr.String())
+	}
+	var envelope struct {
+		Command string            `json:"command"`
+		Data    shellStatusOutput `json:"data"`
+	}
+	if err := json.Unmarshal(jsonOut.Bytes(), &envelope); err != nil {
+		t.Fatalf("decode JSON output %q: %v", jsonOut.String(), err)
+	}
+	if envelope.Command != "shell.status" {
+		t.Fatalf("JSON envelope = %#v", envelope)
+	}
+	activeShells := 0
+	for _, status := range envelope.Data.Shells {
+		if status.Activation == shellconfig.ActivationActive {
+			activeShells++
+			if status.Shell != shellconfig.ShellZsh ||
+				status.Configuration != shellconfig.ConfigurationConfigured {
+				t.Errorf("active status = %#v", status)
+			}
+		}
+	}
+	if len(envelope.Data.Shells) != 1 ||
+		envelope.Data.Shells[0].Shell != shellconfig.ShellZsh ||
+		activeShells != 1 {
+		t.Fatalf("JSON shells = %#v, want only active invoking zsh", envelope.Data.Shells)
+	}
+	if len(envelope.Data.Eligibility) != 2 {
+		t.Fatalf("JSON eligibility = %#v, want two clients", envelope.Data.Eligibility)
+	}
+	for _, eligibility := range envelope.Data.Eligibility {
+		if eligibility.Reason != provider.ProjectRouteEligible {
+			t.Errorf("%s eligibility = %#v", eligibility.Client, eligibility)
+		}
+	}
+
+	fishRC := filepath.Join(home, ".config", "fish", "config.fish")
+	if err := os.MkdirAll(filepath.Dir(fishRC), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(fishRC, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	jsonOut.Reset()
+	jsonErr.Reset()
+	exit = execute(
+		[]string{"--state-dir", stateDir, "--format", "json", "shell", "status"},
+		strings.NewReader(""),
+		&jsonOut,
+		&jsonErr,
+	)
+	if exit != 0 {
+		t.Fatalf("multi-shell JSON exit = %d; stdout=%s stderr=%s", exit, jsonOut.String(), jsonErr.String())
+	}
+	envelope = struct {
+		Command string            `json:"command"`
+		Data    shellStatusOutput `json:"data"`
+	}{}
+	if err := json.Unmarshal(jsonOut.Bytes(), &envelope); err != nil {
+		t.Fatalf("decode multi-shell JSON output %q: %v", jsonOut.String(), err)
+	}
+	if len(envelope.Data.Shells) != 2 ||
+		envelope.Data.Shells[0].Shell != shellconfig.ShellZsh ||
+		envelope.Data.Shells[1].Shell != shellconfig.ShellFish {
+		t.Fatalf("multi-shell JSON shells = %#v, want zsh and existing fish", envelope.Data.Shells)
+	}
+
+	missingBash := filepath.Join(home, "missing-bash")
+	jsonOut.Reset()
+	jsonErr.Reset()
+	exit = execute(
+		[]string{
+			"--state-dir", stateDir,
+			"--format", "json",
+			"shell", "status", "bash", "--rc", missingBash,
+		},
+		strings.NewReader(""),
+		&jsonOut,
+		&jsonErr,
+	)
+	if exit != 0 {
+		t.Fatalf("explicit missing JSON exit = %d; stdout=%s stderr=%s", exit, jsonOut.String(), jsonErr.String())
+	}
+	envelope = struct {
+		Command string            `json:"command"`
+		Data    shellStatusOutput `json:"data"`
+	}{}
+	if err := json.Unmarshal(jsonOut.Bytes(), &envelope); err != nil {
+		t.Fatalf("decode explicit missing JSON output %q: %v", jsonOut.String(), err)
+	}
+	if len(envelope.Data.Shells) != 1 ||
+		envelope.Data.Shells[0].Shell != shellconfig.ShellBash ||
+		envelope.Data.Shells[0].Path != missingBash ||
+		envelope.Data.Shells[0].Configuration != shellconfig.ConfigurationAbsent {
+		t.Fatalf("explicit missing JSON shells = %#v, want absent bash", envelope.Data.Shells)
+	}
+
+	var textOut, textErr bytes.Buffer
+	exit = execute(
+		[]string{"--state-dir", stateDir, "shell", "status"},
+		strings.NewReader(""),
+		&textOut,
+		&textErr,
+	)
+	if exit != 0 {
+		t.Fatalf("text exit = %d; stdout=%s stderr=%s", exit, textOut.String(), textErr.String())
+	}
+	if strings.Count(textOut.String(), "Attribution:") != 1 ||
+		!strings.Contains(textOut.String(), "codex eligible") ||
+		!strings.Contains(textOut.String(), "claude eligible") ||
+		!strings.Contains(textOut.String(), "session: active") {
+		t.Fatalf("text status = %q", textOut.String())
+	}
+	if strings.Contains(textOut.String(), "secret-project-value") {
+		t.Fatalf("text status exposed project value: %q", textOut.String())
+	}
+}
+
+func TestShellStatusReportsUnreadableStateAsUndeterminedWithoutCreatingIt(t *testing.T) {
+	root := t.TempDir()
+	stateDir := filepath.Join(root, "missing-state")
+	rc := filepath.Join(root, "missing-zshrc")
+
+	var stdout, stderr bytes.Buffer
+	exit := execute(
+		[]string{"--state-dir", stateDir, "shell", "status", "zsh", "--rc", rc},
+		strings.NewReader(""),
+		&stdout,
+		&stderr,
+	)
+	if exit != 0 {
+		t.Fatalf("exit = %d, want 0; stdout=%s stderr=%s", exit, stdout.String(), stderr.String())
+	}
+	if strings.Count(stdout.String(), "undetermined (") != 2 {
+		t.Fatalf("status = %q, want per-client undetermined diagnostics", stdout.String())
+	}
+	if _, err := os.Stat(stateDir); !os.IsNotExist(err) {
+		t.Fatalf("status created missing state root: %v", err)
+	}
+}
+
+func TestShellSetupAndRemoveManageOnlyOwnedBlock(t *testing.T) {
+	home := t.TempDir()
+	rc := filepath.Join(home, ".zshrc")
+	original := []byte("export USER_SETTING=kept")
+	if err := os.WriteFile(rc, original, 0o640); err != nil {
+		t.Fatal(err)
+	}
+
+	var setupOutput bytes.Buffer
+	if err := run([]string{"shell", "setup", "zsh", "--rc", rc}, strings.NewReader(""), &setupOutput); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(setupOutput.String(), "zsh: configured "+rc) {
+		t.Fatalf("setup output = %q", setupOutput.String())
+	}
+	configured, err := os.ReadFile(rc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(configured, []byte("# >>> agentdeck shell integration >>>")) ||
+		!bytes.HasPrefix(configured, append(append([]byte(nil), original...), '\n')) {
+		t.Fatalf("configured startup file = %q", configured)
+	}
+
+	var jsonOutput bytes.Buffer
+	if err := run([]string{"--format", "json", "shell", "setup", "--shell", "zsh", "--rc", rc}, strings.NewReader(""), &jsonOutput); err != nil {
+		t.Fatal(err)
+	}
+	var envelope struct {
+		Command string              `json:"command"`
+		Data    shellconfig.Summary `json:"data"`
+	}
+	if err := json.Unmarshal(jsonOutput.Bytes(), &envelope); err != nil {
+		t.Fatalf("decode setup JSON %q: %v", jsonOutput.String(), err)
+	}
+	if envelope.Command != "shell.setup" ||
+		len(envelope.Data.Results) != 1 ||
+		envelope.Data.Results[0].Outcome != shellconfig.OutcomeUnchanged {
+		t.Fatalf("setup JSON = %#v", envelope)
+	}
+
+	var removeOutput bytes.Buffer
+	if err := run([]string{"shell", "remove", "zsh", "--rc", rc}, strings.NewReader(""), &removeOutput); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(removeOutput.String(), "zsh: removed "+rc) {
+		t.Fatalf("remove output = %q", removeOutput.String())
+	}
+	restored, err := os.ReadFile(rc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(restored, original) {
+		t.Fatalf("remove restored %q, want %q", restored, original)
+	}
+}
+
+func TestShellLifecycleRejectsNDJSONBeforeMutation(t *testing.T) {
+	rc := filepath.Join(t.TempDir(), ".zshrc")
+	var stdout, stderr bytes.Buffer
+	exit := execute(
+		[]string{"--format", "ndjson", "shell", "setup", "zsh", "--rc", rc},
+		strings.NewReader(""),
+		&stdout,
+		&stderr,
+	)
+	if exit != 2 {
+		t.Fatalf("exit = %d, want 2; stdout=%s stderr=%s", exit, stdout.String(), stderr.String())
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("stdout = %q, want empty", stdout.String())
+	}
+	if _, err := os.Stat(rc); !os.IsNotExist(err) {
+		t.Fatalf("startup file exists after rejected format: %v", err)
+	}
+}
+
+func TestShellSetupReportsEveryShellAndReturnsFailureWhenOneIsRefused(t *testing.T) {
+	home := t.TempDir()
+	if err := os.WriteFile(filepath.Join(home, ".zshrc"), []byte("zsh\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	fishRC := filepath.Join(home, ".config", "fish", "config.fish")
+	if err := os.MkdirAll(filepath.Dir(fishRC), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	fishTarget := filepath.Join(home, "fish-target")
+	if err := os.WriteFile(fishTarget, []byte("fish\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(fishTarget, fishRC); err != nil {
+		t.Fatal(err)
+	}
+	oldHome := userHomeDir
+	oldDetect := detectInvokingShell
+	userHomeDir = func() (string, error) { return home, nil }
+	detectInvokingShell = func() (shellconfig.Invocation, error) {
+		return shellconfig.Invocation{Shell: shellconfig.ShellBash}, nil
+	}
+	t.Cleanup(func() {
+		userHomeDir = oldHome
+		detectInvokingShell = oldDetect
+	})
+	t.Setenv("ZDOTDIR", "")
+	t.Setenv("XDG_CONFIG_HOME", "")
+
+	var stdout, stderr bytes.Buffer
+	exit := execute([]string{"--format", "json", "shell", "setup"}, strings.NewReader(""), &stdout, &stderr)
+	if exit != 1 {
+		t.Fatalf("exit = %d, want 1; stdout=%s stderr=%s", exit, stdout.String(), stderr.String())
+	}
+	var successEnvelope struct {
+		Command string              `json:"command"`
+		Data    shellconfig.Summary `json:"data"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &successEnvelope); err != nil {
+		t.Fatalf("decode result %q: %v", stdout.String(), err)
+	}
+	if successEnvelope.Command != "shell.setup" ||
+		len(successEnvelope.Data.Results) != 3 ||
+		!successEnvelope.Data.HasFailures() {
+		t.Fatalf("result envelope = %#v", successEnvelope)
+	}
+	var errorEnvelope struct {
+		Command string `json:"command"`
+		Error   struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(stderr.Bytes(), &errorEnvelope); err != nil {
+		t.Fatalf("decode error %q: %v", stderr.String(), err)
+	}
+	if errorEnvelope.Command != "shell.setup" || errorEnvelope.Error.Code != "runtime_error" {
+		t.Fatalf("error envelope = %#v", errorEnvelope)
+	}
+	for _, path := range []string{filepath.Join(home, ".zshrc"), filepath.Join(home, ".bashrc")} {
+		contents, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Contains(contents, []byte("# >>> agentdeck shell integration >>>")) {
+			t.Fatalf("%s was not configured:\n%s", path, contents)
+		}
+	}
+}
+
+func TestShellRemoveWithoutArgumentsDoesNotRequireInvokingShellDetection(t *testing.T) {
+	home := t.TempDir()
+	paths := []struct {
+		shell shellconfig.Shell
+		path  string
 	}{
-		{name: "setup", command: "shell.setup", args: []string{"shell", "setup", "--shell", "zsh"}},
-		{name: "status", command: "shell.status", args: []string{"shell", "status", "zsh"}},
-		{name: "remove", command: "shell.remove", args: []string{"shell", "remove"}},
-	} {
-		for _, format := range []string{"text", "json"} {
-			t.Run(test.name+"/"+format, func(t *testing.T) {
-				args := append([]string{"--format", format}, test.args...)
-				var stdout, stderr bytes.Buffer
-				exit := execute(args, strings.NewReader(""), &stdout, &stderr)
-				if exit != 1 {
-					t.Fatalf("%v exit = %d, want 1", args, exit)
-				}
-				if stdout.Len() != 0 {
-					t.Fatalf("%v stdout = %q, want empty", args, stdout.String())
-				}
-				if format == "text" {
-					if !strings.Contains(stderr.String(), "not available in this build") {
-						t.Fatalf("%v stderr = %q, want unavailable error", args, stderr.String())
-					}
-					return
-				}
-				var envelope struct {
-					Command string `json:"command"`
-					Error   struct {
-						Code    string `json:"code"`
-						Message string `json:"message"`
-					} `json:"error"`
-				}
-				if err := json.Unmarshal(stderr.Bytes(), &envelope); err != nil {
-					t.Fatalf("decode %v JSON error %q: %v", args, stderr.String(), err)
-				}
-				if envelope.Command != test.command ||
-					envelope.Error.Code != "runtime_error" ||
-					!strings.Contains(envelope.Error.Message, "not available in this build") {
-					t.Fatalf("%v JSON error = %#v", args, envelope)
-				}
-			})
+		{shell: shellconfig.ShellZsh, path: filepath.Join(home, ".zshrc")},
+		{shell: shellconfig.ShellFish, path: filepath.Join(home, ".config", "fish", "config.fish")},
+		{shell: shellconfig.ShellBash, path: filepath.Join(home, ".bash_profile")},
+		{shell: shellconfig.ShellBash, path: filepath.Join(home, ".bashrc")},
+	}
+	manager := shellconfig.New(shellconfig.Environment{Home: home})
+	for _, target := range paths {
+		summary, err := manager.Setup(shellconfig.Request{Shell: target.shell, RC: target.path})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if summary.HasFailures() {
+			t.Fatalf("setup %s failed: %#v", target.path, summary.Results)
+		}
+	}
+
+	oldHome := userHomeDir
+	oldDetect := detectInvokingShell
+	userHomeDir = func() (string, error) { return home, nil }
+	detectCalls := 0
+	detectInvokingShell = func() (shellconfig.Invocation, error) {
+		detectCalls++
+		return shellconfig.Invocation{}, errors.New("synthetic invoking shell failure")
+	}
+	t.Cleanup(func() {
+		userHomeDir = oldHome
+		detectInvokingShell = oldDetect
+	})
+	t.Setenv("ZDOTDIR", "")
+	t.Setenv("XDG_CONFIG_HOME", "")
+
+	var stdout, stderr bytes.Buffer
+	exit := execute(
+		[]string{"shell", "remove"},
+		strings.NewReader(""),
+		&stdout,
+		&stderr,
+	)
+	if exit != 0 {
+		t.Fatalf("exit = %d, want 0; stdout=%s stderr=%s", exit, stdout.String(), stderr.String())
+	}
+	if detectCalls != 0 {
+		t.Fatalf("detectInvokingShell called %d times, want 0", detectCalls)
+	}
+	for _, target := range paths {
+		if !strings.Contains(stdout.String(), target.path) {
+			t.Errorf("stdout = %q, want report for %s", stdout.String(), target.path)
+		}
+		contents, err := os.ReadFile(target.path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(contents) != 0 {
+			t.Errorf("%s contents = %q, want empty", target.path, contents)
 		}
 	}
 }

@@ -503,3 +503,39 @@ printf '# suffix without trailing newline' >>"$suffix_rc"
 printf '# original\n# suffix without trailing newline' >"$suffix_expected"
 uninstall_from "$suffix_home" "$suffix_prefix"
 cmp "$suffix_expected" "$suffix_rc"
+
+coexist_before_root="$temporary/coexist-before"
+coexist_before_home="$coexist_before_root/home"
+coexist_before_prefix="$coexist_before_root/prefix"
+coexist_before_rc="$coexist_before_home/.zshrc"
+coexist_before_expected="$coexist_before_root/integration-only"
+mkdir -p "$coexist_before_home"
+printf '# user configuration before integration\n' >"$coexist_before_rc"
+HOME="$coexist_before_home" "$binary" shell setup zsh --rc "$coexist_before_rc" >/dev/null
+cp "$coexist_before_rc" "$coexist_before_expected"
+install_for zsh "$coexist_before_home" "$coexist_before_prefix" "$coexist_before_rc"
+HOME="$coexist_before_home" "$binary" shell setup zsh --rc "$coexist_before_rc" >/dev/null
+uninstall_from "$coexist_before_home" "$coexist_before_prefix"
+cmp "$coexist_before_expected" "$coexist_before_rc"
+HOME="$coexist_before_home" "$binary" shell remove zsh --rc "$coexist_before_rc" >/dev/null
+printf '# user configuration before integration\n' >"$coexist_before_expected"
+cmp "$coexist_before_expected" "$coexist_before_rc"
+
+coexist_after_root="$temporary/coexist-after"
+coexist_after_home="$coexist_after_root/home"
+coexist_after_prefix="$coexist_after_root/prefix"
+coexist_after_rc="$coexist_after_home/.zshrc"
+coexist_after_completion="$coexist_after_root/completion-only"
+coexist_after_expected="$coexist_after_root/integration-only"
+mkdir -p "$coexist_after_home"
+printf '# user configuration before completion\n' >"$coexist_after_rc"
+install_for zsh "$coexist_after_home" "$coexist_after_prefix" "$coexist_after_rc"
+cp "$coexist_after_rc" "$coexist_after_completion"
+HOME="$coexist_after_home" "$binary" shell setup zsh --rc "$coexist_after_rc" >/dev/null
+HOME="$coexist_after_home" "$binary" shell remove zsh --rc "$coexist_after_rc" >/dev/null
+cmp "$coexist_after_completion" "$coexist_after_rc"
+HOME="$coexist_after_home" "$binary" shell setup zsh --rc "$coexist_after_rc" >/dev/null
+printf '# user configuration before completion\n' >"$coexist_after_expected"
+HOME="$coexist_after_home" "$binary" shell setup zsh --rc "$coexist_after_expected" >/dev/null
+uninstall_from "$coexist_after_home" "$coexist_after_prefix"
+cmp "$coexist_after_expected" "$coexist_after_rc"

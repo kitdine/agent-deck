@@ -104,6 +104,16 @@ type CurrentSelection struct {
 	Endpoint   string `json:"endpoint,omitempty"`
 }
 
+type ProjectRouteEligibility string
+
+const (
+	ProjectRouteEligible           ProjectRouteEligibility = "eligible"
+	ProjectRouteNoWrapper          ProjectRouteEligibility = "no_wrapper_route"
+	ProjectRouteWrapperNotHeadroom ProjectRouteEligibility = "wrapper_not_headroom"
+	ProjectRouteEndpointDrifted    ProjectRouteEligibility = "endpoint_drifted"
+	ProjectRouteUndetermined       ProjectRouteEligibility = "undetermined"
+)
+
 const OfficialProviderName = "official"
 
 // NormalizeWrapperURL validates and normalizes a non-empty provider wrapper
@@ -708,17 +718,37 @@ func (s Service) Current(ctx context.Context) ([]CurrentSelection, error) {
 // project attribution. Every lookup or identity failure leaves the child
 // environment untouched so attribution can never prevent a launch.
 func (s Service) RunProjectEnvironment(ctx context.Context, client Client, cwd string, environ []string) ([]string, bool) {
-	snapshot, err := s.Store.CurrentProviderSnapshot(ctx, string(client))
-	if err != nil || !snapshot.ViaWrapper {
-		return nil, false
-	}
-	definition, err := s.Show(ctx, snapshot.Name)
-	if err != nil ||
-		definition.Definition.WrapperURL != snapshot.Endpoint ||
-		definition.Definition.WrapperKind != WrapperKindHeadroom {
+	eligibility, err := s.ProjectRouteEligibility(ctx, client)
+	if err != nil || eligibility != ProjectRouteEligible {
 		return nil, false
 	}
 	return injectProjectEnvironment(client, environ, ProjectWireValue(cwd))
+}
+
+// ProjectRouteEligibility explains the same route judgement used by
+// RunProjectEnvironment without deriving or exposing a project value.
+func (s Service) ProjectRouteEligibility(ctx context.Context, client Client) (ProjectRouteEligibility, error) {
+	snapshot, err := s.Store.CurrentProviderSnapshot(ctx, string(client))
+	if errors.Is(err, sql.ErrNoRows) {
+		return ProjectRouteNoWrapper, nil
+	}
+	if err != nil {
+		return ProjectRouteUndetermined, err
+	}
+	if !snapshot.ViaWrapper {
+		return ProjectRouteNoWrapper, nil
+	}
+	definition, err := s.Show(ctx, snapshot.Name)
+	if err != nil {
+		return ProjectRouteUndetermined, err
+	}
+	if definition.Definition.WrapperKind != WrapperKindHeadroom {
+		return ProjectRouteWrapperNotHeadroom, nil
+	}
+	if definition.Definition.WrapperURL != snapshot.Endpoint {
+		return ProjectRouteEndpointDrifted, nil
+	}
+	return ProjectRouteEligible, nil
 }
 
 // ProjectAttributionGuidance reports the advisory for a completed selection
@@ -726,14 +756,8 @@ func (s Service) RunProjectEnvironment(ctx context.Context, client Client, cwd s
 // wrapper. Read-back failures suppress this informational output rather than
 // changing the status of a switch that already succeeded.
 func (s Service) ProjectAttributionGuidance(ctx context.Context, client Client) string {
-	snapshot, err := s.Store.CurrentProviderSnapshot(ctx, string(client))
-	if err != nil || !snapshot.ViaWrapper {
-		return ""
-	}
-	definition, err := s.Show(ctx, snapshot.Name)
-	if err != nil ||
-		definition.Definition.WrapperURL != snapshot.Endpoint ||
-		definition.Definition.WrapperKind != WrapperKindHeadroom {
+	eligibility, err := s.ProjectRouteEligibility(ctx, client)
+	if err != nil || eligibility != ProjectRouteEligible {
 		return ""
 	}
 	return ProjectAttributionAdvisory
