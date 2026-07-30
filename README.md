@@ -157,9 +157,10 @@ with `provider use --via` whose wrapper was explicitly declared as Headroom
 with `provider set-wrapper --kind headroom`. Without that route, shell
 integration provides no attribution benefit.
 
-If you use such a wrapper and accept one extra AgentDeck process plus a
-read-only database access on each `codex` or `claude` invocation, configure
-every shell you use with:
+With no eligibility marker, the wrappers invoke the real client without
+starting AgentDeck. While the marker is present, each `codex` or `claude`
+invocation adds one AgentDeck process plus one read-only database access.
+To use this integration, configure every shell you use with:
 
 ```bash
 agentdeck shell setup

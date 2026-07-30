@@ -137,23 +137,31 @@ agentdeck provider set-wrapper aigocode --clear
 项目值是当前目录的 safely percent-encoded basename，不会写入 AgentDeck 数据库或
 client 配置。
 
-`agentdeck run` 之外直接启动的 client，只有用户自己 source/安装了 shell helper，
-或自己写了适用的 settings 文件时才会被归属。AgentDeck 不归属 GUI app 启动；在
-AgentDeck 管理的注入路径中，未声明为 `headroom` 的 wrapper 永远不会收到归属
-header。安装 binary 或 command completion 不会自动启用 attribution wrapper。
+`agentdeck run` 之外直接启动的 client，可由用户启用的 managed shell integration
+或自己写入的适用 settings 归属。AgentDeck 不归属 GUI app 启动；在 AgentDeck
+管理的注入路径中，未声明为 `headroom` 的 wrapper 永远不会收到归属 header。
+安装 binary 或 command completion 不会自动启用 attribution wrapper。
 
 持久 shell integration 的前提是至少一个 `codex` 或 `claude` provider route 已通过
 `provider use --via` 选择，并且该 provider 的 wrapper 已通过
-`provider set-wrapper --kind headroom` 明确声明为 Headroom。满足前提且接受每次
-`codex` 或 `claude` 调用多启动一个 AgentDeck 进程并执行一次只读数据库访问时，
-可选运行：
+`provider set-wrapper --kind headroom` 明确声明为 Headroom。资格 marker 不存在
+时，wrapper 直接调用真实 client，不启动 AgentDeck；marker 存在时，每次 `codex`
+或 `claude` 调用会多启动一个 AgentDeck 进程并执行一次只读数据库访问。要使用该
+integration，可选运行：
 
 ```bash
 agentdeck shell setup
 ```
 
 setup 后可选运行 `agentdeck shell status` 自检。该命令分别报告持久配置、当前会话
-激活状态，以及每个 client 的 route 资格。
+激活状态、每个 client 的 route 资格，以及 negative-gate marker 是否与当前资格
+一致；`missing` 或 `stale` 也会由 `agentdeck doctor` 给出可恢复诊断。
+
+完成 `provider use` 后，route-change advisory 只写 stderr，`--quiet` 下不输出，
+也不进入 JSON envelope。切入 eligible Headroom `--via` route 时，已配置 shell
+integration 会报告归属已生效、新 session 的持久状态和当前 shell 激活命令；未配置
+时提示一次性运行 `agentdeck shell setup`。从 eligible route 切出时，只有已配置
+integration 才提示 wrapper 仍保留但已立即停止注入。
 
 `agentdeck shell setup` 为所有当前使用中的 shell 写入 attribution wrapper；它不是安装必需步骤。
 拒绝或跳过不会影响 AgentDeck 的普通功能，只会让 shell-based project attribution

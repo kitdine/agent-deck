@@ -508,9 +508,11 @@ install_agentdeck() {
   printf '\n'
   printf '%s\n' \
     'Project-attribution wrappers are optional and only act when a provider' \
-    'routes through a declared Headroom wrapper. If you use one and accept one' \
-    'extra AgentDeck process plus a read-only database access on each `codex`' \
-    'or `claude` invocation, configure every shell you use with:' \
+    'routes through a declared Headroom wrapper. With no eligibility marker,' \
+    'wrappers invoke the real client without starting AgentDeck. While the' \
+    'marker is present, each `codex` or `claude` invocation adds one AgentDeck' \
+    'process plus one read-only database access. To use this, configure every' \
+    'shell you use with:' \
     '  agentdeck shell setup' \
     '' \
     'To undo it later:' \

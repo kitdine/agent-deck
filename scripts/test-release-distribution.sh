@@ -70,8 +70,10 @@ grep -F 'on_arch_conditional arm: "arm64", intel: "amd64"' "$formula" >/dev/null
 grep -F 'shell_parameter_format: :cobra' "$formula" >/dev/null
 grep -F 'def caveats' "$formula" >/dev/null
 grep -F 'Project-attribution wrappers are optional and only act when a provider' "$formula" >/dev/null
-grep -F 'routes through a declared Headroom wrapper.' "$formula" >/dev/null
-grep -F 'extra AgentDeck process plus a read-only database access' "$formula" >/dev/null
+grep -F 'routes through a declared Headroom wrapper. With no eligibility marker,' "$formula" >/dev/null
+grep -F 'wrappers invoke the real client without starting AgentDeck. While the' "$formula" >/dev/null
+grep -F 'marker is present, each `codex` or `claude` invocation adds one AgentDeck' "$formula" >/dev/null
+grep -F 'process plus one read-only database access. To use this, configure every' "$formula" >/dev/null
 grep -F 'agentdeck shell setup' "$formula" >/dev/null
 grep -F 'agentdeck shell remove' "$formula" >/dev/null
 grep -F 'Command completion is already installed and needs no further action.' "$formula" >/dev/null

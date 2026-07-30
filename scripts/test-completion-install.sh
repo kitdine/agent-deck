@@ -271,8 +271,10 @@ for shell in fish zsh bash; do
   install_output="$case_root/install.out"
   install_for "$shell" "$home" "$prefix" "$rc" "$install_output"
   grep -F 'Project-attribution wrappers are optional and only act when a provider' "$install_output" >/dev/null
-  grep -F 'routes through a declared Headroom wrapper.' "$install_output" >/dev/null
-  grep -F 'extra AgentDeck process plus a read-only database access' "$install_output" >/dev/null
+  grep -F 'routes through a declared Headroom wrapper. With no eligibility marker,' "$install_output" >/dev/null
+  grep -F 'wrappers invoke the real client without starting AgentDeck. While the' "$install_output" >/dev/null
+  grep -F 'marker is present, each `codex` or `claude` invocation adds one AgentDeck' "$install_output" >/dev/null
+  grep -F 'process plus one read-only database access. To use this, configure every' "$install_output" >/dev/null
   grep -F '  agentdeck shell setup' "$install_output" >/dev/null
   grep -F '  agentdeck shell remove' "$install_output" >/dev/null
   grep -F 'Command completion is already installed and needs no further action.' "$install_output" >/dev/null
@@ -319,9 +321,11 @@ printf '# user configuration\n' >"$none_rc"
 cp -p "$none_rc" "$none_expected"
 install_for none "$none_home" "$none_prefix" "$none_rc" "$none_output"
 grep -F 'Project-attribution wrappers are optional and only act when a provider' "$none_output" >/dev/null
-grep -F 'routes through a declared Headroom wrapper. If you use one and accept one' "$none_output" >/dev/null
-grep -F 'extra AgentDeck process plus a read-only database access on each `codex`' "$none_output" >/dev/null
-grep -F 'or `claude` invocation, configure every shell you use with:' "$none_output" >/dev/null
+grep -F 'routes through a declared Headroom wrapper. With no eligibility marker,' "$none_output" >/dev/null
+grep -F 'wrappers invoke the real client without starting AgentDeck. While the' "$none_output" >/dev/null
+grep -F 'marker is present, each `codex` or `claude` invocation adds one AgentDeck' "$none_output" >/dev/null
+grep -F 'process plus one read-only database access. To use this, configure every' "$none_output" >/dev/null
+grep -F 'shell you use with:' "$none_output" >/dev/null
 grep -F '  agentdeck shell setup' "$none_output" >/dev/null
 grep -F 'To undo it later:' "$none_output" >/dev/null
 grep -F '  agentdeck shell remove' "$none_output" >/dev/null
