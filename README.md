@@ -158,8 +158,11 @@ with `provider set-wrapper --kind headroom`. Without that route, shell
 integration provides no attribution benefit.
 
 With no eligibility marker, the wrappers invoke the real client without
-starting AgentDeck. While the marker is present, each `codex` or `claude`
-invocation adds one AgentDeck process plus one read-only database access.
+starting AgentDeck. When the marker exists, each invocation starts one
+AgentDeck process and performs one read-only database access. On the measured
+Intel macOS 26.6 host, marker-present paths added roughly 0.1-0.2 seconds per
+invocation; this is an environment-specific order of magnitude, not a
+performance guarantee.
 To use this integration, configure every shell you use with:
 
 ```bash

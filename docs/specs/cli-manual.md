@@ -132,91 +132,142 @@ agentdeck provider set-wrapper aigocode --clear
 
 ### Project Attribution
 
-把 wrapper 声明为 `headroom` 只是允许项目归属；只有经该 wrapper 发出的请求才会携带
-`X-Headroom-Project`。AgentDeck 不从 URL 或 provider 名称猜协议，也不探测实际代理。
-项目值是当前目录的 safely percent-encoded basename，不会写入 AgentDeck 数据库或
-client 配置。
+把 wrapper 声明为 `headroom` 只是允许项目归属；某个 client 只有在最新一次
+`provider use --via` 仍指向该 provider 当前的 Headroom wrapper 时才 eligible。
+项目值是当前目录经过安全 percent-encoding 的 basename，不写入 AgentDeck 数据库
+或 client 配置。用户已经设置的 attribution 值优先。
 
-`agentdeck run` 之外直接启动的 client，可由用户启用的 managed shell integration
-或自己写入的适用 settings 归属。AgentDeck 不归属 GUI app 启动；在 AgentDeck
-管理的注入路径中，未声明为 `headroom` 的 wrapper 永远不会收到归属 header。
-安装 binary 或 command completion 不会自动启用 attribution wrapper。
+直接启动的 Codex 或 Claude CLI 可以通过 managed shell integration 归属；GUI app
+启动不在保证范围内。安装 binary 或 command completion 不会配置 shell integration，
+package uninstall 也不会修改 startup file。
 
-持久 shell integration 的前提是至少一个 `codex` 或 `claude` provider route 已通过
-`provider use --via` 选择，并且该 provider 的 wrapper 已通过
-`provider set-wrapper --kind headroom` 明确声明为 Headroom。资格 marker 不存在
-时，wrapper 直接调用真实 client，不启动 AgentDeck；marker 存在时，每次 `codex`
-或 `claude` 调用会多启动一个 AgentDeck 进程并执行一次只读数据库访问。要使用该
-integration，可选运行：
+#### 配置、检查与移除
 
-```bash
-agentdeck shell setup
-```
+通常无需单独 setup：成功的交互式 text `provider use --via` 在至少一个 client
+变为 eligible、stderr 是 TTY、未使用 `--quiet`、JSON/NDJSON、
+`--no-shell-setup`，且用户没有拒绝时，会为当前使用中的 shell 自动配置。
+非 TTY、`--quiet`、JSON/NDJSON 或 `--no-shell-setup` 都不会写 startup file。
+自动配置失败不回滚已经成功的 provider switch，只改为提示手动 setup。
 
-setup 后可选运行 `agentdeck shell status` 自检。该命令分别报告持久配置、当前会话
-激活状态、每个 client 的 route 资格，以及 negative-gate marker 是否与当前资格
-一致；`missing` 或 `stale` 也会由 `agentdeck doctor` 给出可恢复诊断。
-
-完成 `provider use` 后，route-change advisory 只写 stderr，`--quiet` 下不输出，
-也不进入 JSON envelope。切入 eligible Headroom `--via` route 时，已配置 shell
-integration 会报告归属已生效、新 session 的持久状态和当前 shell 激活命令；未配置
-时提示一次性运行 `agentdeck shell setup`。从 eligible route 切出时，只有已配置
-integration 才提示 wrapper 仍保留但已立即停止注入。
-
-`agentdeck shell setup` 为所有当前使用中的 shell 写入 attribution wrapper；它不是安装必需步骤。
-拒绝或跳过不会影响 AgentDeck 的普通功能，只会让 shell-based project attribution
-保持未启用。command completion 与此流程独立，`shell setup` 不负责安装命令补全。
-撤销时运行：
+也可以显式管理：
 
 ```bash
-agentdeck shell remove
+agentdeck shell setup [bash|zsh|fish] [--rc <path>]
+agentdeck shell status [bash|zsh|fish] [--rc <path>]
+agentdeck shell remove [bash|zsh|fish] [--rc <path>]
 ```
 
-有三种应用方式：
+无参数命令覆盖所有 in-use shell：默认 startup file 已存在，或它就是当前 invoking
+shell。当前 shell 即使 startup file 不存在也会被包含；仅仅安装了另一个 shell
+不会创建它的文件。zsh 使用 `${ZDOTDIR:-$HOME}/.zshrc`，fish 使用
+`${XDG_CONFIG_HOME:-$HOME/.config}/fish/config.fish`；bash 根据 invoking shell
+是否为 login shell选择 `.bash_profile` 或 `.bashrc`，同时纳入已经存在的 Bash
+startup file。显式 shell 只处理该 shell；非默认路径只能作为唯一目标。
+`--shell <bash|zsh|fish>` 与 positional shell 等价；`--rc <path>` 选择
+非默认 startup file，因此要求单 shell 操作。
 
-1. **AgentDeck 启动的进程**：`agentdeck run codex -- ...` 和
-   `agentdeck run claude -- ...` 自动按启动目录归属。Codex 通过
-   `HEADROOM_PROJECT` 与受管 `env_http_headers` mapping 发出 header；Claude 通过
-   `ANTHROPIC_CUSTOM_HEADERS` 发出同一 header。用户已经设置的值优先。
-2. **shell function 启动的进程**：`agentdeck shell-init <bash|fish|zsh>` 只向
-   stdout 输出包装 `codex` 与 `claude` 的 shell program；单独运行该命令既不激活，
-   也不持久安装任何内容。兼容场景下 source 该输出只激活当前 shell；持久配置使用上面的
-   `agentdeck shell setup`。函数在每次启动时按当前目录动态计算 project 值。生成脚本
-   不需要配置 wrapper；归属生效则要求当前选择经由声明为
-   `headroom` 的 wrapper，即已对该 provider 执行 `provider use --via`。未满足时
-   helper 静默不注入且不影响客户端启动。例如：
+`setup` 幂等安装 AgentDeck-owned block；合法旧版本可升级，相同 block 报
+`unchanged`，重复、截断、被编辑或 hash 无效的 region 会拒绝覆盖。
+`status` 只读，分别报告：
 
-   ```bash
-   source <(agentdeck shell-init bash)
-   ```
+- 持久配置：`absent`、`configured`、`modified`、`invalid`；
+- 当前会话 JSON：`active`、`inactive`、`inherited_from_ancestor`；text 将最后
+  一种显示为 `inactive (marker inherited from ancestor shell)`；
+- 每个 client 的 route 资格及原因；
+- negative-gate marker 与当前资格是否一致。
 
-   zsh 同样可以 source 命令输出；fish 3.4 或更新版本使用
-   `agentdeck shell-init fish | source`。用户已经设置的 attribution 值仍然优先。
-   Codex 还要求受管 `env_http_headers` mapping 将 `HEADROOM_PROJECT` 映射为
-   `X-Headroom-Project` header；该 mapping 只随上述合格 Headroom route 写入，
-   普通 direct switch 或非 Headroom wrapper 不会写入。
-3. **用户维护的 project-scoped settings**：适合不经过 AgentDeck 或 shell function
-   的启动。AgentDeck 只提供 recipe，不创建或修改 repository 文件。例如由用户自己
-   创建 `.claude/settings.local.json`：
+显式检查一个 startup file 缺失的 shell 仍返回该 shell 的一个 `absent` 结果。
+`remove` 只删除校验通过的 AgentDeck-owned block，保留 startup file 其他每个
+字节和独立的 completion block；不存在时幂等成功，被编辑或 invalid 时拒绝自动
+删除。它打印的当前会话停用命令在函数存在或不存在时都安全。无参数多目标操作逐项
+报告并继续处理，成功目标会保留，任一失败使整体失败。
 
-   ```json
-   {
-     "env": {
-       "ANTHROPIC_CUSTOM_HEADERS": "X-Headroom-Project: my%20project"
-     }
-   }
-   ```
+`shell remove` 还记录“不再自动配置”；后续 eligible switch 不会重装。
+显式 `shell setup` 清除此选择。
 
-   `my%20project` 应替换为项目目录 basename 的 percent-encoded 值；已有 custom
-   headers 必须保留，并以换行分隔追加这一行。Claude app 是否读取 project-scoped
-   settings、何时需要重启由 Claude 决定，AgentDeck 不作保证。
+#### Presence guard 与调用成本
+
+受管 block 在生成函数前检查 AgentDeck 是否仍在 `PATH`：bash/zsh 使用
+`command -v agentdeck >/dev/null 2>&1`，fish 使用 `type -q agentdeck`。
+binary 不存在时 block 静默惰性，Codex/Claude 继续解析到真实 client；因此 package
+uninstall 后留下的 block 不会破坏新 shell。仅 binary 缺失被静默处理；找到
+AgentDeck 后若生成或 source 失败，错误仍然可见。
+
+wrapper 先检查 `<state-root>/project-attribution.enabled`。marker 不存在时直接
+调用真实 client，不启动 AgentDeck。marker 存在时，每次 client 调用多启动一个
+AgentDeck resolver 进程并执行一次只读数据库打开，然后仍完整检查该 client
+是否 eligible。在实测的 Intel macOS 26.6 主机上，这条路径每次增加约
+0.1–0.2 秒；这是环境相关量级，不是性能保证。marker 是机器本地派生状态，不进入
+portable backup；restore 后缺失是合法状态。provider switch 在 selection commit
+后 best-effort 刷新 marker；刷新失败不回滚或弄失败已完成的 switch，missing/stale
+状态继续由 `shell status` 和 `agentdeck doctor` 诊断，后续成功刷新才会重建。
+
+#### Resolver 与兼容入口
+
+`agentdeck shell env <codex|claude>` 是受支持的 resolver。eligible 时 stdout
+只输出最终环境变量值；route 不 eligible、状态不可读或没有项目值时 stdout 为空、
+退出码为 `0`。不支持的 client 使用标准参数错误。
+
+`agentdeck shell-init <bash|fish|zsh>` 是隐藏但仍可调用的兼容原语，只向 stdout
+输出 `codex` 和 `claude` 函数；单独运行不会安装、激活或写文件。bash/zsh 可用：
+
+```bash
+eval "$(agentdeck shell-init bash)"
+```
+
+zsh 将参数换为 `zsh`；fish 3.4 或更新版本使用：
+
+```fish
+agentdeck shell-init fish | source
+```
+
+持久配置应使用 `agentdeck shell setup`。该隐藏命令不能删除：受管 block 动态
+调用它以便升级 binary 而无需重写 dotfile，生成 wrapper 与旧 block 仍调用其
+resolver alias，而且 `v0.2.1-rc.1` 已通过 Homebrew RC 与手册发布手工 source
+方式。隐藏的 `shell-init --project-environment <client>` 在这些消费者消失前
+必须与 `shell env <client>` 保持逐字节等价。
+
+#### 生效方式与 route advisory
+
+有三种生效方式：
+
+1. `agentdeck run codex -- ...` 和 `agentdeck run claude -- ...` 为其启动的
+   child process 注入。Codex 使用 `HEADROOM_PROJECT` 与受管
+   `env_http_headers` mapping；Claude 使用 `ANTHROPIC_CUSTOM_HEADERS`。
+2. managed shell function 在每次 client 启动时按当前目录和当前 route 动态
+   resolver；不 eligible 或读取失败时不注入但仍原样启动真实 client。
+3. 用户可以自己维护 project-scoped settings，例如
+   `.claude/settings.local.json`；AgentDeck 只提供 recipe，不创建或修改它。
+
+```json
+{
+  "env": {
+    "ANTHROPIC_CUSTOM_HEADERS": "X-Headroom-Project: my%20project"
+  }
+}
+```
+
+`my%20project` 替换为目录 basename 的 percent-encoded 值；已有 custom headers
+必须保留，并用换行追加。Claude app 是否读取该 settings、何时需要重启由 Claude
+决定，AgentDeck 不作保证。
+
+`provider use` 的 attribution advisory 只写 stderr，`--quiet` 下抑制，不进入
+JSON，也不改变退出码：
+
+- 切入 eligible route 且 integration 已配置：说明归属已生效、新 shell 已持久，
+  并给出当前 shell 激活命令；
+- 切入 eligible route 但未配置：提示一次 `agentdeck shell setup`；
+- 从 eligible route 切出且 integration 已配置：说明函数仍安装但立即停止注入；
+- 其他组合不输出 attribution advisory。
+
+`provider set-wrapper` 的提示只说明机制前提：eligible route、派生 marker 与已配置
+shell integration；仅修改 wrapper metadata 不会被表述为“归属已经生效”。
 
 协议背景见 Headroom 的
 [project attribution issue](https://github.com/headroomlabs-ai/headroom/issues/802)
-以及
+与
 [v0.27.0 release note](https://github.com/headroomlabs-ai/headroom/releases/tag/v0.27.0)。
 这些第三方链接只出现在本手册；命令 advisory 只链接 AgentDeck 自己的文档。
-
 ### 客户端切换提示（stderr）
 
 切换成功后，除 effective route 外还会在 stderr 打印客户端对应的提示行，前缀

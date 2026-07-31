@@ -39,6 +39,13 @@ func TestShellInitEmitsDynamicClientWrappersForSupportedShells(t *testing.T) {
 			if marker := shellconfig.ActivationMarkerName(shellconfig.Shell(shell)); !strings.Contains(script, marker) {
 				t.Errorf("shell-init %s does not set activation marker %s:\n%s", shell, marker, script)
 			}
+			pathGuard := "command -v agentdeck >/dev/null 2>&1"
+			if shell == "fish" {
+				pathGuard = "type -q agentdeck"
+			}
+			if count := strings.Count(script, pathGuard); count != 2 {
+				t.Errorf("shell-init %s has %d agentdeck PATH guards, want 2:\n%s", shell, count, script)
+			}
 			gatePath := provider.ProjectAttributionGatePath(stateDir)
 			if !strings.Contains(script, shellQuote(gatePath)) {
 				t.Errorf("shell-init %s does not guard on %s:\n%s", shell, gatePath, script)
@@ -91,15 +98,21 @@ func TestShellInitQuotesGatePathAndDefinesBothWrappers(t *testing.T) {
 			var gateExpressions []string
 			for _, line := range strings.Split(script, "\n") {
 				line = strings.TrimSpace(line)
-				if shell == "fish" && strings.HasPrefix(line, "if test -f ") {
+				if shell == "fish" {
+					const gateTest = "test -f "
+					start := strings.Index(line, gateTest)
+					if start < 0 {
+						continue
+					}
 					gateExpressions = append(
 						gateExpressions,
-						strings.TrimPrefix(line, "if test -f "),
+						line[start+len(gateTest):],
 					)
 					continue
 				}
-				if shell != "fish" && strings.HasPrefix(line, "if [ -f ") {
-					expression := strings.TrimPrefix(line, "if [ -f ")
+				const gateTest = "[ -f "
+				if start := strings.Index(line, gateTest); start >= 0 {
+					expression := line[start+len(gateTest):]
 					end := strings.Index(expression, " ] &&")
 					if end < 0 {
 						t.Fatalf("bash gate line has no closing test: %q", line)
@@ -321,6 +334,46 @@ func TestShellInitRejectsUnsupportedShell(t *testing.T) {
 	}
 	if stdout.Len() != 0 {
 		t.Fatalf("shell-init powershell stdout = %q, want empty", stdout.String())
+	}
+}
+
+func TestShellRemoveSummaryPrintsGuardedDeactivationOncePerShell(t *testing.T) {
+	tests := []struct {
+		shell shellconfig.Shell
+		want  string
+	}{
+		{
+			shell: shellconfig.ShellBash,
+			want: "if declare -F codex >/dev/null; then unset -f codex; fi; " +
+				"if declare -F claude >/dev/null; then unset -f claude; fi",
+		},
+		{
+			shell: shellconfig.ShellFish,
+			want: "if functions -q codex; functions --erase codex; end; " +
+				"if functions -q claude; functions --erase claude; end",
+		},
+		{
+			shell: shellconfig.ShellZsh,
+			want: "if (( $+functions[codex] )); then unfunction codex; fi; " +
+				"if (( $+functions[claude] )); then unfunction claude; fi",
+		},
+	}
+	for _, test := range tests {
+		t.Run(string(test.shell), func(t *testing.T) {
+			var stdout bytes.Buffer
+			opts := &commandOptions{stdout: &stdout, format: "text"}
+			summary := shellconfig.Summary{Results: []shellconfig.Result{
+				{Shell: test.shell, Path: "/tmp/first", Outcome: shellconfig.OutcomeRemoved},
+				{Shell: test.shell, Path: "/tmp/second", Outcome: shellconfig.OutcomeAbsent},
+			}}
+			if err := writeShellLifecycleSummary(opts, "remove", summary); err != nil {
+				t.Fatalf("write remove summary: %v", err)
+			}
+			line := "Current session deactivation for " + string(test.shell) + ": " + test.want
+			if count := strings.Count(stdout.String(), line); count != 1 {
+				t.Fatalf("deactivation count = %d, want 1:\n%s", count, stdout.String())
+			}
+		})
 	}
 }
 

@@ -23,7 +23,7 @@ test_shell_helpers() {
   local fail_root="$helper_root/fail-open"
   local shell script shell_path actual actual_claude expected
   local unconfigured_codex unconfigured_claude direct_codex direct_claude
-  local actual_unconfigured_codex actual_unconfigured_claude mode
+  local actual_unconfigured_codex actual_unconfigured_claude mode fail_stderr fail_claude_stderr
 
   mkdir -p "$fixture" "$fake_bin" "$fail_root/unavailable" "$fail_root/nonzero" "$fail_root/empty"
   cat >"$fake_bin/codex" <<'EOF'
@@ -44,7 +44,8 @@ EOF
 #!/bin/sh
 printf '%s\n' client-started
 EOF
-    chmod 0755 "$fail_root/$mode/codex"
+    cp "$fail_root/$mode/codex" "$fail_root/$mode/claude"
+    chmod 0755 "$fail_root/$mode/codex" "$fail_root/$mode/claude"
   done
   cat >"$fail_root/nonzero/agentdeck" <<'EOF'
 #!/bin/sh
@@ -206,23 +207,40 @@ EOF
     test "$actual_unconfigured_claude" = "$unconfigured_claude"
 
     for mode in unavailable nonzero empty; do
+      fail_stderr="$fail_root/$mode/$shell.stderr"
+      fail_claude_stderr="$fail_root/$mode/$shell-claude.stderr"
       case "$shell" in
         fish)
           actual=$(
             cd "$fixture"
             HOME="$helper_root/fail-home" PATH="$fail_root/$mode:/usr/bin:/bin" \
-              "$shell_path" -c 'source "$argv[1]"; codex' "$script"
+              "$shell_path" -c 'source "$argv[1]"; codex' "$script" 2>"$fail_stderr"
+          )
+          actual_claude=$(
+            cd "$fixture"
+            HOME="$helper_root/fail-home" PATH="$fail_root/$mode:/usr/bin:/bin" \
+              "$shell_path" -c 'source "$argv[1]"; claude' "$script" 2>"$fail_claude_stderr"
           )
           ;;
         *)
           actual=$(
             cd "$fixture"
             HOME="$helper_root/fail-home" PATH="$fail_root/$mode:/usr/bin:/bin" \
-              "$shell_path" -c 'source "$1"; codex' _ "$script"
+              "$shell_path" -c 'source "$1"; codex' _ "$script" 2>"$fail_stderr"
+          )
+          actual_claude=$(
+            cd "$fixture"
+            HOME="$helper_root/fail-home" PATH="$fail_root/$mode:/usr/bin:/bin" \
+              "$shell_path" -c 'source "$1"; claude' _ "$script" 2>"$fail_claude_stderr"
           )
           ;;
       esac
       test "$actual" = "client-started"
+      test "$actual_claude" = "client-started"
+      if [ "$mode" = unavailable ]; then
+        test ! -s "$fail_stderr"
+        test ! -s "$fail_claude_stderr"
+      fi
     done
   done
 }
@@ -272,9 +290,12 @@ for shell in fish zsh bash; do
   install_for "$shell" "$home" "$prefix" "$rc" "$install_output"
   grep -F 'Project-attribution wrappers are optional and only act when a provider' "$install_output" >/dev/null
   grep -F 'routes through a declared Headroom wrapper. With no eligibility marker,' "$install_output" >/dev/null
-  grep -F 'wrappers invoke the real client without starting AgentDeck. While the' "$install_output" >/dev/null
-  grep -F 'marker is present, each `codex` or `claude` invocation adds one AgentDeck' "$install_output" >/dev/null
-  grep -F 'process plus one read-only database access. To use this, configure every' "$install_output" >/dev/null
+  grep -F 'wrappers invoke the real client without starting AgentDeck. When the' "$install_output" >/dev/null
+  grep -F 'marker exists, each invocation starts one AgentDeck process and performs' "$install_output" >/dev/null
+  grep -F 'one read-only database access. On the measured Intel macOS 26.6 host,' "$install_output" >/dev/null
+  grep -F 'marker-present paths added roughly 0.1-0.2 seconds per invocation; this is' "$install_output" >/dev/null
+  grep -F 'an environment-specific order of magnitude, not a performance guarantee.' "$install_output" >/dev/null
+  grep -F 'To use this, configure every shell you use with:' "$install_output" >/dev/null
   grep -F '  agentdeck shell setup' "$install_output" >/dev/null
   grep -F '  agentdeck shell remove' "$install_output" >/dev/null
   grep -F 'Command completion is already installed and needs no further action.' "$install_output" >/dev/null
@@ -322,9 +343,12 @@ cp -p "$none_rc" "$none_expected"
 install_for none "$none_home" "$none_prefix" "$none_rc" "$none_output"
 grep -F 'Project-attribution wrappers are optional and only act when a provider' "$none_output" >/dev/null
 grep -F 'routes through a declared Headroom wrapper. With no eligibility marker,' "$none_output" >/dev/null
-grep -F 'wrappers invoke the real client without starting AgentDeck. While the' "$none_output" >/dev/null
-grep -F 'marker is present, each `codex` or `claude` invocation adds one AgentDeck' "$none_output" >/dev/null
-grep -F 'process plus one read-only database access. To use this, configure every' "$none_output" >/dev/null
+grep -F 'wrappers invoke the real client without starting AgentDeck. When the' "$none_output" >/dev/null
+grep -F 'marker exists, each invocation starts one AgentDeck process and performs' "$none_output" >/dev/null
+grep -F 'one read-only database access. On the measured Intel macOS 26.6 host,' "$none_output" >/dev/null
+grep -F 'marker-present paths added roughly 0.1-0.2 seconds per invocation; this is' "$none_output" >/dev/null
+grep -F 'an environment-specific order of magnitude, not a performance guarantee.' "$none_output" >/dev/null
+grep -F 'To use this, configure every shell you use with:' "$none_output" >/dev/null
 grep -F 'shell you use with:' "$none_output" >/dev/null
 grep -F '  agentdeck shell setup' "$none_output" >/dev/null
 grep -F 'To undo it later:' "$none_output" >/dev/null

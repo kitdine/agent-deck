@@ -13,9 +13,9 @@ opened"; this plan opens those files once, deliberately, instead of letting the
 entries age further.
 
 The batch is deliberately narrow: no new command, flag, database table, or
-column. Two tasks change promised behavior and therefore raise the contract to
-specification version 21; the rest are internal robustness or documentation
-accuracy.
+column. Two tasks change promised behavior, so the batch's contract task must
+increment `docs/specs/cli-design.md` once from whatever version is current at
+delivery; the rest are internal robustness or documentation accuracy.
 
 ## Goal
 
@@ -306,8 +306,8 @@ depend on it.
 Record the shipped behavior in the contract and the manual, mirroring the
 `attribution-contract` pattern.
 
-- Raise `docs/specs/cli-design.md` to version 21 with one changelog row
-  covering this batch.
+- Increment `docs/specs/cli-design.md` once from whatever version is current at
+  delivery, with one changelog row covering this batch.
 - Rewrite the aggregate-cache-creation rule at lines 903-904 to state the
   disclosed five-minute default and the unchanged conservative handling of
   partial breakdowns.

@@ -9,7 +9,7 @@ This is both the documentation index and the execution baseline. Decide what to
 work on next from this file. Repository code, tests, configuration, and Git
 history remain the source of truth when they disagree with any document.
 
-## Current State (2026-07-29)
+## Current State (2026-07-31)
 
 `v0.2.0` is now the current stable release. Its annotated tag points to
 `8c053c9df53f9aad0797d3e9bf2d307fd203ab8a`; the tagged tree differs from
@@ -95,12 +95,15 @@ which records the refusal until `shell setup` reverses it. `shell setup` therefo
 stops being the ordinary path and becomes the explicit one, for configuring ahead
 of any route, repairing a block, or following a non-interactive switch.
 
-[The shell integration plan](plans/shell-integration.md) owns that lifecycle,
-per-client eligibility reporting, route-change advisories, switch-time setup,
-cross-shell verification, and the `v0.2.1-rc.2` release gate. All eight of its
-tasks were decided to ship in `v0.2.1` rather than being split, accepting a later
-release in exchange for not shipping the interface twice. The `v0.2.2` hardening
-batch is paused behind it.
+[The retired shell integration plan](archive/plans/shell-integration.md)
+delivered the shell lifecycle, per-client eligibility reporting, route-change
+advisories, switch-time setup, cross-shell verification, and living contract
+migration. All eight tasks passed independent review; the stable contract now
+lives in `docs/specs/cli-design.md` version 21 and
+`docs/specs/cli-manual.md`, while implementation and review history live under
+`docs/archive/`. This documentation closure is not release-readiness proof:
+L4 and real RC2 artifact installation remain later delivery gates. The
+`v0.2.2` hardening plans are no longer blocked by this plan.
 
 v0.1.1 is published and installable through `kitdine/homebrew-tap`. Every
 follow-up in the retired phase-one plan passed independent review, so there is
@@ -345,9 +348,8 @@ defect fix.
 
 | Document | Purpose |
 | --- | --- |
-| [specs/cli-design.md](specs/cli-design.md) | What the system does and must keep doing: provider, credential, usage, pricing, session, backup, and distribution behavior. Currently version 20; see its changelog. |
-| [plans/shell-integration.md](plans/shell-integration.md) | The `v0.2.1-rc.2` shell integration lifecycle: interactive `provider use --via` configuring every shell in use, `shell setup`/`status`/`remove`/`env` as the explicit surface, a presence-guarded managed startup-file block, per-client route-eligibility reporting, route-change advisories, hidden compatibility `shell-init`, and cross-shell acceptance. `active — 6/8 done`. |
-| [plans/credential-and-pricing-hardening.md](plans/credential-and-pricing-hardening.md) | The `v0.2.2` hardening batch: credential key durability and key-ID derivation, price-retry ordering, session-health doc accuracy, and Claude cache-creation TTL defaulting. Paused on 2026-07-29 behind the shell integration plan; `active — 0/6 done`. |
+| [specs/cli-design.md](specs/cli-design.md) | What the system does and must keep doing: provider, credential, usage, pricing, session, backup, and distribution behavior. Currently version 21; see its changelog. |
+| [plans/credential-and-pricing-hardening.md](plans/credential-and-pricing-hardening.md) | `v0.2.2` hardening batch: credential key durability and key-ID derivation, price-retry ordering, session-health documentation accuracy, and Claude cache-creation TTL defaulting. Unblocked on 2026-07-31 after shell integration plan retirement; `active — 0/6 done`. |
 | [plans/runtime-provider-attribution.md](plans/runtime-provider-attribution.md) | The `v0.2.2` Hook-first runtime attribution work: reversible Codex/Claude Hook setup, resumed-session and Claude reload boundaries, non-blocking concurrent runs, and unchanged project-attribution shell functions. `active — 0/4 done`. |
 | [specs/cli-manual.md](specs/cli-manual.md) | The implemented command surface, flags, and output shapes. |
 | [reviews/](reviews/README.md) | Per-task review records that back each plan's ticked `Review` cell. |

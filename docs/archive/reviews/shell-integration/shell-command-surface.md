@@ -1,7 +1,8 @@
 ---
-status: active
+status: historical
 plan: shell-integration
 task: shell-command-surface
+retired: 2026-07-31
 ---
 
 # Review log — shell-integration / shell-command-surface

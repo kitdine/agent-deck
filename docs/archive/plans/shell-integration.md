@@ -1,6 +1,7 @@
 ---
-status: active
+status: historical
 created: 2026-07-29
+retired: 2026-07-31
 ---
 
 # Shell Integration
@@ -1057,17 +1058,30 @@ eligible route, an ineligible route with the marker present, and an ineligible
 route gated by an absent marker, and records the numbers in this plan. The
 measurement is evidence for the disclosure in task 4, not a performance gate.
 
-The disclosure follow-up is mandatory:
+Measured on 2026-07-30 using the current worktree binary on an Intel
+`darwin/amd64` host running macOS 26.6 and Go 1.26.5. The harness sourced the
+generated bash wrapper, invoked a no-op external `codex`, and took the median
+of 9 batches of 200 invocations. The direct-client median was 33.83 ms per
+invocation. Results:
 
-- when task 6 lands the negative-gate marker, it must revise the cost wording
-  from "on each invocation" to marker-dependent behavior in the Homebrew
-  formula caveat, `scripts/manage-install.sh`, `README.md`, and
-  `docs/specs/cli-manual.md`, and update the matching assertions in
-  `scripts/test-completion-install.sh` and
-  `scripts/test-release-distribution.sh`;
-- after this task measures the three paths above, it must backfill those
-  measured figures into the same four user-facing texts and both assertion
-  sets. Qualitative disclosure alone does not satisfy task 4 acceptance item 4.
+| Wrapper path | Median total | Added versus direct client |
+| --- | ---: | ---: |
+| eligibility marker absent | 31.62 ms | not applicable; the gate starts no AgentDeck process |
+| marker present, route ineligible | 145.85 ms | +112.02 ms |
+| route eligible | 185.84 ms | +152.02 ms |
+
+These are disclosure measurements for this host and sandbox, not a performance
+gate or a cross-machine guarantee.
+
+Disclosure decision: the exact measurements remain in this plan, where their
+host and method are recorded. The Homebrew formula caveat,
+`scripts/manage-install.sh`, `README.md`, and `docs/specs/cli-manual.md`
+describe the marker-dependent cost shape: no AgentDeck process when the marker
+is absent; one AgentDeck process and one read-only database access per
+invocation when it is present. Those user-facing texts include only the
+host-qualified order of magnitude (roughly 0.1-0.2 seconds on the measured
+Intel macOS 26.6 host), and their assertions pin that structural disclosure
+rather than the exact table values.
 
 Verification: L3 isolated-home integration tests. The final release candidate
 uses the project L4 `make release-verify` aggregate gate once after the last
@@ -1221,6 +1235,25 @@ fresh-shell activation verification from the RC2 artifact.
 Verification: L0 documentation checks for the task itself; release readiness is
 proved later by L4 and real artifact installation, not by documentation.
 
+Development evidence (2026-07-30, Task 8 L0):
+
+- read the specification's delivery-time version `20`, incremented it once to
+  `21`, and added the matching top changelog row;
+- migrated the stable resolver, compatibility, managed lifecycle, in-use
+  targeting, switch-time setup, advisory, negative-gate, cost-shape, and
+  portable-backup contracts into `docs/specs/cli-design.md`, with actionable
+  guidance in `docs/specs/cli-manual.md`;
+- linked `docs/plans/runtime-provider-attribution.md` to the reusable living
+  lifecycle contract rather than copying a second rule set;
+- `rtk git diff --check` passed;
+- targeted discovery checks for `shell env`, hidden `shell-init`,
+  `project-attribution.enabled`, `--no-shell-setup`, version/changelog
+  agreement, and active-document links passed.
+
+No L4 release gate or released-artifact installation was run for this
+documentation task. Those remain delivery evidence after Task 8 review, not
+evidence supplied by the contract documents themselves.
+
 ## Release Scoping
 
 This work belongs to `v0.2.1`, not to `v0.2.2`, for one reason that expires:
@@ -1264,10 +1297,10 @@ and contracts stay as specified either way.
 | 2. `managed-shell-config` | [x] | [x] |
 | 3. `activation-and-eligibility-status` | [x] | [x] |
 | 4. `installation-onboarding` | [x] | [x] |
-| 5. `cross-shell-acceptance` | [ ] | [ ] |
+| 5. `cross-shell-acceptance` | [x] | [x] |
 | 6. `route-change-advisories` | [x] | [x] |
 | 7. `switch-time-setup` | [x] | [x] |
-| 8. `contract-and-release` | [ ] | [ ] |
+| 8. `contract-and-release` | [x] | [x] |
 
 Order: tasks 1-3 define the command and persistence contract. Task 4 may start
 after task 1 settles user-facing wording. Task 6 needs task 3's eligibility and

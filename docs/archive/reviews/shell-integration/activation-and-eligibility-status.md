@@ -1,7 +1,8 @@
 ---
-status: active
+status: historical
 plan: shell-integration
 task: activation-and-eligibility-status
+retired: 2026-07-31
 ---
 
 # Review log — shell-integration / activation-and-eligibility-status

@@ -1,6 +1,6 @@
 ---
 status: active
-version: 20
+version: 21
 created: 2026-07-14
 ---
 
@@ -193,6 +193,7 @@ The default state root is:
 ├── agentdeck.sqlite3
 ├── sessions.sqlite3
 ├── credential.key
+├── project-attribution.enabled
 └── backups/
     ├── codex/
     ├── claude/
@@ -216,6 +217,17 @@ backup configuration.
 
 No `providers.json` is used by AgentDeck. Legacy files are not imported or
 modified automatically.
+
+`project-attribution.enabled` is an empty `0600` machine-local derived-state
+marker. Its absence lets managed client functions bypass AgentDeck without
+starting a process; its presence means only that a full eligibility check may
+be needed. It is not a source of truth and is never included in a portable
+backup. After committing a selection, a provider switch makes a best-effort
+refresh from current selections. Refresh failure never rolls back or fails the
+completed switch and may leave the marker missing or stale. A stale marker can
+cause only an unnecessary resolver process, while a missing marker can
+temporarily suppress otherwise eligible shell attribution; both are diagnosed
+by `shell status` and `doctor`, and a later successful refresh may repair them.
 
 The state root is AgentDeck's persistent working directory, but the process
 does not change its current working directory to the state root. Project-scoped
@@ -707,18 +719,19 @@ envelope rules as the Claude advisories and effective-route line.
 
 ### Project Attribution
 
-Project attribution is opt-in and scoped to an explicitly declared Headroom
-wrapper. AgentDeck injects attribution only when the latest completed client
-selection used `--via`, its recorded endpoint still equals that provider's
-current wrapper URL, and the wrapper kind is still `headroom`.
+Project attribution is optional and scoped to an explicitly declared Headroom
+wrapper. A client route is eligible only when its latest completed selection
+used `--via`, the selected endpoint still equals the provider's current
+wrapper URL, and the wrapper kind is still `headroom`. Eligibility is evaluated
+per client and is observable through `agentdeck shell status`.
 
 For `agentdeck run`, a completed selection for the requested client is also a
 precondition for launching it: without one, the command exits with an error and
 does not start the client. Once `agentdeck run` has decided to launch, failure
-to derive or inject attribution does not block that process. The shell helper
-is fail-open across the wider set of lookup outcomes: unreadable state, no
-completed selection, a direct selection, a stale wrapper URL, or any other
-ineligible route silently omits attribution and still executes the real client.
+to derive or inject attribution does not block the child process. Managed shell
+functions are fail-open: unreadable state, no completed selection, a direct
+selection, a stale wrapper URL, or any other ineligible route omits attribution
+and still executes the real client.
 
 The project identity is the same cleaned full working-directory path used by
 session indexing. Only its basename reaches the wire, percent-encoded as a URL
@@ -727,7 +740,7 @@ decoders agree. Empty or nameless directory references produce no value.
 AgentDeck never persists the full identity or wire value in its database or in
 client configuration.
 
-Eligible launches use one header and client-specific environment transport:
+Eligible launches use one header with client-specific environment transport:
 
 | Client | Launch environment | Request header |
 | --- | --- | --- |
@@ -739,37 +752,135 @@ A user-supplied value always wins. Codex leaves an existing
 `X-Headroom-Project` header unchanged, matched case-insensitively, and
 preserves every unrelated custom-header line.
 
-There are three delivery mechanisms:
+#### Resolver and compatibility primitive
 
-1. `agentdeck run <codex|claude> -- ...` applies attribution to the child
-   process it launches.
-2. `agentdeck shell-init <bash|fish|zsh>` emits sourceable wrapper functions to
-   stdout. Each invocation resolves the current directory and current
-   Headroom-route eligibility through AgentDeck state; lookup failure or an
-   ineligible route silently launches the real client without injection.
-   Emission writes no file and requires no configured wrapper. Like
-   `completion`, this source-producing command is deliberately outside the GUI
-   JSON data contract because stdout is the shell program; argument errors
-   still use the standard error envelope (`exit 2`, `command: shell-init`,
-   `code: invalid_argument`).
-3. A user may maintain project-scoped settings, such as
-   `.claude/settings.local.json`, with a static header value. AgentDeck
-   documents this recipe but never creates or modifies the file.
+`agentdeck shell env <codex|claude>` is the supported resolver used by managed
+shell functions. For an eligible route it writes only the final environment
+value to stdout. An ineligible route, unreadable state, or unavailable project
+value produces empty stdout and exit status `0`; the real client must still be
+launched. An unsupported client is a standard invalid-argument error.
 
-Outside `agentdeck run`, a client is attributed only when the user has sourced
-or otherwise installed the emitted shell helper, or has written an applicable
-settings file. AgentDeck does not attribute GUI app launches and makes no claim
-that a GUI app reads project-scoped settings. Within AgentDeck-managed
-injection, a wrapper not declared `headroom` never receives a project
-attribution header; independently user-supplied headers remain outside
-AgentDeck's control.
+The hidden `agentdeck shell-init --project-environment <client>` form remains a
+byte-equivalent alias of `agentdeck shell env <client>` while any released
+managed block or generated wrapper may call it. It is not a second contract and
+must not diverge.
 
-Successful Headroom wrapper operations may print one informational advisory on
-stderr linking this project's manual. It is suppressed by `--quiet`, never
-enters JSON stdout, never changes exit status, contains exactly one
-project-owned URL, and contains no third-party issue, release, or hostname
-content.
+`agentdeck shell-init <bash|fish|zsh>` remains callable but is hidden from
+recommended help. It writes sourceable `codex` and `claude` functions to
+stdout only: running it does not install, activate, or persist anything. Bash
+and zsh may use `eval "$(agentdeck shell-init <shell>)"`; fish uses
+`agentdeck shell-init fish | source`. Persistent configuration uses
+`agentdeck shell setup`.
 
+This compatibility primitive cannot be removed while any of these dependencies
+exist:
+
+- managed blocks call it dynamically so a binary upgrade can change generated
+  functions without rewriting startup files;
+- generated wrappers and older managed blocks call the hidden resolver alias;
+- `v0.2.1-rc.1` exposed manual sourcing through the Homebrew RC and manual, so
+  deleting it would break already configured shell startup.
+
+Like `completion`, `shell-init` is outside the GUI JSON data contract because
+stdout is a shell program. Argument errors still use the standard error
+envelope (`exit 2`, `command: shell-init`, `code: invalid_argument`).
+
+#### Managed shell lifecycle
+
+The reusable lifecycle shape is:
+
+```text
+agentdeck shell setup [bash|fish|zsh] [--rc <path>]
+agentdeck shell status [bash|fish|zsh] [--rc <path>]
+agentdeck shell remove [bash|fish|zsh] [--rc <path>]
+```
+
+With no target, every shell in use is covered. A shell is in use when its
+default startup file already exists or it is the invoking shell. The invoking
+shell is always included and its missing default startup file may be created;
+another installed shell is not included merely because its executable exists.
+Zsh uses `${ZDOTDIR:-$HOME}/.zshrc`. Fish uses
+`${XDG_CONFIG_HOME:-$HOME/.config}/fish/config.fish`. Bash chooses
+`.bash_profile` or `.bashrc` from the invoking shell's login state and also
+includes existing default Bash startup files. An explicit shell limits the
+operation to that shell, including an absent default file; `--shell` is the
+flag equivalent of the positional shell. `--rc` selects a non-default startup
+file and therefore requires a single-shell operation.
+
+`setup` atomically installs an AgentDeck-owned managed block. It is idempotent:
+an identical block is `unchanged`, and a recognized older block may be upgraded
+safely. Duplicate, truncated, edited, or hash-invalid managed regions are not
+overwritten. `status` is read-only and reports persistent state as
+`absent`, `configured`, `modified`, or `invalid`; current-session JSON
+activation state as `active`, `inactive`, or `inherited_from_ancestor`; and
+each client's route eligibility with its reason. Text renders the inherited
+case as `inactive (marker inherited from ancestor shell)`. An explicit missing
+shell still produces one `absent` result.
+
+`remove` deletes only a validated AgentDeck-owned managed block, preserving
+every other byte, including command-completion blocks. Absence is an idempotent
+success. Edited or invalid managed regions are not automatically removed.
+Removal prints a missing-safe current-session deactivation command; executing
+it succeeds whether the functions are present or absent.
+
+Explicit multi-target lifecycle operations report every target and continue
+after an individual failure. Explicit `shell setup` preserves successful
+targets; any failed target makes the overall command fail. The all-or-nothing
+rollback guarantee applies only to the automatic switch-time setup described
+below, which restores each target's original bytes and existence state without
+overwriting a concurrent replacement. Package installation and uninstallation
+never invoke this lifecycle implicitly.
+
+Managed blocks guard AgentDeck's presence. Bash and zsh use
+`command -v agentdeck >/dev/null 2>&1 && ...`; fish uses
+`if type -q agentdeck`. If the binary is absent from `PATH`, the block is
+silent and inert and the real clients remain usable, including after package
+uninstall. Only binary absence is suppressed: when AgentDeck is found, a
+generation or source failure remains visible.
+
+#### Switch-time setup and advisories
+
+After a successful `provider use --via` leaves at least one client eligible,
+the command may write startup files only when all of these are true: output is
+text, `--quiet` is not set, stderr is a TTY, `--no-shell-setup` is not set,
+the user has not persistently declined, and no valid managed block is installed.
+It then runs the same all-or-nothing setup over every shell in use. JSON,
+NDJSON, non-TTY, quiet, and explicitly suppressed invocations never write
+startup files. `shell remove` records the persistent decline; an explicit
+`shell setup` clears it. Automatic setup failure never rolls back the completed
+provider switch and degrades only to the unconfigured advisory.
+
+Attribution advisories are informational stderr only, are suppressed by
+`--quiet`, never enter JSON output, and never change exit status:
+
+- switching into an eligible route with configured integration says attribution
+  is in effect, new shells are persistently covered, and gives the current-shell
+  activation command;
+- switching into an eligible route without configured integration suggests one
+  `agentdeck shell setup`;
+- switching out of an eligible route with configured integration says the
+  functions remain installed but immediately stop injecting;
+- other route/configuration combinations emit no attribution advisory.
+
+`provider set-wrapper` guidance describes the prerequisites—an eligible route,
+the derived marker, and configured shell integration—and never claims that
+attribution is already active merely because wrapper metadata was changed.
+
+Managed integration can attribute directly launched CLI clients. AgentDeck
+does not attribute GUI app launches and makes no claim that a GUI app reads
+project-scoped settings. A user may independently maintain project-scoped
+settings such as `.claude/settings.local.json`; AgentDeck documents that recipe
+but never creates or modifies the file.
+
+#### Negative gate and invocation cost
+
+Managed functions first test
+`<state-root>/project-attribution.enabled`. When it is absent they execute the
+real client without starting AgentDeck. When present they start one AgentDeck
+resolver process and perform one read-only database open per client invocation;
+the resolver still performs the complete per-client eligibility check. Exact
+benchmark results and host method belong in the archived implementation plan,
+not this living contract.
 ### Selecting the Built-in Provider
 
 Selecting `official` returns the client to its own login state: Codex's
@@ -1482,6 +1593,12 @@ Normal backups exclude the rebuildable session database. They never include
 original client JSONL, authentication files, attachments, environment data, or
 internal rollback backups.
 
+Portable backups also exclude the machine-local derived
+`project-attribution.enabled` negative-gate marker. Its absence immediately
+after restore is valid. A later provider switch attempts the same best-effort
+refresh; only a successful refresh reconstructs it from current selection
+state, and refresh failure does not fail the completed switch.
+
 `backup list` reports only local `.adb` file metadata. `backup inspect` requires
 the passphrase and authenticates the encrypted stream, manifest, entry allowlist,
 and recorded hashes before returning archive metadata.
@@ -1858,6 +1975,17 @@ import the legacy `providers.json`, usage database, or real client settings.
     Outside `agentdeck run`, attribution requires a user-installed shell helper
     or user-written settings; GUI app launches are not attributed by AgentDeck.
 
+51. `shell env` is the supported fail-open resolver, while hidden `shell-init`
+    remains callable and byte-compatible for released startup-file consumers.
+52. Shell setup, status, and remove share one in-use-shell, idempotence,
+    ownership, conflict, and multi-target lifecycle contract; package
+    installation and uninstallation do not run it.
+53. Interactive text `provider use --via` may configure startup files only
+    under the documented opt-in conditions and never rolls back a completed
+    provider switch when shell setup fails.
+54. The project-attribution marker is a `0600` machine-local negative gate,
+    not eligibility truth, and is excluded from portable backups.
+
 ## Changelog
 
 Every entry is a change to the contract this document defines, not a record of
@@ -1866,6 +1994,7 @@ here changes; do not create a dated copy of this file.
 
 | Version | Date | Contract change |
 | --- | --- | --- |
+| 21 | 2026-07-30 | Shell attribution gains the supported `shell env` resolver, hidden `shell-init` compatibility guarantees, presence-guarded managed blocks, reusable setup/status/remove lifecycle, in-use-shell targeting, interactive switch-time setup, corrected route-change advisories, and the machine-local portable-backup-excluded negative gate. |
 | 20 | 2026-07-29 | Project attribution is opt-in and Headroom-wrapper-scoped. Eligible launches derive the cleaned full-path identity used by session indexing, expose only its safely encoded basename, and use client-specific environment transport without persisting the value. Codex owns only the `X-Headroom-Project` to `HEADROOM_PROJECT` mapping while preserving unrelated mappings. Outside `agentdeck run`, users must install the emitted shell helper or write settings themselves; AgentDeck does not attribute GUI app launches, and wrappers not declared `headroom` never receive AgentDeck-generated attribution headers. |
 | 19 | 2026-07-28 | Every successful Codex provider switch reports a stderr advisory to start a new session or restart the running one, because AgentDeck updates the configuration file but cannot update configuration already loaded by a running client. The note deliberately differs from Claude's live-settings and conflicting-credential advisories, remains informational, and is suppressed by `--quiet`. |
 | 18 | 2026-07-28 | The RC formula relies on the documented uninstall/install channel switch instead of Homebrew's `conflicts_with` DSL. Homebrew 6 loads the referenced stable formula while resolving that declaration, but direct formula installation trusts only the requested RC formula, so a user who correctly removed stable could still be blocked by tap trust. Omitting the declaration avoids broad tap trust without weakening the explicit no-coexistence rule. |

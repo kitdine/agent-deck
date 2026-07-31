@@ -5,7 +5,7 @@ created: 2026-07-22
 
 # Archived Documents
 
-Last updated: 2026-07-29
+Last updated: 2026-07-31
 
 ## Why this directory exists
 
@@ -327,3 +327,23 @@ retirement, target fast-forward, and cleanup. Final commit
 After the push was verified, the temporary task, repair, delivery, and audit
 worktrees and refs were removed. The archived plan, task review records, and
 authorization-package identities remain the durable workflow record.
+
+
+## 2026-07-31 retirement: shell integration
+
+`plans/shell-integration.md` and `reviews/shell-integration/` preserve the
+eight-task shell-attribution workflow: explicit setup/status/remove/env
+lifecycle, safe managed startup-file blocks, activation and per-client
+eligibility status, installation onboarding, cross-shell acceptance,
+route-change advisories, switch-time setup, and the final living-contract
+migration. Every task passed independent review; Task 8 required three review
+rounds before closing its lifecycle, status-vocabulary, best-effort marker, and
+cross-plan specification-version findings.
+
+Stable behavior is authoritative in `docs/specs/cli-design.md` version 21 and
+`docs/specs/cli-manual.md`. Exact benchmark results, rejected alternatives,
+implementation evidence, and review history remain in the archived records.
+Task 8 itself was L0 documentation work: this retirement does not claim release
+readiness. L4 and real RC2 artifact installation remain delivery gates, and the
+two `v0.2.2` plans are now unblocked. No commit or push was performed as part
+of retirement.

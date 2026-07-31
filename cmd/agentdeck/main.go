@@ -1019,6 +1019,7 @@ func writeShellLifecycleSummary(opts *commandOptions, operation string, summary 
 	if opts.format == "json" {
 		return writeResult(opts.stdout, opts.format, "shell."+operation, summary)
 	}
+	deactivationPrinted := map[shellconfig.Shell]bool{}
 	for _, result := range summary.Results {
 		if opts.quiet && result.Outcome != shellconfig.OutcomeFailed {
 			continue
@@ -1037,8 +1038,41 @@ func writeShellLifecycleSummary(opts *commandOptions, operation string, summary 
 				return err
 			}
 		}
+		if operation == "remove" &&
+			(result.Outcome == shellconfig.OutcomeRemoved ||
+				result.Outcome == shellconfig.OutcomeAbsent) &&
+			!deactivationPrinted[result.Shell] {
+			command, ok := shellDeactivationCommand(result.Shell)
+			if ok {
+				if _, err := fmt.Fprintf(
+					opts.stdout,
+					"Current session deactivation for %s: %s\n",
+					result.Shell,
+					command,
+				); err != nil {
+					return err
+				}
+				deactivationPrinted[result.Shell] = true
+			}
+		}
 	}
 	return nil
+}
+
+func shellDeactivationCommand(shell shellconfig.Shell) (string, bool) {
+	switch shell {
+	case shellconfig.ShellBash:
+		return "if declare -F codex >/dev/null; then unset -f codex; fi; " +
+			"if declare -F claude >/dev/null; then unset -f claude; fi", true
+	case shellconfig.ShellFish:
+		return "if functions -q codex; functions --erase codex; end; " +
+			"if functions -q claude; functions --erase claude; end", true
+	case shellconfig.ShellZsh:
+		return "if (( $+functions[codex] )); then unfunction codex; fi; " +
+			"if (( $+functions[claude] )); then unfunction claude; fi", true
+	default:
+		return "", false
+	}
 }
 
 func resolveShellTarget(args []string, shellFlag, rc string) (shellTarget, error) {
@@ -1174,7 +1208,7 @@ set -gx %s $fish_pid
 function codex
     set -l _agentdeck_project_value
     set -l _agentdeck_project_status 1
-    if test -f %s
+    if type -q agentdeck; and test -f %s
         set _agentdeck_project_value "$(%s shell-init --project-environment codex 2>/dev/null)"
         set _agentdeck_project_status $status
     end
@@ -1188,7 +1222,7 @@ end
 function claude
     set -l _agentdeck_project_value
     set -l _agentdeck_project_status 1
-    if test -f %s
+    if type -q agentdeck; and test -f %s
         set _agentdeck_project_value "$(%s shell-init --project-environment claude 2>/dev/null)"
         set _agentdeck_project_status $status
     end
@@ -1204,7 +1238,7 @@ end
 export %s="$$"
 codex() {
     local _agentdeck_project_value
-    if [ -f %s ] && _agentdeck_project_value="$(%s shell-init --project-environment codex 2>/dev/null)" && [ -n "$_agentdeck_project_value" ]; then
+    if command -v agentdeck >/dev/null 2>&1 && [ -f %s ] && _agentdeck_project_value="$(%s shell-init --project-environment codex 2>/dev/null)" && [ -n "$_agentdeck_project_value" ]; then
         HEADROOM_PROJECT="$_agentdeck_project_value" command codex "$@"
     else
         command codex "$@"
@@ -1213,7 +1247,7 @@ codex() {
 
 claude() {
     local _agentdeck_project_value
-    if [ -f %s ] && _agentdeck_project_value="$(%s shell-init --project-environment claude 2>/dev/null)" && [ -n "$_agentdeck_project_value" ]; then
+    if command -v agentdeck >/dev/null 2>&1 && [ -f %s ] && _agentdeck_project_value="$(%s shell-init --project-environment claude 2>/dev/null)" && [ -n "$_agentdeck_project_value" ]; then
         ANTHROPIC_CUSTOM_HEADERS="$_agentdeck_project_value" command claude "$@"
     else
         command claude "$@"

@@ -13,7 +13,7 @@ those functions continue to inject only Headroom project metadata.
 
 **Release placement, decided 2026-07-29.** Staying in `v0.2.2` was reconsidered
 against pulling this into `v0.2.1` alongside
-[the shell integration plan](shell-integration.md), and confirmed. That plan had
+[the retired shell integration plan](../archive/plans/shell-integration.md), and confirmed. That plan had
 to move into `v0.2.1` because `shell-init` has never shipped stable, so changing
 its role is only an internal rearrangement until it does. Nothing here has an
 equivalent expiring window: the `usage hook` command group and the session-route
@@ -104,8 +104,9 @@ agentdeck usage hook remove [--client codex|claude|all]
 It preserves every unrelated key, matcher, and hook. It is idempotent. `remove`
 removes only byte-equivalent AgentDeck-owned handler entries and leaves an
 otherwise empty valid document rather than guessing whether AgentDeck owns the
-file. `status` reports configured, missing, drifted, and client-side trust or
-activation limitations that AgentDeck can actually observe.
+file. `status` reports `absent`, `configured`, `modified`, or `invalid` managed
+state, plus client-side trust or activation limitations that AgentDeck can
+actually observe.
 
 Package installation never runs `setup`. Codex may require the user to approve
 the newly added non-managed hook through `/hooks`; AgentDeck reports that step
@@ -114,13 +115,18 @@ but never edits Codex trust state or uses `--dangerously-bypass-hook-trust`.
 This is the project's second `setup`/`status`/`remove` lifecycle. `v0.2.1` ships
 the first one, `agentdeck shell`, and its conventions are the ones to follow here
 rather than to reinvent: the same subcommand shape, the same state vocabulary for
-configured, absent, drifted, and conflicting states, the same idempotence rule,
+`absent`, `configured`, `modified`, and `invalid` states, the same idempotence rule,
 the same "remove touches only AgentDeck-owned entries", the same refusal to
 overwrite an edited or unverifiable managed region, and the same rule that no
 package installation path performs setup. The implementations cannot share code —
 one edits shell text blocks, the other merges JSON documents — so the consistency
 has to be deliberate. Any divergence from those conventions must be a documented
-decision with its reason, not an artifact of being written second.
+decision with its reason, including any future Hook-specific status vocabulary,
+not an artifact of being written second.
+
+The stable source for those reusable conventions is the
+[Managed shell lifecycle](../specs/cli-design.md#managed-shell-lifecycle)
+contract; this plan must name and justify any deliberate divergence.
 
 Installed handlers invoke a hidden command that reads the documented JSON event
 from stdin:

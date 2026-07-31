@@ -81,6 +81,7 @@ uninstall:
 check-install:
 	bash scripts/test-install.sh
 	bash scripts/test-completion-install.sh
+	bash scripts/test-shell-integration-acceptance.sh
 
 check-privacy:
 	@bash scripts/check-privacy.sh
