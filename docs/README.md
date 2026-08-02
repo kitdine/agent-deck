@@ -11,7 +11,24 @@ history remain the source of truth when they disagree with any document.
 
 ## Current State (2026-08-02)
 
-`v0.2.0` is now the current stable release. Its annotated tag points to
+`v0.2.1` is now the current stable release. Its annotated tag points to
+`e722be82c617a1418cc533a0ea2cbed35b65ad06`; the
+[tag-triggered Release run](https://github.com/kitdine/agent-deck/actions/runs/30754555537)
+passed both release and Homebrew jobs, published a non-prerelease GitHub Release
+with both Darwin archives and the checksum asset, and verified the stable
+formula through an isolated install, formula test, and bash, zsh, and fish
+completion loading. [Homebrew tap PR #8](https://github.com/kitdine/homebrew-tap/pull/8)
+merged the checked formula into `Formula/agentdeck.rb`. The local channel
+transition also completed: `brew uninstall kitdine/tap/agentdeck-rc` removed
+`0.2.1-rc.2`, and `brew install kitdine/tap/agentdeck` installed stable `0.2.1`.
+The installed binary reports `v0.2.1` at commit
+`e722be82c617a1418cc533a0ea2cbed35b65ad06`; all three completion files are
+present in Homebrew's standard paths. Local `brew test kitdine/tap/agentdeck`
+could not complete because Homebrew's developer bundle cache under
+`/usr/local/Homebrew/Library/Homebrew/vendor/bundle` is not writable; the
+GitHub Homebrew job passed the corresponding formula verification.
+
+`v0.2.0` was the previous stable release. Its annotated tag points to
 `8c053c9df53f9aad0797d3e9bf2d307fd203ab8a`; the tagged tree differs from
 `v0.2.0-rc.2` only by the RC validation documentation commit, with no
 product-code change after RC2. The
@@ -28,7 +45,7 @@ binary reports `v0.2.0` at commit
 `8c053c9df53f9aad0797d3e9bf2d307fd203ab8a`, and the bash, zsh, and fish
 completion files are all present in Homebrew's standard paths.
 
-`v0.2.1-rc.1` is the current opt-in release candidate. Its annotated tag
+`v0.2.1-rc.1` was the first opt-in release candidate. Its annotated tag
 points to `aaab1c2076e3685dcd3c9d548c1c4bfccc4c0f6c`; the
 [tag-triggered Release run](https://github.com/kitdine/agent-deck/actions/runs/30488817055)
 passed both release and Homebrew jobs, published a GitHub prerelease with both
@@ -45,7 +62,8 @@ formula. The local stable-to-RC transition also passed:
 successfully, and the released `shell-init` command emits the expected
 project-aware wrapper.
 
-Stable `v0.2.1` promotion is paused. RC1 proves wrapper generation but neither
+The following RC1 design history records the issues resolved before stable
+`v0.2.1` promotion. RC1 proved wrapper generation but neither
 a coherent installation lifecycle nor an observable reason for the wrappers to
 act: `shell-init` writes functions to stdout without installing or activating
 them, Homebrew installs completion only, and nothing reports whether a client
@@ -77,7 +95,7 @@ delivery, so a user with no Headroom route pays one `test -e` per client launch
 instead of a fork. The plan also records why this work belongs to `v0.2.1`
 rather than `v0.2.2`: `shell-init` has never shipped in a stable release, so
 hiding it and moving the recommended path is an internal rearrangement only
-until stable `v0.2.1` ships it.
+before stable `v0.2.1` shipped it.
 
 Writing startup files from `brew install` was re-examined and rejected again, but
 on narrower grounds than before — two earlier objections are recorded as
@@ -101,8 +119,9 @@ advisories, switch-time setup, cross-shell verification, and living contract
 migration. All eight tasks passed independent review; the stable contract now
 lives in `docs/specs/cli-design.md` version 21 and
 `docs/specs/cli-manual.md`, while implementation and review history live under
-`docs/archive/`. This documentation closure is not release-readiness proof:
-L4 and real RC2 artifact installation remain later delivery gates. The
+`docs/archive/`. This documentation closure was not release-readiness proof at the time:
+L4 and real RC2 artifact installation gates have since passed in the
+`v0.2.1` release workflow and Homebrew validation. The
 `v0.2.2` hardening plans are no longer blocked by this plan.
 
 Local validation of installed `v0.2.1-rc.2` at commit `886f0a8` found one
@@ -113,11 +132,11 @@ bounded time on the 93,982,720-byte real usage database. The
 delivered only the `v0.2.1` quick/full boundary fix. The related full-doctor and
 `usage sessions` N+1 pricing reads remain explicitly deferred to the `v0.2.2`
 [usage pricing read scalability plan](plans/usage-pricing-read-scalability.md).
-The quick-boundary development and L2 suite pass in the uncommitted tree;
-Review Round 2 passed after directly pinning full-mode `unpriced_models` and its
-result code. Real-state quick acceptance remains recorded as unverified because
-the managed approval reviewer blocked the command with its own request-format
-error, and the installed Homebrew RC2 binary remains unchanged.
+The quick-boundary change was committed in `e722be8`; its L2 suite and Review
+Round 2 passed after directly pinning full-mode `unpriced_models` and its result
+code. Real-state quick acceptance remains recorded as unverified because the
+managed approval reviewer blocked the command with its own request-format
+error. The installed stable Homebrew binary is separately verified above.
 
 v0.1.1 is published and installable through `kitdine/homebrew-tap`. Every
 follow-up in the retired phase-one plan passed independent review, so there is
