@@ -9,7 +9,7 @@ This is both the documentation index and the execution baseline. Decide what to
 work on next from this file. Repository code, tests, configuration, and Git
 history remain the source of truth when they disagree with any document.
 
-## Current State (2026-07-31)
+## Current State (2026-08-02)
 
 `v0.2.0` is now the current stable release. Its annotated tag points to
 `8c053c9df53f9aad0797d3e9bf2d307fd203ab8a`; the tagged tree differs from
@@ -104,6 +104,20 @@ lives in `docs/specs/cli-design.md` version 21 and
 `docs/archive/`. This documentation closure is not release-readiness proof:
 L4 and real RC2 artifact installation remain later delivery gates. The
 `v0.2.2` hardening plans are no longer blocked by this plan.
+
+Local validation of installed `v0.2.1-rc.2` at commit `886f0a8` found one
+release-blocking quick-diagnostics defect: default `agentdeck doctor` enters
+full-history price coverage through `PriceDiagnostics` and does not return in a
+bounded time on the 93,982,720-byte real usage database. The
+[retired doctor quick diagnostics plan](archive/plans/doctor-quick-diagnostics.md)
+delivered only the `v0.2.1` quick/full boundary fix. The related full-doctor and
+`usage sessions` N+1 pricing reads remain explicitly deferred to the `v0.2.2`
+[usage pricing read scalability plan](plans/usage-pricing-read-scalability.md).
+The quick-boundary development and L2 suite pass in the uncommitted tree;
+Review Round 2 passed after directly pinning full-mode `unpriced_models` and its
+result code. Real-state quick acceptance remains recorded as unverified because
+the managed approval reviewer blocked the command with its own request-format
+error, and the installed Homebrew RC2 binary remains unchanged.
 
 v0.1.1 is published and installable through `kitdine/homebrew-tap`. Every
 follow-up in the retired phase-one plan passed independent review, so there is
@@ -351,6 +365,7 @@ defect fix.
 | [specs/cli-design.md](specs/cli-design.md) | What the system does and must keep doing: provider, credential, usage, pricing, session, backup, and distribution behavior. Currently version 21; see its changelog. |
 | [plans/credential-and-pricing-hardening.md](plans/credential-and-pricing-hardening.md) | `v0.2.2` hardening batch: credential key durability and key-ID derivation, price-retry ordering, session-health documentation accuracy, and Claude cache-creation TTL defaulting. Unblocked on 2026-07-31 after shell integration plan retirement; `active — 0/6 done`. |
 | [plans/runtime-provider-attribution.md](plans/runtime-provider-attribution.md) | The `v0.2.2` Hook-first runtime attribution work: reversible Codex/Claude Hook setup, resumed-session and Claude reload boundaries, non-blocking concurrent runs, and unchanged project-attribution shell functions. `active — 0/4 done`. |
+| [plans/usage-pricing-read-scalability.md](plans/usage-pricing-read-scalability.md) | `v0.2.2` batch pricing reads for full doctor and `usage sessions`, reusing the `usage stats` resolver without changing CLI output. `active — 0/4 done`. |
 | [specs/cli-manual.md](specs/cli-manual.md) | The implemented command surface, flags, and output shapes. |
 | [reviews/](reviews/README.md) | Per-task review records that back each plan's ticked `Review` cell. |
 | [archive/](archive/README.md) | Retired plans and superseded contracts. Not a starting point for new work. |

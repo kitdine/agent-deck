@@ -396,6 +396,53 @@ func TestCheckUsageSchemaMatrixNeverLeaksSQL(t *testing.T) {
 	}
 }
 
+func TestQuickCheckSkipsDeepPriceDiagnostics(t *testing.T) {
+	ctx := context.Background()
+	root := filepath.Join(t.TempDir(), "state")
+	database, err := store.Open(ctx, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = database.Exec(ctx, `INSERT INTO usage_events(event_key,client,session_id,event_id,event_at,model,input_tokens,source_path,source_offset) VALUES('malformed','codex','session','event','2026-08-02T00:00:00Z','gpt-5.4',-1,'fixture',0)`); err != nil {
+		database.Close()
+		t.Fatal(err)
+	}
+	if err = database.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	service := Service{
+		StateRoot: root,
+		Home:      t.TempDir(),
+		Workdir:   t.TempDir(),
+		Vault:     doctorVault(root),
+	}
+	report, err := service.Check(ctx, false)
+	if err != nil {
+		t.Fatalf("quick Check returned deep price error: %v", err)
+	}
+	if hasCode(report, "schema_incompatible") {
+		t.Fatalf("quick Check traversed malformed historical event: %#v", report)
+	}
+	foundPrices := false
+	for _, check := range report.Checks {
+		switch check.Name {
+		case "prices":
+			foundPrices = true
+		case "price_provenance", "unpriced_models":
+			t.Fatalf("quick Check included deep price check %#v", check)
+		}
+	}
+	if !foundPrices {
+		t.Fatalf("quick Check omitted price catalog availability: %#v", report)
+	}
+
+	fullReport, err := service.Check(ctx, true)
+	if err != nil || !hasCode(fullReport, "schema_incompatible") {
+		t.Fatalf("full Check = %#v, %v, want deep usage failure", fullReport, err)
+	}
+}
+
 func TestFullCheckReportsProblemsWithoutChangingDatabases(t *testing.T) {
 	ctx := context.Background()
 	root := filepath.Join(t.TempDir(), "state")
@@ -410,6 +457,9 @@ func TestFullCheckReportsProblemsWithoutChangingDatabases(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err = database.Exec(ctx, `INSERT INTO price_catalogs(version,source_kind,source_url,content_sha256,imported_at,effective_from,currency,schema_version) VALUES('invalid','unknown','', 'short', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z', 'USD', 1)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = database.Exec(ctx, `INSERT INTO usage_events(event_key,client,session_id,event_id,event_at,model,input_tokens,source_path,source_offset) VALUES('unpriced','codex','session','event','2026-08-02T00:00:00Z','unpriced-model',1,'fixture',0)`); err != nil {
 		t.Fatal(err)
 	}
 	if err = database.Close(); err != nil {
@@ -437,7 +487,7 @@ func TestFullCheckReportsProblemsWithoutChangingDatabases(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if report.Healthy || !hasCode(report, "pending_operations") || !hasCode(report, "credential_missing") || !hasCode(report, "session_source_unreadable") || !hasCode(report, "price_provenance_invalid") {
+	if report.Healthy || !hasCode(report, "pending_operations") || !hasCode(report, "credential_missing") || !hasCode(report, "session_source_unreadable") || !hasCode(report, "price_provenance_invalid") || !hasCode(report, "unpriced_models") {
 		t.Fatalf("report = %#v", report)
 	}
 	after := fileDigest(t, filepath.Join(root, "agentdeck.sqlite3"))

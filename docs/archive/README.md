@@ -5,7 +5,7 @@ created: 2026-07-22
 
 # Archived Documents
 
-Last updated: 2026-07-31
+Last updated: 2026-08-02
 
 ## Why this directory exists
 
@@ -328,6 +328,22 @@ After the push was verified, the temporary task, repair, delivery, and audit
 worktrees and refs were removed. The archived plan, task review records, and
 authorization-package identities remain the durable workflow record.
 
+
+## 2026-08-02 retirement: doctor quick diagnostics
+
+`plans/doctor-quick-diagnostics.md` and
+`reviews/doctor-quick-diagnostics/` preserve the one-task `v0.2.1` quick/full
+diagnostic boundary fix found while validating installed `v0.2.1-rc.2`. Quick
+doctor still checks price-catalog availability but reserves
+`PriceDiagnostics`, `price_provenance`, and `unpriced_models` for `--full`.
+Round 1 reopened one full-mode regression-coverage gap; Round 2 passed after a
+test-only fixture and assertion directly protected result code
+`unpriced_models`. The production boundary did not change during the fix.
+Real-state quick acceptance remains unverified because the managed approval
+reviewer rejected the read-only command with its own request-format error.
+Full-doctor and `usage sessions` pricing-read scalability remain active
+`v0.2.2` work. No commit, push, release, or local installed-binary update was
+performed as part of this retirement.
 
 ## 2026-07-31 retirement: shell integration
 

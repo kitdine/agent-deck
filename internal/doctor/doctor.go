@@ -437,6 +437,9 @@ func (s Service) checkUsage(ctx context.Context, database *store.Store, report *
 	} else {
 		report.add(Check{Name: "prices", Status: "ok"})
 	}
+	if report.Mode != "full" {
+		return nil
+	}
 	invalidProvenance, unpricedModels, err := service.PriceDiagnostics(ctx)
 	if err != nil {
 		return err
