@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/kitdine/agent-deck/internal/platform"
 )
@@ -349,6 +350,169 @@ func TestVaultConcurrentInitializationUsesOneKey(t *testing.T) {
 	}
 	if sealed[0].KeyID != sealed[1].KeyID {
 		t.Fatalf("concurrent key IDs = %q, %q", sealed[0].KeyID, sealed[1].KeyID)
+	}
+}
+
+func TestVaultSyncsKeyDirectoryAfterLink(t *testing.T) {
+	root := t.TempDir()
+	vault := New(root, fixedMachine("machine-a"))
+	var calls int
+	vault.syncStateRoot = func(path string) error {
+		calls++
+		if path != root {
+			t.Errorf("sync state root = %q, want %q", path, root)
+		}
+		if _, err := os.Stat(vault.KeyPath()); err != nil {
+			t.Errorf("directory sync before credential key link: %v", err)
+		}
+		return nil
+	}
+
+	if _, err := vault.Seal(context.Background(), "provider-default-ref", "synthetic-secret"); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 {
+		t.Fatalf("directory sync calls = %d, want 1", calls)
+	}
+}
+
+func TestVaultConcurrentSealWaitsForDirectorySync(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	winner := New(root, fixedMachine("machine-a"))
+	loser := New(root, fixedMachine("machine-a"))
+	winnerSyncStarted := make(chan struct{})
+	releaseWinnerSync := make(chan struct{})
+	loserSyncStarted := make(chan struct{})
+	releaseLoserSync := make(chan struct{})
+	release := func(done chan struct{}) {
+		select {
+		case <-done:
+		default:
+			close(done)
+		}
+	}
+	t.Cleanup(func() {
+		release(releaseWinnerSync)
+		release(releaseLoserSync)
+	})
+
+	winner.syncStateRoot = func(string) error {
+		close(winnerSyncStarted)
+		<-releaseWinnerSync
+		return nil
+	}
+	loser.syncStateRoot = func(string) error {
+		close(loserSyncStarted)
+		<-releaseLoserSync
+		return nil
+	}
+	winnerResult := make(chan error, 1)
+	go func() {
+		_, err := winner.Seal(ctx, "winner-ref", "winner-secret")
+		winnerResult <- err
+	}()
+	select {
+	case <-winnerSyncStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("winner did not reach directory sync")
+	}
+
+	loserResult := make(chan error, 1)
+	go func() {
+		_, err := loser.Seal(ctx, "loser-ref", "loser-secret")
+		loserResult <- err
+	}()
+	select {
+	case err := <-loserResult:
+		t.Fatalf("loser Seal() returned before directory sync: %v", err)
+	case <-loserSyncStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("loser did not reach directory sync")
+	}
+
+	release(releaseLoserSync)
+	select {
+	case err := <-loserResult:
+		if err != nil {
+			t.Fatalf("loser Seal() error = %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("loser Seal() did not return after directory sync")
+	}
+	release(releaseWinnerSync)
+	select {
+	case err := <-winnerResult:
+		if err != nil {
+			t.Fatalf("winner Seal() error = %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("winner Seal() did not return after directory sync")
+	}
+}
+
+func TestVaultDirectorySyncFailurePreservesRecoverableKey(t *testing.T) {
+	ctx := context.Background()
+	syncErr := errors.New("synthetic-directory-sync-failure")
+
+	tests := []struct {
+		name   string
+		create func(*Vault) error
+	}{
+		{
+			name: "create seed exclusive",
+			create: func(vault *Vault) error {
+				_, err := vault.createSeedExclusive()
+				return err
+			},
+		},
+		{
+			name: "create seed",
+			create: func(vault *Vault) error {
+				_, err := vault.createSeed()
+				return err
+			},
+		},
+		{
+			name: "initialize new",
+			create: func(vault *Vault) error {
+				_, err := vault.InitializeNew(ctx)
+				return err
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			root := t.TempDir()
+			vault := New(root, fixedMachine("machine-a"))
+			vault.random = bytes.NewReader(syntheticSeedA)
+			vault.syncStateRoot = func(string) error { return syncErr }
+
+			if err := test.create(vault); !errors.Is(err, syncErr) {
+				t.Fatalf("create error = %v, want it wrap %v", err, syncErr)
+			}
+			info, err := os.Stat(vault.KeyPath())
+			if err != nil {
+				t.Fatalf("credential key missing after directory sync failure: %v", err)
+			}
+			if info.Mode().Perm() != platform.FileMode {
+				t.Fatalf("credential key mode = %v, want %v", info.Mode().Perm(), platform.FileMode)
+			}
+
+			_, wantKeyID, err := vault.deriveKey(ctx, syntheticSeedA)
+			if err != nil {
+				t.Fatal(err)
+			}
+			recovered := New(root, fixedMachine("machine-a"))
+			gotKeyID, err := recovered.InspectKey(ctx)
+			if err != nil {
+				t.Fatalf("InspectKey() after directory sync failure = %v", err)
+			}
+			if gotKeyID != wantKeyID {
+				t.Fatalf("recovered key ID = %q, want %q", gotKeyID, wantKeyID)
+			}
+		})
 	}
 }
 

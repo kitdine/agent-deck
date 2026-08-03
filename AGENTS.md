@@ -153,8 +153,9 @@ workflow authority for this project.
 
 - Never invoke `superpowers:using-superpowers`.
 - Do not apply the "1% applicability" rule.
-- Automatically use `verification-before-completion` before claiming that work
-  is complete, fixed, passing, or ready.
+- Do not invoke `verification-before-completion` in this project. Its evidence
+  requirements are fully covered by the project verification matrix,
+  exact-content-state reuse rules, review workflows, and delivery checks.
 - Use `systematic-debugging` for non-trivial, reproducible technical failures
   before proposing or implementing fixes.
 - Use `receiving-code-review` when evaluating review feedback, especially when

@@ -155,7 +155,7 @@ tests, since the pinned test's comment is edited alongside.
 
 | Task | Dev | Review |
 | --- | --- | --- |
-| 1. `key-file-durability` | [ ] | [ ] |
+| 1. `key-file-durability` | [x] | [x] |
 | 2. `price-retry-ordering` | [ ] | [ ] |
 | 3. `session-health-doc-accuracy` | [ ] | [ ] |
 

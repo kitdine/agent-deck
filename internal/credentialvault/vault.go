@@ -55,10 +55,16 @@ type Vault struct {
 	stateRoot       string
 	machineIdentity MachineIdentity
 	random          io.Reader
+	syncStateRoot   func(string) error
 }
 
 func New(stateRoot string, machineIdentity MachineIdentity) *Vault {
-	return &Vault{stateRoot: stateRoot, machineIdentity: machineIdentity, random: rand.Reader}
+	return &Vault{
+		stateRoot:       stateRoot,
+		machineIdentity: machineIdentity,
+		random:          rand.Reader,
+		syncStateRoot:   syncDirectory,
+	}
 }
 
 func (v *Vault) KeyPath() string { return filepath.Join(v.stateRoot, keyFilename) }
@@ -150,7 +156,12 @@ func (v *Vault) InitializeNew(ctx context.Context) (bool, error) {
 
 func (v *Vault) key(ctx context.Context, create bool) ([]byte, string, error) {
 	seed, err := v.loadSeed()
-	if errors.Is(err, fs.ErrNotExist) && create {
+	if err == nil {
+		// Another process may have linked this key but not yet synced the directory.
+		if err := v.syncStateRoot(v.stateRoot); err != nil {
+			return nil, "", err
+		}
+	} else if errors.Is(err, fs.ErrNotExist) && create {
 		seed, err = v.createSeed()
 	}
 	if errors.Is(err, fs.ErrNotExist) {
@@ -205,6 +216,9 @@ func (v *Vault) loadSeed() ([]byte, error) {
 func (v *Vault) createSeed() ([]byte, error) {
 	seed, err := v.createSeedExclusive()
 	if errors.Is(err, fs.ErrExist) {
+		if err := v.syncStateRoot(v.stateRoot); err != nil {
+			return nil, err
+		}
 		return v.loadSeed()
 	}
 	return seed, err
@@ -245,7 +259,23 @@ func (v *Vault) createSeedExclusive() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := v.syncStateRoot(v.stateRoot); err != nil {
+		return nil, err
+	}
 	return seed, nil
+}
+
+func syncDirectory(path string) error {
+	directory, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	syncErr := directory.Sync()
+	closeErr := directory.Close()
+	if syncErr != nil {
+		return syncErr
+	}
+	return closeErr
 }
 
 func associatedData(reference string) []byte {
