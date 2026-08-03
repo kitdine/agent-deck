@@ -1,6 +1,6 @@
 ---
 status: active
-version: 21
+version: 22
 created: 2026-07-14
 ---
 
@@ -372,6 +372,40 @@ Switching channels is therefore an explicit uninstall/install operation.
 Homebrew removes only its Cellar and linked artifacts and does not remove
 AgentDeck state under `~/.agentdeck/`. Once the RC formula is installed,
 `brew update && brew upgrade kitdine/tap/agentdeck-rc` follows later candidates.
+
+#### Version Number Semantics
+
+The tag shape above states syntax; this states what each position promises
+during the `0.x` line before any `v1.0.0`. MAJOR stays `0` for the whole line;
+raising it is a separate, explicit stability declaration, not a consequence of
+any single change.
+
+MINOR (`0.Y.0`) is required whenever a release adds, removes, or renames a
+command, subcommand, or flag; migrates the schema of `agentdeck.sqlite3` or
+`sessions.sqlite3`; changes stdout text, JSON, NDJSON, or exit-code semantics;
+changes a user-visible number — cost, coverage, token attribution, or a count —
+for unchanged input; adds, removes, or renames a stable typed error code; ships
+persisted data an earlier release cannot read; or rewrites rather than
+clarifies a promised behavior in this document.
+
+PATCH (`0.Y.Z`) covers everything else: defect fixes that restore already
+promised behavior, performance and robustness work, internal refactors,
+documentation accuracy corrections, and improved diagnostic or error message
+text that keeps its typed code and exit code. A patch release must be safe to
+downgrade from — schema, persisted formats, and the stdout contract stay
+byte-compatible with the prior release.
+
+Rewording an error message, including replacing leaked internal text with
+actionable guidance, is PATCH; adding or renaming the typed `code` in the JSON
+error envelope is MINOR, because "Output and Errors" pins typed error codes
+through stable fixtures. This document's own `version:` frontmatter is
+independent of the release version: raising it does not oblige a minor
+release, and a minor release does not oblige raising it — a patch release may
+raise it when it adds or clarifies a rule without changing promised behavior.
+
+Any release that touches persisted data, the pricing read path, or a
+configuration file owned by an external client ships at least one `-rc.N` and
+is validated against real local data before the stable tag.
 
 For either a stable or supported RC release, a dependent macOS job renders the
 matching formula from the released checksum asset, installs it from an isolated
@@ -1985,6 +2019,18 @@ import the legacy `providers.json`, usage database, or real client settings.
     provider switch when shell setup fails.
 54. The project-attribution marker is a `0600` machine-local negative gate,
     not eligibility truth, and is excluded from portable backups.
+55. A release position change is MINOR when it adds, removes, or renames a
+    command, subcommand, or flag; migrates the
+    `agentdeck.sqlite3` or `sessions.sqlite3` schema; changes stdout text,
+    JSON, NDJSON, or exit-code semantics; changes a user-visible number for
+    unchanged input; adds, removes, or renames a stable typed error code;
+    ships persisted data an earlier release cannot read; or
+    rewrites rather than clarifies a promised behavior in this document.
+    PATCH covers everything else, including reworded error-message text that
+    keeps its typed code and exit code, and must remain safe to downgrade
+    from: schema, persisted formats, and the stdout contract stay
+    byte-compatible. This document's own `version:` is independent of the
+    release version; either may advance without the other.
 
 ## Changelog
 
@@ -1994,6 +2040,7 @@ here changes; do not create a dated copy of this file.
 
 | Version | Date | Contract change |
 | --- | --- | --- |
+| 22 | 2026-08-02 | Defines version number semantics for the `0.x` line: MAJOR stays `0` until an explicit stability declaration; MINOR triggers cover command/flag/typed-error-code changes, schema migration, stdout/JSON/NDJSON/exit-code semantic changes, user-visible number changes for unchanged input, unsafe-to-downgrade persisted formats, and rewritten (not merely clarified) promised behavior; PATCH covers everything else and must stay safe to downgrade from; error-message wording is PATCH while typed error codes are MINOR; this document's own `version:` is independent of the release version; releases touching persisted data, the pricing read path, or external-client configuration ship at least one `-rc.N` validated against real local data first. |
 | 21 | 2026-07-30 | Shell attribution gains the supported `shell env` resolver, hidden `shell-init` compatibility guarantees, presence-guarded managed blocks, reusable setup/status/remove lifecycle, in-use-shell targeting, interactive switch-time setup, corrected route-change advisories, and the machine-local portable-backup-excluded negative gate. |
 | 20 | 2026-07-29 | Project attribution is opt-in and Headroom-wrapper-scoped. Eligible launches derive the cleaned full-path identity used by session indexing, expose only its safely encoded basename, and use client-specific environment transport without persisting the value. Codex owns only the `X-Headroom-Project` to `HEADROOM_PROJECT` mapping while preserving unrelated mappings. Outside `agentdeck run`, users must install the emitted shell helper or write settings themselves; AgentDeck does not attribute GUI app launches, and wrappers not declared `headroom` never receive AgentDeck-generated attribution headers. |
 | 19 | 2026-07-28 | Every successful Codex provider switch reports a stderr advisory to start a new session or restart the running one, because AgentDeck updates the configuration file but cannot update configuration already loaded by a running client. The note deliberately differs from Claude's live-settings and conflicting-credential advisories, remains informational, and is suppressed by `--quiet`. |

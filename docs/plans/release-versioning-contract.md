@@ -128,11 +128,24 @@ Acceptance:
 
 Verification: L0. Documentation and link checks plus `git diff --check`.
 
+**Dev evidence, 2026-08-02.** Added the `#### Version Number Semantics`
+subsection to `docs/specs/cli-design.md` immediately after the Homebrew-tap
+paragraph that follows the tag-shape statement at line 365, added rule 55 to
+`Acceptance Criteria` after existing rule 54 with no renumbering, raised
+`version:` from 21 to 22, and added the version-22 changelog row. Rule 55 maps
+one-to-one onto all 7 Decision triggers with no additions; the PATCH
+downgrade-safety property, the error-text/error-code boundary, and the
+specification-version independence are each stated explicitly. Verified with
+`git diff --check -- docs/specs/cli-design.md` (clean) and a numbered-rule grep
+confirming rules 1-54 are byte-identical and rule 55 is newly appended. No
+plan or living document currently links to the new anchor, so no link check
+was needed beyond the file's own internal consistency.
+
 ## Status
 
 | Task | Dev | Review |
 | --- | --- | --- |
-| 1. `version-semantics-rule` | [ ] | [ ] |
+| 1. `version-semantics-rule` | [x] | [x] |
 
 ## Starting a task
 
