@@ -59,6 +59,14 @@ Extract or generalize the batch price resolver and provider-timeline lookup so
 stats, deep diagnostics, and session summaries share one price interpretation.
 Preserve historical/current component merge behavior and attribution quality.
 
+**Dev evidence, 2026-08-02.** Renamed the stats-only resolver to the internal
+`readPriceResolver`, made it load and retain the provider timeline with the
+price rows, and kept `Stats` on that one snapshot for event attribution and
+provider reporting. `PriceDiagnostics` and `Sessions` intentionally remain
+unchanged for Tasks 2 and 3. Verified
+`GOCACHE=/private/tmp/agent-deck-go-build go test -mod=vendor ./internal/usage`
+and `GOCACHE=/private/tmp/agent-deck-go-build go test -mod=vendor ./...`.
+
 ### 2. `full-price-diagnostics`
 
 Rewrite `PriceDiagnostics` to load pricing inputs once and calculate unpriced
@@ -97,7 +105,7 @@ needs targeted `internal/usage` or `cmd/agentdeck` tests; final acceptance needs
 
 | Task | Dev | Review |
 | --- | --- | --- |
-| 1. `shared-read-resolver` | [ ] | [ ] |
+| 1. `shared-read-resolver` | [x] | [ ] |
 | 2. `full-price-diagnostics` | [ ] | [ ] |
 | 3. `usage-sessions-batch` | [ ] | [ ] |
 | 4. `scalability-acceptance` | [ ] | [ ] |

@@ -2334,50 +2334,55 @@ func percentPointer(numerator, denominator int64) *string {
 	return &value
 }
 
-type statsPriceRow struct {
+type readPriceRow struct {
 	catalogEffective time.Time
 	modelEffective   time.Time
 	order            priceLayerOrder
 	price            modelPrice
 }
 
-type statsPriceResolver struct {
-	current time.Time
-	byModel map[string][]statsPriceRow
+type readPriceResolver struct {
+	current  time.Time
+	byModel  map[string][]readPriceRow
+	timeline store.ProviderTimeline
 }
 
-func (s *Service) loadStatsPriceResolver(ctx context.Context, current time.Time) (statsPriceResolver, error) {
+func (s *Service) loadReadPriceResolver(ctx context.Context, current time.Time) (readPriceResolver, error) {
+	timeline, err := s.Store.LoadProviderTimeline(ctx)
+	if err != nil {
+		return readPriceResolver{}, err
+	}
 	rows, err := s.Store.DB.QueryContext(ctx, `SELECT mp.model,mp.provider,c.effective_from,mp.effective_from,mp.prices_json,mp.aliases_json,c.source_kind,c.imported_at,c.version FROM model_prices mp JOIN price_catalogs c ON c.version=mp.catalog_version`)
 	if err != nil {
-		return statsPriceResolver{}, err
+		return readPriceResolver{}, err
 	}
 	defer rows.Close()
-	resolver := statsPriceResolver{current: current, byModel: map[string][]statsPriceRow{}}
+	resolver := readPriceResolver{current: current, byModel: map[string][]readPriceRow{}, timeline: timeline}
 	for rows.Next() {
 		var model, providerName, catalogText, modelText, pricesText, aliasesText, sourceKind, importedText, version string
 		if err = rows.Scan(&model, &providerName, &catalogText, &modelText, &pricesText, &aliasesText, &sourceKind, &importedText, &version); err != nil {
-			return statsPriceResolver{}, err
+			return readPriceResolver{}, err
 		}
 		catalogEffective, parseErr := time.Parse(time.RFC3339Nano, catalogText)
 		if parseErr != nil {
-			return statsPriceResolver{}, parseErr
+			return readPriceResolver{}, parseErr
 		}
 		modelEffective, parseErr := time.Parse(time.RFC3339Nano, modelText)
 		if parseErr != nil {
-			return statsPriceResolver{}, parseErr
+			return readPriceResolver{}, parseErr
 		}
 		importedAt, parseErr := time.Parse(time.RFC3339Nano, importedText)
 		if parseErr != nil {
-			return statsPriceResolver{}, parseErr
+			return readPriceResolver{}, parseErr
 		}
 		price := modelPrice{Provider: providerName, Prices: map[string]string{}}
 		if err = json.Unmarshal([]byte(pricesText), &price.Prices); err != nil {
-			return statsPriceResolver{}, err
+			return readPriceResolver{}, err
 		}
 		var aliases []string
 		if aliasesText != "" && aliasesText != "null" {
 			if err = json.Unmarshal([]byte(aliasesText), &aliases); err != nil {
-				return statsPriceResolver{}, err
+				return readPriceResolver{}, err
 			}
 		}
 		client := map[string]string{"openai": "codex", "anthropic": "claude"}[providerName]
@@ -2386,12 +2391,12 @@ func (s *Service) loadStatsPriceResolver(ctx context.Context, current time.Time)
 		}
 		seen := map[string]bool{}
 		for _, candidate := range append([]string{model}, aliases...) {
-			key := providerName + "\x00" + statsPriceModelKey(client, candidate)
+			key := providerName + "\x00" + readPriceModelKey(client, candidate)
 			if seen[key] {
 				continue
 			}
 			seen[key] = true
-			resolver.byModel[key] = append(resolver.byModel[key], statsPriceRow{
+			resolver.byModel[key] = append(resolver.byModel[key], readPriceRow{
 				catalogEffective: catalogEffective,
 				modelEffective:   modelEffective,
 				order:            priceLayerOrder{sourceKind: sourceKind, catalogEffective: catalogEffective, importedAt: importedAt, version: version},
@@ -2400,7 +2405,7 @@ func (s *Service) loadStatsPriceResolver(ctx context.Context, current time.Time)
 		}
 	}
 	if err = rows.Err(); err != nil {
-		return statsPriceResolver{}, err
+		return readPriceResolver{}, err
 	}
 	for key := range resolver.byModel {
 		priceRows := resolver.byModel[key]
@@ -2410,17 +2415,17 @@ func (s *Service) loadStatsPriceResolver(ctx context.Context, current time.Time)
 	return resolver, nil
 }
 
-func statsPriceModelKey(client, model string) string {
+func readPriceModelKey(client, model string) string {
 	if client == "claude" && strings.HasPrefix(model, "claude-") {
 		return strings.ReplaceAll(model, ".", "-")
 	}
 	return model
 }
 
-func (r statsPriceResolver) priceAt(client, model string, at time.Time) (modelPrice, bool) {
+func (r readPriceResolver) priceAt(client, model string, at time.Time) (modelPrice, bool) {
 	providerName := map[string]string{"codex": "openai", "claude": "anthropic"}[client]
 	merged := modelPrice{Provider: providerName, Prices: map[string]string{}}
-	rows := r.byModel[providerName+"\x00"+statsPriceModelKey(client, model)]
+	rows := r.byModel[providerName+"\x00"+readPriceModelKey(client, model)]
 	for _, row := range rows {
 		if row.catalogEffective.After(at) || row.modelEffective.After(at) {
 			continue
@@ -2500,7 +2505,7 @@ type eventAttribution struct {
 	viaWrapper bool
 }
 
-func (r statsPriceResolver) priceForEvent(event storedEvent, timeline store.ProviderTimeline) (eventAttribution, error) {
+func (r readPriceResolver) priceForEvent(event storedEvent) (eventAttribution, error) {
 	attribution := eventAttribution{multiplier: "1", quality: "historical", provider: "unknown"}
 	if event.runID.Valid && event.runExact.Valid && event.runExact.Int64 == 1 {
 		if !event.runMultiplier.Valid {
@@ -2510,14 +2515,14 @@ func (r statsPriceResolver) priceForEvent(event storedEvent, timeline store.Prov
 		if event.runProvider.Valid {
 			attribution.provider = runtimeProviderName(event.runProvider.String)
 		}
-		attribution.viaWrapper = runtimeRouteWasWrapped(timeline, event.Client, attribution.provider, event.runStart)
+		attribution.viaWrapper = runtimeRouteWasWrapped(r.timeline, event.Client, attribution.provider, event.runStart)
 	} else {
 		if event.sessionStart.Valid && event.sessionStart.String != "" {
 			at, parseErr := time.Parse(time.RFC3339Nano, event.sessionStart.String)
 			if parseErr != nil {
 				return eventAttribution{}, parseErr
 			}
-			snapshot, snapshotErr := timeline.SnapshotAt(event.Client, at)
+			snapshot, snapshotErr := r.timeline.SnapshotAt(event.Client, at)
 			if snapshotErr == nil {
 				attribution.provider = runtimeProviderName(snapshot.Name)
 				attribution.quality, attribution.multiplier = "estimated", snapshot.Multiplier
@@ -2567,14 +2572,11 @@ func (s *Service) Stats(ctx context.Context, options StatsOptions) (StatsReport,
 	if err != nil {
 		return StatsReport{}, err
 	}
-	resolver, err := s.loadStatsPriceResolver(ctx, s.now())
+	resolver, err := s.loadReadPriceResolver(ctx, s.now())
 	if err != nil {
 		return StatsReport{}, err
 	}
-	timeline, err := s.Store.LoadProviderTimeline(ctx)
-	if err != nil {
-		return StatsReport{}, err
-	}
+	timeline := resolver.timeline
 	total := newStatsAccumulator()
 	buckets := map[string]*statsAccumulator{}
 	models := map[string]*statsAccumulator{}
@@ -2588,7 +2590,7 @@ func (s *Service) Stats(ctx context.Context, options StatsOptions) (StatsReport,
 		if parseErr != nil {
 			return StatsReport{}, parseErr
 		}
-		attribution, priceErr := resolver.priceForEvent(event, timeline)
+		attribution, priceErr := resolver.priceForEvent(event)
 		if priceErr != nil {
 			return StatsReport{}, priceErr
 		}
