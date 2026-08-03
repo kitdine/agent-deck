@@ -73,6 +73,15 @@ Rewrite `PriceDiagnostics` to load pricing inputs once and calculate unpriced
 model coverage without per-event database calls. Full `doctor` check names,
 codes, counts, and recovery commands remain byte-compatible.
 
+**Dev evidence, 2026-08-02.** `PriceDiagnostics` now loads one
+`readPriceResolver` after loading its events and resolves every event through
+that snapshot, eliminating its legacy per-event attribution and price reads.
+The aggregate provenance count, distinct unpriced-model count, `Calculate`
+semantics, and full-doctor check contract remain unchanged. Added a regression
+test for historical/current component merging, then verified
+`GOCACHE=/private/tmp/agent-deck-go-build go test -mod=vendor ./internal/usage ./internal/doctor`
+and `GOCACHE=/private/tmp/agent-deck-go-build go test -mod=vendor ./...`.
+
 ### 3. `usage-sessions-batch`
 
 Load session metadata and events in bounded queries, group events by session in
@@ -106,7 +115,7 @@ needs targeted `internal/usage` or `cmd/agentdeck` tests; final acceptance needs
 | Task | Dev | Review |
 | --- | --- | --- |
 | 1. `shared-read-resolver` | [x] | [x] |
-| 2. `full-price-diagnostics` | [ ] | [ ] |
+| 2. `full-price-diagnostics` | [x] | [x] |
 | 3. `usage-sessions-batch` | [ ] | [ ] |
 | 4. `scalability-acceptance` | [ ] | [ ] |
 

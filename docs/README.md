@@ -416,7 +416,7 @@ defect fix.
 | Document | Purpose |
 | --- | --- |
 | [specs/cli-design.md](specs/cli-design.md) | What the system does and must keep doing: provider, credential, usage, pricing, session, backup, and distribution behavior. Currently version 21; see its changelog. |
-| [plans/usage-pricing-read-scalability.md](plans/usage-pricing-read-scalability.md) | `v0.2.2` batch pricing reads for full doctor and `usage sessions`, reusing the `usage stats` resolver without changing CLI output. Lands first in the release. `active — 1/4 done`. |
+| [plans/usage-pricing-read-scalability.md](plans/usage-pricing-read-scalability.md) | `v0.2.2` batch pricing reads for full doctor and `usage sessions`, reusing the `usage stats` resolver without changing CLI output. Lands first in the release. `active — 2/4 done`. |
 | [plans/credential-and-pricing-hardening.md](plans/credential-and-pricing-hardening.md) | `v0.2.2` patch-safe hardening: credential key directory durability, price-retry ordering, and session-health documentation accuracy. Narrowed from six tasks on 2026-08-02. `active — 0/3 done`. |
 | [plans/session-show-stale-index.md](plans/session-show-stale-index.md) | `v0.2.2` message-only fix so `session show` reports a stale session index or an absent session instead of raw SQL driver text. `active — 0/1 done`. |
 | [plans/release-versioning-contract.md](plans/release-versioning-contract.md) | `v0.2.2` record of what each version-number position means, and the rule that scopes both upcoming releases. `active — 1/1 done`. |

@@ -1766,13 +1766,17 @@ func (s *Service) PriceDiagnostics(ctx context.Context) (invalidProvenance, unpr
 	if err != nil {
 		return 0, 0, err
 	}
+	resolver, err := s.loadReadPriceResolver(ctx, s.now())
+	if err != nil {
+		return 0, 0, err
+	}
 	unpriced := make(map[string]bool)
 	for _, event := range events {
-		price, mult, _, priceErr := s.priceForEvent(ctx, event)
+		attribution, priceErr := resolver.priceForEvent(event)
 		if priceErr != nil {
 			return 0, 0, priceErr
 		}
-		result, calculateErr := Calculate(event.Client, event.Model, event.Tokens, price, mult)
+		result, calculateErr := Calculate(event.Client, event.Model, event.Tokens, attribution.price, attribution.multiplier)
 		if calculateErr != nil {
 			return 0, 0, calculateErr
 		}

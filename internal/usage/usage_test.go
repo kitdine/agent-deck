@@ -1127,6 +1127,32 @@ func TestPriceDiagnosticsValidatesLiteLLMProvenanceAndCountsDistinctModels(t *te
 	}
 }
 
+func TestPriceDiagnosticsUsesCurrentPricesOnlyForMissingHistoricalComponents(t *testing.T) {
+	ctx := context.Background()
+	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	service := New(s, "")
+	service.Now = func() time.Time { return time.Date(2026, 2, 2, 0, 0, 0, 0, time.UTC) }
+	if _, err = s.Exec(ctx, `
+		INSERT INTO price_catalogs(version,source_kind,source_url,content_sha256,imported_at,effective_from,currency,schema_version) VALUES
+			('historical','bundled','bundled://agentdeck/model-prices.json','aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z','USD',1),
+			('current','bundled','bundled://agentdeck/model-prices.json','bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb','2026-02-01T00:00:00Z','2026-02-01T00:00:00Z','USD',1);
+		INSERT INTO model_prices(catalog_version,model,provider,effective_from,prices_json,aliases_json) VALUES
+			('historical','gpt-partial','openai','2026-01-01T00:00:00Z','{"input":"1"}','[]'),
+			('current','gpt-partial','openai','2026-02-01T00:00:00Z','{"output":"2"}','[]');
+		INSERT INTO usage_events(event_key,client,session_id,event_id,event_at,model,input_tokens,output_tokens,source_path,source_offset) VALUES
+			('event','codex','session','event','2026-01-02T00:00:00Z','gpt-partial',1,1,'fixture',0)`); err != nil {
+		t.Fatal(err)
+	}
+	_, unpriced, err := service.PriceDiagnostics(ctx)
+	if err != nil || unpriced != 0 {
+		t.Fatalf("PriceDiagnostics = unpriced:%d err:%v", unpriced, err)
+	}
+}
+
 func TestExactRunBindsOnlyItsTimeRangeAndStaleRecovery(t *testing.T) {
 	ctx := context.Background()
 	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state"))
