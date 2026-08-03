@@ -145,11 +145,11 @@ func fetchPriceBody(ctx context.Context, client *http.Client, url string, header
 	if closeErr != nil {
 		return nil, true, closeErr
 	}
-	if len(data) > int(maxBytes) {
-		return nil, false, fmt.Errorf("response exceeds %d bytes", maxBytes)
-	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, retryablePriceStatus(resp.StatusCode), errors.New(resp.Status)
+	}
+	if len(data) > int(maxBytes) {
+		return nil, false, fmt.Errorf("response exceeds %d bytes", maxBytes)
 	}
 	return data, false, nil
 }

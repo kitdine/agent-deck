@@ -1039,6 +1039,50 @@ func TestUpdateLiteLLMRejectsOversizedCatalogWithoutRetry(t *testing.T) {
 	requirePriceState(t, service, before)
 }
 
+func TestUpdateLiteLLMOversizedNonOKResponseKeepsStatusRetryability(t *testing.T) {
+	tests := []struct {
+		name     string
+		status   int
+		response string
+		attempts int
+	}{
+		{
+			name:     "retries server error",
+			status:   http.StatusBadGateway,
+			response: "502 Bad Gateway",
+			attempts: priceHTTPAttempts,
+		},
+		{
+			name:     "does not retry client error",
+			status:   http.StatusNotFound,
+			response: "404 Not Found",
+			attempts: 1,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			service, before := seedPriceState(t)
+			requests := 0
+			_, err := service.UpdateLiteLLM(context.Background(), strings.Repeat("b", 40), &http.Client{Transport: roundTrip(func(*http.Request) (*http.Response, error) {
+				requests++
+				return &http.Response{
+					StatusCode: test.status,
+					Status:     test.response,
+					Body:       io.NopCloser(&repeatedByteReader{remaining: priceCatalogMaxBytes + 1}),
+					Header:     make(http.Header),
+				}, nil
+			})})
+			if err == nil || !strings.Contains(err.Error(), test.response) {
+				t.Fatalf("update error = %v, want %q", err, test.response)
+			}
+			if requests != test.attempts {
+				t.Fatalf("requests = %d, want %d", requests, test.attempts)
+			}
+			requirePriceState(t, service, before)
+		})
+	}
+}
+
 func TestUpdateLiteLLMCancellationStopsRetry(t *testing.T) {
 	service, before := seedPriceState(t)
 	ctx, cancel := context.WithCancel(context.Background())
