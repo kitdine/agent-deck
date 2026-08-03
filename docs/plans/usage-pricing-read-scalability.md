@@ -88,6 +88,19 @@ Load session metadata and events in bounded queries, group events by session in
 memory, and summarize through the shared resolver. Preserve ordering, token
 totals, known subtotals, nil completeness, local-time text rendering, and JSON.
 
+**Dev evidence, 2026-08-02.** Closed the prior review's P2 by making
+`readPriceResolver` fall back to an event's `EventAt` when no session-start is
+available, matching legacy estimated provider attribution. `Sessions` now loads
+ordered metadata once, all events once, and one shared resolver; it groups events
+in memory and uses the shared summary path without changing its ordering or
+output fields. The event query now also selects exact-run provider and start
+metadata, so every resolver caller has complete attribution inputs. Added
+regression coverage for the fallback and the visible session-start provider cost
+and attribution warning. Constant query-count assertions remain Task 4 scope.
+Verified `GOCACHE=/private/tmp/agent-deck-go-build go test -mod=vendor ./internal/usage`,
+`GOCACHE=/private/tmp/agent-deck-go-build go test -mod=vendor ./cmd/agentdeck ./internal/doctor`,
+and `GOCACHE=/private/tmp/agent-deck-go-build go test -mod=vendor ./...`.
+
 ### 4. `scalability-acceptance`
 
 Add deterministic large-fixture and query-count coverage. Prefer constant-query
@@ -116,7 +129,7 @@ needs targeted `internal/usage` or `cmd/agentdeck` tests; final acceptance needs
 | --- | --- | --- |
 | 1. `shared-read-resolver` | [x] | [x] |
 | 2. `full-price-diagnostics` | [x] | [x] |
-| 3. `usage-sessions-batch` | [ ] | [ ] |
+| 3. `usage-sessions-batch` | [x] | [x] |
 | 4. `scalability-acceptance` | [ ] | [ ] |
 
 ## Starting Task

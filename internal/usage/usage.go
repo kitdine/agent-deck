@@ -2496,6 +2496,14 @@ func runtimeRouteWasWrapped(timeline store.ProviderTimeline, client, provider st
 	return runtimeProviderName(snapshot.Name) == provider && snapshot.ViaWrapper
 }
 
+func sessionStartAt(event storedEvent) (time.Time, error) {
+	value := event.EventAt
+	if event.sessionStart.Valid && event.sessionStart.String != "" {
+		value = event.sessionStart.String
+	}
+	return time.Parse(time.RFC3339Nano, value)
+}
+
 // eventAttribution is everything one pass over the provider timeline decides
 // about an event. Keeping the route here rather than resolving it again at the
 // aggregation site is what holds the aggregation to a single SnapshotAt per
@@ -2521,19 +2529,17 @@ func (r readPriceResolver) priceForEvent(event storedEvent) (eventAttribution, e
 		}
 		attribution.viaWrapper = runtimeRouteWasWrapped(r.timeline, event.Client, attribution.provider, event.runStart)
 	} else {
-		if event.sessionStart.Valid && event.sessionStart.String != "" {
-			at, parseErr := time.Parse(time.RFC3339Nano, event.sessionStart.String)
-			if parseErr != nil {
-				return eventAttribution{}, parseErr
-			}
-			snapshot, snapshotErr := r.timeline.SnapshotAt(event.Client, at)
-			if snapshotErr == nil {
-				attribution.provider = runtimeProviderName(snapshot.Name)
-				attribution.quality, attribution.multiplier = "estimated", snapshot.Multiplier
-				attribution.viaWrapper = attribution.provider != "unknown" && snapshot.ViaWrapper
-			} else if !errors.Is(snapshotErr, sql.ErrNoRows) {
-				return eventAttribution{}, snapshotErr
-			}
+		at, parseErr := sessionStartAt(event)
+		if parseErr != nil {
+			return eventAttribution{}, parseErr
+		}
+		snapshot, snapshotErr := r.timeline.SnapshotAt(event.Client, at)
+		if snapshotErr == nil {
+			attribution.provider = runtimeProviderName(snapshot.Name)
+			attribution.quality, attribution.multiplier = "estimated", snapshot.Multiplier
+			attribution.viaWrapper = attribution.provider != "unknown" && snapshot.ViaWrapper
+		} else if !errors.Is(snapshotErr, sql.ErrNoRows) {
+			return eventAttribution{}, snapshotErr
 		}
 	}
 	eventAt, err := time.Parse(time.RFC3339Nano, event.EventAt)
@@ -2900,13 +2906,29 @@ func (s *Service) Sessions(ctx context.Context) ([]SessionSummary, error) {
 		if err := rows.Scan(&item.Client, &item.SessionID, &item.FirstAt, &item.LastAt); err != nil {
 			return nil, err
 		}
-		events, e := s.events(ctx, item.Client, item.SessionID)
-		if e != nil {
-			return nil, e
-		}
-		total, e := s.summarize(ctx, events)
-		if e != nil {
-			return nil, e
+		out = append(out, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	events, err := s.events(ctx, "", "")
+	if err != nil {
+		return nil, err
+	}
+	resolver, err := s.loadReadPriceResolver(ctx, s.now())
+	if err != nil {
+		return nil, err
+	}
+	bySession := make(map[string][]storedEvent)
+	for _, event := range events {
+		key := event.Client + "\x00" + event.SessionID
+		bySession[key] = append(bySession[key], event)
+	}
+	for index := range out {
+		item := &out[index]
+		total, err := summarizeWithReadPriceResolver(bySession[item.Client+"\x00"+item.SessionID], resolver)
+		if err != nil {
+			return nil, err
 		}
 		item.Tokens = total.Tokens
 		item.CatalogBaseCost = total.CatalogBaseCost
@@ -2915,12 +2937,11 @@ func (s *Service) Sessions(ctx context.Context) ([]SessionSummary, error) {
 		item.KnownProviderCost = total.KnownProviderCost
 		item.Unpriced = total.Unpriced
 		item.Warnings = total.Warnings
-		out = append(out, item)
 	}
-	return out, rows.Err()
+	return out, nil
 }
 func (s *Service) events(ctx context.Context, client, session string) ([]storedEvent, error) {
-	q := `SELECT e.event_key,e.client,e.session_id,e.event_id,e.event_at,e.model,e.input_tokens,e.cached_input_tokens,e.output_tokens,e.cache_read_tokens,e.cache_creation_tokens,e.cache_write_5m_tokens,e.cache_write_1h_tokens,e.source_path,e.source_offset,COALESCE(b.run_id,e.run_id),r.exact,r.multiplier,us.first_at FROM usage_events e LEFT JOIN usage_run_bindings b ON b.event_key=e.event_key LEFT JOIN usage_runs r ON r.id=COALESCE(b.run_id,e.run_id) LEFT JOIN usage_sessions us ON us.client=e.client AND us.session_id=e.session_id`
+	q := `SELECT e.event_key,e.client,e.session_id,e.event_id,e.event_at,e.model,e.input_tokens,e.cached_input_tokens,e.output_tokens,e.cache_read_tokens,e.cache_creation_tokens,e.cache_write_5m_tokens,e.cache_write_1h_tokens,e.source_path,e.source_offset,COALESCE(b.run_id,e.run_id),r.exact,r.multiplier,r.provider,r.started_at,us.first_at FROM usage_events e LEFT JOIN usage_run_bindings b ON b.event_key=e.event_key LEFT JOIN usage_runs r ON r.id=COALESCE(b.run_id,e.run_id) LEFT JOIN usage_sessions us ON us.client=e.client AND us.session_id=e.session_id`
 	args := []any{}
 	where := []string{}
 	if client != "" {
@@ -2944,7 +2965,7 @@ func (s *Service) events(ctx context.Context, client, session string) ([]storedE
 	for rows.Next() {
 		var e storedEvent
 		var in, cached, outTokens, read, creation, write5, write1 int64
-		err = rows.Scan(&e.Key, &e.Client, &e.SessionID, &e.EventID, &e.EventAt, &e.Model, &in, &cached, &outTokens, &read, &creation, &write5, &write1, &e.SourcePath, &e.SourceOffset, &e.runID, &e.runExact, &e.runMultiplier, &e.sessionStart)
+		err = rows.Scan(&e.Key, &e.Client, &e.SessionID, &e.EventID, &e.EventAt, &e.Model, &in, &cached, &outTokens, &read, &creation, &write5, &write1, &e.SourcePath, &e.SourceOffset, &e.runID, &e.runExact, &e.runMultiplier, &e.runProvider, &e.runStart, &e.sessionStart)
 		if err != nil {
 			return nil, err
 		}
@@ -2984,7 +3005,25 @@ func (s *Service) eventsRange(ctx context.Context, from, to time.Time, client, m
 	return out, rows.Err()
 }
 
+type eventPricing func(storedEvent) (modelPrice, string, string, error)
+
 func (s *Service) summarize(ctx context.Context, events []storedEvent) (Summary, error) {
+	return summarizeEvents(events, func(event storedEvent) (modelPrice, string, string, error) {
+		return s.priceForEvent(ctx, event)
+	})
+}
+
+func summarizeWithReadPriceResolver(events []storedEvent, resolver readPriceResolver) (Summary, error) {
+	return summarizeEvents(events, func(event storedEvent) (modelPrice, string, string, error) {
+		attribution, err := resolver.priceForEvent(event)
+		if err != nil {
+			return modelPrice{}, "", "", err
+		}
+		return attribution.price, attribution.multiplier, attribution.quality, nil
+	})
+}
+
+func summarizeEvents(events []storedEvent, priceForEvent eventPricing) (Summary, error) {
 	out := Summary{Tokens: map[string]int64{}, Counts: map[string]int64{"events": int64(len(events)), "exact": 0, "estimated": 0, "historical": 0, "priced": 0, "unpriced": 0}, Models: []ModelCoverage{}, Unpriced: []string{}, Warnings: []string{}}
 	base := new(big.Rat)
 	provider := new(big.Rat)
@@ -3003,7 +3042,7 @@ func (s *Service) summarize(ctx context.Context, events []storedEvent) (Summary,
 		for k, v := range e.Tokens {
 			out.Tokens[k] += v
 		}
-		price, mult, quality, err := s.priceForEvent(ctx, e)
+		price, mult, quality, err := priceForEvent(e)
 		if err != nil {
 			return out, err
 		}

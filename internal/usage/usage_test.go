@@ -1153,6 +1153,66 @@ func TestPriceDiagnosticsUsesCurrentPricesOnlyForMissingHistoricalComponents(t *
 	}
 }
 
+func TestReadPriceResolverFallsBackToEventAtWithoutSessionStart(t *testing.T) {
+	ctx := context.Background()
+	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if _, err = s.Exec(ctx, `
+		INSERT INTO providers(id,name,endpoint,credential_ref,multiplier,created_at,updated_at) VALUES
+			(1,'historical-provider','https://fixture.invalid','ref','2','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z');
+		INSERT INTO provider_selections(provider_id,client,provider_name_snapshot,endpoint_snapshot,multiplier_snapshot,selected_at) VALUES
+			(1,'codex','historical-provider','https://fixture.invalid','2','2026-01-01T00:00:00Z')`); err != nil {
+		t.Fatal(err)
+	}
+	service := New(s, "")
+	resolver, err := service.loadReadPriceResolver(ctx, time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	attribution, err := resolver.priceForEvent(storedEvent{Event: Event{Client: "codex", EventAt: "2026-01-02T00:00:00Z"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if attribution.quality != "estimated" || attribution.multiplier != "2" || attribution.provider != "historical-provider" {
+		t.Fatalf("attribution = %#v", attribution)
+	}
+}
+
+func TestSessionsRetainsSessionStartProviderCost(t *testing.T) {
+	ctx := context.Background()
+	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	service := New(s, "")
+	service.Now = func() time.Time { return time.Date(2026, 7, 13, 1, 0, 0, 0, time.UTC) }
+	if err = service.ImportBundledCatalog(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.Exec(ctx, `
+		INSERT INTO providers(id,name,endpoint,credential_ref,multiplier,created_at,updated_at) VALUES
+			(1,'double','https://fixture.invalid','ref','2','2026-07-13T00:00:00Z','2026-07-13T00:00:00Z');
+		INSERT INTO provider_selections(provider_id,client,provider_name_snapshot,endpoint_snapshot,multiplier_snapshot,selected_at) VALUES
+			(1,'codex','double','https://fixture.invalid','2','2026-07-13T00:00:00Z');
+		INSERT INTO usage_sessions(client,session_id,first_at,last_at) VALUES
+			('codex','session','2026-07-13T00:30:00Z','2026-07-13T00:30:00Z');
+		INSERT INTO usage_events(event_key,client,session_id,event_id,event_at,model,input_tokens,source_path,source_offset) VALUES
+			('event','codex','session','event','2026-07-13T00:30:00Z','gpt-5.4',1000000,'fixture',0)`); err != nil {
+		t.Fatal(err)
+	}
+	sessions, err := service.Sessions(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 1 || sessions[0].ProviderCost == nil || *sessions[0].ProviderCost != "5.000000000" || !reflect.DeepEqual(sessions[0].Warnings, []string{"estimated attribution"}) {
+		t.Fatalf("sessions = %#v", sessions)
+	}
+}
+
 func TestExactRunBindsOnlyItsTimeRangeAndStaleRecovery(t *testing.T) {
 	ctx := context.Background()
 	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state"))
