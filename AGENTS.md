@@ -325,6 +325,39 @@ chore: ...
 - Each commit must contain one logical change.
 - Do not mix behavior changes, dependency upgrades, generated output, and
   unrelated documentation unless explicitly requested.
+
+### Task-Level Commit Boundary / Task 级提交边界
+
+- The default commit unit is one completed plan task after Review PASS. When the
+  task is still entirely uncommitted, its implementation, tests, task-local
+  documentation, review record, and status updates normally belong in one
+  atomic commit.
+- Do not mechanically split development, review, fix, and re-review artifacts.
+  Review round count alone is not a split reason. Split only when the task has
+  independently deliverable or revertible slices, substantial multi-round
+  fixes, an earlier commit boundary, or an explicit project/user requirement.
+- Never combine multiple task anchors merely because they belong to the same
+  plan. Classify shared code, test, plan, and index files by hunk; stage only the
+  current task or stop and report why it cannot be isolated safely.
+- After a task reaches Review PASS, the workflow must present one commit
+  checkpoint before advancing: name the target task, proposed included scope,
+  excluded dirty work, and verification evidence, then ask whether to commit
+  that task now. The checkpoint is a reminder, not commit or push authority.
+- A plain `commit`, `提交`, or `提交目前变更` response to that checkpoint
+  authorizes only the named task. Outside a checkpoint, bind a commit request to
+  the just-completed user-authorized task; do not interpret it as the entire
+  dirty worktree. If multiple task candidates remain, report the split and ask
+  for the target instead of guessing.
+- If implementation was committed earlier, a later review/status commit may
+  contain only the remaining artifacts. Do not amend or rebase to recreate one
+  task commit without explicit history-rewrite authorization.
+
+默认一个已 Review PASS 的完整 task 对应一个原子 commit；开发、测试、评审记录和
+task 状态通常随该 task 一起提交。不得因同属一个 plan 而合并多个 task，也不得因工作
+流阶段或 Review 轮数机械拆分。共享文件必须按 hunk 判断归属。Review PASS 后只提醒
+一次是否提交当前 task；该提醒本身不授权 commit/push，紧随其后的简短“提交”只授权
+checkpoint 点名的 task。
+
 - Stage only intended files. Before committing, inspect:
 
 ```bash
