@@ -105,7 +105,7 @@ needs targeted `internal/usage` or `cmd/agentdeck` tests; final acceptance needs
 
 | Task | Dev | Review |
 | --- | --- | --- |
-| 1. `shared-read-resolver` | [x] | [ ] |
+| 1. `shared-read-resolver` | [x] | [x] |
 | 2. `full-price-diagnostics` | [ ] | [ ] |
 | 3. `usage-sessions-batch` | [ ] | [ ] |
 | 4. `scalability-acceptance` | [ ] | [ ] |
