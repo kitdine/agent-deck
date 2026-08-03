@@ -346,18 +346,52 @@ usage session bounds, watch text, and the `usage stats --activity` model range.
 `version`'s `UTC Build Time` stays UTC by decision, because it is immutable
 build identity rather than a runtime instant.
 
-The next release is `v0.2.2`, with two active plans designed on 2026-07-29.
-[The credential and pricing hardening
-plan](plans/credential-and-pricing-hardening.md) promotes five aged Backlog
-entries into six tasks: credential key directory durability, key-ID derivation
-with a second supported sealed key version, price-retry ordering,
-session-health documentation accuracy, Claude cache-creation TTL defaulting,
-and the contract record. [The runtime provider attribution
-plan](plans/runtime-provider-attribution.md) replaces client-wide run ownership
-with Codex and Claude lifecycle Hooks, makes concurrent runs non-blocking, and
-splits resumed or hot-reloaded sessions at observed runtime boundaries without
-changing project-attribution shell functions. Nothing in either plan is
-implemented yet.
+## Release Roadmap (2026-08-02)
+
+The repository had shipped four releases without a written rule for what a
+version-number position means, and the patch position had drifted into being a
+release counter: `v0.2.1` added the `agentdeck shell` command group and
+relocalized every human-facing timestamp, which is minor-level content. The
+[release versioning contract plan](plans/release-versioning-contract.md) writes
+the position semantics into `docs/specs/cli-design.md`, and the next two
+releases are scoped by that rule rather than by convenience. Nothing in any plan
+below is implemented yet.
+
+**`v0.2.2` — patch. Read scalability and defect fixes; safe to downgrade from.**
+No new command, flag, schema migration, typed error code, or user-visible number
+change.
+
+| Plan | Tasks | Content |
+| --- | --- | --- |
+| [usage-pricing-read-scalability](plans/usage-pricing-read-scalability.md) | 4 | One shared bounded pricing/attribution read path for stats, full doctor, and `usage sessions`; lands first, because three `v0.3.0` tasks build on it |
+| [credential-and-pricing-hardening](plans/credential-and-pricing-hardening.md) | 3 | Credential key directory durability, price-retry ordering, session-health documentation accuracy |
+| [session-show-stale-index](plans/session-show-stale-index.md) | 1 | `session show` stops leaking `sql: no rows in result set` and says whether the index is stale or the session is absent |
+| [release-versioning-contract](plans/release-versioning-contract.md) | 1 | The position semantics above, recorded in the living contract |
+
+**`v0.3.0` — minor. Runtime attribution and pricing semantics.** Carries a
+schema migration, two external client Hook contracts, a Codex trust step
+AgentDeck cannot automate, changed cost numbers, and credentials an earlier
+release cannot read.
+
+| Plan | Tasks | Content |
+| --- | --- | --- |
+| [runtime-provider-attribution](plans/runtime-provider-attribution.md) | 4 | Codex and Claude lifecycle Hooks own runtime boundaries; concurrent runs become non-blocking; resumed and hot-reloaded sessions split at observed boundaries; project-attribution shell functions are unchanged |
+| [credential-key-and-cache-pricing](plans/credential-key-and-cache-pricing.md) | 2 | Derived rather than hashed key ID with a second supported sealed key version; disclosed five-minute default for a Claude cache-creation total with no TTL breakdown |
+| [codex-auto-review-classification](plans/codex-auto-review-classification.md) | 2 | Settle from evidence what the 85 M unpriced tokens are, then classify them, so `unpriced` means only "should have a price and does not" |
+
+Two rules hold across the `v0.3.0` batch. The specification version is raised
+**once**, by `v0-3-0-contract` in the runtime attribution plan, which records all
+three plans' behavior changes; and both releases ship at least one `-rc.N`
+validated against real local data, because both touch persisted data or the
+pricing read path.
+
+The `v0.2.2` batch was cut from what was planned on 2026-07-29. The credential
+and pricing hardening plan then held six tasks; `key-id-derivation` and
+`cache-creation-ttl-default` moved to `v0.3.0` with their evidence intact,
+because the first makes newly sealed rows unreadable by `v0.2.1` and the second
+changes user-visible cost numbers. Tasks 1, 3, and 4 never depended on them.
+`session scan` progress output was considered for `v0.2.2` and declined; it
+stays in the Backlog.
 
 Pulling the runtime attribution work into `v0.2.1` was considered on 2026-07-29
 and rejected: unlike `shell-init`, none of it has an expiring interface window —
@@ -382,9 +416,13 @@ defect fix.
 | Document | Purpose |
 | --- | --- |
 | [specs/cli-design.md](specs/cli-design.md) | What the system does and must keep doing: provider, credential, usage, pricing, session, backup, and distribution behavior. Currently version 21; see its changelog. |
-| [plans/credential-and-pricing-hardening.md](plans/credential-and-pricing-hardening.md) | `v0.2.2` hardening batch: credential key durability and key-ID derivation, price-retry ordering, session-health documentation accuracy, and Claude cache-creation TTL defaulting. Unblocked on 2026-07-31 after shell integration plan retirement; `active — 0/6 done`. |
-| [plans/runtime-provider-attribution.md](plans/runtime-provider-attribution.md) | The `v0.2.2` Hook-first runtime attribution work: reversible Codex/Claude Hook setup, resumed-session and Claude reload boundaries, non-blocking concurrent runs, and unchanged project-attribution shell functions. `active — 0/4 done`. |
-| [plans/usage-pricing-read-scalability.md](plans/usage-pricing-read-scalability.md) | `v0.2.2` batch pricing reads for full doctor and `usage sessions`, reusing the `usage stats` resolver without changing CLI output. `active — 0/4 done`. |
+| [plans/usage-pricing-read-scalability.md](plans/usage-pricing-read-scalability.md) | `v0.2.2` batch pricing reads for full doctor and `usage sessions`, reusing the `usage stats` resolver without changing CLI output. Lands first in the release. `active — 0/4 done`. |
+| [plans/credential-and-pricing-hardening.md](plans/credential-and-pricing-hardening.md) | `v0.2.2` patch-safe hardening: credential key directory durability, price-retry ordering, and session-health documentation accuracy. Narrowed from six tasks on 2026-08-02. `active — 0/3 done`. |
+| [plans/session-show-stale-index.md](plans/session-show-stale-index.md) | `v0.2.2` message-only fix so `session show` reports a stale session index or an absent session instead of raw SQL driver text. `active — 0/1 done`. |
+| [plans/release-versioning-contract.md](plans/release-versioning-contract.md) | `v0.2.2` record of what each version-number position means, and the rule that scopes both upcoming releases. `active — 0/1 done`. |
+| [plans/runtime-provider-attribution.md](plans/runtime-provider-attribution.md) | The `v0.3.0` Hook-first runtime attribution work: reversible Codex/Claude Hook setup, resumed-session and Claude reload boundaries, non-blocking concurrent runs, and unchanged project-attribution shell functions. Also owns the release's single contract task. `active — 0/4 done`. |
+| [plans/credential-key-and-cache-pricing.md](plans/credential-key-and-cache-pricing.md) | `v0.3.0` derived key ID with a second supported sealed key version, and the disclosed five-minute default for a Claude cache-creation total with no TTL breakdown. Split out of the hardening plan on 2026-08-02. `active — 0/2 done`. |
+| [plans/codex-auto-review-classification.md](plans/codex-auto-review-classification.md) | `v0.3.0` evidence-first classification of the 85 M deliberately unpriced `codex-auto-review` tokens. `active — 0/2 done`. |
 | [specs/cli-manual.md](specs/cli-manual.md) | The implemented command surface, flags, and output shapes. |
 | [reviews/](reviews/README.md) | Per-task review records that back each plan's ticked `Review` cell. |
 | [archive/](archive/README.md) | Retired plans and superseded contracts. Not a starting point for new work. |
@@ -408,23 +446,6 @@ than expanding the entry in place.
       the text and JSON contracts, sorting, and pagination compatibility. If
       approved, text renders the new instant in the machine zone while JSON
       keeps UTC.
-
-- [ ] Make the copyable
-      `agentdeck session show <id> --client <client> --activity` commands emitted
-      by usage statistics robust when the core usage database is newer than the
-      separately purgeable session index. Reproduced on `v0.2.0-rc.2`: the
-      selected Claude session, its usage events, safe tool calls, and source
-      ownership were present in `agentdeck.sqlite3`, while `sessions.sqlite3`
-      contained no metadata, documents, or source row for that session because
-      its last scan predated the source log. `session show` therefore returned
-      the raw `sql: no rows in result set` from its initial metadata query before
-      on-demand activity parsing began. A plan must decide whether activity
-      detail resolves through core usage state when available, the generated
-      command synchronizes or verifies the session index, or the CLI reports an
-      actionable stale-index error. Acceptance must cover a regression where
-      usage state is newer than the session index and preserve the privacy
-      contract: no tool arguments, results, command text, environment, or
-      reasoning may be exposed.
 
 - [ ] Add visible progress to `agentdeck session scan`. A real scan can walk
       enough Claude and Codex JSONL sources to leave an interactive terminal
@@ -484,14 +505,6 @@ than expanding the entry in place.
       configuration to scope a value to, so there is currently no mechanism to
       document or to build against — unlike the Claude app, where at least a
       candidate file exists. Revisit if the app gains a configuration surface.
-- [ ] Classify `codex-auto-review`, which accounts for roughly 85 M tokens of
-      real usage and is unpriced on purpose. It is absent from every pricing
-      source checked and is most likely a Codex-internal pseudo-model rather
-      than a billable one, so it needs classification — suppress it, or
-      attribute it to its real underlying model — not a price. This is a
-      usage-attribution question, not a catalog-coverage one; the price-coverage
-      plan deliberately left it out of scope and a shipped test asserts it stays
-      unpriced, so any change here must update that fixture too.
 - [ ] Add the ability to switch Claude subscription/account — analogous to the
       existing AI provider switching, but selecting a Claude account or plan
       rather than an API base URL and token. Not addressed by the

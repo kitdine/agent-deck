@@ -9,6 +9,17 @@ Target release: `v0.2.2`. This plan records the deeper pricing-read work found
 while validating `v0.2.1-rc.2`. Nothing in this plan is implemented by the
 quick-doctor fix.
 
+Confirmed patch-level on 2026-08-02 under
+[the release versioning contract](release-versioning-contract.md): the Non-Goals
+below already forbid every MINOR trigger, so this plan is the largest `v0.2.2`
+work and still leaves the release safe to downgrade from.
+
+It is also the first thing to land in the release. Three `v0.3.0` tasks —
+`cache-creation-ttl-default`, `codex-auto-review-classification`'s
+`classification-behavior`, and `hook-boundary-storage` — all change how a stored
+event resolves to a provider or a price, and each is specified to build on the
+resolver this plan delivers rather than on the per-event path it replaces.
+
 ## Goal
 
 - Make full doctor price diagnostics scale with events and catalog rows without
@@ -67,6 +78,16 @@ assertions over wall-clock thresholds; retain one real-data measurement against
 the validation database as acceptance evidence, not a portable unit-test gate.
 Update living documentation only if implementation changes an observable
 contract.
+
+This task also clears one verification debt carried over from `v0.2.1`. Real-state
+acceptance of the quick `doctor` boundary fix in `e722be8` is recorded in
+`docs/README.md` as unverified, because the managed approval reviewer blocked the
+command with its own request-format error. The same real 93,982,720-byte usage
+database and the same `doctor` surface are already required here, so the run
+covers both: record quick-mode and full-mode `doctor` behavior against that
+database as acceptance evidence, and update the `docs/README.md` statement when
+it passes. If it cannot be run, the debt stays recorded as unverified rather than
+being quietly dropped.
 
 Verification: L2 for shared usage pricing and CLI report behavior. Each task
 needs targeted `internal/usage` or `cmd/agentdeck` tests; final acceptance needs

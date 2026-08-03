@@ -5,13 +5,26 @@ created: 2026-07-29
 
 # Runtime Provider Attribution
 
-Target release: `v0.2.2`.
+Target release: `v0.3.0`.
 
 This plan replaces client-wide `agentdeck run` ownership with client-observed
 session boundaries. It does not expand project-attribution shell functions:
 those functions continue to inject only Headroom project metadata.
 
-**Release placement, decided 2026-07-29.** Staying in `v0.2.2` was reconsidered
+**Release placement, revised 2026-08-02.** The target moved from `v0.2.2` to
+`v0.3.0` when [the release versioning contract](release-versioning-contract.md)
+was adopted. Nothing about the work changed; it simply is not patch-level under
+that contract, and triggers four of its MINOR conditions at once: the
+`usage hook` command group is new (trigger 1), the boundary storage migrates the
+schema (trigger 2), attribution results change for unchanged input (trigger 4),
+and the specification's run-ownership rule is rewritten rather than clarified
+(trigger 7). `v0.2.2` therefore ships as a patch release that is safe to
+downgrade from, and this plan leads the `v0.3.0` batch.
+
+This plan is also the largest `v0.3.0` work and the last to finish, so it owns
+the release's single contract task — see task 4.
+
+**Earlier release placement, decided 2026-07-29.** Staying in `v0.2.2` was reconsidered
 against pulling this into `v0.2.1` alongside
 [the retired shell integration plan](../archive/plans/shell-integration.md), and confirmed. That plan had
 to move into `v0.2.1` because `shell-init` has never shipped stable, so changing
@@ -258,22 +271,42 @@ Acceptance:
 
 Verification: L2 targeted provider/usage tests plus the full vendored suite.
 
-### 4. `runtime-attribution-contract`
+### 4. `v0-3-0-contract`
 
-Update the living specification and manual after tasks 1-3 pass review. Define
-Hook setup/trust/removal, boundary quality, fallback behavior, concurrent runs,
-and the unchanged project-attribution shell-function scope. Raise the
-specification version from whatever version is current at delivery.
+The single contract task for the whole `v0.3.0` release. It was widened on
+2026-08-02 from this plan's own contract task: three plans ship behavior changes
+in `v0.3.0`, and each originally carried its own "increment the specification
+version" task. Three increments in one release would either collide or leave the
+changelog claiming three releases, so this task records all of them and raises
+the specification version exactly once.
+
+It runs after every `v0.3.0` task in all three plans has passed review:
+
+| Source plan | Behavior to record |
+| --- | --- |
+| This plan, tasks 1-3 | Hook setup/trust/removal, boundary quality, fallback behavior, concurrent runs, and the unchanged project-attribution shell-function scope |
+| [credential-key-and-cache-pricing](credential-key-and-cache-pricing.md) | Supported sealed key versions and the derived (not hashed) key ID in numbered rules 36 and 37; the durable key-file directory entry delivered by `v0.2.2`; the disclosed five-minute cache-creation default and the unchanged conservative handling of partial breakdowns at lines 903-904 |
+| [codex-auto-review-classification](codex-auto-review-classification.md) | The shipped classification branch, or nothing if that plan concluded inconclusive |
+
+Also update `docs/specs/cli-manual.md` wherever it shows `missing_components`,
+pricing completeness, credential key diagnostics, or the model coverage list.
 
 Acceptance:
 
+- the specification version is raised exactly once, with one changelog row
+  naming every behavior change in the release;
+- no specification statement contradicts shipped behavior;
 - no living document calls `agentdeck run` the primary resume path;
 - no document says shell functions perform usage tracking;
 - Hook absence and trust state have explicit visible fallbacks;
 - the `usage hook` lifecycle is described in the same terms as the `shell`
   lifecycle the specification already defines, with any deliberate divergence
   named and justified;
-- `docs/README.md`, plan status, and review records agree.
+- the release notes state both downgrade consequences: credentials written by
+  this release are unreadable by `v0.2.x`, and cost/coverage numbers change for
+  existing data;
+- `docs/README.md`, all three plans' status matrices, and the review records
+  agree.
 
 Verification: L0 documentation discovery/link checks and `git diff --check`.
 
@@ -284,11 +317,18 @@ Verification: L0 documentation discovery/link checks and `git diff --check`.
 | 1. `hook-config-lifecycle` | [ ] | [ ] |
 | 2. `hook-boundary-storage` | [ ] | [ ] |
 | 3. `claude-reload-boundary` | [ ] | [ ] |
-| 4. `runtime-attribution-contract` | [ ] | [ ] |
+| 4. `v0-3-0-contract` | [ ] | [ ] |
 
 Order: task 1 defines the installed wire contract. Task 2 consumes that wire
 contract and may proceed once its exact JSON fixtures are fixed. Task 3 depends
-on task 2. Task 4 runs last.
+on task 2. Task 4 runs last, and last across the whole release: it cannot start
+until every task in the other two `v0.3.0` plans has also passed review.
+
+Task 2 must land after `shared-read-resolver` in the `v0.2.2`
+[usage pricing read scalability plan](usage-pricing-read-scalability.md). Both
+change how a stored usage event resolves to a provider and a price; doing the
+resolver first means the session-route lookup is added to one unified read path
+instead of to a path that is about to be replaced.
 
 ## Backlog / Future Feature Ideas
 

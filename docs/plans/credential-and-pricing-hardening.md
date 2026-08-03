@@ -7,38 +7,46 @@ created: 2026-07-29
 
 Target release: `v0.2.2`.
 
-Five known defects promoted out of the `docs/README.md` Backlog. Each was
+Three known defects promoted out of the `docs/README.md` Backlog. Each was
 recorded there with its own evidence and left for "the next time that file is
 opened"; this plan opens those files once, deliberately, instead of letting the
 entries age further.
 
-The batch is deliberately narrow: no new command, flag, database table, or
-column. Two tasks change promised behavior, so the batch's contract task must
-increment `docs/specs/cli-design.md` once from whatever version is current at
-delivery; the rest are internal robustness or documentation accuracy.
+The batch is deliberately narrow: no new command, flag, database table, column,
+error code, or output change. Every task here is PATCH-safe under
+[the release versioning contract](release-versioning-contract.md) — the shipped
+tree stays safe to downgrade to `v0.2.1`.
+
+**Scope reduction, 2026-08-02.** This plan was designed on 2026-07-29 with six
+tasks. Two of them — `key-id-derivation` and `cache-creation-ttl-default` — are
+MINOR under the versioning contract adopted on 2026-08-02: the first makes newly
+sealed rows unreadable by an earlier release, and the second changes user-visible
+cost numbers. They moved, with their evidence, to
+[the credential key and cache pricing plan](credential-key-and-cache-pricing.md)
+targeting `v0.3.0`, together with the contract task that recorded them. Tasks 1,
+3, and 4 below never depended on them.
 
 ## Goal
 
 - Close the credential-key durability window that can strand ciphertext with no
   recoverable key.
-- Stop publishing a hash of the live AES key as the persisted key ID, without
-  breaking any credential already sealed under key version 1.
 - Make an oversized 5xx price response retryable, as the contract already
   promises.
-- Either stop creating session-index WAL sidecars during read-only diagnostics
-  or stop claiming that they are not created.
-- Decide what a Claude cache-creation total means when the provider supplies no
-  TTL breakdown, and price it accordingly.
+- Stop claiming that read-only session diagnostics create no WAL sidecars when
+  they do.
 
 ## Non-Goals
 
 - No credential re-encryption sweep, no forced key rotation, and no automatic
   migration of existing ciphertext.
 - No change to the credential key file format, its seed size, its HKDF salt or
-  info string, or the derived AES key bytes.
+  info string, the derived AES key bytes, or the persisted key ID.
 - No change to the price catalog, its generator, or its pinned LiteLLM commit.
 - No model-name special-casing anywhere in usage parsing or pricing.
 - No new `doctor` check, recovery command, or `--fix` behavior.
+- No specification version increment. Nothing here rewrites a promised behavior;
+  the wording upgrade that states the durable directory entry rides with the
+  `v0.3.0` contract task rather than forcing a spec bump into a patch release.
 
 ## Evidence Baseline
 
@@ -46,20 +54,7 @@ Gathered on 2026-07-29 at `2db056b`, before any task started.
 
 **Credential key.** `internal/credentialvault/vault.go:244` links the temporary
 seed file into place with `os.Link` and returns. The file's contents were synced
-at line 236, but the parent directory entry never is. `KeyVersion = 1` at line 25
-is used for two different things: the version byte inside the key file
-(line 223, checked at line 197) and the `key_version` recorded on every sealed
-row (line 98, checked at line 106). `deriveKey` returns
-`hex(sha256(key)[:16])` as the key ID (lines 181-182).
-
-Consumers of that key ID are wider than the vault:
-
-| Site | Current logic | Why it matters here |
-| --- | --- | --- |
-| `internal/doctor/doctor.go:246` | `sealed.KeyVersion != credentialvault.KeyVersion` reports `credential_key_version_unsupported` | A second supported version must not be reported as unsupported |
-| `internal/doctor/doctor.go:285` | `sealed.KeyID != keyID` reports `credential_key_machine_mismatch` | Comparing a version-1 row against a version-2 key ID would be a false machine mismatch |
-| `internal/doctor/doctor.go:266-270` | `rotationReady` requires exactly one distinct stored key ID equal to the live one | A mixed-version store has two distinct IDs, which would silently drop the `--rotate` recovery hint |
-| `internal/provider/service.go:1091-1098` | same single-key-ID comparison | same |
+at line 236, but the parent directory entry never is.
 
 **Price retrieval.** `internal/usage/price_update.go:140-153` reads the body
 under a `LimitReader`, then checks the byte cap at line 148 and only afterwards
@@ -77,42 +72,6 @@ creation, with a comment stating the pin is test-only. Nothing in
 `docs/specs/cli-design.md` promises the absence of sidecars; the design-level
 promises for `doctor` (lines 1677-1679) are no network, no credentials, no
 session text.
-
-**Claude cache creation.** `usage.go:1224-1232` copies
-`usage.cache_creation_input_tokens` into `cache_creation_tokens` and, when the
-`cache_creation` object is present, copies its two ephemeral fields into
-`cache_write_5m_tokens` and `cache_write_1h_tokens`. `usage.go:475-477` then
-marks `cache_creation_tokens` unpriced whenever the total is positive and both
-TTL buckets are zero, which suppresses `CatalogBaseCost`/`ProviderCost` for the
-whole event (lines 487-490). `docs/specs/cli-design.md:903-904` states this as
-an intentional rule.
-
-An aggregate-only probe of the real local Claude logs (counts only; no session
-text, paths, or arguments were emitted) shows what the affected events actually
-look like:
-
-| Model | `creation>0` events | object absent | object present, both TTLs zero | object with a non-zero TTL | Σ creation | Σ 5m | Σ 1h |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| `claude-opus-4-8` | 9115 | 0 | 0 | 9115 | 75,620,547 | 48,372,753 | 27,247,794 |
-| `claude-sonnet-5` | 7566 | 0 | 0 | 7566 | 36,018,777 | 11,852,178 | 24,166,969 |
-| `claude-haiku-4.5` | 2664 | 0 | 2664 | 0 | 7,716,156 | 0 | 0 |
-| `claude-opus-5` | 2538 | 0 | 0 | 2538 | 16,121,970 | 0 | 16,121,970 |
-| `claude-fable-5` | 1151 | 0 | 0 | 1151 | 5,343,867 | 5,343,867 | 0 |
-| `claude-haiku-4-5-20251001` | 250 | 0 | 0 | 250 | 832,469 | 241,789 | 590,680 |
-| `claude-sonnet-4-6` | 22 | 0 | 0 | 22 | 434,912 | 434,912 | 0 |
-| `claude-opus-4.8` | 1 | 0 | 1 | 0 | 59,152 | 0 | 0 |
-
-Three conclusions follow, and they correct the Backlog entry's framing:
-
-1. The `cache_creation` object is never absent in observed data. The affected
-   events carry the object with both ephemeral fields at zero.
-2. Dotted spelling is a coincidence, not the cause: dotted
-   `claude-haiku-4-5-20251001` reports a normal breakdown, and hyphenated
-   `claude-opus-4-8` does too. Any implementation that branches on a model name
-   is wrong.
-3. Wherever a breakdown exists, `5m + 1h` equals the reported total exactly.
-   The two `claude-sonnet-5` events with a zero total and a non-zero breakdown
-   (370 tokens) are the only observed inconsistency in the other direction.
 
 ## Tasks
 
@@ -141,62 +100,13 @@ Acceptance:
   with mode `0600`.
 - A subsequent call recovers by loading the existing seed and derives the same
   key ID.
+- The derived AES key bytes and the persisted key ID are unchanged, so a vault
+  written by this build opens under `v0.2.1` and the reverse.
 
 Verification: L3. Targeted `internal/credentialvault` tests, then the full
 vendor suite and `go vet`.
 
-### 2. `key-id-derivation`
-
-Derive the persisted key ID alongside the AES key instead of hashing it, and
-add key version 2 without invalidating version 1.
-
-Design constraints, in order of importance:
-
-- **The AES key bytes must not change.** Keep the HKDF salt (machine identity)
-  and info string (`agentdeck/credential-key/v1`) exactly as they are, and read
-  48 bytes from the same reader: bytes 0..32 stay the key, bytes 32..48 become
-  the version-2 key ID. Because HKDF-Expand is a stream, the first 32 bytes are
-  bit-identical to today's key, so every existing ciphertext still decrypts.
-- **The key file format must not change.** Split the overloaded `KeyVersion`
-  constant into a key-file format version (stays 1, still the byte written and
-  checked in the file) and a sealed key version, whose current value becomes 2
-  and whose supported set is {1, 2}. An existing key file must keep loading
-  untouched.
-- **Version-aware key IDs.** `Open` accepts sealed rows at version 1 or 2 and
-  compares against the key ID for *that* row's version; version 1 keeps
-  `hex(sha256(key)[:16])`. `Seal` and `SealExisting` always write version 2.
-- **No migration sweep.** Existing rows stay at version 1 until they are
-  rewritten by a normal credential write or an explicit
-  `credential update --rotate`. No command silently re-encrypts.
-
-Consumers to update, all four sites listed in the Evidence Baseline:
-
-- `doctor.go:246` must accept any supported version rather than only the
-  current one.
-- `doctor.go:285` must compare each row against the expected key ID for its own
-  version.
-- `rotationReady` in both `doctor.go` and `provider/service.go` must mean "every
-  stored row matches this machine's expected key ID for its own version",
-  because a mixed-version store legitimately holds two distinct IDs. Whatever
-  shape that takes, `credential update --rotate` must still be offered as
-  recovery in exactly the situations it is offered today.
-
-Acceptance:
-
-- A vault whose ciphertext was sealed before this change still opens, and
-  `doctor` reports it healthy with no version or mismatch problem.
-- A store holding both a version-1 and a version-2 row reports no problem, and
-  the `--rotate` recovery hint behaves as it does for a single-version store.
-- A version-2 key ID is not derivable from the AES key by SHA-256, and the AES
-  key derived for a fixed seed and machine identity is unchanged from version 1.
-- An unsupported version (0, 3, or absent) still fails closed with
-  `credential_key_version_unsupported` and never overwrites ciphertext.
-
-Verification: L3. Targeted `internal/credentialvault`, `internal/doctor`, and
-`internal/provider` tests, then the full vendor suite, `-race`, and `go vet`.
-Contract text is task 6.
-
-### 3. `price-retry-ordering`
+### 2. `price-retry-ordering`
 
 Check the HTTP status before the byte cap in `fetchPriceBody`.
 
@@ -212,7 +122,7 @@ within-cap 5xx keeps its current behavior; the successful path is unchanged.
 
 Verification: L1. Targeted `internal/usage` tests plus `go vet`.
 
-### 4. `session-health-doc-accuracy`
+### 3. `session-health-doc-accuracy`
 
 Resolve the `CheckHealth` doc-versus-behavior contradiction.
 
@@ -241,104 +151,17 @@ no production behavior changes.
 Verification: L0. `git diff --check` plus the targeted `internal/session`
 tests, since the pinned test's comment is edited alongside.
 
-### 5. `cache-creation-ttl-default`
-
-Price a Claude cache-creation total that arrives without a TTL breakdown.
-
-This task changes promised behavior. `docs/specs/cli-design.md:903-904`
-currently says such totals stay unpriced and that the scanner never guesses.
-The replacement rule must be a disclosed default, not a silent guess:
-
-- **Storage stays faithful.** The parser keeps writing what the source said:
-  `cache_creation_tokens` as reported, and the two TTL buckets exactly as the
-  `cache_creation` object gave them, including zero. No rebuild is required for
-  users to benefit, and no historical event is reinterpreted on disk.
-- **Pricing applies the default TTL.** When `cache_creation_tokens > 0` and both
-  TTL buckets are zero, price the total at the five-minute cache-write rate,
-  which is the rate the importer already maps
-  `cache_creation_input_token_cost` to (`cli-design.md:1182`) and the default
-  TTL Anthropic applies when no longer TTL is requested.
-- **The estimate is disclosed.** A cost that rests on this default must be
-  distinguishable from one derived from a reported breakdown. Follow the
-  existing disclosed-estimate precedent for prices rather than inventing a new
-  vocabulary, and keep the disclosure out of any grouping key.
-- **The branch is data-driven.** The condition is "positive total, both buckets
-  zero". It must never test a model name, a client version, or a spelling.
-- **Partial and contradictory shapes stay conservative.** If a breakdown is
-  present and non-zero but does not sum to the total, price the reported
-  buckets and leave the remainder unpriced as today; do not redistribute. The
-  observed zero-total-with-breakdown case keeps its current behavior.
-
-Consequences to carry through in the same task:
-
-- `missing_components` no longer reports `cache_creation_tokens` for the
-  defaulted shape, and affected events gain non-null cost fields.
-- Cold-start coverage assertions move: the bundled-coverage expectation of
-  95.1% fully priced must be recomputed, not adjusted by hand.
-- `usage stats` coverage, cost, and `unpriced_models` output changes for
-  affected data. The release notes must state that costs previously reported as
-  incomplete will now be priced.
-
-Acceptance:
-
-- An event with a positive total and a zero breakdown is priced at the
-  five-minute rate, carries no `cache_creation_tokens` in
-  `missing_components`, and is marked as resting on the default TTL.
-- An event with a reported breakdown is priced exactly as it is today, with no
-  disclosure marker.
-- An event whose breakdown is non-zero but short of the total keeps the
-  remainder unpriced.
-- Two models that differ only in spelling receive identical treatment for
-  identical token shapes.
-- Recomputed coverage figures are recorded in the plan's evidence when the task
-  completes.
-
-Verification: L2. Targeted `internal/usage` and `cmd/agentdeck` tests, then the
-full vendor suite. Contract text is task 6.
-
-**Scope switch.** This is the only task in the batch that changes user-visible
-cost numbers. If `v0.2.2` should ship as robustness-only, drop this task and
-task 6's specification row for it, and move both to `v0.3.0`; tasks 1-4 do not
-depend on it.
-
-### 6. `hardening-contract`
-
-Record the shipped behavior in the contract and the manual, mirroring the
-`attribution-contract` pattern.
-
-- Increment `docs/specs/cli-design.md` once from whatever version is current at
-  delivery, with one changelog row covering this batch.
-- Rewrite the aggregate-cache-creation rule at lines 903-904 to state the
-  disclosed five-minute default and the unchanged conservative handling of
-  partial breakdowns.
-- Update numbered rules 36 and 37 so the credential key's supported sealed key
-  versions and the derived (not hashed) key ID are part of the promise, and so
-  the durable directory entry is stated rather than implied.
-- Update `docs/specs/cli-manual.md` wherever it shows `missing_components`,
-  pricing completeness, or credential key diagnostics.
-- Update `docs/README.md`: move this plan's rollup into Current State when the
-  batch retires, and keep the Backlog free of the five promoted entries.
-
-Acceptance: no specification statement contradicts shipped behavior, and the
-changelog row names every behavior change in the batch.
-
-Verification: L0. Documentation checks and `git diff --check`.
-
 ## Status
 
 | Task | Dev | Review |
 | --- | --- | --- |
 | 1. `key-file-durability` | [ ] | [ ] |
-| 2. `key-id-derivation` | [ ] | [ ] |
-| 3. `price-retry-ordering` | [ ] | [ ] |
-| 4. `session-health-doc-accuracy` | [ ] | [ ] |
-| 5. `cache-creation-ttl-default` | [ ] | [ ] |
-| 6. `hardening-contract` | [ ] | [ ] |
+| 2. `price-retry-ordering` | [ ] | [ ] |
+| 3. `session-health-doc-accuracy` | [ ] | [ ] |
 
-Order: tasks 1 and 2 are sequential because both edit
-`internal/credentialvault/vault.go`. Tasks 3, 4, and 5 are independent of each
-other and of 1-2. Task 6 runs last and requires 2 and 5 to be reviewed, since
-it records what they shipped.
+All three tasks are independent of each other and of every other `v0.2.2` plan.
+Task 1 must land before `key-id-derivation` in the `v0.3.0` plan, because both
+edit `internal/credentialvault/vault.go`.
 
 Commit boundaries follow task boundaries: one commit per task.
 
