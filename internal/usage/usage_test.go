@@ -1153,6 +1153,83 @@ func TestPriceDiagnosticsUsesCurrentPricesOnlyForMissingHistoricalComponents(t *
 	}
 }
 
+func TestPriceReadPathsKeepQueryCountConstantForLargeFixture(t *testing.T) {
+	ctx := context.Background()
+	state := filepath.Join(t.TempDir(), "state")
+	database, err := store.Open(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = database.Exec(ctx, `
+		INSERT INTO price_catalogs(version,source_kind,source_url,content_sha256,imported_at,effective_from,currency,schema_version) VALUES
+		('fixture','bundled','bundled://agentdeck/model-prices.json','aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z','USD',1);
+		INSERT INTO model_prices(catalog_version,model,provider,effective_from,prices_json,aliases_json) VALUES
+		('fixture','gpt-fixture','openai','2026-01-01T00:00:00Z','{"input":"1"}','[]');
+		INSERT INTO usage_sessions(client,session_id,first_at,last_at) VALUES
+		('codex','one','2026-01-02T00:00:00Z','2026-01-02T00:00:00Z'),
+		('codex','two','2026-01-02T00:00:00Z','2026-01-02T00:00:00Z')`); err != nil {
+		database.Close()
+		t.Fatal(err)
+	}
+	tx, err := database.DB.BeginTx(ctx, nil)
+	if err != nil {
+		database.Close()
+		t.Fatal(err)
+	}
+	statement, err := tx.PrepareContext(ctx, `INSERT INTO usage_events(event_key,client,session_id,event_id,event_at,model,input_tokens,source_path,source_offset) VALUES(?,?,?,?,?,?,?,?,?)`)
+	if err != nil {
+		tx.Rollback()
+		database.Close()
+		t.Fatal(err)
+	}
+	for index := 0; index < 1003; index++ {
+		key := fmt.Sprintf("fixture-%04d", index)
+		sessionID := "one"
+		if index%2 == 1 {
+			sessionID = "two"
+		}
+		if _, err = statement.ExecContext(ctx, key, "codex", sessionID, key, "2026-01-02T00:00:00Z", "gpt-fixture", 1, "fixture", index); err != nil {
+			statement.Close()
+			tx.Rollback()
+			database.Close()
+			t.Fatal(err)
+		}
+	}
+	if err = statement.Close(); err != nil {
+		tx.Rollback()
+		database.Close()
+		t.Fatal(err)
+	}
+	if err = tx.Commit(); err != nil {
+		database.Close()
+		t.Fatal(err)
+	}
+	if err = database.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	countedStore, queries := openQueryCountingStore(t, filepath.Join(state, "agentdeck.sqlite3"))
+	service := New(countedStore, "")
+	service.Now = func() time.Time { return time.Date(2026, 1, 3, 0, 0, 0, 0, time.UTC) }
+
+	invalidProvenance, unpricedModels, err := service.PriceDiagnostics(ctx)
+	if err != nil || invalidProvenance != 0 || unpricedModels != 0 {
+		t.Fatalf("PriceDiagnostics = invalid:%d unpriced:%d err:%v", invalidProvenance, unpricedModels, err)
+	}
+	if got := queries.Load(); got != 5 {
+		t.Fatalf("PriceDiagnostics SQL queries for 1003 events = %d, want 5", got)
+	}
+
+	queries.Store(0)
+	sessions, err := service.Sessions(ctx)
+	if err != nil || len(sessions) != 2 || sessions[0].Tokens["input_tokens"] != 502 || sessions[1].Tokens["input_tokens"] != 501 {
+		t.Fatalf("Sessions = %#v, err:%v", sessions, err)
+	}
+	if got := queries.Load(); got != 5 {
+		t.Fatalf("Sessions SQL queries for 1003 events = %d, want 5", got)
+	}
+}
+
 func TestReadPriceResolverFallsBackToEventAtWithoutSessionStart(t *testing.T) {
 	ctx := context.Background()
 	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state"))

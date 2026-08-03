@@ -134,9 +134,17 @@ delivered only the `v0.2.1` quick/full boundary fix. The related full-doctor and
 [usage pricing read scalability plan](plans/usage-pricing-read-scalability.md).
 The quick-boundary change was committed in `e722be8`; its L2 suite and Review
 Round 2 passed after directly pinning full-mode `unpriced_models` and its result
-code. Real-state quick acceptance remains recorded as unverified because the
-managed approval reviewer blocked the command with its own request-format
-error. The installed stable Homebrew binary is separately verified above.
+code. Real-state acceptance passed on 2026-08-02 against the 93,982,720-byte
+usage database: its before/after SHA-256 was
+`2763ef03f3fff49f79955fe78eb19e31c96323fcb2b88a5fc15ffc024dd8624b`.
+Quick `doctor` (12 checks) and `doctor --full` (18 checks) both used the
+read-only database path and exited 0; the full check included price provenance
+and unpriced-model coverage. Because `usage stats --no-scan` still opens a
+writable store, baseline and current binaries compared isolated byte-identical
+copies over a fixed all-history range. Their JSON matched after excluding only
+the envelope's dynamic `generated_at` field, confirming the session-start
+fallback did not change stats output. The installed stable Homebrew binary is
+separately verified above.
 
 v0.1.1 is published and installable through `kitdine/homebrew-tap`. Every
 follow-up in the retired phase-one plan passed independent review, so there is
@@ -416,7 +424,7 @@ defect fix.
 | Document | Purpose |
 | --- | --- |
 | [specs/cli-design.md](specs/cli-design.md) | What the system does and must keep doing: provider, credential, usage, pricing, session, backup, and distribution behavior. Currently version 21; see its changelog. |
-| [plans/usage-pricing-read-scalability.md](plans/usage-pricing-read-scalability.md) | `v0.2.2` batch pricing reads for full doctor and `usage sessions`, reusing the `usage stats` resolver without changing CLI output. Lands first in the release. `active — 3/4 done`. |
+| [plans/usage-pricing-read-scalability.md](plans/usage-pricing-read-scalability.md) | `v0.2.2` batch pricing reads for full doctor and `usage sessions`, reusing the `usage stats` resolver without changing CLI output. Lands first in the release. `active — 4/4 done`. |
 | [plans/credential-and-pricing-hardening.md](plans/credential-and-pricing-hardening.md) | `v0.2.2` patch-safe hardening: credential key directory durability, price-retry ordering, and session-health documentation accuracy. Narrowed from six tasks on 2026-08-02. `active — 0/3 done`. |
 | [plans/session-show-stale-index.md](plans/session-show-stale-index.md) | `v0.2.2` message-only fix so `session show` reports a stale session index or an absent session instead of raw SQL driver text. `active — 0/1 done`. |
 | [plans/release-versioning-contract.md](plans/release-versioning-contract.md) | `v0.2.2` record of what each version-number position means, and the rule that scopes both upcoming releases. `active — 1/1 done`. |

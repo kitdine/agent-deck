@@ -109,15 +109,20 @@ the validation database as acceptance evidence, not a portable unit-test gate.
 Update living documentation only if implementation changes an observable
 contract.
 
-This task also clears one verification debt carried over from `v0.2.1`. Real-state
-acceptance of the quick `doctor` boundary fix in `e722be8` is recorded in
-`docs/README.md` as unverified, because the managed approval reviewer blocked the
-command with its own request-format error. The same real 93,982,720-byte usage
-database and the same `doctor` surface are already required here, so the run
-covers both: record quick-mode and full-mode `doctor` behavior against that
-database as acceptance evidence, and update the `docs/README.md` statement when
-it passes. If it cannot be run, the debt stays recorded as unverified rather than
-being quietly dropped.
+**Dev evidence, 2026-08-02.** `TestPriceReadPathsKeepQueryCountConstantForLargeFixture`
+seeds 1,003 events and proves both `PriceDiagnostics` and `Sessions` use exactly
+five SELECTs, independent of event count: one caller-specific read plus the
+resolver's operation, selection, and price snapshots. No wall-clock assertion is
+used. The real 93,982,720-byte state database remained SHA-256
+`2763ef03f3fff49f79955fe78eb19e31c96323fcb2b88a5fc15ffc024dd8624b` before and
+after acceptance. Since the CLI's `usage stats --no-scan` still opens a writable
+store, current and `HEAD` binaries compared byte-identical isolated copies over
+the fixed `2000-01-01` through `2026-08-02` range; after removing only envelope
+`generated_at`, their JSON SHA-256 was
+`20199dcad3ac1fd89d78f748af9588b70d61f2c88d306803669b0ba817b452c2`.
+Direct read-only real-state doctor checks both exited 0: quick reported 12 checks
+and full 18, including full-only price provenance and unpriced-model checks.
+This clears the v0.2.1 real-state acceptance debt in `docs/README.md`.
 
 Verification: L2 for shared usage pricing and CLI report behavior. Each task
 needs targeted `internal/usage` or `cmd/agentdeck` tests; final acceptance needs
@@ -130,7 +135,7 @@ needs targeted `internal/usage` or `cmd/agentdeck` tests; final acceptance needs
 | 1. `shared-read-resolver` | [x] | [x] |
 | 2. `full-price-diagnostics` | [x] | [x] |
 | 3. `usage-sessions-batch` | [x] | [x] |
-| 4. `scalability-acceptance` | [ ] | [ ] |
+| 4. `scalability-acceptance` | [x] | [x] |
 
 ## Starting Task
 
