@@ -76,14 +76,10 @@ func TestCheckHealthCompatibleIndexReportsOKWithoutMutatingTheDatabaseFile(t *te
 		t.Fatal("non-full health check changed the session database contents")
 	}
 
-	// CheckHealth opens the index read-only, but SQLite still materializes
-	// -shm/-wal sidecars for a WAL-mode database, and a read-only connection
-	// cannot clean up its own sidecars on close. This pins the OBSERVED
-	// behavior; doctor.go's "without creating" doc comment overstates the
-	// contract. Handed off as a backlog item rather than fixed here, because
-	// this queue is test-only. The sidecars are created 0600 inside the 0700
-	// state root, so the privacy boundary that does hold is asserted too; the
-	// main-database digest above proves the committed data is untouched.
+	// CheckHealth opens the index read-only, but WAL mode may create -shm and -wal
+	// sidecars. This expected diagnostic behavior leaves committed database
+	// contents untouched, and the sidecars are 0600 inside the 0700 state root.
+	// The main-database digest proves the committed contents remain unchanged.
 	for _, suffix := range []string{"-wal", "-shm"} {
 		info, err := os.Stat(dbPath + suffix)
 		if err != nil {

@@ -16,8 +16,12 @@ type Health struct {
 	UnreadableSources int
 }
 
-// CheckHealth inspects the rebuildable session index without creating,
-// migrating, or changing it.
+// CheckHealth reads the rebuildable session index without migrating it or
+// changing its committed contents. Opening its WAL-mode SQLite database
+// read-only may create 0600 -wal and -shm sidecars inside the 0700 state root:
+// immutable=1 assumes the file cannot change and can yield incorrect results or
+// SQLITE_CORRUPT during concurrent watcher or scanner writes, while
+// nolock=1 could return a stale snapshot.
 func CheckHealth(ctx context.Context, stateRoot string, full bool) (Health, error) {
 	path := filepath.Join(stateRoot, "sessions.sqlite3")
 	if _, err := os.Stat(path); errors.Is(err, fs.ErrNotExist) {

@@ -151,13 +151,19 @@ no production behavior changes.
 Verification: L0. `git diff --check` plus the targeted `internal/session`
 tests, since the pinned test's comment is edited alongside.
 
+Development evidence (2026-08-03):
+
+- `GOCACHE=/private/tmp/agent-deck-go-build go test -mod=vendor ./internal/session`
+  -> PASS (`1.255s`; rerun after Round 1 P1 correction).
+- `git diff --check` -> PASS.
+
 ## Status
 
 | Task | Dev | Review |
 | --- | --- | --- |
 | 1. `key-file-durability` | [x] | [x] |
 | 2. `price-retry-ordering` | [x] | [x] |
-| 3. `session-health-doc-accuracy` | [ ] | [ ] |
+| 3. `session-health-doc-accuracy` | [x] | [x] |
 
 All three tasks are independent of each other and of every other `v0.2.2` plan.
 Task 1 must land before `key-id-derivation` in the `v0.3.0` plan, because both
