@@ -1,7 +1,8 @@
 ---
-status: active
+status: historical
 plan: release-versioning-contract
 task: version-semantics-rule
+retired: 2026-08-03
 ---
 
 # Review log — release-versioning-contract / version-semantics-rule

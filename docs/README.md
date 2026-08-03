@@ -131,7 +131,7 @@ bounded time on the 93,982,720-byte real usage database. The
 [retired doctor quick diagnostics plan](archive/plans/doctor-quick-diagnostics.md)
 delivered only the `v0.2.1` quick/full boundary fix. The related full-doctor and
 `usage sessions` N+1 pricing reads remain explicitly deferred to the `v0.2.2`
-[usage pricing read scalability plan](plans/usage-pricing-read-scalability.md).
+[retired usage pricing read scalability plan](archive/plans/usage-pricing-read-scalability.md).
 The quick-boundary change was committed in `e722be8`; its L2 suite and Review
 Round 2 passed after directly pinning full-mode `unpriced_models` and its result
 code. Real-state acceptance passed on 2026-08-02 against the 93,982,720-byte
@@ -360,21 +360,17 @@ The repository had shipped four releases without a written rule for what a
 version-number position means, and the patch position had drifted into being a
 release counter: `v0.2.1` added the `agentdeck shell` command group and
 relocalized every human-facing timestamp, which is minor-level content. The
-[release versioning contract plan](plans/release-versioning-contract.md) writes
+[retired release versioning contract plan](archive/plans/release-versioning-contract.md) wrote
 the position semantics into `docs/specs/cli-design.md`, and the next two
-releases are scoped by that rule rather than by convenience. Nothing in any plan
-below is implemented yet.
+releases are scoped by that rule rather than by convenience.
 
 **`v0.2.2` — patch. Read scalability and defect fixes; safe to downgrade from.**
 No new command, flag, schema migration, typed error code, or user-visible number
-change.
-
-| Plan | Tasks | Content |
-| --- | --- | --- |
-| [usage-pricing-read-scalability](plans/usage-pricing-read-scalability.md) | 4 | One shared bounded pricing/attribution read path for stats, full doctor, and `usage sessions`; lands first, because three `v0.3.0` tasks build on it |
-| [credential-and-pricing-hardening](plans/credential-and-pricing-hardening.md) | 3 | Credential key directory durability, price-retry ordering, session-health documentation accuracy |
-| [session-show-stale-index](plans/session-show-stale-index.md) | 1 | `session show` stops leaking `sql: no rows in result set` and says whether the index is stale or the session is absent |
-| [release-versioning-contract](plans/release-versioning-contract.md) | 1 | The position semantics above, recorded in the living contract |
+change. **All nine tasks across its four plans were delivered and independently
+reviewed by 2026-08-03; the plans and their review records retired to
+`docs/archive/` that day.** See the retirement entry in
+[the archive index](archive/README.md) for what each one delivered and where its
+conclusions now live. The release itself is not tagged yet.
 
 **`v0.3.0` — minor. Runtime attribution and pricing semantics.** Carries a
 schema migration, two external client Hook contracts, a Codex trust step
@@ -424,10 +420,6 @@ defect fix.
 | Document | Purpose |
 | --- | --- |
 | [specs/cli-design.md](specs/cli-design.md) | What the system does and must keep doing: provider, credential, usage, pricing, session, backup, and distribution behavior. Currently version 21; see its changelog. |
-| [plans/usage-pricing-read-scalability.md](plans/usage-pricing-read-scalability.md) | `v0.2.2` batch pricing reads for full doctor and `usage sessions`, reusing the `usage stats` resolver without changing CLI output. Lands first in the release. `active — 4/4 done`. |
-| [plans/credential-and-pricing-hardening.md](plans/credential-and-pricing-hardening.md) | `v0.2.2` patch-safe hardening: credential key directory durability, price-retry ordering, and session-health documentation accuracy. Narrowed from six tasks on 2026-08-02. `active — 3/3 done`. |
-| [plans/session-show-stale-index.md](plans/session-show-stale-index.md) | `v0.2.2` message-only fix so `session show` reports a stale session index or an absent session instead of raw SQL driver text. `active — 1/1 done`. |
-| [plans/release-versioning-contract.md](plans/release-versioning-contract.md) | `v0.2.2` record of what each version-number position means, and the rule that scopes both upcoming releases. `active — 1/1 done`. |
 | [plans/runtime-provider-attribution.md](plans/runtime-provider-attribution.md) | The `v0.3.0` Hook-first runtime attribution work: reversible Codex/Claude Hook setup, resumed-session and Claude reload boundaries, non-blocking concurrent runs, and unchanged project-attribution shell functions. Also owns the release's single contract task. `active — 0/4 done`. |
 | [plans/credential-key-and-cache-pricing.md](plans/credential-key-and-cache-pricing.md) | `v0.3.0` derived key ID with a second supported sealed key version, and the disclosed five-minute default for a Claude cache-creation total with no TTL breakdown. Split out of the hardening plan on 2026-08-02. `active — 0/2 done`. |
 | [plans/codex-auto-review-classification.md](plans/codex-auto-review-classification.md) | `v0.3.0` evidence-first classification of the 85 M deliberately unpriced `codex-auto-review` tokens. `active — 0/2 done`. |

@@ -5,7 +5,7 @@ created: 2026-07-22
 
 # Archived Documents
 
-Last updated: 2026-08-02
+Last updated: 2026-08-03
 
 ## Why this directory exists
 
@@ -44,6 +44,50 @@ Move a document here instead of leaving it `active` in `docs/plans/` or
 - `docs/README.md` must not re-list individual archived files — this file is
   the index for archived material so the main doc index doesn't need to grow
   for documents nobody should open by default.
+
+## 2026-08-03 retirement: the `v0.2.2` plan batch
+
+`plans/usage-pricing-read-scalability.md`,
+`plans/credential-and-pricing-hardening.md`,
+`plans/session-show-stale-index.md`,
+`plans/release-versioning-contract.md`, and their `reviews/` directories
+
+All nine tasks across the four plans were delivered and independently reviewed.
+The release is scoped but not tagged; these documents retire because their work
+is finished and absorbed, not because `v0.2.2` shipped.
+
+**Read scalability.** `usage-pricing-read-scalability` replaced the per-event
+pricing lookups behind `usage stats`, full `doctor`, and `usage sessions` with
+one shared bounded resolver, then paid off the acceptance debt against the
+93,982,720-byte real usage database. The N+1 deferral recorded earlier in
+`docs/README.md` is closed by this plan.
+
+**Hardening.** `credential-and-pricing-hardening` synced the credential key's
+directory entry so a crash cannot strand ciphertext with no recoverable key,
+made an oversized 5xx price response retryable as the contract already promised,
+and corrected `CheckHealth`'s documentation to match what a read-only WAL open
+actually does. Two of its original six tasks — `key-id-derivation` and
+`cache-creation-ttl-default` — are MINOR and moved to
+`plans/credential-key-and-cache-pricing.md` for `v0.3.0`; they are not
+unfinished work here.
+
+**Message-only fix.** `session-show-stale-index` stopped `session show` from
+leaking `sql: no rows in result set` and made it say whether the session index
+is behind or the session is genuinely absent. Its review took three rounds: the
+second round's attempt to avoid WAL sidecars via `immutable=1` was measured to
+read a stale snapshot exactly when the index is behind, and was reverted in
+favor of documenting the sidecars and pinning the live-WAL case with a test.
+
+**Versioning contract.** `release-versioning-contract` recorded what each
+version-number position means. That rule stays active in
+`docs/specs/cli-design.md` and scopes both upcoming releases; the Release
+Roadmap section of `docs/README.md` remains the live planning surface.
+
+Three follow-up ideas were consciously left unscoped and are described in the
+archived `session-show-stale-index` plan's Future Ideas: dedicated typed error
+codes for the two causes, resolving activity detail through core usage state,
+and having `usage stats` verify the session index before emitting a copyable
+command.
 
 ## 2026-07-29 retirement: display timezone
 

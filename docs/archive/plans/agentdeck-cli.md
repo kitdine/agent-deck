@@ -856,7 +856,7 @@ approved specification yet; each needs its own design/plan document before
 implementation starts.
 
 - [ ] Execute the direct test implementation queue in
-      [2026-07-22-agentdeck-test-coverage.md](../../plans/test-coverage.md).
+      [2026-07-22-agentdeck-test-coverage.md](test-coverage.md).
 - [ ] Add the ability to switch Claude subscription/account (analogous to the
       existing AI provider switching, but for Claude account/plan selection
       rather than API base URL/token).

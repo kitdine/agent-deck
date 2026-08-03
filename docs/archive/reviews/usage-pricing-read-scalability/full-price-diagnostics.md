@@ -1,7 +1,8 @@
 ---
-status: active
+status: historical
 plan: usage-pricing-read-scalability
 task: full-price-diagnostics
+retired: 2026-08-03
 ---
 
 # Review log — usage-pricing-read-scalability / full-price-diagnostics

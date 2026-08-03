@@ -1,7 +1,8 @@
 ---
-status: active
+status: historical
 plan: credential-and-pricing-hardening
 task: price-retry-ordering
+retired: 2026-08-03
 ---
 
 # Review log — credential-and-pricing-hardening / price-retry-ordering

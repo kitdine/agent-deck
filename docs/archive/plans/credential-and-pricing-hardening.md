@@ -1,6 +1,7 @@
 ---
-status: active
+status: historical
 created: 2026-07-29
+retired: 2026-08-03
 ---
 
 # Credential and Pricing Hardening
@@ -22,7 +23,7 @@ tasks. Two of them — `key-id-derivation` and `cache-creation-ttl-default` — 
 MINOR under the versioning contract adopted on 2026-08-02: the first makes newly
 sealed rows unreadable by an earlier release, and the second changes user-visible
 cost numbers. They moved, with their evidence, to
-[the credential key and cache pricing plan](credential-key-and-cache-pricing.md)
+[the credential key and cache pricing plan](../../plans/credential-key-and-cache-pricing.md)
 targeting `v0.3.0`, together with the contract task that recorded them. Tasks 1,
 3, and 4 below never depended on them.
 

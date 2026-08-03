@@ -1,7 +1,8 @@
 ---
-status: active
+status: historical
 plan: session-show-stale-index
 task: stale-index-message
+retired: 2026-08-03
 ---
 
 # Review log — session-show-stale-index / stale-index-message

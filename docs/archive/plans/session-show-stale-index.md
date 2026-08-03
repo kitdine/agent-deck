@@ -1,6 +1,7 @@
 ---
-status: active
+status: historical
 created: 2026-08-02
+retired: 2026-08-03
 ---
 
 # Session Show Stale Index Reporting

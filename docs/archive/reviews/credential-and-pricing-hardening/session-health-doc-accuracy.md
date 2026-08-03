@@ -1,7 +1,8 @@
 ---
-status: active
+status: historical
 plan: credential-and-pricing-hardening
 task: session-health-doc-accuracy
+retired: 2026-08-03
 ---
 
 # Review log — credential-and-pricing-hardening / session-health-doc-accuracy

@@ -1,6 +1,7 @@
 ---
-status: active
+status: historical
 created: 2026-08-02
+retired: 2026-08-03
 ---
 
 # Usage Pricing Read Scalability

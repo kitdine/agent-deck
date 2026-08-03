@@ -1,7 +1,8 @@
 ---
-status: active
+status: historical
 plan: usage-pricing-read-scalability
 task: shared-read-resolver
+retired: 2026-08-03
 ---
 
 # Review log — usage-pricing-read-scalability / shared-read-resolver

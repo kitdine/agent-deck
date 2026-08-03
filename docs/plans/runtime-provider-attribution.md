@@ -12,7 +12,7 @@ session boundaries. It does not expand project-attribution shell functions:
 those functions continue to inject only Headroom project metadata.
 
 **Release placement, revised 2026-08-02.** The target moved from `v0.2.2` to
-`v0.3.0` when [the release versioning contract](release-versioning-contract.md)
+`v0.3.0` when [the release versioning contract](../archive/plans/release-versioning-contract.md)
 was adopted. Nothing about the work changed; it simply is not patch-level under
 that contract, and triggers four of its MINOR conditions at once: the
 `usage hook` command group is new (trigger 1), the boundary storage migrates the
@@ -325,7 +325,7 @@ on task 2. Task 4 runs last, and last across the whole release: it cannot start
 until every task in the other two `v0.3.0` plans has also passed review.
 
 Task 2 must land after `shared-read-resolver` in the `v0.2.2`
-[usage pricing read scalability plan](usage-pricing-read-scalability.md). Both
+[usage pricing read scalability plan](../archive/plans/usage-pricing-read-scalability.md). Both
 change how a stored usage event resolves to a provider and a price; doing the
 resolver first means the session-route lookup is added to one unified read path
 instead of to a path that is about to be replaced.
