@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -1985,6 +1986,113 @@ func TestSessionShowReportsCrossClientAmbiguityAndClientFlagsValidate(t *testing
 		if exit := execute(full, bytes.NewReader(nil), &stdout, &stderr); exit != 2 || !strings.Contains(stderr.String(), `"code":"invalid_argument"`) {
 			t.Fatalf("invalid client %v exit=%d stderr=%s", args, exit, stderr.String())
 		}
+	}
+}
+
+func TestSessionShowClassifiesMissingIndexEntries(t *testing.T) {
+	ctx := context.Background()
+	tests := []struct {
+		name, client   string
+		coreHasSession bool
+		wantStale      bool
+	}{
+		{name: "explicit client stale", client: "codex", coreHasSession: true, wantStale: true},
+		{name: "inferred client stale", coreHasSession: true, wantStale: true},
+		{name: "explicit client absent", client: "codex"},
+		{name: "inferred client absent"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			state := filepath.Join(t.TempDir(), "state")
+			core, err := store.Open(ctx, state)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if test.coreHasSession {
+				if _, err = core.Exec(ctx, `INSERT INTO usage_sessions(client,session_id,first_at,last_at) VALUES(?,?,?,?)`, "codex", "missing-index", "2026-08-03T00:00:00Z", "2026-08-03T00:00:00Z"); err != nil {
+					core.Close()
+					t.Fatal(err)
+				}
+			}
+			if err = core.Close(); err != nil {
+				t.Fatal(err)
+			}
+			args := []string{"--state-dir", state, "session", "show", "missing-index"}
+			jsonArgs := []string{"--state-dir", state, "--format", "json", "session", "show", "missing-index"}
+			if test.client != "" {
+				args = append(args, "--client", test.client)
+				jsonArgs = append(jsonArgs, "--client", test.client)
+			}
+			err = run(args, bytes.NewReader(nil), &bytes.Buffer{})
+			if !errors.Is(err, sql.ErrNoRows) {
+				t.Fatalf("session show error = %v, want sql.ErrNoRows", err)
+			}
+			if strings.Contains(err.Error(), "sql: no rows in result set") {
+				t.Fatalf("session show leaked SQL error: %v", err)
+			}
+			if test.wantStale {
+				if !strings.Contains(err.Error(), "agentdeck session scan") {
+					t.Fatalf("stale session show error = %v", err)
+				}
+			} else if !strings.Contains(err.Error(), "no session") {
+				t.Fatalf("absent session show error = %v", err)
+			}
+			for _, suffix := range []string{"-wal", "-shm"} {
+				info, statErr := os.Stat(filepath.Join(state, "agentdeck.sqlite3") + suffix)
+				if statErr != nil {
+					t.Fatalf("stat core %s sidecar after session show: %v", suffix, statErr)
+				}
+				if got := info.Mode().Perm(); got != 0o600 {
+					t.Fatalf("core %s sidecar mode = %04o, want 0600", suffix, got)
+				}
+			}
+
+			var stdout, stderr bytes.Buffer
+			if exit := execute(jsonArgs, bytes.NewReader(nil), &stdout, &stderr); exit != 1 {
+				t.Fatalf("JSON session show exit = %d, want 1; stderr=%s", exit, stderr.String())
+			}
+			if !strings.Contains(stderr.String(), `"code":"runtime_error"`) || strings.Contains(stderr.String(), "sql: no rows in result set") {
+				t.Fatalf("JSON session show error = %s", stderr.String())
+			}
+		})
+	}
+}
+
+func TestSessionShowClassifiesSessionFromLiveCoreWAL(t *testing.T) {
+	ctx := context.Background()
+	state := filepath.Join(t.TempDir(), "state")
+	core, err := store.Open(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer core.Close()
+	if _, err = core.Exec(ctx, `INSERT INTO usage_sessions(client,session_id,first_at,last_at) VALUES(?,?,?,?)`, "codex", "wal-session", "2026-08-03T00:00:00Z", "2026-08-03T00:00:00Z"); err != nil {
+		t.Fatal(err)
+	}
+
+	err = run([]string{"--state-dir", state, "session", "show", "wal-session", "--client", "codex"}, bytes.NewReader(nil), &bytes.Buffer{})
+	if !errors.Is(err, sql.ErrNoRows) || !strings.Contains(err.Error(), "agentdeck session scan") {
+		t.Fatalf("session show error = %v, want stale-index error wrapping sql.ErrNoRows", err)
+	}
+}
+
+func TestSessionShowMissingCoreDoesNotCreateIt(t *testing.T) {
+	ctx := context.Background()
+	state := filepath.Join(t.TempDir(), "state")
+	sessions, err := store.OpenSessions(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = sessions.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	err = run([]string{"--state-dir", state, "session", "show", "missing-core"}, bytes.NewReader(nil), &bytes.Buffer{})
+	if !errors.Is(err, sql.ErrNoRows) || !strings.Contains(err.Error(), "no session") {
+		t.Fatalf("session show error = %v, want absent session error wrapping sql.ErrNoRows", err)
+	}
+	if _, err = os.Stat(filepath.Join(state, "agentdeck.sqlite3")); !os.IsNotExist(err) {
+		t.Fatalf("core database exists after missing-core session show: err=%v", err)
 	}
 }
 

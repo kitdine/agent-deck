@@ -240,6 +240,18 @@ func (e *inputError) Unwrap() error {
 	return e.err
 }
 
+type sessionShowNotFoundError struct {
+	message string
+}
+
+func (e *sessionShowNotFoundError) Error() string {
+	return e.message
+}
+
+func (e *sessionShowNotFoundError) Unwrap() error {
+	return sql.ErrNoRows
+}
+
 func main() {
 	os.Exit(execute(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
 }
@@ -323,6 +335,32 @@ func errorExitCode(err error) int {
 		return 2
 	}
 	return 1
+}
+
+func sessionShowNotFound(ctx context.Context, opts *commandOptions, client, sessionID string) error {
+	message := fmt.Sprintf("no session %q is known", sessionID)
+	stateRoot, stateErr := opts.stateRoot()
+	if stateErr == nil {
+		// Ordinary read-only mode must observe current WAL-backed usage rows. SQLite
+		// may materialize owner-only WAL/SHM sidecars, but it does not create the
+		// core database or change committed database contents.
+		core, err := store.OpenReadOnly(ctx, stateRoot)
+		if err != nil {
+			return &sessionShowNotFoundError{message: message}
+		}
+		defer core.Close()
+		query := "SELECT EXISTS(SELECT 1 FROM usage_sessions WHERE session_id=?)"
+		args := []any{sessionID}
+		if client != "" {
+			query = "SELECT EXISTS(SELECT 1 FROM usage_sessions WHERE client=? AND session_id=?)"
+			args = []any{client, sessionID}
+		}
+		var exists bool
+		if err = core.DB.QueryRowContext(ctx, query, args...).Scan(&exists); err == nil && exists {
+			message = fmt.Sprintf("session %q is missing from the session index; run agentdeck session scan", sessionID)
+		}
+	}
+	return &sessionShowNotFoundError{message: message}
 }
 
 func isInputError(err error) bool {
@@ -2006,11 +2044,14 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 				}
 			}
 			if client == "" {
-				return nil, sql.ErrNoRows
+				return nil, sessionShowNotFound(ctx, opts, "", args[0])
 			}
 		}
 		result, err := session.ShowWithActivity(ctx, s.DB, client, args[0], showActivity)
 		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return nil, sessionShowNotFound(ctx, opts, client, args[0])
+			}
 			return nil, err
 		}
 		explicit := show.Flags().Changed("page") || show.Flags().Changed("limit") || show.Flags().Changed("all")

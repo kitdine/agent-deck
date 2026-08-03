@@ -80,9 +80,12 @@ what makes a message-only correction a patch-level change.
 Three constraints on the classification lookup, all of them safety rather than
 style:
 
-- It is **read-only and non-creating**. It must not open the core database in a
-  mode that creates or migrates it, and must not run when the file is absent.
-  A diagnostic message may not have the side effect of materializing state.
+- It is **read-only and does not create the core database**. It must not open
+  the core database in a mode that creates or migrates it, and must not run when
+  the file is absent. The ordinary read-only SQLite connection may materialize
+  `agentdeck.sqlite3-wal` and `agentdeck.sqlite3-shm` with mode `0600` inside
+  the `0700` state root. This is required to observe current WAL-backed usage
+  rows accurately; the lookup does not change committed database contents.
 - It is **bounded**. One indexed lookup, no scan of usage events, no pricing.
 - It **emits no new data**. The message may name the client and the session ID
   the user already supplied, and nothing else — no source path, project, model,
@@ -132,11 +135,19 @@ Verification: L2. Targeted `cmd/agentdeck` tests covering the three
 classification outcomes and both paths, then `go test -mod=vendor ./...`,
 because the change touches the shared CLI error surface.
 
+Development evidence (2026-08-03):
+
+- `GOCACHE=/private/tmp/agent-deck-go-build go test -mod=vendor ./cmd/agentdeck -run=TestSessionShow`
+  -> PASS (`1.263s`; final run after Round 2 WAL correction).
+- `GOCACHE=/private/tmp/agent-deck-go-build go test -mod=vendor ./...` -> PASS
+  (final run after Round 2 WAL correction).
+- `git diff --check` -> PASS.
+
 ## Status
 
 | Task | Dev | Review |
 | --- | --- | --- |
-| 1. `stale-index-message` | [ ] | [ ] |
+| 1. `stale-index-message` | [x] | [x] |
 
 Independent of every other `v0.2.2` plan.
 
