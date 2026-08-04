@@ -62,8 +62,8 @@ generic *unpriced model* fixture across the CLI test suite:
 | Site | Role |
 | --- | --- |
 | `internal/usage/usage_test.go:732,748` | Proves `Models[]` reports `UnpricedEvents` |
-| `internal/usage/usage_test.go:2208,2671` | Unpriced event in coverage and stats fixtures |
-| `cmd/agentdeck/main_test.go:1262,1269` | Proves the model-coverage table renders an unpriced row |
+| `internal/usage/usage_test.go:2415,2878` | Unpriced event in coverage and stats fixtures |
+| `cmd/agentdeck/main_test.go:1263,1270` | Proves the model-coverage table renders an unpriced row |
 | `cmd/agentdeck/usage_stats_text_test.go:31,1197` | Proves the stats text model section renders it |
 
 If it is reclassified as non-billable, those fixtures stop exercising the
@@ -138,8 +138,13 @@ Acceptance:
 - If the outcome is inconclusive, the plan says so and task 2 is dropped rather
   than reinterpreted.
 
-Verification: L0 for the recorded document; the probe itself is read-only
-inspection of real data and ships no code.
+Verification: L0 for the recorded document. The probe ships no code, but it
+reads real local Codex logs, so the L0 format/link/diff checks do not cover its
+two real risks. Satisfy them explicitly: state the exact commands or query in
+the plan so the numbers are reproducible, and confirm from the emitted output
+itself that only aggregate counts left the probe - no session text, prompt, tool
+argument, path, or credential, in the plan, the terminal, or any file the probe
+wrote.
 
 ### 2. `classification-behavior`
 
@@ -173,7 +178,7 @@ Verification: L2. Targeted `internal/usage` and `cmd/agentdeck` tests, then the
 full vendor suite.
 
 Prerequisite: task 1's branch selection, and `shared-read-resolver` in the
-`v0.2.2` scalability plan.
+`v0.2.2` scalability plan (**satisfied on 2026-08-03**).
 
 ## Status
 
@@ -183,7 +188,12 @@ Prerequisite: task 1's branch selection, and `shared-read-resolver` in the
 | 2. `classification-behavior` | [ ] | [ ] |
 
 Task 2 does not start before task 1 is reviewed, and does not start at all if
-task 1 concludes inconclusive.
+task 1 concludes inconclusive. In that case mark task 2's `Dev` and `Review`
+cells `n/a` with a pointer to task 1's recorded conclusion, rather than leaving
+them unchecked as if the work were still pending, and return the item to the
+Backlog in `docs/README.md`.
+
+Commit boundaries follow task boundaries: one commit per task.
 
 ## Starting a task
 

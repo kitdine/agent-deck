@@ -412,14 +412,15 @@ cache-creation events all carry a `cache_creation` object whose two TTL fields
 are zero rather than a missing object, so dotted model spelling is a
 coincidence and no implementation may branch on a model name; and treating such
 a total as a five-minute write contradicts an explicit specification rule, so
-that task is a contract change to specification version 21 rather than a
-defect fix.
+that task rewrites a rule promised by the current specification rather than
+fixing a defect, which is why it is a contract change recorded by the single
+`v0.3.0` contract task rather than a patch.
 
 ## Documents
 
 | Document | Purpose |
 | --- | --- |
-| [specs/cli-design.md](specs/cli-design.md) | What the system does and must keep doing: provider, credential, usage, pricing, session, backup, and distribution behavior. Currently version 21; see its changelog. |
+| [specs/cli-design.md](specs/cli-design.md) | What the system does and must keep doing: provider, credential, usage, pricing, session, backup, and distribution behavior. Currently version 22; see its changelog. |
 | [plans/runtime-provider-attribution.md](plans/runtime-provider-attribution.md) | The `v0.3.0` Hook-first runtime attribution work: reversible Codex/Claude Hook setup, resumed-session and Claude reload boundaries, non-blocking concurrent runs, and unchanged project-attribution shell functions. Also owns the release's single contract task. `active — 0/4 done`. |
 | [plans/credential-key-and-cache-pricing.md](plans/credential-key-and-cache-pricing.md) | `v0.3.0` derived key ID with a second supported sealed key version, and the disclosed five-minute default for a Claude cache-creation total with no TTL breakdown. Split out of the hardening plan on 2026-08-02. `active — 0/2 done`. |
 | [plans/codex-auto-review-classification.md](plans/codex-auto-review-classification.md) | `v0.3.0` evidence-first classification of the 85 M deliberately unpriced `codex-auto-review` tokens. `active — 0/2 done`. |

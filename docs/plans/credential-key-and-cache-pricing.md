@@ -53,20 +53,20 @@ Gathered on 2026-07-29 at `2db056b`, before any task started.
 
 **Credential key.** `KeyVersion = 1` at `internal/credentialvault/vault.go:25`
 is used for two different things: the version byte inside the key file
-(line 223, checked at line 197) and the `key_version` recorded on every sealed
-row (line 98, checked at line 106). `deriveKey` returns
-`hex(sha256(key)[:16])` as the key ID (lines 181-182).
+(line 235, checked at line 208) and the `key_version` recorded on every sealed
+row (line 104, checked at line 112). `deriveKey` returns
+`hex(sha256(key)[:16])` as the key ID (lines 192-193).
 
 Consumers of that key ID are wider than the vault:
 
 | Site | Current logic | Why it matters here |
 | --- | --- | --- |
-| `internal/doctor/doctor.go:246` | `sealed.KeyVersion != credentialvault.KeyVersion` reports `credential_key_version_unsupported` | A second supported version must not be reported as unsupported |
-| `internal/doctor/doctor.go:285` | `sealed.KeyID != keyID` reports `credential_key_machine_mismatch` | Comparing a version-1 row against a version-2 key ID would be a false machine mismatch |
-| `internal/doctor/doctor.go:266-270` | `rotationReady` requires exactly one distinct stored key ID equal to the live one | A mixed-version store has two distinct IDs, which would silently drop the `--rotate` recovery hint |
-| `internal/provider/service.go:1091-1098` | same single-key-ID comparison | same |
+| `internal/doctor/doctor.go:281` | `sealed.KeyVersion != credentialvault.KeyVersion` reports `credential_key_version_unsupported` | A second supported version must not be reported as unsupported |
+| `internal/doctor/doctor.go:320` | `sealed.KeyID != keyID` reports `credential_key_machine_mismatch` | Comparing a version-1 row against a version-2 key ID would be a false machine mismatch |
+| `internal/doctor/doctor.go:289-305` | `rotationReady` requires exactly one distinct stored key ID equal to the live one | A mixed-version store has two distinct IDs, which would silently drop the `--rotate` recovery hint |
+| `internal/provider/service.go:1116-1127` | same single-key-ID comparison | same |
 
-`doctor.go:246` is also the reason this task is not downgrade-safe: that exact
+`doctor.go:281` is also the reason this task is not downgrade-safe: that exact
 comparison exists in `v0.2.1` with `KeyVersion = 1`.
 
 **Claude cache creation.** `usage.go:1224-1232` copies
@@ -75,7 +75,7 @@ comparison exists in `v0.2.1` with `KeyVersion = 1`.
 `cache_write_5m_tokens` and `cache_write_1h_tokens`. `usage.go:475-477` then
 marks `cache_creation_tokens` unpriced whenever the total is positive and both
 TTL buckets are zero, which suppresses `CatalogBaseCost`/`ProviderCost` for the
-whole event (lines 487-490). `docs/specs/cli-design.md:903-904` states this as
+whole event (lines 487-490). `docs/specs/cli-design.md:1048-1049` states this as
 an intentional rule.
 
 An aggregate-only probe of the real local Claude logs (counts only; no session
@@ -141,9 +141,9 @@ Design constraints, in order of importance:
 
 Consumers to update, all four sites listed in the Evidence Baseline:
 
-- `doctor.go:246` must accept any supported version rather than only the
+- `doctor.go:281` must accept any supported version rather than only the
   current one.
-- `doctor.go:285` must compare each row against the expected key ID for its own
+- `doctor.go:320` must compare each row against the expected key ID for its own
   version.
 - `rotationReady` in both `doctor.go` and `provider/service.go` must mean "every
   stored row matches this machine's expected key ID for its own version",
@@ -169,14 +169,15 @@ Verification: L3. Targeted `internal/credentialvault`, `internal/doctor`, and
 `internal/provider` tests, then the full vendor suite, `-race`, and `go vet`.
 
 Prerequisite: `key-file-durability` in the `v0.2.2` hardening plan, which edits
-the same file.
+the same file. **Satisfied on 2026-08-03** - and it is what moved the `vault.go`
+line numbers cited above, so re-verify them before relying on any of them.
 
 ### 2. `cache-creation-ttl-default`
 
 Price a Claude cache-creation total that arrives without a TTL breakdown.
 
-`docs/specs/cli-design.md:903-904` currently says such totals stay unpriced and
-that the scanner never guesses. The replacement rule must be a disclosed
+`docs/specs/cli-design.md:1048-1049` currently says such totals stay unpriced
+and that the scanner never guesses. The replacement rule must be a disclosed
 default, not a silent guess:
 
 - **Storage stays faithful.** The parser keeps writing what the source said:
@@ -186,7 +187,7 @@ default, not a silent guess:
 - **Pricing applies the default TTL.** When `cache_creation_tokens > 0` and both
   TTL buckets are zero, price the total at the five-minute cache-write rate,
   which is the rate the importer already maps
-  `cache_creation_input_token_cost` to (`cli-design.md:1182`) and the default
+  `cache_creation_input_token_cost` to (`cli-design.md:1327`) and the default
   TTL Anthropic applies when no longer TTL is requested.
 - **The estimate is disclosed.** A cost that rests on this default must be
   distinguishable from one derived from a reported breakdown. Follow the
@@ -227,7 +228,7 @@ Verification: L2. Targeted `internal/usage` and `cmd/agentdeck` tests, then the
 full vendor suite.
 
 Prerequisite: `shared-read-resolver` in the `v0.2.2` scalability plan, for the
-reason recorded in the Evidence Baseline.
+reason recorded in the Evidence Baseline. **Satisfied on 2026-08-03.**
 
 ## Status
 
@@ -236,8 +237,9 @@ reason recorded in the Evidence Baseline.
 | 1. `key-id-derivation` | [ ] | [ ] |
 | 2. `cache-creation-ttl-default` | [ ] | [ ] |
 
-The two tasks are independent of each other. Both have a `v0.2.2` prerequisite,
-recorded in their own sections. Contract text for both is owned by the `v0.3.0`
+The two tasks are independent of each other. Both had a `v0.2.2` prerequisite,
+recorded in their own sections; both were satisfied on 2026-08-03, when that
+release's plans retired. Contract text for both is owned by the `v0.3.0`
 contract task in the runtime provider attribution plan, which cannot start until
 both are reviewed.
 

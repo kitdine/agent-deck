@@ -238,6 +238,14 @@ Acceptance:
   `env` object, verified in both orders;
 - no package installation path writes hook configuration.
 
+Split condition: this task covers two clients times three subcommands plus
+rollback, symlinks, permissions, malformed JSON, and Codex trust guidance. If
+the Codex and Claude merge paths need materially different owned-entry matching,
+or if a review round reopens one client while the other is settled, split it
+into `hook-config-lifecycle-codex` and `hook-config-lifecycle-claude` at that
+point and record the reason here. Do not split it preemptively: the shared
+lifecycle vocabulary is the point of doing them together.
+
 Verification: L3 targeted command/config tests plus the full vendored suite and
 relevant privacy/file-mode checks.
 
@@ -285,16 +293,21 @@ It runs after every `v0.3.0` task in all three plans has passed review:
 | Source plan | Behavior to record |
 | --- | --- |
 | This plan, tasks 1-3 | Hook setup/trust/removal, boundary quality, fallback behavior, concurrent runs, and the unchanged project-attribution shell-function scope |
-| [credential-key-and-cache-pricing](credential-key-and-cache-pricing.md) | Supported sealed key versions and the derived (not hashed) key ID in numbered rules 36 and 37; the durable key-file directory entry delivered by `v0.2.2`; the disclosed five-minute cache-creation default and the unchanged conservative handling of partial breakdowns at lines 903-904 |
+| [credential-key-and-cache-pricing](credential-key-and-cache-pricing.md) | Supported sealed key versions and the derived (not hashed) key ID in numbered rules 36 and 37; the durable key-file directory entry delivered by `v0.2.2`; the disclosed five-minute cache-creation default and the unchanged conservative handling of partial breakdowns at lines 1048-1049 |
 | [codex-auto-review-classification](codex-auto-review-classification.md) | The shipped classification branch, or nothing if that plan concluded inconclusive |
 
-Also update `docs/specs/cli-manual.md` wherever it shows `missing_components`,
-pricing completeness, credential key diagnostics, or the model coverage list.
+Also update `docs/specs/cli-manual.md`: add the `usage hook` command group to
+the documented command surface, described in the same terms as the `shell`
+group, and refresh wherever it shows `missing_components`, pricing
+completeness, credential key diagnostics, or the model coverage list.
 
 Acceptance:
 
-- the specification version is raised exactly once, with one changelog row
-  naming every behavior change in the release;
+- the specification version is raised exactly once, from 22 to 23, with one
+  changelog row naming every behavior change in the release;
+- `docs/specs/cli-manual.md` documents `usage hook setup`, `status`, and
+  `remove`; the hidden `usage hook event` handler stays undocumented there, as
+  hidden commands are elsewhere;
 - no specification statement contradicts shipped behavior;
 - no living document calls `agentdeck run` the primary resume path;
 - no document says shell functions perform usage tracking;
@@ -306,7 +319,13 @@ Acceptance:
   this release are unreadable by `v0.2.x`, and cost/coverage numbers change for
   existing data;
 - `docs/README.md`, all three plans' status matrices, and the review records
-  agree.
+  agree;
+- all three `v0.3.0` plans and their review directories are retired to
+  `docs/archive/` in the same pass, following the convention `v0.2.2` used on
+  2026-08-03: `status: historical` plus `retired:` in every moved file, one
+  retirement entry in `docs/archive/README.md` recording what each plan
+  delivered and where its conclusions live, no archived file re-listed in
+  `docs/README.md`, and every relative link repaired after the move.
 
 Verification: L0 documentation discovery/link checks and `git diff --check`.
 
@@ -328,7 +347,11 @@ Task 2 must land after `shared-read-resolver` in the `v0.2.2`
 [usage pricing read scalability plan](../archive/plans/usage-pricing-read-scalability.md). Both
 change how a stored usage event resolves to a provider and a price; doing the
 resolver first means the session-route lookup is added to one unified read path
-instead of to a path that is about to be replaced.
+instead of to a path that is about to be replaced. **Satisfied on 2026-08-03**:
+that plan is delivered, reviewed, and retired, so this ordering constraint no
+longer gates anything.
+
+Commit boundaries follow task boundaries: one commit per task.
 
 ## Backlog / Future Feature Ideas
 
