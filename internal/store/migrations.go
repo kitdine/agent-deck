@@ -102,6 +102,11 @@ var migrations = []migration{
 	{version: 16, statements: []string{
 		`ALTER TABLE providers ADD COLUMN wrapper_kind TEXT`,
 	}},
+	{version: 17, statements: []string{
+		`DROP INDEX IF EXISTS one_active_usage_run_per_client`,
+		`CREATE TABLE IF NOT EXISTS usage_session_routes (id INTEGER PRIMARY KEY, client TEXT NOT NULL, session_id TEXT NOT NULL, observed_at TEXT NOT NULL, provider TEXT NOT NULL, multiplier TEXT NOT NULL, via_wrapper INTEGER NOT NULL DEFAULT 0, hook_event TEXT NOT NULL, source TEXT NOT NULL DEFAULT '', quality TEXT NOT NULL, semantic_key TEXT NOT NULL)`,
+		`CREATE INDEX IF NOT EXISTS usage_session_routes_lookup ON usage_session_routes(client,session_id,observed_at)`,
+	}},
 }
 
 func normalizeUsageEventTimes(ctx context.Context, tx *sql.Tx) error {

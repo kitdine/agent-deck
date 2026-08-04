@@ -272,6 +272,11 @@ Acceptance:
 
 Verification: L2 targeted store/usage/CLI tests plus the full vendored suite.
 
+Development evidence (2026-08-04; current uncommitted `hook-boundary-storage` state):
+
+- `GOCACHE=/private/tmp/agent-deck-go-build go test -mod=vendor -count=1 ./internal/store ./internal/usage ./internal/usagehook ./cmd/agentdeck` -> PASS.
+- `GOCACHE=/private/tmp/agent-deck-go-build go test -mod=vendor -count=1 ./...` -> PASS.
+
 ### 3. `claude-reload-boundary`
 
 Implement Claude `ConfigChange` reconciliation and estimated time splitting,
@@ -341,7 +346,7 @@ Verification: L0 documentation discovery/link checks and `git diff --check`.
 | Task | Dev | Review |
 | --- | --- | --- |
 | 1. `hook-config-lifecycle` | [x] | [x] |
-| 2. `hook-boundary-storage` | [ ] | [ ] |
+| 2. `hook-boundary-storage` | [x] | [x] |
 | 3. `claude-reload-boundary` | [ ] | [ ] |
 | 4. `v0-3-0-contract` | [ ] | [ ] |
 

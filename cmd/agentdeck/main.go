@@ -2612,8 +2612,8 @@ func newUsageHookEventCommand(opts *commandOptions) *cobra.Command {
 			client = parsed
 			return nil
 		},
-		RunE: func(_ *cobra.Command, _ []string) error {
-			return runUsageHookEvent(opts, client)
+		RunE: func(command *cobra.Command, _ []string) error {
+			return runUsageHookEvent(command.Context(), opts, client)
 		},
 	}
 }
@@ -2685,15 +2685,55 @@ func writeUsageHookText(opts *commandOptions, operation string, summary usagehoo
 	return nil
 }
 
-func runUsageHookEvent(opts *commandOptions, client usagehook.Client) error {
+func runUsageHookEvent(ctx context.Context, opts *commandOptions, client usagehook.Client) error {
 	contents, err := io.ReadAll(io.LimitReader(opts.stdin, usagehook.MaxEventBytes+1))
 	if err != nil || len(contents) > usagehook.MaxEventBytes {
 		// Hook delivery is fail-open: malformed or oversized client input must
 		// never prevent the client from starting, resuming, or exiting.
 		return nil
 	}
-	_ = usagehook.ValidateEvent(client, contents)
+	event, parseErr := usagehook.ParseEvent(client, contents)
+	if parseErr != nil {
+		return nil
+	}
+	database, _, openErr := opts.openStore(ctx)
+	if openErr != nil {
+		return nil
+	}
+	defer database.Close()
+	home, homeErr := userHomeDir()
+	if homeErr != nil {
+		return nil
+	}
+	if event.Name == "SessionStart" && !validHookTranscript(home, client, event) {
+		return nil
+	}
+	_ = usage.New(database, home).RecordSessionRoute(ctx, usage.SessionRoute{Client: string(client), SessionID: event.SessionID, HookEvent: event.Name, Source: event.Source})
 	return nil
+}
+
+func validHookTranscript(home string, client usagehook.Client, event usagehook.Event) bool {
+	if event.TranscriptPath == "" || !strings.Contains(filepath.Base(event.TranscriptPath), event.SessionID) {
+		return false
+	}
+	root := filepath.Join(home, ".codex", "sessions")
+	if client == usagehook.ClientClaude {
+		root = filepath.Join(home, ".claude", "projects")
+	}
+	info, err := os.Lstat(event.TranscriptPath)
+	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
+		return false
+	}
+	resolvedRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return false
+	}
+	resolvedPath, err := filepath.EvalSymlinks(event.TranscriptPath)
+	if err != nil {
+		return false
+	}
+	relative, err := filepath.Rel(resolvedRoot, resolvedPath)
+	return err == nil && relative != "." && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
 }
 
 func newUsageCommand(opts *commandOptions) *cobra.Command {

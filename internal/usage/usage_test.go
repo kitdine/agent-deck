@@ -1260,8 +1260,10 @@ func TestPriceReadPathsKeepQueryCountConstantForLargeFixture(t *testing.T) {
 	if err != nil || invalidProvenance != 0 || unpricedModels != 0 {
 		t.Fatalf("PriceDiagnostics = invalid:%d unpriced:%d err:%v", invalidProvenance, unpricedModels, err)
 	}
-	if got := queries.Load(); got != 5 {
-		t.Fatalf("PriceDiagnostics SQL queries for 1003 events = %d, want 5", got)
+	// The sixth query bulk-loads session routes once; the budget stays
+	// independent of event and session counts.
+	if got := queries.Load(); got != 6 {
+		t.Fatalf("PriceDiagnostics SQL queries for 1003 events = %d, want 6", got)
 	}
 
 	queries.Store(0)
@@ -1269,8 +1271,9 @@ func TestPriceReadPathsKeepQueryCountConstantForLargeFixture(t *testing.T) {
 	if err != nil || len(sessions) != 2 || sessions[0].Tokens["input_tokens"] != 502 || sessions[1].Tokens["input_tokens"] != 501 {
 		t.Fatalf("Sessions = %#v, err:%v", sessions, err)
 	}
-	if got := queries.Load(); got != 5 {
-		t.Fatalf("Sessions SQL queries for 1003 events = %d, want 5", got)
+	// Sessions shares the same bounded provider, price, and route resolver.
+	if got := queries.Load(); got != 6 {
+		t.Fatalf("Sessions SQL queries for 1003 events = %d, want 6", got)
 	}
 }
 
@@ -2579,8 +2582,9 @@ INSERT INTO usage_events(event_key,client,session_id,event_id,event_at,model,inp
 	if len(report.Providers) != 1 || report.Providers[0].Client != "codex" || report.Providers[0].Name != "unknown" || report.Providers[0].Tokens != 750 {
 		t.Fatalf("stats providers = %#v", report.Providers)
 	}
-	if got := queries.Load(); got != 5 {
-		t.Fatalf("stats SQL queries for 3 events = %d, want 5", got)
+	// Stats shares the same bounded provider, price, and route resolver.
+	if got := queries.Load(); got != 6 {
+		t.Fatalf("stats SQL queries for 3 events = %d, want 6", got)
 	}
 	queries.Store(0)
 	tx, err := countedStore.DB.BeginTx(ctx, nil)
@@ -2616,8 +2620,8 @@ INSERT INTO usage_events(event_key,client,session_id,event_id,event_at,model,inp
 	if large.Totals.Events != 1003 {
 		t.Fatalf("large stats events = %d, want 1003", large.Totals.Events)
 	}
-	if got := queries.Load(); got != 5 {
-		t.Fatalf("stats SQL queries for 1003 events = %d, want 5", got)
+	if got := queries.Load(); got != 6 {
+		t.Fatalf("stats SQL queries for 1003 events = %d, want 6", got)
 	}
 	queries.Store(0)
 	today, err := service.Stats(ctx, StatsOptions{From: from, To: from.Add(24 * time.Hour), GroupBy: "hour", Metric: "cost", Location: location, Timezone: "Asia/Shanghai"})

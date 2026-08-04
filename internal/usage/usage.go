@@ -297,14 +297,16 @@ type ScanProgressReporter interface {
 }
 
 type Service struct {
-	Store *store.Store
-	Home  string
-	Now   func() time.Time
+	ProcessAlive func(int) bool
+	Store        *store.Store
+	Home         string
+	Now          func() time.Time
 	// ClientProcesses is injectable so overlap handling has deterministic tests.
-	ClientProcesses func(string) ([]int, error)
-	Stat            func(string) (os.FileInfo, error)
-	Open            func(string) (SourceFile, error)
-	Progress        ScanProgressReporter
+	ClientProcesses         func(string) ([]int, error)
+	beforeSessionRouteWrite func()
+	Stat                    func(string) (os.FileInfo, error)
+	Open                    func(string) (SourceFile, error)
+	Progress                ScanProgressReporter
 }
 type catalog struct {
 	SchemaVersion int                   `json:"schema_version"`
@@ -1856,6 +1858,16 @@ func (s *Service) StartRun(ctx context.Context, client string, pid int) (int64, 
 		return 0, time.Time{}, err
 	}
 	defer tx.Rollback()
+	var active int
+	if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM usage_runs WHERE client=? AND ended_at IS NULL", client).Scan(&active); err != nil {
+		return 0, time.Time{}, err
+	}
+	if active > 0 {
+		exact, reason = 0, "managed_client_overlap"
+		if _, err := tx.ExecContext(ctx, "UPDATE usage_runs SET exact=0,ambiguity_reason='managed_client_overlap' WHERE client=? AND ended_at IS NULL AND exact=1", client); err != nil {
+			return 0, time.Time{}, err
+		}
+	}
 	result, err := tx.ExecContext(ctx, `INSERT INTO usage_runs(client,provider,multiplier,started_at,process_pid,exact,ambiguity_reason) VALUES(?,?,?,?,?,?,?)`, client, name, mult, start.Format(time.RFC3339Nano), pid, exact, reason)
 	if err != nil {
 		return 0, time.Time{}, fmt.Errorf("exact run overlap: %w", err)
@@ -1971,7 +1983,7 @@ func (s *Service) RecoverStaleRuns(ctx context.Context) (int64, error) {
 		if err := rows.Scan(&id, &pid); err != nil {
 			return 0, err
 		}
-		if !pid.Valid || pid.Int64 <= 0 || !processAlive(int(pid.Int64)) {
+		if !pid.Valid || pid.Int64 <= 0 || !s.isProcessAlive(int(pid.Int64)) {
 			stale = append(stale, id)
 		}
 	}
@@ -1984,6 +1996,13 @@ func (s *Service) RecoverStaleRuns(ctx context.Context) (int64, error) {
 		}
 	}
 	return int64(len(stale)), nil
+}
+
+func (s *Service) isProcessAlive(pid int) bool {
+	if s.ProcessAlive != nil {
+		return s.ProcessAlive(pid)
+	}
+	return processAlive(pid)
 }
 
 func processAlive(pid int) bool {
@@ -2345,10 +2364,19 @@ type readPriceRow struct {
 	price            modelPrice
 }
 
+type readSessionRoute struct {
+	observedAt time.Time
+	provider   string
+	multiplier string
+	quality    string
+	viaWrapper bool
+}
+
 type readPriceResolver struct {
 	current  time.Time
 	byModel  map[string][]readPriceRow
 	timeline store.ProviderTimeline
+	routes   map[string][]readSessionRoute
 }
 
 func (s *Service) loadReadPriceResolver(ctx context.Context, current time.Time) (readPriceResolver, error) {
@@ -2356,12 +2384,38 @@ func (s *Service) loadReadPriceResolver(ctx context.Context, current time.Time) 
 	if err != nil {
 		return readPriceResolver{}, err
 	}
+	resolver := readPriceResolver{current: current, byModel: map[string][]readPriceRow{}, timeline: timeline, routes: map[string][]readSessionRoute{}}
+	routeRows, err := s.Store.DB.QueryContext(ctx, `SELECT client,session_id,observed_at,provider,multiplier,quality,via_wrapper FROM usage_session_routes ORDER BY client,session_id,observed_at,id`)
+	if err != nil {
+		return readPriceResolver{}, err
+	}
+	for routeRows.Next() {
+		var client, sessionID, observedText string
+		var route readSessionRoute
+		if err := routeRows.Scan(&client, &sessionID, &observedText, &route.provider, &route.multiplier, &route.quality, &route.viaWrapper); err != nil {
+			routeRows.Close()
+			return readPriceResolver{}, err
+		}
+		route.observedAt, err = time.Parse(time.RFC3339Nano, observedText)
+		if err != nil {
+			routeRows.Close()
+			return readPriceResolver{}, err
+		}
+		key := client + "\x00" + sessionID
+		resolver.routes[key] = append(resolver.routes[key], route)
+	}
+	if err := routeRows.Err(); err != nil {
+		routeRows.Close()
+		return readPriceResolver{}, err
+	}
+	if err := routeRows.Close(); err != nil {
+		return readPriceResolver{}, err
+	}
 	rows, err := s.Store.DB.QueryContext(ctx, `SELECT mp.model,mp.provider,c.effective_from,mp.effective_from,mp.prices_json,mp.aliases_json,c.source_kind,c.imported_at,c.version FROM model_prices mp JOIN price_catalogs c ON c.version=mp.catalog_version`)
 	if err != nil {
 		return readPriceResolver{}, err
 	}
 	defer rows.Close()
-	resolver := readPriceResolver{current: current, byModel: map[string][]readPriceRow{}, timeline: timeline}
 	for rows.Next() {
 		var model, providerName, catalogText, modelText, pricesText, aliasesText, sourceKind, importedText, version string
 		if err = rows.Scan(&model, &providerName, &catalogText, &modelText, &pricesText, &aliasesText, &sourceKind, &importedText, &version); err != nil {
@@ -2424,6 +2478,15 @@ func readPriceModelKey(client, model string) string {
 		return strings.ReplaceAll(model, ".", "-")
 	}
 	return model
+}
+
+func (r readPriceResolver) sessionRouteAt(client, sessionID string, at time.Time) (readSessionRoute, bool) {
+	routes := r.routes[client+"\x00"+sessionID]
+	index := sort.Search(len(routes), func(i int) bool { return routes[i].observedAt.After(at) })
+	if index == 0 {
+		return readSessionRoute{}, false
+	}
+	return routes[index-1], true
 }
 
 func (r readPriceResolver) priceAt(client, model string, at time.Time) (modelPrice, bool) {
@@ -2528,6 +2591,13 @@ func (r readPriceResolver) priceForEvent(event storedEvent) (eventAttribution, e
 			attribution.provider = runtimeProviderName(event.runProvider.String)
 		}
 		attribution.viaWrapper = runtimeRouteWasWrapped(r.timeline, event.Client, attribution.provider, event.runStart)
+	} else if eventAt, routeErr := time.Parse(time.RFC3339Nano, event.EventAt); routeErr != nil {
+		return eventAttribution{}, routeErr
+	} else if route, found := r.sessionRouteAt(event.Client, event.SessionID, eventAt); found {
+		attribution.provider = route.provider
+		attribution.multiplier = route.multiplier
+		attribution.quality = route.quality
+		attribution.viaWrapper = route.viaWrapper
 	} else {
 		at, parseErr := sessionStartAt(event)
 		if parseErr != nil {
@@ -3100,6 +3170,11 @@ func (s *Service) priceForEvent(ctx context.Context, e storedEvent) (modelPrice,
 		if err := s.Store.DB.QueryRowContext(ctx, "SELECT multiplier FROM usage_runs WHERE id=?", e.runID.Int64).Scan(&mult); err != nil {
 			return modelPrice{}, "", "", err
 		}
+	} else if provider, routeMultiplier, routeQuality, found, routeErr := s.sessionRouteAt(ctx, e.Client, e.SessionID, e.EventAt); routeErr != nil {
+		return modelPrice{}, "", "", routeErr
+	} else if found {
+		mult, quality = routeMultiplier, routeQuality
+		_ = provider
 	} else {
 		// File-only attribution belongs to the provider selected when the logical
 		// session began, not a later provider selected mid-session.
