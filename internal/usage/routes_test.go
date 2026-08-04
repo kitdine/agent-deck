@@ -215,6 +215,46 @@ func TestSessionRoutesKeepWrapperOnlyChanges(t *testing.T) {
 	}
 }
 
+func TestClaudeConfigChangeRecordsMatchedOrUnknownRoute(t *testing.T) {
+	ctx := context.Background()
+	database, err := store.Open(ctx, filepath.Join(t.TempDir(), "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	service := New(database, "")
+	now := time.Date(2026, 8, 4, 0, 0, 1, 0, time.UTC)
+	service.Now = func() time.Time { return now }
+	snapshot := store.ProviderSnapshot{Name: "custom", Multiplier: "2", ViaWrapper: true}
+	if err := service.RecordClaudeConfigChange(ctx, "session", snapshot, true); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(time.Second)
+	if err := service.RecordClaudeConfigChange(ctx, "session", store.ProviderSnapshot{}, false); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := database.DB.QueryContext(ctx, `SELECT provider,multiplier,via_wrapper,hook_event,source,quality FROM usage_session_routes ORDER BY id`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	type route struct {
+		provider, multiplier, hookEvent, source, quality string
+		viaWrapper                                       int
+	}
+	var got []route
+	for rows.Next() {
+		var item route
+		if err := rows.Scan(&item.provider, &item.multiplier, &item.viaWrapper, &item.hookEvent, &item.source, &item.quality); err != nil {
+			t.Fatal(err)
+		}
+		got = append(got, item)
+	}
+	if len(got) != 2 || got[0] != (route{"custom", "2", "ConfigChange", "user_settings", "estimated", 1}) || got[1] != (route{"unknown", "1", "ConfigChange", "user_settings", "estimated", 0}) {
+		t.Fatalf("config-change routes = %#v", got)
+	}
+}
+
 func TestReadPriceResolverUsesSessionRouteOnlyAfterBoundary(t *testing.T) {
 	ctx := context.Background()
 	database, err := store.Open(ctx, filepath.Join(t.TempDir(), "state"))

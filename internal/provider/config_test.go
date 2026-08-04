@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kitdine/agent-deck/internal/store"
 	"github.com/pelletier/go-toml/v2"
 )
 
@@ -741,6 +742,31 @@ func TestConfigMatchesEndpointWithoutReturningPrivateContent(t *testing.T) {
 		if err != nil || matches {
 			t.Fatalf("drift ConfigMatchesEndpoint(%s) = %t, %v", test.client, matches, err)
 		}
+	}
+}
+
+func TestClaudeConfigMatchesSnapshotRoutes(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+	for _, test := range []struct {
+		name     string
+		contents string
+		snapshot store.ProviderSnapshot
+		want     bool
+	}{
+		{name: "custom endpoint", contents: `{"env":{"ANTHROPIC_BASE_URL":"https://provider.example"}}`, snapshot: store.ProviderSnapshot{Name: "custom", Endpoint: "https://provider.example"}, want: true},
+		{name: "official direct", contents: `{}`, snapshot: store.ProviderSnapshot{Name: OfficialProviderName}, want: true},
+		{name: "official wrapper", contents: `{"env":{"ANTHROPIC_BASE_URL":"https://wrapper.example"}}`, snapshot: store.ProviderSnapshot{Name: OfficialProviderName, Endpoint: "https://wrapper.example", ViaWrapper: true}, want: true},
+		{name: "mismatch", contents: `{"env":{"ANTHROPIC_BASE_URL":"https://other.example"}}`, snapshot: store.ProviderSnapshot{Name: "custom", Endpoint: "https://provider.example"}, want: false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if err := os.WriteFile(path, []byte(test.contents), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			got, err := ClaudeConfigMatchesSnapshot(path, test.snapshot)
+			if err != nil || got != test.want {
+				t.Fatalf("ClaudeConfigMatchesSnapshot() = %t, %v; want %t", got, err, test.want)
+			}
+		})
 	}
 }
 

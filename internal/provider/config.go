@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/kitdine/agent-deck/internal/platform"
+	"github.com/kitdine/agent-deck/internal/store"
 	"github.com/pelletier/go-toml/v2"
 )
 
@@ -137,6 +138,18 @@ func ConfigMatchesOfficialWrapper(client Client, path, endpoint string) (bool, e
 		return strings.TrimRight(baseURL, "/") == expected && !hasToken, nil
 	}
 	return false, fmt.Errorf("unsupported client %q", client)
+}
+
+// ClaudeConfigMatchesSnapshot checks only the AgentDeck-owned Claude route
+// fields for a completed provider selection. It never returns config content.
+func ClaudeConfigMatchesSnapshot(path string, snapshot store.ProviderSnapshot) (bool, error) {
+	if snapshot.Name == OfficialProviderName {
+		if snapshot.ViaWrapper {
+			return ConfigMatchesOfficialWrapper(ClientClaude, path, snapshot.Endpoint)
+		}
+		return ConfigMatchesOfficialClaude(path)
+	}
+	return ConfigMatchesEndpoint(ClientClaude, path, snapshot.Endpoint)
 }
 
 // ClaudeConflictAPIKey and ClaudeConflictAPIKeyHelper name the two credential

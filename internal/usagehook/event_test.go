@@ -24,7 +24,7 @@ func TestValidateEventAcceptsSupportedClientEvents(t *testing.T) {
 		{
 			name:   "claude config change",
 			client: ClientClaude,
-			input:  `{"session_id":"session-1","hook_event_name":"ConfigChange"}`,
+			input:  `{"session_id":"session-1","hook_event_name":"ConfigChange","source":"user_settings","file_path":"/tmp/settings.json"}`,
 		},
 		{
 			name:   "claude session end",
@@ -53,6 +53,8 @@ func TestValidateEventRejectsInvalidOrUnboundedInput(t *testing.T) {
 		{name: "missing session id", client: ClientCodex, input: []byte(`{"hook_event_name":"SessionStart","source":"startup"}`)},
 		{name: "unsupported Codex event", client: ClientCodex, input: []byte(`{"session_id":"s","hook_event_name":"SessionEnd","source":"startup"}`)},
 		{name: "unsupported Claude source", client: ClientClaude, input: []byte(`{"session_id":"s","hook_event_name":"SessionStart","source":"unknown"}`)},
+		{name: "unsupported Claude config source", client: ClientClaude, input: []byte(`{"session_id":"s","hook_event_name":"ConfigChange","source":"unknown"}`)},
+		{name: "empty Claude config path", client: ClientClaude, input: []byte(`{"session_id":"s","hook_event_name":"ConfigChange","source":"user_settings","file_path":""}`)},
 		{name: "oversized", client: ClientClaude, input: bytes.Repeat([]byte("x"), MaxEventBytes+1)},
 	}
 	for _, test := range tests {
@@ -65,7 +67,7 @@ func TestValidateEventRejectsInvalidOrUnboundedInput(t *testing.T) {
 }
 
 func TestValidateEventDoesNotPersistOrMutateInput(t *testing.T) {
-	input := []byte(`{"session_id":"session-1","hook_event_name":"ConfigChange"}`)
+	input := []byte(`{"session_id":"session-1","hook_event_name":"ConfigChange","source":"user_settings","file_path":"/tmp/settings.json"}`)
 	original := append([]byte(nil), input...)
 	if err := ValidateEvent(ClientClaude, input); err != nil {
 		t.Fatalf("ValidateEvent: %v", err)

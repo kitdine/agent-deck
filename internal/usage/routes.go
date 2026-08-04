@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/kitdine/agent-deck/internal/store"
 )
 
 // SessionRoute is an observed client lifecycle boundary. It contains no client
@@ -34,13 +36,30 @@ func (s *Service) RecordSessionRoute(ctx context.Context, route SessionRoute) er
 	if err != nil {
 		return err
 	}
+	return s.recordSessionRoute(ctx, route, runtimeProviderName(snapshot.Name), snapshot.Multiplier, snapshot.ViaWrapper)
+}
+
+// RecordClaudeConfigChange persists an estimated route after the command
+// boundary has reconciled the managed Claude settings file with a completed
+// provider selection. An observed mismatch deliberately becomes unknown.
+func (s *Service) RecordClaudeConfigChange(ctx context.Context, sessionID string, snapshot store.ProviderSnapshot, matched bool) error {
+	if strings.TrimSpace(sessionID) == "" {
+		return errors.New("route requires session and hook event")
+	}
+	route := SessionRoute{Client: "claude", SessionID: sessionID, HookEvent: "ConfigChange", Source: "user_settings"}
+	if !matched {
+		return s.recordSessionRoute(ctx, route, "unknown", "1", false)
+	}
+	return s.recordSessionRoute(ctx, route, runtimeProviderName(snapshot.Name), snapshot.Multiplier, snapshot.ViaWrapper)
+}
+
+func (s *Service) recordSessionRoute(ctx context.Context, route SessionRoute, provider, multiplier string, viaWrapper bool) error {
 	observedAt := s.now().Format(time.RFC3339Nano)
-	key := strings.Join([]string{route.Client, route.SessionID, route.HookEvent, route.Source, snapshot.Name, snapshot.Multiplier, fmt.Sprint(snapshot.ViaWrapper), observedAt}, "\x00")
+	key := strings.Join([]string{route.Client, route.SessionID, route.HookEvent, route.Source, provider, multiplier, fmt.Sprint(viaWrapper), observedAt}, "\x00")
 	if s.beforeSessionRouteWrite != nil {
 		s.beforeSessionRouteWrite()
 	}
-	provider := runtimeProviderName(snapshot.Name)
-	_, err = s.Store.Exec(ctx, `
+	_, err := s.Store.Exec(ctx, `
 		INSERT INTO usage_session_routes(client,session_id,observed_at,provider,multiplier,via_wrapper,hook_event,source,quality,semantic_key)
 		SELECT ?,?,?,?,?,?,?,?,?,?
 		WHERE NOT EXISTS (
@@ -55,8 +74,8 @@ func (s *Service) RecordSessionRoute(ctx context.Context, route SessionRoute) er
 			WHERE previous.provider=? AND previous.multiplier=? AND previous.via_wrapper=?
 				AND previous.hook_event=? AND previous.source=?
 		)`,
-		route.Client, route.SessionID, observedAt, provider, snapshot.Multiplier, snapshot.ViaWrapper, route.HookEvent, route.Source, "estimated", key,
-		route.Client, route.SessionID, provider, snapshot.Multiplier, snapshot.ViaWrapper, route.HookEvent, route.Source)
+		route.Client, route.SessionID, observedAt, provider, multiplier, viaWrapper, route.HookEvent, route.Source, "estimated", key,
+		route.Client, route.SessionID, provider, multiplier, viaWrapper, route.HookEvent, route.Source)
 	return err
 }
 

@@ -40,6 +40,7 @@ import (
 )
 
 var userHomeDir = os.UserHomeDir
+var sleepForHookReconciliation = time.Sleep
 var detectInvokingShell = shellconfig.DetectInvokingShell
 var newShellConfigManager = shellconfig.New
 var parentProcessID = os.Getppid
@@ -2705,11 +2706,55 @@ func runUsageHookEvent(ctx context.Context, opts *commandOptions, client usageho
 	if homeErr != nil {
 		return nil
 	}
+	if client == usagehook.ClientClaude && event.Name == "ConfigChange" {
+		if !managedClaudeConfigChange(home, event) {
+			return nil
+		}
+		_ = reconcileClaudeConfigChange(ctx, database, home, event.SessionID)
+		return nil
+	}
 	if event.Name == "SessionStart" && !validHookTranscript(home, client, event) {
 		return nil
 	}
 	_ = usage.New(database, home).RecordSessionRoute(ctx, usage.SessionRoute{Client: string(client), SessionID: event.SessionID, HookEvent: event.Name, Source: event.Source})
 	return nil
+}
+
+func managedClaudeConfigChange(home string, event usagehook.Event) bool {
+	return event.Source == "user_settings" && filepath.Clean(event.ConfigPath) == filepath.Join(home, ".claude", "settings.json")
+}
+
+func reconcileClaudeConfigChange(ctx context.Context, database *store.Store, home, sessionID string) error {
+	const attempts = 3
+	const delay = 25 * time.Millisecond
+	configPath := filepath.Join(home, ".claude", "settings.json")
+	service := usage.New(database, home)
+	var lastConfigErr error
+	inspectedConfig := false
+	for attempt := 0; attempt < attempts; attempt++ {
+		snapshot, err := database.CurrentProviderSnapshot(ctx, "claude")
+		if err == nil {
+			matches, matchErr := provider.ClaudeConfigMatchesSnapshot(configPath, snapshot)
+			if matchErr != nil {
+				lastConfigErr = matchErr
+			} else {
+				inspectedConfig = true
+				lastConfigErr = nil
+				if matches {
+					return service.RecordClaudeConfigChange(ctx, sessionID, snapshot, true)
+				}
+			}
+		} else if !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		if attempt+1 < attempts {
+			sleepForHookReconciliation(delay)
+		}
+	}
+	if lastConfigErr != nil && !inspectedConfig {
+		return lastConfigErr
+	}
+	return service.RecordClaudeConfigChange(ctx, sessionID, store.ProviderSnapshot{}, false)
 }
 
 func validHookTranscript(home string, client usagehook.Client, event usagehook.Event) bool {

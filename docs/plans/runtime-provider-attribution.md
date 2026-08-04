@@ -291,6 +291,20 @@ Acceptance:
 
 Verification: L2 targeted provider/usage tests plus the full vendored suite.
 
+Development evidence (2026-08-04):
+
+- `GOCACHE=/private/tmp/agent-deck-go-build go test -mod=vendor -count=1 ./internal/provider ./internal/usage ./internal/usagehook ./cmd/agentdeck` -> PASS.
+- `GOCACHE=/private/tmp/agent-deck-go-build go test -mod=vendor -count=1 ./...` -> PASS.
+
+Review-fix evidence (2026-08-04):
+
+- Added a deterministic transient malformed-settings regression: the first Claude ConfigChange inspection fails, the injected reconciliation delay restores matching settings, and the selected estimated route is recorded.
+- Added the complementary deterministic mismatch-then-transient-read-failure regression: a confirmed mismatch remains sufficient to record exactly one estimated `unknown` route after the remaining attempts cannot inspect the settings file.
+- Strengthened the transient-error-then-match regression to assert exactly one selected-provider route, closing the Round 3 duplicate-boundary coverage gap.
+- `GOCACHE=/private/tmp/agent-deck-go-build go test -mod=vendor -count=1 ./internal/provider ./internal/usage ./internal/usagehook ./cmd/agentdeck` -> PASS.
+- `GOCACHE=/private/tmp/agent-deck-go-build go test -mod=vendor -count=1 ./...` -> PASS.
+- `git diff --check` -> PASS.
+
 ### 4. `v0-3-0-contract`
 
 The single contract task for the whole `v0.3.0` release. It was widened on
@@ -347,7 +361,7 @@ Verification: L0 documentation discovery/link checks and `git diff --check`.
 | --- | --- | --- |
 | 1. `hook-config-lifecycle` | [x] | [x] |
 | 2. `hook-boundary-storage` | [x] | [x] |
-| 3. `claude-reload-boundary` | [ ] | [ ] |
+| 3. `claude-reload-boundary` | [x] | [x] |
 | 4. `v0-3-0-contract` | [ ] | [ ] |
 
 Order: task 1 defines the installed wire contract. Task 2 consumes that wire

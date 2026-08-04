@@ -10,6 +10,7 @@ import (
 
 // Event is the bounded, non-sensitive portion of a client Hook payload.
 type Event struct {
+	ConfigPath                string
 	SessionID, TranscriptPath string
 	Name, Source              string
 }
@@ -64,6 +65,12 @@ func ParseEvent(client Client, contents []byte) (Event, error) {
 			return Event{}, errors.New("hook event source must be a string")
 		}
 	}
+	var configPath string
+	if raw, ok := event["file_path"]; ok {
+		if err := json.Unmarshal(raw, &configPath); err != nil || configPath == "" {
+			return Event{}, errors.New("hook event file_path must be a non-empty string")
+		}
+	}
 	if client == ClientCodex {
 		if eventName != "SessionStart" {
 			return Event{}, fmt.Errorf("unsupported Codex hook event %q", eventName)
@@ -73,7 +80,7 @@ func ParseEvent(client Client, contents []byte) (Event, error) {
 		default:
 			return Event{}, fmt.Errorf("unsupported Codex hook source %q", source)
 		}
-		return Event{SessionID: sessionID, TranscriptPath: transcriptPath, Name: eventName, Source: source}, nil
+		return Event{SessionID: sessionID, TranscriptPath: transcriptPath, Name: eventName, Source: source, ConfigPath: configPath}, nil
 	}
 	switch eventName {
 	case "SessionStart":
@@ -82,12 +89,18 @@ func ParseEvent(client Client, contents []byte) (Event, error) {
 		default:
 			return Event{}, fmt.Errorf("unsupported Claude hook source %q", source)
 		}
-	case "ConfigChange", "SessionEnd":
-		// These events do not have a required source in Claude's contract.
+	case "ConfigChange":
+		switch source {
+		case "user_settings", "project_settings", "local_settings", "policy_settings", "skills":
+		default:
+			return Event{}, fmt.Errorf("unsupported Claude config source %q", source)
+		}
+	case "SessionEnd":
+		// This event does not have a required source in Claude's contract.
 	default:
 		return Event{}, fmt.Errorf("unsupported Claude hook event %q", eventName)
 	}
-	return Event{SessionID: sessionID, TranscriptPath: transcriptPath, Name: eventName, Source: source}, nil
+	return Event{SessionID: sessionID, TranscriptPath: transcriptPath, Name: eventName, Source: source, ConfigPath: configPath}, nil
 }
 
 func decodeRequiredString(event map[string]json.RawMessage, name string, destination *string) error {
