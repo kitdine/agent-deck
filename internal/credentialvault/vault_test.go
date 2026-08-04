@@ -3,9 +3,11 @@ package credentialvault
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"strings"
@@ -14,6 +16,7 @@ import (
 	"time"
 
 	"github.com/kitdine/agent-deck/internal/platform"
+	"golang.org/x/crypto/hkdf"
 )
 
 // syntheticSeedA and syntheticSeedB are fixed, non-secret 32-byte sequences
@@ -45,6 +48,80 @@ func TestVaultRoundTripAndPrivateKey(t *testing.T) {
 	}
 	if strings.Contains(string(keyContents), "synthetic-secret") || strings.Contains(string(sealed.Ciphertext), "synthetic-secret") {
 		t.Fatal("credential plaintext persisted")
+	}
+}
+
+func TestVaultSealsWithDerivedVersionTwoKeyID(t *testing.T) {
+	ctx := context.Background()
+	vault := New(t.TempDir(), fixedMachine("machine-a"))
+	vault.random = bytes.NewReader(bytes.Repeat([]byte{0xA1}, 48))
+
+	sealed, err := vault.Seal(ctx, "provider-default-ref", "synthetic-secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sealed.KeyVersion != 2 {
+		t.Fatalf("sealed key version = %d, want 2", sealed.KeyVersion)
+	}
+
+	key, _, err := vault.deriveKey(ctx, syntheticSeedA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantReader := hkdf.New(sha256.New, syntheticSeedA, []byte("machine-a"), []byte("agentdeck/credential-key/v1"))
+	wantKey := make([]byte, 32)
+	if _, err = io.ReadFull(wantReader, wantKey); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(key, wantKey) {
+		t.Fatalf("derived AES key = %x, want legacy HKDF output %x", key, wantKey)
+	}
+	wantKeyID := make([]byte, 16)
+	if _, err = io.ReadFull(wantReader, wantKeyID); err != nil {
+		t.Fatal(err)
+	}
+	if sealed.KeyID != hex.EncodeToString(wantKeyID) {
+		t.Fatalf("version-2 key ID = %q, want next HKDF bytes", sealed.KeyID)
+	}
+	legacyDigest := sha256.Sum256(key)
+	legacyKeyID := hex.EncodeToString(legacyDigest[:16])
+	if sealed.KeyID == legacyKeyID {
+		t.Fatalf("version-2 key ID = %q must not equal legacy key ID", sealed.KeyID)
+	}
+}
+
+func TestVaultRejectsUnsupportedSealedKeyVersions(t *testing.T) {
+	for _, version := range []int{0, 3} {
+		t.Run(fmt.Sprintf("version-%d", version), func(t *testing.T) {
+			_, err := New(t.TempDir(), fixedMachine("machine-a")).Open(context.Background(), "provider-default-ref", Sealed{
+				Algorithm:  AlgorithmAES256GCM,
+				KeyVersion: version,
+			})
+			if err != ErrKeyVersionUnsupported {
+				t.Fatalf("Open() error = %v, want %v", err, ErrKeyVersionUnsupported)
+			}
+		})
+	}
+}
+
+func TestVaultOpensLegacyVersionOneCiphertext(t *testing.T) {
+	ctx := context.Background()
+	vault := New(t.TempDir(), fixedMachine("machine-a"))
+	sealed, err := vault.Seal(ctx, "provider-default-ref", "synthetic-secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyIDs, err := vault.InspectKeyIDs(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy := sealed
+	legacy.KeyVersion = KeyVersionLegacy
+	legacy.KeyID = keyIDs[KeyVersionLegacy]
+
+	value, err := vault.Open(ctx, "provider-default-ref", legacy)
+	if err != nil || value != "synthetic-secret" {
+		t.Fatalf("Open() legacy ciphertext = %q, %v", value, err)
 	}
 }
 
@@ -278,7 +355,7 @@ func TestVaultRejectsMalformedPayloadBeforeCreatingOrUsingKey(t *testing.T) {
 
 func TestVaultRejectsMalformedKeyFilesWithoutReplacement(t *testing.T) {
 	ctx := context.Background()
-	valid := append(append([]byte(nil), []byte(keyMagic)...), byte(KeyVersion))
+	valid := append(append([]byte(nil), []byte(keyMagic)...), byte(KeyFileVersion))
 	valid = append(valid, syntheticSeedA...)
 
 	badMagic := append([]byte(nil), valid...)

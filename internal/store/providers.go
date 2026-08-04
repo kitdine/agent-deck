@@ -54,6 +54,13 @@ type CredentialSecret struct {
 	UpdatedAt    time.Time
 }
 
+// CredentialSecretKey identifies the sealing key metadata of one stored
+// credential. Key version and ID must always be interpreted together.
+type CredentialSecretKey struct {
+	KeyVersion int
+	KeyID      string
+}
+
 type ClientMapping struct {
 	Client        string `json:"client"`
 	NativeModel   string `json:"native_model"`
@@ -718,21 +725,21 @@ func (s *Store) CredentialSecret(ctx context.Context, credentialID int64) (Crede
 	return secret, err
 }
 
-func (s *Store) CredentialSecretKeyIDs(ctx context.Context) ([]string, error) {
-	rows, err := s.DB.QueryContext(ctx, `SELECT DISTINCT key_id FROM credential_secrets ORDER BY key_id`)
+func (s *Store) CredentialSecretKeys(ctx context.Context) ([]CredentialSecretKey, error) {
+	rows, err := s.DB.QueryContext(ctx, `SELECT DISTINCT key_version, key_id FROM credential_secrets ORDER BY key_version, key_id`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var keyIDs []string
+	var keys []CredentialSecretKey
 	for rows.Next() {
-		var keyID string
-		if err = rows.Scan(&keyID); err != nil {
+		var key CredentialSecretKey
+		if err = rows.Scan(&key.KeyVersion, &key.KeyID); err != nil {
 			return nil, err
 		}
-		keyIDs = append(keyIDs, keyID)
+		keys = append(keys, key)
 	}
-	return keyIDs, rows.Err()
+	return keys, rows.Err()
 }
 
 // ReplaceCredentialSecrets atomically replaces every credential ciphertext.

@@ -76,6 +76,10 @@ func (s *accessCountingCredentialVault) InspectKey(context.Context) (string, err
 	return "", s.called()
 }
 
+func (s *accessCountingCredentialVault) InspectKeyIDs(context.Context) (map[int]string, error) {
+	return nil, s.called()
+}
+
 func TestProviderListAndShowOfficialDoNotAccessSecretsOrLeakCredentials(t *testing.T) {
 	state := filepath.Join(t.TempDir(), "state")
 	vault := &accessCountingCredentialVault{}

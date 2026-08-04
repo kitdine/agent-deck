@@ -278,7 +278,7 @@ func (s Service) checkProviders(ctx context.Context, database *store.Store, repo
 		item.loaded = true
 		item.sealed = credentialvault.Sealed{Algorithm: secret.Algorithm, KeyVersion: secret.KeyVersion, KeyID: secret.KeyID, Nonce: secret.Nonce, Ciphertext: secret.Ciphertext}
 		switch {
-		case item.sealed.Algorithm != credentialvault.AlgorithmAES256GCM || item.sealed.KeyVersion != credentialvault.KeyVersion:
+		case item.sealed.Algorithm != credentialvault.AlgorithmAES256GCM || !credentialvault.IsSupportedKeyVersion(item.sealed.KeyVersion):
 			item.problemCode = credentialvault.ErrKeyVersionUnsupported.Error()
 		case len(item.sealed.Nonce) != 12 || len(item.sealed.Ciphertext) < 16:
 			item.problemCode = credentialvault.ErrCiphertextInvalid.Error()
@@ -287,22 +287,32 @@ func (s Service) checkProviders(ctx context.Context, database *store.Store, repo
 	}
 	authCandidates := make([]ownedSecret, 0, len(owned))
 	keyReady, rotationReady := false, false
-	var keyID string
+	var liveKeyIDs map[int]string
 	if secretRows > 0 {
 		if s.Vault == nil {
 			quickProblems.add(credentialvault.ErrKeyMissing.Error(), "", secretRows)
 		} else {
 			var inspectErr error
-			keyID, inspectErr = s.Vault.InspectKey(ctx)
+			liveKeyIDs, inspectErr = s.Vault.InspectKeyIDs(ctx)
 			if inspectErr != nil {
 				quickProblems.add(credentialErrorCode(inspectErr), "", secretRows)
 			} else {
 				keyReady = true
-				keyIDs, keyIDsErr := database.CredentialSecretKeyIDs(ctx)
+				storedKeys, keyIDsErr := database.CredentialSecretKeys(ctx)
 				if keyIDsErr != nil {
 					return keyIDsErr
 				}
-				rotationReady = len(keyIDs) == 1 && keyIDs[0] != "" && keyIDs[0] == keyID
+				rotationReady = len(storedKeys) > 0
+				for _, storedKey := range storedKeys {
+					expectedKeyID, supported := liveKeyIDs[storedKey.KeyVersion]
+					if !supported {
+						continue
+					}
+					if storedKey.KeyID == "" || storedKey.KeyID != expectedKeyID {
+						rotationReady = false
+						break
+					}
+				}
 			}
 		}
 	}
@@ -317,7 +327,11 @@ func (s Service) checkProviders(ctx context.Context, database *store.Store, repo
 		if !keyReady || !item.loaded {
 			continue
 		}
-		if item.sealed.KeyID == "" || item.sealed.KeyID != keyID {
+		if !credentialvault.IsSupportedKeyVersion(item.sealed.KeyVersion) {
+			continue
+		}
+		expectedKeyID := liveKeyIDs[item.sealed.KeyVersion]
+		if item.sealed.KeyID == "" || item.sealed.KeyID != expectedKeyID {
 			quickProblems.add(credentialvault.ErrKeyMachineMismatch.Error(), "", 1)
 			continue
 		}

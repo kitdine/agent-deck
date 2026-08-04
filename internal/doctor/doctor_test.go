@@ -768,9 +768,99 @@ func TestFullProviderCheckAuthenticatesValidCandidatesAfterQuickFailure(t *testi
 	if quick == nil || quick.Recovery != "" {
 		t.Fatalf("unsupported-version check = %#v in %#v", quick, report)
 	}
+	if mismatch := findCheck(report, "provider_credential_key", credentialvault.ErrKeyMachineMismatch.Error()); mismatch != nil {
+		t.Fatalf("unsupported-version machine mismatch = %#v in %#v", mismatch, report)
+	}
 	authenticated := findCheck(report, "provider_credential_authentication", credentialvault.ErrCiphertextInvalid.Error())
 	if authenticated == nil || authenticated.Recovery != "agentdeck credential update tampered --credential default --rotate" {
 		t.Fatalf("remaining authentication check = %#v in %#v", authenticated, report)
+	}
+}
+
+func TestFullProviderCheckAcceptsMixedCredentialKeyVersions(t *testing.T) {
+	ctx := context.Background()
+	state := filepath.Join(t.TempDir(), "state")
+	database, err := store.Open(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	vault := doctorVault(state)
+	service := provider.Service{Store: database, Vault: vault}
+	if _, err = service.Add(ctx, provider.Definition{Name: "legacy", Endpoint: "https://example.invalid", Clients: []provider.Client{provider.ClientCodex}}, "legacy-secret"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = service.Add(ctx, provider.Definition{Name: "current", Endpoint: "https://example.invalid", Clients: []provider.Client{provider.ClientClaude}}, "current-secret"); err != nil {
+		t.Fatal(err)
+	}
+	legacy, err := database.ProviderCredential(ctx, "legacy", "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyIDs, err := vault.InspectKeyIDs(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = database.Exec(ctx, `UPDATE credential_secrets SET key_version=?, key_id=? WHERE credential_id=?`, credentialvault.KeyVersionLegacy, keyIDs[credentialvault.KeyVersionLegacy], legacy.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	report := Report{}
+	if err = (Service{StateRoot: state, Home: t.TempDir(), Vault: vault}).checkProviders(ctx, database, &report, true); err != nil {
+		t.Fatal(err)
+	}
+	if check := findCheck(report, "provider_credential_key", credentialvault.ErrKeyMachineMismatch.Error()); check != nil {
+		t.Fatalf("mixed-version key check = %#v in %#v", check, report)
+	}
+	if check := findCheck(report, "provider_credential_authentication", credentialvault.ErrCiphertextInvalid.Error()); check != nil {
+		t.Fatalf("mixed-version authentication check = %#v in %#v", check, report)
+	}
+}
+
+func TestFullProviderCheckWithholdsRotationRecoveryForCrossVersionKeyID(t *testing.T) {
+	ctx := context.Background()
+	state := filepath.Join(t.TempDir(), "state")
+	database, err := store.Open(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	vault := doctorVault(state)
+	service := provider.Service{Store: database, Vault: vault}
+	for _, name := range []string{"cross-version", "tampered"} {
+		if _, err = service.Add(ctx, provider.Definition{Name: name, Endpoint: "https://example.invalid", Clients: []provider.Client{provider.ClientCodex}}, name+"-secret"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	crossVersion, err := database.ProviderCredential(ctx, "cross-version", "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tampered, err := database.ProviderCredential(ctx, "tampered", "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyIDs, err := vault.InspectKeyIDs(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = database.Exec(ctx, `UPDATE credential_secrets SET key_version=?, key_id=? WHERE credential_id=?`, credentialvault.KeyVersionLegacy, keyIDs[credentialvault.KeyVersion], crossVersion.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = database.Exec(ctx, `UPDATE credential_secrets SET ciphertext=ciphertext || X'00' WHERE credential_id=?`, tampered.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	report := Report{}
+	if err = (Service{StateRoot: state, Home: t.TempDir(), Vault: vault}).checkProviders(ctx, database, &report, true); err != nil {
+		t.Fatal(err)
+	}
+	if check := findCheck(report, "provider_credential_key", credentialvault.ErrKeyMachineMismatch.Error()); check == nil {
+		t.Fatalf("cross-version key mismatch missing from %#v", report)
+	}
+	check := findCheck(report, "provider_credential_authentication", credentialvault.ErrCiphertextInvalid.Error())
+	if check == nil || check.Recovery != "" {
+		t.Fatalf("cross-version rotation recovery = %#v in %#v", check, report)
 	}
 }
 

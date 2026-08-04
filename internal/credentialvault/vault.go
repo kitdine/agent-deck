@@ -22,11 +22,17 @@ import (
 
 const (
 	AlgorithmAES256GCM = "aes-256-gcm"
-	KeyVersion         = 1
+	KeyFileVersion     = 1
+	KeyVersionLegacy   = 1
+	KeyVersion         = 2
 	keyFilename        = "credential.key"
 	keyMagic           = "AGENTDECK-CREDENTIAL-KEY\n"
 	seedSize           = 32
 )
+
+func IsSupportedKeyVersion(version int) bool {
+	return version == KeyVersionLegacy || version == KeyVersion
+}
 
 var (
 	ErrKeyMissing               = errors.New("credential_key_missing")
@@ -83,7 +89,7 @@ func (v *Vault) seal(ctx context.Context, reference, value string, create bool) 
 	if reference == "" {
 		return Sealed{}, ErrCredentialReferenceEmpty
 	}
-	key, keyID, err := v.key(ctx, create)
+	key, keyIDs, err := v.key(ctx, create)
 	if err != nil {
 		return Sealed{}, err
 	}
@@ -102,20 +108,21 @@ func (v *Vault) seal(ctx context.Context, reference, value string, create bool) 
 	return Sealed{
 		Algorithm:  AlgorithmAES256GCM,
 		KeyVersion: KeyVersion,
-		KeyID:      keyID,
+		KeyID:      keyIDs[KeyVersion],
 		Nonce:      nonce,
 		Ciphertext: aead.Seal(nil, nonce, []byte(value), associatedData(reference)),
 	}, nil
 }
 
 func (v *Vault) Open(ctx context.Context, reference string, sealed Sealed) (string, error) {
-	if sealed.Algorithm != AlgorithmAES256GCM || sealed.KeyVersion != KeyVersion {
+	if sealed.Algorithm != AlgorithmAES256GCM || !IsSupportedKeyVersion(sealed.KeyVersion) {
 		return "", ErrKeyVersionUnsupported
 	}
-	key, keyID, err := v.key(ctx, false)
+	key, keyIDs, err := v.key(ctx, false)
 	if err != nil {
 		return "", err
 	}
+	keyID := keyIDs[sealed.KeyVersion]
 	if sealed.KeyID == "" || sealed.KeyID != keyID {
 		return "", ErrKeyMachineMismatch
 	}
@@ -138,8 +145,18 @@ func (v *Vault) Open(ctx context.Context, reference string, sealed Sealed) (stri
 }
 
 func (v *Vault) InspectKey(ctx context.Context) (string, error) {
-	_, keyID, err := v.key(ctx, false)
-	return keyID, err
+	_, keyIDs, err := v.key(ctx, false)
+	return keyIDs[KeyVersion], err
+}
+
+// InspectKeyIDs reports the persisted IDs accepted for each supported sealed
+// credential version. It never creates or replaces the credential key file.
+func (v *Vault) InspectKeyIDs(ctx context.Context) (map[int]string, error) {
+	_, keyIDs, err := v.key(ctx, false)
+	if err != nil {
+		return nil, err
+	}
+	return keyIDs, nil
 }
 
 // InitializeNew atomically creates a fresh credential key and reports whether
@@ -154,43 +171,58 @@ func (v *Vault) InitializeNew(ctx context.Context) (bool, error) {
 	return true, err
 }
 
-func (v *Vault) key(ctx context.Context, create bool) ([]byte, string, error) {
+func (v *Vault) key(ctx context.Context, create bool) ([]byte, map[int]string, error) {
 	seed, err := v.loadSeed()
 	if err == nil {
 		// Another process may have linked this key but not yet synced the directory.
 		if err := v.syncStateRoot(v.stateRoot); err != nil {
-			return nil, "", err
+			return nil, nil, err
 		}
 	} else if errors.Is(err, fs.ErrNotExist) && create {
 		seed, err = v.createSeed()
 	}
 	if errors.Is(err, fs.ErrNotExist) {
-		return nil, "", ErrKeyMissing
+		return nil, nil, ErrKeyMissing
 	}
 	if err != nil {
-		return nil, "", err
+		return nil, nil, err
 	}
-	return v.deriveKey(ctx, seed)
+	return v.deriveKeyIDs(ctx, seed)
 }
 
 func (v *Vault) deriveKey(ctx context.Context, seed []byte) ([]byte, string, error) {
+	key, keyIDs, err := v.deriveKeyIDs(ctx, seed)
+	if err != nil {
+		return nil, "", err
+	}
+	return key, keyIDs[KeyVersion], nil
+}
+
+func (v *Vault) deriveKeyIDs(ctx context.Context, seed []byte) ([]byte, map[int]string, error) {
 	if v.machineIdentity == nil {
-		return nil, "", ErrMachineIdentityMissing
+		return nil, nil, ErrMachineIdentityMissing
 	}
 	machineID, err := v.machineIdentity(ctx)
 	if err != nil {
-		return nil, "", fmt.Errorf("%w: %v", ErrMachineIdentityMissing, err)
+		return nil, nil, fmt.Errorf("%w: %v", ErrMachineIdentityMissing, err)
 	}
 	if machineID == "" {
-		return nil, "", ErrMachineIdentityMissing
+		return nil, nil, ErrMachineIdentityMissing
 	}
 	reader := hkdf.New(sha256.New, seed, []byte(machineID), []byte("agentdeck/credential-key/v1"))
 	key := make([]byte, 32)
 	if _, err = io.ReadFull(reader, key); err != nil {
-		return nil, "", err
+		return nil, nil, err
+	}
+	keyID := make([]byte, 16)
+	if _, err = io.ReadFull(reader, keyID); err != nil {
+		return nil, nil, err
 	}
 	digest := sha256.Sum256(key)
-	return key, hex.EncodeToString(digest[:16]), nil
+	return key, map[int]string{
+		KeyVersionLegacy: hex.EncodeToString(digest[:16]),
+		KeyVersion:       hex.EncodeToString(keyID),
+	}, nil
 }
 
 func (v *Vault) loadSeed() ([]byte, error) {
@@ -205,7 +237,7 @@ func (v *Vault) loadSeed() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(contents) != len(keyMagic)+1+seedSize || string(contents[:len(keyMagic)]) != keyMagic || int(contents[len(keyMagic)]) != KeyVersion {
+	if len(contents) != len(keyMagic)+1+seedSize || string(contents[:len(keyMagic)]) != keyMagic || int(contents[len(keyMagic)]) != KeyFileVersion {
 		return nil, ErrKeyVersionUnsupported
 	}
 	seed := make([]byte, seedSize)
@@ -234,7 +266,7 @@ func (v *Vault) createSeedExclusive() ([]byte, error) {
 	}
 	contents := make([]byte, 0, len(keyMagic)+1+len(seed))
 	contents = append(contents, keyMagic...)
-	contents = append(contents, byte(KeyVersion))
+	contents = append(contents, byte(KeyFileVersion))
 	contents = append(contents, seed...)
 
 	temporary, err := os.CreateTemp(v.stateRoot, ".credential.key-*")

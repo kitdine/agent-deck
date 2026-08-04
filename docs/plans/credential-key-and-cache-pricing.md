@@ -172,6 +172,16 @@ Prerequisite: `key-file-durability` in the `v0.2.2` hardening plan, which edits
 the same file. **Satisfied on 2026-08-03** - and it is what moved the `vault.go`
 line numbers cited above, so re-verify them before relying on any of them.
 
+#### Development Evidence (2026-08-04)
+
+- New seals write sealed key version 2 and the next 16 bytes of the unchanged HKDF stream as their key ID; the first 32 AES-key bytes, key-file format version, salt, and info string remain unchanged.
+- Version-1 sealed rows validate with the legacy SHA-256 key ID; `doctor` and credential writes accept authenticated version-1/version-2 mixtures, while unknown versions remain fail-closed without a misleading machine-mismatch diagnostic.
+- Regression tests cover the fixed HKDF boundary, v2 ID derivation, version-1 decryption, versions 0 and 3 rejection, normal credential rewrite from legacy to current, and full `doctor` mixed-version diagnostics.
+- RED: `GOCACHE=/private/tmp/agent-deck-go-build go test -mod=vendor ./internal/credentialvault -run '^TestVaultSealsWithDerivedVersionTwoKeyID$'` failed before implementation with `sealed key version = 1, want 2`.
+- GREEN: targeted `internal/credentialvault`, `internal/doctor`, and `internal/provider` tests; `go test -mod=vendor ./...`; `go test -mod=vendor -race ./...`; and `go vet -mod=vendor ./...` all passed with `GOCACHE=/private/tmp/agent-deck-go-build`.
+- Review Round 1 repair preserves `(key_version, key_id)` pairs in the store preflight. Cross-version IDs now reject credential writes without changing ciphertext and suppress `--rotate` recovery, while unrelated unsupported versions retain the prior recovery behavior for valid damaged rows. Targeted store/provider/doctor tests and the L3 command set passed again after the repair.
+- Review Round 2 repair classifies stored key versions 0 and 3 as `credential_key_version_unsupported` before ID comparison. Regression coverage confirms both block normal credential writes without changing the stored secret; targeted store/provider/doctor tests and the L3 command set passed again.
+
 ### 2. `cache-creation-ttl-default`
 
 Price a Claude cache-creation total that arrives without a TTL breakdown.
@@ -234,7 +244,7 @@ reason recorded in the Evidence Baseline. **Satisfied on 2026-08-03.**
 
 | Task | Dev | Review |
 | --- | --- | --- |
-| 1. `key-id-derivation` | [ ] | [ ] |
+| 1. `key-id-derivation` | [x] | [x] |
 | 2. `cache-creation-ttl-default` | [ ] | [ ] |
 
 The two tasks are independent of each other. Both had a `v0.2.2` prerequisite,

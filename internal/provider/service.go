@@ -29,6 +29,7 @@ type CredentialVault interface {
 	SealExisting(context.Context, string, string) (credentialvault.Sealed, error)
 	Open(context.Context, string, credentialvault.Sealed) (string, error)
 	InspectKey(context.Context) (string, error)
+	InspectKeyIDs(context.Context) (map[int]string, error)
 }
 
 type Credential struct {
@@ -1113,19 +1114,25 @@ func sealedRecord(secret store.CredentialSecret) credentialvault.Sealed {
 }
 
 func (s Service) sealCredential(ctx context.Context, reference, value string) (credentialvault.Sealed, error) {
-	keyIDs, err := s.Store.CredentialSecretKeyIDs(ctx)
+	storedKeys, err := s.Store.CredentialSecretKeys(ctx)
 	if err != nil {
 		return credentialvault.Sealed{}, err
 	}
-	if len(keyIDs) == 0 {
+	if len(storedKeys) == 0 {
 		return s.Vault.Seal(ctx, reference, value)
 	}
-	keyID, err := s.Vault.InspectKey(ctx)
+	liveKeyIDs, err := s.Vault.InspectKeyIDs(ctx)
 	if err != nil {
 		return credentialvault.Sealed{}, err
 	}
-	if len(keyIDs) != 1 || keyIDs[0] == "" || keyIDs[0] != keyID {
-		return credentialvault.Sealed{}, credentialvault.ErrKeyMachineMismatch
+	for _, storedKey := range storedKeys {
+		if !credentialvault.IsSupportedKeyVersion(storedKey.KeyVersion) {
+			return credentialvault.Sealed{}, credentialvault.ErrKeyVersionUnsupported
+		}
+		expectedKeyID, supported := liveKeyIDs[storedKey.KeyVersion]
+		if !supported || storedKey.KeyID == "" || storedKey.KeyID != expectedKeyID {
+			return credentialvault.Sealed{}, credentialvault.ErrKeyMachineMismatch
+		}
 	}
 	return s.Vault.SealExisting(ctx, reference, value)
 }

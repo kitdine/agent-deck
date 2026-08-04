@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -76,6 +77,126 @@ func TestServiceStoresAuthenticatedCiphertextAndReportsPresence(t *testing.T) {
 	}
 }
 
+func TestUpdateNamedCredentialReplacesLegacyKeyIDWithCurrentVersion(t *testing.T) {
+	ctx := context.Background()
+	database, err := store.Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	vault := testCredentialVault(t)
+	service := Service{Store: database, Vault: vault}
+	if _, err = service.Add(ctx, Definition{Name: "example", Endpoint: "https://example.invalid", Clients: []Client{ClientCodex}}, "old-secret"); err != nil {
+		t.Fatal(err)
+	}
+	credential, err := database.ProviderCredential(ctx, "example", "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyIDs, err := vault.InspectKeyIDs(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = database.Exec(ctx, `UPDATE credential_secrets SET key_version=?, key_id=? WHERE credential_id=?`, credentialvault.KeyVersionLegacy, keyIDs[credentialvault.KeyVersionLegacy], credential.ID); err != nil {
+		t.Fatal(err)
+	}
+	value := "new-secret"
+	if _, err = service.UpdateNamedCredential(ctx, "example", "default", nil, nil, nil, &value); err != nil {
+		t.Fatalf("UpdateNamedCredential() mixed version store: %v", err)
+	}
+	secret, err := database.CredentialSecret(ctx, credential.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if secret.KeyVersion != credentialvault.KeyVersion || secret.KeyID != keyIDs[credentialvault.KeyVersion] {
+		t.Fatalf("rewritten secret key = (%d, %q), want current version and ID", secret.KeyVersion, secret.KeyID)
+	}
+}
+
+func TestUpdateNamedCredentialRejectsKeyIDFromDifferentVersion(t *testing.T) {
+	ctx := context.Background()
+	database, err := store.Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	vault := testCredentialVault(t)
+	service := Service{Store: database, Vault: vault}
+	if _, err = service.Add(ctx, Definition{Name: "example", Endpoint: "https://example.invalid", Clients: []Client{ClientCodex}}, "old-secret"); err != nil {
+		t.Fatal(err)
+	}
+	credential, err := database.ProviderCredential(ctx, "example", "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyIDs, err := vault.InspectKeyIDs(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = database.Exec(ctx, `UPDATE credential_secrets SET key_version=?, key_id=? WHERE credential_id=?`, credentialvault.KeyVersionLegacy, keyIDs[credentialvault.KeyVersion], credential.ID); err != nil {
+		t.Fatal(err)
+	}
+	before, err := database.CredentialSecret(ctx, credential.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	value := "new-secret"
+	if _, err = service.UpdateNamedCredential(ctx, "example", "default", nil, nil, nil, &value); !errors.Is(err, credentialvault.ErrKeyMachineMismatch) {
+		t.Fatalf("UpdateNamedCredential() cross-version key ID error = %v, want %v", err, credentialvault.ErrKeyMachineMismatch)
+	}
+	after, err := database.CredentialSecret(ctx, credential.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(after, before) {
+		t.Fatalf("cross-version secret overwritten: before=%#v after=%#v", before, after)
+	}
+}
+
+func TestUpdateNamedCredentialRejectsUnsupportedStoredKeyVersion(t *testing.T) {
+	for _, version := range []int{0, 3} {
+		t.Run(fmt.Sprintf("version-%d", version), func(t *testing.T) {
+			ctx := context.Background()
+			database, err := store.Open(ctx, t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer database.Close()
+			vault := testCredentialVault(t)
+			service := Service{Store: database, Vault: vault}
+			if _, err = service.Add(ctx, Definition{Name: "example", Endpoint: "https://example.invalid", Clients: []Client{ClientCodex}}, "old-secret"); err != nil {
+				t.Fatal(err)
+			}
+			credential, err := database.ProviderCredential(ctx, "example", "default")
+			if err != nil {
+				t.Fatal(err)
+			}
+			keyIDs, err := vault.InspectKeyIDs(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err = database.Exec(ctx, `UPDATE credential_secrets SET key_version=?, key_id=? WHERE credential_id=?`, version, keyIDs[credentialvault.KeyVersion], credential.ID); err != nil {
+				t.Fatal(err)
+			}
+			before, err := database.CredentialSecret(ctx, credential.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			value := "new-secret"
+			if _, err = service.UpdateNamedCredential(ctx, "example", "default", nil, nil, nil, &value); !errors.Is(err, credentialvault.ErrKeyVersionUnsupported) {
+				t.Fatalf("UpdateNamedCredential() unsupported version error = %v, want %v", err, credentialvault.ErrKeyVersionUnsupported)
+			}
+			after, err := database.CredentialSecret(ctx, credential.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(after, before) {
+				t.Fatalf("unsupported-version secret overwritten: before=%#v after=%#v", before, after)
+			}
+		})
+	}
+}
+
 type rejectingCredentialVault struct{ calls int }
 
 func (s *rejectingCredentialVault) reject() error {
@@ -93,6 +214,10 @@ func (s *rejectingCredentialVault) Open(context.Context, string, credentialvault
 }
 func (s *rejectingCredentialVault) InspectKey(context.Context) (string, error) {
 	return "", s.reject()
+}
+
+func (s *rejectingCredentialVault) InspectKeyIDs(context.Context) (map[int]string, error) {
+	return nil, s.reject()
 }
 
 func TestCredentialMutationTransactionsRollbackMetadataAndCiphertext(t *testing.T) {
