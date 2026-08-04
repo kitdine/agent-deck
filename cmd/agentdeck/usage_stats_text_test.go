@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -85,6 +86,29 @@ func TestUsageStatsWideLayoutAndColorAreDeterministic(t *testing.T) {
 	}
 	if !paired {
 		t.Fatalf("wide layout did not pair trend and ranking:\n%s", plainText)
+	}
+}
+
+func TestUsageStatsDisclosesWarningsInTextAndJSON(t *testing.T) {
+	report := usageStatsTextFixture()
+	report.Warnings = []string{"defaulted 5m cache creation TTL"}
+	var text bytes.Buffer
+	if err := renderUsageStatsWithOptions(&text, report, usageTextRenderOptions{width: 48}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(text.String(), "WARNINGS") || !strings.Contains(text.String(), "defaulted 5m cache creation TTL") {
+		t.Fatalf("stats warning text =\n%s", text.String())
+	}
+	var encoded bytes.Buffer
+	if err := writeUsageEnvelope(&encoded, "json", "usage.stats", report, false, report.Warnings, false, usageTextRenderOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	var envelope struct {
+		Data     usage.StatsReport `json:"data"`
+		Warnings []string          `json:"warnings"`
+	}
+	if err := json.Unmarshal(encoded.Bytes(), &envelope); err != nil || !reflect.DeepEqual(envelope.Data.Warnings, report.Warnings) || !reflect.DeepEqual(envelope.Warnings, report.Warnings) {
+		t.Fatalf("stats warning JSON = %s, %v", encoded.String(), err)
 	}
 }
 

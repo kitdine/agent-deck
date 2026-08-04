@@ -2097,7 +2097,8 @@
             "sessions": "number",
             "tokens": "number"
           },
-          "unpriced_models": []
+          "unpriced_models": [],
+          "warnings": []
         },
         "generated_at": "string",
         "partial": "boolean",

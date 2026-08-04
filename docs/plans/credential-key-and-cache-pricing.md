@@ -240,12 +240,54 @@ full vendor suite.
 Prerequisite: `shared-read-resolver` in the `v0.2.2` scalability plan, for the
 reason recorded in the Evidence Baseline. **Satisfied on 2026-08-03.**
 
+#### Development Evidence (2026-08-04)
+
+- Claude events with a positive cache-creation total and two zero TTL buckets
+  now use the catalog's five-minute cache-write price. They are fully priced
+  and disclose `defaulted 5m cache creation TTL` through the existing summary
+  warning output, including JSON.
+- A non-zero TTL breakdown that does not equal its positive total prices only
+  the reported buckets and retains `cache_creation_tokens` as unpriced. A
+  zero-total event with a reported breakdown keeps its existing behavior.
+- The resolver branch examines only the three token fields; it contains no
+  model-name, spelling, or client-version condition.
+- RED: `GOCACHE=/private/tmp/agent-deck-go-build go test -mod=vendor
+  ./internal/usage -run '^TestCalculateSeparatesCachedAndClaudeTTLComponents$'`
+  failed before the change: the defaulted shape had no complete cost and left
+  `cache_creation_tokens` unpriced.
+- GREEN: targeted `internal/usage` default/contradictory-shape and summary
+  disclosure tests; then `GOCACHE=/private/tmp/agent-deck-go-build go test
+  -mod=vendor ./internal/usage ./cmd/agentdeck` and `GOCACHE=/private/tmp/
+  agent-deck-go-build go test -mod=vendor ./...` passed.
+- Review Round 1 repair: `usage stats` now retains the same deduplicated warning
+  in its report, text section, and JSON data/envelope. Regression coverage
+  exercises that end-to-end route, dotted and hyphenated model spellings, and
+  the zero-total-with-reported-breakdown invariant; the bundled cold-start
+  fixture now exercises both observed default-TTL model shapes.
+- Recomputed on the frozen aggregate-only baseline: the prior fully priced
+  numerator `5,000,000,097` gains `7,775,308` defaulted cache-creation tokens
+  (`7,716,156` for `claude-haiku-4.5` plus `59,152` for `claude-opus-4.8`),
+  yielding `5,007,775,405 / 5,259,503,075 = 95.213851%`, reported as **95.2%**.
+- Repair verification: `GOCACHE=/private/tmp/agent-deck-go-build go test
+  -mod=vendor ./internal/usage ./cmd/agentdeck` and `GOCACHE=/private/tmp/
+  agent-deck-go-build go test -mod=vendor ./...` passed.
+- Review Round 2 repair: the exact dotted/hyphenated pair `claude-opus-4.8`
+  and `claude-opus-4-8` now receives the same positive creation total and zero
+  TTL buckets in both direct and bundled-cold-start regression coverage.
+- Review Round 3 repair: the real CLI disclosure test pins the existing UTC
+  display clock so its selected local day always contains the synthetic event.
+  The documented `UPDATE_AGENTDECK_GOLDEN=1` path regenerated the GUI JSON
+  contract, whose only change is `usage.stats.data.warnings: []`; the focused
+  CLI and isolated end-to-end tests pass without the update environment.
+  Uncached targeted `internal/usage` and `cmd/agentdeck` tests plus the full
+  vendored suite also pass.
+
 ## Status
 
 | Task | Dev | Review |
 | --- | --- | --- |
 | 1. `key-id-derivation` | [x] | [x] |
-| 2. `cache-creation-ttl-default` | [ ] | [ ] |
+| 2. `cache-creation-ttl-default` | [x] | [x] |
 
 The two tasks are independent of each other. Both had a `v0.2.2` prerequisite,
 recorded in their own sections; both were satisfied on 2026-08-03, when that

@@ -54,6 +54,7 @@ type Result struct {
 	KnownCatalogBaseCost string           `json:"known_catalog_base_cost"`
 	KnownProviderCost    string           `json:"known_provider_cost"`
 	Unpriced             []string         `json:"unpriced_components"`
+	Warnings             []string         `json:"warnings,omitempty"`
 }
 type Summary struct {
 	Tokens               map[string]int64 `json:"tokens"`
@@ -235,6 +236,7 @@ type StatsReport struct {
 	Timezone          string               `json:"timezone"`
 	GroupBy           string               `json:"group_by"`
 	Metric            string               `json:"metric"`
+	Warnings          []string             `json:"warnings"`
 	Totals            StatsTotals          `json:"totals"`
 	Buckets           []StatsBucket        `json:"buckets"`
 	Models            []StatsDimension     `json:"models"`
@@ -438,6 +440,7 @@ func Calculate(client, model string, tokens map[string]int64, prices modelPrice,
 	}
 	base := new(big.Rat)
 	unpriced := []string{}
+	warnings := []string{}
 	add := func(count int64, component string) error {
 		if count == 0 {
 			return nil
@@ -474,18 +477,31 @@ func Calculate(client, model string, tokens map[string]int64, prices modelPrice,
 		if err = add(tokens["output_tokens"], "output"); err != nil {
 			return Result{}, err
 		}
-		if tokens["cache_creation_tokens"] > 0 && tokens["cache_write_5m_tokens"] == 0 && tokens["cache_write_1h_tokens"] == 0 {
-			unpriced = append(unpriced, "cache_creation_tokens")
-		}
-		for _, p := range []struct{ n, p string }{{"cache_write_5m_tokens", "cache_write_5m"}, {"cache_write_1h_tokens", "cache_write_1h"}, {"cache_read_tokens", "cache_read"}} {
-			if err = add(tokens[p.n], p.p); err != nil {
+		cacheCreation := tokens["cache_creation_tokens"]
+		cacheWrite5m := tokens["cache_write_5m_tokens"]
+		cacheWrite1h := tokens["cache_write_1h_tokens"]
+		if cacheCreation > 0 && cacheWrite5m == 0 && cacheWrite1h == 0 {
+			if err = add(cacheCreation, "cache_write_5m"); err != nil {
 				return Result{}, err
 			}
+			warnings = append(warnings, "defaulted 5m cache creation TTL")
+		} else {
+			for _, p := range []struct{ n, p string }{{"cache_write_5m_tokens", "cache_write_5m"}, {"cache_write_1h_tokens", "cache_write_1h"}} {
+				if err = add(tokens[p.n], p.p); err != nil {
+					return Result{}, err
+				}
+			}
+			if cacheCreation > 0 && cacheWrite5m+cacheWrite1h != cacheCreation {
+				unpriced = append(unpriced, "cache_creation_tokens")
+			}
+		}
+		if err = add(tokens["cache_read_tokens"], "cache_read"); err != nil {
+			return Result{}, err
 		}
 	}
 	b := money(base)
 	f := money(new(big.Rat).Mul(base, m))
-	result := Result{Tokens: tokens, KnownCatalogBaseCost: b, KnownProviderCost: f, Unpriced: unpriced}
+	result := Result{Tokens: tokens, KnownCatalogBaseCost: b, KnownProviderCost: f, Unpriced: unpriced, Warnings: warnings}
 	if len(unpriced) == 0 {
 		result.CatalogBaseCost = &b
 		result.ProviderCost = &f
@@ -2658,6 +2674,7 @@ func (s *Service) Stats(ctx context.Context, options StatsOptions) (StatsReport,
 	}
 	timeline := resolver.timeline
 	total := newStatsAccumulator()
+	warnings := map[string]bool{}
 	buckets := map[string]*statsAccumulator{}
 	models := map[string]*statsAccumulator{}
 	clients := map[string]*statsAccumulator{}
@@ -2681,6 +2698,9 @@ func (s *Service) Stats(ctx context.Context, options StatsOptions) (StatsReport,
 		result, calculateErr := Calculate(event.Client, event.Model, event.Tokens, attribution.price, attribution.multiplier)
 		if calculateErr != nil {
 			return StatsReport{}, calculateErr
+		}
+		for _, warning := range result.Warnings {
+			warnings[warning] = true
 		}
 		start := bucketStart(at, options.GroupBy, location)
 		key := start.Format(time.RFC3339Nano)
@@ -2808,7 +2828,7 @@ func (s *Service) Stats(ctx context.Context, options StatsOptions) (StatsReport,
 	report := StatsReport{
 		Range:    StatsRange{From: options.From.In(location).Format(time.RFC3339Nano), To: options.To.In(location).Format(time.RFC3339Nano)},
 		Timezone: timezone, GroupBy: options.GroupBy, Metric: options.Metric,
-		Buckets: []StatsBucket{}, Models: []StatsDimension{}, Clients: []StatsDimension{}, Providers: []StatsDimension{}, CacheSessions: []StatsCacheSession{}, Activity: []StatsActivity{}, UnpricedModels: []StatsUnpricedModel{}, ShowModelActivity: options.Activity,
+		Warnings: []string{}, Buckets: []StatsBucket{}, Models: []StatsDimension{}, Clients: []StatsDimension{}, Providers: []StatsDimension{}, CacheSessions: []StatsCacheSession{}, Activity: []StatsActivity{}, UnpricedModels: []StatsUnpricedModel{}, ShowModelActivity: options.Activity,
 		Coverage: StatsCoverage{PricedEvents: total.priced, UnpricedEvents: total.unpriced, TotalEvents: total.events, Percent: statsCoverage(total.priced, total.unpriced)},
 	}
 	completeProvider, _ := statsCost(total)
@@ -2949,6 +2969,10 @@ func (s *Service) Stats(ctx context.Context, options StatsOptions) (StatsReport,
 			}
 		}
 	}
+	for warning := range warnings {
+		report.Warnings = append(report.Warnings, warning)
+	}
+	sort.Strings(report.Warnings)
 	return report, nil
 }
 
@@ -3124,6 +3148,12 @@ func summarizeEvents(events []storedEvent, priceForEvent eventPricing) (Summary,
 		r, err := Calculate(e.Client, e.Model, e.Tokens, price, mult)
 		if err != nil {
 			return out, err
+		}
+		for _, warning := range r.Warnings {
+			if !warned[warning] {
+				out.Warnings = append(out.Warnings, warning)
+				warned[warning] = true
+			}
 		}
 		knownBase, _ := decimal(r.KnownCatalogBaseCost)
 		knownProvider, _ := decimal(r.KnownProviderCost)

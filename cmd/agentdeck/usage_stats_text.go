@@ -268,6 +268,17 @@ func (r statsTextRenderer) render() string {
 			out.WriteByte('\n')
 		}
 	}
+	if len(r.report.Warnings) > 0 {
+		out.WriteByte('\n')
+		out.WriteString(r.sectionTitle("⚠ WARNINGS", r.width, "1;33"))
+		out.WriteByte('\n')
+		for _, warning := range r.report.Warnings {
+			for _, line := range statsWrap("- "+warning, r.width) {
+				out.WriteString(line)
+				out.WriteByte('\n')
+			}
+		}
+	}
 	return out.String()
 }
 

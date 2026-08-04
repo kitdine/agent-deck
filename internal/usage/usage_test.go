@@ -112,6 +112,66 @@ func TestCalculateSeparatesCachedAndClaudeTTLComponents(t *testing.T) {
 	if err != nil || *got.CatalogBaseCost != "3.120000000" || *got.ProviderCost != "1.560000000" {
 		t.Fatalf("ttl cost = %#v, %v", got, err)
 	}
+	got, err = Calculate("claude", "claude", map[string]int64{"input_tokens": 100000, "output_tokens": 10000, "cache_creation_tokens": 200000}, claude, "0.5")
+	if err != nil || got.CatalogBaseCost == nil || *got.CatalogBaseCost != "1.200000000" || got.ProviderCost == nil || *got.ProviderCost != "0.600000000" || len(got.Unpriced) != 0 || !reflect.DeepEqual(got.Warnings, []string{"defaulted 5m cache creation TTL"}) {
+		t.Fatalf("defaulted cache creation cost = %#v, %v", got, err)
+	}
+	got, err = Calculate("claude", "claude", map[string]int64{"input_tokens": 100000, "output_tokens": 10000, "cache_creation_tokens": 200000, "cache_write_5m_tokens": 100000}, claude, "0.5")
+	if err != nil || got.CatalogBaseCost != nil || got.KnownCatalogBaseCost != "0.825000000" || got.ProviderCost != nil || got.KnownProviderCost != "0.412500000" || !reflect.DeepEqual(got.Unpriced, []string{"cache_creation_tokens"}) || len(got.Warnings) != 0 {
+		t.Fatalf("partial cache creation cost = %#v, %v", got, err)
+	}
+}
+
+func TestSummarizeEventsDisclosesDefaultedCacheCreationTTL(t *testing.T) {
+	prices := modelPrice{Provider: "anthropic", Prices: map[string]string{"input": "3", "output": "15", "cache_write_5m": "3.75"}}
+	summary, err := summarizeEvents([]storedEvent{{Event: Event{Client: "claude", Model: "claude", Tokens: map[string]int64{"cache_creation_tokens": 200000}}}}, func(storedEvent) (modelPrice, string, string, error) {
+		return prices, "1", "exact", nil
+	})
+	if err != nil || summary.CatalogBaseCost == nil || *summary.CatalogBaseCost != "0.750000000" || summary.ProviderCost == nil || *summary.ProviderCost != "0.750000000" || !reflect.DeepEqual(summary.Warnings, []string{"defaulted 5m cache creation TTL"}) || summary.Counts["priced"] != 1 || summary.Counts["unpriced"] != 0 {
+		t.Fatalf("summary = %#v, %v", summary, err)
+	}
+}
+
+func TestCalculateDefaultsCacheCreationTTLRegardlessOfModelSpelling(t *testing.T) {
+	prices := modelPrice{Provider: "anthropic", Prices: map[string]string{"cache_write_5m": "3.75", "cache_write_1h": "6"}}
+	var reference Result
+	for index, model := range []string{"claude-opus-4.8", "claude-opus-4-8"} {
+		got, err := Calculate("claude", model, map[string]int64{"cache_creation_tokens": 200000}, prices, "1")
+		if err != nil || got.CatalogBaseCost == nil || *got.CatalogBaseCost != "0.750000000" || !reflect.DeepEqual(got.Warnings, []string{"defaulted 5m cache creation TTL"}) {
+			t.Fatalf("defaulted %s = %#v, %v", model, got, err)
+		}
+		if index == 0 {
+			reference = got
+			continue
+		}
+		if *got.CatalogBaseCost != *reference.CatalogBaseCost || *got.ProviderCost != *reference.ProviderCost || !reflect.DeepEqual(got.Unpriced, reference.Unpriced) || !reflect.DeepEqual(got.Warnings, reference.Warnings) {
+			t.Fatalf("spelling changed defaulted result: dotted=%#v hyphenated=%#v", reference, got)
+		}
+	}
+	got, err := Calculate("claude", "claude", map[string]int64{"cache_write_1h_tokens": 200000}, prices, "1")
+	if err != nil || got.CatalogBaseCost == nil || *got.CatalogBaseCost != "1.200000000" || len(got.Unpriced) != 0 || len(got.Warnings) != 0 {
+		t.Fatalf("zero total with reported breakdown = %#v, %v", got, err)
+	}
+}
+
+func TestStatsDisclosesDefaultedCacheCreationTTL(t *testing.T) {
+	ctx := context.Background()
+	database, err := store.Open(ctx, filepath.Join(t.TempDir(), "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if _, err = database.Exec(ctx, `
+INSERT INTO price_catalogs(version,source_kind,source_url,content_sha256,imported_at,effective_from,currency,schema_version) VALUES ('fixture','bundled','bundled://agentdeck/model-prices.json','aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z','USD',1);
+INSERT INTO model_prices(catalog_version,model,provider,effective_from,prices_json,aliases_json) VALUES ('fixture','claude-priced','anthropic','2026-01-01T00:00:00Z','{"cache_write_5m":"3.75"}','[]');
+INSERT INTO usage_events(event_key,client,session_id,event_id,event_at,model,cache_creation_tokens,source_path,source_offset) VALUES ('defaulted','claude','session','defaulted','2026-07-20T01:00:00Z','claude-priced',200000,'fixture',0);
+INSERT INTO usage_sessions(client,session_id,first_at,last_at) VALUES ('claude','session','2026-07-20T01:00:00Z','2026-07-20T01:00:00Z')`); err != nil {
+		t.Fatal(err)
+	}
+	report, err := New(database, "").Stats(ctx, StatsOptions{From: time.Date(2026, 7, 20, 0, 0, 0, 0, time.UTC), To: time.Date(2026, 7, 21, 0, 0, 0, 0, time.UTC), GroupBy: "day", Metric: "cost", Location: time.UTC, Timezone: "UTC"})
+	if err != nil || report.Totals.ProviderCost == nil || *report.Totals.ProviderCost != "0.750000000" || report.Coverage.UnpricedEvents != 0 || !reflect.DeepEqual(report.Warnings, []string{"defaulted 5m cache creation TTL"}) {
+		t.Fatalf("stats = %#v, %v", report, err)
+	}
 }
 
 func TestParserRejectsMalformedTokenCounts(t *testing.T) {

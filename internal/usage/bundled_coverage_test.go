@@ -71,19 +71,24 @@ func TestBundledCatalogPricesRealModelsWithoutNetwork(t *testing.T) {
 	}
 
 	for index, want := range coldStartModels {
-		insert := `INSERT INTO usage_events(event_key,client,session_id,event_id,event_at,model,input_tokens,cached_input_tokens,output_tokens,cache_read_tokens,cache_write_5m_tokens,cache_write_1h_tokens,source_path,source_offset) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,'fixture',?)`
+		insert := `INSERT INTO usage_events(event_key,client,session_id,event_id,event_at,model,input_tokens,cached_input_tokens,output_tokens,cache_read_tokens,cache_creation_tokens,cache_write_5m_tokens,cache_write_1h_tokens,source_path,source_offset) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,'fixture',?)`
 		key := fmt.Sprintf("e%d", index)
 		// Only exercise components the client actually reports, so an
 		// unpriced-component gap cannot masquerade as an unpriced model.
-		var cachedInput, cacheRead, write5m, write1h int64
+		var cachedInput, cacheRead, cacheCreation, write5m, write1h int64
 		if want.client == "codex" {
 			cachedInput = 1000
 		} else {
-			cacheRead, write5m, write1h = 1000, 1000, 1000
+			cacheRead = 1000
+			if want.model == "claude-haiku-4.5" || want.model == "claude-opus-4.8" || want.model == "claude-opus-4-8" {
+				cacheCreation = 1000
+			} else {
+				write5m, write1h = 1000, 1000
+			}
 		}
 		if _, err = s.Exec(ctx, insert, key, want.client, key, key,
 			at.Format(time.RFC3339Nano), want.model,
-			10000, cachedInput, 5000, cacheRead, write5m, write1h, index); err != nil {
+			10000, cachedInput, 5000, cacheRead, cacheCreation, write5m, write1h, index); err != nil {
 			t.Fatal(err)
 		}
 		if _, err = s.Exec(ctx, `INSERT INTO usage_sessions(client,session_id,first_at,last_at) VALUES(?,?,?,?)`,
@@ -95,6 +100,9 @@ func TestBundledCatalogPricesRealModelsWithoutNetwork(t *testing.T) {
 	summary, err := service.Summary(ctx)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if !strings.Contains(strings.Join(summary.Warnings, "\n"), "defaulted 5m cache creation TTL") {
+		t.Fatalf("default TTL warning missing from bundled summary: %#v", summary.Warnings)
 	}
 	priced := map[string]bool{}
 	for _, m := range summary.Models {

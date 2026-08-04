@@ -11,6 +11,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -2590,7 +2591,7 @@ func TestUsageSummaryShortcutsAndStatsJSONContract(t *testing.T) {
 	if timezone, _ := data["timezone"].(string); timezone == "" || timezone == "Local" {
 		t.Fatalf("stats timezone = %q", timezone)
 	}
-	for _, key := range []string{"range", "timezone", "totals", "buckets", "models", "clients", "providers", "cache_sessions", "activity", "peak", "coverage", "unpriced_models"} {
+	for _, key := range []string{"range", "timezone", "warnings", "totals", "buckets", "models", "clients", "providers", "cache_sessions", "activity", "peak", "coverage", "unpriced_models"} {
 		if _, exists := data[key]; !exists {
 			t.Fatalf("stats JSON missing %s: %#v", key, data)
 		}
@@ -2635,6 +2636,47 @@ func TestUsageSummaryShortcutsAndStatsJSONContract(t *testing.T) {
 	}
 	if !strings.Contains(textOutput.String(), "Jul 01, 2026 - Jul 07, 2026") || strings.Contains(textOutput.String(), "Jul 08, 2026") {
 		t.Fatalf("stats text range is not inclusive:\n%s", textOutput.String())
+	}
+}
+
+func TestUsageStatsDisclosesDefaultedCacheCreationTTL(t *testing.T) {
+	useUTCDisplayClock(t)
+	ctx := context.Background()
+	state := filepath.Join(t.TempDir(), "state")
+	database, err := store.Open(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := usage.New(database, "")
+	service.Now = func() time.Time { return time.Date(2026, 7, 21, 0, 0, 0, 0, time.UTC) }
+	if err = service.ImportBundledCatalog(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = database.Exec(ctx, `
+INSERT INTO usage_events(event_key,client,session_id,event_id,event_at,model,cache_creation_tokens,source_path,source_offset) VALUES ('defaulted','claude','session','defaulted','2026-07-20T01:00:00Z','claude-haiku-4.5',200000,'fixture',0);
+INSERT INTO usage_sessions(client,session_id,first_at,last_at) VALUES ('claude','session','2026-07-20T01:00:00Z','2026-07-20T01:00:00Z')`); err != nil {
+		t.Fatal(err)
+	}
+	if err = database.Close(); err != nil {
+		t.Fatal(err)
+	}
+	var encoded bytes.Buffer
+	if err = run([]string{"--state-dir", state, "--format", "json", "usage", "stats", "--no-scan", "--from", "2026-07-20", "--to", "2026-07-20"}, bytes.NewReader(nil), &encoded); err != nil {
+		t.Fatal(err)
+	}
+	var envelope struct {
+		Warnings []string       `json:"warnings"`
+		Data     map[string]any `json:"data"`
+	}
+	if err = json.Unmarshal(encoded.Bytes(), &envelope); err != nil || !reflect.DeepEqual(envelope.Warnings, []string{"defaulted 5m cache creation TTL"}) || !reflect.DeepEqual(envelope.Data["warnings"], []any{"defaulted 5m cache creation TTL"}) {
+		t.Fatalf("stats warning JSON = %s, %v", encoded.String(), err)
+	}
+	var text bytes.Buffer
+	if err = run([]string{"--state-dir", state, "usage", "stats", "--no-scan", "--from", "2026-07-20", "--to", "2026-07-20"}, bytes.NewReader(nil), &text); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(text.String(), "WARNINGS") || strings.Count(text.String(), "defaulted 5m cache creation TTL") != 1 {
+		t.Fatalf("stats warning text =\n%s", text.String())
 	}
 }
 

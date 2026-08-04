@@ -2865,7 +2865,9 @@ func newUsageCommand(opts *commandOptions) *cobra.Command {
 			return nil, false, nil, &inputError{err: fmt.Errorf("usage stats group-by must be auto, hour, day, week, or month")}
 		}
 		data, err := s.Stats(ctx, usage.StatsOptions{From: from, To: to, GroupBy: group, Metric: statsMetric, Client: statsClient, Model: statsModel, Provider: statsProvider, Timezone: displayTimezoneName(location, now), Location: location, Activity: statsActivity})
-		return data, scanErr != nil, map[bool][]string{true: {"scan_incomplete"}}[scanErr != nil], err
+		warnings := map[bool][]string{true: {"scan_incomplete"}}[scanErr != nil]
+		warnings = append(warnings, data.Warnings...)
+		return data, scanErr != nil, warnings, err
 	})}
 	stats.Flags().StringVar(&statsPeriod, "period", "7d", "Range: today, 7d, 30d, week, month, 6m, or all")
 	stats.Flags().StringVar(&statsFrom, "from", "", "Local start date in YYYY-MM-DD")
