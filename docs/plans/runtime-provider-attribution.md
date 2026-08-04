@@ -249,6 +249,13 @@ lifecycle vocabulary is the point of doing them together.
 Verification: L3 targeted command/config tests plus the full vendored suite and
 relevant privacy/file-mode checks.
 
+Development evidence (2026-08-03; current uncommitted `hook-config-lifecycle` repair state):
+
+- `GOCACHE=/private/tmp/agent-deck-go-build go test -mod=vendor -count=1 ./internal/usagehook` -> PASS.
+- `GOCACHE=/private/tmp/agent-deck-go-build go test -mod=vendor -count=1 ./...` -> PASS.
+- `GOCACHE=/private/tmp/agent-deck-go-build go test -mod=vendor -count=1 -race ./internal/usagehook ./cmd/agentdeck` -> PASS.
+- `GOCACHE=/private/tmp/agent-deck-go-build go vet -mod=vendor ./...` -> PASS.
+
 ### 2. `hook-boundary-storage`
 
 Add the schema migration, strict event parser, idempotent boundary writer, and
@@ -333,7 +340,7 @@ Verification: L0 documentation discovery/link checks and `git diff --check`.
 
 | Task | Dev | Review |
 | --- | --- | --- |
-| 1. `hook-config-lifecycle` | [ ] | [ ] |
+| 1. `hook-config-lifecycle` | [x] | [x] |
 | 2. `hook-boundary-storage` | [ ] | [ ] |
 | 3. `claude-reload-boundary` | [ ] | [ ] |
 | 4. `v0-3-0-contract` | [ ] | [ ] |

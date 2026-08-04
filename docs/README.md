@@ -421,7 +421,7 @@ fixing a defect, which is why it is a contract change recorded by the single
 | Document | Purpose |
 | --- | --- |
 | [specs/cli-design.md](specs/cli-design.md) | What the system does and must keep doing: provider, credential, usage, pricing, session, backup, and distribution behavior. Currently version 22; see its changelog. |
-| [plans/runtime-provider-attribution.md](plans/runtime-provider-attribution.md) | The `v0.3.0` Hook-first runtime attribution work: reversible Codex/Claude Hook setup, resumed-session and Claude reload boundaries, non-blocking concurrent runs, and unchanged project-attribution shell functions. Also owns the release's single contract task. `active — 0/4 done`. |
+| [plans/runtime-provider-attribution.md](plans/runtime-provider-attribution.md) | The `v0.3.0` Hook-first runtime attribution work: reversible Codex/Claude Hook setup, resumed-session and Claude reload boundaries, non-blocking concurrent runs, and unchanged project-attribution shell functions. Also owns the release's single contract task. `active — 1/4 done`. |
 | [plans/credential-key-and-cache-pricing.md](plans/credential-key-and-cache-pricing.md) | `v0.3.0` derived key ID with a second supported sealed key version, and the disclosed five-minute default for a Claude cache-creation total with no TTL breakdown. Split out of the hardening plan on 2026-08-02. `active — 0/2 done`. |
 | [plans/codex-auto-review-classification.md](plans/codex-auto-review-classification.md) | `v0.3.0` evidence-first classification of the 85 M deliberately unpriced `codex-auto-review` tokens. `active — 0/2 done`. |
 | [specs/cli-manual.md](specs/cli-manual.md) | The implemented command surface, flags, and output shapes. |

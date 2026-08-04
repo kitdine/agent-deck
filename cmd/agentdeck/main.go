@@ -35,6 +35,7 @@ import (
 	"github.com/kitdine/agent-deck/internal/shellconfig"
 	"github.com/kitdine/agent-deck/internal/store"
 	"github.com/kitdine/agent-deck/internal/usage"
+	"github.com/kitdine/agent-deck/internal/usagehook"
 	"github.com/kitdine/agent-deck/internal/watch"
 )
 
@@ -590,17 +591,20 @@ func applyHelpCatalog(root *cobra.Command) {
 			long:    argumentHelp("Restore an authenticated archive into an empty AgentDeck state directory.", "  path  Existing .adb archive path."),
 			example: "  agentdeck --state-dir /new/state backup restore /secure/agentdeck.adb",
 		},
-		"usage scan":     {short: "Incrementally import local usage events"},
-		"usage summary":  {short: "Summarize local usage and cost", long: argumentHelp("Summarize all history or a local calendar period.", "  period  Optional daily, weekly, or monthly shortcut."), example: "  agentdeck usage summary weekly"},
-		"usage stats":    {short: "Show usage, cache hits, models, and activity", long: "Show responsive usage analytics. Use --model with --activity for safe model-level tool summaries.", example: "  agentdeck usage stats --model gpt-5.4 --activity"},
-		"usage sessions": {short: "List session-level usage and cost"},
-		"usage diagnose": {short: "Diagnose usage attribution and source coverage"},
-		"usage rebuild":  {short: "Rebuild usage metadata from local sources"},
-		"price history":  {short: "List price catalog provenance history"},
-		"price list":     {short: "List current effective model prices", long: argumentHelp("List component-wise merged prices in USD per one million tokens.", "  model  Optional exact model filter."), example: "  agentdeck price list gpt-5.6-sol"},
-		"price status":   {short: "Show active price catalog provenance"},
-		"price update":   {short: "Download the latest LiteLLM price catalog"},
-		"price override": {short: "Apply a local structured price override"},
+		"usage scan":        {short: "Incrementally import local usage events"},
+		"usage summary":     {short: "Summarize local usage and cost", long: argumentHelp("Summarize all history or a local calendar period.", "  period  Optional daily, weekly, or monthly shortcut."), example: "  agentdeck usage summary weekly"},
+		"usage stats":       {short: "Show usage, cache hits, models, and activity", long: "Show responsive usage analytics. Use --model with --activity for safe model-level tool summaries.", example: "  agentdeck usage stats --model gpt-5.4 --activity"},
+		"usage sessions":    {short: "List session-level usage and cost"},
+		"usage diagnose":    {short: "Diagnose usage attribution and source coverage"},
+		"usage rebuild":     {short: "Rebuild usage metadata from local sources"},
+		"usage hook setup":  {short: "Install runtime attribution hooks", long: argumentHelp("Install only AgentDeck-owned command hooks into Codex and Claude configuration. Existing unrelated hooks are preserved; Codex may require a manual trust approval through /hooks.", " --client codex|claude|all Client configuration to update."), example: " agentdeck usage hook setup\n agentdeck usage hook setup --client codex"},
+		"usage hook status": {short: "Inspect runtime attribution hooks", long: argumentHelp("Report managed hook configuration state and client-side activation or trust guidance without changing configuration.", " --client codex|claude|all Client configuration to inspect."), example: " agentdeck usage hook status"},
+		"usage hook remove": {short: "Remove runtime attribution hooks", long: argumentHelp("Remove only byte-equivalent AgentDeck-owned command hooks and preserve unrelated configuration.", " --client codex|claude|all Client configuration to update."), example: " agentdeck usage hook remove --client claude"},
+		"price history":     {short: "List price catalog provenance history"},
+		"price list":        {short: "List current effective model prices", long: argumentHelp("List component-wise merged prices in USD per one million tokens.", "  model  Optional exact model filter."), example: "  agentdeck price list gpt-5.6-sol"},
+		"price status":      {short: "Show active price catalog provenance"},
+		"price update":      {short: "Download the latest LiteLLM price catalog"},
+		"price override":    {short: "Apply a local structured price override"},
 		"run": {
 			short:   "Run Codex or Claude with usage attribution",
 			long:    argumentHelp("Run a supported client and attribute the resulting local usage events.", "  codex|claude       Client executable to launch.\n  client arguments   Arguments passed unchanged after the required -- separator."),
@@ -2546,6 +2550,152 @@ func newDoctorCommand(opts *commandOptions) *cobra.Command {
 	return command
 }
 
+func newUsageHookCommand(opts *commandOptions) *cobra.Command {
+	command := &cobra.Command{Use: "hook", Short: "Manage runtime attribution hooks", Args: exactArgs(0)}
+	command.AddCommand(
+		newUsageHookLifecycleCommand(opts, "setup"),
+		newUsageHookLifecycleCommand(opts, "status"),
+		newUsageHookLifecycleCommand(opts, "remove"),
+		newUsageHookEventCommand(opts),
+	)
+	return command
+}
+
+func newUsageHookLifecycleCommand(opts *commandOptions, operation string) *cobra.Command {
+	var clientValue string
+	var client usagehook.Client
+	command := &cobra.Command{
+		Use:  operation,
+		Args: cobra.NoArgs,
+		PreRunE: func(_ *cobra.Command, _ []string) error {
+			if opts.format != "text" && opts.format != "json" {
+				return &inputError{err: fmt.Errorf("usage hook %s supports only text or json format", operation)}
+			}
+			parsed, err := usagehook.ParseClient(clientValue)
+			if err != nil {
+				return &inputError{err: err}
+			}
+			client = parsed
+			return nil
+		},
+		RunE: func(command *cobra.Command, _ []string) error {
+			return runUsageHookLifecycle(command.Context(), opts, operation, client)
+		},
+	}
+	command.Flags().StringVar(&clientValue, "client", "all", "Client configuration: codex, claude, or all")
+	return command
+}
+
+func newUsageHookEventCommand(opts *commandOptions) *cobra.Command {
+	var client usagehook.Client
+	return &cobra.Command{
+		Use:   "event <codex|claude>",
+		Short: "Handle one runtime attribution hook event",
+		Long: argumentHelp(
+			"Read one bounded Codex or Claude hook event from stdin, remain silent, and fail open for the client.",
+			" codex|claude Client that invoked the hook.",
+		),
+		Example: " agentdeck usage hook event codex\n agentdeck usage hook event claude",
+		Hidden:  true,
+		Args:    exactArgs(1),
+		PreRunE: func(_ *cobra.Command, args []string) error {
+			if opts.format != "text" {
+				return &inputError{err: errors.New("usage hook event requires text format")}
+			}
+			parsed, err := usagehook.ParseClient(args[0])
+			if err != nil || parsed == usagehook.ClientAll {
+				if err == nil {
+					err = errors.New("usage hook event requires codex or claude client")
+				}
+				return &inputError{err: err}
+			}
+			client = parsed
+			return nil
+		},
+		RunE: func(_ *cobra.Command, _ []string) error {
+			return runUsageHookEvent(opts, client)
+		},
+	}
+}
+
+func runUsageHookLifecycle(ctx context.Context, opts *commandOptions, operation string, client usagehook.Client) error {
+	home, err := userHomeDir()
+	if err != nil {
+		return err
+	}
+	command := "agentdeck"
+	if opts.stateDir != "" {
+		command += " --state-dir " + shellQuote(opts.stateDir)
+	}
+	manager := usagehook.New(usagehook.Environment{Home: home, AgentDeckCommand: command})
+	request := usagehook.Request{Client: client}
+	var summary usagehook.Summary
+	switch operation {
+	case "setup":
+		summary, err = manager.Setup(request)
+	case "status":
+		summary, err = manager.Status(request)
+	case "remove":
+		summary, err = manager.Remove(request)
+	default:
+		return fmt.Errorf("usage hook %s not available in build", operation)
+	}
+	if err != nil {
+		return err
+	}
+	if opts.format == "json" {
+		if err := writeResult(opts.stdout, opts.format, "usage.hook."+operation, summary); err != nil {
+			return err
+		}
+	} else if err := writeUsageHookText(opts, operation, summary); err != nil {
+		return err
+	}
+	if summary.HasFailures() {
+		return fmt.Errorf("usage hook %s failed for one or more clients", operation)
+	}
+	return nil
+}
+
+func writeUsageHookText(opts *commandOptions, operation string, summary usagehook.Summary) error {
+	for _, result := range summary.Results {
+		if opts.quiet && operation != "status" && result.Outcome != usagehook.OutcomeFailed {
+			continue
+		}
+		if operation == "status" {
+			if _, err := fmt.Fprintf(opts.stdout, "%s %s: %s", result.Client, result.Path, result.Configuration); err != nil {
+				return err
+			}
+		} else if _, err := fmt.Fprintf(opts.stdout, "%s %s: %s", result.Client, result.Path, result.Outcome); err != nil {
+			return err
+		}
+		if result.Error != "" {
+			if _, err := fmt.Fprintf(opts.stdout, " (%s)", result.Error); err != nil {
+				return err
+			}
+		}
+		if result.Guidance != "" && (!opts.quiet || operation == "status") {
+			if _, err := fmt.Fprintf(opts.stdout, "\n  guidance: %s", result.Guidance); err != nil {
+				return err
+			}
+		}
+		if _, err := fmt.Fprintln(opts.stdout); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func runUsageHookEvent(opts *commandOptions, client usagehook.Client) error {
+	contents, err := io.ReadAll(io.LimitReader(opts.stdin, usagehook.MaxEventBytes+1))
+	if err != nil || len(contents) > usagehook.MaxEventBytes {
+		// Hook delivery is fail-open: malformed or oversized client input must
+		// never prevent the client from starting, resuming, or exiting.
+		return nil
+	}
+	_ = usagehook.ValidateEvent(client, contents)
+	return nil
+}
+
 func newUsageCommand(opts *commandOptions) *cobra.Command {
 	cmd := &cobra.Command{Use: "usage", Short: "Inspect usage and pricing"}
 	withUsage := func(run func(context.Context, *usage.Service, *store.Store, []string) (any, bool, []string, error)) func(*cobra.Command, []string) error {
@@ -2644,6 +2794,7 @@ func newUsageCommand(opts *commandOptions) *cobra.Command {
 	stats.Flags().BoolVar(&statsNoScan, "no-scan", false, "Use stored aggregate without scanning sources")
 	stats.Flags().IntVar(&statsTop, "top", 0, "Text-list cap for MODELS/PROVIDERS/UNPRICED/per-model CACHE/cache sessions: unset keeps each section's default cap, 0 shows every row, N overrides the cap to N. TREND and CLIENTS are unaffected; --format json always has every row.")
 	cmd.AddCommand(
+		newUsageHookCommand(opts),
 		&cobra.Command{Use: "scan", Args: cobra.NoArgs, RunE: withUsage(func(ctx context.Context, s *usage.Service, _ *store.Store, _ []string) (any, bool, []string, error) {
 			data, err := s.Scan(ctx)
 			return data, false, nil, err
