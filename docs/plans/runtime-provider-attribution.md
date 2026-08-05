@@ -308,9 +308,11 @@ Review-fix evidence (2026-08-04):
 ### 4. `v0-3-0-contract`
 
 The single contract task for the whole `v0.3.0` release. It was widened on
-2026-08-02 from this plan's own contract task: three plans ship behavior changes
-in `v0.3.0`, and each originally carried its own "increment the specification
-version" task. Three increments in one release would either collide or leave the
+2026-08-02 from this plan's own contract task: the three plans coordinate one
+release, while two ship behavior changes and the classification plan may ship
+nothing when its evidence is inconclusive; each originally carried its own
+"increment the specification version" task. Three increments in one release
+would either collide or leave the
 changelog claiming three releases, so this task records all of them and raises
 the specification version exactly once.
 

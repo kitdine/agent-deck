@@ -381,11 +381,11 @@ release cannot read.
 | --- | --- | --- |
 | [runtime-provider-attribution](plans/runtime-provider-attribution.md) | 4 | Codex and Claude lifecycle Hooks own runtime boundaries; concurrent runs become non-blocking; resumed and hot-reloaded sessions split at observed boundaries; project-attribution shell functions are unchanged |
 | [credential-key-and-cache-pricing](plans/credential-key-and-cache-pricing.md) | 2 | Derived rather than hashed key ID with a second supported sealed key version; disclosed five-minute default for a Claude cache-creation total with no TTL breakdown |
-| [codex-auto-review-classification](plans/codex-auto-review-classification.md) | 2 | Settle from evidence what the 85 M unpriced tokens are, then classify them, so `unpriced` means only "should have a price and does not" |
+| [codex-auto-review-classification](plans/codex-auto-review-classification.md) | 2 (behavior `n/a`) | Evidence proved the reviewer role but not its billing treatment, so no classification behavior ships and the unresolved item returns to Backlog |
 
 Two rules hold across the `v0.3.0` batch. The specification version is raised
-**once**, by `v0-3-0-contract` in the runtime attribution plan, which records all
-three plans' behavior changes; and both releases ship at least one `-rc.N`
+**once**, by `v0-3-0-contract` in the runtime attribution plan, which records the
+batch's behavior changes; and both releases ship at least one `-rc.N`
 validated against real local data, because both touch persisted data or the
 pricing read path.
 
@@ -423,7 +423,7 @@ fixing a defect, which is why it is a contract change recorded by the single
 | [specs/cli-design.md](specs/cli-design.md) | What the system does and must keep doing: provider, credential, usage, pricing, session, backup, and distribution behavior. Currently version 22; see its changelog. |
 | [plans/runtime-provider-attribution.md](plans/runtime-provider-attribution.md) | The `v0.3.0` Hook-first runtime attribution work: reversible Codex/Claude Hook setup, resumed-session and Claude reload boundaries, non-blocking concurrent runs, and unchanged project-attribution shell functions. Also owns the release's single contract task. `active — 3/4 done`. |
 | [plans/credential-key-and-cache-pricing.md](plans/credential-key-and-cache-pricing.md) | `v0.3.0` derived key ID with a second supported sealed key version, and the disclosed five-minute default for a Claude cache-creation total with no TTL breakdown. Split out of the hardening plan on 2026-08-02. `active — 2/2 done`. |
-| [plans/codex-auto-review-classification.md](plans/codex-auto-review-classification.md) | `v0.3.0` evidence-first classification of the 85 M deliberately unpriced `codex-auto-review` tokens. `active — 0/2 done`. |
+| [plans/codex-auto-review-classification.md](plans/codex-auto-review-classification.md) | `v0.3.0` evidence probe complete but billing classification inconclusive; behavior task `n/a`. `active — 1/1 done`; retires with the batch under `v0-3-0-contract`. |
 | [specs/cli-manual.md](specs/cli-manual.md) | The implemented command surface, flags, and output shapes. |
 | [reviews/](reviews/README.md) | Per-task review records that back each plan's ticked `Review` cell. |
 | [archive/](archive/README.md) | Retired plans and superseded contracts. Not a starting point for new work. |
@@ -437,6 +437,15 @@ None.
 Candidate work with no approved specification. Each item needs its own plan
 before implementation starts; promote it out of this list at that point rather
 than expanding the entry in place.
+
+- [ ] Resolve the billing treatment of `codex-auto-review`. The 2026-08-04
+      aggregate evidence probe proved it is a dedicated automatic-approval
+      reviewer model/session label with independently reported token events,
+      but neither official Codex source, adjacent-event correlation, nor public
+      pricing catalogs establish whether its tokens are free, separately
+      billed, or charged under another model. Reopen behavior work only with
+      authoritative billing/account evidence; see
+      [the classification plan](plans/codex-auto-review-classification.md).
 
 - [ ] Redesign `session search` results to carry an instant before adding any
       timezone presentation. Carried over from the retired display-timezone
