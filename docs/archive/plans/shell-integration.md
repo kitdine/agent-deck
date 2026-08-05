@@ -1211,7 +1211,7 @@ is reviewed:
   shell-specific — subcommand shape, state vocabulary, idempotence, "remove
   touches only AgentDeck-owned entries", refusal to overwrite an edited managed
   region, and no setup from any package installation path — because
-  [the runtime provider attribution plan](../../plans/runtime-provider-attribution.md) adds a
+  [the runtime provider attribution plan](runtime-provider-attribution.md) adds a
   second lifecycle over client hook files in `v0.2.2` and is required to follow
   them;
 - define `provider use --via` as a command that may write shell startup files,

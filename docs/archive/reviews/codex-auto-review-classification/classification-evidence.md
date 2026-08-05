@@ -1,7 +1,8 @@
 ---
-status: active
+status: historical
 plan: codex-auto-review-classification
 task: classification-evidence
+retired: 2026-08-04
 ---
 
 # Review log — codex-auto-review-classification / classification-evidence

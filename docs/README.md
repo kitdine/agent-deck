@@ -377,17 +377,24 @@ schema migration, two external client Hook contracts, a Codex trust step
 AgentDeck cannot automate, changed cost numbers, and credentials an earlier
 release cannot read.
 
-| Plan | Tasks | Content |
-| --- | --- | --- |
-| [runtime-provider-attribution](plans/runtime-provider-attribution.md) | 4 | Codex and Claude lifecycle Hooks own runtime boundaries; concurrent runs become non-blocking; resumed and hot-reloaded sessions split at observed boundaries; project-attribution shell functions are unchanged |
-| [credential-key-and-cache-pricing](plans/credential-key-and-cache-pricing.md) | 2 | Derived rather than hashed key ID with a second supported sealed key version; disclosed five-minute default for a Claude cache-creation total with no TTL breakdown |
-| [codex-auto-review-classification](plans/codex-auto-review-classification.md) | 2 (behavior `n/a`) | Evidence proved the reviewer role but not its billing treatment, so no classification behavior ships and the unresolved item returns to Backlog |
+**Every behavior task across its three plans was delivered and independently
+reviewed by 2026-08-04; the plans and their review records retired to
+`docs/archive/` that day.** See the retirement entry in
+[the archive index](archive/README.md) for what each one delivered and where its
+conclusions now live. The final contract task `v0-3-0-contract` passed
+Round 3 re-review on 2026-08-04, so every task in the batch is complete.
+The release itself is not tagged yet.
 
-Two rules hold across the `v0.3.0` batch. The specification version is raised
-**once**, by `v0-3-0-contract` in the runtime attribution plan, which records the
-batch's behavior changes; and both releases ship at least one `-rc.N`
-validated against real local data, because both touch persisted data or the
-pricing read path.
+Two rules held across the `v0.3.0` batch. The specification version was raised
+**once**, by `v0-3-0-contract` in the runtime attribution plan, which recorded
+the batch's behavior changes as version 23; and both releases ship at least one
+`-rc.N` validated against real local data, because both touch persisted data or
+the pricing read path. That release candidate is the remaining `v0.3.0` step.
+
+Its release notes must state both downgrade consequences, which the retired
+contract task owned and this index now carries: credentials written by this
+release are unreadable by `v0.2.x`, and cost/coverage numbers change for
+existing data.
 
 The `v0.2.2` batch was cut from what was planned on 2026-07-29. The credential
 and pricing hardening plan then held six tasks; `key-id-derivation` and
@@ -420,10 +427,7 @@ fixing a defect, which is why it is a contract change recorded by the single
 
 | Document | Purpose |
 | --- | --- |
-| [specs/cli-design.md](specs/cli-design.md) | What the system does and must keep doing: provider, credential, usage, pricing, session, backup, and distribution behavior. Currently version 22; see its changelog. |
-| [plans/runtime-provider-attribution.md](plans/runtime-provider-attribution.md) | The `v0.3.0` Hook-first runtime attribution work: reversible Codex/Claude Hook setup, resumed-session and Claude reload boundaries, non-blocking concurrent runs, and unchanged project-attribution shell functions. Also owns the release's single contract task. `active — 3/4 done`. |
-| [plans/credential-key-and-cache-pricing.md](plans/credential-key-and-cache-pricing.md) | `v0.3.0` derived key ID with a second supported sealed key version, and the disclosed five-minute default for a Claude cache-creation total with no TTL breakdown. Split out of the hardening plan on 2026-08-02. `active — 2/2 done`. |
-| [plans/codex-auto-review-classification.md](plans/codex-auto-review-classification.md) | `v0.3.0` evidence probe complete but billing classification inconclusive; behavior task `n/a`. `active — 1/1 done`; retires with the batch under `v0-3-0-contract`. |
+| [specs/cli-design.md](specs/cli-design.md) | What the system does and must keep doing: provider, credential, usage, pricing, session, backup, and distribution behavior. Currently version 23; see its changelog. |
 | [specs/cli-manual.md](specs/cli-manual.md) | The implemented command surface, flags, and output shapes. |
 | [reviews/](reviews/README.md) | Per-task review records that back each plan's ticked `Review` cell. |
 | [archive/](archive/README.md) | Retired plans and superseded contracts. Not a starting point for new work. |
@@ -445,7 +449,7 @@ than expanding the entry in place.
       pricing catalogs establish whether its tokens are free, separately
       billed, or charged under another model. Reopen behavior work only with
       authoritative billing/account evidence; see
-      [the classification plan](plans/codex-auto-review-classification.md).
+      [the retired classification plan](archive/plans/codex-auto-review-classification.md).
 
 - [ ] Redesign `session search` results to carry an instant before adding any
       timezone presentation. Carried over from the retired display-timezone
@@ -496,6 +500,23 @@ than expanding the entry in place.
       ordering, pagination, duplicate-source ownership, unavailable components,
       and the boundary between safe usage metadata and prohibited raw session
       content.
+
+- [ ] Design complete lifecycle management for native Skills, Plugins, MCP servers,
+      and Hooks. This is an umbrella capability, not an implementation task:
+      promote it into four independently approved plans before development because
+      each native adapter has different ownership, trust, credential, dependency,
+      and rollback contracts. Define consistent `status`, `install`, `update`,
+      `enable`, `disable`, `remove`, and `doctor` semantics while keeping Codex and
+      Claude configuration as the source of truth. Every mutation must support
+      preview, drift detection, atomic application, and safe rollback; must preserve
+      unknown and non-AgentDeck-owned content; and must specify source authenticity,
+      version pinning, dependencies, credential handling, and offline behavior.
+      Existing `extension adopt` and `extension release` remain metadata-only rather
+      than implying file ownership. An adapter stays read-only until its client
+      exposes an unambiguous stable write contract. The Hooks plan must keep
+      AgentDeck-owned runtime-attribution handlers distinct from arbitrary
+      third-party hooks and must not generalize `usage hook` into unrestricted hook
+      mutation.
 
 - [ ] Confirm whether a Claude **app** picks up a project-scoped
       `.claude/settings.local.json` without a restart.

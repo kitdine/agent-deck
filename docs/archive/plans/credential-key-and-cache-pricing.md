@@ -1,5 +1,6 @@
 ---
-status: active
+status: historical
+retired: 2026-08-04
 created: 2026-08-02
 ---
 
@@ -8,9 +9,9 @@ created: 2026-08-02
 Target release: `v0.3.0`.
 
 Two tasks split out of
-[the credential and pricing hardening plan](../archive/plans/credential-and-pricing-hardening.md)
+[the credential and pricing hardening plan](credential-and-pricing-hardening.md)
 on 2026-08-02, when
-[the release versioning contract](../archive/plans/release-versioning-contract.md) classified
+[the release versioning contract](release-versioning-contract.md) classified
 both as MINOR. They were designed on 2026-07-29 and their evidence is carried
 over unchanged; only the release target and the contract ownership moved.
 
@@ -106,7 +107,7 @@ Three conclusions follow, and they correct the original Backlog entry's framing:
    (370 tokens) are the only observed inconsistency in the other direction.
 
 **Cross-plan ordering, added 2026-08-02.** `v0.2.2` delivers
-[the usage pricing read scalability plan](../archive/plans/usage-pricing-read-scalability.md),
+[the usage pricing read scalability plan](usage-pricing-read-scalability.md),
 whose `shared-read-resolver` task unifies the pricing read path used by stats,
 deep diagnostics, and session summaries. Task 2 below must be implemented on top
 of that resolver, not before it: changing the cache-creation rule first would

@@ -1,6 +1,6 @@
 ---
 status: active
-version: 22
+version: 23
 created: 2026-07-14
 ---
 
@@ -1045,8 +1045,12 @@ cache_creation.ephemeral_1h_input_tokens
 cache_read_input_tokens
 ```
 
-Aggregate cache creation without a TTL breakdown remains visible but unpriced.
-The scanner never guesses whether it was a five-minute or one-hour write.
+Aggregate cache creation without a TTL breakdown remains visible. When
+`cache_creation_tokens > 0` and both reported TTL buckets are zero, pricing
+uses the documented five-minute cache-write default and marks the resulting
+cost as `defaulted 5m cache creation TTL`; the stored token fields remain
+unchanged. A non-zero reported breakdown that does not cover the total remains
+partially unpriced, and the scanner never redistributes that remainder.
 
 Claude Code's own internal auxiliary model calls — for example automatic
 session-title generation, recorded in the project JSONL only as a bare
@@ -1083,22 +1087,89 @@ Attribution has three explicit qualities:
 
 - `exact`: `agentdeck run` owns an unambiguous client process lifetime and
   binds only source ranges written during that run.
-- `estimated`: file-only fallback assigns the complete logical session to the
-  provider selected at the session's first timestamp.
+- `estimated`: an observed lifecycle boundary, or failing that a file-only
+  fallback, assigns events to the provider that the boundary — or the session's
+  first timestamp — names.
 - `historical`: no earlier provider selection exists; multiplier is fixed at
   `1`.
 
-Resuming a logical session through `agentdeck run` starts a new exact run with
-the provider active at resume time. Earlier run ranges keep their prior
-provider. An old exact run never captures later unwrapped events merely because
-the logical session ID matches.
+Resolution for a single event is ordered and total. An exact run binding wins.
+Otherwise the most recent recorded lifecycle boundary at or before the event's
+timestamp applies. Otherwise the file-only fallback attributes the complete
+logical session to the provider selected at its first timestamp. A logical
+session is therefore split at observed boundaries rather than attributed
+wholesale, and re-attributing a resumed session no longer requires
+`agentdeck run`: a client with runtime attribution Hooks configured splits its
+own sessions, while `run` remains a supported low-level launcher for exact
+attribution. Earlier ranges keep their prior provider. An old exact run never
+captures later unwrapped events merely because the logical session ID matches.
 
 Overlapping or ambiguous client lifetimes are downgraded to `estimated`; the
-tool never silently claims exact attribution.
+tool never silently claims exact attribution. A second managed run for a client
+that already has one is accepted rather than refused: both overlapping runs are
+downgraded, because losing exactness is a smaller harm than preventing a client
+from launching.
 The wrapper waits for every started child and propagates a failed client exit
 as a runtime failure in text and JSON modes. If wrapper bookkeeping or scanning
 cannot prove the source range, it closes the run as `estimated` rather than
 leaving an incomplete or falsely exact run.
+
+Client lifecycle Hooks are the supported source of those boundaries.
+`agentdeck usage hook setup|status|remove [--client codex|claude|all]` follows
+the same lifecycle contract as `agentdeck shell setup|status|remove`: setup
+merges only AgentDeck-owned entries and is idempotent, status reports `absent`,
+`configured`, `modified`, or `invalid` without changing configuration, and
+remove deletes only entries still matching the owned form, never rewriting an
+edited or unverifiable region. No package installation path writes Hook
+configuration. The two lifecycles deliberately share no implementation: Hooks
+merge JSON — Codex `hooks.json`, Claude `settings.json` — while shell
+integration owns a text block.
+
+An owned entry is a command entry invoking
+`agentdeck usage hook event <codex|claude>`. AgentDeck registers `SessionStart`
+for Codex, and `SessionStart`, `ConfigChange`, and `SessionEnd` for Claude.
+`configured` requires exactly one owned entry for every registered event; a
+duplicate, a partial set, or an altered entry reports `modified`, and hook
+configuration that cannot be decoded reports `invalid`. Writing Hook
+configuration preserves unrelated hooks and unrelated keys, so a provider
+switch and a Hook lifecycle command may touch `~/.claude/settings.json` in
+either order without loss.
+
+Codex may still require the user to trust a newly written Hook through its own
+`/hooks` approval. AgentDeck reports that limitation and never modifies or
+circumvents client trust state.
+
+The handler `agentdeck usage hook event <codex|claude>` is hidden and accepts
+only known, bounded lifecycle payloads. It writes nothing to standard output
+and fails open at every step: oversized, malformed, or unrecognized input,
+unavailable state, and any recording failure all end in success without output,
+because no attribution outcome may delay or prevent a client from starting,
+resuming, reloading settings, or exiting. When Hooks are absent, untrusted,
+disabled, or failing, attribution falls back to the file-only estimated
+behavior above; a client is never reported as unattributed merely because its
+Hooks never ran.
+
+A recorded boundary carries the logical session, the observed instant, and the
+provider, multiplier, and wrapper state of the completed selection in effect,
+together with the event that produced it. It stores no client payload beyond
+the validated event shape. Boundaries are always `estimated`: a Hook never
+claims exact attribution. A boundary equal to that session's most recent one is
+not recorded twice, so duplicate delivery is harmless.
+
+Two events establish boundaries. `SessionStart` does so for both clients, but
+only when its transcript validates and a completed provider selection exists; a
+`compact` source establishes none, because compaction continues the same
+routing. For Claude, `ConfigChange` also does, and only for a user-settings
+change to the managed settings file: AgentDeck reconciles that file against the
+current selection and records either the matching provider, or provider
+`unknown` when the two disagree or no selection exists, rather than guessing
+which side is stale. A `ConfigChange` boundary is therefore possible where
+`SessionStart` would record nothing. `SessionEnd` is registered but records no
+boundary.
+
+Schema v17 creates `usage_session_routes` for those boundaries and drops the
+single-active-run index, which is what makes an overlapping managed run a
+downgrade rather than a refusal.
 
 Incremental import tracks inode or platform file identity, path, cursor,
 partial line state, size, modification time, and prefix hashes. It detects
@@ -1199,8 +1270,10 @@ selected through AgentDeck (for example `official` or a custom relay), not by
 the price-catalog vendor. Each event's provider name is derived during the same
 in-memory aggregation, mirroring the existing attribution quality branches: an
 exact run-bound event uses the recorded `usage_runs.provider`; an estimated
-event uses the provider-timeline snapshot at its session start; an event whose
-session predates every recorded provider selection is grouped as `unknown`.
+event uses the most recent lifecycle boundary at or before it, or the
+provider-timeline snapshot at its session start when no boundary applies; an
+event whose session predates every recorded provider selection is grouped as
+`unknown`.
 `unknown` is an explicit unattributed bucket, never silently mapped to
 `official`, and `--provider unknown` selects exactly those events. Each
 selection snapshot also records whether the route went through the provider's
@@ -2032,6 +2105,15 @@ import the legacy `providers.json`, usage database, or real client settings.
     byte-compatible. This document's own `version:` is independent of the
     release version; either may advance without the other.
 
+**Credential key compatibility.** The key-file format remains version 1. Sealed
+credential rows support versions 1 and 2: version 1 compares its legacy
+`hex(sha256(key)[:16])` ID, while version 2 derives its persisted 16-byte ID
+from bytes 32..48 of the unchanged HKDF stream whose bytes 0..32 remain the
+AES key. New seals and ordinary rewrites use version 2; existing version-1
+ciphertext remains readable and is never rewritten automatically. Unsupported
+sealed versions fail closed as `credential_key_version_unsupported`, and a
+version-2 row is unreadable by `v0.2.x` until rewritten by a compatible build.
+
 ## Changelog
 
 Every entry is a change to the contract this document defines, not a record of
@@ -2040,6 +2122,7 @@ here changes; do not create a dated copy of this file.
 
 | Version | Date | Contract change |
 | --- | --- | --- |
+| 23 | 2026-08-04 | Adds managed `usage hook setup|status|remove` lifecycle commands for Codex and Claude session-route boundaries: setup/removal touch only AgentDeck-owned JSON entries, status exposes absent/configured/modified/invalid and observable trust limits, and handlers are silent, bounded, fail-open. Attribution resolves in a fixed order — exact run binding, then the most recent lifecycle boundary at or before the event, then the session-start fallback — so a Hook-configured client splits its own resumed sessions and `run` is no longer required to re-attribute one; `run` remains a supported low-level exact-attribution launcher, and an overlapping managed run downgrades both runs to estimated rather than being refused. Schema v17 adds `usage_session_routes` and drops the single-active-run index. Sealed credential key version 2 derives its key ID without changing existing AES key bytes, retains version-1 reads, and makes new ciphertext unsafe to downgrade to `v0.2.x`. Claude cache-creation totals with positive total and two zero TTL buckets now use the disclosed default five-minute rate; affected historical cost/coverage numbers change without rewriting stored events. `codex-auto-review` billing remains unresolved and stays an unpriced Backlog item rather than receiving an inferred price or mapping. |
 | 22 | 2026-08-02 | Defines version number semantics for the `0.x` line: MAJOR stays `0` until an explicit stability declaration; MINOR triggers cover command/flag/typed-error-code changes, schema migration, stdout/JSON/NDJSON/exit-code semantic changes, user-visible number changes for unchanged input, unsafe-to-downgrade persisted formats, and rewritten (not merely clarified) promised behavior; PATCH covers everything else and must stay safe to downgrade from; error-message wording is PATCH while typed error codes are MINOR; this document's own `version:` is independent of the release version; releases touching persisted data, the pricing read path, or external-client configuration ship at least one `-rc.N` validated against real local data first. |
 | 21 | 2026-07-30 | Shell attribution gains the supported `shell env` resolver, hidden `shell-init` compatibility guarantees, presence-guarded managed blocks, reusable setup/status/remove lifecycle, in-use-shell targeting, interactive switch-time setup, corrected route-change advisories, and the machine-local portable-backup-excluded negative gate. |
 | 20 | 2026-07-29 | Project attribution is opt-in and Headroom-wrapper-scoped. Eligible launches derive the cleaned full-path identity used by session indexing, expose only its safely encoded basename, and use client-specific environment transport without persisting the value. Codex owns only the `X-Headroom-Project` to `HEADROOM_PROJECT` mapping while preserving unrelated mappings. Outside `agentdeck run`, users must install the emitted shell helper or write settings themselves; AgentDeck does not attribute GUI app launches, and wrappers not declared `headroom` never receive AgentDeck-generated attribution headers. |

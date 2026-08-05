@@ -438,6 +438,24 @@ personal -> aigocode-personal-ref
 | `malformed` | 无法解析的完整 JSON 行 |
 | `source_resets` | truncate、replacement、identity change 或 validated anchor mismatch 引发的 source 重扫次数；内容未变化的显式 rebuild 不计入 |
 
+#### Usage Hook 生命周期
+
+`agentdeck usage hook setup|status|remove [--client codex|claude|all]` 采用与
+`agentdeck shell setup|status|remove` 相同的生命周期语义：`setup` 只合并
+AgentDeck-owned command-hook entries、幂等；`status` 报告 `absent`、`configured`、
+`modified` 或 `invalid`；`remove` 只移除可验证为 AgentDeck-owned 的 entries，绝不覆盖
+已编辑或不可验证的受管区域，也不会因安装软件包而自动执行。实现不同之处是 Hook 合并
+JSON（Codex `hooks.json`、Claude `settings.json`），shell 管理文本 block，因此不共享
+实现代码。Codex 新 Hook 可能仍需用户在 `/hooks` 中信任；AgentDeck 只报告此限制，不会
+修改 trust state 或绕过它。
+
+安装的 handler 调用隐藏的 `agentdeck usage hook event <codex|claude>`。它只接受已知、
+有界的生命周期事件，stdout 保持为空且失败不会阻止 client 启动、恢复、设置更新或退出。
+Hook 缺失、未信任、禁用或失败时，usage attribution 回退到既有的 estimated
+session-start 行为。`agentdeck run` 仍是兼容的低层 exact-attribution launcher，不再是
+resume 的主要归属机制；并发 managed runs 不阻止 client，而将受影响的 open runs 降级为
+`estimated`。
+
 ### Usage 默认输出
 
 - 不指定 `--format` 时输出 text；`usage scan`、`rebuild`、`diagnose`、`summary`
@@ -452,6 +470,10 @@ personal -> aigocode-personal-ref
 - `usage sessions` 将 input、cached input、output、cache read、cache creation、5m
   write 和 1h write token 分成独立列。无法形成完整成本时，已知小计显示为
   `(partial)`，status 列列出 warning 和 unpriced component。
+- Claude `cache_creation_tokens > 0` 且两项 TTL bucket 都为零时，保留原始 token
+  字段并按公开的默认 5 分钟 cache-write rate 计价；text/JSON warning 明示
+  `defaulted 5m cache creation TTL`。只有非零 bucket 未覆盖总额的矛盾形状仍将余数列为
+  `missing_components`，不会按模型名或拼写猜测 TTL。
 - Claude model 只在两侧都为 `claude-` 名称时把点号与连字符视为等价版本标点；
   Codex 名称和其他不相等的 model 不做模糊匹配。
 - `usage stats --period` 支持 `today|7d|30d|week|month|6m|all`；`week` 仍表示本机
@@ -648,10 +670,11 @@ restore 为目标机器创建新 key，并在一个 transaction 中替换 snapsh
 
 | 命令 | 含义与典型用例 | 参数与 Flags | 必填规则 | 示例 |
 | --- | --- | --- | --- | --- |
-| `doctor` | quick read-only diagnostics；检查 key 权限、key ID、算法/版本、nonce 和 secret ownership，不解密 | `--full`：额外认证全部 credential ciphertext，并增加 usage、session、extension 和价格深度检查 | 无 | `agentdeck doctor --full` |
+| `usage hook setup\|status\|remove` | 安装、检查或移除 Codex/Claude 的 AgentDeck-owned session-route Hook entries；不修改无关 hooks，Codex trust 限制由 status 明示 | `--client codex\|claude\|all` | 可选；默认 `all` | `agentdeck usage hook setup --client codex` |
+| `doctor` | quick read-only diagnostics；检查 key 权限、按 sealed key version 推导的 key ID、算法/版本、nonce 和 secret ownership，不解密 | `--full`：额外认证全部 credential ciphertext，并增加 usage、session、extension 和价格深度检查 | 无 | `agentdeck doctor --full` |
 | `state migrate` | 显式将本地 core state 迁移到当前 schema；doctor 永不自动迁移 | 无 | 无 | `agentdeck state migrate` |
 | `watch` | 前台监控 local sources；复用各 domain 已成功 scan 的 checkpoint，不重复 bootstrap 已完成的扫描；text 行首时间使用本机时区并在值后标出，NDJSON 保持 UTC | `--interval <duration>`；`--domains <list>` | 均可选；interval 默认 `1m`，domains 默认 `usage,session,extension` | `agentdeck watch --interval 30s --domains usage --format ndjson` |
-| `run <codex\|claude> [-- <args...>]` | 启动客户端并建立 exact/estimated usage attribution；允许无 child args | client：位置参数；dash 后参数可为空 | client 必填 | `agentdeck run codex --` |
+| `run <codex\|claude> [-- <args...>]` | 兼容的低层 launcher；启动客户端并建立 exact/estimated usage attribution，允许无 child args；session resume 以 Hook boundary 为主 | client：位置参数；dash 后参数可为空 | client 必填 | `agentdeck run codex --` |
 | `version` | 输出 release、commit、branch、Go version 和 UTC build time | 无 | 无 | `agentdeck version --format json` |
 | `help [command-path]` | 显示 root 或指定命令帮助 | command path 可选 | 无 | `agentdeck help credential update` |
 | `completion <bash\|fish\|zsh>` | 只输出指定 shell completion script | shell | shell 必填；PowerShell 不支持且不出现在 help/completion 中 | `agentdeck completion zsh` |

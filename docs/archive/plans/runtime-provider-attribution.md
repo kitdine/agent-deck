@@ -1,5 +1,6 @@
 ---
-status: active
+status: historical
+retired: 2026-08-04
 created: 2026-07-29
 ---
 
@@ -12,7 +13,7 @@ session boundaries. It does not expand project-attribution shell functions:
 those functions continue to inject only Headroom project metadata.
 
 **Release placement, revised 2026-08-02.** The target moved from `v0.2.2` to
-`v0.3.0` when [the release versioning contract](../archive/plans/release-versioning-contract.md)
+`v0.3.0` when [the release versioning contract](release-versioning-contract.md)
 was adopted. Nothing about the work changed; it simply is not patch-level under
 that contract, and triggers four of its MINOR conditions at once: the
 `usage hook` command group is new (trigger 1), the boundary storage migrates the
@@ -26,7 +27,7 @@ the release's single contract task — see task 4.
 
 **Earlier release placement, decided 2026-07-29.** Staying in `v0.2.2` was reconsidered
 against pulling this into `v0.2.1` alongside
-[the retired shell integration plan](../archive/plans/shell-integration.md), and confirmed. That plan had
+[the retired shell integration plan](shell-integration.md), and confirmed. That plan had
 to move into `v0.2.1` because `shell-init` has never shipped stable, so changing
 its role is only an internal rearrangement until it does. Nothing here has an
 equivalent expiring window: the `usage hook` command group and the session-route
@@ -138,7 +139,7 @@ decision with its reason, including any future Hook-specific status vocabulary,
 not an artifact of being written second.
 
 The stable source for those reusable conventions is the
-[Managed shell lifecycle](../specs/cli-design.md#managed-shell-lifecycle)
+[Managed shell lifecycle](../../specs/cli-design.md#managed-shell-lifecycle)
 contract; this plan must name and justify any deliberate divergence.
 
 Installed handlers invoke a hidden command that reads the documented JSON event
@@ -357,6 +358,66 @@ Acceptance:
 
 Verification: L0 documentation discovery/link checks and `git diff --check`.
 
+Review-fix evidence (2026-08-04), closing Round 1's P1 and P2:
+
+- `docs/specs/cli-design.md` now states the Hook attribution contract in the
+  body of `## Usage Collection and Attribution` rather than only in the
+  changelog: the fixed resolution order (exact run binding, then the most
+  recent boundary at or before the event, then the session-start fallback);
+  the `usage hook setup|status|remove` lifecycle against the `shell` lifecycle
+  with the JSON-versus-text-block divergence named; the owned entry form and
+  the registered events per client; the `absent`/`configured`/`modified`/
+  `invalid` state rules; the Codex `/hooks` trust limitation; the hidden
+  handler's silent, bounded, fail-open behavior and the fallback when Hooks
+  never run; boundary storage semantics including estimated-only quality,
+  duplicate suppression, `SessionStart`-only boundaries, `compact` and
+  `SessionEnd` recording none, and Claude's `unknown` on a settings mismatch.
+- The two contradicting statements were rewritten, not merely supplemented:
+  the resume paragraph no longer presents `agentdeck run` as the way to
+  re-attribute a resumed session, and the runtime provider dimension no longer
+  says an estimated event uses the session-start snapshot unconditionally.
+- Added the previously undocumented schema change: `Schema v17 creates
+  usage_session_routes … and drops the single-active-run index`, plus the
+  observable non-blocking consequence that a second managed run downgrades both
+  runs instead of being refused.
+- Tightened the version-23 changelog row so it states the resolution order
+  rather than the ambiguous "supersede client-wide `run` ownership", which
+  could have been read as overriding exact runs.
+- Every added statement was checked against the implementation before writing:
+  `internal/usage/usage.go:2599-2630` (resolution order), `:1877-1886`
+  (overlap downgrade), `internal/usage/routes.go:22-40, 45-53, 63-78`
+  (boundary recording, idempotence, Claude mismatch), `internal/usagehook/
+  config.go:803-853` (states, owned entry, registered events),
+  `cmd/agentdeck/main.go:2689-2725` (fail-open paths, ConfigChange gating),
+  `internal/store/migrations.go:105-110` (schema v17).
+- `git diff --check` (staged and unstaged) -> PASS; full relative-link sweep
+  across `docs/` -> 0 broken.
+
+Review-fix evidence (2026-08-04), closing Round 2's P2:
+
+- Round 2 found the Round 1 fix had asserted "Only `SessionStart` establishes a
+  boundary" while the same paragraph also said Claude `ConfigChange` is honored.
+  The sentence was wrong, not merely ambiguous: `RecordClaudeConfigChange`
+  (`internal/usage/routes.go:45-53`) calls `recordSessionRoute` directly with
+  `HookEvent: "ConfigChange"`, bypassing the `SessionStart` filter that guards
+  `RecordSessionRoute` (`:29`).
+- `docs/specs/cli-design.md:1159-1168` now names both boundary sources and
+  scopes each precondition to the event it actually guards: `SessionStart` for
+  both clients, subject to transcript validation
+  (`cmd/agentdeck/main.go:2716`) and an existing completed selection
+  (`internal/usage/routes.go:33-35`), with `compact` excluded (`:29`); Claude
+  `ConfigChange` gated on a user-settings change to the managed settings file
+  (`cmd/agentdeck/main.go:2723-2725`), recording the matching provider or
+  `unknown` when the two disagree or no selection exists
+  (`:2727-2757`, `internal/usage/routes.go:50-53`). The asymmetry is stated
+  explicitly, because `reconcileClaudeConfigChange` does not return on
+  `sql.ErrNoRows` and so records a boundary where `SessionStart` would record
+  nothing. `SessionEnd` is recorded as registered but boundary-free, with no
+  invented rationale for why it is registered.
+- Scope held to the paragraph the review named; no other statement changed.
+- `git diff --check` (staged and unstaged) -> PASS; full relative-link sweep
+  across `docs/` -> 0 broken.
+
 ## Status
 
 | Task | Dev | Review |
@@ -364,7 +425,7 @@ Verification: L0 documentation discovery/link checks and `git diff --check`.
 | 1. `hook-config-lifecycle` | [x] | [x] |
 | 2. `hook-boundary-storage` | [x] | [x] |
 | 3. `claude-reload-boundary` | [x] | [x] |
-| 4. `v0-3-0-contract` | [ ] | [ ] |
+| 4. `v0-3-0-contract` | [x] | [x] |
 
 Order: task 1 defines the installed wire contract. Task 2 consumes that wire
 contract and may proceed once its exact JSON fixtures are fixed. Task 3 depends
@@ -372,7 +433,7 @@ on task 2. Task 4 runs last, and last across the whole release: it cannot start
 until every task in the other two `v0.3.0` plans has also passed review.
 
 Task 2 must land after `shared-read-resolver` in the `v0.2.2`
-[usage pricing read scalability plan](../archive/plans/usage-pricing-read-scalability.md). Both
+[usage pricing read scalability plan](usage-pricing-read-scalability.md). Both
 change how a stored usage event resolves to a provider and a price; doing the
 resolver first means the session-route lookup is added to one unified read path
 instead of to a path that is about to be replaced. **Satisfied on 2026-08-03**:

@@ -1,7 +1,8 @@
 ---
-status: active
+status: historical
 plan: runtime-provider-attribution
 task: claude-reload-boundary
+retired: 2026-08-04
 ---
 
 # Review log — runtime-provider-attribution / claude-reload-boundary

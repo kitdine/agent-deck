@@ -31,6 +31,20 @@ Move a document here instead of leaving it `active` in `docs/plans/` or
 - Leaving it in the main `docs/` tree risks being mistaken for the current
   source of truth.
 
+## 2026-08-04 retirement: `v0.3.0` plan batch
+
+`runtime-provider-attribution`, `credential-key-and-cache-pricing`, and
+`codex-auto-review-classification` (with their review directories) moved here
+after their task evidence and reviews completed. The living contract is now
+`docs/specs/cli-design.md` version 23 and `docs/specs/cli-manual.md`. Runtime
+attribution delivered managed Codex/Claude usage Hooks, session-route
+boundaries, and non-blocking concurrent-run attribution. Credential/pricing
+delivered sealed key version 2 with version-1 compatibility plus disclosed
+default five-minute cache-creation pricing. The classification probe established
+`codex-auto-review` as a dedicated reviewer label but remained inconclusive
+about billing; it ships no classification behavior and remains an unscoped
+Backlog question pending authoritative billing evidence.
+
 ## Rules
 
 - Archiving means **moving**, not deleting. Content is preserved as-is.

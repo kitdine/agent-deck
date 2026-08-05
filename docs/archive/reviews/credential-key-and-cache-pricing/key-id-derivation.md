@@ -1,7 +1,8 @@
 ---
-status: active
+status: historical
 plan: credential-key-and-cache-pricing
 task: key-id-derivation
+retired: 2026-08-04
 ---
 
 # Review log — credential-key-and-cache-pricing / key-id-derivation
