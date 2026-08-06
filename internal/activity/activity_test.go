@@ -143,6 +143,40 @@ func TestReadDetailsPropagatesMissingSourceError(t *testing.T) {
 	}
 }
 
+func TestReadDetailsPageKeepsOnlyRequestedPageAndCompleteSummary(t *testing.T) {
+	path := writeActivityJSONL(t, []string{
+		`{"type":"session_meta","payload":{"session_id":"paged-session"}}`,
+		`{"type":"turn_context","payload":{"turn_id":"paged-turn","model":"gpt-safe"}}`,
+		`{"type":"response_item","timestamp":"2026-07-23T00:00:01Z","payload":{"item":{"type":"function_call","call_id":"call-1","name":"first","arguments":"secret-1"}}}`,
+		`{"type":"response_item","timestamp":"2026-07-23T00:00:02Z","payload":{"item":{"type":"function_call_output","call_id":"call-1","output":"secret-2"}}}`,
+		`{"type":"response_item","timestamp":"2026-07-23T00:00:03Z","payload":{"item":{"type":"function_call","call_id":"call-2","name":"second","arguments":"secret-3"}}}`,
+		`{"type":"response_item","timestamp":"2026-07-23T00:00:04Z","payload":{"item":{"type":"function_call_output","call_id":"call-2","output":"secret-4"}}}`,
+		`{"type":"response_item","timestamp":"2026-07-23T00:00:05Z","payload":{"item":{"type":"function_call","call_id":"call-3","name":"third","arguments":"secret-5"}}}`,
+	})
+
+	result, err := ReadDetailsPage(path, "codex", "paged-session", 2, 1, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Total != 3 || result.Shown != 1 || !result.HasMore || result.NextPage != 3 {
+		t.Fatalf("pagination = %#v", result)
+	}
+	if len(result.Details) != 1 || result.Details[0].Tool != "second" || result.Details[0].Status != "completed" {
+		t.Fatalf("details = %#v", result.Details)
+	}
+	if result.Summary.Total != 3 || result.Summary.Completed != 2 || result.Summary.Incomplete != 1 || result.Summary.ByTool["first"] != 1 || result.Summary.ByTool["third"] != 1 {
+		t.Fatalf("summary = %#v", result.Summary)
+	}
+	assertNoSensitiveActivityContent(t, result.Details)
+}
+
+func TestReadDetailsPageRejectsDeepPageBeforeOpeningSource(t *testing.T) {
+	_, err := ReadDetailsPage(filepath.Join(t.TempDir(), "missing.jsonl"), "codex", "session", maxPageCandidates+1, 1, false)
+	if err == nil || !strings.Contains(err.Error(), "bounded window") {
+		t.Fatalf("error = %v, want bounded page rejection", err)
+	}
+}
+
 func writeActivityJSONL(t *testing.T, lines []string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "session.jsonl")

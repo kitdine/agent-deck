@@ -1966,10 +1966,13 @@ type sessionSearchPage struct {
 
 type sessionShowPage struct {
 	session.Result
-	Usage       *usage.SessionSummary         `json:"usage,omitempty"`
-	Invocations []usage.SessionInvocation     `json:"invocations,omitempty"`
-	Pagination  map[string]session.Pagination `json:"pagination,omitempty"`
-	NextCommand string                        `json:"-"`
+	Usage             *usage.SessionSummary         `json:"usage,omitempty"`
+	Invocations       []usage.SessionInvocation     `json:"invocations,omitempty"`
+	Pagination        map[string]session.Pagination `json:"pagination,omitempty"`
+	NextCommand       string                        `json:"-"`
+	ActivityRequested bool                          `json:"-"`
+	ActivityWarning   string                        `json:"activity_warning,omitempty"`
+	SourceStale       bool                          `json:"stale,omitempty"`
 }
 
 func newSessionCommand(opts *commandOptions) *cobra.Command {
@@ -2130,12 +2133,35 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 				return nil, sessionShowNotFound(ctx, opts, "", args[0])
 			}
 		}
-		result, err := session.ShowWithActivity(ctx, s.DB, client, args[0], showActivity)
+		metadata, err := session.ShowMetadata(ctx, s.DB, client, args[0])
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return nil, sessionShowNotFound(ctx, opts, client, args[0])
 			}
 			return nil, err
+		}
+		pagingExplicit := show.Flags().Changed("page") || show.Flags().Changed("limit") || show.Flags().Changed("all")
+		documents, documentsPagination, pageErr := session.DocumentsPage(ctx, s.DB, metadata, showPage, showLimit, showAll || (opts.format == "json" && !pagingExplicit))
+		if pageErr != nil {
+			return nil, &inputError{err: pageErr}
+		}
+		result := session.Result{Metadata: metadata, Documents: documents}
+		_, sourceErr := os.Stat(metadata.SourcePath)
+		sourceStale := errors.Is(sourceErr, os.ErrNotExist)
+		activityWarning := ""
+		var activityPagination session.Pagination
+		if showActivity {
+			activityPage, activityErr := activity.ReadDetailsPage(metadata.SourcePath, client, args[0], showPage, showLimit, showAll || (opts.format == "json" && !pagingExplicit))
+			if activityErr != nil {
+				activityWarning = "Activity source is unavailable."
+				if sourceStale {
+					activityWarning = "Activity source is stale."
+				}
+			} else {
+				result.Activity = activityPage.Details
+				result.ActivitySummary = session.ActivitySummaryFromSourceSummary(activityPage.Summary)
+				activityPagination = session.Pagination{Page: activityPage.Page, Limit: activityPage.Limit, Total: activityPage.Total, Shown: activityPage.Shown, HasMore: activityPage.HasMore, NextPage: activityPage.NextPage}
+			}
 		}
 		var sessionUsage *usage.SessionSummary
 		var invocations []usage.SessionInvocation
@@ -2158,26 +2184,15 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 			sessionUsage = &summary
 			invocationPagination = session.Pagination{Page: page.Page, Limit: page.Limit, Total: page.Total, Shown: page.Shown, HasMore: page.HasMore, NextPage: page.NextPage}
 		}
-		pagingExplicit := show.Flags().Changed("page") || show.Flags().Changed("limit") || show.Flags().Changed("all")
 		if opts.format == "json" && !pagingExplicit {
-			if showTokens {
-				return sessionShowPage{Result: result, Usage: sessionUsage, Invocations: invocations}, nil
+			if showTokens || (showActivity && activityWarning != "") || sourceStale {
+				return sessionShowPage{Result: result, Usage: sessionUsage, Invocations: invocations, ActivityRequested: showActivity, ActivityWarning: activityWarning, SourceStale: sourceStale}, nil
 			}
 			return result, nil
 		}
-		docs, documentsPagination, pageErr := session.Paginate(result.Documents, showPage, showLimit, showAll)
-		if pageErr != nil {
-			return nil, &inputError{err: pageErr}
-		}
-		result.Documents = docs
 		pagination := map[string]session.Pagination{"documents": documentsPagination}
 		nextPagination := documentsPagination
 		if showActivity {
-			activityRows, activityPagination, activityErr := session.Paginate(result.Activity, showPage, showLimit, showAll)
-			if activityErr != nil {
-				return nil, &inputError{err: activityErr}
-			}
-			result.Activity = activityRows
 			pagination["activity"] = activityPagination
 			if activityPagination.HasMore {
 				nextPagination = activityPagination
@@ -2189,7 +2204,7 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 				nextPagination = invocationPagination
 			}
 		}
-		return sessionShowPage{Result: result, Usage: sessionUsage, Invocations: invocations, Pagination: pagination, NextCommand: sessionNextCommand(opts.stateDir, "show", client, args[0], showActivity, showTokens, nextPagination)}, nil
+		return sessionShowPage{Result: result, Usage: sessionUsage, Invocations: invocations, Pagination: pagination, NextCommand: sessionNextCommand(opts.stateDir, "show", client, args[0], showActivity, showTokens, nextPagination), ActivityRequested: showActivity, ActivityWarning: activityWarning, SourceStale: sourceStale}, nil
 	})}
 	show.Flags().StringVar(&showClient, "client", "", "Session client")
 	show.Flags().BoolVar(&showActivity, "activity", false, "Show safe tool activity metadata from the source log")
@@ -3631,51 +3646,17 @@ func renderCommandText(w io.Writer, command string, data any) error {
 	case "session.show":
 		value, pagination, nextCommand, ok := session.Result{}, map[string]session.Pagination(nil), "", false
 		usageSummary, invocations := (*usage.SessionSummary)(nil), []usage.SessionInvocation(nil)
+		activityRequested, activityWarning, sourceStale := false, "", false
 		switch typed := data.(type) {
 		case session.Result:
 			value, ok = typed, true
 		case sessionShowPage:
-			value, pagination, nextCommand, usageSummary, invocations, ok = typed.Result, typed.Pagination, typed.NextCommand, typed.Usage, typed.Invocations, true
+			value, pagination, nextCommand, usageSummary, invocations, activityRequested, activityWarning, sourceStale, ok = typed.Result, typed.Pagination, typed.NextCommand, typed.Usage, typed.Invocations, typed.ActivityRequested, typed.ActivityWarning, typed.SourceStale, true
 		}
 		if !ok {
 			return fmt.Errorf("unexpected session.show result %T", data)
 		}
-		if _, err := fmt.Fprintf(w, "client: %s\nsession: %s\nproject: %s\nmodel: %s\nfirst: %s\nlast: %s\n", value.Client, value.SessionID, value.Project, value.Model, renderDisplayTimeWithZone(value.FirstAt), renderDisplayTimeWithZone(value.LastAt)); err != nil {
-			return err
-		}
-		if err := renderSessionDocuments(w, value.Documents); err != nil {
-			return err
-		}
-		if p, found := pagination["documents"]; found {
-			if err := renderPagination(w, p, nextCommand); err != nil {
-				return err
-			}
-		}
-		if value.ActivitySummary != nil || len(value.Activity) > 0 {
-			if err := renderSessionActivitySummary(w, value.ActivitySummary); err != nil {
-				return err
-			}
-			if err := renderSessionActivity(w, value.Activity); err != nil {
-				return err
-			}
-			if p, found := pagination["activity"]; found {
-				if err := renderPagination(w, p, nextCommand); err != nil {
-					return err
-				}
-			}
-		}
-		if usageSummary != nil {
-			if err := renderSessionUsage(w, *usageSummary); err != nil {
-				return err
-			}
-			if err := renderSessionInvocations(w, invocations); err != nil {
-				return err
-			}
-			if p, found := pagination["invocations"]; found {
-				return renderPagination(w, p, nextCommand)
-			}
-		}
-		return nil
+		return renderSessionShowText(w, value, pagination, nextCommand, usageSummary, invocations, activityRequested, activityWarning, sourceStale)
 	case "extension.list":
 		value, ok := data.([]extension.DTO)
 		if !ok {

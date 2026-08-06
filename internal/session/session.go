@@ -131,6 +131,25 @@ func SummarizeActivity(values []activity.Detail) *ActivitySummary {
 	return s
 }
 
+// ActivitySummaryFromSourceSummary converts the bounded source-reader summary
+// into the stable session-show JSON contract.
+func ActivitySummaryFromSourceSummary(value activity.Summary) *ActivitySummary {
+	summary := &ActivitySummary{
+		Total:             value.Total,
+		Completed:         value.Completed,
+		Failed:            value.Failed,
+		Incomplete:        value.Incomplete,
+		TotalDurationMS:   value.TotalDurationMS,
+		AverageDurationMS: value.AverageDurationMS,
+		ByTool:            make([]ToolCount, 0, len(value.ByTool)),
+	}
+	for tool, count := range value.ByTool {
+		summary.ByTool = append(summary.ByTool, ToolCount{Tool: tool, Count: count})
+	}
+	sort.Slice(summary.ByTool, func(i, j int) bool { return summary.ByTool[i].Tool < summary.ByTool[j].Tool })
+	return summary
+}
+
 type ScanResult struct {
 	Sources   int `json:"sources"`
 	Documents int `json:"documents"`
@@ -1016,6 +1035,61 @@ func List(ctx context.Context, db *sql.DB) ([]Metadata, error) {
 }
 func Show(ctx context.Context, db *sql.DB, client, id string) (Result, error) {
 	return ShowWithActivity(ctx, db, client, id, false)
+}
+
+// ShowMetadata returns the selected authoritative source metadata for one session.
+func ShowMetadata(ctx context.Context, db *sql.DB, client, id string) (Metadata, error) {
+	var metadata Metadata
+	err := db.QueryRowContext(ctx, `SELECT m.client,m.session_id,m.project,m.source_path,m.model,m.first_at,m.last_at FROM session_metadata m JOIN session_sources s ON s.source_path=m.source_path WHERE m.client=? AND m.session_id=? ORDER BY s.priority DESC,m.source_path LIMIT 1`, client, id).Scan(&metadata.Client, &metadata.SessionID, &metadata.Project, &metadata.SourcePath, &metadata.Model, &metadata.FirstAt, &metadata.LastAt)
+	return metadata, err
+}
+
+// DocumentsPage returns a deterministic selected-source page without retaining
+// off-page approved document text.
+func DocumentsPage(ctx context.Context, db *sql.DB, metadata Metadata, page, limit int, all bool) ([]Document, Pagination, error) {
+	if page < 1 || limit < 1 || limit > MaxPageLimit {
+		return nil, Pagination{}, fmt.Errorf("page must be positive and limit must be between 1 and %d", MaxPageLimit)
+	}
+	var total int
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM session_documents WHERE source_path=? AND client=? AND session_id=?`, metadata.SourcePath, metadata.Client, metadata.SessionID).Scan(&total); err != nil {
+		return nil, Pagination{}, err
+	}
+	pagination := Pagination{Page: page, Limit: limit, Total: total}
+	offset, queryLimit := 0, limit
+	if all {
+		pagination.Page, pagination.Limit = 1, total
+		queryLimit = total
+	} else {
+		if page-1 > total/limit {
+			return []Document{}, pagination, nil
+		}
+		offset = (page - 1) * limit
+	}
+	if total == 0 {
+		return []Document{}, pagination, nil
+	}
+	rows, err := db.QueryContext(ctx, `SELECT client,session_id,event_at,kind,text FROM session_documents WHERE source_path=? AND client=? AND session_id=? ORDER BY rowid LIMIT ? OFFSET ?`, metadata.SourcePath, metadata.Client, metadata.SessionID, queryLimit, offset)
+	if err != nil {
+		return nil, Pagination{}, err
+	}
+	defer rows.Close()
+	documents := make([]Document, 0, queryLimit)
+	for rows.Next() {
+		var document Document
+		if err := rows.Scan(&document.Client, &document.SessionID, &document.EventAt, &document.Kind, &document.Text); err != nil {
+			return nil, Pagination{}, err
+		}
+		documents = append(documents, document)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, Pagination{}, err
+	}
+	pagination.Shown = len(documents)
+	pagination.HasMore = offset+len(documents) < total
+	if pagination.HasMore {
+		pagination.NextPage = page + 1
+	}
+	return documents, pagination, nil
 }
 
 func ShowWithActivity(ctx context.Context, db *sql.DB, client, id string, includeActivity bool) (Result, error) {

@@ -1129,3 +1129,33 @@ func TestPaginateRejectsUnsafeLimitsAndOverflowingPages(t *testing.T) {
 		t.Fatalf("overflow page = %#v %#v %v", page, metadata, err)
 	}
 }
+
+func TestDocumentsPageUsesDeterministicStoragePagination(t *testing.T) {
+	ctx := context.Background()
+	database, err := store.OpenSessions(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	record := testSessionRecord{source: "/private/tmp/page.jsonl", client: "codex", sessionID: "page-session", project: "project", text: "first", priority: 1}
+	seedSessionRecord(t, database.DB, record)
+	for _, document := range []struct{ at, text string }{{"2026-08-01T00:00:02Z", "second"}, {"2026-08-01T00:00:03Z", "third"}} {
+		if _, err := database.DB.ExecContext(ctx, `INSERT INTO session_documents(source_path,client,session_id,event_at,kind,text) VALUES(?,?,?,?,?,?)`, record.source, record.client, record.sessionID, document.at, "assistant_final", document.text); err != nil {
+			t.Fatal(err)
+		}
+	}
+	metadata, err := ShowMetadata(ctx, database.DB, record.client, record.sessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	documents, pagination, err := DocumentsPage(ctx, database.DB, metadata, 2, 1, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pagination.Total != 3 || pagination.Shown != 1 || !pagination.HasMore || pagination.NextPage != 3 {
+		t.Fatalf("pagination = %#v", pagination)
+	}
+	if len(documents) != 1 || documents[0].Text != "second" || documents[0].EventAt != "2026-08-01T00:00:02Z" {
+		t.Fatalf("documents = %#v", documents)
+	}
+}
