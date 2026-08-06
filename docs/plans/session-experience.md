@@ -428,7 +428,7 @@ Swift code or commit the final desktop snapshot command prematurely.
 
 | Task | Dev | Review |
 | --- | --- | --- |
-| 1. `session-document-time` | [ ] | [ ] |
+| 1. `session-document-time` | [x] | [x] |
 | 2. `session-scan-progress` | [ ] | [ ] |
 | 3. `session-usage-detail` | [ ] | [ ] |
 | 4. `session-show-layout` | [ ] | [ ] |

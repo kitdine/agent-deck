@@ -1643,6 +1643,7 @@
         "data": [
           {
             "client": "string",
+            "event_at": "string",
             "kind": "string",
             "session_id": "string",
             "text": "string"
@@ -1676,6 +1677,7 @@
           "documents": [
             {
               "client": "string",
+              "event_at": "string",
               "kind": "string",
               "session_id": "string",
               "text": "string"

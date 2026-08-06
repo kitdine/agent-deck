@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	ParserVersion                  = 3
+	ParserVersion                  = 4
 	replaceDocumentsSourcePath     = "agentdeck://replace-documents"
 	replaceDocumentsSourceIdentity = "synthetic:replace-documents"
 )
@@ -33,6 +33,7 @@ const MaxPageLimit = 1000
 type Document struct {
 	Client    string `json:"client"`
 	SessionID string `json:"session_id"`
+	EventAt   string `json:"event_at"`
 	Kind      string `json:"kind"`
 	Text      string `json:"text"`
 }
@@ -473,12 +474,13 @@ func removeMissingSourcesExec(ctx context.Context, executor sessionExecutor, see
 }
 
 type visibleDocument struct {
-	kind string
-	text string
+	eventAt string
+	kind    string
+	text    string
 }
 
 func visibleDocuments(ctx context.Context, executor sessionExecutor) (map[string][]visibleDocument, error) {
-	rows, err := executor.QueryContext(ctx, `WITH visible AS (SELECT m.source_path,m.client,m.session_id,row_number() OVER (PARTITION BY m.client,m.session_id ORDER BY s.priority DESC,m.source_path) AS n FROM session_metadata m JOIN session_sources s ON s.source_path=m.source_path) SELECT d.client,d.session_id,d.kind,d.text FROM session_documents d JOIN visible v ON v.source_path=d.source_path AND v.client=d.client AND v.session_id=d.session_id WHERE v.n=1 ORDER BY d.client,d.session_id,d.rowid`)
+	rows, err := executor.QueryContext(ctx, `WITH visible AS (SELECT m.source_path,m.client,m.session_id,row_number() OVER (PARTITION BY m.client,m.session_id ORDER BY s.priority DESC,m.source_path) AS n FROM session_metadata m JOIN session_sources s ON s.source_path=m.source_path) SELECT d.client,d.session_id,d.event_at,d.kind,d.text FROM session_documents d JOIN visible v ON v.source_path=d.source_path AND v.client=d.client AND v.session_id=d.session_id WHERE v.n=1 ORDER BY d.client,d.session_id,d.rowid`)
 	if err != nil {
 		return nil, err
 	}
@@ -487,7 +489,7 @@ func visibleDocuments(ctx context.Context, executor sessionExecutor) (map[string
 	for rows.Next() {
 		var client, sessionID string
 		var document visibleDocument
-		if err = rows.Scan(&client, &sessionID, &document.kind, &document.text); err != nil {
+		if err = rows.Scan(&client, &sessionID, &document.eventAt, &document.kind, &document.text); err != nil {
 			return nil, err
 		}
 		key := client + "\x00" + sessionID
@@ -729,9 +731,11 @@ func fixtureDocument(client, id string, v map[string]any) Document {
 	switch str(v["type"]) {
 	case "visible_user_prompt":
 		d, _ := ApprovedDocument(client, id, "user_prompt", str(p["text"]))
+		d.EventAt = normalizedEventAt(str(v["timestamp"]), str(p["timestamp"]))
 		return d
 	case "visible_assistant_final":
 		d, _ := ApprovedDocument(client, id, "assistant_final", str(p["text"]))
+		d.EventAt = normalizedEventAt(str(v["timestamp"]), str(p["timestamp"]))
 		return d
 	}
 	return Document{}
@@ -756,10 +760,12 @@ func extractCodex(v map[string]any) (string, Document, Metadata) {
 	// Explicit fixture protocol is intentionally accepted as an adapter contract.
 	if typ == "visible_user_prompt" {
 		d, _ := ApprovedDocument("codex", id, "user_prompt", str(p["text"]))
+		d.EventAt = normalizedEventAt(str(v["timestamp"]), str(p["timestamp"]))
 		return id, d, m
 	}
 	if typ == "visible_assistant_final" {
 		d, _ := ApprovedDocument("codex", id, "assistant_final", str(p["text"]))
+		d.EventAt = normalizedEventAt(str(v["timestamp"]), str(p["timestamp"]))
 		return id, d, m
 	}
 	// Real record allowlist: response_item/message with exactly text content.
@@ -786,6 +792,7 @@ func extractCodex(v map[string]any) (string, Document, Metadata) {
 		kind = "assistant_final"
 	}
 	d, _ := ApprovedDocument("codex", id, kind, text)
+	d.EventAt = normalizedEventAt(str(v["timestamp"]), str(p["timestamp"]))
 	return id, d, m
 }
 func extractClaude(v map[string]any) (string, Document, Metadata) {
@@ -817,7 +824,18 @@ func extractClaude(v map[string]any) (string, Document, Metadata) {
 		kind = "assistant_final"
 	}
 	d, _ := ApprovedDocument("claude", id, kind, text)
+	d.EventAt = normalizedEventAt(str(v["timestamp"]))
 	return id, d, m
+}
+
+func normalizedEventAt(values ...string) string {
+	for _, value := range values {
+		at, err := time.Parse(time.RFC3339Nano, value)
+		if err == nil {
+			return at.UTC().Format(time.RFC3339Nano)
+		}
+	}
+	return ""
 }
 func textContent(raw any, want string) (string, bool) {
 	if s, ok := raw.(string); ok && want == "input_text" {
@@ -898,7 +916,7 @@ func replaceExec(ctx context.Context, executor sessionExecutor, r Result) error 
 }
 func insertResult(ctx context.Context, executor sessionExecutor, r Result) error {
 	for _, d := range r.Documents {
-		if _, err := executor.ExecContext(ctx, "INSERT INTO session_documents(source_path,client,session_id,kind,text) VALUES(?,?,?,?,?)", r.SourcePath, d.Client, d.SessionID, d.Kind, d.Text); err != nil {
+		if _, err := executor.ExecContext(ctx, "INSERT INTO session_documents(source_path,client,session_id,event_at,kind,text) VALUES(?,?,?,?,?,?)", r.SourcePath, d.Client, d.SessionID, d.EventAt, d.Kind, d.Text); err != nil {
 			return err
 		}
 	}
@@ -923,7 +941,7 @@ func Search(ctx context.Context, db *sql.DB, query string) ([]Document, error) {
 	if strings.TrimSpace(query) == "" {
 		return nil, errors.New("search query is required")
 	}
-	rows, err := db.QueryContext(ctx, `WITH visible AS (SELECT m.source_path,m.client,m.session_id,row_number() OVER (PARTITION BY m.client,m.session_id ORDER BY s.priority DESC,m.source_path) AS n FROM session_metadata m JOIN session_sources s ON s.source_path=m.source_path) SELECT d.client,d.session_id,d.kind,d.text FROM session_documents d JOIN visible v ON v.source_path=d.source_path AND v.client=d.client AND v.session_id=d.session_id WHERE v.n=1 AND session_documents MATCH ? ORDER BY rank`, query)
+	rows, err := db.QueryContext(ctx, `WITH visible AS (SELECT m.source_path,m.client,m.session_id,row_number() OVER (PARTITION BY m.client,m.session_id ORDER BY s.priority DESC,m.source_path) AS n FROM session_metadata m JOIN session_sources s ON s.source_path=m.source_path) SELECT d.client,d.session_id,d.event_at,d.kind,d.text FROM session_documents d JOIN visible v ON v.source_path=d.source_path AND v.client=d.client AND v.session_id=d.session_id WHERE v.n=1 AND session_documents MATCH ? ORDER BY CASE WHEN d.event_at='' THEN 1 ELSE 0 END,d.event_at DESC,d.client,d.session_id,d.rowid`, query)
 	if err != nil {
 		return nil, err
 	}
@@ -931,7 +949,7 @@ func Search(ctx context.Context, db *sql.DB, query string) ([]Document, error) {
 	out := make([]Document, 0)
 	for rows.Next() {
 		var d Document
-		if err := rows.Scan(&d.Client, &d.SessionID, &d.Kind, &d.Text); err != nil {
+		if err := rows.Scan(&d.Client, &d.SessionID, &d.EventAt, &d.Kind, &d.Text); err != nil {
 			return nil, err
 		}
 		out = append(out, d)

@@ -380,6 +380,37 @@ func TestOpenSessionsAddsSourceCursorColumnsToExistingIndex(t *testing.T) {
 	}
 }
 
+func TestOpenSessionsRebuildsDocumentsWithoutEventAt(t *testing.T) {
+	ctx := context.Background()
+	root := filepath.Join(t.TempDir(), "state")
+	if err := os.MkdirAll(root, platform.DirectoryMode); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "sessions.sqlite3")
+	legacy, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := legacy.Exec(`CREATE VIRTUAL TABLE session_documents USING fts5(source_path UNINDEXED, client UNINDEXED, session_id UNINDEXED, kind UNINDEXED, text)`); err != nil {
+		t.Fatal(err)
+	}
+	if err := legacy.Close(); err != nil {
+		t.Fatal(err)
+	}
+	s, err := OpenSessions(ctx, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	var columns int
+	if err := s.DB.QueryRowContext(ctx, "SELECT count(*) FROM pragma_table_info('session_documents') WHERE name='event_at'").Scan(&columns); err != nil {
+		t.Fatal(err)
+	}
+	if columns != 1 {
+		t.Fatalf("event_at columns = %d, want 1", columns)
+	}
+}
+
 func TestMigrationsRejectUnknownNewerSchema(t *testing.T) {
 	ctx := context.Background()
 	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "state.sqlite3"))

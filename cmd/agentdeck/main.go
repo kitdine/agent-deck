@@ -1916,6 +1916,12 @@ type sessionListPage struct {
 	Pagination  map[string]session.Pagination `json:"pagination"`
 	NextCommand string                        `json:"-"`
 }
+type sessionSearchPage struct {
+	Documents   []session.Document            `json:"documents"`
+	Pagination  map[string]session.Pagination `json:"pagination"`
+	NextCommand string                        `json:"-"`
+}
+
 type sessionShowPage struct {
 	session.Result
 	Pagination  map[string]session.Pagination `json:"pagination"`
@@ -1975,10 +1981,10 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 		}
 	}
 	var listClient, searchClient, showClient, excludeKind, excludeValue string
-	var listPage, listLimit, showPage, showLimit int
-	var listAll, showAll bool
+	var listPage, listLimit, searchPage, searchLimit, showPage, showLimit int
+	var listAll, searchAll, showAll bool
 	var showActivity bool
-	var list *cobra.Command
+	var list, search *cobra.Command
 	list = &cobra.Command{Use: "list", Args: cobra.NoArgs, RunE: withSessions(func(ctx context.Context, s *store.Store, _ string, _ []string) (any, error) {
 		if err := validateOptionalClient(listClient); err != nil {
 			return nil, err
@@ -2009,7 +2015,7 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 	list.Flags().BoolVar(&listAll, "all", false, "Show all rows")
 	list.MarkFlagsMutuallyExclusive("all", "page")
 	list.MarkFlagsMutuallyExclusive("all", "limit")
-	search := &cobra.Command{Use: "search <query>", Args: cobra.ExactArgs(1), RunE: withSessions(func(ctx context.Context, s *store.Store, _ string, args []string) (any, error) {
+	search = &cobra.Command{Use: "search <query>", Args: cobra.ExactArgs(1), RunE: withSessions(func(ctx context.Context, s *store.Store, _ string, args []string) (any, error) {
 		if err := validateOptionalClient(searchClient); err != nil {
 			return nil, err
 		}
@@ -2017,18 +2023,31 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 		if err != nil {
 			return nil, err
 		}
-		if searchClient == "" {
-			return items, nil
-		}
-		out := items[:0]
-		for _, item := range items {
-			if item.Client == searchClient {
-				out = append(out, item)
+		out := items
+		if searchClient != "" {
+			out = items[:0]
+			for _, item := range items {
+				if item.Client == searchClient {
+					out = append(out, item)
+				}
 			}
 		}
-		return out, nil
+		explicit := search.Flags().Changed("page") || search.Flags().Changed("limit") || search.Flags().Changed("all")
+		if opts.format == "json" && !explicit {
+			return out, nil
+		}
+		paged, pagination, pageErr := session.Paginate(out, searchPage, searchLimit, searchAll)
+		if pageErr != nil {
+			return nil, &inputError{err: pageErr}
+		}
+		return sessionSearchPage{Documents: paged, Pagination: map[string]session.Pagination{"search": pagination}, NextCommand: sessionNextCommand(opts.stateDir, "search", searchClient, args[0], false, pagination)}, nil
 	})}
 	search.Flags().StringVar(&searchClient, "client", "", "Filter by client")
+	search.Flags().IntVar(&searchPage, "page", 1, "Page number")
+	search.Flags().IntVar(&searchLimit, "limit", 20, "Rows per page")
+	search.Flags().BoolVar(&searchAll, "all", false, "Show all rows")
+	search.MarkFlagsMutuallyExclusive("all", "page")
+	search.MarkFlagsMutuallyExclusive("all", "limit")
 	var show *cobra.Command
 	show = &cobra.Command{Use: "show <session-id>", Args: cobra.ExactArgs(1), RunE: withSessions(func(ctx context.Context, s *store.Store, _ string, args []string) (any, error) {
 		if err := validateOptionalClient(showClient); err != nil {
@@ -3505,11 +3524,17 @@ func renderCommandText(w io.Writer, command string, data any) error {
 			return fmt.Errorf("unexpected session.list result %T", data)
 		}
 	case "session.search":
-		value, ok := data.([]session.Document)
-		if !ok {
+		switch value := data.(type) {
+		case []session.Document:
+			return renderSessionDocuments(w, value)
+		case sessionSearchPage:
+			if err := renderSessionDocuments(w, value.Documents); err != nil {
+				return err
+			}
+			return renderPagination(w, value.Pagination["search"], value.NextCommand)
+		default:
 			return fmt.Errorf("unexpected session.search result %T", data)
 		}
-		return renderSessionDocuments(w, value)
 	case "session.show":
 		value, pagination, nextCommand, ok := session.Result{}, map[string]session.Pagination(nil), "", false
 		switch typed := data.(type) {
@@ -3777,9 +3802,17 @@ func renderSessionDocuments(w io.Writer, values []session.Document) error {
 	}
 	rows := make([][]string, 0, len(values))
 	for _, value := range values {
-		rows = append(rows, []string{value.Client, value.SessionID, value.Kind, oneLine(value.Text)})
+		rows = append(rows, []string{value.Client, value.SessionID, renderSessionDocumentTime(value.EventAt), value.Kind, oneLine(value.Text)})
 	}
-	return output.WriteASCIITable(w, []string{"CLIENT", "SESSION", "KIND", "TEXT"}, rows)
+	zone := displayZoneName()
+	return output.WriteASCIITable(w, []string{"CLIENT", "SESSION", fmt.Sprintf("EVENT AT (%s)", zone), "KIND", "TEXT"}, rows)
+}
+
+func renderSessionDocumentTime(value string) string {
+	if _, err := time.Parse(time.RFC3339Nano, value); err != nil {
+		return "—"
+	}
+	return renderDisplayTime(value)
 }
 
 func renderSessionActivity(w io.Writer, values []activity.Detail) error {

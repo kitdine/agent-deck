@@ -616,7 +616,7 @@ provenance。
 | --- | --- | --- | --- | --- |
 | `session scan` | 增量建立可清除的 session 搜索索引 | 无 | 无 | `agentdeck session scan` |
 | `session list` | 列出索引中的 sessions | `--client codex\|claude`；`--page`、`--limit`、`--all` | 无 | `agentdeck session list --client codex --page 2` |
-| `session search <query>` | 搜索 approved visible session text | `query`：搜索文本；`--client`：可选过滤 | `query` 必填 | `agentdeck session search "provider timeout" --client codex` |
+| `session search <query>` | 搜索 approved visible session text | `query`：搜索文本；`--client`：可选过滤；`--page`、`--limit`、`--all` | `query` 必填 | `agentdeck session search "provider timeout" --client codex --page 2` |
 | `session show <session-id>` | 显示一个 session；可按需读取安全 activity/tool 元数据 | `--client codex\|claude`、`--activity`、`--page`、`--limit`、`--all` | `session-id` 必填；跨 client 冲突时 `--client` 条件必填 | `agentdeck session show 019abc --client codex --activity --page 2` |
 | `session exclude` | 持久化索引排除规则 | `--kind project\|path\|session\|client`；`--value <value>` | 两个 flags 均必填 | `agentdeck session exclude --kind client --value claude` |
 | `session rebuild` | 重建 purgeable index，不删除源日志 | 无 | 无 | `agentdeck session rebuild` |
@@ -628,6 +628,11 @@ Claude 时返回歧义错误并要求 `--client`。Session 与 credential 的 `-
 `codex|claude`。
 `session show --activity` 只在调用时读取所选 source，显示工具名、时间、状态和可用耗时；
 这些数据不写入 `sessions.sqlite3`，参数、结果、命令文本、环境和 reasoning 始终不显示。Text 默认每页 20 条并显示总数与可复制的下一页命令（保留 `--state-dir`、`--client`、`--activity` 与 limit）；`--limit` 必须为 1 至 1000。JSON 仅在显式分页时加入确定的 `pagination`，否则保持完整集合。`--activity` 始终先输出完整 session 的调用、状态、时长与按工具汇总，再分页显示安全明细。
+
+`session search` 的每条 approved document 都返回该记录自身已归一化为 UTC 的
+`event_at`。可解析时间按时间倒序排列，缺少或无法解析的时间稳定排在其后；text
+输出使用本地时区显示时间，`event_at` 为空时显示 `—`。显式使用分页 flags 时，JSON
+输出在 `documents` 下返回该页内容，并在 `pagination.search` 中返回分页元数据。
 
 ## Extension
 

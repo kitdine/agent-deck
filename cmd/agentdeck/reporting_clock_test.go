@@ -221,7 +221,7 @@ func TestProviderAndSessionTextSurfacesUseDisplayZone(t *testing.T) {
 	}
 }
 
-func TestSessionSearchTextHasNoInstantToLocalize(t *testing.T) {
+func TestSessionSearchTextShowsZoneHeaderAndDashWithoutInstant(t *testing.T) {
 	usePinnedDisplayZone(t, time.FixedZone("UTC+8", 8*60*60))
 
 	var text bytes.Buffer
@@ -233,13 +233,10 @@ func TestSessionSearchTextHasNoInstantToLocalize(t *testing.T) {
 	}}); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"CLIENT", "SESSION", "KIND", "TEXT", "visible search result"} {
+	for _, want := range []string{"CLIENT", "SESSION", "EVENT AT (UTC+8)", "KIND", "TEXT", "—", "visible search result"} {
 		if !strings.Contains(text.String(), want) {
 			t.Errorf("search text missing %q:\n%s", want, text.String())
 		}
-	}
-	if strings.Contains(text.String(), "UTC+8") {
-		t.Errorf("search text named a zone without an instant:\n%s", text.String())
 	}
 }
 

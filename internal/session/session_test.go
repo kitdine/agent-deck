@@ -50,6 +50,68 @@ func TestScanCodexFixtureIndexesOnlyVisibleFields(t *testing.T) {
 	}
 }
 
+func TestSearchOrdersDocumentsByNormalizedEventAt(t *testing.T) {
+	root := t.TempDir()
+	home := filepath.Join(root, "home")
+	path := filepath.Join(home, ".codex", "sessions", "timestamps.jsonl")
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	data := "{\"type\":\"session_meta\",\"payload\":{\"session_id\":\"s\"}}\n" +
+		"{\"type\":\"visible_user_prompt\",\"timestamp\":\"2026-02-01T10:00:00+08:00\",\"payload\":{\"text\":\"needle earliest\"}}\n" +
+		"{\"type\":\"visible_assistant_final\",\"timestamp\":\"2026-02-01T03:00:00Z\",\"payload\":{\"text\":\"needle latest\"}}\n" +
+		"{\"type\":\"visible_user_prompt\",\"timestamp\":\"not-a-time\",\"payload\":{\"text\":\"needle unknown\"}}\n"
+	if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	database, err := store.OpenSessions(context.Background(), filepath.Join(root, "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if _, err := Scan(context.Background(), database.DB, home); err != nil {
+		t.Fatal(err)
+	}
+	documents, err := Search(context.Background(), database.DB, "needle")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(documents) != 3 {
+		t.Fatalf("documents = %#v", documents)
+	}
+	if documents[0].Text != "needle latest" || documents[0].EventAt != "2026-02-01T03:00:00Z" {
+		t.Fatalf("latest = %#v", documents[0])
+	}
+	if documents[1].Text != "needle earliest" || documents[1].EventAt != "2026-02-01T02:00:00Z" {
+		t.Fatalf("earliest = %#v", documents[1])
+	}
+	if documents[2].Text != "needle unknown" || documents[2].EventAt != "" {
+		t.Fatalf("unknown = %#v", documents[2])
+	}
+}
+
+func TestSearchPreservesSourceOrderForEqualEventAt(t *testing.T) {
+	database, err := store.OpenSessions(context.Background(), t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	documents := []Document{
+		{Client: "codex", SessionID: "s", EventAt: "2026-08-06T00:00:00Z", Kind: "user_prompt", Text: "needle first"},
+		{Client: "codex", SessionID: "s", EventAt: "2026-08-06T00:00:00Z", Kind: "assistant_final", Text: "needle second"},
+	}
+	if err := ReplaceDocuments(context.Background(), database.DB, "codex", "s", documents); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Search(context.Background(), database.DB, "needle")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0].Text != "needle first" || got[1].Text != "needle second" {
+		t.Fatalf("ordered documents = %#v", got)
+	}
+}
+
 func TestScanRejectsStructuredPrivacyCounterexamples(t *testing.T) {
 	root := t.TempDir()
 	home := filepath.Join(root, "home")
@@ -639,7 +701,7 @@ func captureSessionIndex(t *testing.T, database *sql.DB) sessionIndexSnapshot {
 	return sessionIndexSnapshot{
 		sources:    snapshotSessionRows(t, database, `SELECT source_path,identity,cursor,partial_line,size,modified_at,prefix_hash,priority,parser_version,scanned_at FROM session_sources ORDER BY source_path`),
 		metadata:   snapshotSessionRows(t, database, `SELECT source_path,client,session_id,project,model,parser_version,first_at,last_at FROM session_metadata ORDER BY source_path,client,session_id`),
-		documents:  snapshotSessionRows(t, database, `SELECT rowid,source_path,client,session_id,kind,text FROM session_documents ORDER BY rowid`),
+		documents:  snapshotSessionRows(t, database, `SELECT rowid,source_path,client,session_id,event_at,kind,text FROM session_documents ORDER BY rowid`),
 		exclusions: snapshotSessionRows(t, database, `SELECT kind,value FROM session_exclusions ORDER BY kind,value`),
 	}
 }
@@ -669,7 +731,7 @@ func TestReplaceDocumentsFirstInsertFailureIsAtomic(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer database.Close()
-	if _, err = database.DB.Exec(`CREATE TRIGGER fail_first_replacement BEFORE INSERT ON session_documents_content WHEN new.c4='freshreplacement' BEGIN SELECT RAISE(ABORT,'synthetic first document insert failure'); END`); err != nil {
+	if _, err = database.DB.Exec(`CREATE TRIGGER fail_first_replacement BEFORE INSERT ON session_documents_content WHEN new.c5='freshreplacement' BEGIN SELECT RAISE(ABORT,'synthetic first document insert failure'); END`); err != nil {
 		t.Fatal(err)
 	}
 	beforeTables := captureSessionIndex(t, database.DB)
@@ -717,7 +779,7 @@ func TestReplaceDocumentsFailureIsAtomic(t *testing.T) {
 	if docs, searchErr := Search(ctx, database.DB, "oldone OR oldtwo"); searchErr != nil || len(docs) != 2 {
 		t.Fatalf("seed search = %#v, %v", docs, searchErr)
 	}
-	if _, err = database.DB.Exec(`CREATE TRIGGER fail_second_replacement BEFORE INSERT ON session_documents_content WHEN new.c4='replacementtwo' BEGIN SELECT RAISE(ABORT,'synthetic later document insert failure'); END`); err != nil {
+	if _, err = database.DB.Exec(`CREATE TRIGGER fail_second_replacement BEFORE INSERT ON session_documents_content WHEN new.c5='replacementtwo' BEGIN SELECT RAISE(ABORT,'synthetic later document insert failure'); END`); err != nil {
 		t.Fatal(err)
 	}
 	beforeTables := captureSessionIndex(t, database.DB)
@@ -759,7 +821,7 @@ func seedSessionRecord(t *testing.T, database *sql.DB, record testSessionRecord)
 	if _, err := database.ExecContext(ctx, `INSERT INTO session_metadata(source_path,client,session_id,project,model,parser_version,first_at,last_at) VALUES(?,?,?,?,?,?,?,?)`, record.source, record.client, record.sessionID, record.project, "synthetic-model", ParserVersion, "2026-07-23T00:00:00Z", "2026-07-23T00:01:00Z"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := database.ExecContext(ctx, `INSERT INTO session_documents(source_path,client,session_id,kind,text) VALUES(?,?,?,?,?)`, record.source, record.client, record.sessionID, "user_prompt", record.text); err != nil {
+	if _, err := database.ExecContext(ctx, `INSERT INTO session_documents(source_path,client,session_id,event_at,kind,text) VALUES(?,?,?,?,?,?)`, record.source, record.client, record.sessionID, "", "user_prompt", record.text); err != nil {
 		t.Fatal(err)
 	}
 }

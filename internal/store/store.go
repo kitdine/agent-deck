@@ -46,7 +46,7 @@ func OpenSessions(ctx context.Context, stateRoot string) (*Store, error) {
 		"CREATE TABLE IF NOT EXISTS session_exclusions (kind TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY(kind, value))",
 		"CREATE TABLE IF NOT EXISTS session_sources (source_path TEXT PRIMARY KEY, identity TEXT NOT NULL, cursor INTEGER NOT NULL, partial_line BLOB NOT NULL DEFAULT X'', size INTEGER NOT NULL, modified_at INTEGER NOT NULL, prefix_hash TEXT NOT NULL, priority INTEGER NOT NULL, parser_version INTEGER NOT NULL, scanned_at TEXT NOT NULL)",
 		"CREATE TABLE IF NOT EXISTS session_metadata (source_path TEXT NOT NULL REFERENCES session_sources(source_path) ON DELETE CASCADE, client TEXT NOT NULL, session_id TEXT NOT NULL, project TEXT NOT NULL DEFAULT '', model TEXT NOT NULL DEFAULT '', parser_version INTEGER NOT NULL, first_at TEXT NOT NULL, last_at TEXT NOT NULL, PRIMARY KEY(source_path, client, session_id))",
-		"CREATE VIRTUAL TABLE IF NOT EXISTS session_documents USING fts5(source_path UNINDEXED, client UNINDEXED, session_id UNINDEXED, kind UNINDEXED, text)",
+		"CREATE VIRTUAL TABLE IF NOT EXISTS session_documents USING fts5(source_path UNINDEXED, client UNINDEXED, session_id UNINDEXED, event_at UNINDEXED, kind UNINDEXED, text)",
 	} {
 		if _, err = db.ExecContext(ctx, statement); err != nil {
 			db.Close()
@@ -65,12 +65,15 @@ func OpenSessions(ctx context.Context, stateRoot string) (*Store, error) {
 // deliberately discards the old client/session view instead of trying to
 // invent source ownership for rows that never recorded it.
 func migrateSessionSchema(ctx context.Context, db *sql.DB) error {
-	var hasDocuments, hasSources, hasSourcePath int
+	var hasDocuments, hasSources, hasSourcePath, hasEventAt int
 	if err := db.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='session_documents'").Scan(&hasDocuments); err != nil {
 		return err
 	}
 	if hasDocuments != 0 {
 		if err := db.QueryRowContext(ctx, "SELECT count(*) FROM pragma_table_info('session_documents') WHERE name='source_path'").Scan(&hasSourcePath); err != nil {
+			return err
+		}
+		if err := db.QueryRowContext(ctx, "SELECT count(*) FROM pragma_table_info('session_documents') WHERE name='event_at'").Scan(&hasEventAt); err != nil {
 			return err
 		}
 	}
@@ -88,6 +91,10 @@ func migrateSessionSchema(ctx context.Context, db *sql.DB) error {
 	}
 	if (hasDocuments != 0 || hasSources != 0) && hasSourcePath == 0 {
 		_, err := db.ExecContext(ctx, "DROP TABLE IF EXISTS session_documents; DROP TABLE IF EXISTS session_metadata; DROP TABLE IF EXISTS session_sources")
+		return err
+	}
+	if hasDocuments != 0 && hasEventAt == 0 {
+		_, err := db.ExecContext(ctx, "DROP TABLE IF EXISTS session_documents")
 		return err
 	}
 	return nil
