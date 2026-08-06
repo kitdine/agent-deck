@@ -9,9 +9,22 @@ This is both the documentation index and the execution baseline. Decide what to
 work on next from this file. Repository code, tests, configuration, and Git
 history remain the source of truth when they disagree with any document.
 
-## Current State (2026-08-02)
+## Current State (2026-08-06)
 
-`v0.2.1` is now the current stable release. Its annotated tag points to
+`v0.3.0` is the current stable GitHub release. Its annotated tag points to
+`b940010c09caac1d4ea5687629f4d60756300f77`; the
+[tag-triggered Release run](https://github.com/kitdine/agent-deck/actions/runs/31078492290)
+passed and published a non-prerelease
+[GitHub Release](https://github.com/kitdine/agent-deck/releases/tag/v0.3.0)
+with Darwin arm64 and amd64 archives plus checksums. The stable Homebrew Formula
+update remains open in
+[homebrew-tap PR #12](https://github.com/kitdine/homebrew-tap/pull/12), so GitHub
+publication is complete while stable Homebrew channel promotion is not yet
+complete. The earlier `v0.3.0-rc.1` Cask-independent Formula RC validation and
+tap merge remain release-candidate evidence, not proof that the stable Formula
+has been promoted.
+
+`v0.2.1` was an earlier stable release. Its annotated tag points to
 `e722be82c617a1418cc533a0ea2cbed35b65ad06`; the
 [tag-triggered Release run](https://github.com/kitdine/agent-deck/actions/runs/30754555537)
 passed both release and Homebrew jobs, published a non-prerelease GitHub Release
@@ -354,7 +367,7 @@ usage session bounds, watch text, and the `usage stats --activity` model range.
 `version`'s `UTC Build Time` stays UTC by decision, because it is immutable
 build identity rather than a runtime instant.
 
-## Release Roadmap (2026-08-02)
+## Release Roadmap (2026-08-06)
 
 The repository had shipped four releases without a written rule for what a
 version-number position means, and the patch position had drifted into being a
@@ -383,18 +396,48 @@ reviewed by 2026-08-04; the plans and their review records retired to
 [the archive index](archive/README.md) for what each one delivered and where its
 conclusions now live. The final contract task `v0-3-0-contract` passed
 Round 3 re-review on 2026-08-04, so every task in the batch is complete.
-The release itself is not tagged yet.
+The stable release was tagged and published on 2026-08-06 at commit
+`b940010c09caac1d4ea5687629f4d60756300f77`. Its GitHub Release workflow passed;
+stable Homebrew Formula promotion remains open in `kitdine/homebrew-tap#12`.
 
 Two rules held across the `v0.3.0` batch. The specification version was raised
 **once**, by `v0-3-0-contract` in the runtime attribution plan, which recorded
 the batch's behavior changes as version 23; and both releases ship at least one
 `-rc.N` validated against real local data, because both touch persisted data or
-the pricing read path. That release candidate is the remaining `v0.3.0` step.
+the pricing read path. `v0.3.0-rc.1` completed that release-candidate gate before
+stable publication.
 
 Its release notes must state both downgrade consequences, which the retired
 contract task owned and this index now carries: credentials written by this
 release are unreadable by `v0.2.x`, and cost/coverage numbers change for
 existing data.
+
+**`v0.4.0` — minor. Session experience and desktop-facing data contracts.**
+Prioritize visible `session scan` progress, a defined instant in `session search`,
+a redesigned human-facing `session show`, invocation-level token and cost detail,
+and an interactive session viewer. The same work must leave bounded, stable DTO
+and JSON contracts suitable for the native desktop client. These Backlog items
+still require their own approved plan before development starts.
+
+**`v0.5.0` — minor. Native macOS desktop foundation.** Deliver the Swift 6,
+SwiftUI macOS 26 menu-bar app, WidgetKit extension, embedded universal Go helper,
+Homebrew Cask `agentdeck-app`, direct-download DMG, signing, notarization, and a
+notification-only update check that opens the official download page. The active
+[native desktop plan](plans/desktop-app.md) owns its six implementation and
+review gates.
+
+**`v0.6.0` — minor. Skills and Hooks lifecycle management.** Build the shared Go
+lifecycle engine, Skills adapter, and third-party Hooks adapter with preview,
+ownership, drift detection, atomic mutation, rollback, and doctor behavior. The
+GUI is the primary interactive surface; thin deterministic CLI commands remain
+for automation, diagnosis, and recovery. The specialized runtime-attribution
+`usage hook` lifecycle remains separate. Skills and Hooks still require separate
+approved plans before development.
+
+**`v0.7.0` — minor. Plugins and MCP lifecycle management.** Reuse the reviewed
+lifecycle engine for Plugins and MCP servers, including dependency, credential,
+transport, source-authenticity, offline, and client-ownership boundaries. Each
+native adapter still requires its own approved plan and independent review.
 
 The `v0.2.2` batch was cut from what was planned on 2026-07-29. The credential
 and pricing hardening plan then held six tasks; `key-id-derivation` and
@@ -429,6 +472,7 @@ fixing a defect, which is why it is a contract change recorded by the single
 | --- | --- |
 | [specs/cli-design.md](specs/cli-design.md) | What the system does and must keep doing: provider, credential, usage, pricing, session, backup, and distribution behavior. Currently version 23; see its changelog. |
 | [specs/cli-manual.md](specs/cli-manual.md) | The implemented command surface, flags, and output shapes. |
+| [plans/desktop-app.md](plans/desktop-app.md) | Active — 0/6 done. Native macOS 26 menu-bar app, WidgetKit extension, unified desktop package, Cask, direct download, and release validation for `v0.5.0`. |
 | [reviews/](reviews/README.md) | Per-task review records that back each plan's ticked `Review` cell. |
 | [archive/](archive/README.md) | Retired plans and superseded contracts. Not a starting point for new work. |
 
@@ -544,8 +588,6 @@ than expanding the entry in place.
       selects, stores, or refreshes an account, plan, or OAuth token. This item
       is what would cross that line, so it needs its own plan and its own
       security review.
-- [ ] Implement a GUI, including a persistent menu-bar presence, as an
-      alternative front end to the CLI.
 Plaintext and credential key bytes are not zeroed after use. That is an
 accepted residual risk rather than a Backlog item: Go's copying garbage
 collector makes wiping unreliable, and `credentialvault.Open` returns an
