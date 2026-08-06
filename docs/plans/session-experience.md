@@ -432,7 +432,7 @@ Swift code or commit the final desktop snapshot command prematurely.
 | 2. `session-scan-progress` | [x] | [x] |
 | 3. `session-usage-detail` | [x] | [x] |
 | 4. `session-show-layout` | [x] | [x] |
-| 5. `interactive-session-viewer` | [ ] | [ ] |
+| 5. `interactive-session-viewer` | [x] | [x] |
 | 6. `session-experience-contract` | [ ] | [ ] |
 
 Tasks 1 and 2 may proceed independently. Task 3 may proceed after its DTO names

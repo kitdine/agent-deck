@@ -1975,9 +1975,11 @@ type sessionShowPage struct {
 	SourceStale       bool                          `json:"stale,omitempty"`
 }
 
+type sessionViewerCompleted struct{}
+
 func newSessionCommand(opts *commandOptions) *cobra.Command {
 	cmd := &cobra.Command{Use: "session", Short: "Search local sessions"}
-	var showTokens bool
+	var showTokens, showInteractive bool
 	withSessions := func(run func(context.Context, *store.Store, string, []string) (any, error)) func(*cobra.Command, []string) error {
 		return func(command *cobra.Command, args []string) error {
 			stateDir, err := opts.stateRoot()
@@ -2006,7 +2008,7 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if command.Name() == "show" && showTokens {
+			if command.Name() == "show" && (showTokens || showInteractive) {
 				core, err := store.OpenWithLockHeld(command.Context(), stateDir)
 				if err != nil {
 					return err
@@ -2017,6 +2019,9 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 			data, err := run(command.Context(), sessions, home, args)
 			if err != nil {
 				return err
+			}
+			if _, ok := data.(sessionViewerCompleted); ok {
+				return nil
 			}
 			if command.Name() == "scan" || command.Name() == "rebuild" {
 				fingerprint, fingerprintErr := watch.FingerprintRoots(sessionWatchRoots(home)...)
@@ -2112,6 +2117,17 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 	search.MarkFlagsMutuallyExclusive("all", "limit")
 	var show *cobra.Command
 	show = &cobra.Command{Use: "show <session-id>", Args: cobra.ExactArgs(1), RunE: withSessions(func(ctx context.Context, s *store.Store, _ string, args []string) (any, error) {
+		if showInteractive {
+			if opts.format != "text" {
+				return nil, &inputError{err: errors.New("--interactive requires text output")}
+			}
+			if _, ok := opts.stdin.(*os.File); !ok {
+				return nil, &inputError{err: errors.New("--interactive requires TTY stdin and stdout")}
+			}
+			if _, ok := opts.stdout.(*os.File); !ok {
+				return nil, &inputError{err: errors.New("--interactive requires TTY stdin and stdout")}
+			}
+		}
 		if err := validateOptionalClient(showClient); err != nil {
 			return nil, err
 		}
@@ -2139,6 +2155,15 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 				return nil, sessionShowNotFound(ctx, opts, client, args[0])
 			}
 			return nil, err
+		}
+		if showInteractive {
+			input := opts.stdin.(*os.File)
+			output := opts.stdout.(*os.File)
+			service, _ := sessionUsageFromContext(ctx)
+			if err := runSessionViewer(ctx, input, output, newSessionViewerLoad(ctx, s, metadata, service)); err != nil {
+				return nil, err
+			}
+			return sessionViewerCompleted{}, nil
 		}
 		pagingExplicit := show.Flags().Changed("page") || show.Flags().Changed("limit") || show.Flags().Changed("all")
 		documents, documentsPagination, pageErr := session.DocumentsPage(ctx, s.DB, metadata, showPage, showLimit, showAll || (opts.format == "json" && !pagingExplicit))
@@ -2209,11 +2234,17 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 	show.Flags().StringVar(&showClient, "client", "", "Session client")
 	show.Flags().BoolVar(&showActivity, "activity", false, "Show safe tool activity metadata from the source log")
 	show.Flags().BoolVar(&showTokens, "tokens", false, "Show normalized usage events and pricing")
+	show.Flags().BoolVar(&showInteractive, "interactive", false, "Open the read-only interactive session viewer")
 	show.Flags().IntVar(&showPage, "page", 1, "Page number")
 	show.Flags().IntVar(&showLimit, "limit", 20, "Rows per page")
 	show.Flags().BoolVar(&showAll, "all", false, "Show all rows")
 	show.MarkFlagsMutuallyExclusive("all", "page")
 	show.MarkFlagsMutuallyExclusive("all", "limit")
+	show.MarkFlagsMutuallyExclusive("interactive", "page")
+	show.MarkFlagsMutuallyExclusive("interactive", "limit")
+	show.MarkFlagsMutuallyExclusive("interactive", "all")
+	show.MarkFlagsMutuallyExclusive("interactive", "activity")
+	show.MarkFlagsMutuallyExclusive("interactive", "tokens")
 	exclude := &cobra.Command{Use: "exclude", Args: cobra.NoArgs, RunE: withSessions(func(ctx context.Context, s *store.Store, _ string, _ []string) (any, error) {
 		err := session.Exclude(ctx, s.DB, excludeKind, excludeValue)
 		return withTextResource(map[string]any{"excluded": err == nil}, excludeKind+":"+excludeValue), err
