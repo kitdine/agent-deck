@@ -412,14 +412,33 @@ contract task owned and this index now carries: credentials written by this
 release are unreadable by `v0.2.x`, and cost/coverage numbers change for
 existing data.
 
-**`v0.4.0` — minor. Session experience and desktop-facing data contracts.**
-Prioritize visible `session scan` progress, a defined instant in `session search`,
-a redesigned human-facing `session show`, invocation-level token and cost detail,
-and an interactive session viewer. The same work must leave bounded, stable DTO
-and JSON contracts suitable for the native desktop client. These Backlog items
-are now owned by the active
+**`v0.4.0` — minor. Session experience, usage report presentation, and
+desktop-facing data contracts.** Two lines share the release.
+
+The first prioritizes visible `session scan` progress, a defined instant in
+`session search`, a redesigned human-facing `session show`, invocation-level
+token and cost detail, and an interactive session viewer. The same work must
+leave bounded, stable DTO and JSON contracts suitable for the native desktop
+client. These Backlog items are now owned by the active
 [session experience plan](plans/session-experience.md), which defines six
 implementation and review gates.
+
+The second redesigns how the `usage` report family presents what it already
+computes, across `usage stats`, `usage summary`, `usage sessions`, and
+`usage diagnose`. The retired
+[readability plan](archive/plans/usage-stats-readability.md) bounded how much
+those reports print; this line addresses whether the printed values can be
+compared and understood. It is owned by the active
+[usage report presentation plan](plans/usage-report-presentation.md), which
+defines six implementation and review gates. Its interactive mode reuses the
+session viewer's terminal state machine, so its task 5 is blocked on
+`interactive-session-viewer`.
+
+Both lines land in one release, so the batch rule that held across `v0.3.0`
+still holds: the specification version is raised **once**. The session plan's
+`v0-4-0-contract` task owns that single raise. The usage presentation plan's
+own contract task deliberately does not raise it, and instead lands its
+contract text first, which sequences `v0-4-0-contract` after both lines finish.
 
 **`v0.5.0` — minor. Native macOS desktop foundation.** Deliver the Swift 6,
 SwiftUI macOS 26 menu-bar app, WidgetKit extension, embedded universal Go helper,
@@ -475,6 +494,7 @@ fixing a defect, which is why it is a contract change recorded by the single
 | [specs/cli-design.md](specs/cli-design.md) | What the system does and must keep doing: provider, credential, usage, pricing, session, backup, and distribution behavior. Currently version 23; see its changelog. |
 | [specs/cli-manual.md](specs/cli-manual.md) | The implemented command surface, flags, and output shapes. |
 | [plans/session-experience.md](plans/session-experience.md) | Active — 0/6 done. Session search time, scan progress, invocation usage, readable show output, interactive viewing, and desktop DTO readiness for `v0.4.0`. |
+| [plans/usage-report-presentation.md](plans/usage-report-presentation.md) | Active — 0/6 done. Shared render primitives, bar and detail semantics, stats layout, family alignment, interactive viewing, and contract text for `v0.4.0`. |
 | [plans/desktop-app.md](plans/desktop-app.md) | Active — 0/6 done. Native macOS 26 menu-bar app, WidgetKit extension, unified desktop package, Cask, direct download, and release validation for `v0.5.0`. |
 | [reviews/](reviews/README.md) | Per-task review records that back each plan's ticked `Review` cell. |
 | [archive/](archive/README.md) | Retired plans and superseded contracts. Not a starting point for new work. |
