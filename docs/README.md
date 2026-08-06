@@ -417,7 +417,9 @@ Prioritize visible `session scan` progress, a defined instant in `session search
 a redesigned human-facing `session show`, invocation-level token and cost detail,
 and an interactive session viewer. The same work must leave bounded, stable DTO
 and JSON contracts suitable for the native desktop client. These Backlog items
-still require their own approved plan before development starts.
+are now owned by the active
+[session experience plan](plans/session-experience.md), which defines six
+implementation and review gates.
 
 **`v0.5.0` — minor. Native macOS desktop foundation.** Deliver the Swift 6,
 SwiftUI macOS 26 menu-bar app, WidgetKit extension, embedded universal Go helper,
@@ -472,6 +474,7 @@ fixing a defect, which is why it is a contract change recorded by the single
 | --- | --- |
 | [specs/cli-design.md](specs/cli-design.md) | What the system does and must keep doing: provider, credential, usage, pricing, session, backup, and distribution behavior. Currently version 23; see its changelog. |
 | [specs/cli-manual.md](specs/cli-manual.md) | The implemented command surface, flags, and output shapes. |
+| [plans/session-experience.md](plans/session-experience.md) | Active — 0/6 done. Session search time, scan progress, invocation usage, readable show output, interactive viewing, and desktop DTO readiness for `v0.4.0`. |
 | [plans/desktop-app.md](plans/desktop-app.md) | Active — 0/6 done. Native macOS 26 menu-bar app, WidgetKit extension, unified desktop package, Cask, direct download, and release validation for `v0.5.0`. |
 | [reviews/](reviews/README.md) | Per-task review records that back each plan's ticked `Review` cell. |
 | [archive/](archive/README.md) | Retired plans and superseded contracts. Not a starting point for new work. |
@@ -494,56 +497,6 @@ than expanding the entry in place.
       billed, or charged under another model. Reopen behavior work only with
       authoritative billing/account evidence; see
       [the retired classification plan](archive/plans/codex-auto-review-classification.md).
-
-- [ ] Redesign `session search` results to carry an instant before adding any
-      timezone presentation. Carried over from the retired display-timezone
-      plan, which localized every other instant-bearing text surface but left
-      search alone because `session.Document` is only `CLIENT`, `SESSION`,
-      `KIND`, and `TEXT`. A plan must decide whether that instant is the
-      matched entry time or the session's `FIRST`/`LAST` bounds, then define
-      the text and JSON contracts, sorting, and pagination compatibility. If
-      approved, text renders the new instant in the machine zone while JSON
-      keeps UTC.
-
-- [ ] Add visible progress to `agentdeck session scan`. A real scan can walk
-      enough Claude and Codex JSONL sources to leave an interactive terminal
-      apparently idle until the single final `Completed session.scan.` line.
-      Follow the established delayed usage-scan progress pattern: show processed
-      and total source counts after a short anti-flicker delay, update in place
-      on a TTY, remain deterministic on non-TTY output, honor `--quiet`, and
-      never print source paths or session content. Keep the final scan summary
-      after progress closes and cover cancellation and zero-source behavior.
-- [ ] Redesign the human-facing `session show` text layout. The current metadata,
-      approved documents, full activity summary, and activity rows form a dense
-      stream that is difficult to scan even when the requested information is
-      present. A plan must define a compact session header, clearly separated
-      document/activity/token sections, stable column priorities for narrow and
-      wide terminals, readable timestamps and durations, and explicit empty and
-      partial states. JSON compatibility and the existing activity privacy
-      boundary remain unchanged.
-- [ ] Add an interactive session viewer with keyboard navigation instead of
-      requiring a new shell command for every `--page` transition. It should let
-      a user move up and down, page forward and backward, switch among session
-      overview, approved documents, tool activity, and token-detail sections,
-      and quit without changing source data. A plan must decide whether this is
-      an explicit `--interactive` mode or the TTY default, preserve the current
-      non-interactive `--page`/`--limit`/`--all` and JSON contracts for scripts,
-      handle terminal resize and interruption, and avoid loading an unbounded
-      session into the terminal UI.
-- [ ] Expose invocation-level token details as part of session inspection.
-      AgentDeck already retains each supported usage event in
-      `agentdeck.sqlite3`, including its session, event time, model, input,
-      cached-input, output, Claude cache-read/cache-creation/cache-write
-      components, source ownership, and attribution inputs. Today
-      `usage sessions` collapses those events into one session total, while
-      `session show` exposes no token detail at all. Add a session-scoped view
-      of each invocation or logical turn, with token components, model, time,
-      pricing completeness, and attributable cost where valid, then make it
-      available to the interactive session viewer. The design must define Codex
-      cumulative snapshot/delta semantics, Claude cache components, event
-      ordering, pagination, duplicate-source ownership, unavailable components,
-      and the boundary between safe usage metadata and prohibited raw session
-      content.
 
 - [ ] Design complete lifecycle management for native Skills, Plugins, MCP servers,
       and Hooks. This is an umbrella capability, not an implementation task:

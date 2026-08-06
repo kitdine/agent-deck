@@ -8,7 +8,7 @@ created: 2026-08-06
 Target release: `v0.5.0`.
 
 This plan delivers the first native AgentDeck desktop surface after the
-`v0.4.0` session-experience release. It covers the menu-bar application,
+[`v0.4.0` session-experience release](session-experience.md). It covers the menu-bar application,
 WidgetKit extension, shared Go/Swift contract, unified desktop package,
 Homebrew Cask, direct download, signing, notarization, and release validation.
 
