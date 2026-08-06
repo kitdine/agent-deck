@@ -430,7 +430,7 @@ Swift code or commit the final desktop snapshot command prematurely.
 | --- | --- | --- |
 | 1. `session-document-time` | [x] | [x] |
 | 2. `session-scan-progress` | [x] | [x] |
-| 3. `session-usage-detail` | [ ] | [ ] |
+| 3. `session-usage-detail` | [x] | [x] |
 | 4. `session-show-layout` | [ ] | [ ] |
 | 5. `interactive-session-viewer` | [ ] | [ ] |
 | 6. `session-experience-contract` | [ ] | [ ] |

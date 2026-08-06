@@ -116,7 +116,7 @@ func TestRenderSessionDocumentsRendersEventTimeInDisplayZone(t *testing.T) {
 }
 
 func TestSessionSearchNextCommandQuotesQuery(t *testing.T) {
-	command := sessionNextCommand("/tmp/state dir", "search", "codex", "needle's", false, session.Pagination{HasMore: true, NextPage: 2, Limit: 20})
+	command := sessionNextCommand("/tmp/state dir", "search", "codex", "needle's", false, false, session.Pagination{HasMore: true, NextPage: 2, Limit: 20})
 	if !strings.Contains(command, "search 'needle'\"'\"'s' --client 'codex' --page 2 --limit 20") {
 		t.Fatalf("next command = %q", command)
 	}

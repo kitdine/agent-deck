@@ -496,7 +496,7 @@ fixing a defect, which is why it is a contract change recorded by the single
 | --- | --- |
 | [specs/cli-design.md](specs/cli-design.md) | What the system does and must keep doing: provider, credential, usage, pricing, session, backup, and distribution behavior. Currently version 23; see its changelog. |
 | [specs/cli-manual.md](specs/cli-manual.md) | The implemented command surface, flags, and output shapes. |
-| [plans/session-experience.md](plans/session-experience.md) | Active — 2/6 done. Session search time, scan progress, invocation usage, readable show output, interactive viewing, and desktop DTO readiness for `v0.4.0`. |
+| [plans/session-experience.md](plans/session-experience.md) | Active — 3/6 done. Session search time, scan progress, invocation usage, readable show output, interactive viewing, and desktop DTO readiness for `v0.4.0`. |
 | [plans/usage-report-presentation.md](plans/usage-report-presentation.md) | Active — 0/6 done. Shared render primitives, bar and detail semantics, stats layout, family alignment, interactive viewing, and contract text for `v0.4.0`. |
 | [plans/v0-4-0-release.md](plans/v0-4-0-release.md) | Active — 0/3 done. Release plan, not a feature plan: the single `v0.4.0` specification raise, the release candidate, and release notes. Blocked until both `v0.4.0` feature plans are fully reviewed. |
 | [plans/desktop-app.md](plans/desktop-app.md) | Active — 0/6 done. Native macOS 26 menu-bar app, WidgetKit extension, unified desktop package, Cask, direct download, and its own contract task for `v0.5.0`. |

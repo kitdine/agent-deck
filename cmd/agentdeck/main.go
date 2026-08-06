@@ -73,6 +73,13 @@ var newSessionProgress = func(stderr io.Writer, quiet bool) session.ScanProgress
 	return newSessionProgressOutput(stderr, quiet, usageProgressIsTerminal(stderr))
 }
 
+type sessionUsageContextKey struct{}
+
+func sessionUsageFromContext(ctx context.Context) (*usage.Service, bool) {
+	service, ok := ctx.Value(sessionUsageContextKey{}).(*usage.Service)
+	return service, ok
+}
+
 type commandOptions struct {
 	stateDir string
 	format   string
@@ -1948,7 +1955,7 @@ func newCredentialCommand(opts *commandOptions) *cobra.Command {
 
 type sessionListPage struct {
 	Sessions    []session.Metadata            `json:"sessions"`
-	Pagination  map[string]session.Pagination `json:"pagination"`
+	Pagination  map[string]session.Pagination `json:"pagination,omitempty"`
 	NextCommand string                        `json:"-"`
 }
 type sessionSearchPage struct {
@@ -1959,12 +1966,15 @@ type sessionSearchPage struct {
 
 type sessionShowPage struct {
 	session.Result
-	Pagination  map[string]session.Pagination `json:"pagination"`
+	Usage       *usage.SessionSummary         `json:"usage,omitempty"`
+	Invocations []usage.SessionInvocation     `json:"invocations,omitempty"`
+	Pagination  map[string]session.Pagination `json:"pagination,omitempty"`
 	NextCommand string                        `json:"-"`
 }
 
 func newSessionCommand(opts *commandOptions) *cobra.Command {
 	cmd := &cobra.Command{Use: "session", Short: "Search local sessions"}
+	var showTokens bool
 	withSessions := func(run func(context.Context, *store.Store, string, []string) (any, error)) func(*cobra.Command, []string) error {
 		return func(command *cobra.Command, args []string) error {
 			stateDir, err := opts.stateRoot()
@@ -1978,7 +1988,12 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer lock.Release()
+			lockReleased := false
+			defer func() {
+				if !lockReleased {
+					_ = lock.Release()
+				}
+			}()
 			sessions, err := store.OpenSessions(command.Context(), stateDir)
 			if err != nil {
 				return err
@@ -1987,6 +2002,14 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 			home, err := userHomeDir()
 			if err != nil {
 				return err
+			}
+			if command.Name() == "show" && showTokens {
+				core, err := store.OpenWithLockHeld(command.Context(), stateDir)
+				if err != nil {
+					return err
+				}
+				defer core.Close()
+				command.SetContext(context.WithValue(command.Context(), sessionUsageContextKey{}, usage.New(core, home)))
 			}
 			data, err := run(command.Context(), sessions, home, args)
 			if err != nil {
@@ -2000,6 +2023,7 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 				if releaseErr := lock.Release(); releaseErr != nil {
 					return releaseErr
 				}
+				lockReleased = true
 				core, _, openErr := opts.openStore(command.Context())
 				if openErr != nil {
 					return openErr
@@ -2042,7 +2066,7 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 		if pageErr != nil {
 			return nil, &inputError{err: pageErr}
 		}
-		return sessionListPage{Sessions: paged, Pagination: map[string]session.Pagination{"sessions": pagination}, NextCommand: sessionNextCommand(opts.stateDir, "list", listClient, "", false, pagination)}, nil
+		return sessionListPage{Sessions: paged, Pagination: map[string]session.Pagination{"sessions": pagination}, NextCommand: sessionNextCommand(opts.stateDir, "list", listClient, "", false, false, pagination)}, nil
 	})}
 	list.Flags().StringVar(&listClient, "client", "", "Filter by client")
 	list.Flags().IntVar(&listPage, "page", 1, "Page number")
@@ -2075,7 +2099,7 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 		if pageErr != nil {
 			return nil, &inputError{err: pageErr}
 		}
-		return sessionSearchPage{Documents: paged, Pagination: map[string]session.Pagination{"search": pagination}, NextCommand: sessionNextCommand(opts.stateDir, "search", searchClient, args[0], false, pagination)}, nil
+		return sessionSearchPage{Documents: paged, Pagination: map[string]session.Pagination{"search": pagination}, NextCommand: sessionNextCommand(opts.stateDir, "search", searchClient, args[0], false, false, pagination)}, nil
 	})}
 	search.Flags().StringVar(&searchClient, "client", "", "Filter by client")
 	search.Flags().IntVar(&searchPage, "page", 1, "Page number")
@@ -2113,8 +2137,32 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 			}
 			return nil, err
 		}
-		explicit := show.Flags().Changed("page") || show.Flags().Changed("limit") || show.Flags().Changed("all")
-		if opts.format == "json" && !explicit {
+		var sessionUsage *usage.SessionSummary
+		var invocations []usage.SessionInvocation
+		var invocationPagination session.Pagination
+		if showTokens {
+			service, ok := sessionUsageFromContext(ctx)
+			if !ok {
+				return nil, errors.New("session usage service unavailable")
+			}
+			summary, usageErr := service.SessionUsageSummary(ctx, client, args[0])
+			if usageErr != nil {
+				return nil, usageErr
+			}
+			var page usage.InvocationPagination
+			pagingExplicit := show.Flags().Changed("page") || show.Flags().Changed("limit") || show.Flags().Changed("all")
+			invocations, page, usageErr = service.SessionInvocations(ctx, client, args[0], showPage, showLimit, showAll || (opts.format == "json" && !pagingExplicit))
+			if usageErr != nil {
+				return nil, &inputError{err: usageErr}
+			}
+			sessionUsage = &summary
+			invocationPagination = session.Pagination{Page: page.Page, Limit: page.Limit, Total: page.Total, Shown: page.Shown, HasMore: page.HasMore, NextPage: page.NextPage}
+		}
+		pagingExplicit := show.Flags().Changed("page") || show.Flags().Changed("limit") || show.Flags().Changed("all")
+		if opts.format == "json" && !pagingExplicit {
+			if showTokens {
+				return sessionShowPage{Result: result, Usage: sessionUsage, Invocations: invocations}, nil
+			}
 			return result, nil
 		}
 		docs, documentsPagination, pageErr := session.Paginate(result.Documents, showPage, showLimit, showAll)
@@ -2135,10 +2183,17 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 				nextPagination = activityPagination
 			}
 		}
-		return sessionShowPage{Result: result, Pagination: pagination, NextCommand: sessionNextCommand(opts.stateDir, "show", client, args[0], showActivity, nextPagination)}, nil
+		if showTokens {
+			pagination["invocations"] = invocationPagination
+			if invocationPagination.HasMore {
+				nextPagination = invocationPagination
+			}
+		}
+		return sessionShowPage{Result: result, Usage: sessionUsage, Invocations: invocations, Pagination: pagination, NextCommand: sessionNextCommand(opts.stateDir, "show", client, args[0], showActivity, showTokens, nextPagination)}, nil
 	})}
 	show.Flags().StringVar(&showClient, "client", "", "Session client")
 	show.Flags().BoolVar(&showActivity, "activity", false, "Show safe tool activity metadata from the source log")
+	show.Flags().BoolVar(&showTokens, "tokens", false, "Show normalized usage events and pricing")
 	show.Flags().IntVar(&showPage, "page", 1, "Page number")
 	show.Flags().IntVar(&showLimit, "limit", 20, "Rows per page")
 	show.Flags().BoolVar(&showAll, "all", false, "Show all rows")
@@ -2165,7 +2220,7 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 	return cmd
 }
 
-func sessionNextCommand(stateDir, action, client, id string, activity bool, p session.Pagination) string {
+func sessionNextCommand(stateDir, action, client, id string, activity, tokens bool, p session.Pagination) string {
 	if !p.HasMore {
 		return ""
 	}
@@ -2182,6 +2237,9 @@ func sessionNextCommand(stateDir, action, client, id string, activity bool, p se
 	}
 	if activity {
 		parts = append(parts, "--activity")
+	}
+	if tokens {
+		parts = append(parts, "--tokens")
 	}
 	parts = append(parts, "--page", strconv.Itoa(p.NextPage), "--limit", strconv.Itoa(p.Limit))
 	return strings.Join(parts, " ")
@@ -3572,11 +3630,12 @@ func renderCommandText(w io.Writer, command string, data any) error {
 		}
 	case "session.show":
 		value, pagination, nextCommand, ok := session.Result{}, map[string]session.Pagination(nil), "", false
+		usageSummary, invocations := (*usage.SessionSummary)(nil), []usage.SessionInvocation(nil)
 		switch typed := data.(type) {
 		case session.Result:
 			value, ok = typed, true
 		case sessionShowPage:
-			value, pagination, nextCommand, ok = typed.Result, typed.Pagination, typed.NextCommand, true
+			value, pagination, nextCommand, usageSummary, invocations, ok = typed.Result, typed.Pagination, typed.NextCommand, typed.Usage, typed.Invocations, true
 		}
 		if !ok {
 			return fmt.Errorf("unexpected session.show result %T", data)
@@ -3600,9 +3659,21 @@ func renderCommandText(w io.Writer, command string, data any) error {
 				return err
 			}
 			if p, found := pagination["activity"]; found {
+				if err := renderPagination(w, p, nextCommand); err != nil {
+					return err
+				}
+			}
+		}
+		if usageSummary != nil {
+			if err := renderSessionUsage(w, *usageSummary); err != nil {
+				return err
+			}
+			if err := renderSessionInvocations(w, invocations); err != nil {
+				return err
+			}
+			if p, found := pagination["invocations"]; found {
 				return renderPagination(w, p, nextCommand)
 			}
-			return nil
 		}
 		return nil
 	case "extension.list":
@@ -3878,6 +3949,41 @@ func renderSessionActivitySummary(w io.Writer, summary *session.ActivitySummary)
 		rows = append(rows, []string{item.Tool, strconv.Itoa(item.Count)})
 	}
 	return output.WriteASCIITable(w, []string{"TOOL", "CALLS"}, rows)
+}
+
+func renderSessionUsage(w io.Writer, value usage.SessionSummary) error {
+	if _, err := fmt.Fprintln(w, "TOKENS"); err != nil {
+		return err
+	}
+	rows := make([][]string, 0, len(usageTokenNames)+6)
+	for _, token := range usageTokenNames {
+		rows = append(rows, []string{token.label, strconv.FormatInt(value.Tokens[token.key], 10)})
+	}
+	rows = append(rows,
+		[]string{"catalog base cost", optionalCost(value.CatalogBaseCost)},
+		[]string{"provider cost", optionalCost(value.ProviderCost)},
+		[]string{"known catalog base cost", optionalCost(value.KnownCatalogBaseCost)},
+		[]string{"known provider cost", optionalCost(value.KnownProviderCost)},
+		[]string{"unpriced components", textList(value.Unpriced)},
+		[]string{"warnings", textList(value.Warnings)},
+	)
+	return output.WriteASCIITable(w, []string{"METRIC", "VALUE"}, rows)
+}
+
+func renderSessionInvocations(w io.Writer, values []usage.SessionInvocation) error {
+	if _, err := fmt.Fprintln(w, "INVOCATIONS"); err != nil {
+		return err
+	}
+	rows := make([][]string, 0, len(values))
+	for _, value := range values {
+		row := []string{strconv.Itoa(value.Sequence), renderDisplayTime(value.EventAt), value.Model}
+		for _, token := range usageTokenNames {
+			row = append(row, strconv.FormatInt(value.Tokens[token.key], 10))
+		}
+		row = append(row, optionalCost(value.CatalogBaseCost), optionalCost(value.ProviderCost), textList(append(append([]string{}, value.Unpriced...), value.Warnings...)))
+		rows = append(rows, row)
+	}
+	return output.WriteASCIITable(w, []string{"#", "EVENT AT", "MODEL", "INPUT", "CACHED", "OUTPUT", "CACHE READ", "CACHE CREATE", "WRITE 5M", "WRITE 1H", "BASE COST", "PROVIDER COST", "STATUS"}, rows)
 }
 
 func renderPagination(w io.Writer, p session.Pagination, nextCommand string) error {
