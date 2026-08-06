@@ -373,16 +373,20 @@ release-secret access.
   arm64, and Intel behavior.
 - Verification level: L4 through an expanded aggregate release gate.
 
-### 6. `v0-5-0-contract`
+### 6. `desktop-app-contract`
 
-- Update living specs and manuals only for behavior actually delivered.
-- Confirm every task has independent Review PASS and all release identities agree.
-- Run the required `v0.5.0-rc.1` against real local AgentDeck state before stable
-  promotion because this release adds external-client access and a new signed
-  distribution surface.
-- Record known compatibility, migration, uninstall, privacy, signing, and update
-  notification behavior in release notes.
-- Verification level: L4.
+- Reconcile **this plan's** delivered behavior into the living specs and manual:
+  the wire contract, menu-bar app, widget, packaging, and distribution behavior
+  actually delivered.
+- Close all review records for this plan and confirm the app, CLI, wire-contract,
+  and package identities this plan produces agree with each other.
+- **This task does not raise the specification version, run the release
+  candidate, or write release notes.** Those are release-level actions owned by
+  the [v0.5.0 release plan](v0-5-0-release.md), which also carries the
+  `v0.5.0-rc.1` requirement this plan triggers by adding external-client access
+  and a new signed distribution surface.
+- Runs only after every other task in this plan has Review PASS.
+- Verification level: L2 for contract state.
 
 ## Status
 
@@ -393,11 +397,12 @@ release-secret access.
 | 3. `menubar-experience` | [ ] | [ ] |
 | 4. `desktop-widget` | [ ] | [ ] |
 | 5. `unified-desktop-distribution` | [ ] | [ ] |
-| 6. `v0-5-0-contract` | [ ] | [ ] |
+| 6. `desktop-app-contract` | [ ] | [ ] |
 
 Task 1 depends on the `v0.4.0` session DTO contract. Task 2 consumes task 1.
 Tasks 3 and 4 depend on task 2 and may proceed independently after the shared
-snapshot contract is fixed. Task 5 integrates tasks 2-4. Task 6 runs last.
+snapshot contract is fixed. Task 5 integrates tasks 2-4. Task 6 runs last within
+this plan, and in turn gates the [v0.5.0 release plan](v0-5-0-release.md).
 
 Commit boundaries follow task boundaries. The plan does not authorize commits,
 pushes, certificate creation, secret changes, release publication, Homebrew tap

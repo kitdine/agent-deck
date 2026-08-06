@@ -362,9 +362,11 @@ Swift code or commit the final desktop snapshot command prematurely.
   the final relevant content state. Add the relevant race, privacy, cross-build,
   and size gates if implementation changes concurrency, privacy, dependencies,
   or binary size risk.
-- Before stable release, run `v0.4.0-rc.1` against isolated copies of real local
-  state and source logs because the release changes a persisted session-index
-  format and reads event-time pricing for a new surface.
+- This plan triggers the release-candidate requirement, because it changes a
+  persisted session-index format and reads event-time pricing for a new surface.
+  Executing `v0.4.0-rc.1` against isolated copies of real local state and source
+  logs is a release-level gate owned by the
+  [v0.4.0 release plan](v0-4-0-release.md), not a task here.
 
 ## Tasks
 
@@ -408,13 +410,19 @@ Swift code or commit the final desktop snapshot command prematurely.
 - Verification level: L3 if terminal concurrency or signal handling requires a
   race gate; otherwise L2 plus targeted PTY acceptance.
 
-### 6. `v0-4-0-contract`
+### 6. `session-experience-contract`
 
-- Reconcile the complete release behavior into the living CLI design and manual,
-  raise the specification version once, verify desktop DTO readiness, close all
-  review records, and prepare RC downgrade/rebuild/privacy notes.
+- Reconcile **this plan's** delivered behavior into the living CLI design and
+  manual: search document instant, scan progress, invocation usage detail,
+  sectioned `session show`, the interactive viewer, and the desktop-facing DTO
+  boundary.
+- Confirm the desktop DTO surface is complete enough for `v0.5.0` to consume,
+  and close all review records for this plan.
+- **This task does not raise the specification version.** That is a release-level
+  action owned by the [v0.4.0 release plan](v0-4-0-release.md), which runs after
+  both `v0.4.0` feature lines land their contract text.
 - This task runs only after every other task in the plan has Review PASS.
-- Verification level: L2 for contract state; release publication later uses L4.
+- Verification level: L2 for contract state.
 
 ## Status
 
@@ -425,13 +433,14 @@ Swift code or commit the final desktop snapshot command prematurely.
 | 3. `session-usage-detail` | [ ] | [ ] |
 | 4. `session-show-layout` | [ ] | [ ] |
 | 5. `interactive-session-viewer` | [ ] | [ ] |
-| 6. `v0-4-0-contract` | [ ] | [ ] |
+| 6. `session-experience-contract` | [ ] | [ ] |
 
 Tasks 1 and 2 may proceed independently. Task 3 may proceed after its DTO names
 are checked against task 1's shared session projection. Task 4 depends on tasks 1
 and 3. Task 5 depends on the bounded APIs from tasks 1, 3, and 4. Task 6 runs
-last. The `v0.5.0` desktop plan's `desktop-wire-contract` remains blocked until
-task 6 passes review.
+last within this plan, and in turn gates the
+[v0.4.0 release plan](v0-4-0-release.md). The `v0.5.0` desktop plan's
+`desktop-wire-contract` remains blocked until task 6 passes review.
 
 Commit boundaries follow task boundaries. This plan does not authorize commits,
 pushes, release tags, RC publication, real-state mutation, or desktop work.

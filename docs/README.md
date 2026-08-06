@@ -435,17 +435,20 @@ session viewer's terminal state machine, so its task 5 is blocked on
 `interactive-session-viewer`.
 
 Both lines land in one release, so the batch rule that held across `v0.3.0`
-still holds: the specification version is raised **once**. The session plan's
-`v0-4-0-contract` task owns that single raise. The usage presentation plan's
-own contract task deliberately does not raise it, and instead lands its
-contract text first, which sequences `v0-4-0-contract` after both lines finish.
+still holds: the specification version is raised **once**. Each feature plan
+lands only its own contract text; the single raise, the release candidate, and
+the release notes belong to the
+[v0.4.0 release plan](plans/v0-4-0-release.md), which starts only after both
+lines are fully reviewed.
 
 **`v0.5.0` — minor. Native macOS desktop foundation.** Deliver the Swift 6,
 SwiftUI macOS 26 menu-bar app, WidgetKit extension, embedded universal Go helper,
 Homebrew Cask `agentdeck-app`, direct-download DMG, signing, notarization, and a
 notification-only update check that opens the official download page. The active
 [native desktop plan](plans/desktop-app.md) owns its six implementation and
-review gates.
+review gates, the last of which lands its own contract text. The single
+specification raise, the release candidate, and the release notes belong to the
+[v0.5.0 release plan](plans/v0-5-0-release.md).
 
 **`v0.6.0` — minor. Skills and Hooks lifecycle management.** Build the shared Go
 lifecycle engine, Skills adapter, and third-party Hooks adapter with preview,
@@ -495,7 +498,9 @@ fixing a defect, which is why it is a contract change recorded by the single
 | [specs/cli-manual.md](specs/cli-manual.md) | The implemented command surface, flags, and output shapes. |
 | [plans/session-experience.md](plans/session-experience.md) | Active — 0/6 done. Session search time, scan progress, invocation usage, readable show output, interactive viewing, and desktop DTO readiness for `v0.4.0`. |
 | [plans/usage-report-presentation.md](plans/usage-report-presentation.md) | Active — 0/6 done. Shared render primitives, bar and detail semantics, stats layout, family alignment, interactive viewing, and contract text for `v0.4.0`. |
-| [plans/desktop-app.md](plans/desktop-app.md) | Active — 0/6 done. Native macOS 26 menu-bar app, WidgetKit extension, unified desktop package, Cask, direct download, and release validation for `v0.5.0`. |
+| [plans/v0-4-0-release.md](plans/v0-4-0-release.md) | Active — 0/3 done. Release plan, not a feature plan: the single `v0.4.0` specification raise, the release candidate, and release notes. Blocked until both `v0.4.0` feature plans are fully reviewed. |
+| [plans/desktop-app.md](plans/desktop-app.md) | Active — 0/6 done. Native macOS 26 menu-bar app, WidgetKit extension, unified desktop package, Cask, direct download, and its own contract task for `v0.5.0`. |
+| [plans/v0-5-0-release.md](plans/v0-5-0-release.md) | Active — 0/3 done. Release plan, not a feature plan: the single `v0.5.0` specification raise, the release candidate, and release notes. Blocked until the desktop plan is fully reviewed. |
 | [reviews/](reviews/README.md) | Per-task review records that back each plan's ticked `Review` cell. |
 | [archive/](archive/README.md) | Retired plans and superseded contracts. Not a starting point for new work. |
 
@@ -597,6 +602,23 @@ a changelog row whenever promised behavior changes. A spec does not retire when
 a feature ships — that is when it becomes most authoritative. Never record
 execution state in a spec; "implemented", "awaiting review", and "in flight"
 belong in this file.
+
+**A plan owns a feature; a release owns a version.** These are different scopes,
+so they get different plans.
+
+- A **feature plan** owns one coherent piece of product behavior. Its own
+  contract task reconciles *what that plan delivered* with the living specs. It
+  **never raises the specification version**.
+- A **release plan** owns one version. It raises the specification version
+  **exactly once**, validates the release candidate, and prepares release notes.
+  It owns no product behavior and starts only after every feature plan in that
+  version is fully reviewed.
+
+The version raise describes a release, not a feature, so attaching it to a
+feature plan makes whichever plan finishes last implicitly responsible for the
+release. This project did that through `v0.3.0` — `v0-3-0-contract` lived inside
+`runtime-provider-attribution` — and corrected it on 2026-08-06 for `v0.4.0` and
+`v0.5.0`. The shipped `v0.3.0` history is not rewritten.
 
 **Plans are scoped work, not a permanent home.**
 

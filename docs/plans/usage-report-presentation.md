@@ -330,13 +330,12 @@ credential path, so no task routes to L3 on data risk alone.
 
 ### 6. `usage-presentation-contract`
 
-- Reconcile this line's delivered behavior into `docs/specs/cli-design.md` and
-  `docs/specs/cli-manual.md`, close all review records, and update the
+- Reconcile **this plan's** delivered behavior into `docs/specs/cli-design.md`
+  and `docs/specs/cli-manual.md`, close all review records, and update the
   documentation index.
-- **This task does not raise the specification version.** `v0.4.0` raises it
-  once, and that raise belongs to the session experience plan's
-  `v0-4-0-contract` task, which must therefore run after this task's contract
-  text has landed.
+- **This task does not raise the specification version.** That is a release-level
+  action owned by the [v0.4.0 release plan](v0-4-0-release.md), which runs after
+  both `v0.4.0` feature lines land their contract text.
 - Runs only after every other task in this plan has Review PASS.
 - Verification level: L2.
 
@@ -353,8 +352,8 @@ credential path, so no task routes to L3 on data risk alone.
 
 Tasks 1 and 4 form the family-consistency path; tasks 2 and 3 form the
 `usage stats` semantics path. Both start from task 1. Task 5 is blocked on the
-session experience plan. Task 6 runs last within this plan and gates that plan's
-`v0-4-0-contract`.
+session experience plan. Task 6 runs last within this plan, and in turn gates
+the [v0.4.0 release plan](v0-4-0-release.md).
 
 Commit boundaries follow task boundaries. This plan does not authorize commits,
 pushes, release tags, RC publication, real-state mutation, or desktop work.
