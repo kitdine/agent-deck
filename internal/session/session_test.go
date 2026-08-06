@@ -903,9 +903,13 @@ func TestRebuildFailurePreservesIndex(t *testing.T) {
 	beforeTables := captureSessionIndex(t, database.DB)
 	beforePublic := captureSessionPublicState(t, database.DB, "earlierrebuild OR laterrebuild")
 
-	_, err = Rebuild(ctx, database.DB, home)
+	progress := &sessionProgressRecorder{}
+	_, err = RebuildWithOptions(ctx, database.DB, home, ScanOptions{Progress: progress})
 	if err == nil || err.Error() != "constraint failed: synthetic later rebuild insert failure (1811)" {
 		t.Fatalf("Rebuild error = %v, want later-source failure after earlier metadata insertion", err)
+	}
+	if progress.starts != 1 || progress.stops != 1 {
+		t.Fatalf("failed rebuild progress lifecycle starts=%d stops=%d", progress.starts, progress.stops)
 	}
 	afterTables := captureSessionIndex(t, database.DB)
 	afterPublic := captureSessionPublicState(t, database.DB, "earlierrebuild OR laterrebuild")
@@ -914,6 +918,92 @@ func TestRebuildFailurePreservesIndex(t *testing.T) {
 	}
 	if !reflect.DeepEqual(afterPublic, beforePublic) {
 		t.Fatalf("Rebuild failure changed Search/List: before=%#v after=%#v", beforePublic, afterPublic)
+	}
+}
+
+type sessionProgressRecorder struct {
+	starts  int
+	stops   int
+	updates []ScanProgress
+}
+
+func (r *sessionProgressRecorder) Start() { r.starts++ }
+
+func (r *sessionProgressRecorder) Update(progress ScanProgress) {
+	r.updates = append(r.updates, progress)
+}
+
+func (r *sessionProgressRecorder) Stop() { r.stops++ }
+
+func TestScanAndRebuildWithOptionsReportAggregateProgress(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	home := filepath.Join(root, "home")
+	source := filepath.Join(home, ".codex", "sessions", "fixture.jsonl")
+	if err := os.MkdirAll(filepath.Dir(source), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(source, []byte("{\"type\":\"session_meta\",\"payload\":{\"session_id\":\"progress-session\"}}\n{\"type\":\"visible_user_prompt\",\"payload\":{\"text\":\"visible progress document\"}}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	database, err := store.OpenSessions(ctx, filepath.Join(root, "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	for _, test := range []struct {
+		name string
+		run  func(ScanOptions) (ScanResult, error)
+	}{
+		{"scan", func(options ScanOptions) (ScanResult, error) { return ScanWithOptions(ctx, database.DB, home, options) }},
+		{"rebuild", func(options ScanOptions) (ScanResult, error) {
+			return RebuildWithOptions(ctx, database.DB, home, options)
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			progress := &sessionProgressRecorder{}
+			result, err := test.run(ScanOptions{Progress: progress})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result.Sources != 1 || result.Documents != 1 || result.Skipped != 0 {
+				t.Fatalf("result=%#v", result)
+			}
+			if progress.starts != 1 || progress.stops != 1 {
+				t.Fatalf("lifecycle starts=%d stops=%d", progress.starts, progress.stops)
+			}
+			if len(progress.updates) < 2 || progress.updates[0] != (ScanProgress{Total: 1}) {
+				t.Fatalf("progress=%#v", progress.updates)
+			}
+			for _, update := range progress.updates {
+				if update.Processed < 0 || update.Processed > update.Total || update.Total != 1 || update.Documents < 0 || update.Skipped < 0 {
+					t.Fatalf("non-aggregate progress update=%#v", update)
+				}
+			}
+			if got := progress.updates[len(progress.updates)-1]; got != (ScanProgress{Processed: 1, Total: 1, Documents: 1}) {
+				t.Fatalf("final progress=%#v", got)
+			}
+		})
+	}
+
+	zero := &sessionProgressRecorder{}
+	zeroHome := filepath.Join(root, "empty-home")
+	if _, err := ScanWithOptions(ctx, database.DB, zeroHome, ScanOptions{Progress: zero}); err != nil {
+		t.Fatal(err)
+	}
+	if zero.starts != 1 || zero.stops != 1 || !reflect.DeepEqual(zero.updates, []ScanProgress{{}, {}}) {
+		t.Fatalf("zero-source progress starts=%d stops=%d updates=%#v", zero.starts, zero.stops, zero.updates)
+	}
+
+	canceledCtx, cancel := context.WithCancel(ctx)
+	cancel()
+	canceled := &sessionProgressRecorder{}
+	if _, err := ScanWithOptions(canceledCtx, database.DB, zeroHome, ScanOptions{Progress: canceled}); err == nil {
+		t.Fatal("canceled scan unexpectedly succeeded")
+	}
+	if canceled.starts != 1 || canceled.stops != 1 {
+		t.Fatalf("canceled lifecycle starts=%d stops=%d", canceled.starts, canceled.stops)
 	}
 }
 

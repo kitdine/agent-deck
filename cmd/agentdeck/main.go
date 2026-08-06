@@ -69,6 +69,10 @@ var newUsageProgress = func(stderr io.Writer, quiet bool) usage.ScanProgressRepo
 	return newUsageProgressOutput(stderr, quiet, usageProgressIsTerminal(stderr))
 }
 
+var newSessionProgress = func(stderr io.Writer, quiet bool) session.ScanProgressReporter {
+	return newSessionProgressOutput(stderr, quiet, usageProgressIsTerminal(stderr))
+}
+
 type commandOptions struct {
 	stateDir string
 	format   string
@@ -130,12 +134,16 @@ type usageProgressOutput struct {
 	terminal bool
 	clock    usageProgressClock
 
-	mu       sync.Mutex
-	progress usage.ScanProgress
-	emitted  bool
-	done     chan struct{}
-	wg       sync.WaitGroup
+	mu              sync.Mutex
+	progress        usage.ScanProgress
+	sessionProgress session.ScanProgress
+	sessionMode     bool
+	emitted         bool
+	done            chan struct{}
+	wg              sync.WaitGroup
 }
+
+type sessionProgressOutput struct{ *usageProgressOutput }
 
 func newUsageProgressOutput(stderr io.Writer, quiet, terminal bool) *usageProgressOutput {
 	return newUsageProgressOutputWithClock(stderr, quiet, terminal, realUsageProgressClock{})
@@ -143,6 +151,14 @@ func newUsageProgressOutput(stderr io.Writer, quiet, terminal bool) *usageProgre
 
 func newUsageProgressOutputWithClock(stderr io.Writer, quiet, terminal bool, clock usageProgressClock) *usageProgressOutput {
 	return &usageProgressOutput{stderr: stderr, quiet: quiet, terminal: terminal, clock: clock}
+}
+
+func newSessionProgressOutput(stderr io.Writer, quiet, terminal bool) *sessionProgressOutput {
+	return newSessionProgressOutputWithClock(stderr, quiet, terminal, realUsageProgressClock{})
+}
+
+func newSessionProgressOutputWithClock(stderr io.Writer, quiet, terminal bool, clock usageProgressClock) *sessionProgressOutput {
+	return &sessionProgressOutput{usageProgressOutput: newUsageProgressOutputWithClock(stderr, quiet, terminal, clock)}
 }
 
 func (p *usageProgressOutput) Start() {
@@ -187,6 +203,13 @@ func (p *usageProgressOutput) Update(progress usage.ScanProgress) {
 	p.mu.Unlock()
 }
 
+func (p *sessionProgressOutput) Update(progress session.ScanProgress) {
+	p.mu.Lock()
+	p.sessionMode = true
+	p.sessionProgress = progress
+	p.mu.Unlock()
+}
+
 func (p *usageProgressOutput) Stop() {
 	if p.quiet {
 		return
@@ -219,6 +242,14 @@ func (p *usageProgressOutput) writeProgress() {
 }
 
 func (p *usageProgressOutput) writeProgressLocked() {
+	if p.sessionMode {
+		if p.sessionProgress.Total == 0 {
+			return
+		}
+		message := fmt.Sprintf("session scan: %d/%d source files, %d documents, %d skipped", p.sessionProgress.Processed, p.sessionProgress.Total, p.sessionProgress.Documents, p.sessionProgress.Skipped)
+		p.writeProgressMessageLocked(message)
+		return
+	}
 	if p.progress.Total == 0 {
 		return
 	}
@@ -226,6 +257,10 @@ func (p *usageProgressOutput) writeProgressLocked() {
 	if p.progress.Reason != "" {
 		message += " (" + p.progress.Reason + ")"
 	}
+	p.writeProgressMessageLocked(message)
+}
+
+func (p *usageProgressOutput) writeProgressMessageLocked(message string) {
 	if p.terminal {
 		_, _ = fmt.Fprintf(p.stderr, "\r\x1b[2K%s", message)
 	} else {
@@ -2119,11 +2154,11 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 	_ = exclude.MarkFlagRequired("value")
 	cmd.AddCommand(
 		&cobra.Command{Use: "scan", Args: cobra.NoArgs, RunE: withSessions(func(ctx context.Context, s *store.Store, home string, _ []string) (any, error) {
-			return session.Scan(ctx, s.DB, home)
+			return session.ScanWithOptions(ctx, s.DB, home, session.ScanOptions{Progress: newSessionProgress(opts.stderr, opts.quiet)})
 		})},
 		list, search, show, exclude,
 		&cobra.Command{Use: "rebuild", Args: cobra.NoArgs, RunE: withSessions(func(ctx context.Context, s *store.Store, home string, _ []string) (any, error) {
-			return session.Rebuild(ctx, s.DB, home)
+			return session.RebuildWithOptions(ctx, s.DB, home, session.ScanOptions{Progress: newSessionProgress(opts.stderr, opts.quiet)})
 		})},
 		newSessionPurgeCommand(opts),
 	)

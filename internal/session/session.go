@@ -138,6 +138,26 @@ type ScanResult struct {
 	Removed   int `json:"removed"`
 }
 
+// ScanProgress reports aggregate scan progress without source identifiers or content.
+type ScanProgress struct {
+	Processed int
+	Total     int
+	Documents int
+	Skipped   int
+}
+
+// ScanProgressReporter receives synchronous scan lifecycle and aggregate progress updates.
+type ScanProgressReporter interface {
+	Start()
+	Update(ScanProgress)
+	Stop()
+}
+
+// ScanOptions configures optional observers for a session scan.
+type ScanOptions struct {
+	Progress ScanProgressReporter
+}
+
 // ApprovedDocument is the privacy boundary: only text already classified by a
 // client-specific allowlist as a visible user prompt or final assistant reply
 // can enter sessions.sqlite3.
@@ -157,7 +177,16 @@ func ApprovedDocument(client, sessionID, kind, text string) (Document, error) {
 // Scan reads only known JSONL shapes. Unknown records and content types are
 // deliberately ignored, so a client format change fails closed.
 func Scan(ctx context.Context, db *sql.DB, home string) (ScanResult, error) {
-	return scan(ctx, db, home,
+	return ScanWithOptions(ctx, db, home, ScanOptions{})
+}
+
+// ScanWithOptions reads known session sources with optional aggregate progress reporting.
+func ScanWithOptions(ctx context.Context, db *sql.DB, home string, options ScanOptions) (ScanResult, error) {
+	if options.Progress != nil {
+		options.Progress.Start()
+		defer options.Progress.Stop()
+	}
+	return scan(ctx, db, home, options.Progress,
 		func(src source) (bool, int, error) {
 			return scanSource(ctx, db, src)
 		},
@@ -171,6 +200,7 @@ func scan(
 	ctx context.Context,
 	executor sessionExecutor,
 	home string,
+	progress ScanProgressReporter,
 	scanOne func(source) (bool, int, error),
 	removeMissing func(map[string]bool) error,
 ) (ScanResult, error) {
@@ -207,18 +237,27 @@ func scan(
 		return paths[i].path < paths[j].path
 	})
 	result := ScanResult{}
+	progressDocuments := 0
+	if progress != nil {
+		progress.Update(ScanProgress{Total: len(paths)})
+	}
 	seen := make(map[string]bool, len(paths))
-	for _, p := range paths {
+	for index, p := range paths {
 		seen[filepath.Clean(p.path)] = true
-		changed, _, err := scanOne(p)
+		changed, documents, err := scanOne(p)
 		if err != nil {
 			return result, err
 		}
 		if !changed {
 			result.Skipped++
-			continue
+		} else {
+			result.Sources++
+			result.Documents += documents
+			progressDocuments += documents
 		}
-		result.Sources++
+		if progress != nil {
+			progress.Update(ScanProgress{Processed: index + 1, Total: len(paths), Documents: progressDocuments, Skipped: result.Skipped})
+		}
 	}
 	if err = removeMissing(seen); err != nil {
 		return result, err
@@ -228,6 +267,9 @@ func scan(
 		return result, err
 	}
 	result.Documents, result.Removed = visibleDocumentChanges(before, after)
+	if progress != nil {
+		progress.Update(ScanProgress{Processed: len(paths), Total: len(paths), Documents: progressDocuments, Skipped: result.Skipped})
+	}
 	return result, nil
 }
 
@@ -1067,6 +1109,15 @@ func excluded(ctx context.Context, executor sessionExecutor, m Metadata) (bool, 
 	return false, rows.Err()
 }
 func Rebuild(ctx context.Context, db *sql.DB, home string) (ScanResult, error) {
+	return RebuildWithOptions(ctx, db, home, ScanOptions{})
+}
+
+// RebuildWithOptions replaces the rebuildable session index with optional aggregate progress reporting.
+func RebuildWithOptions(ctx context.Context, db *sql.DB, home string, options ScanOptions) (ScanResult, error) {
+	if options.Progress != nil {
+		options.Progress.Start()
+		defer options.Progress.Stop()
+	}
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return ScanResult{}, err
@@ -1075,7 +1126,7 @@ func Rebuild(ctx context.Context, db *sql.DB, home string) (ScanResult, error) {
 	if _, err = tx.ExecContext(ctx, "DELETE FROM session_documents; DELETE FROM session_metadata; DELETE FROM session_sources"); err != nil {
 		return ScanResult{}, err
 	}
-	result, err := scan(ctx, tx, home,
+	result, err := scan(ctx, tx, home, options.Progress,
 		func(src source) (bool, int, error) {
 			return scanSourceExec(ctx, tx, src)
 		},
