@@ -343,7 +343,7 @@ credential path, so no task routes to L3 on data risk alone.
 
 | Task | Dev | Review |
 | --- | --- | --- |
-| 1. `usage-render-primitives` | [ ] | [ ] |
+| 1. `usage-render-primitives` | [x] | [x] |
 | 2. `usage-bar-and-detail-semantics` | [ ] | [ ] |
 | 3. `usage-stats-layout` | [ ] | [ ] |
 | 4. `usage-family-alignment` | [ ] | [ ] |

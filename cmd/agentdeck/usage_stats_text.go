@@ -4,13 +4,11 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"os"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/mattn/go-runewidth"
-	"golang.org/x/term"
 
 	"github.com/kitdine/agent-deck/internal/usage"
 )
@@ -91,7 +89,7 @@ func (r statsTextRenderer) statsTrendLabelValueWidths() (labelWidth, valueWidth 
 func (r statsTextRenderer) statsTwoColumnFits() bool {
 	labelWidth, valueWidth := r.statsTrendLabelValueWidths()
 	trendMinWidth := labelWidth + 2 + statsTrendMinBarWidth + 2 + valueWidth
-	return r.width-4 >= statsRankingMinWidth+trendMinWidth
+	return usageResponsiveTableFits(r.width, 4, trendMinWidth, statsRankingMinWidth)
 }
 
 // statsTwoColumnWidths splits the two-column layout's available inner width
@@ -104,10 +102,7 @@ func (r statsTextRenderer) statsTwoColumnFits() bool {
 // both minimums and does not itself protect trend from being squeezed below
 // statsTrendMinWidth.
 func statsTwoColumnWidths(width int) (leftWidth, rightWidth int) {
-	inner := width - 4
-	rightWidth = max(statsRankingMinWidth, inner*2/5)
-	leftWidth = inner - rightWidth
-	return leftWidth, rightWidth
+	return usageResponsiveTableWidths(width, 4, statsRankingMinWidth)
 }
 
 // statsTopN returns the leading limit items of items, in their existing
@@ -160,24 +155,8 @@ type usageTextRenderOptions struct {
 }
 
 func newUsageTextRenderOptions(w io.Writer, noColor bool) usageTextRenderOptions {
-	width := statsDefaultWidth
-	terminal := false
-	if file, ok := w.(*os.File); ok {
-		terminal = term.IsTerminal(int(file.Fd()))
-		if terminal {
-			if columns, _, err := term.GetSize(int(file.Fd())); err == nil && columns > 0 {
-				width = columns
-			}
-		}
-	}
-	if raw := os.Getenv("COLUMNS"); raw != "" {
-		if columns, err := strconv.Atoi(raw); err == nil && columns > 0 {
-			width = columns
-		}
-	}
-	width = min(max(width, statsMinWidth), statsMaxWidth)
-	color := terminal && !noColor && os.Getenv("NO_COLOR") == "" && os.Getenv("TERM") != "dumb"
-	return usageTextRenderOptions{width: width, color: color}
+	primitives := newUsageTextPrimitives(w, noColor)
+	return usageTextRenderOptions{width: primitives.width, color: primitives.color}
 }
 
 func renderUsageStats(w io.Writer, report usage.StatsReport) error {
@@ -226,7 +205,7 @@ func (r statsTextRenderer) render() string {
 	out.WriteByte('\n')
 	if r.statsTwoColumnFits() {
 		leftWidth, rightWidth := statsTwoColumnWidths(r.width)
-		for _, line := range joinStatsColumns(r.trendLines(leftWidth), leftWidth, r.rankingLines(rightWidth), rightWidth, 4) {
+		for _, line := range usageJoinColumns(r.trendLines(leftWidth), leftWidth, r.rankingLines(rightWidth), rightWidth, 4) {
 			out.WriteString(line)
 			out.WriteByte('\n')
 		}
@@ -357,7 +336,7 @@ func (r statsTextRenderer) trendLines(width int) []string {
 	for index := range buckets {
 		label := labels[index]
 		filled := scaledBar(values[index], maximum, barWidth)
-		bar := r.style(strings.Repeat("█", filled), "34") + strings.Repeat("░", barWidth-filled)
+		bar := r.barTrack(filled, barWidth, "34")
 		lines = append(lines, statsPad(label, labelWidth)+"  "+bar+"  "+statsPadLeft(valueLabels[index], valueWidth))
 	}
 	if total == 0 {
@@ -407,7 +386,7 @@ func (r statsTextRenderer) rankingLines(width int) []string {
 		model := shownModels[index]
 		name := statsFit(model.Name, nameWidth)
 		filled := scaledBar(shares[index], maximum, barWidth)
-		bar := r.style(strings.Repeat("█", filled), "35") + strings.Repeat("░", barWidth-filled)
+		bar := r.barTrack(filled, barWidth, "35")
 		lines = append(lines, statsPad(name, nameWidth)+" "+bar+" "+statsPadLeft(shareLabels[index], shareWidth))
 		cost := compactCost(model.ProviderCost, model.KnownProviderCost, knownCostAvailable(model.ProviderCost, model.KnownProviderCost, model.Coverage))
 		detail := fmt.Sprintf("%s tokens · %s · %s · %s · %s sessions", compactNumber(float64(model.Tokens)), shareLabels[index], cost, modelPricingStatus(model), groupedInt(model.Sessions))
@@ -447,7 +426,7 @@ func (r statsTextRenderer) rankingLines(width int) []string {
 		shareWidth := max(6, statsVisibleWidth(shareLabel))
 		barWidth := min(40, max(8, width-nameWidth-shareWidth-3))
 		filled := scaledBar(share, 100, barWidth)
-		bar := r.style(strings.Repeat("█", filled), "36") + strings.Repeat("░", barWidth-filled)
+		bar := r.barTrack(filled, barWidth, "36")
 		lines = append(lines, statsPad(statsTitle(client.Name), nameWidth)+" "+bar+" "+statsPadLeft(shareLabel, shareWidth))
 	}
 	providerLabel := "PROVIDERS"
@@ -472,7 +451,7 @@ func (r statsTextRenderer) rankingLines(width int) []string {
 		shareWidth := max(6, statsVisibleWidth(shareLabel))
 		barWidth := min(36, max(6, width-nameWidth-shareWidth-3))
 		filled := scaledBar(share, 100, barWidth)
-		bar := r.style(strings.Repeat("█", filled), "34") + strings.Repeat("░", barWidth-filled)
+		bar := r.barTrack(filled, barWidth, "34")
 		name := statsTitle(provider.Client) + "/" + provider.Name
 		lines = append(lines, statsPad(statsFit(name, nameWidth), nameWidth)+" "+bar+" "+statsPadLeft(shareLabel, shareWidth))
 		cost := compactCost(provider.ProviderCost, provider.KnownProviderCost, knownCostAvailable(provider.ProviderCost, provider.KnownProviderCost, provider.Coverage))
@@ -683,8 +662,15 @@ func (r statsTextRenderer) activityLines() []string {
 }
 
 func (r statsTextRenderer) sectionTitle(label string, width int, color string) string {
-	plain := label + " "
-	return r.style(label, color) + " " + strings.Repeat("─", max(0, width-runewidth.StringWidth(plain)))
+	return r.textPrimitives().sectionTitle(label, width, color)
+}
+
+func (r statsTextRenderer) textPrimitives() usageTextPrimitives {
+	return usageTextPrimitives{width: r.width, color: r.color}
+}
+
+func (r statsTextRenderer) barTrack(filled, width int, color string) string {
+	return r.textPrimitives().barTrack(filled, width, color)
 }
 
 func (r statsTextRenderer) hasPartialCost() bool {
@@ -700,26 +686,7 @@ func (r statsTextRenderer) hasKnownProviderCost() bool {
 }
 
 func (r statsTextRenderer) style(value, code string) string {
-	if !r.color || value == "" {
-		return value
-	}
-	return "\x1b[" + code + "m" + value + "\x1b[0m"
-}
-
-func joinStatsColumns(left []string, leftWidth int, right []string, rightWidth, gap int) []string {
-	count := max(len(left), len(right))
-	lines := make([]string, 0, count)
-	for index := 0; index < count; index++ {
-		leftLine, rightLine := "", ""
-		if index < len(left) {
-			leftLine = left[index]
-		}
-		if index < len(right) {
-			rightLine = right[index]
-		}
-		lines = append(lines, strings.TrimRight(statsPad(leftLine, leftWidth)+strings.Repeat(" ", gap)+statsFit(rightLine, rightWidth), " "))
-	}
-	return lines
+	return r.textPrimitives().style(value, code)
 }
 
 func compactStatsDate(value string) string {

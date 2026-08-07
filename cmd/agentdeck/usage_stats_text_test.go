@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -16,7 +17,7 @@ import (
 
 func TestUsageStatsBalancedTextLayout(t *testing.T) {
 	report := usageStatsTextFixture()
-	for _, width := range []int{48, 72, 100, 140} {
+	for _, width := range []int{48, 60, 72, 100, 140, 160} {
 		t.Run(groupedInt(int64(width))+" columns", func(t *testing.T) {
 			var output bytes.Buffer
 			if err := renderUsageStatsWithOptions(&output, report, usageTextRenderOptions{width: width}); err != nil {
@@ -937,6 +938,30 @@ func TestUsageStatsBalancedGolden(t *testing.T) {
 	}
 	if output.String() != string(expected) {
 		t.Fatalf("balanced stats output changed\n--- want ---\n%s\n--- got ---\n%s", expected, output.String())
+	}
+}
+
+func TestUsageStatsBalancedBaselinesAtFixtureWidths(t *testing.T) {
+	// These hashes were emitted from the unmodified HEAD renderer before the
+	// usage-text primitive extraction. They make the Task 1 refactor contract
+	// byte-exact at every documented fixture width.
+	baselines := map[int]string{
+		48:  "7baddc9cb22bbcae2129d9230cfd337e54f938927516ba3bf9d6df2a3fc94029",
+		60:  "581e49be9be9d9f81efe7131509be24fd1157740f96c22cac8356e9eb8708e2d",
+		100: "df050a2f60ac3b256195f9c4436575ae0c39ce2a67c74cace4c24b7c3e9ce4d4",
+		140: "4b431f17513e172aa5a4d003def78c36ac562b8a49779221dc06c29b5d46a915",
+		160: "e246c42cc138ba1373c653a68bb24077fd4979fe51f0d09a201937dd47d83ae3",
+	}
+	for _, width := range []int{48, 60, 100, 140, 160} {
+		t.Run(fmt.Sprintf("%d columns", width), func(t *testing.T) {
+			var output bytes.Buffer
+			if err := renderUsageStatsWithOptions(&output, usageStatsTextFixture(), usageTextRenderOptions{width: width}); err != nil {
+				t.Fatal(err)
+			}
+			if got := fmt.Sprintf("%x", sha256.Sum256(output.Bytes())); got != baselines[width] {
+				t.Fatalf("%d-column baseline = %s, want %s", width, got, baselines[width])
+			}
+		})
 	}
 }
 
