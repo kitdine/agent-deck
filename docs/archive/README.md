@@ -5,7 +5,7 @@ created: 2026-07-22
 
 # Archived Documents
 
-Last updated: 2026-08-03
+Last updated: 2026-08-06
 
 ## Why this directory exists
 
@@ -30,6 +30,16 @@ Move a document here instead of leaving it `active` in `docs/plans/` or
   conclusions have already been absorbed into a living document.
 - Leaving it in the main `docs/` tree risks being mistaken for the current
   source of truth.
+
+## 2026-08-06 retirement: session experience
+
+`plans/session-experience.md` and `reviews/session-experience/` retired together
+after all six tasks passed independent review. The plan delivered normalized
+session document time, aggregate scan progress, invocation usage detail,
+sectioned `session show`, the interactive viewer, and the desktop-facing session
+DTO boundary. The active behavior now lives in `docs/specs/cli-design.md` and
+`docs/specs/cli-manual.md`; release versioning remains owned by the separate
+`v0.4.0` release plan.
 
 ## 2026-08-04 retirement: `v0.3.0` plan batch
 

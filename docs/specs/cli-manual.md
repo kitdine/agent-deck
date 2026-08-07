@@ -614,10 +614,10 @@ provenance。
 
 | 命令 | 含义与典型用例 | 参数与 Flags | 必填规则 | 示例 |
 | --- | --- | --- | --- | --- |
-| `session scan` | 增量建立可清除的 session 搜索索引 | 无 | 无 | `agentdeck session scan` |
+| `session scan` | 增量建立可清除的 session 搜索索引；启用时在 stderr 报告聚合进度 | 无 | 无 | `agentdeck session scan` |
 | `session list` | 列出索引中的 sessions | `--client codex\|claude`；`--page`、`--limit`、`--all` | 无 | `agentdeck session list --client codex --page 2` |
 | `session search <query>` | 搜索 approved visible session text | `query`：搜索文本；`--client`：可选过滤；`--page`、`--limit`、`--all` | `query` 必填 | `agentdeck session search "provider timeout" --client codex --page 2` |
-| `session show <session-id>` | 显示一个 session；可按需读取安全 activity/tool 元数据 | `--client codex\|claude`、`--activity`、`--page`、`--limit`、`--all` | `session-id` 必填；跨 client 冲突时 `--client` 条件必填 | `agentdeck session show 019abc --client codex --activity --page 2` |
+| `session show <session-id>` | 分区显示一个 session；可按需读取安全 activity/tool 元数据或 normalized invocation usage | `--client codex\|claude`、`--activity`、`--tokens`、`--interactive`、`--page`、`--limit`、`--all` | `session-id` 必填；跨 client 冲突时 `--client` 条件必填 | `agentdeck session show 019abc --client codex --tokens --page 2` |
 | `session exclude` | 持久化索引排除规则 | `--kind project\|path\|session\|client`；`--value <value>` | 两个 flags 均必填 | `agentdeck session exclude --kind client --value claude` |
 | `session rebuild` | 重建 purgeable index，不删除源日志 | 无 | 无 | `agentdeck session rebuild` |
 | `session purge-index` | 删除 sessions.sqlite3，不删除源日志或 core DB | 无 | 无 | `agentdeck session purge-index` |
@@ -633,6 +633,29 @@ Claude 时返回歧义错误并要求 `--client`。Session 与 credential 的 `-
 `event_at`。可解析时间按时间倒序排列，缺少或无法解析的时间稳定排在其后；text
 输出使用本地时区显示时间，`event_at` 为空时显示 `—`。显式使用分页 flags 时，JSON
 输出在 `documents` 下返回该页内容，并在 `pagination.search` 中返回分页元数据。
+
+`session scan` 和 `session rebuild` 的进度始终写入 stderr，因此 JSON stdout
+保持可机读。启用时只报告 source file processed/total、approved document 和
+skipped 的聚合计数；不输出 source path 或 source content，`--quiet` 会抑制它。
+
+`session show` 始终显示 SESSION metadata 与 DOCUMENTS。`--activity` 增加既有
+安全 activity aggregate/detail section。`--tokens` 增加完整 normalized usage
+summary 和按时间排序的 invocation rows；显式分页时 JSON 返回
+`pagination.invocations`。token 保持整数，price 保持 decimal string 或
+unavailable。pricing/attribution warning 位于 `data.usage.warnings`，每条
+invocation 的 warning 位于 `data.invocations[].warnings`；顶层 envelope 的
+`warnings` 与 `partial` 只表示 command-level state，不能替代这两组 usage warning。
+
+`session show --interactive` 打开只读 TTY viewer，其中包含 OVERVIEW、DOCUMENTS、
+ACTIVITY 和 TOKENS section，以及各 section 独立的 lazy page state。它要求 text
+output 和 TTY stdin/stdout，且不能与 `--activity`、`--tokens`、`--page`、`--limit`
+或 `--all` 同时使用。自动化和 desktop 消费应使用普通 `--format json` command；
+text 和 interactive viewer 都不是 DTO contract。
+
+v0.5.0 desktop client 可消费 versioned JSON envelope 中有界的 session
+metadata/documents、optional safe activity、optional usage/invocations、named
+pagination、warnings 和 partial state。后续 desktop wire contract 仍必须负责一个
+coherent snapshot、wire version 和 Go-owned redaction，而不是解析 CLI text。
 
 ## Extension
 

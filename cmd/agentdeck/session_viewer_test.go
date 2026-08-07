@@ -96,6 +96,15 @@ func TestReadSessionViewerKeyHonorsCancellationWithoutReadingInput(t *testing.T)
 	}
 }
 
+func TestSessionViewerEscapeWinsOverResize(t *testing.T) {
+	if sessionViewerShouldRedrawAfterRead("escape", true) {
+		t.Fatal("recognized Escape was discarded for resize")
+	}
+	if !sessionViewerShouldRedrawAfterRead("", true) {
+		t.Fatal("resize without a recognized key did not request redraw")
+	}
+}
+
 func TestRenderSessionViewerKeepsSelectionInViewport(t *testing.T) {
 	state := newSessionViewerState(func(_ context.Context, _ sessionViewerSection, page, _ int) (sessionViewerPage, error) {
 		return sessionViewerPage{Page: page, Total: 10, Lines: []string{"0", "1", "2", "3", "4", "5", "6", "7", "8", "9"}}, nil

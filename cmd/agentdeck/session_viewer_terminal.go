@@ -48,7 +48,7 @@ func runSessionViewer(ctx context.Context, input, output *os.File, load sessionV
 		if err != nil {
 			return err
 		}
-		if resizedDuringRead {
+		if sessionViewerShouldRedrawAfterRead(key, resizedDuringRead) {
 			continue
 		}
 		reload, exit := viewer.apply(key)
@@ -61,6 +61,12 @@ func runSessionViewer(ctx context.Context, input, output *os.File, load sessionV
 			}
 		}
 	}
+}
+
+// sessionViewerShouldRedrawAfterRead preserves an already recognized Escape
+// when a resize arrives during its ambiguity lookahead.
+func sessionViewerShouldRedrawAfterRead(key string, resizedDuringRead bool) bool {
+	return resizedDuringRead && key != "escape"
 }
 
 func readSessionViewerKey(ctx context.Context, input *os.File, resized <-chan os.Signal) (string, bool, error) {

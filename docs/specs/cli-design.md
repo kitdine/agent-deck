@@ -1591,6 +1591,47 @@ an optional top-level `pagination` object keyed by collection (`sessions`,
 has-more, and next-page values. The additive pagination metadata never contains
 source paths or session content.
 
+### Session Experience Contract
+
+Each `session search` document carries its own normalized UTC `event_at`.
+Search orders parseable instants newest first, then keeps missing or invalid
+instants in stable source order; text renders parseable instants in the
+process display zone and renders absent or invalid values as `—`.
+
+`session scan` and `session rebuild` may report aggregate progress on stderr:
+processed and total source-file counts, approved-document count, and skipped
+source count. Progress never names a source or includes source content, stays
+off stdout so JSON remains machine-readable, and `--quiet` suppresses it.
+
+Non-interactive `session show` is a bounded, sectioned read view. It always
+renders metadata and approved `DOCUMENTS`; `--activity` adds only the existing
+safe activity aggregate and detail collection, and `--tokens` adds complete
+normalized `usage` plus chronologically ordered invocation rows with their
+token components, pricing completeness, warnings, and invocation pagination.
+Explicit `--page`/`--limit` pagination is represented by the named collection
+in JSON (`documents`, `activity`, or `invocations`); without explicit paging,
+JSON retains the complete collection for compatibility.
+
+`session show --interactive` is a read-only terminal view with independent
+OVERVIEW, DOCUMENTS, ACTIVITY, and TOKENS pages. It requires text output and
+TTY stdin/stdout, and is mutually exclusive with `--activity`, `--tokens`,
+`--page`, `--limit`, and `--all`. It is a human interface, not a JSON or
+desktop-wire surface.
+
+The v0.4.0 desktop-facing session DTO boundary is the normal versioned JSON
+envelope and its `data`: session metadata and approved documents; optional
+safe activity summary/detail; optional complete usage summary and normalized
+invocations; named pagination; and envelope `warnings`/`partial` semantics.
+Usage pricing and attribution warnings belong to `data.usage.warnings`; each
+normalized invocation carries its own `data.invocations[].warnings`. Top-level
+envelope `warnings` and `partial` remain command-level state and do not replace
+either usage-level warning collection. Timestamps are UTC RFC 3339 strings,
+token values are integers, and monetary values are decimal strings or
+unavailable. A v0.5.0 desktop client can consume these bounded DTOs as its
+session dependency, but its later wire-contract task must still define the
+coherent desktop snapshot, wire version, and Go-owned redaction; it must not
+parse text or interactive rendering.
+
 ## Extension Management
 
 Codex and Claude native configuration remains authoritative. AgentDeck adapters

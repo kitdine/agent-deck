@@ -37,7 +37,9 @@ not rewritten; `v0.4.0` and `v0.5.0` are corrected here.
 
 `v0.4.0` carries two independent feature lines:
 
-- [session experience](session-experience.md) — six tasks;
+- session experience — six tasks complete, with its contract absorbed into
+  [the CLI design](../specs/cli-design.md) and
+  [manual](../specs/cli-manual.md);
 - [usage report presentation](usage-report-presentation.md) — six tasks.
 
 Each writes its own feature contract text. This plan reconciles the result,

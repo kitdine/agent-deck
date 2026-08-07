@@ -419,9 +419,9 @@ The first prioritizes visible `session scan` progress, a defined instant in
 `session search`, a redesigned human-facing `session show`, invocation-level
 token and cost detail, and an interactive session viewer. The same work must
 leave bounded, stable DTO and JSON contracts suitable for the native desktop
-client. These Backlog items are now owned by the active
-[session experience plan](plans/session-experience.md), which defines six
-implementation and review gates.
+client. This six-task line is now delivered and independently reviewed; its
+current behavior is absorbed into the living CLI design and manual, while the
+historical execution record is summarized by the archive index.
 
 The second redesigns how the `usage` report family presents what it already
 computes, across `usage stats`, `usage summary`, `usage sessions`, and
@@ -496,7 +496,6 @@ fixing a defect, which is why it is a contract change recorded by the single
 | --- | --- |
 | [specs/cli-design.md](specs/cli-design.md) | What the system does and must keep doing: provider, credential, usage, pricing, session, backup, and distribution behavior. Currently version 23; see its changelog. |
 | [specs/cli-manual.md](specs/cli-manual.md) | The implemented command surface, flags, and output shapes. |
-| [plans/session-experience.md](plans/session-experience.md) | Active — 5/6 done. Session search time, scan progress, invocation usage, readable show output, interactive viewing, and desktop DTO readiness for `v0.4.0`. |
 | [plans/usage-report-presentation.md](plans/usage-report-presentation.md) | Active — 0/6 done. Shared render primitives, bar and detail semantics, stats layout, family alignment, interactive viewing, and contract text for `v0.4.0`. |
 | [plans/v0-4-0-release.md](plans/v0-4-0-release.md) | Active — 0/3 done. Release plan, not a feature plan: the single `v0.4.0` specification raise, the release candidate, and release notes. Blocked until both `v0.4.0` feature plans are fully reviewed. |
 | [plans/desktop-app.md](plans/desktop-app.md) | Active — 0/6 done. Native macOS 26 menu-bar app, WidgetKit extension, unified desktop package, Cask, direct download, and its own contract task for `v0.5.0`. |
