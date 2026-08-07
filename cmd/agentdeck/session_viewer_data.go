@@ -57,7 +57,7 @@ func newSessionViewerLoad(ctx context.Context, database *store.Store, metadata s
 			if err != nil {
 				return sessionViewerPage{Page: page, Warning: "Token data is unavailable.", Partial: true}, nil
 			}
-			lines := []string{fmt.Sprintf("input: %d · output: %d", summary.Tokens["input"], summary.Tokens["output"])}
+			lines := []string{fmt.Sprintf("input: %d · output: %d", summary.Tokens["input_tokens"], summary.Tokens["output_tokens"])}
 			for _, invocation := range invocations {
 				lines = append(lines, fmt.Sprintf("%d %s %s", invocation.Sequence, renderDisplayTime(invocation.EventAt), invocation.Model))
 			}

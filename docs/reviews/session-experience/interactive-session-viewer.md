@@ -129,3 +129,81 @@ Round 1 的三项阻断均已关闭，没有仍开放、回归或新增的阻断
 `GOCACHE=/private/tmp/agent-deck-go-build go test -mod=vendor ./...`，两者均通过。
 PTY 验收受当前 macOS-first 支持边界约束，Darwin 之外未在本轮执行真实 PTY；这不影响
 当前任务合同。综合判定 `PASS`。
+
+## 📋 Round 3 评审 — session-experience / interactive-session-viewer
+
+### 📊 总体评分：7/10
+
+### ✅ 结论：FAIL
+
+### 🔴 严重问题（必须修复）
+
+#### [`cmd/agentdeck/session_viewer_data.go:60`] TOKENS 页面读取了未标准化的汇总键，真实会话显示为 0/0
+
+- 行为风险：`session show --tokens` 已返回 `input_tokens=120`、`output_tokens=30`，但交互 TOKENS 页面读取 `summary.Tokens["input"]` 和 `["output"]`。这两个键在当前标准化汇总中不存在，导致用户在交互模式看到 `input: 0 · output: 0`，与同一会话的非交互输出相矛盾。
+- 证据：真实 Codex JSONL sandbox 验收显示 JSON `session show --tokens` 为 120/30；真实 PTY 的 TOKENS 页面为 0/0。当前源码第 60 行直接访问旧键。对 `newSessionViewerLoad` / `viewerTokens` / `input: ` / `SessionUsageSummary` 的现有 `cmd/agentdeck/*test.go` 检索未发现覆盖这个适配路径的回归断言。
+
+💡 修复建议：仅将交互汇总改为读取与 `session show --tokens` 相同的标准化 `input_tokens` 和 `output_tokens` 键；增加一个由真实标准化 summary 驱动的 `newSessionViewerLoad(..., viewerTokens, ...)` 测试，断言首行显示非零 input/output totals，且缺失 token 数据仍保持现有的 partial/warning 行为。
+
+### 🟡 建议改进（推荐）
+
+无。
+
+### 🟢 优点
+
+- Round 2 关闭的终端输入、viewport、resize 和 raw-mode cleanup 保护仍与本轮 finding 无关；本轮未发现这些行为回退的证据。
+- TOKENS 页面继续通过既有 bounded usage service 获取数据，修复可以局限在展示层和其定向测试。
+
+### 📝 摘要
+
+- Reviewed content identity：HEAD `319e665e033646aa897ec9d9532c3e10db78188c`（`feat: add interactive session viewer`），工作树在评审开始时干净。
+- Verdict rationale：真实场景已经证实 TOKENS 汇总与 `session show --tokens` 的规范化 totals 不一致；这是 task 明确承诺的 TOKENS summary 行为，故本轮为 `FAIL`。
+- Evidence：当前源码、真实 Codex JSONL sandbox 的 JSON 与 PTY 验收，以及 test-path 检索。该 finding 已有决定性 reproducer，未重复无关的全仓 L3 验证。
+- Residual uncertainty：修复后仍须在同一真实 JSONL/PTY 路径确认 120/30（或等价 fixture totals）一致，并执行新增定向测试；Round 2 的终端生命周期证据可在未改动相关文件时复用。
+- 状态同步：Dev `[x]`、Review `[ ]`；`docs/README.md` 回退为 `4/6 done`。
+
+### 🛠 修复指令
+
+```text
+根据评审修改：session-experience / interactive-session-viewer
+```
+
+只修复 TOKENS 汇总适配：在 `cmd/agentdeck/session_viewer_data.go` 中改用标准化 `input_tokens` / `output_tokens` totals，并为 `newSessionViewerLoad` 的 `viewerTokens` 分支添加回归覆盖。保持 `--interactive` 的 TTY/JSON 拒绝、terminal/PTY 生命周期、分页、usage reader、JSON 输出契约和依赖边界不变。完成后以真实 Codex JSONL sandbox 同时核对 `session show --tokens` 与 PTY TOKENS 页面，并运行受影响的 Go 测试；不要提交、推送或变更其他 task。
+
+## 📋 Round 4 复评 — session-experience / interactive-session-viewer
+
+### 📊 总体评分：9/10
+
+### ✅ 结论：PASS
+
+### 🔴 严重问题（必须修复）
+
+无。
+
+### 🟡 建议改进（推荐）
+
+无。
+
+### 🟢 优点
+
+- 已关闭 Round 3 `token-summary-contract`：TOKENS 汇总改用标准化
+  `input_tokens` / `output_tokens`，与非交互 `session show --tokens` 共用同一
+  `SessionUsageSummary` 合同。
+- 新增回归测试通过真实临时 store、bundled price catalog 和 usage service 注入
+  `120/30`，直接断言 `viewerTokens` 首行显示 `input: 120 · output: 30`。
+- 编译后的候选二进制在隔离 HOME/state-dir 中扫描真实 Codex JSONL 协议形状，JSON
+  totals 与真实 PTY TOKENS 页面均为 `120/30`；独立 Escape 以 0 退出并恢复光标。
+
+### 📝 摘要
+
+- Finding disposition：Round 3 唯一阻断已关闭；没有仍开放、回归或新增的阻断 finding。
+- Reviewed content identity：HEAD `319e665e033646aa897ec9d9532c3e10db78188c` 加代码/测试
+  SHA-256 manifest `9b195ba8a62ba41c86287a09cdcf75127bb3e0d8d7d146e61ce051d3084f2088`。
+- Evidence：`TestSessionViewerTokensUseNormalizedSummaryTotals` 定向测试通过；修复阶段的
+  `SessionViewer` 普通与 race 定向测试继续有效；本轮编译后二进制 sandbox 的 session/usage
+  scan、JSON `session show --tokens`、真实 PTY TOKENS 与独立 Escape 验收均通过。
+- Residual uncertainty：真实场景使用完全隔离的合成 Codex 数据，未读取真实用户会话，且
+  未另建 Claude fixture；两客户端经过同一标准化 summary/viewer 适配路径，因此不构成当前
+  task 的阻断。
+- Verdict rationale：用户可见的汇总与明细现已一致，Round 3 reproducer 无法复现；综合判定
+  `PASS`。
