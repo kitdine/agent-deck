@@ -42,7 +42,7 @@ func TestUsageStatsTextReportsWrapperRouteOnlyWhenOneCarriedEvents(t *testing.T)
 
 	// The annotation is additive: removing it recovers the original rendering,
 	// so no existing line moved or changed to make room for it.
-	if strings.ReplaceAll(withRoute, " · 1 via wrapper", "") != withoutRoute {
+	if strings.ReplaceAll(withRoute, "\n↳ 1 via wrapper", "") != withoutRoute {
 		t.Fatalf("route annotation changed the surrounding rendering:\nwith:\n%s\nwithout:\n%s", withRoute, withoutRoute)
 	}
 }

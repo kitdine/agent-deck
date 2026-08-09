@@ -310,7 +310,6 @@ func (r statsTextRenderer) kpiLines() []string {
 
 func (r statsTextRenderer) trendLines(width int) []string {
 	metricLabel := strings.ToUpper(r.report.Metric)
-	lines := []string{r.sectionTitle("🗓 TREND · "+metricLabel, width, "1;34")}
 	total := len(r.report.Buckets)
 	omitted := 0
 	buckets := r.report.Buckets
@@ -330,6 +329,11 @@ func (r statsTextRenderer) trendLines(width int) []string {
 		}
 		maximum = math.Max(maximum, values[index])
 	}
+	peakLabel := compactMetric(maximum, r.report.Metric)
+	if r.report.Metric == "cost" && !r.hasKnownProviderCost() {
+		peakLabel = "unavailable"
+	}
+	lines := []string{r.sectionTitle("🗓 TREND · "+metricLabel+" · PEAK "+peakLabel, width, "1;34")}
 	labelWidth, valueWidth := r.statsTrendLabelValueWidths()
 	labelWidth = min(labelWidth, max(statsTrendDefaultLabelWidth, width-valueWidth-12))
 	barWidth := min(52, max(statsTrendMinBarWidth, width-labelWidth-valueWidth-4))
@@ -360,7 +364,6 @@ func (r statsTextRenderer) rankingLines(width int) []string {
 	}
 	lines := []string{r.sectionTitle(rankingLabel, width, "1;35")}
 	shownModels := statsTopN(r.report.Models, r.capFor(statsModelsCap))
-	maximum := float64(0)
 	limit := len(shownModels)
 	shares := make([]float64, limit)
 	shareLabels := make([]string, limit)
@@ -374,8 +377,13 @@ func (r statsTextRenderer) rankingLines(width int) []string {
 				shareLabels[index] = "unavailable"
 			}
 		}
-		maximum = math.Max(maximum, shares[index])
 	}
+	modelDetails := make([][]usageAlignedColumn, limit)
+	for index, model := range shownModels {
+		cost := compactCost(model.ProviderCost, model.KnownProviderCost, knownCostAvailable(model.ProviderCost, model.KnownProviderCost, model.Coverage))
+		modelDetails[index] = dimensionDetailColumns(compactNumber(float64(model.Tokens)), cost, modelPricingStatus(model), groupedInt(model.Sessions))
+	}
+	usageAlignColumnRows(modelDetails)
 	nameWidth := min(23, max(14, width/2))
 	shareWidth := 6
 	for _, label := range shareLabels {
@@ -385,17 +393,14 @@ func (r statsTextRenderer) rankingLines(width int) []string {
 	for index := 0; index < limit; index++ {
 		model := shownModels[index]
 		name := statsFit(model.Name, nameWidth)
-		filled := scaledBar(shares[index], maximum, barWidth)
+		filled := scaledBar(shares[index], 100, barWidth)
 		bar := r.barTrack(filled, barWidth, "35")
 		lines = append(lines, statsPad(name, nameWidth)+" "+bar+" "+statsPadLeft(shareLabels[index], shareWidth))
-		cost := compactCost(model.ProviderCost, model.KnownProviderCost, knownCostAvailable(model.ProviderCost, model.KnownProviderCost, model.Coverage))
-		detail := fmt.Sprintf("%s tokens · %s · %s · %s · %s sessions", compactNumber(float64(model.Tokens)), shareLabels[index], cost, modelPricingStatus(model), groupedInt(model.Sessions))
-		secondaries := []string{groupedInt(modelToolCalls(model)) + " tools"}
+		continuation := []string{groupedInt(modelToolCalls(model)) + " tools"}
 		if model.CacheHitRate != nil && (model.CachedReadTokens > 0 || model.CacheWriteTokens > 0) {
-			secondaries = append(secondaries, *model.CacheHitRate+"% hit")
+			continuation = append(continuation, *model.CacheHitRate+"% hit")
 		}
-		detail = statsCompactDetail(detail, width, secondaries...)
-		for _, detailLine := range statsWrap(detail, width) {
+		for _, detailLine := range r.dimensionDetailLines(width, modelDetails[index], continuation...) {
 			lines = append(lines, r.style(detailLine, "2"))
 		}
 	}
@@ -413,7 +418,13 @@ func (r statsTextRenderer) rankingLines(width int) []string {
 		}
 	}
 	lines = append(lines, "", r.sectionTitle(clientLabel, width, "1;36"))
-	for _, client := range r.report.Clients {
+	clientDetails := make([][]usageAlignedColumn, len(r.report.Clients))
+	for index, client := range r.report.Clients {
+		cost := compactCost(client.ProviderCost, client.KnownProviderCost, knownCostAvailable(client.ProviderCost, client.KnownProviderCost, client.Coverage))
+		clientDetails[index] = dimensionDetailColumns(compactNumber(float64(client.Tokens)), cost, modelPricingStatus(client), groupedInt(client.Sessions))
+	}
+	usageAlignColumnRows(clientDetails)
+	for index, client := range r.report.Clients {
 		share, _ := strconv.ParseFloat(client.KnownShare, 64)
 		shareLabel := formatPercent(share)
 		if r.report.Metric == "cost" {
@@ -428,6 +439,13 @@ func (r statsTextRenderer) rankingLines(width int) []string {
 		filled := scaledBar(share, 100, barWidth)
 		bar := r.barTrack(filled, barWidth, "36")
 		lines = append(lines, statsPad(statsTitle(client.Name), nameWidth)+" "+bar+" "+statsPadLeft(shareLabel, shareWidth))
+		var continuation []string
+		if client.CacheHitRate != nil && (client.CachedReadTokens > 0 || client.CacheWriteTokens > 0) {
+			continuation = append(continuation, *client.CacheHitRate+"% hit")
+		}
+		for _, detailLine := range r.dimensionDetailLines(width, clientDetails[index], continuation...) {
+			lines = append(lines, r.style(detailLine, "2"))
+		}
 	}
 	providerLabel := "PROVIDERS"
 	if r.report.Metric == "cost" {
@@ -440,7 +458,13 @@ func (r statsTextRenderer) rankingLines(width int) []string {
 	}
 	lines = append(lines, "", r.sectionTitle(providerLabel, width, "1;34"))
 	shownProviders := statsTopN(r.report.Providers, r.capFor(statsProvidersCap))
-	for _, provider := range shownProviders {
+	providerDetails := make([][]usageAlignedColumn, len(shownProviders))
+	for index, provider := range shownProviders {
+		cost := compactCost(provider.ProviderCost, provider.KnownProviderCost, knownCostAvailable(provider.ProviderCost, provider.KnownProviderCost, provider.Coverage))
+		providerDetails[index] = dimensionDetailColumns(compactNumber(float64(provider.Tokens)), cost, modelPricingStatus(provider), groupedInt(provider.Sessions))
+	}
+	usageAlignColumnRows(providerDetails)
+	for index, provider := range shownProviders {
 		share, _ := strconv.ParseFloat(provider.KnownShare, 64)
 		shareLabel := formatPercent(share)
 		if r.report.Metric == "cost" && !knownCostAvailable(provider.MetricValue, provider.KnownMetricValue, provider.Coverage) {
@@ -454,21 +478,18 @@ func (r statsTextRenderer) rankingLines(width int) []string {
 		bar := r.barTrack(filled, barWidth, "34")
 		name := statsTitle(provider.Client) + "/" + provider.Name
 		lines = append(lines, statsPad(statsFit(name, nameWidth), nameWidth)+" "+bar+" "+statsPadLeft(shareLabel, shareWidth))
-		cost := compactCost(provider.ProviderCost, provider.KnownProviderCost, knownCostAvailable(provider.ProviderCost, provider.KnownProviderCost, provider.Coverage))
-		detail := fmt.Sprintf("%s tokens · %s · %s · %s · %s sessions", compactNumber(float64(provider.Tokens)), shareLabel, cost, modelPricingStatus(provider), groupedInt(provider.Sessions))
-		var secondaries []string
+		var continuation []string
 		if provider.CacheHitRate != nil && (provider.CachedReadTokens > 0 || provider.CacheWriteTokens > 0) {
-			secondaries = append(secondaries, *provider.CacheHitRate+"% hit")
+			continuation = append(continuation, *provider.CacheHitRate+"% hit")
 		}
 		// The route is reported metadata, so it only ever appends to a row
 		// that already exists, and only when a wrapper actually carried
 		// events. A provider that was never selected through one renders
 		// exactly as before.
 		if provider.WrapperEvents > 0 {
-			secondaries = append(secondaries, groupedInt(provider.WrapperEvents)+" via wrapper")
+			continuation = append(continuation, groupedInt(provider.WrapperEvents)+" via wrapper")
 		}
-		detail = statsCompactDetail(detail, width, secondaries...)
-		for _, detailLine := range statsWrap(detail, width) {
+		for _, detailLine := range r.dimensionDetailLines(width, providerDetails[index], continuation...) {
 			lines = append(lines, r.style(detailLine, "2"))
 		}
 	}
@@ -671,6 +692,25 @@ func (r statsTextRenderer) textPrimitives() usageTextPrimitives {
 
 func (r statsTextRenderer) barTrack(filled, width int, color string) string {
 	return r.textPrimitives().barTrack(filled, width, color)
+}
+
+func dimensionDetailColumns(tokens, cost, status, sessions string) []usageAlignedColumn {
+	return []usageAlignedColumn{
+		usageAlignedColumn{label: "TOKENS", value: tokens, width: 10},
+		usageAlignedColumn{label: "COST", value: cost, width: 12},
+		usageAlignedColumn{label: "STATUS", value: status, width: 9},
+		usageAlignedColumn{label: "SESSIONS", value: sessions, width: 6},
+	}
+}
+
+func (r statsTextRenderer) dimensionDetailLines(width int, columns []usageAlignedColumn, continuation ...string) []string {
+	lines := usageAlignedColumns(width, columns...)
+	for _, value := range continuation {
+		for _, line := range statsWrap("↳ "+value, width) {
+			lines = append(lines, line)
+		}
+	}
+	return lines
 }
 
 func (r statsTextRenderer) hasPartialCost() bool {

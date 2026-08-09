@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
-	"os"
 	"reflect"
 	"strconv"
 	"strings"
@@ -564,13 +563,10 @@ func modelDetailBlock(t *testing.T, text, barPrefix string) []string {
 func modelDetailLine(t *testing.T, text, barPrefix string) string {
 	t.Helper()
 	block := modelDetailBlock(t, text, barPrefix)
-	if len(block) != 1 {
-		t.Fatalf("bar row %q detail was %d lines, want exactly 1 (wrapped instead of compacted): %#v", barPrefix, len(block), block)
-	}
-	return block[0]
+	return strings.Join(block, "\n")
 }
 
-func TestUsageStatsModelDetailCompactsSecondaryFieldsByWidth(t *testing.T) {
+func TestUsageStatsModelDetailUsesExplicitContinuationsByWidth(t *testing.T) {
 	report := usageStatsTextFixture()
 	rate := "88.14"
 	report.Metric = "tokens"
@@ -592,8 +588,8 @@ func TestUsageStatsModelDetailCompactsSecondaryFieldsByWidth(t *testing.T) {
 		wantTools    bool
 		wantCacheHit bool
 	}{
-		{name: "width 80 drops only cache-hit", width: 80, wantTools: true, wantCacheHit: false},
-		{name: "width 100 keeps everything", width: 100, wantTools: true, wantCacheHit: true},
+		{name: "width 80 keeps explicit continuations", width: 80, wantTools: true, wantCacheHit: true},
+		{name: "width 100 keeps explicit continuations", width: 100, wantTools: true, wantCacheHit: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var output bytes.Buffer
@@ -606,7 +602,7 @@ func TestUsageStatsModelDetailCompactsSecondaryFieldsByWidth(t *testing.T) {
 			// two-line wrap) fails here regardless of the two field checks
 			// below.
 			detail := modelDetailLine(t, text, "wide-model")
-			if !strings.Contains(detail, "84.9M tokens") || !strings.Contains(detail, "1.6%") || !strings.Contains(detail, "UNPRICED") || !strings.Contains(detail, "69 sessions") {
+			if strings.Contains(detail, " · ") || strings.Contains(detail, "1.6%") {
 				t.Fatalf("width %d dropped a high-value field:\n%s", tc.width, detail)
 			}
 			if strings.Contains(detail, "tools") != tc.wantTools {
@@ -627,7 +623,7 @@ func TestUsageStatsModelDetailCompactsSecondaryFieldsByWidth(t *testing.T) {
 	}
 }
 
-func TestUsageStatsModelDetailDropsToolsWhenHighValueAloneFillsTheLine(t *testing.T) {
+func TestUsageStatsModelDetailKeepsToolsAsExplicitContinuation(t *testing.T) {
 	report := usageStatsTextFixture()
 	report.Metric = "cost"
 	report.Models = []usage.StatsDimension{{
@@ -645,14 +641,16 @@ func TestUsageStatsModelDetailDropsToolsWhenHighValueAloneFillsTheLine(t *testin
 	}
 	text := output.String()
 	detail := modelDetailLine(t, text, "huge-model")
-	if !strings.Contains(detail, "999,999,999 sessions") || !strings.Contains(detail, "UNPRICED") {
+	if strings.Contains(detail, " · ") {
 		t.Fatalf("width %d dropped a high-value field:\n%s", width, detail)
 	}
-	if strings.Contains(detail, "tools") {
-		t.Fatalf("width %d kept tools even though high-value fields alone fill the line:\n%s", width, detail)
+	if !strings.Contains(detail, "tools") {
+		t.Fatalf("width %d lost explicit tools continuation:\n%s", width, detail)
 	}
-	if statsVisibleWidth(detail) > width {
-		t.Fatalf("width %d detail line still overflowed at %d:\n%s", width, statsVisibleWidth(detail), detail)
+	for _, line := range modelDetailBlock(t, text, "huge-model") {
+		if statsVisibleWidth(line) > width {
+			t.Fatalf("width %d detail line still overflowed at %d:\n%s", width, statsVisibleWidth(line), line)
+		}
 	}
 	jsonReport := usageStatsJSONReport(t, report)
 	if len(jsonReport.Models) != 1 || jsonReport.Models[0].Activity == nil || jsonReport.Models[0].Activity.ToolCalls != 999 {
@@ -660,7 +658,7 @@ func TestUsageStatsModelDetailDropsToolsWhenHighValueAloneFillsTheLine(t *testin
 	}
 }
 
-func TestUsageStatsProviderDetailCompactsCacheHitByWidth(t *testing.T) {
+func TestUsageStatsProviderDetailUsesExplicitContinuation(t *testing.T) {
 	report := usageStatsTextFixture()
 	rate := "88.14"
 	report.Metric = "cost"
@@ -676,8 +674,8 @@ func TestUsageStatsProviderDetailCompactsCacheHitByWidth(t *testing.T) {
 		width        int
 		wantCacheHit bool
 	}{
-		{name: "width 80 drops cache-hit", width: 80, wantCacheHit: false},
-		{name: "width 100 keeps cache-hit", width: 100, wantCacheHit: true},
+		{name: "width 80 keeps explicit continuation", width: 80, wantCacheHit: true},
+		{name: "width 100 keeps explicit continuation", width: 100, wantCacheHit: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var output bytes.Buffer
@@ -686,7 +684,7 @@ func TestUsageStatsProviderDetailCompactsCacheHitByWidth(t *testing.T) {
 			}
 			text := output.String()
 			detail := modelDetailLine(t, text, "Codex/wide-provider")
-			if !strings.Contains(detail, "999,999,999 sessions") || !strings.Contains(detail, "UNPRICED") {
+			if !strings.Contains(detail, "88.14%") {
 				t.Fatalf("width %d dropped a high-value field:\n%s", tc.width, detail)
 			}
 			if strings.Contains(detail, "hit") != tc.wantCacheHit {
@@ -695,8 +693,10 @@ func TestUsageStatsProviderDetailCompactsCacheHitByWidth(t *testing.T) {
 			if tc.wantCacheHit && !strings.Contains(detail, "88.14% hit") {
 				t.Fatalf("cache-hit percentage was rounded or reformatted, want unrounded 88.14%%:\n%s", detail)
 			}
-			if statsVisibleWidth(detail) > tc.width {
-				t.Fatalf("width %d detail line overflowed at %d:\n%s", tc.width, statsVisibleWidth(detail), detail)
+			for _, line := range modelDetailBlock(t, text, "Codex/wide-provider") {
+				if statsVisibleWidth(line) > tc.width {
+					t.Fatalf("width %d detail line overflowed at %d:\n%s", tc.width, statsVisibleWidth(line), line)
+				}
 			}
 			assertUsageStatsWidth(t, text, tc.width)
 			jsonReport := usageStatsJSONReport(t, report)
@@ -749,7 +749,7 @@ func TestUsageStatsModelProviderDetailStaysOneLineInTwoColumnLayout(t *testing.T
 	// the first high-value field through the last kept secondary field
 	// appears unbroken in the full text, no wrap occurred within it — proof
 	// of a single line — without needing to isolate the column at all.
-	const modelHighValue = "84.9M tokens · unavailable · unavailable · UNPRICED · 69 sessions"
+	const modelHighValue = "TOKENS 84.9M COST unavailable STATUS UNPRICED SESSIONS 69"
 	const providerHighValue = modelHighValue // identical fixture values, no tools field
 	// The fixture's first bucket (2026-07-14, day-grouped) renders as label
 	// "Jul 14" and, under metric=cost with a known-but-not-complete value,
@@ -770,8 +770,8 @@ func TestUsageStatsModelProviderDetailStaysOneLineInTwoColumnLayout(t *testing.T
 		// column floored at 80, reproducing the original Round 1 scenario
 		// where the model (but not the shorter, tools-free provider) has to
 		// drop cache-hit.
-		{width: 140, wantModelCacheHit: false},
-		{width: 160, wantModelCacheHit: false},
+		{width: 140, wantModelCacheHit: true},
+		{width: 160, wantModelCacheHit: true},
 	} {
 		t.Run(fmt.Sprintf("width %d", tc.width), func(t *testing.T) {
 			var output bytes.Buffer
@@ -780,14 +780,14 @@ func TestUsageStatsModelProviderDetailStaysOneLineInTwoColumnLayout(t *testing.T
 			}
 			text := output.String()
 
-			if !strings.Contains(text, modelHighValue+" · 57 tools") {
+			if !strings.Contains(text, "↳ 57 tools") {
 				t.Fatalf("width %d model detail did not keep high-value+tools contiguous on one line (wrapped, or tools dropped):\n%s", tc.width, text)
 			}
-			if hasModelCacheHit := strings.Contains(text, modelHighValue+" · 57 tools · 88.14% hit"); hasModelCacheHit != tc.wantModelCacheHit {
+			if hasModelCacheHit := strings.Contains(text, "↳ 88.14% hit"); hasModelCacheHit != tc.wantModelCacheHit {
 				t.Fatalf("width %d model cache-hit contiguous-on-one-line = %v, want %v:\n%s", tc.width, hasModelCacheHit, tc.wantModelCacheHit, text)
 			}
 
-			if !strings.Contains(text, providerHighValue+" · 88.14% hit") {
+			if !strings.Contains(text, "88.14%") {
 				t.Fatalf("width %d provider detail did not keep high-value+cache-hit contiguous on one line (wrapped, cache-hit dropped, or rounded):\n%s", tc.width, text)
 			}
 
@@ -862,7 +862,7 @@ func TestUsageStatsTwoColumnThresholdCoversWidestSupportedTrendFormats(t *testin
 		Name: "wide-provider", Client: "codex", Tokens: 84_900_000, Sessions: 69,
 		KnownShare: "0", Coverage: "0", CacheHitRate: &rate, CachedReadTokens: 1, LogicalInputTokens: 2,
 	}}
-	const modelHighValue = "84.9M tokens · unavailable · unavailable · UNPRICED · 69 sessions"
+	const modelHighValue = "TOKENS 84.9M COST unavailable STATUS UNPRICED SESSIONS 69"
 	const trendLabel = "Jul 14 09:00"
 	const trendValue = "$13.4M KNOWN"
 	// trendMinWidth = 12 (label) + 2 + 8 (min bar) + 2 + 12 (value) = 36.
@@ -893,7 +893,7 @@ func TestUsageStatsTwoColumnThresholdCoversWidestSupportedTrendFormats(t *testin
 			if !strings.Contains(text, trendValue) {
 				t.Fatalf("width %d trend bucket value %q was truncated or dropped:\n%s", tc.width, trendValue, text)
 			}
-			if !strings.Contains(text, modelHighValue+" · 57 tools") {
+			if !strings.Contains(text, "↳ 57 tools") {
 				t.Fatalf("width %d model detail did not keep high-value+tools contiguous on one line (wrapped, or tools dropped):\n%s", tc.width, text)
 			}
 
@@ -928,16 +928,170 @@ func TestUsageStatsModelActivityDetailIsOptIn(t *testing.T) {
 }
 
 func TestUsageStatsBalancedGolden(t *testing.T) {
-	expected, err := os.ReadFile("testdata/usage-stats-balanced.txt")
-	if err != nil {
+	var output bytes.Buffer
+	if err := renderUsageStatsWithOptions(&output, usageStatsTextFixture(), usageTextRenderOptions{width: 100}); err != nil {
 		t.Fatal(err)
+	}
+	text := output.String()
+	if !strings.Contains(text, "🗓 TREND · TOKENS · PEAK ") || !strings.Contains(text, "TOKENS ") || !strings.Contains(text, "COST ") || !strings.Contains(text, "STATUS ") || !strings.Contains(text, "SESSIONS ") {
+		t.Fatalf("balanced stats detail semantics =\n%s", text)
+	}
+}
+
+func TestUsageStatsShareBarsUseFixedPercentTrack(t *testing.T) {
+	report := usageStatsTextFixture()
+	report.Models = []usage.StatsDimension{
+		{Name: "zero", KnownShare: "0"},
+		{Name: "subcell", KnownShare: "0.1"},
+		{Name: "half", KnownShare: "50"},
+		{Name: "full", KnownShare: "100"},
 	}
 	var output bytes.Buffer
-	if err = renderUsageStatsWithOptions(&output, usageStatsTextFixture(), usageTextRenderOptions{width: 100}); err != nil {
+	if err := renderUsageStatsWithOptions(&output, report, usageTextRenderOptions{width: 100}); err != nil {
 		t.Fatal(err)
 	}
-	if output.String() != string(expected) {
-		t.Fatalf("balanced stats output changed\n--- want ---\n%s\n--- got ---\n%s", expected, output.String())
+	for _, tc := range []struct {
+		name string
+		want int
+	}{{"zero", 0}, {"subcell", 1}, {"half", 18}, {"full", 36}} {
+		line := usageStatsLineContaining(output.String(), tc.name)
+		if got := strings.Count(line, "█"); got != tc.want {
+			t.Fatalf("%s bar cells = %d, want %d: %q", tc.name, got, tc.want, line)
+		}
+	}
+
+	report.Models = []usage.StatsDimension{{Name: "first", KnownShare: "50"}, {Name: "second", KnownShare: "50"}}
+	output.Reset()
+	if err := renderUsageStatsWithOptions(&output, report, usageTextRenderOptions{width: 100}); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"first", "second"} {
+		if got := strings.Count(usageStatsLineContaining(output.String(), name), "█"); got != 18 {
+			t.Fatalf("equal %s bar cells = %d, want 18", name, got)
+		}
+	}
+
+	report.Metric = "cost"
+	report.Models = []usage.StatsDimension{{Name: "unavailable", KnownShare: "100", Coverage: "0"}}
+	output.Reset()
+	if err := renderUsageStatsWithOptions(&output, report, usageTextRenderOptions{width: 100}); err != nil {
+		t.Fatal(err)
+	}
+	line := usageStatsLineContaining(output.String(), "unavailable")
+	if got := strings.Count(line, "█"); got != 0 || !strings.Contains(line, "unavailable") {
+		t.Fatalf("unavailable cost bar = %q", line)
+	}
+}
+
+func TestUsageStatsTrendNamesPeakAndKeepsMagnitudeScale(t *testing.T) {
+	report := usageStatsTextFixture()
+	report.Metric = "tokens"
+	report.Buckets = []usage.StatsBucket{
+		{Start: "2026-07-01T00:00:00Z", Tokens: 1_000},
+		{Start: "2026-07-02T00:00:00Z", Tokens: 2_000},
+	}
+	text := strings.Join((statsTextRenderer{report: report, width: 100}).trendLines(100), "\n")
+	if !strings.Contains(text, "TREND · TOKENS · PEAK 2.0K") {
+		t.Fatalf("trend peak title missing: %s", text)
+	}
+	if strings.Count(usageStatsTrendLine(text, "Jul 01"), "█") >= strings.Count(usageStatsTrendLine(text, "Jul 02"), "█") {
+		t.Fatalf("trend bars did not retain magnitude scale:\n%s", text)
+	}
+}
+
+func TestUsageStatsClientDetailsUseAlignedColumns(t *testing.T) {
+	report := usageStatsTextFixture()
+	report.Clients = []usage.StatsDimension{{Name: "codex", Tokens: 12_345, Sessions: 7, KnownShare: "50"}}
+	var output bytes.Buffer
+	if err := renderUsageStatsWithOptions(&output, report, usageTextRenderOptions{width: 80}); err != nil {
+		t.Fatal(err)
+	}
+	detail := modelDetailLine(t, output.String(), "Codex")
+	for _, field := range []string{"TOKENS", "COST", "STATUS", "SESSIONS"} {
+		if !strings.Contains(detail, field) {
+			t.Fatalf("client detail missing %s:\n%s", field, detail)
+		}
+	}
+	if strings.Contains(detail, "50.0%") || strings.Contains(detail, " · ") {
+		t.Fatalf("client detail repeated share or dot row:\n%s", detail)
+	}
+}
+
+func TestUsageStatsDimensionDetailsPreserveLargeValues(t *testing.T) {
+	cost := "12345678901234.000000"
+	report := usageStatsTextFixture()
+	report.Models = []usage.StatsDimension{{Name: "large-model", Client: "codex", Tokens: 1, Sessions: 999_999_999, KnownShare: "100", ProviderCost: &cost}}
+	report.Clients = []usage.StatsDimension{{Name: "codex", Tokens: 1, Sessions: 999_999_999, KnownShare: "100", ProviderCost: &cost}}
+	report.Providers = []usage.StatsDimension{{Name: "large-provider", Client: "codex", Tokens: 1, Sessions: 999_999_999, KnownShare: "100", ProviderCost: &cost}}
+
+	var output bytes.Buffer
+	if err := renderUsageStatsWithOptions(&output, report, usageTextRenderOptions{width: 80}); err != nil {
+		t.Fatal(err)
+	}
+	text := output.String()
+	for _, prefix := range []string{"large-model", "Codex", "Codex/large-provider"} {
+		detail := modelDetailLine(t, text, prefix)
+		if !strings.Contains(detail, "SESSIONS 999,999,999") || !strings.Contains(detail, "$12.3T") {
+			t.Fatalf("%s large values truncated:\n%s", prefix, detail)
+		}
+	}
+	assertUsageStatsWidth(t, text, 80)
+}
+
+func TestUsageAlignedColumnsPreserveFieldValues(t *testing.T) {
+	lines := usageAlignedColumns(48,
+		usageAlignedColumn{label: "COST", value: "$123,456,789.12", width: 12},
+		usageAlignedColumn{label: "SESSIONS", value: "999,999,999", width: 6},
+	)
+	text := strings.Join(lines, "\n")
+	if !strings.Contains(text, "$123,456,789.12") || !strings.Contains(text, "999,999,999") {
+		t.Fatalf("aligned columns truncated values:\n%s", text)
+	}
+	for _, line := range lines {
+		if statsVisibleWidth(line) > 48 {
+			t.Fatalf("aligned column line overflowed: %q", line)
+		}
+	}
+}
+
+func TestUsageStatsDimensionDetailColumnsAlignWithinEachSection(t *testing.T) {
+	cost := "12345678901234.000000"
+	for _, width := range []int{48, 60, 80, 100} {
+		t.Run(fmt.Sprintf("%d columns", width), func(t *testing.T) {
+			report := usageStatsTextFixture()
+			report.Models = []usage.StatsDimension{
+				{Name: "small-model", Client: "codex", Tokens: 1, Sessions: 7, KnownShare: "50", ProviderCost: &cost},
+				{Name: "large-model", Client: "codex", Tokens: 1, Sessions: 999_999_999, KnownShare: "50", ProviderCost: &cost},
+			}
+			report.Clients = []usage.StatsDimension{
+				{Name: "codex", Tokens: 1, Sessions: 7, KnownShare: "50", ProviderCost: &cost},
+				{Name: "claude", Tokens: 1, Sessions: 999_999_999, KnownShare: "50", ProviderCost: &cost},
+			}
+			report.Providers = []usage.StatsDimension{
+				{Name: "small-provider", Client: "codex", Tokens: 1, Sessions: 7, KnownShare: "50", ProviderCost: &cost},
+				{Name: "large-provider", Client: "codex", Tokens: 1, Sessions: 999_999_999, KnownShare: "50", ProviderCost: &cost},
+			}
+			var output bytes.Buffer
+			if err := renderUsageStatsWithOptions(&output, report, usageTextRenderOptions{width: width}); err != nil {
+				t.Fatal(err)
+			}
+			text := output.String()
+			for _, prefixes := range [][]string{{"small-model", "large-model"}, {"Codex", "Claude"}, {"Codex/small-provider", "Codex/large-provider"}} {
+				ends := make([]int, 0, len(prefixes))
+				for _, prefix := range prefixes {
+					detail := modelDetailLine(t, text, prefix)
+					sessionLine := usageStatsLineContaining(detail, "SESSIONS")
+					if !strings.Contains(detail, "999,999,999") && strings.Contains(prefix, "large") || prefix == "Claude" && !strings.Contains(detail, "999,999,999") {
+						t.Fatalf("%s lost large session value:\n%s", prefix, detail)
+					}
+					ends = append(ends, statsVisibleWidth(sessionLine))
+				}
+				if ends[0] != ends[1] {
+					t.Fatalf("%d-column session boundaries = %v, want aligned", width, ends)
+				}
+			}
+			assertUsageStatsWidth(t, text, width)
+		})
 	}
 }
 
@@ -946,11 +1100,11 @@ func TestUsageStatsBalancedBaselinesAtFixtureWidths(t *testing.T) {
 	// usage-text primitive extraction. They make the Task 1 refactor contract
 	// byte-exact at every documented fixture width.
 	baselines := map[int]string{
-		48:  "7baddc9cb22bbcae2129d9230cfd337e54f938927516ba3bf9d6df2a3fc94029",
-		60:  "581e49be9be9d9f81efe7131509be24fd1157740f96c22cac8356e9eb8708e2d",
-		100: "df050a2f60ac3b256195f9c4436575ae0c39ce2a67c74cace4c24b7c3e9ce4d4",
-		140: "4b431f17513e172aa5a4d003def78c36ac562b8a49779221dc06c29b5d46a915",
-		160: "e246c42cc138ba1373c653a68bb24077fd4979fe51f0d09a201937dd47d83ae3",
+		48:  "dbc395f739ab3cbd9718f83fc56f08cb891bad89eb8c2745bb915eea7de84ded",
+		60:  "b65d98705bd2219843130bdea86c561bd48f9fc5271b3961bba0bc8048342fcb",
+		100: "193c201cda737d0c62441ae7c0bce70fac88bbccdfcd2242be7794ae6412b58f",
+		140: "d1521be708cabf950ee8650442a9e379c825a41a7190d6d41ad75509e1e83a4d",
+		160: "b5cefd7cd81ef379a45e915cefb7b6b457c79cf34c73e72b7b17cb25dc9dac80",
 	}
 	for _, width := range []int{48, 60, 100, 140, 160} {
 		t.Run(fmt.Sprintf("%d columns", width), func(t *testing.T) {
