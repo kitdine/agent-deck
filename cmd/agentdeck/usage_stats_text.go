@@ -92,6 +92,26 @@ func (r statsTextRenderer) statsTwoColumnFits() bool {
 	return usageResponsiveTableFits(r.width, 4, trendMinWidth, statsRankingMinWidth)
 }
 
+// statsTwoColumnLayout keeps the width floor, then compares the rendered
+// sections. A split that leaves one side mostly blank or repeatedly wraps a
+// section is less readable than the stacked full-width layout.
+func (r statsTextRenderer) statsTwoColumnLayout() (leftWidth, rightWidth int, ok bool) {
+	if !r.statsTwoColumnFits() {
+		return 0, 0, false
+	}
+	leftWidth, rightWidth = statsTwoColumnWidths(r.width)
+	trendColumn, rankingColumn := r.trendLines(leftWidth), r.rankingLines(rightWidth)
+	trendFull, rankingFull := r.trendLines(r.width), r.rankingLines(r.width)
+	if len(trendColumn) > len(trendFull)+1 || len(rankingColumn) > len(rankingFull)+1 {
+		return 0, 0, false
+	}
+	shorter, taller := min(len(trendColumn), len(rankingColumn)), max(len(trendColumn), len(rankingColumn))
+	if shorter*3 < taller {
+		return 0, 0, false
+	}
+	return leftWidth, rightWidth, true
+}
+
 // statsTwoColumnWidths splits the two-column layout's available inner width
 // (terminal width minus the 4-column gap used by joinStatsColumns) between
 // the trend column and the ranking column. The ranking column is floored at
@@ -203,8 +223,7 @@ func (r statsTextRenderer) render() string {
 		out.WriteByte('\n')
 	}
 	out.WriteByte('\n')
-	if r.statsTwoColumnFits() {
-		leftWidth, rightWidth := statsTwoColumnWidths(r.width)
+	if leftWidth, rightWidth, twoColumn := r.statsTwoColumnLayout(); twoColumn {
 		for _, line := range usageJoinColumns(r.trendLines(leftWidth), leftWidth, r.rankingLines(rightWidth), rightWidth, 4) {
 			out.WriteString(line)
 			out.WriteByte('\n')
@@ -220,11 +239,6 @@ func (r statsTextRenderer) render() string {
 				out.WriteByte('\n')
 			}
 		}
-	}
-	out.WriteByte('\n')
-	for _, line := range r.summaryLines() {
-		out.WriteString(line)
-		out.WriteByte('\n')
 	}
 	if r.report.ShowModelActivity && len(r.report.Models) == 1 {
 		out.WriteByte('\n')
@@ -288,24 +302,41 @@ func (r statsTextRenderer) metaLine() string {
 }
 
 func (r statsTextRenderer) kpiLines() []string {
+	average := compactCost(r.report.Totals.AverageCost, r.report.Totals.KnownAverageCost, r.hasKnownProviderCost())
+	peakValue, _ := strconv.ParseFloat(r.report.Peak.KnownValue, 64)
+	peak := compactMetric(peakValue, r.report.Metric)
+	if r.report.Metric == "cost" {
+		peak = compactCost(r.report.Peak.Value, r.report.Peak.KnownValue, knownCostAvailable(r.report.Peak.Value, r.report.Peak.KnownValue, r.report.Peak.Coverage))
+	}
 	values := []struct{ label, value string }{
 		{label: "TOKENS", value: compactNumber(float64(r.report.Totals.Tokens))},
 		{label: "COST", value: compactCost(r.report.Totals.ProviderCost, r.report.Totals.KnownProviderCost, r.hasKnownProviderCost())},
 		{label: "SESSIONS", value: groupedInt(r.report.Totals.Sessions)},
+		{label: "AVG COST / SESSION", value: average},
+		{label: "PEAK " + strings.ToUpper(r.report.Metric), value: peak},
+		{label: "PRICED EVENTS", value: r.report.Coverage.Percent + "%"},
 	}
 	inner := r.width - 4
-	base := inner / 3
-	widths := []int{base, base, inner - base*2}
+	base := inner / 2
+	widths := []int{base, inner - base}
 	border := func(left, middle, right string) string {
-		return left + strings.Repeat("─", widths[0]) + middle + strings.Repeat("─", widths[1]) + middle + strings.Repeat("─", widths[2]) + right
+		return left + strings.Repeat("─", widths[0]) + middle + strings.Repeat("─", widths[1]) + right
 	}
-	labels := "│"
-	numbers := "│"
-	for index, value := range values {
-		labels += " " + statsPad(value.label, widths[index]-2) + " │"
-		numbers += " " + statsPad(r.style(value.value, "1;37"), widths[index]-2) + " │"
+	lines := []string{border("┌", "┬", "┐")}
+	for row := 0; row < len(values); row += len(widths) {
+		labels := "│"
+		numbers := "│"
+		for column := range widths {
+			value := values[row+column]
+			labels += " " + statsPad(value.label, widths[column]-2) + " │"
+			numbers += " " + statsPad(r.style(value.value, "1;37"), widths[column]-2) + " │"
+		}
+		lines = append(lines, labels, numbers)
+		if row+len(widths) < len(values) {
+			lines = append(lines, border("├", "┼", "┤"))
+		}
 	}
-	return []string{border("┌", "┬", "┐"), labels, numbers, border("└", "┴", "┘")}
+	return append(lines, border("└", "┴", "┘"))
 }
 
 func (r statsTextRenderer) trendLines(width int) []string {
@@ -497,7 +528,7 @@ func (r statsTextRenderer) rankingLines(width int) []string {
 		lines = append(lines, r.style("No providers in this range.", "2"))
 	}
 	lines = append(lines, r.topNFooterLine(len(r.report.Providers), len(shownProviders), "providers")...)
-	cacheLines := r.cacheLines(width)
+	cacheLines := r.cachePresentationLines(width)
 	if len(cacheLines) > 0 {
 		lines = append(lines, "", r.sectionTitle("CACHE HIT RATE", width, "1;33"))
 		lines = append(lines, cacheLines...)
@@ -513,6 +544,72 @@ func modelPricingStatus(model usage.StatsDimension) string {
 		return "PARTIAL"
 	}
 	return "UNPRICED"
+}
+
+func (r statsTextRenderer) cachePresentationLines(width int) []string {
+	var lines []string
+	var cacheModels []usage.StatsDimension
+	for _, model := range r.report.Models {
+		if model.CacheHitRate == nil || model.CachedReadTokens == 0 && model.CacheWriteTokens == 0 {
+			continue
+		}
+		cacheModels = append(cacheModels, model)
+	}
+	shownCacheModels := statsTopN(cacheModels, r.capFor(statsModelCacheCap))
+	if len(shownCacheModels) > 0 {
+		lines = append(lines, r.style("CACHE MODELS", "1;33"))
+		modelLabels := make([][]string, len(shownCacheModels))
+		modelDetails := make([][]usageAlignedColumn, len(shownCacheModels))
+		for index, model := range shownCacheModels {
+			rate, _ := strconv.ParseFloat(*model.CacheHitRate, 64)
+			barWidth := min(12, max(8, width/8))
+			label := fmt.Sprintf("MODEL %s/%s %s %s%%", statsTitle(model.Client), model.Name, r.barTrack(scaledBar(rate, 100, barWidth), barWidth, "36"), *model.CacheHitRate)
+			modelLabels[index] = statsWrap(label, width)
+			modelDetails[index] = []usageAlignedColumn{
+				{label: "READ", value: compactNumber(float64(model.CachedReadTokens)), width: 6},
+				{label: "WRITE", value: compactNumber(float64(model.CacheWriteTokens)), width: 6},
+			}
+		}
+		usageAlignColumnRows(modelDetails)
+		for index, model := range shownCacheModels {
+			lines = append(lines, modelLabels[index]...)
+			continuation := []string(nil)
+			if model.LogicalInputTokens > 0 {
+				continuation = append(continuation, "LOGICAL INPUT "+compactNumber(float64(model.LogicalInputTokens)))
+			}
+			for _, detailLine := range r.dimensionDetailLines(width, modelDetails[index], continuation...) {
+				lines = append(lines, r.style(detailLine, "2"))
+			}
+		}
+	}
+	lines = append(lines, r.topNFooterLine(len(cacheModels), len(shownCacheModels), "cache models")...)
+
+	shownSessions := statsTopN(r.report.CacheSessions, r.capFor(statsCacheSessionsCap))
+	if len(shownSessions) > 0 {
+		lines = append(lines, "", r.style("CACHE SESSIONS", "1;33"))
+	}
+	for index, session := range shownSessions {
+		rate := "0.00"
+		if session.CacheHitRate != nil {
+			rate = *session.CacheHitRate
+		}
+		identifier := statsFit(session.SessionID, min(32, max(12, width/3)))
+		detail := fmt.Sprintf("SESSION %s/%s [%d] %s%% hit · read %s · write %s · %s", statsTitle(session.Client), identifier, index+1, rate, compactNumber(float64(session.CachedReadTokens)), compactNumber(float64(session.CacheWriteTokens)), strings.Join(session.Models, ","))
+		lines = append(lines, statsWrap(detail, width)...)
+	}
+	if len(shownSessions) > 0 {
+		lines = append(lines, "", r.style("DETAIL COMMANDS", "2"))
+		for index, session := range shownSessions {
+			if session.DetailCommand == "" {
+				continue
+			}
+			for _, commandLine := range statsWrapCommand(fmt.Sprintf("[%d] %s", index+1, session.DetailCommand), width) {
+				lines = append(lines, r.style(commandLine, "2"))
+			}
+		}
+	}
+	lines = append(lines, r.topNFooterLine(len(r.report.CacheSessions), len(shownSessions), "cache sessions")...)
+	return lines
 }
 
 func (r statsTextRenderer) cacheLines(width int) []string {
@@ -944,6 +1041,52 @@ func statsWrap(value string, width int) []string {
 			continue
 		}
 		line = candidate
+	}
+	if line != "" {
+		lines = append(lines, line)
+	}
+	return lines
+}
+
+// statsWrapCommand keeps every terminal line within width while preserving a
+// command copyable by a shell: a long token continues with a backslash-newline.
+func statsWrapCommand(value string, width int) []string {
+	if width <= 2 {
+		return statsWrap(value, width)
+	}
+	var lines []string
+	line := ""
+	for _, word := range strings.Fields(value) {
+		if statsVisibleWidth(word) <= width {
+			candidate := word
+			if line != "" {
+				candidate = line + " " + word
+			}
+			if line != "" && statsVisibleWidth(candidate) > width {
+				lines = append(lines, line)
+				line = word
+			} else {
+				line = candidate
+			}
+			continue
+		}
+
+		for statsVisibleWidth(line) > width-2 {
+			prefix := runewidth.Truncate(line, width-2, "")
+			lines = append(lines, prefix+" \\")
+			line = strings.TrimPrefix(line, prefix)
+		}
+		if line != "" {
+			lines = append(lines, line+" \\")
+			line = ""
+		}
+		remaining := stripStatsANSI(word)
+		for statsVisibleWidth(remaining) > width-1 {
+			prefix := runewidth.Truncate(remaining, width-1, "")
+			lines = append(lines, prefix+"\\")
+			remaining = strings.TrimPrefix(remaining, prefix)
+		}
+		line = remaining
 	}
 	if line != "" {
 		lines = append(lines, line)

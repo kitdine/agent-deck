@@ -33,7 +33,7 @@ func TestUsageStatsBalancedTextLayout(t *testing.T) {
 				"CLIENTS", "Claude", "Codex",
 				"PROVIDERS", "Claude/relay", "Codex/official",
 				"CACHE HIT RATE", "MODEL Claude/claude-opus-4-8", "SESSION Codex/codex-session", "--activity",
-				"AVG COST", "PEAK", "PRICED  87.69%",
+				"AVG COST / SESSION", "PEAK TOKENS", "PRICED EVENTS", "87.69%",
 				"▦ ACTIVITY BY WEEKDAY / HOUR · TOKENS",
 				"LESS  · ░ ▒ ▓ █  MORE",
 				"UNPRICED MODELS", "Claude/claude-fable-5", "output",
@@ -84,8 +84,8 @@ func TestUsageStatsWideLayoutAndColorAreDeterministic(t *testing.T) {
 			t.Fatalf("wide line overflowed: %q", line)
 		}
 	}
-	if !paired {
-		t.Fatalf("wide layout did not pair trend and ranking:\n%s", plainText)
+	if paired {
+		t.Fatalf("wide fixture kept an imbalanced trend/ranking split:\n%s", plainText)
 	}
 }
 
@@ -875,7 +875,7 @@ func TestUsageStatsTwoColumnThresholdCoversWidestSupportedTrendFormats(t *testin
 	}{
 		{width: 112, wantStacked: true, wantTwoColumn: false}, // the old static-28 threshold's own activation point
 		{width: 119, wantStacked: true, wantTwoColumn: false}, // one column short of fitting this report's real content
-		{width: 120, wantStacked: false, wantTwoColumn: true}, // first width that truly fits ranking + this trend + gap
+		{width: 120, wantStacked: true, wantTwoColumn: false}, // content is still too imbalanced to justify the split
 	} {
 		t.Run(fmt.Sprintf("width %d", tc.width), func(t *testing.T) {
 			var output bytes.Buffer
@@ -1096,15 +1096,14 @@ func TestUsageStatsDimensionDetailColumnsAlignWithinEachSection(t *testing.T) {
 }
 
 func TestUsageStatsBalancedBaselinesAtFixtureWidths(t *testing.T) {
-	// These hashes were emitted from the unmodified HEAD renderer before the
-	// usage-text primitive extraction. They make the Task 1 refactor contract
-	// byte-exact at every documented fixture width.
+	// These hashes lock the approved Task 3 layout at every documented fixture
+	// width, including its content-aware stacking and structured cache section.
 	baselines := map[int]string{
-		48:  "dbc395f739ab3cbd9718f83fc56f08cb891bad89eb8c2745bb915eea7de84ded",
-		60:  "b65d98705bd2219843130bdea86c561bd48f9fc5271b3961bba0bc8048342fcb",
-		100: "193c201cda737d0c62441ae7c0bce70fac88bbccdfcd2242be7794ae6412b58f",
-		140: "d1521be708cabf950ee8650442a9e379c825a41a7190d6d41ad75509e1e83a4d",
-		160: "b5cefd7cd81ef379a45e915cefb7b6b457c79cf34c73e72b7b17cb25dc9dac80",
+		48:  "f7a7de596df684d8d947a1bb4690cbf232e3a43f9f0a18c3e7240591edd65ee1",
+		60:  "ca39da14c99ad792c0a37a01f10440abfac94f9d26e26d0aae484439bd639e89",
+		100: "1dd66e345c8614a870efd1bb3c04cb634d88aec9a3245f7fa1b1243a717daf13",
+		140: "138c69d503dc09f52665312d1f541f25cf50897330822e37ef1c9dc4e4b196b9",
+		160: "425e3acf4a3b3be390a558bbc36e76129d27e42cfffac7272939ded7607bc228",
 	}
 	for _, width := range []int{48, 60, 100, 140, 160} {
 		t.Run(fmt.Sprintf("%d columns", width), func(t *testing.T) {
@@ -1329,10 +1328,18 @@ func TestUsageStatsCostTextUsesUnavailableWhenNothingIsPriced(t *testing.T) {
 		if line := usageStatsTrendLine(text, "Jul 01"); !strings.Contains(line, "unavailable") {
 			t.Fatalf("%d-column line starting with Jul 01 = %q, want unavailable", width, line)
 		}
-		for _, marker := range []string{"unpriced-model", "Codex", "PEAK", "ACTIVITY BY WEEKDAY / HOUR · COST"} {
+		for _, marker := range []string{"unpriced-model", "Codex", "ACTIVITY BY WEEKDAY / HOUR · COST"} {
 			if line := usageStatsLineContaining(text, marker); !strings.Contains(line, "unavailable") && marker != "ACTIVITY BY WEEKDAY / HOUR · COST" {
 				t.Fatalf("%d-column line containing %q = %q, want unavailable", width, marker, line)
 			}
+		}
+		peakIndex := strings.Index(text, "PEAK COST")
+		if peakIndex < 0 {
+			t.Fatalf("%d-column peak KPI is missing", width)
+		}
+		peakLines := strings.Split(text[peakIndex:], "\n")
+		if len(peakLines) < 2 || !strings.Contains(peakLines[1], "unavailable") {
+			t.Fatalf("%d-column peak KPI = %q, want unavailable", width, usageStatsLineContaining(text, "PEAK COST"))
 		}
 		assertUsageStatsWidth(t, text, width)
 	}
@@ -1375,6 +1382,133 @@ func assertUsageStatsWidth(t *testing.T, text string, width int) {
 		if got := statsVisibleWidth(line); got > width {
 			t.Fatalf("%d-column line %d width = %d:\n%s", width, lineNumber+1, got, line)
 		}
+	}
+}
+
+func TestUsageStatsStacksImbalancedColumnsByRenderedHeight(t *testing.T) {
+	report := usageStatsTextFixture()
+	report.Buckets = report.Buckets[:1]
+	for index := 0; index < 12; index++ {
+		report.Models = append(report.Models, usage.StatsDimension{
+			Name:       fmt.Sprintf("layout-model-%02d", index),
+			Client:     "codex",
+			Tokens:     int64(1_000 - index),
+			Sessions:   int64(index + 1),
+			KnownShare: "1.00",
+		})
+	}
+
+	var output bytes.Buffer
+	if err := renderUsageStatsWithOptions(&output, report, usageTextRenderOptions{width: 160}); err != nil {
+		t.Fatal(err)
+	}
+	text := output.String()
+	if isTwoColumnStatsLayout(text) {
+		t.Fatalf("single-bucket trend with a tall ranking column stayed split:\n%s", text)
+	}
+	assertUsageStatsWidth(t, text, 160)
+	jsonReport := usageStatsJSONReport(t, report)
+	if len(jsonReport.Buckets) != 1 || len(jsonReport.Models) != len(report.Models) {
+		t.Fatalf("content-aware text layout changed JSON collections: %#v", jsonReport)
+	}
+}
+
+func TestUsageStatsCacheSectionUsesBoundedSessionAndSingleFooterCommand(t *testing.T) {
+	report := usageStatsTextFixture()
+	rate := "73.25"
+	longSessionID := strings.Repeat("cache-session-", 4)
+	report.CacheSessions = []usage.StatsCacheSession{{
+		Client:             "codex",
+		SessionID:          longSessionID,
+		Models:             []string{"gpt-5.6-sol"},
+		CachedReadTokens:   600_000,
+		CacheWriteTokens:   200_000,
+		LogicalInputTokens: 1_000_000,
+		CacheHitRate:       &rate,
+		DetailCommand:      "agentdeck session show " + longSessionID + " --client codex --activity",
+	}}
+
+	var output bytes.Buffer
+	if err := renderUsageStatsWithOptions(&output, report, usageTextRenderOptions{width: 60}); err != nil {
+		t.Fatal(err)
+	}
+	text := output.String()
+	for _, want := range []string{"CACHE HIT RATE", "CACHE MODELS", "READ", "WRITE", "CACHE SESSIONS", longSessionID} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("cache section missing %q:\n%s", want, text)
+		}
+	}
+	if strings.Count(text, "agentdeck session show") != 1 || strings.Count(text, longSessionID) != 1 {
+		t.Fatalf("cache session command or full identifier repeated in row body:\n%s", text)
+	}
+	assertUsageStatsWidth(t, text, 60)
+	jsonReport := usageStatsJSONReport(t, report)
+	if len(jsonReport.CacheSessions) != 1 || jsonReport.CacheSessions[0].SessionID != longSessionID {
+		t.Fatalf("cache text compaction changed JSON session identity: %#v", jsonReport.CacheSessions)
+	}
+}
+
+func TestUsageStatsCacheModelsKeepDetailsAdjacent(t *testing.T) {
+	report := usageStatsTextFixture()
+	firstRate, secondRate := "50.00", "25.00"
+	report.Models = []usage.StatsDimension{
+		{Name: "cache-first", Client: "codex", CacheHitRate: &firstRate, CachedReadTokens: 11_000_000, CacheWriteTokens: 22_000_000},
+		{Name: "cache-second", Client: "claude", CacheHitRate: &secondRate, CachedReadTokens: 33_000_000, CacheWriteTokens: 44_000_000},
+	}
+
+	var output bytes.Buffer
+	if err := renderUsageStatsWithOptions(&output, report, usageTextRenderOptions{width: 100}); err != nil {
+		t.Fatal(err)
+	}
+	text := output.String()
+	firstLabel, secondLabel := strings.Index(text, "MODEL Codex/cache-first"), strings.Index(text, "MODEL Claude/cache-second")
+	firstRead, secondRead := strings.Index(text, "11.0M"), strings.Index(text, "33.0M")
+	if !(firstLabel >= 0 && firstLabel < firstRead && firstRead < secondLabel && secondLabel < secondRead) {
+		t.Fatalf("cache model labels and READ/WRITE details are not adjacent:\n%s", text)
+	}
+	assertUsageStatsWidth(t, text, 100)
+}
+
+func TestUsageStatsCacheFooterMapsEveryVisibleSession(t *testing.T) {
+	report := usageStatsTextFixture()
+	rate := "73.25"
+	prefix := strings.Repeat("shared-cache-session-", 3)
+	firstID, secondID := prefix+"first", prefix+"second"
+	report.CacheSessions = []usage.StatsCacheSession{
+		{Client: "codex", SessionID: firstID, Models: []string{"gpt-5.6-sol"}, CachedReadTokens: 600_000, CacheWriteTokens: 200_000, LogicalInputTokens: 1_000_000, CacheHitRate: &rate, DetailCommand: "agentdeck session show " + firstID + " --client codex --activity"},
+		{Client: "codex", SessionID: secondID, Models: []string{"gpt-5.6-sol"}, CachedReadTokens: 500_000, CacheWriteTokens: 100_000, LogicalInputTokens: 900_000, CacheHitRate: &rate, DetailCommand: "agentdeck session show " + secondID + " --client codex --activity"},
+	}
+
+	var output bytes.Buffer
+	if err := renderUsageStatsWithOptions(&output, report, usageTextRenderOptions{width: 60}); err != nil {
+		t.Fatal(err)
+	}
+	text := output.String()
+	commands := strings.ReplaceAll(text, "\\\n", "")
+	if strings.Count(text, "DETAIL COMMANDS") != 1 || strings.Count(commands, firstID) != 1 || strings.Count(commands, secondID) != 1 || !strings.Contains(text, "[1]") || !strings.Contains(text, "[2]") {
+		t.Fatalf("cache footer does not map every visible session once:\n%s", text)
+	}
+	assertUsageStatsWidth(t, text, 60)
+	jsonReport := usageStatsJSONReport(t, report)
+	if len(jsonReport.CacheSessions) != 2 || jsonReport.CacheSessions[0].SessionID != firstID || jsonReport.CacheSessions[1].SessionID != secondID {
+		t.Fatalf("cache footer mapping changed JSON session identities: %#v", jsonReport.CacheSessions)
+	}
+}
+
+func TestUsageStatsKPIsStateTheirBasesOnce(t *testing.T) {
+	report := usageStatsTextFixture()
+	var output bytes.Buffer
+	if err := renderUsageStatsWithOptions(&output, report, usageTextRenderOptions{width: 100}); err != nil {
+		t.Fatal(err)
+	}
+	text := output.String()
+	for _, want := range []string{"AVG COST / SESSION", "PEAK TOKENS", "PRICED EVENTS"} {
+		if strings.Count(text, want) != 1 {
+			t.Fatalf("KPI %q was not stated exactly once:\n%s", want, text)
+		}
+	}
+	if strings.Contains(text, "\nAVG COST $") {
+		t.Fatalf("legacy summary footer remained after KPI merge:\n%s", text)
 	}
 }
 
