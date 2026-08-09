@@ -4256,65 +4256,15 @@ func renderUsageTextWithOptions(w io.Writer, command string, data any, renderOpt
 		for _, key := range []string{"files", "events", "sessions", "exact_runs"} {
 			rows = append(rows, []string{key, fmt.Sprint(values[key])})
 		}
-		return renderUsageMetricTable(w, "🩺 USAGE DIAGNOSTICS", rows)
+		return renderUsageFamilyMetricTable(w, "🩺 USAGE DIAGNOSTICS", rows, renderOptions)
 	}
 	switch v := data.(type) {
 	case usage.StatsReport:
 		return renderUsageStatsWithOptions(w, v, renderOptions)
 	case usage.Summary:
-		if err := renderUsageMetricTable(w, "📊 USAGE SUMMARY", [][]string{
-			{"events", strconv.FormatInt(v.Counts["events"], 10)},
-			{"exact attribution", strconv.FormatInt(v.Counts["exact"], 10)},
-			{"estimated attribution", strconv.FormatInt(v.Counts["estimated"], 10)},
-			{"historical attribution", strconv.FormatInt(v.Counts["historical"], 10)},
-			{"priced events", strconv.FormatInt(v.Counts["priced"], 10)},
-			{"unpriced events", strconv.FormatInt(v.Counts["unpriced"], 10)},
-			{"catalog base total", optionalCost(v.CatalogBaseCost)},
-			{"provider total", optionalCost(v.ProviderCost)},
-			{"known catalog subtotal", optionalCost(v.KnownCatalogBaseCost)},
-			{"known provider subtotal", optionalCost(v.KnownProviderCost)},
-			{"warnings", textList(v.Warnings)},
-			{"unpriced", textList(v.Unpriced)},
-		}); err != nil {
-			return err
-		}
-		if _, err := fmt.Fprintln(w, "\n🪙 TOKEN TOTALS"); err != nil {
-			return err
-		}
-		tokenRows := make([][]string, 0, len(usageTokenNames))
-		for _, token := range usageTokenNames {
-			tokenRows = append(tokenRows, []string{token.label, strconv.FormatInt(v.Tokens[token.key], 10)})
-		}
-		if err := output.WriteASCIITable(w, []string{"TOKEN", "COUNT"}, tokenRows); err != nil {
-			return err
-		}
-		if _, err := fmt.Fprintln(w, "\n🧾 MODEL COVERAGE"); err != nil {
-			return err
-		}
-		modelRows := make([][]string, 0, len(v.Models))
-		for _, model := range v.Models {
-			modelRows = append(modelRows, []string{model.Client, model.Model, strconv.FormatInt(model.Events, 10), strconv.FormatInt(model.PricedEvents, 10), strconv.FormatInt(model.UnpricedEvents, 10), modelCoverageStatus(model)})
-		}
-		return output.WriteASCIITable(w, []string{"CLIENT", "MODEL", "EVENTS", "PRICED", "UNPRICED", "STATUS"}, modelRows)
+		return renderUsageFamilySummary(w, v, renderOptions)
 	case []usage.SessionSummary:
-		if len(v) == 0 {
-			_, err := fmt.Fprintln(w, "No usage sessions.")
-			return err
-		}
-		if _, err := fmt.Fprintln(w, "📚 USAGE SESSIONS"); err != nil {
-			return err
-		}
-		rows := make([][]string, 0, len(v))
-		for _, x := range v {
-			row := []string{x.Client, x.SessionID, renderDisplayTime(x.FirstAt), renderDisplayTime(x.LastAt)}
-			for _, token := range usageTokenNames {
-				row = append(row, strconv.FormatInt(x.Tokens[token.key], 10))
-			}
-			row = append(row, sessionCostText(x.CatalogBaseCost, x.KnownCatalogBaseCost), sessionCostText(x.ProviderCost, x.KnownProviderCost), usageSessionStatus(x))
-			rows = append(rows, row)
-		}
-		zone := displayZoneName()
-		return output.WriteASCIITable(w, []string{"CLIENT", "SESSION", fmt.Sprintf("FIRST (%s)", zone), fmt.Sprintf("LAST (%s)", zone), "INPUT", "CACHED", "OUTPUT", "CACHE READ", "CACHE CREATE", "WRITE 5M", "WRITE 1H", "BASE COST", "PROVIDER COST", "STATUS"}, rows)
+		return renderUsageFamilySessions(w, v, renderOptions)
 	default:
 		return fmt.Errorf("no usage text renderer for %s (%T)", command, data)
 	}

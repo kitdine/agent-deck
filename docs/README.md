@@ -496,7 +496,7 @@ fixing a defect, which is why it is a contract change recorded by the single
 | --- | --- |
 | [specs/cli-design.md](specs/cli-design.md) | What the system does and must keep doing: provider, credential, usage, pricing, session, backup, and distribution behavior. Currently version 23; see its changelog. |
 | [specs/cli-manual.md](specs/cli-manual.md) | The implemented command surface, flags, and output shapes. |
-| [plans/usage-report-presentation.md](plans/usage-report-presentation.md) | Active – 3/6 reviewed; Task 3 stats layout passed Round 2 after closing cache model/detail association and multi-session actionability findings. Tasks 1–3 are Review PASS. Family alignment, interactive viewing, and contract text remain for `v0.4.0`. |
+| [plans/usage-report-presentation.md](plans/usage-report-presentation.md) | Active – 4/6 reviewed; Tasks 1–4 are Review PASS. Task 4 family alignment passed Round 3 after closing long-ID overflow and the stale Phase 9 ASCII-table golden. Interactive viewing and contract text remain for `v0.4.0`. |
 | [plans/v0-4-0-release.md](plans/v0-4-0-release.md) | Active — 0/3 done. Release plan, not a feature plan: the single `v0.4.0` specification raise, the release candidate, and release notes. Blocked until both `v0.4.0` feature plans are fully reviewed. |
 | [plans/desktop-app.md](plans/desktop-app.md) | Active — 0/6 done. Native macOS 26 menu-bar app, WidgetKit extension, unified desktop package, Cask, direct download, and its own contract task for `v0.5.0`. |
 | [plans/v0-5-0-release.md](plans/v0-5-0-release.md) | Active — 0/3 done. Release plan, not a feature plan: the single `v0.5.0` specification raise, the release candidate, and release notes. Blocked until the desktop plan is fully reviewed. |

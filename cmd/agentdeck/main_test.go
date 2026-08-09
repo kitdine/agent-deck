@@ -515,7 +515,7 @@ func TestPhase9TextAndJSONGoldenContracts(t *testing.T) {
 	if err := writeEnvelope(&textOutput, "text", "usage.summary", summary, true, summary.Warnings); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"📊 USAGE SUMMARY", "🪙 TOKEN TOTALS", "🧾 MODEL COVERAGE", "| known catalog subtotal", "| input", "| codex  | model-x"} {
+	for _, want := range []string{"📊 USAGE SUMMARY", "🪙 TOKEN TOTALS", "🧾 MODEL COVERAGE", "KNOWN CATALOG SUBTOTAL", "INPUT", "Codex / Model-x", "STATUS unpriced"} {
 		if !strings.Contains(textOutput.String(), want) {
 			t.Fatalf("usage text golden missing %q:\n%s", want, textOutput.String())
 		}
@@ -828,7 +828,7 @@ func TestUsageCommandTextAndJSONContracts(t *testing.T) {
 	if err := run([]string{"--state-dir", state, "usage", "diagnose"}, bytes.NewReader(nil), &text); err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Contains(text.Bytes(), []byte("USAGE DIAGNOSTICS")) || !bytes.Contains(text.Bytes(), []byte("| events")) || bytes.HasPrefix(bytes.TrimSpace(text.Bytes()), []byte("{")) {
+	if !bytes.Contains(text.Bytes(), []byte("USAGE DIAGNOSTICS")) || !bytes.Contains(text.Bytes(), []byte("EVENTS")) || bytes.HasPrefix(bytes.TrimSpace(text.Bytes()), []byte("{")) {
 		t.Fatalf("text output = %s", text.String())
 	}
 	var encoded bytes.Buffer
@@ -1256,7 +1256,7 @@ func TestUsageProgressOutputShowsParserVersionRereadReason(t *testing.T) {
 	}
 }
 
-func TestUsageSummaryAndSessionsUseReadableASCIITables(t *testing.T) {
+func TestUsageSummaryAndSessionsUseSharedTerminalPrimitives(t *testing.T) {
 	baseCost, providerCost := "0.100000000", "0.200000000"
 	summary := usage.Summary{
 		Tokens:               map[string]int64{"input_tokens": 10, "cached_input_tokens": 3, "output_tokens": 2},
@@ -1272,7 +1272,7 @@ func TestUsageSummaryAndSessionsUseReadableASCIITables(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := rendered.String()
-	for _, want := range []string{"📊 USAGE SUMMARY", "🪙 TOKEN TOTALS", "🧾 MODEL COVERAGE", "| METRIC", "| TOKEN", "| CLIENT | MODEL", "known catalog subtotal", "codex-auto-review"} {
+	for _, want := range []string{"📊 USAGE SUMMARY", "🪙 TOKEN TOTALS", "🧾 MODEL COVERAGE", "KNOWN CATALOG SUBTOTAL", "Codex-auto-review", "EVENTS", "STATUS"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("usage summary missing %q:\n%s", want, text)
 		}
@@ -1297,8 +1297,8 @@ func TestUsageSummaryAndSessionsUseReadableASCIITables(t *testing.T) {
 		t.Fatal(err)
 	}
 	text = rendered.String()
-	if !strings.HasPrefix(text, "📚 USAGE SESSIONS\n+") || !strings.Contains(text, "| CLIENT | SESSION") || !strings.Contains(text, "| INPUT") || !strings.Contains(text, "| CACHED") || !strings.Contains(text, "| OUTPUT") || strings.Contains(text, "input_tokens=") {
-		t.Fatalf("usage sessions are not rendered as the shared ASCII table:\n%s", text)
+	if !strings.HasPrefix(text, "📚 USAGE SESSIONS") || !strings.Contains(text, "CLIENT codex") || !strings.Contains(text, "INPUT") || !strings.Contains(text, "CACHED") || !strings.Contains(text, "OUTPUT") || !strings.Contains(text, "CACHE READ") || strings.Contains(text, "input_tokens=") {
+		t.Fatalf("usage sessions are not rendered through shared terminal primitives:\n%s", text)
 	}
 }
 

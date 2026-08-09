@@ -109,12 +109,21 @@ func usageResponsiveTableWidths(width, gap, rightMin int) (leftWidth, rightWidth
 
 // usageAlignedColumns keeps values in fixed-width fields and moves whole
 // columns to a continuation line when the terminal cannot fit them together.
+// A field wider than the terminal is hard-wrapped without losing its value.
 func usageAlignedColumns(width int, columns ...usageAlignedColumn) []string {
 	lines := make([]string, 0, len(columns))
 	line := ""
 	for _, column := range columns {
 		valueWidth := max(column.width, statsVisibleWidth(column.value))
 		field := column.label + " " + statsPadLeft(column.value, valueWidth)
+		if statsVisibleWidth(field) > width {
+			if line != "" {
+				lines = append(lines, line)
+				line = ""
+			}
+			lines = append(lines, usageWrappedAlignedColumn(width, column)...)
+			continue
+		}
 		candidate := field
 		if line != "" {
 			candidate = line + "  " + field
@@ -128,6 +137,52 @@ func usageAlignedColumns(width int, columns ...usageAlignedColumn) []string {
 	}
 	if line != "" {
 		lines = append(lines, line)
+	}
+	return lines
+}
+
+// usageWrappedAlignedColumn preserves an over-wide value as a labeled first
+// segment followed by indented continuation segments. It intentionally avoids
+// the shared alignment padding because that padding is what made the field
+// impossible to fit in the first place.
+func usageWrappedAlignedColumn(width int, column usageAlignedColumn) []string {
+	width = max(1, width)
+	prefix := column.label + " "
+	if statsVisibleWidth(prefix) >= width {
+		return usageHardWrap(prefix+column.value, width)
+	}
+	segments := usageHardWrap(column.value, width-statsVisibleWidth(prefix))
+	lines := make([]string, 0, len(segments))
+	for index, segment := range segments {
+		if index == 0 {
+			lines = append(lines, prefix+segment)
+			continue
+		}
+		lines = append(lines, "  "+segment)
+	}
+	return lines
+}
+
+func usageHardWrap(value string, width int) []string {
+	width = max(1, width)
+	if value == "" {
+		return []string{""}
+	}
+	lines := make([]string, 0, 1)
+	var line strings.Builder
+	lineWidth := 0
+	for _, runeValue := range value {
+		runeWidth := max(0, runewidth.RuneWidth(runeValue))
+		if line.Len() > 0 && lineWidth+runeWidth > width {
+			lines = append(lines, line.String())
+			line.Reset()
+			lineWidth = 0
+		}
+		line.WriteRune(runeValue)
+		lineWidth += runeWidth
+	}
+	if line.Len() > 0 {
+		lines = append(lines, line.String())
 	}
 	return lines
 }
