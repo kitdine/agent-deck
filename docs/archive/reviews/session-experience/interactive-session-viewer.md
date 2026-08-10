@@ -1,5 +1,5 @@
 ---
-status: active
+status: historical
 plan: session-experience
 task: interactive-session-viewer
 ---

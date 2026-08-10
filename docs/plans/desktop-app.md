@@ -400,7 +400,8 @@ release-secret access.
 | 5. `unified-desktop-distribution` | [ ] | [ ] |
 | 6. `desktop-app-contract` | [ ] | [ ] |
 
-Task 1 depends on the `v0.4.0` session DTO contract. Task 2 consumes task 1.
+Task 1 was blocked on the `v0.4.0` session DTO contract; that dependency is now
+satisfied and `desktop-wire-contract` is unblocked. Task 2 consumes task 1.
 Tasks 3 and 4 depend on task 2 and may proceed independently after the shared
 snapshot contract is fixed. Task 5 integrates tasks 2-4. Task 6 runs last within
 this plan, and in turn gates the [v0.5.0 release plan](v0-5-0-release.md).

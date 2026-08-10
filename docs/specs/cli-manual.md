@@ -663,10 +663,11 @@ output 和 TTY stdin/stdout，且不能与 `--activity`、`--tokens`、`--page`�
 或 `--all` 同时使用。自动化和 desktop 消费应使用普通 `--format json` command；
 text 和 interactive viewer 都不是 DTO contract。
 
-v0.5.0 desktop client 可消费 versioned JSON envelope 中有界的 session
-metadata/documents、optional safe activity、optional usage/invocations、named
-pagination、warnings 和 partial state。后续 desktop wire contract 仍必须负责一个
-coherent snapshot、wire version 和 Go-owned redaction，而不是解析 CLI text。
+这组有界的 session DTO 是 v0.4.0 的桌面依赖合同，已满足 v0.5.0 计划
+`desktop-wire-contract` 的入口条件。desktop client 可消费 versioned JSON envelope
+中的 session metadata/documents、optional safe activity、optional usage/invocations、
+named pagination、warnings 和 partial state。后续 desktop wire contract 仍必须负责
+一个 coherent snapshot、wire version 和 Go-owned redaction，而不是解析 CLI text。
 
 ## Extension
 

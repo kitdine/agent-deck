@@ -433,12 +433,13 @@ reviewed; its current behavior is absorbed into the living CLI design and
 manual, while the historical execution record is summarized by the archive
 index.
 
-Both lines land in one release, so the batch rule that held across `v0.3.0`
-still holds: the specification version is raised **once**. Each feature plan
-lands only its own contract text; the single raise, the release candidate, and
-the release notes belong to the
-[v0.4.0 release plan](plans/v0-4-0-release.md), which starts only after both
-lines are fully reviewed.
+Both lines land in one version contract, so the batch rule that held across
+`v0.3.0` still holds: the specification version is raised **once**. Each
+feature plan lands only its own contract text; the version-wide reconciliation
+belongs to the archived
+[v0.4.0 contract closure](archive/plans/v0-4-0-contract.md), which ends after
+both lines are fully reviewed. RC or stable publication remains a separate
+user-owned decision.
 
 **`v0.5.0` — minor. Native macOS desktop foundation.** Deliver the Swift 6,
 SwiftUI macOS 26 menu-bar app, WidgetKit extension, embedded universal Go helper,
@@ -493,11 +494,10 @@ fixing a defect, which is why it is a contract change recorded by the single
 
 | Document | Purpose |
 | --- | --- |
-| [specs/cli-design.md](specs/cli-design.md) | What the system does and must keep doing: provider, credential, usage, pricing, session, backup, and distribution behavior. Currently version 23; see its changelog. |
+| [specs/cli-design.md](specs/cli-design.md) | What the system does and must keep doing: provider, credential, usage, pricing, session, backup, and distribution behavior. Currently version 24; see its changelog. |
 | [specs/cli-manual.md](specs/cli-manual.md) | The implemented command surface, flags, and output shapes. |
 | [specs/2026-08-06-terminal-rendering-design.md](specs/2026-08-06-terminal-rendering-design.md) | Proposed — shared usage/session terminal rendering, interaction, degradation, accessibility, and verification contract; implementation awaits approval. |
 | [specs/2026-08-07-usage-interactive-viewer-design.md](specs/2026-08-07-usage-interactive-viewer-design.md) | Active — approved Task 5 `usage stats --interactive` layout, color/no-color, state, lifecycle, and PTY contract; session alignment deferred until v0.4.0 RC usage acceptance. |
-| [plans/v0-4-0-release.md](plans/v0-4-0-release.md) | Active — 0/3 done; entry condition met. Release plan, not a feature plan: the single `v0.4.0` specification raise, the release candidate, and release notes. |
 | [plans/desktop-app.md](plans/desktop-app.md) | Active — 0/6 done. Native macOS 26 menu-bar app, WidgetKit extension, unified desktop package, Cask, direct download, and its own contract task for `v0.5.0`. |
 | [plans/v0-5-0-release.md](plans/v0-5-0-release.md) | Active — 0/3 done. Release plan, not a feature plan: the single `v0.5.0` specification raise, the release candidate, and release notes. Blocked until the desktop plan is fully reviewed. |
 | [reviews/](reviews/README.md) | Per-task review records that back each plan's ticked `Review` cell. |

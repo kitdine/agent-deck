@@ -31,6 +31,17 @@ Move a document here instead of leaving it `active` in `docs/plans/` or
 - Leaving it in the main `docs/` tree risks being mistaken for the current
   source of truth.
 
+## 2026-08-10 retirement: v0.4.0 contract closure
+
+`plans/v0-4-0-contract.md` and `reviews/v0-4-0-contract/` preserve the
+version-wide reconciliation after the session-experience and
+usage-report-presentation feature lines passed review. The living CLI design
+was raised to version 24 exactly once, the bounded session DTO dependency for
+`desktop-wire-contract` was satisfied, and the active documentation index was
+synchronized. This historical plan ends at `v0-4-0-contract` Review PASS. It
+does not select an RC or stable release; that remains an explicit user-owned
+decision after commit-bound technical preflight evidence is available.
+
 ## 2026-08-10 retirement: usage report presentation
 
 `plans/usage-report-presentation.md` and
@@ -39,8 +50,9 @@ passed independent review. The plan delivered shared responsive usage
 primitives, fixed-baseline share bars, aligned detail, content-aware stats
 layout, family-wide report alignment, and the explicit interactive stats
 viewer. The active behavior now lives in `docs/specs/cli-design.md` and
-`docs/specs/cli-manual.md`; release versioning and RC acceptance remain owned
-by the separate `v0.4.0` release plan.
+`docs/specs/cli-manual.md`; version-wide reconciliation is preserved by the
+archived `v0.4.0` contract closure. RC or stable publication remains a separate
+user-owned decision.
 
 ## 2026-08-06 retirement: session experience
 
@@ -49,8 +61,9 @@ after all six tasks passed independent review. The plan delivered normalized
 session document time, aggregate scan progress, invocation usage detail,
 sectioned `session show`, the interactive viewer, and the desktop-facing session
 DTO boundary. The active behavior now lives in `docs/specs/cli-design.md` and
-`docs/specs/cli-manual.md`; release versioning remains owned by the separate
-`v0.4.0` release plan.
+`docs/specs/cli-manual.md`; version-wide reconciliation is preserved by the
+archived `v0.4.0` contract closure. RC or stable publication remains a separate
+user-owned decision.
 
 ## 2026-08-04 retirement: `v0.3.0` plan batch
 
