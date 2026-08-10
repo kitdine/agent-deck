@@ -225,7 +225,8 @@ agentdeck usage stats --interactive
 ```
 
 `--interactive` is valid only for text output with TTY stdin and stdout. It is
-mutually exclusive with `--format json` and `--top`; the viewer always makes
+mutually exclusive with `--format json`; existing `--top` semantics apply before
+the viewer's 20-row page boundary. The viewer always makes
 Trend, Models, Clients, Providers, Cache, and Coverage available and pages each
 independently.
 
@@ -322,11 +323,26 @@ credential path, so no task routes to L3 on data risk alone.
 
 ### 5. `usage-interactive-viewer`
 
-- Implement decision 8 by reusing the session viewer's terminal state machine.
+- Add explicit `usage stats --interactive` for text output with Overview,
+  Trend, Models, Clients, Providers, Cache, and Coverage sections.
+- Implement the approved comparison-first list/detail layout: selection changes
+  detail content; section-local page, selection, and viewport survive navigation
+  and resize; wide, standard, and compact geometry degrade deterministically.
+- Add a terminal palette for title, KPIs, selected rows, bars, coverage, and
+  durable warnings. `NO_COLOR` and `--no-color` preserve labels, markers,
+  ordering, values, and status without ANSI.
+- Reuse or extract only terminal-neutral session viewer mechanics. Do not
+  intentionally change `session show --interactive` rendering, data, sections,
+  pagination, or key behavior.
+- Preserve Tasks 2–3 ordinary `usage` output and all JSON values/shapes.
+  Existing `--top` semantics apply before the interactive 20-row page boundary.
 - Verification level: L3 if terminal concurrency or signal handling requires a
-  race gate; otherwise L2 plus targeted PTY acceptance.
-- **Blocked on the session experience plan's `interactive-session-viewer`
-  reaching Review PASS.**
+  race gate; otherwise L2 plus targeted PTY and compiled-binary isolated-HOME
+  acceptance. The v0.4.0 RC later validates realistic local usage data before
+  any decision to align session rendering.
+- The session prerequisite is satisfied: its six-task plan reached Review PASS
+  and was retired on 2026-08-06. The approved design is
+  [Usage Interactive Viewer](../specs/2026-08-07-usage-interactive-viewer-design.md).
 
 ### 6. `usage-presentation-contract`
 
@@ -347,7 +363,7 @@ credential path, so no task routes to L3 on data risk alone.
 | 2. `usage-bar-and-detail-semantics` | [x] | [x] |
 | 3. `usage-stats-layout` | [x] | [x] |
 | 4. `usage-family-alignment` | [x] | [x] |
-| 5. `usage-interactive-viewer` | [ ] | [ ] |
+| 5. `usage-interactive-viewer` | [x] | [x] |
 | 6. `usage-presentation-contract` | [ ] | [ ] |
 
 Tasks 1 and 4 form the family-consistency path; tasks 2 and 3 form the

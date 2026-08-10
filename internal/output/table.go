@@ -48,12 +48,16 @@ func WriteASCIITable(w io.Writer, headers []string, rows [][]string) error {
 func normalizeTableRow(values []string) []string {
 	normalized := make([]string, len(values))
 	for i, value := range values {
-		normalized[i] = sanitizeTableCell(value)
+		normalized[i] = SanitizeTerminalCell(value)
 	}
 	return normalized
 }
 
-func sanitizeTableCell(value string) string {
+// SanitizeTerminalCell makes an untrusted value safe to print inside a
+// single-line terminal cell: ANSI escapes, CSI/OSC sequences, C0/C1 controls,
+// and invalid UTF-8 lose their terminal meaning while every visible rune
+// needed to identify the value is preserved.
+func SanitizeTerminalCell(value string) string {
 	var sanitized strings.Builder
 	sanitized.Grow(len(value))
 	for index := 0; index < len(value); {

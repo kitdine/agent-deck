@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/mattn/go-runewidth"
 
@@ -1128,9 +1130,13 @@ func stripStatsANSI(value string) string {
 	return plain.String()
 }
 
+// statsTitle upper-cases the first character of a known client-style label. It
+// decodes a full rune rather than a byte, so a non-ASCII label keeps its first
+// code point intact instead of being split into invalid UTF-8.
 func statsTitle(value string) string {
-	if value == "" {
-		return ""
+	first, size := utf8.DecodeRuneInString(value)
+	if size == 0 || first == utf8.RuneError && size == 1 {
+		return value
 	}
-	return strings.ToUpper(value[:1]) + value[1:]
+	return string(unicode.ToUpper(first)) + value[size:]
 }

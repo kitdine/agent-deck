@@ -2941,8 +2941,17 @@ func validHookTranscript(home string, client usagehook.Client, event usagehook.E
 
 func newUsageCommand(opts *commandOptions) *cobra.Command {
 	cmd := &cobra.Command{Use: "usage", Short: "Inspect usage and pricing"}
+	var statsInteractive bool
 	withUsage := func(run func(context.Context, *usage.Service, *store.Store, []string) (any, bool, []string, error)) func(*cobra.Command, []string) error {
 		return func(command *cobra.Command, args []string) error {
+			if command.Name() == "stats" && statsInteractive && opts.format != "text" {
+				return &inputError{err: errors.New("usage stats --interactive requires text output")}
+			}
+			if command.Name() == "stats" && statsInteractive {
+				if _, _, err := usageStatsInteractiveTerminal(opts.stdin, opts.stdout); err != nil {
+					return &inputError{err: err}
+				}
+			}
 			database, _, err := opts.openStore(command.Context())
 			if err != nil {
 				return err
@@ -2963,6 +2972,17 @@ func newUsageCommand(opts *commandOptions) *cobra.Command {
 				if top, err := command.Flags().GetInt("top"); err == nil {
 					renderOptions.top = &top
 				}
+			}
+			if command.Name() == "stats" && statsInteractive {
+				report, ok := data.(usage.StatsReport)
+				if !ok {
+					return errors.New("usage stats interactive report is unavailable")
+				}
+				input, output, err := usageStatsInteractiveTerminal(opts.stdin, opts.stdout)
+				if err != nil {
+					return &inputError{err: err}
+				}
+				return runUsageStatsViewer(command.Context(), input, output, report, warnings, opts.noColor, renderOptions.top)
 			}
 			return writeUsageEnvelope(opts.stdout, opts.format, commandOutputName(command), data, partial, warnings, opts.quiet, renderOptions)
 		}
@@ -3037,6 +3057,7 @@ func newUsageCommand(opts *commandOptions) *cobra.Command {
 	stats.Flags().StringVar(&statsProvider, "provider", "", "Open-set exact runtime provider; values are not enumerated; unknown selects unattributed events")
 	stats.Flags().BoolVar(&statsActivity, "activity", false, "Show safe activity and tool summaries for the selected model")
 	stats.Flags().BoolVar(&statsNoScan, "no-scan", false, "Use stored aggregate without scanning sources")
+	stats.Flags().BoolVar(&statsInteractive, "interactive", false, "Open a read-only terminal usage viewer")
 	stats.Flags().IntVar(&statsTop, "top", 0, "Text-list cap for MODELS/PROVIDERS/UNPRICED/per-model CACHE/cache sessions: unset keeps each section's default cap, 0 shows every row, N overrides the cap to N. TREND and CLIENTS are unaffected; --format json always has every row.")
 	cmd.AddCommand(
 		newUsageHookCommand(opts),
