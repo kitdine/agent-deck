@@ -381,11 +381,10 @@ release-secret access.
   actually delivered.
 - Close all review records for this plan and confirm the app, CLI, wire-contract,
   and package identities this plan produces agree with each other.
-- **This task does not raise the specification version, run the release
-  candidate, or write release notes.** Those are release-level actions owned by
-  the [v0.5.0 release plan](v0-5-0-release.md), which also carries the
-  `v0.5.0-rc.1` requirement this plan triggers by adding external-client access
-  and a new signed distribution surface.
+- **This task does not raise the specification version, run technical preflight,
+  choose a release channel, or write release notes.** The version-wide raise is
+  owned by the [v0.5.0 contract closure](v0-5-0-contract.md). Preflight and any
+  RC or stable publication remain separate, explicitly authorized workflows.
 - Runs only after every other task in this plan has Review PASS.
 - Verification level: L2 for contract state.
 
@@ -404,7 +403,7 @@ Task 1 was blocked on the `v0.4.0` session DTO contract; that dependency is now
 satisfied and `desktop-wire-contract` is unblocked. Task 2 consumes task 1.
 Tasks 3 and 4 depend on task 2 and may proceed independently after the shared
 snapshot contract is fixed. Task 5 integrates tasks 2-4. Task 6 runs last within
-this plan, and in turn gates the [v0.5.0 release plan](v0-5-0-release.md).
+this plan, and in turn gates the [v0.5.0 contract closure](v0-5-0-contract.md).
 
 Commit boundaries follow task boundaries. The plan does not authorize commits,
 pushes, certificate creation, secret changes, release publication, Homebrew tap

@@ -12,12 +12,14 @@ on:
         type: string
 
 permissions:
+  actions: read
   contents: read
 
 jobs:
   release:
     if: ${{ github.event_name == 'push' }}
     permissions:
+      actions: read
       contents: write
     runs-on: macos-15
     steps:
@@ -38,12 +40,36 @@ jobs:
         # check-install) exercises fish completion install/uninstall; the
         # macos-15 runner image does not ship fish by default.
         run: brew install fish
-      - name: Verify release
-        run: make release-verify
-      - name: Build release archives
+      - name: Require successful release preflight
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          preflight_run_id=$(gh api \
+            --method GET \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/$GITHUB_REPOSITORY/actions/workflows/release-preflight.yml/runs?event=workflow_dispatch&status=success&head_sha=$GITHUB_SHA&per_page=100" \
+            --jq '.workflow_runs[0].id // empty')
+          if [[ -z $preflight_run_id ]]; then
+            echo "no successful release-preflight.yml run exists for $GITHUB_SHA" >&2
+            exit 1
+          fi
+          evidence_dir="$RUNNER_TEMP/release-preflight"
+          gh run download "$preflight_run_id" \
+            --name "release-preflight-$GITHUB_SHA" \
+            --dir "$evidence_dir"
+          ruby scripts/release-preflight-manifest.rb verify \
+            "$evidence_dir" \
+            "$GITHUB_REPOSITORY" \
+            "$GITHUB_SHA" \
+            "$preflight_run_id"
+      - name: Verify version-specific release artifacts
         # Pin archive names to the tag so they always match the files uploaded
         # below, independent of the Makefile's git-describe version derivation.
-        run: make release-archive VERSION="$GITHUB_REF_NAME"
+        run: |
+          make release-artifact-verify \
+            VERSION="$GITHUB_REF_NAME" \
+            COMMIT="$GITHUB_SHA" \
+            BRANCH=release
       - name: Extract annotated release notes
         # actions/checkout may leave refs/tags/<tag> pointing at the peeled
         # commit for a tag event. Fetch the remote tag object into a private

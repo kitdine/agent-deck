@@ -569,6 +569,30 @@ are the project catalog; only the commands selected by the current risk level ar
 required. `release-verify` is L4 and is not a default development, review,
 re-review, commit, or push check.
 
+### Release Decision and Preflight / 发布决策与技术预检
+
+- A version-development workflow ends when its version contract task reaches
+  Review PASS. Do not create release-candidate or release tasks under that plan,
+  and do not infer an RC or stable-release decision from Review or CEv1 status.
+- At that terminal checkpoint, offer to commit the contract task. After an
+  authorized commit, a push to any remote branch may make the commit eligible
+  for technical preflight; pushing does not start preflight automatically.
+- After an authorized push, ask whether to dispatch the manual
+  `release-preflight` workflow for the exact pushed commit SHA. Dispatch remains
+  a separately authorized external action.
+- The preflight runs L4, requires an existing isolated-real-state evidence ID,
+  builds and verifies candidate artifacts, and publishes only a commit-bound
+  evidence artifact. It does not tag, release, publish, install, or choose a
+  release channel.
+- A successful same-SHA preflight lets the user choose RC, stable release, or no
+  publication. Tag and publication workflows must reject a tag whose peeled
+  commit lacks successful preflight evidence for that exact SHA.
+- RC and stable publication reuse the same-SHA L4 and isolated-real-state
+  evidence. They run only version-specific artifact identity, checksum,
+  installation, and distribution checks made necessary by embedded version and
+  build metadata; they must not repeat the technical preflight merely because
+  the workflow stage changed.
+
 ### Domain Constraints / 领域约束
 
 - Store AgentDeck provider definitions, credential metadata, and only

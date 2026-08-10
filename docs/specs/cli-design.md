@@ -340,11 +340,18 @@ Archives contain the stripped binary — the same artifact class the
 `check-arm64-size` gate measures. Packaging is deterministic and local; it
 performs no network access and no uploads.
 
+A manual GitHub Actions preflight (`.github/workflows/release-preflight.yml`)
+accepts an exact pushed commit SHA and an isolated-real-state evidence ID. It
+runs aggregate `make release-verify`, builds and verifies commit-bound candidate
+artifacts, and uploads evidence without publishing a tag or release. A
+successful preflight does not select RC or stable publication.
+
 A GitHub Actions release workflow (`.github/workflows/release.yml`) triggers on
-pushed `v*` tags. It runs on a macOS arm64 runner with full Git history so tag
-derivation works, builds with the vendored module set, runs
-`make release-verify` as the gate, then `make release-archive`, and creates the
-GitHub Release with the two archives and the checksum file attached. Release
+pushed `v*` tags and rejects a tag unless that exact commit SHA has successful
+preflight evidence. It reuses same-SHA L4 and isolated-real-state results, then
+runs only version-specific `make release-artifact-verify` for embedded identity,
+checksums, installation, and distribution before creating the GitHub Release
+with the two archives and the checksum file attached. Release
 notes follow the repository release-note structure and are finalized at tag
 time. `make release-tag TAG=<tag> RELEASE_NOTES=<file>` creates the annotated
 tag with `--cleanup=verbatim` and verifies that its message exactly matches the
@@ -405,9 +412,12 @@ independent of the release version: raising it does not oblige a minor
 release, and a minor release does not oblige raising it — a patch release may
 raise it when it adds or clarifies a rule without changing promised behavior.
 
-Any release that touches persisted data, the pricing read path, or a
-configuration file owned by an external client ships at least one `-rc.N` and
-is validated against real local data before the stable tag.
+Any version that touches persisted data, the pricing read path, or a
+configuration file owned by an external client requires a manual technical
+preflight bound to the exact pushed commit before any tag. The preflight runs
+L4 and cites validation against an isolated copy of real local data. Its result
+does not choose a release channel; RC, stable release, or no publication remains
+an explicit user decision.
 
 For either a stable or supported RC release, a dependent macOS job renders the
 matching formula from the released checksum asset, installs it from an isolated
@@ -2180,7 +2190,7 @@ here changes; do not create a dated copy of this file.
 
 | Version | Date | Contract change |
 | --- | --- | --- |
-| 24 | 2026-08-10 | Establishes the v0.4.0 release contract across the completed session-experience and usage-report-presentation lines: session search/show gains bounded, additive document, activity, usage, invocation, pagination, and interactive-viewer surfaces; usage reports use responsive text presentation without changing JSON values, pricing, or attribution; the session parser/index format change requires rebuildable-index migration and an RC validated against isolated real local state; invocation-level pricing reads event-time prices without rewriting stored usage or historical price rows. The bounded session DTO is the v0.5.0 desktop dependency and unblocks `desktop-wire-contract`, which still owns the later coherent snapshot, wire version, and Go-owned redaction contract. |
+| 24 | 2026-08-10 | Establishes the v0.4.0 version contract across the completed session-experience and usage-report-presentation lines: session search/show gains bounded, additive document, activity, usage, invocation, pagination, and interactive-viewer surfaces; usage reports use responsive text presentation without changing JSON values, pricing, or attribution; the session parser/index format change requires rebuildable-index migration and an exact-commit technical preflight citing isolated-real-state validation before the user selects RC, stable release, or no publication; invocation-level pricing reads event-time prices without rewriting stored usage or historical price rows. The bounded session DTO is the v0.5.0 desktop dependency and unblocks `desktop-wire-contract`, which still owns the later coherent snapshot, wire version, and Go-owned redaction contract. |
 | 23 | 2026-08-04 | Adds managed `usage hook setup|status|remove` lifecycle commands for Codex and Claude session-route boundaries: setup/removal touch only AgentDeck-owned JSON entries, status exposes absent/configured/modified/invalid and observable trust limits, and handlers are silent, bounded, fail-open. Attribution resolves in a fixed order — exact run binding, then the most recent lifecycle boundary at or before the event, then the session-start fallback — so a Hook-configured client splits its own resumed sessions and `run` is no longer required to re-attribute one; `run` remains a supported low-level exact-attribution launcher, and an overlapping managed run downgrades both runs to estimated rather than being refused. Schema v17 adds `usage_session_routes` and drops the single-active-run index. Sealed credential key version 2 derives its key ID without changing existing AES key bytes, retains version-1 reads, and makes new ciphertext unsafe to downgrade to `v0.2.x`. Claude cache-creation totals with positive total and two zero TTL buckets now use the disclosed default five-minute rate; affected historical cost/coverage numbers change without rewriting stored events. `codex-auto-review` billing remains unresolved and stays an unpriced Backlog item rather than receiving an inferred price or mapping. |
 | 22 | 2026-08-02 | Defines version number semantics for the `0.x` line: MAJOR stays `0` until an explicit stability declaration; MINOR triggers cover command/flag/typed-error-code changes, schema migration, stdout/JSON/NDJSON/exit-code semantic changes, user-visible number changes for unchanged input, unsafe-to-downgrade persisted formats, and rewritten (not merely clarified) promised behavior; PATCH covers everything else and must stay safe to downgrade from; error-message wording is PATCH while typed error codes are MINOR; this document's own `version:` is independent of the release version; releases touching persisted data, the pricing read path, or external-client configuration ship at least one `-rc.N` validated against real local data first. |
 | 21 | 2026-07-30 | Shell attribution gains the supported `shell env` resolver, hidden `shell-init` compatibility guarantees, presence-guarded managed blocks, reusable setup/status/remove lifecycle, in-use-shell targeting, interactive switch-time setup, corrected route-change advisories, and the machine-local portable-backup-excluded negative gate. |

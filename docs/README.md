@@ -447,8 +447,9 @@ Homebrew Cask `agentdeck-app`, direct-download DMG, signing, notarization, and a
 notification-only update check that opens the official download page. The active
 [native desktop plan](plans/desktop-app.md) owns its six implementation and
 review gates, the last of which lands its own contract text. The single
-specification raise, the release candidate, and the release notes belong to the
-[v0.5.0 release plan](plans/v0-5-0-release.md).
+version-wide specification raise belongs to the
+[v0.5.0 contract closure](plans/v0-5-0-contract.md). Technical preflight and any
+RC or stable publication remain separate, explicitly authorized workflows.
 
 **`v0.6.0` — minor. Skills and Hooks lifecycle management.** Build the shared Go
 lifecycle engine, Skills adapter, and third-party Hooks adapter with preview,
@@ -497,9 +498,9 @@ fixing a defect, which is why it is a contract change recorded by the single
 | [specs/cli-design.md](specs/cli-design.md) | What the system does and must keep doing: provider, credential, usage, pricing, session, backup, and distribution behavior. Currently version 24; see its changelog. |
 | [specs/cli-manual.md](specs/cli-manual.md) | The implemented command surface, flags, and output shapes. |
 | [specs/2026-08-06-terminal-rendering-design.md](specs/2026-08-06-terminal-rendering-design.md) | Proposed — shared usage/session terminal rendering, interaction, degradation, accessibility, and verification contract; implementation awaits approval. |
-| [specs/2026-08-07-usage-interactive-viewer-design.md](specs/2026-08-07-usage-interactive-viewer-design.md) | Active — approved Task 5 `usage stats --interactive` layout, color/no-color, state, lifecycle, and PTY contract; session alignment deferred until v0.4.0 RC usage acceptance. |
+| [specs/2026-08-07-usage-interactive-viewer-design.md](specs/2026-08-07-usage-interactive-viewer-design.md) | Active — approved Task 5 `usage stats --interactive` layout, color/no-color, state, lifecycle, and PTY contract; session alignment is a separately approved follow-up after v0.4.0 manual acceptance. |
 | [plans/desktop-app.md](plans/desktop-app.md) | Active — 0/6 done. Native macOS 26 menu-bar app, WidgetKit extension, unified desktop package, Cask, direct download, and its own contract task for `v0.5.0`. |
-| [plans/v0-5-0-release.md](plans/v0-5-0-release.md) | Active — 0/3 done. Release plan, not a feature plan: the single `v0.5.0` specification raise, the release candidate, and release notes. Blocked until the desktop plan is fully reviewed. |
+| [plans/v0-5-0-contract.md](plans/v0-5-0-contract.md) | Active — 0/1 done. Version contract only: the single `v0.5.0` specification raise and documentation reconciliation. Blocked until the desktop plan is fully reviewed; preflight and publication remain separate user decisions. |
 | [reviews/](reviews/README.md) | Per-task review records that back each plan's ticked `Review` cell. |
 | [archive/](archive/README.md) | Retired plans and superseded contracts. Not a starting point for new work. |
 
@@ -608,8 +609,10 @@ so they get different plans.
 - A **feature plan** owns one coherent piece of product behavior. Its own
   contract task reconciles *what that plan delivered* with the living specs. It
   **never raises the specification version**.
-- A **release plan** owns one version. It raises the specification version
-  **exactly once**, validates the release candidate, and prepares release notes.
+- A **version contract plan** owns one version. It raises the specification
+  version **exactly once**, then ends at Review PASS. Technical preflight,
+  release-channel selection, release notes, tagging, and publication remain
+  separate workflows.
   It owns no product behavior and starts only after every feature plan in that
   version is fully reviewed.
 

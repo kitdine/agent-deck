@@ -1,0 +1,88 @@
+name: Release Preflight
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_sha:
+        description: Exact pushed commit SHA to validate
+        required: true
+        type: string
+      real_state_evidence_id:
+        description: Completion-evidence ID for isolated real-state validation
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    runs-on: macos-15
+    steps:
+      - name: Check out exact target
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.target_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Require exact target SHA
+        env:
+          EVENT_SHA: ${{ github.sha }}
+          TARGET_SHA: ${{ inputs.target_sha }}
+        run: |
+          [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$EVENT_SHA" = "$TARGET_SHA"
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          test "$(git cat-file -t "$TARGET_SHA")" = commit
+
+      - name: Require an arm64 runner
+        run: test "$(uname -m)" = arm64
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install fish
+        run: brew install fish
+
+      - name: Run technical preflight
+        run: make release-verify
+
+      - name: Build and verify candidate artifacts
+        env:
+          TARGET_SHA: ${{ inputs.target_sha }}
+        run: |
+          ARTIFACT_VERSION="preflight-$TARGET_SHA"
+          make release-artifact-verify \
+            VERSION="$ARTIFACT_VERSION" \
+            COMMIT="$TARGET_SHA" \
+            BRANCH=preflight
+
+      - name: Write preflight evidence manifest
+        env:
+          REAL_STATE_EVIDENCE_ID: ${{ inputs.real_state_evidence_id }}
+          TARGET_SHA: ${{ inputs.target_sha }}
+        run: |
+          ARTIFACT_VERSION="preflight-$TARGET_SHA"
+          ruby scripts/release-preflight-manifest.rb create \
+            dist/release-preflight.json \
+            "$GITHUB_REPOSITORY" \
+            "$TARGET_SHA" \
+            "$GITHUB_RUN_ID" \
+            "$REAL_STATE_EVIDENCE_ID" \
+            "dist/agentdeck_${ARTIFACT_VERSION}_checksums.txt"
+
+      - name: Upload preflight evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-preflight-${{ inputs.target_sha }}
+          path: |
+            dist/release-preflight.json
+            dist/agentdeck_preflight-${{ inputs.target_sha }}_darwin_arm64.tar.gz
+            dist/agentdeck_preflight-${{ inputs.target_sha }}_darwin_amd64.tar.gz
+            dist/agentdeck_preflight-${{ inputs.target_sha }}_checksums.txt
+          if-no-files-found: error
+          retention-days: 90

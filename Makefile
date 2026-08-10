@@ -24,6 +24,8 @@ COMPLETION_RC ?=
 
 .PHONY: build build-all release-tag release-archive check-arm64-size check-install check-privacy check-release-distribution install uninstall release-verify clean test test-race vet verify prices-regen check-prices-reproducible
 
+.PHONY: release-artifact-verify
+
 build:
 	mkdir -p $(DIST_DIR)
 	env GOCACHE=$(GOCACHE) GOMODCACHE=$(GOMODCACHE) $(GO) build -mod=vendor -trimpath -ldflags='$(BUILD_LDFLAGS)' -o $(DIST_DIR)/agentdeck $(PACKAGE)
@@ -42,6 +44,9 @@ release-tag:
 
 release-archive: build-all
 	bash scripts/release-archive.sh "$(DIST_DIR)" "$(VERSION)"
+
+release-artifact-verify: release-archive
+	bash scripts/verify-release-artifacts.sh "$(DIST_DIR)" "$(VERSION)" "$(COMMIT)"
 
 # Measures the exact arm64 binary release-archive packages, so the gate covers
 # the shipped artifact rather than a separately stripped build.
@@ -88,6 +93,7 @@ check-privacy:
 
 check-release-distribution:
 	bash scripts/test-release-distribution.sh
+	bash scripts/test-release-preflight.sh
 
 release-verify: verify build-all check-arm64-size check-install check-privacy check-release-distribution
 
