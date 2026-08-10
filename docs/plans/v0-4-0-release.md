@@ -40,7 +40,10 @@ not rewritten; `v0.4.0` and `v0.5.0` are corrected here.
 - session experience — six tasks complete, with its contract absorbed into
   [the CLI design](../specs/cli-design.md) and
   [manual](../specs/cli-manual.md);
-- [usage report presentation](usage-report-presentation.md) — six tasks.
+- usage report presentation — six tasks complete, with its contract absorbed
+  into [the CLI design](../specs/cli-design.md) and
+  [manual](../specs/cli-manual.md); its execution record is
+  [archived](../archive/plans/usage-report-presentation.md).
 
 Each writes its own feature contract text. This plan reconciles the result,
 raises the specification version once, validates the release candidate, and
@@ -115,8 +118,9 @@ the same rule that governed `v0.2.1` and `v0.3.0`.
 | 2. `v0-4-0-release-candidate` | [ ] | [ ] |
 | 3. `v0-4-0-release` | [ ] | [ ] |
 
-Task 1 is blocked until both feature plans are fully reviewed. Task 2 depends on
-task 1. Task 3 depends on task 2 and on explicit release authorization.
+Task 1 is unblocked because both feature plans are fully reviewed. Task 2
+depends on task 1. Task 3 depends on task 2 and on explicit release
+authorization.
 
 Commit boundaries follow task boundaries. This plan does not authorize commits,
 pushes, release tags, RC publication, or real-state mutation.
@@ -129,8 +133,11 @@ Turn a Status row into scoped work by naming its anchor:
 进入开发：`v0-4-0-release` / `<task-anchor>`
 ```
 
-Read `AGENTS.md`, this plan's named task, both feature plans' Status matrices,
-the specification versioning contract in `docs/specs/cli-design.md`, and
-verification routing. Tick `Dev` only after selected verification passes. An
+Read `AGENTS.md`, this plan's named task, the archived
+[session-experience](../archive/plans/session-experience.md) and
+[usage-report-presentation](../archive/plans/usage-report-presentation.md)
+Status matrices, the specification versioning contract in
+`docs/specs/cli-design.md`, and verification routing. Tick `Dev` only after
+selected verification passes. An
 independent reviewer records a PASS round under
 `docs/reviews/v0-4-0-release/<task-anchor>.md` before ticking `Review`.

@@ -1,6 +1,7 @@
 ---
-status: active
+status: historical
 created: 2026-08-06
+retired: 2026-08-10
 ---
 
 # Usage Report Presentation
@@ -12,7 +13,7 @@ This plan makes the `usage` report family readable as one surface. It covers
 their visual language, and adds an explicit interactive mode consistent with the
 session viewer.
 
-The retired [readability plan](../archive/plans/usage-stats-readability.md)
+The retired [readability plan](usage-stats-readability.md)
 already bounded *how much* these reports print, through per-section caps,
 `--top`, a 48-bucket trend window, and the two-column layout. It reduced
 `usage stats --period 30d --group-by hour` from 832 lines to 142. This plan
@@ -342,7 +343,7 @@ credential path, so no task routes to L3 on data risk alone.
   any decision to align session rendering.
 - The session prerequisite is satisfied: its six-task plan reached Review PASS
   and was retired on 2026-08-06. The approved design is
-  [Usage Interactive Viewer](../specs/2026-08-07-usage-interactive-viewer-design.md).
+  [Usage Interactive Viewer](../../specs/2026-08-07-usage-interactive-viewer-design.md).
 
 ### 6. `usage-presentation-contract`
 
@@ -350,7 +351,7 @@ credential path, so no task routes to L3 on data risk alone.
   and `docs/specs/cli-manual.md`, close all review records, and update the
   documentation index.
 - **This task does not raise the specification version.** That is a release-level
-  action owned by the [v0.4.0 release plan](v0-4-0-release.md), which runs after
+  action owned by the [v0.4.0 release plan](../../plans/v0-4-0-release.md), which runs after
   both `v0.4.0` feature lines land their contract text.
 - Runs only after every other task in this plan has Review PASS.
 - Verification level: L2.
@@ -364,12 +365,26 @@ credential path, so no task routes to L3 on data risk alone.
 | 3. `usage-stats-layout` | [x] | [x] |
 | 4. `usage-family-alignment` | [x] | [x] |
 | 5. `usage-interactive-viewer` | [x] | [x] |
-| 6. `usage-presentation-contract` | [ ] | [ ] |
+| 6. `usage-presentation-contract` | [x] | [x] |
 
 Tasks 1 and 4 form the family-consistency path; tasks 2 and 3 form the
-`usage stats` semantics path. Both start from task 1. Task 5 is blocked on the
-session experience plan. Task 6 runs last within this plan, and in turn gates
-the [v0.4.0 release plan](v0-4-0-release.md).
+`usage stats` semantics path. Both start from task 1. Task 5 consumed the
+retired session experience prerequisite and reached Review PASS. Task 6 runs
+last within this plan, and in turn gates the [v0.4.0 release plan](../../plans/v0-4-0-release.md).
+
+Task 6 development reconciled the delivered shared usage renderer and explicit
+interactive stats viewer into `docs/specs/cli-design.md` and
+`docs/specs/cli-manual.md`. The contract now documents fixed-baseline share bars,
+peak-relative trend bars, aligned and responsive fields, structured cache output,
+consolidated KPIs, and the seven-section `usage stats --interactive` state and
+terminal lifecycle. JSON, pricing, attribution, and specification version
+contracts remain unchanged. Verification: `git diff --check` passed.
+
+Task 6 reached Review PASS on 2026-08-10 after closing the global ASCII-grid
+contract conflict and the stale Task 5 dependency status in the documentation
+index. All six tasks are complete and independently reviewed; this plan and its
+review records retired together, while the separate `v0.4.0` release plan now
+owns versioning and RC acceptance.
 
 Commit boundaries follow task boundaries. This plan does not authorize commits,
 pushes, release tags, RC publication, real-state mutation, or desktop work.

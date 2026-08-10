@@ -5,7 +5,7 @@ created: 2026-07-22
 
 # Archived Documents
 
-Last updated: 2026-08-06
+Last updated: 2026-08-10
 
 ## Why this directory exists
 
@@ -30,6 +30,17 @@ Move a document here instead of leaving it `active` in `docs/plans/` or
   conclusions have already been absorbed into a living document.
 - Leaving it in the main `docs/` tree risks being mistaken for the current
   source of truth.
+
+## 2026-08-10 retirement: usage report presentation
+
+`plans/usage-report-presentation.md` and
+`reviews/usage-report-presentation/` retired together after all six tasks
+passed independent review. The plan delivered shared responsive usage
+primitives, fixed-baseline share bars, aligned detail, content-aware stats
+layout, family-wide report alignment, and the explicit interactive stats
+viewer. The active behavior now lives in `docs/specs/cli-design.md` and
+`docs/specs/cli-manual.md`; release versioning and RC acceptance remain owned
+by the separate `v0.4.0` release plan.
 
 ## 2026-08-06 retirement: session experience
 

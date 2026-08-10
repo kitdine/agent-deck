@@ -428,11 +428,10 @@ computes, across `usage stats`, `usage summary`, `usage sessions`, and
 `usage diagnose`. The retired
 [readability plan](archive/plans/usage-stats-readability.md) bounded how much
 those reports print; this line addresses whether the printed values can be
-compared and understood. It is owned by the active
-[usage report presentation plan](plans/usage-report-presentation.md), which
-defines six implementation and review gates. Its interactive mode reuses the
-session viewer's terminal state machine, so its task 5 is blocked on
-`interactive-session-viewer`.
+compared and understood. This six-task line is now delivered and independently
+reviewed; its current behavior is absorbed into the living CLI design and
+manual, while the historical execution record is summarized by the archive
+index.
 
 Both lines land in one release, so the batch rule that held across `v0.3.0`
 still holds: the specification version is raised **once**. Each feature plan
@@ -498,8 +497,7 @@ fixing a defect, which is why it is a contract change recorded by the single
 | [specs/cli-manual.md](specs/cli-manual.md) | The implemented command surface, flags, and output shapes. |
 | [specs/2026-08-06-terminal-rendering-design.md](specs/2026-08-06-terminal-rendering-design.md) | Proposed — shared usage/session terminal rendering, interaction, degradation, accessibility, and verification contract; implementation awaits approval. |
 | [specs/2026-08-07-usage-interactive-viewer-design.md](specs/2026-08-07-usage-interactive-viewer-design.md) | Active — approved Task 5 `usage stats --interactive` layout, color/no-color, state, lifecycle, and PTY contract; session alignment deferred until v0.4.0 RC usage acceptance. |
-| [plans/usage-report-presentation.md](plans/usage-report-presentation.md) | Active – 5/6 reviewed; Tasks 1–5 are Review PASS. Task 5 interactive viewer passed Round 6 after closing terminal label safety, section-local viewport, cache-detail, and exact-state verification gaps. Contract text remains for `v0.4.0`. |
-| [plans/v0-4-0-release.md](plans/v0-4-0-release.md) | Active — 0/3 done. Release plan, not a feature plan: the single `v0.4.0` specification raise, the release candidate, and release notes. Blocked until both `v0.4.0` feature plans are fully reviewed. |
+| [plans/v0-4-0-release.md](plans/v0-4-0-release.md) | Active — 0/3 done; entry condition met. Release plan, not a feature plan: the single `v0.4.0` specification raise, the release candidate, and release notes. |
 | [plans/desktop-app.md](plans/desktop-app.md) | Active — 0/6 done. Native macOS 26 menu-bar app, WidgetKit extension, unified desktop package, Cask, direct download, and its own contract task for `v0.5.0`. |
 | [plans/v0-5-0-release.md](plans/v0-5-0-release.md) | Active — 0/3 done. Release plan, not a feature plan: the single `v0.5.0` specification raise, the release candidate, and release notes. Blocked until the desktop plan is fully reviewed. |
 | [reviews/](reviews/README.md) | Per-task review records that back each plan's ticked `Review` cell. |

@@ -123,13 +123,15 @@ secrets or internal envelope fields. Raw JSON objects or arrays must appear only
 when the caller explicitly selects `--format json`. The JSON envelope and field
 names remain stable independently of text presentation.
 
-Usage text may use sparse Emoji section titles to separate the summary, token
-totals, model coverage, and session table. Session token components remain
-separate columns rather than a packed cell. If one or more events cannot be
-priced, the complete `catalog_base_cost` and `provider_cost` remain unavailable;
-the output separately labels known priced subtotals, priced/unpriced event
-counts, and per-model coverage. This exposes verified priced work without
-presenting a partial amount as a complete total.
+Usage reports use the shared width-aware command-layer primitives for section
+titles, bars, aligned fields, and responsive rows. Text remains a presentation
+contract: layout may change without changing JSON fields or values. Session
+token components remain separate fields; at narrow widths secondary fields move
+to continuation lines and long identity values are wrapped losslessly. If one
+or more events cannot be priced, the complete `catalog_base_cost` and
+`provider_cost` remain unavailable; text labels known subtotals, priced/unpriced
+event counts, and per-model coverage without presenting a partial amount as a
+complete total.
 
 ## Architecture
 
@@ -958,21 +960,24 @@ endpoint, multiplier, credential reference, or nested credential details.
 Provider status exposes credential detail only through the plural `credentials`
 collection and has no deprecated singular `credential` projection.
 
-Every collection-shaped `text` result uses one shared ASCII grid renderer. This
-includes provider list/status/recovery collections, credential lists, session
+Collection-shaped `text` results that use the shared ASCII grid renderer include
+provider list/status/recovery collections, credential lists, session
 list/search/document collections, extension lists, backup lists, and price
-history. The renderer uses only `+`, `-`, and `|`, adds one space of horizontal
+history. The usage report family (`usage summary`, `usage stats`, `usage
+sessions`, and `usage diagnose`) is explicitly excluded and follows the
+dedicated responsive section, bar, and continuation-line contract below. The
+ASCII grid renderer uses only `+`, `-`, and `|`, adds one space of horizontal
 cell padding, and draws a horizontal separator around the header and every data
 row. It does not use Unicode box-drawing characters. Empty collections keep
 their existing concise prose instead of rendering an empty grid, and detail
 views keep their labeled-field layout.
 
-Grid column widths are calculated from terminal display width rather than byte
-length so CJK and other wide text remain aligned. Cells are left-aligned and are
-not truncated or wrapped. The implementation uses one small width-focused
-dependency rather than a full table UI framework, vendors it through the normal
-dependency workflow, and must continue to pass the release size gate. JSON and
-NDJSON contracts are unchanged.
+For commands using the ASCII grid, column widths are calculated from terminal
+display width rather than byte length so CJK and other wide text remain aligned.
+Cells are left-aligned and are not truncated or wrapped. The implementation
+uses one small width-focused dependency rather than a full table UI framework,
+vendors it through the normal dependency workflow, and must continue to pass
+the release size gate. JSON and NDJSON contracts are unchanged.
 
 Text `provider status` uses the columns `CODEX ACTIVE` and `CLAUDE ACTIVE`.
 Each active cell contains the selected credential shorthand; inactive cells and
@@ -1313,25 +1318,35 @@ cache, activity, and tool counts. `providers` entries are client-scoped
 dimensions sorted like models (known metric value descending, then client,
 then name) and expose the same share, cost, cache, session, and event fields.
 
-Text always
-uses the approved responsive Balanced layout: compact token/cost/session KPIs,
-bar-based trend and all-model sections, client share, a PROVIDERS ranking
-directly after the client share section, model/session cache hit
-analysis, and an average/peak/priced footer. PROVIDERS rows are labeled
-`<Client>/<provider>` with the same proportional bars and share labels as the
-client section and an empty-state line when the range has no providers. Cache
-text shows all relevant
-models and the first ten deterministically sorted sessions, reports the omitted
-count, and gives each session a copyable
-`agentdeck session show <id> --client <client> --activity` command. Wide
-terminals use two columns; narrow terminals stack the same sections without
-exceeding the detected width. Ranges spanning at least seven
-local calendar days include a full-width 7-by-24 activity heatmap at the bottom;
-hour ranges omit it. TTY color is optional and `--no-color` or redirected output
-contains no ANSI escapes. `timezone` is a stable IANA identifier when the
-machine zone can be resolved and otherwise an explicit `UTC+HH:MM` offset. Hour
-bucket boundaries retain their RFC3339 offsets so both hours in a DST fold
-remain distinct.
+Text always uses the approved responsive Balanced layout and the shared
+command-layer primitives. `MODELS`, `CLIENTS`, and `PROVIDERS` use share bars
+with a fixed 100% baseline; `TREND` uses magnitude bars whose full scale is the
+named peak of that series. Share is printed once, while tokens, cost, pricing
+status, and sessions align in detail columns. `CLIENTS` exposes the same detail
+depth as the other dimensions. Cache is a structured model section followed by
+a capped subordinate session list and grouped detail commands; the complete
+session identifier remains available without making the primary row unbounded.
+KPI values, including `AVG COST / SESSION`, `PEAK`, and `PRICED`, are stated in
+the header region once. Wide terminals use two columns only when both content
+regions remain readable; otherwise sections stack. Narrow terminals keep
+identity and primary values and move secondary fields to lossless continuation
+lines without exceeding detected width. Ranges spanning at least seven local
+calendar days include a full-width 7-by-24 activity heatmap; hour ranges omit
+it. TTY color is optional and `--no-color` or redirected output contains no ANSI
+escapes. `timezone` is a stable IANA identifier when the machine zone can be
+resolved and otherwise an explicit `UTC+HH:MM` offset. Hour bucket boundaries
+retain their RFC3339 offsets so both hours in a DST fold remain distinct.
+
+`usage stats --interactive` is explicit and read-only. It requires text output,
+TTY stdin/stdout, a usable `TERM`, and at least 48x10; this preflight happens
+before opening the store, scanning, or entering raw mode. The viewer exposes
+Overview, Trend, Models, Clients, Providers, Cache, and Coverage, with
+section-local page, selection, and viewport state and 20-row pages. Left/Right
+or Tab changes section, Up/Down/Home/End changes selection, PageUp/PageDown
+changes page, `?` toggles help, and `q` or standalone Escape exits. Resize,
+Ctrl-C, EOF, cancellation, and errors restore the terminal before reporting.
+`--top` is applied before interactive paging; JSON is rejected before state
+creation and ordinary `usage stats` is the fallback for unsupported terminals.
 
 `usage stats --model <model> --activity` adds that model's active session/day
 range, safe tool-call totals, completion/failure counts, available durations,
@@ -2073,9 +2088,11 @@ import the legacy `providers.json`, usage database, or real client settings.
     providers with zero credentials and retained orphan secrets add nothing.
 32. Schema v8 transactionally canonicalizes logical references, endpoints, and
     multiplier precision before enforcing logical-reference uniqueness.
-33. Every collection-shaped text result uses the shared `+`, `-`, and `|` ASCII
-    grid with per-row separators and terminal-display-width alignment, while
-    prose empty states, labeled details, JSON, and NDJSON remain unchanged.
+33. Collection-shaped text results outside the usage report family use the
+    shared `+`, `-`, and `|` ASCII grid with per-row separators and
+    terminal-display-width alignment. Usage reports use their dedicated
+    responsive primitives; prose empty states, labeled details, JSON, and
+    NDJSON remain unchanged.
 34. Text provider status reports credential shorthand in independent `CODEX
     ACTIVE` and `CLAUDE ACTIVE` columns, using `-` for inactive or built-in
     official credentials, while JSON retains the `active` collection.
