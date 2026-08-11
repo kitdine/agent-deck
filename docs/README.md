@@ -504,6 +504,8 @@ fixing a defect, which is why it is a contract change recorded by the single
 | [reviews/](reviews/README.md) | Per-task review records that back each plan's ticked `Review` cell. |
 | [archive/](archive/README.md) | Retired plans and superseded contracts. Not a starting point for new work. |
 
+| [plans/rc3-terminal-ux-remediation.md](plans/rc3-terminal-ux-remediation.md) | Active — 1/4 RC2 manual-acceptance remediation tasks complete; Claude model indexing passed review, with bright Usage visuals, Session interactive detail, and ordinary Session text remaining. |
+
 ## Open Tasks Not Owned by a Plan
 
 None.

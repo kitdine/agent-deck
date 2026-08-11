@@ -175,6 +175,61 @@ func TestScanClaudeAllowlistAndExclusion(t *testing.T) {
 	}
 }
 
+func TestScanClaudeIndexesNestedModelAndRereadsLegacyParserVersion(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	home := filepath.Join(root, "home")
+	path := filepath.Join(home, ".claude", "projects", "p", "session.jsonl")
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		t.Fatal(err)
+	}
+	contents := strings.Join([]string{
+		`{"type":"user","sessionId":"claude-session","timestamp":"2026-08-11T00:00:00Z","cwd":"/work/p","message":{"model":"spoofed-user-model","content":"visible prompt"}}`,
+		`{"type":"assistant","sessionId":"claude-session","timestamp":"2026-08-11T00:00:01Z","message":{"model":"claude-sonnet-5","content":[{"type":"text","text":"visible answer"}]}}`,
+	}, "\n") + "\n"
+	if err := os.WriteFile(path, []byte(contents), 0600); err != nil {
+		t.Fatal(err)
+	}
+	database, err := store.OpenSessions(ctx, filepath.Join(root, "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	if result, scanErr := Scan(ctx, database.DB, home); scanErr != nil || result.Documents != 2 {
+		t.Fatalf("initial scan = %+v, %v", result, scanErr)
+	}
+	assertModel := func() {
+		t.Helper()
+		items, listErr := List(ctx, database.DB)
+		if listErr != nil || len(items) != 1 || items[0].Model != "claude-sonnet-5" {
+			t.Fatalf("listed metadata = %#v, %v", items, listErr)
+		}
+		metadata, showErr := ShowMetadata(ctx, database.DB, "claude", "claude-session")
+		if showErr != nil || metadata.Model != "claude-sonnet-5" {
+			t.Fatalf("shown metadata = %#v, %v", metadata, showErr)
+		}
+	}
+	assertModel()
+
+	legacyVersion := ParserVersion - 1
+	if _, err = database.DB.ExecContext(ctx, `UPDATE session_metadata SET model='',parser_version=?`, legacyVersion); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = database.DB.ExecContext(ctx, `UPDATE session_sources SET parser_version=?`, legacyVersion); err != nil {
+		t.Fatal(err)
+	}
+	result, err := Scan(ctx, database.DB, home)
+	if err != nil || result.Sources != 1 || result.Skipped != 0 {
+		t.Fatalf("parser-version reread = %+v, %v", result, err)
+	}
+	assertModel()
+	var sourceVersion int
+	if err = database.DB.QueryRowContext(ctx, `SELECT parser_version FROM session_sources WHERE source_path=?`, filepath.Clean(path)).Scan(&sourceVersion); err != nil || sourceVersion != ParserVersion {
+		t.Fatalf("source parser version = %d, %v", sourceVersion, err)
+	}
+}
+
 func assertSessionSourceOwnership(t *testing.T, database *sql.DB, path string, wantSources, wantMetadata, wantDocuments int) {
 	t.Helper()
 	for _, check := range []struct {

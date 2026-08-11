@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	ParserVersion                  = 4
+	ParserVersion                  = 5
 	replaceDocumentsSourcePath     = "agentdeck://replace-documents"
 	replaceDocumentsSourceIdentity = "synthetic:replace-documents"
 )
@@ -867,6 +867,9 @@ func extractClaude(v map[string]any) (string, Document, Metadata) {
 		return id, Document{}, m
 	}
 	msg, _ := v["message"].(map[string]any)
+	if typ == "assistant" && m.Model == "" {
+		m.Model = str(msg["model"])
+	}
 	if msg == nil {
 		return id, Document{}, m
 	}
