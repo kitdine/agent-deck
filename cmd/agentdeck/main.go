@@ -732,6 +732,7 @@ type shellTarget struct {
 }
 
 const shellLifecycleSurfaceOnlyAnnotation = "agentdeck.shell-lifecycle-surface-only"
+const humanInteractiveSurfaceOnlyAnnotation = "agentdeck.human-interactive-surface-only"
 const shellSetupDeclinedSetting = "shell.setup.declined"
 
 func newShellCommand(opts *commandOptions) *cobra.Command {
@@ -1978,8 +1979,12 @@ type sessionShowPage struct {
 type sessionViewerCompleted struct{}
 
 func newSessionCommand(opts *commandOptions) *cobra.Command {
-	cmd := &cobra.Command{Use: "session", Short: "Search local sessions"}
-	var showTokens, showInteractive bool
+	cmd := &cobra.Command{
+		Use:         "session",
+		Short:       "Search local sessions",
+		Annotations: map[string]string{humanInteractiveSurfaceOnlyAnnotation: "true"},
+	}
+	var showTokens, showInteractive, sessionInteractive bool
 	withSessions := func(run func(context.Context, *store.Store, string, []string) (any, error)) func(*cobra.Command, []string) error {
 		return func(command *cobra.Command, args []string) error {
 			stateDir, err := opts.stateRoot()
@@ -2008,13 +2013,19 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if command.Name() == "show" && (showTokens || showInteractive) {
+			if (command.Name() == "show" && (showTokens || showInteractive)) || (command == cmd && sessionInteractive) {
 				core, err := store.OpenWithLockHeld(command.Context(), stateDir)
 				if err != nil {
 					return err
 				}
 				defer core.Close()
 				command.SetContext(context.WithValue(command.Context(), sessionUsageContextKey{}, usage.New(core, home)))
+			}
+			if (command.Name() == "show" && showInteractive) || (command == cmd && sessionInteractive) {
+				if releaseErr := lock.Release(); releaseErr != nil {
+					return releaseErr
+				}
+				lockReleased = true
 			}
 			data, err := run(command.Context(), sessions, home, args)
 			if err != nil {
@@ -2047,6 +2058,35 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 			return writeResult(opts.stdout, opts.format, commandOutputName(command), data, opts.quiet)
 		}
 	}
+	cmd.Args = cobra.NoArgs
+	cmd.RunE = func(command *cobra.Command, args []string) error {
+		if !sessionInteractive {
+			return command.Help()
+		}
+		return withSessions(func(ctx context.Context, s *store.Store, _ string, _ []string) (any, error) {
+			if opts.format != "text" {
+				return nil, errors.New("session --interactive requires text format")
+			}
+			input, inputOK := opts.stdin.(*os.File)
+			output, outputOK := opts.stdout.(*os.File)
+			if !inputOK || !outputOK {
+				return nil, errors.New("session --interactive requires TTY stdin and stdout")
+			}
+			items, err := session.List(ctx, s.DB)
+			if err != nil {
+				return nil, err
+			}
+			service, _ := sessionUsageFromContext(ctx)
+			err = runSessionBrowser(ctx, input, output, items, func(metadata session.Metadata) sessionViewerLoad {
+				return newSessionViewerLoad(ctx, s, metadata, service)
+			})
+			if err != nil {
+				return nil, err
+			}
+			return sessionViewerCompleted{}, nil
+		})(command, args)
+	}
+	cmd.Flags().BoolVar(&sessionInteractive, "interactive", false, "Browse indexed sessions in the read-only viewer")
 	var listClient, searchClient, showClient, excludeKind, excludeValue string
 	var listPage, listLimit, searchPage, searchLimit, showPage, showLimit int
 	var listAll, searchAll, showAll bool

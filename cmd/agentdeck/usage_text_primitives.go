@@ -97,16 +97,6 @@ func usageJoinColumns(left []string, leftWidth int, right []string, rightWidth, 
 	return lines
 }
 
-func usageResponsiveTableFits(width, gap, leftMin, rightMin int) bool {
-	return width-gap >= leftMin+rightMin
-}
-
-func usageResponsiveTableWidths(width, gap, rightMin int) (leftWidth, rightWidth int) {
-	inner := width - gap
-	rightWidth = max(rightMin, inner*2/5)
-	return inner - rightWidth, rightWidth
-}
-
 // usageAlignedColumns keeps values in fixed-width fields and moves whole
 // columns to a continuation line when the terminal cannot fit them together.
 // A field wider than the terminal is hard-wrapped without losing its value.

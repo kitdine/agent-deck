@@ -84,8 +84,8 @@ func TestUsageStatsWideLayoutAndColorAreDeterministic(t *testing.T) {
 			t.Fatalf("wide line overflowed: %q", line)
 		}
 	}
-	if paired {
-		t.Fatalf("wide fixture kept an imbalanced trend/ranking split:\n%s", plainText)
+	if !paired {
+		t.Fatalf("wide fixture did not use its approved balanced two-column layout:\n%s", plainText)
 	}
 }
 
@@ -707,17 +707,9 @@ func TestUsageStatsProviderDetailUsesExplicitContinuation(t *testing.T) {
 	}
 }
 
-// TestUsageStatsModelProviderDetailStaysOneLineInTwoColumnLayout closes a gap
-// the single-column 80/100 detail-compaction tests left open: at terminal
-// width >= 104, render() switches to a two-column layout and passes only a
-// fraction of the terminal width to rankingLines (MODELS/PROVIDERS), not the
-// full width — e.g. the pre-fix split gave the ranking column just 40 columns
-// at terminal width 104, well under the 80-column single-line contract, even
-// though 104 itself comfortably clears it. This exercises 104/140/160 (the
-// two-column band up to statsMaxWidth) with fields sized so the full detail
-// does not fit, proving the actual available column width, not just the raw
-// terminal width, respects the single-line contract.
-func TestUsageStatsModelProviderDetailStaysOneLineInTwoColumnLayout(t *testing.T) {
+// Responsive panel compaction must use the panel's actual width, while
+// preserving high-value fields and independently optional continuations.
+func TestUsageStatsModelProviderDetailStaysReadableInResponsivePanels(t *testing.T) {
 	rate := "88.14"
 	report := usageStatsTextFixture()
 	report.Metric = "cost"
@@ -751,25 +743,15 @@ func TestUsageStatsModelProviderDetailStaysOneLineInTwoColumnLayout(t *testing.T
 	// of a single line — without needing to isolate the column at all.
 	const modelHighValue = "TOKENS 84.9M COST unavailable STATUS UNPRICED SESSIONS 69"
 	const providerHighValue = modelHighValue // identical fixture values, no tools field
-	// The fixture's first bucket (2026-07-14, day-grouped) renders as label
-	// "Jul 14" and, under metric=cost with a known-but-not-complete value,
-	// value "$13.4M KNOWN" — both must stay visible at every width: below
-	// statsTwoColumnFits' threshold trend gets the full stacked width, at or
-	// above it trend gets its own floored column (statsTrendMinWidth), never
-	// a column truncated below what its own label+value need.
+	// The known-partial trend label and value must stay visible whether the
+	// content-aware layout chooses one or several columns.
 	for _, tc := range []struct {
 		width             int
 		wantModelCacheHit bool
 	}{
-		// width 104 is below statsTwoColumnFits' threshold (needs inner >=
-		// 80+28=108, i.e. width >= 112), so it now stacks: rankingLines gets
-		// the full 104-column width, comfortably fitting the model's full
-		// 89-column detail (cache-hit included) as well as the provider's.
+		// Width 104 is in the one-column band.
 		{width: 104, wantModelCacheHit: true},
-		// 140/160 clear the threshold and stay two-column with the ranking
-		// column floored at 80, reproducing the original Round 1 scenario
-		// where the model (but not the shorter, tools-free provider) has to
-		// drop cache-hit.
+		// Widths 140/160 permit two balanced columns for this fixture.
 		{width: 140, wantModelCacheHit: true},
 		{width: 160, wantModelCacheHit: true},
 	} {
@@ -826,20 +808,9 @@ func isTwoColumnStatsLayout(text string) bool {
 	return false
 }
 
-// TestUsageStatsTwoColumnThresholdCoversWidestSupportedTrendFormats closes a
-// gap the round-2 repair's static statsTrendMinWidth=28 left open: 28 assumes
-// trendLines' 7/9-column *defaults*, but compact label/value formats can be
-// wider than that — a known-but-partial cost value like "$13.4M KNOWN" is 12
-// columns, and so is a multi-date hour label like "Jul 14 09:00" (the format
-// compactBucketLabels switches to whenever buckets span more than one
-// calendar date under hour grouping). At width 112 (the old static
-// threshold's exact activation point), a report using both wide formats
-// still needs 36 trend columns (12 label + 2 + 8 min-bar + 2 + 12 value), not
-// 28, so two-column mode would still truncate at that width. This asserts
-// the layout instead stacks until the terminal is actually wide enough for
-// this report's real content — not a fixed guess — and that model/provider
-// detail stays single-line throughout.
-func TestUsageStatsTwoColumnThresholdCoversWidestSupportedTrendFormats(t *testing.T) {
+// The 120-cell responsive band must preserve the widest supported trend label
+// and value when it activates a balanced second column.
+func TestUsageStatsResponsiveThresholdPreservesWidestTrendFormats(t *testing.T) {
 	rate := "88.14"
 	report := usageStatsTextFixture()
 	report.Metric = "cost"
@@ -865,9 +836,7 @@ func TestUsageStatsTwoColumnThresholdCoversWidestSupportedTrendFormats(t *testin
 	const modelHighValue = "TOKENS 84.9M COST unavailable STATUS UNPRICED SESSIONS 69"
 	const trendLabel = "Jul 14 09:00"
 	const trendValue = "$13.4M KNOWN"
-	// trendMinWidth = 12 (label) + 2 + 8 (min bar) + 2 + 12 (value) = 36.
-	// Two-column needs inner (width-4) >= statsRankingMinWidth(80) + 36 = 116,
-	// i.e. width >= 120.
+	// Widths below 120 remain in the one-column band; 120 permits two.
 	for _, tc := range []struct {
 		width         int
 		wantStacked   bool
@@ -875,7 +844,7 @@ func TestUsageStatsTwoColumnThresholdCoversWidestSupportedTrendFormats(t *testin
 	}{
 		{width: 112, wantStacked: true, wantTwoColumn: false}, // the old static-28 threshold's own activation point
 		{width: 119, wantStacked: true, wantTwoColumn: false}, // one column short of fitting this report's real content
-		{width: 120, wantStacked: true, wantTwoColumn: false}, // content is still too imbalanced to justify the split
+		{width: 120, wantStacked: false, wantTwoColumn: true}, // approved responsive band permits a balanced two-column split
 	} {
 		t.Run(fmt.Sprintf("width %d", tc.width), func(t *testing.T) {
 			var output bytes.Buffer
@@ -1096,16 +1065,21 @@ func TestUsageStatsDimensionDetailColumnsAlignWithinEachSection(t *testing.T) {
 }
 
 func TestUsageStatsBalancedBaselinesAtFixtureWidths(t *testing.T) {
-	// These hashes lock the approved Task 3 layout at every documented fixture
-	// width, including its content-aware stacking and structured cache section.
+	// These hashes lock the approved responsive layout at every documented
+	// fixture width, including balanced panel placement and full-width details.
 	baselines := map[int]string{
-		48:  "f7a7de596df684d8d947a1bb4690cbf232e3a43f9f0a18c3e7240591edd65ee1",
-		60:  "ca39da14c99ad792c0a37a01f10440abfac94f9d26e26d0aae484439bd639e89",
-		100: "1dd66e345c8614a870efd1bb3c04cb634d88aec9a3245f7fa1b1243a717daf13",
-		140: "138c69d503dc09f52665312d1f541f25cf50897330822e37ef1c9dc4e4b196b9",
-		160: "425e3acf4a3b3be390a558bbc36e76129d27e42cfffac7272939ded7607bc228",
+		48:  "a42dca664d9ace189b27f32632350275858140e6637055a4e2aa35730cd6200b",
+		60:  "04fb48b4aa5895984a2f8b68b8cfc66d65e1c61c1899d1638abe7e7a883952de",
+		100: "e43173fa19a1f60f0ee70748ad58003f253f4492d0a26766fd034c5c5cc56f0b",
+		120: "5aae5effab91b378b02f71da1a6757233591d5b26889bdf888cfbe65158ed75b",
+		140: "8942d69048530fc36a355933fdf82e479c887d8595391489901b721ffc8c2b5b",
+		160: "f4fecde721249f77b84e0156b4a2f548fba5241c9d3a111ca708a17da1b841e7",
+		180: "829de33ee26129a7a439792892bfa9a423a14a5a8c001da1a14d57547120ddf6",
+		239: "d43274028cd09542aa0be53636f99b0a33c6f0e0fa31a058daeb0693b9fc849c",
+		240: "6c9467ffee719dc719049285426969e2dba86dbabe53043290efe83debc70882",
+		260: "888f70d3fbcab6f285ca6c58e96364b3c13bb2d767220cc440fcb87f27633530",
 	}
-	for _, width := range []int{48, 60, 100, 140, 160} {
+	for _, width := range []int{48, 60, 100, 120, 140, 160, 180, 239, 240, 260} {
 		t.Run(fmt.Sprintf("%d columns", width), func(t *testing.T) {
 			var output bytes.Buffer
 			if err := renderUsageStatsWithOptions(&output, usageStatsTextFixture(), usageTextRenderOptions{width: width}); err != nil {

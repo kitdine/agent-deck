@@ -3,10 +3,8 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
+	"io"
 	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
 	"golang.org/x/sys/unix"
@@ -17,47 +15,79 @@ func runSessionViewer(ctx context.Context, input, output *os.File, load sessionV
 	if !term.IsTerminal(int(input.Fd())) || !term.IsTerminal(int(output.Fd())) {
 		return errors.New("--interactive requires TTY stdin and stdout")
 	}
-	state, err := term.MakeRaw(int(input.Fd()))
-	if err != nil {
-		return fmt.Errorf("enable interactive terminal: %w", err)
+	if os.Getenv("TERM") == "dumb" {
+		return errors.New("--interactive requires a usable terminal")
 	}
-	defer term.Restore(int(input.Fd()), state)
-	defer fmt.Fprint(output, "\x1b[?25h\n")
-	if _, err := fmt.Fprint(output, "\x1b[?25l"); err != nil {
+	viewer, err := prepareSessionViewer(ctx, load)
+	if err != nil {
 		return err
 	}
+	terminal, err := startInteractiveTerminal(input, output)
+	if err != nil {
+		return err
+	}
+	defer terminal.Close()
+	_, err = runPreparedSessionViewerScreen(ctx, input, output, terminal.frameWriter(), terminal.resized, viewer)
+	return err
+}
+
+// runSessionViewerScreen renders one detail screen inside an already-owned
+// terminal. The returned key lets the session browser distinguish Back from a
+// global Quit without nesting raw-mode or alternate-screen lifecycles.
+func runSessionViewerScreen(
+	ctx context.Context,
+	input, output *os.File,
+	frame io.Writer,
+	resized <-chan os.Signal,
+	load sessionViewerLoad,
+) (string, error) {
+	viewer, err := prepareSessionViewer(ctx, load)
+	if err != nil {
+		return "", err
+	}
+	return runPreparedSessionViewerScreen(ctx, input, output, frame, resized, viewer)
+}
+
+func prepareSessionViewer(ctx context.Context, load sessionViewerLoad) (*sessionViewerState, error) {
 	viewer := newSessionViewerState(load)
 	if err := viewer.refresh(ctx); err != nil {
-		return err
+		return nil, err
 	}
-	resized := make(chan os.Signal, 1)
-	signal.Notify(resized, syscall.SIGWINCH)
-	defer signal.Stop(resized)
+	return viewer, nil
+}
+
+func runPreparedSessionViewerScreen(
+	ctx context.Context,
+	input, output *os.File,
+	frame io.Writer,
+	resized <-chan os.Signal,
+	viewer *sessionViewerState,
+) (string, error) {
 	for {
 		if err := ctx.Err(); err != nil {
-			return err
+			return "", err
 		}
 		width, height := 100, 24
 		if columns, rows, sizeErr := term.GetSize(int(output.Fd())); sizeErr == nil && columns > 0 && rows > 0 {
 			width, height = columns, rows
 		}
-		if err := renderSessionViewer(output, width, height, viewer); err != nil {
-			return err
+		if err := renderSessionViewer(frame, width, height, viewer); err != nil {
+			return "", err
 		}
 		key, resizedDuringRead, err := readSessionViewerKey(ctx, input, resized)
 		if err != nil {
-			return err
+			return "", err
 		}
 		if sessionViewerShouldRedrawAfterRead(key, resizedDuringRead) {
 			continue
 		}
 		reload, exit := viewer.apply(key)
 		if exit {
-			return nil
+			return key, nil
 		}
 		if reload {
 			if err := viewer.refresh(ctx); err != nil {
-				return err
+				return "", err
 			}
 		}
 	}
@@ -70,15 +100,17 @@ func sessionViewerShouldRedrawAfterRead(key string, resizedDuringRead bool) bool
 }
 
 func readSessionViewerKey(ctx context.Context, input *os.File, resized <-chan os.Signal) (string, bool, error) {
-	key, resizedDuringRead, err := readSessionViewerByte(ctx, input, resized, 0)
+	first, resizedDuringRead, err := readSessionViewerByte(ctx, input, resized, 0)
 	if err != nil || resizedDuringRead {
 		return "", resizedDuringRead, err
 	}
-	switch key {
+	switch first {
 	case 0x03:
 		return "q", false, nil
 	case 'q':
 		return "q", false, nil
+	case '\r', '\n':
+		return "enter", false, nil
 	case '\t':
 		return "tab", false, nil
 	case 0x1b:

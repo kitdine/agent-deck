@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"reflect"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -54,6 +55,23 @@ func TestRunSessionViewerPTYExitResizeAndRestore(t *testing.T) {
 	}
 	if !reflect.DeepEqual(before, after) {
 		t.Fatal("viewer did not restore terminal state")
+	}
+	if err := master.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	buffer := make([]byte, 8192)
+	read, err := master.Read(buffer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	output := string(buffer[:read])
+	for _, want := range []string{"\x1b[?1049h", "\x1b[?25l", "\x1b[?25h", "\x1b[?1049l"} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("terminal output missing %q: %q", want, output)
+		}
+	}
+	if strings.Contains(strings.ReplaceAll(output, "\r\n", ""), "\n") {
+		t.Fatalf("raw-mode session frame contains a bare LF: %q", output)
 	}
 }
 

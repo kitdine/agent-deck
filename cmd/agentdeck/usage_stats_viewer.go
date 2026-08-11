@@ -6,10 +6,8 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/signal"
 	"strconv"
 	"strings"
-	"syscall"
 
 	"github.com/kitdine/agent-deck/internal/output"
 	"github.com/kitdine/agent-deck/internal/usage"
@@ -294,28 +292,21 @@ func runUsageStatsViewer(ctx context.Context, input, output *os.File, report usa
 	}
 	width, height, _ := term.GetSize(int(output.Fd()))
 	viewer := newUsageViewerState(report, warnings, top)
-	raw, err := term.MakeRaw(int(input.Fd()))
+	terminal, err := startInteractiveTerminal(input, output)
 	if err != nil {
-		return fmt.Errorf("enable interactive terminal: %w", err)
-	}
-	defer term.Restore(int(input.Fd()), raw)
-	if _, err := fmt.Fprint(output, "\x1b[?1049h\x1b[?25l"); err != nil {
 		return err
 	}
-	defer fmt.Fprint(output, "\x1b[?25h\x1b[?1049l")
-	resized := make(chan os.Signal, 1)
-	signal.Notify(resized, syscall.SIGWINCH)
-	defer signal.Stop(resized)
+	defer terminal.Close()
 	p := newUsageTextPrimitives(output, noColor)
 	for {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
 		width, height, _ = term.GetSize(int(output.Fd()))
-		if err := renderUsageStatsViewer(output, max(1, width), max(1, height), viewer, p); err != nil {
+		if err := renderUsageStatsViewer(terminal.frameWriter(), max(1, width), max(1, height), viewer, p); err != nil {
 			return err
 		}
-		key, resizedDuringRead, err := readSessionViewerKey(ctx, input, resized)
+		key, resizedDuringRead, err := readSessionViewerKey(ctx, input, terminal.resized)
 		if errors.Is(err, io.EOF) {
 			return nil
 		}

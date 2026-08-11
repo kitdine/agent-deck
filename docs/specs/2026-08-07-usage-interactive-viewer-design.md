@@ -10,12 +10,14 @@ source_sufficiency: sufficient
 This document is the approved-ready design for
 `usage-report-presentation` Task 5, `usage-interactive-viewer`. It consumes the
 accepted interactive prototype and narrows the broader
-[terminal rendering proposal](2026-08-06-terminal-rendering-design.md) to
+[terminal rendering contract](2026-08-06-terminal-rendering-design.md) to
 `usage` only. The broader proposal remains available as future reference;
-session alignment is deferred until v0.4.0 RC usage acceptance.
+shared raw-frame behavior and session alignment are now approved there after
+the v0.4.0-rc.1 manual-acceptance failure.
 
-This design does not authorize implementation, commit, push, release, or
-changes to the existing `session show --interactive` experience.
+This usage-specific document does not independently redefine session behavior;
+the shared frame and `session --interactive` browser contracts live in the
+broader design.
 
 ## 1. Goal, scope, and non-goals
 
@@ -40,14 +42,15 @@ record without losing section, page, or viewport context.
 
 ### Preserved boundaries
 
-- Tasks 2 and 3 continue to own non-interactive `usage stats` semantics and
-  layout. Task 5 may consume their primitives but does not redefine their
-  output.
+- The broader terminal-rendering contract owns the approved non-interactive
+  `usage stats` remediation. This viewer consumes the same primitives but does
+  not redefine its responsive panel layout.
 - Existing filters, range resolution, scan behavior, `--top`, warnings,
   pricing calculations, and report values remain the source of viewer data.
 - JSON remains byte-shape compatible and never enters the interactive renderer.
-- Existing `session show --interactive` data, sections, frames, key behavior,
-  paging, privacy, and output remain unchanged.
+- Session detail data, sections, paging, and privacy remain unchanged. Shared
+  raw-frame lifecycle and the new root session browser are defined only by the
+  broader terminal-rendering contract.
 
 ### Non-goals
 
@@ -184,11 +187,11 @@ the hierarchy, marker, bars, labels, ordering, and values remain intact.
 | `q` / standalone Escape | Exit through normal cleanup |
 | Ctrl-C / EOF / context cancellation | Exit or return the existing command error only after cleanup |
 
-Task 5 reuses or extracts only terminal-neutral mechanics from the session
-viewer: cancelable polling, the current 35ms bounded Escape ambiguity window,
-key decoding, resize notification, raw-mode ownership, and cleanup. Usage owns
-its state and renderer. Session keeps an adapter with no intentional frame or
-behavior change.
+Usage and Session now reuse one terminal-neutral lifecycle: cancelable polling,
+the 35ms bounded Escape ambiguity window, key decoding, resize notification,
+raw-mode ownership, alternate-screen ownership, and cleanup. Each raw-mode
+logical row is emitted with explicit CRLF and redraw clears stale cells. Usage
+continues to own its state and renderer; Session retains its domain adapter.
 
 Setup and cleanup order is contractual:
 

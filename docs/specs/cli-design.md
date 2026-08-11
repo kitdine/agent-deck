@@ -1328,19 +1328,29 @@ cache, activity, and tool counts. `providers` entries are client-scoped
 dimensions sorted like models (known metric value descending, then client,
 then name) and expose the same share, cost, cache, session, and event fields.
 
-Text always uses the approved responsive Balanced layout and the shared
+Text always uses the approved responsive balanced layout and the shared
 command-layer primitives. `MODELS`, `CLIENTS`, and `PROVIDERS` use share bars
 with a fixed 100% baseline; `TREND` uses magnitude bars whose full scale is the
 named peak of that series. Share is printed once, while tokens, cost, pricing
 status, and sessions align in detail columns. `CLIENTS` exposes the same detail
 depth as the other dimensions. Cache is a structured model section followed by
-a capped subordinate session list and grouped detail commands; the complete
+a capped subordinate session list; copyable detail commands render in a
+separate full-width block, and the complete
 session identifier remains available without making the primary row unbounded.
 KPI values, including `AVG COST / SESSION`, `PEAK`, and `PRICED`, are stated in
-the header region once. Wide terminals use two columns only when both content
-regions remain readable; otherwise sections stack. Narrow terminals keep
-identity and primary values and move secondary fields to lossless continuation
-lines without exceeding detected width. Ranges spanning at least seven local
+the header region once. The renderer uses up to 260 visible cells and permits
+at most one column below 120 cells, two at 120–179, three at 180–239, and four
+at 240 or more. It assigns whole `TREND`, `MODELS`, `CLIENTS`, `PROVIDERS`,
+`CACHE`, and `COVERAGE` panels to columns and falls back when the shortest
+column would be below 60% of the tallest or an added column would reduce
+maximum height by less than 15%. Target panel width is approximately 56–80
+cells. KPI cards use 2×3 below 120 cells, 3×2 at 120–179, and 6×1 at 180 or
+more. Three or more consecutive zero-valued Trend buckets collapse into one
+range row in text only. Heatmaps, model activity, detail commands, and warnings
+remain full-width. Narrow terminals keep identity and primary values and move
+secondary fields to lossless continuation lines without exceeding detected
+width. JSON shape and values never depend on this layout. Ranges spanning at
+least seven local
 calendar days include a full-width 7-by-24 activity heatmap; hour ranges omit
 it. TTY color is optional and `--no-color` or redirected output contains no ANSI
 escapes. `timezone` is a stable IANA identifier when the machine zone can be
@@ -1642,6 +1652,14 @@ OVERVIEW, DOCUMENTS, ACTIVITY, and TOKENS pages. It requires text output and
 TTY stdin/stdout, and is mutually exclusive with `--activity`, `--tokens`,
 `--page`, `--limit`, and `--all`. It is a human interface, not a JSON or
 desktop-wire surface.
+
+`session --interactive` is the explicit indexed-session browser. It performs no
+implicit scan, never displays source paths, and shows a copyable
+`agentdeck session scan` hint when the index is empty. Up/Down/Home/End select,
+PageUp/PageDown page, Enter opens the existing detail viewer, Escape returns
+from detail to the list, Escape on the list exits, and `q` exits from either
+level. The state lock is released before either interactive entry waits for
+user input.
 
 The v0.4.0 desktop-facing session DTO boundary is the normal versioned JSON
 envelope and its `data`: session metadata and approved documents; optional

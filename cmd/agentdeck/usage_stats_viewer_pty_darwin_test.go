@@ -66,6 +66,9 @@ func TestRunUsageStatsViewerPTYExitRestoresScreen(t *testing.T) {
 			t.Fatalf("terminal output missing %q: %q", want, output)
 		}
 	}
+	if strings.Contains(strings.ReplaceAll(output, "\r\n", ""), "\n") {
+		t.Fatalf("raw-mode usage frame contains a bare LF: %q", output)
+	}
 }
 
 func TestRunUsageStatsViewerPTYCancellationRestoresTerminal(t *testing.T) {

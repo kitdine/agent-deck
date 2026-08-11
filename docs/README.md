@@ -497,8 +497,8 @@ fixing a defect, which is why it is a contract change recorded by the single
 | --- | --- |
 | [specs/cli-design.md](specs/cli-design.md) | What the system does and must keep doing: provider, credential, usage, pricing, session, backup, and distribution behavior. Currently version 24; see its changelog. |
 | [specs/cli-manual.md](specs/cli-manual.md) | The implemented command surface, flags, and output shapes. |
-| [specs/2026-08-06-terminal-rendering-design.md](specs/2026-08-06-terminal-rendering-design.md) | Proposed — shared usage/session terminal rendering, interaction, degradation, accessibility, and verification contract; implementation awaits approval. |
-| [specs/2026-08-07-usage-interactive-viewer-design.md](specs/2026-08-07-usage-interactive-viewer-design.md) | Active — approved Task 5 `usage stats --interactive` layout, color/no-color, state, lifecycle, and PTY contract; session alignment is a separately approved follow-up after v0.4.0 manual acceptance. |
+| [specs/2026-08-06-terminal-rendering-design.md](specs/2026-08-06-terminal-rendering-design.md) | Active — approved shared usage/session terminal framing, balanced ordinary usage layout, session browser, degradation, accessibility, and verification contract. |
+| [specs/2026-08-07-usage-interactive-viewer-design.md](specs/2026-08-07-usage-interactive-viewer-design.md) | Active — approved Task 5 `usage stats --interactive` layout, color/no-color, state, lifecycle, and PTY contract; shared raw framing and session alignment now live in the terminal-rendering contract. |
 | [plans/desktop-app.md](plans/desktop-app.md) | Active — 0/6 done. Native macOS 26 menu-bar app, WidgetKit extension, unified desktop package, Cask, direct download, and its own contract task for `v0.5.0`. |
 | [plans/v0-5-0-contract.md](plans/v0-5-0-contract.md) | Active — 0/1 done. Version contract only: the single `v0.5.0` specification raise and documentation reconciliation. Blocked until the desktop plan is fully reviewed; preflight and publication remain separate user decisions. |
 | [reviews/](reviews/README.md) | Per-task review records that back each plan's ticked `Review` cell. |

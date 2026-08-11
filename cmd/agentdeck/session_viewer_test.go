@@ -45,7 +45,7 @@ func TestReadSessionViewerKey(t *testing.T) {
 		input string
 		want  string
 	}{
-		{"q", "q"}, {"\t", "tab"}, {"\x1b[A", "up"}, {"\x1b[B", "down"}, {"\x1b[C", "right"}, {"\x1b[D", "left"}, {"\x1b[Z", "shift-tab"}, {"\x1b[5~", "page-up"}, {"\x1b[6~", "page-down"},
+		{"q", "q"}, {"\r", "enter"}, {"\t", "tab"}, {"\x1b[A", "up"}, {"\x1b[B", "down"}, {"\x1b[C", "right"}, {"\x1b[D", "left"}, {"\x1b[Z", "shift-tab"}, {"\x1b[5~", "page-up"}, {"\x1b[6~", "page-down"},
 	} {
 		t.Run(test.want, func(t *testing.T) {
 			input, writer, err := os.Pipe()

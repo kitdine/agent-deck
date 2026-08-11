@@ -18,7 +18,7 @@ import (
 const (
 	statsMinWidth     = 48
 	statsDefaultWidth = 100
-	statsMaxWidth     = 160
+	statsMaxWidth     = 260
 
 	statsModelsCap        = 8
 	statsProvidersCap     = 8
@@ -26,14 +26,6 @@ const (
 	statsModelCacheCap    = 8
 	statsCacheSessionsCap = 10
 	statsTrendCap         = 48
-
-	// statsRankingMinWidth matches detail-compaction's single-line guarantee:
-	// statsCompactDetail keeps a model/provider detail on one line for
-	// realistic field values once its column is at least this wide. The
-	// two-column layout must never hand rankingLines less than this, or the
-	// "single line at width >= 80" contract silently breaks for wide
-	// terminals even though the terminal itself is far past 80.
-	statsRankingMinWidth = 80
 
 	// statsTrendDefaultLabelWidth and statsTrendDefaultValueWidth are
 	// trendLines' own starting column widths before it widens either to fit
@@ -59,7 +51,7 @@ const (
 // is a DST-disambiguated hour label like "15:04 +08:00"); computing the real
 // widths from this report's own data, the same way trendLines itself will,
 // closes that class of mismatch instead of chasing one more format.
-// trendLines and the two-column layout decision both call this so they can
+// trendLines and responsive zero-range folding both call this so they can
 // never disagree about what trend actually needs.
 func (r statsTextRenderer) statsTrendLabelValueWidths() (labelWidth, valueWidth int) {
 	total := len(r.report.Buckets)
@@ -80,51 +72,6 @@ func (r statsTextRenderer) statsTrendLabelValueWidths() (labelWidth, valueWidth 
 		valueWidth = max(valueWidth, statsVisibleWidth(valueLabel))
 	}
 	return labelWidth, valueWidth
-}
-
-// statsTwoColumnFits reports whether the terminal is wide enough for both the
-// ranking column's single-line detail guarantee and this report's actual
-// trend label/value width, with the 4-column gap joinStatsColumns uses
-// between them. render falls back to the stacked single-column layout when
-// this is false, rather than splitting into a two-column layout that would
-// have to truncate one side below what it needs to stay meaningful.
-func (r statsTextRenderer) statsTwoColumnFits() bool {
-	labelWidth, valueWidth := r.statsTrendLabelValueWidths()
-	trendMinWidth := labelWidth + 2 + statsTrendMinBarWidth + 2 + valueWidth
-	return usageResponsiveTableFits(r.width, 4, trendMinWidth, statsRankingMinWidth)
-}
-
-// statsTwoColumnLayout keeps the width floor, then compares the rendered
-// sections. A split that leaves one side mostly blank or repeatedly wraps a
-// section is less readable than the stacked full-width layout.
-func (r statsTextRenderer) statsTwoColumnLayout() (leftWidth, rightWidth int, ok bool) {
-	if !r.statsTwoColumnFits() {
-		return 0, 0, false
-	}
-	leftWidth, rightWidth = statsTwoColumnWidths(r.width)
-	trendColumn, rankingColumn := r.trendLines(leftWidth), r.rankingLines(rightWidth)
-	trendFull, rankingFull := r.trendLines(r.width), r.rankingLines(r.width)
-	if len(trendColumn) > len(trendFull)+1 || len(rankingColumn) > len(rankingFull)+1 {
-		return 0, 0, false
-	}
-	shorter, taller := min(len(trendColumn), len(rankingColumn)), max(len(trendColumn), len(rankingColumn))
-	if shorter*3 < taller {
-		return 0, 0, false
-	}
-	return leftWidth, rightWidth, true
-}
-
-// statsTwoColumnWidths splits the two-column layout's available inner width
-// (terminal width minus the 4-column gap used by joinStatsColumns) between
-// the trend column and the ranking column. The ranking column is floored at
-// statsRankingMinWidth so MODELS/PROVIDERS detail keeps its single-line
-// guarantee regardless of how the split ratio would otherwise divide a wide
-// terminal; trend takes whatever remains. Callers must check
-// statsTwoColumnFits first — this function assumes there is enough room for
-// both minimums and does not itself protect trend from being squeezed below
-// statsTrendMinWidth.
-func statsTwoColumnWidths(width int) (leftWidth, rightWidth int) {
-	return usageResponsiveTableWidths(width, 4, statsRankingMinWidth)
 }
 
 // statsTopN returns the leading limit items of items, in their existing
@@ -191,7 +138,7 @@ func renderUsageStatsWithOptions(w io.Writer, report usage.StatsReport, options 
 	}
 	options.width = min(max(options.width, statsMinWidth), statsMaxWidth)
 	renderer := statsTextRenderer{report: report, width: options.width, color: options.color, top: options.top}
-	_, err := io.WriteString(w, renderer.render())
+	_, err := io.WriteString(w, renderer.renderResponsive())
 	return err
 }
 
@@ -211,70 +158,6 @@ func (r statsTextRenderer) capFor(defaultCap int) int {
 		return defaultCap
 	}
 	return *r.top
-}
-
-func (r statsTextRenderer) render() string {
-	var out strings.Builder
-	title := "📊 USAGE STATS · " + r.rangeLabel()
-	out.WriteString(r.style(title, "1;32"))
-	out.WriteByte('\n')
-	out.WriteString(r.metaLine())
-	out.WriteString("\n\n")
-	for _, line := range r.kpiLines() {
-		out.WriteString(line)
-		out.WriteByte('\n')
-	}
-	out.WriteByte('\n')
-	if leftWidth, rightWidth, twoColumn := r.statsTwoColumnLayout(); twoColumn {
-		for _, line := range usageJoinColumns(r.trendLines(leftWidth), leftWidth, r.rankingLines(rightWidth), rightWidth, 4) {
-			out.WriteString(line)
-			out.WriteByte('\n')
-		}
-	} else {
-		blocks := [][]string{r.trendLines(r.width), r.rankingLines(r.width)}
-		for blockIndex, block := range blocks {
-			for _, line := range block {
-				out.WriteString(line)
-				out.WriteByte('\n')
-			}
-			if blockIndex < len(blocks)-1 {
-				out.WriteByte('\n')
-			}
-		}
-	}
-	if r.report.ShowModelActivity && len(r.report.Models) == 1 {
-		out.WriteByte('\n')
-		for _, line := range r.modelActivityLines(r.report.Models[0]) {
-			out.WriteString(line)
-			out.WriteByte('\n')
-		}
-	}
-	if len(r.report.Activity) > 0 {
-		out.WriteByte('\n')
-		for _, line := range r.activityLines() {
-			out.WriteString(line)
-			out.WriteByte('\n')
-		}
-	}
-	if len(r.report.UnpricedModels) > 0 {
-		out.WriteByte('\n')
-		for _, line := range r.unpricedLines() {
-			out.WriteString(line)
-			out.WriteByte('\n')
-		}
-	}
-	if len(r.report.Warnings) > 0 {
-		out.WriteByte('\n')
-		out.WriteString(r.sectionTitle("⚠ WARNINGS", r.width, "1;33"))
-		out.WriteByte('\n')
-		for _, warning := range r.report.Warnings {
-			for _, line := range statsWrap("- "+warning, r.width) {
-				out.WriteString(line)
-				out.WriteByte('\n')
-			}
-		}
-	}
-	return out.String()
 }
 
 func (r statsTextRenderer) rangeLabel() string {
@@ -301,44 +184,6 @@ func (r statsTextRenderer) metaLine() string {
 	from, to := compactStatsDisplayRange(r.report.Range)
 	metadata := fmt.Sprintf("%s - %s · %s · %s · %s · %s events", from, to, r.report.Timezone, r.report.GroupBy, r.report.Metric, groupedInt(r.report.Totals.Events))
 	return statsFit(metadata, r.width)
-}
-
-func (r statsTextRenderer) kpiLines() []string {
-	average := compactCost(r.report.Totals.AverageCost, r.report.Totals.KnownAverageCost, r.hasKnownProviderCost())
-	peakValue, _ := strconv.ParseFloat(r.report.Peak.KnownValue, 64)
-	peak := compactMetric(peakValue, r.report.Metric)
-	if r.report.Metric == "cost" {
-		peak = compactCost(r.report.Peak.Value, r.report.Peak.KnownValue, knownCostAvailable(r.report.Peak.Value, r.report.Peak.KnownValue, r.report.Peak.Coverage))
-	}
-	values := []struct{ label, value string }{
-		{label: "TOKENS", value: compactNumber(float64(r.report.Totals.Tokens))},
-		{label: "COST", value: compactCost(r.report.Totals.ProviderCost, r.report.Totals.KnownProviderCost, r.hasKnownProviderCost())},
-		{label: "SESSIONS", value: groupedInt(r.report.Totals.Sessions)},
-		{label: "AVG COST / SESSION", value: average},
-		{label: "PEAK " + strings.ToUpper(r.report.Metric), value: peak},
-		{label: "PRICED EVENTS", value: r.report.Coverage.Percent + "%"},
-	}
-	inner := r.width - 4
-	base := inner / 2
-	widths := []int{base, inner - base}
-	border := func(left, middle, right string) string {
-		return left + strings.Repeat("─", widths[0]) + middle + strings.Repeat("─", widths[1]) + right
-	}
-	lines := []string{border("┌", "┬", "┐")}
-	for row := 0; row < len(values); row += len(widths) {
-		labels := "│"
-		numbers := "│"
-		for column := range widths {
-			value := values[row+column]
-			labels += " " + statsPad(value.label, widths[column]-2) + " │"
-			numbers += " " + statsPad(r.style(value.value, "1;37"), widths[column]-2) + " │"
-		}
-		lines = append(lines, labels, numbers)
-		if row+len(widths) < len(values) {
-			lines = append(lines, border("├", "┼", "┤"))
-		}
-	}
-	return append(lines, border("└", "┴", "┘"))
 }
 
 func (r statsTextRenderer) trendLines(width int) []string {
@@ -689,40 +534,6 @@ func modelToolCalls(model usage.StatsDimension) int64 {
 		return 0
 	}
 	return model.Activity.ToolCalls
-}
-
-func (r statsTextRenderer) unpricedLines() []string {
-	lines := []string{r.sectionTitle("UNPRICED MODELS", r.width, "1;33")}
-	shown := statsTopN(r.report.UnpricedModels, r.capFor(statsUnpricedCap))
-	for _, model := range shown {
-		entry := fmt.Sprintf("%s/%s · %s", statsTitle(model.Client), model.Model, strings.Join(model.Components, ", "))
-		lines = append(lines, statsWrap(entry, r.width)...)
-	}
-	lines = append(lines, r.topNFooterLine(len(r.report.UnpricedModels), len(shown), "unpriced models")...)
-	return lines
-}
-
-func (r statsTextRenderer) summaryLines() []string {
-	average := compactCost(r.report.Totals.AverageCost, r.report.Totals.KnownAverageCost, r.hasKnownProviderCost())
-	peakValue, _ := strconv.ParseFloat(r.report.Peak.KnownValue, 64)
-	peak := compactMetric(peakValue, r.report.Metric)
-	if r.report.Metric == "cost" {
-		peak = compactCost(r.report.Peak.Value, r.report.Peak.KnownValue, knownCostAvailable(r.report.Peak.Value, r.report.Peak.KnownValue, r.report.Peak.Coverage))
-	}
-	items := []string{"AVG COST  " + average, "PEAK  " + peak, "PRICED  " + r.report.Coverage.Percent + "%"}
-	inner := r.width - 2
-	base := inner / 3
-	widths := []int{base, base, inner - base*2}
-	for index, item := range items {
-		if statsVisibleWidth(item) > widths[index] {
-			return append([]string{strings.Repeat("─", r.width)}, items...)
-		}
-	}
-	line := ""
-	for index, item := range items {
-		line += statsPad(item, widths[index])
-	}
-	return []string{strings.Repeat("─", r.width), strings.TrimRight(line, " ")}
 }
 
 func (r statsTextRenderer) activityLines() []string {

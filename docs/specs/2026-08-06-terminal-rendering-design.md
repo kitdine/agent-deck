@@ -1,12 +1,12 @@
 ---
-status: proposed
+status: active
 created: 2026-08-06
 scope: usage-and-session
 ---
 
 # Terminal Rendering Experience — Usage and Session
 
-This proposed design applies the AgentDeck terminal-experience profile to the
+This active design applies the AgentDeck terminal-experience profile to the
 `usage` report family and the `session` inspection surfaces. It is a design
 gate, not implementation authority. Existing JSON, persistence, pricing,
 privacy, and exit-code contracts remain authoritative until an approved
@@ -32,7 +32,8 @@ selection, ordering, labels, pagination, and privacy.
 ### In scope
 
 - `usage stats`, `usage summary`, `usage sessions`, and `usage diagnose` text;
-- `session show` text and `session show --interactive`;
+- `session show` text, `session show --interactive`, and the explicit
+  `session --interactive` browser;
 - the planned explicit `usage stats --interactive` surface;
 - shared command-layer rendering primitives and interaction state contracts.
 
@@ -45,6 +46,61 @@ selection, ordering, labels, pagination, and privacy.
 - No implicit interactive mode when stdin/stdout happen to be TTYs.
 - No desktop implementation, specification-version raise, release, commit, or
   push authority.
+
+## Approved v0.4.0 RC remediation
+
+The v0.4.0-rc.1 manual acceptance rejected three coupled terminal behaviors.
+The following decisions are approved for remediation before another candidate:
+
+1. **One raw-terminal frame contract.** Usage and session viewers share a
+   command-layer frame writer. Every logical row has an explicit carriage
+   return and line feed while raw mode is active; redraw clears stale cells;
+   both viewers use the alternate screen and restore raw mode, cursor, signal
+   handlers, input ownership, and the previous screen on every exit path.
+2. **Balanced ordinary usage layout.** `usage stats` may use one through four
+   columns. Column count is an output of rendered content and available width,
+   not a fixed preference. Whole panels move between columns; individual
+   records never split between columns. A candidate with a nearly empty column
+   beside a very tall column is invalid and must use fewer columns. The
+   renderer uses the real terminal width up to a 260-cell readable canvas
+   instead of deciding layout after clamping the entire report to 160 cells.
+3. **Session browser entry.** `agentdeck session --interactive` opens an indexed
+   session list. Up/Down/Home/End select, PageUp/PageDown page, Enter opens the
+   selected session detail, Escape returns from detail to the list, and `q`
+   exits. Escape on the list exits. Existing
+   `session show <session-id> --interactive` remains the direct detail entry;
+   Escape and `q` exit it because it has no parent list.
+
+The browser does not scan implicitly, mutate source logs, expose source paths,
+or change ordinary text/JSON output. An empty index renders an explicit empty
+state with a copyable `agentdeck session scan` recovery hint.
+
+### Ordinary Usage layout prototype
+
+Available width sets the maximum; rendered content balance sets the actual
+column count:
+
+| TTY/text width | Maximum columns | KPI grid |
+| --- | ---: | --- |
+| `<120` | 1 | 2×3 |
+| `120–179` | 2 | 3×2 |
+| `180–239` | 3 | 6×1 |
+| `>=240` | 4 | 6×1 |
+
+The target panel width is approximately 56–80 cells. A multi-column candidate
+is accepted only when its shortest column is at least 60% of its tallest and it
+reduces the preceding layout's maximum height by at least 15%; otherwise the
+renderer falls back 4→3→2→1. Preferred placements, used as tie-breakers while
+balancing actual rendered heights, are:
+
+- two columns: `Trend + Clients + Coverage` | `Models + Providers + Cache`;
+- three columns: `Trend + Coverage` | `Models + Clients` | `Providers + Cache`;
+- four columns: `Trend` | `Models` | `Clients + Providers` | `Cache + Coverage`.
+
+Three or more consecutive zero-valued Trend buckets collapse into a single
+range row. Header, KPI grid, heatmap, model activity, copyable detail commands,
+and warnings remain full-width. JSON is unchanged and does not observe text
+column selection or Trend folding.
 
 ## 2. Terminal matrix
 
@@ -227,12 +283,12 @@ SIGWINCH races, load errors, render errors, and closed input.
 | Risk | Observable oracle |
 | --- | --- |
 | Primitive extraction changes output | Byte-identical fixtures at existing widths before intentional visual changes. |
-| Width overflow or Unicode split | Visible-cell tests at 24, 40, 48, 60, 80, 100, 120, 140, and 160 columns with CJK, emoji, combining marks, ANSI, and controls. |
+| Width overflow or Unicode split | Visible-cell tests at 24, 40, 48, 60, 80, 100, 120, 140, 160, 180, 239, 240, and 260 columns with CJK, emoji, combining marks, ANSI, and controls. |
 | Usage semantics drift | Share/magnitude baseline fixtures, aligned-column assertions, and unchanged underlying numeric values. |
 | Session privacy drift | Existing approved-document/activity/invocation allowlist tests plus control-sequence sanitization tests. |
 | Paging/state bleed | Pure state tests proving section-local page, selection, and viewport restoration. |
 | Resize corruption | PTY resize tests across wide, compact, and short geometry with selection kept visible and no stale cells. |
-| Input/cleanup regression | PTY tests for key sequences, standalone Escape, resize/Escape interleaving, Ctrl-C, EOF, cancellation, render/load error, raw-mode restoration, cursor restoration, and alternate-screen restoration. |
+| Input/cleanup regression | PTY tests for key sequences, standalone Escape, resize/Escape interleaving, Ctrl-C, EOF, cancellation, render/load error, explicit CRLF with no bare LF in raw mode, raw-mode restoration, cursor restoration, and alternate-screen restoration. |
 | Fallback regression | Non-TTY and `TERM=dumb` rejection for interactive mode; plain redirected text; byte-identical JSON. |
 | Runtime integration | Compile the current binary and run usage and session acceptance against an isolated HOME with synthetic local data. |
 
@@ -256,31 +312,12 @@ For interactive presentation, persistent alternate-screen frames are selected
 over cursor-up rewriting in the main screen because explicit interactive mode
 must restore previous screen contents. Ordinary commands remain line-oriented.
 
-### Current conflicts to resolve during implementation
+### Implementation status
 
-- Usage clamps layout to 48–160 columns while session text uses the reported
-  width directly; widths below 48 therefore do not share a degradation rule.
-- Usage and session have separate color, fitting, section, and responsive-table
-  logic.
-- Session interactive state keeps page per section but selection and viewport
-  are not section-local.
-- Session sanitizes newlines but does not yet define control/ANSI sanitization
-  as a shared pre-layout step.
-- The current viewer clears the active screen instead of using an alternate
-  screen whose previous contents can be restored.
-
-### Implementation sequencing after approval
-
-1. Reconcile any in-progress `usage-render-primitives` work with this contract;
-   preserve byte-identical existing fixtures.
-2. Extract the shared terminal render context and safe geometry primitives,
-   then adapt usage and session without intentional visual changes.
-3. Implement approved usage bar/detail/layout changes through the shared layer.
-4. Align session line and interactive rendering, including section-local state,
-   sanitization, geometry degradation, and alternate-screen cleanup.
-5. Add the planned usage interactive viewer by reusing the shared state and
-   lifecycle contracts.
-
-No unresolved product decision blocks design review. Implementation remains
-blocked until this proposed contract is explicitly approved and the active
-usage plan is reconciled with it.
+The v0.4.0 RC remediation now routes both interactive viewers through the same
+raw-terminal frame and alternate-screen lifecycle, expands ordinary Usage to a
+260-cell responsive canvas with balanced one-to-four-column panels, and adds
+the explicit indexed `session --interactive` browser. Targeted renderer, state,
+route, and PTY tests bind these behaviors to the approved thresholds and
+cleanup contract. Broader visual convergence of ordinary Usage and Session
+line-mode reports remains outside this RC remediation unless separately scoped.

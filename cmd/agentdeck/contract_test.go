@@ -67,7 +67,8 @@ func leafCommands(root *cobra.Command) []*cobra.Command {
 	visit = func(command *cobra.Command) {
 		if (command.RunE != nil || command.Run != nil) &&
 			!emitsShellScript(command) &&
-			command.Annotations[shellLifecycleSurfaceOnlyAnnotation] != "true" {
+			command.Annotations[shellLifecycleSurfaceOnlyAnnotation] != "true" &&
+			command.Annotations[humanInteractiveSurfaceOnlyAnnotation] != "true" {
 			leaves = append(leaves, command)
 		}
 		for _, child := range command.Commands() {

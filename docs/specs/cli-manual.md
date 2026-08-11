@@ -625,6 +625,7 @@ provenance。
 
 | 命令 | 含义与典型用例 | 参数与 Flags | 必填规则 | 示例 |
 | --- | --- | --- | --- | --- |
+| `session --interactive` | 以只读 TTY browser 浏览已索引 sessions，并进入分区详情；不会隐式执行 scan | `--interactive` | 不接受位置参数；要求 text 输出以及 TTY stdin/stdout | `agentdeck session --interactive` |
 | `session scan` | 增量建立可清除的 session 搜索索引；启用时在 stderr 报告聚合进度 | 无 | 无 | `agentdeck session scan` |
 | `session list` | 列出索引中的 sessions | `--client codex\|claude`；`--page`、`--limit`、`--all` | 无 | `agentdeck session list --client codex --page 2` |
 | `session search <query>` | 搜索 approved visible session text | `query`：搜索文本；`--client`：可选过滤；`--page`、`--limit`、`--all` | `query` 必填 | `agentdeck session search "provider timeout" --client codex --page 2` |
@@ -656,6 +657,14 @@ summary 和按时间排序的 invocation rows；显式分页时 JSON 返回
 unavailable。pricing/attribution warning 位于 `data.usage.warnings`，每条
 invocation 的 warning 位于 `data.invocations[].warnings`；顶层 envelope 的
 `warnings` 与 `partial` 只表示 command-level state，不能替代这两组 usage warning。
+
+`session --interactive` 是根级、显式的只读索引浏览入口，不会隐式执行
+`session scan`。索引为空时显示可复制的 `agentdeck session scan` 提示。列表中使用
+Up/Down/Home/End 选择，PageUp/PageDown 翻页，Enter 打开现有详情 viewer；详情中的
+Escape 返回列表，列表中的 Escape 退出，`q` 在任一层退出。进入根级 browser 或
+`session show --interactive` 等待用户输入前都会释放 state lock。整个根级浏览流程
+不显示 source path，列表也不渲染 Project。该入口只接受 text output 与 TTY
+stdin/stdout，不属于 JSON 或 desktop DTO surface。
 
 `session show --interactive` 打开只读 TTY viewer，其中包含 OVERVIEW、DOCUMENTS、
 ACTIVITY 和 TOKENS section，以及各 section 独立的 lazy page state。它要求 text
