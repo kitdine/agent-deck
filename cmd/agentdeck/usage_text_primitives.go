@@ -10,6 +10,17 @@ import (
 	"golang.org/x/term"
 )
 
+const (
+	usageColorBrand   = "1;96"
+	usageColorToken   = "1;96"
+	usageColorCost    = "1;92"
+	usageColorSession = "1;95"
+	usageColorSuccess = "1;92"
+	usageColorWarning = "1;93"
+	usageColorError   = "1;91"
+	usageColorInfo    = "1;94"
+)
+
 // usageTextPrimitives is the shared terminal presentation base for usage
 // report commands. It keeps terminal detection and ANSI decisions separate
 // from report-specific data layout.
@@ -78,7 +89,56 @@ func (p usageTextPrimitives) style(value, code string) string {
 }
 
 func (p usageTextPrimitives) barTrack(filled, width int, color string) string {
-	return p.style(strings.Repeat("█", filled), color) + strings.Repeat("░", width-filled)
+	width = max(0, width)
+	filled = min(max(0, filled), width)
+	return p.style(strings.Repeat("█", filled), color) + strings.Repeat("·", width-filled)
+}
+
+func (p usageTextPrimitives) heatmapCell(level int) string {
+	level = min(max(0, level), 4)
+	glyphs := [...]string{"·", "░", "▒", "▓", "█"}
+	colors := [...]string{"", usageColorInfo, usageColorBrand, usageColorSuccess, usageColorWarning}
+	if level == 0 {
+		return glyphs[level]
+	}
+	return p.style(glyphs[level], colors[level])
+}
+
+func usageMetricColor(metric string) string {
+	switch strings.ToLower(metric) {
+	case "cost":
+		return usageColorCost
+	case "sessions":
+		return usageColorSession
+	default:
+		return usageColorToken
+	}
+}
+
+func usageClientColor(client string) string {
+	switch strings.ToLower(client) {
+	case "claude":
+		return usageColorSession
+	case "codex":
+		return usageColorToken
+	default:
+		return usageColorInfo
+	}
+}
+
+func usageCostColor(complete *string, knownAvailable bool) string {
+	if complete == nil || !knownAvailable {
+		return usageColorWarning
+	}
+	return usageColorCost
+}
+
+func usageCoverageColor(percent string) string {
+	value, err := strconv.ParseFloat(percent, 64)
+	if err != nil || value < 100 {
+		return usageColorWarning
+	}
+	return usageColorSuccess
 }
 
 func usageJoinColumns(left []string, leftWidth int, right []string, rightWidth, gap int) []string {

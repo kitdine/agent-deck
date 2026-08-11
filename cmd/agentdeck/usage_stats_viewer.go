@@ -21,21 +21,28 @@ type usageViewerSection int
 const (
 	usageViewerOverview usageViewerSection = iota
 	usageViewerTrend
+	usageViewerActivity
 	usageViewerModels
 	usageViewerClients
 	usageViewerProviders
 	usageViewerCache
 	usageViewerCoverage
+	usageViewerSectionCount
 )
 
-var usageViewerSections = []string{"OVERVIEW", "TREND", "MODELS", "CLIENTS", "PROVIDERS", "CACHE", "COVERAGE"}
+var usageViewerSections = [usageViewerSectionCount]string{"OVERVIEW", "TREND", "ACTIVITY", "MODELS", "CLIENTS", "PROVIDERS", "CACHE", "COVERAGE"}
 
 type usageViewerRow struct {
-	identity string
-	label    string
-	value    string
-	detail   []string
-	bar      float64
+	identity   string
+	label      string
+	value      string
+	detail     []string
+	bar        float64
+	showBar    bool
+	labelColor string
+	valueColor string
+	barColor   string
+	heatmap    []int
 }
 
 // usageViewerState is terminal-independent, keeping navigation and selection
@@ -45,9 +52,9 @@ type usageViewerState struct {
 	top       *int
 	warnings  []string
 	section   usageViewerSection
-	pages     [7]int
-	selected  [7]int
-	viewports [7]int
+	pages     [usageViewerSectionCount]int
+	selected  [usageViewerSectionCount]int
+	viewports [usageViewerSectionCount]int
 	rows      []usageViewerRow
 	help      bool
 }
@@ -166,24 +173,44 @@ func (s *usageViewerState) reportRows() []usageViewerRow {
 	metric := strings.ToUpper(s.report.Metric)
 	switch s.section {
 	case usageViewerOverview:
+		costAvailable := knownCostAvailable(s.report.Totals.ProviderCost, s.report.Totals.KnownProviderCost, s.report.Coverage.Percent)
 		return []usageViewerRow{
-			{identity: "tokens", label: "TOKENS", value: compactNumber(float64(s.report.Totals.Tokens)), detail: []string{"Input " + compactNumber(float64(s.report.Totals.InputTokens)), "Output " + compactNumber(float64(s.report.Totals.OutputTokens))}},
-			{identity: "cost", label: "COST", value: compactCost(s.report.Totals.ProviderCost, s.report.Totals.KnownProviderCost, true), detail: []string{"Known provider cost " + s.report.Totals.KnownProviderCost}},
-			{identity: "sessions", label: "SESSIONS", value: groupedInt(s.report.Totals.Sessions), detail: []string{"Events " + groupedInt(s.report.Totals.Events)}},
-			{identity: "priced", label: "PRICED", value: s.report.Coverage.Percent + "%", detail: []string{fmt.Sprintf("%d priced · %d unpriced", s.report.Coverage.PricedEvents, s.report.Coverage.UnpricedEvents)}},
+			{identity: "tokens", label: "TOKENS", value: compactNumber(float64(s.report.Totals.Tokens)), valueColor: usageColorToken, detail: []string{"Input " + compactNumber(float64(s.report.Totals.InputTokens)), "Output " + compactNumber(float64(s.report.Totals.OutputTokens))}},
+			{identity: "cost", label: "COST", value: compactCost(s.report.Totals.ProviderCost, s.report.Totals.KnownProviderCost, costAvailable), valueColor: usageCostColor(s.report.Totals.ProviderCost, costAvailable), detail: []string{"Known provider cost " + s.report.Totals.KnownProviderCost}},
+			{identity: "sessions", label: "SESSIONS", value: groupedInt(s.report.Totals.Sessions), valueColor: usageColorSession, detail: []string{"Events " + groupedInt(s.report.Totals.Events)}},
+			{identity: "priced", label: "PRICED", value: s.report.Coverage.Percent + "%", valueColor: usageCoverageColor(s.report.Coverage.Percent), detail: []string{fmt.Sprintf("%d priced · %d unpriced", s.report.Coverage.PricedEvents, s.report.Coverage.UnpricedEvents)}},
 		}
 	case usageViewerTrend:
 		rows := make([]usageViewerRow, 0, len(s.report.Buckets))
 		peak := 0.0
 		for _, b := range s.report.Buckets {
-			v, _ := strconv.ParseFloat(b.KnownMetricValue, 64)
-			peak = max(peak, v)
+			v, err := strconv.ParseFloat(b.KnownMetricValue, 64)
+			available := err == nil && (metric != "COST" || knownCostAvailable(b.MetricValue, b.KnownMetricValue, b.Coverage))
+			if available {
+				peak = max(peak, v)
+			}
 		}
 		for _, b := range s.report.Buckets {
-			v, _ := strconv.ParseFloat(b.KnownMetricValue, 64)
-			rows = append(rows, usageViewerRow{identity: b.Start, label: b.Start, value: usageViewerMetric(b.MetricValue, b.KnownMetricValue, b.Coverage, metric), bar: v / max(1, peak), detail: []string{"Range " + b.Start + " to " + b.End, "Coverage " + b.Coverage + "%", "Sessions " + groupedInt(b.Sessions)}})
+			v, err := strconv.ParseFloat(b.KnownMetricValue, 64)
+			available := err == nil && (metric != "COST" || knownCostAvailable(b.MetricValue, b.KnownMetricValue, b.Coverage))
+			valueColor := usageMetricColor(metric)
+			if metric == "COST" {
+				valueColor = usageCostColor(b.MetricValue, available)
+			}
+			rows = append(rows, usageViewerRow{
+				identity:   b.Start,
+				label:      b.Start,
+				value:      usageViewerMetric(b.MetricValue, b.KnownMetricValue, b.Coverage, metric),
+				bar:        v / max(1, peak),
+				showBar:    available && peak > 0,
+				valueColor: valueColor,
+				barColor:   valueColor,
+				detail:     []string{"Range " + b.Start + " to " + b.End, "Coverage " + b.Coverage + "%", "Sessions " + groupedInt(b.Sessions)},
+			})
 		}
 		return rows
+	case usageViewerActivity:
+		return s.activityRows()
 	case usageViewerModels, usageViewerClients, usageViewerProviders:
 		var dimensions []usage.StatsDimension
 		switch s.section {
@@ -201,34 +228,142 @@ func (s *usageViewerState) reportRows() []usageViewerRow {
 			// provider names stay verbatim, exactly as the ordinary renderer
 			// prints them.
 			name := d.Name
+			client := d.Client
 			switch {
 			case s.section == usageViewerClients:
 				name = statsTitle(d.Name)
+				client = d.Name
 			case s.section == usageViewerProviders && d.Client != "":
 				name = statsTitle(d.Client) + "/" + d.Name
 			}
-			share, _ := strconv.ParseFloat(d.KnownShare, 64)
-			rows = append(rows, usageViewerRow{identity: d.Client + "\x00" + d.Name, label: name, value: formatPercent(share), bar: share / 100, detail: usageViewerDimensionDetail(d)})
+			share, err := strconv.ParseFloat(d.KnownShare, 64)
+			available := err == nil && (metric != "COST" || knownCostAvailable(d.MetricValue, d.KnownMetricValue, d.Coverage))
+			shareLabel := "unavailable"
+			if available {
+				shareLabel = formatPercent(share)
+			}
+			identityColor := usageClientColor(client)
+			valueColor := usageMetricColor(metric)
+			if !available {
+				valueColor = usageColorWarning
+			}
+			rows = append(rows, usageViewerRow{
+				identity:   d.Client + "\x00" + d.Name,
+				label:      name,
+				value:      shareLabel,
+				bar:        share / 100,
+				showBar:    available,
+				labelColor: identityColor,
+				valueColor: valueColor,
+				barColor:   identityColor,
+				detail:     usageViewerDimensionDetail(d),
+			})
 		}
 		return rows
 	case usageViewerCache:
 		rows := make([]usageViewerRow, 0, len(s.report.CacheSessions))
 		for _, c := range s.report.CacheSessions {
 			rate, value := "unavailable", 0.0
+			available := false
 			if c.CacheHitRate != nil {
-				rate = *c.CacheHitRate + "%"
-				value, _ = strconv.ParseFloat(*c.CacheHitRate, 64)
-				value /= 100
+				parsed, err := strconv.ParseFloat(*c.CacheHitRate, 64)
+				if err == nil {
+					rate = *c.CacheHitRate + "%"
+					value = parsed / 100
+					available = true
+				}
 			}
-			rows = append(rows, usageViewerRow{identity: c.Client + "\x00" + c.SessionID, label: c.Client + "/" + c.SessionID, value: rate, bar: value, detail: []string{"Read " + compactNumber(float64(c.CachedReadTokens)), "Write " + compactNumber(float64(c.CacheWriteTokens)), "Logical input " + compactNumber(float64(c.LogicalInputTokens)), c.DetailCommand}})
+			valueColor := usageColorWarning
+			if available {
+				valueColor = usageColorSuccess
+			}
+			rows = append(rows, usageViewerRow{
+				identity:   c.Client + "\x00" + c.SessionID,
+				label:      c.Client + "/" + c.SessionID,
+				value:      rate,
+				bar:        value,
+				showBar:    available,
+				labelColor: usageClientColor(c.Client),
+				valueColor: valueColor,
+				barColor:   usageColorSuccess,
+				detail:     []string{"Read " + compactNumber(float64(c.CachedReadTokens)), "Write " + compactNumber(float64(c.CacheWriteTokens)), "Logical input " + compactNumber(float64(c.LogicalInputTokens)), c.DetailCommand},
+			})
 		}
 		return rows
-	default:
-		return []usageViewerRow{
-			{identity: "priced", label: "PRICED EVENTS", value: groupedInt(s.report.Coverage.PricedEvents), detail: []string{"Coverage " + s.report.Coverage.Percent + "%"}},
-			{identity: "unpriced", label: "UNPRICED EVENTS", value: groupedInt(s.report.Coverage.UnpricedEvents), detail: []string{"Total events " + groupedInt(s.report.Coverage.TotalEvents)}},
-			{identity: "warnings", label: "WARNINGS", value: groupedInt(int64(len(s.warnings))), detail: append([]string(nil), s.warnings...)},
+	case usageViewerCoverage:
+		total := s.report.Coverage.TotalEvents
+		pricedRatio, unpricedRatio := 0.0, 0.0
+		showCoverageBars := total > 0
+		if showCoverageBars {
+			pricedRatio = float64(s.report.Coverage.PricedEvents) / float64(total)
+			unpricedRatio = float64(s.report.Coverage.UnpricedEvents) / float64(total)
 		}
+		return []usageViewerRow{
+			{identity: "priced", label: "PRICED EVENTS", value: groupedInt(s.report.Coverage.PricedEvents), bar: pricedRatio, showBar: showCoverageBars, valueColor: usageCoverageColor(s.report.Coverage.Percent), barColor: usageColorSuccess, detail: []string{"Coverage " + s.report.Coverage.Percent + "%"}},
+			{identity: "unpriced", label: "UNPRICED EVENTS", value: groupedInt(s.report.Coverage.UnpricedEvents), bar: unpricedRatio, showBar: showCoverageBars, valueColor: usageColorWarning, barColor: usageColorWarning, detail: []string{"Total events " + groupedInt(total)}},
+			{identity: "warnings", label: "WARNINGS", value: groupedInt(int64(len(s.warnings))), valueColor: usageColorWarning, detail: append([]string(nil), s.warnings...)},
+		}
+	default:
+		return nil
+	}
+}
+
+func (s *usageViewerState) activityRows() []usageViewerRow {
+	values := make([]float64, 7*24)
+	maximum := 0.0
+	for _, activity := range s.report.Activity {
+		if activity.Weekday < 0 || activity.Weekday >= 7 || activity.Hour < 0 || activity.Hour >= 24 {
+			continue
+		}
+		value, err := strconv.ParseFloat(activity.KnownMetricValue, 64)
+		if err != nil {
+			continue
+		}
+		values[activity.Weekday*24+activity.Hour] = value
+		maximum = max(maximum, value)
+	}
+
+	shortDays := [...]string{"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"}
+	longDays := [...]string{"Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"}
+	rows := make([]usageViewerRow, 0, len(shortDays))
+	for weekday := range shortDays {
+		levels := make([]int, 24)
+		peakHour, peakValue := 0, 0.0
+		for hour := range levels {
+			value := values[weekday*24+hour]
+			levels[hour] = heatLevel(value, maximum)
+			if value > peakValue {
+				peakHour, peakValue = hour, value
+			}
+		}
+		detail := []string{fmt.Sprintf("%s · 1H buckets · %s", longDays[weekday], strings.ToUpper(s.report.Metric))}
+		if peakValue > 0 {
+			detail = append(detail, fmt.Sprintf("Peak %02d:00–%02d:00 · %s", peakHour, (peakHour+1)%24, s.activityMetricValue(peakValue)))
+		} else if strings.EqualFold(s.report.Metric, "cost") && !knownCostAvailable(s.report.Totals.ProviderCost, s.report.Totals.KnownProviderCost, s.report.Coverage.Percent) {
+			detail = append(detail, "Cost unavailable: no priced events.")
+		} else {
+			detail = append(detail, "No activity in this day.")
+		}
+		rows = append(rows, usageViewerRow{identity: shortDays[weekday], label: shortDays[weekday], labelColor: usageColorInfo, heatmap: levels, detail: detail})
+	}
+	return rows
+}
+
+func (s *usageViewerState) activityMetricValue(value float64) string {
+	switch strings.ToLower(s.report.Metric) {
+	case "cost":
+		if !knownCostAvailable(s.report.Totals.ProviderCost, s.report.Totals.KnownProviderCost, s.report.Coverage.Percent) {
+			return "unavailable"
+		}
+		label := "$" + compactDecimal(value)
+		if s.report.Totals.ProviderCost == nil {
+			label += " KNOWN"
+		}
+		return label
+	case "sessions":
+		return groupedInt(int64(value))
+	default:
+		return compactNumber(value)
 	}
 }
 
@@ -333,18 +468,10 @@ func renderUsageStatsViewer(w io.Writer, width, height int, s *usageViewerState,
 	if width < 48 || height < 10 {
 		return renderUsageStatsViewerTooSmall(w, width, height)
 	}
-	if _, err := fmt.Fprintln(w, statsFit(p.style("AGENTDECK · USAGE", "1;36")+" "+p.style("INTERACTIVE · READ ONLY", "2;36"), width)); err != nil {
+	if _, err := fmt.Fprintln(w, statsFit(p.style("AGENTDECK · USAGE", usageColorBrand)+" "+p.style("INTERACTIVE · READ ONLY", usageColorInfo), width)); err != nil {
 		return err
 	}
-	tabs := make([]string, len(usageViewerSections))
-	for i, name := range usageViewerSections {
-		if usageViewerSection(i) == s.section {
-			tabs[i] = p.style("["+name+"]", "1;36")
-		} else {
-			tabs[i] = name
-		}
-	}
-	if _, err := fmt.Fprintln(w, statsFit(strings.Join(tabs, " "), width)); err != nil {
+	if _, err := fmt.Fprintln(w, usageViewerTabLine(s.section, width, p)); err != nil {
 		return err
 	}
 	from, to := compactStatsDisplayRange(s.report.Range)
@@ -352,69 +479,83 @@ func renderUsageStatsViewer(w io.Writer, width, height int, s *usageViewerState,
 	if _, err := fmt.Fprintln(w, statsFit(meta, width)); err != nil {
 		return err
 	}
-	kpis := fmt.Sprintf("TOKENS %s   COST %s   SESSIONS %s   PRICED %s%%", compactNumber(float64(s.report.Totals.Tokens)), compactCost(s.report.Totals.ProviderCost, s.report.Totals.KnownProviderCost, true), groupedInt(s.report.Totals.Sessions), s.report.Coverage.Percent)
-	if _, err := fmt.Fprintln(w, statsFit(kpis, width)); err != nil {
+	if _, err := fmt.Fprintln(w, usageViewerKPIline(s.report, width, p)); err != nil {
 		return err
 	}
+
 	selected := s.selected[s.section]
 	bodyBudget := max(2, height-6) // title, tabs, meta, KPIs, status, and help.
+	guide := []string(nil)
+	if s.section == usageViewerActivity {
+		guide = usageViewerActivityGuide(width, bodyBudget, p)
+	}
+	contentBudget := max(1, bodyBudget-len(guide))
 	detail := []string(nil)
 	if len(s.rows) > 0 {
 		detail = usageViewerDetail(s.rows[selected], width)
 	}
-	if width < 120 && len(detail) > bodyBudget-1 {
-		detail = detail[:bodyBudget-1]
+	sideBySide := width >= 120 && len(s.rows) > 0 && len(detail) > 0 && len(s.rows)+len(detail) > contentBudget
+	leftWidth, rightWidth := width, width
+	if sideBySide {
+		leftWidth = width*2/3 - 2
+		rightWidth = width - width*2/3
+		detail = usageViewerDetail(s.rows[selected], rightWidth)
+		detail = detail[:min(len(detail), contentBudget)]
+	} else {
+		detail = detail[:min(len(detail), max(0, contentBudget-1))]
 	}
-	viewport := max(1, bodyBudget-len(detail))
-	if width >= 120 {
-		viewport = bodyBudget
-		detail = detail[:min(len(detail), bodyBudget)]
+
+	viewport := max(1, contentBudget-len(detail))
+	if sideBySide {
+		viewport = contentBudget
 	}
 	start := s.viewportOffset(viewport)
 	end := min(len(s.rows), start+viewport)
 	lines := make([]string, 0, end-start)
 	for i := start; i < end; i++ {
-		row := s.rows[i]
-		prefix := "  "
-		if i == selected {
-			prefix = p.style("> ", "1;36")
-		}
-		barWidth := min(20, max(0, width-statsVisibleWidth(prefix)-statsVisibleWidth(row.label)-statsVisibleWidth(row.value)-6))
-		lines = append(lines, statsFit(prefix+statsPad(row.label, min(28, max(10, width/3)))+" "+p.barTrack(scaledBar(row.bar, 1, barWidth), barWidth, "36")+" "+row.value, width))
+		lines = append(lines, usageViewerRowLine(s.rows[i], i == selected, leftWidth, p))
 	}
 	if len(lines) == 0 {
-		lines = append(lines, "No rows in this section.")
+		lines = append(lines, p.style("No rows in this section.", usageColorWarning))
 	}
-	if width >= 120 && len(s.rows) > 0 {
-		for _, line := range usageJoinColumns(lines, width*2/3-2, detail, width-width*2/3, 2) {
+	for _, line := range guide {
+		if _, err := fmt.Fprintln(w, statsFit(line, width)); err != nil {
+			return err
+		}
+	}
+	if sideBySide {
+		for _, line := range usageJoinColumns(lines, leftWidth, usageViewerStyledDetail(detail, p), rightWidth, 2) {
 			if _, err := fmt.Fprintln(w, line); err != nil {
 				return err
 			}
 		}
 	} else {
 		for _, line := range lines {
-			if _, err := fmt.Fprintln(w, line); err != nil {
+			if _, err := fmt.Fprintln(w, statsFit(line, width)); err != nil {
 				return err
 			}
 		}
 		if len(s.rows) > 0 {
-			for _, line := range detail {
+			for _, line := range usageViewerStyledDetail(detail, p) {
 				if _, err := fmt.Fprintln(w, statsFit(line, width)); err != nil {
 					return err
 				}
 			}
 		}
 	}
+
 	status := fmt.Sprintf("page %d · %d rows", s.pages[s.section], len(s.sectionRowsCapped()))
 	if len(s.rows) == 0 {
 		status += " · no selection"
 	} else {
 		status += fmt.Sprintf(" · row %d/%d", selected+1, len(s.rows))
 	}
+	statusColor := usageColorInfo
 	if len(s.warnings) > 0 {
 		status += " · warning"
+		statusColor = usageColorWarning
 	}
-	if _, err := fmt.Fprintln(w, statsFit(status, width)); err != nil {
+	if _, err := fmt.Fprintln(w, statsFit(p.style(status, statusColor), width)); err != nil {
 		return err
 	}
 	help := "←/→ tabs · ↑/↓ select · pgup/pgdn page · home/end · ? help · q/esc quit"
@@ -423,6 +564,123 @@ func renderUsageStatsViewer(w io.Writer, width, height int, s *usageViewerState,
 	}
 	_, err := fmt.Fprintln(w, statsFit(help, width))
 	return err
+}
+
+func usageViewerKPIline(report usage.StatsReport, width int, p usageTextPrimitives) string {
+	costAvailable := knownCostAvailable(report.Totals.ProviderCost, report.Totals.KnownProviderCost, report.Coverage.Percent)
+	parts := []string{
+		p.style("TOKENS "+compactNumber(float64(report.Totals.Tokens)), usageColorToken),
+		p.style("COST "+compactCost(report.Totals.ProviderCost, report.Totals.KnownProviderCost, costAvailable), usageCostColor(report.Totals.ProviderCost, costAvailable)),
+		p.style("SESSIONS "+groupedInt(report.Totals.Sessions), usageColorSession),
+		p.style("PRICED "+report.Coverage.Percent+"%", usageCoverageColor(report.Coverage.Percent)),
+	}
+	return statsFit(strings.Join(parts, "   "), width)
+}
+
+func usageViewerTabLine(section usageViewerSection, width int, p usageTextPrimitives) string {
+	tokens := make([]string, len(usageViewerSections))
+	for i, name := range usageViewerSections {
+		if usageViewerSection(i) == section {
+			tokens[i] = p.style("["+name+"]", usageColorBrand)
+		} else {
+			tokens[i] = name
+		}
+	}
+	build := func(start, end int) string {
+		visible := append([]string(nil), tokens[start:end]...)
+		if start > 0 {
+			visible = append([]string{"‹"}, visible...)
+		}
+		if end < len(tokens) {
+			visible = append(visible, "›")
+		}
+		return strings.Join(visible, " ")
+	}
+	if full := build(0, len(tokens)); statsVisibleWidth(full) <= width {
+		return full
+	}
+	start, end := int(section), int(section)+1
+	for {
+		expanded := false
+		if start > 0 {
+			candidate := build(start-1, end)
+			if statsVisibleWidth(candidate) <= width {
+				start--
+				expanded = true
+			}
+		}
+		if end < len(tokens) {
+			candidate := build(start, end+1)
+			if statsVisibleWidth(candidate) <= width {
+				end++
+				expanded = true
+			}
+		}
+		if !expanded {
+			return statsFit(build(start, end), width)
+		}
+	}
+}
+
+func usageViewerActivityGuide(width, bodyBudget int, p usageTextPrimitives) []string {
+	legend := "1H BUCKET · LESS " + p.heatmapCell(0) + " " + p.heatmapCell(1) + " " + p.heatmapCell(2) + " " + p.heatmapCell(3) + " " + p.heatmapCell(4) + " MORE"
+	if bodyBudget < 6 {
+		return []string{statsFit(legend, width)}
+	}
+	axis := "     00 03 06 09 12 15 18 21"
+	if width >= 58 {
+		axis = "     00    03    06    09    12    15    18    21"
+	}
+	return []string{statsFit(legend, width), statsFit(axis, width)}
+}
+
+func usageViewerRowLine(row usageViewerRow, selected bool, width int, p usageTextPrimitives) string {
+	prefix := "  "
+	if selected {
+		prefix = p.style("> ", usageColorBrand)
+	}
+	if len(row.heatmap) > 0 {
+		separator := ""
+		if width >= 58 {
+			separator = " "
+		}
+		cells := make([]string, 0, len(row.heatmap))
+		for _, level := range row.heatmap {
+			cells = append(cells, p.heatmapCell(level))
+		}
+		label := p.style(statsPad(row.label, 3), row.labelColor)
+		return statsFit(prefix+label+" "+strings.Join(cells, separator), width)
+	}
+
+	labelWidth := min(28, max(10, width/3))
+	label := statsPad(p.style(statsFit(row.label, labelWidth), row.labelColor), labelWidth)
+	value := p.style(row.value, row.valueColor)
+	line := prefix + label
+	if row.showBar {
+		barWidth := min(20, max(0, width-statsVisibleWidth(prefix)-labelWidth-statsVisibleWidth(row.value)-3))
+		if barWidth > 0 {
+			line += " " + p.barTrack(scaledBar(row.bar, 1, barWidth), barWidth, row.barColor)
+		}
+	}
+	if row.value != "" {
+		line += " " + value
+	}
+	return statsFit(line, width)
+}
+
+func usageViewerStyledDetail(lines []string, p usageTextPrimitives) []string {
+	styled := append([]string(nil), lines...)
+	for i, line := range styled {
+		switch {
+		case i == 0:
+			styled[i] = p.style(line, usageColorBrand)
+		case strings.Contains(strings.ToLower(line), "failed"), strings.Contains(strings.ToLower(line), "error"):
+			styled[i] = p.style(line, usageColorError)
+		case strings.Contains(strings.ToLower(line), "unavailable"), strings.Contains(strings.ToLower(line), "warning"), strings.Contains(strings.ToLower(line), "unpriced"), strings.Contains(strings.ToLower(line), "partial"):
+			styled[i] = p.style(line, usageColorWarning)
+		}
+	}
+	return styled
 }
 
 // renderUsageStatsViewerTooSmall deliberately has no state mutation: a resize

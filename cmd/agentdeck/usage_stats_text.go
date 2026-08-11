@@ -211,15 +211,28 @@ func (r statsTextRenderer) trendLines(width int) []string {
 	if r.report.Metric == "cost" && !r.hasKnownProviderCost() {
 		peakLabel = "unavailable"
 	}
-	lines := []string{r.sectionTitle("🗓 TREND · "+metricLabel+" · PEAK "+peakLabel, width, "1;34")}
+	trendColor := usageMetricColor(r.report.Metric)
+	if r.report.Metric == "cost" && (r.hasPartialCost() || !r.hasKnownProviderCost()) {
+		trendColor = usageColorWarning
+	}
+	lines := []string{r.sectionTitle("🗓 TREND · "+metricLabel+" · PEAK "+peakLabel, width, trendColor)}
 	labelWidth, valueWidth := r.statsTrendLabelValueWidths()
 	labelWidth = min(labelWidth, max(statsTrendDefaultLabelWidth, width-valueWidth-12))
 	barWidth := min(52, max(statsTrendMinBarWidth, width-labelWidth-valueWidth-4))
 	for index := range buckets {
 		label := labels[index]
+		valueColor := usageMetricColor(r.report.Metric)
+		if r.report.Metric == "cost" {
+			valueColor = usageCostColor(buckets[index].MetricValue, knownCostAvailable(buckets[index].MetricValue, buckets[index].KnownMetricValue, buckets[index].Coverage))
+		}
+		value := statsPadLeft(r.style(valueLabels[index], valueColor), valueWidth)
+		if maximum <= 0 {
+			lines = append(lines, statsPad(label, labelWidth)+"  "+value)
+			continue
+		}
 		filled := scaledBar(values[index], maximum, barWidth)
-		bar := r.barTrack(filled, barWidth, "34")
-		lines = append(lines, statsPad(label, labelWidth)+"  "+bar+"  "+statsPadLeft(valueLabels[index], valueWidth))
+		bar := r.barTrack(filled, barWidth, trendColor)
+		lines = append(lines, statsPad(label, labelWidth)+"  "+bar+"  "+value)
 	}
 	if total == 0 {
 		lines = append(lines, r.style("No activity in this range.", "2"))
@@ -240,7 +253,7 @@ func (r statsTextRenderer) rankingLines(width int) []string {
 			rankingLabel += " · COST UNAVAILABLE"
 		}
 	}
-	lines := []string{r.sectionTitle(rankingLabel, width, "1;35")}
+	lines := []string{r.sectionTitle(rankingLabel, width, usageColorSession)}
 	shownModels := statsTopN(r.report.Models, r.capFor(statsModelsCap))
 	limit := len(shownModels)
 	shares := make([]float64, limit)
@@ -271,9 +284,17 @@ func (r statsTextRenderer) rankingLines(width int) []string {
 	for index := 0; index < limit; index++ {
 		model := shownModels[index]
 		name := statsFit(model.Name, nameWidth)
-		filled := scaledBar(shares[index], 100, barWidth)
-		bar := r.barTrack(filled, barWidth, "35")
-		lines = append(lines, statsPad(name, nameWidth)+" "+bar+" "+statsPadLeft(shareLabels[index], shareWidth))
+		identityColor := usageClientColor(model.Client)
+		line := statsPad(r.style(name, identityColor), nameWidth)
+		if shareLabels[index] != "unavailable" {
+			filled := scaledBar(shares[index], 100, barWidth)
+			line += " " + r.barTrack(filled, barWidth, identityColor)
+		}
+		shareColor := usageMetricColor(r.report.Metric)
+		if shareLabels[index] == "unavailable" {
+			shareColor = usageColorWarning
+		}
+		lines = append(lines, line+" "+statsPadLeft(r.style(shareLabels[index], shareColor), shareWidth))
 		continuation := []string{groupedInt(modelToolCalls(model)) + " tools"}
 		if model.CacheHitRate != nil && (model.CachedReadTokens > 0 || model.CacheWriteTokens > 0) {
 			continuation = append(continuation, *model.CacheHitRate+"% hit")
@@ -295,7 +316,7 @@ func (r statsTextRenderer) rankingLines(width int) []string {
 			clientLabel += " · COST UNAVAILABLE"
 		}
 	}
-	lines = append(lines, "", r.sectionTitle(clientLabel, width, "1;36"))
+	lines = append(lines, "", r.sectionTitle(clientLabel, width, usageColorBrand))
 	clientDetails := make([][]usageAlignedColumn, len(r.report.Clients))
 	for index, client := range r.report.Clients {
 		cost := compactCost(client.ProviderCost, client.KnownProviderCost, knownCostAvailable(client.ProviderCost, client.KnownProviderCost, client.Coverage))
@@ -314,9 +335,17 @@ func (r statsTextRenderer) rankingLines(width int) []string {
 		nameWidth := min(10, max(6, width/5))
 		shareWidth := max(6, statsVisibleWidth(shareLabel))
 		barWidth := min(40, max(8, width-nameWidth-shareWidth-3))
-		filled := scaledBar(share, 100, barWidth)
-		bar := r.barTrack(filled, barWidth, "36")
-		lines = append(lines, statsPad(statsTitle(client.Name), nameWidth)+" "+bar+" "+statsPadLeft(shareLabel, shareWidth))
+		identityColor := usageClientColor(client.Name)
+		line := statsPad(r.style(statsTitle(client.Name), identityColor), nameWidth)
+		if shareLabel != "unavailable" {
+			filled := scaledBar(share, 100, barWidth)
+			line += " " + r.barTrack(filled, barWidth, identityColor)
+		}
+		shareColor := usageMetricColor(r.report.Metric)
+		if shareLabel == "unavailable" {
+			shareColor = usageColorWarning
+		}
+		lines = append(lines, line+" "+statsPadLeft(r.style(shareLabel, shareColor), shareWidth))
 		var continuation []string
 		if client.CacheHitRate != nil && (client.CachedReadTokens > 0 || client.CacheWriteTokens > 0) {
 			continuation = append(continuation, *client.CacheHitRate+"% hit")
@@ -334,7 +363,7 @@ func (r statsTextRenderer) rankingLines(width int) []string {
 			providerLabel += " · COST UNAVAILABLE"
 		}
 	}
-	lines = append(lines, "", r.sectionTitle(providerLabel, width, "1;34"))
+	lines = append(lines, "", r.sectionTitle(providerLabel, width, usageColorInfo))
 	shownProviders := statsTopN(r.report.Providers, r.capFor(statsProvidersCap))
 	providerDetails := make([][]usageAlignedColumn, len(shownProviders))
 	for index, provider := range shownProviders {
@@ -352,10 +381,18 @@ func (r statsTextRenderer) rankingLines(width int) []string {
 		nameWidth := min(23, max(14, width/2))
 		shareWidth := max(6, statsVisibleWidth(shareLabel))
 		barWidth := min(36, max(6, width-nameWidth-shareWidth-3))
-		filled := scaledBar(share, 100, barWidth)
-		bar := r.barTrack(filled, barWidth, "34")
 		name := statsTitle(provider.Client) + "/" + provider.Name
-		lines = append(lines, statsPad(statsFit(name, nameWidth), nameWidth)+" "+bar+" "+statsPadLeft(shareLabel, shareWidth))
+		identityColor := usageClientColor(provider.Client)
+		line := statsPad(r.style(statsFit(name, nameWidth), identityColor), nameWidth)
+		if shareLabel != "unavailable" {
+			filled := scaledBar(share, 100, barWidth)
+			line += " " + r.barTrack(filled, barWidth, identityColor)
+		}
+		shareColor := usageMetricColor(r.report.Metric)
+		if shareLabel == "unavailable" {
+			shareColor = usageColorWarning
+		}
+		lines = append(lines, line+" "+statsPadLeft(r.style(shareLabel, shareColor), shareWidth))
 		var continuation []string
 		if provider.CacheHitRate != nil && (provider.CachedReadTokens > 0 || provider.CacheWriteTokens > 0) {
 			continuation = append(continuation, *provider.CacheHitRate+"% hit")
@@ -377,7 +414,7 @@ func (r statsTextRenderer) rankingLines(width int) []string {
 	lines = append(lines, r.topNFooterLine(len(r.report.Providers), len(shownProviders), "providers")...)
 	cacheLines := r.cachePresentationLines(width)
 	if len(cacheLines) > 0 {
-		lines = append(lines, "", r.sectionTitle("CACHE HIT RATE", width, "1;33"))
+		lines = append(lines, "", r.sectionTitle("CACHE HIT RATE", width, usageColorWarning))
 		lines = append(lines, cacheLines...)
 	}
 	return lines
@@ -404,13 +441,13 @@ func (r statsTextRenderer) cachePresentationLines(width int) []string {
 	}
 	shownCacheModels := statsTopN(cacheModels, r.capFor(statsModelCacheCap))
 	if len(shownCacheModels) > 0 {
-		lines = append(lines, r.style("CACHE MODELS", "1;33"))
+		lines = append(lines, r.style("CACHE MODELS", usageColorWarning))
 		modelLabels := make([][]string, len(shownCacheModels))
 		modelDetails := make([][]usageAlignedColumn, len(shownCacheModels))
 		for index, model := range shownCacheModels {
 			rate, _ := strconv.ParseFloat(*model.CacheHitRate, 64)
 			barWidth := min(12, max(8, width/8))
-			label := fmt.Sprintf("MODEL %s/%s %s %s%%", statsTitle(model.Client), model.Name, r.barTrack(scaledBar(rate, 100, barWidth), barWidth, "36"), *model.CacheHitRate)
+			label := fmt.Sprintf("MODEL %s/%s %s %s%%", statsTitle(model.Client), model.Name, r.barTrack(scaledBar(rate, 100, barWidth), barWidth, usageColorSuccess), *model.CacheHitRate)
 			modelLabels[index] = statsWrap(label, width)
 			modelDetails[index] = []usageAlignedColumn{
 				{label: "READ", value: compactNumber(float64(model.CachedReadTokens)), width: 6},
@@ -433,7 +470,7 @@ func (r statsTextRenderer) cachePresentationLines(width int) []string {
 
 	shownSessions := statsTopN(r.report.CacheSessions, r.capFor(statsCacheSessionsCap))
 	if len(shownSessions) > 0 {
-		lines = append(lines, "", r.style("CACHE SESSIONS", "1;33"))
+		lines = append(lines, "", r.style("CACHE SESSIONS", usageColorWarning))
 	}
 	for index, session := range shownSessions {
 		rate := "0.00"
@@ -538,18 +575,24 @@ func modelToolCalls(model usage.StatsDimension) int64 {
 
 func (r statsTextRenderer) activityLines() []string {
 	metricLabel := strings.ToUpper(r.report.Metric)
+	costUnavailable := false
 	if r.report.Metric == "cost" {
-		if !r.hasKnownProviderCost() {
-			return []string{
-				r.sectionTitle("▦ ACTIVITY BY WEEKDAY / HOUR · COST", r.width, "1;32"),
-				"unavailable: no priced events",
-			}
-		}
+		costUnavailable = !r.hasKnownProviderCost()
 		if r.hasPartialCost() {
 			metricLabel = "KNOWN COST"
 		}
 	}
-	lines := []string{r.sectionTitle("▦ ACTIVITY BY WEEKDAY / HOUR · "+metricLabel, r.width, "1;32")}
+	title := "▦ ACTIVITY BY WEEKDAY / HOUR · " + metricLabel
+	if r.width >= 58 {
+		title += " · 1H BUCKET"
+	}
+	lines := []string{r.sectionTitle(title, r.width, usageColorBrand)}
+	if costUnavailable {
+		for _, line := range statsWrap("unavailable: no priced events; heatmap retained with zero-value buckets", r.width) {
+			lines = append(lines, r.style(line, usageColorWarning))
+		}
+	}
+
 	values := make([]float64, 7*24)
 	maximum := float64(0)
 	for _, activity := range r.report.Activity {
@@ -568,22 +611,18 @@ func (r statsTextRenderer) activityLines() []string {
 		lines = append(lines, "     00    03    06    09    12    15    18    21")
 	}
 	weekdays := []string{"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"}
+	primitives := r.textPrimitives()
 	for weekday := 0; weekday < 7; weekday++ {
 		line := weekdays[weekday] + "  "
 		for hour := 0; hour < 24; hour++ {
-			level := heatLevel(values[weekday*24+hour], maximum)
-			cell := []string{"·", "░", "▒", "▓", "█"}[level]
-			if r.color && level > 0 {
-				cell = r.style(cell, []string{"", "32", "1;32", "1;92", "1;97;42"}[level])
-			}
-			line += cell + cellSeparator
+			line += primitives.heatmapCell(heatLevel(values[weekday*24+hour], maximum)) + cellSeparator
 		}
 		lines = append(lines, strings.TrimRight(line, " "))
 	}
-	legend := "LESS  · ░ ▒ ▓ █  MORE"
+	legend := "1H BUCKET · LESS  " + primitives.heatmapCell(0) + " " + primitives.heatmapCell(1) + " " + primitives.heatmapCell(2) + " " + primitives.heatmapCell(3) + " " + primitives.heatmapCell(4) + "  MORE"
 	from, to := compactStatsDisplayRange(r.report.Range)
 	rangeText := from + " - " + to
-	gap := r.width - runewidth.StringWidth(legend) - runewidth.StringWidth(rangeText)
+	gap := r.width - statsVisibleWidth(legend) - statsVisibleWidth(rangeText)
 	if gap >= 1 {
 		lines = append(lines, legend+strings.Repeat(" ", gap)+rangeText)
 	} else {

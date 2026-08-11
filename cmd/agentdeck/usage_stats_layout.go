@@ -19,7 +19,7 @@ type statsResponsiveLayout struct {
 
 func (r statsTextRenderer) renderResponsive() string {
 	var out strings.Builder
-	out.WriteString(r.style("📊 USAGE STATS · "+r.rangeLabel(), "1;32"))
+	out.WriteString(r.style("📊 USAGE STATS · "+r.rangeLabel(), usageColorBrand))
 	out.WriteByte('\n')
 	out.WriteString(r.metaLine())
 	out.WriteString("\n\n")
@@ -33,17 +33,15 @@ func (r statsTextRenderer) renderResponsive() string {
 		out.WriteByte('\n')
 		writeStatsLines(&out, r.modelActivityLines(r.report.Models[0]))
 	}
-	if len(r.report.Activity) > 0 {
-		out.WriteByte('\n')
-		writeStatsLines(&out, r.activityLines())
-	}
+	out.WriteByte('\n')
+	writeStatsLines(&out, r.activityLines())
 	if detail := r.responsiveDetailCommandLines(r.width); len(detail) > 0 {
 		out.WriteByte('\n')
 		writeStatsLines(&out, detail)
 	}
 	if len(r.report.Warnings) > 0 {
 		out.WriteByte('\n')
-		out.WriteString(r.sectionTitle("⚠ WARNINGS", r.width, "1;33"))
+		out.WriteString(r.sectionTitle("⚠ WARNINGS", r.width, usageColorWarning))
 		out.WriteByte('\n')
 		for _, warning := range r.report.Warnings {
 			writeStatsLines(&out, statsWrap("! "+warning, r.width))
@@ -60,19 +58,23 @@ func writeStatsLines(out *strings.Builder, lines []string) {
 }
 
 func (r statsTextRenderer) responsiveKPILines() []string {
-	average := compactCost(r.report.Totals.AverageCost, r.report.Totals.KnownAverageCost, r.hasKnownProviderCost())
+	costAvailable := r.hasKnownProviderCost()
+	average := compactCost(r.report.Totals.AverageCost, r.report.Totals.KnownAverageCost, costAvailable)
 	peakValue, _ := strconv.ParseFloat(r.report.Peak.KnownValue, 64)
 	peak := compactMetric(peakValue, r.report.Metric)
+	peakColor := usageMetricColor(r.report.Metric)
 	if r.report.Metric == "cost" {
-		peak = compactCost(r.report.Peak.Value, r.report.Peak.KnownValue, knownCostAvailable(r.report.Peak.Value, r.report.Peak.KnownValue, r.report.Peak.Coverage))
+		peakAvailable := knownCostAvailable(r.report.Peak.Value, r.report.Peak.KnownValue, r.report.Peak.Coverage)
+		peak = compactCost(r.report.Peak.Value, r.report.Peak.KnownValue, peakAvailable)
+		peakColor = usageCostColor(r.report.Peak.Value, peakAvailable)
 	}
-	values := []struct{ label, value string }{
-		{label: "TOKENS", value: compactNumber(float64(r.report.Totals.Tokens))},
-		{label: "COST", value: compactCost(r.report.Totals.ProviderCost, r.report.Totals.KnownProviderCost, r.hasKnownProviderCost())},
-		{label: "SESSIONS", value: groupedInt(r.report.Totals.Sessions)},
-		{label: "AVG COST / SESSION", value: average},
-		{label: "PEAK " + strings.ToUpper(r.report.Metric), value: peak},
-		{label: "PRICED EVENTS", value: r.report.Coverage.Percent + "%"},
+	values := []struct{ label, value, color string }{
+		{label: "TOKENS", value: compactNumber(float64(r.report.Totals.Tokens)), color: usageColorToken},
+		{label: "COST", value: compactCost(r.report.Totals.ProviderCost, r.report.Totals.KnownProviderCost, costAvailable), color: usageCostColor(r.report.Totals.ProviderCost, costAvailable)},
+		{label: "SESSIONS", value: groupedInt(r.report.Totals.Sessions), color: usageColorSession},
+		{label: "AVG COST / SESSION", value: average, color: usageCostColor(r.report.Totals.AverageCost, costAvailable)},
+		{label: "PEAK " + strings.ToUpper(r.report.Metric), value: peak, color: peakColor},
+		{label: "PRICED EVENTS", value: r.report.Coverage.Percent + "%", color: usageCoverageColor(r.report.Coverage.Percent)},
 	}
 	columns := 2
 	if r.width >= 180 {
@@ -99,7 +101,7 @@ func (r statsTextRenderer) responsiveKPILines() []string {
 		for column := 0; column < columns; column++ {
 			value := values[row+column]
 			labels += " " + statsPad(value.label, widths[column]-2) + " │"
-			numbers += " " + statsPad(r.style(value.value, "1;37"), widths[column]-2) + " │"
+			numbers += " " + statsPad(r.style(value.value, value.color), widths[column]-2) + " │"
 		}
 		lines = append(lines, labels, numbers)
 		if row+columns < len(values) {
@@ -337,7 +339,7 @@ func trimStatsBlankLines(lines []string) []string {
 }
 
 func (r statsTextRenderer) responsiveCoverageLines(width int) []string {
-	lines := []string{r.sectionTitle("COVERAGE", width, "1;33")}
+	lines := []string{r.sectionTitle("COVERAGE", width, usageCoverageColor(r.report.Coverage.Percent))}
 	priced := fmt.Sprintf("PRICED %s%% · %s/%s events", r.report.Coverage.Percent, groupedInt(r.report.Coverage.PricedEvents), groupedInt(r.report.Coverage.TotalEvents))
 	lines = append(lines, statsWrap(priced, width)...)
 	lines = append(lines, statsWrap("UNPRICED "+groupedInt(r.report.Coverage.UnpricedEvents)+" events", width)...)
@@ -345,7 +347,7 @@ func (r statsTextRenderer) responsiveCoverageLines(width int) []string {
 	if len(shown) == 0 {
 		return append(lines, r.style("No unpriced models in this range.", "2"))
 	}
-	lines = append(lines, "", r.style("UNPRICED MODELS", "1;33"))
+	lines = append(lines, "", r.style("UNPRICED MODELS", usageColorWarning))
 	for _, model := range shown {
 		entry := fmt.Sprintf("%s/%s · %s", statsTitle(model.Client), model.Model, strings.Join(model.Components, ", "))
 		lines = append(lines, statsWrap(entry, width)...)
@@ -361,7 +363,7 @@ func (r statsTextRenderer) responsiveDetailCommandLines(width int) []string {
 			continue
 		}
 		if len(lines) == 0 {
-			lines = append(lines, r.sectionTitle("DETAIL COMMANDS", width, "1;33"))
+			lines = append(lines, r.sectionTitle("DETAIL COMMANDS", width, usageColorInfo))
 		}
 		lines = append(lines, statsWrapCommand(fmt.Sprintf("[%d] %s", index+1, item.DetailCommand), width)...)
 	}
@@ -408,12 +410,23 @@ func statsTrendBucketIsZero(bucket usage.StatsBucket, metric string) bool {
 
 func (r statsTextRenderer) foldedTrendRow(width int, first, last string, bucket usage.StatsBucket) string {
 	value := compactMetric(0, r.report.Metric)
+	valueColor := usageMetricColor(r.report.Metric)
 	if r.report.Metric == "cost" {
-		value = compactCost(bucket.MetricValue, bucket.KnownMetricValue, true)
+		available := knownCostAvailable(bucket.MetricValue, bucket.KnownMetricValue, bucket.Coverage)
+		value = compactCost(bucket.MetricValue, bucket.KnownMetricValue, available)
+		valueColor = usageCostColor(bucket.MetricValue, available)
 	}
 	labelWidth, valueWidth := r.statsTrendLabelValueWidths()
 	labelWidth = min(max(labelWidth, min(statsVisibleWidth(first+"…"+last), 18)), max(statsTrendDefaultLabelWidth, width-valueWidth-12))
 	barWidth := min(52, max(statsTrendMinBarWidth, width-labelWidth-valueWidth-4))
 	label := statsFit(first+"…"+last, labelWidth)
-	return statsPad(label, labelWidth) + " " + r.barTrack(0, barWidth, "34") + " " + statsPadLeft(value, valueWidth)
+	line := statsPad(label, labelWidth)
+	maximum := float64(0)
+	for _, candidate := range r.report.Buckets {
+		maximum = max(maximum, statsBucketMetric(candidate, r.report.Metric))
+	}
+	if maximum > 0 {
+		line += " " + r.barTrack(0, barWidth, usageMetricColor(r.report.Metric))
+	}
+	return line + " " + statsPadLeft(r.style(value, valueColor), valueWidth)
 }

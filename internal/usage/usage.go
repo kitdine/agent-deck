@@ -2957,16 +2957,14 @@ func (s *Service) Stats(ctx context.Context, options StatsOptions) (StatsReport,
 		}
 		return report.UnpricedModels[i].Client < report.UnpricedModels[j].Client
 	})
-	if options.GroupBy != "hour" && naturalDayCount(options.From, options.To, location) >= 7 {
-		for weekday := 0; weekday < 7; weekday++ {
-			for hour := 0; hour < 24; hour++ {
-				value := activity[[2]int{weekday, hour}]
-				if value == nil {
-					value = newStatsAccumulator()
-				}
-				metricComplete, metricKnown := statsMetricValues(options.Metric, value)
-				report.Activity = append(report.Activity, StatsActivity{Weekday: weekday, Hour: hour, Tokens: value.tokens, Sessions: int64(len(value.sessions)), Events: value.events, KnownCost: money(value.provider), MetricValue: metricComplete, KnownMetricValue: metricKnown})
+	for weekday := 0; weekday < 7; weekday++ {
+		for hour := 0; hour < 24; hour++ {
+			value := activity[[2]int{weekday, hour}]
+			if value == nil {
+				value = newStatsAccumulator()
 			}
+			metricComplete, metricKnown := statsMetricValues(options.Metric, value)
+			report.Activity = append(report.Activity, StatsActivity{Weekday: weekday, Hour: hour, Tokens: value.tokens, Sessions: int64(len(value.sessions)), Events: value.events, KnownCost: money(value.provider), MetricValue: metricComplete, KnownMetricValue: metricKnown})
 		}
 	}
 	for warning := range warnings {
@@ -2976,18 +2974,6 @@ func (s *Service) Stats(ctx context.Context, options StatsOptions) (StatsReport,
 	return report, nil
 }
 
-func naturalDayCount(from, to time.Time, location *time.Location) int {
-	start := from.In(location)
-	end := to.Add(-time.Nanosecond).In(location)
-	startDate := time.Date(start.Year(), start.Month(), start.Day(), 0, 0, 0, 0, location)
-	endDate := time.Date(end.Year(), end.Month(), end.Day(), 0, 0, 0, 0, location)
-	days := 1
-	for startDate.Before(endDate) {
-		startDate = startDate.AddDate(0, 0, 1)
-		days++
-	}
-	return days
-}
 func (s *Service) Sessions(ctx context.Context) ([]SessionSummary, error) {
 	rows, err := s.Store.DB.QueryContext(ctx, `SELECT client,session_id,first_at,last_at FROM usage_sessions ORDER BY first_at DESC, client, session_id`)
 	if err != nil {

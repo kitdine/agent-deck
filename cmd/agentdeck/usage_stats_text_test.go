@@ -1068,16 +1068,16 @@ func TestUsageStatsBalancedBaselinesAtFixtureWidths(t *testing.T) {
 	// These hashes lock the approved responsive layout at every documented
 	// fixture width, including balanced panel placement and full-width details.
 	baselines := map[int]string{
-		48:  "a42dca664d9ace189b27f32632350275858140e6637055a4e2aa35730cd6200b",
-		60:  "04fb48b4aa5895984a2f8b68b8cfc66d65e1c61c1899d1638abe7e7a883952de",
-		100: "e43173fa19a1f60f0ee70748ad58003f253f4492d0a26766fd034c5c5cc56f0b",
-		120: "5aae5effab91b378b02f71da1a6757233591d5b26889bdf888cfbe65158ed75b",
-		140: "8942d69048530fc36a355933fdf82e479c887d8595391489901b721ffc8c2b5b",
-		160: "f4fecde721249f77b84e0156b4a2f548fba5241c9d3a111ca708a17da1b841e7",
-		180: "829de33ee26129a7a439792892bfa9a423a14a5a8c001da1a14d57547120ddf6",
-		239: "d43274028cd09542aa0be53636f99b0a33c6f0e0fa31a058daeb0693b9fc849c",
-		240: "6c9467ffee719dc719049285426969e2dba86dbabe53043290efe83debc70882",
-		260: "888f70d3fbcab6f285ca6c58e96364b3c13bb2d767220cc440fcb87f27633530",
+		48:  "4436ae7c1baf7f8b9054cb9123fd68e999cf0a9e8599973b4eb0fc308d9eea14",
+		60:  "838f087ad54743de029f6e28e019e92fe88b01399343ead7b27e609941de5731",
+		100: "d9a3d537d57c45316275f6057314d1cbb6f5f58f7bc455d3b029c98ebcd6547c",
+		120: "5120b0612f9a2ca6264b10c9a1e73a568b46868dcad78555e0ed4ffaa8c1df91",
+		140: "e1460d96888ccb3893b5becb419f04092b000f06a229ef05fcb09adc2396b319",
+		160: "1ca4893570d2370cda9641c47c5e9bd909425afaf24429a2ba16e4fe43efc328",
+		180: "ca333dab46a0b033bb48be6cf01930a78209b8416d5dfaffb686c096353cf4ed",
+		239: "f375e2d2992c3df58d284a3294adbae4d3afdb41236c12f3d6f6cf2dbeee2443",
+		240: "1ba609d06df1bebbc9e140d49c658b3b4a2fff688e2ecf0c4ab8184e8a707ac4",
+		260: "6560109885173f508397e990f04de161bcc05cddfd36f18df99023a2f170d769",
 	}
 	for _, width := range []int{48, 60, 100, 120, 140, 160, 180, 239, 240, 260} {
 		t.Run(fmt.Sprintf("%d columns", width), func(t *testing.T) {
@@ -1180,6 +1180,55 @@ func TestUsageStatsActivityLegendShowsInclusiveRangeAtSupportedWidths(t *testing
 				})
 			}
 		})
+	}
+}
+
+func TestUsageStatsActivityHeatmapRemainsVisibleForShortEmptyRanges(t *testing.T) {
+	report := usage.StatsReport{
+		Range:    usage.StatsRange{From: "2026-07-01T00:00:00Z", To: "2026-07-01T01:00:00Z"},
+		Timezone: "UTC",
+		GroupBy:  "hour",
+		Metric:   "tokens",
+		Coverage: usage.StatsCoverage{Percent: "0"},
+	}
+	for _, width := range []int{48, 100} {
+		var output bytes.Buffer
+		if err := renderUsageStatsWithOptions(&output, report, usageTextRenderOptions{width: width}); err != nil {
+			t.Fatal(err)
+		}
+		text := output.String()
+		activity := usageStatsActivitySection(t, text)
+		for _, want := range []string{"ACTIVITY BY WEEKDAY / HOUR · TOKENS", "1H BUCKET", "LESS", "MORE", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun", "·"} {
+			if !strings.Contains(activity, want) {
+				t.Fatalf("%d-column empty Activity missing %q:\n%s", width, want, activity)
+			}
+		}
+		if strings.Contains(text, "\x1b[") {
+			t.Fatalf("%d-column redirected empty Activity contains ANSI: %q", width, text)
+		}
+		assertUsageStatsWidth(t, text, width)
+	}
+}
+
+func TestUsageStatsColorUsesBrightSemanticRolesWithoutChangingText(t *testing.T) {
+	report := usageStatsTextFixture()
+	var plain, colored bytes.Buffer
+	if err := renderUsageStatsWithOptions(&plain, report, usageTextRenderOptions{width: 100}); err != nil {
+		t.Fatal(err)
+	}
+	if err := renderUsageStatsWithOptions(&colored, report, usageTextRenderOptions{width: 100, color: true}); err != nil {
+		t.Fatal(err)
+	}
+	if stripStatsANSI(colored.String()) != plain.String() {
+		t.Fatalf("semantic color changed visible text:\nplain=%q\ncolored=%q", plain.String(), colored.String())
+	}
+	for _, code := range []string{"\x1b[1;96m", "\x1b[1;95m", "\x1b[1;92m", "\x1b[1;93m", "\x1b[1;94m"} {
+		if !strings.Contains(colored.String(), code) {
+			t.Fatalf("colored report missing semantic role %q", code)
+		}
+	}
+	if strings.Contains(colored.String(), "\x1b[1;91m") {
+		t.Fatalf("ordinary non-error report used error red: %q", colored.String())
 	}
 }
 
@@ -1330,7 +1379,7 @@ func usageStatsLineContaining(text, marker string) string {
 
 func usageStatsTrendLine(text, marker string) string {
 	for _, line := range strings.Split(text, "\n") {
-		if strings.HasPrefix(line, marker) && (strings.Contains(line, "█") || strings.Contains(line, "░")) {
+		if strings.HasPrefix(line, marker) && !strings.Contains(line, " · ") {
 			return line
 		}
 	}

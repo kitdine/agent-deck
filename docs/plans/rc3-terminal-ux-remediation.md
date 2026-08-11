@@ -117,7 +117,7 @@ privacy boundaries, or the explicit read-only interactive lifecycle.
 | Task | Dev | Review |
 | --- | --- | --- |
 | `session-model-index` | [x] | [x] |
-| `usage-visual-system` | [ ] | [ ] |
+| `usage-visual-system` | [x] | [x] |
 | `session-interactive-experience` | [ ] | [ ] |
 | `session-show-readability` | [ ] | [ ] |
 

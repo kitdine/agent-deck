@@ -362,6 +362,142 @@ func TestUsageViewerRenderFitsRequiredGeometriesAndEmptySections(t *testing.T) {
 	}
 }
 
+func TestUsageViewerRowsOnlyShowBarsWithDefinedBasis(t *testing.T) {
+	report := usage.StatsReport{
+		Metric:   "tokens",
+		Coverage: usage.StatsCoverage{Percent: "0", TotalEvents: 0},
+		Totals:   usage.StatsTotals{Tokens: 100, Sessions: 1},
+		Buckets: []usage.StatsBucket{
+			{Start: "zero", KnownMetricValue: "0"},
+			{Start: "invalid", KnownMetricValue: "not-a-number"},
+		},
+		Models:        []usage.StatsDimension{{Name: "known", Client: "codex", KnownShare: "100"}, {Name: "unknown", Client: "claude", KnownShare: ""}},
+		CacheSessions: []usage.StatsCacheSession{{Client: "codex", SessionID: "unknown"}},
+	}
+	state := newUsageViewerState(report, nil, nil)
+	for _, row := range state.rows {
+		if row.showBar {
+			t.Fatalf("overview row %q exposes a bar without a comparison basis", row.label)
+		}
+	}
+
+	state.section = usageViewerTrend
+	state.refresh()
+	for _, row := range state.rows {
+		if row.showBar {
+			t.Fatalf("zero/invalid trend row %q exposes a bar without a peak", row.label)
+		}
+	}
+	report.Buckets[0].KnownMetricValue = "10"
+	state = newUsageViewerState(report, nil, nil)
+	state.section = usageViewerTrend
+	state.refresh()
+	if !state.rows[0].showBar {
+		t.Fatal("trend row with a positive peak lost its comparison bar")
+	}
+
+	state.section = usageViewerModels
+	state.refresh()
+	if !state.rows[0].showBar || state.rows[1].showBar {
+		t.Fatalf("model share bars = %v/%v, want true/false", state.rows[0].showBar, state.rows[1].showBar)
+	}
+	state.section = usageViewerCache
+	state.refresh()
+	if state.rows[0].showBar {
+		t.Fatal("cache row without a hit-rate denominator exposes a bar")
+	}
+	state.section = usageViewerCoverage
+	state.refresh()
+	if state.rows[0].showBar || state.rows[1].showBar {
+		t.Fatal("empty coverage rows expose bars without total events")
+	}
+}
+
+func TestUsageViewerActivityRendersEveryHourWithSemanticHeatmapPalette(t *testing.T) {
+	report := usage.StatsReport{
+		Metric: "tokens",
+		Range:  usage.StatsRange{From: "2026-08-01T00:00:00Z", To: "2026-08-08T00:00:00Z"},
+		Activity: []usage.StatsActivity{
+			{Weekday: 0, Hour: 0, KnownMetricValue: "1"},
+			{Weekday: 0, Hour: 1, KnownMetricValue: "2"},
+			{Weekday: 0, Hour: 2, KnownMetricValue: "3"},
+			{Weekday: 0, Hour: 3, KnownMetricValue: "4"},
+		},
+	}
+	state := newUsageViewerState(report, nil, nil)
+	state.section = usageViewerActivity
+	state.refresh()
+	if len(state.rows) != 7 {
+		t.Fatalf("activity rows = %d, want 7", len(state.rows))
+	}
+	for _, row := range state.rows {
+		if len(row.heatmap) != 24 {
+			t.Fatalf("activity row %q buckets = %d, want 24", row.label, len(row.heatmap))
+		}
+	}
+
+	var colored strings.Builder
+	if err := renderUsageStatsViewer(&colored, 80, 24, state, usageTextPrimitives{color: true}); err != nil {
+		t.Fatal(err)
+	}
+	plain := stripStatsANSI(colored.String())
+	for _, want := range []string{"[ACTIVITY]", "1H BUCKET", "LESS", "MORE", "Mon", "Sun", "·", "░", "▒", "▓", "█"} {
+		if !strings.Contains(plain, want) {
+			t.Fatalf("activity frame missing %q:\n%s", want, plain)
+		}
+	}
+	for _, code := range []string{"\x1b[1;94m", "\x1b[1;96m", "\x1b[1;92m", "\x1b[1;93m"} {
+		if !strings.Contains(colored.String(), code) {
+			t.Fatalf("activity frame missing palette code %q: %q", code, colored.String())
+		}
+	}
+	if strings.Contains(colored.String(), "\x1b[1;91m") {
+		t.Fatalf("activity intensity used error red: %q", colored.String())
+	}
+
+	var noColor strings.Builder
+	if err := renderUsageStatsViewer(&noColor, 48, 10, state, usageTextPrimitives{}); err != nil {
+		t.Fatal(err)
+	}
+	if regexp.MustCompile(`\x1b\[[0-9;]+m`).MatchString(noColor.String()) {
+		t.Fatalf("no-color activity frame contains SGR: %q", noColor.String())
+	}
+	for _, want := range []string{"1H BUCKET", "·", "░", "▒", "▓", "█"} {
+		if !strings.Contains(noColor.String(), want) {
+			t.Fatalf("no-color activity frame missing %q: %q", want, noColor.String())
+		}
+	}
+}
+
+func TestUsageViewerWideOverviewUsesContentHeightAndKeepsActiveTabVisible(t *testing.T) {
+	complete := "1.000000000"
+	report := usage.StatsReport{
+		Metric:   "tokens",
+		Range:    usage.StatsRange{From: "2026-08-01T00:00:00Z", To: "2026-08-02T00:00:00Z"},
+		Totals:   usage.StatsTotals{Tokens: 100, Sessions: 1, ProviderCost: &complete, KnownProviderCost: complete},
+		Coverage: usage.StatsCoverage{PricedEvents: 1, TotalEvents: 1, Percent: "100"},
+	}
+	state := newUsageViewerState(report, nil, nil)
+	var out strings.Builder
+	if err := renderUsageStatsViewer(&out, 140, 32, state, usageTextPrimitives{color: true}); err != nil {
+		t.Fatal(err)
+	}
+	plain := stripStatsANSI(out.String())
+	selected := usageViewerSelectedRow(t, out.String())
+	if strings.ContainsAny(selected, "█·") {
+		t.Fatalf("absolute overview KPI rendered a meaningless track: %q", selected)
+	}
+	if !strings.Contains(plain, "\nDETAIL · TOKENS\n") {
+		t.Fatalf("short wide overview did not use sequential full-width layout:\n%s", plain)
+	}
+
+	state.section = usageViewerCoverage
+	state.refresh()
+	if tabs := stripStatsANSI(usageViewerTabLine(state.section, 48, usageTextPrimitives{color: true})); !strings.Contains(tabs, "[COVERAGE]") {
+		t.Fatalf("narrow tab window hid active Coverage tab: %q", tabs)
+	}
+}
+
 // usageViewerSelectedRow returns the selected-row line of a rendered frame with
 // the viewer's own style sequences removed.
 func usageViewerSelectedRow(t *testing.T, frame string) string {
@@ -413,7 +549,7 @@ func TestUsageViewerSanitizesUntrustedLabelsAndKeepsVisibleIdentity(t *testing.T
 				}
 			}
 			// The viewer's own screen and style control stays intact.
-			for _, want := range []string{"\x1b[H\x1b[2J", "\x1b[1;36m"} {
+			for _, want := range []string{"\x1b[H\x1b[2J", "\x1b[1;96m"} {
 				if !strings.Contains(frame, want) {
 					t.Fatalf("frame lost viewer control %q: %q", want, frame)
 				}

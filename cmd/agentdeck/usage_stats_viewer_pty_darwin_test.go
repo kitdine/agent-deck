@@ -71,6 +71,88 @@ func TestRunUsageStatsViewerPTYExitRestoresScreen(t *testing.T) {
 	}
 }
 
+func TestRunUsageStatsViewerPTYNavigatesToActivityHeatmap(t *testing.T) {
+	master, slave := openSessionViewerPTY(t)
+	defer master.Close()
+	defer slave.Close()
+	if err := unix.IoctlSetWinsize(int(slave.Fd()), unix.TIOCSWINSZ, &unix.Winsize{Col: 80, Row: 24}); err != nil {
+		t.Fatal(err)
+	}
+
+	activitySeen := make(chan struct{}, 1)
+	outputDone := make(chan string, 1)
+	go func() {
+		var output strings.Builder
+		buffer := make([]byte, 4096)
+		for {
+			count, err := master.Read(buffer)
+			if count > 0 {
+				output.Write(buffer[:count])
+				if strings.Contains(output.String(), "1H BUCKET") {
+					select {
+					case activitySeen <- struct{}{}:
+					default:
+					}
+				}
+			}
+			if err != nil {
+				outputDone <- output.String()
+				return
+			}
+		}
+	}()
+
+	report := usage.StatsReport{
+		Metric: "tokens",
+		Range:  usage.StatsRange{From: "2026-08-01T00:00:00Z", To: "2026-08-08T00:00:00Z"},
+		Activity: []usage.StatsActivity{
+			{Weekday: 0, Hour: 9, KnownMetricValue: "10"},
+		},
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		done <- runUsageStatsViewer(ctx, slave, slave, report, nil, true, nil)
+	}()
+	time.Sleep(25 * time.Millisecond)
+	if _, err := master.WriteString("\x1b[C\x1b[C"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-activitySeen:
+	case <-time.After(2 * time.Second):
+		cancel()
+		<-done
+		t.Fatal("usage viewer did not render Activity after two right-arrow keys")
+	}
+	if _, err := master.WriteString("q"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(2 * time.Second):
+		cancel()
+		t.Fatal("usage viewer did not exit after Activity acceptance")
+	}
+	if err := slave.Close(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case output := <-outputDone:
+		for _, want := range []string{"[ACTIVITY]", "1H BUCKET", "Mon"} {
+			if !strings.Contains(output, want) {
+				t.Fatalf("PTY Activity output missing %q: %q", want, output)
+			}
+		}
+	case <-time.After(time.Second):
+		t.Fatal("PTY Activity reader did not finish after viewer exit")
+	}
+}
+
 func TestRunUsageStatsViewerPTYCancellationRestoresTerminal(t *testing.T) {
 	master, slave := openSessionViewerPTY(t)
 	defer master.Close()

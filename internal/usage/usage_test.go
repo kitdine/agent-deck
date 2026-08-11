@@ -2685,8 +2685,19 @@ INSERT INTO usage_events(event_key,client,session_id,event_id,event_at,model,inp
 	}
 	queries.Store(0)
 	today, err := service.Stats(ctx, StatsOptions{From: from, To: from.Add(24 * time.Hour), GroupBy: "hour", Metric: "cost", Location: location, Timezone: "Asia/Shanghai"})
-	if err != nil || len(today.Activity) != 0 || len(today.Buckets) != 24 {
+	if err != nil || len(today.Activity) != 168 || len(today.Buckets) != 24 {
 		t.Fatalf("today stats = buckets:%d activity:%d err:%v", len(today.Buckets), len(today.Activity), err)
+	}
+	var activityEvents int64
+	for _, bucket := range today.Activity {
+		activityEvents += bucket.Events
+	}
+	if activityEvents != today.Totals.Events {
+		t.Fatalf("today activity events = %d, want totals %d", activityEvents, today.Totals.Events)
+	}
+	empty, err := service.Stats(ctx, StatsOptions{From: from, To: from.Add(24 * time.Hour), GroupBy: "hour", Metric: "cost", Client: "claude", Location: location, Timezone: "Asia/Shanghai"})
+	if err != nil || len(empty.Activity) != 168 || empty.Totals.Events != 0 {
+		t.Fatalf("empty filtered stats = events:%d activity:%d err:%v", empty.Totals.Events, len(empty.Activity), err)
 	}
 	var indexed int
 	rows, err := countedStore.DB.QueryContext(ctx, `PRAGMA index_list('usage_events')`)
