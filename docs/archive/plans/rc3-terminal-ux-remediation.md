@@ -1,6 +1,7 @@
 ---
-status: active
+status: historical
 created: 2026-08-11
+retired: 2026-08-11
 ---
 
 # RC3 Terminal UX Acceptance Remediation
@@ -119,7 +120,7 @@ privacy boundaries, or the explicit read-only interactive lifecycle.
 | `session-model-index` | [x] | [x] |
 | `usage-visual-system` | [x] | [x] |
 | `session-interactive-experience` | [x] | [x] |
-| `session-show-readability` | [ ] | [ ] |
+| `session-show-readability` | [x] | [x] |
 
 Each task follows Development -> Review -> Repair -> Re-review -> PASS. Review
 records live under `docs/reviews/rc3-terminal-ux-remediation/`. A Review finding,

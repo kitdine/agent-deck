@@ -219,10 +219,20 @@ rendered visibly before width calculation, preventing terminal injection.
 ### Session rules
 
 - Metadata remains first and is never displaced by an empty paged section.
-- Documents, activity, and invocations use the same wide/compact row grammar as
-  usage while preserving their current privacy allowlists.
+- Ordinary `session show` uses one bounded section/record/labeled-continuation
+  grammar at every width; it never switches to a data-dependent document,
+  activity, token, or fixed 13-column invocation table.
+- Documents wrap approved visible text; Activity separates aggregate outcome
+  from safe call metadata; Tokens expose every normalized component, cost,
+  pricing state, unpriced component, and warning without claiming a reliable
+  conversation-turn join. Pagination commands use the same bounded continuation
+  grammar. JSON remains geometry-independent.
+- The root browser has explicit Client, Session, Model, Project, and Last
+  Activity identities at standard/wide widths. Compact mode keeps Model and
+  Project in the selected preview, renders absent model as `unknown`, reduces
+  Project to a non-path identifier, and never exposes source path.
 - Interactive sections remain Overview, Documents, Activity, and Tokens, each
-  with independent page, selection, and viewport state.
+  with independent page, selection, and viewport state plus selected-row detail.
 
 ### Interactive row budget
 

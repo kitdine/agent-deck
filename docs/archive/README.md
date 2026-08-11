@@ -5,7 +5,7 @@ created: 2026-07-22
 
 # Archived Documents
 
-Last updated: 2026-08-10
+Last updated: 2026-08-11
 
 ## Why this directory exists
 
@@ -30,6 +30,22 @@ Move a document here instead of leaving it `active` in `docs/plans/` or
   conclusions have already been absorbed into a living document.
 - Leaving it in the main `docs/` tree risks being mistaken for the current
   source of truth.
+
+## 2026-08-11 retirement: RC3 terminal UX acceptance remediation
+
+`plans/rc3-terminal-ux-remediation.md` and
+`reviews/rc3-terminal-ux-remediation/` retired together after all four tasks
+reached Review PASS. The work repaired Claude model indexing, restored a bright
+semantic Usage palette and always-present adaptive heatmap, rebuilt the root and
+detail Session interactive experience, and replaced ordinary `session show`
+tables with bounded labeled sections. Living behavior is now recorded in
+`docs/specs/cli-manual.md` and
+`docs/specs/2026-08-06-terminal-rendering-design.md`. Final verification included
+full tests, race, vet, compiled-current-binary isolated-real-state scans,
+multi-width text and JSON checks, and a real PTY browser-to-Tokens lifecycle.
+Retirement closes the development plan only: the immutable `v0.4.0-rc.2`
+release is unchanged, while `v0.4.0-rc.3` still requires successful same-SHA
+preflight evidence before tag and prerelease publication.
 
 ## 2026-08-10 retirement: v0.4.0 contract closure
 

@@ -658,12 +658,21 @@ unavailable。pricing/attribution warning 位于 `data.usage.warnings`，每条
 invocation 的 warning 位于 `data.invocations[].warnings`；顶层 envelope 的
 `warnings` 与 `partial` 只表示 command-level state，不能替代这两组 usage warning。
 
+普通 `session show` text 使用有界的 section/record/labeled-continuation 画布，不再按
+terminal 宽度切换为 ASCII table。`COLUMNS` 为正整数时决定 redirected text 宽度，
+否则使用 100；TTY text 先读取 terminal width，并仍允许 `COLUMNS` 显式覆盖。每一行
+都不超过该可见宽度。DOCUMENTS 展开当前有界 page 的 approved visible text；ACTIVITY
+按 summary 与 safe call metadata 分层；TOKENS 先解释完整 summary，再把每个 normalized
+invocation 的全部 token/cache component、catalog/provider cost、pricing status、unpriced
+component 与 warning 放到续行。invocation sequence 仅表示 usage chronological position，
+不宣称与 conversation turn 可靠对应。JSON envelope、字段、分页和 UTC 值不受 text 布局影响。
+
 `session --interactive` 是根级、显式的只读索引浏览入口，不会隐式执行
 `session scan`。索引为空时显示可复制的 `agentdeck session scan` 提示。列表中使用
 Up/Down/Home/End 选择，PageUp/PageDown 翻页，Enter 打开现有详情 viewer；详情中的
 Escape 返回列表，列表中的 Escape 退出，`q` 在任一层退出。进入根级 browser 或
 `session show --interactive` 等待用户输入前都会释放 state lock。整个根级浏览流程
-不显示 source path，列表也不渲染 Project。该入口只接受 text output 与 TTY
+不显示 source path；列表显示 compact Project 标识，并将缺失 Model 明确标为 `unknown`。该入口只接受 text output 与 TTY
 stdin/stdout，不属于 JSON 或 desktop DTO surface。
 
 `session show --interactive` 打开只读 TTY viewer，其中包含 OVERVIEW、DOCUMENTS、
@@ -671,6 +680,13 @@ ACTIVITY 和 TOKENS section，以及各 section 独立的 lazy page state。它�
 output 和 TTY stdin/stdout，且不能与 `--activity`、`--tokens`、`--page`、`--limit`
 或 `--all` 同时使用。自动化和 desktop 消费应使用普通 `--format json` command；
 text 和 interactive viewer 都不是 DTO contract。
+
+根 browser 与详情 viewer 共用亮色 semantic roles、active tab、selection、warning、status
+和 no-color label contract。详情的 OVERVIEW、DOCUMENTS、ACTIVITY、TOKENS 各自保留
+page、selection 与 viewport；selected document 展开有界 approved text preview 和完整页命令，
+selected activity 只展开 safe metadata，selected invocation 展开全部 token/cost/pricing/warning
+详情。48x10 是 interactive minimum；窄、短 frame 受控降级，宽 frame 只在 detail 确实需要
+额外高度时使用 list/detail split。
 
 这组有界的 session DTO 是 v0.4.0 的桌面依赖合同，已满足 v0.5.0 计划
 `desktop-wire-contract` 的入口条件。desktop client 可消费 versioned JSON envelope

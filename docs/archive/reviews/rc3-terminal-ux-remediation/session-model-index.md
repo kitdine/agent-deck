@@ -1,7 +1,8 @@
 ---
-status: active
+status: historical
 plan: rc3-terminal-ux-remediation
 task: session-model-index
+retired: 2026-08-11
 ---
 
 # Review log — rc3-terminal-ux-remediation / session-model-index

@@ -101,7 +101,7 @@ INSERT INTO usage_events(event_key,client,session_id,event_id,event_at,model,inp
 	if exit := execute([]string{"--state-dir", state, "session", "show", "token-session", "--client", "codex", "--tokens", "--page", "1", "--limit", "1"}, bytes.NewReader(nil), &stdout, &stderr); exit != 0 {
 		t.Fatalf("text exit=%d stdout=%q stderr=%q", exit, stdout.String(), stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "TOKENS") || !strings.Contains(stdout.String(), "INVOCATIONS") || !strings.Contains(stdout.String(), "Showing 1-1 of 2") || !strings.Contains(stdout.String(), "--tokens") {
+	if !strings.Contains(stdout.String(), "TOKENS") || !strings.Contains(stdout.String(), "INVOCATIONS") || !strings.Contains(stdout.String(), "SHOWING") || !strings.Contains(stdout.String(), "1-1 of 2") || !strings.Contains(stdout.String(), "--tokens") {
 		t.Fatalf("text token page=%q", stdout.String())
 	}
 }

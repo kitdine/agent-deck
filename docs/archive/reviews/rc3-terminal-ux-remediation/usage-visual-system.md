@@ -1,7 +1,8 @@
 ---
-status: active
+status: historical
 plan: rc3-terminal-ux-remediation
 task: usage-visual-system
+retired: 2026-08-11
 ---
 
 - Reviewed state: uncommitted candidate based on

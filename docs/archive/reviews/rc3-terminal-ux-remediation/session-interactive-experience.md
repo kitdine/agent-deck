@@ -1,7 +1,8 @@
 ---
-status: active
+status: historical
 plan: rc3-terminal-ux-remediation
 task: session-interactive-experience
+retired: 2026-08-11
 ---
 
 - Reviewed state: uncommitted candidate based on `ecebb62361603a77a53c4be6f2524fa0bed3ba55`.
