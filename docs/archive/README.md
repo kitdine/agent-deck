@@ -46,6 +46,9 @@ multi-width text and JSON checks, and a real PTY browser-to-Tokens lifecycle.
 Retirement closes the development plan only: the immutable `v0.4.0-rc.2`
 release is unchanged, while `v0.4.0-rc.3` still requires successful same-SHA
 preflight evidence before tag and prerelease publication.
+The first post-retirement preflight (`31490703746`) reopened the final task on
+fresh-test and display-zone findings; Round 4 closed both and requires a new
+same-SHA preflight rather than reusing that failed run.
 
 ## 2026-08-10 retirement: v0.4.0 contract closure
 

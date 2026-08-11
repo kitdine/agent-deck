@@ -184,9 +184,10 @@ func TestProviderAndSessionTextSurfacesUseDisplayZone(t *testing.T) {
 				}},
 			},
 			want: []string{
-				"first: " + localized + " UTC+8",
-				"last: " + localized + " UTC+8",
-				"STARTED (UTC+8)",
+				"FIRST ACTIVITY",
+				"LAST ACTIVITY",
+				localized + " UTC+8",
+				"STARTED",
 				localized,
 			},
 		},
@@ -253,15 +254,13 @@ func TestSessionShowLeavesInvalidDisplayTimesUnchanged(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"first: not-a-timestamp\n", "last: \n"} {
+	for _, want := range []string{"FIRST ACTIVITY", "not-a-timestamp", "LAST ACTIVITY", "unknown"} {
 		if !strings.Contains(text.String(), want) {
 			t.Errorf("session show missing unchanged value %q:\n%s", want, text.String())
 		}
 	}
-	for _, unwanted := range []string{"not-a-timestamp UTC+8", "last:  UTC+8"} {
-		if strings.Contains(text.String(), unwanted) {
-			t.Errorf("session show added a zone to invalid value %q:\n%s", unwanted, text.String())
-		}
+	if strings.Contains(text.String(), "UTC+8") {
+		t.Errorf("session show added a zone to invalid or empty values:\n%s", text.String())
 	}
 }
 

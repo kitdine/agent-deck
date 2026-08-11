@@ -222,6 +222,9 @@ rendered visibly before width calculation, preventing terminal injection.
 - Ordinary `session show` uses one bounded section/record/labeled-continuation
   grammar at every width; it never switches to a data-dependent document,
   activity, token, or fixed 13-column invocation table.
+- Every parseable record-level instant names the active display zone in its
+  wrapping value; empty or invalid timestamps never fabricate a zone. JSON
+  remains UTC.
 - Documents wrap approved visible text; Activity separates aggregate outcome
   from safe call metadata; Tokens expose every normalized component, cost,
   pricing state, unpriced component, and warning without claiming a reliable

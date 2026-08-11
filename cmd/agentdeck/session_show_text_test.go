@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kitdine/agent-deck/internal/activity"
 	"github.com/kitdine/agent-deck/internal/session"
@@ -193,6 +194,47 @@ func TestRenderSessionShowTextPaginationUsesBoundedContinuation(t *testing.T) {
 		if got := runewidth.StringWidth(line); got > 48 {
 			t.Fatalf("pagination line width %d exceeds 48: %q", got, line)
 		}
+	}
+}
+
+func TestRenderSessionShowTextNamesDisplayZoneForRecordTimestamps(t *testing.T) {
+	usePinnedDisplayZone(t, time.FixedZone("UTC+8", 8*60*60))
+	const stored = "2026-07-20T16:00:00Z"
+	result := session.Result{
+		Metadata:  session.Metadata{Client: "codex", SessionID: "session-1"},
+		Documents: []session.Document{{EventAt: stored, Kind: "user_prompt", Text: "visible"}},
+		Activity: []activity.Detail{{
+			StartedAt: stored, CompletedAt: stored, Tool: "Read", Status: "completed",
+		}},
+	}
+	summary := &usage.SessionSummary{Tokens: sessionShowTestTokens()}
+	invocations := []usage.SessionInvocation{{Sequence: 1, EventAt: stored, Tokens: sessionShowTestTokens()}}
+	var output strings.Builder
+	if err := renderSessionShowText(&output, result, nil, "", summary, invocations, true, "", false); err != nil {
+		t.Fatal(err)
+	}
+	text := output.String()
+	for _, want := range []string{"EVENT AT", "STARTED", "COMPLETED", "2026-07-21 00:00:00 UTC+8"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("record timestamp missing %q:\n%s", want, text)
+		}
+	}
+	if strings.Count(text, "EVENT AT") != 2 || strings.Count(text, "2026-07-21 00:00:00 UTC+8") != 4 || strings.Contains(text, stored) {
+		t.Fatalf("document/invocation timestamps did not share the display-zone contract:\n%s", text)
+	}
+
+	invalid := result
+	invalid.Documents = []session.Document{{EventAt: "not-a-timestamp", Kind: "user_prompt", Text: "visible"}}
+	invalid.Activity = []activity.Detail{{
+		StartedAt: "not-a-timestamp", CompletedAt: "not-a-timestamp", Tool: "Read", Status: "completed",
+	}}
+	invocations[0].EventAt = "not-a-timestamp"
+	output.Reset()
+	if err := renderSessionShowText(&output, invalid, nil, "", summary, invocations, true, "", false); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(output.String(), "—") != 4 || strings.Contains(output.String(), "UTC+8") {
+		t.Fatalf("invalid record timestamps fabricated a display zone:\n%s", output.String())
 	}
 }
 

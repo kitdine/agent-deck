@@ -34,3 +34,27 @@ retired: 2026-08-11
   - Real JSON output at 48, 100, and 140 columns — `data` and shape identical; independent invocations differ only in the expected top-level `generated_at` envelope field.
   - Real PTY root browser → detail → `[TOKENS]` → Escape → q — PASS; alternate-screen enter/exit balanced and transcript mode `0600`.
 - Verdict: PASS
+
+## Round 3 — 2026-08-11 release-preflight
+
+- Reviewed state: committed tree `044b9ac2d8425885b888fbea7f1cfffcf05e37ca`, commit `61f79c3127a08d11235d6c6053b30439587c5db2`.
+- Evidence: release-preflight run `31490703746` failed in fresh `make release-verify`; all four failing test groups reproduce locally with `-count=1`.
+- Findings:
+  - [P1] Documents, Activity, and Invocations localize record-level timestamps without naming the display zone, violating the human-readable time contract.
+  - [P1] Pagination, duration, metadata-label, and invalid-time assertions still bind to the superseded Session renderer, so cached local tests concealed deterministic fresh-suite failures.
+- Classification: mixed production and test defects; CI/macOS-only, toolchain, and flaky alternatives rejected by the deterministic local reproducer.
+- Verdict: REOPEN
+
+## Round 4 — 2026-08-11
+
+- Reviewed state: repaired uncommitted candidate based on `61f79c3127a08d11235d6c6053b30439587c5db2`.
+- Reviewer: Codex fresh re-review pass.
+- Scope: both Round 3 findings, all affected Session text routes, fresh-suite assertions, time-zone and invalid-time branches, JSON separation, and living contracts.
+- Findings: none. Parseable Documents, Activity, and Invocations timestamps carry the complete display zone in wrapping values; invalid or empty record times remain `—` without a fabricated zone. Pagination, grouped durations, summaries, metadata labels, and next-page commands are asserted against the new grammar without weakening privacy checks.
+- Evidence:
+  - All five original/new focused tests with `-count=1` — PASS.
+  - Final-content `make release-verify` — PASS.
+  - Current compiled binary `/private/tmp/agentdeck-rc3-preflight-fix` with reused isolated-real-state index — 48/100/140-column text has zero overflow, all sections present, and complete zone markers.
+  - Stable historical real session JSON at 48/100/140 columns — payload identical after excluding only the per-command `generated_at` envelope field.
+  - A live-session JSON difference was limited to newly appended Activity data between reads; same-time 48/100 payloads were identical and the stable-source three-width control rejected a geometry regression.
+- Verdict: PASS

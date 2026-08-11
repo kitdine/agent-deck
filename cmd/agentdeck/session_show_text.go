@@ -112,7 +112,7 @@ func sessionShowDocumentLines(values []session.Document, width int) []string {
 			lines = append(lines, "")
 		}
 		lines = append(lines, sessionShowFit(fmt.Sprintf("DOCUMENT %d", index+1), width))
-		lines = append(lines, sessionShowFieldLines("EVENT AT", sessionShowKnown(renderSessionDocumentTime(value.EventAt)), width)...)
+		lines = append(lines, sessionShowTimestampFieldLines("EVENT AT", value.EventAt, width)...)
 		lines = append(lines, sessionShowFieldLines("KIND", sessionShowKnown(value.Kind), width)...)
 		lines = append(lines, sessionShowFieldLines("TEXT", sessionShowKnown(value.Text), width)...)
 	}
@@ -155,7 +155,7 @@ func sessionShowActivityLines(values []activity.Detail, width int) []string {
 			lines = append(lines, "")
 		}
 		lines = append(lines, sessionShowFit(fmt.Sprintf("CALL %d", index+1), width))
-		lines = append(lines, sessionShowFieldLines("STARTED", sessionShowKnown(renderDisplayTime(value.StartedAt)), width)...)
+		lines = append(lines, sessionShowTimestampFieldLines("STARTED", value.StartedAt, width)...)
 		lines = append(lines, sessionShowFieldLines("TOOL", sessionShowKnown(value.Tool), width)...)
 		lines = append(lines, sessionShowFieldLines("MODEL", sessionShowKnown(value.Model), width)...)
 		lines = append(lines, sessionShowFieldLines("STATUS", sessionShowKnown(value.Status), width)...)
@@ -165,7 +165,7 @@ func sessionShowActivityLines(values []activity.Detail, width int) []string {
 		}
 		lines = append(lines, sessionShowFieldLines("DURATION", duration, width)...)
 		if value.CompletedAt != "" {
-			lines = append(lines, sessionShowFieldLines("COMPLETED", sessionShowKnown(renderDisplayTime(value.CompletedAt)), width)...)
+			lines = append(lines, sessionShowTimestampFieldLines("COMPLETED", value.CompletedAt, width)...)
 		}
 	}
 	return lines
@@ -209,7 +209,7 @@ func sessionShowInvocationLines(values []usage.SessionInvocation, width int) []s
 	lines := []string{sessionShowFit("Sequence numbers are chronological usage positions, not conversation turns.", width)}
 	for _, value := range values {
 		lines = append(lines, "", sessionShowFit("INVOCATION #"+strconv.Itoa(value.Sequence), width))
-		lines = append(lines, sessionShowFieldLines("EVENT AT", sessionShowKnown(renderDisplayTime(value.EventAt)), width)...)
+		lines = append(lines, sessionShowTimestampFieldLines("EVENT AT", value.EventAt, width)...)
 		lines = append(lines, sessionShowFieldLines("MODEL", sessionShowKnown(value.Model), width)...)
 		lines = append(lines, sessionShowFieldLines("PRIMARY TOKENS", fmt.Sprintf(
 			"input %s · cached input %s · output %s",
@@ -244,6 +244,14 @@ func sessionShowPaginationLines(page session.Pagination, nextCommand string, wid
 		lines = append(lines, sessionShowFieldLines("NEXT PAGE", nextCommand, width)...)
 	}
 	return lines
+}
+
+func sessionShowTimestampFieldLines(label, value string, width int) []string {
+	rendered := renderSessionDocumentTime(value)
+	if _, err := time.Parse(time.RFC3339Nano, value); err == nil {
+		rendered = renderDisplayTimeWithZone(value)
+	}
+	return sessionShowFieldLines(label, rendered, width)
 }
 
 func sessionShowFieldLines(label, value string, width int) []string {

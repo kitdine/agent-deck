@@ -194,7 +194,7 @@ func TestSessionCLIListAndShowPaginationContracts(t *testing.T) {
 	if err = run([]string{"--state-dir", state, "session", "show", "a", "--page", "1", "--limit", "2"}, bytes.NewReader(nil), &showText); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"Showing 1-2 of 3", "--client 'codex'", "--page 2", "--limit 2"} {
+	for _, want := range []string{"SHOWING", "1-2 of 3", "--client 'codex'", "--page 2", "--limit 2"} {
 		if !strings.Contains(showText.String(), want) {
 			t.Fatalf("show text missing %q: %s", want, showText.String())
 		}
@@ -441,7 +441,13 @@ func TestSessionShowActivityReadsOnlySafeMetadataOnDemand(t *testing.T) {
 			t.Fatal(err)
 		}
 		text := output.String()
-		for _, want := range []string{"exec_command", "completed", "2000"} {
+		wants := []string{"exec_command", "completed"}
+		if format == "json" {
+			wants = append(wants, "2000")
+		} else {
+			wants = append(wants, "2,000 ms")
+		}
+		for _, want := range wants {
 			if !strings.Contains(text, want) {
 				t.Fatalf("%s activity missing %q: %s", format, want, text)
 			}
@@ -457,9 +463,8 @@ func TestSessionShowActivityReadsOnlySafeMetadataOnDemand(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		"activity: total=2 completed=2 failed=0 incomplete=0 total_duration_ms=3000 average_duration_ms=1500",
-		"Showing 1-1 of 2",
-		fmt.Sprintf("Next page: agentdeck --state-dir '%s' session show 'activity-session' --client 'codex' --activity --page 2 --limit 1", state),
+		"SUMMARY", "2 calls", "2 completed", "DURATION", "total 3s (3,000 ms)", "average 1.5s (1,500 ms)",
+		"SHOWING", "1-1 of 2", "NEXT PAGE", "agentdeck --state-dir", "--client 'codex'", "--activity", "--page 2", "--limit 1",
 	} {
 		if !strings.Contains(pagedText.String(), want) {
 			t.Fatalf("paged activity text missing %q: %s", want, pagedText.String())
