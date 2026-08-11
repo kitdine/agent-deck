@@ -118,7 +118,7 @@ privacy boundaries, or the explicit read-only interactive lifecycle.
 | --- | --- | --- |
 | `session-model-index` | [x] | [x] |
 | `usage-visual-system` | [x] | [x] |
-| `session-interactive-experience` | [ ] | [ ] |
+| `session-interactive-experience` | [x] | [x] |
 | `session-show-readability` | [ ] | [ ] |
 
 Each task follows Development -> Review -> Repair -> Re-review -> PASS. Review

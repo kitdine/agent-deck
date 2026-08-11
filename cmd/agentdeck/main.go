@@ -2079,7 +2079,7 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 			service, _ := sessionUsageFromContext(ctx)
 			err = runSessionBrowser(ctx, input, output, items, func(metadata session.Metadata) sessionViewerLoad {
 				return newSessionViewerLoad(ctx, s, metadata, service)
-			})
+			}, opts.noColor)
 			if err != nil {
 				return nil, err
 			}
@@ -2200,7 +2200,7 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 			input := opts.stdin.(*os.File)
 			output := opts.stdout.(*os.File)
 			service, _ := sessionUsageFromContext(ctx)
-			if err := runSessionViewer(ctx, input, output, newSessionViewerLoad(ctx, s, metadata, service)); err != nil {
+			if err := runSessionViewer(ctx, input, output, newSessionViewerLoad(ctx, s, metadata, service), opts.noColor); err != nil {
 				return nil, err
 			}
 			return sessionViewerCompleted{}, nil

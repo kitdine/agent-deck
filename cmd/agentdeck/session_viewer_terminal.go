@@ -11,7 +11,7 @@ import (
 	"golang.org/x/term"
 )
 
-func runSessionViewer(ctx context.Context, input, output *os.File, load sessionViewerLoad) error {
+func runSessionViewer(ctx context.Context, input, output *os.File, load sessionViewerLoad, noColor ...bool) error {
 	if !term.IsTerminal(int(input.Fd())) || !term.IsTerminal(int(output.Fd())) {
 		return errors.New("--interactive requires TTY stdin and stdout")
 	}
@@ -22,17 +22,22 @@ func runSessionViewer(ctx context.Context, input, output *os.File, load sessionV
 	if err != nil {
 		return err
 	}
+	disableColor := len(noColor) > 0 && noColor[0]
+	p := newUsageTextPrimitives(output, disableColor)
 	terminal, err := startInteractiveTerminal(input, output)
 	if err != nil {
 		return err
 	}
 	defer terminal.Close()
-	_, err = runPreparedSessionViewerScreen(ctx, input, output, terminal.frameWriter(), terminal.resized, viewer)
+	_, err = runPreparedSessionViewerScreen(ctx, input, output, terminal.frameWriter(), terminal.resized, viewer, p)
+	if errors.Is(err, io.EOF) {
+		return nil
+	}
 	return err
 }
 
 // runSessionViewerScreen renders one detail screen inside an already-owned
-// terminal. The returned key lets the session browser distinguish Back from a
+// terminal. The returned key lets the session browser distinguish Back from
 // global Quit without nesting raw-mode or alternate-screen lifecycles.
 func runSessionViewerScreen(
 	ctx context.Context,
@@ -40,12 +45,13 @@ func runSessionViewerScreen(
 	frame io.Writer,
 	resized <-chan os.Signal,
 	load sessionViewerLoad,
+	primitives ...usageTextPrimitives,
 ) (string, error) {
 	viewer, err := prepareSessionViewer(ctx, load)
 	if err != nil {
 		return "", err
 	}
-	return runPreparedSessionViewerScreen(ctx, input, output, frame, resized, viewer)
+	return runPreparedSessionViewerScreen(ctx, input, output, frame, resized, viewer, primitives...)
 }
 
 func prepareSessionViewer(ctx context.Context, load sessionViewerLoad) (*sessionViewerState, error) {
@@ -62,16 +68,21 @@ func runPreparedSessionViewerScreen(
 	frame io.Writer,
 	resized <-chan os.Signal,
 	viewer *sessionViewerState,
+	primitives ...usageTextPrimitives,
 ) (string, error) {
+	p := usageTextPrimitives{}
+	if len(primitives) > 0 {
+		p = primitives[0]
+	}
 	for {
 		if err := ctx.Err(); err != nil {
 			return "", err
 		}
 		width, height := 100, 24
-		if columns, rows, sizeErr := term.GetSize(int(output.Fd())); sizeErr == nil && columns > 0 && rows > 0 {
+		if columns, rows, err := term.GetSize(int(output.Fd())); err == nil && columns > 0 && rows > 0 {
 			width, height = columns, rows
 		}
-		if err := renderSessionViewer(frame, width, height, viewer); err != nil {
+		if err := renderSessionViewer(frame, width, height, viewer, p); err != nil {
 			return "", err
 		}
 		key, resizedDuringRead, err := readSessionViewerKey(ctx, input, resized)
@@ -93,10 +104,8 @@ func runPreparedSessionViewerScreen(
 	}
 }
 
-// sessionViewerShouldRedrawAfterRead preserves an already recognized Escape
-// when a resize arrives during its ambiguity lookahead.
 func sessionViewerShouldRedrawAfterRead(key string, resizedDuringRead bool) bool {
-	return resizedDuringRead && key != "escape"
+	return resizedDuringRead && key == ""
 }
 
 func readSessionViewerKey(ctx context.Context, input *os.File, resized <-chan os.Signal) (string, bool, error) {
@@ -115,16 +124,19 @@ func readSessionViewerKey(ctx context.Context, input *os.File, resized <-chan os
 		return "tab", false, nil
 	case 0x1b:
 		next, resizedDuringRead, err := readSessionViewerByte(ctx, input, resized, 35*time.Millisecond)
+		if errors.Is(err, io.EOF) {
+			return "escape", false, nil
+		}
 		if err != nil || resizedDuringRead {
 			return "escape", resizedDuringRead, err
 		}
-		if next == 0 {
-			return "escape", false, nil
-		}
-		if next != '[' {
+		if next == 0 || next != '[' {
 			return "escape", false, nil
 		}
 		final, resizedDuringRead, err := readSessionViewerByte(ctx, input, resized, 35*time.Millisecond)
+		if errors.Is(err, io.EOF) {
+			return "escape", false, nil
+		}
 		if err != nil || resizedDuringRead {
 			return "escape", resizedDuringRead, err
 		}
@@ -143,11 +155,13 @@ func readSessionViewerKey(ctx context.Context, input *os.File, resized <-chan os
 			return "end", false, nil
 		case 'Z':
 			return "shift-tab", false, nil
-		case '5':
-			_, _, _ = readSessionViewerByte(ctx, input, resized, 35*time.Millisecond)
-			return "page-up", false, nil
-		case '6':
-			_, _, _ = readSessionViewerByte(ctx, input, resized, 35*time.Millisecond)
+		case '5', '6':
+			if _, _, suffixErr := readSessionViewerByte(ctx, input, resized, 35*time.Millisecond); suffixErr != nil && !errors.Is(suffixErr, io.EOF) {
+				return "", false, suffixErr
+			}
+			if final == '5' {
+				return "page-up", false, nil
+			}
 			return "page-down", false, nil
 		}
 	}
@@ -171,17 +185,40 @@ func readSessionViewerByte(ctx context.Context, input *os.File, resized <-chan o
 			return 0, true, nil
 		default:
 		}
-		fds := []unix.PollFd{{Fd: int32(input.Fd()), Events: unix.POLLIN}}
-		if _, err := unix.Poll(fds, 25); err != nil && !errors.Is(err, unix.EINTR) {
+
+		waitMS := 25
+		if !deadline.IsZero() {
+			remaining := time.Until(deadline)
+			if remaining <= 0 {
+				return 0, false, nil
+			}
+			waitMS = max(1, min(waitMS, int(remaining.Milliseconds())))
+		}
+		fds := []unix.PollFd{{Fd: int32(input.Fd()), Events: unix.POLLIN | unix.POLLHUP}}
+		ready, err := unix.Poll(fds, waitMS)
+		if errors.Is(err, unix.EINTR) {
+			continue
+		}
+		if err != nil {
 			return 0, false, err
+		}
+		if ready == 0 {
+			continue
 		}
 		if fds[0].Revents&(unix.POLLIN|unix.POLLHUP) == 0 {
 			continue
 		}
-		var buffer [1]byte
-		if _, err := input.Read(buffer[:]); err != nil {
+		buffer := []byte{0}
+		count, err := input.Read(buffer)
+		if count > 0 {
+			return buffer[0], false, nil
+		}
+		if errors.Is(err, unix.EIO) {
+			return 0, false, io.EOF
+		}
+		if err != nil {
 			return 0, false, err
 		}
-		return buffer[0], false, nil
+		return 0, false, io.EOF
 	}
 }

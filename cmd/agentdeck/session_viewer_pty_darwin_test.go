@@ -116,6 +116,62 @@ func ptyViewerLoad(ready chan<- struct{}) sessionViewerLoad {
 	}
 }
 
+func TestRunSessionViewerPTYCtrlCAndEOFCleanup(t *testing.T) {
+	load := func(_ context.Context, _ sessionViewerSection, page, _ int) (sessionViewerPage, error) {
+		return sessionViewerPage{Rows: []sessionViewerRow{{Label: "MODEL", Value: "gpt-5.6", Detail: []string{"selected detail"}}}, Page: page, Total: 1}, nil
+	}
+	for _, test := range []struct {
+		name   string
+		exit   func(*os.File) error
+		hangup bool
+	}{
+		{name: "ctrl-c", exit: func(master *os.File) error { _, err := master.Write([]byte{0x03}); return err }},
+		{name: "eof", hangup: true, exit: func(master *os.File) error { return master.Close() }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Setenv("TERM", "xterm-256color")
+			master, slave := openSessionViewerPTY(t)
+			if !test.hangup {
+				defer master.Close()
+			}
+			defer slave.Close()
+			if err := unix.IoctlSetWinsize(int(slave.Fd()), unix.TIOCSWINSZ, &unix.Winsize{Row: 24, Col: 100}); err != nil {
+				t.Fatal(err)
+			}
+			before, err := term.GetState(int(slave.Fd()))
+			if err != nil {
+				t.Fatal(err)
+			}
+			done := make(chan error, 1)
+			go func() {
+				done <- runSessionViewer(context.Background(), slave, slave, load)
+			}()
+			startup := readSessionBrowserPTYUntil(t, master, "q/esc back")
+			if !strings.Contains(startup, terminalEnterScreen) {
+				t.Fatalf("viewer did not enter alternate screen: %q", startup)
+			}
+			if err := test.exit(master); err != nil {
+				t.Fatal(err)
+			}
+			select {
+			case err := <-done:
+				if err != nil {
+					t.Fatalf("viewer exit error: %v", err)
+				}
+			case <-time.After(2 * time.Second):
+				t.Fatal("viewer did not exit and clean up")
+			}
+			after, err := term.GetState(int(slave.Fd()))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(before, after) {
+				t.Fatal("viewer did not restore terminal state")
+			}
+		})
+	}
+}
+
 func openSessionViewerPTY(t *testing.T) (*os.File, *os.File) {
 	t.Helper()
 	master, err := os.OpenFile("/dev/ptmx", os.O_RDWR, 0)

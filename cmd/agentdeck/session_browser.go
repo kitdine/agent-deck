@@ -47,7 +47,8 @@ func (s *sessionBrowserState) apply(key string, viewport int) (open, exit bool) 
 }
 
 func (s *sessionBrowserState) viewport(height int) (start, end, size int) {
-	size = max(1, height-5)
+	// Title, context, headers, selected preview, status, and help are fixed.
+	size = max(1, height-6)
 	start = max(0, min(s.selected-size/2, len(s.items)-size))
 	end = min(len(s.items), start+size)
 	return start, end, size
@@ -60,6 +61,7 @@ func runSessionBrowser(
 	input, output *os.File,
 	items []session.Metadata,
 	detailLoad sessionBrowserDetailLoad,
+	noColor ...bool,
 ) error {
 	if !term.IsTerminal(int(input.Fd())) || !term.IsTerminal(int(output.Fd())) {
 		return errors.New("session --interactive requires TTY stdin and stdout")
@@ -67,11 +69,15 @@ func runSessionBrowser(
 	if os.Getenv("TERM") == "dumb" {
 		return errors.New("session --interactive requires a usable terminal")
 	}
+
+	disableColor := len(noColor) > 0 && noColor[0]
+	p := newUsageTextPrimitives(output, disableColor)
 	terminal, err := startInteractiveTerminal(input, output)
 	if err != nil {
 		return err
 	}
 	defer terminal.Close()
+
 	frame := terminal.frameWriter()
 	state := newSessionBrowserState(items)
 	for {
@@ -82,7 +88,7 @@ func runSessionBrowser(
 		if columns, rows, sizeErr := term.GetSize(int(output.Fd())); sizeErr == nil && columns > 0 && rows > 0 {
 			width, height = columns, rows
 		}
-		if err := renderSessionBrowser(frame, width, height, state); err != nil {
+		if err := renderSessionBrowser(frame, width, height, state, p); err != nil {
 			return err
 		}
 		_, _, viewport := state.viewport(height)
@@ -103,7 +109,7 @@ func runSessionBrowser(
 		if !open {
 			continue
 		}
-		exitKey, err := runSessionViewerScreen(ctx, input, output, frame, terminal.resized, detailLoad(state.items[state.selected]))
+		exitKey, err := runSessionViewerScreen(ctx, input, output, frame, terminal.resized, detailLoad(state.items[state.selected]), p)
 		if errors.Is(err, io.EOF) {
 			return nil
 		}
@@ -116,72 +122,162 @@ func runSessionBrowser(
 	}
 }
 
-func renderSessionBrowser(w io.Writer, width, height int, state *sessionBrowserState) error {
-	if _, err := io.WriteString(w, "\x1b[H\x1b[2J"); err != nil {
-		return err
+func renderSessionBrowser(w io.Writer, width, height int, state *sessionBrowserState, primitives ...usageTextPrimitives) error {
+	p := usageTextPrimitives{}
+	if len(primitives) > 0 {
+		p = primitives[0]
 	}
+	lines := []string{"\x1b[H\x1b[2J"}
 	if width < 48 || height < 10 {
-		lines := []string{
-			"AGENTDECK · SESSIONS",
-			"Terminal too small for the session browser.",
+		lines = append(lines,
+			p.style("AGENTDECK · SESSIONS", usageColorBrand),
+			"Terminal too small for session browser.",
 			"Resize to at least 48x10.",
 			"q/esc quit",
-		}
-		for _, line := range lines[:min(len(lines), max(1, height))] {
-			if _, err := fmt.Fprintln(w, sessionShowFit(line, max(1, width))); err != nil {
-				return err
-			}
-		}
-		return nil
+		)
+		return sessionViewerWriteFrame(w, lines[:min(len(lines), max(1, height+1))], width)
 	}
-	if _, err := fmt.Fprintln(w, "AGENTDECK · SESSIONS  INTERACTIVE · READ ONLY"); err != nil {
-		return err
-	}
-	if _, err := fmt.Fprintf(w, "%d indexed sessions · times in %s\n", len(state.items), displayZoneName()); err != nil {
-		return err
-	}
+
+	lines = append(lines,
+		p.style("AGENTDECK · SESSIONS", usageColorBrand)+" · "+p.style("INTERACTIVE", usageColorSession)+" · "+p.style("READ ONLY", usageColorSuccess),
+		p.style(fmt.Sprintf("%d INDEXED SESSIONS", len(state.items)), usageColorSession)+" · times in "+displayZoneName(),
+	)
 	if len(state.items) == 0 {
-		if _, err := fmt.Fprintln(w, "\nNo indexed sessions."); err != nil {
-			return err
-		}
-		if _, err := fmt.Fprintln(w, "Run: agentdeck session scan"); err != nil {
-			return err
-		}
-		_, err := fmt.Fprintln(w, "\nq/esc quit")
-		return err
+		lines = append(lines,
+			p.style("No indexed sessions.", usageColorWarning),
+			"Run: agentdeck session scan",
+			"q/esc quit",
+		)
+		return sessionViewerWriteFrame(w, lines, width)
 	}
+
+	lines = append(lines, sessionBrowserHeader(width, p))
 	start, end, _ := state.viewport(height)
 	for index := start; index < end; index++ {
-		item := state.items[index]
-		prefix := "  "
-		if index == state.selected {
-			prefix = "> "
-		}
-		line := sessionBrowserRow(item, width-2)
-		if _, err := fmt.Fprintln(w, prefix+sessionShowFit(line, max(1, width-2))); err != nil {
-			return err
-		}
+		lines = append(lines, sessionBrowserStyledRow(state.items[index], index == state.selected, width, p))
 	}
-	status := fmt.Sprintf("row %d/%d", state.selected+1, len(state.items))
-	if _, err := fmt.Fprintln(w, sessionShowFit(status, width)); err != nil {
-		return err
+	selected := state.items[state.selected]
+	lines = append(lines,
+		sessionBrowserPreview(selected, width, p),
+		statsFit(p.style(fmt.Sprintf("row %d/%d", state.selected+1, len(state.items)), usageColorInfo), width),
+		statsFit("↑/↓ select · pgup/pgdn page · home/end · enter open · q/esc quit", width),
+	)
+	if len(lines) > height+1 {
+		lines = lines[:height+1]
 	}
-	_, err := fmt.Fprintln(w, sessionShowFit("↑/↓ select · pgup/pgdn page · home/end · enter open · q/esc quit", width))
-	return err
+	return sessionViewerWriteFrame(w, lines, width)
 }
 
-func sessionBrowserRow(item session.Metadata, width int) string {
-	client := terminaloutput.SanitizeTerminalCell(item.Client)
-	id := terminaloutput.SanitizeTerminalCell(item.SessionID)
-	model := terminaloutput.SanitizeTerminalCell(item.Model)
-	lastAt := renderSessionDocumentTime(item.LastAt)
-	switch {
-	case width >= 118:
-		return fmt.Sprintf("%-7s %-40s %-28s %s", client, id, model, lastAt)
-	case width >= 78:
-		return fmt.Sprintf("%-7s %-30s %-14s %s", client, id, model, lastAt)
-	default:
-		identity := strings.TrimSpace(client + "/" + id)
-		return fmt.Sprintf("%-34s %s", identity, lastAt)
+type sessionBrowserLayout struct {
+	client  int
+	session int
+	model   int
+	project int
+	last    int
+	compact bool
+}
+
+func sessionBrowserLayoutFor(width int) sessionBrowserLayout {
+	available := max(1, width-2)
+	if width >= 118 {
+		layout := sessionBrowserLayout{client: 7, session: 34, model: 24, last: 18}
+		layout.project = max(14, available-layout.client-layout.session-layout.model-layout.last-4)
+		return layout
 	}
+	if width >= 78 {
+		layout := sessionBrowserLayout{client: 7, session: 18, model: 13, last: 16}
+		layout.project = max(10, available-layout.client-layout.session-layout.model-layout.last-4)
+		return layout
+	}
+	return sessionBrowserLayout{compact: true}
+}
+
+func sessionBrowserHeader(width int, p usageTextPrimitives) string {
+	layout := sessionBrowserLayoutFor(width)
+	if layout.compact {
+		left := "CLIENT / SESSION"
+		right := "LAST ACTIVITY"
+		space := max(1, width-2-statsVisibleWidth(left)-statsVisibleWidth(right))
+		return "  " + p.style(statsFit(left+strings.Repeat(" ", space)+right, width-2), usageColorBrand)
+	}
+	return "  " + sessionBrowserColumns(
+		[]string{"CLIENT", "SESSION", "MODEL", "PROJECT", "LAST ACTIVITY"},
+		layout,
+		[]string{usageColorBrand, usageColorBrand, usageColorBrand, usageColorBrand, usageColorBrand},
+		p,
+	)
+}
+
+func sessionBrowserStyledRow(item session.Metadata, selected bool, width int, p usageTextPrimitives) string {
+	prefix := "  "
+	if selected {
+		prefix = p.style("> ", usageColorBrand)
+	}
+	layout := sessionBrowserLayoutFor(width)
+	client := sessionViewerKnown(item.Client)
+	id := sessionViewerKnown(item.SessionID)
+	model := sessionViewerKnown(item.Model)
+	project := sessionProjectLabel(item.Project)
+	last := sessionViewerKnown(renderSessionDocumentTime(item.LastAt))
+	if layout.compact {
+		identity := client + "/" + id
+		available := max(1, width-2)
+		lastWidth := min(18, max(12, available/3))
+		identityWidth := max(1, available-lastWidth-1)
+		line := statsPad(p.style(statsFit(identity, identityWidth), sessionClientColor(client)), identityWidth) + " " + statsPadLeft(p.style(statsFit(last, lastWidth), usageColorInfo), lastWidth)
+		return prefix + statsFit(line, available)
+	}
+	return prefix + sessionBrowserColumns(
+		[]string{client, id, model, project, last},
+		layout,
+		[]string{sessionClientColor(client), usageColorBrand, sessionClientColor(client), usageColorSuccess, usageColorInfo},
+		p,
+	)
+}
+
+func sessionBrowserColumns(values []string, layout sessionBrowserLayout, colors []string, p usageTextPrimitives) string {
+	widths := []int{layout.client, layout.session, layout.model, layout.project, layout.last}
+	columns := make([]string, 0, len(values))
+	for index, value := range values {
+		columns = append(columns, statsPad(p.style(statsFit(value, widths[index]), colors[index]), widths[index]))
+	}
+	return strings.TrimRight(strings.Join(columns, " "), " ")
+}
+
+func sessionBrowserPreview(item session.Metadata, width int, p usageTextPrimitives) string {
+	client := sessionViewerKnown(item.Client)
+	model := sessionViewerKnown(item.Model)
+	project := sessionProjectLabel(item.Project)
+	last := sessionViewerKnown(renderSessionDocumentTime(item.LastAt))
+	if sessionBrowserLayoutFor(width).compact {
+		separator := " · "
+		fixed := statsVisibleWidth("MODEL ") + statsVisibleWidth(separator) + statsVisibleWidth("PROJECT ")
+		valueBudget := max(2, width-fixed)
+		projectBudget := max(1, valueBudget*3/5)
+		modelBudget := max(1, valueBudget-projectBudget)
+		line := p.style("MODEL", usageColorBrand) + " " + p.style(statsFit(model, modelBudget), sessionClientColor(client)) + separator +
+			p.style("PROJECT", usageColorBrand) + " " + p.style(statsFit(project, projectBudget), usageColorSuccess)
+		return statsFit(line, width)
+	}
+	line := p.style("SELECTED", usageColorBrand) + " · " +
+		p.style(client, sessionClientColor(client)) + " · MODEL " + p.style(model, sessionClientColor(client)) +
+		" · PROJECT " + p.style(project, usageColorSuccess) + " · LAST " + p.style(last, usageColorInfo)
+	return statsFit(line, width)
+}
+
+// sessionBrowserRow remains the plain, deterministic row adapter used by unit
+// tests and non-color geometry checks.
+func sessionBrowserRow(item session.Metadata, width int) string {
+	layout := sessionBrowserLayoutFor(width + 2)
+	client := sessionViewerKnown(terminaloutput.SanitizeTerminalCell(item.Client))
+	id := sessionViewerKnown(terminaloutput.SanitizeTerminalCell(item.SessionID))
+	model := sessionViewerKnown(terminaloutput.SanitizeTerminalCell(item.Model))
+	project := sessionProjectLabel(item.Project)
+	last := sessionViewerKnown(renderSessionDocumentTime(item.LastAt))
+	if layout.compact {
+		identity := strings.TrimSpace(client + "/" + id)
+		lastWidth := min(18, max(12, width/3))
+		return statsFit(statsPad(statsFit(identity, max(1, width-lastWidth-1)), max(1, width-lastWidth-1))+" "+statsPadLeft(statsFit(last, lastWidth), lastWidth), width)
+	}
+	return sessionBrowserColumns([]string{client, id, model, project, last}, layout, []string{"", "", "", "", ""}, usageTextPrimitives{})
 }
