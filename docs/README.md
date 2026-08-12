@@ -501,7 +501,7 @@ fixing a defect, which is why it is a contract change recorded by the single
 | [specs/2026-08-07-usage-interactive-viewer-design.md](specs/2026-08-07-usage-interactive-viewer-design.md) | Active — approved Task 5 `usage stats --interactive` layout, color/no-color, state, lifecycle, and PTY contract; shared raw framing and session alignment now live in the terminal-rendering contract. |
 | [plans/desktop-app.md](plans/desktop-app.md) | Active — 0/6 done. Native macOS 26 menu-bar app, WidgetKit extension, unified desktop package, Cask, direct download, and its own contract task for `v0.5.0`. |
 | [plans/v0-5-0-contract.md](plans/v0-5-0-contract.md) | Active — 0/1 done. Version contract only: the single `v0.5.0` specification raise and documentation reconciliation. Blocked until the desktop plan is fully reviewed; preflight and publication remain separate user decisions. |
-| [plans/terminal-presentation-remediation.md](plans/terminal-presentation-remediation.md) | Active — 2/5 done. Tasks 1-2 are committed and CEv1 VERIFIED on their exact isolated-review trees. Task 3 Usage migration and reset review are in progress, followed by full Task 4 review, Task 5 acceptance, and the separately gated next `v0.4.0-rc.N`. |
+| [plans/terminal-presentation-remediation.md](plans/terminal-presentation-remediation.md) | Active — 1/5 done. Task 1 is committed and CEv1 VERIFIED. Task 2 retains signed candidate `6f107b7`, but every prior Reset R1-R5 verdict and test conclusion is invalid; a new complete Full Reset Review is required before Task 3 may resume. Tasks 3-4 must receive the same independent complete review treatment. |
 | [reviews/](reviews/README.md) | Per-task review records that back each plan's ticked `Review` cell. |
 | [archive/](archive/README.md) | Retired plans and superseded contracts. Not a starting point for new work. |
 
@@ -513,8 +513,10 @@ isolated `review/terminal-presentation-remediation-v2` branch created from fresh
 directly to remote `main` by fast-forward without a second cherry-pick; Task 5,
 same-SHA preflight, RC, Homebrew, installation, and visual acceptance remain
 separate gates documented by the plan. Task 1 is complete after a fresh Reset
-Round R3 PASS; Task 2 reached fresh Reset Round R5 PASS and freezes the shared
-Detail contract before Task 3 begins.
+Round R3 PASS. Task 2 retains its signed candidate but is NOT VERIFIED because
+Reset R1-R5 continued invalid review history instead of independently reviewing
+the complete candidate. Task 3 remains frozen until Task 2 passes a new Full
+Reset Review.
 
 ## Open Tasks Not Owned by a Plan
 

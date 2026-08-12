@@ -191,3 +191,16 @@ Verdict: PASS
 No open blocking, non-blocking, P0-P3, or nit findings remain. Task 2 freezes
 the shared Detail contract; Usage and Session producer-specific behavior and
 PTY coverage remain owned by Tasks 3 and 4.
+
+## Review invalidation — 2026-08-12
+
+The user rejected Reset R1-R5 as an incomplete continuation of prior review
+history rather than a new complete review of the entire Task 2 candidate.
+Every verdict, finding closure, and test result above remains audit history only
+and cannot support Review PASS, Task completion, or CEv1 verification.
+
+Task 2 returns to `NOT_VERIFIED`. The next legal gate is **Full Reset Review
+R1**, which must independently inspect the complete production implementation,
+complete test protection, every acceptance criterion, and all blocking,
+non-blocking, P0-P3, and nit surfaces. It may not reuse the old PASS conclusion
+or close a surface merely because an earlier round mentioned it.
