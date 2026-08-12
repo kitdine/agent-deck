@@ -501,9 +501,25 @@ fixing a defect, which is why it is a contract change recorded by the single
 | [specs/2026-08-07-usage-interactive-viewer-design.md](specs/2026-08-07-usage-interactive-viewer-design.md) | Active — approved Task 5 `usage stats --interactive` layout, color/no-color, state, lifecycle, and PTY contract; shared raw framing and session alignment now live in the terminal-rendering contract. |
 | [plans/desktop-app.md](plans/desktop-app.md) | Active — 0/6 done. Native macOS 26 menu-bar app, WidgetKit extension, unified desktop package, Cask, direct download, and its own contract task for `v0.5.0`. |
 | [plans/v0-5-0-contract.md](plans/v0-5-0-contract.md) | Active — 0/1 done. Version contract only: the single `v0.5.0` specification raise and documentation reconciliation. Blocked until the desktop plan is fully reviewed; preflight and publication remain separate user decisions. |
+| [plans/terminal-presentation-remediation.md](plans/terminal-presentation-remediation.md) | Active — 0/5 done after review reset. Task 1-3 implementations are committed locally, Task 4 has an uncommitted development candidate, and every earlier PASS/Test conclusion is invalid. Execution restarts with full Task 1 review, then freezes shared Detail before full Task 3/4 reviews, Task 5 acceptance, and separately gated next `v0.4.0-rc.N`. |
 | [reviews/](reviews/README.md) | Per-task review records that back each plan's ticked `Review` cell. |
 | [archive/](archive/README.md) | Retired plans and superseded contracts. Not a starting point for new work. |
 
+
+The terminal-presentation remediation plan's approved execution topology is an
+isolated `review/terminal-presentation-remediation-v2` branch created from fresh
+`origin/main`. The dirty local `main` remains a read-only payload source. Tasks
+1-4 form new legal commits on the review branch, whose final exact SHA is pushed
+directly to remote `main` by fast-forward without a second cherry-pick; Task 5,
+same-SHA preflight, RC, Homebrew, installation, and visual acceptance remain
+separate gates documented by the plan. Task 1 is complete after a fresh Reset
+Round R3 PASS; Task 2 shared Detail migration and contract freeze is next.
+
+Current terminal-presentation remediation status: Task 1 reached fresh Reset
+Round R3 PASS on the isolated review branch, so the active plan is 1/5 done.
+Task 2 shared Detail migration and contract freeze is next; the older 0/5 table
+sentence above is superseded by this exact current status until Task 5 performs
+the final documentation reconciliation.
 
 ## Open Tasks Not Owned by a Plan
 

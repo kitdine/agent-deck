@@ -2,6 +2,8 @@ package main
 
 import (
 	"errors"
+	"fmt"
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -125,7 +127,7 @@ func TestRenderSessionShowTextExplainsActivityAndInvocationDetails(t *testing.T)
 	}
 	text := output.String()
 	for _, want := range []string{
-		"SUMMARY", "1 calls", "1 completed", "BY TOOL", "Read 1", "CALL 1", "DURATION", "1.25s (1,250 ms)",
+		"SUMMARY", "1 calls", "1 completed", "BY TOOL", "Read 1", "CALL 1", "1.25s (1,250 ms)",
 		"TOKENS", "PRIMARY TOKENS", "input 1,200", "cached input 200", "CACHE TOKENS", "read 70", "write 5m 13", "write 1h 17",
 		"PROVIDER COST", "0.125000000 (partial)", "PRICING", "partial", "UNPRICED", "output_tokens", "WARNINGS", "historical attribution",
 		"INVOCATION #1", "Sequence numbers are chronological usage positions, not conversation turns.",
@@ -159,9 +161,33 @@ func TestRenderSessionShowTextKeepsActivityDetailsWithoutSummary(t *testing.T) {
 	if err := renderSessionShowText(&output, result, nil, "", nil, nil, false, "", false); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"ACTIVITY", "CALL 1", "TOOL", "Read", "STATUS", "completed"} {
+	for _, want := range []string{"ACTIVITY", "CALL 1", "Read", "gpt-safe", "completed"} {
 		if !strings.Contains(output.String(), want) {
 			t.Fatalf("activity without summary missing %q:\n%s", want, output.String())
+		}
+	}
+}
+
+func TestSessionShowActivityLinesKeepLargePagesCompact(t *testing.T) {
+	duration := int64(1250)
+	values := make([]activity.Detail, 20)
+	for index := range values {
+		values[index] = activity.Detail{
+			StartedAt:  "2026-08-01T00:00:00Z",
+			Tool:       "Read",
+			Model:      "gpt-5.6-sol",
+			Status:     "completed",
+			DurationMS: &duration,
+		}
+	}
+	lines := sessionShowActivityLines(values, 240)
+	if len(lines) != len(values)+1 {
+		t.Fatalf("activity lines = %d, want one labeled header plus one row per call", len(lines))
+	}
+	joined := strings.Join(lines, "\n")
+	for _, redundant := range []string{"\nSTARTED", "\nTOOL", "\nMODEL", "\nSTATUS", "\nDURATION", "\nCOMPLETED", "\n\n"} {
+		if strings.Contains(joined, redundant) {
+			t.Fatalf("compact activity rows retained %q:\n%s", redundant, joined)
 		}
 	}
 }
@@ -233,8 +259,191 @@ func TestRenderSessionShowTextNamesDisplayZoneForRecordTimestamps(t *testing.T) 
 	if err := renderSessionShowText(&output, invalid, nil, "", summary, invocations, true, "", false); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Count(output.String(), "—") != 4 || strings.Contains(output.String(), "UTC+8") {
+	if strings.Count(output.String(), "—") != 3 || strings.Contains(output.String(), "UTC+8") {
 		t.Fatalf("invalid record timestamps fabricated a display zone:\n%s", output.String())
+	}
+}
+
+func TestSessionShowActivityLinesUseResponsiveLabeledGrammar(t *testing.T) {
+	duration := int64(1240)
+	values := []activity.Detail{{
+		StartedAt:  "2026-08-11T17:30:00Z",
+		Tool:       "Read",
+		Model:      "claude-opus",
+		Status:     "completed",
+		DurationMS: &duration,
+	}}
+
+	for _, width := range []int{48, 80, 100, 120, 180} {
+		t.Run(fmt.Sprintf("width-%d", width), func(t *testing.T) {
+			lines := sessionShowActivityLines(values, width)
+			text := strings.Join(lines, "\n")
+			for _, want := range []string{"CALL", "1", "STARTED", "2026-08-11", "TOOL", "Read", "MODEL", "claude-opus", "STATUS", "completed", "DURATION", "1.24s"} {
+				if !strings.Contains(text, want) {
+					t.Fatalf("activity at width %d missing %q:\n%s", width, want, text)
+				}
+			}
+			for _, line := range lines {
+				if got := statsVisibleWidth(line); got > width {
+					t.Fatalf("activity line width = %d, want <= %d: %q", got, width, line)
+				}
+			}
+		})
+	}
+
+	standardLines := sessionShowActivityLines(values, 80)
+	if len(standardLines) != 2 || !strings.Contains(standardLines[0], "TOOL Read") || !strings.Contains(standardLines[0], "STATUS completed") || strings.Contains(standardLines[0], "STARTED") {
+		t.Fatalf("standard activity primary line order = %#v", standardLines)
+	}
+	for _, want := range []string{"STARTED", "MODEL claude-opus", "DURATION 1.24s"} {
+		if !strings.Contains(standardLines[1], want) {
+			t.Fatalf("standard activity detail line missing %q: %#v", want, standardLines)
+		}
+	}
+
+	wide := strings.Join(sessionShowActivityLines(values, 120), "\n")
+	veryWide := strings.Join(sessionShowActivityLines(values, 180), "\n")
+	if wide != veryWide {
+		t.Fatalf("wide activity should remain content-bounded:\n120:\n%s\n180:\n%s", wide, veryWide)
+	}
+	compact := strings.Join(sessionShowActivityLines(values, 48), "\n")
+	if !strings.Contains(compact, "CALL 1\n") || !strings.Contains(compact, "TOOL") {
+		t.Fatalf("compact activity should stack a complete labeled record:\n%s", compact)
+	}
+	previous := -1
+	for _, label := range []string{"TOOL", "STATUS", "STARTED", "MODEL", "DURATION"} {
+		position := strings.Index(compact, label)
+		if position <= previous {
+			t.Fatalf("compact activity field order invalid at %q:\n%s", label, compact)
+		}
+		previous = position
+	}
+}
+
+func TestSessionShowActivityLinesOmitUnknownAndRedundantOptionalFields(t *testing.T) {
+	duration := int64(2000)
+	values := []activity.Detail{
+		{
+			Tool:        "unknown",
+			Model:       "unavailable",
+			Status:      "completed",
+			CompletedAt: "2026-08-11T17:30:02Z",
+			DurationMS:  &duration,
+		},
+		{
+			Tool:        "Write",
+			CompletedAt: "2026-08-11T17:31:00Z",
+		},
+		{
+			StartedAt:   "not-a-time",
+			CompletedAt: "not-a-time",
+		},
+		{},
+	}
+
+	text := strings.Join(sessionShowActivityLines(values, 80), "\n")
+	for _, omitted := range []string{"unknown", "unavailable", "not-a-time"} {
+		if strings.Contains(text, omitted) {
+			t.Fatalf("activity should omit optional %q value:\n%s", omitted, text)
+		}
+	}
+	if strings.Count(text, "COMPLETED") != 1 {
+		t.Fatalf("activity should show valid COMPLETED only without DURATION:\n%s", text)
+	}
+	if !strings.Contains(text, "DURATION") || !strings.Contains(text, "STARTED") || !strings.Contains(text, "—") || !strings.Contains(text, "NO SAFE ACTIVITY METADATA") {
+		t.Fatalf("activity should preserve duration, invalid-time marker, and explicit safe-empty state:\n%s", text)
+	}
+	wideLines := sessionShowActivityLines(values, 180)
+	if len(wideLines) != len(values)+1 || !strings.Contains(wideLines[0], "STATE") || !strings.Contains(wideLines[len(wideLines)-1], "NO SAFE ACTIVITY METADATA") {
+		t.Fatalf("wide activity should keep table mode for safe-empty rows: %#v", wideLines)
+	}
+}
+
+func TestSessionShowActivityLinesUseAbsoluteOrdinalsAcrossResponsiveLayouts(t *testing.T) {
+	values := []activity.Detail{{Tool: "Read", Status: "completed"}, {Tool: "Write", Status: "failed"}}
+	for _, width := range []int{48, 80, 180} {
+		lines := sessionShowActivityLinesFrom(values, width, 21)
+		seen := map[string]bool{}
+		for _, line := range lines {
+			fields := strings.Fields(line)
+			if len(fields) >= 2 && fields[0] == "CALL" {
+				seen[fields[1]] = true
+			} else if len(fields) > 0 && (fields[0] == "21" || fields[0] == "22" || fields[0] == "1" || fields[0] == "2") {
+				seen[fields[0]] = true
+			}
+		}
+		if !seen["21"] || !seen["22"] || seen["1"] || seen["2"] {
+			t.Fatalf("activity width %d ordinals = %#v, want 21 and 22 only:\n%s", width, seen, strings.Join(lines, "\n"))
+		}
+	}
+}
+
+func TestRenderSessionShowTextUsesActivityPageOffset(t *testing.T) {
+	for _, width := range []string{"48", "80", "180"} {
+		t.Run(width, func(t *testing.T) {
+			t.Setenv("COLUMNS", width)
+			var output strings.Builder
+			result := session.Result{
+				Metadata: session.Metadata{Client: "codex", SessionID: "session-1"},
+				Activity: []activity.Detail{{Tool: "Read", Status: "completed"}},
+			}
+			pagination := map[string]session.Pagination{"activity": {Page: 3, Limit: 10, Total: 21, Shown: 1}}
+			if err := renderSessionShowText(&output, result, pagination, "", nil, nil, true, "", false); err != nil {
+				t.Fatal(err)
+			}
+			lines := strings.Split(output.String(), "\n")
+			seen21, seen1 := false, false
+			for _, line := range lines {
+				fields := strings.Fields(line)
+				if len(fields) >= 2 && fields[0] == "CALL" {
+					seen21 = seen21 || fields[1] == "21"
+					seen1 = seen1 || fields[1] == "1"
+				} else if len(fields) > 0 {
+					seen21 = seen21 || fields[0] == "21"
+					seen1 = seen1 || fields[0] == "1"
+				}
+			}
+			if !seen21 || seen1 {
+				t.Fatalf("activity page offset at width %s (seen21=%t seen1=%t):\n%s", width, seen21, seen1, output.String())
+			}
+		})
+	}
+}
+
+func TestSessionShowPageFirstOrdinalSaturatesHugePages(t *testing.T) {
+	if got := sessionShowPageFirstOrdinal(session.Pagination{Page: math.MaxInt, Limit: 2}); got != math.MaxInt {
+		t.Fatalf("huge activity page first ordinal = %d, want %d", got, math.MaxInt)
+	}
+}
+
+func TestSessionShowActivityLinesOmitUnavailableStartedAt(t *testing.T) {
+	for _, startedAt := range []string{"unknown", "unavailable", " UNKNOWN "} {
+		for _, width := range []int{48, 80, 180} {
+			text := strings.Join(sessionShowActivityLines([]activity.Detail{{StartedAt: startedAt, Tool: "Read"}}, width), "\n")
+			if strings.Contains(text, "STARTED") || strings.Contains(text, "—") {
+				t.Fatalf("activity width %d retained unavailable StartedAt %q:\n%s", width, startedAt, text)
+			}
+		}
+	}
+}
+
+func TestSessionShowActivityLinesSanitizeHostileCells(t *testing.T) {
+	values := []activity.Detail{{
+		Tool:   "Read\x1b[31m\nspoof",
+		Model:  "模型🙂e\u0301",
+		Status: "completed\rfailed",
+	}}
+	for _, width := range []int{48, 80, 120} {
+		lines := sessionShowActivityLines(values, width)
+		text := strings.Join(lines, "\n")
+		if strings.Contains(text, "\x1b") || strings.Contains(text, "\r") {
+			t.Fatalf("activity exposed terminal control at width %d: %q", width, text)
+		}
+		for _, line := range lines {
+			if got := statsVisibleWidth(line); got > width {
+				t.Fatalf("hostile activity line width = %d, want <= %d: %q", got, width, line)
+			}
+		}
 	}
 }
 

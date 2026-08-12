@@ -60,7 +60,11 @@ func renderSessionShowText(
 			lines = append(lines, sessionShowFieldLines("WARNING", activityWarning, width)...)
 		}
 		lines = append(lines, sessionShowActivitySummaryLines(value.ActivitySummary, width)...)
-		lines = append(lines, sessionShowActivityLines(value.Activity, width)...)
+		activityStart := 1
+		if page, found := pagination["activity"]; found {
+			activityStart = sessionShowPageFirstOrdinal(page)
+		}
+		lines = append(lines, sessionShowActivityLinesFrom(value.Activity, width, activityStart)...)
 		if page, found := pagination["activity"]; found {
 			lines = append(lines, sessionShowPaginationLines(page, nextCommand, width)...)
 		}
@@ -146,29 +150,220 @@ func sessionShowActivitySummaryLines(summary *session.ActivitySummary, width int
 }
 
 func sessionShowActivityLines(values []activity.Detail, width int) []string {
+	return sessionShowActivityLinesFrom(values, width, 1)
+}
+
+func sessionShowPageFirstOrdinal(page session.Pagination) int {
+	if page.Page <= 1 || page.Limit <= 0 {
+		return 1
+	}
+	maxInt := int(^uint(0) >> 1)
+	if page.Page-1 > (maxInt-1)/page.Limit {
+		return maxInt
+	}
+	return (page.Page-1)*page.Limit + 1
+}
+
+func sessionShowActivityLinesFrom(values []activity.Detail, width, firstOrdinal int) []string {
+	firstOrdinal = max(1, firstOrdinal)
+	if len(values) > 0 && width >= 120 {
+		if lines, ok := sessionShowActivityTableLines(values, width, firstOrdinal); ok {
+			return lines
+		}
+	}
+	if len(values) > 0 && width < 80 {
+		return sessionShowActivityCompactLines(values, width, firstOrdinal)
+	}
 	if len(values) == 0 {
 		return []string{sessionShowFit("No safe activity calls on this page.", width)}
 	}
+	lines := make([]string, 0, len(values)*3)
+	for index, value := range values {
+		fields := sessionShowActivityFields(value)
+		if index > 0 {
+			lines = append(lines, "")
+		}
+		primary := sessionShowActivityOrderedFields(fields, "TOOL", "STATUS")
+		detail := sessionShowActivityOrderedFields(fields, "STARTED", "MODEL", "DURATION", "COMPLETED")
+		lines = append(lines, sessionShowActivityWrappedFields(fmt.Sprintf("CALL %d", firstOrdinal+index), primary, width, 0)...)
+		if len(detail) > 0 {
+			lines = append(lines, sessionShowActivityWrappedFields("", detail, width, 2)...)
+		} else if len(primary) == 0 {
+			lines = append(lines, sessionShowActivityWrappedText("NO SAFE ACTIVITY METADATA", width, 2)...)
+		}
+	}
+	return lines
+}
+
+type sessionShowActivityField struct {
+	label string
+	value string
+}
+
+func sessionShowActivityFields(value activity.Detail) []sessionShowActivityField {
+	fields := make([]sessionShowActivityField, 0, 6)
+	appendOptional := func(label, candidate string) {
+		if visible, ok := sessionShowActivityOptional(candidate); ok {
+			fields = append(fields, sessionShowActivityField{label: label, value: visible})
+		}
+	}
+	if started, ok := sessionShowActivityOptional(value.StartedAt); ok {
+		appendOptional("STARTED", sessionShowActivityTimestamp(started))
+	}
+	appendOptional("TOOL", value.Tool)
+	appendOptional("MODEL", value.Model)
+	appendOptional("STATUS", value.Status)
+	if value.DurationMS != nil {
+		fields = append(fields, sessionShowActivityField{label: "DURATION", value: sessionShowActivityDuration(*value.DurationMS)})
+	} else if completed := strings.TrimSpace(value.CompletedAt); sessionShowActivityValidCompleted(completed) {
+		appendOptional("COMPLETED", sessionShowActivityTimestamp(completed))
+	}
+	return fields
+}
+
+func sessionShowActivityTimestamp(value string) string {
+	instant, err := time.Parse(time.RFC3339Nano, value)
+	if err != nil {
+		return "—"
+	}
+	return instant.In(displayLocation()).Format("2006-01-02 15:04:05 MST")
+}
+
+func sessionShowActivityOptional(value string) (string, bool) {
+	value = sessionShowKnown(value)
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "", "unknown", "unavailable":
+		return "", false
+	default:
+		return value, true
+	}
+}
+
+func sessionShowActivityValidCompleted(value string) bool {
+	if value == "" {
+		return false
+	}
+	_, err := time.Parse(time.RFC3339Nano, value)
+	return err == nil
+}
+
+func sessionShowActivityDuration(value int64) string {
+	return (time.Duration(value) * time.Millisecond).String()
+}
+
+func sessionShowActivityOrderedFields(fields []sessionShowActivityField, labels ...string) []sessionShowActivityField {
+	ordered := make([]sessionShowActivityField, 0, len(labels))
+	for _, label := range labels {
+		if value, ok := sessionShowActivityFieldValue(fields, label); ok {
+			ordered = append(ordered, sessionShowActivityField{label: label, value: value})
+		}
+	}
+	return ordered
+}
+
+func sessionShowActivityWrappedFields(prefix string, fields []sessionShowActivityField, width, indent int) []string {
+	parts := make([]string, 0, len(fields)+1)
+	if prefix != "" {
+		parts = append(parts, prefix)
+	}
+	for _, field := range fields {
+		parts = append(parts, field.label+" "+field.value)
+	}
+	return sessionShowActivityWrappedText(strings.Join(parts, " · "), width, indent)
+}
+
+func sessionShowActivityWrappedText(value string, width, indent int) []string {
+	indent = min(max(0, indent), max(0, width-1))
+	wrapped := sessionShowWrap(value, max(1, width-indent))
+	prefix := strings.Repeat(" ", indent)
+	for index := range wrapped {
+		wrapped[index] = prefix + wrapped[index]
+	}
+	return wrapped
+}
+
+func sessionShowActivityCompactLines(values []activity.Detail, width, firstOrdinal int) []string {
 	lines := make([]string, 0, len(values)*7)
 	for index, value := range values {
 		if index > 0 {
 			lines = append(lines, "")
 		}
-		lines = append(lines, sessionShowFit(fmt.Sprintf("CALL %d", index+1), width))
-		lines = append(lines, sessionShowTimestampFieldLines("STARTED", value.StartedAt, width)...)
-		lines = append(lines, sessionShowFieldLines("TOOL", sessionShowKnown(value.Tool), width)...)
-		lines = append(lines, sessionShowFieldLines("MODEL", sessionShowKnown(value.Model), width)...)
-		lines = append(lines, sessionShowFieldLines("STATUS", sessionShowKnown(value.Status), width)...)
-		duration := "unavailable"
-		if value.DurationMS != nil {
-			duration = sessionShowMilliseconds(*value.DurationMS)
+		lines = append(lines, sessionShowFit(fmt.Sprintf("CALL %d", firstOrdinal+index), width))
+		fields := sessionShowActivityOrderedFields(sessionShowActivityFields(value), "TOOL", "STATUS", "STARTED", "MODEL", "DURATION", "COMPLETED")
+		if len(fields) == 0 {
+			lines = append(lines, sessionShowFieldLines("STATE", "NO SAFE ACTIVITY METADATA", width)...)
+			continue
 		}
-		lines = append(lines, sessionShowFieldLines("DURATION", duration, width)...)
-		if value.CompletedAt != "" {
-			lines = append(lines, sessionShowTimestampFieldLines("COMPLETED", value.CompletedAt, width)...)
+		for _, field := range fields {
+			lines = append(lines, sessionShowFieldLines(field.label, field.value, width)...)
 		}
 	}
 	return lines
+}
+
+func sessionShowActivityTableLines(values []activity.Detail, width, firstOrdinal int) ([]string, bool) {
+	records := make([][]sessionShowActivityField, len(values))
+	labels := []string{"CALL"}
+	for index, value := range values {
+		records[index] = sessionShowActivityFields(value)
+		if len(records[index]) == 0 {
+			records[index] = []sessionShowActivityField{{label: "STATE", value: "NO SAFE ACTIVITY METADATA"}}
+		}
+	}
+	for _, label := range []string{"STARTED", "TOOL", "MODEL", "STATUS", "DURATION", "COMPLETED", "STATE"} {
+		for _, fields := range records {
+			if _, ok := sessionShowActivityFieldValue(fields, label); ok {
+				labels = append(labels, label)
+				break
+			}
+		}
+	}
+	widths := make([]int, len(labels))
+	for index, label := range labels {
+		widths[index] = statsVisibleWidth(label)
+	}
+	for recordIndex, fields := range records {
+		widths[0] = max(widths[0], statsVisibleWidth(strconv.Itoa(firstOrdinal+recordIndex)))
+		for labelIndex, label := range labels[1:] {
+			if value, ok := sessionShowActivityFieldValue(fields, label); ok {
+				widths[labelIndex+1] = max(widths[labelIndex+1], statsVisibleWidth(value))
+			}
+		}
+	}
+	tableWidth := max(0, len(widths)-1)
+	for _, columnWidth := range widths {
+		tableWidth += columnWidth
+	}
+	if tableWidth > width {
+		return nil, false
+	}
+	lines := []string{sessionShowActivityTableRow(labels, widths)}
+	for recordIndex, fields := range records {
+		row := make([]string, len(labels))
+		row[0] = strconv.Itoa(firstOrdinal + recordIndex)
+		for labelIndex, label := range labels[1:] {
+			row[labelIndex+1], _ = sessionShowActivityFieldValue(fields, label)
+		}
+		lines = append(lines, sessionShowActivityTableRow(row, widths))
+	}
+	return lines, true
+}
+
+func sessionShowActivityFieldValue(fields []sessionShowActivityField, label string) (string, bool) {
+	for _, field := range fields {
+		if field.label == label {
+			return field.value, true
+		}
+	}
+	return "", false
+}
+
+func sessionShowActivityTableRow(values []string, widths []int) string {
+	columns := make([]string, len(values))
+	for index, value := range values {
+		columns[index] = value + strings.Repeat(" ", max(0, widths[index]-statsVisibleWidth(value)))
+	}
+	return strings.TrimRight(strings.Join(columns, " "), " ")
 }
 
 func sessionShowUsageLines(value usage.SessionSummary, hasInvocations bool, width int) []string {

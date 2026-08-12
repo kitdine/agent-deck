@@ -445,7 +445,7 @@ func TestSessionShowActivityReadsOnlySafeMetadataOnDemand(t *testing.T) {
 		if format == "json" {
 			wants = append(wants, "2000")
 		} else {
-			wants = append(wants, "2,000 ms")
+			wants = append(wants, "DURATION 2s")
 		}
 		for _, want := range wants {
 			if !strings.Contains(text, want) {
