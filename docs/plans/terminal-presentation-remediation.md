@@ -31,7 +31,7 @@ Current baseline:
 
 | Task | Retained implementation state | Authoritative next gate |
 | --- | --- | --- |
-| `session-show-activity-presentation` | Local commit `11c92366decf10cb0413601c1c2a7bf5bb938b4e`; not pushed | Reset full review, repair, mandatory full re-review |
+| `session-show-activity-presentation` | Isolated review commit `1f026a3cada47dcd9493781a44cba263e0040480`, tree `af31e270b6e639af8302bf241e6c1d6cf782332b`; signed and not pushed | Completed — Reset Round R3 Review PASS, targeted tests PASS, CEv1 VERIFIED |
 | `interactive-detail-language` | Local commit `25ea084edbcf27f481b4d956370de100d87ca00a`; not pushed; Task 4 also has uncommitted shared-renderer hunks | Classify shared hunks, then reset full review, repair, mandatory full re-review |
 | `usage-interactive-detail` | Local commit `bbbe5be5b4ac4ea00a961f5bbdcddb2f5fe61ac5`; not pushed | Review only after the shared Detail task is frozen, then repair and mandatory full re-review |
 | `session-interactive-responsive-layout` | Development candidate present in the working tree; not committed | Review only after shared Detail is frozen, then repair and mandatory full re-review |
@@ -586,20 +586,22 @@ repair set, one complete re-review, and one commit checkpoint at a time.
 
 ## Status
 
-| Task | Dev | Review | Test | Acceptance |
-| --- | --- | --- | --- | --- |
-| `session-show-activity-presentation` | [x] | [x] | [x] | N/A |
-| `interactive-detail-language` | [x] | [ ] | [ ] | N/A |
-| `usage-interactive-detail` | [x] | [ ] | [ ] | N/A |
-| `session-interactive-responsive-layout` | [x] | [ ] | [ ] | N/A |
-| `terminal-contract-and-acceptance` | [ ] | [ ] | [ ] | [ ] |
+| Task | State | Dev | Review | Test | Acceptance |
+| --- | --- | --- | --- | --- | --- |
+| `session-show-activity-presentation` | Completed — Reset Round R3 Review PASS; CEv1 VERIFIED | [x] | [x] | [x] | N/A |
+| `interactive-detail-language` | Pending — shared-contract reset review is not complete | [x] | [ ] | [ ] | N/A |
+| `usage-interactive-detail` | Pending | [x] | [ ] | [ ] | N/A |
+| `session-interactive-responsive-layout` | Pending | [x] | [ ] | [ ] | N/A |
+| `terminal-contract-and-acceptance` | Pending | [ ] | [ ] | [ ] | [ ] |
 
-For Tasks 1-3, checked `Dev` means only that an implementation commit exists; it
-does not certify correctness. For Task 4 it means only that a complete
-uncommitted development candidate exists. All previous Review and Test checks are
-reset. For the first four tasks, `Test` means fresh targeted verification on the
-exact candidate that receives the new legal PASS. For the final task, `Test`
-includes the final aggregate local gate and `Acceptance` includes both
+For Tasks 2-3, checked `Dev` means only that an imported development payload
+exists; it does not certify correctness. For Task 4 it means only that a
+complete uncommitted development candidate exists. Their previous Review and
+Test checks remain reset. Task 1 is the exception recorded above: its fresh
+Reset Round R3 review, targeted tests, signed commit tree, and CEv1 gate are
+complete. For the first four tasks, `Test` means fresh targeted verification on
+the exact candidate that receives the new legal PASS. For the final task,
+`Test` includes the final aggregate local gate and `Acceptance` includes both
 compiled-binary synthetic and isolated-real-state terminal validation.
 
 ## Reset review workflow
