@@ -4,6 +4,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/clipperhouse/uax29/v2/graphemes"
 	terminaloutput "github.com/kitdine/agent-deck/internal/output"
 	"github.com/mattn/go-runewidth"
 )
@@ -52,11 +53,7 @@ func renderTerminalDetailModel(detail terminalDetailModel, width int, p usageTex
 	if len(detail.fields) == 0 && len(detail.notes) == 0 {
 		return nil
 	}
-	title := "DETAIL"
-	if detail.title != "" {
-		title += " · " + detail.title
-	}
-	lines := []string{p.style(statsFit(title, width), usageColorBrand)}
+	lines := renderTerminalDetailTitle(detail.title, width, p)
 	if terminalDetailUsesTwoColumns(detail.fields, width) {
 		lines = append(lines, renderTerminalDetailTwoColumns(detail.fields, width, p)...)
 	} else {
@@ -74,6 +71,34 @@ func renderTerminalDetailModel(detail terminalDetailModel, width int, p usageTex
 		for _, line := range terminalDetailWrap(text, max(1, width-2)) {
 			lines = append(lines, statsFit("  "+p.style(line, terminalDetailRoleColor(note.role)), width))
 		}
+	}
+	return lines
+}
+
+func renderTerminalDetailTitle(title string, width int, p usageTextPrimitives) []string {
+	const prefix = "DETAIL · "
+	if title == "" {
+		return []string{p.style(statsFit("DETAIL", width), usageColorBrand)}
+	}
+
+	prefixWidth := statsVisibleWidth(prefix)
+	if width <= prefixWidth {
+		wrapped := terminalDetailWrap(prefix+title, width)
+		lines := make([]string, 0, len(wrapped))
+		for _, line := range wrapped {
+			lines = append(lines, p.style(line, usageColorBrand))
+		}
+		return lines
+	}
+
+	wrapped := terminalDetailWrap(title, width-prefixWidth)
+	lines := make([]string, 0, len(wrapped))
+	for index, line := range wrapped {
+		if index == 0 {
+			lines = append(lines, p.style(prefix+line, usageColorBrand))
+			continue
+		}
+		lines = append(lines, p.style(strings.Repeat(" ", prefixWidth)+line, usageColorBrand))
 	}
 	return lines
 }
@@ -244,12 +269,14 @@ func terminalDetailHardWrapWord(word string, width int) []string {
 		part.Reset()
 		used = 0
 	}
-	for _, value := range word {
-		cellWidth := max(0, runewidth.RuneWidth(value))
+	iterator := graphemes.FromString(word)
+	for iterator.Next() {
+		value := iterator.Value()
+		cellWidth := max(0, runewidth.StringWidth(value))
 		if used > 0 && used+cellWidth > width {
 			flush()
 		}
-		part.WriteRune(value)
+		part.WriteString(value)
 		used += cellWidth
 	}
 	flush()

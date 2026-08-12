@@ -204,3 +204,182 @@ R1**, which must independently inspect the complete production implementation,
 complete test protection, every acceptance criterion, and all blocking,
 non-blocking, P0-P3, and nit surfaces. It may not reuse the old PASS conclusion
 or close a surface merely because an earlier round mentioned it.
+
+## Full Reset Review R1 — 2026-08-12
+
+Candidate identity: committed tree
+`84b1bc0f092bedb4e088a12aed517218e638d50b`; production SHA-256
+`c1bee6a1d6b7a2bc5f4722baaf02d8ee9a77a19c7d542ba6aff168ccad22a6b3`;
+test SHA-256
+`cc3baf429b649f6ad868cb83d26d01130f8dc1e2fe88c6575771d316a91e8171`.
+Task 3 uncommitted files were excluded by testing an archive of the committed
+tree.
+
+Verdict: FAIL
+
+### Findings
+
+1. **P1 blocking — compact Detail title loses selected-row identity.**
+   `renderTerminalDetailModel` sends the complete `DETAIL · <title>` string to
+   `statsFit`, which replaces the tail with an ellipsis at 48 cells. Distinct
+   long row identities with a distinguishing suffix can therefore render the
+   same title, violating compact identity and selection-meaning preservation.
+   A fresh diagnostic rendered
+   `DETAIL · provider-xxxxxxxxxxxxxxxxxxxxxxxxxxxxx…` and lost
+   `-unique-suffix`.
+
+2. **P2 non-blocking — hard wrapping can split an emoji grapheme.**
+   `terminalDetailHardWrapWord` iterates individual runes. A long repeated
+   `👩‍💻` value was split between the ZWJ and laptop rune at a line boundary,
+   so one visible grapheme no longer survives intact. Existing coverage uses
+   single-rune emoji and simple combining marks, but does not protect ZWJ
+   clusters.
+
+No additional P0, P3, or nit findings were identified after independently
+reviewing the complete structured model, normalization, priority ordering,
+single/two-column geometry, empty/semantic-zero handling, role-based palette,
+ANSI/control sanitization, no-color equivalence, shared caller boundary, and
+existing tests. Cost yellow is the explicit living palette contract and is not
+a finding.
+
+### Fresh evidence
+
+- PASS: committed-tree `go test -mod=vendor ./cmd/agentdeck -run
+  TestRenderTerminalDetail -count=1`.
+- FAIL: independent `TestFullResetReviewLongTitlePreservesSelectionIdentity`.
+- FAIL: independent `TestFullResetReviewHardWrapKeepsEmojiGraphemesIntact`.
+- Environment: `GOCACHE=/private/tmp/agent-deck-go-build`, vendored
+  dependencies.
+
+### Required repair
+
+- Wrap a long Detail title losslessly across visible-cell-bounded lines while
+  retaining the `DETAIL ·` identity prefix.
+- Hard-wrap by grapheme clusters using the already vendored Unicode grapheme
+  support; do not split ZWJ or combining sequences.
+- Add both diagnostics as permanent Task 2 regressions and run a complete fresh
+  Task 2 re-review after repair.
+
+## Repair after Full Reset Review R1 — 2026-08-12
+
+- Replaced title truncation with visible-cell-bounded, lossless title wrapping;
+  the first line retains `DETAIL ·` and continuations retain every identity
+  grapheme.
+- Replaced rune-boundary hard wrapping with grapheme-boundary segmentation and
+  added permanent long-title and repeated-ZWJ-emoji regressions under the
+  plan-prescribed `TestRenderTerminalDetail` gate.
+
+## Full Reset Re-review R1 — 2026-08-12
+
+Verdict: FAIL
+
+### Finding disposition
+
+1. **Full Reset R1 P1 closed.** The 48/60/80/120/180 matrix preserves the
+   complete long title, its unique suffix, visible width, and exact
+   color/no-color semantic frame.
+2. **Full Reset R1 P2 closed.** Repeated `👩‍💻` graphemes remain intact across
+   hard-wrap boundaries and within the requested visible width.
+
+### New finding
+
+1. **P2 non-blocking — grapheme repair introduces quadratic wrapping work.**
+   The repaired `terminalDetailHardWrapWord` repeatedly calls
+   `runewidth.Truncate` on each remaining suffix. `Truncate` first measures the
+   complete suffix, so a hostile very long unbroken value is scanned repeatedly
+   and can stall an interactive frame. Correct Unicode boundaries must not
+   introduce O(n²) rendering behavior.
+
+No other new blocking, P0, P1, P3, or nit findings were identified during the
+complete repaired-candidate review.
+
+### Fresh evidence
+
+- PASS: isolated repaired candidate `go test -mod=vendor ./cmd/agentdeck -run
+  TestRenderTerminalDetail -count=1`.
+- PASS: the standard gate lists and executes all six Task 2 tests, including
+  both new regressions.
+- PASS: Task 2 scoped `git diff --check`.
+
+### Required repair
+
+- Segment the value in one pass with the already pinned and vendored UAX29
+  grapheme iterator.
+- Record the existing `uax29/v2` module as a direct dependency because Task 2
+  production code imports it; do not upgrade it or alter vendored contents.
+- Run fresh targeted verification and another complete Full Reset re-review.
+
+## Repair after Full Reset Re-review R1 — 2026-08-12
+
+- Replaced repeated suffix truncation with one-pass UAX29 grapheme iteration,
+  preserving linear work for long unbroken hostile values.
+- Promoted the already pinned and vendored `github.com/clipperhouse/uax29/v2`
+  module from indirect to direct dependency metadata; version and vendor content
+  remain unchanged.
+
+## 📋 Full Reset Re-review R2 — 2026-08-12
+
+📊 Overall score: 10/10
+
+✅ Verdict: PASS
+
+### 🔴 Serious issues that must be fixed
+
+None.
+
+### 🟡 Suggested improvements
+
+None.
+
+### 🟢 Strengths
+
+- Full Reset Review R1 P1 is closed: long selected-row titles preserve their
+  complete distinguishing identity at 48, 60, 80, 120, and 180 cells without
+  ellipsis or overflow, and color/no-color frames remain semantically exact.
+- Full Reset Review R1 P2 is closed: repeated ZWJ emoji graphemes remain intact
+  across hard-wrap boundaries.
+- Full Reset Re-review R1 P2 is closed: wrapping now performs one UAX29 pass
+  rather than repeatedly scanning suffixes.
+- Structured roles still determine color without display-text parsing; empty
+  optional fields disappear, semantic zero and status-only warnings remain,
+  and empty models consume no Detail rows.
+
+### 📝 Summary
+
+The complete repaired Task 2 candidate was independently re-reviewed across the
+entire structured model, normalization and stable priority ordering,
+single/two-column geometry, long title and field/note wrapping, CJK/emoji/ZWJ
+visible-cell behavior, empty/semantic-zero handling, semantic palette,
+ANSI/control sanitization, no-color equivalence, dependency metadata, shared
+caller boundary, and all test protection. Every Full Reset finding is closed;
+no open blocking, non-blocking, P0-P3, or nit findings remain.
+
+Candidate base: commit `6494cb61625e830797204774e9bdbc0f98cfbbe7`, tree
+`84b1bc0f092bedb4e088a12aed517218e638d50b`, plus the reviewed Task 2 repair.
+Final repaired content SHA-256:
+
+- `go.mod`: `b702f0c0cd98a623e9591401d7c69e121912287c2d11691c33865dbfa801dc4c`
+- production: `403163d5267febe023130d8b51c1ac778b7605b342f9b34cd46cc0070c922cae`
+- tests: `5cf663b678d75e471e5a761a5a23fe1ccdb15fa5ccd8bcf3dc69b70699d11ec9`
+
+Fresh evidence from a committed-tree archive with only the reviewed Task 2
+repair overlaid:
+
+- PASS: `go test -mod=vendor ./cmd/agentdeck -run
+  TestRenderTerminalDetail -count=1`.
+- PASS: the standard gate lists all six Task 2 tests, including both new
+  regressions.
+- PASS: `go list -mod=vendor ./cmd/agentdeck`.
+- PASS: Task 2 scoped `git diff --check`.
+- PASS: `vendor/modules.txt` and vendored UAX29 content are unchanged; the
+  pinned version remains `v2.2.0`.
+- The diagnostic `go list -m all -mod=vendor` was rejected by Go because module
+  enumeration is unsupported in vendor mode; it is not treated as evidence or
+  a product failure.
+
+Task checkpoint: `interactive-detail-language` is Review PASS; its CEv1 gate
+must be rebound to the exact staged repair tree before commit. Commit
+recommendation: one Task 2 repair/review/status commit containing only the
+shared Detail repair, regressions, direct-dependency classification, review
+record, and task-local plan/index status. Push recommendation: defer until the
+entire five-task plan reaches its final same-SHA delivery gate.

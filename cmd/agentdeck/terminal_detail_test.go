@@ -180,3 +180,46 @@ func TestRenderTerminalDetailGeometryMatrixPreservesSemantics(t *testing.T) {
 		})
 	}
 }
+
+func TestRenderTerminalDetailWrapsLongTitleWithoutLosingSelectionIdentity(t *testing.T) {
+	title := "provider-" + strings.Repeat("x", 48) + "-unique-suffix"
+	detail := terminalDetailModel{
+		title:  title,
+		fields: []terminalDetailField{{label: "STATUS", value: "available"}},
+	}
+	for _, width := range []int{48, 60, 80, 120, 180} {
+		plainLines := renderTerminalDetailModel(detail, width, usageTextPrimitives{})
+		colorLines := renderTerminalDetailModel(detail, width, usageTextPrimitives{color: true})
+		plain := strings.Join(plainLines, "\n")
+		if stripped := stripStatsANSI(strings.Join(colorLines, "\n")); stripped != plain {
+			t.Fatalf("width %d long-title color/no-color frames differ:\ncolor stripped:\n%s\nplain:\n%s", width, stripped, plain)
+		}
+		if !strings.Contains(plain, "DETAIL · provider-") ||
+			!strings.Contains(plain, "-unique-suffix") || strings.Contains(plain, "…") {
+			t.Fatalf("width %d Detail title lost selected identity:\n%s", width, plain)
+		}
+		for _, line := range plainLines {
+			if got := statsVisibleWidth(line); got > width {
+				t.Fatalf("long-title line width = %d, want <= %d: %q", got, width, line)
+			}
+		}
+		compact := strings.ReplaceAll(strings.ReplaceAll(plain, "\n", ""), " ", "")
+		if !strings.Contains(compact, strings.ReplaceAll(title, " ", "")) {
+			t.Fatalf("width %d wrapped title did not preserve every identity rune:\n%s", width, plain)
+		}
+	}
+}
+
+func TestRenderTerminalDetailHardWrapKeepsEmojiGraphemesIntact(t *testing.T) {
+	const grapheme = "👩‍💻"
+	value := strings.Repeat(grapheme, 30)
+	lines := terminalDetailWrap(value, 39)
+	if strings.Count(strings.Join(lines, "\n"), grapheme) != 30 {
+		t.Fatalf("hard wrap split an emoji grapheme: %#v", lines)
+	}
+	for _, line := range lines {
+		if got := statsVisibleWidth(line); got > 39 {
+			t.Fatalf("hard-wrapped line width = %d, want <= 39: %q", got, line)
+		}
+	}
+}
