@@ -113,9 +113,9 @@ func TestUsageViewerStateKeymapChangesSelectedDetailAndExits(t *testing.T) {
 	state := newUsageViewerState(report, nil, nil)
 	state.section = usageViewerModels
 	state.refresh()
-	first := state.rows[state.selected[state.section]].detail[0]
+	first := strings.Join(usageViewerDetail(state.rows[state.selected[state.section]], 80, usageTextPrimitives{}), "\n")
 	state.apply("down")
-	if state.rows[state.selected[state.section]].detail[0] == first {
+	if strings.Join(usageViewerDetail(state.rows[state.selected[state.section]], 80, usageTextPrimitives{}), "\n") == first {
 		t.Fatal("down did not change selected detail")
 	}
 	state.apply("end")
@@ -274,6 +274,107 @@ func TestUsageViewerRenderNoColorKeepsSelectionAndWarnings(t *testing.T) {
 	}
 }
 
+func TestUsageViewerDetailUsesSemanticColorAndOmitsEmptyContent(t *testing.T) {
+	known := "1.250000000"
+	catalog := "1.500000000"
+	average := "0.625000000"
+	report := usage.StatsReport{
+		Metric: "tokens",
+		Range:  usage.StatsRange{From: "2026-08-01T00:00:00Z", To: "2026-08-02T00:00:00Z"},
+		Totals: usage.StatsTotals{
+			Tokens:               100,
+			InputTokens:          80,
+			OutputTokens:         20,
+			Sessions:             2,
+			Events:               4,
+			KnownProviderCost:    known,
+			KnownCatalogBaseCost: catalog,
+			KnownAverageCost:     average,
+			AverageTokens:        "50",
+		},
+		Coverage: usage.StatsCoverage{PricedEvents: 4, UnpricedEvents: 1, TotalEvents: 5, Percent: "80"},
+	}
+	state := newUsageViewerState(report, nil, nil)
+	var colorful strings.Builder
+	if err := renderUsageStatsViewer(&colorful, 80, 24, state, usageTextPrimitives{color: true}); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"DETAIL · TOKENS", "INPUT TOKENS", "AVERAGE TOKENS / SESSION", "\x1b[1;94m", "\x1b[1;96m80\x1b[0m"} {
+		if !strings.Contains(colorful.String(), want) {
+			t.Fatalf("color detail missing %q:\n%s", want, colorful.String())
+		}
+	}
+	plainState := newUsageViewerState(report, nil, nil)
+	var plainFrame strings.Builder
+	if err := renderUsageStatsViewer(&plainFrame, 80, 24, plainState, usageTextPrimitives{}); err != nil {
+		t.Fatal(err)
+	}
+	if stripped, plain := stripStatsANSI(colorful.String()), stripStatsANSI(plainFrame.String()); stripped != plain {
+		t.Fatalf("color and no-color Usage frames differ:\ncolor stripped:\n%s\nplain:\n%s", stripped, plain)
+	}
+
+	state.selected[usageViewerOverview] = 1
+	colorful.Reset()
+	if err := renderUsageStatsViewer(&colorful, 80, 24, state, usageTextPrimitives{color: true}); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"DETAIL · COST", "PARTIAL", "UNPRICED EVENTS", "\x1b[1;93m$1.500000000 KNOWN\x1b[0m"} {
+		if !strings.Contains(colorful.String(), want) {
+			t.Fatalf("cost detail missing %q:\n%s", want, colorful.String())
+		}
+	}
+	if strings.Contains(colorful.String(), "$1.250000000 KNOWN") {
+		t.Fatalf("cost detail repeated the selected provider-cost value:\n%s", colorful.String())
+	}
+
+	var short strings.Builder
+	if err := renderUsageStatsViewer(&short, 48, 10, state, usageTextPrimitives{}); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"DETAIL · COST", "PARTIAL", "Provider cost includes priced events"} {
+		if !strings.Contains(short.String(), want) {
+			t.Fatalf("48x10 cost detail lost %q:\n%s", want, short.String())
+		}
+	}
+
+	state.section = usageViewerCoverage
+	state.refresh()
+	if len(state.rows) != 2 {
+		t.Fatalf("coverage rows = %d, want priced and unpriced only when there are no warnings", len(state.rows))
+	}
+	warningState := newUsageViewerState(report, []string{"Catalog refresh is stale."}, nil)
+	warningState.section = usageViewerCoverage
+	warningState.refresh()
+	if len(warningState.rows) != 3 {
+		t.Fatalf("coverage rows = %d, want required warning row", len(warningState.rows))
+	}
+	warningState.selected[usageViewerCoverage] = 2
+	warningFrame := strings.Join(usageViewerDetail(warningState.rows[2], 80, usageTextPrimitives{color: true}), "\n")
+	if !strings.Contains(warningFrame, "\x1b[1;93mWARNING · Catalog refresh is stale.\x1b[0m") {
+		t.Fatalf("warning detail lost explicit warning role:\n%s", warningFrame)
+	}
+	unavailableCost := newUsageViewerState(usage.StatsReport{Metric: "cost", Range: report.Range, Coverage: usage.StatsCoverage{Percent: "0"}}, nil, nil)
+	unavailableCost.selected[usageViewerOverview] = 1
+	unavailableFrame := strings.Join(usageViewerDetail(unavailableCost.rows[1], 80, usageTextPrimitives{color: true}), "\n")
+	if !strings.Contains(unavailableFrame, "\x1b[1;93mUNAVAILABLE · No priced events.\x1b[0m") {
+		t.Fatalf("unavailable cost detail lost required pricing state:\n%s", unavailableFrame)
+	}
+
+	empty := newUsageViewerState(usage.StatsReport{
+		Metric:   "tokens",
+		Range:    report.Range,
+		Totals:   usage.StatsTotals{Tokens: 100},
+		Coverage: usage.StatsCoverage{Percent: "0"},
+	}, nil, nil)
+	var plain strings.Builder
+	if err := renderUsageStatsViewer(&plain, 80, 24, empty, usageTextPrimitives{}); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(plain.String(), "DETAIL · TOKENS") {
+		t.Fatalf("empty supplementary content rendered a detail block:\n%s", plain.String())
+	}
+}
+
 func TestUsageViewerDimensionDetailExposesCacheAccounting(t *testing.T) {
 	rate := "62.5"
 	cached := usage.StatsDimension{Name: "cached", KnownShare: "60", Tokens: 1000, Sessions: 2, Coverage: "100", CachedReadTokens: 800, CacheWriteTokens: 200, LogicalInputTokens: 1200, CacheHitRate: &rate}
@@ -287,28 +388,60 @@ func TestUsageViewerDimensionDetailExposesCacheAccounting(t *testing.T) {
 		Clients:   []usage.StatsDimension{cached, plain},
 		Providers: []usage.StatsDimension{{Name: "cached", Client: "codex", KnownShare: "60", Tokens: 1000, Sessions: 2, Coverage: "100", CachedReadTokens: 800, CacheWriteTokens: 200, LogicalInputTokens: 1200, CacheHitRate: &rate}, plain},
 	}
-	cacheFields := []string{"Cache hit rate 62.5%", "Cache read 800", "Cache write 200", "Logical input 1.2K"}
+	wantFields := map[string]struct {
+		value string
+		role  terminalDetailRole
+	}{
+		"TOKENS":           {value: "1.0K", role: terminalDetailRoleToken},
+		"SESSIONS":         {value: "2", role: terminalDetailRoleSession},
+		"PRICING COVERAGE": {value: "100%", role: terminalDetailRoleSuccess},
+		"CACHE HIT RATE":   {value: "62.5%", role: terminalDetailRoleSuccess},
+		"CACHE READ":       {value: "800", role: terminalDetailRoleToken},
+		"CACHE WRITE":      {value: "200", role: terminalDetailRoleToken},
+		"LOGICAL INPUT":    {value: "1.2K", role: terminalDetailRoleToken},
+	}
+	cacheLabels := []string{"CACHE HIT RATE", "CACHE READ", "CACHE WRITE", "LOGICAL INPUT"}
+	for name, detail := range map[string]terminalDetailModel{
+		"dimension": usageViewerDimensionDetail(usage.StatsDimension{CachedReadTokens: 800}),
+		"cache":     usageViewerCacheDetail(usage.StatsCacheSession{CachedReadTokens: 800}),
+	} {
+		labels := make(map[string]bool, len(detail.fields))
+		for _, field := range detail.fields {
+			labels[field.label] = true
+		}
+		if !labels["CACHE READ"] || labels["CACHE WRITE"] {
+			t.Fatalf("%s one-sided cache fields = %#v, want read without zero write", name, detail.fields)
+		}
+	}
 	for _, section := range []usageViewerSection{usageViewerModels, usageViewerClients, usageViewerProviders} {
 		state := newUsageViewerState(report, nil, nil)
 		state.section = section
 		state.refresh()
-		detail := state.rows[state.selected[section]].detail
-		joined := strings.Join(detail, "\n")
-		for _, want := range append([]string{"Tokens 1.0K", "Sessions 2", "Coverage 100%"}, cacheFields...) {
-			if !strings.Contains(joined, want) {
-				t.Fatalf("section %d cached detail missing %q:\n%s", section, want, joined)
+		row := state.rows[state.selected[section]]
+		fields := make(map[string]terminalDetailField, len(row.detail.fields))
+		for _, field := range row.detail.fields {
+			fields[field.label] = field
+		}
+		for label, want := range wantFields {
+			got, ok := fields[label]
+			if !ok || got.value != want.value || got.role != want.role {
+				t.Fatalf("section %d field %q = %#v, want value %q role %d", section, label, got, want.value, want.role)
 			}
 		}
+		joined := strings.Join(usageViewerDetail(row, 80, usageTextPrimitives{}), "\n")
 		// Selection drives detail, and a dimension without cache accounting
 		// exposes no fabricated cache field.
 		state.apply("down")
-		other := strings.Join(state.rows[state.selected[section]].detail, "\n")
+		otherRow := state.rows[state.selected[section]]
+		other := strings.Join(usageViewerDetail(otherRow, 80, usageTextPrimitives{}), "\n")
 		if other == joined {
 			t.Fatalf("section %d selection did not change detail", section)
 		}
-		for _, unwanted := range cacheFields {
-			if strings.Contains(other, unwanted) {
-				t.Fatalf("section %d uncached detail contains %q:\n%s", section, unwanted, other)
+		for _, unwanted := range cacheLabels {
+			for _, field := range otherRow.detail.fields {
+				if field.label == unwanted {
+					t.Fatalf("section %d uncached detail contains %q: %#v", section, unwanted, otherRow.detail.fields)
+				}
 			}
 		}
 		// The wide frame renders the selected detail beside the list.
@@ -316,7 +449,8 @@ func TestUsageViewerDimensionDetailExposesCacheAccounting(t *testing.T) {
 		if err := renderUsageStatsViewer(&out, 140, 32, state, usageTextPrimitives{}); err != nil {
 			t.Fatal(err)
 		}
-		if !strings.Contains(stripStatsANSI(out.String()), "Tokens 500") {
+		plainFrame := stripStatsANSI(out.String())
+		if !strings.Contains(plainFrame, "TOKENS") || !strings.Contains(plainFrame, "500") {
 			t.Fatalf("section %d frame lost selected detail:\n%s", section, out.String())
 		}
 	}
@@ -324,7 +458,7 @@ func TestUsageViewerDimensionDetailExposesCacheAccounting(t *testing.T) {
 
 func TestUsageViewerRenderFitsRequiredGeometriesAndEmptySections(t *testing.T) {
 	report := usage.StatsReport{Metric: "tokens", Range: usage.StatsRange{From: "2026-08-01T00:00:00Z", To: "2026-08-02T00:00:00Z"}, Totals: usage.StatsTotals{Tokens: 100}, Coverage: usage.StatsCoverage{Percent: "50"}, Models: []usage.StatsDimension{{Name: "模型😀", KnownShare: "100", Tokens: 100, Sessions: 1, Coverage: "50"}}}
-	for _, size := range [][2]int{{48, 10}, {60, 18}, {80, 24}, {100, 24}, {140, 32}} {
+	for _, size := range [][2]int{{48, 10}, {60, 18}, {80, 24}, {100, 24}, {120, 32}, {140, 32}, {180, 40}} {
 		t.Run("geometry", func(t *testing.T) {
 			state := newUsageViewerState(report, []string{"partial pricing"}, nil)
 			state.section = usageViewerModels
@@ -474,7 +608,7 @@ func TestUsageViewerWideOverviewUsesContentHeightAndKeepsActiveTabVisible(t *tes
 	report := usage.StatsReport{
 		Metric:   "tokens",
 		Range:    usage.StatsRange{From: "2026-08-01T00:00:00Z", To: "2026-08-02T00:00:00Z"},
-		Totals:   usage.StatsTotals{Tokens: 100, Sessions: 1, ProviderCost: &complete, KnownProviderCost: complete},
+		Totals:   usage.StatsTotals{Tokens: 100, InputTokens: 80, OutputTokens: 20, Sessions: 1, ProviderCost: &complete, KnownProviderCost: complete},
 		Coverage: usage.StatsCoverage{PricedEvents: 1, TotalEvents: 1, Percent: "100"},
 	}
 	state := newUsageViewerState(report, nil, nil)
@@ -539,10 +673,19 @@ func TestUsageViewerSanitizesUntrustedLabelsAndKeepsVisibleIdentity(t *testing.T
 			if row := usageViewerSelectedRow(t, frame); !strings.HasPrefix(row, "> "+tc.want+" ") {
 				t.Fatalf("selected row = %q, want label %q verbatim", row, tc.want)
 			}
-			plain := stripStatsANSI(frame)
-			if !strings.Contains(plain, "DETAIL · "+tc.want+"\n") {
-				t.Fatalf("detail title missing %q:\n%s", tc.want, plain)
+		plain := stripStatsANSI(frame)
+		detailTitle := ""
+		for _, line := range strings.Split(plain, "\n") {
+			if strings.HasPrefix(line, "DETAIL · ") {
+				detailTitle = line
+				break
 			}
+		}
+		gotTitle := strings.Join(strings.Fields(detailTitle), " ")
+		wantTitle := strings.Join(strings.Fields("DETAIL · "+tc.want), " ")
+		if gotTitle != wantTitle {
+			t.Fatalf("detail title missing %q:\n%s", tc.want, plain)
+		}
 			for _, r := range plain {
 				if r != '\n' && (r < 0x20 || r >= 0x7f && r <= 0x9f) {
 					t.Fatalf("frame retains untrusted control %#U:\n%q", r, plain)

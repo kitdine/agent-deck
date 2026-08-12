@@ -19,7 +19,7 @@ import (
 )
 
 func TestRunUsageStatsViewerPTYExitRestoresScreen(t *testing.T) {
-	master, slave := openSessionViewerPTY(t)
+	master, slave := openUsageStatsViewerPTY(t)
 	defer master.Close()
 	defer slave.Close()
 	if err := unix.IoctlSetWinsize(int(slave.Fd()), unix.TIOCSWINSZ, &unix.Winsize{Col: 80, Row: 24}); err != nil {
@@ -72,7 +72,7 @@ func TestRunUsageStatsViewerPTYExitRestoresScreen(t *testing.T) {
 }
 
 func TestRunUsageStatsViewerPTYNavigatesToActivityHeatmap(t *testing.T) {
-	master, slave := openSessionViewerPTY(t)
+	master, slave := openUsageStatsViewerPTY(t)
 	defer master.Close()
 	defer slave.Close()
 	if err := unix.IoctlSetWinsize(int(slave.Fd()), unix.TIOCSWINSZ, &unix.Winsize{Col: 80, Row: 24}); err != nil {
@@ -80,6 +80,7 @@ func TestRunUsageStatsViewerPTYNavigatesToActivityHeatmap(t *testing.T) {
 	}
 
 	activitySeen := make(chan struct{}, 1)
+	overviewSeen := make(chan struct{}, 1)
 	outputDone := make(chan string, 1)
 	go func() {
 		var output strings.Builder
@@ -88,6 +89,12 @@ func TestRunUsageStatsViewerPTYNavigatesToActivityHeatmap(t *testing.T) {
 			count, err := master.Read(buffer)
 			if count > 0 {
 				output.Write(buffer[:count])
+				if strings.Contains(output.String(), "[OVERVIEW]") {
+					select {
+					case overviewSeen <- struct{}{}:
+					default:
+					}
+				}
 				if strings.Contains(output.String(), "1H BUCKET") {
 					select {
 					case activitySeen <- struct{}{}:
@@ -115,7 +122,15 @@ func TestRunUsageStatsViewerPTYNavigatesToActivityHeatmap(t *testing.T) {
 	go func() {
 		done <- runUsageStatsViewer(ctx, slave, slave, report, nil, true, nil)
 	}()
-	time.Sleep(25 * time.Millisecond)
+	select {
+	case <-overviewSeen:
+	case err := <-done:
+		t.Fatalf("usage viewer exited before initial Overview frame: %v", err)
+	case <-time.After(2 * time.Second):
+		cancel()
+		<-done
+		t.Fatal("usage viewer did not render initial Overview frame")
+	}
 	if _, err := master.WriteString("\x1b[C\x1b[C"); err != nil {
 		t.Fatal(err)
 	}
@@ -154,7 +169,7 @@ func TestRunUsageStatsViewerPTYNavigatesToActivityHeatmap(t *testing.T) {
 }
 
 func TestRunUsageStatsViewerPTYCancellationRestoresTerminal(t *testing.T) {
-	master, slave := openSessionViewerPTY(t)
+	master, slave := openUsageStatsViewerPTY(t)
 	defer master.Close()
 	defer slave.Close()
 	if err := unix.IoctlSetWinsize(int(slave.Fd()), unix.TIOCSWINSZ, &unix.Winsize{Col: 80, Row: 24}); err != nil {
@@ -189,7 +204,7 @@ func TestRunUsageStatsViewerPTYCancellationRestoresTerminal(t *testing.T) {
 }
 
 func TestRunUsageStatsViewerPTYInterruptExitsAndReleasesInput(t *testing.T) {
-	master, slave := openSessionViewerPTY(t)
+	master, slave := openUsageStatsViewerPTY(t)
 	defer master.Close()
 	defer slave.Close()
 	if err := unix.IoctlSetWinsize(int(slave.Fd()), unix.TIOCSWINSZ, &unix.Winsize{Col: 80, Row: 24}); err != nil {
@@ -244,7 +259,7 @@ func TestRunUsageStatsViewerPTYInterruptExitsAndReleasesInput(t *testing.T) {
 }
 
 func TestRunUsageStatsViewerPTYInputEOFRestoresTerminal(t *testing.T) {
-	master, slave := openSessionViewerPTY(t)
+	master, slave := openUsageStatsViewerPTY(t)
 	defer slave.Close()
 	if err := unix.IoctlSetWinsize(int(slave.Fd()), unix.TIOCSWINSZ, &unix.Winsize{Col: 80, Row: 24}); err != nil {
 		t.Fatal(err)
@@ -285,7 +300,7 @@ func TestRunUsageStatsViewerPTYInputEOFRestoresTerminal(t *testing.T) {
 }
 
 func TestRunUsageStatsViewerPTYWriteFailureRestoresTerminal(t *testing.T) {
-	master, slave := openSessionViewerPTY(t)
+	master, slave := openUsageStatsViewerPTY(t)
 	defer slave.Close()
 	if err := unix.IoctlSetWinsize(int(slave.Fd()), unix.TIOCSWINSZ, &unix.Winsize{Col: 80, Row: 24}); err != nil {
 		t.Fatal(err)
@@ -309,33 +324,86 @@ func TestRunUsageStatsViewerPTYWriteFailureRestoresTerminal(t *testing.T) {
 }
 
 func TestRunUsageStatsViewerPTYResizeTooSmallAndRecover(t *testing.T) {
-	master, slave := openSessionViewerPTY(t)
+	master, slave := openUsageStatsViewerPTY(t)
 	defer master.Close()
 	defer slave.Close()
-	resize := func(columns, rows uint16) {
+	setSize := func(columns, rows uint16) {
 		t.Helper()
 		if err := unix.IoctlSetWinsize(int(slave.Fd()), unix.TIOCSWINSZ, &unix.Winsize{Col: columns, Row: rows}); err != nil {
 			t.Fatal(err)
 		}
+	}
+	resize := func(columns, rows uint16) {
+		t.Helper()
+		setSize(columns, rows)
 		if err := syscall.Kill(os.Getpid(), syscall.SIGWINCH); err != nil {
 			t.Fatal(err)
 		}
 	}
-	resize(80, 24)
+	setSize(80, 24)
+
+	initialSeen := make(chan struct{}, 1)
+	tooSmallSeen := make(chan struct{}, 1)
+	recoveredSeen := make(chan struct{}, 1)
 	go func() {
-		_, _ = io.Copy(io.Discard, master)
+		phase := 0
+		var pending strings.Builder
+		buffer := make([]byte, 4096)
+		for {
+			count, err := master.Read(buffer)
+			if count > 0 {
+				pending.Write(buffer[:count])
+				frame := pending.String()
+				switch phase {
+				case 0:
+					if strings.Contains(frame, "[OVERVIEW]") {
+						initialSeen <- struct{}{}
+						phase++
+						pending.Reset()
+					}
+				case 1:
+					if strings.Contains(frame, "Terminal too small") {
+						tooSmallSeen <- struct{}{}
+						phase++
+						pending.Reset()
+					}
+				case 2:
+					if strings.Contains(frame, "[OVERVIEW]") {
+						recoveredSeen <- struct{}{}
+						return
+					}
+				}
+			}
+			if err != nil {
+				return
+			}
+		}
 	}()
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	done := make(chan error, 1)
 	go func() {
 		done <- runUsageStatsViewer(ctx, slave, slave, usage.StatsReport{Metric: "tokens"}, nil, true, nil)
 	}()
-	time.Sleep(50 * time.Millisecond)
+	timer := time.NewTimer(2 * time.Second)
+	defer timer.Stop()
+	waitFor := func(observed <-chan struct{}, description string) {
+		t.Helper()
+		select {
+		case <-observed:
+		case err := <-done:
+			t.Fatalf("usage viewer exited before %s: %v", description, err)
+		case <-timer.C:
+			t.Fatalf("usage viewer did not render %s", description)
+		}
+	}
+
+	waitFor(initialSeen, "initial Overview frame")
 	resize(40, 9)
-	time.Sleep(50 * time.Millisecond)
+	waitFor(tooSmallSeen, "too-small frame")
 	resize(80, 24)
-	time.Sleep(150 * time.Millisecond)
+	waitFor(recoveredSeen, "recovered Overview frame")
 	cancel()
 	select {
 	case err := <-done:
@@ -345,4 +413,10 @@ func TestRunUsageStatsViewerPTYResizeTooSmallAndRecover(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("usage viewer did not exit after resize recovery")
 	}
+}
+
+func openUsageStatsViewerPTY(t *testing.T) (*os.File, *os.File) {
+	t.Helper()
+	t.Setenv("TERM", "xterm-256color")
+	return openSessionViewerPTY(t)
 }

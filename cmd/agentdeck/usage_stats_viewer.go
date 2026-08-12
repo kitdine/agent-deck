@@ -36,7 +36,7 @@ type usageViewerRow struct {
 	identity   string
 	label      string
 	value      string
-	detail     []string
+	detail     terminalDetailModel
 	bar        float64
 	showBar    bool
 	labelColor string
@@ -162,9 +162,7 @@ func (s *usageViewerState) sectionRows() []usageViewerRow {
 	for i := range rows {
 		rows[i].label = output.SanitizeTerminalCell(rows[i].label)
 		rows[i].value = output.SanitizeTerminalCell(rows[i].value)
-		for j := range rows[i].detail {
-			rows[i].detail[j] = output.SanitizeTerminalCell(rows[i].detail[j])
-		}
+		rows[i].detail = normalizeTerminalDetail(rows[i].detail)
 	}
 	return rows
 }
@@ -175,10 +173,10 @@ func (s *usageViewerState) reportRows() []usageViewerRow {
 	case usageViewerOverview:
 		costAvailable := knownCostAvailable(s.report.Totals.ProviderCost, s.report.Totals.KnownProviderCost, s.report.Coverage.Percent)
 		return []usageViewerRow{
-			{identity: "tokens", label: "TOKENS", value: compactNumber(float64(s.report.Totals.Tokens)), valueColor: usageColorToken, detail: []string{"Input " + compactNumber(float64(s.report.Totals.InputTokens)), "Output " + compactNumber(float64(s.report.Totals.OutputTokens))}},
-			{identity: "cost", label: "COST", value: compactCost(s.report.Totals.ProviderCost, s.report.Totals.KnownProviderCost, costAvailable), valueColor: usageCostColor(s.report.Totals.ProviderCost, costAvailable), detail: []string{"Known provider cost " + s.report.Totals.KnownProviderCost}},
-			{identity: "sessions", label: "SESSIONS", value: groupedInt(s.report.Totals.Sessions), valueColor: usageColorSession, detail: []string{"Events " + groupedInt(s.report.Totals.Events)}},
-			{identity: "priced", label: "PRICED", value: s.report.Coverage.Percent + "%", valueColor: usageCoverageColor(s.report.Coverage.Percent), detail: []string{fmt.Sprintf("%d priced · %d unpriced", s.report.Coverage.PricedEvents, s.report.Coverage.UnpricedEvents)}},
+			{identity: "tokens", label: "TOKENS", value: compactNumber(float64(s.report.Totals.Tokens)), valueColor: usageColorToken, detail: usageViewerTokenDetail(s.report.Totals)},
+			{identity: "cost", label: "COST", value: compactCost(s.report.Totals.ProviderCost, s.report.Totals.KnownProviderCost, costAvailable), valueColor: usageCostColor(s.report.Totals.ProviderCost, costAvailable), detail: usageViewerCostDetail(s.report.Totals, s.report.Coverage)},
+			{identity: "sessions", label: "SESSIONS", value: groupedInt(s.report.Totals.Sessions), valueColor: usageColorSession, detail: usageViewerSessionDetail(s.report.Totals)},
+			{identity: "priced", label: "PRICED", value: s.report.Coverage.Percent + "%", valueColor: usageCoverageColor(s.report.Coverage.Percent), detail: usageViewerCoverageDetail(s.report.Coverage)},
 		}
 	case usageViewerTrend:
 		rows := make([]usageViewerRow, 0, len(s.report.Buckets))
@@ -205,7 +203,7 @@ func (s *usageViewerState) reportRows() []usageViewerRow {
 				showBar:    available && peak > 0,
 				valueColor: valueColor,
 				barColor:   valueColor,
-				detail:     []string{"Range " + b.Start + " to " + b.End, "Coverage " + b.Coverage + "%", "Sessions " + groupedInt(b.Sessions)},
+				detail:     usageViewerTrendDetail(b, metric),
 			})
 		}
 		return rows
@@ -286,7 +284,7 @@ func (s *usageViewerState) reportRows() []usageViewerRow {
 				labelColor: usageClientColor(c.Client),
 				valueColor: valueColor,
 				barColor:   usageColorSuccess,
-				detail:     []string{"Read " + compactNumber(float64(c.CachedReadTokens)), "Write " + compactNumber(float64(c.CacheWriteTokens)), "Logical input " + compactNumber(float64(c.LogicalInputTokens)), c.DetailCommand},
+				detail:     usageViewerCacheDetail(c),
 			})
 		}
 		return rows
@@ -298,11 +296,14 @@ func (s *usageViewerState) reportRows() []usageViewerRow {
 			pricedRatio = float64(s.report.Coverage.PricedEvents) / float64(total)
 			unpricedRatio = float64(s.report.Coverage.UnpricedEvents) / float64(total)
 		}
-		return []usageViewerRow{
-			{identity: "priced", label: "PRICED EVENTS", value: groupedInt(s.report.Coverage.PricedEvents), bar: pricedRatio, showBar: showCoverageBars, valueColor: usageCoverageColor(s.report.Coverage.Percent), barColor: usageColorSuccess, detail: []string{"Coverage " + s.report.Coverage.Percent + "%"}},
-			{identity: "unpriced", label: "UNPRICED EVENTS", value: groupedInt(s.report.Coverage.UnpricedEvents), bar: unpricedRatio, showBar: showCoverageBars, valueColor: usageColorWarning, barColor: usageColorWarning, detail: []string{"Total events " + groupedInt(total)}},
-			{identity: "warnings", label: "WARNINGS", value: groupedInt(int64(len(s.warnings))), valueColor: usageColorWarning, detail: append([]string(nil), s.warnings...)},
+		rows := []usageViewerRow{
+			{identity: "priced", label: "PRICED EVENTS", value: groupedInt(s.report.Coverage.PricedEvents), bar: pricedRatio, showBar: showCoverageBars, valueColor: usageCoverageColor(s.report.Coverage.Percent), barColor: usageColorSuccess, detail: usageViewerCoverageRowDetail(s.report.Coverage, "priced")},
+			{identity: "unpriced", label: "UNPRICED EVENTS", value: groupedInt(s.report.Coverage.UnpricedEvents), bar: unpricedRatio, showBar: showCoverageBars, valueColor: usageColorWarning, barColor: usageColorWarning, detail: usageViewerCoverageRowDetail(s.report.Coverage, "unpriced")},
 		}
+		if len(s.warnings) > 0 {
+			rows = append(rows, usageViewerRow{identity: "warnings", label: "WARNINGS", value: groupedInt(int64(len(s.warnings))), valueColor: usageColorWarning, detail: usageViewerWarningsDetail(s.warnings)})
+		}
+		return rows
 	default:
 		return nil
 	}
@@ -324,7 +325,6 @@ func (s *usageViewerState) activityRows() []usageViewerRow {
 	}
 
 	shortDays := [...]string{"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"}
-	longDays := [...]string{"Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"}
 	rows := make([]usageViewerRow, 0, len(shortDays))
 	for weekday := range shortDays {
 		levels := make([]int, 24)
@@ -336,13 +336,15 @@ func (s *usageViewerState) activityRows() []usageViewerRow {
 				peakHour, peakValue = hour, value
 			}
 		}
-		detail := []string{fmt.Sprintf("%s · 1H buckets · %s", longDays[weekday], strings.ToUpper(s.report.Metric))}
+		detail := terminalDetailModel{}
 		if peakValue > 0 {
-			detail = append(detail, fmt.Sprintf("Peak %02d:00–%02d:00 · %s", peakHour, (peakHour+1)%24, s.activityMetricValue(peakValue)))
+			detail.fields = append(detail.fields,
+				terminalDetailField{label: "PEAK WINDOW", value: fmt.Sprintf("%02d:00–%02d:00", peakHour, (peakHour+1)%24), role: terminalDetailRoleNeutral, priority: terminalDetailPriorityPrimary},
+				terminalDetailField{label: "PEAK " + strings.ToUpper(s.report.Metric), value: s.activityMetricValue(peakValue), role: usageViewerMetricDetailRole(s.report.Metric), priority: terminalDetailPriorityPrimary},
+			)
+			detail.notes = append(detail.notes, terminalDetailNote{text: "1H BUCKETS · " + strings.ToUpper(s.report.Metric), role: terminalDetailRoleNeutral, priority: terminalDetailPrioritySecondary})
 		} else if strings.EqualFold(s.report.Metric, "cost") && !knownCostAvailable(s.report.Totals.ProviderCost, s.report.Totals.KnownProviderCost, s.report.Coverage.Percent) {
-			detail = append(detail, "Cost unavailable: no priced events.")
-		} else {
-			detail = append(detail, "No activity in this day.")
+			detail.notes = append(detail.notes, terminalDetailNote{text: "No priced events.", status: "UNAVAILABLE", role: terminalDetailRoleWarning, priority: terminalDetailPriorityPrimary})
 		}
 		rows = append(rows, usageViewerRow{identity: shortDays[weekday], label: shortDays[weekday], labelColor: usageColorInfo, heatmap: levels, detail: detail})
 	}
@@ -371,23 +373,167 @@ func (s *usageViewerState) activityMetricValue(value float64) string {
 // short frame degrades by dropping cache accounting rather than the tokens,
 // cost, sessions, and coverage a dimension always has. Cache fields appear only
 // when the dimension actually carries cache accounting.
-func usageViewerDimensionDetail(d usage.StatsDimension) []string {
-	cost := compactCost(d.ProviderCost, d.KnownProviderCost, knownCostAvailable(d.ProviderCost, d.KnownProviderCost, d.Coverage))
-	detail := []string{
-		"Tokens " + compactNumber(float64(d.Tokens)),
-		"Cost " + cost,
-		"Sessions " + groupedInt(d.Sessions),
-		"Coverage " + d.Coverage + "%",
+func usageViewerCacheDetail(cache usage.StatsCacheSession) terminalDetailModel {
+	detail := terminalDetailModel{}
+	usageViewerAppendDetailField(&detail, "CACHE READ", compactNumber(float64(cache.CachedReadTokens)), terminalDetailRoleToken, terminalDetailPriorityPrimary, cache.CachedReadTokens > 0)
+	usageViewerAppendDetailField(&detail, "CACHE WRITE", compactNumber(float64(cache.CacheWriteTokens)), terminalDetailRoleToken, terminalDetailPriorityPrimary, cache.CacheWriteTokens > 0)
+	usageViewerAppendDetailField(&detail, "LOGICAL INPUT", compactNumber(float64(cache.LogicalInputTokens)), terminalDetailRoleToken, terminalDetailPrioritySecondary, cache.LogicalInputTokens > 0)
+	if command := strings.TrimSpace(cache.DetailCommand); command != "" {
+		detail.notes = append(detail.notes, terminalDetailNote{text: command, role: terminalDetailRoleNeutral, priority: terminalDetailPriorityTertiary})
 	}
+	return detail
+}
+
+func usageViewerTokenDetail(totals usage.StatsTotals) terminalDetailModel {
+	detail := terminalDetailModel{}
+	usageViewerAppendDetailField(&detail, "INPUT TOKENS", compactNumber(float64(totals.InputTokens)), terminalDetailRoleToken, terminalDetailPriorityPrimary, totals.InputTokens > 0)
+	usageViewerAppendDetailField(&detail, "OUTPUT TOKENS", compactNumber(float64(totals.OutputTokens)), terminalDetailRoleToken, terminalDetailPriorityPrimary, totals.OutputTokens > 0)
+	usageViewerAppendDetailField(&detail, "CACHE READ TOKENS", compactNumber(float64(totals.CachedReadTokens)), terminalDetailRoleToken, terminalDetailPrioritySecondary, totals.CachedReadTokens > 0)
+	usageViewerAppendDetailField(&detail, "CACHE WRITE TOKENS", compactNumber(float64(totals.CacheWriteTokens)), terminalDetailRoleToken, terminalDetailPrioritySecondary, totals.CacheWriteTokens > 0)
+	usageViewerAppendDetailField(&detail, "AVERAGE TOKENS / SESSION", totals.AverageTokens, terminalDetailRoleToken, terminalDetailPrioritySecondary, totals.Tokens > 0 && totals.Sessions > 0)
+	return detail
+}
+
+func usageViewerCostDetail(totals usage.StatsTotals, coverage usage.StatsCoverage) terminalDetailModel {
+	detail := terminalDetailModel{}
+	usageViewerAppendDetailField(&detail, "CATALOG BASE COST", usageViewerExactCost(totals.CatalogBaseCost, totals.KnownCatalogBaseCost), usageViewerCostDetailRole(totals.CatalogBaseCost), terminalDetailPriorityPrimary, usageViewerNonZeroCost(totals.CatalogBaseCost, totals.KnownCatalogBaseCost))
+	usageViewerAppendDetailField(&detail, "AVERAGE COST / SESSION", usageViewerExactCost(totals.AverageCost, totals.KnownAverageCost), usageViewerCostDetailRole(totals.AverageCost), terminalDetailPrioritySecondary, usageViewerNonZeroCost(totals.AverageCost, totals.KnownAverageCost))
+	usageViewerAppendDetailField(&detail, "PRICED EVENTS", groupedInt(coverage.PricedEvents), terminalDetailRoleSuccess, terminalDetailPrioritySecondary, coverage.PricedEvents > 0)
+	usageViewerAppendDetailField(&detail, "UNPRICED EVENTS", groupedInt(coverage.UnpricedEvents), terminalDetailRoleWarning, terminalDetailPriorityPrimary, coverage.UnpricedEvents > 0)
+	if totals.ProviderCost == nil {
+		if knownCostAvailable(totals.ProviderCost, totals.KnownProviderCost, coverage.Percent) {
+			detail.notes = append(detail.notes, terminalDetailNote{text: "Provider cost includes priced events only.", status: "PARTIAL", role: terminalDetailRoleWarning, priority: terminalDetailPriorityPrimary})
+		} else {
+			detail.notes = append(detail.notes, terminalDetailNote{text: "No priced events.", status: "UNAVAILABLE", role: terminalDetailRoleWarning, priority: terminalDetailPriorityPrimary})
+		}
+	}
+	return detail
+}
+
+func usageViewerSessionDetail(totals usage.StatsTotals) terminalDetailModel {
+	detail := terminalDetailModel{}
+	usageViewerAppendDetailField(&detail, "EVENTS", groupedInt(totals.Events), terminalDetailRoleSession, terminalDetailPriorityPrimary, totals.Events > 0)
+	usageViewerAppendDetailField(&detail, "AVERAGE TOKENS / SESSION", totals.AverageTokens, terminalDetailRoleToken, terminalDetailPrioritySecondary, totals.Tokens > 0 && totals.Sessions > 0)
+	usageViewerAppendDetailField(&detail, "AVERAGE COST / SESSION", usageViewerExactCost(totals.AverageCost, totals.KnownAverageCost), usageViewerCostDetailRole(totals.AverageCost), terminalDetailPrioritySecondary, usageViewerNonZeroCost(totals.AverageCost, totals.KnownAverageCost))
+	return detail
+}
+
+func usageViewerCoverageDetail(coverage usage.StatsCoverage) terminalDetailModel {
+	detail := terminalDetailModel{}
+	usageViewerAppendDetailField(&detail, "PRICED EVENTS", groupedInt(coverage.PricedEvents), terminalDetailRoleSuccess, terminalDetailPriorityPrimary, coverage.PricedEvents > 0)
+	usageViewerAppendDetailField(&detail, "UNPRICED EVENTS", groupedInt(coverage.UnpricedEvents), terminalDetailRoleWarning, terminalDetailPriorityPrimary, coverage.UnpricedEvents > 0)
+	usageViewerAppendDetailField(&detail, "TOTAL EVENTS", groupedInt(coverage.TotalEvents), terminalDetailRoleSession, terminalDetailPrioritySecondary, coverage.TotalEvents > 0)
+	return detail
+}
+
+func usageViewerTrendDetail(bucket usage.StatsBucket, metric string) terminalDetailModel {
+	detail := terminalDetailModel{}
+	usageViewerAppendDetailField(&detail, "ENDS", bucket.End, terminalDetailRoleNeutral, terminalDetailPriorityPrimary, strings.TrimSpace(bucket.End) != "" && bucket.End != bucket.Start)
+	usageViewerAppendDetailField(&detail, "PRICING COVERAGE", strings.TrimSpace(bucket.Coverage)+"%", usageViewerCoverageDetailRole(bucket.Coverage), terminalDetailPriorityPrimary, strings.TrimSpace(bucket.Coverage) != "")
+	usageViewerAppendDetailField(&detail, "SESSIONS", groupedInt(bucket.Sessions), terminalDetailRoleSession, terminalDetailPrioritySecondary, !strings.EqualFold(metric, "sessions") && bucket.Sessions > 0)
+	if strings.EqualFold(metric, "tokens") {
+		usageViewerAppendDetailField(&detail, "INPUT TOKENS", compactNumber(float64(bucket.InputTokens)), terminalDetailRoleToken, terminalDetailPrioritySecondary, bucket.InputTokens > 0)
+		usageViewerAppendDetailField(&detail, "OUTPUT TOKENS", compactNumber(float64(bucket.OutputTokens)), terminalDetailRoleToken, terminalDetailPrioritySecondary, bucket.OutputTokens > 0)
+		usageViewerAppendDetailField(&detail, "CACHE READ TOKENS", compactNumber(float64(bucket.CachedReadTokens)), terminalDetailRoleToken, terminalDetailPriorityTertiary, bucket.CachedReadTokens > 0)
+		usageViewerAppendDetailField(&detail, "CACHE WRITE TOKENS", compactNumber(float64(bucket.CacheWriteTokens)), terminalDetailRoleToken, terminalDetailPriorityTertiary, bucket.CacheWriteTokens > 0)
+	}
+	return detail
+}
+
+func usageViewerCoverageRowDetail(coverage usage.StatsCoverage, selected string) terminalDetailModel {
+	detail := terminalDetailModel{}
+	usageViewerAppendDetailField(&detail, "PRICING COVERAGE", strings.TrimSpace(coverage.Percent)+"%", usageViewerCoverageDetailRole(coverage.Percent), terminalDetailPriorityPrimary, strings.TrimSpace(coverage.Percent) != "")
+	usageViewerAppendDetailField(&detail, "PRICED EVENTS", groupedInt(coverage.PricedEvents), terminalDetailRoleSuccess, terminalDetailPriorityPrimary, selected != "priced" && coverage.PricedEvents > 0)
+	usageViewerAppendDetailField(&detail, "UNPRICED EVENTS", groupedInt(coverage.UnpricedEvents), terminalDetailRoleWarning, terminalDetailPriorityPrimary, selected != "unpriced" && coverage.UnpricedEvents > 0)
+	usageViewerAppendDetailField(&detail, "TOTAL EVENTS", groupedInt(coverage.TotalEvents), terminalDetailRoleSession, terminalDetailPrioritySecondary, coverage.TotalEvents > 0)
+	return detail
+}
+
+func usageViewerWarningsDetail(warnings []string) terminalDetailModel {
+	detail := terminalDetailModel{notes: make([]terminalDetailNote, 0, len(warnings))}
+	for _, warning := range warnings {
+		if strings.TrimSpace(warning) == "" {
+			continue
+		}
+		detail.notes = append(detail.notes, terminalDetailNote{text: warning, status: "WARNING", role: terminalDetailRoleWarning, priority: terminalDetailPriorityPrimary})
+	}
+	return detail
+}
+
+func usageViewerAppendDetailField(detail *terminalDetailModel, label, value string, role terminalDetailRole, priority int, include bool) {
+	value = strings.TrimSpace(value)
+	if !include || value == "" || strings.EqualFold(value, "unknown") || strings.EqualFold(value, "unavailable") {
+		return
+	}
+	detail.fields = append(detail.fields, terminalDetailField{label: label, value: value, role: role, priority: priority})
+}
+
+func usageViewerExactCost(complete *string, known string) string {
+	value, suffix := strings.TrimSpace(known), " KNOWN"
+	if complete != nil && strings.TrimSpace(*complete) != "" {
+		value, suffix = strings.TrimSpace(*complete), ""
+	}
+	if value == "" {
+		return ""
+	}
+	return "$" + strings.TrimPrefix(value, "$") + suffix
+}
+
+func usageViewerNonZeroCost(complete *string, known string) bool {
+	value := strings.TrimSpace(known)
+	if complete != nil {
+		value = strings.TrimSpace(*complete)
+	}
+	parsed, err := strconv.ParseFloat(strings.TrimPrefix(value, "$"), 64)
+	return err == nil && parsed != 0
+}
+
+func usageViewerCostDetailRole(complete *string) terminalDetailRole {
+	if complete == nil {
+		return terminalDetailRoleWarning
+	}
+	return terminalDetailRoleCost
+}
+
+func usageViewerCoverageDetailRole(percent string) terminalDetailRole {
+	value, err := strconv.ParseFloat(strings.TrimSpace(percent), 64)
+	if err != nil || value < 100 {
+		return terminalDetailRoleWarning
+	}
+	return terminalDetailRoleSuccess
+}
+
+func usageViewerMetricDetailRole(metric string) terminalDetailRole {
+	switch strings.ToUpper(strings.TrimSpace(metric)) {
+	case "TOKENS":
+		return terminalDetailRoleToken
+	case "COST":
+		return terminalDetailRoleCost
+	case "SESSIONS":
+		return terminalDetailRoleSession
+	default:
+		return terminalDetailRoleNeutral
+	}
+}
+
+func usageViewerDimensionDetail(d usage.StatsDimension) terminalDetailModel {
+	detail := terminalDetailModel{}
+	usageViewerAppendDetailField(&detail, "TOKENS", compactNumber(float64(d.Tokens)), terminalDetailRoleToken, terminalDetailPriorityPrimary, d.Tokens > 0)
+	usageViewerAppendDetailField(&detail, "PROVIDER COST", usageViewerExactCost(d.ProviderCost, d.KnownProviderCost), usageViewerCostDetailRole(d.ProviderCost), terminalDetailPriorityPrimary, usageViewerNonZeroCost(d.ProviderCost, d.KnownProviderCost))
+	usageViewerAppendDetailField(&detail, "SESSIONS", groupedInt(d.Sessions), terminalDetailRoleSession, terminalDetailPriorityPrimary, d.Sessions > 0)
+	usageViewerAppendDetailField(&detail, "PRICING COVERAGE", strings.TrimSpace(d.Coverage)+"%", usageViewerCoverageDetailRole(d.Coverage), terminalDetailPriorityPrimary, strings.TrimSpace(d.Coverage) != "")
 	if d.CacheHitRate != nil {
-		detail = append(detail, "Cache hit rate "+*d.CacheHitRate+"%")
+		rate := strings.TrimSpace(*d.CacheHitRate)
+		role := terminalDetailRoleSuccess
+		if _, err := strconv.ParseFloat(rate, 64); err != nil {
+			role = terminalDetailRoleWarning
+		}
+		usageViewerAppendDetailField(&detail, "CACHE HIT RATE", rate+"%", role, terminalDetailPrioritySecondary, rate != "")
 	}
-	if d.CachedReadTokens > 0 || d.CacheWriteTokens > 0 {
-		detail = append(detail, "Cache read "+compactNumber(float64(d.CachedReadTokens)), "Cache write "+compactNumber(float64(d.CacheWriteTokens)))
-	}
-	if d.LogicalInputTokens > 0 {
-		detail = append(detail, "Logical input "+compactNumber(float64(d.LogicalInputTokens)))
-	}
+	usageViewerAppendDetailField(&detail, "CACHE READ", compactNumber(float64(d.CachedReadTokens)), terminalDetailRoleToken, terminalDetailPrioritySecondary, d.CachedReadTokens > 0)
+	usageViewerAppendDetailField(&detail, "CACHE WRITE", compactNumber(float64(d.CacheWriteTokens)), terminalDetailRoleToken, terminalDetailPrioritySecondary, d.CacheWriteTokens > 0)
+	usageViewerAppendDetailField(&detail, "LOGICAL INPUT", compactNumber(float64(d.LogicalInputTokens)), terminalDetailRoleToken, terminalDetailPrioritySecondary, d.LogicalInputTokens > 0)
+	usageViewerAppendDetailField(&detail, "WRAPPER EVENTS", groupedInt(d.WrapperEvents), terminalDetailRoleSession, terminalDetailPrioritySecondary, d.WrapperEvents > 0)
 	return detail
 }
 
@@ -492,17 +638,16 @@ func renderUsageStatsViewer(w io.Writer, width, height int, s *usageViewerState,
 	contentBudget := max(1, bodyBudget-len(guide))
 	detail := []string(nil)
 	if len(s.rows) > 0 {
-		detail = usageViewerDetail(s.rows[selected], width)
+		detail = usageViewerDetail(s.rows[selected], width, p)
 	}
 	sideBySide := width >= 120 && len(s.rows) > 0 && len(detail) > 0 && len(s.rows)+len(detail) > contentBudget
 	leftWidth, rightWidth := width, width
 	if sideBySide {
 		leftWidth = width*2/3 - 2
 		rightWidth = width - width*2/3
-		detail = usageViewerDetail(s.rows[selected], rightWidth)
-		detail = detail[:min(len(detail), contentBudget)]
-	} else {
-		detail = detail[:min(len(detail), max(0, contentBudget-1))]
+		detail = usageViewerDetailWithin(s.rows[selected], rightWidth, contentBudget, p)
+	} else if len(detail) > 0 {
+		detail = usageViewerDetailWithin(s.rows[selected], width, max(0, contentBudget-1), p)
 	}
 
 	viewport := max(1, contentBudget-len(detail))
@@ -524,7 +669,7 @@ func renderUsageStatsViewer(w io.Writer, width, height int, s *usageViewerState,
 		}
 	}
 	if sideBySide {
-		for _, line := range usageJoinColumns(lines, leftWidth, usageViewerStyledDetail(detail, p), rightWidth, 2) {
+		for _, line := range usageJoinColumns(lines, leftWidth, detail, rightWidth, 2) {
 			if _, err := fmt.Fprintln(w, line); err != nil {
 				return err
 			}
@@ -536,7 +681,7 @@ func renderUsageStatsViewer(w io.Writer, width, height int, s *usageViewerState,
 			}
 		}
 		if len(s.rows) > 0 {
-			for _, line := range usageViewerStyledDetail(detail, p) {
+			for _, line := range detail {
 				if _, err := fmt.Fprintln(w, statsFit(line, width)); err != nil {
 					return err
 				}
@@ -668,21 +813,6 @@ func usageViewerRowLine(row usageViewerRow, selected bool, width int, p usageTex
 	return statsFit(line, width)
 }
 
-func usageViewerStyledDetail(lines []string, p usageTextPrimitives) []string {
-	styled := append([]string(nil), lines...)
-	for i, line := range styled {
-		switch {
-		case i == 0:
-			styled[i] = p.style(line, usageColorBrand)
-		case strings.Contains(strings.ToLower(line), "failed"), strings.Contains(strings.ToLower(line), "error"):
-			styled[i] = p.style(line, usageColorError)
-		case strings.Contains(strings.ToLower(line), "unavailable"), strings.Contains(strings.ToLower(line), "warning"), strings.Contains(strings.ToLower(line), "unpriced"), strings.Contains(strings.ToLower(line), "partial"):
-			styled[i] = p.style(line, usageColorWarning)
-		}
-	}
-	return styled
-}
-
 // renderUsageStatsViewerTooSmall deliberately has no state mutation: a resize
 // below the entry minimum is transient, so the previous section/page/selection
 // is available unchanged as soon as the terminal recovers.
@@ -701,10 +831,51 @@ func renderUsageStatsViewerTooSmall(w io.Writer, width, height int) error {
 	return nil
 }
 
-func usageViewerDetail(row usageViewerRow, width int) []string {
-	lines := []string{"DETAIL · " + row.label}
-	for _, detail := range row.detail {
-		lines = append(lines, statsWrap(detail, max(1, width))...)
+func usageViewerDetail(row usageViewerRow, width int, p usageTextPrimitives) []string {
+	detail := row.detail
+	detail.title = row.label
+	return renderTerminalDetailModel(detail, width, p)
+}
+
+// usageViewerDetailWithin preserves Detail identity and semantic warning state
+// when a short terminal cannot fit the full card. Frames that fit retain the
+// shared renderer's complete ordering.
+func usageViewerDetailWithin(row usageViewerRow, width, limit int, p usageTextPrimitives) []string {
+	if limit <= 0 {
+		return nil
 	}
-	return lines
+	full := usageViewerDetail(row, width, p)
+	if len(full) <= limit {
+		return full
+	}
+
+	detail := row.detail
+	detail.title = row.label
+	priorityNotes := make([]terminalDetailNote, 0, len(detail.notes))
+	for _, note := range detail.notes {
+		if note.priority == terminalDetailPriorityPrimary ||
+			note.role == terminalDetailRoleWarning || note.role == terminalDetailRoleError {
+			priorityNotes = append(priorityNotes, note)
+		}
+	}
+	if len(priorityNotes) == 0 {
+		return full[:limit]
+	}
+
+	priority := renderTerminalDetailModel(terminalDetailModel{
+		title: detail.title,
+		notes: priorityNotes,
+	}, width, p)
+	if len(priority) >= limit {
+		return priority[:limit]
+	}
+
+	result := append([]string(nil), priority...)
+	for _, line := range full[1:] {
+		if len(result) == limit {
+			break
+		}
+		result = append(result, line)
+	}
+	return result
 }

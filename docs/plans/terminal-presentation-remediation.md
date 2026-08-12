@@ -33,7 +33,7 @@ Current baseline:
 | --- | --- | --- |
 | `session-show-activity-presentation` | Isolated review commit `1f026a3cada47dcd9493781a44cba263e0040480`, tree `af31e270b6e639af8302bf241e6c1d6cf782332b`; signed and not pushed | Completed — Reset Round R3 Review PASS, targeted tests PASS, CEv1 VERIFIED |
 | `interactive-detail-language` | Full Reset repair candidate on the isolated review branch; exact tree recorded by CEv1 | Completed — independent Full Reset Review R1 and Full Reset Re-reviews R1-R2 closed every finding; targeted tests PASS; CEv1 VERIFIED |
-| `usage-interactive-detail` | Local commit `bbbe5be5b4ac4ea00a961f5bbdcddb2f5fe61ac5`; not pushed | Review only after the shared Detail task is frozen, then repair and mandatory full re-review |
+| `usage-interactive-detail` | Full Reset repair candidate on the isolated review branch; exact tree recorded by CEv1 | Completed — independent Full Reset Review R1 and Full Reset Re-reviews R1-R3 closed every finding; targeted unit, PTY, and race tests PASS; CEv1 VERIFIED |
 | `session-interactive-responsive-layout` | Development candidate present in the working tree; not committed | Review only after shared Detail is frozen, then repair and mandatory full re-review |
 | `terminal-contract-and-acceptance` | Not developed | Develop after Tasks 1-4 obtain new legal PASS results |
 
@@ -590,7 +590,7 @@ repair set, one complete re-review, and one commit checkpoint at a time.
 | --- | --- | --- | --- | --- | --- |
 | `session-show-activity-presentation` | Completed — Reset Round R3 Review PASS; CEv1 VERIFIED | [x] | [x] | [x] | N/A |
 | `interactive-detail-language` | Completed — Full Reset Re-review R2 PASS; CEv1 VERIFIED | [x] | [x] | [x] | N/A |
-| `usage-interactive-detail` | Pending | [x] | [ ] | [ ] | N/A |
+| `usage-interactive-detail` | Completed — Full Reset Re-review R3 PASS; CEv1 VERIFIED | [x] | [x] | [x] | N/A |
 | `session-interactive-responsive-layout` | Pending | [x] | [ ] | [ ] | N/A |
 | `terminal-contract-and-acceptance` | Pending | [ ] | [ ] | [ ] | [ ] |
 
