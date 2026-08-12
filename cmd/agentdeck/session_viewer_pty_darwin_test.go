@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"reflect"
 	"strings"
@@ -75,6 +76,120 @@ func TestRunSessionViewerPTYExitResizeAndRestore(t *testing.T) {
 	}
 }
 
+func TestRunSessionViewerPTYResizeReflowsOncePerGeometryAndKeepsIdentity(t *testing.T) {
+	t.Setenv("TERM", "xterm-256color")
+	master, slave := openSessionViewerPTY(t)
+	defer master.Close()
+	defer slave.Close()
+	if err := unix.IoctlSetWinsize(int(slave.Fd()), unix.TIOCSWINSZ, &unix.Winsize{Row: 18, Col: 60}); err != nil {
+		t.Fatal(err)
+	}
+	frames := make(chan string, 64)
+	readerDone := make(chan struct{})
+	go func() {
+		defer close(readerDone)
+		var output strings.Builder
+		buffer := make([]byte, 4096)
+		for {
+			count, err := master.Read(buffer)
+			if count > 0 {
+				output.Write(buffer[:count])
+				current := output.String()
+				if start := strings.LastIndex(current, "\x1b[H\x1b[2J"); start >= 0 {
+					current = current[start:]
+				}
+				frames <- current
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
+	loads := make(chan int, 8)
+	load := func(_ context.Context, _ sessionViewerSection, page, limit int) (sessionViewerPage, error) {
+		loads <- limit
+		rows := make([]sessionViewerRow, limit)
+		for index := range rows {
+			rows[index] = sessionViewerRow{Identity: fmt.Sprintf("stable-%02d", index), Label: fmt.Sprintf("stable-%02d", index)}
+		}
+		return sessionViewerPage{Rows: rows, Summary: []string{fmt.Sprintf("LIMIT %d", limit)}, Page: page, Total: 80}, nil
+	}
+	done := make(chan error, 1)
+	go func() { done <- runSessionViewer(context.Background(), slave, slave, load, true) }()
+	wantLoad := func(want int) {
+		t.Helper()
+		select {
+		case got := <-loads:
+			if got != want {
+				t.Fatalf("resize load limit = %d, want %d", got, want)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatalf("viewer did not reload limit %d", want)
+		}
+	}
+	wantFrame := func(limit int, identity string) {
+		t.Helper()
+		deadline := time.NewTimer(2 * time.Second)
+		defer deadline.Stop()
+		for {
+			select {
+			case frame := <-frames:
+				if strings.Contains(frame, fmt.Sprintf("LIMIT %d", limit)) &&
+					strings.Contains(frame, "> "+identity) {
+					return
+				}
+			case <-deadline.C:
+				t.Fatalf("viewer did not render limit %d with selected identity %q", limit, identity)
+			}
+		}
+	}
+	wantLoad(14)
+	wantFrame(14, "stable-00")
+	for range 6 {
+		if _, err := master.WriteString("\x1b[B"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	wantFrame(14, "stable-06")
+	for _, size := range []struct {
+		rows, cols uint16
+		limit      int
+	}{{40, 180, 36}, {24, 80, 20}} {
+		if err := unix.IoctlSetWinsize(int(slave.Fd()), unix.TIOCSWINSZ, &unix.Winsize{Row: size.rows, Col: size.cols}); err != nil {
+			t.Fatal(err)
+		}
+		if err := syscall.Kill(os.Getpid(), syscall.SIGWINCH); err != nil {
+			t.Fatal(err)
+		}
+		wantLoad(size.limit)
+		wantFrame(size.limit, "stable-06")
+	}
+	if _, err := master.WriteString("q"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("viewer did not exit after resize acceptance")
+	}
+	if err := slave.Close(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-readerDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("resize frame reader did not exit")
+	}
+	select {
+	case extra := <-loads:
+		t.Fatalf("resize performed an extra reload with limit %d", extra)
+	default:
+	}
+}
+
 func TestRunSessionViewerPTYCancellationRestoresTerminal(t *testing.T) {
 	master, slave := openSessionViewerPTY(t)
 	defer master.Close()
@@ -118,7 +233,7 @@ func ptyViewerLoad(ready chan<- struct{}) sessionViewerLoad {
 
 func TestRunSessionViewerPTYCtrlCAndEOFCleanup(t *testing.T) {
 	load := func(_ context.Context, _ sessionViewerSection, page, _ int) (sessionViewerPage, error) {
-		return sessionViewerPage{Rows: []sessionViewerRow{{Label: "MODEL", Value: "gpt-5.6", Detail: []string{"selected detail"}}}, Page: page, Total: 1}, nil
+		return sessionViewerPage{Rows: []sessionViewerRow{{Label: "MODEL", Value: "gpt-5.6", Detail: terminalDetailModel{notes: []terminalDetailNote{{text: "selected detail"}}}}}, Page: page, Total: 1}, nil
 	}
 	for _, test := range []struct {
 		name   string

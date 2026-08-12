@@ -70,9 +70,9 @@ func TestSessionBrowserPTYOpensNavigatesAndReturnsFromStructuredDetail(t *testin
 		return func(_ context.Context, section sessionViewerSection, page, _ int) (sessionViewerPage, error) {
 			switch section {
 			case viewerOverview:
-				return sessionViewerPage{Rows: []sessionViewerRow{{Label: "MODEL", Value: "claude-opus", Detail: []string{"Selected model detail"}}}, Page: page, Total: 1}, nil
+				return sessionViewerPage{Rows: []sessionViewerRow{{Label: "MODEL", Value: "claude-opus", Detail: terminalDetailModel{notes: []terminalDetailNote{{text: "Selected model detail"}}}}}, Page: page, Total: 1}, nil
 			case viewerTokens:
-				return sessionViewerPage{Rows: []sessionViewerRow{{Label: "#1 · claude-opus", Value: "IN 10 · OUT 2", Detail: []string{"INPUT TOKENS 10", "OUTPUT TOKENS 2", "PRICING STATUS complete"}}}, Page: page, Total: 1}, nil
+				return sessionViewerPage{Rows: []sessionViewerRow{{Label: "#1 · claude-opus", Value: "IN 10 · OUT 2", Detail: terminalDetailModel{fields: []terminalDetailField{{label: "INPUT TOKENS", value: "10", role: terminalDetailRoleToken}, {label: "OUTPUT TOKENS", value: "2", role: terminalDetailRoleToken}}, notes: []terminalDetailNote{{status: "complete", role: terminalDetailRoleSuccess}}}}}, Page: page, Total: 1}, nil
 			default:
 				return sessionViewerPage{Empty: "No rows in fixture.", Page: page}, nil
 			}
@@ -103,8 +103,8 @@ func TestSessionBrowserPTYOpensNavigatesAndReturnsFromStructuredDetail(t *testin
 	if _, err := master.WriteString("\t\t\t"); err != nil {
 		t.Fatal(err)
 	}
-	tokens := readSessionBrowserPTYUntil(t, master, "PRICING STATUS complete")
-	for _, want := range []string{"[TOKENS]", "INPUT TOKENS 10", "OUTPUT TOKENS 2"} {
+	tokens := readSessionBrowserPTYUntil(t, master, "COMPLETE")
+	for _, want := range []string{"[TOKENS]", "INPUT TOKENS", "10", "OUTPUT TOKENS", "2"} {
 		if !strings.Contains(tokens, want) {
 			t.Fatalf("Tokens detail missing %q: %q", want, tokens)
 		}

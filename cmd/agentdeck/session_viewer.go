@@ -27,8 +27,7 @@ type sessionViewerRow struct {
 	Identity   string
 	Label      string
 	Value      string
-	Detail     []string
-	Footer     string
+	Detail     terminalDetailModel
 	LabelColor string
 	ValueColor string
 }
@@ -54,12 +53,17 @@ type sessionViewerLoad func(context.Context, sessionViewerSection, int, int) (se
 // sessionViewerState is terminal-independent. Page, selection, and viewport
 // are all section-local so switching tabs never destroys the user's place.
 type sessionViewerState struct {
-	section   sessionViewerSection
-	selected  [sessionViewerSectionCount]int
-	pages     [sessionViewerSectionCount]int
-	viewports [sessionViewerSectionCount]int
-	current   sessionViewerPage
-	load      sessionViewerLoad
+	section        sessionViewerSection
+	selected       [sessionViewerSectionCount]int
+	pages          [sessionViewerSectionCount]int
+	viewports      [sessionViewerSectionCount]int
+	limits         [sessionViewerSectionCount]int
+	ordinals       [sessionViewerSectionCount]int
+	anchors        [sessionViewerSectionCount]string
+	current        sessionViewerPage
+	currentSection sessionViewerSection
+	loaded         bool
+	load           sessionViewerLoad
 }
 
 func newSessionViewerState(load sessionViewerLoad) *sessionViewerState {
@@ -71,12 +75,41 @@ func newSessionViewerState(load sessionViewerLoad) *sessionViewerState {
 }
 
 func (s *sessionViewerState) refresh(ctx context.Context) error {
-	page, err := s.load(ctx, s.section, s.pages[s.section], sessionViewerPageLimit)
+	section := s.section
+	limit := s.limit(section)
+	page, err := s.load(ctx, section, s.pages[section], limit)
 	if err != nil {
 		return err
 	}
+	s.installPage(page, limit, s.selected[section], "")
+	return nil
+}
+
+// reflow reloads the active section at most once for a new acquisition
+// capacity. The selected stable identity wins; its absolute ordinal is the
+// deterministic fallback when the source changed between loads.
+func (s *sessionViewerState) reflow(ctx context.Context, limit int) error {
+	section := s.section
+	limit = max(1, limit)
+	if s.loaded && s.currentSection == section && s.pages[section] == s.current.Page {
+		s.rememberSelection()
+	}
+	absolute := s.ordinals[section]
+	anchor := s.anchors[section]
+	pageNumber := absolute/limit + 1
+	page, err := s.load(ctx, section, pageNumber, limit)
+	if err != nil {
+		return err
+	}
+	selected := max(0, absolute-(max(1, page.Page)-1)*limit)
+	s.installPage(page, limit, selected, anchor)
+	return nil
+}
+
+func (s *sessionViewerState) installPage(page sessionViewerPage, limit, selected int, anchor string) {
+	section := s.section
 	if page.Page < 1 {
-		page.Page = s.pages[s.section]
+		page.Page = max(1, s.pages[section])
 	}
 	if len(page.Rows) == 0 && len(page.Lines) > 0 {
 		page.Rows = make([]sessionViewerRow, 0, len(page.Lines))
@@ -87,15 +120,41 @@ func (s *sessionViewerState) refresh(ctx context.Context) error {
 			})
 		}
 	}
-	s.current = page
-	section := s.section
-	if s.selected[section] >= len(page.Rows) {
-		s.selected[section] = max(0, len(page.Rows)-1)
+	if anchor != "" {
+		for index := range page.Rows {
+			if page.Rows[index].Identity == anchor {
+				selected = index
+				break
+			}
+		}
 	}
+	s.current = page
+	s.currentSection = section
+	s.loaded = true
+	s.limits[section] = max(1, limit)
+	s.pages[section] = page.Page
+	s.selected[section] = min(max(0, selected), max(0, len(page.Rows)-1))
 	if s.viewports[section] > s.selected[section] {
 		s.viewports[section] = s.selected[section]
 	}
-	return nil
+	s.rememberSelection()
+}
+
+func (s *sessionViewerState) limit(section sessionViewerSection) int {
+	if s.limits[section] > 0 {
+		return s.limits[section]
+	}
+	return sessionViewerPageLimit
+}
+
+func (s *sessionViewerState) rememberSelection() {
+	section := s.section
+	if !s.loaded || s.currentSection != section || len(s.current.Rows) == 0 {
+		return
+	}
+	selected := min(max(0, s.selected[section]), len(s.current.Rows)-1)
+	s.ordinals[section] = max(0, (max(1, s.current.Page)-1)*s.limit(section)+selected)
+	s.anchors[section] = s.current.Rows[selected].Identity
 }
 
 // apply updates only viewer state. The caller reloads only when true is
@@ -105,9 +164,11 @@ func (s *sessionViewerState) apply(key string) (reload, exit bool) {
 	case "q", "escape":
 		return false, true
 	case "left", "shift-tab":
+		s.rememberSelection()
 		s.section = sessionViewerSection((int(s.section) + len(sessionViewerSections) - 1) % len(sessionViewerSections))
 		return true, false
 	case "right", "tab":
+		s.rememberSelection()
 		s.section = sessionViewerSection((int(s.section) + 1) % len(sessionViewerSections))
 		return true, false
 	case "up":
@@ -123,16 +184,21 @@ func (s *sessionViewerState) apply(key string) (reload, exit bool) {
 			s.pages[s.section]--
 			s.selected[s.section] = 0
 			s.viewports[s.section] = 0
+			s.ordinals[s.section] = (s.pages[s.section] - 1) * s.limit(s.section)
+			s.anchors[s.section] = ""
 			return true, false
 		}
 	case "page-down":
-		if s.current.Page*sessionViewerPageLimit < s.current.Total {
+		if s.current.Page*s.limit(s.section) < s.current.Total {
 			s.pages[s.section]++
 			s.selected[s.section] = 0
 			s.viewports[s.section] = 0
+			s.ordinals[s.section] = (s.pages[s.section] - 1) * s.limit(s.section)
+			s.anchors[s.section] = ""
 			return true, false
 		}
 	}
+	s.rememberSelection()
 	return false, false
 }
 
@@ -172,8 +238,9 @@ func renderSessionViewer(w io.Writer, width, height int, state *sessionViewerSta
 
 	lines = append(lines,
 		p.style("AGENTDECK · SESSION", usageColorBrand)+" · "+p.style("READ ONLY", usageColorSuccess),
-		sessionViewerTabLine(state.section, width, p),
+		sessionViewerTabLine(state.section, sessionViewerCanvasWidth(width), p),
 	)
+	canvasWidth := sessionViewerCanvasWidth(width)
 
 	advisories := sessionViewerAdvisories(state.current, p)
 	advisoryLimit := 1
@@ -181,19 +248,24 @@ func renderSessionViewer(w io.Writer, width, height int, state *sessionViewerSta
 		advisoryLimit = 2
 	}
 	for _, advisory := range advisories[:min(len(advisories), advisoryLimit)] {
-		lines = append(lines, statsFit(advisory, width))
+		lines = append(lines, statsFit(advisory, canvasWidth))
 	}
 
-	bodyBudget := max(1, height-len(lines)-2)
-	lines = append(lines, sessionViewerBody(state, width, bodyBudget, p)...)
+	// lines[0] is clear/home control with no visual row.
+	bodyBudget := max(1, height-(len(lines)-1)-2)
+	lines = append(lines, sessionViewerBody(state, canvasWidth, bodyBudget, p)...)
 	lines = append(lines,
-		sessionViewerStatus(state, width, p),
-		statsFit("←/→ tab · ↑/↓ select · pgup/pgdn page · home/end · q/esc back", width),
+		sessionViewerStatus(state, canvasWidth, p),
+		statsFit("←/→ tab · ↑/↓ select · pgup/pgdn page · home/end · q/esc back", canvasWidth),
 	)
 	if len(lines) > height+1 {
 		lines = lines[:height+1]
 	}
 	return sessionViewerWriteFrame(w, lines, width)
+}
+
+func sessionViewerCanvasWidth(width int) int {
+	return max(1, min(width, 120))
 }
 
 func sessionViewerWriteFrame(w io.Writer, lines []string, width int) error {
@@ -273,7 +345,8 @@ func sessionViewerBody(state *sessionViewerState, width, budget int, p usageText
 		return lines
 	}
 
-	listBudget := max(1, budget/2)
+	detailBudget := min(len(detail), max(0, budget-1))
+	listBudget := max(1, budget-detailBudget)
 	start, end := state.viewport(listBudget)
 	lines := make([]string, 0, budget)
 	for index := start; index < end; index++ {
@@ -314,23 +387,15 @@ func sessionViewerRowLine(row sessionViewerRow, selected bool, width int, p usag
 }
 
 func sessionViewerDetail(row sessionViewerRow, width int, p usageTextPrimitives) []string {
-	if len(row.Detail) == 0 && row.Footer == "" {
-		return nil
-	}
-	lines := []string{p.style("DETAIL · "+row.Label, usageColorBrand)}
-	for _, value := range row.Detail {
-		wrapped := statsWrap(value, max(1, width))
-		lines = append(lines, wrapped...)
-	}
-	if row.Footer != "" {
-		lines = append(lines, p.style(row.Footer, usageColorInfo))
-	}
-	return lines
+	detail := row.Detail
+	detail.title = row.Label
+	return renderTerminalDetailModel(detail, width, p)
 }
 
 func sessionViewerStatus(state *sessionViewerState, width int, p usageTextPrimitives) string {
 	page := state.current
-	pageCount := max(1, (page.Total+sessionViewerPageLimit-1)/sessionViewerPageLimit)
+	limit := state.limit(state.section)
+	pageCount := max(1, (page.Total+limit-1)/limit)
 	selected := 0
 	if len(page.Rows) > 0 {
 		selected = state.selected[state.section] + 1

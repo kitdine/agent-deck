@@ -105,7 +105,7 @@ func TestRenderSessionBrowserFitsResponsiveGeometries(t *testing.T) {
 		}
 	}
 	state := newSessionBrowserState(items)
-	for _, size := range [][2]int{{48, 10}, {60, 12}, {80, 24}, {120, 24}, {140, 32}} {
+	for _, size := range [][2]int{{48, 10}, {60, 12}, {79, 24}, {80, 24}, {120, 24}, {140, 32}, {180, 40}} {
 		var rendered bytes.Buffer
 		if err := renderSessionBrowser(&rendered, size[0], size[1], state, usageTextPrimitives{color: true}); err != nil {
 			t.Fatalf("%dx%d render: %v", size[0], size[1], err)
@@ -123,6 +123,18 @@ func TestRenderSessionBrowserFitsResponsiveGeometries(t *testing.T) {
 		for _, want := range []string{"MODEL", "PROJECT", "LAST"} {
 			if !strings.Contains(plain, want) {
 				t.Fatalf("%dx%d controlled layout lost %q:\n%s", size[0], size[1], want, plain)
+			}
+		}
+		if size[0] >= 48 && size[0] <= 79 {
+			if !strings.Contains(plain, "codex/会话") || !strings.Contains(plain, "MODEL") || !strings.Contains(plain, "PROJECT") || !strings.Contains(plain, "LAST") {
+				t.Fatalf("%dx%d compact record is incomplete:\n%s", size[0], size[1], plain)
+			}
+		}
+		if size[0] == 180 {
+			for _, line := range lines {
+				if strings.Contains(line, "LAST ACTIVITY") && statsVisibleWidth(strings.TrimRight(line, " ")) > 120 {
+					t.Fatalf("wide browser pushed LAST ACTIVITY beyond readable canvas: width=%d line=%q", statsVisibleWidth(strings.TrimRight(line, " ")), line)
+				}
 			}
 		}
 	}

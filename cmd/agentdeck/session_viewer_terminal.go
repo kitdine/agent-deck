@@ -18,7 +18,8 @@ func runSessionViewer(ctx context.Context, input, output *os.File, load sessionV
 	if os.Getenv("TERM") == "dumb" {
 		return errors.New("--interactive requires a usable terminal")
 	}
-	viewer, err := prepareSessionViewer(ctx, load)
+	_, height := sessionViewerTerminalSize(output)
+	viewer, err := prepareSessionViewer(ctx, load, sessionViewerAcquisitionLimit(height))
 	if err != nil {
 		return err
 	}
@@ -47,16 +48,17 @@ func runSessionViewerScreen(
 	load sessionViewerLoad,
 	primitives ...usageTextPrimitives,
 ) (string, error) {
-	viewer, err := prepareSessionViewer(ctx, load)
+	_, height := sessionViewerTerminalSize(output)
+	viewer, err := prepareSessionViewer(ctx, load, sessionViewerAcquisitionLimit(height))
 	if err != nil {
 		return "", err
 	}
 	return runPreparedSessionViewerScreen(ctx, input, output, frame, resized, viewer, primitives...)
 }
 
-func prepareSessionViewer(ctx context.Context, load sessionViewerLoad) (*sessionViewerState, error) {
+func prepareSessionViewer(ctx context.Context, load sessionViewerLoad, limit int) (*sessionViewerState, error) {
 	viewer := newSessionViewerState(load)
-	if err := viewer.refresh(ctx); err != nil {
+	if err := viewer.reflow(ctx, limit); err != nil {
 		return nil, err
 	}
 	return viewer, nil
@@ -78,9 +80,12 @@ func runPreparedSessionViewerScreen(
 		if err := ctx.Err(); err != nil {
 			return "", err
 		}
-		width, height := 100, 24
-		if columns, rows, err := term.GetSize(int(output.Fd())); err == nil && columns > 0 && rows > 0 {
-			width, height = columns, rows
+		width, height := sessionViewerTerminalSize(output)
+		limit := sessionViewerAcquisitionLimit(height)
+		if viewer.currentSection != viewer.section || viewer.limit(viewer.section) != limit {
+			if err := viewer.reflow(ctx, limit); err != nil {
+				return "", err
+			}
 		}
 		if err := renderSessionViewer(frame, width, height, viewer, p); err != nil {
 			return "", err
@@ -97,11 +102,25 @@ func runPreparedSessionViewerScreen(
 			return key, nil
 		}
 		if reload {
-			if err := viewer.refresh(ctx); err != nil {
+			if err := viewer.reflow(ctx, limit); err != nil {
 				return "", err
 			}
 		}
 	}
+}
+
+func sessionViewerTerminalSize(output *os.File) (width, height int) {
+	width, height = 100, 24
+	if columns, rows, err := term.GetSize(int(output.Fd())); err == nil && columns > 0 && rows > 0 {
+		width, height = columns, rows
+	}
+	return width, height
+}
+
+func sessionViewerAcquisitionLimit(height int) int {
+	// Clear/home is control-only. Title, tabs, status, and help are fixed; the
+	// remaining maximum body capacity is acquired independently of Detail.
+	return max(1, height-4)
 }
 
 func sessionViewerShouldRedrawAfterRead(key string, resizedDuringRead bool) bool {

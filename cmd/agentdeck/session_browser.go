@@ -46,9 +46,14 @@ func (s *sessionBrowserState) apply(key string, viewport int) (open, exit bool) 
 	return false, false
 }
 
-func (s *sessionBrowserState) viewport(height int) (start, end, size int) {
-	// Title, context, headers, selected preview, status, and help are fixed.
-	size = max(1, height-6)
+func (s *sessionBrowserState) viewport(width, height int) (start, end, size int) {
+	compact := sessionBrowserLayoutFor(sessionBrowserCanvasWidth(width)).compact
+	fixedRows, recordRows := 6, 1
+	if compact {
+		// The compact header and every compact record use two complete lines.
+		fixedRows, recordRows = 7, 2
+	}
+	size = max(1, (height-fixedRows)/recordRows)
 	start = max(0, min(s.selected-size/2, len(s.items)-size))
 	end = min(len(s.items), start+size)
 	return start, end, size
@@ -91,7 +96,7 @@ func runSessionBrowser(
 		if err := renderSessionBrowser(frame, width, height, state, p); err != nil {
 			return err
 		}
-		_, _, viewport := state.viewport(height)
+		_, _, viewport := state.viewport(width, height)
 		key, resizedDuringRead, err := readSessionViewerKey(ctx, input, terminal.resized)
 		if errors.Is(err, io.EOF) {
 			return nil
@@ -151,21 +156,26 @@ func renderSessionBrowser(w io.Writer, width, height int, state *sessionBrowserS
 		return sessionViewerWriteFrame(w, lines, width)
 	}
 
-	lines = append(lines, sessionBrowserHeader(width, p))
-	start, end, _ := state.viewport(height)
+	canvasWidth := sessionBrowserCanvasWidth(width)
+	lines = append(lines, sessionBrowserHeader(canvasWidth, p)...)
+	start, end, _ := state.viewport(width, height)
 	for index := start; index < end; index++ {
-		lines = append(lines, sessionBrowserStyledRow(state.items[index], index == state.selected, width, p))
+		lines = append(lines, sessionBrowserStyledRows(state.items[index], index == state.selected, canvasWidth, p)...)
 	}
 	selected := state.items[state.selected]
 	lines = append(lines,
-		sessionBrowserPreview(selected, width, p),
-		statsFit(p.style(fmt.Sprintf("row %d/%d", state.selected+1, len(state.items)), usageColorInfo), width),
-		statsFit("↑/↓ select · pgup/pgdn page · home/end · enter open · q/esc quit", width),
+		sessionBrowserPreview(selected, canvasWidth, p),
+		statsFit(p.style(fmt.Sprintf("row %d/%d", state.selected+1, len(state.items)), usageColorInfo), canvasWidth),
+		statsFit("↑/↓ select · pgup/pgdn page · home/end · enter open · q/esc quit", canvasWidth),
 	)
 	if len(lines) > height+1 {
 		lines = lines[:height+1]
 	}
 	return sessionViewerWriteFrame(w, lines, width)
+}
+
+func sessionBrowserCanvasWidth(width int) int {
+	return max(1, min(width, 120))
 }
 
 type sessionBrowserLayout struct {
@@ -184,7 +194,7 @@ func sessionBrowserLayoutFor(width int) sessionBrowserLayout {
 		layout.project = max(14, available-layout.client-layout.session-layout.model-layout.last-4)
 		return layout
 	}
-	if width >= 78 {
+	if width >= 80 {
 		layout := sessionBrowserLayout{client: 7, session: 18, model: 13, last: 16}
 		layout.project = max(10, available-layout.client-layout.session-layout.model-layout.last-4)
 		return layout
@@ -192,23 +202,23 @@ func sessionBrowserLayoutFor(width int) sessionBrowserLayout {
 	return sessionBrowserLayout{compact: true}
 }
 
-func sessionBrowserHeader(width int, p usageTextPrimitives) string {
+func sessionBrowserHeader(width int, p usageTextPrimitives) []string {
 	layout := sessionBrowserLayoutFor(width)
 	if layout.compact {
-		left := "CLIENT / SESSION"
-		right := "LAST ACTIVITY"
-		space := max(1, width-2-statsVisibleWidth(left)-statsVisibleWidth(right))
-		return "  " + p.style(statsFit(left+strings.Repeat(" ", space)+right, width-2), usageColorBrand)
+		return []string{
+			"  " + p.style("CLIENT / SESSION", usageColorBrand),
+			"  " + p.style("MODEL · PROJECT · LAST ACTIVITY", usageColorBrand),
+		}
 	}
-	return "  " + sessionBrowserColumns(
+	return []string{"  " + sessionBrowserColumns(
 		[]string{"CLIENT", "SESSION", "MODEL", "PROJECT", "LAST ACTIVITY"},
 		layout,
 		[]string{usageColorBrand, usageColorBrand, usageColorBrand, usageColorBrand, usageColorBrand},
 		p,
-	)
+	)}
 }
 
-func sessionBrowserStyledRow(item session.Metadata, selected bool, width int, p usageTextPrimitives) string {
+func sessionBrowserStyledRows(item session.Metadata, selected bool, width int, p usageTextPrimitives) []string {
 	prefix := "  "
 	if selected {
 		prefix = p.style("> ", usageColorBrand)
@@ -220,19 +230,30 @@ func sessionBrowserStyledRow(item session.Metadata, selected bool, width int, p 
 	project := sessionProjectLabel(item.Project)
 	last := sessionViewerKnown(renderSessionDocumentTime(item.LastAt))
 	if layout.compact {
-		identity := client + "/" + id
 		available := max(1, width-2)
-		lastWidth := min(18, max(12, available/3))
-		identityWidth := max(1, available-lastWidth-1)
-		line := statsPad(p.style(statsFit(identity, identityWidth), sessionClientColor(client)), identityWidth) + " " + statsPadLeft(p.style(statsFit(last, lastWidth), usageColorInfo), lastWidth)
-		return prefix + statsFit(line, available)
+		identity := p.style(statsFit(client+"/"+id, available), sessionClientColor(client))
+		second := sessionBrowserCompactMetadata(client, model, project, last, available, p)
+		return []string{prefix + statsFit(identity, available), "  " + second}
 	}
-	return prefix + sessionBrowserColumns(
+	return []string{prefix + sessionBrowserColumns(
 		[]string{client, id, model, project, last},
 		layout,
 		[]string{sessionClientColor(client), usageColorBrand, sessionClientColor(client), usageColorSuccess, usageColorInfo},
 		p,
-	)
+	)}
+}
+
+func sessionBrowserCompactMetadata(client, model, project, last string, width int, p usageTextPrimitives) string {
+	separator := " · "
+	fixed := statsVisibleWidth("MODEL ") + statsVisibleWidth("PROJECT ") + statsVisibleWidth("LAST ") + 2*statsVisibleWidth(separator)
+	values := max(3, width-fixed)
+	modelWidth := max(1, values/4)
+	projectWidth := max(1, values/3)
+	lastWidth := max(1, values-modelWidth-projectWidth)
+	line := p.style("MODEL", usageColorBrand) + " " + p.style(statsFit(model, modelWidth), sessionClientColor(client)) + separator +
+		p.style("PROJECT", usageColorBrand) + " " + p.style(statsFit(project, projectWidth), usageColorSuccess) + separator +
+		p.style("LAST", usageColorBrand) + " " + p.style(statsFit(last, lastWidth), usageColorInfo)
+	return statsFit(line, width)
 }
 
 func sessionBrowserColumns(values []string, layout sessionBrowserLayout, colors []string, p usageTextPrimitives) string {

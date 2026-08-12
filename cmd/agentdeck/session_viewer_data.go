@@ -89,13 +89,13 @@ func sessionViewerOverviewPage(metadata session.Metadata) sessionViewerPage {
 	last := sessionViewerKnown(renderDisplayTimeWithZone(metadata.LastAt))
 	duration := sessionViewerSessionDuration(metadata.FirstAt, metadata.LastAt)
 	rows := []sessionViewerRow{
-		{Identity: "client", Label: "CLIENT", Value: client, Detail: []string{"Indexed client ownership: " + client}, LabelColor: sessionClientColor(client), ValueColor: sessionClientColor(client)},
-		{Identity: "session", Label: "SESSION", Value: sessionViewerKnown(metadata.SessionID), Detail: []string{"Stable indexed session identity."}, LabelColor: usageColorBrand, ValueColor: usageColorBrand},
-		{Identity: "model", Label: "MODEL", Value: model, Detail: []string{"Latest model identity observed in the selected authoritative source."}, LabelColor: sessionClientColor(client), ValueColor: sessionClientColor(client)},
-		{Identity: "project", Label: "PROJECT", Value: project, Detail: []string{"Compact project identifier; private source paths are never shown."}, LabelColor: usageColorSuccess, ValueColor: usageColorSuccess},
-		{Identity: "first", Label: "FIRST ACTIVITY", Value: first, Detail: []string{"First approved indexed activity timestamp."}, LabelColor: usageColorInfo, ValueColor: usageColorInfo},
-		{Identity: "last", Label: "LAST ACTIVITY", Value: last, Detail: []string{"Last approved indexed activity timestamp."}, LabelColor: usageColorInfo, ValueColor: usageColorInfo},
-		{Identity: "duration", Label: "SESSION SPAN", Value: duration, Detail: []string{"Elapsed time from first to last indexed activity."}, LabelColor: usageColorSession, ValueColor: usageColorSession},
+		{Identity: "client", Label: "CLIENT", Value: client, LabelColor: sessionClientColor(client), ValueColor: sessionClientColor(client)},
+		{Identity: "session", Label: "SESSION", Value: sessionViewerKnown(metadata.SessionID), LabelColor: usageColorBrand, ValueColor: usageColorBrand},
+		{Identity: "model", Label: "MODEL", Value: model, LabelColor: sessionClientColor(client), ValueColor: sessionClientColor(client)},
+		{Identity: "project", Label: "PROJECT", Value: project, LabelColor: usageColorSuccess, ValueColor: usageColorSuccess},
+		{Identity: "first", Label: "FIRST ACTIVITY", Value: first, LabelColor: usageColorInfo, ValueColor: usageColorInfo},
+		{Identity: "last", Label: "LAST ACTIVITY", Value: last, LabelColor: usageColorInfo, ValueColor: usageColorInfo},
+		{Identity: "duration", Label: "SESSION SPAN", Value: duration, LabelColor: usageColorSession, ValueColor: usageColorSession},
 	}
 	return sessionViewerPage{
 		Rows:    rows,
@@ -116,16 +116,22 @@ func sessionViewerDocumentRows(metadata session.Metadata, documents []session.Do
 			preview = "empty approved text"
 		}
 		excerpt, truncated := sessionViewerExcerpt(text, sessionViewerDocumentPreviewRunes)
-		detail := []string{excerpt, "KIND " + kind, "INDEXED " + when}
-		if truncated {
-			detail = append(detail, fmt.Sprintf("Preview capped at %d characters.", sessionViewerDocumentPreviewRunes))
+		detail := terminalDetailModel{
+			fields: []terminalDetailField{
+				{label: "KIND", value: kind, role: terminalDetailRoleNeutral, priority: terminalDetailPriorityPrimary},
+				{label: "INDEXED", value: when, role: terminalDetailRoleSession, priority: terminalDetailPriorityPrimary},
+			},
+			notes: []terminalDetailNote{{text: excerpt, role: terminalDetailRoleNeutral, priority: terminalDetailPrioritySecondary}},
 		}
+		if truncated {
+			detail.notes = append(detail.notes, terminalDetailNote{text: fmt.Sprintf("Preview capped at %d characters.", sessionViewerDocumentPreviewRunes), status: "TRUNCATED", role: terminalDetailRoleWarning, priority: terminalDetailPriorityTertiary})
+		}
+		detail.notes = append(detail.notes, terminalDetailNote{text: sessionViewerFullPageCommand(metadata, page, limit), role: terminalDetailRoleNeutral, priority: terminalDetailPriorityTertiary})
 		rows = append(rows, sessionViewerRow{
 			Identity:   fmt.Sprintf("document-%d", (page-1)*limit+index+1),
 			Label:      when + " · " + kind,
 			Value:      preview,
 			Detail:     detail,
-			Footer:     sessionViewerFullPageCommand(metadata, page, limit),
 			LabelColor: usageColorInfo,
 			ValueColor: usageColorSuccess,
 		})
@@ -159,16 +165,10 @@ func sessionViewerActivityPage(result activity.Page) sessionViewerPage {
 			duration = groupedInt(*detail.DurationMS) + "ms"
 		}
 		rows = append(rows, sessionViewerRow{
-			Identity: fmt.Sprintf("activity-%d", (result.Page-1)*result.Limit+index+1),
-			Label:    started + " · " + sessionViewerKnown(detail.Tool),
-			Value:    status,
-			Detail: []string{
-				"MODEL " + model,
-				"STATUS " + status,
-				"DURATION " + duration,
-				"COMPLETED " + completed,
-			},
-			Footer:     "Safe metadata only; arguments, results, commands, and hidden content are excluded.",
+			Identity:   fmt.Sprintf("activity-%d", (result.Page-1)*result.Limit+index+1),
+			Label:      started + " · " + sessionViewerKnown(detail.Tool),
+			Value:      status,
+			Detail:     sessionViewerActivityDetail(model, duration, completed),
 			LabelColor: sessionClientColor(detail.Client),
 			ValueColor: sessionActivityStatusColor(status),
 		})
@@ -190,26 +190,47 @@ func sessionViewerActivityPage(result activity.Page) sessionViewerPage {
 	}
 }
 
+func sessionViewerActivityDetail(model, duration, completed string) terminalDetailModel {
+	detail := terminalDetailModel{}
+	if model != "unknown" {
+		detail.fields = append(detail.fields, terminalDetailField{label: "MODEL", value: model, role: terminalDetailRoleNeutral, priority: terminalDetailPriorityPrimary})
+	}
+	if duration != "unavailable" {
+		detail.fields = append(detail.fields, terminalDetailField{label: "DURATION", value: duration, role: terminalDetailRoleSession, priority: terminalDetailPriorityPrimary})
+	}
+	if completed != "unknown" {
+		detail.fields = append(detail.fields, terminalDetailField{label: "COMPLETED", value: completed, role: terminalDetailRoleSuccess, priority: terminalDetailPrioritySecondary})
+	}
+	detail.notes = append(detail.notes, terminalDetailNote{text: "Arguments, results, commands, and hidden content are excluded.", status: "SAFE METADATA ONLY", role: terminalDetailRoleNeutral, priority: terminalDetailPriorityTertiary})
+	return detail
+}
+
 func sessionViewerTokensPage(summary usage.SessionSummary, invocations []usage.SessionInvocation, pagination usage.InvocationPagination) sessionViewerPage {
 	_, pricing := sessionViewerSummaryCost(summary)
 	rows := make([]sessionViewerRow, 0, len(invocations))
 	for _, invocation := range invocations {
 		model := sessionViewerKnown(invocation.Model)
 		cost, status := sessionViewerInvocationCost(invocation)
-		detail := make([]string, 0, 14)
+		detail := terminalDetailModel{}
 		for _, component := range sessionViewerTokenComponents() {
-			detail = append(detail, component.label+" "+groupedInt(invocation.Tokens[component.key]))
+			if invocation.Tokens[component.key] == 0 {
+				continue
+			}
+			// Input, output, and cost are already carried by the selected row.
+			if component.key == "input_tokens" || component.key == "output_tokens" {
+				continue
+			}
+			detail.fields = append(detail.fields, terminalDetailField{label: component.label, value: groupedInt(invocation.Tokens[component.key]), role: terminalDetailRoleToken, priority: terminalDetailPriorityPrimary})
 		}
-		detail = append(detail,
-			"CATALOG BASE COST "+sessionViewerInvocationCatalogCost(invocation),
-			"PROVIDER COST "+cost,
-			"PRICING STATUS "+status,
-		)
+		if catalogCost := sessionViewerInvocationCatalogCost(invocation); catalogCost != "unpriced" {
+			detail.fields = append(detail.fields, terminalDetailField{label: "CATALOG BASE COST", value: catalogCost, role: sessionViewerPricingDetailRole(status), priority: terminalDetailPriorityPrimary})
+		}
+		detail.notes = append(detail.notes, terminalDetailNote{text: "Normalized invocation; no unreliable conversation-turn join is claimed.", status: strings.ToUpper(status), role: sessionViewerPricingDetailRole(status), priority: terminalDetailPriorityPrimary})
 		if len(invocation.Unpriced) > 0 {
-			detail = append(detail, "UNPRICED COMPONENTS "+strings.Join(invocation.Unpriced, ", "))
+			detail.notes = append(detail.notes, terminalDetailNote{text: strings.Join(invocation.Unpriced, ", "), status: "UNPRICED COMPONENTS", role: terminalDetailRoleWarning, priority: terminalDetailPriorityPrimary})
 		}
 		if len(invocation.Warnings) > 0 {
-			detail = append(detail, "WARNINGS "+strings.Join(invocation.Warnings, " · "))
+			detail.notes = append(detail.notes, terminalDetailNote{text: strings.Join(invocation.Warnings, " · "), status: "WARNING", role: terminalDetailRoleWarning, priority: terminalDetailPriorityPrimary})
 		}
 		rows = append(rows, sessionViewerRow{
 			Identity: fmt.Sprintf("invocation-%d", invocation.Sequence),
@@ -224,7 +245,6 @@ func sessionViewerTokensPage(summary usage.SessionSummary, invocations []usage.S
 				cost,
 			),
 			Detail:     detail,
-			Footer:     "Normalized invocation; no unreliable conversation-turn join is claimed.",
 			LabelColor: sessionClientColor(summary.Client),
 			ValueColor: sessionPricingStatusColor(status),
 		})
@@ -249,6 +269,13 @@ func sessionViewerTokensPage(summary usage.SessionSummary, invocations []usage.S
 		Warning: warningText,
 		Partial: partial,
 	}
+}
+
+func sessionViewerPricingDetailRole(status string) terminalDetailRole {
+	if status == "complete" {
+		return terminalDetailRoleCost
+	}
+	return terminalDetailRoleWarning
 }
 
 func sessionViewerTokenSummaryLines(summary usage.SessionSummary, empty bool) []string {

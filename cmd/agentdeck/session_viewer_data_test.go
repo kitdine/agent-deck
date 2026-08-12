@@ -29,7 +29,7 @@ func TestSessionViewerOverviewUsesExplicitUnknownAndCompactProject(t *testing.T)
 		t.Fatalf("overview values = %#v", values)
 	}
 	for _, row := range page.Rows {
-		if strings.Contains(strings.Join(append(row.Detail, row.Value), " "), "/private/") {
+		if strings.Contains(strings.Join(append(sessionViewerDetail(row, 120, usageTextPrimitives{}), row.Value), " "), "/private/") {
 			t.Fatalf("overview exposed path in %#v", row)
 		}
 	}
@@ -43,10 +43,10 @@ func TestSessionViewerDocumentsExposeBoundedApprovedDetailAndRecoveryCommand(t *
 		Kind:    "assistant",
 		Text:    longText + "\x1b[31munsafe escape",
 	}}, 2, 20)
-	if len(rows) != 1 || !strings.Contains(rows[0].Detail[0], "approved visible text") {
+	if len(rows) != 1 || len(rows[0].Detail.notes) == 0 || !strings.Contains(rows[0].Detail.notes[0].text, "approved visible text") {
 		t.Fatalf("document rows = %#v", rows)
 	}
-	joined := strings.Join(append(append([]string{}, rows[0].Detail...), rows[0].Footer), " ")
+	joined := strings.Join(sessionViewerDetail(rows[0], 120, usageTextPrimitives{}), " ")
 	for _, want := range []string{"Preview capped", "agentdeck session show", "--page 2", "--limit 20"} {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("document detail missing %q: %q", want, joined)
@@ -72,14 +72,14 @@ func TestSessionViewerActivityRowsContainOnlySafeStructuredMetadata(t *testing.T
 	if len(page.Rows) != 1 || page.Rows[0].Value != "completed" {
 		t.Fatalf("activity page = %#v", page)
 	}
-	joined := strings.Join(page.Rows[0].Detail, " ")
-	for _, want := range []string{"MODEL claude-opus", "STATUS completed", "DURATION 1,250ms", "COMPLETED"} {
+	joined := strings.Join(sessionViewerDetail(page.Rows[0], 120, usageTextPrimitives{}), " ")
+	for _, want := range []string{"MODEL", "claude-opus", "DURATION", "1,250ms", "COMPLETED"} {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("activity detail missing %q: %q", want, joined)
 		}
 	}
-	if !strings.Contains(page.Rows[0].Footer, "arguments, results, commands") {
-		t.Fatalf("activity privacy footer = %q", page.Rows[0].Footer)
+	if !strings.Contains(joined, "Arguments, results, commands") {
+		t.Fatalf("activity privacy note = %q", joined)
 	}
 }
 
@@ -115,15 +115,28 @@ VALUES('token-event','codex','token-session','event','2026-07-13T00:00:00Z','gpt
 	if !strings.Contains(page.Warning, "historical attribution") || page.Warning == "none" {
 		t.Fatalf("token page warning = %q, want real attribution warning", page.Warning)
 	}
-	detail := strings.Join(page.Rows[0].Detail, " ")
-	for _, want := range []string{
-		"INPUT TOKENS 120", "CACHED INPUT TOKENS 20", "OUTPUT TOKENS 30",
-		"CACHE READ TOKENS 7", "CACHE CREATION TOKENS 11", "CACHE WRITE 5M TOKENS 13", "CACHE WRITE 1H TOKENS 17",
-		"CATALOG BASE COST", "PROVIDER COST", "PRICING STATUS complete",
+	fields := make(map[string]terminalDetailField, len(page.Rows[0].Detail.fields))
+	for _, field := range page.Rows[0].Detail.fields {
+		fields[field.label] = field
+	}
+	for label, value := range map[string]string{
+		"CACHED INPUT TOKENS":   "20",
+		"CACHE READ TOKENS":     "7",
+		"CACHE CREATION TOKENS": "11",
+		"CACHE WRITE 5M TOKENS": "13",
+		"CACHE WRITE 1H TOKENS": "17",
 	} {
-		if !strings.Contains(detail, want) {
-			t.Fatalf("token detail missing %q: %q", want, detail)
+		field, ok := fields[label]
+		if !ok || field.value != value || field.role != terminalDetailRoleToken {
+			t.Fatalf("token detail field %q = %#v, want token value %q", label, field, value)
 		}
+	}
+	if field := fields["CATALOG BASE COST"]; field.value == "" || field.role != terminalDetailRoleCost {
+		t.Fatalf("catalog cost detail = %#v, want explicit cost role", field)
+	}
+	detail := strings.Join(sessionViewerDetail(page.Rows[0], 120, usageTextPrimitives{}), " ")
+	if !strings.Contains(detail, "COMPLETE") {
+		t.Fatalf("token detail lost complete pricing status: %q", detail)
 	}
 }
 
@@ -147,8 +160,8 @@ func TestSessionViewerTokensExposePartialPricingWarnings(t *testing.T) {
 	if !strings.Contains(page.Warning, "fallback attribution · unpriced components") {
 		t.Fatalf("partial warning separator = %q", page.Warning)
 	}
-	detail := strings.Join(page.Rows[0].Detail, " ")
-	for _, want := range []string{"PRICING STATUS partial", "UNPRICED COMPONENTS output_tokens", "WARNINGS fallback attribution"} {
+	detail := strings.Join(sessionViewerDetail(page.Rows[0], 120, usageTextPrimitives{}), " ")
+	for _, want := range []string{"PARTIAL", "UNPRICED COMPONENTS", "output_tokens", "WARNING", "fallback attribution"} {
 		if !strings.Contains(detail, want) {
 			t.Fatalf("partial detail missing %q: %q", want, detail)
 		}
