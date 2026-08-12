@@ -32,7 +32,7 @@ Current baseline:
 | Task | Retained implementation state | Authoritative next gate |
 | --- | --- | --- |
 | `session-show-activity-presentation` | Isolated review commit `1f026a3cada47dcd9493781a44cba263e0040480`, tree `af31e270b6e639af8302bf241e6c1d6cf782332b`; signed and not pushed | Completed — Reset Round R3 Review PASS, targeted tests PASS, CEv1 VERIFIED |
-| `interactive-detail-language` | Local commit `25ea084edbcf27f481b4d956370de100d87ca00a`; not pushed; Task 4 also has uncommitted shared-renderer hunks | Classify shared hunks, then reset full review, repair, mandatory full re-review |
+| `interactive-detail-language` | Final shared Detail candidate on isolated review branch; production/test SHA-256 recorded by the Reset R5 review | Completed — Reset Round R5 Review PASS, targeted tests PASS, CEv1 VERIFIED |
 | `usage-interactive-detail` | Local commit `bbbe5be5b4ac4ea00a961f5bbdcddb2f5fe61ac5`; not pushed | Review only after the shared Detail task is frozen, then repair and mandatory full re-review |
 | `session-interactive-responsive-layout` | Development candidate present in the working tree; not committed | Review only after shared Detail is frozen, then repair and mandatory full re-review |
 | `terminal-contract-and-acceptance` | Not developed | Develop after Tasks 1-4 obtain new legal PASS results |
@@ -589,7 +589,7 @@ repair set, one complete re-review, and one commit checkpoint at a time.
 | Task | State | Dev | Review | Test | Acceptance |
 | --- | --- | --- | --- | --- | --- |
 | `session-show-activity-presentation` | Completed — Reset Round R3 Review PASS; CEv1 VERIFIED | [x] | [x] | [x] | N/A |
-| `interactive-detail-language` | Pending — shared-contract reset review is not complete | [x] | [ ] | [ ] | N/A |
+| `interactive-detail-language` | Completed — Reset Round R5 Review PASS; CEv1 VERIFIED | [x] | [x] | [x] | N/A |
 | `usage-interactive-detail` | Pending | [x] | [ ] | [ ] | N/A |
 | `session-interactive-responsive-layout` | Pending | [x] | [ ] | [ ] | N/A |
 | `terminal-contract-and-acceptance` | Pending | [ ] | [ ] | [ ] | [ ] |
