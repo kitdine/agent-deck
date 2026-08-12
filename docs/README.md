@@ -501,7 +501,7 @@ fixing a defect, which is why it is a contract change recorded by the single
 | [specs/2026-08-07-usage-interactive-viewer-design.md](specs/2026-08-07-usage-interactive-viewer-design.md) | Active — approved Task 5 `usage stats --interactive` layout, color/no-color, state, lifecycle, and PTY contract; shared raw framing and session alignment now live in the terminal-rendering contract. |
 | [plans/desktop-app.md](plans/desktop-app.md) | Active — 0/6 done. Native macOS 26 menu-bar app, WidgetKit extension, unified desktop package, Cask, direct download, and its own contract task for `v0.5.0`. |
 | [plans/v0-5-0-contract.md](plans/v0-5-0-contract.md) | Active — 0/1 done. Version contract only: the single `v0.5.0` specification raise and documentation reconciliation. Blocked until the desktop plan is fully reviewed; preflight and publication remain separate user decisions. |
-| [plans/terminal-presentation-remediation.md](plans/terminal-presentation-remediation.md) | Active — 4/5 done. Tasks 1-4 are CEv1 VERIFIED. Task 4 passed a new independent Full Reset Review and Full Reset Re-review R2 after closing every finding. Task 5 contract and acceptance is next. |
+| [plans/terminal-presentation-remediation.md](plans/terminal-presentation-remediation.md) | Active — 3/5 complete. Task 4 post-PASS PTY harness finding is repaired and Full Reset Re-review R4 is PASS; atomic commit and commit-bound CEv1 remain pending. Task 5 Acceptance is retained but rebind/re-review and L4 are paused. |
 | [reviews/](reviews/README.md) | Per-task review records that back each plan's ticked `Review` cell. |
 | [archive/](archive/README.md) | Retired plans and superseded contracts. Not a starting point for new work. |
 

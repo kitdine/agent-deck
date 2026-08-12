@@ -20,6 +20,7 @@ import (
 )
 
 func TestRunSessionViewerPTYExitResizeAndRestore(t *testing.T) {
+	t.Setenv("TERM", "xterm-256color")
 	master, slave := openSessionViewerPTY(t)
 	defer master.Close()
 	defer slave.Close()
@@ -32,7 +33,7 @@ func TestRunSessionViewerPTYExitResizeAndRestore(t *testing.T) {
 	go func() {
 		done <- runSessionViewer(context.Background(), slave, slave, ptyViewerLoad(ready))
 	}()
-	<-ready
+	waitForSessionViewerPTYReady(t, ready, done)
 	if err := unix.IoctlSetWinsize(int(master.Fd()), unix.TIOCSWINSZ, &unix.Winsize{Row: 10, Col: 60}); err != nil {
 		t.Fatal(err)
 	}
@@ -191,6 +192,7 @@ func TestRunSessionViewerPTYResizeReflowsOncePerGeometryAndKeepsIdentity(t *test
 }
 
 func TestRunSessionViewerPTYCancellationRestoresTerminal(t *testing.T) {
+	t.Setenv("TERM", "xterm-256color")
 	master, slave := openSessionViewerPTY(t)
 	defer master.Close()
 	defer slave.Close()
@@ -202,7 +204,7 @@ func TestRunSessionViewerPTYCancellationRestoresTerminal(t *testing.T) {
 	ready := make(chan struct{}, 1)
 	done := make(chan error, 1)
 	go func() { done <- runSessionViewer(ctx, slave, slave, ptyViewerLoad(ready)) }()
-	<-ready
+	waitForSessionViewerPTYReady(t, ready, done)
 	cancel()
 	select {
 	case err := <-done:
@@ -228,6 +230,17 @@ func ptyViewerLoad(ready chan<- struct{}) sessionViewerLoad {
 		default:
 		}
 		return sessionViewerPage{Lines: []string{"row"}, Page: page, Total: 1}, nil
+	}
+}
+
+func waitForSessionViewerPTYReady(t *testing.T, ready <-chan struct{}, done <-chan error) {
+	t.Helper()
+	select {
+	case <-ready:
+	case err := <-done:
+		t.Fatalf("viewer exited before PTY loader readiness: %v", err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("viewer did not reach PTY loader readiness")
 	}
 }
 

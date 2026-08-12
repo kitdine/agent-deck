@@ -164,3 +164,95 @@ no intermediate Task 4 push.
 
 Implement: `terminal-contract-and-acceptance` after Task 4's exact tree is CEv1
 VERIFIED and committed.
+
+## Post-PASS Full Reset Review R3 — 2026-08-12
+
+📊 Overall score: 8/10
+
+✅ Verdict: FAIL
+
+Trigger: Task 5's first final L4 `release-verify` attempt failed in
+`make test`. A direct reproduction showed `./cmd/agentdeck` timing out after
+601.624 seconds. A two-minute diagnostic timeout identified
+`TestRunSessionViewerPTYExitResizeAndRestore` as the active test.
+
+### 🔴 Serious issues — must fix
+
+1. **P1 — Session PTY lifecycle tests can turn an immediate startup error into
+   a ten-minute package hang.**
+
+   [`cmd/agentdeck/session_viewer_pty_darwin_test.go`]
+
+   - Root cause: the execution environment has `TERM=dumb`; the affected tests
+     did not isolate TERM. `runSessionViewer` therefore correctly returned
+     `--interactive requires a usable terminal` before calling the loader.
+     The test waited unconditionally on `<-ready` and never observed the
+     buffered `done` error, so the fast error surfaced only as Go's default
+     ten-minute timeout.
+   - Scope: `TestRunSessionViewerPTYExitResizeAndRestore` and
+     `TestRunSessionViewerPTYCancellationRestoresTerminal` shared the unbounded
+     ready wait. Other PTY tests in the same file already set
+     `TERM=xterm-256color` explicitly.
+   - Product disposition: no product hang was observed. The viewer exited
+     before its loader and no product viewer goroutine remained in the timeout
+     stack. The contract requires rejecting `TERM=dumb`, so weakening that
+     product check would be incorrect.
+   - Required repair: isolate TERM in both tests and replace the unbounded
+     receive with a bounded wait that reports loader readiness, early viewer
+     exit, or a two-second readiness timeout.
+
+### 🟡 Suggested improvements — recommended
+
+None beyond the required P1 repair.
+
+### 📝 Summary
+
+The earlier R2 PASS is invalidated for Task completion by a new decisive L4
+finding. Task 4 is reopened; its prior review remains audit history only. Task 5
+and Plan closure are paused until repair, complete re-review, commit-bound CEv1,
+and Task 5 rebind all succeed.
+
+## Post-PASS Full Reset Re-review R4 — 2026-08-12
+
+📊 Overall score: 10/10
+
+✅ Verdict: PASS
+
+### 🔴 Serious issues — must fix
+
+None.
+
+### 🟡 Suggested improvements — recommended
+
+None.
+
+### 🔍 R3 finding disposition
+
+- Both affected tests now set `TERM=xterm-256color` within `t.Setenv`, so they
+  remain hermetic even when the invoking environment is `TERM=dumb`.
+- `waitForSessionViewerPTYReady` observes loader readiness, early viewer
+  return, and a two-second timeout. A future startup regression reports the
+  actual error immediately instead of hanging the package.
+- No production code changed; the valid unusable-terminal rejection remains
+  intact.
+
+### 🧪 Fresh repair evidence
+
+- PASS with external `TERM=dumb`:
+  `TestRunSessionViewerPTYExitResizeAndRestore` (1.734s).
+- PASS with external `TERM=dumb`:
+  `TestRunSessionViewerPTYCancellationRestoresTerminal` (1.568s).
+- PASS with external `TERM=dumb`: full `./cmd/agentdeck` package (70.879s),
+  closing the original failing component.
+- PASS with external `TERM=dumb`: all `TestRunSessionViewerPTY*` under `-race`
+  (3.730s).
+- PASS: `gofmt` and Task 4 scoped `git diff --check`.
+
+### 📝 Summary
+
+The complete Task 4 surface has been independently re-reviewed after the L4
+finding. The repaired PTY harness preserves all responsive layout, resize,
+identity, terminal lifecycle, privacy, and error contracts from R2 while making
+startup failures deterministic and bounded. No blocking, non-blocking, P0-P3,
+or nit finding remains. Task 4 Review PASS is restored pending an atomic signed
+repair commit and commit-bound CEv1 verification.
