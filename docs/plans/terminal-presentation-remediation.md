@@ -32,7 +32,7 @@ Current baseline:
 | Task | Retained implementation state | Authoritative next gate |
 | --- | --- | --- |
 | `session-show-activity-presentation` | Isolated review commit `1f026a3cada47dcd9493781a44cba263e0040480`, tree `af31e270b6e639af8302bf241e6c1d6cf782332b`; signed and not pushed | Completed — Reset Round R3 Review PASS, targeted tests PASS, CEv1 VERIFIED |
-| `interactive-detail-language` | Final shared Detail candidate on isolated review branch; production/test SHA-256 recorded by the Reset R5 review | Completed — Reset Round R5 Review PASS, targeted tests PASS, CEv1 VERIFIED |
+| `interactive-detail-language` | Isolated review commit `6f107b79d8ee8f87559bbd56d9b2fad0eb0b00f3`, tree `19a4dddd2ac936fab6d9fec24d08bbd2854748c6`; signed and not pushed | Completed — Reset Round R5 Review PASS, targeted tests PASS, CEv1 VERIFIED |
 | `usage-interactive-detail` | Local commit `bbbe5be5b4ac4ea00a961f5bbdcddb2f5fe61ac5`; not pushed | Review only after the shared Detail task is frozen, then repair and mandatory full re-review |
 | `session-interactive-responsive-layout` | Development candidate present in the working tree; not committed | Review only after shared Detail is frozen, then repair and mandatory full re-review |
 | `terminal-contract-and-acceptance` | Not developed | Develop after Tasks 1-4 obtain new legal PASS results |
