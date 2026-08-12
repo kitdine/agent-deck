@@ -1,7 +1,8 @@
 ---
-status: active
+status: historical
 plan: terminal-presentation-remediation
 task: session-interactive-responsive-layout
+retired: 2026-08-12
 ---
 
 # Review: Session Interactive Responsive Layout

@@ -1,7 +1,8 @@
 ---
-status: active
+status: historical
 plan: terminal-presentation-remediation
 task: session-show-activity-presentation
+retired: 2026-08-12
 ---
 
 # Review: Session Show Activity Presentation

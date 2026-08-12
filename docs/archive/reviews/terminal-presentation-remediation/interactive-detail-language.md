@@ -1,7 +1,8 @@
 ---
-status: active
+status: historical
 plan: terminal-presentation-remediation
 task: interactive-detail-language
+retired: 2026-08-12
 ---
 
 # Review: Interactive Detail Language

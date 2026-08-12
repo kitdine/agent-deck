@@ -417,6 +417,14 @@ personal -> aigocode-personal-ref
 
 ## Usage
 
+`usage stats --interactive` 的选中行 Detail 使用带显式语义角色的结构化字段；
+token、cost、session、success、warning、error 和 neutral value 使用一致的终端色彩，
+no-color 模式保留相同标签、值、顺序和状态。已在选中行出现或为空、零值、
+`unknown`、`unavailable` 的可选字段不重复展示，但 pricing、partial、stale、warning
+和 error 状态始终保留。标准化后没有 field 或 required note 时不渲染 title-only 空
+Detail，并立即把高度归还给列表；
+宽度不足以保持两列可读时自动改为单列标签/值。
+
 | 命令 | 含义与典型用例 | 参数与 Flags | 必填规则 | 示例 |
 | --- | --- | --- | --- | --- |
 | `usage scan` | 增量扫描本地 Codex/Claude usage sources | 无 | 无 | `agentdeck usage scan` |
@@ -622,6 +630,19 @@ override 使用可读表格并隐藏长 URL、完整 commit/SHA；JSON 和 `--ve
 provenance。
 
 ## Session
+
+`session show --activity` 的明细在宽终端使用有界带标签表格，在标准宽度使用两行紧凑
+记录，在窄终端使用堆叠标签；每条调用保留稳定序号。空、`unknown`、`unavailable`
+和冗余可选字段不显示，优先显示 `DURATION`，仅在无法得到 duration 且完成时间仍有
+信息时显示 `COMPLETED`。没有可显示安全字段的调用仍保留明确的 safe-metadata empty
+state。
+
+Session interactive 内容在最多 120 个 visible cells 的左对齐画布内渲染；48-79 列的
+根列表使用完整的两行记录。详情列表的 bounded acquisition 根据当前 body 高度动态计算，
+不固定为 20；逻辑 page、stable selection identity 与 visual viewport 相互独立。Resize
+保留 selected identity，并至多执行一次 identity-anchored reload。Usage 与 Session 共用
+结构化 Detail 的显式标签和 semantic color/no-color 合同；没有非冗余 Detail 时列表立即
+回收其高度。
 
 | 命令 | 含义与典型用例 | 参数与 Flags | 必填规则 | 示例 |
 | --- | --- | --- | --- | --- |

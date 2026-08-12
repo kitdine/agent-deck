@@ -218,6 +218,15 @@ rendered visibly before width calculation, preventing terminal injection.
 
 ### Session rules
 
+Ordinary Activity uses a bounded labeled table at wide widths, a compact
+two-line record at standard widths, and a stacked labeled record at narrow
+widths. It never falls back to either a seven-line field dump or one dense,
+unlabeled sentence, and every call retains a stable ordinal. Empty, `unknown`,
+`unavailable`, and redundant optional fields are omitted. `DURATION` is the
+preferred completion boundary; `COMPLETED` appears only when duration is
+unavailable and the timestamp adds information. A call with no displayable safe
+fields keeps an explicit safe-metadata empty state.
+
 - Metadata remains first and is never displaced by an empty paged section.
 - Ordinary `session show` uses one bounded section/record/labeled-continuation
   grammar at every width; it never switches to a data-dependent document,
@@ -234,10 +243,40 @@ rendered visibly before width calculation, preventing terminal injection.
   Activity identities at standard/wide widths. Compact mode keeps Model and
   Project in the selected preview, renders absent model as `unknown`, reduces
   Project to a non-path identifier, and never exposes source path.
-- Interactive sections remain Overview, Documents, Activity, and Tokens, each
-  with independent page, selection, and viewport state plus selected-row detail.
+- Interactive sections remain Overview, Documents, Activity, and Tokens. Each
+  owns an independent logical acquisition position, stable selected identity,
+  and visual viewport plus selected-row Detail.
 
 ### Interactive row budget
+
+Usage and Session selected-row Detail use one structured semantic card model.
+Domain adapters provide label, value, semantic role, priority, and optional
+spanning notes; the renderer never parses concatenated `LABEL VALUE` strings or
+guesses color from keywords. Labels remain explicit in no-color mode, while
+values use token, cost, session, success, warning, error, or neutral roles.
+Optional zero, empty, unknown, unavailable, and selected-row-redundant fields
+are omitted, while required warnings and pricing states remain explicit. After
+normalization, a model with no field and no note renders no title-only card and
+reserves no Detail rows.
+
+Detail uses a two-column compact field grid only when both cells retain useful
+minimum widths; otherwise it stacks one aligned label/value field per row.
+Approved long text and notes span the card and wrap by visible cells.
+
+Session browser and detail content are left aligned inside a readable canvas of
+at most 120 visible cells. At 48-79 columns, each browser item becomes a
+complete two-line left-aligned record rather than a space-between row. Nested
+Session acquisition is derived from current body-line capacity rather than a
+fixed row count. Acquisition and visual viewport remain separate; Detail
+consumes list height only when stacked. Resize anchors the selected stable
+identity and absolute ordinal while recalculating page, viewport, and capacity.
+
+The root Session browser fills the remaining line budget with complete rendered
+records. The nested viewer acquires enough bounded rows for the full body budget,
+then gives its visual viewport the lines remaining after any stacked Detail.
+When Detail is absent, rows immediately reclaim all body lines. Selection
+movement does not change acquisition size or reload data; a geometry change may
+perform at most one identity-anchored reload.
 
 The full-screen frame reserves rows for title, section tabs, context/status,
 warning/status footer, and help. The content viewport is calculated only after

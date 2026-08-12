@@ -1,5 +1,5 @@
 ---
-status: active
+status: reference
 created: 2026-08-07
 scope: usage-report-presentation/usage-interactive-viewer
 source_sufficiency: sufficient
@@ -7,17 +7,12 @@ source_sufficiency: sufficient
 
 # Usage Interactive Viewer
 
-This document is the approved-ready design for
-`usage-report-presentation` Task 5, `usage-interactive-viewer`. It consumes the
-accepted interactive prototype and narrows the broader
+This document is the delivered Usage interactive contract originally approved
+for `usage-report-presentation` Task 5, `usage-interactive-viewer`. It narrows
+the broader
 [terminal rendering contract](2026-08-06-terminal-rendering-design.md) to
-`usage` only. The broader proposal remains available as future reference;
-shared raw-frame behavior and session alignment are now approved there after
-the v0.4.0-rc.1 manual-acceptance failure.
-
-This usage-specific document does not independently redefine session behavior;
-the shared frame and `session --interactive` browser contracts live in the
-broader design.
+`usage` only. The shared raw-frame behavior and Session alignment described
+here were delivered in response to the v0.4.0-rc.1 manual-acceptance failure.
 
 ## 1. Goal, scope, and non-goals
 
@@ -158,6 +153,23 @@ or the selected detail block.
 
 ### Terminal palette
 
+Selected Detail cards consume structured fields supplied by the Usage adapter:
+label, value, semantic role, priority, and an optional spanning note. The
+renderer does not parse concatenated display strings or infer roles from
+keywords. Labels use the information role; values use their explicit token,
+cost, session, success, warning, error, or neutral role.
+
+Optional zero components, unavailable optional fields, and values already
+carried by the selected row are omitted. Required pricing, partial, warning,
+stale, or error states remain explicit even when another numeric value is zero.
+After normalization, when no non-redundant field or required note remains, the
+renderer emits no title-only card and its rows return to the list viewport.
+
+The card uses two field columns only when both retain useful minimum
+visible-cell widths; otherwise it stacks one aligned label/value field per row.
+Long notes span the card and wrap. Usage's compact row/value/bar layout remains
+the visual baseline and does not stretch merely to fill a wide terminal.
+
 Use the existing standard ANSI style mechanism rather than introducing a color
 library:
 
@@ -219,6 +231,13 @@ Setup and cleanup order is contractual:
 
 ## 7. Verification design
 
+Runtime acceptance covers 60x18, 80x24, 120x32, and 180x40 using the compiled
+current candidate, including color/no-color equivalence, live resize, selected
+identity preservation, and complete terminal cleanup. Synthetic isolated state
+is followed by a read-only isolated copy of realistic local data whose source
+hashes must remain unchanged. This acceptance supplements, and does not replace,
+the pure state, visible-cell, PTY lifecycle, privacy, and JSON assertions below.
+
 | Risk | Required observable evidence |
 | --- | --- |
 | State bleed | Pure tests prove section-local page, selection, viewport, Home/End, empty pages, and selection-driven detail. |
@@ -230,7 +249,7 @@ Setup and cleanup order is contractual:
 | Terminal ownership | PTY tests cover startup, standalone Escape, arrows, paging, resize, Ctrl-C, EOF, cancellation, load error, render error, raw mode, cursor, alternate screen, and input-reader exit. |
 | Session regression | Existing session state, key-decoder, token-summary, privacy, and PTY lifecycle tests remain green if shared mechanics move; no intentional snapshot update. |
 | Runtime integration | Build the current binary and exercise `usage stats --interactive` against an isolated HOME containing synthetic local usage data; also run ordinary text and JSON against the same state. |
-| RC decision gate | Exercise the compiled RC binary against isolated copies of realistic local usage data and record layout, color/no-color, paging, resize, and cleanup acceptance before any session-alignment decision. |
+| Release-preflight entry gate | Exercise the compiled current candidate against synthetic isolated state and read-only isolated copies of realistic local data. Record layout, color/no-color, paging, live resize, cleanup, and source-hash invariance; bind that evidence to the exact candidate SHA before same-SHA `release-preflight`. |
 
 Screenshots or recordings may compare frames, but cannot replace lifecycle,
 state, cleanup, privacy, or machine-output assertions.
@@ -249,32 +268,30 @@ state, cleanup, privacy, or machine-output assertions.
 4. Add a third-party TUI framework. Rejected: it broadens dependencies and
    state ownership beyond Task 5.
 
-### Expected implementation boundary
+### Delivered implementation boundary
 
-- `cmd/agentdeck/main.go`: add and validate the stats-only `--interactive`
-  route without changing ordinary report or JSON routing.
-- command-layer usage viewer files: usage state, report adapter, renderer, and
-  tests.
-- session terminal files only when necessary to expose terminal-neutral input
-  or lifecycle mechanics; existing session behavior must remain unchanged.
-- existing usage render primitives supply visible width, ANSI styling, bars,
-  fitting, and no-color decisions where their reviewed Task 1 contract allows.
+- `cmd/agentdeck/main.go` validates the stats-only `--interactive` route
+  without changing ordinary report or JSON routing.
+- Command-layer Usage viewer files own Usage state, report adaptation,
+  rendering, and tests.
+- Terminal-neutral input and lifecycle mechanics are shared with Session while
+  each domain retains its own state and data adapter.
+- Existing Usage render primitives supply visible width, ANSI styling, bars,
+  fitting, and no-color decisions.
 
-### Current conflicts resolved by the design
+### Resolved implementation state
 
-- `usage stats` has width and color primitives but no terminal-height,
-  viewport, selection, or interactive route.
-- The current session terminal loop couples reusable key/lifecycle mechanics to
-  session-specific state and rendering.
-- Existing session uses active-screen clearing. Usage Task 5 requires previous
-  screen restoration without using this task to redesign session.
+- `usage stats --interactive` now has explicit terminal-height, viewport,
+  selection, and routing behavior.
+- Usage and Session share cancelable key decoding, resize notification,
+  raw-mode ownership, alternate-screen ownership, and cleanup while retaining
+  domain-specific state and rendering.
+- Both interactive surfaces restore the previous screen on every exit path.
 
-### Assumptions and remaining questions
+### Assumptions and remaining release evidence
 
-- The archived session experience plan is the authoritative evidence that the
-  reuse prerequisite reached Review PASS; the earlier real-scenario token-key
-  defect is fixed in current source.
-- The approved prototype is presentation evidence, not runtime or cleanup
+- The approved prototype remains presentation evidence, not runtime or cleanup
   evidence.
-- No unresolved product choice blocks implementation. RC acceptance and a
-  possible session-alignment task remain separate future decisions.
+- Runtime and cleanup claims require current compiled-binary synthetic and
+  isolated-real-state acceptance plus exact-state CEv1 and aggregate evidence.
+- No unresolved product choice blocks the delivered interaction contract.

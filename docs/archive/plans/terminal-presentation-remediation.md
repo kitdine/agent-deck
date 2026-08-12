@@ -1,6 +1,7 @@
 ---
-status: active
+status: historical
 created: 2026-08-11
+retired: 2026-08-12
 ---
 
 # Terminal Presentation Remediation
@@ -34,8 +35,8 @@ Current baseline:
 | `session-show-activity-presentation` | Isolated review commit `1f026a3cada47dcd9493781a44cba263e0040480`, tree `af31e270b6e639af8302bf241e6c1d6cf782332b`; signed and not pushed | Completed — Reset Round R3 Review PASS, targeted tests PASS, CEv1 VERIFIED |
 | `interactive-detail-language` | Full Reset repair candidate on the isolated review branch; exact tree recorded by CEv1 | Completed — independent Full Reset Review R1 and Full Reset Re-reviews R1-R2 closed every finding; targeted tests PASS; CEv1 VERIFIED |
 | `usage-interactive-detail` | Full Reset repair candidate on the isolated review branch; exact tree recorded by CEv1 | Completed — independent Full Reset Review R1 and Full Reset Re-reviews R1-R3 closed every finding; targeted unit, PTY, and race tests PASS; CEv1 VERIFIED |
-| `session-interactive-responsive-layout` | Post-PASS PTY harness repair candidate on the isolated review branch | Post-PASS Full Reset Review R3 FAIL repaired; Full Reset Re-review R4 PASS; atomic commit and commit-bound CEv1 pending |
-| `terminal-contract-and-acceptance` | Living contracts and compiled-current-candidate acceptance recorded on the isolated review branch | Acceptance remains recorded, but Task 5 is paused for rebind and complete re-review after Task 4's new commit |
+| `session-interactive-responsive-layout` | Signed repair commit `e4174af1175dae17eb71517bb51ef118ede84a7f`, tree `ba99579614ae834aa6ea4dbf07fac8c3442007d7` | Completed — Post-PASS Full Reset Review R3 FAIL repaired; Full Reset Re-review R4 PASS; commit-bound CEv1 VERIFIED |
+| `terminal-contract-and-acceptance` | Archived living-contract and compiled-current-candidate acceptance closure | Completed — Full Re-review R5, Acceptance, L4, archival lifecycle, and candidate CEv1 VERIFIED |
 
 `origin/main` remains `5afc0a1` (`v0.4.0-rc.3`); local `main` is currently
 `bbbe5be`. These identifiers describe the planning baseline only. Execution must
@@ -591,8 +592,8 @@ repair set, one complete re-review, and one commit checkpoint at a time.
 | `session-show-activity-presentation` | Completed — Reset Round R3 Review PASS; CEv1 VERIFIED | [x] | [x] | [x] | N/A |
 | `interactive-detail-language` | Completed — Full Reset Re-review R2 PASS; CEv1 VERIFIED | [x] | [x] | [x] | N/A |
 | `usage-interactive-detail` | Completed — Full Reset Re-review R3 PASS; CEv1 VERIFIED | [x] | [x] | [x] | N/A |
-| `session-interactive-responsive-layout` | In progress — post-PASS Full Reset Re-review R4 PASS; commit/CEv1 pending | [x] | [x] | [x] | N/A |
-| `terminal-contract-and-acceptance` | Paused — Acceptance PASS; rebind/re-review required after Task 4 commit | [x] | [ ] | [ ] | [x] |
+| `session-interactive-responsive-layout` | Completed — post-PASS Full Reset Re-review R4 PASS; CEv1 VERIFIED | [x] | [x] | [x] | N/A |
+| `terminal-contract-and-acceptance` | Completed — R5/Acceptance/L4 and archival candidate CEv1 VERIFIED | [x] | [x] | [x] | [x] |
 
 For Tasks 2-3, checked `Dev` means only that an imported development payload
 exists; it does not certify correctness. For Task 4 it means only that a

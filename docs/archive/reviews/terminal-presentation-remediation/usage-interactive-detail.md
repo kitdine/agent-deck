@@ -1,7 +1,8 @@
 ---
-status: active
+status: historical
 plan: terminal-presentation-remediation
 task: usage-interactive-detail
+retired: 2026-08-12
 ---
 
 # Review: Usage Interactive Detail

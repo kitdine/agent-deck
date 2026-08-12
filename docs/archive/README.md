@@ -5,7 +5,32 @@ created: 2026-07-22
 
 # Archived Documents
 
-Last updated: 2026-08-11
+Last updated: 2026-08-12
+
+## 2026-08-12 retirement: terminal presentation remediation
+
+`plans/terminal-presentation-remediation.md` and
+`reviews/terminal-presentation-remediation/` retired together after all five
+tasks completed fresh independent review and exact-state CEv1 gates. The work
+delivered responsive labeled `session show --activity`, structured semantic
+Usage and Session Detail, bounded responsive Session browser/viewer geometry,
+height-derived acquisition, stable resize identity, and complete interactive
+terminal lifecycle behavior. Living contracts remain in
+`docs/specs/2026-08-06-terminal-rendering-design.md`,
+`docs/specs/2026-08-07-usage-interactive-viewer-design.md`, and
+`docs/specs/cli-manual.md`.
+
+Final acceptance used a compiled current binary across synthetic isolated state
+and isolated copies of approved real state, covering narrow through wide
+geometries, color/no-color, live resize, browser/detail return, direct detail,
+all documented exits and cleanup, JSON invariance, privacy, and source/database
+hash invariance. The first aggregate L4 attempt exposed a `TERM=dumb` PTY test
+harness hang; Task 4 was reopened, repaired without changing product behavior,
+fully re-reviewed, signed, and commit-bound CEv1 VERIFIED before the complete
+`release-verify` gate passed. Retirement closes the development plan only;
+same-SHA preflight, RC publication, Homebrew distribution, and installation are
+subsequent authorized delivery stages, not evidence that publication already
+occurred.
 
 ## Why this directory exists
 
