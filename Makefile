@@ -1,6 +1,7 @@
 GO ?= go
 GOCACHE ?= /private/tmp/agent-deck-go-build
 GOMODCACHE ?= /private/tmp/agent-deck-go-mod
+GO_TEST_RUNNER := scripts/run-go-test.sh
 DIST_DIR ?= dist
 PACKAGE := ./cmd/agentdeck
 ARM64_MAX_BYTES ?= 26214400
@@ -22,7 +23,7 @@ FORCE ?= 0
 COMPLETION_SHELL ?= auto
 COMPLETION_RC ?=
 
-.PHONY: build build-all release-tag release-archive check-arm64-size check-install check-privacy check-release-distribution install uninstall release-verify clean test test-race vet verify prices-regen check-prices-reproducible
+.PHONY: build build-all release-tag release-archive check-arm64-size check-go-test-runner check-install check-privacy check-release-distribution install uninstall release-verify clean test test-race vet verify prices-regen check-prices-reproducible
 
 .PHONY: release-artifact-verify
 
@@ -54,10 +55,13 @@ check-arm64-size: build-all
 	test $$(wc -c < $(DIST_DIR)/agentdeck_darwin_arm64) -le $(ARM64_MAX_BYTES)
 
 test:
-	env GOCACHE=$(GOCACHE) $(GO) test -mod=vendor -count=1 ./...
+	env GOCACHE=$(GOCACHE) GO_TEST_BIN=$(GO) $(GO_TEST_RUNNER) ./...
 
 test-race:
-	env GOCACHE=$(GOCACHE) $(GO) test -mod=vendor -race -count=1 ./...
+	env GOCACHE=$(GOCACHE) GO_TEST_BIN=$(GO) $(GO_TEST_RUNNER) -race ./...
+
+check-go-test-runner:
+	bash scripts/test-run-go-test.sh
 
 vet:
 	env GOCACHE=$(GOCACHE) $(GO) vet -mod=vendor ./...
@@ -75,7 +79,7 @@ prices-regen:
 check-prices-reproducible:
 	env GOCACHE=$(GOCACHE) GOMODCACHE=$(GOMODCACHE) $(GO) run -mod=vendor ./tools/genprices -check
 
-verify: test test-race vet
+verify: check-go-test-runner test test-race vet
 
 install: build
 	@PREFIX="$(PREFIX)" BINDIR="$(BINDIR)" DATADIR="$(DATADIR)" FORCE="$(FORCE)" COMPLETION_SHELL="$(COMPLETION_SHELL)" COMPLETION_RC="$(COMPLETION_RC)" bash scripts/manage-install.sh install "$(DIST_DIR)/agentdeck"

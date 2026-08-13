@@ -228,14 +228,23 @@ download modules, set `GOMODCACHE=/private/tmp/agent-deck-go-mod` for that
 command rather than writing to the user Go module cache.
 
 ```bash
-rtk test env GOCACHE=/private/tmp/agent-deck-go-build go test -mod=vendor ./...
-rtk test env GOCACHE=/private/tmp/agent-deck-go-build go test -mod=vendor -race ./...
+rtk test scripts/run-go-test.sh ./...
+rtk test scripts/run-go-test.sh -race ./...
 rtk lint env GOCACHE=/private/tmp/agent-deck-go-build go vet -mod=vendor ./...
 rtk test env GOCACHE=/private/tmp/agent-deck-go-build GOOS=darwin GOARCH=arm64 go build -mod=vendor -trimpath ./cmd/agentdeck
 rtk test env GOCACHE=/private/tmp/agent-deck-go-build GOOS=darwin GOARCH=amd64 go build -mod=vendor -trimpath ./cmd/agentdeck
 rtk test make check-arm64-size
 rtk test make release-verify
 ```
+
+`scripts/run-go-test.sh` runs Go tests once with `-mod=vendor -count=1 -v`,
+captures combined stdout and stderr in a unique temporary log, preserves the Go
+test exit status, and prints both focused failure matches and the log tail on
+failure. It defaults `GOCACHE` to `/private/tmp/agent-deck-go-build`; pass normal
+`go test` arguments after the script name for a targeted package or `-run`
+selection. Use `AGENTDECK_GO_TEST_LOG` only when a stable task-specific log path
+is required. Set that path before a long run when the log may need inspection
+while the test process is still running.
 
 - Scale verification to the risk and blast radius of the change.
 - Select the smallest complete evidence set from this risk matrix:
@@ -287,6 +296,25 @@ For non-trivial reproducible failures:
 7. Rerun targeted and required full verification after the final change.
 
 Do not patch symptoms blindly or claim a root cause without evidence.
+
+For Go test failures and timeouts:
+
+- Use `scripts/run-go-test.sh` on the first potentially slow or diagnostic run
+  so the complete combined output and real exit status survive output filtering.
+- For a long run, set `AGENTDECK_GO_TEST_LOG` to a known task-specific path
+  before starting it; inspect that file while waiting instead of starting a
+  second test process.
+- Inspect the saved log before running any test again. Do not rerun merely to
+  add `-v`, search for `FAIL`, view the tail, or recover output hidden by a tool.
+- Before a rerun, state the unresolved question and the material change in
+  package scope, `-run` selection, timeout, environment, instrumentation, or
+  content that will answer it. If neither changed, reuse the saved evidence.
+- Treat a timeout as a request to inspect the goroutine dump, blocked source
+  line, channel or PTY wait, expected output marker, and environment. Do not
+  increase sleeps or timeouts unless evidence shows forward progress is merely
+  slower than the current bound.
+- Stop after two failed attempts in the same diagnostic approach family and
+  reassess the hypothesis before issuing another Go test command.
 
 ## Commit and Push Rules / 提交与推送规则
 
