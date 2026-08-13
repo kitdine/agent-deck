@@ -165,5 +165,6 @@ func usageSessionSecondaryColumns(value usage.SessionSummary) []usageAlignedColu
 		{label: "CACHE CREATE", value: strconv.FormatInt(value.Tokens["cache_creation_tokens"], 10)},
 		{label: "WRITE 5M", value: strconv.FormatInt(value.Tokens["cache_write_5m_tokens"], 10)},
 		{label: "WRITE 1H", value: strconv.FormatInt(value.Tokens["cache_write_1h_tokens"], 10)},
+		{label: "CACHE WRITE", value: strconv.FormatInt(value.Tokens["cache_write_tokens"], 10)},
 	}
 }

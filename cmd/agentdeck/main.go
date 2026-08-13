@@ -4277,6 +4277,7 @@ var usageTokenNames = []struct {
 	{key: "cache_creation_tokens", label: "cache create"},
 	{key: "cache_write_5m_tokens", label: "write 5m"},
 	{key: "cache_write_1h_tokens", label: "write 1h"},
+	{key: "cache_write_tokens", label: "cache write"},
 }
 
 func renderUsageMetricTable(w io.Writer, title string, rows [][]string) error {

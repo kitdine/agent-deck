@@ -303,6 +303,7 @@ func sessionViewerTokenComponents() []sessionViewerTokenComponent {
 		{key: "cache_creation_tokens", label: "CACHE CREATION TOKENS"},
 		{key: "cache_write_5m_tokens", label: "CACHE WRITE 5M TOKENS"},
 		{key: "cache_write_1h_tokens", label: "CACHE WRITE 1H TOKENS"},
+		{key: "cache_write_tokens", label: "CACHE WRITE TOKENS"},
 	}
 }
 

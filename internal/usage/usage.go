@@ -33,10 +33,13 @@ var bundledCatalog []byte
 const (
 	bundledCatalogSourceURL       = "bundled://agentdeck/model-prices.json"
 	legacyBundledCatalogSourceURL = "bundled://config/model-prices.json"
-	usageParserVersion            = 3
+	// usageParserVersion 4 adds Codex cache_write_input_tokens extraction; a
+	// source already scanned at version 3 must be re-read so cache_write_tokens
+	// backfills instead of staying at the migration default of 0.
+	usageParserVersion = 4
 )
 
-var tokenNames = []string{"input_tokens", "cached_input_tokens", "output_tokens", "cache_read_tokens", "cache_creation_tokens", "cache_write_5m_tokens", "cache_write_1h_tokens"}
+var tokenNames = []string{"input_tokens", "cached_input_tokens", "output_tokens", "cache_read_tokens", "cache_creation_tokens", "cache_write_5m_tokens", "cache_write_1h_tokens", "cache_write_tokens"}
 
 var errUsageSourceChanged = errors.New("usage source changed during inventory scan")
 
@@ -1124,13 +1127,14 @@ type parseState struct {
 
 func tokenUsage(value any) (map[string]int64, bool) {
 	raw, _ := value.(map[string]any)
-	if raw == nil || !validTokenFields(raw, "input_tokens", "cached_input_tokens", "output_tokens") {
+	if raw == nil || !validTokenFields(raw, "input_tokens", "cached_input_tokens", "output_tokens", "cache_write_input_tokens") {
 		return nil, false
 	}
 	return map[string]int64{
 		"input_tokens":        integer(raw["input_tokens"]),
 		"cached_input_tokens": integer(raw["cached_input_tokens"]),
 		"output_tokens":       integer(raw["output_tokens"]),
+		"cache_write_tokens":  integer(raw["cache_write_input_tokens"]),
 	}, true
 }
 
@@ -1148,7 +1152,7 @@ func codexUsageDelta(state *parseState, lastValue, totalValue any) (map[string]i
 	state.codexCumulative[state.session] = total
 	if previousOK {
 		delta := map[string]int64{}
-		for _, name := range []string{"input_tokens", "cached_input_tokens", "output_tokens"} {
+		for _, name := range []string{"input_tokens", "cached_input_tokens", "output_tokens", "cache_write_tokens"} {
 			if total[name] < previous[name] {
 				return last, lastOK
 			}
@@ -1221,7 +1225,7 @@ func parse(client string, v map[string]any, state *parseState, path string, offs
 		if !ok {
 			return Event{}, false
 		}
-		if u["input_tokens"] == 0 && u["cached_input_tokens"] == 0 && u["output_tokens"] == 0 {
+		if u["input_tokens"] == 0 && u["cached_input_tokens"] == 0 && u["output_tokens"] == 0 && u["cache_write_tokens"] == 0 {
 			return Event{}, true
 		}
 		timestamp := stringValue(v, "timestamp")
@@ -1259,8 +1263,8 @@ func upsertTx(ctx context.Context, tx *sql.Tx, e Event) (inserted, changed bool,
 	e.EventAt = at.UTC().Format(time.RFC3339Nano)
 	var existingPath, existingEventAt, existingModel string
 	var existingSourceIndexed int
-	var existingInput, existingCachedInput, existingOutput, existingCacheRead, existingCacheCreation, existingCacheWrite5m, existingCacheWrite1h int64
-	lookupErr := tx.QueryRowContext(ctx, `SELECT e.source_path,CASE WHEN f.path IS NULL THEN 0 ELSE 1 END,e.event_at,e.model,e.input_tokens,e.cached_input_tokens,e.output_tokens,e.cache_read_tokens,e.cache_creation_tokens,e.cache_write_5m_tokens,e.cache_write_1h_tokens FROM usage_events e LEFT JOIN usage_source_files f ON f.path=e.source_path WHERE e.event_key=?`, e.Key).Scan(&existingPath, &existingSourceIndexed, &existingEventAt, &existingModel, &existingInput, &existingCachedInput, &existingOutput, &existingCacheRead, &existingCacheCreation, &existingCacheWrite5m, &existingCacheWrite1h)
+	var existingInput, existingCachedInput, existingOutput, existingCacheRead, existingCacheCreation, existingCacheWrite5m, existingCacheWrite1h, existingCacheWrite int64
+	lookupErr := tx.QueryRowContext(ctx, `SELECT e.source_path,CASE WHEN f.path IS NULL THEN 0 ELSE 1 END,e.event_at,e.model,e.input_tokens,e.cached_input_tokens,e.output_tokens,e.cache_read_tokens,e.cache_creation_tokens,e.cache_write_5m_tokens,e.cache_write_1h_tokens,e.cache_write_tokens FROM usage_events e LEFT JOIN usage_source_files f ON f.path=e.source_path WHERE e.event_key=?`, e.Key).Scan(&existingPath, &existingSourceIndexed, &existingEventAt, &existingModel, &existingInput, &existingCachedInput, &existingOutput, &existingCacheRead, &existingCacheCreation, &existingCacheWrite5m, &existingCacheWrite1h, &existingCacheWrite)
 	exists := lookupErr == nil
 	if lookupErr != nil && !errors.Is(lookupErr, sql.ErrNoRows) {
 		return false, false, lookupErr
@@ -1268,9 +1272,9 @@ func upsertTx(ctx context.Context, tx *sql.Tx, e Event) (inserted, changed bool,
 	if exists && existingSourceIndexed == 1 && existingPath > e.SourcePath {
 		return false, false, nil
 	}
-	vals := []any{e.Key, e.Client, e.SessionID, e.EventID, e.EventAt, e.Model, e.Tokens["input_tokens"], e.Tokens["cached_input_tokens"], e.Tokens["output_tokens"], e.Tokens["cache_read_tokens"], e.Tokens["cache_creation_tokens"], e.Tokens["cache_write_5m_tokens"], e.Tokens["cache_write_1h_tokens"], e.SourcePath, e.SourceOffset}
-	_, err = tx.ExecContext(ctx, `INSERT INTO usage_events(event_key,client,session_id,event_id,event_at,model,input_tokens,cached_input_tokens,output_tokens,cache_read_tokens,cache_creation_tokens,cache_write_5m_tokens,cache_write_1h_tokens,source_path,source_offset)VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(event_key) DO UPDATE SET event_at=excluded.event_at,model=excluded.model,input_tokens=excluded.input_tokens,cached_input_tokens=excluded.cached_input_tokens,output_tokens=excluded.output_tokens,cache_read_tokens=excluded.cache_read_tokens,cache_creation_tokens=excluded.cache_creation_tokens,cache_write_5m_tokens=excluded.cache_write_5m_tokens,cache_write_1h_tokens=excluded.cache_write_1h_tokens,source_path=excluded.source_path,source_offset=excluded.source_offset`, vals...)
-	logicalChanged := !exists || existingEventAt != e.EventAt || existingModel != e.Model || existingInput != e.Tokens["input_tokens"] || existingCachedInput != e.Tokens["cached_input_tokens"] || existingOutput != e.Tokens["output_tokens"] || existingCacheRead != e.Tokens["cache_read_tokens"] || existingCacheCreation != e.Tokens["cache_creation_tokens"] || existingCacheWrite5m != e.Tokens["cache_write_5m_tokens"] || existingCacheWrite1h != e.Tokens["cache_write_1h_tokens"]
+	vals := []any{e.Key, e.Client, e.SessionID, e.EventID, e.EventAt, e.Model, e.Tokens["input_tokens"], e.Tokens["cached_input_tokens"], e.Tokens["output_tokens"], e.Tokens["cache_read_tokens"], e.Tokens["cache_creation_tokens"], e.Tokens["cache_write_5m_tokens"], e.Tokens["cache_write_1h_tokens"], e.Tokens["cache_write_tokens"], e.SourcePath, e.SourceOffset}
+	_, err = tx.ExecContext(ctx, `INSERT INTO usage_events(event_key,client,session_id,event_id,event_at,model,input_tokens,cached_input_tokens,output_tokens,cache_read_tokens,cache_creation_tokens,cache_write_5m_tokens,cache_write_1h_tokens,cache_write_tokens,source_path,source_offset)VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(event_key) DO UPDATE SET event_at=excluded.event_at,model=excluded.model,input_tokens=excluded.input_tokens,cached_input_tokens=excluded.cached_input_tokens,output_tokens=excluded.output_tokens,cache_read_tokens=excluded.cache_read_tokens,cache_creation_tokens=excluded.cache_creation_tokens,cache_write_5m_tokens=excluded.cache_write_5m_tokens,cache_write_1h_tokens=excluded.cache_write_1h_tokens,cache_write_tokens=excluded.cache_write_tokens,source_path=excluded.source_path,source_offset=excluded.source_offset`, vals...)
+	logicalChanged := !exists || existingEventAt != e.EventAt || existingModel != e.Model || existingInput != e.Tokens["input_tokens"] || existingCachedInput != e.Tokens["cached_input_tokens"] || existingOutput != e.Tokens["output_tokens"] || existingCacheRead != e.Tokens["cache_read_tokens"] || existingCacheCreation != e.Tokens["cache_creation_tokens"] || existingCacheWrite5m != e.Tokens["cache_write_5m_tokens"] || existingCacheWrite1h != e.Tokens["cache_write_1h_tokens"] || existingCacheWrite != e.Tokens["cache_write_tokens"]
 	return !exists, err == nil && logicalChanged, err
 }
 
@@ -2208,6 +2212,7 @@ func (a *statsAccumulator) add(event storedEvent, result Result) error {
 	a.output += event.Tokens["output_tokens"]
 	if event.Client == "codex" {
 		a.cachedRead += event.Tokens["cached_input_tokens"]
+		a.cacheWrite += event.Tokens["cache_write_tokens"]
 	} else {
 		a.cachedRead += event.Tokens["cache_read_tokens"]
 		cacheWrite := event.Tokens["cache_write_5m_tokens"] + event.Tokens["cache_write_1h_tokens"]
@@ -3021,7 +3026,7 @@ func (s *Service) Sessions(ctx context.Context) ([]SessionSummary, error) {
 	return out, nil
 }
 func (s *Service) events(ctx context.Context, client, session string) ([]storedEvent, error) {
-	q := `SELECT e.event_key,e.client,e.session_id,e.event_id,e.event_at,e.model,e.input_tokens,e.cached_input_tokens,e.output_tokens,e.cache_read_tokens,e.cache_creation_tokens,e.cache_write_5m_tokens,e.cache_write_1h_tokens,e.source_path,e.source_offset,COALESCE(b.run_id,e.run_id),r.exact,r.multiplier,r.provider,r.started_at,us.first_at FROM usage_events e LEFT JOIN usage_run_bindings b ON b.event_key=e.event_key LEFT JOIN usage_runs r ON r.id=COALESCE(b.run_id,e.run_id) LEFT JOIN usage_sessions us ON us.client=e.client AND us.session_id=e.session_id`
+	q := `SELECT e.event_key,e.client,e.session_id,e.event_id,e.event_at,e.model,e.input_tokens,e.cached_input_tokens,e.output_tokens,e.cache_read_tokens,e.cache_creation_tokens,e.cache_write_5m_tokens,e.cache_write_1h_tokens,e.cache_write_tokens,e.source_path,e.source_offset,COALESCE(b.run_id,e.run_id),r.exact,r.multiplier,r.provider,r.started_at,us.first_at FROM usage_events e LEFT JOIN usage_run_bindings b ON b.event_key=e.event_key LEFT JOIN usage_runs r ON r.id=COALESCE(b.run_id,e.run_id) LEFT JOIN usage_sessions us ON us.client=e.client AND us.session_id=e.session_id`
 	args := []any{}
 	where := []string{}
 	if client != "" {
@@ -3044,19 +3049,19 @@ func (s *Service) events(ctx context.Context, client, session string) ([]storedE
 	out := []storedEvent{}
 	for rows.Next() {
 		var e storedEvent
-		var in, cached, outTokens, read, creation, write5, write1 int64
-		err = rows.Scan(&e.Key, &e.Client, &e.SessionID, &e.EventID, &e.EventAt, &e.Model, &in, &cached, &outTokens, &read, &creation, &write5, &write1, &e.SourcePath, &e.SourceOffset, &e.runID, &e.runExact, &e.runMultiplier, &e.runProvider, &e.runStart, &e.sessionStart)
+		var in, cached, outTokens, read, creation, write5, write1, write int64
+		err = rows.Scan(&e.Key, &e.Client, &e.SessionID, &e.EventID, &e.EventAt, &e.Model, &in, &cached, &outTokens, &read, &creation, &write5, &write1, &write, &e.SourcePath, &e.SourceOffset, &e.runID, &e.runExact, &e.runMultiplier, &e.runProvider, &e.runStart, &e.sessionStart)
 		if err != nil {
 			return nil, err
 		}
-		e.Tokens = map[string]int64{"input_tokens": in, "cached_input_tokens": cached, "output_tokens": outTokens, "cache_read_tokens": read, "cache_creation_tokens": creation, "cache_write_5m_tokens": write5, "cache_write_1h_tokens": write1}
+		e.Tokens = map[string]int64{"input_tokens": in, "cached_input_tokens": cached, "output_tokens": outTokens, "cache_read_tokens": read, "cache_creation_tokens": creation, "cache_write_5m_tokens": write5, "cache_write_1h_tokens": write1, "cache_write_tokens": write}
 		out = append(out, e)
 	}
 	return out, rows.Err()
 }
 
 func (s *Service) eventsRange(ctx context.Context, from, to time.Time, client, model string) ([]storedEvent, error) {
-	query := `SELECT e.event_key,e.client,e.session_id,e.event_id,e.event_at,e.model,e.input_tokens,e.cached_input_tokens,e.output_tokens,e.cache_read_tokens,e.cache_creation_tokens,e.cache_write_5m_tokens,e.cache_write_1h_tokens,e.source_path,e.source_offset,COALESCE(b.run_id,e.run_id),r.exact,r.multiplier,r.provider,r.started_at,us.first_at FROM usage_events e LEFT JOIN usage_run_bindings b ON b.event_key=e.event_key LEFT JOIN usage_runs r ON r.id=COALESCE(b.run_id,e.run_id) LEFT JOIN usage_sessions us ON us.client=e.client AND us.session_id=e.session_id WHERE e.event_at>=? AND e.event_at<?`
+	query := `SELECT e.event_key,e.client,e.session_id,e.event_id,e.event_at,e.model,e.input_tokens,e.cached_input_tokens,e.output_tokens,e.cache_read_tokens,e.cache_creation_tokens,e.cache_write_5m_tokens,e.cache_write_1h_tokens,e.cache_write_tokens,e.source_path,e.source_offset,COALESCE(b.run_id,e.run_id),r.exact,r.multiplier,r.provider,r.started_at,us.first_at FROM usage_events e LEFT JOIN usage_run_bindings b ON b.event_key=e.event_key LEFT JOIN usage_runs r ON r.id=COALESCE(b.run_id,e.run_id) LEFT JOIN usage_sessions us ON us.client=e.client AND us.session_id=e.session_id WHERE e.event_at>=? AND e.event_at<?`
 	args := []any{from.UTC().Format(time.RFC3339Nano), to.UTC().Format(time.RFC3339Nano)}
 	if client != "" {
 		query += ` AND e.client=?`
@@ -3075,11 +3080,11 @@ func (s *Service) eventsRange(ctx context.Context, from, to time.Time, client, m
 	out := []storedEvent{}
 	for rows.Next() {
 		var event storedEvent
-		var input, cached, output, read, creation, write5, write1 int64
-		if err = rows.Scan(&event.Key, &event.Client, &event.SessionID, &event.EventID, &event.EventAt, &event.Model, &input, &cached, &output, &read, &creation, &write5, &write1, &event.SourcePath, &event.SourceOffset, &event.runID, &event.runExact, &event.runMultiplier, &event.runProvider, &event.runStart, &event.sessionStart); err != nil {
+		var input, cached, output, read, creation, write5, write1, write int64
+		if err = rows.Scan(&event.Key, &event.Client, &event.SessionID, &event.EventID, &event.EventAt, &event.Model, &input, &cached, &output, &read, &creation, &write5, &write1, &write, &event.SourcePath, &event.SourceOffset, &event.runID, &event.runExact, &event.runMultiplier, &event.runProvider, &event.runStart, &event.sessionStart); err != nil {
 			return nil, err
 		}
-		event.Tokens = map[string]int64{"input_tokens": input, "cached_input_tokens": cached, "output_tokens": output, "cache_read_tokens": read, "cache_creation_tokens": creation, "cache_write_5m_tokens": write5, "cache_write_1h_tokens": write1}
+		event.Tokens = map[string]int64{"input_tokens": input, "cached_input_tokens": cached, "output_tokens": output, "cache_read_tokens": read, "cache_creation_tokens": creation, "cache_write_5m_tokens": write5, "cache_write_1h_tokens": write1, "cache_write_tokens": write}
 		out = append(out, event)
 	}
 	return out, rows.Err()

@@ -157,7 +157,7 @@ func (s *Service) sessionInvocationCount(ctx context.Context, client, sessionID 
 }
 
 func (s *Service) sessionInvocationEventsPage(ctx context.Context, client, sessionID string, limit, offset int) ([]storedEvent, error) {
-	rows, err := s.Store.DB.QueryContext(ctx, `SELECT e.event_key,e.client,e.session_id,e.event_id,e.event_at,e.model,e.input_tokens,e.cached_input_tokens,e.output_tokens,e.cache_read_tokens,e.cache_creation_tokens,e.cache_write_5m_tokens,e.cache_write_1h_tokens,e.source_path,e.source_offset,COALESCE(b.run_id,e.run_id),r.exact,r.multiplier,r.provider,r.started_at,us.first_at FROM usage_events e LEFT JOIN usage_run_bindings b ON b.event_key=e.event_key LEFT JOIN usage_runs r ON r.id=COALESCE(b.run_id,e.run_id) LEFT JOIN usage_sessions us ON us.client=e.client AND us.session_id=e.session_id WHERE e.client=? AND e.session_id=? ORDER BY e.event_at,e.event_key LIMIT ? OFFSET ?`, client, sessionID, limit, offset)
+	rows, err := s.Store.DB.QueryContext(ctx, `SELECT e.event_key,e.client,e.session_id,e.event_id,e.event_at,e.model,e.input_tokens,e.cached_input_tokens,e.output_tokens,e.cache_read_tokens,e.cache_creation_tokens,e.cache_write_5m_tokens,e.cache_write_1h_tokens,e.cache_write_tokens,e.source_path,e.source_offset,COALESCE(b.run_id,e.run_id),r.exact,r.multiplier,r.provider,r.started_at,us.first_at FROM usage_events e LEFT JOIN usage_run_bindings b ON b.event_key=e.event_key LEFT JOIN usage_runs r ON r.id=COALESCE(b.run_id,e.run_id) LEFT JOIN usage_sessions us ON us.client=e.client AND us.session_id=e.session_id WHERE e.client=? AND e.session_id=? ORDER BY e.event_at,e.event_key LIMIT ? OFFSET ?`, client, sessionID, limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -165,8 +165,8 @@ func (s *Service) sessionInvocationEventsPage(ctx context.Context, client, sessi
 	out := make([]storedEvent, 0, limit)
 	for rows.Next() {
 		var event storedEvent
-		var input, cachedInput, output, cacheRead, cacheCreation, cacheWrite5m, cacheWrite1h int64
-		if err := rows.Scan(&event.Key, &event.Client, &event.SessionID, &event.EventID, &event.EventAt, &event.Model, &input, &cachedInput, &output, &cacheRead, &cacheCreation, &cacheWrite5m, &cacheWrite1h, &event.SourcePath, &event.SourceOffset, &event.runID, &event.runExact, &event.runMultiplier, &event.runProvider, &event.runStart, &event.sessionStart); err != nil {
+		var input, cachedInput, output, cacheRead, cacheCreation, cacheWrite5m, cacheWrite1h, cacheWrite int64
+		if err := rows.Scan(&event.Key, &event.Client, &event.SessionID, &event.EventID, &event.EventAt, &event.Model, &input, &cachedInput, &output, &cacheRead, &cacheCreation, &cacheWrite5m, &cacheWrite1h, &cacheWrite, &event.SourcePath, &event.SourceOffset, &event.runID, &event.runExact, &event.runMultiplier, &event.runProvider, &event.runStart, &event.sessionStart); err != nil {
 			return nil, err
 		}
 		event.Tokens = map[string]int64{
@@ -177,6 +177,7 @@ func (s *Service) sessionInvocationEventsPage(ctx context.Context, client, sessi
 			"cache_creation_tokens": cacheCreation,
 			"cache_write_5m_tokens": cacheWrite5m,
 			"cache_write_1h_tokens": cacheWrite1h,
+			"cache_write_tokens":    cacheWrite,
 		}
 		out = append(out, event)
 	}

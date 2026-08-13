@@ -372,11 +372,12 @@ func sessionShowUsageLines(value usage.SessionSummary, hasInvocations bool, widt
 		groupedInt(value.Tokens["cached_input_tokens"]),
 		groupedInt(value.Tokens["output_tokens"]),
 	)
-	cache := fmt.Sprintf("read %s · create %s · write 5m %s · write 1h %s",
+	cache := fmt.Sprintf("read %s · create %s · write 5m %s · write 1h %s · cache write %s",
 		groupedInt(value.Tokens["cache_read_tokens"]),
 		groupedInt(value.Tokens["cache_creation_tokens"]),
 		groupedInt(value.Tokens["cache_write_5m_tokens"]),
 		groupedInt(value.Tokens["cache_write_1h_tokens"]),
+		groupedInt(value.Tokens["cache_write_tokens"]),
 	)
 	catalogCost := sessionCostText(value.CatalogBaseCost, value.KnownCatalogBaseCost)
 	providerCost := sessionCostText(value.ProviderCost, value.KnownProviderCost)
@@ -413,11 +414,12 @@ func sessionShowInvocationLines(values []usage.SessionInvocation, width int) []s
 			groupedInt(value.Tokens["output_tokens"]),
 		), width)...)
 		lines = append(lines, sessionShowFieldLines("CACHE TOKENS", fmt.Sprintf(
-			"read %s · create %s · write 5m %s · write 1h %s",
+			"read %s · create %s · write 5m %s · write 1h %s · cache write %s",
 			groupedInt(value.Tokens["cache_read_tokens"]),
 			groupedInt(value.Tokens["cache_creation_tokens"]),
 			groupedInt(value.Tokens["cache_write_5m_tokens"]),
 			groupedInt(value.Tokens["cache_write_1h_tokens"]),
+			groupedInt(value.Tokens["cache_write_tokens"]),
 		), width)...)
 		lines = append(lines, sessionShowFieldLines("CATALOG COST", sessionShowInvocationCost(value.CatalogBaseCost, value.KnownCatalogBaseCost, value.Unpriced), width)...)
 		lines = append(lines, sessionShowFieldLines("PROVIDER COST", sessionShowInvocationCost(value.ProviderCost, value.KnownProviderCost, value.Unpriced), width)...)

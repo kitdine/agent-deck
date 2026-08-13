@@ -1232,6 +1232,34 @@ func TestUsageStatsColorUsesBrightSemanticRolesWithoutChangingText(t *testing.T)
 	}
 }
 
+// TestUsageStatsDetailRowsDistinguishLabelFromValue locks in that the
+// TOKENS/COST/STATUS/SESSIONS detail row dims its labels and colors its
+// values distinctly, instead of the whole row sharing one flat dim style
+// that made "STATUS PRICED SESSIONS" read as one run of plain text.
+func TestUsageStatsDetailRowsDistinguishLabelFromValue(t *testing.T) {
+	report := usageStatsTextFixture()
+	var colored bytes.Buffer
+	if err := renderUsageStatsWithOptions(&colored, report, usageTextRenderOptions{width: 100, color: true}); err != nil {
+		t.Fatal(err)
+	}
+	text := colored.String()
+	for _, label := range []string{"TOKENS", "COST", "STATUS", "SESSIONS"} {
+		dimmed := "\x1b[2m" + label + "\x1b[0m"
+		if !strings.Contains(text, dimmed) {
+			t.Fatalf("detail label %q not dimmed separately from its value:\n%s", label, text)
+		}
+	}
+	if !strings.Contains(text, "\x1b[1;92mPRICED\x1b[0m") {
+		t.Fatalf("PRICED status missing its success color:\n%s", text)
+	}
+	if !strings.Contains(text, "\x1b[1;93mPARTIAL\x1b[0m") {
+		t.Fatalf("PARTIAL status missing its warning color:\n%s", text)
+	}
+	if !strings.Contains(text, "\x1b[1;93mUNPRICED\x1b[0m") {
+		t.Fatalf("UNPRICED status missing its warning color:\n%s", text)
+	}
+}
+
 func TestUsageStatsHourLabelsDistinguishDatesAndDSTFold(t *testing.T) {
 	report := usage.StatsReport{
 		Range:    usage.StatsRange{From: "2026-10-31T23:00:00-04:00", To: "2026-11-01T03:00:00-05:00"},

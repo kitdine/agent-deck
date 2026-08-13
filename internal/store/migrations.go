@@ -107,6 +107,13 @@ var migrations = []migration{
 		`CREATE TABLE IF NOT EXISTS usage_session_routes (id INTEGER PRIMARY KEY, client TEXT NOT NULL, session_id TEXT NOT NULL, observed_at TEXT NOT NULL, provider TEXT NOT NULL, multiplier TEXT NOT NULL, via_wrapper INTEGER NOT NULL DEFAULT 0, hook_event TEXT NOT NULL, source TEXT NOT NULL DEFAULT '', quality TEXT NOT NULL, semantic_key TEXT NOT NULL)`,
 		`CREATE INDEX IF NOT EXISTS usage_session_routes_lookup ON usage_session_routes(client,session_id,observed_at)`,
 	}},
+	// cache_write_tokens is Codex's own cache_write_input_tokens counter. It is
+	// a distinct column from Anthropic's cache_write_5m_tokens/cache_write_1h_tokens
+	// because Codex has no TTL tiering, and OpenAI does not price cache writes
+	// separately, so it is tracked for display only.
+	{version: 18, statements: []string{
+		`ALTER TABLE usage_events ADD COLUMN cache_write_tokens INTEGER NOT NULL DEFAULT 0`,
+	}},
 }
 
 func normalizeUsageEventTimes(ctx context.Context, tx *sql.Tx) error {

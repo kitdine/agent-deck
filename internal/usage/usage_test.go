@@ -223,6 +223,54 @@ func TestCodexScanKeepsEveryTokenCountInOneTurn(t *testing.T) {
 	}
 }
 
+// TestCodexScanCapturesCacheWriteInputTokens locks in that Codex's own
+// cache_write_input_tokens field (confirmed present in real ~/.codex session
+// logs) is parsed into usage_events.cache_write_tokens instead of being
+// silently dropped, and that its delta accumulates like the other counters
+// across a cumulative total_token_usage snapshot.
+func TestCodexScanCapturesCacheWriteInputTokens(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	home := filepath.Join(root, "home")
+	source := filepath.Join(home, ".codex", "sessions", "2026", "fixture.jsonl")
+	if err := os.MkdirAll(filepath.Dir(source), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	contents := `{"type":"session_meta","payload":{"session_id":"session"}}` + "\n" +
+		`{"type":"turn_context","payload":{"turn_id":"turn","model":"gpt-5.6-sol"}}` + "\n" +
+		`{"type":"event_msg","timestamp":"2026-07-20T00:00:01Z","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":10,"cached_input_tokens":4,"cache_write_input_tokens":2,"output_tokens":1},"total_token_usage":{"input_tokens":10,"cached_input_tokens":4,"cache_write_input_tokens":2,"output_tokens":1}}}}` + "\n" +
+		`{"type":"event_msg","timestamp":"2026-07-20T00:00:02Z","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":20,"cached_input_tokens":8,"cache_write_input_tokens":3,"output_tokens":2},"total_token_usage":{"input_tokens":30,"cached_input_tokens":12,"cache_write_input_tokens":5,"output_tokens":3}}}}` + "\n"
+	if err := os.WriteFile(source, []byte(contents), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	database, err := store.Open(ctx, filepath.Join(root, "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	result, err := New(database, home).Scan(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result["imported"] != 2 {
+		t.Fatalf("imported = %d, want 2", result["imported"])
+	}
+	var cacheWrite int64
+	if err = database.DB.QueryRowContext(ctx, `SELECT SUM(cache_write_tokens) FROM usage_events WHERE client='codex' AND session_id='session'`).Scan(&cacheWrite); err != nil {
+		t.Fatal(err)
+	}
+	if cacheWrite != 5 {
+		t.Fatalf("cache_write_tokens sum = %d, want 5", cacheWrite)
+	}
+	report, err := New(database, home).Stats(ctx, StatsOptions{From: time.Date(2026, 7, 20, 0, 0, 0, 0, time.UTC), To: time.Date(2026, 7, 21, 0, 0, 0, 0, time.UTC), GroupBy: "day", Metric: "tokens", Location: time.UTC, Timezone: "UTC"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Models) != 1 || report.Models[0].Client != "codex" || report.Models[0].CacheWriteTokens != 5 {
+		t.Fatalf("codex model cache write = %#v", report.Models)
+	}
+}
+
 func TestCodexCumulativeUsageSurvivesAppendRestartResetAndArchiveCopy(t *testing.T) {
 	ctx := context.Background()
 	root := t.TempDir()
@@ -567,6 +615,59 @@ func TestUsageParserVersionRebuildsUnchangedSource(t *testing.T) {
 	wantProgress := []ScanProgress{{Total: 1, Reason: ParserVersionRereadReason}, {Processed: 1, Total: 1, Reason: ParserVersionRereadReason}}
 	if !reflect.DeepEqual(progress.updates, wantProgress) {
 		t.Fatalf("parser-version progress=%#v want=%#v", progress.updates, wantProgress)
+	}
+}
+
+// TestUsageParserVersionUpgradeBackfillsCodexCacheWriteTokens locks in that a
+// Codex source already indexed under the pre-cache-write parser version
+// (3) is re-read on upgrade, so cache_write_tokens backfills from the real
+// cache_write_input_tokens in the log instead of staying at the migration
+// default of 0 forever because the source "hasn't changed."
+func TestUsageParserVersionUpgradeBackfillsCodexCacheWriteTokens(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	home := filepath.Join(root, "home")
+	source := filepath.Join(home, ".codex", "sessions", "2026", "fixture.jsonl")
+	if err := os.MkdirAll(filepath.Dir(source), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	contents := `{"type":"session_meta","payload":{"session_id":"session"}}` + "\n" +
+		`{"type":"turn_context","payload":{"turn_id":"turn","model":"gpt-5.6-sol"}}` + "\n" +
+		`{"type":"event_msg","timestamp":"2026-07-20T00:00:01Z","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":10,"cached_input_tokens":4,"cache_write_input_tokens":2,"output_tokens":1}}}}` + "\n"
+	if err := os.WriteFile(source, []byte(contents), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	database, err := store.Open(ctx, filepath.Join(root, "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	service := New(database, home)
+	if _, err = service.Scan(ctx); err != nil {
+		t.Fatal(err)
+	}
+	// Simulate a source already indexed by the pre-upgrade parser: its
+	// cache_write_tokens is still the migration default, and its recorded
+	// parser_version predates the cache-write extraction.
+	if _, err = database.Exec(ctx, `UPDATE usage_events SET cache_write_tokens=0 WHERE client='codex' AND session_id='session'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = database.Exec(ctx, `UPDATE usage_source_files SET parser_version=3 WHERE path=?`, source); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = service.Scan(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var cacheWrite int64
+	var parserVersion int
+	if err = database.DB.QueryRowContext(ctx, `SELECT cache_write_tokens FROM usage_events WHERE client='codex' AND session_id='session'`).Scan(&cacheWrite); err != nil {
+		t.Fatal(err)
+	}
+	if err = database.DB.QueryRowContext(ctx, `SELECT parser_version FROM usage_source_files WHERE path=?`, source).Scan(&parserVersion); err != nil {
+		t.Fatal(err)
+	}
+	if cacheWrite != 2 || parserVersion != usageParserVersion {
+		t.Fatalf("cache_write_tokens=%d parser_version=%d, want cache_write_tokens=2 parser_version=%d", cacheWrite, parserVersion, usageParserVersion)
 	}
 }
 

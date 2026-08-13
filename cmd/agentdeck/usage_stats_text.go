@@ -272,7 +272,7 @@ func (r statsTextRenderer) rankingLines(width int) []string {
 	modelDetails := make([][]usageAlignedColumn, limit)
 	for index, model := range shownModels {
 		cost := compactCost(model.ProviderCost, model.KnownProviderCost, knownCostAvailable(model.ProviderCost, model.KnownProviderCost, model.Coverage))
-		modelDetails[index] = dimensionDetailColumns(compactNumber(float64(model.Tokens)), cost, modelPricingStatus(model), groupedInt(model.Sessions))
+		modelDetails[index] = r.dimensionDetailColumns(compactNumber(float64(model.Tokens)), cost, modelPricingStatus(model), groupedInt(model.Sessions))
 	}
 	usageAlignColumnRows(modelDetails)
 	nameWidth := min(23, max(14, width/2))
@@ -299,9 +299,7 @@ func (r statsTextRenderer) rankingLines(width int) []string {
 		if model.CacheHitRate != nil && (model.CachedReadTokens > 0 || model.CacheWriteTokens > 0) {
 			continuation = append(continuation, *model.CacheHitRate+"% hit")
 		}
-		for _, detailLine := range r.dimensionDetailLines(width, modelDetails[index], continuation...) {
-			lines = append(lines, r.style(detailLine, "2"))
-		}
+		lines = append(lines, r.dimensionDetailLines(width, modelDetails[index], continuation...)...)
 	}
 	if limit == 0 {
 		lines = append(lines, r.style("No models in this range.", "2"))
@@ -320,7 +318,7 @@ func (r statsTextRenderer) rankingLines(width int) []string {
 	clientDetails := make([][]usageAlignedColumn, len(r.report.Clients))
 	for index, client := range r.report.Clients {
 		cost := compactCost(client.ProviderCost, client.KnownProviderCost, knownCostAvailable(client.ProviderCost, client.KnownProviderCost, client.Coverage))
-		clientDetails[index] = dimensionDetailColumns(compactNumber(float64(client.Tokens)), cost, modelPricingStatus(client), groupedInt(client.Sessions))
+		clientDetails[index] = r.dimensionDetailColumns(compactNumber(float64(client.Tokens)), cost, modelPricingStatus(client), groupedInt(client.Sessions))
 	}
 	usageAlignColumnRows(clientDetails)
 	for index, client := range r.report.Clients {
@@ -350,9 +348,7 @@ func (r statsTextRenderer) rankingLines(width int) []string {
 		if client.CacheHitRate != nil && (client.CachedReadTokens > 0 || client.CacheWriteTokens > 0) {
 			continuation = append(continuation, *client.CacheHitRate+"% hit")
 		}
-		for _, detailLine := range r.dimensionDetailLines(width, clientDetails[index], continuation...) {
-			lines = append(lines, r.style(detailLine, "2"))
-		}
+		lines = append(lines, r.dimensionDetailLines(width, clientDetails[index], continuation...)...)
 	}
 	providerLabel := "PROVIDERS"
 	if r.report.Metric == "cost" {
@@ -368,7 +364,7 @@ func (r statsTextRenderer) rankingLines(width int) []string {
 	providerDetails := make([][]usageAlignedColumn, len(shownProviders))
 	for index, provider := range shownProviders {
 		cost := compactCost(provider.ProviderCost, provider.KnownProviderCost, knownCostAvailable(provider.ProviderCost, provider.KnownProviderCost, provider.Coverage))
-		providerDetails[index] = dimensionDetailColumns(compactNumber(float64(provider.Tokens)), cost, modelPricingStatus(provider), groupedInt(provider.Sessions))
+		providerDetails[index] = r.dimensionDetailColumns(compactNumber(float64(provider.Tokens)), cost, modelPricingStatus(provider), groupedInt(provider.Sessions))
 	}
 	usageAlignColumnRows(providerDetails)
 	for index, provider := range shownProviders {
@@ -404,9 +400,7 @@ func (r statsTextRenderer) rankingLines(width int) []string {
 		if provider.WrapperEvents > 0 {
 			continuation = append(continuation, groupedInt(provider.WrapperEvents)+" via wrapper")
 		}
-		for _, detailLine := range r.dimensionDetailLines(width, providerDetails[index], continuation...) {
-			lines = append(lines, r.style(detailLine, "2"))
-		}
+		lines = append(lines, r.dimensionDetailLines(width, providerDetails[index], continuation...)...)
 	}
 	if len(r.report.Providers) == 0 {
 		lines = append(lines, r.style("No providers in this range.", "2"))
@@ -450,8 +444,8 @@ func (r statsTextRenderer) cachePresentationLines(width int) []string {
 			label := fmt.Sprintf("MODEL %s/%s %s %s%%", statsTitle(model.Client), model.Name, r.barTrack(scaledBar(rate, 100, barWidth), barWidth, usageColorSuccess), *model.CacheHitRate)
 			modelLabels[index] = statsWrap(label, width)
 			modelDetails[index] = []usageAlignedColumn{
-				{label: "READ", value: compactNumber(float64(model.CachedReadTokens)), width: 6},
-				{label: "WRITE", value: compactNumber(float64(model.CacheWriteTokens)), width: 6},
+				{label: r.style("READ", "2"), value: r.style(compactNumber(float64(model.CachedReadTokens)), usageColorSuccess), width: 6},
+				{label: r.style("WRITE", "2"), value: r.style(compactNumber(float64(model.CacheWriteTokens)), usageColorWarning), width: 6},
 			}
 		}
 		usageAlignColumnRows(modelDetails)
@@ -461,9 +455,7 @@ func (r statsTextRenderer) cachePresentationLines(width int) []string {
 			if model.LogicalInputTokens > 0 {
 				continuation = append(continuation, "LOGICAL INPUT "+compactNumber(float64(model.LogicalInputTokens)))
 			}
-			for _, detailLine := range r.dimensionDetailLines(width, modelDetails[index], continuation...) {
-				lines = append(lines, r.style(detailLine, "2"))
-			}
+			lines = append(lines, r.dimensionDetailLines(width, modelDetails[index], continuation...)...)
 		}
 	}
 	lines = append(lines, r.topNFooterLine(len(cacheModels), len(shownCacheModels), "cache models")...)
@@ -643,20 +635,34 @@ func (r statsTextRenderer) barTrack(filled, width int, color string) string {
 	return r.textPrimitives().barTrack(filled, width, color)
 }
 
-func dimensionDetailColumns(tokens, cost, status, sessions string) []usageAlignedColumn {
+// dimensionDetailColumns builds the TOKENS/COST/STATUS/SESSIONS detail row.
+// Each label is dimmed and each value keeps its own semantic color so the
+// two are visually distinct instead of reading as one run of plain text.
+func (r statsTextRenderer) dimensionDetailColumns(tokens, cost, status, sessions string) []usageAlignedColumn {
 	return []usageAlignedColumn{
-		usageAlignedColumn{label: "TOKENS", value: tokens, width: 10},
-		usageAlignedColumn{label: "COST", value: cost, width: 12},
-		usageAlignedColumn{label: "STATUS", value: status, width: 9},
-		usageAlignedColumn{label: "SESSIONS", value: sessions, width: 6},
+		{label: r.style("TOKENS", "2"), value: r.style(tokens, usageColorToken), width: 10},
+		{label: r.style("COST", "2"), value: r.style(cost, usageColorCost), width: 12},
+		{label: r.style("STATUS", "2"), value: r.style(status, dimensionStatusColor(status)), width: 9},
+		{label: r.style("SESSIONS", "2"), value: r.style(sessions, usageColorSession), width: 6},
 	}
+}
+
+// dimensionStatusColor mirrors modelPricingStatus's three possible values.
+// UNPRICED is an ordinary, expected coverage state (not a system error), so
+// it stays on the same warning color as PARTIAL rather than error red, which
+// this report reserves for actual failures.
+func dimensionStatusColor(status string) string {
+	if status == "PRICED" {
+		return usageColorCost
+	}
+	return usageColorWarning
 }
 
 func (r statsTextRenderer) dimensionDetailLines(width int, columns []usageAlignedColumn, continuation ...string) []string {
 	lines := usageAlignedColumns(width, columns...)
 	for _, value := range continuation {
 		for _, line := range statsWrap("↳ "+value, width) {
-			lines = append(lines, line)
+			lines = append(lines, r.style(line, "2"))
 		}
 	}
 	return lines
