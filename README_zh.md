@@ -11,12 +11,11 @@ AgentDeck 面向需要使用多个 Codex 或 Claude provider 的开发者。它�
 数据源。内置 Codex
 `official` provider 复用 Codex 已有的 OpenAI 或 ChatGPT 登录状态。
 
-> **预发布状态：** Phase One 与 version/installation baseline 均已完成实现和独立
-> 评审；合并后的 Phase 9 CLI usability、multi-credential、usage/watch 增量修复与
-> Codex `official` provider baseline 也已完成实现、release verification 和独立复评。
-> Credential-owned provider configuration follow-up 的修复已完成实现、release
-> verification 和独立复评。统一 ASCII collection table 与机器绑定的 SQLite 加密凭证
-> 存储已经实现并通过 release verification，正在等待独立评审。
+> **稳定版本：** [`v0.4.0`](https://github.com/kitdine/agent-deck/releases/tag/v0.4.0)
+> 已发布 Darwin arm64 和 amd64 版本，对应 commit
+> `6b7663b51f22903445798dd7db637cbcaab1a422`。同 SHA preflight、release artifact、
+> 稳定版 Homebrew formula、formula test 以及 bash、zsh、fish completion 均已通过
+> 验证。当前开发状态见[文档索引](docs/README.md)。
 
 ```bash
 make build
@@ -90,9 +89,9 @@ brew install kitdine/tap/agentdeck
 agentdeck version
 ```
 
-当前 v0.1.0 formula 仍只安装 release binary。已准备并验证的 formula 更新会在
-Homebrew 标准目录下增加 bash、zsh、fish completion 脚本，但不会修改 shell rc
-文件。下方源码安装流程还支持由 AgentDeck 管理 rc 文件中的启用配置。
+当前稳定 formula 为 `v0.4.0`，安装 release binary，并在 Homebrew 标准目录下安装
+bash、zsh、fish completion 脚本，但不会修改 shell rc 文件。下方源码安装流程还支持
+由 AgentDeck 管理 rc 文件中的启用配置。
 
 ## 从源码安装
 
@@ -380,10 +379,10 @@ vendor/          已提交的 Go 依赖
 ## Release 分发
 
 版本化 GitHub Release 为 arm64 和 amd64 提供带 checksum 的 macOS 归档。
-`kitdine/tap/agentdeck` formula 安装这些不可变 artifact，而不是从持续变化的 Git
-分支构建。每个稳定版 release 都会验证渲染后的 formula 及 bash、zsh、fish
-completion，然后在 tap 仓库创建更新 PR。现有 v0.1.0 formula 将在 Homebrew-only
-迁移任务运行并合并 tap PR 后获得 completion 支持。
+稳定版 `kitdine/tap/agentdeck` 与可选的 `kitdine/tap/agentdeck-rc` formula 安装这些
+不可变 artifact，而不是从持续变化的 Git 分支构建。每个支持的稳定版或严格
+`vX.Y.Z-rc.N` release 都会验证渲染后的对应 formula、安装、formula test 以及
+bash、zsh、fish completion，并在 tap 仓库创建仅更新相应渠道 formula 的 PR。
 
 ## 参与贡献
 

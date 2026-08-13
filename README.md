@@ -12,15 +12,12 @@ live in SQLite, protected by a private machine-bound key file; client session
 logs remain read-only source data. The built-in Codex `official` provider uses
 Codex's existing OpenAI or ChatGPT login.
 
-> **Pre-release:** Phase One and the version/installation baseline have completed
-> implementation and independent review. The consolidated Phase 9 CLI usability,
-> multi-credential, incremental usage/watch, and Codex `official` provider
-> baseline have also passed implementation, release verification, and independent
-> re-review. Independent review of the credential-owned provider configuration
-> follow-up found issues; their remediation has passed implementation, release
-> verification, and independent re-review. Unified ASCII collection tables and
-> machine-bound encrypted SQLite credential storage are implemented,
-> release-verified, and awaiting independent review.
+> **Stable release:** [`v0.4.0`](https://github.com/kitdine/agent-deck/releases/tag/v0.4.0)
+> is published for Darwin arm64 and amd64 at commit
+> `6b7663b51f22903445798dd7db637cbcaab1a422`. Its same-SHA preflight,
+> release artifacts, stable Homebrew formula, formula test, and bash, zsh, and
+> fish completions passed verification. See the
+> [documentation index](docs/README.md) for current development status.
 
 ```bash
 make build
