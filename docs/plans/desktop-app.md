@@ -50,15 +50,18 @@ The accepted near-term release order is:
    desktop-facing session DTOs.
 2. `v0.5.0`: this plan — native menu-bar app, desktop widget, application
    package, Cask, direct download, signing, notarization, and release gates.
-3. `v0.6.0`: Skills and third-party Hooks lifecycle core, GUI management, and
-   thin deterministic CLI recovery/automation commands.
-4. `v0.7.0`: Plugins and MCP server lifecycle adapters and their GUI surfaces.
 
-The lifecycle releases use a Go domain engine with preview, plan, apply,
-ownership, drift detection, atomic mutation, rollback, and doctor behavior.
-The GUI is the primary interactive management surface; the CLI remains a thin
-non-interactive automation and recovery surface. The existing specialized
-`usage hook` lifecycle remains separate from arbitrary third-party Hooks.
+Releases after `v0.5.0` were re-planned on 2026-08-13 and are recorded in
+[the documentation index](../README.md#roadmap). This plan no longer defines
+them.
+
+The extension lifecycle direction previously recorded here — a Go domain engine
+with preview, plan, apply, ownership, drift detection, atomic mutation, and
+rollback, plus GUI management for Skills, Hooks, Plugins, and MCP servers — was
+withdrawn. Extension work is now bounded to cross-client observability, because
+each client already owns its own extension management surface while no tool
+reports the cross-client view. The specialized `usage hook` lifecycle remains
+separate from arbitrary third-party Hooks.
 
 ## Goals
 

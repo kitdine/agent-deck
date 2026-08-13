@@ -64,33 +64,68 @@ User-facing entry points are the [English README](../README.md) and
 [Chinese README](../README_zh.md). Repository-specific development and
 authorization rules live in [AGENTS.md](../AGENTS.md).
 
+## Roadmap
+
+Planned after `v0.5.0`. Re-planned on 2026-08-13; this table supersedes the
+release sequence previously recorded in the desktop plan. Each version has a
+Beads tracking epic and a blocked design task, and needs a bounded plan under
+`docs/plans/` before development starts. Version themes are commitments of
+sequence, not of scope detail.
+
+| Version | Theme | Scope |
+| --- | --- | --- |
+| `v0.6.0` | Cost truthfulness | Attribution timeline precision, billing-mode detection, Codex cache-write pricing, `codex-auto-review` fallback classification, `unpriced` disambiguation, layered cost presentation, budget rules, menu-bar alerting. |
+| `v0.7.0` | Subscription quota | Quota interface feasibility, in-app network quota lookup, allowance-window and reset modelling, quota alerting, automatic update download, prerelease channel selection. |
+| `v0.8.0` | Boundary consolidation and Linux | Versioned client adapter contract, Linux machine identity, de-darwin PTY tests, Linux CI matrix and release artifacts. |
+| `v0.9.0` | Observability completion | Extension enabled state, cross-client duplication and drift, source authenticity, structured session search filters, wrapper health probing, richer desktop session window. |
+| `v1.0.0` | Multi-device and trust | Device dimension, backup merge import, read-only aggregation views, CLI archive signing and notarization. |
+
+Direction decisions that shape this roadmap:
+
+- Client breadth stays at Codex and Claude. An explicit versioned client adapter
+  contract is extracted so a later out-of-process plugin model can add clients
+  externally; no third client is added in-tree.
+- Each machine remains its own authoritative store. Cross-device support is
+  read-only aggregation, never bidirectional synchronization.
+- Proactive behavior — alerting and scheduled evaluation — is hosted by the
+  menu-bar app. No daemon, LaunchAgent, or network listener is introduced, and
+  alert rules stay in Go.
+- The CLI targets macOS and Linux; the GUI stays macOS-only. Capability layering
+  is explicit rather than accidental.
+- Cost has three coexisting dimensions. Third-party API with a multiplier and
+  official API are real spend computed locally; official subscription is quota,
+  requires network access, and is therefore handled inside the app. Equivalent
+  API cost is retained as a reference baseline for every mode.
+- Extension work is bounded to cross-client observability. Each client already
+  owns its own management surface; no tool reports the cross-client view.
+
 ## Backlog
 
-These candidates have no approved implementation plan. Promote each into a
-bounded plan before development; do not expand an active plan opportunistically.
+These candidates have no approved implementation plan and no version. Promote
+each into a bounded plan before development; do not expand an active plan
+opportunistically. Candidates that now carry a version live in the Roadmap above.
 
-- [ ] Resolve `codex-auto-review` billing only when authoritative billing or
-  account evidence establishes how its independently reported tokens are charged.
-  See the [historical classification plan](archive/plans/codex-auto-review-classification.md).
-- [ ] Design native lifecycle management for Skills, Plugins, MCP servers, and
-  Hooks as separate ownership and security plans with preview, drift detection,
-  atomic mutation, rollback, source authenticity, dependency, credential, and
-  offline contracts.
-- [ ] Verify through observed requests whether the Claude app picks up
-  project-scoped `.claude/settings.local.json` without restart. Documentation
-  inference is insufficient; see the CLI manual's
-  [Project Attribution](specs/cli-manual.md#project-attribution) section.
 - [ ] Revisit ChatGPT app project attribution only if the app exposes a stable,
   reachable project configuration surface.
-- [ ] Design Claude subscription/account switching separately from API-provider
-  switching, including account, OAuth, credential, and security boundaries.
-- [ ] Design Codex and Claude Code subscription quota-cycle accounting. Read
-  plan identity, allowance windows, and reset timestamps only from
-  authoritative client or account surfaces; preserve each observed reset
-  rule change as a new exact time boundary; and attribute usage plus
-  equivalent cost to each resulting allowance period with explicit
-  coverage. Keep equivalent API cost distinct from the actual subscription
-  invoice unless authoritative billing data makes the latter observable.
+
+## Withdrawn Candidates
+
+Recorded so they are not rediscovered as gaps. Reopen only if the stated reason
+stops holding.
+
+- **Homebrew core submission.** Not important to this project; the personal tap
+  already serves stable and release-candidate channels.
+- **Claude subscription/account switching.** Technically reachable — the login
+  state is a single per-system-user macOS Keychain entry — but withdrawn: OAuth
+  refresh tokens rotate server-side so a saved snapshot silently expires and
+  cannot be validated offline, persisting another product's credential
+  contradicts this project's no-plaintext-credential rule, cross-application
+  Keychain access is hard to justify in the trust model, and a failed write
+  leaves the user unable to authenticate with no rollback path.
+- **Extension mutation lifecycle.** The preview/plan/apply/ownership/rollback
+  engine and its GUI, previously planned as two whole releases, chase each
+  client's evolving extension format and duplicate management surfaces the
+  clients already ship. Replaced by cross-client observability in `v0.9.0`.
 
 ## Known Residual Risk
 
