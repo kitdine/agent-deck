@@ -84,6 +84,13 @@ bounded plan before development; do not expand an active plan opportunistically.
   reachable project configuration surface.
 - [ ] Design Claude subscription/account switching separately from API-provider
   switching, including account, OAuth, credential, and security boundaries.
+- [ ] Design Codex and Claude Code subscription quota-cycle accounting. Read
+  plan identity, allowance windows, and reset timestamps only from
+  authoritative client or account surfaces; preserve each observed reset
+  rule change as a new exact time boundary; and attribute usage plus
+  equivalent cost to each resulting allowance period with explicit
+  coverage. Keep equivalent API cost distinct from the actual subscription
+  invoice unless authoritative billing data makes the latter observable.
 
 ## Known Residual Risk
 
