@@ -21,6 +21,11 @@ func TestSetupIsIdempotentAndRemoveRestoresUnrelatedBytesAndMode(t *testing.T) {
 	if err := os.WriteFile(path, original, 0o640); err != nil {
 		t.Fatal(err)
 	}
+	// os.WriteFile's mode is subject to the process umask, so force the exact
+	// permission the test asserts on regardless of the runner's umask.
+	if err := os.Chmod(path, 0o640); err != nil {
+		t.Fatal(err)
+	}
 	manager := New(Environment{Home: home, Invocation: Invocation{Shell: ShellZsh}})
 	request := Request{Shell: ShellZsh, RC: path}
 
