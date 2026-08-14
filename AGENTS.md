@@ -3,41 +3,6 @@
 This file defines the operating rules for AI agents working in this project.
 本文件定义 AI Agent 在本项目中的工作规则。
 
-Replace every project-specific placeholder before adopting this template. Remove optional
-sections that do not apply. Project-specific extensions belong in the final
-section and must not weaken the core safety and authorization rules.
-
-采用本模板前必须替换所有项目特有占位符。不适用的可选章节应直接删除。项目特有
-约定统一放在末尾扩展区，且不得削弱核心安全与授权规则。
-
-## RTK Command Policy / RTK 命令规范
-
-Always prefix shell commands with `rtk`. RTK reduces command output while
-preserving command behavior. If no specialized filter exists, it passes the
-command through unchanged.
-
-所有 shell 命令必须以 `rtk` 开头。RTK 只压缩命令输出，不改变命令行为；没有专用
-过滤器时会原样执行命令。
-
-```bash
-rtk git status
-rtk git diff
-rtk read <file>
-rtk grep <pattern> <path>
-rtk test <test-command>
-rtk lint <lint-command>
-rtk summary <command>
-```
-
-In command chains, prefix every segment:
-
-```bash
-rtk git add <files> && rtk git commit -m "<message>"
-```
-
-Use `rtk proxy <command>` when unfiltered output is required for debugging.
-Do not bypass RTK merely for convenience.
-
 ## Project Overview / 项目概览
 
 - Project name / 项目名称: `AgentDeck`
@@ -78,30 +43,6 @@ The workspace may contain one or more independent repositories:
 每个仓库都应视为独立的所有权和发布单元。未经明确要求，不得跨仓库扩散改动、调整
 边界或改造成 monorepo。
 
-## Repository Relationships / 仓库依赖关系
-
-Document cross-repository dependencies here:
-
-```text
-Not applicable: this repository has no cross-repository dependencies.
-```
-
-When a provider change must be consumed by another repository:
-
-1. Validate the provider independently.
-2. Obtain explicit authorization before committing, tagging, releasing, or
-   publishing it.
-3. Update the consumer to an immutable released version when the project
-   requires release-based dependencies.
-4. Refresh lockfiles, checksums, generated dependency metadata, or vendored
-   sources using the project's official commands.
-5. Validate the consumer without relying on undeclared local overrides.
-6. Keep provider behavior changes and consumer dependency updates in separate
-   commits unless the user explicitly requests otherwise.
-
-Do not commit temporary local dependency overrides unless the project explicitly
-defines them as permanent configuration.
-
 ## Scope and Authorization / 范围与授权
 
 - Do exactly what the user requested and keep all changes within that scope.
@@ -131,6 +72,26 @@ their declared scope.
   review, fix, re-review, and full-delivery workflow triggers.
 - `handoff-sync` is the primary authority for synchronizing handoff documents,
   repository state, requirement status, and other project status records.
+- The external Beads store is the primary authority for Agent task dispatch,
+  dependency readiness, atomic claims, leases, and cross-Agent handoff. It is
+  not a product-requirement, phase-status, review-verdict, evidence, Git, or
+  release authority. Read `.agent-instructions/beads.md` only when current work
+  requires Beads coordination, and resolve task IDs from live Beads state.
+
+The authorities use a single-writer model:
+
+- Repository plans, contracts, review records, and status documents own
+  requirements, phase state, and review verdicts.
+- CEv1 owns the evidence status of a named WorkUnit for one exact
+  `target_content_state`.
+- Beads owns dispatch, dependencies, claims, leases, and handoff. Its `closed`
+  state means no further coordination is pending; it is not a phase verdict or
+  evidence result.
+
+A Beads task and a CEv1 WorkUnit are different entity types and need not map
+one-to-one. Cross-system identifiers correlate records; do not mirror status
+or evidence between them. A Beads transition does not query or invalidate
+CEv1, and a CEv1 result does not create, claim, close, or reopen a Beads task.
 - When a request matches either skill, invoke it before optional generic
   workflows such as brainstorming, plan-writing, TDD orchestration, or
   branch-finishing.
@@ -145,37 +106,6 @@ their declared scope.
 
 项目定义的工作流技能在其适用范围内优先于通用可选流程，但不能覆盖用户当前指令，
 也不能覆盖系统或开发者级指令。
-
-## Workflow Skills and Authority / 工作流技能与权威边界
-
-Superpowers is opt-in and provides task-level discipline; it is not the global
-workflow authority for this project.
-
-- Never invoke `superpowers:using-superpowers`.
-- Do not apply the "1% applicability" rule.
-- Do not invoke `verification-before-completion` in this project. Its evidence
-  requirements are fully covered by the project verification matrix,
-  exact-content-state reuse rules, review workflows, and delivery checks.
-- Use `systematic-debugging` for non-trivial, reproducible technical failures
-  before proposing or implementing fixes.
-- Use `receiving-code-review` when evaluating review feedback, especially when
-  the feedback is ambiguous or technically questionable.
-- Use TDD, brainstorming, worktrees, branch-finishing, plan-writing, or
-  subagent-based workflows only when explicitly requested, required by
-  higher-priority instructions, or clearly justified by task scale and risk.
-- Do not create worktrees, branches, commits, pull requests, or materially
-  expand subagent usage without explicit user approval.
-- Do not introduce a second planning or project-state system when the project
-  already defines an authoritative one.
-- When GSD is active, GSD owns project state and plans. Superpowers may provide
-  implementation, debugging, review, and verification discipline, but must not
-  create or maintain a competing plan source.
-- User instructions and applicable project instructions take precedence over
-  optional skill workflows. System and developer instructions always retain
-  higher priority.
-
-Superpowers 默认不接管项目流程，仅在明确要求、上级指令要求，或任务规模与风险确有
-需要时使用。它可以补充实现与验证纪律，但不能建立竞争性的计划或状态来源。
 
 ## Standard Work Stages / 标准工作阶段
 
@@ -228,13 +158,13 @@ download modules, set `GOMODCACHE=/private/tmp/agent-deck-go-mod` for that
 command rather than writing to the user Go module cache.
 
 ```bash
-rtk test scripts/run-go-test.sh ./...
-rtk test scripts/run-go-test.sh -race ./...
-rtk lint env GOCACHE=/private/tmp/agent-deck-go-build go vet -mod=vendor ./...
-rtk test env GOCACHE=/private/tmp/agent-deck-go-build GOOS=darwin GOARCH=arm64 go build -mod=vendor -trimpath ./cmd/agentdeck
-rtk test env GOCACHE=/private/tmp/agent-deck-go-build GOOS=darwin GOARCH=amd64 go build -mod=vendor -trimpath ./cmd/agentdeck
-rtk test make check-arm64-size
-rtk test make release-verify
+scripts/run-go-test.sh ./...
+scripts/run-go-test.sh -race ./...
+env GOCACHE=/private/tmp/agent-deck-go-build go vet -mod=vendor ./...
+env GOCACHE=/private/tmp/agent-deck-go-build GOOS=darwin GOARCH=arm64 go build -mod=vendor -trimpath ./cmd/agentdeck
+env GOCACHE=/private/tmp/agent-deck-go-build GOOS=darwin GOARCH=amd64 go build -mod=vendor -trimpath ./cmd/agentdeck
+make check-arm64-size
+make release-verify
 ```
 
 `scripts/run-go-test.sh` runs Go tests once with `-mod=vendor -count=1 -v`,
@@ -280,7 +210,7 @@ while the test process is still running.
 - Remove generated caches and temporary artifacts before delivery:
 
 ```bash
-rtk proxy rm -rf bin/__pycache__
+rm -rf bin/__pycache__
 ```
 
 ## Failure Diagnosis / 故障诊断
@@ -390,9 +320,9 @@ checkpoint 点名的 task。
 - Stage only intended files. Before committing, inspect:
 
 ```bash
-rtk git diff --cached --stat
-rtk git diff --cached --name-only
-rtk git diff --cached
+git diff --cached --stat
+git diff --cached --name-only
+git diff --cached
 ```
 
 - When the staged tree is the exact tree already verified, committing does not
@@ -422,11 +352,9 @@ Dependency changes must be intentional and isolated.
 - Document the required commands:
 
 ```bash
-rtk proxy env GOCACHE=/private/tmp/agent-deck-go-build GOMODCACHE=/private/tmp/agent-deck-go-mod go mod tidy
-rtk proxy env GOCACHE=/private/tmp/agent-deck-go-build GOMODCACHE=/private/tmp/agent-deck-go-mod go mod vendor
+env GOCACHE=/private/tmp/agent-deck-go-build GOMODCACHE=/private/tmp/agent-deck-go-mod go mod tidy
+env GOCACHE=/private/tmp/agent-deck-go-build GOMODCACHE=/private/tmp/agent-deck-go-mod go mod vendor
 ```
-
-Delete this section if the project has no vendoring or dependency lock policy.
 
 ## Security and Sensitive Data / 安全与敏感数据
 
@@ -464,8 +392,6 @@ labeled as examples.
 项目已有的运行时注入方式。
 
 ## Runtime and Deployment Verification / 运行与部署验证
-
-Define project-specific runtime constraints here:
 
 - Runtime topology / 运行拓扑: One on-demand `agentdeck` binary uses
   `~/.agentdeck/agentdeck.sqlite3`, a machine-bound private
@@ -540,6 +466,8 @@ store.
   `docs/README.md`
 - Requirements source / 需求来源:
   `docs/specs/cli-design.md`
+- Agent task dispatch source / Agent 任务调度来源:
+  `/Users/jobshen/.local/state/agentdeck-beads/.beads`
 - Repository history / 仓库历史: `.` (`.git`)
 
 At the start of resumed work:
@@ -547,8 +475,11 @@ At the start of resumed work:
 1. Read this instruction file and the handoff pointer.
 2. Inspect status and recent history for every repository in scope.
 3. Read the relevant authoritative status, requirement, and contract documents.
-4. Verify drift-prone facts in the current environment.
-5. Do not rely only on prior chat summaries.
+4. When current work uses Beads coordination, inspect the matching task,
+   blockers, claim, and handoff comments using the wrapper documented in
+   `.agent-instructions/beads.md`.
+5. Verify drift-prone facts in the current environment.
+6. Do not rely only on prior chat summaries or Beads state.
 
 Use `handoff-sync` when the user requests status synchronization or when the
 project's documented hook or workflow requires it. Do not hand-edit generated or
@@ -582,13 +513,6 @@ known limitations, and rollback requirements. Publishing tags or releases always
 requires explicit authorization.
 
 ## Project-Specific Extensions / 项目扩展
-
-Add only rules that are truly specific to this project, such as domain safety,
-repository-specific commands, required trigger phrases, network restrictions,
-data handling, or release sequencing.
-
-仅在此处补充项目特有规则，例如领域安全边界、仓库专用命令、固定触发词、网络策略、
-数据处理要求或发布顺序。不要重复上文已经定义的通用规则。
 
 ### Verification Routing / 验证路由
 
@@ -645,90 +569,20 @@ re-review, commit, or push check.
 - Do not commit provider credentials, generated local configuration, or backups.
 - Do not alter unrelated Codex or Claude settings while switching providers.
 
-### Completion Evidence and Neo4j / 验收证据与 Neo4j
+### Completion Evidence and Project Memory / 验收证据与项目记忆
 
-AgentDeck opts into `completion-evidence/v1` whenever the current environment
-exposes a compatible provider or local store. The current Neo4j binding is
-capability-based: a Cypher read/write interface whose schema contains
-`CEv1Node` and `CEv1Relation` is a configured provider even when no tool is
-named `completion-evidence`.
+`completion-evidence/v1` is the authority for exact-content-state completion
+evidence; it is distinct from Beads coordination and a review verdict. When
+current work crosses a new Task, Plan, or Release completion boundary, or
+creates or invalidates relevant evidence, read
+`.agent-instructions/evidence.md`. Reuse unchanged exact-state evidence rather
+than querying mechanically.
 
-- Before using fallback evidence rules, probe available capabilities once per
-  repository session. When a Neo4j Cypher interface is available, inspect its
-  schema and treat the CEv1 labels above as provider discovery.
-- Use repository namespace `github.com/kitdine/agent-deck`. Never read, write,
-  merge, invalidate, or delete another repository's CEv1 records as part of an
-  AgentDeck workflow.
-- Before claiming a Task, Plan, or Release complete, query every newly crossed
-  WorkUnit boundary from inner to outer with its `work_unit_id` and exact
-  `target_content_state`.
-- If local verification creates new evidence or an impact assessment, record it
-  with idempotent CEv1 upserts and query the gate again. Only `VERIFIED` closes
-  the evidence gate; `NOT_VERIFIED`, `FAILED`, and `BLOCKED` keep the WorkUnit
-  open according to the development workflow contract.
-- Bind evidence to the exact content identity required by this repository's
-  evidence-reuse rules. Use the Git tree for committed content. For an
-  uncommitted review candidate, record HEAD plus the scoped blob or diff
-  fingerprint, then relate or re-record the immutable Git tree if an authorized
-  delivery later creates a commit.
-- Provider discovery and gate reads are read-only diagnostics. Idempotent CEv1
-  node and relationship upserts limited to this repository namespace are
-  standing workflow authority when they record evidence produced within the
-  already authorized phase. This authority does not permit schema changes,
-  deletions, arbitrary Cypher writes, or changes to evidence owned by another
-  repository.
-- Fallback is allowed only when no compatible provider or local store exists.
-  Report it explicitly as `COMPLETION_EVIDENCE_FALLBACK: <reason>`; never
-  silently degrade. A configured provider that is unreachable, rejects a
-  query, or lacks required write authority is `BLOCKED`, not absent.
-- CEv1 synchronization never grants commit, push, release, deployment, or
-  product-change authority. A Review `PASS` remains distinct from a
-  `VERIFIED` WorkUnit gate.
-
-### Neo4j Project Memory / Neo4j 项目记忆
-
-`neo4j-memory` is a non-authoritative, durable project-knowledge aid. It is a
-separate concern from `completion-evidence/v1`: project memory explains durable
-decisions and relationships, while CEv1 proves an exact content state passed a
-defined gate.
-
-- Query relevant project memory when resuming work or investigating prior
-  architecture decisions, release policies, workflow conventions, or recurring
-  failures. Do not query it mechanically for unrelated, self-contained work.
-- Record only durable, reusable, non-sensitive knowledge supported by an
-  authoritative repository source, or knowledge the user explicitly requests
-  to preserve. Suitable facts include approved architecture and product
-  decisions, stable workflow and release conventions, reusable diagnostic
-  conclusions, known pitfalls, and relationships among plans, versions,
-  components, and contracts.
-- Use namespaced entity names such as `agent-deck:project`,
-  `agent-deck:decision:<topic>`, `agent-deck:plan:<topic>`, and
-  `agent-deck:version:<version>`. Prefer small, idempotent entity, observation,
-  and relationship updates over duplicated narrative documents.
-- Bounded idempotent creates, observation additions, and relationship upserts in
-  the `agent-deck:` namespace are standing knowledge-synchronization authority
-  when the fact already has an authoritative source. Deletion, replacement,
-  broad imports, and mutation of another namespace require explicit approval.
-- Do not store Task verification evidence, PASS/FAIL state, raw command output,
-  ordinary progress logs, current Git status, credentials, session content,
-  private source paths, or other sensitive data. Task and release evidence
-  belongs in CEv1, not project memory.
-- Code, tests, configuration, living documentation, and Git history remain the
-  source of truth. If project memory conflicts with repository truth, follow
-  the repository and report the stale memory before correcting or deleting it.
-- Missing or unavailable `neo4j-memory` does not affect CEv1 gates and does not
-  trigger completion-evidence fallback. Continue with repository sources and
-  report the memory limitation only when it materially affects the task.
-
-### Workflow Triggers / 工作流触发词
-
-| Trigger        | Required workflow                       | Commit/push authority            |
-| -------------- | --------------------------------------- | -------------------------------- |
-| Not applicable | No project-specific trigger is defined. | Explicit authorization required. |
-| Not applicable | No project-specific trigger is defined. | Explicit authorization required. |
-
-Never infer commit or push authorization from a workflow trigger unless this
-table explicitly grants it.
+`neo4j-memory` is an optional, non-authoritative store for durable project
+knowledge. Read `.agent-instructions/evidence.md` when resuming work or
+investigating a prior project decision where that knowledge is materially
+relevant. Code, tests, configuration, living documentation, and Git history
+remain the source of truth.
 
 ### Review Artifact Finalization / 评审产物收口
 
