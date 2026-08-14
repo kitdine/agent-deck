@@ -30,17 +30,20 @@ pre-create empty files or fabricate rounds for unreviewed tasks.
 
 ## Link to the plan matrix
 
-A plan's `Review` cell may be ticked `✅` only when this directory holds a
-`Verdict: PASS` round for that task. The matrix cell is the summary; the review
-file is the audit trail. A `Verdict: REOPEN` round sends the task back to `Dev`
-in the matrix and lists the findings that must close before the next pass.
+A plan's `Review` cell may be ticked `[x]` only when this task's latest
+applicable round in this directory is `Verdict: PASS`. An earlier `PASS`
+followed by a later `REOPEN` does not qualify. The matrix cell is the summary;
+the review file is the audit trail. A `Verdict: REOPEN` round sends the task
+back to `Dev` in the matrix and lists the findings that must close before the
+next pass.
 
 ## Retirement
 
 When a plan retires to `docs/archive/plans/`, move its review directory the same
-way: `git mv docs/reviews/<plan-topic> docs/archive/reviews/<plan-topic>` and
-set each file's frontmatter to `status: historical`. Reviews are archived with
-the plan they belong to, never deleted.
+way: `git mv docs/reviews/<plan-topic> docs/archive/reviews/<plan-topic>`, then
+set each file's frontmatter to `status: historical` and add `retired:` with the
+retirement date. Reviews are archived with the plan they belong to, never
+deleted.
 
 ## Template
 
