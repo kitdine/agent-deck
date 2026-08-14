@@ -1,7 +1,6 @@
 ---
 status: active
 created: 2026-08-13
-updated: 2026-08-13
 ---
 
 # Usage Attribution Precision
@@ -208,12 +207,12 @@ dispatch, or publication.
 Turn a Status row into scoped development by naming its anchor:
 
 ```text
-进入开发：`2026-08-13-usage-attribution-precision` / `<task-anchor>`
+进入开发：`usage-attribution-precision` / `<task-anchor>`
 ```
 
 Read `AGENTS.md`, this plan's Architecture and named task, the attribution
 contract in `docs/specs/cli-design.md`, and verification routing. Tick `Dev`
 only after the task's selected verification passes. An independent reviewer
 records a PASS round under
-`docs/reviews/2026-08-13-usage-attribution-precision/<task-anchor>.md` before
-ticking `Review`.
+`docs/reviews/usage-attribution-precision/<task-anchor>.md` before ticking
+`Review`.

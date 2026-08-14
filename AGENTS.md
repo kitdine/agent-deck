@@ -436,7 +436,7 @@ Authoritative documents:
 Naming and lifecycle rules are documented once, in `docs/README.md`'s "Naming
 Convention" and "Document Lifecycle" sections — read there for the filename
 patterns (`docs/specs/YYYY-MM-DD-<topic>-design.md`,
-`docs/plans/YYYY-MM-DD-<topic>.md` with dated Follow-Up subsections, and the
+`docs/plans/<topic>.md` with dated Follow-Up subsections, and the
 plan's `Backlog / Future Feature Ideas` section for unscoped ideas). Do not
 duplicate that index here; it changes as documents are added or archived.
 
