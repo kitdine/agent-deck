@@ -584,6 +584,14 @@ investigating a prior project decision where that knowledge is materially
 relevant. Code, tests, configuration, living documentation, and Git history
 remain the source of truth.
 
+### Branch Model and Integration / 分支模型与集成
+
+Version feature lines, release patch lines, and `main` as the integration trunk
+are defined in `.agent-instructions/branching.md`. Read it only when current work
+crosses a branch, merge, or version-line boundary. A merge produces a content
+state no prior evidence covers, so it carries its own review and evidence
+requirements that scale with the merge class.
+
 ### Review Artifact Finalization / 评审产物收口
 
 For an active plan that defines per-task review records and a Status matrix,

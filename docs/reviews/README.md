@@ -28,6 +28,11 @@ docs/reviews/<plan-topic>/<task-anchor>.md
 Create a task's file lazily, when its first review actually happens. Do not
 pre-create empty files or fabricate rounds for unreviewed tasks.
 
+A version contract plan's review directory also carries that version's
+integration reviews, because integrating other lines is a task of the contract
+plan rather than a plan of its own. See
+`.agent-instructions/branching.md` for the merge classes and what each requires.
+
 ## Link to the plan matrix
 
 A plan's `Review` cell may be ticked `[x]` only when this task's latest
