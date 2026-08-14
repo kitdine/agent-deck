@@ -45,10 +45,14 @@ agentdeck version
 | --- | --- | --- |
 | [Native macOS Desktop App](plans/desktop-app.md) | Active — 1/6 done | macOS 26 menu-bar app, WidgetKit extension, unified desktop distribution, Cask, and direct-download delivery. |
 | [`v0.5.0` Contract Closure](plans/v0-5-0-contract.md) | Active — 0/1 done | Version-wide specification raise and documentation reconciliation after all desktop tasks pass review. |
+| [Usage Attribution Precision](plans/2026-08-13-usage-attribution-precision.md) | Active — 0/3 done | First `v0.6.0` plan: per-client attribution time semantics, determinability-based quality, and an unattributed boundary that never enters a real-spend total. |
 
 `desktop-wire-contract` reached Re-review Round 2 PASS. The current checkpoint
 is its task-level commit; `macos-app-foundation` remains next but is not yet
 authorized. There are no open execution tasks outside an active plan.
+
+Usage attribution precision is planned but not started. It is independent of
+the desktop plan and blocks the remaining `v0.6.0` cost items.
 
 ## Authoritative Documents
 
