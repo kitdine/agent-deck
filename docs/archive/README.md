@@ -16,8 +16,8 @@ delivered responsive labeled `session show --activity`, structured semantic
 Usage and Session Detail, bounded responsive Session browser/viewer geometry,
 height-derived acquisition, stable resize identity, and complete interactive
 terminal lifecycle behavior. Living contracts remain in
-`docs/specs/2026-08-06-terminal-rendering-design.md`,
-`docs/specs/2026-08-07-usage-interactive-viewer-design.md`, and
+`docs/specs/terminal-rendering-design.md`,
+`docs/specs/usage-interactive-viewer-design.md`, and
 `docs/specs/cli-manual.md`.
 
 Final acceptance used a compiled current binary across synthetic isolated state
@@ -65,7 +65,7 @@ semantic Usage palette and always-present adaptive heatmap, rebuilt the root and
 detail Session interactive experience, and replaced ordinary `session show`
 tables with bounded labeled sections. Living behavior is now recorded in
 `docs/specs/cli-manual.md` and
-`docs/specs/2026-08-06-terminal-rendering-design.md`. Final verification included
+`docs/specs/terminal-rendering-design.md`. Final verification included
 full tests, race, vet, compiled-current-binary isolated-real-state scans,
 multi-width text and JSON checks, and a real PTY browser-to-Tokens lifecycle.
 Retirement closes the development plan only: the immutable `v0.4.0-rc.2`

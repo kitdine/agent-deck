@@ -60,8 +60,8 @@ the desktop plan and blocks the remaining `v0.6.0` cost items.
 | --- | --- | --- |
 | [CLI Design](specs/cli-design.md) | Active, version 25 | System, persistence, security, compatibility, and distribution contracts. |
 | [CLI Manual](specs/cli-manual.md) | Active | Implemented commands, flags, output shapes, and interaction behavior. |
-| [Terminal Rendering Experience](specs/2026-08-06-terminal-rendering-design.md) | Active | Shared Usage and Session terminal framing, responsive geometry, accessibility, and lifecycle. |
-| [Usage Interactive Viewer](specs/2026-08-07-usage-interactive-viewer-design.md) | Reference | Delivered Usage interactive layout, state, color/no-color, and PTY contract. |
+| [Terminal Rendering Experience](specs/terminal-rendering-design.md) | Active | Shared Usage and Session terminal framing, responsive geometry, accessibility, and lifecycle. |
+| [Usage Interactive Viewer](specs/usage-interactive-viewer-design.md) | Reference | Delivered Usage interactive layout, state, color/no-color, and PTY contract. |
 | [Review Records](reviews/README.md) | Active | Review-record format and relationship to plan task gates. |
 | [Archived Documents](archive/README.md) | Active index | Retirement history and pointers to historical plans and reviews. |
 
@@ -141,8 +141,7 @@ stops holding.
 ## Naming Convention
 
 - Use lowercase kebab-case topic names.
-- New dated design documents use
-  `docs/specs/YYYY-MM-DD-<topic>-design.md`.
+- New design documents use `docs/specs/<topic>-design.md`.
 - New execution plans use `docs/plans/<topic>.md` without a date prefix, so the
   plan filename is also its review-directory topic.
 - Established living authorities such as `cli-design.md`, `cli-manual.md`, and

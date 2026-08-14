@@ -10,7 +10,7 @@ source_sufficiency: sufficient
 This document is the delivered Usage interactive contract originally approved
 for `usage-report-presentation` Task 5, `usage-interactive-viewer`. It narrows
 the broader
-[terminal rendering contract](2026-08-06-terminal-rendering-design.md) to
+[terminal rendering contract](terminal-rendering-design.md) to
 `usage` only. The shared raw-frame behavior and Session alignment described
 here were delivered in response to the v0.4.0-rc.1 manual-acceptance failure.
 
