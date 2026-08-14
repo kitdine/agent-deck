@@ -182,6 +182,7 @@ func TestIsolatedEndToEndFlow(t *testing.T) {
 	runJSON("session.list", "", "session", "list")
 	runJSON("session.show", "", "session", "show", "phase7-run")
 	search := runJSON("session.search", "", "session", "search", "phase7")
+	runJSON("desktop.snapshot", "", "desktop", "snapshot", "--wire-version", "1", "--recent-limit", "5")
 	if !bytes.Contains(search, []byte("phase7 visible prompt")) {
 		t.Fatalf("session search did not return approved synthetic content: %s", search)
 	}

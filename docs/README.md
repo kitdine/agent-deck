@@ -43,17 +43,18 @@ agentdeck version
 
 | Plan | Status | Purpose |
 | --- | --- | --- |
-| [Native macOS Desktop App](plans/desktop-app.md) | Active — 0/6 done | macOS 26 menu-bar app, WidgetKit extension, unified desktop distribution, Cask, and direct-download delivery. |
+| [Native macOS Desktop App](plans/desktop-app.md) | Active — 1/6 done | macOS 26 menu-bar app, WidgetKit extension, unified desktop distribution, Cask, and direct-download delivery. |
 | [`v0.5.0` Contract Closure](plans/v0-5-0-contract.md) | Active — 0/1 done | Version-wide specification raise and documentation reconciliation after all desktop tasks pass review. |
 
-The next planned feature anchor is `desktop-wire-contract`; development has not
-started. There are no open execution tasks outside an active plan.
+`desktop-wire-contract` reached Re-review Round 2 PASS. The current checkpoint
+is its task-level commit; `macos-app-foundation` remains next but is not yet
+authorized. There are no open execution tasks outside an active plan.
 
 ## Authoritative Documents
 
 | Document | Status | Authority |
 | --- | --- | --- |
-| [CLI Design](specs/cli-design.md) | Active, version 24 | System, persistence, security, compatibility, and distribution contracts. |
+| [CLI Design](specs/cli-design.md) | Active, version 25 | System, persistence, security, compatibility, and distribution contracts. |
 | [CLI Manual](specs/cli-manual.md) | Active | Implemented commands, flags, output shapes, and interaction behavior. |
 | [Terminal Rendering Experience](specs/2026-08-06-terminal-rendering-design.md) | Active | Shared Usage and Session terminal framing, responsive geometry, accessibility, and lifecycle. |
 | [Usage Interactive Viewer](specs/2026-08-07-usage-interactive-viewer-design.md) | Reference | Delivered Usage interactive layout, state, color/no-color, and PTY contract. |

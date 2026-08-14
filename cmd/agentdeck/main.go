@@ -26,6 +26,7 @@ import (
 	"github.com/kitdine/agent-deck/internal/backup"
 	"github.com/kitdine/agent-deck/internal/buildinfo"
 	"github.com/kitdine/agent-deck/internal/credentialvault"
+	"github.com/kitdine/agent-deck/internal/desktop"
 	"github.com/kitdine/agent-deck/internal/doctor"
 	"github.com/kitdine/agent-deck/internal/extension"
 	"github.com/kitdine/agent-deck/internal/output"
@@ -367,6 +368,10 @@ func errorCode(err error) string {
 		return credentialvault.ErrMachineIdentityMissing.Error()
 	case errors.Is(err, store.ErrStateBusy):
 		return store.ErrStateBusy.Code
+	case errors.Is(err, desktop.ErrUnsupportedWireVersion):
+		return desktop.ErrUnsupportedWireVersion.Error()
+	case errors.Is(err, desktop.ErrInvalidRecentLimit):
+		return desktop.ErrInvalidRecentLimit.Error()
 	case isInputError(err):
 		return "invalid_argument"
 	default:
@@ -409,7 +414,7 @@ func sessionShowNotFound(ctx context.Context, opts *commandOptions, client, sess
 
 func isInputError(err error) bool {
 	var target *inputError
-	return errors.As(err, &target) || errors.Is(err, provider.ErrInvalidProvider) || errors.Is(err, provider.ErrInvalidMultiplier)
+	return errors.As(err, &target) || errors.Is(err, provider.ErrInvalidProvider) || errors.Is(err, provider.ErrInvalidMultiplier) || errors.Is(err, desktop.ErrUnsupportedWireVersion) || errors.Is(err, desktop.ErrInvalidRecentLimit)
 }
 
 func exactArgs(count int) cobra.PositionalArgs {
@@ -496,7 +501,7 @@ func newRootCommandWithError(stdin io.Reader, stdout, stderr io.Writer) *cobra.C
 	flags.BoolVar(&opts.verbose, "verbose", false, "Include technical provenance in text output")
 	root.Flags().BoolVar(&showVersion, "version", false, "Print build identity")
 	root.CompletionOptions.DisableDefaultCmd = true
-	root.AddCommand(newProviderCommand(opts), newCredentialCommand(opts), newUsageCommand(opts), newPriceCommand(opts), newSessionCommand(opts), newExtensionCommand(opts), newWatchCommand(opts), newBackupCommand(opts), newDoctorCommand(opts), newStateCommand(opts), newRunCommand(opts), newVersionCommand(opts), newCompletionCommand(opts), newShellCommand(opts), newShellInitCommand(opts))
+	root.AddCommand(newProviderCommand(opts), newCredentialCommand(opts), newUsageCommand(opts), newPriceCommand(opts), newSessionCommand(opts), newExtensionCommand(opts), newWatchCommand(opts), newBackupCommand(opts), newDoctorCommand(opts), newDesktopCommand(opts), newStateCommand(opts), newRunCommand(opts), newVersionCommand(opts), newCompletionCommand(opts), newShellCommand(opts), newShellInitCommand(opts))
 	applyHelpCatalog(root)
 	wrapArgumentValidators(root)
 	return root

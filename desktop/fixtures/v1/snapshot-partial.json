@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "command": "desktop.snapshot",
+  "generated_at": "2026-08-13T10:00:00Z",
+  "data": {
+    "wire_version": 1,
+    "generated_at": "2026-08-13T10:00:00Z",
+    "next_refresh_at": "2026-08-13T10:05:00Z",
+    "provider": {
+      "available": false,
+      "routes": []
+    },
+    "usage": {
+      "available": false,
+      "from": "2026-08-13T00:00:00-07:00",
+      "to": "2026-08-14T00:00:00-07:00",
+      "tokens": {},
+      "counts": {},
+      "catalog_base_cost": null,
+      "provider_cost": null,
+      "known_catalog_base_cost": null,
+      "known_provider_cost": null,
+      "pricing_complete": false,
+      "unpriced_components": 0,
+      "warnings": []
+    },
+    "sessions": {
+      "available": false,
+      "total": 0,
+      "items": []
+    },
+    "health": {
+      "available": true,
+      "status": "error",
+      "healthy": false,
+      "problems": 1,
+      "warnings": 0,
+      "errors": 1,
+      "checks": [
+        {
+          "name": "database",
+          "status": "error",
+          "code": "database_missing"
+        }
+      ]
+    }
+  },
+  "warnings": [
+    "provider_unavailable",
+    "sessions_unavailable",
+    "usage_unavailable"
+  ],
+  "partial": true
+}

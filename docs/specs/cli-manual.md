@@ -717,6 +717,48 @@ selected activity 只展开 safe metadata，selected invocation 展开全部 tok
 named pagination、warnings 和 partial state。后续 desktop wire contract 仍必须负责
 一个 coherent snapshot、wire version 和 Go-owned redaction，而不是解析 CLI text。
 
+## Desktop
+
+`desktop snapshot` 是 macOS host 每次刷新调用的稳定 JSON-only helper
+入口。它不扫描源日志、不创建或迁移数据库、不修改权限，也不联网：
+
+```bash
+agentdeck --format json desktop snapshot --wire-version 1 --recent-limit 5
+```
+
+`--wire-version` 当前只支持 `1`；不支持的版本返回
+`unsupported_wire_version`。`--recent-limit` 默认为 `5`，允许 `1` 至
+`20`；越界返回 `invalid_recent_limit`。两类输入错误都使用 JSON error
+envelope 写入 stderr 并退出 `2`。省略 `--format json` 或选择 text/NDJSON
+同样作为输入错误拒绝，desktop host 不得解析 text output。
+
+成功响应使用标准 envelope、`command: "desktop.snapshot"` 和独立的
+`data.wire_version: 1`。`data` 始终包含 `provider`、`usage`、`sessions`、
+`health` 四个 section 及各自的 `available`。任一只读 section 失败时，
+其余 section 仍返回；命令退出 `0`，envelope 标记 `partial: true` 并加入
+稳定的 `*_unavailable` warning。只读数据库 close 失败会加入
+`state_close_failed` 或 `sessions_close_failed`，但不丢弃已解码 section。
+空数组和 map 不返回 `null`。
+
+快照中的 provider 只含 client、provider 名、selected time 和
+`via_wrapper`；usage 只含本地当天范围、聚合 token/count、nullable cost、
+pricing completeness、unpriced count 与 warnings；recent sessions 只含
+client、session ID、project basename、model 和 first/last time；health 只含
+聚合状态与安全的 check metadata。响应不含 credential/reference、endpoint、
+header、config content、source path、完整 project path、raw session content、
+prompt/response、tool argument/result 或 machine identity。
+
+完整和 partial 的 canonical v1 envelopes 位于 `desktop/fixtures/v1`。Go
+contract tests 与后续 `AgentDeckShared` Swift `Codable` decoder tests 必须读取
+同一文件，不能维护两份样例。
+
+更新检查不属于 `desktop snapshot`。host 只有在用户明确 opt-in 后才可自动
+检查，且最多每 24 小时一次；用户也可手动触发。请求仅允许访问官方
+AgentDeck GitHub latest stable release API，不能携带 AgentDeck state、usage、
+provider、session、machine ID、credential 或自定义 tracking header。失败不
+影响本地快照；发现兼容 stable version 时只可打开官方 release page，不得
+下载、安装、替换、重启或请求提权。
+
 ## Extension
 
 Extension ID 是稳定资源标识，继续使用位置参数。

@@ -395,12 +395,22 @@ release-secret access.
 
 | Task | Dev | Review |
 | --- | --- | --- |
-| 1. `desktop-wire-contract` | [ ] | [ ] |
+| 1. `desktop-wire-contract` | [x] | [x] |
 | 2. `macos-app-foundation` | [ ] | [ ] |
 | 3. `menubar-experience` | [ ] | [ ] |
 | 4. `desktop-widget` | [ ] | [ ] |
 | 5. `unified-desktop-distribution` | [ ] | [ ] |
 | 6. `desktop-app-contract` | [ ] | [ ] |
+
+`desktop-wire-contract` Review Round 1 (2026-08-13): **FAIL**. The `Review`
+cell remained unchecked pending the bounded filesystem-contract and
+documentation-index Repair recorded in
+[`docs/reviews/desktop-app/desktop-wire-contract.md`](../reviews/desktop-app/desktop-wire-contract.md).
+
+`desktop-wire-contract` Re-review Round 2 (2026-08-13): **PASS**. Both Round 1
+blockers are closed and the `Review` cell is synchronized. The next action is
+the Task 1 commit checkpoint; `macos-app-foundation` development remains
+separately authorized.
 
 Task 1 was blocked on the `v0.4.0` session DTO contract; that dependency is now
 satisfied and `desktop-wire-contract` is unblocked. Task 2 consumes task 1.

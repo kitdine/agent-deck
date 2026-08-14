@@ -164,6 +164,39 @@ func TestOpenReadOnlyDoesNotCreateMissingDatabase(t *testing.T) {
 	}
 }
 
+func TestOpenSessionsReadOnlyDoesNotCreateMissingDatabase(t *testing.T) {
+	root := t.TempDir()
+	if _, err := OpenSessionsReadOnly(context.Background(), root); err == nil {
+		t.Fatal("OpenSessionsReadOnly unexpectedly succeeded")
+	}
+	if _, err := os.Stat(filepath.Join(root, "sessions.sqlite3")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("sessions.sqlite3 after read-only open: %v", err)
+	}
+}
+
+func TestOpenSessionsReadOnlyReadsExistingIndex(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	writable, err := OpenSessions(ctx, root)
+	if err != nil {
+		t.Fatalf("OpenSessions: %v", err)
+	}
+	defer writable.Close()
+
+	readOnly, err := OpenSessionsReadOnly(ctx, root)
+	if err != nil {
+		t.Fatalf("OpenSessionsReadOnly: %v", err)
+	}
+	defer readOnly.Close()
+	var sources int
+	if err = readOnly.DB.QueryRowContext(ctx, "SELECT count(*) FROM session_sources").Scan(&sources); err != nil {
+		t.Fatalf("read live WAL session index: %v", err)
+	}
+	if _, err = readOnly.DB.ExecContext(ctx, "DELETE FROM session_metadata"); err == nil {
+		t.Fatal("read-only session index accepted a write")
+	}
+}
+
 func TestOpenReadOnlyRejectsFutureSchema(t *testing.T) {
 	ctx := context.Background()
 	state := filepath.Join(t.TempDir(), "state")

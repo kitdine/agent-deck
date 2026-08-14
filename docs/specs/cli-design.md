@@ -1,6 +1,6 @@
 ---
 status: active
-version: 24
+version: 25
 created: 2026-07-14
 ---
 
@@ -1675,6 +1675,68 @@ session dependency, but its later wire-contract task must still define the
 coherent desktop snapshot, wire version, and Go-owned redaction; it must not
 parse text or interactive rendering.
 
+### Desktop Snapshot Contract
+
+`agentdeck --format json desktop snapshot --wire-version 1 --recent-limit N`
+is the v0.5.0 desktop refresh boundary. `N` defaults to `5` and must be from
+`1` through `20`. The command accepts no positional arguments and rejects text
+or NDJSON output. Unsupported wire versions return typed code
+`unsupported_wire_version`; an out-of-range recent limit returns
+`invalid_recent_limit`. Both are input errors with exit status `2` and the
+normal JSON error envelope on stderr.
+
+A successful invocation exits `0` and returns the normal output envelope with
+`command: "desktop.snapshot"`. `data.wire_version` is independently versioned
+from the top-level automation `schema_version`. The v1 data object contains one
+coherent refresh result with:
+
+- `generated_at` and `next_refresh_at` UTC RFC 3339 timestamps; v1 suggests a
+  five-minute refresh interval but does not schedule or run a background task;
+- `provider.available` and privacy-bounded routes containing only client,
+  provider name, selected time, and whether the selected route used a wrapper;
+- `usage.available`, the current local-day half-open range, bounded token/count
+  totals, nullable complete and known costs, explicit `pricing_complete`, an
+  unpriced-component count, and usage-level warnings;
+- `sessions.available`, total indexed sessions, and at most `recent-limit`
+  stable recent rows containing client, session ID, project basename, model,
+  and first/last times;
+- `health.available`, aggregate doctor status/counts, and safe check name,
+  status, code, count, and recovery command.
+
+Every section always exists and owns an `available` flag. Failure to read one
+local section does not discard the other sections: the command still exits
+`0`, sets envelope `partial: true`, and adds a stable warning code from
+`provider_unavailable`, `usage_unavailable`, `sessions_unavailable`, or
+`health_unavailable`. A failed read-only database close adds
+`state_close_failed` or `sessions_close_failed` without discarding the already
+decoded section. Empty collections encode as `[]` or `{}`, never `null`.
+The command performs no implicit usage/session scan, does not create a missing
+state root or database, applies no migration, changes no permission, changes
+no committed SQLite contents, and performs no network request. Reading an
+existing WAL-mode core or session database may materialize owner-only `-wal`
+and `-shm` sidecars inside the existing state root so the snapshot can observe
+concurrent committed changes correctly.
+
+Go constructs the snapshot through dedicated DTOs; it never serializes domain
+objects directly. The contract excludes credentials and references, provider
+or wrapper endpoints and headers, configuration contents, source paths, raw
+session content, prompts, responses, tool arguments/results, machine identity,
+and full project paths. Canonical complete and partial v1 envelopes live under
+`desktop/fixtures/v1`; Go contract tests consume them, and the macOS foundation
+must reuse those same files for Swift `Codable` decoding rather than copying
+fixture values.
+
+Update discovery is separate from `desktop snapshot`. The desktop host may
+perform an automatic check only after explicit opt-in and at most once per 24
+hours; a user-initiated manual check is also allowed. It may issue an
+unauthenticated request only to the official AgentDeck GitHub latest stable
+release API and may send no AgentDeck state, usage, provider, session, machine
+identifier, credential, or custom tracking header. It may compare compatible
+stable versions and offer to open the official release page. Network, HTTP,
+decoding, or browser-open failures are non-fatal and never reduce local desktop
+snapshot availability. The app never downloads, installs, replaces, relaunches,
+or requests privilege as part of this check.
+
 ## Extension Management
 
 Codex and Claude native configuration remains authoritative. AgentDeck adapters
@@ -2208,6 +2270,7 @@ here changes; do not create a dated copy of this file.
 
 | Version | Date | Contract change |
 | --- | --- | --- |
+| 25 | 2026-08-13 | Adds the v0.5.0 `desktop snapshot` wire v1 contract: JSON-only request flags, coherent Go-owned provider/usage/session/health response, privacy redaction, per-section availability, partial warning semantics, stable input error codes, read-only/no-network behavior, shared Go/Swift canonical fixtures, and opt-in privacy-bounded stable-release update-check connectivity. |
 | 24 | 2026-08-10 | Establishes the v0.4.0 version contract across the completed session-experience and usage-report-presentation lines: session search/show gains bounded, additive document, activity, usage, invocation, pagination, and interactive-viewer surfaces; usage reports use responsive text presentation without changing JSON values, pricing, or attribution; the session parser/index format change requires rebuildable-index migration and an exact-commit technical preflight citing isolated-real-state validation before the user selects RC, stable release, or no publication; invocation-level pricing reads event-time prices without rewriting stored usage or historical price rows. The bounded session DTO is the v0.5.0 desktop dependency and unblocks `desktop-wire-contract`, which still owns the later coherent snapshot, wire version, and Go-owned redaction contract. |
 | 23 | 2026-08-04 | Adds managed `usage hook setup|status|remove` lifecycle commands for Codex and Claude session-route boundaries: setup/removal touch only AgentDeck-owned JSON entries, status exposes absent/configured/modified/invalid and observable trust limits, and handlers are silent, bounded, fail-open. Attribution resolves in a fixed order — exact run binding, then the most recent lifecycle boundary at or before the event, then the session-start fallback — so a Hook-configured client splits its own resumed sessions and `run` is no longer required to re-attribute one; `run` remains a supported low-level exact-attribution launcher, and an overlapping managed run downgrades both runs to estimated rather than being refused. Schema v17 adds `usage_session_routes` and drops the single-active-run index. Sealed credential key version 2 derives its key ID without changing existing AES key bytes, retains version-1 reads, and makes new ciphertext unsafe to downgrade to `v0.2.x`. Claude cache-creation totals with positive total and two zero TTL buckets now use the disclosed default five-minute rate; affected historical cost/coverage numbers change without rewriting stored events. `codex-auto-review` billing remains unresolved and stays an unpriced Backlog item rather than receiving an inferred price or mapping. |
 | 22 | 2026-08-02 | Defines version number semantics for the `0.x` line: MAJOR stays `0` until an explicit stability declaration; MINOR triggers cover command/flag/typed-error-code changes, schema migration, stdout/JSON/NDJSON/exit-code semantic changes, user-visible number changes for unchanged input, unsafe-to-downgrade persisted formats, and rewritten (not merely clarified) promised behavior; PATCH covers everything else and must stay safe to downgrade from; error-message wording is PATCH while typed error codes are MINOR; this document's own `version:` is independent of the release version; releases touching persisted data, the pricing read path, or external-client configuration ship at least one `-rc.N` validated against real local data first. |

@@ -27,6 +27,7 @@
     "credential.remove",
     "credential.show",
     "credential.update",
+    "desktop.snapshot",
     "doctor",
     "extension.adopt",
     "extension.disable",
@@ -396,6 +397,105 @@
       },
       "error_code": "invalid_argument",
       "error_command": "credential.update"
+    },
+    "desktop.snapshot": {
+      "success_schema": {
+        "command": "string",
+        "data": {
+          "generated_at": "string",
+          "health": {
+            "available": "boolean",
+            "checks": [
+              {
+                "code": "string",
+                "count": "number",
+                "name": "string",
+                "recovery_command": "string",
+                "status": "string"
+              },
+              {
+                "count": "number",
+                "name": "string",
+                "status": "string"
+              },
+              {
+                "name": "string",
+                "status": "string"
+              }
+            ],
+            "errors": "number",
+            "healthy": "boolean",
+            "problems": "number",
+            "status": "string",
+            "warnings": "number"
+          },
+          "next_refresh_at": "string",
+          "provider": {
+            "available": "boolean",
+            "routes": [
+              {
+                "client": "string",
+                "provider": "string",
+                "selected_at": "string",
+                "via_wrapper": "boolean"
+              }
+            ]
+          },
+          "sessions": {
+            "available": "boolean",
+            "items": [
+              {
+                "client": "string",
+                "last_at": "string",
+                "model": "string",
+                "project": "string",
+                "session_id": "string"
+              }
+            ],
+            "total": "number"
+          },
+          "usage": {
+            "available": "boolean",
+            "catalog_base_cost": "string",
+            "counts": {
+              "estimated": "number",
+              "events": "number",
+              "exact": "number",
+              "historical": "number",
+              "priced": "number",
+              "unpriced": "number"
+            },
+            "from": "string",
+            "known_catalog_base_cost": "string",
+            "known_provider_cost": "string",
+            "pricing_complete": "boolean",
+            "provider_cost": "string",
+            "to": "string",
+            "tokens": {},
+            "unpriced_components": "number",
+            "warnings": []
+          },
+          "wire_version": "number"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "desktop.snapshot"
     },
     "doctor": {
       "success_schema": {

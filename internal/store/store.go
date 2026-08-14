@@ -61,7 +61,29 @@ func OpenSessions(ctx context.Context, stateRoot string) (*Store, error) {
 	return s, nil
 }
 
-// Session indexes are rebuildable.  The first source-level schema upgrade
+// OpenSessionsReadOnly opens an existing session-search index without creating
+// state, applying migrations, changing permissions, or enabling WAL.
+func OpenSessionsReadOnly(ctx context.Context, stateRoot string) (*Store, error) {
+	path := filepath.Join(stateRoot, "sessions.sqlite3")
+	db, err := sql.Open("sqlite", "file:"+path+"?mode=ro&_pragma=foreign_keys(1)")
+	if err != nil {
+		return nil, err
+	}
+	for _, table := range []string{"session_sources", "session_metadata"} {
+		var present int
+		if err = db.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?", table).Scan(&present); err != nil {
+			db.Close()
+			return nil, err
+		}
+		if present != 1 {
+			db.Close()
+			return nil, fmt.Errorf("session index missing table %s", table)
+		}
+	}
+	return &Store{DB: db, path: path, readOnly: true}, nil
+}
+
+// Session indexes are rebuildable. The first source-level schema upgrade
 // deliberately discards the old client/session view instead of trying to
 // invent source ownership for rows that never recorded it.
 func migrateSessionSchema(ctx context.Context, db *sql.DB) error {
