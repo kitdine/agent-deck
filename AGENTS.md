@@ -68,7 +68,7 @@ The workspace may contain one or more independent repositories:
 The project-defined workflow skills are the primary workflow authorities within
 their declared scope.
 
-- `dev-workflow-triggers` is the primary authority for design, development,
+- `development-workflow` is the primary authority for design, development,
   review, fix, re-review, and full-delivery workflow triggers.
 - `handoff-sync` is the primary authority for synchronizing handoff documents,
   repository state, requirement status, and other project status records.
