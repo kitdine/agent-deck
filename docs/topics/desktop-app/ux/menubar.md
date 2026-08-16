@@ -136,13 +136,20 @@ previous snapshot exists:
 | `refreshing` | no | `loadingSurface` | none |
 | `refreshing` | yes | `dataSurface` | `stale`, plus `aged`/`partial`/`empty` as they hold |
 | `ready` | — | `dataSurface` | `partial` or `empty` as they hold |
-| `degraded`, launch/missing/timeout | yes | `dataSurface` | `stale` + `offline`, plus `aged`/`partial` |
+| `degraded`, launch/missing/timeout | yes | `dataSurface` | `stale` + `offline`, plus `aged`/`partial`/`empty` |
 | `degraded`, launch/missing/timeout | no | `errorSurface` | `offline` |
-| `degraded`, invalid wire/storage | yes | `dataSurface` | `stale` + `failing`, plus `aged`/`partial` |
+| `degraded`, invalid wire/storage | yes | `dataSurface` | `stale` + `failing`, plus `aged`/`partial`/`empty` |
 | `degraded`, invalid wire/storage | no | `errorSurface` | `failing` |
 
 `empty` and `partial` are mutually exclusive by construction: `empty` requires
 every section available, which `partial` denies.
+
+`empty` is a property of the retained snapshot, not of the refresh outcome, so
+it holds on the `degraded` rows exactly as it does on `refreshing` — a snapshot
+that was complete and had no rows stays empty when the next refresh fails. The
+two are independent: the surface shows an empty snapshot and the issue qualifier
+explains that it is also out of date. An `errorSurface` row never carries
+`empty`, because `empty` describes a snapshot and those rows have none.
 
 Fixed qualifier order wherever more than one is shown — freshness first, then
 reachability, then completeness: `stale`, `aged`, `offline`, `failing`,

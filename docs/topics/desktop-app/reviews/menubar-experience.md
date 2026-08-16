@@ -318,6 +318,15 @@ timeout handling, and helper survival across window dismissal.
   `7a801bd0edce2321dd4b3148de2e0eb79f60bcdb` carries R3-F6. Verified present at
   `architecture.md:649`, `:687`, `:721`, `:757`, `:785`, `:810` and
   `ux/menubar.md:103`, `:130`.
+- Residual closed during the 2026-08-16 record repair. Re-verifying R3-F6's
+  table against its own qualifier definitions found `empty` listed on the
+  `refreshing` retained-snapshot row but omitted from both `degraded` retained
+  rows, while the qualifier table makes it hold whenever its condition does. A
+  snapshot that was complete and had no rows stays empty when the next refresh
+  fails, so the omission left exactly the kind of undefined combination R3-F6
+  was raised about. Both rows now carry it, with the rule stated: `empty`
+  describes the retained snapshot, not the refresh outcome, and never appears on
+  an `errorSurface` row, which has no snapshot to describe.
 - Still open, and not a Round 3 finding: `ux/menubar.md` carries no rendered
   specimen of any state, so its `Draft` is unticked against the specimen
   requirement adopted after this round. `ux/widget.md` is required and unwritten.
