@@ -70,7 +70,9 @@ and nothing else.
 malformed App Group cache data were made fail-closed. The menu-bar contract
 failed Design Review Round 3 on six decision-completeness findings and requires
 bounded design repair before Development; the findings span the topic's
-`architecture.md` and `ux/menubar.md`.
+`architecture.md` and `ux/menubar.md`. That repair also has to add the rendered
+specimens `ux/menubar.md` never carried, and `ux/widget.md` is required and
+unwritten.
 
 Usage attribution precision is planned but not started. It is independent of
 the desktop topic and blocks the remaining `v0.6.0` cost items.
@@ -253,6 +255,29 @@ A `vX-Y-Z-contract` topic needs only `tasks.md`: it reconciles what other topics
 already delivered and originates no requirement, surface, or architecture of its
 own.
 
+#### The specimen requirement
+
+A `ux/<surface>.md` carries a rendered specimen of each state, not only rules
+about it. Rules and specimen are one document because they are reviewed against
+each other: a specimen with no rules cannot be checked, and rules with no
+specimen can satisfy every stated condition while remaining illegible. A
+geometry table of `340 pt` and `280 pt` does not let anyone see what the surface
+looks like at either bound.
+
+Be explicit about what a specimen settles. For a terminal surface it is close to
+exact, because the specimen and the output share a medium. For a GUI it is an
+approximation that settles hierarchy, copy, state coverage, and wrap or
+truncation at the narrow bound, and settles nothing about real typography,
+Dynamic Type, or assistive-technology order. Those need the manual acceptance
+the topic's tasks already require; a specimen is presentation evidence and never
+substitutes for runtime evidence.
+
+The cost of omitting one is not hypothetical. An independent UI audit of the
+menu-bar design scored it zero on aesthetics because no prototype existed, which
+under that tool's own rules forced a redesign verdict its total contradicted.
+The score was invalid, and the document was also genuinely missing the evidence
+class the question needed.
+
 #### When the set is decided, and by whom
 
 The set cannot be fixed when the topic is created. A surface or contract domain
@@ -277,6 +302,57 @@ breakdown covers the other documents with nothing missing — whether the set
 itself is complete is that same question. It follows that changing the set
 returns `tasks.md` to review, and only `tasks.md`; the other documents keep
 their verdicts.
+
+#### Creating a topic
+
+A topic is promoted from one of five origins, and the origin belongs in
+`requirements.md`'s opening so a later reader can tell why the work exists:
+
+- a Roadmap version theme, narrowed to one coherent behavior change;
+- a Backlog candidate;
+- a finding recorded in another topic's review;
+- a measured defect in released behavior;
+- a direct request.
+
+Promote with the project's initialization trigger:
+
+```text
+初始化：`<topic>`
+```
+
+**A topic starts from an observation, not from an idea.** Both topics promoted
+so far open with measurement — one with a table of `error.code` and
+`error.message` values captured from the released binary, the other with counted
+attribution shares from the real local store. That is not a stylistic habit. The
+review question for `requirements.md` is whether the boundary is decided, and a
+boundary around a problem nobody has observed cannot be decided, only guessed.
+So the minimum input is the observed behavior and how it was measured, the
+surfaces and contracts it touches, and what is deliberately excluded.
+
+Initialization produces exactly two files: `requirements.md`, and `tasks.md`
+carrying the Documents matrix that declares the intended set. It does not
+produce `ux/` or `architecture.md`. Their scope derives from a boundary that has
+not been reviewed yet, so writing them first means writing against a boundary
+that may still move.
+
+#### The order documents are reviewed
+
+The order is not a convention; it falls out of the review questions themselves.
+
+1. **`requirements.md` first.** Every other document's scope derives from its
+   boundary. Findings raised against a surface or a contract whose boundary is
+   still open evaporate when the boundary moves, so that review is spent twice.
+2. **`ux/<surface>.md` and `architecture.md` next, in any order or at once.**
+   Their questions are different and their evidence is different, and neither
+   verdict depends on the other. Serializing them buys nothing.
+3. **`tasks.md` last.** Its question is whether the breakdown covers the other
+   documents with nothing missing and nothing beyond, which cannot be answered
+   before they exist.
+
+The Documents matrix therefore exists from the moment the topic does but is
+ratified at the end. That is not a contradiction: it is a claim from the start
+and a verdict at the finish, which is the same shape as `Draft` and `Review` on
+every other row.
 
 ### Status
 
@@ -307,7 +383,7 @@ structure above — the author asserts it, the reviewer asks it.
 | Document | Ready to review when |
 | --- | --- |
 | `requirements.md` | Goals, non-goals, and acceptance boundary are stated; no TBD remains; it declares whether a user-visible surface and new contracts are in scope |
-| `ux/<surface>.md` | Every user-visible state has a presentation rule and copy in every shipped language; no placeholder remains |
+| `ux/<surface>.md` | Every user-visible state has a presentation rule, copy in every shipped language, and a rendered specimen; no placeholder remains |
 | `architecture.md` | Every new contract is fully specified, and every claim about existing code names where it was verified |
 | `tasks.md` | Every task has an anchor, its files, and a verification level, and the set covers the other documents' scope with nothing missing and nothing beyond it |
 

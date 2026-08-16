@@ -92,9 +92,15 @@ This file is the only status authority for this topic.
 | --- | --- | --- |
 | requirements.md | [x] | [ ] |
 | architecture.md | [x] | [ ] |
-| ux/menubar.md | [x] | [ ] |
+| ux/menubar.md | [ ] | [ ] |
 | ux/widget.md | [ ] | [ ] |
 | tasks.md | [x] | [ ] |
+
+`ux/menubar.md` states geometry as numbers — 340 pt default, 280 pt narrow
+bound, 560 pt maximum height — and carries no rendered specimen of any state, so
+its `Draft` tick predates the specimen requirement and its readiness must be
+re-asserted during the R3 repair. The repair is the right moment: five of the
+six findings already reopen this surface's contracts.
 
 `ux/widget.md` is required and not yet written. Task 4 `desktop-widget` adds
 WidgetKit timelines and App Intent configuration, which is a second user-visible
