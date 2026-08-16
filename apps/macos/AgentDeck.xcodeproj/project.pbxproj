@@ -1,0 +1,443 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A10000000000000000000001 /* AgentDeckApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* AgentDeckApp.swift */; };
+		A10000000000000000000002 /* AgentDeckShared.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20000000000000000000011 /* AgentDeckShared.framework */; };
+		A10000000000000000000003 /* AgentDeckShared.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = A20000000000000000000011 /* AgentDeckShared.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		A10000000000000000000004 /* DesktopWire.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* DesktopWire.swift */; };
+		A10000000000000000000005 /* AppGroupSnapshotStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000004 /* AppGroupSnapshotStore.swift */; };
+		A10000000000000000000006 /* EmbeddedHelperRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000005 /* EmbeddedHelperRunner.swift */; };
+		A10000000000000000000007 /* DesktopLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000006 /* DesktopLog.swift */; };
+		A10000000000000000000008 /* FixtureSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000A /* FixtureSupport.swift */; };
+		A10000000000000000000009 /* DesktopWireTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000B /* DesktopWireTests.swift */; };
+		A1000000000000000000000A /* EmbeddedHelperRunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000C /* EmbeddedHelperRunnerTests.swift */; };
+		A1000000000000000000000B /* AppGroupSnapshotStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000D /* AppGroupSnapshotStoreTests.swift */; };
+		A1000000000000000000000C /* DesktopLogPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000E /* DesktopLogPolicyTests.swift */; };
+		A1000000000000000000000D /* AgentDeckShared.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20000000000000000000011 /* AgentDeckShared.framework */; };
+		A1000000000000000000000E /* DesktopRefreshCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000013 /* DesktopRefreshCoordinatorTests.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		A20000000000000000000001 /* AgentDeckApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentDeckApp.swift; sourceTree = "<group>"; };
+		A20000000000000000000002 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A20000000000000000000003 /* DesktopWire.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopWire.swift; sourceTree = "<group>"; };
+		A20000000000000000000004 /* AppGroupSnapshotStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppGroupSnapshotStore.swift; sourceTree = "<group>"; };
+		A20000000000000000000005 /* EmbeddedHelperRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmbeddedHelperRunner.swift; sourceTree = "<group>"; };
+		A20000000000000000000006 /* DesktopLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopLog.swift; sourceTree = "<group>"; };
+		A20000000000000000000012 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A20000000000000000000007 /* AgentDeck.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AgentDeck.entitlements; sourceTree = SOURCE_ROOT; };
+		A20000000000000000000008 /* AgentDeckWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AgentDeckWidget.entitlements; sourceTree = SOURCE_ROOT; };
+		A20000000000000000000009 /* AgentDeck.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = AgentDeck.xcconfig; sourceTree = "<group>"; };
+		A2000000000000000000000A /* FixtureSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FixtureSupport.swift; sourceTree = "<group>"; };
+		A2000000000000000000000B /* DesktopWireTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopWireTests.swift; sourceTree = "<group>"; };
+		A2000000000000000000000C /* EmbeddedHelperRunnerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmbeddedHelperRunnerTests.swift; sourceTree = "<group>"; };
+		A2000000000000000000000D /* AppGroupSnapshotStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppGroupSnapshotStoreTests.swift; sourceTree = "<group>"; };
+		A2000000000000000000000E /* DesktopLogPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopLogPolicyTests.swift; sourceTree = "<group>"; };
+		A20000000000000000000013 /* DesktopRefreshCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopRefreshCoordinatorTests.swift; sourceTree = "<group>"; };
+		A2000000000000000000000F /* AgentDeck.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AgentDeck.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A20000000000000000000011 /* AgentDeckShared.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = AgentDeckShared.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		A20000000000000000000010 /* AgentDeckSharedTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AgentDeckSharedTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		A60000000000000000000001 /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				A10000000000000000000003 /* AgentDeckShared.framework in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A60000000000000000000002 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000000000002 /* AgentDeckShared.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A60000000000000000000003 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A1000000000000000000000D /* AgentDeckShared.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		A30000000000000000000001 = {
+			isa = PBXGroup;
+			children = (
+				A30000000000000000000002 /* AgentDeckApp */,
+				A30000000000000000000003 /* AgentDeckShared */,
+				A30000000000000000000004 /* AgentDeckTests */,
+				A30000000000000000000005 /* Config */,
+				A30000000000000000000006 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A30000000000000000000002 /* AgentDeckApp */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000001 /* AgentDeckApp.swift */,
+				A20000000000000000000002 /* Info.plist */,
+				A20000000000000000000007 /* AgentDeck.entitlements */,
+			);
+			path = AgentDeckApp;
+			sourceTree = "<group>";
+		};
+		A30000000000000000000003 /* AgentDeckShared */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000003 /* DesktopWire.swift */,
+				A20000000000000000000004 /* AppGroupSnapshotStore.swift */,
+				A20000000000000000000005 /* EmbeddedHelperRunner.swift */,
+				A20000000000000000000006 /* DesktopLog.swift */,
+				A20000000000000000000012 /* Info.plist */,
+			);
+			path = AgentDeckShared;
+			sourceTree = "<group>";
+		};
+		A30000000000000000000004 /* AgentDeckTests */ = {
+			isa = PBXGroup;
+			children = (
+				A2000000000000000000000A /* FixtureSupport.swift */,
+				A2000000000000000000000B /* DesktopWireTests.swift */,
+				A2000000000000000000000C /* EmbeddedHelperRunnerTests.swift */,
+				A2000000000000000000000D /* AppGroupSnapshotStoreTests.swift */,
+				A2000000000000000000000E /* DesktopLogPolicyTests.swift */,
+				A20000000000000000000013 /* DesktopRefreshCoordinatorTests.swift */,
+			);
+			path = AgentDeckTests;
+			sourceTree = "<group>";
+		};
+		A30000000000000000000005 /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000009 /* AgentDeck.xcconfig */,
+				A20000000000000000000008 /* AgentDeckWidget.entitlements */,
+			);
+			path = Config;
+			sourceTree = "<group>";
+		};
+		A30000000000000000000006 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A2000000000000000000000F /* AgentDeck.app */,
+				A20000000000000000000011 /* AgentDeckShared.framework */,
+				A20000000000000000000010 /* AgentDeckSharedTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A40000000000000000000001 /* AgentDeck */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A80000000000000000000001 /* Build configuration list for PBXNativeTarget "AgentDeck" */;
+			buildPhases = (
+				A60000000000000000000004 /* Sources */,
+				A60000000000000000000002 /* Frameworks */,
+				A60000000000000000000001 /* Embed Frameworks */,
+				A60000000000000000000005 /* Embed AgentDeck Helper */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A50000000000000000000001 /* PBXTargetDependency */,
+			);
+			name = AgentDeck;
+			productName = AgentDeck;
+			productReference = A2000000000000000000000F /* AgentDeck.app */;
+			productType = "com.apple.product-type.application";
+		};
+		A40000000000000000000002 /* AgentDeckShared */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A80000000000000000000002 /* Build configuration list for PBXNativeTarget "AgentDeckShared" */;
+			buildPhases = (
+				A60000000000000000000006 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = AgentDeckShared;
+			productName = AgentDeckShared;
+			productReference = A20000000000000000000011 /* AgentDeckShared.framework */;
+			productType = "com.apple.product-type.framework";
+		};
+		A40000000000000000000003 /* AgentDeckSharedTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A80000000000000000000003 /* Build configuration list for PBXNativeTarget "AgentDeckSharedTests" */;
+			buildPhases = (
+				A60000000000000000000007 /* Sources */,
+				A60000000000000000000003 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A50000000000000000000002 /* PBXTargetDependency */,
+			);
+			name = AgentDeckSharedTests;
+			productName = AgentDeckSharedTests;
+			productReference = A20000000000000000000010 /* AgentDeckSharedTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A90000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastSwiftUpdateCheck = 2600;
+				LastUpgradeCheck = 2600;
+				TargetAttributes = {
+					A40000000000000000000001 = { CreatedOnToolsVersion = 26.0; };
+					A40000000000000000000002 = { CreatedOnToolsVersion = 26.0; };
+					A40000000000000000000003 = { CreatedOnToolsVersion = 26.0; TestTargetID = A40000000000000000000001; };
+				};
+			};
+			buildConfigurationList = A80000000000000000000004 /* Build configuration list for PBXProject "AgentDeck" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = A30000000000000000000001;
+			productRefGroup = A30000000000000000000006 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				A40000000000000000000001 /* AgentDeck */,
+				A40000000000000000000002 /* AgentDeckShared */,
+				A40000000000000000000003 /* AgentDeckSharedTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		A60000000000000000000005 /* Embed AgentDeck Helper */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(PROJECT_DIR)/build/agentdeck",
+			);
+			name = "Embed AgentDeck Helper";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(CONTENTS_FOLDER_PATH)/Helpers/agentdeck",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -eu\nhelper=\"${PROJECT_DIR}/build/agentdeck\"\ndestination=\"${TARGET_BUILD_DIR}/${CONTENTS_FOLDER_PATH}/Helpers\"\nif [ ! -x \"$helper\" ]; then\n  echo \"Embedded AgentDeck helper is missing: $helper\" >&2\n  exit 1\nfi\nmkdir -p \"$destination\"\n/usr/bin/install -m 0755 \"$helper\" \"$destination/agentdeck\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A60000000000000000000004 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000000000001 /* AgentDeckApp.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A60000000000000000000006 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000000000004 /* DesktopWire.swift in Sources */,
+				A10000000000000000000005 /* AppGroupSnapshotStore.swift in Sources */,
+				A10000000000000000000006 /* EmbeddedHelperRunner.swift in Sources */,
+				A10000000000000000000007 /* DesktopLog.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A60000000000000000000007 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000000000008 /* FixtureSupport.swift in Sources */,
+				A10000000000000000000009 /* DesktopWireTests.swift in Sources */,
+				A1000000000000000000000A /* EmbeddedHelperRunnerTests.swift in Sources */,
+				A1000000000000000000000B /* AppGroupSnapshotStoreTests.swift in Sources */,
+				A1000000000000000000000C /* DesktopLogPolicyTests.swift in Sources */,
+				A1000000000000000000000E /* DesktopRefreshCoordinatorTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		A50000000000000000000001 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = A40000000000000000000002 /* AgentDeckShared */; }; 
+		A50000000000000000000002 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = A40000000000000000000002 /* AgentDeckShared */; }; 
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		A70000000000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		A70000000000000000000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		A70000000000000000000003 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = A20000000000000000000009 /* AgentDeck.xcconfig */;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = AgentDeck.entitlements;
+				CODE_SIGN_STYLE = Manual;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = AgentDeckApp/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
+				PRODUCT_NAME = AgentDeck;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+			};
+			name = Debug;
+		};
+		A70000000000000000000004 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = A20000000000000000000009 /* AgentDeck.xcconfig */;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = AgentDeck.entitlements;
+				CODE_SIGN_STYLE = Manual;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = AgentDeckApp/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
+				PRODUCT_NAME = AgentDeck;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+			};
+			name = Release;
+		};
+		A70000000000000000000005 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				DEFINES_MODULE = YES;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				ENABLE_TESTABILITY = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = AgentDeckShared/Info.plist;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.kitdine.agentdeck.shared;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		A70000000000000000000006 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				DEFINES_MODULE = YES;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = AgentDeckShared/Info.plist;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.kitdine.agentdeck.shared;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		A70000000000000000000007 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "";
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.kitdine.agentdeck.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		A70000000000000000000008 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "";
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.kitdine.agentdeck.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A80000000000000000000001 /* Build configuration list for PBXNativeTarget "AgentDeck" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A70000000000000000000003 /* Debug */,
+				A70000000000000000000004 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A80000000000000000000002 /* Build configuration list for PBXNativeTarget "AgentDeckShared" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A70000000000000000000005 /* Debug */,
+				A70000000000000000000006 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A80000000000000000000003 /* Build configuration list for PBXNativeTarget "AgentDeckSharedTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A70000000000000000000007 /* Debug */,
+				A70000000000000000000008 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A80000000000000000000004 /* Build configuration list for PBXProject "AgentDeck" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A70000000000000000000001 /* Debug */,
+				A70000000000000000000002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = A90000000000000000000001 /* Project object */;
+}

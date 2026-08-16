@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- The host is Developer ID signed and deliberately not App Sandboxed. -->
+    <key>com.apple.security.application-groups</key>
+    <array>
+        <string>$(AGENTDECK_APP_GROUP)</string>
+    </array>
+</dict>
+</plist>

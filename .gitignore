@@ -3,6 +3,8 @@
 .DS_Store
 __pycache__/
 dist/
+apps/macos/build/
+apps/macos/.swiftpm/
 .vscode
 .idea
 .superpowers/

@@ -1,0 +1,4 @@
+MACOSX_DEPLOYMENT_TARGET = 26.0
+SWIFT_VERSION = 6.0
+PRODUCT_BUNDLE_IDENTIFIER = com.kitdine.agentdeck
+AGENTDECK_APP_GROUP = group.com.kitdine.agentdeck

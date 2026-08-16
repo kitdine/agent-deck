@@ -23,7 +23,7 @@ FORCE ?= 0
 COMPLETION_SHELL ?= auto
 COMPLETION_RC ?=
 
-.PHONY: build build-all release-tag release-archive check-arm64-size check-go-test-runner check-install check-privacy check-release-distribution install uninstall release-verify clean test test-race vet verify prices-regen check-prices-reproducible
+.PHONY: build build-all release-tag release-archive check-arm64-size check-go-test-runner check-install check-privacy check-release-distribution install uninstall release-verify clean test test-race vet verify prices-regen check-prices-reproducible test-macos-app build-macos-app
 
 .PHONY: release-artifact-verify
 
@@ -59,6 +59,12 @@ test:
 
 test-race:
 	env GOCACHE=$(GOCACHE) GO_TEST_BIN=$(GO) $(GO_TEST_RUNNER) -race ./...
+
+test-macos-app:
+	bash scripts/test-macos-app.sh
+
+build-macos-app:
+	bash scripts/build-macos-app.sh
 
 check-go-test-runner:
 	bash scripts/test-run-go-test.sh
