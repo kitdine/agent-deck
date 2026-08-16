@@ -628,15 +628,16 @@ and evidence requirements that scale with the merge class.
 
 ### Review Artifact Finalization / 评审产物收口
 
-For an active plan that defines per-task review records and a Status matrix,
-`进入评审...` and `进入复评...` authorize only the review-artifact updates
-required by that plan:
+For an active topic that defines per-document and per-task review records and
+status matrices, `评审：...` and `复评：...` authorize only the review-artifact
+updates required by that topic:
 
 - append the current round and verdict under the topic's `reviews/` directory;
 - keep Review unchecked while medium-or-higher findings remain, or tick it when
-  the task passes;
-- synchronize the plan summary and `docs/README.md` when their status changes;
-- derive the next workflow instruction from the authoritative Status matrix.
+  the document or task passes;
+- synchronize the topic's `tasks.md` and `docs/README.md` when their status
+  changes;
+- derive the next workflow instruction from the authoritative status matrices.
 
 These triggers do not authorize product changes, commits, pushes, releases, or
 environment updates except the repository-scoped, idempotent CEv1 evidence

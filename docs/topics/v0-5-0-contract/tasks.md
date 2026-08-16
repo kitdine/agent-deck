@@ -135,7 +135,7 @@ evidence. The user then decides RC, stable release, or no publication.
 Start the task only after its entry condition is met:
 
 ```text
-进入开发：`v0-5-0-contract` / `<task-anchor>`
+开发：`v0-5-0-contract` / `<task-anchor>`
 ```
 
 Read `AGENTS.md`, this task, the assembly list above, the desktop topic's Tasks

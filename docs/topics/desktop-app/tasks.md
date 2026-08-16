@@ -167,7 +167,7 @@ changes, local installation, or external distribution.
 Turn a status row into scoped development by naming its anchor:
 
 ```text
-进入开发：`desktop-app` / `<task-anchor>`
+开发：`desktop-app` / `<task-anchor>`
 ```
 
 Read `AGENTS.md`, this topic's [requirements](requirements.md) and

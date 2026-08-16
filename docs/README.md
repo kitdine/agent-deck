@@ -293,8 +293,9 @@ writer is how the two drift apart.
   an empty file to fill it.
 - List a kind that does not apply as a row saying so, rather than omitting it
   silently, so a reader can tell "decided not to" from "forgot".
-- Revise the set whenever a task's scope names a surface or contract domain the
-  matrix does not cover.
+- Revise the set — the matrix rows — whenever a task's scope names a surface or
+  contract domain it does not cover. Revising the set adds a row; it does not
+  write the document. That is a later `设计：<topic> / <document>`.
 
 The author proposes the set; **the `tasks.md` reviewer ratifies it**. This adds
 no reviewer role, because `tasks.md`'s review question already asks whether the
@@ -335,11 +336,33 @@ boundary around a problem nobody has observed cannot be decided, only guessed.
 So the minimum input is the observed behavior and how it was measured, the
 surfaces and contracts it touches, and what is deliberately excluded.
 
-That first design produces exactly two files: `requirements.md`, and `tasks.md`
-carrying the Documents matrix that declares the intended set. It does not
-produce `ux/` or `architecture.md`. Their scope derives from a boundary that has
-not been reviewed yet, so writing them first means writing against a boundary
-that may still move.
+That first design normally produces two files: `requirements.md`, and `tasks.md`
+carrying the Documents matrix that declares the intended set. Those are the only
+two that can be written before a boundary exists — `ux/` and `architecture.md`
+derive their scope from it, so writing them first risks writing against a
+boundary the review still moves. Writing them early is allowed; the rework is
+the author's risk to take. The binding constraint is the review order below, not
+how many files one design produces.
+
+#### The commands
+
+The verbs are the workflow's, unchanged. What varies is the target after the
+colon, and one rule covers all of it: **the verb is the phase, and what follows
+the colon is what that phase acts on.**
+
+| Command | Acts on |
+| --- | --- |
+| `设计：<topic>` | A topic that does not exist yet; produces `requirements.md` and `tasks.md` |
+| `设计：<topic> / <document>` | One further document — `ux/<surface>.md`, `architecture.md`, or a revision of either |
+| `评审：<topic> / <document>` | One document, as its own artifact |
+| `开发：<topic> / <task-anchor>` | One task's implementation |
+| `评审：<topic> / <task-anchor>` | One task's implementation |
+| `修复：<scope>` / `复评：<scope>` | Recorded findings, then their closure |
+
+`开发` never writes a design document; it writes the code a reviewed document
+already specified. When a task's scope reveals a surface or contract the matrix
+does not cover, that is a `tasks.md` revision plus a later `设计：<topic> /
+<document>` — not something the task absorbs.
 
 #### The order documents are reviewed
 

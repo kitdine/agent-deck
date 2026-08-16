@@ -75,7 +75,7 @@ dispatch, or publication.
 Turn a status row into scoped development by naming its anchor:
 
 ```text
-进入开发：`usage-attribution-precision` / `<task-anchor>`
+开发：`usage-attribution-precision` / `<task-anchor>`
 ```
 
 Read `AGENTS.md`, this topic's [requirements](requirements.md) and
