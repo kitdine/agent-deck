@@ -292,8 +292,8 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
-		A50000000000000000000001 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = A40000000000000000000002 /* AgentDeckShared */; }; 
-		A50000000000000000000002 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = A40000000000000000000002 /* AgentDeckShared */; }; 
+		A50000000000000000000001 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = A40000000000000000000002 /* AgentDeckShared */; };
+		A50000000000000000000002 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = A40000000000000000000002 /* AgentDeckShared */; };
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */

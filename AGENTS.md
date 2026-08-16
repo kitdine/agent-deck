@@ -171,6 +171,7 @@ download modules, set `GOMODCACHE=/private/tmp/agent-deck-go-mod` for that
 command rather than writing to the user Go module cache.
 
 ```bash
+make check-whitespace
 scripts/run-go-test.sh ./...
 scripts/run-go-test.sh -race ./...
 env GOCACHE=/private/tmp/agent-deck-go-build go vet -mod=vendor ./...
@@ -179,6 +180,13 @@ env GOCACHE=/private/tmp/agent-deck-go-build GOOS=darwin GOARCH=amd64 go build -
 make check-arm64-size
 make release-verify
 ```
+
+`make check-whitespace` scans tracked and untracked content for trailing
+whitespace, CRLF line endings, and a missing final newline, excluding
+`vendor/` and binary files. It scans content rather than a diff, so a violation
+that is already committed stays visible instead of surfacing only in diffs that
+happen to touch it. It runs inside `make verify`, and therefore inside CI and
+`make release-verify`; run it alone as L0 evidence.
 
 `scripts/run-go-test.sh` runs Go tests once with `-mod=vendor -count=1 -v`,
 captures combined stdout and stderr in a unique temporary log, preserves the Go
@@ -194,7 +202,7 @@ while the test process is still running.
 
 | Level | Typical change | Required evidence |
 | ----- | -------------- | ----------------- |
-| L0 | Documentation, comments, ignore rules | Relevant format/link/discovery checks and `git diff --check` |
+| L0 | Documentation, comments, ignore rules | Relevant format/link/discovery checks, `make check-whitespace`, and `git diff --check` |
 | L1 | Localized package or renderer behavior | Affected targeted tests |
 | L2 | Shared CLI, parser, SQLite schema, persisted or JSON/text contract | Targeted tests plus `go test -mod=vendor ./...` |
 | L3 | Concurrency, credentials/privacy, migration execution, build or installer behavior | L2 plus only the relevant race, vet, cross-build, size, install, or privacy checks |

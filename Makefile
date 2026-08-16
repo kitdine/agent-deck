@@ -23,7 +23,7 @@ FORCE ?= 0
 COMPLETION_SHELL ?= auto
 COMPLETION_RC ?=
 
-.PHONY: build build-all release-tag release-archive check-arm64-size check-go-test-runner check-install check-privacy check-release-distribution install uninstall release-verify clean test test-race vet verify prices-regen check-prices-reproducible test-macos-app build-macos-app
+.PHONY: build build-all release-tag release-archive check-arm64-size check-go-test-runner check-install check-privacy check-release-distribution check-whitespace install uninstall release-verify clean test test-race vet verify prices-regen check-prices-reproducible test-macos-app build-macos-app
 
 .PHONY: release-artifact-verify
 
@@ -85,7 +85,7 @@ prices-regen:
 check-prices-reproducible:
 	env GOCACHE=$(GOCACHE) GOMODCACHE=$(GOMODCACHE) $(GO) run -mod=vendor ./tools/genprices -check
 
-verify: check-go-test-runner test test-race vet
+verify: check-whitespace check-go-test-runner test test-race vet
 
 install: build
 	@PREFIX="$(PREFIX)" BINDIR="$(BINDIR)" DATADIR="$(DATADIR)" FORCE="$(FORCE)" COMPLETION_SHELL="$(COMPLETION_SHELL)" COMPLETION_RC="$(COMPLETION_RC)" bash scripts/manage-install.sh install "$(DIST_DIR)/agentdeck"
@@ -100,6 +100,11 @@ check-install:
 
 check-privacy:
 	@bash scripts/check-privacy.sh
+
+# Scans tracked and untracked content, not a diff, so a violation already
+# committed stays visible instead of only surfacing in diffs that touch it.
+check-whitespace:
+	@bash scripts/check-whitespace.sh
 
 check-release-distribution:
 	bash scripts/test-release-distribution.sh
