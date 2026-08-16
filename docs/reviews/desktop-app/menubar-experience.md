@@ -51,7 +51,57 @@ task: menubar-experience
   connectivity, `docs/specs/menubar-experience-design.md` lines 33, 64, 162
 - Verdict: REOPEN
 
-The four open findings belong to the `menubar-experience` design task and are
-left to its owner; this review changed no design content. Only the connectivity
-policy conflict was resolved here, because it was a defect in the authoritative
-documents rather than in the design.
+## Round 2 — 2026-08-16
+
+- Reviewed state: `docs/specs/menubar-experience-design.md`, uncommitted working
+  tree
+- Reviewer: claude-code (repair round, same owner — an independent Review round
+  is still required before the plan's `Review` cell may be ticked)
+- Scope: the four Round 1 findings, plus the UI, UX, and UED specification the
+  design had been missing entirely.
+
+- Round 1 findings, dispositions:
+  - [P1] Switch invocation and result contract -> **Fixed.** Added a result
+    envelope section: outcome is decided by the presence of `error` and by
+    nothing else, `MenuBarSwitchOperation` owns one attempt per client, and
+    serialization, double-submit impossibility, non-cancellation, and result
+    lifetime are specified.
+  - [P2] `stale` / `offline` wording and update-check copy -> **Fixed.** Added an
+    interaction-state and copy table in both languages. The user-visible wording
+    no longer says "stale"; it states when data was updated. `offline` names the
+    helper rather than the network. Manual and automatic update checks read
+    differently, and a silent automatic no-op is required.
+  - [P2] Missing visual contract -> **Fixed.** Added a menu-bar item section and
+    a visual contract with geometry (340 pt, 280 pt narrow bound, 560 pt height
+    cap), semantic type styles, a 4 pt spacing scale, semantic status colors each
+    carrying a symbol and a label, and density bounds for the two unbounded
+    sections.
+  - [P2] Partial-failure presentation -> **Fixed.** Candidate discovery failure
+    with readable routes now keeps `available: true` and shows current routes,
+    with switching visibly disabled instead of the section disappearing.
+    `ready: false` candidates are listed with a localized reason.
+
+- New findings, raised during repair:
+  - [P1] `provider use` exits `0` on a failed switch while reporting
+    `error.code: runtime_error`. Verified: `agentdeck --format json provider use
+    nonexistent-xyz --client codex` returns exit `0`, whereas `session show` with
+    a missing id returns exit `1`. A consumer reading the exit status would treat
+    the failure as success. -> Recorded in the design as a CLI prerequisite; the
+    host is specified to ignore exit status entirely. The CLI defect itself is
+    out of this task's scope and needs its own fix.
+  - [P2] That same failure carries `sql: no rows in result set` in
+    `error.message`, and `runtime_error` is not defined as a stable code in
+    `docs/specs/cli-design.md`. -> The design forbids displaying or logging the
+    raw message and requires a generic localized explanation beside the verbatim
+    code.
+
+- Evidence: `agentdeck --format json provider use nonexistent-xyz --client
+  codex` (exit 0, `runtime_error`), `agentdeck --format json session show
+  nonexistent-id` (exit 1), `agentdeck --format json provider current` envelope
+  keys, `grep runtime_error docs/specs/cli-design.md` (no definition)
+- Verdict: REOPEN — repair complete, awaiting independent review
+
+Round 1's connectivity-policy finding was resolved in the authoritative documents
+rather than in the design, and is closed. The two CLI defects found in Round 2 are
+prerequisites recorded for their own fix; the design works correctly around them
+without hiding them.
