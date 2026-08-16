@@ -29,9 +29,10 @@ Create a task's file lazily, when its first review actually happens. Do not
 pre-create empty files or fabricate rounds for unreviewed tasks.
 
 A version contract plan's review directory also carries that version's
-integration reviews, because integrating other lines is a task of the contract
-plan rather than a plan of its own. See
-`.agent-instructions/branching.md` for the merge classes and what each requires.
+integration reviews under its `assemble` task anchor, because merging the
+version's feature branches is a task of the contract plan rather than a plan of
+its own. See `.agent-instructions/branching.md` for the merge classes and what
+each requires.
 
 ## Link to the plan matrix
 

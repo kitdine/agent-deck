@@ -586,11 +586,15 @@ remain the source of truth.
 
 ### Branch Model and Integration / 分支模型与集成
 
-Version feature lines, release patch lines, and `main` as the integration trunk
-are defined in `.agent-instructions/branching.md`. Read it only when current work
-crosses a branch, merge, or version-line boundary. A merge produces a content
-state no prior evidence covers, so it carries its own review and evidence
-requirements that scale with the merge class.
+Plan-topic feature branches, release patch lines, and `main` are defined in
+`.agent-instructions/branching.md`. Read it only when current work crosses a
+branch, merge, or version assembly boundary.
+
+Two consequences bind other workflows. A feature plan finishing does not merge
+anything: merging into `main` is a task of the version contract plan that
+includes the plan, which is what keeps version membership reversible. And a merge
+produces a content state no prior evidence covers, so it carries its own review
+and evidence requirements that scale with the merge class.
 
 ### Review Artifact Finalization / 评审产物收口
 
