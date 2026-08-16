@@ -314,11 +314,17 @@ A topic is promoted from one of five origins, and the origin belongs in
 - a measured defect in released behavior;
 - a direct request.
 
-Promote with the project's initialization trigger:
+Promote with the design trigger, naming a topic that does not exist yet:
 
 ```text
-初始化：`<topic>`
+设计：`<topic>`
 ```
+
+Not `初始化`. That command is the workflow's project-initialization route, which
+refreshes the managed guidance block in `AGENTS.md` and runs once per
+repository; reusing the word for topic creation would make one trigger mean two
+things. Creating a topic is design work anyway — `requirements.md` is the
+boundary decision, which is exactly what the design phase produces.
 
 **A topic starts from an observation, not from an idea.** Both topics promoted
 so far open with measurement — one with a table of `error.code` and
@@ -329,7 +335,7 @@ boundary around a problem nobody has observed cannot be decided, only guessed.
 So the minimum input is the observed behavior and how it was measured, the
 surfaces and contracts it touches, and what is deliberately excluded.
 
-Initialization produces exactly two files: `requirements.md`, and `tasks.md`
+That first design produces exactly two files: `requirements.md`, and `tasks.md`
 carrying the Documents matrix that declares the intended set. It does not
 produce `ux/` or `architecture.md`. Their scope derives from a boundary that has
 not been reviewed yet, so writing them first means writing against a boundary
