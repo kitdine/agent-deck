@@ -18,12 +18,31 @@ The corrected ownership model is recorded by the historical
 
 This file is the only status authority for this topic.
 
+## Assembly list
+
+This list decides what `v0.5.0` contains. A topic carries no version number of
+its own, so membership exists here and in
+[the Roadmap](../../README.md#active-development) and nowhere else. Changing the
+list is how a topic is added or deferred; no commit, branch, review record, or
+evidence moves when it changes.
+
+| Topic | Included | Reason |
+| --- | --- | --- |
+| [`desktop-app`](../desktop-app/tasks.md) | **Yes** | The version's only feature line. All six of its tasks ship together; a topic is merged whole or not at all. |
+| [`cli-error-classification`](../cli-error-classification/requirements.md) | **No** | It changes the documented JSON error contract, turning `runtime_error` into specific not-found codes. That is an observable break for any consumer matching the old code, and it is unrelated to what `v0.5.0` promises. Excluding it keeps the change out of this tag without any revert, because an unselected topic is never merged. |
+| [`usage-attribution-precision`](../usage-attribution-precision/requirements.md) | **No** | Promoted out of the `v0.6.0` cost-truthfulness scope and independent of the desktop work. |
+
+Excluding a topic costs nothing here and everything later: a topic already
+merged but no longer wanted has no clean removal, because `revert` propagates
+forward and `reset` rewrites history. See `.agent-instructions/branching.md`.
+
 ## Scope
 
-`v0.5.0` carries one feature line: the desktop topic's six tasks. That topic
-owns the behavior it delivers and writes its own feature-contract text. This
-topic reconciles the complete version, raises the living specification exactly
-once, and checks that its documentation and version identities agree.
+`v0.5.0` therefore carries one feature line: the desktop topic's six tasks. That
+topic owns the behavior it delivers and writes its own feature-contract text.
+This topic merges the selected branches, reconciles the complete version, raises
+the living specification exactly once, and checks that its documentation and
+version identities agree.
 
 The later technical preflight and any RC or stable publication are separate
 commit-bound workflows. They are not tasks here and require their own explicit
@@ -53,7 +72,20 @@ Passing those checks still does not select RC or stable publication.
 
 ## Task breakdown
 
-### `v0-5-0-contract`
+### 1. `assemble`
+
+- Merge the branches of every topic marked **Yes** in the assembly list, in
+  dependency order, classifying each merge before it happens.
+- Review the intersection only. Neither side's already-reviewed behavior is
+  re-reviewed; state the exclusions and point at the reviews that cover them.
+- Record integration evidence with `unit_kind: integration` bound to the merge
+  tree, and append each merge as a round in `reviews/assemble.md`.
+- Nothing to merge is a valid outcome while `v0.5.0` development happens
+  directly on `main`; say so in the record rather than skipping the task.
+- Verification level and merge class requirements come from
+  `.agent-instructions/branching.md`.
+
+### 2. `v0-5-0-contract`
 
 - Reconcile the complete `v0.5.0` behavior into `docs/specs/cli-design.md` and
   `docs/specs/cli-manual.md`, on top of the feature-contract text already landed
@@ -79,10 +111,11 @@ already delivered.
 
 | Task | Dev | Review |
 | --- | --- | --- |
-| `v0-5-0-contract` | [ ] | [ ] |
+| 1. `assemble` | [ ] | [ ] |
+| 2. `v0-5-0-contract` | [ ] | [ ] |
 
-The task is blocked until the desktop topic is fully reviewed. Commit boundaries
-follow task boundaries. This topic does not authorize commits, pushes,
+Both tasks are blocked until the desktop topic is fully reviewed, and `assemble`
+precedes the contract task. Commit boundaries follow task boundaries. This topic does not authorize commits, pushes,
 certificate creation, secret changes, preflight dispatch, release publication,
 Homebrew tap changes, local installation, or external distribution.
 
@@ -97,10 +130,12 @@ evidence. The user then decides RC, stable release, or no publication.
 Start the task only after its entry condition is met:
 
 ```text
-进入开发：`v0-5-0-contract` / `v0-5-0-contract`
+进入开发：`v0-5-0-contract` / `<task-anchor>`
 ```
 
-Read `AGENTS.md`, this task, the desktop topic's Tasks matrix, the specification
-versioning contract in `docs/specs/cli-design.md`, and verification routing.
+Read `AGENTS.md`, this task, the assembly list above, the desktop topic's Tasks
+matrix, the specification versioning contract in `docs/specs/cli-design.md`, and
+verification routing. `assemble` additionally requires
+`.agent-instructions/branching.md`.
 Tick `Dev` only after selected verification passes. An independent reviewer
-records a PASS round under `reviews/v0-5-0-contract.md` before ticking `Review`.
+records a PASS round under `reviews/<task-anchor>.md` before ticking `Review`.

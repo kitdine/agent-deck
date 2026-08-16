@@ -6,7 +6,10 @@ updated: 2026-08-16
 
 # Native macOS Desktop App — Requirements
 
-Target version: `v0.5.0`.
+Version membership is decided by the [`v0.5.0` contract
+topic](../v0-5-0-contract/tasks.md#assembly-list) and mirrored in
+[the documentation index](../../README.md#active-development); this topic
+carries no version of its own.
 
 This topic delivers the first native AgentDeck desktop surface after the
 `v0.4.0` session-experience feature line documented in the living

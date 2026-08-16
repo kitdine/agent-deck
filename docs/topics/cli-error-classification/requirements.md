@@ -6,10 +6,11 @@ updated: 2026-08-16
 
 # CLI Error Classification — Requirements
 
-No version is assigned. This topic's changes must not enter the `v0.5.0` tag —
-they are not part of that version's scope. Version membership is decided by a
-`vX-Y-Z-contract` topic that selects this one; see
-`.agent-instructions/branching.md`.
+No version has selected this topic. Version membership is decided by a
+`vX-Y-Z-contract` topic's assembly list, not here; the
+[`v0.5.0` contract topic](../v0-5-0-contract/tasks.md#assembly-list) records
+why it deliberately excludes this one. See `.agent-instructions/branching.md`
+for how an unselected topic stays out of a tag.
 
 Surfaced while specifying the desktop menu-bar switch contract, recorded in
 [`menubar-experience.md`](../desktop-app/reviews/menubar-experience.md) Round 2.

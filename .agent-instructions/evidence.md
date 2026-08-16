@@ -85,6 +85,22 @@ defined gate.
   decisions, stable workflow and release conventions, reusable diagnostic
   conclusions, known pitfalls, and relationships among topics, versions,
   components, and contracts.
+- The durability test: record a fact only when it would still be true and useful
+  in a session holding none of the current context, **and** could not be derived
+  by reading the repository at that later time. A decision and the reason it was
+  chosen pass both. The repository's present state passes neither — it is
+  derivable, so recording it only creates something that can go stale.
+- The line against evidence follows from that test. A conclusion about why an
+  approach failed is durable; the measurement that produced it is evidence.
+  Record the conclusion here and leave the measurement in CEv1 or the review
+  record. "The gate scans a diff, so a committed violation never fails" is
+  memory; "the gate passed on tree X" is not.
+- Writing is not gated on asking. Bounded creates and observation additions in
+  the `agent-deck:` namespace are standing authority, so record a qualifying
+  fact when it is established rather than deferring it to a confirmation.
+- Correct a stale entry by adding a dated correcting observation. Deletion and
+  replacement need explicit approval, so an addition that supersedes is the
+  available repair, and it preserves what the earlier reader believed.
 - Use namespaced entity names such as `agent-deck:project`,
   `agent-deck:decision:<topic>`, `agent-deck:topic:<topic>`, and
   `agent-deck:version:<version>`. Prefer small, idempotent entity, observation,

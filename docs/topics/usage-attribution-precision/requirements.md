@@ -6,11 +6,13 @@ updated: 2026-08-16
 
 # Usage Attribution Precision — Requirements
 
-Target version: `v0.6.0`. This is the first bounded topic promoted out of the
-[`v0.6.0` cost-truthfulness scope](../../README.md#roadmap), and the other
-`v0.6.0` items depend on it: pricing backfill, `codex-auto-review`
-classification, `unpriced` disambiguation, and layered cost presentation all
-require knowing which provider and multiplier an event belongs to.
+This is the first bounded topic promoted out of the
+[`v0.6.0` cost-truthfulness scope](../../README.md#roadmap). Version membership
+is decided by that version's contract topic and the Roadmap, not here; this
+topic carries no version of its own. The other `v0.6.0` items depend on it:
+pricing backfill, `codex-auto-review` classification, `unpriced`
+disambiguation, and layered cost presentation all require knowing which
+provider and multiplier an event belongs to.
 
 The question this topic answers is not what an event costs. It is **whether the
 recorded cost is real**. Today 26.8% of events are priced at multiplier `1`

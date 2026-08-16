@@ -79,7 +79,7 @@ the desktop topic and blocks the remaining `v0.6.0` cost items.
 
 | Document | Status | Authority |
 | --- | --- | --- |
-| [CLI Design](specs/cli-design.md) | Active, version 25 | System, persistence, security, compatibility, and distribution contracts. |
+| [CLI Design](specs/cli-design.md) | Active, version 26 | System, persistence, security, compatibility, and distribution contracts. |
 | [CLI Manual](specs/cli-manual.md) | Active | Implemented commands, flags, output shapes, and interaction behavior. |
 | [Archived Documents](archive/README.md) | Active index | Retirement history and pointers to historical topics, plans, and reviews. |
 
