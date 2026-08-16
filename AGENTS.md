@@ -442,18 +442,25 @@ Authoritative documents:
 | Purpose                                        | Path                                                       |
 | ---------------------------------------------- | ---------------------------------------------------------- |
 | Documentation index and execution status / 文档索引与执行状态 | `docs/README.md`                              |
-| Requirements catalog / 需求目录                | `docs/specs/cli-design.md`                       |
-| Architecture or API contract / 架构或 API 契约 | `docs/specs/cli-design.md`                       |
+| Requirements catalog / 需求目录                | `docs/topics/<topic>/requirements.md`            |
+| Interaction design / 交互设计                  | `docs/topics/<topic>/ux/<surface>.md`            |
+| Architecture or API contract / 架构或 API 契约 | `docs/topics/<topic>/architecture.md` while in progress, then `docs/specs/cli-design.md` |
+| Task breakdown and status / 任务划分与状态     | `docs/topics/<topic>/tasks.md`                   |
+| Review records / 评审记录                      | `docs/topics/<topic>/reviews/`                    |
 | Development guide / 开发指南                   | `AGENTS.md`                                                |
 | Deployment guide / 部署指南                    | Not applicable; this repository has no deployment process. |
 | Archived / superseded documents / 归档文档      | `docs/archive/` (see `docs/archive/README.md`)              |
 
-Naming and lifecycle rules are documented once, in `docs/README.md`'s "Naming
-Convention" and "Document Lifecycle" sections — read there for the filename
-patterns (`docs/specs/<topic>-design.md`,
-`docs/plans/<topic>.md` with dated Follow-Up subsections, and the
-plan's `Backlog / Future Feature Ideas` section for unscoped ideas). Do not
-duplicate that index here; it changes as documents are added or archived.
+A topic owns one coherent behavior change and carries requirements, interaction
+design, architecture, tasks, and reviews in one directory. `docs/specs/` holds
+only contracts the product guarantees, and receives a topic's stable contracts
+after its last task passes review.
+
+Naming, structure, required documents, readiness conditions, status matrices, and
+lifecycle are documented once, in `docs/README.md`'s "Naming Convention" and
+"Document Lifecycle" sections. Do not duplicate that index here; it changes as
+documents are added or archived. Review-record format lives in
+`.agent-instructions/review-records.md`.
 
 - Treat code, tests, configuration, and repository history as current truth.
 - Update the closest living document when behavior, contracts, requirements, or
@@ -617,7 +624,7 @@ For an active plan that defines per-task review records and a Status matrix,
 `进入评审...` and `进入复评...` authorize only the review-artifact updates
 required by that plan:
 
-- append the current round and verdict under `docs/reviews/`;
+- append the current round and verdict under the topic's `reviews/` directory;
 - keep Review unchecked while medium-or-higher findings remain, or tick it when
   the task passes;
 - synchronize the plan summary and `docs/README.md` when their status changes;

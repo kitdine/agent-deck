@@ -459,7 +459,7 @@ cmd/agentdeck/   Cobra CLI entrypoint and end-to-end contract tests
 internal/        Provider, usage, session, extension, backup, and platform code
 scripts/         Release privacy checks
 docs/specs/      Approved behavior and architecture contracts
-docs/plans/      Execution status and completion gates
+docs/topics/     Requirements, design, tasks, and reviews per topic
 vendor/          Committed Go dependencies
 ```
 

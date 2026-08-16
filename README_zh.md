@@ -364,7 +364,7 @@ cmd/agentdeck/   Cobra CLI 入口与端到端契约测试
 internal/        Provider、用量、会话、扩展、备份和平台实现
 scripts/         发布隐私检查
 docs/specs/      已批准的行为和架构契约
-docs/plans/      执行状态与完成门禁
+docs/topics/     按主题组织的需求、设计、任务与评审
 vendor/          已提交的 Go 依赖
 ```
 

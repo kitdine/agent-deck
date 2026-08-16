@@ -43,19 +43,25 @@ agentdeck version
 
 | Plan | Status | Purpose |
 | --- | --- | --- |
-| [Native macOS Desktop App](plans/desktop-app.md) | Active — 1/6 done | macOS 26 menu-bar app, WidgetKit extension, unified desktop distribution, Cask, and direct-download delivery. |
+| [Native macOS Desktop App](plans/desktop-app.md) | Active — 2/6 reviewed; Task 3 design Review FAIL | macOS 26 menu-bar app, WidgetKit extension, unified desktop distribution, Cask, and direct-download delivery. |
 | [`v0.5.0` Contract Closure](plans/v0-5-0-contract.md) | Active — 0/1 done | Version-wide specification raise and documentation reconciliation after all desktop tasks pass review. |
 | [Usage Attribution Precision](plans/usage-attribution-precision.md) | Active — 0/3 done | First `v0.6.0` plan: per-client attribution time semantics, determinability-based quality, and an unattributed boundary that never enters a real-spend total. |
 | [CLI Error Classification](plans/cli-error-classification.md) | Active — 0/2 done | Unassigned to a version: stable not-found codes, and no storage text in a documented JSON contract. |
 
-`desktop-wire-contract` reached Re-review Round 2 PASS. The current checkpoint
-is its task-level commit; `macos-app-foundation` remains next but is not yet
-authorized. There are no open execution tasks outside an active plan.
+`desktop-wire-contract` reached Re-review Round 2 PASS.
+`macos-app-foundation` reached Re-review Round 3 PASS after unsupported and
+malformed App Group cache data were made fail-closed. `menubar-experience`
+Design Review Round 3 failed on six decision-completeness findings and requires
+bounded design repair before Development.
 
 Usage attribution precision is planned but not started. It is independent of
 the desktop plan and blocks the remaining `v0.6.0` cost items.
 
 ## Authoritative Documents
+
+Approved task design: [`macOS App Foundation`](specs/macos-app-foundation-design.md).
+Task design under revision: [`Menu-Bar Experience`](specs/menubar-experience-design.md)
+(Design Review Round 3 FAIL).
 
 | Document | Status | Authority |
 | --- | --- | --- |
@@ -75,7 +81,7 @@ authorization rules live in [AGENTS.md](../AGENTS.md).
 Planned after `v0.5.0`. Re-planned on 2026-08-13; this table supersedes the
 release sequence previously recorded in the desktop plan. Each version has a
 Beads tracking epic and a blocked design task, and needs a bounded plan under
-`docs/plans/` before development starts. Version themes are commitments of
+`docs/topics/` before development starts. Version themes are commitments of
 sequence, not of scope detail.
 
 | Version | Theme | Scope |
@@ -141,15 +147,18 @@ stops holding.
 
 ## Naming Convention
 
-- Use lowercase kebab-case topic names.
-- New design documents use `docs/specs/<topic>-design.md`.
-- New execution plans use `docs/plans/<topic>.md` without a date prefix, so the
-  plan filename is also its review-directory topic.
-- Established living authorities such as `cli-design.md`, `cli-manual.md`, and
-  existing active plans keep their stable names; do not rename them solely to
-  adopt the dated convention.
-- Review directories mirror the owning plan topic and use one file per task
-  anchor: `docs/reviews/<plan-topic>/<task-anchor>.md`.
+- Use lowercase kebab-case topic names, with no date prefix and no version
+  number.
+- A topic is a directory: `docs/topics/<topic>/`, with the fixed document names
+  in the Topic structure section above.
+- Review records live inside the topic and are named after what they review:
+  `docs/topics/<topic>/reviews/requirements.md`,
+  `.../reviews/ux-<surface>.md`, `.../reviews/architecture.md`,
+  `.../reviews/tasks.md`, and `.../reviews/<task-anchor>.md`.
+- `docs/specs/` holds contracts, not designs. A file there describes behavior the
+  product guarantees, not how a topic intends to build it.
+- Established living authorities such as `cli-design.md` and `cli-manual.md` keep
+  their stable names.
 - A follow-up that remains part of an unfinished plan uses a dated
   `## Follow-Up — YYYY-MM-DD` subsection. Work with a distinct goal or acceptance
   boundary gets a new plan.
@@ -173,27 +182,104 @@ version: N            # versioned specifications only
 
 | Directory | Purpose | Lifecycle |
 | --- | --- | --- |
-| `docs/specs/` | Current product and interaction contracts | Revise in place while authoritative. A supporting delivered design may become `reference`. |
-| `docs/plans/` | Finite approved execution | Keep `active` until every required task gate passes; then archive. |
-| `docs/reviews/` | Per-task review evidence matching active plans | Archive with the owning plan. |
-| `docs/archive/` | Historical plans, reviews, and superseded material | Preserve history; never use as the starting point for new work. |
+| `docs/topics/<topic>/` | One coherent behavior change, from requirements through tasks | Keep `active` until every required gate passes; then archive the whole directory. |
+| `docs/specs/` | Current product and interaction contracts only | Revise in place while authoritative. Receives a topic's stable contracts after its last task passes review. |
+| `docs/archive/` | Retired topics and superseded material | Preserve history; never use as the starting point for new work. |
 | `docs/README.md` | Current status and navigation | Keep concise and update in place; do not duplicate historical narratives. |
 
-- A feature plan owns one coherent behavior change and reconciles that behavior
-  into living specifications. It does not raise the specification version.
-- A version contract plan begins only after its included feature plans pass
-  review, raises the specification version exactly once, and ends at Review
-  PASS. Preflight, release-channel selection, tagging, publication, and local
+### Topic structure
+
+A topic owns one coherent behavior change and carries no version number. Version
+membership is decided by a `vX-Y-Z-contract` topic and recorded in the Roadmap
+above; nothing about a topic changes when its target version does.
+
+```text
+docs/topics/<topic>/
+  requirements.md        goals, non-goals, acceptance boundary
+  ux/<surface>.md        interaction design, one file per user-visible surface
+  architecture.md        development design, contracts, boundaries
+  tasks.md               task breakdown and the status matrices
+  reviews/<name>.md      one record per document and per task
+```
+
+Only `requirements.md` and `tasks.md` are always required. The others are
+required when they apply:
+
+| Document | Required when |
+| --- | --- |
+| `ux/<surface>.md` | The topic changes or adds a user-visible surface |
+| `architecture.md` | The topic introduces a contract, a boundary, or a cross-module change |
+
+When one does not apply, say so in `requirements.md` — "this topic changes no
+user-visible surface" — rather than committing an empty file. A
+`vX-Y-Z-contract` topic needs only `tasks.md`: it reconciles what other topics
+already delivered and originates no requirement, surface, or architecture of its
+own.
+
+### Status
+
+`tasks.md` is the only status authority for its topic, and it carries two
+matrices because documents and tasks are different kinds of work:
+
+```markdown
+## Documents
+
+| Document | Draft | Review |
+| --- | --- | --- |
+| requirements.md | [x] | [x] |
+| ux/menubar.md | [x] | [ ] |
+
+## Tasks
+
+| Task | Dev | Review |
+| --- | --- | --- |
+| 1. `<anchor>` | [ ] | [ ] |
+```
+
+`Draft` means the author asserts the document is complete enough to review. It is
+not a formatting claim: a document may be marked ready for review only when it
+meets its readiness condition.
+
+| Document | Ready to review when |
+| --- | --- |
+| `requirements.md` | Goals, non-goals, and acceptance boundary are stated; no TBD remains; it declares whether a user-visible surface and new contracts are in scope |
+| `ux/<surface>.md` | Every user-visible state has a presentation rule and copy in every shipped language; no placeholder remains |
+| `architecture.md` | Every new contract is fully specified, and every claim about existing code names where it was verified |
+| `tasks.md` | Every task has an anchor, its files, and a verification level, and the set covers the other documents' scope with nothing missing and nothing beyond it |
+
+`tasks.md` appears in its own Documents matrix. Reviewing it asks whether the
+breakdown is sound and complete against the other documents, which is a different
+question from whether any task's implementation is correct.
+
+This index records only a coarse `X/N` rollup per topic and never duplicates
+per-document or per-task status.
+
+- A `Review` tick requires a review record whose latest applicable round is
+  `Verdict: PASS`. A reopened finding returns that document or task to work.
+- A topic reconciles its stable contracts into `docs/specs/` only after its last
+  task passes review, not while it is still executing.
+- A `vX-Y-Z-contract` topic begins only after its included topics pass review,
+  raises the specification version exactly once, and ends at Review PASS.
+  Preflight, release-channel selection, tagging, publication, and local
   installation remain separately authorized delivery stages.
-- Each plan owns its task matrix. This index records only a coarse `X/N` rollup;
-  it never duplicates per-task status.
-- A Review tick requires a corresponding review record whose latest applicable
-  round is `Verdict: PASS`. A reopened finding returns the task to development.
-- Retire completed work with `git mv`: move the plan to `docs/archive/plans/`,
-  move its review directory to `docs/archive/reviews/`, set `status: historical`
-  and `retired:`, and add one concise entry to `docs/archive/README.md`.
+- Retire a completed topic with one `git mv` of `docs/topics/<topic>/` to
+  `docs/archive/topics/<topic>/`, set `status: historical` and `retired:` in each
+  document, and add one concise entry to `docs/archive/README.md`. Reviews travel
+  with the topic because they live inside it.
 - Do not re-list individual archived files in this index. Link the archive index
   instead.
+
+### Document size
+
+Length is judged by what produced it, not by a line count. A long document is
+correct when the length comes from recorded design argument — rejected
+alternatives with their reasons, retracted judgements, measured baselines — and
+wrong when it comes from accumulating unrelated work. Retired topics in the
+archive include several documents past a thousand lines that were deliberately
+never split.
+
+Do not split a document to hit a size target. Split a topic only when it stops
+owning one coherent behavior change.
 
 ## Status Vocabulary
 

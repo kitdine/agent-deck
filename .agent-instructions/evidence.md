@@ -1,8 +1,8 @@
 # Completion Evidence and Neo4j Project Memory
 
-Read this file only when current work crosses a new Task, Plan, or Release
-completion boundary, creates or invalidates completion evidence, or materially
-depends on prior durable project knowledge.
+Read this file only when current work crosses a new Document, Task, Topic, or
+Release completion boundary, creates or invalidates completion evidence, or
+materially depends on prior durable project knowledge.
 
 ## Completion Evidence and Neo4j / 验收证据与 Neo4j
 
@@ -18,9 +18,28 @@ named `completion-evidence`.
 - Use repository namespace `github.com/kitdine/agent-deck`. Never read, write,
   merge, invalidate, or delete another repository's CEv1 records as part of an
   AgentDeck workflow.
-- Before claiming a Task, Plan, or Release complete, query every newly crossed
-  WorkUnit boundary from inner to outer with its `work_unit_id` and exact
+- Before claiming a Document, Task, Topic, or Release complete, query every newly
+  crossed WorkUnit boundary from inner to outer with its `work_unit_id` and exact
   `target_content_state`.
+- The four boundaries and their bindings. Repository and evidence terminology are
+  identical; there is no mapping to remember:
+
+  | Boundary | `unit_kind` | `work_unit_id` | `target_content_state` |
+  | --- | --- | --- | --- |
+  | A reviewed document | `document` | `<topic>:<document>` | HEAD SHA plus that document's blob hash |
+  | A task's implementation | `task` | `<topic>:<task-anchor>` | Git tree |
+  | A whole topic | `topic` | `<topic>` | Git tree |
+  | A release | `release` | the version | Git tree plus the preflight SHA |
+
+  A merge additionally records `unit_kind: integration`; see
+  `.agent-instructions/branching.md`.
+
+- Write `unit_kind` in lowercase. Historical nodes carry mixed casing and the
+  retired value `plan`; leave them as they are, since they record work that
+  already completed, and use `topic` for anything new.
+- A document boundary is crossed when its review reaches `Verdict: PASS`, so a
+  frozen requirement or an approved design is queryable rather than only narrated
+  in a review record.
 - A CEv1 WorkUnit is an evidence scope, not a dispatch task. It may cover work
   coordinated through several Beads tasks, and one Beads task may reference
   several WorkUnits. Store only correlation identifiers across systems.
@@ -64,10 +83,10 @@ defined gate.
   authoritative repository source, or knowledge the user explicitly requests
   to preserve. Suitable facts include approved architecture and product
   decisions, stable workflow and release conventions, reusable diagnostic
-  conclusions, known pitfalls, and relationships among plans, versions,
+  conclusions, known pitfalls, and relationships among topics, versions,
   components, and contracts.
 - Use namespaced entity names such as `agent-deck:project`,
-  `agent-deck:decision:<topic>`, `agent-deck:plan:<topic>`, and
+  `agent-deck:decision:<topic>`, `agent-deck:topic:<topic>`, and
   `agent-deck:version:<version>`. Prefer small, idempotent entity, observation,
   and relationship updates over duplicated narrative documents.
 - Bounded idempotent creates, observation additions, and relationship upserts in

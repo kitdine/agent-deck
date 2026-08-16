@@ -39,14 +39,21 @@ development, but are not deleted because they still carry useful history:
 implementation rationale, superseded contracts, or one-off investigation
 records.
 
-It mirrors the live structure: retired execution trackers go under
-`plans/`, retired contracts under `specs/`, and a retired plan's review records
-under `reviews/<plan-topic>/`. Filenames keep the topic only; `status:
-historical` and `retired:` in each document's frontmatter carry the rest.
+It mirrors the live structure. A topic retires as one directory under
+`topics/<topic>/`, carrying its own reviews, because they live inside it.
+Retired contracts go under `specs/`.
+
+Entries below `2026-08-16` predate the topic structure and preserve the layout
+they retired in: execution trackers under `plans/`, review records under
+`reviews/<plan-topic>/`. Those paths are left as they were; they are history,
+not a current convention.
+
+Filenames keep the topic only; `status: historical` and `retired:` in each
+document's frontmatter carry the rest.
 
 ## Criteria for archiving a document
 
-Move a document here instead of leaving it `active` in `docs/plans/` or
+Move a document here instead of leaving it `active` in `docs/topics/` or
 `docs/specs/` once any of the following is true:
 
 - It describes a system, contract, or plan that has been replaced by a newer
