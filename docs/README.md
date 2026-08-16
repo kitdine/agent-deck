@@ -28,6 +28,12 @@ detail belongs in [the archive](archive/README.md), not in this index.
 - [Homebrew tap PR #18](https://github.com/kitdine/homebrew-tap/pull/18)
   merged the reviewed stable `Formula/agentdeck.rb` update. The workflow verified
   `brew install`, `brew test`, and bash, zsh, and fish completions.
+- Beads coordination is **BLOCKED**: its database is at schema v65 while the
+  `bd` binary knows up to v53, twelve migrations behind. Reads work only under
+  `BD_IGNORE_SCHEMA_SKEW=1` and are not trustworthy; no write should be made
+  until the binary is updated. Twenty-one of its thirty issues still cite
+  fourteen `docs/plans/` and `docs/reviews/` paths that the topic migration
+  removed.
 - Exact-SHA [release preflight run 31676882544](https://github.com/kitdine/agent-deck/actions/runs/31676882544)
   succeeded for the `v0.4.1` commit. **No CEv1 Release boundary was recorded for
   `v0.4.1`**; the newest one is `v0.4.0`, `VERIFIED` for Git tree

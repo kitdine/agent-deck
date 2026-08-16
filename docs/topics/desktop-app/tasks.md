@@ -120,6 +120,20 @@ span both `ux/menubar.md` and the menu-bar section of `architecture.md`, so the
 
 ## Tasks
 
+This matrix predates the staged progression, so it was written before
+`architecture.md` and `ux/menubar.md` existed in reviewable form — the early
+decomposition the progression now forbids. It is not being rebuilt from scratch:
+tasks 1 and 2 are delivered and independently reviewed, and discarding a
+decomposition that already produced verified work would cost more than it
+corrects.
+
+Instead, decomposition happens properly once the Documents matrix is green.
+Tasks 1 and 2 then enter stage 5 as fixed inputs — their anchors, boundaries,
+and evidence stay as they are — and tasks 3 through 6 are re-derived from the
+reviewed specification rather than assumed from this list. A task whose scope
+the specification does not support is dropped or re-cut then, which is the point
+of decomposing after the design exists.
+
 | Task | Dev | Review |
 | --- | --- | --- |
 | 1. `desktop-wire-contract` | [x] | [x] |
