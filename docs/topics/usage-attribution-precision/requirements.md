@@ -76,9 +76,10 @@ binary:
 
 ## Surfaces and contracts
 
-This topic adds no interactive surface, so it carries no `ux/` document. It does
-change the observable `usage summary` JSON and text output, which is a contract
-change specified in [`architecture.md`](architecture.md).
+This topic adds no interactive surface. It does change the observable
+`usage summary` JSON and text output, which is a contract change specified in
+[`architecture.md`](architecture.md). The document set itself is declared in
+[`tasks.md`](tasks.md)'s Documents matrix, not here.
 
 ## Acceptance boundary
 

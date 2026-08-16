@@ -93,7 +93,15 @@ This file is the only status authority for this topic.
 | requirements.md | [x] | [ ] |
 | architecture.md | [x] | [ ] |
 | ux/menubar.md | [x] | [ ] |
+| ux/widget.md | [ ] | [ ] |
 | tasks.md | [x] | [ ] |
+
+`ux/widget.md` is required and not yet written. Task 4 `desktop-widget` adds
+WidgetKit timelines and App Intent configuration, which is a second user-visible
+surface, and reviewing `ux/menubar.md` says nothing about whether the widget's
+states and copy are complete. The row is empty rather than absent so the gap is
+visible; task 4 cannot start development against a surface with no interaction
+contract.
 
 The foundation runtime contract in `architecture.md` was reviewed and approved
 under the previous per-task-design convention; that history is in

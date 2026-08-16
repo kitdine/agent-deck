@@ -51,8 +51,12 @@ unattributed cost as its own bucket separate from any real-spend total.
 | requirements.md | [x] | [ ] |
 | architecture.md | [x] | [ ] |
 | tasks.md | [x] | [ ] |
+| `ux/` | n/a | n/a |
 
-This topic adds no user-visible surface, so it carries no `ux/` document.
+The `ux/` row is stated rather than omitted so a reader can tell a decision from
+an oversight: no command gains a new surface. `usage summary` keeps its existing
+text and JSON shape while the values and their labels change, which
+`architecture.md` owns as a contract change.
 
 ## Tasks
 

@@ -83,9 +83,10 @@ Three distinct problems:
 
 ## Surfaces and contracts
 
-This topic changes no interactive surface, so it carries no `ux/` document. The
-observable change is the documented JSON error contract, which is specified in
-[`architecture.md`](architecture.md).
+This topic changes no interactive surface. The observable change is the
+documented JSON error contract, specified in
+[`architecture.md`](architecture.md). The document set itself is declared in
+[`tasks.md`](tasks.md)'s Documents matrix, not here.
 
 ## Acceptance boundary
 

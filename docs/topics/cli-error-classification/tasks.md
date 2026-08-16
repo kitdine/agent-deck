@@ -43,8 +43,11 @@ affected commands.
 | requirements.md | [x] | [ ] |
 | architecture.md | [x] | [ ] |
 | tasks.md | [x] | [ ] |
+| `ux/` | n/a | n/a |
 
-This topic changes no user-visible surface, so it carries no `ux/` document.
+The `ux/` row is stated rather than omitted so a reader can tell a decision from
+an oversight: every command in scope keeps its current output shape, and the
+observable change is a machine-read error code, which `architecture.md` owns.
 
 ## Tasks
 

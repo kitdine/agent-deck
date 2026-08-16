@@ -103,9 +103,14 @@ Passing those checks still does not select RC or stable publication.
 | Document | Draft | Review |
 | --- | --- | --- |
 | tasks.md | [x] | [ ] |
+| requirements.md | n/a | n/a |
+| architecture.md | n/a | n/a |
+| `ux/` | n/a | n/a |
 
-A `vX-Y-Z-contract` topic needs only this file; it reconciles what other topics
-already delivered.
+A `vX-Y-Z-contract` topic needs only this file: it reconciles what other topics
+already delivered and originates no requirement, surface, or architecture of its
+own. The three rows are stated rather than omitted so the emptiness reads as a
+decision.
 
 ## Tasks
 

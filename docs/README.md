@@ -217,19 +217,66 @@ docs/topics/<topic>/
   reviews/<name>.md      one record per document and per task
 ```
 
-Only `requirements.md` and `tasks.md` are always required. The others are
-required when they apply:
+#### Why these documents, and how many
 
-| Document | Required when |
-| --- | --- |
-| `ux/<surface>.md` | The topic changes or adds a user-visible surface |
-| `architecture.md` | The topic introduces a contract, a boundary, or a cross-module change |
+A document exists to be reviewed as its own artifact — that is the reason a
+topic keeps its design next to its tasks instead of scattering it. So a document
+earns its existence by having a **distinct review question**, answered against
+different evidence:
 
-When one does not apply, say so in `requirements.md` — "this topic changes no
-user-visible surface" — rather than committing an empty file. A
-`vX-Y-Z-contract` topic needs only `tasks.md`: it reconciles what other topics
+| Document | Review question | Evidence |
+| --- | --- | --- |
+| `requirements.md` | Is the boundary decided? | Goals, non-goals, acceptance; no TBD |
+| `ux/<surface>.md` | Does every user-visible state have a presentation rule and copy? | The state set, in every shipped language |
+| `architecture.md` | Is every new contract fully specified, and every claim about existing code located? | Contract text and the code it names |
+| `tasks.md` | Does the decomposition cover the others, with nothing missing and nothing beyond? | The other documents |
+
+That gives the test for splitting or merging: **two candidate documents that
+would be reviewed by asking the same question against the same evidence are one
+document, and one document that needs two unrelated questions to judge complete
+is two.** Apply the test to content, not to length.
+
+The count follows from the same test, which is why `ux/` is plural and
+`architecture.md` is not:
+
+- One `requirements.md`, because a topic is one coherent behavior change and so
+  has one boundary question.
+- One `tasks.md`, because there is one decomposition.
+- One `ux/<surface>.md` **per surface**, because reviewing one surface says
+  nothing about whether another is complete — each has its own state set and
+  copy.
+- One `architecture.md`, because "are the contracts specified" is a single
+  question. Split it only for genuinely independent contract domains, and argue
+  the split in `tasks.md` rather than assuming it.
+
+A `vX-Y-Z-contract` topic needs only `tasks.md`: it reconciles what other topics
 already delivered and originates no requirement, surface, or architecture of its
 own.
+
+#### When the set is decided, and by whom
+
+The set cannot be fixed when the topic is created. A surface or contract domain
+often becomes knowable only when a later task's scope is written, and pretending
+otherwise is how a required document goes missing without anyone noticing.
+
+So the set is a claim, and the `Documents` matrix in `tasks.md` is the only
+place that claim lives. Do not also declare it in prose elsewhere; a second
+writer is how the two drift apart.
+
+- List a document that is required but **not yet written** as a row with `Draft`
+  unticked. An empty row is the point — it makes the gap visible. Never commit
+  an empty file to fill it.
+- List a kind that does not apply as a row saying so, rather than omitting it
+  silently, so a reader can tell "decided not to" from "forgot".
+- Revise the set whenever a task's scope names a surface or contract domain the
+  matrix does not cover.
+
+The author proposes the set; **the `tasks.md` reviewer ratifies it**. This adds
+no reviewer role, because `tasks.md`'s review question already asks whether the
+breakdown covers the other documents with nothing missing — whether the set
+itself is complete is that same question. It follows that changing the set
+returns `tasks.md` to review, and only `tasks.md`; the other documents keep
+their verdicts.
 
 ### Status
 
@@ -253,7 +300,9 @@ matrices because documents and tasks are different kinds of work:
 
 `Draft` means the author asserts the document is complete enough to review. It is
 not a formatting claim: a document may be marked ready for review only when it
-meets its readiness condition.
+meets its readiness condition. Each condition below is the author's side of the
+review question that justifies that document existing at all, in Topic
+structure above — the author asserts it, the reviewer asks it.
 
 | Document | Ready to review when |
 | --- | --- |
@@ -263,8 +312,9 @@ meets its readiness condition.
 | `tasks.md` | Every task has an anchor, its files, and a verification level, and the set covers the other documents' scope with nothing missing and nothing beyond it |
 
 `tasks.md` appears in its own Documents matrix. Reviewing it asks whether the
-breakdown is sound and complete against the other documents, which is a different
-question from whether any task's implementation is correct.
+breakdown is sound and complete against the other documents, and whether the
+document set that matrix declares is itself complete — both are different
+questions from whether any task's implementation is correct.
 
 This index records only a coarse `X/N` rollup per topic and never duplicates
 per-document or per-task status.
