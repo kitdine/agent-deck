@@ -159,12 +159,23 @@ XCTest cases passed.
 closed, all earlier findings remain closed, and 19 XCTest cases pass. Task 3
 `menubar-experience` is the next task.
 
-`menubar-experience` independent Design Review Round 3 (2026-08-16): **FAIL**.
-The design requires six bounded contract repairs before Development: quiet
-helper invocation, switch-envelope decoding, application-owned single-flight
-operation lifetime, exact redacted switch options, legacy wire-v1 decoding, and
-deterministic presentation-state precedence. Task 3 `Dev` and `Review` remain
-unchecked. Next action: `修复：menubar-experience / R3-F1–R3-F6`.
+Menu-bar design Review Round 3 (2026-08-16): **FAIL**. Six bounded contract
+repairs are required: quiet helper invocation, switch-envelope decoding,
+application-owned single-flight operation lifetime, exact redacted switch
+options, legacy wire-v1 decoding, and deterministic presentation-state
+precedence.
+
+The target is documents, not task 3. Nothing has been implemented — task 3's
+`Dev` is unticked — so this repair belongs to the Documents matrix: R3-F1
+through R3-F5 land in `architecture.md` and R3-F6 in `ux/menubar.md`, and the
+same pass adds the rendered specimens `ux/menubar.md` has never carried. Task 3
+stays blocked because it cannot be developed against a failed specification.
+
+Next action:
+
+```text
+修复：`desktop-app` / `reviews/menubar-experience.md` / R3-F1–R3-F6
+```
 
 Task 1 was blocked on the `v0.4.0` session DTO contract; that dependency is now
 satisfied. Task 2 consumes task 1. Tasks 3 and 4 depend on task 2 and may

@@ -76,9 +76,10 @@ and nothing else.
 malformed App Group cache data were made fail-closed. The menu-bar contract
 failed Design Review Round 3 on six decision-completeness findings and requires
 bounded design repair before Development; the findings span the topic's
-`architecture.md` and `ux/menubar.md`. That repair also has to add the rendered
-specimens `ux/menubar.md` never carried, and `ux/widget.md` is required and
-unwritten.
+`architecture.md` and `ux/menubar.md`, so the repair targets those documents
+rather than the task, which has no implementation yet. That repair also has to
+add the rendered specimens `ux/menubar.md` never carried, and `ux/widget.md` is
+required and unwritten.
 
 Usage attribution precision is planned but not started. It is independent of
 the desktop topic and blocks the remaining `v0.6.0` cost items.
@@ -376,9 +377,21 @@ simply empty until stage 5.
 
 The verbs are the workflow's, unchanged; no command is invented here. What
 varies is the target after the colon, and one rule covers all of it: **the verb
-is the phase, and what follows the colon is what that phase acts on.** A finding
-at any stage is `修复：<scope>` then `复评：<scope>`, whether the target is a
-document or code.
+is the phase, and what follows the colon is what that phase acts on.**
+
+Repair and re-review take the same shape as the rest, and name the record rather
+than the subject:
+
+```text
+修复：<topic> / reviews/<record>.md / <finding ids>
+复评：<topic> / reviews/<record>.md
+```
+
+Naming the record, not the document or task, is what keeps the target
+unambiguous. A record's findings can span more than one document — the menu-bar
+round does — and a record's name can collide with a task anchor, so `修复：
+<anchor>` alone cannot say whether the design or the implementation is being
+repaired. A path can.
 
 `开发` never writes a design document; it writes the code a reviewed document
 already specified. When a task's scope reveals a surface or contract the matrix
