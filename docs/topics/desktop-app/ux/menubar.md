@@ -346,12 +346,21 @@ compose in the fixed order.
 | `offline` | `Cannot reach the AgentDeck helper` | `无法连接 AgentDeck 助手` |
 | `failing` | `Data could not be read` | `无法读取数据` |
 | `partial` | `Some data unavailable` | `部分数据不可用` |
-| `empty` | `No local activity today` | `今天没有本地活动` |
+| `empty` (current) | `No local activity today` | `今天没有本地活动` |
+| `empty` (with any freshness or reachability qualifier) | `No activity in this snapshot` | `此快照中没有活动` |
 
 The user never reads the words "stale" or "offline" as labels. Saying when data
 was updated is honest and actionable; calling it stale is a judgment the user did
 not ask for. The reachability copy names the helper, because the network is not
 what failed.
+
+`empty` has two forms because one of them would otherwise lie. It holds on the
+`degraded` retained rows, where the app is showing a snapshot it could not
+refresh — so `No local activity today` beside `Cannot reach the AgentDeck
+helper` would assert something about today that the app currently has no way to
+know. Whenever `stale`, `aged`, `offline`, or `failing` accompanies it, `empty`
+describes the snapshot instead of the day. Only a current, issue-free surface
+may claim the day.
 
 `aged` replaces `stale`'s wording rather than adding to it — one freshness
 statement, not two. Every other combination appears in the fixed order:

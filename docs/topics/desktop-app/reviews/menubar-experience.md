@@ -315,9 +315,11 @@ timeout handling, and helper survival across window dismissal.
   `docs/topics/desktop-app/architecture.md`
   `83c9a882d586a953ba18abfd05aa20e782aaa066` carries R3-F1 through R3-F5, and
   `docs/topics/desktop-app/ux/menubar.md`
-  `b6791cd911fbb703c9ef8e9c9988d7aec663e3c2` carries R3-F6, including the residual closed below. Verified present at
+  carries R3-F6, including the two residuals closed below. Verified present at
   `architecture.md:649`, `:687`, `:721`, `:757`, `:785`, `:810` and
-  `ux/menubar.md:103`, `:130`.
+  `ux/menubar.md:103`, `:130`, `:342`. The `ux/menubar.md` blob is stated in the
+  final residual entry rather than here, because closing the second residual
+  changed it after this line was first written.
 - Residual closed during the 2026-08-16 record repair. Re-verifying R3-F6's
   table against its own qualifier definitions found `empty` listed on the
   `refreshing` retained-snapshot row but omitted from both `degraded` retained
@@ -327,6 +329,17 @@ timeout handling, and helper survival across window dismissal.
   was raised about. Both rows now carry it, with the rule stated: `empty`
   describes the retained snapshot, not the refresh outcome, and never appears on
   an `errorSurface` row, which has no snapshot to describe.
+- Second residual, surfaced by the first. Adding `empty` to the `degraded` rows
+  put its copy — `No local activity today` / `今天没有本地活动` — beside
+  `Cannot reach the AgentDeck helper`, which reads as a claim about today that
+  the app cannot make while it is showing a snapshot it could not refresh. The
+  qualifier now has two forms: it may claim the day only on a current,
+  issue-free surface, and otherwise describes the snapshot
+  (`No activity in this snapshot` / `此快照中没有活动`). Fixing a derivation
+  table without re-reading the copy it drives is how a truthful rule produces an
+  untruthful sentence. Recorded at `ux/menubar.md:342`, in blob
+  `38221fe155c8ac3647124deb74914b222d437b24`, which supersedes the blob named in
+  the state mapping above.
 - Still open, and not a Round 3 finding: `ux/menubar.md` carries no rendered
   specimen of any state, so its `Draft` is unticked against the specimen
   requirement adopted after this round. `ux/widget.md` is required and unwritten.
