@@ -178,23 +178,19 @@ Outcome is determined by the presence of `error`, and by nothing else:
 | --- | --- |
 | `error` absent | Success. Trigger one replacement refresh |
 | `error` present | Typed failure. Map `error.code` to a localized message |
-| stdout is not valid JSON, or `schema_version` is unknown | Treat as an opaque failure. Never parse the text, never guess |
+| Neither stream carries valid JSON, or `schema_version` is unknown | Treat as an opaque failure. Never parse the text, never guess |
 
-**The host MUST NOT infer success from the process exit status.** As of
-`v0.4.1`, `provider use` returns exit status `0` while reporting
-`error.code: runtime_error` for an unknown provider, so the exit status and the
-envelope disagree. The envelope is the contract; the exit status is not.
+A failure writes the envelope to **stderr**, not stdout, and exits non-zero. The
+host therefore reads both streams and decodes whichever carries an envelope,
+rather than assuming stdout.
 
-Two CLI defects are recorded here as prerequisites rather than silently absorbed
-by the GUI, because a GUI workaround would hide them from every other consumer:
+One CLI defect is recorded here as a prerequisite rather than silently absorbed
+by the GUI, because a GUI workaround would hide it from every other consumer: a
+failed switch for an unknown provider reports `error.code: runtime_error`, which
+no specification defines as a stable code, and its `error.message` carries the
+underlying storage text `sql: no rows in result set`.
 
-- `provider use` exits `0` on a failed switch, while `session show` exits `1` for
-  a comparable not-found failure.
-- The failure surfaces `runtime_error`, which no specification defines as a
-  stable code, and its message carries the underlying SQL text
-  (`sql: no rows in result set`).
-
-Until both are fixed, the host treats any `error` as a failure regardless of code
+Until that is fixed, the host treats any `error` as a failure regardless of code
 and displays the code verbatim beside a generic localized explanation, never the
 raw message. A message that may contain internal storage text MUST NOT be shown
 to the user or written to a log.

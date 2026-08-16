@@ -82,23 +82,26 @@ task: menubar-experience
     `ready: false` candidates are listed with a localized reason.
 
 - New findings, raised during repair:
-  - [P1] `provider use` exits `0` on a failed switch while reporting
-    `error.code: runtime_error`. Verified: `agentdeck --format json provider use
-    nonexistent-xyz --client codex` returns exit `0`, whereas `session show` with
-    a missing id returns exit `1`. A consumer reading the exit status would treat
-    the failure as success. -> Recorded in the design as a CLI prerequisite; the
-    host is specified to ignore exit status entirely. The CLI defect itself is
-    out of this task's scope and needs its own fix.
-  - [P2] That same failure carries `sql: no rows in result set` in
-    `error.message`, and `runtime_error` is not defined as a stable code in
-    `docs/specs/cli-design.md`. -> The design forbids displaying or logging the
-    raw message and requires a generic localized explanation beside the verbatim
-    code.
+  - [P2] A failed switch for an unknown provider reports `error.code:
+    runtime_error`, which appears zero times in `docs/specs/cli-design.md` and
+    `docs/specs/cli-manual.md`, so it is not a stable code a consumer can map.
+    Its `error.message` carries the underlying storage text `sql: no rows in
+    result set`. -> Recorded in the design as a CLI prerequisite; the host is
+    forbidden from displaying or logging the raw message and shows the verbatim
+    code beside a generic localized explanation. The CLI defect itself is out of
+    this task's scope and needs its own fix.
+  - [Withdrawn] An earlier draft of this round claimed `provider use` exits `0`
+    on failure. That was a measurement error: `exit=$?` had read the exit status
+    of a `head` process in a pipeline rather than of `agentdeck`. Re-measured
+    without a pipeline, the command exits `1`, consistent with `session show`.
+    The design text asserting otherwise was corrected in the same pass.
 
-- Evidence: `agentdeck --format json provider use nonexistent-xyz --client
-  codex` (exit 0, `runtime_error`), `agentdeck --format json session show
-  nonexistent-id` (exit 1), `agentdeck --format json provider current` envelope
-  keys, `grep runtime_error docs/specs/cli-design.md` (no definition)
+- Evidence: `agentdeck --format json provider use nonexistent-xyz --client codex`
+  writes the envelope to stderr and exits `1`; `error.code` is `runtime_error`
+  with message `sql: no rows in result set`; `grep -c runtime_error
+  docs/specs/cli-design.md docs/specs/cli-manual.md` returns `0` for both;
+  `agentdeck --format json provider current` envelope keys are `command`, `data`,
+  `generated_at`, `partial`, `schema_version`, `warnings`
 - Verdict: REOPEN — repair complete, awaiting independent review
 
 Round 1's connectivity-policy finding was resolved in the authoritative documents
