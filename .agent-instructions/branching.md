@@ -4,27 +4,27 @@ Read this file only when current work crosses a branch, merge, or version
 assembly boundary. Repository plans, contracts, review records, and CEv1
 evidence remain authoritative for their respective concerns.
 
-## What a plan is
+## What a topic is
 
-A feature plan owns one coherent behavior change and carries no version number.
-Which version ships it is decided by a version contract plan, which lists its
-included feature plans. This split is already the repository rule; the branch
+A feature topic owns one coherent behavior change and carries no version number.
+Which version ships it is decided by a version contract topic, which lists its
+included feature topics. This split is already the repository rule; the branch
 model follows it rather than adding a second notion of version ownership.
 
-Branches for feature work are therefore named after the plan topic, never after
-a version. A plan whose target version changes needs no branch, commit, review
+Branches for feature work are therefore named after the topic, never after a
+version. A topic whose target version changes needs no branch, commit, review
 record, or evidence change.
 
 ## Branches
 
 | Branch | Naming | Purpose | Lifecycle |
 | --- | --- | --- | --- |
-| `feature/<plan-topic>` | Matches `docs/plans/<topic>.md` | One plan's complete set of tasks | Created when that plan's development starts; deleted after the plan is assembled into a version |
+| `feature/<topic>` | Matches `docs/topics/<topic>/` | One topic's complete set of tasks | Created when that topic's development starts; deleted after the topic is assembled into a version |
 | `main` | — | Released content plus the version currently being assembled | Permanent |
 | `release/vX.Y.x` | The released version | Patches to an already released version | Created only when a released version needs a patch; kept for later patches |
 
 `main` is not the sum of all work. It is what users already have, plus what is
-being prepared for them next. A plan that has passed review but has not been
+being prepared for them next. A topic that has passed review but has not been
 assigned to a version is deliberately absent from `main`, because it has not
 shipped and is not being shipped yet.
 
@@ -38,42 +38,42 @@ branch concept, and `release.yml` triggers on `v*` tags and verifies that the
 tag's commit has preflight evidence for that SHA. Nothing in the release path
 inspects a branch name.
 
-## Merging is a contract plan action
+## Merging is a contract topic action
 
-**A feature plan finishing does not merge anything.** When its last task passes
+**A feature topic finishing does not merge anything.** When its last task passes
 review, its branch stays where it is. Merging into `main` is a task of the
-version contract plan that includes it:
+version contract topic that includes it:
 
 ```text
-docs/plans/vX-Y-Z-contract.md
+docs/topics/vX-Y-Z-contract/tasks.md
   ### 1. `assemble`          merge the selected feature branches, review the integrations
   ### 2. `vX-Y-Z-contract`   contract and documentation closure
 ```
 
 This is what keeps version membership reversible. There is no point in the
-workflow at which an unassigned plan gets merged, so excluding a plan from a
+workflow at which an unassigned topic gets merged, so excluding a topic from a
 version never requires undoing a merge.
 
 Two rules follow:
 
-- **A plan is merged whole or not at all.** Half a plan is not a coherent
-  behavior change. If some of a plan's tasks might ship in a different version
-  than the rest, that plan should have been two plans.
-- **Version membership lives only in the contract plan and the roadmap in
+- **A topic is merged whole or not at all.** Half a topic is not a coherent
+  behavior change. If some of a topic's tasks might ship in a different version
+  than the rest, that topic should have been two topics.
+- **Version membership lives only in the contract topic and the roadmap in
   `docs/README.md`.** Rescheduling changes those two documents and nothing else
   — no commit, branch, review record, or evidence moves.
 
-### Excluding and deferring plans
+### Excluding and deferring topics
 
-Deferring a plan costs nothing as long as it was never merged:
+Deferring a topic costs nothing as long as it was never merged:
 
 | Situation | Action |
 | --- | --- |
-| Plan not needed in this version | Leave it out of the contract plan's assembly list. Its branch stays |
-| A later plan is promoted ahead of an earlier one | Assemble the promoted one; leave the others' branches alone |
-| Plan already merged but no longer wanted | **No clean option.** `revert` propagates forward and will cancel the feature again when it is finally released; `reset` rewrites history and is prohibited |
+| Topic not needed in this version | Leave it out of the contract topic's assembly list. Its branch stays |
+| A later topic is promoted ahead of an earlier one | Assemble the promoted one; leave the others' branches alone |
+| Topic already merged but no longer wanted | **No clean option.** `revert` propagates forward and will cancel the feature again when it is finally released; `reset` rewrites history and is prohibited |
 
-The third row is the reason merging belongs to the contract plan. Prevention is
+The third row is the reason merging belongs to the contract topic. Prevention is
 the only clean answer.
 
 A deferred branch outlives one or more releases, so merge `main` into it
@@ -120,26 +120,26 @@ Classify before merging; the class decides how much work follows.
 git merge-base --is-ancestor main feature/<topic>   # exit 0 means fast-forwardable
 ```
 
-| Class | Tree | Plan | Review | Evidence |
+| Class | Tree | Design work | Review | Evidence |
 | --- | --- | --- | --- | --- |
 | Fast-forward | Unchanged | No | No | None needed. Downstream evidence already binds this exact tree |
 | Three-way, no conflict | New | No | **Yes**, intersection only | Integration evidence |
 | Three-way, conflicted | New, contains hand-written code | **Yes** | **Yes**, the resolution is the subject | Integration evidence plus the review record |
 
-Only the first plan assembled into a version can fast-forward; once `main` has
-that plan's commits, the next assembly is a three-way merge unless the branch
+Only the first topic assembled into a version can fast-forward; once `main` has
+that topic's commits, the next assembly is a three-way merge unless the branch
 first merges `main`. Keeping deferred branches synced with `main` is what makes
 later assemblies cheap.
 
 A clean three-way merge still needs review. Its tree is the first content state
 containing both sides, so their interaction has never been exercised by either
-side's tests. It needs no plan, because nobody made a design decision — git
-combined two already reviewed change sets mechanically.
+side's tests. It needs no design work, because nobody made a design decision —
+git combined two already reviewed change sets mechanically.
 
-A conflicted merge needs a plan, because resolving a conflict means writing new
-code and making design decisions no review approved. That code has no plan, no
-review, and no test coverage until this work provides them, and it can introduce
-a defect present on neither side.
+A conflicted merge needs design work, because resolving a conflict means writing
+new code and making design decisions no review approved. That code has no
+design, no review, and no test coverage until this work provides them, and it
+can introduce a defect present on neither side.
 
 ## Integration review scope
 
@@ -162,35 +162,36 @@ State the exclusions explicitly in the review record and point at the review
 that already covers them, so a reader can tell "not reviewed" from "reviewed
 elsewhere".
 
-The consuming call sites matter most for a long-deferred plan. Git reports no
+The consuming call sites matter most for a long-deferred topic. Git reports no
 conflict when one side renames a contract value and the other side reads it from
 a different file, so a semantic mismatch survives a clean merge and only this
 review catches it.
 
 ## Where integration work is recorded
 
-Integration belongs to the target version's contract plan, as the `assemble`
-task. It is not a plan of its own.
+Integration belongs to the target version's contract topic, as the `assemble`
+task. It is not a topic of its own.
 
 ```text
-docs/reviews/vX-Y-Z-contract/
+docs/topics/vX-Y-Z-contract/reviews/
   assemble.md              every merge into this version
   vX-Y-Z-contract.md
 ```
 
-This reuses the existing `vX-Y-Z-contract` structure — `v0-4-0-contract` and its
-review directory are the precedent — so no new directory level, plan type, or
-frontmatter field appears. The review record's `plan:` field names a plan file
-that exists, keeping the derivation rule in `docs/reviews/README.md` intact.
+This reuses the existing `vX-Y-Z-contract` structure — `v0-4-0-contract` is the
+precedent — so no new directory level, topic type, or frontmatter field appears.
+The record's `subject:` field names the `assemble` anchor in that topic's Tasks
+matrix, which is the ordinary naming rule in
+`.agent-instructions/review-records.md`.
 
-One task anchor covers every merge into that version. Assembling several plans,
+One task anchor covers every merge into that version. Assembling several topics,
 or repeatedly syncing one, accumulates as `## Round 1..N` in the same file, which
 is what the round mechanism is already for.
 
 ## Review record shape
 
-Use the standard template from `docs/reviews/README.md`. Only `Reviewed state`
-and `Scope` differ:
+Use the standard template from `.agent-instructions/review-records.md`. Only
+`Reviewed state` and `Scope` differ:
 
 ```markdown
 ## Round 1 — YYYY-MM-DD
@@ -201,7 +202,7 @@ and `Scope` differ:
   behavior is re-reviewed.
   - Conflicted files: ...
   - Consuming call sites: ...
-  - Out of scope: ... (covered by <plan-topic>/<task-anchor>.md)
+  - Out of scope: ... (covered by <topic>/reviews/<task-anchor>.md)
 ```
 
 Recording both parent trees is the only structural difference from an ordinary
@@ -214,7 +215,7 @@ Use the existing CEv1 fields. No schema change is required or permitted.
 
 | Meaning | Field |
 | --- | --- |
-| Evidence scope | `work_unit_id`, matching the plan task anchor |
+| Evidence scope | `work_unit_id`, matching the topic's task anchor |
 | Kind of unit | `unit_kind: integration` |
 | Resulting state | `target_content_state` — the merge tree |
 | Source states | `from_state_id`, `to_state_id`, `previous_target_content_state` |
@@ -224,9 +225,9 @@ Relate the parent states with `CEv1Relation` rather than inventing a property.
 The standing authority in `.agent-instructions/evidence.md` covers idempotent
 upserts, not schema changes.
 
-A merge does not invalidate anything. A plan's task evidence states that its
+A merge does not invalidate anything. A topic's task evidence states that its
 tree passed review, which stays true forever; it simply does not cover the merge
-tree, because that is different content. A long-deferred plan therefore
+tree, because that is different content. A long-deferred topic therefore
 accumulates a chain of integration states — each sync produces a new tree
 needing its own integration evidence — while its original task evidence remains
 valid and cited.
@@ -243,15 +244,15 @@ What an integration gate means is narrow, and must not be widened:
 
 **The side changing a contract updates every consumer that exists when the
 change is made.** Integration handles two sides that are each correct but
-interact badly; it does not absorb a consumer a plan failed to enumerate. A
-missed consumer means that version's plan scope was incomplete, and it is fixed
-inside that version.
+interact badly; it does not absorb a consumer a topic failed to enumerate. A
+missed consumer means that topic's scope was incomplete, and it is fixed inside
+that version.
 
-This applies in both directions, which matters for a deferred plan. When a plan
-waits out a release, the contracts it consumes may have changed on `main` in the
-meantime. The deferred plan is then the party whose scope is incomplete relative
-to the branch it is joining, and it re-enumerates its consumers and adapts
-before assembly — the work belongs to that plan, not to the merge.
+This applies in both directions, which matters for a deferred topic. When a
+topic waits out a release, the contracts it consumes may have changed on `main`
+in the meantime. The deferred topic is then the party whose scope is incomplete
+relative to the branch it is joining, and it re-enumerates its consumers and
+adapts before assembly — the work belongs to that topic, not to the merge.
 
 An already released or already merged contract cannot anticipate values a later
 version will introduce, so never ask an earlier version to reserve a degradation
@@ -265,13 +266,14 @@ code.
 
 | Document | Branch |
 | --- | --- |
-| `AGENTS.md`, `.agent-instructions/*`, `docs/reviews/README.md` | `main` — they bind all branches |
+| `AGENTS.md`, `.agent-instructions/*` | `main` — they bind all branches |
 | `docs/README.md` index, roadmap, backlog | `main` — single source of truth |
-| `docs/plans/<topic>.md`, `docs/specs/<topic>-design.md` | `main` — they describe intent and change no behavior |
-| `docs/reviews/<plan-topic>/<task-anchor>.md` | With the code — a verdict binds a tree on that branch |
+| `docs/topics/<topic>/` requirements, `ux/`, architecture, tasks | `main` — they describe intent and change no behavior |
+| `docs/topics/<topic>/reviews/<task-anchor>.md` | With the code — a task verdict binds a tree on that branch |
+| `docs/topics/<topic>/reviews/` document records | `main` — a document verdict binds a document state, not a code tree |
 | Behavior text in `cli-design.md` and `cli-manual.md` | With the code — it must ship with the implementation it describes |
 
-A plan document on `main` authorizes no development and implies no version
+A topic's documents on `main` authorize no development and imply no version
 membership. Its `Dev` and `Review` cells are ticked on the branch where the work
 happens, and those ticks reach `main` with the assembly merge.
 
@@ -289,7 +291,7 @@ feature/<topic> ───●──●──●──●────────�
 
 1. Branch from the **tag**, not from `main`:
    `git switch -c release/v0.5.x v0.5.0`
-2. Fix it there through the normal workflow: bounded plan, development,
+2. Fix it there through the normal workflow: bounded topic, development,
    verification, independent review.
 3. Release `v0.5.1` from that branch — push, dispatch preflight for that SHA,
    tag, and let the release workflow run. No workflow needs to know the branch.
@@ -301,7 +303,7 @@ feature/<topic> ───●──●──●──●────────�
 
 Tags are cut on `main`. A version's content is everything on `main` at the tag,
 so no selection step exists at release time — selection already happened when
-the contract plan chose what to assemble.
+the contract topic chose what to assemble.
 
 1. `assemble` merges the selected feature branches and their integrations pass
    review
@@ -315,16 +317,16 @@ places:
 
 ```bash
 git log --oneline v0.5.0..v0.6.0          # commits the version introduced
-ls docs/archive/reviews/<plan-topic>/ \
-   docs/archive/reviews/vX-Y-Z-contract/  # every review record, integration included
+ls docs/archive/topics/<topic>/reviews/ \
+   docs/archive/topics/vX-Y-Z-contract/reviews/  # every review record, integration included
 git tag --contains <commit>               # which releases carry a change
 ```
 
 | Change origin | Recorded in |
 | --- | --- |
-| Feature work | Each feature plan and its review directory |
-| Content produced by merging | The contract plan's `assemble` task and its review |
-| Contract closure | The contract plan's contract task and its review |
+| Feature work | Each feature topic and its `reviews/` directory |
+| Content produced by merging | The contract topic's `assemble` task and its review |
+| Contract closure | The contract topic's contract task and its review |
 | Release validation | Release WorkUnit and the preflight artifact |
 
 Cross-check each review record's `Reviewed state` tree against CEv1 by
@@ -332,17 +334,17 @@ Cross-check each review record's `Reviewed state` tree against CEv1 by
 
 ## Archival
 
-A version's feature plans and its contract plan retire together under the rules
-in `docs/README.md`, and the contract plan carries the integration record with
-it. Add one entry per version to `docs/archive/README.md`. When a merge produced
-behavior no source plan described, say so explicitly — that sentence is what
-keeps the change from becoming invisible to a later audit:
+A version's feature topics and its contract topic retire together under the
+rules in `docs/README.md`, and the contract topic carries the integration record
+with it. Add one entry per version to `docs/archive/README.md`. When a merge
+produced behavior no source topic described, say so explicitly — that sentence
+is what keeps the change from becoming invisible to a later audit:
 
 ```markdown
 Integration: assembling the desktop work required conflict resolution on the
-snapshot quality contract, recorded as task `assemble` in the contract plan and
-reviewed in `reviews/v0-6-0-contract/assemble.md`. It introduced <behavior>,
-which no source plan described.
+snapshot quality contract, recorded as task `assemble` in the contract topic and
+reviewed in `topics/v0-6-0-contract/reviews/assemble.md`. It introduced
+<behavior>, which no source topic described.
 ```
 
 Branch operations grant no delivery authority. Creating or deleting a branch,

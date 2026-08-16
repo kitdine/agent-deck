@@ -5,7 +5,31 @@ created: 2026-07-22
 
 # Archived Documents
 
-Last updated: 2026-08-12
+Last updated: 2026-08-16
+
+## 2026-08-16 retirement: two terminal design documents left in `docs/specs/`
+
+`specs/terminal-rendering-design.md` and `specs/usage-interactive-viewer-design.md`
+moved out of the live `docs/specs/` tree. Both were task designs whose owning
+work — `terminal-presentation-remediation` and `usage-report-presentation` — had
+already retired, and the topic structure adopted the same day makes explicit
+that `docs/specs/` holds only contracts the product guarantees. The first
+document said so about itself: "It is a design gate, not implementation
+authority."
+
+Their guaranteed behavior was verified present in the living authorities before
+the move: the 260-cell canvas, one-to-four column bands, 60% balance and 15%
+height-reduction fallback, target panel width, and KPI grids in
+`docs/specs/cli-design.md:1341-1347`; interactive admission (text, TTY,
+non-dumb `TERM`, 48x10, checked before raw mode), the shared keymap, terminal
+restoration on Ctrl-C/EOF/cancel/resize/error, the no-color label contract, the
+session browser's Escape hierarchy, and `COLUMNS`/ASCII degradation in
+`docs/specs/cli-manual.md:422, 432, 528, 531-533, 644, 685, 696, 708`.
+
+What retires with them is the design argument the living contracts do not
+carry: rejected alternatives and their reasons, the verification-design risk
+table, the column tie-breaker placements, and the delivered-implementation
+status notes.
 
 ## 2026-08-12 retirement: terminal presentation remediation
 
@@ -15,10 +39,10 @@ tasks completed fresh independent review and exact-state CEv1 gates. The work
 delivered responsive labeled `session show --activity`, structured semantic
 Usage and Session Detail, bounded responsive Session browser/viewer geometry,
 height-derived acquisition, stable resize identity, and complete interactive
-terminal lifecycle behavior. Living contracts remain in
-`docs/specs/terminal-rendering-design.md`,
-`docs/specs/usage-interactive-viewer-design.md`, and
-`docs/specs/cli-manual.md`.
+terminal lifecycle behavior. Its living contracts are in
+`docs/specs/cli-design.md` and `docs/specs/cli-manual.md`; the two design
+documents this entry originally pointed to were retired on 2026-08-16, recorded
+below.
 
 Final acceptance used a compiled current binary across synthetic isolated state
 and isolated copies of approved real state, covering narrow through wide

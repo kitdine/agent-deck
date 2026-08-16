@@ -64,8 +64,6 @@ the desktop topic and blocks the remaining `v0.6.0` cost items.
 | --- | --- | --- |
 | [CLI Design](specs/cli-design.md) | Active, version 25 | System, persistence, security, compatibility, and distribution contracts. |
 | [CLI Manual](specs/cli-manual.md) | Active | Implemented commands, flags, output shapes, and interaction behavior. |
-| [Terminal Rendering Experience](specs/terminal-rendering-design.md) | Active | Shared Usage and Session terminal framing, responsive geometry, accessibility, and lifecycle. |
-| [Usage Interactive Viewer](specs/usage-interactive-viewer-design.md) | Reference | Delivered Usage interactive layout, state, color/no-color, and PTY contract. |
 | [Archived Documents](archive/README.md) | Active index | Retirement history and pointers to historical topics, plans, and reviews. |
 
 A topic's own documents are authoritative for that topic while it executes; see

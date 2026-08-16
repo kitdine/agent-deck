@@ -1,6 +1,7 @@
 ---
-status: reference
+status: historical
 created: 2026-08-07
+retired: 2026-08-16
 scope: usage-report-presentation/usage-interactive-viewer
 source_sufficiency: sufficient
 ---

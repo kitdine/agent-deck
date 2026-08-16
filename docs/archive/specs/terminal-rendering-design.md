@@ -1,13 +1,14 @@
 ---
-status: active
+status: historical
 created: 2026-08-06
+retired: 2026-08-16
 scope: usage-and-session
 ---
 
 # Terminal Rendering Experience — Usage and Session
 
-This active design applies the AgentDeck terminal-experience profile to the
-`usage` report family and the `session` inspection surfaces. It is a design
+This design applied the AgentDeck terminal-experience profile to the
+`usage` report family and the `session` inspection surfaces. It was a design
 gate, not implementation authority. Existing JSON, persistence, pricing,
 privacy, and exit-code contracts remain authoritative until an approved
 implementation task changes a human-facing text or interactive contract.
