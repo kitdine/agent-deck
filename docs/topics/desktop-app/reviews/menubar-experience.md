@@ -1,10 +1,22 @@
 ---
 status: active
-plan: desktop-app
-task: menubar-experience
+topic: desktop-app
+subject: menubar-experience
 ---
 
 # Review log — desktop-app / menubar-experience
+
+> **Path note (2026-08-16).** Rounds 1–3 reviewed
+> `docs/specs/menubar-experience-design.md`, which the topic migration split into
+> two documents. Its wire-contract extension — `provider.candidates`, the switch
+> command surface, the result envelope, and switch operation ownership — is now
+> `docs/topics/desktop-app/architecture.md`, and its presentation, copy,
+> localization, and accessibility contract is now
+> `docs/topics/desktop-app/ux/menubar.md`. The paths and line numbers cited in
+> the rounds below identify the state that was reviewed and are left unchanged.
+> Of the six open Round 3 findings, R3-F1 through R3-F5 now land in
+> `architecture.md` and R3-F6 lands in `ux/menubar.md`. This record therefore
+> covers both documents until the repair passes.
 
 ## Round 1 — 2026-08-15
 

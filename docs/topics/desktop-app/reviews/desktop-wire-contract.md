@@ -1,7 +1,7 @@
 ---
 status: active
-plan: desktop-app
-task: desktop-wire-contract
+topic: desktop-app
+subject: desktop-wire-contract
 created: 2026-08-13
 updated: 2026-08-13
 ---

@@ -41,27 +41,24 @@ agentdeck version
 
 ### Active Development
 
-| Plan | Status | Purpose |
+| Topic | Status | Purpose |
 | --- | --- | --- |
-| [Native macOS Desktop App](plans/desktop-app.md) | Active — 2/6 reviewed; Task 3 design Review FAIL | macOS 26 menu-bar app, WidgetKit extension, unified desktop distribution, Cask, and direct-download delivery. |
-| [`v0.5.0` Contract Closure](plans/v0-5-0-contract.md) | Active — 0/1 done | Version-wide specification raise and documentation reconciliation after all desktop tasks pass review. |
-| [Usage Attribution Precision](plans/usage-attribution-precision.md) | Active — 0/3 done | First `v0.6.0` plan: per-client attribution time semantics, determinability-based quality, and an unattributed boundary that never enters a real-spend total. |
-| [CLI Error Classification](plans/cli-error-classification.md) | Active — 0/2 done | Unassigned to a version: stable not-found codes, and no storage text in a documented JSON contract. |
+| [Native macOS Desktop App](topics/desktop-app/tasks.md) | Active — 2/6 tasks reviewed; menu-bar design Review FAIL | macOS 26 menu-bar app, WidgetKit extension, unified desktop distribution, Cask, and direct-download delivery. |
+| [`v0.5.0` Contract Closure](topics/v0-5-0-contract/tasks.md) | Active — 0/1 done | Version-wide specification raise and documentation reconciliation after all desktop tasks pass review. |
+| [Usage Attribution Precision](topics/usage-attribution-precision/tasks.md) | Active — 0/3 done | First `v0.6.0` topic: per-client attribution time semantics, determinability-based quality, and an unattributed boundary that never enters a real-spend total. |
+| [CLI Error Classification](topics/cli-error-classification/tasks.md) | Active — 0/2 done | Unassigned to a version: stable not-found codes, and no storage text in a documented JSON contract. |
 
 `desktop-wire-contract` reached Re-review Round 2 PASS.
 `macos-app-foundation` reached Re-review Round 3 PASS after unsupported and
-malformed App Group cache data were made fail-closed. `menubar-experience`
-Design Review Round 3 failed on six decision-completeness findings and requires
-bounded design repair before Development.
+malformed App Group cache data were made fail-closed. The menu-bar contract
+failed Design Review Round 3 on six decision-completeness findings and requires
+bounded design repair before Development; the findings span the topic's
+`architecture.md` and `ux/menubar.md`.
 
 Usage attribution precision is planned but not started. It is independent of
-the desktop plan and blocks the remaining `v0.6.0` cost items.
+the desktop topic and blocks the remaining `v0.6.0` cost items.
 
 ## Authoritative Documents
-
-Approved task design: [`macOS App Foundation`](specs/macos-app-foundation-design.md).
-Task design under revision: [`Menu-Bar Experience`](specs/menubar-experience-design.md)
-(Design Review Round 3 FAIL).
 
 | Document | Status | Authority |
 | --- | --- | --- |
@@ -69,8 +66,11 @@ Task design under revision: [`Menu-Bar Experience`](specs/menubar-experience-des
 | [CLI Manual](specs/cli-manual.md) | Active | Implemented commands, flags, output shapes, and interaction behavior. |
 | [Terminal Rendering Experience](specs/terminal-rendering-design.md) | Active | Shared Usage and Session terminal framing, responsive geometry, accessibility, and lifecycle. |
 | [Usage Interactive Viewer](specs/usage-interactive-viewer-design.md) | Reference | Delivered Usage interactive layout, state, color/no-color, and PTY contract. |
-| [Review Records](reviews/README.md) | Active | Review-record format and relationship to plan task gates. |
-| [Archived Documents](archive/README.md) | Active index | Retirement history and pointers to historical plans and reviews. |
+| [Archived Documents](archive/README.md) | Active index | Retirement history and pointers to historical topics, plans, and reviews. |
+
+A topic's own documents are authoritative for that topic while it executes; see
+its `tasks.md` in the table above. Review-record format lives in
+`.agent-instructions/review-records.md`.
 
 User-facing entry points are the [English README](../README.md) and
 [Chinese README](../README_zh.md). Repository-specific development and

@@ -1,14 +1,15 @@
 ---
 status: active
 created: 2026-08-15
+updated: 2026-08-16
 ---
 
-# Menu-Bar Experience Design
+# Menu-Bar Experience
 
-Target: v0.5.0
-Task: `menubar-experience`
-Owning plan: `docs/plans/desktop-app.md`
-Consumes: `docs/specs/macos-app-foundation-design.md`
+Surface: the AgentDeck macOS menu-bar host.
+Task: `menubar-experience`.
+Consumes the foundation runtime and the menu-bar wire contract extension in
+[`../architecture.md`](../architecture.md).
 
 ## Purpose
 
@@ -19,12 +20,15 @@ AgentDeck macOS host.
 This document is normative. Product behavior must follow this contract even
 when an earlier implementation differs from it.
 
+The Go-side contracts this surface depends on — the additive
+`provider.candidates` section, the switch command surface, its result envelope,
+and switch operation ownership — are specified in
+[`../architecture.md`](../architecture.md#menu-bar-wire-contract-extension).
+
 ## Scope
 
-This task delivers:
+This task delivers, on the presentation side:
 
-- an additive `provider.candidates` section in desktop wire v1;
-- a Go provider-switch command surface the desktop host can invoke;
 - menu-bar summaries for provider, usage, cost, recent sessions, warnings, and
   health;
 - safe provider quick actions with explicit confirmation and result reporting;
@@ -63,247 +67,6 @@ This task does not deliver:
 | Login item | `SMAppService.mainApp` only. Enable and disable are idempotent and never install a daemon. |
 | Update check | Opt-in, defaults off, at most once per 24 hours automatic plus unlimited manual. It only compares stable versions and opens a page. |
 | Preference storage | Preferences live in the application's own `UserDefaults` domain, never in `~/.agentdeck` and never in the App Group cache. |
-
-## Wire contract extension
-
-### Additive `provider.candidates`
-
-`data.provider` gains one additive array. Existing fields are unchanged, so a
-`wire_version` raise is not required and existing decoders keep working.
-
-```json
-"provider": {
-  "available": true,
-  "routes": [ { "client": "codex", "provider": "official",
-                "selected_at": "2026-08-13T09:55:00Z", "via_wrapper": false } ],
-  "candidates": [
-    { "provider": "official", "built_in": true, "clients": ["codex", "claude"],
-      "credentials": [], "has_wrapper": false, "ready": true },
-    { "provider": "aigocode", "built_in": false, "clients": ["codex"],
-      "credentials": [ { "name": "work", "clients": ["codex"], "present": true } ],
-      "has_wrapper": true, "ready": true }
-  ]
-}
-```
-
-Each candidate carries only:
-
-- `provider`: the provider name;
-- `built_in`: whether this is the built-in `official` provider;
-- `clients`: the clients this provider can serve;
-- `credentials`: credential shorthand name, its client bindings, and whether
-  its secret row is present;
-- `has_wrapper`: whether a wrapper URL is configured, never the URL itself;
-- `ready`: whether any switch to this provider can be attempted;
-- `options`: the fully resolved switch options this candidate expands into.
-
-A candidate is a **grouping for display**, not a mutation target. It may serve
-several clients, carry several credentials, and support both a direct and a
-wrapper route, so provider-level `ready` cannot say whether one specific switch
-is possible. Go therefore expands every executable combination, and the host
-never composes one itself:
-
-```json
-"options": [
-  { "client": "codex", "provider": "aigocode", "credential": "work",
-    "via_wrapper": false, "ready": true, "reason_code": null },
-  { "client": "codex", "provider": "aigocode", "credential": "work",
-    "via_wrapper": true, "ready": true, "reason_code": null },
-  { "client": "claude", "provider": "aigocode", "credential": null,
-    "via_wrapper": false, "ready": false, "reason_code": "credential_missing" }
-]
-```
-
-Each option is exactly one executable switch: `(client, provider, credential?,
-via_wrapper, ready, reason_code?)`. It maps one-to-one onto the canonical
-invocation's arguments, so the option the user confirmed and the command that runs
-are provably the same target. `reason_code` is a fixed code with localized copy
-in both languages, never a message; the defined codes are
-`credential_missing`, `credential_client_mismatch`, `wrapper_not_configured`,
-`already_selected`, and `switch_in_flight`.
-
-Selection therefore happens at the option level. A candidate offering more than
-one option presents them as distinct rows — credential and route are user choices,
-never inferred — and a `ready: false` option is listed and disabled with its
-localized reason rather than hidden.
-
-The candidate list MUST NOT contain endpoints, wrapper URLs, credential
-references, credential values, multipliers, model mappings, configuration
-contents, or paths. `credentials` reports presence only; it never decrypts.
-
-`candidates` is `[]` when the provider section is unavailable.
-
-**Candidate discovery failure MUST NOT hide the current routes.** `routes` and
-`candidates` answer different questions from different sources: what is in effect
-now, and what could be switched to. Losing the second is an inconvenience; losing
-the first removes the surface's primary answer.
-
-| Failure | `available` | `routes` | `candidates` | Presentation |
-| --- | --- | --- | --- | --- |
-| Route read fails | `false` | `[]` | `[]` | Section shows unavailable; the existing `provider_unavailable` warning applies |
-| Candidate discovery fails, routes readable | **`true`** | populated | `[]` | Current routes shown normally; switching disabled with a localized reason |
-
-An empty `candidates` with `available: true` therefore means "switching is not
-offered right now", not "no provider information". The host renders the switch
-affordance as disabled with `Switching unavailable` / `暂时无法切换` rather than
-omitting it, so the capability's absence is visible instead of silent.
-
-A candidate whose `ready` is `false` is listed but not selectable, with a
-localized reason derived from its own fields — a credential whose `present` is
-`false` reads `Credential missing` / `缺少凭据` — never a bare disabled row.
-
-Compatibility must hold in **both** directions, and only one of them is
-self-evident. A current v1 decoder ignores the unknown `candidates` key, so a new
-producer works with an old consumer. The reverse is the risk: a new Swift model
-that declares `candidates` non-optional would fail to decode an existing v1
-payload that predates the field, and every stored App Group snapshot is exactly
-such a payload.
-
-Therefore, without raising `wire_version`:
-
-- the producer always encodes `candidates` as an array, empty when there is
-  nothing to offer;
-- a decoder treats a **missing** `candidates` as `[]`, and a present value that
-  is not an array as invalid;
-- the same rule applies to `options` within a candidate.
-
-Fixtures under `desktop/fixtures/v1` gain the field in the complete and partial
-examples, and **one legacy fixture without `candidates` is retained** so the
-old-payload path stays covered. Replacing every fixture would delete the only
-regression signal for the direction that can actually break. Go contract tests
-and the Swift decoder consume the same files, and the Swift tests assert that the
-legacy fixture decodes with an empty candidate list.
-
-### Switch command surface
-
-The desktop host performs a provider switch through:
-
-```text
-agentdeck --quiet --format json provider use <name> --client <codex|claude> \
-  [--credential <name>] [--via] --no-shell-setup
-```
-
-This exact argument list is the only canonical invocation. It uses the existing
-command; the host adds no new mutation command.
-
-`--quiet` is required, not optional. `--format json` alone does **not** silence
-the advisory reporters: `provider use` calls `reportEffectiveRoute` and
-`reportSwitchAdvisories` after a successful switch, and both return early only on
-`opts.quiet`, so without the flag a successful switch writes the effective
-endpoint and restart guidance to stderr. That would put an endpoint on a surface
-this design forbids from ever presenting one, and it would break the rule below
-that a successful switch produces no stderr at all.
-
-`--no-shell-setup` is passed explicitly so the behavior does not depend on any
-suppression remaining implicit.
-
-Required stream behavior, which the implementation MUST test with the exact
-arguments above:
-
-| Outcome | stdout | stderr | exit |
-| --- | --- | --- | --- |
-| Success | One envelope with no `error` | **Empty** | `0` |
-| Failure | Empty | One envelope with `error` | non-zero |
-
-The host MUST:
-
-- resolve the exact provider, client, and credential from the confirmed
-  candidate rather than from free-form input;
-- pass arguments as an array through the foundation helper runner;
-- treat `state_busy`, `invalid_argument`, and every other stable error code as a
-  typed failure category;
-- trigger one replacement refresh after a successful switch;
-- leave presented state unchanged after a failed switch, then surface the typed
-  failure.
-
-The host MUST NOT retry a failed switch automatically, switch more than one
-client per confirmation, or infer a credential when the candidate offers more
-than one.
-
-#### Result envelope
-
-The switch needs its own Swift type, `ProviderUseEnvelopeV1`. It cannot reuse
-`DesktopWireEnvelopeV1`, whose `command` is fixed to `desktop.snapshot` and whose
-`data` is a non-optional `DesktopSnapshotV1`; `provider use` emits
-`command: "provider.use"` with `data: null` on both success and failure, so the
-existing decoder cannot represent it.
-
-```json
-{
-  "schema_version": 1,
-  "command": "provider.use",
-  "generated_at": "<RFC 3339>",
-  "data": null,
-  "warnings": [],
-  "partial": false,
-  "error": { "code": "<stable code>", "message": "<discarded>" }
-}
-```
-
-The type fixes `schema_version` to `1` and `command` to `provider.use`, decodes
-`data` as ignored-and-nullable, and retains only `error.code`. It never retains
-`error.message`; see the prerequisite below.
-
-Outcome is decided by the envelope, never by the exit status alone:
-
-| Streams and status | Host behavior |
-| --- | --- |
-| stdout envelope, no `error`, empty stderr, exit `0` | **Success.** Trigger one replacement refresh |
-| stderr envelope with `error`, non-zero exit | **Typed failure.** Map `error.code` to a localized message |
-| Envelopes on both streams, or `error` present with exit `0`, or absent with non-zero exit | **Indeterminate.** Never guess which is authoritative |
-| Unknown `schema_version` or `command`, malformed, truncated, or no valid JSON on either stream | **Opaque failure.** Never parse the text |
-
-An indeterminate outcome is not a failure and not a success: the configuration
-may or may not have been applied. The host MUST force a replacement refresh and
-reconcile from the resulting snapshot rather than asserting either result.
-
-The current `EmbeddedHelperRunner` cannot serve this contract as written: it
-guards on a zero exit status and throws before decoding, so a stderr failure
-envelope is unreachable through it. The switch path therefore needs a runner
-entry point that captures both streams and the exit status and hands all three to
-`ProviderUseEnvelopeV1` for classification. The snapshot path keeps the existing
-strict behavior unchanged.
-
-One CLI defect is recorded here as a prerequisite rather than silently absorbed
-by the GUI, because a GUI workaround would hide it from every other consumer: a
-failed switch for an unknown provider reports `error.code: runtime_error`, which
-no specification defines as a stable code, and its `error.message` carries the
-underlying storage text `sql: no rows in result set`.
-
-Until that is fixed, the host treats any `error` as a failure regardless of code
-and displays the code verbatim beside a generic localized explanation, never the
-raw message. A message that may contain internal storage text MUST NOT be shown
-to the user or written to a log.
-
-#### Operation ownership
-
-One **app-owned** `SwitchController` owns switching, not the view model and not a
-per-client object. It outlives the menu-bar window, because the window is
-dismissed whenever the user clicks elsewhere in the menu bar and an in-flight
-configuration change must not depend on a presentation lifetime. The view model
-observes it; views never hold it.
-
-It is **globally single-flight**: at most one switch exists across all clients.
-A per-client limit would be wrong here — a switch rewrites client configuration
-and completes in well under a second, so concurrency buys nothing and costs the
-ability to reason about which configuration state is current.
-
-State: `idle`, `inFlight(client, provider)`, `succeeded(client, provider)`,
-`failed(code)`, or `indeterminate`.
-
-| Concern | Rule |
-| --- | --- |
-| Serialization | One switch app-wide. A request while not `idle` is refused, not queued |
-| Double submit | Structurally impossible: confirmation's controls are disabled on entry to `inFlight`, so no second submit can be issued |
-| Cancellation | The controller never cancels an in-flight switch, and MUST NOT invoke the runner through a cancellable task whose cancellation terminates the helper. `EmbeddedHelperRunner`'s `withTaskCancellationHandler` calls `running.terminate()` on cancel, which would kill the helper mid-write; the switch path must not be cancelled by window dismissal, view teardown, or task cancellation |
-| Window dismissal | Detaches presentation only. On reopen the controller's current state is displayed, including a result that became terminal while closed |
-| Timeout after launch | Becomes `indeterminate`, never `failed`. The helper may already have written the client configuration, so the controller forces a replacement refresh and reconciles health and recovery state from the snapshot |
-| Success lifetime | Cleared by the next completed replacement refresh, or after 10 seconds, whichever comes first |
-| Failure and indeterminate lifetime | Retained until the user retries or dismisses. These are never cleared by a timer, because a failure the user did not see is a failure that gets repeated |
-
-The two lifetimes differ deliberately: a success is confirmed by the refreshed
-data that replaces it, while a failure has no such successor and must wait to be
-read.
 
 ## Presentation architecture
 
