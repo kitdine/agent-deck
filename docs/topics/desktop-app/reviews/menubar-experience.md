@@ -121,66 +121,6 @@ rather than in the design, and is closed. The two CLI defects found in Round 2 a
 prerequisites recorded for their own fix; the design works correctly around them
 without hiding them.
 
-## Round 4 — 2026-08-16
-
-- Reviewed state: HEAD `3c18e02deb345fc7090680ccf3aaa194c5590492` plus
-  `docs/specs/menubar-experience-design.md` blob
-  `9c94aee650ca660efdc765191b230515ae7e6d6d`
-- Reviewer: claude-code (repair round for Round 3's FAIL — an independent
-  Re-review is still required before either plan cell may be ticked)
-- Method: each Round 3 finding re-verified against the repository before
-  accepting it, rather than adopting the described remedy. Design grew from 637
-  to 796 lines.
-
-- Round 3 findings, dispositions:
-  - **R3-F1** GUI invocation missing `--quiet` -> **Fixed, verified.**
-    `cmd/agentdeck/main.go:1609` and `:1638` both return early only on
-    `opts.quiet`, and `project_attribution_guidance_test.go` asserts stderr is
-    empty only once `--quiet` is present. The canonical invocation now includes
-    it, with a required stream/exit matrix. The prior claim that `--format json`
-    already suppressed advisories was wrong.
-  - **R3-F2** envelope incompatible with the decoder -> **Fixed, verified.**
-    `DesktopWireEnvelopeV1` fixes `command` to `desktop.snapshot` and declares
-    `data` non-optional, while `provider use` emits `provider.use` with
-    `data: null`; `EmbeddedHelperRunner` also guards on a zero exit before
-    decoding, so a stderr envelope was unreachable. Replaced with a separate
-    `ProviderUseEnvelopeV1`, an explicit indeterminate class, and a runner entry
-    point that captures both streams and the status.
-  - **R3-F3** ownership contradictions -> **Fixed, verified.** All three
-    conflicts were real: per-client versus app-wide serialization, and a terminal
-    result cleared on a timer while a failure was retained until dismissed.
-    `EmbeddedHelperRunner`'s `withTaskCancellationHandler` does call
-    `running.terminate()` on cancel. Replaced with an app-owned globally
-    single-flight `SwitchController`, separated success and failure lifetimes with
-    the reason stated, and an explicit rule that the switch path must not be
-    cancellable.
-  - **R3-F4** candidate cannot identify a target -> **Fixed.** A candidate is now
-    a display grouping; Go expands `options`, each one exactly
-    `(client, provider, credential?, via_wrapper, ready, reason_code?)` mapping
-    one-to-one onto the invocation's arguments. Selection happens per option, and
-    five fixed `reason_code` values carry localized copy.
-  - **R3-F5** compatibility proven one direction only -> **Fixed.** Specified
-    that a missing `candidates` decodes as `[]` and a non-array is invalid, and
-    retained one legacy fixture without the field, since replacing every fixture
-    would delete the only signal for the direction that can break.
-  - **R3-F6** presentation states not exhaustive -> **Fixed.** The six names were
-    never mutually exclusive. Replaced with one surface plus orthogonal
-    qualifiers, an exhaustive truth table, a fixed qualifier order, and the rule
-    that a retained snapshot is always shown — which removes the contradiction
-    between the error copy and the retention rule. Copy, accessibility, badge
-    policy, and the manual checklist were realigned.
-
-- Evidence: `cmd/agentdeck/main.go:1608-1638`;
-  `cmd/agentdeck/project_attribution_guidance_test.go:110-145`;
-  `apps/macos/AgentDeckShared/DesktopWire.swift:25-46`;
-  `apps/macos/AgentDeckShared/EmbeddedHelperRunner.swift:107-115,224-236`;
-  `internal/output/output.go:8-36`
-- Verdict: REOPEN — repair complete, awaiting independent Re-review
-
-Manual verification items grew to 20, covering the empty-stderr assertion, per
-option rows, the legacy fixture, global single-flight refusal, indeterminate
-timeout handling, and helper survival across window dismissal.
-
 ## Round 3 — 2026-08-16
 
 ### 📋 独立设计评审 — desktop-app / menubar-experience
@@ -307,3 +247,78 @@ timeout handling, and helper survival across window dismissal.
 投影已经具备实现基础，但 switch transport、application ownership、exact
 target、wire-v1 双向兼容和 presentation state algebra 仍需六项有界设计修复。
 Task 3 的 `Dev`/`Review` 均保持未勾选；不得在这些契约闭合前进入实现。
+
+## Round 4 — 2026-08-16
+
+- Reviewed state: HEAD `3c18e02deb345fc7090680ccf3aaa194c5590492` plus
+  `docs/specs/menubar-experience-design.md` blob
+  `9c94aee650ca660efdc765191b230515ae7e6d6d`
+- Reviewer: claude-code (repair round for Round 3's FAIL — an independent
+  Re-review is still required before either plan cell may be ticked)
+- Method: each Round 3 finding re-verified against the repository before
+  accepting it, rather than adopting the described remedy. Design grew from 637
+  to 796 lines.
+
+- Round 3 findings, dispositions:
+  - **R3-F1** GUI invocation missing `--quiet` -> **Fixed, verified.**
+    `cmd/agentdeck/main.go:1609` and `:1638` both return early only on
+    `opts.quiet`, and `project_attribution_guidance_test.go` asserts stderr is
+    empty only once `--quiet` is present. The canonical invocation now includes
+    it, with a required stream/exit matrix. The prior claim that `--format json`
+    already suppressed advisories was wrong.
+  - **R3-F2** envelope incompatible with the decoder -> **Fixed, verified.**
+    `DesktopWireEnvelopeV1` fixes `command` to `desktop.snapshot` and declares
+    `data` non-optional, while `provider use` emits `provider.use` with
+    `data: null`; `EmbeddedHelperRunner` also guards on a zero exit before
+    decoding, so a stderr envelope was unreachable. Replaced with a separate
+    `ProviderUseEnvelopeV1`, an explicit indeterminate class, and a runner entry
+    point that captures both streams and the status.
+  - **R3-F3** ownership contradictions -> **Fixed, verified.** All three
+    conflicts were real: per-client versus app-wide serialization, and a terminal
+    result cleared on a timer while a failure was retained until dismissed.
+    `EmbeddedHelperRunner`'s `withTaskCancellationHandler` does call
+    `running.terminate()` on cancel. Replaced with an app-owned globally
+    single-flight `SwitchController`, separated success and failure lifetimes with
+    the reason stated, and an explicit rule that the switch path must not be
+    cancellable.
+  - **R3-F4** candidate cannot identify a target -> **Fixed.** A candidate is now
+    a display grouping; Go expands `options`, each one exactly
+    `(client, provider, credential?, via_wrapper, ready, reason_code?)` mapping
+    one-to-one onto the invocation's arguments. Selection happens per option, and
+    five fixed `reason_code` values carry localized copy.
+  - **R3-F5** compatibility proven one direction only -> **Fixed.** Specified
+    that a missing `candidates` decodes as `[]` and a non-array is invalid, and
+    retained one legacy fixture without the field, since replacing every fixture
+    would delete the only signal for the direction that can break.
+  - **R3-F6** presentation states not exhaustive -> **Fixed.** The six names were
+    never mutually exclusive. Replaced with one surface plus orthogonal
+    qualifiers, an exhaustive truth table, a fixed qualifier order, and the rule
+    that a retained snapshot is always shown — which removes the contradiction
+    between the error copy and the retention rule. Copy, accessibility, badge
+    policy, and the manual checklist were realigned.
+
+- Evidence: `cmd/agentdeck/main.go:1608-1638`;
+  `cmd/agentdeck/project_attribution_guidance_test.go:110-145`;
+  `apps/macos/AgentDeckShared/DesktopWire.swift:25-46`;
+  `apps/macos/AgentDeckShared/EmbeddedHelperRunner.swift:107-115,224-236`;
+  `internal/output/output.go:8-36`
+- Verdict: REOPEN — repair complete, awaiting independent Re-review
+
+Manual verification items grew to 20, covering the empty-stderr assertion, per
+option rows, the legacy fixture, global single-flight refusal, indeterminate
+timeout handling, and helper survival across window dismissal.
+
+- Post-migration state mapping. This round's `Reviewed state` names the single
+  pre-split document. The topic migration has since divided that text, so the
+  repaired content a Re-review must judge is two blobs at HEAD
+  `3a07618ac1f1b36151077e3343fe36775ea39b26`:
+  `docs/topics/desktop-app/architecture.md`
+  `83c9a882d586a953ba18abfd05aa20e782aaa066` carries R3-F1 through R3-F5, and
+  `docs/topics/desktop-app/ux/menubar.md`
+  `7a801bd0edce2321dd4b3148de2e0eb79f60bcdb` carries R3-F6. Verified present at
+  `architecture.md:649`, `:687`, `:721`, `:757`, `:785`, `:810` and
+  `ux/menubar.md:103`, `:130`.
+- Still open, and not a Round 3 finding: `ux/menubar.md` carries no rendered
+  specimen of any state, so its `Draft` is unticked against the specimen
+  requirement adopted after this round. `ux/widget.md` is required and unwritten.
+  Both are tracked in the topic's Documents matrix.

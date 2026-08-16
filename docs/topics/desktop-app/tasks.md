@@ -159,22 +159,24 @@ XCTest cases passed.
 closed, all earlier findings remain closed, and 19 XCTest cases pass. Task 3
 `menubar-experience` is the next task.
 
-Menu-bar design Review Round 3 (2026-08-16): **FAIL**. Six bounded contract
-repairs are required: quiet helper invocation, switch-envelope decoding,
-application-owned single-flight operation lifetime, exact redacted switch
-options, legacy wire-v1 decoding, and deterministic presentation-state
-precedence.
+Menu-bar design Review Round 3 (2026-08-16): **FAIL** on six bounded contract
+findings. Round 4 (2026-08-16): repair complete, `REOPEN` pending independent
+Re-review. All six are closed in the current documents — R3-F1 through R3-F5 in
+`architecture.md`, R3-F6 in `ux/menubar.md` — and the record carries the
+post-migration blob mapping a Re-review needs.
 
-The target is documents, not task 3. Nothing has been implemented — task 3's
-`Dev` is unticked — so this repair belongs to the Documents matrix: R3-F1
-through R3-F5 land in `architecture.md` and R3-F6 in `ux/menubar.md`, and the
-same pass adds the rendered specimens `ux/menubar.md` has never carried. Task 3
-stays blocked because it cannot be developed against a failed specification.
+The target was documents, not task 3, which has no implementation. Task 3 stays
+blocked until the Re-review passes, because it cannot be developed against a
+specification whose latest verdict is not `PASS`.
+
+Two readiness gaps remain and are **not** Round 3 findings: `ux/menubar.md`
+carries no rendered specimen, and `ux/widget.md` is unwritten. Neither blocks
+the Re-review of the six findings; both keep their `Draft` cells unticked.
 
 Next action:
 
 ```text
-修复：`desktop-app` / `reviews/menubar-experience.md` / R3-F1–R3-F6
+复评：`desktop-app` / `reviews/menubar-experience.md`
 ```
 
 Task 1 was blocked on the `v0.4.0` session DTO contract; that dependency is now

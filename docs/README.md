@@ -74,12 +74,11 @@ and nothing else.
 `desktop-wire-contract` reached Re-review Round 2 PASS.
 `macos-app-foundation` reached Re-review Round 3 PASS after unsupported and
 malformed App Group cache data were made fail-closed. The menu-bar contract
-failed Design Review Round 3 on six decision-completeness findings and requires
-bounded design repair before Development; the findings span the topic's
-`architecture.md` and `ux/menubar.md`, so the repair targets those documents
-rather than the task, which has no implementation yet. That repair also has to
-add the rendered specimens `ux/menubar.md` never carried, and `ux/widget.md` is
-required and unwritten.
+failed Design Review Round 3 on six decision-completeness findings; Round 4
+closed all six across the topic's `architecture.md` and `ux/menubar.md` and
+awaits independent Re-review. Separately, `ux/menubar.md` still carries no
+rendered specimen and `ux/widget.md` is required and unwritten, so both keep
+their `Draft` cells unticked.
 
 Usage attribution precision is planned but not started. It is independent of
 the desktop topic and blocks the remaining `v0.6.0` cost items.
