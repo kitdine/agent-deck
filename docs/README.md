@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-07-14
-updated: 2026-08-12
+updated: 2026-08-16
 ---
 
 # AgentDeck Documentation
@@ -15,22 +15,30 @@ detail belongs in [the archive](archive/README.md), not in this index.
 
 ### Release
 
-- **Latest stable:** [`v0.4.0`](https://github.com/kitdine/agent-deck/releases/tag/v0.4.0)
-  at commit `6b7663b51f22903445798dd7db637cbcaab1a422`.
-- The [stable Release workflow](https://github.com/kitdine/agent-deck/actions/runs/31664284248)
+- **Latest stable:** [`v0.4.1`](https://github.com/kitdine/agent-deck/releases/tag/v0.4.1)
+  at commit `3b709a8fb09494a8d8fdd37ee154e3baedbce9ea`, published 2026-08-13.
+  It is a patch on `v0.4.0`: Codex `cache_write_input_tokens` is backfilled into
+  a new `cache_write_tokens` column and already-indexed Codex sources are
+  re-scanned, so historical cache-write figures change on upgrade rather than
+  staying at the migration default of zero.
+- The [stable Release workflow](https://github.com/kitdine/agent-deck/actions/runs/31677864670)
   passed same-SHA preflight enforcement, version-specific artifact verification,
   GitHub publication, and Homebrew verification. The non-draft,
   non-prerelease release contains Darwin arm64 and amd64 archives plus checksums.
-- [Homebrew tap PR #17](https://github.com/kitdine/homebrew-tap/pull/17)
+- [Homebrew tap PR #18](https://github.com/kitdine/homebrew-tap/pull/18)
   merged the reviewed stable `Formula/agentdeck.rb` update. The workflow verified
   `brew install`, `brew test`, and bash, zsh, and fish completions.
-- Exact-SHA [release preflight run 31607179658](https://github.com/kitdine/agent-deck/actions/runs/31607179658)
-  and the `v0.4.0` CEv1 Release boundary are `VERIFIED/PASS` for Git tree
-  `4cf71848342b9b3ddf4d0739ae67b293f568d306`.
-- Terminal-presentation remediation completed all five tasks, including manual
-  visual acceptance of `session show --activity`, Usage interactive, and Session
-  interactive surfaces. Its plan and review records are historical and indexed
-  by [the archive](archive/README.md#2026-08-12-retirement-terminal-presentation-remediation).
+- Exact-SHA [release preflight run 31676882544](https://github.com/kitdine/agent-deck/actions/runs/31676882544)
+  succeeded for the `v0.4.1` commit. **No CEv1 Release boundary was recorded for
+  `v0.4.1`**; the newest one is `v0.4.0`, `VERIFIED` for Git tree
+  `4cf71848342b9b3ddf4d0739ae67b293f568d306`. `v0.4.1`'s tree is
+  `6b2a7279e36adcc3048d9b98431a1bc8e77f983c` and has no boundary of its own.
+- The previous stable, [`v0.4.0`](https://github.com/kitdine/agent-deck/releases/tag/v0.4.0)
+  at commit `6b7663b51f22903445798dd7db637cbcaab1a422`, completed
+  terminal-presentation remediation's five tasks including manual visual
+  acceptance of `session show --activity`, Usage interactive, and Session
+  interactive surfaces. Those records are historical and indexed by
+  [the archive](archive/README.md#2026-08-12-retirement-terminal-presentation-remediation).
 
 Install the stable Homebrew channel with:
 
@@ -41,12 +49,21 @@ agentdeck version
 
 ### Active Development
 
-| Topic | Status | Purpose |
-| --- | --- | --- |
-| [Native macOS Desktop App](topics/desktop-app/tasks.md) | Active — 2/6 tasks reviewed; menu-bar design Review FAIL | macOS 26 menu-bar app, WidgetKit extension, unified desktop distribution, Cask, and direct-download delivery. |
-| [`v0.5.0` Contract Closure](topics/v0-5-0-contract/tasks.md) | Active — 0/1 done | Version-wide specification raise and documentation reconciliation after all desktop tasks pass review. |
-| [Usage Attribution Precision](topics/usage-attribution-precision/tasks.md) | Active — 0/3 done | First `v0.6.0` topic: per-client attribution time semantics, determinability-based quality, and an unattributed boundary that never enters a real-spend total. |
-| [CLI Error Classification](topics/cli-error-classification/tasks.md) | Active — 0/2 done | Unassigned to a version: stable not-found codes, and no storage text in a documented JSON contract. |
+| Topic | Version | Status | Purpose |
+| --- | --- | --- | --- |
+| [Native macOS Desktop App](topics/desktop-app/tasks.md) | `v0.5.0` | Active — 2/6 tasks reviewed; menu-bar design Review FAIL | macOS 26 menu-bar app, WidgetKit extension, unified desktop distribution, Cask, and direct-download delivery. |
+| [`v0.5.0` Contract Closure](topics/v0-5-0-contract/tasks.md) | `v0.5.0` | Active — 0/1 done | Version-wide specification raise and documentation reconciliation after all desktop tasks pass review. |
+| [Usage Attribution Precision](topics/usage-attribution-precision/tasks.md) | `v0.6.0` | Active — 0/3 done | Per-client attribution time semantics, determinability-based quality, and an unattributed boundary that never enters a real-spend total. |
+| [CLI Error Classification](topics/cli-error-classification/tasks.md) | Unassigned | Active — 0/2 done | Stable not-found codes, and no storage text in a documented JSON contract. Deliberately kept out of `v0.5.0`. |
+
+**`v0.5.0` contains exactly the two rows marked `v0.5.0` above**: the desktop
+topic's six tasks, plus the contract closure that reconciles them. The
+authoritative scope statement is
+[`topics/v0-5-0-contract/tasks.md`](topics/v0-5-0-contract/tasks.md); per-task
+state lives in each topic's own `tasks.md`, which is the only status authority
+for that topic. A topic carries no version number of its own — membership is
+decided here and in the contract topic, so a reschedule changes those two places
+and nothing else.
 
 `desktop-wire-contract` reached Re-review Round 2 PASS.
 `macos-app-foundation` reached Re-review Round 3 PASS after unsupported and
@@ -78,7 +95,7 @@ authorization rules live in [AGENTS.md](../AGENTS.md).
 
 Planned after `v0.5.0`. Re-planned on 2026-08-13; this table supersedes the
 release sequence previously recorded in the desktop plan. Each version has a
-Beads tracking epic and a blocked design task, and needs a bounded plan under
+Beads tracking epic and a blocked design task, and needs a bounded topic under
 `docs/topics/` before development starts. Version themes are commitments of
 sequence, not of scope detail.
 

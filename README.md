@@ -12,11 +12,13 @@ live in SQLite, protected by a private machine-bound key file; client session
 logs remain read-only source data. The built-in Codex `official` provider uses
 Codex's existing OpenAI or ChatGPT login.
 
-> **Stable release:** [`v0.4.0`](https://github.com/kitdine/agent-deck/releases/tag/v0.4.0)
+> **Stable release:** [`v0.4.1`](https://github.com/kitdine/agent-deck/releases/tag/v0.4.1)
 > is published for Darwin arm64 and amd64 at commit
-> `6b7663b51f22903445798dd7db637cbcaab1a422`. Its same-SHA preflight,
+> `3b709a8fb09494a8d8fdd37ee154e3baedbce9ea`. Its same-SHA preflight,
 > release artifacts, stable Homebrew formula, formula test, and bash, zsh, and
-> fish completions passed verification. See the
+> fish completions passed verification. Upgrading from `v0.4.0` re-scans indexed
+> Codex sources to backfill cache-write tokens, so historical cache-write
+> figures change. See the
 > [documentation index](docs/README.md) for current development status.
 
 ```bash

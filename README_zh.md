@@ -11,11 +11,12 @@ AgentDeck 面向需要使用多个 Codex 或 Claude provider 的开发者。它�
 数据源。内置 Codex
 `official` provider 复用 Codex 已有的 OpenAI 或 ChatGPT 登录状态。
 
-> **稳定版本：** [`v0.4.0`](https://github.com/kitdine/agent-deck/releases/tag/v0.4.0)
+> **稳定版本：** [`v0.4.1`](https://github.com/kitdine/agent-deck/releases/tag/v0.4.1)
 > 已发布 Darwin arm64 和 amd64 版本，对应 commit
-> `6b7663b51f22903445798dd7db637cbcaab1a422`。同 SHA preflight、release artifact、
+> `3b709a8fb09494a8d8fdd37ee154e3baedbce9ea`。同 SHA preflight、release artifact、
 > 稳定版 Homebrew formula、formula test 以及 bash、zsh、fish completion 均已通过
-> 验证。当前开发状态见[文档索引](docs/README.md)。
+> 验证。从 `v0.4.0` 升级会重新扫描已索引的 Codex source 以回填 cache-write token，
+> 因此历史 cache-write 数据会发生变化。当前开发状态见[文档索引](docs/README.md)。
 
 ```bash
 make build
@@ -89,7 +90,7 @@ brew install kitdine/tap/agentdeck
 agentdeck version
 ```
 
-当前稳定 formula 为 `v0.4.0`，安装 release binary，并在 Homebrew 标准目录下安装
+当前稳定 formula 为 `v0.4.1`，安装 release binary，并在 Homebrew 标准目录下安装
 bash、zsh、fish completion 脚本，但不会修改 shell rc 文件。下方源码安装流程还支持
 由 AgentDeck 管理 rc 文件中的启用配置。
 
