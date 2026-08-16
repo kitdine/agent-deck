@@ -94,7 +94,38 @@ Each candidate carries only:
 - `credentials`: credential shorthand name, its client bindings, and whether
   its secret row is present;
 - `has_wrapper`: whether a wrapper URL is configured, never the URL itself;
-- `ready`: whether a switch can be attempted without further setup.
+- `ready`: whether any switch to this provider can be attempted;
+- `options`: the fully resolved switch options this candidate expands into.
+
+A candidate is a **grouping for display**, not a mutation target. It may serve
+several clients, carry several credentials, and support both a direct and a
+wrapper route, so provider-level `ready` cannot say whether one specific switch
+is possible. Go therefore expands every executable combination, and the host
+never composes one itself:
+
+```json
+"options": [
+  { "client": "codex", "provider": "aigocode", "credential": "work",
+    "via_wrapper": false, "ready": true, "reason_code": null },
+  { "client": "codex", "provider": "aigocode", "credential": "work",
+    "via_wrapper": true, "ready": true, "reason_code": null },
+  { "client": "claude", "provider": "aigocode", "credential": null,
+    "via_wrapper": false, "ready": false, "reason_code": "credential_missing" }
+]
+```
+
+Each option is exactly one executable switch: `(client, provider, credential?,
+via_wrapper, ready, reason_code?)`. It maps one-to-one onto the canonical
+invocation's arguments, so the option the user confirmed and the command that runs
+are provably the same target. `reason_code` is a fixed code with localized copy
+in both languages, never a message; the defined codes are
+`credential_missing`, `credential_client_mismatch`, `wrapper_not_configured`,
+`already_selected`, and `switch_in_flight`.
+
+Selection therefore happens at the option level. A candidate offering more than
+one option presents them as distinct rows — credential and route are user choices,
+never inferred — and a `ready: false` option is listed and disabled with its
+localized reason rather than hidden.
 
 The candidate list MUST NOT contain endpoints, wrapper URLs, credential
 references, credential values, multipliers, model mappings, configuration
@@ -121,24 +152,58 @@ A candidate whose `ready` is `false` is listed but not selectable, with a
 localized reason derived from its own fields — a credential whose `present` is
 `false` reads `Credential missing` / `缺少凭据` — never a bare disabled row.
 
-The canonical fixtures under `desktop/fixtures/v1` gain the new field in both
-the complete and partial examples. Go contract tests and the Swift decoder
-consume the same files.
+Compatibility must hold in **both** directions, and only one of them is
+self-evident. A current v1 decoder ignores the unknown `candidates` key, so a new
+producer works with an old consumer. The reverse is the risk: a new Swift model
+that declares `candidates` non-optional would fail to decode an existing v1
+payload that predates the field, and every stored App Group snapshot is exactly
+such a payload.
+
+Therefore, without raising `wire_version`:
+
+- the producer always encodes `candidates` as an array, empty when there is
+  nothing to offer;
+- a decoder treats a **missing** `candidates` as `[]`, and a present value that
+  is not an array as invalid;
+- the same rule applies to `options` within a candidate.
+
+Fixtures under `desktop/fixtures/v1` gain the field in the complete and partial
+examples, and **one legacy fixture without `candidates` is retained** so the
+old-payload path stays covered. Replacing every fixture would delete the only
+regression signal for the direction that can actually break. Go contract tests
+and the Swift decoder consume the same files, and the Swift tests assert that the
+legacy fixture decodes with an empty candidate list.
 
 ### Switch command surface
 
 The desktop host performs a provider switch through:
 
 ```text
-agentdeck --format json provider use <name> --client <codex|claude> \
+agentdeck --quiet --format json provider use <name> --client <codex|claude> \
   [--credential <name>] [--via] --no-shell-setup
 ```
 
-This is the existing command. The host adds no new mutation command. `--format
-json` already suppresses shell-integration writes, attribution advisories, and
-interactive prompts, so a GUI switch cannot silently modify startup files or
-block on stdin. `--no-shell-setup` is passed explicitly so the behavior does not
-depend on that suppression remaining implicit.
+This exact argument list is the only canonical invocation. It uses the existing
+command; the host adds no new mutation command.
+
+`--quiet` is required, not optional. `--format json` alone does **not** silence
+the advisory reporters: `provider use` calls `reportEffectiveRoute` and
+`reportSwitchAdvisories` after a successful switch, and both return early only on
+`opts.quiet`, so without the flag a successful switch writes the effective
+endpoint and restart guidance to stderr. That would put an endpoint on a surface
+this design forbids from ever presenting one, and it would break the rule below
+that a successful switch produces no stderr at all.
+
+`--no-shell-setup` is passed explicitly so the behavior does not depend on any
+suppression remaining implicit.
+
+Required stream behavior, which the implementation MUST test with the exact
+arguments above:
+
+| Outcome | stdout | stderr | exit |
+| --- | --- | --- | --- |
+| Success | One envelope with no `error` | **Empty** | `0` |
+| Failure | Empty | One envelope with `error` | non-zero |
 
 The host MUST:
 
@@ -157,32 +222,47 @@ than one.
 
 #### Result envelope
 
-The switch reuses the existing JSON envelope, so the host decodes one shape for
-every command:
+The switch needs its own Swift type, `ProviderUseEnvelopeV1`. It cannot reuse
+`DesktopWireEnvelopeV1`, whose `command` is fixed to `desktop.snapshot` and whose
+`data` is a non-optional `DesktopSnapshotV1`; `provider use` emits
+`command: "provider.use"` with `data: null` on both success and failure, so the
+existing decoder cannot represent it.
 
 ```json
 {
   "schema_version": 1,
   "command": "provider.use",
   "generated_at": "<RFC 3339>",
-  "data": { "...": "command payload, null on failure" },
+  "data": null,
   "warnings": [],
   "partial": false,
-  "error": { "code": "<stable code>", "message": "<localizable text>" }
+  "error": { "code": "<stable code>", "message": "<discarded>" }
 }
 ```
 
-Outcome is determined by the presence of `error`, and by nothing else:
+The type fixes `schema_version` to `1` and `command` to `provider.use`, decodes
+`data` as ignored-and-nullable, and retains only `error.code`. It never retains
+`error.message`; see the prerequisite below.
 
-| Condition | Host behavior |
+Outcome is decided by the envelope, never by the exit status alone:
+
+| Streams and status | Host behavior |
 | --- | --- |
-| `error` absent | Success. Trigger one replacement refresh |
-| `error` present | Typed failure. Map `error.code` to a localized message |
-| Neither stream carries valid JSON, or `schema_version` is unknown | Treat as an opaque failure. Never parse the text, never guess |
+| stdout envelope, no `error`, empty stderr, exit `0` | **Success.** Trigger one replacement refresh |
+| stderr envelope with `error`, non-zero exit | **Typed failure.** Map `error.code` to a localized message |
+| Envelopes on both streams, or `error` present with exit `0`, or absent with non-zero exit | **Indeterminate.** Never guess which is authoritative |
+| Unknown `schema_version` or `command`, malformed, truncated, or no valid JSON on either stream | **Opaque failure.** Never parse the text |
 
-A failure writes the envelope to **stderr**, not stdout, and exits non-zero. The
-host therefore reads both streams and decodes whichever carries an envelope,
-rather than assuming stdout.
+An indeterminate outcome is not a failure and not a success: the configuration
+may or may not have been applied. The host MUST force a replacement refresh and
+reconcile from the resulting snapshot rather than asserting either result.
+
+The current `EmbeddedHelperRunner` cannot serve this contract as written: it
+guards on a zero exit status and throws before decoding, so a stderr failure
+envelope is unreachable through it. The switch path therefore needs a runner
+entry point that captures both streams and the exit status and hands all three to
+`ProviderUseEnvelopeV1` for classification. The snapshot path keeps the existing
+strict behavior unchanged.
 
 One CLI defect is recorded here as a prerequisite rather than silently absorbed
 by the GUI, because a GUI workaround would hide it from every other consumer: a
@@ -197,18 +277,33 @@ to the user or written to a log.
 
 #### Operation ownership
 
-`MenuBarSwitchOperation` owns one switch attempt. It is created by
-`MenuBarViewModel` on confirmation, is the only type that invokes the helper
-runner for a mutation, and exposes exactly one state: `idle`, `inFlight`,
-`succeeded`, or `failed(code)`.
+One **app-owned** `SwitchController` owns switching, not the view model and not a
+per-client object. It outlives the menu-bar window, because the window is
+dismissed whenever the user clicks elsewhere in the menu bar and an in-flight
+configuration change must not depend on a presentation lifetime. The view model
+observes it; views never hold it.
+
+It is **globally single-flight**: at most one switch exists across all clients.
+A per-client limit would be wrong here — a switch rewrites client configuration
+and completes in well under a second, so concurrency buys nothing and costs the
+ability to reason about which configuration state is current.
+
+State: `idle`, `inFlight(client, provider)`, `succeeded(client, provider)`,
+`failed(code)`, or `indeterminate`.
 
 | Concern | Rule |
 | --- | --- |
-| Serialization | At most one operation exists per client. The view model refuses to create a second while one is not terminal |
-| Double submit | Structurally impossible: confirmation disables its controls on entry to `inFlight` |
-| Cancellation | An in-flight switch is never cancelled. Closing the window detaches presentation, not the operation, because a partially applied configuration change is worse than waiting |
-| Result lifetime | A terminal result survives until the next replacement refresh completes, or 10 seconds, whichever comes first |
-| Failure retention | A failed operation retains its code until the user retries or cancels, so the failure cannot vanish before it is read |
+| Serialization | One switch app-wide. A request while not `idle` is refused, not queued |
+| Double submit | Structurally impossible: confirmation's controls are disabled on entry to `inFlight`, so no second submit can be issued |
+| Cancellation | The controller never cancels an in-flight switch, and MUST NOT invoke the runner through a cancellable task whose cancellation terminates the helper. `EmbeddedHelperRunner`'s `withTaskCancellationHandler` calls `running.terminate()` on cancel, which would kill the helper mid-write; the switch path must not be cancelled by window dismissal, view teardown, or task cancellation |
+| Window dismissal | Detaches presentation only. On reopen the controller's current state is displayed, including a result that became terminal while closed |
+| Timeout after launch | Becomes `indeterminate`, never `failed`. The helper may already have written the client configuration, so the controller forces a replacement refresh and reconciles health and recovery state from the snapshot |
+| Success lifetime | Cleared by the next completed replacement refresh, or after 10 seconds, whichever comes first |
+| Failure and indeterminate lifetime | Retained until the user retries or dismisses. These are never cleared by a timer, because a failure the user did not see is a failure that gets repeated |
+
+The two lifetimes differ deliberately: a success is confirmed by the refreshed
+data that replaces it, while a failure has no such successor and must wait to be
+read.
 
 ## Presentation architecture
 
@@ -237,22 +332,60 @@ stay independently testable.
 
 ### Presentation state
 
-The six required states are derived from foundation coordinator state. No new
-state machine is introduced.
+Presentation is derived from foundation coordinator state. No new state machine is
+introduced, but the six names are **not** mutually exclusive, so treating them as
+one enum leaves real combinations undefined: `degraded(previous, timeout)` is both
+stale and offline, and `degraded(previous, invalidWire)` is both stale and error.
 
-| Presentation state | Derivation |
+The model is therefore one **surface** plus independent **qualifiers**.
+
+The surface answers only one question — is there a snapshot to show?
+
+| Surface | Condition |
 | --- | --- |
-| `loading` | `uninitialized`, or `refreshing` with no previous snapshot. |
-| `stale` | `refreshing(previous)` or `degraded(previous, _)` where the previous snapshot exists. |
-| `offline` | `degraded` whose issue is a helper launch, missing-helper, or timeout category. |
-| `partial` | `ready(snapshot)` or a retained snapshot whose `partial` flag is set. |
-| `empty` | `ready(snapshot)` where every section reports `available: true` but carries no rows, tokens, or costs. |
-| `error` | `degraded` with no previous snapshot, or an invalid-wire or storage-unavailable issue. |
+| `loadingSurface` | No snapshot has ever been retained |
+| `dataSurface` | A snapshot is retained, whatever its age or issue |
+| `errorSurface` | No snapshot is retained and the coordinator is `degraded` |
 
-`stale` and `partial` may hold simultaneously; presentation shows both
-qualifiers rather than collapsing them. Every non-`loading` state that retains a
-snapshot MUST show that snapshot's data plus its qualifier, never an empty
-surface.
+**A retained snapshot is always shown.** No issue category, including
+`invalidWire`, replaces existing data with an empty surface; the issue becomes a
+qualifier on top of it. This resolves the earlier contradiction where the error
+copy demanded showing nothing while the retention rule demanded showing the
+snapshot.
+
+Qualifiers are orthogonal and may all apply at once:
+
+| Qualifier | Condition |
+| --- | --- |
+| `stale` | Coordinator is `refreshing` or `degraded` while a previous snapshot is retained |
+| `aged` | Retained snapshot's `generated_at` is older than 15 minutes |
+| `partial` | Snapshot's `partial` flag is set, or any section reports `available: false` |
+| `offline` | Issue category is helper launch, missing helper, or timeout |
+| `failing` | Issue category is invalid wire or storage unavailable |
+| `empty` | Not `partial`, every section is `available: true`, and none carries rows, tokens, or costs |
+
+Exhaustive truth table over coordinator state, issue category, and whether a
+previous snapshot exists:
+
+| Coordinator | Previous snapshot | Surface | Qualifiers |
+| --- | --- | --- | --- |
+| `uninitialized` | — | `loadingSurface` | none |
+| `refreshing` | no | `loadingSurface` | none |
+| `refreshing` | yes | `dataSurface` | `stale`, plus `aged`/`partial`/`empty` as they hold |
+| `ready` | — | `dataSurface` | `partial` or `empty` as they hold |
+| `degraded`, launch/missing/timeout | yes | `dataSurface` | `stale` + `offline`, plus `aged`/`partial` |
+| `degraded`, launch/missing/timeout | no | `errorSurface` | `offline` |
+| `degraded`, invalid wire/storage | yes | `dataSurface` | `stale` + `failing`, plus `aged`/`partial` |
+| `degraded`, invalid wire/storage | no | `errorSurface` | `failing` |
+
+`empty` and `partial` are mutually exclusive by construction: `empty` requires
+every section available, which `partial` denies.
+
+Fixed qualifier order wherever more than one is shown — freshness first, then
+reachability, then completeness: `stale`, `aged`, `offline`, `failing`,
+`partial`, `empty`. The accessibility value announces them in the same order, and
+the menu-bar glyph badges only when `offline` or `failing` holds, regardless of
+which surface is showing.
 
 Staleness age is computed from the snapshot's `generated_at`. A retained
 snapshot older than 15 minutes is additionally labeled with its age. The host
@@ -426,24 +559,33 @@ absent collapse to a single unavailable row rather than an empty header.
 
 ## Interaction states and copy
 
-The presentation-state table above defines *derivation*. This defines what the
-user reads, and replaces the internal words `stale` and `offline` with wording
-that says what is actually true.
+The surface and qualifier model above defines *derivation*. This defines what the
+user reads. Each surface has one copy; each qualifier has its own, and they
+compose in the fixed order.
 
-| State | Qualifier copy (`en`) | Qualifier copy (`zh-Hans`) | Data shown |
+| Surface | `en` | `zh-Hans` | Data shown |
 | --- | --- | --- | --- |
-| `loading` | `Loading…` | `加载中…` | Nothing yet, no spinner beyond the system idiom |
-| `stale` | `Updated <relative>` and, past 15 minutes, `Last updated <relative>` | `<相对时间>更新` / `上次更新于<相对时间>` | Retained snapshot in full |
-| `offline` | `Cannot reach the AgentDeck helper` | `无法连接 AgentDeck 助手` | Retained snapshot if any, plus this qualifier |
-| `partial` | `Some data unavailable` | `部分数据不可用` | Everything available; unavailable sections labeled individually |
-| `empty` | `No local activity today` | `今天没有本地活动` | Section headers with an explicit empty row |
-| `error` | The specific failure, never a generic message | 同上 | Nothing, plus a retry affordance |
+| `loadingSurface` | `Loading…` | `加载中…` | Nothing yet, no spinner beyond the system idiom |
+| `dataSurface` | No surface copy; qualifiers speak | 同上 | The retained snapshot in full, always |
+| `errorSurface` | The specific failure, never a generic message | 同上 | No data exists to show, plus a retry affordance |
 
-`stale` never surfaces the word "stale" to the user. Saying when data was updated
-is honest and actionable; calling it stale is a judgment the user did not ask for.
-`offline` names the helper, because the network is not what failed.
+| Qualifier | `en` | `zh-Hans` |
+| --- | --- | --- |
+| `stale` | `Updated <relative>` | `<相对时间>更新` |
+| `aged` | `Last updated <relative>` | `上次更新于<相对时间>` |
+| `offline` | `Cannot reach the AgentDeck helper` | `无法连接 AgentDeck 助手` |
+| `failing` | `Data could not be read` | `无法读取数据` |
+| `partial` | `Some data unavailable` | `部分数据不可用` |
+| `empty` | `No local activity today` | `今天没有本地活动` |
 
-When `stale` and `partial` hold together, both qualifiers appear, freshness first.
+The user never reads the words "stale" or "offline" as labels. Saying when data
+was updated is honest and actionable; calling it stale is a judgment the user did
+not ask for. The reachability copy names the helper, because the network is not
+what failed.
+
+`aged` replaces `stale`'s wording rather than adding to it — one freshness
+statement, not two. Every other combination appears in the fixed order:
+`stale`/`aged`, `offline`, `failing`, `partial`, `empty`.
 
 ### Update check copy
 
@@ -465,8 +607,9 @@ no-op is noise.
 
 The one mutating action, specified end to end:
 
-1. **Selection** — choosing a candidate opens confirmation. The candidate row is
-   never itself the commit.
+1. **Selection** — choosing one `option` opens confirmation, carrying that
+   option's exact `(client, provider, credential?, via_wrapper)`. A candidate is
+   never selected as a whole, and the row is never itself the commit.
 2. **Confirmation** — names client, provider, credential, and wrapper route in
    one sentence, with `Switch` and `Cancel`. `Cancel` is the default focus.
 3. **In flight** — the confirmation stays open with its controls disabled and a
@@ -483,8 +626,13 @@ The one mutating action, specified end to end:
    cancel it; the operation completes and its outcome appears on next open. The
    app never abandons a half-applied configuration change.
 
-Only one switch may be in flight per client, and the app MUST NOT start a second
-one for any client while one is in flight.
+7. **Indeterminate** — a timeout after the helper launched leaves the outcome
+   unknown. The confirmation reports that the result could not be confirmed,
+   offers to reopen after a refresh, and the app forces a replacement refresh.
+   It MUST NOT claim either success or failure.
+
+Switching is globally single-flight, as specified under Operation ownership: one
+switch app-wide, and a request while one is active is refused rather than queued.
 
 ## Accessibility, motion, contrast, and layout
 
@@ -492,7 +640,8 @@ The menu-bar window MUST:
 
 - give every row an accessibility label, value, and — where the row is
   actionable — a hint, so VoiceOver announces meaning rather than raw glyphs;
-- expose state qualifiers (`stale`, `partial`, `offline`, `error`) as part of the
+- expose every active qualifier (`stale`, `aged`, `offline`, `failing`,
+  `partial`, `empty`), in the fixed order, as part of the
   accessible value, not only as color or an icon;
 - reach every control by keyboard, with a visible focus indicator and a logical
   focus order matching visual order;
@@ -539,8 +688,8 @@ Verification level L3.
 
 ### Swift
 
-- Presentation derivation for all six states plus the simultaneous
-  `stale` + `partial` case and the retained-snapshot-over-empty-surface rule.
+- Every row of the surface-and-qualifier truth table, including the combinations
+  that hold together, and the rule that a retained snapshot is always shown.
 - Section rendering for available, unavailable, empty, and incomplete-pricing
   inputs, including the assertion that an incomplete cost is never labeled
   complete.
@@ -574,8 +723,9 @@ Recorded in the review record with the observed result for each item on macOS 26
    truncates, at default and at the largest Dynamic Type size.
 8. Content exceeding the height bound scrolls inside it; the window neither grows
    past the bound nor clips a row.
-9. The menu-bar glyph is unbadged in `stale` and `partial`, and badged in
-   `offline` and `error`. It never animates and never renders text.
+9. The menu-bar glyph is unbadged when only `stale`, `aged`, `partial`, or
+   `empty` hold, and badged whenever `offline` or `failing` holds, on either
+   surface. It never animates and never renders text.
 10. Health and warning sections show at most three rows plus a working overflow
     row that expands in place.
 11. A switch in flight disables every other action, and the confirmation's own
@@ -585,6 +735,19 @@ Recorded in the review record with the observed result for each item on macOS 26
 13. Candidate discovery failure with readable routes still shows current routes,
     with the switch affordance visibly disabled rather than absent.
 14. An automatic update check that finds nothing shows nothing.
+15. A successful switch through the canonical invocation produces an empty
+    stderr, confirming `--quiet` suppresses the route and advisory reporters.
+16. A candidate with several options presents one row per option; credential and
+    direct-versus-wrapper are never inferred, and each `ready: false` option is
+    listed and disabled with its localized reason.
+17. The legacy v1 fixture without `candidates` decodes with an empty candidate
+    list, and a present non-array value is rejected.
+18. A switch is refused, not queued, while another is in flight anywhere in the
+    app.
+19. A timeout after helper launch reports an unconfirmed result, forces a
+    replacement refresh, and claims neither success nor failure.
+20. Window dismissal during an in-flight switch does not terminate the helper,
+    and the outcome is visible on reopen.
 
 ### Not verifiable in this task
 
