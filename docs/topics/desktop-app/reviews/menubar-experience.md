@@ -311,11 +311,11 @@ timeout handling, and helper survival across window dismissal.
 - Post-migration state mapping. This round's `Reviewed state` names the single
   pre-split document. The topic migration has since divided that text, so the
   repaired content a Re-review must judge is two blobs at HEAD
-  `3a07618ac1f1b36151077e3343fe36775ea39b26`:
+  `a713e3286936becad0359956fb7362fa57a90f8e`:
   `docs/topics/desktop-app/architecture.md`
   `83c9a882d586a953ba18abfd05aa20e782aaa066` carries R3-F1 through R3-F5, and
   `docs/topics/desktop-app/ux/menubar.md`
-  `7a801bd0edce2321dd4b3148de2e0eb79f60bcdb` carries R3-F6. Verified present at
+  `b6791cd911fbb703c9ef8e9c9988d7aec663e3c2` carries R3-F6, including the residual closed below. Verified present at
   `architecture.md:649`, `:687`, `:721`, `:757`, `:785`, `:810` and
   `ux/menubar.md:103`, `:130`.
 - Residual closed during the 2026-08-16 record repair. Re-verifying R3-F6's
