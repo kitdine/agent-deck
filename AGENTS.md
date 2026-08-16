@@ -98,6 +98,19 @@ CEv1, and a CEv1 result does not create, claim, close, or reopen a Beads task.
 - Generic skills may supplement implementation, debugging, review, or
   verification, but must not replace these project workflows or create a
   competing plan or status source.
+- A third-party or externally authored skill is a generic skill under the rule
+  above, regardless of how specific its name sounds. Before invoking one, confirm
+  its subject matches the actual target: a skill whose scoring anchors assume an
+  implemented surface cannot judge an unimplemented design, and reporting its
+  number anyway asserts a measurement that was never taken.
+- An external skill's findings become project record only after independent
+  verification against the repository, and only through the artifact the project
+  workflow already defines. Its own scratch directories, scorecards, and handoff
+  files are temporary diagnostics: extract the verified findings, then remove
+  them rather than committing a parallel record.
+- Prefer a lower-cost tool that fits over a broader one that overruns. Reserve
+  multi-agent panels and full audits for high-value or high-risk targets, and say
+  which mode was used in the review record.
 - If a required project workflow skill is unavailable at runtime, report that
   limitation and follow the fallback process documented by the project. Do not
   silently substitute an unrelated generic workflow.

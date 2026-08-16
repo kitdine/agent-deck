@@ -63,8 +63,11 @@ task: <task-anchor>
 # Review log — <plan-topic> / <task-anchor>
 
 ## Round 1 — YYYY-MM-DD
-- Reviewed state: <commit SHA or tree hash>
+- Reviewed state: <commit SHA or tree hash; for an uncommitted design or contract,
+  the HEAD SHA plus each reviewed document's blob hash>
 - Reviewer: <agent or person>
+- Method: <how the review was conducted, and any tool whose scope did not match
+  the target>
 - Scope: <files and behavior actually reviewed>
 - Findings:
   - [P1] <defect> -> <resolution or follow-up>
@@ -72,6 +75,12 @@ task: <task-anchor>
 - Evidence: <commands run, results>
 - Verdict: PASS | REOPEN
 ```
+
+A design or contract review records both HEAD and the blob hash, because the
+document alone does not identify the state it was judged against. The `Method`
+line exists so a later reader can tell a repository-verified finding from a
+tool's unverified score; `development-workflow`'s review reference owns the
+dimensions for each target class.
 
 A `PASS` round ends with the plan's `Review` cell ticked. A `REOPEN` round names
 the unclosed findings and reverts the task to `Dev`; the next pass is `Round 2`
