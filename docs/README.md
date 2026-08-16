@@ -336,47 +336,62 @@ boundary around a problem nobody has observed cannot be decided, only guessed.
 So the minimum input is the observed behavior and how it was measured, the
 surfaces and contracts it touches, and what is deliberately excluded.
 
-That first design normally produces two files: `requirements.md`, and `tasks.md`
-carrying the Documents matrix that declares the intended set. Those are the only
-two that can be written before a boundary exists — `ux/` and `architecture.md`
-derive their scope from it, so writing them first risks writing against a
-boundary the review still moves. Writing them early is allowed; the rework is
-the author's risk to take. The binding constraint is the review order below, not
-how many files one design produces.
+#### The progression from a topic to development
 
-#### The commands
+A new topic is a name and an observation. Nothing else exists, so the useful
+question is not which documents a topic may carry but what to do next. Each
+stage below states what it produces and when it is finished.
 
-The verbs are the workflow's, unchanged. What varies is the target after the
-colon, and one rule covers all of it: **the verb is the phase, and what follows
-the colon is what that phase acts on.**
+| Stage | Command | Produces | Finished when |
+| --- | --- | --- | --- |
+| 1. Boundary | `设计：<topic>` | `requirements.md`, plus `tasks.md` holding only the Documents matrix | The boundary is decided and the intended document set is declared |
+| 2. Boundary review | `评审：<topic> / requirements.md` | A review record | `Verdict: PASS` |
+| 3. Specification | `设计：<topic> / architecture.md`, `设计：<topic> / ux/<surface>.md` | One document per invocation | Every document the matrix declares is drafted |
+| 4. Specification review | `评审：<topic> / <document>` | One record per document | Each passes; they are independent and may run in parallel |
+| 5. Decomposition | `设计：<topic> / tasks.md` | The Tasks matrix | Every task has an anchor, its files, and a verification level |
+| 6. Decomposition review | `评审：<topic> / tasks.md` | A review record | `Verdict: PASS`; the topic is now developable |
+| 7. Development | `开发：<topic> / <task-anchor>` and its review | Code and tests | Per the Tasks matrix |
 
-| Command | Acts on |
-| --- | --- |
-| `设计：<topic>` | A topic that does not exist yet; produces `requirements.md` and `tasks.md` |
-| `设计：<topic> / <document>` | One further document — `ux/<surface>.md`, `architecture.md`, or a revision of either |
-| `评审：<topic> / <document>` | One document, as its own artifact |
-| `开发：<topic> / <task-anchor>` | One task's implementation |
-| `评审：<topic> / <task-anchor>` | One task's implementation |
-| `修复：<scope>` / `复评：<scope>` | Recorded findings, then their closure |
+Stages 1 through 6 turn a topic into something developable; stage 7 builds it.
+The boundary between them is `tasks.md` passing review — before that there is no
+task to implement, and after it every task's scope is fixed.
+
+**Decomposition is stage 5, not stage 1.** A task is a unit of development work,
+and what work exists is not knowable from a boundary alone; it is knowable from
+the specification. Producing the Tasks matrix earlier would mean writing a claim
+about documents that do not exist, which is exactly what its review question
+asks about — "does the decomposition cover the others" — and exactly what the
+evidence column names: the other documents. That is why `tasks.md` is reviewed
+last, and it has to be produced last for the same reason.
+
+`tasks.md` still exists from stage 1, because it is the topic's only status
+authority and the Documents matrix has to live somewhere. Its Tasks matrix is
+simply empty until stage 5.
+
+The verbs are the workflow's, unchanged; no command is invented here. What
+varies is the target after the colon, and one rule covers all of it: **the verb
+is the phase, and what follows the colon is what that phase acts on.** A finding
+at any stage is `修复：<scope>` then `复评：<scope>`, whether the target is a
+document or code.
 
 `开发` never writes a design document; it writes the code a reviewed document
 already specified. When a task's scope reveals a surface or contract the matrix
 does not cover, that is a `tasks.md` revision plus a later `设计：<topic> /
 <document>` — not something the task absorbs.
 
-#### The order documents are reviewed
+#### Why the progression is ordered that way
 
-The order is not a convention; it falls out of the review questions themselves.
+The stage order is not a convention; it falls out of the review questions.
 
-1. **`requirements.md` first.** Every other document's scope derives from its
-   boundary. Findings raised against a surface or a contract whose boundary is
-   still open evaporate when the boundary moves, so that review is spent twice.
-2. **`ux/<surface>.md` and `architecture.md` next, in any order or at once.**
-   Their questions are different and their evidence is different, and neither
-   verdict depends on the other. Serializing them buys nothing.
-3. **`tasks.md` last.** Its question is whether the breakdown covers the other
-   documents with nothing missing and nothing beyond, which cannot be answered
-   before they exist.
+- **`requirements.md` first** because every other document's scope derives from
+  its boundary. Findings raised against a surface or contract whose boundary is
+  still open evaporate when the boundary moves, so that review is spent twice.
+- **`ux/<surface>.md` and `architecture.md` in parallel** because their
+  questions and evidence are different and neither verdict depends on the other.
+  Serializing them buys nothing.
+- **`tasks.md` last** because its question is whether the breakdown covers the
+  other documents, which cannot be answered — or even written — before they
+  exist.
 
 The Documents matrix therefore exists from the moment the topic does but is
 ratified at the end. That is not a contradiction: it is a claim from the start
