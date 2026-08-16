@@ -2082,7 +2082,9 @@ commands such as `provider recover`, `usage rebuild`, `session rebuild`, or
 - Keep indexed visible conversation text isolated in `sessions.sqlite3`.
 - Redact credentials from rollback backups and diagnostics.
 - Do not expose network ports or change host networking.
-- Permit network access only for an explicit price update.
+- Permit network access only for an explicit price update or an opt-in desktop
+  stable-release update check. Both are user-initiated or explicitly enabled,
+  send no local state, and are off by default in the desktop app.
 - Use synthetic logs, temporary homes, and fake credentials in tests.
 
 ## Performance and Platform Constraints

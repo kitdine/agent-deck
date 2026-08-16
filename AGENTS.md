@@ -399,8 +399,10 @@ labeled as examples.
   `~/.claude/settings.json`. The optional watcher is foreground-only.
 - Allowed connectivity / 允许的连接方式: Normal commands and tests require no
   network. Only an explicit `agentdeck usage price update` downloads the
-  configured public price catalog; provider hosts are consumed by Codex or
-  Claude, not probed by AgentDeck.
+  configured public price catalog, and the desktop app may check for a newer
+  stable release when that check is explicitly enabled; it defaults off, sends
+  no local state, and only opens the official release page. Provider hosts are
+  consumed by Codex or Claude, not probed by AgentDeck.
 - Prohibited exposure / 禁止的暴露方式: The tools must not expose network ports or alter host network configuration.
 - Test-data policy / 测试数据策略: Tests use temporary homes, synthetic machine
   identities, synthetic session logs, fake credentials, and isolated encrypted
