@@ -310,13 +310,18 @@ writer is how the two drift apart.
 - Revise the set — the matrix rows — whenever a task's scope names a surface or
   contract domain it does not cover. Revising the set adds a row; it does not
   write the document. That is a later `设计：<topic> / <document>`.
-- `make check-topic-docs` audits the result. It compares three things that must
-  agree — what the matrix declares, what exists on disk, and what the topic's
-  own `requirements.md` names as a surface — so a required document that nobody
-  remembered fails a check instead of waiting to be noticed. That third
+- `make check-topic-docs` audits the result, and the `tasks.md` reviewer runs
+  it, because that review is where the set is ratified. It compares three things
+  that must agree — what the matrix declares, what exists on disk, and what the
+  topic's own `requirements.md` names as a surface — so a required document that
+  nobody remembered fails a check instead of waiting to be noticed. That third
   comparison only works because `requirements.md` names each surface by its
   path; a surface described in prose alone is invisible to it, which is how
   `ux/widget.md` stayed missing.
+- It is a workflow tool, not a build step. It reads only `docs/topics/**`, so no
+  code change can fail it, and putting it in `make verify` would fail a
+  code-only CI run for a missing design document. Documentation obligations bind
+  the phase that owns them, not the build.
 
 The author proposes the set; **the `tasks.md` reviewer ratifies it**. This adds
 no reviewer role, because `tasks.md`'s review question already asks whether the

@@ -85,7 +85,7 @@ prices-regen:
 check-prices-reproducible:
 	env GOCACHE=$(GOCACHE) GOMODCACHE=$(GOMODCACHE) $(GO) run -mod=vendor ./tools/genprices -check
 
-verify: check-whitespace check-topic-docs check-go-test-runner test test-race vet
+verify: check-whitespace check-go-test-runner test test-race vet
 
 install: build
 	@PREFIX="$(PREFIX)" BINDIR="$(BINDIR)" DATADIR="$(DATADIR)" FORCE="$(FORCE)" COMPLETION_SHELL="$(COMPLETION_SHELL)" COMPLETION_RC="$(COMPLETION_RC)" bash scripts/manage-install.sh install "$(DIST_DIR)/agentdeck"
@@ -106,9 +106,10 @@ check-privacy:
 check-whitespace:
 	@bash scripts/check-whitespace.sh
 
-# Compares each topic's Documents matrix against the files on disk and against
-# the surfaces its own requirements.md names, so a missing required document
-# fails a check rather than waiting to be noticed.
+# Documentation-workflow tool, deliberately NOT in `verify`: it reads only
+# docs/topics/**, so no code change can fail it, and coupling it to the build
+# would fail a code-only CI run for a missing design document. It is invoked by
+# the workflow when a topic's documents change; see docs/README.md.
 check-topic-docs:
 	@bash scripts/check-topic-docs.sh
 
