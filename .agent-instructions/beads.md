@@ -34,8 +34,10 @@ env BEADS_ACTOR=claude-code /Users/jobshen/.local/state/agentdeck-beads/bin/agen
 2. Resolve the selected task from current Beads state, then read it with `show
    --json`, its blockers with `blocked --json` or `dep tree`, and its comments.
 3. A phase command accepted by the project workflow authorizes resolving only
-   the matching `Authorize <Phase>: <task-anchor>` human Gate. Never resolve a
-   later Gate, a different task's Gate, or a Gate based only on `bd ready`.
+   the matching `Authorize <Phase>: <task-anchor>` human Gate, where `<Phase>`
+   is `Design` or `Development` — review has no Gate, see One lifecycle below.
+   Never resolve a later Gate, a different task's Gate, or a Gate based only on
+   `bd ready`.
 4. Atomically claim the exact resolved task ID with `bd update <id> --claim`.
    Do not use an unfiltered ready claim when the user named a task anchor.
 5. **Frozen, pending upstream.** `bd heartbeat` does not exist in the installed
@@ -65,8 +67,6 @@ status walks its lifecycle:
 
 ```text
 ad-<topic>-doc-<document>-design     文档：<topic> / <document>
-
-open -> drafting -> in_review -> repairing -> in_review -> closed
 ```
 
 One task, not a design/review pair. A document is one object and these are
@@ -76,46 +76,120 @@ below, one document that failed review three times would carry a design task, a
 review task, three repair tasks and three re-review tasks — eight objects for
 one file. `ux/menubar.md` reached eight rounds.
 
-`drafting`, `in_review`, and `repairing` are custom statuses, registered once
-with `bd config set status.custom "drafting,in_review,repairing"`. The built-in
-set is `open, in_progress, blocked, deferred, closed, pinned, hooked`.
+## One lifecycle
 
-`closed` means the latest applicable review round is `Verdict: PASS` — not that
-the document was written. A drafted but unreviewed document is `open`; a
-document whose repair is complete and awaiting an independent re-review is
-`in_review`.
+One lifecycle covers every task — a document, a task anchor, a test, anything
+else. What differs between them is the work product (`.md`, code, a test run),
+not the states it passes through, so the status model has no
+document-versus-development split:
+
+```text
+open ──→ in_progress ──→ in_review ──→ awaiting_commit ──→ closed
+              ↑______________│
+                (review sends it back)
+```
+
+| Status | Kind | Category | Meaning |
+| --- | --- | --- | --- |
+| `open` | built-in | active | Not started |
+| `in_progress` | built-in | wip | Being produced — document, code, or anything else |
+| `in_review` | custom | active | Awaiting or under review |
+| `awaiting_commit` | custom | wip | Review passed; awaiting the commit checkpoint |
+| `closed` | built-in | done | Committed |
+
+**Never set `blocked` by hand.** Express blocking as a dependency and let it be
+derived: a hand-set `blocked` is a second, silent record of the same fact, and
+the two diverge the moment the blocker closes — the dependency graph says the
+task is workable while the status still says it is not, and nothing brings it
+back. `deferred` parks work indefinitely and is set deliberately. `pinned`
+exists for work that never closes; nothing in this workflow qualifies, since
+every task here ends at `closed`.
+
+The custom pair is registered once:
+
+```bash
+bd config set status.custom "in_review:active,awaiting_commit:wip"
+```
+
+The categories are load-bearing, and each is the opposite of what it looks
+like. `in_review` is `active` because `active` is what puts a task in
+`bd ready`: a task entering review has no reviewer yet, and the reviewer has to
+be dispatched to it and claim it, exactly as an implementer is dispatched to
+`open` work. Making it `wip` would drop it out of the ready queue and no
+reviewer would ever arrive. `awaiting_commit` is `wip` for the mirror-image reason —
+what it waits on is the user's commit authorization, not an agent, so it must
+never be dispatched.
+
+**Entering review needs no authorization.** Work that is finished moves to
+`in_review` in the same action that finishes it. There is no `Authorize Review`
+Gate: such a gate only records that nobody has started reviewing yet, which is
+what the status already says. `Authorize Design` and `Authorize Development`
+Gates remain — when work *starts* is the user's decision.
+
+**A Gate's description is written for the user, not for an agent.** Its only
+reader is the person deciding, so it states what approving starts, what it
+changes that is observable from outside, what it is based on, and what it
+unblocks — with the consequential part first, since the board truncates. Machine
+release conditions belong in a comment. A description reading "Resolve only
+after X Review PASS and explicit user Development authorization" tells the
+decider nothing they can act on, and on an authorization Gate it is circular:
+the approval it demands is the very approval being asked for.
+
+`closed` means the work is delivered, not that it was produced or that review
+passed. A `PASS` moves the task to `awaiting_commit`; the authorized commit is
+what closes it. Collapsing `awaiting_commit` into `closed` is exactly what makes
+"review passed" and "delivered" indistinguishable in dispatch.
+
+**This includes document tasks**, and the commit checkpoint for one is the
+project's to emit. The Skill deliberately emits no commit recommendation over a
+document, contract, or process target — nothing was implemented, so it has
+nothing to recommend — but that is a statement about the Skill's output, not
+about whether the work is delivered. A passing document leaves the document
+itself, its review record, and the `tasks.md` / `docs/README.md` status
+synchronization to be committed, and CEv1 binds an uncommitted review candidate
+to HEAD plus a blob fingerprint that must be re-recorded against the immutable
+Git tree once an authorized commit exists. `awaiting_commit` is precisely that
+interval. Closing a document at `PASS` would drop both the commit and the
+evidence re-record on the floor.
+
+**A review verdict is not an evidence gate.** `PASS` with a required completion
+gate still `NOT_VERIFIED`, `FAILED`, or `BLOCKED` does NOT reach
+`awaiting_commit` or `closed`: the task stays `in_review` and a comment records
+the verdict and the open gate. The status name reads oddly for a few hours, and
+that is the correct trade — the alternative asserts a completion the evidence
+does not support. Do not add a status for this; the gate is CEv1's to answer and
+mirroring it here would make Beads a second, stale evidence record.
 
 Nothing moves a status by itself. Each phase command owns exactly one
-transition on the document task it names, and performing the command without
-the transition is what made an entire day of document work invisible to
-dispatch:
+transition on the task it names, and performing the command without the
+transition is what made an entire day of document work invisible to dispatch:
 
 | Command | Transition | Also |
 | --- | --- | --- |
-| `设计：<topic>` | create the topic's document tasks at `open` + `stage-open` | — |
-| `设计：<topic> / <document>` | `open` → `in_progress`, label `stage-drafting` then `stage-drafted` | claim it |
-| `开发：<topic> / <task-anchor>` | `open` → `in_progress`, label `stage-implementing` | claim it |
-| `评审：<topic> / <subject>` | stays `in_progress`, label `stage-review` | claim it as the reviewer; on `PASS` → `closed`, on `REOPEN` → `stage-repair` and increment `round-N` |
-| `修复：<topic> / reviews/<record>.md / <ids>` | label `stage-repair` → `stage-review` when the repair is complete | comment the disposition |
+| `设计：<topic>` | create the topic's document tasks at `open` | — |
+| `设计：<topic> / <document>` | `open` → `in_progress`, → `in_review` when the draft is complete | claim it |
+| `开发：<topic> / <task-anchor>` | `open` → `in_progress`, → `in_review` when the implementation is complete | claim it |
+| `评审：<topic> / <subject>` | stays `in_review` | claim it as the reviewer; on `PASS` → `awaiting_commit`, on `REOPEN` → `in_progress` and increment `round-N` |
+| `修复：<topic> / reviews/<record>.md / <ids>` | stays `in_progress`, → `in_review` when the repair is complete | comment the disposition |
 | `复评：<topic> / reviews/<record>.md` | as for `评审` | — |
+| commit checkpoint | `awaiting_commit` → `closed`, after the authorized commit | — |
 
-Stage lives in a `stage-*` label and coarse state in a built-in status, rather
-than in custom statuses. `bd` accepts custom statuses through
-`bd config set status.custom`, and they were used briefly here, but the
-installed board maps every status it does not know to one bucket, so a document
-in review looked identical to one nobody had started. Labels render and filter
-in both the CLI and the board. If a board that understands custom statuses
-replaces the current one, the labels convert to statuses without data loss.
+Repair and re-review are transitions on this one task, never new tasks. A
+`round-N` label counts how many times review sent it back; it increments on
+every `REOPEN` and is never reset, so a task that keeps bouncing is visible as a
+number rather than as a comment someone has to read.
 
-The comment matters as much as the status: a status says where the document is,
-a comment says why it moved. Write it in the same action, not afterwards —
+Derive the status from the command being performed, not from the last verdict
+word in a review record. `REOPEN` marks the round that returns work to `Dev`,
+but a repair round appends its own closing line to the same record, and those
+lines read `Verdict: REOPEN — repair complete, awaiting independent Re-review`:
+still-not-PASS, yet the work is finished and waiting for a reviewer. Read
+literally, the record's last `REOPEN` says `in_progress` for a task that is
+correctly `in_review`.
+
+The comment matters as much as the status: a status says where the work is, a
+comment says why it moved. Write it in the same action, not afterwards —
 "afterwards" is reliably never.
-
-A `round-N` label counts how many times review sent the document back. It
-increments on every `REOPEN` and is never reset, so a document that keeps
-bouncing is visible as a number rather than as a comment someone has to read.
-Repair and Re-review are therefore status transitions on this one task rather
-than new tasks.
 
 **The same holds for a task anchor.** `menubar-experience` is one unit of work
 and development, review, repair, and re-review are its stages, exactly as they
@@ -136,9 +210,9 @@ put version membership in a second place. A row marked `n/a` gets no task.
 
 Ordering follows the review order, expressed as dependencies: every other
 document task depends on the requirements document task, and the `tasks`
-document task depends on every other one. A task anchor's `Development:` task
-depends on the `tasks` document task, which is what makes "the specification has
-not passed" a dispatch fact rather than something a reader must infer.
+document task depends on every other one. A task anchor's task depends on the
+`tasks` document task, which is what makes "the specification has not passed" a
+dispatch fact rather than something a reader must infer.
 
 ## State transitions and authority
 
@@ -150,21 +224,19 @@ Apply repository workflow and CEv1 transitions in their own authoritative
 stores first, then close the corresponding Beads task last as a derived
 coordination projection. Beads closure adds no completion gate.
 
-- Close a Development coordination task only after the owning plan's `Dev`
-  field is synchronized and every completion gate required for that transition
-  is satisfied. Closing it does not grant Review.
-- Close a Review coordination task only after the latest applicable independent
-  review record says `Verdict: PASS`, the owning plan's `Review` field is
+- Move a task to `in_review` only after the owning plan's `Dev` field is
+  synchronized and every completion gate required for that transition is
+  satisfied. Reaching `in_review` grants nothing: it reports that the work
+  product exists and needs a reviewer.
+- Move a task to `awaiting_commit` only after the latest applicable independent review
+  record says `Verdict: PASS`, the owning plan's `Review` field is
   synchronized, and every required completion gate is satisfied.
-- If Review finds a blocker, do not close the Review task. Record the finding,
-  release its claim, and create bounded Repair and Re-review tasks and Gates
-  linked back to that Review task. The original Review task remains the
-  downstream coordination gate and closes only after successful Re-review.
-  **Superseded.** Neither a document nor a task anchor creates Repair and
-  Re-review tasks: both move their one task's stage label and increment
-  `round-N`, because in each case there is only one object. Keep this bullet's
-  substance — a Review that found a blocker is not closed, its claim is
-  released, and the finding is recorded — and drop the task creation.
+- If review finds a blocker, the task does not reach `awaiting_commit`. Record the
+  finding, release the reviewer's claim, move it back to `in_progress`, and
+  increment `round-N`. Do not create Repair or Re-review tasks — there is one
+  object, and repair and re-review are transitions on it.
+- Close a task only after its authorized commit exists. `closed` is a
+  delivery fact, not a review verdict.
 - A Beads task and a CEv1 WorkUnit need not map one-to-one. A concise handoff
   comment may link stable task, WorkUnit, content-state, and evidence
   identifiers; do not copy criteria, raw evidence, test output, review
