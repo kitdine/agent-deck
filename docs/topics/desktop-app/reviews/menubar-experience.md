@@ -1220,3 +1220,58 @@ specimen 使用示例文本不构成与固定串的矛盾——这正是 R11-N2 
 ```text
 评审：desktop-app / ux/widget.md
 ```
+
+## Round 14 — 2026-08-17（更正轮：Round 13 的 PASS 被推翻）
+
+- Reviewed state: HEAD `10ce01e790d5330e632da081cfa681f36cb9e086`；
+  `ux/menubar.md` blob `5303e0d14556da181632f80ccc802b3f82c3a068`；
+  `architecture.md` blob `e23ccc7cab3545f4e6c19ab15d5cc33e6261c4fb`。内容与
+  Round 13 判定的完全一致——本轮改变的不是内容，是对它的判断。
+- 来源：`ux/widget.md` 的 Round 1 评审（`reviews/ux-widget.md`）。它的 W-F1 在
+  `architecture.md` 的投影清单上撞到同一处缺口，因此顺带证伪了本记录 Round 13
+  的一项前提。本条不改写 Round 13 已写下的任何内容。
+
+- **被推翻的结论：`ux/menubar.md:760` 的 period switcher 行不成立。**
+  该行称 `today`/`7d`/`30d` 的期间选择"backed by the daily `buckets` series"，
+  并位于表头声明"These are provisioned as of `architecture.md`'s 2026-08-17
+  revision"之下。回到投影清单核验：`architecture.md:438-456` 只有一组
+  "aggregate usage totals" 与"a bounded daily series … plus **the period's**
+  `peak` bucket and average"——单数的"the period"；全文件再无第二处 period 供给，
+  `:385-396` 的 helper execution contract 也没有 period 参数。因此三个期间的
+  hero 数值只能由 Swift 侧对日桶求和得到，而 `requirements.md:132-133` 与
+  `ux/menubar.md:55` 都禁止在 Swift 侧再做一层聚合。
+- **这正是 R9-F2 的实质，而 Round 10 的修复只处理了它的表象。** R9-F2 是"切换器
+  声称的粒度投影没有供给"。把粒度从 week/month 收窄到 7d/30d 之后，"谁生成这三个
+  期间"这个问题原样存在，而"backed by the daily buckets series"这句话恰好指向被
+  禁止的那条路。
+- **Round 13 的失职点，精确地说：** 它核对了该行与 `ux/widget.md:85-86`、
+  `requirements.md:75,137` 的措辞一致——三处都写着 today/7d/30d，于是看起来自洽——
+  但没有回到投影清单确认"provisioned"这个词成立。三份文档共同引用一个并不存在的
+  供给，一致性检查因此全部通过。这与 R9-F2 当初能存活的方式是同一种。
+- **后续处置：**
+  - `ux/menubar.md` 与 `architecture.md` 的 Document gate 重开，`tasks.md` 的两个
+    `Review` 单元格取消勾选，CEv1 两个 WorkUnit 改回 `FAILED` 并记录理由；
+  - commit `10ce01e` 不回滚。它记录的修复本身为真（specimen 重画、`Month` 残留
+    清除、框线与文案对齐），错的只是"因此可以关闭 gate"这一步；已提交的事实由
+    Git 历史承担，本记录承担判断的更正；
+  - 修复归口在 `reviews/ux-widget.md` 的 W-F1，因为根因在投影而不在任一 surface。
+    投影一旦决定是否承载三个期间，本文档的 `:760` 行随之成立或需要重新设计。
+- Evidence: `architecture.md:438-456`、`:385-396`；`requirements.md:132-133`；
+  `ux/menubar.md:55`、`:760`；`ux/prototype/desktop-surfaces.html:591-622`
+  把同一缺口画实（widget magnitude 同屏列出三个期间的 cost 与 tokens）。
+- Verdict: REOPEN — Round 13 的 PASS 撤回，两份文档等待 W-F1 的决定后重新复评。
+
+#### 📌 下一步
+
+```text
+修复：desktop-app / reviews/ux-widget.md / W-F1 W-F2 W-F3 W-F4
+```
+
+**附记（2026-08-17，非独立评审轮次）。** 上述"下一步"指向的修复已在
+`reviews/ux-widget.md` Round 2 完成：`architecture.md` 的投影扩展为承载
+`today`/`7d`/`30d` 三期间的 totals 与 per-period top-N model shares（用户在
+W-F1 的两条有界路径间选择了"扩展投影"），`ux/menubar.md:760` 的 period
+switcher 行随之改写，不再声称由日桶 Swift 侧求和支撑。这是本条被推翻结论的
+实际修复，但不构成对本记录的独立复评——`architecture.md` 与 `ux/menubar.md`
+的 Document gate 仍按 Round 14 保持重开状态，等待一次针对本记录（连同
+`reviews/ux-widget.md`）的独立 Re-review 逐条核实后才能关闭。

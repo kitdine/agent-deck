@@ -436,22 +436,39 @@ The shared cache is a Widget-oriented projection, not a copy of the wire
 envelope. It may contain only:
 
 - cache schema version and source wire version;
-- generation time, partial state, and last successful refresh time;
+- generation time, partial state, last successful refresh time, and next
+  suggested refresh time;
 - client identifiers and selected provider display identifiers;
-- aggregate usage totals, counts, pricing completeness, and cost strings;
+- per-period usage totals for the three supported periods — `today`, `7d`,
+  `30d` — **for each client scope**, each with counts, session count, pricing
+  completeness, and cost strings;
 - token components — input, output, cached-read, cache-write — at total,
   bucket, model, and client level, matching what `usage stats` already returns;
-- a bounded daily series: at most 90 buckets of `(date, tokens, cost, sessions)`
-  for the trend charts, plus the period's `peak` bucket and average;
+- a bounded daily series of at most 90 buckets of
+  `(date, tokens, cost, sessions)` for the trend charts, plus each period's
+  `peak` bucket and average — **one series per client scope**, for `all` and for
+  each client present, so at most 3 series and 270 buckets;
 - a bounded 7×24 hour-of-week activity grid of relative intensity, the same
-  aggregate the terminal report already renders;
-- top-N model shares: at most 12 entries of
-  `(model, tokens, cost, share)`, deterministically ordered;
-- per-client and per-provider subtotals, each with its attribution quality
-  counts — determinable, inferred, unattributed;
-- pricing coverage: priced and unpriced counts, and at most 12
-  deterministically ordered unpriced model identifiers;
-- aggregate session availability and count;
+  aggregate the terminal report already renders, plus the active-day count and
+  the busiest and quietest day names, each scoped to the last 30 days — the
+  same window `rhythm` defaults to everywhere else — computed as a one-time
+  reduction over the most recent 30 entries of that scope's daily series the
+  producer already holds, not a second query; **one grid and one reduction per
+  client scope**, so at most 3 grids and 504 cells;
+- per-period top-N model shares: at most 12 entries of
+  `(model, tokens, cost, share)` for each of the three supported periods **and
+  each client scope**, deterministically ordered — the product `composition`
+  needs, since it takes both `Period` and `Client`;
+- per-period per-client subtotals: cost and token totals for each client, for
+  each of the three supported periods;
+- per-client and per-provider attribution-quality subtotals for the current
+  period only — determinable, inferred, and unattributed each as
+  `(cost, tokens, count, share)` — because `trust` is fixed to the current
+  period and never takes `Period`;
+- pricing coverage per client scope: priced and unpriced counts, and at most 12
+  deterministically ordered unpriced model identifiers, for `all` and for each
+  client present, because `trust` takes `Client` and its coverage bar and
+  identifier list must render under a single client;
 - aggregate health status and problem/warning/error counts;
 - allowlisted presentation-safe issue codes.
 
@@ -464,12 +481,109 @@ credential, and each is already computed by `usage stats` for the terminal
 report, so the projection copies a number the product already publishes rather
 than deriving new knowledge inside a sandboxed extension.
 
+The per-period totals and per-period model shares are a second, same-day
+revision, made because `reviews/ux-widget.md`'s W-F1 found the first revision
+had provisioned only one period's aggregate while `ux/widget.md`'s `magnitude`
+medium/large and `composition`'s `Period` parameter both require the other two
+periods' totals and model shares simultaneously, and while `ux/menubar.md`'s
+period switcher named the same gap under R9-F2/Round 14. A single-period
+projection cannot answer either without a second aggregation layer in Swift,
+which `requirements.md` and `ux/menubar.md` both forbid; computing three
+periods in Go once, at publication time, is the same class of one-time
+reduction as the existing daily series and 7×24 grid, not a new capability.
+The active-day count and busiest/quietest day names close the matching gap
+W-F3 found in `rhythm`, for the same reason: a Swift-side reduction over the
+90-day series would be a second aggregation layer, so the producer computes it
+once instead.
+
+The per-client subtotals split into two bullets in a third, same-day revision,
+because `reviews/ux-widget.md`'s Round 3 (W-F5) found the single prior bullet
+served two consumers with different period semantics: `composition`'s large
+size takes `Period` and needs per-client subtotals for each of the three
+periods, while `trust` never takes `Period` and needs only the current
+period's attribution-quality breakdown. Making the whole bullet per-period
+would have given `trust` two periods of data it never asked for and cannot
+display; keeping it single would have left `composition` exactly where W-F5
+found it. The split assigns each consumer only the shape it uses.
+
+The active-day count and busiest/quietest day names changed window in a
+fourth, same-day revision, from 90 days to 30, because Round 3's W-F6 found
+they had been provisioned over the window the newly-added 90-day heatmap
+uses, not the window `ux/widget.md:88` states as `rhythm`'s default and
+`:135` states explicitly for the active-day count. The 90-day heatmap itself
+needs no separate field — it renders directly from the already-provisioned
+bounded daily series — so nothing here serves it; both reduced fields exist
+only for the 30-day-scoped elements that named them.
+
+The attribution-quality subtotals gained cost and tokens alongside their
+existing counts in a fifth, same-day revision, because Round 5's W-F8 found
+`ux/widget.md`'s `trust` small/medium display quality-tier **amounts**
+(`:121-122`, and `:129`'s own stated reason for the widget's existence) while
+this bullet had provisioned only **counts** — a shape mismatch this
+document's own Data requirements table had also gotten wrong, since it named
+counts too. No other bullet carries cost broken out by attribution quality:
+per-period totals are a single aggregate, per-period model shares are keyed
+by model, and per-period client subtotals are keyed by client — none has a
+quality-tier dimension. Each tier now carries `(cost, tokens, count, share)`,
+the same shape as the other per-dimension breakdowns in this list, still
+scoped to the current period only for the same reason the split recorded
+above gave it that scope.
+
+Nine bullets gained a **client scope** in a sixth, same-day revision, because
+Round 7's W-F9 found `Client` — the one configuration parameter every widget
+carries (`ux/widget.md:73-80`) — provisioned on only three of them. Under
+`Client = codex` the daily series, the 7×24 grid, the model shares, the
+per-period totals, the session count and the pricing coverage all had no
+per-client form, so `magnitude`, `composition` and `rhythm` had nothing to
+render at any size, and `trust` lost its coverage bar. The projection had been
+extended along `Period` (W-F1), along the client subtotals `composition` names
+(W-F5) and along the rhythm window (W-F6) without anyone asking what the third
+dominating parameter governs.
+
+Two of those bullets take the **product** of the two parameters rather than one
+scope each. `composition` takes both `Period` and `Client`, so its model shares
+are provisioned for each period *and* each scope — twelve entries per cell, nine
+cells; and `magnitude`'s per-period totals are provisioned the same way.
+Provisioning either parameter alone would have left the cross term exactly where
+W-F9 found it, which is the failure mode this topic has now hit four times: the
+repair answered the named rows and not the set the parameter governs.
+
+The two per-period totals bullets were consolidated in a seventh, same-day
+revision because Round 9's W-F10 found they split one `Client` × `Period` cell
+across contradictory scopes: one carried pricing completeness without a client
+scope, while the other carried a client-scoped session count without pricing
+completeness. Totals, session count, completeness, and cost strings now travel
+together for every client and period, so `Cost incomplete` qualifies the same
+number the widget displays. The former aggregate session availability/count
+bullet had no independent widget consumer: its count duplicated this per-period
+field, while the projection's existing `partial` state already communicates an
+unavailable source. It was removed rather than retained as unowned cache data.
+
+The next suggested refresh time joined the projection in an eighth, same-day
+revision because Round 11's W-F11 found `ux/widget.md` used it as the baseline
+for WidgetKit's refresh-after request while the projection's allowlist omitted
+it. The producer already receives this scalar timestamp in the wire snapshot;
+projecting it beside `generated_at` gives the extension the declared baseline
+without adding a client or period dimension, and the widget still clamps that
+value to its documented 15-to-60-minute range.
+
+**Client scope** means `all` plus each client actually present, so at most three
+scopes with the two clients this product supports, and the `all` scope is the
+value every bullet already carried. A client absent from the projection is not
+an error (`ux/widget.md:81-83`), so the scope count follows the data rather than
+a fixed list.
+
 The bounds are part of the contract, not an implementation detail. A projection
 is read by an extension on every timeline refresh and persists across launches;
 an unbounded series or model list would grow the cache without limit and make
-its read cost a function of history. Ninety buckets, twelve models, and twelve
-unpriced identifiers are the stated ceilings, and the producer truncates
-deterministically rather than sampling.
+its read cost a function of history. Per client scope: ninety daily buckets and
+one 7×24 grid; twelve models per period, thirty-six model-share entries across
+the three supported periods; and twelve unpriced identifiers. Across at most
+three scopes that is 270 buckets, 504 grid cells and 108 model-share entries —
+about three times the single-scope ceiling, on an aggregate that carries no
+per-event data at any scope. The producer truncates deterministically rather
+than sampling, within each scope independently, so a busy client cannot consume
+another's budget.
 
 It MUST NOT persist:
 

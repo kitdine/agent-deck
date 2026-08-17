@@ -62,7 +62,7 @@ agentdeck version
 
 | Topic | Version | Status | Purpose |
 | --- | --- | --- | --- |
-| [Native macOS Desktop App](topics/desktop-app/tasks.md) | `v0.5.0` | Active — 2/6 tasks reviewed; requirements, architecture, and menu-bar UX all PASS; `ux/widget.md` next | macOS 26 menu-bar app, WidgetKit extension, unified desktop distribution, Cask, and direct-download delivery. |
+| [Native macOS Desktop App](topics/desktop-app/tasks.md) | `v0.5.0` | Active — 2/6 tasks reviewed; requirements and widget UX PASS; architecture and menu-bar UX reopened by the projection work and awaiting re-review | macOS 26 menu-bar app, WidgetKit extension, unified desktop distribution, Cask, and direct-download delivery. |
 | [`v0.5.0` Contract Closure](topics/v0-5-0-contract/tasks.md) | `v0.5.0` | Active — 0/2 done | Version-wide specification raise and documentation reconciliation after every selected topic's tasks pass review. |
 | [Usage Attribution Precision](topics/usage-attribution-precision/tasks.md) | `v0.6.0` | Active — 0/3 done | Per-client attribution time semantics, determinability-based quality, and an unattributed boundary that never enters a real-spend total. |
 | [CLI Error Classification](topics/cli-error-classification/tasks.md) | `v0.5.0` | Active — 0/2 done | Stable not-found codes, and no storage text in a documented JSON contract. Breaks the documented `runtime_error` value; announced in this version's notes. |
@@ -103,10 +103,16 @@ Round 13: Round 9 caught the two artifacts the Round 8 redesign left behind —
 text specimens still drawing the abandoned structure, and a period switcher
 claiming bucket granularity the projection never carried — and Round 11 caught
 two smaller inconsistencies inside the redrawn specimens. Round 13 closed the
-last of them, so `architecture.md` and `ux/menubar.md` both pass with every
-finding since Round 1 closed. `ux/widget.md` is the next document to review,
-and this topic's own `tasks.md` is last, because the task matrix stays a draft
-until the documents it rests on have passed.
+last of them, and both documents passed at Round 13. `ux/widget.md`'s own first
+review then withdrew that pass: its W-F1 found that the App Group projection
+carries one period's aggregates while three surfaces — the widget's `Period`
+parameter, the menu bar's period switcher, and the prototype boards for both —
+all present `today`/`7d`/`30d` as provisioned. Round 13 had checked that claim
+against the other documents repeating it rather than against the projection, so
+`architecture.md` and `ux/menubar.md` are reopened and the repair is owned by
+`reviews/ux-widget.md`'s W-F1. This topic's own `tasks.md` is reviewed last,
+because the task matrix stays a draft until the documents it rests on have
+passed.
 
 Usage attribution precision is planned but not started. It is independent of
 the desktop topic and blocks the remaining `v0.6.0` cost items.

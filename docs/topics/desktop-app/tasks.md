@@ -37,8 +37,8 @@ This file is the only status authority for this topic.
 - Contracts: [`ux/menubar.md`](ux/menubar.md) for presentation, and
   [`architecture.md`](architecture.md#menu-bar-wire-contract-extension) for the
   additive `provider.candidates` section, the switch command surface, its result
-  envelope, and switch operation ownership. Both passed independent Re-review
-  Round 13; see the Documents matrix below.
+  envelope, and switch operation ownership. Both were reopened by
+  `ux/widget.md`'s W-F1; see the Documents matrix below.
 - Implement provider, usage, cost, recent-session, warning, and health summaries.
 - Add safe provider quick actions, refresh behavior, login-item preference, and
   newer-version notification that opens the official download page only.
@@ -91,9 +91,9 @@ This file is the only status authority for this topic.
 | Document | Draft | Review |
 | --- | --- | --- |
 | requirements.md | [x] | [x] |
-| architecture.md | [x] | [x] |
-| ux/menubar.md | [x] | [x] |
-| ux/widget.md | [x] | [ ] |
+| architecture.md | [x] | [ ] |
+| ux/menubar.md | [x] | [ ] |
+| ux/widget.md | [x] | [x] |
 | tasks.md | [x] | [ ] |
 
 `requirements.md` Review Round 1 (2026-08-17): **FAIL**. The boundary still
@@ -262,14 +262,144 @@ and only an authorized commit closes them. What is committable is the two
 documents, this file, `docs/README.md`, and the review record — not the
 `menubar-experience` implementation anchor, which still has no implementation.
 
+`ux/widget.md` Review Round 1 (2026-08-17): **FAIL**, recorded in
+[`reviews/ux-widget.md`](reviews/ux-widget.md). Three findings are local
+alignment work, but W-F1 is not: the widget's `Period` parameter and its
+three-period comparison need per-period aggregates the App Group projection
+does not carry, and a widget has no second way to get them — it cannot invoke
+the helper, and deriving them in Swift is what `requirements.md` and
+`ux/menubar.md:55` both forbid.
+
+That finding reopens two documents this topic had already closed. The same
+projection gap sits under `ux/menubar.md:754`'s period switcher, whose row
+claims `today`/`7d`/`30d` are provisioned; they are not, and Re-review Round 13
+passed that row by checking it against three documents that all repeat the same
+unprovisioned claim instead of against the projection itself. Round 14 of
+[`reviews/menubar-experience.md`](reviews/menubar-experience.md) withdraws that
+`PASS`. Both `Review` cells are unticked again and both CEv1 gates are back to
+`FAILED`. Commit `10ce01e` is not reverted: the repairs it carries are real, and
+only the gate-closing conclusion drawn from them was wrong.
+
+`ux/widget.md` Re-review Round 3 (2026-08-17): **FAIL**. Round 2 took the
+user's chosen path and extended the App Group projection to carry per-period
+totals and per-period model shares, plus the two rhythm-day fields, and it
+also corrected `ux/menubar.md:754`'s mechanism wording rather than letting the
+extension merely make the old sentence true. W-F1 through W-F4 are closed on
+the elements they named. Two same-source residuals keep the document open:
+W-F5, `composition` large's per-client subtotals are still single-period while
+`composition` accepts a `Period`; and W-F6, the two new rhythm fields are
+provisioned over a 90-day window while `rhythm` displays a 30-day one. Both are
+the recurring shape in this topic — the repair answered the finding's line
+numbers instead of the set of elements the same decision governs.
+
+`architecture.md` and `ux/menubar.md` were both edited by that repair, so on
+top of being reopened by Round 14 they now carry content states no re-review
+has judged. Their independent re-review should run after W-F5 and W-F6 close,
+since W-F5's fix most likely lands in `architecture.md` again.
+
+`ux/widget.md` Re-review Round 5 (2026-08-17): **FAIL**. W-F5 and W-F6 are
+closed, and closed well — the per-client bullet was split by consumer rather
+than changed uniformly, because `composition` takes a `Period` and `trust` does
+not, and the rhythm sentence that made the window ambiguous was rewritten
+rather than just renumbered. Two new findings: W-F8 (blocking) — `trust` shows
+per-tier **amounts** at every size while the projection provisions per-tier
+**counts**, and the document's own Data requirements row asks only for counts,
+so the target contradicts itself; and W-F7, a citation to an `architecture.md`
+revision ordinal that does not exist by that file's own numbering.
+
+W-F8 is the third appearance of one problem: a displayed element whose shape
+the projection does not carry. `Period` exposed the first, the shared bullet
+the second, and `trust` — governed by neither — the third. The convergent fix
+is to map every Data requirements row one-to-one onto a projection bullet and
+check the field's *shape*, not its name; "attribution counts" matches
+"attribution counts" by name while money and cardinality are different data.
+
+`ux/widget.md` Re-review Round 7 (2026-08-17): **FAIL**. W-F7 and W-F8 are both
+closed — the quality tiers now carry `(cost, tokens, count, share)`, the same
+shape as the projection's other per-dimension breakdowns, and both documents
+now share one explicit revision sequence instead of two disagreeing ordinals.
+Running the row-to-bullet shape mapping Round 5 prescribed then found W-F9 on
+the one governing dimension no round had swept: `Client` takes `all`, `codex`,
+or `claude` on every widget, while the projection keys only three things by
+client. At `Client = codex`, `composition` and `rhythm` have no data at any
+size, and `magnitude` keeps its cost and tokens but loses its chart, `avg/day`,
+`peak`, and session count.
+
+`ux/widget.md` Re-review Round 9 (2026-08-17): **FAIL**, with no serious
+finding. W-F9 is closed, and closed most thoroughly of the series: the two
+cross terms are provisioned as products rather than as single dimensions, the
+ceilings were restated per scope with truncation held inside each scope so a
+busy client cannot eat another's budget, and the table gained a `Varies by`
+column that turns the next check of this kind from reading the document into
+reading one column. The choice between the two paths was made after measuring
+the cost (906 entries against 309) rather than deferred a second time. A
+thirty-six cell enumeration of `Client` x `Period` x kind x size found no cell
+outside the projection. What keeps the document open is W-F10: `Cost
+incomplete` is a label this document displays and specifies, yet it has no Data
+requirements row and no stated client scope, and the same repair left
+`architecture.md` describing per-period totals in two overlapping bullets where
+only the unscoped one mentions pricing completeness. One table row and one
+bullet merge close it.
+
+Recorded against `architecture.md` rather than this document: its
+sixth-revision paragraph says nine bullets gained a client scope, while five
+did and its own following sentence names six things. That closes in
+`reviews/menubar-experience.md`, whose gates have been open since Round 14.
+
+`ux/widget.md` Re-review Round 11 (2026-08-17): **FAIL**. W-F10 is closed by
+merging the two per-period totals bullets into one client-scoped cell that
+carries counts, session count, pricing completeness, and cost strings together,
+so `Cost incomplete` now qualifies the number beside it; the table gained the
+matching row. The repair also removed the aggregate session availability/count
+bullet after checking for consumers, and that check holds independently — the
+projection is read by the widget alone, the menu bar reads the wire snapshot.
+W-F11 keeps the document open: the timeline's refresh-after reads "the
+projection's next suggested refresh time", which the projection does not carry;
+that field lives in the wire snapshot, and the projection list is a *may contain
+only* enumeration, so the timeline's stated input is not merely absent but
+disallowed. One bullet and one row close it.
+
+W-F10 and W-F11 came from the same sweep at different breadths — Copy table and
+widget bodies the first time, Timeline and Accessibility added the second. The
+completeness test for the Data requirements table is therefore "every place this
+document says it reads the projection has a row", not "every visible element has
+a row". No section that specifies reading remains unswept.
+
+`ux/widget.md` Re-review Round 13 (2026-08-17): **PASS**, and its `Review` cell
+is ticked. W-F11 closed by projecting the next suggested refresh time beside
+`generated_at` — the scalar the wire snapshot already carries — so the timeline
+has the baseline its clamp needs without a new refresh policy. All eleven
+findings are closed with no regression, and a full pass over every section that
+specifies reading the projection found nothing further.
+
+Six of those eleven were one problem: a displayed field the projection did not
+carry. What ended it was not effort but the test getting wider each round —
+from the named lines, to the element set one decision governs, to a row-by-row
+shape mapping, to the full `Client` x `Period` x kind x size enumeration, to
+every place the document says it reads the projection. `architecture.md` was
+revised seven times across those rounds, all driven by this document.
+
+`architecture.md` and `ux/menubar.md` stay unticked. None of those seven
+revisions has been independently re-reviewed, and both documents have been
+reopened since `reviews/menubar-experience.md` Round 14. They should be
+re-reviewed together, because they bind to the same projection contract.
+
+That is the fourth appearance, and it also bounds the problem: this document
+has exactly three governing dimensions — `Client`, `Period`, and `rhythm`'s
+window — and all three have now been swept. The next repair should close the
+whole parameter space at once rather than one dimension per round, checking
+`Client` × `Period` × kind × size and especially the cross terms, since a
+per-client `composition` at `7d` needs model shares keyed by both and
+provisioning either dimension alone does not produce it.
+
 The target was documents, not task 3, which has no implementation. Task 3 stays
-blocked until this topic's remaining documents — `ux/widget.md` and this file —
-pass their own review, since a task matrix is a draft until it does.
+blocked until this topic's remaining documents pass, since a task matrix is a
+draft until they do.
 
 Next action:
 
 ```text
-评审：desktop-app / ux/widget.md
+复评：desktop-app / reviews/menubar-experience.md
 ```
 
 Task 1 was blocked on the `v0.4.0` session DTO contract; that dependency is now

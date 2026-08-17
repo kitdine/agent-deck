@@ -134,16 +134,25 @@ product exists to remove.
 | --- | --- |
 | small | Active-day count over the last 30 days, and the single busiest hour named |
 | medium | The 7×24 hour-of-week grid with day labels and quarter-day hour ticks, plus the intensity legend |
-| large | Adds the 90-day daily heatmap above the grid, and the quietest and busiest day names |
+| large | Adds the 90-day daily heatmap above the grid, and the quietest and busiest day names for the same last-30-days window as small — a separate figure from the heatmap beside it, not a description of it |
 
 The grid is the aggregate the terminal report already renders, so this widget
 shows the product's own view rather than a new invention.
 
 ## Surface and qualifiers
 
-The widgets reuse the menu-bar model rather than inventing a second one, because
-a user seeing both must not meet two vocabularies for one condition. See
-[`menubar.md`](menubar.md) for the derivation.
+The widgets reuse the menu-bar model's surface states and its freshness/
+degraded **copy**, because a user seeing both must not read two different
+sentences for one condition. See [`menubar.md`](menubar.md) for the
+derivation. The two age qualifiers below are widget-local and intentionally
+named differently from the menu bar's `stale`/`aged`: a widget has no refresh
+state machine, so its age tiers are derived purely from `generated_at`, while
+the menu bar's `stale`/`aged` are derived from coordinator refresh state.
+Reusing the same qualifier names for two different derivations would invite
+implementers to share one Swift type across both surfaces, which would be
+wrong on at least one of them. The displayed *copy* still matches the menu
+bar's freshness wording exactly (see Copy below) — only the qualifier
+identifiers differ.
 
 | Surface | Condition |
 | --- | --- |
@@ -153,12 +162,12 @@ a user seeing both must not meet two vocabularies for one condition. See
 
 | Qualifier | Condition |
 | --- | --- |
-| `stale` | Projection `generated_at` is 15 minutes to 6 hours old |
-| `aged` | Projection `generated_at` is more than 6 hours old |
+| `aging` | Projection `generated_at` is 15 minutes to 6 hours old |
+| `old` | Projection `generated_at` is more than 6 hours old |
 | `partial` | Projection's partial flag is set |
 | `empty` | Not partial, and every aggregate the widget shows is zero |
 
-`stale` and `aged` are mutually exclusive. `aged` exists because a widget is
+`aging` and `old` are mutually exclusive. `old` exists because a widget is
 glanced at, not opened: a six-hour-old figure presented like a live one is the
 failure the menu bar avoids by being opened deliberately.
 
@@ -169,8 +178,8 @@ Exhaustive over cache presence, version support, and age:
 | absent | — | — | `unavailableSurface` | none |
 | present | unsupported | — | `unavailableSurface` | none |
 | present | supported | < 15 min | `dataSurface` | `partial`/`empty` as they hold |
-| present | supported | 15 min – 6 h | `dataSurface` | `stale`, plus `partial`/`empty` |
-| present | supported | > 6 h | `dataSurface` | `aged`, plus `partial`/`empty` |
+| present | supported | 15 min – 6 h | `dataSurface` | `aging`, plus `partial`/`empty` |
+| present | supported | > 6 h | `dataSurface` | `old`, plus `partial`/`empty` |
 
 An unsupported cache version renders unavailable and never attempts a partial
 read, matching the fail-closed rule the foundation already applies.
@@ -189,10 +198,10 @@ copy only when its own subject is empty.
 | `rhythm` title | `Activity` | `活动` |
 | Scope, all clients | `All clients` | `全部客户端` |
 | Scope, one client | `Codex` | `Codex` |
-| Fresh / `stale` | `Updated <relative>` | `<相对时间>更新` |
-| `aged` | `Last updated <relative>` | `上次更新于<相对时间>` |
+| Fresh / `aging` | `Updated <relative>` | `<相对时间>更新` |
+| `old` | `Last updated <relative>` | `上次更新于<相对时间>` |
 | `partial` | `Some data unavailable` | `部分数据不可用` |
-| `empty`, `magnitude` | `No activity today` | `今天没有活动` |
+| `empty`, `magnitude` | `No local activity today` | `今天没有本地活动` |
 | `empty`, other kinds | `Nothing to break down yet` | `暂无可分解数据` |
 | `unavailable` | `Open AgentDeck to refresh` | `打开 AgentDeck 以刷新` |
 | Incomplete pricing | `Cost incomplete` | `成本不完整` |
@@ -223,7 +232,7 @@ best available answer, and suppressing it would read as zero spend.
 
 The clamp binds in both directions: below 15 minutes WidgetKit budget is spent
 on data the host has not republished, and above 60 minutes a widget can drift
-far past its `aged` threshold without asking to be refreshed.
+far past its `old` threshold without asking to be refreshed.
 
 A widget reloads its timeline when the host signals a successful publication. It
 never polls the cache and never invokes the helper.
@@ -234,8 +243,8 @@ never polls the cache and never invokes the helper.
   is not a label.
 - The status symbol is never the only carrier of a state; qualifier text is
   always present.
-- Qualifiers are announced in the fixed menu-bar order: `stale`/`aged`,
-  `partial`, `empty`.
+- Qualifiers are announced in the same freshness-first order the menu bar
+  uses: `aging`/`old`, `partial`, `empty`.
 - At the largest accessibility Dynamic Type size each size degrades to the one
   beneath it — `large` shows what `medium` shows, `medium` what `small` shows —
   rather than truncating. That rule exists because the size progression is
@@ -256,20 +265,42 @@ never polls the cache and never invokes the helper.
 
 Per the progression in `docs/README.md`, a surface names the fields it needs and
 the contract provisions or refuses each. These are provisioned as of
-`architecture.md`'s 2026-08-17 revision:
+`architecture.md`'s eighth 2026-08-17 revision, which added the projection's
+next suggested refresh time. The seventh revision makes pricing completeness
+part of the same client-scoped per-period totals this table reads. The sixth
+revision added the client scope this
+table now cites on top of the per-period totals, per-period model shares,
+per-period client subtotals, 30-day-scoped rhythm-day fields, and
+per-quality-tier cost added by earlier revisions.
 
-| Element | Field |
-| --- | --- |
-| Every headline cost and token figure | `totals` with its four token components |
-| Sparklines and bar charts | bounded daily series, ≤ 90 buckets |
-| `avg/day`, `peak` | period average and `peak` bucket |
-| Cache-hit rate | cached-read over logical input |
-| `composition` model rows | top-N model shares, ≤ 12 |
-| `composition` client rows | per-client subtotals |
-| `trust` quality rows | per-client and per-provider attribution counts |
-| `trust` coverage and unpriced list | pricing `coverage`, ≤ 12 unpriced identifiers |
-| `rhythm` grid | 7×24 hour-of-week intensity |
-| Every freshness line | `generated_at`, last successful refresh |
+**Every row below is read at the configured `Client` scope**, because `Client` is
+the one parameter all four widgets carry. `all` is a scope like any other, not
+the absence of one. Where a row also varies by `Period`, the field is provisioned
+for the product of the two, not for either alone.
+
+| Element | Field | Varies by |
+| --- | --- | --- |
+| Every headline cost and token figure | per-period `totals` (`today`/`7d`/`30d`), each with its four token components | `Client` × `Period` |
+| `magnitude` medium/large three-period comparison | all three periods' `totals` in one payload, not a Swift-side reduction of one | `Client` × `Period` |
+| `magnitude` session count | per-period session count | `Client` × `Period` |
+| `Cost incomplete` label | per-period pricing completeness accompanying the displayed totals | `Client` × `Period` |
+| Sparklines and bar charts | bounded daily series, ≤ 90 buckets per scope | `Client` |
+| `avg/day`, `peak` | each period's average and `peak` bucket | `Client` × `Period` |
+| Cache-hit rate | cached-read over logical input | `Client` × `Period` |
+| `composition` model rows, all `Period` values | per-period top-N model shares, ≤ 12 per period per scope | `Client` × `Period` |
+| `composition` client rows, all `Period` values | per-period per-client subtotals, one set per supported period | `Period` — the row *is* the client breakdown, so it is read at `all` |
+| `trust` quality rows (small/medium amounts, large per-provider rows) | per-client and per-provider attribution-quality `(cost, tokens, count, share)`, current period only | `Client` |
+| `trust` coverage and unpriced list | pricing `coverage`, ≤ 12 unpriced identifiers per scope | `Client` |
+| `rhythm` grid | 7×24 hour-of-week intensity per scope | `Client` |
+| `rhythm` small active-day count | active-day count over the 30-day window | `Client` |
+| `rhythm` large busiest/quietest day names | busiest and quietest day names over the 30-day window | `Client` |
+| Timeline refresh-after | next suggested refresh time | neither — publication is one event |
+| Every freshness line | `generated_at`, last successful refresh | neither — publication is one event |
+
+The `composition` client-rows row is the one element `Client` does not scope: it
+enumerates clients, so reading it under a single client would leave one row.
+Under `Client = codex` that size shows the codex row alone, which is a
+presentation choice this document makes rather than a second field.
 
 Refused, with the ground stated in `architecture.md`: per-session and
 per-project breakdowns, because the identifiers are in the exclusion list.
@@ -309,8 +340,8 @@ macOS 26:
 4. Increase Contrast and grayscale keep every status and every series
    distinguishable.
 5. The gallery placeholder shows no real data for any kind or size.
-6. A widget left untouched past six hours shows `aged`, not a stale-looking
-   fresh figure.
+6. A widget left untouched past six hours shows `old`, not a fresh-looking
+   figure.
 7. With the host never launched, every kind shows unavailable rather than an
    empty or zeroed layout.
 8. `en` and `zh-Hans` both render without truncation or clipping at every size.

@@ -757,7 +757,7 @@ the contract provisions or refuses each. These are provisioned as of
 | --- | --- |
 | Menu-bar item value | period cost or token total, per the preference |
 | Magnitude hero | `totals` with its four token components, event and session counts |
-| Period switcher | `today`/`7d`/`30d` period selection, backed by the daily `buckets` series |
+| Period switcher | `today`/`7d`/`30d` period selection, backed by the projection's per-period totals — not a Swift-side reduction over the daily `buckets` series |
 | Trend chart | bounded daily series, ≤ 90 buckets |
 | `avg/day`, `peak`, cache-hit chips | period average, `peak` bucket, cached-read over logical input |
 | Composition model rows | top-N model shares, ≤ 12 |
