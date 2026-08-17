@@ -90,7 +90,7 @@ This file is the only status authority for this topic.
 
 | Document | Draft | Review |
 | --- | --- | --- |
-| requirements.md | [x] | [ ] |
+| requirements.md | [x] | [x] |
 | architecture.md | [x] | [ ] |
 | ux/menubar.md | [x] | [ ] |
 | ux/widget.md | [x] | [ ] |
@@ -109,8 +109,14 @@ required non-temporal dimension except provider. Round 4 (2026-08-17) closed it 
 `runtime provider` is authorized in both Goals and the Acceptance boundary, and
 attribution quality is stated as reportable per client and per runtime provider,
 matching what `ux/menubar.md`, `ux/widget.md`, and `architecture.md` all
-already require. Repair complete, `REOPEN` pending independent Re-review; later
-document review stays blocked until it passes.
+already require. Re-review Round 5 (2026-08-17) independently confirmed R2-F1
+closed and found no regression on the two original findings: **PASS**, `Review`
+cell ticked, and the remaining four documents are unblocked. Round 5 also swept
+the half of the scope prohibition Round 2 left unchecked and recorded R5-F1
+against `ux/menubar.md:754`, whose period switcher asks for week and month
+grouping that this requirement does not authorize and the projection does not
+provision. It is attributed to that document and closes in its own review, so it
+does not reopen this one.
 
 `ux/menubar.md` and `ux/widget.md` are both drafted as of 2026-08-16.
 `ux/menubar.md` now carries rendered specimens for healthy, loading, retained

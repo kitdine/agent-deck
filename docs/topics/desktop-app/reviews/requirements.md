@@ -160,3 +160,113 @@ R1-F1 和 R1-F2 保持关闭；R2-F1 已从广泛的 breakdown 禁令矛盾收�
   `git hash-object docs/topics/desktop-app/requirements.md` -> `46c37f60c4f3c0f67b6cf36d22f0eb5031ed9392`. No
   product code, test, or configuration changed.
 - Verdict: REOPEN — repair complete, awaiting independent Re-review
+
+## Round 5 — 2026-08-17
+
+- Reviewed state: HEAD `d8ae8b3ca348520c01e2843afa1956e84481b4fa`;
+  `docs/topics/desktop-app/requirements.md` blob
+  `46c37f60c4f3c0f67b6cf36d22f0eb5031ed9392`
+- Reviewer: claude-code (independent Re-review of Round 4's repair; the repair
+  was authored by the same agent, so every claim below is re-derived from the
+  four documents rather than read off the repair note)
+- Method: Single-agent bounded Re-review. The blob is byte-identical to the one
+  Round 4 declared, so its repair diff needed no re-derivation; HEAD advanced by
+  two documentation commits that do not touch this topic. Re-read the requirement
+  in full against the three documents Round 3 cited, then swept the whole
+  prohibition sentence rather than only the half Round 2 opened, because that
+  sentence has already produced one blocking finding.
+- Scope: R2-F1 in `docs/topics/desktop-app/requirements.md`; regression on R1-F1
+  and R1-F2; and any further contradiction introduced by the Round 2-4 repair
+  chain.
+- Findings:
+  - [closed] R2-F1 — `requirements.md:78` authorizes `runtime provider` among the
+    non-temporal breakdown dimensions, `requirements.md:82-83` states attribution
+    quality is reportable per client and per runtime provider, and
+    `requirements.md:138-140` carries both into the Acceptance boundary. Verified
+    against the three documents that demanded it, not against the repair note:
+    `ux/menubar.md:759` and `ux/widget.md:269` each request "per-client and
+    per-provider attribution counts", and `architecture.md:450-451` provisions
+    "per-client and per-provider subtotals, each with its attribution quality
+    counts". All four documents now agree. `runtime provider` is also the term
+    the living specification already uses (`cli-design.md:1283`), so the
+    authorization names an existing dimension rather than inventing one.
+  - [closed, no regression] R1-F1 — the temporal scope remains fixed at today,
+    trailing 7 days, trailing 30 days, at most 90 daily buckets, and the 7x24
+    hour-of-week view.
+  - [closed, no regression] R1-F2 — the four bounded Widget questions and the
+    requirement to render real product information remain in both Goals and the
+    Acceptance boundary, and presentation ownership still sits with
+    `ux/widget.md`.
+  - [P1, attributed to `ux/menubar.md`] R5-F1 — `ux/menubar.md:754` specifies the
+    period switcher as "`buckets` groupable by day, week, month". Week and month
+    are temporal granularities, and `requirements.md:76-77` authorizes none
+    beyond the daily trend and the 7x24 view. This is the other half of the
+    sentence Round 2 already found defective on its breakdown axis; Round 2
+    closed the breakdown half and nobody swept the temporal half.
+    **This does not block the requirement.** Round 3's precedent — authorize the
+    dimension the surfaces need — does not transfer, because three separate
+    checks say the surface is the document in error. `architecture.md:444`
+    provisions only a daily series and defends that bound at `:470`; no week or
+    month bucket exists anywhere in the projection. Serving the switcher from a
+    daily series therefore requires re-aggregating in Swift, which
+    `requirements.md:134-135` forbids outright. And week/month grouping answers
+    none of the four bounded questions that the daily trend and the 7x24 grid do
+    not already answer. Two of the four documents agree with the requirement and
+    the third is silent; the outlier is a presentation document that must live
+    inside the upstream boundary, and blocking the requirement for a downstream
+    over-reach would invert the dependency direction the topic is built on.
+    -> Close in `ux/menubar.md`'s own review by removing week and month from the
+    switcher, or, if either is genuinely wanted, reopen this requirement and
+    `architecture.md` together, since the projection would have to carry the
+    buckets.
+- Evidence: `git rev-parse HEAD` -> `d8ae8b3ca348520c01e2843afa1956e84481b4fa`;
+  `git hash-object docs/topics/desktop-app/requirements.md` ->
+  `46c37f60c4f3c0f67b6cf36d22f0eb5031ed9392`, identical to Round 4's declared
+  blob with a clean worktree; `bash scripts/check-topic-docs.sh` -> exit 0;
+  `make check-whitespace` -> exit 0. `rg 'runtime provider'` across the topic and
+  `docs/specs/` confirms the term is the specification's own. `rg 'week|month'`
+  across `architecture.md` and `ux/widget.md` returns only the 7x24 grid and no
+  grouping granularity, which is what isolates R5-F1 to `ux/menubar.md:754`. No
+  product code, test, or configuration changed.
+- Verdict: PASS
+
+## 📋 复评报告
+
+📊 综合评分：9/10
+
+✅ 结论：PASS
+
+### 🔴 严重问题——必须修复
+
+无（针对本文档）。
+
+### 🟡 建议改进——推荐
+
+[`ux/menubar.md:754`] 周期切换器的 week/month 粒度超出需求授权 —— 记为 R5-F1，
+归属 `ux/menubar.md`，不阻断本需求。
+- 处置：新增，归属下游文档。
+- 行为风险：投影只提供日桶（`architecture.md:444`），按周/月分组只能在 Swift 侧
+  二次聚合，而这被 `requirements.md:134-135` 明确禁止。
+- 证据：`ux/menubar.md:754` 要求 day/week/month 分组；`requirements.md:76-77`
+  未授权其他时间粒度；`architecture.md` 全文无周桶或月桶。
+💡 有界修复：在 `ux/menubar.md` 自己的评审中删除 week/month；若确实需要，则需
+同时重开本需求与 `architecture.md`，因为投影必须先承载这些桶。
+
+### 🟢 优点
+
+- R2-F1 已关闭：`runtime provider` 在 Goals 与 Acceptance boundary 中均获授权，
+  归因质量按 client 和 runtime provider 可分解，四份文档口径一致。
+- 授权使用的是活文档既有术语 `runtime provider`（`cli-design.md:1283`），没有
+  发明新维度。
+- R1-F1、R1-F2 保持关闭，无回归。
+- 修复说明记录了理由而非仅记录改动：展示当前 provider 是路由事实，不等于授权按
+  provider 聚合；而 trust 问题天然是 per-provider 的。
+
+### 📝 摘要
+
+复评对象为 HEAD `d8ae8b3ca348520c01e2843afa1956e84481b4fa` 与 `requirements.md`
+blob `46c37f60c4f3c0f67b6cf36d22f0eb5031ed9392`（与 Round 4 声明的 blob 逐字节
+一致，工作区干净）。R2-F1 已关闭，R1-F1 与 R1-F2 无回归，需求边界现在可直接实现。
+本轮额外扫了 Round 2 只查了一半的那句范围禁令，发现其时间轴一侧同样与下游冲突，
+但三项独立检查都指向下游文档有错而非需求有错，故记为 R5-F1 归属 `ux/menubar.md`，
+不阻断本需求。裁决 PASS。
