@@ -163,29 +163,40 @@ never discards a valid snapshot because of age.
 
 ### Sections
 
-The menu-bar window presents, in order:
+An earlier draft listed six sections in an order nobody had derived, opening
+with provider state and treating usage as the second thing a reader wanted. That
+was backwards: a user opens a cost tracker to find out what they are spending.
 
-1. **Provider** — one row per client with its current provider, wrapper
-   indication, and selection time. Clients with no recorded selection show an
-   explicit unconfigured label, not a blank.
-2. **Usage** — the current local-day range, token totals, and event/session
-   counts.
-3. **Cost** — provider cost and catalog base cost. When `pricing_complete` is
-   false, the known-cost values are shown with an explicit incomplete-pricing
-   qualifier and the unpriced-component count. A cost is never presented as
-   complete when the snapshot says it is not.
-4. **Recent sessions** — at most the snapshot's rows, each with client, project
-   basename, model, and relative last-activity time. Session identifiers are
-   never displayed.
-5. **Health** — aggregate status with problem, warning, and error counts. Failed
-   checks list name, status, and code. Recovery commands are shown as copyable
-   text and are never executed by the app.
-6. **Warnings** — snapshot-level warning codes rendered as localized
-   explanations. An unrecognized code is shown verbatim as a code, never
-   silently dropped.
+The body answers the four questions a user has about their spend, in the order
+they ask them. **These are the same four kinds as the widgets**, deliberately, so
+that learning one surface teaches the other; see [`widget.md`](widget.md) for the
+derivation of why there are four and not five.
 
-Every section that reports `available: false` shows an explicit unavailable
-label in place of its values.
+| Order | Section | The question | Contents |
+| --- | --- | --- | --- |
+| 1 | **Magnitude** | How much am I spending? | The period hero — cost, tokens, event and session counts — the period switcher, and the trend chart with `avg/day`, `peak`, and cache-hit chips |
+| 2 | **Composition** | Where does it go? | Model shares with bars, and the token-component split naming cache write as billed |
+| 3 | **Trust** | Is the number real? | Determinable, inferred, and unattributed amounts with shares, and pricing coverage with its unpriced identifiers |
+| 4 | **Rhythm** | When do I actually work? | The 7×24 hour-of-week grid, collapsed by default because it is the least urgent of the four |
+
+Above them sit the **client tabs**, which filter every section at once and carry
+each client's own subtotal. Tabs filter; they never mutate.
+
+Below them sits the **footer**, which is not a section because it answers no
+question about spend. It carries current provider state as read-only text, the
+`⌄` actions menu, refresh, and the link into session detail. Provider switching,
+Settings, and Quit all live in that menu: each is a rare deliberate act, and none
+of them may compete with the numbers a user opened this for.
+
+Health and warnings are not sections either. They are surface-level conditions,
+rendered as the banner strip above the freshness line, because a warning about
+the data is not a fourth thing to read about spend — it qualifies the other
+three. An unrecognized warning code is shown verbatim as a code, never silently
+dropped, and recovery commands appear as copyable text the app never executes.
+
+Every section that reports `available: false` shows an explicit unavailable label
+in place of its values, and a section whose own subject is empty shows its own
+empty copy rather than the whole surface claiming emptiness.
 
 ### Rendered specimens
 
@@ -727,6 +738,33 @@ untested risk.
   checklist is recorded with observed results.
 - No prohibited value appears in presented text, the pasteboard, logs, or the
   App Group cache.
+
+## Data requirements
+
+Per the progression in `docs/README.md`, a surface names the fields it needs and
+the contract provisions or refuses each. These are provisioned as of
+`architecture.md`'s 2026-08-17 revision:
+
+| Element | Field |
+| --- | --- |
+| Menu-bar item value | period cost or token total, per the preference |
+| Magnitude hero | `totals` with its four token components, event and session counts |
+| Period switcher | `buckets` groupable by day, week, month |
+| Trend chart | bounded daily series, ≤ 90 buckets |
+| `avg/day`, `peak`, cache-hit chips | period average, `peak` bucket, cached-read over logical input |
+| Composition model rows | top-N model shares, ≤ 12 |
+| Composition token split | input, output, cached-read, cache-write |
+| Trust quality rows | per-client and per-provider attribution counts |
+| Trust coverage | pricing `coverage`, ≤ 12 unpriced identifiers |
+| Rhythm grid | 7×24 hour-of-week intensity |
+| Client tabs | per-client subtotals |
+| Footer provider state | `provider.routes` |
+| Switch menu rows | `provider.candidates[].options` |
+| Freshness line | `generated_at`, `next_refresh_at` |
+
+Refused, with the ground stated in `architecture.md`: per-project and
+per-session breakdown inside the popover body. Recent-session rows keep their
+existing bounded shape in session detail rather than in the reading surface.
 
 ## Downstream contracts
 
