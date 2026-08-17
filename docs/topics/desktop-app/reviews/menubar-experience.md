@@ -344,3 +344,181 @@ timeout handling, and helper survival across window dismissal.
   specimen of any state, so its `Draft` is unticked against the specimen
   requirement adopted after this round. `ux/widget.md` is required and unwritten.
   Both are tracked in the topic's Documents matrix.
+
+## Round 5 — 2026-08-16
+
+### 📋 独立复评 — desktop-app / menubar-experience
+
+📊 总体评分：6/10
+
+✅ 结论：FAIL
+
+- Reviewed state: HEAD `e998cf29c5b351dfb8255fdc090de758ab666f6f`
+  plus `docs/topics/desktop-app/architecture.md` blob
+  `83c9a882d586a953ba18abfd05aa20e782aaa066` and
+  `docs/topics/desktop-app/ux/menubar.md` blob
+  `38221fe155c8ac3647124deb74914b222d437b24`
+- Reviewer: codex, independent of the Round 4 repair owner
+- Method: repository evidence, CodeGraph-first source location, focused contract
+  inspection, and one decisive consistency check. Broad product verification
+  stopped after the contract itself reproduced blocking ambiguities.
+- Scope: every Round 3 finding against the post-migration architecture and
+  menu-bar UX contracts, plus newly blocking contradictions exposed by those
+  dispositions
+- Evidence: `make check-whitespace` and `git diff --check HEAD~4..HEAD` passed;
+  current CLI/output/runner source remained the comparison boundary for the
+  repaired contract. No implementation or product test was changed.
+- Completion evidence: the compatible Neo4j `completion-evidence/v1` provider
+  records both exact document states as `FAILED`; neither Document gate is
+  closed by this review verdict.
+
+#### 🔴 严重问题 — 必须修复
+
+**R3-F2 — `docs/topics/desktop-app/architecture.md:779-786`: switch
+stream/exit matrix 仍未穷尽有效 envelope 落在错误 stream 的情况。**
+
+- 处置：**仍未关闭。** 独立 `ProviderUseEnvelopeV1`、双 stream 捕获、未知
+  schema/command 与双 envelope 处理已经补齐，但矩阵没有覆盖“stdout 上的
+  error envelope + non-zero exit”或“stderr 上的 success envelope + zero
+  exit”。这些输入既不是表中的 typed/indeterminate 行，也不是 malformed、
+  truncated 或 no-valid-JSON 的 opaque 行。
+- 行为风险：实现者必须自行决定一个格式有效但 transport 位置错误的 mutation
+  结果是 typed、indeterminate 还是 opaque；不同实现可能对同一配置写入给出
+  相反结论。
+- 证据：`architecture.md:783-786` 的四行分类没有 catch-all transport
+  violation；`architecture.md:779` 又要求由 envelope 而不是 exit status
+  单独决定结果。
+- 💡 有界修复：为每个“单一有效 envelope、stream、error presence、exit”组合
+  给出穷尽分类，或增加明确的 catch-all：任何不匹配 canonical stream 的有效
+  envelope 均进入指定的 indeterminate/opaque 类，且不得据此宣称成功或失败。
+
+**R3-F3 — `docs/topics/desktop-app/architecture.md:828,834`: retry 生命周期与
+non-idle 请求拒绝规则仍互相冲突。**
+
+- 处置：**仍未关闭。** app-owned global single-flight、不可取消与 terminal
+  result 的不同寿命已经明确；但 controller 在 `failed`/`indeterminate` 时并非
+  `idle`，规则一方面拒绝任何 non-idle request，另一方面又要求状态保留到用户
+  retry，并在 UX 中提供 retry。
+- 行为风险：实现者必须自行发明 retry 是先清除到 `idle`、原子转入
+  `inFlight`，还是被 serialization 拒绝；失败后的恢复行为因此不确定。
+- 证据：`architecture.md:828` 与 `:834` 的规则直接冲突；
+  `ux/menubar.md:401-403` 要求 failure 提供 retry。
+- 💡 有界修复：写出 controller 的允许状态转换，并明确 retry/dismiss 是
+  non-idle 拒绝规则的有界例外；retry 必须原子地从
+  `failed|indeterminate` 转入 `inFlight` 或先执行一个明确的 reset transition。
+
+**R5-F1 — `docs/topics/desktop-app/architecture.md:635-655`: wire-owned
+`switch_in_flight` reason 无法由 snapshot producer 知道。**
+
+- 处置：**新发现。** 设计要求 Go 生成完整 option、host 不组合 option，并把
+  `switch_in_flight` 列为固定 `reason_code`；但 in-flight 是 app-owned
+  `SwitchController` 的瞬时状态，不是 helper 生成 snapshot 时可知的 provider
+  元数据。
+- 行为风险：实现者必须在“host 不得组合 option”和“UI 必须禁用并解释全局
+  in-flight”之间任选其一，或让已有 snapshot 暴露不可能保持同步的动态原因。
+- 证据：`architecture.md:635` 把 option ownership 固定给 Go，`:652-655`
+  又把 `switch_in_flight` 放入 wire reason；`:814-828` 则把对应状态固定给
+  app-owned controller。
+- 💡 有界修复：把 `switch_in_flight` 定义为 host-only presentation overlay，
+  不修改 Go-resolved mutation tuple；或删除该 wire reason，并明确 controller
+  全局禁用状态的 copy 与优先级。
+
+#### 🟡 建议改进 — 推荐
+
+**R5-N1 — `docs/topics/desktop-app/ux/menubar.md:389-392`: selection 文案有一段
+重复且语法中断。**
+
+- 处置：新发现，非阻塞。
+- 证据：`A candidate is option's exact ...` 紧接着重新开始
+  `A candidate is never selected ...`；后一句与 architecture contract 足以保留
+  唯一语义。
+- 💡 有界改进：删除重复的半句，保留 one-option/one-confirmation 规则。
+
+#### 🟢 优点
+
+- **R3-F1 已关闭。** canonical invocation 已固定包含全局 `--quiet`，并规定
+  success stdout、空 stderr 与 exit `0` 的一致性。
+- **R3-F4 已关闭。** candidate 只用于分组，Go-resolved option 把 client、
+  provider、credential 与 wrapper route 一对一绑定到确认和命令参数。
+- **R3-F5 已关闭。** missing `candidates`/`options` 解码为 `[]`，non-array
+  无效，并保留 legacy-v1-without-candidates fixture。
+- **R3-F6 已关闭。** surface/qualifier truth table 已覆盖 retained snapshot、
+  degraded、empty 的组合；empty copy 也区分 current 与 non-current snapshot。
+
+#### 📝 总结
+
+Round 5 对 R3-F1～R3-F6 全部重新处置：F1、F4、F5、F6 关闭，F2 与 F3
+仍未闭合，并新增一个会改变 readiness ownership 的阻塞项 R5-F1。评审对象是
+上述两个 committed blobs；缺少 rendered specimen 与 `ux/widget.md` 仍是独立
+readiness gap，不计入本轮六项 finding 的结论。由于三项 material contract
+ambiguity 仍要求实现者自行决定 mutation transport、retry transition 或动态
+readiness ownership，本轮结论为 FAIL。
+
+## Round 6 — 2026-08-16
+
+- Reviewed state: the repair targets Round 5's three blocking findings against
+  `architecture.md` blob `83c9a882d586a953ba18abfd05aa20e782aaa066` and
+  `ux/menubar.md` blob `38221fe155c8ac3647124deb74914b222d437b24`, the exact
+  blobs Round 5 judged.
+- Reviewer: claude-code (repair round for Round 5's FAIL — an independent
+  Re-review is still required before either Document cell may be ticked)
+- Method: each finding's contradiction reproduced in the current text before
+  choosing a remedy, rather than adopting the suggested fix unread.
+- Scope: R3-F2, R3-F3, R5-F1 as named in the repair command. R5-N1 is recorded
+  but was not authorized and is untouched.
+
+- Round 5 findings, dispositions:
+  - **R3-F2** transport classification not exhaustive -> **Fixed.** The matrix
+    is split into two conclusive rows — each requiring its envelope on its
+    canonical stream, agreeing with the exit status, with the other stream empty
+    — and an inconclusive set closed by a catch-all: any decodable envelope not
+    matching a conclusive row is `indeterminate`, anything that does not decode
+    is `opaque`. That makes the classification total by construction, so a valid
+    envelope on the wrong stream can no longer fall outside the table. It is
+    reported as neither success nor failure, and its `error.code` is not shown
+    as an outcome, because the helper reached the point of emitting an envelope
+    and may already have written the configuration. `architecture.md:823`.
+  - **R3-F3** retry versus the non-idle refusal -> **Fixed.** The refusal rule
+    governs *new* switches; recovery from a terminal state is a bounded
+    exception. A complete transition table is added: `failed`/`indeterminate`
+    accept `Retry`, which moves atomically back to `inFlight` for the same
+    target, and `Dismiss`, which returns to `idle`. A request for a *different*
+    target is still refused, so an unread failure cannot be silently abandoned.
+    Retry is atomic rather than reset-then-start, because an observable `idle`
+    between the two would be exactly the unguarded window serialization exists
+    to prevent. `architecture.md:885`.
+  - **R5-F1** `switch_in_flight` unknowable to the producer -> **Fixed by
+    removal from the wire.** Every remaining `reason_code` states something the
+    snapshot producer can know; in-flight is transient host state created after
+    the snapshot was generated, and persisting it in the App Group cache would
+    carry that staleness across launches. It becomes a host-only presentation
+    overlay that disables option rows without altering their `ready`,
+    `reason_code`, or arguments, shown in place of an option's own reason while
+    it holds, with copy `Switch in progress` / `正在切换`. The dividing line is
+    stated: Go decides what a switch *is*, the host decides whether one can be
+    *started right now*. `architecture.md:657`, `ux/menubar.md:398`.
+
+- Consequential UX repairs, required by the three above rather than raised
+  separately:
+  - The failure step offered "retry or cancel" while step 2's confirmation
+    button and step 6's non-cancellable rule both use `Cancel` with different
+    meanings. Renamed to `Retry` / `重试` and `Dismiss` / `关闭`, with the
+    reason recorded: offering `Cancel` beside a finished failure implies an
+    operation could still be called off, which step 6 forbids.
+    `ux/menubar.md:409`.
+  - Step 7 offered a different action set for `indeterminate` than for
+    `failed`, contradicting the controller that treats both terminal states
+    identically. Aligned to the same two actions.
+  - The single-flight sentence was restated with the retry exception, so the UX
+    and the transition table no longer disagree.
+  - Manual checklist items 21 through 23 added: wrong-stream classification,
+    retry atomicity with the different-target refusal, and the in-flight overlay
+    reverting to snapshot values.
+
+- Evidence: `make check-whitespace` passes; every new user-visible string is
+  present in both `en` and `zh-Hans`; no product code, test, or configuration
+  was changed.
+- Verdict: REOPEN — repair complete, awaiting independent Re-review
+
+Still open and out of this repair's scope: R5-N1's duplicated sentence, the
+absent rendered specimens, and the unwritten `ux/widget.md`.

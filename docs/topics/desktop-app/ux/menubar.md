@@ -394,24 +394,46 @@ The one mutating action, specified end to end:
 3. **In flight** — the confirmation stays open with its controls disabled and a
    progress indicator. Every other action on the surface is disabled. A second
    submit is impossible because the control is gone, not merely ignored.
+   Every option row elsewhere on the surface is disabled with
+   `Switch in progress` / `正在切换`. This overlay is host state, not wire
+   state: it does not alter an option's `ready`, `reason_code`, or arguments,
+   and it is shown *instead of* an option's own reason while it holds, because
+   a global block explains more than a per-option one. When the controller
+   leaves the in-flight state the rows revert to exactly what the snapshot
+   says.
 4. **Success** — the confirmation closes, the switched row updates from the next
    refresh, and a transient row states `Switched <client> to <provider>` /
    `已将 <client> 切换到 <provider>`. It clears on the next refresh or after 10
    seconds.
 5. **Failure** — the confirmation stays open, shows the localized failure with
-   its code, and offers retry or cancel. The previously selected provider is
-   still displayed as current, because it still is.
+   its code, and offers `Retry` / `重试` and `Dismiss` / `关闭`. The previously
+   selected provider is still displayed as current, because it still is.
+   `Retry` re-runs the same target and moves the controller atomically back to
+   in flight; `Dismiss` clears the result and returns it to idle. The word
+   `Cancel` is deliberately not reused here: it means "do not start" on the
+   confirmation in step 2, and step 6 states that nothing cancels a switch once
+   launched, so offering `Cancel` beside a finished failure would suggest an
+   operation could still be called off. Starting a *different* switch requires
+   dismissing this one first, so an unread failure cannot be silently
+   abandoned. An indeterminate outcome offers the same two actions and reads as
+   step 7 describes.
 6. **Cancellation** — closing the window during an in-flight switch does not
    cancel it; the operation completes and its outcome appears on next open. The
    app never abandons a half-applied configuration change.
 
-7. **Indeterminate** — a timeout after the helper launched leaves the outcome
-   unknown. The confirmation reports that the result could not be confirmed,
-   offers to reopen after a refresh, and the app forces a replacement refresh.
-   It MUST NOT claim either success or failure.
+7. **Indeterminate** — a timeout after the helper launched, or a result that
+   arrived in a shape the transport contract cannot classify, leaves the
+   outcome unknown. The confirmation reports that the result could not be
+   confirmed, the app forces a replacement refresh, and the reconciled snapshot
+   is what the user reads next. It MUST NOT claim either success or failure.
+   It offers `Retry` / `重试` and `Dismiss` / `关闭`, the same two actions as a
+   failure, because the controller treats both terminal states identically.
 
 Switching is globally single-flight, as specified under Operation ownership: one
-switch app-wide, and a request while one is active is refused rather than queued.
+switch app-wide, and a *new* switch requested while one is active is refused
+rather than queued. `Retry` on a terminal failure or indeterminate result is not
+a new switch — it moves the controller atomically back to in flight for the same
+target, so no window exists in which a second switch could interleave.
 
 ## Accessibility, motion, contrast, and layout
 
@@ -527,6 +549,17 @@ Recorded in the review record with the observed result for each item on macOS 26
     replacement refresh, and claims neither success nor failure.
 20. Window dismissal during an in-flight switch does not terminate the helper,
     and the outcome is visible on reopen.
+21. A valid envelope delivered on the wrong stream — an `error` envelope on
+    stdout, or a success envelope on stderr — is reported as unconfirmed rather
+    than as success or failure, shows no outcome code, and forces a replacement
+    refresh.
+22. `Retry` on a failed or indeterminate result starts the same target with no
+    observable idle state between, and a switch to a *different* target is
+    refused until the result is dismissed.
+23. While a switch is in flight, every other option row is disabled reading
+    `Switch in progress` / `正在切换` in place of its own reason, and each row
+    reverts to exactly the snapshot's `ready` and `reason_code` once the
+    controller leaves the in-flight state.
 
 ### Not verifiable in this task
 

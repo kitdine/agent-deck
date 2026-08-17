@@ -37,8 +37,8 @@ This file is the only status authority for this topic.
 - Contracts: [`ux/menubar.md`](ux/menubar.md) for presentation, and
   [`architecture.md`](architecture.md#menu-bar-wire-contract-extension) for the
   additive `provider.candidates` section, the switch command surface, its result
-  envelope, and switch operation ownership. Both are under design repair; see
-  the Documents matrix below.
+  envelope, and switch operation ownership. Both remain under bounded design
+  repair after Re-review Round 5; see the Documents matrix below.
 - Implement provider, usage, cost, recent-session, warning, and health summaries.
 - Add safe provider quick actions, refresh behavior, login-item preference, and
   newer-version notification that opens the official download page only.
@@ -160,14 +160,25 @@ closed, all earlier findings remain closed, and 19 XCTest cases pass. Task 3
 `menubar-experience` is the next task.
 
 Menu-bar design Review Round 3 (2026-08-16): **FAIL** on six bounded contract
-findings. Round 4 (2026-08-16): repair complete, `REOPEN` pending independent
-Re-review. All six are closed in the current documents — R3-F1 through R3-F5 in
-`architecture.md`, R3-F6 in `ux/menubar.md` — and the record carries the
-post-migration blob mapping a Re-review needs.
+findings. Round 4 repaired all six and recorded the post-migration blob mapping.
+Independent Re-review Round 5 (2026-08-16): **FAIL**. R3-F1, R3-F4, R3-F5, and
+R3-F6 are closed; R3-F2's transport matrix and R3-F3's retry transition remain
+open, and R5-F1 newly identifies conflicting ownership of the dynamic
+`switch_in_flight` reason.
+
+Round 6 (2026-08-16): repair complete, `REOPEN` pending independent Re-review.
+The transport matrix is now total by construction with an explicit catch-all,
+the controller carries a complete transition table making retry and dismiss
+bounded exceptions to the non-idle refusal, and `switch_in_flight` is removed
+from the wire and respecified as a host-only presentation overlay. Consequential
+UX repairs followed: `Cancel` on a finished failure became `Dismiss`,
+`indeterminate` was aligned to the same two actions as `failed`, and three
+manual checklist items were added. R5-N1 was recorded but not authorized, and is
+untouched.
 
 The target was documents, not task 3, which has no implementation. Task 3 stays
-blocked until the Re-review passes, because it cannot be developed against a
-specification whose latest verdict is not `PASS`.
+blocked until a later Re-review passes, because it cannot be developed against
+a specification whose latest verdict is not `PASS`.
 
 Two readiness gaps remain and are **not** Round 3 findings: `ux/menubar.md`
 carries no rendered specimen, and `ux/widget.md` is unwritten. Neither blocks
@@ -176,7 +187,7 @@ the Re-review of the six findings; both keep their `Draft` cells unticked.
 Next action:
 
 ```text
-复评：`desktop-app` / `reviews/menubar-experience.md`
+修复：`desktop-app` / `reviews/menubar-experience.md`（R3-F2、R3-F3、R5-F1）
 ```
 
 Task 1 was blocked on the `v0.4.0` session DTO contract; that dependency is now

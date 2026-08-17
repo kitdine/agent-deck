@@ -652,7 +652,29 @@ invocation's arguments, so the option the user confirmed and the command that ru
 are provably the same target. `reason_code` is a fixed code with localized copy
 in both languages, never a message; the defined codes are
 `credential_missing`, `credential_client_mismatch`, `wrapper_not_configured`,
-`already_selected`, and `switch_in_flight`.
+and `already_selected`.
+
+**`switch_in_flight` is deliberately not among them.** Every wire `reason_code`
+states something the snapshot producer can know: a credential row is absent, a
+wrapper URL is unconfigured, a provider is already selected. Whether a switch is
+running is transient state owned by the host's `SwitchController`, created after
+the snapshot was generated and gone before the next one. Encoding it in the wire
+would put a value in the payload that is stale the moment it is written, and the
+App Group cache would persist that staleness across launches.
+
+It is therefore a **host-only presentation overlay**. While the controller is
+not `idle`, the host disables every option row and states why, without altering
+the Go-resolved tuple: an option's `ready`, `reason_code`, and arguments are
+unchanged, and the same option becomes selectable again when the controller
+returns to `idle`. Precedence is fixed — the in-flight overlay is shown instead
+of an option's own `reason_code`, because a global block explains more than a
+per-option one while it holds. Its copy is `Switch in progress` /
+`正在切换`, specified with the rest of the switch flow in
+[`ux/menubar.md`](ux/menubar.md).
+
+The rule this preserves: Go decides what a switch *is*, the host decides whether
+one can be *started right now*. Those are different questions with different
+owners, and only the first belongs in the wire.
 
 Selection therefore happens at the option level. A candidate offering more than
 one option presents them as distinct rows — credential and route are user choices,
@@ -776,18 +798,41 @@ The type fixes `schema_version` to `1` and `command` to `provider.use`, decodes
 `data` as ignored-and-nullable, and retains only `error.code`. It never retains
 `error.message`; see the prerequisite below.
 
-Outcome is decided by the envelope, never by the exit status alone:
+Outcome is decided by the envelope, never by the exit status alone.
+
+Exactly two input shapes are conclusive. Each requires its envelope on its
+canonical stream, agreeing with the exit status, with the other stream empty:
 
 | Streams and status | Host behavior |
 | --- | --- |
 | stdout envelope, no `error`, empty stderr, exit `0` | **Success.** Trigger one replacement refresh |
-| stderr envelope with `error`, non-zero exit | **Typed failure.** Map `error.code` to a localized message |
-| Envelopes on both streams, or `error` present with exit `0`, or absent with non-zero exit | **Indeterminate.** Never guess which is authoritative |
-| Unknown `schema_version` or `command`, malformed, truncated, or no valid JSON on either stream | **Opaque failure.** Never parse the text |
+| stderr envelope with `error`, non-zero exit, empty stdout | **Typed failure.** Map `error.code` to a localized message |
+
+Everything else is inconclusive, and the classification is total by
+construction: a decodable envelope that does not match a conclusive row above is
+**indeterminate**; anything that does not decode is **opaque**.
+
+| Inconclusive input | Class |
+| --- | --- |
+| Envelopes on both streams | Indeterminate |
+| `error` present with exit `0`, or absent with non-zero exit | Indeterminate |
+| A valid envelope on the wrong stream — an `error` envelope on stdout, or a success envelope on stderr — whatever the exit status | Indeterminate |
+| Any other decodable envelope not matching a conclusive row | Indeterminate |
+| Unknown `schema_version` or `command`, malformed, truncated, or no valid JSON on either stream | Opaque failure. Never parse the text |
+
+The catch-all row exists so that no input can fall outside the table. A valid
+envelope on the wrong stream is a transport violation, not a result: the helper
+plainly reached the point of emitting an envelope, so the configuration may have
+been written, and treating a misplaced `error` envelope as a typed failure would
+report "nothing happened" about a mutation that may have happened. It is
+therefore never reported as success or failure, and its `error.code`, if any, is
+not shown as an outcome.
 
 An indeterminate outcome is not a failure and not a success: the configuration
 may or may not have been applied. The host MUST force a replacement refresh and
-reconcile from the resulting snapshot rather than asserting either result.
+reconcile from the resulting snapshot rather than asserting either result. An
+opaque failure is distinct because nothing decodable was produced; it too forces
+a replacement refresh, and it reports no code.
 
 The current `EmbeddedHelperRunner` cannot serve this contract as written: it
 guards on a zero exit status and throws before decoding, so a stderr failure
@@ -825,7 +870,7 @@ State: `idle`, `inFlight(client, provider)`, `succeeded(client, provider)`,
 
 | Concern | Rule |
 | --- | --- |
-| Serialization | One switch app-wide. A request while not `idle` is refused, not queued |
+| Serialization | One switch app-wide. A *new* switch requested while the controller is not `idle` is refused, not queued. Retry and dismiss are not new switches; see the transition table below |
 | Double submit | Structurally impossible: confirmation's controls are disabled on entry to `inFlight`, so no second submit can be issued |
 | Cancellation | The controller never cancels an in-flight switch, and MUST NOT invoke the runner through a cancellable task whose cancellation terminates the helper. `EmbeddedHelperRunner`'s `withTaskCancellationHandler` calls `running.terminate()` on cancel, which would kill the helper mid-write; the switch path must not be cancelled by window dismissal, view teardown, or task cancellation |
 | Window dismissal | Detaches presentation only. On reopen the controller's current state is displayed, including a result that became terminal while closed |
@@ -836,3 +881,28 @@ State: `idle`, `inFlight(client, provider)`, `succeeded(client, provider)`,
 The two lifetimes differ deliberately: a success is confirmed by the refreshed
 data that replaces it, while a failure has no such successor and must wait to be
 read.
+
+##### Allowed transitions
+
+Retaining a terminal failure until the user acts, while refusing any request
+made when not `idle`, would deadlock the controller: `failed` and
+`indeterminate` are not `idle`, so the retry the UX offers would be refused by
+the rule meant to stop concurrent switches. The serialization rule governs *new*
+switches. Recovery from a terminal state is a bounded exception, and this table
+is the complete set of transitions:
+
+| From | Event | To | Note |
+| --- | --- | --- | --- |
+| `idle` | Confirmed switch | `inFlight` | The only entry point for a new switch |
+| `inFlight` | Conclusive success | `succeeded` | |
+| `inFlight` | Typed failure | `failed(code)` | |
+| `inFlight` | Indeterminate, opaque, or timeout after launch | `indeterminate` | Forces a replacement refresh |
+| `inFlight` | Any switch request | `inFlight` | Refused; this is what serialization protects |
+| `succeeded` | Replacement refresh completes, or 10 s elapse | `idle` | Whichever comes first |
+| `failed` / `indeterminate` | **Retry** | `inFlight` | Atomic; same target as the attempt that failed. No intermediate `idle` state is observable, so no other switch can interleave |
+| `failed` / `indeterminate` | **Dismiss** | `idle` | Clears the result without retrying |
+| `failed` / `indeterminate` | A switch request for a *different* target | refused | Recovery is bounded to retry and dismiss; starting a different switch requires dismissing first, so the user cannot silently abandon an unread failure |
+
+Retry is atomic rather than a reset followed by a start, because an observable
+`idle` between them would be a window in which serialization is not held, which
+is exactly the property the rule exists to guarantee.

@@ -57,7 +57,7 @@ agentdeck version
 
 | Topic | Version | Status | Purpose |
 | --- | --- | --- | --- |
-| [Native macOS Desktop App](topics/desktop-app/tasks.md) | `v0.5.0` | Active — 2/6 tasks reviewed; menu-bar design Review FAIL | macOS 26 menu-bar app, WidgetKit extension, unified desktop distribution, Cask, and direct-download delivery. |
+| [Native macOS Desktop App](topics/desktop-app/tasks.md) | `v0.5.0` | Active — 2/6 tasks reviewed; menu-bar design Re-review FAIL | macOS 26 menu-bar app, WidgetKit extension, unified desktop distribution, Cask, and direct-download delivery. |
 | [`v0.5.0` Contract Closure](topics/v0-5-0-contract/tasks.md) | `v0.5.0` | Active — 0/1 done | Version-wide specification raise and documentation reconciliation after all desktop tasks pass review. |
 | [Usage Attribution Precision](topics/usage-attribution-precision/tasks.md) | `v0.6.0` | Active — 0/3 done | Per-client attribution time semantics, determinability-based quality, and an unattributed boundary that never enters a real-spend total. |
 | [CLI Error Classification](topics/cli-error-classification/tasks.md) | Unassigned | Active — 0/2 done | Stable not-found codes, and no storage text in a documented JSON contract. Deliberately kept out of `v0.5.0`. |
@@ -74,11 +74,13 @@ and nothing else.
 `desktop-wire-contract` reached Re-review Round 2 PASS.
 `macos-app-foundation` reached Re-review Round 3 PASS after unsupported and
 malformed App Group cache data were made fail-closed. The menu-bar contract
-failed Design Review Round 3 on six decision-completeness findings; Round 4
-closed all six across the topic's `architecture.md` and `ux/menubar.md` and
-awaits independent Re-review. Separately, `ux/menubar.md` still carries no
-rendered specimen and `ux/widget.md` is required and unwritten, so both keep
-their `Draft` cells unticked.
+failed Design Review Round 3 on six decision-completeness findings. Round 4
+repaired them, but independent Re-review Round 5 still found R3-F2's transport
+matrix and R3-F3's retry transition open, plus a new dynamic-readiness ownership
+conflict R5-F1. Round 6 closed all three and awaits independent Re-review.
+Separately, `ux/menubar.md` still carries no rendered specimen and
+`ux/widget.md` is required and unwritten, so both keep their `Draft` cells
+unticked.
 
 Usage attribution precision is planned but not started. It is independent of
 the desktop topic and blocks the remaining `v0.6.0` cost items.
