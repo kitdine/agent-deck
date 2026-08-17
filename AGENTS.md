@@ -638,6 +638,11 @@ updates required by that topic:
   step: it reads only `docs/topics/**` and is deliberately absent from
   `make verify`, where a code-only change would otherwise fail on a missing
   design document;
+- move the document's Beads task to the status that phase owns and comment the
+  disposition, in the same action rather than afterwards. The transition table
+  is in `.agent-instructions/beads.md`. A phase that changes a document without
+  it leaves dispatch asserting the previous state, which is how a task sat
+  `in_progress` for a day while nothing was being implemented;
 - append the current round and verdict under the topic's `reviews/` directory;
 - keep Review unchecked while medium-or-higher findings remain, or tick it when
   the document or task passes;

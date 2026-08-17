@@ -85,6 +85,23 @@ the document was written. A drafted but unreviewed document is `open`; a
 document whose repair is complete and awaiting an independent re-review is
 `in_review`.
 
+Nothing moves a status by itself. Each phase command owns exactly one
+transition on the document task it names, and performing the command without
+the transition is what made an entire day of document work invisible to
+dispatch:
+
+| Command | Transition | Also |
+| --- | --- | --- |
+| `设计：<topic>` | create the topic's document tasks at `open` | — |
+| `设计：<topic> / <document>` | `open` → `drafting`, then `drafting` → `in_review` when the draft is complete | claim it |
+| `评审：<topic> / <document>` | stays `in_review` | claim it as the reviewer; on `PASS` → `closed`, on `REOPEN` → `repairing` and increment `round-N` |
+| `修复：<topic> / reviews/<record>.md / <ids>` | `repairing` → `in_review` when the repair is complete | comment the disposition |
+| `复评：<topic> / reviews/<record>.md` | as for `评审` | — |
+
+The comment matters as much as the status: a status says where the document is,
+a comment says why it moved. Write it in the same action, not afterwards —
+"afterwards" is reliably never.
+
 A `round-N` label counts how many times review sent the document back. It
 increments on every `REOPEN` and is never reset, so a document that keeps
 bouncing is visible as a number rather than as a comment someone has to read.
