@@ -60,7 +60,7 @@ agentdeck version
 
 | Topic | Version | Status | Purpose |
 | --- | --- | --- | --- |
-| [Native macOS Desktop App](topics/desktop-app/tasks.md) | `v0.5.0` | Active — 2/6 tasks reviewed; menu-bar design Re-review FAIL | macOS 26 menu-bar app, WidgetKit extension, unified desktop distribution, Cask, and direct-download delivery. |
+| [Native macOS Desktop App](topics/desktop-app/tasks.md) | `v0.5.0` | Active — 2/6 tasks reviewed; requirements Re-review FAIL | macOS 26 menu-bar app, WidgetKit extension, unified desktop distribution, Cask, and direct-download delivery. |
 | [`v0.5.0` Contract Closure](topics/v0-5-0-contract/tasks.md) | `v0.5.0` | Active — 0/1 done | Version-wide specification raise and documentation reconciliation after all desktop tasks pass review. |
 | [Usage Attribution Precision](topics/usage-attribution-precision/tasks.md) | `v0.6.0` | Active — 0/3 done | Per-client attribution time semantics, determinability-based quality, and an unattributed boundary that never enters a real-spend total. |
 | [CLI Error Classification](topics/cli-error-classification/tasks.md) | Unassigned | Active — 0/2 done | Stable not-found codes, and no storage text in a documented JSON contract. Deliberately kept out of `v0.5.0`. |
@@ -87,10 +87,16 @@ target, and raised R7-F1 for applying in-progress copy to terminal states.
 Round 8 closed both and, in the same pass, rederived both surfaces around the
 four questions the usage data answers after a design review of the rendered
 prototype; the App Group projection was extended to carry what they need. All
-four documents await review.
-Separately, both surface documents are now drafted: `ux/menubar.md` gained the
-rendered specimens it had never carried, and `ux/widget.md` was written. Neither
-is reviewed yet.
+four documents entered the document-review sequence. Requirements Review Round
+1 then failed because the boundary still names only current-day usage while the
+surfaces demand bounded historical analytics, and because it defines Widget
+isolation without a functional user-visible outcome. The repair closed both
+findings, but Re-review Round 2 found its new prohibition on every other
+`breakdown` also forbids the non-temporal breakdowns needed by the authorized
+composition and trust questions. Re-review Round 3 narrowed R2-F1 to the missing
+provider dimension; Round 4 authorized it in both Goals and the Acceptance
+boundary and awaits independent Re-review. The remaining documents are drafted
+but cannot enter review until that passes.
 
 Usage attribution precision is planned but not started. It is independent of
 the desktop topic and blocks the remaining `v0.6.0` cost items.

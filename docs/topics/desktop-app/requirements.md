@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-08-06
-updated: 2026-08-16
+updated: 2026-08-17
 ---
 
 # Native macOS Desktop App — Requirements
@@ -70,11 +70,30 @@ separate from arbitrary third-party Hooks.
 
 ## Goals
 
-- Show current provider, current-day usage, cost, active or recent sessions,
-  and important health state from a persistent menu-bar surface.
+- Show current provider, usage, and cost — bounded to today, the trailing
+  7 days, and the trailing 30 days, plus a daily trend of at most 90 buckets
+  and a 7x24 hour-of-week rhythm view — active or recent sessions, and
+  important health state from a persistent menu-bar surface. No other
+  historical period or temporal granularity is authorized. Usage and cost may
+  additionally be broken down by model, client, **runtime provider**, token
+  component, attribution quality (determinable, inferred, unattributed), and
+  pricing coverage, as needed to answer the composition and trust questions;
+  presentation of these breakdowns is owned by `ux/menubar.md` and
+  `ux/widget.md`. Attribution quality may be broken down by both client and
+  runtime provider. Aggregating usage by provider is authorized here as its own
+  dimension, because showing which provider is currently selected is a routing
+  fact and says nothing about whether spend may be attributed to one — and the
+  trust question is per-provider by nature: a provider whose events resolve to
+  `unknown` is exactly what a determinability figure is meant to expose.
 - Provide safe quick actions, initially including provider switching and links
   into detailed session or diagnostic views.
-- Publish a privacy-bounded desktop snapshot for WidgetKit through an App Group.
+- Publish a privacy-bounded desktop snapshot for WidgetKit through an App
+  Group, answering the same four bounded spend questions as the menu bar:
+  how much am I spending (magnitude), where does it go (composition), is the
+  number real (trust), and when do I actually work (rhythm). The Widget must
+  render real product information for the question it answers, not merely
+  publish and isolate data; `ux/widget.md` owns the widget count, sizing, and
+  presentation of each question.
 - Keep all authoritative behavior in the Go implementation and expose a small,
   versioned, typed desktop wire contract to Swift.
 - Ship one signed, notarized, universal `AgentDeck.app` that works identically
@@ -114,10 +133,17 @@ packaging and distribution layout — specified in
 
 - The menu bar presents provider, usage, cost, recent sessions, warnings, and
   health from a single Go-owned snapshot, with no second aggregation layer in
-  Swift.
+  Swift. Usage and cost analytics are bounded to today, 7-day, and 30-day
+  periods, a daily trend of at most 90 buckets, and a 7x24 hour-of-week rhythm
+  view, plus breakdowns by model, client, runtime provider, token component,
+  attribution quality, and pricing coverage. Attribution quality is reportable
+  per client and per runtime provider.
 - The Widget renders only from the redacted App Group projection and can reach
   no AgentDeck database, credential, client configuration, or raw session
-  source.
+  source. It renders real product information answering at least one of the
+  four bounded spend questions — magnitude, composition, trust, rhythm — not
+  merely data publication and isolation; the widget count, sizing, and
+  presentation of each question are owned by `ux/widget.md`.
 - One signed, notarized, universal `AgentDeck.app` installs and behaves
   identically through Homebrew Cask and direct download, on arm64 and Intel.
 - The App, embedded helper, standalone CLI archives, Cask, Formula, release

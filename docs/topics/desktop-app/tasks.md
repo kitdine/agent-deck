@@ -96,6 +96,22 @@ This file is the only status authority for this topic.
 | ux/widget.md | [x] | [ ] |
 | tasks.md | [x] | [ ] |
 
+`requirements.md` Review Round 1 (2026-08-17): **FAIL**. The boundary still
+limits the named menu-bar outcome to current-day usage while the drafted
+surfaces require bounded historical analytics, and it gives the Widget no
+functional user-visible acceptance outcome. Both findings are recorded in
+[`reviews/requirements.md`](reviews/requirements.md). Its `Review` cell remains
+unchecked. Re-review Round 2 closed both original findings but found R2-F1: the
+new prohibition on every other `breakdown` also forbids the non-temporal
+breakdowns required by the authorized composition and trust questions. Re-review
+Round 3 narrowed R2-F1 to one omission: the repaired authorization lists every
+required non-temporal dimension except provider. Round 4 (2026-08-17) closed it —
+`runtime provider` is authorized in both Goals and the Acceptance boundary, and
+attribution quality is stated as reportable per client and per runtime provider,
+matching what `ux/menubar.md`, `ux/widget.md`, and `architecture.md` all
+already require. Repair complete, `REOPEN` pending independent Re-review; later
+document review stays blocked until it passes.
+
 `ux/menubar.md` and `ux/widget.md` are both drafted as of 2026-08-16.
 `ux/menubar.md` now carries rendered specimens for healthy, loading, retained
 offline, partial with incomplete pricing, the switch confirmation and its
@@ -198,14 +214,10 @@ The target was documents, not task 3, which has no implementation. Task 3 stays
 blocked until a later Re-review passes, because it cannot be developed against
 a specification whose latest verdict is not `PASS`.
 
-Two readiness gaps remain and are **not** Round 3 findings: `ux/menubar.md`
-carries no rendered specimen, and `ux/widget.md` is unwritten. Neither blocks
-the Re-review of the six findings; both keep their `Draft` cells unticked.
-
 Next action:
 
 ```text
-修复：`desktop-app` / `reviews/menubar-experience.md`（R3-F3、R7-F1）
+修复：`desktop-app` / `requirements.md`（R2-F1：provider 维度）
 ```
 
 Task 1 was blocked on the `v0.4.0` session DTO contract; that dependency is now
