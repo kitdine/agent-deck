@@ -215,30 +215,40 @@ Neither settles real SF type metrics, Dynamic Type reflow, VoiceOver order, or
 measured contrast. Those are runtime claims and stay in the manual checklist.
 Width shown is the 340 pt default unless noted.
 
-Healthy, everything available:
+Healthy, everything available. The body is the four sections in order —
+magnitude, composition, trust, rhythm — under the client tabs, with provider
+state, the `⌄` actions menu, refresh, and the session link in the footer
+rather than in the reading surface. There is no title bar and no close
+button: a `MenuBarExtra` popover is dismissed by clicking away, so none is
+drawn.
 
 ```text
 ┌────────────────────────────────────────────┐
-│ AgentDeck                          ⋯   ✕   │
+│ All  $12.47     Codex $9.10   Claude $3.37 │
 │                                            │
-│ PROVIDER                                   │
-│   Codex     aigocode · wrapper    2h ago   │
-│   Claude    official              1d ago   │
+│ Today · Sun Aug 16                  $12.47 │
+│ 1,204,881 tokens · 143 events · 8 sess.    │
 │                                            │
-│ USAGE                          today       │
-│   1,204,881 tokens · 143 events · 8 sess.  │
+│ Today   7 Days   30 Days                   │
 │                                            │
-│ COST                                       │
-│   $12.47 provider · $9.98 catalog base     │
+│ TREND · 30 DAYS                28.4M tokens│
+│   avg/day 1.18M · peak 3.4M Aug 12 ·       │
+│   cache hit 71.2%                          │
 │                                            │
-│ RECENT SESSIONS                            │
-│   Codex   agent-deck   gpt-5      12m ago  │
-│   Claude  ai-tools     opus-5     3h ago   │
+│ MODELS                              today  │
+│   claude-opus-5     612.4K         50.8%   │
+│   gpt-5              401.1K         33.3%  │
 │                                            │
-│ HEALTH                            ✓ ok     │
+│ ATTRIBUTION                    is it real? │
+│   Determinable     $11.90          95.4%   │
+│   Inferred           $0.57          4.6%   │
+│                                            │
+│ RHYTHM                  7×24 · last 30 days│
+│   peak Tue 15:00                           │
 │                                            │
 │ ─────────────────────────────────────────  │
-│ Refresh          Settings…        Quit     │
+│ Codex aigocode · Claude official  ⌄ Refresh│
+│                                    Sessions│
 │ Updated 3m ago                             │
 └────────────────────────────────────────────┘
 ```
@@ -247,7 +257,6 @@ Loading, no snapshot ever retained — the only state that shows no data:
 
 ```text
 ┌────────────────────────────────────────────┐
-│ AgentDeck                          ⋯   ✕   │
 │                                            │
 │   Loading…                                 │
 │                                            │
@@ -255,23 +264,22 @@ Loading, no snapshot ever retained — the only state that shows no data:
 ```
 
 Retained snapshot with the helper unreachable — `dataSurface` + `stale` +
-`offline`. The data stays; the qualifiers explain it:
+`offline`. The data stays; the qualifiers explain it in the footer, not a
+title bar, because this surface has none:
 
 ```text
 ┌────────────────────────────────────────────┐
-│ AgentDeck                       ⚠  ⋯   ✕   │
+│ All  $12.47     Codex $9.10   Claude $3.37 │
 │                                            │
-│ PROVIDER                                   │
-│   Codex     aigocode · wrapper    2h ago   │
-│   Claude    official              1d ago   │
-│                                            │
-│ USAGE                          today       │
-│   1,204,881 tokens · 143 events · 8 sess.  │
-│   … sections unchanged …                   │
+│ Today · Sun Aug 16                  $12.47 │
+│ 1,204,881 tokens · 143 events · 8 sess.    │
+│   … sections unchanged, dimmed …           │
 │                                            │
 │ ─────────────────────────────────────────  │
-│ Updated 41m ago                            │
+│ Codex aigocode · Claude official  ⌄ Refresh│
+│                                    Sessions│
 │ Cannot reach the AgentDeck helper          │
+│ Updated 41m ago                            │
 └────────────────────────────────────────────┘
 ```
 
@@ -279,14 +287,11 @@ Partial snapshot with incomplete pricing — an unavailable section is labelled,
 never blank, and the cost is shown with its qualifier rather than suppressed:
 
 ```text
-│ COST                                       │
-│   $12.47 provider · $9.98 catalog base     │
-│   Cost incomplete · 37 unpriced            │
-│                                            │
-│ RECENT SESSIONS                            │
-│   Unavailable                              │
+│ MODELS                         Unavailable │
+│   Section could not be read this refresh   │
 │                                            │
 │ ─────────────────────────────────────────  │
+│ Cost incomplete · 37 unpriced ·            │
 │ Some data unavailable                      │
 ```
 
@@ -322,22 +327,23 @@ than truncating:
 
 ```text
 ┌──────────────────────────────────┐
-│ PROVIDER                         │
-│   Codex                          │
-│     aigocode · wrapper           │
-│     2h ago                       │
+│ All $12.47                       │
 │                                  │
-│ USAGE                    today   │
+│ Today                    $12.47  │
 │   1,204,881 tokens               │
 │   143 events · 8 sessions        │
+│                                  │
+│ TREND                            │
+│   28.4M tokens · 30 days         │
 └──────────────────────────────────┘
 ```
 
-Empty, distinct from unavailable — a real zero rather than an unknown:
+Empty, distinct from unavailable — a real zero rather than an unknown. History
+still renders, because a quiet day is only legible against the days around it:
 
 ```text
-│ USAGE                          today       │
-│   No activity today                        │
+│ Today · Sun Aug 16                   $0.00 │
+│   No local activity today                  │
 ```
 
 ### Actions
@@ -751,7 +757,7 @@ the contract provisions or refuses each. These are provisioned as of
 | --- | --- |
 | Menu-bar item value | period cost or token total, per the preference |
 | Magnitude hero | `totals` with its four token components, event and session counts |
-| Period switcher | `buckets` groupable by day, week, month |
+| Period switcher | `today`/`7d`/`30d` period selection, backed by the daily `buckets` series |
 | Trend chart | bounded daily series, ≤ 90 buckets |
 | `avg/day`, `peak`, cache-hit chips | period average, `peak` bucket, cached-read over logical input |
 | Composition model rows | top-N model shares, ≤ 12 |

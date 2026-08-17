@@ -62,7 +62,7 @@ agentdeck version
 
 | Topic | Version | Status | Purpose |
 | --- | --- | --- | --- |
-| [Native macOS Desktop App](topics/desktop-app/tasks.md) | `v0.5.0` | Active — 2/6 tasks reviewed; requirements Re-review PASS | macOS 26 menu-bar app, WidgetKit extension, unified desktop distribution, Cask, and direct-download delivery. |
+| [Native macOS Desktop App](topics/desktop-app/tasks.md) | `v0.5.0` | Active — 2/6 tasks reviewed; requirements, architecture, and menu-bar UX all PASS; `ux/widget.md` next | macOS 26 menu-bar app, WidgetKit extension, unified desktop distribution, Cask, and direct-download delivery. |
 | [`v0.5.0` Contract Closure](topics/v0-5-0-contract/tasks.md) | `v0.5.0` | Active — 0/2 done | Version-wide specification raise and documentation reconciliation after every selected topic's tasks pass review. |
 | [Usage Attribution Precision](topics/usage-attribution-precision/tasks.md) | `v0.6.0` | Active — 0/3 done | Per-client attribution time semantics, determinability-based quality, and an unattributed boundary that never enters a real-spend total. |
 | [CLI Error Classification](topics/cli-error-classification/tasks.md) | `v0.5.0` | Active — 0/2 done | Stable not-found codes, and no storage text in a documented JSON contract. Breaks the documented `runtime_error` value; announced in this version's notes. |
@@ -98,8 +98,15 @@ findings, but Re-review Round 2 found its new prohibition on every other
 `breakdown` also forbids the non-temporal breakdowns needed by the authorized
 composition and trust questions. Re-review Round 3 narrowed R2-F1 to the missing
 provider dimension; Round 4 authorized it in both Goals and the Acceptance
-boundary and awaits independent Re-review. The remaining documents are drafted
-but cannot enter review until that passes.
+boundary, and Re-review Round 5 passed it. The menu-bar record then ran to
+Round 13: Round 9 caught the two artifacts the Round 8 redesign left behind —
+text specimens still drawing the abandoned structure, and a period switcher
+claiming bucket granularity the projection never carried — and Round 11 caught
+two smaller inconsistencies inside the redrawn specimens. Round 13 closed the
+last of them, so `architecture.md` and `ux/menubar.md` both pass with every
+finding since Round 1 closed. `ux/widget.md` is the next document to review,
+and this topic's own `tasks.md` is last, because the task matrix stays a draft
+until the documents it rests on have passed.
 
 Usage attribution precision is planned but not started. It is independent of
 the desktop topic and blocks the remaining `v0.6.0` cost items.

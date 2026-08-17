@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-08-06
-updated: 2026-08-16
+updated: 2026-08-17
 ---
 
 # Native macOS Desktop App — Tasks
@@ -37,8 +37,8 @@ This file is the only status authority for this topic.
 - Contracts: [`ux/menubar.md`](ux/menubar.md) for presentation, and
   [`architecture.md`](architecture.md#menu-bar-wire-contract-extension) for the
   additive `provider.candidates` section, the switch command surface, its result
-  envelope, and switch operation ownership. Both were repaired in Round 8 and
-  await independent Re-review; see the Documents matrix below.
+  envelope, and switch operation ownership. Both passed independent Re-review
+  Round 13; see the Documents matrix below.
 - Implement provider, usage, cost, recent-session, warning, and health summaries.
 - Add safe provider quick actions, refresh behavior, login-item preference, and
   newer-version notification that opens the official download page only.
@@ -91,8 +91,8 @@ This file is the only status authority for this topic.
 | Document | Draft | Review |
 | --- | --- | --- |
 | requirements.md | [x] | [x] |
-| architecture.md | [x] | [ ] |
-| ux/menubar.md | [x] | [ ] |
+| architecture.md | [x] | [x] |
+| ux/menubar.md | [x] | [x] |
 | ux/widget.md | [x] | [ ] |
 | tasks.md | [x] | [ ] |
 
@@ -216,14 +216,60 @@ composition, trust, rhythm — with widget size selecting depth rather than
 subject. `architecture.md`'s App Group projection was extended to carry the
 fields those surfaces asked for.
 
+Independent Re-review Round 9 (2026-08-17): **FAIL**. R3-F3 and R7-F1 are both
+closed, and the six findings Rounds 5 and 7 closed show no regression. Two new
+blockers come from the redesign itself: Round 8 moved the prose and the
+prototype to the four-section body and the footer menu, and two artifacts tied
+to the old structure did not follow. R9-F1 is that all four text specimens in
+`ux/menubar.md` still draw the five-section body with window chrome and a
+flat `Settings…`/`Quit` footer, which the document itself designates as the
+inline review entry point, so the file offers implementers two mutually
+exclusive structures. R9-F2 is that the Data requirements table lists week and
+month bucket grouping as provisioned when the projection carries only a daily
+series, and `requirements.md` authorizes no granularity beyond it.
+
+Independent Re-review Round 11 (2026-08-17): **FAIL**, with no serious finding.
+Round 10 closed both of Round 9's blockers — the four specimens are redrawn onto
+the four-section body with the window chrome and the flat footer gone, and the
+Data requirements row now asks for the `today`/`7d`/`30d` selection the daily
+`buckets` series actually backs. R5-N1 is closed as not reproducing, verified
+back at the blob it cited; the prototype's `Month` tab is gone; the `usage
+stats` capability callout was independently confirmed accurate and correctly
+left alone; and a topic-wide sweep found no other week/month claim.
+`architecture.md` is unchanged and carries no open finding. Two new non-blocking
+findings keep the round from passing, both of the same kind as R9-F1 and both
+inside the artifact Round 10 redrew: R11-N1, thirteen specimen frame lines one
+column wider than their border, a regression against the previous blob's uniform
+widths; and R11-N2, the empty specimen printing `No activity today` where the
+copy table fixes `No local activity today`. Under the no-deferred-findings gate
+adopted this day, a minor finding blocks `PASS`, so both Document cells stay
+unticked; the repair is about fourteen lines and touches no behavior contract.
+
+Independent Re-review Round 13 (2026-08-17): **PASS**. Round 12 closed both:
+every specimen frame line re-measures at exactly 46 or 36 display columns —
+the two rows carrying annotations outside the box excluded, as R11-N1 itself
+excluded them — and the empty specimen now reads `No local activity today`,
+the string the copy table fixes for a current, issue-free surface. The repair
+also corrected the one same-kind row R11-N1 had not named. No new finding, and
+no regression in the four-section structure, the Data requirements row, or the
+other fixed copy. Both `architecture.md` and `ux/menubar.md` therefore have
+every finding closed since Round 1, and both Document cells are ticked. Their
+CEv1 Document gates re-query as `VERIFIED` against this exact uncommitted
+candidate state, which must be re-recorded against the Git tree once an
+authorized commit exists. Each of these documents is a task in its own right,
+so both now sit at `awaiting_commit`: the work product exists and has passed,
+and only an authorized commit closes them. What is committable is the two
+documents, this file, `docs/README.md`, and the review record — not the
+`menubar-experience` implementation anchor, which still has no implementation.
+
 The target was documents, not task 3, which has no implementation. Task 3 stays
-blocked until a later Re-review passes, because it cannot be developed against
-a specification whose latest verdict is not `PASS`.
+blocked until this topic's remaining documents — `ux/widget.md` and this file —
+pass their own review, since a task matrix is a draft until it does.
 
 Next action:
 
 ```text
-修复：`desktop-app` / `requirements.md`（R2-F1：provider 维度）
+评审：desktop-app / ux/widget.md
 ```
 
 Task 1 was blocked on the `v0.4.0` session DTO contract; that dependency is now

@@ -685,3 +685,538 @@ FAIL，两个 Document gate 保持未关闭。
   code, test, or configuration was changed; this remains a contract-document
   repair.
 - Verdict: REOPEN — repair complete, awaiting independent Re-review
+
+## Round 9 — 2026-08-17
+
+### 📋 独立复评 — desktop-app / menubar-experience
+
+📊 总体评分：7/10
+
+✅ 结论：FAIL
+
+- Reviewed state: HEAD `8beacdb1a412fc4cbe59f84cbe76512ee2c41025`;
+  `docs/topics/desktop-app/architecture.md` blob
+  `e23ccc7cab3545f4e6c19ab15d5cc33e6261c4fb`;
+  `docs/topics/desktop-app/ux/menubar.md` blob
+  `af8bdff81c344086fa399d1617605f15f3e2306e`;
+  `docs/topics/desktop-app/ux/prototype/desktop-surfaces.html` blob
+  `1081e56bff7f3acbd4a06e7561bbe5f93d41a57a`. Both contract blobs are
+  byte-identical to the ones Round 8 declared, so its repair diff needed no
+  re-derivation.
+- Reviewer: claude-code (independent of Round 8's repair only in pass, not in
+  authorship — the same agent wrote that repair, so every disposition below is
+  re-derived from the documents rather than read off the repair note)
+- Method: Single-agent bounded Re-review. Re-derived R3-F3 and R7-F1 from the
+  controller contract and the UX switch flow on both sides, then checked the
+  Round 8 redesign for the failure mode a redesign produces — prose and
+  prototype moving while the artifacts that illustrate them stay behind.
+- Scope: R3-F3 and R7-F1; the design findings Round 8 closed; regression on
+  R3-F1, R3-F2, R3-F4, R3-F5, R3-F6 and R5-F1; and R5-N1, still non-blocking.
+
+#### 🔴 严重问题 — 必须修复
+
+**R9-F1 — `docs/topics/desktop-app/ux/menubar.md:220-341`: 全部 text specimen
+仍是被 Round 8 废弃的旧结构。**
+
+- 处置：**新发现。** Round 8 重设计了 popover：body 变为 magnitude、
+  composition、trust、rhythm 四段（`:170-180`），窗口 chrome 被删除因为
+  `MenuBarExtra` popover 无标题栏，Settings 与 Quit 移入 `⌄` footer 菜单
+  （`:182-189`）。散文和 prototype 都照此改了，四个 specimen 一个没改。
+- 行为风险：这不是过时插图。`:209-212` 明确 specimen 的作用是"评审按 blob hash
+  引用契约，读者需要内联的状态"——它们是被指定的评审入口。实现者按 specimen
+  搭出的是 `PROVIDER / USAGE / COST / RECENT SESSIONS / HEALTH` 五段加一个
+  `✕` 关闭按钮和 footer 里的 `Settings…`、`Quit`，与散文要求的四段式加 footer
+  菜单没有一处对应。同一份文档对同一个界面给出两种互斥结构，实现者必须自己选
+  一个，而 specimen 是更具体的那个。
+- 证据：`:222`、`:250`、`:262` 画出 `⋯ ✕`，而 `:187-189` 说这个界面没有 chrome；
+  `:241` 把 `Refresh Settings… Quit` 平铺在 footer，而 `:186-189` 要求它们进
+  `⌄` 菜单；`:224-238` 的段落名与 `:175-180` 的表格无一致项；四个 specimen 全
+  无 period switcher、client tabs、trend chart、trust 行或 7×24 grid，而这些是
+  `:746-770` 声明为必需字段的元素。对照 prototype `1081e56b`：`:591-639` 是四
+  段式，`:661` 与 `:678-679` 明确记录了 Settings/Quit 进 footer 菜单和 popover
+  复用同四段——prototype 跟上了，text specimen 没有。
+- 💡 有界修复：把四个 specimen 重画为四段式 body 加 client tabs 加 footer，删除
+  `✕` 与平铺的 `Settings…`/`Quit`；或者，若认为 prototype 已足以承载这些状态，
+  则删除 specimen 并改写 `:209-212` 说明状态索引改由 prototype 承载。二者都可
+  接受，同时保留两套互斥结构不可接受。
+
+**R9-F2 — `docs/topics/desktop-app/ux/menubar.md:754`: period switcher 声称
+`buckets` 可按 day/week/month 分组，投影只提供日桶。**
+
+- 处置：**新发现。** 该行位于 Data requirements 表，表头（`:748-750`）声明
+  "These are provisioned as of `architecture.md`'s 2026-08-17 revision"。week 与
+  month 未被提供。
+- 行为风险：`architecture.md:444` 只投影"a bounded daily series: at most 90
+  buckets"，`:467-472` 又把该上界定为契约而非实现细节。实现者要么把 week/month
+  切换器做成读不到数据，要么在 Swift 侧按日桶二次聚合——而
+  `requirements.md:134-135` 明确禁止宿主端再聚合。两条路都违反已通过评审的上游
+  边界。
+- 证据：`ux/menubar.md:754` 断言已提供；`architecture.md:438-456` 的投影清单无
+  周桶或月桶，`:458` 起的新增理由也未提及；`requirements.md:76-77`（Round 5
+  PASS）授权的时间粒度止于日桶与 7×24；`ux/widget.md:85-86` 的 period 只有
+  `today`/`7d`/`30d`，同一产品的另一个界面没有 week/month。
+- 💡 有界修复：把该行改为切换器实际需要的东西——`today`/`7d`/`30d` 三个期间选择
+  加 ≤90 日桶的趋势序列，与 `ux/widget.md:85-86` 及 `requirements.md:76-77` 对齐；
+  若确实要 week/month，则需先重开 `requirements.md` 与 `architecture.md`，因为
+  投影必须先承载这些桶。本轮不作此推定：四个有界问题中没有一个是日趋势与 7×24
+  回答不了而 week/month 能回答的。
+
+#### 🟡 建议改进 — 推荐
+
+**R5-N1 — `docs/topics/desktop-app/ux/menubar.md`: selection 文案的重复半句。**
+
+- 处置：仍未处理，非阻塞。Round 8 的 repair scope 是 R3-F3、R7-F1 与用户提出的
+  设计发现，未含此项，保持 scope 正确。
+- 证据：语义仍由后一句和 architecture contract 唯一确定，不改变本轮 verdict。
+- 💡 有界改进：在获得修复授权时随附近改动一并删除。
+
+#### 🟢 优点
+
+- **R3-F3 已关闭。** 状态形状现在是 `inFlight(opt)`、`succeeded(opt)`、
+  `failed(opt, code)`、`indeterminate(opt)`，`opt` 是与 canonical invocation 同
+  一个 `(client, provider, credential?, via_wrapper)` 元组
+  （`architecture.md:903-913`）。transition 表（`:946-956`）写明 retry 从
+  `failed|indeterminate` 原子转入 `inFlight(opt)`，且 `opt` 取自状态本身；
+  `:958-961` 记录了理由——窗口可能已关闭、快照可能已替换、选项列表可能已重新推
+  导，所以唯一可靠来源是 controller。这正是 Round 7 要求的所有权归属。
+- **R7-F1 已关闭，且两侧一致。** `architecture.md:693-699` 把 overlay 限定为
+  `inFlight` **only**，并明确记录了旧稿键在 "not idle" 会在已失败的切换旁显示
+  `Switch in progress`；`ux/menubar.md:554-558` 用相同措辞说 overlay 属于
+  `inFlight` alone，terminal 状态下 rows 回到快照所述。`:563-574` 为 failure 与
+  indeterminate 各自定义了 `Retry`/`Dismiss`，并解释了为何不复用 `Cancel`。
+- **Round 5 与 Round 7 已关闭的项无回归。** R3-F1 canonical invocation、R3-F2
+  stream/envelope/exit 全分类、R3-F4 option 绑定、R3-F5 解码回退、R3-F6 truth
+  table、R5-F1 wire ownership 均未被 Round 8 的重设计改动。
+- **Round 8 关闭的设计发现，散文层面确实落地。** 四段式 body 由数据能回答的四个
+  问题推导而来而非按字段罗列（`:170-173`），footer 明确不是第五段因为它不回答关
+  于花费的问题（`:185-189`），投影扩展记录了准入理由——模型标识、日 token 总数、
+  周内小时强度、归因计数都是事件的聚合而非内容（`architecture.md:458-465`），并
+  把 90/12/12 三个上界定为契约（`:467-472`）。
+- **投影扩展提供了 trust 与 rhythm 所需字段。** `architecture.md:446-453` 的
+  7×24 grid、per-client/per-provider 归因计数、pricing coverage 与
+  `ux/menubar.md:759-761` 一一对应。
+
+#### 📝 总结
+
+逐条处置：R3-F3 关闭；R7-F1 关闭，且 `architecture.md` 与 `ux/menubar.md` 两侧
+措辞一致；Round 5 与 Round 7 已关闭的六项无回归；Round 8 的设计发现在散文与
+prototype 中确实落地；R5-N1 仍非阻塞；新增 R9-F1 与 R9-F2 两项阻断。评审对象为
+HEAD `8beacdb1` 与上述两个 blob，与 Round 8 声明逐字节一致、工作区干净。
+
+两项新发现同源：Round 8 是一次重设计，散文与 prototype 都改了，而依附于旧结构的
+两处产物没跟上。R9-F1 是四个 text specimen 仍画着五段式加窗口 chrome，而文档自己
+（`:209-212`）指定 specimen 为评审的内联状态入口，因此实现者会读到两套互斥结构；
+R9-F2 是 Data requirements 表把 week/month 分组列为"已提供"，而投影只有日桶，且
+`requirements.md` 在 Round 5 PASS 时授权的时间粒度止于日桶与 7×24。两者都不是契
+约歧义而是文档内部不一致，修复边界清晰，不涉及 architecture 的行为契约。
+
+本轮为 FAIL，两个 Document gate 保持未关闭。残余不确定性：R9-F2 的有界修复假定用
+户并不真的要 week/month 粒度；若要，需连带重开 `requirements.md` 与
+`architecture.md`，因为投影必须先承载这些桶。
+
+证据：`git rev-parse HEAD` -> `8beacdb1a412fc4cbe59f84cbe76512ee2c41025`；两个
+blob hash 与 Round 8 声明一致；`bash scripts/check-topic-docs.sh` -> exit 0；
+`make check-whitespace` -> exit 0。未改动任何产品代码、测试、配置或被评审的契约。
+
+#### 📌 下一步
+
+```text
+修复：desktop-app / reviews/menubar-experience.md / R9-F1 R9-F2
+```
+
+## Round 10 — 2026-08-17
+
+- Reviewed state: repair of Round 9's two open findings, against
+  `docs/topics/desktop-app/ux/menubar.md` blob
+  `af8bdff81c344086fa399d1617605f15f3e2306e`, the exact blob Round 9 judged.
+- Reviewer: claude-code (repair round for Round 9's FAIL — an independent
+  Re-review is still required before the `ux/menubar.md` Document cell may be
+  ticked)
+- Scope: R9-F1 and R9-F2 as named in the repair command, plus R5-N1 and the
+  prototype's unprovisioned `Month` tab, both explicitly requested for
+  inclusion rather than left for a later round.
+
+- Round 9 findings, dispositions:
+  - **R9-F1** text specimens still drew the structure Round 8 abandoned ->
+    **Fixed.** All four affected specimens (healthy, helper-unreachable,
+    narrow-bound, and the partial/empty fragments) are redrawn onto the
+    four-section body — client tabs, hero, period switcher, `TREND`,
+    `MODELS`, `ATTRIBUTION`, `RHYTHM` — with provider state, the `⌄` actions
+    menu, refresh, and the session link moved into the footer. The `⋯ ✕`
+    title-bar row and the flat `Refresh Settings… Quit` footer row are
+    removed; the healthy specimen's intro line now states explicitly that a
+    `MenuBarExtra` popover has no chrome to draw. The switch-flow specimens
+    (confirmation, in-flight, failed) were already footer-menu dialogs and
+    needed no change. `ux/menubar.md:218-347`.
+  - **R9-F2** period switcher claimed week/month grouping the projection does
+    not carry -> **Fixed.** The Data requirements row now states what the
+    switcher actually needs — `today`/`7d`/`30d` period selection backed by
+    the daily `buckets` series — matching `ux/widget.md:85-86` and the
+    daily/7×24 granularity `requirements.md` authorized at its Round 5 PASS.
+    No `requirements.md` or `architecture.md` reopening was needed, because
+    the bounded fix assumed the switcher, not the projection, was wrong.
+    `ux/menubar.md:754`.
+
+- Non-blocking and residual items, dispositions:
+  - **R5-N1** selection copy duplicated and grammatically broken ->
+    **Does not reproduce; closed as no defect found.** The finding's own
+    evidence is `ux/menubar.md:389-392` at Round 5's reviewed blob
+    `38221fe155c8ac3647124deb74914b222d437b24`. Reading that exact blob at
+    those exact lines shows one sentence — "choosing one `option` opens
+    confirmation, carrying that option's exact `(client, provider,
+    credential?, via_wrapper)`. A candidate is never selected as a whole, and
+    the row is never itself the commit." — with no repeated clause and no
+    syntax break. `git log -p` shows this file has carried exactly this
+    wording since the line was first committed; no intermediate revision ever
+    held a duplicate. The finding was carried forward as open for four rounds
+    (5, 6, 7, 8, 9) without any round re-reading the cited lines against the
+    cited blob, which is how a misreading survives past the text it described.
+    Current location: `ux/menubar.md:548-550`.
+  - Prototype period tabs claimed a fourth `Month` option ->
+    **Fixed.** `ux/prototype/desktop-surfaces.html:285` and `:374` both read
+    `Today · 7 Days · 30 Days · Month`. `Month` is not a period
+    `ux/widget.md:85-86` defines, not one the corrected Data requirements row
+    provisions, and not one any projection field backs — it is the same
+    overclaim R9-F2 found in the prose, just left uncorrected in the
+    prototype when R9-F2 named only `ux/menubar.md:754`. Removed from both
+    occurrences, leaving `Today · 7 Days · 30 Days`, matching the widget
+    document and the repaired Data requirements row.
+
+- Site checked and left unchanged, recorded for the Re-review to confirm
+  rather than asserted as settled: `ux/prototype/desktop-surfaces.html:688`
+  reads "`buckets` groupable by hour / day / week / month" inside the "The
+  data was always there" callout. That line describes `usage stats`'s own
+  capability, not the desktop projection or the period switcher.
+  `docs/specs/cli-manual.md:488-489` states `group-by` accepts
+  `auto|hour|day|week|month` for that command. Left as-is on that basis, but
+  this repair round is the one that made the call, so it is not independent
+  confirmation.
+
+- Evidence: `make check-whitespace` passes; `bash scripts/check-topic-docs.sh`
+  passes; `git diff --check` passes; no product code, test, or configuration
+  was changed. This remains a contract-document repair.
+- Verdict: REOPEN — repair complete, awaiting independent Re-review. No
+  Document gate is closed and no commit is authorized by this round; both
+  require the independent Re-review's own verdict.
+
+Nothing remains open from this round by the repair owner's own assessment.
+The Re-review should independently confirm every disposition above,
+including R5-N1's non-reproduction and the `usage stats` line left
+unchanged, and should still check for further `Month`- or week/month-shaped
+residue elsewhere in the topic's documents; this repair checked only the
+sites named above.
+
+#### 📌 下一步
+
+```text
+复评：desktop-app / reviews/menubar-experience.md / Round 10
+```
+
+## Round 11 — 2026-08-17
+
+### 📋 独立复评 — desktop-app / menubar-experience
+
+📊 总体评分：8/10
+
+✅ 结论：FAIL
+
+- Reviewed state: HEAD `8beacdb1a412fc4cbe59f84cbe76512ee2c41025`，工作区未提交；
+  `docs/topics/desktop-app/ux/menubar.md` blob
+  `bbe920a213b91fa061a68cad7593e1c0af671a52`；
+  `docs/topics/desktop-app/architecture.md` blob
+  `e23ccc7cab3545f4e6c19ab15d5cc33e6261c4fb`（与 Round 8/9 逐字节一致，Round 10
+  未改动）；`docs/topics/desktop-app/ux/prototype/desktop-surfaces.html` blob
+  `8a8c8e5d16acfa41206ac789429078e92baefe89`
+- Reviewer: claude-code（与 Round 10 修复同一 agent，因此每条处置均从文档本身重新
+  推导，而不是照读修复说明；每条“已修复”均回到被引用的确切 blob 与行号复核）
+- Method: 单 agent 有界复评。先按 Round 9 的两条 finding 重新推导 specimen 结构与
+  Data requirements 行，再独立复核 Round 10 主动纳入的两项残余项与它自陈"已检查但
+  未改动"的一处，最后按 Round 10 交接要求做 week/month 形状的全 topic 残留扫描。
+  重设计轮次的典型失效模式是产物落后于散文，因此本轮把 specimen 与它所引用的
+  copy 表逐串比对，而不只看结构。
+- Scope: R9-F1、R9-F2；R5-N1；prototype `Month` 页签；`usage stats` callout；
+  R3-F1～R3-F6、R5-F1、R7-F1 的回归检查
+- Evidence: `git rev-parse HEAD`、`git hash-object` 三个 blob 如上；
+  `bash scripts/check-topic-docs.sh` -> exit 0；`make check-whitespace` -> exit 0；
+  `git diff --check` -> exit 0。未改动任何产品代码、测试、配置或被评审的契约。
+- Completion evidence: 兼容的 Neo4j `completion-evidence/v1` provider 中
+  `desktop-app:architecture.md` 与 `desktop-app:ux/menubar.md` 两个 WorkUnit 的最新
+  记录均为 `FAILED`，且 `ux/menubar.md` 的内容状态已在 Round 10 后改变，没有任何
+  证据覆盖当前候选状态。两个 Document gate 均未关闭。
+
+#### 🔴 严重问题 — 必须修复
+
+无。
+
+#### 🟡 建议改进 — 推荐
+
+**R11-N1 — `docs/topics/desktop-app/ux/menubar.md:225-347`: 重绘后的 specimen
+边框宽度不齐，13 行比框宽多一列。**
+
+- 处置：**新发现，非阻塞。** 由 Round 10 的重绘引入。
+- 证据：healthy specimen 的上下边框（`:226`、`:253`）为 46 列，而其中的空行
+  （`:228`、`:231`、`:233`、`:237`、`:241`、`:245`、`:248`）为 47 列；
+  helper-unreachable（`:273`、`:277`）、loading（`:260`、`:262`）、narrow-bound
+  （`:331`、`:335`，框宽 36 对 37）与 empty 片段（`:345`）同样如此。对照 Round 9
+  评判的 blob `af8bdff8`：其全部 70 行框线恰为 46 列、10 行为 36 列，无一例外
+  （两行 63/77 列是 `← both disabled` 这类框外注解，不属框线）。因此这是本轮
+  被修复文件自身的回归，而不是既有约定。
+- 行为风险：无契约歧义。specimen 明确声明不承载比例与换行（`:214-216`，那些由
+  prototype 承载），因此右边缘参差只损害它作为"评审内联入口"（`:209-212`）的可读
+  性——而这正是 R9-F1 认定它必须成立的作用。
+- 💡 有界改进：把这 13 行的行尾多余空格删掉，使每个 specimen 内所有框线等宽。
+
+**R11-N2 — `docs/topics/desktop-app/ux/menubar.md:346`: empty specimen 写的
+`No activity today` 不是 copy 表固定的字符串。**
+
+- 处置：**新发现，非阻塞。** 早于 Round 10（`af8bdff8:340` 同样如此），但
+  Round 10 正是重绘该 specimen 的一轮，重绘时未回读它所展示的 copy。
+- 证据：`:508` 把 `empty`（current）的 `en` 文案固定为 `No local activity today`
+  / `今天没有本地活动`，`:509` 把带任何 freshness/reachability qualifier 的形态固定
+  为 `No activity in this snapshot`；`:516-522` 说明这两种形态的存在理由正是
+  "local/today" 的断言边界。specimen 显示的 `No activity today` 两者都不是。
+- 行为风险：与 R9-F1 同类，只是尺度更小——同一份文档对同一处用户可见文案给出两
+  个版本，而 specimen 是更具体的那个。实现者照 specimen 落地会丢掉 `local` 这个
+  刻意保留的限定词，即 Round 4 第二项残余修复所建立的区分。
+- 💡 有界改进：把 `:346` 改为 `No local activity today`，与 `:508` 对齐；该 specimen
+  描述的是 current、无 issue 的表面，属 `:508` 而非 `:509` 的形态。
+
+#### 🟢 优点
+
+- **R9-F1 已关闭。** 四个 specimen 全部重绘为四段式：`:227` 是 client tabs，
+  `:229-232` 是 magnitude hero 加 period switcher，`:234`、`:238`、`:242`、`:246`
+  依次是 `TREND`、`MODELS`、`ATTRIBUTION`、`RHYTHM`，与 `:175-180` 的段落表逐行
+  对应；footer（`:249-252`）承载 provider 只读状态、`⌄` 菜单、refresh 与 session
+  链接，与 `:182-189` 一致。`rg '✕|Settings… Quit|Refresh Settings'` 在该文件返回
+  零命中，窗口 chrome 与平铺的 `Settings…`/`Quit` 已彻底移除；`:221-223` 还把
+  "`MenuBarExtra` popover 无 chrome 可画"写进了 specimen 前言，使结构选择自带理由。
+  R9-F1 点名缺失的 period switcher、client tabs、trend chart、trust 行与 7×24 现在
+  都在。narrow-bound 与 partial 片段也改用同一结构。
+- **R9-F2 已关闭。** Data requirements 的 period switcher 行（现 `:760`）改为
+  "`today`/`7d`/`30d` period selection, backed by the daily `buckets` series"，与
+  `ux/widget.md:85-86` 的三个 period、`architecture.md:438-456` 只投影日桶、
+  `requirements.md:75,137` 在 Round 5 PASS 时授权的"至多 90 日桶加 7x24"三处同时
+  对齐。选择的是 R9-F2 建议的有界路径：改切换器而非重开投影，因此
+  `requirements.md` 与 `architecture.md` 都未被改动，也不必重开。
+- **R5-N1 不成立，已关闭。** 独立复核了 Round 10 的非复现结论：
+  `git cat-file -p 38221fe1…`（Round 5 评判的确切 blob）第 389-392 行读到的是单独
+  一句 "choosing one `option` opens confirmation, carrying that option's exact
+  `(client, provider, credential?, via_wrapper)`. A candidate is never selected as
+  a whole, and the row is never itself the commit."——没有重复半句，也没有语法
+  中断。当前位置 `:548-550` 文本相同。该 finding 从 Round 5 起被携带了五轮而无人
+  回到被引用的 blob 与行号复核，这正是 Round 9 之后新政策（不得把任何 finding 延后
+  到 PASS）要防的情形；关闭方式是"无缺陷"，不是"已修复"。
+- **prototype 的 `Month` 页签已移除。** `desktop-surfaces.html:285` 与 `:374` 现读
+  `Today · 7 Days · 30 Days`，全文件再无 `Month` 命中，与修复后的 Data requirements
+  行及 `ux/widget.md:85-86` 一致。
+- **Round 10 声明"已检查但未改动"的一处，独立确认判断正确。**
+  `desktop-surfaces.html:688` 的 "`buckets` groupable by hour / day / week / month"
+  位于 "The data was always there" callout 内，该段句首即 "`usage stats` returns"，
+  陈述的是 CLI 自身能力；`docs/specs/cli-manual.md:488-489` 确认 `group-by` 接受
+  `auto|hour|day|week|month`。该句为真，且不声称桌面投影或 period switcher 拥有这些
+  粒度，保留正确。
+- **week/month 形状残留扫描无遗漏。** 对 `docs/topics/desktop-app/` 全目录扫描后，
+  除评审记录与 `tasks.md` 的叙述性引用外，仅剩 `requirements.md:75,137` 与
+  `architecture.md:461` 的 "hour-of-week"——那是 7×24 网格的维度名，不是桶粒度声明。
+  没有第二处未被授权的 week/month 主张。
+- **前轮已关闭项无回归。** `architecture.md` blob 与 Round 8 声明、Round 9 评判逐
+  字节一致（`e23ccc7c`），Round 10 未触及该文件，因此 R3-F1、R3-F2、R3-F3、R3-F4、
+  R3-F5、R5-F1、R7-F1 的关闭状态沿用 Round 9 绑定在同一内容状态上的证据，无需重跑。
+  `ux/menubar.md` 侧的 R3-F6 truth table（`:120-152`）、R7-F1 的 `inFlight`-only
+  overlay（`:553-564`）与 switch flow 的 `Retry`/`Dismiss`（`:569-591`）在重绘后
+  文字未变，in-flight specimen（`:310-315`）仍展示 overlay 覆盖单行 reason。
+
+#### 📝 总结
+
+逐条处置：R9-F1 关闭，四个 specimen 已整体改画为四段式并删除不存在的窗口 chrome；
+R9-F2 关闭，period switcher 的数据需求改为投影实际承载的三期间加日桶；R5-N1 以
+"不复现、无缺陷"关闭，且该结论已回到被引用的 blob 独立验证；prototype 的 `Month`
+页签已移除；`usage stats` callout 保留正确；全 topic 无其他 week/month 形状残留；
+`architecture.md` 未改动，其全部 finding 保持关闭。新增两项非阻塞发现 R11-N1 与
+R11-N2。
+
+本轮为 FAIL。两项发现都不是契约歧义，行为风险都很低，但按本 topic 于 2026-08-17
+采纳的门禁——任何未关闭的 finding（含 minor）都不得随 PASS 延后——它们必须先关闭。
+两项同源，且与 R9-F1 同源：Round 8 与 Round 10 两次改动 specimen 时，都只对齐了
+结构而没有回读 specimen 自身呈现的细节（框线宽度、文案串）。修复边界清晰，合计
+14 行编辑，不涉及任何行为契约。
+
+`architecture.md` 在本轮没有任何未关闭 finding，其 Document gate 之所以仍未关闭，
+只是因为本记录同时覆盖两份文档而整体结论为 FAIL；它预计随下一轮 PASS 一并关闭，
+不需要针对它的额外修复。
+
+残余不确定性：R11-N1 的"框线应等宽"以该文件自身在 `af8bdff8` 之前各轮的一致做法
+为准，本 topic 没有独立的 ASCII specimen 排版约定文档（`ux/widget.md` 不含框图）。
+若用户认为框线参差不值得一轮修复，可显式豁免，该判断属用户而非评审。
+
+证据：`git rev-parse HEAD` -> `8beacdb1a412fc4cbe59f84cbe76512ee2c41025`；
+`git hash-object` 三个 blob 如 Reviewed state 所列；
+`bash scripts/check-topic-docs.sh` -> exit 0；`make check-whitespace` -> exit 0；
+`git diff --check` -> exit 0。
+
+#### 📌 下一步
+
+```text
+修复：desktop-app / reviews/menubar-experience.md / R11-N1 R11-N2
+```
+
+## Round 12 — 2026-08-17
+
+- Reviewed state: repair of Round 11's two open findings, against
+  `docs/topics/desktop-app/ux/menubar.md` blob
+  `bbe920a213b91fa061a68cad7593e1c0af671a52`, the exact blob Round 11 judged.
+- Reviewer: claude-code (repair round for Round 11's FAIL — an independent
+  Re-review is still required before either Document gate may be ticked; this
+  round does not close either gate and authorizes no commit)
+- Scope: R11-N1 and R11-N2 as named in the repair command.
+
+- Round 11 findings, dispositions:
+  - **R11-N1** specimen borders uneven width -> **Fixed.** Every blank-fill
+    row in the wide (`340 pt`, 46-column) specimens carried one trailing
+    space too many; the narrow-bound (`280 pt`, 36-column) specimen's two
+    blank rows had the same defect at 37 columns. The `MODELS … Unavailable`
+    row was off in the other direction. Trimmed the wide blanks from 45 to 44
+    interior spaces, the narrow blanks from 34 to 33, and re-balanced the
+    `Unavailable` row, then verified programmatically that every `┌`/`│`/`└`
+    line inside `ux/menubar.md:225-347` is exactly 46 or 36 columns (the two
+    annotated in-flight rows carrying `← both disabled` / `← overlay, not
+    its own reason` outside the box are unaffected, matching R11-N1's own
+    exclusion of them).
+  - **R11-N2** empty specimen copy did not match the fixed string ->
+    **Fixed.** `:346` read `No activity today`; the copy table at `:508`
+    fixes the current, issue-free form as `No local activity today`. The
+    empty specimen shows a current snapshot with no qualifier, so `:508`'s
+    form applies, not `:509`'s snapshot-scoped `No activity in this
+    snapshot`. Changed to `No local activity today`.
+
+- Verification performed by this repair round, not yet independently
+  confirmed: a script re-read every `┌`/`│`/`└` line in the specimen block
+  and asserted each is 46 or 36 columns with no exception; this is the same
+  check R11-N1's evidence describes doing by inspection, repeated here
+  mechanically as a sturdier check for the Re-review to redo rather than
+  trust.
+
+- Evidence: `make check-whitespace` passes; `bash scripts/check-topic-docs.sh`
+  passes; `git diff --check` passes; no product code, test, or configuration
+  was changed. This remains a contract-document repair, and is 15 edited
+  lines against R11's own estimate of 14.
+- Verdict: REOPEN — repair complete, awaiting independent Re-review. No
+  Document gate is closed and no commit is authorized by this round.
+
+#### 📌 下一步
+
+```text
+复评：desktop-app / reviews/menubar-experience.md / Round 12
+```
+
+## Round 13 — 2026-08-17
+
+### 📋 独立复评 — desktop-app / menubar-experience
+
+📊 总体评分：9/10
+
+✅ 结论：PASS
+
+- Reviewed state: HEAD `8beacdb1a412fc4cbe59f84cbe76512ee2c41025`，工作区未提交；
+  `docs/topics/desktop-app/ux/menubar.md` blob
+  `5303e0d14556da181632f80ccc802b3f82c3a068`（Round 12 修复后）；
+  `docs/topics/desktop-app/architecture.md` blob
+  `e23ccc7cab3545f4e6c19ab15d5cc33e6261c4fb`；
+  `docs/topics/desktop-app/ux/prototype/desktop-surfaces.html` blob
+  `8a8c8e5d16acfa41206ac789429078e92baefe89`。后两个 blob 与 Round 11 评判的
+  完全一致，Round 12 未触及。
+- Reviewer: claude-code（与 Round 12 修复同一 agent；两条 finding 均以独立测量
+  重新判定，而非采信修复轮自述的脚本结果）
+- Method: 单 agent 有界复评。对 R11-N1 重新做一次机械测量而不是目视：按东亚宽度
+  逐行计算 specimen 块内每一条框线的显示列宽；对 R11-N2 回到 copy 表判定该
+  specimen 属于哪一种 `empty` 形态，再比对字符串。随后检查修复是否在别处引入回归
+  ——重排空白最容易破坏的是 R9-F1 刚建立的结构与其他固定文案。
+- Scope: R11-N1、R11-N2；R9-F1、R9-F2 的回归检查；R3-F1～R3-F6、R5-F1、R5-N1、
+  R7-F1 的回归检查
+- Evidence: `git rev-parse HEAD`、`git hash-object` 三个 blob 如上；
+  `bash scripts/check-topic-docs.sh` -> exit 0；`make check-whitespace` -> exit 0；
+  `git diff --check` -> exit 0。未改动任何产品代码、测试、配置或被评审的契约。
+- Completion evidence: 兼容的 Neo4j `completion-evidence/v1` provider 中
+  `desktop-app:architecture.md` 与 `desktop-app:ux/menubar.md` 两个 Document
+  WorkUnit 已按本轮的确切内容状态（HEAD 加各自 blob 指纹）记录并复查为
+  `VERIFIED`。该 gate 与本 PASS 是两件事，且都不授权任何提交。
+
+#### 🔴 严重问题 — 必须修复
+
+无。
+
+#### 🟡 建议改进 — 推荐
+
+无。
+
+#### 🟢 优点
+
+- **R11-N1 已关闭，机械复核。** 对 `ux/menubar.md:225-350` 内每一条以 `┌`/`│`/
+  `└` 起始的行按显示列宽重算，全部恰为 46 列（340 pt 规格）或 36 列（280 pt narrow
+  规格），无一例外。唯二超出的两行是 `:312` 与 `:314`——它们的多出部分是框外注解
+  `← both disabled` 与 `← overlay, not its own reason`，正是 R11-N1 证据本身排除的
+  情形。Round 12 修复面覆盖了 R11-N1 未点名但同源的一处：`:290` 的
+  `MODELS … Unavailable` 行原先偏向另一侧，现已与框宽一致；把同类缺陷一次改净而不是
+  只改被点名的行，是正确的修复边界处理。
+- **R11-N2 已关闭。** `:346` 现为 `No local activity today`。判定路径独立复核：该
+  specimen 展示的是 current、无任何 freshness/reachability qualifier 的表面，因此适用
+  `:508` 的 `empty`（current）形态，而非 `:509` 的 snapshot 限定形态；改后与
+  `:508`、`:518` 三处一致。
+- **R9-F1 无回归。** 重排空白后结构完好：`:227` client tabs、`:229-232` magnitude
+  hero 与 period switcher、`:234`/`:238`/`:242`/`:246` 四段标题、`:249-252` footer
+  的 provider 只读状态与 `⌄`/Refresh/Sessions，均与 `:175-189` 的段落表逐行对应。
+  全文件仍无 `✕`、无平铺 `Settings…`/`Quit`。
+- **R9-F2 无回归。** Data requirements 的 period switcher 行（`:760`）仍为
+  `today`/`7d`/`30d` + 日 `buckets`；prototype blob 未变，`Month` 页签未回流。
+- **其余 specimen 文案与 copy 表一致。** 逐串比对：`Loading…`(`:261` / `:497`)、
+  `Cannot reach the AgentDeck helper`(`:281` / `:505`)、`Some data unavailable`
+  (`:295` / `:507`)、`Switch in progress`(`:314` / `:557`) 全部命中固定串。未再发现
+  R11-N2 同类的矛盾。
+- **前轮已关闭项无回归。** `architecture.md` blob 与 Round 8 声明、Round 9 与
+  Round 11 评判逐字节一致，R3-F1～R3-F5、R5-F1、R7-F1 的关闭证据按同一内容状态复用；
+  `ux/menubar.md` 侧的 R3-F6 truth table（`:120-152`）、R7-F1 的 `inFlight`-only
+  overlay（`:553-564`）、switch flow 的 `Retry`/`Dismiss`（`:569-591`）文字未变。
+  R5-N1 已于 Round 10 以"不复现"关闭，本轮在 `:548-550` 复看仍为单句。
+
+#### 📝 总结
+
+逐条处置：R11-N1 关闭，specimen 框线全部等宽，且修复顺带改净了同源但未被点名的
+一行；R11-N2 关闭，empty specimen 改用 copy 表固定的 `No local activity today`。
+R9-F1、R9-F2 与 Rounds 5、7、9 已关闭的全部 finding 均无回归。本轮无新发现，
+disposition 矩阵内没有任何未关闭项——minor 也没有——因此结论为 PASS。
+
+`architecture.md` 与 `ux/menubar.md` 两份文档的 Document gate 随本轮关闭：前者内容
+自 Round 8 起未变且其全部 finding 早已关闭（Round 9 与 Round 11 各确认一次），后者
+在本轮闭合最后两项。两份文档的 `Review` 单元格随之勾选。
+
+这两份文档各自就是一个 task——`.agent-instructions/beads.md` 的单一 lifecycle 覆盖
+文档、task anchor 与测试，差别只在工作产物是 `.md` 还是代码，不在它经过的状态。
+`development-workflow` 对 design/contract/process 目标不发出 Task checkpoint，那是
+关于该 Skill 输出的约定，不是"文档未交付"的判断；文档的提交检查点由项目发出，
+两个 Beads 文档任务因此进入 `awaiting_commit`，等待被授权的提交才 `closed`。
+本轮通过的是文档，不是 `menubar-experience` 这个实现 anchor——它仍无任何实现，
+其 `Dev`/`Review` 保持未勾选。
+
+审阅过但判定不成立、记录以免下轮重复：specimen 中若干只出现一次的英文串
+（`Cost incomplete`、`Section could not be read this refresh`、`Another operation is
+using AgentDeck state.`）在文档内没有对应的 `zh-Hans` 条目。这不是缺陷：`:393-397`
+的 Localization 规则把"每条用户可见串都本地化"交给 String Catalog，而 copy 表只固定
+那些措辞本身承载真实性要求的串（surface、qualifier、update check）。段级
+unavailable 标签与失败原因文案属派生内容，文档没有把它们声明为固定串，因此
+specimen 使用示例文本不构成与固定串的矛盾——这正是 R11-N2 与本项的区别。
+
+残余不确定性：本轮全部结论绑定在未提交的工作区内容上（HEAD 加 blob 指纹）。
+一次授权提交之后，CEv1 证据需按不可变 Git tree 重新记录；在那之前 gate 绑定的是
+候选状态而非提交状态。
+
+证据：`git rev-parse HEAD` -> `8beacdb1a412fc4cbe59f84cbe76512ee2c41025`；
+`git hash-object` -> `ux/menubar.md` `5303e0d1…`、`architecture.md` `e23ccc7c…`、
+`prototype/desktop-surfaces.html` `8a8c8e5d…`；
+`bash scripts/check-topic-docs.sh` -> exit 0；`make check-whitespace` -> exit 0；
+`git diff --check` -> exit 0。
+
+#### 📌 下一步
+
+```text
+评审：desktop-app / ux/widget.md
+```
