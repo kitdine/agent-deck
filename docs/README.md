@@ -84,6 +84,10 @@ conflict R5-F1. Round 6 closed all three and awaits independent Re-review.
 Independent Re-review Round 7 closed R3-F2 and R5-F1's wire-ownership defect,
 but kept R3-F3 open because terminal states do not retain the complete retry
 target, and raised R7-F1 for applying in-progress copy to terminal states.
+Round 8 closed both and, in the same pass, rederived both surfaces around the
+four questions the usage data answers after a design review of the rendered
+prototype; the App Group projection was extended to carry what they need. All
+four documents await review.
 Separately, both surface documents are now drafted: `ux/menubar.md` gained the
 rendered specimens it had never carried, and `ux/widget.md` was written. Neither
 is reviewed yet.

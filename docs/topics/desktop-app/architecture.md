@@ -690,11 +690,18 @@ the snapshot was generated and gone before the next one. Encoding it in the wire
 would put a value in the payload that is stale the moment it is written, and the
 App Group cache would persist that staleness across launches.
 
-It is therefore a **host-only presentation overlay**. While the controller is
-not `idle`, the host disables every option row and states why, without altering
-the Go-resolved tuple: an option's `ready`, `reason_code`, and arguments are
-unchanged, and the same option becomes selectable again when the controller
-returns to `idle`. Precedence is fixed — the in-flight overlay is shown instead
+It is therefore a **host-only presentation overlay**, and it applies in
+`inFlight` **only** — not in every non-idle state. `failed` and `indeterminate`
+are also not `idle`, and an earlier draft keyed the overlay on "not idle", which
+would have shown `Switch in progress` beside a switch that had already finished
+and failed. A terminal state is not progress. Those states present their own
+result and their retry and dismiss actions instead, per
+[`ux/menubar.md`](ux/menubar.md).
+
+While `inFlight`, the host disables every option row and states why, without
+altering the Go-resolved tuple: an option's `ready`, `reason_code`, and arguments
+are unchanged, and the same option becomes selectable again when the controller
+leaves `inFlight`. Precedence is fixed — the in-flight overlay is shown instead
 of an option's own `reason_code`, because a global block explains more than a
 per-option one while it holds. Its copy is `Switch in progress` /
 `正在切换`, specified with the rest of the switch flow in
@@ -893,8 +900,25 @@ A per-client limit would be wrong here — a switch rewrites client configuratio
 and completes in well under a second, so concurrency buys nothing and costs the
 ability to reason about which configuration state is current.
 
-State: `idle`, `inFlight(client, provider)`, `succeeded(client, provider)`,
-`failed(code)`, or `indeterminate`.
+Every non-idle state carries the **complete resolved option**, written here as
+`opt` = `(client, provider, credential?, via_wrapper)` — the same tuple the
+canonical invocation takes:
+
+```text
+idle
+inFlight(opt)
+succeeded(opt)
+failed(opt, code)
+indeterminate(opt)
+```
+
+`failed` and `indeterminate` carry `opt` and not merely a code, because retry
+re-runs the same target and there is nowhere else to read it from. A terminal
+state holding only `failed(code)` would force the controller to recover the
+target from presentation state, which is exactly the direction of dependency
+this design forbids: the view model observes the controller, never the reverse.
+The window may be closed when the user retries, so the presentation may not
+exist at that moment.
 
 | Concern | Rule |
 | --- | --- |
@@ -921,15 +945,20 @@ is the complete set of transitions:
 
 | From | Event | To | Note |
 | --- | --- | --- | --- |
-| `idle` | Confirmed switch | `inFlight` | The only entry point for a new switch |
-| `inFlight` | Conclusive success | `succeeded` | |
-| `inFlight` | Typed failure | `failed(code)` | |
-| `inFlight` | Indeterminate, opaque, or timeout after launch | `indeterminate` | Forces a replacement refresh |
-| `inFlight` | Any switch request | `inFlight` | Refused; this is what serialization protects |
-| `succeeded` | Replacement refresh completes, or 10 s elapse | `idle` | Whichever comes first |
-| `failed` / `indeterminate` | **Retry** | `inFlight` | Atomic; same target as the attempt that failed. No intermediate `idle` state is observable, so no other switch can interleave |
-| `failed` / `indeterminate` | **Dismiss** | `idle` | Clears the result without retrying |
-| `failed` / `indeterminate` | A switch request for a *different* target | refused | Recovery is bounded to retry and dismiss; starting a different switch requires dismissing first, so the user cannot silently abandon an unread failure |
+| `idle` | Confirmed switch for `opt` | `inFlight(opt)` | The only entry point for a new switch |
+| `inFlight(opt)` | Conclusive success | `succeeded(opt)` | |
+| `inFlight(opt)` | Typed failure | `failed(opt, code)` | `opt` is carried forward, not discarded |
+| `inFlight(opt)` | Indeterminate, opaque, or timeout after launch | `indeterminate(opt)` | Forces a replacement refresh |
+| `inFlight(opt)` | Any switch request | `inFlight(opt)` | Refused; this is what serialization protects |
+| `succeeded(opt)` | Replacement refresh completes, or 10 s elapse | `idle` | Whichever comes first |
+| `failed(opt, _)` / `indeterminate(opt)` | **Retry** | `inFlight(opt)` | Atomic, and `opt` comes from the state itself. No intermediate `idle` is observable, so no other switch can interleave |
+| `failed(opt, _)` / `indeterminate(opt)` | **Dismiss** | `idle` | Clears the result without retrying |
+| `failed(opt, _)` / `indeterminate(opt)` | A switch request for `opt' ≠ opt` | refused | Recovery is bounded to retry and dismiss; starting a different switch requires dismissing first, so the user cannot silently abandon an unread failure |
+
+Retry takes its target from `opt` in the state and never from what the user is
+looking at. The menu may be closed, the snapshot may have been replaced, and the
+option list may have been re-derived between the failure and the retry; none of
+that changes which switch is being retried.
 
 Retry is atomic rather than a reset followed by a start, because an observable
 `idle` between them would be a window in which serialization is not held, which

@@ -551,9 +551,11 @@ The one mutating action, specified end to end:
    `Switch in progress` / `正在切换`. This overlay is host state, not wire
    state: it does not alter an option's `ready`, `reason_code`, or arguments,
    and it is shown *instead of* an option's own reason while it holds, because
-   a global block explains more than a per-option one. When the controller
-   leaves the in-flight state the rows revert to exactly what the snapshot
-   says.
+   a global block explains more than a per-option one. The overlay belongs to
+   `inFlight` alone: the moment the controller reaches `failed` or
+   `indeterminate` the rows revert to exactly what the snapshot says, because a
+   finished switch is not progress and saying otherwise beside a failure would
+   be false.
 4. **Success** — the confirmation closes, the switched row updates from the next
    refresh, and a transient row states `Switched <client> to <provider>` /
    `已将 <client> 切换到 <provider>`. It clears on the next refresh or after 10

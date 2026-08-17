@@ -37,8 +37,8 @@ This file is the only status authority for this topic.
 - Contracts: [`ux/menubar.md`](ux/menubar.md) for presentation, and
   [`architecture.md`](architecture.md#menu-bar-wire-contract-extension) for the
   additive `provider.candidates` section, the switch command surface, its result
-  envelope, and switch operation ownership. Both remain under bounded design
-  repair after Re-review Round 7; see the Documents matrix below.
+  envelope, and switch operation ownership. Both were repaired in Round 8 and
+  await independent Re-review; see the Documents matrix below.
 - Implement provider, usage, cost, recent-session, warning, and health summaries.
 - Add safe provider quick actions, refresh behavior, login-item preference, and
   newer-version notification that opens the official download page only.
@@ -182,6 +182,17 @@ wire-ownership defect are closed, but R3-F3 remains open because terminal states
 do not retain the complete credential/wrapper target required by same-target
 retry. R7-F1 newly records that the architecture applies `Switch in progress`
 to every non-idle terminal state while the UX limits it to `inFlight`.
+
+Round 8 (2026-08-17): repair complete, `REOPEN` pending independent Re-review.
+Both findings are closed — every non-idle controller state now carries the
+complete resolved option so retry reads its target from the state, and the
+overlay applies in `inFlight` alone. The same round absorbed a design review of
+the rendered prototype: the popover lost invented window chrome, Settings, Quit
+and provider switching moved into the footer menu, and both surfaces were
+rederived around the four questions the usage data answers — magnitude,
+composition, trust, rhythm — with widget size selecting depth rather than
+subject. `architecture.md`'s App Group projection was extended to carry the
+fields those surfaces asked for.
 
 The target was documents, not task 3, which has no implementation. Task 3 stays
 blocked until a later Re-review passes, because it cannot be developed against

@@ -619,3 +619,69 @@ R3-F3 的 transition 冲突虽已修复，但 same-target 数据所有权仍不�
 R5-N1 仍是独立 readiness/improvement 项，不计入两项 material blocker。
 由于实现者仍须自行决定 retry target 存储和 terminal-row presentation，本轮为
 FAIL，两个 Document gate 保持未关闭。
+
+## Round 8 — 2026-08-17
+
+- Reviewed state: repair of Round 7's two open findings, plus the surface
+  redesign the user's design review required. Resulting blobs at HEAD:
+  `architecture.md` `e23ccc7cab3545f4e6c19ab15d5cc33e6261c4fb`,
+  `ux/menubar.md` `af8bdff81c344086fa399d1617605f15f3e2306e`,
+  `ux/widget.md` `c317583f8ab9a521c9b49d51c16462f4cb1319fe`.
+- Reviewer: claude-code (repair round — an independent Re-review is still
+  required before any Document cell may be ticked)
+- Scope: R3-F3 and R7-F1, and the design findings raised directly by the user
+  against the rendered prototype.
+
+- Round 7 findings, dispositions:
+  - **R3-F3** terminal states do not retain the retry target -> **Fixed.** Round
+    6 defined retry as atomic "for the same target" while the state enum was
+    `failed(code)` and `indeterminate`, neither of which carries one — the rule
+    was unimplementable from the state alone. Every non-idle state now carries
+    the complete resolved option `opt = (client, provider, credential?,
+    via_wrapper)`, the same tuple the canonical invocation takes, and retry reads
+    its target from the state rather than from presentation. The reason is
+    recorded: the window may be closed and the option list re-derived between the
+    failure and the retry, so the only reliable source is the controller itself,
+    and the view model observes the controller rather than the reverse.
+  - **R7-F1** in-progress copy applied to terminal states -> **Fixed.** The
+    overlay was keyed on "while the controller is not `idle`", and `failed` and
+    `indeterminate` are also not idle, so `Switch in progress` would have
+    appeared beside a switch that had already finished and failed. The overlay
+    now applies in `inFlight` alone; terminal states present their own result
+    with retry and dismiss. Both documents carry the correction.
+
+- Design findings raised against the prototype, dispositions:
+  - **Close button on the popover** -> **Fixed.** A `MenuBarExtra` popover is
+    dismissed by clicking away and has no title bar or close control. The board
+    had drawn window chrome that does not exist on this surface. Removed.
+  - **Settings and Quit in the reading surface** -> **Fixed.** Moved to the `⌄`
+    footer menu with provider switching, all three being rare deliberate acts.
+  - **Provider switching leading the surface** -> **Fixed.** Demoted to that
+    footer menu. Usage is what the surface is for.
+  - **Widget set was arbitrary** -> **Fixed.** Seven cards had been listed one
+    per interesting field, which answers nothing about why seven. The set is now
+    derived from the four questions the data can answer — magnitude,
+    composition, trust, rhythm — which closes it: a fifth widget requires a fifth
+    question. Size selects depth rather than subject, each family a superset of
+    the one beneath, giving twelve configurations and a natural Dynamic Type
+    degradation.
+  - **Popover had no derived sectioning** -> **Fixed.** Its body is the same four
+    kinds in the same order, so learning one surface teaches the other. Health
+    and warnings are not a fifth section; they qualify the other four and render
+    as the banner strip.
+  - **Too little of the available data was rendered** -> **Fixed upstream.**
+    `usage stats` already returns buckets, models, clients, providers with
+    attribution, cache components, activity, peak, coverage and unpriced models,
+    and the terminal report already draws a 7×24 heatmap. The App Group
+    projection is extended to carry them with stated bounds — 90 buckets, 12
+    models, 12 unpriced identifiers.
+
+- Process finding recorded against `docs/README.md`, not this topic: the
+  progression reviewed `ux/` and `architecture.md` in parallel, which let the
+  projection be treated as fixed and the surface trimmed to fit it. The surface
+  now leads and the contract answers, provisioning or refusing each requested
+  field with a stated ground.
+- Evidence: `make check-topic-docs` and `make check-whitespace` pass. No product
+  code, test, or configuration was changed; this remains a contract-document
+  repair.
+- Verdict: REOPEN — repair complete, awaiting independent Re-review
