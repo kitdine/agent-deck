@@ -439,9 +439,37 @@ envelope. It may contain only:
 - generation time, partial state, and last successful refresh time;
 - client identifiers and selected provider display identifiers;
 - aggregate usage totals, counts, pricing completeness, and cost strings;
+- token components — input, output, cached-read, cache-write — at total,
+  bucket, model, and client level, matching what `usage stats` already returns;
+- a bounded daily series: at most 90 buckets of `(date, tokens, cost, sessions)`
+  for the trend charts, plus the period's `peak` bucket and average;
+- a bounded 7×24 hour-of-week activity grid of relative intensity, the same
+  aggregate the terminal report already renders;
+- top-N model shares: at most 12 entries of
+  `(model, tokens, cost, share)`, deterministically ordered;
+- per-client and per-provider subtotals, each with its attribution quality
+  counts — determinable, inferred, unattributed;
+- pricing coverage: priced and unpriced counts, and at most 12
+  deterministically ordered unpriced model identifiers;
 - aggregate session availability and count;
 - aggregate health status and problem/warning/error counts;
 - allowlisted presentation-safe issue codes.
+
+Everything after the fourth bullet was added on 2026-08-17 because the surface
+documents asked for it. The reasoning is recorded because the earlier, thinner
+list was not defended anywhere: **a model identifier, a daily token total, an
+hour-of-week intensity, and an attribution count are aggregates over events, not
+content of them.** None names a session, a path, a prompt, a project, or a
+credential, and each is already computed by `usage stats` for the terminal
+report, so the projection copies a number the product already publishes rather
+than deriving new knowledge inside a sandboxed extension.
+
+The bounds are part of the contract, not an implementation detail. A projection
+is read by an extension on every timeline refresh and persists across launches;
+an unbounded series or model list would grow the cache without limit and make
+its read cost a function of history. Ninety buckets, twelve models, and twelve
+unpriced identifiers are the stated ceilings, and the producer truncates
+deterministically rather than sampling.
 
 It MUST NOT persist:
 

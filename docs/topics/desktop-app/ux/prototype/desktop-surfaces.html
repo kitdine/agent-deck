@@ -191,7 +191,15 @@
   .w-c { font-size: 11.5px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
   .w-f { font-size: 10px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
   .w-cols { display: flex; gap: 20px; }
+  .wdg.lg { width: 364px; height: 382px; }
   .heat { display: grid; grid-template-columns: repeat(17, 1fr); gap: 2.5px; }
+  /* 7 rows of 24 hours — the same aggregate the terminal report renders. */
+  .hw { display: grid; grid-template-columns: auto repeat(24, 1fr); gap: 2px; align-items: center; }
+  .hw .d { font: 8px/1 ui-monospace, "SF Mono", Menlo, monospace; color: var(--ink-3); padding-right: 3px; }
+  .hw i { aspect-ratio: 1; border-radius: 1.5px; display: block; }
+  .hwx { display: grid; grid-template-columns: auto repeat(24, 1fr); gap: 2px; }
+  .hwx span { font: 7.5px/1 ui-monospace, Menlo, monospace; color: var(--ink-3); text-align: center; }
+  .lgsec { border-top: 1px solid var(--rule); padding-top: 9px; margin-top: 9px; }
   .heat i { aspect-ratio: 1; border-radius: 1.5px; background: var(--grid); display: block; }
 
   .callout { border: 1px solid var(--pop-edge); border-radius: 8px; background: var(--card);
@@ -211,7 +219,7 @@
   <div class="meta">
     <span>popover 420pt · no chrome</span>
     <span>value shown in the menu bar</span>
-    <span>systemSmall 170 · systemMedium 364</span>
+    <span>small 170 · medium 364 · large 364×382</span>
     <span>light + dark</span>
   </div>
 
@@ -308,10 +316,28 @@
           </div>
 
           <div class="panel">
+            <div class="p-h"><span class="p-t">TOKEN MIX</span><span class="p-s">cache write is billed</span></div>
+            <div class="mrow"><span class="nm">Input</span><span class="tk">148.2K</span><span class="pc">12.3%</span></div>
+            <div class="mrow"><span class="nm">Output</span><span class="tk">96.4K</span><span class="pc">8.0%</span></div>
+            <div class="mrow"><span class="nm">Cache read</span><span class="tk">857.9K</span><span class="pc">71.2%</span></div>
+            <div class="mrow"><span class="nm">Cache write</span><span class="tk">102.4K</span><span class="pc">8.5%</span></div>
+            <div class="track" style="display:flex;gap:1px;background:none">
+              <i style="width:12.3%;background:var(--data)"></i><i style="width:8.0%;background:#7C5CD6"></i>
+              <i style="width:71.2%;background:var(--ok)"></i><i style="width:8.5%;background:var(--warn)"></i>
+            </div>
+          </div>
+
+          <div class="panel">
             <div class="p-h"><span class="p-t">ATTRIBUTION</span><span class="p-s">is the cost real?</span></div>
             <div class="qrow"><span class="nm">Determinable</span><span class="v">$11.90</span><span class="pc" style="color:var(--ok)">95.4%</span></div>
             <div class="qrow"><span class="nm">Inferred</span><span class="v">$0.57</span><span class="pc">4.6%</span></div>
             <div class="qrow"><span class="nm">Unattributed</span><span class="v">—</span><span class="pc">0</span></div>
+          </div>
+
+          <div class="panel">
+            <div class="p-h"><span class="p-t">PRICING COVERAGE</span><span class="p-s">76,220 / 79,072 priced</span></div>
+            <div class="track" style="height:5px"><i style="width:96.4%;background:var(--ok);height:5px"></i></div>
+            <div class="qrow" style="margin-top:6px"><span class="nm" style="color:var(--ink-3);font-size:11px">Unpriced: codex-auto-review · gpt-5-preview</span></div>
           </div>
         </div>
 
@@ -556,8 +582,10 @@
   <hr class="sep">
 
   <h2>Widgets</h2>
-  <p class="note">Four content-typed widgets rather than one generic card. A
-    widget that shows a single number is a worse menu bar item.</p>
+  <p class="note">Seven content-typed widgets across three families. A widget
+    that shows a single number is a worse menu bar item; each of these answers a
+    question the others cannot, and every value comes from a field
+    <code>usage stats</code> already returns.</p>
   <div class="gallery">
     <figure>
       <div class="wdg sm">
@@ -600,6 +628,87 @@
         <span class="cap-t">Usage · systemMedium</span>
         <span class="cap-d">Three periods side by side. One period alone cannot
           say whether today is expensive.</span>
+      </figcaption>
+    </figure>
+
+    <figure>
+      <div class="wdg lg">
+        <div class="w-h"><span class="w-k">AGENTDECK · TODAY</span><span class="w-f">updated 3m ago</span></div>
+        <div>
+          <div class="w-n" style="font-size:31px;color:var(--accent)">$12.47</div>
+          <div class="w-c">1.2M tokens · 143 events · 8 sessions</div>
+        </div>
+        <div class="w-cols" style="gap:16px">
+          <div><div class="w-k">7 DAYS</div><div class="w-n" style="font-size:17px">$78.20</div></div>
+          <div><div class="w-k">30 DAYS</div><div class="w-n" style="font-size:17px">$291.55</div></div>
+          <div><div class="w-k">CACHE HIT</div><div class="w-n" style="font-size:17px">71.2%</div></div>
+        </div>
+        <div class="lgsec">
+          <div class="w-k" style="margin-bottom:5px">30-DAY TREND</div>
+          <div class="bars" style="height:38px">
+            <i style="height:18%"></i><i style="height:26%"></i><i style="height:12%"></i><i style="height:31%"></i>
+            <i style="height:44%"></i><i style="height:22%"></i><i style="height:9%"></i><i style="height:38%"></i>
+            <i style="height:52%"></i><i style="height:41%"></i><i style="height:19%"></i><i style="height:63%"></i>
+            <i style="height:47%"></i><i style="height:29%"></i><i style="height:71%"></i><i style="height:55%"></i>
+            <i style="height:34%"></i><i style="height:88%"></i><i class="pk" style="height:100%"></i><i style="height:62%"></i>
+          </div>
+        </div>
+        <div class="lgsec">
+          <div class="w-k" style="margin-bottom:5px">MODELS</div>
+          <div class="mrow" style="font-size:11px"><span class="dot" style="background:var(--data)"></span><span class="nm">claude-opus-5</span><span class="pc">50.8%</span></div>
+          <div class="track"><i style="width:50.8%;background:var(--data)"></i></div>
+          <div class="mrow" style="font-size:11px"><span class="dot" style="background:#7C5CD6"></span><span class="nm">gpt-5</span><span class="pc">33.3%</span></div>
+          <div class="track"><i style="width:33.3%;background:#7C5CD6"></i></div>
+        </div>
+        <div class="lgsec">
+          <div class="w-h"><span class="w-k">ATTRIBUTION</span><span class="w-f" style="color:var(--ok)">95.4% determinable</span></div>
+          <div class="track" style="height:4px;margin-top:5px"><i style="width:95.4%;background:var(--ok);height:4px"></i></div>
+        </div>
+      </div>
+      <figcaption>
+        <span class="cap-t">Dashboard · systemLarge</span>
+        <span class="cap-d">Previously refused on the grounds that the projection
+          carried aggregates only — a contract I had written, treated as a fact.
+          With the projection extended it is the one family that answers today,
+          the trend, the mix, and whether the number is real, in one glance.</span>
+      </figcaption>
+    </figure>
+
+    <figure>
+      <div class="wdg md">
+        <div class="w-h"><span class="w-k">WHEN YOU WORK</span><span class="w-f">7×24 · last 30 days</span></div>
+        <div class="hw"><span class="d">Mon</span><i style="background:var(--grid)"></i><i style="background:var(--grid)"></i><i style="background:var(--grid)"></i><i style="background:var(--grid)"></i><i style="background:var(--grid)"></i><i style="background:var(--grid)"></i><i style="background:var(--grid)"></i><i style="background:color-mix(in oklab,var(--data) 25%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 15%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 90%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 45%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 45%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 100%,var(--grid))"></i><i style="background:var(--grid)"></i><i style="background:color-mix(in oklab,var(--data) 75%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 100%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 45%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 100%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 60%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 45%,var(--grid))"></i><i style="background:var(--grid)"></i><i style="background:color-mix(in oklab,var(--data) 40%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 40%,var(--grid))"></i><i style="background:var(--grid)"></i><span class="d">Tue</span><i style="background:var(--grid)"></i><i style="background:var(--grid)"></i><i style="background:var(--grid)"></i><i style="background:var(--grid)"></i><i style="background:var(--grid)"></i><i style="background:var(--grid)"></i><i style="background:var(--grid)"></i><i style="background:color-mix(in oklab,var(--data) 15%,var(--grid))"></i><i style="background:var(--grid)"></i><i style="background:color-mix(in oklab,var(--data) 100%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 90%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 45%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 100%,var(--grid))"></i><i style="background:var(--grid)"></i><i style="background:color-mix(in oklab,var(--data) 60%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 100%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 45%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 100%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 100%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 90%,var(--grid))"></i><i style="background:var(--grid)"></i><i style="background:color-mix(in oklab,var(--data) 15%,var(--grid))"></i><i style="background:var(--grid)"></i><i style="background:color-mix(in oklab,var(--data) 15%,var(--grid))"></i><span class="d">Wed</span><i style="background:var(--grid)"></i><i style="background:var(--grid)"></i><i style="background:var(--grid)"></i><i style="background:var(--grid)"></i><i style="background:var(--grid)"></i><i style="background:var(--grid)"></i><i style="background:var(--grid)"></i><i style="background:color-mix(in oklab,var(--data) 25%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 40%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 60%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 100%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 45%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 100%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 25%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 100%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 60%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 45%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 100%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 100%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 60%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 25%,var(--grid))"></i><i style="background:var(--grid)"></i><i style="background:var(--grid)"></i><i style="background:var(--grid)"></i><span class="d">Thu</span><i style="background:var(--grid)"></i><i style="background:var(--grid)"></i><i style="background:var(--grid)"></i><i style="background:var(--grid)"></i><i style="background:var(--grid)"></i><i style="background:var(--grid)"></i><i style="background:var(--grid)"></i><i style="background:color-mix(in oklab,var(--data) 15%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 40%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 100%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 90%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 75%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 90%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 40%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 75%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 75%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 60%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 60%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 60%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 45%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 25%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 40%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 25%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 40%,var(--grid))"></i><span class="d">Fri</span><i style="background:var(--grid)"></i><i style="background:var(--grid)"></i><i style="background:var(--grid)"></i><i style="background:var(--grid)"></i><i style="background:var(--grid)"></i><i style="background:var(--grid)"></i><i style="background:var(--grid)"></i><i style="background:color-mix(in oklab,var(--data) 25%,var(--grid))"></i><i style="background:var(--grid)"></i><i style="background:color-mix(in oklab,var(--data) 45%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 100%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 90%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 60%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 25%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 60%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 90%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 90%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 45%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 45%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 100%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 25%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 25%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 25%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 40%,var(--grid))"></i><span class="d">Sat</span><i style="background:var(--grid)"></i><i style="background:var(--grid)"></i><i style="background:var(--grid)"></i><i style="background:var(--grid)"></i><i style="background:var(--grid)"></i><i style="background:var(--grid)"></i><i style="background:var(--grid)"></i><i style="background:color-mix(in oklab,var(--data) 45%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 30%,var(--grid))"></i><i style="background:var(--grid)"></i><i style="background:var(--grid)"></i><i style="background:color-mix(in oklab,var(--data) 15%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 30%,var(--grid))"></i><i style="background:var(--grid)"></i><i style="background:var(--grid)"></i><i style="background:color-mix(in oklab,var(--data) 15%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 45%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 30%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 15%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 30%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 15%,var(--grid))"></i><i style="background:var(--grid)"></i><i style="background:color-mix(in oklab,var(--data) 30%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 15%,var(--grid))"></i><span class="d">Sun</span><i style="background:var(--grid)"></i><i style="background:var(--grid)"></i><i style="background:var(--grid)"></i><i style="background:var(--grid)"></i><i style="background:var(--grid)"></i><i style="background:var(--grid)"></i><i style="background:var(--grid)"></i><i style="background:var(--grid)"></i><i style="background:color-mix(in oklab,var(--data) 45%,var(--grid))"></i><i style="background:var(--grid)"></i><i style="background:color-mix(in oklab,var(--data) 30%,var(--grid))"></i><i style="background:var(--grid)"></i><i style="background:var(--grid)"></i><i style="background:color-mix(in oklab,var(--data) 15%,var(--grid))"></i><i style="background:var(--grid)"></i><i style="background:var(--grid)"></i><i style="background:color-mix(in oklab,var(--data) 30%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 30%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 30%,var(--grid))"></i><i style="background:var(--grid)"></i><i style="background:var(--grid)"></i><i style="background:color-mix(in oklab,var(--data) 30%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 30%,var(--grid))"></i><i style="background:color-mix(in oklab,var(--data) 45%,var(--grid))"></i></div><div class="hwx"><span></span><span>0</span><span></span><span></span><span></span><span></span><span></span><span>6</span><span></span><span></span><span></span><span></span><span></span><span>12</span><span></span><span></span><span></span><span></span><span></span><span>18</span><span></span><span></span><span></span><span></span><span></span></div>
+        <div class="w-f">Peak Tue 15:00 · quietest weekends</div>
+      </div>
+      <figcaption>
+        <span class="cap-t">Hour-of-week activity · systemMedium</span>
+        <span class="cap-d">The shape the terminal report already draws, and the
+          one a daily total cannot: which hours the spend actually happens in.</span>
+      </figcaption>
+    </figure>
+
+    <figure>
+      <div class="wdg md">
+        <div class="w-h"><span class="w-k">TOKEN MIX</span><span class="w-f">today</span></div>
+        <div class="w-cols" style="gap:14px">
+          <div><div class="w-k">CACHE READ</div><div class="w-n" style="font-size:18px;color:var(--ok)">71.2%</div></div>
+          <div><div class="w-k">CACHE WRITE</div><div class="w-n" style="font-size:18px;color:var(--warn)">8.5%</div></div>
+          <div><div class="w-k">INPUT</div><div class="w-n" style="font-size:18px">12.3%</div></div>
+          <div><div class="w-k">OUTPUT</div><div class="w-n" style="font-size:18px">8.0%</div></div>
+        </div>
+        <div class="track" style="display:flex;gap:1px;background:none;height:6px">
+          <i style="width:71.2%;background:var(--ok);height:6px"></i>
+          <i style="width:8.5%;background:var(--warn);height:6px"></i>
+          <i style="width:12.3%;background:var(--data);height:6px"></i>
+          <i style="width:8.0%;background:#7C5CD6;height:6px"></i>
+        </div>
+        <div class="w-f">Cache write is billed · 102.4K today</div>
+      </div>
+      <figcaption>
+        <span class="cap-t">Token mix · systemMedium</span>
+        <span class="cap-d">Cache write is billed and was reporting zero until
+          v0.4.1 backfilled it. A tracker that hides the component it just
+          learned to count is hiding its own correction.</span>
       </figcaption>
     </figure>
 
@@ -667,13 +776,21 @@
   </div>
 
   <div class="callout">
-    <b>What this forces upstream.</b> Trend, models, cache-hit and attribution
-    are not in the App Group projection <code>architecture.md</code> currently
-    permits, and the widget document rejected them on that basis — treating a
-    contract I wrote as if it were a law of nature. The projection must gain a
-    bounded daily series, top-N model shares, and attribution counts. None of it
-    is sensitive: model names and daily token totals carry no session content,
-    no paths, and no credentials.
+    <b>The data was always there.</b> <code>usage stats</code> returns
+    <code>range</code>, <code>timezone</code>, <code>totals</code>,
+    <code>buckets</code> groupable by hour / day / week / month,
+    <code>models</code>, <code>clients</code>, <code>providers</code> with
+    exact / estimated / unknown attribution, <code>cache_sessions</code>,
+    <code>activity</code>, <code>peak</code>, <code>coverage</code> and
+    <code>unpriced_models</code> — and totals, buckets, models and clients each
+    keep input, output, cached-read and cache-write separately. The terminal
+    report already draws a 7×24 activity heatmap. The first board rendered a
+    fraction of that and the widget document refused <code>systemLarge</code>
+    citing a projection that carried only aggregates. That projection is a
+    contract written days earlier, and treating it as a fact about the world is
+    how a surface ends up poor for no defended reason. It is extended now, with
+    stated bounds — 90 buckets, 12 models, 12 unpriced identifiers — because an
+    extension re-reads it on every timeline refresh.
   </div>
 
   <div class="callout">

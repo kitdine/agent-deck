@@ -372,15 +372,45 @@ stage below states what it produces and when it is finished.
 | --- | --- | --- | --- |
 | 1. Boundary | `设计：<topic>` | `requirements.md`, plus `tasks.md` holding only the Documents matrix | The boundary is decided and the intended document set is declared |
 | 2. Boundary review | `评审：<topic> / requirements.md` | A review record | `Verdict: PASS` |
-| 3. Specification | `设计：<topic> / architecture.md`, `设计：<topic> / ux/<surface>.md` | One document per invocation | Every document the matrix declares is drafted |
-| 4. Specification review | `评审：<topic> / <document>` | One record per document | Each passes; they are independent and may run in parallel |
-| 5. Decomposition | `设计：<topic> / tasks.md` | The Tasks matrix | Every task has an anchor, its files, and a verification level |
-| 6. Decomposition review | `评审：<topic> / tasks.md` | A review record | `Verdict: PASS`; the topic is now developable |
-| 7. Development | `开发：<topic> / <task-anchor>` and its review | Code and tests | Per the Tasks matrix |
+| 3. Surface framework | `设计：<topic> / ux/<surface>.md` | Layout, hierarchy, states, and a **data requirements list** naming the field each element needs | A reviewer can see the surface and read what it demands |
+| 4. Framework review | `评审：<topic> / ux/<surface>.md` | A review record | `Verdict: PASS` on the framework and its requirements list |
+| 5. Contract | `设计：<topic> / architecture.md` | Contracts and boundaries, provisioning each requested field or vetoing it with a stated ground | Every requested field is provisioned or refused in writing |
+| 6. Contract review | `评审：<topic> / architecture.md` | A review record | `Verdict: PASS` |
+| 7. Surface final | `设计：<topic> / ux/<surface>.md` | The surface absorbing any veto | No element depends on a field the contract refused |
+| 8. Decomposition | `设计：<topic> / tasks.md` | The Tasks matrix | Every task has an anchor, its files, and a verification level |
+| 9. Decomposition review | `评审：<topic> / tasks.md` | A review record | `Verdict: PASS`; the topic is now developable |
+| 10. Development | `开发：<topic> / <task-anchor>` and its review | Code and tests | Per the Tasks matrix |
 
-Stages 1 through 6 turn a topic into something developable; stage 7 builds it.
+A topic with no user-visible surface skips stages 3, 4, and 7 and runs
+requirements → contract → decomposition.
+
+Stages 1 through 9 turn a topic into something developable; stage 10 builds it.
 The boundary between them is `tasks.md` passing review — before that there is no
 task to implement, and after it every task's scope is fixed.
+
+##### Why the surface leads the contract
+
+An earlier version of this table put `ux/` and `architecture.md` in one stage,
+reviewed in parallel, on the reasoning that their questions and evidence are
+independent. They are not, and the desktop topic proved it: the menu-bar surface
+needed a daily series, model shares, and attribution counts that the App Group
+projection did not carry, and rather than asking for them the surface document
+recorded them as rejected — citing a contract written days earlier as though it
+were a fact about the world. The result was a poor surface justified by a
+constraint nobody had defended.
+
+The dependency is real and it is a cycle: the surface cannot be finished without
+knowing what data exists, and the contract cannot be sized without knowing what
+the surface needs. What breaks the cycle is that the two sides are not
+symmetric. **A contract can nearly always be extended to carry more derived,
+non-sensitive data; a surface can never invent data that is not there.** So the
+surface goes first and states what it needs, and the contract answers.
+
+That gives architecture a specific obligation and a specific power. It must
+provision each requested field or refuse it, and a refusal names its ground —
+privacy, cost, or genuine unavailability — in writing, where a reviewer can
+disagree with it. "The contract does not carry that" is not a ground; it is the
+thing under discussion.
 
 **Decomposition is stage 5, not stage 1.** A task is a unit of development work,
 and what work exists is not knowable from a boundary alone; it is knowable from
@@ -424,9 +454,10 @@ The stage order is not a convention; it falls out of the review questions.
 - **`requirements.md` first** because every other document's scope derives from
   its boundary. Findings raised against a surface or contract whose boundary is
   still open evaporate when the boundary moves, so that review is spent twice.
-- **`ux/<surface>.md` and `architecture.md` in parallel** because their
-  questions and evidence are different and neither verdict depends on the other.
-  Serializing them buys nothing.
+- **`ux/<surface>.md` before `architecture.md`**, because a surface states what
+  data it needs and a contract answers. Reviewing them in parallel invites the
+  contract to be treated as fixed and the surface to be trimmed to fit it, which
+  is exactly the failure the desktop topic recorded.
 - **`tasks.md` last** because its question is whether the breakdown covers the
   other documents, which cannot be answered — or even written — before they
   exist.
@@ -465,8 +496,8 @@ structure above — the author asserts it, the reviewer asks it.
 | Document | Ready to review when |
 | --- | --- |
 | `requirements.md` | Goals, non-goals, and acceptance boundary are stated; no TBD remains; it lists every user-visible surface **by its `ux/<surface>.md` path**, or says the topic adds none, and declares whether new contracts are in scope |
-| `ux/<surface>.md` | Every user-visible state has a presentation rule, copy in every shipped language, and a rendered specimen; no placeholder remains |
-| `architecture.md` | Every new contract is fully specified, and every claim about existing code names where it was verified |
+| `ux/<surface>.md` | Every user-visible state has a presentation rule, copy in every shipped language, and a rendered specimen; every element names the data field it needs; no placeholder remains |
+| `architecture.md` | Every new contract is fully specified, every claim about existing code names where it was verified, and every field a surface requested is provisioned or refused with a stated ground |
 | `tasks.md` | Every task has an anchor, its files, and a verification level, and the set covers the other documents' scope with nothing missing and nothing beyond it |
 
 `tasks.md` appears in its own Documents matrix. Reviewing it asks whether the
