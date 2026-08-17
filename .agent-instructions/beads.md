@@ -60,12 +60,37 @@ see the progression in `docs/README.md`. Beads carried only `Development:` and
 during it a `Development:` task sat claimed and `in_progress` while nothing was
 being implemented, which is the opposite of what dispatch should report.
 
-Each document a topic's Documents matrix declares therefore gets its own pair:
+Each document a topic's Documents matrix declares gets **one** task, whose
+status walks its lifecycle:
 
 ```text
-ad-<topic>-doc-<document>-design     设计：<topic> / <document>
-ad-<topic>-doc-<document>-review     评审：<topic> / <document>
+ad-<topic>-doc-<document>-design     文档：<topic> / <document>
+
+open -> drafting -> in_review -> repairing -> in_review -> closed
 ```
+
+One task, not a design/review pair. A document is one object and these are
+stages of that object, so a second task duplicates it. The pair model also does
+not survive contact with a real review: under the Repair and Re-review rule
+below, one document that failed review three times would carry a design task, a
+review task, three repair tasks and three re-review tasks — eight objects for
+one file. `ux/menubar.md` reached eight rounds.
+
+`drafting`, `in_review`, and `repairing` are custom statuses, registered once
+with `bd config set status.custom "drafting,in_review,repairing"`. The built-in
+set is `open, in_progress, blocked, deferred, closed, pinned, hooked`.
+
+`closed` means the latest applicable review round is `Verdict: PASS` — not that
+the document was written. A drafted but unreviewed document is `open`; a
+document whose repair is complete and awaiting an independent re-review is
+`in_review`.
+
+A `round-N` label counts how many times review sent the document back. It
+increments on every `REOPEN` and is never reset, so a document that keeps
+bouncing is visible as a number rather than as a comment someone has to read.
+Repair and Re-review are therefore status transitions on this one task rather
+than new tasks; the rule below applies unchanged to task reviews, where the
+implementation and its review are genuinely separate objects.
 
 `<document>` is the matrix row flattened: `req`, `arch`, `tasks`,
 `ux-<surface>`. Use topic-scoped IDs with no version segment, following the
@@ -73,14 +98,10 @@ ad-<topic>-doc-<document>-review     评审：<topic> / <document>
 put version membership in a second place. A row marked `n/a` gets no task.
 
 Ordering follows the review order, expressed as dependencies: every other
-document's design task depends on the requirements review task, and the
-`tasks` design task depends on every other document's review task. A task
-anchor's `Development:` task depends on the `tasks` review task, which is what
-makes "the specification has not passed" a dispatch fact rather than something
-a reader must infer.
-
-Repair and Re-review tasks are created against a document review exactly as
-`State transitions and authority` already requires for a task review.
+document task depends on the requirements document task, and the `tasks`
+document task depends on every other one. A task anchor's `Development:` task
+depends on the `tasks` document task, which is what makes "the specification has
+not passed" a dispatch fact rather than something a reader must infer.
 
 ## State transitions and authority
 
@@ -102,6 +123,10 @@ coordination projection. Beads closure adds no completion gate.
   release its claim, and create bounded Repair and Re-review tasks and Gates
   linked back to that Review task. The original Review task remains the
   downstream coordination gate and closes only after successful Re-review.
+  This applies to **task** reviews, where the implementation and its review are
+  separate objects with separate claims. A document task instead moves to
+  `repairing` and increments its `round-N` label, because there is only one
+  object; see `Document work is dispatched too`.
 - A Beads task and a CEv1 WorkUnit need not map one-to-one. A concise handoff
   comment may link stable task, WorkUnit, content-state, and evidence
   identifiers; do not copy criteria, raw evidence, test output, review
