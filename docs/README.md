@@ -322,7 +322,7 @@ writer is how the two drift apart.
 - Revise the set — the matrix rows — whenever a task's scope names a surface or
   contract domain it does not cover. Revising the set adds a row; it does not
   write the document. That is a later `设计：<topic> / <document>`.
-- `make check-topic-docs` audits the result, and the `tasks.md` reviewer runs
+- `bash scripts/check-topic-docs.sh` audits the result, and the `tasks.md` reviewer runs
   it, because that review is where the set is ratified. It compares three things
   that must agree — what the matrix declares, what exists on disk, and what the
   topic's own `requirements.md` names as a surface — so a required document that

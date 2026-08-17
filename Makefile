@@ -23,7 +23,7 @@ FORCE ?= 0
 COMPLETION_SHELL ?= auto
 COMPLETION_RC ?=
 
-.PHONY: build build-all release-tag release-archive check-arm64-size check-go-test-runner check-install check-privacy check-release-distribution check-whitespace check-topic-docs install uninstall release-verify clean test test-race vet verify prices-regen check-prices-reproducible test-macos-app build-macos-app
+.PHONY: build build-all release-tag release-archive check-arm64-size check-go-test-runner check-install check-privacy check-release-distribution check-whitespace install uninstall release-verify clean test test-race vet verify prices-regen check-prices-reproducible test-macos-app build-macos-app
 
 .PHONY: release-artifact-verify
 
@@ -106,12 +106,10 @@ check-privacy:
 check-whitespace:
 	@bash scripts/check-whitespace.sh
 
-# Documentation-workflow tool, deliberately NOT in `verify`: it reads only
-# docs/topics/**, so no code change can fail it, and coupling it to the build
-# would fail a code-only CI run for a missing design document. It is invoked by
-# the workflow when a topic's documents change; see docs/README.md.
-check-topic-docs:
-	@bash scripts/check-topic-docs.sh
+# The topic-document audit is NOT a make target. It is a documentation-workflow
+# tool that reads only docs/topics/**, participates in no build, `verify`, or
+# release path, and a make alias for it only implied otherwise. Run it directly:
+# `bash scripts/check-topic-docs.sh`; see docs/README.md.
 
 check-release-distribution:
 	bash scripts/test-release-distribution.sh

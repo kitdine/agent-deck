@@ -632,12 +632,12 @@ For an active topic that defines per-document and per-task review records and
 status matrices, `评审：...` and `复评：...` authorize only the review-artifact
 updates required by that topic:
 
-- run `make check-topic-docs` when the reviewed subject is a topic's
+- run `bash scripts/check-topic-docs.sh` when the reviewed subject is a topic's
   `tasks.md`, because that review ratifies the document set and the audit is
   what makes the set falsifiable. It is a workflow obligation, not a build
-  step: it reads only `docs/topics/**` and is deliberately absent from
-  `make verify`, where a code-only change would otherwise fail on a missing
-  design document;
+  step: it reads only `docs/topics/**`, belongs to no build, `verify`, or
+  release path, and therefore has no make target — a make alias would only
+  imply the opposite;
 - move the subject's Beads task to the status that phase owns and comment the
   disposition, in the same action rather than afterwards. The transition table
   is in `.agent-instructions/beads.md`, and it covers documents and task anchors

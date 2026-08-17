@@ -123,7 +123,7 @@ and age, copy in both languages, timeline construction, and the negative
 privacy assertions.
 
 Both remain unreviewed, so neither surface may enter development yet. The
-document set is audited by `make check-topic-docs`, which compares this matrix
+document set is audited by `bash scripts/check-topic-docs.sh`, which compares this matrix
 against the files on disk and against the surfaces `requirements.md` names.
 
 The foundation runtime contract in `architecture.md` was reviewed and approved
