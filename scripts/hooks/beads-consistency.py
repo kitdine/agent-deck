@@ -125,17 +125,46 @@ def latest_verdict(path: Path) -> str | None:
     return found[-1].upper() if found else None
 
 
-def topic_of(bead: dict[str, Any]) -> str | None:
-    title = str(bead.get("title") or "")
-    doc = DOC_TITLE.match(title)
-    if doc:
-        return doc.group(1)
-    return None
+def doc_subject_of(bead: dict[str, Any]) -> tuple[str, str] | None:
+    """`(topic, document)` for a `文档：<topic> / <document>` title.
+
+    Both halves matter. A topic owns several document tasks, and each one is
+    reviewed on its own record with its own verdict, so keying by topic alone
+    makes one record's verdict speak for every sibling document.
+    """
+    doc = DOC_TITLE.match(str(bead.get("title") or ""))
+    if not doc:
+        return None
+    return doc.group(1), doc.group(2).strip()
 
 
 def anchor_of(bead: dict[str, Any]) -> str | None:
     task = TASK_TITLE.match(str(bead.get("title") or ""))
     return task.group(1).strip() if task else None
+
+
+def review_subject(rel: str) -> tuple[str, str] | None:
+    """`docs/topics/<topic>/reviews/<subject>.md` -> `(topic, subject)`."""
+    parts = Path(rel).parts
+    if (
+        len(parts) != 5
+        or parts[0] != "docs"
+        or parts[1] != "topics"
+        or parts[3] != "reviews"
+    ):
+        return None
+    return parts[2], Path(parts[4]).stem
+
+
+def record_stem(document: str) -> str:
+    """The record name a document is reviewed under.
+
+    `.agent-instructions/review-records.md` names a document's record after the
+    document itself, flattening `ux/<surface>.md` to `ux-<surface>.md`. A record
+    whose stem matches no document task is a task-anchor record, and it says
+    nothing about any document's status.
+    """
+    return document[:-3].replace("/", "-") if document.endswith(".md") else document
 
 
 def findings(root: Path) -> list[str]:
@@ -147,28 +176,37 @@ def findings(root: Path) -> list[str]:
     touched_reviews = [p for p in changed if "/reviews/" in p and p.endswith(".md")]
     if touched_reviews:
         in_review = bd_json(["list", "--status", "in_review"]) or []
-        by_topic: dict[str, list[str]] = {}
+        # Keyed by the record each task is reviewed under, so a verdict reaches
+        # exactly the one task whose subject it is.
+        by_record: dict[tuple[str, str], str] = {}
         for bead in in_review:
             if not isinstance(bead, dict):
                 continue
-            topic = topic_of(bead)
-            if topic:
-                by_topic.setdefault(topic, []).append(str(bead.get("id")))
-        for rel in touched_reviews:
-            parts = Path(rel).parts
-            # docs/topics/<topic>/reviews/<record>.md
-            if len(parts) < 5 or parts[0] != "docs" or parts[1] != "topics":
+            subject = doc_subject_of(bead)
+            if subject:
+                topic, document = subject
+                by_record[(topic, record_stem(document))] = str(bead.get("id"))
                 continue
-            topic = parts[2]
+            anchor = anchor_of(bead)
+            if anchor:
+                # A task-anchor record carries the topic in its own task title
+                # only loosely, so match it under every topic; the stem is what
+                # disambiguates.
+                by_record[("", anchor)] = str(bead.get("id"))
+        for rel in touched_reviews:
+            subject = review_subject(rel)
+            if not subject:
+                continue
+            topic, stem = subject
             verdict = latest_verdict(root / rel)
             if verdict != "PASS":
                 continue
-            stuck = by_topic.get(topic)
+            stuck = by_record.get((topic, stem)) or by_record.get(("", stem))
             if stuck:
                 notes.append(
-                    f"{rel} records Verdict: PASS, but {', '.join(sorted(stuck))} "
-                    f"({topic}) is still `in_review`. A PASS moves its task to "
-                    f"`awaiting_commit`; see .agent-instructions/beads.md."
+                    f"{rel} records Verdict: PASS, but its subject's task "
+                    f"{stuck} ({topic}) is still `in_review`. A PASS moves that "
+                    f"task to `awaiting_commit`; see .agent-instructions/beads.md."
                 )
 
     # 2. A task is parked at `awaiting_commit` while the tree is clean. Either
@@ -195,25 +233,25 @@ def findings(root: Path) -> list[str]:
     ]
     if touched_docs:
         openish = bd_json(["list", "--status", "open"]) or []
-        idle: dict[str, list[str]] = {}
+        idle: dict[tuple[str, str], str] = {}
         for bead in openish:
             if not isinstance(bead, dict):
                 continue
-            topic = topic_of(bead)
-            if topic:
-                idle.setdefault(topic, []).append(str(bead.get("id")))
-        seen: set[str] = set()
+            subject = doc_subject_of(bead)
+            if subject:
+                idle[subject] = str(bead.get("id"))
         for rel in touched_docs:
             parts = Path(rel).parts
             if len(parts) < 4 or parts[0] != "docs" or parts[1] != "topics":
                 continue
-            topic = parts[2]
-            if topic in seen or topic not in idle:
+            # docs/topics/<topic>/<document>, where <document> may be `ux/<x>.md`
+            subject = (parts[2], "/".join(parts[3:]))
+            stuck = idle.get(subject)
+            if not stuck:
                 continue
-            seen.add(topic)
             notes.append(
-                f"{rel} is being edited, but {', '.join(sorted(idle[topic]))} "
-                f"({topic}) is still `open`. Drafting a document is the "
+                f"{rel} is being edited, but its task {stuck} "
+                f"({parts[2]}) is still `open`. Drafting a document is the "
                 f"`in_progress` state, and it should be claimed."
             )
 
