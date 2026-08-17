@@ -38,7 +38,7 @@ This file is the only status authority for this topic.
   [`architecture.md`](architecture.md#menu-bar-wire-contract-extension) for the
   additive `provider.candidates` section, the switch command surface, its result
   envelope, and switch operation ownership. Both remain under bounded design
-  repair after Re-review Round 5; see the Documents matrix below.
+  repair after Re-review Round 7; see the Documents matrix below.
 - Implement provider, usage, cost, recent-session, warning, and health summaries.
 - Add safe provider quick actions, refresh behavior, login-item preference, and
   newer-version notification that opens the official download page only.
@@ -92,22 +92,23 @@ This file is the only status authority for this topic.
 | --- | --- | --- |
 | requirements.md | [x] | [ ] |
 | architecture.md | [x] | [ ] |
-| ux/menubar.md | [ ] | [ ] |
-| ux/widget.md | [ ] | [ ] |
+| ux/menubar.md | [x] | [ ] |
+| ux/widget.md | [x] | [ ] |
 | tasks.md | [x] | [ ] |
 
-`ux/menubar.md` states geometry as numbers — 340 pt default, 280 pt narrow
-bound, 560 pt maximum height — and carries no rendered specimen of any state, so
-its `Draft` tick predates the specimen requirement and its readiness must be
-re-asserted during the R3 repair. The repair is the right moment: five of the
-six findings already reopen this surface's contracts.
+`ux/menubar.md` and `ux/widget.md` are both drafted as of 2026-08-16.
+`ux/menubar.md` now carries rendered specimens for healthy, loading, retained
+offline, partial with incomplete pricing, the switch confirmation and its
+in-flight and failed states, the 280 pt narrow bound, and empty — the readiness
+condition it previously failed while stating geometry only as numbers.
+`ux/widget.md` is new: it specifies both widget families, the App Intent
+configuration, the surface/qualifier table over cache presence, version support
+and age, copy in both languages, timeline construction, and the negative
+privacy assertions.
 
-`ux/widget.md` is required and not yet written. Task 4 `desktop-widget` adds
-WidgetKit timelines and App Intent configuration, which is a second user-visible
-surface, and reviewing `ux/menubar.md` says nothing about whether the widget's
-states and copy are complete. The row is empty rather than absent so the gap is
-visible; task 4 cannot start development against a surface with no interaction
-contract.
+Both remain unreviewed, so neither surface may enter development yet. The
+document set is audited by `make check-topic-docs`, which compares this matrix
+against the files on disk and against the surfaces `requirements.md` names.
 
 The foundation runtime contract in `architecture.md` was reviewed and approved
 under the previous per-task-design convention; that history is in
@@ -176,6 +177,12 @@ UX repairs followed: `Cancel` on a finished failure became `Dismiss`,
 manual checklist items were added. R5-N1 was recorded but not authorized, and is
 untouched.
 
+Independent Re-review Round 7 (2026-08-16): **FAIL**. R3-F2 and R5-F1's
+wire-ownership defect are closed, but R3-F3 remains open because terminal states
+do not retain the complete credential/wrapper target required by same-target
+retry. R7-F1 newly records that the architecture applies `Switch in progress`
+to every non-idle terminal state while the UX limits it to `inFlight`.
+
 The target was documents, not task 3, which has no implementation. Task 3 stays
 blocked until a later Re-review passes, because it cannot be developed against
 a specification whose latest verdict is not `PASS`.
@@ -187,7 +194,7 @@ the Re-review of the six findings; both keep their `Draft` cells unticked.
 Next action:
 
 ```text
-修复：`desktop-app` / `reviews/menubar-experience.md`（R3-F2、R3-F3、R5-F1）
+修复：`desktop-app` / `reviews/menubar-experience.md`（R3-F3、R7-F1）
 ```
 
 Task 1 was blocked on the `v0.4.0` session DTO contract; that dependency is now

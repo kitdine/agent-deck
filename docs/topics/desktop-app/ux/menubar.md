@@ -187,6 +187,139 @@ The menu-bar window presents, in order:
 Every section that reports `available: false` shows an explicit unavailable
 label in place of its values.
 
+### Rendered specimens
+
+Rules alone cannot be reviewed for legibility, so each state is shown as it
+renders. These are approximations of a SwiftUI surface: they settle hierarchy,
+copy, state coverage, and behavior at the narrow bound, and settle nothing about
+real typography, Dynamic Type, or VoiceOver order — those belong to the manual
+checklist. Width shown is the 340 pt default unless noted.
+
+Healthy, everything available:
+
+```text
+┌────────────────────────────────────────────┐
+│ AgentDeck                          ⋯   ✕   │
+│                                            │
+│ PROVIDER                                   │
+│   Codex     aigocode · wrapper    2h ago   │
+│   Claude    official              1d ago   │
+│                                            │
+│ USAGE                          today       │
+│   1,204,881 tokens · 143 events · 8 sess.  │
+│                                            │
+│ COST                                       │
+│   $12.47 provider · $9.98 catalog base     │
+│                                            │
+│ RECENT SESSIONS                            │
+│   Codex   agent-deck   gpt-5      12m ago  │
+│   Claude  ai-tools     opus-5     3h ago   │
+│                                            │
+│ HEALTH                            ✓ ok     │
+│                                            │
+│ ─────────────────────────────────────────  │
+│ Refresh          Settings…        Quit     │
+│ Updated 3m ago                             │
+└────────────────────────────────────────────┘
+```
+
+Loading, no snapshot ever retained — the only state that shows no data:
+
+```text
+┌────────────────────────────────────────────┐
+│ AgentDeck                          ⋯   ✕   │
+│                                            │
+│   Loading…                                 │
+│                                            │
+└────────────────────────────────────────────┘
+```
+
+Retained snapshot with the helper unreachable — `dataSurface` + `stale` +
+`offline`. The data stays; the qualifiers explain it:
+
+```text
+┌────────────────────────────────────────────┐
+│ AgentDeck                       ⚠  ⋯   ✕   │
+│                                            │
+│ PROVIDER                                   │
+│   Codex     aigocode · wrapper    2h ago   │
+│   Claude    official              1d ago   │
+│                                            │
+│ USAGE                          today       │
+│   1,204,881 tokens · 143 events · 8 sess.  │
+│   … sections unchanged …                   │
+│                                            │
+│ ─────────────────────────────────────────  │
+│ Updated 41m ago                            │
+│ Cannot reach the AgentDeck helper          │
+└────────────────────────────────────────────┘
+```
+
+Partial snapshot with incomplete pricing — an unavailable section is labelled,
+never blank, and the cost is shown with its qualifier rather than suppressed:
+
+```text
+│ COST                                       │
+│   $12.47 provider · $9.98 catalog base     │
+│   Cost incomplete · 37 unpriced            │
+│                                            │
+│ RECENT SESSIONS                            │
+│   Unavailable                              │
+│                                            │
+│ ─────────────────────────────────────────  │
+│ Some data unavailable                      │
+```
+
+Switch confirmation and its in-flight state, showing that every other row is
+disabled with the overlay copy rather than its own reason:
+
+```text
+┌────────────────────────────────────────────┐
+│ Switch Codex to aigocode using credential  │
+│ "work", through the wrapper?               │
+│                                            │
+│              [ Cancel ]  [ Switch ]        │
+└────────────────────────────────────────────┘
+
+in flight
+┌────────────────────────────────────────────┐
+│ Switching…                                 │
+│              [ Cancel ]  [ Switch ]        │  ← both disabled
+│ ─────────────────────────────────────────  │
+│   Claude → official      Switch in progress│  ← overlay, not its own reason
+└────────────────────────────────────────────┘
+
+failed
+┌────────────────────────────────────────────┐
+│ Switch failed · state_busy                 │
+│ Another operation is using AgentDeck state.│
+│              [ Dismiss ]  [ Retry ]        │
+└────────────────────────────────────────────┘
+```
+
+At the 280 pt narrow bound, values wrap onto labelled continuation lines rather
+than truncating:
+
+```text
+┌──────────────────────────────────┐
+│ PROVIDER                         │
+│   Codex                          │
+│     aigocode · wrapper           │
+│     2h ago                       │
+│                                  │
+│ USAGE                    today   │
+│   1,204,881 tokens               │
+│   143 events · 8 sessions        │
+└──────────────────────────────────┘
+```
+
+Empty, distinct from unavailable — a real zero rather than an unknown:
+
+```text
+│ USAGE                          today       │
+│   No activity today                        │
+```
+
 ### Actions
 
 | Action | Behavior |

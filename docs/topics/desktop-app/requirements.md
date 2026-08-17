@@ -98,9 +98,13 @@ separate from arbitrary third-party Hooks.
 
 ## Surfaces and contracts
 
-This topic adds two user-visible surfaces: the menu-bar host, specified in
-[`ux/menubar.md`](ux/menubar.md), and the WidgetKit widget, whose interaction
-contract is not written yet. It introduces new contracts — the desktop wire
+This topic adds two user-visible surfaces, each named by its document so an
+audit can compare this list against what exists:
+
+- the menu-bar host — [`ux/menubar.md`](ux/menubar.md)
+- the WidgetKit widget — [`ux/widget.md`](ux/widget.md)
+
+It introduces new contracts — the desktop wire
 contract, the foundation runtime boundary, the App Group projection, and the
 packaging and distribution layout — specified in
 [`architecture.md`](architecture.md). The document set itself is declared in

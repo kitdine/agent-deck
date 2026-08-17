@@ -23,7 +23,7 @@ FORCE ?= 0
 COMPLETION_SHELL ?= auto
 COMPLETION_RC ?=
 
-.PHONY: build build-all release-tag release-archive check-arm64-size check-go-test-runner check-install check-privacy check-release-distribution check-whitespace install uninstall release-verify clean test test-race vet verify prices-regen check-prices-reproducible test-macos-app build-macos-app
+.PHONY: build build-all release-tag release-archive check-arm64-size check-go-test-runner check-install check-privacy check-release-distribution check-whitespace check-topic-docs install uninstall release-verify clean test test-race vet verify prices-regen check-prices-reproducible test-macos-app build-macos-app
 
 .PHONY: release-artifact-verify
 
@@ -85,7 +85,7 @@ prices-regen:
 check-prices-reproducible:
 	env GOCACHE=$(GOCACHE) GOMODCACHE=$(GOMODCACHE) $(GO) run -mod=vendor ./tools/genprices -check
 
-verify: check-whitespace check-go-test-runner test test-race vet
+verify: check-whitespace check-topic-docs check-go-test-runner test test-race vet
 
 install: build
 	@PREFIX="$(PREFIX)" BINDIR="$(BINDIR)" DATADIR="$(DATADIR)" FORCE="$(FORCE)" COMPLETION_SHELL="$(COMPLETION_SHELL)" COMPLETION_RC="$(COMPLETION_RC)" bash scripts/manage-install.sh install "$(DIST_DIR)/agentdeck"
@@ -105,6 +105,12 @@ check-privacy:
 # committed stays visible instead of only surfacing in diffs that touch it.
 check-whitespace:
 	@bash scripts/check-whitespace.sh
+
+# Compares each topic's Documents matrix against the files on disk and against
+# the surfaces its own requirements.md names, so a missing required document
+# fails a check rather than waiting to be noticed.
+check-topic-docs:
+	@bash scripts/check-topic-docs.sh
 
 check-release-distribution:
 	bash scripts/test-release-distribution.sh

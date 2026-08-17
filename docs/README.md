@@ -28,12 +28,15 @@ detail belongs in [the archive](archive/README.md), not in this index.
 - [Homebrew tap PR #18](https://github.com/kitdine/homebrew-tap/pull/18)
   merged the reviewed stable `Formula/agentdeck.rb` update. The workflow verified
   `brew install`, `brew test`, and bash, zsh, and fish completions.
-- Beads coordination is **BLOCKED**: its database is at schema v65 while the
-  `bd` binary knows up to v53, twelve migrations behind. Reads work only under
-  `BD_IGNORE_SCHEMA_SKEW=1` and are not trustworthy; no write should be made
-  until the binary is updated. Twenty-one of its thirty issues still cite
-  fourteen `docs/plans/` and `docs/reviews/` paths that the topic migration
-  removed.
+- Beads coordination was blocked by schema skew and is **recovered** as of
+  2026-08-16. The accidentally published `bd` v1.2.1 had migrated the database
+  from schema v53 to v65; the cursor was rolled back per the upstream runbook
+  and `bd` now runs without an override, with all thirty issues intact. Work
+  leases, `bd heartbeat`, and `bd reclaim` do not exist in the installed
+  v1.2.2 and are frozen in `.agent-instructions/beads.md` pending an upstream
+  release. Twenty-one issues still cite `docs/plans/` and `docs/reviews/` paths
+  the topic migration removed, and document-level dispatch is defined but not
+  yet created.
 - Exact-SHA [release preflight run 31676882544](https://github.com/kitdine/agent-deck/actions/runs/31676882544)
   succeeded for the `v0.4.1` commit. **No CEv1 Release boundary was recorded for
   `v0.4.1`**; the newest one is `v0.4.0`, `VERIFIED` for Git tree
@@ -78,9 +81,12 @@ failed Design Review Round 3 on six decision-completeness findings. Round 4
 repaired them, but independent Re-review Round 5 still found R3-F2's transport
 matrix and R3-F3's retry transition open, plus a new dynamic-readiness ownership
 conflict R5-F1. Round 6 closed all three and awaits independent Re-review.
-Separately, `ux/menubar.md` still carries no rendered specimen and
-`ux/widget.md` is required and unwritten, so both keep their `Draft` cells
-unticked.
+Independent Re-review Round 7 closed R3-F2 and R5-F1's wire-ownership defect,
+but kept R3-F3 open because terminal states do not retain the complete retry
+target, and raised R7-F1 for applying in-progress copy to terminal states.
+Separately, both surface documents are now drafted: `ux/menubar.md` gained the
+rendered specimens it had never carried, and `ux/widget.md` was written. Neither
+is reviewed yet.
 
 Usage attribution precision is planned but not started. It is independent of
 the desktop topic and blocks the remaining `v0.6.0` cost items.
@@ -304,6 +310,13 @@ writer is how the two drift apart.
 - Revise the set — the matrix rows — whenever a task's scope names a surface or
   contract domain it does not cover. Revising the set adds a row; it does not
   write the document. That is a later `设计：<topic> / <document>`.
+- `make check-topic-docs` audits the result. It compares three things that must
+  agree — what the matrix declares, what exists on disk, and what the topic's
+  own `requirements.md` names as a surface — so a required document that nobody
+  remembered fails a check instead of waiting to be noticed. That third
+  comparison only works because `requirements.md` names each surface by its
+  path; a surface described in prose alone is invisible to it, which is how
+  `ux/widget.md` stayed missing.
 
 The author proposes the set; **the `tasks.md` reviewer ratifies it**. This adds
 no reviewer role, because `tasks.md`'s review question already asks whether the
@@ -446,7 +459,7 @@ structure above — the author asserts it, the reviewer asks it.
 
 | Document | Ready to review when |
 | --- | --- |
-| `requirements.md` | Goals, non-goals, and acceptance boundary are stated; no TBD remains; it declares whether a user-visible surface and new contracts are in scope |
+| `requirements.md` | Goals, non-goals, and acceptance boundary are stated; no TBD remains; it lists every user-visible surface **by its `ux/<surface>.md` path**, or says the topic adds none, and declares whether new contracts are in scope |
 | `ux/<surface>.md` | Every user-visible state has a presentation rule, copy in every shipped language, and a rendered specimen; no placeholder remains |
 | `architecture.md` | Every new contract is fully specified, and every claim about existing code names where it was verified |
 | `tasks.md` | Every task has an anchor, its files, and a verification level, and the set covers the other documents' scope with nothing missing and nothing beyond it |

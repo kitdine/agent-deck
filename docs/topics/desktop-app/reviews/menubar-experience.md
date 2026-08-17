@@ -522,3 +522,100 @@ readiness ownership，本轮结论为 FAIL。
 
 Still open and out of this repair's scope: R5-N1's duplicated sentence, the
 absent rendered specimens, and the unwritten `ux/widget.md`.
+
+## Round 7 — 2026-08-16
+
+### 📋 独立复评 — desktop-app / menubar-experience
+
+📊 总体评分：7/10
+
+✅ 结论：FAIL
+
+- Reviewed state: HEAD `c2ff1623f2a509994f596f4730f7786fbeec8194`
+  plus `docs/topics/desktop-app/architecture.md` blob
+  `137834b9098560ad1168c758ace9467737d1db07` and
+  `docs/topics/desktop-app/ux/menubar.md` blob
+  `de7da5c7342d0f7f076618984807bccdf1772e41`
+- Reviewer: codex, independent of the Round 6 repair owner
+- Method: focused inspection of the committed repair diff and the final
+  architecture/UX contracts. Broad product verification stopped after two
+  contract-level reproducers decisively kept the document boundary open.
+- Scope: R3-F2, R3-F3, and R5-F1, including Round 6's consequential UX changes;
+  R5-N1 remains a recorded non-blocking improvement outside the repair scope
+- Evidence: the exact committed state and line-level contradictions below;
+  `make check-whitespace` and `git diff --check` pass after the review/status
+  artifacts were synchronized. No product code, test, configuration, or reviewed
+  contract was changed by this Re-review.
+- Completion evidence: the compatible Neo4j `completion-evidence/v1` provider
+  records both exact document states as `FAILED`; both Document gates remain
+  open.
+
+#### 🔴 严重问题 — 必须修复
+
+**R3-F3 — `docs/topics/desktop-app/architecture.md:868-904`: terminal states
+仍未保存 atomic retry 所需的完整 mutation target。**
+
+- 处置：**仍未关闭。** Round 6 已明确 retry 是 non-idle refusal 的有界例外，
+  且 transition 必须原子；但状态仍只有 `inFlight(client, provider)`、
+  `failed(code)` 和无关联值的 `indeterminate`，而 retry 又要求重跑同一个
+  `(client, provider, credential?, via_wrapper)` option。
+- 行为风险：window dismiss 后由 app-owned controller 独立存活时，terminal
+  state 无法从自身恢复 credential 与 wrapper route。实现者必须额外发明一个
+  未入契约的 `lastTarget`，或退化为只按 client/provider 重建命令，破坏
+  one-option/one-invocation 保证。
+- 证据：`architecture.md:868-869` 的状态形状不携带完整 option；`:902` 要求
+  same-target atomic retry；`ux/menubar.md:411` 和 `:556-558` 重复要求完全相同
+  target，且 controller 明确不依赖 view lifetime。
+- 💡 有界修复：让 `inFlight`、`failed`、`indeterminate`（以及需要展示 identity
+  的 success）显式关联同一个 resolved option/immutable switch target，并让
+  transition table 写出该值如何原样跨越 terminal state 与 retry。
+
+**R7-F1 — `docs/topics/desktop-app/architecture.md:665-672`: host overlay 把
+所有 non-idle terminal state 都错误显示为 `Switch in progress`。**
+
+- 处置：**新发现。** R5-F1 的 wire ownership 已正确关闭，但 repair 把 overlay
+  条件写成 controller `not idle`；controller 在 `succeeded`、`failed`、
+  `indeterminate` 时同样 not idle。UX 与 checklist 则只在 `inFlight` 时显示
+  `Switch in progress`，离开 in-flight 后恢复 snapshot reason。
+- 行为风险：已经成功、失败或结果不确定的操作会继续被宣称为“正在切换”；若
+  实现遵循 UX 而恢复 option rows，又会与 architecture 的 non-idle refusal 和
+  disabled-row contract 不一致。
+- 证据：`architecture.md:665-672` 使用 `not idle`/`returns to idle`；`:868-904`
+  定义三个 terminal non-idle states；`ux/menubar.md:394-403` 与 `:559-563`
+  把该文案和恢复条件限定为 in-flight。
+- 💡 有界修复：按 controller state 穷尽 option-row availability 与 overlay copy。
+  `inFlight` 才能显示 `Switch in progress`；对 `succeeded`、`failed`、
+  `indeterminate` 分别定义是否禁用、何时恢复 snapshot reason，以及 truthful
+  copy，不得用 in-progress 文案覆盖 terminal result。
+
+#### 🟡 建议改进 — 推荐
+
+**R5-N1 — `docs/topics/desktop-app/ux/menubar.md:389-392`: selection 文案的
+重复半句仍在。**
+
+- 处置：仍未处理，非阻塞；Round 6 正确保持了 repair scope。
+- 证据：后一句和 architecture contract 已保留唯一行为语义，因此它不改变本轮
+  verdict。
+- 💡 有界改进：在获得相应修复授权时删除重复半句。
+
+#### 🟢 优点
+
+- **R3-F2 已关闭。** 两个 conclusive shape 加 decodable/opaque catch-all 使
+  stream/envelope/exit 分类 total；wrong-stream envelope 明确进入
+  indeterminate，并强制 replacement refresh。
+- **R5-F1 原 finding 已关闭。** `switch_in_flight` 已从 wire reason 删除，Go
+  继续独占 resolved mutation tuple，host 独占瞬时可启动性。
+- **R3-F3 的原 refusal/retry 冲突已部分关闭。** transition table 明确 retry
+  原子、dismiss 返回 idle、different-target request 必须先 dismiss；剩余 blocker
+  仅是状态没有保存该 same target。
+- Round 5 已关闭的 R3-F1、R3-F4、R3-F5、R3-F6 未见回归。
+
+#### 📝 总结
+
+Round 7 重新处置了 Round 5 的三项 blocker：R3-F2 与 R5-F1 原 finding 关闭；
+R3-F3 的 transition 冲突虽已修复，但 same-target 数据所有权仍不完整，因此继续
+保持 open；R7-F1 新发现 terminal state 被错误套用 in-progress overlay。
+评审对象是上述两个 committed blobs。rendered specimen、`ux/widget.md` 与
+R5-N1 仍是独立 readiness/improvement 项，不计入两项 material blocker。
+由于实现者仍须自行决定 retry target 存储和 terminal-row presentation，本轮为
+FAIL，两个 Document gate 保持未关闭。

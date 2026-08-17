@@ -171,6 +171,7 @@ download modules, set `GOMODCACHE=/private/tmp/agent-deck-go-mod` for that
 command rather than writing to the user Go module cache.
 
 ```bash
+make check-topic-docs
 make check-whitespace
 scripts/run-go-test.sh ./...
 scripts/run-go-test.sh -race ./...
@@ -202,7 +203,7 @@ while the test process is still running.
 
 | Level | Typical change | Required evidence |
 | ----- | -------------- | ----------------- |
-| L0 | Documentation, comments, ignore rules | Relevant format/link/discovery checks, `make check-whitespace`, and `git diff --check` |
+| L0 | Documentation, comments, ignore rules | Relevant format/link/discovery checks, `make check-topic-docs` when a topic's documents change, `make check-whitespace`, and `git diff --check` |
 | L1 | Localized package or renderer behavior | Affected targeted tests |
 | L2 | Shared CLI, parser, SQLite schema, persisted or JSON/text contract | Targeted tests plus `go test -mod=vendor ./...` |
 | L3 | Concurrency, credentials/privacy, migration execution, build or installer behavior | L2 plus only the relevant race, vet, cross-build, size, install, or privacy checks |
