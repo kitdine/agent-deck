@@ -27,6 +27,9 @@ env BEADS_ACTOR=codex /Users/jobshen/.local/state/agentdeck-beads/bin/agentdeck-
 env BEADS_ACTOR=claude-code /Users/jobshen/.local/state/agentdeck-beads/bin/agentdeck-bd ready --label agent-task --json
 ```
 
+`ready` covers work waiting to START. It cannot see a custom status, so work
+waiting for a REVIEWER needs `list --status in_review`; see One lifecycle.
+
 ## Scoped task procedure
 
 1. Resolve the repository workflow route and read its authoritative plan and
@@ -111,14 +114,24 @@ The custom pair is registered once:
 bd config set status.custom "in_review:active,awaiting_commit:wip"
 ```
 
-The categories are load-bearing, and each is the opposite of what it looks
-like. `in_review` is `active` because `active` is what puts a task in
-`bd ready`: a task entering review has no reviewer yet, and the reviewer has to
-be dispatched to it and claim it, exactly as an implementer is dispatched to
-`open` work. Making it `wip` would drop it out of the ready queue and no
-reviewer would ever arrive. `awaiting_commit` is `wip` for the mirror-image reason —
-what it waits on is the user's commit authorization, not an agent, so it must
-never be dispatched.
+**`bd ready` never returns a custom status.** Its query hardcodes
+`status IN ('open', 'in_progress')` (`internal/storage/sqlbuild/ready.go`), so
+category has no bearing on it, and `internal/types/types.go`'s comment that
+"active statuses appear in bd ready" states an intent the query does not
+implement. Verified against bd 1.2.2 in an isolated repository: two unblocked,
+unassigned tasks in an `active` custom status, and `bd ready` returned nothing.
+
+Dispatch a reviewer with `bd list --status in_review`. Using `bd ready` for it
+silently finds no work forever, which looks identical to there being none.
+
+What category does control is default `bd list` visibility: `active` and `wip`
+are listed, `frozen` and `done` are hidden. Same isolated check — `in_progress`,
+`in_review` and `qa_testing` listed; `closed`, `on_hold` and `pinned` absent.
+Both custom statuses must stay visible there, so both must be `active` or `wip`,
+and bd draws no behavioural distinction between the two. `in_review` as `active`
+and `awaiting_commit` as `wip` is therefore a semantic label — one is waiting for
+someone to pick it up, the other is a waiting state of work already done — plus
+the board's column colour, which is derived from category.
 
 **Entering review needs no authorization.** Work that is finished moves to
 `in_review` in the same action that finishes it. There is no `Authorize Review`
