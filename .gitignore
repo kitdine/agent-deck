@@ -1,5 +1,12 @@
-.claude/
-.codex
+# Both clients keep local, machine-specific state in these directories, but the
+# project's own hook wiring lives there too and has to travel with the
+# repository — otherwise it exists only on the machine that set it up. The
+# entries are `dir/*` rather than `dir/`: git cannot re-include a file whose
+# parent directory is itself excluded.
+.claude/*
+!.claude/settings.json
+.codex/*
+!.codex/hooks.json
 .DS_Store
 __pycache__/
 dist/
