@@ -34,9 +34,11 @@ detail belongs in [the archive](archive/README.md), not in this index.
   and `bd` now runs without an override, with all thirty issues intact. Work
   leases, `bd heartbeat`, and `bd reclaim` do not exist in the installed
   v1.2.2 and are frozen in `.agent-instructions/beads.md` pending an upstream
-  release. Twenty-one issues still cite `docs/plans/` and `docs/reviews/` paths
-  the topic migration removed, and document-level dispatch is defined but not
-  yet created.
+  release. The path migration and document-level dispatch are complete as of
+  2026-08-17: 24 document tasks exist across the four topics, every open issue
+  cites topic paths, and no open issue carries a stale claim. Eleven closed
+  issues still cite the old paths and are left as written, because a closed
+  dispatch record states where the work actually pointed while it ran.
 - Exact-SHA [release preflight run 31676882544](https://github.com/kitdine/agent-deck/actions/runs/31676882544)
   succeeded for the `v0.4.1` commit. **No CEv1 Release boundary was recorded for
   `v0.4.1`**; the newest one is `v0.4.0`, `VERIFIED` for Git tree
