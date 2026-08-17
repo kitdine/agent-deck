@@ -227,6 +227,21 @@ document task depends on every other one. A task anchor's task depends on the
 `tasks` document task, which is what makes "the specification has not passed" a
 dispatch fact rather than something a reader must infer.
 
+**Create a topic's development tasks only after its `tasks.md` passes review.**
+The task matrix is what defines which anchors exist, and before `PASS` that
+matrix is a draft: anchors get renamed, merged, split, or dropped. Tasks created
+from a draft therefore assert work that may never exist, and the Gates created
+alongside them ask the user to authorize it — which is how nineteen objects
+(ten development tasks and nine `Authorize Development` Gates) came to sit in
+dispatch for topics whose requirements document had not yet passed round 4. They
+were deleted rather than repositioned, because dependency edges cannot fix an
+object that should not have been created: without a passed document there are no
+development tasks to order.
+
+The same rule read forwards: `设计：<topic>` creates document tasks only. The
+first command that may create development tasks is the one that follows the
+`tasks.md` task reaching `awaiting_commit`.
+
 ## State transitions and authority
 
 Beads state transitions must preserve the project workflow boundaries. A Beads
