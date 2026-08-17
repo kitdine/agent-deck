@@ -1,0 +1,540 @@
+<title>AgentDeck Surface Board</title>
+<style>
+  /* Light palette on :root — complete set, no color defined only in a theme block. */
+  :root {
+    --desk: #E4E7EB;
+    --desk-line: #D2D7DE;
+    --panel: #FFFFFF;
+    --panel-edge: #C9CFD8;
+    --ink: #14171C;
+    --ink-2: #5A6473;
+    --ink-3: #8A94A3;
+    --accent: #0A66E8;
+    --ok: #1F7A47;
+    --warn: #9A6510;
+    --err: #B3271E;
+    --rule: #DDE2E8;
+    --chip: #EDF0F4;
+    --shadow: 0 1px 2px rgb(20 23 28 / .10), 0 8px 24px rgb(20 23 28 / .10);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --desk: #16181C;
+      --desk-line: #23262C;
+      --panel: #24272D;
+      --panel-edge: #34383F;
+      --ink: #E7EAEE;
+      --ink-2: #A2ACBA;
+      --ink-3: #6F7986;
+      --accent: #4D9BFF;
+      --ok: #4FBE7B;
+      --warn: #D9A03C;
+      --err: #F0685E;
+      --rule: #32363D;
+      --chip: #2C3037;
+      --shadow: 0 1px 2px rgb(0 0 0 / .5), 0 10px 28px rgb(0 0 0 / .45);
+    }
+  }
+  :root[data-theme="dark"] {
+    --desk: #16181C;
+    --desk-line: #23262C;
+    --panel: #24272D;
+    --panel-edge: #34383F;
+    --ink: #E7EAEE;
+    --ink-2: #A2ACBA;
+    --ink-3: #6F7986;
+    --accent: #4D9BFF;
+    --ok: #4FBE7B;
+    --warn: #D9A03C;
+    --err: #F0685E;
+    --rule: #32363D;
+    --chip: #2C3037;
+    --shadow: 0 1px 2px rgb(0 0 0 / .5), 0 10px 28px rgb(0 0 0 / .45);
+  }
+
+  /* The subject is macOS UI, so the system face is the accurate choice here,
+     not a default: the specimens must show the type the surface will ship. */
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--desk);
+    color: var(--ink);
+    font: 15px/1.55 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 40px 24px 80px; }
+
+  header.board { display: flex; flex-direction: column; gap: 10px; margin-bottom: 8px; }
+  h1 { font-size: 27px; line-height: 1.2; margin: 0; letter-spacing: -.02em; text-wrap: balance; }
+  .sub { color: var(--ink-2); max-width: 66ch; margin: 0; }
+  .meta {
+    display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px;
+    font: 11px/1 ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  .meta span {
+    background: var(--chip); color: var(--ink-2);
+    border: 1px solid var(--panel-edge); border-radius: 4px; padding: 5px 8px;
+    letter-spacing: .02em;
+  }
+
+  h2 {
+    font-size: 12px; text-transform: uppercase; letter-spacing: .09em;
+    color: var(--ink-3); margin: 52px 0 4px; font-weight: 600;
+  }
+  h2 + .note { margin: 0 0 20px; color: var(--ink-2); max-width: 66ch; font-size: 14px; }
+  hr.sep { border: 0; border-top: 1px solid var(--desk-line); margin: 44px 0 0; }
+
+  .gallery { display: flex; flex-wrap: wrap; gap: 32px 28px; align-items: flex-start; }
+  figure { margin: 0; display: flex; flex-direction: column; gap: 9px; }
+  figcaption { display: flex; flex-direction: column; gap: 3px; max-width: 340px; }
+  .cap-t { font-size: 13px; font-weight: 600; }
+  .cap-d { font-size: 12.5px; color: var(--ink-2); line-height: 1.45; }
+  .quals { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+  .q {
+    font: 10px/1 ui-monospace, "SF Mono", Menlo, monospace;
+    border: 1px solid var(--panel-edge); border-radius: 3px;
+    padding: 4px 6px; color: var(--ink-2); background: var(--chip);
+  }
+  .q.on { color: var(--warn); border-color: color-mix(in oklab, var(--warn) 45%, var(--panel-edge)); }
+
+  /* 1px == 1pt at 1x, so the specimens carry the real dimensions the contract
+     states rather than an impression of them. */
+  .win {
+    width: 340px; background: var(--panel); color: var(--ink);
+    border: 1px solid var(--panel-edge); border-radius: 10px;
+    box-shadow: var(--shadow); overflow: hidden;
+  }
+  .win.narrow { width: 280px; }
+  .win-in { padding: 10px 12px 8px; display: flex; flex-direction: column; gap: 12px; }
+
+  .titlebar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 12px 0;
+  }
+  .brand { font-size: 13px; font-weight: 600; letter-spacing: -.01em; }
+  .tb-r { display: flex; align-items: center; gap: 9px; color: var(--ink-3); font-size: 12px; }
+
+  section.blk { display: flex; flex-direction: column; gap: 5px; }
+  .lbl {
+    display: flex; justify-content: space-between; align-items: baseline;
+    font: 10px/1 ui-monospace, "SF Mono", Menlo, monospace;
+    letter-spacing: .07em; color: var(--ink-3);
+  }
+  .row { display: flex; justify-content: space-between; gap: 10px; font-size: 12.5px; }
+  .row .k { color: var(--ink-2); flex: 0 0 auto; min-width: 52px; }
+  .row .v { flex: 1 1 auto; }
+  .row .t { color: var(--ink-3); font-variant-numeric: tabular-nums; flex: 0 0 auto; }
+  .stat { font-size: 12.5px; font-variant-numeric: tabular-nums; }
+  .muted { color: var(--ink-2); }
+  .dim { color: var(--ink-3); }
+  .warnline { color: var(--warn); font-size: 12px; }
+  .errline { color: var(--err); font-size: 12px; }
+  .okline { color: var(--ok); font-size: 12px; }
+
+  footer.win-f {
+    border-top: 1px solid var(--rule); padding: 8px 12px 10px;
+    display: flex; flex-direction: column; gap: 5px;
+  }
+  .acts { display: flex; gap: 14px; font-size: 12.5px; color: var(--accent); }
+  .stamp { font-size: 11px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+
+  .btn {
+    font-size: 12px; padding: 4px 11px; border-radius: 6px;
+    border: 1px solid var(--panel-edge); background: var(--chip); color: var(--ink);
+  }
+  .btn.p { background: var(--accent); border-color: transparent; color: #fff; }
+  .btn.off { opacity: .4; }
+  .btnrow { display: flex; gap: 8px; justify-content: flex-end; }
+
+  .opt { display: flex; justify-content: space-between; gap: 8px; font-size: 12.5px; padding: 2px 0; }
+  .opt.off { color: var(--ink-3); }
+  .opt .why { font-size: 11px; color: var(--ink-3); }
+
+  /* Widget families at their real point sizes. */
+  .wdg {
+    background: var(--panel); border: 1px solid var(--panel-edge);
+    border-radius: 18px; box-shadow: var(--shadow);
+    padding: 14px; display: flex; flex-direction: column; justify-content: space-between;
+  }
+  .wdg.sm { width: 170px; height: 170px; }
+  .wdg.md { width: 364px; height: 170px; }
+  .w-top { display: flex; justify-content: space-between; align-items: center; }
+  .w-brand { font-size: 11px; font-weight: 600; color: var(--ink-2); }
+  .w-cost { font-size: 30px; font-weight: 600; letter-spacing: -.02em; color: var(--accent); font-variant-numeric: tabular-nums; }
+  .w-cost.dimv { color: var(--ink-3); }
+  .w-scope { font-size: 11px; color: var(--ink-2); }
+  .w-foot { font-size: 10.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+  .w-metrics { display: flex; gap: 26px; }
+  .w-m { display: flex; flex-direction: column; gap: 1px; }
+  .w-m .n { font-size: 19px; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+  .w-m .u { font-size: 10.5px; color: var(--ink-3); }
+
+  .callout {
+    border: 1px solid var(--panel-edge); border-radius: 8px;
+    background: var(--panel); padding: 14px 16px; margin-top: 22px;
+    max-width: 74ch; font-size: 13.5px; color: var(--ink-2);
+  }
+  .callout b { color: var(--ink); font-weight: 600; }
+  code {
+    font: 11.5px/1.4 ui-monospace, "SF Mono", Menlo, monospace;
+    background: var(--chip); border: 1px solid var(--panel-edge);
+    border-radius: 3px; padding: 1px 4px; color: var(--ink);
+  }
+  a { color: var(--accent); }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <header class="board">
+    <h1>AgentDeck Surface Board</h1>
+    <p class="sub">Rendered specimens for the two user-visible surfaces of the
+      <code>desktop-app</code> topic. Every panel below is drawn at its contract
+      dimension — 1&nbsp;px here is 1&nbsp;pt there — so proportion, density and
+      wrapping are reviewable rather than described.</p>
+    <div class="meta">
+      <span>ux/menubar.md</span>
+      <span>ux/widget.md</span>
+      <span>340pt · 280pt narrow bound</span>
+      <span>systemSmall 170 · systemMedium 364</span>
+      <span>light + dark</span>
+    </div>
+  </header>
+
+  <hr class="sep">
+
+  <h2>Menu bar · data surface</h2>
+  <p class="note">A retained snapshot is always shown. Qualifiers explain its
+    condition; they never replace it with an empty surface.</p>
+
+  <div class="gallery">
+    <figure>
+      <div class="win">
+        <div class="titlebar"><span class="brand">AgentDeck</span><span class="tb-r">⋯&nbsp;&nbsp;✕</span></div>
+        <div class="win-in">
+          <section class="blk">
+            <div class="lbl"><span>PROVIDER</span></div>
+            <div class="row"><span class="k">Codex</span><span class="v">aigocode · wrapper</span><span class="t">2h ago</span></div>
+            <div class="row"><span class="k">Claude</span><span class="v">official</span><span class="t">1d ago</span></div>
+          </section>
+          <section class="blk">
+            <div class="lbl"><span>USAGE</span><span>today</span></div>
+            <div class="stat">1,204,881 tokens · 143 events · 8 sessions</div>
+          </section>
+          <section class="blk">
+            <div class="lbl"><span>COST</span></div>
+            <div class="stat">$12.47 provider · <span class="muted">$9.98 catalog base</span></div>
+          </section>
+          <section class="blk">
+            <div class="lbl"><span>RECENT SESSIONS</span></div>
+            <div class="row"><span class="k">Codex</span><span class="v">agent-deck · gpt-5</span><span class="t">12m ago</span></div>
+            <div class="row"><span class="k">Claude</span><span class="v">ai-tools · opus-5</span><span class="t">3h ago</span></div>
+          </section>
+          <section class="blk">
+            <div class="lbl"><span>HEALTH</span></div>
+            <div class="okline">✓ All checks passing</div>
+          </section>
+        </div>
+        <footer class="win-f">
+          <div class="acts"><span>Refresh</span><span>Settings…</span><span>Quit</span></div>
+          <div class="stamp">Updated 3m ago</div>
+        </footer>
+      </div>
+      <figcaption>
+        <span class="cap-t">Healthy</span>
+        <span class="cap-d">Every section available, pricing complete, nothing to explain.</span>
+        <span class="quals"><span class="q">dataSurface</span><span class="q">no qualifiers</span></span>
+      </figcaption>
+    </figure>
+
+    <figure>
+      <div class="win">
+        <div class="titlebar"><span class="brand">AgentDeck</span><span class="tb-r" style="color:var(--warn)">⚠&nbsp;&nbsp;<span style="color:var(--ink-3)">⋯&nbsp;&nbsp;✕</span></span></div>
+        <div class="win-in">
+          <section class="blk">
+            <div class="lbl"><span>PROVIDER</span></div>
+            <div class="row"><span class="k">Codex</span><span class="v">aigocode · wrapper</span><span class="t">2h ago</span></div>
+            <div class="row"><span class="k">Claude</span><span class="v">official</span><span class="t">1d ago</span></div>
+          </section>
+          <section class="blk">
+            <div class="lbl"><span>USAGE</span><span>today</span></div>
+            <div class="stat">1,204,881 tokens · 143 events · 8 sessions</div>
+          </section>
+          <section class="blk">
+            <div class="lbl"><span>COST</span></div>
+            <div class="stat">$12.47 provider · <span class="muted">$9.98 catalog base</span></div>
+          </section>
+          <section class="blk">
+            <div class="lbl"><span>RECENT SESSIONS</span></div>
+            <div class="row"><span class="k">Codex</span><span class="v">agent-deck · gpt-5</span><span class="t">12m ago</span></div>
+          </section>
+        </div>
+        <footer class="win-f">
+          <div class="acts"><span>Refresh</span><span>Settings…</span><span>Quit</span></div>
+          <div class="stamp">Updated 41m ago</div>
+          <div class="warnline">Cannot reach the AgentDeck helper</div>
+        </footer>
+      </div>
+      <figcaption>
+        <span class="cap-t">Retained snapshot, helper unreachable</span>
+        <span class="cap-d">The data stays and the badge appears. The copy names
+          the helper, not the network — the network is not what failed.</span>
+        <span class="quals"><span class="q">dataSurface</span><span class="q on">stale</span><span class="q on">offline</span></span>
+      </figcaption>
+    </figure>
+
+    <figure>
+      <div class="win">
+        <div class="titlebar"><span class="brand">AgentDeck</span><span class="tb-r" style="color:var(--warn)">⚠&nbsp;&nbsp;<span style="color:var(--ink-3)">⋯&nbsp;&nbsp;✕</span></span></div>
+        <div class="win-in">
+          <section class="blk">
+            <div class="lbl"><span>PROVIDER</span></div>
+            <div class="row"><span class="k">Codex</span><span class="v">aigocode · wrapper</span><span class="t">2h ago</span></div>
+          </section>
+          <section class="blk">
+            <div class="lbl"><span>COST</span></div>
+            <div class="stat">$12.47 provider · <span class="muted">$9.98 catalog base</span></div>
+            <div class="warnline">Cost incomplete · 37 unpriced components</div>
+          </section>
+          <section class="blk">
+            <div class="lbl"><span>RECENT SESSIONS</span></div>
+            <div class="dim" style="font-size:12.5px">Unavailable</div>
+          </section>
+          <section class="blk">
+            <div class="lbl"><span>HEALTH</span></div>
+            <div class="warnline">⚠ 1 warning · 0 errors</div>
+          </section>
+        </div>
+        <footer class="win-f">
+          <div class="acts"><span>Refresh</span><span>Settings…</span><span>Quit</span></div>
+          <div class="stamp">Updated 4m ago</div>
+          <div class="warnline">Some data unavailable</div>
+        </footer>
+      </div>
+      <figcaption>
+        <span class="cap-t">Partial, pricing incomplete</span>
+        <span class="cap-d">An unavailable section is labelled, never blank. The
+          cost is shown with its qualifier rather than suppressed — hiding it
+          would read as zero spend.</span>
+        <span class="quals"><span class="q">dataSurface</span><span class="q on">partial</span></span>
+      </figcaption>
+    </figure>
+
+    <figure>
+      <div class="win">
+        <div class="titlebar"><span class="brand">AgentDeck</span><span class="tb-r">⋯&nbsp;&nbsp;✕</span></div>
+        <div class="win-in">
+          <section class="blk">
+            <div class="lbl"><span>USAGE</span><span>today</span></div>
+            <div class="stat muted">No activity today</div>
+          </section>
+          <section class="blk">
+            <div class="lbl"><span>COST</span></div>
+            <div class="stat">$0.00</div>
+          </section>
+        </div>
+        <footer class="win-f">
+          <div class="acts"><span>Refresh</span><span>Settings…</span><span>Quit</span></div>
+          <div class="stamp">Updated 1m ago</div>
+        </footer>
+      </div>
+      <figcaption>
+        <span class="cap-t">Empty</span>
+        <span class="cap-d"><b>$0.00, not an em dash.</b> Zero spend is a fact;
+          an em dash means unknown. The distinction is the whole reason
+          <code>empty</code> and <code>unavailable</code> are separate.</span>
+        <span class="quals"><span class="q">dataSurface</span><span class="q on">empty</span></span>
+      </figcaption>
+    </figure>
+
+    <figure>
+      <div class="win">
+        <div class="titlebar"><span class="brand">AgentDeck</span><span class="tb-r">⋯&nbsp;&nbsp;✕</span></div>
+        <div class="win-in"><div class="stat muted" style="padding:26px 0 30px">Loading…</div></div>
+      </div>
+      <figcaption>
+        <span class="cap-t">Loading</span>
+        <span class="cap-d">The only state that shows no data, because no
+          snapshot has ever been retained.</span>
+        <span class="quals"><span class="q">loadingSurface</span></span>
+      </figcaption>
+    </figure>
+  </div>
+
+  <hr class="sep">
+
+  <h2>Menu bar · switch flow</h2>
+  <p class="note">A mutation is confirmed against one fully resolved option, and
+    the confirmed option is the command that runs.</p>
+
+  <div class="gallery">
+    <figure>
+      <div class="win">
+        <div class="win-in">
+          <div style="font-size:12.5px">Switch <b>Codex</b> to <b>aigocode</b> using
+            credential “work”, through the wrapper?</div>
+          <div class="btnrow"><span class="btn p">Cancel</span><span class="btn">Switch</span></div>
+        </div>
+      </div>
+      <figcaption>
+        <span class="cap-t">Confirmation</span>
+        <span class="cap-d">Client, provider, credential and route named in one
+          sentence. <code>Cancel</code> holds default focus.</span>
+      </figcaption>
+    </figure>
+
+    <figure>
+      <div class="win">
+        <div class="win-in">
+          <div style="font-size:12.5px" class="muted">Switching…</div>
+          <div class="btnrow"><span class="btn off">Cancel</span><span class="btn off">Switch</span></div>
+          <section class="blk" style="border-top:1px solid var(--rule);padding-top:9px">
+            <div class="opt off"><span>Claude → official</span><span class="why">Switch in progress</span></div>
+            <div class="opt off"><span>Claude → aigocode</span><span class="why">Switch in progress</span></div>
+          </section>
+        </div>
+      </div>
+      <figcaption>
+        <span class="cap-t">In flight</span>
+        <span class="cap-d">Every other option row is disabled reading
+          <code>Switch in progress</code> <i>instead of</i> its own reason — a
+          global block explains more than a per-option one. This overlay is host
+          state; it never alters the option’s wire values.</span>
+      </figcaption>
+    </figure>
+
+    <figure>
+      <div class="win">
+        <div class="win-in">
+          <div class="errline">Switch failed · <code>state_busy</code></div>
+          <div style="font-size:12.5px" class="muted">Another operation is using
+            AgentDeck state. The previous provider is still current.</div>
+          <div class="btnrow"><span class="btn">Dismiss</span><span class="btn p">Retry</span></div>
+        </div>
+      </div>
+      <figcaption>
+        <span class="cap-t">Failed</span>
+        <span class="cap-d"><b>Dismiss, not Cancel.</b> Cancel means “do not
+          start” on the confirmation, and nothing cancels a switch once
+          launched — offering it here would imply an operation could still be
+          called off.</span>
+      </figcaption>
+    </figure>
+
+    <figure>
+      <div class="win narrow">
+        <div class="titlebar"><span class="brand">AgentDeck</span><span class="tb-r">⋯&nbsp;&nbsp;✕</span></div>
+        <div class="win-in">
+          <section class="blk">
+            <div class="lbl"><span>PROVIDER</span></div>
+            <div style="font-size:12.5px">Codex</div>
+            <div style="font-size:12.5px" class="muted">aigocode · wrapper</div>
+            <div style="font-size:12px" class="dim">2h ago</div>
+          </section>
+          <section class="blk">
+            <div class="lbl"><span>USAGE</span><span>today</span></div>
+            <div class="stat">1,204,881 tokens</div>
+            <div class="stat muted">143 events · 8 sessions</div>
+          </section>
+        </div>
+        <footer class="win-f"><div class="stamp">Updated 3m ago</div></footer>
+      </div>
+      <figcaption>
+        <span class="cap-t">Narrow bound · 280pt</span>
+        <span class="cap-d">Values wrap onto labelled continuation lines. The
+          rule is that decoration goes before meaning: nothing semantic is
+          truncated to fit.</span>
+      </figcaption>
+    </figure>
+  </div>
+
+  <hr class="sep">
+
+  <h2>Widget</h2>
+  <p class="note">A sandboxed extension reading only the redacted App Group
+    projection. Everything shown is an aggregate, because that is all the
+    projection is permitted to carry.</p>
+
+  <div class="gallery">
+    <figure>
+      <div class="wdg sm">
+        <div class="w-top"><span class="w-brand">AgentDeck</span></div>
+        <div>
+          <div class="w-cost">$12.47</div>
+          <div class="w-scope">today · Codex</div>
+        </div>
+        <div class="w-foot">Updated 3m ago</div>
+      </div>
+      <figcaption>
+        <span class="cap-t">systemSmall · 170pt</span>
+        <span class="cap-d">Answers one question. A second metric at this size
+          becomes a table nobody reads at a glance.</span>
+      </figcaption>
+    </figure>
+
+    <figure>
+      <div class="wdg md">
+        <div class="w-top"><span class="w-brand">AgentDeck · All clients</span></div>
+        <div class="w-metrics">
+          <div class="w-m"><span class="n" style="color:var(--accent)">$12.47</span><span class="u">today</span></div>
+          <div class="w-m"><span class="n">1.2M</span><span class="u">tokens</span></div>
+          <div class="w-m"><span class="n">8</span><span class="u">sessions</span></div>
+        </div>
+        <div class="w-top">
+          <span class="w-foot">Codex $9.10 · Claude $3.37</span>
+          <span class="w-foot">Updated 3m ago</span>
+        </div>
+      </div>
+      <figcaption>
+        <span class="cap-t">systemMedium · 364pt</span>
+        <span class="cap-d">The per-client split appears only when the widget is
+          configured for all clients and more than one reports a cost.</span>
+      </figcaption>
+    </figure>
+
+    <figure>
+      <div class="wdg sm">
+        <div class="w-top"><span class="w-brand">AgentDeck</span><span style="color:var(--warn);font-size:12px">⚠</span></div>
+        <div>
+          <div class="w-cost">$12.47</div>
+          <div class="w-scope">today · Codex</div>
+        </div>
+        <div class="w-foot" style="color:var(--warn)">Last updated 9h ago</div>
+      </div>
+      <figcaption>
+        <span class="cap-t">Aged · past 6 hours</span>
+        <span class="cap-d">A widget is glanced at, not opened. A nine-hour-old
+          figure presented like a live one is the failure the menu bar avoids by
+          being opened deliberately — so the widget says so.</span>
+        <span class="quals"><span class="q">dataSurface</span><span class="q on">aged</span></span>
+      </figcaption>
+    </figure>
+
+    <figure>
+      <div class="wdg sm">
+        <div class="w-top"><span class="w-brand">AgentDeck</span><span style="color:var(--warn);font-size:12px">⚠</span></div>
+        <div>
+          <div class="w-cost dimv">——</div>
+          <div class="w-scope">Open AgentDeck to refresh</div>
+        </div>
+        <div class="w-foot">No published snapshot</div>
+      </div>
+      <figcaption>
+        <span class="cap-t">Unavailable</span>
+        <span class="cap-d">No projection, or a cache version this build does not
+          support. The em dash is correct here — the value is genuinely unknown,
+          and a zero would be a lie.</span>
+        <span class="quals"><span class="q">unavailableSurface</span></span>
+      </figcaption>
+    </figure>
+  </div>
+
+  <div class="callout">
+    <b>What this board settles, and what it cannot.</b> It settles hierarchy,
+    density, copy, state coverage, proportion at both width bounds, and both
+    appearances. It does not settle real SF type metrics, Dynamic Type reflow,
+    VoiceOver order, or contrast measured on device — those are
+    presentation-adjacent claims that only the running app can support, and they
+    stay in the manual acceptance checklist. A specimen is presentation evidence;
+    it never substitutes for runtime evidence.
+  </div>
+</div>

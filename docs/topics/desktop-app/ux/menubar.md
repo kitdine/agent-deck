@@ -189,11 +189,20 @@ label in place of its values.
 
 ### Rendered specimens
 
-Rules alone cannot be reviewed for legibility, so each state is shown as it
-renders. These are approximations of a SwiftUI surface: they settle hierarchy,
-copy, state coverage, and behavior at the narrow bound, and settle nothing about
-real typography, Dynamic Type, or VoiceOver order — those belong to the manual
-checklist. Width shown is the 340 pt default unless noted.
+The reviewable prototype is
+[`prototype/desktop-surfaces.html`](prototype/desktop-surfaces.html) — open it in
+a browser. Every panel is drawn at its contract dimension, 1 px to 1 pt, in both
+light and dark, so proportion, density, and wrapping can be judged rather than
+imagined. That is what a specimen is for, and a text sketch cannot do it.
+
+The sketches below are the same states in text. They are kept because the
+contract is reviewed as text and cited by blob hash, so a reader following a
+review round needs the states inline; they are an index to the prototype, not a
+substitute for it.
+
+Neither settles real SF type metrics, Dynamic Type reflow, VoiceOver order, or
+measured contrast. Those are runtime claims and stay in the manual checklist.
+Width shown is the 340 pt default unless noted.
 
 Healthy, everything available:
 

@@ -149,6 +149,11 @@ The per-client split line appears only when `Client` is `all` and more than one
 client reports a cost. With a single client configured, that line is omitted
 rather than repeating the total.
 
+The reviewable prototype for both families, at their real point sizes and in
+both appearances, is
+[`prototype/desktop-surfaces.html`](prototype/desktop-surfaces.html). The
+sketches here index those states for a reader following the text.
+
 ### Degraded specimens
 
 ```text
