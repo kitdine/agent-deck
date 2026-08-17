@@ -92,11 +92,20 @@ dispatch:
 
 | Command | Transition | Also |
 | --- | --- | --- |
-| `设计：<topic>` | create the topic's document tasks at `open` | — |
-| `设计：<topic> / <document>` | `open` → `drafting`, then `drafting` → `in_review` when the draft is complete | claim it |
-| `评审：<topic> / <document>` | stays `in_review` | claim it as the reviewer; on `PASS` → `closed`, on `REOPEN` → `repairing` and increment `round-N` |
-| `修复：<topic> / reviews/<record>.md / <ids>` | `repairing` → `in_review` when the repair is complete | comment the disposition |
+| `设计：<topic>` | create the topic's document tasks at `open` + `stage-open` | — |
+| `设计：<topic> / <document>` | `open` → `in_progress`, label `stage-drafting` then `stage-drafted` | claim it |
+| `开发：<topic> / <task-anchor>` | `open` → `in_progress`, label `stage-implementing` | claim it |
+| `评审：<topic> / <subject>` | stays `in_progress`, label `stage-review` | claim it as the reviewer; on `PASS` → `closed`, on `REOPEN` → `stage-repair` and increment `round-N` |
+| `修复：<topic> / reviews/<record>.md / <ids>` | label `stage-repair` → `stage-review` when the repair is complete | comment the disposition |
 | `复评：<topic> / reviews/<record>.md` | as for `评审` | — |
+
+Stage lives in a `stage-*` label and coarse state in a built-in status, rather
+than in custom statuses. `bd` accepts custom statuses through
+`bd config set status.custom`, and they were used briefly here, but the
+installed board maps every status it does not know to one bucket, so a document
+in review looked identical to one nobody had started. Labels render and filter
+in both the CLI and the board. If a board that understands custom statuses
+replaces the current one, the labels convert to statuses without data loss.
 
 The comment matters as much as the status: a status says where the document is,
 a comment says why it moved. Write it in the same action, not afterwards —
@@ -106,8 +115,19 @@ A `round-N` label counts how many times review sent the document back. It
 increments on every `REOPEN` and is never reset, so a document that keeps
 bouncing is visible as a number rather than as a comment someone has to read.
 Repair and Re-review are therefore status transitions on this one task rather
-than new tasks; the rule below applies unchanged to task reviews, where the
-implementation and its review are genuinely separate objects.
+than new tasks.
+
+**The same holds for a task anchor.** `menubar-experience` is one unit of work
+and development, review, repair, and re-review are its stages, exactly as they
+are a document's. An earlier version of this file kept a `Development:` /
+`Review:` pair there, justified as "implementation and review are separate
+objects with separate claims" — which is not a reason for two tasks, because a
+changing owner is what `assignee` is for. The pair was inherited from the bulk
+import and the justification written afterwards. One task per anchor:
+
+```text
+ad-<...>-dev     任务：<task-anchor>
+```
 
 `<document>` is the matrix row flattened: `req`, `arch`, `tasks`,
 `ux-<surface>`. Use topic-scoped IDs with no version segment, following the
@@ -140,10 +160,11 @@ coordination projection. Beads closure adds no completion gate.
   release its claim, and create bounded Repair and Re-review tasks and Gates
   linked back to that Review task. The original Review task remains the
   downstream coordination gate and closes only after successful Re-review.
-  This applies to **task** reviews, where the implementation and its review are
-  separate objects with separate claims. A document task instead moves to
-  `repairing` and increments its `round-N` label, because there is only one
-  object; see `Document work is dispatched too`.
+  **Superseded.** Neither a document nor a task anchor creates Repair and
+  Re-review tasks: both move their one task's stage label and increment
+  `round-N`, because in each case there is only one object. Keep this bullet's
+  substance — a Review that found a blocker is not closed, its claim is
+  released, and the finding is recorded — and drop the task creation.
 - A Beads task and a CEv1 WorkUnit need not map one-to-one. A concise handoff
   comment may link stable task, WorkUnit, content-state, and evidence
   identifiers; do not copy criteria, raw evidence, test output, review
