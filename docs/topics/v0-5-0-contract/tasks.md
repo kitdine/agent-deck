@@ -29,7 +29,7 @@ evidence moves when it changes.
 | Topic | Included | Reason |
 | --- | --- | --- |
 | [`desktop-app`](../desktop-app/tasks.md) | **Yes** | The version's only feature line. All six of its tasks ship together; a topic is merged whole or not at all. |
-| [`cli-error-classification`](../cli-error-classification/requirements.md) | **No** | It changes the documented JSON error contract, turning `runtime_error` into specific not-found codes. That is an observable break for any consumer matching the old code, and it is unrelated to what `v0.5.0` promises. Excluding it keeps the change out of this tag without any revert, because an unselected topic is never merged. |
+| [`cli-error-classification`](../cli-error-classification/requirements.md) | **Yes** | It changes the documented JSON error contract, turning `runtime_error` into specific not-found codes. That is an observable break for any consumer matching the old code, so it ships in the same tag as the desktop line rather than trailing it: the desktop surface reads those codes, and a version whose UI classifies errors one way while its CLI classifies them another is the worse outcome. The break is announced once, in this version's notes. |
 | [`usage-attribution-precision`](../usage-attribution-precision/requirements.md) | **No** | Promoted out of the `v0.6.0` cost-truthfulness scope and independent of the desktop work. |
 
 Excluding a topic costs nothing here and everything later: a topic already
@@ -38,11 +38,18 @@ forward and `reset` rewrites history. See `.agent-instructions/branching.md`.
 
 ## Scope
 
-`v0.5.0` therefore carries one feature line: the desktop topic's six tasks. That
-topic owns the behavior it delivers and writes its own feature-contract text.
-This topic merges the selected branches, reconciles the complete version, raises
-the living specification exactly once, and checks that its documentation and
-version identities agree.
+`v0.5.0` therefore carries two lines: the desktop topic's six tasks, and the
+error-classification topic's contract change. Each topic owns the behavior it
+delivers and writes its own feature-contract text. This topic merges the
+selected branches, reconciles the complete version, raises the living
+specification exactly once, and checks that its documentation and version
+identities agree.
+
+The error-classification line is a breaking change to a documented JSON
+contract. This version's notes must announce it under a compatibility heading,
+naming the old `runtime_error` code and each code replacing it, so a consumer
+matching the old value learns of the break from the release rather than from a
+failure.
 
 The later technical preflight and any RC or stable publication are separate
 commit-bound workflows. They are not tasks here and require their own explicit
@@ -50,9 +57,10 @@ authorization.
 
 ## Entry condition
 
-Every task in the desktop topic must have Review PASS, including its own feature
-contract task. This topic does not start early and does not absorb unfinished
-desktop work.
+Every task in each selected topic must have Review PASS — the desktop topic
+including its own feature contract task, and the error-classification topic
+including its contract change. This topic does not start early and does not
+absorb unfinished work from either.
 
 ## Later preflight considerations
 
@@ -89,11 +97,12 @@ Passing those checks still does not select RC or stable publication.
 
 - Reconcile the complete `v0.5.0` behavior into `docs/specs/cli-design.md` and
   `docs/specs/cli-manual.md`, on top of the feature-contract text already landed
-  by the desktop topic.
+  by the selected topics.
 - Raise the specification version exactly once and record one version-level
-  changelog entry.
-- Confirm every desktop task has independent Review PASS and that release
-  identities — app version, CLI version, wire-contract version, and Cask
+  changelog entry, including the error-contract break under a compatibility
+  heading.
+- Confirm every task in both selected topics has independent Review PASS and that
+  release identities — app version, CLI version, wire-contract version, and Cask
   version — agree.
 - Synchronize the documentation index and archive lifecycle state.
 - Verification level: L2 contract state.
@@ -119,8 +128,8 @@ decision.
 | 1. `assemble` | [ ] | [ ] |
 | 2. `v0-5-0-contract` | [ ] | [ ] |
 
-Both tasks are blocked until the desktop topic is fully reviewed, and `assemble`
-precedes the contract task. Commit boundaries follow task boundaries. This topic does not authorize commits, pushes,
+Both tasks are blocked until both selected topics are fully reviewed, and
+`assemble` precedes the contract task. Commit boundaries follow task boundaries. This topic does not authorize commits, pushes,
 certificate creation, secret changes, preflight dispatch, release publication,
 Homebrew tap changes, local installation, or external distribution.
 

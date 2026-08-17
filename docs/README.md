@@ -63,12 +63,13 @@ agentdeck version
 | Topic | Version | Status | Purpose |
 | --- | --- | --- | --- |
 | [Native macOS Desktop App](topics/desktop-app/tasks.md) | `v0.5.0` | Active — 2/6 tasks reviewed; requirements Re-review FAIL | macOS 26 menu-bar app, WidgetKit extension, unified desktop distribution, Cask, and direct-download delivery. |
-| [`v0.5.0` Contract Closure](topics/v0-5-0-contract/tasks.md) | `v0.5.0` | Active — 0/1 done | Version-wide specification raise and documentation reconciliation after all desktop tasks pass review. |
+| [`v0.5.0` Contract Closure](topics/v0-5-0-contract/tasks.md) | `v0.5.0` | Active — 0/2 done | Version-wide specification raise and documentation reconciliation after every selected topic's tasks pass review. |
 | [Usage Attribution Precision](topics/usage-attribution-precision/tasks.md) | `v0.6.0` | Active — 0/3 done | Per-client attribution time semantics, determinability-based quality, and an unattributed boundary that never enters a real-spend total. |
-| [CLI Error Classification](topics/cli-error-classification/tasks.md) | Unassigned | Active — 0/2 done | Stable not-found codes, and no storage text in a documented JSON contract. Deliberately kept out of `v0.5.0`. |
+| [CLI Error Classification](topics/cli-error-classification/tasks.md) | `v0.5.0` | Active — 0/2 done | Stable not-found codes, and no storage text in a documented JSON contract. Breaks the documented `runtime_error` value; announced in this version's notes. |
 
-**`v0.5.0` contains exactly the two rows marked `v0.5.0` above**: the desktop
-topic's six tasks, plus the contract closure that reconciles them. The
+**`v0.5.0` contains exactly the three rows marked `v0.5.0` above**: the desktop
+topic's six tasks, the error-classification topic's two, plus the contract
+closure that reconciles them. The
 authoritative scope statement is
 [`topics/v0-5-0-contract/tasks.md`](topics/v0-5-0-contract/tasks.md); per-task
 state lives in each topic's own `tasks.md`, which is the only status authority
