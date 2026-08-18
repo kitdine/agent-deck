@@ -176,11 +176,18 @@ derivation of why there are four and not five.
 | --- | --- | --- | --- |
 | 1 | **Magnitude** | How much am I spending? | The period hero — cost, tokens, event and session counts — the period switcher, and the trend chart with `avg/day`, `peak`, and cache-hit chips |
 | 2 | **Composition** | Where does it go? | Model shares with bars, and the token-component split naming cache write as billed |
-| 3 | **Trust** | Is the number real? | Determinable, inferred, and unattributed amounts with shares, and pricing coverage with its unpriced identifiers |
+| 3 | **Trust** | Is the number real? | Current-period determinable, inferred, and unattributed amounts with shares, and current-period pricing coverage with its unpriced identifiers |
 | 4 | **Rhythm** | When do I actually work? | The 7×24 hour-of-week grid, collapsed by default because it is the least urgent of the four |
 
 Above them sit the **client tabs**, which filter every section at once and carry
 each client's own subtotal. Tabs filter; they never mutate.
+
+The **period switcher** filters Magnitude and Composition together. It changes
+the hero, trend summary, token split, and model shares to the same selected
+`today`, `7d`, or `30d` record. Trust remains fixed to the current period because
+a stale trust figure is worse than none, and Rhythm remains fixed to the last 30
+days because a one-day rhythm is not a rhythm. Their headings state those fixed
+windows; the switcher never changes either section.
 
 Below them sits the **footer**, which is not a section because it answers no
 question about spend. It carries current provider state as read-only text, the
@@ -239,7 +246,7 @@ drawn.
 │   claude-opus-5     612.4K         50.8%   │
 │   gpt-5              401.1K         33.3%  │
 │                                            │
-│ ATTRIBUTION                    is it real? │
+│ ATTRIBUTION                          today │
 │   Determinable     $11.90          95.4%   │
 │   Inferred           $0.57          4.6%   │
 │                                            │
@@ -750,22 +757,25 @@ untested risk.
 ## Data requirements
 
 Per the progression in `docs/README.md`, a surface names the fields it needs and
-the contract provisions or refuses each. These are provisioned as of
-`architecture.md`'s 2026-08-17 revision:
+the contract provisions or refuses each. Every usage row below is read from the
+wire snapshot's `data.usage.presentation` at the selected client scope; the App
+Group projection is a downstream widget cache and is never a menu-bar data
+source. These fields are provisioned by `architecture.md`'s menu-bar wire
+extension:
 
 | Element | Field |
 | --- | --- |
-| Menu-bar item value | period cost or token total, per the preference |
-| Magnitude hero | `totals` with its four token components, event and session counts |
-| Period switcher | `today`/`7d`/`30d` period selection, backed by the projection's per-period totals — not a Swift-side reduction over the daily `buckets` series |
-| Trend chart | bounded daily series, ≤ 90 buckets |
-| `avg/day`, `peak`, cache-hit chips | period average, `peak` bucket, cached-read over logical input |
-| Composition model rows | top-N model shares, ≤ 12 |
-| Composition token split | input, output, cached-read, cache-write |
-| Trust quality rows | per-client and per-provider attribution counts |
-| Trust coverage | pricing `coverage`, ≤ 12 unpriced identifiers |
-| Rhythm grid | 7×24 hour-of-week intensity |
-| Client tabs | per-client subtotals |
+| Menu-bar item value | selected `scopes[].periods.items[].totals` cost or token total, per the preference |
+| Magnitude hero | selected period `totals` with its four token components, event count, and session count |
+| Period switcher | the wire's three `today`/`7d`/`30d` period records; never a Swift-side reduction over `daily` |
+| Trend chart | selected scope's bounded `daily` series, ≤ 90 buckets |
+| `avg/day`, `peak`, cache-hit chips | selected period's producer-computed `average_per_day`, `peak`, and `cache_hit_share` |
+| Composition model rows | selected period's top-N `models`, ≤ 12 |
+| Composition token split | selected period's input, output, cached-read, and cache-write totals |
+| Trust quality rows | current-period per-client and per-provider `(cost, tokens, count, share)` tiers |
+| Trust coverage | current-period pricing `coverage`, ≤ 12 unpriced identifiers |
+| Rhythm grid | producer-computed 7×24 hour-of-week intensity for the fixed last-30-days window |
+| Client tabs | selected period's per-client subtotals |
 | Footer provider state | `provider.routes` |
 | Switch menu rows | `provider.candidates[].options` |
 | Freshness line | `generated_at`, `next_refresh_at` |

@@ -529,7 +529,8 @@ the same shape as the other per-dimension breakdowns in this list, still
 scoped to the current period only for the same reason the split recorded
 above gave it that scope.
 
-Nine bullets gained a **client scope** in a sixth, same-day revision, because
+The projection's usage families gained a **client scope** in a sixth, same-day
+revision, because
 Round 7's W-F9 found `Client` — the one configuration parameter every widget
 carries (`ux/widget.md:73-80`) — provisioned on only three of them. Under
 `Client = codex` the daily series, the 7×24 grid, the model shares, the
@@ -739,6 +740,55 @@ Normative contract for the Go-side surface task 3 `menubar-experience` consumes.
 It extends the wire contract task 1 delivered, additively; it does not raise
 `wire_version` or reopen that task's review. The presentation that consumes it
 is specified in [`ux/menubar.md`](ux/menubar.md).
+
+### Additive `usage.presentation`
+
+`data.usage` gains one additive `presentation` object. The existing summary
+fields remain unchanged. This object is the source for the menu bar's four usage
+sections and the presentation-safe usage values in the App Group projection; the
+menu bar never reads that projection back.
+
+Go computes this aggregate once while producing the wire snapshot. The host may
+select the active `Client` and `Period`, format already-computed values, and copy
+the allowlisted values into the App Group projection. It MUST NOT sum daily
+buckets, regroup model or quality rows, calculate shares, or otherwise create a
+second aggregation layer in Swift.
+
+Every collection below is a non-null array. Collection families use the explicit
+`{ available, items }` shape; `pricing` and `rhythm` carry `available` beside
+their named values. One unavailable family therefore does not erase the other
+sections. `available: true` with empty `items` means a valid empty result, while
+`available: false` means the producer could not supply that family. A family
+failure leaves the other families intact and is covered by the snapshot's
+existing warning and partial-result semantics.
+
+| Field | Bound and semantic shape |
+| --- | --- |
+| `presentation.available` | Whether any presentation aggregate was produced. When `false`, every family is unavailable and every collection is empty. |
+| `scopes[]` | Exactly three records when `presentation.available` is true, in `all`, `codex`, `claude` order. `all` is an explicit scope, not a missing client; a client with no data keeps its record with unavailable families. |
+| `scopes[].periods.items[]` | Exactly `today`, `7d`, and `30d`, in that order, when `periods.available` is true. Each record carries `totals`, `average_per_day`, `peak`, `cache_hit_share`, and `models`. This is the `Client` × `Period` product, not two independent partial views. |
+| `periods.items[].totals` | Total tokens plus input, output, cached-read, and cache-write components; event and session counts; the existing usage cost tuple (`catalog_base_cost`, `provider_cost`, `known_catalog_base_cost`, `known_provider_cost`); `pricing_complete`; and `unpriced_components`. |
+| `periods.items[].average_per_day` and `periods.items[].peak` | Producer-computed values for that exact scope and period. `peak` is one dated bucket; neither value is recomputed from `daily.items` by the host. |
+| `periods.items[].cache_hit_share` | Producer-computed cached-read over logical input for that exact scope and period. |
+| `periods.items[].models[]` | At most 12 deterministically ordered `(model, token components, cost tuple, share)` rows for that exact scope and period. |
+| `scopes[].daily.items[]` | At most 90 ascending dated buckets per client scope when `daily.available` is true. Each bucket carries token components, event and session counts, and the cost tuple needed by the bounded trend chart. |
+| `scopes[].quality.items[]` | Current-period only when `quality.available` is true: one client-scope aggregate plus deterministic per-provider records. Each record carries determinable, inferred, and unattributed tiers as `(cost tuple, tokens, count, share)`. |
+| `scopes[].pricing` | Current-period `available`, priced and unpriced counts, plus at most 12 deterministically ordered unpriced model identifiers for that client scope. |
+| `scopes[].rhythm` | `available`, the producer-computed 7×24 grid for the last 30 days (exactly 168 cells when available), active-day count, and busiest and quietest day names used by the downstream projection. |
+| `client_subtotals.items[]` | At most six deterministic `(period, client, totals)` records when `client_subtotals.available` is true: one for each supported period and concrete client. These drive the client tabs without a host-side regrouping. |
+
+The bounds, privacy exclusions, cost semantics, and deterministic truncation are
+the same as the corresponding App Group projection fields above. The projection
+is still not a copy of the wire envelope: the host writes only this allowlisted
+usage subset plus the separately allowlisted cache metadata, provider display
+state, health summary, and issue codes.
+
+Compatibility holds in both directions without raising `wire_version`. The
+producer always emits `presentation`; an older decoder ignores it. A new decoder
+treats a missing object in a legacy v1 payload as `available: false` with empty
+families, while a present object with a wrong field type is invalid. Fixtures
+therefore retain one legacy payload without `presentation`, and current complete
+and partial fixtures carry it with every collection bound asserted.
 
 ### Additive `provider.candidates`
 

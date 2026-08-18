@@ -1275,3 +1275,477 @@ switcher 行随之改写，不再声称由日桶 Swift 侧求和支撑。这是�
 实际修复，但不构成对本记录的独立复评——`architecture.md` 与 `ux/menubar.md`
 的 Document gate 仍按 Round 14 保持重开状态，等待一次针对本记录（连同
 `reviews/ux-widget.md`）的独立 Re-review 逐条核实后才能关闭。
+
+## Round 15 — 2026-08-17
+
+### 📋 独立复评 — desktop-app / menubar-experience
+
+📊 总体评分：6/10
+
+✅ 结论：FAIL
+
+- Reviewed state: HEAD `9e2a5c43ccd07813fe9ac8991aaba8b3c876bdd8`（工作区对本记录
+  的两份被评审文档无改动）；`docs/topics/desktop-app/architecture.md` blob
+  `165dcc2b26926aeb53da9df362318f4183cd58ac`；
+  `docs/topics/desktop-app/ux/menubar.md` blob
+  `6c3bfed4e92ea71d8a02f6916d1451a19c5e7f5f`。
+- Reviewer: claude-code
+- Method: 单 agent 有界复评。先确认 Round 14 重开的实质是否已闭合，再对
+  `architecture.md` 自 Round 13 判定状态（blob `e23ccc7c`）以来的全部改动确定影响
+  范围，最后把 `ux/menubar.md` 的 Data requirements 逐行映射到**它实际读取的那份
+  契约**上——这是本次复评的关键动作，因为 `reviews/ux-widget.md` 的十三轮全部围绕
+  投影展开，而菜单栏读的不是投影。
+- Scope: Round 14 重开的 period switcher 供给问题；`architecture.md` 七次修订对本
+  记录已关闭 finding 的回归风险；归属本记录的两项跨目标记录（"Nine bullets" 编号、
+  period switcher 的管辖范围）
+- Evidence: `bash scripts/check-topic-docs.sh` -> exit 0；`make check-whitespace`
+  -> exit 0；`git diff --check` -> exit 0。未改动任何产品代码、测试、配置或被评审
+  的文档。
+- Completion evidence: 本轮 FAIL，两个 Document gate 保持 `FAILED`。
+
+#### 🔴 严重问题 — 必须修复
+
+**M-F1 — `docs/topics/desktop-app/ux/menubar.md:752-771`: 菜单栏的 Data
+requirements 声称"已供给"，但它逐行指向的是 widget 的 App Group 投影，而菜单栏读的
+是 wire snapshot；wire 契约里这些字段一个都没有。**
+
+- 处置：**新发现，且它意味着 Round 14 重开的实质并未闭合，只是被移到了边界的另一
+  侧。** `reviews/ux-widget.md` 的十三轮把投影从单期间扩到分期间、分 client scope、
+  质量档带金额、rhythm 归约、next refresh time——那些修复对 widget 全部成立，但
+  菜单栏一行都用不上。
+- 行为风险：`architecture.md:713` 写明"`desktop-widget` reads only the
+  presentation-safe App Group projection"，`ux/widget.md:11`、`:258` 同样；投影是
+  host **写**给扩展**读**的缓存，菜单栏自身渲染的是 helper 返回的 wire snapshot。
+  而 wire 契约（`architecture.md:59-68`）对用量只有一句"bounded usage summary and
+  pricing completeness"，`## Menu-bar wire contract extension`（`:736-878`）只增加了
+  `provider.candidates`。因此 Round 8 重设计后菜单栏要显示的四段内容，在它实际读取
+  的契约里没有供给：实现者只能自行发明 wire 字段，或者让菜单栏去读扩展的缓存——
+  后者与 `architecture.md:607` 的"application is the sole cache writer"及整个
+  投影最小化立论冲突。
+- 证据：`ux/menubar.md:754` 的表头声明"These are provisioned as of
+  `architecture.md`'s 2026-08-17 revision"；同表十四行中，下列九行在 wire 契约与
+  menu-bar wire extension 里都找不到对应字段——Magnitude hero 的 `totals` 与四个
+  token 分量、Period switcher 的三期间、Trend chart 的 ≤90 日桶、`avg/day`/`peak`/
+  cache-hit、Composition model rows 的 top-N shares、Composition token split、
+  Trust quality rows、Trust coverage 的 ≤12 未定价标识符、Rhythm 的 7×24 网格、
+  Client tabs 的 per-client 小计。只有 Footer provider state（`provider.routes`）、
+  Switch menu rows（`provider.candidates[].options`）与 Freshness line
+  （`generated_at`、`next_refresh_at`）三行有 wire 契约依据。
+  最尖锐的一处是 `:760`：它是 Round 14 点名的那一行，修复后写成"backed by **the
+  projection's** per-period totals"——把菜单栏的数据来源明确写成了它不读的那份契约。
+  另外 `:765` 的 Trust 行写"attribution counts"，而 `:179` 与 specimen `:243-244`
+  显示的是金额（`Determinable $11.90`），与 `reviews/ux-widget.md` 的 W-F8 同型，
+  只是这一侧连供给方都还没有。
+- 💡 有界修复：在 `architecture.md` 的 wire 契约（或 menu-bar wire extension）里
+  写明菜单栏四段所需的 usage 结构——三期间 totals 与 token 分量、≤90 日桶与每期间
+  `peak`/average、top-N model shares、按质量档的 `(cost, tokens, count, share)`、
+  pricing coverage 与 ≤12 未定价标识符、7×24 网格、per-client 小计——并给出与投影
+  同类的上界；然后把 `:754` 的表头与 `:760` 的机制描述改为指向 wire snapshot 而
+  不是投影，`:765` 改为与展示形状一致的四元组。**不要**把菜单栏改成读投影：那会
+  颠覆 `architecture.md:601-626` 的单写者与最小化设计。若 Go 侧计划让同一份聚合
+  同时喂 wire 与投影，那正是应当在契约里写出来的事实，而不是留给实现者推断。
+
+#### 🟡 建议改进 — 推荐
+
+**M-F2 — `docs/topics/desktop-app/ux/menubar.md:177,182-183,238`: period switcher
+管辖哪些 section 没有写明，而 client tabs 写明了。**
+
+- 处置：**新发现，非阻塞。** 归属本记录，此前在 `reviews/ux-widget.md` 的 Round 3
+  与 Round 5 已作为跨目标事项记录。
+- 行为风险：`:182-183` 明确 client tabs "filter every section at once"；period
+  switcher 只在 `:177` 作为 Magnitude 段的组成部分出现，没有对应句子。按位置读，
+  它只管第一段；但 specimen `:238` 的 `MODELS` 行右侧标着 `today`，即 Composition
+  段也带期间标签。实现者因此无法判断切到 `30 Days` 时 MODELS 与 ATTRIBUTION 是否
+  跟随。这个问题与 M-F1 的供给决定相互影响，但它是呈现范围问题，不会被供给自动
+  回答。
+- 证据：`:177`、`:182-183`、`:238`、`:242`。
+- 💡 有界改进：补一句与 client tabs 对称的声明，写明 period switcher 管辖哪些
+  section；若只管 Magnitude，则说明 Composition 与 Trust 固定为当前期间，并让
+  specimen 的段标签与之一致。
+
+**M-F3 — `docs/topics/desktop-app/architecture.md:532`: "Nine bullets gained a
+client scope" 与清单实际条数及该句自身的枚举都不符。**
+
+- 处置：**仍未关闭。** 该项由 `reviews/ux-widget.md` Round 9 发现并明确归属本记录；
+  其后的第七、第八次修订又合并、删除、新增了 bullet，偏差随之扩大。
+- 行为风险：不影响任何字段语义，只影响修订记录的可核对性。
+- 证据：`:532` 的"Nine"；实际在第六次修订中获得 client scope 的是五条（日序列、
+  7×24 网格与其两个归约、model shares、新增的 per-period totals 与 session count、
+  pricing coverage），而 `:534-538` 该句自身随后枚举的是六样东西。
+- 💡 有界改进：把数字改为与清单一致，或改为不带计数的表述。
+
+#### 🟢 优点
+
+- **Round 13 判定的两侧一致性未被这七次修订破坏。** `architecture.md` 自 blob
+  `e23ccc7c` 以来的全部改动集中在两个 hunk（`@@ -436,22` 与 `@@ -464,12`），都落在
+  `### Presentation-safe App Group projection` 一节内。switch 命令面、result
+  envelope、operation ownership 与 transition 表（`:736-1100`）逐字未动，因此
+  R3-F1～R3-F6、R5-F1、R7-F1 的关闭状态可按同一内容状态复用，无需重跑。
+- **`ux/menubar.md` 自 Round 13 以来只改了一行**（`:760` 的机制描述），specimen、
+  copy 表、truth table、switch flow 全部保持 Round 13 判定时的状态；R9-F1 的四段式
+  specimen、R11-N1 的框线、R11-N2 的 `No local activity today` 均无回归。
+- **Round 14 的更正本身是对的，并且指向了正确的根因。** 它认定 R9-F2 的实质是
+  "谁生成这三个期间"，这一判断在本轮得到进一步印证——修复方向没错，只是落点落在了
+  widget 的投影上，而菜单栏读的是另一份契约。
+- **投影侧的扩展质量很高**，且其立论（一次性归约、per-scope 上界、scope 内独立
+  截断）可以直接复用到 wire 侧，M-F1 的修复因此有现成的形状可循，不需要重新设计。
+
+#### 📝 总结
+
+Round 14 重开的实质**未闭合**：投影被扩了七次，而菜单栏读的是 wire snapshot，
+其契约对用量只有一句"bounded usage summary"。`ux/menubar.md` 的 Data requirements
+表十四行里有十行在它实际读取的契约中没有对应字段，表头却声明"已供给"，
+`:760` 更把数据来源明确写成了它不读的那份契约。这就是 R9-F2 的实质第三次以不同
+形态出现：第一次是粒度（week/month），第二次是"谁生成三个期间"，这一次是"从哪份
+契约取"。
+
+值得记下的教训与 `reviews/ux-widget.md` 收敛时那条不同：那边的判据是"文档说要读的
+每一处都有行"，而这里暴露的是更前一步的问题——**核对一行是否"已供给"之前，先要确定
+这份 surface 读的是哪一份契约**。widget 与 menu bar 共处一个 topic、共用一套词汇、
+甚至共用四段式结构，但数据路径完全不同：一个读 host 写出的 App Group 缓存，一个读
+helper 返回的 wire snapshot。十三轮修复全部作用在前者，而本记录的两份文档一份是
+后者的消费者、一份是两者的定义者。
+
+本轮为 FAIL，两个 Document gate 保持未关闭。M-F1 的修复落在 `architecture.md` 的
+wire 契约，形状可直接沿用投影侧已经论证过的那套；M-F2 与 M-F3 各是一处改动。
+
+残余不确定性：M-F1 的修复规模取决于一个本轮未判定的问题——Go 侧是否让同一份聚合
+同时喂 wire snapshot 与 App Group 投影。若是，wire 契约的补写主要是把既有事实写明；
+若不是，则需要各自定义上界与截断规则。该决定属 `architecture.md`，不由本轮代为
+选择。
+
+证据：`git rev-parse HEAD` -> `9e2a5c43ccd07813fe9ac8991aaba8b3c876bdd8`；
+`git hash-object` -> `architecture.md` `165dcc2b…`、`ux/menubar.md` `6c3bfed4…`；
+`git diff e23ccc7c 165dcc2b` 的改动仅落在投影一节的两个 hunk；
+`bash scripts/check-topic-docs.sh` -> exit 0；`make check-whitespace` -> exit 0；
+`git diff --check` -> exit 0。
+
+#### 📌 下一步
+
+```text
+修复：desktop-app / reviews/menubar-experience.md / M-F1 M-F2 M-F3
+```
+
+## Round 16 — 2026-08-17（修复轮）
+
+- Repair state: HEAD `c7331dbc7761093e3e7af0c19668e74bbfa2e945`，工作区未提交；
+  `docs/topics/desktop-app/architecture.md` repair blob
+  `75c96aed3524456b9cf0b682d029b1db49aefd33`；
+  `docs/topics/desktop-app/ux/menubar.md` repair blob
+  `a8e3b555b8f8e989bace08df8816a30ad6e9924d`。
+- Repair owner: codex
+- Scope: 只修复 Round 15 的 M-F1、M-F2、M-F3；未改动产品代码、测试、配置、
+  prototype 或其他已关闭 finding 的合同面。
+
+### Finding-to-change mapping
+
+- **M-F1 repaired in the candidate.** `architecture.md` 的 menu-bar wire
+  extension 现在给 `data.usage` 增加向后兼容的 `presentation` 对象。它以精确的
+  `{available, items}` family 形状承载 `Client` × `Period` totals、四种 token
+  分量、event/session counts、现有 cost tuple、每期间 average/peak/cache-hit、每期间
+  top-N model rows、每 client scope 的 ≤90 日桶、current-period quality 四元组与
+  pricing coverage、固定 30 日的 7×24 rhythm，以及每期间 per-client subtotals；同时
+  固定数组上界、排序、missing-v1 解码和 malformed 类型规则。Go 只聚合一次，host 从
+  wire 渲染菜单栏并把 allowlisted 值复制进 widget projection，不再存在菜单栏反读
+  projection 或 Swift 二次归约的空间。`ux/menubar.md` 的 Data requirements 表已逐行
+  指向该 wire 对象，Trust 行改为实际展示的 `(cost, tokens, count, share)` 形状。
+- **M-F2 repaired in the candidate.** `ux/menubar.md` 现在明确 period switcher 同时
+  管辖 Magnitude 与 Composition；Trust 固定 current period，Rhythm 固定最近 30 日，
+  两者都不随 switcher 改变。这与 specimen 的 `MODELS … today`、Trust 无期间标签、
+  `RHYTHM … last 30 days` 一致。
+- **M-F3 repaired in the candidate.** 第六次 projection 修订改为不带陈旧数字的
+  “usage families gained a client scope”，不再让标题数字、正文枚举和当前 bullet 数
+  彼此矛盾。
+
+### Verification and status
+
+- Existing wire source was checked before writing: `internal/desktop/desktop.go` keeps
+  wire v1 and the current flat usage summary, so `usage.presentation` is an additive
+  extension rather than a silent replacement.
+- `bash scripts/check-topic-docs.sh` -> exit 0；`make check-whitespace` -> exit 0；
+  `git diff --check` -> exit 0。
+- Compatible Neo4j `completion-evidence/v1` capability is reachable. Both Document
+  WorkUnits were already `FAILED`; this repair does not claim an independent verdict,
+  retarget them, or write `VERIFIED` evidence. `architecture.md` and `ux/menubar.md`
+  remain unticked and await exact-state Re-review.
+
+Repair status: M-F1、M-F2、M-F3 已在候选文档中完成；Review verdict 仍为 FAIL，
+等待独立复评。
+
+#### 📌 下一步
+
+```text
+复评：desktop-app / reviews/menubar-experience.md
+```
+
+## Round 17 — 2026-08-17
+
+### 📋 独立复评 — desktop-app / menubar-experience
+
+📊 总体评分：8/10
+
+✅ 结论：FAIL
+
+- Reviewed state: HEAD `c7331dbc7761093e3e7af0c19668e74bbfa2e945`（自 Round 15 的
+  `9e2a5c43` 以来新增的唯一提交 `c7331db docs: approve switch effectiveness tasks`
+  未触及 `docs/topics/desktop-app/`，经 `git diff --stat 9e2a5c4..HEAD --
+  docs/topics/desktop-app/` 确认为空）。未提交工作区：`architecture.md` blob
+  `75c96aed3524456b9cf0b682d029b1db49aefd33`、`ux/menubar.md` blob
+  `a8e3b555b8f8e989bace08df8816a30ad6e9924d`，与 Round 16 声明一致。
+- Reviewer: claude-code（Round 16 的修复由 codex 完成）
+- Method: 单 agent 有界复评。M-F1 的核验方式与它被发现的方式对称——把
+  `ux/menubar.md` 的 Data requirements **逐行**映射到它现在声明要读的那份契约
+  （`data.usage.presentation`），确认每行都有对应字段与形状；M-F2、M-F3 各自回到
+  被改动的文本核对；随后检查修复自身是否引入新的不一致，重点是散文与 specimen
+  的关系——这是本记录出过 R9-F1 的地方。另外核实"additive、不抬 `wire_version`"
+  这一断言在当前源码中成立，因为契约对既有实现的断言属必须验证项。
+- Scope: M-F1、M-F2、M-F3 的处置；修复引入的回归；对既有 wire 实现的断言
+- Evidence: `bash scripts/check-topic-docs.sh` -> exit 0；`make check-whitespace`
+  -> exit 0；`git diff --check` -> exit 0；`internal/desktop/desktop.go` 只读检查。
+  未改动任何产品代码、测试、配置或被评审的文档。
+- Completion evidence: 本轮 FAIL，两个 Document gate 保持 `FAILED`。
+
+#### 🔴 严重问题 — 必须修复
+
+无。
+
+#### 🟡 建议改进 — 推荐
+
+**M-F4 — `docs/topics/desktop-app/ux/menubar.md:190,249`: M-F2 新增的句子声称两个
+固定窗口 section 都在标题里写出窗口，但 ATTRIBUTION 的 specimen 标题没有。**
+
+- 处置：**新发现，非阻塞。** 由本轮修复自身引入，属本记录出过的 R9-F1 同类
+  （散文与 specimen 对同一界面给出两种说法，而 specimen 是更具体的那个）。
+- 行为风险：`:190` 写 "Their headings state those fixed windows"，主语是 Trust 与
+  Rhythm 两段。specimen 里 `RHYTHM` 的右栏确实是 `7×24 · last 30 days`
+  （`:253`），而 `ATTRIBUTION` 的右栏是 `is it real?`（`:249`）——一句提问，不是窗口。
+  于是用户在切到 `30 Days` 之后，Magnitude 与 Composition 都跟着变，Trust 静止在
+  当前期间却没有任何可见说明；实现者照 specimen 落地就会得到这个结果，照散文落地
+  又会得到另一个。
+- 证据：`:185-190` 的新段落；specimen `:249` 与 `:253`；`:179` 的 Sections 表对
+  Trust 也未写窗口；`:775-776` 的 Data requirements 两行则明确写了 current-period。
+- 💡 有界改进：把 specimen `:249` 的右栏改为窗口说明（与 `RHYTHM` 行同构，例如
+  `ATTRIBUTION` 右栏写当前期间），并相应调整 `:179`；或者把 `:190` 改为只声明
+  Rhythm 的标题写窗口、Trust 的固定窗口由别处说明。两者都行，但散文与 specimen
+  必须一致。
+
+#### 🟢 优点
+
+- **M-F1 已关闭，且修在了正确的一侧。** `architecture.md:743-793` 给 `data.usage`
+  增加 `presentation` 对象，明确它是菜单栏四段与投影中用量值的**共同来源**，并写死
+  "the menu bar never reads that projection back"。Round 15 指出的十行缺口逐行核对
+  已全部落位：hero 与 menu-bar item 读 `scopes[].periods.items[].totals`（含四个
+  token 分量、event/session 计数与既有 cost tuple）、period switcher 读三条 period
+  记录、trend 读 `scopes[].daily.items[]`（≤90 升序日桶）、chips 读
+  `average_per_day`/`peak`/`cache_hit_share`（producer 计算，明确禁止 host 重算）、
+  model rows 读 `periods.items[].models[]`（≤12）、Trust 读
+  `scopes[].quality.items[]` 的 `(cost tuple, tokens, count, share)` 四元组、
+  coverage 读 `scopes[].pricing`、rhythm 读 `scopes[].rhythm`（168 格）、client tabs
+  读 `client_subtotals.items[]`（≤6 = 3 期间 × 2 客户端）。`ux/menubar.md:752-780`
+  的表头也已改写，明确"App Group projection 是下游 widget 缓存，永远不是菜单栏的
+  数据源"，并逐行指向 wire 字段；Trust 行的形状同步改成四元组，与 `:179` 和
+  specimen 显示的金额一致——`reviews/ux-widget.md` 的 W-F8 同型问题在这一侧一并
+  关闭了。
+- **它同时回答了 Round 15 遗留的那个未判定问题。** Round 15 明说规模取决于"Go 侧
+  是否让同一份聚合同时喂 wire 与投影"。修复直接把答案写进契约：Go 聚合一次，host
+  只做选择、格式化与向投影复制 allowlisted 值，且明确禁止 Swift 侧求和、重新分组、
+  自算 share。这既关闭了本 finding，也让投影侧十三轮论证过的形状可以复用而不是
+  重来。
+- **family 级 `{available, items}` 与向后兼容规则是有备而来的。** 一个 family 不可用
+  不擦除其他 section；`available: true` 且 `items` 为空是有效空结果，`false` 是产不出
+  来——这正好接上 R3-F6 truth table 里 `partial` 与 `empty` 必须区分的那条。兼容性
+  双向写明：producer 恒发、旧 decoder 忽略、新 decoder 把 legacy v1 的缺失对象解码为
+  `available: false` 加空 family、类型错误则无效，并保留一份不含 `presentation` 的
+  legacy fixture——与 R3-F5 当年确立的方向一致，没有把唯一能坏的方向删掉。
+- **"additive、不抬 `wire_version`"这一断言经源码核实成立。**
+  `internal/desktop/desktop.go:21` 的 `WireVersion = 1`、`:48` 的 `wire_version`
+  字段与 `:69` 起的扁平 `UsageSnapshot` 均在，`presentation` 是并列新增而非替换。
+  契约对既有实现的断言为真，不是推测。
+- **M-F2 已关闭。** `:185-190` 写明 period switcher 同时管辖 Magnitude 与
+  Composition，并给出 Trust 固定当前期间、Rhythm 固定 30 日的理由；与 client tabs
+  的 `:182-183` 形成对称声明。剩下的只是标题呈现问题（M-F4）。
+- **M-F3 已关闭。** `:532` 改为"The projection's usage families gained a **client
+  scope**"，去掉了与清单和自身枚举都对不上的数字。
+- **无回归，且改动面被严格限制。** 本次 `architecture.md` 只有两个 hunk
+  （`@@ -529,7` 与 `@@ -740,6`）：一句改写加一节新增。投影一节、switch 命令面、
+  result envelope、operation ownership 与 transition 表逐字未动，因此
+  R3-F1～R3-F6、R5-F1、R7-F1 的关闭状态按同一内容状态复用；`ux/menubar.md` 的
+  specimen、copy 表、truth table、switch flow 同样未动，R9-F1、R11-N1、R11-N2
+  无回归。
+
+#### 📝 总结
+
+M-F1、M-F2、M-F3 全部关闭。M-F1 的关闭尤其干净：它没有把菜单栏改成读投影去迁就
+已有的修复，而是在菜单栏实际读取的那份契约里补齐字段，并把"Go 聚合一次、两个
+surface 各取所需"这条边界写死。R9-F2 三次换形态的那条线——粒度、谁生成、从哪份
+契约取——到此闭合。
+
+本轮为 FAIL，只因 M-F4：M-F2 的新句子声称 Trust 与 Rhythm 的标题都写出固定窗口，
+而 specimen 里只有 RHYTHM 写了。这是本记录第三次出现同一形态（R9-F1、R11-N2、
+M-F4）：**散文改了，而依附于它的 specimen 没跟上**。修复是一处 specimen 右栏或一句
+散文，二选一。
+
+残余不确定性：`presentation` 的数组上界（3 scopes × 3 periods × 12 models、≤90 日桶、
+≤6 client subtotals）在文档层面自洽，但 wire payload 的实际体积同样未按序列化字节
+测量——与投影侧留下的是同一项未决，需在实现任务里按真实 payload 复核。另外
+`scopes[]` 固定为 `all`/`codex`/`claude` 三条，若将来支持第三个 client，该"恰好三条"
+的措辞需要一并修订；本轮按当前产品范围判断，不作预留要求。
+
+证据：`git rev-parse HEAD` -> `c7331dbc7761093e3e7af0c19668e74bbfa2e945`；
+`git diff --stat 9e2a5c4..HEAD -- docs/topics/desktop-app/` 为空；
+`git hash-object` -> `architecture.md` `75c96aed…`、`ux/menubar.md` `a8e3b555…`；
+`internal/desktop/desktop.go:21,48,69` 确认 wire v1 与扁平 usage summary 仍在；
+`bash scripts/check-topic-docs.sh` -> exit 0；`make check-whitespace` -> exit 0；
+`git diff --check` -> exit 0。
+
+#### 📌 下一步
+
+```text
+修复：desktop-app / reviews/menubar-experience.md / M-F4
+```
+
+## Round 18 — 2026-08-17（修复轮）
+
+- Repair state: HEAD `c7331dbc7761093e3e7af0c19668e74bbfa2e945`，工作区未提交；
+  `docs/topics/desktop-app/architecture.md` blob
+  `75c96aed3524456b9cf0b682d029b1db49aefd33`（本轮未改）；
+  `docs/topics/desktop-app/ux/menubar.md` repair blob
+  `a5475e84e77c65a78645a77ce83af36d70c305b5`。
+- Repair owner: codex
+- Scope: 只修复 Round 17 的 M-F4；未改动 M-F1～M-F3 的已关闭契约、产品代码、
+  测试、配置或 prototype。
+
+### Finding-to-change mapping
+
+- **M-F4 repaired in the candidate.** `ux/menubar.md` 的 Sections 表现在把 Trust
+  的 amounts 与 pricing coverage 都明确标为 current-period；healthy specimen 的
+  `ATTRIBUTION` 标题右栏从 `is it real?` 改为 `today`。因此 M-F2 建立的规则——
+  Magnitude 与 Composition 随 period switcher 改变，Trust 固定当前期间，Rhythm
+  固定最近 30 日，且两个固定窗口都在 section 标题中可见——在散文、表格和 specimen
+  三处一致。
+- specimen 行改写后仍与同一框体的其他内容行保持 46 个显示列，没有重开 R11-N1；
+  `MODELS … today`、`ATTRIBUTION … today` 与 `RHYTHM … last 30 days` 现在把三个
+  section 的期间行为直接并列展示。
+
+### Verification and status
+
+- 定向宽度测量确认改写后的 ATTRIBUTION 行与相邻 specimen 内容行保持相同宽度。
+- `bash scripts/check-topic-docs.sh` -> exit 0；`make check-whitespace` -> exit 0；
+  `git diff --check` -> exit 0。
+- 本轮是 Repair，不是独立复评；两个 Document WorkUnit 继续保持 `FAILED`，
+  `architecture.md` 与 `ux/menubar.md` 的 `Review` 单元格继续未勾选。
+
+Repair status: M-F4 已在候选文档中完成；Review verdict 仍为 FAIL，等待独立复评。
+
+#### 📌 下一步
+
+```text
+复评：desktop-app / reviews/menubar-experience.md
+```
+
+## Round 19 — 2026-08-17
+
+### 📋 独立复评 — desktop-app / menubar-experience
+
+📊 总体评分：9/10
+
+✅ 结论：PASS
+
+- Reviewed state: HEAD `c7331dbc7761093e3e7af0c19668e74bbfa2e945`；未提交工作区：
+  `docs/topics/desktop-app/architecture.md` blob
+  `75c96aed3524456b9cf0b682d029b1db49aefd33`（本轮未改，与 Round 17 判定一致）、
+  `docs/topics/desktop-app/ux/menubar.md` blob
+  `a5475e84e77c65a78645a77ce83af36d70c305b5`、
+  `ux/prototype/desktop-surfaces.html` blob `8a8c8e5d…`（未改动）。
+- Reviewer: claude-code（Round 18 的修复由 codex 完成）
+- Method: 单 agent 有界复评。M-F4 回到散文、Sections 表与 specimen 三处交叉核对，
+  并重跑框线宽度测量（改写的是 specimen 内容行，正是 R11-N1 出过问题的地方）。
+  随后对本记录**全部十七项** finding 逐条复看当前内容状态，确认无一项残留。
+- Scope: M-F4 的处置；R3-F1～R3-F6、R5-F1、R5-N1、R7-F1、R9-F1、R9-F2、R11-N1、
+  R11-N2、M-F1～M-F3 的回归
+- Evidence: `bash scripts/check-topic-docs.sh` -> exit 0；`make check-whitespace`
+  -> exit 0；`git diff --check` -> exit 0。未改动任何产品代码、测试、配置或被评审
+  的文档。
+- Completion evidence: 兼容的 Neo4j `completion-evidence/v1` provider 中
+  `desktop-app:architecture.md` 与 `desktop-app:ux/menubar.md` 两个 Document
+  WorkUnit 已按本轮的确切内容状态记录并复查为 `VERIFIED`，绑定的是未提交候选状态
+  （HEAD 加各自指纹），授权提交后需按 Git tree 重记。
+
+#### 🔴 严重问题 — 必须修复
+
+无。
+
+#### 🟡 建议改进 — 推荐
+
+无。
+
+#### 🟢 优点
+
+- **M-F4 已关闭，三处一致。** Sections 表 `:179` 的 Trust 行现在把 amounts 与
+  pricing coverage 都标为 current-period；specimen `:249` 的 `ATTRIBUTION` 右栏由
+  `is it real?` 改为 `today`。于是 `:185-190` 建立的规则在散文、表格、specimen 三处
+  同时可读：`MODELS … today` 随 switcher 变，`ATTRIBUTION … today` 固定在当前期间，
+  `RHYTHM … last 30 days` 固定在 30 日——切到 `30 Days` 时三者的差异才显现，而这正是
+  该规则要让用户看见的东西。
+- **改写没有重开 R11-N1。** 独立重跑显示列宽测量：`:225-360` 内全部框线恰为 46 或
+  36 列，唯二例外仍是 `:319`、`:321` 两条框外注解行，与 R11-N1 当初的排除一致。
+- **十七项 finding 全部关闭，无一残留。** R3-F1（canonical invocation 含
+  `--quiet`）、R3-F2（stream/envelope/exit 全分类加 catch-all）、R3-F3（terminal
+  state 携带完整 option 与原子 retry）、R3-F4（Go 展开 option，一对一映射调用参数）、
+  R3-F5（missing `candidates` 解码为 `[]` 并保留 legacy fixture）、R3-F6（surface/
+  qualifier truth table）、R5-F1（`switch_in_flight` 移出 wire，改为 host overlay）、
+  R5-N1（不复现，已于 Round 10 以"无缺陷"关闭）、R7-F1（overlay 仅限 `inFlight`）、
+  R9-F1（四段式 specimen）、R9-F2（本轮由 M-F1 最终闭合）、R11-N1（框线等宽）、
+  R11-N2（`No local activity today`）、M-F1（wire `usage.presentation`）、
+  M-F2（switcher 管辖范围）、M-F3（修订编号去掉陈旧计数）、M-F4（标题窗口一致）。
+- **R9-F2 那条线到此真正闭合。** 它换过三次形态——粒度（week/month）、谁生成三个
+  期间、从哪份契约取——每次都被当作已修复过一次。最终闭合方式是把菜单栏读的那份
+  契约补齐，并写死"Go 聚合一次、两个 surface 各读自己的契约"，而不是让某一侧去迁就
+  另一侧已有的修复。
+- **`ux/widget.md` 的 Round 13 PASS 未被本记录的改动影响。** 独立核实：
+  `architecture.md` 自 widget 通过以来的两处改动是 M-F3 的一句改写与新增的
+  `## Menu-bar wire contract extension` 小节，投影一节逐字未动，而 widget 只读投影；
+  两个文档的证据各自绑定在自己的内容状态上，互不失效。
+
+#### 📝 总结
+
+M-F4 关闭，本记录十七项 finding 全部关闭且无回归，disposition 矩阵内没有任何未关闭
+项——minor 也没有——因此结论为 PASS。评审对象是上述 HEAD 与两个 blob。
+
+这份记录走了十九轮。值得留下的判断有两条。其一，`architecture.md` 与
+`ux/menubar.md` 始终被当作一个评审对象处理是对的：十七项里有九项跨两份文档，
+分开评审会让"契约说 A、界面说 B"这类问题各自看起来自洽。其二，本记录反复栽在同一个
+形态上——**散文改了而依附于它的产物没跟上**（R9-F1 的 specimen、R11-N2 的文案、
+M-F4 的标题），以及**核对"已供给"时看错了契约**（R9-F2 三次）。前者的防线是每次改
+散文都回读它所驱动的 specimen 与 copy；后者的防线是先确定 surface 读哪份契约，再逐行
+核对字段。这两条已分别写进两份记录的总结，供后续文档参考。
+
+残余不确定性：`usage.presentation` 与 App Group 投影的数组上界在文档层面自洽，但两者
+的实际序列化体积均未测量，需在实现任务里按真实 payload 复核；`scopes[]` 固定三条的
+措辞在支持第三个 client 时需要修订；`internal/desktop/desktop.go` 目前只实现扁平
+usage summary，`usage.presentation` 属尚未实现的契约扩展，实现任务需一并交付其
+fixture 与解码测试。
+
+证据：`git rev-parse HEAD` -> `c7331dbc7761093e3e7af0c19668e74bbfa2e945`；
+`git hash-object` -> `architecture.md` `75c96aed…`、`ux/menubar.md` `a5475e84…`；
+specimen 框线宽度测量：`:225-360` 内除两条框外注解行外全部为 46 或 36 列；
+`bash scripts/check-topic-docs.sh` -> exit 0；`make check-whitespace` -> exit 0；
+`git diff --check` -> exit 0。
+
+#### 📌 Task checkpoint
+
+```text
+Task checkpoint：desktop-app / architecture.md（blob 75c96aed）与
+                desktop-app / ux/menubar.md（blob a5475e84），Re-review Round 19
+                PASS，两个 CEv1 Document gate 均为 VERIFIED
+提交建议：architecture.md、ux/menubar.md、reviews/menubar-experience.md、
+          tasks.md、docs/README.md —— 按 hunk 排除并行工作的
+          v0-5-0-contract/tasks.md 与 docs/README.md 中不属本 task 的行
+推送建议：未解析 —— 当前分支 main，项目未授权在此提交或推送；两者均需显式授权
+```
+
+#### 📌 下一步
+
+```text
+评审：desktop-app / tasks.md
+```

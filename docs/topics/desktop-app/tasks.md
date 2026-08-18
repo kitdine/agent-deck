@@ -91,8 +91,8 @@ This file is the only status authority for this topic.
 | Document | Draft | Review |
 | --- | --- | --- |
 | requirements.md | [x] | [x] |
-| architecture.md | [x] | [ ] |
-| ux/menubar.md | [x] | [ ] |
+| architecture.md | [x] | [x] |
+| ux/menubar.md | [x] | [x] |
 | ux/widget.md | [x] | [x] |
 | tasks.md | [x] | [ ] |
 
@@ -384,13 +384,83 @@ revisions has been independently re-reviewed, and both documents have been
 reopened since `reviews/menubar-experience.md` Round 14. They should be
 re-reviewed together, because they bind to the same projection contract.
 
-That is the fourth appearance, and it also bounds the problem: this document
-has exactly three governing dimensions — `Client`, `Period`, and `rhythm`'s
-window — and all three have now been swept. The next repair should close the
-whole parameter space at once rather than one dimension per round, checking
-`Client` × `Period` × kind × size and especially the cross terms, since a
-per-client `composition` at `7d` needs model shares keyed by both and
-provisioning either dimension alone does not produce it.
+`menubar-experience` Re-review Round 15 (2026-08-17): **FAIL**. What Round 14
+reopened is not closed — it was answered on the wrong side of a boundary. The
+thirteen widget rounds extended the App Group projection seven times, but the
+menu bar does not read the projection: that cache is written by the host and
+read by the widget, while the menu bar renders the wire snapshot, whose contract
+says only "bounded usage summary and pricing completeness" and whose menu-bar
+extension adds nothing but `provider.candidates`. Ten of the fourteen rows in
+`ux/menubar.md`'s Data requirements table have no field in the contract they
+actually read, and the row Round 14 named now cites the projection by name.
+M-F2 and M-F3 are the two cross-target items this record already owned: the
+period switcher's governed scope is unstated where the client tabs' is explicit,
+and `architecture.md`'s sixth-revision paragraph still miscounts its own bullets.
+
+No regression: `architecture.md` changed only inside the projection section, so
+the switch surface, envelope, ownership and transition table this record cleared
+at Rounds 7 through 13 are byte-identical, and `ux/menubar.md` changed by one
+line.
+
+The lesson differs from the widget record's. There the test was "every place the
+document says it reads the projection has a row." Here the prior step failed:
+before checking whether a row is provisioned, establish which contract the
+surface reads. The two surfaces share a topic, a vocabulary, and a four-section
+structure, but not a data path.
+
+Repair Round 16 (2026-08-17) closes M-F1 through M-F3 in the candidate documents.
+The wire now carries additive `usage.presentation` analytics produced once by Go
+for the complete `Client` × `Period` product, with explicit bounds, partial-family
+availability, quality/cost shape, daily and rhythm data, pricing coverage, and
+per-client subtotals. The host renders the menu bar from that wire object and
+only copies its allowlisted values into the widget projection; it does not read
+the projection back or aggregate in Swift. The period switcher now explicitly
+governs Magnitude and Composition, while Trust stays current-period and Rhythm
+stays last-30-days. The sixth-revision note no longer makes a stale bullet-count
+claim. Both Document `Review` cells and their CEv1 gates remain open until an
+independent re-review closes the findings.
+
+Independent Re-review Round 17 (2026-08-17): **FAIL**, with no serious finding.
+M-F1, M-F2 and M-F3 are all closed, and M-F1 was closed on the correct side of
+the boundary — the menu bar was not pointed at the widget's cache to fit repairs
+already made; the wire snapshot gained the analytics instead, with Go
+aggregating once and Swift-side summing, regrouping, and share calculation
+forbidden. All ten previously unprovisioned rows map to a named field with a
+bound, and the claim that the extension is additive without raising
+`wire_version` was verified against `internal/desktop/desktop.go`. The R9-F2
+line — granularity, then who produces the three periods, then which contract
+they come from — is closed.
+
+M-F4 keeps the record open: M-F2's new sentence says both fixed-window sections
+state their window in their heading, and the ATTRIBUTION specimen does not.
+That is this record's third instance of prose moving while the specimen
+attached to it stays behind, after R9-F1 and R11-N2. One specimen cell or one
+sentence closes it.
+
+Repair Round 18 (2026-08-17) closes M-F4 in the candidate UX document. The Trust
+row now says its amounts and pricing coverage are current-period, and the
+ATTRIBUTION specimen heading says `today`, while RHYTHM continues to say
+`last 30 days`. The changed specimen row retains the established 46-column
+width. Both Document `Review` cells and CEv1 gates remain open until independent
+re-review.
+
+Independent Re-review Round 19 (2026-08-17): **PASS**. M-F4 closed, and all
+seventeen findings on this record are closed with no regression, so both
+`architecture.md` and `ux/menubar.md` have their `Review` cells ticked and their
+CEv1 gates `VERIFIED`. R9-F2 is finally closed through M-F1 rather than through
+one more repair on the widget's side of the boundary.
+
+Nineteen rounds are worth two notes. Keeping `architecture.md` and
+`ux/menubar.md` as one review subject was right: nine of the seventeen findings
+span both documents, and reviewed apart each side reads as self-consistent while
+the contract and the surface disagree. And the record kept failing in two
+shapes — prose moving while the specimen or copy attached to it stayed behind
+(R9-F1, R11-N2, M-F4), and checking a "provisioned" claim against the wrong
+contract (R9-F2, three times). The defences are to re-read what a prose change
+drives, and to establish which contract a surface reads before checking any row.
+
+Three documents have now passed. `tasks.md` is the last, and it is reviewed last
+by design: the task matrix stays a draft until the documents it rests on pass.
 
 The target was documents, not task 3, which has no implementation. Task 3 stays
 blocked until this topic's remaining documents pass, since a task matrix is a
@@ -399,7 +469,7 @@ draft until they do.
 Next action:
 
 ```text
-复评：desktop-app / reviews/menubar-experience.md
+评审：desktop-app / tasks.md
 ```
 
 Task 1 was blocked on the `v0.4.0` session DTO contract; that dependency is now
