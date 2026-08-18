@@ -34,28 +34,35 @@ This file is the only status authority for this topic.
 
 ### 3. `menubar-experience`
 
-- Contracts: [`ux/menubar.md`](ux/menubar.md) for presentation, and
-  [`architecture.md`](architecture.md#menu-bar-wire-contract-extension) for the
-  additive `provider.candidates` section, the switch command surface, its result
-  envelope, and switch operation ownership. Both were reopened by
-  `ux/widget.md`'s W-F1; see the Documents matrix below.
-- Implement provider, usage, cost, recent-session, warning, and health summaries.
+- Contracts: [`ux/menubar.md`](ux/menubar.md#sections) for the reading surface
+  and [`Presentation state`](ux/menubar.md#presentation-state) for its state
+  model; [`architecture.md`](architecture.md#menu-bar-wire-contract-extension)
+  for additive `usage.presentation` and `provider.candidates`, the switch command
+  surface, its result envelope, and switch operation ownership.
+- Implement the reading surface, surface-level qualifiers, and footer exactly as
+  defined by the Sections contract; recent-session rows remain in session detail.
 - Add safe provider quick actions, refresh behavior, login-item preference, and
   newer-version notification that opens the official download page only.
-- Define loading, stale, offline, partial, empty, and error states.
+- Derive presentation from the coordinator surfaces and orthogonal qualifiers in
+  the Presentation state contract; do not introduce a second state machine.
 - Verify VoiceOver, keyboard navigation, reduced motion, high contrast, locale,
   narrow layout, and appearance changes on macOS 26.
-- The `provider.candidates` extension is additive to task 1's delivered
-  contract; it does not raise `wire_version` or reopen that task's review.
+- Implement both additive wire objects in Go; update the canonical complete,
+  partial, and retained legacy v1 fixtures plus Go and Swift decoder tests.
+  Neither object raises `wire_version` or reopens task 1's delivered contract or
+  its Review PASS.
 - Ship English and Simplified Chinese user-visible strings.
 - Verification level: L3 including rendered and interactive acceptance.
 
 ### 4. `desktop-widget`
 
+- Contracts: [`ux/widget.md`](ux/widget.md#surface-and-qualifiers) for the
+  surface/qualifier model and [`Timeline`](ux/widget.md#timeline) for WidgetKit
+  entry-point behavior.
 - Add WidgetKit timelines and App Intent configuration backed only by the
   redacted App Group snapshot.
-- Define stale age, privacy redaction, placeholder, snapshot, timeline, and
-  unavailable-host states.
+- Implement the surface, qualifier, and timeline entry-point behavior from those
+  contracts; do not introduce a parallel state vocabulary.
 - Prove the Widget cannot read AgentDeck databases, credentials, client config,
   or raw session sources.
 - Verification level: L3 including extension sandbox and privacy checks.
@@ -94,7 +101,7 @@ This file is the only status authority for this topic.
 | architecture.md | [x] | [x] |
 | ux/menubar.md | [x] | [x] |
 | ux/widget.md | [x] | [x] |
-| tasks.md | [x] | [ ] |
+| tasks.md | [x] | [x] |
 
 `requirements.md` Review Round 1 (2026-08-17): **FAIL**. The boundary still
 limits the named menu-bar outcome to current-day usage while the drafted
@@ -462,6 +469,68 @@ drives, and to establish which contract a surface reads before checking any row.
 Three documents have now passed. `tasks.md` is the last, and it is reviewed last
 by design: the task matrix stays a draft until the documents it rests on pass.
 
+`tasks.md` Review Round 1 (2026-08-17): **FAIL**, recorded in
+[`reviews/tasks.md`](reviews/tasks.md). The two status matrices, the verification
+routing, task 6's release boundary and the dispatch prerequisites all hold. What
+fails is task 3's own description, which was written before the Round 8 redesign
+and still asks for the five-section surface and the six-state model that
+`ux/menubar.md` replaced (T-F1), and which names only `provider.candidates` where
+the menu-bar wire extension now also defines `usage.presentation` — the larger,
+unimplemented object, whose owner and its effect on task 1's closed review are
+left unstated (T-F2). T-F3 and T-F4 are the same cause at smaller scale: the
+task 3/task 4 independence claim and a stale "reopened" sentence were not re-read
+when the contracts changed.
+
+Re-review Round 3 (2026-08-17): **FAIL**, with no serious finding. T-F1 through
+T-F4 are all closed, and closed by pointing at the contracts rather than by
+updating the restatement — task 3 now cites `ux/menubar.md#sections`,
+`#presentation-state`, and the wire extension, owns both additive wire objects
+with their fixtures and decoder tests, and no longer repeats document status.
+T-F5 keeps the record open: task 4 restates the vocabulary `ux/widget.md`
+retired — `stale age`, `unavailable-host`, and timeline entry points described
+as states — and is the only in-flight task with no contract pointer at all.
+
+Round 1 missed it because the contract comparison was run against task 3 only.
+That omission is itself the lesson this topic keeps relearning: a check worth
+running is worth running against every object of its kind, not just the one that
+exposed the problem.
+
+Re-review Round 5 (2026-08-17): **PASS**, and the `Review` cell is ticked. T-F5
+closed the same way task 3 was: a `Contracts:` pointer to
+`ux/widget.md#surface-and-qualifiers` and `#timeline`, and the state/entry-point
+enumeration replaced by "implement from those contracts, and do not introduce a
+parallel state vocabulary". All four anchors this file cites were verified to
+exist, a sweep of the whole Task breakdown found no remaining retired
+vocabulary, and T-F1 through T-F4 show no regression.
+
+All five of this topic's documents have now passed. The five findings on this
+record were one defect wearing five faces — a task description restating a
+contract, and nobody re-reading the restatement when the contract changed — and
+they close by the same move: replace the restatement with an anchor and keep
+only what the contract does not carry, namely the task boundary and its
+verification level. What must be re-checked after a future contract rewrite
+shrinks from every bullet to whether a heading was renamed.
+
+This is the topic's third instance of one shape: R9-F1 was a specimen left behind
+by prose, M-F4 a heading left behind by prose, and this is the dispatch
+instruction left behind by the contract. A task description reads like a to-do
+list rather than document content, which is exactly why it gets missed when a
+contract it restates is rewritten.
+
+`tasks.md` Repair Round 2 (2026-08-17) closes T-F1 through T-F4 in the candidate
+document. Task 3 now delegates presentation shape and state semantics to the
+approved UX anchors, owns the Go/fixture/Swift-decoder delivery for both additive
+wire objects without reopening task 1, and no longer repeats stale document
+status. Task 4 now depends on task 3's `usage.presentation` producer as well as
+the foundation. The `tasks.md` `Review` cell remains unchecked pending
+independent re-review.
+
+`tasks.md` Repair Round 4 (2026-08-17) closes T-F5 in the candidate document.
+Task 4 now points directly to `ux/widget.md`'s Surface and qualifiers and Timeline
+contracts, and its delivery item requires those surface, qualifier, and timeline
+entry-point behaviors without restating or inventing state vocabulary. The
+`tasks.md` `Review` cell remains unchecked pending independent re-review.
+
 The target was documents, not task 3, which has no implementation. Task 3 stays
 blocked until this topic's remaining documents pass, since a task matrix is a
 draft until they do.
@@ -469,13 +538,15 @@ draft until they do.
 Next action:
 
 ```text
-评审：desktop-app / tasks.md
+开发：desktop-app / menubar-experience
 ```
 
 Task 1 was blocked on the `v0.4.0` session DTO contract; that dependency is now
-satisfied. Task 2 consumes task 1. Tasks 3 and 4 depend on task 2 and may
-proceed independently after the shared snapshot contract is fixed. Task 5
-integrates tasks 2-4. Task 6 runs last within this topic, and in turn gates the
+satisfied. Task 2 consumes task 1. Task 3 depends on task 2. Task 4 depends on
+tasks 2 and 3 because its App Group usage projection consumes the
+`usage.presentation` producer task 3 delivers; it does not start as an
+independent sibling. Task 5 integrates tasks 2-4. Task 6 runs last within this
+topic, and in turn gates the
 [v0.5.0 contract closure](../v0-5-0-contract/tasks.md).
 
 Commit boundaries follow task boundaries. This topic does not authorize commits,

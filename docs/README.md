@@ -62,7 +62,7 @@ agentdeck version
 
 | Topic | Version | Status | Purpose |
 | --- | --- | --- | --- |
-| [Native macOS Desktop App](topics/desktop-app/tasks.md) | `v0.5.0` | Active — 2/6 tasks reviewed; requirements, architecture, menu-bar UX and widget UX all PASS; `tasks.md` is the last document | macOS 26 menu-bar app, WidgetKit extension, unified desktop distribution, Cask, and direct-download delivery. |
+| [Native macOS Desktop App](topics/desktop-app/tasks.md) | `v0.5.0` | Active — 2/6 tasks reviewed; all five documents PASS; implementation resumes at task 3 `menubar-experience` | macOS 26 menu-bar app, WidgetKit extension, unified desktop distribution, Cask, and direct-download delivery. |
 | [`v0.5.0` Contract Closure](topics/v0-5-0-contract/tasks.md) | `v0.5.0` | Active — 0/2 done | Version-wide specification raise and documentation reconciliation after every selected topic's tasks pass review. |
 | [Usage Attribution Precision](topics/usage-attribution-precision/tasks.md) | `v0.6.0` | Active — 0/3 done | Per-client attribution time semantics, determinability-based quality, and an unattributed boundary that never enters a real-spend total. |
 | [CLI Error Classification](topics/cli-error-classification/tasks.md) | `v0.5.0` | Active — 0/2 done | Stable not-found codes, and no storage text in a documented JSON contract. Breaks the documented `runtime_error` value; announced in this version's notes. |
@@ -113,7 +113,15 @@ those three findings but found the new fixed-window prose ahead of the specimen;
 Repair Round 18 labels Trust as current-period in the Sections table and `today`
 in the ATTRIBUTION heading, and Re-review Round 19 passed both documents with all
 seventeen findings closed. This topic's own `tasks.md` is reviewed last, because
-the task matrix stays a draft until the documents it rests on have passed.
+the task matrix stays a draft until the documents it rests on have passed. Its
+Review Round 1 found four stale dispatch statements; Repair Round 2 realigned
+task 3's surface, state, wire ownership, and fixture scope, made task 4 depend on
+task 3's usage producer, and removed the stale document-status copy. Re-review
+Round 3 closed those four findings but found task 4 still repeating retired
+widget-state vocabulary; Repair Round 4 delegated its surface, qualifier, and
+timeline behavior to the approved Widget UX anchors, and Re-review Round 5
+passed the document. All five of this topic's documents have now passed, so
+implementation may resume at task 3 `menubar-experience`.
 
 Usage attribution precision is planned but not started. It is independent of
 the desktop topic and blocks the remaining `v0.6.0` cost items.
