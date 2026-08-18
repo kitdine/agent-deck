@@ -41,7 +41,7 @@ affected commands.
 | Document | Draft | Review |
 | --- | --- | --- |
 | requirements.md | [x] | [x] |
-| architecture.md | [x] | [ ] |
+| architecture.md | [x] | [x] |
 | tasks.md | [x] | [ ] |
 | `ux/` | n/a | n/a |
 
