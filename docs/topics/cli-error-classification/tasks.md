@@ -40,7 +40,7 @@ affected commands.
 
 | Document | Draft | Review |
 | --- | --- | --- |
-| requirements.md | [x] | [ ] |
+| requirements.md | [x] | [x] |
 | architecture.md | [x] | [ ] |
 | tasks.md | [x] | [ ] |
 | `ux/` | n/a | n/a |

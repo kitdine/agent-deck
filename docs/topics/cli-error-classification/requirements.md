@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-08-16
-updated: 2026-08-16
+updated: 2026-08-17
 ---
 
 # CLI Error Classification — Requirements
@@ -59,13 +59,17 @@ Three distinct problems:
 
 - Every not-found condition in the evidence table reports a stable, documented
   error code decided by the domain that owns the concept.
-- No `error.message` in a documented JSON contract carries `database/sql`,
-  driver, errno, or file-path text. A message names the missing thing and
-  nothing else.
+- No `error.message` for a command in the evidence table carries `database/sql`,
+  driver, errno, or file-path text. The stable code lives in `error.code`; a
+  message is human-readable text naming the missing thing, carrying at most the
+  one caller-supplied identifier the Message identity table below permits for
+  that row, and nothing else. Messages outside the evidence table are out of
+  scope; a later topic may extend the rule.
 - `docs/specs/cli-design.md` documents the complete error-code table, so
   `runtime_error` means an unclassified failure rather than an undocumented
   default.
-- Regression coverage asserts both the code and the absence of storage text.
+- Regression coverage asserts the code, the absence of storage text, and that
+  each message matches its Message identity row.
 
 ## Non-Goals
 
@@ -75,11 +79,40 @@ Three distinct problems:
 - No new command, flag, or output format.
 - No localization of error messages. Codes are for machines; the desktop app
   supplies user-facing text from the code.
-- No broad audit of unrelated `runtime_error` cases. Only not-found conditions
-  and leaked storage text are in scope; a genuinely unexpected runtime failure
-  may keep `runtime_error`.
+- No broad audit of unrelated `runtime_error` cases. Scope is exactly the
+  not-found conditions in the evidence table and the storage text those rows
+  leak; a genuinely unexpected runtime failure elsewhere may keep
+  `runtime_error` and its current message.
 - No renaming of `extension_not_found`, which is already correct and already
   consumed.
+
+## Message identity
+
+The stable code lives in `error.code`, and a message is not required to repeat
+it. A machine consumer reads the code field; the message exists for a human
+reader, and duplicating the code into it buys nothing while making the two fields
+drift apart. That decision is what lets `session show` keep the text this document
+already calls correct. `extension_not_found: <id>`, whose message happens to begin
+with its code, stays valid and unchanged because consumers already read it, but it
+is a preserved shape rather than the form new rows must copy.
+
+"Names the missing thing" then needs a per-row decision, because for some commands
+the only identifier the CLI receives is one the privacy rule forbids repeating:
+
+| Command | `error.message` | Permitted caller-supplied identifier |
+| --- | --- | --- |
+| `provider show`, `provider use` | Names the missing provider | The provider name the caller supplied — a user-chosen label, not a path |
+| `credential show` | Names the missing credential | The credential reference the caller supplied |
+| `backup inspect` | Names the missing or unreadable backup archive by kind only | None. The caller supplies only a filesystem path, and its basename is still caller-supplied path text |
+| `session show` | Unchanged: `no session "<id>" is known` | The session identifier |
+| `extension show` | Unchanged: `extension_not_found: <id>` | The extension id |
+
+So "and nothing else" means that naming plus at most this one identifier — never
+a third element, and never storage, driver, errno, or path text. `session show`
+satisfies the rule as written, which is why its already-correct text survives.
+`backup inspect` satisfies it with the identifier omitted, which is the only
+privacy-safe answer available when the caller named the target by path; a consumer
+that needs to know which archive failed already holds the path it passed.
 
 ## Surfaces and contracts
 
@@ -95,6 +128,9 @@ documented JSON error contract, specified in
 - No `error.message` in that table contains `sql:`, `no rows in result set`, an
   errno string, or a filesystem path, and a test asserts this rather than a
   reviewer reading it.
+- Each message in that table matches its Message identity row: at most the
+  permitted caller-supplied identifier, none for `backup inspect`, and no
+  requirement that a message repeat its `error.code`.
 - `docs/specs/cli-design.md` documents each code.
 - Existing consumers of `extension_not_found` and `state_busy` are unaffected.
 
