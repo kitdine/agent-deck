@@ -33,9 +33,18 @@ Measured on 2026-08-16 with the released `v0.4.1` binary, using
 | `provider show nonexistent-xyz` | `runtime_error` | `sql: no rows in result set` |
 | `provider use nonexistent-xyz --client codex` | `runtime_error` | `sql: no rows in result set` |
 | `credential show nonexistent-xyz` | `runtime_error` | `sql: no rows in result set` |
-| `backup inspect /tmp/nonexistent.adb` | `runtime_error` | `operation not supported by device` |
+| `backup inspect /tmp/nonexistent.adb`, passphrase supplied | `runtime_error` | `open /tmp/nonexistent.adb: no such file or directory` |
 | `session show <unknown uuid>` | `runtime_error` | `no session "<id>" is known` |
 | `extension show codex:skill:nonexistent` | `extension_not_found` | `extension_not_found: codex:skill:nonexistent` |
+
+The `backup inspect` row was re-measured on 2026-08-17 against a build of
+`1a205e2a`, because the original figure recorded a different failure. `inspect`
+reads the passphrase before it opens anything, so with a character-device stdin the
+command never reached the archive: it returned `operation not supported by device`,
+the Darwin rendering of the ioctl error from reading a passphrase, and no archive
+lookup occurred. Supplying a passphrase reaches the real absence path shown above,
+which leaks the full caller-supplied path. The passphrase-input failure is a
+separate defect in a different layer and is excluded below.
 
 The last row is the target shape and already exists, which makes this a
 consistency defect rather than a new capability: `extension_not_found` is a stable
@@ -85,6 +94,13 @@ Three distinct problems:
   `runtime_error` and its current message.
 - No renaming of `extension_not_found`, which is already correct and already
   consumed.
+- No classification of `backup inspect`'s passphrase-input failure. Reading the
+  passphrase happens before any archive lookup and fails for reasons that have
+  nothing to do with a missing target, so it is not a not-found condition and gets
+  no code here. It leaks an errno string today and still will; that is a real
+  defect, in the CLI input layer rather than in any domain's lookup, and it needs
+  its own topic. Every `backup inspect` scenario in this topic supplies a
+  passphrase so it reaches the archive.
 
 ## Message identity
 
@@ -124,7 +140,8 @@ documented JSON error contract, specified in
 ## Acceptance boundary
 
 - Every command in the evidence table above reports a stable, documented code
-  instead of `runtime_error`.
+  instead of `runtime_error`. The `backup inspect` scenario supplies a passphrase,
+  so it exercises the archive lookup rather than the excluded passphrase input.
 - No `error.message` in that table contains `sql:`, `no rows in result set`, an
   errno string, or a filesystem path, and a test asserts this rather than a
   reviewer reading it.

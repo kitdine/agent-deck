@@ -213,3 +213,65 @@ R1-F1 已关闭。复评对象为 HEAD `272c09ff0279cb21f0a94a4dba9f4c7c7927f814
 ### 📝 摘要
 
 R1-F1 与 R2-F1 均已关闭。复评对象为 HEAD `272c09ff0279cb21f0a94a4dba9f4c7c7927f814` 与 `requirements.md` blob `9e36fbc03021b2f06a92e474fb1fa69ad8d50e01`。修复明确把 stable code 放在 `error.code`，并让 Goals、逐行 message 合同、session/extension 兼容形状和 Acceptance 使用同一规则；未发现新 finding 或剩余不确定性。本轮 PASS。
+
+## Round 4 repair — 2026-08-17
+
+- Repaired state: HEAD `1a205e2a1afd1c258e97f95a253552a012e87439`; `docs/topics/cli-error-classification/requirements.md` blob `118c21dbba956b0eed832b20f66946a83bd28db4`
+- Repairer: Claude Code
+- Authorized scope: the requirements boundary named by `reviews/architecture.md`
+  A2-F1's bounded fix. This document had already reached PASS and was committed;
+  A2-F1 reopened it because the architecture review proved one evidence cell
+  measured a different failure than the row claims.
+- Disposition:
+  - The `backup inspect` evidence row now reads "passphrase supplied" and
+    `open /tmp/nonexistent.adb: no such file or directory`, the re-measured absence
+    path. A dated note records that the original figure,
+    `operation not supported by device`, was the Darwin ioctl error from reading a
+    passphrase on a character-device stdin, produced before any archive lookup.
+  - A new Non-Goal excludes `backup inspect`'s passphrase-input failure by name: it
+    is not a not-found condition, it belongs to the CLI input layer, it still leaks
+    an errno string after this topic ships, and it needs its own topic. It also
+    requires every `backup inspect` scenario here to supply a passphrase.
+  - Acceptance's first bullet now states that the `backup inspect` scenario supplies
+    a passphrase, so it exercises the archive lookup rather than the excluded input.
+- Verification: L0. `bash scripts/check-topic-docs.sh` -> exit 0;
+  `make check-whitespace` -> exit 0; `git diff --check` -> exit 0.
+- Verdict: REOPEN — repair complete, awaiting independent Re-review
+
+## Round 5 — 2026-08-17
+
+- Reviewed state: HEAD `1a205e2a1afd1c258e97f95a253552a012e87439`; `docs/topics/cli-error-classification/requirements.md` blob `118c21dbba956b0eed832b20f66946a83bd28db4`
+- Reviewer: Codex
+- Method: Single-agent independent Re-review of the upstream boundary repair required by architecture finding A2-F1. Inspected the exact requirements diff, re-derived the backup scenario against the current CLI call order, and checked for regressions in every previously closed requirements finding.
+- Scope: The `backup inspect` evidence row, passphrase-input Non-Goal, and matching Acceptance clause in `docs/topics/cli-error-classification/requirements.md`; preservation of R1-F1 and R2-F1.
+- Findings:
+  - [closed] A2-F1 upstream prerequisite — `requirements.md:33-50,94-103,140-147` now states that the in-scope backup scenario supplies a passphrase and therefore reaches archive lookup, records the re-measured missing-path output, and explicitly excludes the earlier CLI passphrase-input failure as a different-layer residual requiring its own topic. The evidence, Non-Goal, and Acceptance clauses use one boundary.
+  - [closed, no regression] R1-F1 — the table-only privacy scope, backup identifier prohibition, and per-row message identity remain unchanged.
+  - [closed, no regression] R2-F1 — stable codes remain owned by `error.code`; messages need not repeat them, and the session/extension compatibility decisions remain unchanged.
+- Evidence: `git rev-parse HEAD` -> `1a205e2a1afd1c258e97f95a253552a012e87439`; `git hash-object docs/topics/cli-error-classification/requirements.md` -> `118c21dbba956b0eed832b20f66946a83bd28db4`; the exact diff is limited to the re-measured evidence, one explicit Non-Goal, and the matching Acceptance qualifier. Unchanged current source confirms `backup inspect` calls `readPassphrase` before `backup.Service.Inspect`, so supplying a passphrase is the necessary discriminator. `bash scripts/check-topic-docs.sh`, `make check-whitespace`, and `git diff --check` -> exit 0. CEv1 document gate `cli-error-classification:requirements.md` -> `VERIFIED` for HEAD plus blob `118c21dbba956b0eed832b20f66946a83bd28db4` after new content-state and Round 5 evidence lineage were recorded.
+- Verdict: PASS
+
+## 📋 复评报告
+
+📊 综合评分：10/10
+
+✅ 结论：PASS
+
+### 🔴 严重问题——必须修复
+
+无。
+
+### 🟡 建议改进——推荐
+
+无（针对本文档）。
+
+### 🟢 优点
+
+- Backup evidence 现在明确提供 passphrase，实际测量 archive absence，而不是前置 CLI input failure。
+- 被排除的 passphrase-input errno 被诚实记录为不同层的已知 residual，没有被静默吞入 not-found topic。
+- Evidence、Non-Goal 和 Acceptance 使用同一个可执行场景。
+- R1-F1、R2-F1 保持关闭，无回归。
+
+### 📝 摘要
+
+复评对象为 HEAD `1a205e2a1afd1c258e97f95a253552a012e87439` 与 `requirements.md` blob `118c21dbba956b0eed832b20f66946a83bd28db4`。上游范围修复正确区分了 passphrase input 与 archive lookup，并选择排除前者；所有已批准 code/message/privacy 决定保持一致。未发现新 finding 或剩余不确定性，本轮 PASS。
