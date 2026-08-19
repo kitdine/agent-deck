@@ -14,6 +14,11 @@ what the working tree shows was just done, and what Beads currently claims. It
 only ever reports; it never writes to Beads and never blocks a stop.
 
 Runs on Stop for both Codex and Claude Code. Silent unless something disagrees.
+It never writes to Beads. A disagreement holds the turn open in both runtimes so
+the agent reconciles it before finishing — Claude Code through the blocker JSON,
+Codex through the stderr exit-code-2 transport it accepts. Either way the report
+must reach the actor that can act on it, which a user-facing message alone does
+not.
 """
 
 from __future__ import annotations
@@ -24,6 +29,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -44,15 +50,25 @@ TASK_TITLE = re.compile(r"^任务：\s*(.+)$")
 VERDICT = re.compile(r"Verdict:\s*(PASS|FAIL|REOPEN)", re.IGNORECASE)
 
 TIMEOUT = 8
+HOOK_BUDGET = 10.0
 
 
-def repo_root() -> Path | None:
+def remaining_timeout(deadline: float) -> float | None:
+    """Return one subprocess timeout inside the shared Stop-hook budget."""
+    remaining = deadline - time.monotonic()
+    return min(float(TIMEOUT), remaining) if remaining > 0 else None
+
+
+def repo_root(deadline: float) -> Path | None:
+    timeout = remaining_timeout(deadline)
+    if timeout is None:
+        return None
     try:
         out = subprocess.run(
             ["git", "rev-parse", "--show-toplevel"],
             capture_output=True,
             text=True,
-            timeout=TIMEOUT,
+            timeout=timeout,
         )
     except (OSError, subprocess.SubprocessError):
         return None
@@ -62,7 +78,7 @@ def repo_root() -> Path | None:
     return root if (root / REPO_MARKER).is_file() else None
 
 
-def bd_json(args: list[str]) -> Any:
+def bd_json(args: list[str], deadline: float) -> Any:
     """Run bd read-only. Any failure yields None — a hook must never be the
     reason a session cannot stop."""
     env = {
@@ -72,12 +88,15 @@ def bd_json(args: list[str]) -> Any:
         # Reads are audited too, and the wrapper rejects an omitted actor.
         "BEADS_ACTOR": os.environ.get("BEADS_ACTOR") or "consistency-hook",
     }
+    timeout = remaining_timeout(deadline)
+    if timeout is None:
+        return None
     try:
         out = subprocess.run(
             [BD_BIN, "-C", str(BEADS_ROOT), *args, "--json"],
             capture_output=True,
             text=True,
-            timeout=TIMEOUT,
+            timeout=timeout,
             env=env,
         )
     except (OSError, subprocess.SubprocessError):
@@ -94,13 +113,16 @@ def bd_json(args: list[str]) -> Any:
     return parsed
 
 
-def changed_paths(root: Path) -> list[str]:
+def changed_paths(root: Path, deadline: float) -> list[str]:
+    timeout = remaining_timeout(deadline)
+    if timeout is None:
+        return []
     try:
         out = subprocess.run(
             ["git", "-C", str(root), "status", "--porcelain"],
             capture_output=True,
             text=True,
-            timeout=TIMEOUT,
+            timeout=timeout,
         )
     except (OSError, subprocess.SubprocessError):
         return []
@@ -167,15 +189,15 @@ def record_stem(document: str) -> str:
     return document[:-3].replace("/", "-") if document.endswith(".md") else document
 
 
-def findings(root: Path) -> list[str]:
-    changed = changed_paths(root)
+def findings(root: Path, deadline: float) -> list[str]:
+    changed = changed_paths(root, deadline)
     notes: list[str] = []
 
     # 1. A review record was written or updated, but the task it reviews is
     #    still `in_review`. The verdict exists; dispatch has not heard about it.
     touched_reviews = [p for p in changed if "/reviews/" in p and p.endswith(".md")]
     if touched_reviews:
-        in_review = bd_json(["list", "--status", "in_review"]) or []
+        in_review = bd_json(["list", "--status", "in_review"], deadline) or []
         # Keyed by the record each task is reviewed under, so a verdict reaches
         # exactly the one task whose subject it is.
         by_record: dict[tuple[str, str], str] = {}
@@ -212,8 +234,12 @@ def findings(root: Path) -> list[str]:
     # 2. A task is parked at `awaiting_commit` while the tree is clean. Either
     #    the commit happened and nobody closed the task, or the work is not
     #    actually in the tree. Both are worth a look; neither is guessable here.
-    awaiting = bd_json(["list", "--status", "awaiting_commit"]) or []
-    if awaiting and not changed:
+    awaiting = (
+        bd_json(["list", "--status", "awaiting_commit"], deadline) or []
+        if not changed
+        else []
+    )
+    if awaiting:
         ids = sorted(
             str(b.get("id")) for b in awaiting if isinstance(b, dict) and b.get("id")
         )
@@ -232,7 +258,7 @@ def findings(root: Path) -> list[str]:
         if p.startswith("docs/topics/") and "/reviews/" not in p and p.endswith(".md")
     ]
     if touched_docs:
-        openish = bd_json(["list", "--status", "open"]) or []
+        openish = bd_json(["list", "--status", "open"], deadline) or []
         idle: dict[tuple[str, str], str] = {}
         for bead in openish:
             if not isinstance(bead, dict):
@@ -258,30 +284,8 @@ def findings(root: Path) -> list[str]:
     return notes
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--runtime", choices=("codex", "claude"), required=True)
-    parser.parse_args()
-
-    try:
-        event = json.load(sys.stdin)
-    except (json.JSONDecodeError, OSError):
-        return 0
-    if not isinstance(event, dict) or event.get("hook_event_name") != "Stop":
-        return 0
-
-    root = repo_root()
-    if root is None:
-        return 0
-
-    try:
-        notes = findings(root)
-    except Exception:  # noqa: BLE001 - a hook must never break the session
-        return 0
-    if not notes:
-        return 0
-
-    context = "\n".join(
+def report_context(notes: list[str]) -> str:
+    return "\n".join(
         [
             "Beads coordination state disagrees with the working tree.",
             "Reconcile it now, in this turn, before reporting the work complete:",
@@ -290,19 +294,83 @@ def main() -> int:
             "or CEv1 evidence to make them agree with it.",
         ]
     )
-    print(
-        json.dumps(
-            {
-                "hookSpecificOutput": {
-                    "hookEventName": "Stop",
-                    "additionalContext": context,
-                }
-            },
-            ensure_ascii=False,
-            separators=(",", ":"),
-        )
-    )
+
+
+def report_output(
+    notes: list[str], stop_hook_active: bool = False
+) -> dict[str, Any]:
+    """Shape one report. The transport, not the shape, differs per runtime.
+
+    `systemMessage` reaches the user; it does not reach the model and does not
+    hold the turn. Reporting only through it is how this check lost its effect —
+    for six consecutive review rounds it matched correctly and no agent ever saw
+    a word of it. A report the actor cannot read is not a check.
+
+    `decision: "block"` with `reason` is the channel that reaches the model and
+    keeps the turn open until the mismatch is reconciled, which is the point of
+    noticing it at Stop rather than later. `emit_output` carries it to each
+    runtime the way that runtime accepts.
+
+    `stop_hook_active` means the turn is already continuing because of this
+    hook. Blocking again would loop with no exit, so the second pass reports and
+    releases.
+    """
+    context = report_context(notes)
+    if stop_hook_active:
+        return {"systemMessage": context}
+    return {"decision": "block", "reason": context}
+
+
+def emit_output(output: dict[str, Any], event_name: object, runtime: str) -> int:
+    """Deliver one report over the transport its runtime supports.
+
+    Claude Code reads the JSON. Codex does not parse blocker JSON on Stop — it
+    takes the reason on stderr with exit code 2 — so sending it JSON is the same
+    as saying nothing. This mirrors `emit_output` in the `development-workflow`
+    and `handoff-sync` hooks, which were moved to this transport in ai-tools
+    `1aa8c06`; this hook is the one that was left on the user-facing field.
+    """
+    if (
+        runtime == "codex"
+        and event_name == "Stop"
+        and output.get("decision") == "block"
+    ):
+        reason = output.get("reason")
+        if isinstance(reason, str) and reason:
+            print(reason, file=sys.stderr)
+            return 2
+    print(json.dumps(output, ensure_ascii=False, separators=(",", ":")))
     return 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--runtime", choices=("codex", "claude"), required=True)
+    args = parser.parse_args()
+
+    try:
+        event = json.load(sys.stdin)
+    except (json.JSONDecodeError, OSError):
+        return 0
+    if not isinstance(event, dict) or event.get("hook_event_name") != "Stop":
+        return 0
+    stop_hook_active = bool(event.get("stop_hook_active"))
+
+    deadline = time.monotonic() + HOOK_BUDGET
+    root = repo_root(deadline)
+    if root is None:
+        return 0
+
+    try:
+        notes = findings(root, deadline)
+    except Exception:  # noqa: BLE001 - a hook must never break the session
+        return 0
+    if not notes:
+        return 0
+
+    return emit_output(
+        report_output(notes, stop_hook_active), "Stop", args.runtime
+    )
 
 
 if __name__ == "__main__":
