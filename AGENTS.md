@@ -449,7 +449,7 @@ Authoritative documents:
 
 | Purpose                                        | Path                                                       |
 | ---------------------------------------------- | ---------------------------------------------------------- |
-| Documentation index and execution status / 文档索引与执行状态 | `docs/README.md`                              |
+| Cross-topic index, release and stage status / 跨 topic 索引、发布与阶段状态 | `docs/README.md`  |
 | Requirements catalog / 需求目录                | `docs/topics/<topic>/requirements.md`            |
 | Interaction design / 交互设计                  | `docs/topics/<topic>/ux/<surface>.md`            |
 | Architecture or API contract / 架构或 API 契约 | `docs/topics/<topic>/architecture.md` while in progress, then `docs/specs/cli-design.md` |
@@ -463,6 +463,15 @@ A topic owns one coherent behavior change and carries requirements, interaction
 design, architecture, tasks, and reviews in one directory. `docs/specs/` holds
 only contracts the product guarantees, and receives a topic's stable contracts
 after its last task passes review.
+
+`docs/README.md` is cross-topic and stays that way. It answers which release is
+out, which topics exist and in which version, roughly how far each has got, what
+is on the roadmap or withdrawn, and where each authoritative document lives.
+Anything internal to one topic — its `Draft`/`Review` cells, round history,
+findings, dispositions, verification evidence — belongs to that topic's `tasks.md`
+and `reviews/`, and `tasks.md` is the only status authority for its topic. See
+**Where a Review Round Is Written Down** for the file-by-file split and the two
+rules agents most often break.
 
 Naming, structure, required documents, readiness conditions, status matrices, and
 lifecycle are documented once, in `docs/README.md`'s "Naming Convention" and
@@ -648,7 +657,11 @@ updates required by that topic:
 - keep Review unchecked while medium-or-higher findings remain, or tick it when
   the document or task passes;
 - synchronize the topic's `tasks.md` and `docs/README.md` when their status
-  changes;
+  changes — and only then. "Status" means the matrix cell and the topic's stage,
+  not the account of what happened. A `PASS` that ticks a `Review` cell is a
+  status change; a repair round is not, because the cell reads the same before and
+  after it. See **Where a review round is written down** below for what each file
+  may carry;
 - derive the next workflow instruction from the authoritative status matrices.
 
 These triggers do not authorize product changes, commits, pushes, releases, or
@@ -657,3 +670,37 @@ synchronization explicitly authorized above. Neo4j project-memory operations
 remain governed by the separate authority and scope above. Before reporting a
 review or re-review complete, confirm that the latest verdict, CEv1 gate,
 Review cell, documentation index, and next instruction agree.
+
+### Where a Review Round Is Written Down / 评审轮次写在哪里
+
+One review round produces one account of itself, in one file. Three files can
+receive something from a round, and each has a different job:
+
+| File | Carries | Never carries |
+| --- | --- | --- |
+| `docs/topics/<topic>/reviews/<record>.md` | The whole round: reviewed content state, method, scope, findings, dispositions, evidence, verdict | — |
+| `docs/topics/<topic>/tasks.md` | The `Draft`/`Review` matrix cells, plus the short statement of what the topic's current review state is | Findings, dispositions, evidence, or a narrative of a round |
+| `docs/README.md` | The topic's stage, its version membership, withdrawals and additions | Any finding, round number, verdict, or per-document cell |
+
+The direction is one-way. A round is written into its review record; the other two
+files are read *from* that record and only when their own subject changes.
+Restating a round's content in `tasks.md` or `docs/README.md` produces two or
+three copies of one fact, which then drift: a copy in `tasks.md` asserted a
+prototype self-check count of 39 that a later round in the same session had
+already moved to 49, and `docs/README.md`'s topic paragraph had grown into a
+forty-line run-on of nineteen rounds before it was collapsed on 2026-08-19.
+
+Two consequences follow, and they are the ones that get missed:
+
+- **A repair round writes only to its review record.** It changes no cell and no
+  stage, so `tasks.md` and `docs/README.md` are not touched. If a repair
+  genuinely needs one of them changed, that is a finding about that file, not a
+  status synchronization.
+- **A `PASS` writes the cell, not the story.** Tick the matrix cell, state the new
+  current review state in one or two sentences if the topic's convention has such
+  a statement, and leave the findings and evidence in the record.
+
+一轮评审只产生一份记录，写在一个文件里。`reviews/` 承载整轮内容，`tasks.md` 只承载
+矩阵单元格与当前评审状态的简短陈述，`docs/README.md` 只承载 topic 阶段与版本归属。
+方向是单向的：轮次写进评审记录，另两份文件只在自己的主题发生变化时按记录更新。修复轮
+不改变任何单元格与阶段，因此只写评审记录。

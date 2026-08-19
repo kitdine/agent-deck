@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-07-14
-updated: 2026-08-16
+updated: 2026-08-19
 ---
 
 # AgentDeck Documentation
@@ -10,6 +10,31 @@ This file is the documentation index and the concise authority for current
 release and execution status. Code, tests, configuration, and Git history remain
 the source of truth when they disagree with documentation. Historical execution
 detail belongs in [the archive](archive/README.md), not in this index.
+
+**What this file owns, and what it must not absorb.** The scope here is
+cross-topic: which release is out, which topics exist and which version each
+belongs to, roughly how far each has got, what is on the roadmap, what was
+withdrawn, and where every authoritative document lives. Everything *inside* a
+topic — its per-document and per-task `Draft`/`Review` cells, its round history,
+its findings and their dispositions, its verification evidence — belongs to that
+topic's own `tasks.md` and `reviews/`, and `tasks.md` is the only status authority
+for its topic. So:
+
+- A single document's or task's `Review` cell changing is topic-internal. It does
+  not change this index, because a topic's stage is what this index states.
+- A repair round changes no status at all — the cell reads the same before and
+  after — so it updates its review record and nothing here.
+- Update this file when a topic's stage changes, when version membership changes,
+  when a candidate is withdrawn or added, when a release ships, or when the
+  document set itself changes.
+- Never restate a finding, a round number, or a verdict here. If a fact is worth
+  keeping and is not cross-topic, the right place already exists.
+
+That distinction was learned the expensive way: the Active Development prose below
+had grown into a forty-line run-on of nineteen review rounds, duplicating two
+other documents and going stale inside them — a copy asserted a prototype
+self-check count that a later round had already changed. It was collapsed to
+topic-level state on 2026-08-19.
 
 ## Current State
 
@@ -66,65 +91,31 @@ agentdeck version
 | [`v0.5.0` Contract Closure](topics/v0-5-0-contract/tasks.md) | `v0.5.0` | Active — 0/2 done | Version-wide specification raise and documentation reconciliation after every selected topic's tasks pass review. |
 | [Usage Attribution Precision](topics/usage-attribution-precision/tasks.md) | `v0.6.0` | Active — 0/3 done | Per-client attribution time semantics, determinability-based quality, and an unattributed boundary that never enters a real-spend total. |
 | [CLI Error Classification](topics/cli-error-classification/tasks.md) | `v0.5.0` | Active — all design documents PASS; implementation task 1 next; 0/2 implementation tasks done | Stable not-found codes, and no storage text in a documented JSON contract. Breaks the documented `runtime_error` value; announced in this version's notes. |
+| [Switch Effectiveness Boundary](topics/switch-effectiveness-boundary/tasks.md) | `v0.5.0` | Active — all design documents PASS; implementation task 1 next; 0/4 implementation tasks done | A Claude switch to subscription does not reach a running session, so its advisory must say so and its route must not claim a multiplier the session is not billing at. |
 
-**`v0.5.0` contains exactly the three rows marked `v0.5.0` above**: the desktop
-topic's six tasks, the error-classification topic's two, plus the contract
-closure that reconciles them. The
-authoritative scope statement is
+**`v0.5.0` contains exactly the rows marked `v0.5.0` above**, plus the contract
+closure that reconciles them. The count is deliberately not written here: it was
+stated as a number twice and was wrong both times, once when a topic was
+selected into the version and once when a topic's task count changed. The rows
+are the list. The authoritative scope statement is
 [`topics/v0-5-0-contract/tasks.md`](topics/v0-5-0-contract/tasks.md); per-task
 state lives in each topic's own `tasks.md`, which is the only status authority
 for that topic. A topic carries no version number of its own — membership is
 decided here and in the contract topic, so a reschedule changes those two places
 and nothing else.
 
-`desktop-wire-contract` reached Re-review Round 2 PASS.
-`macos-app-foundation` reached Re-review Round 3 PASS after unsupported and
-malformed App Group cache data were made fail-closed. The menu-bar contract
-failed Design Review Round 3 on six decision-completeness findings. Round 4
-repaired them, but independent Re-review Round 5 still found R3-F2's transport
-matrix and R3-F3's retry transition open, plus a new dynamic-readiness ownership
-conflict R5-F1. Round 6 closed all three and awaits independent Re-review.
-Independent Re-review Round 7 closed R3-F2 and R5-F1's wire-ownership defect,
-but kept R3-F3 open because terminal states do not retain the complete retry
-target, and raised R7-F1 for applying in-progress copy to terminal states.
-Round 8 closed both and, in the same pass, rederived both surfaces around the
-four questions the usage data answers after a design review of the rendered
-prototype; the App Group projection was extended to carry what they need. All
-four documents entered the document-review sequence. Requirements Review Round
-1 then failed because the boundary still names only current-day usage while the
-surfaces demand bounded historical analytics, and because it defines Widget
-isolation without a functional user-visible outcome. The repair closed both
-findings, but Re-review Round 2 found its new prohibition on every other
-`breakdown` also forbids the non-temporal breakdowns needed by the authorized
-composition and trust questions. Re-review Round 3 narrowed R2-F1 to the missing
-provider dimension; Round 4 authorized it in both Goals and the Acceptance
-boundary, and Re-review Round 5 passed it. The menu-bar record then ran to
-Round 13: Round 9 caught the two artifacts the Round 8 redesign left behind —
-text specimens still drawing the abandoned structure, and a period switcher
-claiming bucket granularity the projection never carried — and Round 11 caught
-two smaller inconsistencies inside the redrawn specimens. Round 13 closed the
-last of them. The widget review then reopened the shared projection, extended it
-across its full data requirements, and passed at Re-review Round 13. Menu-bar
-Re-review Round 15 found that repair had landed on the wrong data path: the menu
-bar reads the wire snapshot, not the widget projection. Repair Round 16 adds the
-bounded `usage.presentation` wire structure, defines the period switcher's
-section scope, and removes a stale revision count. Re-review Round 17 closed
-those three findings but found the new fixed-window prose ahead of the specimen;
-Repair Round 18 labels Trust as current-period in the Sections table and `today`
-in the ATTRIBUTION heading, and Re-review Round 19 passed both documents with all
-seventeen findings closed. This topic's own `tasks.md` is reviewed last, because
-the task matrix stays a draft until the documents it rests on have passed. Its
-Review Round 1 found four stale dispatch statements; Repair Round 2 realigned
-task 3's surface, state, wire ownership, and fixture scope, made task 4 depend on
-task 3's usage producer, and removed the stale document-status copy. Re-review
-Round 3 closed those four findings but found task 4 still repeating retired
-widget-state vocabulary; Repair Round 4 delegated its surface, qualifier, and
-timeline behavior to the approved Widget UX anchors, and Re-review Round 5
-passed the document. All five of this topic's documents have now passed, so
-implementation may resume at task 3 `menubar-experience`.
-
-Usage attribution precision is planned but not started. It is independent of
-the desktop topic and blocks the remaining `v0.6.0` cost items.
+The desktop topic's six documents were re-opened on 2026-08-18: a reviewable
+prototype at the contract dimensions exposed structural defects that nineteen
+rounds of prose review had passed, and acting on them changed the content of every
+document, which unticks every `Review` cell because evidence binds to a content
+state rather than to a file name. Three consequences are version-scope decisions
+and are recorded as such — the desktop update check is withdrawn (see Withdrawn
+Candidates), the three work-signal modules move to the Backlog, and
+`presentation-period-scoping` is added as a Go producer task. Everything else
+about that re-open — which defects, what survives unchanged, the dependency order
+the set is re-reviewed in, and every round and finding — belongs to the topic and
+lives in [`topics/desktop-app/tasks.md`](topics/desktop-app/tasks.md) and
+[`topics/desktop-app/reviews/`](topics/desktop-app/reviews/).
 
 ## Authoritative Documents
 
@@ -183,6 +174,12 @@ These candidates have no approved implementation plan and no version. Promote
 each into a bounded plan before development; do not expand an active plan
 opportunistically. Candidates that now carry a version live in the Roadmap above.
 
+- [ ] Activity, workflow, and tooling work signals for the desktop surfaces.
+  Moved out of `v0.5.0` on 2026-08-18: the three modules are specified in
+  `topics/desktop-app/ux/menubar.md`, but classifying activity, counting tool
+  calls, and measuring iteration depth is a usage-domain capability with no field
+  behind it today, not a presentation one. Promote it as a usage topic that
+  supplies the data, then the surfaces can render it.
 - [ ] Revisit ChatGPT app project attribution only if the app exposes a stable,
   reachable project configuration surface.
 
@@ -191,6 +188,11 @@ opportunistically. Candidates that now carry a version live in the Roadmap above
 Recorded so they are not rediscovered as gaps. Reopen only if the stated reason
 stops holding.
 
+- **Desktop update check.** Withdrawn from `v0.5.0` entirely on 2026-08-18 — no
+  menu item, no preference, no copy, no network request. The desktop app is
+  installed through the Cask or a direct download, both of which already carry an
+  upgrade path, so an in-app check would add the product's only outbound request
+  to duplicate one.
 - **Homebrew core submission.** Not important to this project; the personal tap
   already serves stable and release-candidate channels.
 - **Claude subscription/account switching.** Technically reachable — the login
