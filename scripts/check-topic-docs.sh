@@ -17,6 +17,12 @@ set -uo pipefail
 # requirements.md or in a task's scope requires a ux/<surface>.md whether or not
 # anyone remembered to add the row.
 #
+# ux/prototype/ is excluded from (2). A prototype is a rendered specimen cited by
+# a ux/<surface>.md, not a topic document, and it brings its own README plus a
+# dependency tree full of third-party README files. Requiring a matrix row for
+# each of those would make the audit fail permanently and teach everyone to
+# ignore it, which is the one outcome a gate must never produce.
+#
 # Exit 0 clean, 1 findings, 2 harness failure.
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -72,11 +78,12 @@ for topic_path in "$topics_dir"/*/; do
 		rel="${file#"$topic_path"}"
 		printf '%s\n' "$matrix" | sed 's/`//g' | grep -qxF "$rel" ||
 			note "$topic" "$rel exists but no Documents matrix row declares it"
-	done < <(find "$topic_path" -name '*.md' -not -path '*/reviews/*' | sort)
+	done < <(find "$topic_path" -name '*.md' -not -path '*/reviews/*' \
+		-not -path '*/prototype/*' | sort)
 
 	# 3 — surfaces the topic's own text implies. A ux/<surface>.md is required
 	# per user-visible surface; the matrix must at least mention each one.
-	surfaces="$(grep -ohE 'ux/[a-z0-9-]+\.md' "$topic_path"/*.md 2>/dev/null |
+	surfaces="$(grep -ohE 'ux/[a-z0-9-]+\.md' "$topic_path"/*.md "$topic_path"/ux/*.md 2>/dev/null |
 		sort -u || true)"
 	while IFS= read -r surface; do
 		[ -n "$surface" ] || continue
