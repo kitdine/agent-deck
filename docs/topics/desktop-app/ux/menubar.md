@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-08-15
-updated: 2026-08-16
+updated: 2026-08-18
 ---
 
 # Menu-Bar Experience
@@ -13,9 +13,13 @@ Consumes the foundation runtime and the menu-bar wire contract extension in
 
 ## Purpose
 
-Define the menu-bar presentation, quick actions, preferences, update
-notification, state model, localization, and accessibility contract for the
-AgentDeck macOS host.
+Define the menu-bar presentation, quick actions, state model, localization, and
+accessibility contract for the AgentDeck macOS host.
+
+This revision is derived from the reviewable prototype under
+[`prototype/interactive-v7/`](prototype/interactive-v7/) rather than the other way
+round. Where the prototype and an earlier draft of this document disagreed, the
+prototype is what was reviewed, so the document was changed.
 
 This document is normative. Product behavior must follow this contract even
 when an earlier implementation differs from it.
@@ -29,17 +33,23 @@ and switch operation ownership — are specified in
 
 This task delivers, on the presentation side:
 
-- menu-bar summaries for provider, usage, cost, recent sessions, warnings, and
-  health;
+- the reading surface: client and period filters, four filtered panels, the
+  unfiltered rhythm block, and the provider footer. The Sessions panel ships its
+  statistics, per-project rows, and recent-session rows; its three work-signal
+  modules are specified here but not shipped by this task — see Data
+  requirements;
+- the notice strip and the health detail it opens;
 - safe provider quick actions with explicit confirmation and result reporting;
-- manual refresh plus an opt-in periodic refresh preference;
-- an `SMAppService` login-item preference;
-- an opt-in stable-release update check that only opens the official download
-  page;
+- manual refresh, and the periodic-refresh and login-item preferences the
+  settings window presents;
+- the menu-bar item and its right-click menu;
 - six presentation states derived from foundation coordinator state;
 - English and Simplified Chinese localization;
 - accessibility, keyboard, motion, contrast, and layout behavior with XCTest
   assertions and a manual verification checklist.
+
+The settings window is a separate surface with its own state set and copy; it is
+specified in [`settings.md`](settings.md).
 
 ## Non-goals
 
@@ -47,7 +57,9 @@ This task does not deliver:
 
 - the WidgetKit extension, its timelines, or its App Intents;
 - signing, notarization, universal packaging, Cask, or DMG publication;
-- automatic update download, installation, replacement, or relaunch;
+- **any update check**. It is withdrawn from this version: no automatic check, no
+  manual check, no version comparison, and no release page. Nothing in the menu,
+  the settings window, or the copy refers to updates;
 - a `~/.local/bin/agentdeck` link action;
 - credential creation, editing, or deletion;
 - provider definition or wrapper management;
@@ -63,9 +75,12 @@ This task does not deliver:
 | Switch safety | Every switch requires explicit user confirmation and reports a typed result. The host never switches implicitly or on refresh. |
 | Localization | The UI ships `en` and `zh-Hans` through a String Catalog. All numbers, currency, dates, and relative times use the viewer's locale. |
 | Accessibility evidence | Derivable behavior is asserted in XCTest. Assistive-technology and perceptual behavior uses the manual checklist in this document. |
-| Refresh cadence | Manual refresh always exists. Periodic refresh is opt-in, defaults off, and uses the snapshot's `next_refresh_at`. |
+| Refresh cadence | Launch and manual refresh first update the rebuildable usage and session indexes, then read one snapshot. Periodic refresh is opt-in, defaults off, and uses the snapshot's `next_refresh_at`. A failed scan falls back to the last committed indexes. |
 | Login item | `SMAppService.mainApp` only. Enable and disable are idempotent and never install a daemon. |
-| Update check | Opt-in, defaults off, at most once per 24 hours automatic plus unlimited manual. It only compares stable versions and opens a page. |
+| Update check | Not in this version. See Non-goals. |
+| Filter scope | The client and period filters apply to **every** panel in the reading surface. A filter that governs half the surface, silently ignored by the other half, is the defect this replaces. |
+| Unfiltered content | Content the filters cannot govern does not sit among the filtered panels. Rhythm is a fixed 30-day window, so it lives below them as its own block, stating that window. |
+| Exits | Settings and Quit belong to the menu-bar item's own menu, not to the reading surface. A popover that carries its own application exits spends its scarcest space on the two things a user needs least often. |
 | Preference storage | Preferences live in the application's own `UserDefaults` domain, never in `~/.agentdeck` and never in the App Group cache. |
 
 ## Presentation architecture
@@ -89,9 +104,9 @@ presentation values. It owns no refresh state machine, performs no process
 execution, no wire decoding, and no App Group access. Views read the view model
 and never compute freshness, formatting, or availability themselves.
 
-Preference state (`periodic refresh`, `login item`, `update check`) lives in a
-separate `DesktopPreferences` type so presentation and preference persistence
-stay independently testable.
+Preference state (`periodic refresh`, `login item`, menu-bar value and scope)
+lives in a separate `DesktopPreferences` type so presentation and preference
+persistence stay independently testable.
 
 ### Presentation state
 
@@ -122,10 +137,10 @@ Qualifiers are orthogonal and may all apply at once:
 | --- | --- |
 | `stale` | Coordinator is `refreshing` or `degraded` while a previous snapshot is retained |
 | `aged` | Retained snapshot's `generated_at` is older than 15 minutes |
-| `partial` | Snapshot's `partial` flag is set, or any section reports `available: false` |
+| `partial` | Snapshot's `partial` flag is set, or any data domain reports `available: false` |
 | `offline` | Issue category is helper launch, missing helper, or timeout |
 | `failing` | Issue category is invalid wire or storage unavailable |
-| `empty` | Not `partial`, every section is `available: true`, and none carries rows, tokens, or costs |
+| `empty` | Not `partial`, every data domain is `available: true`, and none carries rows, tokens, or costs |
 
 Exhaustive truth table over coordinator state, issue category, and whether a
 previous snapshot exists:
@@ -142,7 +157,7 @@ previous snapshot exists:
 | `degraded`, invalid wire/storage | no | `errorSurface` | `failing` |
 
 `empty` and `partial` are mutually exclusive by construction: `empty` requires
-every section available, which `partial` denies.
+every data domain available, which `partial` denies.
 
 `empty` is a property of the retained snapshot, not of the refresh outcome, so
 it holds on the `degraded` rows exactly as it does on `refreshing` — a snapshot
@@ -167,139 +182,186 @@ An earlier draft listed six sections in an order nobody had derived, opening
 with provider state and treating usage as the second thing a reader wanted. That
 was backwards: a user opens a cost tracker to find out what they are spending.
 
-The body answers the four questions a user has about their spend, in the order
-they ask them. **These are the same four kinds as the widgets**, deliberately, so
-that learning one surface teaches the other; see [`widget.md`](widget.md) for the
-derivation of why there are four and not five.
+A later draft fixed the order but left a second defect the prototype made
+obvious. It put four sections behind one switcher while the client and period
+filters above them governed only two: selecting `30 Days` changed magnitude and
+composition and did nothing to trust or rhythm, with no disabled state and no
+explanation. **A filter that governs half of what sits beneath it is broken
+either way** — either it should govern all of it, or what it cannot govern does
+not belong beneath it.
 
-| Order | Section | The question | Contents |
+So the body is split by what the filters can reach.
+
+**The filtered panels.** Four panels behind one switcher, every one of them
+scoped by both the client tabs and the period switcher:
+
+| Order | Panel | The question | Contents |
 | --- | --- | --- | --- |
-| 1 | **Magnitude** | How much am I spending? | The period hero — cost, tokens, event and session counts — the period switcher, and the trend chart with `avg/day`, `peak`, and cache-hit chips |
-| 2 | **Composition** | Where does it go? | Model shares with bars, and the token-component split naming cache write as billed |
-| 3 | **Trust** | Is the number real? | Current-period determinable, inferred, and unattributed amounts with shares, and current-period pricing coverage with its unpriced identifiers |
-| 4 | **Rhythm** | When do I actually work? | The 7×24 hour-of-week grid, collapsed by default because it is the least urgent of the four |
+| 1 | **Usage** | How much am I spending? | The trend chart with its readout, plus three stat chips |
+| 2 | **Breakdown** | Where does it go? | Model shares with bars, the token-component split naming cache write as billed, and the per-client subtotals |
+| 3 | **Attribution** | Is the number real? | Determinable, inferred, and unattributed amounts with shares; pricing coverage with its unpriced identifiers; and the per-provider rows |
+| 4 | **Sessions** | How did I work? | Session count, average length, project count; the three work-signal modules; per-project and recent-session rows |
 
-Above them sit the **client tabs**, which filter every section at once and carry
-each client's own subtotal. Tabs filter; they never mutate.
+The switcher carries an icon and a name per panel and **no value**. An earlier
+draft put each panel's headline number on its own tab, which restated the hero
+directly above it and spent 21 pt of a 760 pt surface saying the same thing
+twice.
 
-The **period switcher** filters Magnitude and Composition together. It changes
-the hero, trend summary, token split, and model shares to the same selected
-`today`, `7d`, or `30d` record. Trust remains fixed to the current period because
-a stale trust figure is worse than none, and Rhythm remains fixed to the last 30
-days because a one-day rhythm is not a rhythm. Their headings state those fixed
-windows; the switcher never changes either section.
+Usage's stat chips change with the period rather than being fixed, because two
+of the three are degenerate for a single day: over `today`, `avg/day` and the
+peak *day* both equal the day's total. `today` therefore shows the priciest
+hour, the event count, and cache hit; `7d` and `30d` show `avg/day`, the peak
+day, and cache hit.
 
-Below them sits the **footer**, which is not a section because it answers no
-question about spend. It carries current provider state as read-only text, the
-`⌄` actions menu, refresh, and the link into session detail. Provider switching,
-Settings, and Quit all live in that menu: each is a rare deliberate act, and none
-of them may compete with the numbers a user opened this for.
+Sessions is a filtered panel because sessions carry a client and a time, so both
+filters reach them. The three work-signal modules live there rather than under
+Usage because what they describe — activity mix, workflow shape, tool calls — is
+what happened *inside* the sessions.
 
-Health and warnings are not sections either. They are surface-level conditions,
-rendered as the banner strip above the freshness line, because a warning about
-the data is not a fourth thing to read about spend — it qualifies the other
-three. An unrecognized warning code is shown verbatim as a code, never silently
-dropped, and recovery commands appear as copyable text the app never executes.
+**The rhythm block.** Rhythm is a fixed last-30-days window: a one-day rhythm is
+not a rhythm, and neither filter can change that. It therefore sits below the
+filtered panels as its own block rather than among them, stating its window in
+its own heading, and the reader scrolls to it. It carries the 7×24 hour-of-week
+grid and the 90-day calendar; the four figures above them — active days, busiest
+and quietest weekday, peak window — are derived from the same two grids and
+never stated independently of them.
 
-Every section that reports `available: false` shows an explicit unavailable label
-in place of its values, and a section whose own subject is empty shows its own
+**Above them** sit the **client tabs**, which filter every panel at once and
+carry each client's own subtotal; the **hero**, which states the selected scope's
+cost, token total, and event, session, and project counts; and the **period
+switcher**. Tabs and switcher filter; they never mutate.
+
+**The notice strip** sits at the top of the scrolling content, above the selected
+panel. It carries, in severity order, an unreadable-data notice, a partial-data
+notice, and a health notice; it is absent entirely when none holds. It is part of
+the content rather than a bar pinned above the footer, because a pinned bar
+covers the data the user opened this for, and an inline expansion of it pushes
+the footer out of shape. The health notice opens a **health detail** — a second
+level of the content area with a back control, listing every check and its
+status. Health is therefore never a section: it qualifies the numbers rather than
+being a fifth thing to read about spend. An unrecognized warning code is shown
+verbatim as a code, never silently dropped, and recovery commands appear as
+copyable text the app never executes.
+
+**The freshness line** sits in the header beside the refresh control, because
+when the data was updated and the control that updates it are one subject. The
+cost-completeness note sits directly under the hero amount, because it explains
+the `≈` that amount carries.
+
+**The footer** is not a section because it answers no question about spend. It
+carries current provider state and opens the provider menu, and nothing else.
+The menu opens upward, so its disclosure points upward.
+
+Every panel that reports `available: false` shows an explicit unavailable label
+in place of its values, and a panel whose own subject is empty shows its own
 empty copy rather than the whole surface claiming emptiness.
 
 ### Rendered specimens
 
-The reviewable prototype is
-[`prototype/desktop-surfaces.html`](prototype/desktop-surfaces.html) — open it in
-a browser. Every panel is drawn at its contract dimension, 1 px to 1 pt, in both
-light and dark, so proportion, density, and wrapping can be judged rather than
-imagined. That is what a specimen is for, and a text sketch cannot do it.
+The reviewable prototype is [`prototype/interactive-v7/`](prototype/interactive-v7/).
+It is a running application, not a static page: `npm install && npm run dev --
+--port 4175`, then
 
-The sketches below are the same states in text. They are kept because the
-contract is reviewed as text and cited by blob hash, so a reader following a
-review round needs the states inline; they are an index to the prototype, not a
-substitute for it.
+| Surface | Address |
+| --- | --- |
+| Menu bar and popover | `http://127.0.0.1:4175/` |
+| Twelve widgets | `http://127.0.0.1:4175/?surface=widgets` |
+| Every degraded state, side by side | `http://127.0.0.1:4175/?surface=states` |
 
-Neither settles real SF type metrics, Dynamic Type reflow, VoiceOver order, or
-measured contrast. Those are runtime claims and stay in the manual checklist.
-Width shown is the 340 pt default unless noted.
+Its stage controls switch language, appearance, and data state; URL parameters
+(`lang`, `theme`, `state`, `tab`, `signal`, `settings`) address any single
+combination directly, which is what a review round cites. The panel is drawn at
+its contract dimension, 1 px to 1 pt, in both appearances and both languages.
 
-Healthy, everything available. The body is the four sections in order —
-magnitude, composition, trust, rhythm — under the client tabs, with provider
-state, the `⌄` actions menu, refresh, and the session link in the footer
-rather than in the reading surface. There is no title bar and no close
-button: a `MenuBarExtra` popover is dismissed by clicking away, so none is
-drawn.
+The prototype carries two self-checks, and a review round may run them:
+`?surface=widgets&measure=1` reports every clipped container, and `?probe=1`
+drives the surface with real events and asserts the interaction rules this
+document states — filter propagation, chart hover/pin/keyboard, provider menu and
+confirmation, the notice strip and health detail, signal detail entry and exit,
+refresh failure and retry, the item's right-click and double-click menus, and the
+settings window. A screenshot cannot show any of those.
+
+The sketches below are the same states in text, kept because the contract is
+reviewed as text and cited by blob hash. They are an index to the prototype, not
+a substitute for it. Neither settles real SF type metrics, Dynamic Type reflow,
+VoiceOver order, or measured contrast; those are runtime claims and stay in the
+manual checklist.
+
+Healthy, everything available. Width is the 420 pt default.
 
 ```text
-┌────────────────────────────────────────────┐
-│ All  $12.47     Codex $9.10   Claude $3.37 │
-│                                            │
-│ Today · Sun Aug 16                  $12.47 │
-│ 1,204,881 tokens · 143 events · 8 sess.    │
-│                                            │
-│ Today   7 Days   30 Days                   │
-│                                            │
-│ TREND · 30 DAYS                28.4M tokens│
-│   avg/day 1.18M · peak 3.4M Aug 12 ·       │
-│   cache hit 71.2%                          │
-│                                            │
-│ MODELS                              today  │
-│   claude-opus-5     612.4K         50.8%   │
-│   gpt-5              401.1K         33.3%  │
-│                                            │
-│ ATTRIBUTION                          today │
-│   Determinable     $11.90          95.4%   │
-│   Inferred           $0.57          4.6%   │
-│                                            │
-│ RHYTHM                  7×24 · last 30 days│
-│   peak Tue 15:00                           │
-│                                            │
-│ ─────────────────────────────────────────  │
-│ Codex aigocode · Claude official  ⌄ Refresh│
-│                                    Sessions│
-│ Updated 3m ago                             │
-└────────────────────────────────────────────┘
+┌──────────────────────────────────────────────┐
+│ ⬢ AgentDeck              Updated just now  ⟳ │
+├──────────────────────────────────────────────┤
+│ [ All $9.06 ]  Codex $7.53    Claude $1.53   │
+│                                              │
+│ Today · Tue, Aug 18                    16.4M │
+│ ≈$9.06                75 events · 4 sessions │
+│ Cost incomplete · 14 unpriced   · 3 projects │
+│                                              │
+│ [ Today ]   7D        30D                    │
+│ [ ▮ Usage ] ◔ Breakdown ⛨ Attribution ⟨⟩ Ses.│
+├──────────────────────────────────────────────┤
+│ ⚠ 2 checks not passing                     › │
+│ ┌──────────────────────────────────────────┐ │
+│ │        ▁▂▃▅▆█▆▃▂▁                        │ │
+│ │ 00:00        12:00                   Now │ │
+│ │ Peak 15:00–16:00 · $1.49                 │ │
+│ │ PRICIEST HOUR   EVENTS      CACHE HIT    │ │
+│ │ $1.49           75          66.1%        │ │
+│ └──────────────────────────────────────────┘ │
+│ ──────────────────────────────────────────── │
+│ ⏱ Rhythm      Last 30 days · not filtered    │
+│ ACTIVE 27/30  BUSIEST Tue  QUIETEST Sun      │
+│ ▓▒░ 7×24 grid ░▒▓                            │
+│ ▓▒░ 90-day calendar ░▒▓            (scrolls) │
+├──────────────────────────────────────────────┤
+│ Providers  Codex aigocode · Claude official ⌃│
+└──────────────────────────────────────────────┘
 ```
 
 Loading, no snapshot ever retained — the only state that shows no data:
 
 ```text
-┌────────────────────────────────────────────┐
-│                                            │
-│   Loading…                                 │
-│                                            │
-└────────────────────────────────────────────┘
+┌──────────────────────────────────────────────┐
+│   Loading…                                   │
+└──────────────────────────────────────────────┘
 ```
 
 Retained snapshot with the helper unreachable — `dataSurface` + `stale` +
-`offline`. The data stays; the qualifiers explain it in the footer, not a
-title bar, because this surface has none:
+`offline`. The data stays; the header states its age and the notice strip
+explains the condition:
 
 ```text
-┌────────────────────────────────────────────┐
-│ All  $12.47     Codex $9.10   Claude $3.37 │
-│                                            │
-│ Today · Sun Aug 16                  $12.47 │
-│ 1,204,881 tokens · 143 events · 8 sess.    │
-│   … sections unchanged, dimmed …           │
-│                                            │
-│ ─────────────────────────────────────────  │
-│ Codex aigocode · Claude official  ⌄ Refresh│
-│                                    Sessions│
-│ Cannot reach the AgentDeck helper          │
-│ Updated 41m ago                            │
-└────────────────────────────────────────────┘
+│ ⬢ AgentDeck           Last updated 9h ago  ⟳ │
+│ … filters and panels unchanged …             │
+│ ⓘ Cannot reach the AgentDeck helper          │
 ```
 
-Partial snapshot with incomplete pricing — an unavailable section is labelled,
-never blank, and the cost is shown with its qualifier rather than suppressed:
+Partial snapshot — the unavailable domain is named in place, and its tab is
+marked, so the user is told which panel lost data rather than being left to find
+it:
 
 ```text
-│ MODELS                         Unavailable │
-│   Section could not be read this refresh   │
-│                                            │
-│ ─────────────────────────────────────────  │
-│ Cost incomplete · 37 unpriced ·            │
-│ Some data unavailable                      │
+│ [ Usage ]  Breakdown  [Attribution •] Sessions│
+│ ⓘ Some data unavailable                      │
+│ ┌──────────────────────────────────────────┐ │
+│ │            ⚠  Some data unavailable      │ │
+│ │               Attribution quality        │ │
+│ └──────────────────────────────────────────┘ │
+```
+
+Health detail, opened from the notice strip — a second level of the content
+area, not an expansion pinned above the footer:
+
+```text
+│ ‹ Back                              ⚠ Health │
+│ State directory permissions                OK│
+│ Credential key                             OK│
+│ Usage index                           Warning│
+│ Price catalog                          Failed│
+│ Session index                              OK│
+│ These checks come from agentdeck doctor.     │
 ```
 
 Switch confirmation and its in-flight state, showing that every other row is
@@ -334,68 +396,68 @@ than truncating:
 
 ```text
 ┌──────────────────────────────────┐
-│ All $12.47                       │
+│ All ≈$9.06                       │
 │                                  │
-│ Today                    $12.47  │
-│   1,204,881 tokens               │
-│   143 events · 8 sessions        │
+│ Today                    ≈$9.06  │
+│   16.4M tokens                   │
+│   75 events · 4 sessions         │
 │                                  │
-│ TREND                            │
-│   28.4M tokens · 30 days         │
+│ [ Usage ] Breakdown              │
+│ Attribution  Sessions            │
 └──────────────────────────────────┘
 ```
 
-Empty, distinct from unavailable — a real zero rather than an unknown. History
-still renders, because a quiet day is only legible against the days around it:
+Empty, distinct from unavailable — a real zero rather than an unknown. The
+filtered panels go to zero; rhythm keeps rendering, because a quiet day is only
+legible against the days around it, and its 30-day window is not empty just
+because today is:
 
 ```text
-│ Today · Sun Aug 16                   $0.00 │
-│   No local activity today                  │
+│ [ All $0.00 ]  Codex $0.00   Claude $0.00    │
+│ Today · Tue, Aug 18                        0 │
+│ $0.00                 0 events · 0 sessions  │
+│ ┌──────────────────────────────────────────┐ │
+│ │ ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁                 │ │
+│ │        No local activity today           │ │
+│ │ PRICIEST HOUR   EVENTS      CACHE HIT    │ │
+│ │ —               0           —            │ │
+│ └──────────────────────────────────────────┘ │
+│ ⏱ Rhythm   ACTIVE 27/30 … still rendered     │
 ```
 
 ### Actions
 
-| Action | Behavior |
-| --- | --- |
-| Refresh now | Requests a replacement refresh. Disabled while a refresh is active. |
-| Switch provider | Opens a confirmation naming the client, provider, credential, and wrapper route. Performs the switch only after confirmation. |
-| Copy recovery command | Copies the snapshot's recovery command text to the pasteboard. |
-| Open Settings | Opens the preferences scene. |
-| Check for updates | Performs one manual update check. |
-| Quit | Terminates the application. |
+| Action | Where | Behavior |
+| --- | --- | --- |
+| Refresh now | Header, and `⌘R` | Requests a replacement refresh. Disabled while a refresh is active. |
+| Switch provider | Footer menu | Opens a confirmation naming the client, provider, credential, and wrapper route. Performs the switch only after confirmation. |
+| Open health detail | Notice strip | Replaces the content area with the check list; a back control returns. |
+| Copy recovery command | Health detail | Copies the snapshot's recovery command text to the pasteboard. |
+| Open Settings | Item menu, and `⌘,` | Opens the settings window. See [`settings.md`](settings.md). |
+| Menu-bar shows | Item menu | Sets the item's value mode without opening settings. |
+| About | Item menu | Opens the standard about panel. |
+| Quit | Item menu, and `⌘Q` | Terminates the application. |
 
 No action mutates AgentDeck state except `Switch provider`. No action executes a
 recovery command, opens a database, or reads a client configuration file.
 
 ## Preferences
 
-| Preference | Default | Behavior |
-| --- | --- | --- |
-| Periodic refresh | Off | When on, schedules the next refresh from `next_refresh_at`. Never runs while the menu is closed if the app is inactive-suspended; a missed interval refreshes once on reactivation. |
-| Launch at login | Off | Registers or unregisters `SMAppService.mainApp`. The UI reports the service's actual current status, including `requiresApproval`. |
-| Update check | Off | When on, permits at most one automatic check per 24 hours. |
+Preferences are presented by the settings window, which is its own surface:
+[`settings.md`](settings.md) specifies each control, its default, its failure
+presentation, and its copy. This document owns only what the reading surface does
+with them:
+
+| Preference | Effect on this surface |
+| --- | --- |
+| Periodic refresh | When on, the coordinator schedules the next refresh from `next_refresh_at`; the header's freshness line is the only visible difference. |
+| Launch at login | No effect on this surface. |
+| Menu-bar value | Selects what the menu-bar item renders — cost, tokens, or icon only. |
+| Menu-bar scope | Selects whether the item follows the popover's client filter or stays on all clients. |
 
 Preference operations MUST be idempotent, MUST report the real post-operation
 state rather than the requested state, and MUST NOT install a launch daemon,
 launch agent, or privileged helper.
-
-## Update check
-
-The host may issue one unauthenticated `GET` to the official AgentDeck GitHub
-latest-stable-release endpoint. The request MUST NOT carry AgentDeck state,
-usage, provider, session, machine identifier, credential, or custom tracking
-header.
-
-The host compares the running application's version with the returned stable
-tag. Prereleases are ignored. When a newer stable version exists, the host shows
-the version and offers to open the official release page through the system
-browser.
-
-Network, HTTP, decoding, comparison, and browser-open failures are non-fatal,
-never reduce local snapshot availability, and never block any other action. The
-app never downloads, installs, replaces, relaunches, or requests privilege.
-
-Update-check outcome MUST NOT be written to the App Group cache.
 
 ## Localization
 
@@ -420,10 +482,14 @@ is specified before the window.
 
 | Aspect | Specification |
 | --- | --- |
-| Glyph | One SF Symbol rendered as a template image, so macOS owns light, dark, and highlight appearance. No custom bitmap, no color glyph. |
-| Base glyph | `gauge.with.needle` — it reads as a live local measurement rather than a document or a cloud service. |
+| Glyph | The `AgentDeckMenuBarIcon` asset rendered as a monochrome template image, so macOS owns light, dark, and highlight appearance. No color glyph. |
+| Base glyph | Three stacked cards form an `A` in negative space, combining the product initial with the deck metaphor while remaining legible at menu-bar size. |
 | Status overlay | None in the normal case. The glyph gains a badge only for `error` and `offline`, using `exclamationmark.triangle.fill` as the badged variant. `stale` and `partial` are window-level qualifiers and MUST NOT badge the menu bar. |
-| Text | Never. No token count, cost, or provider name is rendered in the menu bar. Cost in particular MUST NOT sit permanently on screen where a screen share or a passer-by can read it. |
+| Text | Today's cost by default, matching the rendered prototype. A preference switches the value among cost, tokens, and icon-only when screen-sharing privacy or menu-bar space matters. Provider names never appear here. |
+| Scope | The value covers all clients by default. A preference makes it follow the popover's client filter instead; without that preference the item never silently narrows because of something the user did inside the popover and then closed. |
+| Incomplete cost | The value carries the same `≈` prefix the hero uses when pricing is incomplete, and nothing else explains it here — the explanation is one click away, and a menu-bar item is not the place to argue. |
+| Left click | Toggles the popover. |
+| Right click, and double click | Opens the item's own menu: menu-bar value, Settings…, About, Quit. This is where the application's exits live, so the popover does not carry them. |
 | Animation | None, ever — including during refresh. A moving menu-bar item draws attention that the underlying event does not warrant. |
 | Accessibility label | Localized app name plus, when badged, the state: for example `AgentDeck — 离线` / `AgentDeck — offline`. |
 
@@ -434,18 +500,31 @@ still usable and is qualified where the user actually reads it.
 ## Visual contract
 
 Values are the specification, not suggestions, because an unbounded menu-bar
-window is a real failure mode: this surface has six sections whose content grows
+window is a real failure mode: this surface has four panels and a rhythm block whose content grows
 with health checks and warnings.
 
 ### Geometry
 
 | Property | Value |
 | --- | --- |
-| Window width | Fixed 340 pt at default Dynamic Type |
+| Window width | Fixed 420 pt at default Dynamic Type |
 | Narrow bound | 280 pt — the minimum width every layout MUST remain correct at |
-| Maximum height | 560 pt, or 70% of the shortest visible screen's height, whichever is smaller |
-| Content overflow | The section stack scrolls vertically inside the height bound. The window never grows past it and never clips a row |
+| Maximum height | 760 pt, or the shortest visible screen's height less 72 pt, whichever is smaller |
+| Fixed regions | Header, client tabs, hero, period switcher, and panel switcher never scroll; together they are bounded at 40% of the window height |
+| Scrolling region | The notice strip, the selected panel, and the rhythm block scroll as one column inside the remaining height |
+| Footer | Never scrolls; one row |
 | Row minimum height | 28 pt, so a pointer target stays comfortable |
+
+The width and height are the dimensions the prototype and the shipped host both
+use. An earlier draft stated 340 pt and 560 pt while the implementation used
+420 pt and 760 pt, and the drift went unnoticed because the document stated
+geometry only as numbers with nothing rendered at them.
+
+The scrolling region exists because rhythm sits below the filtered panels: the
+surface is deliberately taller than one screenful, and scrolling to reach the
+unfiltered block is the interaction, not an overflow accident. What must never
+scroll is the filter set, because a filter the user cannot see while reading the
+result it produced is worse than no filter.
 
 ### Typography and spacing
 
@@ -483,15 +562,22 @@ than decorated with green.
 
 ### Density control
 
-Two sections grow without bound and MUST be bounded in presentation:
+Three regions grow without bound and MUST be bounded in presentation:
 
-| Section | Rule |
+| Region | Rule |
 | --- | --- |
-| Health | Show aggregate status plus at most 3 failed checks, then a localized "and N more" row that expands in place |
-| Warnings | Show at most 3 warnings, then the same expandable overflow row |
+| Notice strip | At most one notice per condition, never one per failing check. The health notice states a count and opens the detail |
+| Health detail | Lists every check; it is a second level of the content area and may scroll |
+| Warnings | At most 3 in the notice strip, then a localized "and N more" that opens the same detail |
 
-Recent sessions are already bounded by the snapshot. Sections whose data is
-absent collapse to a single unavailable row rather than an empty header.
+The health count belongs in the strip and the list belongs in the detail because
+they answer different questions: whether anything is wrong, and what. An earlier
+draft expanded the list in place above the footer, which covered the data and
+deformed the footer at the same time.
+
+Recent sessions and per-project rows are already bounded by the snapshot. Panels
+whose data is absent collapse to a single unavailable label rather than an empty
+header.
 
 ## Interaction states and copy
 
@@ -532,21 +618,28 @@ may claim the day.
 statement, not two. Every other combination appears in the fixed order:
 `stale`/`aged`, `offline`, `failing`, `partial`, `empty`.
 
-### Update check copy
+Where each of these is *rendered* is fixed too, because a qualifier in the wrong
+place reads as being about the wrong thing:
 
-Manual and automatic checks MUST read differently, because the user initiated one
-and not the other:
+| Copy | Rendered |
+| --- | --- |
+| `stale`/`aged` freshness | Header, beside the refresh control |
+| Cost completeness | Directly under the hero amount, explaining its `≈` |
+| `offline`, `failing`, `partial`, health | The notice strip at the top of the content |
+| A panel's own unavailable or empty copy | Inside that panel |
 
-| Situation | `en` | `zh-Hans` |
+| Element | `en` | `zh-Hans` |
 | --- | --- | --- |
-| Manual, up to date | `You're on the latest version` | `已是最新版本` |
-| Manual, newer exists | `Version <v> is available` with an `Open download page` action | `有新版本 <v>` + `打开下载页` |
-| Manual, check failed | `Could not check for updates` | `无法检查更新` |
-| Automatic, newer exists | Same wording, shown as a passive row — never a modal, never a badge | 同上 |
-| Automatic, up to date or failed | Silent. Nothing is shown | 同上 |
+| Cost incomplete | `Cost incomplete · <n> unpriced` | `成本不完整 · <n> 项未计价` |
+| Health notice | `<n> checks not passing` | `<n> 项检查未通过` |
+| Health detail title | `Health` | `运行状况` |
+| Check status | `OK` / `Warning` / `Failed` | `正常` / `警告` / `失败` |
+| Rhythm scope | `Last 30 days · not affected by the filters above` | `近 30 天 · 不受上方筛选影响` |
+| Work signals, not yet captured | `Not captured yet` | `待采集` |
 
-An automatic check that finds nothing MUST stay silent. Reporting a successful
-no-op is noise.
+The rhythm scope line is not decoration. It is the sentence that keeps the
+filters honest: it states, where the user is looking, why the block above
+changed and this one did not.
 
 ### Provider switch flow
 
@@ -635,7 +728,7 @@ The menu-bar window MUST:
   logged, copied, or persisted.
 - Logging keeps the foundation's fixed-classification policy. New events use
   fixed codes for switch attempt, switch outcome category, preference change,
-  and update-check outcome category. No dynamic value is logged.
+  and preference change. No dynamic value is logged.
 - The App Group cache contract is unchanged. Menu-bar work adds no field and
   never writes the cache directly.
 - Tests use synthetic snapshots, synthetic candidates, an injected preference
@@ -667,9 +760,11 @@ Verification level L3.
   triggering one replacement refresh, and each typed failure category leaving
   presented state unchanged.
 - Preferences: idempotent enable and disable, real-status reporting, and the
-  24-hour automatic update-check bound with manual checks unaffected.
-- Update check: newer stable, same version, older version, prerelease ignored,
-  and each failure category being non-fatal.
+  menu-bar value and scope modes each changing what the item renders.
+- The notice strip: each severity present alone and together, in the fixed order,
+  and absent entirely when no condition holds.
+- Filter propagation: every panel re-reads at the selected client and period, and
+  the rhythm block does not.
 - Localization: both catalogs resolve every key, and no key falls back to its
   identifier.
 - Accessibility-derivable behavior: label/value/hint presence, qualifier in the
@@ -681,8 +776,8 @@ Verification level L3.
 
 Recorded in the review record with the observed result for each item on macOS 26:
 
-1. VoiceOver reads every section and action in a sensible order with meaningful
-   labels.
+1. VoiceOver reads every panel and action in a sensible order with meaningful
+   labels, and announces which panel the switcher has selected.
 2. Full keyboard access reaches every control with a visible focus indicator.
 3. Reduce Motion removes transitions and progress animation.
 4. Increase Contrast keeps every status legible.
@@ -695,15 +790,16 @@ Recorded in the review record with the observed result for each item on macOS 26
 9. The menu-bar glyph is unbadged when only `stale`, `aged`, `partial`, or
    `empty` hold, and badged whenever `offline` or `failing` holds, on either
    surface. It never animates and never renders text.
-10. Health and warning sections show at most three rows plus a working overflow
-    row that expands in place.
+10. The notice strip shows at most one notice per condition; the health detail
+    lists every check and returns to the panel the user left.
 11. A switch in flight disables every other action, and the confirmation's own
     controls, so a second submit cannot be issued.
 12. A failed switch keeps the previous provider displayed as current and shows
     the failure code without the underlying message text.
 13. Candidate discovery failure with readable routes still shows current routes,
     with the switch affordance visibly disabled rather than absent.
-14. An automatic update check that finds nothing shows nothing.
+14. The notice strip is absent when nothing is wrong, and the health detail opens
+    and returns without disturbing the selected panel or the scroll position.
 15. A successful switch through the canonical invocation produces an empty
     stderr, confirming `--quiet` suppresses the route and advisory reporters.
 16. A candidate with several options presents one row per option; credential and
@@ -739,15 +835,17 @@ untested risk.
 
 - Desktop wire v1 carries `provider.candidates` additively, Go owns its
   redaction, and both fixtures and both decoders agree.
-- The menu bar presents all six sections with explicit unavailable, empty, and
-  incomplete-pricing handling.
+- The menu bar presents four filtered panels and the unfiltered rhythm block,
+  each with explicit unavailable, empty, and incomplete-pricing handling.
 - All six presentation states derive from foundation coordinator state with no
   second state machine.
 - A provider switch happens only after explicit confirmation, uses exactly the
   confirmed candidate, and reports a typed outcome.
-- Manual refresh always works; periodic refresh, login item, and update check
-  are opt-in, default off, idempotent, and report real state.
-- The update check only compares stable versions and opens a page.
+- Manual refresh always works; periodic refresh and login item are opt-in,
+  default off, idempotent, and report real state.
+- The client and period filters govern every filtered panel; the rhythm block
+  states its own fixed window and no filter changes it.
+- No surface, menu, or string refers to an update check.
 - Every user-visible string resolves in `en` and `zh-Hans`.
 - Accessibility-derivable behavior is asserted in XCTest and the manual
   checklist is recorded with observed results.
@@ -780,9 +878,27 @@ extension:
 | Switch menu rows | `provider.candidates[].options` |
 | Freshness line | `generated_at`, `next_refresh_at` |
 
-Refused, with the ground stated in `architecture.md`: per-project and
-per-session breakdown inside the popover body. Recent-session rows keep their
-existing bounded shape in session detail rather than in the reading surface.
+| Session panel statistics | `sessions.items[]` client, model, project, and start/end times, and `sessions.total` |
+| Menu-bar item scope | the same per-client subtotals, so the item and the tabs cannot disagree |
+
+Three elements this surface now presents are **not** provisioned by the current
+projection. They are named here rather than quietly rendered from invented data,
+and the prototype marks each of them `Not captured yet`:
+
+| Element | Ruling in `architecture.md` | What this surface does |
+| --- | --- | --- |
+| Attribution under a period filter | **Provisioned** — `quality` and `pricing` move to the `Client` × `Period` product | The Attribution panel honors both filters, like the other three |
+| Sessions under a period filter | **Provisioned** — `sessions` gains per-period grouped statistics beside its bounded recent list | The Sessions panel honors both filters |
+| Work signals — activity mix, workflow shape, tool calls | **Refused in this topic** — the classifier over raw session logs is a usage-domain capability, not a presentation one | The three modules stay specified here and are **not shipped by `menubar-experience`**. Until the capability exists, the Sessions panel ships its statistics, per-project rows, and recent-session rows only |
+
+The refused modules keep their specification and their `Not captured yet`
+treatment in the prototype so the gap stays visible and costed. What must never
+happen is the third row rendering plausible numbers: a work-signal module with no
+capture behind it is an invented measurement in a product whose reason to exist
+is that its measurements are real.
+
+Refused, with the ground stated in `architecture.md`: per-session cost. The
+projection carries no per-session cost, so no session row states one.
 
 ## Downstream contracts
 
@@ -790,13 +906,14 @@ existing bounded shape in session detail rather than in the reading surface.
 projection. The new candidate data stays in the host process.
 
 `unified-desktop-distribution` owns signing, notarization, universal assembly,
-and the App Group entitlement in release artifacts. The update check's endpoint
-and the release page it opens must agree with the release assets that task
-publishes.
+and the App Group entitlement in release artifacts.
 
-`desktop-app-contract` reconciles the delivered menu-bar behavior, the additive
-candidate contract, and the update-check behavior into `docs/specs/cli-design.md`
-and `docs/specs/cli-manual.md`.
+`desktop-app-contract` reconciles the delivered menu-bar behavior and the
+additive candidate contract into `docs/specs/cli-design.md` and
+`docs/specs/cli-manual.md`.
+
+`settings.md` owns the settings window this surface opens. The two share the
+preference domain and nothing else.
 
 ## Approval boundary
 
