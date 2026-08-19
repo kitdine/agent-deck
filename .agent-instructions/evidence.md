@@ -69,6 +69,84 @@ named `completion-evidence`.
   product-change authority. A Review `PASS` remains distinct from a
   `VERIFIED` WorkUnit gate.
 
+### Record shape / 记录形状
+
+The rules above are the contract. They do not describe how a record is shaped,
+and a writer who reconstructs that by memory writes nodes the gate cannot see.
+On 2026-08-19 that happened: six evidence nodes were written in the single-node
+form this store retired on 2026-08-17, and the gate query — which walks
+`work_unit -> criterion <- evidence` and matches `outcome = 'pass'` — returned
+nothing from them. They looked recorded and proved nothing.
+
+**Inspect the store before writing.** The convention lives in the graph, not in
+memory and not in this file's history. One read settles it:
+
+```cypher
+MATCH (n:CEv1Node) WHERE n.ce_namespace = 'github.com/kitdine/agent-deck'
+RETURN n.kind AS kind, min(n.recorded_at) AS first, max(n.recorded_at) AS last,
+       count(*) AS c ORDER BY last DESC
+```
+
+A `kind` whose `last` is old is retired vocabulary, however many rows it has.
+Mixed property types make this trap worse: ordering by a property that is a
+string on some nodes and `DATE_TIME` on others sorts by type before value, so
+`ORDER BY … DESC LIMIT n` can hide every recent record. Aggregate, do not
+sample.
+
+The current shape, as the store holds it:
+
+```text
+work_unit ──requires──▶ criterion ◀──satisfies── evidence ──observed_at──▶ content_state
+```
+
+- Node `kind` is lowercase: `work_unit`, `criterion`, `content_state`,
+  `evidence`. Every node and relation carries
+  `profile: 'completion-evidence/v1'`, `ce_namespace`, and `attributes_json`
+  holding the same properties as JSON. Timestamps use `datetime()`, never a
+  string.
+- `content_state` is its own node, identified by its `subject_digest`, and it is
+  where `head`, `git_commit`, `scoped_blob_fingerprint`, `subject_path`, and
+  `manifest_sha256` live. An evidence node's `target_content_state` is a foreign
+  key to that node's `id`, not a description of the state.
+- The digest is computed from the bound identity, so two writers agree on the
+  same state without coordinating:
+
+  ```bash
+  printf '%s' 'head=<HEAD-SHA>;document=<blob>' | shasum -a 256
+  # append ';prototype=<manifest_sha256>' when a specimen is part of the state
+  ```
+
+- **`outcome` MUST be lowercase `pass`.** The gate filters on that exact value;
+  `PASS` records a node the gate will never count.
+- Records are append-only facts. When content changes, add a new
+  `content_state` and `evidence` and point the new evidence at the old one with
+  a `supersedes` relation. Do not rewrite an existing node — the previous state
+  is what makes reuse decisions auditable, and this store's write path may
+  reject the update anyway.
+- Upsert with the profile's own templates: `UNWIND $nodes` for nodes, the
+  relation preflight that reports `missing_endpoint` / `identity_conflict`, then
+  `UNWIND $relations`. Compare the returned count with the submitted count, then
+  re-run the gate query. Recording is not finished until the gate answers.
+
+**Record after the round's own status synchronization, not before.** A review
+round ticks a matrix cell and writes a current-state paragraph in the document
+it reviewed, which changes that document's blob. Evidence bound to the
+pre-synchronization blob is stale the moment the round finishes. Bind to the
+final blob, and if evidence was already recorded against the earlier one,
+supersede it rather than leaving two live records.
+
+A denied write is not automatically `BLOCKED`. Retry as a smaller idempotent
+upsert first: an environment may reject one statement's shape while permitting
+the same intent expressed as the profile's template. Report `BLOCKED` only after
+that, and say which statement was refused.
+
+证据记录的形状以库中现状为准，不以记忆为准；写入前先聚合查询 `kind` 与其最后使用
+时间，被淘汰的词汇不因历史条数多而正确。当前为四类小写节点加三种关系，
+`outcome` 必须小写 `pass`，`content_state` 是独立节点且 `target_content_state`
+是指向它的外键，`subject_digest` 由上面那条 `shasum` 得出。记录只追加，内容变化用
+`supersedes` 而非改写。证据应绑定本轮状态同步之后的最终 blob，并在写完后用门禁
+查询自查。写入被拒时先改用更小的幂等 upsert 重试，再决定是否报告 `BLOCKED`。
+
 ## Neo4j Project Memory / Neo4j 项目记忆
 
 `neo4j-memory` is a non-authoritative, durable project-knowledge aid. It is a
