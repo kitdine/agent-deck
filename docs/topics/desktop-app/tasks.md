@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-08-06
-updated: 2026-08-17
+updated: 2026-08-18
 ---
 
 # Native macOS Desktop App — Tasks
@@ -17,8 +17,13 @@ This file is the only status authority for this topic.
 - Keep Go aggregation, authorization, privacy filtering, partial results, and
   warnings authoritative.
 - Add Go fixtures and Swift decoding fixtures from the same canonical examples.
-- Document allowed desktop update-check connectivity and privacy behavior in the
-  living specification when implementation makes it real.
+- Preserve the no-network boundary this command established: the snapshot reaches
+  no network, and neither does any other desktop surface. The desktop update check
+  is withdrawn from this version, so there is no connectivity behavior to document
+  — what a later task must not do is add the first outbound request. This bullet
+  replaces a delivered instruction to document update-check connectivity "when
+  implementation makes it real"; it never became real. Task 1's implementation and
+  its Review PASS are untouched by the correction.
 - Verification level: L2 because this adds a stable JSON/exit-code contract.
 
 ### 2. `macos-app-foundation`
@@ -32,66 +37,340 @@ This file is the only status authority for this topic.
 - Add Swift unit tests without reading real AgentDeck or client state.
 - Verification level: L3 for new build and application boundaries.
 
-### 3. `menubar-experience`
+### 3. `presentation-period-scoping`
 
-- Contracts: [`ux/menubar.md`](ux/menubar.md#sections) for the reading surface
-  and [`Presentation state`](ux/menubar.md#presentation-state) for its state
-  model; [`architecture.md`](architecture.md#menu-bar-wire-contract-extension)
-  for additive `usage.presentation` and `provider.candidates`, the switch command
-  surface, its result envelope, and switch operation ownership.
-- Implement the reading surface, surface-level qualifiers, and footer exactly as
-  defined by the Sections contract; recent-session rows remain in session detail.
-- Add safe provider quick actions, refresh behavior, login-item preference, and
-  newer-version notification that opens the official download page only.
+- Contract: [`architecture.md`](architecture.md#presentation-gaps-raised-by-the-reviewed-surfaces).
+- **Two wire owners, not one.** The contract provisions period scoping in two
+  different places, and they have different producers, different DTOs, and
+  different decoders. Writing this task against `usage.presentation` alone would
+  either duplicate the session schema under usage or leave two owners fighting over
+  `data.sessions`:
+
+| Sub-change | Wire location | Go producer | Swift decoder |
+| --- | --- | --- | --- |
+| `quality` and `pricing` move from client scope to the `Client` × `Period` product | `data.usage.presentation.scopes[].quality.items[]` and `…pricing.items[]` | `internal/usage/presentation.go` | `DesktopUsageQualityV1` / `DesktopUsagePricingV1` in `apps/macos/AgentDeckShared/DesktopWire.swift` |
+| `sessions` gains per-period grouping and per-period counts beside its bounded recent list | `data.sessions.periods.items[]`, with `data.sessions.items[]` unchanged | `internal/desktop/desktop.go` (`SessionsSnapshot`) | `DesktopSessionsSnapshotV1` in the same file |
+
+- The bounded recent list stays a *recent* list. The panel's statistics come from
+  `sessions.periods.items[]`; the host never derives them from the recent rows.
+- This exists as its own task because it is a Go producer change with its own
+  fixtures and decoders, and because `menubar-experience` cannot honor its own
+  filter contract without it. Folding it into the UI task would hide a wire
+  change inside a presentation task.
+- Both changes are additive and MUST NOT raise `wire_version`; a payload without
+  them decodes as `available: false`.
+- Depends on tasks 1 and 2, both already Review PASS, so it is startable now.
+- **File lists below are stated against the commit baseline**, not against
+  whatever happens to be in the working tree. A path that exists only as
+  uncommitted work in progress is a file this task creates, because the task's
+  commit is what first puts it under version control. Checking the lists against a
+  dirty tree hides exactly that distinction.
+- Files, existing at the baseline:
+  `internal/desktop/desktop.go` (`SessionsSnapshot` and its builder hunks),
+  `internal/desktop/desktop_test.go`,
+  `desktop/fixtures/v1/snapshot-complete.json`,
+  `desktop/fixtures/v1/snapshot-partial.json`, `desktop/fixtures/v1/verify.swift`,
+  `apps/macos/AgentDeckShared/DesktopWire.swift` (the quality, pricing, and
+  sessions DTO hunks only), `apps/macos/AgentDeckTests/DesktopWireTests.swift`,
+  `apps/macos/AgentDeckTests/FixtureSupport.swift`,
+  `cmd/agentdeck/testdata/phase7/gui-json-contract.json`.
+- Creates: `internal/usage/presentation.go`,
+  `internal/usage/presentation_test.go`, and
+  `desktop/fixtures/v1/snapshot-legacy.json`. All three exist as uncommitted work
+  in progress; this task is what commits them, and its commit boundary therefore
+  covers three new files rather than none.
+- The split above rests on the two sub-changes having **different owners** — a
+  different Go producer, a different DTO family, and a different decoder each —
+  not on whether any file is new. An earlier revision argued the split from "no new
+  file", which was both wrong at the baseline and the wrong reason: the sub-changes
+  would still need separating if they shared a file, and would still be separate if
+  both were new.
+- Owns no Swift presentation code. `AgentDeckApp.swift` and
+  `AppGroupSnapshotStore.swift` belong to tasks 4 and 5; this task stops at the
+  decoded types.
+- Verification level: L2 because this changes a persisted JSON contract.
+
+### 4. `menubar-experience`
+
+- Contracts: [`ux/menubar.md`](ux/menubar.md#sections) for the reading surface,
+  [`Presentation state`](ux/menubar.md#presentation-state) for its state model,
+  [`ux/settings.md`](ux/settings.md) for the settings window, and
+  [`architecture.md`](architecture.md#menu-bar-wire-contract-extension) for the
+  additive `usage.presentation` and `provider.candidates` objects, the switch
+  command surface, its result envelope, and switch operation ownership.
+- Implement the reading surface exactly as the Sections contract defines it: the
+  client and period filters, the four filtered panels, the unfiltered rhythm
+  block below them, the notice strip and its health detail, and the provider
+  footer.
+- **Both filters govern every filtered panel.** A panel that ignores one of them
+  is a defect, not a simplification; this is the correction the reviewed
+  prototype exists to record.
+- The Sessions panel ships its statistics, per-project rows, and recent-session
+  rows. Its three work-signal modules are specified but **not** delivered here —
+  `architecture.md` refuses their data in this topic.
+- Implement the settings window as its own window with the four preferences,
+  their defaults, and the login-item refusal presentation.
+- Implement the menu-bar item, its value and scope modes, and its right-click and
+  double-click menu carrying Settings and Quit. The popover carries no
+  application exits.
+- Deliver no update check anywhere: no menu item, no preference, no copy, no
+  network request.
 - Derive presentation from the coordinator surfaces and orthogonal qualifiers in
   the Presentation state contract; do not introduce a second state machine.
 - Verify VoiceOver, keyboard navigation, reduced motion, high contrast, locale,
   narrow layout, and appearance changes on macOS 26.
-- Implement both additive wire objects in Go; update the canonical complete,
-  partial, and retained legacy v1 fixtures plus Go and Swift decoder tests.
-  Neither object raises `wire_version` or reopens task 1's delivered contract or
-  its Review PASS.
-- Ship English and Simplified Chinese user-visible strings.
+- Ship English and Simplified Chinese user-visible strings for both surfaces.
+- Depends on task 2 for the host runtime and on task 3 for the period-scoped
+  attribution and session data. It does not depend on task 5 for any behavior:
+  neither surface reads the other, and either can be implemented and reviewed first.
+  What the two do share is one file — task 5 adds the two hunks that make the app
+  target embed the widget, and those land in the app target this task otherwise owns.
+  That is a landing-order constraint on `project.pbxproj`, resolved by the rebase
+  rule below, not a behavioral dependency in either direction.
+- Files, existing at the commit baseline:
+  `apps/macos/AgentDeckApp/AgentDeckApp.swift`,
+  `apps/macos/AgentDeckApp/Info.plist`,
+  `apps/macos/AgentDeckShared/EmbeddedHelperRunner.swift` (the refresh-coordinator
+  and presentation-state hunks only; the process and capture contract is task 2's),
+  `apps/macos/AgentDeckTests/DesktopRefreshCoordinatorTests.swift`,
+  `apps/macos/AgentDeckTests/EmbeddedHelperRunnerTests.swift`,
+  `apps/macos/AgentDeck.xcodeproj/project.pbxproj` (the app target's hunks **and
+  the `AgentDeckAppTests` test-target hunks** it adds, but **not** the two hunks
+  that embed the widget extension — those are task 5's, listed there),
+  `apps/macos/AgentDeck.xcodeproj/xcshareddata/xcschemes/AgentDeck.xcscheme` (its
+  own `<TestableReference>` entry only).
+- **A test target that is not in the scheme does not run.**
+  `scripts/test-macos-app.sh` invokes `xcodebuild -scheme AgentDeck … test`, and
+  `xcodebuild test` executes the scheme's `<Testables>`, not every unit-test target
+  in the project. Adding `AgentDeckAppTests` to the project without adding it to the
+  scheme produces a target that builds, never executes, and leaves the command
+  green — a failure indistinguishable from passing. Acceptance for this task
+  therefore includes: `bash scripts/test-macos-app.sh` output names
+  `AgentDeckAppTests` and reports its test count.
+- Creates: `apps/macos/AgentDeckApp/Localizable.xcstrings` and
+  `apps/macos/AgentDeckApp/Assets.xcassets/`, both currently uncommitted work in
+  progress that this task commits; the settings window and menu-bar-item Swift
+  sources under `apps/macos/AgentDeckApp/`; and the `AgentDeckAppTests` Xcode
+  unit-test target with its sources under `apps/macos/AgentDeckAppTests/`.
+- **Its tests do not go in `apps/macos/AgentDeckTests/`.** That directory is bound
+  by `path: "AgentDeckTests"` to the `AgentDeckSharedTests` target, which depends on
+  `AgentDeckShared` only and cannot see `AgentDeckApp/`. The two existing files
+  listed above stay there because what they test — the refresh coordinator and the
+  helper runner — lives in `AgentDeckShared`. Anything testing the settings window or
+  the menu-bar item needs a target that links the app, which is why this task adds
+  one. `architecture.md`'s Build and configuration section says the project defines
+  isolated unit-test *targets*, plural; this is one of them.
+- The app's string catalog is this task's exclusively. Task 5 creates and owns the
+  widget's own catalog; neither task edits the other's.
+- Does not own `apps/macos/AgentDeckShared/DesktopWire.swift` or
+  `AppGroupSnapshotStore.swift`. The first is task 3's for the new DTOs and task
+  2's otherwise; the second is task 5's projection boundary.
 - Verification level: L3 including rendered and interactive acceptance.
 
-### 4. `desktop-widget`
+### 5. `desktop-widget`
 
 - Contracts: [`ux/widget.md`](ux/widget.md#surface-and-qualifiers) for the
   surface/qualifier model and [`Timeline`](ux/widget.md#timeline) for WidgetKit
   entry-point behavior.
 - Add WidgetKit timelines and App Intent configuration backed only by the
   redacted App Group snapshot.
+- Build and judge every size at its true canvas proportion — `systemLarge` is
+  `systemMedium`'s width and roughly twice its height, not a full-row band. The
+  reviewed prototype's first draft got this wrong and hid seven clipped regions.
+- Honor the caption size bound and the fixed-height grid cell rule in
+  [`ux/widget.md`](ux/widget.md#what-a-size-can-actually-hold); when content and
+  canvas conflict, drop the least load-bearing element rather than shrinking type
+  or clipping.
+- Derive every figure from the same bounded series and 7×24 grid the popover
+  reads, so the two surfaces cannot state contradictory facts.
 - Implement the surface, qualifier, and timeline entry-point behavior from those
   contracts; do not introduce a parallel state vocabulary.
 - Prove the Widget cannot read AgentDeck databases, credentials, client config,
   or raw session sources.
-- Verification level: L3 including extension sandbox and privacy checks.
+- Ship English and Simplified Chinese strings for every widget-visible element:
+  the copy table in [`Copy`](ux/widget.md#copy) and the `Client` App Intent
+  parameter values, whose `en`/`zh-Hans` pairs `ux/widget.md` fixes. Acceptance
+  condition 8 there — both languages render without truncation or clipping at every
+  size — is this task's to satisfy, and it is the reason the widget owns its own
+  catalog rather than borrowing the app's.
+- Depends on task 2 for the App Group snapshot store and on task 3 for the
+  period-scoped data the projection carries. It consumes task 3's producer through
+  that projection rather than by reading the wire itself, which is why the
+  dependency is real even though no Go file is shared.
+- Files: `apps/macos/AgentDeckShared/AppGroupSnapshotStore.swift` (the projection
+  hunks that add the period-scoped fields; the atomic-write and fail-closed
+  behavior is task 2's and stays as reviewed),
+  `apps/macos/AgentDeckTests/AppGroupSnapshotStoreTests.swift`,
+  `apps/macos/AgentDeckWidget.entitlements`,
+  `apps/macos/AgentDeck.xcodeproj/project.pbxproj` (the widget target's hunks, the
+  `AgentDeckWidgetTests` test-target hunks, **and the two app-target hunks that
+  embed the extension** — the `PlugIns` copy phase and the app target's
+  `PBXTargetDependency` on the widget target),
+  `apps/macos/AgentDeck.xcodeproj/xcshareddata/xcschemes/AgentDeck.xcscheme` (its
+  own `<TestableReference>` entry only).
+- **Embedding is this task's, not task 4's.** A macOS app extension ships only if
+  the host application target copies it through a `PlugIns` phase and depends on its
+  target, and the current `AgentDeck` target has neither — its build phases stop at
+  `Embed AgentDeck Helper` and it carries one dependency. Those two hunks live in the
+  app target but belong to the delivery that needs them: a widget nobody embeds is
+  not a widget. Task 4's app-target share explicitly excludes them, and task 6
+  cannot supply them because its `project.pbxproj` share is signing and packaging
+  build settings only.
+- **A test target that is not in the scheme does not run**, exactly as stated in
+  task 4. Acceptance for this task includes: `bash scripts/test-macos-app.sh` output
+  names `AgentDeckWidgetTests` and reports its test count.
+- Creates: the `AgentDeckWidget/` target sources — timeline provider, App Intent
+  configuration, and the four widget families at all three sizes;
+  `apps/macos/AgentDeckWidget/Localizable.xcstrings` for the strings above; the
+  `AgentDeckWidgetTests` Xcode unit-test target with its sources under
+  `apps/macos/AgentDeckWidgetTests/`; and `scripts/check-widget-sandbox.sh` for the
+  static half of the negative privacy proof below.
+- **Its tests do not go in `apps/macos/AgentDeckTests/`** either, for the same
+  reason as task 4: that directory belongs to `AgentDeckSharedTests`, which links
+  only `AgentDeckShared`. `AppGroupSnapshotStoreTests.swift` stays there because the
+  store is Shared code; the timeline provider, the App Intent, and the four families
+  need a target that links the widget.
+- The negative privacy proof has two halves, and only one of them is a script:
+  - **Static**, this task's `scripts/check-widget-sandbox.sh`: the widget target's
+    entitlements grant the App Group and nothing else; no widget source references
+    an AgentDeck database, credential store, client-configuration, or raw session
+    path; and the widget target links no module that could reach one.
+  - **Runtime**, a manual acceptance step on macOS 26 with the extension actually
+    running: those reads fail rather than merely being absent from the source.
+    Stated as manual because a sandbox denial is observable only from inside the
+    running extension.
+  - `scripts/check-privacy.sh` is listed above for a different job and does not
+    contribute to this proof. It enumerates repository files and greps for
+    credential *literals*; it says nothing about what a process can open. The L3
+    level's "privacy checks" means the two halves here, not that script.
+  - `check-widget-sandbox.sh` is invoked directly by this task as its own L3
+    evidence. Whether it also joins the aggregate release gate is task 6's to wire,
+    and task 6 says it does — recorded in both places because a script created by one
+    task and wired by another is exactly the seam where neither does it.
+- The widget gets **its own** string catalog rather than a share of task 4's.
+  `apps/macos/AgentDeckApp/Localizable.xcstrings` stays task 4's exclusively, and
+  its target does not include the widget's strings. A second catalog is the cheaper
+  boundary here: the alternative is two tasks editing one catalog, which is the
+  overlap the `Files` lists exist to prevent, and an extension target loading the
+  containing app's catalog is not something either target's membership gives it for
+  free. Strings shared between the two surfaces, if any turn out to be identical,
+  stay duplicated rather than hoisted — a shared catalog would recreate the
+  overlap for the sake of a handful of words.
+- Shares `project.pbxproj` with tasks 4 and 6, in four shares: task 4 owns the app
+  target and the `AgentDeckAppTests` target **except** the two embedding hunks above;
+  task 5 owns the widget target, the `AgentDeckWidgetTests` target, and those two
+  embedding hunks; task 6 owns the signing and packaging build settings. Whichever
+  lands second rebases rather than reformats, and a whole-file regeneration by any of
+  them is a defect.
+- Shares `AgentDeck.xcscheme` with task 4 on the same terms: one
+  `<TestableReference>` entry each, nothing else in the file, same rebase rule.
+  Xcode rewrites this file wholesale just as it does `project.pbxproj`, so it needs
+  the same convention rather than being left as an unclaimed side effect of opening
+  the project.
+- `apps/macos/Package.swift` is changed by **no task in this topic**, and that is a
+  decision rather than an omission. The package exists only to exercise
+  `AgentDeckShared` without Xcode, as its own header says; it cannot host an
+  application or app-extension test bundle, so the two new test targets belong to
+  the Xcode project and the manifest stays scoped to Shared. A later task that needs
+  a Shared-only test target may extend it and must then claim it explicitly.
+- Verification level: L3 including the extension sandbox and privacy checks named
+  above.
 
-### 5. `unified-desktop-distribution`
+### 6. `unified-desktop-distribution`
 
-- Build the universal helper and full App bundle, sign nested code, notarize and
-  staple the DMG, publish direct-download assets, render the `agentdeck-app`
-  Cask, and add Formula-to-Cask migration and mutual-exclusion behavior.
+- **This task builds and tests the distribution automation. It performs no real
+  release action.** Signing with a development-team certificate, notarizing with
+  Apple, uploading assets, opening a tap pull request, and publishing are each
+  outside what a development phase may do here — the certificate, the notarization
+  credential, the tap write, and the publication decision are all authority this
+  topic does not hold, and the version contract reserves the release decision
+  anyway. Writing the task as "sign, notarize, publish" made it literally
+  uncompletable, which is worse than making it smaller: an implementer either stops
+  and asks, or reaches past the ceiling.
+- Implement: the universal helper and full App bundle build, nested-code signing
+  **invocation**, notarization and stapling **invocation**, direct-download asset
+  assembly, the `agentdeck-app` Cask rendering, and Formula-to-Cask migration and
+  mutual-exclusion behavior.
+- Test all of it in isolation, with no external state: ad-hoc or self-signed
+  identities for the signing path, a stubbed notarization response for the stapling
+  path, a local tap fixture for the Cask render and pull-request body, and a
+  temporary `HOME` and prefix for every install path. A test that needs the real
+  Developer ID, the real Apple service, or the real tap is out of scope for this
+  task by construction.
 - Preserve CLI-only Formula archives and tests.
-- Verify fresh Cask install, upgrade, uninstall, direct DMG installation,
-  optional user CLI link, completion loading, state preservation, Gatekeeper,
-  arm64, and Intel behavior.
-- Verification level: L4 through an expanded aggregate release gate.
+- Verify against locally built artifacts: fresh Cask install, upgrade, uninstall,
+  direct DMG installation, completion loading, state preservation, Gatekeeper
+  assessment of a locally signed bundle, arm64, and Intel behavior.
+- There is no user CLI link to verify: `architecture.md`'s Direct download section
+  ships no link action, and the command line stays the Formula's and the Cask's to
+  provide.
+- Real signing, notarization, upload, tap pull request, and publication belong to
+  the separately authorized exact-SHA release workflows, which run on a commit that
+  already carries preflight evidence. Task 6 is what makes those workflows
+  possible; it is not permitted to run them, and its Review PASS is not a release
+  decision.
+- Depends on tasks 4 and 5, because it packages the app and the widget it signs.
+- Files: `scripts/build-macos-app.sh`, `scripts/test-macos-app.sh`,
+  `scripts/release-archive.sh`, `scripts/verify-release-artifacts.sh`,
+  `scripts/render-homebrew-formula.sh`, `scripts/update-homebrew-tap-pr.sh`,
+  `scripts/test-release-distribution.sh`, `scripts/test-install.sh`,
+  `scripts/manage-install.sh`, `scripts/test-completion-install.sh`,
+  `packaging/homebrew/agentdeck.rb.tmpl`, `.github/workflows/release.yml`,
+  `.github/workflows/release-preflight.yml`, `.github/workflows/ci.yml`,
+  `apps/macos/AgentDeck.xcodeproj/project.pbxproj` (signing and packaging build
+  settings only), `apps/macos/Config/AgentDeck.xcconfig`, `Makefile`.
+- Creates: `packaging/homebrew/agentdeck-app.rb.tmpl` for the Cask, and the
+  migration and mutual-exclusion test scripts under `scripts/`.
+- Wire task 5's `scripts/check-widget-sandbox.sh` into the aggregate gate, as a
+  `Makefile` target reached by `release-verify` — the same shape
+  `scripts/check-privacy.sh` already has. Task 5 creates the script and runs it
+  directly as its own L3 evidence; this task owns `Makefile`, so the wiring is this
+  task's. It is written in both places because a script one task creates and another
+  wires is exactly the seam where neither does it, and a static sandbox assertion
+  that runs only once during the task that wrote it is not a gate.
+- Verification level: L4 through an expanded aggregate release gate, run against
+  locally produced artifacts.
 
-### 6. `desktop-app-contract`
+### 7. `desktop-app-contract`
 
 - Reconcile **this topic's** delivered behavior into the living specs and manual:
-  the wire contract, menu-bar app, widget, packaging, and distribution behavior
-  actually delivered.
-- Close all review records for this topic and confirm the app, CLI,
-  wire-contract, and package identities it produces agree with each other.
+  the wire contract, the menu-bar app, **the settings window and its four
+  preferences**, the widget, packaging, and distribution behavior actually
+  delivered. The settings surface is a separately reviewed contract
+  (`ux/settings.md`) and was missing from this list, which is how a whole surface
+  reaches release without entering the living specification.
+- **Every prior task's Review PASS is a precondition, not work this task does.**
+  Task 7 cannot close its own review, and it cannot close anyone else's: a review
+  record is closed by the independent Review that passes it. What task 7 does is
+  verify that the records are already closed and that the document set is
+  consistent with what shipped, then report any that are not as a blocker rather
+  than ticking them.
+- Task 7's own Review is likewise independent. Reaching the end of this task means
+  the reconciliation is ready to review, not that the topic is closed.
+- Confirm the app, CLI, wire-contract, and package identities agree with each
+  other. **Reuse task 6's evidence rather than re-deriving it:** identity is an
+  artifact property that task 6 established at L4 against a specific content state.
+  If the tree is unchanged since that run — verified by status, diff, and the same
+  commit or tree hash, not by assumption — task 7 cites it and runs no build. If
+  anything relevant changed, the identity check is task 6's to redo at its own
+  level, not something task 7 re-asserts under an L2 gate it cannot support.
 - **This task does not raise the specification version, run technical preflight,
   choose a release channel, or write release notes.** The version-wide raise is
   owned by the [v0.5.0 contract closure](../v0-5-0-contract/tasks.md). Preflight
   and any RC or stable publication remain separate, explicitly authorized
   workflows.
-- Runs only after every other task in this topic has Review PASS.
-- Verification level: L2 for contract state.
+- Depends on tasks 1 through 6, each at Review PASS.
+- Files, existing at the commit baseline: `docs/specs/cli-design.md`,
+  `docs/specs/cli-manual.md`, and `docs/README.md` (the topic's stage row only).
+- Creates: `docs/topics/desktop-app/reviews/desktop-app-contract.md`, when this
+  task's first review round runs.
+- Changes no product code, test, or configuration. If reconciliation reveals that
+  the specification and the delivered behavior disagree, that is a finding against
+  the task that delivered it, not a fix task 7 applies to the code.
+- Verification level: L0. It is a documentation change plus a reuse of task 6's
+  unchanged exact-state evidence, so it requires the documentation and discovery
+  checks and no product test run. The previous L2 claim implied a contract test
+  this task neither changes nor can produce.
 
 ## Documents
 
@@ -100,8 +379,198 @@ This file is the only status authority for this topic.
 | requirements.md | [x] | [x] |
 | architecture.md | [x] | [x] |
 | ux/menubar.md | [x] | [x] |
+| ux/settings.md | [x] | [x] |
 | ux/widget.md | [x] | [x] |
 | tasks.md | [x] | [x] |
+
+### Why every Review cell is unticked again (2026-08-18)
+
+The set was green. It is not any more, and the reason is worth stating plainly
+rather than burying in a round note.
+
+A reviewable prototype was built for the menu-bar and widget surfaces — a running
+application at the contract dimensions, in both appearances and both languages,
+with every degraded state addressable. Reviewing **it** rather than a text sketch
+surfaced defects that the prose had passed:
+
+- the client and period filters governed only two of the four sections beneath
+  them, with no disabled state and no explanation for the other two;
+- the widget board drew `systemLarge` as a wide full-row band. At the true
+  proportion — `systemMedium`'s width, roughly twice its height — seven regions
+  clipped, including a whole statistics strip;
+- the stated geometry was 340 × 560 pt while the shipped host used 420 × 760 pt,
+  and nobody had noticed because the document stated geometry only as numbers;
+- health expanded inline above the footer, covering data and deforming the footer
+  at once;
+- three modules were specified whose data no field in the projection supplies.
+
+Those are the defects the specimen requirement in `docs/README.md` exists to
+catch, and they were caught. Acting on them changed the content of every document
+in the set, and **evidence binds to a content state, not to a file name** — a
+`PASS` recorded against the previous text says nothing about this one. So every
+cell is unticked and the set is re-reviewed in order.
+
+What survives unchanged, and is not being re-litigated: the presentation
+surface-and-qualifier state model, the provider switch flow end to end, the
+privacy and logging boundaries, the four-question derivation of both surfaces,
+and the size-is-depth rule for widgets. The changes are to structure, geometry,
+and data provisioning — not to the model underneath them.
+
+The prototype is [`prototype/interactive-v7/`](prototype/interactive-v7/) and is
+cited by all three surface documents. It is the only prototype retained: the
+earlier iterations and the static `desktop-surfaces.html` were removed once this
+one superseded them, so nothing in the tree can be mistaken for a current
+specimen. The round history below cites the removed HTML page; those citations
+resolve through Git history, which is where a superseded specimen belongs.
+
+### Review order
+
+The order follows the dependency, not convenience: the boundary decides what the
+surfaces may contain, the surfaces decide what contracts must provision, and the
+decomposition is judged against all of them.
+
+1. `requirements.md` — the boundary moved: update check withdrawn entirely, work
+   signals moved to Backlog, a third surface added.
+2. `ux/menubar.md`, `ux/settings.md`, `ux/widget.md` — the three surfaces. Any
+   order among them; they do not depend on each other.
+3. `architecture.md` — judged against the surfaces, especially the three
+   provisioning rulings.
+4. `tasks.md` — judged against all of the above, last.
+
+### Current requirements review
+
+Requirements Review Round 6 (2026-08-18): **FAIL**. The revised boundary names
+the settings window and constrains the quality of preferences it exposes, but it
+does not authorize a user outcome or the four-preference set that
+`ux/settings.md` and `menubar-experience` require. An empty window with no
+preferences would still satisfy the written acceptance boundary. R6-F1 is
+recorded in [`reviews/requirements.md`](reviews/requirements.md).
+
+Independent Re-review Round 7 (2026-08-18): **PASS**. Goals and Acceptance now
+authorize exactly launch at login, periodic refresh, menu-bar value, and
+menu-bar scope, matching `ux/settings.md` and `menubar-experience` one-to-one.
+R6-F1 is closed and the requirements Review cell is ticked.
+
+### Current menu-bar document review
+
+`ux/menubar.md` Review Round 1 (2026-08-19): **FAIL**. A headed review of the
+current referenced prototype closed the interaction, state, localization, and
+layout questions but found M1-F1: scoped axe WCAG A/AA checks report serious
+text-contrast failures in both Light and Dark appearances. The finding is
+recorded in [`reviews/ux-menubar.md`](reviews/ux-menubar.md); the document's
+Review cell remains unticked. Prototype mock arithmetic is explicitly not a
+finding.
+
+Independent Re-review Round 3 (2026-08-19): **PASS**. M1-F1 is closed on the
+same contract blob and repaired specimen: current Light and Dark captures keep
+the named roles legible, and an independent foreground/background check found
+no ratio below 4.5:1 across 292 affected role instances. The exact content state
+has a non-vacuous `VERIFIED` CEv1 gate, so the `ux/menubar.md` Review cell is
+ticked. Surface-document review continues with `ux/settings.md`.
+
+### Current settings document review
+
+`ux/settings.md` Review Round 1 (2026-08-19): **FAIL**. S1-F1 is that the
+referenced specimen leaves both switch hints as unrelated visible text instead
+of exposing them as the controls' accessible descriptions. S1-F2 is that the
+conditional login-item failure is not a status or live region and therefore is
+not announced when it appears. Both findings are recorded in
+[`reviews/ux-settings.md`](reviews/ux-settings.md); the Review cell remains
+unticked pending repair and independent Re-review.
+
+Independent Re-review Round 3 (2026-08-19): **PASS**. Current `zh` and `en`
+accessibility trees expose every localized description; the refusal leaves the
+switch off with one announced status and no disabled sibling control or second
+dialog, and the next successful attempt clears it. S1-F1 and S1-F2 are closed,
+the exact content state has a non-vacuous `VERIFIED` CEv1 gate, and the
+`ux/settings.md` Review cell is ticked. Surface-document review continues with
+`ux/widget.md`.
+
+### Current widget document review
+
+`ux/widget.md` Review Round 14 (2026-08-19): **FAIL**. W-F12 is that the
+current referenced specimen contradicts the normative `magnitude` size-depth
+table: medium omits each period's token value and renders 30 rather than 20
+bars, while large omits the peak date. The finding is recorded in
+[`reviews/ux-widget.md`](reviews/ux-widget.md); the Review cell remains unticked
+pending repair and independent Re-review.
+
+Independent Re-review Round 16 (2026-08-19): **PASS**. W-F12 is closed on the
+current specimen: medium carries cost and tokens for all three periods, exactly
+20 bars and the matching date axis; large carries the localized peak date with
+no chip clipping. The exact content state has a non-vacuous `VERIFIED` CEv1
+gate, so the `ux/widget.md` Review cell is ticked. Document review continues
+with `architecture.md`.
+
+### Current architecture document review
+
+`architecture.md` Review Round 1 (2026-08-19): **FAIL**. A1-F1 is that the
+top-level desktop wire section leaves the already-selected dedicated snapshot
+command as a future decision while the same document and current code require
+`desktop snapshot` wire v1. A1-F2 is that Direct download adds an optional
+Settings CLI-link action outside the approved four-preference surface and task
+boundary. Both findings are recorded in
+[`reviews/architecture.md`](reviews/architecture.md); the Review cell remains
+unticked pending repair and independent Re-review.
+
+Independent Re-review Round 3 (2026-08-19): **PASS**. A1-F1 and A1-F2 are
+closed: the dedicated `desktop snapshot` wire-v1 contract is fixed and
+implementation-aligned, while Direct download explicitly ships no Settings
+CLI-link action and task 6 agrees. The previously unreviewed remainder of the
+current architecture produced no new blocker; the exact content state has a
+non-vacuous `VERIFIED` CEv1 gate. The `architecture.md` Review cell is ticked,
+and document review continues with `tasks.md`.
+
+### Current tasks document review
+
+`tasks.md` Review Round 6 (2026-08-19): **FAIL**. T6-F1 assigns period-scoped
+sessions to the wrong wire owner; T6-F2 leaves tasks 3–7 without required file
+ownership; T6-F3 leaves the current dependency graph incomplete; T6-F4 mixes
+distribution implementation with separately authorized publication; T6-F5
+leaves the final contract task's settings, Review ownership, and evidence reuse
+incomplete; T6-F6 leaves the version contract at six desktop tasks while this
+matrix has seven; and T6-F7 retains withdrawn update-check scope in task 1. The
+findings are recorded in [`reviews/tasks.md`](reviews/tasks.md); the Review cell
+remains unticked pending repair and independent Re-review.
+
+Independent Re-review Round 8 (2026-08-19): **FAIL**. Six of Round 6's seven
+findings are confirmed closed; T6-F2 is only partly closed, and three findings
+remain — widget localization has no owning task, task 3's `Creates` claim does
+not hold against the committed baseline, and the matrix preamble still states a
+six-task range. They are recorded in [`reviews/tasks.md`](reviews/tasks.md); the
+Review cell stays unticked pending repair and a further Re-review.
+
+Independent Re-review Round 10 (2026-08-19): **FAIL**. All three Round 8 findings
+are confirmed closed and the commit-baseline rule for `Files`/`Creates` now holds
+mechanically, but two findings remain — the test-target growth tasks 4 and 5 need
+belongs to no task, and task 5's extension-sandbox proof names no artifact that
+can perform it. They are recorded in [`reviews/tasks.md`](reviews/tasks.md); the
+Review cell stays unticked pending repair and a further Re-review.
+
+Independent Re-review Round 12 (2026-08-19): **FAIL**. Both Round 10 findings are
+confirmed closed, but the same reverse reading of the build system found two more
+one level out — the shared scheme that decides which test targets `xcodebuild
+test` actually runs belongs to no task, and the app-target hunk that embeds the
+widget extension is assigned to task 4 while tasks 4 and 5 are declared mutually
+independent. They are recorded in [`reviews/tasks.md`](reviews/tasks.md); the
+Review cell stays unticked pending repair and a further Re-review.
+
+Independent Re-review Round 14 (2026-08-19): **PASS**. R12-F1, R12-F2 and R12-F3
+are closed, the commit-baseline `Files`/`Creates` rule holds under an independent
+re-run, and the two questions Round 13 left open both resolve into territory a
+task already owns. The `tasks.md` Review cell is ticked and the Documents matrix
+is complete. The `completion-evidence/v1` gate for this
+exact content state is `VERIFIED`; the record in
+[`reviews/tasks.md`](reviews/tasks.md) carries the criterion, content state, and
+evidence identifiers, and corrects an earlier `BLOCKED` claim that was wrong.
+
+
+### Round history for the previous content state
+
+Everything below this line was recorded against the pre-2026-08-18 text. It is
+kept because a reader following a citation needs it, and because the findings it
+closed are findings this revision must not reintroduce. It is not evidence for
+the current content.
 
 `requirements.md` Review Round 1 (2026-08-17): **FAIL**. The boundary still
 limits the named menu-bar outcome to current-day usage while the drafted
@@ -157,21 +626,42 @@ tasks 1 and 2 are delivered and independently reviewed, and discarding a
 decomposition that already produced verified work would cost more than it
 corrects.
 
-Instead, decomposition happens properly once the Documents matrix is green.
-Tasks 1 and 2 then enter stage 5 as fixed inputs — their anchors, boundaries,
-and evidence stay as they are — and tasks 3 through 6 are re-derived from the
-reviewed specification rather than assumed from this list. A task whose scope
-the specification does not support is dropped or re-cut then, which is the point
-of decomposing after the design exists.
+Instead it was re-derived once the design existed, in the 2026-08-18 pass recorded
+under **What changed in the decomposition (2026-08-18)** below. Tasks 1 and 2
+entered that pass as fixed inputs — their anchors, boundaries, and evidence stayed
+as they are — and tasks 3 through 7 were re-derived from the reviewed specification
+rather than assumed from this list, which is what added
+`presentation-period-scoping` as task 3 and moved `menubar-experience` to task 4.
+A task whose scope the specification did not support was dropped or re-cut in that
+pass, which is the point of decomposing after the design exists.
 
 | Task | Dev | Review |
 | --- | --- | --- |
 | 1. `desktop-wire-contract` | [x] | [x] |
 | 2. `macos-app-foundation` | [x] | [x] |
-| 3. `menubar-experience` | [ ] | [ ] |
-| 4. `desktop-widget` | [ ] | [ ] |
-| 5. `unified-desktop-distribution` | [ ] | [ ] |
-| 6. `desktop-app-contract` | [ ] | [ ] |
+| 3. `presentation-period-scoping` | [ ] | [ ] |
+| 4. `menubar-experience` | [ ] | [ ] |
+| 5. `desktop-widget` | [ ] | [ ] |
+| 6. `unified-desktop-distribution` | [ ] | [ ] |
+| 7. `desktop-app-contract` | [ ] | [ ] |
+
+### What changed in the decomposition (2026-08-18)
+
+Tasks 1 and 2 are delivered, independently reviewed, and untouched. The rest was
+re-cut against the reviewed surfaces:
+
+| Change | Reason |
+| --- | --- |
+| `presentation-period-scoping` added as task 3 | Attribution and sessions must honor the period filter, which is a Go producer change with its own fixtures and decoders. Folding it into the UI task would hide a wire change inside a presentation task, and `menubar-experience` cannot satisfy its own filter contract without it |
+| `menubar-experience` re-scoped | It now delivers four filtered panels plus an unfiltered rhythm block, a notice strip with a health detail, the settings window, and the item's own menu. It no longer delivers an update check, and it no longer delivers the three work-signal modules |
+| `desktop-widget` re-scoped | Same twelve configurations, but built and judged at the true canvas proportion, with the caption-size bound and fixed-height cell rule as acceptance conditions |
+| Work signals removed from this topic | `architecture.md` refuses their data here: a classifier over raw session logs is a usage-domain capability with its own extraction, storage, and privacy analysis. It is carried in `requirements.md`'s Backlog and needs its own topic |
+| Update check removed everywhere | Withdrawn from the version. With it gone the desktop app makes no network request at all, which is a boundary simplification, not only a scope cut |
+
+No task was dropped for being inconvenient, and none was added that the reviewed
+surfaces do not require.
+
+### Task round history
 
 `desktop-wire-contract` Review Round 1 (2026-08-13): **FAIL**. The `Review` cell
 remained unchecked pending the bounded filesystem-contract and

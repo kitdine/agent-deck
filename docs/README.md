@@ -62,7 +62,7 @@ agentdeck version
 
 | Topic | Version | Status | Purpose |
 | --- | --- | --- | --- |
-| [Native macOS Desktop App](topics/desktop-app/tasks.md) | `v0.5.0` | Active — 2/6 tasks reviewed; all five documents PASS; implementation resumes at task 3 `menubar-experience` | macOS 26 menu-bar app, WidgetKit extension, unified desktop distribution, Cask, and direct-download delivery. |
+| [Native macOS Desktop App](topics/desktop-app/tasks.md) | `v0.5.0` | Active — 2/7 tasks reviewed; all six documents re-reviewed after the 2026-08-18 re-open, so the document set is complete and task 3 is next | macOS 26 menu-bar app, settings window, WidgetKit extension, unified desktop distribution, Cask, and direct-download delivery. |
 | [`v0.5.0` Contract Closure](topics/v0-5-0-contract/tasks.md) | `v0.5.0` | Active — 0/2 done | Version-wide specification raise and documentation reconciliation after every selected topic's tasks pass review. |
 | [Usage Attribution Precision](topics/usage-attribution-precision/tasks.md) | `v0.6.0` | Active — 0/3 done | Per-client attribution time semantics, determinability-based quality, and an unattributed boundary that never enters a real-spend total. |
 | [CLI Error Classification](topics/cli-error-classification/tasks.md) | `v0.5.0` | Active — all design documents PASS; implementation task 1 next; 0/2 implementation tasks done | Stable not-found codes, and no storage text in a documented JSON contract. Breaks the documented `runtime_error` value; announced in this version's notes. |

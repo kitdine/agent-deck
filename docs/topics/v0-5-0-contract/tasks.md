@@ -28,9 +28,10 @@ evidence moves when it changes.
 
 | Topic | Included | Reason |
 | --- | --- | --- |
-| [`desktop-app`](../desktop-app/tasks.md) | **Yes** | The version's only feature line. All six of its tasks ship together; a topic is merged whole or not at all. |
+| [`desktop-app`](../desktop-app/tasks.md) | **Yes** | The version's only feature line. All seven of its tasks ship together; a topic is merged whole or not at all. |
 | [`cli-error-classification`](../cli-error-classification/requirements.md) | **Yes** | It changes the documented JSON error contract, turning `runtime_error` into specific not-found codes. That is an observable break for any consumer matching the old code, so it ships in the same tag as the desktop line rather than trailing it: the desktop surface reads those codes, and a version whose UI classifies errors one way while its CLI classifies them another is the worse outcome. The break is announced once, in this version's notes. |
-| [`usage-attribution-precision`](../usage-attribution-precision/requirements.md) | **No** | Promoted out of the `v0.6.0` cost-truthfulness scope and independent of the desktop work. |
+| [`switch-effectiveness-boundary`](../switch-effectiveness-boundary/requirements.md) | **Yes** | A defect found in real use on 2026-08-17: a Claude switch back to subscription does not reach a running session, yet the advisory says it does and the recorded route claims the subscription multiplier for events the session is billing against an API key. The product currently reports a cost figure at a confidence the evidence does not support, which is worse than reporting none. It ships here rather than in `v0.6.0` with the rest of the attribution work because that work is a redesign of the quality dimension and this is a wrong number being written today. Its four tasks include one manual real-session acceptance, since the claim is about a process and no automated suite can observe it. No contract break: the advisory text changes and a route that claimed a provider now records the unknown route the schema already carries. |
+| [`usage-attribution-precision`](../usage-attribution-precision/requirements.md) | **No** | Promoted out of the `v0.6.0` cost-truthfulness scope and independent of the desktop work. `switch-effectiveness-boundary` corrects one invalid premise in its unreviewed architecture draft, which changes no verdict and does not pull the topic forward. |
 
 Excluding a topic costs nothing here and everything later: a topic already
 merged but no longer wanted has no clean removal, because `revert` propagates
@@ -38,12 +39,12 @@ forward and `reset` rewrites history. See `.agent-instructions/branching.md`.
 
 ## Scope
 
-`v0.5.0` therefore carries two lines: the desktop topic's six tasks, and the
-error-classification topic's contract change. Each topic owns the behavior it
-delivers and writes its own feature-contract text. This topic merges the
-selected branches, reconciles the complete version, raises the living
-specification exactly once, and checks that its documentation and version
-identities agree.
+`v0.5.0` therefore carries three lines: the desktop topic's seven tasks, the
+error-classification topic's contract change, and the switch-effectiveness fix.
+Each topic owns the behavior it delivers and writes its own feature-contract
+text. This topic merges the selected branches, reconciles the complete version,
+raises the living specification exactly once, and checks that its documentation
+and version identities agree.
 
 The error-classification line is a breaking change to a documented JSON
 contract. This version's notes must announce it under a compatibility heading,
@@ -58,9 +59,11 @@ authorization.
 ## Entry condition
 
 Every task in each selected topic must have Review PASS — the desktop topic
-including its own feature contract task, and the error-classification topic
-including its contract change. This topic does not start early and does not
-absorb unfinished work from either.
+including its own feature contract task, the error-classification topic including
+its contract change, and the switch-effectiveness topic including its manual
+real-session acceptance, which is the only evidence that its central claim holds.
+This topic does not start early and does not absorb unfinished work from any of
+them.
 
 ## Later preflight considerations
 
@@ -101,7 +104,7 @@ Passing those checks still does not select RC or stable publication.
 - Raise the specification version exactly once and record one version-level
   changelog entry, including the error-contract break under a compatibility
   heading.
-- Confirm every task in both selected topics has independent Review PASS and that
+- Confirm every task in every selected topic has independent Review PASS and that
   release identities — app version, CLI version, wire-contract version, and Cask
   version — agree.
 - Synchronize the documentation index and archive lifecycle state.
@@ -128,7 +131,7 @@ decision.
 | 1. `assemble` | [ ] | [ ] |
 | 2. `v0-5-0-contract` | [ ] | [ ] |
 
-Both tasks are blocked until both selected topics are fully reviewed, and
+Both tasks are blocked until every selected topic is fully reviewed, and
 `assemble` precedes the contract task. Commit boundaries follow task boundaries. This topic does not authorize commits, pushes,
 certificate creation, secret changes, preflight dispatch, release publication,
 Homebrew tap changes, local installation, or external distribution.
