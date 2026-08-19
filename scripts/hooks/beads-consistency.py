@@ -189,6 +189,40 @@ def record_stem(document: str) -> str:
     return document[:-3].replace("/", "-") if document.endswith(".md") else document
 
 
+# A task-matrix row, in either shape a topic uses: `| 1. `anchor` | [x] | [ ] |`
+# and `| 1 | `anchor` | [x] | [ ] |`. The Documents matrix never matches, because
+# its subject cell carries no backticks.
+CHECKBOX = ("[ ]", "[x]")
+ANCHOR_CELL = re.compile(r"`([a-z0-9][a-z0-9-]*)`")
+
+
+def matrix_rows(text: str) -> list[tuple[str, str, str]]:
+    """Return (anchor, dev, review) for every task row in a topic's tasks.md."""
+    rows: list[tuple[str, str, str]] = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line.startswith("|") or not line.endswith("|"):
+            continue
+        cells = [c.strip() for c in line.strip("|").split("|")]
+        if len(cells) < 3 or cells[-1] not in CHECKBOX or cells[-2] not in CHECKBOX:
+            continue
+        found = ANCHOR_CELL.search(" ".join(cells[:-2]))
+        if found:
+            rows.append((found.group(1), cells[-2], cells[-1]))
+    return rows
+
+
+def decomposition_passed(text: str) -> bool:
+    """True when the topic's own `tasks.md` row shows a ticked Review cell."""
+    for line in text.splitlines():
+        line = line.strip()
+        if not line.startswith("| tasks.md |"):
+            continue
+        cells = [c.strip() for c in line.strip("|").split("|")]
+        return len(cells) >= 3 and cells[-1] == "[x]"
+    return False
+
+
 def findings(root: Path, deadline: float) -> list[str]:
     changed = changed_paths(root, deadline)
     notes: list[str] = []
@@ -279,6 +313,42 @@ def findings(root: Path, deadline: float) -> list[str]:
                 f"{rel} is being edited, but its task {stuck} "
                 f"({parts[2]}) is still `open`. Drafting a document is the "
                 f"`in_progress` state, and it should be claimed."
+            )
+
+    # 4. A topic's decomposition passed review, so its anchors are dispatchable —
+    #    but no task exists to dispatch. `.agent-instructions/beads.md` allows
+    #    development tasks to be created only after `tasks.md` passes, and nothing
+    #    creates them when it does, so the window between the two is exactly where
+    #    they get forgotten. A `开发：` command then has no task ID to claim.
+    plans = sorted((root / "docs" / "topics").glob("*/tasks.md"))
+    pending: list[tuple[str, str]] = []
+    for plan in plans:
+        try:
+            text = plan.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        if not decomposition_passed(text):
+            continue
+        topic = plan.parent.name
+        for anchor, _dev, review in matrix_rows(text):
+            if review != "[x]":
+                pending.append((topic, anchor))
+    if pending:
+        known = bd_json(["list", "--all"], deadline) or []
+        have = set()
+        for bead in known:
+            if not isinstance(bead, dict):
+                continue
+            name = anchor_of(bead)
+            if name:
+                have.add(name)
+        missing = [(t, a) for t, a in pending if a not in have]
+        for topic, anchor in missing:
+            notes.append(
+                f"{topic} passed its `tasks.md` review, but its task `{anchor}` "
+                f"has no Beads task. Development tasks are created once the "
+                f"decomposition passes; until one exists there is nothing for "
+                f"`开发：{topic} / {anchor}` to claim."
             )
 
     return notes

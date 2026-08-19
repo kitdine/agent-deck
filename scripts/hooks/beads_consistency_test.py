@@ -46,6 +46,72 @@ class BeadsConsistencyHookTest(unittest.TestCase):
 
         bd_json.assert_called_once_with(["list", "--status", "open"], 123.0)
 
+    def test_matrix_rows_read_both_task_table_shapes(self) -> None:
+        text = "\n".join(
+            (
+                "| Document | Draft | Review |",
+                "| tasks.md | [x] | [x] |",
+                "| `ux/` | n/a | n/a |",
+                "| 1. `numbered-with-dot` | [x] | [ ] |",
+                "| 2 | `numbered-own-cell` | [ ] | [ ] |",
+            )
+        )
+
+        # The Documents matrix must never be read as a task row; its subject cell
+        # carries no backticks, which is what separates the two tables.
+        self.assertEqual(
+            MODULE.matrix_rows(text),
+            [("numbered-with-dot", "[x]", "[ ]"), ("numbered-own-cell", "[ ]", "[ ]")],
+        )
+        self.assertTrue(MODULE.decomposition_passed(text))
+
+    def test_draft_decomposition_creates_no_dispatch_expectation(self) -> None:
+        text = "| tasks.md | [x] | [ ] |\n| 1. `anchor` | [ ] | [ ] |"
+
+        # Before PASS the matrix is a draft: anchors still get renamed, merged or
+        # dropped, so demanding tasks for them would assert work that may not exist.
+        self.assertFalse(MODULE.decomposition_passed(text))
+
+    def test_missing_development_task_is_reported_after_pass(self) -> None:
+        root = Path("/repo")
+        plan = mock.MagicMock()
+        plan.read_text.return_value = (
+            "| tasks.md | [x] | [x] |\n"
+            "| 1. `delivered` | [x] | [x] |\n"
+            "| 2. `pending` | [ ] | [ ] |"
+        )
+        plan.parent.name = "example"
+
+        with (
+            mock.patch.object(MODULE, "changed_paths", return_value=[]),
+            mock.patch.object(MODULE.Path, "glob", return_value=[plan]),
+            mock.patch.object(MODULE, "bd_json", return_value=[]),
+        ):
+            notes = MODULE.findings(root, 123.0)
+
+        # `delivered` is already reviewed, so it needs no dispatch object; only the
+        # anchor that still has work left does.
+        joined = "\n".join(notes)
+        self.assertIn("`pending` has no Beads task", joined)
+        self.assertNotIn("`delivered`", joined)
+
+    def test_existing_development_task_is_not_reported(self) -> None:
+        root = Path("/repo")
+        plan = mock.MagicMock()
+        plan.read_text.return_value = "| tasks.md | [x] | [x] |\n| 1. `pending` | [ ] | [ ] |"
+        plan.parent.name = "example"
+
+        with (
+            mock.patch.object(MODULE, "changed_paths", return_value=[]),
+            mock.patch.object(MODULE.Path, "glob", return_value=[plan]),
+            mock.patch.object(
+                MODULE, "bd_json", return_value=[{"id": "x", "title": "任务：pending"}]
+            ),
+        ):
+            notes = MODULE.findings(root, 123.0)
+
+        self.assertEqual([n for n in notes if "has no Beads task" in n], [])
+
     def test_stop_report_blocks_so_the_model_sees_it(self) -> None:
         output = MODULE.report_output(["example mismatch"])
 
