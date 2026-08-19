@@ -1332,3 +1332,334 @@ Task checkpoint：desktop-app / ux/widget.md（blob d9f8f416，Review Round 13 P
 ```text
 复评：desktop-app / reviews/menubar-experience.md
 ```
+
+## Round 14 — 2026-08-19
+
+- Reviewed state: HEAD `58fe5d300c5af572adef81a69a856a6aef9cea56`;
+  `docs/topics/desktop-app/ux/widget.md` blob
+  `aae4b309bf4907262bf31db8e70aa3b92e2e72c7`; referenced
+  `ux/prototype/interactive-v7/` manifest fingerprint
+  `e04e83899c3df575df3932a752f61f3f9e7063d125694b78e8afd412875d7434`;
+  `src/Widgets.jsx` sha256
+  `1ffe4ca167d6ac5d210081476c8e7f6445f51bd6533792c18268c9f290b8f98a`.
+- Reviewer: Codex
+- Method: Single-agent formal design/contract Review, supplemented by a current
+  Product Design audit. The current Simplified Chinese Light-appearance board
+  was captured and inspected at all twelve declared configurations. CodeGraph
+  supplied the current `Magnitude` and `MiniBars` source and call path, and a
+  scoped DOM probe counted only the medium magnitude card's comparison values
+  and chart buckets. Broad Widget verification stopped after the decisive
+  W-F12 reproducer.
+- Scope: current `docs/topics/desktop-app/ux/widget.md` and its referenced
+  `ux/prototype/interactive-v7/` specimen, checked against the document's own
+  size-depth contract. Historical W-F1 through W-F11 remain attached to their
+  older reviewed content states and were not carried forward as current
+  findings.
+- Findings:
+  - [P1] W-F12 — `ux/widget.md:134-135` says `magnitude` medium shows today,
+    7-day, and 30-day **cost and tokens** plus a 20-bucket bar chart, and large
+    adds `peak` **with its date**. The referenced current specimen shows only one
+    cost per medium period, no token value, and 30 bars; its large Peak chip
+    contains only `$11.89`. `Widgets.jsx:150-170` renders one `<strong>` cost per
+    comparison row and calls `month.daily.slice(-30)`, while the large WStats
+    peak value formats only the cost. -> Align the specimen to the normative
+    size contract: include tokens for each medium period, render exactly 20
+    medium buckets, and include the peak date in large. Add focused prototype
+    assertions so all three details remain coupled to the document.
+- Evidence: `git rev-parse HEAD` ->
+  `58fe5d300c5af572adef81a69a856a6aef9cea56`; `git hash-object
+  docs/topics/desktop-app/ux/widget.md` ->
+  `aae4b309bf4907262bf31db8e70aa3b92e2e72c7`; current prototype manifest and
+  `Widgets.jsx` fingerprints as above; current headed board capture -> all
+  twelve cards visible at the declared proportions; scoped DOM probe of
+  `article "用量 · 中"` -> period rows `今日/$9.06`, `7 天/$39.76`,
+  `30 天/$152`, zero token-text matches, and 30 `.mini-bars > i` nodes;
+  CodeGraph current source independently confirms the same render path. Chrome
+  logged only extension message-channel noise after capture; the page and DOM
+  remained complete. `bash scripts/check-topic-docs.sh`, `make
+  check-whitespace`, and `git diff --check` -> exit 0.
+- Verdict: REOPEN
+
+## 📋 评审报告
+
+📊 综合评分：7/10
+
+✅ 结论：FAIL
+
+### 🔴 严重问题——必须修复
+
+[`ux/widget.md:134`] W-F12：当前引用 specimen 与 `magnitude` 的 medium/large
+size-depth 合同不一致。
+- 行为风险：文档与 specimen 是同一设计交付的两个权威面；实现者无法判断 medium 应显示
+  cost-only 还是 cost+tokens、图表应有 20 还是 30 buckets，以及 large Peak 是否必须
+  带日期。按任一边实现都会违反另一边，后续真实尺寸验收也没有唯一预期。
+- 证据：当前 medium DOM 三个 period row 各只有一个 cost，token 文本为 0，柱数为
+  30；current large 截图的 Peak chip 只有 `$11.89`。源码对应一个 cost `<strong>`、
+  `slice(-30)` 和仅格式化 peak cost 的 WStats value。
+💡 有界修复：让 `Widgets.jsx` 按 `ux/widget.md:134-135` 显示三期 token、20 根 medium
+bars 与 large peak 日期，并为这三项增加 focused prototype assertions。
+
+### 🟡 建议改进——推荐
+
+无。
+
+### 🟢 优点
+
+- 当前 board 的四类 × 三尺寸共十二张 card 全部可见，large 使用与 medium 同宽的纵向
+  比例，没有重现旧 full-row banner。
+- 四类问题、size-as-depth 层级、Light 中文 copy 和 `Cost incomplete` 状态在当前截图
+  中保持清楚。
+- App Group allowlist 与 Data requirements 已保留 W-F10/W-F11 建立的 pricing
+  completeness 和 refresh-after 字段对应；本轮 finding 是 specimen 呈现偏离，不是
+  projection 供给缺口复发。
+
+### 📝 摘要
+
+评审对象为 HEAD `58fe5d300c5af572adef81a69a856a6aef9cea56`、`ux/widget.md`
+blob `aae4b309bf4907262bf31db8e70aa3b92e2e72c7` 和 prototype manifest
+`e04e83899c3df575df3932a752f61f3f9e7063d125694b78e8afd412875d7434`。
+当前十二配置整体层级健康，但 W-F12 使 normative size contract 与其 declared rendered
+specimen 在三项可测内容上直接冲突，因此本轮 FAIL/REOPEN。决定性 reproducer 后未继续
+Dark、English、degraded states、axe、键盘或完整 overflow matrix；这些不是本轮 PASS
+证据，也没有被记为额外 finding。
+
+#### 📌 下一步
+
+```text
+修复：desktop-app / reviews/ux-widget.md / W-F12
+```
+
+## Round 15 — 2026-08-19（修复轮）
+
+- Reviewed state: repair of Round 14's single open finding. `ux/widget.md` is
+  unchanged and still blob `aae4b309bf4907262bf31db8e70aa3b92e2e72c7` — the
+  finding was that the specimen contradicts the document, and the document is the
+  normative side, so nothing in it needed to move. HEAD is still
+  `58fe5d300c5af572adef81a69a856a6aef9cea56`. Edited specimen files, by `sha256`:
+  - `src/Widgets.jsx` ->
+    `b9b35925ad6d6121627e85107a2d6cf14b2325f4c617c237f3904ca09fc1cd9f`
+  - `src/contract.js` (new) ->
+    `138d83c70b76d1ea3b95c11923881e4148a4e9fe4df10286ee975f1b23038675`
+  - `src/main.jsx` ->
+    `3cd99f339db6ea6707682455e1d05f425807feb07a2f867eb802fe88b5981e76`
+  - `src/styles.css` ->
+    `d88d23b8c491e56a47f8aa63f9e1c83287306914f2ad1fad24e9245a63fb7ccc`
+  - `README.md` ->
+    `4ca00f5ebafbdd3d3ff1560989fa54a2256ef19d3f16c75fb0c102f06e33a630`
+- Reviewer: claude-code (repair round for Round 14's FAIL — an independent
+  Re-review is still required before the Document `Review` cell may be ticked;
+  this round closes no gate and authorizes no commit)
+- Scope: W-F12 as named in the repair command. Historical W-F1 through W-F11 stay
+  attached to their older content states and were not revisited. No product code,
+  test, configuration, or contract text was changed.
+
+- Round 14 findings, dispositions:
+  - **W-F12** specimen contradicts the `magnitude` size-depth contract on three
+    measurable details -> **Fixed**, all three, plus the geometry each one costs:
+    1. **Tokens per medium period.** Each of the three comparison cells now
+       carries its token total beneath the cost, which is where
+       `ux/widget.md:137-139` puts it ("Tokens sit immediately beneath at every
+       size") — beside the cost would have been cheaper in height and is not what
+       the document says. Renders `今日 $9.06 / 16.4M`, `7 天 $39.76 / 72.0M`,
+       `30 天 $152 / 266M`.
+    2. **Exactly 20 medium buckets.** `slice(-30)` became `slice(-20)`. The date
+       axis was reading `month.window[0].date`, the 30-day window's start, so it
+       would have kept saying 30 days ago while the chart drew 20; it now reads
+       the first of the same 20 rows. Axis now spans `7月30日` to `8月18日`,
+       which is 20 days inclusive.
+    3. **Peak date in large.** The peak chip now shows `峰值 · 8月17日` /
+       `$11.89`.
+  - Geometry the fix had to pay for, since a specimen that overflows is not a
+    specimen: the medium card had zero spare height (body content exactly filled
+    its 85 pt), so a third line per cell pushed `w-axis` 9 pt out of the card —
+    caught by `measure=1`, not by eye. Reclaimed by tightening the token line's
+    `line-height` to 1.15 and lowering the bar chart's floor to 16 pt **for the
+    medium size only** (`.widget-medium .mini-bars`), leaving `small`'s 7-bucket
+    chart untouched. At 20 buckets in a 262 pt width the bars are about 11 pt
+    wide, so a bar is still a bar, which is the condition `ux/widget.md:143-146`
+    puts on keeping the mark as bars.
+  - The peak date's placement was decided by measurement, not preference. Put on
+    the value line it needed 74 pt (`$11.89` 36 + gap 4 + `8月17日` 34) inside a
+    72 pt content box, and the first implementation shipped exactly that: the DOM
+    held the date and the screen silently ellipsized 8 pt of it. Moved to the
+    label line, which needs 61 pt in both languages, so the date keeps its full
+    localized format instead of being shortened to fit.
+
+- Focused assertions, as W-F12 required. Added a third self-check,
+  `?surface=widgets&contract=1`, that counts the size-depth table out loud: 13
+  assertions covering small's 7 buckets, medium's three cells each with a cost
+  and a token value positioned after it, exactly 20 medium bars, the date axis,
+  large's 90-point filled line, its three chips, and the peak date. It also
+  asserts no chip label or value is ellipsized, because that is the failure mode
+  the layout gauge cannot see and the one this repair actually hit.
+  - The assertions were proven to bite rather than assumed to: with the token
+    line deleted and the peak `sub` deleted, the check reported `2 FAILED` naming
+    exactly those two; with the bucket count changed to 30 it reported `1 FAILED`
+    naming the bucket assertion.
+  - That last one only works because `contract.js` transcribes 7 / 20 / 90 from
+    the document instead of importing the constants `Widgets.jsx` renders from.
+    The first version did import them, and the proof run exposed it: changing the
+    constant to 30 moved the render and the expectation together and the
+    assertion passed at 30 bars. An expectation that follows the code under test
+    cannot fail. Both files now state the spec independently, and the README says
+    not to "simplify" that back into a shared constant.
+
+- Verification performed by this repair round, not yet independently confirmed:
+  - `?surface=widgets&contract=1` -> `ALL PASS` over 13 assertions in all four
+    appearance × language combinations.
+  - `?surface=widgets&measure=1` -> `NO OVERFLOW` in all four, after first
+    reproducing the 9 pt `w-axis` clip the token lines caused.
+  - Direct DOM read of the rendered board confirms 20 `.mini-bars > i`, a token
+    value in each of the three period cells, the axis pair `7月30日`/`8月18日`,
+    and the peak chip's date — and that no chip's `scrollWidth` exceeds its
+    `clientWidth`, in both languages.
+  - No regression elsewhere: the popover interaction probe stays `ALL PASS` over
+    49 assertions ×4, and scoped axe WCAG A/AA over the widgets `.stage-body`
+    reports 0 violations of any rule in all four combinations, so the new 9 pt
+    qualifier text does not reintroduce M1-F1's contrast problem.
+  - Light-appearance capture of the board reviewed directly: all twelve cards
+    still render at their declared proportions with the three new details visible.
+  - Not exercised by this round, and not claimed: Dark and English full-board
+    captures, degraded widget states, keyboard traversal, and the complete
+    overflow matrix beyond the four combinations above. Round 14 stopped before
+    them and this repair does not substitute for them.
+
+- Evidence: `contract=1` 13/13 `ALL PASS` ×4 plus the three deliberate-break runs
+  (`2 FAILED`, then `1 FAILED`) that prove each new assertion fails when its
+  detail regresses; `measure=1` `NO OVERFLOW` ×4 after reproducing the 9 pt clip;
+  `probe=1` 49/49 `ALL PASS` ×4; scoped axe 0 violations ×4 on the widgets
+  surface; `make check-whitespace`, `bash scripts/check-topic-docs.sh`, and
+  `git diff --check` all exit 0. `ux/widget.md` is byte-identical to the blob
+  Round 14 judged. Five specimen files changed, fingerprints listed above.
+- Documentation correction made in this round, covering all three repair rounds
+  this session ran (`ux/menubar.md` Round 2, `ux/settings.md` Round 2, and this
+  one): each had written its finding-and-disposition narrative into
+  `docs/topics/desktop-app/tasks.md` and `docs/README.md` as well as into its
+  review record, so the same account existed in three places. The rule is to
+  synchronize `tasks.md` and `docs/README.md` **when their status changes**, and a
+  repair round changes no status — the `Review` cell reads `[ ]` before and after.
+  There was nothing to synchronize and nothing should have been written to either
+  file. The duplication had already started to rot: the `tasks.md` copy asserted
+  `probe=1` stays 39/39, which the settings repair moved to 49. All six added
+  paragraphs were removed. The round records under `reviews/` are unchanged and
+  remain the single account; `docs/README.md` keeps one clause per document plus a
+  pointer to `tasks.md` and `reviews/`, and `tasks.md` keeps only the
+  status-changing `FAIL`/`PASS` statements that were already its convention.
+- Follow-up authorized by the user in the same session and done here rather than
+  deferred: `docs/README.md`'s Active Development prose — most of it predating
+  this session — was collapsed from a forty-line run-on of nineteen review rounds
+  to topic-level state, 35 lines including the topic table. Before deleting, each
+  removed fact was confirmed to still have a source: the task `PASS`es in the
+  Tasks matrix and their records, the requirements and menu-bar round histories in
+  `reviews/requirements.md` and `reviews/menubar-experience.md` (19 rounds), and
+  the 2026-08-18 re-open rationale in `tasks.md`'s own section, which is fuller
+  than the copy that was removed. Two facts the prose was the *only* carrier of
+  were moved to the sections that own them rather than deleted: the withdrawn
+  desktop update check is now a Withdrawn Candidates entry, and the three
+  work-signal modules a Backlog entry. `docs/README.md` gained an explicit
+  statement of what it owns and must not absorb, and `AGENTS.md` gained a
+  **Where a Review Round Is Written Down** section with the per-file split, plus a
+  tightened definition of "status changes" on the rule that had misled this
+  session into writing a round narrative into three files.
+- Verdict: REOPEN — repair complete, awaiting independent Re-review. No Document
+  gate is closed and no commit is authorized by this round.
+
+#### 📌 下一步
+
+```text
+复评：desktop-app / reviews/ux-widget.md / Round 15
+```
+
+## Round 16 — 2026-08-19（独立复评）
+
+- Reviewed state: HEAD `58fe5d300c5af572adef81a69a856a6aef9cea56`;
+  `docs/topics/desktop-app/ux/widget.md` blob
+  `aae4b309bf4907262bf31db8e70aa3b92e2e72c7`; referenced
+  `ux/prototype/interactive-v7/` manifest fingerprint
+  `6ec754c85cc1538476e0985854a7a798c3e51cc796acdcc513bf862f836bc0b3`;
+  repaired `src/Widgets.jsx` sha256
+  `b9b35925ad6d6121627e85107a2d6cf14b2325f4c617c237f3904ca09fc1cd9f`.
+- Reviewer: Codex
+- Method: Single-agent formal independent Re-review of Round 15, supplemented
+  by a current Product Design audit. The current Simplified Chinese Light board
+  was captured and inspected. A scoped DOM probe independently measured the
+  medium comparison rows, bucket count, date axis, large peak date, and chip
+  clipping. The new contract assertions were run in Light Chinese and Dark
+  English, and CodeGraph supplied the current `MiniBars`, `WStats`, and
+  `contract.js` source and call path.
+- Scope: Round 14 finding W-F12 and regressions in the three size-contract
+  details it named. Round 15's broader same-manifest appearance, axe, probe, and
+  overflow evidence was reused rather than rerun in unchanged combinations.
+- Findings:
+  - [P1] W-F12 — **CLOSED.** Medium now renders today, 7-day, and 30-day rows
+    with both cost and tokens, exactly 20 `.mini-bars > i` nodes, and an axis
+    spanning the same 20 rows (`7月30日`–`8月18日`). Large now renders
+    `峰值 · 8月17日` with `$11.89`; all three stat-chip labels and values have
+    `scrollWidth <= clientWidth + 1` and are not ellipsized.
+  - Newly blocking findings: none.
+- Evidence: current accepted Light Chinese board capture; scoped current DOM ->
+  `今日/$9.06/16.4M`, `7 天/$39.76/72.0M`, `30 天/$152/266M`, 20 bars,
+  two axis dates, localized peak date, and no chip clipping; current
+  `contract=1` -> 13/13 `ALL PASS` in Light Chinese and Dark English; CodeGraph
+  current source confirms independent 7/20/90 expectations and the render
+  path. Round 15 exact-state evidence remains reusable for the other two
+  appearance × language combinations, `measure=1` `NO OVERFLOW` ×4,
+  `probe=1` 49/49 ×4, and scoped axe 0 violations ×4. Chrome emitted only the
+  same extension message-channel noise seen before navigation; the board and
+  assertions completed. `bash scripts/check-topic-docs.sh`, `make
+  check-whitespace`, and `git diff --check` -> exit 0. CEv1 content state
+  `8bbc8f52a1c1d381a86ae1aa60054ddb16907f53f0004380d05e5b20159705ed`
+  -> one required criterion, current passing evidence, no invalidation or
+  unresolved impact, `VERIFIED`.
+- Verdict: PASS
+
+## 📋 复评报告
+
+📊 综合评分：10/10
+
+✅ 结论：PASS
+
+### 🔴 严重问题——必须修复
+
+无。W-F12 已关闭，没有新的阻断 finding。
+
+### 🟡 建议改进——推荐
+
+无。
+
+### 🟢 优点
+
+- 三期 token、20-bucket 图表和 peak 日期都与 normative size table 一一对应。
+- 20-day 轴起点来自图表使用的同一 slice，避免图表缩短而轴仍标 30 天前。
+- Peak 日期放在 label line 后保持完整本地化格式；当前三个 stat chip 均无 ellipsis。
+- Contract assertions 的 7/20/90 期望独立于 renderer 常量，能够在渲染值回归时失败。
+
+### 📝 摘要
+
+W-F12 是 Round 14 的唯一 finding，本轮已在 HEAD
+`58fe5d300c5af572adef81a69a856a6aef9cea56`、`ux/widget.md` blob
+`aae4b309bf4907262bf31db8e70aa3b92e2e72c7` 与 prototype manifest
+`6ec754c85cc1538476e0985854a7a798c3e51cc796acdcc513bf862f836bc0b3`
+上独立确认关闭。没有新阻断项，因此结论为 PASS。真实 WidgetKit canvas、Dynamic Type、
+VoiceOver 与 Home Screen/Notification Centre 验收仍属于 `desktop-widget` 实现任务，
+prototype review 不替代这些运行时证据。
+
+#### Task checkpoint
+
+Task checkpoint：`desktop-app:ux/widget.md`（`desktop-widget` 的文档交付）；上述
+exact content state 的 CEv1 门槛为 `VERIFIED`。
+
+提交建议：以 Widget 文档交付为原子边界，候选范围包括 `ux/widget.md`、W-F12 所需的
+`Widgets.jsx`、`contract.js`、`main.jsx`、`styles.css`、prototype `README.md`，再加
+本评审记录与 `tasks.md`/`docs/README.md` 的本任务状态 hunk；排除产品代码、未评审的
+`architecture.md`/`tasks.md` 文档内容和其他脏工作树。
+
+推送建议：本轮不执行推送；若后续单独授权提交与推送，先确认 `main` 到
+`origin/main` 的精确范围、暂存边界、commit 正文/共同创作者尾注/SSH 签名和 Hook
+效果，再只推送该文档 Task 的 commit。
+
+#### 📌 下一步
+
+```text
+评审：desktop-app / reviews/architecture.md
+```

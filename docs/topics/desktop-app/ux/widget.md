@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-08-16
-updated: 2026-08-17
+updated: 2026-08-18
 ---
 
 # Widget Experience
@@ -10,7 +10,9 @@ Surface: the AgentDeck WidgetKit widgets.
 Task: `desktop-widget`.
 Reads only the presentation-safe App Group projection specified in
 [`../architecture.md`](../architecture.md#presentation-safe-app-group-projection).
-Rendered specimens: [`prototype/desktop-surfaces.html`](prototype/desktop-surfaces.html).
+Rendered specimens: [`prototype/interactive-v7/`](prototype/interactive-v7/) —
+`http://127.0.0.1:4175/?surface=widgets` for all twelve, and
+`?surface=states` for the degraded set.
 
 ## Purpose
 
@@ -44,8 +46,18 @@ that none of the four already covers it. Per-project and per-session breakdowns
 fail that test twice over: they are `composition` questions, and the projection
 excludes the identifiers they would need.
 
-The same four are the popover's sections, in the same order, so a user who
-learns one surface can read the other. See [`menubar.md`](menubar.md).
+The same four are the popover's panels, in the same order, so a user who learns
+one surface can read the other. See [`menubar.md`](menubar.md). The popover adds
+a fifth panel, `sessions`, which has no widget: it answers *how* the work
+happened rather than what it cost, and its content — per-project rows, recent
+sessions — is a list, which is the one shape a glanceable surface cannot carry.
+
+**Both surfaces derive every figure from the same two structures**: the bounded
+daily series and the 7×24 grid. Nothing is stated independently in one surface
+that is computed in the other. A widget claiming Tuesday is busiest while the
+popover's grid is darkest on Wednesday is not a rendering bug — it means the two
+were written from separate constants, and the prototype that shares one data
+module is what proves they are not.
 
 ## How size is chosen
 
@@ -63,6 +75,31 @@ The progression is fixed:
 | `systemSmall` | One headline value plus one supporting line, and at most a sparkline | An axis, a legend, a table, or more than one dimension |
 | `systemMedium` | The headline, one comparison across a single axis, and a chart with an axis | A second dimension of breakdown |
 | `systemLarge` | The headline, the comparison, the full breakdown, and one secondary dimension | A third dimension, or anything needing scroll |
+
+### What a size can actually hold
+
+Depth is bounded by the canvas, and the canvas is small. `systemLarge` is **the
+same width as `systemMedium`** and roughly twice its height — it is a tall card,
+not a wide banner. A specimen that draws it as a wide banner overstates the
+horizontal room by about a third, and every layout judged against that specimen
+is wrong in the same direction.
+
+That is not hypothetical. The first prototype of this set drew `large` as a
+full-row band; redrawing all three at true proportion immediately produced seven
+clipped regions — a fourth model row, a coverage bar, the last row of a grid and
+its legend, and a whole statistics strip — none of which had been visible while
+the canvas was wrong.
+
+Two rules follow, and both are contract:
+
+| Rule | Reason |
+| --- | --- |
+| No text below the system's smallest caption size | Below it the glyphs are present but not readable, which is worse than absent because it costs space and delivers nothing |
+| A grid or calendar cell has a fixed height, never one derived from its width | An aspect-ratio cell makes a widget's total height a function of its width, so it fits at one size and clips at another, and nothing in the layout says so |
+
+When content and canvas conflict, **the content loses**. A size that cannot hold
+its specified depth drops the least load-bearing element and says so here; it
+does not shrink type below the bound, and it does not clip.
 
 Four kinds by three sizes is twelve configurations. Each is specified below by
 what it adds to the size beneath it, so a reader never has to diff two layouts
@@ -95,11 +132,17 @@ because a stale trust figure is worse than none, and `rhythm` is always the last
 | --- | --- |
 | small | Period cost as the headline, tokens and session count beneath, a 7-bucket sparkline, and the freshness line |
 | medium | Adds the three-period comparison — today, 7 days, 30 days, each with cost and tokens — and replaces the sparkline with a 20-bucket bar chart carrying a date axis |
-| large | Adds `avg/day`, `peak` with its date, and cache-hit rate as stat chips, and extends the chart to the full 90-bucket bound with gridlines |
+| large | Adds `avg/day`, `peak` with its date, and cache-hit rate as stat chips, and extends the chart to the full 90-bucket bound |
 
 Cost leads rather than tokens, because a bill is denominated in money. Tokens
 sit immediately beneath at every size, because a cost with no volume beside it
 cannot be sanity-checked.
+
+The 90-bucket chart is drawn as a filled line, not as bars. At `large`'s true
+width, 90 bars are about 1.6 pt each with no usable gap: the result reads as a
+grey fence rather than as ninety days. The bound stays 90 because the shape of a
+quarter is the point of the size; only the mark changes. `medium`'s 20-bucket
+and `small`'s 7-bucket charts stay bars, where a bar is still a bar.
 
 ### `composition` — where does it go?
 
@@ -314,7 +357,13 @@ Verification level L3.
 - Every row of the surface/qualifier truth table, including an unsupported cache
   version rendering unavailable rather than a partial read.
 - All twelve configurations — four kinds by three sizes — render at their family
-  size without clipping.
+  size without clipping, asserted at the true canvas proportion rather than at a
+  convenient review layout, and in both languages.
+- No rendered text is smaller than the caption bound, asserted rather than
+  eyeballed.
+- Every derived figure — active days, busiest and quietest weekday, peak window,
+  period totals — recomputes from the same series the charts draw, so no
+  specimen can state a fact its own chart contradicts.
 - The depth rule: each size shows a superset of the size beneath it for the same
   kind, asserted rather than eyeballed.
 - Configuration: each `Client` value, each `Period` value on the kinds that take
@@ -332,7 +381,9 @@ Verification level L3.
 Recorded in the review record with the observed result for each item on
 macOS 26:
 
-1. All twelve configurations render correctly in light and dark appearance.
+1. All twelve configurations render correctly in light and dark appearance, at
+   the real widget sizes on a real Home Screen or Notification Centre rather
+   than in a review board.
 2. At the largest accessibility Dynamic Type size each size degrades to the one
    beneath it rather than truncating.
 3. VoiceOver announces each value with a meaningful label, qualifiers in the
