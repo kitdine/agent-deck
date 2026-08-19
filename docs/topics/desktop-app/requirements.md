@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-08-06
-updated: 2026-08-17
+updated: 2026-08-18
 ---
 
 # Native macOS Desktop App — Requirements
@@ -33,9 +33,10 @@ usage, session, credential, extension, or client-configuration behavior.
   `SMAppService` where login-item management is needed.
 - The Homebrew Cask token is `agentdeck-app`.
 - Desktop distribution uses both Homebrew Cask and direct GitHub download.
-- The direct-download app checks only whether a newer stable release exists,
-  then offers to open the release download page. It does not download, install,
-  replace, or relaunch itself.
+- The app performs **no update check** in this version. It does not query a
+  release endpoint, compare versions, notify about a newer release, or open a
+  download page. Consequently the desktop surfaces make no network request at
+  all.
 - `AgentDeck.app` contains the Swift menu-bar host, WidgetKit extension, and a
   signed universal Go `agentdeck` helper built from the same tag.
 - The existing `agentdeck` Homebrew Formula and architecture-specific CLI
@@ -87,6 +88,12 @@ separate from arbitrary third-party Hooks.
   `unknown` is exactly what a determinability figure is meant to expose.
 - Provide safe quick actions, initially including provider switching and links
   into detailed session or diagnostic views.
+- Give users one dedicated settings window to control whether AgentDeck launches
+  at login, whether it refreshes periodically, what the menu-bar item reports,
+  and whether that value follows the popover's client filter or covers all
+  clients. These four preferences are the complete settings scope for this
+  version; `ux/settings.md` owns their defaults, copy, interaction details, and
+  failure presentation.
 - Publish a privacy-bounded desktop snapshot for WidgetKit through an App
   Group, answering the same four bounded spend questions as the menu bar:
   how much am I spending (magnitude), where does it go (composition), is the
@@ -111,17 +118,25 @@ separate from arbitrary third-party Hooks.
   sources.
 - No network listener, local HTTP server, background daemon, privileged helper,
   kernel extension, or system extension.
-- No automatic update download or installation.
+- No update check of any kind, and therefore no automatic download, installation,
+  or notification.
 - No Skills, Plugins, MCP, or arbitrary Hooks mutation in `v0.5.0`.
 - No deletion of user state during App, Cask, Formula, or CLI-link removal.
 
 ## Surfaces and contracts
 
-This topic adds two user-visible surfaces, each named by its document so an
+This topic adds three user-visible surfaces, each named by its document so an
 audit can compare this list against what exists:
 
 - the menu-bar host — [`ux/menubar.md`](ux/menubar.md)
+- the settings window — [`ux/settings.md`](ux/settings.md)
 - the WidgetKit widget — [`ux/widget.md`](ux/widget.md)
+
+The settings window is listed separately because it is judged by a different
+question against different evidence: the reading surface must give every data
+state a presentation rule, while the settings window has no data states and must
+instead give every preference a default, an idempotent effect, and an honest
+failure presentation.
 
 It introduces new contracts — the desktop wire
 contract, the foundation runtime boundary, the App Group projection, and the
@@ -131,9 +146,11 @@ packaging and distribution layout — specified in
 
 ## Acceptance boundary
 
-- The menu bar presents provider, usage, cost, recent sessions, warnings, and
-  health from a single Go-owned snapshot, with no second aggregation layer in
-  Swift. Usage and cost analytics are bounded to today, 7-day, and 30-day
+- The menu bar presents provider, usage, cost, sessions, warnings, and health
+  from a single Go-owned snapshot, with no second aggregation layer in Swift.
+  Its client and period filters govern **every** panel they sit above; content
+  no filter can govern — the fixed 30-day rhythm window — is presented outside
+  them and states its own window. Usage and cost analytics are bounded to today, 7-day, and 30-day
   periods, a daily trend of at most 90 buckets, and a 7x24 hour-of-week rhythm
   view, plus breakdowns by model, client, runtime provider, token component,
   attribution quality, and pricing coverage. Attribution quality is reportable
@@ -150,14 +167,28 @@ packaging and distribution layout — specified in
   title, and tag all report the same release version and source commit.
 - The existing CLI-only Formula path keeps working, and no install or uninstall
   path deletes user state.
+- The settings window exposes exactly four product preferences: launch at login,
+  periodic refresh, menu-bar value, and menu-bar scope. Together they let users
+  control whether the app starts with login and refreshes periodically, what the
+  menu-bar item reports, and whether that value follows the popover's client
+  filter or covers all clients. No other preference is included in this
+  version.
+- Every preference the app exposes has a default, is idempotent, reports the real
+  post-operation state rather than the requested one, and presents an operating
+  system refusal in place rather than reverting silently.
 - The delivered behavior is reconciled into the living specification and manual
   by this topic's contract task, without raising the specification version.
 
 ## Backlog / Future Feature Ideas
 
 - App Store distribution and App Sandbox redesign, if ever desired.
-- Automatic update download and installation; `v0.5.0` only opens the download
-  page.
+- Any in-app update check, and beyond it automatic download and installation.
+  Reintroducing even the check reopens the app's network boundary, so it needs
+  its own design rather than a preference toggle.
+- Work signals — activity mix, workflow shape, and tool-call breakdown. The
+  surfaces specify them and the projection cannot supply them; the classifier
+  over raw session logs is a usage-domain capability with its own extraction,
+  storage, and privacy analysis.
 - Prerelease update channel selection.
 - Rich desktop session windows beyond the menu-bar and Widget scope.
 - Skills/Hooks GUI lifecycle management, if the withdrawn extension-mutation

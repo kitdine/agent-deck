@@ -270,3 +270,147 @@ blob `46c37f60c4f3c0f67b6cf36d22f0eb5031ed9392`（与 Round 4 声明的 blob 逐
 本轮额外扫了 Round 2 只查了一半的那句范围禁令，发现其时间轴一侧同样与下游冲突，
 但三项独立检查都指向下游文档有错而非需求有错，故记为 R5-F1 归属 `ux/menubar.md`，
 不阻断本需求。裁决 PASS。
+
+## Round 6 — 2026-08-18
+
+- Reviewed state: HEAD `58fe5d300c5af572adef81a69a856a6aef9cea56`;
+  `docs/topics/desktop-app/requirements.md` blob
+  `b51dac4dbe7e1a2419296df0ab8ad97b343a330e`
+- Reviewer: Codex
+- Method: Single-agent formal Review using the `development-workflow`
+  design/contract dimensions. This is a new review round because the target blob
+  changed after Round 5. CodeGraph was used first to locate the current desktop
+  wire, App Group, host, and prototype paths; focused document inspection then
+  checked the changed update-check, surface, filter, preference, and backlog
+  boundaries against the current task decomposition and surface contracts.
+- Scope: `docs/topics/desktop-app/requirements.md`, checked against
+  `docs/topics/desktop-app/tasks.md`, `ux/menubar.md`, `ux/settings.md`,
+  `ux/widget.md`, `architecture.md`, and the document-lifecycle rules in
+  `docs/README.md`. Broad verification stopped after the decisive R6-F1
+  requirements counterexample, as required by the repository review rules.
+- Findings:
+  - [P1] R6-F1 — `requirements.md:129-133,164-166` adds the settings window as a
+    third shipped surface and constrains the quality of any preference it
+    exposes, but never states which user outcome or bounded preference set this
+    version must deliver. An empty settings window with zero preferences would
+    satisfy the written acceptance boundary, while `ux/settings.md:36-74` and
+    `tasks.md:51-75` independently require launch-at-login, periodic refresh,
+    menu-bar value, and menu-bar scope. That makes downstream documents invent
+    product scope the requirements boundary has not authorized. -> Add a Goal
+    and functional acceptance outcome that authorize and bound the intended
+    settings capabilities, naming the four preferences or an equally precise
+    product boundary while leaving defaults, copy, and failure presentation to
+    `ux/settings.md`; alternatively remove the settings surface and its
+    downstream scope from this version.
+- Evidence: `git rev-parse HEAD` ->
+  `58fe5d300c5af572adef81a69a856a6aef9cea56`; `git hash-object
+  docs/topics/desktop-app/requirements.md` ->
+  `b51dac4dbe7e1a2419296df0ab8ad97b343a330e`; `codegraph explore` located the
+  current desktop wire and App Group production symbols and distinguished them
+  from the untracked prototype; focused inspection confirmed the requirements
+  counterexample against `ux/settings.md:36-74` and `tasks.md:51-75`;
+  `bash scripts/check-topic-docs.sh`, `make check-whitespace`, and
+  `git diff --check` -> exit 0.
+- Verdict: REOPEN
+
+## 📋 评审报告
+
+📊 综合评分：8/10
+
+✅ 结论：FAIL
+
+### 🔴 严重问题——必须修复
+
+[`requirements.md:129`] R6-F1：新增 settings 表面没有需求层的用户结果和范围。
+- 行为风险：零偏好的空 settings 窗口也满足当前验收文字；反过来，UX 和任务文档
+  要求的开机启动、定时刷新、菜单栏值与菜单栏范围，都是下游自行发明的产品范围，
+  实现者无法从需求判断它们是必需、允许还是越界。
+- 证据：`requirements.md:129-133,164-166` 只规定“每个已暴露偏好”的质量属性；
+  `ux/settings.md:36-74` 与 `tasks.md:51-75` 则明确要求四个偏好。
+💡 有界修复：在 Goals 与 Acceptance boundary 中授权并限定本版本 settings 的用户
+结果和四个偏好；默认值、文案、幂等行为及拒绝态继续由 `ux/settings.md` 持有。若本
+版本不交付 settings，则从需求和下游任务范围一并移除该表面。
+
+### 🟡 建议改进——推荐
+
+无。
+
+### 🟢 优点
+
+- 更新检查已从 Confirmed Decisions、Non-Goals、Acceptance 外的未来列表和三个表面
+  合同中一致撤回，网络边界清楚。
+- client/period filter 与固定 30 天 rhythm 的层级边界已经明确，和当前菜单栏合同
+  一致。
+- work signals 被明确放入 Backlog，并说明当前投影无法供数，避免原型数据被误当成
+  本版本交付。
+- 旧的 provider、时间范围和 Widget 功能结果修复仍然成立。
+
+### 📝 摘要
+
+评审对象为 HEAD `58fe5d300c5af572adef81a69a856a6aef9cea56` 与
+`requirements.md` blob `b51dac4dbe7e1a2419296df0ab8ad97b343a330e`。当前修订正确
+收紧了更新检查、筛选和 work-signal 边界，但新增 settings 表面没有需求层的功能结果
+或有界偏好集合，导致零实现可过验收、完整实现却依赖下游自行决定范围。本轮为
+FAIL/REOPEN；强制修复范围仅为 R6-F1。
+
+## Round 7 — 2026-08-18
+
+- Reviewed state: HEAD `58fe5d300c5af572adef81a69a856a6aef9cea56`;
+  `docs/topics/desktop-app/requirements.md` blob
+  `685a113ecda5af20f8a4574eb952c54c4c7ecf`
+- Reviewer: Codex
+- Method: Single-agent bounded Re-review of R6-F1. Reused the unchanged Round 6
+  evidence for the settings surface and task decomposition, inspected the exact
+  requirements repair, and compared both repaired anchors against the same four
+  preferences in `ux/settings.md` and `menubar-experience`.
+- Scope: R6-F1 in `docs/topics/desktop-app/requirements.md`, including regression
+  or a newly blocking contradiction introduced by the repair.
+- Findings:
+  - [closed] R6-F1 — `requirements.md:91-96` now makes the dedicated settings
+    window and its four user controls a product Goal, and
+    `requirements.md:170-178` requires exactly launch at login, periodic refresh,
+    menu-bar value, and menu-bar scope while excluding every other preference in
+    this version. The list matches `ux/settings.md:36-74` and `tasks.md:51-75`
+    one-to-one, so neither an empty window nor an arbitrary fifth preference can
+    satisfy the boundary. Defaults, copy, interaction details, and failure
+    presentation remain owned by `ux/settings.md`, preserving the intended
+    requirements/UX boundary. No regression or new blocker was introduced.
+- Evidence: `git rev-parse HEAD` ->
+  `58fe5d300c5af572adef81a69a856a6aef9cea56`; `git hash-object
+  docs/topics/desktop-app/requirements.md` ->
+  `685a113ecda5af20f8a4574eb952c54c4c4c7ecf`; the focused repair diff adds the
+  same four preferences to Goals and Acceptance; focused inspection confirms
+  exact agreement with `ux/settings.md:36-74` and `tasks.md:51-75`;
+  `bash scripts/check-topic-docs.sh`, `make check-whitespace`, and
+  `git diff --check` -> exit 0.
+- Verdict: PASS
+
+## 📋 复评报告
+
+📊 综合评分：10/10
+
+✅ 结论：PASS
+
+### 🔴 严重问题——必须修复
+
+无。
+
+### 🟡 建议改进——推荐
+
+无。
+
+### 🟢 优点
+
+- R6-F1 已关闭：Goals 与 Acceptance 都明确授权同一组四项 settings 能力。
+- “恰好四项”同时排除了零偏好空窗口和任意新增偏好两种范围漂移。
+- 默认值、文案、交互细节与失败呈现仍由 `ux/settings.md` 持有，没有在需求层复制
+  表面设计。
+- 修复没有改变已通过的更新检查、筛选、work-signal、provider、时间范围或 Widget
+  边界。
+
+### 📝 摘要
+
+R6-F1 已关闭；没有回归或新增阻断。复评对象为 HEAD
+`58fe5d300c5af572adef81a69a856a6aef9cea56` 与 `requirements.md` blob
+`685a113ecda5af20f8a4574eb952c54c4c4c7ecf`。修复同时给出 settings 的用户结果、
+完整四项范围和排他边界，且与下游合同逐项一致，本轮裁决 PASS，无剩余不确定性。
