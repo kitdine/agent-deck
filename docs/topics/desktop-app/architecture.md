@@ -51,12 +51,48 @@ must never enter OSLog or the widget snapshot.
 
 ### Desktop wire contract
 
-The first implementation must decide whether existing public JSON commands are
-sufficient or a dedicated desktop snapshot command is necessary. If a new
-command is added, it must be a versioned product contract rather than an
-unreviewed private parser dependency.
+A dedicated, versioned desktop snapshot command carries this contract. Composing
+existing public JSON commands was rejected: the menu bar needs one coherent
+snapshot taken at a single instant, and stitching several command outputs together
+would let provider state, usage totals, and health disagree with each other within
+one refresh, with no single discriminator or version to reject on.
 
-The contract must provide one coherent snapshot for the menu-bar refresh cycle,
+The selected contract is fixed, not a future decision:
+
+| Element | Value |
+| --- | --- |
+| Command | `agentdeck --format json desktop snapshot` |
+| Required flag | `--format json`; any other format is an input error |
+| Wire version flag | `--wire-version`, currently `1`, rejected when it is not the supported version |
+| Recent-session flag | `--recent-limit`; its default and accepted range are in **Helper execution contract** below and are not restated here |
+| Envelope discriminator | `command` = `desktop.snapshot` |
+| Envelope schema version | `schema_version` = `1` |
+| Data wire version | `wire_version` inside `data`, independent of the envelope's `schema_version` |
+
+The two versions are deliberately separate. `schema_version` describes the
+envelope every JSON command shares; `wire_version` describes this snapshot's own
+shape. A change to one does not force a change to the other, and the decoder
+checks both.
+
+**Recent-limit ownership.** Go owns the value: the default and the accepted range
+are the CLI contract's, and the request is rejected rather than clamped when the
+value falls outside it. The Swift runner owns rejecting an out-of-range value
+*before* launch, so an impossible request never becomes a process. Neither side
+silently substitutes a different number, because a snapshot that quietly returns a
+different session count than the caller asked for cannot be reasoned about from
+either side. Both sides therefore encode the same bound, and a divergence between
+them is a contract defect rather than a matter of taste.
+
+**Swift runner invocation boundary.** The runner passes the flags above as an
+argument array to the helper embedded in its own bundle — never a shell string and
+never an `agentdeck` found on `PATH`. It refreshes the rebuildable indexes through
+that same helper first, then requests the read-only snapshot. Everything about
+capture limits, timeouts, and typed failures is specified once in **Helper
+execution contract** below; everything about rejecting a malformed or
+wrong-versioned response is specified once in **Wire validation**. This section
+owns only which command is invoked and with what.
+
+The contract provides one coherent snapshot for the menu-bar refresh cycle,
 including:
 
 - AgentDeck and wire-contract versions;
@@ -86,17 +122,15 @@ state, make enable/disable idempotent, and never install a separate daemon.
 
 ### Update notification
 
-At most once per documented interval, plus an explicit manual check, the host may
-query the official AgentDeck GitHub release endpoint for the latest stable tag.
-Prereleases are ignored unless a later design introduces an explicit opt-in
-channel. The request sends no AgentDeck state, usage, provider, session, or
-machine identifier.
+**Withdrawn from this version.** The desktop app performs no update check: no
+automatic query, no manual check, no version comparison, and no release page.
 
-When a newer compatible stable version exists, the app shows release version and
-offers to open its official download page through the system browser. Network,
-HTTP, parsing, or browser-open failure is non-fatal and never blocks normal app
-use. There is no background download, package replacement, relaunch, or privilege
-request.
+The consequence for this document is the one worth stating: with the check gone,
+**the desktop app makes no network request at all**. The connectivity claim in
+`AGENTS.md` — that only an explicit `usage price update` reaches the network —
+holds for the desktop surfaces without an exception. Reintroducing an update
+check is therefore not a UI addition; it reopens the app's network boundary and
+needs its own design.
 
 ## Packaging and Distribution
 
@@ -155,12 +189,21 @@ branch.
 The same notarized DMG published for the Cask is the direct-download artifact.
 Dragging the App into `/Applications` is sufficient for GUI and Widget use.
 
-An optional Settings action may expose the embedded helper through
-`~/.local/bin/agentdeck`. It creates a link rather than copying a second binary.
-Before mutation it must classify an existing path as absent, same App-owned link,
-recognized AgentDeck Formula/Cask installation, recognized legacy AgentDeck
-installation, modified, or unknown. It must never overwrite an unknown file,
-symlink, or legacy script. Removal touches only the exact link it created.
+**This topic ships no CLI-link action.** A direct-download install exposes the GUI
+and the Widget; the command line stays the Formula's and the Cask's to provide,
+which is where the ownership conflict and migration path above are already
+specified. A settings control that created `~/.local/bin/agentdeck` would be a
+fifth preference in a window the approved boundary limits to exactly four
+(`requirements.md` Goals and Acceptance, `ux/settings.md`), and it would add the
+only user-filesystem mutation in the desktop surfaces — one no task in this
+topic's decomposition owns, and therefore one with no acceptance, no test, and no
+rollback design behind it.
+
+Reintroducing it needs its own approved requirement, a surface contract that
+places it, a task that owns it, and a mutation design that survives the cases that
+make it dangerous: an existing path that is a Formula or Cask installation, a
+legacy AgentDeck script, or an unknown file or symlink that must never be
+overwritten. That is a separate piece of work, not a line in this document.
 
 ## Repository Structure Assessment
 
@@ -390,11 +433,17 @@ CLI contract with a bounded recent-session limit.
 | Default recent-session count | 5 |
 | Accepted recent-session range | 1 through 20 |
 | Default wall-clock timeout | 10 seconds |
+| Usage/session index refresh timeout | 120 seconds per scan |
 | Maximum captured stdout | 256 KiB |
 | Maximum captured stderr | 256 KiB |
 
 The runner MUST:
 
+- refresh the rebuildable usage and session indexes through the embedded
+  helper before requesting the read-only snapshot, so opening or manually
+  refreshing the tracker reflects current local logs;
+- fall back to the last committed indexes when either scan fails, while still
+  requesting the snapshot that can retain and qualify that data;
 - pass arguments as an array without shell parsing;
 - give the child no semantic dependence on the current working directory;
 - forward only the home, locale, temporary-directory, and documented
@@ -629,7 +678,8 @@ directory when the App Group container is unavailable.
 
 - The helper and application run as the current user and request no privilege
   escalation.
-- Foundation behavior is read-only with respect to AgentDeck and client state.
+- Foundation never modifies client state or source logs. Refresh may update only
+  AgentDeck's rebuildable usage and session indexes before reading the snapshot.
 - No component opens a listening port or modifies host networking.
 - The helper path, argument set, and cache destination are not influenced by
   snapshot content.
@@ -789,6 +839,44 @@ treats a missing object in a legacy v1 payload as `available: false` with empty
 families, while a present object with a wrong field type is invalid. Fixtures
 therefore retain one legacy payload without `presentation`, and current complete
 and partial fixtures carry it with every collection bound asserted.
+
+### Presentation gaps raised by the reviewed surfaces
+
+The reviewed prototype presents three things the current `presentation` object
+cannot supply. Each is decided here rather than left to the implementer, because
+a surface that renders an unprovisioned field renders an invented one.
+
+| Element | Decision | Ground |
+| --- | --- | --- |
+| Attribution under a period filter | **Provisioned.** `quality` and `pricing` move from client scope to the `Client` × `Period` product, exactly as `periods.items[]` already is | The surfaces' central correction is that both filters govern every panel. Leaving these two at current-period only would rebuild the half-governed filter the design exists to remove |
+| Sessions under a period filter | **Provisioned.** `sessions` gains per-period grouping and per-period counts alongside its bounded recent list | Same ground. A `Sessions` panel that ignores the period switcher is the same defect wearing a different label |
+| Work signals — activity mix, workflow shape, tool calls | **Refused in this topic.** Not provisioned here, and the three modules do not ship in this topic's `menubar-experience` | These need a classifier over raw session logs — new extraction, new storage, new privacy analysis. That is a usage-domain capability, not a presentation one. Adding it inside a topic scoped to *presenting existing aggregates* would hide a data-pipeline change inside a UI task |
+
+The refusal is bounded, not permanent. `ux/menubar.md` keeps the three modules
+specified and marks them `Not captured yet` so the surface states its own gap
+instead of faking it, and the capability is carried as a separate topic. The
+`Sessions` panel ships in this topic with its statistics, per-project rows, and
+recent-session rows — all of which the projection already supports.
+
+#### Shape of the two provisioned changes
+
+Both are additive and neither raises `wire_version`:
+
+| Field | Bound and semantic shape |
+| --- | --- |
+| `scopes[].quality.items[]` | Gains a `period` discriminator; the family carries one record set per supported period, in `today`, `7d`, `30d` order. Tier shape is unchanged |
+| `scopes[].pricing` | Becomes `pricing.items[]` under the same `{ available, items }` family shape, one record per supported period, each carrying the existing counts, coverage, and at most 12 unpriced identifiers |
+| `sessions.periods.items[]` | One record per supported period per client scope, carrying session count, total and median duration, and distinct project count. Bounded and producer-computed; the host never derives them from the recent list |
+| `sessions.items[]` | Unchanged bounded recent list. It stays a *recent* list, not a period query — the panel's statistics come from the record above |
+
+The host still performs no aggregation: it selects a `(Client, Period)` record
+and formats it. A decoder reading a payload that predates these fields treats the
+new families as `available: false`, which the surfaces already render as an
+unavailable panel rather than as a zero.
+
+**Per-session cost stays refused.** The projection carries no per-session cost
+and this change does not add one, so no session row states a cost. The panel
+shows duration, client, model, and project only.
 
 ### Additive `provider.candidates`
 
