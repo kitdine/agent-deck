@@ -33,4 +33,6 @@ env \
     --scratch-path "$scratch_root" \
     AgentDeckFoundationVerifier \
     "$repo_root/desktop/fixtures/v1/snapshot-complete.json" \
-    "$repo_root/desktop/fixtures/v1/snapshot-partial.json"
+    "$repo_root/desktop/fixtures/v1/snapshot-partial.json" \
+    "$repo_root/desktop/fixtures/v1/snapshot-empty-client.json" \
+    "$repo_root/desktop/fixtures/v1/snapshot-legacy.json"

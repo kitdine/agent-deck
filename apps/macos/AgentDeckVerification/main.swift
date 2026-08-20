@@ -6,14 +6,16 @@ import AgentDeckShared
 enum AgentDeckFoundationVerifier {
     static func main() async {
         let paths = Array(CommandLine.arguments.dropFirst())
-        guard paths.count == 2 else {
-            fail("expected complete and partial fixture paths")
+        guard paths.count == 4 else {
+            fail("expected the complete, partial, empty-client and legacy fixture paths")
         }
 
         do {
             try await verify(
                 completeData: Data(contentsOf: URL(fileURLWithPath: paths[0])),
-                partialData: Data(contentsOf: URL(fileURLWithPath: paths[1]))
+                partialData: Data(contentsOf: URL(fileURLWithPath: paths[1])),
+                emptyClientData: Data(contentsOf: URL(fileURLWithPath: paths[2])),
+                legacyData: Data(contentsOf: URL(fileURLWithPath: paths[3]))
             )
             print("verified AgentDeck macOS foundation fixtures and helper boundaries")
         } catch {
@@ -21,12 +23,105 @@ enum AgentDeckFoundationVerifier {
         }
     }
 
-    private static func verify(completeData: Data, partialData: Data) async throws {
+    /// Holds a fixture to the fixed collection bounds the contract states, so a
+    /// payload the producer cannot emit cannot pass this gate.
+    private static func requirePresentationBounds(
+        _ envelope: DesktopWireEnvelopeV1,
+        distinguishPeriods: Bool,
+        label: String
+    ) throws {
+        let presentation = envelope.data.usage.presentation
+        try require(presentation.available, "\(label) fixture presentation is available")
+        try require(
+            presentation.scopes.map(\.client) == ["all", "codex", "claude"],
+            "\(label) fixture carries exactly the three contract scopes"
+        )
+        try require(
+            presentation.clientSubtotals.available && presentation.clientSubtotals.items.count == 6,
+            "\(label) fixture carries one subtotal per period per concrete client"
+        )
+        for scope in presentation.scopes where scope.periods.available {
+            try require(
+                scope.periods.items.map(\.period) == ["today", "7d", "30d"],
+                "\(label)/\(scope.client) carries every supported period in order"
+            )
+            try require(
+                scope.daily.available && scope.daily.items.count == 90,
+                "\(label)/\(scope.client) carries the bounded 90-day series"
+            )
+            try require(
+                scope.rhythm.available && scope.rhythm.cells.count == 168,
+                "\(label)/\(scope.client) carries the 7x24 rhythm grid"
+            )
+            try require(
+                scope.pricing.available && scope.pricing.items.map(\.period) == ["today", "7d", "30d"],
+                "\(label)/\(scope.client) carries one pricing record per period"
+            )
+            try require(
+                scope.quality.available && Set(scope.quality.items.map(\.period)) == ["today", "7d", "30d"],
+                "\(label)/\(scope.client) carries quality records for every period"
+            )
+            if distinguishPeriods {
+                let totals = scope.periods.items.map(\.totals.tokens)
+                try require(
+                    totals[0] != totals[1] && totals[1] != totals[2],
+                    "\(label)/\(scope.client) period totals distinguish the periods"
+                )
+            }
+        }
+    }
+
+    private static func verify(
+        completeData: Data,
+        partialData: Data,
+        emptyClientData: Data,
+        legacyData: Data
+    ) async throws {
         let complete = try decodeDesktopWireEnvelopeV1(completeData)
         let partial = try decodeDesktopWireEnvelopeV1(partialData)
         try require(!complete.partial && complete.warnings.isEmpty, "complete fixture must remain complete")
         try require(partial.partial && !partial.warnings.isEmpty, "partial fixture must remain usable")
         try require(partial.data.health.available, "available sections survive a partial snapshot")
+
+        // The production decoder must accept the exact payload the producer
+        // emits when the session index is unavailable. It reports the family as
+        // unavailable with an empty collection; a null collection is rejected,
+        // which is why the producer must never emit one.
+        try require(
+            !partial.data.sessions.periods.available && partial.data.sessions.periods.items.isEmpty,
+            "an unavailable session index reports an empty period family"
+        )
+        try requirePresentationBounds(complete, distinguishPeriods: true, label: "complete")
+
+        // A concrete client with no data keeps its record and reports that no
+        // family was supplied, rather than presenting synthetic zeros.
+        let emptyClient = try decodeDesktopWireEnvelopeV1(emptyClientData)
+        try requirePresentationBounds(emptyClient, distinguishPeriods: false, label: "empty-client")
+        let emptyScope = emptyClient.data.usage.presentation.scopes.first { $0.client == "claude" }
+        try require(emptyScope != nil, "the empty-client fixture keeps the claude record")
+        if let emptyScope {
+            try require(
+                !emptyScope.periods.available && emptyScope.periods.items.isEmpty
+                    && !emptyScope.daily.available && emptyScope.daily.items.isEmpty
+                    && !emptyScope.quality.available && emptyScope.quality.items.isEmpty
+                    && !emptyScope.pricing.available && emptyScope.pricing.items.isEmpty
+                    && !emptyScope.rhythm.available && emptyScope.rhythm.cells.isEmpty,
+                "an empty concrete client reports unavailable families with empty collections"
+            )
+        }
+
+        // Both additive families are absent from a legacy v1 payload. It decodes
+        // as unavailable rather than failing, and wire_version stays 1.
+        let legacy = try decodeDesktopWireEnvelopeV1(legacyData)
+        try require(legacy.data.wireVersion == 1, "the legacy fixture stays at wire version 1")
+        try require(
+            !legacy.data.usage.presentation.available && legacy.data.usage.presentation.scopes.isEmpty,
+            "a legacy payload decodes presentation as unavailable"
+        )
+        try require(
+            !legacy.data.sessions.periods.available && legacy.data.sessions.periods.items.isEmpty,
+            "a legacy payload decodes the session period family as unavailable"
+        )
 
         let temporaryDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: temporaryDirectory) }

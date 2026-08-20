@@ -12,8 +12,8 @@
     },
     "usage": {
       "available": false,
-      "from": "2026-08-13T00:00:00-07:00",
-      "to": "2026-08-14T00:00:00-07:00",
+      "from": "2026-08-13T00:00:00Z",
+      "to": "2026-08-14T00:00:00Z",
       "tokens": {},
       "counts": {},
       "catalog_base_cost": null,
@@ -22,25 +22,45 @@
       "known_provider_cost": null,
       "pricing_complete": false,
       "unpriced_components": 0,
-      "warnings": []
+      "warnings": [],
+      "presentation": {
+        "available": false,
+        "scopes": [],
+        "client_subtotals": {
+          "available": false,
+          "items": []
+        }
+      }
     },
     "sessions": {
       "available": false,
       "total": 0,
+      "periods": {
+        "available": false,
+        "items": []
+      },
       "items": []
     },
     "health": {
       "available": true,
-      "status": "error",
+      "status": "unhealthy",
       "healthy": false,
       "problems": 1,
       "warnings": 0,
       "errors": 1,
       "checks": [
         {
+          "name": "state_permissions",
+          "status": "ok"
+        },
+        {
+          "name": "state_lock",
+          "status": "ok"
+        },
+        {
           "name": "database",
           "status": "error",
-          "code": "database_missing"
+          "code": "database_unreadable"
         }
       ]
     }

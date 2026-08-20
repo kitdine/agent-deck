@@ -452,6 +452,19 @@
                 "session_id": "string"
               }
             ],
+            "periods": {
+              "available": "boolean",
+              "items": [
+                {
+                  "client": "string",
+                  "distinct_projects": "number",
+                  "median_duration_seconds": "number",
+                  "period": "string",
+                  "sessions": "number",
+                  "total_duration_seconds": "number"
+                }
+              ]
+            },
             "total": "number"
           },
           "usage": {
@@ -468,6 +481,190 @@
             "from": "string",
             "known_catalog_base_cost": "string",
             "known_provider_cost": "string",
+            "presentation": {
+              "available": "boolean",
+              "client_subtotals": {
+                "available": "boolean",
+                "items": [
+                  {
+                    "client": "string",
+                    "period": "string",
+                    "totals": {
+                      "cache_write_tokens": "number",
+                      "cached_read_tokens": "number",
+                      "catalog_base_cost": "string",
+                      "events": "number",
+                      "input_tokens": "number",
+                      "known_catalog_base_cost": "string",
+                      "known_provider_cost": "string",
+                      "output_tokens": "number",
+                      "pricing_complete": "boolean",
+                      "provider_cost": "string",
+                      "sessions": "number",
+                      "tokens": "number",
+                      "unpriced_components": "number"
+                    }
+                  }
+                ]
+              },
+              "scopes": [
+                {
+                  "client": "string",
+                  "daily": {
+                    "available": "boolean",
+                    "items": []
+                  },
+                  "periods": {
+                    "available": "boolean",
+                    "items": []
+                  },
+                  "pricing": {
+                    "available": "boolean",
+                    "items": []
+                  },
+                  "quality": {
+                    "available": "boolean",
+                    "items": []
+                  },
+                  "rhythm": {
+                    "active_days": "number",
+                    "available": "boolean",
+                    "busiest_day": "string",
+                    "cells": [],
+                    "quietest_day": "string"
+                  }
+                },
+                {
+                  "client": "string",
+                  "daily": {
+                    "available": "boolean",
+                    "items": [
+                      {
+                        "date": "string",
+                        "totals": {
+                          "cache_write_tokens": "number",
+                          "cached_read_tokens": "number",
+                          "catalog_base_cost": "string",
+                          "events": "number",
+                          "input_tokens": "number",
+                          "known_catalog_base_cost": "string",
+                          "known_provider_cost": "string",
+                          "output_tokens": "number",
+                          "pricing_complete": "boolean",
+                          "provider_cost": "string",
+                          "sessions": "number",
+                          "tokens": "number",
+                          "unpriced_components": "number"
+                        }
+                      }
+                    ]
+                  },
+                  "periods": {
+                    "available": "boolean",
+                    "items": [
+                      {
+                        "average_per_day": {
+                          "known_provider_cost": "string",
+                          "provider_cost": "string",
+                          "tokens": "string"
+                        },
+                        "cache_hit_share": "string",
+                        "models": [],
+                        "peak": {
+                          "date": "string",
+                          "totals": {
+                            "cache_write_tokens": "number",
+                            "cached_read_tokens": "number",
+                            "catalog_base_cost": "string",
+                            "events": "number",
+                            "input_tokens": "number",
+                            "known_catalog_base_cost": "string",
+                            "known_provider_cost": "string",
+                            "output_tokens": "number",
+                            "pricing_complete": "boolean",
+                            "provider_cost": "string",
+                            "sessions": "number",
+                            "tokens": "number",
+                            "unpriced_components": "number"
+                          }
+                        },
+                        "period": "string",
+                        "totals": {
+                          "cache_write_tokens": "number",
+                          "cached_read_tokens": "number",
+                          "catalog_base_cost": "string",
+                          "events": "number",
+                          "input_tokens": "number",
+                          "known_catalog_base_cost": "string",
+                          "known_provider_cost": "string",
+                          "output_tokens": "number",
+                          "pricing_complete": "boolean",
+                          "provider_cost": "string",
+                          "sessions": "number",
+                          "tokens": "number",
+                          "unpriced_components": "number"
+                        }
+                      }
+                    ]
+                  },
+                  "pricing": {
+                    "available": "boolean",
+                    "items": [
+                      {
+                        "coverage": "string",
+                        "period": "string",
+                        "priced_events": "number",
+                        "unpriced_events": "number",
+                        "unpriced_identifiers": []
+                      }
+                    ]
+                  },
+                  "quality": {
+                    "available": "boolean",
+                    "items": [
+                      {
+                        "period": "string",
+                        "provider": null,
+                        "tiers": [
+                          {
+                            "quality": "string",
+                            "share": null,
+                            "totals": {
+                              "cache_write_tokens": "number",
+                              "cached_read_tokens": "number",
+                              "catalog_base_cost": "string",
+                              "events": "number",
+                              "input_tokens": "number",
+                              "known_catalog_base_cost": "string",
+                              "known_provider_cost": "string",
+                              "output_tokens": "number",
+                              "pricing_complete": "boolean",
+                              "provider_cost": "string",
+                              "sessions": "number",
+                              "tokens": "number",
+                              "unpriced_components": "number"
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "rhythm": {
+                    "active_days": "number",
+                    "available": "boolean",
+                    "busiest_day": "string",
+                    "cells": [
+                      {
+                        "hour": "number",
+                        "intensity": "number",
+                        "weekday": "number"
+                      }
+                    ],
+                    "quietest_day": "string"
+                  }
+                }
+              ]
+            },
             "pricing_complete": "boolean",
             "provider_cost": "string",
             "to": "string",

@@ -8,20 +8,7 @@
     "next_refresh_at": "2026-08-13T10:05:00Z",
     "provider": {
       "available": true,
-      "routes": [
-        {
-          "client": "codex",
-          "provider": "official",
-          "selected_at": "2026-08-13T09:55:00Z",
-          "via_wrapper": false
-        },
-        {
-          "client": "claude",
-          "provider": "official",
-          "selected_at": "2026-08-13T09:55:00Z",
-          "via_wrapper": false
-        }
-      ]
+      "routes": []
     },
     "usage": {
       "available": true,
@@ -34,16 +21,16 @@
         "cache_write_5m_tokens": 0,
         "cache_write_tokens": 0,
         "cached_input_tokens": 0,
-        "input_tokens": 1500,
-        "output_tokens": 300
+        "input_tokens": 1200,
+        "output_tokens": 240
       },
       "counts": {
         "estimated": 0,
-        "events": 2,
+        "events": 1,
         "exact": 0,
-        "historical": 2,
+        "historical": 1,
         "priced": 0,
-        "unpriced": 2
+        "unpriced": 1
       },
       "catalog_base_cost": null,
       "provider_cost": null,
@@ -65,13 +52,13 @@
                 {
                   "period": "today",
                   "totals": {
-                    "tokens": 1800,
-                    "input_tokens": 1500,
-                    "output_tokens": 300,
+                    "tokens": 1440,
+                    "input_tokens": 1200,
+                    "output_tokens": 240,
                     "cached_read_tokens": 0,
                     "cache_write_tokens": 0,
-                    "events": 2,
-                    "sessions": 2,
+                    "events": 1,
+                    "sessions": 1,
                     "catalog_base_cost": null,
                     "provider_cost": null,
                     "known_catalog_base_cost": "0.000000000",
@@ -80,20 +67,20 @@
                     "unpriced_components": 1
                   },
                   "average_per_day": {
-                    "tokens": "1800.00",
+                    "tokens": "1440.00",
                     "provider_cost": null,
                     "known_provider_cost": "0.000000000"
                   },
                   "peak": {
                     "date": "2026-08-13",
                     "totals": {
-                      "tokens": 1800,
-                      "input_tokens": 1500,
-                      "output_tokens": 300,
+                      "tokens": 1440,
+                      "input_tokens": 1200,
+                      "output_tokens": 240,
                       "cached_read_tokens": 0,
                       "cache_write_tokens": 0,
-                      "events": 2,
-                      "sessions": 2,
+                      "events": 1,
+                      "sessions": 1,
                       "catalog_base_cost": null,
                       "provider_cost": null,
                       "known_catalog_base_cost": "0.000000000",
@@ -122,40 +109,20 @@
                         "pricing_complete": false,
                         "unpriced_components": 1
                       },
-                      "share": "80.00"
-                    },
-                    {
-                      "client": "claude",
-                      "model": "claude-sonnet-5",
-                      "totals": {
-                        "tokens": 360,
-                        "input_tokens": 300,
-                        "output_tokens": 60,
-                        "cached_read_tokens": 0,
-                        "cache_write_tokens": 0,
-                        "events": 1,
-                        "sessions": 1,
-                        "catalog_base_cost": null,
-                        "provider_cost": null,
-                        "known_catalog_base_cost": "0.000000000",
-                        "known_provider_cost": "0.000000000",
-                        "pricing_complete": false,
-                        "unpriced_components": 1
-                      },
-                      "share": "20.00"
+                      "share": "100.00"
                     }
                   ]
                 },
                 {
                   "period": "7d",
                   "totals": {
-                    "tokens": 2940,
-                    "input_tokens": 2450,
-                    "output_tokens": 490,
+                    "tokens": 1440,
+                    "input_tokens": 1200,
+                    "output_tokens": 240,
                     "cached_read_tokens": 0,
                     "cache_write_tokens": 0,
-                    "events": 4,
-                    "sessions": 4,
+                    "events": 1,
+                    "sessions": 1,
                     "catalog_base_cost": null,
                     "provider_cost": null,
                     "known_catalog_base_cost": "0.000000000",
@@ -164,20 +131,20 @@
                     "unpriced_components": 1
                   },
                   "average_per_day": {
-                    "tokens": "420.00",
+                    "tokens": "205.71",
                     "provider_cost": null,
                     "known_provider_cost": "0.000000000"
                   },
                   "peak": {
                     "date": "2026-08-13",
                     "totals": {
-                      "tokens": 1800,
-                      "input_tokens": 1500,
-                      "output_tokens": 300,
+                      "tokens": 1440,
+                      "input_tokens": 1200,
+                      "output_tokens": 240,
                       "cached_read_tokens": 0,
                       "cache_write_tokens": 0,
-                      "events": 2,
-                      "sessions": 2,
+                      "events": 1,
+                      "sessions": 1,
                       "catalog_base_cost": null,
                       "provider_cost": null,
                       "known_catalog_base_cost": "0.000000000",
@@ -192,29 +159,9 @@
                       "client": "codex",
                       "model": "gpt-5",
                       "totals": {
-                        "tokens": 2400,
-                        "input_tokens": 2000,
-                        "output_tokens": 400,
-                        "cached_read_tokens": 0,
-                        "cache_write_tokens": 0,
-                        "events": 2,
-                        "sessions": 2,
-                        "catalog_base_cost": null,
-                        "provider_cost": null,
-                        "known_catalog_base_cost": "0.000000000",
-                        "known_provider_cost": "0.000000000",
-                        "pricing_complete": false,
-                        "unpriced_components": 1
-                      },
-                      "share": "81.63"
-                    },
-                    {
-                      "client": "claude",
-                      "model": "claude-sonnet-5",
-                      "totals": {
-                        "tokens": 360,
-                        "input_tokens": 300,
-                        "output_tokens": 60,
+                        "tokens": 1440,
+                        "input_tokens": 1200,
+                        "output_tokens": 240,
                         "cached_read_tokens": 0,
                         "cache_write_tokens": 0,
                         "events": 1,
@@ -226,40 +173,20 @@
                         "pricing_complete": false,
                         "unpriced_components": 1
                       },
-                      "share": "12.24"
-                    },
-                    {
-                      "client": "claude",
-                      "model": "claude-opus-5",
-                      "totals": {
-                        "tokens": 180,
-                        "input_tokens": 150,
-                        "output_tokens": 30,
-                        "cached_read_tokens": 0,
-                        "cache_write_tokens": 0,
-                        "events": 1,
-                        "sessions": 1,
-                        "catalog_base_cost": null,
-                        "provider_cost": null,
-                        "known_catalog_base_cost": "0.000000000",
-                        "known_provider_cost": "0.000000000",
-                        "pricing_complete": false,
-                        "unpriced_components": 1
-                      },
-                      "share": "6.12"
+                      "share": "100.00"
                     }
                   ]
                 },
                 {
                   "period": "30d",
                   "totals": {
-                    "tokens": 3528,
-                    "input_tokens": 2940,
-                    "output_tokens": 588,
+                    "tokens": 1440,
+                    "input_tokens": 1200,
+                    "output_tokens": 240,
                     "cached_read_tokens": 0,
                     "cache_write_tokens": 0,
-                    "events": 6,
-                    "sessions": 6,
+                    "events": 1,
+                    "sessions": 1,
                     "catalog_base_cost": null,
                     "provider_cost": null,
                     "known_catalog_base_cost": "0.000000000",
@@ -268,20 +195,20 @@
                     "unpriced_components": 1
                   },
                   "average_per_day": {
-                    "tokens": "117.60",
+                    "tokens": "48.00",
                     "provider_cost": null,
                     "known_provider_cost": "0.000000000"
                   },
                   "peak": {
                     "date": "2026-08-13",
                     "totals": {
-                      "tokens": 1800,
-                      "input_tokens": 1500,
-                      "output_tokens": 300,
+                      "tokens": 1440,
+                      "input_tokens": 1200,
+                      "output_tokens": 240,
                       "cached_read_tokens": 0,
                       "cache_write_tokens": 0,
-                      "events": 2,
-                      "sessions": 2,
+                      "events": 1,
+                      "sessions": 1,
                       "catalog_base_cost": null,
                       "provider_cost": null,
                       "known_catalog_base_cost": "0.000000000",
@@ -296,29 +223,9 @@
                       "client": "codex",
                       "model": "gpt-5",
                       "totals": {
-                        "tokens": 2400,
-                        "input_tokens": 2000,
-                        "output_tokens": 400,
-                        "cached_read_tokens": 0,
-                        "cache_write_tokens": 0,
-                        "events": 2,
-                        "sessions": 2,
-                        "catalog_base_cost": null,
-                        "provider_cost": null,
-                        "known_catalog_base_cost": "0.000000000",
-                        "known_provider_cost": "0.000000000",
-                        "pricing_complete": false,
-                        "unpriced_components": 1
-                      },
-                      "share": "68.03"
-                    },
-                    {
-                      "client": "codex",
-                      "model": "gpt-5-mini",
-                      "totals": {
-                        "tokens": 480,
-                        "input_tokens": 400,
-                        "output_tokens": 80,
+                        "tokens": 1440,
+                        "input_tokens": 1200,
+                        "output_tokens": 240,
                         "cached_read_tokens": 0,
                         "cache_write_tokens": 0,
                         "events": 1,
@@ -330,47 +237,7 @@
                         "pricing_complete": false,
                         "unpriced_components": 1
                       },
-                      "share": "13.61"
-                    },
-                    {
-                      "client": "claude",
-                      "model": "claude-sonnet-5",
-                      "totals": {
-                        "tokens": 360,
-                        "input_tokens": 300,
-                        "output_tokens": 60,
-                        "cached_read_tokens": 0,
-                        "cache_write_tokens": 0,
-                        "events": 1,
-                        "sessions": 1,
-                        "catalog_base_cost": null,
-                        "provider_cost": null,
-                        "known_catalog_base_cost": "0.000000000",
-                        "known_provider_cost": "0.000000000",
-                        "pricing_complete": false,
-                        "unpriced_components": 1
-                      },
-                      "share": "10.20"
-                    },
-                    {
-                      "client": "claude",
-                      "model": "claude-opus-5",
-                      "totals": {
-                        "tokens": 288,
-                        "input_tokens": 240,
-                        "output_tokens": 48,
-                        "cached_read_tokens": 0,
-                        "cache_write_tokens": 0,
-                        "events": 2,
-                        "sessions": 2,
-                        "catalog_base_cost": null,
-                        "provider_cost": null,
-                        "known_catalog_base_cost": "0.000000000",
-                        "known_provider_cost": "0.000000000",
-                        "pricing_complete": false,
-                        "unpriced_components": 1
-                      },
-                      "share": "8.16"
+                      "share": "100.00"
                     }
                   ]
                 }
@@ -1642,19 +1509,19 @@
                 {
                   "date": "2026-07-25",
                   "totals": {
-                    "tokens": 108,
-                    "input_tokens": 90,
-                    "output_tokens": 18,
+                    "tokens": 0,
+                    "input_tokens": 0,
+                    "output_tokens": 0,
                     "cached_read_tokens": 0,
                     "cache_write_tokens": 0,
-                    "events": 1,
-                    "sessions": 1,
-                    "catalog_base_cost": null,
-                    "provider_cost": null,
+                    "events": 0,
+                    "sessions": 0,
+                    "catalog_base_cost": "0.000000000",
+                    "provider_cost": "0.000000000",
                     "known_catalog_base_cost": "0.000000000",
                     "known_provider_cost": "0.000000000",
-                    "pricing_complete": false,
-                    "unpriced_components": 1
+                    "pricing_complete": true,
+                    "unpriced_components": 0
                   }
                 },
                 {
@@ -1696,19 +1563,19 @@
                 {
                   "date": "2026-07-28",
                   "totals": {
-                    "tokens": 480,
-                    "input_tokens": 400,
-                    "output_tokens": 80,
+                    "tokens": 0,
+                    "input_tokens": 0,
+                    "output_tokens": 0,
                     "cached_read_tokens": 0,
                     "cache_write_tokens": 0,
-                    "events": 1,
-                    "sessions": 1,
-                    "catalog_base_cost": null,
-                    "provider_cost": null,
+                    "events": 0,
+                    "sessions": 0,
+                    "catalog_base_cost": "0.000000000",
+                    "provider_cost": "0.000000000",
                     "known_catalog_base_cost": "0.000000000",
                     "known_provider_cost": "0.000000000",
-                    "pricing_complete": false,
-                    "unpriced_components": 1
+                    "pricing_complete": true,
+                    "unpriced_components": 0
                   }
                 },
                 {
@@ -1912,37 +1779,37 @@
                 {
                   "date": "2026-08-09",
                   "totals": {
-                    "tokens": 180,
-                    "input_tokens": 150,
-                    "output_tokens": 30,
+                    "tokens": 0,
+                    "input_tokens": 0,
+                    "output_tokens": 0,
                     "cached_read_tokens": 0,
                     "cache_write_tokens": 0,
-                    "events": 1,
-                    "sessions": 1,
-                    "catalog_base_cost": null,
-                    "provider_cost": null,
+                    "events": 0,
+                    "sessions": 0,
+                    "catalog_base_cost": "0.000000000",
+                    "provider_cost": "0.000000000",
                     "known_catalog_base_cost": "0.000000000",
                     "known_provider_cost": "0.000000000",
-                    "pricing_complete": false,
-                    "unpriced_components": 1
+                    "pricing_complete": true,
+                    "unpriced_components": 0
                   }
                 },
                 {
                   "date": "2026-08-10",
                   "totals": {
-                    "tokens": 960,
-                    "input_tokens": 800,
-                    "output_tokens": 160,
+                    "tokens": 0,
+                    "input_tokens": 0,
+                    "output_tokens": 0,
                     "cached_read_tokens": 0,
                     "cache_write_tokens": 0,
-                    "events": 1,
-                    "sessions": 1,
-                    "catalog_base_cost": null,
-                    "provider_cost": null,
+                    "events": 0,
+                    "sessions": 0,
+                    "catalog_base_cost": "0.000000000",
+                    "provider_cost": "0.000000000",
                     "known_catalog_base_cost": "0.000000000",
                     "known_provider_cost": "0.000000000",
-                    "pricing_complete": false,
-                    "unpriced_components": 1
+                    "pricing_complete": true,
+                    "unpriced_components": 0
                   }
                 },
                 {
@@ -1984,13 +1851,13 @@
                 {
                   "date": "2026-08-13",
                   "totals": {
-                    "tokens": 1800,
-                    "input_tokens": 1500,
-                    "output_tokens": 300,
+                    "tokens": 1440,
+                    "input_tokens": 1200,
+                    "output_tokens": 240,
                     "cached_read_tokens": 0,
                     "cache_write_tokens": 0,
-                    "events": 2,
-                    "sessions": 2,
+                    "events": 1,
+                    "sessions": 1,
                     "catalog_base_cost": null,
                     "provider_cost": null,
                     "known_catalog_base_cost": "0.000000000",
@@ -2049,13 +1916,13 @@
                     {
                       "quality": "unattributed",
                       "totals": {
-                        "tokens": 1800,
-                        "input_tokens": 1500,
-                        "output_tokens": 300,
+                        "tokens": 1440,
+                        "input_tokens": 1200,
+                        "output_tokens": 240,
                         "cached_read_tokens": 0,
                         "cache_write_tokens": 0,
-                        "events": 2,
-                        "sessions": 2,
+                        "events": 1,
+                        "sessions": 1,
                         "catalog_base_cost": null,
                         "provider_cost": null,
                         "known_catalog_base_cost": "0.000000000",
@@ -2112,13 +1979,13 @@
                     {
                       "quality": "unattributed",
                       "totals": {
-                        "tokens": 1800,
-                        "input_tokens": 1500,
-                        "output_tokens": 300,
+                        "tokens": 1440,
+                        "input_tokens": 1200,
+                        "output_tokens": 240,
                         "cached_read_tokens": 0,
                         "cache_write_tokens": 0,
-                        "events": 2,
-                        "sessions": 2,
+                        "events": 1,
+                        "sessions": 1,
                         "catalog_base_cost": null,
                         "provider_cost": null,
                         "known_catalog_base_cost": "0.000000000",
@@ -2175,13 +2042,13 @@
                     {
                       "quality": "unattributed",
                       "totals": {
-                        "tokens": 2940,
-                        "input_tokens": 2450,
-                        "output_tokens": 490,
+                        "tokens": 1440,
+                        "input_tokens": 1200,
+                        "output_tokens": 240,
                         "cached_read_tokens": 0,
                         "cache_write_tokens": 0,
-                        "events": 4,
-                        "sessions": 4,
+                        "events": 1,
+                        "sessions": 1,
                         "catalog_base_cost": null,
                         "provider_cost": null,
                         "known_catalog_base_cost": "0.000000000",
@@ -2238,13 +2105,13 @@
                     {
                       "quality": "unattributed",
                       "totals": {
-                        "tokens": 2940,
-                        "input_tokens": 2450,
-                        "output_tokens": 490,
+                        "tokens": 1440,
+                        "input_tokens": 1200,
+                        "output_tokens": 240,
                         "cached_read_tokens": 0,
                         "cache_write_tokens": 0,
-                        "events": 4,
-                        "sessions": 4,
+                        "events": 1,
+                        "sessions": 1,
                         "catalog_base_cost": null,
                         "provider_cost": null,
                         "known_catalog_base_cost": "0.000000000",
@@ -2301,13 +2168,13 @@
                     {
                       "quality": "unattributed",
                       "totals": {
-                        "tokens": 3528,
-                        "input_tokens": 2940,
-                        "output_tokens": 588,
+                        "tokens": 1440,
+                        "input_tokens": 1200,
+                        "output_tokens": 240,
                         "cached_read_tokens": 0,
                         "cache_write_tokens": 0,
-                        "events": 6,
-                        "sessions": 6,
+                        "events": 1,
+                        "sessions": 1,
                         "catalog_base_cost": null,
                         "provider_cost": null,
                         "known_catalog_base_cost": "0.000000000",
@@ -2364,13 +2231,13 @@
                     {
                       "quality": "unattributed",
                       "totals": {
-                        "tokens": 3528,
-                        "input_tokens": 2940,
-                        "output_tokens": 588,
+                        "tokens": 1440,
+                        "input_tokens": 1200,
+                        "output_tokens": 240,
                         "cached_read_tokens": 0,
                         "cache_write_tokens": 0,
-                        "events": 6,
-                        "sessions": 6,
+                        "events": 1,
+                        "sessions": 1,
                         "catalog_base_cost": null,
                         "provider_cost": null,
                         "known_catalog_base_cost": "0.000000000",
@@ -2390,34 +2257,28 @@
                 {
                   "period": "today",
                   "priced_events": 0,
-                  "unpriced_events": 2,
+                  "unpriced_events": 1,
                   "coverage": "0.00",
                   "unpriced_identifiers": [
-                    "claude/claude-sonnet-5",
                     "codex/gpt-5"
                   ]
                 },
                 {
                   "period": "7d",
                   "priced_events": 0,
-                  "unpriced_events": 4,
+                  "unpriced_events": 1,
                   "coverage": "0.00",
                   "unpriced_identifiers": [
-                    "claude/claude-opus-5",
-                    "claude/claude-sonnet-5",
                     "codex/gpt-5"
                   ]
                 },
                 {
                   "period": "30d",
                   "priced_events": 0,
-                  "unpriced_events": 6,
+                  "unpriced_events": 1,
                   "coverage": "0.00",
                   "unpriced_identifiers": [
-                    "claude/claude-opus-5",
-                    "claude/claude-sonnet-5",
-                    "codex/gpt-5",
-                    "codex/gpt-5-mini"
+                    "codex/gpt-5"
                   ]
                 }
               ]
@@ -2468,7 +2329,7 @@
                 {
                   "weekday": 0,
                   "hour": 8,
-                  "intensity": 67
+                  "intensity": 0
                 },
                 {
                   "weekday": 0,
@@ -2588,7 +2449,7 @@
                 {
                   "weekday": 1,
                   "hour": 8,
-                  "intensity": 33
+                  "intensity": 0
                 },
                 {
                   "weekday": 1,
@@ -2833,7 +2694,7 @@
                 {
                   "weekday": 3,
                   "hour": 9,
-                  "intensity": 25
+                  "intensity": 0
                 },
                 {
                   "weekday": 3,
@@ -3073,7 +2934,7 @@
                 {
                   "weekday": 5,
                   "hour": 9,
-                  "intensity": 8
+                  "intensity": 0
                 },
                 {
                   "weekday": 5,
@@ -3193,7 +3054,7 @@
                 {
                   "weekday": 6,
                   "hour": 9,
-                  "intensity": 13
+                  "intensity": 0
                 },
                 {
                   "weekday": 6,
@@ -3266,9 +3127,9 @@
                   "intensity": 0
                 }
               ],
-              "active_days": 5,
+              "active_days": 1,
               "busiest_day": "thursday",
-              "quietest_day": "wednesday"
+              "quietest_day": "monday"
             }
           },
           {
@@ -3342,13 +3203,13 @@
                 {
                   "period": "7d",
                   "totals": {
-                    "tokens": 2400,
-                    "input_tokens": 2000,
-                    "output_tokens": 400,
+                    "tokens": 1440,
+                    "input_tokens": 1200,
+                    "output_tokens": 240,
                     "cached_read_tokens": 0,
                     "cache_write_tokens": 0,
-                    "events": 2,
-                    "sessions": 2,
+                    "events": 1,
+                    "sessions": 1,
                     "catalog_base_cost": null,
                     "provider_cost": null,
                     "known_catalog_base_cost": "0.000000000",
@@ -3357,7 +3218,7 @@
                     "unpriced_components": 1
                   },
                   "average_per_day": {
-                    "tokens": "342.86",
+                    "tokens": "205.71",
                     "provider_cost": null,
                     "known_provider_cost": "0.000000000"
                   },
@@ -3384,13 +3245,13 @@
                     {
                       "model": "gpt-5",
                       "totals": {
-                        "tokens": 2400,
-                        "input_tokens": 2000,
-                        "output_tokens": 400,
+                        "tokens": 1440,
+                        "input_tokens": 1200,
+                        "output_tokens": 240,
                         "cached_read_tokens": 0,
                         "cache_write_tokens": 0,
-                        "events": 2,
-                        "sessions": 2,
+                        "events": 1,
+                        "sessions": 1,
                         "catalog_base_cost": null,
                         "provider_cost": null,
                         "known_catalog_base_cost": "0.000000000",
@@ -3405,13 +3266,13 @@
                 {
                   "period": "30d",
                   "totals": {
-                    "tokens": 2880,
-                    "input_tokens": 2400,
-                    "output_tokens": 480,
+                    "tokens": 1440,
+                    "input_tokens": 1200,
+                    "output_tokens": 240,
                     "cached_read_tokens": 0,
                     "cache_write_tokens": 0,
-                    "events": 3,
-                    "sessions": 3,
+                    "events": 1,
+                    "sessions": 1,
                     "catalog_base_cost": null,
                     "provider_cost": null,
                     "known_catalog_base_cost": "0.000000000",
@@ -3420,7 +3281,7 @@
                     "unpriced_components": 1
                   },
                   "average_per_day": {
-                    "tokens": "96.00",
+                    "tokens": "48.00",
                     "provider_cost": null,
                     "known_provider_cost": "0.000000000"
                   },
@@ -3447,28 +3308,9 @@
                     {
                       "model": "gpt-5",
                       "totals": {
-                        "tokens": 2400,
-                        "input_tokens": 2000,
-                        "output_tokens": 400,
-                        "cached_read_tokens": 0,
-                        "cache_write_tokens": 0,
-                        "events": 2,
-                        "sessions": 2,
-                        "catalog_base_cost": null,
-                        "provider_cost": null,
-                        "known_catalog_base_cost": "0.000000000",
-                        "known_provider_cost": "0.000000000",
-                        "pricing_complete": false,
-                        "unpriced_components": 1
-                      },
-                      "share": "83.33"
-                    },
-                    {
-                      "model": "gpt-5-mini",
-                      "totals": {
-                        "tokens": 480,
-                        "input_tokens": 400,
-                        "output_tokens": 80,
+                        "tokens": 1440,
+                        "input_tokens": 1200,
+                        "output_tokens": 240,
                         "cached_read_tokens": 0,
                         "cache_write_tokens": 0,
                         "events": 1,
@@ -3480,7 +3322,7 @@
                         "pricing_complete": false,
                         "unpriced_components": 1
                       },
-                      "share": "16.67"
+                      "share": "100.00"
                     }
                   ]
                 }
@@ -4806,19 +4648,19 @@
                 {
                   "date": "2026-07-28",
                   "totals": {
-                    "tokens": 480,
-                    "input_tokens": 400,
-                    "output_tokens": 80,
+                    "tokens": 0,
+                    "input_tokens": 0,
+                    "output_tokens": 0,
                     "cached_read_tokens": 0,
                     "cache_write_tokens": 0,
-                    "events": 1,
-                    "sessions": 1,
-                    "catalog_base_cost": null,
-                    "provider_cost": null,
+                    "events": 0,
+                    "sessions": 0,
+                    "catalog_base_cost": "0.000000000",
+                    "provider_cost": "0.000000000",
                     "known_catalog_base_cost": "0.000000000",
                     "known_provider_cost": "0.000000000",
-                    "pricing_complete": false,
-                    "unpriced_components": 1
+                    "pricing_complete": true,
+                    "unpriced_components": 0
                   }
                 },
                 {
@@ -5040,19 +4882,19 @@
                 {
                   "date": "2026-08-10",
                   "totals": {
-                    "tokens": 960,
-                    "input_tokens": 800,
-                    "output_tokens": 160,
+                    "tokens": 0,
+                    "input_tokens": 0,
+                    "output_tokens": 0,
                     "cached_read_tokens": 0,
                     "cache_write_tokens": 0,
-                    "events": 1,
-                    "sessions": 1,
-                    "catalog_base_cost": null,
-                    "provider_cost": null,
+                    "events": 0,
+                    "sessions": 0,
+                    "catalog_base_cost": "0.000000000",
+                    "provider_cost": "0.000000000",
                     "known_catalog_base_cost": "0.000000000",
                     "known_provider_cost": "0.000000000",
-                    "pricing_complete": false,
-                    "unpriced_components": 1
+                    "pricing_complete": true,
+                    "unpriced_components": 0
                   }
                 },
                 {
@@ -5285,13 +5127,13 @@
                     {
                       "quality": "unattributed",
                       "totals": {
-                        "tokens": 2400,
-                        "input_tokens": 2000,
-                        "output_tokens": 400,
+                        "tokens": 1440,
+                        "input_tokens": 1200,
+                        "output_tokens": 240,
                         "cached_read_tokens": 0,
                         "cache_write_tokens": 0,
-                        "events": 2,
-                        "sessions": 2,
+                        "events": 1,
+                        "sessions": 1,
                         "catalog_base_cost": null,
                         "provider_cost": null,
                         "known_catalog_base_cost": "0.000000000",
@@ -5348,13 +5190,13 @@
                     {
                       "quality": "unattributed",
                       "totals": {
-                        "tokens": 2400,
-                        "input_tokens": 2000,
-                        "output_tokens": 400,
+                        "tokens": 1440,
+                        "input_tokens": 1200,
+                        "output_tokens": 240,
                         "cached_read_tokens": 0,
                         "cache_write_tokens": 0,
-                        "events": 2,
-                        "sessions": 2,
+                        "events": 1,
+                        "sessions": 1,
                         "catalog_base_cost": null,
                         "provider_cost": null,
                         "known_catalog_base_cost": "0.000000000",
@@ -5411,13 +5253,13 @@
                     {
                       "quality": "unattributed",
                       "totals": {
-                        "tokens": 2880,
-                        "input_tokens": 2400,
-                        "output_tokens": 480,
+                        "tokens": 1440,
+                        "input_tokens": 1200,
+                        "output_tokens": 240,
                         "cached_read_tokens": 0,
                         "cache_write_tokens": 0,
-                        "events": 3,
-                        "sessions": 3,
+                        "events": 1,
+                        "sessions": 1,
                         "catalog_base_cost": null,
                         "provider_cost": null,
                         "known_catalog_base_cost": "0.000000000",
@@ -5474,13 +5316,13 @@
                     {
                       "quality": "unattributed",
                       "totals": {
-                        "tokens": 2880,
-                        "input_tokens": 2400,
-                        "output_tokens": 480,
+                        "tokens": 1440,
+                        "input_tokens": 1200,
+                        "output_tokens": 240,
                         "cached_read_tokens": 0,
                         "cache_write_tokens": 0,
-                        "events": 3,
-                        "sessions": 3,
+                        "events": 1,
+                        "sessions": 1,
                         "catalog_base_cost": null,
                         "provider_cost": null,
                         "known_catalog_base_cost": "0.000000000",
@@ -5509,7 +5351,7 @@
                 {
                   "period": "7d",
                   "priced_events": 0,
-                  "unpriced_events": 2,
+                  "unpriced_events": 1,
                   "coverage": "0.00",
                   "unpriced_identifiers": [
                     "gpt-5"
@@ -5518,11 +5360,10 @@
                 {
                   "period": "30d",
                   "priced_events": 0,
-                  "unpriced_events": 3,
+                  "unpriced_events": 1,
                   "coverage": "0.00",
                   "unpriced_identifiers": [
-                    "gpt-5",
-                    "gpt-5-mini"
+                    "gpt-5"
                   ]
                 }
               ]
@@ -5573,7 +5414,7 @@
                 {
                   "weekday": 0,
                   "hour": 8,
-                  "intensity": 67
+                  "intensity": 0
                 },
                 {
                   "weekday": 0,
@@ -5693,7 +5534,7 @@
                 {
                   "weekday": 1,
                   "hour": 8,
-                  "intensity": 33
+                  "intensity": 0
                 },
                 {
                   "weekday": 1,
@@ -6371,3134 +6212,35 @@
                   "intensity": 0
                 }
               ],
-              "active_days": 3,
+              "active_days": 1,
               "busiest_day": "thursday",
-              "quietest_day": "wednesday"
+              "quietest_day": "monday"
             }
           },
           {
             "client": "claude",
             "periods": {
-              "available": true,
-              "items": [
-                {
-                  "period": "today",
-                  "totals": {
-                    "tokens": 360,
-                    "input_tokens": 300,
-                    "output_tokens": 60,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 1,
-                    "sessions": 1,
-                    "catalog_base_cost": null,
-                    "provider_cost": null,
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": false,
-                    "unpriced_components": 1
-                  },
-                  "average_per_day": {
-                    "tokens": "360.00",
-                    "provider_cost": null,
-                    "known_provider_cost": "0.000000000"
-                  },
-                  "peak": {
-                    "date": "2026-08-13",
-                    "totals": {
-                      "tokens": 360,
-                      "input_tokens": 300,
-                      "output_tokens": 60,
-                      "cached_read_tokens": 0,
-                      "cache_write_tokens": 0,
-                      "events": 1,
-                      "sessions": 1,
-                      "catalog_base_cost": null,
-                      "provider_cost": null,
-                      "known_catalog_base_cost": "0.000000000",
-                      "known_provider_cost": "0.000000000",
-                      "pricing_complete": false,
-                      "unpriced_components": 1
-                    }
-                  },
-                  "cache_hit_share": "0.00",
-                  "models": [
-                    {
-                      "model": "claude-sonnet-5",
-                      "totals": {
-                        "tokens": 360,
-                        "input_tokens": 300,
-                        "output_tokens": 60,
-                        "cached_read_tokens": 0,
-                        "cache_write_tokens": 0,
-                        "events": 1,
-                        "sessions": 1,
-                        "catalog_base_cost": null,
-                        "provider_cost": null,
-                        "known_catalog_base_cost": "0.000000000",
-                        "known_provider_cost": "0.000000000",
-                        "pricing_complete": false,
-                        "unpriced_components": 1
-                      },
-                      "share": "100.00"
-                    }
-                  ]
-                },
-                {
-                  "period": "7d",
-                  "totals": {
-                    "tokens": 540,
-                    "input_tokens": 450,
-                    "output_tokens": 90,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 2,
-                    "sessions": 2,
-                    "catalog_base_cost": null,
-                    "provider_cost": null,
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": false,
-                    "unpriced_components": 1
-                  },
-                  "average_per_day": {
-                    "tokens": "77.14",
-                    "provider_cost": null,
-                    "known_provider_cost": "0.000000000"
-                  },
-                  "peak": {
-                    "date": "2026-08-13",
-                    "totals": {
-                      "tokens": 360,
-                      "input_tokens": 300,
-                      "output_tokens": 60,
-                      "cached_read_tokens": 0,
-                      "cache_write_tokens": 0,
-                      "events": 1,
-                      "sessions": 1,
-                      "catalog_base_cost": null,
-                      "provider_cost": null,
-                      "known_catalog_base_cost": "0.000000000",
-                      "known_provider_cost": "0.000000000",
-                      "pricing_complete": false,
-                      "unpriced_components": 1
-                    }
-                  },
-                  "cache_hit_share": "0.00",
-                  "models": [
-                    {
-                      "model": "claude-sonnet-5",
-                      "totals": {
-                        "tokens": 360,
-                        "input_tokens": 300,
-                        "output_tokens": 60,
-                        "cached_read_tokens": 0,
-                        "cache_write_tokens": 0,
-                        "events": 1,
-                        "sessions": 1,
-                        "catalog_base_cost": null,
-                        "provider_cost": null,
-                        "known_catalog_base_cost": "0.000000000",
-                        "known_provider_cost": "0.000000000",
-                        "pricing_complete": false,
-                        "unpriced_components": 1
-                      },
-                      "share": "66.67"
-                    },
-                    {
-                      "model": "claude-opus-5",
-                      "totals": {
-                        "tokens": 180,
-                        "input_tokens": 150,
-                        "output_tokens": 30,
-                        "cached_read_tokens": 0,
-                        "cache_write_tokens": 0,
-                        "events": 1,
-                        "sessions": 1,
-                        "catalog_base_cost": null,
-                        "provider_cost": null,
-                        "known_catalog_base_cost": "0.000000000",
-                        "known_provider_cost": "0.000000000",
-                        "pricing_complete": false,
-                        "unpriced_components": 1
-                      },
-                      "share": "33.33"
-                    }
-                  ]
-                },
-                {
-                  "period": "30d",
-                  "totals": {
-                    "tokens": 648,
-                    "input_tokens": 540,
-                    "output_tokens": 108,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 3,
-                    "sessions": 3,
-                    "catalog_base_cost": null,
-                    "provider_cost": null,
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": false,
-                    "unpriced_components": 1
-                  },
-                  "average_per_day": {
-                    "tokens": "21.60",
-                    "provider_cost": null,
-                    "known_provider_cost": "0.000000000"
-                  },
-                  "peak": {
-                    "date": "2026-08-13",
-                    "totals": {
-                      "tokens": 360,
-                      "input_tokens": 300,
-                      "output_tokens": 60,
-                      "cached_read_tokens": 0,
-                      "cache_write_tokens": 0,
-                      "events": 1,
-                      "sessions": 1,
-                      "catalog_base_cost": null,
-                      "provider_cost": null,
-                      "known_catalog_base_cost": "0.000000000",
-                      "known_provider_cost": "0.000000000",
-                      "pricing_complete": false,
-                      "unpriced_components": 1
-                    }
-                  },
-                  "cache_hit_share": "0.00",
-                  "models": [
-                    {
-                      "model": "claude-sonnet-5",
-                      "totals": {
-                        "tokens": 360,
-                        "input_tokens": 300,
-                        "output_tokens": 60,
-                        "cached_read_tokens": 0,
-                        "cache_write_tokens": 0,
-                        "events": 1,
-                        "sessions": 1,
-                        "catalog_base_cost": null,
-                        "provider_cost": null,
-                        "known_catalog_base_cost": "0.000000000",
-                        "known_provider_cost": "0.000000000",
-                        "pricing_complete": false,
-                        "unpriced_components": 1
-                      },
-                      "share": "55.56"
-                    },
-                    {
-                      "model": "claude-opus-5",
-                      "totals": {
-                        "tokens": 288,
-                        "input_tokens": 240,
-                        "output_tokens": 48,
-                        "cached_read_tokens": 0,
-                        "cache_write_tokens": 0,
-                        "events": 2,
-                        "sessions": 2,
-                        "catalog_base_cost": null,
-                        "provider_cost": null,
-                        "known_catalog_base_cost": "0.000000000",
-                        "known_provider_cost": "0.000000000",
-                        "pricing_complete": false,
-                        "unpriced_components": 1
-                      },
-                      "share": "44.44"
-                    }
-                  ]
-                }
-              ]
+              "available": false,
+              "items": []
             },
             "daily": {
-              "available": true,
-              "items": [
-                {
-                  "date": "2026-05-16",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-05-17",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-05-18",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-05-19",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-05-20",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-05-21",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-05-22",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-05-23",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-05-24",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-05-25",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-05-26",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-05-27",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-05-28",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-05-29",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-05-30",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-05-31",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-06-01",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-06-02",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-06-03",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-06-04",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-06-05",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-06-06",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-06-07",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-06-08",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-06-09",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-06-10",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-06-11",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-06-12",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-06-13",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-06-14",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-06-15",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-06-16",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-06-17",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-06-18",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-06-19",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-06-20",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-06-21",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-06-22",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-06-23",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-06-24",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-06-25",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-06-26",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-06-27",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-06-28",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-06-29",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-06-30",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-07-01",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-07-02",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-07-03",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-07-04",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-07-05",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-07-06",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-07-07",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-07-08",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-07-09",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-07-10",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-07-11",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-07-12",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-07-13",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-07-14",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-07-15",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-07-16",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-07-17",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-07-18",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-07-19",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-07-20",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-07-21",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-07-22",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-07-23",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-07-24",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-07-25",
-                  "totals": {
-                    "tokens": 108,
-                    "input_tokens": 90,
-                    "output_tokens": 18,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 1,
-                    "sessions": 1,
-                    "catalog_base_cost": null,
-                    "provider_cost": null,
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": false,
-                    "unpriced_components": 1
-                  }
-                },
-                {
-                  "date": "2026-07-26",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-07-27",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-07-28",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-07-29",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-07-30",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-07-31",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-08-01",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-08-02",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-08-03",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-08-04",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-08-05",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-08-06",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-08-07",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-08-08",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-08-09",
-                  "totals": {
-                    "tokens": 180,
-                    "input_tokens": 150,
-                    "output_tokens": 30,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 1,
-                    "sessions": 1,
-                    "catalog_base_cost": null,
-                    "provider_cost": null,
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": false,
-                    "unpriced_components": 1
-                  }
-                },
-                {
-                  "date": "2026-08-10",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-08-11",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-08-12",
-                  "totals": {
-                    "tokens": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 0,
-                    "sessions": 0,
-                    "catalog_base_cost": "0.000000000",
-                    "provider_cost": "0.000000000",
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": true,
-                    "unpriced_components": 0
-                  }
-                },
-                {
-                  "date": "2026-08-13",
-                  "totals": {
-                    "tokens": 360,
-                    "input_tokens": 300,
-                    "output_tokens": 60,
-                    "cached_read_tokens": 0,
-                    "cache_write_tokens": 0,
-                    "events": 1,
-                    "sessions": 1,
-                    "catalog_base_cost": null,
-                    "provider_cost": null,
-                    "known_catalog_base_cost": "0.000000000",
-                    "known_provider_cost": "0.000000000",
-                    "pricing_complete": false,
-                    "unpriced_components": 1
-                  }
-                }
-              ]
+              "available": false,
+              "items": []
             },
             "quality": {
-              "available": true,
-              "items": [
-                {
-                  "period": "today",
-                  "provider": null,
-                  "tiers": [
-                    {
-                      "quality": "determinable",
-                      "totals": {
-                        "tokens": 0,
-                        "input_tokens": 0,
-                        "output_tokens": 0,
-                        "cached_read_tokens": 0,
-                        "cache_write_tokens": 0,
-                        "events": 0,
-                        "sessions": 0,
-                        "catalog_base_cost": "0.000000000",
-                        "provider_cost": "0.000000000",
-                        "known_catalog_base_cost": "0.000000000",
-                        "known_provider_cost": "0.000000000",
-                        "pricing_complete": true,
-                        "unpriced_components": 0
-                      },
-                      "share": null
-                    },
-                    {
-                      "quality": "inferred",
-                      "totals": {
-                        "tokens": 0,
-                        "input_tokens": 0,
-                        "output_tokens": 0,
-                        "cached_read_tokens": 0,
-                        "cache_write_tokens": 0,
-                        "events": 0,
-                        "sessions": 0,
-                        "catalog_base_cost": "0.000000000",
-                        "provider_cost": "0.000000000",
-                        "known_catalog_base_cost": "0.000000000",
-                        "known_provider_cost": "0.000000000",
-                        "pricing_complete": true,
-                        "unpriced_components": 0
-                      },
-                      "share": null
-                    },
-                    {
-                      "quality": "unattributed",
-                      "totals": {
-                        "tokens": 360,
-                        "input_tokens": 300,
-                        "output_tokens": 60,
-                        "cached_read_tokens": 0,
-                        "cache_write_tokens": 0,
-                        "events": 1,
-                        "sessions": 1,
-                        "catalog_base_cost": null,
-                        "provider_cost": null,
-                        "known_catalog_base_cost": "0.000000000",
-                        "known_provider_cost": "0.000000000",
-                        "pricing_complete": false,
-                        "unpriced_components": 1
-                      },
-                      "share": null
-                    }
-                  ]
-                },
-                {
-                  "period": "today",
-                  "provider": "unknown",
-                  "tiers": [
-                    {
-                      "quality": "determinable",
-                      "totals": {
-                        "tokens": 0,
-                        "input_tokens": 0,
-                        "output_tokens": 0,
-                        "cached_read_tokens": 0,
-                        "cache_write_tokens": 0,
-                        "events": 0,
-                        "sessions": 0,
-                        "catalog_base_cost": "0.000000000",
-                        "provider_cost": "0.000000000",
-                        "known_catalog_base_cost": "0.000000000",
-                        "known_provider_cost": "0.000000000",
-                        "pricing_complete": true,
-                        "unpriced_components": 0
-                      },
-                      "share": null
-                    },
-                    {
-                      "quality": "inferred",
-                      "totals": {
-                        "tokens": 0,
-                        "input_tokens": 0,
-                        "output_tokens": 0,
-                        "cached_read_tokens": 0,
-                        "cache_write_tokens": 0,
-                        "events": 0,
-                        "sessions": 0,
-                        "catalog_base_cost": "0.000000000",
-                        "provider_cost": "0.000000000",
-                        "known_catalog_base_cost": "0.000000000",
-                        "known_provider_cost": "0.000000000",
-                        "pricing_complete": true,
-                        "unpriced_components": 0
-                      },
-                      "share": null
-                    },
-                    {
-                      "quality": "unattributed",
-                      "totals": {
-                        "tokens": 360,
-                        "input_tokens": 300,
-                        "output_tokens": 60,
-                        "cached_read_tokens": 0,
-                        "cache_write_tokens": 0,
-                        "events": 1,
-                        "sessions": 1,
-                        "catalog_base_cost": null,
-                        "provider_cost": null,
-                        "known_catalog_base_cost": "0.000000000",
-                        "known_provider_cost": "0.000000000",
-                        "pricing_complete": false,
-                        "unpriced_components": 1
-                      },
-                      "share": null
-                    }
-                  ]
-                },
-                {
-                  "period": "7d",
-                  "provider": null,
-                  "tiers": [
-                    {
-                      "quality": "determinable",
-                      "totals": {
-                        "tokens": 0,
-                        "input_tokens": 0,
-                        "output_tokens": 0,
-                        "cached_read_tokens": 0,
-                        "cache_write_tokens": 0,
-                        "events": 0,
-                        "sessions": 0,
-                        "catalog_base_cost": "0.000000000",
-                        "provider_cost": "0.000000000",
-                        "known_catalog_base_cost": "0.000000000",
-                        "known_provider_cost": "0.000000000",
-                        "pricing_complete": true,
-                        "unpriced_components": 0
-                      },
-                      "share": null
-                    },
-                    {
-                      "quality": "inferred",
-                      "totals": {
-                        "tokens": 0,
-                        "input_tokens": 0,
-                        "output_tokens": 0,
-                        "cached_read_tokens": 0,
-                        "cache_write_tokens": 0,
-                        "events": 0,
-                        "sessions": 0,
-                        "catalog_base_cost": "0.000000000",
-                        "provider_cost": "0.000000000",
-                        "known_catalog_base_cost": "0.000000000",
-                        "known_provider_cost": "0.000000000",
-                        "pricing_complete": true,
-                        "unpriced_components": 0
-                      },
-                      "share": null
-                    },
-                    {
-                      "quality": "unattributed",
-                      "totals": {
-                        "tokens": 540,
-                        "input_tokens": 450,
-                        "output_tokens": 90,
-                        "cached_read_tokens": 0,
-                        "cache_write_tokens": 0,
-                        "events": 2,
-                        "sessions": 2,
-                        "catalog_base_cost": null,
-                        "provider_cost": null,
-                        "known_catalog_base_cost": "0.000000000",
-                        "known_provider_cost": "0.000000000",
-                        "pricing_complete": false,
-                        "unpriced_components": 1
-                      },
-                      "share": null
-                    }
-                  ]
-                },
-                {
-                  "period": "7d",
-                  "provider": "unknown",
-                  "tiers": [
-                    {
-                      "quality": "determinable",
-                      "totals": {
-                        "tokens": 0,
-                        "input_tokens": 0,
-                        "output_tokens": 0,
-                        "cached_read_tokens": 0,
-                        "cache_write_tokens": 0,
-                        "events": 0,
-                        "sessions": 0,
-                        "catalog_base_cost": "0.000000000",
-                        "provider_cost": "0.000000000",
-                        "known_catalog_base_cost": "0.000000000",
-                        "known_provider_cost": "0.000000000",
-                        "pricing_complete": true,
-                        "unpriced_components": 0
-                      },
-                      "share": null
-                    },
-                    {
-                      "quality": "inferred",
-                      "totals": {
-                        "tokens": 0,
-                        "input_tokens": 0,
-                        "output_tokens": 0,
-                        "cached_read_tokens": 0,
-                        "cache_write_tokens": 0,
-                        "events": 0,
-                        "sessions": 0,
-                        "catalog_base_cost": "0.000000000",
-                        "provider_cost": "0.000000000",
-                        "known_catalog_base_cost": "0.000000000",
-                        "known_provider_cost": "0.000000000",
-                        "pricing_complete": true,
-                        "unpriced_components": 0
-                      },
-                      "share": null
-                    },
-                    {
-                      "quality": "unattributed",
-                      "totals": {
-                        "tokens": 540,
-                        "input_tokens": 450,
-                        "output_tokens": 90,
-                        "cached_read_tokens": 0,
-                        "cache_write_tokens": 0,
-                        "events": 2,
-                        "sessions": 2,
-                        "catalog_base_cost": null,
-                        "provider_cost": null,
-                        "known_catalog_base_cost": "0.000000000",
-                        "known_provider_cost": "0.000000000",
-                        "pricing_complete": false,
-                        "unpriced_components": 1
-                      },
-                      "share": null
-                    }
-                  ]
-                },
-                {
-                  "period": "30d",
-                  "provider": null,
-                  "tiers": [
-                    {
-                      "quality": "determinable",
-                      "totals": {
-                        "tokens": 0,
-                        "input_tokens": 0,
-                        "output_tokens": 0,
-                        "cached_read_tokens": 0,
-                        "cache_write_tokens": 0,
-                        "events": 0,
-                        "sessions": 0,
-                        "catalog_base_cost": "0.000000000",
-                        "provider_cost": "0.000000000",
-                        "known_catalog_base_cost": "0.000000000",
-                        "known_provider_cost": "0.000000000",
-                        "pricing_complete": true,
-                        "unpriced_components": 0
-                      },
-                      "share": null
-                    },
-                    {
-                      "quality": "inferred",
-                      "totals": {
-                        "tokens": 0,
-                        "input_tokens": 0,
-                        "output_tokens": 0,
-                        "cached_read_tokens": 0,
-                        "cache_write_tokens": 0,
-                        "events": 0,
-                        "sessions": 0,
-                        "catalog_base_cost": "0.000000000",
-                        "provider_cost": "0.000000000",
-                        "known_catalog_base_cost": "0.000000000",
-                        "known_provider_cost": "0.000000000",
-                        "pricing_complete": true,
-                        "unpriced_components": 0
-                      },
-                      "share": null
-                    },
-                    {
-                      "quality": "unattributed",
-                      "totals": {
-                        "tokens": 648,
-                        "input_tokens": 540,
-                        "output_tokens": 108,
-                        "cached_read_tokens": 0,
-                        "cache_write_tokens": 0,
-                        "events": 3,
-                        "sessions": 3,
-                        "catalog_base_cost": null,
-                        "provider_cost": null,
-                        "known_catalog_base_cost": "0.000000000",
-                        "known_provider_cost": "0.000000000",
-                        "pricing_complete": false,
-                        "unpriced_components": 1
-                      },
-                      "share": null
-                    }
-                  ]
-                },
-                {
-                  "period": "30d",
-                  "provider": "unknown",
-                  "tiers": [
-                    {
-                      "quality": "determinable",
-                      "totals": {
-                        "tokens": 0,
-                        "input_tokens": 0,
-                        "output_tokens": 0,
-                        "cached_read_tokens": 0,
-                        "cache_write_tokens": 0,
-                        "events": 0,
-                        "sessions": 0,
-                        "catalog_base_cost": "0.000000000",
-                        "provider_cost": "0.000000000",
-                        "known_catalog_base_cost": "0.000000000",
-                        "known_provider_cost": "0.000000000",
-                        "pricing_complete": true,
-                        "unpriced_components": 0
-                      },
-                      "share": null
-                    },
-                    {
-                      "quality": "inferred",
-                      "totals": {
-                        "tokens": 0,
-                        "input_tokens": 0,
-                        "output_tokens": 0,
-                        "cached_read_tokens": 0,
-                        "cache_write_tokens": 0,
-                        "events": 0,
-                        "sessions": 0,
-                        "catalog_base_cost": "0.000000000",
-                        "provider_cost": "0.000000000",
-                        "known_catalog_base_cost": "0.000000000",
-                        "known_provider_cost": "0.000000000",
-                        "pricing_complete": true,
-                        "unpriced_components": 0
-                      },
-                      "share": null
-                    },
-                    {
-                      "quality": "unattributed",
-                      "totals": {
-                        "tokens": 648,
-                        "input_tokens": 540,
-                        "output_tokens": 108,
-                        "cached_read_tokens": 0,
-                        "cache_write_tokens": 0,
-                        "events": 3,
-                        "sessions": 3,
-                        "catalog_base_cost": null,
-                        "provider_cost": null,
-                        "known_catalog_base_cost": "0.000000000",
-                        "known_provider_cost": "0.000000000",
-                        "pricing_complete": false,
-                        "unpriced_components": 1
-                      },
-                      "share": null
-                    }
-                  ]
-                }
-              ]
+              "available": false,
+              "items": []
             },
             "pricing": {
-              "available": true,
-              "items": [
-                {
-                  "period": "today",
-                  "priced_events": 0,
-                  "unpriced_events": 1,
-                  "coverage": "0.00",
-                  "unpriced_identifiers": [
-                    "claude-sonnet-5"
-                  ]
-                },
-                {
-                  "period": "7d",
-                  "priced_events": 0,
-                  "unpriced_events": 2,
-                  "coverage": "0.00",
-                  "unpriced_identifiers": [
-                    "claude-opus-5",
-                    "claude-sonnet-5"
-                  ]
-                },
-                {
-                  "period": "30d",
-                  "priced_events": 0,
-                  "unpriced_events": 3,
-                  "coverage": "0.00",
-                  "unpriced_identifiers": [
-                    "claude-opus-5",
-                    "claude-sonnet-5"
-                  ]
-                }
-              ]
+              "available": false,
+              "items": []
             },
             "rhythm": {
-              "available": true,
-              "cells": [
-                {
-                  "weekday": 0,
-                  "hour": 0,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 0,
-                  "hour": 1,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 0,
-                  "hour": 2,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 0,
-                  "hour": 3,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 0,
-                  "hour": 4,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 0,
-                  "hour": 5,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 0,
-                  "hour": 6,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 0,
-                  "hour": 7,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 0,
-                  "hour": 8,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 0,
-                  "hour": 9,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 0,
-                  "hour": 10,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 0,
-                  "hour": 11,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 0,
-                  "hour": 12,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 0,
-                  "hour": 13,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 0,
-                  "hour": 14,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 0,
-                  "hour": 15,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 0,
-                  "hour": 16,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 0,
-                  "hour": 17,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 0,
-                  "hour": 18,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 0,
-                  "hour": 19,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 0,
-                  "hour": 20,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 0,
-                  "hour": 21,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 0,
-                  "hour": 22,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 0,
-                  "hour": 23,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 1,
-                  "hour": 0,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 1,
-                  "hour": 1,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 1,
-                  "hour": 2,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 1,
-                  "hour": 3,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 1,
-                  "hour": 4,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 1,
-                  "hour": 5,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 1,
-                  "hour": 6,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 1,
-                  "hour": 7,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 1,
-                  "hour": 8,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 1,
-                  "hour": 9,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 1,
-                  "hour": 10,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 1,
-                  "hour": 11,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 1,
-                  "hour": 12,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 1,
-                  "hour": 13,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 1,
-                  "hour": 14,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 1,
-                  "hour": 15,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 1,
-                  "hour": 16,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 1,
-                  "hour": 17,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 1,
-                  "hour": 18,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 1,
-                  "hour": 19,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 1,
-                  "hour": 20,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 1,
-                  "hour": 21,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 1,
-                  "hour": 22,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 1,
-                  "hour": 23,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 2,
-                  "hour": 0,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 2,
-                  "hour": 1,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 2,
-                  "hour": 2,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 2,
-                  "hour": 3,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 2,
-                  "hour": 4,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 2,
-                  "hour": 5,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 2,
-                  "hour": 6,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 2,
-                  "hour": 7,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 2,
-                  "hour": 8,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 2,
-                  "hour": 9,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 2,
-                  "hour": 10,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 2,
-                  "hour": 11,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 2,
-                  "hour": 12,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 2,
-                  "hour": 13,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 2,
-                  "hour": 14,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 2,
-                  "hour": 15,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 2,
-                  "hour": 16,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 2,
-                  "hour": 17,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 2,
-                  "hour": 18,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 2,
-                  "hour": 19,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 2,
-                  "hour": 20,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 2,
-                  "hour": 21,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 2,
-                  "hour": 22,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 2,
-                  "hour": 23,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 3,
-                  "hour": 0,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 3,
-                  "hour": 1,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 3,
-                  "hour": 2,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 3,
-                  "hour": 3,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 3,
-                  "hour": 4,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 3,
-                  "hour": 5,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 3,
-                  "hour": 6,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 3,
-                  "hour": 7,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 3,
-                  "hour": 8,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 3,
-                  "hour": 9,
-                  "intensity": 100
-                },
-                {
-                  "weekday": 3,
-                  "hour": 10,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 3,
-                  "hour": 11,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 3,
-                  "hour": 12,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 3,
-                  "hour": 13,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 3,
-                  "hour": 14,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 3,
-                  "hour": 15,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 3,
-                  "hour": 16,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 3,
-                  "hour": 17,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 3,
-                  "hour": 18,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 3,
-                  "hour": 19,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 3,
-                  "hour": 20,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 3,
-                  "hour": 21,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 3,
-                  "hour": 22,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 3,
-                  "hour": 23,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 4,
-                  "hour": 0,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 4,
-                  "hour": 1,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 4,
-                  "hour": 2,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 4,
-                  "hour": 3,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 4,
-                  "hour": 4,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 4,
-                  "hour": 5,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 4,
-                  "hour": 6,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 4,
-                  "hour": 7,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 4,
-                  "hour": 8,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 4,
-                  "hour": 9,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 4,
-                  "hour": 10,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 4,
-                  "hour": 11,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 4,
-                  "hour": 12,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 4,
-                  "hour": 13,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 4,
-                  "hour": 14,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 4,
-                  "hour": 15,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 4,
-                  "hour": 16,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 4,
-                  "hour": 17,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 4,
-                  "hour": 18,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 4,
-                  "hour": 19,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 4,
-                  "hour": 20,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 4,
-                  "hour": 21,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 4,
-                  "hour": 22,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 4,
-                  "hour": 23,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 5,
-                  "hour": 0,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 5,
-                  "hour": 1,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 5,
-                  "hour": 2,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 5,
-                  "hour": 3,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 5,
-                  "hour": 4,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 5,
-                  "hour": 5,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 5,
-                  "hour": 6,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 5,
-                  "hour": 7,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 5,
-                  "hour": 8,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 5,
-                  "hour": 9,
-                  "intensity": 30
-                },
-                {
-                  "weekday": 5,
-                  "hour": 10,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 5,
-                  "hour": 11,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 5,
-                  "hour": 12,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 5,
-                  "hour": 13,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 5,
-                  "hour": 14,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 5,
-                  "hour": 15,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 5,
-                  "hour": 16,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 5,
-                  "hour": 17,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 5,
-                  "hour": 18,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 5,
-                  "hour": 19,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 5,
-                  "hour": 20,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 5,
-                  "hour": 21,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 5,
-                  "hour": 22,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 5,
-                  "hour": 23,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 6,
-                  "hour": 0,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 6,
-                  "hour": 1,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 6,
-                  "hour": 2,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 6,
-                  "hour": 3,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 6,
-                  "hour": 4,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 6,
-                  "hour": 5,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 6,
-                  "hour": 6,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 6,
-                  "hour": 7,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 6,
-                  "hour": 8,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 6,
-                  "hour": 9,
-                  "intensity": 50
-                },
-                {
-                  "weekday": 6,
-                  "hour": 10,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 6,
-                  "hour": 11,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 6,
-                  "hour": 12,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 6,
-                  "hour": 13,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 6,
-                  "hour": 14,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 6,
-                  "hour": 15,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 6,
-                  "hour": 16,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 6,
-                  "hour": 17,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 6,
-                  "hour": 18,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 6,
-                  "hour": 19,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 6,
-                  "hour": 20,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 6,
-                  "hour": 21,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 6,
-                  "hour": 22,
-                  "intensity": 0
-                },
-                {
-                  "weekday": 6,
-                  "hour": 23,
-                  "intensity": 0
-                }
-              ],
-              "active_days": 3,
-              "busiest_day": "thursday",
-              "quietest_day": "monday"
+              "available": false,
+              "cells": [],
+              "active_days": 0,
+              "busiest_day": "",
+              "quietest_day": ""
             }
           }
         ],
@@ -9528,9 +6270,28 @@
               "period": "today",
               "client": "claude",
               "totals": {
-                "tokens": 360,
-                "input_tokens": 300,
-                "output_tokens": 60,
+                "tokens": 0,
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "cached_read_tokens": 0,
+                "cache_write_tokens": 0,
+                "events": 0,
+                "sessions": 0,
+                "catalog_base_cost": "0.000000000",
+                "provider_cost": "0.000000000",
+                "known_catalog_base_cost": "0.000000000",
+                "known_provider_cost": "0.000000000",
+                "pricing_complete": true,
+                "unpriced_components": 0
+              }
+            },
+            {
+              "period": "7d",
+              "client": "codex",
+              "totals": {
+                "tokens": 1440,
+                "input_tokens": 1200,
+                "output_tokens": 240,
                 "cached_read_tokens": 0,
                 "cache_write_tokens": 0,
                 "events": 1,
@@ -9545,53 +6306,34 @@
             },
             {
               "period": "7d",
-              "client": "codex",
-              "totals": {
-                "tokens": 2400,
-                "input_tokens": 2000,
-                "output_tokens": 400,
-                "cached_read_tokens": 0,
-                "cache_write_tokens": 0,
-                "events": 2,
-                "sessions": 2,
-                "catalog_base_cost": null,
-                "provider_cost": null,
-                "known_catalog_base_cost": "0.000000000",
-                "known_provider_cost": "0.000000000",
-                "pricing_complete": false,
-                "unpriced_components": 1
-              }
-            },
-            {
-              "period": "7d",
               "client": "claude",
               "totals": {
-                "tokens": 540,
-                "input_tokens": 450,
-                "output_tokens": 90,
+                "tokens": 0,
+                "input_tokens": 0,
+                "output_tokens": 0,
                 "cached_read_tokens": 0,
                 "cache_write_tokens": 0,
-                "events": 2,
-                "sessions": 2,
-                "catalog_base_cost": null,
-                "provider_cost": null,
+                "events": 0,
+                "sessions": 0,
+                "catalog_base_cost": "0.000000000",
+                "provider_cost": "0.000000000",
                 "known_catalog_base_cost": "0.000000000",
                 "known_provider_cost": "0.000000000",
-                "pricing_complete": false,
-                "unpriced_components": 1
+                "pricing_complete": true,
+                "unpriced_components": 0
               }
             },
             {
               "period": "30d",
               "client": "codex",
               "totals": {
-                "tokens": 2880,
-                "input_tokens": 2400,
-                "output_tokens": 480,
+                "tokens": 1440,
+                "input_tokens": 1200,
+                "output_tokens": 240,
                 "cached_read_tokens": 0,
                 "cache_write_tokens": 0,
-                "events": 3,
-                "sessions": 3,
+                "events": 1,
+                "sessions": 1,
                 "catalog_base_cost": null,
                 "provider_cost": null,
                 "known_catalog_base_cost": "0.000000000",
@@ -9604,19 +6346,19 @@
               "period": "30d",
               "client": "claude",
               "totals": {
-                "tokens": 648,
-                "input_tokens": 540,
-                "output_tokens": 108,
+                "tokens": 0,
+                "input_tokens": 0,
+                "output_tokens": 0,
                 "cached_read_tokens": 0,
                 "cache_write_tokens": 0,
-                "events": 3,
-                "sessions": 3,
-                "catalog_base_cost": null,
-                "provider_cost": null,
+                "events": 0,
+                "sessions": 0,
+                "catalog_base_cost": "0.000000000",
+                "provider_cost": "0.000000000",
                 "known_catalog_base_cost": "0.000000000",
                 "known_provider_cost": "0.000000000",
-                "pricing_complete": false,
-                "unpriced_components": 1
+                "pricing_complete": true,
+                "unpriced_components": 0
               }
             }
           ]
@@ -9625,101 +6367,85 @@
     },
     "sessions": {
       "available": true,
-      "total": 5,
+      "total": 1,
       "periods": {
         "available": true,
         "items": [
           {
             "period": "today",
             "client": "all",
-            "sessions": 3,
-            "total_duration_seconds": 6600,
-            "median_duration_seconds": 1800,
-            "distinct_projects": 3
+            "sessions": 1,
+            "total_duration_seconds": 3600,
+            "median_duration_seconds": 3600,
+            "distinct_projects": 1
           },
           {
             "period": "today",
             "client": "codex",
-            "sessions": 2,
-            "total_duration_seconds": 5400,
-            "median_duration_seconds": 2700,
-            "distinct_projects": 2
+            "sessions": 1,
+            "total_duration_seconds": 3600,
+            "median_duration_seconds": 3600,
+            "distinct_projects": 1
           },
           {
             "period": "today",
             "client": "claude",
-            "sessions": 1,
-            "total_duration_seconds": 1200,
-            "median_duration_seconds": 1200,
-            "distinct_projects": 1
+            "sessions": 0,
+            "total_duration_seconds": 0,
+            "median_duration_seconds": 0,
+            "distinct_projects": 0
           },
           {
             "period": "7d",
             "client": "all",
-            "sessions": 4,
-            "total_duration_seconds": 9300,
-            "median_duration_seconds": 2250,
-            "distinct_projects": 3
+            "sessions": 1,
+            "total_duration_seconds": 3600,
+            "median_duration_seconds": 3600,
+            "distinct_projects": 1
           },
           {
             "period": "7d",
             "client": "codex",
-            "sessions": 3,
-            "total_duration_seconds": 8100,
-            "median_duration_seconds": 2700,
-            "distinct_projects": 2
+            "sessions": 1,
+            "total_duration_seconds": 3600,
+            "median_duration_seconds": 3600,
+            "distinct_projects": 1
           },
           {
             "period": "7d",
             "client": "claude",
-            "sessions": 1,
-            "total_duration_seconds": 1200,
-            "median_duration_seconds": 1200,
-            "distinct_projects": 1
+            "sessions": 0,
+            "total_duration_seconds": 0,
+            "median_duration_seconds": 0,
+            "distinct_projects": 0
           },
           {
             "period": "30d",
             "client": "all",
-            "sessions": 5,
-            "total_duration_seconds": 12900,
-            "median_duration_seconds": 2700,
-            "distinct_projects": 3
+            "sessions": 1,
+            "total_duration_seconds": 3600,
+            "median_duration_seconds": 3600,
+            "distinct_projects": 1
           },
           {
             "period": "30d",
             "client": "codex",
-            "sessions": 3,
-            "total_duration_seconds": 8100,
-            "median_duration_seconds": 2700,
-            "distinct_projects": 2
+            "sessions": 1,
+            "total_duration_seconds": 3600,
+            "median_duration_seconds": 3600,
+            "distinct_projects": 1
           },
           {
             "period": "30d",
             "client": "claude",
-            "sessions": 2,
-            "total_duration_seconds": 4800,
-            "median_duration_seconds": 2400,
-            "distinct_projects": 1
+            "sessions": 0,
+            "total_duration_seconds": 0,
+            "median_duration_seconds": 0,
+            "distinct_projects": 0
           }
         ]
       },
       "items": [
-        {
-          "client": "codex",
-          "session_id": "codex-other",
-          "project": "agent-deck",
-          "model": "gpt-5",
-          "first_at": "2026-08-13T09:10:00Z",
-          "last_at": "2026-08-13T09:40:00Z"
-        },
-        {
-          "client": "claude",
-          "session_id": "claude-today",
-          "project": "notes",
-          "model": "claude-sonnet-5",
-          "first_at": "2026-08-13T09:00:00Z",
-          "last_at": "2026-08-13T09:20:00Z"
-        },
         {
           "client": "codex",
           "session_id": "codex-today",
@@ -9727,22 +6453,6 @@
           "model": "gpt-5",
           "first_at": "2026-08-13T08:00:00Z",
           "last_at": "2026-08-13T09:00:00Z"
-        },
-        {
-          "client": "codex",
-          "session_id": "codex-week",
-          "project": "agent-deck",
-          "model": "gpt-5",
-          "first_at": "2026-08-10T08:00:00Z",
-          "last_at": "2026-08-10T08:45:00Z"
-        },
-        {
-          "client": "claude",
-          "session_id": "claude-month",
-          "project": "notes",
-          "model": "claude-opus-5",
-          "first_at": "2026-07-25T09:00:00Z",
-          "last_at": "2026-07-25T10:00:00Z"
         }
       ]
     },
@@ -9750,8 +6460,8 @@
       "available": true,
       "status": "degraded",
       "healthy": false,
-      "problems": 2,
-      "warnings": 2,
+      "problems": 1,
+      "warnings": 1,
       "errors": 0,
       "checks": [
         {
@@ -9781,10 +6491,7 @@
         },
         {
           "name": "provider_configuration",
-          "status": "warning",
-          "code": "provider_config_drift",
-          "count": 2,
-          "recovery_command": "agentdeck provider use"
+          "status": "ok"
         },
         {
           "name": "project_attribution_gate",

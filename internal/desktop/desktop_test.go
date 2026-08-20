@@ -47,7 +47,7 @@ func TestSnapshotsRedactPrivateDomainFields(t *testing.T) {
 		Client: "codex", SessionID: "session-1",
 		Project: "/Users/example/private/agent-deck", SourcePath: "/Users/example/.codex/session.jsonl",
 		Model: "gpt-5", FirstAt: "2026-08-13T09:00:00Z", LastAt: "2026-08-13T10:00:00Z",
-	}}, 5)
+	}}, 5, time.Date(2026, 8, 13, 12, 0, 0, 0, time.UTC), time.UTC)
 
 	encoded, err := json.Marshal(struct {
 		Provider ProviderSnapshot `json:"provider"`
@@ -153,12 +153,18 @@ func TestBuildReadsCompleteIsolatedSnapshot(t *testing.T) {
 	if !result.Snapshot.Provider.Available || !result.Snapshot.Usage.Available || !result.Snapshot.Sessions.Available || !result.Snapshot.Health.Available {
 		t.Fatalf("section availability = %#v", result.Snapshot)
 	}
+	if presentation := result.Snapshot.Usage.Presentation; !presentation.Available || len(presentation.Scopes) != 3 || len(presentation.Scopes[0].Daily.Items) != 90 || len(presentation.Scopes[0].Rhythm.Cells) != 168 || len(presentation.ClientSubtotals.Items) != 6 {
+		t.Fatalf("usage presentation bounds = %#v", presentation)
+	}
 	if len(result.Snapshot.Sessions.Items) != 1 || result.Snapshot.Sessions.Items[0].Project != "agent-deck" {
 		t.Fatalf("sessions = %#v", result.Snapshot.Sessions)
 	}
 	encoded, err := json.Marshal(result.Snapshot)
 	if err != nil {
 		t.Fatalf("Marshal snapshot: %v", err)
+	}
+	if len(encoded) > 256*1024 {
+		t.Fatalf("bounded desktop snapshot = %d bytes, exceeds helper capture limit", len(encoded))
 	}
 	for _, forbidden := range []string{"/private/source.jsonl", "/Users/example", "source_path"} {
 		if strings.Contains(string(encoded), forbidden) {
@@ -204,7 +210,7 @@ func TestCanonicalFixturesDecodeAndExcludeForbiddenKeys(t *testing.T) {
 			Message string `json:"message"`
 		} `json:"error,omitempty"`
 	}
-	for _, name := range []string{"snapshot-complete.json", "snapshot-partial.json"} {
+	for _, name := range []string{"snapshot-complete.json", "snapshot-partial.json", "snapshot-empty-client.json"} {
 		t.Run(name, func(t *testing.T) {
 			contents, err := os.ReadFile(filepath.Join("..", "..", "desktop", "fixtures", "v1", name))
 			if err != nil {
@@ -219,7 +225,7 @@ func TestCanonicalFixturesDecodeAndExcludeForbiddenKeys(t *testing.T) {
 			if envelope.SchemaVersion != 1 || envelope.Command != "desktop.snapshot" || envelope.GeneratedAt.IsZero() || envelope.Data.WireVersion != 1 || envelope.Error != nil {
 				t.Fatalf("fixture identity = %#v", envelope)
 			}
-			if envelope.Data.GeneratedAt == "" || envelope.Data.NextRefreshAt == "" || envelope.Data.Provider.Routes == nil || envelope.Data.Usage.Tokens == nil || envelope.Data.Usage.Counts == nil || envelope.Data.Usage.Warnings == nil || envelope.Data.Sessions.Items == nil || envelope.Data.Health.Checks == nil {
+			if envelope.Data.GeneratedAt == "" || envelope.Data.NextRefreshAt == "" || envelope.Data.Provider.Routes == nil || envelope.Data.Usage.Tokens == nil || envelope.Data.Usage.Counts == nil || envelope.Data.Usage.Warnings == nil || envelope.Data.Usage.Presentation.Scopes == nil || envelope.Data.Usage.Presentation.ClientSubtotals.Items == nil || envelope.Data.Sessions.Items == nil || envelope.Data.Health.Checks == nil {
 				t.Fatalf("fixture required fields = %#v", envelope.Data)
 			}
 			if name == "snapshot-complete.json" && (envelope.Partial || len(envelope.Warnings) != 0 || !envelope.Data.Provider.Available || !envelope.Data.Usage.Available || !envelope.Data.Sessions.Available || !envelope.Data.Health.Available) {
@@ -227,6 +233,19 @@ func TestCanonicalFixturesDecodeAndExcludeForbiddenKeys(t *testing.T) {
 			}
 			if name == "snapshot-partial.json" && (!envelope.Partial || len(envelope.Warnings) == 0 || envelope.Data.Provider.Available || envelope.Data.Usage.Available || envelope.Data.Sessions.Available || !envelope.Data.Health.Available) {
 				t.Fatalf("partial fixture availability = %#v", envelope)
+			}
+			// The partial fixture used to declare an available session-period
+			// family beside an unavailable session index, which is a state the
+			// producer cannot reach and which hid the null-collection defect.
+			if name == "snapshot-partial.json" && (envelope.Data.Sessions.Periods.Available || envelope.Data.Sessions.Periods.Items == nil || len(envelope.Data.Sessions.Periods.Items) != 0) {
+				t.Fatalf("partial fixture session periods = %#v", envelope.Data.Sessions.Periods)
+			}
+			if name == "snapshot-empty-client.json" {
+				assertEmptyClientScope(t, envelope.Data)
+			}
+			if name != "snapshot-partial.json" {
+				assertPresentationBounds(t, envelope.Data, name == "snapshot-complete.json")
+				assertSessionPeriodKeys(t, envelope.Data)
 			}
 			var raw any
 			if err = json.Unmarshal(contents, &raw); err != nil {
@@ -237,10 +256,128 @@ func TestCanonicalFixturesDecodeAndExcludeForbiddenKeys(t *testing.T) {
 	}
 }
 
+// assertPresentationBounds holds the canonical fixtures to the fixed collection
+// bounds the contract states. A fixture the producer cannot emit proves nothing
+// about the producer, which is what one scope, one period and one rhythm cell
+// were doing here.
+func assertPresentationBounds(t *testing.T, snapshot Snapshot, distinguishPeriods bool) {
+	t.Helper()
+	presentation := snapshot.Usage.Presentation
+	if !presentation.Available || len(presentation.Scopes) != 3 {
+		t.Fatalf("presentation scopes = %#v, want exactly three records", presentation.Scopes)
+	}
+	for index, want := range []string{"all", "codex", "claude"} {
+		scope := presentation.Scopes[index]
+		if scope.Client != want {
+			t.Fatalf("scope %d = %q, want %q", index, scope.Client, want)
+		}
+		if !scope.Periods.Available {
+			// An unavailable scope keeps its record with empty collections.
+			continue
+		}
+		if got := periodNames(scope); !reflect.DeepEqual(got, []string{"today", "7d", "30d"}) {
+			t.Fatalf("%s periods = %v", scope.Client, got)
+		}
+		if len(scope.Daily.Items) != 90 || len(scope.Rhythm.Cells) != 168 {
+			t.Fatalf("%s daily/rhythm = %d/%d, want 90/168", scope.Client, len(scope.Daily.Items), len(scope.Rhythm.Cells))
+		}
+		if len(scope.Pricing.Items) != 3 {
+			t.Fatalf("%s pricing = %d records, want one per period", scope.Client, len(scope.Pricing.Items))
+		}
+		// Copying today's figures into 7d and 30d must be visible, so the
+		// complete fixture carries values that differ across periods. The
+		// empty-client fixture deliberately has today-only history and is not
+		// held to it.
+		if distinguishPeriods && (scope.Periods.Items[0].Totals.Tokens == scope.Periods.Items[1].Totals.Tokens ||
+			scope.Periods.Items[1].Totals.Tokens == scope.Periods.Items[2].Totals.Tokens) {
+			t.Fatalf("%s period totals do not distinguish the periods: %#v", scope.Client, periodTotals(scope))
+		}
+	}
+	if len(presentation.ClientSubtotals.Items) != 6 {
+		t.Fatalf("client subtotals = %d, want one per period per concrete client", len(presentation.ClientSubtotals.Items))
+	}
+}
+
+func periodNames(scope usage.PresentationScope) []string {
+	names := make([]string, 0, len(scope.Periods.Items))
+	for _, item := range scope.Periods.Items {
+		names = append(names, item.Period)
+	}
+	return names
+}
+
+func periodTotals(scope usage.PresentationScope) []int64 {
+	totals := make([]int64, 0, len(scope.Periods.Items))
+	for _, item := range scope.Periods.Items {
+		totals = append(totals, item.Totals.Tokens)
+	}
+	return totals
+}
+
+// assertSessionPeriodKeys pins the exact nine (period, client) records, so a
+// producer that dropped or duplicated one cannot pass.
+func assertSessionPeriodKeys(t *testing.T, snapshot Snapshot) {
+	t.Helper()
+	want := []string{
+		"today/all", "today/codex", "today/claude",
+		"7d/all", "7d/codex", "7d/claude",
+		"30d/all", "30d/codex", "30d/claude",
+	}
+	got := make([]string, 0, len(snapshot.Sessions.Periods.Items))
+	for _, item := range snapshot.Sessions.Periods.Items {
+		got = append(got, item.Period+"/"+item.Client)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("session period keys = %v, want %v", got, want)
+	}
+}
+
+// assertEmptyClientScope covers the contract's empty concrete client: the record
+// exists, every family reports that nothing was supplied, and every collection
+// is present and empty rather than null.
+func assertEmptyClientScope(t *testing.T, snapshot Snapshot) {
+	t.Helper()
+	scopes := snapshot.Usage.Presentation.Scopes
+	if len(scopes) != 3 {
+		t.Fatalf("scopes = %d", len(scopes))
+	}
+	empty := scopes[2]
+	if empty.Client != "claude" {
+		t.Fatalf("third scope = %q", empty.Client)
+	}
+	if empty.Periods.Available || empty.Daily.Available || empty.Quality.Available ||
+		empty.Pricing.Available || empty.Rhythm.Available {
+		t.Fatalf("empty client families = %#v, want every family unavailable", empty)
+	}
+	if empty.Periods.Items == nil || empty.Daily.Items == nil || empty.Quality.Items == nil ||
+		empty.Pricing.Items == nil || empty.Rhythm.Cells == nil {
+		t.Fatalf("empty client scope carries a null collection: %#v", empty)
+	}
+	if !scopes[1].Periods.Available {
+		t.Fatalf("populated client scope = %#v, want its families available", scopes[1])
+	}
+}
+
+func TestLegacyFixtureRetainsTheMissingAdditiveFields(t *testing.T) {
+	contents, err := os.ReadFile(filepath.Join("..", "..", "desktop", "fixtures", "v1", "snapshot-legacy.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var envelope struct {
+		Data Snapshot `json:"data"`
+	}
+	if err = json.Unmarshal(contents, &envelope); err != nil {
+		t.Fatal(err)
+	}
+	if envelope.Data.Usage.Presentation.Available || envelope.Data.Sessions.Periods.Available {
+		t.Fatalf("legacy additive fields = %#v %#v", envelope.Data.Usage.Presentation, envelope.Data.Sessions.Periods)
+	}
+}
+
 func assertForbiddenKeysAbsent(t *testing.T, value any) {
 	t.Helper()
 	forbidden := map[string]bool{
-		"credential": true, "credential_ref": true, "endpoint": true,
+		"credential_ref": true, "endpoint": true,
 		"source_path": true, "text": true, "prompt": true, "response": true,
 		"tool_arguments": true, "provider_headers": true, "config_contents": true,
 	}
@@ -263,5 +400,181 @@ func assertForbiddenKeysAbsent(t *testing.T, value any) {
 	visit(value)
 	if t.Failed() {
 		t.Logf("fixture shape: %v", reflect.TypeOf(value))
+	}
+}
+
+func TestSessionsPeriodsAreProducerComputedForEveryScope(t *testing.T) {
+	now := time.Date(2026, 8, 13, 12, 0, 0, 0, time.UTC)
+	values := []session.Metadata{
+		{Client: "codex", SessionID: "a", Project: "/tmp/one", FirstAt: "2026-08-13T09:00:00Z", LastAt: "2026-08-13T09:30:00Z"},
+		{Client: "codex", SessionID: "b", Project: "/tmp/two", FirstAt: "2026-08-13T10:00:00Z", LastAt: "2026-08-13T10:10:00Z"},
+		{Client: "claude", SessionID: "c", Project: "/tmp/one", FirstAt: "2026-08-10T08:00:00Z", LastAt: "2026-08-10T09:00:00Z"},
+	}
+
+	// The recent list is bounded to one entry, and the statistics must not come
+	// from it: a bounded list of the newest sessions cannot answer a question
+	// about a period, which is why the producer computes these.
+	snapshot := sessionsSnapshot(values, 1, now, time.UTC)
+
+	if len(snapshot.Items) != 1 || snapshot.Total != 3 {
+		t.Fatalf("recent list = %d items, total %d", len(snapshot.Items), snapshot.Total)
+	}
+	if !snapshot.Periods.Available || len(snapshot.Periods.Items) != 9 {
+		t.Fatalf("periods = %#v, want one record per period per client scope", snapshot.Periods)
+	}
+	byKey := map[string]SessionsPeriodItem{}
+	for _, item := range snapshot.Periods.Items {
+		byKey[item.Period+"/"+item.Client] = item
+	}
+	today := byKey["today/all"]
+	if today.Sessions != 2 || today.DistinctProjects != 2 {
+		t.Fatalf("today/all = %#v", today)
+	}
+	if today.TotalDurationSeconds != 2400 || today.MedianDurationSeconds != 1200 {
+		t.Fatalf("today/all durations = %#v", today)
+	}
+	if got := byKey["today/claude"]; got.Sessions != 0 || got.MedianDurationSeconds != 0 {
+		t.Fatalf("today/claude = %#v, want an empty record rather than a missing one", got)
+	}
+	if got := byKey["7d/claude"]; got.Sessions != 1 || got.TotalDurationSeconds != 3600 {
+		t.Fatalf("7d/claude = %#v", got)
+	}
+}
+
+// PPS-F1. An unavailable session index used to leave SessionsPeriods.Items nil,
+// which encoding/json writes as `null`. The Swift decoder accepts the family
+// being absent but rejects a present family whose items is null, so the whole
+// snapshot failed to decode instead of reaching the unavailable panel state.
+func TestUnavailableSessionIndexEncodesEmptyArraysRatherThanNull(t *testing.T) {
+	root := t.TempDir()
+	now := time.Date(2026, 8, 13, 10, 0, 0, 0, time.UTC)
+	result, err := (Service{
+		StateRoot: root, Home: t.TempDir(), Workdir: t.TempDir(),
+		Now: func() time.Time { return now }, Location: time.UTC,
+	}).Build(context.Background(), Request{WireVersion: 1, RecentLimit: 5})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if result.Snapshot.Sessions.Available {
+		t.Fatalf("sessions availability = true, want the unavailable path")
+	}
+
+	encoded, err := json.Marshal(result.Snapshot)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	if strings.Contains(string(encoded), `"items":null`) {
+		t.Fatalf("snapshot encodes a null collection: %s", encoded)
+	}
+
+	var decoded map[string]any
+	if err = json.Unmarshal(encoded, &decoded); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	sessions, ok := decoded["sessions"].(map[string]any)
+	if !ok {
+		t.Fatalf("sessions = %#v", decoded["sessions"])
+	}
+	periods, ok := sessions["periods"].(map[string]any)
+	if !ok {
+		t.Fatalf("sessions.periods = %#v", sessions["periods"])
+	}
+	items, ok := periods["items"].([]any)
+	if !ok || len(items) != 0 {
+		t.Fatalf("sessions.periods.items = %#v, want an empty array", periods["items"])
+	}
+	if recent, ok := sessions["items"].([]any); !ok || len(recent) != 0 {
+		t.Fatalf("sessions.items = %#v, want an empty array", sessions["items"])
+	}
+}
+
+// PPS-F4. Distinct projects are counted on the normalized full identity. Two
+// checkouts sharing a basename are two projects, and a session with no project
+// is not a project at all.
+func TestDistinctProjectsCountIdentitiesRatherThanDisplayBasenames(t *testing.T) {
+	now := time.Date(2026, 8, 13, 12, 0, 0, 0, time.UTC)
+	values := []session.Metadata{
+		{Client: "codex", SessionID: "a", Project: "/work/one/agent-deck", FirstAt: "2026-08-13T09:00:00Z", LastAt: "2026-08-13T09:30:00Z"},
+		{Client: "codex", SessionID: "b", Project: "/work/two/agent-deck", FirstAt: "2026-08-13T10:00:00Z", LastAt: "2026-08-13T10:10:00Z"},
+		{Client: "codex", SessionID: "c", Project: "", FirstAt: "2026-08-13T11:00:00Z", LastAt: "2026-08-13T11:10:00Z"},
+	}
+
+	snapshot := sessionsSnapshot(values, 5, now, time.UTC)
+	byKey := map[string]SessionsPeriodItem{}
+	for _, item := range snapshot.Periods.Items {
+		byKey[item.Period+"/"+item.Client] = item
+	}
+	if got := byKey["today/all"]; got.Sessions != 3 || got.DistinctProjects != 2 {
+		t.Fatalf("today/all = %#v, want 3 sessions across 2 distinct project identities", got)
+	}
+
+	// The display rows keep the basename projection, which is what makes the
+	// two concerns separable rather than one call site serving both.
+	if snapshot.Items[0].Project != "agent-deck" {
+		t.Fatalf("recent row project = %q, want the display basename", snapshot.Items[0].Project)
+	}
+
+	unattributed := sessionsSnapshot(values[2:], 5, now, time.UTC)
+	for _, item := range unattributed.Periods.Items {
+		if item.DistinctProjects != 0 {
+			t.Fatalf("%s/%s distinct projects = %d, want 0 for an unattributed session", item.Period, item.Client, item.DistinctProjects)
+		}
+	}
+}
+
+// PPS-F5. Period membership is half-open on the local calendar. A session whose
+// last event is after the current local day must fall outside every period
+// rather than being counted by all three.
+func TestSessionPeriodsExcludeEventsAfterTheLocalDayEnd(t *testing.T) {
+	now := time.Date(2026, 8, 13, 12, 0, 0, 0, time.UTC)
+	values := []session.Metadata{
+		{Client: "codex", SessionID: "future", Project: "/work/one", FirstAt: "2026-08-14T09:00:00Z", LastAt: "2026-08-14T09:30:00Z"},
+		{Client: "codex", SessionID: "boundary", Project: "/work/two", FirstAt: "2026-08-13T23:00:00Z", LastAt: "2026-08-13T23:59:59Z"},
+	}
+
+	snapshot := sessionsSnapshot(values, 5, now, time.UTC)
+	for _, item := range snapshot.Periods.Items {
+		if item.Client == "claude" {
+			continue
+		}
+		if item.Sessions != 1 {
+			t.Fatalf("%s/%s sessions = %d, want only the session inside the local day", item.Period, item.Client, item.Sessions)
+		}
+		if item.DistinctProjects != 1 {
+			t.Fatalf("%s/%s distinct projects = %d", item.Period, item.Client, item.DistinctProjects)
+		}
+	}
+}
+
+// PPS-F5. A period spans the intended number of calendar days across a DST
+// transition, because both bounds come from calendar arithmetic on a local
+// start-of-day rather than from a fixed multiple of 24 hours.
+func TestSessionPeriodsUseCalendarDaysAcrossADaylightSavingTransition(t *testing.T) {
+	location, err := time.LoadLocation("America/Los_Angeles")
+	if err != nil {
+		t.Skipf("tzdata unavailable: %v", err)
+	}
+	// 2026-11-01 is the local end of daylight saving time in this zone.
+	now := time.Date(2026, 11, 3, 12, 0, 0, 0, location)
+	values := []session.Metadata{
+		// Local 2026-10-28, inside the 7-day window that spans the transition.
+		{Client: "codex", SessionID: "inside", Project: "/work/one", FirstAt: "2026-10-28T17:00:00Z", LastAt: "2026-10-28T18:00:00Z"},
+		// Local 2026-10-27, one day before that window opens.
+		{Client: "codex", SessionID: "outside", Project: "/work/two", FirstAt: "2026-10-27T17:00:00Z", LastAt: "2026-10-27T18:00:00Z"},
+	}
+
+	snapshot := sessionsSnapshot(values, 5, now, location)
+	byKey := map[string]SessionsPeriodItem{}
+	for _, item := range snapshot.Periods.Items {
+		byKey[item.Period+"/"+item.Client] = item
+	}
+	if got := byKey["7d/all"]; got.Sessions != 1 {
+		t.Fatalf("7d/all = %#v, want the 7-day window to span exactly seven local days", got)
+	}
+	if got := byKey["30d/all"]; got.Sessions != 2 {
+		t.Fatalf("30d/all = %#v, want both sessions inside the 30-day window", got)
+	}
+	if got := byKey["today/all"]; got.Sessions != 0 {
+		t.Fatalf("today/all = %#v", got)
 	}
 }

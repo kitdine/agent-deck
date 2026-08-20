@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "command": "desktop.snapshot",
+  "generated_at": "2026-08-13T10:00:00Z",
+  "data": {
+    "wire_version": 1,
+    "generated_at": "2026-08-13T10:00:00Z",
+    "next_refresh_at": "2026-08-13T10:05:00Z",
+    "provider": {
+      "available": true,
+      "routes": [
+        {
+          "client": "codex",
+          "provider": "official",
+          "selected_at": "2026-08-13T09:55:00Z",
+          "via_wrapper": false
+        }
+      ]
+    },
+    "usage": {
+      "available": true,
+      "from": "2026-08-13T00:00:00-07:00",
+      "to": "2026-08-14T00:00:00-07:00",
+      "tokens": {
+        "input_tokens": 1200,
+        "output_tokens": 240
+      },
+      "counts": {
+        "events": 3,
+        "sessions": 1
+      },
+      "catalog_base_cost": "0.012000",
+      "provider_cost": "0.012000",
+      "known_catalog_base_cost": "0.012000",
+      "known_provider_cost": "0.012000",
+      "pricing_complete": true,
+      "unpriced_components": 0,
+      "warnings": []
+    },
+    "sessions": {
+      "available": true,
+      "total": 1,
+      "items": []
+    },
+    "health": {
+      "available": true,
+      "status": "ok",
+      "healthy": true,
+      "problems": 0,
+      "warnings": 0,
+      "errors": 0,
+      "checks": []
+    }
+  },
+  "warnings": [],
+  "partial": false
+}
