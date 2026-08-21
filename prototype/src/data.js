@@ -323,6 +323,7 @@ export function sessionStats(client, period) {
 }
 
 // 下面三块目前的投影里没有对应字段，是这一版原型提出的采集需求，界面上会明确标注。
+// 未采集态：一份早于本能力的快照解码出来的样子。保留它，因为旧快照仍会命中这条路径。
 export const PENDING_CAPTURE = {
   activity: [
     { key: "coding", share: 58, cost: 3.06, events: 24, tone: "model-a" },
@@ -330,10 +331,68 @@ export const PENDING_CAPTURE = {
     { key: "conversation", share: 12, cost: 0.63, events: 6, tone: "model-b" },
     { key: "delegation", share: 9, cost: 0.48, events: 4, tone: "model-c" },
   ],
+  workflow: { firstEditMinutes: 2, filesTouched: 7, retries: 3, editsPerSession: 4, topFile: "tasks.md", topFileCount: 4 },
+  tooling: { calls: 82, groups: 4, rows: [], topServer: "codegraph", topServerCalls: 5 },
+};
+
+// 已采集态。四个大类各自带子类，子类的 share/cost/events 之和等于所属大类。
+// 工具那一块只有次数和占比：token 由 turn 消耗，工具调用本身不花钱，给它标金额
+// 等于把一个归因当成实测值。活动类型的金额是成立的，它归给真正消耗 token 的 turn。
+export const WORK_SIGNALS = {
+  activity: [
+    {
+      key: "coding",
+      share: 52,
+      cost: 2.74,
+      events: 21,
+      tone: "model-a",
+      sub: [
+        { key: "feature", share: 24, cost: 1.26, events: 9 },
+        { key: "refactoring", share: 13, cost: 0.69, events: 5 },
+        { key: "testing", share: 9, cost: 0.47, events: 4 },
+        { key: "maintenance", share: 6, cost: 0.32, events: 3 },
+      ],
+    },
+    {
+      key: "debugging",
+      share: 24,
+      cost: 1.27,
+      events: 10,
+      tone: "warn",
+      sub: [
+        { key: "investigation", share: 9, cost: 0.48, events: 4 },
+        { key: "repair", share: 15, cost: 0.79, events: 6 },
+      ],
+    },
+    {
+      key: "conversation",
+      share: 15,
+      cost: 0.79,
+      events: 8,
+      tone: "model-b",
+      sub: [
+        { key: "exploration", share: 8, cost: 0.42, events: 4 },
+        { key: "brainstorming", share: 4, cost: 0.21, events: 2 },
+        { key: "planning", share: 3, cost: 0.16, events: 2 },
+      ],
+    },
+    {
+      key: "delegation",
+      share: 9,
+      cost: 0.48,
+      events: 4,
+      tone: "model-c",
+      sub: [
+        { key: "subagent", share: 6, cost: 0.32, events: 3 },
+        { key: "workflow", share: 3, cost: 0.16, events: 1 },
+      ],
+    },
+  ],
   workflow: {
     firstEditMinutes: 2,
     filesTouched: 7,
-    iterationDepth: 4.2,
+    // 返工：同一文件 编辑 -> 跑了个非查看类命令 -> 又编辑，计一次。
+    retries: 3,
     editsPerSession: 4,
     topFile: "tasks.md",
     topFileCount: 4,
@@ -342,14 +401,13 @@ export const PENDING_CAPTURE = {
     calls: 82,
     groups: 4,
     rows: [
-      { key: "bash", calls: 32, cost: 0.68 },
-      { key: "read", calls: 27, cost: 0.31 },
-      { key: "edit", calls: 14, cost: 0.22 },
-      { key: "mcp", calls: 9, cost: 0.17 },
+      { key: "bash", calls: 32, share: 39 },
+      { key: "read", calls: 27, share: 33 },
+      { key: "edit", calls: 14, share: 17 },
+      { key: "mcp", calls: 9, share: 11 },
     ],
     topServer: "codegraph",
     topServerCalls: 5,
-    shareOfCost: 16.2,
   },
 };
 

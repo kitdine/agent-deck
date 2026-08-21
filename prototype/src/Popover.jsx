@@ -17,7 +17,7 @@ import {
   WarningCircle,
   Wrench,
 } from "@phosphor-icons/react";
-import { HEALTH, PENDING_CAPTURE, PROVIDER, buckets, meta, rhythm, scope } from "./data.js";
+import { HEALTH, PENDING_CAPTURE, PROVIDER, WORK_SIGNALS, buckets, meta, rhythm, scope } from "./data.js";
 import {
   catalogs,
   formatCost,
@@ -408,7 +408,7 @@ const SIGNALS = [
 
 function SessionsPanel({ view, lang, state, signal, onSignal }) {
   const dict = useDict(lang);
-  if (signal) return <SignalDetail kind={signal} lang={lang} onBack={() => onSignal(null)} />;
+  if (signal) return <SignalDetail kind={signal} lang={lang} state={state} onBack={() => onSignal(null)} />;
   const stats = view.sessions;
   if (state === "empty") {
     return (
@@ -430,7 +430,7 @@ function SessionsPanel({ view, lang, state, signal, onSignal }) {
       />
       <div className="signal-head">
         <span>{dict.sessions.signals}</span>
-        <small className="pending-flag">{dict.sessions.pending}</small>
+        {state === "unavailable" && <small className="pending-flag">{dict.sessions.pending}</small>}
       </div>
       <div className="signal-grid">
         {SIGNALS.map(({ key, Icon, tone }) => (
@@ -440,7 +440,7 @@ function SessionsPanel({ view, lang, state, signal, onSignal }) {
               {dict.sessions[key]}
               <CaretRight size={12} />
             </span>
-            <strong>{signalSummary(key, lang)}</strong>
+            <strong>{signalSummary(key, lang, state)}</strong>
           </button>
         ))}
       </div>
@@ -476,21 +476,66 @@ function SessionsPanel({ view, lang, state, signal, onSignal }) {
   );
 }
 
-function signalSummary(kind, lang) {
+// 未采集态由 state="unavailable" 触发：那是一份早于本能力的快照解码出来的样子。
+function signalsFor(state) {
+  return state === "unavailable" ? PENDING_CAPTURE : WORK_SIGNALS;
+}
+
+function signalSummary(kind, lang, state) {
   const dict = catalogs[lang];
+  const data = signalsFor(state);
   if (kind === "activity") {
-    const top = PENDING_CAPTURE.activity[0];
+    const top = data.activity[0];
     return `${dict.sessions.activityKinds[top.key]} ${formatShare(top.share, lang)}`;
   }
   if (kind === "workflow") {
-    return `${dict.sessions.firstEdit} ${formatDuration(PENDING_CAPTURE.workflow.firstEditMinutes, lang)}`;
+    return `${dict.sessions.firstEdit} ${formatDuration(data.workflow.firstEditMinutes, lang)}`;
   }
-  return `${formatNumber(PENDING_CAPTURE.tooling.calls, lang)} ${dict.sessions.toolCalls}`;
+  return `${formatNumber(data.tooling.calls, lang)} ${dict.sessions.toolCalls}`;
 }
 
-function SignalDetail({ kind, lang, onBack }) {
+// 一个大类一行，点开露出它的子类。子类只在这一层出现：概览行始终是四个，
+// 面板宽度是固定的 280pt，八个并列的类别在那个宽度里读不成。
+function ActivityRow({ item, lang, expanded, onToggle }) {
+  const dict = useDict(lang);
+  return (
+    <>
+      <button
+        type="button"
+        className={`activity-row${expanded ? " is-open" : ""}`}
+        aria-expanded={expanded}
+        onClick={onToggle}
+      >
+        <CaretRight size={11} className="activity-caret" />
+        <Row
+          label={dict.sessions.activityKinds[item.key]}
+          value={`${formatCost(item.cost, lang)} · ${formatNumber(item.events, lang)}`}
+          share={item.share}
+          tone={item.tone}
+          lang={lang}
+        />
+      </button>
+      {expanded && (
+        <div className="activity-sub">
+          {item.sub.map((child) => (
+            <div className="list-row" key={child.key}>
+              <b>{dict.sessions.subKinds[child.key]}</b>
+              <small>{formatShare(child.share, lang)}</small>
+              <strong>{formatCost(child.cost, lang)}</strong>
+            </div>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+function SignalDetail({ kind, lang, state, onBack }) {
   const dict = useDict(lang);
   const { Icon, tone } = SIGNALS.find((item) => item.key === kind);
+  const data = signalsFor(state);
+  const pending = state === "unavailable";
+  const [open, setOpen] = useState(null);
   return (
     <section className="panel">
       <div className="detail-head">
@@ -503,32 +548,44 @@ function SignalDetail({ kind, lang, onBack }) {
           {dict.sessions[kind]}
         </span>
       </div>
-      <div className="pending-banner">
-        <Warning size={14} weight="fill" />
-        <span>{dict.sessions.pendingHint}</span>
-      </div>
+      {pending && (
+        <div className="pending-banner">
+          <Warning size={14} weight="fill" />
+          <span>{dict.sessions.pendingHint}</span>
+        </div>
+      )}
       {kind === "activity" && (
         <div className="card">
-          {PENDING_CAPTURE.activity.map((item) => (
-            <Row
-              key={item.key}
-              label={dict.sessions.activityKinds[item.key]}
-              value={`${formatCost(item.cost, lang)} · ${formatNumber(item.events, lang)}`}
-              share={item.share}
-              tone={item.tone}
-              lang={lang}
-            />
-          ))}
+          {data.activity.map((item) =>
+            item.sub ? (
+              <ActivityRow
+                key={item.key}
+                item={item}
+                lang={lang}
+                expanded={open === item.key}
+                onToggle={() => setOpen(open === item.key ? null : item.key)}
+              />
+            ) : (
+              <Row
+                key={item.key}
+                label={dict.sessions.activityKinds[item.key]}
+                value={`${formatCost(item.cost, lang)} · ${formatNumber(item.events, lang)}`}
+                share={item.share}
+                tone={item.tone}
+                lang={lang}
+              />
+            ),
+          )}
         </div>
       )}
       {kind === "workflow" && (
         <>
           <div className="metric-grid">
             {[
-              { label: dict.sessions.firstEdit, value: formatDuration(PENDING_CAPTURE.workflow.firstEditMinutes, lang), note: dict.sessions.median },
-              { label: dict.sessions.filesTouched, value: formatNumber(PENDING_CAPTURE.workflow.filesTouched, lang) },
-              { label: dict.sessions.iterationDepth, value: PENDING_CAPTURE.workflow.iterationDepth, note: dict.sessions.turnsPerEdit },
-              { label: dict.sessions.editsPerSession, value: formatNumber(PENDING_CAPTURE.workflow.editsPerSession, lang) },
+              { label: dict.sessions.firstEdit, value: formatDuration(data.workflow.firstEditMinutes, lang), note: dict.sessions.median },
+              { label: dict.sessions.filesTouched, value: formatNumber(data.workflow.filesTouched, lang) },
+              { label: dict.sessions.retries, value: formatNumber(data.workflow.retries, lang), note: dict.sessions.retriesNote },
+              { label: dict.sessions.editsPerSession, value: formatNumber(data.workflow.editsPerSession, lang) },
             ].map((item) => (
               <div key={item.label}>
                 <span>{item.label}</span>
@@ -540,7 +597,7 @@ function SignalDetail({ kind, lang, onBack }) {
           <div className="inline-row">
             <span>{dict.sessions.topFile}</span>
             <strong>
-              {PENDING_CAPTURE.workflow.topFile} ×{PENDING_CAPTURE.workflow.topFileCount}
+              {data.workflow.topFile} ×{data.workflow.topFileCount}
             </strong>
           </div>
         </>
@@ -548,20 +605,21 @@ function SignalDetail({ kind, lang, onBack }) {
       {kind === "tooling" && (
         <>
           <div className="card">
-            {PENDING_CAPTURE.tooling.rows.map((item) => (
+            {data.tooling.rows.map((item) => (
               <div className="list-row" key={item.key}>
                 <b>{dict.sessions.toolKinds[item.key]}</b>
                 <small>
                   {formatNumber(item.calls, lang)} {dict.sessions.toolCalls}
                 </small>
-                <strong>{formatCost(item.cost, lang)}</strong>
+                <strong>{formatShare(item.share, lang)}</strong>
               </div>
             ))}
+            {data.tooling.rows.length === 0 && <EmptyNote text={dict.sessions.pendingHint} />}
           </div>
           <div className="inline-row">
             <span>{dict.sessions.topServer}</span>
             <strong>
-              {PENDING_CAPTURE.tooling.topServer} · {formatNumber(PENDING_CAPTURE.tooling.topServerCalls, lang)}
+              {data.tooling.topServer} · {formatNumber(data.tooling.topServerCalls, lang)}
             </strong>
           </div>
         </>

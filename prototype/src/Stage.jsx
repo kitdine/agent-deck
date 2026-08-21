@@ -54,6 +54,7 @@ export function StageControls({ prefs, showState = true }) {
         {link(null, "Popover")}
         {link("widgets", lang === "zh" ? "小组件" : "Widgets")}
         {link("states", lang === "zh" ? "状态" : "States")}
+        {link("cli", "CLI")}
       </nav>
       <div className="stage-groups">
         {showState && (

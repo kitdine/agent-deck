@@ -88,6 +88,7 @@ agentdeck version
 | Topic | Version | Status | Purpose |
 | --- | --- | --- | --- |
 | [Native macOS Desktop App](topics/desktop-app/tasks.md) | `v0.5.0` | Active — 2/7 tasks reviewed; all six documents re-reviewed after the 2026-08-18 re-open, so the document set is complete and task 3 is next | macOS 26 menu-bar app, settings window, WidgetKit extension, unified desktop distribution, Cask, and direct-download delivery. |
+| [Work Signals](topics/work-signals/tasks.md) | `v0.5.0` | Active — all five design documents PASS after three combined rounds; prototype task done, implementation task 1 next; 0/6 implementation tasks | Activity classification, workflow metrics, and tool-call attribution, delivered on two first-class surfaces: the menu-bar `Sessions` panel's three pending modules and a new `agentdeck usage signals`. |
 | [`v0.5.0` Contract Closure](topics/v0-5-0-contract/tasks.md) | `v0.5.0` | Active — 0/2 done | Version-wide specification raise and documentation reconciliation after every selected topic's tasks pass review. |
 | [Usage Attribution Precision](topics/usage-attribution-precision/tasks.md) | `v0.6.0` | Active — 0/3 done | Per-client attribution time semantics, determinability-based quality, and an unattributed boundary that never enters a real-spend total. |
 | [CLI Error Classification](topics/cli-error-classification/tasks.md) | `v0.5.0` | Active — all design documents PASS; implementation task 1 next; 0/2 implementation tasks done | Stable not-found codes, and no storage text in a documented JSON contract. Breaks the documented `runtime_error` value; announced in this version's notes. |
@@ -110,17 +111,43 @@ rounds of prose review had passed, and acting on them changed the content of eve
 document, which unticks every `Review` cell because evidence binds to a content
 state rather than to a file name. Three consequences are version-scope decisions
 and are recorded as such — the desktop update check is withdrawn (see Withdrawn
-Candidates), the three work-signal modules move to the Backlog, and
+Candidates), the three work-signal modules get their own topic, and
 `presentation-period-scoping` is added as a Go producer task. Everything else
 about that re-open — which defects, what survives unchanged, the dependency order
 the set is re-reviewed in, and every round and finding — belongs to the topic and
 lives in [`topics/desktop-app/tasks.md`](topics/desktop-app/tasks.md) and
 [`topics/desktop-app/reviews/`](topics/desktop-app/reviews/).
 
+Two corrections were made on 2026-08-20, both cross-topic and both recorded here
+because they change version membership and process, not because they narrate a
+round.
+
+**Work signals are back in `v0.5.0`.** The 2026-08-18 re-open recorded the three
+modules as moved to the Backlog and as "refused" by the desktop boundary. That
+cut a committed feature out of the version without asking, and the stated ground
+— that no field exists behind them — was only partly true: `internal/activity`
+already extracts tool calls and `usage_tool_calls` has persisted them since
+schema v13. The capability is restored as its own topic,
+[`work-signals`](topics/work-signals/tasks.md), which supplies the data, turns
+the panel's pending cards into real ones, and adds `agentdeck usage signals` so
+the numbers are checkable from a terminal rather than visible only in a GUI.
+`menubar-experience` is unaffected: it ships the three modules in their
+uncaptured form, which stays a valid state because the new wire families are
+additive.
+
+**`work-signals` reviews its five documents together, in one round, under one
+verdict.** That too is by user instruction, and for a different reason: reviewing
+documents that constrain each other one at a time does not converge. Its first
+design pass ran fourteen single-document rounds before being discarded, six of
+them repairing damage the order itself had caused. Whether this becomes the
+project's general process is decided after that topic, not by it. Task review is
+unaffected.
+
 ## Authoritative Documents
 
 | Document | Status | Authority |
 | --- | --- | --- |
+| [Product Prototype](../prototype/README.md) | Active | The design truth for every user-visible surface: menu-bar panel, widgets, settings, and CLI output. A document that disagrees with it is repaired. |
 | [CLI Design](specs/cli-design.md) | Active, version 26 | System, persistence, security, compatibility, and distribution contracts. |
 | [CLI Manual](specs/cli-manual.md) | Active | Implemented commands, flags, output shapes, and interaction behavior. |
 | [Archived Documents](archive/README.md) | Active index | Retirement history and pointers to historical topics, plans, and reviews. |
@@ -174,12 +201,6 @@ These candidates have no approved implementation plan and no version. Promote
 each into a bounded plan before development; do not expand an active plan
 opportunistically. Candidates that now carry a version live in the Roadmap above.
 
-- [ ] Activity, workflow, and tooling work signals for the desktop surfaces.
-  Moved out of `v0.5.0` on 2026-08-18: the three modules are specified in
-  `topics/desktop-app/ux/menubar.md`, but classifying activity, counting tool
-  calls, and measuring iteration depth is a usage-domain capability with no field
-  behind it today, not a presentation one. Promote it as a usage topic that
-  supplies the data, then the surfaces can render it.
 - [ ] Revisit ChatGPT app project attribution only if the app exposes a stable,
   reachable project configuration surface.
 

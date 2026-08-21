@@ -1,6 +1,10 @@
-# AgentDeck 菜单栏原型 v7
+# AgentDeck 产品原型
 
-v6 保持原样不动，v7 是并行的另一版，方便逐条对比。
+产品全部界面的唯一设计真相：菜单栏面板、小组件、设置窗口，以及 CLI 的逐字符输出。
+
+它在 2026-08-20 从 `docs/topics/desktop-app/ux/prototype/interactive-v7/` 移到仓库根，
+因为一份原型是整个产品表面的标本，不是某一个 topic 的资产。`work-signals` 需要同一份
+标本，而在第二个 topic 下再放一份拷贝，等于制造第二个设计真相。
 
 ```bash
 npm install
@@ -12,6 +16,11 @@ npm run dev -- --port 4175
 | Popover | `http://127.0.0.1:4175/` |
 | 12 个小组件 | `http://127.0.0.1:4175/?surface=widgets` |
 | 状态一览 | `http://127.0.0.1:4175/?surface=states` |
+| CLI 输出 | `http://127.0.0.1:4175/?surface=cli` |
+
+CLI 那一页渲染的是逐字符的真实输出，不是示意图。终端里能被设计的只有分节、对齐列，
+以及一个数字读不出来时写什么，所以那三件事必须以最终形态出现才可评。它的文本不随
+语言开关变化：AgentDeck 的 CLI 输出是单一英文的，与面板不同。
 
 URL 参数：`lang=zh|en`、`theme=dark|light`、`state=normal|empty|aged|partial|unavailable`、
 `tab=usage|breakdown|attribution|sessions`、`signal=activity|workflow|tooling`、`settings=1`。

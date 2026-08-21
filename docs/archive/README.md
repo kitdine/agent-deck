@@ -530,3 +530,22 @@ Task 8 itself was L0 documentation work: this retirement does not claim release
 readiness. L4 and real RC2 artifact installation remain delivery gates, and the
 two `v0.2.2` plans are now unblocked. No commit or push was performed as part
 of retirement.
+
+## 2026-08-20 supersession: work-signals first design pass
+
+`work-signals-superseded-2026-08-20/` preserves the first design pass at the
+`work-signals` topic — `architecture.md`, `tasks.md`, both `ux/` surfaces, and
+the four review records covering fourteen rounds — none of which was ever
+committed.
+
+It is archived rather than deleted because the review rounds are the evidence
+for why the topic was restarted. The rounds converged on document-internal
+consistency while the design itself rested on decisions the user had never been
+asked about: the classification unit, the privacy boundary around tool
+arguments, cost attribution, and the CLI's shape. Six of the fourteen rounds
+repaired contradictions introduced by earlier rounds of the same pass.
+
+The user directed a full restart on 2026-08-20 and made those decisions
+explicitly. The replacement document set derives from them and from the
+CodeBurn implementation the user named as a reference. Nothing in the archived
+set is authoritative; `docs/topics/work-signals/` is.
