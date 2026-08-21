@@ -18,6 +18,22 @@ npm run dev -- --port 4175
 | 状态一览 | `http://127.0.0.1:4175/?surface=states` |
 | CLI 输出 | `http://127.0.0.1:4175/?surface=cli` |
 
+## 只想看一眼：单文件导出
+
+```bash
+npm run build:single
+open "file://$PWD/preview.html?surface=cli"
+```
+
+产出 `preview.html`，约 380 KB，JS、CSS 与图片全部内联，双击就能打开，不需要
+dev server。它在 `.gitignore` 里，**不进仓库**：设计真相仍然是 `src/` 下的源码，
+因为一个压缩成一行的产物没法 diff，也就没法评审。
+
+两个约束值得知道，否则改了构建会得到一个只表现为白屏的文件：Chrome 会用 CORS
+挡掉 `file://` 下的 `type="module"`，所以这条路径把 vite 打成 IIFE；而经典脚本
+不再延迟执行，必须插在 `</body>` 之前，否则它会在 `<div id="root">` 存在之前跑。
+`tools/build-single-file.mjs` 对这两点都有断言，破坏了就构建失败而不是产出白屏。
+
 CLI 那一页渲染的是逐字符的真实输出，不是示意图。终端里能被设计的只有分节、对齐列，
 以及一个数字读不出来时写什么，所以那三件事必须以最终形态出现才可评。它的文本不随
 语言开关变化：AgentDeck 的 CLI 输出是单一英文的，与面板不同。
