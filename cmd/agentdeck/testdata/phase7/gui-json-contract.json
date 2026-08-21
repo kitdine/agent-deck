@@ -27,6 +27,7 @@
     "credential.remove",
     "credential.show",
     "credential.update",
+    "desktop.refresh-indexes",
     "desktop.snapshot",
     "doctor",
     "extension.adopt",
@@ -398,6 +399,23 @@
       "error_code": "invalid_argument",
       "error_command": "credential.update"
     },
+    "desktop.refresh-indexes": {
+      "success_schema": null,
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "desktop.refresh-indexes"
+    },
     "desktop.snapshot": {
       "success_schema": {
         "command": "string",
@@ -432,6 +450,100 @@
           "next_refresh_at": "string",
           "provider": {
             "available": "boolean",
+            "candidates": [
+              {
+                "built_in": "boolean",
+                "clients": [
+                  "string"
+                ],
+                "credentials": [],
+                "has_wrapper": "boolean",
+                "options": [
+                  {
+                    "client": "string",
+                    "credential": null,
+                    "provider": "string",
+                    "ready": "boolean",
+                    "reason_code": "string",
+                    "via_wrapper": "boolean"
+                  },
+                  {
+                    "client": "string",
+                    "credential": null,
+                    "provider": "string",
+                    "ready": "boolean",
+                    "reason_code": null,
+                    "via_wrapper": "boolean"
+                  }
+                ],
+                "provider": "string",
+                "ready": "boolean"
+              },
+              {
+                "built_in": "boolean",
+                "clients": [
+                  "string"
+                ],
+                "credentials": [
+                  {
+                    "clients": [
+                      "string"
+                    ],
+                    "name": "string",
+                    "present": "boolean"
+                  }
+                ],
+                "has_wrapper": "boolean",
+                "options": [
+                  {
+                    "client": "string",
+                    "credential": "string",
+                    "provider": "string",
+                    "ready": "boolean",
+                    "reason_code": "string",
+                    "via_wrapper": "boolean"
+                  },
+                  {
+                    "client": "string",
+                    "credential": "string",
+                    "provider": "string",
+                    "ready": "boolean",
+                    "reason_code": null,
+                    "via_wrapper": "boolean"
+                  }
+                ],
+                "provider": "string",
+                "ready": "boolean"
+              },
+              {
+                "built_in": "boolean",
+                "clients": [
+                  "string"
+                ],
+                "credentials": [
+                  {
+                    "clients": [
+                      "string"
+                    ],
+                    "name": "string",
+                    "present": "boolean"
+                  }
+                ],
+                "has_wrapper": "boolean",
+                "options": [
+                  {
+                    "client": "string",
+                    "credential": "string",
+                    "provider": "string",
+                    "ready": "boolean",
+                    "reason_code": "string",
+                    "via_wrapper": "boolean"
+                  }
+                ],
+                "provider": "string",
+                "ready": "boolean"
+              }
+            ],
             "routes": [
               {
                 "client": "string",
@@ -460,6 +572,7 @@
                   "distinct_projects": "number",
                   "median_duration_seconds": "number",
                   "period": "string",
+                  "projects": [],
                   "sessions": "number",
                   "total_duration_seconds": "number"
                 }
@@ -489,20 +602,11 @@
                   {
                     "client": "string",
                     "period": "string",
-                    "totals": {
-                      "cache_write_tokens": "number",
-                      "cached_read_tokens": "number",
-                      "catalog_base_cost": "string",
+                    "value": {
+                      "cost_incomplete": "boolean",
                       "events": "number",
-                      "input_tokens": "number",
-                      "known_catalog_base_cost": "string",
-                      "known_provider_cost": "string",
-                      "output_tokens": "number",
-                      "pricing_complete": "boolean",
                       "provider_cost": "string",
-                      "sessions": "number",
-                      "tokens": "number",
-                      "unpriced_components": "number"
+                      "tokens": "number"
                     }
                   }
                 ]
@@ -513,6 +617,11 @@
                   "daily": {
                     "available": "boolean",
                     "items": []
+                  },
+                  "hourly": {
+                    "available": "boolean",
+                    "items": [],
+                    "through_hour": "number"
                   },
                   "periods": {
                     "available": "boolean",
@@ -530,8 +639,11 @@
                     "active_days": "number",
                     "available": "boolean",
                     "busiest_day": "string",
-                    "cells": [],
-                    "quietest_day": "string"
+                    "cost_incomplete": [],
+                    "intensities": [],
+                    "provider_costs": [],
+                    "quietest_day": "string",
+                    "tokens": []
                   }
                 },
                 {
@@ -541,23 +653,29 @@
                     "items": [
                       {
                         "date": "string",
-                        "totals": {
-                          "cache_write_tokens": "number",
-                          "cached_read_tokens": "number",
-                          "catalog_base_cost": "string",
+                        "value": {
+                          "cost_incomplete": "boolean",
                           "events": "number",
-                          "input_tokens": "number",
-                          "known_catalog_base_cost": "string",
-                          "known_provider_cost": "string",
-                          "output_tokens": "number",
-                          "pricing_complete": "boolean",
                           "provider_cost": "string",
-                          "sessions": "number",
-                          "tokens": "number",
-                          "unpriced_components": "number"
+                          "tokens": "number"
                         }
                       }
                     ]
+                  },
+                  "hourly": {
+                    "available": "boolean",
+                    "items": [
+                      {
+                        "hour": "number",
+                        "value": {
+                          "cost_incomplete": "boolean",
+                          "events": "number",
+                          "provider_cost": "string",
+                          "tokens": "number"
+                        }
+                      }
+                    ],
+                    "through_hour": "number"
                   },
                   "periods": {
                     "available": "boolean",
@@ -629,20 +747,11 @@
                           {
                             "quality": "string",
                             "share": null,
-                            "totals": {
-                              "cache_write_tokens": "number",
-                              "cached_read_tokens": "number",
-                              "catalog_base_cost": "string",
+                            "value": {
+                              "cost_incomplete": "boolean",
                               "events": "number",
-                              "input_tokens": "number",
-                              "known_catalog_base_cost": "string",
-                              "known_provider_cost": "string",
-                              "output_tokens": "number",
-                              "pricing_complete": "boolean",
                               "provider_cost": "string",
-                              "sessions": "number",
-                              "tokens": "number",
-                              "unpriced_components": "number"
+                              "tokens": "number"
                             }
                           }
                         ]
@@ -653,14 +762,19 @@
                     "active_days": "number",
                     "available": "boolean",
                     "busiest_day": "string",
-                    "cells": [
-                      {
-                        "hour": "number",
-                        "intensity": "number",
-                        "weekday": "number"
-                      }
+                    "cost_incomplete": [
+                      "boolean"
                     ],
-                    "quietest_day": "string"
+                    "intensities": [
+                      "number"
+                    ],
+                    "provider_costs": [
+                      "string"
+                    ],
+                    "quietest_day": "string",
+                    "tokens": [
+                      "number"
+                    ]
                   }
                 }
               ]

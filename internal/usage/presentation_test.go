@@ -51,8 +51,19 @@ INSERT INTO usage_run_bindings(event_key,run_id) VALUES ('exact',1)`); err != ni
 		t.Fatalf("presentation shape = %#v", report)
 	}
 	all := report.Scopes[0]
-	if all.Client != "all" || len(all.Periods.Items) != 3 || len(all.Daily.Items) != 90 || len(all.Rhythm.Cells) != 168 {
+	if all.Client != "all" || len(all.Periods.Items) != 3 || len(all.Daily.Items) != 90 ||
+		all.Hourly.ThroughHour != 10 || len(all.Hourly.Items) != 11 || len(all.Rhythm.Intensities) != 168 {
 		t.Fatalf("all scope shape = %#v", all)
+	}
+	if all.Hourly.Items[8].Hour != 8 || all.Hourly.Items[8].Value.Tokens != 11 || all.Hourly.Items[8].Value.Events != 1 {
+		t.Fatalf("hour 8 = %#v, want the exact event totals", all.Hourly.Items[8])
+	}
+	if all.Hourly.Items[9].Hour != 9 || all.Hourly.Items[9].Value.Tokens != 55 || all.Hourly.Items[9].Value.Events != 2 {
+		t.Fatalf("hour 9 = %#v, want both events in the same local-hour bucket", all.Hourly.Items[9])
+	}
+	rhythmIndex := 3*24 + 8
+	if all.Rhythm.Tokens[rhythmIndex] != 11 || all.Rhythm.ProviderCosts[rhythmIndex] == "" {
+		t.Fatalf("rhythm Thursday hour 8 = tokens %d, cost %q; want same-pass tokens and provider price", all.Rhythm.Tokens[rhythmIndex], all.Rhythm.ProviderCosts[rhythmIndex])
 	}
 	today := all.Periods.Items[0]
 	if today.Period != "today" || today.Totals.Tokens != 66 || today.Totals.Events != 3 || today.Totals.Sessions != 3 || len(today.Models) != 3 {
@@ -113,7 +124,7 @@ func slicesEqual(got, want []string) bool {
 func qualityEventCounts(item PresentationQualityItem) [3]int64 {
 	var counts [3]int64
 	for index, tier := range item.Tiers {
-		counts[index] = tier.Totals.Events
+		counts[index] = tier.Value.Events
 	}
 	return counts
 }
@@ -160,16 +171,21 @@ INSERT INTO usage_events(event_key,client,session_id,event_id,event_at,model,inp
 	if claude.Client != "claude" {
 		t.Fatalf("third scope = %q, want claude", claude.Client)
 	}
-	if claude.Periods.Available || claude.Daily.Available || claude.Quality.Available ||
+	if claude.Periods.Available || claude.Daily.Available || claude.Hourly.Available || claude.Quality.Available ||
 		claude.Pricing.Available || claude.Rhythm.Available {
 		t.Fatalf("empty claude scope = %#v, want every family unavailable", claude)
 	}
-	if claude.Periods.Items == nil || claude.Daily.Items == nil || claude.Quality.Items == nil ||
-		claude.Pricing.Items == nil || claude.Rhythm.Cells == nil {
+	if claude.Hourly.ThroughHour != 10 {
+		t.Fatalf("empty claude through hour = %d, want the snapshot's current local hour", claude.Hourly.ThroughHour)
+	}
+	if claude.Periods.Items == nil || claude.Daily.Items == nil || claude.Hourly.Items == nil || claude.Quality.Items == nil ||
+		claude.Pricing.Items == nil || claude.Rhythm.Intensities == nil || claude.Rhythm.Tokens == nil ||
+		claude.Rhythm.ProviderCosts == nil || claude.Rhythm.CostIncomplete == nil {
 		t.Fatalf("empty claude scope has a nil collection: %#v", claude)
 	}
-	if len(claude.Periods.Items) != 0 || len(claude.Daily.Items) != 0 || len(claude.Quality.Items) != 0 ||
-		len(claude.Pricing.Items) != 0 || len(claude.Rhythm.Cells) != 0 {
+	if len(claude.Periods.Items) != 0 || len(claude.Daily.Items) != 0 || len(claude.Hourly.Items) != 0 || len(claude.Quality.Items) != 0 ||
+		len(claude.Pricing.Items) != 0 || len(claude.Rhythm.Intensities) != 0 || len(claude.Rhythm.Tokens) != 0 ||
+		len(claude.Rhythm.ProviderCosts) != 0 || len(claude.Rhythm.CostIncomplete) != 0 {
 		t.Fatalf("empty claude scope carries synthetic rows: %#v", claude)
 	}
 
@@ -179,12 +195,14 @@ INSERT INTO usage_events(event_key,client,session_id,event_id,event_at,model,inp
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(encoded), `"items":null`) || strings.Contains(string(encoded), `"cells":null`) {
+	if strings.Contains(string(encoded), `"items":null`) || strings.Contains(string(encoded), `"intensities":null`) ||
+		strings.Contains(string(encoded), `"provider_costs":null`) {
 		t.Fatalf("presentation encodes a null collection: %s", encoded)
 	}
 
 	codex := report.Scopes[1]
-	if !codex.Periods.Available || len(codex.Daily.Items) != 90 || len(codex.Rhythm.Cells) != 168 {
+	if !codex.Periods.Available || len(codex.Daily.Items) != 90 || codex.Hourly.ThroughHour != 10 ||
+		len(codex.Hourly.Items) != 11 || len(codex.Rhythm.Intensities) != 168 {
 		t.Fatalf("codex scope = %#v, want a populated client to keep its families", codex)
 	}
 	all := report.Scopes[0]

@@ -25,6 +25,7 @@ type PresentationScope struct {
 	Client  string              `json:"client"`
 	Periods PresentationPeriods `json:"periods"`
 	Daily   PresentationDaily   `json:"daily"`
+	Hourly  PresentationHourly  `json:"hourly"`
 	Quality PresentationQuality `json:"quality"`
 	Pricing PresentationPricing `json:"pricing"`
 	Rhythm  PresentationRhythm  `json:"rhythm"`
@@ -71,11 +72,21 @@ type PresentationPeak struct {
 	Totals PresentationTotals `json:"totals"`
 }
 
+// PresentationDisplayValue is the bounded subset used by rows and plotted
+// buckets. Period totals keep the complete accounting tuple; these high-count
+// collections do not repeat fields their consumers never read.
+type PresentationDisplayValue struct {
+	Tokens         int64  `json:"tokens"`
+	Events         int64  `json:"events"`
+	ProviderCost   string `json:"provider_cost"`
+	CostIncomplete bool   `json:"cost_incomplete"`
+}
+
 type PresentationModel struct {
-	Client string             `json:"client,omitempty"`
-	Model  string             `json:"model"`
-	Totals PresentationTotals `json:"totals"`
-	Share  *string            `json:"share"`
+	Client string                   `json:"client,omitempty"`
+	Model  string                   `json:"model"`
+	Value  PresentationDisplayValue `json:"value"`
+	Share  *string                  `json:"share"`
 }
 
 type PresentationDaily struct {
@@ -84,8 +95,19 @@ type PresentationDaily struct {
 }
 
 type PresentationDailyItem struct {
-	Date   string             `json:"date"`
-	Totals PresentationTotals `json:"totals"`
+	Date  string                   `json:"date"`
+	Value PresentationDisplayValue `json:"value"`
+}
+
+type PresentationHourly struct {
+	Available   bool                     `json:"available"`
+	ThroughHour int                      `json:"through_hour"`
+	Items       []PresentationHourlyItem `json:"items"`
+}
+
+type PresentationHourlyItem struct {
+	Hour  int                      `json:"hour"`
+	Value PresentationDisplayValue `json:"value"`
 }
 
 type PresentationQuality struct {
@@ -100,9 +122,9 @@ type PresentationQualityItem struct {
 }
 
 type PresentationQualityTier struct {
-	Quality string             `json:"quality"`
-	Totals  PresentationTotals `json:"totals"`
-	Share   *string            `json:"share"`
+	Quality string                   `json:"quality"`
+	Value   PresentationDisplayValue `json:"value"`
+	Share   *string                  `json:"share"`
 }
 
 type PresentationPricing struct {
@@ -119,17 +141,14 @@ type PresentationPricingItem struct {
 }
 
 type PresentationRhythm struct {
-	Available   bool                     `json:"available"`
-	Cells       []PresentationRhythmCell `json:"cells"`
-	ActiveDays  int                      `json:"active_days"`
-	BusiestDay  string                   `json:"busiest_day"`
-	QuietestDay string                   `json:"quietest_day"`
-}
-
-type PresentationRhythmCell struct {
-	Weekday   int `json:"weekday"`
-	Hour      int `json:"hour"`
-	Intensity int `json:"intensity"`
+	Available      bool     `json:"available"`
+	Intensities    []int    `json:"intensities"`
+	Tokens         []int64  `json:"tokens"`
+	ProviderCosts  []string `json:"provider_costs"`
+	CostIncomplete []bool   `json:"cost_incomplete"`
+	ActiveDays     int      `json:"active_days"`
+	BusiestDay     string   `json:"busiest_day"`
+	QuietestDay    string   `json:"quietest_day"`
 }
 
 type PresentationClientSubtotals struct {
@@ -138,9 +157,9 @@ type PresentationClientSubtotals struct {
 }
 
 type PresentationClientSubtotal struct {
-	Period string             `json:"period"`
-	Client string             `json:"client"`
-	Totals PresentationTotals `json:"totals"`
+	Period string                   `json:"period"`
+	Client string                   `json:"client"`
+	Value  PresentationDisplayValue `json:"value"`
 }
 
 type presentationPeriodDefinition struct {
@@ -184,6 +203,7 @@ func newPresentationPeriodAccumulator() *presentationPeriodAccumulator {
 type presentationScopeAccumulator struct {
 	periods map[string]*presentationPeriodAccumulator
 	daily   map[string]*presentationAccumulator
+	hourly  map[int]*presentationAccumulator
 	// quality, pricing and unpriced are keyed by period first: the contract
 	// moves both families from client scope to the Client x Period product, so
 	// a filtered panel reads one record rather than the current period only.
@@ -195,7 +215,7 @@ type presentationScopeAccumulator struct {
 
 func newPresentationScopeAccumulator(periods []presentationPeriodDefinition) *presentationScopeAccumulator {
 	value := &presentationScopeAccumulator{
-		periods: map[string]*presentationPeriodAccumulator{}, daily: map[string]*presentationAccumulator{},
+		periods: map[string]*presentationPeriodAccumulator{}, daily: map[string]*presentationAccumulator{}, hourly: map[int]*presentationAccumulator{},
 		quality: map[string]map[string]map[string]*presentationAccumulator{},
 		pricing: map[string]*presentationAccumulator{}, unpriced: map[string]map[string]struct{}{},
 		rhythm: map[[2]int]*presentationAccumulator{},
@@ -221,6 +241,7 @@ func (s *Service) Presentation(ctx context.Context, now time.Time, location *tim
 		location = time.Local
 	}
 	today := localDateStart(now, location)
+	currentHour := now.In(location).Hour()
 	end := today.AddDate(0, 0, 1)
 	start90 := today.AddDate(0, 0, -(presentationDailyLimit - 1))
 	periods := []presentationPeriodDefinition{
@@ -272,6 +293,14 @@ func (s *Service) Presentation(ctx context.Context, now time.Time, location *tim
 			if err = scope.daily[date].add(event, calculated); err != nil {
 				return PresentationReport{}, err
 			}
+			if !at.Before(today) {
+				if scope.hourly[at.Hour()] == nil {
+					scope.hourly[at.Hour()] = newPresentationAccumulator()
+				}
+				if err = scope.hourly[at.Hour()].add(event, calculated); err != nil {
+					return PresentationReport{}, err
+				}
+			}
 
 			if !at.Before(periods[2].start) {
 				key := [2]int{(int(at.Weekday()) + 6) % 7, at.Hour()}
@@ -317,12 +346,12 @@ func (s *Service) Presentation(ctx context.Context, now time.Time, location *tim
 
 	report := PresentationReport{Available: true, Scopes: make([]PresentationScope, 0, 3), ClientSubtotals: PresentationClientSubtotals{Available: true, Items: []PresentationClientSubtotal{}}, Summary: summary.finish()}
 	for _, scopeName := range []string{"all", "codex", "claude"} {
-		report.Scopes = append(report.Scopes, buildPresentationScope(scopeName, scopes[scopeName], periods, start90, today))
+		report.Scopes = append(report.Scopes, buildPresentationScope(scopeName, scopes[scopeName], periods, start90, today, currentHour))
 	}
 	for _, period := range periods {
 		for _, client := range []string{"codex", "claude"} {
 			report.ClientSubtotals.Items = append(report.ClientSubtotals.Items, PresentationClientSubtotal{
-				Period: period.name, Client: client, Totals: presentationTotals(scopes[client].periods[period.name].total.stats),
+				Period: period.name, Client: client, Value: presentationDisplayValue(scopes[client].periods[period.name].total.stats),
 			})
 		}
 	}
@@ -375,28 +404,32 @@ func presentationScopeHasData(value *presentationScopeAccumulator) bool {
 // synthetic zeros instead would present "no data was measured" as "zero was
 // measured", which are different claims about the same client. Every collection
 // is a non-null empty array for the same reason `emptySessionsSnapshot` is.
-func unavailablePresentationScope(name string) PresentationScope {
+func unavailablePresentationScope(name string, currentHour int) PresentationScope {
 	return PresentationScope{
 		Client:  name,
 		Periods: PresentationPeriods{Items: []PresentationPeriod{}},
 		Daily:   PresentationDaily{Items: []PresentationDailyItem{}},
+		Hourly:  PresentationHourly{ThroughHour: currentHour, Items: []PresentationHourlyItem{}},
 		Quality: PresentationQuality{Items: []PresentationQualityItem{}},
 		Pricing: PresentationPricing{Items: []PresentationPricingItem{}},
-		Rhythm:  PresentationRhythm{Cells: []PresentationRhythmCell{}},
+		Rhythm: PresentationRhythm{
+			Intensities: []int{}, Tokens: []int64{}, ProviderCosts: []string{}, CostIncomplete: []bool{},
+		},
 	}
 }
 
-func buildPresentationScope(name string, value *presentationScopeAccumulator, periods []presentationPeriodDefinition, start90, today time.Time) PresentationScope {
+func buildPresentationScope(name string, value *presentationScopeAccumulator, periods []presentationPeriodDefinition, start90, today time.Time, currentHour int) PresentationScope {
 	// `all` is an explicit scope rather than a missing client, so it keeps its
 	// families available and reports a measured zero. A concrete client with no
 	// data reports unavailable families instead.
 	if name != "all" && !presentationScopeHasData(value) {
-		return unavailablePresentationScope(name)
+		return unavailablePresentationScope(name, currentHour)
 	}
 	scope := PresentationScope{
 		Client:  name,
 		Periods: PresentationPeriods{Available: true, Items: []PresentationPeriod{}},
 		Daily:   PresentationDaily{Available: true, Items: []PresentationDailyItem{}},
+		Hourly:  PresentationHourly{Available: true, ThroughHour: currentHour, Items: []PresentationHourlyItem{}},
 		Quality: PresentationQuality{Available: true, Items: []PresentationQualityItem{}},
 		Pricing: presentationPricing(value, periods),
 		Rhythm:  presentationRhythm(value, periods[2].start),
@@ -417,7 +450,14 @@ func buildPresentationScope(name string, value *presentationScopeAccumulator, pe
 		if item == nil {
 			item = newPresentationAccumulator()
 		}
-		scope.Daily.Items = append(scope.Daily.Items, PresentationDailyItem{Date: date.Format("2006-01-02"), Totals: presentationTotals(item.stats)})
+		scope.Daily.Items = append(scope.Daily.Items, PresentationDailyItem{Date: date.Format("2006-01-02"), Value: presentationDisplayValue(item.stats)})
+	}
+	for hour := 0; hour <= currentHour; hour++ {
+		item := value.hourly[hour]
+		if item == nil {
+			item = newPresentationAccumulator()
+		}
+		scope.Hourly.Items = append(scope.Hourly.Items, PresentationHourlyItem{Hour: hour, Value: presentationDisplayValue(item.stats)})
 	}
 	scope.Quality.Items = presentationQuality(value, periods)
 	return scope
@@ -438,6 +478,20 @@ func presentationTotals(value *statsAccumulator) PresentationTotals {
 		CatalogBaseCost: catalogBaseCost, ProviderCost: providerCost,
 		KnownCatalogBaseCost: knownCatalogBaseCost, KnownProviderCost: knownProviderCost,
 		PricingComplete: value.complete, UnpricedComponents: len(value.missing),
+	}
+}
+
+func presentationDisplayValue(value *statsAccumulator) PresentationDisplayValue {
+	providerCost, knownProviderCost := statsCost(value)
+	displayCost := knownProviderCost
+	costIncomplete := true
+	if providerCost != nil {
+		displayCost = *providerCost
+		costIncomplete = false
+	}
+	return PresentationDisplayValue{
+		Tokens: value.tokens, Events: value.events,
+		ProviderCost: displayCost, CostIncomplete: costIncomplete,
 	}
 }
 
@@ -497,7 +551,7 @@ func presentationModels(scopeName string, value *presentationPeriodAccumulator) 
 		if scopeName == "all" {
 			client = item.client
 		}
-		out = append(out, PresentationModel{Client: client, Model: item.model, Totals: presentationTotals(item.value.stats), Share: percentPointer(item.value.stats.tokens, value.total.stats.tokens)})
+		out = append(out, PresentationModel{Client: client, Model: item.model, Value: presentationDisplayValue(item.value.stats), Share: percentPointer(item.value.stats.tokens, value.total.stats.tokens)})
 	}
 	return out
 }
@@ -549,15 +603,15 @@ func presentationPeriodQuality(period string, byProvider map[string]map[string]*
 			if item == nil {
 				item = newPresentationAccumulator()
 			}
-			result.Tiers = append(result.Tiers, PresentationQualityTier{Quality: quality, Totals: presentationTotals(item.stats), Share: percentRat(item.stats.provider, totalCost)})
+			result.Tiers = append(result.Tiers, PresentationQualityTier{Quality: quality, Value: presentationDisplayValue(item.stats), Share: percentRat(item.stats.provider, totalCost)})
 		}
 		out = append(out, result)
 	}
 	if len(out) == 0 {
 		out = append(out, PresentationQualityItem{Period: period, Tiers: []PresentationQualityTier{
-			{Quality: "determinable", Totals: presentationTotals(newStatsAccumulator())},
-			{Quality: "inferred", Totals: presentationTotals(newStatsAccumulator())},
-			{Quality: "unattributed", Totals: presentationTotals(newStatsAccumulator())},
+			{Quality: "determinable", Value: presentationDisplayValue(newStatsAccumulator())},
+			{Quality: "inferred", Value: presentationDisplayValue(newStatsAccumulator())},
+			{Quality: "unattributed", Value: presentationDisplayValue(newStatsAccumulator())},
 		}})
 	}
 	return out
@@ -598,14 +652,25 @@ func presentationRhythm(value *presentationScopeAccumulator, start time.Time) Pr
 		}
 		weekdayTotals[key[0]] += item.stats.tokens
 	}
-	cells := make([]PresentationRhythmCell, 0, 7*24)
+	intensities := make([]int, 0, 7*24)
+	tokens := make([]int64, 0, 7*24)
+	providerCosts := make([]string, 0, 7*24)
+	costIncomplete := make([]bool, 0, 7*24)
 	for weekday := 0; weekday < 7; weekday++ {
 		for hour := 0; hour < 24; hour++ {
 			intensity := 0
-			if maximum > 0 && value.rhythm[[2]int{weekday, hour}] != nil {
-				intensity = int((value.rhythm[[2]int{weekday, hour}].stats.tokens*100 + maximum/2) / maximum)
+			item := value.rhythm[[2]int{weekday, hour}]
+			if item == nil {
+				item = newPresentationAccumulator()
 			}
-			cells = append(cells, PresentationRhythmCell{Weekday: weekday, Hour: hour, Intensity: intensity})
+			if maximum > 0 {
+				intensity = int((item.stats.tokens*100 + maximum/2) / maximum)
+			}
+			display := presentationDisplayValue(item.stats)
+			intensities = append(intensities, intensity)
+			tokens = append(tokens, display.Tokens)
+			providerCosts = append(providerCosts, display.ProviderCost)
+			costIncomplete = append(costIncomplete, display.CostIncomplete)
 		}
 	}
 	activeDays := 0
@@ -615,7 +680,11 @@ func presentationRhythm(value *presentationScopeAccumulator, start time.Time) Pr
 		}
 	}
 	busiest, quietest := presentationDayNames(weekdayTotals)
-	return PresentationRhythm{Available: true, Cells: cells, ActiveDays: activeDays, BusiestDay: busiest, QuietestDay: quietest}
+	return PresentationRhythm{
+		Available: true, Intensities: intensities, Tokens: tokens,
+		ProviderCosts: providerCosts, CostIncomplete: costIncomplete,
+		ActiveDays: activeDays, BusiestDay: busiest, QuietestDay: quietest,
+	}
 }
 
 func presentationDayNames(totals [7]int64) (string, string) {

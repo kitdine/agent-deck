@@ -79,6 +79,68 @@ func TestUsageSnapshotPublishesPricingCompleteness(t *testing.T) {
 	}
 }
 
+func TestProviderCandidateOptionsResolveExactTuplesAndReasons(t *testing.T) {
+	candidate := ProviderCandidate{
+		Provider: "relay", Clients: []string{"codex", "claude"}, HasWrapper: true,
+		Credentials: []ProviderCandidateCredential{
+			{Name: "work", Clients: []string{"codex"}, Present: true},
+			{Name: "missing", Clients: []string{"claude"}, Present: false},
+		},
+	}
+	options := providerCandidateOptions(candidate, map[string]provider.CurrentSelection{
+		"codex": {Client: "codex", Provider: "relay", Credential: "work", ViaWrapper: false},
+	})
+	if len(options) != 8 {
+		t.Fatalf("options = %#v, want 8 exact client/credential/route tuples", options)
+	}
+	wantReasons := map[string]string{
+		"codex/work/direct":     "already_selected",
+		"codex/work/via":        "",
+		"claude/work/direct":    "credential_client_mismatch",
+		"codex/missing/direct":  "credential_client_mismatch",
+		"claude/missing/direct": "credential_missing",
+	}
+	for _, option := range options {
+		credential := ""
+		if option.Credential != nil {
+			credential = *option.Credential
+		}
+		route := "direct"
+		if option.ViaWrapper {
+			route = "via"
+		}
+		key := option.Client + "/" + credential + "/" + route
+		want, checked := wantReasons[key]
+		if !checked {
+			continue
+		}
+		got := ""
+		if option.ReasonCode != nil {
+			got = *option.ReasonCode
+		}
+		if got != want || option.Ready != (want == "") {
+			t.Fatalf("option %s = %#v, want reason %q", key, option, want)
+		}
+	}
+	encoded, err := json.Marshal(candidate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, forbidden := range []string{"endpoint", "credential_ref", "multiplier", "wrapper_url", "private-secret"} {
+		if strings.Contains(string(encoded), forbidden) {
+			t.Fatalf("candidate contains forbidden %q: %s", forbidden, encoded)
+		}
+	}
+}
+
+func TestProviderCandidateWithoutWrapperKeepsDirectReadyAndExplainsVia(t *testing.T) {
+	candidate := ProviderCandidate{Provider: "official", BuiltIn: true, Clients: []string{"codex"}, Credentials: []ProviderCandidateCredential{}}
+	options := providerCandidateOptions(candidate, nil)
+	if len(options) != 2 || !options[0].Ready || options[1].ReasonCode == nil || *options[1].ReasonCode != "wrapper_not_configured" {
+		t.Fatalf("official options = %#v", options)
+	}
+}
+
 func TestBuildMissingStateIsPartialWithoutCreatingDatabases(t *testing.T) {
 	root := t.TempDir()
 	now := time.Date(2026, 8, 13, 10, 0, 0, 0, time.UTC)
@@ -153,7 +215,10 @@ func TestBuildReadsCompleteIsolatedSnapshot(t *testing.T) {
 	if !result.Snapshot.Provider.Available || !result.Snapshot.Usage.Available || !result.Snapshot.Sessions.Available || !result.Snapshot.Health.Available {
 		t.Fatalf("section availability = %#v", result.Snapshot)
 	}
-	if presentation := result.Snapshot.Usage.Presentation; !presentation.Available || len(presentation.Scopes) != 3 || len(presentation.Scopes[0].Daily.Items) != 90 || len(presentation.Scopes[0].Rhythm.Cells) != 168 || len(presentation.ClientSubtotals.Items) != 6 {
+	if len(result.Snapshot.Provider.Candidates) != 1 || result.Snapshot.Provider.Candidates[0].Provider != "official" {
+		t.Fatalf("provider candidates = %#v", result.Snapshot.Provider.Candidates)
+	}
+	if presentation := result.Snapshot.Usage.Presentation; !presentation.Available || len(presentation.Scopes) != 3 || len(presentation.Scopes[0].Daily.Items) != 90 || len(presentation.Scopes[0].Rhythm.Intensities) != 168 || len(presentation.ClientSubtotals.Items) != 6 {
 		t.Fatalf("usage presentation bounds = %#v", presentation)
 	}
 	if len(result.Snapshot.Sessions.Items) != 1 || result.Snapshot.Sessions.Items[0].Project != "agent-deck" {
@@ -225,7 +290,7 @@ func TestCanonicalFixturesDecodeAndExcludeForbiddenKeys(t *testing.T) {
 			if envelope.SchemaVersion != 1 || envelope.Command != "desktop.snapshot" || envelope.GeneratedAt.IsZero() || envelope.Data.WireVersion != 1 || envelope.Error != nil {
 				t.Fatalf("fixture identity = %#v", envelope)
 			}
-			if envelope.Data.GeneratedAt == "" || envelope.Data.NextRefreshAt == "" || envelope.Data.Provider.Routes == nil || envelope.Data.Usage.Tokens == nil || envelope.Data.Usage.Counts == nil || envelope.Data.Usage.Warnings == nil || envelope.Data.Usage.Presentation.Scopes == nil || envelope.Data.Usage.Presentation.ClientSubtotals.Items == nil || envelope.Data.Sessions.Items == nil || envelope.Data.Health.Checks == nil {
+			if envelope.Data.GeneratedAt == "" || envelope.Data.NextRefreshAt == "" || envelope.Data.Provider.Routes == nil || envelope.Data.Provider.Candidates == nil || envelope.Data.Usage.Tokens == nil || envelope.Data.Usage.Counts == nil || envelope.Data.Usage.Warnings == nil || envelope.Data.Usage.Presentation.Scopes == nil || envelope.Data.Usage.Presentation.ClientSubtotals.Items == nil || envelope.Data.Sessions.Items == nil || envelope.Data.Health.Checks == nil {
 				t.Fatalf("fixture required fields = %#v", envelope.Data)
 			}
 			if name == "snapshot-complete.json" && (envelope.Partial || len(envelope.Warnings) != 0 || !envelope.Data.Provider.Available || !envelope.Data.Usage.Available || !envelope.Data.Sessions.Available || !envelope.Data.Health.Available) {
@@ -278,8 +343,8 @@ func assertPresentationBounds(t *testing.T, snapshot Snapshot, distinguishPeriod
 		if got := periodNames(scope); !reflect.DeepEqual(got, []string{"today", "7d", "30d"}) {
 			t.Fatalf("%s periods = %v", scope.Client, got)
 		}
-		if len(scope.Daily.Items) != 90 || len(scope.Rhythm.Cells) != 168 {
-			t.Fatalf("%s daily/rhythm = %d/%d, want 90/168", scope.Client, len(scope.Daily.Items), len(scope.Rhythm.Cells))
+		if len(scope.Daily.Items) != 90 || len(scope.Rhythm.Intensities) != 168 {
+			t.Fatalf("%s daily/rhythm = %d/%d, want 90/168", scope.Client, len(scope.Daily.Items), len(scope.Rhythm.Intensities))
 		}
 		if len(scope.Pricing.Items) != 3 {
 			t.Fatalf("%s pricing = %d records, want one per period", scope.Client, len(scope.Pricing.Items))
@@ -350,7 +415,8 @@ func assertEmptyClientScope(t *testing.T, snapshot Snapshot) {
 		t.Fatalf("empty client families = %#v, want every family unavailable", empty)
 	}
 	if empty.Periods.Items == nil || empty.Daily.Items == nil || empty.Quality.Items == nil ||
-		empty.Pricing.Items == nil || empty.Rhythm.Cells == nil {
+		empty.Pricing.Items == nil || empty.Rhythm.Intensities == nil || empty.Rhythm.Tokens == nil ||
+		empty.Rhythm.ProviderCosts == nil || empty.Rhythm.CostIncomplete == nil {
 		t.Fatalf("empty client scope carries a null collection: %#v", empty)
 	}
 	if !scopes[1].Periods.Available {
@@ -369,8 +435,8 @@ func TestLegacyFixtureRetainsTheMissingAdditiveFields(t *testing.T) {
 	if err = json.Unmarshal(contents, &envelope); err != nil {
 		t.Fatal(err)
 	}
-	if envelope.Data.Usage.Presentation.Available || envelope.Data.Sessions.Periods.Available {
-		t.Fatalf("legacy additive fields = %#v %#v", envelope.Data.Usage.Presentation, envelope.Data.Sessions.Periods)
+	if envelope.Data.Provider.Candidates != nil || envelope.Data.Usage.Presentation.Available {
+		t.Fatalf("legacy additive fields = %#v %#v", envelope.Data.Provider.Candidates, envelope.Data.Usage.Presentation)
 	}
 }
 
@@ -433,8 +499,17 @@ func TestSessionsPeriodsAreProducerComputedForEveryScope(t *testing.T) {
 	if today.TotalDurationSeconds != 2400 || today.MedianDurationSeconds != 1200 {
 		t.Fatalf("today/all durations = %#v", today)
 	}
+	if !reflect.DeepEqual(today.Projects, []SessionsProjectItem{
+		{Project: "one", Sessions: 1, DurationSeconds: 1800},
+		{Project: "two", Sessions: 1, DurationSeconds: 600},
+	}) {
+		t.Fatalf("today/all projects = %#v", today.Projects)
+	}
 	if got := byKey["today/claude"]; got.Sessions != 0 || got.MedianDurationSeconds != 0 {
 		t.Fatalf("today/claude = %#v, want an empty record rather than a missing one", got)
+	}
+	if got := byKey["today/claude"].Projects; got == nil || len(got) != 0 {
+		t.Fatalf("today/claude projects = %#v, want a non-nil empty array", got)
 	}
 	if got := byKey["7d/claude"]; got.Sessions != 1 || got.TotalDurationSeconds != 3600 {
 		t.Fatalf("7d/claude = %#v", got)
@@ -519,6 +594,31 @@ func TestDistinctProjectsCountIdentitiesRatherThanDisplayBasenames(t *testing.T)
 		if item.DistinctProjects != 0 {
 			t.Fatalf("%s/%s distinct projects = %d, want 0 for an unattributed session", item.Period, item.Client, item.DistinctProjects)
 		}
+	}
+}
+
+func TestChatGPTWorkConversationDirectoriesShareOneProjectAggregate(t *testing.T) {
+	now := time.Date(2026, 8, 13, 12, 0, 0, 0, time.UTC)
+	values := []session.Metadata{
+		{Client: "codex", SessionID: "a", Project: "/work/2026-08-11/referenced-chatgpt-conversation-this-is-untrusted", FirstAt: "2026-08-13T08:00:00Z", LastAt: "2026-08-13T09:00:00Z"},
+		{Client: "codex", SessionID: "b", Project: "/work/2026-08-12/referenced-chatgpt-conversation-this-is-an", FirstAt: "2026-08-13T09:00:00Z", LastAt: "2026-08-13T09:30:00Z"},
+		{Client: "codex", SessionID: "c", Project: "/other/referenced-chatgpt-conversation-this-is-untrusted", FirstAt: "2026-08-13T10:00:00Z", LastAt: "2026-08-13T10:15:00Z"},
+	}
+
+	snapshot := sessionsSnapshot(values, 5, now, time.UTC)
+	var today SessionsPeriodItem
+	for _, item := range snapshot.Periods.Items {
+		if item.Period == "today" && item.Client == "all" {
+			today = item
+			break
+		}
+	}
+	if today.DistinctProjects != 1 {
+		t.Fatalf("distinct projects = %d, want one ChatGPT Work project", today.DistinctProjects)
+	}
+	want := []SessionsProjectItem{{Project: "ChatGPT Work", Sessions: 3, DurationSeconds: 6300}}
+	if !reflect.DeepEqual(today.Projects, want) {
+		t.Fatalf("projects = %#v, want %#v", today.Projects, want)
 	}
 }
 

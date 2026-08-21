@@ -11,6 +11,15 @@ final class DesktopWireTests: XCTestCase {
         XCTAssertTrue(complete.warnings.isEmpty)
         XCTAssertTrue(complete.data.provider.available)
         XCTAssertTrue(complete.data.sessions.available)
+		XCTAssertEqual(complete.data.provider.candidates.count, 1)
+		// One option per client per route. The fixture seeds a current route for
+		// both clients, so the built-in candidate offers codex and claude, each
+		// direct and through a wrapper. A bare count hid which of those changed
+		// when the fixture was regenerated, so the identities are asserted.
+		XCTAssertEqual(
+			complete.data.provider.candidates[0].options.map { "\($0.client)/\($0.viaWrapper ? "via" : "direct")" },
+			["codex/direct", "codex/via", "claude/direct", "claude/via"]
+		)
 		XCTAssertTrue(complete.data.usage.presentation.available)
 		XCTAssertEqual(complete.data.usage.presentation.scopes.first?.client, "all")
 
@@ -18,6 +27,7 @@ final class DesktopWireTests: XCTestCase {
         XCTAssertFalse(partial.warnings.isEmpty)
         XCTAssertFalse(partial.data.provider.available)
         XCTAssertTrue(partial.data.health.available)
+		XCTAssertTrue(partial.data.provider.candidates.isEmpty)
 		XCTAssertFalse(partial.data.usage.presentation.available)
     }
 
@@ -45,6 +55,7 @@ final class DesktopWireTests: XCTestCase {
 
 	func testLegacyFixtureDefaultsMissingAdditiveFields() throws {
 		let legacy = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-legacy.json"))
+		XCTAssertTrue(legacy.data.provider.candidates.isEmpty)
 		XCTAssertEqual(legacy.data.usage.presentation, .unavailable)
 		// A payload that predates the additive session periods decodes as an
 		// unavailable family, not as an error: the change raises no wire version.
@@ -52,23 +63,85 @@ final class DesktopWireTests: XCTestCase {
 		XCTAssertTrue(legacy.data.sessions.available)
 	}
 
-	// A missing additive family decodes as unavailable, but a present family of
-	// the wrong type is invalid. `provider.candidates` is another task's
-	// additive object and is covered by that task's decoder tests.
+	func testMissingAdditiveHourlyRhythmHoverAndSessionProjectFamiliesDefaultWithoutRaisingTheWireVersion() throws {
+		let complete = try desktopFixtureData("snapshot-complete.json")
+		var object = try XCTUnwrap(JSONSerialization.jsonObject(with: complete) as? [String: Any])
+		var data = try XCTUnwrap(object["data"] as? [String: Any])
+		var usage = try XCTUnwrap(data["usage"] as? [String: Any])
+		var presentation = try XCTUnwrap(usage["presentation"] as? [String: Any])
+		var scopes = try XCTUnwrap(presentation["scopes"] as? [[String: Any]])
+		for index in scopes.indices {
+			scopes[index].removeValue(forKey: "hourly")
+			var rhythm = try XCTUnwrap(scopes[index]["rhythm"] as? [String: Any])
+			let intensities = try XCTUnwrap(rhythm.removeValue(forKey: "intensities") as? [Int])
+			rhythm.removeValue(forKey: "tokens")
+			rhythm.removeValue(forKey: "provider_costs")
+			rhythm.removeValue(forKey: "cost_incomplete")
+			rhythm["cells"] = intensities.enumerated().map { index, intensity in
+				["weekday": index / 24, "hour": index % 24, "intensity": intensity]
+			}
+			scopes[index]["rhythm"] = rhythm
+		}
+		presentation["scopes"] = scopes
+		usage["presentation"] = presentation
+		data["usage"] = usage
+		var sessions = try XCTUnwrap(data["sessions"] as? [String: Any])
+		var periods = try XCTUnwrap(sessions["periods"] as? [String: Any])
+		var periodItems = try XCTUnwrap(periods["items"] as? [[String: Any]])
+		for index in periodItems.indices {
+			periodItems[index].removeValue(forKey: "projects")
+		}
+		periods["items"] = periodItems
+		sessions["periods"] = periods
+		data["sessions"] = sessions
+		object["data"] = data
+
+		let decoded = try decodeDesktopWireEnvelopeV1(JSONSerialization.data(withJSONObject: object))
+		XCTAssertTrue(decoded.data.usage.presentation.scopes.allSatisfy { $0.hourly == nil })
+		XCTAssertTrue(decoded.data.usage.presentation.scopes.flatMap(\.rhythm.cells).allSatisfy {
+			$0.tokens == nil && $0.providerCost == nil && $0.costIncomplete == nil
+		})
+		XCTAssertTrue(decoded.data.sessions.periods.items.allSatisfy { $0.projects.isEmpty })
+	}
+
 	func testPresentMalformedAdditiveFieldsAreRejected() throws {
 		let complete = try desktopFixtureData("snapshot-complete.json")
-		for mutation in ["presentation", "sessions-periods"] {
+		for mutation in ["candidates", "options", "presentation", "hourly", "rhythm-cost"] {
 			var object = try XCTUnwrap(JSONSerialization.jsonObject(with: complete) as? [String: Any])
 			var data = try XCTUnwrap(object["data"] as? [String: Any])
 			switch mutation {
+			case "candidates":
+				var provider = try XCTUnwrap(data["provider"] as? [String: Any])
+				provider["candidates"] = "not-an-array"
+				data["provider"] = provider
+			case "options":
+				var provider = try XCTUnwrap(data["provider"] as? [String: Any])
+				var candidates = try XCTUnwrap(provider["candidates"] as? [[String: Any]])
+				candidates[0]["options"] = "not-an-array"
+				provider["candidates"] = candidates
+				data["provider"] = provider
 			case "presentation":
 				var usage = try XCTUnwrap(data["usage"] as? [String: Any])
 				usage["presentation"] = "not-an-object"
 				data["usage"] = usage
+			case "hourly":
+				var usage = try XCTUnwrap(data["usage"] as? [String: Any])
+				var presentation = try XCTUnwrap(usage["presentation"] as? [String: Any])
+				var scopes = try XCTUnwrap(presentation["scopes"] as? [[String: Any]])
+				scopes[0]["hourly"] = "not-an-object"
+				presentation["scopes"] = scopes
+				usage["presentation"] = presentation
+				data["usage"] = usage
 			default:
-				var sessions = try XCTUnwrap(data["sessions"] as? [String: Any])
-				sessions["periods"] = "not-an-object"
-				data["sessions"] = sessions
+				var usage = try XCTUnwrap(data["usage"] as? [String: Any])
+				var presentation = try XCTUnwrap(usage["presentation"] as? [String: Any])
+				var scopes = try XCTUnwrap(presentation["scopes"] as? [[String: Any]])
+				var rhythm = try XCTUnwrap(scopes[0]["rhythm"] as? [String: Any])
+				rhythm["provider_costs"] = ["not": "an-array"]
+				scopes[0]["rhythm"] = rhythm
+				presentation["scopes"] = scopes
+				usage["presentation"] = presentation
+				data["usage"] = usage
 			}
 			object["data"] = data
 			let malformed = try JSONSerialization.data(withJSONObject: object)
@@ -76,6 +149,45 @@ final class DesktopWireTests: XCTestCase {
 		}
 	}
 
+	func testHourlyFamilyRejectsNullPartialOutOfRangeDuplicateDescendingAndPostBoundaryShapes() throws {
+		let complete = try desktopFixtureData("snapshot-complete.json")
+		for mutation in ["null", "missing-boundary", "partial", "out-of-range", "duplicate", "descending", "post-boundary", "unavailable-with-items"] {
+			var object = try XCTUnwrap(JSONSerialization.jsonObject(with: complete) as? [String: Any])
+			var data = try XCTUnwrap(object["data"] as? [String: Any])
+			var usage = try XCTUnwrap(data["usage"] as? [String: Any])
+			var presentation = try XCTUnwrap(usage["presentation"] as? [String: Any])
+			var scopes = try XCTUnwrap(presentation["scopes"] as? [[String: Any]])
+			if mutation == "null" {
+				scopes[0]["hourly"] = NSNull()
+			} else {
+				var hourly = try XCTUnwrap(scopes[0]["hourly"] as? [String: Any])
+				var items = try XCTUnwrap(hourly["items"] as? [[String: Any]])
+				switch mutation {
+				case "missing-boundary": hourly.removeValue(forKey: "through_hour")
+				case "partial": items.removeLast()
+				case "out-of-range": items[0]["hour"] = 24
+				case "duplicate": items[1]["hour"] = 0
+				case "descending": items.swapAt(1, 2)
+				case "post-boundary": hourly["through_hour"] = 9
+				default: hourly["available"] = false
+				}
+				hourly["items"] = items
+				scopes[0]["hourly"] = hourly
+			}
+			presentation["scopes"] = scopes
+			usage["presentation"] = presentation
+			data["usage"] = usage
+			object["data"] = data
+			XCTAssertThrowsError(
+				try decodeDesktopWireEnvelopeV1(JSONSerialization.data(withJSONObject: object)),
+				mutation
+			)
+		}
+	}
+
+	// The canonical fixtures are producer output. These assertions pin the fixed
+	// collection bounds the contract states, so a payload the producer cannot
+	// emit cannot satisfy this decoder gate.
 	func testCompleteFixtureCarriesTheContractCollectionBounds() throws {
 		let complete = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
 		let presentation = complete.data.usage.presentation
@@ -86,7 +198,15 @@ final class DesktopWireTests: XCTestCase {
 		for scope in presentation.scopes {
 			XCTAssertEqual(scope.periods.items.map(\.period), ["today", "7d", "30d"], scope.client)
 			XCTAssertEqual(scope.daily.items.count, 90, scope.client)
+			let hourly = try XCTUnwrap(scope.hourly, scope.client)
+			XCTAssertTrue(hourly.available, scope.client)
+			XCTAssertEqual(hourly.throughHour, 10, scope.client)
+			XCTAssertEqual(hourly.items.map(\.hour), Array(0 ... 10), scope.client)
 			XCTAssertEqual(scope.rhythm.cells.count, 168, scope.client)
+			XCTAssertEqual(scope.rhythm.intensities.count, 168, scope.client)
+			XCTAssertEqual(scope.rhythm.tokens.count, 168, scope.client)
+			XCTAssertEqual(scope.rhythm.providerCosts.count, 168, scope.client)
+			XCTAssertEqual(scope.rhythm.costIncomplete.count, 168, scope.client)
 			XCTAssertEqual(scope.pricing.items.map(\.period), ["today", "7d", "30d"], scope.client)
 			XCTAssertEqual(Set(scope.quality.items.map(\.period)), ["today", "7d", "30d"], scope.client)
 			// Copying today's figures into the wider periods must be visible.
@@ -94,6 +214,26 @@ final class DesktopWireTests: XCTestCase {
 			XCTAssertNotEqual(totals[0], totals[1], scope.client)
 			XCTAssertNotEqual(totals[1], totals[2], scope.client)
 		}
+		let hourEight = try XCTUnwrap(presentation.scopes[0].hourly?.items.first { $0.hour == 8 })
+		XCTAssertEqual(hourEight.value.tokens, 1_440)
+		XCTAssertEqual(hourEight.value.events, 1)
+		XCTAssertFalse(hourEight.value.providerCost.isEmpty)
+		let rhythmHourEight = try XCTUnwrap(
+			presentation.scopes[0].rhythm.cells.first { $0.weekday == 3 && $0.hour == 8 }
+		)
+		XCTAssertEqual(rhythmHourEight.tokens, 1_440)
+		XCTAssertNotNil(rhythmHourEight.providerCost)
+		XCTAssertNotNil(rhythmHourEight.costIncomplete)
+		XCTAssertLessThan(
+			try JSONEncoder().encode(complete).count,
+			128 * 1024,
+			"the compact complete bounded snapshot must preserve the 128 KiB contract budget"
+		)
+		let todayProjects = try XCTUnwrap(
+			complete.data.sessions.periods.items.first { $0.period == "today" && $0.client == "all" }?.projects
+		)
+		XCTAssertFalse(todayProjects.isEmpty)
+		XCTAssertGreaterThan(todayProjects[0].durationSeconds, 0)
 
 		// The exact nine session records, so a dropped or duplicated key fails.
 		XCTAssertEqual(

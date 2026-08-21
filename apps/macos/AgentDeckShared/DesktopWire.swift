@@ -105,6 +105,20 @@ public struct DesktopSnapshotV1: Codable, Equatable, Sendable {
 public struct DesktopProviderSnapshotV1: Codable, Equatable, Sendable {
     public let available: Bool
     public let routes: [DesktopProviderRouteV1]
+	public let candidates: [DesktopProviderCandidateV1]
+
+	enum CodingKeys: String, CodingKey {
+		case available
+		case routes
+		case candidates
+	}
+
+	public init(from decoder: Decoder) throws {
+		let container = try decoder.container(keyedBy: CodingKeys.self)
+		available = try container.decode(Bool.self, forKey: .available)
+		routes = try container.decode([DesktopProviderRouteV1].self, forKey: .routes)
+		candidates = try container.decodeIfPresent([DesktopProviderCandidateV1].self, forKey: .candidates) ?? []
+	}
 }
 
 public struct DesktopProviderRouteV1: Codable, Equatable, Sendable {
@@ -119,6 +133,65 @@ public struct DesktopProviderRouteV1: Codable, Equatable, Sendable {
         case selectedAt = "selected_at"
         case viaWrapper = "via_wrapper"
     }
+}
+
+public struct DesktopProviderCandidateV1: Codable, Equatable, Sendable, Identifiable {
+	public var id: String { provider }
+	public let provider: String
+	public let builtIn: Bool
+	public let clients: [String]
+	public let credentials: [DesktopProviderCredentialV1]
+	public let hasWrapper: Bool
+	public let ready: Bool
+	public let options: [DesktopProviderSwitchOptionV1]
+
+	enum CodingKeys: String, CodingKey {
+		case provider
+		case builtIn = "built_in"
+		case clients
+		case credentials
+		case hasWrapper = "has_wrapper"
+		case ready
+		case options
+	}
+
+	public init(from decoder: Decoder) throws {
+		let container = try decoder.container(keyedBy: CodingKeys.self)
+		provider = try container.decode(String.self, forKey: .provider)
+		builtIn = try container.decode(Bool.self, forKey: .builtIn)
+		clients = try container.decode([String].self, forKey: .clients)
+		credentials = try container.decode([DesktopProviderCredentialV1].self, forKey: .credentials)
+		hasWrapper = try container.decode(Bool.self, forKey: .hasWrapper)
+		ready = try container.decode(Bool.self, forKey: .ready)
+		options = try container.decodeIfPresent([DesktopProviderSwitchOptionV1].self, forKey: .options) ?? []
+	}
+}
+
+public struct DesktopProviderCredentialV1: Codable, Equatable, Sendable {
+	public let name: String
+	public let clients: [String]
+	public let present: Bool
+}
+
+public struct DesktopProviderSwitchOptionV1: Codable, Equatable, Sendable, Identifiable {
+	public var id: String {
+		[client, provider, credential ?? "", viaWrapper ? "via" : "direct"].joined(separator: "\u{0}")
+	}
+	public let client: String
+	public let provider: String
+	public let credential: String?
+	public let viaWrapper: Bool
+	public let ready: Bool
+	public let reasonCode: String?
+
+	enum CodingKeys: String, CodingKey {
+		case client
+		case provider
+		case credential
+		case viaWrapper = "via_wrapper"
+		case ready
+		case reasonCode = "reason_code"
+	}
 }
 
 public struct DesktopUsageSnapshotV1: Codable, Equatable, Sendable {
@@ -199,9 +272,32 @@ public struct DesktopUsageScopeV1: Codable, Equatable, Sendable, Identifiable {
 	public let client: String
 	public let periods: DesktopUsagePeriodsV1
 	public let daily: DesktopUsageDailyV1
+	public let hourly: DesktopUsageHourlyV1?
 	public let quality: DesktopUsageQualityV1
 	public let pricing: DesktopUsagePricingV1
 	public let rhythm: DesktopUsageRhythmV1
+
+	enum CodingKeys: String, CodingKey {
+		case client, periods, daily, hourly, quality, pricing, rhythm
+	}
+
+	public init(from decoder: Decoder) throws {
+		let container = try decoder.container(keyedBy: CodingKeys.self)
+		client = try container.decode(String.self, forKey: .client)
+		periods = try container.decode(DesktopUsagePeriodsV1.self, forKey: .periods)
+		daily = try container.decode(DesktopUsageDailyV1.self, forKey: .daily)
+		if container.contains(.hourly) {
+			guard try !container.decodeNil(forKey: .hourly) else {
+				throw DesktopWireError.invalidEnvelope
+			}
+			hourly = try container.decode(DesktopUsageHourlyV1.self, forKey: .hourly)
+		} else {
+			hourly = nil
+		}
+		quality = try container.decode(DesktopUsageQualityV1.self, forKey: .quality)
+		pricing = try container.decode(DesktopUsagePricingV1.self, forKey: .pricing)
+		rhythm = try container.decode(DesktopUsageRhythmV1.self, forKey: .rhythm)
+	}
 }
 
 public struct DesktopUsagePeriodsV1: Codable, Equatable, Sendable {
@@ -260,6 +356,27 @@ public struct DesktopPresentationTotalsV1: Codable, Equatable, Sendable {
 	}
 }
 
+public struct DesktopPresentationValueV1: Codable, Equatable, Sendable {
+	public let tokens: Int64
+	public let events: Int64
+	public let providerCost: String
+	public let costIncomplete: Bool
+
+	enum CodingKeys: String, CodingKey {
+		case tokens
+		case events
+		case providerCost = "provider_cost"
+		case costIncomplete = "cost_incomplete"
+	}
+
+	init(legacy totals: DesktopPresentationTotalsV1) {
+		tokens = totals.tokens
+		events = totals.events
+		providerCost = totals.providerCost ?? totals.knownProviderCost
+		costIncomplete = totals.providerCost == nil
+	}
+}
+
 public struct DesktopPresentationAverageV1: Codable, Equatable, Sendable {
 	public let tokens: String
 	public let providerCost: String?
@@ -281,8 +398,29 @@ public struct DesktopPresentationModelV1: Codable, Equatable, Sendable, Identifi
 	public var id: String { [client ?? "", model].joined(separator: "\u{0}") }
 	public let client: String?
 	public let model: String
-	public let totals: DesktopPresentationTotalsV1
+	public let value: DesktopPresentationValueV1
 	public let share: String?
+
+	enum CodingKeys: String, CodingKey {
+		case client, model, value, totals, share
+	}
+
+	public init(from decoder: Decoder) throws {
+		let container = try decoder.container(keyedBy: CodingKeys.self)
+		client = try container.decodeIfPresent(String.self, forKey: .client)
+		model = try container.decode(String.self, forKey: .model)
+		share = try container.decodeIfPresent(String.self, forKey: .share)
+		value = try container.decodeIfPresent(DesktopPresentationValueV1.self, forKey: .value)
+			?? DesktopPresentationValueV1(legacy: container.decode(DesktopPresentationTotalsV1.self, forKey: .totals))
+	}
+
+	public func encode(to encoder: Encoder) throws {
+		var container = encoder.container(keyedBy: CodingKeys.self)
+		try container.encodeIfPresent(client, forKey: .client)
+		try container.encode(model, forKey: .model)
+		try container.encode(value, forKey: .value)
+		try container.encodeIfPresent(share, forKey: .share)
+	}
 }
 
 public struct DesktopUsageDailyV1: Codable, Equatable, Sendable {
@@ -293,7 +431,77 @@ public struct DesktopUsageDailyV1: Codable, Equatable, Sendable {
 public struct DesktopUsageDailyItemV1: Codable, Equatable, Sendable, Identifiable {
 	public var id: String { date }
 	public let date: String
-	public let totals: DesktopPresentationTotalsV1
+	public let value: DesktopPresentationValueV1
+
+	enum CodingKeys: String, CodingKey { case date, value, totals }
+
+	public init(from decoder: Decoder) throws {
+		let container = try decoder.container(keyedBy: CodingKeys.self)
+		date = try container.decode(String.self, forKey: .date)
+		value = try container.decodeIfPresent(DesktopPresentationValueV1.self, forKey: .value)
+			?? DesktopPresentationValueV1(legacy: container.decode(DesktopPresentationTotalsV1.self, forKey: .totals))
+	}
+
+	public func encode(to encoder: Encoder) throws {
+		var container = encoder.container(keyedBy: CodingKeys.self)
+		try container.encode(date, forKey: .date)
+		try container.encode(value, forKey: .value)
+	}
+}
+
+public struct DesktopUsageHourlyV1: Codable, Equatable, Sendable {
+	public let available: Bool
+	public let throughHour: Int
+	public let items: [DesktopUsageHourlyItemV1]
+
+	enum CodingKeys: String, CodingKey {
+		case available
+		case throughHour = "through_hour"
+		case items
+	}
+
+	public init(from decoder: Decoder) throws {
+		let container = try decoder.container(keyedBy: CodingKeys.self)
+		let available = try container.decode(Bool.self, forKey: .available)
+		let throughHour = try container.decode(Int.self, forKey: .throughHour)
+		let items = try container.decode([DesktopUsageHourlyItemV1].self, forKey: .items)
+		guard (0 ... 23).contains(throughHour) else {
+			throw DesktopWireError.invalidEnvelope
+		}
+		if available {
+			guard items.count == throughHour + 1,
+				items.enumerated().allSatisfy({ offset, item in item.hour == offset })
+			else {
+				throw DesktopWireError.invalidEnvelope
+			}
+		} else if !items.isEmpty {
+			throw DesktopWireError.invalidEnvelope
+		}
+		self.available = available
+		self.throughHour = throughHour
+		self.items = items
+	}
+}
+
+public struct DesktopUsageHourlyItemV1: Codable, Equatable, Sendable, Identifiable {
+	public var id: Int { hour }
+	public let hour: Int
+	public let value: DesktopPresentationValueV1
+
+	enum CodingKeys: String, CodingKey { case hour, value, totals }
+
+	public init(from decoder: Decoder) throws {
+		let container = try decoder.container(keyedBy: CodingKeys.self)
+		hour = try container.decode(Int.self, forKey: .hour)
+		value = try container.decodeIfPresent(DesktopPresentationValueV1.self, forKey: .value)
+			?? DesktopPresentationValueV1(legacy: container.decode(DesktopPresentationTotalsV1.self, forKey: .totals))
+	}
+
+	public func encode(to encoder: Encoder) throws {
+		var container = encoder.container(keyedBy: CodingKeys.self)
+		try container.encode(hour, forKey: .hour)
+		try container.encode(value, forKey: .value)
+	}
 }
 
 public struct DesktopUsageQualityV1: Codable, Equatable, Sendable {
@@ -313,8 +521,25 @@ public struct DesktopUsageQualityItemV1: Codable, Equatable, Sendable, Identifia
 public struct DesktopUsageQualityTierV1: Codable, Equatable, Sendable, Identifiable {
 	public var id: String { quality }
 	public let quality: String
-	public let totals: DesktopPresentationTotalsV1
+	public let value: DesktopPresentationValueV1
 	public let share: String?
+
+	enum CodingKeys: String, CodingKey { case quality, value, totals, share }
+
+	public init(from decoder: Decoder) throws {
+		let container = try decoder.container(keyedBy: CodingKeys.self)
+		quality = try container.decode(String.self, forKey: .quality)
+		share = try container.decodeIfPresent(String.self, forKey: .share)
+		value = try container.decodeIfPresent(DesktopPresentationValueV1.self, forKey: .value)
+			?? DesktopPresentationValueV1(legacy: container.decode(DesktopPresentationTotalsV1.self, forKey: .totals))
+	}
+
+	public func encode(to encoder: Encoder) throws {
+		var container = encoder.container(keyedBy: CodingKeys.self)
+		try container.encode(quality, forKey: .quality)
+		try container.encode(value, forKey: .value)
+		try container.encodeIfPresent(share, forKey: .share)
+	}
 }
 
 public struct DesktopUsagePricingV1: Codable, Equatable, Sendable {
@@ -341,17 +566,90 @@ public struct DesktopUsagePricingItemV1: Codable, Equatable, Sendable, Identifia
 
 public struct DesktopUsageRhythmV1: Codable, Equatable, Sendable {
 	public let available: Bool
-	public let cells: [DesktopUsageRhythmCellV1]
+	public let intensities: [Int]
+	public let tokens: [Int64]
+	public let providerCosts: [String]
+	public let costIncomplete: [Bool]
 	public let activeDays: Int
 	public let busiestDay: String
 	public let quietestDay: String
+	private let hoverAvailable: Bool
+
+	public var cells: [DesktopUsageRhythmCellV1] {
+		guard intensities.count == tokens.count,
+			intensities.count == providerCosts.count,
+			intensities.count == costIncomplete.count
+		else {
+			return []
+		}
+		return intensities.indices.map { index in
+			DesktopUsageRhythmCellV1(
+				weekday: index / 24,
+				hour: index % 24,
+				intensity: intensities[index],
+				tokens: hoverAvailable ? tokens[index] : nil,
+				providerCost: hoverAvailable ? providerCosts[index] : nil,
+				costIncomplete: hoverAvailable ? costIncomplete[index] : nil
+			)
+		}
+	}
 
 	enum CodingKeys: String, CodingKey {
 		case available
+		case intensities
+		case tokens
+		case providerCosts = "provider_costs"
+		case costIncomplete = "cost_incomplete"
 		case cells
 		case activeDays = "active_days"
 		case busiestDay = "busiest_day"
 		case quietestDay = "quietest_day"
+	}
+
+	public init(from decoder: Decoder) throws {
+		let container = try decoder.container(keyedBy: CodingKeys.self)
+		available = try container.decode(Bool.self, forKey: .available)
+		activeDays = try container.decode(Int.self, forKey: .activeDays)
+		busiestDay = try container.decode(String.self, forKey: .busiestDay)
+		quietestDay = try container.decode(String.self, forKey: .quietestDay)
+		if let packedIntensities = try container.decodeIfPresent([Int].self, forKey: .intensities) {
+			hoverAvailable = true
+			intensities = packedIntensities
+			tokens = try container.decode([Int64].self, forKey: .tokens)
+			providerCosts = try container.decode([String].self, forKey: .providerCosts)
+			costIncomplete = try container.decode([Bool].self, forKey: .costIncomplete)
+			guard intensities.count == tokens.count,
+				intensities.count == providerCosts.count,
+				intensities.count == costIncomplete.count
+			else {
+				throw DecodingError.dataCorruptedError(
+					forKey: .intensities,
+					in: container,
+					debugDescription: "rhythm parallel arrays have different lengths"
+				)
+			}
+		} else {
+			let legacyCells = try container.decode([DesktopUsageRhythmCellV1].self, forKey: .cells)
+			hoverAvailable = legacyCells.allSatisfy {
+				$0.tokens != nil && $0.providerCost != nil && $0.costIncomplete != nil
+			}
+			intensities = legacyCells.map(\.intensity)
+			tokens = legacyCells.map { $0.tokens ?? 0 }
+			providerCosts = legacyCells.map { $0.providerCost ?? "" }
+			costIncomplete = legacyCells.map { $0.costIncomplete ?? true }
+		}
+	}
+
+	public func encode(to encoder: Encoder) throws {
+		var container = encoder.container(keyedBy: CodingKeys.self)
+		try container.encode(available, forKey: .available)
+		try container.encode(intensities, forKey: .intensities)
+		try container.encode(tokens, forKey: .tokens)
+		try container.encode(providerCosts, forKey: .providerCosts)
+		try container.encode(costIncomplete, forKey: .costIncomplete)
+		try container.encode(activeDays, forKey: .activeDays)
+		try container.encode(busiestDay, forKey: .busiestDay)
+		try container.encode(quietestDay, forKey: .quietestDay)
 	}
 }
 
@@ -360,6 +658,18 @@ public struct DesktopUsageRhythmCellV1: Codable, Equatable, Sendable, Identifiab
 	public let weekday: Int
 	public let hour: Int
 	public let intensity: Int
+	public let tokens: Int64?
+	public let providerCost: String?
+	public let costIncomplete: Bool?
+
+	enum CodingKeys: String, CodingKey {
+		case weekday
+		case hour
+		case intensity
+		case tokens
+		case providerCost = "provider_cost"
+		case costIncomplete = "cost_incomplete"
+	}
 }
 
 public struct DesktopClientSubtotalsV1: Codable, Equatable, Sendable {
@@ -376,7 +686,24 @@ public struct DesktopClientSubtotalV1: Codable, Equatable, Sendable, Identifiabl
 	public var id: String { "\(period):\(client)" }
 	public let period: String
 	public let client: String
-	public let totals: DesktopPresentationTotalsV1
+	public let value: DesktopPresentationValueV1
+
+	enum CodingKeys: String, CodingKey { case period, client, value, totals }
+
+	public init(from decoder: Decoder) throws {
+		let container = try decoder.container(keyedBy: CodingKeys.self)
+		period = try container.decode(String.self, forKey: .period)
+		client = try container.decode(String.self, forKey: .client)
+		value = try container.decodeIfPresent(DesktopPresentationValueV1.self, forKey: .value)
+			?? DesktopPresentationValueV1(legacy: container.decode(DesktopPresentationTotalsV1.self, forKey: .totals))
+	}
+
+	public func encode(to encoder: Encoder) throws {
+		var container = encoder.container(keyedBy: CodingKeys.self)
+		try container.encode(period, forKey: .period)
+		try container.encode(client, forKey: .client)
+		try container.encode(value, forKey: .value)
+	}
 }
 
 public struct DesktopSessionsSnapshotV1: Codable, Equatable, Sendable {
@@ -427,6 +754,7 @@ public struct DesktopSessionsPeriodItemV1: Codable, Equatable, Sendable, Identif
     public let totalDurationSeconds: Int64
     public let medianDurationSeconds: Int64
     public let distinctProjects: Int
+	public let projects: [DesktopSessionsProjectV1]
 
     enum CodingKeys: String, CodingKey {
         case period
@@ -435,7 +763,32 @@ public struct DesktopSessionsPeriodItemV1: Codable, Equatable, Sendable, Identif
         case totalDurationSeconds = "total_duration_seconds"
         case medianDurationSeconds = "median_duration_seconds"
         case distinctProjects = "distinct_projects"
+		case projects
     }
+
+	public init(from decoder: Decoder) throws {
+		let container = try decoder.container(keyedBy: CodingKeys.self)
+		period = try container.decode(String.self, forKey: .period)
+		client = try container.decode(String.self, forKey: .client)
+		sessions = try container.decode(Int.self, forKey: .sessions)
+		totalDurationSeconds = try container.decode(Int64.self, forKey: .totalDurationSeconds)
+		medianDurationSeconds = try container.decode(Int64.self, forKey: .medianDurationSeconds)
+		distinctProjects = try container.decode(Int.self, forKey: .distinctProjects)
+		projects = try container.decodeIfPresent([DesktopSessionsProjectV1].self, forKey: .projects) ?? []
+	}
+}
+
+public struct DesktopSessionsProjectV1: Codable, Equatable, Sendable, Identifiable {
+	public var id: String { project ?? "" }
+	public let project: String?
+	public let sessions: Int
+	public let durationSeconds: Int64
+
+	enum CodingKeys: String, CodingKey {
+		case project
+		case sessions
+		case durationSeconds = "duration_seconds"
+	}
 }
 
 public struct DesktopRecentSessionV1: Codable, Equatable, Sendable {
@@ -484,6 +837,57 @@ public struct DesktopHealthCheckV1: Codable, Equatable, Sendable {
 
 public func decodeDesktopWireEnvelopeV1(_ data: Data) throws -> DesktopWireEnvelopeV1 {
 	try JSONDecoder().decode(DesktopWireEnvelopeV1.self, from: data)
+}
+
+public struct ProviderUseEnvelopeV1: Decodable, Equatable, Sendable {
+	public static let schemaVersion = 1
+	public static let command = "provider.use"
+
+	public let schemaVersion: Int
+	public let command: String
+	public let generatedAt: String
+	public let warnings: [String]
+	public let partial: Bool
+	public let errorCode: String?
+
+	enum CodingKeys: String, CodingKey {
+		case schemaVersion = "schema_version"
+		case command
+		case generatedAt = "generated_at"
+		case data
+		case warnings
+		case partial
+		case error
+	}
+
+	private struct EncodedError: Decodable {
+		let code: String
+	}
+
+	public init(from decoder: Decoder) throws {
+		let container = try decoder.container(keyedBy: CodingKeys.self)
+		let schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
+		let command = try container.decode(String.self, forKey: .command)
+		let generatedAt = try container.decode(String.self, forKey: .generatedAt)
+		let dataIsNull = try (!container.contains(.data) || container.decodeNil(forKey: .data))
+		guard schemaVersion == Self.schemaVersion,
+			command == Self.command,
+			isRFC3339Timestamp(generatedAt),
+			dataIsNull
+		else {
+			throw DesktopWireError.invalidEnvelope
+		}
+		self.schemaVersion = schemaVersion
+		self.command = command
+		self.generatedAt = generatedAt
+		warnings = try container.decode([String].self, forKey: .warnings)
+		partial = try container.decode(Bool.self, forKey: .partial)
+		errorCode = try container.decodeIfPresent(EncodedError.self, forKey: .error)?.code
+	}
+}
+
+public func decodeProviderUseEnvelopeV1(_ data: Data) throws -> ProviderUseEnvelopeV1 {
+	try JSONDecoder().decode(ProviderUseEnvelopeV1.self, from: data)
 }
 
 private func isRFC3339Timestamp(_ value: String) -> Bool {

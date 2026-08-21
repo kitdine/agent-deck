@@ -55,8 +55,9 @@ type Snapshot struct {
 }
 
 type ProviderSnapshot struct {
-	Available bool            `json:"available"`
-	Routes    []ProviderRoute `json:"routes"`
+	Available  bool                `json:"available"`
+	Routes     []ProviderRoute     `json:"routes"`
+	Candidates []ProviderCandidate `json:"candidates"`
 }
 
 type ProviderRoute struct {
@@ -64,6 +65,31 @@ type ProviderRoute struct {
 	Provider   string `json:"provider"`
 	SelectedAt string `json:"selected_at"`
 	ViaWrapper bool   `json:"via_wrapper"`
+}
+
+type ProviderCandidate struct {
+	Provider    string                        `json:"provider"`
+	BuiltIn     bool                          `json:"built_in"`
+	Clients     []string                      `json:"clients"`
+	Credentials []ProviderCandidateCredential `json:"credentials"`
+	HasWrapper  bool                          `json:"has_wrapper"`
+	Ready       bool                          `json:"ready"`
+	Options     []ProviderSwitchOption        `json:"options"`
+}
+
+type ProviderCandidateCredential struct {
+	Name    string   `json:"name"`
+	Clients []string `json:"clients"`
+	Present bool     `json:"present"`
+}
+
+type ProviderSwitchOption struct {
+	Client     string  `json:"client"`
+	Provider   string  `json:"provider"`
+	Credential *string `json:"credential"`
+	ViaWrapper bool    `json:"via_wrapper"`
+	Ready      bool    `json:"ready"`
+	ReasonCode *string `json:"reason_code"`
 }
 
 type UsageSnapshot struct {
@@ -99,12 +125,19 @@ type SessionsPeriods struct {
 }
 
 type SessionsPeriodItem struct {
-	Period                string `json:"period"`
-	Client                string `json:"client"`
-	Sessions              int    `json:"sessions"`
-	TotalDurationSeconds  int64  `json:"total_duration_seconds"`
-	MedianDurationSeconds int64  `json:"median_duration_seconds"`
-	DistinctProjects      int    `json:"distinct_projects"`
+	Period                string                `json:"period"`
+	Client                string                `json:"client"`
+	Sessions              int                   `json:"sessions"`
+	TotalDurationSeconds  int64                 `json:"total_duration_seconds"`
+	MedianDurationSeconds int64                 `json:"median_duration_seconds"`
+	DistinctProjects      int                   `json:"distinct_projects"`
+	Projects              []SessionsProjectItem `json:"projects"`
+}
+
+type SessionsProjectItem struct {
+	Project         string `json:"project,omitempty"`
+	Sessions        int    `json:"sessions"`
+	DurationSeconds int64  `json:"duration_seconds"`
 }
 
 type RecentSession struct {
@@ -158,7 +191,7 @@ func (s Service) Build(ctx context.Context, request Request) (Result, error) {
 		WireVersion:   request.WireVersion,
 		GeneratedAt:   now.Format(time.RFC3339Nano),
 		NextRefreshAt: now.Add(RefreshInterval).Format(time.RFC3339Nano),
-		Provider:      ProviderSnapshot{Routes: []ProviderRoute{}},
+		Provider:      ProviderSnapshot{Routes: []ProviderRoute{}, Candidates: []ProviderCandidate{}},
 		Usage:         emptyUsageSnapshot(now, s.location()),
 		Sessions:      emptySessionsSnapshot(),
 		Health:        HealthSnapshot{Checks: []HealthCheck{}},
@@ -206,12 +239,21 @@ func (r *Result) warn(code string) {
 }
 
 func (s Service) loadProvider(ctx context.Context, core *store.Store, result *Result) {
-	values, err := (provider.Service{Store: core}).Current(ctx)
+	service := provider.Service{Store: core}
+	values, err := service.Current(ctx)
 	if err != nil {
 		result.warn("provider_unavailable")
 		return
 	}
-	result.Snapshot.Provider = providerSnapshot(values)
+	snapshot := providerSnapshot(values)
+	candidates, err := providerCandidates(ctx, service, values)
+	if err != nil {
+		result.Snapshot.Provider = snapshot
+		result.warn("provider_candidates_unavailable")
+		return
+	}
+	snapshot.Candidates = candidates
+	result.Snapshot.Provider = snapshot
 }
 
 func providerSnapshot(values []provider.CurrentSelection) ProviderSnapshot {
@@ -222,7 +264,126 @@ func providerSnapshot(values []provider.CurrentSelection) ProviderSnapshot {
 			SelectedAt: value.SelectedAt, ViaWrapper: value.ViaWrapper,
 		})
 	}
-	return ProviderSnapshot{Available: true, Routes: routes}
+	return ProviderSnapshot{Available: true, Routes: routes, Candidates: []ProviderCandidate{}}
+}
+
+func providerCandidates(ctx context.Context, service provider.Service, current []provider.CurrentSelection) ([]ProviderCandidate, error) {
+	definitions, err := service.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	currentByClient := map[string]provider.CurrentSelection{}
+	for _, selection := range current {
+		currentByClient[selection.Client] = selection
+	}
+	candidates := make([]ProviderCandidate, 0, len(definitions))
+	for _, item := range definitions {
+		definition := item.Definition
+		clients := providerCandidateClients(definition.Clients)
+		credentials, err := service.ListCredentials(ctx, definition.Name, "")
+		if err != nil {
+			return nil, err
+		}
+		candidate := ProviderCandidate{
+			Provider: definition.Name, BuiltIn: definition.BuiltIn, Clients: clients,
+			Credentials: []ProviderCandidateCredential{}, HasWrapper: definition.WrapperURL != "",
+			Options: []ProviderSwitchOption{},
+		}
+		for _, credential := range credentials {
+			bindings := append([]string(nil), credential.Clients...)
+			sort.Slice(bindings, func(i, j int) bool { return providerClientLess(bindings[i], bindings[j]) })
+			candidate.Credentials = append(candidate.Credentials, ProviderCandidateCredential{Name: credential.Name, Clients: bindings, Present: credential.Present})
+		}
+		candidate.Options = providerCandidateOptions(candidate, currentByClient)
+		for _, option := range candidate.Options {
+			candidate.Ready = candidate.Ready || option.Ready
+		}
+		candidates = append(candidates, candidate)
+	}
+	return candidates, nil
+}
+
+func providerCandidateClients(mappings []store.ClientMapping) []string {
+	seen := map[string]bool{}
+	clients := make([]string, 0, len(mappings))
+	for _, mapping := range mappings {
+		if !seen[mapping.Client] {
+			seen[mapping.Client] = true
+			clients = append(clients, mapping.Client)
+		}
+	}
+	sort.Slice(clients, func(i, j int) bool { return providerClientLess(clients[i], clients[j]) })
+	return clients
+}
+
+func providerClientLess(left, right string) bool {
+	order := map[string]int{"codex": 0, "claude": 1}
+	leftOrder, leftKnown := order[left]
+	rightOrder, rightKnown := order[right]
+	if leftKnown && rightKnown {
+		return leftOrder < rightOrder
+	}
+	if leftKnown != rightKnown {
+		return leftKnown
+	}
+	return left < right
+}
+
+func providerCandidateOptions(candidate ProviderCandidate, current map[string]provider.CurrentSelection) []ProviderSwitchOption {
+	credentials := candidate.Credentials
+	if candidate.BuiltIn || len(credentials) == 0 {
+		credentials = []ProviderCandidateCredential{{}}
+	}
+	options := make([]ProviderSwitchOption, 0, len(candidate.Clients)*len(credentials)*2)
+	for _, client := range candidate.Clients {
+		for _, credential := range credentials {
+			var credentialName *string
+			if credential.Name != "" {
+				copy := credential.Name
+				credentialName = &copy
+			}
+			for _, viaWrapper := range []bool{false, true} {
+				option := ProviderSwitchOption{Client: client, Provider: candidate.Provider, Credential: credentialName, ViaWrapper: viaWrapper}
+				reason := providerOptionReason(candidate, credential, client, viaWrapper, current[client])
+				if reason == "" {
+					option.Ready = true
+				} else {
+					option.ReasonCode = &reason
+				}
+				options = append(options, option)
+			}
+		}
+	}
+	return options
+}
+
+func providerOptionReason(candidate ProviderCandidate, credential ProviderCandidateCredential, client string, viaWrapper bool, current provider.CurrentSelection) string {
+	if !candidate.BuiltIn {
+		if credential.Name == "" {
+			return "credential_missing"
+		}
+		bound := false
+		for _, value := range credential.Clients {
+			bound = bound || value == client
+		}
+		if !bound {
+			return "credential_client_mismatch"
+		}
+		if !credential.Present {
+			return "credential_missing"
+		}
+	}
+	if viaWrapper && !candidate.HasWrapper {
+		return "wrapper_not_configured"
+	}
+	credentialName := ""
+	if !candidate.BuiltIn {
+		credentialName = credential.Name
+	}
+	if current.Client == client && current.Provider == candidate.Provider && current.Credential == credentialName && current.ViaWrapper == viaWrapper {
+		return "already_selected"
+	}
+	return ""
 }
 
 func emptyUsageSnapshot(now time.Time, location *time.Location) UsageSnapshot {
@@ -341,6 +502,12 @@ func sessionsPeriods(values []session.Metadata, now time.Time, location *time.Lo
 func sessionsPeriodItem(values []session.Metadata, period string, start, end time.Time, client string, location *time.Location) SessionsPeriodItem {
 	durations := make([]int64, 0, len(values))
 	projects := map[string]struct{}{}
+	type projectAccumulator struct {
+		label    string
+		sessions int
+		duration int64
+	}
+	projectTotals := map[string]*projectAccumulator{}
 	var total int64
 	for _, value := range values {
 		if client != "all" && value.Client != client {
@@ -361,17 +528,40 @@ func sessionsPeriodItem(values []session.Metadata, period string, start, end tim
 		}
 		durations = append(durations, duration)
 		total += duration
-		// Distinct projects count normalized full identities, not display
-		// basenames: two checkouts named `agent-deck` under different parents
-		// are two projects, and a session with no project is none.
-		if identity := projectIdentity(value.Project); identity != "" {
+		// Ordinary checkouts keep their normalized full identity. ChatGPT Work
+		// conversation directories are ephemeral one-conversation workspaces,
+		// so their stable product identity is the shared ChatGPT Work bucket.
+		identity, label := sessionProjectGroup(value.Project)
+		if identity != "" {
 			projects[identity] = struct{}{}
 		}
+		if identity == "" {
+			identity = "\x00"
+		}
+		project := projectTotals[identity]
+		if project == nil {
+			project = &projectAccumulator{label: label}
+			projectTotals[identity] = project
+		}
+		project.sessions++
+		project.duration += duration
 	}
+	projectItems := make([]SessionsProjectItem, 0, len(projectTotals))
+	for _, project := range projectTotals {
+		projectItems = append(projectItems, SessionsProjectItem{
+			Project: project.label, Sessions: project.sessions, DurationSeconds: project.duration,
+		})
+	}
+	sort.Slice(projectItems, func(i, j int) bool {
+		if projectItems[i].DurationSeconds != projectItems[j].DurationSeconds {
+			return projectItems[i].DurationSeconds > projectItems[j].DurationSeconds
+		}
+		return projectItems[i].Project < projectItems[j].Project
+	})
 	return SessionsPeriodItem{
 		Period: period, Client: client, Sessions: len(durations),
 		TotalDurationSeconds: total, MedianDurationSeconds: medianDuration(durations),
-		DistinctProjects: len(projects),
+		DistinctProjects: len(projects), Projects: projectItems,
 	}
 }
 
@@ -405,6 +595,15 @@ func projectLabel(value string) string {
 		return ""
 	}
 	return label
+}
+
+func sessionProjectGroup(value string) (identity, label string) {
+	identity = projectIdentity(value)
+	label = projectLabel(value)
+	if strings.HasPrefix(strings.ToLower(label), "referenced-chatgpt-conversation-") {
+		return "chatgpt-work://referenced-conversation", "ChatGPT Work"
+	}
+	return identity, label
 }
 
 func (s Service) loadHealth(ctx context.Context, result *Result) {

@@ -222,13 +222,18 @@ struct DesktopUsagePricingItemV1: Codable, Sendable {
 
 struct DesktopUsageRhythmV1: Codable, Sendable {
     let available: Bool
-    let cells: [DesktopUsageRhythmCellV1]
-}
+	let intensities: [Int]
+	let tokens: [Int64]
+	let providerCosts: [String]
+	let costIncomplete: [Bool]
 
-struct DesktopUsageRhythmCellV1: Codable, Sendable {
-    let weekday: Int
-    let hour: Int
-    let intensity: Int
+	enum CodingKeys: String, CodingKey {
+		case available
+		case intensities
+		case tokens
+		case providerCosts = "provider_costs"
+		case costIncomplete = "cost_incomplete"
+	}
 }
 
 struct DesktopClientSubtotalsV1: Codable, Sendable {
