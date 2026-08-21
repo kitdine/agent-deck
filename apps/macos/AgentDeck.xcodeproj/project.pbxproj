@@ -21,6 +21,24 @@
 		A1000000000000000000000C /* DesktopLogPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000E /* DesktopLogPolicyTests.swift */; };
 		A1000000000000000000000D /* AgentDeckShared.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20000000000000000000011 /* AgentDeckShared.framework */; };
 		A1000000000000000000000E /* DesktopRefreshCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000013 /* DesktopRefreshCoordinatorTests.swift */; };
+		A1000000000000000000000F /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000014 /* Localizable.xcstrings */; };
+		A10000000000000000000010 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000015 /* Assets.xcassets */; };
+		A10000000000000000000011 /* DesktopCopy.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000016 /* DesktopCopy.swift */; };
+		A10000000000000000000012 /* DesktopPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000017 /* DesktopPreferences.swift */; };
+		A10000000000000000000013 /* MenuBarViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000018 /* MenuBarViewModel.swift */; };
+		A10000000000000000000014 /* MenuBarSurfaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000019 /* MenuBarSurfaceView.swift */; };
+		A10000000000000000000015 /* MenuBarPanelViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001A /* MenuBarPanelViews.swift */; };
+		A10000000000000000000016 /* MenuBarItemController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001B /* MenuBarItemController.swift */; };
+		A10000000000000000000017 /* SettingsWindowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001C /* SettingsWindowView.swift */; };
+		A10000000000000000000018 /* AppTestFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001D /* AppTestFixtures.swift */; };
+		A10000000000000000000019 /* MenuBarViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001E /* MenuBarViewModelTests.swift */; };
+		A1000000000000000000001A /* SwitchFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000001F /* SwitchFlowTests.swift */; };
+		A1000000000000000000001B /* DesktopPreferencesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000020 /* DesktopPreferencesTests.swift */; };
+		A1000000000000000000001C /* DesktopCopyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000021 /* DesktopCopyTests.swift */; };
+		A1000000000000000000001D /* AgentDeckShared.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20000000000000000000011 /* AgentDeckShared.framework */; };
+		A1000000000000000000001E /* MenuBarChromeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000023 /* MenuBarChromeTests.swift */; };
+		A1000000000000000000001F /* AgentDeckMenuBarIcon.png in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000024 /* AgentDeckMenuBarIcon.png */; };
+		A10000000000000000000020 /* AgentDeckAppIcon.png in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000025 /* AgentDeckAppIcon.png */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -40,9 +58,27 @@
 		A2000000000000000000000D /* AppGroupSnapshotStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppGroupSnapshotStoreTests.swift; sourceTree = "<group>"; };
 		A2000000000000000000000E /* DesktopLogPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopLogPolicyTests.swift; sourceTree = "<group>"; };
 		A20000000000000000000013 /* DesktopRefreshCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopRefreshCoordinatorTests.swift; sourceTree = "<group>"; };
+		A20000000000000000000014 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
+		A20000000000000000000015 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A2000000000000000000000F /* AgentDeck.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AgentDeck.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A20000000000000000000011 /* AgentDeckShared.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = AgentDeckShared.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		A20000000000000000000010 /* AgentDeckSharedTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AgentDeckSharedTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		A20000000000000000000016 /* DesktopCopy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopCopy.swift; sourceTree = "<group>"; };
+		A20000000000000000000017 /* DesktopPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopPreferences.swift; sourceTree = "<group>"; };
+		A20000000000000000000018 /* MenuBarViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarViewModel.swift; sourceTree = "<group>"; };
+		A20000000000000000000019 /* MenuBarSurfaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarSurfaceView.swift; sourceTree = "<group>"; };
+		A2000000000000000000001A /* MenuBarPanelViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarPanelViews.swift; sourceTree = "<group>"; };
+		A2000000000000000000001B /* MenuBarItemController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarItemController.swift; sourceTree = "<group>"; };
+		A2000000000000000000001C /* SettingsWindowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsWindowView.swift; sourceTree = "<group>"; };
+		A2000000000000000000001D /* AppTestFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTestFixtures.swift; sourceTree = "<group>"; };
+		A2000000000000000000001E /* MenuBarViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarViewModelTests.swift; sourceTree = "<group>"; };
+		A2000000000000000000001F /* SwitchFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwitchFlowTests.swift; sourceTree = "<group>"; };
+		A20000000000000000000020 /* DesktopPreferencesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopPreferencesTests.swift; sourceTree = "<group>"; };
+		A20000000000000000000021 /* DesktopCopyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopCopyTests.swift; sourceTree = "<group>"; };
+		A20000000000000000000022 /* AgentDeckAppTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AgentDeckAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		A20000000000000000000023 /* MenuBarChromeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarChromeTests.swift; sourceTree = "<group>"; };
+		A20000000000000000000024 /* AgentDeckMenuBarIcon.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = AgentDeckMenuBarIcon.png; path = Resources/AgentDeckMenuBarIcon.png; sourceTree = "<group>"; };
+		A20000000000000000000025 /* AgentDeckAppIcon.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = AgentDeckAppIcon.png; path = Resources/AgentDeckAppIcon.png; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -76,6 +112,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A6000000000000000000000A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A1000000000000000000001D /* AgentDeckShared.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -85,6 +129,7 @@
 				A30000000000000000000002 /* AgentDeckApp */,
 				A30000000000000000000003 /* AgentDeckShared */,
 				A30000000000000000000004 /* AgentDeckTests */,
+				A30000000000000000000007 /* AgentDeckAppTests */,
 				A30000000000000000000005 /* Config */,
 				A30000000000000000000006 /* Products */,
 			);
@@ -94,6 +139,17 @@
 			isa = PBXGroup;
 			children = (
 				A20000000000000000000001 /* AgentDeckApp.swift */,
+				A20000000000000000000016 /* DesktopCopy.swift */,
+				A20000000000000000000017 /* DesktopPreferences.swift */,
+				A20000000000000000000018 /* MenuBarViewModel.swift */,
+				A20000000000000000000019 /* MenuBarSurfaceView.swift */,
+				A2000000000000000000001A /* MenuBarPanelViews.swift */,
+				A2000000000000000000001B /* MenuBarItemController.swift */,
+				A2000000000000000000001C /* SettingsWindowView.swift */,
+				A20000000000000000000015 /* Assets.xcassets */,
+				A20000000000000000000024 /* AgentDeckMenuBarIcon.png */,
+				A20000000000000000000025 /* AgentDeckAppIcon.png */,
+				A20000000000000000000014 /* Localizable.xcstrings */,
 				A20000000000000000000002 /* Info.plist */,
 				A20000000000000000000007 /* AgentDeck.entitlements */,
 			);
@@ -140,8 +196,22 @@
 				A2000000000000000000000F /* AgentDeck.app */,
 				A20000000000000000000011 /* AgentDeckShared.framework */,
 				A20000000000000000000010 /* AgentDeckSharedTests.xctest */,
+				A20000000000000000000022 /* AgentDeckAppTests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		A30000000000000000000007 /* AgentDeckAppTests */ = {
+			isa = PBXGroup;
+			children = (
+				A2000000000000000000001D /* AppTestFixtures.swift */,
+				A2000000000000000000001E /* MenuBarViewModelTests.swift */,
+				A2000000000000000000001F /* SwitchFlowTests.swift */,
+				A20000000000000000000020 /* DesktopPreferencesTests.swift */,
+				A20000000000000000000021 /* DesktopCopyTests.swift */,
+				A20000000000000000000023 /* MenuBarChromeTests.swift */,
+			);
+			path = AgentDeckAppTests;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -153,6 +223,7 @@
 			buildPhases = (
 				A60000000000000000000004 /* Sources */,
 				A60000000000000000000002 /* Frameworks */,
+				A60000000000000000000008 /* Resources */,
 				A60000000000000000000001 /* Embed Frameworks */,
 				A60000000000000000000005 /* Embed AgentDeck Helper */,
 			);
@@ -198,6 +269,23 @@
 			productReference = A20000000000000000000010 /* AgentDeckSharedTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		A40000000000000000000004 /* AgentDeckAppTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A80000000000000000000005 /* Build configuration list for PBXNativeTarget "AgentDeckAppTests" */;
+			buildPhases = (
+				A60000000000000000000009 /* Sources */,
+				A6000000000000000000000A /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A50000000000000000000003 /* PBXTargetDependency */,
+			);
+			name = AgentDeckAppTests;
+			productName = AgentDeckAppTests;
+			productReference = A20000000000000000000022 /* AgentDeckAppTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -211,6 +299,7 @@
 					A40000000000000000000001 = { CreatedOnToolsVersion = 26.0; };
 					A40000000000000000000002 = { CreatedOnToolsVersion = 26.0; };
 					A40000000000000000000003 = { CreatedOnToolsVersion = 26.0; TestTargetID = A40000000000000000000001; };
+					A40000000000000000000004 = { CreatedOnToolsVersion = 26.0; TestTargetID = A40000000000000000000001; };
 				};
 			};
 			buildConfigurationList = A80000000000000000000004 /* Build configuration list for PBXProject "AgentDeck" */;
@@ -219,6 +308,7 @@
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				en,
+				"zh-Hans",
 				Base,
 			);
 			mainGroup = A30000000000000000000001;
@@ -229,6 +319,7 @@
 				A40000000000000000000001 /* AgentDeck */,
 				A40000000000000000000002 /* AgentDeckShared */,
 				A40000000000000000000003 /* AgentDeckSharedTests */,
+				A40000000000000000000004 /* AgentDeckAppTests */,
 			);
 		};
 /* End PBXProject section */
@@ -256,12 +347,33 @@
 		};
 /* End PBXShellScriptBuildPhase section */
 
+/* Begin PBXResourcesBuildPhase section */
+		A60000000000000000000008 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000000000010 /* Assets.xcassets in Resources */,
+				A1000000000000000000001F /* AgentDeckMenuBarIcon.png in Resources */,
+				A10000000000000000000020 /* AgentDeckAppIcon.png in Resources */,
+				A1000000000000000000000F /* Localizable.xcstrings in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		A60000000000000000000004 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 				A10000000000000000000001 /* AgentDeckApp.swift in Sources */,
+				A10000000000000000000011 /* DesktopCopy.swift in Sources */,
+				A10000000000000000000012 /* DesktopPreferences.swift in Sources */,
+				A10000000000000000000013 /* MenuBarViewModel.swift in Sources */,
+				A10000000000000000000014 /* MenuBarSurfaceView.swift in Sources */,
+				A10000000000000000000015 /* MenuBarPanelViews.swift in Sources */,
+				A10000000000000000000016 /* MenuBarItemController.swift in Sources */,
+				A10000000000000000000017 /* SettingsWindowView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -289,11 +401,25 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A60000000000000000000009 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000000000018 /* AppTestFixtures.swift in Sources */,
+				A10000000000000000000019 /* MenuBarViewModelTests.swift in Sources */,
+				A1000000000000000000001A /* SwitchFlowTests.swift in Sources */,
+				A1000000000000000000001B /* DesktopPreferencesTests.swift in Sources */,
+				A1000000000000000000001C /* DesktopCopyTests.swift in Sources */,
+				A1000000000000000000001E /* MenuBarChromeTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
 		A50000000000000000000001 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = A40000000000000000000002 /* AgentDeckShared */; };
 		A50000000000000000000002 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = A40000000000000000000002 /* AgentDeckShared */; };
+		A50000000000000000000003 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = A40000000000000000000001 /* AgentDeck */; };
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
@@ -319,12 +445,17 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = A20000000000000000000009 /* AgentDeck.xcconfig */;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = AgentDeck.entitlements;
 				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = AgentDeckApp/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
+				MARKETING_VERSION = 0.5.0;
+				ENABLE_TESTABILITY = YES;
 				PRODUCT_NAME = AgentDeck;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 			};
 			name = Debug;
@@ -333,11 +464,14 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = A20000000000000000000009 /* AgentDeck.xcconfig */;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = AgentDeck.entitlements;
 				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = AgentDeckApp/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
+				MARKETING_VERSION = 0.5.0;
 				PRODUCT_NAME = AgentDeck;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 			};
@@ -347,6 +481,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				DEFINES_MODULE = YES;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
 				DYLIB_COMPATIBILITY_VERSION = 1;
 				DYLIB_CURRENT_VERSION = 1;
 				ENABLE_TESTABILITY = YES;
@@ -364,6 +499,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				DEFINES_MODULE = YES;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
 				DYLIB_COMPATIBILITY_VERSION = 1;
 				DYLIB_CURRENT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -395,6 +531,32 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.kitdine.agentdeck.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		A70000000000000000000009 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks @loader_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.kitdine.agentdeck.apptests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/AgentDeck.app/Contents/MacOS/AgentDeck";
+			};
+			name = Debug;
+		};
+		A7000000000000000000000A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks @loader_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.kitdine.agentdeck.apptests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/AgentDeck.app/Contents/MacOS/AgentDeck";
 			};
 			name = Release;
 		};
@@ -433,6 +595,15 @@
 			buildConfigurations = (
 				A70000000000000000000001 /* Debug */,
 				A70000000000000000000002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A80000000000000000000005 /* Build configuration list for PBXNativeTarget "AgentDeckAppTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A70000000000000000000009 /* Debug */,
+				A7000000000000000000000A /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

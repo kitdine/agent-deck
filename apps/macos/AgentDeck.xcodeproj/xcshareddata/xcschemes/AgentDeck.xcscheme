@@ -39,6 +39,16 @@
                ReferencedContainer = "container:AgentDeck.xcodeproj">
             </BuildableReference>
          </TestableReference>
+         <TestableReference
+            skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "A40000000000000000000004"
+               BuildableName = "AgentDeckAppTests.xctest"
+               BlueprintName = "AgentDeckAppTests"
+               ReferencedContainer = "container:AgentDeck.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
       </Testables>
    </TestAction>
    <LaunchAction
