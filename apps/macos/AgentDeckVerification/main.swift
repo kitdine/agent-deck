@@ -138,13 +138,26 @@ enum AgentDeckFoundationVerifier {
         )
         _ = try await embeddedRunner.snapshot()
         let invocations = await recordingProcess.recordedInvocations()
-        try require(invocations.count == 1, "expected exactly one embedded-helper invocation")
+        // A refresh updates the rebuildable usage and session indexes first and
+        // then reads one snapshot, so three invocations are the contract rather
+        // than a regression on the single snapshot read.
+        try require(invocations.count == 3, "expected two index refreshes followed by one snapshot read")
+        for invocation in invocations {
+            try require(
+                invocation.executableURL.path == bundleURL.appendingPathComponent("Contents/Helpers/agentdeck").path,
+                "host must not resolve agentdeck from PATH"
+            )
+        }
         try require(
-            invocations[0].executableURL.path == bundleURL.appendingPathComponent("Contents/Helpers/agentdeck").path,
-            "host must not resolve agentdeck from PATH"
+            invocations[0].arguments == ["--quiet", "--format", "json", "usage", "scan"],
+            "the usage index refresh must use the approved argument array"
         )
         try require(
-            invocations[0].arguments == ["--format", "json", "desktop", "snapshot", "--wire-version", "1", "--recent-limit", "5"],
+            invocations[1].arguments == ["--quiet", "--format", "json", "session", "scan"],
+            "the session index refresh must use the approved argument array"
+        )
+        try require(
+            invocations[2].arguments == ["--format", "json", "desktop", "snapshot", "--wire-version", "1", "--recent-limit", "5"],
             "helper command must use the approved argument array"
         )
 

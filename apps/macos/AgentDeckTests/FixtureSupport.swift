@@ -43,11 +43,16 @@ struct RecordedHelperInvocation: Equatable, Sendable {
 }
 
 actor RecordingHelperProcess: EmbeddedHelperProcess {
-    private let behavior: TestHelperBehavior
-    private var invocations = [RecordedHelperInvocation]()
+	private var behaviors: [TestHelperBehavior]
+	private var invocations = [RecordedHelperInvocation]()
 
-    init(behavior: TestHelperBehavior) {
-        self.behavior = behavior
+	init(behavior: TestHelperBehavior) {
+		behaviors = [behavior]
+	}
+
+	init(behaviors: [TestHelperBehavior]) {
+		precondition(!behaviors.isEmpty)
+		self.behaviors = behaviors
     }
 
     func run(
@@ -64,7 +69,8 @@ actor RecordingHelperProcess: EmbeddedHelperProcess {
                 timeout: timeout
             )
         )
-        switch behavior {
+		let behavior = behaviors.count == 1 ? behaviors[0] : behaviors.removeFirst()
+		switch behavior {
         case let .output(output):
             return output
         case let .helperError(error):
