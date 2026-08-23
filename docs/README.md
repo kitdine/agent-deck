@@ -87,7 +87,7 @@ agentdeck version
 
 | Topic | Version | Status | Purpose |
 | --- | --- | --- | --- |
-| [Native macOS Desktop App](topics/desktop-app/tasks.md) | `v0.5.0` | Active — 2/7 tasks reviewed; all six documents re-reviewed after the 2026-08-18 re-open, so the document set is complete and task 3 is next | macOS 26 menu-bar app, settings window, WidgetKit extension, unified desktop distribution, Cask, and direct-download delivery. |
+| [Native macOS Desktop App](topics/desktop-app/tasks.md) | `v0.5.0` | Active — 3/6 tasks reviewed; task 4 `desktop-widget` repaired after a Round 1 FAIL and awaiting re-review; task 5 `unified-desktop-distribution` implemented and awaiting review; document review deferred to task 6 | macOS 26 menu-bar app, settings window, WidgetKit extension, unified desktop distribution, Cask, and direct-download delivery. |
 | [Work Signals](topics/work-signals/tasks.md) | `v0.5.0` | Active — all five design documents PASS after three combined rounds; prototype task done, implementation task 1 next; 0/6 implementation tasks | Activity classification, workflow metrics, and tool-call attribution, delivered on two first-class surfaces: the menu-bar `Sessions` panel's three pending modules and a new `agentdeck usage signals`. |
 | [`v0.5.0` Contract Closure](topics/v0-5-0-contract/tasks.md) | `v0.5.0` | Active — 0/2 done | Version-wide specification raise and documentation reconciliation after every selected topic's tasks pass review. |
 | [Usage Attribution Precision](topics/usage-attribution-precision/tasks.md) | `v0.6.0` | Active — 0/3 done | Per-client attribution time semantics, determinability-based quality, and an unattributed boundary that never enters a real-spend total. |
@@ -111,8 +111,10 @@ rounds of prose review had passed, and acting on them changed the content of eve
 document, which unticks every `Review` cell because evidence binds to a content
 state rather than to a file name. Three consequences are version-scope decisions
 and are recorded as such — the desktop update check is withdrawn (see Withdrawn
-Candidates), the three work-signal modules get their own topic, and
-`presentation-period-scoping` is added as a Go producer task. Everything else
+Candidates), the three work-signal modules get their own topic, and the former
+`presentation-period-scoping` producer slice is merged into
+`menubar-experience` so the wire and the surface form one reviewable task.
+Everything else
 about that re-open — which defects, what survives unchanged, the dependency order
 the set is re-reviewed in, and every round and finding — belongs to the topic and
 lives in [`topics/desktop-app/tasks.md`](topics/desktop-app/tasks.md) and
@@ -130,10 +132,21 @@ already extracts tool calls and `usage_tool_calls` has persisted them since
 schema v13. The capability is restored as its own topic,
 [`work-signals`](topics/work-signals/tasks.md), which supplies the data, turns
 the panel's pending cards into real ones, and adds `agentdeck usage signals` so
-the numbers are checkable from a terminal rather than visible only in a GUI.
-`menubar-experience` is unaffected: it ships the three modules in their
-uncaptured form, which stays a valid state because the new wire families are
-additive.
+the numbers are checkable from a terminal rather than visible only in a GUI. `menubar-experience` is unaffected: it
+ships the three modules in their `Not captured yet` form, which stays a valid
+state because the new wire families are additive.
+
+**`desktop-app` defers document review to one closing pass.** By user
+instruction, that topic runs no document review rounds while its tasks are being
+implemented: changes are written directly into the process record that owns them.
+Review is deferred, not cancelled — after every implementation task is done, the
+whole set is reconciled against the final prototype and the shipped
+implementation and reviewed once, scoped as a bullet on that topic's task 7. The
+reason and the consequences are stated in
+[`topics/desktop-app/tasks.md`](topics/desktop-app/tasks.md).
+
+This is specific to `desktop-app`, whose documents were being re-reviewed against
+an implementation that is still moving.
 
 **`work-signals` reviews its five documents together, in one round, under one
 verdict.** That too is by user instruction, and for a different reason: reviewing
@@ -141,7 +154,7 @@ documents that constrain each other one at a time does not converge. Its first
 design pass ran fourteen single-document rounds before being discarded, six of
 them repairing damage the order itself had caused. Whether this becomes the
 project's general process is decided after that topic, not by it. Task review is
-unaffected.
+unaffected in both topics.
 
 ## Authoritative Documents
 
