@@ -22,3 +22,37 @@ jobs:
           cache: true
       - name: Verify
         run: make verify
+
+  desktop:
+    # The desktop surfaces need the macOS 26 SDK, so they get their own runner
+    # and their own job: a Swift toolchain failure must not be reported as a Go
+    # verification failure, and the Go gate must not wait on Xcode.
+    runs-on: macos-26
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Select the pinned Xcode
+        run: |
+          xcode=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+          if [[ -z $xcode ]]; then
+            echo "no Xcode 26 installation is available on this runner" >&2
+            ls -d /Applications/Xcode* >&2 || true
+            exit 1
+          fi
+          sudo xcode-select --switch "$xcode/Contents/Developer"
+          xcodebuild -version
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Build Swift targets and run Swift unit tests
+        # Also validates the Go/Swift wire fixtures: the standalone verifier and
+        # the Swift test targets both decode the committed fixture set.
+        run: make test-macos-app
+      - name: Build the app without publishing it
+        run: make build-macos-app
+      - name: Check the widget sandbox boundary
+        run: make check-widget-sandbox
+      - name: Check desktop distribution in isolation
+        run: make check-macos-distribution

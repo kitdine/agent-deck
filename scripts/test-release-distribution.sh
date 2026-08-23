@@ -155,6 +155,38 @@ if ruby "$root/scripts/check-release-workflow.rb" "$workflow_without_rc_formula"
   exit 1
 fi
 
+workflow_without_desktop_gatekeeper="$temporary/release-without-desktop-gatekeeper.yml"
+sed 's/AGENTDECK_REQUIRE_GATEKEEPER: "1"/AGENTDECK_REQUIRE_GATEKEEPER: "0"/' \
+  "$root/.github/workflows/release.yml" >"$workflow_without_desktop_gatekeeper"
+if ruby "$root/scripts/check-release-workflow.rb" "$workflow_without_desktop_gatekeeper" >/dev/null 2>&1; then
+  echo "workflow check accepted a release that does not require Gatekeeper" >&2
+  exit 1
+fi
+
+workflow_skipping_notarization="$temporary/release-skipping-notarization.yml"
+sed 's/          AGENTDECK_NOTARY_PROFILE: agentdeck-release/          AGENTDECK_NOTARY_PROFILE: agentdeck-release\n          AGENTDECK_SKIP_NOTARIZATION: "1"/' \
+  "$root/.github/workflows/release.yml" >"$workflow_skipping_notarization"
+if ruby "$root/scripts/check-release-workflow.rb" "$workflow_skipping_notarization" >/dev/null 2>&1; then
+  echo "workflow check accepted a release that skips notarization" >&2
+  exit 1
+fi
+
+workflow_without_keychain_cleanup="$temporary/release-without-keychain-cleanup.yml"
+sed 's/^      - name: Remove the signing keychain$/      - name: Remove the signing keychain later/' \
+  "$root/.github/workflows/release.yml" >"$workflow_without_keychain_cleanup"
+if ruby "$root/scripts/check-release-workflow.rb" "$workflow_without_keychain_cleanup" >/dev/null 2>&1; then
+  echo "workflow check accepted a release that leaves the signing keychain behind" >&2
+  exit 1
+fi
+
+workflow_cask_into_formula="$temporary/release-cask-into-formula.yml"
+sed 's#"$RELEASE_TAG" cask#"$RELEASE_TAG" formula#' \
+  "$root/.github/workflows/release.yml" >"$workflow_cask_into_formula"
+if ruby "$root/scripts/check-release-workflow.rb" "$workflow_cask_into_formula" >/dev/null 2>&1; then
+  echo "workflow check accepted a cask pull request opened against the formula channel" >&2
+  exit 1
+fi
+
 fake_bin="$temporary/bin"
 mkdir -p "$fake_bin"
 printf '%s\n' \

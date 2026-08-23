@@ -175,3 +175,183 @@ jobs:
         run: |
           bash scripts/update-homebrew-tap-pr.sh \
             homebrew-tap "$RUNNER_TEMP/${{ steps.formula.outputs.name }}.rb" "$RELEASE_TAG"
+
+  desktop:
+    # The desktop artifacts are built, signed, notarized, and uploaded next to
+    # the CLI archives of the same tag. Nothing here decides to release: the tag
+    # already exists and the release job already published it.
+    if: ${{ github.event_name == 'push' && needs.release.result == 'success' }}
+    needs: release
+    permissions:
+      contents: write
+    runs-on: macos-26
+    env:
+      RELEASE_TAG: ${{ github.ref_name }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Require an arm64 runner
+        run: test "$(uname -m)" = arm64
+      - name: Select the pinned Xcode
+        run: |
+          xcode=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+          if [[ -z $xcode ]]; then
+            echo "no Xcode 26 installation is available on this runner" >&2
+            exit 1
+          fi
+          sudo xcode-select --switch "$xcode/Contents/Developer"
+          xcodebuild -version
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Build the universal desktop candidate
+        # The helper inside the App is the same build the CLI archives ship, so
+        # the App, the embedded helper, and the archives carry one identity.
+        run: |
+          make build-macos-release \
+            VERSION="$RELEASE_TAG" \
+            COMMIT="$GITHUB_SHA" \
+            BRANCH=release \
+            APP_VERSION="${RELEASE_TAG#v}"
+      - name: Import the Developer ID certificate
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          MACOS_KEYCHAIN_PASSWORD: ${{ secrets.MACOS_KEYCHAIN_PASSWORD }}
+        run: |
+          # The certificate lives in a run-scoped keychain that the final step
+          # deletes, so it never joins the runner's login keychain.
+          keychain="$RUNNER_TEMP/agentdeck-signing.keychain-db"
+          certificate="$RUNNER_TEMP/certificate.p12"
+          printf '%s' "$MACOS_CERTIFICATE" | base64 --decode >"$certificate"
+          security create-keychain -p "$MACOS_KEYCHAIN_PASSWORD" "$keychain"
+          security set-keychain-settings -lut 900 "$keychain"
+          security unlock-keychain -p "$MACOS_KEYCHAIN_PASSWORD" "$keychain"
+          security import "$certificate" -k "$keychain" \
+            -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$MACOS_KEYCHAIN_PASSWORD" "$keychain" >/dev/null
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          rm -f "$certificate"
+      - name: Store the notarization credential
+        env:
+          MACOS_NOTARY_APPLE_ID: ${{ secrets.MACOS_NOTARY_APPLE_ID }}
+          MACOS_NOTARY_TEAM_ID: ${{ secrets.MACOS_NOTARY_TEAM_ID }}
+          MACOS_NOTARY_PASSWORD: ${{ secrets.MACOS_NOTARY_PASSWORD }}
+          MACOS_KEYCHAIN_PASSWORD: ${{ secrets.MACOS_KEYCHAIN_PASSWORD }}
+        run: |
+          xcrun notarytool store-credentials agentdeck-release \
+            --apple-id "$MACOS_NOTARY_APPLE_ID" \
+            --team-id "$MACOS_NOTARY_TEAM_ID" \
+            --password "$MACOS_NOTARY_PASSWORD" \
+            --keychain "$RUNNER_TEMP/agentdeck-signing.keychain-db" \
+            --keychain-password "$MACOS_KEYCHAIN_PASSWORD"
+      - name: Sign, notarize, staple, and assess the desktop artifacts
+        env:
+          AGENTDECK_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+          AGENTDECK_NOTARY_PROFILE: agentdeck-release
+          # The profile was stored into the run-scoped keychain, so submit must
+          # name that keychain too; without it notarytool reads the login
+          # keychain and fails on a credential this job demonstrably wrote.
+          AGENTDECK_NOTARY_KEYCHAIN: ${{ runner.temp }}/agentdeck-signing.keychain-db
+          AGENTDECK_REQUIRE_GATEKEEPER: "1"
+        run: |
+          make package-macos-app VERSION="$RELEASE_TAG"
+      - name: Upload desktop assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "$RELEASE_TAG" \
+            "dist/AgentDeck_${RELEASE_TAG}_universal.dmg" \
+            "dist/AgentDeck_${RELEASE_TAG}_universal.zip" \
+            "dist/AgentDeck_${RELEASE_TAG}_checksums.txt" \
+            --clobber
+      - name: Remove the signing keychain
+        if: always()
+        run: |
+          security delete-keychain "$RUNNER_TEMP/agentdeck-signing.keychain-db" || true
+
+  cask:
+    # The cask is a second tap channel with its own pull request. It never
+    # touches the CLI formula, and it runs only after the DMG it points at is
+    # published.
+    if: >-
+      ${{ always() && github.event_name == 'push' && needs.desktop.result == 'success' &&
+          (!contains(github.ref_name, '-') || contains(github.ref_name, '-rc.')) }}
+    needs: [release, desktop]
+    permissions:
+      contents: read
+    runs-on: macos-26
+    env:
+      RELEASE_TAG: ${{ github.ref_name }}
+    steps:
+      - name: Check out AgentDeck
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Download desktop checksums
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "$RELEASE_TAG" \
+            --pattern "AgentDeck_${RELEASE_TAG}_checksums.txt" \
+            --dir "$RUNNER_TEMP"
+      - name: Select Homebrew cask
+        id: cask
+        run: |
+          if [[ "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            cask_token=agentdeck-app
+          elif [[ "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-rc\.(0|[1-9][0-9]*)$ ]]; then
+            cask_token=agentdeck-app-rc
+          else
+            echo "unsupported Homebrew release tag: $RELEASE_TAG" >&2
+            exit 2
+          fi
+          echo "token=$cask_token" >>"$GITHUB_OUTPUT"
+      - name: Render Homebrew cask
+        run: |
+          bash scripts/render-homebrew-cask.sh \
+            packaging/homebrew/agentdeck-app.rb.tmpl \
+            "$RELEASE_TAG" \
+            "$RUNNER_TEMP/AgentDeck_${RELEASE_TAG}_checksums.txt" \
+            "$RUNNER_TEMP/${{ steps.cask.outputs.token }}.rb"
+      - name: Verify cask install, completions, and uninstall
+        run: |
+          cask_token="${{ steps.cask.outputs.token }}"
+          test_tap="agentdeck/cask-${GITHUB_RUN_ID}"
+          brew tap-new "$test_tap"
+          tap_root=$(brew --repository "$test_tap")
+          mkdir -p "$tap_root/Casks"
+          cp "$RUNNER_TEMP/$cask_token.rb" "$tap_root/Casks/$cask_token.rb"
+          brew install --cask "$test_tap/$cask_token"
+
+          app="/Applications/AgentDeck.app"
+          test -d "$app"
+          test -x "$app/Contents/Helpers/agentdeck"
+          test -d "$app/Contents/PlugIns/AgentDeckWidget.appex"
+          "$(brew --prefix)/bin/agentdeck" version | grep -F "Release Version: $RELEASE_TAG"
+          bash --noprofile --norc -c 'source "$1"; complete -p agentdeck >/dev/null' \
+            _ "$(brew --prefix)/etc/bash_completion.d/agentdeck"
+          spctl --assess --type execute --verbose=4 "$app"
+
+          brew uninstall --cask "$test_tap/$cask_token"
+          test ! -e "$app"
+          test -d "$HOME/.agentdeck" || true
+      - name: Check out Homebrew tap
+        uses: actions/checkout@v4
+        with:
+          repository: kitdine/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: homebrew-tap
+          fetch-depth: 0
+      - name: Open cask update pull request
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          bash scripts/update-homebrew-tap-pr.sh \
+            homebrew-tap "$RUNNER_TEMP/${{ steps.cask.outputs.token }}.rb" "$RELEASE_TAG" cask

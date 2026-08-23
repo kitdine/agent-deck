@@ -86,3 +86,60 @@ jobs:
             dist/agentdeck_preflight-${{ inputs.target_sha }}_checksums.txt
           if-no-files-found: error
           retention-days: 90
+
+  desktop:
+    # The desktop half of the technical preflight. It proves the exact target
+    # commit builds, signs, and assembles a universal candidate; it produces no
+    # publishable artifact, because it signs ad-hoc and never notarizes.
+    runs-on: macos-26
+    steps:
+      - name: Check out exact target
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.target_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Require exact target SHA
+        env:
+          EVENT_SHA: ${{ github.sha }}
+          TARGET_SHA: ${{ inputs.target_sha }}
+        run: |
+          [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$EVENT_SHA" = "$TARGET_SHA"
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+
+      - name: Select the pinned Xcode
+        run: |
+          xcode=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+          if [[ -z $xcode ]]; then
+            echo "no Xcode 26 installation is available on this runner" >&2
+            exit 1
+          fi
+          sudo xcode-select --switch "$xcode/Contents/Developer"
+          xcodebuild -version
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run Swift tests and the widget sandbox gate
+        run: |
+          make test-macos-app
+          make check-widget-sandbox
+
+      - name: Build and package the desktop candidate
+        env:
+          TARGET_SHA: ${{ inputs.target_sha }}
+        run: |
+          app_version=$(awk -F'=' '/^AGENTDECK_MARKETING_VERSION/ { gsub(/ /, "", $2); print $2 }' \
+            apps/macos/Config/AgentDeck.xcconfig)
+          test -n "$app_version"
+          make build-macos-release \
+            VERSION="v$app_version" \
+            COMMIT="$TARGET_SHA" \
+            BRANCH=preflight \
+            APP_VERSION="$app_version"
+          AGENTDECK_SKIP_NOTARIZATION=1 make package-macos-app VERSION="v$app_version"

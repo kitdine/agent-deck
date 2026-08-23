@@ -16,6 +16,8 @@ BUILD_LDFLAGS := -X "$(BUILDINFO_PACKAGE).Version=$(VERSION)"
 BUILD_LDFLAGS += -X "$(BUILDINFO_PACKAGE).Commit=$(COMMIT)"
 BUILD_LDFLAGS += -X "$(BUILDINFO_PACKAGE).Branch=$(BRANCH)"
 BUILD_LDFLAGS += -X "$(BUILDINFO_PACKAGE).BuildTime=$(BUILD_TIME)"
+APP_VERSION ?= $(patsubst v%,%,$(VERSION_TAG))
+MACOS_APP ?= apps/macos/build/DerivedData/Build/Products/Release/AgentDeck.app
 PREFIX ?= $(HOME)/.local
 BINDIR ?= $(PREFIX)/bin
 DATADIR ?= $(PREFIX)/share/agentdeck
@@ -23,7 +25,7 @@ FORCE ?= 0
 COMPLETION_SHELL ?= auto
 COMPLETION_RC ?=
 
-.PHONY: build build-all release-tag release-archive check-arm64-size check-go-test-runner check-install check-privacy check-release-distribution check-whitespace install uninstall release-verify clean test test-race vet verify prices-regen check-prices-reproducible test-macos-app build-macos-app
+.PHONY: build build-all release-tag release-archive check-arm64-size check-go-test-runner check-install check-privacy check-release-distribution check-whitespace install uninstall release-verify clean test test-race vet verify prices-regen check-prices-reproducible test-macos-app build-macos-app build-macos-release package-macos-app check-widget-sandbox check-macos-distribution
 
 .PHONY: release-artifact-verify
 
@@ -66,6 +68,18 @@ test-macos-app:
 build-macos-app:
 	bash scripts/build-macos-app.sh
 
+# The universal release candidate. It consumes build-all's binaries so the App,
+# its embedded helper, and the CLI archives carry one version and one commit.
+build-macos-release: build-all
+	AGENTDECK_APP_CONFIGURATION=Release AGENTDECK_APP_VERSION="$(APP_VERSION)" \
+		AGENTDECK_DIST_DIR="$(DIST_DIR)" bash scripts/build-macos-app.sh
+
+# Signs, assembles, and (unless skipped) notarizes the built candidate. It
+# publishes nothing; a real identity and notarization profile are supplied by
+# the separately authorized release workflow, never by this target's defaults.
+package-macos-app:
+	bash scripts/package-macos-app.sh "$(MACOS_APP)" "$(VERSION)" "$(DIST_DIR)"
+
 check-go-test-runner:
 	bash scripts/test-run-go-test.sh
 
@@ -101,6 +115,12 @@ check-install:
 check-privacy:
 	@bash scripts/check-privacy.sh
 
+# The static half of the widget's privacy proof. It is a gate rather than a
+# one-off, so it runs from the aggregate release check and not only from the
+# task that wrote it. The runtime half is a manual macOS acceptance step.
+check-widget-sandbox:
+	@bash scripts/check-widget-sandbox.sh
+
 # Scans tracked and untracked content, not a diff, so a violation already
 # committed stays visible instead of only surfacing in diffs that touch it.
 check-whitespace:
@@ -115,7 +135,18 @@ check-release-distribution:
 	bash scripts/test-release-distribution.sh
 	bash scripts/test-release-preflight.sh
 
-release-verify: verify build-all check-arm64-size check-install check-privacy check-release-distribution
+# Desktop distribution, in isolation: cask rendering, Homebrew's acceptance of
+# the rendered cask, signing order, the notarization and stapling invocations,
+# artifact assembly, Formula-to-Cask migration, and mutual exclusion. Reaches no
+# Apple service and no published tap, and installs nothing. It does require
+# Homebrew: the cask load check creates and removes a throwaway tap inside the
+# local Homebrew prefix, and fails the run when `brew` is absent rather than
+# skipping the only check that reads Homebrew's own verdict.
+check-macos-distribution:
+	bash scripts/test-macos-distribution.sh
+	bash scripts/test-cask-migration.sh
+
+release-verify: verify build-all check-arm64-size check-install check-privacy check-widget-sandbox check-release-distribution check-macos-distribution
 
 clean:
 	rm -rf $(DIST_DIR)

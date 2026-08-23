@@ -173,10 +173,22 @@ and tag must report the same release version and source commit.
 
 - `kitdine/tap/agentdeck` remains the CLI-only Formula.
 - `kitdine/tap/agentdeck-app` is the full desktop Cask.
+- `kitdine/tap/agentdeck-app-rc` is its opt-in RC channel, mirroring the
+  formula's `agentdeck-rc`. It excludes the stable cask and both formulae, so an
+  RC never installs beside the channel it is validating.
 - The Cask installs `AgentDeck.app` and exposes its embedded helper and shell
   completions through supported Homebrew Cask artifacts.
 - Formula and Cask installation together must be rejected or produce an explicit
-  migration path before either can own the global `agentdeck` command.
+  migration path before either can own the global `agentdeck` command. Both hold,
+  and the rejection is declared in two places because Homebrew supports only one
+  of them as a stanza: `conflicts_with` accepts `cask:` alone
+  (`Cask::DSL::ConflictsWith::VALID_KEYS` is `[:cask]`, and any other key makes
+  the whole cask unloadable), so the opposing cask channel is declared there and
+  the CLI-only formulae are refused by the cask's `preflight`, which aborts when
+  `agentdeck` or `agentdeck-rc` is present in the Cellar. The cask's caveats state
+  the same two-command migration (`brew uninstall agentdeck` then
+  `brew install --cask agentdeck-app`) which leaves `~/.agentdeck` untouched in
+  either direction.
 - Cask uninstall removes App-owned artifacts only and preserves `~/.agentdeck`
   and unrelated Codex, Claude, and shell configuration.
 
@@ -186,8 +198,15 @@ branch.
 
 ### Direct download
 
-The same notarized DMG published for the Cask is the direct-download artifact.
-Dragging the App into `/Applications` is sufficient for GUI and Widget use.
+Two direct-download artifacts are published, both carrying the bundle the Cask
+installs. The DMG is the same notarized image the Cask points at; dragging the
+App into `/Applications` from it is sufficient for GUI and Widget use. The ZIP
+is the archive form of the same bundle, for anyone scripting the download.
+
+One notarization submission covers both, because the ticket is issued against
+the code signature they share. Both are stapled — the DMG as the image, the
+bundle before it is archived — so neither needs the network to clear Gatekeeper
+on first launch.
 
 **This topic ships no CLI-link action.** A direct-download install exposes the GUI
 and the Widget; the command line stays the Formula's and the Cask's to provide,
@@ -235,23 +254,35 @@ apps/
 packaging/
   homebrew/
     agentdeck.rb.tmpl
-  cask/
     agentdeck-app.rb.tmpl
-  macos/
-    AgentDeck.entitlements
-    AgentDeckWidget.entitlements
-    ExportOptions.plist
+
+apps/macos/
+  AgentDeck.entitlements
+  AgentDeckWidget.entitlements
+  Config/AgentDeck.xcconfig
 
 scripts/
   build-macos-app.sh
   package-macos-app.sh
-  notarize-macos-app.sh
   render-homebrew-cask.sh
-  test-desktop-distribution.sh
+  test-macos-distribution.sh
+  test-cask-migration.sh
 
 cmd/agentdeck/                  existing Go CLI, unchanged location
 internal/                       existing Go domain core, unchanged location
 ```
+
+Three of those paths differ from the first sketch of this section, and the
+differences are decisions rather than drift. The cask template sits beside the
+formula template in `packaging/homebrew/` because they are two channels of one
+tap and are rendered by two scripts of the same shape. Notarization and stapling
+are steps of `package-macos-app.sh` rather than a separate
+`notarize-macos-app.sh`, because they operate on the DMG that script has just
+produced and fail closed on the same missing-credential check. The entitlements
+stay under `apps/macos/`, where the Xcode targets reference them, rather than
+moving to `packaging/macos/` for symmetry; no `ExportOptions.plist` exists
+because the release path signs the built product directly instead of exporting
+an archive.
 
 The committed Xcode project is the canonical Apple project. Shared Swift models,
 helper invocation, App Group storage, and release-version handling live under
@@ -291,6 +322,25 @@ Required release secrets, certificate handling, App Group identifiers, bundle
 identifiers, signing team, and notarization credentials must be documented and
 tested without exposing their values. Pull requests and ordinary CI never gain
 release-secret access.
+
+| Secret | Used by | What it is |
+| --- | --- | --- |
+| `MACOS_CERTIFICATE` | desktop job, certificate import | Base64 of the Developer ID Application `.p12` |
+| `MACOS_CERTIFICATE_PASSWORD` | desktop job, certificate import | Export password of that `.p12` |
+| `MACOS_KEYCHAIN_PASSWORD` | desktop job, certificate import and notary credential | Password of the run-scoped keychain, which is created and deleted inside the job |
+| `MACOS_SIGN_IDENTITY` | desktop job, packaging | Common name of the signing identity, passed as `AGENTDECK_SIGN_IDENTITY` |
+| `MACOS_NOTARY_APPLE_ID` / `MACOS_NOTARY_TEAM_ID` / `MACOS_NOTARY_PASSWORD` | desktop job, notary credential | Inputs to `notarytool store-credentials`, stored under the profile `agentdeck-release` |
+| `HOMEBREW_TAP_TOKEN` | homebrew and cask jobs | Existing tap write token; unchanged by this topic |
+
+The identity inputs the build itself needs are **not** secrets and stay in
+`apps/macos/Config/AgentDeck.xcconfig`: `AGENTDECK_APP_GROUP`,
+`PRODUCT_BUNDLE_IDENTIFIER`, `AGENTDECK_MARKETING_VERSION`,
+`AGENTDECK_PROJECT_VERSION`, `AGENTDECK_CODE_SIGN_IDENTITY` (default `-`, the
+ad-hoc identity) and `AGENTDECK_DEVELOPMENT_TEAM` (default empty). An unsigned
+local build and the isolated distribution tests run entirely on those defaults,
+which is what makes the whole path testable without a credential: the tests sign
+ad-hoc and drive notarization through a recording stub, and the packaging script
+refuses to notarize under the ad-hoc identity at all.
 
 ## Foundation runtime
 
@@ -820,18 +870,31 @@ existing warning and partial-result semantics.
 | `periods.items[].totals` | Total tokens plus input, output, cached-read, and cache-write components; event and session counts; the existing usage cost tuple (`catalog_base_cost`, `provider_cost`, `known_catalog_base_cost`, `known_provider_cost`); `pricing_complete`; and `unpriced_components`. |
 | `periods.items[].average_per_day` and `periods.items[].peak` | Producer-computed values for that exact scope and period. `peak` is one dated bucket; neither value is recomputed from `daily.items` by the host. |
 | `periods.items[].cache_hit_share` | Producer-computed cached-read over logical input for that exact scope and period. |
-| `periods.items[].models[]` | At most 12 deterministically ordered `(model, token components, cost tuple, share)` rows for that exact scope and period. |
-| `scopes[].daily.items[]` | At most 90 ascending dated buckets per client scope when `daily.available` is true. Each bucket carries token components, event and session counts, and the cost tuple needed by the bounded trend chart. |
-| `scopes[].quality.items[]` | Current-period only when `quality.available` is true: one client-scope aggregate plus deterministic per-provider records. Each record carries determinable, inferred, and unattributed tiers as `(cost tuple, tokens, count, share)`. |
+| `periods.items[].models[]` | At most 12 deterministically ordered rows for that exact scope and period. Each row carries model identity, share, and one compact `value` of tokens, events, display provider cost, and incompleteness; it does not repeat the full period accounting tuple. |
+| `scopes[].daily.items[]` | At most 90 ascending dated buckets per client scope when `daily.available` is true. Each bucket carries its date plus the compact plotted `value` needed by trend/calendar hover: tokens, events, display provider cost, and incompleteness. |
+| `scopes[].hourly.through_hour` and `items[]` | `through_hour` is the producer's required `0...23` current-local-hour boundary for every present family. When `hourly.available` is true, `items` contains exactly one ascending bucket for every hour `0...through_hour`; future hours are omitted rather than emitted as measured zero. Each item carries `hour` plus the same compact plotted `value` as `daily`. When unavailable, `items` is empty. A missing whole family remains the legacy unavailable case; a present family with missing `through_hour`, explicit `null`, duplicate, descending, out-of-range, partial, or post-boundary rows is malformed wire. |
+| `scopes[].quality.items[]` | Current-period only when `quality.available` is true: one client-scope aggregate plus deterministic per-provider records. Each tier carries share plus the same compact display `value`; period-level accounting stays in `periods.items[].totals`. |
 | `scopes[].pricing` | Current-period `available`, priced and unpriced counts, plus at most 12 deterministically ordered unpriced model identifiers for that client scope. |
-| `scopes[].rhythm` | `available`, the producer-computed 7×24 grid for the last 30 days (exactly 168 cells when available), active-day count, and busiest and quietest day names used by the downstream projection. |
-| `client_subtotals.items[]` | At most six deterministic `(period, client, totals)` records when `client_subtotals.available` is true: one for each supported period and concrete client. These drive the client tabs without a host-side regrouping. |
+| `scopes[].rhythm` | `available`, active-day count, busiest and quietest day names, and four parallel 168-value arrays in fixed Monday-00 through Sunday-23 order: `intensities`, `tokens`, `provider_costs`, and `cost_incomplete`. Fixed ordering avoids repeating weekday/hour and field names 504 times. The Swift decoder still accepts the prior `cells[]` v1 shape. |
+| `client_subtotals.items[]` | At most six deterministic `(period, client, value)` records when `client_subtotals.available` is true: one for each supported period and concrete client. The compact value drives the tabs and menu-bar item without repeating complete totals or performing host-side regrouping. |
+
+For the `today` priciest-hour chip, the host may make one deterministic selection
+over a structurally valid `hourly.items[]` family: consider only observed buckets
+whose event count is non-zero, choose the greatest numeric display provider cost,
+and choose the earlier hour on a tie. An empty observed set produces no priciest
+hour. This is selection over producer-computed values, not a second aggregation;
+the chart and chip use the same family-validity decision.
 
 The bounds, privacy exclusions, cost semantics, and deterministic truncation are
 the same as the corresponding App Group projection fields above. The projection
 is still not a copy of the wire envelope: the host writes only this allowlisted
 usage subset plus the separately allowlisted cache metadata, provider display
 state, health summary, and issue codes.
+
+The compact complete canonical snapshot must encode below 128 KiB. The helper
+process retains a separate 512 KiB absolute capture cap for bounded differences
+in local provider candidates and warnings; that cap is not the target payload
+size and must not be used to justify repeating unused accounting fields.
 
 Compatibility holds in both directions without raising `wire_version`. The
 producer always emits `presentation`; an older decoder ignores it. A new decoder
@@ -842,7 +905,7 @@ and partial fixtures carry it with every collection bound asserted.
 
 ### Presentation gaps raised by the reviewed surfaces
 
-The reviewed prototype presents three things the current `presentation` object
+The reviewed prototype presents four things the earlier `presentation` object
 cannot supply. Each is decided here rather than left to the implementer, because
 a surface that renders an unprovisioned field renders an invented one.
 

@@ -848,7 +848,7 @@ pass, which is the point of decomposing after the design exists.
 | 2. `macos-app-foundation` | [x] | [x] |
 | 3. `menubar-experience` | [x] | [x] |
 | 4. `desktop-widget` | [x] | [ ] |
-| 5. `unified-desktop-distribution` | [x] | [ ] |
+| 5. `unified-desktop-distribution` | [x] | [x] |
 | 6. `desktop-app-contract` | [ ] | [ ] |
 
 ### What changed in the decomposition (2026-08-18)
@@ -1304,6 +1304,25 @@ topic, and in turn gates the
 Commit boundaries follow task boundaries. This topic does not authorize commits,
 pushes, certificate creation, secret changes, release publication, Homebrew tap
 changes, local installation, or external distribution.
+
+`unified-desktop-distribution` Review Round 1 (2026-08-23): **FAIL**. The
+universal build, inside-out signing, artifact assembly, the two isolated test
+suites, the tap Cask channel, the workflow checkers, and the aggregate-gate
+wiring are all present and their gates pass. R1-F1 is release blocking: the
+rendered Cask declares `conflicts_with formula:`, a key current Homebrew rejects,
+so the Cask cannot be loaded at all. R1-F2 is release blocking: the notarization
+profile is stored in a run-scoped keychain that `notarytool submit` is never told
+to read. Three further findings cover the Cask tests asserting their own
+template, the unstapled direct-download ZIP, and a deprecated `depends_on macos:`
+form. The `Review` cell stays unchecked. Round content is in
+[`reviews/unified-desktop-distribution.md`](reviews/unified-desktop-distribution.md).
+
+`unified-desktop-distribution` Re-review Round 5 (2026-08-23): **PASS**. All
+seven findings from Rounds 1 and 3 are closed, no new finding was recorded, and
+`make release-verify` exited 0 on this exact content state rather than being
+reused from the pre-repair run. The `Review` cell is ticked. Task 6 remains
+blocked on task 4, which is parked on an external prerequisite. Round content is
+in [`reviews/unified-desktop-distribution.md`](reviews/unified-desktop-distribution.md).
 
 ## Starting a task
 

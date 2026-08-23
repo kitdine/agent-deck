@@ -38,6 +38,14 @@ end
 raise "preflight default permissions must be contents: read" unless preflight.dig("permissions", "contents") == "read"
 raise "preflight must not receive write permissions" if File.read(preflight_path).match?(/\bwrite\b/)
 
+desktop = preflight.fetch("jobs").fetch("desktop")
+raise "the desktop preflight needs the macOS 26 runner" unless desktop.fetch("runs-on") == "macos-26"
+desktop_run = step(desktop, "Build and package the desktop candidate").fetch("run")
+%w[make\ build-macos-release make\ package-macos-app AGENTDECK_SKIP_NOTARIZATION=1].each do |expected|
+  raise "desktop preflight must contain #{expected.inspect}" unless desktop_run.include?(expected)
+end
+raise "the desktop preflight must not sign with a release identity" if desktop_run.include?("MACOS_SIGN_IDENTITY")
+
 job = preflight.fetch("jobs").fetch("preflight")
 raise "preflight must run on macos-15" unless job.fetch("runs-on") == "macos-15"
 

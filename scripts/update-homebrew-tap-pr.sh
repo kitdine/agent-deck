@@ -1,26 +1,52 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ $# -ne 3 ]]; then
-  echo "usage: update-homebrew-tap-pr.sh <tap-repository> <formula> <version-tag>" >&2
+if [[ $# -lt 3 || $# -gt 4 ]]; then
+  echo "usage: update-homebrew-tap-pr.sh <tap-repository> <rendered-file> <version-tag> [formula|cask]" >&2
   exit 2
 fi
 
 tap_repository=$1
 formula=$2
 tag=$3
+# The tap carries two independent channels: the CLI-only formula and the
+# desktop cask. They render different files into different directories and open
+# separate pull requests, so the kind is an input rather than something the
+# script infers from the file it was handed.
+kind=${4:-formula}
 remote=origin
 base_branch=main
 repository=${HOMEBREW_TAP_REPOSITORY:-kitdine/homebrew-tap}
 bot_name=github-actions[bot]
 bot_email=41898282+github-actions[bot]@users.noreply.github.com
 
+case $kind in
+formula)
+  artifact_directory=Formula
+  stable_name=agentdeck
+  rc_name=agentdeck-rc
+  stable_body="Update AgentDeck to $tag and install bash, zsh, and fish completions."
+  rc_body="Update the opt-in AgentDeck RC channel to $tag and install bash, zsh, and fish completions. The stable formula remains unchanged."
+  ;;
+cask)
+  artifact_directory=Casks
+  stable_name=agentdeck-app
+  rc_name=agentdeck-app-rc
+  stable_body="Update the AgentDeck desktop app to $tag. The CLI-only formula is unchanged, and the two remain mutually exclusive."
+  rc_body="Update the opt-in AgentDeck desktop RC channel to $tag. The stable cask and the CLI-only formula are unchanged."
+  ;;
+*)
+  echo "Homebrew tap updates accept only formula or cask: $kind" >&2
+  exit 2
+  ;;
+esac
+
 if [[ $tag =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
-  formula_name=agentdeck
-  pr_body="Update AgentDeck to $tag and install bash, zsh, and fish completions."
+  formula_name=$stable_name
+  pr_body=$stable_body
 elif [[ $tag =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-rc\.(0|[1-9][0-9]*)$ ]]; then
-  formula_name=agentdeck-rc
-  pr_body="Update the opt-in AgentDeck RC channel to $tag and install bash, zsh, and fish completions. The stable formula remains unchanged."
+  formula_name=$rc_name
+  pr_body=$rc_body
 else
   echo "Homebrew tap updates require a stable or rc.N semantic version tag: $tag" >&2
   exit 2
@@ -30,14 +56,14 @@ if [[ ! -d $tap_repository/.git ]]; then
   exit 2
 fi
 if [[ ! -f $formula || -L $formula ]]; then
-  echo "rendered formula must be a regular file: $formula" >&2
+  echo "rendered $kind must be a regular file: $formula" >&2
   exit 2
 fi
 
 tap_repository=$(cd "$tap_repository" && pwd)
 formula=$(cd "$(dirname "$formula")" && pwd)/$(basename "$formula")
 branch="$formula_name-$tag"
-formula_path="Formula/$formula_name.rb"
+formula_path="$artifact_directory/$formula_name.rb"
 remote_branch="refs/remotes/$remote/$branch"
 temporary=$(mktemp "${TMPDIR:-/tmp}/agentdeck-tap-formula.XXXXXX")
 trap 'rm -f "$temporary"' EXIT
@@ -47,7 +73,7 @@ git config user.name "$bot_name"
 git config user.email "$bot_email"
 
 if cmp -s "$formula" "$formula_path"; then
-  echo "Homebrew formula already matches $tag"
+  echo "Homebrew $kind already matches $tag"
   exit 0
 fi
 
@@ -101,6 +127,7 @@ fi
 
 if [[ $branch_exists -eq 1 && $formula_matches_remote_branch -eq 0 ]]; then
   git switch --create "$branch" --track "$remote_branch" >/dev/null
+  mkdir -p "$(dirname "$formula_path")"
   cp "$formula" "$formula_path"
   git add "$formula_path"
   if git diff --cached --quiet -- "$formula_path"; then
@@ -114,10 +141,11 @@ fi
 
 if [[ $branch_exists -eq 0 ]]; then
   if [[ -n $existing_pr ]]; then
-    echo "Homebrew formula pull request #$existing_pr has no remote branch $branch" >&2
+    echo "Homebrew $kind pull request #$existing_pr has no remote branch $branch" >&2
     exit 1
   fi
   git switch --create "$branch" >/dev/null
+  mkdir -p "$(dirname "$formula_path")"
   cp "$formula" "$formula_path"
   git add "$formula_path"
   git commit -m "$formula_name $tag" >/dev/null
@@ -127,11 +155,11 @@ if [[ $branch_exists -eq 0 ]]; then
 fi
 
 if [[ $formula_matches_remote_branch -ne 1 ]]; then
-  echo "remote Homebrew formula does not match the rendered formula for $tag" >&2
+  echo "remote Homebrew $kind does not match the rendered file for $tag" >&2
   exit 1
 fi
 if [[ -n $existing_pr ]]; then
-  echo "Homebrew formula pull request is current: #$existing_pr"
+  echo "Homebrew $kind pull request is current: #$existing_pr"
   exit 0
 fi
 
