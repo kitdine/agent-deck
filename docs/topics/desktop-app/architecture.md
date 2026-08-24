@@ -757,6 +757,20 @@ Application and future extension targets that consume the cache share the App
 Group entitlement. Test targets use injected temporary directories and do not
 require the entitlement.
 
+`AGENTDECK_PROJECT_VERSION` is the single source for `CFBundleVersion` in the
+App, Widget, and embedded `AgentDeckShared` framework. Its checked-in value `1`
+is only the unsigned local-build and isolated-test default; ordinary local
+builds, pull-request CI, and test reruns do not consume distributable Build
+numbers and do not edit the xcconfig. The manually dispatched exact-SHA
+`release-preflight` assigns one positive integer candidate Build from that
+workflow's `GITHUB_RUN_NUMBER`, passes it to every bundle target, and records it
+in the commit-bound preflight manifest. A retry of the same workflow run reuses
+that Build. A new dispatch allocates a new candidate Build, even for the same
+SHA. RC or stable publication must read the Build from the verified preflight
+manifest instead of deriving a new value from its own CI run, so promotion of
+one candidate preserves its bundle identity. Packaging rejects App and Widget
+Build disagreement before signing.
+
 The local build command MUST:
 
 - use an isolated DerivedData directory;

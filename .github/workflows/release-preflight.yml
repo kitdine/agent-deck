@@ -73,6 +73,7 @@ jobs:
             "$TARGET_SHA" \
             "$GITHUB_RUN_ID" \
             "$REAL_STATE_EVIDENCE_ID" \
+            "$GITHUB_RUN_NUMBER" \
             "dist/agentdeck_${ARTIFACT_VERSION}_checksums.txt"
 
       - name: Upload preflight evidence
@@ -141,5 +142,6 @@ jobs:
             VERSION="v$app_version" \
             COMMIT="$TARGET_SHA" \
             BRANCH=preflight \
-            APP_VERSION="$app_version"
+            APP_VERSION="$app_version" \
+            APP_BUILD_NUMBER="$GITHUB_RUN_NUMBER"
           AGENTDECK_SKIP_NOTARIZATION=1 make package-macos-app VERSION="v$app_version"

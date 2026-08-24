@@ -20,6 +20,7 @@ helper="$repo_root/apps/macos/build/agentdeck"
 derived_data="$build_root/DerivedData"
 configuration=${AGENTDECK_APP_CONFIGURATION:-Debug}
 dist_dir=${AGENTDECK_DIST_DIR:-"$repo_root/dist"}
+build_number=${AGENTDECK_APP_BUILD_NUMBER:-}
 
 case "$configuration" in
 Debug | Release) ;;
@@ -28,6 +29,11 @@ Debug | Release) ;;
   exit 2
   ;;
 esac
+
+if [[ -n $build_number && ! $build_number =~ ^[1-9][0-9]*$ ]]; then
+  echo "AGENTDECK_APP_BUILD_NUMBER must be a positive integer: $build_number" >&2
+  exit 2
+fi
 
 if ! xcodebuild -version >/dev/null 2>&1; then
   echo "A full Xcode installation must be selected to build AgentDeck.app." >&2
@@ -68,10 +74,21 @@ if [[ $configuration == Release ]]; then
   if [[ -n ${AGENTDECK_APP_VERSION:-} ]]; then
     xcodebuild_arguments+=("AGENTDECK_MARKETING_VERSION=$AGENTDECK_APP_VERSION")
   fi
+  if [[ -n $build_number ]]; then
+    xcodebuild_arguments+=("AGENTDECK_PROJECT_VERSION=$build_number")
+  fi
 else
+  # Go refuses to replace an existing universal Mach-O with a single-arch
+  # debug executable. Build at a fresh same-directory path, then atomically
+  # replace the generated helper so Release -> Debug verification is repeatable.
+  debug_staging=$(mktemp -d "$(dirname "$helper")/.agentdeck-debug.XXXXXX")
+  trap 'rm -rf "$debug_staging"' EXIT
   env GOCACHE="${GOCACHE:-/private/tmp/agent-deck-go-build}" \
     GOMODCACHE="${GOMODCACHE:-/private/tmp/agent-deck-go-mod}" \
-    go build -mod=vendor -trimpath -o "$helper" "$repo_root/cmd/agentdeck"
+    go build -mod=vendor -trimpath -o "$debug_staging/agentdeck" "$repo_root/cmd/agentdeck"
+  mv -f "$debug_staging/agentdeck" "$helper"
+  rmdir "$debug_staging"
+  trap - EXIT
 fi
 
 xcodebuild "${xcodebuild_arguments[@]}" build
@@ -92,9 +109,26 @@ fi
 
 if [[ $configuration == Release ]]; then
   widget="$app/Contents/PlugIns/AgentDeckWidget.appex"
+  framework_info="$app/Contents/Frameworks/AgentDeckShared.framework/Resources/Info.plist"
   if [[ ! -d $widget ]]; then
     echo "Release app build did not embed the widget extension: $widget" >&2
     exit 1
+  fi
+  if [[ ! -f $framework_info ]]; then
+    echo "Release app build did not embed AgentDeckShared metadata: $framework_info" >&2
+    exit 1
+  fi
+  if [[ -n $build_number ]]; then
+    for plist in \
+      "$app/Contents/Info.plist" \
+      "$widget/Contents/Info.plist" \
+      "$framework_info"; do
+      actual_build=$(plutil -extract CFBundleVersion raw -o - "$plist")
+      if [[ $actual_build != "$build_number" ]]; then
+        echo "bundle build $actual_build in $plist does not match candidate build $build_number" >&2
+        exit 1
+      fi
+    done
   fi
   # A universal App that ships a single-architecture binary is an Intel or
   # Apple silicon release that only reports itself as universal.

@@ -4,15 +4,15 @@ require "digest"
 require "fileutils"
 require "json"
 
-SCHEMA = "agentdeck/release-preflight/v1"
+SCHEMA = "agentdeck/release-preflight/v2"
 SHA_PATTERN = /\A[0-9a-f]{40}\z/
 EVIDENCE_PATTERN = /\Aurn:ce:agent-deck:evidence:[A-Za-z0-9._:-]+\z/
 
 def usage!
   abort <<~USAGE
     usage:
-      release-preflight-manifest.rb create <output> <repository> <target-sha> <run-id> <real-state-evidence-id> <checksums>
-      release-preflight-manifest.rb verify <artifact-dir> <repository> <target-sha> <run-id>
+      release-preflight-manifest.rb create <output> <repository> <target-sha> <run-id> <real-state-evidence-id> <macos-build-number> <checksums>
+      release-preflight-manifest.rb verify <artifact-dir> <repository> <target-sha> <run-id> [--build-number-only]
   USAGE
 end
 
@@ -52,9 +52,11 @@ def validate_identity!(repository, target_sha, run_id, evidence_id = nil)
 end
 
 def create_manifest(arguments)
-  usage! unless arguments.length == 6
-  output, repository, target_sha, run_id, evidence_id, checksums_path = arguments
+  usage! unless arguments.length == 7
+  output, repository, target_sha, run_id, evidence_id, build_number, checksums_path = arguments
   validate_identity!(repository, target_sha, run_id, evidence_id)
+  require_value(build_number.match?(/\A[1-9][0-9]*\z/),
+                "macOS build number must be a positive integer")
   entries = parse_checksums(checksums_path, target_sha)
 
   manifest = {
@@ -62,6 +64,7 @@ def create_manifest(arguments)
     "repository" => repository,
     "target_sha" => target_sha,
     "workflow_run_id" => run_id.to_i,
+    "macos_build_number" => build_number.to_i,
     "real_state_evidence_id" => evidence_id,
     "l4" => {
       "command" => "make release-verify",
@@ -78,6 +81,8 @@ def create_manifest(arguments)
 end
 
 def verify_manifest(arguments)
+  build_number_only = arguments.last == "--build-number-only"
+  arguments = arguments[0...-1] if build_number_only
   usage! unless arguments.length == 4
   artifact_dir, repository, target_sha, run_id = arguments
   validate_identity!(repository, target_sha, run_id)
@@ -88,6 +93,9 @@ def verify_manifest(arguments)
   require_value(manifest.fetch("repository") == repository, "preflight repository mismatch")
   require_value(manifest.fetch("target_sha") == target_sha, "preflight target SHA mismatch")
   require_value(manifest.fetch("workflow_run_id") == run_id.to_i, "preflight run ID mismatch")
+  build_number = manifest.fetch("macos_build_number")
+  require_value(build_number.is_a?(Integer) && build_number.positive?,
+                "preflight macOS build number must be a positive integer")
   validate_identity!(repository, target_sha, run_id, manifest.fetch("real_state_evidence_id"))
   require_value(manifest.dig("l4", "command") == "make release-verify", "preflight L4 command mismatch")
   require_value(manifest.dig("l4", "result") == "pass", "preflight L4 did not pass")
@@ -114,7 +122,11 @@ def verify_manifest(arguments)
   expected_files = expected + [File.basename(checksum_path), File.basename(manifest_path)]
   actual_files = Dir.children(artifact_dir).sort
   require_value(actual_files == expected_files.sort, "preflight artifact bundle contains unexpected files")
-  puts "verified release preflight run #{run_id} for #{target_sha} with #{manifest.fetch('real_state_evidence_id')}"
+  if build_number_only
+    puts build_number
+  else
+    puts "verified release preflight run #{run_id} for #{target_sha} with #{manifest.fetch('real_state_evidence_id')} and macOS build #{build_number}"
+  end
 end
 
 command = ARGV.shift

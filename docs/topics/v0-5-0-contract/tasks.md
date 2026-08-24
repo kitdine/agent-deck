@@ -78,6 +78,10 @@ must preserve them when the desktop release gate is implemented:
   Gatekeeper behavior;
 - fresh install, upgrade, uninstall, DMG launch, and embedded CLI identity on an
   isolated copy of real AgentDeck state.
+- one macOS candidate Build allocated by the manual preflight, recorded in its
+  exact-SHA manifest, shared by the App, Widget, and embedded framework, and
+  reused by any RC or stable publication of that candidate; ordinary
+  development and CI runs do not consume this counter.
 
 Passing those checks still does not select RC or stable publication.
 

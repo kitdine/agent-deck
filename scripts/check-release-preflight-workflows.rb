@@ -41,7 +41,7 @@ raise "preflight must not receive write permissions" if File.read(preflight_path
 desktop = preflight.fetch("jobs").fetch("desktop")
 raise "the desktop preflight needs the macOS 26 runner" unless desktop.fetch("runs-on") == "macos-26"
 desktop_run = step(desktop, "Build and package the desktop candidate").fetch("run")
-%w[make\ build-macos-release make\ package-macos-app AGENTDECK_SKIP_NOTARIZATION=1].each do |expected|
+%w[make\ build-macos-release make\ package-macos-app AGENTDECK_SKIP_NOTARIZATION=1 APP_BUILD_NUMBER="$GITHUB_RUN_NUMBER"].each do |expected|
   raise "desktop preflight must contain #{expected.inspect}" unless desktop_run.include?(expected)
 end
 raise "the desktop preflight must not sign with a release identity" if desktop_run.include?("MACOS_SIGN_IDENTITY")
@@ -67,7 +67,7 @@ require_text(artifact_run, "preflight-$TARGET_SHA", "candidate artifact verifica
 
 manifest_run = step(job, "Write preflight evidence manifest").fetch("run")
 require_text(manifest_run, "scripts/release-preflight-manifest.rb create", "preflight manifest")
-%w[TARGET_SHA GITHUB_RUN_ID REAL_STATE_EVIDENCE_ID].each do |expected|
+%w[TARGET_SHA GITHUB_RUN_ID GITHUB_RUN_NUMBER REAL_STATE_EVIDENCE_ID].each do |expected|
   require_text(manifest_run, expected, "preflight manifest")
 end
 
@@ -80,16 +80,30 @@ raise "release default permissions must allow Actions reads" unless release.dig(
 release_job = release.fetch("jobs").fetch("release")
 raise "release job must allow Actions reads" unless release_job.dig("permissions", "actions") == "read"
 
-gate_run = step(release_job, "Require successful release preflight").fetch("run")
+gate = step(release_job, "Require successful release preflight")
+raise "release preflight gate must expose a stable step ID" unless gate.fetch("id") == "preflight"
+raise "release job must expose the verified macOS build number" unless
+  release_job.dig("outputs", "macos_build_number") == "${{ steps.preflight.outputs.macos_build_number }}"
+gate_run = gate.fetch("run")
 [
   "release-preflight.yml",
   "head_sha=$GITHUB_SHA",
   "gh run download",
   "release-preflight-$GITHUB_SHA",
-  "scripts/release-preflight-manifest.rb verify"
+  "scripts/release-preflight-manifest.rb verify",
+  "--build-number-only",
+  "GITHUB_OUTPUT"
 ].each { |expected| require_text(gate_run, expected, "release preflight gate") }
 
 final_run = step(release_job, "Verify version-specific release artifacts").fetch("run")
 require_text(final_run, "make release-artifact-verify", "version-specific release verification")
 reject_text(final_run, "release-verify", "version-specific release verification")
 reject_text(File.read(release_path), "name: Verify release\n", "release workflow")
+
+release_desktop = release.fetch("jobs").fetch("desktop")
+release_desktop_run = step(release_desktop, "Build the universal desktop candidate").fetch("run")
+require_text(
+  release_desktop_run,
+  'APP_BUILD_NUMBER="${{ needs.release.outputs.macos_build_number }}"',
+  "released desktop candidate build"
+)

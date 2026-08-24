@@ -78,7 +78,7 @@ desktop_checkout = step(desktop, "Check out repository")
 raise "desktop checkout must not persist credentials" unless desktop_checkout.dig("with", "persist-credentials") == false
 
 build_run = step(desktop, "Build the universal desktop candidate").fetch("run")
-%w[make\ build-macos-release VERSION= COMMIT= APP_VERSION=].each do |expected|
+%w[make\ build-macos-release VERSION= COMMIT= APP_VERSION= APP_BUILD_NUMBER=].each do |expected|
   require_text(build_run, expected, "desktop candidate build")
 end
 

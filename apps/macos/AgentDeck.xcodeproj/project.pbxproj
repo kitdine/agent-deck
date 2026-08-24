@@ -485,7 +485,9 @@
 		};
 		A70000000000000000000005 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = A20000000000000000000009 /* AgentDeck.xcconfig */;
 			buildSettings = {
+				CURRENT_PROJECT_VERSION = "$(AGENTDECK_PROJECT_VERSION)";
 				DEFINES_MODULE = YES;
 				DYLIB_INSTALL_NAME_BASE = "@rpath";
 				DYLIB_COMPATIBILITY_VERSION = 1;
@@ -494,6 +496,7 @@
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = AgentDeckShared/Info.plist;
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = "$(AGENTDECK_MARKETING_VERSION)";
 				PRODUCT_BUNDLE_IDENTIFIER = com.kitdine.agentdeck.shared;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -503,7 +506,9 @@
 		};
 		A70000000000000000000006 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = A20000000000000000000009 /* AgentDeck.xcconfig */;
 			buildSettings = {
+				CURRENT_PROJECT_VERSION = "$(AGENTDECK_PROJECT_VERSION)";
 				DEFINES_MODULE = YES;
 				DYLIB_INSTALL_NAME_BASE = "@rpath";
 				DYLIB_COMPATIBILITY_VERSION = 1;
@@ -511,6 +516,7 @@
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = AgentDeckShared/Info.plist;
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = "$(AGENTDECK_MARKETING_VERSION)";
 				PRODUCT_BUNDLE_IDENTIFIER = com.kitdine.agentdeck.shared;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;

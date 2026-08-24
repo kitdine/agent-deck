@@ -156,7 +156,7 @@ trap 'rm -rf "$temporary"' EXIT
 # 5. A synthetic bundle drives the real packaging script. Its executables are
 # real Mach-O binaries because entitlements only attach to real code.
 make_bundle() {
-  local bundle=$1 version=$2
+  local bundle=$1 version=$2 build_number=${3:-1}
   local widget="$bundle/Contents/PlugIns/AgentDeckWidget.appex"
   rm -rf "$bundle"
   mkdir -p "$bundle/Contents/MacOS" "$bundle/Contents/Helpers" "$widget/Contents/MacOS"
@@ -171,7 +171,7 @@ make_bundle() {
 <key>CFBundleName</key><string>AgentDeck</string>
 <key>CFBundleExecutable</key><string>AgentDeck</string>
 <key>CFBundleShortVersionString</key><string>$version</string>
-<key>CFBundleVersion</key><string>1</string>
+<key>CFBundleVersion</key><string>$build_number</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 </dict></plist>
 PLIST
@@ -183,7 +183,7 @@ PLIST
 <key>CFBundleName</key><string>AgentDeckWidget</string>
 <key>CFBundleExecutable</key><string>AgentDeckWidget</string>
 <key>CFBundleShortVersionString</key><string>$version</string>
-<key>CFBundleVersion</key><string>1</string>
+<key>CFBundleVersion</key><string>$build_number</string>
 <key>CFBundlePackageType</key><string>XPC!</string>
 </dict></plist>
 PLIST
@@ -203,7 +203,7 @@ HELPER
 
 bundle="$temporary/AgentDeck.app"
 package_dist="$temporary/package-dist"
-make_bundle "$bundle" 1.2.3
+make_bundle "$bundle" 1.2.3 37
 mkdir -p "$package_dist"
 AGENTDECK_SKIP_NOTARIZATION=1 \
   bash "$root/scripts/package-macos-app.sh" "$bundle" v1.2.3 "$package_dist" \
@@ -214,7 +214,23 @@ zip_archive="$package_dist/AgentDeck_v1.2.3_universal.zip"
 package_checksums="$package_dist/AgentDeck_v1.2.3_checksums.txt"
 test -f "$dmg"
 test -f "$zip_archive"
+test "$(plutil -extract CFBundleVersion raw -o - "$bundle/Contents/Info.plist")" = 37
+test "$(plutil -extract CFBundleVersion raw -o - "$bundle/Contents/PlugIns/AgentDeckWidget.appex/Contents/Info.plist")" = 37
 test "$(wc -l <"$package_checksums" | tr -d ' ')" -eq 2
+
+mismatched_bundle="$temporary/AgentDeck-mismatched.app"
+cp -R "$bundle" "$mismatched_bundle"
+plutil -replace CFBundleVersion -string 38 \
+  "$mismatched_bundle/Contents/PlugIns/AgentDeckWidget.appex/Contents/Info.plist"
+if AGENTDECK_SKIP_NOTARIZATION=1 \
+  bash "$root/scripts/package-macos-app.sh" \
+    "$mismatched_bundle" v1.2.3 "$temporary/mismatched-dist" \
+    >"$temporary/mismatched-build.log" 2>&1; then
+  echo "packaging accepted mismatched App and Widget build numbers" >&2
+  exit 1
+fi
+grep -F 'widget bundle build 38 does not match app build 37' \
+  "$temporary/mismatched-build.log" >/dev/null
 (
   cd "$package_dist"
   shasum -a 256 -c "$(basename "$package_checksums")" >/dev/null

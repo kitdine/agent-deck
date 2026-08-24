@@ -17,6 +17,7 @@ BUILD_LDFLAGS += -X "$(BUILDINFO_PACKAGE).Commit=$(COMMIT)"
 BUILD_LDFLAGS += -X "$(BUILDINFO_PACKAGE).Branch=$(BRANCH)"
 BUILD_LDFLAGS += -X "$(BUILDINFO_PACKAGE).BuildTime=$(BUILD_TIME)"
 APP_VERSION ?= $(patsubst v%,%,$(VERSION_TAG))
+APP_BUILD_NUMBER ?=
 MACOS_APP ?= apps/macos/build/DerivedData/Build/Products/Release/AgentDeck.app
 PREFIX ?= $(HOME)/.local
 BINDIR ?= $(PREFIX)/bin
@@ -72,6 +73,7 @@ build-macos-app:
 # its embedded helper, and the CLI archives carry one version and one commit.
 build-macos-release: build-all
 	AGENTDECK_APP_CONFIGURATION=Release AGENTDECK_APP_VERSION="$(APP_VERSION)" \
+		AGENTDECK_APP_BUILD_NUMBER="$(APP_BUILD_NUMBER)" \
 		AGENTDECK_DIST_DIR="$(DIST_DIR)" bash scripts/build-macos-app.sh
 
 # Signs, assembles, and (unless skipped) notarizes the built candidate. It

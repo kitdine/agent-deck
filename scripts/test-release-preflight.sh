@@ -46,8 +46,25 @@ if ruby "$checker" "$preflight" "$with_duplicate_l4" >/dev/null 2>&1; then
   exit 1
 fi
 
+without_candidate_build="$temporary/preflight-without-candidate-build.yml"
+sed 's/APP_BUILD_NUMBER="$GITHUB_RUN_NUMBER"/APP_BUILD_NUMBER="1"/' \
+  "$preflight" >"$without_candidate_build"
+if ruby "$checker" "$without_candidate_build" "$release" >/dev/null 2>&1; then
+  echo "preflight checker accepted a desktop build not bound to the candidate count" >&2
+  exit 1
+fi
+
+without_build_reuse="$temporary/release-without-build-reuse.yml"
+sed 's/APP_BUILD_NUMBER="${{ needs.release.outputs.macos_build_number }}"/APP_BUILD_NUMBER="1"/' \
+  "$release" >"$without_build_reuse"
+if ruby "$checker" "$preflight" "$without_build_reuse" >/dev/null 2>&1; then
+  echo "preflight checker accepted a release that discarded the candidate build" >&2
+  exit 1
+fi
+
 target_sha=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 run_id=12345
+build_number=37
 evidence_id=urn:ce:agent-deck:evidence:v0-4-0-release-candidate:l4:test
 artifact_dir="$temporary/artifacts"
 version="preflight-$target_sha"
@@ -65,9 +82,33 @@ printf 'amd64 artifact\n' >"$artifact_dir/agentdeck_${version}_darwin_amd64.tar.
 ruby "$root/scripts/release-preflight-manifest.rb" create \
   "$artifact_dir/release-preflight.json" \
   kitdine/agent-deck "$target_sha" "$run_id" "$evidence_id" \
+  "$build_number" \
   "$artifact_dir/agentdeck_${version}_checksums.txt"
-ruby "$root/scripts/release-preflight-manifest.rb" verify \
-  "$artifact_dir" kitdine/agent-deck "$target_sha" "$run_id" >/dev/null
+test "$(ruby "$root/scripts/release-preflight-manifest.rb" verify \
+  "$artifact_dir" kitdine/agent-deck "$target_sha" "$run_id" \
+  --build-number-only)" = "$build_number"
+
+if ruby "$root/scripts/release-preflight-manifest.rb" create \
+  "$temporary/invalid-build.json" \
+  kitdine/agent-deck "$target_sha" "$run_id" "$evidence_id" 0 \
+  "$artifact_dir/agentdeck_${version}_checksums.txt" >/dev/null 2>&1; then
+  echo "preflight manifest accepted a non-positive macOS build number" >&2
+  exit 1
+fi
+
+cp "$artifact_dir/release-preflight.json" "$temporary/valid-manifest.json"
+ruby -rjson -e '
+  path = ARGV.fetch(0)
+  manifest = JSON.parse(File.read(path))
+  manifest["macos_build_number"] = 0
+  File.write(path, JSON.pretty_generate(manifest) + "\n")
+' "$artifact_dir/release-preflight.json"
+if ruby "$root/scripts/release-preflight-manifest.rb" verify \
+  "$artifact_dir" kitdine/agent-deck "$target_sha" "$run_id" >/dev/null 2>&1; then
+  echo "preflight verifier accepted a non-positive macOS build number" >&2
+  exit 1
+fi
+cp "$temporary/valid-manifest.json" "$artifact_dir/release-preflight.json"
 
 printf 'tampered\n' >>"$artifact_dir/agentdeck_${version}_darwin_arm64.tar.gz"
 if ruby "$root/scripts/release-preflight-manifest.rb" verify \

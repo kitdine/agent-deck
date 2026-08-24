@@ -21,6 +21,8 @@ jobs:
     permissions:
       actions: read
       contents: write
+    outputs:
+      macos_build_number: ${{ steps.preflight.outputs.macos_build_number }}
     runs-on: macos-15
     steps:
       - name: Check out repository
@@ -41,6 +43,7 @@ jobs:
         # macos-15 runner image does not ship fish by default.
         run: brew install fish
       - name: Require successful release preflight
+        id: preflight
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -57,11 +60,13 @@ jobs:
           gh run download "$preflight_run_id" \
             --name "release-preflight-$GITHUB_SHA" \
             --dir "$evidence_dir"
-          ruby scripts/release-preflight-manifest.rb verify \
+          macos_build_number=$(ruby scripts/release-preflight-manifest.rb verify \
             "$evidence_dir" \
             "$GITHUB_REPOSITORY" \
             "$GITHUB_SHA" \
-            "$preflight_run_id"
+            "$preflight_run_id" \
+            --build-number-only)
+          echo "macos_build_number=$macos_build_number" >>"$GITHUB_OUTPUT"
       - name: Verify version-specific release artifacts
         # Pin archive names to the tag so they always match the files uploaded
         # below, independent of the Makefile's git-describe version derivation.
@@ -217,7 +222,8 @@ jobs:
             VERSION="$RELEASE_TAG" \
             COMMIT="$GITHUB_SHA" \
             BRANCH=release \
-            APP_VERSION="${RELEASE_TAG#v}"
+            APP_VERSION="${RELEASE_TAG#v}" \
+            APP_BUILD_NUMBER="${{ needs.release.outputs.macos_build_number }}"
       - name: Import the Developer ID certificate
         env:
           MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}

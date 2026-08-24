@@ -62,8 +62,9 @@ helper="$app/Contents/Helpers/agentdeck"
 widget="$app/Contents/PlugIns/AgentDeckWidget.appex"
 frameworks="$app/Contents/Frameworks"
 info_plist="$app/Contents/Info.plist"
+widget_info_plist="$widget/Contents/Info.plist"
 
-for required in "$helper" "$widget" "$info_plist"; do
+for required in "$helper" "$widget" "$info_plist" "$widget_info_plist"; do
   if [[ ! -e $required ]]; then
     echo "app bundle is missing $required" >&2
     exit 1
@@ -104,6 +105,16 @@ fi
 bundle_version=$(plutil -extract CFBundleShortVersionString raw -o - "$info_plist")
 if [[ $bundle_version != "$version" ]]; then
   echo "app bundle version $bundle_version does not match release tag $tag" >&2
+  exit 1
+fi
+bundle_build=$(plutil -extract CFBundleVersion raw -o - "$info_plist")
+widget_build=$(plutil -extract CFBundleVersion raw -o - "$widget_info_plist")
+if [[ ! $bundle_build =~ ^[1-9][0-9]*$ ]]; then
+  echo "app bundle build must be a positive integer: $bundle_build" >&2
+  exit 1
+fi
+if [[ $widget_build != "$bundle_build" ]]; then
+  echo "widget bundle build $widget_build does not match app build $bundle_build" >&2
   exit 1
 fi
 helper_identity=$("$helper" --format json version)

@@ -7,6 +7,8 @@ AGENTDECK_APP_GROUP = group.com.kitdine.agentdeck
 // isolated distribution test need; a real release overrides them on the
 // xcodebuild invocation and never by editing this file.
 AGENTDECK_MARKETING_VERSION = 0.5.0
+// Local and isolated-test default only. A manually dispatched release preflight
+// assigns the distributable candidate build and injects it without editing this file.
 AGENTDECK_PROJECT_VERSION = 1
 // `-` is the ad-hoc identity. Release signing is performed by
 // scripts/package-macos-app.sh, which signs nested code inside-out with an
