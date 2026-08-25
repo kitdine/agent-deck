@@ -7,7 +7,7 @@ created: 2026-07-16
 
 本文档定义 Phase 9 CLI usability、内置 `official` provider baseline，以及
 credential-owned provider configuration 的正式命令契约。执行状态以
-`docs/README.md` 为准。
+`docs/status.md` 为准。
 
 ## 设计原则
 

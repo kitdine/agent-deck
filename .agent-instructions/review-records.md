@@ -45,7 +45,7 @@ the findings that must close before the next pass.
 
 Documents and tasks use the same records directory and the same rounds, but their
 matrices differ: a document has `Draft` and `Review`, a task has `Dev` and
-`Review`. See the Status section of `docs/README.md`.
+`Review`. See the Status section of `docs/documentation-workflow.md`.
 
 ## Retirement
 

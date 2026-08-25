@@ -131,7 +131,7 @@ check-whitespace:
 # The topic-document audit is NOT a make target. It is a documentation-workflow
 # tool that reads only docs/topics/**, participates in no build, `verify`, or
 # release path, and a make alias for it only implied otherwise. Run it directly:
-# `bash scripts/check-topic-docs.sh`; see docs/README.md.
+# `bash scripts/check-topic-docs.sh`; see docs/documentation-workflow.md.
 
 check-release-distribution:
 	bash scripts/test-release-distribution.sh

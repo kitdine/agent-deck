@@ -4,7 +4,7 @@
 The development-workflow Skill deliberately does not know Beads exists — its
 own boundaries say `AGENTS.md` is not a runtime prerequisite — so running a
 phase never moves a Beads task by itself. The only thing that does is an agent
-remembering AGENTS.md's "Review Artifact Finalization" rules, and a forgotten
+following AGENTS.md's routed workflow rules, and a forgotten
 transition is invisible: dispatch keeps asserting the previous state. That is
 how a task once sat `in_progress` for a day while nothing was being implemented.
 

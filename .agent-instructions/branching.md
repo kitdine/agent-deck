@@ -59,9 +59,10 @@ Two rules follow:
 - **A topic is merged whole or not at all.** Half a topic is not a coherent
   behavior change. If some of a topic's tasks might ship in a different version
   than the rest, that topic should have been two topics.
-- **Version membership lives only in the contract topic and the roadmap in
-  `docs/README.md`.** Rescheduling changes those two documents and nothing else
-  — no commit, branch, review record, or evidence moves.
+- **Active version membership lives only in the contract topic and is projected
+  in `docs/status.md`.** Rescheduling an active topic changes those two documents
+  and nothing else — no commit, branch, review record, or evidence moves. Later
+  version direction and unscheduled planning intake live in `docs/roadmap.md`.
 
 ### Excluding and deferring topics
 
@@ -267,7 +268,7 @@ code.
 | Document | Branch |
 | --- | --- |
 | `AGENTS.md`, `.agent-instructions/*` | `main` — they bind all branches |
-| `docs/README.md` index, roadmap, backlog | `main` — single source of truth |
+| `docs/README.md` stable index, `docs/status.md`, `docs/roadmap.md` | `main` — single source of truth for their respective scopes |
 | `docs/topics/<topic>/` requirements, `ux/`, architecture, tasks | `main` — they describe intent and change no behavior |
 | `docs/topics/<topic>/reviews/<task-anchor>.md` | With the code — a task verdict binds a tree on that branch |
 | `docs/topics/<topic>/reviews/` document records | `main` — a document verdict binds a document state, not a code tree |
@@ -335,8 +336,9 @@ Cross-check each review record's `Reviewed state` tree against CEv1 by
 ## Archival
 
 A version's feature topics and its contract topic retire together under the
-rules in `docs/README.md`, and the contract topic carries the integration record
-with it. Add one entry per version to `docs/archive/README.md`. When a merge
+rules in `docs/documentation-workflow.md`, and the contract topic carries the
+integration record with it. Add one entry per version to
+`docs/archive/README.md`. When a merge
 produced behavior no source topic described, say so explicitly — that sentence
 is what keeps the change from becoming invisible to a later audit:
 

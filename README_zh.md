@@ -16,7 +16,7 @@ AgentDeck 面向需要使用多个 Codex 或 Claude provider 的开发者。它�
 > `3b709a8fb09494a8d8fdd37ee154e3baedbce9ea`。同 SHA preflight、release artifact、
 > 稳定版 Homebrew formula、formula test 以及 bash、zsh、fish completion 均已通过
 > 验证。从 `v0.4.0` 升级会重新扫描已索引的 Codex source 以回填 cache-write token，
-> 因此历史 cache-write 数据会发生变化。当前开发状态见[文档索引](docs/README.md)。
+> 因此历史 cache-write 数据会发生变化。当前开发状态见[项目状态](docs/status.md)。
 
 ```bash
 make build
@@ -364,16 +364,23 @@ make clean
 cmd/agentdeck/   Cobra CLI 入口与端到端契约测试
 internal/        Provider、用量、会话、扩展、备份和平台实现
 scripts/         发布隐私检查
+.agent-instructions/  按需项目、证据、评审、Beads 与分支规则
 docs/specs/      已批准的行为和架构契约
 docs/topics/     按主题组织的需求、设计、任务与评审
+docs/status.md   当前发布与跨 topic 执行状态
+docs/roadmap.md  后续路线图、Backlog 与撤回项
 vendor/          已提交的 Go 依赖
 ```
 
 ## 文档与状态
 
 - [文档索引](docs/README.md)
-- [执行状态](docs/README.md)
+- [执行状态](docs/status.md)
+- [路线图与 Backlog](docs/roadmap.md)
+- [文档工作流](docs/documentation-workflow.md)
 - [CLI 设计与契约](docs/specs/cli-design.md)
+- [CLI 命令手册](docs/specs/cli-manual.md)
+- [Agent 规则与路由](AGENTS.md)
 
 仓库代码、测试、配置、Git 历史和以上 active 文档共同构成项目事实来源。
 

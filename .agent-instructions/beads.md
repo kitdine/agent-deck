@@ -60,8 +60,9 @@ store by anchor, labels, dependencies, and comments.
 ## Document work is dispatched too
 
 A topic reaches development through six document stages before any task exists;
-see the progression in `docs/README.md`. Beads carried only `Development:` and
-`Review:` pairs per task anchor, so that entire span was invisible to dispatch —
+see the progression in `docs/documentation-workflow.md`. Beads carried only
+`Development:` and `Review:` pairs per task anchor, so that entire span was
+invisible to dispatch —
 during it a `Development:` task sat claimed and `in_progress` while nothing was
 being implemented, which is the opposite of what dispatch should report.
 
@@ -158,7 +159,7 @@ project's to emit. The Skill deliberately emits no commit recommendation over a
 document, contract, or process target — nothing was implemented, so it has
 nothing to recommend — but that is a statement about the Skill's output, not
 about whether the work is delivered. A passing document leaves the document
-itself, its review record, and the `tasks.md` / `docs/README.md` status
+itself, its review record, and the `tasks.md` / `docs/status.md` status
 synchronization to be committed, and CEv1 binds an uncommitted review candidate
 to HEAD plus a blob fingerprint that must be re-recorded against the immutable
 Git tree once an authorized commit exists. `awaiting_commit` is precisely that

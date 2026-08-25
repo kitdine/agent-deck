@@ -9,7 +9,7 @@ created: 2026-07-14
 This document describes what the system does and must keep doing. It is revised
 in place as the contract changes and is not superseded by a dated replacement.
 Execution state — what is built, in flight, or deferred — lives in
-`docs/README.md`, not here.
+`docs/status.md`; roadmap and backlog state lives in `docs/roadmap.md`.
 
 ## Product Definition
 

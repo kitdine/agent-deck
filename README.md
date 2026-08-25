@@ -19,7 +19,7 @@ Codex's existing OpenAI or ChatGPT login.
 > fish completions passed verification. Upgrading from `v0.4.0` re-scans indexed
 > Codex sources to backfill cache-write tokens, so historical cache-write
 > figures change. See the
-> [documentation index](docs/README.md) for current development status.
+> [project status](docs/status.md) for current development status.
 
 ```bash
 make build
@@ -460,16 +460,23 @@ make clean
 cmd/agentdeck/   Cobra CLI entrypoint and end-to-end contract tests
 internal/        Provider, usage, session, extension, backup, and platform code
 scripts/         Release privacy checks
+.agent-instructions/  Routed project, evidence, review, Beads, and branching rules
 docs/specs/      Approved behavior and architecture contracts
 docs/topics/     Requirements, design, tasks, and reviews per topic
+docs/status.md   Current release and cross-topic execution status
+docs/roadmap.md  Later roadmap, backlog, and withdrawn candidates
 vendor/          Committed Go dependencies
 ```
 
 ## Documentation and Status
 
 - [Documentation index](docs/README.md)
-- [Execution status](docs/README.md)
+- [Execution status](docs/status.md)
+- [Roadmap and backlog](docs/roadmap.md)
+- [Documentation workflow](docs/documentation-workflow.md)
 - [CLI design and contracts](docs/specs/cli-design.md)
+- [CLI command manual](docs/specs/cli-manual.md)
+- [Agent rules and routing](AGENTS.md)
 
 The repository code, tests, configuration, Git history, and active documents
 above are the sources of truth.
