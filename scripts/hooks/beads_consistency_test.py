@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import io
 import json
+import sys
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -16,6 +17,39 @@ SPEC.loader.exec_module(MODULE)
 
 
 class BeadsConsistencyHookTest(unittest.TestCase):
+    def test_authorization_wait_skips_all_heavy_consistency_work(self) -> None:
+        event = {
+            "hook_event_name": "Stop",
+            "last_assistant_message": (
+                "Waiting for one exact approval.\n"
+                "WORKFLOW_AUTHORIZATION_WAIT: ce-write phase-token"
+            ),
+        }
+        with (
+            mock.patch.object(sys, "argv", [str(SCRIPT), "--runtime", "codex"]),
+            mock.patch.object(sys, "stdin", io.StringIO(json.dumps(event))),
+            mock.patch.object(MODULE, "repo_root") as repo_root,
+            mock.patch.object(MODULE, "findings") as findings,
+        ):
+            self.assertEqual(MODULE.main(), 0)
+
+        repo_root.assert_not_called()
+        findings.assert_not_called()
+
+    def test_project_contract_grants_stage_internal_state_transitions(self) -> None:
+        agents = SCRIPT.parents[2] / "AGENTS.md"
+        normalized = " ".join(agents.read_text(encoding="utf-8").split())
+
+        for contract in (
+            "Stage Command Authority",
+            "review and status artifacts",
+            "completion-evidence",
+            "Beads",
+            "without additional user authorization",
+            "commit, push, release, or deploy",
+        ):
+            self.assertIn(contract, normalized)
+
     def test_remaining_timeout_is_bounded_by_command_and_hook_budgets(self) -> None:
         with mock.patch.object(MODULE.time, "monotonic", return_value=100.0):
             self.assertEqual(MODULE.remaining_timeout(120.0), 8.0)
@@ -111,6 +145,100 @@ class BeadsConsistencyHookTest(unittest.TestCase):
             notes = MODULE.findings(root, 123.0)
 
         self.assertEqual([n for n in notes if "has no Beads task" in n], [])
+
+    def test_latest_review_state_reads_the_latest_round_gate(self) -> None:
+        review = mock.MagicMock()
+        review.read_text.return_value = "\n".join(
+            (
+                "## Round 1",
+                "- Completion gate: VERIFIED",
+                "- Verdict: PASS",
+                "## Round 2",
+                "- Completion gate: BLOCKED",
+                "- Verdict: PASS",
+            )
+        )
+
+        self.assertEqual(MODULE.latest_review_state(review), ("PASS", "BLOCKED"))
+
+    def test_pass_with_blocked_gate_may_remain_in_review(self) -> None:
+        root = Path("/repo")
+
+        def beads(args: list[str], _deadline: float) -> list[dict[str, str]]:
+            if args == ["list", "--status", "in_review"]:
+                return [{"id": "task-1", "title": "任务：anchor"}]
+            return []
+
+        with (
+            mock.patch.object(
+                MODULE,
+                "changed_paths",
+                return_value=["docs/topics/example/reviews/anchor.md"],
+            ),
+            mock.patch.object(
+                MODULE.Path,
+                "read_text",
+                return_value="- Completion gate: BLOCKED\n- Verdict: PASS\n",
+            ),
+            mock.patch.object(MODULE.Path, "glob", return_value=[]),
+            mock.patch.object(MODULE, "bd_json", side_effect=beads),
+        ):
+            self.assertEqual(MODULE.findings(root, 123.0), [])
+
+    def test_pass_requires_awaiting_commit_only_after_verified_gate(self) -> None:
+        root = Path("/repo")
+
+        def beads(args: list[str], _deadline: float) -> list[dict[str, str]]:
+            if args == ["list", "--status", "in_review"]:
+                return [{"id": "task-1", "title": "任务：anchor"}]
+            return []
+
+        with (
+            mock.patch.object(
+                MODULE,
+                "changed_paths",
+                return_value=["docs/topics/example/reviews/anchor.md"],
+            ),
+            mock.patch.object(
+                MODULE.Path,
+                "read_text",
+                return_value="- Completion gate: VERIFIED\n- Verdict: PASS\n",
+            ),
+            mock.patch.object(MODULE.Path, "glob", return_value=[]),
+            mock.patch.object(MODULE, "bd_json", side_effect=beads),
+        ):
+            notes = MODULE.findings(root, 123.0)
+
+        self.assertEqual(len(notes), 1)
+        self.assertIn("completion gate is `VERIFIED`", notes[0])
+
+    def test_pass_with_blocked_gate_rejects_awaiting_commit(self) -> None:
+        root = Path("/repo")
+
+        def beads(args: list[str], _deadline: float) -> list[dict[str, str]]:
+            if args == ["list", "--status", "awaiting_commit"]:
+                return [{"id": "task-1", "title": "任务：anchor"}]
+            return []
+
+        with (
+            mock.patch.object(
+                MODULE,
+                "changed_paths",
+                return_value=["docs/topics/example/reviews/anchor.md"],
+            ),
+            mock.patch.object(
+                MODULE.Path,
+                "read_text",
+                return_value="- Completion gate: BLOCKED\n- Verdict: PASS\n",
+            ),
+            mock.patch.object(MODULE.Path, "glob", return_value=[]),
+            mock.patch.object(MODULE, "bd_json", side_effect=beads),
+        ):
+            notes = MODULE.findings(root, 123.0)
+
+        self.assertEqual(len(notes), 1)
+        self.assertIn("completion gate is `BLOCKED`", notes[0])
+        self.assertIn("must remain `in_review`", notes[0])
 
     def test_stop_report_blocks_so_the_model_sees_it(self) -> None:
         output = MODULE.report_output(["example mismatch"])

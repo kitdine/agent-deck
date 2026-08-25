@@ -48,6 +48,14 @@ TASK_TITLE = re.compile(r"^任务：\s*(.+)$")
 
 # A review record's verdict line, e.g. "- Verdict: PASS".
 VERDICT = re.compile(r"Verdict:\s*(PASS|FAIL|REOPEN)", re.IGNORECASE)
+COMPLETION_GATE = re.compile(
+    r"Completion gate:\s*`?(VERIFIED|NOT_VERIFIED|FAILED|BLOCKED|NOT_REQUIRED)`?",
+    re.IGNORECASE,
+)
+AUTHORIZATION_WAIT = re.compile(
+    r"(?m)^WORKFLOW_AUTHORIZATION_WAIT:\s*"
+    r"[A-Za-z0-9][A-Za-z0-9._:/-]*(?:\s+[A-Za-z0-9_-]+)?[ \t]*$"
+)
 
 TIMEOUT = 8
 HOOK_BUDGET = 10.0
@@ -57,6 +65,11 @@ def remaining_timeout(deadline: float) -> float | None:
     """Return one subprocess timeout inside the shared Stop-hook budget."""
     remaining = deadline - time.monotonic()
     return min(float(TIMEOUT), remaining) if remaining > 0 else None
+
+
+def authorization_wait(event: dict[str, Any]) -> bool:
+    message = event.get("last_assistant_message")
+    return isinstance(message, str) and bool(AUTHORIZATION_WAIT.search(message))
 
 
 def repo_root(deadline: float) -> Path | None:
@@ -136,15 +149,30 @@ def changed_paths(root: Path, deadline: float) -> list[str]:
     return paths
 
 
-def latest_verdict(path: Path) -> str | None:
-    """The last verdict in a review record — records append rounds, so the
-    final one is the current round's."""
+def latest_review_state(path: Path) -> tuple[str | None, str | None]:
+    """Return the latest round's verdict and completion gate.
+
+    Records append rounds. Restrict the gate lookup to the section containing
+    the final verdict so an older VERIFIED gate cannot leak across a later
+    REOPEN or BLOCKED round.
+    """
     try:
         text = path.read_text(encoding="utf-8", errors="replace")
     except OSError:
-        return None
-    found = VERDICT.findall(text)
-    return found[-1].upper() if found else None
+        return None, None
+    verdicts = list(VERDICT.finditer(text))
+    if not verdicts:
+        return None, None
+    latest = verdicts[-1]
+    round_start = text.rfind("\n## ", 0, latest.start())
+    section = text[round_start if round_start >= 0 else 0 : latest.end()]
+    gates = COMPLETION_GATE.findall(section)
+    gate = gates[-1].upper() if gates else None
+    return latest.group(1).upper(), gate
+
+
+def latest_verdict(path: Path) -> str | None:
+    return latest_review_state(path)[0]
 
 
 def doc_subject_of(bead: dict[str, Any]) -> tuple[str, str] | None:
@@ -227,42 +255,59 @@ def findings(root: Path, deadline: float) -> list[str]:
     changed = changed_paths(root, deadline)
     notes: list[str] = []
 
-    # 1. A review record was written or updated, but the task it reviews is
-    #    still `in_review`. The verdict exists; dispatch has not heard about it.
+    # 1. A review record was written or updated, but dispatch does not reflect
+    #    both its verdict and completion gate. Review PASS alone is insufficient:
+    #    a required non-VERIFIED gate intentionally keeps the task in_review.
     touched_reviews = [p for p in changed if "/reviews/" in p and p.endswith(".md")]
     if touched_reviews:
-        in_review = bd_json(["list", "--status", "in_review"], deadline) or []
+        by_status = {
+            status: bd_json(["list", "--status", status], deadline) or []
+            for status in ("in_review", "awaiting_commit")
+        }
         # Keyed by the record each task is reviewed under, so a verdict reaches
         # exactly the one task whose subject it is.
-        by_record: dict[tuple[str, str], str] = {}
-        for bead in in_review:
-            if not isinstance(bead, dict):
-                continue
-            subject = doc_subject_of(bead)
-            if subject:
-                topic, document = subject
-                by_record[(topic, record_stem(document))] = str(bead.get("id"))
-                continue
-            anchor = anchor_of(bead)
-            if anchor:
-                # A task-anchor record carries the topic in its own task title
-                # only loosely, so match it under every topic; the stem is what
-                # disambiguates.
-                by_record[("", anchor)] = str(bead.get("id"))
+        by_record: dict[tuple[str, str], tuple[str, str]] = {}
+        for status, beads in by_status.items():
+            for bead in beads:
+                if not isinstance(bead, dict):
+                    continue
+                identity = (str(bead.get("id")), status)
+                subject = doc_subject_of(bead)
+                if subject:
+                    topic, document = subject
+                    by_record[(topic, record_stem(document))] = identity
+                    continue
+                anchor = anchor_of(bead)
+                if anchor:
+                    # A task-anchor record carries the topic in its own task title
+                    # only loosely, so match it under every topic; the stem is what
+                    # disambiguates.
+                    by_record[("", anchor)] = identity
         for rel in touched_reviews:
             subject = review_subject(rel)
             if not subject:
                 continue
             topic, stem = subject
-            verdict = latest_verdict(root / rel)
-            if verdict != "PASS":
+            verdict, gate = latest_review_state(root / rel)
+            if verdict != "PASS" or gate is None:
                 continue
-            stuck = by_record.get((topic, stem)) or by_record.get(("", stem))
-            if stuck:
+            task = by_record.get((topic, stem)) or by_record.get(("", stem))
+            if not task:
+                continue
+            task_id, status = task
+            if gate in {"VERIFIED", "NOT_REQUIRED"} and status == "in_review":
                 notes.append(
                     f"{rel} records Verdict: PASS, but its subject's task "
-                    f"{stuck} ({topic}) is still `in_review`. A PASS moves that "
-                    f"task to `awaiting_commit`; see .agent-instructions/beads.md."
+                    f"{task_id} ({topic}) is still `in_review` even though the "
+                    f"completion gate is `{gate}`. Move it to `awaiting_commit`; "
+                    f"see .agent-instructions/beads.md."
+                )
+            elif gate in {"NOT_VERIFIED", "FAILED", "BLOCKED"} and status == "awaiting_commit":
+                notes.append(
+                    f"{rel} records Verdict: PASS, but its subject's task "
+                    f"{task_id} ({topic}) is `awaiting_commit` while the completion "
+                    f"gate is `{gate}`. It must remain `in_review` until the gate is "
+                    f"VERIFIED; see .agent-instructions/beads.md."
                 )
 
     # 2. A task is parked at `awaiting_commit` while the tree is clean. Either
@@ -423,6 +468,8 @@ def main() -> int:
     except (json.JSONDecodeError, OSError):
         return 0
     if not isinstance(event, dict) or event.get("hook_event_name") != "Stop":
+        return 0
+    if authorization_wait(event):
         return 0
     stop_hook_active = bool(event.get("stop_hook_active"))
 

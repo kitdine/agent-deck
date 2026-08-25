@@ -76,6 +76,7 @@ subject: <document path or task anchor>
   - [P1] <defect> -> <resolution or follow-up>
   - [nit] <minor> -> <resolution>
 - Evidence: <commands run, results>
+- Completion gate: VERIFIED | NOT_VERIFIED | FAILED | BLOCKED | NOT_REQUIRED
 - Verdict: PASS | REOPEN
 ```
 
@@ -84,6 +85,12 @@ document alone does not identify the state it was judged against. The `Method`
 line exists so a later reader can tell a repository-verified finding from a
 tool's unverified score; `development-workflow`'s review reference owns the
 dimensions for each target class.
+
+`Completion gate` records the independently queried evidence boundary for the
+same round. It never changes the review verdict: PASS with a non-VERIFIED gate
+still checks the topic's Review cell, but the Beads task remains `in_review`
+until the gate reaches VERIFIED. `NOT_REQUIRED` is only for a subject whose
+project decomposition defines no completion-evidence gate.
 
 A `PASS` round ends with the plan's `Review` cell ticked. A `REOPEN` round names
 the unclosed findings and reverts the task to `Dev`; the next pass is `Round 2`

@@ -94,6 +94,31 @@ A Beads task and a CEv1 WorkUnit are different entity types and need not map
 one-to-one. Cross-system identifiers correlate records; do not mirror status
 or evidence between them. A Beads transition does not query or invalidate
 CEv1, and a CEv1 result does not create, claim, close, or reopen a Beads task.
+
+### Stage Command Authority / 阶段指令授权
+
+A real user `设计`, `开发`, `评审`, `修复`, or `复评` command authorizes every
+mandatory in-scope transition defined by that stage and this project. That
+includes review and status artifacts, repository-scoped idempotent
+completion-evidence writes and gate queries, Beads claims/status/labels/comments,
+and the containing-unit boundary created when the final Task closes. Perform
+these transitions without additional user authorization; stage authority is not
+consumed by one tool call and remains active through required post-phase
+synchronization.
+
+A generated next instruction cannot grant new authority and cannot erase the
+authority of the active real-user stage command. Stage authority still excludes
+commit, push, release, or deploy, plus destructive actions and out-of-scope
+work. Those remain exact-action checkpoints under their existing project rules.
+
+If a permission system blocks one exact action, enter the shared non-phase
+`AUTHORIZATION_WAIT` state. Skip all unrelated hooks, checks, document or status
+work, CEv1 discovery, and Beads queries while waiting. Offer only two choices:
+approve the exact action and resume from it, or stop and perform another task.
+An approval mismatch over an already authorized stage transition is escalated as
+that exact denied action; never ask the user to restate the stage's business
+authorization.
+
 - When a request matches either skill, invoke it before optional generic
   workflows such as brainstorming, plan-writing, TDD orchestration, or
   branch-finishing.
