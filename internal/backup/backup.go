@@ -23,12 +23,15 @@ import (
 	"filippo.io/age"
 
 	"github.com/kitdine/agent-deck/internal/credentialvault"
+	"github.com/kitdine/agent-deck/internal/errdefs"
 	"github.com/kitdine/agent-deck/internal/platform"
 	"github.com/kitdine/agent-deck/internal/store"
 )
 
 const (
 	ManifestSchemaVersion = 1
+	CodeArchiveNotFound   = "backup_not_found"
+	CodeArchiveUnreadable = "backup_unreadable"
 	manifestName          = "manifest.json"
 	coreName              = "agentdeck.sqlite3"
 	credentialsName       = "credentials.json"
@@ -459,7 +462,10 @@ func writeEncrypted(destination, passphrase string, entries map[string][]byte, c
 func readEncrypted(path, passphrase string) (Manifest, map[string][]byte, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return Manifest{}, nil, err
+		if errors.Is(err, fs.ErrNotExist) {
+			return Manifest{}, nil, errdefs.NewNotFound(CodeArchiveNotFound, "backup archive not found", err)
+		}
+		return Manifest{}, nil, errdefs.NewNotFound(CodeArchiveUnreadable, "backup archive is unreadable", err)
 	}
 	defer file.Close()
 	identity, err := age.NewScryptIdentity(passphrase)

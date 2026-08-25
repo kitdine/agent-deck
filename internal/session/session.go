@@ -24,6 +24,7 @@ import (
 
 const (
 	ParserVersion                  = 5
+	CodeSessionNotFound            = "session_not_found"
 	replaceDocumentsSourcePath     = "agentdeck://replace-documents"
 	replaceDocumentsSourceIdentity = "synthetic:replace-documents"
 )

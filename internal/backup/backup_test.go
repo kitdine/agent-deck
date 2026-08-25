@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,6 +17,7 @@ import (
 	"filippo.io/age"
 
 	"github.com/kitdine/agent-deck/internal/credentialvault"
+	"github.com/kitdine/agent-deck/internal/errdefs"
 	"github.com/kitdine/agent-deck/internal/platform"
 	providerpkg "github.com/kitdine/agent-deck/internal/provider"
 	"github.com/kitdine/agent-deck/internal/store"
@@ -311,6 +313,40 @@ func TestEncryptedBackupInspectAndEmptyRootRestore(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(target, "credential.key")); err != nil {
 		t.Fatalf("restored credential key: %v", err)
+	}
+}
+
+func TestReadEncryptedClassifiesOpenFailuresWithoutLeakingPaths(t *testing.T) {
+	assertOpenError := func(err error, code, message, path string) {
+		t.Helper()
+		var notFound *errdefs.NotFound
+		if !errors.As(err, &notFound) || notFound.Code != code {
+			t.Fatalf("open error = %#v, %v", notFound, err)
+		}
+		if err.Error() != message || strings.Contains(err.Error(), path) || strings.Contains(err.Error(), "permission denied") {
+			t.Fatalf("open message = %q", err.Error())
+		}
+	}
+
+	missing := filepath.Join(t.TempDir(), "missing-secret-name.adb")
+	_, _, err := readEncrypted(missing, "passphrase")
+	assertOpenError(err, CodeArchiveNotFound, "backup archive not found", missing)
+	if !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("missing archive does not preserve fs.ErrNotExist: %v", err)
+	}
+
+	unreadable := filepath.Join(t.TempDir(), "unreadable-secret-name.adb")
+	if err = os.WriteFile(unreadable, []byte("not an archive"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Chmod(unreadable, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(unreadable, 0o600) })
+	_, _, err = readEncrypted(unreadable, "passphrase")
+	assertOpenError(err, CodeArchiveUnreadable, "backup archive is unreadable", unreadable)
+	if !errors.Is(err, fs.ErrPermission) {
+		t.Fatalf("unreadable archive does not preserve fs.ErrPermission: %v", err)
 	}
 }
 

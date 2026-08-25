@@ -126,13 +126,34 @@ document is required.
 
 | Task | Dev | Review |
 | --- | --- | --- |
-| 1. `typed-not-found-errors` | [ ] | [ ] |
+| 1. `typed-not-found-errors` | [x] | [x] |
 | 2. `stable-error-codes` | [ ] | [ ] |
 
 Tasks are sequential. Commit boundaries follow task boundaries, and because both
 tasks touch `cmd/agentdeck/main.go`, each commit must be staged by hunk rather
 than by file. This topic does not authorize commits, pushes, release preparation,
 or assembly into any version.
+
+`typed-not-found-errors` Review Round 1 (2026-08-25): **PASS** with no findings;
+its Task completion gate is **VERIFIED** in CEv1 WorkUnit
+`urn:ce:agent-deck:work-unit:cli-error-classification-typed-not-found-errors`.
+The new
+`internal/errdefs.NotFound` carrier renders only its redacted message while
+preserving an optional cause for `errors.Is` and its code for `errors.As`. Store
+provider and credential lookups now return that carrier; `UseCredential`
+propagates it; backup archive open failures distinguish absent from unreadable
+without rendering a path or errno; and both session-not-found messages remain
+byte-identical while carrying `session_not_found`. Task 2's `errorCode` mapping
+hunk remains untouched. The five focused regressions, all affected package
+tests, and `scripts/run-go-test.sh ./...` pass on the final behavior state; the
+independent Review reran the five focused regressions successfully.
+This task is delivered by the commit containing this status record.
+
+Next action:
+
+```text
+开发：cli-error-classification / stable-error-codes
+```
 
 ## Starting a task
 

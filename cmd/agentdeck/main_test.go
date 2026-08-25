@@ -23,6 +23,7 @@ import (
 	"github.com/kitdine/agent-deck/internal/buildinfo"
 	"github.com/kitdine/agent-deck/internal/credentialvault"
 	"github.com/kitdine/agent-deck/internal/doctor"
+	"github.com/kitdine/agent-deck/internal/errdefs"
 	"github.com/kitdine/agent-deck/internal/extension"
 	"github.com/kitdine/agent-deck/internal/output"
 	"github.com/kitdine/agent-deck/internal/provider"
@@ -2004,12 +2005,12 @@ func TestSessionShowClassifiesMissingIndexEntries(t *testing.T) {
 	tests := []struct {
 		name, client   string
 		coreHasSession bool
-		wantStale      bool
+		wantMessage    string
 	}{
-		{name: "explicit client stale", client: "codex", coreHasSession: true, wantStale: true},
-		{name: "inferred client stale", coreHasSession: true, wantStale: true},
-		{name: "explicit client absent", client: "codex"},
-		{name: "inferred client absent"},
+		{name: "explicit client stale", client: "codex", coreHasSession: true, wantMessage: `session "missing-index" is missing from the session index; run agentdeck session scan`},
+		{name: "inferred client stale", coreHasSession: true, wantMessage: `session "missing-index" is missing from the session index; run agentdeck session scan`},
+		{name: "explicit client absent", client: "codex", wantMessage: `no session "missing-index" is known`},
+		{name: "inferred client absent", wantMessage: `no session "missing-index" is known`},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -2037,15 +2038,15 @@ func TestSessionShowClassifiesMissingIndexEntries(t *testing.T) {
 			if !errors.Is(err, sql.ErrNoRows) {
 				t.Fatalf("session show error = %v, want sql.ErrNoRows", err)
 			}
+			var notFound *errdefs.NotFound
+			if !errors.As(err, &notFound) || notFound.Code != session.CodeSessionNotFound {
+				t.Fatalf("session show error = %#v, %v", notFound, err)
+			}
 			if strings.Contains(err.Error(), "sql: no rows in result set") {
 				t.Fatalf("session show leaked SQL error: %v", err)
 			}
-			if test.wantStale {
-				if !strings.Contains(err.Error(), "agentdeck session scan") {
-					t.Fatalf("stale session show error = %v", err)
-				}
-			} else if !strings.Contains(err.Error(), "no session") {
-				t.Fatalf("absent session show error = %v", err)
+			if err.Error() != test.wantMessage {
+				t.Fatalf("session show error = %q, want %q", err.Error(), test.wantMessage)
 			}
 			for _, suffix := range []string{"-wal", "-shm"} {
 				info, statErr := os.Stat(filepath.Join(state, "agentdeck.sqlite3") + suffix)

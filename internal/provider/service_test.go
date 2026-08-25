@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/kitdine/agent-deck/internal/credentialvault"
+	"github.com/kitdine/agent-deck/internal/errdefs"
 	"github.com/kitdine/agent-deck/internal/store"
 	"modernc.org/sqlite"
 )
@@ -533,6 +534,25 @@ func TestUseRejectsUnsupportedClient(t *testing.T) {
 	}
 	if err := service.Use(ctx, "example", ClientClaude, filepath.Join(t.TempDir(), "settings.json"), filepath.Join(t.TempDir(), "backup.json")); err == nil {
 		t.Fatal("Use succeeded for unsupported client")
+	}
+}
+
+func TestUseCredentialPropagatesProviderNotFound(t *testing.T) {
+	ctx := context.Background()
+	database, err := store.Open(ctx, filepath.Join(t.TempDir(), "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	service := Service{Store: database, Vault: testCredentialVault(t)}
+
+	err = service.UseCredential(ctx, "missing-provider", ClientCodex, "", filepath.Join(t.TempDir(), "config.toml"), "", false)
+	var notFound *errdefs.NotFound
+	if !errors.As(err, &notFound) || notFound.Code != store.CodeProviderNotFound {
+		t.Fatalf("UseCredential error = %#v, %v", notFound, err)
+	}
+	if !errors.Is(err, sql.ErrNoRows) || strings.Contains(err.Error(), "sql:") {
+		t.Fatalf("UseCredential error = %v", err)
 	}
 }
 

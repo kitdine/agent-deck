@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/kitdine/agent-deck/internal/errdefs"
 )
 
 func TestRealV6FixtureMigratesCredentialOwnedMetadataToV9WithoutSecrets(t *testing.T) {
@@ -438,6 +440,40 @@ func TestDeleteMissingProvider(t *testing.T) {
 	if err := s.DeleteProvider(context.Background(), "missing"); err != sql.ErrNoRows {
 		t.Fatalf("DeleteProvider error = %v", err)
 	}
+}
+
+func TestProviderAndCredentialLookupsReturnRedactedNotFoundErrors(t *testing.T) {
+	ctx := context.Background()
+	s, err := Open(ctx, filepath.Join(t.TempDir(), "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	_, err = s.ProviderByName(ctx, "missing-provider")
+	assertNotFound := func(err error, code, identifier string) {
+		t.Helper()
+		var notFound *errdefs.NotFound
+		if !errors.As(err, &notFound) || notFound.Code != code {
+			t.Fatalf("not-found error = %#v, %v", notFound, err)
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			t.Fatalf("error does not preserve sql.ErrNoRows: %v", err)
+		}
+		if !strings.Contains(err.Error(), identifier) || strings.Contains(err.Error(), "sql:") || strings.Contains(err.Error(), "no rows in result set") {
+			t.Fatalf("not-found message = %q", err.Error())
+		}
+	}
+	assertNotFound(err, CodeProviderNotFound, "missing-provider")
+
+	if _, err = s.CreateProviderWithCredential(ctx,
+		Provider{Name: "example", Endpoint: "https://example.invalid", CredentialRef: "example-default-ref", Multiplier: "1", Clients: []ClientMapping{{Client: "codex"}}},
+		ProviderCredential{Name: "default", CredentialRef: "example-default-ref", Endpoint: "https://example.invalid", Multiplier: "1", Clients: []string{"codex"}},
+		CredentialSecret{Algorithm: "aes-256-gcm", KeyVersion: 1, KeyID: "test-key", Nonce: []byte("123456789012"), Ciphertext: []byte("sealed")}); err != nil {
+		t.Fatal(err)
+	}
+	_, err = s.ProviderCredential(ctx, "example", "missing-credential")
+	assertNotFound(err, CodeCredentialNotFound, "example/missing-credential")
 }
 
 func TestCompleteProviderUseCompletesOperationAndPersistsSelection(t *testing.T) {

@@ -4,7 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"time"
+
+	"github.com/kitdine/agent-deck/internal/errdefs"
 )
 
 type Provider struct {
@@ -364,7 +367,7 @@ func (s *Store) ProviderByName(ctx context.Context, name string) (Provider, erro
 			return provider, nil
 		}
 	}
-	return Provider{}, sql.ErrNoRows
+	return Provider{}, errdefs.NewNotFound(CodeProviderNotFound, fmt.Sprintf("no provider %q is known", name), sql.ErrNoRows)
 }
 
 // SetProviderWrapper stores or clears a provider's wrapper URL. It is pure
@@ -661,7 +664,8 @@ func (s *Store) ProviderCredential(ctx context.Context, providerName, name strin
 			return item, nil
 		}
 	}
-	return ProviderCredential{}, sql.ErrNoRows
+	reference := providerName + "/" + name
+	return ProviderCredential{}, errdefs.NewNotFound(CodeCredentialNotFound, fmt.Sprintf("no credential %q is known", reference), sql.ErrNoRows)
 }
 
 func (s *Store) UpdateProviderCredential(ctx context.Context, credential ProviderCredential) (ProviderCredential, error) {

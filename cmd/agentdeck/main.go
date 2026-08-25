@@ -28,6 +28,7 @@ import (
 	"github.com/kitdine/agent-deck/internal/credentialvault"
 	"github.com/kitdine/agent-deck/internal/desktop"
 	"github.com/kitdine/agent-deck/internal/doctor"
+	"github.com/kitdine/agent-deck/internal/errdefs"
 	"github.com/kitdine/agent-deck/internal/extension"
 	"github.com/kitdine/agent-deck/internal/output"
 	"github.com/kitdine/agent-deck/internal/platform"
@@ -285,18 +286,6 @@ func (e *inputError) Unwrap() error {
 	return e.err
 }
 
-type sessionShowNotFoundError struct {
-	message string
-}
-
-func (e *sessionShowNotFoundError) Error() string {
-	return e.message
-}
-
-func (e *sessionShowNotFoundError) Unwrap() error {
-	return sql.ErrNoRows
-}
-
 func main() {
 	os.Exit(execute(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
 }
@@ -395,7 +384,7 @@ func sessionShowNotFound(ctx context.Context, opts *commandOptions, client, sess
 		// core database or change committed database contents.
 		core, err := store.OpenReadOnly(ctx, stateRoot)
 		if err != nil {
-			return &sessionShowNotFoundError{message: message}
+			return errdefs.NewNotFound(session.CodeSessionNotFound, message, sql.ErrNoRows)
 		}
 		defer core.Close()
 		query := "SELECT EXISTS(SELECT 1 FROM usage_sessions WHERE session_id=?)"
@@ -409,7 +398,7 @@ func sessionShowNotFound(ctx context.Context, opts *commandOptions, client, sess
 			message = fmt.Sprintf("session %q is missing from the session index; run agentdeck session scan", sessionID)
 		}
 	}
-	return &sessionShowNotFoundError{message: message}
+	return errdefs.NewNotFound(session.CodeSessionNotFound, message, sql.ErrNoRows)
 }
 
 func isInputError(err error) bool {
