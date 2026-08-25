@@ -336,7 +336,7 @@ The identity inputs the build itself needs are **not** secrets and stay in
 `apps/macos/Config/AgentDeck.xcconfig`: `AGENTDECK_APP_GROUP`,
 `PRODUCT_BUNDLE_IDENTIFIER`, `AGENTDECK_MARKETING_VERSION`,
 `AGENTDECK_PROJECT_VERSION`, `AGENTDECK_CODE_SIGN_IDENTITY` (default `-`, the
-ad-hoc identity) and `AGENTDECK_DEVELOPMENT_TEAM` (default empty). An unsigned
+ad-hoc identity) and `AGENTDECK_DEVELOPMENT_TEAM` (`N2FZ2FNRTU`). An unsigned
 local build and the isolated distribution tests run entirely on those defaults,
 which is what makes the whole path testable without a credential: the tests sign
 ad-hoc and drive notarization through a recording stub, and the packaging script
@@ -390,7 +390,7 @@ This task does not deliver:
 | Runtime ownership | One application-owned coordinator owns refresh state, helper execution, decoding, and cache publication. |
 | Helper | The host executes only the `agentdeck` binary embedded in its own bundle. It never resolves a helper through `PATH` and never uses a shell. |
 | Data authority | The Go helper and existing AgentDeck state remain authoritative. Swift state and the App Group file are disposable projections. |
-| Shared storage | The application is the sole writer to `group.com.kitdine.agentdeck`; future extensions are read-only consumers. |
+| Shared storage | The application is the sole writer to `N2FZ2FNRTU.group.com.kitdine.agentdeck`; extensions are read-only consumers. |
 | Sandboxing | v0.5.0 is a directly distributed, non-App-Store application and does not enable App Sandbox. Hardened Runtime and release signing belong to distribution work. |
 | Networking | Foundation refresh is local-only and opens no sockets. |
 | Dependencies | The Swift foundation uses Apple frameworks only and must build without package downloads. |
@@ -757,6 +757,21 @@ Application and future extension targets that consume the cache share the App
 Group entitlement. Test targets use injected temporary directories and do not
 require the entitlement.
 
+The canonical macOS App Group identifier is
+`N2FZ2FNRTU.group.com.kitdine.agentdeck`. It uses Apple's
+`<team identifier>.<group name>` form, so the group container is bound to the
+same Team ID carried by the Developer ID signature.
+
+`AGENTDECK_APP_GROUP` in `apps/macos/Config/AgentDeck.xcconfig` is the single
+identity source. Xcode expands it into both targets' application-group
+entitlements and their `AgentDeckAppGroupIdentifier` Info.plist value. The host
+writer and Widget reader load that value from their own runtime bundle and fail
+closed when it is absent; neither compiles a second identifier literal.
+Packaging, distribution assertions, and the Cask `zap` path use the same
+canonical value. `scripts/check-widget-sandbox.sh` rejects a missing Team
+prefix, a plist/entitlement injection mismatch, or a Swift literal that could
+drift from the signing configuration.
+
 `AGENTDECK_PROJECT_VERSION` is the single source for `CFBundleVersion` in the
 App, Widget, and embedded `AgentDeckShared` framework. Its checked-in value `1`
 is only the unsigned local-build and isolated-test default; ordinary local
@@ -779,9 +794,11 @@ The local build command MUST:
 - embed the helper in the exact bundle location consumed by the runner;
 - perform no network access and no mutation of real AgentDeck state.
 
-Signing, Hardened Runtime validation, notarization, universal assembly, release
-asset layout, and update-channel metadata belong to
-`unified-desktop-distribution`.
+Signing, Hardened Runtime validation, notarization, universal assembly, and
+release asset layout belong to `unified-desktop-distribution`. That task
+delivered no update-channel metadata, and none is specified: the update check
+was withdrawn from this version, so there is no channel for metadata to
+describe.
 
 ### Acceptance criteria
 
@@ -927,17 +944,25 @@ a surface that renders an unprovisioned field renders an invented one.
 | --- | --- | --- |
 | Attribution under a period filter | **Provisioned.** `quality` and `pricing` move from client scope to the `Client` × `Period` product, exactly as `periods.items[]` already is | The surfaces' central correction is that both filters govern every panel. Leaving these two at current-period only would rebuild the half-governed filter the design exists to remove |
 | Sessions under a period filter | **Provisioned.** `sessions` gains per-period grouping and per-period counts alongside its bounded recent list | Same ground. A `Sessions` panel that ignores the period switcher is the same defect wearing a different label |
-| Work signals — activity mix, workflow shape, tool calls | **Refused in this topic.** Not provisioned here, and the three modules do not ship in this topic's `menubar-experience` | These need a classifier over raw session logs — new extraction, new storage, new privacy analysis. That is a usage-domain capability, not a presentation one. Adding it inside a topic scoped to *presenting existing aggregates* would hide a data-pipeline change inside a UI task |
+| Today's hourly trend and priciest-hour chip | **Provisioned.** Each client scope gains the bounded `hourly` family above; the host selects and formats valid producer buckets, then pads only the chart's fixed 24-slot canvas with non-observed zero-height placeholders. Those placeholders never enter priciest-hour selection, totals, hover facts, or accessibility measurements | A daily bucket cannot truthfully drive an hourly chart or name a priciest hour. The fixed `0...23` layout prevents one early observed hour from becoming one full-width bar without misrepresenting future slots as elapsed measurements |
+| Work signals — activity mix, workflow shape, tool calls | **Provisioned by a sibling topic, not by this one.** The three modules ship here in their `Not captured yet` form; [`work-signals`](../work-signals/architecture.md) adds the extraction, storage, privacy analysis, and wire fields, then replaces the pending cards with real values | These need a classifier over raw session logs — new extraction, new storage, new privacy analysis. That is a usage-domain capability, not a presentation one, so it gets its own topic rather than hiding a data-pipeline change inside a UI task. It does **not** get dropped from `v0.5.0`; both topics belong to that version |
 
-The refusal is bounded, not permanent. `ux/menubar.md` keeps the three modules
-specified and marks them `Not captured yet` so the surface states its own gap
-instead of faking it, and the capability is carried as a separate topic. The
-`Sessions` panel ships in this topic with its statistics, per-project rows, and
-recent-session rows — all of which the projection already supports.
+The split is one of ownership, not of commitment. `ux/menubar.md` keeps the three
+modules specified and `menubar-experience` renders them marked `Not captured yet`,
+so the surface states its own gap instead of faking it. `work-signals` then
+supplies the data and turns the same cards into real values without changing
+their layout. The `Sessions` panel ships in this topic with its statistics,
+per-project rows, and recent-session rows — all of which the projection already
+supports.
 
-#### Shape of the two provisioned changes
+**Corrected 2026-08-20.** The 2026-08-18 text called this a *refusal* and the
+version index carried the capability into Backlog. That removed a committed
+`v0.5.0` feature without asking, and it is reversed: work signals are in
+`v0.5.0`, owned by the `work-signals` topic.
 
-Both are additive and neither raises `wire_version`:
+#### Shape of the three provisioned changes
+
+All three are additive and none raises `wire_version`:
 
 | Field | Bound and semantic shape |
 | --- | --- |
@@ -945,11 +970,15 @@ Both are additive and neither raises `wire_version`:
 | `scopes[].pricing` | Becomes `pricing.items[]` under the same `{ available, items }` family shape, one record per supported period, each carrying the existing counts, coverage, and at most 12 unpriced identifiers |
 | `sessions.periods.items[]` | One record per supported period per client scope, carrying session count, total and median duration, and distinct project count. Bounded and producer-computed; the host never derives them from the recent list |
 | `sessions.items[]` | Unchanged bounded recent list. It stays a *recent* list, not a period query — the panel's statistics come from the record above |
+| `scopes[].hourly.items[]` | The bounded current-day local-hour series defined above. The host treats the family as a unit: invalid or partial shapes fail decoding instead of driving either the chart or a derived chip. After successful decoding, the renderer maps the observed `0...through_hour` buckets into a fixed 24-slot day canvas and fills only the unobserved visual slots with zero-height placeholders; this does not change or extend the wire family |
 
 The host still performs no aggregation: it selects a `(Client, Period)` record
-and formats it. A decoder reading a payload that predates these fields treats the
-new families as `available: false`, which the surfaces already render as an
-unavailable panel rather than as a zero.
+and a valid producer-supplied bucket family, applies only the deterministic
+priciest-hour selection above, then formats them. A decoder reading
+a payload that predates these fields treats a missing family as
+`available: false`; a present `null`, wrong type, or structurally invalid family
+is malformed wire rather than legacy absence. The surfaces render unavailable
+data explicitly rather than as a measured zero.
 
 **Per-session cost stays refused.** The projection carries no per-session cost
 and this change does not add one, so no session row states a cost. The panel

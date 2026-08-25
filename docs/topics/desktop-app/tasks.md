@@ -8,17 +8,6 @@ updated: 2026-08-20
 
 This file is the only status authority for this topic.
 
-## Temporary code-over-contract rule
-
-This rule applies only inside the `desktop-app` topic while its implementation
-tasks and deferred closing review remain active. When this topic's current code
-and a topic-local requirement, UX document, architecture contract, or test
-expectation conflict, treat the code as the temporary behavior authority and
-repair the topic document or stale expectation unless the user explicitly asks
-to change behavior. It does not apply to another topic or to repository-wide
-policy. Task 6's closing reconciliation must remove this temporary rule after
-the final implementation and document set agree.
-
 ## Task breakdown
 
 ### 1. `desktop-wire-contract`
@@ -502,10 +491,17 @@ the final implementation and document set agree.
   workflows.
 - Depends on tasks 1 through 5, each at Review PASS.
 - Files, existing at the commit baseline: `docs/specs/cli-design.md`,
-  `docs/specs/cli-manual.md`, `docs/README.md` (the topic's stage row only), and
-  — for the deferred reconciliation above — this topic's own `requirements.md`,
-  `architecture.md`, `ux/menubar.md`, `ux/settings.md`, `ux/widget.md`, and
-  `tasks.md`.
+  `docs/specs/cli-manual.md`, `docs/README.md` (the topic's stage row, **and the
+  `desktop-app` deferral paragraph**), and — for the deferred reconciliation
+  above — this topic's own `requirements.md`, `architecture.md`,
+  `ux/menubar.md`, `ux/settings.md`, `ux/widget.md`, and `tasks.md`. It also owns
+  **the deferral note at the foot of each of the six document records under
+  `reviews/`**, which is the note's own bookkeeping — the pass's task number and
+  whether the set has been submitted — and never a round, a verdict, or a
+  finding, which stay the reviewer's. The list originally omitted both, and the
+  omission was not neutral: it left seven documents naming a task 7 that the
+  2026-08-18 re-cut had renumbered to 6, in the one task whose subject is making
+  this topic's documents agree with each other.
 - Creates: `docs/topics/desktop-app/reviews/desktop-app-contract.md`, when this
   task's first review round runs. The deferred document review's round is **not**
   written there: it appends to each reconciled document's own record under
@@ -568,25 +564,28 @@ deferring: the store holds one `document` WorkUnit for this topic,
 `menubar-experience`'s four criteria bind builds, wire behavior, and manual macOS
 acceptance, none of them a document's content. Checked 2026-08-20.
 
-Two consequences bind the rest of this file:
+Three consequences bind the rest of this file:
 
-- The `Review` cells below are **suspended**, not frozen and not a gate, until the
-  closing pass. Their current values record where the previous process stopped.
+- The `Review` cells below retain the **suspended historical values** from before
+  deferral. They do not report the closing pass.
+- The dated `Closing review` column is the closing-pass result: `[x]` means the
+  document's own outcome is PASS, `[ ]` means REOPEN, and `—` marks a row outside
+  the six-document closing set.
 - The per-document "Current … review" sections and the round history below record
-  that process. Nothing is appended to them until the closing pass, which appends
-  its own round.
+  the earlier process; the closing pass appends its own round to each of the six
+  document records.
 
 ## Documents
 
-| Document | Draft | Review |
-| --- | --- | --- |
-| requirements.md | [x] | [x] |
-| architecture.md | [x] | [x] |
-| ux/menubar.md | [x] | [x] |
-| ux/settings.md | [x] | [x] |
-| acceptance/menubar-experience.md | [x] | [ ] |
-| ux/widget.md | [x] | [x] |
-| tasks.md | [x] | [x] |
+| Document | Draft | Review | Closing review (2026-08-23) |
+| --- | --- | --- | --- |
+| requirements.md | [x] | [x] | [x] |
+| architecture.md | [x] | [x] | [x] |
+| ux/menubar.md | [x] | [x] | [x] |
+| ux/settings.md | [x] | [x] | [x] |
+| acceptance/menubar-experience.md | [x] | [ ] | — |
+| ux/widget.md | [x] | [x] | [x] |
+| tasks.md | [x] | [x] | [x] |
 
 ### Why every Review cell is unticked again (2026-08-18)
 
@@ -847,9 +846,9 @@ pass, which is the point of decomposing after the design exists.
 | 1. `desktop-wire-contract` | [x] | [x] |
 | 2. `macos-app-foundation` | [x] | [x] |
 | 3. `menubar-experience` | [x] | [x] |
-| 4. `desktop-widget` | [x] | [ ] |
+| 4. `desktop-widget` | [x] | [x] |
 | 5. `unified-desktop-distribution` | [x] | [x] |
-| 6. `desktop-app-contract` | [ ] | [ ] |
+| 6. `desktop-app-contract` | [x] | [x] |
 
 ### What changed in the decomposition (2026-08-18)
 
@@ -1287,10 +1286,276 @@ rather than a code decision. The finding stays open, task 4 stays unreviewed, an
 its Beads task is `deferred` with the resume condition recorded. Dispatch moves
 to task 5.
 
+DW-R3-F1 Repair resumed (2026-08-23): the user supplied Team `N2FZ2FNRTU` and
+confirmed a matching Developer ID Application identity. The source candidate now
+uses `N2FZ2FNRTU.group.com.kitdine.agentdeck` through one xcconfig-to-entitlement
+and Info.plist injection path; the host writer and Widget reader no longer compile
+duplicate identifier literals. Shared 39/39, App 52/52, Widget 12/12, the Widget
+sandbox gate, and the isolated distribution test pass. A current-HEAD `v0.5.0`
+universal candidate is Developer ID signed with matching host/Widget entitlements.
+After explicit authorization, that candidate replaced the installed app. The
+new container did not exist before launch; the host then published a schema-v1
+projection with usage, presentation, and sessions available. `containermanagerd`
+approved both host and Widget requests, `chronod` successfully produced all
+twelve kind-by-size timelines, and twelve privacy-bounded window captures show
+data instead of `unavailableSurface`. Repair is complete; the finding and
+`Review` cell remain open for independent Re-review.
+
+`desktop-widget` prototype-alignment Repair (2026-08-24): before independent
+Re-review, the user found that the native implementation preserved the data
+hierarchy but did not implement the repository prototype's actual per-size
+compositions. `prototype/src/Widgets.jsx` and its Widget CSS are now the direct
+source: semantic Usage/Breakdown/Attribution/Activity headers, scope and updated
+footer, 7/20/90 trend treatment, large Magnitude area/axis/stats, Composition
+share tracks/token stack/client chip, Trust quality/provider/unpriced layers, and
+Rhythm axes/legend/Monday-first hour grid/90-day calendar each map to the matching
+small/medium/large SwiftUI branch. The former monotonic-depth test was replaced
+with exact source-section contracts; twelve dark render attachments and the full
+105-test macOS gate pass. This candidate has not replaced the currently installed
+signed app during the Repair itself. A separately authorized installation later
+replaced it with the same-source Developer ID candidate; `chronod` successfully
+reloaded all twelve standard kind-by-size timelines from the new extension.
+No AgentDeck Widget is currently pinned on the desktop, so installed light and
+`zh-Hans` visual acceptance remains for independent Re-review rather than being
+inferred from gallery snapshots.
+
+`desktop-widget` DW-R11 Repair Round 12 (2026-08-24): the four Round 11 findings
+are repaired in the candidate. Every Widget metric is now an AX label/value
+element, charts and categorical tracks carry summaries, decorative SF Symbols
+are hidden, and Trust provider names precede their values. A standalone
+WidgetCenter reload hook plus byte-safe backup/restore procedure makes checklist
+items 6 and 7 executable. Composition large uses bounded spacing before client
+subtotals. Grayscale evidence is a physical-display observation, and production
+View tests now run under explicit Xcode test languages; fixing WidgetCopy's
+resource-bundle ownership made the twelve `zh-Hans` attachments actually render
+Chinese. The final explicit-English macOS suite passes Shared 39/39, App 52/52,
+and Widget 17/17; the sandbox gate and reload-hook check pass. No installed app,
+projection, system setting, or real timeline was changed. The `Review` cell and
+completion gate remain open for independent Re-review of DW-R11-F1 through F4
+and the still-open DW-R3-F1.
+
+`desktop-widget` Repair Round 18 (2026-08-24): DW-R15-F1 and DW-R15-F2 are
+repaired in the candidate. The misleading Round 14 attachment directory was
+renamed, and the current candidate has independently located 12-image `en` and
+`zh-Hans` evidence sets. Trust large now always anchors its pricing summary:
+unpriced details when incomplete, pricing coverage when complete. The full
+macOS suite passes 108/108, the Widget sandbox gate passes, and a Developer ID
+signed universal `0.5.0 (2)` candidate is installed. The DW-R3-F1 unified run
+obtained current-build Light/Dark evidence for all twelve windows and a valid
+six-hours-old observation for all twelve, then restored the projection bytes,
+mode, appearance, and running host. It remains incomplete: Accessibility TCC
+blocks Dynamic Type, AX/VoiceOver, contrast, and gallery automation; physical
+grayscale still needs a human observer; managed approval separately refused
+moving the real projection for host-absent acceptance. The `Review` cell and
+completion gate remain open; exact evidence and recovery state are in
+[`reviews/desktop-widget.md`](reviews/desktop-widget.md) Round 18.
+
+`desktop-widget` Repair Round 20 (2026-08-24): DW-R19-F1 and DW-R19-F2 are
+repaired in the source candidate. The footer now renders one age-dependent
+freshness value — `Updated <relative>` or `Last updated <relative>` — and keeps
+only non-age qualifiers alongside it, with exact `en` / `zh-Hans` regression
+coverage. Trust large no longer inserts a flexible spacer between provider rows
+and the pricing summary; a production-view rendering shows the former roughly
+160-point gap reduced to an explicit 10-point section gap. Widget tests pass
+18/18 and the static sandbox boundary passes. The full scheme remains non-green
+because one out-of-scope App test expects English provider-option copy while its
+test host resolves Simplified Chinese; both aggregate attempts failed only that
+same assertion. The installed signed build 2 predates this source repair. The
+`Review` cell and completion gate remain open for independent Re-review; Round 20
+details and exact scoped hashes are in
+[`reviews/desktop-widget.md`](reviews/desktop-widget.md).
+
+`desktop-widget` Re-review Round 21 (2026-08-24): **FAIL**. DW-R19-F1 and
+DW-R19-F2 are closed: the current scoped hashes still match Round 20, and an
+independent focused XCTest run passed all four Widget copy tests plus the
+production-view dark rendering test for all twelve configurations (5/5 total).
+DW-R3-F1 remains
+open because the installed signed Build 2 predates the Round 20 source repair:
+items 2, 3, 4, 5 and 7 were never completed, while the user-visible footer and
+Trust changes invalidate that installed candidate's item 1, 6 and 8 evidence for
+the current source. The fixed Profile v1 gate query therefore reports eight
+required criteria without current-candidate passing evidence and returns
+`NOT_VERIFIED`. The `Review` cell stays unchecked, and the exact disposition is in
+[`reviews/desktop-widget.md`](reviews/desktop-widget.md) Round 21.
+
+`desktop-widget` Repair Round 22 (2026-08-24): the user corrected the large
+bottom-alignment requirement for the earlier DW-R11-F3 and DW-R19-F2 repairs.
+Composition `ClientSubtotals` and both Trust pricing-summary branches now use a
+collapsible spacer so their bottom information elements align immediately above
+the footer; the existing 10-point minimum section gap remains when content grows.
+The twelve-view dark rendering, a new two-view focused bottom-anchor rendering,
+and the largest Dynamic Type rendering each pass their selected XCTest. The
+`Review` cell and completion gate remain open for independent Re-review; exact
+hashes and evidence are in
+[`reviews/desktop-widget.md`](reviews/desktop-widget.md) Round 22.
+
+`desktop-widget` DW-R3-F1 unified Repair Round 23 (2026-08-24): the final source
+candidate adds the missing largest-Dynamic-Type family degradation and replaces
+the non-transporting interpreted reload request with an installed-host acceptance
+mode that exits before refresh or projection publication. Developer ID signed
+build 2 is installed and byte-matches the candidate. Checklist items 1, 6, 7,
+and 8 have current-candidate observations; production-view evidence additionally
+covers the item 2 family degradation and item 5 placeholders. The user made the
+final acceptance decision that items 2–5 are not severe, must not receive further
+real-environment execution, and are accepted for this candidate without it. The
+full Widget target passes 22/22, the static sandbox and isolated distribution
+checks pass, projection/settings/process state is restored, and exact evidence is
+under the private Round 23 evidence root named in
+[`reviews/desktop-widget.md`](reviews/desktop-widget.md). The exact candidate's
+CEv1 gate is `VERIFIED` with 14/14 required criteria; the `Review` cell remains
+open for independent Re-review.
+
+`desktop-widget` independent Re-review Round 24 (2026-08-25): **PASS**. The
+current source fingerprint and installed App / Widget / helper hashes still match
+the Round 23 candidate. `DW-R3-F1`, corrected-requirement `DW-R11-F3`, and
+`DW-R19-F2` are closed; all earlier findings remain closed and no new finding is
+recorded. The exact candidate gate is `VERIFIED` at 14/14, and the final
+review/status-synchronized uncommitted state is recorded separately in CEv1. The
+`Review` cell is ticked and task 4 reaches its commit checkpoint. Task 6's
+task-4 precondition is now satisfied and its final reconciliation follows below.
+
+`desktop-app-contract` Review Round 1 (2026-08-23): **REOPEN** on three findings,
+repaired the same day. R1-F1 (P1) recorded that the two halves of this task ran
+in the wrong order; R1-F2 and R1-F3 are recorded with their repairs in
+[`reviews/desktop-app-contract.md`](reviews/desktop-app-contract.md) Round 2.
+
+**The ordering, corrected.** This task's second bullet puts the topic's own
+document set first — reconciled, then reviewed once — because a specification
+written from a set that still disagrees with the build carries the disagreement
+into `docs/specs/`. The first development pass reconciled the set but wrote the
+living-spec text without waiting for the deferred review, so the ordering was
+inverted rather than observed. The set is now reconciled **and submitted**: the
+deferral note in each of the six document records says so, and the closing round
+is what those records are waiting for.
+
+What follows from that, and it constrains this task's own Review: the
+living-spec text in `docs/specs/cli-design.md` and `docs/specs/cli-manual.md` is
+**provisional to the deferred document review**. If that review changes the
+topic's document set, the specification text derived from it changes with it.
+Task 6 therefore cannot reach Review PASS before the deferred document review
+has passed — the contract's ordering is restored by making the dependency
+explicit and blocking on it, not by claiming the step happened.
+
+`desktop-app-contract` development (2026-08-23): **COMPLETE**, and it ran with
+task 4 still unreviewed. The task's own contract makes every prior task's Review
+PASS a precondition; tasks 1, 2, 3 and 5 satisfy it, task 4 does not and cannot
+until an Apple Developer team ID exists. That was reported as a blocker and the
+user then decided explicitly to proceed without task 4. The deviation is
+recorded here rather than absorbed silently, because task 6's Review has to
+judge the reconciliation knowing the widget contract was written against a
+surface whose runtime acceptance never passed.
+
+What that cost is bounded and located. The widget's *specified* behavior is
+unchanged and remains the contract; what could not be confirmed against a
+working desktop is that the specification matches observed behavior, because
+observed behavior is the unavailable state everywhere. Both documents that
+carry a widget contract now say so at the point where a reader would otherwise
+assume otherwise — `architecture.md`'s identifiers section and `ux/widget.md`'s
+freshness table — and `docs/specs/cli-design.md` and `cli-manual.md` carry the
+same disclosure rather than describing a widget that works.
+
+Reconciled in this task: `architecture.md` (the App Group identifier's runtime
+refusal, and the removal of update-channel metadata task 5 never delivered);
+`ux/widget.md` (the shipped-state disclosure); `docs/specs/cli-design.md` (the
+GUI non-goal restated as a CLI-scope boundary, the signing/notarization
+non-goal narrowed to the CLI archives, the withdrawn update check, a new
+Desktop Application section, and the desktop release channel);
+`docs/specs/cli-manual.md` (the same withdrawal plus the desktop application
+and Cask installation sections); and `docs/README.md`'s stage row.
+
+Verified current and left unchanged: `requirements.md`, `ux/menubar.md`, and
+`ux/settings.md` already record the update-check withdrawal, the four
+preferences, and the twelve widget configurations, because this topic writes
+each change into the document that owns it as the change is made.
+
+Identity is cited, not re-derived, exactly as this task's contract requires.
+`package-macos-app.sh` refuses to sign unless the bundle's
+`CFBundleShortVersionString` equals the tag without its `v` and the embedded
+helper reports the exact tag, and the Cask's version is rendered from the same
+tag, so app, CLI, and package identities agree by construction rather than by
+inspection. The wire contract is pinned at `1` on both sides —
+`DesktopSnapshotV1.wireVersion` in Swift against the Go contract. The evidence
+is task 5's Round 5 `make release-verify` (exit 0) run against this content
+state; task 6 ran no build.
+
+Not done here, by contract: the specification version is not raised and no
+changelog row is added. `docs/specs/cli-design.md`'s changelog rule requires
+both when promised behavior changes, and this task's edits do change it — that
+row is [`v0-5-0-contract`](../v0-5-0-contract/tasks.md) task 2's, which raises
+the version exactly once across every topic in the version and lands on top of
+the feature-contract text this task just wrote. Row 25's mention of an
+"opt-in privacy-bounded stable-release update-check" is the historical record of
+what version 25 promised and is deliberately left as written; the withdrawal
+belongs in the new row.
+
 Next action:
 
 ```text
+复评：desktop-app / reviews/desktop-app-contract.md
+```
+
+The closing pass the whole topic deferred has since run and **passed** on
+2026-08-23: CD1-F1, CD1-F2 and CD1-F3 are closed, all six documents carry `[x]`
+in the `Closing review` column, and the round is recorded in each of the six
+records. Task 6's R1-F1 dependency on it is therefore lifted.
+
+What still stands between task 6 and Review PASS is the temporary
+code-over-contract rule above: it is retained while task 4's open P1 `DW-R3-F1`
+leaves the implementation and the document set in disagreement, and only task 4
+closing that finding lets task 6 run the final reconciliation that removes it.
+The Apple Developer prerequisite is now satisfied and task 4's Repair is active;
+its signed candidate has passed real WidgetKit/App Group Repair acceptance, and
+the subsequent prototype-alignment candidate now awaits independent Re-review.
+
+`desktop-app-contract` independent Re-review Round 7 (2026-08-23): **REOPEN** on
+P1 `R7-F1`. Task 4's Team-prefixed runtime repair moved the delivered Widget
+behavior, while the two living specs task 6 owns still said the Team ID did not
+exist, the App Group lacked its prefix, and all twelve configurations rendered
+unavailable. Repair Round 8 (2026-08-24) aligns both disclosures with the topic
+documents: prerequisite satisfied, installed signed candidate has approved host
+and Widget container access, all twelve configurations render data, and
+independent Re-review still owns closure. Task 6 remains gated by task 4's
+unchecked Review cell; this repair does not remove the temporary rule early.
+
+`desktop-app-contract` independent Re-review Round 10 (2026-08-25): **FAIL** on
+P1 `R10-F1`. Task 4's Round 24 PASS satisfies the former structural prerequisite,
+but task 6 has not yet run the final reconciliation that its own temporary
+code-over-contract rule requires: that active rule remains at the top of this
+file, and both living specs still describe DW-R3-F1 as awaiting independent
+closure. R1-F1/F2/F3, R3-F1 and R7-F1 remain closed; task 4 stays PASS. Task 6's
+`Review` cell remains unchecked pending the bounded document-only repair recorded
+in [`reviews/desktop-app-contract.md`](reviews/desktop-app-contract.md) Round 10.
+
+`desktop-app-contract` Repair Round 11 (2026-08-25): **COMPLETE** for P1
+`R10-F1`, awaiting independent Re-review. The task-4-triggered final
+reconciliation removes the temporary code-over-contract rule and changes both
+living-spec Widget disclosures from a pending-review boundary to the final
+delivered facts. R1-F1/F2/F3, R3-F1 and R7-F1 remain closed; task 4 remains PASS,
+and task 6's `Review` cell remains unchecked until independent Re-review.
+
+`desktop-app-contract` independent Re-review Round 12 (2026-08-25): **PASS**.
+P1 `R10-F1` is closed: the temporary rule remains absent, both living specs state
+the final delivered Widget facts, and the task/topic status is reconciled. All
+earlier findings remain closed. The exact review/status-synchronized candidate's
+completion-evidence/v1 Task gate is `VERIFIED`; task 6 reaches its commit
+checkpoint. The containing desktop-app completion gate remains a separate outer
+boundary and is not inferred from this Task verdict.
+
+`desktop-app` Unit completion checkpoint (2026-08-25): **VERIFIED**. The Plan
+WorkUnit contains all six Task WorkUnits; each child has a non-vacuous `VERIFIED`
+Task gate, and the Plan's three cross-Task criteria cover six-Task review/evidence
+closure, cross-surface contract reconciliation, and the shared security, identity,
+and distribution boundary. This closes the topic's development/review unit only.
+Tasks 4, 5, and 6 still await their own authorized commit checkpoints; no commit,
+push, preflight, release-channel decision, or publication is implied.
+
+The previous actions, now complete:
+
+```text
 开发：desktop-app / unified-desktop-distribution
+开发：desktop-app / desktop-app-contract
+评审：desktop-app / desktop-app-contract
+修复：desktop-app / reviews/desktop-app-contract.md / R1-F1, R1-F2, R1-F3
 ```
 
 Task 1 was blocked on the `v0.4.0` session DTO contract; that dependency is now

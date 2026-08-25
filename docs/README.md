@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-07-14
-updated: 2026-08-19
+updated: 2026-08-24
 ---
 
 # AgentDeck Documentation
@@ -87,7 +87,7 @@ agentdeck version
 
 | Topic | Version | Status | Purpose |
 | --- | --- | --- | --- |
-| [Native macOS Desktop App](topics/desktop-app/tasks.md) | `v0.5.0` | Active — 4/6 tasks reviewed; task 4 `desktop-widget` repaired after a Round 1 FAIL and awaiting re-review; task 5 `unified-desktop-distribution` Review PASS and awaiting its commit checkpoint; document review deferred to task 6 | macOS 26 menu-bar app, settings window, WidgetKit extension, unified desktop distribution, Cask, and direct-download delivery. |
+| [Native macOS Desktop App](topics/desktop-app/tasks.md) | `v0.5.0` | Review complete — 6/6 tasks reviewed with exact-state CEv1 Task gates VERIFIED; the containing desktop-app Plan gate is VERIFIED; tasks 4 `desktop-widget`, 5 `unified-desktop-distribution`, and 6 `desktop-app-contract` still await their authorized commit checkpoints | macOS 26 menu-bar app, settings window, WidgetKit extension, unified desktop distribution, Cask, and direct-download delivery. |
 | [Work Signals](topics/work-signals/tasks.md) | `v0.5.0` | Active — all five design documents PASS after three combined rounds; prototype task done, implementation task 1 next; 0/6 implementation tasks | Activity classification, workflow metrics, and tool-call attribution, delivered on two first-class surfaces: the menu-bar `Sessions` panel's three pending modules and a new `agentdeck usage signals`. |
 | [`v0.5.0` Contract Closure](topics/v0-5-0-contract/tasks.md) | `v0.5.0` | Active — 0/2 done | Version-wide specification raise and documentation reconciliation after every selected topic's tasks pass review. |
 | [Usage Attribution Precision](topics/usage-attribution-precision/tasks.md) | `v0.6.0` | Active — 0/3 done | Per-client attribution time semantics, determinability-based quality, and an unattributed boundary that never enters a real-spend total. |
@@ -141,9 +141,10 @@ instruction, that topic runs no document review rounds while its tasks are being
 implemented: changes are written directly into the process record that owns them.
 Review is deferred, not cancelled — after every implementation task is done, the
 whole set is reconciled against the final prototype and the shipped
-implementation and reviewed once, scoped as a bullet on that topic's task 7. The
+implementation and reviewed once, scoped as a bullet on that topic's task 6. The
 reason and the consequences are stated in
-[`topics/desktop-app/tasks.md`](topics/desktop-app/tasks.md).
+[`topics/desktop-app/tasks.md`](topics/desktop-app/tasks.md). As of 2026-08-23
+the set is reconciled and submitted; the closing round has not run.
 
 This is specific to `desktop-app`, whose documents were being re-reviewed against
 an implementation that is still moving.

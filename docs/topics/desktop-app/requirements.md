@@ -161,6 +161,14 @@ packaging and distribution layout — specified in
   four bounded spend questions — magnitude, composition, trust, rhythm — not
   merely data publication and isolation; the widget count, sizing, and
   presentation of each question are owned by `ux/widget.md`.
+  **Known defect:** this criterion is not met by the shipped build. Its App Group
+  identifier lacks a team-ID prefix, so macOS 26 refuses the Widget's container
+  and all twelve configurations render the unavailable state. The open P1
+  `desktop-widget` finding `DW-R3-F1` owns the repair. Its Apple Developer Team
+  prerequisite is satisfied; the installed signed repair candidate receives
+  approved host and Widget container access, and all twelve configurations now
+  render data. Independent Re-review still owns closure. The criterion above
+  remains the contract.
 - One signed, notarized, universal `AgentDeck.app` installs and behaves
   identically through Homebrew Cask and direct download, on arm64 and Intel.
 - The App, embedded helper, standalone CLI archives, Cask, Formula, release
@@ -185,10 +193,6 @@ packaging and distribution layout — specified in
 - Any in-app update check, and beyond it automatic download and installation.
   Reintroducing even the check reopens the app's network boundary, so it needs
   its own design rather than a preference toggle.
-- Work signals — activity mix, workflow shape, and tool-call breakdown. The
-  surfaces specify them and the projection cannot supply them; the classifier
-  over raw session logs is a usage-domain capability with its own extraction,
-  storage, and privacy analysis.
 - Prerelease update channel selection.
 - Rich desktop session windows beyond the menu-bar and Widget scope.
 - Skills/Hooks GUI lifecycle management, if the withdrawn extension-mutation

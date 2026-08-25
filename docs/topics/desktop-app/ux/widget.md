@@ -171,6 +171,17 @@ Unattributed cost is shown as its own amount and never folded into the headline,
 because a total that silently includes multiplier-`1` guesses is the defect this
 product exists to remove.
 
+**An unpriced amount is not a zero.** A tier whose `cost_incomplete` is true has
+an unknown cost, not a cost of zero, so the surface states the tier's projected
+token amount instead of its `provider_cost`, and every size that shows any tier
+carries the `Cost incomplete` line whenever a tier or today's pricing coverage is
+incomplete. A `share` of `null` is unavailable for the same reason: `small` then
+takes the determinable tier's amount as its headline and draws no bar, because a
+bar rendered from an unavailable share reads as a measured `0%`. The repository's
+own `snapshot-complete` fixture is exactly this state — 1,800 unattributed tokens,
+no pricing coverage, every share `null` — and it is the state the widget exists to
+explain, so it is the one state the surface may not render as an unremarkable zero.
+
 ### `rhythm` — when do I actually work?
 
 | Size | Content |
@@ -226,6 +237,19 @@ Exhaustive over cache presence, version support, and age:
 
 An unsupported cache version renders unavailable and never attempts a partial
 read, matching the fail-closed rule the foundation already applies.
+
+**As shipped, every row above collapses to the first one on a real desktop, and
+that is a defect rather than the contract.** The App Group identifier carries no
+team-ID prefix, so macOS 26 refuses the sandboxed extension its container and
+the cache reads as absent no matter what the app wrote. All twelve
+configurations therefore render `unavailableSurface`. The table states the
+intended behavior and stays the contract this surface is judged against; the
+gap between it and the current build is `desktop-widget`'s open P1 finding
+DW-R3-F1. Its Apple Developer Team prerequisite is now satisfied and a signed
+repair candidate has approved host and Widget container access; all twelve
+configurations render data instead of `unavailableSurface`. Independent
+Re-review still owns closure. Nothing in this document changes when that lands
+— only the identifier does.
 
 `empty` is per-widget, not global: a day with no spend leaves `magnitude` empty
 while `rhythm` still has 30 days of history to draw. A widget shows the empty
@@ -292,8 +316,11 @@ never polls the cache and never invokes the helper.
   beneath it — `large` shows what `medium` shows, `medium` what `small` shows —
   rather than truncating. That rule exists because the size progression is
   already a depth ordering, so dropping depth is the natural degradation.
-- Charts carry an accessibility summary naming the range, peak, and trend
-  direction, because a bar chart is unreadable to a screen reader otherwise.
+- Time-series charts carry an accessibility summary naming the date range, peak,
+  and endpoint direction. Categorical share and token tracks name their category,
+  amount, and share; the 7×24 grid names its weekday/hour range and peak window.
+  A shape or a row of anonymous cells is not exposed as a substitute for that
+  summary.
 - Full contrast compliance in light and dark, verified in the manual checklist.
 
 ## Security and privacy
@@ -389,13 +416,55 @@ macOS 26:
 3. VoiceOver announces each value with a meaningful label, qualifiers in the
    fixed order, and a chart summary naming range, peak, and direction.
 4. Increase Contrast and grayscale keep every status and every series
-   distinguishable.
+   distinguishable. Increase Contrast may use screen captures. Grayscale is a
+   direct human observation of the physical display, recorded with observer,
+   configuration, and result; a software screenshot is neither required nor
+   accepted as grayscale evidence because macOS applies that display filter
+   after the capture path.
 5. The gallery placeholder shows no real data for any kind or size.
-6. A widget left untouched past six hours shows `old`, not a fresh-looking
-   figure.
-7. With the host never launched, every kind shows unavailable rather than an
-   empty or zeroed layout.
-8. `en` and `zh-Hans` both render without truncation or clipping at every size.
+6. A projection staged with `generated_at` more than six hours old shows `old`,
+   not a fresh-looking figure, after the standalone reload hook requests a new
+   timeline.
+7. With the host stopped and the projection moved outside the App Group
+   container, every kind shows unavailable rather than an empty or zeroed layout
+   after the standalone reload hook requests a new timeline.
+8. `en` and `zh-Hans` production `AgentDeckWidgetView` renderings both show no
+   truncation or clipping at every size. Run the focused Xcode test once with
+   `-testLanguage en` and once with `-testLanguage zh-Hans`, and inspect all
+   twelve kept attachments from each run; changing the host language does not
+   establish the extension locale.
+
+Items 6 and 7 use `scripts/reload-widget-timelines.swift`. Run it with `--check`
+first; that mode only proves the hook compiles and exits without requesting a
+reload. Use the repository-local cache path and the installed Xcode toolchain so
+the check does not depend on the machine's active `xcode-select` value:
+
+```bash
+env __CFBundleIdentifier=com.kitdine.agentdeck \
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
+  CLANG_MODULE_CACHE_PATH=/private/tmp/agentdeck-widget-reload-module-cache \
+  xcrun swift -module-cache-path /private/tmp/agentdeck-widget-reload-module-cache \
+  scripts/reload-widget-timelines.swift --check
+```
+
+Replace `--check` with `--reload` only at the observation steps below. The hook
+fails closed when its launch-time AgentDeck identity guard is missing. In
+`--reload` mode it delegates to the installed host executable's
+`--reload-widget-timelines` acceptance mode. That mode is intercepted before
+`NSApplication`, the app delegate, refresh coordination, or projection publication;
+it requests the four exact Widget kinds, allows the WidgetCenter request to flush,
+and exits. Calling WidgetCenter directly from interpreted Swift or a bare signed
+executable is not valid transport evidence: chronod may ignore the request or reload
+unrelated extensions. A successful command that produces no AgentDeck timeline
+request is not reload evidence. For an
+observation, quit the host, resolve its App Group container, and
+make a byte-for-byte backup of `desktop-snapshot-v1.json` outside that container,
+recording its SHA-256 and mode. Stage only the item under test, run the hook with
+`--reload`, and wait for a newly rendered timeline rather than killing the
+extension process. Restore the original bytes and mode before relaunching the
+host, verify the restored SHA-256, run `--reload` once more, and remove the
+temporary backup. The evidence record names both precondition and restored
+state; a cached frame with no newly requested timeline is invalid evidence.
 
 ### Not verifiable in this task
 

@@ -36,7 +36,9 @@ The first CLI release will:
 - identify every binary build with a version, commit, build time, and Go
   version suitable for support diagnostics;
 - provide explicit user-local install and ownership-checked uninstall targets;
-- expose stable JSON for a future Swift menubar application;
+- expose stable JSON for the Swift menu-bar application, and since v0.5.0 ship
+  that application: a menu-bar reading surface, its settings window, and a
+  WidgetKit extension, all reading the same JSON boundary;
 - remain on-demand by default, with an optional foreground watcher.
 
 ## Non-Goals
@@ -44,7 +46,10 @@ The first CLI release will:
 The first release will not:
 
 - run a daemon or install a LaunchAgent;
-- implement a GUI;
+- extend the CLI itself into a GUI. The desktop application v0.5.0 adds is a
+  separate macOS bundle that *invokes* this CLI and parses its JSON; no command
+  gains an interactive graphical mode, and the CLI remains complete and
+  supported on its own. See Desktop Application;
 - query provider billing, subscription, or usage APIs;
 - select, store, or refresh a client account, plan, or OAuth token; probe a
   configured endpoint to verify that a relay or wrapper reaches the upstream its
@@ -54,9 +59,12 @@ The first release will not:
 - support custom model prices;
 - install, update, uninstall, or resolve dependencies for extensions;
 - merge a backup into an existing AgentDeck database;
-- publish to homebrew-core, sign or notarize archives, or provide system-wide
-  privileged installers; binary distribution starts with GitHub Releases and a
-  personal Homebrew tap as defined in Release and Distribution;
+- publish to homebrew-core, sign or notarize the **CLI archives**, or provide
+  system-wide privileged installers; binary distribution starts with GitHub
+  Releases and a personal Homebrew tap as defined in Release and Distribution.
+  The v0.5.0 desktop application is the one signed and notarized artifact,
+  because macOS refuses to run an unnotarized bundle a user downloaded; it is
+  still installed per-user and never requests privilege;
 - maintain compatibility aliases for the legacy Python and Bash commands.
 
 ## User Interface
@@ -381,6 +389,48 @@ Switching channels is therefore an explicit uninstall/install operation.
 Homebrew removes only its Cellar and linked artifacts and does not remove
 AgentDeck state under `~/.agentdeck/`. Once the RC formula is installed,
 `brew update && brew upgrade kitdine/tap/agentdeck-rc` follows later candidates.
+
+#### Desktop Channel
+
+Since v0.5.0 a release also publishes the desktop application, from the same
+commit and carrying the same version. The App, its embedded helper, the
+standalone CLI archives, the Cask, the Formula, the release title, and the tag
+must all report one release version and one source commit.
+
+```text
+dist/AgentDeck_<tag>_universal.dmg
+dist/AgentDeck_<tag>_universal.zip
+dist/AgentDeck_<tag>_checksums.txt
+```
+
+`make package-macos-app` signs the built bundle inside-out — nested code sealed
+before the enclosing signature — submits the DMG for notarization, and staples
+both the DMG and the bundle. The ZIP is assembled last, from the stapled
+bundle, so neither direct-download artifact needs the network to clear
+Gatekeeper on first launch. One submission covers both, because the ticket is
+issued against the code signature they share. Missing credentials fail the run
+rather than leaving an unnotarized artifact that looks released, and
+notarization is refused outright under the ad-hoc identity.
+
+`kitdine/tap/agentdeck-app` is the desktop Cask and `agentdeck-app-rc` its
+opt-in RC channel, mirroring the two CLI formulae. The Cask installs
+`AgentDeck.app` and exposes the embedded helper and the three shell completions
+packaged inside the bundle, so a Cask install provides the `agentdeck` command
+too.
+
+Exactly one installation may own that command, and the exclusion is declared in
+two places because Homebrew supports only one of them as a stanza:
+`conflicts_with` accepts `cask:` alone, so the opposing cask channel is declared
+there, while the CLI-only formulae are refused by the Cask's `preflight`, which
+aborts when `agentdeck` or `agentdeck-rc` is present in the Cellar and prints
+the two-command migration. That migration — `brew uninstall agentdeck` then
+`brew install --cask agentdeck-app` — leaves `~/.agentdeck` untouched in either
+direction, and a Cask uninstall removes App-owned artifacts only.
+
+The Cask update is a pull request into `kitdine/homebrew-tap` writing `Casks/`
+and never `Formula/`, opened only after the DMG it points at is published. It
+is a second, independent channel from the Formula flow, and publication never
+pushes the tap default branch directly.
 
 #### Version Number Semantics
 
@@ -1726,16 +1776,52 @@ and full project paths. Canonical complete and partial v1 envelopes live under
 must reuse those same files for Swift `Codable` decoding rather than copying
 fixture values.
 
-Update discovery is separate from `desktop snapshot`. The desktop host may
-perform an automatic check only after explicit opt-in and at most once per 24
-hours; a user-initiated manual check is also allowed. It may issue an
-unauthenticated request only to the official AgentDeck GitHub latest stable
-release API and may send no AgentDeck state, usage, provider, session, machine
-identifier, credential, or custom tracking header. It may compare compatible
-stable versions and offer to open the official release page. Network, HTTP,
-decoding, or browser-open failures are non-fatal and never reduce local desktop
-snapshot availability. The app never downloads, installs, replaces, relaunches,
-or requests privilege as part of this check.
+**There is no update discovery.** An opt-in check against the GitHub latest
+stable release API was specified here and then withdrawn from v0.5.0 before it
+was built. Nothing replaced it: the desktop application issues no network
+request of any kind, which is a boundary property rather than only a dropped
+feature — the whole desktop surface reads local state through the CLI and
+nothing else. No menu item, preference, or string refers to an update, and the
+app never downloads, installs, replaces, relaunches, or requests privilege.
+Reintroducing a check needs its own requirement, surface contract, and privacy
+analysis.
+
+### Desktop Application
+
+v0.5.0 ships `AgentDeck.app`, a macOS 26 menu-bar application with an embedded
+copy of this CLI as its only data source. It is a reading surface plus one
+write action; it holds no state of its own that matters.
+
+- **Boundary.** The app runs the embedded helper and decodes
+  `desktop snapshot`'s wire-v1 envelope. It parses no text output, reads no
+  database directly, opens no port, and makes no network request. The Go helper
+  and the existing AgentDeck state stay authoritative; everything the app holds
+  is a disposable projection of them.
+- **Menu-bar surface.** Four filtered panels — provider, usage, sessions, and
+  health — plus an unfiltered rhythm block, a notice strip carrying health
+  detail, and a provider footer. Two filters (client and period) govern every
+  filtered panel. The three work-signal modules render in their
+  `Not captured yet` form; the data behind them is the `work-signals` topic's,
+  not this one's.
+- **The one write.** Switching the active provider is the only action that
+  changes anything outside the app, and it goes through the same CLI path a
+  terminal switch uses. Every other surface is read-only.
+- **Settings.** Exactly four preferences: periodic refresh (off by default,
+  because it is background work the user did not ask for), the menu-bar value
+  (cost, tokens, or icon), the menu-bar scope (all clients, or follow the
+  panel filter), and start at login. The login-item control renders what
+  `SMAppService` reports, never what the toggle intended, so a refusal is
+  visible rather than silently assumed.
+- **Widget.** A sandboxed WidgetKit extension offering four families —
+  magnitude, composition, trust, and rhythm — at all three system sizes, twelve
+  configurations in total. It reads only a redacted App Group projection the
+  app writes; it never runs the helper, reaches the databases, or sees a source
+  path. The signed application and Widget use
+  `N2FZ2FNRTU.group.com.kitdine.agentdeck`; macOS approves both host and Widget
+  container access, and all twelve configurations render data.
+- **Localization.** English and Simplified Chinese ship together.
+- **State.** The app creates no state root, applies no migration, and changes
+  no committed SQLite contents. Uninstalling it leaves `~/.agentdeck` intact.
 
 ## Extension Management
 

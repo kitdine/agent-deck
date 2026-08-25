@@ -1618,3 +1618,226 @@ R12 的三项发现全部关闭，且都以"修复加机制"的方式关闭；`F
 ```text
 开发：desktop-app / presentation-period-scoping
 ```
+
+## Document review deferred to the closing pass (2026-08-20)
+
+By user instruction, `desktop-app` runs no document review rounds while its tasks
+are being implemented. Review is **deferred, not cancelled**: after every
+implementation task is done, the whole document set is reconciled against the
+final prototype and the shipped implementation and reviewed once, as a bullet on
+task 6.
+
+Until then, changes to this subject are written directly into the document that
+owns it, and nothing is appended here. The closing pass appends its round to this
+record. The reason and the two consequences are stated in
+[`../tasks.md`](../tasks.md).
+
+**Status 2026-08-23 — reconciled and submitted; the closing round has not run.**
+Task 6 has brought the set into agreement with the shipped implementation, so this
+record is now waiting for the single deferred review rather than waiting for
+implementation to finish. The next thing appended below is that round.
+
+## Closing document review — Round 1 (2026-08-23)
+
+This is the single deferred document review this topic postponed on 2026-08-20.
+One round, one verdict, over the whole set; this record carries the round's
+common part plus this document's own outcome.
+
+- Reviewed state: HEAD `a190186297db40bade40f129fd4a17e35600bbbb`, uncommitted
+  working tree. Set fingerprint
+  `5d5c576eeb75117bd6b329d807bb018c5dec7cea12b213a1c603256d3f5345e3`, computed as
+  `shasum -a 256` over one `<git hash-object> <space> <line count> <space> <path>`
+  line per document, in this order: `requirements.md`, `architecture.md`,
+  `ux/menubar.md`, `ux/settings.md`, `ux/widget.md`, `tasks.md`. The order is part
+  of the recipe.
+- Reviewer: Claude Code, independent of every implementing and reconciling
+  session.
+- Method: the set judged against the shipped implementation rather than against
+  itself, which is the reason the review was deferred to this point. Checkable
+  claims were taken to the code: the settings defaults and the login-item refusal
+  path to `DesktopPreferences.swift` and `SettingsWindowView.swift`; the four
+  panels and the Breakdown cards' non-collapsibility to `MenuBarPanelViews.swift`;
+  the `Not captured yet` modules to `DesktopCopy.swift`; the fixed 30-day rhythm
+  window across `requirements.md`, `ux/menubar.md` and `internal/usage`; the
+  widget's runtime state to `desktop-widget` Round 3. `scripts/check-topic-docs.sh`
+  is the project's checker for this target class and was run.
+- Set-wide verdict: **REOPEN**. Three findings, all located in two documents;
+  four of the six documents carry none.
+- This document's outcome: **REOPEN** — two P2.
+  - [P2] CD1-F2 `tasks.md`, `## Temporary code-over-contract rule` — the rule
+    carries an unconditional obligation on task 6 that task 6 did not perform and
+    did not explain: "Task 6's closing reconciliation must remove this temporary
+    rule after the final implementation and document set agree." Task 6's
+    reconciliation has run and the rule is still here, with nothing stating whether
+    it was kept deliberately or missed. Keeping it is defensible while task 4's
+    implementation is not final, but that reasoning exists nowhere, so a reader
+    cannot tell a deferral from an omission — and while the rule is live it is what
+    makes CD1-F1 mandatory rather than optional. -> open
+  - Bounded remediation: either remove the rule, or state the condition that keeps
+    it alive (task 4's open P1) and who removes it when that closes.
+  - [P2] CD1-F3 `tasks.md`, `## Documents` matrix against the deferral section —
+    the matrix has no place to record this review's outcome. The deferral section
+    says the `Review` cells are "**suspended**, not frozen and not a gate, until
+    the closing pass" and that "their current values record where the previous
+    process stopped"; every cell currently reads `[x]` from that earlier process.
+    So the closing pass has no cell to move: a `PASS` would leave the matrix
+    byte-identical to the state before the review ran, which is the same defect
+    class this topic has repeatedly recorded elsewhere — a result indistinguishable
+    from not having run. -> open
+  - Bounded remediation: give the closing pass something falsifiable to write —
+    unticking the suspended cells so this round ticks them, or adding a column or
+    a dated line per document that records the closing verdict.
+- Evidence:
+  - `bash scripts/check-topic-docs.sh` → exit 0 (the project's checker for this
+    target class; a verdict on set completeness must cite the tool that can
+    falsify it)
+  - `make check-whitespace` → exit 0
+  - `git diff --check` → exit 0
+  - Implementation cross-checks named under Method, each run against the working
+    tree at this content state
+- Residual, carried and owned elsewhere: task 4 `desktop-widget` remains at an
+  open P1 (DW-R3-F1) parked on an Apple Developer team ID, so this set describes a
+  surface whose runtime acceptance never passed; task 6's basis remains the user's
+  explicit decision to proceed without task 4, recorded only by the implementing
+  agent.
+- Verdict: REOPEN
+
+## Closing document review — Round 2 (repair, 2026-08-23)
+
+- Repair state: HEAD `a190186297db40bade40f129fd4a17e35600bbbb`, uncommitted
+  working tree. Set fingerprint
+  `771b3375cf696bee4539e4d8b1d22fdba532cb8e472a412fc4e1ca58b479cd10`,
+  computed with Round 1's six-document recipe; `requirements.md` blob
+  `9d77bde98d881bf81641c84cd1dfe4532067ed7c` and `tasks.md` blob
+  `da5f31d17c624ba5f8c7507355787ddcc320da03`.
+- Repair owner: Codex
+- Scope: only CD1-F2 and CD1-F3 in `tasks.md`; no task definitions, product
+  code, tests, configuration, the other four closing-review documents, or task
+  4's open DW-R3-F1 implementation finding.
+
+### Finding-to-change mapping
+
+- **CD1-F2 repaired in the candidate.** The temporary code-over-contract rule
+  now says why it remains after task 6's initial reconciliation: task 4's open
+  DW-R3-F1 still leaves final implementation and the document contract in
+  disagreement. It assigns task 6 the final reconciliation that removes the
+  rule after task 4 closes that finding and before task 6 can reach Review PASS.
+- **CD1-F3 repaired in the candidate.** The Documents matrix now has a dated
+  `Closing review` column. It preserves the old `Review` cells as suspended
+  historical values, records document-local PASS for the four documents without
+  findings, records REOPEN plus the owning CD1 IDs for `requirements.md` and
+  `tasks.md`, and marks the manual-acceptance row as outside the six-document
+  set. Independent Re-review therefore has explicit cells to change.
+
+### Verification and status
+
+- `bash scripts/check-topic-docs.sh` -> exit 0; `make check-whitespace` -> exit
+  0; `git diff --check` -> exit 0.
+- This is Repair, not independent Re-review. The set-wide verdict remains
+  REOPEN, the dated closing-review status stays unchecked for `tasks.md`, and no
+  completion-evidence gate or delivery action is claimed.
+
+Repair status: CD1-F2 and CD1-F3 are repaired in the candidate; awaiting
+independent Re-review together with CD1-F1.
+
+#### 📌 下一步
+
+```text
+复评：desktop-app / 文档集收尾评审 / CD1-F1, CD1-F2, CD1-F3
+```
+
+## Closing document review — Round 3 (independent re-review, 2026-08-23)
+
+- Reviewed state: HEAD `a190186297db40bade40f129fd4a17e35600bbbb`, uncommitted
+  working tree. Set fingerprint, computed with Round 1's six-document recipe
+  **after this round's own status synchronization**, so the evidence binds to the
+  state the verdict leaves behind rather than to the pre-tick one:
+  `c42a6de1d707e6d79320032877996ad8aec10847cf58a45885eb3e63fa3bd2a7`.
+  Round 2's repair candidate was `771b3375…cd10`; Round 1 was `5d5c576e…45e3`.
+  Two of the six documents changed between Rounds 1 and 2 — `requirements.md` and
+  `tasks.md` — which is exactly Round 2's declared scope; the four documents that
+  passed Round 1 are byte-identical to their Round 1 blobs.
+- Reviewer: Claude Code, independent of the repair round.
+- Method: each finding re-verified against the documents themselves rather than
+  against Round 2's account of the repair, and the four already-passing documents
+  re-hashed to confirm the repair did not touch them.
+- Disposition of every Round 1 finding:
+  - CD1-F1 — **closed.** `requirements.md`'s Widget acceptance bullet now carries
+    a `Known defect:` paragraph stating that the criterion is not met by the
+    shipped build, naming the missing team-ID prefix, macOS 26's refusal, all
+    twelve configurations rendering the unavailable state, and `DW-R3-F1` with its
+    parked Apple Developer prerequisite — and it closes with "The criterion above
+    remains the contract", which is the half that mattered. The disclosure now
+    matches the shape the other four documents already used, so the set has one
+    voice on this defect instead of two.
+  - CD1-F2 — **closed.** The temporary code-over-contract rule now states why it
+    survives task 6's initial reconciliation — task 4's open `DW-R3-F1` leaves the
+    implementation and the document set in disagreement — and assigns the removal:
+    task 6 owns a final reconciliation after task 4 closes that finding, before
+    task 6 can reach Review PASS. A reader can now tell a deferral from an
+    omission, which is what the finding asked for. Declaring the retention
+    deliberate is the owner's decision to make, not a claim this reviewer can
+    falsify, and the substantive requirement — the condition and the owner — is
+    met.
+  - CD1-F3 — **closed, and the repair is the stronger of the two available
+    options.** The Documents matrix gained a dated `Closing review` column, and
+    the deferral section was updated to say which column means what: the old
+    `Review` cells "retain the suspended historical values from before deferral"
+    and "do not report the closing pass", while the dated column "is the
+    closing-pass result". The manual-acceptance row is marked `—` as outside the
+    six-document set, which is correct — Round 1 reviewed six documents and that
+    was not one of them. The closing pass now has falsifiable cells, and this
+    round moved the two that were `[ ]`.
+- New findings: none. The four documents that passed Round 1 are unchanged, and
+  the two repaired documents introduced no defect this round could find.
+- Status synchronization performed by this round, recorded here because it
+  changed the fingerprint the evidence binds to: `requirements.md` and `tasks.md`
+  moved to `[x]` in the `Closing review` column, and `tasks.md`'s next-action
+  statement was corrected — it still directed the reader to run this review and to
+  re-review task 6's record, both of which had already run.
+- Evidence:
+  - `bash scripts/check-topic-docs.sh` → exit 0 (the project's checker for this
+    target class)
+  - `make check-whitespace` → exit 0
+  - `git diff --check` → exit 0
+  - Per-document blob comparison against Round 1 → only `requirements.md` and
+    `tasks.md` changed
+- What this verdict does and does not unblock: it closes task 6's R1-F1, whose
+  whole content was that this review had not run. It does not let task 6 pass.
+  The rule repaired under CD1-F2 now makes that explicit — task 4 must close
+  `DW-R3-F1` before task 6 runs the final reconciliation that removes the rule —
+  and `DW-R3-F1` is parked on an Apple Developer team ID that does not exist yet.
+  That is where the topic stops, and it is an external prerequisite rather than
+  work anyone here can perform.
+- Set-wide verdict: **PASS**
+
+### Round 3 addendum — completion-evidence bookkeeping (2026-08-23)
+
+Recorded after the round, because the recording itself needed a correction and
+hiding it would defeat the purpose of an audit trail.
+
+- The six `document` boundaries this round crossed are now recorded and the gate
+  answers `VERIFIED` for each, bound to content state
+  `urn:ce:agent-deck:state:candidate:a5e3433a…f167` (HEAD `a190186` plus the
+  post-synchronization set fingerprint `c42a6de1…d2a7`).
+- **A mistake, disclosed rather than quietly fixed.** The first write used
+  `MERGE` on work-unit ids that already existed under the store's *retired*
+  capitalized `WorkUnit` vocabulary for four of the six documents —
+  `architecture.md`, `ux/menubar.md`, `ux/widget.md` and `tasks.md`. Two things
+  followed. The gate could not see them, because it filters on the current
+  lowercase `work_unit` kind, so those four read `NOT_VERIFIED` while looking
+  recorded. And an unconditional `SET` overwrote each of those historical nodes'
+  `target_content_state` with this round's value; the prior values were not
+  captured first and are **not** restored here, because guessing them from their
+  latest evidence would put an invented fact into the record. `head` and
+  `attributes_json` were added to those nodes rather than overwritten, the old
+  vocabulary carrying neither.
+- The forward fix creates four new current-model `work_unit` nodes under distinct
+  ids ending `-doc`, pointing at the criteria this round already wrote, and
+  leaves the historical nodes as history. `.agent-instructions/evidence.md` says
+  to leave retired-vocabulary nodes as they are; it also says to inspect the store
+  before writing, which is the step that was skipped.
+- One pre-existing row still reads `NOT_VERIFIED`: `ux/settings.md`'s older
+  `independent-review-pass` criterion, whose evidence binds to a content state
+  from before the deferral. It is a leftover of the earlier process, not of this
+  round, and is left for whoever reconciles that boundary.

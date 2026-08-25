@@ -6,6 +6,13 @@ subject: presentation-period-scoping
 
 # Review log — desktop-app / presentation-period-scoping
 
+> **Merge note (2026-08-20).** The user explicitly merged this delivered producer
+> slice into task 3 `menubar-experience`. The rounds below remain unchanged as
+> exact-state history for commit `1bf1f7647e4aa2449c71b7d900b3f6c8208f97c7`;
+> `presentation-period-scoping` is no longer a live task or an independent
+> completion boundary. The combined task's current review continues in
+> [`menubar-experience.md`](menubar-experience.md).
+
 ## Round 1 — 2026-08-19
 
 - Reviewed state: commit `54e12ed9ceac8e26e07a8809670e1657923f9eab`;

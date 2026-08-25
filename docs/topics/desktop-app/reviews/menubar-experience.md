@@ -527,9 +527,9 @@ absent rendered specimens, and the unwritten `ux/widget.md`.
 
 ### 📋 独立复评 — desktop-app / menubar-experience
 
-📊 总体评分：7/10
+📊 总体评分：9/10
 
-✅ 结论：FAIL
+✅ 结论：PASS
 
 - Reviewed state: HEAD `c2ff1623f2a509994f596f4730f7786fbeec8194`
   plus `docs/topics/desktop-app/architecture.md` blob
@@ -1478,6 +1478,559 @@ Repair status: M-F1、M-F2、M-F3 已在候选文档中完成；Review verdict �
 复评：desktop-app / reviews/menubar-experience.md
 ```
 
+## Round 33 — 2026-08-20（独立实现复评）
+
+### 📋 独立复评 — desktop-app / menubar-experience
+
+📊 总体评分：7/10
+
+✅ 结论：FAIL
+
+- Reviewed state: HEAD
+  `9613498123f00b59d3d4b84fbff71e0f71d6ebd4`; current product-scope patch
+  SHA-256 `c4629eb2a72fc5e94922e9edae99697d3f8baf048f4256d9321b071f8a4efdf3`.
+- Reviewer: Codex
+- Method: `development-workflow` REREVIEW，只复核 Round 31 的 R31-F1/F2/F3，
+  再将它们的修复路径放回完整 Go/Xcode gate 中。CodeGraph 定位当前
+  producer → decoder → ViewModel → chart/test 路径；源码与测试执行结果分别复核。
+- Finding dispositions:
+  - **R31-F1 — CLOSED.** 用户明确决定合并原 Task 3/4；`tasks.md`、
+    `architecture.md`、`docs/README.md`、acceptance link、review history 与 Beads
+    现在以合并后 Task 3 `menubar-experience` 拥有完整 producer-to-UI 边界。
+  - **R31-F2 — CLOSED.** Go producer 通过 snapshot local `currentHour` 只输出
+    `0...through_hour`；chart axis 从实际 bucket IDs 派生中点与右端 `Now`。
+    上午 8 点、正午 12 点和日末 23 点的 model/axis tests 通过。
+  - **R31-F3 — CLOSED.** Present-null、missing boundary、partial、out-of-range、
+    duplicate、descending、post-boundary 和 unavailable-with-items 都被 decoder 拒绝；
+    chart/chip 共用同一个 validated family，priciest-hour 忽略零 events 并在同价时
+    选较早 hour。
+  - **R33-F1 — CLOSED AS REVIEWER ERROR.** 用户指出本 topic 当前临时规则是
+    契约与实现冲突时以代码为准。复评不应将已实现的 `.timedOut → .failing`
+    报成生产缺陷；topic UX 文档和 stale XCTest 期望已直接与该行为对齐。
+- Evidence:
+  - `scripts/run-go-test.sh ./internal/usage ./internal/desktop ./cmd/agentdeck`:
+    PASS; log `agentdeck-go-test.EbBDGX`.
+  - `scripts/run-go-test.sh ./...`: PASS; log `agentdeck-go-test.0TRV7A`.
+  - 评审结果纠正后，经授权的非沙箱聚焦 XCTest 1/1 PASS；原完整
+    `scripts/test-macos-app.sh` 命令也通过：`AgentDeckSharedTests` 38/38，
+    `AgentDeckAppTests` 51/51，`** TEST SUCCEEDED **`。Result bundle:
+    `apps/macos/build/DerivedData/Logs/Test/Test-AgentDeck-2026.08.20_22-51-34--0700.xcresult`.
+  - `bash scripts/check-topic-docs.sh`, `make check-whitespace`, and
+    `git diff --check`: PASS.
+  - CEv1 fixed-template gate query: Review findings are closed, while Task completion
+    remains `BLOCKED` only on the separate required `manual-ux` criterion.
+
+#### 🔴 严重问题 — 必须修复
+
+无。R33-F1 是 reviewer 误用了本 topic 的临时权威顺序，不是产品 finding。
+
+#### 🟡 建议改进 — 推荐
+
+无。
+
+#### 🟢 优点
+
+- R31-F1/F2/F3 都已在当前内容状态关闭，并有与每个失效模式对应的直接测试。
+- Hourly family 保持 wire v1 additive compatibility；legacy missing 与 present malformed
+  现在是两条明确路径。
+- App tests 51/51 通过，hourly axis、decoder rejection、shared validity 与
+  priciest-hour tie-break 都在完整 Xcode 运行中真正执行。
+- Topic UX 契约和 Shared XCTest 期望已与保留的 `.timedOut → .failing`
+  代码行为一致，完整 Xcode gate 恢复为 89/89 PASS。
+
+#### 📝 总结
+
+R31-F1/F2/F3 全部关闭，R33-F1 由用户指出为 reviewer 判断错误并关闭。
+当前代码、topic 文档、XCTest 期望和完整 Go/Xcode gate 一致，所以本轮
+Review verdict 直接更正为 PASS，无需另起 Repair 或重新复评这一 finding。
+Task 3 Dev/Review 单元格均勾选；用户对最终 commit tree 明确确认
+`manual-ux` 全部通过，CEv1 四项 required criteria 重新查询为 `VERIFIED`。
+三笔已授权代码 commit 存在，因此 Beads task 可以关闭。
+
+- Verdict: PASS
+
+#### Task checkpoint
+
+Task checkpoint：Task 3 `menubar-experience` at aggregate commit tree
+`0b051d9e32afa6a2b188577ffb2f916547d91ce5` — Review PASS; CEv1 completion
+gate `VERIFIED`.
+
+提交建议：已按同一 Task 的三个 partial content states 完成：`9716dc7`
+wire/data、`fa7eb1f` runtime/state、`f37328d` menu-bar app/resources/tests。
+
+推送建议：当前未授权推送；提交保留在本地 `main`，后续需单独确认
+分支、远端和 commit range。
+
+## Round 32 — 2026-08-20（R31-F2 / R31-F3 修复）
+
+Repair scope 仅限 Round 31 记录的 R31-F2、R31-F3。实现 identity 为 HEAD
+`9613498123f00b59d3d4b84fbff71e0f71d6ebd4` 加当前 producer、Swift wire/host、
+两组 Swift tests、canonical fixtures、GUI contract golden 与两份契约文档的有序
+source manifest；该 manifest 的 SHA-256 为
+`15059560d459988807f299e21d3890612c49efbee162f8e5ee1ad58f9ebc1b00`。
+
+### Finding → change
+
+- **R31-F2：CLOSED in Repair candidate.** `usage.presentation.hourly` 增加 producer
+  声明的必填 `through_hour`，Go 只生成 `0...through_hour`；canonical 10:00 fixture
+  因而是 11 桶而非 24 桶。ViewModel 不再以 `count == 24` 才采用 hourly，chart 的
+  `Now` 永远落在 producer 边界的最右端；中点标签随当前小时变化，上午 8、正午 12、
+  日末 23 分别验证为 `04:00`、`06:00`、`12:00`。
+- **R31-F3：CLOSED in Repair candidate.** `DesktopUsageScopeV1` 自定义 decoder 只把
+  field 缺失视为 legacy unavailable，显式 `null` 为 invalid wire；
+  `DesktopUsageHourlyV1` 要求 `through_hour` 在 `0...23`，available family 必须精确
+  包含 `0...through_hour`，从而拒绝 partial、越界、重复、降序、post-boundary 和
+  unavailable-with-items。chart 与 priciest-hour 现在共用这一个已验证 family；chip
+  只比较 `events > 0` 的 numeric display cost，并在同价时选择较早小时。
+
+### Verification
+
+- `env GOCACHE=/private/tmp/agent-deck-go-build AGENTDECK_UPDATE_FIXTURES=1 go test
+  -mod=vendor ./internal/desktop`：PASS，三份 producer fixture 通过可重现性测试。
+- `scripts/run-go-test.sh ./internal/usage -run
+  'TestPresentation|TestEmptyConcreteClientScope'`：PASS。
+- `scripts/run-go-test.sh ./...` 的首次 final-state run 只有
+  `TestIsolatedEndToEndFlow` 因新增 `through_hour` 尚未写入 GUI contract golden 而失败；
+  其余包 PASS。随后官方 `UPDATE_AGENTDECK_GOLDEN=1` 路径更新 golden，更新/非更新模式的
+  E2E 均 PASS，最终 `scripts/run-go-test.sh ./cmd/agentdeck` 全包 PASS；未变包复用首次
+  run 的同内容状态结果。
+- `env DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer bash
+  scripts/test-macos-app.sh` 在宿主权限下成功 build；本范围的
+  `DesktopWireTests` 11/11、`AgentDeckAppTests` 51/51 PASS，其中新增 malformed family、
+  上午/正午/日末轴模型、zero-event/tie-break 与 unavailable-family tests 全部 PASS。
+  aggregate 仍由既有 `DesktopRefreshCoordinatorTests` 一条范围外断言阻断：production
+  把 `.helper(.timedOut)` 归为 `failing`，该测试仍期望 `offline`；hourly decoder、fixture
+  或本轮 host 路径均不参与该分支，本 Repair 未越权修改它。
+
+Verdict: REOPEN — R31-F2、R31-F3 repair complete，等待独立 Re-review；Task 3 的其余
+L3/manual acceptance 与既有范围外测试状态不在本轮 disposition 内。
+
+#### 📌 下一步
+
+```text
+复评：desktop-app / reviews/menubar-experience.md
+```
+
+## Round 31 — 2026-08-20（实现代码评审）
+
+Checklist: 24/54 complete
+
+Incomplete: `TRACE-1`, `TRACE-3`–`TRACE-9`; `DESIGN-1`, `DESIGN-2`,
+`DESIGN-5`, `DESIGN-7`–`DESIGN-9`, `DESIGN-11`; `VERIFY-1`–`VERIFY-15` —
+同一 hourly 路径存在两个已证实的用户可见正确性缺陷。原 Task 3/4 ownership
+歧义已由用户明确决定合并，并在本轮后的文档修复中关闭；评审仍按项目规则在
+决定性代码 blocker 后停止更广的 product verification。修复代码后，下一轮必须
+补齐这些条目的实现、验收与门禁映射。
+
+### 📋 独立实现评审 — desktop-app / menubar-experience
+
+📊 总体评分：3/10
+
+✅ 结论：FAIL
+
+- Reviewed state: HEAD
+  `9613498123f00b59d3d4b84fbff71e0f71d6ebd4`; tracked Task-4-adjacent patch
+  SHA-256 `87e9d0e34bedf269e725660c28ebd1ada8dfb9d4eeae783108051ff8656c9125`;
+  current App/AppTests/acceptance source manifest SHA-256
+  `4db3e0ec620afd45b4128c37ef2133d3bd7cfdbd618579f221d74cdea90ffb0b`.
+- Reviewer: Codex
+- Method: `development-workflow` 正式 REVIEW，以 `ln-12-delivery-reviewer` 作为补充
+  checklist。CodeGraph 先定位 producer → JSON wire → Swift decoder → ViewModel →
+  chart/test 路径，再用聚焦 diff 与权威文档验证。Independent review panel 为
+  initial scope-scaled，消耗 1/2 轮：White/facts 和 API/compatibility 两个盲审
+  lens；两者均只读，结论由 Blue 直接复核。
+- Scope: 合并后的 Task 3 `menubar-experience` 当前未提交实现，及证明其用户结果所必需的
+  `usage.presentation` hourly producer/decoder/consumer 路径。排除 Task 4 widget、
+  Task 5 distribution、`work-signals` 和其他脏工作树内容。
+
+#### 🔴 严重问题 — 必须修复
+
+**[P1] R31-F1 — [`tasks.md:51`](../tasks.md) / [`architecture.md:815`](../architecture.md):
+旧任务分解少覆盖 hourly wire 与其可交付 ownership；已由用户决定关闭。**
+- 行为风险：旧文档把 producer/period-scoping 与 UI 拆成 Task 3/4，却没有给后续
+  hourly、compact plotted values、rhythm hover values、session project rows、对应 Swift
+  DTO/legacy validation 和 UI consumer 一个完整边界。这会让评审无法说明当前
+  candidate 应由哪个 Task 原子交付；这是任务文档少做了范围声明，不是代码不得修改
+  旧文件。
+- 证据：`internal/usage/presentation.go:102-109,294-300,426-459` 生产固定 24 个
+  hourly buckets；`DesktopWire.swift:275,430-451` 解码；
+  `MenuBarViewModel.swift:452-486` 消费。但 [`architecture.md`](../architecture.md#additive-usagepresentation)
+  的字段表只列 daily/rhythm，后续的“Presentation gaps”也未决定 hourly；
+  旧 [`tasks.md`](../tasks.md) 将两个 Go 文件交给独立
+  `presentation-period-scoping`，而旧 `menubar-experience` Files/Creates 未列它们。
+  Round 30 已写下该缺口；用户随后明确决定“文档不对就改文档”，将两个 Task 合并。
+💡 Disposition（2026-08-20）：**CLOSED by explicit user decision and documentation
+repair.** `tasks.md` 现在以 Task 3 `menubar-experience` 一次性拥有 producer、Go tests、
+fixtures/golden、Swift DTO/legacy decode 和 UI consumer；`architecture.md` 增加 hourly
+bounds、local-hour、legacy/malformed semantics。原 commit `1bf1f76` 作为合并 Task 的
+partial evidence 保留，不再是独立 completion boundary。
+
+**[P1] R31-F2 — [`MenuBarPanelViews.swift:290`](../../../../apps/macos/AgentDeckApp/MenuBarPanelViews.swift):
+固定 24 个小时桶把未来的一天末尾标成“现在”。**
+- 行为风险：除一天结束前外，图表的最右桶都是 23:00，不是当前小时；中间的
+  未来空桶还会压缩已观测趋势。这使时间轴与实际数据窗口同时误导用户。
+- 证据：`presentation.go:453-459` 无条件生产 `0...23` 全部桶；
+  `MenuBarViewModel.swift:452-476` 仅在数量等于 24 时把全部桶传给 chart；
+  `MenuBarPanelViews.swift:290-296` 在最右端固定渲染 `Now` / `现在`。
+💡 有界修复：在 [`ux/menubar.md`](../ux/menubar.md) 和 wire 契约中决定唯一语义：
+要么 producer/UI 只给出截至当前本地小时的桶，要么保留 24 桶但把 `Now` 标在真实位置且不让
+未来桶参与趋势形状；增加上午、正午和日末的渲染/模型验证。
+💡 Repair disposition（Round 32）：**CLOSED in candidate**；采用只生成截至
+`through_hour` 的方案，动态轴与上午/正午/日末模型测试见 Round 32。
+
+**[P1] R31-F3 — [`DesktopWire.swift:275`](../../../../apps/macos/AgentDeckShared/DesktopWire.swift) /
+[`MenuBarViewModel.swift:484`](../../../../apps/macos/AgentDeckApp/MenuBarViewModel.swift): malformed/partial
+hourly 会绕过 invalid-wire 语义，并让 chart 与“最贵小时”互相矛盾。**
+- 行为风险：optional synthesized `Codable` 把 field 缺失和显式 JSON `null` 都解为
+  `nil`，且不验证 hour 范围、顺序和唯一性。例如 23 个桶会让 chart 回退到 daily，
+  但 `usageChips` 仍对这 23 个桶做 `max`，生成看似可信的 priciest-hour。
+- 证据：`DesktopUsageScopeV1.hourly` 是无自定义 decoder 的 optional field；
+  `usesHourly` 只以 `count == 24` 决定 chart，而 `usageChips` 无条件对任意非空数组做 `max`。
+  当前 tests 覆盖 missing 和 wrong-type string，未覆盖 `null`、越界/重复 hour 或 partial rows。
+  合并后的 [`architecture.md`](../architecture.md#additive-usagepresentation) 允许 host
+  只在完整有效 family 上做一次确定性选择，但当前实现没有共享 validity、非零 events
+  过滤或相同 cost 下的明确 tie-breaking。
+💡 有界修复：区分 legacy missing 与 present-null invalid（JSON `null` 是一个显式值，
+参见 [RFC 8259](https://www.rfc-editor.org/rfc/rfc8259)），验证固定范围/顺序/唯一性，并让 chart
+与 chip 共用一个 validity decision；按 architecture 只比较有 events 的已观察 bucket，
+并实现相同 cost 选择较早 hour 的确定规则。
+💡 Repair disposition（Round 32）：**CLOSED in candidate**；严格 decoder、共享
+family decision 与 priciest-hour 过滤/tie-break tests 见 Round 32。
+
+#### 🟡 建议改进 — 推荐
+
+无。
+
+#### 🟢 优点
+
+- hourly 字段本身保持 additive；old decoder 可忽略，new decoder 可对缺失字段做
+  legacy fallback，因此新增 family 本身不要求提高 `wire_version`。
+- Go producer 而非 Swift host 生成原始小时聚合，incomplete-cost 标记也穿过
+  producer → DTO → presentation 路径。
+- 已有 focused producer test 和 missing-family fallback test；它们为修复后的契约补齐提供了
+  可用基线。
+
+#### 📝 总结
+
+本轮评审的实现 identity 是上述 HEAD + patch/source-manifest 指纹。用户决定与文档修复
+已关闭 R31-F1 的 Task boundary 歧义；hourly 仍存在错误的 `Now` 时间轴和不一致的
+malformed/partial 处理，因此不能 PASS。项目规则要求决定性 blocker 后停止更广验证；本轮没有重跑
+未改状态的 Go/Xcode 套件。CEv1 provider 已发现，但此 FAIL 不跨过 Task completion
+boundary，所以未写入新证据；现有 manual-UX 证据仍是 `BLOCKED`。Beads 任务保持
+`in_progress`；由于 completion blocker 尚在，本轮 reviewer claim / `in_review` 转移被安全
+策略拒绝，本评审没有绕过该限制。
+
+- Verdict: REOPEN
+
+#### 📌 下一步
+
+```text
+修复：desktop-app / reviews/menubar-experience.md / R31-F2 R31-F3
+```
+
+## Round 29 — 2026-08-20（原型一致性补充复评）
+
+### 📋 实现复评 — desktop-app / menubar-experience
+
+📊 总体评分：2/10
+
+✅ 结论：FAIL
+
+- Reviewed state: Round 28 安装后的同一个 unsigned candidate，安装位置为
+  `/Applications/AgentDeck.app`；本轮未修改 product code、tests 或 configuration。
+- Reviewer: Codex，以项目 `REREVIEW` 为主工作流，辅以
+  Product Design screenshot audit 对已批准原型和已安装 App 做可视对照。
+- Approved prototype evidence:
+  - popover：`d47332b110d0…`（420×760）；
+  - chart hover：`99c4c493cafc…`（420×760）；
+  - provider menu：`1ca14f433887…`（420×760）；
+  - Settings：`59f3abb2fad3…`（460×426）。
+- Installed-app evidence: user-provided current popover/provider screenshot
+  `e9ef148f127d…`（2114×3556）and Settings screenshot
+  `0f704b5a24e0…`（920×718）。Round 26 status-item evidence
+  `ce5489a4aabb…` remains applicable, and the user independently reports that
+  the newly installed status item is still effectively iconless.
+- Prototype visual contract observed in the accepted captures: warm orange
+  `#f2650f` emphasis; near-black `#0b0e13`, `#141922` and `#1a202a` surfaces;
+  restrained indigo/blue chart with an orange peak; compact card hierarchy; a
+  24-hour bar chart whose bars expose time/cost/token detail; and a bounded,
+  grouped Codex/Claude provider menu.
+- Review correction: Round 28's statement **"New findings — none in static or
+  automated review"** was too broad. That round proved source, asset, bundle and
+  XCTest properties, but it did not compare the installed visual result against
+  the approved prototype. Automated green evidence cannot close prototype
+  fidelity. This round supersedes that visual conclusion, while preserving the
+  valid test results.
+
+- Finding dispositions:
+  - **MEI-F1 — CLOSED, unchanged.** Task ownership remains correct.
+  - **MEI-F2 — CLOSED, unchanged.** Existing model/state verification remains
+    valid; this round found rendered-surface failures, not a regression in that
+    closed finding.
+  - **[P2] MEI-F3 — STILL OPEN.** Asset registration and compositor tests pass,
+    but the newly installed status item still has no recognizable AgentDeck
+    glyph at actual menu-bar size. Resource presence is not rendered acceptance.
+  - **MEI-F4 — CLOSED.** The latest installed-app screenshot shows the header,
+    client/period filters and panel selector in the visible popover; the prior
+    shorter-display clipping symptom is no longer present in the supplied state.
+  - **[P2] MEI-F5 — STILL OPEN / NOT RE-OBSERVED.** Source and bundle metadata
+    are repaired, but this continuation supplied no current About-panel capture.
+    Round 28 explicitly required that installed rendering before closure; the
+    finding therefore remains open rather than being inferred closed.
+  - **[P1] MEI-F6 — NEW: the installed App does not implement the approved
+    visual language.** The popover and Settings use saturated macOS system
+    blue/teal tint, blue selected controls, native semantic surfaces, larger
+    type/spacing and different borders/weights. The approved prototype uses the
+    explicit warm-orange and near-black palette above, restrained indigo chart
+    color, compact dark cards and a visible header glyph. This is a whole-surface
+    contract mismatch, not a subjective request for polish.
+  - **[P1] MEI-F7 — NEW: Usage and rhythm visualization structure does not
+    match the prototype.** The installed Today panel leaves a large unexplained
+    blank region between the panel selector and chart, then renders a sparse,
+    right-heavy series whose visible period reads like a 90-day distribution.
+    The accepted prototype places a bounded 24-hour chart card directly below
+    the notice strip. The installed lower "Last 90 days" area also collapses to
+    a label/tiny mark instead of the prototype's legible calendar/rhythm block.
+  - **[P1] MEI-F8 — NEW: chart-bar detail interaction is absent.** Every bar in
+    the prototype is an interactive target and hover exposes the bucket's hour,
+    cost and token/event detail. Current `TrendChart` renders non-interactive
+    `RoundedRectangle` views with only accessibility label/value metadata; the
+    installed bars expose no hover popover or equivalent visible detail.
+  - **[P1] MEI-F9 — NEW: provider selection is structurally and visually wrong.**
+    The installed menu expands into an oversized translucent, low-contrast, flat
+    option list that extends far outside the compact popover, repeats raw rows
+    and makes disabled entries difficult to read. The approved prototype uses a
+    bounded menu grouped by Codex and Claude with concise current, ready and
+    unavailable states. Current `FooterView` delegates the raw sections to a
+    native borderless `Menu`; that implementation does not enforce the approved
+    hierarchy, density, contrast or height.
+- Launch-at-login disposition: the observed refusal remains contract-conformant
+  for this unsigned local build and is not converted into a product finding.
+  This does **not** prove the enabled path in a signed distribution; that path
+  remains an explicitly environment-limited acceptance item rather than visual
+  PASS evidence.
+- Evidence limits: screenshots can prove visible color, spacing, clipping,
+  hierarchy and the user-observed absence of hover feedback. They cannot prove
+  VoiceOver, maximum text size or increased-contrast behavior without changing
+  accessibility state; those cases remain governed by the separate acceptance
+  runbook and must not be claimed tested here.
+- Delivery-reviewer verdict: FAIL
+- Verdict: REOPEN
+
+Checklist: 49/54 complete
+
+Incomplete: VERIFY-9 remains open for the installed About panel; the approved
+prototype comparison additionally fails the visible glyph, visual-language,
+chart-layout, chart-interaction and provider-menu checks recorded below.
+
+#### 🔴 严重问题 — 必须修复
+
+[`apps/macos/AgentDeckApp/MenuBarSurfaceView.swift:1`] MEI-F6：popover 和
+Settings 的整体色彩、字重、边框、间距与 header icon 不符合已批准
+原型。
+- 处置：新增，仍打开。
+- 行为风险：产品失去原型已确定的身份、信息层级和状态强调语义；系统
+  默认蓝色不是可接受的替代实现。
+- 证据：原型 `d47332b110d0…` / `59f3abb2fad3…` 与安装版
+  `e9ef148f127d…` / `0f704b5a24e0…` 直接对照；current views 仍依赖
+  SwiftUI semantic/tint styling。
+💡 有界修复：将原型 palette、surface、type、border、spacing 和 icon
+规则落成 Task 4 单一 design-token layer，popover 与 Settings 共用；在相同
+viewport/state 下输出 reference-versus-candidate screenshot 作为复评证据。
+
+[`apps/macos/AgentDeckApp/MenuBarPanelViews.swift:100`] MEI-F7：Usage 图表前出现
+大段空白，图表的时间结构和下方 rhythm/calendar 都不符合原型。
+- 处置：新增，仍打开。
+- 行为风险：用户无法在打开 popover 后立即理解 Today 消耗，也无法从
+  下方模块读取 90-day rhythm。
+- 证据：原型 `d47332b110d0…` 的紧凑 24-hour card 与安装版
+  `e9ef148f127d…` 的 blank/sparse layout；current `TrendChart` 只按 bucket tokens
+  比例排列 rectangles，未实现原型可见结构。
+💡 有界修复：Today 状态固定为紧随 notice 的 24 个小时 bucket card，
+消除无所属的空白，并按原型恢复可读的 90-day rhythm/calendar。
+
+[`apps/macos/AgentDeckApp/MenuBarPanelViews.swift:100`] MEI-F8：柱图缺少原型已
+定义的 hover/detail 交互。
+- 处置：新增，仍打开。
+- 行为风险：用户只能看高度，不能将任一柱与具体时间、cost 和
+  tokens/events 对应，图表丧失基本可解释性。
+- 证据：原型 hover 状态 `99c4c493cafc…`；安装版人工观察；
+  `TrendChart:107-114` 只渲染 `RoundedRectangle` 及 accessibility metadata，无
+  hover/focus/detail state。
+💡 有界修复：每个 bucket 必须是有明确 hit target 的交互元素，
+hover 和 keyboard focus 显示 hour/cost/tokens-or-events detail，同一信息通过
+accessibility label/value 暴露；复评必须提供 hover 截图与交互测试。
+
+[`apps/macos/AgentDeckApp/MenuBarSurfaceView.swift:393`] MEI-F9：provider 菜单是一个
+超长、低对比、平铺的系统列表，不是原型中有界且按 client 分组的选择器。
+- 处置：新增，仍打开。
+- 行为风险：菜单超出 popover/屏幕，选项层级和可用性不可扫读，disabled 行难以
+  辨认，provider switching 主路径不可靠。
+- 证据：原型 `1ca14f433887…` 与安装版 `e9ef148f127d…`；
+  `FooterView:407-435` 将 sections 直接交给 native borderless `Menu`。
+💡 有界修复：实现原型的 compact bounded menu，按 Codex/Claude
+分组，每行只呈现一个清晰的 current/ready/unavailable 状态，且整个选择器
+不能超出 popover 或 visible screen。
+
+#### 🟡 建议改进 — 推荐
+
+[`apps/macos/AgentDeckApp/MenuBarItemController.swift:55`] MEI-F3：安装版在实际
+menu-bar size 下仍无可识别 AgentDeck glyph。
+- 处置：仍打开；Round 27/28 的 asset/compositor 证据未通过 rendered gate。
+- 证据：Round 26 `ce5489a4aabb…` 与当前用户观察。
+💡 有界修复：以原型中的明细 icon 为视觉基准，在实际 1×/2×
+status-item 尺寸下调整轮廓、占比和 template rendering，并提供安装后
+normal/badged 截图；不得再以 asset lookup 成功代替视觉验收。
+
+[`apps/macos/AgentDeckApp/Info.plist:1`] MEI-F5：About 的 metadata 修复尚未经新
+安装版人工观察。
+- 处置：仍打开，本轮没有用旧截图推断新 bundle 已通过。
+- 证据：Round 28 的显式人工 gate 未完成。
+💡 有界修复：打开新安装 bundle 的标准 About panel，确认 icon、
+version 0.5.0、build 1 和 copyright 全部可见。
+
+#### 🟢 优点
+
+- MEI-F4 的较短屏 popover 尺寸修复在最新截图中已生效；header 和 filters
+  不再被窗口顶部裁掉。
+- Round 27/28 的 Xcode tests 仍是有效的非回归证据，但它们不再被解读为原型
+  fidelity PASS。
+
+#### 📝 总结
+
+本轮已对每个旧 finding 重新处置：MEI-F1/F2/F4 关闭，MEI-F3 仍打开，
+MEI-F5 因缺少新安装版 About 观察而仍打开。与批准原型的直接对照又产生
+MEI-F6/F7/F8/F9：视觉语言、图表结构、柱图交互和 provider 选择器都不
+符合已批准设计。因此 Task 4 不能 PASS，`Dev`/`Review` 保持未勾选，状态回到
+repair-ready。
+
+本轮也修正了评审方法：未来复评必须在相同 viewport 和可比状态下同时
+检查 reference 与 candidate screenshot，逐项验收 icon、palette、typography、spacing、
+chart structure/interaction 和 provider hierarchy。只跑 XCTest、查 Assets.car 或确认
+SwiftUI control 存在，都不再足以宣布原型一致性。
+
+#### 📌 下一步
+
+```text
+修复：desktop-app / reviews/menubar-experience.md / MEI-F3 MEI-F5 MEI-F6 MEI-F7 MEI-F8 MEI-F9
+```
+
+## Round 30 — 2026-08-20
+
+- Repair owner: Codex
+- Scope: only MEI-F3, MEI-F5, MEI-F6, MEI-F7, MEI-F8 and MEI-F9 from
+  Round 29. No installation, commit, push, provider mutation, login-item change,
+  release action or real-user-state probe was authorized or performed.
+- Repaired state: HEAD `1bf1f7647e4aa2449c71b7d900b3f6c8208f97c7` plus the
+  uncommitted Task 4 candidate. The final `Artwork` + `Assets.xcassets`
+  manifest digest is
+  `6c125812b0bce6bc0e96a2a8a3e4d88386cb339e256ddbe5ba916e3a469c89a4`.
+- Method: repository contract/data tracing, local rendering of the approved v7
+  prototype in an isolated `agent-browser` session, SwiftUI/AppKit candidate
+  rendering over synthetic fixtures, and focused plus full Xcode gates.
+
+- Finding dispositions:
+  - **MEI-F3 — implementation repaired; installed-runtime gate BLOCKED.** The
+    status-item template now uses the prototype's recognizable robot face rather
+    than the deck/negative-space-A mark that remained unreadable at 18 pt. The
+    same 18 pt mark appears in the popover header. Normal and badged 2×
+    production-compositor attachments were visually inspected; the normal face
+    remains recognizable and the badged state retains the face silhouette plus
+    a separated warning triangle. Final attachment SHA-256 values are
+    `81529c415cb7f01ddc3ff822853608cbd08054f9a46f7dc7d7d5ee5584bac1d8`
+    (normal) and
+    `80934a1d1123d40fbd9ae8380a72e2170fbb0371c3119810b1f38e338458caf9`
+    (badged). Round 29 still requires a newly installed status-item screenshot;
+    Repair does not infer that observation from a test renderer.
+  - **MEI-F5 — built-bundle rendering closed; installed-runtime gate BLOCKED.**
+    The unchanged standard About action was opened inside the built AgentDeck
+    test host and captured from the real standard panel. The screenshot visibly
+    contains the AppIcon, `AgentDeck`, `Version 0.5.0 (1)`, and the copyright;
+    SHA-256
+    `a8adae009dfba957dba6a61cc1a56986141ea69d91875c578fe27e76cc170285`.
+    Round 29 explicitly asks for the newly installed panel, and this Repair did
+    not have installation authority.
+  - **MEI-F6 — implementation repaired; installed comparison pending.** Added
+    one dynamic light/dark `DesktopVisualTheme` token layer carrying the
+    approved orange accent, blue activity, near-black/white surfaces, borders
+    and text hierarchy. Popover and Settings now share it; the header carries
+    the robot mark, selected controls use orange rather than system blue, panels
+    use compact bordered cards, and Settings uses the same surface/type rules.
+    The 420×760 popover and 460 pt Settings candidate attachments are
+    `d4d64b094ce455ebbc42ce48fdd64a360ba8170d4e361497a4724fa709e65b4c`
+    and `95eaab60cdb54105273e5d6ab3b65ac11b60ea11158e3632176e5dd3ec8f99c5`.
+    They were compared against the local approved prototype captures
+    `72480913693a60d0f1be097c342ed4ebcb9b8073f9f5edcf7e6395583453256c`
+    (normal) and
+    `19ac20df2c7ade3dec11ecb96eb6b38d8962e3b8a4459951b175c286dbe9289b`
+    (hover). Installed same-viewport evidence remains a Re-review prerequisite.
+  - **MEI-F7 — honest daily/calendar repair applied; required 24-hour chart
+    BLOCKED by the wire contract.** The Usage chart no longer renders all 90
+    daily buckets when `today` is selected: it shows only the selected daily
+    window, directly below the notice strip, inside a compact chart card. The
+    rhythm section now renders the 7×24 intensity grid and the 90 daily values as
+    an explicit 18-column calendar rather than compressing them into one tiny
+    trend mark. However, the authoritative wire supplies only a bounded daily
+    series and a 7×24 *relative-intensity* grid; it supplies no 24-item Today
+    series. Creating the prototype's 24 hourly bars here would invent a
+    distribution or mislabel 30-day rhythm intensity as today's activity.
+  - **MEI-F8 — daily bucket interaction repaired; required hourly detail
+    BLOCKED by the same contract gap.** Every available daily bucket is now a
+    hit target; hover and keyboard focus show its real date, cost and tokens in
+    a fixed readout, click pins/unpins it, arrow keys move the single chart focus,
+    and accessibility exposes the same values. `TrendChartInteraction` tests the
+    pin > hover > focused-bucket priority. The wire's rhythm cells contain only
+    `(weekday, hour, intensity)`, so hour-specific cost/tokens/events cannot be
+    displayed honestly until the producer contract changes.
+  - **MEI-F9 — implementation repaired; installed comparison pending.** Replaced
+    the native flat `Menu` with a custom 250 pt selector whose computed height is
+    capped at 260 pt, scrolls within that bound, groups Codex and Claude, and
+    gives every row exactly one current/available/unavailable status with higher
+    disabled contrast. Its candidate attachment SHA-256 is
+    `cdbccbb9bd17618bd15606daec0e1502440d85a7e1f73ea77872943ff7c45fdd`;
+    the approved prototype provider capture is
+    `09031a1f270b1fc09586bd9430abf95c0ce489d8527c8a26f890e717c8c6d2e1`.
+
+- Contract blocker for MEI-F7/MEI-F8:
+  `docs/topics/desktop-app/ux/menubar.md` assigns the trend chart the selected
+  scope's ≤90-item `daily` series, and `architecture.md` defines each daily item
+  as `(date, tokens, cost, sessions)`. `DesktopUsageRhythmCellV1` contains only
+  `weekday`, `hour` and `intensity`. Supplying 24 truthful Today bars with
+  hour/cost/tokens-or-events therefore requires an approved additive
+  `usage.presentation` hourly family, Go producer/fixture changes, Swift DTOs,
+  and a deliberate Task 3/Task 4 ownership decision. That is a new design and
+  cross-task scope, not an authorized Task 4 visual Repair.
+
+- Verification:
+  - focused model/chrome Xcode tests: 26 tests / 0 failures;
+  - `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer bash
+    scripts/test-macos-app.sh`: **TEST SUCCEEDED**; Shared 32/32 and App 41/41;
+    final result bundle
+    `apps/macos/build/DerivedData/Logs/Test/Test-AgentDeck-2026.08.20_02-33-01--0700.xcresult`;
+  - `make check-whitespace`, `git diff --check`,
+    `bash scripts/check-topic-docs.sh`, and `jq empty` on the string catalog:
+    PASS on the code state before this record append.
+- Final source SHA-256: `MenuBarSurfaceView.swift`
+  `9ab304d8c655851197e43cb662d0316c334e81b1abb274fd3ba16d3b74606fef`;
+  `MenuBarPanelViews.swift`
+  `0d0bf3cd05f4cda011fe49cec96da6b90b378a3b7086303816c6ffad3937af18`;
+  `MenuBarViewModel.swift`
+  `e2d1ba5a52234c009ffaaff4fe41ee415199f3f5066538b79740dc42bb1b3c3a`;
+  `SettingsWindowView.swift`
+  `7407f1be565af79d1b61ebc9f13881c40dda302126d4d0f1e1ed435cc0678055`;
+  `DesktopCopy.swift`
+  `9eeb5649f2b36fafd4a936865ecdde9b94aee8735751a1c4af1d5e1859d63193`;
+  `Localizable.xcstrings`
+  `1c7bd50a4970a70861be67fa91d2e412663eb1bbfa54dbab89523b8fe5401bfc`;
+  `MenuBarChromeTests.swift`
+  `b1873392aecd1a0bc66cfa19f48e918be1cb17833e85b8ca0111a1de9820a6fa`;
+  `MenuBarViewModelTests.swift`
+  `13d857d7c8230740092ffd23db078d85b0c30d0d09d91271013ec192f903dcd2`.
+- Repair status: **WORKFLOW_BLOCKED**, not awaiting Re-review. F3/F5/F6/F9
+  still need authorized installed-candidate observations, and F7/F8 need the
+  approved producer/ownership prerequisite above. Task 4 remains `in_progress`;
+  its `Dev` and `Review` cells remain unchecked.
+
 ## Round 17 — 2026-08-17
 
 ### 📋 独立复评 — desktop-app / menubar-experience
@@ -1748,4 +2301,761 @@ Task checkpoint：desktop-app / architecture.md（blob 75c96aed）与
 
 ```text
 评审：desktop-app / tasks.md
+```
+
+## Round 20 — 2026-08-19（首次实现评审）
+
+### 📋 实现评审 — desktop-app / menubar-experience
+
+📊 总体评分：4/10
+
+✅ 结论：FAIL
+
+- Reviewed state: HEAD
+  `1bf1f7647e4aa2449c71b7d900b3f6c8208f97c7`; uncommitted Task 4
+  candidate fingerprint
+  `5e9d78c222d00cf5a34d8e16d7ae90acf02c0b189018b09a3b8edac43902c8ce`.
+- Reviewer: Codex
+- Method: Initial implementation Review under `development-workflow`,
+  supplemented by `ln-12-delivery-reviewer`. CodeGraph traced filter,
+  presentation, switch, item/window and settings paths before focused diff
+  inspection. The pass was Blue-only after the exact task-boundary reproducer
+  became decisive; repository policy stops broader verification and an
+  independent panel after a demonstrated P1 unless the workflow requires it.
+- Scope: task 4's app/menu-bar implementation, provider-switch producer and
+  decoders, refresh/switch state, settings, localization, Xcode target/scheme,
+  tests, fixtures and current Files/Creates boundary. Task 5
+  `AppGroupSnapshotStore.swift` and task 6 `scripts/build-macos-app.sh` were
+  excluded.
+- Findings:
+  - **[P1] MEI-F1 — the implementation's core provider-switch and verification
+    paths have no Task 4 ownership.** The authoritative task lists app sources,
+    `EmbeddedHelperRunner` refresh/state hunks, two Shared test files, the app
+    project/scheme hunks, catalogs/assets and App tests. It then explicitly says
+    Task 4 does **not** own `AgentDeckShared/DesktopWire.swift`. The current
+    implementation nevertheless modifies ten undeclared paths:
+    `internal/desktop/desktop.go`, `internal/desktop/desktop_test.go`,
+    `AgentDeckShared/DesktopWire.swift`, `AgentDeckTests/DesktopWireTests.swift`,
+    `AgentDeckTests/FixtureSupport.swift`, `AgentDeckVerification/main.swift`,
+    `cmd/agentdeck/testdata/phase7/gui-json-contract.json`, and the complete,
+    partial and empty-client desktop fixtures. These are not incidental changes:
+    they implement `provider.candidates`, executable switch options,
+    `ProviderUseEnvelopeV1`, sequential helper behavior, and the two-index-plus-
+    snapshot verifier that the task's own switch and refresh flow consumes. ->
+    Assign every one of these exact files/hunks to Task 4, or relocate the
+    provider-switch producer/DTO/fixture delivery to another explicitly named
+    prerequisite and update dependencies. Preserve Task 3 period-scoping hunks,
+    Task 5 projection work, and Task 6 build work as excluded boundaries.
+- Evidence: task 4 definition at `tasks.md:124-201`; `git diff --name-status`
+  showed all ten undeclared modified paths; focused diff tied them directly to
+  `ProviderCandidate`, `ProviderSwitchOption`, `ProviderUseEnvelopeV1`,
+  `providerCandidates`, sequential `behaviors`, and the three-invocation
+  verifier. The development handoff itself claims these behaviors as delivered,
+  confirming they are required Task 4 content rather than unrelated dirt.
+  Required L3 execution remains unavailable: this machine has Command Line
+  Tools only, so Xcode/XCTest and the macOS 26 manual checklist were not run;
+  full Go L3 evidence was also not supplied. Those gaps do not change this FAIL
+  verdict because the atomic-boundary P1 is already decisive.
+- Delivery-reviewer verdict: FAIL
+- Verdict: REOPEN
+
+Checklist: 52/54 complete
+
+Incomplete: VERIFY-7 — required full Go and Xcode/XCTest gates are not current;
+outcome impact: none for this FAIL verdict; exact next action: run the selected
+L3 gates after MEI-F1 is repaired and the final task content state is frozen.
+
+Incomplete: VERIFY-9 — macOS 26 rendered, interaction and accessibility
+acceptance is unavailable on this machine; outcome impact: the task cannot later
+PASS without that external evidence; exact next action: execute and record the
+task's manual checklist on macOS 26 after repair.
+
+#### 🔴 严重问题 — 必须修复
+
+[`docs/topics/desktop-app/tasks.md:168`] MEI-F1：Task 4 明确不拥有
+`DesktopWire.swift`，但 provider-switch 的 producer、DTO、fixtures、golden、test helper
+和 production verifier 共十个修改路径都未进入 Files/Creates。
+- 行为风险：按权威文件表提交会漏掉核心 switch wire 与 verifier；按实际工作区提交会越过
+  Task 边界并吸收其他任务内容，无法形成可审计、可回退的原子 commit。
+- 证据：current diff 中的 `ProviderCandidate`、`ProviderSwitchOption`、
+  `ProviderUseEnvelopeV1`、`providerCandidates`、sequential `behaviors` 与三次 helper
+  invocation 都来自这些未声明路径。
+💡 有界修复：为 Task 4 声明这些精确 files/hunks，或把整条 provider-switch
+producer/DTO/fixture 路径迁入一个明确 prerequisite 并同步依赖；不得把 Task 3/5/6 hunks
+顺带并入。
+
+#### 🟡 建议改进 — 推荐
+
+无。
+
+#### 🟢 优点
+
+- 现有代码与测试意图覆盖 retained snapshot、qualifier 顺序、四 panel filter、unfiltered
+  rhythm、producer-computed sessions、incomplete pricing、provider switch、menu-bar value/
+  scope、privacy 和 health detail。
+- app test target 与 scheme、英语/简体中文 catalog、settings 和 NSStatusItem surface 都已
+  出现在候选实现中；这些内容在边界修复后仍需通过实际 Xcode 与 macOS 26 验收。
+
+#### 📝 总结
+
+Round 19 的 PASS 只批准设计/架构文档，本轮是首次实现评审。当前实现包含 Task 4 所需的
+主要 surface 和 switch 机制，但其核心 wire/fixture/verifier 路径没有权威 owner，且任务
+文本还明确否认其中一个关键文件的 ownership。这个矛盾在 commit 前必须解决，因此本轮
+REOPEN。由于已有决定性 P1，未继续扩展静态审查或用不可运行的 L3 evidence 制造额外
+finding；修复后复评必须重新核对边界，并完成 Xcode/XCTest 与 macOS 26 checklist。
+
+#### 📌 下一步
+
+```text
+修复：desktop-app / reviews/menubar-experience.md / MEI-F1
+```
+
+## Round 21 — 2026-08-19（修复轮）
+
+- Reviewed state: HEAD `f5935b6b91b0bfb6580c32d29f6cae15edb5ca25`. This round's
+  only content change is `docs/topics/desktop-app/tasks.md`, blob
+  `9ad9ada35202`. No product code, test, fixture, script, or generated artifact
+  was touched.
+- Repairer: Claude Code
+- Method: `修复` under `development-workflow`, scoped to MEI-F1 alone. The
+  finding offers two remedies and `tasks.md` carried two authoritative statements
+  that contradict each other, so the choice was put to the user rather than
+  decided here; the reasoning and the decision are recorded below.
+- Scope: task 4's Files/Creates boundary and its ownership statements. Task 3's
+  period-scoping hunks, task 5's projection work, and task 6's build work were
+  left as excluded boundaries.
+- Findings and disposition:
+  - **MEI-F1 — CLOSED.** All ten paths the finding named are now declared in task
+    4, each scoped to its own hunks so no other task's share is absorbed:
+    `internal/desktop/desktop.go` (the three candidate/option types, the
+    `Candidates` field, and the five `provider*` functions — explicitly not the
+    `SessionsSnapshot` hunks), `internal/desktop/desktop_test.go` (the candidate
+    and option-reason tests), `AgentDeckShared/DesktopWire.swift` (the candidate,
+    credential and switch-option DTOs, the `candidates` field and decoder, and
+    `ProviderUseEnvelopeV1` — explicitly not the quality, pricing and sessions
+    DTOs), `AgentDeckTests/DesktopWireTests.swift` (the candidate assertions and
+    the `candidates`/`options` malformed-family cases),
+    `AgentDeckTests/FixtureSupport.swift` (the multi-behaviour recorder),
+    `AgentDeckVerification/main.swift` (the embedded-helper invocation assertions
+    only — its four-fixture and presentation/legacy/empty-client assertions were
+    declared by task 3 in that task's Round 4), the command-contract golden, and
+    the complete, partial and empty-client fixtures.
+  - **The contradiction the finding pointed at is removed.** Task 4's list said
+    it owned none of `DesktopWire.swift` while its `Contracts:` line owned
+    `provider.candidates`, the switch command surface, its result envelope, and
+    switch operation ownership. That sentence now states what task 4 owns in that
+    file and what it does not, and says plainly which revision was wrong. A task
+    cannot own a wire contract and disown the producer, DTOs and fixtures that
+    realize it.
+  - **Which remedy, and why it was the user's call.** The alternative was to
+    relocate the whole provider-switch producer/DTO/fixture delivery into a new
+    prerequisite task, which is exactly the shape this topic used when it split
+    `presentation-period-scoping` out of the UI task for being "a Go producer
+    change with its own fixtures and decoders". That argument applies to
+    `provider.candidates` without modification, so the two remedies were not
+    equivalent bookkeeping: one edits a list, the other changes the
+    decomposition, the matrix, the dependency graph and dispatch. The user chose
+    to assign the paths to task 4, on the ground that task 4's `Contracts:` line
+    already owns these objects and passed review at Round 19. The alternative and
+    its rationale are recorded here so a later reader can see the decision was
+    made rather than defaulted into.
+  - **Generated artifacts are declared by both tasks on purpose.** The three
+    fixtures and the command-contract golden cannot be split by hunk: they are
+    regenerated wholesale by `internal/desktop/fixtures_test.go` under
+    `AGENTDECK_UPDATE_FIXTURES=1` and by `UPDATE_AGENTDECK_GOLDEN=1`. Both tasks
+    therefore list them, whichever commits second regenerates, and task 4's stated
+    contribution to their content is the `provider.candidates` object and nothing
+    else.
+- Evidence: verification level L0, because only a status and ownership document
+  changed. `make check-whitespace` clean; `git diff --check` clean;
+  `bash scripts/check-topic-docs.sh` clean. A sweep confirms all ten paths named
+  by MEI-F1 now appear in task 4's section. Nothing was relocated or deleted:
+  `providerCandidates`, `ProviderUseEnvelopeV1` and the fixtures' `candidates`
+  object are all still present in the tree. Task 3's 15 reviewed blobs and task
+  4's 21 implementation artifacts were recomputed after this edit and are
+  byte-identical, so no prior behavioural evidence is invalidated and none was
+  rerun.
+- Residual risk: unchanged from Round 20 and untouched by this repair. Round 20's
+  `VERIFY-7` and `VERIFY-9` stay open — this machine has Command Line Tools only,
+  so Xcode/XCTest and the macOS 26 rendered, interaction and accessibility
+  checklist cannot be executed, and task 4 cannot reach PASS without that
+  external evidence. `AgentDeckVerification/main.swift`'s invocation hunk is now
+  declared by task 4, but the file is shared with task 3, so a commit checkpoint
+  must stage it by hunk rather than whole.
+- Verdict: REOPEN — repair complete, awaiting independent Re-review.
+## Round 22 — 2026-08-19（实现复评，外部证据阻塞）
+
+- Reviewed state: HEAD
+  `1bf1f7647e4aa2449c71b7d900b3f6c8208f97c7`; unchanged implementation
+  fingerprint
+  `758d3d3ce2ce4ed6e7513b81073e911a456635684b114e796bd1d70ef7af09aa`;
+  task-boundary blob `9ad9ada35202887d9008a6700ad01a5c1f0ab90b`.
+- Reviewer: Codex
+- Method: Independent `复评` under `development-workflow`, limited to MEI-F1
+  and the required evidence that remained open in Round 20. The ownership text,
+  ten changed paths and shared-hunk exclusions were checked directly; available
+  L3 commands were then run without modifying product code, tests or
+  configuration.
+- Scope: MEI-F1 disposition, full Go/vet evidence, Xcode scheme-test
+  availability, and the macOS 26 manual acceptance prerequisite.
+- Finding disposition:
+  - **MEI-F1 — CLOSED.** Task 4 now owns all ten provider-switch and verifier
+    paths the finding named, with explicit hunk exclusions for Task 3 period
+    DTO/session work and the Task 3 portion of `AgentDeckVerification/main.swift`.
+    The former contradiction denying `DesktopWire.swift` ownership is gone.
+    Generated fixtures and the golden are explicitly shared, regenerated
+    artifacts with task 4's contribution bounded to `provider.candidates`.
+  - **New findings — none.** The ownership-only repair did not change any
+    implementation artifact, so Round 20's static candidate review remains
+    applicable.
+- Evidence: `scripts/run-go-test.sh ./...` PASS; `go vet -mod=vendor ./...`
+  PASS; host OS `26.7`. `xcodebuild -version` failed because the active
+  developer directory is `/Library/Developer/CommandLineTools`, not a full
+  Xcode installation. No Xcode/XCTest result exists, and no item in the
+  `ux/menubar.md` or `ux/settings.md` macOS 26 manual checklist has an observed
+  result.
+- Review status: **BLOCKED**. Exact prerequisites:
+  1. Install or select a full Xcode developer directory, run
+     `bash scripts/test-macos-app.sh`, and retain output that names
+     `AgentDeckAppTests` and reports its test count.
+  2. On macOS 26, execute and record every manual checklist item from
+     `ux/menubar.md` and `ux/settings.md`, including VoiceOver, full keyboard
+     access, Reduce Motion, Increase Contrast, Light/Dark, both locales, narrow
+     layout, largest Dynamic Type, scrolling, status-item gestures, switch
+     single-flight/failure, candidate-discovery failure, settings Escape and
+     login-item refusal.
+
+Checklist: 52/54 complete
+
+Incomplete: VERIFY-7 — Xcode/XCTest scheme execution is unavailable until a
+full Xcode developer directory is installed or selected.
+
+Incomplete: VERIFY-9 — rendered, interaction and accessibility acceptance has
+no observed manual results on macOS 26.
+
+### 📋 复评状态 — desktop-app / menubar-experience
+
+📊 评审状态：BLOCKED（不产生 PASS/FAIL 评分）
+
+#### 🔴 严重问题 — 必须修复
+
+无。MEI-F1 已关闭。
+
+#### 🟡 建议改进 — 推荐
+
+无。
+
+#### 🟢 优点
+
+- Provider-switch producer、DTO、fixtures、golden、sequential helper 和 production
+  verifier 现在都有明确 Task 4 owner，并按 hunk保护 Task 3 边界。
+- full Go 与 vet 在当前实现状态通过；主机本身已是 macOS 26.7，剩余缺口是完整 Xcode 和
+  尚未执行的人工验收，而不是新的代码 finding。
+
+#### 📝 总结
+
+MEI-F1 独立复核为 CLOSED，且没有新 finding。Task 4 仍不能获得正式 PASS：其 L3
+acceptance 明文要求实际 `AgentDeckAppTests` scheme output 和 macOS 26 rendered/
+interaction/accessibility observations，当前两者都不存在。评审保持在 `in_review`；提供这些
+证据后应继续本轮复评并复用已通过的 Go/vet 与 unchanged implementation evidence。
+
+#### 📌 继续条件
+
+```text
+复评：desktop-app / reviews/menubar-experience.md
+```
+
+## Round 23 — 2026-08-19（Xcode 证据恢复后的实现复评）
+
+### 📋 实现复评 — desktop-app / menubar-experience
+
+📊 总体评分：6/10
+
+✅ 结论：FAIL
+
+- Reviewed state: same implementation fingerprint and task-boundary blob as
+  Round 22. No source, test, fixture, project or configuration content changed;
+  only the Xcode evidence premise was corrected.
+- Reviewer: Codex
+- Method: Continuation of the active `复评` route after the user established
+  that full Xcode is installed. The global `xcode-select` still points at
+  Command Line Tools, so the required gate was run without changing system
+  configuration by setting
+  `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer` for that command.
+- Finding dispositions:
+  - **MEI-F1 — CLOSED, unchanged.** Round 22's ownership disposition remains
+    valid.
+  - **[P1] MEI-F2 — NEW.** The Xcode scheme discovers
+    `AgentDeckAppTests`, but its module cannot compile under Swift 6 strict
+    concurrency. `AppTestFixtures.swift` declares five static `[String: Any]`
+    values — `defaultRoute`, `defaultCandidate`, `defaultSessionItem`,
+    `healthyHealth`, and `failingHealth` — whose non-`Sendable` dictionary type
+    is treated as shared mutable global state. `SwiftEmitModule` fails before
+    any App test executes. -> Isolate the fixture owner or these values to
+    `@MainActor` when all consumers are main-actor tests, or replace them with
+    immutable `Sendable` typed fixture values. Do not suppress concurrency
+    checks with `nonisolated(unsafe)` unless an independently reviewed external
+    synchronization invariant actually exists.
+- Evidence:
+  `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -version`
+  -> Xcode 26.4 (`17E192`). The same environment running
+  `bash scripts/test-macos-app.sh` built `AgentDeck.app` successfully and the
+  test dependency graph named both `AgentDeckAppTests` and
+  `AgentDeckSharedTests`. The test action then exited 65 with five exact
+  concurrency-safety errors at `AppTestFixtures.swift:209,216,235,244,250`;
+  testing was cancelled because `AgentDeckAppTests` failed to build. Round 22's
+  full Go and vet PASS remain valid. The macOS 26 manual checklist was not
+  started after this decisive P1.
+- Delivery-reviewer verdict: FAIL
+- Verdict: REOPEN
+
+Checklist: 53/54 complete
+
+Incomplete: VERIFY-9 — macOS 26 manual rendered, interaction and accessibility
+acceptance remains pending; outcome impact: none for this FAIL verdict; exact
+next action: execute it only after the Xcode test target compiles and passes.
+
+#### 🔴 严重问题 — 必须修复
+
+[`apps/macos/AgentDeckAppTests/AppTestFixtures.swift:209`] MEI-F2：五个静态
+`[String: Any]` fixture 不是 `Sendable`，Swift 6 concurrency safety 阻止
+`AgentDeckAppTests` module 编译。
+- 行为风险：项目要求的 App XCTest 一个都没有执行；syntax-only evidence 掩盖了真实
+  Xcode target failure。
+- 证据：Xcode 26.4 scheme 已发现 `AgentDeckAppTests`，随后
+  `SwiftEmitModule` 在 `:209/:216/:235/:244/:250` 报错并以 65 退出。
+💡 有界修复：优先按实际 consumer 将 fixture owner/values 设为 `@MainActor`，或改用
+不可变 `Sendable` typed fixture；不要用无证据的 `nonisolated(unsafe)` 绕过检查。
+
+#### 🟡 建议改进 — 推荐
+
+无。
+
+#### 🟢 优点
+
+- App 本体在完整 Xcode 26.4 下构建成功。
+- `AgentDeckAppTests` 已进入 scheme 和 dependency graph；问题是 test source 的真实编译
+  缺陷，不再是 target 未注册或环境不可见。
+- MEI-F1 ownership 修复与 full Go/vet evidence 保持有效。
+
+#### 📝 总结
+
+用户纠正了环境判断后，Xcode gate 从“不可运行”变成了可复现的实现失败。Task 4 当前
+不能 PASS：App test target 在执行任何测试前就因 Swift 6 concurrency safety 编译失败。
+本轮 REOPEN 仅要求修复 MEI-F2；修复后重新运行同一 Xcode gate，确认输出包含
+`AgentDeckAppTests` 的实际 test count，再进入 macOS 26 手工验收。
+
+#### 📌 下一步
+
+```text
+修复：desktop-app / reviews/menubar-experience.md / MEI-F2
+```
+
+## Round 24 — 2026-08-20（修复轮）
+
+- Reviewed state: HEAD `f5935b6b91b0bfb6580c32d29f6cae15edb5ca25`. Changed files:
+  `apps/macos/AgentDeckAppTests/AppTestFixtures.swift` and
+  `apps/macos/AgentDeckTests/DesktopWireTests.swift` — both inside task 4's
+  boundary as repaired at Round 21.
+- Repairer: Claude Code
+- Method: `修复` under `development-workflow`, scoped to MEI-F2. The finding's
+  own acceptance is an executed Xcode gate, so every step was judged by running
+  it rather than by static inspection.
+- Scope: the `AgentDeckAppTests` module's compilability and the assertions that
+  its first real execution exposed. No product code was changed.
+- Findings and disposition:
+  - **MEI-F2 — CLOSED.** `WireFixture` is now `@MainActor`, which is the
+    finding's first remedy: every consumer is a main-actor test, so isolating the
+    fixture owner is what makes the five `[String: Any]` payloads safe.
+    `nonisolated(unsafe)` was not used, because no external synchronization
+    invariant exists here for it to describe.
+  - **A second compile failure was hiding behind the first.** With the
+    concurrency errors gone, `SwiftCompile` reached
+    `AppTestFixtures.swift:158` and reported "unable to type-check this
+    expression in reasonable time" on the single heterogeneous dictionary literal
+    that builds the whole envelope. It is now decomposed into named, explicitly
+    typed sub-expressions — `subtotalItems`, `sessionPeriodItems`,
+    `presentation`, `usage`, `sessions`, `provider`, `snapshot`, `payload`. This
+    is part of MEI-F2 rather than a new finding: the finding's stated consequence
+    is that no App test executes, and that stayed true until this was fixed too.
+  - **Two real test defects, exposed by the first execution of these tests.**
+    Both were in the tests, not the product:
+    - `DesktopWireTests` asserted the complete fixture's built-in candidate
+      offered three options; it offers four. Task 3's fixture repair seeds a
+      current route for both clients, so the candidate covers codex and claude,
+      each direct and through a wrapper. The bare count is replaced by the option
+      identities, because a count hid *which* option changed.
+    - `MenuBarViewModelTests` expected `No local activity today` and read
+      `No activity in this snapshot`. The product was right: the model's clock
+      sat 4.4 days after the fixtures' `generated_at`, so every derived state was
+      additionally `aged`, and the contract says `empty` then describes the
+      snapshot rather than the day. The clock now sits one minute after
+      `generated_at`. Had the assertion been "corrected" to the observed value
+      instead, the rule that distinguishes those two strings would have lost its
+      only test.
+- Evidence: `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer bash
+  scripts/test-macos-app.sh` -> `** TEST SUCCEEDED **`, exit 0.
+  `Test Suite 'AgentDeckAppTests.xctest' passed` with **34 tests, 0 failures**,
+  and `Test Suite 'AgentDeckSharedTests.xctest' passed` with **32 tests, 0
+  failures**. That satisfies this task's stated acceptance condition — the gate
+  output names `AgentDeckAppTests` and reports its test count — for the first
+  time. Three gate runs were made: the first proved the concurrency errors gone
+  and surfaced the type-check timeout, the second compiled and executed the
+  module and surfaced the two assertion defects, the third is green.
+  `make check-whitespace` and `git diff --check` clean. No Go file changed, so
+  Round 22's Go and vet evidence is untouched.
+- **Correction to a fact several rounds have relied on.** This machine does have
+  Xcode: 26.4, build `17E192`, at `/Applications/Xcode.app`. Only `xcode-select`
+  points at `CommandLineTools`, which is what earlier rounds — and this
+  repairer's own handoffs — read as "Command Line Tools only". `VERIFY-7`'s
+  Xcode/XCTest half was therefore never actually blocked, and is now satisfied.
+  `VERIFY-9` remains genuinely outstanding: the macOS 26 rendered, interaction
+  and accessibility checklist needs a person at the screen, and no toolchain
+  discovery changes that.
+- Residual risk: `VERIFY-9` is unexecuted, so this task still cannot reach PASS
+  on this evidence alone. The App tests assert the view model rather than
+  rendered SwiftUI output, so layout, VoiceOver order, contrast and the 280 pt
+  narrow bound remain covered only by that manual checklist.
+- Verdict: REOPEN — repair complete, awaiting independent Re-review.
+
+## Round 25 — 2026-08-20（实现复评，等待手工验收）
+
+- Reviewed state: HEAD
+  `1bf1f7647e4aa2449c71b7d900b3f6c8208f97c7`; task-boundary blob
+  `9ad9ada35202887d9008a6700ad01a5c1f0ab90b`; repaired test blobs
+  `AppTestFixtures.swift` `a8fbad397428`, `DesktopWireTests.swift`
+  `3a9090ef8ebe`, and `MenuBarViewModelTests.swift` `0e8e139ec3f6`.
+- Reviewer: Codex
+- Method: Independent `复评` under `development-workflow`, re-running the exact
+  Xcode gate rather than reusing Round 24's repairer report. Full Xcode was
+  selected for the command through `DEVELOPER_DIR`; no global developer setting
+  was changed.
+- Finding dispositions:
+  - **MEI-F1 — CLOSED, unchanged.** Ownership remains complete.
+  - **MEI-F2 — CLOSED.** `WireFixture` is main-actor isolated, the large payload
+    literal is decomposed into typed subexpressions, and the two test assertions
+    exposed by first execution now state stable option identities and use a
+    fixture-aligned clock. No unsafe concurrency suppression was introduced.
+  - **New findings — none.** The full App and Shared test suites passed.
+- Evidence:
+  `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer bash
+  scripts/test-macos-app.sh` independently returned exit 0 and
+  `** TEST SUCCEEDED **`. `AgentDeckAppTests.xctest` executed **34 tests with 0
+  failures**; `AgentDeckSharedTests.xctest` executed **32 tests with 0
+  failures**. The app build, catalogs, app test target and scheme registration
+  all completed under Xcode 26.4 (`17E192`). Round 22's full Go and vet PASS
+  remain reusable because no Go file changed.
+- Review status: **BLOCKED only on VERIFY-9.** The task's approved L3 contract
+  requires observed results for the macOS 26 manual checklists in
+  `ux/menubar.md` and `ux/settings.md`. Unit tests cover model behavior, not
+  rendered SwiftUI geometry, VoiceOver reading order, focus visibility,
+  contrast, truncation, scrolling or actual status-item gestures.
+- Exact prerequisite: a person at the macOS 26 screen must execute and record
+  PASS/FAIL for every menu-bar and settings manual item. Any FAIL becomes a new
+  implementation finding; all PASS results allow this same re-review to finish
+  without rerunning unchanged Go/Xcode evidence.
+
+Checklist: 53/54 complete
+
+Incomplete: VERIFY-9 — macOS 26 rendered, interaction and accessibility manual
+acceptance has no observed results.
+
+### 📋 复评状态 — desktop-app / menubar-experience
+
+📊 评审状态：BLOCKED（Xcode/XCTest 已满足，仅等待手工验收）
+
+#### 🔴 严重问题 — 必须修复
+
+无。MEI-F1 与 MEI-F2 均已关闭。
+
+#### 🟡 建议改进 — 推荐
+
+无。
+
+#### 🟢 优点
+
+- 完整 Xcode gate 独立通过，App tests 34/34、Shared tests 32/32。
+- Swift 6 concurrency fix 使用 `@MainActor` 表达真实隔离，没有以 unsafe escape hatch
+  隐藏问题。
+- 任务 ownership、full Go、vet、Xcode build/test 和双语言 catalog 编译证据均已齐全。
+
+#### 📝 总结
+
+所有代码 finding 已关闭，且完整 Xcode 证据通过。Task 4 仍不能正式 PASS 的唯一原因是
+approved L3 contract 明确要求人机交互与渲染观察，而这些结果尚未记录。任务保持
+`in_review`，不应退回开发；完成 macOS 26 手工清单后继续同一复评即可。
+
+#### 📌 继续条件
+
+```text
+复评：desktop-app / reviews/menubar-experience.md
+```
+
+## Round 26 — 2026-08-20（macOS 26 手工验收）
+
+### 📋 实现复评 — desktop-app / menubar-experience
+
+📊 总体评分：3/10
+
+✅ 结论：FAIL
+
+- Reviewed state: same implementation and test blobs as Round 25; installed
+  unsigned local build at `/Applications/AgentDeck.app`, compiled from the
+  current candidate with Xcode 26.4.
+- Reviewer: Codex, using user-observed macOS 26.7 screenshots from the installed
+  application and direct source/contract tracing.
+- Method: The user executed the real status-item, popover, Settings and About
+  paths. Four screenshots were inspected at original resolution and bound by
+  SHA-256: status item `ce5489a4aabb` (222×252), popover
+  `067354fcb5da` (2066×1208), Settings `e2c55bb3973b` (920×718), and About
+  `9de6a2a401cc` (568×340). CodeGraph and focused source inspection tied the
+  observed failures to their owning code.
+- Finding dispositions:
+  - **MEI-F1 and MEI-F2 — CLOSED, unchanged.** Ownership and Xcode tests remain
+    valid.
+  - **[P2] MEI-F3 — NEW: the installed menu-bar glyph is not a recognizable
+    AgentDeck icon.** The status item shows the three tiny dots contained in the
+    current 18×18 template asset beside the cost. The image loaded successfully;
+    the defect is the asset's visible mark, scale and silhouette, not a missing
+    resource lookup. -> Replace the template asset with a recognizable
+    monochrome AgentDeck glyph whose artwork occupies the status-item canvas at
+    1×/2×, and add a rendered status-item acceptance image for normal and badged
+    states.
+  - **[P1] MEI-F4 — NEW: the popover uses the wrong screen to calculate its
+    height and is clipped off the top of a shorter secondary display.**
+    `MenuBarGeometry.height` reads `NSScreen.main.visibleFrame`, while the
+    popover is shown from whichever screen contains the `NSStatusItem`. In the
+    observed secondary-screen run, header, client tabs, hero, period switcher
+    and panel switcher are above the visible desktop; only the lower content and
+    footer remain. The internal `ScrollView` cannot recover controls outside
+    the popover window. -> Derive available height from the status item's
+    actual screen before `popover.show`, size the popover to that screen's
+    visible frame with margin, and keep overflow inside the content scroll view.
+    Cover a secondary display shorter than the main display.
+  - **[P2] MEI-F5 — NEW: About opens a metadata-empty standard panel.** The
+    observed panel shows a generic placeholder icon and only `AgentDeck`, with
+    no version, build or copyright. Task 4 owns the About action, `Info.plist`
+    and `Assets.xcassets`; the current plist contains only
+    `CFBundleDisplayName` and `LSUIElement`, and the catalog has no application
+    icon set. -> Supply the Task 4-owned application icon and the stable About
+    metadata this surface needs, or explicitly assign version/build metadata to
+    the distribution prerequisite and suppress the About item until that
+    metadata exists. The delivered About action must not expose an empty shell.
+  - **Launch-at-login refusal — PASS, not a finding.** This installed bundle is
+    an unsigned local build. `ux/settings.md` explicitly says such a build may
+    not register and specifies the observed presentation: switch remains off,
+    an inline warning appears, and the rest of Settings stays usable. The
+    screenshot matches that contract.
+- Evidence: installed-build screenshots above; `MenuBarItemController.swift:55`
+  loads and renders the current `AgentDeckMenuBarIcon`; the asset catalog
+  contains registered 18×18/36×36 template PNGs whose visible mark is the three
+  dots; `MenuBarSurfaceView.swift:58-59` applies a fixed width/height and
+  `MenuBarGeometry.height` uses `NSScreen.main` rather than the status item's
+  screen; `Info.plist` has only display name and `LSUIElement`; the menu-bar UX
+  contract requires a glyph and a standard About panel. Round 25's Xcode
+  34/34 + 32/32 PASS remains valid but did not render these surfaces.
+- Delivery-reviewer verdict: FAIL
+- Verdict: REOPEN
+
+Checklist: 54/54 complete
+
+Incomplete: None — the manual checklist produced current failing evidence
+rather than remaining unexecuted.
+
+#### 🔴 严重问题 — 必须修复
+
+[`apps/macos/AgentDeckApp/MenuBarSurfaceView.swift:58`] MEI-F4：popover 高度按
+`NSScreen.main` 计算，而窗口实际出现在较矮的副屏，顶部核心 controls 被裁到屏幕外。
+- 行为风险：主界面的 header、filters、hero 和 panel switcher 不可见也不可达，popover
+  无法完成其基本任务。
+- 证据：截图 `067354fcb5da…` 与 `MenuBarGeometry.height` / `.frame(height:)` 路径。
+💡 有界修复：按 status item 所在 screen 的 `visibleFrame` 定尺寸，并让 overflow 只发生在
+内部 `ScrollView`。
+
+#### 🟡 建议改进 — 推荐
+
+[`apps/macos/AgentDeckApp/MenuBarItemController.swift:55`] MEI-F3：当前 template
+asset 实际呈现为三颗小点，不是可识别的 AgentDeck glyph。
+- 证据：截图 `ce5489a4aabb…`；资源已加载，问题在 artwork/silhouette。
+💡 有界改进：替换为占满 18pt canvas 的清晰单色 glyph，并验证 normal/badged 两态。
+
+[`apps/macos/AgentDeckApp/Info.plist:1`] MEI-F5：标准 About panel 只有通用占位图和应用名。
+- 证据：截图 `9de6a2a401cc…`；bundle 缺 app icon、version/build/copyright metadata。
+💡 有界改进：补齐 About 所需 icon/metadata，或在 distribution metadata 到位前隐藏 About。
+
+#### 🟢 优点
+
+- unsigned build 的 login-item refusal 状态与 contract 完全一致，Settings 其余 controls
+  保持可用。
+- 完整 Xcode tests、full Go 和 vet 仍通过；本轮失败来自真实 rendered behavior，正是手工
+  L3 gate 应捕获的内容。
+
+#### 📝 总结
+
+macOS 26 手工验收不再是 blocker，而是产生了三个可复现 finding。MEI-F4 使主 popover
+在较矮副屏不可用；MEI-F3 与 MEI-F5 分别破坏状态栏身份和 About surface。开机启动拒绝
+是 unsigned local build 的正确失败呈现，不列为 defect。本轮 REOPEN，修复范围限定为
+这三个 UI/rendering owner。
+
+#### 📌 下一步
+
+```text
+修复：desktop-app / reviews/menubar-experience.md / MEI-F3 MEI-F4 MEI-F5
+```
+
+## Round 27 — 2026-08-20
+
+- Repair owner: Codex
+- Scope: only Round 26 findings MEI-F3, MEI-F4 and MEI-F5. No provider,
+  snapshot, settings, widget, release or delivery behavior changed.
+- Repaired state: HEAD `1bf1f7647e4aa2449c71b7d900b3f6c8208f97c7` plus the uncommitted
+  Task 4 candidate. The final repair files are bound by SHA-256 in the evidence
+  below; the complete `Artwork` + `Assets.xcassets` manifest digest is
+  `6b9664cdb222ce849fc673dc9ec3c85864073727625ccd099076ba526001f885`.
+
+- Finding dispositions:
+  - **MEI-F3 — Fixed, awaiting independent rendered Re-review.** Replaced the
+    three-dot 18×18/36×36 template PNGs with the contract's three stacked cards
+    and negative-space `A`, generated from a checked-in SVG source. The
+    production compositor is now testable with the exact 2× source asset;
+    `MenuBarChromeTests` renders normal and badged production variants, asserts
+    that the normal silhouette occupies at least 30×30 pixels of its 36×36
+    canvas, and preserves both PNGs as `.xcresult` attachments. The badged
+    compositor clears a transparent halo before drawing the alert triangle, so
+    the black template symbol cannot disappear against the black base mark; the
+    test also requires at least 24 opaque base pixels to be cleared. The final
+    exported attachments were inspected at nearest-neighbor scale: normal keeps
+    the full negative-space `A`, and badged keeps the deck silhouette while the
+    separated warning triangle remains visible. The acceptance runbook names
+    those attachments as the CI evidence.
+  - **MEI-F4 — Fixed, awaiting independent multi-display Re-review.** Before
+    `popover.show`, `MenuBarItemController` now reads
+    `sender.window?.screen?.visibleFrame.height`, derives the bounded height with
+    the existing 72 pt margin, and injects that same value into both the SwiftUI
+    root view and `NSPopover.contentSize`. The fixed region's 40% bound derives
+    from that injected height, so overflow remains in the existing internal
+    scrolling region. A 600 pt secondary display produces a 528 pt popover while
+    a 1,200 pt main display remains capped at 760 pt.
+  - **MEI-F5 — Fixed, awaiting independent About-panel Re-review.** Added a full
+    macOS `AppIcon` set generated from the same deck/`A` mark, selected it through
+    the app target's asset-catalog build setting, and supplied
+    `CFBundleIconName`, marketing version `0.5.0`, build `1`, and human-readable
+    copyright metadata. The standard About action remains standard and now reads
+    a complete built bundle rather than opening a metadata-empty shell.
+
+- Test-failure diagnosis during repair: the first rendering test exposed that a
+  hosted XCTest process does not resolve the app's named image catalog through
+  `NSImage(named:)`, despite the installed app having loaded it and `assetutil`
+  proving both renditions are in `Assets.car`. Replacing that optional lookup
+  with Xcode's generated force-loading symbol made the test host crash before
+  bootstrap. This was classified as a test-harness resource-context defect, not
+  a missing asset; production keeps the fail-safe optional lookup and the test
+  injects the exact checked-in 2× asset into the production compositor.
+
+- Evidence:
+  - `xcodebuild ... -only-testing:AgentDeckAppTests/MenuBarChromeTests test`:
+    **TEST SUCCEEDED**, 3 tests, 0 failures.
+  - `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer bash
+    scripts/test-macos-app.sh`: **TEST SUCCEEDED**;
+    `AgentDeckSharedTests` 32 tests / 0 failures and `AgentDeckAppTests` 37 tests
+    / 0 failures. Result bundle:
+    `apps/macos/build/DerivedData/Logs/Test/Test-AgentDeck-2026.08.20_01-07-05--0700.xcresult`.
+  - `xcrun assetutil --info .../AgentDeck.app/Contents/Resources/Assets.car`
+    lists `AgentDeckMenuBarIcon` at 18×18 and 36×36, and all ten `AppIcon`
+    renditions from 16×16 through 1024×1024.
+  - `make check-whitespace`, `git diff --check`, and
+    `bash scripts/check-topic-docs.sh`: PASS.
+  - Final source fingerprints: `project.pbxproj`
+    `bf2c2e9f5647987bfa34dcd1e21c86b42b501089eb0211defdd5f3d9fa106f85`;
+    `Info.plist`
+    `677905266182cfd34816f30c7ed768cb07b8cff130ac1fa92e379bbf86355bd8`;
+    `MenuBarItemController.swift`
+    `74bf5898a4cc5175142097a1d9ee38e1137e3506ae8340f81cd543fec70370ca`;
+    `MenuBarSurfaceView.swift`
+    `3822febef2d3670c4b1e543a6cffb5d8c87f50bad787352de4e324e89c9efeb4`;
+    `MenuBarChromeTests.swift`
+    `3bcecdc48256160941913351075142649c3df1c95d9393d1375e88cb3d5861fd`.
+
+- Remaining gate: an independent Re-review must inspect the new installed
+  normal/badged status item, open the popover from the shorter secondary display,
+  and open the standard About panel. Repair does not claim those runtime
+  observations in advance.
+- Verdict: REOPEN — repair complete, awaiting independent Re-review. Task 4's
+  `Dev` and `Review` cells remain unchecked.
+
+## Round 28 — 2026-08-20（自动化复评与重新安装）
+
+- Reviewed state: Round 27 final source fingerprints, unchanged after repair;
+  Xcode-tested and installed unsigned candidate at `/Applications/AgentDeck.app`.
+  Installed binary SHA-256 `3f209bfd77aa7ad82de7a600084b84604528c24cddca12860156a480788dace4`;
+  installed `Assets.car` SHA-256
+  `0a65eb6bbfbd1d2034bea0a3c15af45bd16c302ae4d04b6ce7634bdcdc952733`.
+- Reviewer: Codex
+- Method: Independent `复评` of MEI-F3/F4/F5 owning code, assets and bundle
+  metadata, followed by the full Xcode gate and replacement installation. The
+  prior installed bundle was moved to
+  `/private/tmp/agentdeck-install-backup.Yk2U7t/AgentDeck.app`; the new bundle
+  was installed and launched without changing global `xcode-select`.
+- Finding dispositions:
+  - **MEI-F3 — implementation and automated evidence CLOSED; rendered result
+    pending user observation.** The checked-in icon now uses the deck/negative-
+    space-A mark, fills the 36×36 canvas, and its normal/badged compositor tests
+    pass. The final installed status item must still be visually confirmed.
+  - **MEI-F4 — implementation and automated evidence CLOSED; multi-display
+    result pending user observation.** Popover height is derived from
+    `sender.window?.screen?.visibleFrame.height`, injected into the SwiftUI root
+    and `contentSize`; the 600pt/1200pt test passes. The shorter real secondary
+    display must still show header and filters.
+  - **MEI-F5 — implementation and automated evidence CLOSED; About rendering
+    pending user observation.** The installed bundle contains `AppIcon`, version
+    `0.5.0`, build `1`, and copyright metadata. The standard panel must still be
+    opened and inspected.
+  - **New findings — none in static or automated review.**
+- Evidence:
+  `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer bash
+  scripts/test-macos-app.sh` -> `** TEST SUCCEEDED **`; Shared 32/32 and App
+  37/37, including `MenuBarChromeTests` 3/3. The built menu and application
+  artwork were independently viewed before installation. Installed bundle
+  metadata contains `CFBundleIconName=AppIcon`,
+  `CFBundleShortVersionString=0.5.0`, `CFBundleVersion=1`, and human-readable
+  copyright.
+- Review status: **BLOCKED only on independent installed-app observations.**
+  Required user checks:
+  1. normal and badged status-item glyph are recognizable at actual menu-bar size;
+  2. on the shorter secondary display, the popover shows header, filters, hero,
+     panel switcher and footer, with overflow scrolling internally;
+  3. About shows the new application icon, version 0.5.0, build 1 and copyright.
+
+Checklist: 53/54 complete
+
+Incomplete: VERIFY-9 — the newly installed rendered candidate has not yet been
+observed by the independent user after MEI-F3/F4/F5 repair.
+
+### 📋 复评状态 — desktop-app / menubar-experience
+
+📊 评审状态：BLOCKED（新版本已安装并启动，等待人工观察）
+
+#### 🔴 严重问题 — 必须修复
+
+无未关闭代码 finding；MEI-F3/F4/F5 等待 rendered confirmation。
+
+#### 🟡 建议改进 — 推荐
+
+无。
+
+#### 🟢 优点
+
+- 修复后的完整 Xcode suite 通过，新增 chrome tests 覆盖 glyph、screen-specific height
+  和 About metadata。
+- 新 bundle 已安全替换安装，旧 bundle 可从临时备份恢复。
+
+#### 📝 总结
+
+三项修复在源码、资源、bundle metadata 和 Xcode tests 层面均关闭。正式 PASS 只等待用户
+对刚安装版本的三个实际界面结果；若任一失败则产生新 finding，全部通过则继续同一复评。
+
+#### 📌 继续条件
+
+```text
+复评：desktop-app / reviews/menubar-experience.md
 ```

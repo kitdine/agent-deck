@@ -752,12 +752,59 @@ prompt/response、tool argument/result 或 machine identity。
 contract tests 与后续 `AgentDeckShared` Swift `Codable` decoder tests 必须读取
 同一文件，不能维护两份样例。
 
-更新检查不属于 `desktop snapshot`。host 只有在用户明确 opt-in 后才可自动
-检查，且最多每 24 小时一次；用户也可手动触发。请求仅允许访问官方
-AgentDeck GitHub latest stable release API，不能携带 AgentDeck state、usage、
-provider、session、machine ID、credential 或自定义 tracking header。失败不
-影响本地快照；发现兼容 stable version 时只可打开官方 release page，不得
-下载、安装、替换、重启或请求提权。
+**没有更新检查。** 早期版本曾在此规定一个 opt-in 的 GitHub latest stable
+release 检查，v0.5.0 在实现之前将其撤回，且没有任何替代物。桌面应用不发起
+任何网络请求——这是一条边界性质，不只是少了一个功能：整个桌面表面只通过
+CLI 读取本地状态。没有任何菜单项、偏好或文案提到更新，应用也从不下载、
+安装、替换、重启或请求提权。
+
+### 桌面应用
+
+v0.5.0 随发布提供 `AgentDeck.app`，一个 macOS 26 菜单栏应用，其唯一数据源
+是内嵌的本 CLI 副本。它是一个阅读表面加一个写操作。
+
+- **边界**：应用运行内嵌 helper 并解码 `desktop snapshot` 的 wire-v1
+  envelope。它不解析 text 输出、不直接读数据库、不监听端口、不联网。Go
+  helper 与既有 AgentDeck 状态始终是权威，应用持有的一切都是它们的可丢弃
+  投影。
+- **菜单栏表面**：provider、usage、sessions、health 四个受筛选面板，加上
+  不受筛选的 rhythm 区块、承载 health 详情的通知条，以及 provider 页脚。
+  client 与 period 两个筛选器统辖全部受筛选面板。三个 work-signal 模块以
+  `Not captured yet` 形态渲染，其背后的数据属于 `work-signals` topic。
+- **唯一的写操作**：切换当前 provider 是唯一会改变应用之外状态的动作，且
+  走与终端切换相同的 CLI 路径。其余表面全部只读。
+- **设置**：恰好四项偏好——周期刷新（默认关闭，因为那是用户没有要求的后台
+  工作）、菜单栏显示值（cost / tokens / icon）、菜单栏范围（全部 client 或
+  跟随面板筛选）、开机启动。开机启动控件渲染的是 `SMAppService` 报告的状态，
+  而非开关的意图，因此系统拒绝是可见的而不是被默认成功。
+- **Widget**：沙箱化的 WidgetKit 扩展，提供 magnitude、composition、trust、
+  rhythm 四个族，每族三种系统尺寸，共十二种配置。它只读取应用写出的脱敏
+  App Group 投影，从不运行 helper、访问数据库或看到 source path。
+  签名应用与 Widget 使用 `N2FZ2FNRTU.group.com.kitdine.agentdeck`；macOS 已批准
+  宿主与 Widget 的容器访问，十二种配置均渲染真实数据。
+- **本地化**：英文与简体中文同时提供。
+- **状态**：应用不创建 state root、不执行迁移、不修改已提交的 SQLite 内容。
+  卸载它不会影响 `~/.agentdeck`。
+
+### 桌面安装
+
+```bash
+brew install --cask kitdine/tap/agentdeck-app
+```
+
+Cask 安装 `AgentDeck.app`，并把内嵌 helper 与打包在 bundle 内的三种 shell
+completion 暴露出来，因此 Cask 安装同时提供 `agentdeck` 命令。全局
+`agentdeck` 命令只能由一个安装拥有：若已装有 CLI-only formula，Cask 会在
+preflight 阶段拒绝安装并给出两步迁移——
+
+```bash
+brew uninstall agentdeck
+brew install --cask kitdine/tap/agentdeck-app
+```
+
+两个方向的迁移都不触碰 `~/.agentdeck`，Cask 卸载也只移除 App 自有产物。
+`agentdeck-app-rc` 是对应的 opt-in RC 通道。直接下载的 `.dmg` 与 `.zip` 同样
+随发布提供，两者携带同一个已公证并 staple 的 bundle。
 
 ## Extension
 

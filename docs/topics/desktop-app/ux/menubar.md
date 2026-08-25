@@ -113,7 +113,7 @@ persistence stay independently testable.
 Presentation is derived from foundation coordinator state. No new state machine is
 introduced, but the six names are **not** mutually exclusive, so treating them as
 one enum leaves real combinations undefined: `degraded(previous, timeout)` is both
-stale and offline, and `degraded(previous, invalidWire)` is both stale and error.
+stale and failing, and `degraded(previous, invalidWire)` is both stale and failing.
 
 The model is therefore one **surface** plus independent **qualifiers**.
 
@@ -138,8 +138,8 @@ Qualifiers are orthogonal and may all apply at once:
 | `stale` | Coordinator is `refreshing` or `degraded` while a previous snapshot is retained |
 | `aged` | Retained snapshot's `generated_at` is older than 15 minutes |
 | `partial` | Snapshot's `partial` flag is set, or any data domain reports `available: false` |
-| `offline` | Issue category is helper launch, missing helper, or timeout |
-| `failing` | Issue category is invalid wire or storage unavailable |
+| `offline` | Issue category is helper launch or missing helper |
+| `failing` | Issue category is helper timeout, invalid wire, or storage unavailable |
 | `empty` | Not `partial`, every data domain is `available: true`, and none carries rows, tokens, or costs |
 
 Exhaustive truth table over coordinator state, issue category, and whether a
@@ -151,10 +151,10 @@ previous snapshot exists:
 | `refreshing` | no | `loadingSurface` | none |
 | `refreshing` | yes | `dataSurface` | `stale`, plus `aged`/`partial`/`empty` as they hold |
 | `ready` | — | `dataSurface` | `partial` or `empty` as they hold |
-| `degraded`, launch/missing/timeout | yes | `dataSurface` | `stale` + `offline`, plus `aged`/`partial`/`empty` |
-| `degraded`, launch/missing/timeout | no | `errorSurface` | `offline` |
-| `degraded`, invalid wire/storage | yes | `dataSurface` | `stale` + `failing`, plus `aged`/`partial`/`empty` |
-| `degraded`, invalid wire/storage | no | `errorSurface` | `failing` |
+| `degraded`, launch/missing | yes | `dataSurface` | `stale` + `offline`, plus `aged`/`partial`/`empty` |
+| `degraded`, launch/missing | no | `errorSurface` | `offline` |
+| `degraded`, timeout/invalid wire/storage | yes | `dataSurface` | `stale` + `failing`, plus `aged`/`partial`/`empty` |
+| `degraded`, timeout/invalid wire/storage | no | `errorSurface` | `failing` |
 
 `empty` and `partial` are mutually exclusive by construction: `empty` requires
 every data domain available, which `partial` denies.
@@ -202,6 +202,12 @@ scoped by both the client tabs and the period switcher:
 | 3 | **Attribution** | Is the number real? | Determinable, inferred, and unattributed amounts with shares; pricing coverage with its unpriced identifiers; and the per-provider rows |
 | 4 | **Sessions** | How did I work? | Session count, average length, project count; the three work-signal modules; per-project and recent-session rows |
 
+Breakdown follows the prototype structure literally: one static Models card
+with at most four dot-labelled rows and one share track per row; one static
+Token mix card with a four-segment stack above four separator-delimited rows;
+and one `surfaceRaised` Client subtotals row beneath them. These are not
+collapsible sections, and the client subtotals are not a third card.
+
 The switcher carries an icon and a name per panel and **no value**. An earlier
 draft put each panel's headline number on its own tab, which restated the hero
 directly above it and spent 21 pt of a 760 pt surface saying the same thing
@@ -224,7 +230,10 @@ filtered panels as its own block rather than among them, stating its window in
 its own heading, and the reader scrolls to it. It carries the 7×24 hour-of-week
 grid and the 90-day calendar; the four figures above them — active days, busiest
 and quietest weekday, peak window — are derived from the same two grids and
-never stated independently of them.
+never stated independently of them. Their visible notes define the reductions:
+active is the number of days with tokens, busiest and quietest are the weekday
+totals with most and fewest tokens, and peak window is the weekday/hour cell
+with most tokens.
 
 **Above them** sit the **client tabs**, which filter every panel at once and
 carry each client's own subtotal; the **hero**, which states the selected scope's
@@ -255,6 +264,47 @@ The menu opens upward, so its disclosure points upward.
 Every panel that reports `available: false` shows an explicit unavailable label
 in place of its values, and a panel whose own subject is empty shows its own
 empty copy rather than the whole surface claiming emptiness.
+
+### Chart and heatmap interaction
+
+Four rules govern every plotted region — the trend chart, the 7×24 grid, and the
+90-day calendar. They were established against the shipped build on 2026-08-20
+and the document had recorded none of them.
+
+**Normalize against the real maximum.** A bar's height is its value over the
+largest *positive* value actually present in the selected scope. There is no
+floor on the divisor. An earlier build forced a minimum divisor of 1, so a day
+whose hourly costs were all under a dollar drew every bar in the bottom sliver
+and left the chart area empty — the chart reported the currency unit rather than
+the shape of the day, which is the one thing a chart is for.
+
+**The readout does not move.** Idle, hover, pinned, and keyboard selection all
+render in the same fixed 26 pt row with the same padding and the same
+background. Reading a chart must not reflow it.
+
+**Keyboard selection without a focus ring on the chart.** Left and right select
+the adjacent bucket, and the whole-chart macOS focus effect is disabled — an
+unsolicited blue frame around the entire plotted region says the region is a
+control, when the selection inside it is what the user is moving. The selected
+bucket's own indication carries the state, and the accessible value follows the
+selection.
+
+**Pointer feedback is visible, not only accessible.** Every plotted cell
+outlines on hover, shows its values in the visible readout, and carries native
+help text: weekday, hour, tokens, and provider price for the 7×24 grid; date,
+tokens, and provider price for the 90-day calendar. Normalized intensity drives
+color only and is never presented as a percentage. An earlier build exposed a
+percentage through accessibility values alone, which left a pointer user with
+an unexplained number rather than the underlying usage and price.
+
+The hourly chart always reserves the full local-day canvas: exactly 24 equal-width
+slots for hours `0...23`, with axis labels `00`, `06`, `12`, `18`, and `24`.
+Producer-supplied buckets through the current local hour carry the measured values;
+later slots are zero-height layout placeholders, not measured zeroes, and never
+participate in the priciest-hour selection. This fixed canvas preserves the shape
+and scale of a day just after midnight instead of stretching one observed hour into
+one full-width block. The visible readout still names the selected observed bucket
+exactly.
 
 ### Rendered specimens
 
@@ -305,7 +355,7 @@ Healthy, everything available. Width is the 420 pt default.
 │ ⚠ 2 checks not passing                     › │
 │ ┌──────────────────────────────────────────┐ │
 │ │        ▁▂▃▅▆█▆▃▂▁                        │ │
-│ │ 00:00        12:00                   Now │ │
+│ │ 00       06       12       18       24 │ │
 │ │ Peak 15:00–16:00 · $1.49                 │ │
 │ │ PRICIEST HOUR   EVENTS      CACHE HIT    │ │
 │ │ $1.49           75          66.1%        │ │
@@ -510,10 +560,12 @@ with health checks and warnings.
 | Window width | Fixed 420 pt at default Dynamic Type |
 | Narrow bound | 280 pt — the minimum width every layout MUST remain correct at |
 | Maximum height | 760 pt, or the shortest visible screen's height less 72 pt, whichever is smaller |
-| Fixed regions | Header, client tabs, hero, period switcher, and panel switcher never scroll; together they are bounded at 40% of the window height |
-| Scrolling region | The notice strip, the selected panel, and the rhythm block scroll as one column inside the remaining height |
+| Fixed regions | Header, client tabs, hero, period switcher, and panel switcher never scroll. They take their natural height — **no percentage of the window is reserved for them** |
+| Scrolling region | The notice strip, the selected panel, and the rhythm block scroll as one column inside the remaining height, with the system scroll indicator hidden |
 | Footer | Never scrolls; one row |
 | Row minimum height | 28 pt, so a pointer target stays comfortable |
+| Chart readout row | Fixed 26 pt, with fixed padding and a fixed background in every state |
+| Provider popover | Fixed 250 × 260 pt, **identical at both levels** |
 
 The width and height are the dimensions the prototype and the shipped host both
 use. An earlier draft stated 340 pt and 560 pt while the implementation used
@@ -525,6 +577,30 @@ surface is deliberately taller than one screenful, and scrolling to reach the
 unfiltered block is the interaction, not an overflow accident. What must never
 scroll is the filter set, because a filter the user cannot see while reading the
 result it produced is worse than no filter.
+
+**The scroll indicator is hidden while scrolling input is preserved.** At this
+width the system's vertical indicator overlays the right edge of the content —
+it clipped the peak card and both heatmap cards — and a popover the user is
+already pointing at does not need to be told it scrolls.
+
+**No region reserves space it is not using.** The 40% bound this table
+previously stated for the fixed regions was never implemented; `MenuBarGeometry`
+has no such constant, and a percentage floor would hold blank vertical space
+open above the data whenever the header set happened to be short.
+
+Three geometry values are fixed rather than intrinsic, and each is fixed to stop
+a *jump* rather than to control size:
+
+- The **chart readout row** is 26 pt with fixed padding and a fixed background in
+  every state. Idle, hover, pinned, and keyboard selection must render at the
+  same height, or reading the chart moves the chart.
+- The **provider popover** is 250 × 260 pt at both its levels, so opening a
+  candidate's executable targets does not resize the popover under the pointer.
+- The **rhythm cards** keep the full content width, which is what hiding the
+  indicator buys them.
+
+These corrections were made on 2026-08-20 against the shipped implementation.
+The document had recorded none of them.
 
 ### Typography and spacing
 
@@ -544,20 +620,66 @@ and 12 window padding. No other values.
 
 ### Color and status
 
-Semantic colors only — `.primary`, `.secondary`, `.tint`, and the system
-semantic status colors. No fixed hex values anywhere.
+The surface uses **one owned palette**, defined once as
+`DesktopVisualTheme` in `apps/macos/AgentDeckApp/MenuBarSurfaceView.swift`, with
+an explicit light and dark value for every token. It is not built from
+`.primary` / `.secondary` / system semantic colors.
 
-Every status carries a text label and an SF Symbol shape in addition to color, so
-the status survives grayscale, Increase Contrast, and color-vision differences:
+**Corrected 2026-08-20.** This section previously read "Semantic colors only …
+No fixed hex values anywhere", which the prototype never did and the shipped app
+never did. The prototype defines its own palette in `src/styles.css` and the
+implementation mirrors it token for token; the document was describing an
+intention that was abandoned before either was built, which is how a
+four-colour series chart came to be specified as a single tint.
 
-| Status | Symbol | Color role |
+Why an owned palette rather than the system's: the surface renders a dense,
+multi-series data view inside a popover it does not own the background of. The
+system semantic set has no four-way categorical series, and `.primary` /
+`.secondary` alone cannot express the four surface elevations
+(`background`, `surface`, `surfaceRaised`, `surfaceEmphasis`) the layout uses to
+group cards. The cost of owning the palette is that contrast is this document's
+obligation rather than the system's — see Accessibility.
+
+| Token group | Tokens | Role |
 | --- | --- | --- |
-| Healthy | `checkmark.circle` | `.secondary` |
-| Warning | `exclamationmark.triangle` | Semantic warning |
-| Error | `xmark.octagon` | Semantic error |
-| Unavailable / unconfigured | `minus.circle` | `.secondary` |
+| Accent | `accent`, `accentStrong` | The product's own identity colour; interactive emphasis |
+| Status | `info`, `good`, `warning`, `error` | The four status roles below |
+| Series | `series[0…3]` | Categorical data series only — never status, never emphasis |
+| Elevation | `background`, `surface`, `surfaceRaised`, `surfaceEmphasis` | Card and panel grouping |
+| Line | `line`, `lineSoft` | Separators and card strokes |
+| Text | `text`, `muted`, `dim` | Primary, secondary, and tertiary text |
 
-`.secondary` for healthy is intentional: a healthy system should be quiet rather
+The **series palette is fixed and ordered**, and it is the same in both
+appearances because a categorical hue that shifts between light and dark stops
+being an identity:
+
+| Index | Value | Bound to |
+| --- | --- | --- |
+| 0 | `#6F8FD6` | `gpt-5.6-sol`; Token `input` |
+| 1 | `#B07BE0` | `claude-opus-5`; Token `output` |
+| 2 | `#3FA08A` | `codex-auto-review`; Token `cacheRead` |
+| 3 | `#CF8B5C` | `gpt-5.5` |
+
+These bindings come directly from the prototype's `MODEL_DEFS` and `tokenMix`
+roles, so producer ordering cannot change a known model's colour. Unknown model
+identifiers fall back to rendered position, wrapping past four. Cache write uses
+the status `warning` token (`#D9971A` dark), exactly as the prototype does, not
+series index 3. Client subtotals are text in one inline row and carry no series
+colour. Series hue identifies a known category or token role; it never encodes a
+magnitude or status.
+
+Every status carries a text label and an SF Symbol shape in addition to colour,
+so the status survives grayscale, Increase Contrast, and colour-vision
+differences:
+
+| Status | Symbol | Token |
+| --- | --- | --- |
+| Healthy | `checkmark.circle` | `muted` |
+| Warning | `exclamationmark.triangle` | `warning` |
+| Error | `xmark.octagon` | `error` |
+| Unavailable / unconfigured | `minus.circle` | `dim` |
+
+A muted healthy state is intentional: a healthy system should be quiet rather
 than decorated with green.
 
 ### Density control
@@ -872,7 +994,7 @@ extension:
 | Composition token split | selected period's input, output, cached-read, and cache-write totals |
 | Trust quality rows | current-period per-client and per-provider `(cost, tokens, count, share)` tiers |
 | Trust coverage | current-period pricing `coverage`, ≤ 12 unpriced identifiers |
-| Rhythm grid | producer-computed 7×24 hour-of-week intensity for the fixed last-30-days window |
+| Rhythm grid | producer-computed 7×24 hour-of-week intensity for the fixed last-30-days window; every cell also carries tokens and the provider-cost tuple for visible hover detail |
 | Client tabs | selected period's per-client subtotals |
 | Footer provider state | `provider.routes` |
 | Switch menu rows | `provider.candidates[].options` |
@@ -889,13 +1011,22 @@ and the prototype marks each of them `Not captured yet`:
 | --- | --- | --- |
 | Attribution under a period filter | **Provisioned** — `quality` and `pricing` move to the `Client` × `Period` product | The Attribution panel honors both filters, like the other three |
 | Sessions under a period filter | **Provisioned** — `sessions` gains per-period grouped statistics beside its bounded recent list | The Sessions panel honors both filters |
-| Work signals — activity mix, workflow shape, tool calls | **Refused in this topic** — the classifier over raw session logs is a usage-domain capability, not a presentation one | The three modules stay specified here and are **not shipped by `menubar-experience`**. Until the capability exists, the Sessions panel ships its statistics, per-project rows, and recent-session rows only |
+| Work signals — activity mix, workflow shape, tool calls | **Provisioned by [`work-signals`](../../work-signals/architecture.md)**, a sibling `v0.5.0` topic — the classifier over raw session logs is a usage-domain capability, not a presentation one | The three modules are specified here and **shipped by `menubar-experience` in their `Not captured yet` form**: real headings, real layout, an explicit pending state instead of a number. `work-signals` replaces the pending state with values without changing the layout |
 
-The refused modules keep their specification and their `Not captured yet`
-treatment in the prototype so the gap stays visible and costed. What must never
-happen is the third row rendering plausible numbers: a work-signal module with no
-capture behind it is an invented measurement in a product whose reason to exist
-is that its measurements are real.
+The pending modules keep their specification and their `Not captured yet`
+treatment, in the prototype and in the shipped app alike, so the gap stays
+visible and costed until `work-signals` closes it. What must never happen in the
+meantime is the third row rendering plausible numbers: a work-signal module with
+no capture behind it is an invented measurement in a product whose reason to
+exist is that its measurements are real. That is also why the prototype's own
+sample values under `PENDING_CAPTURE` in `prototype/interactive-v7/src/data.js`
+are demonstration data and are never copied into the app — they are the *field
+shape* `work-signals` must supply, not values to display.
+
+**Corrected 2026-08-20.** The 2026-08-18 text called this a *refusal in this
+topic* and the version index moved the capability to Backlog, which cut a
+committed `v0.5.0` feature without asking. Reversed: the capability is in
+`v0.5.0` and owned by `work-signals`.
 
 Refused, with the ground stated in `architecture.md`: per-session cost. The
 projection carries no per-session cost, so no session row states one.
