@@ -2057,6 +2057,40 @@ Exit codes are:
 2  invalid command syntax or user input
 ```
 
+Every JSON failure carries one of these stable `error.code` values. Exit `1`
+means the command was valid but could not complete; exit `2` is reserved for
+invalid syntax or input. `runtime_error` is the documented residual for a
+failure that has no more specific classification.
+
+| `error.code` | Meaning | Exit |
+| --- | --- | ---: |
+| `provider_not_found` | The named provider definition does not exist. | 1 |
+| `credential_not_found` | The named provider credential does not exist. | 1 |
+| `backup_not_found` | The requested backup archive does not exist. | 1 |
+| `backup_unreadable` | The requested backup archive cannot be opened. | 1 |
+| `session_not_found` | The requested session is absent or missing from the session index. | 1 |
+| `extension_not_found` | The requested extension does not exist. | 1 |
+| `extension_read_only` | The extension adapter cannot perform the requested mutation. | 1 |
+| `invalid_backup` | A backup cannot be authenticated or does not satisfy the archive contract. | 1 |
+| `restore_target_not_empty` | A portable restore target is not empty. | 1 |
+| `backup_exists` | Backup creation would overwrite an existing destination. | 1 |
+| `credential_key_missing` | The local credential key is absent. | 1 |
+| `credential_key_permissions` | Credential key permissions are not private enough. | 1 |
+| `credential_key_machine_mismatch` | The credential key belongs to another machine identity. | 1 |
+| `credential_key_version_unsupported` | The credential key version is unsupported. | 1 |
+| `credential_ciphertext_invalid` | Stored credential ciphertext is invalid or cannot be authenticated. | 1 |
+| `machine_identity_unavailable` | The stable local machine identity cannot be obtained. | 1 |
+| `state_busy` | Another process holds the required state lock. | 1 |
+| `unsupported_wire_version` | A desktop request uses an unsupported wire version. | 2 |
+| `invalid_recent_limit` | A desktop request uses an invalid recent-item limit. | 2 |
+| `invalid_argument` | Command syntax, flags, or another user input is invalid. | 2 |
+| `runtime_error` | The failure is not classified by a more specific code. | 1 |
+
+Not-found messages are human-readable and never render database, driver,
+filesystem-path, or errno text. Provider, credential, session, and extension
+messages retain only the caller-supplied identifier allowed by that command;
+backup messages identify the archive by kind and omit the supplied path.
+
 Malformed individual JSONL records are skipped and counted. An explicit scan
 fails on an unreadable source but retains prior committed data. A summary whose
 automatic scan fails may return the last committed data with `partial: true`

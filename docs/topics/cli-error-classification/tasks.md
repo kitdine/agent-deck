@@ -127,7 +127,7 @@ document is required.
 | Task | Dev | Review |
 | --- | --- | --- |
 | 1. `typed-not-found-errors` | [x] | [x] |
-| 2. `stable-error-codes` | [ ] | [ ] |
+| 2. `stable-error-codes` | [x] | [x] |
 
 Tasks are sequential. Commit boundaries follow task boundaries, and because both
 tasks touch `cmd/agentdeck/main.go`, each commit must be staged by hunk rather
@@ -149,10 +149,38 @@ tests, and `scripts/run-go-test.sh ./...` pass on the final behavior state; the
 independent Review reran the five focused regressions successfully.
 This task is delivered by the commit containing this status record.
 
+`stable-error-codes` implementation (2026-08-25): **Dev complete**; its
+pre-review Task completion gate was **VERIFIED** for candidate content state
+`urn:ce:agent-deck:state:candidate:8b714377943941002ece0b7c68c99b48feeec96ba504f1e3066502279ee3f4ff`.
+The CLI now maps every wrapped `*errdefs.NotFound` through one `errors.As` case,
+while the existing stable mappings keep their precedence. The command-level
+JSON regression covers all seven approved missing-target rows, including both
+passphrase-supplied backup cases, and the living CLI design and manual now
+document the stable codes and message privacy boundary. The focused regressions,
+`scripts/run-go-test.sh ./...`, topic-docs, whitespace, and diff checks pass.
+At that implementation checkpoint, the Task was uncommitted and awaited
+independent Review.
+
+`stable-error-codes` Review Round 1 (2026-08-25): **REOPEN** on
+`SEC-R1-F1`. The new complete table in `docs/specs/cli-design.md` says
+`unsupported_wire_version` and `invalid_recent_limit` exit `1`, while the same
+specification and the unchanged CLI classify both as input errors with exit `2`;
+the mapping regression omits both existing rows. CEv1 now records the
+living-specification failure and the Task gate is **FAILED**. No production,
+test, or configuration repair was made during Review.
+
+`stable-error-codes` Re-review Round 2 (2026-08-25): **PASS**. `SEC-R1-F1`
+is closed: the complete table and existing desktop contract now both say exit
+`2`, the mapping matrix asserts both desktop codes and exits, and production
+mapping remains unchanged. The repaired candidate's CEv1 Task gate is
+**VERIFIED** for all four required criteria. This Task is delivered by the
+commit containing this status record; containing-unit completion remains a
+separate CEv1 boundary.
+
 Next action:
 
 ```text
-开发：cli-error-classification / stable-error-codes
+同步 cli-error-classification containing-unit CEv1 WorkUnit 与 gate；验证后进入 v0.5.0 contract closure
 ```
 
 ## Starting a task

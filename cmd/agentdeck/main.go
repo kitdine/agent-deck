@@ -332,6 +332,7 @@ func commandOutputName(command *cobra.Command) string {
 }
 
 func errorCode(err error) string {
+	var notFound *errdefs.NotFound
 	switch {
 	case errors.Is(err, extension.ErrReadOnly):
 		return extension.ErrReadOnly.Error()
@@ -355,6 +356,8 @@ func errorCode(err error) string {
 		return credentialvault.ErrCiphertextInvalid.Error()
 	case errors.Is(err, credentialvault.ErrMachineIdentityMissing):
 		return credentialvault.ErrMachineIdentityMissing.Error()
+	case errors.As(err, &notFound):
+		return notFound.Code
 	case errors.Is(err, store.ErrStateBusy):
 		return store.ErrStateBusy.Code
 	case errors.Is(err, desktop.ErrUnsupportedWireVersion):

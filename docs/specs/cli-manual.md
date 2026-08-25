@@ -897,6 +897,26 @@ SQLite 查询或驱动错误。`state migrate` 的 text 成功信息明确确认
 
 ## JSON 与敏感信息
 
+### 稳定错误码
+
+JSON 失败 envelope 的 `error.code` 是机器契约；完整代码表和 exit 语义见
+[`cli-design.md`](cli-design.md#output-and-errors)。本轮受影响的命令如下，均保持 exit
+`1`，并只在 stderr 写入失败 envelope：
+
+| 命令 | `error.code` | `error.message` 契约 |
+| --- | --- | --- |
+| `provider show <missing>` | `provider_not_found` | 命名调用者传入的 provider；不含 SQL 文本 |
+| `provider use <missing> --client codex` | `provider_not_found` | 与 `provider show` 相同 |
+| `credential show <provider> --credential <missing>` | `credential_not_found` | 命名调用者传入的 provider/credential reference；不含 SQL 文本 |
+| `backup inspect <absent>` | `backup_not_found` | 只说明 backup archive 缺失，不回显 path 或 errno |
+| `backup inspect <unreadable>` | `backup_unreadable` | 只说明 backup archive 不可读，不回显 path 或 errno |
+| `session show <unknown>` | `session_not_found` | 保留 `no session "<id>" is known`；stale-index 提示也保持原文 |
+| `extension show <missing>` | `extension_not_found` | 保留 `extension_not_found: <id>` |
+
+两个 `backup inspect` 分类都发生在 passphrase 已成功读入、命令开始打开 archive 之后。
+passphrase 输入本身失败仍属于未分类 CLI 输入层故障，继续返回 `runtime_error`；它不是
+`backup_not_found` 或 `backup_unreadable`。
+
 - 保持版本化 envelope；本轮不因 official provider 提高 `schema_version`。
 - CLI 参数重构不改变 credential value 从不进入 JSON/text/log 的安全契约。
 - Provider definition JSON 只显示 aggregate `clients` 和 `credential_count`，不包含

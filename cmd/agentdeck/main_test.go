@@ -2062,8 +2062,102 @@ func TestSessionShowClassifiesMissingIndexEntries(t *testing.T) {
 			if exit := execute(jsonArgs, bytes.NewReader(nil), &stdout, &stderr); exit != 1 {
 				t.Fatalf("JSON session show exit = %d, want 1; stderr=%s", exit, stderr.String())
 			}
-			if !strings.Contains(stderr.String(), `"code":"runtime_error"`) || strings.Contains(stderr.String(), "sql: no rows in result set") {
+			if !strings.Contains(stderr.String(), `"code":"session_not_found"`) || strings.Contains(stderr.String(), "sql: no rows in result set") {
 				t.Fatalf("JSON session show error = %s", stderr.String())
+			}
+		})
+	}
+}
+
+func TestNotFoundCommandErrorEnvelopeMatrix(t *testing.T) {
+	ctx := context.Background()
+	state := filepath.Join(t.TempDir(), "state")
+	database, err := store.Open(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = database.CreateProvider(ctx, store.Provider{
+		Name:          "known-provider",
+		Endpoint:      "https://example.invalid",
+		CredentialRef: "known-provider-default-ref",
+		Multiplier:    "1",
+		Clients:       []store.ClientMapping{{Client: "codex"}},
+	}); err != nil {
+		database.Close()
+		t.Fatal(err)
+	}
+	if err = database.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	home := t.TempDir()
+	oldHome := userHomeDir
+	userHomeDir = func() (string, error) { return home, nil }
+	t.Cleanup(func() { userHomeDir = oldHome })
+
+	missingArchive := filepath.Join(t.TempDir(), "missing-archive.adb")
+	unreadableArchive := filepath.Join(t.TempDir(), "unreadable-archive.adb")
+	if err = os.WriteFile(unreadableArchive, []byte("synthetic archive"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Chmod(unreadableArchive, 0); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name        string
+		args        []string
+		stdin       string
+		wantCommand string
+		wantCode    string
+		wantMessage string
+	}{
+		{name: "provider show", args: []string{"provider", "show", "missing-provider"}, wantCommand: "provider.show", wantCode: "provider_not_found", wantMessage: `no provider "missing-provider" is known`},
+		{name: "provider use", args: []string{"provider", "use", "missing-provider", "--client", "codex"}, wantCommand: "provider.use", wantCode: "provider_not_found", wantMessage: `no provider "missing-provider" is known`},
+		{name: "credential show", args: []string{"credential", "show", "known-provider", "--credential", "missing-credential"}, wantCommand: "credential.show", wantCode: "credential_not_found", wantMessage: `no credential "known-provider/missing-credential" is known`},
+		{name: "backup inspect absent", args: []string{"backup", "inspect", missingArchive}, stdin: "passphrase\n", wantCommand: "backup.inspect", wantCode: "backup_not_found", wantMessage: "backup archive not found"},
+		{name: "session show", args: []string{"session", "show", "missing-session"}, wantCommand: "session.show", wantCode: "session_not_found", wantMessage: `no session "missing-session" is known`},
+		{name: "extension show", args: []string{"extension", "show", "missing-extension"}, wantCommand: "extension.show", wantCode: "extension_not_found", wantMessage: "extension_not_found: missing-extension"},
+	}
+	probe, probeErr := os.Open(unreadableArchive)
+	if probeErr == nil {
+		_ = probe.Close()
+		t.Log("skipping unreadable backup row because this user can open a mode-000 file")
+	} else {
+		tests = append(tests, struct {
+			name        string
+			args        []string
+			stdin       string
+			wantCommand string
+			wantCode    string
+			wantMessage string
+		}{name: "backup inspect unreadable", args: []string{"backup", "inspect", unreadableArchive}, stdin: "passphrase\n", wantCommand: "backup.inspect", wantCode: "backup_unreadable", wantMessage: "backup archive is unreadable"})
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			args := append([]string{"--state-dir", state, "--format", "json"}, test.args...)
+			if exit := execute(args, strings.NewReader(test.stdin), &stdout, &stderr); exit != 1 {
+				t.Fatalf("exit = %d, want 1; stdout=%s stderr=%s", exit, stdout.String(), stderr.String())
+			}
+			if stdout.Len() != 0 {
+				t.Fatalf("stdout = %q, want empty", stdout.String())
+			}
+			var envelope struct {
+				Command string       `json:"command"`
+				Error   output.Error `json:"error"`
+			}
+			if err := json.Unmarshal(stderr.Bytes(), &envelope); err != nil {
+				t.Fatalf("decode stderr %q: %v", stderr.String(), err)
+			}
+			if envelope.Command != test.wantCommand || envelope.Error.Code != test.wantCode || envelope.Error.Message != test.wantMessage {
+				t.Fatalf("envelope = %#v, want command=%q code=%q message=%q", envelope, test.wantCommand, test.wantCode, test.wantMessage)
+			}
+			for _, forbidden := range []string{"sql:", "no rows in result set", "no such file or directory", "permission denied", "operation not permitted", missingArchive, unreadableArchive} {
+				if strings.Contains(envelope.Error.Message, forbidden) {
+					t.Fatalf("error message %q contains forbidden text %q", envelope.Error.Message, forbidden)
+				}
 			}
 		})
 	}
