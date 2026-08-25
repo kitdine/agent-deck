@@ -30,6 +30,31 @@ env BEADS_ACTOR=claude-code /Users/jobshen/.local/state/agentdeck-beads/bin/agen
 `ready` covers work waiting to START. It cannot see a custom status, so work
 waiting for a REVIEWER needs `list --status in_review`; see One lifecycle.
 
+## Automatic backup warnings
+
+Mutating `agentdeck-bd` commands may complete their primary database write and
+then report `auto-backup failed`. The backup is an internal `bd` side effect,
+not a separate Beads workflow action and not a new user-authorization boundary.
+
+When this warning appears:
+
+1. Read back the exact primary mutation: task status, assignee, dependency, or
+   comment.
+2. If the read-back matches, treat the primary operation as successful and
+   report the backup warning once as a non-blocking operational risk.
+3. Do not retry the mutation, change permissions, request sandbox escalation,
+   or describe extra user authorization as necessary merely to silence the
+   warning.
+4. Escalate only when successful backup creation is itself an explicit task
+   requirement or the primary mutation did not persist.
+
+Keep the three authorities distinct in explanations: the user's workflow
+instruction authorizes the Beads mutation; the Codex sandbox determines which
+paths a command can technically write; and `bd` owns its internal backup side
+effect. Use wording such as `primary write succeeded; the internal backup was
+unavailable and did not block this task`, never `the user must authorize the
+automatic backup`.
+
 ## Scoped task procedure
 
 1. Resolve the repository workflow route and read its authoritative plan and
