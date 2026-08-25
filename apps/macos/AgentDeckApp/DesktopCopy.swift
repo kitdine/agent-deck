@@ -59,7 +59,7 @@ enum DesktopCopy {
 	static let tokenOutput = "Output"
 	static let tokenCacheRead = "Cache read"
 	static let tokenCacheWrite = "Cache write"
-	static let perClientTitle = "Per client"
+	static let perClientTitle = "Client subtotals"
 
 	static let qualityTitle = "Attribution quality"
 	static let qualityDeterminable = "Determinable"

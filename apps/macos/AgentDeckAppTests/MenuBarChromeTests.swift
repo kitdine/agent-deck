@@ -37,8 +37,23 @@ final class MenuBarChromeTests: XCTestCase {
 	}
 
 	func testHourlyAxisRejectsPartialOrNonHourlyBucketIdentities() {
-		XCTAssertNil(TrendChartInteraction.hourlyAxis(bucketIDs: ["hour.0", "hour.2"], nowLabel: "Now"))
-		XCTAssertNil(TrendChartInteraction.hourlyAxis(bucketIDs: ["2026-08-20"], nowLabel: "Now"))
+		XCTAssertNil(TrendChartInteraction.hourlyAxis(bucketIDs: ["hour.0", "hour.2"]))
+		XCTAssertNil(TrendChartInteraction.hourlyAxis(bucketIDs: ["2026-08-20"]))
+		XCTAssertEqual(
+			TrendChartInteraction.hourlyAxis(bucketIDs: (0 ..< 24).map { "hour.\($0)" }),
+			TrendChartAxis(ticks: ["00", "06", "12", "18", "24"])
+		)
+	}
+
+	func testBreakdownPaletteFollowsPrototypeIdentityAndTokenRoles() {
+		XCTAssertEqual(BreakdownPalette.modelTone(label: "gpt-5.6-sol", fallbackIndex: 3), .series(0))
+		XCTAssertEqual(BreakdownPalette.modelTone(label: "claude-opus-5", fallbackIndex: 0), .series(1))
+		XCTAssertEqual(BreakdownPalette.modelTone(label: "codex-auto-review", fallbackIndex: 0), .series(2))
+		XCTAssertEqual(BreakdownPalette.modelTone(label: "gpt-5.5", fallbackIndex: 0), .series(3))
+		XCTAssertEqual(BreakdownPalette.tokenTone(id: "input"), .series(0))
+		XCTAssertEqual(BreakdownPalette.tokenTone(id: "output"), .series(1))
+		XCTAssertEqual(BreakdownPalette.tokenTone(id: "cache-read"), .series(2))
+		XCTAssertEqual(BreakdownPalette.tokenTone(id: "cache-write"), .warning)
 	}
 
 	func testRhythmHoverClearsOnlyTheCellThatActuallyExited() {

@@ -223,35 +223,22 @@ struct TrendChartInteraction: Equatable {
 		return min(1, max(0, magnitude / maximum))
 	}
 
-	static func hourlyAxis(bucketIDs: [String], nowLabel: String) -> TrendChartAxis? {
+	static func hourlyAxis(bucketIDs: [String]) -> TrendChartAxis? {
 		let hours = bucketIDs.compactMap { id -> Int? in
 			guard id.hasPrefix("hour.") else { return nil }
 			return Int(id.dropFirst("hour.".count))
 		}
-		guard !hours.isEmpty,
-			hours.count == bucketIDs.count,
-			hours.enumerated().allSatisfy({ offset, hour in hour == offset }),
-			let last = hours.last
+		guard hours == Array(0 ..< 24),
+			hours.count == bucketIDs.count
 		else {
 			return nil
 		}
-		let middleHour = last >= 2 ? (last + 1) / 2 : nil
-		return TrendChartAxis(
-			leading: "00:00",
-			middle: middleHour.map(hourTick),
-			trailing: nowLabel
-		)
-	}
-
-	private static func hourTick(_ hour: Int) -> String {
-		hour < 10 ? "0\(hour):00" : "\(hour):00"
+		return TrendChartAxis(ticks: ["00", "06", "12", "18", "24"])
 	}
 }
 
 struct TrendChartAxis: Equatable, Sendable {
-	let leading: String
-	let middle: String?
-	let trailing: String
+	let ticks: [String]
 }
 
 struct TrendChart: View {
@@ -264,10 +251,7 @@ struct TrendChart: View {
 		let maximum = max(0.000_001, buckets.map(\.magnitude).max() ?? 0)
 		let peak = buckets.max(by: { $0.magnitude < $1.magnitude })
 		let active = activeBucket
-		let hourlyAxis = TrendChartInteraction.hourlyAxis(
-			bucketIDs: buckets.map(\.id),
-			nowLabel: t(DesktopCopy.trendNow)
-		)
+		let hourlyAxis = TrendChartInteraction.hourlyAxis(bucketIDs: buckets.map(\.id))
 		VStack(alignment: .leading, spacing: 0) {
 			HStack(alignment: .bottom, spacing: 2) {
 				ForEach(buckets) { bucket in
@@ -322,13 +306,12 @@ struct TrendChart: View {
 
 			if let hourlyAxis {
 				HStack {
-					Text(hourlyAxis.leading)
-					Spacer()
-					if let middle = hourlyAxis.middle {
-						Text(middle)
+					ForEach(hourlyAxis.ticks.indices, id: \.self) { index in
+						Text(hourlyAxis.ticks[index])
+						if index < hourlyAxis.ticks.count - 1 {
 						Spacer()
+						}
 					}
-					Text(hourlyAxis.trailing)
 				}
 				.font(.caption2)
 				.monospacedDigit()
@@ -405,40 +388,229 @@ struct UsagePanelView: View {
 
 struct BreakdownPanelView: View {
 	let panel: BreakdownPanelModel
-	let expansion: SectionExpansion
-
-	init(panel: BreakdownPanelModel, expansion: @escaping SectionExpansion = { _ in .constant(true) }) {
-		self.panel = panel
-		self.expansion = expansion
-	}
 
 	var body: some View {
-		VStack(alignment: .leading, spacing: MenuBarGeometry.betweenSections) {
-			CollapsibleSection(title: t(DesktopCopy.modelsTitle), isExpanded: expansion("breakdown.models")) {
-				if !panel.available {
-					UnavailableRow()
-				} else if let emptyCopy = panel.modelsEmptyCopy {
-					Text(emptyCopy)
-						.font(.caption)
-						.foregroundStyle(.secondary)
-						.fixedSize(horizontal: false, vertical: true)
-				} else {
-					ShareRowsView(rows: panel.models)
+		VStack(alignment: .leading, spacing: MenuBarGeometry.betweenRows) {
+			if !panel.available {
+				UnavailableRow().desktopCard()
+			} else if let emptyCopy = panel.modelsEmptyCopy {
+				Text(emptyCopy)
+					.font(.caption)
+					.foregroundStyle(DesktopVisualTheme.muted)
+					.fixedSize(horizontal: false, vertical: true)
+					.desktopCard()
+			} else {
+				BreakdownModelsCard(rows: panel.models)
+				BreakdownTokenMixCard(rows: panel.tokenMix)
+				if !panel.clientRows.isEmpty {
+					BreakdownClientSubtotalsRow(rows: panel.clientRows)
 				}
 			}
-			if panel.available {
-				CollapsibleSection(title: t(DesktopCopy.tokenMixTitle), trailing: t(DesktopCopy.tokenMixNote), isExpanded: expansion("breakdown.token-mix")) {
-					ShareRowsView(rows: panel.tokenMix)
+		}
+	}
+}
+
+enum BreakdownTone: Equatable {
+	case series(Int)
+	case warning
+
+	var color: Color {
+		switch self {
+		case let .series(index): DesktopVisualTheme.series[index % DesktopVisualTheme.series.count]
+		case .warning: DesktopVisualTheme.warning
+		}
+	}
+}
+
+enum BreakdownPalette {
+	static func modelTone(label: String, fallbackIndex: Int) -> BreakdownTone {
+		switch label {
+		case "gpt-5.6-sol": .series(0)
+		case "claude-opus-5": .series(1)
+		case "codex-auto-review": .series(2)
+		case "gpt-5.5": .series(3)
+		default: .series(fallbackIndex)
+		}
+	}
+
+	static func tokenTone(id: String) -> BreakdownTone {
+		switch id {
+		case "input": .series(0)
+		case "output": .series(1)
+		case "cache-read": .series(2)
+		case "cache-write": .warning
+		default: .series(0)
+		}
+	}
+}
+
+private struct BreakdownCardHeader: View {
+	let title: String
+	var trailing: String?
+
+	var body: some View {
+		HStack(alignment: .firstTextBaseline, spacing: MenuBarGeometry.betweenRows) {
+			Text(title)
+				.font(.caption.weight(.semibold))
+				.foregroundStyle(DesktopVisualTheme.muted)
+			Spacer()
+			if let trailing {
+				Text(trailing)
+					.font(.caption2)
+					.foregroundStyle(DesktopVisualTheme.warning)
+			}
+		}
+		.padding(.bottom, 9)
+	}
+}
+
+private struct BreakdownModelsCard: View {
+	let rows: [ShareRow]
+
+	var body: some View {
+		let shown = Array(rows.prefix(4))
+		VStack(alignment: .leading, spacing: 0) {
+			BreakdownCardHeader(title: t(DesktopCopy.modelsTitle))
+			VStack(alignment: .leading, spacing: 9) {
+				ForEach(Array(shown.enumerated()), id: \.element.id) { index, row in
+					BreakdownModelRow(
+						row: row,
+						tone: BreakdownPalette.modelTone(label: row.label, fallbackIndex: index)
+					)
 				}
-				CollapsibleSection(title: t(DesktopCopy.perClientTitle), isExpanded: expansion("breakdown.per-client")) {
-					if panel.clientRows.isEmpty {
-						UnavailableRow()
-					} else {
-						ShareRowsView(rows: panel.clientRows)
+			}
+			if rows.count > shown.count {
+				Text(t(DesktopCopy.noticeMore, Int64(rows.count - shown.count)))
+					.font(.caption2)
+					.foregroundStyle(DesktopVisualTheme.dim)
+					.padding(.top, 9)
+			}
+		}
+		.desktopCard()
+	}
+}
+
+private struct BreakdownModelRow: View {
+	let row: ShareRow
+	let tone: BreakdownTone
+
+	var body: some View {
+		VStack(alignment: .leading, spacing: 5) {
+			HStack(alignment: .firstTextBaseline, spacing: MenuBarGeometry.betweenRows) {
+				HStack(spacing: 6) {
+					Circle().fill(tone.color).frame(width: 7, height: 7)
+					Text(row.label).lineLimit(1).truncationMode(.middle)
+				}
+				Spacer(minLength: MenuBarGeometry.betweenRows)
+				Text(row.value)
+					.foregroundStyle(DesktopVisualTheme.muted)
+					.fontWeight(.medium)
+					.monospacedDigit()
+				Text(row.shareText)
+					.fontWeight(.semibold)
+					.monospacedDigit()
+					.frame(width: 52, alignment: .trailing)
+			}
+			.font(.caption)
+			GeometryReader { geometry in
+				Capsule()
+					.fill(tone.color)
+					.frame(width: geometry.size.width * CGFloat(max(row.share, row.share > 0 ? 0.015 : 0)), height: 4)
+			}
+			.frame(height: 4)
+			.background(DesktopVisualTheme.surfaceEmphasis, in: Capsule())
+		}
+		.accessibilityElement(children: .combine)
+	}
+}
+
+private struct BreakdownTokenMixCard: View {
+	let rows: [ShareRow]
+
+	var body: some View {
+		VStack(alignment: .leading, spacing: 0) {
+			BreakdownCardHeader(title: t(DesktopCopy.tokenMixTitle), trailing: t(DesktopCopy.tokenMixNote))
+			BreakdownTokenStack(rows: rows)
+				.padding(.bottom, 4)
+			VStack(alignment: .leading, spacing: 0) {
+				ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
+					BreakdownTokenRow(row: row, tone: BreakdownPalette.tokenTone(id: row.id))
+					if index < rows.count - 1 {
+						Divider().overlay(DesktopVisualTheme.lineSoft)
 					}
 				}
 			}
 		}
+		.desktopCard()
+	}
+}
+
+private struct BreakdownTokenStack: View {
+	let rows: [ShareRow]
+
+	var body: some View {
+		GeometryReader { geometry in
+			let gap = CGFloat(max(0, rows.count - 1))
+			let contentWidth = max(0, geometry.size.width - gap)
+			HStack(spacing: 1) {
+				ForEach(rows) { row in
+					Rectangle()
+						.fill(BreakdownPalette.tokenTone(id: row.id).color)
+						.frame(width: contentWidth * CGFloat(row.share))
+				}
+			}
+		}
+		.frame(height: 7)
+		.clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+	}
+}
+
+private struct BreakdownTokenRow: View {
+	let row: ShareRow
+	let tone: BreakdownTone
+
+	var body: some View {
+		HStack(spacing: MenuBarGeometry.betweenRows) {
+			HStack(spacing: 7) {
+				Circle().fill(tone.color).frame(width: 7, height: 7)
+				Text(row.label)
+			}
+			Spacer(minLength: MenuBarGeometry.betweenRows)
+			Text(row.value)
+				.foregroundStyle(DesktopVisualTheme.muted)
+				.fontWeight(.medium)
+				.monospacedDigit()
+			Text(row.shareText)
+				.foregroundStyle(DesktopVisualTheme.dim)
+				.monospacedDigit()
+				.frame(width: 52, alignment: .trailing)
+		}
+		.font(.caption)
+		.frame(minHeight: 30)
+		.accessibilityElement(children: .combine)
+	}
+}
+
+private struct BreakdownClientSubtotalsRow: View {
+	let rows: [ShareRow]
+
+	var body: some View {
+		HStack(spacing: 10) {
+			Text(t(DesktopCopy.perClientTitle))
+				.foregroundStyle(DesktopVisualTheme.dim)
+			Spacer(minLength: 0)
+			ForEach(rows) { row in
+				Text("\(row.label) \(row.value)")
+					.foregroundStyle(DesktopVisualTheme.text)
+					.fontWeight(.semibold)
+					.monospacedDigit()
+			}
+		}
+		.font(.caption2)
+		.padding(.horizontal, MenuBarGeometry.padding)
+		.padding(.vertical, 9)
+		.background(DesktopVisualTheme.surfaceRaised, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+		.accessibilityElement(children: .combine)
 	}
 }
 

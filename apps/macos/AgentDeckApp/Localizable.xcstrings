@@ -657,6 +657,22 @@
         }
       }
     },
+    "Client subtotals": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Client subtotals"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "客户端小计"
+          }
+        }
+      }
+    },
     "Copied": {
       "localizations": {
         "en": {

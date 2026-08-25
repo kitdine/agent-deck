@@ -217,23 +217,20 @@ final class MenuBarViewModelTests: XCTestCase {
 		XCTAssertEqual(model.usagePanel.chips.map(\.id), ["average", "peak", "cache-hit"])
 	}
 
-	func testTodayHourlyModelAndAxisEndAtMorningNoonAndEndOfDayNow() async {
-		for sample in [
-			(throughHour: 8, middle: "04:00"),
-			(throughHour: 12, middle: "06:00"),
-			(throughHour: 23, middle: "12:00"),
-		] {
-			let scope = WireFixture.scope(client: "all", throughHour: sample.throughHour)
+	func testTodayHourlyModelAlwaysRestoresTheFullZeroThroughTwentyThreeHourCanvas() async {
+		for throughHour in [0, 8, 12, 23] {
+			let scope = WireFixture.scope(client: "all", throughHour: throughHour)
 			let model = await readyModel(envelope: WireFixture.envelope(scopes: [scope]))
 			model.selectedPeriod = "today"
-			XCTAssertEqual(model.usagePanel.buckets.count, sample.throughHour + 1)
-			XCTAssertEqual(model.usagePanel.buckets.last?.id, "hour.\(sample.throughHour)")
+			XCTAssertEqual(model.usagePanel.buckets.count, 24)
+			XCTAssertEqual(model.usagePanel.buckets.map(\.id), (0 ..< 24).map { "hour.\($0)" })
+			XCTAssertTrue(model.usagePanel.buckets.prefix(throughHour + 1).allSatisfy(\.inWindow))
+			XCTAssertTrue(model.usagePanel.buckets.dropFirst(throughHour + 1).allSatisfy { bucket in
+				!bucket.inWindow && bucket.tokens == 0 && bucket.events == 0 && bucket.magnitude == 0
+			})
 			XCTAssertEqual(
-				TrendChartInteraction.hourlyAxis(
-					bucketIDs: model.usagePanel.buckets.map(\.id),
-					nowLabel: t(DesktopCopy.trendNow)
-				),
-				TrendChartAxis(leading: "00:00", middle: sample.middle, trailing: t(DesktopCopy.trendNow))
+				TrendChartInteraction.hourlyAxis(bucketIDs: model.usagePanel.buckets.map(\.id)),
+				TrendChartAxis(ticks: ["00", "06", "12", "18", "24"])
 			)
 		}
 	}

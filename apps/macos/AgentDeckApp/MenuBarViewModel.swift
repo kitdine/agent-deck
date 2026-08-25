@@ -451,14 +451,19 @@ final class MenuBarViewModel {
 		let window = periodWindow(scope: scope)
 		let usesHourly = selectedPeriod == "today" && scope.hourly?.available == true
 		let hourly = usesHourly ? scope.hourly?.items ?? [] : []
+		let hourlyByHour = Dictionary(uniqueKeysWithValues: hourly.map { ($0.hour, $0) })
 		let buckets = usesHourly
-			? hourly.map { item in
-				trendBucket(
-					id: "hour.\(item.hour)",
-					label: DesktopFormat.hourWindow(item.hour),
-					value: item.value,
-					inWindow: true
-				)
+			? (0 ..< 24).map { hour in
+				if let item = hourlyByHour[hour] {
+					trendBucket(
+						id: "hour.\(item.hour)",
+						label: DesktopFormat.hourWindow(item.hour),
+						value: item.value,
+						inWindow: true
+					)
+				} else {
+					emptyHourlyTrendBucket(hour: hour)
+				}
 			}
 			: daily.filter { window.contains($0.date) }.map { item in
 				trendBucket(
@@ -1104,6 +1109,20 @@ final class MenuBarViewModel {
 			magnitude: costMagnitude(value),
 			inWindow: inWindow,
 			accessibilityValue: "\(costText(value)), \(DesktopFormat.tokens(value.tokens)), \(t(DesktopCopy.trendEvents, value.events))"
+		)
+	}
+
+	private func emptyHourlyTrendBucket(hour: Int) -> TrendBucket {
+		let cost = DesktopFormat.cost("0", known: "0", approximate: false)
+		return TrendBucket(
+			id: "hour.\(hour)",
+			label: DesktopFormat.hourWindow(hour),
+			tokens: 0,
+			events: 0,
+			cost: cost,
+			magnitude: 0,
+			inWindow: false,
+			accessibilityValue: "\(cost), \(DesktopFormat.tokens(0)), \(t(DesktopCopy.trendEvents, Int64(0)))"
 		)
 	}
 

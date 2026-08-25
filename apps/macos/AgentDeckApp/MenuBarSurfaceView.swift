@@ -380,7 +380,7 @@ struct MenuBarSurfaceView: View {
 		case .usage:
 			UsagePanelView(panel: model.usagePanel)
 			case .breakdown:
-				BreakdownPanelView(panel: model.breakdownPanel, expansion: sectionExpansion)
+				BreakdownPanelView(panel: model.breakdownPanel)
 			case .attribution:
 				AttributionPanelView(panel: model.attributionPanel, expansion: sectionExpansion)
 			case .sessions:
