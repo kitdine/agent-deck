@@ -174,14 +174,13 @@ is closed: the complete table and existing desktop contract now both say exit
 `2`, the mapping matrix asserts both desktop codes and exits, and production
 mapping remains unchanged. The repaired candidate's CEv1 Task gate is
 **VERIFIED** for all four required criteria. This Task is delivered by the
-commit containing this status record; containing-unit completion remains a
-separate CEv1 boundary.
-
-Next action:
-
-```text
-同步 cli-error-classification containing-unit CEv1 WorkUnit 与 gate；验证后进入 v0.5.0 contract closure
-```
+commit containing this status record. The `cli-error-classification` Topic gate
+is also **VERIFIED** in CEv1 WorkUnit
+`urn:ce:agent-deck:work-unit:cli-error-classification` for immutable Git tree
+`6d26f2055b1fa13f5438cbe31b94ecca3cb5e843`, reusing both delivered Task gates
+and three Topic-owned cross-Task criteria. This topic has no remaining workflow
+action. The `v0.5.0` contract closure remains not started until every selected
+topic satisfies its own entry conditions.
 
 ## Starting a task
 
