@@ -1549,6 +1549,15 @@ and distribution boundary. This closes the topic's development/review unit only.
 Tasks 4, 5, and 6 still await their own authorized commit checkpoints; no commit,
 push, preflight, release-channel decision, or publication is implied.
 
+`desktop-app` delivery checkpoint (2026-08-25): **COMMITTED** as three signed,
+feature-scoped commits: `7b743d0` (menu-bar usage presentation), `b359850`
+(WidgetKit, App Group, and packaging boundary), and `0aefed1` (topic contract,
+review history, and Unit checkpoint). The final immutable tree
+`87cc09d58b154eb1a83c4713744a1fe78f1c91bb` has non-vacuous `VERIFIED` gates
+for task 4 (14/14), task 5 (4/4), task 6 (4/4), and the Plan (3/3). Tasks 4–6
+are delivered; no push, technical preflight, release-channel decision, or
+publication was authorized or performed.
+
 The previous actions, now complete:
 
 ```text

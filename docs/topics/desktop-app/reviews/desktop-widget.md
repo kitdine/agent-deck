@@ -1763,3 +1763,12 @@ subtree、物理灰度或 Widget gallery 操作；该事实已在验收记录和
   `failed=[]`、`gate_status=VERIFIED`。本轮 review/status 同步后的最终 uncommitted
   content state 另行追加记录并复查 gate；不把旧 candidate ID 冒充最终同步状态。
 - Verdict: PASS。
+
+### Delivery checkpoint — 2026-08-25
+
+Task 4 is delivered by signed commits `b359850` (WidgetKit implementation,
+App Group identity, tests, sandbox and packaging seam) and `0aefed1` (review and
+topic status artifacts). The final immutable tree
+`87cc09d58b154eb1a83c4713744a1fe78f1c91bb` re-queries as `VERIFIED` for all
+14 required criteria. Beads `ad-desktop-widget-dev` is closed. No push,
+technical preflight, RC, or stable publication was performed.

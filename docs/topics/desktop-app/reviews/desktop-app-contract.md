@@ -873,3 +873,12 @@ completion-evidence/v1 Plan WorkUnit `desktop-app` 的三项 Plan-owned criterio
 首次查询为 `VERIFIED`。该 checkpoint 关闭 topic 的开发与评审单元，不代表 task 4、
 task 5 或 task 6 已提交，也不授权 commit、push、technical preflight、RC 或 stable
 publication。
+
+#### Delivery checkpoint — 2026-08-25
+
+Task 6 is delivered by signed commit `0aefed1`, which contains the reconciled
+living specifications, Round 1–12 review history, Task checkpoint, and Unit
+completion checkpoint. The final immutable tree
+`87cc09d58b154eb1a83c4713744a1fe78f1c91bb` re-queries as `VERIFIED` for task 6
+(4/4) and the desktop-app Plan (3/3). Beads `ad-desktop-contract-dev` is closed.
+No push, technical preflight, RC, or stable publication was performed.
