@@ -1,10 +1,26 @@
 import AgentDeckShared
 import AppKit
 import SwiftUI
+import WidgetKit
 
 @main
 enum AgentDeckMain {
+	static let widgetReloadArgument = "--reload-widget-timelines"
+	static let widgetKinds = [
+		"com.kitdine.agentdeck.widget.magnitude",
+		"com.kitdine.agentdeck.widget.composition",
+		"com.kitdine.agentdeck.widget.trust",
+		"com.kitdine.agentdeck.widget.rhythm",
+	]
+
 	static func main() {
+		if Array(CommandLine.arguments.dropFirst()) == [widgetReloadArgument] {
+			for kind in widgetKinds {
+				WidgetCenter.shared.reloadTimelines(ofKind: kind)
+			}
+			RunLoop.current.run(until: Date().addingTimeInterval(1))
+			return
+		}
 		let application = NSApplication.shared
 		let delegate = AgentDeckApplicationDelegate()
 		application.delegate = delegate

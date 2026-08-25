@@ -247,7 +247,7 @@ done
 # The signature is real and the widget's entitlements carry the app group.
 codesign --verify --deep --strict "$bundle"
 codesign --display --entitlements - "$bundle/Contents/PlugIns/AgentDeckWidget.appex" 2>/dev/null |
-  grep -F 'group.com.kitdine.agentdeck' >/dev/null
+  grep -F 'N2FZ2FNRTU.group.com.kitdine.agentdeck' >/dev/null
 # Gatekeeper is assessed on every run; an ad-hoc bundle is correctly rejected,
 # and the rejection being visible is the point.
 grep -F ': rejected' "$temporary/package.log" >/dev/null
@@ -269,7 +269,7 @@ cat >"$stub_bin/codesign" <<'STUB'
 set -euo pipefail
 printf 'codesign %s\n' "$*" >>"$STUB_LOG"
 if [[ ${1:-} == --display ]]; then
-  printf 'group.com.kitdine.agentdeck\n'
+  printf 'N2FZ2FNRTU.group.com.kitdine.agentdeck\n'
 fi
 exit 0
 STUB

@@ -39,6 +39,32 @@
 		A1000000000000000000001E /* MenuBarChromeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000023 /* MenuBarChromeTests.swift */; };
 		A1000000000000000000001F /* AgentDeckMenuBarIcon.png in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000024 /* AgentDeckMenuBarIcon.png */; };
 		A10000000000000000000020 /* AgentDeckAppIcon.png in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000025 /* AgentDeckAppIcon.png */; };
+		A10000000000000000000021 /* WidgetDomain.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000028 /* WidgetDomain.swift */; };
+		A10000000000000000000022 /* WidgetIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000029 /* WidgetIntents.swift */; };
+		A10000000000000000000023 /* WidgetTimeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000002A /* WidgetTimeline.swift */; };
+		A10000000000000000000024 /* WidgetCopy.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000002B /* WidgetCopy.swift */; };
+		A10000000000000000000025 /* WidgetViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000002C /* WidgetViews.swift */; };
+		A10000000000000000000026 /* AgentDeckWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000002D /* AgentDeckWidgets.swift */; };
+		A10000000000000000000027 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000002F /* Localizable.xcstrings */; };
+		A10000000000000000000028 /* DesktopWire.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* DesktopWire.swift */; };
+		A10000000000000000000029 /* AppGroupSnapshotStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000004 /* AppGroupSnapshotStore.swift */; };
+		A1000000000000000000002A /* AgentDeckWidget.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = A20000000000000000000026 /* AgentDeckWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		A1000000000000000000002B /* WidgetDomain.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000028 /* WidgetDomain.swift */; };
+		A1000000000000000000002C /* WidgetIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000029 /* WidgetIntents.swift */; };
+		A1000000000000000000002D /* WidgetTimeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000002A /* WidgetTimeline.swift */; };
+		A1000000000000000000002E /* WidgetCopy.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000002B /* WidgetCopy.swift */; };
+		A1000000000000000000002F /* WidgetViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000002C /* WidgetViews.swift */; };
+		A10000000000000000000030 /* DesktopWire.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* DesktopWire.swift */; };
+		A10000000000000000000031 /* AppGroupSnapshotStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000004 /* AppGroupSnapshotStore.swift */; };
+		A10000000000000000000032 /* WidgetTestFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000030 /* WidgetTestFixtures.swift */; };
+		A10000000000000000000033 /* WidgetTimelineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000031 /* WidgetTimelineTests.swift */; };
+		A10000000000000000000034 /* WidgetPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000032 /* WidgetPresentationTests.swift */; };
+		A10000000000000000000035 /* WidgetCopyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000033 /* WidgetCopyTests.swift */; };
+		A10000000000000000000036 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000002F /* Localizable.xcstrings */; };
+		A10000000000000000000037 /* snapshot-complete.json in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000034 /* snapshot-complete.json */; };
+		A10000000000000000000038 /* snapshot-partial.json in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000035 /* snapshot-partial.json */; };
+		A10000000000000000000039 /* WidgetSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000036 /* WidgetSnapshot.swift */; };
+		A1000000000000000000003A /* WidgetSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000036 /* WidgetSnapshot.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -79,6 +105,23 @@
 		A20000000000000000000023 /* MenuBarChromeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarChromeTests.swift; sourceTree = "<group>"; };
 		A20000000000000000000024 /* AgentDeckMenuBarIcon.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = AgentDeckMenuBarIcon.png; path = Resources/AgentDeckMenuBarIcon.png; sourceTree = "<group>"; };
 		A20000000000000000000025 /* AgentDeckAppIcon.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = AgentDeckAppIcon.png; path = Resources/AgentDeckAppIcon.png; sourceTree = "<group>"; };
+		A20000000000000000000026 /* AgentDeckWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = AgentDeckWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		A20000000000000000000027 /* AgentDeckWidgetTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AgentDeckWidgetTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		A20000000000000000000028 /* WidgetDomain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetDomain.swift; sourceTree = "<group>"; };
+		A20000000000000000000029 /* WidgetIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetIntents.swift; sourceTree = "<group>"; };
+		A2000000000000000000002A /* WidgetTimeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetTimeline.swift; sourceTree = "<group>"; };
+		A2000000000000000000002B /* WidgetCopy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetCopy.swift; sourceTree = "<group>"; };
+		A2000000000000000000002C /* WidgetViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetViews.swift; sourceTree = "<group>"; };
+		A2000000000000000000002D /* AgentDeckWidgets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentDeckWidgets.swift; sourceTree = "<group>"; };
+		A2000000000000000000002E /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A2000000000000000000002F /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
+		A20000000000000000000030 /* WidgetTestFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetTestFixtures.swift; sourceTree = "<group>"; };
+		A20000000000000000000031 /* WidgetTimelineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetTimelineTests.swift; sourceTree = "<group>"; };
+		A20000000000000000000032 /* WidgetPresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetPresentationTests.swift; sourceTree = "<group>"; };
+		A20000000000000000000033 /* WidgetCopyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetCopyTests.swift; sourceTree = "<group>"; };
+		A20000000000000000000034 /* snapshot-complete.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = "snapshot-complete.json"; path = "../../desktop/fixtures/v1/snapshot-complete.json"; sourceTree = SOURCE_ROOT; };
+		A20000000000000000000035 /* snapshot-partial.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = "snapshot-partial.json"; path = "../../desktop/fixtures/v1/snapshot-partial.json"; sourceTree = SOURCE_ROOT; };
+		A20000000000000000000036 /* WidgetSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetSnapshot.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -91,6 +134,17 @@
 				A10000000000000000000003 /* AgentDeckShared.framework in Embed Frameworks */,
 			);
 			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A6000000000000000000000C /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				A1000000000000000000002A /* AgentDeckWidget.appex in Embed App Extensions */,
+			);
+			name = "Embed App Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXCopyFilesBuildPhase section */
@@ -120,6 +174,20 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A6000000000000000000000E /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A60000000000000000000011 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -130,6 +198,8 @@
 				A30000000000000000000003 /* AgentDeckShared */,
 				A30000000000000000000004 /* AgentDeckTests */,
 				A30000000000000000000007 /* AgentDeckAppTests */,
+				A30000000000000000000008 /* AgentDeckWidget */,
+				A30000000000000000000009 /* AgentDeckWidgetTests */,
 				A30000000000000000000005 /* Config */,
 				A30000000000000000000006 /* Products */,
 			);
@@ -197,6 +267,8 @@
 				A20000000000000000000011 /* AgentDeckShared.framework */,
 				A20000000000000000000010 /* AgentDeckSharedTests.xctest */,
 				A20000000000000000000022 /* AgentDeckAppTests.xctest */,
+				A20000000000000000000026 /* AgentDeckWidget.appex */,
+				A20000000000000000000027 /* AgentDeckWidgetTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -214,6 +286,35 @@
 			path = AgentDeckAppTests;
 			sourceTree = "<group>";
 		};
+		A30000000000000000000008 /* AgentDeckWidget */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000036 /* WidgetSnapshot.swift */,
+				A20000000000000000000028 /* WidgetDomain.swift */,
+				A20000000000000000000029 /* WidgetIntents.swift */,
+				A2000000000000000000002A /* WidgetTimeline.swift */,
+				A2000000000000000000002B /* WidgetCopy.swift */,
+				A2000000000000000000002C /* WidgetViews.swift */,
+				A2000000000000000000002D /* AgentDeckWidgets.swift */,
+				A2000000000000000000002F /* Localizable.xcstrings */,
+				A2000000000000000000002E /* Info.plist */,
+			);
+			path = AgentDeckWidget;
+			sourceTree = "<group>";
+		};
+		A30000000000000000000009 /* AgentDeckWidgetTests */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000030 /* WidgetTestFixtures.swift */,
+				A20000000000000000000031 /* WidgetTimelineTests.swift */,
+				A20000000000000000000032 /* WidgetPresentationTests.swift */,
+				A20000000000000000000033 /* WidgetCopyTests.swift */,
+				A20000000000000000000034 /* snapshot-complete.json */,
+				A20000000000000000000035 /* snapshot-partial.json */,
+			);
+			path = AgentDeckWidgetTests;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -226,11 +327,13 @@
 				A60000000000000000000008 /* Resources */,
 				A60000000000000000000001 /* Embed Frameworks */,
 				A60000000000000000000005 /* Embed AgentDeck Helper */,
+				A6000000000000000000000C /* Embed App Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 				A50000000000000000000001 /* PBXTargetDependency */,
+				A50000000000000000000005 /* PBXTargetDependency */,
 			);
 			name = AgentDeck;
 			productName = AgentDeck;
@@ -286,6 +389,41 @@
 			productReference = A20000000000000000000022 /* AgentDeckAppTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		A40000000000000000000005 /* AgentDeckWidget */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A80000000000000000000006 /* Build configuration list for PBXNativeTarget "AgentDeckWidget" */;
+			buildPhases = (
+				A6000000000000000000000B /* Sources */,
+				A6000000000000000000000E /* Frameworks */,
+				A6000000000000000000000D /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = AgentDeckWidget;
+			productName = AgentDeckWidget;
+			productReference = A20000000000000000000026 /* AgentDeckWidget.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		A40000000000000000000006 /* AgentDeckWidgetTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A80000000000000000000007 /* Build configuration list for PBXNativeTarget "AgentDeckWidgetTests" */;
+			buildPhases = (
+				A6000000000000000000000F /* Sources */,
+				A60000000000000000000011 /* Frameworks */,
+				A60000000000000000000010 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A50000000000000000000004 /* PBXTargetDependency */,
+			);
+			name = AgentDeckWidgetTests;
+			productName = AgentDeckWidgetTests;
+			productReference = A20000000000000000000027 /* AgentDeckWidgetTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -300,6 +438,8 @@
 					A40000000000000000000002 = { CreatedOnToolsVersion = 26.0; };
 					A40000000000000000000003 = { CreatedOnToolsVersion = 26.0; TestTargetID = A40000000000000000000001; };
 					A40000000000000000000004 = { CreatedOnToolsVersion = 26.0; TestTargetID = A40000000000000000000001; };
+					A40000000000000000000005 = { CreatedOnToolsVersion = 26.0; };
+					A40000000000000000000006 = { CreatedOnToolsVersion = 26.0; TestTargetID = A40000000000000000000005; };
 				};
 			};
 			buildConfigurationList = A80000000000000000000004 /* Build configuration list for PBXProject "AgentDeck" */;
@@ -320,6 +460,8 @@
 				A40000000000000000000002 /* AgentDeckShared */,
 				A40000000000000000000003 /* AgentDeckSharedTests */,
 				A40000000000000000000004 /* AgentDeckAppTests */,
+				A40000000000000000000005 /* AgentDeckWidget */,
+				A40000000000000000000006 /* AgentDeckWidgetTests */,
 			);
 		};
 /* End PBXProject section */
@@ -356,6 +498,24 @@
 				A1000000000000000000001F /* AgentDeckMenuBarIcon.png in Resources */,
 				A10000000000000000000020 /* AgentDeckAppIcon.png in Resources */,
 				A1000000000000000000000F /* Localizable.xcstrings in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A6000000000000000000000D /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000000000027 /* Localizable.xcstrings in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A60000000000000000000010 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000000000036 /* Localizable.xcstrings in Resources */,
+				A10000000000000000000037 /* snapshot-complete.json in Resources */,
+				A10000000000000000000038 /* snapshot-partial.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -414,12 +574,48 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A6000000000000000000000B /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000000000028 /* DesktopWire.swift in Sources */,
+				A10000000000000000000039 /* WidgetSnapshot.swift in Sources */,
+				A10000000000000000000021 /* WidgetDomain.swift in Sources */,
+				A10000000000000000000022 /* WidgetIntents.swift in Sources */,
+				A10000000000000000000023 /* WidgetTimeline.swift in Sources */,
+				A10000000000000000000024 /* WidgetCopy.swift in Sources */,
+				A10000000000000000000025 /* WidgetViews.swift in Sources */,
+				A10000000000000000000026 /* AgentDeckWidgets.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A6000000000000000000000F /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000000000030 /* DesktopWire.swift in Sources */,
+				A10000000000000000000031 /* AppGroupSnapshotStore.swift in Sources */,
+				A1000000000000000000003A /* WidgetSnapshot.swift in Sources */,
+				A1000000000000000000002B /* WidgetDomain.swift in Sources */,
+				A1000000000000000000002C /* WidgetIntents.swift in Sources */,
+				A1000000000000000000002D /* WidgetTimeline.swift in Sources */,
+				A1000000000000000000002E /* WidgetCopy.swift in Sources */,
+				A1000000000000000000002F /* WidgetViews.swift in Sources */,
+				A10000000000000000000032 /* WidgetTestFixtures.swift in Sources */,
+				A10000000000000000000033 /* WidgetTimelineTests.swift in Sources */,
+				A10000000000000000000034 /* WidgetPresentationTests.swift in Sources */,
+				A10000000000000000000035 /* WidgetCopyTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
 		A50000000000000000000001 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = A40000000000000000000002 /* AgentDeckShared */; };
 		A50000000000000000000002 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = A40000000000000000000002 /* AgentDeckShared */; };
 		A50000000000000000000003 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = A40000000000000000000001 /* AgentDeck */; };
+		A50000000000000000000004 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = A40000000000000000000005 /* AgentDeckWidget */; };
+		A50000000000000000000005 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = A40000000000000000000005 /* AgentDeckWidget */; };
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
@@ -572,6 +768,77 @@
 			};
 			name = Release;
 		};
+		A7000000000000000000000B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = A20000000000000000000009 /* AgentDeck.xcconfig */;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = AgentDeckWidget.entitlements;
+				CODE_SIGN_IDENTITY = "$(AGENTDECK_CODE_SIGN_IDENTITY)";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = "$(AGENTDECK_PROJECT_VERSION)";
+				DEVELOPMENT_TEAM = "$(AGENTDECK_DEVELOPMENT_TEAM)";
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_TESTABILITY = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = AgentDeckWidget/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../../../../Frameworks";
+				MARKETING_VERSION = "$(AGENTDECK_MARKETING_VERSION)";
+				PRODUCT_BUNDLE_IDENTIFIER = com.kitdine.agentdeck.widget;
+				PRODUCT_NAME = AgentDeckWidget;
+				SKIP_INSTALL = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+			};
+			name = Debug;
+		};
+		A7000000000000000000000C /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = A20000000000000000000009 /* AgentDeck.xcconfig */;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = AgentDeckWidget.entitlements;
+				CODE_SIGN_IDENTITY = "$(AGENTDECK_CODE_SIGN_IDENTITY)";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = "$(AGENTDECK_PROJECT_VERSION)";
+				DEVELOPMENT_TEAM = "$(AGENTDECK_DEVELOPMENT_TEAM)";
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = AgentDeckWidget/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../../../../Frameworks";
+				MARKETING_VERSION = "$(AGENTDECK_MARKETING_VERSION)";
+				PRODUCT_BUNDLE_IDENTIFIER = com.kitdine.agentdeck.widget;
+				PRODUCT_NAME = AgentDeckWidget;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+			};
+			name = Release;
+		};
+		A7000000000000000000000D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "";
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.kitdine.agentdeck.widgettests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "";
+			};
+			name = Debug;
+		};
+		A7000000000000000000000E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "";
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.kitdine.agentdeck.widgettests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 6.0;
+				TEST_HOST = "";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -616,6 +883,24 @@
 			buildConfigurations = (
 				A70000000000000000000009 /* Debug */,
 				A7000000000000000000000A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A80000000000000000000006 /* Build configuration list for PBXNativeTarget "AgentDeckWidget" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A7000000000000000000000B /* Debug */,
+				A7000000000000000000000C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A80000000000000000000007 /* Build configuration list for PBXNativeTarget "AgentDeckWidgetTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A7000000000000000000000D /* Debug */,
+				A7000000000000000000000E /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

@@ -18,6 +18,31 @@ final class AppGroupSnapshotStoreTests: XCTestCase {
 		XCTAssertFalse(encoded.contains("session-1"))
 		XCTAssertFalse(encoded.contains("recovery_command"))
 		XCTAssertFalse(encoded.contains("credential"))
+		XCTAssertEqual(projection.nextRefreshAt, "2026-08-13T10:05:00Z")
+		XCTAssertEqual(projection.usage.presentation.scopes.map(\.client), ["all", "codex", "claude"])
+		XCTAssertEqual(
+			projection.usage.presentation.scopes.first?.periods.items.map(\.period),
+			["today", "7d", "30d"]
+		)
+		XCTAssertFalse(encoded.contains("projects"))
+	}
+
+	func testSuccessfulPublicationReloadsWidgetTimelinesExactlyOnce() throws {
+		let envelope = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
+		let temporaryDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+		defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
+		let recorder = TimelineReloadRecorder()
+		let store = AppGroupSnapshotStore(
+			directoryURL: temporaryDirectory,
+			atomicReplace: { temporaryURL, destinationURL in
+				try FileManager.default.moveItem(at: temporaryURL, to: destinationURL)
+			},
+			timelineReload: { recorder.record() }
+		)
+
+		try store.write(AppGroupDesktopSnapshotV1(envelope: envelope))
+
+		XCTAssertEqual(recorder.count, 1)
 	}
 
 	func testProjectionFiltersRawDiagnosticTextAndUnknownCodes() throws {
@@ -167,4 +192,21 @@ private final class FileModeRecorder: @unchecked Sendable {
 
 private enum ReplacementError: Error {
 	case failed
+}
+
+private final class TimelineReloadRecorder: @unchecked Sendable {
+	private let lock = NSLock()
+	private var reloadCount = 0
+
+	var count: Int {
+		lock.lock()
+		defer { lock.unlock() }
+		return reloadCount
+	}
+
+	func record() {
+		lock.lock()
+		reloadCount += 1
+		lock.unlock()
+	}
 }

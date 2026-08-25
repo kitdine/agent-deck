@@ -45,7 +45,7 @@ assess_tool=${AGENTDECK_SPCTL:-/usr/sbin/spctl}
 skip_notarization=${AGENTDECK_SKIP_NOTARIZATION:-0}
 notary_profile=${AGENTDECK_NOTARY_PROFILE:-}
 notary_keychain=${AGENTDECK_NOTARY_KEYCHAIN:-}
-app_group=${AGENTDECK_APP_GROUP:-group.com.kitdine.agentdeck}
+app_group=${AGENTDECK_APP_GROUP:-N2FZ2FNRTU.group.com.kitdine.agentdeck}
 
 for tool in ditto hdiutil lipo plutil shasum; do
   if ! command -v "$tool" >/dev/null 2>&1; then

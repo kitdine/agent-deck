@@ -7,11 +7,13 @@ menu-bar host that imports `AgentDeckShared` and embeds only the same-build
 The local identifiers are deliberately non-secret defaults:
 
 - App: `com.kitdine.agentdeck`
-- App Group: `group.com.kitdine.agentdeck`
+- App Group: `N2FZ2FNRTU.group.com.kitdine.agentdeck`
 - Reserved Widget extension: `com.kitdine.agentdeck.widget`
+- Developer Team: `N2FZ2FNRTU`
 
-Release signing, a Developer Team, notarization credentials, and release
-configuration are intentionally absent. They belong to the distribution task.
+The identifiers and Developer Team are non-secret build inputs. Signing private
+keys, notarization credentials, and release configuration remain outside the
+repository.
 
 Use the focused shared-layer tests without reading any real AgentDeck or client
 state. With full Xcode this runs the XCTest target; Command Line Tools run the

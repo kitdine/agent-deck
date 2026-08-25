@@ -1,7 +1,7 @@
 MACOSX_DEPLOYMENT_TARGET = 26.0
 SWIFT_VERSION = 6.0
 PRODUCT_BUNDLE_IDENTIFIER = com.kitdine.agentdeck
-AGENTDECK_APP_GROUP = group.com.kitdine.agentdeck
+AGENTDECK_APP_GROUP = N2FZ2FNRTU.group.com.kitdine.agentdeck
 
 // Distribution inputs. The defaults are what an unsigned local build and an
 // isolated distribution test need; a real release overrides them on the
@@ -14,4 +14,4 @@ AGENTDECK_PROJECT_VERSION = 1
 // scripts/package-macos-app.sh, which signs nested code inside-out with an
 // explicit identity; the build itself stays signable without any credential.
 AGENTDECK_CODE_SIGN_IDENTITY = -
-AGENTDECK_DEVELOPMENT_TEAM =
+AGENTDECK_DEVELOPMENT_TEAM = N2FZ2FNRTU

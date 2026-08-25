@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import WidgetKit
 
 public struct AppGroupDesktopSnapshotV1: Codable, Equatable, Sendable {
 	public static let schemaVersion = 1
@@ -81,6 +82,7 @@ public struct AppGroupUsageSnapshotV1: Codable, Equatable, Sendable {
 	public let pricingComplete: Bool
 	public let unpricedComponents: Int
 	public let issueCodes: [String]
+	public let presentation: DesktopUsagePresentationV1
 
 	init(_ snapshot: DesktopUsageSnapshotV1) {
 		available = snapshot.available
@@ -93,6 +95,22 @@ public struct AppGroupUsageSnapshotV1: Codable, Equatable, Sendable {
 		pricingComplete = snapshot.pricingComplete
 		unpricedComponents = snapshot.unpricedComponents
 		issueCodes = AppGroupPresentationCode.filter(snapshot.warnings)
+		presentation = snapshot.presentation
+	}
+
+	public init(from decoder: Decoder) throws {
+		let container = try decoder.container(keyedBy: CodingKeys.self)
+		available = try container.decode(Bool.self, forKey: .available)
+		from = try container.decode(String.self, forKey: .from)
+		to = try container.decode(String.self, forKey: .to)
+		tokens = try container.decode([String: Int64].self, forKey: .tokens)
+		counts = try container.decode([String: Int64].self, forKey: .counts)
+		catalogBaseCost = try container.decodeIfPresent(String.self, forKey: .catalogBaseCost)
+		providerCost = try container.decodeIfPresent(String.self, forKey: .providerCost)
+		pricingComplete = try container.decode(Bool.self, forKey: .pricingComplete)
+		unpricedComponents = try container.decode(Int.self, forKey: .unpricedComponents)
+		issueCodes = try container.decode([String].self, forKey: .issueCodes)
+		presentation = try container.decodeIfPresent(DesktopUsagePresentationV1.self, forKey: .presentation) ?? .unavailable
 	}
 
 	enum CodingKeys: String, CodingKey {
@@ -106,6 +124,7 @@ public struct AppGroupUsageSnapshotV1: Codable, Equatable, Sendable {
 		case pricingComplete = "pricing_complete"
 		case unpricedComponents = "unpriced_components"
 		case issueCodes = "issue_codes"
+		case presentation
 	}
 }
 
@@ -151,24 +170,43 @@ public struct AppGroupHealthSnapshotV1: Codable, Equatable, Sendable {
 
 public struct AppGroupSnapshotStore: Sendable {
 	typealias AtomicReplace = @Sendable (_ temporaryURL: URL, _ destinationURL: URL) throws -> Void
+	typealias TimelineReload = @Sendable () -> Void
 
-	public static let appGroupIdentifier = "group.com.kitdine.agentdeck"
+	public static var appGroupIdentifier: String {
+		guard let identifier = Bundle.main.object(
+			forInfoDictionaryKey: "AgentDeckAppGroupIdentifier"
+		) as? String else {
+			return ""
+		}
+		return identifier
+	}
 	public static let fileName = "desktop-snapshot-v1.json"
 
 	public let directoryURL: URL
 	private let atomicReplace: AtomicReplace
+	private let timelineReload: TimelineReload
 
 	public init(directoryURL: URL) {
-		self.init(directoryURL: directoryURL, atomicReplace: Self.replaceAtomically)
+		self.init(
+			directoryURL: directoryURL,
+			atomicReplace: Self.replaceAtomically,
+			timelineReload: Self.reloadWidgetTimelines
+		)
 	}
 
-	init(directoryURL: URL, atomicReplace: @escaping AtomicReplace) {
+	init(
+		directoryURL: URL,
+		atomicReplace: @escaping AtomicReplace,
+		timelineReload: @escaping TimelineReload = Self.reloadWidgetTimelines
+	) {
 		self.directoryURL = directoryURL
 		self.atomicReplace = atomicReplace
+		self.timelineReload = timelineReload
 	}
 
 	public init?(appGroupIdentifier: String = Self.appGroupIdentifier) {
-		guard let directoryURL = FileManager.default.containerURL(
+		guard !appGroupIdentifier.isEmpty,
+			let directoryURL = FileManager.default.containerURL(
 			forSecurityApplicationGroupIdentifier: appGroupIdentifier
 		) else {
 			return nil
@@ -203,6 +241,7 @@ public struct AppGroupSnapshotStore: Sendable {
 		try atomicReplace(temporaryURL, snapshotURL)
 		removeTemporaryFile = false
 		try Self.verifyPrivateRegularFile(snapshotURL, fileManager: fileManager)
+		timelineReload()
 	}
 
 	public func read() throws -> AppGroupDesktopSnapshotV1 {
@@ -261,6 +300,10 @@ public struct AppGroupSnapshotStore: Sendable {
 		guard rename(temporaryURL.path, destinationURL.path) == 0 else {
 			throw currentPOSIXError()
 		}
+	}
+
+	private static func reloadWidgetTimelines() {
+		WidgetCenter.shared.reloadAllTimelines()
 	}
 
 	private static func verifyPrivateRegularFile(_ url: URL, fileManager: FileManager) throws {
