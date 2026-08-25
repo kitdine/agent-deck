@@ -333,7 +333,8 @@ never polls the cache and never invokes the helper.
 
 ## Data requirements
 
-Per the progression in `docs/README.md`, a surface names the fields it needs and
+Per the progression in `docs/documentation-workflow.md`, a surface names the
+fields it needs and
 the contract provisions or refuses each. These are provisioned as of
 `architecture.md`'s eighth 2026-08-17 revision, which added the projection's
 next suggested refresh time. The seventh revision makes pricing completeness

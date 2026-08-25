@@ -976,7 +976,8 @@ untested risk.
 
 ## Data requirements
 
-Per the progression in `docs/README.md`, a surface names the fields it needs and
+Per the progression in `docs/documentation-workflow.md`, a surface names the
+fields it needs and
 the contract provisions or refuses each. Every usage row below is read from the
 wire snapshot's `data.usage.presentation` at the selected client scope; the App
 Group projection is a downstream widget cache and is never a menu-bar data

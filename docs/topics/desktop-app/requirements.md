@@ -8,7 +8,7 @@ updated: 2026-08-18
 
 Version membership is decided by the [`v0.5.0` contract
 topic](../v0-5-0-contract/tasks.md#assembly-list) and mirrored in
-[the documentation index](../../README.md#active-development); this topic
+[the active-topic status](../../status.md#active-development); this topic
 carries no version of its own.
 
 This topic delivers the first native AgentDeck desktop surface after the
@@ -58,7 +58,7 @@ The accepted near-term release order is:
    package, Cask, direct download, signing, notarization, and release gates.
 
 Releases after `v0.5.0` were re-planned on 2026-08-13 and are recorded in
-[the documentation index](../../README.md#roadmap). This topic no longer
+[the roadmap](../../roadmap.md#roadmap). This topic no longer
 defines them.
 
 The extension lifecycle direction previously recorded here — a Go domain engine

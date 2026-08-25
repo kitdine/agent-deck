@@ -491,7 +491,7 @@ This file is the only status authority for this topic.
   workflows.
 - Depends on tasks 1 through 5, each at Review PASS.
 - Files, existing at the commit baseline: `docs/specs/cli-design.md`,
-  `docs/specs/cli-manual.md`, `docs/README.md` (the topic's stage row, **and the
+  `docs/specs/cli-manual.md`, `docs/status.md` (the topic's stage row, **and the
   `desktop-app` deferral paragraph**), and — for the deferred reconciliation
   above — this topic's own `requirements.md`, `architecture.md`,
   `ux/menubar.md`, `ux/settings.md`, `ux/widget.md`, and `tasks.md`. It also owns
@@ -608,7 +608,7 @@ surfaced defects that the prose had passed:
   at once;
 - three modules were specified whose data no field in the projection supplies.
 
-Those are the defects the specimen requirement in `docs/README.md` exists to
+Those are the defects the specimen requirement in `docs/documentation-workflow.md` exists to
 catch, and they were caught. Acting on them changed the content of every document
 in the set, and **evidence binds to a content state, not to a file name** — a
 `PASS` recorded against the previous text says nothing about this one. So every
@@ -961,7 +961,7 @@ candidate state, which must be re-recorded against the Git tree once an
 authorized commit exists. Each of these documents is a task in its own right,
 so both now sit at `awaiting_commit`: the work product exists and has passed,
 and only an authorized commit closes them. What is committable is the two
-documents, this file, `docs/README.md`, and the review record — not the
+documents, this file, `docs/status.md`, and the review record — not the
 `menubar-experience` implementation anchor, which still has no implementation.
 
 `ux/widget.md` Review Round 1 (2026-08-17): **FAIL**, recorded in
@@ -1461,7 +1461,7 @@ GUI non-goal restated as a CLI-scope boundary, the signing/notarization
 non-goal narrowed to the CLI archives, the withdrawn update check, a new
 Desktop Application section, and the desktop release channel);
 `docs/specs/cli-manual.md` (the same withdrawal plus the desktop application
-and Cask installation sections); and `docs/README.md`'s stage row.
+and Cask installation sections); and `docs/status.md`'s stage row.
 
 Verified current and left unchanged: `requirements.md`, `ux/menubar.md`, and
 `ux/settings.md` already record the update-check withdrawal, the four
