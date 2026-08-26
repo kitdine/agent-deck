@@ -187,6 +187,22 @@ after X Review PASS and explicit user Development authorization" tells the
 decider nothing they can act on, and on an authorization Gate it is circular:
 the approval it demands is the very approval being asked for.
 
+**Create a Gate with `create --id <name>-gate -t gate`, not `bd gate create`.**
+`gate` is a built-in `bd` issue type, so it needs no `types.custom` entry —
+`bd create -t`'s help text lists only `bug|feature|task|epic|chore|decision`
+and is simply incomplete, which is how one of these Gates first got created as
+a `task`. Block the work the normal way, with a `depends-on` edge from the task
+to its Gate, and let the user close the Gate to authorize the start.
+
+`bd gate create` is the other route and this project does not use it. It mints
+an auto-generated ID and sets an `Await Type` such as `human`, `timer`, or
+`gh:run`, which is the field `bd gate check` evaluates when it closes resolved
+Gates automatically. A Gate made the way above leaves `Await Type` empty, so
+`bd gate check` skips it and reports "Checked 0 gates". That is the intended
+outcome, not a defect: an authorization Gate is waiting for a person, and there
+is nothing for an evaluator to resolve. Expect these Gates to appear in
+`bd gate list` and `bd gate show` while never being touched by `bd gate check`.
+
 `closed` means the work is delivered, not that it was produced or that review
 passed. A `PASS` moves the task to `awaiting_commit`; the authorized commit is
 what closes it. Collapsing `awaiting_commit` into `closed` is exactly what makes
