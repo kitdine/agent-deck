@@ -108,8 +108,12 @@ boundary that does not change any route this build already writes.
 - Files: `internal/store/migrations.go`, `internal/usagehook/event.go`,
   `internal/usage/routes.go`, `cmd/agentdeck/main.go`,
   `internal/store/store_test.go`, `internal/store/routes_test.go`,
-  `internal/usage/routes_test.go`, `cmd/agentdeck/hook_boundary_test.go`, and
-  `cmd/agentdeck/main_test.go`.
+  `internal/usage/routes_test.go`, `cmd/agentdeck/hook_boundary_test.go`,
+  `cmd/agentdeck/main_test.go`, and the two canonical desktop producer outputs
+  `desktop/fixtures/v1/snapshot-complete.json` and
+  `desktop/fixtures/v1/snapshot-empty-client.json`, which are regenerated —
+  never hand-edited — because the schema count they record is derived from the
+  migration list this task extends.
 - Verification level: L2 — shared persisted Hook evidence and transaction
   behavior across both clients.
 
@@ -357,15 +361,17 @@ adds a shared internal Hook observation ledger, and corrects effective-route
 writes. These are contracts `architecture.md` owns, not a user-facing state set
 or copy that a surface document would review.
 
-All three required design documents have passed independent Re-review. The topic
-is developable; `hook-delivery-ledger` is the next implementation task, and the
-matching records under `reviews/` own the findings and evidence.
+All three required design documents have passed independent Re-review.
+`hook-delivery-ledger` and `switch-effectiveness-contract` have passed
+independent Re-review; 2/4 implementation tasks are reviewed.
+`effective-route-policy` is next, and the matching records under `reviews/` own
+the findings and evidence.
 
 ## Tasks
 
 | # | Task | Dev | Review |
 | --- | --- | --- | --- |
-| 1 | `hook-delivery-ledger` | [ ] | [ ] |
+| 1 | `hook-delivery-ledger` | [x] | [x] |
 | 2 | `switch-effectiveness-contract` | [x] | [x] |
 | 3 | `effective-route-policy` | [ ] | [ ] |
 | 4 | `real-session-acceptance` | [ ] | [ ] |

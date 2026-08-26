@@ -86,6 +86,19 @@ func TestUsageHookEventRejectsInvalidTranscriptAndNonBoundaryEvents(t *testing.T
 		}
 		return count
 	}
+	countObservations := func() int {
+		t.Helper()
+		database, openErr := store.Open(ctx, state)
+		if openErr != nil {
+			t.Fatal(openErr)
+		}
+		defer database.Close()
+		var count int
+		if queryErr := database.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM usage_session_observations`).Scan(&count); queryErr != nil {
+			t.Fatal(queryErr)
+		}
+		return count
+	}
 
 	deliver("SessionStart", "resume", filepath.Join(home, "outside", "valid-session.jsonl"))
 	deliver("SessionStart", "resume", mismatchedTranscript)
@@ -94,8 +107,84 @@ func TestUsageHookEventRejectsInvalidTranscriptAndNonBoundaryEvents(t *testing.T
 	if got := countRoutes(); got != 0 {
 		t.Fatalf("invalid events wrote %d routes", got)
 	}
+	if got := countObservations(); got != 0 {
+		t.Fatalf("invalid events wrote %d observations", got)
+	}
 	deliver("SessionStart", "resume", transcript)
 	if got := countRoutes(); got != 1 {
 		t.Fatalf("valid event wrote %d routes, want 1", got)
+	}
+	if got := countObservations(); got != 1 {
+		t.Fatalf("valid event wrote %d observations, want 1", got)
+	}
+}
+
+func TestUsageHookEventRejectsUnmanagedClaudeConfigChangeSources(t *testing.T) {
+	ctx := context.Background()
+	state := filepath.Join(t.TempDir(), "state")
+	home := t.TempDir()
+	database, err := store.Open(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = database.Close(); err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(home, ".claude", "settings.json")
+	if err = os.MkdirAll(filepath.Dir(configPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(configPath, []byte(`{"env":{}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	oldHome := userHomeDir
+	userHomeDir = func() (string, error) { return home, nil }
+	t.Cleanup(func() { userHomeDir = oldHome })
+
+	deliver := func(source, path string) {
+		t.Helper()
+		payload, marshalErr := json.Marshal(map[string]string{
+			"session_id":      "valid-session",
+			"hook_event_name": "ConfigChange",
+			"source":          source,
+			"file_path":       path,
+		})
+		if marshalErr != nil {
+			t.Fatal(marshalErr)
+		}
+		var stdout bytes.Buffer
+		if err := run([]string{"--state-dir", state, "usage", "hook", "event", "claude"}, bytes.NewReader(payload), &stdout); err != nil {
+			t.Fatal(err)
+		}
+		if stdout.Len() != 0 {
+			t.Fatalf("hook event stdout = %q", stdout.String())
+		}
+	}
+	counts := func() (routes, observations int) {
+		t.Helper()
+		database, openErr := store.Open(ctx, state)
+		if openErr != nil {
+			t.Fatal(openErr)
+		}
+		defer database.Close()
+		if queryErr := database.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM usage_session_routes`).Scan(&routes); queryErr != nil {
+			t.Fatal(queryErr)
+		}
+		if queryErr := database.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM usage_session_observations`).Scan(&observations); queryErr != nil {
+			t.Fatal(queryErr)
+		}
+		return routes, observations
+	}
+
+	for _, source := range []string{"project_settings", "local_settings", "policy_settings", "skills"} {
+		deliver(source, configPath)
+	}
+	unmanagedPath := filepath.Join(home, ".claude", "settings.local.json")
+	if err = os.WriteFile(unmanagedPath, []byte(`{"env":{}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	deliver("user_settings", unmanagedPath)
+	if routes, observations := counts(); routes != 0 || observations != 0 {
+		t.Fatalf("unmanaged ConfigChange sources wrote routes=%d observations=%d, want 0/0", routes, observations)
 	}
 }

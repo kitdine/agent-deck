@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -716,6 +717,286 @@ func TestV15MigrationAddsProviderWrapperURLAndSelectionRouteWithoutSideEffects(t
 	if _, err = os.Stat(filepath.Join(state, "credential.key")); !errors.Is(err, fs.ErrNotExist) {
 		t.Fatalf("credential.key stat error = %v, want not-exist", err)
 	}
+}
+
+func TestV19MigrationAddsHookDeliveryObservationLedger(t *testing.T) {
+	ctx := context.Background()
+	type columnSpec struct {
+		columnType   string
+		notNull      bool
+		hasDefault   bool
+		defaultValue string
+		primaryKey   bool
+	}
+	// Mirrors the exact Stream 1 DDL in architecture.md, not just column
+	// name/type: notnull, default, and primary-key must all match, or a
+	// weakened constraint (e.g. a nullable route_effect) would still pass.
+	observationColumns := map[string]columnSpec{
+		"id":                   {"INTEGER", false, false, "", true},
+		"client":               {"TEXT", true, false, "", false},
+		"session_id":           {"TEXT", true, false, "", false},
+		"observed_at":          {"TEXT", true, false, "", false},
+		"hook_event":           {"TEXT", true, false, "", false},
+		"source":               {"TEXT", true, true, "''", false},
+		"config_matched":       {"INTEGER", false, false, "", false},
+		"observed_provider":    {"TEXT", false, false, "", false},
+		"observed_multiplier":  {"TEXT", false, false, "", false},
+		"observed_via_wrapper": {"INTEGER", false, false, "", false},
+		"prior_state":          {"TEXT", false, false, "", false},
+		"conflict_scan":        {"TEXT", false, false, "", false},
+		"conflict_sources":     {"TEXT", true, true, "''", false},
+		"route_effect":         {"TEXT", true, false, "", false},
+		"settings_changed_at":  {"TEXT", true, true, "''", false},
+		"delivery_id":          {"TEXT", true, false, "", false},
+	}
+	type indexSpec struct {
+		unique  bool
+		columns []string
+	}
+	observationIndexes := map[string]indexSpec{
+		"usage_session_observations_lookup":   {unique: false, columns: []string{"client", "session_id", "observed_at"}},
+		"usage_session_observations_delivery": {unique: true, columns: []string{"delivery_id"}},
+	}
+	assertObservationShape := func(t *testing.T, db *sql.DB) {
+		t.Helper()
+		rows, err := db.QueryContext(ctx, `SELECT name,type,"notnull",dflt_value,pk FROM pragma_table_info('usage_session_observations')`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rows.Close()
+		got := map[string]columnSpec{}
+		for rows.Next() {
+			var name, columnType string
+			var notNull, pk int
+			var dfltValue sql.NullString
+			if err := rows.Scan(&name, &columnType, &notNull, &dfltValue, &pk); err != nil {
+				t.Fatal(err)
+			}
+			got[name] = columnSpec{columnType: columnType, notNull: notNull != 0, hasDefault: dfltValue.Valid, defaultValue: dfltValue.String, primaryKey: pk != 0}
+		}
+		if err := rows.Err(); err != nil {
+			t.Fatal(err)
+		}
+		if len(got) != len(observationColumns) {
+			t.Fatalf("usage_session_observations columns = %#v, want %#v", got, observationColumns)
+		}
+		for name, want := range observationColumns {
+			if got[name] != want {
+				t.Fatalf("usage_session_observations.%s = %#v, want %#v", name, got[name], want)
+			}
+		}
+
+		indexRows, err := db.QueryContext(ctx, `SELECT name,"unique" FROM pragma_index_list('usage_session_observations')`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer indexRows.Close()
+		foundIndexes := map[string]bool{}
+		for indexRows.Next() {
+			var name string
+			var unique int
+			if err := indexRows.Scan(&name, &unique); err != nil {
+				t.Fatal(err)
+			}
+			want, ok := observationIndexes[name]
+			if !ok {
+				continue
+			}
+			foundIndexes[name] = true
+			if (unique != 0) != want.unique {
+				t.Fatalf("index %s unique = %v, want %v", name, unique != 0, want.unique)
+			}
+			columnRows, err := db.QueryContext(ctx, `SELECT name FROM pragma_index_info(?) ORDER BY seqno`, name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var columns []string
+			for columnRows.Next() {
+				var column string
+				if err := columnRows.Scan(&column); err != nil {
+					columnRows.Close()
+					t.Fatal(err)
+				}
+				columns = append(columns, column)
+			}
+			if err := columnRows.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if len(columns) != len(want.columns) {
+				t.Fatalf("index %s columns = %#v, want %#v", name, columns, want.columns)
+			}
+			for i, column := range want.columns {
+				if columns[i] != column {
+					t.Fatalf("index %s columns = %#v, want %#v", name, columns, want.columns)
+				}
+			}
+		}
+		if err := indexRows.Err(); err != nil {
+			t.Fatal(err)
+		}
+		if len(foundIndexes) != len(observationIndexes) {
+			t.Fatalf("usage_session_observations indexes found = %#v, want %#v", foundIndexes, observationIndexes)
+		}
+	}
+	readRow := func(t *testing.T, db *sql.DB, query string, args ...any) map[string]any {
+		t.Helper()
+		rows, err := db.QueryContext(ctx, query, args...)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rows.Close()
+		columns, err := rows.Columns()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !rows.Next() {
+			t.Fatalf("no row for query %q", query)
+		}
+		values := make([]any, len(columns))
+		pointers := make([]any, len(columns))
+		for i := range values {
+			pointers[i] = &values[i]
+		}
+		if err := rows.Scan(pointers...); err != nil {
+			t.Fatal(err)
+		}
+		if err := rows.Err(); err != nil {
+			t.Fatal(err)
+		}
+		result := map[string]any{}
+		for i, column := range columns {
+			if raw, ok := values[i].([]byte); ok {
+				result[column] = string(raw)
+			} else {
+				result[column] = values[i]
+			}
+		}
+		return result
+	}
+
+	t.Run("fresh database", func(t *testing.T) {
+		state := filepath.Join(t.TempDir(), "state")
+		fresh, err := Open(ctx, state)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer fresh.Close()
+		if version, err := fresh.SchemaVersion(ctx); err != nil || version != CurrentSchemaVersion || CurrentSchemaVersion != 19 {
+			t.Fatalf("schema version = %d, %v, want 19", version, err)
+		}
+		assertObservationShape(t, fresh.DB)
+	})
+
+	t.Run("upgrade from version 18", func(t *testing.T) {
+		db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "state.sqlite3"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer db.Close()
+		if err := migrate(ctx, db, migrations[:18]); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.ExecContext(ctx, `
+			INSERT INTO providers(id,name,endpoint,credential_ref,multiplier,created_at,updated_at)
+			VALUES(1,'official','x','','1','2026-08-04T00:00:00Z','2026-08-04T00:00:00Z');
+			INSERT INTO usage_session_routes(client,session_id,observed_at,provider,multiplier,via_wrapper,hook_event,source,quality,semantic_key)
+			VALUES('codex','session','2026-08-04T00:00:00Z','official','1',0,'SessionStart','resume','estimated','key-1');
+			INSERT INTO usage_events(event_key,client,session_id,event_id,event_at,model,source_path,source_offset)
+			VALUES('event-1','codex','session','evt','2026-08-04T00:00:00Z','fixture','path',0);
+		`); err != nil {
+			t.Fatal(err)
+		}
+		beforeRoutes, err := db.QueryContext(ctx, `SELECT id,client,session_id,observed_at,provider,multiplier,via_wrapper,hook_event,source,quality,semantic_key FROM usage_session_routes ORDER BY id`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		type routeRow struct {
+			id                   int64
+			client, sessionID    string
+			observedAt           string
+			provider, multiplier string
+			viaWrapper           int
+			hookEvent, source    string
+			quality, semanticKey string
+		}
+		var wantRoutes []routeRow
+		for beforeRoutes.Next() {
+			var row routeRow
+			if err := beforeRoutes.Scan(&row.id, &row.client, &row.sessionID, &row.observedAt, &row.provider, &row.multiplier, &row.viaWrapper, &row.hookEvent, &row.source, &row.quality, &row.semanticKey); err != nil {
+				t.Fatal(err)
+			}
+			wantRoutes = append(wantRoutes, row)
+		}
+		if err := beforeRoutes.Close(); err != nil {
+			t.Fatal(err)
+		}
+		wantEvent := readRow(t, db, `SELECT * FROM usage_events WHERE event_key='event-1'`)
+
+		if err := migrate(ctx, db, migrations[18:]); err != nil {
+			t.Fatal(err)
+		}
+		if version, err := schemaVersion(ctx, db); err != nil || version != 19 {
+			t.Fatalf("schema version = %d, %v, want 19", version, err)
+		}
+		assertObservationShape(t, db)
+
+		routeColumns := map[string]string{}
+		routeRows, err := db.QueryContext(ctx, `SELECT name,type FROM pragma_table_info('usage_session_routes')`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for routeRows.Next() {
+			var name, columnType string
+			if err := routeRows.Scan(&name, &columnType); err != nil {
+				t.Fatal(err)
+			}
+			routeColumns[name] = columnType
+		}
+		if err := routeRows.Close(); err != nil {
+			t.Fatal(err)
+		}
+		wantRouteColumns := map[string]string{"id": "INTEGER", "client": "TEXT", "session_id": "TEXT", "observed_at": "TEXT", "provider": "TEXT", "multiplier": "TEXT", "via_wrapper": "INTEGER", "hook_event": "TEXT", "source": "TEXT", "quality": "TEXT", "semantic_key": "TEXT"}
+		if len(routeColumns) != len(wantRouteColumns) {
+			t.Fatalf("usage_session_routes columns = %#v, want %#v", routeColumns, wantRouteColumns)
+		}
+		for name, columnType := range wantRouteColumns {
+			if routeColumns[name] != columnType {
+				t.Fatalf("usage_session_routes.%s type = %q, want %q", name, routeColumns[name], columnType)
+			}
+		}
+
+		afterRoutes, err := db.QueryContext(ctx, `SELECT id,client,session_id,observed_at,provider,multiplier,via_wrapper,hook_event,source,quality,semantic_key FROM usage_session_routes ORDER BY id`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var gotRoutes []routeRow
+		for afterRoutes.Next() {
+			var row routeRow
+			if err := afterRoutes.Scan(&row.id, &row.client, &row.sessionID, &row.observedAt, &row.provider, &row.multiplier, &row.viaWrapper, &row.hookEvent, &row.source, &row.quality, &row.semanticKey); err != nil {
+				t.Fatal(err)
+			}
+			gotRoutes = append(gotRoutes, row)
+		}
+		if err := afterRoutes.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if len(gotRoutes) != len(wantRoutes) || len(gotRoutes) != 1 || gotRoutes[0] != wantRoutes[0] {
+			t.Fatalf("usage_session_routes rows = %#v, want %#v", gotRoutes, wantRoutes)
+		}
+
+		gotEvent := readRow(t, db, `SELECT * FROM usage_events WHERE event_key='event-1'`)
+		if !reflect.DeepEqual(gotEvent, wantEvent) {
+			t.Fatalf("usage_events row = %#v, want %#v (byte-identical to the pre-migration row)", gotEvent, wantEvent)
+		}
+
+		var observationCount int
+		if err := db.QueryRowContext(ctx, `SELECT count(*) FROM usage_session_observations`).Scan(&observationCount); err != nil {
+			t.Fatal(err)
+		}
+		if observationCount != 0 {
+			t.Fatalf("usage_session_observations count = %d, want 0 after a purely additive migration", observationCount)
+		}
+	})
 }
 
 func TestMigrationsRejectExistingDatabaseWithoutMetadata(t *testing.T) {

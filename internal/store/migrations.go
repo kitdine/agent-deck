@@ -114,6 +114,30 @@ var migrations = []migration{
 	{version: 18, statements: []string{
 		`ALTER TABLE usage_events ADD COLUMN cache_write_tokens INTEGER NOT NULL DEFAULT 0`,
 	}},
+	{version: 19, statements: []string{
+		`CREATE TABLE IF NOT EXISTS usage_session_observations (
+		  id INTEGER PRIMARY KEY,
+		  client TEXT NOT NULL,
+		  session_id TEXT NOT NULL,
+		  observed_at TEXT NOT NULL,
+		  hook_event TEXT NOT NULL,
+		  source TEXT NOT NULL DEFAULT '',
+		  config_matched INTEGER,
+		  observed_provider TEXT,
+		  observed_multiplier TEXT,
+		  observed_via_wrapper INTEGER,
+		  prior_state TEXT,
+		  conflict_scan TEXT,
+		  conflict_sources TEXT NOT NULL DEFAULT '',
+		  route_effect TEXT NOT NULL,
+		  settings_changed_at TEXT NOT NULL DEFAULT '',
+		  delivery_id TEXT NOT NULL
+		)`,
+		`CREATE INDEX IF NOT EXISTS usage_session_observations_lookup
+		  ON usage_session_observations(client,session_id,observed_at)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS usage_session_observations_delivery
+		  ON usage_session_observations(delivery_id)`,
+	}},
 }
 
 func normalizeUsageEventTimes(ctx context.Context, tx *sql.Tx) error {

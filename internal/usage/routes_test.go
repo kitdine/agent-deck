@@ -2,6 +2,8 @@ package usage
 
 import (
 	"context"
+	"database/sql"
+	"fmt"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -10,7 +12,7 @@ import (
 	"github.com/kitdine/agent-deck/internal/store"
 )
 
-func TestSessionRoutesAreIdempotentButKeepLaterReturnBoundary(t *testing.T) {
+func TestRecordHookDeliverySessionStartAdvancesIdempotentRoute(t *testing.T) {
 	ctx := context.Background()
 	database, err := store.Open(ctx, filepath.Join(t.TempDir(), "state"))
 	if err != nil {
@@ -23,27 +25,32 @@ func TestSessionRoutesAreIdempotentButKeepLaterReturnBoundary(t *testing.T) {
 	service := New(database, "")
 	now := time.Date(2026, 8, 4, 0, 0, 1, 0, time.UTC)
 	service.Now = func() time.Time { return now }
-	route := SessionRoute{Client: "codex", SessionID: "session", HookEvent: "SessionStart", Source: "resume"}
-	if err := service.RecordSessionRoute(ctx, route); err != nil {
-		t.Fatal(err)
+	deliverID := 0
+	deliver := func() {
+		t.Helper()
+		deliverID++
+		snapshot, snapErr := database.CurrentProviderSnapshot(ctx, "codex")
+		if snapErr != nil {
+			t.Fatal(snapErr)
+		}
+		delivery := HookDelivery{Client: "codex", SessionID: "session", HookEvent: "SessionStart", Source: "resume", DeliveryID: fmt.Sprintf("d%d", deliverID), HasSelection: true, Selection: snapshot}
+		if err := service.RecordHookDelivery(ctx, delivery); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if err := service.RecordSessionRoute(ctx, route); err != nil {
-		t.Fatal(err)
-	}
+	deliver()
+	deliver()
 	if _, err = database.Exec(ctx, `INSERT INTO provider_selections(provider_id,client,provider_name_snapshot,endpoint_snapshot,multiplier_snapshot,selected_at) VALUES(2,'codex','b','x','2','2026-08-04T00:00:02Z')`); err != nil {
 		t.Fatal(err)
 	}
 	now = now.Add(2 * time.Second)
-	if err := service.RecordSessionRoute(ctx, route); err != nil {
-		t.Fatal(err)
-	}
+	deliver()
 	if _, err = database.Exec(ctx, `INSERT INTO provider_selections(provider_id,client,provider_name_snapshot,endpoint_snapshot,multiplier_snapshot,selected_at) VALUES(1,'codex','official','x','1','2026-08-04T00:00:04Z')`); err != nil {
 		t.Fatal(err)
 	}
 	now = now.Add(2 * time.Second)
-	if err := service.RecordSessionRoute(ctx, route); err != nil {
-		t.Fatal(err)
-	}
+	deliver()
+
 	rows, err := database.DB.QueryContext(ctx, `SELECT provider FROM usage_session_routes ORDER BY id`)
 	if err != nil {
 		t.Fatal(err)
@@ -59,6 +66,21 @@ func TestSessionRoutesAreIdempotentButKeepLaterReturnBoundary(t *testing.T) {
 	}
 	if len(got) != 3 || got[0] != "official" || got[1] != "b" || got[2] != "official" {
 		t.Fatalf("routes = %#v", got)
+	}
+
+	var observationCount int
+	if err := database.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM usage_session_observations WHERE client='codex' AND session_id='session'`).Scan(&observationCount); err != nil {
+		t.Fatal(err)
+	}
+	if observationCount != 4 {
+		t.Fatalf("observations = %d, want 4 (one per delivered SessionStart, including the consecutive-identical no-op)", observationCount)
+	}
+	var advanceCount int
+	if err := database.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM usage_session_observations WHERE route_effect='advance'`).Scan(&advanceCount); err != nil {
+		t.Fatal(err)
+	}
+	if advanceCount != 4 {
+		t.Fatalf("advance observations = %d, want 4", advanceCount)
 	}
 }
 
@@ -120,31 +142,31 @@ func TestConcurrentDuplicateSessionRoutesInsertOneBoundary(t *testing.T) {
 	}
 	defer second.Close()
 
-	ready := make(chan struct{}, 2)
-	release := make(chan struct{})
-	barrier := func() {
-		ready <- struct{}{}
-		<-release
-	}
+	// The whole accepted-Hook operation is one SQLite transaction, so two
+	// concurrent deliveries are serialized by the store's single-writer lock
+	// rather than by an application-level barrier: the second transaction
+	// only starts its writes once the first has committed, and its own
+	// WHERE NOT EXISTS route guard then sees the row the first already wrote.
 	now := time.Date(2026, 8, 4, 0, 0, 1, 0, time.UTC)
 	services := []*Service{New(first, ""), New(second, "")}
+	deliveryIDs := []string{"delivery-a", "delivery-b"}
 	for _, service := range services {
 		service.Now = func() time.Time { return now }
-		service.beforeSessionRouteWrite = barrier
 	}
-	route := SessionRoute{Client: "codex", SessionID: "session", HookEvent: "SessionStart", Source: "resume"}
+	snapshot, err := first.CurrentProviderSnapshot(ctx, "codex")
+	if err != nil {
+		t.Fatal(err)
+	}
 	errs := make(chan error, 2)
 	var writers sync.WaitGroup
 	writers.Add(2)
-	for _, service := range services {
-		go func(service *Service) {
+	for i, service := range services {
+		go func(service *Service, deliveryID string) {
 			defer writers.Done()
-			errs <- service.RecordSessionRoute(ctx, route)
-		}(service)
+			delivery := HookDelivery{Client: "codex", SessionID: "session", HookEvent: "SessionStart", Source: "resume", DeliveryID: deliveryID, HasSelection: true, Selection: snapshot}
+			errs <- service.RecordHookDelivery(ctx, delivery)
+		}(service, deliveryIDs[i])
 	}
-	<-ready
-	<-ready
-	close(release)
 	writers.Wait()
 	close(errs)
 	for err := range errs {
@@ -158,6 +180,13 @@ func TestConcurrentDuplicateSessionRoutesInsertOneBoundary(t *testing.T) {
 	}
 	if count != 1 {
 		t.Fatalf("concurrent duplicate routes = %d, want 1", count)
+	}
+	var observations int
+	if err := first.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM usage_session_observations`).Scan(&observations); err != nil {
+		t.Fatal(err)
+	}
+	if observations != 2 {
+		t.Fatalf("concurrent distinct-delivery observations = %d, want 2", observations)
 	}
 }
 
@@ -179,24 +208,30 @@ func TestSessionRoutesKeepWrapperOnlyChanges(t *testing.T) {
 	service := New(database, "")
 	now := time.Date(2026, 8, 4, 0, 0, 1, 0, time.UTC)
 	service.Now = func() time.Time { return now }
-	route := SessionRoute{Client: "codex", SessionID: "session", HookEvent: "SessionStart", Source: "resume"}
-	if err := service.RecordSessionRoute(ctx, route); err != nil {
-		t.Fatal(err)
+	deliverID := 0
+	deliver := func() {
+		t.Helper()
+		deliverID++
+		snapshot, snapErr := database.CurrentProviderSnapshot(ctx, "codex")
+		if snapErr != nil {
+			t.Fatal(snapErr)
+		}
+		delivery := HookDelivery{Client: "codex", SessionID: "session", HookEvent: "SessionStart", Source: "resume", DeliveryID: fmt.Sprintf("w%d", deliverID), HasSelection: true, Selection: snapshot}
+		if err := service.RecordHookDelivery(ctx, delivery); err != nil {
+			t.Fatal(err)
+		}
 	}
+	deliver()
 	if _, err = database.Exec(ctx, `INSERT INTO provider_selections(provider_id,client,provider_name_snapshot,endpoint_snapshot,multiplier_snapshot,via_wrapper,selected_at) VALUES(1,'codex','official','x','1',1,'2026-08-04T00:00:02Z')`); err != nil {
 		t.Fatal(err)
 	}
 	now = now.Add(2 * time.Second)
-	if err := service.RecordSessionRoute(ctx, route); err != nil {
-		t.Fatal(err)
-	}
+	deliver()
 	if _, err = database.Exec(ctx, `INSERT INTO provider_selections(provider_id,client,provider_name_snapshot,endpoint_snapshot,multiplier_snapshot,via_wrapper,selected_at) VALUES(1,'codex','official','x','1',0,'2026-08-04T00:00:04Z')`); err != nil {
 		t.Fatal(err)
 	}
 	now = now.Add(2 * time.Second)
-	if err := service.RecordSessionRoute(ctx, route); err != nil {
-		t.Fatal(err)
-	}
+	deliver()
 	rows, err := database.DB.QueryContext(ctx, `SELECT via_wrapper FROM usage_session_routes ORDER BY id`)
 	if err != nil {
 		t.Fatal(err)
@@ -215,7 +250,7 @@ func TestSessionRoutesKeepWrapperOnlyChanges(t *testing.T) {
 	}
 }
 
-func TestClaudeConfigChangeRecordsMatchedOrUnknownRoute(t *testing.T) {
+func TestRecordHookDeliveryConfigChangeRecordsMatchedOrUnknownRoute(t *testing.T) {
 	ctx := context.Background()
 	database, err := store.Open(ctx, filepath.Join(t.TempDir(), "state"))
 	if err != nil {
@@ -226,11 +261,13 @@ func TestClaudeConfigChangeRecordsMatchedOrUnknownRoute(t *testing.T) {
 	now := time.Date(2026, 8, 4, 0, 0, 1, 0, time.UTC)
 	service.Now = func() time.Time { return now }
 	snapshot := store.ProviderSnapshot{Name: "custom", Multiplier: "2", ViaWrapper: true}
-	if err := service.RecordClaudeConfigChange(ctx, "session", snapshot, true); err != nil {
+	matched := true
+	if err := service.RecordHookDelivery(ctx, HookDelivery{Client: "claude", SessionID: "session", HookEvent: "ConfigChange", Source: "user_settings", DeliveryID: "c1", ConfigMatched: &matched, HasSelection: true, Selection: snapshot}); err != nil {
 		t.Fatal(err)
 	}
 	now = now.Add(time.Second)
-	if err := service.RecordClaudeConfigChange(ctx, "session", store.ProviderSnapshot{}, false); err != nil {
+	mismatched := false
+	if err := service.RecordHookDelivery(ctx, HookDelivery{Client: "claude", SessionID: "session", HookEvent: "ConfigChange", Source: "user_settings", DeliveryID: "c2", ConfigMatched: &mismatched}); err != nil {
 		t.Fatal(err)
 	}
 	rows, err := database.DB.QueryContext(ctx, `SELECT provider,multiplier,via_wrapper,hook_event,source,quality FROM usage_session_routes ORDER BY id`)
@@ -252,6 +289,141 @@ func TestClaudeConfigChangeRecordsMatchedOrUnknownRoute(t *testing.T) {
 	}
 	if len(got) != 2 || got[0] != (route{"custom", "2", "ConfigChange", "user_settings", "estimated", 1}) || got[1] != (route{"unknown", "1", "ConfigChange", "user_settings", "estimated", 0}) {
 		t.Fatalf("config-change routes = %#v", got)
+	}
+	var configMatched1, configMatched2 sql.NullInt64
+	if err := database.DB.QueryRowContext(ctx, `SELECT config_matched FROM usage_session_observations WHERE delivery_id='c1'`).Scan(&configMatched1); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.DB.QueryRowContext(ctx, `SELECT config_matched FROM usage_session_observations WHERE delivery_id='c2'`).Scan(&configMatched2); err != nil {
+		t.Fatal(err)
+	}
+	if !configMatched1.Valid || configMatched1.Int64 != 1 || !configMatched2.Valid || configMatched2.Int64 != 0 {
+		t.Fatalf("config_matched = (%v,%v), want (1,0)", configMatched1, configMatched2)
+	}
+}
+
+func TestRecordHookDeliverySessionEndAndCompactWriteObservationOnlyNoRoute(t *testing.T) {
+	ctx := context.Background()
+	database, err := store.Open(ctx, filepath.Join(t.TempDir(), "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	service := New(database, "")
+	now := time.Date(2026, 8, 4, 0, 0, 1, 0, time.UTC)
+	service.Now = func() time.Time { return now }
+	if err := service.RecordHookDelivery(ctx, HookDelivery{Client: "claude", SessionID: "session", HookEvent: "SessionEnd", Source: "", DeliveryID: "e1"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.RecordHookDelivery(ctx, HookDelivery{Client: "codex", SessionID: "session", HookEvent: "SessionStart", Source: "compact", DeliveryID: "e2", HasSelection: true, Selection: store.ProviderSnapshot{Name: "official", Multiplier: "1"}}); err != nil {
+		t.Fatal(err)
+	}
+	var routeCount int
+	if err := database.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM usage_session_routes`).Scan(&routeCount); err != nil {
+		t.Fatal(err)
+	}
+	if routeCount != 0 {
+		t.Fatalf("routes = %d, want 0", routeCount)
+	}
+	rows, err := database.DB.QueryContext(ctx, `SELECT route_effect FROM usage_session_observations ORDER BY id`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var effects []string
+	for rows.Next() {
+		var effect string
+		if err := rows.Scan(&effect); err != nil {
+			t.Fatal(err)
+		}
+		effects = append(effects, effect)
+	}
+	if len(effects) != 2 || effects[0] != "none" || effects[1] != "none" {
+		t.Fatalf("route effects = %#v, want [none none]", effects)
+	}
+}
+
+func TestRecordHookDeliveryWholeOperationRetryIsANoOpAcrossBothStreams(t *testing.T) {
+	ctx := context.Background()
+	database, err := store.Open(ctx, filepath.Join(t.TempDir(), "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	service := New(database, "")
+	now := time.Date(2026, 8, 4, 0, 0, 1, 0, time.UTC)
+	service.Now = func() time.Time { return now }
+	delivery := HookDelivery{Client: "codex", SessionID: "session", HookEvent: "SessionStart", Source: "resume", DeliveryID: "retry-1", HasSelection: true, Selection: store.ProviderSnapshot{Name: "official", Multiplier: "1"}}
+	for i := 0; i < 3; i++ {
+		if err := service.RecordHookDelivery(ctx, delivery); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var observations, routes int
+	if err := database.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM usage_session_observations WHERE delivery_id='retry-1'`).Scan(&observations); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM usage_session_routes`).Scan(&routes); err != nil {
+		t.Fatal(err)
+	}
+	if observations != 1 {
+		t.Fatalf("observations for retried delivery = %d, want 1", observations)
+	}
+	if routes != 1 {
+		t.Fatalf("routes after retried delivery = %d, want 1", routes)
+	}
+}
+
+func TestRecordHookDeliveryRouteWriteFailureRollsBackBothStreams(t *testing.T) {
+	ctx := context.Background()
+	database, err := store.Open(ctx, filepath.Join(t.TempDir(), "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	// Force the route write (the step after the observation insert) to fail,
+	// so a successful RecordHookDelivery call cannot exist without exercising
+	// this path: the trigger only fires once the observation insert already
+	// affected one row.
+	if _, err = database.Exec(ctx, `CREATE TRIGGER force_route_insert_failure BEFORE INSERT ON usage_session_routes BEGIN SELECT RAISE(ABORT, 'forced route insert failure'); END;`); err != nil {
+		t.Fatal(err)
+	}
+	service := New(database, "")
+	now := time.Date(2026, 8, 4, 0, 0, 1, 0, time.UTC)
+	service.Now = func() time.Time { return now }
+	delivery := HookDelivery{Client: "codex", SessionID: "session", HookEvent: "SessionStart", Source: "resume", DeliveryID: "fail-1", HasSelection: true, Selection: store.ProviderSnapshot{Name: "official", Multiplier: "1"}}
+	if err := service.RecordHookDelivery(ctx, delivery); err == nil {
+		t.Fatal("expected the route write failure to propagate")
+	}
+	var observations, routes int
+	if err := database.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM usage_session_observations`).Scan(&observations); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM usage_session_routes`).Scan(&routes); err != nil {
+		t.Fatal(err)
+	}
+	if observations != 0 || routes != 0 {
+		t.Fatalf("after a route-write failure, observations=%d routes=%d, want 0/0 (both streams rolled back)", observations, routes)
+	}
+
+	// The failed transaction must be fully closed, not left open holding the
+	// write lock: a later delivery, once the trigger is removed, commits
+	// normally.
+	if _, err = database.Exec(ctx, `DROP TRIGGER force_route_insert_failure`); err != nil {
+		t.Fatal(err)
+	}
+	delivery.DeliveryID = "fail-1-retry"
+	if err := service.RecordHookDelivery(ctx, delivery); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM usage_session_observations`).Scan(&observations); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM usage_session_routes`).Scan(&routes); err != nil {
+		t.Fatal(err)
+	}
+	if observations != 1 || routes != 1 {
+		t.Fatalf("after the trigger is removed, observations=%d routes=%d, want 1/1", observations, routes)
 	}
 }
 

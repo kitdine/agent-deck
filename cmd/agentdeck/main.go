@@ -3,7 +3,9 @@ package main
 import (
 	"bufio"
 	"context"
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -2943,14 +2945,40 @@ func runUsageHookEvent(ctx context.Context, opts *commandOptions, client usageho
 		if !managedClaudeConfigChange(home, event) {
 			return nil
 		}
-		_ = reconcileClaudeConfigChange(ctx, database, home, event.SessionID)
+		deliveryID, idErr := newHookDeliveryID()
+		if idErr != nil {
+			return nil
+		}
+		_ = reconcileClaudeConfigChange(ctx, database, home, event.SessionID, deliveryID)
 		return nil
 	}
 	if event.Name == "SessionStart" && !validHookTranscript(home, client, event) {
 		return nil
 	}
-	_ = usage.New(database, home).RecordSessionRoute(ctx, usage.SessionRoute{Client: string(client), SessionID: event.SessionID, HookEvent: event.Name, Source: event.Source})
+	deliveryID, idErr := newHookDeliveryID()
+	if idErr != nil {
+		return nil
+	}
+	delivery := usage.HookDelivery{Client: string(client), SessionID: event.SessionID, HookEvent: event.Name, Source: event.Source, DeliveryID: deliveryID}
+	if event.Name == "SessionStart" && event.Source != "compact" {
+		snapshot, snapErr := database.CurrentProviderSnapshot(ctx, string(client))
+		if snapErr == nil {
+			delivery.HasSelection = true
+			delivery.Selection = snapshot
+		} else if !errors.Is(snapErr, sql.ErrNoRows) {
+			return nil
+		}
+	}
+	_ = usage.New(database, home).RecordHookDelivery(ctx, delivery)
 	return nil
+}
+
+func newHookDeliveryID() (string, error) {
+	raw := make([]byte, 16)
+	if _, err := rand.Read(raw); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(raw), nil
 }
 
 func managedClaudeConfigChange(home string, event usagehook.Event) bool {
@@ -2963,7 +2991,7 @@ func managedClaudeConfigChange(home string, event usagehook.Event) bool {
 // triggered this Hook is currently presenting: after key replacement or
 // removal, the two can differ indefinitely, because a match proves the write
 // completed, not that any running session re-authenticated.
-func reconcileClaudeConfigChange(ctx context.Context, database *store.Store, home, sessionID string) error {
+func reconcileClaudeConfigChange(ctx context.Context, database *store.Store, home, sessionID, deliveryID string) error {
 	const attempts = 3
 	const delay = 25 * time.Millisecond
 	configPath := filepath.Join(home, ".claude", "settings.json")
@@ -2980,7 +3008,11 @@ func reconcileClaudeConfigChange(ctx context.Context, database *store.Store, hom
 				inspectedConfig = true
 				lastConfigErr = nil
 				if matches {
-					return service.RecordClaudeConfigChange(ctx, sessionID, snapshot, true)
+					matched := true
+					return service.RecordHookDelivery(ctx, usage.HookDelivery{
+						Client: "claude", SessionID: sessionID, HookEvent: "ConfigChange", Source: "user_settings",
+						DeliveryID: deliveryID, ConfigMatched: &matched, HasSelection: true, Selection: snapshot,
+					})
 				}
 			}
 		} else if !errors.Is(err, sql.ErrNoRows) {
@@ -2993,7 +3025,11 @@ func reconcileClaudeConfigChange(ctx context.Context, database *store.Store, hom
 	if lastConfigErr != nil && !inspectedConfig {
 		return lastConfigErr
 	}
-	return service.RecordClaudeConfigChange(ctx, sessionID, store.ProviderSnapshot{}, false)
+	mismatched := false
+	return service.RecordHookDelivery(ctx, usage.HookDelivery{
+		Client: "claude", SessionID: sessionID, HookEvent: "ConfigChange", Source: "user_settings",
+		DeliveryID: deliveryID, ConfigMatched: &mismatched,
+	})
 }
 
 func validHookTranscript(home string, client usagehook.Client, event usagehook.Event) bool {

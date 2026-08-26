@@ -143,7 +143,7 @@ func TestClaudeConfigChangeRetriesTransientSettingsRead(t *testing.T) {
 	}
 	t.Cleanup(func() { sleepForHookReconciliation = oldSleep })
 
-	if err = reconcileClaudeConfigChange(ctx, database, home, "session"); err != nil {
+	if err = reconcileClaudeConfigChange(ctx, database, home, "session", "delivery-1"); err != nil {
 		t.Fatalf("reconcileClaudeConfigChange: %v", err)
 	}
 	if sleeps != 1 {
@@ -197,7 +197,7 @@ func TestClaudeConfigChangeRecordsUnknownAfterConfirmedMismatchAndTransientReadF
 	}
 	t.Cleanup(func() { sleepForHookReconciliation = oldSleep })
 
-	if err = reconcileClaudeConfigChange(ctx, database, home, "session"); err != nil {
+	if err = reconcileClaudeConfigChange(ctx, database, home, "session", "delivery-1"); err != nil {
 		t.Fatalf("reconcileClaudeConfigChange: %v", err)
 	}
 	if sleeps != 2 {
