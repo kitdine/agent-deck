@@ -83,31 +83,37 @@ func TestClaudeCredentialConflictsReportsBlankButNonEmptyValues(t *testing.T) {
 
 // TestSwitchAdvisoriesAreClientSpecificAndScopeConflictsToClaudeOfficial pins
 // advisories a completed switch carries. Codex gets its application-boundary
-// note. The Claude restart note applies to every Claude switch; the conflict
-// note only to a built-in-provider selection,
-// which is the selection an unowned credential source overrides.
+// note. Claude's restart note is direction-aware, selected by whether the
+// completed selection carries a credential; the conflict note applies only to
+// a built-in-provider selection, which is the selection an unowned credential
+// source overrides.
 func TestSwitchAdvisoriesAreClientSpecificAndScopeConflictsToClaudeOfficial(t *testing.T) {
 	settings := writeClaudeSettingsForTest(t, `{"env":{"ANTHROPIC_API_KEY":"synthetic-secret"},"apiKeyHelper":"/bin/echo helper"}`)
 	service := Service{}
 
-	if advisories := service.SwitchAdvisories(ClientCodex, OfficialProviderName, settings); len(advisories) != 1 ||
+	if advisories := service.SwitchAdvisories(ClientCodex, OfficialProviderName, settings, true); len(advisories) != 1 ||
 		!strings.Contains(advisories[0], "start a new or restart the running Codex session") {
 		t.Fatalf("codex switch advisories = %#v", advisories)
 	}
 
-	custom := service.SwitchAdvisories(ClientClaude, "example", settings)
-	if len(custom) != 1 || !strings.Contains(custom[0], "restart running Claude sessions") {
-		t.Fatalf("custom claude advisories = %#v", custom)
+	customKeyed := service.SwitchAdvisories(ClientClaude, "example", settings, true)
+	if len(customKeyed) != 1 || !strings.Contains(customKeyed[0], "only a session that started without an API key may adopt its first key live") {
+		t.Fatalf("credential-written claude advisories = %#v", customKeyed)
 	}
 
-	official := service.SwitchAdvisories(ClientClaude, OfficialProviderName, settings)
+	customKeyless := service.SwitchAdvisories(ClientClaude, "example", settings, false)
+	if len(customKeyless) != 1 || !strings.Contains(customKeyless[0], "removing a key does not re-authenticate a session that already holds one") {
+		t.Fatalf("credential-free claude advisories = %#v", customKeyless)
+	}
+
+	official := service.SwitchAdvisories(ClientClaude, OfficialProviderName, settings, false)
 	if len(official) != 3 {
 		t.Fatalf("official claude advisories = %#v", official)
 	}
 	if !strings.Contains(official[0], ClaudeConflictAPIKey) || !strings.Contains(official[1], ClaudeConflictAPIKeyHelper) {
 		t.Fatalf("official claude conflict advisories = %#v", official)
 	}
-	if !strings.Contains(official[2], "restart running Claude sessions") {
+	if !strings.Contains(official[2], "removing a key does not re-authenticate a session that already holds one") {
 		t.Fatalf("restart advisory missing or misordered: %#v", official)
 	}
 	for _, advisory := range official {
@@ -129,9 +135,9 @@ func TestSwitchAdvisoriesSurviveAnUnreadableSettingsFile(t *testing.T) {
 		"empty content": writeClaudeSettingsForTest(t, ``),
 	} {
 		t.Run(name, func(t *testing.T) {
-			advisories := service.SwitchAdvisories(ClientClaude, OfficialProviderName, path)
-			if len(advisories) != 1 || !strings.Contains(advisories[0], "restart running Claude sessions") {
-				t.Fatalf("advisories = %#v, want only the restart note", advisories)
+			advisories := service.SwitchAdvisories(ClientClaude, OfficialProviderName, path, false)
+			if len(advisories) != 1 || !strings.Contains(advisories[0], "removing a key does not re-authenticate a session that already holds one") {
+				t.Fatalf("advisories = %#v, want only the credential-free restart note", advisories)
 			}
 		})
 	}
@@ -148,7 +154,7 @@ func TestSwitchAdvisoriesResolveTheDefaultPathWhenNoOverrideIsGiven(t *testing.T
 	if err := os.WriteFile(filepath.Join(home, ".claude", "settings.json"), []byte(`{"apiKeyHelper":"/bin/echo helper"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	advisories := Service{Home: home}.SwitchAdvisories(ClientClaude, OfficialProviderName, "")
+	advisories := Service{Home: home}.SwitchAdvisories(ClientClaude, OfficialProviderName, "", false)
 	if len(advisories) != 2 || !strings.Contains(advisories[0], ClaudeConflictAPIKeyHelper) {
 		t.Fatalf("advisories = %#v", advisories)
 	}

@@ -1454,7 +1454,7 @@ func newProviderCommand(opts *commandOptions) *cobra.Command {
 			return nil, err
 		}
 		reportEffectiveRoute(ctx, s, opts, client)
-		reportSwitchAdvisories(s, opts, client, args[0], configPath)
+		reportSwitchAdvisories(ctx, s, opts, client, args[0], configPath)
 		configured := maybeSetupShellIntegration(ctx, opts, s, useVia, noShellSetup)
 		if !configured {
 			reportRouteChangeAttributionGuidance(ctx, opts, s, client, previousEligibility)
@@ -1622,15 +1622,53 @@ func reportEffectiveRoute(ctx context.Context, s provider.Service, opts *command
 	}
 }
 
+// currentSelectionsForAdvisories is a test seam over provider.Service.Current,
+// so a read-back failure after a successful switch can be injected without a
+// fault-injecting store.
+var currentSelectionsForAdvisories = func(ctx context.Context, s provider.Service) ([]provider.CurrentSelection, error) {
+	return s.Current(ctx)
+}
+
+// claudeCredentialPresence reports whether the completed selection for client
+// carries a credential, and whether that selection was found at all. A
+// missing selection is distinguished from "no credential" so the caller can
+// tell "known credential-free" from "unknown" and never conflate the two.
+func claudeCredentialPresence(selections []provider.CurrentSelection, client provider.Client) (hasCredential, found bool) {
+	for _, selection := range selections {
+		if selection.Client == string(client) {
+			return selection.Credential != "", true
+		}
+	}
+	return false, false
+}
+
 // reportSwitchAdvisories prints the informational notes a completed switch
 // carries to stderr, under the same rules as the effective-route line: never
 // on stdout, never in the JSON envelope, never affecting the exit status, and
-// suppressed by --quiet.
-func reportSwitchAdvisories(s provider.Service, opts *commandOptions, client provider.Client, name, configPath string) {
+// suppressed by --quiet. The credential-presence input selects between
+// SwitchAdvisories' two Claude restart texts; AgentDeck has no per-session
+// authentication state, so this is a fact about the completed selection, not
+// a claim about which running session adopted it.
+//
+// A Claude switch whose read-back fails or finds no matching selection drops
+// the advisory entirely rather than guessing a direction: defaulting to the
+// credential-free text would tell the operator the opposite of what a
+// credential-writing switch actually did. Codex's advisory does not depend on
+// credential presence, so a Codex switch is unaffected by a read-back failure.
+func reportSwitchAdvisories(ctx context.Context, s provider.Service, opts *commandOptions, client provider.Client, name, configPath string) {
 	if opts.quiet || opts.stderr == nil {
 		return
 	}
-	for _, advisory := range s.SwitchAdvisories(client, name, configPath) {
+	hasCredential := false
+	if client == provider.ClientClaude {
+		selections, err := currentSelectionsForAdvisories(ctx, s)
+		var found bool
+		hasCredential, found = claudeCredentialPresence(selections, client)
+		if err != nil || !found {
+			return
+		}
+	}
+	for _, advisory := range s.SwitchAdvisories(client, name, configPath, hasCredential) {
 		_, _ = fmt.Fprintf(opts.stderr, "advisory: %s\n", advisory)
 	}
 }
@@ -2919,6 +2957,12 @@ func managedClaudeConfigChange(home string, event usagehook.Event) bool {
 	return event.Source == "user_settings" && filepath.Clean(event.ConfigPath) == filepath.Join(home, ".claude", "settings.json")
 }
 
+// reconcileClaudeConfigChange checks whether the managed settings file
+// matches the completed provider selection. A match is a fact about the file
+// on disk, not about which credential the running Claude session that
+// triggered this Hook is currently presenting: after key replacement or
+// removal, the two can differ indefinitely, because a match proves the write
+// completed, not that any running session re-authenticated.
 func reconcileClaudeConfigChange(ctx context.Context, database *store.Store, home, sessionID string) error {
 	const attempts = 3
 	const delay = 25 * time.Millisecond

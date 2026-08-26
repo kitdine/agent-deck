@@ -366,7 +366,7 @@ matching records under `reviews/` own the findings and evidence.
 | # | Task | Dev | Review |
 | --- | --- | --- | --- |
 | 1 | `hook-delivery-ledger` | [ ] | [ ] |
-| 2 | `switch-effectiveness-contract` | [ ] | [ ] |
+| 2 | `switch-effectiveness-contract` | [x] | [x] |
 | 3 | `effective-route-policy` | [ ] | [ ] |
 | 4 | `real-session-acceptance` | [ ] | [ ] |
 

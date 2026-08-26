@@ -142,6 +142,12 @@ func ConfigMatchesOfficialWrapper(client Client, path, endpoint string) (bool, e
 
 // ClaudeConfigMatchesSnapshot checks only the AgentDeck-owned Claude route
 // fields for a completed provider selection. It never returns config content.
+//
+// A match proves the managed fields on disk equal the completed selection. It
+// proves nothing about which credential a running client is currently
+// presenting. After key replacement or removal, the two can differ
+// indefinitely: a match proves the write completed, not that any running
+// session re-authenticated.
 func ClaudeConfigMatchesSnapshot(path string, snapshot store.ProviderSnapshot) (bool, error) {
 	if snapshot.Name == OfficialProviderName {
 		if snapshot.ViaWrapper {

@@ -796,12 +796,28 @@ touch. When a Claude switch selects `official` and `env.ANTHROPIC_API_KEY` or an
 the conflicting source on stderr. It never removes a field it does not own to
 force its own selection to win.
 
-A Claude client reads `~/.claude/settings.json` while it runs, so a switch that
-changes owned keys takes effect in an already-running session without a
-restart and can reset that session's negotiated capabilities mid-conversation.
-A successful Claude switch therefore reports on stderr that running Claude
-sessions should be restarted. The advisory is informational; it does not change
-the exit status or the JSON envelope.
+A Claude client reads `~/.claude/settings.json` while it runs, but a process
+that has already authenticated keeps that authentication: introducing a first
+credential to a session that started without one is the sole transition that
+can take effect live, while replacing or removing an existing key does not
+cause re-authentication. AgentDeck has no per-session authentication state, so
+it cannot know whether any given running session already holds a key, and a
+successful Claude switch therefore reports one of two conservative,
+direction-aware restart advisories on stderr, selected by whether the
+completed selection carries a credential: a credential write states both
+possible outcomes (a session that started without a key may adopt it live; an
+already-keyed session keeps its current key until restart), and a
+credential-free selection states only the guaranteed boundary (removing a key
+does not re-authenticate an already-keyed session, and adoption of other
+configuration changes is not established until restart). Neither text claims
+that the switch reached every running session. The advisory is informational;
+it does not change the exit status or the JSON envelope.
+
+Whether the managed settings file matches a completed selection
+(`ClaudeConfigMatchesSnapshot`) is a fact about the file on disk, not about
+which credential a running client is currently presenting. After key
+replacement or removal, the two can differ indefinitely: a match proves the
+write completed, not that any running session re-authenticated.
 
 
 AgentDeck changes Codex provider configuration on disk but cannot update

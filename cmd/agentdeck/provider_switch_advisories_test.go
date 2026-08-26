@@ -2,11 +2,15 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/kitdine/agent-deck/internal/provider"
 )
 
 // newClaudeAdvisoryFixture creates an isolated state directory with one custom
@@ -40,7 +44,7 @@ func TestOfficialClaudeSwitchReportsUnownedCredentialSourcesWithoutRemovingThem(
 	for _, want := range []string{
 		"advisory: env.ANTHROPIC_API_KEY in " + settings + " overrides the official selection",
 		"advisory: apiKeyHelper in " + settings + " overrides the official selection",
-		"advisory: restart running Claude sessions",
+		"advisory: restart running Claude sessions to guarantee this selection: removing a key does not re-authenticate a session that already holds one",
 	} {
 		if !strings.Contains(stderr, want) {
 			t.Fatalf("stderr = %q, want %q", stderr, want)
@@ -129,8 +133,8 @@ func TestSwitchAdvisoryScopeAndQuietSuppression(t *testing.T) {
 	if exit != 0 {
 		t.Fatalf("custom claude switch exit = %d: %s", exit, stderr)
 	}
-	if !strings.Contains(stderr, "advisory: restart running Claude sessions") {
-		t.Fatalf("custom claude switch missing the restart advisory: %q", stderr)
+	if !strings.Contains(stderr, "advisory: restart running Claude sessions to guarantee this switch: only a session that started without an API key may adopt its first key live") {
+		t.Fatalf("custom claude switch missing the credential-written restart advisory: %q", stderr)
 	}
 	if strings.Contains(stderr, "overrides the official selection") {
 		t.Fatalf("custom claude switch reported an official-only conflict: %q", stderr)
@@ -144,7 +148,7 @@ func TestSwitchAdvisoryScopeAndQuietSuppression(t *testing.T) {
 	if !strings.Contains(codexStderr, "advisory: start a new or restart the running Codex session to ensure this switch is applied") {
 		t.Fatalf("codex switch missing application-boundary advisory: %q", codexStderr)
 	}
-	if strings.Contains(codexStderr, "running client reads its settings file live") ||
+	if strings.Contains(codexStderr, "restart running Claude sessions") ||
 		strings.Contains(codexStderr, "overrides the official selection") {
 		t.Fatalf("codex switch carried a Claude-only advisory: %q", codexStderr)
 	}
@@ -163,5 +167,70 @@ func TestSwitchAdvisoryScopeAndQuietSuppression(t *testing.T) {
 	}
 	if quietCodexStderr != "" {
 		t.Fatalf("--quiet codex switch still printed an advisory: %q", quietCodexStderr)
+	}
+}
+
+// TestClaudeCredentialPresenceDistinguishesUnknownFromCredentialFree pins the
+// helper reportSwitchAdvisories relies on to never conflate "the selection
+// could not be found" with "the selection was found and has no credential" —
+// collapsing the two is exactly what let S1-F1 print the wrong direction.
+func TestClaudeCredentialPresenceDistinguishesUnknownFromCredentialFree(t *testing.T) {
+	keyed := []provider.CurrentSelection{{Client: "claude", Credential: "default"}}
+	if hasCredential, found := claudeCredentialPresence(keyed, provider.ClientClaude); !found || !hasCredential {
+		t.Fatalf("keyed selection = (hasCredential=%v, found=%v), want (true, true)", hasCredential, found)
+	}
+	keyless := []provider.CurrentSelection{{Client: "claude"}}
+	if hasCredential, found := claudeCredentialPresence(keyless, provider.ClientClaude); !found || hasCredential {
+		t.Fatalf("keyless selection = (hasCredential=%v, found=%v), want (false, true)", hasCredential, found)
+	}
+	otherClientOnly := []provider.CurrentSelection{{Client: "codex", Credential: "default"}}
+	if hasCredential, found := claudeCredentialPresence(otherClientOnly, provider.ClientClaude); found || hasCredential {
+		t.Fatalf("no matching selection = (hasCredential=%v, found=%v), want (false, false)", hasCredential, found)
+	}
+	if hasCredential, found := claudeCredentialPresence(nil, provider.ClientClaude); found || hasCredential {
+		t.Fatalf("nil selections = (hasCredential=%v, found=%v), want (false, false)", hasCredential, found)
+	}
+}
+
+// TestSwitchAdvisoryDropsRatherThanGuessesOnReadBackFailure is S1-F1's
+// regression: a completed Claude switch that wrote a credential must not
+// print the credential-free "removing a key" text, and must not fail, when
+// the post-switch selection read-back errors.
+func TestSwitchAdvisoryDropsRatherThanGuessesOnReadBackFailure(t *testing.T) {
+	state, settings := newClaudeAdvisoryFixture(t, `{"env":{"UNRELATED":true}}`)
+
+	oldCurrent := currentSelectionsForAdvisories
+	currentSelectionsForAdvisories = func(context.Context, provider.Service) ([]provider.CurrentSelection, error) {
+		return nil, errors.New("synthetic read-back failure")
+	}
+	t.Cleanup(func() { currentSelectionsForAdvisories = oldCurrent })
+
+	_, stderr, exit := runRouteCommand(t, "--state-dir", state, "provider", "use", "example", "--client", "claude", "--config-path", settings)
+	if exit != 0 {
+		t.Fatalf("switch exit = %d: %s", exit, stderr)
+	}
+	if strings.Contains(stderr, "restart running Claude sessions") {
+		t.Fatalf("advisory printed despite a failed read-back, risking the wrong direction: %q", stderr)
+	}
+}
+
+// TestSwitchAdvisoryDropsRatherThanGuessesOnMissingSelection covers the other
+// half of S1-F1: a successful read that simply has no entry for this client
+// must not fall through to the credential-free default either.
+func TestSwitchAdvisoryDropsRatherThanGuessesOnMissingSelection(t *testing.T) {
+	state, settings := newClaudeAdvisoryFixture(t, `{"env":{"UNRELATED":true}}`)
+
+	oldCurrent := currentSelectionsForAdvisories
+	currentSelectionsForAdvisories = func(context.Context, provider.Service) ([]provider.CurrentSelection, error) {
+		return []provider.CurrentSelection{{Client: "codex", Credential: "default"}}, nil
+	}
+	t.Cleanup(func() { currentSelectionsForAdvisories = oldCurrent })
+
+	_, stderr, exit := runRouteCommand(t, "--state-dir", state, "provider", "use", "example", "--client", "claude", "--config-path", settings)
+	if exit != 0 {
+		t.Fatalf("switch exit = %d: %s", exit, stderr)
+	}
+	if strings.Contains(stderr, "restart running Claude sessions") {
+		t.Fatalf("advisory printed despite no matching selection, risking the wrong direction: %q", stderr)
 	}
 }

@@ -767,22 +767,33 @@ func (s Service) ProjectAttributionGuidance(ctx context.Context, client Client) 
 // SwitchAdvisories reports informational notes about a switch that already
 // completed. Codex receives an application-boundary note because AgentDeck
 // changes only the configuration file and cannot update configuration already
-// loaded by a running client. Claude receives a different restart note because
-// it reads its settings file while it runs, so a switch reaches a live session
-// without a restart and can reset its negotiated capabilities mid-conversation.
-// Claude also honors credential sources AgentDeck does not own, which override
-// a built-in-provider selection AgentDeck may not "win" by deleting a field it
+// loaded by a running client. Claude receives one of two conservative restart
+// notes selected by whether the completed selection carries a credential:
+// AgentDeck has no per-session authentication state, so it cannot know
+// whether any given running session already holds a key. A credential write
+// states both possible outcomes (a session that started without a key may
+// adopt it live; an already-keyed session keeps its current key), and a
+// credential-free selection states only the guaranteed boundary (removing a
+// key does not re-authenticate an already-keyed session, and adoption of
+// other configuration changes is not established until restart). Neither
+// text claims that every credential write took effect. Claude also honors
+// credential sources AgentDeck does not own, which override a
+// built-in-provider selection AgentDeck may not "win" by deleting a field it
 // never wrote.
 //
 // It never fails a switch that already succeeded: an unreadable or unparsable
 // settings file drops the conflict note rather than returning an error, and
 // the notes carry key names only, never a credential value.
-func (s Service) SwitchAdvisories(client Client, name, configPath string) []string {
+func (s Service) SwitchAdvisories(client Client, name, configPath string, hasCredential bool) []string {
 	if client == ClientCodex {
 		return []string{codexRestartAdvisory}
 	}
 	if client != ClientClaude {
 		return nil
+	}
+	claudeAdvisory := claudeCredentialFreeRestartAdvisory
+	if hasCredential {
+		claudeAdvisory = claudeCredentialWrittenRestartAdvisory
 	}
 	advisories := make([]string, 0, 3)
 	if name == OfficialProviderName {
@@ -790,7 +801,7 @@ func (s Service) SwitchAdvisories(client Client, name, configPath string) []stri
 		if path == "" {
 			resolved, err := defaultConfigPath(s.Home, client)
 			if err != nil {
-				return append(advisories, claudeRestartAdvisory)
+				return append(advisories, claudeAdvisory)
 			}
 			path = resolved
 		}
@@ -801,11 +812,12 @@ func (s Service) SwitchAdvisories(client Client, name, configPath string) []stri
 			}
 		}
 	}
-	return append(advisories, claudeRestartAdvisory)
+	return append(advisories, claudeAdvisory)
 }
 
 const codexRestartAdvisory = "start a new or restart the running Codex session to ensure this switch is applied; AgentDeck cannot update configuration already loaded by a running client"
-const claudeRestartAdvisory = "restart running Claude sessions: a running client reads its settings file live, so this switch can reach a session mid-conversation"
+const claudeCredentialWrittenRestartAdvisory = "restart running Claude sessions to guarantee this switch: only a session that started without an API key may adopt its first key live; a session already authenticated with a key keeps it until restart"
+const claudeCredentialFreeRestartAdvisory = "restart running Claude sessions to guarantee this selection: removing a key does not re-authenticate a session that already holds one, and adoption of other configuration changes is not established until restart"
 
 func (s Service) Use(ctx context.Context, name string, client Client, configPath, backupPath string) error {
 	return s.UseCredential(ctx, name, client, "", configPath, backupPath, false)
