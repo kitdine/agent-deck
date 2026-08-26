@@ -418,6 +418,9 @@ func (s *Service) recordSessionRouteConn(ctx context.Context, conn *sql.Conn, ro
 	return err
 }
 
+// Deprecated: pricing must use the parsed-instant lookups in usage.go. This
+// method compares raw RFC3339 strings and has no callers; task 2's read-side
+// route metadata work owns its removal or replacement. Do not reuse it.
 func (s *Service) sessionRouteAt(ctx context.Context, client, sessionID, eventAt string) (provider, multiplier, quality string, found bool, err error) {
 	err = s.Store.DB.QueryRowContext(ctx, `SELECT provider,multiplier,quality FROM usage_session_routes WHERE client=? AND session_id=? AND observed_at<=? ORDER BY observed_at DESC,id DESC LIMIT 1`, client, sessionID, eventAt).Scan(&provider, &multiplier, &quality)
 	if errors.Is(err, sql.ErrNoRows) {

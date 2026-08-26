@@ -134,13 +134,40 @@ independent Re-review; development remains blocked.
 
 | Task | Dev | Review |
 | --- | --- | --- |
-| 1. `client-time-semantics` | [ ] | [ ] |
+| 1. `client-time-semantics` | [x] | [x] |
 | 2. `determinability-quality` | [ ] | [ ] |
 | 3. `attribution-observability` | [ ] | [ ] |
+
+Development Task 1 (2026-08-26): `client-time-semantics` is complete and awaits
+independent Review. Both pricing paths now use one session-attribution resolver:
+effective routes are positioned at event time and provider-timeline fallback at
+session start. Both the database lookup and the in-memory route slices compare
+parsed route instants, using route ID as the equal-instant tie breaker, closing
+the whole-second versus fractional-second divergence.
+Parity coverage passes for Claude first-key/rotation/removal/restart, Codex
+switch-without-restart/restart, and timeline fallback. Stored quality values,
+quality promotion, observability, and `recordSessionRouteConn` are unchanged.
 
 Tasks are strictly sequential. Commit boundaries follow task boundaries. This
 topic does not authorize commits, pushes, release preparation, preflight
 dispatch, or publication.
+
+Task 1 Review Round 1 (2026-08-26): **REOPEN** on C1-F1 and C1-F2; Re-review
+Round 2 (2026-08-26): **PASS**, both closed, CEv1 gate VERIFIED across all five
+criteria. Original Round 1 finding text follows. The shared
+time-positioning helper is right, but the RFC3339Nano ordering hazard the
+implementation documents is fixed only on the `Service.priceForEvent` path;
+`loadReadPriceResolver` still loads routes with a SQL string `ORDER BY
+observed_at`, so `sort.Search` runs over an unsorted slice and the two read
+paths can resolve the same event to different providers — the divergence this
+task exists to remove. The record under `reviews/client-time-semantics.md` owns
+the findings and evidence.
+
+Task 1 Repair Round 1 (2026-08-26): C1-F1 and C1-F2 are addressed. In-memory
+routes are re-sorted by parsed instant and ID before binary search, a mixed
+fraction-length regression proves parity with the database path, and the dead
+raw-string lookup is marked as forbidden pending task 2's read-side replacement.
+Task 1 awaits independent Re-review; its Review cell remains open.
 
 ## Starting a task
 

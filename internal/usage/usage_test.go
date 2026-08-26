@@ -1466,6 +1466,170 @@ func TestReadPriceResolverFallsBackToEventAtWithoutSessionStart(t *testing.T) {
 	}
 }
 
+func TestAttributionResolversShareClientTimeSemantics(t *testing.T) {
+	ctx := context.Background()
+	database, err := store.Open(ctx, filepath.Join(t.TempDir(), "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	t0 := time.Date(2026, 8, 4, 0, 0, 0, 0, time.UTC)
+	service := New(database, "")
+	now := t0
+	service.Now = func() time.Time { return now }
+
+	if err = database.RecordSelection(ctx, store.Selection{
+		Client: "codex", ProviderName: "codexA", MultiplierSnapshot: "2", SelectedAt: t0,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err = service.RecordHookDelivery(ctx, HookDelivery{
+		Client: "claude", SessionID: "claude-session", HookEvent: "SessionStart", Source: "startup", DeliveryID: "claude-start",
+		HasSelection: true, Selection: store.ProviderSnapshot{Name: "official", Multiplier: "1"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	now = t0.Add(100 * time.Millisecond)
+	if err = service.RecordHookDelivery(ctx, HookDelivery{
+		Client: "codex", SessionID: "codex-session", HookEvent: "SessionStart", Source: "startup", DeliveryID: "codex-start",
+		HasSelection: true, Selection: store.ProviderSnapshot{Name: "codexA", Multiplier: "2", Credential: "default"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	matched := true
+	now = t0.Add(time.Second)
+	if err = service.RecordHookDelivery(ctx, HookDelivery{
+		Client: "claude", SessionID: "claude-session", HookEvent: "ConfigChange", Source: "user_settings", DeliveryID: "claude-first-key",
+		ConfigMatched: &matched, HasSelection: true, Selection: store.ProviderSnapshot{Name: "custom", Multiplier: "3", Credential: "default"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	now = t0.Add(2 * time.Second)
+	if err = database.RecordSelection(ctx, store.Selection{
+		Client: "codex", ProviderName: "codexB", MultiplierSnapshot: "9", SelectedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err = service.RecordHookDelivery(ctx, HookDelivery{
+		Client: "claude", SessionID: "claude-session", HookEvent: "ConfigChange", Source: "user_settings", DeliveryID: "claude-rotation",
+		ConfigMatched: &matched, HasSelection: true, Selection: store.ProviderSnapshot{Name: "keyB", Multiplier: "9", Credential: "other"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	now = t0.Add(3 * time.Second)
+	if err = service.RecordHookDelivery(ctx, HookDelivery{
+		Client: "claude", SessionID: "claude-session", HookEvent: "ConfigChange", Source: "user_settings", DeliveryID: "claude-removal",
+		ConfigMatched: &matched, HasSelection: true, Selection: store.ProviderSnapshot{Name: "official", Multiplier: "1"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	now = t0.Add(4 * time.Second)
+	if err = service.RecordHookDelivery(ctx, HookDelivery{
+		Client: "claude", SessionID: "claude-session", HookEvent: "SessionStart", Source: "resume", DeliveryID: "claude-restart",
+		HasSelection: true, Selection: store.ProviderSnapshot{Name: "keyB", Multiplier: "9", Credential: "other"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err = service.RecordHookDelivery(ctx, HookDelivery{
+		Client: "codex", SessionID: "codex-session", HookEvent: "SessionStart", Source: "resume", DeliveryID: "codex-restart",
+		HasSelection: true, Selection: store.ProviderSnapshot{Name: "codexB", Multiplier: "9", Credential: "other"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	resolver, err := service.loadReadPriceResolver(ctx, t0.Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name, client, session, eventAt, sessionStart, provider, multiplier, quality string
+	}{
+		{"claude before first key", "claude", "claude-session", t0.Add(500 * time.Millisecond).Format(time.RFC3339Nano), t0.Format(time.RFC3339Nano), "official", "1", "estimated"},
+		{"claude after first key", "claude", "claude-session", t0.Add(1500 * time.Millisecond).Format(time.RFC3339Nano), t0.Format(time.RFC3339Nano), "custom", "3", "estimated"},
+		{"claude after rotation", "claude", "claude-session", t0.Add(2500 * time.Millisecond).Format(time.RFC3339Nano), t0.Format(time.RFC3339Nano), "custom", "3", "estimated"},
+		{"claude after removal", "claude", "claude-session", t0.Add(3500 * time.Millisecond).Format(time.RFC3339Nano), t0.Format(time.RFC3339Nano), "custom", "3", "estimated"},
+		{"claude after restart", "claude", "claude-session", t0.Add(4500 * time.Millisecond).Format(time.RFC3339Nano), t0.Format(time.RFC3339Nano), "keyB", "9", "estimated"},
+		{"codex spans global switch", "codex", "codex-session", t0.Add(3 * time.Second).Format(time.RFC3339Nano), t0.Add(100 * time.Millisecond).Format(time.RFC3339Nano), "codexA", "2", "estimated"},
+		{"codex after restart", "codex", "codex-session", t0.Add(4500 * time.Millisecond).Format(time.RFC3339Nano), t0.Add(100 * time.Millisecond).Format(time.RFC3339Nano), "codexB", "9", "estimated"},
+		{"timeline fallback stays at session start", "codex", "fallback-session", t0.Add(3 * time.Second).Format(time.RFC3339Nano), t0.Add(500 * time.Millisecond).Format(time.RFC3339Nano), "codexA", "2", "estimated"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			event := storedEvent{
+				Event:        Event{Client: test.client, SessionID: test.session, EventAt: test.eventAt, Model: "fixture"},
+				sessionStart: sql.NullString{String: test.sessionStart, Valid: true},
+			}
+			readAttribution, readErr := resolver.priceForEvent(event)
+			if readErr != nil {
+				t.Fatal(readErr)
+			}
+			_, serviceMultiplier, serviceQuality, serviceErr := service.priceForEvent(ctx, event)
+			if serviceErr != nil {
+				t.Fatal(serviceErr)
+			}
+			if readAttribution.provider != test.provider || readAttribution.multiplier != test.multiplier || readAttribution.quality != test.quality {
+				t.Fatalf("read resolver = %#v, want provider=%s multiplier=%s quality=%s", readAttribution, test.provider, test.multiplier, test.quality)
+			}
+			if serviceMultiplier != test.multiplier || serviceQuality != test.quality {
+				t.Fatalf("service resolver = multiplier %s quality %s, want %s/%s", serviceMultiplier, serviceQuality, test.multiplier, test.quality)
+			}
+		})
+	}
+}
+
+func TestAttributionResolversSortMixedRFC3339RouteInstants(t *testing.T) {
+	ctx := context.Background()
+	database, err := store.Open(ctx, filepath.Join(t.TempDir(), "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if _, err = database.Exec(ctx, `
+		INSERT INTO usage_session_routes(client,session_id,observed_at,provider,multiplier,via_wrapper,hook_event,source,quality,semantic_key) VALUES
+		 ('claude','mixed','2026-08-04T00:00:00.5Z','half','2',0,'SessionStart','fixture','estimated','mixed-half'),
+		 ('claude','mixed','2026-08-04T00:00:01Z','whole','3',0,'SessionStart','fixture','estimated','mixed-whole'),
+		 ('claude','mixed','2026-08-04T00:00:01.5Z','one-half','4',0,'SessionStart','fixture','estimated','mixed-one-half'),
+		 ('claude','mixed','2026-08-04T00:00:02Z','tie-a','5',0,'SessionStart','fixture','estimated','mixed-tie-a'),
+		 ('claude','mixed','2026-08-04T00:00:02Z','tie-b','6',0,'SessionStart','fixture','estimated','mixed-tie-b')`); err != nil {
+		t.Fatal(err)
+	}
+
+	service := New(database, "")
+	resolver, err := service.loadReadPriceResolver(ctx, time.Date(2026, 8, 4, 1, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		name, eventAt, provider, multiplier string
+	}{
+		{"whole second sorts before longer fraction", "2026-08-04T00:00:01.25Z", "whole", "3"},
+		{"equal instant uses the later id", "2026-08-04T00:00:02Z", "tie-b", "6"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			event := storedEvent{Event: Event{Client: "claude", SessionID: "mixed", EventAt: test.eventAt, Model: "fixture"}}
+			readAttribution, readErr := resolver.priceForEvent(event)
+			if readErr != nil {
+				t.Fatal(readErr)
+			}
+			_, serviceMultiplier, serviceQuality, serviceErr := service.priceForEvent(ctx, event)
+			if serviceErr != nil {
+				t.Fatal(serviceErr)
+			}
+			if readAttribution.provider != test.provider || readAttribution.multiplier != test.multiplier || readAttribution.quality != "estimated" {
+				t.Fatalf("read resolver = %#v, want %s/%s/estimated", readAttribution, test.provider, test.multiplier)
+			}
+			if serviceMultiplier != test.multiplier || serviceQuality != "estimated" {
+				t.Fatalf("service resolver = %s/%s, want %s/estimated", serviceMultiplier, serviceQuality, test.multiplier)
+			}
+		})
+	}
+}
+
 // TestPriceForEventIgnoresObservationsAndPricesThroughRetainedRoute is Task
 // 3's required cost-consequence coverage: sessionRouteAt and priceForEvent
 // are untouched by the prior-state classifier and never read

@@ -2386,6 +2386,7 @@ type readPriceRow struct {
 }
 
 type readSessionRoute struct {
+	id         int64
 	observedAt time.Time
 	provider   string
 	multiplier string
@@ -2406,14 +2407,14 @@ func (s *Service) loadReadPriceResolver(ctx context.Context, current time.Time) 
 		return readPriceResolver{}, err
 	}
 	resolver := readPriceResolver{current: current, byModel: map[string][]readPriceRow{}, timeline: timeline, routes: map[string][]readSessionRoute{}}
-	routeRows, err := s.Store.DB.QueryContext(ctx, `SELECT client,session_id,observed_at,provider,multiplier,quality,via_wrapper FROM usage_session_routes ORDER BY client,session_id,observed_at,id`)
+	routeRows, err := s.Store.DB.QueryContext(ctx, `SELECT id,client,session_id,observed_at,provider,multiplier,quality,via_wrapper FROM usage_session_routes ORDER BY client,session_id,id`)
 	if err != nil {
 		return readPriceResolver{}, err
 	}
 	for routeRows.Next() {
 		var client, sessionID, observedText string
 		var route readSessionRoute
-		if err := routeRows.Scan(&client, &sessionID, &observedText, &route.provider, &route.multiplier, &route.quality, &route.viaWrapper); err != nil {
+		if err := routeRows.Scan(&route.id, &client, &sessionID, &observedText, &route.provider, &route.multiplier, &route.quality, &route.viaWrapper); err != nil {
 			routeRows.Close()
 			return readPriceResolver{}, err
 		}
@@ -2431,6 +2432,15 @@ func (s *Service) loadReadPriceResolver(ctx context.Context, current time.Time) 
 	}
 	if err := routeRows.Close(); err != nil {
 		return readPriceResolver{}, err
+	}
+	for key, routes := range resolver.routes {
+		sort.Slice(routes, func(i, j int) bool {
+			if routes[i].observedAt.Equal(routes[j].observedAt) {
+				return routes[i].id < routes[j].id
+			}
+			return routes[i].observedAt.Before(routes[j].observedAt)
+		})
+		resolver.routes[key] = routes
 	}
 	rows, err := s.Store.DB.QueryContext(ctx, `SELECT mp.model,mp.provider,c.effective_from,mp.effective_from,mp.prices_json,mp.aliases_json,c.source_kind,c.imported_at,c.version FROM model_prices mp JOIN price_catalogs c ON c.version=mp.catalog_version`)
 	if err != nil {
@@ -2588,6 +2598,104 @@ func sessionStartAt(event storedEvent) (time.Time, error) {
 	return time.Parse(time.RFC3339Nano, value)
 }
 
+type sessionAttributionResolution string
+
+const (
+	sessionAttributionUnresolved sessionAttributionResolution = "unresolved"
+	sessionAttributionRoute      sessionAttributionResolution = "session_route"
+	sessionAttributionTimeline   sessionAttributionResolution = "timeline_snapshot"
+)
+
+type resolvedSessionAttribution struct {
+	provider   string
+	multiplier string
+	quality    string
+	viaWrapper bool
+	resolution sessionAttributionResolution
+}
+
+type sessionRouteLookup func(client, sessionID string, at time.Time) (resolvedSessionAttribution, bool, error)
+type providerSnapshotLookup func(client string, at time.Time) (store.ProviderSnapshot, error)
+
+// storedSessionRouteAt is the database-backed counterpart to
+// readPriceResolver.sessionRouteAt. RFC3339Nano strings are not lexically
+// ordered when one timestamp has fractional seconds and the other does not, so
+// compare parsed instants and use id only as the equal-instant tie breaker.
+func (s *Service) storedSessionRouteAt(ctx context.Context, client, sessionID string, at time.Time) (resolvedSessionAttribution, bool, error) {
+	rows, err := s.Store.DB.QueryContext(ctx, `SELECT id,observed_at,provider,multiplier,quality,via_wrapper FROM usage_session_routes WHERE client=? AND session_id=?`, client, sessionID)
+	if err != nil {
+		return resolvedSessionAttribution{}, false, err
+	}
+	defer rows.Close()
+
+	var selected resolvedSessionAttribution
+	var selectedAt time.Time
+	var selectedID int64
+	found := false
+	for rows.Next() {
+		var id int64
+		var observedText string
+		var candidate resolvedSessionAttribution
+		if err = rows.Scan(&id, &observedText, &candidate.provider, &candidate.multiplier, &candidate.quality, &candidate.viaWrapper); err != nil {
+			return resolvedSessionAttribution{}, false, err
+		}
+		observedAt, parseErr := time.Parse(time.RFC3339Nano, observedText)
+		if parseErr != nil {
+			return resolvedSessionAttribution{}, false, parseErr
+		}
+		if observedAt.After(at) {
+			continue
+		}
+		if !found || observedAt.After(selectedAt) || observedAt.Equal(selectedAt) && id > selectedID {
+			selected, selectedAt, selectedID, found = candidate, observedAt, id, true
+		}
+	}
+	if err = rows.Err(); err != nil {
+		return resolvedSessionAttribution{}, false, err
+	}
+	return selected, found, nil
+}
+
+// resolveSessionAttribution owns the shared time-positioning policy for both
+// pricing paths. Effective session routes are positioned at the event time;
+// the provider timeline is only a fallback and is always positioned at the
+// logical session start. Quality promotion and observable reason reporting are
+// later task boundaries, so this helper preserves the stored/current values.
+func resolveSessionAttribution(event storedEvent, routeAt sessionRouteLookup, snapshotAt providerSnapshotLookup) (resolvedSessionAttribution, error) {
+	result := resolvedSessionAttribution{
+		provider: "unknown", multiplier: "1", quality: "historical",
+		resolution: sessionAttributionUnresolved,
+	}
+	eventAt, err := time.Parse(time.RFC3339Nano, event.EventAt)
+	if err != nil {
+		return resolvedSessionAttribution{}, err
+	}
+	if route, found, routeErr := routeAt(event.Client, event.SessionID, eventAt); routeErr != nil {
+		return resolvedSessionAttribution{}, routeErr
+	} else if found {
+		route.resolution = sessionAttributionRoute
+		return route, nil
+	}
+
+	startAt, err := sessionStartAt(event)
+	if err != nil {
+		return resolvedSessionAttribution{}, err
+	}
+	snapshot, err := snapshotAt(event.Client, startAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return result, nil
+	}
+	if err != nil {
+		return resolvedSessionAttribution{}, err
+	}
+	result.provider = runtimeProviderName(snapshot.Name)
+	result.multiplier = snapshot.Multiplier
+	result.quality = "estimated"
+	result.viaWrapper = result.provider != "unknown" && snapshot.ViaWrapper
+	result.resolution = sessionAttributionTimeline
+	return result, nil
+}
+
 // eventAttribution is everything one pass over the provider timeline decides
 // about an event. Keeping the route here rather than resolving it again at the
 // aggregation site is what holds the aggregation to a single SnapshotAt per
@@ -2612,26 +2720,28 @@ func (r readPriceResolver) priceForEvent(event storedEvent) (eventAttribution, e
 			attribution.provider = runtimeProviderName(event.runProvider.String)
 		}
 		attribution.viaWrapper = runtimeRouteWasWrapped(r.timeline, event.Client, attribution.provider, event.runStart)
-	} else if eventAt, routeErr := time.Parse(time.RFC3339Nano, event.EventAt); routeErr != nil {
-		return eventAttribution{}, routeErr
-	} else if route, found := r.sessionRouteAt(event.Client, event.SessionID, eventAt); found {
-		attribution.provider = route.provider
-		attribution.multiplier = route.multiplier
-		attribution.quality = route.quality
-		attribution.viaWrapper = route.viaWrapper
 	} else {
-		at, parseErr := sessionStartAt(event)
-		if parseErr != nil {
-			return eventAttribution{}, parseErr
+		resolved, resolveErr := resolveSessionAttribution(
+			event,
+			func(client, sessionID string, at time.Time) (resolvedSessionAttribution, bool, error) {
+				route, found := r.sessionRouteAt(client, sessionID, at)
+				if !found {
+					return resolvedSessionAttribution{}, false, nil
+				}
+				return resolvedSessionAttribution{
+					provider: route.provider, multiplier: route.multiplier,
+					quality: route.quality, viaWrapper: route.viaWrapper,
+				}, true, nil
+			},
+			r.timeline.SnapshotAt,
+		)
+		if resolveErr != nil {
+			return eventAttribution{}, resolveErr
 		}
-		snapshot, snapshotErr := r.timeline.SnapshotAt(event.Client, at)
-		if snapshotErr == nil {
-			attribution.provider = runtimeProviderName(snapshot.Name)
-			attribution.quality, attribution.multiplier = "estimated", snapshot.Multiplier
-			attribution.viaWrapper = attribution.provider != "unknown" && snapshot.ViaWrapper
-		} else if !errors.Is(snapshotErr, sql.ErrNoRows) {
-			return eventAttribution{}, snapshotErr
-		}
+		attribution.provider = resolved.provider
+		attribution.multiplier = resolved.multiplier
+		attribution.quality = resolved.quality
+		attribution.viaWrapper = resolved.viaWrapper
 	}
 	eventAt, err := time.Parse(time.RFC3339Nano, event.EventAt)
 	if err != nil {
@@ -3191,31 +3301,20 @@ func (s *Service) priceForEvent(ctx context.Context, e storedEvent) (modelPrice,
 		if err := s.Store.DB.QueryRowContext(ctx, "SELECT multiplier FROM usage_runs WHERE id=?", e.runID.Int64).Scan(&mult); err != nil {
 			return modelPrice{}, "", "", err
 		}
-	} else if provider, routeMultiplier, routeQuality, found, routeErr := s.sessionRouteAt(ctx, e.Client, e.SessionID, e.EventAt); routeErr != nil {
-		return modelPrice{}, "", "", routeErr
-	} else if found {
-		mult, quality = routeMultiplier, routeQuality
-		_ = provider
 	} else {
-		// File-only attribution belongs to the provider selected when the logical
-		// session began, not a later provider selected mid-session.
-		var sessionStart string
-		_ = s.Store.DB.QueryRowContext(ctx, `SELECT first_at FROM usage_sessions WHERE client=? AND session_id=?`, e.Client, e.SessionID).Scan(&sessionStart)
-		if sessionStart == "" {
-			sessionStart = e.EventAt
+		resolved, resolveErr := resolveSessionAttribution(
+			e,
+			func(client, sessionID string, at time.Time) (resolvedSessionAttribution, bool, error) {
+				return s.storedSessionRouteAt(ctx, client, sessionID, at)
+			},
+			func(client string, at time.Time) (store.ProviderSnapshot, error) {
+				return s.Store.ProviderSnapshotAt(ctx, client, at)
+			},
+		)
+		if resolveErr != nil {
+			return modelPrice{}, "", "", resolveErr
 		}
-		at, parseErr := time.Parse(time.RFC3339Nano, sessionStart)
-		if parseErr != nil {
-			return modelPrice{}, "", "", parseErr
-		}
-		snapshot, err := s.Store.ProviderSnapshotAt(ctx, e.Client, at)
-		if err == nil {
-			mult = snapshot.Multiplier
-			quality = "estimated"
-		}
-		if err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return modelPrice{}, "", "", err
-		}
+		mult, quality = resolved.multiplier, resolved.quality
 	}
 	historical, historicalFound, err := s.mergedPriceAt(ctx, e.Client, e.Model, e.EventAt)
 	if err != nil {
