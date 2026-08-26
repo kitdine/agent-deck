@@ -342,6 +342,19 @@ rotation, removal, and restart against provider-side evidence.
 - Files: this topic's review record only. No product change.
 - Verification level: L3 — real credentials and real client behavior, which no
   automated suite in this repository covers.
+- **Waived by the operator, 2026-08-26.** This procedure was not executed and no
+  review record was created for it. The operator, who runs both clients daily
+  against real custom providers, states that the switch-effectiveness behavior
+  this task would confirm — first-key addition applying live, key rotation and
+  removal not applying to an already-keyed running session — has already been
+  observed in the real environment many times over. The waiver is recorded as a
+  decision rather than the row being left unticked or removed, so a later reader
+  can tell it apart from an oversight, and so the distinction stays explicit:
+  tasks 1-3 are backed by reviewed automated evidence, while this task's
+  assumption rests on standing operator experience and not on the recorded
+  provider-audit evidence the procedure above specifies. If that assumption is
+  ever contradicted in practice, the correct response remains the one this task
+  already states — reopen the design, do not adjust the test.
 
 Commit boundaries follow task boundaries. This topic does not authorize commits,
 pushes, release publication, or installation.
@@ -363,9 +376,12 @@ or copy that a surface document would review.
 
 All three required design documents have passed independent Re-review.
 `hook-delivery-ledger` and `switch-effectiveness-contract` have passed
-independent Re-review; `effective-route-policy` has now passed as well. 3/4
-implementation tasks are reviewed. `real-session-acceptance` is next, and the
-matching records under `reviews/` own the findings and evidence.
+independent Re-review; `effective-route-policy` has now passed as well, so all
+3 code-bearing implementation tasks are reviewed and the matching records under
+`reviews/` own their findings and evidence. `real-session-acceptance` is
+`n/a`/`n/a` rather than unticked: it was waived by the operator on 2026-08-26,
+for the reason recorded in its task section below. No review record exists for
+it, and none should be created.
 
 ## Tasks
 
@@ -374,7 +390,7 @@ matching records under `reviews/` own the findings and evidence.
 | 1 | `hook-delivery-ledger` | [x] | [x] |
 | 2 | `switch-effectiveness-contract` | [x] | [x] |
 | 3 | `effective-route-policy` | [x] | [x] |
-| 4 | `real-session-acceptance` | [ ] | [ ] |
+| 4 | `real-session-acceptance` | n/a | n/a |
 
 Development is blocked until this `tasks.md` passes review, per
 `.agent-instructions/beads.md`: a draft task matrix is not a source of task
