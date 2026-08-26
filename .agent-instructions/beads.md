@@ -134,6 +134,19 @@ back. `deferred` parks work indefinitely and is set deliberately. `pinned`
 exists for work that never closes; nothing in this workflow qualifies, since
 every task here ends at `closed`.
 
+**A task description points at this lifecycle; it never restates it.** Write
+what the task produces and what makes it ready, then refer here for the status
+contract. A copied lifecycle is a fork with no owner: when this file changed on
+2026-08-17 (`b3ca412`, `drafting`/`repairing` → `in_progress`/`awaiting_commit`)
+twelve descriptions kept the retired vocabulary, and nothing referenced them, so
+nothing noticed. Descriptions are the worst place for that copy, because an
+agent meets one already attached to the task it was dispatched to — it reads as
+this task's own rule rather than as a document that might be out of date, and it
+arrives before the agent has any reason to open this file. One did exactly that
+and tried to set `--status repairing`. `scripts/hooks/beads-consistency.py`
+reports any live task whose description names a retired status; closed tasks are
+left alone, because they record what happened under the contract in force then.
+
 The custom pair is registered once:
 
 ```bash

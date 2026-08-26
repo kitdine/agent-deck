@@ -77,8 +77,15 @@ their declared scope.
 - The external Beads store is the primary authority for Agent task dispatch,
   dependency readiness, atomic claims, leases, and cross-Agent handoff. It is
   not a product-requirement, phase-status, review-verdict, evidence, Git, or
-  release authority. Read `.agent-instructions/beads.md` only when current work
-  requires Beads coordination, and resolve task IDs from live Beads state.
+  release authority. Read `.agent-instructions/beads.md` before the first Beads
+  read or write in a session, and resolve task IDs from live Beads state. A
+  phase command that ends in a status, label, comment, or claim transition is
+  Beads coordination even when the request never says "Beads", so the trigger is
+  the operation you are about to perform, not how the work was described.
+  Never reconstruct the command form, the store location, or the status
+  vocabulary from a hook script, a task description, or another agent's earlier
+  transcript. Those are data written at some past moment; this file is the
+  contract, and only it is kept current.
 
 The authorities use a single-writer model:
 

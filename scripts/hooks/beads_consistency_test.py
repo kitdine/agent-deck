@@ -78,7 +78,81 @@ class BeadsConsistencyHookTest(unittest.TestCase):
         ):
             self.assertEqual(MODULE.findings(root, 123.0), [])
 
-        bd_json.assert_called_once_with(["list", "--status", "open"], 123.0)
+        # Assert the intent — the awaiting_commit query is the one a dirty tree
+        # makes meaningless — rather than the total call count, which any
+        # unrelated check that also queries Beads would break.
+        queried = [call.args[0] for call in bd_json.call_args_list]
+        self.assertIn(["list", "--status", "open"], queried)
+        self.assertNotIn(["list", "--status", "awaiting_commit"], queried)
+
+    def test_live_task_restating_a_retired_status_name_is_reported(self) -> None:
+        root = Path("/repo")
+        beads = [
+            {
+                "id": "ad-x-doc-req-design",
+                "description": (
+                    "Author requirements.md. Lifecycle: open -> drafting -> "
+                    "in_review -> repairing -> in_review -> closed."
+                ),
+            }
+        ]
+
+        with (
+            mock.patch.object(MODULE, "changed_paths", return_value=[]),
+            mock.patch.object(MODULE.Path, "glob", return_value=[]),
+            mock.patch.object(MODULE, "bd_json", return_value=beads),
+        ):
+            notes = MODULE.findings(root, 123.0)
+
+        stale = [n for n in notes if "retired status name" in n]
+        self.assertEqual(len(stale), 1)
+        self.assertIn("ad-x-doc-req-design", stale[0])
+        self.assertIn("`drafting`", stale[0])
+        self.assertIn("`repairing`", stale[0])
+        self.assertIn(".agent-instructions/beads.md", stale[0])
+
+    def test_retired_status_scan_excludes_closed_tasks(self) -> None:
+        root = Path("/repo")
+        seen: list[list[str]] = []
+
+        def bd_json(args: list[str], _deadline: float) -> list[dict[str, str]]:
+            seen.append(args)
+            return []
+
+        with (
+            mock.patch.object(MODULE, "changed_paths", return_value=[]),
+            mock.patch.object(MODULE.Path, "glob", return_value=[]),
+            mock.patch.object(MODULE, "bd_json", side_effect=bd_json),
+        ):
+            MODULE.findings(root, 123.0)
+
+        # A closed task recorded what happened under the contract in force then;
+        # rewriting it would falsify history, so it must never be scanned.
+        scans = [a for a in seen if a[:2] == ["list", "--status"] and "in_review" in a[2]]
+        self.assertTrue(scans)
+        for args in scans:
+            self.assertNotIn("closed", args[2].split(","))
+
+    def test_current_lifecycle_vocabulary_is_not_flagged(self) -> None:
+        root = Path("/repo")
+        beads = [
+            {
+                "id": "ad-x-doc-req-design",
+                "description": (
+                    "Author requirements.md. The status lifecycle and its "
+                    "transitions are defined in .agent-instructions/beads.md."
+                ),
+            }
+        ]
+
+        with (
+            mock.patch.object(MODULE, "changed_paths", return_value=[]),
+            mock.patch.object(MODULE.Path, "glob", return_value=[]),
+            mock.patch.object(MODULE, "bd_json", return_value=beads),
+        ):
+            notes = MODULE.findings(root, 123.0)
+
+        self.assertEqual([n for n in notes if "retired status name" in n], [])
 
     def test_matrix_rows_read_both_task_table_shapes(self) -> None:
         text = "\n".join(

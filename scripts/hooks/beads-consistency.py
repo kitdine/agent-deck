@@ -39,7 +39,27 @@ from typing import Any
 # match would silently disable the hook for every clone but one.
 REPO_MARKER = Path(".agent-instructions/beads.md")
 BEADS_ROOT = Path.home() / ".local/state/agentdeck-beads"
+# NOT the agent-facing way to call Beads. This hook is a non-interactive reader
+# that supplies its own -C and needs no audit identity, so it invokes the raw
+# binary. An agent MUST instead use the wrapper, which requires an actor and
+# sets BEADS_DIR itself:
+#     env BEADS_ACTOR=claude-code BEADS_ROOT/bin/agentdeck-bd <command>
+# Calling this path directly leaves BEADS_ACTOR unset, and bd then falls back to
+# git user.name — which records the human operator as the author of an agent's
+# comments and status transitions. See .agent-instructions/beads.md.
 BD_BIN = "/usr/local/bin/bd"
+
+# Status names `.agent-instructions/beads.md` retired in commit b3ca412, when the
+# lifecycle became open -> in_progress -> in_review -> awaiting_commit -> closed.
+# They are no longer valid `bd` statuses, so their only remaining home is prose
+# that was copied before the change.
+RETIRED_STATUS_NAMES = frozenset({"drafting", "repairing"})
+# Every status a task can hold while it is still live work. `closed` is excluded
+# deliberately: a closed task records what happened under the contract in force
+# at the time, and rewriting it would falsify history rather than fix anything.
+LIVE_STATUSES = frozenset(
+    {"open", "in_progress", "in_review", "awaiting_commit", "blocked", "deferred"}
+)
 
 # "文档：<topic> / <document>" and "任务：<task-anchor>" — the two title shapes
 # .agent-instructions/beads.md defines.
@@ -395,6 +415,31 @@ def findings(root: Path, deadline: float) -> list[str]:
                 f"decomposition passes; until one exists there is nothing for "
                 f"`开发：{topic} / {anchor}` to claim."
             )
+
+    # 5. A live task's description restates the status lifecycle using vocabulary
+    #    the contract has retired. A description is data, but an agent dispatched
+    #    to the task reads it as instruction — it arrives attached to the very
+    #    work it is describing, which makes it look more authoritative than a
+    #    file the agent has to go find. That is how the retired names outlived
+    #    the contract: `.agent-instructions/beads.md` replaced them, and every
+    #    copy already stamped into a description stayed behind, unreferenced by
+    #    anything that would notice. Closed tasks are history and are left alone.
+    stale_terms = tuple(sorted(RETIRED_STATUS_NAMES))
+    live = bd_json(["list", "--status", ",".join(sorted(LIVE_STATUSES))], deadline) or []
+    for bead in live:
+        if not isinstance(bead, dict):
+            continue
+        description = str(bead.get("description") or "")
+        hits = [term for term in stale_terms if re.search(rf"\b{term}\b", description)]
+        if not hits:
+            continue
+        notes.append(
+            f"{bead.get('id')} describes its own lifecycle with retired status "
+            f"name(s) {', '.join(f'`{h}`' for h in hits)}. The lifecycle belongs "
+            f"to .agent-instructions/beads.md; point at it from the description "
+            f"instead of restating it, so the next contract change does not have "
+            f"to be backfilled into every task."
+        )
 
     return notes
 
