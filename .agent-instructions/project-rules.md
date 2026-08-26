@@ -167,6 +167,14 @@ Co-Authored-By: Codex <noreply@openai.com>
 - Do not substitute another agent's identity for Codex. If another AI agent
   materially contributed, use that agent's established identity in an
   additional trailer.
+- At the commit checkpoint, run the staged-scope contributor-attribution check
+  defined in `.agent-instructions/beads.md` for every staged work product backed
+  by Beads tasks. Show its included, excluded, trailer, and unresolved output
+  before showing or executing the commit command. Use task comments and roles as
+  the durable evidence; current `assignee` alone is never proof of authorship.
+  If a material contributor remains unresolved, stop before committing rather
+  than guessing an identity. This check does not replace the mandatory Codex
+  trailer above and does not grant commit authorization.
 - Before creating a commit, inspect the complete proposed commit message and
   confirm the required trailer is present. After creating it, inspect the
   committed message and verify the trailer and signature before reporting the

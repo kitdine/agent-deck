@@ -226,6 +226,64 @@ transition is what made an entire day of document work invisible to dispatch:
 | `复评：<topic> / reviews/<record>.md` | as for `评审` | — |
 | commit checkpoint | `awaiting_commit` → `closed`, after the authorized commit | — |
 
+### Commit-checkpoint contributor attribution
+
+The commit checkpoint uses Beads as durable evidence for co-author attribution;
+it does not guess from the current chat, the last editor, or the task's current
+`assignee`. The current assignee may be a reviewer, while the material author is
+recorded in an earlier claim, completion, repair, or handoff comment.
+
+Before creating an authorized commit:
+
+1. Resolve the exact staged files and hunks, then identify only the
+   `awaiting_commit` Beads tasks whose work products are included. Do not scan
+   unrelated tasks or infer contributors from a topic or version epic.
+2. Read each task with `show --json` and read its comments. Collect actors whose
+   recorded Design, Development, Repair, or content-producing handoff work is
+   materially present in the staged content. A Review-only claim, status sync,
+   dispatch action, or evidence query is not authorship unless its comment also
+   records a content change included in the commit.
+3. Treat `assignee` and `updated_at` as supporting evidence only. They identify
+   current ownership and recency, not the complete contributor set. Prefer the
+   actor and role on the task's durable comments; union contributors across all
+   staged tasks and de-duplicate them.
+4. Print this checkpoint block before showing or executing the commit command:
+
+   ```text
+   Commit checkpoint contributors
+   staged_tasks: <task ids>
+   included: <actor> — <Design|Development|Repair|content handoff> — <comment id or timestamp>
+   excluded: <actor> — <Review-only|dispatch|status-only> — <comment id or timestamp>
+   trailers:
+   Co-Authored-By: <established identity>
+   unresolved: <none, or actor and missing identity/evidence>
+   ```
+
+5. Use these actor-level established identities when the corresponding actor
+   materially contributed:
+
+   ```text
+   codex       -> Co-Authored-By: Codex <noreply@openai.com>
+   claude-code -> Co-Authored-By: Claude <noreply@anthropic.com>
+   ```
+
+   A task comment may name a more specific established identity already used by
+   the repository. Never infer a model-specific Claude name from the current
+   runtime, model selection, or chat context. Do not synthesize a human name or
+   email from a Beads actor string.
+6. If a material contributor has no established identity or the task evidence
+   cannot distinguish content work from Review-only work, list it under
+   `unresolved` and stop before the commit rather than guessing. An incomplete
+   historical comment is a reason to ask, not a reason to use the current
+   assignee as the author.
+
+The exact Codex trailer required by `.agent-instructions/project-rules.md`
+remains mandatory whenever Codex materially assisted, even if an old Beads task
+lacks that comment. This contributor check supplies additional trailers; it
+does not weaken Git authorization, staged-scope inspection, commit-message,
+signature, or post-commit verification rules. Close the matched Beads tasks only
+after the authorized commit object has been inspected successfully.
+
 Repair and re-review are transitions on this one task, never new tasks. A
 `round-N` label counts how many times review sent it back; it increments on
 every `REOPEN` and is never reset, so a task that keeps bouncing is visible as a
