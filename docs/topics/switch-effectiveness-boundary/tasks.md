@@ -1,6 +1,7 @@
 ---
 status: active
 created: 2026-08-17
+updated: 2026-08-25
 ---
 
 # Switch Effectiveness Boundary — Tasks
@@ -188,8 +189,8 @@ pushes, release publication, or installation.
 | Document | Draft | Review |
 | --- | --- | --- |
 | requirements.md | [x] | [x] |
-| architecture.md | [x] | [x] |
-| tasks.md | [x] | [x] |
+| architecture.md | [x] | [ ] |
+| tasks.md | [x] | [ ] |
 | `ux/` | n/a | n/a |
 
 The `ux/` row is stated rather than omitted so a reader can tell a decision from
@@ -198,23 +199,12 @@ existing stderr advisory and suppresses one misleading stored route. Both are
 contracts `architecture.md` owns, and neither has a state set or copy that a
 surface document would review.
 
-All three documents are drafted as of 2026-08-17. `requirements.md` Re-review
-Round 3 closed R1-F1 and R1-F2 and passed against its exact HEAD-plus-blob
-content state; its completion-evidence/v1 document gate is `VERIFIED`.
-`architecture.md` was reviewed next. Document review runs in order —
-requirements, architecture, tasks — because each later document is judged
-against the earlier ones; `tasks.md` is now the final document awaiting review.
-
-`architecture.md` Review Round 1 (2026-08-17): **FAIL**. A-F1 records the
-opening premise's contradiction with the `official --via` field shape; A-F2
-records the stale unknown-route title and v0.6.0 quality conclusion after the
-contract changed to write no route. Its `Review` cell remains unchecked; see
-[`reviews/architecture.md`](reviews/architecture.md).
-
-`architecture.md` Re-review Round 2 (2026-08-17): **PASS**. A-F1 and A-F2 are
-closed against blob `fd0919372bab8a37b2d7e9f0c6205603d40cefe0`, and the
-completion-evidence/v1 document gate is `VERIFIED`. `tasks.md` is the next and
-final unreviewed document.
+The review records under [`reviews/`](reviews/) preserve the exact reviewed
+blobs. Additional real-session evidence on 2026-08-25 proved that an already-keyed
+Claude session also ignores key rotation; only `no key -> first key` may apply
+live. The current requirements now pass independent review. Architecture and
+decomposition remain reopened on the corrected state machine, so review proceeds
+architecture -> tasks before development.
 
 ## Tasks
 

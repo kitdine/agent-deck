@@ -203,3 +203,208 @@ unknown-route 验收步骤已按所有权归属到后续文档评审，不伪造
   architecture/tasks 行为内容与其他 dirty work。
 - 推送建议：只在上述 Task 边界能被安全隔离、获得明确 commit
   与 push 授权、并核对目标分支/远端后推送；本 checkpoint 不执行也不授权交付。
+
+## Round 4 — 2026-08-25
+
+- Reviewed state: HEAD `6ec680adcb9ab65fa05622140100b4e6cdba57cf`;
+  `requirements.md` blob `02ce6a26bc02d53e3e515529b6fa10269f0c5a1f`.
+- Reviewer: Codex
+- Method: Formal design/contract review using the `development-workflow` Review
+  dimensions. CodeGraph resolved the current configuration-write,
+  reconciliation, session-route, pricing-fallback, and Claude lifecycle paths;
+  focused source and living-contract inspection checked the exact premises and
+  cross-topic boundary. No requirements-boundary checker exists;
+  `scripts/check-topic-docs.sh` ratifies the document set during `tasks.md`
+  review and does not judge this target.
+- Scope: `docs/topics/switch-effectiveness-boundary/requirements.md`; premise and
+  scenario checks against the current Claude configuration writer and advisory,
+  `ConfigChange` reconciliation, route ordering, provider timeline snapshots,
+  session-start handling, wrapper semantics, and the current
+  `usage-attribution-precision` draft.
+- Findings:
+  - [P1] R4-F1 — The Goals section says an unadopted switch keeps the provider
+    the session “started with”. That is false for the newly added sequence
+    `no key -> first key A -> key B`: the session started on `official`, adopted
+    A live, and must keep A across the unadopted rotation. The document's own
+    defect explanation and route hierarchy correctly give the latest prior
+    effective route precedence, so the goal contradicts both of them -> open;
+    define the retained provider as the latest adopted effective session route,
+    using the provider timeline at session start only when no route exists.
+  - [P2] R4-F2 — Two audit references no longer identify the facts they claim:
+    the mixed `official --via` state is the fourth table row, not the third, and
+    `cmd/agentdeck/main.go:2947` is the retry sleep rather than the matched
+    `RecordClaudeConfigChange` call, which is currently at line 2939 -> open;
+    name the wrapper row directly (or correct its ordinal) and update the call
+    citation to the current source location.
+- Evidence: CodeGraph source for `WriteClaudeConfig`,
+  `ClaudeConfigMatchesSnapshot`, `reconcileClaudeConfigChange`,
+  `RecordClaudeConfigChange`, `RecordSessionRoute`, both `sessionRouteAt` /
+  `priceForEvent` paths, `ProviderSnapshot`, and Claude `SessionStart` parsing.
+  Focused source inspection confirmed the read-time route precedence at
+  `internal/usage/usage.go:2617-2634`, provider-timeline credential snapshots at
+  `internal/store/providers.go:819-950`, and the matched reconciliation call at
+  `cmd/agentdeck/main.go:2939`. The current
+  `usage-attribution-precision` requirements and architecture agree that only
+  `no key -> first key` adds a live route. L0 record checks:
+  `make check-whitespace` -> exit 0; `git diff --check` -> exit 0.
+- Completion gate: NOT_VERIFIED — R4-F1 and R4-F2 leave the current document
+  criterion open; no CEv1 evidence was written for this content state.
+- Verdict: REOPEN
+
+## 📋 需求文档评审报告
+
+📊 总体评分：7/10
+
+✅ 评审结论：FAIL
+
+### 🔴 严重问题——必须修复
+
+[`requirements.md:111`](../requirements.md#goals) R4-F1：Goals 把未采纳切换后的
+有效 provider 写成 session “started with”的 provider，与新增的 first-key 后再换 key
+场景及本文自己的路由层级冲突。
+- 行为风险：在 `official -> first key A -> key B` 中，实现者可能错误回退到 session-start
+  的 `official`，而不是继续使用已被运行中进程采纳并已记录的 A route，重新造成错误
+  multiplier 与成本归因。
+- 证据：本文 `requirements.md:79-83` 已说明 first-key route 记录 A，
+  `requirements.md:127-143` 又规定 prior route 先于 session-start timeline；当前
+  `sessionRouteAt` 与 `priceForEvent` 也按此顺序解析。
+💡 有界修复：把该 Goal 改为保留“最后一个已采纳的有效 session route”；仅在 session
+没有 route 时才使用 session-start provider timeline，并保留无覆盖时的既有 fallback。
+
+### 🟡 建议改进——推荐
+
+[`requirements.md:44`](../requirements.md#the-defect) R4-F2：wrapper 混合态的行号与
+matched reconciliation 的源码行号均已失真。
+- 行为风险：读者会把 direct `official` 的第三行误当成 endpoint/token 混合态；同时
+  `main.go:2947` 无法审计“matched route 被写入”的事实，因为该行当前只是 retry sleep。
+- 证据：表格中 `official --via` 是第四行；当前调用位于
+  `cmd/agentdeck/main.go:2939`。
+💡 有界修复：直接按名称引用 `official --via` 行（或改成第四行），并把调用引用更新为
+当前位置。
+
+### 🟢 优点
+
+- 新草稿正确把唯一可能热更新的状态限定为 `no key -> first key`，不再把所有 custom
+  switch 视为立即生效。
+- prior route、session-start timeline 与无覆盖 fallback 的层级清楚，无需 schema
+  migration 或历史重解释。
+- settings mismatch、凭据隐私、Codex 非目标以及真实 Claude session 验收边界均有明确
+  约束，并与当前 `usage-attribution-precision` 草稿一致。
+
+### 📝 总结
+
+本轮绑定 HEAD `6ec680adcb9ab65fa05622140100b4e6cdba57cf` 与当前未提交
+`requirements.md` blob `02ce6a26bc02d53e3e515529b6fa10269f0c5a1f`。新增状态机方向
+基本正确，但 Goals 对 first-key 后再换 key 的 retained-provider 定义仍会导向错误实现，
+并有两处可审计引用失真，因此结论为 FAIL/REOPEN。真实 Claude session 仍是后续实现
+验收门禁；本轮未用磁盘文件测试替代该运行时证据。
+
+## Round 5 — 2026-08-25
+
+- Reviewed state: repair of Round 4's two authorized findings. HEAD
+  `6ec680adcb9ab65fa05622140100b4e6cdba57cf`; `requirements.md` blob
+  `c762becde8c1480739ae6111f8faa5832bd3dce3`.
+- Repairer: Codex (repair round — an independent Re-review is required before
+  the `Review` cell may be ticked again).
+- Scope: R4-F1 and R4-F2 only.
+- Round 4 findings, dispositions:
+  - **R4-F1** the Goals section returned every unadopted switch to the provider
+    at session start, contradicting the `no key -> first key A -> key B`
+    sequence and the document's own route precedence -> **Fixed.** The Goal now
+    preserves the latest prior effective session route first, uses the provider
+    timeline at session start only when no session route exists, and retains the
+    existing no-coverage fallback. It explicitly states that a first-key route
+    survives a later unadopted rotation.
+  - **R4-F2** the wrapper mixed-state paragraph called `official --via` the
+    third table row and cited the matched reconciliation call at stale line 2947
+    -> **Fixed.** The paragraph now names the `official --via` row directly, and
+    the matched `RecordClaudeConfigChange` citation points to
+    `cmd/agentdeck/main.go:2939`.
+- Evidence: CodeGraph and focused source inspection confirmed the matched call
+  at `cmd/agentdeck/main.go:2939`. Focused document inspection confirmed the
+  prior-route-first hierarchy already stated below the Goal and the absence of
+  the two stale references from the repaired requirements candidate. No product
+  code, test, configuration, architecture, task decomposition, or unrelated
+  topic document changed in this repair.
+- Completion gate: NOT_VERIFIED — Repair closes the named findings but does not
+  grant an independent review verdict or create completion evidence.
+- Verdict: REOPEN — repair complete, awaiting independent Re-review
+
+## Round 6 — 2026-08-25
+
+- Reviewed state: HEAD `6ec680adcb9ab65fa05622140100b4e6cdba57cf`;
+  `requirements.md` blob `c762becde8c1480739ae6111f8faa5832bd3dce3`.
+- Reviewer: Codex, independently re-reviewing the Round 5 repair; this workflow
+  turn did not author that repair.
+- Method: Finding-by-finding design/contract Re-review under the
+  `development-workflow` REREVIEW dimensions. The unchanged HEAD-bound
+  CodeGraph/source evidence from Round 4 was reused; focused inspection checked
+  the repaired requirements text and the exact current matched-reconciliation
+  citation. No requirements-boundary checker exists; the topic document-set
+  checker belongs to `tasks.md` review.
+- Scope: R4-F1 and R4-F2, their repaired requirements statements, and new
+  blocking regressions caused by those edits.
+- Finding dispositions:
+  - **R4-F1 — CLOSED.** The Goal now resolves an unadopted switch first through
+    the latest prior effective session route, then through the provider timeline
+    at session start only when the session has no route, followed by the existing
+    no-coverage fallback. It explicitly preserves first-key route A across a
+    later unadopted rotation to key B, matching the document's route hierarchy
+    and current `sessionRouteAt` / `priceForEvent` precedence.
+  - **R4-F2 — CLOSED.** The mixed-state paragraph now names the
+    `official --via` row rather than using the wrong ordinal, and the matched
+    `RecordClaudeConfigChange` call is cited at current
+    `cmd/agentdeck/main.go:2939`.
+- New blocking findings: none.
+- Evidence: focused inspection of `requirements.md:29-51,69-117`; current
+  `cmd/agentdeck/main.go:2939`; reused unchanged-HEAD route-precedence evidence
+  at `internal/usage/usage.go:2617-2634`; targeted stale-reference scan; L0
+  final-state checks: stale-reference scan -> no matches;
+  `make check-whitespace` -> exit 0; `git diff --check` -> exit 0. CEv1 evidence
+  `urn:ce:agent-deck:evidence:switch-effectiveness-boundary:requirements.md:rereview-round-6:c762becde8c1480739ae6111f8faa5832bd3dce3`
+  satisfies the document criterion for the exact reviewed state.
+- Completion gate: VERIFIED
+- Verdict: PASS
+
+## 📋 需求文档独立复评
+
+📊 总体评分：10/10
+
+✅ 复评结论：PASS
+
+### 🔴 严重问题——必须修复
+
+无。
+
+### 🟡 建议改进——推荐
+
+无。
+
+### 🟢 优点
+
+- R4-F1 已关闭：first-key route 在后续未采纳 key rotation 中保持最高优先级，只有无
+  session route 时才回退 session-start timeline。
+- R4-F2 已关闭：wrapper 混合态与 matched reconciliation 调用均由当前、可审计的名称
+  和位置标识。
+- 修复没有扩张 requirements 边界，也没有改变 schema、历史解释、Codex 非目标或真实
+  Claude session 验收门禁。
+
+### 📝 总结
+
+R4-F1、R4-F2 均在 HEAD `6ec680adcb9ab65fa05622140100b4e6cdba57cf` +
+`requirements.md` blob `c762becde8c1480739ae6111f8faa5832bd3dce3` 中关闭，无新
+blocking finding，复评结论为 PASS。剩余运行时不确定性由后续
+`real-session-acceptance` Task 按既有契约验证，不是 requirements 文档的开放 finding。
+
+### Task checkpoint
+
+- Task：`switch-effectiveness-boundary / requirements.md` @ HEAD
+  `6ec680adcb9ab65fa05622140100b4e6cdba57cf` + blob
+  `c762becde8c1480739ae6111f8faa5832bd3dce3`
+- Completion evidence gate：`VERIFIED`
+- 提交建议：仅纳入完整的已评审 `requirements.md`、本 requirements 评审记录、
+  `tasks.md` 的 requirements Review cell/当前状态 hunk，以及 `docs/status.md` 的
+  Switch Effectiveness Boundary 状态 hunk；排除尚未评审的 architecture/tasks 行为
+  内容、其他 topic、roadmap 与无关 dirty work。
+- 推送建议：目标分支与远端尚未解析；仅在获得明确 commit 与 push 授权、按上述 Task
+  边界形成并核验签名提交后推送。本 checkpoint 不执行也不授权交付。
