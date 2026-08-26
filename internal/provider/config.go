@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/kitdine/agent-deck/internal/platform"
 	"github.com/kitdine/agent-deck/internal/store"
@@ -33,8 +34,8 @@ func ConfigMatchesEndpoint(client Client, path, endpoint string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	expected := strings.TrimRight(endpoint, "/")
 	if client == ClientCodex {
+		expected := strings.TrimRight(endpoint, "/")
 		var document map[string]any
 		if err = toml.Unmarshal(contents, &document); err != nil {
 			return false, err
@@ -52,11 +53,15 @@ func ConfigMatchesEndpoint(client Client, path, endpoint string) (bool, error) {
 		if err = json.Unmarshal(contents, &document); err != nil {
 			return false, err
 		}
-		environment, _ := document["env"].(map[string]any)
-		baseURL, _ := environment["ANTHROPIC_BASE_URL"].(string)
-		return strings.TrimRight(baseURL, "/") == expected, nil
+		return matchesEndpointClaudeDocument(document, endpoint), nil
 	}
 	return false, fmt.Errorf("unsupported client %q", client)
+}
+
+func matchesEndpointClaudeDocument(document map[string]any, endpoint string) bool {
+	environment, _ := document["env"].(map[string]any)
+	baseURL, _ := environment["ANTHROPIC_BASE_URL"].(string)
+	return strings.TrimRight(baseURL, "/") == strings.TrimRight(endpoint, "/")
 }
 
 func ConfigMatchesOfficialCodex(path string) (bool, error) {
@@ -94,10 +99,14 @@ func ConfigMatchesOfficialClaude(path string) (bool, error) {
 	if err := json.Unmarshal(contents, &document); err != nil {
 		return false, err
 	}
+	return matchesOfficialClaudeDocument(document), nil
+}
+
+func matchesOfficialClaudeDocument(document map[string]any) bool {
 	environment, _ := document["env"].(map[string]any)
 	_, hasBaseURL := environment["ANTHROPIC_BASE_URL"]
 	_, hasToken := environment["ANTHROPIC_AUTH_TOKEN"]
-	return !hasBaseURL && !hasToken, nil
+	return !hasBaseURL && !hasToken
 }
 
 // ConfigMatchesOfficialWrapper reports whether the client configuration carries
@@ -111,8 +120,8 @@ func ConfigMatchesOfficialWrapper(client Client, path, endpoint string) (bool, e
 	if err != nil {
 		return false, err
 	}
-	expected := strings.TrimRight(endpoint, "/")
 	if client == ClientCodex {
+		expected := strings.TrimRight(endpoint, "/")
 		var document map[string]any
 		if err := toml.Unmarshal(contents, &document); err != nil {
 			return false, err
@@ -132,12 +141,16 @@ func ConfigMatchesOfficialWrapper(client Client, path, endpoint string) (bool, e
 		if err := json.Unmarshal(contents, &document); err != nil {
 			return false, err
 		}
-		environment, _ := document["env"].(map[string]any)
-		baseURL, _ := environment["ANTHROPIC_BASE_URL"].(string)
-		_, hasToken := environment["ANTHROPIC_AUTH_TOKEN"]
-		return strings.TrimRight(baseURL, "/") == expected && !hasToken, nil
+		return matchesOfficialWrapperClaudeDocument(document, endpoint), nil
 	}
 	return false, fmt.Errorf("unsupported client %q", client)
+}
+
+func matchesOfficialWrapperClaudeDocument(document map[string]any, endpoint string) bool {
+	environment, _ := document["env"].(map[string]any)
+	baseURL, _ := environment["ANTHROPIC_BASE_URL"].(string)
+	_, hasToken := environment["ANTHROPIC_AUTH_TOKEN"]
+	return strings.TrimRight(baseURL, "/") == strings.TrimRight(endpoint, "/") && !hasToken
 }
 
 // ClaudeConfigMatchesSnapshot checks only the AgentDeck-owned Claude route
@@ -185,6 +198,10 @@ func ClaudeCredentialConflicts(path string) ([]string, error) {
 	if err := json.Unmarshal(contents, &document); err != nil {
 		return nil, err
 	}
+	return conflictsFromClaudeDocument(document), nil
+}
+
+func conflictsFromClaudeDocument(document map[string]any) []string {
 	conflicts := make([]string, 0, 2)
 	environment, _ := document["env"].(map[string]any)
 	if configuresCredential(environment["ANTHROPIC_API_KEY"]) {
@@ -193,7 +210,63 @@ func ClaudeCredentialConflicts(path string) ([]string, error) {
 	if configuresCredential(document["apiKeyHelper"]) {
 		conflicts = append(conflicts, ClaudeConflictAPIKeyHelper)
 	}
-	return conflicts, nil
+	return conflicts
+}
+
+// ClaudeSettingsSnapshot is one parsed read of the managed Claude settings
+// file, shared by the match evaluation and the conflict scan for one
+// reconcile attempt. Reading the file twice would let it change between the
+// two reads, pairing a match derived from one file state with a conflict scan
+// derived from another — exactly what could promote a false no-key
+// classification. See architecture.md's "One settings snapshot, not two
+// reads".
+type ClaudeSettingsSnapshot struct {
+	document map[string]any
+	mtime    time.Time
+}
+
+// ReadClaudeSettingsSnapshot reads and parses the managed Claude settings
+// file exactly once. A read or parse failure returns a zero-value snapshot
+// and the error; the caller must treat that the same as today's unreadable-
+// settings-file handling, not attempt a second independent read to recover.
+func ReadClaudeSettingsSnapshot(path string) (ClaudeSettingsSnapshot, error) {
+	var mtime time.Time
+	if info, statErr := os.Stat(path); statErr == nil {
+		mtime = info.ModTime()
+	}
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		return ClaudeSettingsSnapshot{}, err
+	}
+	var document map[string]any
+	if err := json.Unmarshal(contents, &document); err != nil {
+		return ClaudeSettingsSnapshot{}, err
+	}
+	return ClaudeSettingsSnapshot{document: document, mtime: mtime}, nil
+}
+
+// Mtime is the settings file's modification time observed at the moment this
+// snapshot was read. Diagnostic only; it is never used to suppress or
+// identify a delivery.
+func (snapshot ClaudeSettingsSnapshot) Mtime() time.Time { return snapshot.mtime }
+
+// Matches evaluates ClaudeConfigMatchesSnapshot's rule against the document
+// this snapshot already read, so it cannot disagree with Conflicts about
+// which file state it saw.
+func (snapshot ClaudeSettingsSnapshot) Matches(selection store.ProviderSnapshot) bool {
+	if selection.Name == OfficialProviderName {
+		if selection.ViaWrapper {
+			return matchesOfficialWrapperClaudeDocument(snapshot.document, selection.Endpoint)
+		}
+		return matchesOfficialClaudeDocument(snapshot.document)
+	}
+	return matchesEndpointClaudeDocument(snapshot.document, selection.Endpoint)
+}
+
+// Conflicts evaluates ClaudeCredentialConflicts' rule against the same
+// document Matches used.
+func (snapshot ClaudeSettingsSnapshot) Conflicts() []string {
+	return conflictsFromClaudeDocument(snapshot.document)
 }
 
 // configuresCredential reports whether a settings value can actually supply a

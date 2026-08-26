@@ -363,9 +363,9 @@ or copy that a surface document would review.
 
 All three required design documents have passed independent Re-review.
 `hook-delivery-ledger` and `switch-effectiveness-contract` have passed
-independent Re-review; 2/4 implementation tasks are reviewed.
-`effective-route-policy` is next, and the matching records under `reviews/` own
-the findings and evidence.
+independent Re-review; `effective-route-policy` has now passed as well. 3/4
+implementation tasks are reviewed. `real-session-acceptance` is next, and the
+matching records under `reviews/` own the findings and evidence.
 
 ## Tasks
 
@@ -373,7 +373,7 @@ the findings and evidence.
 | --- | --- | --- | --- |
 | 1 | `hook-delivery-ledger` | [x] | [x] |
 | 2 | `switch-effectiveness-contract` | [x] | [x] |
-| 3 | `effective-route-policy` | [ ] | [ ] |
+| 3 | `effective-route-policy` | [x] | [x] |
 | 4 | `real-session-acceptance` | [ ] | [ ] |
 
 Development is blocked until this `tasks.md` passes review, per

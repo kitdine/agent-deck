@@ -250,7 +250,54 @@ func TestSessionRoutesKeepWrapperOnlyChanges(t *testing.T) {
 	}
 }
 
-func TestRecordHookDeliveryConfigChangeRecordsMatchedOrUnknownRoute(t *testing.T) {
+// routeRow and readRoutes are the shared helpers the ConfigChange classifier
+// tests below use to inspect usage_session_routes.
+type routeRow struct {
+	provider, multiplier, hookEvent, source, quality string
+	viaWrapper                                       int
+}
+
+func readRoutes(t *testing.T, ctx context.Context, database *store.Store) []routeRow {
+	t.Helper()
+	rows, err := database.DB.QueryContext(ctx, `SELECT provider,multiplier,via_wrapper,hook_event,source,quality FROM usage_session_routes ORDER BY id`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var got []routeRow
+	for rows.Next() {
+		var item routeRow
+		if err := rows.Scan(&item.provider, &item.multiplier, &item.viaWrapper, &item.hookEvent, &item.source, &item.quality); err != nil {
+			t.Fatal(err)
+		}
+		got = append(got, item)
+	}
+	return got
+}
+
+func readObservationClassifier(t *testing.T, ctx context.Context, database *store.Store, deliveryID string) (routeEffect string, configMatched sql.NullInt64, priorState, conflictScan sql.NullString, conflictSources string) {
+	t.Helper()
+	if err := database.DB.QueryRowContext(ctx, `SELECT route_effect,config_matched,prior_state,conflict_scan,conflict_sources FROM usage_session_observations WHERE delivery_id=?`, deliveryID).Scan(&routeEffect, &configMatched, &priorState, &conflictScan, &conflictSources); err != nil {
+		t.Fatal(err)
+	}
+	return
+}
+
+// readObservationSelection reads Stream 1's observed-selection columns, which
+// are NULL exactly when the delivery saw no completed selection.
+func readObservationSelection(t *testing.T, ctx context.Context, database *store.Store, deliveryID string) (provider, multiplier sql.NullString, viaWrapper sql.NullInt64) {
+	t.Helper()
+	if err := database.DB.QueryRowContext(ctx, `SELECT observed_provider,observed_multiplier,observed_via_wrapper FROM usage_session_observations WHERE delivery_id=?`, deliveryID).Scan(&provider, &multiplier, &viaWrapper); err != nil {
+		t.Fatal(err)
+	}
+	return
+}
+
+// TestRecordHookDeliveryConfigChangeRecordsConfirmedFirstKeyOrUnknownRoute
+// covers Contract 3's two behaviors this task did not change: a confirmed
+// no-key -> first-key transition still advances the route, and an explicit
+// settings mismatch still records unknown/multiplier 1.
+func TestRecordHookDeliveryConfigChangeRecordsConfirmedFirstKeyOrUnknownRoute(t *testing.T) {
 	ctx := context.Background()
 	database, err := store.Open(ctx, filepath.Join(t.TempDir(), "state"))
 	if err != nil {
@@ -260,7 +307,15 @@ func TestRecordHookDeliveryConfigChangeRecordsMatchedOrUnknownRoute(t *testing.T
 	service := New(database, "")
 	now := time.Date(2026, 8, 4, 0, 0, 1, 0, time.UTC)
 	service.Now = func() time.Time { return now }
-	snapshot := store.ProviderSnapshot{Name: "custom", Multiplier: "2", ViaWrapper: true}
+
+	// The session starts on official (no-key), establishing the prior route
+	// the classifier's step 1 reads.
+	if err := service.RecordHookDelivery(ctx, HookDelivery{Client: "claude", SessionID: "session", HookEvent: "SessionStart", Source: "startup", DeliveryID: "start", HasSelection: true, Selection: store.ProviderSnapshot{Name: "official", Multiplier: "1"}}); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(time.Second)
+
+	snapshot := store.ProviderSnapshot{Name: "custom", Multiplier: "2", ViaWrapper: true, Credential: "default"}
 	matched := true
 	if err := service.RecordHookDelivery(ctx, HookDelivery{Client: "claude", SessionID: "session", HookEvent: "ConfigChange", Source: "user_settings", DeliveryID: "c1", ConfigMatched: &matched, HasSelection: true, Selection: snapshot}); err != nil {
 		t.Fatal(err)
@@ -270,35 +325,219 @@ func TestRecordHookDeliveryConfigChangeRecordsMatchedOrUnknownRoute(t *testing.T
 	if err := service.RecordHookDelivery(ctx, HookDelivery{Client: "claude", SessionID: "session", HookEvent: "ConfigChange", Source: "user_settings", DeliveryID: "c2", ConfigMatched: &mismatched}); err != nil {
 		t.Fatal(err)
 	}
-	rows, err := database.DB.QueryContext(ctx, `SELECT provider,multiplier,via_wrapper,hook_event,source,quality FROM usage_session_routes ORDER BY id`)
+
+	got := readRoutes(t, ctx, database)
+	want := []routeRow{
+		{"official", "1", "SessionStart", "startup", "estimated", 0},
+		{"custom", "2", "ConfigChange", "user_settings", "estimated", 1},
+		{"unknown", "1", "ConfigChange", "user_settings", "estimated", 0},
+	}
+	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] || got[2] != want[2] {
+		t.Fatalf("config-change routes = %#v, want %#v", got, want)
+	}
+
+	effect1, matched1, priorState1, conflictScan1, sources1 := readObservationClassifier(t, ctx, database, "c1")
+	if effect1 != "advance" || !matched1.Valid || matched1.Int64 != 1 || !priorState1.Valid || priorState1.String != "no-key" || !conflictScan1.Valid || conflictScan1.String != "clean" || sources1 != "" {
+		t.Fatalf("c1 classifier = (effect=%q, matched=%v, prior=%v, conflict=%v, sources=%q)", effect1, matched1, priorState1, conflictScan1, sources1)
+	}
+	effect2, matched2, priorState2, conflictScan2, _ := readObservationClassifier(t, ctx, database, "c2")
+	if effect2 != "unknown" || !matched2.Valid || matched2.Int64 != 0 || priorState2.Valid || conflictScan2.Valid {
+		t.Fatalf("c2 classifier = (effect=%q, matched=%v, prior=%v, conflict=%v), want unknown/0/NULL/NULL", effect2, matched2, priorState2, conflictScan2)
+	}
+}
+
+// TestRecordHookDeliveryConfigChangeRetainsRouteForRotationRemovalAndIndeterminate
+// is Contract 3's core defect fix: a matched change whose prior state is not a
+// confirmed no-key must retain the existing route rather than overwrite it.
+func TestRecordHookDeliveryConfigChangeRetainsRouteForRotationRemovalAndIndeterminate(t *testing.T) {
+	ctx := context.Background()
+	database, err := store.Open(ctx, filepath.Join(t.TempDir(), "state"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rows.Close()
-	type route struct {
-		provider, multiplier, hookEvent, source, quality string
-		viaWrapper                                       int
-	}
-	var got []route
-	for rows.Next() {
-		var item route
-		if err := rows.Scan(&item.provider, &item.multiplier, &item.viaWrapper, &item.hookEvent, &item.source, &item.quality); err != nil {
+	defer database.Close()
+	service := New(database, "")
+	now := time.Date(2026, 8, 4, 0, 0, 1, 0, time.UTC)
+	service.Now = func() time.Time { return now }
+
+	t.Run("key rotation retains the keyed route", func(t *testing.T) {
+		if err := service.RecordHookDelivery(ctx, HookDelivery{Client: "claude", SessionID: "rotation", HookEvent: "SessionStart", Source: "startup", DeliveryID: "rotation-start", HasSelection: true, Selection: store.ProviderSnapshot{Name: "keyA", Multiplier: "2", Credential: "default"}}); err != nil {
 			t.Fatal(err)
 		}
-		got = append(got, item)
-	}
-	if len(got) != 2 || got[0] != (route{"custom", "2", "ConfigChange", "user_settings", "estimated", 1}) || got[1] != (route{"unknown", "1", "ConfigChange", "user_settings", "estimated", 0}) {
-		t.Fatalf("config-change routes = %#v", got)
-	}
-	var configMatched1, configMatched2 sql.NullInt64
-	if err := database.DB.QueryRowContext(ctx, `SELECT config_matched FROM usage_session_observations WHERE delivery_id='c1'`).Scan(&configMatched1); err != nil {
+		now = now.Add(time.Second)
+		matched := true
+		if err := service.RecordHookDelivery(ctx, HookDelivery{Client: "claude", SessionID: "rotation", HookEvent: "ConfigChange", Source: "user_settings", DeliveryID: "rotation-change", ConfigMatched: &matched, HasSelection: true, Selection: store.ProviderSnapshot{Name: "keyB", Multiplier: "3", Credential: "other"}}); err != nil {
+			t.Fatal(err)
+		}
+		var routeCount int
+		if err := database.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM usage_session_routes WHERE client='claude' AND session_id='rotation'`).Scan(&routeCount); err != nil {
+			t.Fatal(err)
+		}
+		if routeCount != 1 {
+			t.Fatalf("rotation route count = %d, want 1 (no new row)", routeCount)
+		}
+		effect, _, priorState, conflictScan, _ := readObservationClassifier(t, ctx, database, "rotation-change")
+		if effect != "retain" || !priorState.Valid || priorState.String != "keyed" || !conflictScan.Valid || conflictScan.String != "clean" {
+			t.Fatalf("rotation classifier = (effect=%q, prior=%v, conflict=%v), want retain/keyed/clean", effect, priorState, conflictScan)
+		}
+	})
+
+	t.Run("credential deletion retains the keyed route", func(t *testing.T) {
+		if err := service.RecordHookDelivery(ctx, HookDelivery{Client: "claude", SessionID: "deletion", HookEvent: "SessionStart", Source: "startup", DeliveryID: "deletion-start", HasSelection: true, Selection: store.ProviderSnapshot{Name: "keyA", Multiplier: "2", Credential: "default"}}); err != nil {
+			t.Fatal(err)
+		}
+		now = now.Add(time.Second)
+		matched := true
+		if err := service.RecordHookDelivery(ctx, HookDelivery{Client: "claude", SessionID: "deletion", HookEvent: "ConfigChange", Source: "user_settings", DeliveryID: "deletion-change", ConfigMatched: &matched, HasSelection: true, Selection: store.ProviderSnapshot{Name: "official", Multiplier: "1"}}); err != nil {
+			t.Fatal(err)
+		}
+		var routeCount int
+		if err := database.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM usage_session_routes WHERE client='claude' AND session_id='deletion'`).Scan(&routeCount); err != nil {
+			t.Fatal(err)
+		}
+		if routeCount != 1 {
+			t.Fatalf("deletion route count = %d, want 1 (no new row)", routeCount)
+		}
+		effect, _, priorState, _, _ := readObservationClassifier(t, ctx, database, "deletion-change")
+		if effect != "retain" || !priorState.Valid || priorState.String != "keyed" {
+			t.Fatalf("deletion classifier = (effect=%q, prior=%v), want retain/keyed", effect, priorState)
+		}
+	})
+
+	t.Run("a candidate no-key with a conflicting settings source is indeterminate", func(t *testing.T) {
+		if err := service.RecordHookDelivery(ctx, HookDelivery{Client: "claude", SessionID: "conflict", HookEvent: "SessionStart", Source: "startup", DeliveryID: "conflict-start", HasSelection: true, Selection: store.ProviderSnapshot{Name: "official", Multiplier: "1"}}); err != nil {
+			t.Fatal(err)
+		}
+		now = now.Add(time.Second)
+		matched := true
+		if err := service.RecordHookDelivery(ctx, HookDelivery{
+			Client: "claude", SessionID: "conflict", HookEvent: "ConfigChange", Source: "user_settings", DeliveryID: "conflict-change",
+			ConfigMatched: &matched, HasSelection: true, Selection: store.ProviderSnapshot{Name: "custom", Multiplier: "2", Credential: "default"},
+			ConflictSources: []string{"env.ANTHROPIC_API_KEY"},
+		}); err != nil {
+			t.Fatal(err)
+		}
+		var routeCount int
+		if err := database.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM usage_session_routes WHERE client='claude' AND session_id='conflict'`).Scan(&routeCount); err != nil {
+			t.Fatal(err)
+		}
+		if routeCount != 1 {
+			t.Fatalf("conflict route count = %d, want 1 (no new row)", routeCount)
+		}
+		effect, _, priorState, conflictScan, sources := readObservationClassifier(t, ctx, database, "conflict-change")
+		if effect != "retain" || !priorState.Valid || priorState.String != "indeterminate" || !conflictScan.Valid || conflictScan.String != "conflicted" || sources != "env.ANTHROPIC_API_KEY" {
+			t.Fatalf("conflict classifier = (effect=%q, prior=%v, conflict=%v, sources=%q), want retain/indeterminate/conflicted/env.ANTHROPIC_API_KEY", effect, priorState, conflictScan, sources)
+		}
+	})
+
+	t.Run("no prior evidence at all is indeterminate", func(t *testing.T) {
+		matched := true
+		if err := service.RecordHookDelivery(ctx, HookDelivery{
+			Client: "claude", SessionID: "unknown-session", HookEvent: "ConfigChange", Source: "user_settings", DeliveryID: "blank-change",
+			ConfigMatched: &matched, HasSelection: true, Selection: store.ProviderSnapshot{Name: "custom", Multiplier: "2", Credential: "default"},
+		}); err != nil {
+			t.Fatal(err)
+		}
+		var routeCount int
+		if err := database.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM usage_session_routes WHERE client='claude' AND session_id='unknown-session'`).Scan(&routeCount); err != nil {
+			t.Fatal(err)
+		}
+		if routeCount != 0 {
+			t.Fatalf("blank-session route count = %d, want 0", routeCount)
+		}
+		effect, _, priorState, conflictScan, _ := readObservationClassifier(t, ctx, database, "blank-change")
+		if effect != "retain" || !priorState.Valid || priorState.String != "indeterminate" || !conflictScan.Valid || conflictScan.String != "clean" {
+			t.Fatalf("blank-session classifier = (effect=%q, prior=%v, conflict=%v), want retain/indeterminate/clean", effect, priorState, conflictScan)
+		}
+	})
+}
+
+// TestRecordHookDeliveryConfigChangeSettingsUnreadableRecordsIndeterminateRetain
+// is E1-F1's regression: a ConfigChange whose settings snapshot could not be
+// read or parsed on any attempt must still be accepted and observed — never
+// silently dropped — classifying indeterminate/retain with an unreadable
+// conflict scan and no route write, and never asserting a match it never
+// determined.
+func TestRecordHookDeliveryConfigChangeSettingsUnreadableRecordsIndeterminateRetain(t *testing.T) {
+	ctx := context.Background()
+	database, err := store.Open(ctx, filepath.Join(t.TempDir(), "state"))
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.DB.QueryRowContext(ctx, `SELECT config_matched FROM usage_session_observations WHERE delivery_id='c2'`).Scan(&configMatched2); err != nil {
+	defer database.Close()
+	service := New(database, "")
+	now := time.Date(2026, 8, 4, 0, 0, 1, 0, time.UTC)
+	service.Now = func() time.Time { return now }
+
+	if err := service.RecordHookDelivery(ctx, HookDelivery{
+		Client: "claude", SessionID: "session", HookEvent: "ConfigChange", Source: "user_settings",
+		DeliveryID: "unreadable-1", SettingsUnreadable: true,
+		HasSelection: true, Selection: store.ProviderSnapshot{Name: "custom", Multiplier: "2", ViaWrapper: true},
+	}); err != nil {
 		t.Fatal(err)
 	}
-	if !configMatched1.Valid || configMatched1.Int64 != 1 || !configMatched2.Valid || configMatched2.Int64 != 0 {
-		t.Fatalf("config_matched = (%v,%v), want (1,0)", configMatched1, configMatched2)
+
+	var observations, routes int
+	if err := database.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM usage_session_observations WHERE session_id='session'`).Scan(&observations); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM usage_session_routes WHERE session_id='session'`).Scan(&routes); err != nil {
+		t.Fatal(err)
+	}
+	if observations != 1 || routes != 0 {
+		t.Fatalf("observations=%d routes=%d, want 1/0 (the delivery is observed, never dropped, and writes no route)", observations, routes)
+	}
+
+	effect, configMatched, priorState, conflictScan, sources := readObservationClassifier(t, ctx, database, "unreadable-1")
+	if effect != "retain" || configMatched.Valid || !priorState.Valid || priorState.String != "indeterminate" || !conflictScan.Valid || conflictScan.String != "unreadable" || sources != "" {
+		t.Fatalf("unreadable classifier = (effect=%q, matched=%v, prior=%v, conflict=%v, sources=%q), want retain/NULL/indeterminate/unreadable/\"\"", effect, configMatched, priorState, conflictScan, sources)
+	}
+
+	// E3-F1: the settings document was unreadable, but the completed selection
+	// was read from the store, so Stream 1's observed-selection columns record
+	// what this reconcile actually observed instead of collapsing to NULL.
+	provider, multiplier, viaWrapper := readObservationSelection(t, ctx, database, "unreadable-1")
+	if !provider.Valid || provider.String != "custom" || !multiplier.Valid || multiplier.String != "2" || !viaWrapper.Valid || viaWrapper.Int64 != 1 {
+		t.Fatalf("unreadable observed selection = (provider=%v, multiplier=%v, viaWrapper=%v), want custom/2/1", provider, multiplier, viaWrapper)
+	}
+}
+
+// TestRecordHookDeliveryConfigChangeSettingsUnreadableWithoutSelectionKeepsSelectionNull
+// is E3-F1's other half: when the reconcile never observed a completed
+// selection either, the same three columns stay NULL, so "not applicable"
+// remains distinguishable from an observed value.
+func TestRecordHookDeliveryConfigChangeSettingsUnreadableWithoutSelectionKeepsSelectionNull(t *testing.T) {
+	ctx := context.Background()
+	database, err := store.Open(ctx, filepath.Join(t.TempDir(), "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	service := New(database, "")
+	now := time.Date(2026, 8, 4, 0, 0, 1, 0, time.UTC)
+	service.Now = func() time.Time { return now }
+
+	if err := service.RecordHookDelivery(ctx, HookDelivery{
+		Client: "claude", SessionID: "session", HookEvent: "ConfigChange", Source: "user_settings",
+		DeliveryID: "unreadable-2", SettingsUnreadable: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	effect, _, priorState, conflictScan, _ := readObservationClassifier(t, ctx, database, "unreadable-2")
+	if effect != "retain" || !priorState.Valid || priorState.String != "indeterminate" || !conflictScan.Valid || conflictScan.String != "unreadable" {
+		t.Fatalf("unreadable classifier = (effect=%q, prior=%v, conflict=%v), want retain/indeterminate/unreadable", effect, priorState, conflictScan)
+	}
+	provider, multiplier, viaWrapper := readObservationSelection(t, ctx, database, "unreadable-2")
+	if provider.Valid || multiplier.Valid || viaWrapper.Valid {
+		t.Fatalf("no-selection observed columns = (provider=%v, multiplier=%v, viaWrapper=%v), want all NULL", provider, multiplier, viaWrapper)
+	}
+	var routes int
+	if err := database.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM usage_session_routes WHERE session_id='session'`).Scan(&routes); err != nil {
+		t.Fatal(err)
+	}
+	if routes != 0 {
+		t.Fatalf("route count = %d, want 0", routes)
 	}
 }
 

@@ -770,6 +770,54 @@ func TestClaudeConfigMatchesSnapshotRoutes(t *testing.T) {
 	}
 }
 
+// TestClaudeSettingsSnapshotMatchesConflictsSameDocument pins the reconcile
+// classifier's snapshot rule: Matches and Conflicts both answer from the one
+// document ReadClaudeSettingsSnapshot already parsed, so a file that carries
+// both a matching endpoint and a conflicting credential source at once
+// reports both consistently from a single read, and the snapshot never
+// re-reads the path to answer either question — verified by deleting the
+// file before calling either method.
+func TestClaudeSettingsSnapshotMatchesConflictsSameDocument(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+	contents := `{"env":{"ANTHROPIC_BASE_URL":"https://provider.example","ANTHROPIC_API_KEY":"synthetic-secret"}}`
+	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := ReadClaudeSettingsSnapshot(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.Mtime().IsZero() {
+		t.Fatal("snapshot mtime is zero for an existing file")
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if !snapshot.Matches(store.ProviderSnapshot{Name: "custom", Endpoint: "https://provider.example"}) {
+		t.Fatal("snapshot no longer matches after the file was removed, want the already-parsed document to still answer")
+	}
+	conflicts := snapshot.Conflicts()
+	if len(conflicts) != 1 || conflicts[0] != ClaudeConflictAPIKey {
+		t.Fatalf("snapshot conflicts = %#v, want [%s]", conflicts, ClaudeConflictAPIKey)
+	}
+}
+
+// TestClaudeSettingsSnapshotUnreadableFileFailsClosed covers the case the
+// reconcile loop must treat as indeterminate: a snapshot that cannot be read
+// or parsed carries no usable document.
+func TestClaudeSettingsSnapshotUnreadableFileFailsClosed(t *testing.T) {
+	if _, err := ReadClaudeSettingsSnapshot(filepath.Join(t.TempDir(), "absent.json")); err == nil {
+		t.Fatal("expected an error reading a missing settings file")
+	}
+	path := filepath.Join(t.TempDir(), "settings.json")
+	if err := os.WriteFile(path, []byte(`{"env":`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ReadClaudeSettingsSnapshot(path); err == nil {
+		t.Fatal("expected an error parsing an invalid settings file")
+	}
+}
+
 func TestConfigMatchesOfficialCodexRequiresOfficialName(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.toml")
 	for _, test := range []struct {

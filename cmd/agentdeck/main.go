@@ -2998,20 +2998,38 @@ func reconcileClaudeConfigChange(ctx context.Context, database *store.Store, hom
 	service := usage.New(database, home)
 	var lastConfigErr error
 	inspectedConfig := false
+	// The completed selection is a separate observation from the settings
+	// document. When the provider snapshot read succeeds and only the
+	// settings read fails, the selection is still a fact this reconcile
+	// observed, so it is kept for the indeterminate delivery below rather
+	// than discarded with the unreadable settings.
+	var observedSelection store.ProviderSnapshot
+	hasObservedSelection := false
 	for attempt := 0; attempt < attempts; attempt++ {
 		snapshot, err := database.CurrentProviderSnapshot(ctx, "claude")
 		if err == nil {
-			matches, matchErr := provider.ClaudeConfigMatchesSnapshot(configPath, snapshot)
-			if matchErr != nil {
-				lastConfigErr = matchErr
+			observedSelection = snapshot
+			hasObservedSelection = true
+			// One parsed settings snapshot per attempt: the match evaluation
+			// and the conflict scan both read this same in-memory document,
+			// so a file change between them cannot pair a match from one
+			// state with a clean conflict scan from another.
+			settings, settingsErr := provider.ReadClaudeSettingsSnapshot(configPath)
+			if settingsErr != nil {
+				lastConfigErr = settingsErr
 			} else {
 				inspectedConfig = true
 				lastConfigErr = nil
-				if matches {
+				if settings.Matches(snapshot) {
 					matched := true
+					settingsChangedAt := ""
+					if mtime := settings.Mtime(); !mtime.IsZero() {
+						settingsChangedAt = mtime.Format(time.RFC3339Nano)
+					}
 					return service.RecordHookDelivery(ctx, usage.HookDelivery{
 						Client: "claude", SessionID: sessionID, HookEvent: "ConfigChange", Source: "user_settings",
 						DeliveryID: deliveryID, ConfigMatched: &matched, HasSelection: true, Selection: snapshot,
+						ConflictSources: settings.Conflicts(), SettingsChangedAt: settingsChangedAt,
 					})
 				}
 			}
@@ -3023,7 +3041,18 @@ func reconcileClaudeConfigChange(ctx context.Context, database *store.Store, hom
 		}
 	}
 	if lastConfigErr != nil && !inspectedConfig {
-		return lastConfigErr
+		// Every attempt failed to read or parse the settings snapshot. The
+		// accepted delivery is still observed, not silently dropped: it
+		// classifies indeterminate and writes no route, while still carrying
+		// the completed selection this reconcile did read, so the observation
+		// records what was observed as well as what stayed undetermined. This
+		// does not propagate lastConfigErr, keeping the Hook fail-open exactly
+		// as a confirmed mismatch does.
+		return service.RecordHookDelivery(ctx, usage.HookDelivery{
+			Client: "claude", SessionID: sessionID, HookEvent: "ConfigChange", Source: "user_settings",
+			DeliveryID: deliveryID, SettingsUnreadable: true,
+			HasSelection: hasObservedSelection, Selection: observedSelection,
+		})
 	}
 	mismatched := false
 	return service.RecordHookDelivery(ctx, usage.HookDelivery{

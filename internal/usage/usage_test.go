@@ -1466,6 +1466,113 @@ func TestReadPriceResolverFallsBackToEventAtWithoutSessionStart(t *testing.T) {
 	}
 }
 
+// TestPriceForEventIgnoresObservationsAndPricesThroughRetainedRoute is Task
+// 3's required cost-consequence coverage: sessionRouteAt and priceForEvent
+// are untouched by the prior-state classifier and never read
+// usage_session_observations, so an event in a session whose matched
+// ConfigChange the classifier retained (an unadopted key rotation) still
+// prices at the prior provider's multiplier, not the new selection's, even
+// though the retained delivery left its own observation row.
+func TestPriceForEventIgnoresObservationsAndPricesThroughRetainedRoute(t *testing.T) {
+	ctx := context.Background()
+	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	service := New(s, "")
+	now := time.Date(2026, 8, 4, 0, 0, 1, 0, time.UTC)
+	service.Now = func() time.Time { return now }
+
+	if err := service.RecordHookDelivery(ctx, HookDelivery{Client: "claude", SessionID: "session", HookEvent: "SessionStart", Source: "startup", DeliveryID: "start", HasSelection: true, Selection: store.ProviderSnapshot{Name: "keyA", Multiplier: "2", Credential: "default"}}); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(time.Second)
+	matched := true
+	if err := service.RecordHookDelivery(ctx, HookDelivery{Client: "claude", SessionID: "session", HookEvent: "ConfigChange", Source: "user_settings", DeliveryID: "rotate", ConfigMatched: &matched, HasSelection: true, Selection: store.ProviderSnapshot{Name: "keyB", Multiplier: "9", Credential: "other"}}); err != nil {
+		t.Fatal(err)
+	}
+
+	var observations, routes int
+	if err := s.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM usage_session_observations WHERE session_id='session'`).Scan(&observations); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM usage_session_routes WHERE session_id='session'`).Scan(&routes); err != nil {
+		t.Fatal(err)
+	}
+	if observations != 2 || routes != 1 {
+		t.Fatalf("observations=%d routes=%d, want 2/1 (the rotation leaves an observation but no new route)", observations, routes)
+	}
+
+	resolver, err := service.loadReadPriceResolver(ctx, now.Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	after, err := resolver.priceForEvent(storedEvent{Event: Event{Client: "claude", SessionID: "session", EventAt: now.Add(time.Minute).Format(time.RFC3339Nano), Model: "fixture"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.provider != "keyA" || after.multiplier != "2" {
+		t.Fatalf("post-rotation attribution = %#v, want the prior provider keyA at multiplier 2", after)
+	}
+}
+
+// TestSessionStartedAfterSwitchAttributesNewSelectionAndRestartAdopts covers
+// the regression Task 3 could plausibly introduce by suppressing a matched
+// ConfigChange's route write: suppressing the write must not make the old
+// route permanent. A session that starts after the switch still attributes
+// from its own SessionStart, and a restart of the spanning session resolves
+// to the new selection once it actually starts under it.
+func TestSessionStartedAfterSwitchAttributesNewSelectionAndRestartAdopts(t *testing.T) {
+	ctx := context.Background()
+	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	service := New(s, "")
+	now := time.Date(2026, 8, 4, 0, 0, 1, 0, time.UTC)
+	service.Now = func() time.Time { return now }
+
+	if err := service.RecordHookDelivery(ctx, HookDelivery{Client: "claude", SessionID: "spanning", HookEvent: "SessionStart", Source: "startup", DeliveryID: "spanning-start", HasSelection: true, Selection: store.ProviderSnapshot{Name: "keyA", Multiplier: "2", Credential: "default"}}); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(time.Second)
+	matched := true
+	if err := service.RecordHookDelivery(ctx, HookDelivery{Client: "claude", SessionID: "spanning", HookEvent: "ConfigChange", Source: "user_settings", DeliveryID: "spanning-rotate", ConfigMatched: &matched, HasSelection: true, Selection: store.ProviderSnapshot{Name: "keyB", Multiplier: "9", Credential: "other"}}); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(time.Second)
+	newSessionAt := now
+	if err := service.RecordHookDelivery(ctx, HookDelivery{Client: "claude", SessionID: "after-switch", HookEvent: "SessionStart", Source: "startup", DeliveryID: "after-switch-start", HasSelection: true, Selection: store.ProviderSnapshot{Name: "keyB", Multiplier: "9", Credential: "other"}}); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(time.Second)
+	restartAt := now
+	if err := service.RecordHookDelivery(ctx, HookDelivery{Client: "claude", SessionID: "spanning", HookEvent: "SessionStart", Source: "resume", DeliveryID: "spanning-restart", HasSelection: true, Selection: store.ProviderSnapshot{Name: "keyB", Multiplier: "9", Credential: "other"}}); err != nil {
+		t.Fatal(err)
+	}
+
+	resolver, err := service.loadReadPriceResolver(ctx, now.Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	newSessionPrice, err := resolver.priceForEvent(storedEvent{Event: Event{Client: "claude", SessionID: "after-switch", EventAt: newSessionAt.Add(time.Millisecond).Format(time.RFC3339Nano), Model: "fixture"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if newSessionPrice.provider != "keyB" || newSessionPrice.multiplier != "9" {
+		t.Fatalf("session started after the switch = %#v, want keyB/9", newSessionPrice)
+	}
+	afterRestartPrice, err := resolver.priceForEvent(storedEvent{Event: Event{Client: "claude", SessionID: "spanning", EventAt: restartAt.Add(time.Millisecond).Format(time.RFC3339Nano), Model: "fixture"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if afterRestartPrice.provider != "keyB" || afterRestartPrice.multiplier != "9" {
+		t.Fatalf("spanning session after restart = %#v, want keyB/9", afterRestartPrice)
+	}
+}
+
 func TestSessionsRetainsSessionStartProviderCost(t *testing.T) {
 	ctx := context.Background()
 	s, err := store.Open(ctx, filepath.Join(t.TempDir(), "state"))
