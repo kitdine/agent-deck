@@ -408,3 +408,300 @@ blocking finding，复评结论为 PASS。剩余运行时不确定性由后续
   内容、其他 topic、roadmap 与无关 dirty work。
 - 推送建议：目标分支与远端尚未解析；仅在获得明确 commit 与 push 授权、按上述 Task
   边界形成并核验签名提交后推送。本 checkpoint 不执行也不授权交付。
+
+## Round 7 — 2026-08-25
+
+- Reviewed state: HEAD `56097366fa7fa4c275750a03387346d98f51dc57`;
+  `requirements.md` blob `046460d4d03f4ae0b710b2899a19e49389e6ff0e`.
+- Author: Claude Code — this is a reopen record produced by the
+  `architecture.md` A8-F1 repair, not an independent review round.
+- Completion gate: NOT_VERIFIED — the Round 6 evidence is bound to the
+  superseded blob and does not carry to this content state.
+- Verdict: REOPEN — awaiting one independent review of the current blob.
+
+Round 6's PASS is bound to blob `c762becde8c1480739ae6111f8faa5832bd3dce3` and
+does not carry to the current state. The `architecture.md` A8-F1 repair
+(`reviews/architecture.md` Round 9) changed this document's persistence
+statements: "recording no route" is now scoped to the effective-route stream,
+the unqualified "no new stored representation" and "no migration is required"
+claims are replaced by one additive append-only observation table that no
+pricing path reads, and the acceptance boundary gained the observation
+requirement. `requirements.md` is now blob
+`046460d4d03f4ae0b710b2899a19e49389e6ff0e`, its `Review` cell in `tasks.md` is
+unticked, and its completion-evidence gate is no longer satisfied by the Round 6
+evidence. One independent review of the current blob is required before it may
+be ticked again. No finding from Rounds 1-6 is reopened by this note.
+
+## Round 8 — 2026-08-25
+
+- Reviewed state: HEAD `56097366fa7fa4c275750a03387346d98f51dc57`;
+  `requirements.md` blob `046460d4d03f4ae0b710b2899a19e49389e6ff0e`.
+  Consequential consistency was checked against `architecture.md` blob
+  `0c91b38ccb82a4947b50ff4960d4486a6e8b4ffd` and `tasks.md` blob
+  `62065df2c32241c76814e409fc318f6f6c92542c`.
+- Reviewer: Codex, independently reviewing the persistence reconciliation; this
+  workflow turn did not author it.
+- Method: Requirements-boundary Re-review under the `development-workflow`
+  REREVIEW dimensions. Checked the new observation/effective-route distinction,
+  migration consequence, privacy boundary, acceptance rule, and every previously
+  approved route/restart/non-goal statement for regression. No
+  requirements-specific checker exists; the document-set checker belongs to
+  `tasks.md` review.
+- Scope: the persistence statements added by architecture A8-F1 repair, their
+  consequential requirements sections, and new blockers caused by the change.
+- Finding dispositions:
+  - **A8-F1 requirements consequence — CLOSED.** “Recording no route” is now
+    explicitly scoped to the effective-route stream and cannot be read as
+    discarding the Hook fact. Every handled Claude `ConfigChange` must persist
+    one privacy-bounded observation that never changes pricing, while only an
+    adopted transition advances the existing effective-route history.
+  - **Migration consequence — CLOSED.** The former no-migration statement is
+    replaced by one additive observation-table migration that changes no
+    existing table or historical row and that no pricing path reads. This keeps
+    the effective-route and historical-recomputation boundaries intact.
+  - **Acceptance consequence — CLOSED.** The acceptance boundary requires the
+    observed selection, prior-state classification, and supporting conflict
+    evidence to be persisted without a credential value, and separately asserts
+    that an observation never changes event pricing.
+- New blocking findings: none.
+- Evidence: focused inspection of `requirements.md:126-183,203-266`; consistency
+  with architecture's two-stream ownership and tasks task 2's migration,
+  transaction, privacy, dedup, and resolver-isolation scope. The first-key,
+  prior-route, restart, settings-mismatch, no-history-rewrite, Codex non-goal,
+  and real-session acceptance boundaries remain unchanged. L0 final-state checks:
+  `make check-whitespace` -> exit 0; `git diff --check` -> exit 0. CEv1 evidence
+  `urn:ce:agent-deck:evidence:switch-effectiveness-boundary:requirements.md:rereview-round-8:046460d4d03f4ae0b710b2899a19e49389e6ff0e`
+  satisfies the document criterion for this exact state.
+- Completion gate: VERIFIED
+- Verdict: PASS
+
+## 📋 需求文档独立复评
+
+📊 总体评分：10/10
+
+✅ 复评结论：PASS
+
+### 🔴 严重问题——必须修复
+
+无。
+
+### 🟡 建议改进——推荐
+
+无。
+
+### 🟢 优点
+
+- Hook observation 与 effective route 的边界明确：完整保存事实，但未采纳 observation
+  不改变成本归因。
+- additive migration 不修改现有表、历史行或 pricing resolver。
+- 隐私要求明确禁止 credential value，并保留真实 Claude session 验收门禁。
+
+### 📝 总结
+
+当前 requirements blob `046460d4d03f4ae0b710b2899a19e49389e6ff0e` 已完整吸收
+A8-F1 的持久化不变量，没有重新引入错误 route、历史重解释或隐私扩张。requirements
+边界已决定，复评结论为 PASS；architecture A8-F1 仍需在其自己的复评中获得独立 verdict。
+
+### Task checkpoint
+
+- Task：`switch-effectiveness-boundary / requirements.md` @ HEAD
+  `56097366fa7fa4c275750a03387346d98f51dc57` + blob
+  `046460d4d03f4ae0b710b2899a19e49389e6ff0e`
+- Completion evidence gate：`VERIFIED`
+- 提交建议：仅纳入当前 `requirements.md` 的 persistence reconciliation、requirements
+  评审记录、`tasks.md` 的 requirements Review/current-state hunk，以及
+  `docs/status.md` 的对应 topic 状态 hunk；排除尚未复评的 architecture、tasks 行为内容、
+  其他 topic、roadmap 与无关 dirty work。
+- 推送建议：目标分支与远端尚未解析；仅在获得明确 commit 与 push 授权、形成并核验
+  上述 Task 边界的签名提交后推送。本 checkpoint 不执行也不授权交付。
+
+## Round 9 — 2026-08-25
+
+- Reviewed state: user-authorized client-neutral Hook-operation revision. HEAD
+  `56097366fa7fa4c275750a03387346d98f51dc57`; `requirements.md` blob
+  `3605f402d413811290e5f56dee4361c035321823`.
+- Author: Codex — this is a design reopen record, not an independent review.
+- Change: the prior Claude-only observation promise is superseded. Every accepted
+  Codex or Claude Hook delivery now requires one normalized observation, one
+  shared `route_effect` policy, and identical persistence, transaction, privacy,
+  replay, and resolver-isolation rules. Codex reload behavior remains
+  restart-only; only the Hook operation boundary changed.
+- Completion gate: NOT_VERIFIED — Round 8 evidence is bound to the superseded
+  blob and does not apply to this cross-client requirements state.
+- Verdict: REOPEN — awaiting independent review of the current blob.
+
+## Round 10 — 2026-08-26
+
+- Reviewed state: HEAD `56097366fa7fa4c275750a03387346d98f51dc57`;
+  `requirements.md` blob `3605f402d413811290e5f56dee4361c035321823`.
+  Consistency was checked against architecture blob
+  `ced65fe13f6f9d0b07f7b3a9f572943d374ed8d3` and final synchronized tasks blob
+  `3cf880b8df1ab0cbec6500c164400c368a312974`.
+- Reviewer: Codex, independently reviewing the client-neutral Hook-operation
+  revision; this workflow turn did not author the reviewed requirements content.
+- Method: Formal design/contract Review under `development-workflow`; CodeGraph
+  located the current Hook parser, command handler, route writers, resolver, and
+  affected tests, followed by focused source inspection of the admission and
+  persistence paths. Broad verification stopped after decisive contract
+  contradictions; the repository-required topic/L0 checks were still run on the
+  final review-artifact state.
+- Scope: `requirements.md`, its client-neutral accepted-delivery boundary, and
+  consistency with the architecture failure contract and current Hook admission
+  behavior.
+- Findings:
+  - **[P1] R10-F1 — “accepted delivery” has no satisfiable exact-once boundary.**
+    `requirements.md:246-254` requires every accepted delivery to be persisted as
+    exactly one observation, while `architecture.md:405-410` requires a failed
+    transaction to persist nothing and defines no recovery. The requirements also
+    do not say whether acceptance occurs at `usagehook.ParseEvent` or after the
+    current post-parse transcript/config-scope validation in
+    `cmd/agentdeck/main.go:2891-2914`. As written, one implementation must either
+    persist a delivery the current security boundary rejects, violate “exactly
+    one” on storage failure, or invent an unapproved recovery contract. Repair by
+    defining admission after all required client/path validation and qualifying
+    exact-once as the successful commit outcome; state the fail-open zero-write
+    outcome explicitly and keep it consistent with architecture and tasks.
+- Evidence: `codegraph explore` over `usagehook.ParseEvent`, Hook handling,
+  route persistence, provider reconciliation, and pricing resolution; focused
+  source reads of `internal/usagehook/event.go:26-103` and
+  `cmd/agentdeck/main.go:2884-2976`; final-state checks:
+  `bash scripts/check-topic-docs.sh` -> exit 0, `make check-whitespace` -> exit 0,
+  and `git diff --check` -> exit 0.
+- Completion gate: NOT_VERIFIED — R10-F1 leaves the current requirements WorkUnit
+  unsatisfied; no CEv1 completion evidence was recorded for this blob.
+- Verdict: REOPEN
+
+## 📋 Requirements 独立评审
+
+📊 总体评分：8/10
+
+✅ 评审结论：FAIL
+
+### 🔴 严重问题——必须修复
+
+[`requirements.md:246`] R10-F1：`accepted delivery` 的 exact-once 验收边界与
+事务失败零写入语义互相冲突，且未说明 post-parse 安全校验是否属于 admission。
+- 行为风险：实现可能持久化本应被 transcript/config-path 边界拒绝的 Hook，或在数据库
+  失败时违反“恰好一条”，也可能自行发明未批准的恢复协议。
+- 证据：`ParseEvent` 成功后，`runUsageHookEvent` 仍在
+  `cmd/agentdeck/main.go:2904-2913` 执行 managed-config 与 transcript 校验；
+  `architecture.md:405-410` 明确失败时整个事务零写入且无恢复。
+💡 有界修复：定义 admission 必须经过哪些 parser/path/scope 校验；把 exactly-one
+限定为成功提交结果，并明确 fail-open 失败为 observation/route 均不写入。
+
+### 🟡 建议改进——推荐
+
+无。
+
+### 🟢 优点
+
+- 清楚把 observation 与 effective route 分离，且没有把 Codex reload 行为误改成热加载。
+- 隐私边界和 pricing resolver isolation 已在验收边界中明确列出。
+
+### 📝 总结
+
+当前 requirements blob `3605f402d413811290e5f56dee4361c035321823` 的
+client-neutral 方向成立，但 admission 与失败语义尚未形成可同时满足的验收合同；R10-F1
+关闭前不能通过。
+
+## Round 11 — 2026-08-26
+
+- Reviewed state: repair of Round 10's blocking finding. HEAD
+  `56097366fa7fa4c275750a03387346d98f51dc57`; `requirements.md` blob
+  `64cbe359ff36fd249b96593c85fb70cf542854f6`. Companion repairs land in
+  `architecture.md` blob `b620adf14e53711334cc6dd038424a2947b04109` and
+  `tasks.md` blob `a6d6a6f46954f8b7fc72b00f4c76401f203789d6`.
+- Author: claude-code (repair round — this is not an independent review; the
+  `Review` cell stays unticked until an independent Re-review records a verdict).
+- Scope: R10-F1 only, as named in the repair command.
+- Repair of R10-F1 — the acceptance boundary now separates admission from
+  cardinality instead of leaving both implicit:
+  - **Admission is defined and ordered.** A new acceptance bullet states that a
+    delivery is accepted only after the whole sequence passes — bounded read,
+    `usagehook.ParseEvent`, store/home availability, the
+    `user_settings` + managed-path scope check for a Claude `ConfigChange`, and
+    the transcript-scope check for a `SessionStart` from either client. Nothing
+    rejected is normalized or persisted, and rejection writes neither stream.
+    This matches the sequence the current handler already performs at
+    `cmd/agentdeck/main.go:2884-2914`, so the repair names the existing security
+    boundary rather than relaxing it.
+  - **Exact-once is qualified as successful-commit cardinality.** The former
+    "persisted as exactly one observation" promise is replaced by an explicit
+    invariant `0 <= observations(delivery_id) <= 1`: a committed transaction
+    leaves one observation plus zero or one route; a failed transaction leaves
+    zero rows in both streams. That removes the contradiction with the
+    architecture's zero-write failure contract at `architecture.md:405-410`.
+  - **The fail-open failure outcome is stated.** A failed delivery is dropped
+    fail-open with no pending marker, no cross-process retry, and no recovery
+    protocol, so no unapproved recovery contract has to be invented. An internal
+    retry reusing the same `delivery_id` is a whole-operation no-op adding
+    neither a second observation nor a second route.
+  - Consistency: the same wording is carried in `architecture.md` (Contract 0
+    admission section, Stream 1 whole-operation guard, and the cardinality
+    paragraph under *Ownership and failure semantics*) and in `tasks.md` Task 1's
+    admission, cardinality, and retry assertions.
+- Consequential change outside R10-F1: the `route_effect` bullet now states that
+  `advance` and `unknown` write through the unchanged consecutive-identical
+  route no-op and guarantee the resolved route rather than a new row. This keeps
+  the requirements consistent with the A16-F5 repair; it narrows no promise.
+- Verification: `bash scripts/check-topic-docs.sh` -> exit 0. No product code
+  changed in this round.
+- Completion gate: NOT_VERIFIED — a repair round cannot record its own
+  completion evidence; the requirements WorkUnit stays open until an independent
+  Re-review passes this blob.
+- Verdict: REPAIRED — awaiting independent Re-review.
+
+## Round 12 — 2026-08-26
+
+- Reviewed state: HEAD `56097366fa7fa4c275750a03387346d98f51dc57`;
+  `requirements.md` blob `64cbe359ff36fd249b96593c85fb70cf542854f6`.
+  Consistency was checked against architecture blob
+  `b620adf14e53711334cc6dd038424a2947b04109` and final synchronized tasks blob
+  `a81f3b8f8e9bf9bd594e29a361dcfe526b51f973`.
+- Reviewer: Codex, independently re-reviewing the Round 11 repair; this workflow
+  turn did not author the reviewed requirements content.
+- Method: Formal REREVIEW under `development-workflow`; finding-by-finding
+  comparison against Round 10, focused CodeGraph inspection of the current Hook
+  admission path, and cross-document contract comparison.
+- Scope: R10-F1 and any new blocker in the repaired requirements boundary.
+- Findings:
+  - **R10-F1 — CLOSED.** Acceptance now follows the complete bounded-read,
+    parse, runtime-prerequisite, managed-config, and transcript-scope sequence.
+    Rejected deliveries are explicitly fail-open with zero writes, and
+    successful-commit cardinality is separated from failed attempts and
+    same-delivery internal retries.
+  - No new requirements finding.
+- Evidence: `requirements.md:246-264` defines admission and the
+  `0 <= observations(delivery_id) <= 1` invariant; current
+  `runUsageHookEvent` performs the post-parse managed-config and transcript
+  checks at `cmd/agentdeck/main.go:2904-2913`; the repaired architecture and
+  tasks carry the same failure and retry boundary.
+- Completion gate: VERIFIED — CEv1 gate
+  `switch-effectiveness-boundary:requirements.md` verified the exact
+  `HEAD + requirements.md` state with subject digest
+  `c8ab2bde425964b8bf8bde5b10543e341e9fa527ab7266eadc51b0f452f07b13`.
+- Verdict: PASS
+
+## 📋 Requirements 独立复评
+
+📊 总体评分：10/10
+
+✅ 评审结论：PASS
+
+### 🔴 严重问题——必须修复
+
+无。
+
+### 🟡 建议改进——推荐
+
+无。
+
+### 🟢 优点
+
+- R10-F1 已关闭：admission、成功提交 cardinality、失败零写入和内部 retry 现在可同时满足。
+- 客户端无关的 observation/route 分离、隐私边界和 resolver isolation 保持一致。
+
+### 📝 总结
+
+当前 requirements blob `64cbe359ff36fd249b96593c85fb70cf542854f6`
+关闭了唯一既有 finding，未发现新的 requirements blocker；边界已经决定。

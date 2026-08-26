@@ -210,3 +210,372 @@ T-F1–T-F5 均已在 blob `719ff3988ebe14699fc39a8f891f5b4ee253866b`
   该 Task hunk 时纳入，排除 `docs/README.md` 中的其他 dirty hunk 和所有无关更改。
 - 推送建议：获得明确 commit/push 授权，并检查目标分支、远端和提交范围后
   再推送；本 checkpoint 不执行也不授权交付。
+
+## Round 3 — 2026-08-25
+
+- Reviewed state: user-authorized decomposition revision. HEAD
+  `56097366fa7fa4c275750a03387346d98f51dc57`; `tasks.md` blob
+  `646de4edc9b541dc7fff5c5b8dc540321d382efc`.
+- Author: Codex — this is a design reopen record, not an independent review.
+- Change: the former three-task Claude-led plan is replaced by four tasks:
+  shared `hook-delivery-ledger`, Claude `switch-effectiveness-contract`, shared
+  `effective-route-policy`, and cross-client `real-session-acceptance`. Normal
+  lifecycle transport — never manual payload injection — is required for both
+  clients.
+- Completion gate: NOT_VERIFIED — historical Round 2 evidence is bound to a
+  superseded decomposition.
+- Verdict: REOPEN — awaiting independent review of the current four-task matrix.
+
+## Round 4 — 2026-08-26
+
+- Reviewed state: HEAD `56097366fa7fa4c275750a03387346d98f51dc57`;
+  final synchronized `tasks.md` blob
+  `3cf880b8df1ab0cbec6500c164400c368a312974`. Upstream consistency was checked
+  against requirements blob `3605f402d413811290e5f56dee4361c035321823`
+  and architecture blob `ced65fe13f6f9d0b07f7b3a9f572943d374ed8d3`.
+- Reviewer: Codex, independently reviewing the four-task decomposition; this
+  workflow turn changed only the required Review/status projection after the
+  verdict, not the reviewed task scopes.
+- Method: Formal decomposition Review under `development-workflow`; CodeGraph
+  identified current call paths and affected tests, then the task files,
+  dependencies, verification levels, security-boundary test, and transaction
+  ownership were checked against source and the two upstream documents. The
+  project topic checker and L0 checks were run on the final artifact state.
+- Scope: Documents matrix, all four task anchors, file ownership, dependencies,
+  verification levels, real-session lifecycle acceptance, and development
+  readiness.
+- Findings:
+  - **[P1] T4-F1 — Task 1 starts persistence too early and omits the regression
+    that proves the admission boundary.** `tasks.md:18-20` calls shared
+    `RecordHookDelivery` immediately after `ParseEvent` accepts, but current code
+    still rejects invalid transcripts and unmanaged ConfigChange paths after that
+    point. The file list omits `cmd/agentdeck/hook_boundary_test.go`, whose current
+    cases pin those rejections. Repair Task 1 to normalize/persist only after the
+    full approved admission sequence and include that test file plus cases that
+    assert rejected input writes neither stream.
+  - **[P1] T4-F2 — Tasks 1 and 3 do not form independently coherent commit
+    boundaries.** Task 1 creates shared `RecordHookDelivery`, makes observation
+    and optional route writes atomic, and covers every accepted event
+    (`tasks.md:13-44`); Task 3 later puts every route decision inside that same
+    operation (`:72-118`). The matrix does not say what route policy Task 1 ships
+    or tests before Task 3, so Task 1 either contains part of Task 3, temporarily
+    regresses ConfigChange routing, or cannot meet its own atomic acceptance.
+    Repair by merging the coupled slices or narrowing Task 1 to a complete
+    independently reviewable storage boundary with an explicit non-regressing
+    intermediate policy and moving shared-operation completion to Task 3.
+  - **[P1] T4-F3 — verification does not cover the whole retry operation or the
+    concrete migration contract.** Task 1 requires a delivery-ID retry and an
+    atomic optional route, but its assertions only promise one observation; they
+    do not prove that an already committed retry cannot append a second route.
+    The architecture also requires fresh and previous-version migration cases,
+    while the task does not name the exact schema/encoding assertions needed to
+    falsify the incomplete column contract. Repair by asserting both streams on
+    retry, adding the concrete v18-to-new-version and fresh-schema checks, and
+    naming their test ownership.
+  - **[P2] T4-F4 — real-session acceptance assumes every non-compact start
+    appends/advances a route without deciding the existing no-op behavior.**
+    `tasks.md:146-152` conflicts with the consecutive-identical suppression in
+    `internal/usage/routes.go:62-78`. Align the procedure with the architecture's
+    repaired definition of `advance` and assert the chosen row-count behavior.
+- Evidence: source and CodeGraph evidence listed in the matching requirements and
+  architecture rounds; current `cmd/agentdeck/hook_boundary_test.go:14-101` pins
+  post-parse rejection; task overlap was checked directly at `tasks.md:13-118`;
+  final-state checks: `bash scripts/check-topic-docs.sh` -> exit 0,
+  `make check-whitespace` -> exit 0, and `git diff --check` -> exit 0.
+- Completion gate: NOT_VERIFIED — T4-F1 through T4-F4 and the open upstream
+  Document findings leave this decomposition WorkUnit unsatisfied; no CEv1
+  completion evidence was recorded for this blob.
+- Verdict: REOPEN
+
+## 📋 Tasks decomposition 独立评审
+
+📊 总体评分：5/10
+
+✅ 评审结论：FAIL
+
+### 🔴 严重问题——必须修复
+
+[`tasks.md:18`] T4-F1：Task 1 把 `ParseEvent` 成功直接当作 persistence admission，
+并漏掉现有 Hook boundary 回归文件。
+- 行为风险：无效 transcript 或非 managed ConfigChange 可能开始写 observation。
+- 证据：`cmd/agentdeck/main.go:2904-2913` 的校验发生在 parse 之后；
+  `cmd/agentdeck/hook_boundary_test.go:14-101` 固定了拒绝行为。
+💡 有界修复：完整 admission 后再 normalize/persist，并把该测试文件及双流零写入断言纳入
+Task 1。
+
+[`tasks.md:13`] T4-F2：Task 1 与 Task 3 同时拥有 `RecordHookDelivery`、route policy、
+transaction 和相同核心文件，缺少可独立 Review/commit 的中间行为。
+- 行为风险：Task 1 要么偷带 Task 3，要么临时改变 ConfigChange route，要么无法满足
+自己的 atomic acceptance。
+- 证据：Task 1 的 `:13-44` 与 Task 3 的 `:72-118` 共享同一操作和文件边界。
+💡 有界修复：合并耦合切片，或把 Task 1 缩成完整且不改变 route 行为的存储 Task，并把
+shared operation 的完成点放到 Task 3。
+
+[`tasks.md:27`] T4-F3：retry 只断言 observation，没有断言 optional route 不重复；
+migration 也没有精确的 fresh/v18 upgrade schema 断言所有权。
+- 行为风险：同一 delivery 可留下一个 observation 与两个 route，或迁移生成实现者自行
+猜测的 schema。
+- 证据：unique `delivery_id` 只约束 observation；architecture 要求两类迁移场景。
+💡 有界修复：同时断言双流 retry 结果，并列出 fresh 与 v18 升级的完整 schema/数据保留
+测试及归属文件。
+
+### 🟡 建议改进——推荐
+
+[`tasks.md:146`] T4-F4：实机会话步骤把每个 non-compact start 写成 route advance，
+但现有连续相同 route 会 no-op。
+- 证据：`internal/usage/routes.go:62-78`。
+💡 有界改进：待 architecture 决定 `advance` 后同步 row-count 验收。
+
+### 🟢 优点
+
+- 四个 anchor 都列出文件、依赖与 L2/L3 级别，真实生命周期明确禁止手工喂 Hook。
+- provider-side 非秘密 discriminator、UTC 区间和只读 SQLite/CLI 证据流程保持完整。
+
+### 📝 总结
+
+最终 tasks blob `3cf880b8df1ab0cbec6500c164400c368a312974` 覆盖了
+client-neutral 目标，但 admission、安全回归、Task 1/3 原子边界、retry 双流断言和
+route-advance 语义尚未闭合；四个实现 Task 不能开始。
+
+## Round 5 — 2026-08-26
+
+- Reviewed state: repair of Round 4's four findings. HEAD
+  `56097366fa7fa4c275750a03387346d98f51dc57`; `tasks.md` blob
+  `a6d6a6f46954f8b7fc72b00f4c76401f203789d6`. Upstream repairs land in
+  `requirements.md` blob `64cbe359ff36fd249b96593c85fb70cf542854f6` and
+  `architecture.md` blob `b620adf14e53711334cc6dd038424a2947b04109`.
+- Author: claude-code (repair round — this is not an independent review; the
+  `Review` cell stays unticked until an independent Re-review records a verdict).
+- Scope: T4-F1 through T4-F4, as named in the repair command.
+- Repair of T4-F1 — Task 1 no longer treats `ParseEvent` success as admission.
+  It now calls `RecordHookDelivery` only after the full ordered sequence
+  (bounded read, `ParseEvent`, store/home availability, `managedClaudeConfigChange`
+  for a Claude `ConfigChange`, `validHookTranscript` for a `SessionStart`), and a
+  rejected delivery stays fail-open writing neither stream.
+  `cmd/agentdeck/hook_boundary_test.go` is added to the file list, and a named
+  *Admission regressions* assertion group extends its existing cases —
+  out-of-root transcript, session-mismatched base name, non-regular/symlink
+  transcript, `ConfigChange` on `project_settings`/`local_settings`/
+  `policy_settings`/`skills`, and `ConfigChange` on an unmanaged path — each
+  requiring zero observation rows and zero route rows plus a fail-open exit.
+- Repair of T4-F2 — the Task 1/Task 3 overlap is resolved by narrowing Task 1 to
+  a storage boundary with an explicit non-regressing intermediate policy rather
+  than by merging the slices. Task 1 emits only `advance`, `unknown`, and `none`
+  from facts the current handler already has, introduces no prior-state
+  classifier, and never emits `retain`; a *Route non-regression* assertion
+  requires the route rows written after Task 1 to be identical to the rows the
+  pre-task build writes for the same input. Task 3 now states that it owns the
+  only route-behavior change in the topic, adds the classifier and `retain`, and
+  changes `RecordHookDelivery`'s decision inputs rather than its storage,
+  transaction, or admission boundary — so both tasks are independently
+  reviewable and independently committable. Task 3 also absorbs the A16-F2
+  snapshot and same-transaction rules with a matching assertion and gains
+  `internal/provider/config.go` and `internal/provider/config_test.go` in its
+  file list.
+- Repair of T4-F3 — Task 1's *Whole-operation retry* assertion now requires the
+  same-`delivery_id` retry to leave one observation **and** the same route row
+  count as the first commit, closing the one-observation/two-routes gap. A
+  *Cardinality* assertion states the `0 <= observations(delivery_id) <= 1`
+  invariant with the failed-transaction zero-write case. A *Migration*
+  assertion names both concrete cases — a fresh database reaching schema version
+  19 with the table, the lookup index, the unique `delivery_id` index, and
+  exactly the declared columns and types; and a populated version-18 database
+  upgrading to that shape with its `usage_session_routes` and `usage_events`
+  rows byte-identical — and assigns them to `internal/store/store_test.go`,
+  which already owns this repository's migration assertions.
+- Repair of T4-F4 (P2) — real-session steps 1 and 2 now follow the architecture's
+  repaired definition of `advance`. Step 1 requires recording the route row count
+  before and after: a start whose selection differs appends one row, while a
+  repeated non-compact start on an unchanged selection appends **no** row and
+  still records its own `route_effect=advance` observation — the preserved
+  consecutive-identical no-op at `internal/usage/routes.go:56-78`, stated as
+  expected rather than as a defect. Step 2 asserts the restart increases the
+  route count by exactly one because the selection changed.
+- Status prose: the Documents section now records that all ten findings across
+  the three records were repaired on 2026-08-26 and that every `Review` cell
+  stays unticked pending independent Re-review. No status cell was ticked.
+- Verification: `bash scripts/check-topic-docs.sh` -> exit 0. No product code
+  changed in this round.
+- Completion gate: NOT_VERIFIED — a repair round cannot record its own
+  completion evidence; the decomposition WorkUnit stays open until an
+  independent Re-review passes this blob, and the upstream requirements and
+  architecture repairs must pass their own.
+- Verdict: REPAIRED — awaiting independent Re-review.
+
+## Round 6 — 2026-08-26
+
+- Reviewed state: HEAD `56097366fa7fa4c275750a03387346d98f51dc57`;
+  final synchronized `tasks.md` blob
+  `a81f3b8f8e9bf9bd594e29a361dcfe526b51f973`. Upstream consistency was checked
+  against requirements blob `64cbe359ff36fd249b96593c85fb70cf542854f6`
+  and architecture blob `b620adf14e53711334cc6dd038424a2947b04109`.
+- Reviewer: Codex, independently re-reviewing the Round 5 repair; this workflow
+  turn changed only the required Review/status projection after the verdict,
+  not the reviewed task scopes.
+- Method: Formal decomposition REREVIEW under `development-workflow`;
+  finding-by-finding comparison against Round 4, task-boundary and dependency
+  analysis, and consistency checking against the two upstream documents.
+- Scope: T4-F1 through T4-F4, all four task boundaries, and any newly blocking
+  dependency or decomposition regression.
+- Findings:
+  - **T4-F1 — CLOSED.** Task 1 now admits only after every required check and
+    owns the existing Hook-boundary regressions with zero-write assertions.
+  - **T4-F2 — CLOSED.** Task 1 is a non-regressing storage boundary; Task 3 owns
+    the sole route-policy change and the prior-state classifier.
+  - **T4-F3 — CLOSED.** Both-stream retry, exact migration-19 shape, fresh-store,
+    and populated-v18 upgrade assertions have explicit ownership.
+  - **T4-F4 — CLOSED.** Real-session acceptance treats a consecutive-identical
+    advance as a route-row no-op with a new observation.
+  - **[P1] T6-F1 — the decomposition depends on a non-executable shared-operation
+    ordering.** Task 1 must persist `route_effect` in every observation and Task
+    3 must classify prior-route evidence on the same transaction, but the
+    architecture they both adopt inserts the `NOT NULL route_effect` observation
+    before that classification. Until the contract fixes the order, neither task
+    has an independently implementable transaction boundary.
+- Evidence: `tasks.md:30-64` makes Task 1 own the observation row and guarded
+  atomic write; `tasks.md:127-141` makes Task 3 own the in-transaction classifier;
+  architecture Round 18 records the contradictory insert/classify order as
+  A18-F1.
+- Completion gate: NOT_VERIFIED — T6-F1 and the open upstream architecture
+  criterion leave the decomposition WorkUnit unsatisfied; no CEv1 completion
+  evidence was recorded for this blob.
+- Verdict: REOPEN
+
+## 📋 Tasks decomposition 独立复评
+
+📊 总体评分：8/10
+
+✅ 评审结论：FAIL
+
+### 🔴 严重问题——必须修复
+
+[`tasks.md:30`] T6-F1：Task 1 的 observation 写入与 Task 3 的事务内 classifier
+依赖 architecture 中不可执行的“先插入、后分类”顺序。
+- 处置：新增阻断 finding。
+- 行为风险：两个 Task 无法各自满足可实现、可独立评审和可独立提交的边界。
+- 证据：Task 1 要求 observation 携带 `route_effect` 并以整项 guard 写入；Task 3 才
+完成 prior-state 分类，而 A18-F1 证明上游顺序在字段产生前就要求插入该行。
+💡 有界修复：在 architecture 明确可执行事务顺序后，同步 Task 1/3 的 classifier、
+duplicate guard、observation insert 与 optional route write 所有权和先后关系。
+
+### 🟡 建议改进——推荐
+
+无。
+
+### 🟢 优点
+
+- T4-F1–T4-F4 均已关闭；admission 回归、Task 1/3 非重叠边界、双流 retry、迁移覆盖和
+实机会话 row-count 语义都已补齐。
+- 四个 anchor 仍具备明确文件、依赖、验证级别和正常 Hook lifecycle acceptance。
+
+### 📝 总结
+
+最终 tasks blob `a81f3b8f8e9bf9bd594e29a361dcfe526b51f973` 关闭了四个
+既有 finding，但 T6-F1 继承了 architecture 的事务顺序 blocker；在共享操作顺序明确
+前，当前四个实现 Task 不能开始。
+
+## Round 7 — 2026-08-26
+
+- Reviewed state: repair of Round 6's blocking finding. HEAD
+  `56097366fa7fa4c275750a03387346d98f51dc57`; `tasks.md` blob
+  `e09f3b990c17e1b0073a12ea0da3451bbec67593`. The upstream architecture repair
+  that unblocks it is blob `98bbbeaa662247b87cc774cd42e70da4d28ec6cd`
+  (`reviews/architecture.md` Round 19); `requirements.md` is unchanged at blob
+  `64cbe359ff36fd249b96593c85fb70cf542854f6`.
+- Author: claude-code (repair round — this is not an independent review; the
+  `Review` cell stays unticked until an independent Re-review records a verdict).
+- Scope: T6-F1 only, as named in the repair command. T4-F1 through T4-F4 stay
+  CLOSED per Round 6 and were not reopened by this repair.
+- Repair of T6-F1 — the decomposition now adopts the executable order A18-F1's
+  repair fixed upstream, and states which task owns which part of it:
+  - **Task 1 owns the ordered transaction skeleton.** Its atomic-write bullet is
+    replaced by the six numbered steps — per-attempt settings snapshot before
+    `BEGIN`; duplicate-delivery guard whose hit is a whole-operation no-op;
+    classify on the same transaction; insert the observation carrying the
+    computed `route_effect` conditionally on `delivery_id`; the zero-row insert
+    taking that same no-op outcome; and the route write only on a one-row
+    insert. The bullet states the reason classification precedes the insert
+    (`route_effect` is `NOT NULL`), so the task no longer inherits an
+    unimplementable order.
+  - **Task 1's today's-behavior mapping is scoped to one step.** The
+    non-regression bullet now says that mapping is the *body* of the classify
+    step, and that the step's position, the duplicate guard around it, and the
+    observation/route write order belong to Task 1 and do not move.
+  - **Task 3 replaces that body, not the order.** Its classifier bullet now says
+    it substitutes the prior-state classifier into Task 1's step 3, produces
+    `route_effect`, `prior_state`, `conflict_scan`, and `conflict_sources`
+    **before** the observation insert that carries them, and moves no step: the
+    guard stays ahead of classification, the insert stays ahead of the optional
+    route write, and both zero-row no-op outcomes are unchanged. That is what
+    keeps Task 3 a decision change rather than a second transaction design.
+  - Both tasks therefore have an implementable, independently reviewable, and
+    independently committable transaction boundary: Task 1 can ship and be
+    reviewed with its fixed mapping in place, and Task 3 changes exactly one
+    step's body.
+- No task anchor, dependency, verification level, or file list changed beyond
+  the ownership wording above, and no status cell was ticked.
+- Verification: `bash scripts/check-topic-docs.sh` -> exit 0,
+  `make check-whitespace` -> exit 0, `git diff --check` -> exit 0. No product
+  code changed in this round.
+- Completion gate: NOT_VERIFIED — a repair round cannot record its own
+  completion evidence; the decomposition WorkUnit stays open until an
+  independent Re-review passes this blob, and the upstream architecture repair
+  must pass its own.
+- Verdict: REPAIRED — awaiting independent Re-review.
+
+## Round 8 — 2026-08-26
+
+- Reviewed state: HEAD `56097366fa7fa4c275750a03387346d98f51dc57`;
+  final synchronized `tasks.md` blob
+  `31e267b9a885b7b07fd2743a06404f70008cda33`. Upstream consistency was checked
+  against requirements blob `64cbe359ff36fd249b96593c85fb70cf542854f6`
+  and independently re-reviewed architecture blob
+  `98bbbeaa662247b87cc774cd42e70da4d28ec6cd`.
+- Reviewer: Codex, independently re-reviewing the Round 7 repair; this workflow
+  turn changed only the required Review/status projection after the verdict,
+  not the reviewed task scopes.
+- Method: Formal decomposition REREVIEW under `development-workflow`;
+  finding-by-finding comparison against T6-F1, task-boundary analysis, and
+  consistency checking against the repaired architecture transaction.
+- Scope: T6-F1, Task 1/Task 3 transaction ownership, and any newly blocking
+  dependency or decomposition regression.
+- Findings:
+  - **T6-F1 — CLOSED.** Task 1 owns the fixed transaction skeleton and its
+    non-regressing classifier body; Task 3 replaces only that body's policy and
+    cannot move the guard, classification, insert, or optional-write steps.
+    Both tasks are independently implementable, reviewable, and committable.
+  - No new decomposition finding.
+- Evidence: `tasks.md:57-75` fixes Task 1's ordered skeleton and both duplicate
+  no-op exits; `:160-168` limits Task 3 to the classifier body before the
+  observation insert. These boundaries match architecture Round 20, while task
+  anchors, dependencies, files, and verification levels remain unchanged.
+- Completion gate: VERIFIED — CEv1 gate
+  `switch-effectiveness-boundary:tasks.md` verified the exact
+  `HEAD + tasks.md` state with subject digest
+  `7f7706d5ac82139cf50aafa7a52754b048778cd5205dd09773eccc3c886ea3c4`.
+- Verdict: PASS
+
+## 📋 Tasks decomposition 独立复评
+
+📊 总体评分：10/10
+
+✅ 评审结论：PASS
+
+### 🔴 严重问题——必须修复
+
+无。
+
+### 🟡 建议改进——推荐
+
+无。
+
+### 🟢 优点
+
+- T6-F1 已关闭：Task 1 固定事务骨架，Task 3 只替换 classifier body，提交边界不再重叠。
+- 四个实现 anchor 的依赖、文件、验证级别和真实 lifecycle acceptance 保持完整。
+
+### 📝 总结
+
+最终 tasks blob `31e267b9a885b7b07fd2743a06404f70008cda33` 关闭了
+T6-F1，未发现新的 decomposition blocker；该 topic 现在可进入
+`hook-delivery-ledger` 开发。

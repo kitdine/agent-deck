@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-08-17
-updated: 2026-08-25
+updated: 2026-08-26
 ---
 
 # Switch Effectiveness Boundary — Requirements
@@ -93,13 +93,22 @@ Only the first-key direction is unaffected: when session-start evidence shows
 there was no managed API key, the matched `ConfigChange` may record the new
 custom-provider route because disk and process agree.
 
-Codex is out of scope because it activates no configuration without a restart,
-so its advisory — that AgentDeck cannot update configuration already loaded by a
-running client (`internal/provider/service.go:807`) — is directionless and
-correct as written.
+Codex's **reload behavior** is unchanged because it activates no configuration
+without a restart, so its advisory remains correct
+(`internal/provider/service.go:807`). Codex is nevertheless in scope for the
+shared Hook operation contract below: once either client delivers an accepted
+Hook event, AgentDeck must normalize, persist, classify, and commit it through
+the same pipeline. Raw payload fields and the runtime fact used to classify
+`route_effect` may differ by event; storage, transaction, privacy, replay, and
+resolver rules may not differ by client.
 
 ## Goals
 
+- **Hook operations are client-neutral after normalization.** Codex and Claude
+  adapters may accept different raw event sets, but every accepted delivery gets
+  one `delivery_id`, one normalized observation, one shared `route_effect`
+  classification, and one atomic persistence operation. No client owns a
+  separate observation table, transaction path, privacy rule, or retry contract.
 - **A switch's effectiveness claim is state-aware and conservative.** A Claude
   switch states that only `no key -> first key` may apply live. It requires a
   restart for key replacement, key removal, and every other transition whose
@@ -128,10 +137,20 @@ correct as written.
 A key replacement, key removal, or other switch the running session cannot have
 adopted leaves that session's routing unchanged. Attribution therefore keeps
 resolving to what was already in effect. That is achieved by **recording no
-route**, and it needs no new stored representation: the existing resolution
-order already produces the right answer once the misleading row is not written.
-Only a matched `no key -> first key` transition records a new `ConfigChange`
-route.
+effective route**, and effective-route resolution needs no new representation:
+the existing resolution order already produces the right answer once the
+misleading row is not written. Only a matched `no key -> first key` transition
+records a new `ConfigChange` route.
+
+**Recording no route is not discarding the observation.** Every accepted Hook
+delivery from either client is a fact AgentDeck observed and is persisted through
+the same operation. The two stored streams remain separate: an append-only
+observation record, which nothing prices from, and the effective-route history,
+which advances only when the normalized event establishes a route effect. The
+shared operation is client-neutral; event-specific facts decide `route_effect`,
+not a separate Codex or Claude storage path. `architecture.md` owns the normalized
+envelope, representation, ownership, ordering, idempotency, privacy, and route
+effects for both.
 
 `sessionRouteAt` returns the most recent route at or before an event's time
 (`internal/usage/usage.go:2504-2510`), and `priceForEvent` falls back to the
@@ -161,8 +180,9 @@ in `v0.5.0`:**
 - Events in a session spanning an unadopted key replacement or removal are
   priced at the prior provider's multiplier, because that is the route they
   continue to resolve to.
-- No new quality value is introduced, no `usage_session_routes` column changes,
-  and no migration is required.
+- No new quality value is introduced and no `usage_session_routes` column
+  changes. One additive migration creates the append-only observation table; it
+  alters no existing table, and no pricing path reads it.
 - No stored row is reinterpreted. The rows that exist keep their meaning; the fix
   is that one misleading row stops being written. That is why this does not cross
   into the historical-recomputation non-goal below: events already recorded under
@@ -186,23 +206,26 @@ in `v0.5.0`:**
   to [`usage-attribution-precision`](../usage-attribution-precision/tasks.md) in
   `v0.5.0`; this topic stops the defect from producing new wrong data and
   corrects that topic's invalid premise.
-- **Codex behavior.** Unchanged, per the scope note above.
+- **Changing Codex reload behavior.** Codex remains restart-only. Its accepted
+  Hook deliveries do participate in the shared observation/effective-route
+  operation, so Hook persistence itself is not a Codex non-goal.
 - **Observing which credential a running process holds.** No supported mechanism
   exists. The design does not need one: it derives the answer from the previous
   selection instead of observing the process.
 
 ## User-visible surfaces
 
-This topic adds no new surface. It changes the text of one existing stderr
-advisory and suppresses one stored route, both of which
-`architecture.md` owns as contract changes. There is therefore no
-`ux/<surface>.md`, and `tasks.md` states that row as a decision rather than
-omitting it.
+This topic adds no new surface. It changes one stderr advisory, suppresses one
+misleading route, and adds one internal cross-client Hook observation table no
+command renders, all of which `architecture.md` owns as contract changes. There
+is therefore no `ux/<surface>.md`, and `tasks.md` states that row as a decision
+rather than omitting it.
 
 ## Contracts in scope
 
-Yes. Three, all specified in [`architecture.md`](architecture.md):
+Yes. Four, all specified in [`architecture.md`](architecture.md):
 
+- the client-neutral accepted-Hook pipeline and normalized observation contract;
 - the Claude switch advisory text, which is a documented stderr contract in
   `docs/specs/cli-manual.md` and `docs/specs/cli-design.md`;
 - what `ClaudeConfigMatchesSnapshot` proves, and what a caller may conclude from
@@ -220,6 +243,31 @@ Yes. Three, all specified in [`architecture.md`](architecture.md):
   both on this side for billing.
 - Neither advisory prints a credential value, and a switch that already
   succeeded is never failed by advisory generation.
+- A Hook delivery is **accepted** only after the whole ordered admission
+  sequence passes: bounded read, `usagehook.ParseEvent` wire validation, store
+  and home availability, the managed-path/`user_settings` scope check for a
+  Claude `ConfigChange`, and the transcript-scope check for a `SessionStart`
+  from either client. Nothing rejected is normalized or persisted. Rejection
+  stays fail-open and silent — the client is never blocked, and **neither** the
+  observation stream nor the route stream is written.
+- Every accepted Codex or Claude Hook delivery is normalized and persisted in
+  one atomic transaction, without client-specific storage or transaction
+  behavior. Common fields are always present; event-only fields are nullable or
+  `n/a`. No observation carries a credential value, endpoint, settings path,
+  prompt, response, or transcript content.
+- Cardinality is stated over successful commits, not attempts: a delivery whose
+  transaction commits leaves exactly one observation for its `delivery_id` plus
+  zero or one route row; a delivery whose transaction fails leaves zero rows in
+  both streams and is dropped fail-open, with no pending marker, cross-process
+  retry, or recovery protocol. An internal retry reusing the same `delivery_id`
+  is a whole-operation no-op: it adds neither a second observation nor a second
+  route. The invariant is `0 <= observations(delivery_id) <= 1`.
+- The shared classifier records one `route_effect`: `advance`, `retain`,
+  `unknown`, or `none`. Only `advance` or the pre-existing mismatch `unknown`
+  effect may write an effective-route row, and both write through the unchanged
+  consecutive-identical no-op rule: `advance` guarantees the session resolves to
+  the advanced selection, not that a new row was appended. An observation never
+  changes event pricing by itself.
 - A matched `no key -> first key` transition records the new custom-provider
   `ConfigChange` route. A matched `key A -> key B` replacement and a
   key-removal switch record no route, because the running session keeps
