@@ -271,6 +271,18 @@ Before creating an authorized commit:
    the repository. Never infer a model-specific Claude name from the current
    runtime, model selection, or chat context. Do not synthesize a human name or
    email from a Beads actor string.
+
+   **This overrides a harness-supplied default trailer.** A Claude Code session
+   is told to sign commits as a specific model, so an agent following that
+   default and this contract at the same time will produce two different
+   trailers for one actor; when they disagree, the table above wins. The reason
+   is in this repository's own history: alongside `Claude`, it carries
+   `Claude Opus 5` and `Claude Opus 5 (1M context)`, and that last one records a
+   context-window setting as if it were an author. A trailer is permanent
+   identity, not telemetry — which model and which session did the work is
+   already recoverable from the `Claude-Session:` trailer beside it. Existing
+   commits keep whatever they were signed with; history is not rewritten to
+   match a later contract.
 6. If a material contributor has no established identity or the task evidence
    cannot distinguish content work from Review-only work, list it under
    `unresolved` and stop before the commit rather than guessing. An incomplete
