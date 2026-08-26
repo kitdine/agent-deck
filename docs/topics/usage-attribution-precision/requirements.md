@@ -67,9 +67,14 @@ and can be reproduced.
   and every current writer stores `estimated`; the target resolver deliberately
   stops treating that value as its verdict. No schema migration, write-path
   change, or backfill is required.
-- **Recomputation is accepted and must be disclosed.** Existing data is
-  re-attributed on upgrade, so cost totals change. The release notes must state
-  this, following the `v0.3.0` cache-creation precedent.
+- **Recomputation is evidence-bounded and must be disclosed.** Existing data is
+  re-attributed at read time on upgrade, but confidence may rise only when the
+  effective-state evidence supports the stronger claim. In particular, a legacy
+  Claude `ConfigChange` row that records rotation or removal from an already-keyed
+  session stays `estimated`; a cutoff or other coarse provenance rule may not
+  stand in for that classification. Release notes must state both that cost
+  totals can change and that quality distributions are recomputed, following the
+  `v0.3.0` cache-creation precedent.
 - **Unattributed cost is never folded into a real-spend total.** It is reported
   as its own bucket so a total can no longer silently include multiplier-`1`
   guesses.
@@ -112,6 +117,12 @@ This topic adds no interactive surface. It does change the observable
 - A Claude session already using key A remains attributed to A across a file
   change to key B or to no key. Only a restarted session adopts B or the
   subscription selection through a fresh `SessionStart` boundary.
+- Recomputing legacy routes promotes a Claude `ConfigChange` only when its prior
+  effective state proves the recorded route was adopted: same-provider rows and
+  `no key -> first key` are `exact`; rotation or removal from an already-keyed
+  state stays `estimated`. The reference classification is the six-group table
+  in `reviews/architecture.md` Round 2; no blanket pre-cutoff exclusion is
+  acceptable.
 - No event is priced at multiplier `1` while being counted toward a real-spend
   total.
 - `usage summary` reports `exact`, `estimated`, and `unattributed` counts plus a
@@ -120,4 +131,6 @@ This topic adds no interactive surface. It does change the observable
 - The existing desktop `Presentation` contract maps those qualities to
   `determinable`, `inferred`, and `unattributed` respectively, without using
   `provider = unknown` as an alternate quality test.
-- The release notes state that cost totals can change for existing data.
+- The release notes state that cost totals and quality distributions can change
+  for existing data, and that confidence is never raised past what effective-state
+  evidence supports.

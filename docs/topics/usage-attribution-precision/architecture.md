@@ -14,9 +14,11 @@ and the decisions this design implements are in
 ## Current resolution order
 
 Two functions in `internal/usage/usage.go` independently implement the same
-four-step policy: `readPriceResolver.priceForEvent`, used by bounded range and
-desktop presentation reads, and `Service.priceForEvent`, used by session and
-legacy summary paths. Only their first step yields `exact`:
+four-step policy. `Service.priceForEvent` serves `Summary` and `SummaryRange`
+(the two `usage summary` paths) plus session-summary aggregation.
+`readPriceResolver.priceForEvent` serves Stats, Sessions, PriceDiagnostics,
+bounded range reads, and desktop `Presentation`. Only their first step currently
+yields `exact`:
 
 ```text
 1. usage_runs.exact = 1                  -> exact       (agentdeck run only; observed 0)
@@ -45,13 +47,14 @@ billing. This resolver consumes only the resulting effective-route stream.
 
 ```text
 1. usage_runs.exact = 1                          -> exact
-2. effective route sequence for the session
-     codex : the SessionStart route loaded by the process
-     claude: the latest adopted route at or before the event time
-                                                 -> exact / effective_route when
-                                                    provider is known
-                                                 -> estimated / ambiguous_route
-                                                    when provider is unknown
+2. positioned route in the session sequence
+     provider unknown                            -> estimated / ambiguous_route
+     SessionStart, provider known                -> exact / effective_route
+     ConfigChange, provider known
+       recorded provider equals prior effective -> exact / effective_route
+       prior is no-key official, route is keyed -> exact / effective_route
+       prior is keyed, route changes provider    -> estimated / ambiguous_route
+       prior effective state cannot be resolved -> estimated / ambiguous_route
 3. timeline.SnapshotAt(session start time) for either client
                                                  -> estimated / timeline_snapshot
 4. no timeline coverage at the positioned time
@@ -64,8 +67,9 @@ the table, the resolver therefore returns one closed reason vocabulary:
 `exact_run`, `effective_route`, `ambiguous_route`, `timeline_snapshot`,
 `before_adoption`, or `coverage_gap`.
 
-Step 2 becomes `exact` because a known-provider route is an observation of the
-provider and multiplier actually in effect, not a guess:
+Step 2 becomes `exact` only when the route is evidence that the provider and
+multiplier were actually in effect, not merely because the stored provider is
+known:
 
 - **Codex** activates configuration only on restart. Its accepted Hook deliveries
   use the same observation transaction as Claude, while non-compact
@@ -86,6 +90,34 @@ Codex. Using its event-time selection would reintroduce the defect: the global
 selection changes when the file changes even when the running session does not
 adopt it. Event time applies only inside the session's effective route sequence.
 
+### Legacy `ConfigChange` effect classification
+
+Rows written before `switch-effectiveness-boundary` task 3 may contain a known
+provider for a matched Claude change that the running process did not adopt.
+The resolver classifies such rows at read time; it does not use commit time,
+`observed_at`, delivery ID, or another provenance cutoff.
+
+`usage_session_routes.hook_event` already distinguishes `SessionStart` from
+`ConfigChange`. Both resolver paths must load it. For a positioned
+`ConfigChange`, resolve the prior effective provider from the immediately
+preceding route in the same session; when no prior session route exists, use the
+provider-timeline snapshot at the session start. Then apply this closed rule:
+
+| Prior effective state | Positioned route | Quality | Reason |
+| --- | --- | --- | --- |
+| Same provider | Same provider | `exact` | No provider transition occurred |
+| Official/no key | First keyed provider | `exact` | This is the one live transition Claude adopts |
+| Already keyed | Different key or official/no key | `estimated` | Rotation/removal was not adopted by the running session |
+| Unresolvable | Any known provider | `estimated` | Effect cannot be proven |
+
+The last two rows use the existing `ambiguous_route` reason even though the
+recorded provider is known: the ambiguity is whether that route took effect.
+They keep the route's current price inputs, so this compatibility repair changes
+quality and presentation confidence, not historical amounts. The normative
+acceptance fixture is the six-group table in `reviews/architecture.md` Round 2:
+all 135 `SessionStart` rows and 27 valid `ConfigChange` rows reach `exact`, while
+the four keyed-to-official removal rows and their 534 events stay `estimated`.
+
 A route is **ambiguous**, and stays `estimated`, when the positioned route
 records `provider = unknown`. That behavior now lives in `classifyConfigChange`
 inside `RecordHookDelivery` (`internal/usage/routes.go`): a managed-file mismatch
@@ -96,19 +128,22 @@ sets the route provider to `unknown`, the multiplier to `1`, and the effect to
 
 Both `readPriceResolver.priceForEvent` and `Service.priceForEvent` must call the
 same policy helper (or prove equivalent results through one shared table of
-cases). Step 2 derives quality from the positioned route: known provider is
-`exact`; `provider = unknown` is `estimated`. It does not read the persisted
+cases). Step 2 derives quality from `hook_event`, the positioned route, its prior
+effective state, and the rules above; it does not read the persisted
 `usage_session_routes.quality` value as the verdict. The column and
-`recordSessionRouteConn` remain unchanged for compatibility, existing rows need
-no backfill, and `internal/usage/routes.go` is not a target file for this topic.
+`recordSessionRouteConn` remain unchanged for compatibility and existing rows
+need no backfill. `internal/usage/routes.go` may change only on its read side to
+return the route metadata and predecessor required by this classifier.
 
 The returned attribution also carries its reason and a `spend_eligible` decision.
 Quality and spend eligibility are independent: an `ambiguous_route` remains
 `estimated`/`inferred`, but `provider = unknown` makes it ineligible for a
 real-spend provider total. `before_adoption` and `coverage_gap` are likewise
-ineligible. A known-provider effective route or timeline snapshot is eligible;
-step 1 treats a missing provider or multiplier as invalid exact-run data rather
-than silently applying `1`.
+ineligible. A route that the legacy classifier holds at `estimated` retains the
+existing amount and spend-eligibility behavior; A2-F1 changes only its confidence
+claim. A known-provider effective route or timeline snapshot is eligible; step 1
+treats a missing provider or multiplier as invalid exact-run data rather than
+silently applying `1`.
 
 ## Unattributed boundary
 

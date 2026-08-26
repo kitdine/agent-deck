@@ -103,3 +103,121 @@ subject: tasks.md
 - T1-F3 closed: task 1 removes `routes.go` from its file list and states that the
   persisted route-quality writer remains unchanged under read-time derivation.
 - Verdict: REOPEN — repair complete, awaiting independent Re-review.
+
+## Round 2 — 2026-08-26
+
+- Reviewed state: HEAD `2b9dd2bd43d130ea31c6065df11275756e38605f` plus committed
+  document blob `1651a86c465f42b049bd75992726c873ea247862` (`requirements.md`
+  `0abe112cccb025e40e69ac6c531e93a3621f10be`, `architecture.md`
+  `2174860af3646359e86f7cfaa8ace1611dbd1b14` re-reviewed in the same pass).
+- Reviewer: claude-code, independently re-reviewing the Round 1 repair authored
+  by `codex`; this workflow turn kept production code, tests, and configuration
+  read-only.
+- Method: Formal REREVIEW under `development-workflow`; each `Files` list
+  checked against the call sites that own the behavior its task changes, and
+  each prerequisite resolved against live repository state.
+- Scope: T1-F1 through T1-F3, and any newly blocking repair regression.
+- Findings:
+  - **T1-F1 — CLOSED.** Task 2 now names `internal/usage/presentation.go`,
+    `internal/desktop/fixtures_test.go`, `internal/desktop/desktop_test.go`,
+    `desktop/fixtures/v1/*.json`, and the affected macOS presentation/Widget
+    tests, and carries the producer regeneration command with an explicit
+    "never hand-edit them". Task 3 repeats the producer scope for the
+    observability surface.
+  - **T1-F2 — CLOSED.** Task 3 implements the six-key `attribution_reasons`
+    object that `architecture.md` now defines, and the Documents-matrix note no
+    longer claims the JSON shape is unchanged; it states that `usage summary`
+    text/JSON and the desktop payloads do change, and justifies `ux/` as `n/a`
+    on the ground that no interaction design is required, which is a different
+    and sound claim.
+  - **T1-F3 — CLOSED.** Task 1 no longer lists `internal/usage/routes.go`, and
+    its prerequisite states that the persisted route-quality writer is
+    unchanged, matching the read-time derivation the architecture chose. Only
+    `routes_test.go` remains, for parity coverage.
+  - **[P1] T2-F1 — no task owns the effect test A2-F1 requires.** Task 1 makes
+    both read paths follow effective session state, and task 2 promotes
+    known-provider routes to `exact`; neither is scoped to decide whether a
+    positioned `ConfigChange` route recorded a transition that actually took
+    effect. As written, task 2's "promote known-provider effective routes to
+    `exact`" (`tasks.md:35`) is precisely the rule A2-F1 rejects, so following
+    this decomposition produces the defect. The owning task also needs the
+    prior-effective-state inputs named in its scope — the session's earlier
+    route and the provider timeline at session start — even though both are
+    already read, because the rule is what is missing, not the data. Once
+    `architecture.md` states the rule, this file must place it in a task and
+    add the acceptance coverage: the per-group classification recorded in
+    `reviews/architecture.md` Round 2 is the reference fixture, and the
+    regression must prove that the four removal-from-keyed rows stay
+    `estimated` while the other twenty-seven `ConfigChange` rows and all 135
+    `SessionStart` rows reach `exact`.
+- Verified, not findings:
+  - Task 1's prerequisite that `switch-effectiveness-boundary` tasks 1 and 3
+    have Review PASS remains satisfied; those implementations are committed at
+    `8703fed` and `7db5618`.
+  - Task 3's addition of `internal/store/providers.go` is consistent with the
+    client-wide timeline existence check `architecture.md` requires for the
+    `before_adoption` / `coverage_gap` split; `LoadProviderTimeline` and
+    `SnapshotAt` live there.
+  - The dependency edges and strict sequencing still match the resolution order.
+- Evidence: `tasks.md:29-30,43-47,61-65` are the repaired `Files` lists.
+  `internal/store/providers.go:122,178` are the timeline entry points task 3
+  will need. The A2-F1 classification and totals are in
+  `reviews/architecture.md` Round 2.
+- Completion gate: NOT_REQUIRED — a document review round records no completion
+  evidence; the document boundary is crossed only on `PASS`.
+- Verdict: REOPEN
+
+### Repair disposition — Round 2 — 2026-08-26
+
+- T2-F1 closed: task 2 owns the legacy-effect classifier, its prior-state
+  inputs, read-side route metadata changes, and the complete six-group reference
+  regression. `recordSessionRouteConn` remains outside the change boundary.
+- Verdict: REOPEN — repair complete, awaiting independent Re-review.
+
+## Round 3 — 2026-08-26
+
+- Reviewed state: HEAD `2b9dd2bd43d130ea31c6065df11275756e38605f` plus the
+  uncommitted document blob `9f08908761ae0cc63a593190a5cbdbe94aa17fff`
+  (`requirements.md` `647c0963d5a012b0bb513645042747461d921080`,
+  `architecture.md` `6a43f5f3b4cf6e71042390265e542a647919dda2` re-reviewed in
+  the same pass); subject digest
+  `4225f43c57838ccc9b58ca754267a0221415d0f0e5c4e9cdeff96943dc6f6498`.
+- Reviewer: claude-code, independently re-reviewing the Round 2 repair authored
+  by `codex`; this workflow turn kept production code, tests, and configuration
+  read-only.
+- Method: Formal REREVIEW under `development-workflow`; the Round 2 finding was
+  checked against the repaired decomposition, and each `Files` list re-checked
+  against the call sites its task must change.
+- Scope: T2-F1, and any newly blocking repair regression.
+- Findings:
+  - **T2-F1 — CLOSED.** Task 2 now owns the rule and states it as the
+    distinction Round 2 asked for: "Derive quality at read time from route
+    effect, not provider presence." It names the three inputs the classifier
+    needs — the existing `hook_event`, the preceding session route, and the
+    provider timeline at session start — in both resolver paths, and states the
+    promotion outcomes for each case. The acceptance obligation is explicit and
+    checkable: the six-group table in `reviews/architecture.md` Round 2 is named
+    as the fixture, a focused regression must reproduce the complete
+    classification with its counts, and it must additionally prove that a
+    blanket pre-cutoff exclusion would be wrong — which keeps the rejected
+    coarse rule from reappearing as an implementation shortcut.
+- Verified, not findings:
+  - The task 1 / task 2 boundary stays coherent. Task 1 still reads the
+    effective-route stream only, keeps the persisted writer unchanged, and does
+    not list `routes.go`; task 2 takes the read-side change, and its `Files`
+    entry carries the guard "(never `recordSessionRouteConn`)", which matches
+    the architecture's read-side-only scope and the requirements Non-Goal.
+  - Task 3 keeps `internal/store/providers.go` for the timeline existence check
+    behind the `before_adoption` / `coverage_gap` split; `LoadProviderTimeline`
+    and `SnapshotAt` are there (`internal/store/providers.go:122,178`).
+  - The dependency edges, strict sequencing, and the `ux/` `n/a` justification
+    are unchanged and still hold.
+- Evidence: the repaired task 2 scope, acceptance paragraph, and `Files` list
+  are at `tasks.md:33-60`; task 1's boundary is at `:13-31`. The four-row rule
+  this task implements, and the measured classification it must reproduce, are
+  in `reviews/architecture.md` Round 2 and were re-verified in Round 3 of that
+  record, including the fifteen rows Round 2 left unresolved.
+- Completion gate: VERIFIED — CEv1 gate `usage-attribution-precision:tasks.md`
+  records this PASS against exact content state
+  `4225f43c57838ccc9b58ca754267a0221415d0f0e5c4e9cdeff96943dc6f6498`.
+- Verdict: PASS

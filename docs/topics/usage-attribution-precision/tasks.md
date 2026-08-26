@@ -32,16 +32,28 @@ B`, and `key -> no key` — plus restart and a Codex session that spans a switch
 
 ### 2. `determinability-quality`
 
-Derive quality at read time: promote known-provider effective routes to `exact`,
-keep `provider = unknown` routes `estimated`, and replace the fallback quality
-`historical` with `unattributed`. Ignore the persisted route-quality value as a
-resolver verdict without changing its writer or backfilling rows. Align desktop
-quality tiers strictly from attribution quality, propagate spend eligibility,
-and regenerate every affected canonical producer fixture.
+Derive quality at read time from route effect, not provider presence. Load the
+existing `hook_event`, the preceding session route, and the provider timeline at
+session start in both resolver paths. Promote known-provider `SessionStart`,
+same-provider `ConfigChange`, and `no key -> first key` routes to `exact`; keep
+key rotation/removal and any unresolved prior state `estimated`, as well as
+`provider = unknown`. Replace the fallback quality `historical` with
+`unattributed`, ignore the persisted route-quality verdict without backfilling
+rows, align desktop quality tiers, propagate spend eligibility, and regenerate
+every affected canonical producer fixture.
+
+The table in `reviews/architecture.md` Round 2 is the acceptance fixture. A
+focused regression must reproduce its complete classification: all 135
+`SessionStart` rows and the other 27 `ConfigChange` rows become `exact`; the four
+keyed-to-official removal rows and the 534 events they position stay `estimated`.
+It must also prove that a blanket pre-cutoff exclusion would be wrong.
 
 - Depends on task 1.
-- Files: `internal/usage/usage.go`, `internal/usage/presentation.go`, their
-  focused tests, `internal/desktop/fixtures_test.go`,
+- Files: `internal/usage/usage.go`, the read-side route helpers in
+  `internal/usage/routes.go` (never `recordSessionRouteConn`),
+  `internal/usage/presentation.go`, `internal/usage/usage_test.go`,
+  `internal/usage/routes_test.go`, `internal/usage/presentation_test.go`,
+  `internal/desktop/fixtures_test.go`,
   `internal/desktop/desktop_test.go`, `desktop/fixtures/v1/*.json`, and affected
   macOS presentation/Widget tests. Regenerate fixtures with
   `AGENTDECK_UPDATE_FIXTURES=1 go test ./internal/desktop`; never hand-edit them.
@@ -69,9 +81,9 @@ desktop summary payload, and release-note input with the same field semantics.
 
 | Document | Draft | Review |
 | --- | --- | --- |
-| requirements.md | [x] | [ ] |
-| architecture.md | [x] | [ ] |
-| tasks.md | [x] | [ ] |
+| requirements.md | [x] | [x] |
+| architecture.md | [x] | [x] |
+| tasks.md | [x] | [x] |
 | `ux/` | n/a | n/a |
 
 The `ux/` row is stated rather than omitted so a reader can tell a decision from
@@ -97,7 +109,26 @@ in the three design documents and their review records. The repaired design now
 rests the baseline on event quality, chooses read-time derivation across both
 resolvers, makes the unattributed reason and real-spend shapes observable, and
 includes presentation code plus canonical fixture generation in task scope.
-All three documents await independent Re-review; development remains blocked.
+
+Design Re-review Round 3 (2026-08-26): all three documents **PASS**. Round 2's
+A2-F1, A2-F2, R2-F1, and T2-F1 are closed: step 2 now derives quality from route
+effect rather than provider presence, legacy Claude `ConfigChange` rows are
+classified by whether the recorded transition was adopted, and task 2 owns that
+rule together with the acceptance fixture. The six-group table in
+`reviews/architecture.md` Round 2 is normative for accepting the implementation —
+all 135 `SessionStart` rows and 27 `ConfigChange` rows reach `exact`, while the
+four keyed-to-official removal rows and the 534 events they position stay
+`estimated`. CEv1 gates `usage-attribution-precision:{requirements,architecture,tasks}.md`
+are VERIFIED. The design is frozen and the three implementation tasks are
+dispatchable.
+
+Repair Round 2 (2026-08-26): A2-F1, A2-F2, R2-F1, and T2-F1 are addressed in
+the three design documents and review records. The repaired policy classifies
+legacy `ConfigChange` effect from the preceding session route or the session-start
+provider timeline, never from a coarse cutoff; names both resolver caller sets
+accurately; bounds recomputation by evidence; and assigns the classifier plus
+the complete reference-fixture regression to task 2. All three documents await
+independent Re-review; development remains blocked.
 
 ## Tasks
 
