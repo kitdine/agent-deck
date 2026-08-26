@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-08-06
-updated: 2026-08-16
+updated: 2026-08-26
 ---
 
 # v0.5.0 Contract Closure — Tasks
@@ -22,16 +22,17 @@ This file is the only status authority for this topic.
 
 This list decides what `v0.5.0` contains. A topic carries no version number of
 its own, so membership exists here and in
-[the Roadmap](../../README.md#active-development) and nowhere else. Changing the
+[the active-topic status](../../status.md#active-development) and nowhere else. Changing the
 list is how a topic is added or deferred; no commit, branch, review record, or
 evidence moves when it changes.
 
 | Topic | Included | Reason |
 | --- | --- | --- |
-| [`desktop-app`](../desktop-app/tasks.md) | **Yes** | The version's only feature line. All seven of its tasks ship together; a topic is merged whole or not at all. |
+| [`desktop-app`](../desktop-app/tasks.md) | **Yes** | All six tasks ship together; a topic is merged whole or not at all. |
+| [`work-signals`](../work-signals/tasks.md) | **Yes** | Restores the captured activity, workflow, and tooling data behind the desktop Sessions surface and adds the matching CLI surface. Its six implementation tasks and contract task ship as one topic. |
 | [`cli-error-classification`](../cli-error-classification/requirements.md) | **Yes** | It changes the documented JSON error contract, turning `runtime_error` into specific not-found codes. That is an observable break for any consumer matching the old code, so it ships in the same tag as the desktop line rather than trailing it: the desktop surface reads those codes, and a version whose UI classifies errors one way while its CLI classifies them another is the worse outcome. The break is announced once, in this version's notes. |
-| [`switch-effectiveness-boundary`](../switch-effectiveness-boundary/requirements.md) | **Yes** | A defect found in real use on 2026-08-17: a Claude switch back to subscription does not reach a running session, yet the advisory says it does and the recorded route claims the subscription multiplier for events the session is billing against an API key. The product currently reports a cost figure at a confidence the evidence does not support, which is worse than reporting none. It ships here rather than in `v0.6.0` with the rest of the attribution work because that work is a redesign of the quality dimension and this is a wrong number being written today. Its four tasks include one manual real-session acceptance, since the claim is about a process and no automated suite can observe it. No contract break: the advisory text changes and a route that claimed a provider now records the unknown route the schema already carries. |
-| [`usage-attribution-precision`](../usage-attribution-precision/requirements.md) | **No** | Promoted out of the `v0.6.0` cost-truthfulness scope and independent of the desktop work. `switch-effectiveness-boundary` corrects one invalid premise in its unreviewed architecture draft, which changes no verdict and does not pull the topic forward. |
+| [`switch-effectiveness-boundary`](../switch-effectiveness-boundary/requirements.md) | **Yes** | One client-neutral Hook operation must persist every accepted Codex or Claude delivery before applying an event-specific route effect. Real-session evidence still fixes Claude's state machine: only `no key -> first key` may apply live; key rotation and removal retain the prior route until restart. Its four tasks cover the shared ledger, advisory/file contract, effective-route policy, and cross-client real-lifecycle acceptance. |
+| [`usage-attribution-precision`](../usage-attribution-precision/requirements.md) | **Yes** | The cancelled `v0.6.0` attribution line moves into `v0.5.0` as this active topic, not as a future Backlog reconciliation. It corrects the contract that reserves `exact` for `agentdeck run` while hardcoding determinable Hook routes as `estimated`. Pricing, credit, Context Efficiency, and subscription candidates remain independent. A determinable event downgraded to `inferred` is a release blocker and cannot ship. |
 
 Excluding a topic costs nothing here and everything later: a topic already
 merged but no longer wanted has no clean removal, because `revert` propagates
@@ -39,8 +40,8 @@ forward and `reset` rewrites history. See `.agent-instructions/branching.md`.
 
 ## Scope
 
-`v0.5.0` therefore carries three lines: the desktop topic's seven tasks, the
-error-classification topic's contract change, and the switch-effectiveness fix.
+`v0.5.0` therefore carries five feature lines: desktop app, work signals, CLI
+error classification, switch effectiveness, and usage-attribution precision.
 Each topic owns the behavior it delivers and writes its own feature-contract
 text. This topic merges the selected branches, reconciles the complete version,
 raises the living specification exactly once, and checks that its documentation
@@ -59,11 +60,14 @@ authorization.
 ## Entry condition
 
 Every task in each selected topic must have Review PASS — the desktop topic
-including its own feature contract task, the error-classification topic including
-its contract change, and the switch-effectiveness topic including its manual
-real-session acceptance, which is the only evidence that its central claim holds.
-This topic does not start early and does not absorb unfinished work from any of
-them.
+including its own feature contract task; work-signals including both CLI and
+desktop surfaces; error classification including its contract change; switch
+effectiveness including its first-key, key-rotation, key-removal, and restart
+real-session acceptance; and attribution precision including the effective-route
+state machine and quality redesign. Non-attribution planning candidates remain
+separate. The attribution gate must prove that no determinable event is
+downgraded to `inferred`. This topic does not start early and does not absorb
+unfinished work from any of them.
 
 ## Later preflight considerations
 

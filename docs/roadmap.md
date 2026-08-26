@@ -56,17 +56,19 @@ version's delivery scope.
 Planning intake for `v0.5.0` cost truthfulness (keep these as separate candidates
 until design evidence justifies merging them):
 
-`v0.6.0` is cancelled as a release unit. Its cost-truthfulness scope and the
-independent candidates below now belong to `v0.5.0`; this changes version
-membership, not the current topic content. One boundary is already final: a
-determinable event classified as `inferred` is not publishable, so `v0.5.0`
-cannot close while any such downgrade remains.
+`v0.6.0` is cancelled as a release unit. Its cost-truthfulness scope moves into
+`v0.5.0`, but version membership does not merge the independent candidates
+below. The attribution-classification defect is no longer a Backlog candidate:
+it is owned by the active
+[`usage-attribution-precision`](topics/usage-attribution-precision/tasks.md)
+topic. That topic corrects the current contract that reserves `exact` for
+`agentdeck run` while hardcoding otherwise determinable Hook routes as
+`estimated`; a determinable event classified as `inferred` is not publishable.
+There is no later attribution item to reconcile from this checklist.
 
-When `usage-attribution-precision` development begins, reconcile **only** Backlog
-items whose subject is attribution with that topic's unchanged current
-requirements, architecture, and task decomposition. Pricing catalogs and tiers,
-credits, Context Efficiency, and subscription discovery remain independent
-candidates even though they now share the `v0.5.0` version boundary.
+Pricing catalogs and tiers, credits, Context Efficiency, subscription
+discovery, and the other candidates below remain independent even though they
+share the `v0.5.0` planning boundary.
 
 - [ ] Model the two public-API price tiers for the GPT-5.6 family around the
   `272K` context boundary. Determine the tier for each request from the concrete
