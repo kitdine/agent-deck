@@ -10,6 +10,7 @@ const CAUSE = {
     empty: "快照可读，但所选范围内没有任何事件",
     aged: "超过 6 小时没有成功刷新，时间戳改用「上次更新于」",
     partial: "部分数据域不可用，或上一次刷新失败但保留了旧快照",
+    pending: "快照可读，但早于工作信号字段——只保留待采集模块",
     unavailable: "没有快照，或缓存版本不受支持——一律不显示零，而是让用户去打开主程序",
   },
   en: {
@@ -17,6 +18,7 @@ const CAUSE = {
     empty: "Snapshot readable, but no events in the selected range",
     aged: "No successful refresh for over 6 hours; the timestamp switches to “last updated”",
     partial: "Some domains unavailable, or the last refresh failed while an old snapshot was kept",
+    pending: "Snapshot readable, but predates work-signal fields — keep only the pending modules",
     unavailable: "No snapshot, or an unsupported cache version — never render a zero, ask the user to open the app",
   },
 };

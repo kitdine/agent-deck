@@ -241,13 +241,61 @@ reviewed against a specimen that does not yet show what they describe.
 
 | Task | Implemented | Reviewed |
 | --- | --- | --- |
-| 0. `work-signal-prototype` | [x] | [ ] |
+| 0. `work-signal-prototype` | [x] | [x] |
 | 1. `work-signal-extraction` | [ ] | [ ] |
 | 2. `activity-classification` | [ ] | [ ] |
 | 3. `work-signal-cli` | [ ] | [ ] |
 | 4. `work-signal-projection` | [ ] | [ ] |
 | 5. `work-signal-surface` | [ ] | [ ] |
 | 6. `work-signals-contract` | [ ] | [ ] |
+
+Task 0 Review Round 1 (2026-08-27): **REOPEN** on W1-F1. The move, the captured
+four-category/eleven-subcategory fixture, the dropped Tooling cost column, rework
+replacing iteration depth, the six CLI shapes, the `--sub` expansion and the
+panel's two-level Activity expansion were all verified in a browser and hold.
+The pending-capture fixture does not: it is retained in `data.js` but no state
+can render it, because `unavailable` replaces the whole panel body before the
+Sessions panel mounts, so `.pending-flag` never appears on any of the five
+states. That fails the reachability half of its acceptance clause, and the
+bullet above claiming the fixture "is what the `unavailable` state renders" is
+not true of the delivered code. The record under
+`reviews/work-signal-prototype.md` owns the finding and evidence. No CEv1
+WorkUnit exists for this task yet; it is created and answered at re-review.
+
+Task 0 Re-review Round 2 (2026-08-27): **REOPEN** on W2-F1. W1-F1 is closed —
+the Sessions tab now mounts in the `unavailable` state, the board carries
+exactly one pending flag, and the Activity detail renders the pending banner
+over the retained fixture with no subcategories. But `SessionsPanel` draws its
+content from unfiltered fixture data, so that specimen now also lists four
+sessions by name, a 59-minute average, three projects and their per-project
+rows — real numbers in the state whose Usage tab still says the snapshot could
+not be read, and whose own pending banner says the snapshot *was* read and
+lacks the new fields. The board states the rule three sections below:
+「占位骨架绝不含真实数字」. The conflation Round 1 named was widened rather than
+separated.
+
+Task 0 Re-review Round 3 (2026-08-27): **REOPEN** on W3-F1. The Round 2 repair
+delivered its stated remedy exactly — the unavailable Sessions panel no longer
+prints session counts, per-project rows or recent sessions — but that remedy was
+the wrong one, and the review proposed it, so the correction belongs to the
+record rather than to the repair. W2-F1's headline stands: the specimen's own
+caption says 「没有快照」 and its notice says 「数据读取失败」, and three lines
+below them the panel shows `编码 58%`, `首次编辑 2 分钟`, `82 工具调用`. A
+specimen that says there is no snapshot cannot display values decoded from one.
+The two separations named in Round 1 — a sixth `SURFACE_STATES` entry for the
+pending-capture case, or a module-level availability input for the Sessions
+panel — remain what closes it.
+
+Task 0 Re-review Round 4 (2026-08-27): **PASS**. The repair took the first
+separation: `SURFACE_STATES` gains a sixth `pending` entry, and `signalsFor`,
+the pending flag and the detail banner key on it instead of on `unavailable`.
+The tab bypass and the Round 2 suppressions are both gone, so `unavailable` is
+wholly unavailable again — its Sessions tab carries zero signal cards and the
+panel-wide placeholder — while `pending` is its own specimen with its own
+caption, a readable hero and session list, and only the work-signal modules
+flagged 待采集. The captured path is untouched: `normal` still expands 编码 52%
+into its four subcategories. The CEv1 gate for this task was created on this
+round and is VERIFIED across all six criteria.
 
 ## The dependency graph is a fork
 

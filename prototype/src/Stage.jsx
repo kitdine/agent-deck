@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { catalogs } from "./i18n.js";
 
-const STATES = ["normal", "empty", "aged", "partial", "unavailable"];
+const STATES = ["normal", "empty", "aged", "partial", "pending", "unavailable"];
 
 // 原型舞台自己的控制条，不属于产品界面：切语言、切外观、切数据状态。
 export function useStagePrefs() {

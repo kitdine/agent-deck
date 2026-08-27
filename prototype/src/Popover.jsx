@@ -39,8 +39,8 @@ const TABS = [
   { key: "sessions", Icon: Code },
 ];
 
-// 数据状态。normal 以外的四种都是这一版新增的，用来检验界面在数据不好时还站不站得住。
-export const SURFACE_STATES = ["normal", "empty", "aged", "partial", "unavailable"];
+// 数据状态。normal 以外的五种都是这一版新增的，用来检验界面在数据不好时还站不站得住。
+export const SURFACE_STATES = ["normal", "empty", "aged", "partial", "pending", "unavailable"];
 
 function useDict(lang) {
   return catalogs[lang];
@@ -430,7 +430,7 @@ function SessionsPanel({ view, lang, state, signal, onSignal }) {
       />
       <div className="signal-head">
         <span>{dict.sessions.signals}</span>
-        {state === "unavailable" && <small className="pending-flag">{dict.sessions.pending}</small>}
+        {state === "pending" && <small className="pending-flag">{dict.sessions.pending}</small>}
       </div>
       <div className="signal-grid">
         {SIGNALS.map(({ key, Icon, tone }) => (
@@ -476,9 +476,9 @@ function SessionsPanel({ view, lang, state, signal, onSignal }) {
   );
 }
 
-// 未采集态由 state="unavailable" 触发：那是一份早于本能力的快照解码出来的样子。
+// pending 是可读旧快照缺少工作信号字段的状态；unavailable 留给整份快照不可读。
 function signalsFor(state) {
-  return state === "unavailable" ? PENDING_CAPTURE : WORK_SIGNALS;
+  return state === "pending" ? PENDING_CAPTURE : WORK_SIGNALS;
 }
 
 function signalSummary(kind, lang, state) {
@@ -534,7 +534,7 @@ function SignalDetail({ kind, lang, state, onBack }) {
   const dict = useDict(lang);
   const { Icon, tone } = SIGNALS.find((item) => item.key === kind);
   const data = signalsFor(state);
-  const pending = state === "unavailable";
+  const pending = state === "pending";
   const [open, setOpen] = useState(null);
   return (
     <section className="panel">
