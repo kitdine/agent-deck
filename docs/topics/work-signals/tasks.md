@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-08-20
-updated: 2026-08-20
+updated: 2026-08-27
 ---
 
 # Work Signals — Tasks
@@ -17,6 +17,21 @@ This file is the only status authority for this topic.
 | ux/session-work-signals.md | [x] | [x] |
 | ux/cli-work-signals.md | [x] | [x] |
 | tasks.md | [x] | [x] |
+
+**Re-opened 2026-08-27 by a design change, repaired under Round 4's R4-F1,
+and PASSED independent Re-review Round 5.**
+Decision 8 named the migration `v19`, which `switch-effectiveness-boundary` had
+since landed and shipped, so the number was wrong and this task set said to write
+it. The first repair replaced one literal with another and left the document
+saying both things at once — read the number from the code, and also it is v20
+with a fixed `19` → `20` fixture diff. Round 4 caught that. Decision 8 and task 1
+now state only the procedure, `next` is defined by what the implementer reads,
+and no acceptance clause carries a version literal. Task 1 also carries the
+canonical-fixture regeneration that raising the count forces.
+
+All five `Review` cells moved together: the design change and Round 4 `REOPEN`
+unticked the set, and Round 5 `PASS` ticked the set. The three unchanged documents
+were re-read against the repaired pair rather than re-argued.
 
 ## How this document set is reviewed
 
@@ -133,9 +148,20 @@ reviewed against a specimen that does not yet show what they describe.
   direction is `bash`, never `edit`.
 - Record `turn_index` on `usage_events` during the same scan. This is what makes
   Decision 4 structural rather than a timestamp guess.
-- Add schema **v19** — including the `usage_tool_files` table — and bump
-  `usage_source_files.parser_version` so indexed sources re-scan and all four
-  tables backfill.
+- Add the next schema migration — including the `usage_tool_files` table — and
+  bump `usage_source_files.parser_version` so indexed sources re-scan and all
+  four tables backfill. **Read `CurrentSchemaVersion` and the last entry in
+  `internal/store/migrations.go` at implementation time and append the next
+  one.** This task names no version number, and neither does its acceptance:
+  `next` below means whatever that read returns. Decision 8 states why the
+  number lives in the code and not in the design.
+- Regenerate the two canonical desktop fixtures through the official producer,
+  never by hand. They embed the migration count as a doctor check, so raising it
+  fails `TestCanonicalFixturesAreReproducibleProducerOutput` and with it the
+  whole Go suite. Acceptance: in each of the two files, the count that was there
+  before this task replaced by `next`, and no other difference. A larger diff
+  means the producer output moved for some other reason, and that is a finding,
+  not something to accept.
 - Rewrite the package doc comment and the `Record` comment — the absolute
   no-arguments claim is on `Record`, not on `Detail`. A comment left
   contradicting the code is what produced a wrong premise on 2026-08-18.
@@ -232,8 +258,9 @@ reviewed against a specimen that does not yet show what they describe.
 ### 6. `work-signals-contract`
 
 - Reconcile delivered behavior into `docs/specs/cli-design.md` and
-  `docs/specs/cli-manual.md`: schema v19, the narrowed privacy boundary, the new
-  command and flags, and the additive wire families.
+  `docs/specs/cli-manual.md`: the schema version task 1 actually landed — read it
+  from the delivered migration, do not predict it here — the narrowed privacy
+  boundary, the new command and flags, and the additive wire families.
 - Depends on tasks 1 through 5.
 - Verification level: **L2**.
 

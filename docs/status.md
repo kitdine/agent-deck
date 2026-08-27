@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-08-25
-updated: 2026-08-25
+updated: 2026-08-27
 ---
 
 # AgentDeck Project Status
@@ -64,7 +64,7 @@ agentdeck version
 | Topic | Version | Status | Purpose |
 | --- | --- | --- | --- |
 | [Native macOS Desktop App](topics/desktop-app/tasks.md) | `v0.5.0` | Delivered — 6/6 tasks reviewed and committed; the immutable commit-tree CEv1 Task and Plan gates are VERIFIED at `0aefed1`; version-wide contract closure and any release action remain separate | macOS 26 menu-bar app, settings window, WidgetKit extension, unified desktop distribution, Cask, and direct-download delivery. |
-| [Work Signals](topics/work-signals/tasks.md) | `v0.5.0` | Active — all five design documents PASS after three combined rounds; prototype task 0 PASS at Re-review Round 4 with its CEv1 gate VERIFIED across all six criteria and awaiting its commit checkpoint, implementation task 1 next; 0/6 implementation tasks | Activity classification, workflow metrics, and tool-call attribution, delivered on two first-class surfaces: the menu-bar `Sessions` panel's three pending modules and a new `agentdeck usage signals`. |
+| [Work Signals](topics/work-signals/tasks.md) | `v0.5.0` | Active — prototype task 0 PASS, committed at `151c6d3` / tree `13f4ff60` with its CEv1 gate VERIFIED and re-bound to that immutable tree; the five design documents PASS at independent Re-review Round 5 after R4-F1 removed the fixed migration prediction, with all five current-state Document gates VERIFIED; implementation task 1 next; 0/6 implementation tasks | Activity classification, workflow metrics, and tool-call attribution, delivered on two first-class surfaces: the menu-bar `Sessions` panel's three pending modules and a new `agentdeck usage signals`. |
 | [`v0.5.0` Contract Closure](topics/v0-5-0-contract/tasks.md) | `v0.5.0` | Active — 0/2 done | Version-wide specification raise and documentation reconciliation after every selected topic's tasks pass review. |
 | [Usage Attribution Precision](topics/usage-attribution-precision/tasks.md) | `v0.5.0` | Complete — 3/3 tasks reviewed and committed at `9035b80` / tree `d3ffe3ac`; immutable Task and Topic CEv1 gates VERIFIED; v0.5.0 contract closure remains separate and not started; release blockers held: no determinable event is downgraded to `inferred`, and no unattributed event enters provider spend | Effective-session attribution semantics, determinability-based quality, and an unattributed boundary that never enters a real-spend total. |
 | [CLI Error Classification](topics/cli-error-classification/tasks.md) | `v0.5.0` | Complete — 2/2 tasks reviewed and committed; immutable Task and Topic CEv1 gates VERIFIED at `574a7ad` / tree `6d26f205`; v0.5.0 contract closure remains separate and not started | Stable not-found codes, and no storage text in a documented JSON contract. Breaks the documented `runtime_error` value; announced in this version's notes. |

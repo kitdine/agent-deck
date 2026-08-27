@@ -15,3 +15,8 @@ apps/macos/.swiftpm/
 .vscode
 .idea
 .superpowers/
+
+# Locally generated diagram exports. They are produced on demand from the
+# documents that describe them and are not a build input, so the repository
+# tracks the source rather than the rendered PNG/SVG pair.
+output/

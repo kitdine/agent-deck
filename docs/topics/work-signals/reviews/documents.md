@@ -1241,3 +1241,192 @@ git diff --check                          -> exit 0, clean
 All five `Review` cells are ticked. Three P2s are carried into implementation and
 listed above. The topic's document phase is closed; implementation starts at
 task 1.
+
+## Round 4 — 2026-08-27
+
+- Reviewed state:
+  - HEAD `151c6d33489b319c3c6afd75124ece19b036e032`
+  - `requirements.md` `778cf35aebf6a293ce5a3d0245393563bacea7ab`
+  - `architecture.md` `6c6ce84fe7f6136ac33f76ce7736a0910f0a66fa` (modified, uncommitted)
+  - `ux/session-work-signals.md` `7f0654bef23fbab8af3e67e38351f08156475989`
+  - `ux/cli-work-signals.md` `63e31684cee91b43278e022fc64cd38305eab7ab`
+  - `tasks.md` `5bcee992b1f0c1324788bba6775802369059e4cf` (modified, uncommitted)
+- Reviewer: Codex, combined five-document review
+- Method: 设计/合同维度的独立评审。五份文档完整或按未变内容状态复用读取，随后把
+  Decision 8 与 task 1 的迁移和 fixture 断言核对到当前 store migration、
+  `CurrentSchemaVersion`、canonical fixture producer 与三个 producer fixture。
+  CodeGraph 用于定位 producer/test 调用路径；最终发现由当前源码与 fixture 内容独立
+  复核。R4-F1 已提供决定性反例，因此按评审规则停止更广泛的语义验证。
+- Scope: 五份文档作为一个不可部分通过的集合；产品代码、测试、配置、fixture 与原型
+  全部只读。`docs/status.md` 与本记录仅作为本轮必需状态工件更新。
+
+### Findings
+
+#### P1
+
+- **[R4-F1] `architecture.md` Decision 8 与 `tasks.md` task 1/task 6 同时把迁移
+  版本定义成动态 next migration 和固定 v20。** `architecture.md` 的标题与开头写
+  `schema v20` / “The version number is v20”，同一段又规定 task 1 必须在实现时读取
+  `migrations.go`，若第三个 topic 先落地则使用 v21。`tasks.md` 继承动态规则，却又把
+  canonical fixture 的唯一允许差异固定成 `19` -> `20`，并把 task 6 的合同同步示例
+  固定成 “v20 unless a third topic moved it”。
+  - Behavior risk: 如果另一迁移在 task 1 之前落地，一个实现者会按动态规则追加 v21，
+    另一个会按标题和 fixture 验收坚持 v20/`19` -> `20`；前者会被任务自己的验收误判，
+    后者会破坏迁移顺序或复用已占用版本。当前仓库确实是 v19，因此 v20 是今天的快照，
+    但文档显式定义的未来分支仍给出互斥指令。
+  - Evidence: `internal/store/store.go` 的 `CurrentSchemaVersion` 为 19，
+    `internal/store/migrations.go` 的 v19 已属于 `usage_session_observations`；
+    `TestCanonicalFixturesAreReproducibleProducerOutput` 通过
+    `AGENTDECK_UPDATE_FIXTURES=1` 生成三个 fixture，而只有 complete 与 empty-client
+    fixture 含当前 schema count 19，证明“两份 fixture”判断正确、错误只在把 next count
+    写死为 20。
+  - Bounded remediation: 把 Decision 8 标题和规范性正文改为“next schema migration”，
+    当前 v20 仅作为可失效的观察值；task 1 的 fixture 验收改为“这两份文件的旧 count
+    到实现时选定的 next count，且无其他差异”；task 6 只引用 task 1 实际落地的版本，
+    不预测 v20。同步刷新 `ad-ws-extraction-dev` 中仍固定写 v19 的描述与验收条件。
+
+### Evidence
+
+```text
+bash scripts/check-topic-docs.sh -> exit 0
+make check-whitespace            -> exit 0
+git diff --check                 -> exit 0
+```
+
+- Completion gate: FAILED — current-state fail evidence is bound to
+  `work-signals:architecture.md` and `work-signals:tasks.md`; the unchanged three
+  documents have no matching current-HEAD pass evidence and cannot make the combined
+  set pass independently.
+- Verdict: REOPEN
+
+Per the topic's one-verdict rule, all five `Review` cells remain unticked.
+
+## Round 4 — repair — 2026-08-27
+
+- Repairer: claude-code
+- Scope: R4-F1 only. No other finding was open, and nothing outside the two
+  documents the finding names was changed.
+- Repaired state:
+  - `architecture.md` `219a2e9147019f90eb3f04f8542843483b5831ee`
+  - `tasks.md` `7c20b8d212d66fd87ca31bfd0bebf7bd35a41f18`
+
+### R4-F1 — closed
+
+The finding is accepted in full and was not disputed. The previous repair
+replaced one version literal with another and then, in the same section, told the
+implementer to read the number from the code — so the document gave two
+instructions that diverge exactly when they matter, on the day a third topic
+lands a migration first. The literal was also load-bearing in two acceptance
+clauses, which is what made it a P1 rather than a wording problem: task 1's
+fixture acceptance fixed the only permitted diff at `19` → `20`, so an
+implementer who correctly appended v21 would have failed the task's own
+acceptance.
+
+Four changes, matching the finding's bounded remediation:
+
+| Where | Was | Now |
+| --- | --- | --- |
+| `architecture.md` Decision 8 heading and opening | `schema v20`, "The version number is v20, not v19" | "the next schema migration"; the section states it names no number, and the normative rule is the read-then-append procedure |
+| `architecture.md` fixture paragraph | "two `18` → `19` replacements", "Task 1 … asserts the same shape of diff" | each file's current count replaced by `next`, no other change |
+| `tasks.md` task 1 | "this task is **v20** unless a third topic lands first"; fixture diff fixed at `19` → `20` | reads `CurrentSchemaVersion` and the last `migrations.go` entry, calls the result `next`; acceptance is "the count that was there before this task, replaced by `next`" |
+| `tasks.md` task 6 | "the schema version task 1 actually landed (v20 unless a third topic moved it)" | "read it from the delivered migration, do not predict it here" |
+
+`next` is now defined in one place and every dependent clause is expressed
+against it. The 2026-08-27 reading of `CurrentSchemaVersion` as `19` survives in
+Decision 8 as an explicitly dated observation with a stated precedence rule —
+`migrations.go` wins — because deleting it would leave a reader unable to tell
+whether the procedure had ever been checked against a real repository state.
+
+The finding's fourth remediation item is outside the documents. `ad-ws-extraction-dev`
+still carried `v19` in both its description and its acceptance criteria; both were
+rewritten to the same procedure, and the dated `19` is recorded there as an
+observation too. Updating the Beads task also flipped its status to
+`in_progress`; it was set back to `open`, since task 1 has not started.
+
+### Evidence
+
+```text
+bash scripts/check-topic-docs.sh -> exit 0, no output
+make check-whitespace            -> exit 0, no violations
+git diff --check                 -> exit 0, clean
+```
+
+- Verification level: **L0**. Design documents and one dispatch record; no
+  product code, test, configuration, fixture, or generated file changed.
+- No new finding was introduced and no unrecorded issue was repaired
+  opportunistically. Three documents remain untouched by this repair.
+
+### Verdict: REOPEN — repair complete, awaiting independent re-review
+
+All five `Review` cells remain unticked. The set carries one verdict, so the
+three unchanged documents are re-read against the repaired pair rather than
+carried forward.
+
+## Round 5 — independent re-review — 2026-08-27
+
+- Reviewed state after status synchronization:
+  - HEAD `151c6d33489b319c3c6afd75124ece19b036e032`
+  - `requirements.md` `778cf35aebf6a293ce5a3d0245393563bacea7ab`
+  - `architecture.md` `219a2e9147019f90eb3f04f8542843483b5831ee`
+  - `ux/session-work-signals.md` `7f0654bef23fbab8af3e67e38351f08156475989`
+  - `ux/cli-work-signals.md` `63e31684cee91b43278e022fc64cd38305eab7ab`
+  - `tasks.md` `cdd06ad8d53283a9acb493b2fbb5467d5076e7d9`
+- Reviewer: Codex, independent of the Round 4 repairer
+- Method: finding-by-finding re-review of R4-F1 against the repaired pair, then
+  re-reading the three unchanged documents against that pair. The prior
+  producer/test evidence was reused because product code, tests, fixtures, and
+  configuration are unchanged. Fixed-version searches covered all five documents
+  and the live `ad-ws-extraction-dev` dispatch record.
+- Scope: R4-F1 and regressions caused by its repair. Product code, tests,
+  configuration, fixtures, and prototype remained read-only.
+
+### Finding dispositions
+
+#### R4-F1 — CLOSED
+
+Every branch of the prior failure is removed:
+
+- Decision 8 is titled “the next schema migration” and makes the
+  `CurrentSchemaVersion` plus last-migration read the only normative source.
+- The dated observation that 19 implied v20 is explicitly non-normative and says
+  `migrations.go` wins without another document correction.
+- Task 1's fixture acceptance now says each file's current count is replaced by
+  `next`, with no other difference; it contains no version literal.
+- Task 6 reads the schema version from task 1's delivered migration and makes no
+  prediction.
+- `ad-ws-extraction-dev` now uses the same dynamic procedure in its description
+  and schema/fixture acceptance clauses, and its status is `open` because
+  implementation has not started.
+
+The Round 4 failure scenario no longer has two valid readings. If another topic
+lands first, every normative path selects the new next migration and the same
+fixture acceptance follows it.
+
+### Newly blocking findings
+
+None.
+
+### External owner note — not a finding against this document set
+
+`ad-ws-extraction-dev`'s acceptance criteria still says “package and Detail
+comments” while its description and the authoritative task contract say package
+and `Record`, not `Detail`. This mismatch predates R4-F1 and belongs to the
+development task's dispatch record, not to the five repaired documents. The
+document verdict therefore remains PASS; task 1 must synchronize that field before
+substantive implementation so dispatch does not restate the old identifier.
+
+### Evidence
+
+```text
+bash scripts/check-topic-docs.sh -> exit 0
+make check-whitespace            -> exit 0
+git diff --check                 -> exit 0
+```
+
+- Completion gate: VERIFIED — all five current-HEAD Document WorkUnits have
+  matching pass evidence after final status synchronization.
+- Verdict: PASS
+
+All five `Review` cells are ticked together. The next implementation task is
+`work-signal-extraction`; commit and push remain separate recommendations at the
+Task checkpoint.

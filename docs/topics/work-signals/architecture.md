@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-08-20
-updated: 2026-08-20
+updated: 2026-08-27
 ---
 
 # Work Signals — Architecture
@@ -386,7 +386,32 @@ server in its own field; Claude's is embedded in the tool name. The top MCP
 server is the one with the most calls in scope, ties broken alphabetically so
 the value is stable between runs.
 
-## Decision 8 — schema v19
+## Decision 8 — the next schema migration
+
+**This decision does not name a version number.** It was written on 2026-08-20
+naming `v19`, and the first design review recorded "schema v19 is the correct
+next version" as a checked fact so a later round would not re-derive it. That was
+true when it was written and stopped being true when `switch-effectiveness-boundary`
+landed `usage_session_observations` as `version: 19` and shipped it.
+
+A migration number is not a design choice this topic gets to make. It is assigned
+by landing order across every topic in the version, so any number written here is
+a copy of repository state that goes stale the moment another topic commits
+first — which is exactly what happened once already. The normative rule is
+therefore the procedure, not the number: **task 1 reads `CurrentSchemaVersion`
+and the last entry in `internal/store/migrations.go` at implementation time and
+appends the next one.** Everything below that depends on the number is expressed
+against `next` rather than against a literal.
+
+As an observation that may already be stale by the time this is read:
+`CurrentSchemaVersion` was `19` on 2026-08-27, which would make `next` v20. That
+sentence is a dated reading of the repository, not an instruction, and a
+disagreement between it and `migrations.go` is resolved in favour of
+`migrations.go` without a correction round.
+
+The historical review record keeps its v19 sentence unchanged — it states what
+was true when that round ran, and rewriting it would erase the evidence that
+landing order, not review error, moved the number.
 
 Three columns on `usage_tool_calls`:
 
@@ -453,6 +478,19 @@ and all four tables backfill, following the `v0.4.1` cache-write precedent. The
 backfill is what makes the 93 `apply_patch`-era Codex sessions visible; a
 database with no prior tool-call rows backfills from the source logs like any
 first scan, and that path is tested, not assumed.
+
+**Raising the version invalidates the two canonical desktop fixtures.** They
+embed the schema migration count as a doctor check — the `schema` entry in
+`desktop/fixtures/v1/snapshot-complete.json` and `snapshot-empty-client.json`
+carries the count — and `TestCanonicalFixturesAreReproducibleProducerOutput`
+compares the producer's output against them byte for byte, so the whole Go suite
+fails until they are regenerated. `switch-effectiveness-boundary` hit exactly
+this as a P1 finding when it raised the count, and closed it by regenerating both
+through the official producer rather than hand-editing them; the resulting diff
+was one count replacement per file and nothing else. Task 1 regenerates them the
+same way and asserts the same shape of diff — each file's current count replaced
+by `next`, no other change. This is a known consequence of the migration, not a
+discovery to be made during review.
 
 ## Decision 9 — the wire projection
 
