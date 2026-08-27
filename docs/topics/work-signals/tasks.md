@@ -18,6 +18,52 @@ This file is the only status authority for this topic.
 | ux/cli-work-signals.md | [x] | [x] |
 | tasks.md | [x] | [x] |
 
+**Re-opened 2026-08-27 (second time) by two blockers found entering task 2.**
+Both were confirmed against the repository before any document changed, and both
+are contradictions this set carried rather than implementation problems.
+
+The first is self-evidencing: Decision 3 ran category precedence on the *presence*
+of a fault word and, three paragraphs later, told implementers to resolve
+`coding`'s subcategories by earliest match — citing `add error handling` as the
+case that motivated it. A subcategory rule cannot rescue a message the category
+rule already sent to `debugging`, so task 2's acceptance for that exact message
+was unreachable from this document. Decision 3 now runs one message scan that
+decides both levels.
+
+The second is a gap rather than a contradiction. Decision 1 carries the turn
+boundary across an incremental scan, but nothing carried the message-derived
+classification, and `usage_work_signals` had no pending state, no source
+ownership, and no reset path. A turn split across two scans would have been
+classified from tool shape alone, making `debugging` unreachable at any
+boundary. Decision 11 is new and owns this.
+
+All five `Review` cells untick under the set's one-verdict rule. Decision 8's
+`usage_work_signals` DDL is left as written and marked superseded, because it is
+what the committed schema contains.
+
+Combined Review Round 6 (2026-08-27): **REOPEN** on R6-F1 through R6-F3.
+Decision 3's single message scan closes the category contradiction, and Decision
+11 recognizes that classifier state must survive incremental scans. The new
+ownership rule, pending-row key, and migration acceptance are not yet
+implementable without source loss, an unstated provisional index, or a
+deterministic canonical-fixture failure. `reviews/documents.md` owns the exact
+findings, evidence, and bounded remediation. All five `Review` cells remain
+unticked.
+
+Independent Re-review Round 7 (2026-08-27): **REOPEN**. R6-F2 and R6-F3 are
+closed. R6-F1 remains open because Decision 11 says the lexicographically smaller
+source wins while the delivered event/tool comparison and its regression test
+select the larger path. Implementing the repaired text would make signals choose
+a different owner from events and tool calls. `reviews/documents.md` owns the
+exact disposition and evidence. All five `Review` cells remain unticked.
+
+Independent Re-review Round 8 (2026-08-27): **PASS**. The second R6-F1 repair
+now states the delivered sorting-last ownership rule, anchors it in the existing
+live-versus-archive example, and requires one cross-table assertion over signals,
+events, and tool calls. R6-F1, R6-F2, and R6-F3 are all closed with no new
+finding. All five `Review` cells tick together; task 2 is the next implementation
+task. `reviews/documents.md` owns the exact disposition and evidence.
+
 **Re-opened 2026-08-27 by a design change, repaired under Round 4's R4-F1,
 and PASSED independent Re-review Round 5.**
 Decision 8 named the migration `v19`, which `switch-effectiveness-boundary` had
@@ -178,10 +224,27 @@ reviewed against a specimen that does not yet show what they describe.
 
 ### 2. `activity-classification`
 
-- Contract: [`architecture.md`](architecture.md) Decisions 3, 4, 5, and 6.
-- Implement the four-category classifier with its fixed precedence, the eleven
-  subcategories, the earliest-match rule inside `coding`, and the visible
-  fallback. Write `usage_work_signals`.
+- Contract: [`architecture.md`](architecture.md) Decisions 3, 4, 5, 6, and 11.
+- Implement the four-category classifier. The message is scanned **once**, per
+  Decision 3, and that scan decides `message_class` and `intent_sub` together;
+  the category precedence and the `coding` subcategory both read its result.
+  Implement the visible fallback. Write `usage_work_signals`.
+- Replace `usage_work_signals` with Decision 11's shape — `state`,
+  `message_class`, `intent_sub`, `source_path`, and defaulted
+  `activity_kind`/`activity_sub`. Task 1 created the table and never wrote to it,
+  so this is a replacement, not a data migration. Read the migration number from
+  `migrations.go` at implementation time.
+- Regenerate the two canonical desktop fixtures through the official producer,
+  never by hand — the same step and the same reason as task 1. Raising the
+  migration count changes the doctor schema count they embed, and the byte-for-byte
+  producer test fails the whole Go suite until they are regenerated. Acceptance:
+  in each of the two files, the count that was there before this task replaced by
+  the new one, and no other difference.
+- Implement the incremental classifier state of Decision 11: a `pending` row is
+  written when a turn-opening message is seen, is invisible to every aggregate,
+  and becomes `classified` once an assistant call arrives. Recomputation is
+  idempotent, and tool shape is read back from `usage_tool_calls` rather than
+  carried in memory across scans.
 - Implement cost attribution from `turn_index` with the `cost_basis`
   discriminator, including `none`.
 - Implement the session-level reduction of Decision 5 and the five workflow
@@ -190,9 +253,40 @@ reviewed against a specimen that does not yet show what they describe.
 - Tests MUST cover: each category rule matching and being outranked; a Codex-only
   and a Claude-only fixture producing comparable classifications from the same
   work despite different boundary markers, including a Claude turn with no tool
-  call classified as `conversation`; `add error handling` classified as `feature`
-  rather than `debugging`; and the assertion that no rule consults tool failure
-  status, which would bias Codex systematically.
+  call classified as `conversation`; `add error handling` classified as
+  `coding/feature` rather than `debugging/repair`, **and** `fix the add button`
+  classified as `debugging` — one example alone cannot distinguish the
+  earliest-match rule from a hardcoded exception for that phrase; and the
+  assertion that no rule consults tool failure status, which would bias Codex
+  systematically.
+- Tests MUST also cover Decision 11's scan boundary: a fixture whose
+  turn-opening message lands in one scan and whose assistant and tool calls land
+  in the next, asserting that the message-derived classification survives — the
+  same shape as task 1's `TestClaudePendingTurnBoundarySurvivesAppendCursor`, but
+  asserting the category rather than the turn index. A `debugging` message split
+  this way must still classify as `debugging`, since classifying from tool shape
+  alone would make that category unreachable across a boundary. Cover the reset
+  path too: re-scanning a rewritten source leaves no row from the old content.
+- The classification of a turn is a pure function of its stored message
+  reduction and its rows in `usage_tool_calls`. A test asserts that running the
+  classifier twice over an unchanged source produces byte-identical rows.
+- Tests MUST cover Decision 11's pending index on both clients: a Claude pending
+  row keyed to the next index and promoted in place when the assistant entry
+  arrives; consecutive Claude user messages with no assistant between them
+  replacing one another rather than accumulating, with the last one's intent
+  carried by the resulting turn; and a Codex pending row keyed to the current
+  index, since `turn_context` precedes the message.
+- Tests MUST cover duplicate-source ownership in **both** scan orders — live
+  then archive, and archive then live — asserting the same winner each time, and
+  that removing the losing source leaves the winning row intact.
+- The ownership test MUST assert that `usage_work_signals`, `usage_events`, and
+  `usage_tool_calls` name **the same** `source_path` for the same conflict, in
+  the same scenario `TestUsageToolActivityFollowsDuplicateSourceOwnership`
+  already covers. Asserting the signals table alone against a direction written
+  in prose is what let a reversed rule pass its first repair; a cross-table
+  assertion fails whichever way it is reversed.
+- A chat-only `conversation` turn with no `usage_tool_calls` row must survive
+  every reset and orphan path; it is not an orphan.
 - Depends on task 1.
 - Verification level: **L2**.
 

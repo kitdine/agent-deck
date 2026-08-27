@@ -99,6 +99,14 @@ is dropped in the same function that read it, before the record is constructed.
 | `mcp_server` | The server segment of an `mcp__<server>__<tool>` name | Top MCP server |
 | `turn_index` | Integer, per session | Join key for everything per-turn |
 | `activity_kind`, `activity_sub` | Decision 3's vocabulary | Activity module |
+| `message_class` | One of `build`, `fault`, `none` | Decision 11's incremental classifier state |
+| `intent_sub` | One of `coding`'s four subcategories, or empty | Decision 11's incremental classifier state |
+
+The last two are the user message reduced to its decision, not to a summary of
+itself. Together they take fifteen values; no message can be recovered from
+them, and no directory, path, or command fragment reaches them. They exist
+because Decision 11 must carry a message's verdict across a scan boundary the
+message itself does not survive.
 
 Never persisted: the absolute or relative path, any directory segment, the user
 message, the command string, tool results, environment, or reasoning. The
@@ -192,23 +200,72 @@ The panel shows four rows and expands one of them; the CLI prints four rows and
 expands all of them under `--sub`. The category is decided first, from tool
 shape; the subcategory is decided second, and may consult text.
 
+### The message is scanned once, and that scan decides both levels
+
+Every message-derived rule in this decision reads from **one** pass over the user
+message that records, for each vocabulary below, the position of its earliest
+match:
+
+- the **fault** vocabulary — `fix`, `bug`, `error`, `broken`, `failing`,
+  `crash`, `traceback`, `exception`, `not working`, and the numeric HTTP failure
+  codes;
+- the three **build** vocabularies that have message rules — `feature`,
+  `refactoring`, and `testing`. `maintenance` has no message vocabulary; it is
+  command-shaped only, and so takes no part in this scan.
+
+`testing`'s vocabulary was named but never enumerated by the earlier draft,
+which was survivable while it only picked a subcategory and is not survivable now
+that it can decide a category. It is: `test`, `tests`, `testing`, `spec`,
+`coverage`, `assertion`, `regression`. `failing` is deliberately absent — it
+belongs to the fault vocabulary, and a message about a failing test is a
+`debugging` message.
+
+The earliest match across all five decides `message_class`:
+
+| Earliest match is | `message_class` | `intent_sub` |
+| --- | --- | --- |
+| a fault word | `fault` | empty |
+| a build word | `build` | the subcategory that word belongs to |
+| nothing matched | `none` | empty |
+
+Ties break toward `fault`, then in the order the Subcategories table lists them.
+
 ### Categories, in precedence order
 
 | # | Category | Rule |
 | --- | --- | --- |
-| 1 | `delegation` | The turn spawned a subagent or invoked a skill or workflow. Per-client identifiers below |
-| 2 | `debugging` | The turn matches the debugging signal below |
+| 1 | `delegation` | The turn spawned a subagent or invoked a skill or workflow. Tool-shaped, so it does not compete on message text |
+| 2 | `debugging` | `message_class` is `fault`, **and** the turn either edits a file or reads/searches without editing |
 | 3 | `coding` | The turn contains at least one edit-shaped tool call |
 | 4 | `conversation` | Anything else, including a turn with no tool call at all |
 
-The debugging signal is: the user message matches the fault vocabulary
-(`fix`, `bug`, `error`, `broken`, `failing`, `crash`, `traceback`, `exception`,
-`not working`, and the numeric HTTP failure codes), **and** the turn either edits
-a file or reads/searches without editing. Without the message text this rule
-cannot exist, which is the whole reason Decision 2 permits reading it.
+Without the message text rule 2 cannot exist, which is the whole reason
+Decision 2 permits reading it.
 
-`debugging` outranks `coding` because a turn that fixes a bug also edits a file;
-the reverse precedence would make `debugging` unreachable.
+`debugging` still outranks `coding`, because a turn that fixes a bug also edits a
+file and the reverse order would make `debugging` unreachable. What changed is
+its entry condition: it is no longer "a fault word appears somewhere in the
+message" but "a fault word is the message's earliest intent signal".
+
+**Why the earlier form was wrong, stated so it is not reintroduced.** This
+decision previously ran fixed precedence on presence alone, and separately told
+implementers to resolve `coding`'s four subcategories by earliest match — citing
+`add error handling`, which CodeBurn had persistently misclassified, as the
+reason. That fix was correct and installed one level too low. Presence-only
+precedence sends `add error handling` to `debugging` at the category level, and
+a subcategory rule that only runs *inside* `coding` never gets to see it: the
+turn edits a file, `error` matches the fault vocabulary, and the message never
+reaches the rule written to save it. `tasks.md` task 2's acceptance requires that
+message to classify as `feature`, which is a `coding` subcategory, so the two
+halves of this document contradicted each other and the test would have failed
+whichever half an implementer followed.
+
+Lifting the same scan to the category level resolves it without an exception
+table. In `add error handling`, `add` precedes `error`, so `message_class` is
+`build` and the turn is `coding/feature`. In `fix the add button`, `fix`
+precedes `add`, so it is `debugging`. Neither needs a phrase list, and a phrase
+list is what this would otherwise become: `error handling`, `error message`,
+`error type`, each added after it is reported.
 
 ### The identifiers are per-client
 
@@ -262,11 +319,11 @@ rather than as a hierarchy.
 | `delegation` | `subagent` | A subagent spawn |
 | | `workflow` | A skill or workflow invocation |
 
-Within `coding`, the four rules are evaluated by **earliest match position in the
-message**, not by rule order. CodeBurn arrived at this after
-"add error handling" was persistently classified as debugging: the debug regex
-matched `error` and was simply checked first. First-match-wins fixes it because
-`add` appears earlier. Ties break in the order listed.
+Within `coding`, the message-derived subcategory is `intent_sub` — already
+decided by the single scan above, by earliest match position rather than by rule
+order. `testing` and `maintenance` additionally have command-shaped rules, which
+apply when `intent_sub` is empty; a message-derived `intent_sub` wins over them,
+because the user's stated intent outranks an incidental command in the same turn.
 
 A subcategory that matches nothing falls back to the category's first
 subcategory, and that fallback is visible: `coding` with no keyword match reads
@@ -473,6 +530,13 @@ CREATE INDEX usage_work_signals_started ON usage_work_signals(started_at);
 CREATE INDEX usage_work_signals_kind    ON usage_work_signals(activity_kind, started_at);
 ```
 
+**`usage_work_signals` as written here is superseded by Decision 11.** Task 1
+created it in this shape and never wrote a row to it; task 2 replaces it with a
+form that carries the incremental classifier state, source ownership, and the
+reset path. The shape above is what the delivered migration contains, and it is
+left stated rather than edited so a reader of the committed schema finds the
+decision that produced it.
+
 `usage_source_files.parser_version` is bumped so indexed sources are re-scanned
 and all four tables backfill, following the `v0.4.1` cache-write precedent. The
 backfill is what makes the 93 `apply_patch`-era Codex sessions visible; a
@@ -556,3 +620,210 @@ The three periods both surfaces share — `today`, `7d`, `30d` — carry a
 reproducibility guarantee: the same figure, for the same client and period, on
 both. The CLI accepts periods the panel has no control for; those carry no
 cross-surface guarantee because there is nothing to compare them to.
+
+## Decision 11 — the classifier survives an incremental scan
+
+A source log is scanned incrementally: the parser resumes at a stored offset and
+sees only what was appended. Decision 1 already handles a turn boundary that
+straddles two scans, by persisting the pending-user state. Classification needs
+more than the boundary, and the difference is what this decision exists for.
+
+**The problem.** A turn's category is a function of two things that arrive at
+different times: the user message, which opens the turn, and the tool calls that
+follow it. When a scan ends between them, the message has been read and dropped —
+Decision 2 forbids keeping it — and the next scan has no way to recover it. The
+turn would be classified from tool shape alone, silently losing every
+message-derived rule: `debugging` becomes unreachable across a scan boundary,
+and `coding` always falls back to `feature`.
+
+**The reduction, not the message, is what persists.** When the parser sees a
+turn-opening message it performs Decision 3's single scan immediately and stores
+the verdict: `message_class` and `intent_sub`, fifteen values between them. That
+is the same reduction Decision 2 permits for `activity_kind` — a classifier input
+leaving the process as a bounded label — applied one step earlier because the
+classification cannot be completed yet.
+
+Storing a position, a matched word, or a truncated message would each be a weaker
+form of the same idea and a worse one: all three carry message content, and
+`message_class` carries only its decision.
+
+**This is not the pending state task 1 already stores.** Task 1 persists a
+pending-user marker on `usage_source_files`, and it belongs to the parser: it is
+part of the resume cursor, answers "was the last thing I read an unconsumed turn
+boundary", and is scoped to a source file. Decision 11's pending row belongs to
+the classifier, answers "which turn is awaiting its tool shape", and is scoped to
+a turn. They are set by the same scan and cleared by different events — the
+parser's marker clears when the assistant entry advances `turn_index`, the
+classifier's row clears when it is recomputed as `classified` — so neither can be
+derived from the other, and collapsing them would tie the resume cursor to
+classification state that a re-scan legitimately rebuilds.
+
+**Tool behavior is not carried in memory.** It does not need to be. Tool calls
+are already persisted with their `turn_index` by task 1, so the classifier reads
+a turn's tool shape back from `usage_tool_calls` rather than accumulating it
+across scans. Only the message reduction has no other home.
+
+### The row's states
+
+| `state` | Meaning | Visible to Decisions 4, 5, 6 |
+| --- | --- | --- |
+| `pending` | The message was seen; no assistant API call has followed it yet | **No** |
+| `classified` | At least one assistant call has arrived; `activity_kind` and `activity_sub` are computed | Yes |
+
+`pending` is invisible to every aggregate on purpose, and it is the same rule as
+Decision 1's "no assistant API call, no turn" seen from the storage side. A
+pending row is a turn that does not exist yet. Counting it would inflate turn
+counts, and classifying it would have to guess the tool shape that has not
+happened.
+
+### Which `turn_index` a pending row carries
+
+The primary key needs an index at the moment the message arrives, and the two
+clients advance `turn_index` at different moments, so the rule is per-client. It
+is stated here because task 1's parser makes one of the two non-obvious.
+
+| Client | When `turn_index` advances | Index a pending row carries |
+| --- | --- | --- |
+| Codex | On a changed `turn_id`, which arrives in `turn_context` **before** the message | The current index — it is already this turn's |
+| Claude | On the first assistant entry **after** the message | The **next** index, the one this turn will commit to when that assistant entry arrives |
+
+Claude's row is therefore written against an index that does not exist yet, and
+promotion is what makes it exist: when the assistant entry advances the counter,
+the pending row is already keyed to the value it lands on, so it is recomputed as
+`classified` in place rather than moved.
+
+Three consequences follow, and each is a case an implementer would otherwise
+have to invent:
+
+- **Consecutive user messages replace, they do not accumulate.** Several user
+  entries with no assistant between them all target the same next index, so each
+  overwrites the previous pending row. This is the storage-side reading of
+  Decision 1: those entries have produced no turn yet, and the one that finally
+  draws an assistant reply is the one whose intent the turn carries. The last
+  message before the assistant wins.
+- **Promotion is an update, never an insert plus delete.** The key is unchanged
+  across it, so no window exists in which the turn is absent or duplicated.
+- **A session reset clears pending rows with everything else.** A pending row
+  keyed to an index that a re-scan will re-derive must not survive that re-scan;
+  it is deleted by `source_path` along with the classified rows and rebuilt.
+
+Replay is idempotent under all three: re-scanning unchanged content re-derives
+the same index, the same reduction, and the same row.
+
+A pending row's `started_at` is the timestamp of the entry that opened the turn.
+When that entry carries none — Codex `user_message` events do, Claude user
+entries do, but a malformed line may not — no pending row is written, and the
+turn is recorded directly as `classified` when its first assistant call arrives,
+carrying that call's timestamp. A row is never written with a synthesized time,
+because `started_at` is what `first_edit_seconds` measures from.
+
+`classified` is a conclusion, not a seal. A turn that gains more tool calls in a
+later scan is recomputed from the same inputs and re-upserted; the computation is
+a pure function of the message reduction and the turn's rows in
+`usage_tool_calls`, so recomputation is idempotent and needs no ordering
+guarantee. A turn stops changing when the next turn boundary passes it, but
+nothing has to record that moment.
+
+### Ownership and reset
+
+`usage_work_signals` gains `source_path`, which the other two usage tables have
+carried since before this topic. Without it the table cannot participate in the
+reset path that already exists for events and tool calls, and a rewritten or
+truncated log leaves rows behind that nothing will ever delete or correct.
+
+- **Reset** — when a source's identity changes, its rows are deleted by
+  `source_path` and rebuilt from the re-scan, exactly as `usage_events` and
+  `usage_tool_calls` are.
+- **Ownership on conflict — signals do not get their own policy.** The primary
+  key stays `(client, session_id, turn_index)`, because one turn is one row and a
+  composite including `source_path` would silently split a turn in two. When a
+  second source claims a key, **the winner is whichever `source_path` sorts
+  last, and an existing owner yields only while it is still an indexed source.**
+  `upsertTx` and `upsertToolActivityTx` already decide duplicate events and tool
+  calls this way, and `TestUsageToolActivityFollowsDuplicateSourceOwnership`
+  pins it: a session under `.codex/sessions/…` keeps ownership when a copy
+  appears under `.codex/archived_sessions/…`, and the archive takes over only
+  once the live path is gone.
+
+  **Read the winner off that example, not off the adjective.** The direction is
+  easy to state backwards — the first repair of this finding did exactly that,
+  asserting the opposite winner in the same sentence that told implementers to
+  match the delivered code — so the example is the definition here and the
+  wording is a summary of it. If the delivered comparison ever changes, this
+  paragraph is wrong and the code is right; signals follow events and tool calls
+  rather than restating their rule independently.
+
+  Scan order must not decide this. A last-writer rule looks equivalent and is
+  not: scanning a live log and then an archived copy of it hands the row to the
+  archive, after which removing the archive deletes a turn whose live source was
+  never re-scanned, and a later archive scan can overwrite a newer live
+  classification with stale content. Making the winner a function of the paths
+  themselves removes both.
+
+  **The binding requirement is agreement, not the direction itself.** Signals,
+  events, and tool calls must name the same owner for the same conflict, and
+  that is what task 2 asserts — three tables disagreeing about which source owns
+  a session is worse than any one of them being wrong, and it is invisible from
+  inside any single table. A test that compares the three against each other
+  catches a reversed direction; a paragraph describing the direction does not,
+  which is how this finding survived its first repair.
+- **Orphans** — a row belonging to a source whose content no longer produces it,
+  which is what a rewritten or truncated log leaves behind. The reset path
+  removes them as a consequence of deleting by `source_path`; no separate sweep
+  is needed, and none should be added.
+
+  **A row is not an orphan merely because no `usage_tool_calls` row shares its
+  `turn_index`.** A `conversation` turn legitimately calls no tool at all, and
+  `conversation` is the category Decision 3 assigns to "anything else, including
+  a turn with no tool call". A sweep keyed on tool-row absence would delete every
+  chat-only turn in the store, plus every pending row whose tool calls have not
+  arrived yet — it would delete precisely the rows that are correct.
+
+### Schema
+
+Task 1 created `usage_work_signals` and never wrote to it, so task 2 replaces the
+table rather than altering it column by column. This is not a data migration —
+there is no data — and the resulting statement is one a later reader can check
+against this decision in one pass:
+
+```
+DROP TABLE usage_work_signals;
+CREATE TABLE usage_work_signals (
+  client        TEXT NOT NULL,
+  session_id    TEXT NOT NULL,
+  turn_index    INTEGER NOT NULL,
+  started_at    TEXT NOT NULL,
+  state         TEXT NOT NULL,
+  message_class TEXT NOT NULL,
+  intent_sub    TEXT NOT NULL DEFAULT '',
+  activity_kind TEXT NOT NULL DEFAULT '',
+  activity_sub  TEXT NOT NULL DEFAULT '',
+  source_path   TEXT NOT NULL,
+  PRIMARY KEY (client, session_id, turn_index)
+);
+CREATE INDEX usage_work_signals_started ON usage_work_signals(started_at);
+CREATE INDEX usage_work_signals_kind    ON usage_work_signals(activity_kind, started_at);
+CREATE INDEX usage_work_signals_source  ON usage_work_signals(source_path);
+```
+
+`activity_kind` and `activity_sub` are empty while `state` is `pending`, which is
+why they carry a default rather than the `NOT NULL` with no default that
+Decision 8's version used. The `source_path` index exists for the reset path,
+which deletes by that column on every source identity change.
+
+The migration number is read from `migrations.go` at implementation time, for the
+reason Decision 8 gives.
+
+**And it carries Decision 8's consequence with it.** Raising the migration count
+invalidates the two canonical desktop fixtures, which embed it as a doctor check
+and are compared byte for byte by
+`TestCanonicalFixturesAreReproducibleProducerOutput`. Task 2 regenerates
+`desktop/fixtures/v1/snapshot-complete.json` and `snapshot-empty-client.json`
+through the official producer, never by hand, and the whole diff is each file's
+current count replaced by the new one — no other change in either file.
+
+This is repeated here rather than left as a cross-reference because task 2 cites
+Decision 11 and not Decision 8, and an implementer reading only what a task cites
+is the reader this document has to serve. `switch-effectiveness-boundary` hit
+this as a P1, and task 1 was amended after the fact to prevent it; a second
+rediscovery would mean the amendment only ever protected the task that made it.

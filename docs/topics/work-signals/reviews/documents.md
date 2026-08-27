@@ -1362,6 +1362,80 @@ All five `Review` cells remain unticked. The set carries one verdict, so the
 three unchanged documents are re-read against the repaired pair rather than
 carried forward.
 
+## Round 7 — independent re-review — 2026-08-27
+
+- Reviewed state after the Round 6 repair:
+  - HEAD `b029644e6298cc5549f78d89db90bd1f856b8dec`
+  - `requirements.md` `778cf35aebf6a293ce5a3d0245393563bacea7ab`
+  - `architecture.md` `9f5340a5fa5ba6f4b3aac4b13efa03a1130e0e76`
+  - `ux/session-work-signals.md` `7f0654bef23fbab8af3e67e38351f08156475989`
+  - `ux/cli-work-signals.md` `63e31684cee91b43278e022fc64cd38305eab7ab`
+  - `tasks.md` `57b591254531eb887539ccfda65c1b5042cfa3c3`
+- Reviewer: Codex, independent of the Round 6 repairer
+- Method: finding-by-finding re-review of R6-F1, R6-F2, and R6-F3. The repaired
+  ownership rule was checked against the exact `upsertTx` /
+  `upsertToolActivityTx` comparison and
+  `TestUsageToolActivityFollowsDuplicateSourceOwnership`; pending-index and
+  fixture clauses were checked against their repaired contracts. Product code,
+  tests, configuration, and fixtures remained read-only.
+- Scope: Round 6 finding dispositions and regressions introduced by their repair.
+
+### Finding dispositions
+
+#### R6-F1 — STILL OPEN
+
+The repair chooses the opposite source-path winner from the code it says signals
+must match. Decision 11 now says the **lexicographically smaller** source wins.
+The delivered event/tool condition keeps the existing row when
+`existingPath > newPath` and otherwise lets the new source overwrite it, so the
+**lexicographically larger** source wins while the existing owner remains
+indexed.
+
+- Behavior risk: signals implemented from the repaired text choose the archived
+  path, while the same turn's event and tool rows choose the live sessions path.
+  Reset or removal then operates on different owners across the three tables —
+  precisely the disagreement R6-F1 required the repair to eliminate.
+- Evidence: `TestUsageToolActivityFollowsDuplicateSourceOwnership` scans the live
+  sessions path, adds the lexicographically smaller archived path, and asserts
+  the live path remains owner; only after removing live does archive take over.
+  The repaired Round 6 narrative also calls the winner “smaller”, so the mismatch
+  exists in both the contract and its claimed disposition.
+- Required repair: state the same winner the delivered event/tool policy actually
+  uses, or name a shared comparator symbol and define its ordering once. Keep the
+  both-scan-orders and losing-source removal tests, and ensure signals, events,
+  and tool calls assert the same owner in each case.
+
+#### R6-F2 — CLOSED
+
+Decision 11 now defines Codex pending rows on the current index and Claude pending
+rows on the next index, with consecutive user replacement, in-place promotion,
+session reset, and replay semantics. Task 2 names the corresponding tests. The
+prior undefined-key failure has no remaining branch.
+
+#### R6-F3 — CLOSED
+
+Decision 11 and task 2 both require producer-only regeneration of the two
+canonical fixtures, each current schema count replaced by the new count and no
+other difference. The migration acceptance now carries the known consequence.
+
+### Newly blocking findings
+
+None.
+
+### Evidence
+
+```text
+bash scripts/check-topic-docs.sh -> exit 0
+make check-whitespace            -> exit 0
+git diff --check                 -> exit 0
+```
+
+- Completion gate: FAILED — the current architecture/tasks candidate still has
+  one open P1; the set cannot partially pass.
+- Verdict: REOPEN
+
+All five `Review` cells remain unticked.
+
 ## Round 5 — independent re-review — 2026-08-27
 
 - Reviewed state after status synchronization:
@@ -1430,3 +1504,328 @@ git diff --check                 -> exit 0
 All five `Review` cells are ticked together. The next implementation task is
 `work-signal-extraction`; commit and push remain separate recommendations at the
 Task checkpoint.
+
+## Round 6 — 2026-08-27
+
+- Reviewed state:
+  - HEAD `b029644e6298cc5549f78d89db90bd1f856b8dec`
+  - `requirements.md` `778cf35aebf6a293ce5a3d0245393563bacea7ab`
+  - `architecture.md` `5da5d8876694af53f742c92b7bf440aa839450ad`
+  - `ux/session-work-signals.md` `7f0654bef23fbab8af3e67e38351f08156475989`
+  - `ux/cli-work-signals.md` `63e31684cee91b43278e022fc64cd38305eab7ab`
+  - `tasks.md` `c380cc02313c82256ce1d9c3bf567699e9d63384`
+- Reviewer: Codex, combined five-document review
+- Method: design/contract review of the two task-2 entry blockers and every
+  contract they changed. Decision 3 and Decision 11 were checked against the
+  delivered task-1 parser, incremental scan transaction, duplicate-source
+  upserts/reset path, and canonical desktop fixture producer. CodeGraph supplied
+  the current symbol bodies; product code, tests, configuration, and fixtures
+  remained read-only. R6-F1 provides a decisive source-loss counterexample, so
+  broader semantic verification stopped there; R6-F2 and R6-F3 were already
+  established from the same changed contract before that stop.
+- Scope: the five documents as one indivisible review set, plus current repository
+  facts each changed premise cites.
+
+### Findings
+
+#### P1
+
+- **[R6-F1] `architecture.md` Decision 11 / Ownership and reset — last-writer
+  ownership permits an archived source to delete a live turn.** The decision says
+  a conflicting source always overwrites `source_path`, so the last scan owns the
+  signal; it then claims that deleting only rows a source still owns means an
+  archived copy cannot delete the live row. Those statements do not compose.
+  - Behavior risk: scan the live source, then its archived duplicate. Last-writer
+    makes the archived path own the only row. If that archive is rewritten,
+    truncated, or removed, reset/detach deletes the row by archived `source_path`;
+    the unchanged live source is not re-scanned, so the turn disappears. A later
+    archive scan can also overwrite a newer live classification with stale data.
+  - Evidence: delivered `upsertTx` and `upsertToolActivityTx` already apply a
+    deterministic indexed-source path comparison before overwriting duplicate
+    events/tool calls; `scanFileMode` resets by source ownership. Decision 11
+    replaces that policy with scan order without defining why signals may differ.
+  - Bounded remediation: define one deterministic winner compatible with the
+    existing event/tool ownership policy, use it for signal upsert, reset, detach,
+    and orphan recovery, and require live/archive conflict tests in both scan
+    orders plus reset/removal of the losing source. Clarify that classified
+    no-tool conversation rows are not orphans merely because no tool row exists.
+
+- **[R6-F2] `architecture.md` Decision 11 / The row's states and Schema — a
+  Claude pending row has no defined primary-key `turn_index`.** The row must be
+  written when the user message arrives, but task 1 deliberately advances
+  Claude's `turn_index` only when the first assistant entry arrives; the schema
+  requires `(client, session_id, turn_index)` immediately.
+  - Behavior risk: using the current index collides with or overwrites the prior
+    turn, while using the next index is an unstated assumption. Consecutive user
+    messages with no assistant make the collision and replacement semantics
+    observable, and the stored pending row cannot be implemented consistently.
+  - Evidence: task-1 `activity.Parser.parseClaude` and usage `parse` increment on
+    the assistant entry after the pending marker; Decision 11 requires the row at
+    the earlier user entry and supplies no provisional-index rule.
+  - Bounded remediation: specify the pending index for both clients — including
+    Claude's next committed index — and define consecutive user-message
+    replacement, assistant promotion, session reset, and idempotent replay tests.
+
+- **[R6-F3] `tasks.md` task 2 and `architecture.md` Decision 11 — the new schema
+  migration omits the repository's mandatory canonical-fixture regeneration.**
+  Decision 11 requires the next migration, while task 2 neither cites Decision
+  8's known consequence nor names the producer step.
+  - Behavior risk: raising `CurrentSchemaVersion` changes the doctor schema count
+    in `snapshot-complete.json` and `snapshot-empty-client.json`; the byte-for-byte
+    producer test and therefore the full Go suite fail on an otherwise conforming
+    implementation. An implementer reading only the decisions task 2 cites will
+    rediscover the exact failure task 1 was amended to prevent.
+  - Evidence: Decision 8 records this consequence and task 1 carries the producer
+    command/expected two-file count-only diff. The current canonical producer reads
+    the live schema version; Decision 11 says task 2 increments it.
+  - Bounded remediation: add the same producer-only regeneration and exact
+    previous-count-to-next-count acceptance to Decision 11 and task 2, including
+    the two-file/no-other-diff assertion.
+
+#### P2
+
+None.
+
+### Evidence
+
+```text
+bash scripts/check-topic-docs.sh -> exit 0
+make check-whitespace            -> exit 0
+git diff --check                 -> exit 0
+```
+
+- Completion gate: FAILED — current-state fail evidence is bound to
+  `work-signals:architecture.md` and `work-signals:tasks.md`; unchanged documents
+  cannot independently pass the set's one-verdict rule.
+- Verdict: REOPEN
+
+Per the topic contract, all five `Review` cells remain unticked.
+
+## Round 6 — repair — 2026-08-27
+
+- Repairer: claude-code, author of the Round 6 target
+- Scope: R6-F1, R6-F2, R6-F3. No other finding was open. Product code, tests,
+  configuration, and fixtures remained read-only; only the two documents the
+  findings name were changed.
+- Repaired state:
+  - `architecture.md` `9f5340a5fa5ba6f4b3aac4b13efa03a1130e0e76`
+  - `tasks.md` `31f0424c096deddb8ca7ca72c43a33a32a80fae5`
+
+All three findings are accepted in full. None was disputed, and R6-F1 in
+particular was a composition error in the repaired text rather than a matter of
+emphasis: the two sentences it names cannot both be true.
+
+### R6-F1 — closed
+
+Decision 11 said a conflicting source always overwrites `source_path`, and then
+said reset deletes only rows a source still owns so an archived copy cannot
+delete the live one's. Under last-writer the archive *becomes* the owner, so the
+second sentence describes a protection the first had already removed.
+
+The repair does not invent a tie-break. `upsertTx` and `upsertToolActivityTx`
+already resolve duplicate events and tool calls by taking the lexicographically
+smaller `source_path`, with an existing owner yielding only while it is still an
+indexed source, and signals now use that same rule. Making the winner a function
+of the paths rather than of scan order removes both failure modes the finding
+named, and it keeps the three tables agreeing about which source owns a session —
+which matters more than any single table's answer, because a disagreement is not
+visible from inside any one of them.
+
+The finding's last clause is repaired too: the orphan definition no longer keys
+on the absence of a `usage_tool_calls` row. A `conversation` turn calls no tool
+by definition — it is the category Decision 3 gives to "anything else, including
+a turn with no tool call" — so a sweep keyed on tool-row absence would delete
+every chat-only turn in the store along with every legitimately pending row. The
+text now says so explicitly, since the wrong sweep is the one that looks like
+tidying up.
+
+### R6-F2 — closed
+
+The finding is exact: the row is required when the message arrives, Claude's
+`turn_index` advances only on the following assistant entry, and the schema needs
+the key immediately. Decision 11 gains a per-client rule and the three
+consequences that follow from it.
+
+Claude's pending row is keyed to the **next** index — the one the turn will
+commit to — so promotion is an in-place update rather than an insert plus
+delete, and no window exists where the turn is absent or duplicated. Codex uses
+the current index, because `turn_context` precedes the message and has already
+advanced it.
+
+Consecutive user messages with no assistant between them therefore target one
+key and replace one another, which is Decision 1 read from the storage side:
+those entries have produced no turn yet, and the one that finally draws an
+assistant reply is the one whose intent the turn carries. Session reset clears
+pending rows with everything else, and replay re-derives the same index, the same
+reduction, and the same row.
+
+### R6-F3 — closed
+
+Decision 11 required the next migration and did not carry Decision 8's known
+consequence with it, while task 2 cited neither. Both now state the
+canonical-fixture regeneration explicitly: producer only, never by hand, with the
+diff being each file's current count replaced by the new one and nothing else.
+
+It is repeated rather than cross-referenced on purpose. Task 2 cites Decision 11
+and not Decision 8, and the reader a task has to serve is the one who reads what
+it cites. `switch-effectiveness-boundary` hit this as a P1 and task 1 was amended
+afterwards to prevent it; a second rediscovery would mean that amendment only
+ever protected the task that made it.
+
+Task 2's test list gains the cases the findings imply: the pending index on both
+clients including consecutive-message replacement, duplicate-source ownership
+asserted in **both** scan orders with the losing source's removal leaving the
+winner intact, and a chat-only `conversation` turn surviving every reset and
+orphan path.
+
+### Evidence
+
+```text
+bash scripts/check-topic-docs.sh -> exit 0, no output
+make check-whitespace            -> exit 0, no violations
+git diff --check                 -> exit 0, clean
+```
+
+- Verification level: **L0**. Design documents only; no product code, test,
+  configuration, fixture, or generated file changed.
+- No new finding was introduced and no unrecorded issue was repaired
+  opportunistically. The three unchanged documents were not touched.
+- Note for the re-reviewer: this repair was made by the author of the text under
+  review, so the independence this topic's earlier rounds relied on comes from
+  the re-review, not from here.
+
+### Verdict: REOPEN — repair complete, awaiting independent re-review
+
+All five `Review` cells remain unticked. The set carries one verdict, so the
+three unchanged documents are re-read against the repaired pair.
+
+## Round 7 — repair — 2026-08-27
+
+- Repairer: claude-code, author of both the Round 6 target and its failed repair
+- Scope: R6-F1 only. R6-F2 and R6-F3 were closed by Round 7 and are untouched.
+  Product code, tests, configuration, and fixtures remained read-only.
+- Repaired state:
+  - `architecture.md` `0cdcbc87a1639aa2b563aa132052382f39132317`
+  - `tasks.md` `40b330fbb153f09e71b08a9398be5186a379898b`
+
+### R6-F1 — closed, second attempt
+
+The finding is accepted without qualification. The Round 6 repair named the
+lexicographically **smaller** `source_path` as the winner in the same sentence
+that instructed implementers to match the delivered code, and the delivered code
+does the opposite. Verified this round against the comparison itself and against
+`TestUsageToolActivityFollowsDuplicateSourceOwnership`: the test writes a session
+under `.codex/sessions/…`, then adds a copy under `.codex/archived_sessions/…`,
+and asserts the live path keeps ownership; `archived_sessions` sorts before
+`sessions`, so the path that sorts **last** wins, and the archive takes over only
+after the live path is removed.
+
+The text is corrected. More usefully, the repair changes what the correctness of
+this rule rests on.
+
+**The example is now the definition, and the adjective is a summary of it.** A
+direction stated as "smaller" or "larger" is one word away from being wrong, and
+the first repair proves that is not hypothetical — it inverted the rule while
+explicitly citing the code it inverted, and the inversion survived a
+self-review. The paragraph now leads with the concrete pair the delivered test
+pins, so a reader checking it has something to compare against rather than a
+claim to believe.
+
+**The binding requirement moved from the prose to a cross-table assertion.**
+Task 2 must now assert that `usage_work_signals`, `usage_events`, and
+`usage_tool_calls` name the same `source_path` for the same conflict, in the
+scenario that existing test already covers. That assertion fails whichever way
+the direction is reversed, which a paragraph describing the direction does not —
+and that difference is exactly why this finding survived its first repair. The
+both-scan-orders and losing-source-removal requirements are kept.
+
+The rest of the finding's disposition is unchanged from Round 6 and was not
+re-opened: signals take no independent policy, scan order decides nothing, and
+agreement across the three tables is what the rule exists to produce.
+
+### Evidence
+
+```text
+bash scripts/check-topic-docs.sh -> exit 0, no output
+make check-whitespace            -> exit 0, no violations
+```
+
+Source re-verified for this repair: the duplicate-source comparison in `upsertTx`
+and `upsertToolActivityTx`, and the ordering asserted by
+`TestUsageToolActivityFollowsDuplicateSourceOwnership`.
+
+- Verification level: **L0**. Design documents only; no product code, test,
+  configuration, fixture, or generated file changed.
+- No new finding was introduced. The three unchanged documents were not touched,
+  and R6-F2 and R6-F3 were left exactly as Round 7 closed them.
+- Note for the re-reviewer: this is the second repair of one finding by the
+  author of the text under review, and the first one asserted the opposite of
+  what it verified. The cross-table assertion above is the part worth checking
+  hardest, because it is what is supposed to make a third occurrence impossible.
+
+### Verdict: REOPEN — repair complete, awaiting independent re-review
+
+All five `Review` cells remain unticked.
+
+## Round 8 — independent re-review — 2026-08-27
+
+- Reviewed state after final status synchronization:
+  - HEAD `b029644e6298cc5549f78d89db90bd1f856b8dec`
+  - `requirements.md` `778cf35aebf6a293ce5a3d0245393563bacea7ab`
+  - `architecture.md` `0cdcbc87a1639aa2b563aa132052382f39132317`
+  - `ux/session-work-signals.md` `7f0654bef23fbab8af3e67e38351f08156475989`
+  - `ux/cli-work-signals.md` `63e31684cee91b43278e022fc64cd38305eab7ab`
+  - `tasks.md` `33bcc6ae8268b83988f325c6c01007edb668608c`
+- Reviewer: Codex, independent of the Round 7 repairer
+- Method: re-verified the sole open disposition R6-F1 against Decision 11's
+  repaired ownership paragraph, `upsertTx`, `upsertToolActivityTx`, and
+  `TestUsageToolActivityFollowsDuplicateSourceOwnership`. R6-F2 and R6-F3 were
+  checked for unchanged closure. Product code, tests, configuration, and fixtures
+  remained read-only.
+- Scope: R6-F1 second repair and regressions; R6-F2/R6-F3 closure preservation.
+
+### Finding dispositions
+
+#### R6-F1 — CLOSED
+
+Decision 11 now matches the delivered behavior: the `source_path` that sorts
+last wins while the existing owner remains indexed. The concrete live-versus-
+archive example is the definition, and it matches the existing regression — the
+sessions path keeps ownership after an archived copy appears, and archive takes
+over only once live is removed.
+
+The task-level protection is stronger than the repaired prose: task 2 must assert
+that `usage_work_signals`, `usage_events`, and `usage_tool_calls` all name the
+same owner for the same conflict in both scan orders, and that removing the
+losing source preserves the winner. Reversing the adjective or comparator now
+fails a cross-table test rather than surviving as a self-consistent second rule.
+
+#### R6-F2 — CLOSED
+
+The per-client pending index, consecutive-message replacement, in-place
+promotion, reset, and replay semantics remain complete and unchanged.
+
+#### R6-F3 — CLOSED
+
+The next migration still carries producer-only canonical fixture regeneration
+and the two-file count-only acceptance.
+
+### Newly blocking findings
+
+None.
+
+### Evidence
+
+```text
+bash scripts/check-topic-docs.sh -> exit 0
+make check-whitespace            -> exit 0
+git diff --check                 -> exit 0
+```
+
+- Completion gate: VERIFIED — all five current-HEAD Document WorkUnits have
+  matching pass evidence after final status synchronization.
+- Verdict: PASS
+
+All five `Review` cells are ticked together. Task 2 `activity-classification` is
+the next implementation task; commit and push remain separate recommendations
+at the document Task checkpoints.
