@@ -359,11 +359,12 @@ func (s *Service) Presentation(ctx context.Context, now time.Time, location *tim
 }
 
 func addPresentationQuality(scope *presentationScopeAccumulator, period string, attribution eventAttribution, event storedEvent, result Result) error {
-	quality := "inferred"
-	if attribution.provider == "unknown" {
-		quality = "unattributed"
-	} else if attribution.quality == "exact" {
+	quality := "unattributed"
+	switch attribution.quality {
+	case "exact":
 		quality = "determinable"
+	case "estimated":
+		quality = "inferred"
 	}
 	byPeriod := scope.quality[period]
 	if byPeriod == nil {
@@ -376,8 +377,12 @@ func addPresentationQuality(scope *presentationScopeAccumulator, period string, 
 		if byPeriod[providerName][quality] == nil {
 			byPeriod[providerName][quality] = newPresentationAccumulator()
 		}
-		if err := byPeriod[providerName][quality].add(event, result); err != nil {
+		tier := byPeriod[providerName][quality]
+		if err := tier.add(event, result); err != nil {
 			return err
+		}
+		if !attribution.spendEligible {
+			tier.stats.complete = false
 		}
 	}
 	return nil
@@ -729,7 +734,7 @@ type presentationSummaryBuilder struct {
 
 func newPresentationSummaryBuilder() *presentationSummaryBuilder {
 	return &presentationSummaryBuilder{
-		summary: Summary{Tokens: map[string]int64{}, Counts: map[string]int64{"events": 0, "exact": 0, "estimated": 0, "historical": 0, "priced": 0, "unpriced": 0}, Models: []ModelCoverage{}, Unpriced: []string{}, Warnings: []string{}},
+		summary: Summary{Tokens: map[string]int64{}, Counts: map[string]int64{"events": 0, "exact": 0, "estimated": 0, "unattributed": 0, "priced": 0, "unpriced": 0}, Models: []ModelCoverage{}, Unpriced: []string{}, Warnings: []string{}},
 		base:    new(big.Rat), provider: new(big.Rat), complete: true,
 		warned: map[string]bool{}, unpriced: map[string]bool{}, coverage: map[string]*ModelCoverage{},
 	}

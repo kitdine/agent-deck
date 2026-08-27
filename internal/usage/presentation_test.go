@@ -81,8 +81,8 @@ INSERT INTO usage_run_bindings(event_key,run_id) VALUES ('exact',1)`); err != ni
 	if all.Quality.Items[0].Period != "today" || all.Quality.Items[0].Provider != nil {
 		t.Fatalf("first quality record = %#v, want the today client-scope aggregate", all.Quality.Items[0])
 	}
-	if report.Summary.Counts["exact"] != 1 || report.Summary.Counts["estimated"] != 1 || report.Summary.Counts["historical"] != 1 {
-		t.Fatalf("legacy summary quality counts = %#v", report.Summary.Counts)
+	if report.Summary.Counts["exact"] != 1 || report.Summary.Counts["estimated"] != 1 || report.Summary.Counts["unattributed"] != 1 {
+		t.Fatalf("summary quality counts = %#v", report.Summary.Counts)
 	}
 	if !all.Pricing.Available || len(all.Pricing.Items) != 3 {
 		t.Fatalf("pricing = %#v, want one record per supported period", all.Pricing)
@@ -93,6 +93,37 @@ INSERT INTO usage_run_bindings(event_key,run_id) VALUES ('exact',1)`); err != ni
 	}
 	if got := []string{all.Pricing.Items[1].Period, all.Pricing.Items[2].Period}; !slicesEqual(got, []string{"7d", "30d"}) {
 		t.Fatalf("pricing periods = %v", got)
+	}
+}
+
+func TestAddPresentationQualityUsesQualityAndSpendEligibility(t *testing.T) {
+	periods := []presentationPeriodDefinition{{name: "today", days: 1}}
+	scope := newPresentationScopeAccumulator(periods)
+	cost := "1.000000000"
+	result := Result{Tokens: map[string]int64{}, CatalogBaseCost: &cost, ProviderCost: &cost, KnownCatalogBaseCost: cost, KnownProviderCost: cost, Unpriced: []string{}}
+	event := storedEvent{Event: Event{Client: "claude", SessionID: "session", Tokens: map[string]int64{"input_tokens": 1}}}
+	for _, attribution := range []eventAttribution{
+		{quality: "exact", provider: "known", spendEligible: true},
+		{quality: "estimated", provider: "unknown", spendEligible: false},
+		{quality: "unattributed", provider: "known", spendEligible: false},
+	} {
+		if err := addPresentationQuality(scope, "today", attribution, event, result); err != nil {
+			t.Fatal(err)
+		}
+	}
+	items := presentationPeriodQuality("today", scope.quality["today"])
+	if len(items) == 0 || items[0].Provider != nil || len(items[0].Tiers) != 3 {
+		t.Fatalf("quality items = %#v", items)
+	}
+	tiers := items[0].Tiers
+	if tiers[0].Quality != "determinable" || tiers[0].Value.Events != 1 || tiers[0].Value.CostIncomplete {
+		t.Fatalf("determinable tier = %#v", tiers[0])
+	}
+	if tiers[1].Quality != "inferred" || tiers[1].Value.Events != 1 || !tiers[1].Value.CostIncomplete {
+		t.Fatalf("inferred tier = %#v", tiers[1])
+	}
+	if tiers[2].Quality != "unattributed" || tiers[2].Value.Events != 1 || !tiers[2].Value.CostIncomplete {
+		t.Fatalf("unattributed tier = %#v", tiers[2])
 	}
 }
 

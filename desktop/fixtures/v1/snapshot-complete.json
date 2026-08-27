@@ -88,8 +88,8 @@
         "estimated": 0,
         "events": 2,
         "exact": 0,
-        "historical": 2,
         "priced": 0,
+        "unattributed": 2,
         "unpriced": 2
       },
       "catalog_base_cost": null,
@@ -99,7 +99,7 @@
       "pricing_complete": false,
       "unpriced_components": 1,
       "warnings": [
-        "historical attribution"
+        "unattributed attribution"
       ],
       "presentation": {
         "available": true,

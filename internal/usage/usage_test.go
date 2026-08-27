@@ -870,7 +870,7 @@ func TestSummarySessionsAndEventTimeCatalogSelection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if summary.CatalogBaseCost == nil || *summary.CatalogBaseCost != "2.500000000" || summary.ProviderCost == nil || *summary.ProviderCost != "2.500000000" || summary.Counts["historical"] != 1 {
+	if summary.CatalogBaseCost == nil || *summary.CatalogBaseCost != "2.500000000" || summary.ProviderCost == nil || *summary.ProviderCost != "2.500000000" || summary.Counts["unattributed"] != 1 {
 		t.Fatalf("summary=%+v", summary)
 	}
 	sessions, err := service.Sessions(ctx)
@@ -1549,13 +1549,13 @@ func TestAttributionResolversShareClientTimeSemantics(t *testing.T) {
 	tests := []struct {
 		name, client, session, eventAt, sessionStart, provider, multiplier, quality string
 	}{
-		{"claude before first key", "claude", "claude-session", t0.Add(500 * time.Millisecond).Format(time.RFC3339Nano), t0.Format(time.RFC3339Nano), "official", "1", "estimated"},
-		{"claude after first key", "claude", "claude-session", t0.Add(1500 * time.Millisecond).Format(time.RFC3339Nano), t0.Format(time.RFC3339Nano), "custom", "3", "estimated"},
-		{"claude after rotation", "claude", "claude-session", t0.Add(2500 * time.Millisecond).Format(time.RFC3339Nano), t0.Format(time.RFC3339Nano), "custom", "3", "estimated"},
-		{"claude after removal", "claude", "claude-session", t0.Add(3500 * time.Millisecond).Format(time.RFC3339Nano), t0.Format(time.RFC3339Nano), "custom", "3", "estimated"},
-		{"claude after restart", "claude", "claude-session", t0.Add(4500 * time.Millisecond).Format(time.RFC3339Nano), t0.Format(time.RFC3339Nano), "keyB", "9", "estimated"},
-		{"codex spans global switch", "codex", "codex-session", t0.Add(3 * time.Second).Format(time.RFC3339Nano), t0.Add(100 * time.Millisecond).Format(time.RFC3339Nano), "codexA", "2", "estimated"},
-		{"codex after restart", "codex", "codex-session", t0.Add(4500 * time.Millisecond).Format(time.RFC3339Nano), t0.Add(100 * time.Millisecond).Format(time.RFC3339Nano), "codexB", "9", "estimated"},
+		{"claude before first key", "claude", "claude-session", t0.Add(500 * time.Millisecond).Format(time.RFC3339Nano), t0.Format(time.RFC3339Nano), "official", "1", "exact"},
+		{"claude after first key", "claude", "claude-session", t0.Add(1500 * time.Millisecond).Format(time.RFC3339Nano), t0.Format(time.RFC3339Nano), "custom", "3", "exact"},
+		{"claude after rotation", "claude", "claude-session", t0.Add(2500 * time.Millisecond).Format(time.RFC3339Nano), t0.Format(time.RFC3339Nano), "custom", "3", "exact"},
+		{"claude after removal", "claude", "claude-session", t0.Add(3500 * time.Millisecond).Format(time.RFC3339Nano), t0.Format(time.RFC3339Nano), "custom", "3", "exact"},
+		{"claude after restart", "claude", "claude-session", t0.Add(4500 * time.Millisecond).Format(time.RFC3339Nano), t0.Format(time.RFC3339Nano), "keyB", "9", "exact"},
+		{"codex spans global switch", "codex", "codex-session", t0.Add(3 * time.Second).Format(time.RFC3339Nano), t0.Add(100 * time.Millisecond).Format(time.RFC3339Nano), "codexA", "2", "exact"},
+		{"codex after restart", "codex", "codex-session", t0.Add(4500 * time.Millisecond).Format(time.RFC3339Nano), t0.Add(100 * time.Millisecond).Format(time.RFC3339Nano), "codexB", "9", "exact"},
 		{"timeline fallback stays at session start", "codex", "fallback-session", t0.Add(3 * time.Second).Format(time.RFC3339Nano), t0.Add(500 * time.Millisecond).Format(time.RFC3339Nano), "codexA", "2", "estimated"},
 	}
 	for _, test := range tests {
@@ -1620,11 +1620,164 @@ func TestAttributionResolversSortMixedRFC3339RouteInstants(t *testing.T) {
 			if serviceErr != nil {
 				t.Fatal(serviceErr)
 			}
-			if readAttribution.provider != test.provider || readAttribution.multiplier != test.multiplier || readAttribution.quality != "estimated" {
-				t.Fatalf("read resolver = %#v, want %s/%s/estimated", readAttribution, test.provider, test.multiplier)
+			if readAttribution.provider != test.provider || readAttribution.multiplier != test.multiplier || readAttribution.quality != "exact" {
+				t.Fatalf("read resolver = %#v, want %s/%s/exact", readAttribution, test.provider, test.multiplier)
 			}
-			if serviceMultiplier != test.multiplier || serviceQuality != "estimated" {
-				t.Fatalf("service resolver = %s/%s, want %s/estimated", serviceMultiplier, serviceQuality, test.multiplier)
+			if serviceMultiplier != test.multiplier || serviceQuality != "exact" {
+				t.Fatalf("service resolver = %s/%s, want %s/exact", serviceMultiplier, serviceQuality, test.multiplier)
+			}
+		})
+	}
+}
+
+func TestRouteQualityMatchesLegacySixGroupReference(t *testing.T) {
+	type group struct {
+		name, client, hookEvent, provider, priorProvider, want string
+		priorFound                                             bool
+		rows, events                                           int
+	}
+	groups := []group{
+		{"SessionStart codex", "codex", "SessionStart", "codexA", "", "exact", false, 104, 0},
+		{"SessionStart claude", "claude", "SessionStart", "official", "", "exact", false, 31, 9953},
+		{"ConfigChange same provider", "claude", "ConfigChange", "custom", "custom", "exact", true, 9, 810},
+		{"ConfigChange no prior route uses official timeline", "claude", "ConfigChange", "custom", "official", "exact", true, 15, 1350},
+		{"ConfigChange no-key to first key", "claude", "ConfigChange", "custom", "official", "exact", true, 3, 282},
+		{"ConfigChange keyed removal", "claude", "ConfigChange", "official", "custom", "estimated", true, 4, 534},
+	}
+	exactRows, estimatedRows := 0, 0
+	exactClaudeEvents, estimatedClaudeEvents := 0, 0
+	configChangeEvents, exactConfigChangeEvents := 0, 0
+	for _, group := range groups {
+		route := readSessionRoute{provider: group.provider, hookEvent: group.hookEvent}
+		got := routeQuality(group.client, route, group.priorProvider, group.priorFound)
+		if got != group.want {
+			t.Fatalf("%s quality = %q, want %q", group.name, got, group.want)
+		}
+		if got == "exact" {
+			exactRows += group.rows
+			exactClaudeEvents += group.events
+		} else {
+			estimatedRows += group.rows
+			estimatedClaudeEvents += group.events
+		}
+		if group.hookEvent == "ConfigChange" {
+			configChangeEvents += group.events
+			if got == "exact" {
+				exactConfigChangeEvents += group.events
+			}
+		}
+	}
+	if exactRows != 162 || estimatedRows != 4 {
+		t.Fatalf("route classification = exact %d estimated %d, want 162/4 (135 SessionStart + 27 ConfigChange exact, 4 removal estimated)", exactRows, estimatedRows)
+	}
+	if exactClaudeEvents != 12395 || estimatedClaudeEvents != 534 || exactClaudeEvents+estimatedClaudeEvents != 12929 {
+		t.Fatalf("Claude events = exact %d estimated %d total %d, want 12395/534/12929", exactClaudeEvents, estimatedClaudeEvents, exactClaudeEvents+estimatedClaudeEvents)
+	}
+	if configChangeEvents != 2976 {
+		t.Fatalf("ConfigChange-positioned events = %d, want 2976; a blanket pre-cutoff exclusion would incorrectly hold all of them at estimated", configChangeEvents)
+	}
+	if exactConfigChangeEvents != 2442 {
+		t.Fatalf("exact ConfigChange-positioned events = %d, want 2442; a blanket pre-cutoff exclusion would demote classifier-exact events", exactConfigChangeEvents)
+	}
+}
+
+func TestExactRunRequiresProviderAndMultiplierOnBothResolvers(t *testing.T) {
+	base := storedEvent{
+		Event:    Event{Client: "codex", EventAt: "2026-08-04T00:00:00Z"},
+		runID:    sql.NullInt64{Int64: 1, Valid: true},
+		runExact: sql.NullInt64{Int64: 1, Valid: true},
+	}
+	for _, test := range []struct {
+		name  string
+		event storedEvent
+	}{
+		{"missing multiplier", func() storedEvent {
+			event := base
+			event.runProvider = sql.NullString{String: "official", Valid: true}
+			return event
+		}()},
+		{"missing provider", func() storedEvent {
+			event := base
+			event.runMultiplier = sql.NullString{String: "1", Valid: true}
+			return event
+		}()},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if _, err := (readPriceResolver{}).priceForEvent(test.event); err == nil {
+				t.Fatal("read resolver accepted invalid exact run")
+			}
+			if _, _, _, err := (&Service{}).priceForEvent(context.Background(), test.event); err == nil {
+				t.Fatal("service resolver accepted invalid exact run")
+			}
+		})
+	}
+}
+
+func TestAttributionResolversClassifyRouteEffectFromPriorState(t *testing.T) {
+	ctx := context.Background()
+	database, err := store.Open(ctx, filepath.Join(t.TempDir(), "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	t0 := time.Date(2026, 8, 4, 0, 0, 0, 0, time.UTC)
+	if err = database.RecordSelection(ctx, store.Selection{Client: "claude", ProviderName: "official", MultiplierSnapshot: "1", SelectedAt: t0}); err != nil {
+		t.Fatal(err)
+	}
+	if err = database.RecordSelection(ctx, store.Selection{Client: "claude", ProviderName: "custom", MultiplierSnapshot: "2", SelectedAt: t0.Add(10 * time.Second)}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = database.Exec(ctx, `
+		INSERT INTO usage_session_routes(client,session_id,observed_at,provider,multiplier,via_wrapper,hook_event,source,quality,semantic_key) VALUES
+			 ('codex','codex-start','2026-08-04T00:00:01Z','codexA','2',0,'SessionStart','fixture','estimated','codex-start'),
+			 ('codex','no-timeline','2026-08-04T00:00:02Z','codexB','3',0,'ConfigChange','fixture','estimated','codex-no-timeline-change'),
+			 ('claude','claude-start','2026-08-04T00:00:01Z','official','1',0,'SessionStart','fixture','estimated','claude-start'),
+			 ('claude','same','2026-08-04T00:00:01Z','custom','2',0,'SessionStart','fixture','estimated','same-start'),
+			 ('claude','same','2026-08-04T00:00:02Z','custom','2',0,'ConfigChange','fixture','estimated','same-change'),
+			 ('claude','no-prior','2026-08-04T00:00:02Z','custom','2',0,'ConfigChange','fixture','estimated','no-prior-change'),
+			 ('claude','no-prior-keyed','2026-08-04T00:00:11Z','official','1',0,'ConfigChange','fixture','estimated','no-prior-keyed-change'),
+			 ('claude','first-key','2026-08-04T00:00:01Z','official','1',0,'SessionStart','fixture','estimated','first-key-start'),
+		 ('claude','first-key','2026-08-04T00:00:02Z','custom','2',0,'ConfigChange','fixture','estimated','first-key-change'),
+		 ('claude','removal','2026-08-04T00:00:01Z','custom','2',0,'SessionStart','fixture','estimated','removal-start'),
+		 ('claude','removal','2026-08-04T00:00:02Z','official','1',0,'ConfigChange','fixture','estimated','removal-change'),
+		 ('claude','unknown','2026-08-04T00:00:02Z','unknown','1',0,'ConfigChange','fixture','estimated','unknown-change')`); err != nil {
+		t.Fatal(err)
+	}
+	service := New(database, "")
+	resolver, err := service.loadReadPriceResolver(ctx, t0.Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		client, session, want string
+		eventAt, sessionStart time.Duration
+	}{
+		{"codex", "codex-start", "exact", 3 * time.Second, 500 * time.Millisecond},
+		{"codex", "no-timeline", "estimated", 3 * time.Second, 500 * time.Millisecond},
+		{"claude", "claude-start", "exact", 3 * time.Second, 500 * time.Millisecond},
+		{"claude", "same", "exact", 3 * time.Second, 500 * time.Millisecond},
+		{"claude", "no-prior", "exact", 3 * time.Second, 500 * time.Millisecond},
+		{"claude", "no-prior-keyed", "estimated", 12 * time.Second, 10500 * time.Millisecond},
+		{"claude", "first-key", "exact", 3 * time.Second, 500 * time.Millisecond},
+		{"claude", "removal", "estimated", 3 * time.Second, 500 * time.Millisecond},
+		{"claude", "unknown", "estimated", 3 * time.Second, 500 * time.Millisecond},
+	}
+	for _, test := range tests {
+		t.Run(test.session, func(t *testing.T) {
+			event := storedEvent{
+				Event:        Event{Client: test.client, SessionID: test.session, EventAt: t0.Add(test.eventAt).Format(time.RFC3339Nano), Model: "fixture"},
+				sessionStart: sql.NullString{String: t0.Add(test.sessionStart).Format(time.RFC3339Nano), Valid: true},
+			}
+			readAttribution, readErr := resolver.priceForEvent(event)
+			if readErr != nil {
+				t.Fatal(readErr)
+			}
+			_, _, serviceQuality, serviceErr := service.priceForEvent(ctx, event)
+			if serviceErr != nil {
+				t.Fatal(serviceErr)
+			}
+			if readAttribution.quality != test.want || serviceQuality != test.want {
+				t.Fatalf("qualities = read %q service %q, want %q", readAttribution.quality, serviceQuality, test.want)
 			}
 		})
 	}
@@ -2696,7 +2849,7 @@ func TestRebuildPreservesStableRunBindings(t *testing.T) {
 		t.Fatalf("event bindings = %d, %v", eventBindings, err)
 	}
 	summary, err := service.Summary(ctx)
-	if err != nil || summary.Counts["exact"] != 1 || summary.Counts["estimated"] != 0 || summary.Counts["historical"] != 0 {
+	if err != nil || summary.Counts["exact"] != 1 || summary.Counts["estimated"] != 0 || summary.Counts["unattributed"] != 0 {
 		t.Fatalf("summary attribution = %#v, %v", summary.Counts, err)
 	}
 }

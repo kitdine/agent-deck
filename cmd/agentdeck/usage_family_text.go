@@ -54,7 +54,7 @@ func renderUsageFamilySummary(w io.Writer, value usage.Summary, options usageTex
 		{{label: "EVENTS", value: strconv.FormatInt(value.Counts["events"], 10)}},
 		{{label: "EXACT ATTRIBUTION", value: strconv.FormatInt(value.Counts["exact"], 10)}},
 		{{label: "ESTIMATED ATTRIBUTION", value: strconv.FormatInt(value.Counts["estimated"], 10)}},
-		{{label: "HISTORICAL ATTRIBUTION", value: strconv.FormatInt(value.Counts["historical"], 10)}},
+		{{label: "UNATTRIBUTED ATTRIBUTION", value: strconv.FormatInt(value.Counts["unattributed"], 10)}},
 		{{label: "PRICED EVENTS", value: strconv.FormatInt(value.Counts["priced"], 10)}},
 		{{label: "UNPRICED EVENTS", value: strconv.FormatInt(value.Counts["unpriced"], 10)}},
 		{{label: "CATALOG BASE TOTAL", value: optionalCost(value.CatalogBaseCost)}},

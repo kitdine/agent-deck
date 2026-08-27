@@ -1266,7 +1266,7 @@ func TestUsageSummaryAndSessionsUseSharedTerminalPrimitives(t *testing.T) {
 	baseCost, providerCost := "0.100000000", "0.200000000"
 	summary := usage.Summary{
 		Tokens:               map[string]int64{"input_tokens": 10, "cached_input_tokens": 3, "output_tokens": 2},
-		Counts:               map[string]int64{"events": 2, "exact": 1, "estimated": 1, "historical": 0, "priced": 1, "unpriced": 1},
+		Counts:               map[string]int64{"events": 3, "exact": 1, "estimated": 1, "unattributed": 1, "priced": 1, "unpriced": 2},
 		KnownCatalogBaseCost: &baseCost,
 		KnownProviderCost:    &providerCost,
 		Warnings:             []string{"estimated attribution"},
@@ -1278,10 +1278,20 @@ func TestUsageSummaryAndSessionsUseSharedTerminalPrimitives(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := rendered.String()
-	for _, want := range []string{"📊 USAGE SUMMARY", "🪙 TOKEN TOTALS", "🧾 MODEL COVERAGE", "KNOWN CATALOG SUBTOTAL", "Codex-auto-review", "EVENTS", "STATUS"} {
+	for _, want := range []string{"📊 USAGE SUMMARY", "🪙 TOKEN TOTALS", "🧾 MODEL COVERAGE", "KNOWN CATALOG SUBTOTAL", "Codex-auto-review", "EVENTS", "STATUS", "UNATTRIBUTED ATTRIBUTION"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("usage summary missing %q:\n%s", want, text)
 		}
+	}
+	for _, line := range strings.Split(text, "\n") {
+		if !strings.Contains(line, "UNATTRIBUTED ATTRIBUTION") {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) == 0 || fields[len(fields)-1] != "1" {
+			t.Fatalf("usage summary unattributed row = %q, want count 1", line)
+		}
+		break
 	}
 	if strings.Contains(text, "input_tokens=") {
 		t.Fatalf("usage summary retained packed token text:\n%s", text)

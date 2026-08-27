@@ -135,7 +135,7 @@ independent Re-review; development remains blocked.
 | Task | Dev | Review |
 | --- | --- | --- |
 | 1. `client-time-semantics` | [x] | [x] |
-| 2. `determinability-quality` | [ ] | [ ] |
+| 2. `determinability-quality` | [x] | [x] |
 | 3. `attribution-observability` | [ ] | [ ] |
 
 Development Task 1 (2026-08-26): `client-time-semantics` is complete and awaits
@@ -147,6 +147,42 @@ the whole-second versus fractional-second divergence.
 Parity coverage passes for Claude first-key/rotation/removal/restart, Codex
 switch-without-restart/restart, and timeline fallback. Stored quality values,
 quality promotion, observability, and `recordSessionRouteConn` are unchanged.
+
+Task 2 Review Round 1 (2026-08-26): **REOPEN** on D1-F1, with D1-F2 open
+alongside it. The read-time classifier itself is correct — `routeQuality`
+reproduces every row of the six-group reference table, and both resolvers are
+driven through all seven cases against a live store — but the rename of the
+fallback quality was not carried to one of its consumers: the `usage summary`
+text renderer still reads `Counts["historical"]`, a key no producer writes any
+more, so it prints `HISTORICAL ATTRIBUTION 0` for every store while the warning
+beside it reads `unattributed attribution`, and the attribution rows no longer
+sum to `EVENTS`. D1-F2 is that the focused regression's proof against a blanket
+pre-cutoff exclusion is arithmetic over the test's own constants rather than
+over the classifier's verdicts. The record under
+`reviews/determinability-quality.md` owns the findings and evidence. The CEv1
+gate is VERIFIED at the reviewed state; a VERIFIED gate is not a review verdict,
+and the repair re-records evidence against the new state.
+
+Task 2 Repair Round 1 (2026-08-26): D1-F1 through D1-F5 are repaired and await
+independent Re-review. The text renderer now reads and labels `unattributed`,
+the six-group regression couples its blanket-cutoff proof to classifier-exact
+`ConfigChange` events, and the dual-resolver table covers both missing-prior
+estimated branches. The Codex restriction now states its process-start reason,
+and the exact-run branch no longer retains a dead provider check. Focused tests
+and the full repository Go suite pass; the repaired CEv1 state is recorded
+separately from the still-REOPEN review verdict.
+
+Task 2 Re-review Round 2 (2026-08-26): **PASS**. D1-F1 through D1-F5 are all
+closed. `usage summary` renders `UNATTRIBUTED ATTRIBUTION` from the live count
+and a CLI regression asserts the rendered row is non-zero, so the three
+attribution rows sum to `EVENTS` again and no live reader of the retired
+`historical` key remains. The six-group regression now derives its
+blanket-cutoff proof from the classifier's own verdicts and asserts 2,442
+classifier-exact `ConfigChange` events. The dual-resolver live-store table
+covers a move away from an already-keyed timeline prior. The Codex restriction
+states its process-start reason and the exact-run dead condition is gone. The
+CEv1 gate is VERIFIED across all seven criteria, re-recorded against this
+round's post-synchronization state and superseding the repair-round records.
 
 Tasks are strictly sequential. Commit boundaries follow task boundaries. This
 topic does not authorize commits, pushes, release preparation, preflight
@@ -168,6 +204,25 @@ routes are re-sorted by parsed instant and ID before binary search, a mixed
 fraction-length regression proves parity with the database path, and the dead
 raw-string lookup is marked as forbidden pending task 2's read-side replacement.
 Task 1 awaits independent Re-review; its Review cell remains open.
+
+Development Task 2 (2026-08-26): `determinability-quality` is complete and
+awaits independent Review. Both resolvers ignore persisted route quality and
+derive `exact`/`estimated` from `hook_event` plus prior effective state;
+unavailable fallback is now `unattributed`. The six-group reference regression
+reproduces 162 exact versus 4 estimated routes and 12,395 exact versus 534
+estimated Claude events, while proving a blanket cutoff would misclassify all
+2,976 ConfigChange-positioned events. Presentation tiers map strictly from
+quality, propagate cost incompleteness for non-spend-eligible events, and the
+desktop fixtures were regenerated through their producer. Stable JSON schema
+and session warning tests were updated; task 3 reason counts, CLI text
+reconciliation, and real-spend total separation remain unimplemented.
+
+Verification: focused classification/presentation tests, full `internal/usage`,
+canonical desktop producer reproducibility, and `scripts/run-go-test.sh ./...`
+pass. The Command Line Tools synthetic macOS verifier successfully builds and
+decodes the snapshot before failing its unrelated stale 3-invocation assertion
+against the current 2-invocation refresh contract; XCTest is unavailable in
+this environment, so Widget XCTest was not run.
 
 ## Starting a task
 

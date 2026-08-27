@@ -112,7 +112,7 @@ VALUES('token-event','codex','token-session','event','2026-07-13T00:00:00Z','gpt
 	if len(page.Rows) != 1 || !strings.Contains(strings.Join(page.Summary, " "), "INPUT 120") || !strings.Contains(strings.Join(page.Summary, " "), "OUTPUT 30") {
 		t.Fatalf("token page summary = %#v rows = %#v", page.Summary, page.Rows)
 	}
-	if !strings.Contains(page.Warning, "historical attribution") || page.Warning == "none" {
+	if !strings.Contains(page.Warning, "unattributed attribution") || page.Warning == "none" {
 		t.Fatalf("token page warning = %q, want real attribution warning", page.Warning)
 	}
 	fields := make(map[string]terminalDetailField, len(page.Rows[0].Detail.fields))

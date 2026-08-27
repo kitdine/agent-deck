@@ -2390,8 +2390,14 @@ type readSessionRoute struct {
 	observedAt time.Time
 	provider   string
 	multiplier string
-	quality    string
 	viaWrapper bool
+	hookEvent  string
+}
+
+type sessionRouteMatch struct {
+	route      readSessionRoute
+	prior      readSessionRoute
+	priorFound bool
 }
 
 type readPriceResolver struct {
@@ -2407,14 +2413,14 @@ func (s *Service) loadReadPriceResolver(ctx context.Context, current time.Time) 
 		return readPriceResolver{}, err
 	}
 	resolver := readPriceResolver{current: current, byModel: map[string][]readPriceRow{}, timeline: timeline, routes: map[string][]readSessionRoute{}}
-	routeRows, err := s.Store.DB.QueryContext(ctx, `SELECT id,client,session_id,observed_at,provider,multiplier,quality,via_wrapper FROM usage_session_routes ORDER BY client,session_id,id`)
+	routeRows, err := s.Store.DB.QueryContext(ctx, `SELECT id,client,session_id,observed_at,provider,multiplier,via_wrapper,hook_event FROM usage_session_routes ORDER BY client,session_id,id`)
 	if err != nil {
 		return readPriceResolver{}, err
 	}
 	for routeRows.Next() {
 		var client, sessionID, observedText string
 		var route readSessionRoute
-		if err := routeRows.Scan(&route.id, &client, &sessionID, &observedText, &route.provider, &route.multiplier, &route.quality, &route.viaWrapper); err != nil {
+		if err := routeRows.Scan(&route.id, &client, &sessionID, &observedText, &route.provider, &route.multiplier, &route.viaWrapper, &route.hookEvent); err != nil {
 			routeRows.Close()
 			return readPriceResolver{}, err
 		}
@@ -2434,12 +2440,7 @@ func (s *Service) loadReadPriceResolver(ctx context.Context, current time.Time) 
 		return readPriceResolver{}, err
 	}
 	for key, routes := range resolver.routes {
-		sort.Slice(routes, func(i, j int) bool {
-			if routes[i].observedAt.Equal(routes[j].observedAt) {
-				return routes[i].id < routes[j].id
-			}
-			return routes[i].observedAt.Before(routes[j].observedAt)
-		})
+		sortSessionRoutes(routes)
 		resolver.routes[key] = routes
 	}
 	rows, err := s.Store.DB.QueryContext(ctx, `SELECT mp.model,mp.provider,c.effective_from,mp.effective_from,mp.prices_json,mp.aliases_json,c.source_kind,c.imported_at,c.version FROM model_prices mp JOIN price_catalogs c ON c.version=mp.catalog_version`)
@@ -2511,13 +2512,29 @@ func readPriceModelKey(client, model string) string {
 	return model
 }
 
-func (r readPriceResolver) sessionRouteAt(client, sessionID string, at time.Time) (readSessionRoute, bool) {
-	routes := r.routes[client+"\x00"+sessionID]
+func sortSessionRoutes(routes []readSessionRoute) {
+	sort.Slice(routes, func(i, j int) bool {
+		if routes[i].observedAt.Equal(routes[j].observedAt) {
+			return routes[i].id < routes[j].id
+		}
+		return routes[i].observedAt.Before(routes[j].observedAt)
+	})
+}
+
+func positionedSessionRoute(routes []readSessionRoute, at time.Time) (sessionRouteMatch, bool) {
 	index := sort.Search(len(routes), func(i int) bool { return routes[i].observedAt.After(at) })
 	if index == 0 {
-		return readSessionRoute{}, false
+		return sessionRouteMatch{}, false
 	}
-	return routes[index-1], true
+	match := sessionRouteMatch{route: routes[index-1]}
+	if index > 1 {
+		match.prior, match.priorFound = routes[index-2], true
+	}
+	return match, true
+}
+
+func (r readPriceResolver) sessionRouteAt(client, sessionID string, at time.Time) (sessionRouteMatch, bool) {
+	return positionedSessionRoute(r.routes[client+"\x00"+sessionID], at)
 }
 
 func (r readPriceResolver) priceAt(client, model string, at time.Time) (modelPrice, bool) {
@@ -2607,74 +2624,113 @@ const (
 )
 
 type resolvedSessionAttribution struct {
-	provider   string
-	multiplier string
-	quality    string
-	viaWrapper bool
-	resolution sessionAttributionResolution
+	provider      string
+	multiplier    string
+	quality       string
+	viaWrapper    bool
+	spendEligible bool
+	resolution    sessionAttributionResolution
 }
 
-type sessionRouteLookup func(client, sessionID string, at time.Time) (resolvedSessionAttribution, bool, error)
+type sessionRouteLookup func(client, sessionID string, at time.Time) (sessionRouteMatch, bool, error)
 type providerSnapshotLookup func(client string, at time.Time) (store.ProviderSnapshot, error)
 
 // storedSessionRouteAt is the database-backed counterpart to
 // readPriceResolver.sessionRouteAt. RFC3339Nano strings are not lexically
 // ordered when one timestamp has fractional seconds and the other does not, so
 // compare parsed instants and use id only as the equal-instant tie breaker.
-func (s *Service) storedSessionRouteAt(ctx context.Context, client, sessionID string, at time.Time) (resolvedSessionAttribution, bool, error) {
-	rows, err := s.Store.DB.QueryContext(ctx, `SELECT id,observed_at,provider,multiplier,quality,via_wrapper FROM usage_session_routes WHERE client=? AND session_id=?`, client, sessionID)
+func (s *Service) storedSessionRouteAt(ctx context.Context, client, sessionID string, at time.Time) (sessionRouteMatch, bool, error) {
+	rows, err := s.Store.DB.QueryContext(ctx, `SELECT id,observed_at,provider,multiplier,via_wrapper,hook_event FROM usage_session_routes WHERE client=? AND session_id=?`, client, sessionID)
 	if err != nil {
-		return resolvedSessionAttribution{}, false, err
+		return sessionRouteMatch{}, false, err
 	}
 	defer rows.Close()
 
-	var selected resolvedSessionAttribution
-	var selectedAt time.Time
-	var selectedID int64
-	found := false
+	routes := []readSessionRoute{}
 	for rows.Next() {
-		var id int64
+		var route readSessionRoute
 		var observedText string
-		var candidate resolvedSessionAttribution
-		if err = rows.Scan(&id, &observedText, &candidate.provider, &candidate.multiplier, &candidate.quality, &candidate.viaWrapper); err != nil {
-			return resolvedSessionAttribution{}, false, err
+		if err = rows.Scan(&route.id, &observedText, &route.provider, &route.multiplier, &route.viaWrapper, &route.hookEvent); err != nil {
+			return sessionRouteMatch{}, false, err
 		}
-		observedAt, parseErr := time.Parse(time.RFC3339Nano, observedText)
+		route.observedAt, err = time.Parse(time.RFC3339Nano, observedText)
+		parseErr := err
 		if parseErr != nil {
-			return resolvedSessionAttribution{}, false, parseErr
+			return sessionRouteMatch{}, false, parseErr
 		}
-		if observedAt.After(at) {
-			continue
-		}
-		if !found || observedAt.After(selectedAt) || observedAt.Equal(selectedAt) && id > selectedID {
-			selected, selectedAt, selectedID, found = candidate, observedAt, id, true
-		}
+		routes = append(routes, route)
 	}
 	if err = rows.Err(); err != nil {
-		return resolvedSessionAttribution{}, false, err
+		return sessionRouteMatch{}, false, err
 	}
-	return selected, found, nil
+	sortSessionRoutes(routes)
+	match, found := positionedSessionRoute(routes, at)
+	return match, found, nil
+}
+
+func routeQuality(client string, route readSessionRoute, priorProvider string, priorFound bool) string {
+	if runtimeProviderName(route.provider) == "unknown" {
+		return "estimated"
+	}
+	switch route.hookEvent {
+	case "SessionStart":
+		return "exact"
+	case "ConfigChange":
+		// Codex applies configuration only when a process starts, so a
+		// mid-session ConfigChange can never be an adopted route boundary.
+		if client != "claude" || !priorFound || priorProvider == "unknown" {
+			return "estimated"
+		}
+		if route.provider == priorProvider || priorProvider == "official" && route.provider != "official" {
+			return "exact"
+		}
+		return "estimated"
+	default:
+		return "estimated"
+	}
 }
 
 // resolveSessionAttribution owns the shared time-positioning policy for both
 // pricing paths. Effective session routes are positioned at the event time;
 // the provider timeline is only a fallback and is always positioned at the
-// logical session start. Quality promotion and observable reason reporting are
-// later task boundaries, so this helper preserves the stored/current values.
+// logical session start. Route quality is derived from whether the positioned
+// boundary took effect; the persisted quality column is legacy capture data.
+// Observable reason reporting remains task 3's boundary.
 func resolveSessionAttribution(event storedEvent, routeAt sessionRouteLookup, snapshotAt providerSnapshotLookup) (resolvedSessionAttribution, error) {
 	result := resolvedSessionAttribution{
-		provider: "unknown", multiplier: "1", quality: "historical",
+		provider: "unknown", multiplier: "1", quality: "unattributed",
 		resolution: sessionAttributionUnresolved,
 	}
 	eventAt, err := time.Parse(time.RFC3339Nano, event.EventAt)
 	if err != nil {
 		return resolvedSessionAttribution{}, err
 	}
-	if route, found, routeErr := routeAt(event.Client, event.SessionID, eventAt); routeErr != nil {
+	if match, found, routeErr := routeAt(event.Client, event.SessionID, eventAt); routeErr != nil {
 		return resolvedSessionAttribution{}, routeErr
 	} else if found {
-		route.resolution = sessionAttributionRoute
-		return route, nil
+		route := match.route
+		priorProvider, priorFound := "unknown", match.priorFound
+		if priorFound {
+			priorProvider = runtimeProviderName(match.prior.provider)
+		} else if route.hookEvent == "ConfigChange" {
+			startAt, startErr := sessionStartAt(event)
+			if startErr != nil {
+				return resolvedSessionAttribution{}, startErr
+			}
+			snapshot, snapshotErr := snapshotAt(event.Client, startAt)
+			if snapshotErr == nil {
+				priorProvider, priorFound = runtimeProviderName(snapshot.Name), true
+			} else if !errors.Is(snapshotErr, sql.ErrNoRows) {
+				return resolvedSessionAttribution{}, snapshotErr
+			}
+		}
+		provider := runtimeProviderName(route.provider)
+		return resolvedSessionAttribution{
+			provider: provider, multiplier: route.multiplier,
+			quality:    routeQuality(event.Client, route, priorProvider, priorFound),
+			viaWrapper: route.viaWrapper, spendEligible: provider != "unknown",
+			resolution: sessionAttributionRoute,
+		}, nil
 	}
 
 	startAt, err := sessionStartAt(event)
@@ -2692,6 +2748,7 @@ func resolveSessionAttribution(event storedEvent, routeAt sessionRouteLookup, sn
 	result.multiplier = snapshot.Multiplier
 	result.quality = "estimated"
 	result.viaWrapper = result.provider != "unknown" && snapshot.ViaWrapper
+	result.spendEligible = result.provider != "unknown"
 	result.resolution = sessionAttributionTimeline
 	return result, nil
 }
@@ -2702,36 +2759,40 @@ func resolveSessionAttribution(event storedEvent, routeAt sessionRouteLookup, sn
 // event: an estimated event reuses the snapshot that chose its provider, and
 // an exact one spends its single lookup at the run start.
 type eventAttribution struct {
-	price      modelPrice
-	multiplier string
-	quality    string
-	provider   string
-	viaWrapper bool
+	price         modelPrice
+	multiplier    string
+	quality       string
+	provider      string
+	viaWrapper    bool
+	spendEligible bool
+}
+
+func exactRunRoute(event storedEvent) (provider, multiplier string, err error) {
+	if !event.runMultiplier.Valid {
+		return "", "", errors.New("exact usage run has no multiplier")
+	}
+	if !event.runProvider.Valid || runtimeProviderName(event.runProvider.String) == "unknown" {
+		return "", "", errors.New("exact usage run has no provider")
+	}
+	return runtimeProviderName(event.runProvider.String), event.runMultiplier.String, nil
 }
 
 func (r readPriceResolver) priceForEvent(event storedEvent) (eventAttribution, error) {
-	attribution := eventAttribution{multiplier: "1", quality: "historical", provider: "unknown"}
+	attribution := eventAttribution{multiplier: "1", quality: "unattributed", provider: "unknown"}
 	if event.runID.Valid && event.runExact.Valid && event.runExact.Int64 == 1 {
-		if !event.runMultiplier.Valid {
-			return eventAttribution{}, errors.New("exact usage run has no multiplier")
+		provider, multiplier, routeErr := exactRunRoute(event)
+		if routeErr != nil {
+			return eventAttribution{}, routeErr
 		}
-		attribution.quality, attribution.multiplier = "exact", event.runMultiplier.String
-		if event.runProvider.Valid {
-			attribution.provider = runtimeProviderName(event.runProvider.String)
-		}
+		attribution.quality, attribution.multiplier, attribution.provider = "exact", multiplier, provider
 		attribution.viaWrapper = runtimeRouteWasWrapped(r.timeline, event.Client, attribution.provider, event.runStart)
+		attribution.spendEligible = true
 	} else {
 		resolved, resolveErr := resolveSessionAttribution(
 			event,
-			func(client, sessionID string, at time.Time) (resolvedSessionAttribution, bool, error) {
-				route, found := r.sessionRouteAt(client, sessionID, at)
-				if !found {
-					return resolvedSessionAttribution{}, false, nil
-				}
-				return resolvedSessionAttribution{
-					provider: route.provider, multiplier: route.multiplier,
-					quality: route.quality, viaWrapper: route.viaWrapper,
-				}, true, nil
+			func(client, sessionID string, at time.Time) (sessionRouteMatch, bool, error) {
+				match, found := r.sessionRouteAt(client, sessionID, at)
+				return match, found, nil
 			},
 			r.timeline.SnapshotAt,
 		)
@@ -2742,6 +2803,7 @@ func (r readPriceResolver) priceForEvent(event storedEvent) (eventAttribution, e
 		attribution.multiplier = resolved.multiplier
 		attribution.quality = resolved.quality
 		attribution.viaWrapper = resolved.viaWrapper
+		attribution.spendEligible = resolved.spendEligible
 	}
 	eventAt, err := time.Parse(time.RFC3339Nano, event.EventAt)
 	if err != nil {
@@ -3219,7 +3281,7 @@ func summarizeWithReadPriceResolver(events []storedEvent, resolver readPriceReso
 }
 
 func summarizeEvents(events []storedEvent, priceForEvent eventPricing) (Summary, error) {
-	out := Summary{Tokens: map[string]int64{}, Counts: map[string]int64{"events": int64(len(events)), "exact": 0, "estimated": 0, "historical": 0, "priced": 0, "unpriced": 0}, Models: []ModelCoverage{}, Unpriced: []string{}, Warnings: []string{}}
+	out := Summary{Tokens: map[string]int64{}, Counts: map[string]int64{"events": int64(len(events)), "exact": 0, "estimated": 0, "unattributed": 0, "priced": 0, "unpriced": 0}, Models: []ModelCoverage{}, Unpriced: []string{}, Warnings: []string{}}
 	base := new(big.Rat)
 	provider := new(big.Rat)
 	complete := true
@@ -3295,16 +3357,17 @@ func summarizeEvents(events []storedEvent, priceForEvent eventPricing) (Summary,
 	return out, nil
 }
 func (s *Service) priceForEvent(ctx context.Context, e storedEvent) (modelPrice, string, string, error) {
-	quality, mult := "historical", "1"
+	quality, mult := "unattributed", "1"
 	if e.runID.Valid && e.runExact.Valid && e.runExact.Int64 == 1 {
-		quality = "exact"
-		if err := s.Store.DB.QueryRowContext(ctx, "SELECT multiplier FROM usage_runs WHERE id=?", e.runID.Int64).Scan(&mult); err != nil {
-			return modelPrice{}, "", "", err
+		_, multiplier, routeErr := exactRunRoute(e)
+		if routeErr != nil {
+			return modelPrice{}, "", "", routeErr
 		}
+		quality, mult = "exact", multiplier
 	} else {
 		resolved, resolveErr := resolveSessionAttribution(
 			e,
-			func(client, sessionID string, at time.Time) (resolvedSessionAttribution, bool, error) {
+			func(client, sessionID string, at time.Time) (sessionRouteMatch, bool, error) {
 				return s.storedSessionRouteAt(ctx, client, sessionID, at)
 			},
 			func(client string, at time.Time) (store.ProviderSnapshot, error) {

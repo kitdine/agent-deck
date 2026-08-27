@@ -587,7 +587,7 @@
               "estimated": "number",
               "events": "number",
               "exact": "number",
-              "historical": "number",
+              "unattributed": "number",
               "priced": "number",
               "unpriced": "number"
             },
@@ -2543,7 +2543,7 @@
             "estimated": "number",
             "events": "number",
             "exact": "number",
-            "historical": "number",
+            "unattributed": "number",
             "priced": "number",
             "unpriced": "number"
           },

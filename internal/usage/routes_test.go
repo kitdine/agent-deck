@@ -699,7 +699,7 @@ func TestReadPriceResolverUsesSessionRouteOnlyAfterBoundary(t *testing.T) {
 	if before.provider != "official" || before.multiplier != "1" || before.quality != "estimated" || before.viaWrapper {
 		t.Fatalf("before boundary = %#v", before)
 	}
-	if after.provider != "b" || after.multiplier != "2" || after.quality != "estimated" || !after.viaWrapper {
+	if after.provider != "b" || after.multiplier != "2" || after.quality != "exact" || !after.viaWrapper {
 		t.Fatalf("after boundary = %#v", after)
 	}
 }
