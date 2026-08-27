@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-07-14
-updated: 2026-08-25
+updated: 2026-08-27
 ---
 
 # AgentDeck Documentation
@@ -19,6 +19,7 @@ the source of truth when they disagree with documentation.
 | Documentation naming, topic structure, and lifecycle | [Documentation Workflow](documentation-workflow.md) |
 | Product, persistence, security, compatibility, and distribution contract | [CLI Design](specs/cli-design.md) |
 | Implemented commands, flags, output, and interaction behavior | [CLI Manual](specs/cli-manual.md) |
+| Brand asset provenance, hashes, and unresolved legal boundaries | [Brand Asset Provenance](legal/brand-assets.md) |
 | Historical topics, plans, and reviews | [Archive](archive/README.md) |
 
 Topic-internal status belongs only to that topic's `tasks.md` and `reviews/`.
@@ -35,6 +36,7 @@ changes.
 | [CLI Design](specs/cli-design.md) | Active, version 26 | System, persistence, security, compatibility, and distribution contracts. |
 | [CLI Manual](specs/cli-manual.md) | Active | Implemented commands, flags, output shapes, and interaction behavior. |
 | [Documentation Workflow](documentation-workflow.md) | Active | Documentation naming, topic structure, lifecycle, readiness matrices, size policy, and status vocabulary. |
+| [Brand Asset Provenance](legal/brand-assets.md) | Active | Generation history, derivative chain, canonical hashes, and the boundary between recorded provenance and unresolved trademark/legal review. |
 | [Archived Documents](archive/README.md) | Active index | Retirement history and pointers to historical topics, plans, and reviews. |
 
 A topic's own documents are authoritative for that topic while it executes; use
