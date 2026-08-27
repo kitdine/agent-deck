@@ -65,6 +65,51 @@ The workspace may contain one or more independent repositories:
 严格执行用户给定范围。实现或修复授权不自动包含提交、推送、发版、部署、建分支、
 建 worktree 或创建 PR 的授权。
 
+## Delegation and Model Tier / 委派与模型层级
+
+These rules apply when the user has asked for delegation or a cheaper model.
+Neither is something to reach for on its own — this section bounds them, it does
+not encourage them.
+
+**A subagent may write implementation, and nothing else.** Production code and
+tests inside an already-approved task boundary are its writable surface. Review
+records, `tasks.md`, `docs/status.md`, completion evidence, and Beads are not,
+and neither is any Git delivery action.
+
+The reason is the single-writer model this file already establishes. A gate that
+several writers can reach stops answering "who asserted this, against which
+content state" — and that question is the only thing a gate is for. The same
+constraint that keeps repository documents, CEv1, and Beads from mirroring each
+other keeps a subagent out of all three.
+
+**A subagent's report is input, not evidence.** Before anything it produced
+reaches an authoritative record, the main agent verifies it against the
+repository. A finding, a test result, or a claim of completeness that is only
+asserted in a subagent's summary has not been checked; recording it as though it
+had is how a review record starts asserting things the target does not have. A
+subagent may gather review material read-only, but the verdict and the record
+stay with the main agent — **independence comes from a cold context and a
+separate role, not from a process boundary.**
+
+**A lower model tier is for work a machine can grade.** Search, bulk mechanical
+rewrites, boilerplate tests, formatting cleanup — anything whose result the
+compiler, the test suite, or a project script decides objectively. Design,
+review, and re-review keep the session's default tier: their output is a
+judgment that a later reader cannot re-derive cheaply, and it is what makes a
+gate believable. Say which tier was used in the dispatch record when it was not
+the default.
+
+The failure this avoids is specific and recent: a wrong line in code fails a
+test, while a wrong line in a design gets implemented, copied into the
+downstream documents, and repaired only after several rounds notice it.
+
+委派与降级仅在用户要求时适用。subagent 只能写已批准 task 边界内的生产代码与测试；
+评审记录、`tasks.md`、`docs/status.md`、验收证据、Beads 与任何 Git 交付动作都不在
+其可写范围，因为单写者模型是门禁可追溯的前提。subagent 的报告是输入而非证据，进入
+权威记录前必须由主 agent 对着仓库核实；独立性来自冷上下文与不同职责，不来自进程
+边界。低层级模型只用于结果可被编译器、测试或脚本客观判定的机械任务；设计、评审、
+复评保持会话默认层级，并在调度记录中说明非默认的层级选择。
+
 ## Project Workflow Authorities / 项目工作流权威
 
 The project-defined workflow skills are the primary workflow authorities within
