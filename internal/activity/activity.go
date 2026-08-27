@@ -1,4 +1,5 @@
-// Package activity extracts only allowlisted session and tool-call metadata.
+// Package activity reads session tool arguments transiently and retains only
+// allowlisted session, turn, tool-kind, MCP, and opaque file metadata.
 package activity
 
 import (
@@ -17,11 +18,15 @@ import (
 
 const maxMetadataLength = 256
 
-// Record is an internal source-owned tool-call transition. It deliberately has
-// no fields for arguments, results, command text, environment, or reasoning.
+// Record is an internal source-owned tool-call transition. It deliberately
+// retains no arguments, results, command text, user message, environment,
+// reasoning, path, or directory; file identity is reduced before construction.
 type Record struct {
 	Key, Client, SessionID, Model, Tool, StartedAt, CompletedAt, Status, SourcePath string
 	SourceOffset                                                                    int64
+	TurnIndex                                                                       int
+	ToolKind, MCPServer                                                             string
+	Files                                                                           []File
 }
 
 // Detail is the safe, user-visible form of a merged tool call.
@@ -68,6 +73,9 @@ const maxPageCandidates = 1000
 type Parser struct {
 	client, sourcePath       string
 	sessionID, turnID, model string
+	machineIdentity          string
+	turnIndex                int
+	claudePendingUserMessage bool
 }
 
 func NewParser(client, sourcePath string) *Parser {
@@ -76,6 +84,14 @@ func NewParser(client, sourcePath string) *Parser {
 
 func (p *Parser) SetContext(sessionID, turnID, model string) {
 	p.sessionID, p.turnID, p.model = sessionID, turnID, model
+}
+
+func (p *Parser) SetTurnIndex(turnIndex int) { p.turnIndex = max(turnIndex, 0) }
+
+func (p *Parser) SetClaudePending(pending bool) { p.claudePendingUserMessage = pending }
+
+func (p *Parser) SetMachineIdentity(machineIdentity string) {
+	p.machineIdentity = machineIdentity
 }
 
 func (p *Parser) Context() (sessionID, turnID, model string) {
@@ -96,10 +112,18 @@ func (p *Parser) parseCodex(value map[string]any, offset int64) []Record {
 	payload, _ := value["payload"].(map[string]any)
 	switch safeString(value["type"]) {
 	case "session_meta":
-		p.sessionID = firstSafe(payload["session_id"], payload["id"])
+		sessionID := firstSafe(payload["session_id"], payload["id"])
+		if sessionID != "" && sessionID != p.sessionID {
+			p.turnID, p.turnIndex = "", 0
+		}
+		p.sessionID = sessionID
 		return nil
 	case "turn_context":
-		p.turnID = safeString(payload["turn_id"])
+		turnID := safeString(payload["turn_id"])
+		if turnID != "" && turnID != p.turnID {
+			p.turnIndex++
+		}
+		p.turnID = turnID
 		p.model = safeString(payload["model"])
 		return nil
 	}
@@ -120,8 +144,12 @@ func (p *Parser) parseCodex(value map[string]any, offset int64) []Record {
 	switch kind {
 	case "function_call", "custom_tool_call", "mcp_tool_call", "web_search_call", "computer_call":
 		tool := firstSafe(item["name"], item["tool_name"], item["tool"])
+		if tool == "" && kind == "mcp_tool_call" {
+			tool = "mcp"
+		}
 		callID := firstSafe(item["call_id"], item["id"])
-		return p.started(callID, tool, timestamp, offset)
+		toolKind, mcpServer, files := classifyCodexTool(item, kind, tool, p.machineIdentity)
+		return p.started(callID, tool, timestamp, offset, toolKind, mcpServer, files)
 	case "function_call_output", "custom_tool_call_output", "mcp_tool_call_output", "web_search_call_output", "computer_call_output":
 		callID := firstSafe(item["call_id"], item["id"])
 		return p.completed(callID, timestamp, "completed", offset)
@@ -130,11 +158,23 @@ func (p *Parser) parseCodex(value map[string]any, offset int64) []Record {
 }
 
 func (p *Parser) parseClaude(value map[string]any, offset int64) []Record {
-	p.sessionID = firstSafe(value["sessionId"], value["session_id"], p.sessionID)
+	sessionID := firstSafe(value["sessionId"], value["session_id"], p.sessionID)
+	if sessionID != "" && sessionID != p.sessionID {
+		p.turnID, p.turnIndex, p.claudePendingUserMessage = "", 0, false
+	}
+	p.sessionID = sessionID
 	if p.sessionID == "" {
 		return nil
 	}
 	message, _ := value["message"].(map[string]any)
+	if ClaudeUserTurnBoundary(value, message) {
+		p.claudePendingUserMessage = true
+		return nil
+	}
+	if safeString(value["type"]) == "assistant" && p.claudePendingUserMessage {
+		p.turnIndex++
+		p.claudePendingUserMessage = false
+	}
 	if model := safeString(message["model"]); model != "" && model != "<synthetic>" {
 		p.model = model
 	}
@@ -143,7 +183,9 @@ func (p *Parser) parseClaude(value map[string]any, offset int64) []Record {
 	for _, item := range contentItems(message["content"]) {
 		switch safeString(item["type"]) {
 		case "tool_use":
-			records = append(records, p.started(safeString(item["id"]), safeString(item["name"]), timestamp, offset)...)
+			tool := safeString(item["name"])
+			toolKind, mcpServer, files := classifyClaudeTool(item, tool, p.machineIdentity)
+			records = append(records, p.started(safeString(item["id"]), tool, timestamp, offset, toolKind, mcpServer, files)...)
 		case "tool_result":
 			status := "completed"
 			if failed, _ := item["is_error"].(bool); failed {
@@ -155,19 +197,19 @@ func (p *Parser) parseClaude(value map[string]any, offset int64) []Record {
 	return records
 }
 
-func (p *Parser) started(callID, tool, at string, offset int64) []Record {
+func (p *Parser) started(callID, tool, at string, offset int64, toolKind, mcpServer string, files []File) []Record {
 	if tool == "" || at == "" {
 		return nil
 	}
 	key := p.key(callID, tool, at)
-	return []Record{{Key: key, Client: p.client, SessionID: p.sessionID, Model: p.model, Tool: tool, StartedAt: at, Status: "started", SourcePath: p.sourcePath, SourceOffset: offset}}
+	return []Record{{Key: key, Client: p.client, SessionID: p.sessionID, Model: p.model, Tool: tool, StartedAt: at, Status: "started", SourcePath: p.sourcePath, SourceOffset: offset, TurnIndex: p.turnIndex, ToolKind: toolKind, MCPServer: mcpServer, Files: files}}
 }
 
 func (p *Parser) completed(callID, at, status string, offset int64) []Record {
 	if callID == "" || at == "" {
 		return nil
 	}
-	return []Record{{Key: p.key(callID, "", ""), Client: p.client, SessionID: p.sessionID, CompletedAt: at, Status: status, SourcePath: p.sourcePath, SourceOffset: offset}}
+	return []Record{{Key: p.key(callID, "", ""), Client: p.client, SessionID: p.sessionID, CompletedAt: at, Status: status, SourcePath: p.sourcePath, SourceOffset: offset, TurnIndex: p.turnIndex}}
 }
 
 func (p *Parser) key(callID, tool, at string) string {

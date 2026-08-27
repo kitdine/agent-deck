@@ -46,6 +46,99 @@ func TestParserExtractsOnlySafeClaudeToolMetadata(t *testing.T) {
 	assertNoSensitiveActivityContent(t, details)
 }
 
+func TestParserExtractsCodexWorkSignalMetadata(t *testing.T) {
+	root := t.TempDir()
+	patchPath := filepath.Join(root, "private", "patched.go")
+	commandPath := filepath.Join(root, "private", "command.go")
+	execPath := filepath.Join(root, "private", "exec.go")
+	parser := NewParser("codex", "fixture.jsonl")
+	parser.SetMachineIdentity("machine-a")
+	values := []map[string]any{
+		{"type": "session_meta", "payload": map[string]any{"session_id": "session"}},
+		{"type": "turn_context", "payload": map[string]any{"turn_id": "turn-1", "model": "gpt-5.6"}},
+		{"type": "response_item", "timestamp": "2026-08-27T00:00:01Z", "payload": map[string]any{"item": map[string]any{"type": "custom_tool_call", "call_id": "patch", "name": "apply_patch", "input": "*** Begin Patch\n*** Update File: " + patchPath + "\n*** End Patch"}}},
+		{"type": "turn_context", "payload": map[string]any{"turn_id": "turn-2", "model": "gpt-5.6"}},
+		{"type": "response_item", "timestamp": "2026-08-27T00:00:02Z", "payload": map[string]any{"item": map[string]any{"type": "function_call", "call_id": "command", "name": "exec_command", "arguments": `{"cmd":"cat ` + commandPath + ` && sed -i '' ` + commandPath + `","workdir":"` + root + `"}`}}},
+		{"type": "turn_context", "payload": map[string]any{"turn_id": "turn-3", "model": "gpt-5.6"}},
+		{"type": "response_item", "timestamp": "2026-08-27T00:00:03Z", "payload": map[string]any{"item": map[string]any{"type": "custom_tool_call", "call_id": "exec", "name": "exec", "input": "await Promise.all([tools.exec_command({cmd: 'cat " + execPath + " # )'}), tools.exec_command({cmd: `head -1 " + execPath + "`})])"}}},
+		{"type": "turn_context", "payload": map[string]any{"turn_id": "turn-4", "model": "gpt-5.6"}},
+		{"type": "response_item", "timestamp": "2026-08-27T00:00:04Z", "payload": map[string]any{"item": map[string]any{"type": "mcp_tool_call", "id": "mcp", "server": "codegraph", "tool": "explore"}}},
+	}
+	allRecords := parseActivityValues(parser, values)
+	var records []Record
+	for _, record := range allRecords {
+		if record.StartedAt != "" {
+			records = append(records, record)
+		}
+	}
+	if len(records) != 4 {
+		t.Fatalf("records = %#v", records)
+	}
+	for index, wantKind := range []string{"edit", "edit", "read", "mcp"} {
+		if records[index].TurnIndex != index+1 || records[index].ToolKind != wantKind {
+			t.Fatalf("record[%d] = %#v, want turn=%d kind=%s", index, records[index], index+1, wantKind)
+		}
+	}
+	if records[3].MCPServer != "codegraph" {
+		t.Fatalf("mcp record = %#v", records[3])
+	}
+	for index, wantBase := range []string{"patched.go", "command.go", "exec.go"} {
+		if len(records[index].Files) != 1 || records[index].Files[0].BaseName != wantBase || records[index].Files[0].PathDigest == "" {
+			t.Fatalf("record[%d] files = %#v, want %s", index, records[index].Files, wantBase)
+		}
+		if index < 2 && !records[index].Files[0].Wrote {
+			t.Fatalf("record[%d] file = %#v, want write", index, records[index].Files[0])
+		}
+		if index == 2 && records[index].Files[0].Wrote {
+			t.Fatalf("exec read file = %#v", records[index].Files[0])
+		}
+	}
+
+	other := NewParser("codex", "fixture.jsonl")
+	other.SetMachineIdentity("machine-b")
+	otherRecords := parseActivityValues(other, values[:3])
+	if len(otherRecords) != 1 || otherRecords[0].Files[0].PathDigest == records[0].Files[0].PathDigest {
+		t.Fatalf("machine-salted digests = %q and %q", records[0].Files[0].PathDigest, otherRecords[0].Files[0].PathDigest)
+	}
+}
+
+func TestParserSegmentsClaudeTurnsWithoutSyntheticOrToolResultBoundaries(t *testing.T) {
+	root := t.TempDir()
+	editPath := filepath.Join(root, "edit.go")
+	readPath := filepath.Join(root, "read.go")
+	parser := NewParser("claude", "fixture.jsonl")
+	parser.SetMachineIdentity("machine-a")
+	values := []map[string]any{
+		{"type": "user", "sessionId": "session", "message": map[string]any{"role": "user", "content": "implement it"}},
+		{"type": "assistant", "timestamp": "2026-08-27T00:00:01Z", "sessionId": "session", "message": map[string]any{"role": "assistant", "model": "claude-opus", "content": []any{map[string]any{"type": "tool_use", "id": "edit", "name": "Edit", "input": map[string]any{"file_path": editPath}}}}},
+		{"type": "user", "timestamp": "2026-08-27T00:00:02Z", "sessionId": "session", "message": map[string]any{"role": "user", "content": []any{map[string]any{"type": "tool_result", "tool_use_id": "edit", "content": "private-result"}}}},
+		{"type": "user", "isMeta": true, "sessionId": "session", "message": map[string]any{"role": "user", "content": "Base directory for this skill: /private/skill"}},
+		{"type": "assistant", "timestamp": "2026-08-27T00:00:03Z", "sessionId": "session", "message": map[string]any{"role": "assistant", "model": "claude-opus", "content": []any{map[string]any{"type": "tool_use", "id": "mcp", "name": "mcp__neo4j__read", "input": map[string]any{}}}}},
+		{"type": "user", "sessionId": "session", "message": map[string]any{"role": "user", "content": "abandoned message"}},
+		{"type": "user", "sessionId": "session", "message": map[string]any{"role": "user", "content": "inspect it"}},
+		{"type": "assistant", "timestamp": "2026-08-27T00:00:04Z", "sessionId": "session", "message": map[string]any{"role": "assistant", "model": "claude-opus", "content": []any{map[string]any{"type": "tool_use", "id": "read", "name": "Read", "input": map[string]any{"file_path": readPath}}}}},
+	}
+	allRecords := parseActivityValues(parser, values)
+	var records []Record
+	for _, record := range allRecords {
+		if record.StartedAt != "" {
+			records = append(records, record)
+		}
+	}
+	if len(records) != 3 {
+		t.Fatalf("records = %#v", records)
+	}
+	if records[0].TurnIndex != 1 || records[0].ToolKind != "edit" || len(records[0].Files) != 1 || !records[0].Files[0].Wrote {
+		t.Fatalf("edit record = %#v", records[0])
+	}
+	if records[1].TurnIndex != 1 || records[1].ToolKind != "mcp" || records[1].MCPServer != "neo4j" {
+		t.Fatalf("synthetic-boundary MCP record = %#v", records[1])
+	}
+	if records[2].TurnIndex != 2 || records[2].ToolKind != "read" || len(records[2].Files) != 1 || records[2].Files[0].Wrote {
+		t.Fatalf("read record = %#v", records[2])
+	}
+}
+
 func TestReadDetailsToleratesMalformedAndTruncatedRecords(t *testing.T) {
 	const (
 		requestArguments = "requested-arguments-secret"
@@ -194,6 +287,14 @@ func parseActivityFixture(t *testing.T, parser *Parser, lines []string) []Record
 		if err := json.Unmarshal([]byte(line), &value); err != nil {
 			t.Fatal(err)
 		}
+		records = append(records, parser.Parse(value, int64(index))...)
+	}
+	return records
+}
+
+func parseActivityValues(parser *Parser, values []map[string]any) []Record {
+	var records []Record
+	for index, value := range values {
 		records = append(records, parser.Parse(value, int64(index))...)
 	}
 	return records

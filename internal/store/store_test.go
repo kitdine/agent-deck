@@ -875,16 +875,18 @@ func TestV19MigrationAddsHookDeliveryObservationLedger(t *testing.T) {
 	}
 
 	t.Run("fresh database", func(t *testing.T) {
-		state := filepath.Join(t.TempDir(), "state")
-		fresh, err := Open(ctx, state)
+		db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "state.sqlite3"))
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer fresh.Close()
-		if version, err := fresh.SchemaVersion(ctx); err != nil || version != CurrentSchemaVersion || CurrentSchemaVersion != 19 {
+		defer db.Close()
+		if err := migrate(ctx, db, migrations[:19]); err != nil {
+			t.Fatal(err)
+		}
+		if version, err := schemaVersion(ctx, db); err != nil || version != 19 {
 			t.Fatalf("schema version = %d, %v, want 19", version, err)
 		}
-		assertObservationShape(t, fresh.DB)
+		assertObservationShape(t, db)
 	})
 
 	t.Run("upgrade from version 18", func(t *testing.T) {
@@ -932,7 +934,7 @@ func TestV19MigrationAddsHookDeliveryObservationLedger(t *testing.T) {
 		}
 		wantEvent := readRow(t, db, `SELECT * FROM usage_events WHERE event_key='event-1'`)
 
-		if err := migrate(ctx, db, migrations[18:]); err != nil {
+		if err := migrate(ctx, db, migrations[18:19]); err != nil {
 			t.Fatal(err)
 		}
 		if version, err := schemaVersion(ctx, db); err != nil || version != 19 {
@@ -997,6 +999,60 @@ func TestV19MigrationAddsHookDeliveryObservationLedger(t *testing.T) {
 			t.Fatalf("usage_session_observations count = %d, want 0 after a purely additive migration", observationCount)
 		}
 	})
+}
+
+func TestV20MigrationAddsWorkSignalExtractionStorage(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "state.sqlite3"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err = migrate(ctx, db, migrations[:19]); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.ExecContext(ctx, `
+		INSERT INTO usage_events(event_key,client,session_id,event_id,event_at,model,source_path,source_offset)
+		VALUES('event','codex','session','turn','2026-08-27T00:00:00Z','gpt','source',1);
+		INSERT INTO usage_tool_calls(activity_key,client,session_id,model,tool_name,started_at,status,source_path,source_offset)
+		VALUES('call','codex','session','gpt','apply_patch','2026-08-27T00:00:01Z','started','source',2);
+	`); err != nil {
+		t.Fatal(err)
+	}
+	if err = migrate(ctx, db, migrations[19:]); err != nil {
+		t.Fatal(err)
+	}
+	if version, versionErr := schemaVersion(ctx, db); versionErr != nil || version != 20 || CurrentSchemaVersion != 20 {
+		t.Fatalf("schema version = %d, %v, current=%d", version, versionErr, CurrentSchemaVersion)
+	}
+	var eventTurn, callTurn sql.NullInt64
+	var toolKind string
+	var mcpServer sql.NullString
+	if err = db.QueryRowContext(ctx, `SELECT turn_index FROM usage_events WHERE event_key='event'`).Scan(&eventTurn); err != nil {
+		t.Fatal(err)
+	}
+	if err = db.QueryRowContext(ctx, `SELECT turn_index,tool_kind,mcp_server FROM usage_tool_calls WHERE activity_key='call'`).Scan(&callTurn, &toolKind, &mcpServer); err != nil {
+		t.Fatal(err)
+	}
+	if eventTurn.Valid || callTurn.Valid || toolKind != "other" || mcpServer.Valid {
+		t.Fatalf("migrated defaults event_turn=%v call_turn=%v kind=%q mcp=%v", eventTurn, callTurn, toolKind, mcpServer)
+	}
+	if _, err = db.ExecContext(ctx, `INSERT INTO usage_tool_files(activity_key,path_digest,base_name,wrote) VALUES('call','digest','main.go',1); INSERT INTO usage_work_signals(client,session_id,turn_index,started_at,activity_kind,activity_sub) VALUES('codex','session',1,'2026-08-27T00:00:00Z','coding','feature')`); err != nil {
+		t.Fatal(err)
+	}
+	var fileRows, signalRows, digestIndexes int
+	if err = db.QueryRowContext(ctx, `SELECT count(*) FROM usage_tool_files`).Scan(&fileRows); err != nil {
+		t.Fatal(err)
+	}
+	if err = db.QueryRowContext(ctx, `SELECT count(*) FROM usage_work_signals`).Scan(&signalRows); err != nil {
+		t.Fatal(err)
+	}
+	if err = db.QueryRowContext(ctx, `SELECT count(*) FROM pragma_index_list('usage_tool_files') WHERE name='usage_tool_files_digest'`).Scan(&digestIndexes); err != nil {
+		t.Fatal(err)
+	}
+	if fileRows != 1 || signalRows != 1 || digestIndexes != 1 {
+		t.Fatalf("file_rows=%d signal_rows=%d digest_indexes=%d", fileRows, signalRows, digestIndexes)
+	}
 }
 
 func TestMigrationsRejectExistingDatabaseWithoutMetadata(t *testing.T) {

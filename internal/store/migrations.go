@@ -138,6 +138,31 @@ var migrations = []migration{
 		`CREATE UNIQUE INDEX IF NOT EXISTS usage_session_observations_delivery
 		  ON usage_session_observations(delivery_id)`,
 	}},
+	{version: 20, statements: []string{
+		`ALTER TABLE usage_tool_calls ADD COLUMN turn_index INTEGER`,
+		`ALTER TABLE usage_tool_calls ADD COLUMN tool_kind TEXT NOT NULL DEFAULT 'other'`,
+		`ALTER TABLE usage_tool_calls ADD COLUMN mcp_server TEXT`,
+		`ALTER TABLE usage_events ADD COLUMN turn_index INTEGER`,
+		`CREATE TABLE usage_tool_files (
+		  activity_key TEXT NOT NULL REFERENCES usage_tool_calls(activity_key) ON DELETE CASCADE,
+		  path_digest TEXT NOT NULL,
+		  base_name TEXT NOT NULL,
+		  wrote INTEGER NOT NULL,
+		  PRIMARY KEY (activity_key, path_digest)
+		)`,
+		`CREATE INDEX usage_tool_files_digest ON usage_tool_files(path_digest)`,
+		`CREATE TABLE usage_work_signals (
+		  client TEXT NOT NULL,
+		  session_id TEXT NOT NULL,
+		  turn_index INTEGER NOT NULL,
+		  started_at TEXT NOT NULL,
+		  activity_kind TEXT NOT NULL,
+		  activity_sub TEXT NOT NULL,
+		  PRIMARY KEY (client, session_id, turn_index)
+		)`,
+		`CREATE INDEX usage_work_signals_started ON usage_work_signals(started_at)`,
+		`CREATE INDEX usage_work_signals_kind ON usage_work_signals(activity_kind, started_at)`,
+	}},
 }
 
 func normalizeUsageEventTimes(ctx context.Context, tx *sql.Tx) error {

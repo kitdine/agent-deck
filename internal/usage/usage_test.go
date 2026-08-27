@@ -1,6 +1,7 @@
 package usage
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"database/sql/driver"
@@ -8,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -17,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kitdine/agent-deck/internal/activity"
 	"github.com/kitdine/agent-deck/internal/store"
 	"modernc.org/sqlite"
 )
@@ -674,6 +677,208 @@ func TestUsageParserVersionRebuildsUnchangedSource(t *testing.T) {
 	wantProgress := []ScanProgress{{Total: 1, Reason: ParserVersionRereadReason}, {Processed: 1, Total: 1, Reason: ParserVersionRereadReason}}
 	if !reflect.DeepEqual(progress.updates, wantProgress) {
 		t.Fatalf("parser-version progress=%#v want=%#v", progress.updates, wantProgress)
+	}
+}
+
+func TestUsageParserVersionBackfillsWorkSignalExtractionWithoutSensitiveContent(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	home := filepath.Join(root, "home")
+	source := filepath.Join(home, ".codex", "sessions", "2026", "fixture.jsonl")
+	if err := os.MkdirAll(filepath.Dir(source), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	secretDirectory := "private-directory-sentinel"
+	secretPath := filepath.Join(root, secretDirectory, "private-file.go")
+	commandSecret := "PRIVATE_COMMAND_SENTINEL"
+	messageSecret := "PRIVATE_USER_MESSAGE_SENTINEL"
+	resultSecret := "PRIVATE_RESULT_SENTINEL"
+	contents := strings.Join([]string{
+		`{"type":"session_meta","payload":{"session_id":"session"}}`,
+		`{"type":"turn_context","payload":{"turn_id":"turn","model":"gpt-5.6"}}`,
+		`{"type":"event_msg","timestamp":"2026-08-27T00:00:01Z","payload":{"type":"user_message","message":"` + messageSecret + `"}}`,
+		`{"type":"response_item","timestamp":"2026-08-27T00:00:02Z","payload":{"item":{"type":"function_call","call_id":"call","name":"exec_command","arguments":{"cmd":"sed -i '' ` + secretPath + ` # ` + commandSecret + `","workdir":"` + root + `"}}}}`,
+		`{"type":"event_msg","timestamp":"2026-08-27T00:00:03Z","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":10,"output_tokens":1}}}}`,
+		`{"type":"response_item","timestamp":"2026-08-27T00:00:04Z","payload":{"item":{"type":"function_call_output","call_id":"call","output":"` + resultSecret + `"}}}`,
+	}, "\n") + "\n"
+	if err := os.WriteFile(source, []byte(contents), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	database, err := store.Open(ctx, filepath.Join(root, "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	service := New(database, home)
+	service.MachineIdentity = func(context.Context) (string, error) { return "machine-a", nil }
+	if _, err = service.Scan(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = database.Exec(ctx, `UPDATE usage_events SET turn_index=NULL WHERE source_path=?`, source); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = database.Exec(ctx, `DELETE FROM usage_tool_calls WHERE source_path=?`, source); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = database.Exec(ctx, `UPDATE usage_source_files SET parser_version=? WHERE path=?`, usageParserVersion-1, source); err != nil {
+		t.Fatal(err)
+	}
+	progress := &scanProgressRecorder{}
+	service.Progress = progress
+	var emittedLogs bytes.Buffer
+	var result map[string]int
+	var scanResultErr error
+	func() {
+		previousLogWriter := log.Writer()
+		log.SetOutput(&emittedLogs)
+		defer log.SetOutput(previousLogWriter)
+		result, scanResultErr = service.Scan(ctx)
+	}()
+	if scanResultErr != nil {
+		t.Fatal(scanResultErr)
+	}
+	var eventTurn, callTurn, wrote, parserVersion int
+	var toolKind, digest, baseName string
+	if err = database.DB.QueryRowContext(ctx, `SELECT turn_index FROM usage_events WHERE source_path=?`, source).Scan(&eventTurn); err != nil {
+		t.Fatal(err)
+	}
+	if err = database.DB.QueryRowContext(ctx, `SELECT a.turn_index,a.tool_kind,f.path_digest,f.base_name,f.wrote FROM usage_tool_calls a JOIN usage_tool_files f ON f.activity_key=a.activity_key WHERE a.source_path=?`, source).Scan(&callTurn, &toolKind, &digest, &baseName, &wrote); err != nil {
+		t.Fatal(err)
+	}
+	if err = database.DB.QueryRowContext(ctx, `SELECT parser_version FROM usage_source_files WHERE path=?`, source).Scan(&parserVersion); err != nil {
+		t.Fatal(err)
+	}
+	if eventTurn != 1 || callTurn != 1 || toolKind != "edit" || digest == "" || baseName != "private-file.go" || wrote != 1 || parserVersion != usageParserVersion || result["replaced"] == 0 {
+		t.Fatalf("result=%v event_turn=%d call_turn=%d kind=%q digest=%q base=%q wrote=%d parser=%d", result, eventTurn, callTurn, toolKind, digest, baseName, wrote, parserVersion)
+	}
+
+	page, err := activity.ReadDetailsPage(source, "codex", "session", 1, 100, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pageJSON, err := json.Marshal(page)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resultJSON, err := json.Marshal(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	diagnosticsJSON, err := json.Marshal(progress.updates)
+	if err != nil {
+		t.Fatal(err)
+	}
+	summary, err := service.Summary(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	warningsJSON, err := json.Marshal(summary.Warnings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, err := database.DB.QueryContext(ctx, `SELECT source_path,CAST(source_offset AS TEXT),'' FROM usage_events UNION ALL SELECT tool_name,tool_kind,COALESCE(mcp_server,'') FROM usage_tool_calls UNION ALL SELECT path_digest,base_name,CAST(wrote AS TEXT) FROM usage_tool_files UNION ALL SELECT identity,prefix_hash,codex_cumulative_json FROM usage_source_files`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var databaseText strings.Builder
+	for rows.Next() {
+		var first, second, third string
+		if err = rows.Scan(&first, &second, &third); err != nil {
+			t.Fatal(err)
+		}
+		databaseText.WriteString(first)
+		databaseText.WriteString(second)
+		databaseText.WriteString(third)
+	}
+	if err = rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	failedInventory, err := service.Inventory(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(failedInventory.Entries) != 1 {
+		t.Fatalf("failed inventory entries = %#v", failedInventory.Entries)
+	}
+	failedInventory.Entries[0].Identity = "stale-inventory-identity"
+	failedInventory.Mutated = []string{source}
+	_, scanErr := service.ScanInventory(ctx, failedInventory)
+	if !errors.Is(scanErr, errUsageSourceChanged) {
+		t.Fatalf("failed scan error = %T %v, want errUsageSourceChanged", scanErr, scanErr)
+	}
+
+	outputs := []string{
+		databaseText.String(),
+		string(pageJSON),
+		string(resultJSON),
+		string(diagnosticsJSON),
+		emittedLogs.String(),
+		string(warningsJSON),
+		scanErr.Error(),
+	}
+	for _, output := range outputs {
+		for _, forbidden := range []string{secretPath, secretDirectory, commandSecret, messageSecret, resultSecret} {
+			if strings.Contains(output, forbidden) {
+				t.Fatalf("work-signal extraction leaked %q in %q", forbidden, output)
+			}
+		}
+	}
+}
+
+func TestClaudePendingTurnBoundarySurvivesAppendCursor(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	home := filepath.Join(root, "home")
+	source := filepath.Join(home, ".claude", "projects", "fixture.jsonl")
+	if err := os.MkdirAll(filepath.Dir(source), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	userLine := `{"type":"user","sessionId":"session","message":{"role":"user","content":"implement it"}}` + "\n"
+	if err := os.WriteFile(source, []byte(userLine), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	database, err := store.Open(ctx, filepath.Join(root, "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	service := New(database, home)
+	service.MachineIdentity = func(context.Context) (string, error) { return "machine-a", nil }
+	if _, err = service.Scan(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var persistedTurn string
+	if err = database.DB.QueryRowContext(ctx, `SELECT turn_id FROM usage_source_files WHERE path=?`, source).Scan(&persistedTurn); err != nil {
+		t.Fatal(err)
+	}
+	if persistedTurn != claudePendingTurnMarker {
+		t.Fatalf("pending turn marker = %q", persistedTurn)
+	}
+	assistantLine := `{"type":"assistant","timestamp":"2026-08-27T00:00:01Z","sessionId":"session","message":{"role":"assistant","id":"message","model":"claude-opus","usage":{"input_tokens":10,"output_tokens":1},"content":[{"type":"tool_use","id":"tool","name":"Read","input":{"file_path":"` + filepath.Join(root, "read.go") + `"}}]}}` + "\n"
+	file, err := os.OpenFile(source, os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = file.WriteString(assistantLine); err != nil {
+		file.Close()
+		t.Fatal(err)
+	}
+	if err = file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = service.Scan(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var eventTurn, toolTurn int
+	if err = database.DB.QueryRowContext(ctx, `SELECT turn_index FROM usage_events WHERE client='claude' AND session_id='session'`).Scan(&eventTurn); err != nil {
+		t.Fatal(err)
+	}
+	if err = database.DB.QueryRowContext(ctx, `SELECT turn_index FROM usage_tool_calls WHERE client='claude' AND session_id='session'`).Scan(&toolTurn); err != nil {
+		t.Fatal(err)
+	}
+	if eventTurn != 1 || toolTurn != 1 {
+		t.Fatalf("append turn indexes event=%d tool=%d", eventTurn, toolTurn)
 	}
 }
 

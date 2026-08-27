@@ -20,10 +20,12 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
 	"github.com/kitdine/agent-deck/internal/activity"
+	"github.com/kitdine/agent-deck/internal/platform"
 	"github.com/kitdine/agent-deck/internal/store"
 )
 
@@ -33,10 +35,10 @@ var bundledCatalog []byte
 const (
 	bundledCatalogSourceURL       = "bundled://agentdeck/model-prices.json"
 	legacyBundledCatalogSourceURL = "bundled://config/model-prices.json"
-	// usageParserVersion 4 adds Codex cache_write_input_tokens extraction; a
-	// source already scanned at version 3 must be re-read so cache_write_tokens
-	// backfills instead of staying at the migration default of 0.
-	usageParserVersion = 4
+	// usageParserVersion 5 adds turn association, tool-kind/MCP metadata, and
+	// opaque per-file attribution. Older indexed sources must be re-read so the
+	// schema-v20 fields and usage_tool_files backfill from their source logs.
+	usageParserVersion = 5
 )
 
 var tokenNames = []string{"input_tokens", "cached_input_tokens", "output_tokens", "cache_read_tokens", "cache_creation_tokens", "cache_write_5m_tokens", "cache_write_1h_tokens", "cache_write_tokens"}
@@ -48,6 +50,7 @@ const ParserVersionRereadReason = "re-reading after parser update"
 type Event struct {
 	Key, Client, SessionID, EventID, EventAt, Model, SourcePath string
 	SourceOffset                                                int64
+	TurnIndex                                                   int
 	Tokens                                                      map[string]int64
 }
 type Result struct {
@@ -313,7 +316,10 @@ type Service struct {
 	beforeSessionRouteWrite func()
 	Stat                    func(string) (os.FileInfo, error)
 	Open                    func(string) (SourceFile, error)
+	MachineIdentity         func(context.Context) (string, error)
 	Progress                ScanProgressReporter
+	machineIdentityOnce     sync.Once
+	machineIdentityValue    string
 }
 type catalog struct {
 	SchemaVersion int                   `json:"schema_version"`
@@ -398,7 +404,7 @@ func priceLayerBefore(left, right priceLayerOrder) bool {
 }
 
 func New(s *store.Store, home string) *Service {
-	return &Service{Store: s, Home: home, Now: time.Now, Stat: os.Stat, Open: func(path string) (SourceFile, error) { return os.Open(path) }}
+	return &Service{Store: s, Home: home, Now: time.Now, Stat: os.Stat, Open: func(path string) (SourceFile, error) { return os.Open(path) }, MachineIdentity: platform.MachineIdentity}
 }
 func (s *Service) stat(path string) (os.FileInfo, error) {
 	if s.Stat != nil {
@@ -417,6 +423,18 @@ func (s *Service) now() time.Time {
 		return s.Now().UTC()
 	}
 	return time.Now().UTC()
+}
+
+func (s *Service) activityMachineIdentity(ctx context.Context) string {
+	s.machineIdentityOnce.Do(func() {
+		if s.MachineIdentity == nil {
+			return
+		}
+		if value, err := s.MachineIdentity(ctx); err == nil {
+			s.machineIdentityValue = value
+		}
+	})
+	return s.machineIdentityValue
 }
 
 func decimal(v string) (*big.Rat, error) {
@@ -918,6 +936,22 @@ func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceR
 	}
 	activityParser := activity.NewParser(client, path)
 	activityParser.SetContext(state.session, state.turn, state.model)
+	if client == "claude" && state.turn == claudePendingTurnMarker {
+		state.claudePending = true
+		activityParser.SetClaudePending(true)
+	}
+	var priorTurnIndex sql.NullInt64
+	if found {
+		turnErr := s.Store.DB.QueryRowContext(ctx, `SELECT MAX(turn_index) FROM (SELECT turn_index FROM usage_events WHERE source_path=? UNION ALL SELECT turn_index FROM usage_tool_calls WHERE source_path=? UNION ALL SELECT turn_index FROM usage_work_signals WHERE client=? AND session_id=?)`, path, path, client, state.session).Scan(&priorTurnIndex)
+		if turnErr != nil {
+			return r, turnErr
+		}
+		if priorTurnIndex.Valid {
+			state.turnIndex = int(priorTurnIndex.Int64)
+			activityParser.SetTurnIndex(state.turnIndex)
+		}
+	}
+	activityParser.SetMachineIdentity(s.activityMachineIdentity(ctx))
 	parserOutdated := found && parserVersion != usageParserVersion
 	stableMetadata := found && !parserOutdated && oldIdentity == entry.Identity && oldSize == entry.Size && oldModified == entry.ModifiedAt
 	if !forceRebuild && stableMetadata {
@@ -945,6 +979,7 @@ func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceR
 		cursor = 0
 		state = parseState{codexCumulative: map[string]map[string]int64{}}
 		activityParser = activity.NewParser(client, path)
+		activityParser.SetMachineIdentity(s.activityMachineIdentity(ctx))
 		if sourceMutated {
 			r["source_resets"]++
 		}
@@ -1124,8 +1159,12 @@ func hash(b []byte) string { sum := sha256.Sum256(b); return hex.EncodeToString(
 
 type parseState struct {
 	session, turn, model string
+	turnIndex            int
+	claudePending        bool
 	codexCumulative      map[string]map[string]int64
 }
+
+const claudePendingTurnMarker = "claude-pending-user-message"
 
 func tokenUsage(value any) (map[string]int64, bool) {
 	raw, _ := value.(map[string]any)
@@ -1205,14 +1244,22 @@ func parse(client string, v map[string]any, state *parseState, path string, offs
 		p, _ := v["payload"].(map[string]any)
 		typ, _ := v["type"].(string)
 		if typ == "session_meta" {
-			state.session, _ = p["session_id"].(string)
-			if state.session == "" {
-				state.session, _ = p["id"].(string)
+			session, _ := p["session_id"].(string)
+			if session == "" {
+				session, _ = p["id"].(string)
 			}
+			if session != "" && session != state.session {
+				state.turn, state.turnIndex = "", 0
+			}
+			state.session = session
 			return Event{}, false
 		}
 		if typ == "turn_context" {
-			state.turn, _ = p["turn_id"].(string)
+			turn, _ := p["turn_id"].(string)
+			if turn != "" && turn != state.turn {
+				state.turnIndex++
+			}
+			state.turn = turn
 			state.model, _ = p["model"].(string)
 			return Event{}, false
 		}
@@ -1232,13 +1279,26 @@ func parse(client string, v map[string]any, state *parseState, path string, offs
 		}
 		timestamp := stringValue(v, "timestamp")
 		lastUsage, _ := info["last_token_usage"].(map[string]any)
-		return Event{Key: codexEventKey(*state, timestamp, lastUsage, info["total_token_usage"]), Client: client, SessionID: state.session, EventID: state.turn, EventAt: timestamp, Model: state.model, SourcePath: path, SourceOffset: offset, Tokens: u}, true
+		return Event{Key: codexEventKey(*state, timestamp, lastUsage, info["total_token_usage"]), Client: client, SessionID: state.session, EventID: state.turn, EventAt: timestamp, Model: state.model, SourcePath: path, SourceOffset: offset, TurnIndex: state.turnIndex, Tokens: u}, true
+	}
+	msg, _ := v["message"].(map[string]any)
+	sid, _ := v["sessionId"].(string)
+	if sid != "" && sid != state.session {
+		state.session, state.turn, state.model, state.turnIndex, state.claudePending = sid, "", "", 0, false
+	}
+	if activity.ClaudeUserTurnBoundary(v, msg) {
+		state.claudePending = true
+		state.turn = claudePendingTurnMarker
+		return Event{}, false
 	}
 	if v["type"] != "assistant" {
 		return Event{}, false
 	}
-	msg, _ := v["message"].(map[string]any)
-	sid, _ := v["sessionId"].(string)
+	if state.claudePending {
+		state.turnIndex++
+		state.claudePending = false
+		state.turn = ""
+	}
 	id, _ := msg["id"].(string)
 	model, _ := msg["model"].(string)
 	usage, _ := msg["usage"].(map[string]any)
@@ -1254,7 +1314,7 @@ func parse(client string, v map[string]any, state *parseState, path string, offs
 		t["cache_write_5m_tokens"] = integer(creation["ephemeral_5m_input_tokens"])
 		t["cache_write_1h_tokens"] = integer(creation["ephemeral_1h_input_tokens"])
 	}
-	return Event{Key: "claude:" + sid + ":" + id, Client: client, SessionID: sid, EventID: id, EventAt: stringValue(v, "timestamp"), Model: model, SourcePath: path, SourceOffset: offset, Tokens: t}, true
+	return Event{Key: "claude:" + sid + ":" + id, Client: client, SessionID: sid, EventID: id, EventAt: stringValue(v, "timestamp"), Model: model, SourcePath: path, SourceOffset: offset, TurnIndex: state.turnIndex, Tokens: t}, true
 }
 func stringValue(v map[string]any, k string) string { x, _ := v[k].(string); return x }
 func upsertTx(ctx context.Context, tx *sql.Tx, e Event) (inserted, changed bool, err error) {
@@ -1266,7 +1326,8 @@ func upsertTx(ctx context.Context, tx *sql.Tx, e Event) (inserted, changed bool,
 	var existingPath, existingEventAt, existingModel string
 	var existingSourceIndexed int
 	var existingInput, existingCachedInput, existingOutput, existingCacheRead, existingCacheCreation, existingCacheWrite5m, existingCacheWrite1h, existingCacheWrite int64
-	lookupErr := tx.QueryRowContext(ctx, `SELECT e.source_path,CASE WHEN f.path IS NULL THEN 0 ELSE 1 END,e.event_at,e.model,e.input_tokens,e.cached_input_tokens,e.output_tokens,e.cache_read_tokens,e.cache_creation_tokens,e.cache_write_5m_tokens,e.cache_write_1h_tokens,e.cache_write_tokens FROM usage_events e LEFT JOIN usage_source_files f ON f.path=e.source_path WHERE e.event_key=?`, e.Key).Scan(&existingPath, &existingSourceIndexed, &existingEventAt, &existingModel, &existingInput, &existingCachedInput, &existingOutput, &existingCacheRead, &existingCacheCreation, &existingCacheWrite5m, &existingCacheWrite1h, &existingCacheWrite)
+	var existingTurnIndex int
+	lookupErr := tx.QueryRowContext(ctx, `SELECT e.source_path,CASE WHEN f.path IS NULL THEN 0 ELSE 1 END,e.event_at,e.model,COALESCE(e.turn_index,0),e.input_tokens,e.cached_input_tokens,e.output_tokens,e.cache_read_tokens,e.cache_creation_tokens,e.cache_write_5m_tokens,e.cache_write_1h_tokens,e.cache_write_tokens FROM usage_events e LEFT JOIN usage_source_files f ON f.path=e.source_path WHERE e.event_key=?`, e.Key).Scan(&existingPath, &existingSourceIndexed, &existingEventAt, &existingModel, &existingTurnIndex, &existingInput, &existingCachedInput, &existingOutput, &existingCacheRead, &existingCacheCreation, &existingCacheWrite5m, &existingCacheWrite1h, &existingCacheWrite)
 	exists := lookupErr == nil
 	if lookupErr != nil && !errors.Is(lookupErr, sql.ErrNoRows) {
 		return false, false, lookupErr
@@ -1274,9 +1335,9 @@ func upsertTx(ctx context.Context, tx *sql.Tx, e Event) (inserted, changed bool,
 	if exists && existingSourceIndexed == 1 && existingPath > e.SourcePath {
 		return false, false, nil
 	}
-	vals := []any{e.Key, e.Client, e.SessionID, e.EventID, e.EventAt, e.Model, e.Tokens["input_tokens"], e.Tokens["cached_input_tokens"], e.Tokens["output_tokens"], e.Tokens["cache_read_tokens"], e.Tokens["cache_creation_tokens"], e.Tokens["cache_write_5m_tokens"], e.Tokens["cache_write_1h_tokens"], e.Tokens["cache_write_tokens"], e.SourcePath, e.SourceOffset}
-	_, err = tx.ExecContext(ctx, `INSERT INTO usage_events(event_key,client,session_id,event_id,event_at,model,input_tokens,cached_input_tokens,output_tokens,cache_read_tokens,cache_creation_tokens,cache_write_5m_tokens,cache_write_1h_tokens,cache_write_tokens,source_path,source_offset)VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(event_key) DO UPDATE SET event_at=excluded.event_at,model=excluded.model,input_tokens=excluded.input_tokens,cached_input_tokens=excluded.cached_input_tokens,output_tokens=excluded.output_tokens,cache_read_tokens=excluded.cache_read_tokens,cache_creation_tokens=excluded.cache_creation_tokens,cache_write_5m_tokens=excluded.cache_write_5m_tokens,cache_write_1h_tokens=excluded.cache_write_1h_tokens,cache_write_tokens=excluded.cache_write_tokens,source_path=excluded.source_path,source_offset=excluded.source_offset`, vals...)
-	logicalChanged := !exists || existingEventAt != e.EventAt || existingModel != e.Model || existingInput != e.Tokens["input_tokens"] || existingCachedInput != e.Tokens["cached_input_tokens"] || existingOutput != e.Tokens["output_tokens"] || existingCacheRead != e.Tokens["cache_read_tokens"] || existingCacheCreation != e.Tokens["cache_creation_tokens"] || existingCacheWrite5m != e.Tokens["cache_write_5m_tokens"] || existingCacheWrite1h != e.Tokens["cache_write_1h_tokens"] || existingCacheWrite != e.Tokens["cache_write_tokens"]
+	vals := []any{e.Key, e.Client, e.SessionID, e.EventID, e.EventAt, e.Model, nullableInt(e.TurnIndex), e.Tokens["input_tokens"], e.Tokens["cached_input_tokens"], e.Tokens["output_tokens"], e.Tokens["cache_read_tokens"], e.Tokens["cache_creation_tokens"], e.Tokens["cache_write_5m_tokens"], e.Tokens["cache_write_1h_tokens"], e.Tokens["cache_write_tokens"], e.SourcePath, e.SourceOffset}
+	_, err = tx.ExecContext(ctx, `INSERT INTO usage_events(event_key,client,session_id,event_id,event_at,model,turn_index,input_tokens,cached_input_tokens,output_tokens,cache_read_tokens,cache_creation_tokens,cache_write_5m_tokens,cache_write_1h_tokens,cache_write_tokens,source_path,source_offset)VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(event_key) DO UPDATE SET event_at=excluded.event_at,model=excluded.model,turn_index=excluded.turn_index,input_tokens=excluded.input_tokens,cached_input_tokens=excluded.cached_input_tokens,output_tokens=excluded.output_tokens,cache_read_tokens=excluded.cache_read_tokens,cache_creation_tokens=excluded.cache_creation_tokens,cache_write_5m_tokens=excluded.cache_write_5m_tokens,cache_write_1h_tokens=excluded.cache_write_1h_tokens,cache_write_tokens=excluded.cache_write_tokens,source_path=excluded.source_path,source_offset=excluded.source_offset`, vals...)
+	logicalChanged := !exists || existingEventAt != e.EventAt || existingModel != e.Model || existingTurnIndex != e.TurnIndex || existingInput != e.Tokens["input_tokens"] || existingCachedInput != e.Tokens["cached_input_tokens"] || existingOutput != e.Tokens["output_tokens"] || existingCacheRead != e.Tokens["cache_read_tokens"] || existingCacheCreation != e.Tokens["cache_creation_tokens"] || existingCacheWrite5m != e.Tokens["cache_write_5m_tokens"] || existingCacheWrite1h != e.Tokens["cache_write_1h_tokens"] || existingCacheWrite != e.Tokens["cache_write_tokens"]
 	return !exists, err == nil && logicalChanged, err
 }
 
@@ -1292,8 +1353,19 @@ func upsertToolActivityTx(ctx context.Context, tx *sql.Tx, record activity.Recor
 		return nil
 	}
 	if record.StartedAt != "" {
-		_, err := tx.ExecContext(ctx, `INSERT INTO usage_tool_calls(activity_key,client,session_id,model,tool_name,started_at,completed_at,status,duration_ms,source_path,source_offset) VALUES(?,?,?,?,?,?,NULL,'started',NULL,?,?) ON CONFLICT(activity_key) DO UPDATE SET client=excluded.client,session_id=excluded.session_id,model=excluded.model,tool_name=excluded.tool_name,started_at=excluded.started_at,completed_at=NULL,status='started',duration_ms=NULL,source_path=excluded.source_path,source_offset=excluded.source_offset`, record.Key, record.Client, record.SessionID, record.Model, record.Tool, record.StartedAt, record.SourcePath, record.SourceOffset)
-		return err
+		_, err := tx.ExecContext(ctx, `INSERT INTO usage_tool_calls(activity_key,client,session_id,model,tool_name,started_at,completed_at,status,duration_ms,source_path,source_offset,turn_index,tool_kind,mcp_server) VALUES(?,?,?,?,?,?,NULL,'started',NULL,?,?,?,?,?) ON CONFLICT(activity_key) DO UPDATE SET client=excluded.client,session_id=excluded.session_id,model=excluded.model,tool_name=excluded.tool_name,started_at=excluded.started_at,completed_at=NULL,status='started',duration_ms=NULL,source_path=excluded.source_path,source_offset=excluded.source_offset,turn_index=excluded.turn_index,tool_kind=excluded.tool_kind,mcp_server=excluded.mcp_server`, record.Key, record.Client, record.SessionID, record.Model, record.Tool, record.StartedAt, record.SourcePath, record.SourceOffset, nullableInt(record.TurnIndex), record.ToolKind, nullableString(record.MCPServer))
+		if err != nil {
+			return err
+		}
+		if _, err = tx.ExecContext(ctx, `DELETE FROM usage_tool_files WHERE activity_key=?`, record.Key); err != nil {
+			return err
+		}
+		for _, file := range record.Files {
+			if _, err = tx.ExecContext(ctx, `INSERT INTO usage_tool_files(activity_key,path_digest,base_name,wrote) VALUES(?,?,?,?) ON CONFLICT(activity_key,path_digest) DO UPDATE SET base_name=excluded.base_name,wrote=MAX(usage_tool_files.wrote,excluded.wrote)`, record.Key, file.PathDigest, file.BaseName, file.Wrote); err != nil {
+				return err
+			}
+		}
+		return nil
 	}
 	if !exists || record.CompletedAt == "" {
 		return nil
@@ -1306,6 +1378,20 @@ func upsertToolActivityTx(ctx context.Context, tx *sql.Tx, record activity.Recor
 	}
 	_, err := tx.ExecContext(ctx, `UPDATE usage_tool_calls SET completed_at=?,status=?,duration_ms=?,source_path=? WHERE activity_key=?`, record.CompletedAt, record.Status, duration, record.SourcePath, record.Key)
 	return err
+}
+
+func nullableString(value string) any {
+	if value == "" {
+		return nil
+	}
+	return value
+}
+
+func nullableInt(value int) any {
+	if value == 0 {
+		return nil
+	}
+	return value
 }
 
 type eventRunBinding struct {
@@ -3232,7 +3318,7 @@ func (s *Service) Sessions(ctx context.Context) ([]SessionSummary, error) {
 	return out, nil
 }
 func (s *Service) events(ctx context.Context, client, session string) ([]storedEvent, error) {
-	q := `SELECT e.event_key,e.client,e.session_id,e.event_id,e.event_at,e.model,e.input_tokens,e.cached_input_tokens,e.output_tokens,e.cache_read_tokens,e.cache_creation_tokens,e.cache_write_5m_tokens,e.cache_write_1h_tokens,e.cache_write_tokens,e.source_path,e.source_offset,COALESCE(b.run_id,e.run_id),r.exact,r.multiplier,r.provider,r.started_at,us.first_at FROM usage_events e LEFT JOIN usage_run_bindings b ON b.event_key=e.event_key LEFT JOIN usage_runs r ON r.id=COALESCE(b.run_id,e.run_id) LEFT JOIN usage_sessions us ON us.client=e.client AND us.session_id=e.session_id`
+	q := `SELECT e.event_key,e.client,e.session_id,e.event_id,e.event_at,e.model,COALESCE(e.turn_index,0),e.input_tokens,e.cached_input_tokens,e.output_tokens,e.cache_read_tokens,e.cache_creation_tokens,e.cache_write_5m_tokens,e.cache_write_1h_tokens,e.cache_write_tokens,e.source_path,e.source_offset,COALESCE(b.run_id,e.run_id),r.exact,r.multiplier,r.provider,r.started_at,us.first_at FROM usage_events e LEFT JOIN usage_run_bindings b ON b.event_key=e.event_key LEFT JOIN usage_runs r ON r.id=COALESCE(b.run_id,e.run_id) LEFT JOIN usage_sessions us ON us.client=e.client AND us.session_id=e.session_id`
 	args := []any{}
 	where := []string{}
 	if client != "" {
@@ -3256,7 +3342,7 @@ func (s *Service) events(ctx context.Context, client, session string) ([]storedE
 	for rows.Next() {
 		var e storedEvent
 		var in, cached, outTokens, read, creation, write5, write1, write int64
-		err = rows.Scan(&e.Key, &e.Client, &e.SessionID, &e.EventID, &e.EventAt, &e.Model, &in, &cached, &outTokens, &read, &creation, &write5, &write1, &write, &e.SourcePath, &e.SourceOffset, &e.runID, &e.runExact, &e.runMultiplier, &e.runProvider, &e.runStart, &e.sessionStart)
+		err = rows.Scan(&e.Key, &e.Client, &e.SessionID, &e.EventID, &e.EventAt, &e.Model, &e.TurnIndex, &in, &cached, &outTokens, &read, &creation, &write5, &write1, &write, &e.SourcePath, &e.SourceOffset, &e.runID, &e.runExact, &e.runMultiplier, &e.runProvider, &e.runStart, &e.sessionStart)
 		if err != nil {
 			return nil, err
 		}
@@ -3267,7 +3353,7 @@ func (s *Service) events(ctx context.Context, client, session string) ([]storedE
 }
 
 func (s *Service) eventsRange(ctx context.Context, from, to time.Time, client, model string) ([]storedEvent, error) {
-	query := `SELECT e.event_key,e.client,e.session_id,e.event_id,e.event_at,e.model,e.input_tokens,e.cached_input_tokens,e.output_tokens,e.cache_read_tokens,e.cache_creation_tokens,e.cache_write_5m_tokens,e.cache_write_1h_tokens,e.cache_write_tokens,e.source_path,e.source_offset,COALESCE(b.run_id,e.run_id),r.exact,r.multiplier,r.provider,r.started_at,us.first_at FROM usage_events e LEFT JOIN usage_run_bindings b ON b.event_key=e.event_key LEFT JOIN usage_runs r ON r.id=COALESCE(b.run_id,e.run_id) LEFT JOIN usage_sessions us ON us.client=e.client AND us.session_id=e.session_id WHERE e.event_at>=? AND e.event_at<?`
+	query := `SELECT e.event_key,e.client,e.session_id,e.event_id,e.event_at,e.model,COALESCE(e.turn_index,0),e.input_tokens,e.cached_input_tokens,e.output_tokens,e.cache_read_tokens,e.cache_creation_tokens,e.cache_write_5m_tokens,e.cache_write_1h_tokens,e.cache_write_tokens,e.source_path,e.source_offset,COALESCE(b.run_id,e.run_id),r.exact,r.multiplier,r.provider,r.started_at,us.first_at FROM usage_events e LEFT JOIN usage_run_bindings b ON b.event_key=e.event_key LEFT JOIN usage_runs r ON r.id=COALESCE(b.run_id,e.run_id) LEFT JOIN usage_sessions us ON us.client=e.client AND us.session_id=e.session_id WHERE e.event_at>=? AND e.event_at<?`
 	args := []any{from.UTC().Format(time.RFC3339Nano), to.UTC().Format(time.RFC3339Nano)}
 	if client != "" {
 		query += ` AND e.client=?`
@@ -3287,7 +3373,7 @@ func (s *Service) eventsRange(ctx context.Context, from, to time.Time, client, m
 	for rows.Next() {
 		var event storedEvent
 		var input, cached, output, read, creation, write5, write1, write int64
-		if err = rows.Scan(&event.Key, &event.Client, &event.SessionID, &event.EventID, &event.EventAt, &event.Model, &input, &cached, &output, &read, &creation, &write5, &write1, &write, &event.SourcePath, &event.SourceOffset, &event.runID, &event.runExact, &event.runMultiplier, &event.runProvider, &event.runStart, &event.sessionStart); err != nil {
+		if err = rows.Scan(&event.Key, &event.Client, &event.SessionID, &event.EventID, &event.EventAt, &event.Model, &event.TurnIndex, &input, &cached, &output, &read, &creation, &write5, &write1, &write, &event.SourcePath, &event.SourceOffset, &event.runID, &event.runExact, &event.runMultiplier, &event.runProvider, &event.runStart, &event.sessionStart); err != nil {
 			return nil, err
 		}
 		event.Tokens = map[string]int64{"input_tokens": input, "cached_input_tokens": cached, "output_tokens": output, "cache_read_tokens": read, "cache_creation_tokens": creation, "cache_write_5m_tokens": write5, "cache_write_1h_tokens": write1, "cache_write_tokens": write}

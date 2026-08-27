@@ -269,12 +269,59 @@ reviewed against a specimen that does not yet show what they describe.
 | Task | Implemented | Reviewed |
 | --- | --- | --- |
 | 0. `work-signal-prototype` | [x] | [x] |
-| 1. `work-signal-extraction` | [ ] | [ ] |
+| 1. `work-signal-extraction` | [x] | [x] |
 | 2. `activity-classification` | [ ] | [ ] |
 | 3. `work-signal-cli` | [ ] | [ ] |
 | 4. `work-signal-projection` | [ ] | [ ] |
 | 5. `work-signal-surface` | [ ] | [ ] |
 | 6. `work-signals-contract` | [ ] | [ ] |
+
+Task 1 Development (2026-08-27): schema v20 adds `turn_index` to usage events,
+turn/tool-kind/MCP fields to tool calls, `usage_tool_files`, and the reserved
+`usage_work_signals` table. Parser version 5 re-reads indexed Codex and Claude
+sources; Codex extracts `apply_patch.input`, JSON-string `exec_command.arguments`,
+and `exec.input` JavaScript `tools.exec_command({cmd: ...})` literals. Raw paths,
+directories, commands, user messages, and results are reduced before `Record`
+construction to a machine-salted digest, a capped base name, and write direction.
+Claude pending user boundaries survive append cursors through the existing source
+state. The canonical producer changed only the complete and empty-client schema
+counts from 19 to 20. L3 verification passed: the full Go suite, race on the
+three affected packages, full vet, darwin arm64/amd64 builds, topic/document
+hygiene, and the cross-surface privacy regression. Independent Review is next.
+
+Task 1 Review Round 1 (2026-08-27): **REOPEN** on R1-F1. Schema v20, the parser
+version bump and backfill, both fixture regenerations, Decision 1's turn
+boundaries on both clients, Decision 2's retained set and rewritten comments,
+Decision 7's kind table, and all three Codex extraction paths were verified
+against the source and hold. The negative test does not: it asserts the five
+sentinels against the database, the source cache, the scan result and the `Page`
+JSON, while task 1 and Decision 2 also require emitted log lines and error and
+warning strings. Those two surfaces are covered by a structural argument instead
+— true today, and independently re-verified this round, but it is the assertion
+that has to hold tomorrow, and the CEv1 `privacy-boundary` criterion states all
+six surfaces while carrying a `pass`. The record under
+`reviews/work-signal-extraction.md` owns the finding and its bounded remediation.
+
+Task 1 Re-review Round 2 (2026-08-27): **PASS**. The test-only repair added the
+two missing surfaces and two more besides — emitted log lines, `Summary.Warnings`,
+scan progress diagnostics, and the text of a provoked `errUsageSourceChanged` —
+so the same five sentinels now run through seven outputs. The sinks are installed
+rather than described: `log.SetOutput` wraps the scan, and the error is provoked
+by mutating the captured inventory identity and asserted with `errors.Is` before
+its text is checked. `emittedLogs` is empty at this state, which is recorded in
+the review rather than treated as a gap — neither package logs on the scan path,
+so the assertion is forward-looking by construction, and unlike the structural
+argument it replaces it can fail when the structure changes. Implementation blobs
+are byte-identical to Round 1, so every earlier verified item stands. All seven
+CEv1 criteria answer `pass`; the gate is VERIFIED.
+
+Task 1 Repair Round 1 (2026-08-27): **R1-F1 closed, awaiting independent
+Re-review.** The existing privacy regression now asserts the same five
+sentinels against emitted scan diagnostics/log lines, warning strings, and a
+deterministic error from the same source, in addition to its existing database,
+source-cache, scan-result, and Page/Detail JSON coverage. Production code and
+fixtures were unchanged; the focused test, full usage package, vet, and privacy
+gate pass. The review record owns the exact disposition and evidence.
 
 Task 0 Review Round 1 (2026-08-27): **REOPEN** on W1-F1. The move, the captured
 four-category/eleven-subcategory fixture, the dropped Tooling cost column, rework
