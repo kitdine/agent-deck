@@ -581,14 +581,22 @@
             "total": "number"
           },
           "usage": {
+            "attribution_reasons": {
+              "ambiguous_route": "number",
+              "before_adoption": "number",
+              "coverage_gap": "number",
+              "effective_route": "number",
+              "exact_run": "number",
+              "timeline_snapshot": "number"
+            },
             "available": "boolean",
             "catalog_base_cost": "string",
             "counts": {
               "estimated": "number",
               "events": "number",
               "exact": "number",
-              "unattributed": "number",
               "priced": "number",
+              "unattributed": "number",
               "unpriced": "number"
             },
             "from": "string",
@@ -783,6 +791,7 @@
             "provider_cost": "string",
             "to": "string",
             "tokens": {},
+            "unattributed_catalog_base_cost": "string",
             "unpriced_components": "number",
             "warnings": []
           },
@@ -2538,13 +2547,21 @@
       "success_schema": {
         "command": "string",
         "data": {
+          "attribution_reasons": {
+            "ambiguous_route": "number",
+            "before_adoption": "number",
+            "coverage_gap": "number",
+            "effective_route": "number",
+            "exact_run": "number",
+            "timeline_snapshot": "number"
+          },
           "catalog_base_cost": "string",
           "counts": {
             "estimated": "number",
             "events": "number",
             "exact": "number",
-            "unattributed": "number",
             "priced": "number",
+            "unattributed": "number",
             "unpriced": "number"
           },
           "known_catalog_base_cost": "string",
@@ -2569,6 +2586,7 @@
             "input_tokens": "number",
             "output_tokens": "number"
           },
+          "unattributed_catalog_base_cost": "string",
           "unpriced_components": [],
           "warnings": []
         },

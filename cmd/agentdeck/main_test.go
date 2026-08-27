@@ -1265,20 +1265,22 @@ func TestUsageProgressOutputShowsParserVersionRereadReason(t *testing.T) {
 func TestUsageSummaryAndSessionsUseSharedTerminalPrimitives(t *testing.T) {
 	baseCost, providerCost := "0.100000000", "0.200000000"
 	summary := usage.Summary{
-		Tokens:               map[string]int64{"input_tokens": 10, "cached_input_tokens": 3, "output_tokens": 2},
-		Counts:               map[string]int64{"events": 3, "exact": 1, "estimated": 1, "unattributed": 1, "priced": 1, "unpriced": 2},
-		KnownCatalogBaseCost: &baseCost,
-		KnownProviderCost:    &providerCost,
-		Warnings:             []string{"estimated attribution"},
-		Unpriced:             []string{"unknown_model"},
-		Models:               []usage.ModelCoverage{{Client: "codex", Model: "gpt-5.4", Events: 1, PricedEvents: 1}, {Client: "codex", Model: "codex-auto-review", Events: 1, UnpricedEvents: 1}},
+		Tokens:                      map[string]int64{"input_tokens": 10, "cached_input_tokens": 3, "output_tokens": 2},
+		Counts:                      map[string]int64{"events": 3, "exact": 1, "estimated": 1, "unattributed": 1, "priced": 1, "unpriced": 2},
+		AttributionReasons:          map[string]int64{"exact_run": 1, "effective_route": 0, "ambiguous_route": 0, "timeline_snapshot": 0, "before_adoption": 2, "coverage_gap": 0},
+		KnownCatalogBaseCost:        &baseCost,
+		KnownProviderCost:           &providerCost,
+		UnattributedCatalogBaseCost: &baseCost,
+		Warnings:                    []string{"estimated attribution"},
+		Unpriced:                    []string{"unknown_model"},
+		Models:                      []usage.ModelCoverage{{Client: "codex", Model: "gpt-5.4", Events: 1, PricedEvents: 1}, {Client: "codex", Model: "codex-auto-review", Events: 1, UnpricedEvents: 1}},
 	}
 	var rendered bytes.Buffer
 	if err := renderUsageText(&rendered, "usage.summary", summary); err != nil {
 		t.Fatal(err)
 	}
 	text := rendered.String()
-	for _, want := range []string{"📊 USAGE SUMMARY", "🪙 TOKEN TOTALS", "🧾 MODEL COVERAGE", "KNOWN CATALOG SUBTOTAL", "Codex-auto-review", "EVENTS", "STATUS", "UNATTRIBUTED ATTRIBUTION"} {
+	for _, want := range []string{"📊 USAGE SUMMARY", "🔎 ATTRIBUTION REASONS", "EXACT RUN", "BEFORE ADOPTION", "UNATTRIBUTED CATALOG BASE", "🪙 TOKEN TOTALS", "🧾 MODEL COVERAGE", "KNOWN CATALOG SUBTOTAL", "Codex-auto-review", "EVENTS", "STATUS", "UNATTRIBUTED ATTRIBUTION"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("usage summary missing %q:\n%s", want, text)
 		}

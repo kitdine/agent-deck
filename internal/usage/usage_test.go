@@ -124,11 +124,70 @@ func TestCalculateSeparatesCachedAndClaudeTTLComponents(t *testing.T) {
 
 func TestSummarizeEventsDisclosesDefaultedCacheCreationTTL(t *testing.T) {
 	prices := modelPrice{Provider: "anthropic", Prices: map[string]string{"input": "3", "output": "15", "cache_write_5m": "3.75"}}
-	summary, err := summarizeEvents([]storedEvent{{Event: Event{Client: "claude", Model: "claude", Tokens: map[string]int64{"cache_creation_tokens": 200000}}}}, func(storedEvent) (modelPrice, string, string, error) {
-		return prices, "1", "exact", nil
+	summary, err := summarizeEvents([]storedEvent{{Event: Event{Client: "claude", Model: "claude", Tokens: map[string]int64{"cache_creation_tokens": 200000}}}}, func(storedEvent) (eventAttribution, error) {
+		return eventAttribution{price: prices, multiplier: "1", quality: "exact", reason: "exact_run", spendEligible: true}, nil
 	})
 	if err != nil || summary.CatalogBaseCost == nil || *summary.CatalogBaseCost != "0.750000000" || summary.ProviderCost == nil || *summary.ProviderCost != "0.750000000" || !reflect.DeepEqual(summary.Warnings, []string{"defaulted 5m cache creation TTL"}) || summary.Counts["priced"] != 1 || summary.Counts["unpriced"] != 0 {
 		t.Fatalf("summary = %#v, %v", summary, err)
+	}
+}
+
+func TestSummarizeEventsReportsReasonsAndSeparatesRealSpend(t *testing.T) {
+	prices := modelPrice{Provider: "openai", Prices: map[string]string{"input": "1"}}
+	events := []storedEvent{
+		{Event: Event{Client: "codex", Model: "fixture", Tokens: map[string]int64{"input_tokens": 1000000}}},
+		{Event: Event{Client: "codex", Model: "fixture", Tokens: map[string]int64{"input_tokens": 1000000}}},
+		{Event: Event{Client: "codex", Model: "fixture", Tokens: map[string]int64{"input_tokens": 1000000}}},
+	}
+	attributions := []eventAttribution{
+		{price: prices, multiplier: "1", quality: "exact", reason: "exact_run", spendEligible: true},
+		{price: prices, multiplier: "1", quality: "unattributed", reason: "before_adoption"},
+		{price: prices, multiplier: "1", quality: "estimated", reason: "ambiguous_route"},
+	}
+	index := 0
+	summary, err := summarizeEvents(events, func(storedEvent) (eventAttribution, error) {
+		attribution := attributions[index]
+		index++
+		return attribution, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.CatalogBaseCost == nil || *summary.CatalogBaseCost != "3.000000000" ||
+		summary.ProviderCost != nil || summary.KnownProviderCost == nil || *summary.KnownProviderCost != "1.000000000" ||
+		summary.UnattributedCatalogBaseCost == nil || *summary.UnattributedCatalogBaseCost != "1.000000000" {
+		t.Fatalf("summary cost boundary = %#v", summary)
+	}
+	wantReasons := map[string]int64{"exact_run": 1, "effective_route": 0, "ambiguous_route": 1, "timeline_snapshot": 0, "before_adoption": 1, "coverage_gap": 0}
+	if !reflect.DeepEqual(summary.AttributionReasons, wantReasons) {
+		t.Fatalf("attribution reasons = %#v, want %#v", summary.AttributionReasons, wantReasons)
+	}
+
+	unpriced, err := summarizeEvents([]storedEvent{{Event: Event{Client: "codex", Model: "fixture", Tokens: map[string]int64{"output_tokens": 1}}}}, func(storedEvent) (eventAttribution, error) {
+		return eventAttribution{price: prices, multiplier: "1", quality: "unattributed", reason: "coverage_gap"}, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unpriced.UnattributedCatalogBaseCost != nil || unpriced.AttributionReasons["coverage_gap"] != 1 {
+		t.Fatalf("unpriced unattributed cost = %#v", unpriced)
+	}
+}
+
+func TestAttributedAggregationPreservesPerEventPartialCost(t *testing.T) {
+	prices := modelPrice{Provider: "anthropic", Prices: map[string]string{"input": "3"}}
+	event := storedEvent{Event: Event{Client: "claude", Model: "fixture", Tokens: map[string]int64{"input_tokens": 100000, "output_tokens": 10000}}}
+	attribution := eventAttribution{price: prices, multiplier: "0.5", spendEligible: true}
+	result, err := calculateAttributedEvent(event, attribution)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.ProviderCost != nil || result.KnownProviderCost != "0.150000000" {
+		t.Fatalf("per-event partial provider cost = %#v", result)
+	}
+	aggregated := aggregateAttributedResult(result, attribution)
+	if aggregated.ProviderCost != nil || aggregated.KnownProviderCost != "0.000000000" {
+		t.Fatalf("aggregate partial provider summand = %#v", aggregated)
 	}
 }
 
@@ -169,7 +228,7 @@ INSERT INTO usage_sessions(client,session_id,first_at,last_at) VALUES ('claude',
 		t.Fatal(err)
 	}
 	report, err := New(database, "").Stats(ctx, StatsOptions{From: time.Date(2026, 7, 20, 0, 0, 0, 0, time.UTC), To: time.Date(2026, 7, 21, 0, 0, 0, 0, time.UTC), GroupBy: "day", Metric: "cost", Location: time.UTC, Timezone: "UTC"})
-	if err != nil || report.Totals.ProviderCost == nil || *report.Totals.ProviderCost != "0.750000000" || report.Coverage.UnpricedEvents != 0 || !reflect.DeepEqual(report.Warnings, []string{"defaulted 5m cache creation TTL"}) {
+	if err != nil || report.Totals.ProviderCost != nil || report.Totals.KnownProviderCost != "0.000000000" || report.Coverage.UnpricedEvents != 0 || !reflect.DeepEqual(report.Warnings, []string{"defaulted 5m cache creation TTL"}) {
 		t.Fatalf("stats = %#v, %v", report, err)
 	}
 }
@@ -870,7 +929,7 @@ func TestSummarySessionsAndEventTimeCatalogSelection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if summary.CatalogBaseCost == nil || *summary.CatalogBaseCost != "2.500000000" || summary.ProviderCost == nil || *summary.ProviderCost != "2.500000000" || summary.Counts["unattributed"] != 1 {
+	if summary.CatalogBaseCost == nil || *summary.CatalogBaseCost != "2.500000000" || summary.ProviderCost != nil || summary.KnownProviderCost == nil || *summary.KnownProviderCost != "0.000000000" || summary.UnattributedCatalogBaseCost == nil || *summary.UnattributedCatalogBaseCost != "2.500000000" || summary.AttributionReasons["before_adoption"] != 1 {
 		t.Fatalf("summary=%+v", summary)
 	}
 	sessions, err := service.Sessions(ctx)
@@ -900,7 +959,7 @@ func TestSummaryKeepsCompleteTotalsUnavailableAndReportsKnownSubtotal(t *testing
 	if summary.CatalogBaseCost != nil || summary.ProviderCost != nil {
 		t.Fatalf("partial totals must remain unavailable: %#v", summary)
 	}
-	if summary.KnownCatalogBaseCost == nil || *summary.KnownCatalogBaseCost != "2.500000000" || summary.KnownProviderCost == nil || *summary.KnownProviderCost != "2.500000000" {
+	if summary.KnownCatalogBaseCost == nil || *summary.KnownCatalogBaseCost != "2.500000000" || summary.KnownProviderCost == nil || *summary.KnownProviderCost != "0.000000000" || summary.UnattributedCatalogBaseCost != nil {
 		t.Fatalf("known subtotal = %#v", summary)
 	}
 	if summary.Counts["priced"] != 1 || summary.Counts["unpriced"] != 1 || len(summary.Models) != 2 {
@@ -1749,18 +1808,20 @@ func TestAttributionResolversClassifyRouteEffectFromPriorState(t *testing.T) {
 		t.Fatal(err)
 	}
 	tests := []struct {
-		client, session, want string
-		eventAt, sessionStart time.Duration
+		client, session, wantQuality, wantReason string
+		eventAt, sessionStart                    time.Duration
 	}{
-		{"codex", "codex-start", "exact", 3 * time.Second, 500 * time.Millisecond},
-		{"codex", "no-timeline", "estimated", 3 * time.Second, 500 * time.Millisecond},
-		{"claude", "claude-start", "exact", 3 * time.Second, 500 * time.Millisecond},
-		{"claude", "same", "exact", 3 * time.Second, 500 * time.Millisecond},
-		{"claude", "no-prior", "exact", 3 * time.Second, 500 * time.Millisecond},
-		{"claude", "no-prior-keyed", "estimated", 12 * time.Second, 10500 * time.Millisecond},
-		{"claude", "first-key", "exact", 3 * time.Second, 500 * time.Millisecond},
-		{"claude", "removal", "estimated", 3 * time.Second, 500 * time.Millisecond},
-		{"claude", "unknown", "estimated", 3 * time.Second, 500 * time.Millisecond},
+		{"codex", "codex-start", "exact", "effective_route", 3 * time.Second, 500 * time.Millisecond},
+		{"codex", "no-timeline", "estimated", "ambiguous_route", 3 * time.Second, 500 * time.Millisecond},
+		{"codex", "before-adoption", "unattributed", "before_adoption", 3 * time.Second, 500 * time.Millisecond},
+		{"claude", "coverage-gap", "unattributed", "coverage_gap", 3 * time.Second, -500 * time.Millisecond},
+		{"claude", "claude-start", "exact", "effective_route", 3 * time.Second, 500 * time.Millisecond},
+		{"claude", "same", "exact", "effective_route", 3 * time.Second, 500 * time.Millisecond},
+		{"claude", "no-prior", "exact", "effective_route", 3 * time.Second, 500 * time.Millisecond},
+		{"claude", "no-prior-keyed", "estimated", "ambiguous_route", 12 * time.Second, 10500 * time.Millisecond},
+		{"claude", "first-key", "exact", "effective_route", 3 * time.Second, 500 * time.Millisecond},
+		{"claude", "removal", "estimated", "ambiguous_route", 3 * time.Second, 500 * time.Millisecond},
+		{"claude", "unknown", "estimated", "ambiguous_route", 3 * time.Second, 500 * time.Millisecond},
 	}
 	for _, test := range tests {
 		t.Run(test.session, func(t *testing.T) {
@@ -1772,12 +1833,13 @@ func TestAttributionResolversClassifyRouteEffectFromPriorState(t *testing.T) {
 			if readErr != nil {
 				t.Fatal(readErr)
 			}
-			_, _, serviceQuality, serviceErr := service.priceForEvent(ctx, event)
+			serviceAttribution, serviceErr := service.eventAttributionForEvent(ctx, event)
 			if serviceErr != nil {
 				t.Fatal(serviceErr)
 			}
-			if readAttribution.quality != test.want || serviceQuality != test.want {
-				t.Fatalf("qualities = read %q service %q, want %q", readAttribution.quality, serviceQuality, test.want)
+			if readAttribution.quality != test.wantQuality || serviceAttribution.quality != test.wantQuality ||
+				readAttribution.reason != test.wantReason || serviceAttribution.reason != test.wantReason {
+				t.Fatalf("attribution = read %#v service %#v, want %s/%s", readAttribution, serviceAttribution, test.wantQuality, test.wantReason)
 			}
 		})
 	}
@@ -3291,7 +3353,7 @@ INSERT INTO usage_tool_calls(activity_key,client,session_id,model,tool_name,star
 	if len(report.UnpricedModels) != 1 || report.UnpricedModels[0].Client != "codex" || report.UnpricedModels[0].Model != "zzz-unknown" || !reflect.DeepEqual(report.UnpricedModels[0].Components, []string{"unknown_model"}) {
 		t.Fatalf("unpriced models = %#v", report.UnpricedModels)
 	}
-	if report.Totals.ProviderCost != nil || report.Totals.KnownProviderCost == "0.000000000" {
+	if report.Totals.ProviderCost != nil || report.Totals.KnownProviderCost != "0.000000000" {
 		t.Fatalf("partial cost state = %#v", report.Totals)
 	}
 	if len(report.CacheSessions) != 2 || report.CacheSessions[0].SessionID != "a" || report.CacheSessions[0].CacheHitRate == nil || *report.CacheSessions[0].CacheHitRate != "60.00" || report.CacheSessions[1].SessionID != "c" || *report.CacheSessions[1].CacheHitRate != "40.00" {

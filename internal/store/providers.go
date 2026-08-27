@@ -206,6 +206,38 @@ func (t ProviderTimeline) SnapshotAt(client string, at time.Time) (ProviderSnaps
 	return ProviderSnapshot{}, sql.ErrNoRows
 }
 
+// HasClient reports whether the timeline has any completed provider operation
+// or usable selection for a client, independent of a particular snapshot time.
+func (t ProviderTimeline) HasClient(client string) bool {
+	for _, operation := range t.operations {
+		if operation.client == client && operation.state == "completed" {
+			return true
+		}
+	}
+	for _, selection := range t.selections {
+		if selection.client != client {
+			continue
+		}
+		if !selection.operationID.Valid || t.operationStates[selection.operationID.String] == "completed" {
+			return true
+		}
+	}
+	return false
+}
+
+// ProviderTimelineExists is the database-backed counterpart to
+// ProviderTimeline.HasClient.
+func (s *Store) ProviderTimelineExists(ctx context.Context, client string) (bool, error) {
+	var exists bool
+	err := s.DB.QueryRowContext(ctx, `SELECT EXISTS(
+		SELECT 1 FROM operations WHERE kind='provider.use' AND client=? AND state='completed'
+		UNION ALL
+		SELECT 1 FROM provider_selections ps LEFT JOIN operations o ON o.id=ps.operation_id
+		WHERE ps.client=? AND (ps.operation_id IS NULL OR o.state='completed')
+	)`, client, client).Scan(&exists)
+	return exists, err
+}
+
 func (t ProviderTimeline) latestSelection(client string, providerID *int64, notBefore, notAfter *time.Time) (ProviderSnapshot, bool) {
 	var latest *providerTimelineSelection
 	for index := range t.selections {

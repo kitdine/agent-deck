@@ -474,12 +474,24 @@ resume 的主要归属机制；并发 managed runs 不阻止 client，而将受�
 
 - 不指定 `--format` 时输出 text；usage 报告使用共享的宽度感知 section、bar、对齐列
   和响应式行原语，只有显式 `--format json` 才输出稳定 JSON envelope。
-- `usage summary` 以稀疏 Emoji 标题区分总览、token totals 和 model coverage。
-  `catalog_base_cost`、`provider_cost` 仍只在所有 event 都能完整计价时提供；存在
-  unknown model 或缺失价格组件时保持 unavailable，同时通过明确标注的
-  `known_catalog_base_cost`、`known_provider_cost`、priced/unpriced event 数和逐 model
-  coverage 展示可验证的已知小计，不能把已计价工作隐藏掉。
+- `usage summary` 以稀疏 Emoji 标题区分总览、`ATTRIBUTION REASONS`、token totals
+  和 model coverage。JSON 的 `attribution_reasons` 始终包含 `exact_run`、
+  `effective_route`、`ambiguous_route`、`timeline_snapshot`、`before_adoption` 和
+  `coverage_gap` 六个 key；text 只打印其中非零项。`before_adoption` 表示该 client
+  从未有 completed provider operation 或可用 selection，`coverage_gap` 表示已有
+  timeline 但 session-start 位置之前没有可用 snapshot。
+- `catalog_base_cost` 在所有 event 的 catalog 组件均可计价时提供；`provider_cost`
+  还要求每个 event 都具备可计费的有效 provider。`known_provider_cost` 只累计完整
+  计价且 spend-eligible 的 event，不能把 unknown provider 或 attribution gap 当作
+  真实支出。`unattributed_catalog_base_cost` 单独累计 `before_adoption` 与
+  `coverage_gap` 的可计算 catalog base，任一此类 event 有未计价组件时为
+  unavailable。priced/unpriced event 数和逐 model coverage 继续展示 catalog 计价
+  覆盖；warning 使用 `estimated attribution` 与 `unattributed attribution`。
 - `usage summary` 和 `usage stats` 默认在输出前同步扫描；`--no-scan` 跳过该扫描并立即使用已存聚合，不会将扫描移到后台。
+- `usage stats --metric cost` 的 complete total、average、bucket、dimension
+  share 和 peak 只在范围内每个 event 都完整计价且 spend-eligible 时提供；已完整
+  计价但不可归属的 event 仍保留 catalog 覆盖，却不能让 provider real-spend 数字
+  看起来完整。
 - `usage sessions` 将 input、cached input、output、cache read、cache creation、5m
   write 和 1h write token 分成独立列。无法形成完整成本时，已知小计显示为
   `(partial)`，status 列列出 warning 和 unpriced component。
@@ -686,6 +698,9 @@ summary 和按时间排序的 invocation rows；显式分页时 JSON 返回
 unavailable。pricing/attribution warning 位于 `data.usage.warnings`，每条
 invocation 的 warning 位于 `data.invocations[].warnings`；顶层 envelope 的
 `warnings` 与 `partial` 只表示 command-level state，不能替代这两组 usage warning。
+单条 invocation 若不可归属，则 provider cost 为 unavailable，而不是 `0`；其
+catalog base 仍可显示。spend-eligible 但仅部分计价的 invocation 继续显示真实的
+known provider subtotal，并标为 partial。
 
 普通 `session show` text 使用有界的 section/record/labeled-continuation 画布，不再按
 terminal 宽度切换为 ASCII table。`COLUMNS` 为正整数时决定 redirected text 宽度，

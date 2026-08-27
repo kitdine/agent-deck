@@ -84,6 +84,9 @@ INSERT INTO usage_run_bindings(event_key,run_id) VALUES ('exact',1)`); err != ni
 	if report.Summary.Counts["exact"] != 1 || report.Summary.Counts["estimated"] != 1 || report.Summary.Counts["unattributed"] != 1 {
 		t.Fatalf("summary quality counts = %#v", report.Summary.Counts)
 	}
+	if report.Summary.AttributionReasons["exact_run"] != 1 || report.Summary.AttributionReasons["timeline_snapshot"] != 1 || report.Summary.AttributionReasons["before_adoption"] != 1 {
+		t.Fatalf("summary attribution reasons = %#v", report.Summary.AttributionReasons)
+	}
 	if !all.Pricing.Available || len(all.Pricing.Items) != 3 {
 		t.Fatalf("pricing = %#v, want one record per supported period", all.Pricing)
 	}
@@ -93,6 +96,34 @@ INSERT INTO usage_run_bindings(event_key,run_id) VALUES ('exact',1)`); err != ni
 	}
 	if got := []string{all.Pricing.Items[1].Period, all.Pricing.Items[2].Period}; !slicesEqual(got, []string{"7d", "30d"}) {
 		t.Fatalf("pricing periods = %v", got)
+	}
+}
+
+func TestPresentationSummaryExcludesNonSpendEligibleProviderCost(t *testing.T) {
+	builder := newPresentationSummaryBuilder()
+	cost := "1.000000000"
+	result := Result{CatalogBaseCost: &cost, ProviderCost: &cost, KnownCatalogBaseCost: cost, KnownProviderCost: cost}
+	event := storedEvent{Event: Event{Client: "codex", Model: "fixture", Tokens: map[string]int64{}}}
+	builder.add(event, eventAttribution{quality: "exact", reason: "exact_run", spendEligible: true}, result)
+	builder.add(event, eventAttribution{quality: "unattributed", reason: "before_adoption"}, result)
+	summary := builder.finish()
+	if summary.KnownProviderCost == nil || *summary.KnownProviderCost != "1.000000000" || summary.ProviderCost != nil ||
+		summary.UnattributedCatalogBaseCost == nil || *summary.UnattributedCatalogBaseCost != "1.000000000" {
+		t.Fatalf("presentation summary cost boundary = %#v", summary)
+	}
+}
+
+func TestPresentationTotalsDistinguishAttributionIncompleteFromUnpriced(t *testing.T) {
+	value := newPresentationAccumulator()
+	cost := "1.000000000"
+	result := Result{CatalogBaseCost: &cost, ProviderCost: &cost, KnownCatalogBaseCost: cost, KnownProviderCost: cost}
+	attribution := eventAttribution{quality: "unattributed", reason: "before_adoption"}
+	if err := value.add(storedEvent{Event: Event{Client: "codex", SessionID: "session", Tokens: map[string]int64{}}}, aggregateAttributedResult(result, attribution)); err != nil {
+		t.Fatal(err)
+	}
+	totals := presentationTotals(value.stats)
+	if totals.CatalogBaseCost == nil || totals.ProviderCost != nil || totals.PricingComplete || totals.UnpricedComponents != 0 {
+		t.Fatalf("attribution-incomplete totals = %#v", totals)
 	}
 }
 

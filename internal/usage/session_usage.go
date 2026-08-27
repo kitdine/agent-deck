@@ -110,7 +110,7 @@ func (s *Service) SessionInvocations(ctx context.Context, client, sessionID stri
 		if err != nil {
 			return nil, InvocationPagination{}, err
 		}
-		priced, err := Calculate(event.Client, event.Model, event.Tokens, attribution.price, attribution.multiplier)
+		priced, err := calculateAttributedEvent(event, attribution)
 		if err != nil {
 			return nil, InvocationPagination{}, err
 		}
@@ -118,15 +118,21 @@ func (s *Service) SessionInvocations(ctx context.Context, client, sessionID stri
 		if attribution.quality != "exact" {
 			warnings = append(warnings, attribution.quality+" attribution")
 		}
+		providerCost := priced.ProviderCost
+		knownProviderCost := priced.KnownProviderCost
+		if !attribution.spendEligible {
+			providerCost = nil
+			knownProviderCost = ""
+		}
 		invocations = append(invocations, SessionInvocation{
 			Sequence:             offset + index + 1,
 			EventAt:              event.EventAt,
 			Model:                event.Model,
 			Tokens:               copySessionUsageTokens(event.Tokens),
 			CatalogBaseCost:      priced.CatalogBaseCost,
-			ProviderCost:         priced.ProviderCost,
+			ProviderCost:         providerCost,
 			KnownCatalogBaseCost: priced.KnownCatalogBaseCost,
-			KnownProviderCost:    priced.KnownProviderCost,
+			KnownProviderCost:    knownProviderCost,
 			Unpriced:             append([]string{}, priced.Unpriced...),
 			Warnings:             warnings,
 		})

@@ -737,6 +737,22 @@
         }
       }
     },
+    "Cost incomplete · attribution unavailable": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cost incomplete · attribution unavailable"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "成本不完整 · 归属不可用"
+          }
+        }
+      }
+    },
     "Could not change the login item": {
       "localizations": {
         "en": {

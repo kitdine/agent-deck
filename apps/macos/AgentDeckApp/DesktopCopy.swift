@@ -29,6 +29,7 @@ enum DesktopCopy {
 	static let period7d = "7D"
 	static let period30d = "30D"
 	static let costIncomplete = "Cost incomplete · %lld unpriced"
+	static let costIncompleteAttribution = "Cost incomplete · attribution unavailable"
 	static let heroCounts = "%1$lld events · %2$lld sessions · %3$lld projects"
 
 	// Panels.
@@ -189,7 +190,7 @@ enum DesktopCopy {
 		freshnessUpdated, freshnessLastUpdated, retry, refreshNow, refreshTimedOut, appName,
 		badgedOffline, badgedFailing, qualifierList,
 		clientFilter, periodFilter, clientAll, periodToday, period7d, period30d,
-		costIncomplete, heroCounts,
+		costIncomplete, costIncompleteAttribution, heroCounts,
 		panelUsage, panelBreakdown, panelAttribution, panelSessions,
 		panelUnavailableMark, sectionUnavailable,
 		trendTitle, trendWindow, trendHours, trendEvents, trendNow,

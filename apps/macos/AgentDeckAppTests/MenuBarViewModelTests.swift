@@ -188,6 +188,15 @@ final class MenuBarViewModelTests: XCTestCase {
 		model.selectedPeriod = "7d"
 		XCTAssertNil(model.hero?.costIncomplete)
 		XCTAssertFalse(model.hero?.amount.hasPrefix("≈") ?? true)
+
+		var attributionScope = WireFixture.scope(client: "all")
+		attributionScope["periods"] = [
+			"available": true,
+			"items": [WireFixture.period("today", tokens: 1440, pricingComplete: false, unpricedComponents: 0)],
+		]
+		let attributionModel = await readyModel(envelope: WireFixture.envelope(scopes: [attributionScope]))
+		XCTAssertEqual(attributionModel.hero?.costIncomplete, t(DesktopCopy.costIncompleteAttribution))
+		XCTAssertTrue(attributionModel.hero?.amount.hasPrefix("≈") ?? false)
 	}
 
 	func testEmptyPeriodStatesTheDayOnlyOnACurrentIssueFreeSurface() async {

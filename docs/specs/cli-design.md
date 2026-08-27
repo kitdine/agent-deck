@@ -1166,24 +1166,33 @@ race.
 
 Attribution has three explicit qualities:
 
-- `exact`: `agentdeck run` owns an unambiguous client process lifetime and
-  binds only source ranges written during that run.
-- `estimated`: an observed lifecycle boundary, or failing that a file-only
-  fallback, assigns events to the provider that the boundary — or the session's
-  first timestamp — names.
-- `historical`: no earlier provider selection exists; multiplier is fixed at
-  `1`.
+- `exact`: an exact run or an effective session route proves the provider and
+  multiplier that the event used.
+- `estimated`: a route effect is ambiguous, or the provider timeline supplies
+  only a session-start snapshot.
+- `unattributed`: no provider snapshot covers the session-start position; no
+  multiplier-`1` default enters real spend.
 
 Resolution for a single event is ordered and total. An exact run binding wins.
-Otherwise the most recent recorded lifecycle boundary at or before the event's
-timestamp applies. Otherwise the file-only fallback attributes the complete
-logical session to the provider selected at its first timestamp. A logical
-session is therefore split at observed boundaries rather than attributed
-wholesale, and re-attributing a resumed session no longer requires
-`agentdeck run`: a client with runtime attribution Hooks configured splits its
-own sessions, while `run` remains a supported low-level launcher for exact
-attribution. Earlier ranges keep their prior provider. An old exact run never
-captures later unwrapped events merely because the logical session ID matches.
+Otherwise the effective session-route sequence is positioned at event time;
+known `SessionStart`, same-provider `ConfigChange`, and Claude's adopted
+no-key-to-first-key transition are `exact`, while unknown or unproven route
+effects are `estimated`. Otherwise the provider timeline is positioned at the
+logical session start and is `estimated`. If that lookup has no row, a
+client-wide existence check returns `before_adoption` when the client has no
+timeline anywhere and `coverage_gap` when a timeline exists but does not cover
+the position; both are `unattributed`.
+
+Every event carries exactly one reason: `exact_run`, `effective_route`,
+`ambiguous_route`, `timeline_snapshot`, `before_adoption`, or `coverage_gap`.
+`usage summary` exposes all six initialized keys in JSON and the non-zero keys
+in text. Provider-cost fields are real-spend fields: non-spend-eligible and
+partially priced events do not enter `known_provider_cost`, any such event makes
+`provider_cost` unavailable, and `unattributed_catalog_base_cost` separately
+reports complete catalog-base amounts for `before_adoption` and `coverage_gap`.
+A logical session is split only at effective boundaries, and an old exact run
+never captures later unwrapped events merely because the logical session ID
+matches.
 
 Overlapping or ambiguous client lifetimes are downgraded to `estimated`; the
 tool never silently claims exact attribution. A second managed run for a client
@@ -1230,12 +1239,14 @@ disabled, or failing, attribution falls back to the file-only estimated
 behavior above; a client is never reported as unattributed merely because its
 Hooks never ran.
 
-A recorded boundary carries the logical session, the observed instant, and the
+A recorded effective boundary carries the logical session, the observed instant, and the
 provider, multiplier, and wrapper state of the completed selection in effect,
 together with the event that produced it. It stores no client payload beyond
-the validated event shape. Boundaries are always `estimated`: a Hook never
-claims exact attribution. A boundary equal to that session's most recent one is
-not recorded twice, so duplicate delivery is harmless.
+the validated event shape. Persisted route quality remains compatibility data;
+read-time classification derives the verdict and reason from the Hook event,
+the positioned route, and its prior effective state. A boundary equal to that
+session's most recent one is not recorded twice, so duplicate delivery is
+harmless.
 
 Two events establish boundaries. `SessionStart` does so for both clients, but
 only when its transcript validates and a completed provider selection exists; a
@@ -1440,6 +1451,10 @@ and deterministic tool-name distribution. No tool arguments or results are
 read into the report.
 
 For `metric=cost`, complete average, metric, share, and peak values are nullable.
+They are present only when every event in the applicable range or dimension is
+fully priced and spend-eligible. Catalog pricing coverage remains independently
+observable when a provider real-spend value is unavailable because attribution
+is missing.
 They are present only when the applicable events are fully priced; the parallel
 `known_average_cost_per_session`, `known_metric_value`, `known_share`, and
 `known_value` fields always describe the known priced subtotal. Stats text marks
@@ -1709,6 +1724,10 @@ renders metadata and approved `DOCUMENTS`; `--activity` adds only the existing
 safe activity aggregate and detail collection, and `--tokens` adds complete
 normalized `usage` plus chronologically ordered invocation rows with their
 token components, pricing completeness, warnings, and invocation pagination.
+An invocation with unavailable attribution exposes no provider cost value while
+retaining its calculable catalog base. A spend-eligible but partially priced
+invocation retains its genuine known provider subtotal and marks it partial;
+neither case is rendered as a fabricated zero.
 Explicit `--page`/`--limit` pagination is represented by the named collection
 in JSON (`documents`, `activity`, or `invocations`); without explicit paging,
 JSON retains the complete collection for compatibility.

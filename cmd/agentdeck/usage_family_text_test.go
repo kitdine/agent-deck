@@ -100,3 +100,13 @@ func TestUsageFamilyTextPathsPreserveJSONData(t *testing.T) {
 		})
 	}
 }
+
+func TestUsageSummaryOmitsEmptyAttributionReasonsSection(t *testing.T) {
+	var rendered bytes.Buffer
+	if err := renderUsageText(&rendered, "usage.summary", usage.Summary{Tokens: map[string]int64{}, Counts: map[string]int64{}}); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(rendered.String(), "ATTRIBUTION REASONS") {
+		t.Fatalf("empty summary rendered an empty attribution-reasons section:\n%s", rendered.String())
+	}
+}

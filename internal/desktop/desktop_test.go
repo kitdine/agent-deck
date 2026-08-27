@@ -69,13 +69,20 @@ func TestSnapshotsRedactPrivateDomainFields(t *testing.T) {
 
 func TestUsageSnapshotPublishesPricingCompleteness(t *testing.T) {
 	from := time.Date(2026, 8, 13, 0, 0, 0, 0, time.UTC)
-	complete := usageSnapshot(usage.Summary{}, from, from.AddDate(0, 0, 1))
-	if !complete.PricingComplete || complete.Warnings == nil || complete.Tokens == nil || complete.Counts == nil {
+	complete := usageSnapshot(usage.Summary{AttributionReasons: map[string]int64{"exact_run": 1}}, from, from.AddDate(0, 0, 1))
+	if !complete.PricingComplete || complete.Warnings == nil || complete.Tokens == nil || complete.Counts == nil || complete.AttributionReasons["exact_run"] != 1 {
 		t.Fatalf("complete usage snapshot = %#v", complete)
 	}
 	incomplete := usageSnapshot(usage.Summary{Unpriced: []string{"model:input_tokens"}}, from, from.AddDate(0, 0, 1))
 	if incomplete.PricingComplete || incomplete.UnpricedComponents != 1 {
 		t.Fatalf("incomplete usage snapshot = %#v", incomplete)
+	}
+}
+
+func TestEmptyUsageSnapshotUsesNonNilCollections(t *testing.T) {
+	empty := emptyUsageSnapshot(time.Date(2026, 8, 13, 0, 0, 0, 0, time.UTC), time.UTC)
+	if empty.Tokens == nil || empty.Counts == nil || empty.AttributionReasons == nil || empty.Warnings == nil {
+		t.Fatalf("empty usage snapshot = %#v", empty)
 	}
 }
 

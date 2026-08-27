@@ -371,6 +371,15 @@ func TestProviderSnapshotTracksBearerOfficialBearerOperations(t *testing.T) {
 			t.Fatalf("timeline snapshot at %s = %#v, %v want %#v, %v", at, got, gotErr, want, wantErr)
 		}
 	}
+	if !timeline.HasClient("codex") || timeline.HasClient("claude") {
+		t.Fatalf("timeline client coverage = codex:%t claude:%t", timeline.HasClient("codex"), timeline.HasClient("claude"))
+	}
+	if exists, existsErr := s.ProviderTimelineExists(ctx, "codex"); existsErr != nil || !exists {
+		t.Fatalf("database timeline coverage = %t, %v", exists, existsErr)
+	}
+	if exists, existsErr := s.ProviderTimelineExists(ctx, "claude"); existsErr != nil || exists {
+		t.Fatalf("absent database timeline coverage = %t, %v", exists, existsErr)
+	}
 }
 
 func TestProviderSnapshotComparesParsedTimesAcrossRFC3339NanoPrecision(t *testing.T) {

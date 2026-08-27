@@ -92,10 +92,19 @@
         "unattributed": 2,
         "unpriced": 2
       },
+      "attribution_reasons": {
+        "ambiguous_route": 0,
+        "before_adoption": 0,
+        "coverage_gap": 2,
+        "effective_route": 0,
+        "exact_run": 0,
+        "timeline_snapshot": 0
+      },
       "catalog_base_cost": null,
       "provider_cost": null,
       "known_catalog_base_cost": "0.000000000",
       "known_provider_cost": "0.000000000",
+      "unattributed_catalog_base_cost": null,
       "pricing_complete": false,
       "unpriced_components": 1,
       "warnings": [

@@ -61,6 +61,7 @@ func renderUsageFamilySummary(w io.Writer, value usage.Summary, options usageTex
 		{{label: "PROVIDER TOTAL", value: optionalCost(value.ProviderCost)}},
 		{{label: "KNOWN CATALOG SUBTOTAL", value: optionalCost(value.KnownCatalogBaseCost)}},
 		{{label: "KNOWN PROVIDER SUBTOTAL", value: optionalCost(value.KnownProviderCost)}},
+		{{label: "UNATTRIBUTED CATALOG BASE", value: optionalCost(value.UnattributedCatalogBaseCost)}},
 		{{label: "WARNINGS", value: textList(value.Warnings)}},
 		{{label: "UNPRICED", value: textList(value.Unpriced)}},
 	}
@@ -68,6 +69,19 @@ func renderUsageFamilySummary(w io.Writer, value usage.Summary, options usageTex
 	lines := []string{renderer.section("📊 USAGE SUMMARY", "1;32")}
 	for _, row := range metricRows {
 		lines = append(lines, usageAlignedColumns(renderer.width, row...)...)
+	}
+	reasonRows := [][]usageAlignedColumn{}
+	for _, reason := range []string{"exact_run", "effective_route", "ambiguous_route", "timeline_snapshot", "before_adoption", "coverage_gap"} {
+		if count := value.AttributionReasons[reason]; count > 0 {
+			reasonRows = append(reasonRows, []usageAlignedColumn{{label: strings.ToUpper(strings.ReplaceAll(reason, "_", " ")), value: strconv.FormatInt(count, 10)}})
+		}
+	}
+	usageAlignColumnRows(reasonRows)
+	if len(reasonRows) > 0 {
+		lines = append(lines, "", renderer.section("🔎 ATTRIBUTION REASONS", "1;34"))
+		for _, row := range reasonRows {
+			lines = append(lines, usageAlignedColumns(renderer.width, row...)...)
+		}
 	}
 
 	tokenRows := make([][]usageAlignedColumn, 0, len(usageTokenNames))

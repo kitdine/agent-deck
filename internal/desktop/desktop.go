@@ -93,19 +93,21 @@ type ProviderSwitchOption struct {
 }
 
 type UsageSnapshot struct {
-	Available            bool                     `json:"available"`
-	From                 string                   `json:"from"`
-	To                   string                   `json:"to"`
-	Tokens               map[string]int64         `json:"tokens"`
-	Counts               map[string]int64         `json:"counts"`
-	CatalogBaseCost      *string                  `json:"catalog_base_cost"`
-	ProviderCost         *string                  `json:"provider_cost"`
-	KnownCatalogBaseCost *string                  `json:"known_catalog_base_cost"`
-	KnownProviderCost    *string                  `json:"known_provider_cost"`
-	PricingComplete      bool                     `json:"pricing_complete"`
-	UnpricedComponents   int                      `json:"unpriced_components"`
-	Warnings             []string                 `json:"warnings"`
-	Presentation         usage.PresentationReport `json:"presentation"`
+	Available                   bool                     `json:"available"`
+	From                        string                   `json:"from"`
+	To                          string                   `json:"to"`
+	Tokens                      map[string]int64         `json:"tokens"`
+	Counts                      map[string]int64         `json:"counts"`
+	AttributionReasons          map[string]int64         `json:"attribution_reasons"`
+	CatalogBaseCost             *string                  `json:"catalog_base_cost"`
+	ProviderCost                *string                  `json:"provider_cost"`
+	KnownCatalogBaseCost        *string                  `json:"known_catalog_base_cost"`
+	KnownProviderCost           *string                  `json:"known_provider_cost"`
+	UnattributedCatalogBaseCost *string                  `json:"unattributed_catalog_base_cost"`
+	PricingComplete             bool                     `json:"pricing_complete"`
+	UnpricedComponents          int                      `json:"unpriced_components"`
+	Warnings                    []string                 `json:"warnings"`
+	Presentation                usage.PresentationReport `json:"presentation"`
 }
 
 type SessionsSnapshot struct {
@@ -390,7 +392,7 @@ func emptyUsageSnapshot(now time.Time, location *time.Location) UsageSnapshot {
 	from, to := localDay(now, location)
 	return UsageSnapshot{
 		From: from.Format(time.RFC3339), To: to.Format(time.RFC3339),
-		Tokens: map[string]int64{}, Counts: map[string]int64{}, Warnings: []string{}, Presentation: usage.EmptyPresentationReport(),
+		Tokens: map[string]int64{}, Counts: map[string]int64{}, AttributionReasons: map[string]int64{}, Warnings: []string{}, Presentation: usage.EmptyPresentationReport(),
 	}
 }
 
@@ -410,10 +412,11 @@ func (s Service) loadUsage(ctx context.Context, core *store.Store, now time.Time
 func usageSnapshot(summary usage.Summary, from, to time.Time) UsageSnapshot {
 	return UsageSnapshot{
 		Available: true, From: from.Format(time.RFC3339), To: to.Format(time.RFC3339),
-		Tokens: nonNilMap(summary.Tokens), Counts: nonNilMap(summary.Counts),
+		Tokens: nonNilMap(summary.Tokens), Counts: nonNilMap(summary.Counts), AttributionReasons: nonNilMap(summary.AttributionReasons),
 		CatalogBaseCost: summary.CatalogBaseCost, ProviderCost: summary.ProviderCost,
 		KnownCatalogBaseCost: summary.KnownCatalogBaseCost, KnownProviderCost: summary.KnownProviderCost,
-		PricingComplete: len(summary.Unpriced) == 0, UnpricedComponents: len(summary.Unpriced),
+		UnattributedCatalogBaseCost: summary.UnattributedCatalogBaseCost,
+		PricingComplete:             len(summary.Unpriced) == 0, UnpricedComponents: len(summary.Unpriced),
 		Warnings: nonNilStrings(summary.Warnings), Presentation: usage.EmptyPresentationReport(),
 	}
 }

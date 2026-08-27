@@ -136,7 +136,7 @@ independent Re-review; development remains blocked.
 | --- | --- | --- |
 | 1. `client-time-semantics` | [x] | [x] |
 | 2. `determinability-quality` | [x] | [x] |
-| 3. `attribution-observability` | [ ] | [ ] |
+| 3. `attribution-observability` | [x] | [x] |
 
 Development Task 1 (2026-08-26): `client-time-semantics` is complete and awaits
 independent Review. Both pricing paths now use one session-attribution resolver:
@@ -183,6 +183,64 @@ covers a move away from an already-keyed timeline prior. The Codex restriction
 states its process-start reason and the exact-run dead condition is gone. The
 CEv1 gate is VERIFIED across all seven criteria, re-recorded against this
 round's post-synchronization state and superseding the repair-round records.
+
+Development Task 3 (2026-08-26): `attribution-observability` is complete and
+awaits independent Review. Both attribution resolvers now emit one of the six
+closed reasons, and a client-wide timeline existence check distinguishes
+`before_adoption` from `coverage_gap`. Summary JSON/text and the desktop payload
+publish those reason counts plus `unattributed_catalog_base_cost`; every
+non-spend-eligible or partially priced event is excluded from provider-cost
+totals while catalog-base accounting remains separate. The CLI manual, living
+design contract, v0.5.0 release-note input, command-contract golden, and all
+three canonical desktop fixtures are reconciled through their producers.
+Focused tests, affected packages, the full repository Go suite, and affected
+package vet pass. Review remains open and no commit or push is authorized.
+
+Task 3 Review Round 1 (2026-08-26): **REOPEN** on O1-F1, with O1-F2 and O1-F3
+open alongside it. The reason vocabulary, the timeline-gap distinction and the
+summary-level real-spend split are correct and covered on both resolvers. The
+blocking defect is where the exclusion is applied: `calculateAttributedEvent`
+zeroes each event's own `KnownProviderCost`, and that same `Result` is what
+`SessionInvocations` returns per invocation, so `session show` prints
+`COST 0.000000000 (partial)` for a fully priced unattributed invocation while
+displaying its known catalog base beside it. O1-F2 is that the desktop
+`pricing_complete` flag was widened to provider-cost completeness — correctly,
+or the Widget loses its `≈` hedge — without updating the menu-bar copy that
+explains it with an unpriced-component count, which now reads
+`Cost incomplete · 0 unpriced`. O1-F3 is `attribution_reasons` marshalling to
+`null` in `snapshot-partial.json` while its sibling collections are empty
+objects. The record under `reviews/attribution-observability.md` owns the
+findings and evidence. The CEv1 gate is VERIFIED at the reviewed state; a
+VERIFIED gate is not a review verdict, and the repair re-records evidence
+against the new state.
+
+Task 3 Repair Round 1 (2026-08-27): O1-F1 through O1-F5 are repaired and await
+independent Re-review. Per-event pricing again preserves genuine known partials;
+aggregate-only copies enforce provider-spend exclusion, while unattributed
+invocation DTOs expose provider cost as unavailable rather than zero. Desktop
+keeps provider completeness and distinguishes attribution gaps from unpriced
+components in localized copy; the unavailable snapshot now emits an empty
+reason object. Empty summaries omit the reason section, and both living CLI
+contracts state the `usage stats --metric cost` completeness rule. Focused
+tests, affected packages, and the full repository Go suite pass; Review remains
+open and no commit or push is authorized.
+
+Task 3 Re-review Round 2 (2026-08-27): **PASS**. O1-F1 through O1-F5 are all
+closed. The provider-spend exclusion now lives in `aggregateAttributedResult` at
+the four aggregate sites, so each event's own `Result` stays honest and an
+unattributable invocation reports no provider cost instead of `0.000000000`,
+while a spend-eligible partially priced one keeps its real known subtotal. The
+desktop flag keeps its provider-cost meaning — the Widget's `≈` hedge depends on
+it — and the menu bar now selects a separate localized attribution copy when no
+component is unpriced. `attribution_reasons` is an object in the empty snapshot,
+the text reason section appears only when a count is non-zero, and both living
+contracts state the `usage stats --metric cost` and per-invocation boundaries.
+The CEv1 gate is VERIFIED across all nine criteria, re-recorded against this
+round's post-synchronization state and superseding the repair-round records.
+
+With this task all three implementation tasks are reviewed and the topic's
+implementation is complete; the topic itself closes at its own boundary, not
+here.
 
 Tasks are strictly sequential. Commit boundaries follow task boundaries. This
 topic does not authorize commits, pushes, release preparation, preflight

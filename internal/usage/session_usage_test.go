@@ -51,6 +51,9 @@ UPDATE usage_events SET cache_read_tokens=7,cache_creation_tokens=11,cache_write
 	if len(first) != 1 || first[0].Sequence != 1 || first[0].EventAt != "2026-07-13T00:00:00Z" || first[0].Tokens["input_tokens"] != 1000000 || pagination != (InvocationPagination{Page: 1, Limit: 1, Total: 2, Shown: 1, HasMore: true, NextPage: 2}) {
 		t.Fatalf("first=%#v pagination=%#v", first, pagination)
 	}
+	if first[0].CatalogBaseCost == nil || first[0].ProviderCost != nil || first[0].KnownProviderCost != "" {
+		t.Fatalf("unattributed invocation cost = %#v", first[0])
+	}
 	second, pagination, err := service.SessionInvocations(ctx, "codex", "session", 2, 1, false)
 	if err != nil {
 		t.Fatal(err)

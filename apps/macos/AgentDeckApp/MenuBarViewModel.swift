@@ -437,7 +437,9 @@ final class MenuBarViewModel {
 			counts: t(DesktopCopy.heroCounts, period.totals.events, period.totals.sessions, Int64(projects)),
 			costIncomplete: period.totals.pricingComplete
 				? nil
-				: t(DesktopCopy.costIncomplete, Int64(period.totals.unpricedComponents))
+				: period.totals.unpricedComponents > 0
+					? t(DesktopCopy.costIncomplete, Int64(period.totals.unpricedComponents))
+					: t(DesktopCopy.costIncompleteAttribution)
 		)
 	}
 

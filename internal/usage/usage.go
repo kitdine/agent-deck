@@ -60,15 +60,17 @@ type Result struct {
 	Warnings             []string         `json:"warnings,omitempty"`
 }
 type Summary struct {
-	Tokens               map[string]int64 `json:"tokens"`
-	Counts               map[string]int64 `json:"counts"`
-	CatalogBaseCost      *string          `json:"catalog_base_cost"`
-	ProviderCost         *string          `json:"provider_cost"`
-	KnownCatalogBaseCost *string          `json:"known_catalog_base_cost"`
-	KnownProviderCost    *string          `json:"known_provider_cost"`
-	Models               []ModelCoverage  `json:"model_coverage"`
-	Unpriced             []string         `json:"unpriced_components"`
-	Warnings             []string         `json:"warnings"`
+	Tokens                      map[string]int64 `json:"tokens"`
+	Counts                      map[string]int64 `json:"counts"`
+	AttributionReasons          map[string]int64 `json:"attribution_reasons"`
+	CatalogBaseCost             *string          `json:"catalog_base_cost"`
+	ProviderCost                *string          `json:"provider_cost"`
+	KnownCatalogBaseCost        *string          `json:"known_catalog_base_cost"`
+	KnownProviderCost           *string          `json:"known_provider_cost"`
+	UnattributedCatalogBaseCost *string          `json:"unattributed_catalog_base_cost"`
+	Models                      []ModelCoverage  `json:"model_coverage"`
+	Unpriced                    []string         `json:"unpriced_components"`
+	Warnings                    []string         `json:"warnings"`
 }
 
 type ModelCoverage struct {
@@ -1798,10 +1800,11 @@ func (s *Service) PriceDiagnostics(ctx context.Context) (invalidProvenance, unpr
 		if priceErr != nil {
 			return 0, 0, priceErr
 		}
-		result, calculateErr := Calculate(event.Client, event.Model, event.Tokens, attribution.price, attribution.multiplier)
+		result, calculateErr := calculateAttributedEvent(event, attribution)
 		if calculateErr != nil {
 			return 0, 0, calculateErr
 		}
+		result = aggregateAttributedResult(result, attribution)
 		if result.CatalogBaseCost == nil {
 			unpriced[event.Model] = true
 		}
@@ -2141,11 +2144,11 @@ type statsAccumulator struct {
 	events, priced, unpriced                      int64
 	// wrapperEvents is only counted on the provider dimension, where the
 	// route is reported metadata; every other dimension leaves it zero.
-	wrapperEvents  int64
-	base, provider *big.Rat
-	complete       bool
-	sessions       map[string]struct{}
-	missing        map[string]struct{}
+	wrapperEvents                     int64
+	base, provider                    *big.Rat
+	catalogComplete, providerComplete bool
+	sessions                          map[string]struct{}
+	missing                           map[string]struct{}
 }
 
 type statsSessionAccumulator struct {
@@ -2203,7 +2206,7 @@ func (a *statsModelActivityAccumulator) summary() StatsModelActivity {
 }
 
 func newStatsAccumulator() *statsAccumulator {
-	return &statsAccumulator{base: new(big.Rat), provider: new(big.Rat), complete: true, sessions: map[string]struct{}{}, missing: map[string]struct{}{}}
+	return &statsAccumulator{base: new(big.Rat), provider: new(big.Rat), catalogComplete: true, providerComplete: true, sessions: map[string]struct{}{}, missing: map[string]struct{}{}}
 }
 
 func (a *statsAccumulator) add(event storedEvent, result Result) error {
@@ -2236,8 +2239,11 @@ func (a *statsAccumulator) add(event storedEvent, result Result) error {
 	}
 	a.base.Add(a.base, base)
 	a.provider.Add(a.provider, providerCost)
+	if result.ProviderCost == nil {
+		a.providerComplete = false
+	}
 	if result.CatalogBaseCost == nil {
-		a.complete = false
+		a.catalogComplete = false
 		a.unpriced++
 		return nil
 	}
@@ -2266,7 +2272,7 @@ func statsCoverage(priced, unpriced int64) string {
 
 func statsCost(value *statsAccumulator) (*string, string) {
 	known := money(value.provider)
-	if !value.complete {
+	if !value.providerComplete {
 		return nil, known
 	}
 	complete := known
@@ -2286,7 +2292,7 @@ func statsMetricValue(metric string, value *statsAccumulator) string {
 
 func statsMetricValues(metric string, value *statsAccumulator) (*string, string) {
 	known := statsMetricValue(metric, value)
-	if metric == "cost" && !value.complete {
+	if metric == "cost" && !value.providerComplete {
 		return nil, known
 	}
 	complete := known
@@ -2351,7 +2357,7 @@ func statsDimension(name, client, metric string, value *statsAccumulator, total 
 	}
 	metricComplete, metricKnown := statsMetricValues(metric, value)
 	var share *string
-	if metric != "cost" || value.complete && totalComplete {
+	if metric != "cost" || value.providerComplete && totalComplete {
 		value := knownShare
 		share = &value
 	}
@@ -2615,25 +2621,38 @@ func sessionStartAt(event storedEvent) (time.Time, error) {
 	return time.Parse(time.RFC3339Nano, value)
 }
 
-type sessionAttributionResolution string
-
 const (
-	sessionAttributionUnresolved sessionAttributionResolution = "unresolved"
-	sessionAttributionRoute      sessionAttributionResolution = "session_route"
-	sessionAttributionTimeline   sessionAttributionResolution = "timeline_snapshot"
+	attributionReasonExactRun         = "exact_run"
+	attributionReasonEffectiveRoute   = "effective_route"
+	attributionReasonAmbiguousRoute   = "ambiguous_route"
+	attributionReasonTimelineSnapshot = "timeline_snapshot"
+	attributionReasonBeforeAdoption   = "before_adoption"
+	attributionReasonCoverageGap      = "coverage_gap"
 )
+
+func attributionReasons() [6]string {
+	return [6]string{
+		attributionReasonExactRun,
+		attributionReasonEffectiveRoute,
+		attributionReasonAmbiguousRoute,
+		attributionReasonTimelineSnapshot,
+		attributionReasonBeforeAdoption,
+		attributionReasonCoverageGap,
+	}
+}
 
 type resolvedSessionAttribution struct {
 	provider      string
 	multiplier    string
 	quality       string
+	reason        string
 	viaWrapper    bool
 	spendEligible bool
-	resolution    sessionAttributionResolution
 }
 
 type sessionRouteLookup func(client, sessionID string, at time.Time) (sessionRouteMatch, bool, error)
 type providerSnapshotLookup func(client string, at time.Time) (store.ProviderSnapshot, error)
+type providerTimelineExistenceLookup func(client string) (bool, error)
 
 // storedSessionRouteAt is the database-backed counterpart to
 // readPriceResolver.sessionRouteAt. RFC3339Nano strings are not lexically
@@ -2696,10 +2715,9 @@ func routeQuality(client string, route readSessionRoute, priorProvider string, p
 // logical session start. Route quality is derived from whether the positioned
 // boundary took effect; the persisted quality column is legacy capture data.
 // Observable reason reporting remains task 3's boundary.
-func resolveSessionAttribution(event storedEvent, routeAt sessionRouteLookup, snapshotAt providerSnapshotLookup) (resolvedSessionAttribution, error) {
+func resolveSessionAttribution(event storedEvent, routeAt sessionRouteLookup, snapshotAt providerSnapshotLookup, timelineExists providerTimelineExistenceLookup) (resolvedSessionAttribution, error) {
 	result := resolvedSessionAttribution{
 		provider: "unknown", multiplier: "1", quality: "unattributed",
-		resolution: sessionAttributionUnresolved,
 	}
 	eventAt, err := time.Parse(time.RFC3339Nano, event.EventAt)
 	if err != nil {
@@ -2725,11 +2743,15 @@ func resolveSessionAttribution(event storedEvent, routeAt sessionRouteLookup, sn
 			}
 		}
 		provider := runtimeProviderName(route.provider)
+		quality := routeQuality(event.Client, route, priorProvider, priorFound)
+		reason := attributionReasonAmbiguousRoute
+		if quality == "exact" {
+			reason = attributionReasonEffectiveRoute
+		}
 		return resolvedSessionAttribution{
 			provider: provider, multiplier: route.multiplier,
-			quality:    routeQuality(event.Client, route, priorProvider, priorFound),
+			quality: quality, reason: reason,
 			viaWrapper: route.viaWrapper, spendEligible: provider != "unknown",
-			resolution: sessionAttributionRoute,
 		}, nil
 	}
 
@@ -2739,6 +2761,14 @@ func resolveSessionAttribution(event storedEvent, routeAt sessionRouteLookup, sn
 	}
 	snapshot, err := snapshotAt(event.Client, startAt)
 	if errors.Is(err, sql.ErrNoRows) {
+		exists, existsErr := timelineExists(event.Client)
+		if existsErr != nil {
+			return resolvedSessionAttribution{}, existsErr
+		}
+		result.reason = attributionReasonBeforeAdoption
+		if exists {
+			result.reason = attributionReasonCoverageGap
+		}
 		return result, nil
 	}
 	if err != nil {
@@ -2747,9 +2777,9 @@ func resolveSessionAttribution(event storedEvent, routeAt sessionRouteLookup, sn
 	result.provider = runtimeProviderName(snapshot.Name)
 	result.multiplier = snapshot.Multiplier
 	result.quality = "estimated"
+	result.reason = attributionReasonTimelineSnapshot
 	result.viaWrapper = result.provider != "unknown" && snapshot.ViaWrapper
 	result.spendEligible = result.provider != "unknown"
-	result.resolution = sessionAttributionTimeline
 	return result, nil
 }
 
@@ -2762,6 +2792,7 @@ type eventAttribution struct {
 	price         modelPrice
 	multiplier    string
 	quality       string
+	reason        string
 	provider      string
 	viaWrapper    bool
 	spendEligible bool
@@ -2784,7 +2815,7 @@ func (r readPriceResolver) priceForEvent(event storedEvent) (eventAttribution, e
 		if routeErr != nil {
 			return eventAttribution{}, routeErr
 		}
-		attribution.quality, attribution.multiplier, attribution.provider = "exact", multiplier, provider
+		attribution.quality, attribution.reason, attribution.multiplier, attribution.provider = "exact", attributionReasonExactRun, multiplier, provider
 		attribution.viaWrapper = runtimeRouteWasWrapped(r.timeline, event.Client, attribution.provider, event.runStart)
 		attribution.spendEligible = true
 	} else {
@@ -2795,6 +2826,7 @@ func (r readPriceResolver) priceForEvent(event storedEvent) (eventAttribution, e
 				return match, found, nil
 			},
 			r.timeline.SnapshotAt,
+			func(client string) (bool, error) { return r.timeline.HasClient(client), nil },
 		)
 		if resolveErr != nil {
 			return eventAttribution{}, resolveErr
@@ -2802,6 +2834,7 @@ func (r readPriceResolver) priceForEvent(event storedEvent) (eventAttribution, e
 		attribution.provider = resolved.provider
 		attribution.multiplier = resolved.multiplier
 		attribution.quality = resolved.quality
+		attribution.reason = resolved.reason
 		attribution.viaWrapper = resolved.viaWrapper
 		attribution.spendEligible = resolved.spendEligible
 	}
@@ -2872,10 +2905,11 @@ func (s *Service) Stats(ctx context.Context, options StatsOptions) (StatsReport,
 		if options.Provider != "" && runtimeProvider != options.Provider {
 			continue
 		}
-		result, calculateErr := Calculate(event.Client, event.Model, event.Tokens, attribution.price, attribution.multiplier)
+		result, calculateErr := calculateAttributedEvent(event, attribution)
 		if calculateErr != nil {
 			return StatsReport{}, calculateErr
 		}
+		result = aggregateAttributedResult(result, attribution)
 		for _, warning := range result.Warnings {
 			warnings[warning] = true
 		}
@@ -3011,7 +3045,7 @@ func (s *Service) Stats(ctx context.Context, options StatsOptions) (StatsReport,
 	completeProvider, _ := statsCost(total)
 	knownBase := money(total.base)
 	var completeBase *string
-	if total.complete {
+	if total.catalogComplete {
 		value := knownBase
 		completeBase = &value
 	}
@@ -3020,7 +3054,7 @@ func (s *Service) Stats(ctx context.Context, options StatsOptions) (StatsReport,
 	if len(total.sessions) > 0 {
 		report.Totals.AverageTokens = new(big.Rat).Quo(big.NewRat(total.tokens, 1), big.NewRat(int64(len(total.sessions)), 1)).FloatString(2)
 		report.Totals.KnownAverageCost = money(new(big.Rat).Quo(total.provider, big.NewRat(int64(len(total.sessions)), 1)))
-		if total.complete {
+		if total.providerComplete {
 			value := report.Totals.KnownAverageCost
 			report.Totals.AverageCost = &value
 		} else {
@@ -3055,7 +3089,7 @@ func (s *Service) Stats(ctx context.Context, options StatsOptions) (StatsReport,
 	totalMetric := statsMetricRat(options.Metric, total)
 	for key, value := range models {
 		parts := strings.SplitN(key, "\x00", 2)
-		dimension := statsDimension(parts[1], parts[0], options.Metric, value, totalMetric, total.complete)
+		dimension := statsDimension(parts[1], parts[0], options.Metric, value, totalMetric, total.providerComplete)
 		if modelActivity[key] != nil {
 			summary := modelActivity[key].summary()
 			dimension.Activity = &summary
@@ -3071,11 +3105,11 @@ func (s *Service) Stats(ctx context.Context, options StatsOptions) (StatsReport,
 		}
 	}
 	for name, value := range clients {
-		report.Clients = append(report.Clients, statsDimension(name, "", options.Metric, value, totalMetric, total.complete))
+		report.Clients = append(report.Clients, statsDimension(name, "", options.Metric, value, totalMetric, total.providerComplete))
 	}
 	for key, value := range providers {
 		parts := strings.SplitN(key, "\x00", 2)
-		report.Providers = append(report.Providers, statsDimension(parts[1], parts[0], options.Metric, value, totalMetric, total.complete))
+		report.Providers = append(report.Providers, statsDimension(parts[1], parts[0], options.Metric, value, totalMetric, total.providerComplete))
 	}
 	for key, value := range sessions {
 		if value.cachedRead == 0 && value.cacheWrite == 0 {
@@ -3262,29 +3296,28 @@ func (s *Service) eventsRange(ctx context.Context, from, to time.Time, client, m
 	return out, rows.Err()
 }
 
-type eventPricing func(storedEvent) (modelPrice, string, string, error)
+type eventPricing func(storedEvent) (eventAttribution, error)
 
 func (s *Service) summarize(ctx context.Context, events []storedEvent) (Summary, error) {
-	return summarizeEvents(events, func(event storedEvent) (modelPrice, string, string, error) {
-		return s.priceForEvent(ctx, event)
+	return summarizeEvents(events, func(event storedEvent) (eventAttribution, error) {
+		return s.eventAttributionForEvent(ctx, event)
 	})
 }
 
 func summarizeWithReadPriceResolver(events []storedEvent, resolver readPriceResolver) (Summary, error) {
-	return summarizeEvents(events, func(event storedEvent) (modelPrice, string, string, error) {
-		attribution, err := resolver.priceForEvent(event)
-		if err != nil {
-			return modelPrice{}, "", "", err
-		}
-		return attribution.price, attribution.multiplier, attribution.quality, nil
-	})
+	return summarizeEvents(events, resolver.priceForEvent)
 }
 
 func summarizeEvents(events []storedEvent, priceForEvent eventPricing) (Summary, error) {
-	out := Summary{Tokens: map[string]int64{}, Counts: map[string]int64{"events": int64(len(events)), "exact": 0, "estimated": 0, "unattributed": 0, "priced": 0, "unpriced": 0}, Models: []ModelCoverage{}, Unpriced: []string{}, Warnings: []string{}}
+	reasons := make(map[string]int64, len(attributionReasons()))
+	for _, reason := range attributionReasons() {
+		reasons[reason] = 0
+	}
+	out := Summary{Tokens: map[string]int64{}, Counts: map[string]int64{"events": int64(len(events)), "exact": 0, "estimated": 0, "unattributed": 0, "priced": 0, "unpriced": 0}, AttributionReasons: reasons, Models: []ModelCoverage{}, Unpriced: []string{}, Warnings: []string{}}
 	base := new(big.Rat)
 	provider := new(big.Rat)
-	complete := true
+	unattributedBase := new(big.Rat)
+	complete, providerComplete, unattributedComplete := true, true, true
 	warned := map[string]bool{}
 	unpriced := map[string]bool{}
 	coverage := map[string]*ModelCoverage{}
@@ -3299,19 +3332,21 @@ func summarizeEvents(events []storedEvent, priceForEvent eventPricing) (Summary,
 		for k, v := range e.Tokens {
 			out.Tokens[k] += v
 		}
-		price, mult, quality, err := priceForEvent(e)
+		attribution, err := priceForEvent(e)
 		if err != nil {
 			return out, err
 		}
-		out.Counts[quality]++
-		if quality != "exact" && !warned[quality] {
-			out.Warnings = append(out.Warnings, quality+" attribution")
-			warned[quality] = true
+		out.Counts[attribution.quality]++
+		out.AttributionReasons[attribution.reason]++
+		if attribution.quality != "exact" && !warned[attribution.quality] {
+			out.Warnings = append(out.Warnings, attribution.quality+" attribution")
+			warned[attribution.quality] = true
 		}
-		r, err := Calculate(e.Client, e.Model, e.Tokens, price, mult)
+		r, err := calculateAttributedEvent(e, attribution)
 		if err != nil {
 			return out, err
 		}
+		r = aggregateAttributedResult(r, attribution)
 		for _, warning := range r.Warnings {
 			if !warned[warning] {
 				out.Warnings = append(out.Warnings, warning)
@@ -3322,6 +3357,16 @@ func summarizeEvents(events []storedEvent, priceForEvent eventPricing) (Summary,
 		knownProvider, _ := decimal(r.KnownProviderCost)
 		base.Add(base, knownBase)
 		provider.Add(provider, knownProvider)
+		if r.ProviderCost == nil {
+			providerComplete = false
+		}
+		if attribution.reason == attributionReasonBeforeAdoption || attribution.reason == attributionReasonCoverageGap {
+			if r.CatalogBaseCost == nil {
+				unattributedComplete = false
+			} else {
+				unattributedBase.Add(unattributedBase, knownBase)
+			}
+		}
 		if r.CatalogBaseCost == nil {
 			complete = false
 			out.Counts["unpriced"]++
@@ -3339,7 +3384,13 @@ func summarizeEvents(events []storedEvent, priceForEvent eventPricing) (Summary,
 	out.KnownProviderCost = &knownProvider
 	if complete {
 		out.CatalogBaseCost = &knownBase
+	}
+	if providerComplete {
 		out.ProviderCost = &knownProvider
+	}
+	if unattributedComplete {
+		value := money(unattributedBase)
+		out.UnattributedCatalogBaseCost = &value
 	}
 	for u := range unpriced {
 		out.Unpriced = append(out.Unpriced, u)
@@ -3356,14 +3407,27 @@ func summarizeEvents(events []storedEvent, priceForEvent eventPricing) (Summary,
 	})
 	return out, nil
 }
-func (s *Service) priceForEvent(ctx context.Context, e storedEvent) (modelPrice, string, string, error) {
-	quality, mult := "unattributed", "1"
+
+func calculateAttributedEvent(event storedEvent, attribution eventAttribution) (Result, error) {
+	return Calculate(event.Client, event.Model, event.Tokens, attribution.price, attribution.multiplier)
+}
+
+func aggregateAttributedResult(result Result, attribution eventAttribution) Result {
+	if !attribution.spendEligible || result.CatalogBaseCost == nil {
+		result.ProviderCost = nil
+		result.KnownProviderCost = "0.000000000"
+	}
+	return result
+}
+
+func (s *Service) eventAttributionForEvent(ctx context.Context, e storedEvent) (eventAttribution, error) {
+	attribution := eventAttribution{multiplier: "1", quality: "unattributed", provider: "unknown"}
 	if e.runID.Valid && e.runExact.Valid && e.runExact.Int64 == 1 {
-		_, multiplier, routeErr := exactRunRoute(e)
+		provider, multiplier, routeErr := exactRunRoute(e)
 		if routeErr != nil {
-			return modelPrice{}, "", "", routeErr
+			return eventAttribution{}, routeErr
 		}
-		quality, mult = "exact", multiplier
+		attribution.quality, attribution.reason, attribution.provider, attribution.multiplier, attribution.spendEligible = "exact", attributionReasonExactRun, provider, multiplier, true
 	} else {
 		resolved, resolveErr := resolveSessionAttribution(
 			e,
@@ -3373,25 +3437,31 @@ func (s *Service) priceForEvent(ctx context.Context, e storedEvent) (modelPrice,
 			func(client string, at time.Time) (store.ProviderSnapshot, error) {
 				return s.Store.ProviderSnapshotAt(ctx, client, at)
 			},
+			func(client string) (bool, error) {
+				return s.Store.ProviderTimelineExists(ctx, client)
+			},
 		)
 		if resolveErr != nil {
-			return modelPrice{}, "", "", resolveErr
+			return eventAttribution{}, resolveErr
 		}
-		mult, quality = resolved.multiplier, resolved.quality
+		attribution.multiplier, attribution.quality, attribution.reason = resolved.multiplier, resolved.quality, resolved.reason
+		attribution.provider, attribution.viaWrapper, attribution.spendEligible = resolved.provider, resolved.viaWrapper, resolved.spendEligible
 	}
 	historical, historicalFound, err := s.mergedPriceAt(ctx, e.Client, e.Model, e.EventAt)
 	if err != nil {
-		return modelPrice{}, "", "", err
+		return eventAttribution{}, err
 	}
 	current, currentFound, err := s.mergedPriceAt(ctx, e.Client, e.Model, s.now().Format(time.RFC3339Nano))
 	if err != nil {
-		return modelPrice{}, "", "", err
+		return eventAttribution{}, err
 	}
 	if !historicalFound && !currentFound {
-		return modelPrice{Provider: "unknown", Prices: map[string]string{}}, mult, quality, nil
+		attribution.price = modelPrice{Provider: "unknown", Prices: map[string]string{}}
+		return attribution, nil
 	}
 	if !historicalFound {
-		return current, mult, quality, nil
+		attribution.price = current
+		return attribution, nil
 	}
 	// Current prices fill only components missing from the historical result.
 	// A component that was calculable at event time is never repriced.
@@ -3400,7 +3470,16 @@ func (s *Service) priceForEvent(ctx context.Context, e storedEvent) (modelPrice,
 			historical.Prices[component] = value
 		}
 	}
-	return historical, mult, quality, nil
+	attribution.price = historical
+	return attribution, nil
+}
+
+func (s *Service) priceForEvent(ctx context.Context, e storedEvent) (modelPrice, string, string, error) {
+	attribution, err := s.eventAttributionForEvent(ctx, e)
+	if err != nil {
+		return modelPrice{}, "", "", err
+	}
+	return attribution.price, attribution.multiplier, attribution.quality, nil
 }
 
 func (s *Service) mergedPriceAt(ctx context.Context, client, eventModel, at string) (modelPrice, bool, error) {
