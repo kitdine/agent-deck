@@ -154,6 +154,55 @@ authorization.
 项目定义的工作流技能在其适用范围内优先于通用可选流程，但不能覆盖用户当前指令，
 也不能覆盖系统或开发者级指令。
 
+## Runtime Contract / 运行时契约
+
+The routed table below answers "I am doing X, which rules apply". This section
+answers a question routing cannot: **what this repository expects to exist
+around the agent.** Those facts are needed before the work reveals that it needs
+them, so they are stated here rather than deferred. Detail, degradation rules,
+and configuration guidance live in
+[Toolchain](.agent-instructions/toolchain.md).
+
+**Stage command syntax is a self-check obligation, not a copied rule.** The
+commands this file grants authority to — `设计`, `开发`, `评审`, `修复`,
+`复评` — are defined by the `development-workflow` Skill, and its
+`references/protocol-commands.md` is their syntax authority. Copying that syntax
+here would create a specification copy that goes stale silently, which this
+repository has already paid for more than once. What is owed here instead:
+before emitting any `下一步指令` / `Next instruction`, treat it as text the user
+is about to paste verbatim and self-check it against that Skill's Matching
+rules. A short stage command followed by a space does not match and activates no
+route, no stage authority, no Beads transition, and no evidence boundary. Scope
+is written `<topic> / <anchor>`. A parsing rule that has been read is a
+specification for output as well as for input.
+
+**Runtime capabilities.** This repository declares what it depends on and how to
+behave without it; it does not store endpoints, which differ per machine.
+
+| Capability | Used for | Without it |
+| --- | --- | --- |
+| `neo4j` MCP | `completion-evidence/v1` gates and records | `BLOCKED`, reported exactly; never silently skipped and never worked around by calling the backend directly |
+| `neo4j-mem` MCP | Durable project memory | Continue from repository sources; does not trigger evidence fallback |
+| `codegraph` MCP | Symbol and callgraph lookup | Fall back to `rg`/`fd`; a missing index is a choice, not a defect |
+| `scripts/hooks/beads-consistency.py` | `Stop` hook in both runtimes; reports Beads state the tree has moved past | Reconciliation is the agent's action — the hook only ever reports and never writes to Beads |
+
+MCP connections are established once at session start, so a server restored
+mid-session stays unavailable until the client reconnects. A reachable endpoint
+and an available tool are two different facts.
+
+**Required wrappers.** `scripts/run-go-test.sh` instead of bare `go test`;
+`env BEADS_ACTOR=<actor> …/agentdeck-bd` instead of bare `bd`, which otherwise
+records the human operator as the author of an agent's writes. Verification
+commands are selected by the L0–L4 matrix in
+[Project Rules](.agent-instructions/project-rules.md), not chosen ad hoc.
+
+`CLAUDE.md` is a symlink to this file. Editing either edits both.
+
+运行时契约在此内联而非路由，因为用到时才查已经太晚。阶段命令语法属于 Skill，这里
+只记录自检义务：输出下一步指令前按 Skill 的 Matching 规则自检，短命令后用空格分隔
+不匹配，任何路由与授权都不会触发。仓库声明依赖哪些能力及缺失时如何降级，不记录
+随机器而异的地址。
+
 ## Routed Project Instructions / 按需项目规则
 
 Read `AGENTS.md` for every repository task, then load only the routed
@@ -169,6 +218,7 @@ each applicable file; do not read every conditional guide by default.
 | Completion evidence, WorkUnits, Topic gates, or Neo4j project memory | [Evidence](.agent-instructions/evidence.md) |
 | Review-record creation or updates | [Review Records](.agent-instructions/review-records.md) |
 | Branching, merging, version assembly, or integration review | [Branching](.agent-instructions/branching.md) |
+| MCP availability, hook behavior, command wrappers, or local-only runtime files | [Toolchain](.agent-instructions/toolchain.md) |
 
 The stable documentation index is [`docs/README.md`](docs/README.md), current
 execution state is [`docs/status.md`](docs/status.md), and the primary product
