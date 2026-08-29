@@ -70,6 +70,7 @@
     "usage.rebuild",
     "usage.scan",
     "usage.sessions",
+    "usage.signals",
     "usage.stats",
     "usage.summary",
     "version",
@@ -2370,6 +2371,76 @@
       },
       "error_code": "invalid_argument",
       "error_command": "usage.sessions"
+    },
+    "usage.signals": {
+      "success_schema": {
+        "command": "string",
+        "data": {
+          "activity": {
+            "available": "boolean",
+            "cost_basis": "string",
+            "kinds": [
+              {
+                "cost": "number",
+                "events": "number",
+                "kind": "string",
+                "share": "number",
+                "sub": [
+                  {
+                    "cost": "number",
+                    "events": "number",
+                    "kind": "string",
+                    "share": "number"
+                  }
+                ]
+              }
+            ]
+          },
+          "client": "string",
+          "period": "string",
+          "tooling": {
+            "available": "boolean",
+            "calls": "number",
+            "groups": "number",
+            "rows": [
+              {
+                "calls": "number",
+                "kind": "string",
+                "share": "number"
+              }
+            ],
+            "top_mcp_calls": "number",
+            "top_mcp_server": "string"
+          },
+          "workflow": {
+            "available": "boolean",
+            "edits_per_session": "number",
+            "files_touched": null,
+            "first_edit_seconds": null,
+            "retries": null,
+            "top_file": null,
+            "top_file_edits": null
+          }
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "usage.signals"
     },
     "usage.stats": {
       "success_schema": {

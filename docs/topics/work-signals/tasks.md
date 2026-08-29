@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-08-20
-updated: 2026-08-27
+updated: 2026-08-29
 ---
 
 # Work Signals — Tasks
@@ -365,7 +365,7 @@ reviewed against a specimen that does not yet show what they describe.
 | 0. `work-signal-prototype` | [x] | [x] |
 | 1. `work-signal-extraction` | [x] | [x] |
 | 2. `activity-classification` | [x] | [x] |
-| 3. `work-signal-cli` | [ ] | [ ] |
+| 3. `work-signal-cli` | [x] | [x] |
 | 4. `work-signal-projection` | [ ] | [ ] |
 | 5. `work-signal-surface` | [ ] | [ ] |
 | 6. `work-signals-contract` | [ ] | [ ] |
@@ -408,6 +408,58 @@ state. The canonical producer changed only the complete and empty-client schema
 counts from 19 to 20. L3 verification passed: the full Go suite, race on the
 three affected packages, full vet, darwin arm64/amd64 builds, topic/document
 hygiene, and the cross-surface privacy regression. Independent Review is next.
+
+Task 3 Development (2026-08-29): `usage signals` now reads the persisted
+derivation directly and reuses the usage family's period, client, format, and
+no-color semantics. Its repeatable `--kind`, `--sub`, and `--activity` flags
+select bounded families, expand subcategories, and filter every family to the
+same turns; filtered shares renormalize while cost and event counts remain
+absolute, and the command has no `--top`. Non-interactive `usage stats` inserts
+`WORK KIND`, `WORKFLOW`, and `TOOLING` after its weekday/hour heatmap and before
+`COVERAGE`; the interactive viewer is unchanged. `session show --activity`
+adds the one `SIGNALS` line when a classified session exists and omits its
+category when cost has no basis. Text preserves measured zero versus em-dash
+unavailability, JSON uses the existing envelope and wire-family field names,
+and only bounded base names reach the surface. The canonical GUI JSON contract
+was regenerated through `TestIsolatedEndToEndFlow`. Focused command, renderer,
+filtering, availability, privacy, and session regressions pass, as do the full
+affected packages and repository-wide L2 Go suite. Independent Review is next.
+
+Task 3 Review Round 1 (2026-08-29): **REOPEN** on R1-F1. Every rendering rule the
+CLI document states was verified against real output rather than source: section
+order inside `usage stats`, the four categories in Decision 3's order, `--sub`
+indentation, `--activity` renormalizing shares while leaving cost and events
+absolute, the three availability forms each exiting `0`, the `—` versus `0`
+distinction, and the `SIGNALS` line's omission rules. The JSON field names match
+Decision 9 field by field. What does not hold is the acceptance criterion binding
+them: `gui-json-contract.json` registers `usage.signals` with a null
+`success_schema` because the end-to-end walk never invokes it, and renaming two
+`json:` tags left the entire repository suite passing. The criterion is asserted
+by inspection where the project already ships a checker that could falsify it —
+the same class of finding as Task 1's R1-F1. `reviews/work-signal-cli.md` owns
+the finding and its bounded remediation. Both task cells remain unticked until
+Repair and independent Re-review close it.
+
+Task 3 Repair Round 1 (2026-08-29): **R1-F1 closed, awaiting independent
+Re-review.** The phase7 E2E walk now invokes a populated `usage.signals` payload
+and its producer-generated GUI JSON contract records every nested Activity,
+Workflow, and Tooling field name. The exact two-tag mutation from Review now
+fails the checker; restoring those tags returns the production source to its
+pre-diagnostic SHA-256. The focused contract tests and repository-wide L2 Go
+suite pass. Production behavior is unchanged; the review record owns the full
+disposition and falsifier evidence.
+
+Task 3 independent Re-review Round 2 (2026-08-29): **PASS**. R1-F1 is closed, and
+the closure was re-derived rather than accepted: Round 1's exact two-tag rename
+was re-applied and the checker now fails while naming the drifted fields, then the
+source was restored to its pre-diagnostic SHA-256. The regenerated fixture pins
+every Decision 9 field name, including `top_mcp_server` and `top_mcp_calls`, which
+are reachable only because the walk's log gained an MCP call. The repair is
+contained — the fixture diff is additive and touches only the `usage.signals`
+entry, and every production file's diff statistic is identical to Round 1 — so
+Round 1's verification of the other ten criteria is reused unchanged. No finding
+was carried forward, regressed, or newly raised. Both task cells tick; task 4
+`work-signal-projection` is the next implementation task.
 
 Task 1 Review Round 1 (2026-08-27): **REOPEN** on R1-F1. Schema v20, the parser
 version bump and backfill, both fixture regenerations, Decision 1's turn

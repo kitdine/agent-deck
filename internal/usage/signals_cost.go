@@ -83,19 +83,43 @@ type SessionCategory struct {
 // parser recorded which turn each event fell after, so nothing here re-derives
 // that from a timestamp window.
 func (s *Service) ActivityCostRange(ctx context.Context, from, to time.Time, client string) (ActivityCost, error) {
-	events, err := s.eventsRange(ctx, from, to, client, "")
+	return s.ActivityCostForScope(ctx, SignalScope{From: from, To: to, Client: client})
+}
+
+// ActivityCostForScope applies the CLI's optional activity filter before the
+// fold, so excluded turns do not become uncovered spend. The resulting shares
+// are therefore renormalized while cost and event counts remain the selected
+// turns' real values.
+func (s *Service) ActivityCostForScope(ctx context.Context, scope SignalScope) (ActivityCost, error) {
+	events, err := s.eventsRange(ctx, scope.From, scope.To, scope.Client, scope.Session)
 	if err != nil {
 		return ActivityCost{}, err
 	}
-	turns, err := classifiedTurns(ctx, s.Store.DB, client, "")
+	turns, err := classifiedTurns(ctx, s.Store.DB, scope.Client, scope.Session)
 	if err != nil {
 		return ActivityCost{}, err
+	}
+	if scope.Activity != "" {
+		selected := make(map[turnKey]turnCategory)
+		for key, category := range turns {
+			if category.kind == scope.Activity || category.sub == scope.Activity {
+				selected[key] = category
+			}
+		}
+		filtered := make([]storedEvent, 0, len(events))
+		for _, event := range events {
+			key := turnKey{client: event.Client, session: event.SessionID, index: event.TurnIndex}
+			if _, ok := selected[key]; ok {
+				filtered = append(filtered, event)
+			}
+		}
+		events, turns = filtered, selected
 	}
 	fold, err := s.foldActivityCost(ctx, events, turns)
 	if err != nil {
 		return ActivityCost{}, err
 	}
-	return fold.activityCost(client), nil
+	return fold.activityCost(scope.Client), nil
 }
 
 // SessionActivityCategory answers the one word on `session show --activity`.

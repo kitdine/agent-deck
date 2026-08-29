@@ -35,6 +35,12 @@ func (r statsTextRenderer) renderResponsive() string {
 	}
 	out.WriteByte('\n')
 	writeStatsLines(&out, r.activityLines())
+	if r.report.Signals != nil {
+		out.WriteByte('\n')
+		writeStatsLines(&out, usageSignalLines(*r.report.Signals, usageTextRenderOptions{width: r.width, color: r.color}, "🧭 WORK KIND"))
+		out.WriteByte('\n')
+		writeStatsLines(&out, r.responsiveCoverageLines(r.width))
+	}
 	if detail := r.responsiveDetailCommandLines(r.width); len(detail) > 0 {
 		out.WriteByte('\n')
 		writeStatsLines(&out, detail)
@@ -287,7 +293,9 @@ func joinStatsColumns(columns [][]string, widths []int, gap int) []string {
 func (r statsTextRenderer) responsivePanelMap(width int) map[string][]string {
 	panels := splitStatsRankingPanels(r.rankingLines(width))
 	panels["trend"] = r.responsiveTrendLines(width)
-	panels["coverage"] = r.responsiveCoverageLines(width)
+	if r.report.Signals == nil {
+		panels["coverage"] = r.responsiveCoverageLines(width)
+	}
 	if len(panels["cache"]) == 0 {
 		panels["cache"] = []string{r.sectionTitle("CACHE HIT RATE", width, "1;33"), r.style("No cache data in this range.", "2")}
 	}

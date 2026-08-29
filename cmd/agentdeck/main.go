@@ -2021,7 +2021,7 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 		Short:       "Search local sessions",
 		Annotations: map[string]string{humanInteractiveSurfaceOnlyAnnotation: "true"},
 	}
-	var showTokens, showInteractive, sessionInteractive bool
+	var showTokens, showActivity, showInteractive, sessionInteractive bool
 	withSessions := func(run func(context.Context, *store.Store, string, []string) (any, error)) func(*cobra.Command, []string) error {
 		return func(command *cobra.Command, args []string) error {
 			stateDir, err := opts.stateRoot()
@@ -2050,7 +2050,7 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if (command.Name() == "show" && (showTokens || showInteractive)) || (command == cmd && sessionInteractive) {
+			if (command.Name() == "show" && (showTokens || showActivity || showInteractive)) || (command == cmd && sessionInteractive) {
 				core, err := store.OpenWithLockHeld(command.Context(), stateDir)
 				if err != nil {
 					return err
@@ -2127,7 +2127,6 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 	var listClient, searchClient, showClient, excludeKind, excludeValue string
 	var listPage, listLimit, searchPage, searchLimit, showPage, showLimit int
 	var listAll, searchAll, showAll bool
-	var showActivity bool
 	var list, search *cobra.Command
 	list = &cobra.Command{Use: "list", Args: cobra.NoArgs, RunE: withSessions(func(ctx context.Context, s *store.Store, _ string, _ []string) (any, error) {
 		if err := validateOptionalClient(listClient); err != nil {
@@ -2263,6 +2262,23 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 				result.Activity = activityPage.Details
 				result.ActivitySummary = session.ActivitySummaryFromSourceSummary(activityPage.Summary)
 				activityPagination = session.Pagination{Page: activityPage.Page, Limit: activityPage.Limit, Total: activityPage.Total, Shown: activityPage.Shown, HasMore: activityPage.HasMore, NextPage: activityPage.NextPage}
+			}
+			service, ok := sessionUsageFromContext(ctx)
+			if !ok {
+				return nil, errors.New("session signal service unavailable")
+			}
+			signals, found, signalErr := service.SessionSignals(ctx, client, args[0])
+			if signalErr != nil {
+				return nil, signalErr
+			}
+			if found {
+				result.Signals = &session.WorkSignals{
+					CostBasis:        signals.CostBasis,
+					Kind:             signals.Kind,
+					ToolCalls:        signals.ToolCalls,
+					FilesTouched:     signals.FilesTouched,
+					FirstEditSeconds: signals.FirstEditSeconds,
+				}
 			}
 		}
 		var sessionUsage *usage.SessionSummary
@@ -3189,6 +3205,13 @@ func newUsageCommand(opts *commandOptions) *cobra.Command {
 			return nil, false, nil, &inputError{err: fmt.Errorf("usage stats group-by must be auto, hour, day, week, or month")}
 		}
 		data, err := s.Stats(ctx, usage.StatsOptions{From: from, To: to, GroupBy: group, Metric: statsMetric, Client: statsClient, Model: statsModel, Provider: statsProvider, Timezone: displayTimezoneName(location, now), Location: location, Activity: statsActivity})
+		if err == nil && !statsInteractive {
+			signals, signalErr := s.Signals(ctx, usage.SignalOptions{Period: statsPeriod, From: from, To: to, Client: statsClient})
+			if signalErr != nil {
+				return nil, false, nil, signalErr
+			}
+			data.Signals = &signals
+		}
 		warnings := map[bool][]string{true: {"scan_incomplete"}}[scanErr != nil]
 		warnings = append(warnings, data.Warnings...)
 		return data, scanErr != nil, warnings, err
@@ -3205,6 +3228,33 @@ func newUsageCommand(opts *commandOptions) *cobra.Command {
 	stats.Flags().BoolVar(&statsNoScan, "no-scan", false, "Use stored aggregate without scanning sources")
 	stats.Flags().BoolVar(&statsInteractive, "interactive", false, "Open a read-only terminal usage viewer")
 	stats.Flags().IntVar(&statsTop, "top", 0, "Text-list cap for MODELS/PROVIDERS/UNPRICED/per-model CACHE/cache sessions: unset keeps each section's default cap, 0 shows every row, N overrides the cap to N. TREND and CLIENTS are unaffected; --format json always has every row.")
+	var signalsPeriod, signalsClient, signalsActivity string
+	var signalsKinds []string
+	var signalsSub bool
+	signals := &cobra.Command{Use: "signals", Short: "Show activity, workflow, and tooling signals", Args: cobra.NoArgs, RunE: withUsage(func(ctx context.Context, s *usage.Service, _ *store.Store, _ []string) (any, bool, []string, error) {
+		if signalsClient != "" && signalsClient != "codex" && signalsClient != "claude" {
+			return nil, false, nil, &inputError{err: fmt.Errorf("usage signals client must be codex or claude")}
+		}
+		if signalsActivity != "" && !usage.ValidActivityFilter(signalsActivity) {
+			return nil, false, nil, &inputError{err: fmt.Errorf("usage signals activity must be a documented category or subcategory")}
+		}
+		_, scanErr := s.Scan(ctx)
+		now := time.Now()
+		from, to, err := resolveUsageRange(ctx, s, signalsPeriod, "", "", now, displayLocation())
+		if err != nil {
+			return nil, false, nil, err
+		}
+		data, err := s.Signals(ctx, usage.SignalOptions{
+			Period: signalsPeriod, From: from, To: to, Client: signalsClient,
+			Kinds: signalsKinds, Activity: signalsActivity, IncludeSub: signalsSub || signalsActivity != "",
+		})
+		return data, scanErr != nil, map[bool][]string{true: {"scan_incomplete"}}[scanErr != nil], err
+	})}
+	signals.Flags().StringVar(&signalsPeriod, "period", "7d", "Range: today, 7d, 30d, week, month, 6m, or all")
+	signals.Flags().StringVar(&signalsClient, "client", "", "Filter by codex or claude")
+	signals.Flags().StringSliceVar(&signalsKinds, "kind", nil, "Section: activity, workflow, or tooling; repeat to select more than one")
+	signals.Flags().BoolVar(&signalsSub, "sub", false, "Expand activity categories into subcategories")
+	signals.Flags().StringVar(&signalsActivity, "activity", "", "Filter turns by an activity category or subcategory")
 	cmd.AddCommand(
 		newUsageHookCommand(opts),
 		&cobra.Command{Use: "scan", Args: cobra.NoArgs, RunE: withUsage(func(ctx context.Context, s *usage.Service, _ *store.Store, _ []string) (any, bool, []string, error) {
@@ -3213,6 +3263,7 @@ func newUsageCommand(opts *commandOptions) *cobra.Command {
 		})},
 		summary,
 		stats,
+		signals,
 		&cobra.Command{Use: "sessions", Args: cobra.NoArgs, RunE: withUsage(func(ctx context.Context, s *usage.Service, _ *store.Store, _ []string) (any, bool, []string, error) {
 			data, err := s.Sessions(ctx)
 			return data, false, nil, err
@@ -3271,6 +3322,13 @@ func resolveUsageRange(ctx context.Context, service *usage.Service, period, from
 		earliest, err := service.EarliestEventAt(ctx)
 		if err != nil {
 			return time.Time{}, time.Time{}, err
+		}
+		earliestSignal, err := service.EarliestSignalAt(ctx)
+		if err != nil {
+			return time.Time{}, time.Time{}, err
+		}
+		if earliestSignal != nil && (earliest == nil || earliestSignal.Before(*earliest)) {
+			earliest = earliestSignal
 		}
 		if earliest == nil {
 			from = today
@@ -4363,6 +4421,8 @@ func renderUsageTextWithOptions(w io.Writer, command string, data any, renderOpt
 	switch v := data.(type) {
 	case usage.StatsReport:
 		return renderUsageStatsWithOptions(w, v, renderOptions)
+	case usage.SignalReport:
+		return renderUsageSignalsWithOptions(w, v, renderOptions)
 	case usage.Summary:
 		return renderUsageFamilySummary(w, v, renderOptions)
 	case []usage.SessionSummary:

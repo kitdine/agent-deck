@@ -22,9 +22,11 @@ const (
 // to every aggregate here, which is why the scope is anchored on that table
 // rather than on the tool calls or events a turn happens to carry.
 type SignalScope struct {
-	From   time.Time
-	To     time.Time
-	Client string
+	From     time.Time
+	To       time.Time
+	Client   string
+	Session  string
+	Activity string
 }
 
 // WorkflowMetrics carries Decision 6's five metrics for one scope.
@@ -254,6 +256,14 @@ func (s *Service) workflowSessionStarts(ctx context.Context, scope SignalScope) 
 		query += ` AND client=?`
 		args = append(args, scope.Client)
 	}
+	if scope.Session != "" {
+		query += ` AND session_id=?`
+		args = append(args, scope.Session)
+	}
+	if scope.Activity != "" {
+		query += ` AND (activity_kind=? OR activity_sub=?)`
+		args = append(args, scope.Activity, scope.Activity)
+	}
 	query += ` GROUP BY client,session_id`
 	rows, err := s.Store.DB.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -288,6 +298,14 @@ WHERE w.state=? AND w.started_at>=? AND w.started_at<?`
 	if scope.Client != "" {
 		query += ` AND w.client=?`
 		args = append(args, scope.Client)
+	}
+	if scope.Session != "" {
+		query += ` AND w.session_id=?`
+		args = append(args, scope.Session)
+	}
+	if scope.Activity != "" {
+		query += ` AND (w.activity_kind=? OR w.activity_sub=?)`
+		args = append(args, scope.Activity, scope.Activity)
 	}
 	query += ` ORDER BY c.started_at,c.source_offset,c.activity_key,f.path_digest`
 	rows, err := s.Store.DB.QueryContext(ctx, query, args...)

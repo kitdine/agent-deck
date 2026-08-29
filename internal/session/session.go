@@ -52,6 +52,15 @@ type Result struct {
 	Documents       []Document        `json:"documents"`
 	Activity        []activity.Detail `json:"activity,omitempty"`
 	ActivitySummary *ActivitySummary  `json:"activity_summary,omitempty"`
+	Signals         *WorkSignals      `json:"signals,omitempty"`
+}
+
+type WorkSignals struct {
+	CostBasis        string `json:"cost_basis"`
+	Kind             string `json:"kind,omitempty"`
+	ToolCalls        int64  `json:"tool_calls"`
+	FilesTouched     *int   `json:"files_touched"`
+	FirstEditSeconds *int   `json:"first_edit_seconds"`
 }
 type Pagination struct {
 	Page     int  `json:"page"`

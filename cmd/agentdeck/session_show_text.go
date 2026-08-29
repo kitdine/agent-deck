@@ -54,8 +54,9 @@ func renderSessionShowText(
 		lines = append(lines, sessionShowPaginationLines(page, nextCommand, width)...)
 	}
 
-	if value.ActivitySummary != nil || activityRequested || len(value.Activity) > 0 {
+	if value.ActivitySummary != nil || value.Signals != nil || activityRequested || len(value.Activity) > 0 {
 		lines = sessionShowSection(lines, "ACTIVITY", width)
+		lines = append(lines, sessionShowSignalLines(value.Signals, width)...)
 		if activityWarning != "" {
 			lines = append(lines, sessionShowFieldLines("WARNING", activityWarning, width)...)
 		}
@@ -84,6 +85,28 @@ func renderSessionShowText(
 		}
 	}
 	return sessionShowWriteLines(w, lines)
+}
+
+func sessionShowSignalLines(signals *session.WorkSignals, width int) []string {
+	if signals == nil {
+		return nil
+	}
+	parts := make([]string, 0, 4)
+	if signals.Kind != "" {
+		parts = append(parts, statsTitle(signals.Kind))
+	}
+	parts = append(parts, signalCount(signals.ToolCalls, "tool call"))
+	files := "— files"
+	if signals.FilesTouched != nil {
+		files = signalCount(int64(*signals.FilesTouched), "file")
+	}
+	parts = append(parts, files)
+	firstEdit := "first edit —"
+	if signals.FirstEditSeconds != nil {
+		firstEdit = "first edit " + (time.Duration(*signals.FirstEditSeconds) * time.Second).String()
+	}
+	parts = append(parts, firstEdit)
+	return sessionShowFieldLines("SIGNALS", strings.Join(parts, " · "), width)
 }
 
 func sessionShowTextWidth(w io.Writer) int {

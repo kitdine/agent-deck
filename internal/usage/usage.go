@@ -256,6 +256,7 @@ type StatsReport struct {
 	Peak              StatsPeak            `json:"peak"`
 	Coverage          StatsCoverage        `json:"coverage"`
 	UnpricedModels    []StatsUnpricedModel `json:"unpriced_models"`
+	Signals           *SignalReport        `json:"-"`
 	ShowModelActivity bool                 `json:"-"`
 }
 

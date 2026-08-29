@@ -48,6 +48,8 @@ func TestIsolatedEndToEndFlow(t *testing.T) {
 	script := "#!/bin/sh\nmkdir -p \"$(dirname \"$AGENTDECK_PHASE7_LOG\")\"\nprintf '%s\\n' " +
 		"'{\"timestamp\":\"2026-07-14T00:00:00Z\",\"type\":\"session_meta\",\"payload\":{\"session_id\":\"phase7-run\"}}' " +
 		"'{\"type\":\"turn_context\",\"payload\":{\"turn_id\":\"phase7-turn\",\"model\":\"gpt-5.4\"}}' " +
+		"'{\"timestamp\":\"2026-07-14T00:00:00Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"user_message\",\"message\":\"implement phase7\"}}' " +
+		"'{\"timestamp\":\"2026-07-14T00:00:00.500Z\",\"type\":\"response_item\",\"payload\":{\"item\":{\"type\":\"mcp_tool_call\",\"call_id\":\"phase7-mcp\",\"name\":\"explore\",\"server\":\"codegraph\"}}}' " +
 		"'{\"timestamp\":\"2026-07-14T00:00:01Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"token_count\",\"info\":{\"last_token_usage\":{\"input_tokens\":10,\"cached_input_tokens\":0,\"output_tokens\":2}}}}' " +
 		"'{\"type\":\"visible_user_prompt\",\"session_id\":\"phase7-run\",\"payload\":{\"text\":\"phase7 visible prompt\"}}' > \"$AGENTDECK_PHASE7_LOG\"\n"
 	for _, client := range []string{"codex", "claude"} {
@@ -136,6 +138,7 @@ func TestIsolatedEndToEndFlow(t *testing.T) {
 	runJSON("usage.scan", "", "usage", "scan")
 	runJSON("usage.summary", "", "usage", "summary")
 	runJSON("usage.stats", "", "usage", "stats", "--from", "2026-07-14", "--to", "2026-07-20")
+	runJSON("usage.signals", "", "usage", "signals", "--period", "all", "--sub")
 	providerStats := runJSON("usage.stats", "", "usage", "stats", "--from", "2026-07-14", "--to", "2026-07-20", "--provider", "phase7")
 	var providerStatsEnvelope struct {
 		Data struct {
