@@ -27,6 +27,12 @@ type Record struct {
 	TurnIndex                                                                       int
 	ToolKind, MCPServer                                                             string
 	Files                                                                           []File
+	// CommandHint is a parsed command reduced to `testing`, `chore`, or empty.
+	// CommandRead records only whether every parsed shell segment was read-shaped.
+	// Both are bounded reductions: Decision 3 needs the hint, Decision 6 needs the
+	// read exclusion, and Decision 2 forbids retaining the command itself.
+	CommandHint string
+	CommandRead bool
 }
 
 // Detail is the safe, user-visible form of a merged tool call.
@@ -148,8 +154,8 @@ func (p *Parser) parseCodex(value map[string]any, offset int64) []Record {
 			tool = "mcp"
 		}
 		callID := firstSafe(item["call_id"], item["id"])
-		toolKind, mcpServer, files := classifyCodexTool(item, kind, tool, p.machineIdentity)
-		return p.started(callID, tool, timestamp, offset, toolKind, mcpServer, files)
+		toolKind, mcpServer, files, hint, commandRead := classifyCodexTool(item, kind, tool, p.machineIdentity)
+		return p.started(callID, tool, timestamp, offset, toolKind, mcpServer, files, hint, commandRead)
 	case "function_call_output", "custom_tool_call_output", "mcp_tool_call_output", "web_search_call_output", "computer_call_output":
 		callID := firstSafe(item["call_id"], item["id"])
 		return p.completed(callID, timestamp, "completed", offset)
@@ -184,8 +190,8 @@ func (p *Parser) parseClaude(value map[string]any, offset int64) []Record {
 		switch safeString(item["type"]) {
 		case "tool_use":
 			tool := safeString(item["name"])
-			toolKind, mcpServer, files := classifyClaudeTool(item, tool, p.machineIdentity)
-			records = append(records, p.started(safeString(item["id"]), tool, timestamp, offset, toolKind, mcpServer, files)...)
+			toolKind, mcpServer, files, hint, commandRead := classifyClaudeTool(item, tool, p.machineIdentity)
+			records = append(records, p.started(safeString(item["id"]), tool, timestamp, offset, toolKind, mcpServer, files, hint, commandRead)...)
 		case "tool_result":
 			status := "completed"
 			if failed, _ := item["is_error"].(bool); failed {
@@ -197,12 +203,12 @@ func (p *Parser) parseClaude(value map[string]any, offset int64) []Record {
 	return records
 }
 
-func (p *Parser) started(callID, tool, at string, offset int64, toolKind, mcpServer string, files []File) []Record {
+func (p *Parser) started(callID, tool, at string, offset int64, toolKind, mcpServer string, files []File, hint string, commandRead bool) []Record {
 	if tool == "" || at == "" {
 		return nil
 	}
 	key := p.key(callID, tool, at)
-	return []Record{{Key: key, Client: p.client, SessionID: p.sessionID, Model: p.model, Tool: tool, StartedAt: at, Status: "started", SourcePath: p.sourcePath, SourceOffset: offset, TurnIndex: p.turnIndex, ToolKind: toolKind, MCPServer: mcpServer, Files: files}}
+	return []Record{{Key: key, Client: p.client, SessionID: p.sessionID, Model: p.model, Tool: tool, StartedAt: at, Status: "started", SourcePath: p.sourcePath, SourceOffset: offset, TurnIndex: p.turnIndex, ToolKind: toolKind, MCPServer: mcpServer, Files: files, CommandHint: hint, CommandRead: commandRead}}
 }
 
 func (p *Parser) completed(callID, at, status string, offset int64) []Record {

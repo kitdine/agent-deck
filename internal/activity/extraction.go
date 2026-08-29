@@ -16,55 +16,56 @@ type File struct {
 	Wrote      bool
 }
 
-func classifyCodexTool(item map[string]any, itemKind, tool, machineIdentity string) (string, string, []File) {
+func classifyCodexTool(item map[string]any, itemKind, tool, machineIdentity string) (string, string, []File, string, bool) {
 	if itemKind == "mcp_tool_call" {
-		return "mcp", firstSafe(item["server"], item["server_name"], item["mcp_server"]), nil
+		return "mcp", firstSafe(item["server"], item["server_name"], item["mcp_server"]), nil, "", false
 	}
 	arguments, raw := toolArguments(item)
 	input := firstRaw(item["input"])
 	switch tool {
 	case "apply_patch":
 		patch := firstRaw(arguments["patch"], arguments["input"], input, raw)
-		return "edit", "", collectFiles(extractPatchPaths(patch), machineIdentity)
+		return "edit", "", collectFiles(extractPatchPaths(patch), machineIdentity), "", false
 	case "exec_command":
 		cmd := firstRaw(arguments["cmd"])
 		workdir := firstRaw(arguments["workdir"])
-		kind, files := classifyShellCommands([]string{cmd}, workdir, machineIdentity)
-		return kind, "", files
+		kind, files, hint := classifyShellCommands([]string{cmd}, workdir, machineIdentity)
+		return kind, "", files, hint, kind == "read"
 	case "exec":
 		payload := firstRaw(arguments["code"], arguments["source"], arguments["script"], input, raw)
 		commands := execCommandLiterals(payload)
-		kind, files := classifyShellCommands(commands, firstRaw(arguments["workdir"]), machineIdentity)
-		return kind, "", files
+		kind, files, hint := classifyShellCommands(commands, firstRaw(arguments["workdir"]), machineIdentity)
+		return kind, "", files, hint, kind == "read"
 	case "js", "write_stdin":
-		return "bash", "", nil
+		return "bash", "", nil, "", false
 	case "wait", "wait_agent", "spawn_agent", "list_agents", "interrupt_agent", "send_message", "followup_task", "update_plan", "view_image":
-		return "other", "", nil
+		return "other", "", nil, "", false
 	default:
-		return "other", "", nil
+		return "other", "", nil, "", false
 	}
 }
 
-func classifyClaudeTool(item map[string]any, tool, machineIdentity string) (string, string, []File) {
+func classifyClaudeTool(item map[string]any, tool, machineIdentity string) (string, string, []File, string, bool) {
 	input, _ := item["input"].(map[string]any)
 	if input == nil {
 		input = map[string]any{}
 	}
 	if strings.HasPrefix(tool, "mcp__") {
 		parts := strings.SplitN(strings.TrimPrefix(tool, "mcp__"), "__", 2)
-		return "mcp", parts[0], nil
+		return "mcp", parts[0], nil, "", false
 	}
 	switch tool {
 	case "Edit", "Write", "NotebookEdit":
 		path := firstRaw(input["file_path"], input["path"], input["notebook_path"])
-		return "edit", "", collectFiles([]pathAccess{{path: path, wrote: true}}, machineIdentity)
+		return "edit", "", collectFiles([]pathAccess{{path: path, wrote: true}}, machineIdentity), "", false
 	case "Read", "Grep", "Glob":
 		path := firstRaw(input["file_path"], input["path"])
-		return "read", "", collectFiles([]pathAccess{{path: path}}, machineIdentity)
+		return "read", "", collectFiles([]pathAccess{{path: path}}, machineIdentity), "", false
 	case "Bash":
-		return "bash", "", nil
+		kind, files, hint := classifyShellCommands([]string{firstRaw(input["command"])}, "", machineIdentity)
+		return "bash", "", files, hint, kind == "read"
 	default:
-		return "other", "", nil
+		return "other", "", nil, "", false
 	}
 }
 
@@ -163,11 +164,12 @@ func extractPatchPaths(patch string) []pathAccess {
 	return result
 }
 
-func classifyShellCommands(commands []string, workdir, machineIdentity string) (string, []File) {
+func classifyShellCommands(commands []string, workdir, machineIdentity string) (string, []File, string) {
 	if len(commands) == 0 {
-		return "bash", nil
+		return "bash", nil, ""
 	}
 	allRead := true
+	hint := ""
 	var paths []pathAccess
 	for _, command := range commands {
 		segments := splitShellSegments(command)
@@ -184,6 +186,9 @@ func classifyShellCommands(commands []string, workdir, machineIdentity string) (
 			}
 			segmentPaths := shellPaths(segment, commandTokens, workdir)
 			paths = append(paths, segmentPaths...)
+			if hint == "" {
+				hint = commandHint(commandTokens)
+			}
 			if !readOnlyCommand(commandTokens) {
 				allRead = false
 			}
@@ -192,13 +197,13 @@ func classifyShellCommands(commands []string, workdir, machineIdentity string) (
 	files := collectFiles(paths, machineIdentity)
 	for _, file := range files {
 		if file.Wrote {
-			return "edit", files
+			return "edit", files, hint
 		}
 	}
 	if allRead {
-		return "read", files
+		return "read", files, hint
 	}
-	return "bash", files
+	return "bash", files, hint
 }
 
 func splitShellSegments(command string) []string {
@@ -343,6 +348,40 @@ func assignment(token string) bool {
 		}
 	}
 	return true
+}
+
+// commandHint reduces a parsed command to the only two subcategory facts
+// Decision 3 takes from a command string: whether it names a test runner, and
+// whether it is chore-shaped. The command itself is dropped in the same function
+// that read it, per Decision 2; what leaves is one of three constants.
+func commandHint(tokens []string) string {
+	if len(tokens) == 0 {
+		return ""
+	}
+	command := filepath.Base(tokens[0])
+	switch command {
+	case "pytest", "jest", "vitest", "mocha", "rspec", "phpunit", "gradlew", "ctest":
+		return HintTesting
+	case "git":
+		return HintChore
+	case "make", "cmake", "bazel", "mvn", "gradle":
+		return HintChore
+	case "npm", "pnpm", "yarn", "bun", "cargo", "go", "poetry", "pip", "pip3", "uv", "bundle", "composer":
+		for _, token := range tokens[1:] {
+			if strings.HasPrefix(token, "-") {
+				continue
+			}
+			switch token {
+			case "test", "t":
+				return HintTesting
+			case "install", "add", "update", "upgrade", "ci", "sync", "tidy", "vendor", "build", "mod":
+				return HintChore
+			}
+			break
+		}
+		return ""
+	}
+	return ""
 }
 
 func readOnlyCommand(tokens []string) bool {
@@ -572,6 +611,17 @@ func ClaudeUserTurnBoundary(value, message map[string]any) bool {
 		}
 	}
 	return true
+}
+
+// ClaudeTurnMessage returns the text of a Claude entry that opens a turn, and
+// whether it opens one at all. Callers outside this package get the text only
+// long enough to reduce it: Decision 2 permits reading a user message and
+// forbids keeping it.
+func ClaudeTurnMessage(value, message map[string]any) (string, bool) {
+	if !ClaudeUserTurnBoundary(value, message) {
+		return "", false
+	}
+	return claudeMessageText(message["content"]), true
 }
 
 func claudeMessageText(content any) string {

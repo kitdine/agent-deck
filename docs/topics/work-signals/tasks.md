@@ -364,7 +364,7 @@ reviewed against a specimen that does not yet show what they describe.
 | --- | --- | --- |
 | 0. `work-signal-prototype` | [x] | [x] |
 | 1. `work-signal-extraction` | [x] | [x] |
-| 2. `activity-classification` | [ ] | [ ] |
+| 2. `activity-classification` | [x] | [x] |
 | 3. `work-signal-cli` | [ ] | [ ] |
 | 4. `work-signal-projection` | [ ] | [ ] |
 | 5. `work-signal-surface` | [ ] | [ ] |
@@ -377,6 +377,32 @@ sources; Codex extracts `apply_patch.input`, JSON-string `exec_command.arguments
 and `exec.input` JavaScript `tools.exec_command({cmd: ...})` literals. Raw paths,
 directories, commands, user messages, and results are reduced before `Record`
 construction to a machine-salted digest, a capped base name, and write direction.
+
+Task 2 Development (2026-08-27): schema v21 replaces the reserved signal table
+with Decision 11's pending/classified and source-ownership shape and stores only
+the bounded read-shaped-shell reduction needed by Decision 6. Parser version 6
+re-reads version 5 sources so existing installations backfill classifications.
+The deterministic four-category/eleven-subcategory classifier, structural turn
+cost attribution, session reduction, and five workflow metrics are implemented;
+cross-scan state, both-client comparability, cross-table duplicate ownership in
+both scan orders, losing-source removal, reset/replay, cost bases, tie-breaks,
+and unavailable metric states have regression coverage. Targeted activity,
+usage, and store tests plus the full Go suite pass; Review remains pending.
+
+Task 2 Review Round 1 (2026-08-27): **REOPEN** on R1-F1. A focused incremental
+reproducer shows that a command-derived `testing` or `maintenance` hint is folded
+only into signals created during the same scan and is not reconstructed from
+persisted tool rows. A split user/assistant turn therefore falls back to
+`coding/feature`; `reviews/activity-classification.md` owns the exact finding,
+evidence, and bounded repair. Both task cells remain unticked until Repair and
+independent Re-review close the finding.
+
+Task 2 independent Re-review Round 2 (2026-08-27): **PASS**. R1-F1 is closed:
+schema v21 persists only the bounded `testing`/`chore`/empty command hint,
+`turnShape` reconstructs both command-shaped subcategories from stored tool
+rows, and direct split-scan regressions cover `coding/testing` and
+`coding/maintenance`. The focused repair checks and full L2 Go suite pass; all
+ten CEv1 criteria are VERIFIED for the synchronized candidate.
 Claude pending user boundaries survive append cursors through the existing source
 state. The canonical producer changed only the complete and empty-client schema
 counts from 19 to 20. L3 verification passed: the full Go suite, race on the

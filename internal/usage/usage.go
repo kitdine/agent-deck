@@ -35,10 +35,11 @@ var bundledCatalog []byte
 const (
 	bundledCatalogSourceURL       = "bundled://agentdeck/model-prices.json"
 	legacyBundledCatalogSourceURL = "bundled://config/model-prices.json"
-	// usageParserVersion 5 adds turn association, tool-kind/MCP metadata, and
-	// opaque per-file attribution. Older indexed sources must be re-read so the
-	// schema-v20 fields and usage_tool_files backfill from their source logs.
-	usageParserVersion = 5
+	// usageParserVersion 6 adds the activity-classification reduction and the
+	// read-shaped shell flag used by workflow rework metrics. Version 5 sources
+	// must be re-read after schema v21 replaces the reserved signal table, or an
+	// upgraded store would expose empty signals until every source changed.
+	usageParserVersion = 6
 )
 
 var tokenNames = []string{"input_tokens", "cached_input_tokens", "output_tokens", "cache_read_tokens", "cache_creation_tokens", "cache_write_5m_tokens", "cache_write_1h_tokens", "cache_write_tokens"}
@@ -940,9 +941,14 @@ func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceR
 		state.claudePending = true
 		activityParser.SetClaudePending(true)
 	}
+	// Only a classified row counts as a committed turn index. A pending row
+	// carries the index its turn *will* commit to, so treating it as the high
+	// water mark makes the next assistant entry advance past it and strands the
+	// pending row forever — which is the scan boundary Decision 11 exists to
+	// survive, failing in the one place it was written to protect.
 	var priorTurnIndex sql.NullInt64
 	if found {
-		turnErr := s.Store.DB.QueryRowContext(ctx, `SELECT MAX(turn_index) FROM (SELECT turn_index FROM usage_events WHERE source_path=? UNION ALL SELECT turn_index FROM usage_tool_calls WHERE source_path=? UNION ALL SELECT turn_index FROM usage_work_signals WHERE client=? AND session_id=?)`, path, path, client, state.session).Scan(&priorTurnIndex)
+		turnErr := s.Store.DB.QueryRowContext(ctx, `SELECT MAX(turn_index) FROM (SELECT turn_index FROM usage_events WHERE source_path=? UNION ALL SELECT turn_index FROM usage_tool_calls WHERE source_path=? UNION ALL SELECT turn_index FROM usage_work_signals WHERE client=? AND session_id=? AND state='classified')`, path, path, client, state.session).Scan(&priorTurnIndex)
 		if turnErr != nil {
 			return r, turnErr
 		}
@@ -1057,6 +1063,15 @@ func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceR
 		if _, err = tx.ExecContext(ctx, "DELETE FROM usage_tool_calls WHERE source_path=?", path); err != nil {
 			return r, err
 		}
+		// Decision 11: signals join the reset path the other two usage tables
+		// already have. Deleting by source_path is also what removes orphans —
+		// a row a rewritten or truncated log no longer produces. It is not
+		// keyed on the absence of a tool row, because a conversation turn calls
+		// no tool by definition and such a sweep would delete every chat-only
+		// turn in the store.
+		if _, err = tx.ExecContext(ctx, "DELETE FROM usage_work_signals WHERE source_path=?", path); err != nil {
+			return r, err
+		}
 		if sourceMutated {
 			if _, err = tx.ExecContext(ctx, "DELETE FROM usage_run_sources WHERE path=?", path); err != nil {
 				return r, err
@@ -1083,6 +1098,14 @@ func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceR
 		if err = upsertToolActivityTx(ctx, tx, item); err != nil {
 			return r, err
 		}
+	}
+	for _, signal := range state.signals {
+		if err = upsertWorkSignalTx(ctx, tx, signal, path); err != nil {
+			return r, err
+		}
+	}
+	if err = classifySourceTurns(ctx, tx, path); err != nil {
+		return r, err
 	}
 	if err = restoreEventRunBindings(ctx, tx, path, preservedBindings); err != nil {
 		return r, err
@@ -1162,6 +1185,45 @@ type parseState struct {
 	turnIndex            int
 	claudePending        bool
 	codexCumulative      map[string]map[string]int64
+	// signals accumulates the reduction of each turn-opening message seen in
+	// this scan. Only the reduction is kept, per Decision 2; the text does not
+	// leave the parse call that read it.
+	signals []turnSignal
+}
+
+// turnSignal is Decision 11's pending row before it reaches the database.
+type turnSignal struct {
+	client, session string
+	turnIndex       int
+	startedAt       string
+	messageClass    string
+	intentSub       string
+	brainstorming   bool
+}
+
+// note records a turn-opening message's reduction against the index that turn
+// will carry. Consecutive messages with no assistant between them target the
+// same index and replace one another, which is Decision 1 read from the storage
+// side: those entries have produced no turn yet, and the one that finally draws
+// an assistant reply is the one whose intent the turn carries.
+func (state *parseState) note(client, startedAt, text string, turnIndex int) {
+	messageClass, intentSub := activity.ScanMessage(text)
+	signal := turnSignal{
+		client:        client,
+		session:       state.session,
+		turnIndex:     turnIndex,
+		startedAt:     startedAt,
+		messageClass:  messageClass,
+		intentSub:     intentSub,
+		brainstorming: activity.BrainstormingApplies(text),
+	}
+	for i := range state.signals {
+		if state.signals[i].session == signal.session && state.signals[i].turnIndex == turnIndex {
+			state.signals[i] = signal
+			return
+		}
+	}
+	state.signals = append(state.signals, signal)
 }
 
 const claudePendingTurnMarker = "claude-pending-user-message"
@@ -1263,6 +1325,13 @@ func parse(client string, v map[string]any, state *parseState, path string, offs
 			state.model, _ = p["model"].(string)
 			return Event{}, false
 		}
+		if typ == "event_msg" && state.session != "" && state.turn != "" {
+			if inner, _ := p["type"].(string); inner == "user_message" {
+				text, _ := p["message"].(string)
+				state.note(client, stringValue(v, "timestamp"), text, state.turnIndex)
+				return Event{}, false
+			}
+		}
 		if typ != "event_msg" || state.session == "" || state.turn == "" || state.model == "" {
 			return Event{}, false
 		}
@@ -1286,9 +1355,10 @@ func parse(client string, v map[string]any, state *parseState, path string, offs
 	if sid != "" && sid != state.session {
 		state.session, state.turn, state.model, state.turnIndex, state.claudePending = sid, "", "", 0, false
 	}
-	if activity.ClaudeUserTurnBoundary(v, msg) {
+	if text, opens := activity.ClaudeTurnMessage(v, msg); opens {
 		state.claudePending = true
 		state.turn = claudePendingTurnMarker
+		state.note(client, stringValue(v, "timestamp"), text, state.turnIndex+1)
 		return Event{}, false
 	}
 	if v["type"] != "assistant" {
@@ -1353,7 +1423,7 @@ func upsertToolActivityTx(ctx context.Context, tx *sql.Tx, record activity.Recor
 		return nil
 	}
 	if record.StartedAt != "" {
-		_, err := tx.ExecContext(ctx, `INSERT INTO usage_tool_calls(activity_key,client,session_id,model,tool_name,started_at,completed_at,status,duration_ms,source_path,source_offset,turn_index,tool_kind,mcp_server) VALUES(?,?,?,?,?,?,NULL,'started',NULL,?,?,?,?,?) ON CONFLICT(activity_key) DO UPDATE SET client=excluded.client,session_id=excluded.session_id,model=excluded.model,tool_name=excluded.tool_name,started_at=excluded.started_at,completed_at=NULL,status='started',duration_ms=NULL,source_path=excluded.source_path,source_offset=excluded.source_offset,turn_index=excluded.turn_index,tool_kind=excluded.tool_kind,mcp_server=excluded.mcp_server`, record.Key, record.Client, record.SessionID, record.Model, record.Tool, record.StartedAt, record.SourcePath, record.SourceOffset, nullableInt(record.TurnIndex), record.ToolKind, nullableString(record.MCPServer))
+		_, err := tx.ExecContext(ctx, `INSERT INTO usage_tool_calls(activity_key,client,session_id,model,tool_name,started_at,completed_at,status,duration_ms,source_path,source_offset,turn_index,tool_kind,mcp_server,command_read,command_hint) VALUES(?,?,?,?,?,?,NULL,'started',NULL,?,?,?,?,?,?,?) ON CONFLICT(activity_key) DO UPDATE SET client=excluded.client,session_id=excluded.session_id,model=excluded.model,tool_name=excluded.tool_name,started_at=excluded.started_at,completed_at=NULL,status='started',duration_ms=NULL,source_path=excluded.source_path,source_offset=excluded.source_offset,turn_index=excluded.turn_index,tool_kind=excluded.tool_kind,mcp_server=excluded.mcp_server,command_read=excluded.command_read,command_hint=excluded.command_hint`, record.Key, record.Client, record.SessionID, record.Model, record.Tool, record.StartedAt, record.SourcePath, record.SourceOffset, nullableInt(record.TurnIndex), record.ToolKind, nullableString(record.MCPServer), record.CommandRead, record.CommandHint)
 		if err != nil {
 			return err
 		}

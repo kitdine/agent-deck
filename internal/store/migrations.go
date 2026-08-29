@@ -163,6 +163,36 @@ var migrations = []migration{
 		`CREATE INDEX usage_work_signals_started ON usage_work_signals(started_at)`,
 		`CREATE INDEX usage_work_signals_kind ON usage_work_signals(activity_kind, started_at)`,
 	}},
+	// v20 created usage_work_signals and nothing ever wrote to it: task 1 added the
+	// table, task 2 is what classifies into it. Decision 11 needs the incremental
+	// classifier state, source ownership and a reset path, so the table is replaced
+	// rather than altered column by column. The bounded command_read and
+	// command_hint reductions let Decision 6 exclude read-shaped shell calls and
+	// Decision 3 recover a command's subcategory across a scan boundary, both
+	// without retaining the command text itself.
+	// There is no signal data to migrate, and one CREATE a reader can check against
+	// the decision in a single pass beats four ALTERs reassembled mentally.
+	{version: 21, statements: []string{
+		`ALTER TABLE usage_tool_calls ADD COLUMN command_read INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE usage_tool_calls ADD COLUMN command_hint TEXT NOT NULL DEFAULT ''`,
+		`DROP TABLE IF EXISTS usage_work_signals`,
+		`CREATE TABLE usage_work_signals (
+		  client TEXT NOT NULL,
+		  session_id TEXT NOT NULL,
+		  turn_index INTEGER NOT NULL,
+		  started_at TEXT NOT NULL,
+		  state TEXT NOT NULL,
+		  message_class TEXT NOT NULL,
+		  intent_sub TEXT NOT NULL DEFAULT '',
+		  activity_kind TEXT NOT NULL DEFAULT '',
+		  activity_sub TEXT NOT NULL DEFAULT '',
+		  source_path TEXT NOT NULL,
+		  PRIMARY KEY (client, session_id, turn_index)
+		)`,
+		`CREATE INDEX usage_work_signals_started ON usage_work_signals(started_at)`,
+		`CREATE INDEX usage_work_signals_kind ON usage_work_signals(activity_kind, started_at)`,
+		`CREATE INDEX usage_work_signals_source ON usage_work_signals(source_path)`,
+	}},
 }
 
 func normalizeUsageEventTimes(ctx context.Context, tx *sql.Tx) error {

@@ -1001,7 +1001,7 @@ func TestV19MigrationAddsHookDeliveryObservationLedger(t *testing.T) {
 	})
 }
 
-func TestV20MigrationAddsWorkSignalExtractionStorage(t *testing.T) {
+func TestV20AndV21MigrationsAddWorkSignalStorage(t *testing.T) {
 	ctx := context.Background()
 	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "state.sqlite3"))
 	if err != nil {
@@ -1022,22 +1022,23 @@ func TestV20MigrationAddsWorkSignalExtractionStorage(t *testing.T) {
 	if err = migrate(ctx, db, migrations[19:]); err != nil {
 		t.Fatal(err)
 	}
-	if version, versionErr := schemaVersion(ctx, db); versionErr != nil || version != 20 || CurrentSchemaVersion != 20 {
+	if version, versionErr := schemaVersion(ctx, db); versionErr != nil || version != CurrentSchemaVersion || CurrentSchemaVersion < 20 {
 		t.Fatalf("schema version = %d, %v, current=%d", version, versionErr, CurrentSchemaVersion)
 	}
 	var eventTurn, callTurn sql.NullInt64
 	var toolKind string
 	var mcpServer sql.NullString
+	var commandRead int
 	if err = db.QueryRowContext(ctx, `SELECT turn_index FROM usage_events WHERE event_key='event'`).Scan(&eventTurn); err != nil {
 		t.Fatal(err)
 	}
-	if err = db.QueryRowContext(ctx, `SELECT turn_index,tool_kind,mcp_server FROM usage_tool_calls WHERE activity_key='call'`).Scan(&callTurn, &toolKind, &mcpServer); err != nil {
+	if err = db.QueryRowContext(ctx, `SELECT turn_index,tool_kind,mcp_server,command_read FROM usage_tool_calls WHERE activity_key='call'`).Scan(&callTurn, &toolKind, &mcpServer, &commandRead); err != nil {
 		t.Fatal(err)
 	}
-	if eventTurn.Valid || callTurn.Valid || toolKind != "other" || mcpServer.Valid {
-		t.Fatalf("migrated defaults event_turn=%v call_turn=%v kind=%q mcp=%v", eventTurn, callTurn, toolKind, mcpServer)
+	if eventTurn.Valid || callTurn.Valid || toolKind != "other" || mcpServer.Valid || commandRead != 0 {
+		t.Fatalf("migrated defaults event_turn=%v call_turn=%v kind=%q mcp=%v command_read=%d", eventTurn, callTurn, toolKind, mcpServer, commandRead)
 	}
-	if _, err = db.ExecContext(ctx, `INSERT INTO usage_tool_files(activity_key,path_digest,base_name,wrote) VALUES('call','digest','main.go',1); INSERT INTO usage_work_signals(client,session_id,turn_index,started_at,activity_kind,activity_sub) VALUES('codex','session',1,'2026-08-27T00:00:00Z','coding','feature')`); err != nil {
+	if _, err = db.ExecContext(ctx, `INSERT INTO usage_tool_files(activity_key,path_digest,base_name,wrote) VALUES('call','digest','main.go',1); INSERT INTO usage_work_signals(client,session_id,turn_index,started_at,state,message_class,intent_sub,activity_kind,activity_sub,source_path) VALUES('codex','session',1,'2026-08-27T00:00:00Z','classified','build','feature','coding','feature','/tmp/source.jsonl')`); err != nil {
 		t.Fatal(err)
 	}
 	var fileRows, signalRows, digestIndexes int
