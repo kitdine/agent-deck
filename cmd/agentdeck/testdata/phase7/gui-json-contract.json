@@ -579,7 +579,21 @@
                 }
               ]
             },
-            "total": "number"
+            "total": "number",
+            "work_signals": {
+              "activity": {
+                "available": "boolean",
+                "items": []
+              },
+              "tooling": {
+                "available": "boolean",
+                "items": []
+              },
+              "workflow": {
+                "available": "boolean",
+                "items": []
+              }
+            }
           },
           "usage": {
             "attribution_reasons": {

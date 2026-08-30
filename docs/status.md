@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-08-25
-updated: 2026-08-29
+updated: 2026-08-30
 ---
 
 # AgentDeck Project Status
@@ -64,7 +64,7 @@ agentdeck version
 | Topic | Version | Status | Purpose |
 | --- | --- | --- | --- |
 | [Native macOS Desktop App](topics/desktop-app/tasks.md) | `v0.5.0` | Delivered — 6/6 tasks reviewed and committed; the immutable commit-tree CEv1 Task and Plan gates are VERIFIED at `0aefed1`; version-wide contract closure and any release action remain separate | macOS 26 menu-bar app, settings window, WidgetKit extension, unified desktop distribution, Cask, and direct-download delivery. |
-| [Work Signals](topics/work-signals/tasks.md) | `v0.5.0` | Active — prototype task 0 and implementation tasks 1–2 PASS and committed; all five design documents PASS at independent Re-review Round 8; task 3 `work-signal-cli` PASS at independent Re-review Round 2 after R1-F1 gave the JSON field-name criterion a falsifier the checker now enforces; Task gate VERIFIED and awaiting commit; 3/6 implementation tasks reviewed | Activity classification, workflow metrics, and tool-call attribution, delivered on two first-class surfaces: the menu-bar `Sessions` panel's three pending modules and a new `agentdeck usage signals`. |
+| [Work Signals](topics/work-signals/tasks.md) | `v0.5.0` | Active — prototype task 0 and implementation tasks 1–3 PASS and committed; all five design documents PASS at independent Re-review Round 8; task 4 `work-signal-projection` PASS at independent Re-review Round 1 after R1-F1's silent field-name drift was falsified by renaming producer tags and watching the new assertions fail; Task gate VERIFIED and awaiting commit; 4/6 implementation tasks reviewed | Activity classification, workflow metrics, and tool-call attribution, delivered on two first-class surfaces: the menu-bar `Sessions` panel's three pending modules and a new `agentdeck usage signals`. |
 | [`v0.5.0` Contract Closure](topics/v0-5-0-contract/tasks.md) | `v0.5.0` | Active — 0/2 done | Version-wide specification raise and documentation reconciliation after every selected topic's tasks pass review. |
 | [Usage Attribution Precision](topics/usage-attribution-precision/tasks.md) | `v0.5.0` | Complete — 3/3 tasks reviewed and committed at `9035b80` / tree `d3ffe3ac`; immutable Task and Topic CEv1 gates VERIFIED; v0.5.0 contract closure remains separate and not started; release blockers held: no determinable event is downgraded to `inferred`, and no unattributed event enters provider spend | Effective-session attribution semantics, determinability-based quality, and an unattributed boundary that never enters a real-spend total. |
 | [CLI Error Classification](topics/cli-error-classification/tasks.md) | `v0.5.0` | Complete — 2/2 tasks reviewed and committed; immutable Task and Topic CEv1 gates VERIFIED at `574a7ad` / tree `6d26f205`; v0.5.0 contract closure remains separate and not started | Stable not-found codes, and no storage text in a documented JSON contract. Breaks the documented `runtime_error` value; announced in this version's notes. |

@@ -710,12 +710,14 @@ public struct DesktopSessionsSnapshotV1: Codable, Equatable, Sendable {
     public let available: Bool
     public let total: Int
     public let periods: DesktopSessionsPeriodsV1
+    public let workSignals: DesktopWorkSignalsV1
     public let items: [DesktopRecentSessionV1]
 
     enum CodingKeys: String, CodingKey {
         case available
         case total
         case periods
+        case workSignals = "work_signals"
         case items
     }
 
@@ -727,6 +729,7 @@ public struct DesktopSessionsSnapshotV1: Codable, Equatable, Sendable {
         // that predates it must decode as an unavailable family rather than as
         // an error — the same rule `presentation` already follows.
         periods = try container.decodeIfPresent(DesktopSessionsPeriodsV1.self, forKey: .periods) ?? .unavailable
+        workSignals = try container.decodeIfPresent(DesktopWorkSignalsV1.self, forKey: .workSignals) ?? .unavailable
         items = try container.decode([DesktopRecentSessionV1].self, forKey: .items)
     }
 }
@@ -789,6 +792,122 @@ public struct DesktopSessionsProjectV1: Codable, Equatable, Sendable, Identifiab
 		case sessions
 		case durationSeconds = "duration_seconds"
 	}
+}
+
+public struct DesktopWorkSignalsV1: Codable, Equatable, Sendable {
+    public static let unavailable = DesktopWorkSignalsV1(
+        activity: .unavailable,
+        workflow: .unavailable,
+        tooling: .unavailable
+    )
+
+    public let activity: DesktopWorkSignalActivityFamilyV1
+    public let workflow: DesktopWorkSignalWorkflowFamilyV1
+    public let tooling: DesktopWorkSignalToolingFamilyV1
+}
+
+public struct DesktopWorkSignalActivityFamilyV1: Codable, Equatable, Sendable {
+    public static let unavailable = DesktopWorkSignalActivityFamilyV1(available: false, items: [])
+
+    public let available: Bool
+    public let items: [DesktopWorkSignalActivityItemV1]
+}
+
+public struct DesktopWorkSignalActivityItemV1: Codable, Equatable, Sendable, Identifiable {
+    public var id: String { period + "/" + client }
+    public let period: String
+    public let client: String
+    public let costBasis: String
+    public let kinds: [DesktopWorkSignalActivityKindV1]
+
+    enum CodingKeys: String, CodingKey {
+        case period
+        case client
+        case costBasis = "cost_basis"
+        case kinds
+    }
+}
+
+public struct DesktopWorkSignalActivityKindV1: Codable, Equatable, Sendable, Identifiable {
+    public var id: String { kind }
+    public let kind: String
+    public let share: Double
+    public let cost: Double
+    public let events: Int64
+    public let sub: [DesktopWorkSignalActivitySubV1]
+}
+
+public struct DesktopWorkSignalActivitySubV1: Codable, Equatable, Sendable, Identifiable {
+    public var id: String { kind }
+    public let kind: String
+    public let share: Double
+    public let cost: Double
+    public let events: Int64
+}
+
+public struct DesktopWorkSignalWorkflowFamilyV1: Codable, Equatable, Sendable {
+    public static let unavailable = DesktopWorkSignalWorkflowFamilyV1(available: false, items: [])
+
+    public let available: Bool
+    public let items: [DesktopWorkSignalWorkflowItemV1]
+}
+
+public struct DesktopWorkSignalWorkflowItemV1: Codable, Equatable, Sendable, Identifiable {
+    public var id: String { period + "/" + client }
+    public let period: String
+    public let client: String
+    public let firstEditSeconds: Int?
+    public let filesTouched: Int?
+    public let retries: Int?
+    public let editsPerSession: Double?
+    public let topFile: String?
+    public let topFileEdits: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case period
+        case client
+        case firstEditSeconds = "first_edit_seconds"
+        case filesTouched = "files_touched"
+        case retries
+        case editsPerSession = "edits_per_session"
+        case topFile = "top_file"
+        case topFileEdits = "top_file_edits"
+    }
+}
+
+public struct DesktopWorkSignalToolingFamilyV1: Codable, Equatable, Sendable {
+    public static let unavailable = DesktopWorkSignalToolingFamilyV1(available: false, items: [])
+
+    public let available: Bool
+    public let items: [DesktopWorkSignalToolingItemV1]
+}
+
+public struct DesktopWorkSignalToolingItemV1: Codable, Equatable, Sendable, Identifiable {
+    public var id: String { period + "/" + client }
+    public let period: String
+    public let client: String
+    public let calls: Int64
+    public let groups: Int
+    public let rows: [DesktopWorkSignalToolRowV1]
+    public let topMCPServer: String?
+    public let topMCPCalls: Int64?
+
+    enum CodingKeys: String, CodingKey {
+        case period
+        case client
+        case calls
+        case groups
+        case rows
+        case topMCPServer = "top_mcp_server"
+        case topMCPCalls = "top_mcp_calls"
+    }
+}
+
+public struct DesktopWorkSignalToolRowV1: Codable, Equatable, Sendable, Identifiable {
+    public var id: String { kind }
+    public let kind: String
+    public let calls: Int64
+    public let share: Double
 }
 
 public struct DesktopRecentSessionV1: Codable, Equatable, Sendable {

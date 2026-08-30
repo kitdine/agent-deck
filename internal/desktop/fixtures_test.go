@@ -121,12 +121,12 @@ func buildCompleteFixture(t *testing.T) string {
 	root := fixtureStateRoot(t)
 	seedSelections(t, root)
 	seedUsage(t, root, []usageSeed{
-		{client: "codex", session: "codex-today", at: "2026-08-13T08:00:00Z", model: "gpt-5", input: 1200, output: 240},
-		{client: "codex", session: "codex-week", at: "2026-08-10T08:00:00Z", model: "gpt-5", input: 800, output: 160},
-		{client: "codex", session: "codex-month", at: "2026-07-28T08:00:00Z", model: "gpt-5-mini", input: 400, output: 80},
-		{client: "claude", session: "claude-today", at: "2026-08-13T09:00:00Z", model: "claude-sonnet-5", input: 300, output: 60},
-		{client: "claude", session: "claude-week", at: "2026-08-09T09:00:00Z", model: "claude-opus-5", input: 150, output: 30},
-		{client: "claude", session: "claude-month", at: "2026-07-25T09:00:00Z", model: "claude-opus-5", input: 90, output: 18},
+		{client: "codex", session: "codex-today", at: "2026-08-13T08:00:00Z", model: "gpt-5", input: 1200, output: 240, activityKind: "coding", activitySub: "feature", toolKind: "edit", baseName: "main.go", wrote: true},
+		{client: "codex", session: "codex-week", at: "2026-08-10T08:00:00Z", model: "gpt-5", input: 800, output: 160, activityKind: "debugging", activitySub: "repair", toolKind: "bash"},
+		{client: "codex", session: "codex-month", at: "2026-07-28T08:00:00Z", model: "gpt-5-mini", input: 400, output: 80, activityKind: "delegation", activitySub: "subagent", toolKind: "other"},
+		{client: "claude", session: "claude-today", at: "2026-08-13T09:00:00Z", model: "claude-sonnet-5", input: 300, output: 60, activityKind: "coding", activitySub: "testing", toolKind: "mcp", mcpServer: "codegraph"},
+		{client: "claude", session: "claude-week", at: "2026-08-09T09:00:00Z", model: "claude-opus-5", input: 150, output: 30, activityKind: "conversation", activitySub: "exploration", toolKind: "read"},
+		{client: "claude", session: "claude-month", at: "2026-07-25T09:00:00Z", model: "claude-opus-5", input: 90, output: 18, activityKind: "delegation", activitySub: "workflow", toolKind: "other"},
 	})
 	seedSessions(t, root, []sessionSeed{
 		{client: "codex", id: "codex-today", project: "/Users/example/private/agent-deck", model: "gpt-5", first: "2026-08-13T08:00:00Z", last: "2026-08-13T09:00:00Z"},
@@ -152,7 +152,7 @@ func buildEmptyClientFixture(t *testing.T) string {
 	t.Helper()
 	root := fixtureStateRoot(t)
 	seedUsage(t, root, []usageSeed{
-		{client: "codex", session: "codex-today", at: "2026-08-13T08:00:00Z", model: "gpt-5", input: 1200, output: 240},
+		{client: "codex", session: "codex-today", at: "2026-08-13T08:00:00Z", model: "gpt-5", input: 1200, output: 240, activityKind: "coding", activitySub: "feature", toolKind: "edit", baseName: "main.go", wrote: true},
 	})
 	seedSessions(t, root, []sessionSeed{
 		{client: "codex", id: "codex-today", project: "/Users/example/private/agent-deck", model: "gpt-5", first: "2026-08-13T08:00:00Z", last: "2026-08-13T09:00:00Z"},
@@ -161,12 +161,14 @@ func buildEmptyClientFixture(t *testing.T) string {
 }
 
 type usageSeed struct {
-	client  string
-	session string
-	at      string
-	model   string
-	input   int64
-	output  int64
+	client                        string
+	session                       string
+	at                            string
+	model                         string
+	activityKind, activitySub     string
+	toolKind, mcpServer, baseName string
+	input, output                 int64
+	wrote                         bool
 }
 
 type sessionSeed struct {
@@ -222,13 +224,48 @@ func seedUsage(t *testing.T, root string, seeds []usageSeed) {
 			t.Fatalf("seed usage session: %v", err)
 		}
 		if _, err = database.Exec(ctx,
-			`INSERT INTO usage_events(event_key,client,session_id,event_id,event_at,model,input_tokens,output_tokens,source_path,source_offset) VALUES(?,?,?,?,?,?,?,?,?,?)`,
+			`INSERT INTO usage_events(event_key,client,session_id,event_id,event_at,model,input_tokens,output_tokens,source_path,source_offset,turn_index) VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
 			seed.session+"-event", seed.client, seed.session, seed.session, seed.at, seed.model,
-			seed.input, seed.output, "fixture", index,
+			seed.input, seed.output, "fixture", index, 1,
 		); err != nil {
 			t.Fatalf("seed usage event: %v", err)
 		}
+		if _, err = database.Exec(ctx,
+			`INSERT INTO usage_work_signals(client,session_id,turn_index,started_at,state,message_class,intent_sub,activity_kind,activity_sub,source_path) VALUES(?,?,?,?,?,'','',?,?,?)`,
+			seed.client, seed.session, 1, seed.at, "classified", seed.activityKind, seed.activitySub, "fixture",
+		); err != nil {
+			t.Fatalf("seed work signal: %v", err)
+		}
+		activityKey := seed.session + "-tool"
+		if _, err = database.Exec(ctx,
+			`INSERT INTO usage_tool_calls(activity_key,client,session_id,model,tool_name,started_at,completed_at,status,duration_ms,source_path,source_offset,turn_index,tool_kind,mcp_server,command_read,command_hint) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			activityKey, seed.client, seed.session, seed.model, fixtureToolName(seed.client, seed.toolKind), seed.at, seed.at, "completed", 0, "fixture", index, 1, seed.toolKind, nullableFixtureString(seed.mcpServer), false, "",
+		); err != nil {
+			t.Fatalf("seed tool call: %v", err)
+		}
+		if seed.baseName != "" {
+			if _, err = database.Exec(ctx,
+				`INSERT INTO usage_tool_files(activity_key,path_digest,base_name,wrote) VALUES(?,?,?,?)`,
+				activityKey, fmt.Sprintf("fixture-digest-%d", index), seed.baseName, seed.wrote,
+			); err != nil {
+				t.Fatalf("seed tool file: %v", err)
+			}
+		}
 	}
+}
+
+func fixtureToolName(client, kind string) string {
+	if client == "claude" {
+		return map[string]string{"edit": "Edit", "read": "Read", "bash": "Bash", "mcp": "mcp__codegraph__explore", "other": "TodoWrite"}[kind]
+	}
+	return map[string]string{"edit": "apply_patch", "read": "exec_command", "bash": "exec_command", "mcp": "mcp", "other": "update_plan"}[kind]
+}
+
+func nullableFixtureString(value string) any {
+	if value == "" {
+		return nil
+	}
+	return value
 }
 
 func seedSessions(t *testing.T, root string, seeds []sessionSeed) {

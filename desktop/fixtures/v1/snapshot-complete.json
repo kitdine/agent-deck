@@ -6564,6 +6564,1239 @@
           }
         ]
       },
+      "work_signals": {
+        "activity": {
+          "available": true,
+          "items": [
+            {
+              "period": "today",
+              "client": "all",
+              "cost_basis": "none",
+              "kinds": [
+                {
+                  "kind": "delegation",
+                  "share": 0,
+                  "cost": 0,
+                  "events": 0,
+                  "sub": [
+                    {
+                      "kind": "subagent",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    },
+                    {
+                      "kind": "workflow",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    }
+                  ]
+                },
+                {
+                  "kind": "debugging",
+                  "share": 0,
+                  "cost": 0,
+                  "events": 0,
+                  "sub": [
+                    {
+                      "kind": "investigation",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    },
+                    {
+                      "kind": "repair",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    }
+                  ]
+                },
+                {
+                  "kind": "coding",
+                  "share": 0,
+                  "cost": 0,
+                  "events": 2,
+                  "sub": [
+                    {
+                      "kind": "feature",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 1
+                    },
+                    {
+                      "kind": "refactoring",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    },
+                    {
+                      "kind": "testing",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 1
+                    },
+                    {
+                      "kind": "maintenance",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    }
+                  ]
+                },
+                {
+                  "kind": "conversation",
+                  "share": 0,
+                  "cost": 0,
+                  "events": 0,
+                  "sub": [
+                    {
+                      "kind": "exploration",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    },
+                    {
+                      "kind": "brainstorming",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    },
+                    {
+                      "kind": "planning",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "period": "today",
+              "client": "codex",
+              "cost_basis": "none",
+              "kinds": [
+                {
+                  "kind": "delegation",
+                  "share": 0,
+                  "cost": 0,
+                  "events": 0,
+                  "sub": [
+                    {
+                      "kind": "subagent",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    }
+                  ]
+                },
+                {
+                  "kind": "debugging",
+                  "share": 0,
+                  "cost": 0,
+                  "events": 0,
+                  "sub": [
+                    {
+                      "kind": "investigation",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    },
+                    {
+                      "kind": "repair",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    }
+                  ]
+                },
+                {
+                  "kind": "coding",
+                  "share": 0,
+                  "cost": 0,
+                  "events": 1,
+                  "sub": [
+                    {
+                      "kind": "feature",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 1
+                    },
+                    {
+                      "kind": "refactoring",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    },
+                    {
+                      "kind": "testing",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    },
+                    {
+                      "kind": "maintenance",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    }
+                  ]
+                },
+                {
+                  "kind": "conversation",
+                  "share": 0,
+                  "cost": 0,
+                  "events": 0,
+                  "sub": [
+                    {
+                      "kind": "exploration",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    },
+                    {
+                      "kind": "brainstorming",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    },
+                    {
+                      "kind": "planning",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "period": "today",
+              "client": "claude",
+              "cost_basis": "none",
+              "kinds": [
+                {
+                  "kind": "delegation",
+                  "share": 0,
+                  "cost": 0,
+                  "events": 0,
+                  "sub": [
+                    {
+                      "kind": "subagent",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    },
+                    {
+                      "kind": "workflow",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    }
+                  ]
+                },
+                {
+                  "kind": "debugging",
+                  "share": 0,
+                  "cost": 0,
+                  "events": 0,
+                  "sub": [
+                    {
+                      "kind": "investigation",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    },
+                    {
+                      "kind": "repair",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    }
+                  ]
+                },
+                {
+                  "kind": "coding",
+                  "share": 0,
+                  "cost": 0,
+                  "events": 1,
+                  "sub": [
+                    {
+                      "kind": "feature",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    },
+                    {
+                      "kind": "refactoring",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    },
+                    {
+                      "kind": "testing",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 1
+                    },
+                    {
+                      "kind": "maintenance",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    }
+                  ]
+                },
+                {
+                  "kind": "conversation",
+                  "share": 0,
+                  "cost": 0,
+                  "events": 0,
+                  "sub": [
+                    {
+                      "kind": "exploration",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    },
+                    {
+                      "kind": "brainstorming",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    },
+                    {
+                      "kind": "planning",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "period": "7d",
+              "client": "all",
+              "cost_basis": "none",
+              "kinds": [
+                {
+                  "kind": "delegation",
+                  "share": 0,
+                  "cost": 0,
+                  "events": 0,
+                  "sub": [
+                    {
+                      "kind": "subagent",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    },
+                    {
+                      "kind": "workflow",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    }
+                  ]
+                },
+                {
+                  "kind": "debugging",
+                  "share": 0,
+                  "cost": 0,
+                  "events": 1,
+                  "sub": [
+                    {
+                      "kind": "investigation",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    },
+                    {
+                      "kind": "repair",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 1
+                    }
+                  ]
+                },
+                {
+                  "kind": "coding",
+                  "share": 0,
+                  "cost": 0,
+                  "events": 2,
+                  "sub": [
+                    {
+                      "kind": "feature",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 1
+                    },
+                    {
+                      "kind": "refactoring",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    },
+                    {
+                      "kind": "testing",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 1
+                    },
+                    {
+                      "kind": "maintenance",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    }
+                  ]
+                },
+                {
+                  "kind": "conversation",
+                  "share": 0,
+                  "cost": 0,
+                  "events": 1,
+                  "sub": [
+                    {
+                      "kind": "exploration",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 1
+                    },
+                    {
+                      "kind": "brainstorming",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    },
+                    {
+                      "kind": "planning",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "period": "7d",
+              "client": "codex",
+              "cost_basis": "none",
+              "kinds": [
+                {
+                  "kind": "delegation",
+                  "share": 0,
+                  "cost": 0,
+                  "events": 0,
+                  "sub": [
+                    {
+                      "kind": "subagent",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    }
+                  ]
+                },
+                {
+                  "kind": "debugging",
+                  "share": 0,
+                  "cost": 0,
+                  "events": 1,
+                  "sub": [
+                    {
+                      "kind": "investigation",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    },
+                    {
+                      "kind": "repair",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 1
+                    }
+                  ]
+                },
+                {
+                  "kind": "coding",
+                  "share": 0,
+                  "cost": 0,
+                  "events": 1,
+                  "sub": [
+                    {
+                      "kind": "feature",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 1
+                    },
+                    {
+                      "kind": "refactoring",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    },
+                    {
+                      "kind": "testing",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    },
+                    {
+                      "kind": "maintenance",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    }
+                  ]
+                },
+                {
+                  "kind": "conversation",
+                  "share": 0,
+                  "cost": 0,
+                  "events": 0,
+                  "sub": [
+                    {
+                      "kind": "exploration",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    },
+                    {
+                      "kind": "brainstorming",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    },
+                    {
+                      "kind": "planning",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "period": "7d",
+              "client": "claude",
+              "cost_basis": "none",
+              "kinds": [
+                {
+                  "kind": "delegation",
+                  "share": 0,
+                  "cost": 0,
+                  "events": 0,
+                  "sub": [
+                    {
+                      "kind": "subagent",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    },
+                    {
+                      "kind": "workflow",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    }
+                  ]
+                },
+                {
+                  "kind": "debugging",
+                  "share": 0,
+                  "cost": 0,
+                  "events": 0,
+                  "sub": [
+                    {
+                      "kind": "investigation",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    },
+                    {
+                      "kind": "repair",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    }
+                  ]
+                },
+                {
+                  "kind": "coding",
+                  "share": 0,
+                  "cost": 0,
+                  "events": 1,
+                  "sub": [
+                    {
+                      "kind": "feature",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    },
+                    {
+                      "kind": "refactoring",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    },
+                    {
+                      "kind": "testing",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 1
+                    },
+                    {
+                      "kind": "maintenance",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    }
+                  ]
+                },
+                {
+                  "kind": "conversation",
+                  "share": 0,
+                  "cost": 0,
+                  "events": 1,
+                  "sub": [
+                    {
+                      "kind": "exploration",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 1
+                    },
+                    {
+                      "kind": "brainstorming",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    },
+                    {
+                      "kind": "planning",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "period": "30d",
+              "client": "all",
+              "cost_basis": "none",
+              "kinds": [
+                {
+                  "kind": "delegation",
+                  "share": 0,
+                  "cost": 0,
+                  "events": 2,
+                  "sub": [
+                    {
+                      "kind": "subagent",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 1
+                    },
+                    {
+                      "kind": "workflow",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 1
+                    }
+                  ]
+                },
+                {
+                  "kind": "debugging",
+                  "share": 0,
+                  "cost": 0,
+                  "events": 1,
+                  "sub": [
+                    {
+                      "kind": "investigation",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    },
+                    {
+                      "kind": "repair",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 1
+                    }
+                  ]
+                },
+                {
+                  "kind": "coding",
+                  "share": 0,
+                  "cost": 0,
+                  "events": 2,
+                  "sub": [
+                    {
+                      "kind": "feature",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 1
+                    },
+                    {
+                      "kind": "refactoring",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    },
+                    {
+                      "kind": "testing",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 1
+                    },
+                    {
+                      "kind": "maintenance",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    }
+                  ]
+                },
+                {
+                  "kind": "conversation",
+                  "share": 0,
+                  "cost": 0,
+                  "events": 1,
+                  "sub": [
+                    {
+                      "kind": "exploration",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 1
+                    },
+                    {
+                      "kind": "brainstorming",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    },
+                    {
+                      "kind": "planning",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "period": "30d",
+              "client": "codex",
+              "cost_basis": "none",
+              "kinds": [
+                {
+                  "kind": "delegation",
+                  "share": 0,
+                  "cost": 0,
+                  "events": 1,
+                  "sub": [
+                    {
+                      "kind": "subagent",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 1
+                    }
+                  ]
+                },
+                {
+                  "kind": "debugging",
+                  "share": 0,
+                  "cost": 0,
+                  "events": 1,
+                  "sub": [
+                    {
+                      "kind": "investigation",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    },
+                    {
+                      "kind": "repair",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 1
+                    }
+                  ]
+                },
+                {
+                  "kind": "coding",
+                  "share": 0,
+                  "cost": 0,
+                  "events": 1,
+                  "sub": [
+                    {
+                      "kind": "feature",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 1
+                    },
+                    {
+                      "kind": "refactoring",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    },
+                    {
+                      "kind": "testing",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    },
+                    {
+                      "kind": "maintenance",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    }
+                  ]
+                },
+                {
+                  "kind": "conversation",
+                  "share": 0,
+                  "cost": 0,
+                  "events": 0,
+                  "sub": [
+                    {
+                      "kind": "exploration",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    },
+                    {
+                      "kind": "brainstorming",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    },
+                    {
+                      "kind": "planning",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "period": "30d",
+              "client": "claude",
+              "cost_basis": "none",
+              "kinds": [
+                {
+                  "kind": "delegation",
+                  "share": 0,
+                  "cost": 0,
+                  "events": 1,
+                  "sub": [
+                    {
+                      "kind": "subagent",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    },
+                    {
+                      "kind": "workflow",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 1
+                    }
+                  ]
+                },
+                {
+                  "kind": "debugging",
+                  "share": 0,
+                  "cost": 0,
+                  "events": 0,
+                  "sub": [
+                    {
+                      "kind": "investigation",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    },
+                    {
+                      "kind": "repair",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    }
+                  ]
+                },
+                {
+                  "kind": "coding",
+                  "share": 0,
+                  "cost": 0,
+                  "events": 1,
+                  "sub": [
+                    {
+                      "kind": "feature",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    },
+                    {
+                      "kind": "refactoring",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    },
+                    {
+                      "kind": "testing",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 1
+                    },
+                    {
+                      "kind": "maintenance",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    }
+                  ]
+                },
+                {
+                  "kind": "conversation",
+                  "share": 0,
+                  "cost": 0,
+                  "events": 1,
+                  "sub": [
+                    {
+                      "kind": "exploration",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 1
+                    },
+                    {
+                      "kind": "brainstorming",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    },
+                    {
+                      "kind": "planning",
+                      "share": 0,
+                      "cost": 0,
+                      "events": 0
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "workflow": {
+          "available": true,
+          "items": [
+            {
+              "period": "today",
+              "client": "all",
+              "first_edit_seconds": 0,
+              "files_touched": 1,
+              "retries": 0,
+              "edits_per_session": 0.5,
+              "top_file": "main.go",
+              "top_file_edits": 1
+            },
+            {
+              "period": "today",
+              "client": "codex",
+              "first_edit_seconds": 0,
+              "files_touched": 1,
+              "retries": 0,
+              "edits_per_session": 1,
+              "top_file": "main.go",
+              "top_file_edits": 1
+            },
+            {
+              "period": "today",
+              "client": "claude",
+              "first_edit_seconds": null,
+              "files_touched": null,
+              "retries": null,
+              "edits_per_session": 0,
+              "top_file": null,
+              "top_file_edits": null
+            },
+            {
+              "period": "7d",
+              "client": "all",
+              "first_edit_seconds": 0,
+              "files_touched": 1,
+              "retries": 0,
+              "edits_per_session": 0.25,
+              "top_file": "main.go",
+              "top_file_edits": 1
+            },
+            {
+              "period": "7d",
+              "client": "codex",
+              "first_edit_seconds": 0,
+              "files_touched": 1,
+              "retries": 0,
+              "edits_per_session": 0.5,
+              "top_file": "main.go",
+              "top_file_edits": 1
+            },
+            {
+              "period": "7d",
+              "client": "claude",
+              "first_edit_seconds": null,
+              "files_touched": null,
+              "retries": null,
+              "edits_per_session": 0,
+              "top_file": null,
+              "top_file_edits": null
+            },
+            {
+              "period": "30d",
+              "client": "all",
+              "first_edit_seconds": 0,
+              "files_touched": 1,
+              "retries": 0,
+              "edits_per_session": 0.16666666666666666,
+              "top_file": "main.go",
+              "top_file_edits": 1
+            },
+            {
+              "period": "30d",
+              "client": "codex",
+              "first_edit_seconds": 0,
+              "files_touched": 1,
+              "retries": 0,
+              "edits_per_session": 0.3333333333333333,
+              "top_file": "main.go",
+              "top_file_edits": 1
+            },
+            {
+              "period": "30d",
+              "client": "claude",
+              "first_edit_seconds": null,
+              "files_touched": null,
+              "retries": null,
+              "edits_per_session": 0,
+              "top_file": null,
+              "top_file_edits": null
+            }
+          ]
+        },
+        "tooling": {
+          "available": true,
+          "items": [
+            {
+              "period": "today",
+              "client": "all",
+              "calls": 2,
+              "groups": 2,
+              "rows": [
+                {
+                  "kind": "edit",
+                  "calls": 1,
+                  "share": 50
+                },
+                {
+                  "kind": "mcp",
+                  "calls": 1,
+                  "share": 50
+                }
+              ],
+              "top_mcp_server": "codegraph",
+              "top_mcp_calls": 1
+            },
+            {
+              "period": "today",
+              "client": "codex",
+              "calls": 1,
+              "groups": 1,
+              "rows": [
+                {
+                  "kind": "edit",
+                  "calls": 1,
+                  "share": 100
+                }
+              ]
+            },
+            {
+              "period": "today",
+              "client": "claude",
+              "calls": 1,
+              "groups": 1,
+              "rows": [
+                {
+                  "kind": "mcp",
+                  "calls": 1,
+                  "share": 100
+                }
+              ],
+              "top_mcp_server": "codegraph",
+              "top_mcp_calls": 1
+            },
+            {
+              "period": "7d",
+              "client": "all",
+              "calls": 4,
+              "groups": 4,
+              "rows": [
+                {
+                  "kind": "edit",
+                  "calls": 1,
+                  "share": 25
+                },
+                {
+                  "kind": "read",
+                  "calls": 1,
+                  "share": 25
+                },
+                {
+                  "kind": "bash",
+                  "calls": 1,
+                  "share": 25
+                },
+                {
+                  "kind": "mcp",
+                  "calls": 1,
+                  "share": 25
+                }
+              ],
+              "top_mcp_server": "codegraph",
+              "top_mcp_calls": 1
+            },
+            {
+              "period": "7d",
+              "client": "codex",
+              "calls": 2,
+              "groups": 2,
+              "rows": [
+                {
+                  "kind": "edit",
+                  "calls": 1,
+                  "share": 50
+                },
+                {
+                  "kind": "bash",
+                  "calls": 1,
+                  "share": 50
+                }
+              ]
+            },
+            {
+              "period": "7d",
+              "client": "claude",
+              "calls": 2,
+              "groups": 2,
+              "rows": [
+                {
+                  "kind": "read",
+                  "calls": 1,
+                  "share": 50
+                },
+                {
+                  "kind": "mcp",
+                  "calls": 1,
+                  "share": 50
+                }
+              ],
+              "top_mcp_server": "codegraph",
+              "top_mcp_calls": 1
+            },
+            {
+              "period": "30d",
+              "client": "all",
+              "calls": 6,
+              "groups": 5,
+              "rows": [
+                {
+                  "kind": "edit",
+                  "calls": 1,
+                  "share": 16.7
+                },
+                {
+                  "kind": "read",
+                  "calls": 1,
+                  "share": 16.7
+                },
+                {
+                  "kind": "bash",
+                  "calls": 1,
+                  "share": 16.7
+                },
+                {
+                  "kind": "mcp",
+                  "calls": 1,
+                  "share": 16.7
+                },
+                {
+                  "kind": "other",
+                  "calls": 2,
+                  "share": 33.3
+                }
+              ],
+              "top_mcp_server": "codegraph",
+              "top_mcp_calls": 1
+            },
+            {
+              "period": "30d",
+              "client": "codex",
+              "calls": 3,
+              "groups": 3,
+              "rows": [
+                {
+                  "kind": "edit",
+                  "calls": 1,
+                  "share": 33.3
+                },
+                {
+                  "kind": "bash",
+                  "calls": 1,
+                  "share": 33.3
+                },
+                {
+                  "kind": "other",
+                  "calls": 1,
+                  "share": 33.3
+                }
+              ]
+            },
+            {
+              "period": "30d",
+              "client": "claude",
+              "calls": 3,
+              "groups": 3,
+              "rows": [
+                {
+                  "kind": "read",
+                  "calls": 1,
+                  "share": 33.3
+                },
+                {
+                  "kind": "mcp",
+                  "calls": 1,
+                  "share": 33.3
+                },
+                {
+                  "kind": "other",
+                  "calls": 1,
+                  "share": 33.3
+                }
+              ],
+              "top_mcp_server": "codegraph",
+              "top_mcp_calls": 1
+            }
+          ]
+        }
+      },
       "items": [
         {
           "client": "codex",

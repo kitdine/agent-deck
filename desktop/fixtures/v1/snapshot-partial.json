@@ -42,6 +42,20 @@
         "available": false,
         "items": []
       },
+      "work_signals": {
+        "activity": {
+          "available": false,
+          "items": []
+        },
+        "workflow": {
+          "available": false,
+          "items": []
+        },
+        "tooling": {
+          "available": false,
+          "items": []
+        }
+      },
       "items": []
     },
     "health": {

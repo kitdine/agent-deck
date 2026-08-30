@@ -111,10 +111,11 @@ type UsageSnapshot struct {
 }
 
 type SessionsSnapshot struct {
-	Available bool            `json:"available"`
-	Total     int             `json:"total"`
-	Periods   SessionsPeriods `json:"periods"`
-	Items     []RecentSession `json:"items"`
+	Available   bool                `json:"available"`
+	Total       int                 `json:"total"`
+	Periods     SessionsPeriods     `json:"periods"`
+	WorkSignals WorkSignalsSnapshot `json:"work_signals"`
+	Items       []RecentSession     `json:"items"`
 }
 
 // SessionsPeriods carries the per-period statistics the Sessions panel reads
@@ -134,6 +135,55 @@ type SessionsPeriodItem struct {
 	MedianDurationSeconds int64                 `json:"median_duration_seconds"`
 	DistinctProjects      int                   `json:"distinct_projects"`
 	Projects              []SessionsProjectItem `json:"projects"`
+}
+
+type WorkSignalsSnapshot struct {
+	Activity WorkSignalActivityFamily `json:"activity"`
+	Workflow WorkSignalWorkflowFamily `json:"workflow"`
+	Tooling  WorkSignalToolingFamily  `json:"tooling"`
+}
+
+type WorkSignalActivityFamily struct {
+	Available bool                     `json:"available"`
+	Items     []WorkSignalActivityItem `json:"items"`
+}
+
+type WorkSignalActivityItem struct {
+	Period    string                     `json:"period"`
+	Client    string                     `json:"client"`
+	CostBasis string                     `json:"cost_basis"`
+	Kinds     []usage.SignalActivityKind `json:"kinds"`
+}
+
+type WorkSignalWorkflowFamily struct {
+	Available bool                     `json:"available"`
+	Items     []WorkSignalWorkflowItem `json:"items"`
+}
+
+type WorkSignalWorkflowItem struct {
+	Period           string   `json:"period"`
+	Client           string   `json:"client"`
+	FirstEditSeconds *int     `json:"first_edit_seconds"`
+	FilesTouched     *int     `json:"files_touched"`
+	Retries          *int     `json:"retries"`
+	EditsPerSession  *float64 `json:"edits_per_session"`
+	TopFile          *string  `json:"top_file"`
+	TopFileEdits     *int     `json:"top_file_edits"`
+}
+
+type WorkSignalToolingFamily struct {
+	Available bool                    `json:"available"`
+	Items     []WorkSignalToolingItem `json:"items"`
+}
+
+type WorkSignalToolingItem struct {
+	Period       string                `json:"period"`
+	Client       string                `json:"client"`
+	Calls        int64                 `json:"calls"`
+	Groups       int                   `json:"groups"`
+	Rows         []usage.SignalToolRow `json:"rows"`
+	TopMCPServer string                `json:"top_mcp_server,omitempty"`
+	TopMCPCalls  int64                 `json:"top_mcp_calls,omitempty"`
 }
 
 type SessionsProjectItem struct {
@@ -206,6 +256,7 @@ func (s Service) Build(ctx context.Context, request Request) (Result, error) {
 	} else {
 		s.loadProvider(ctx, core, &result)
 		s.loadUsage(ctx, core, now, &result)
+		s.loadWorkSignals(ctx, core, now, &result)
 		if closeErr := core.Close(); closeErr != nil {
 			result.warn("state_close_failed")
 		}
@@ -443,7 +494,9 @@ func (s Service) loadSessions(ctx context.Context, limit int, now time.Time, res
 		result.warn("sessions_unavailable")
 		return
 	}
-	result.Snapshot.Sessions = sessionsSnapshot(values, limit, now, s.location())
+	snapshot := sessionsSnapshot(values, limit, now, s.location())
+	snapshot.WorkSignals = result.Snapshot.Sessions.WorkSignals
+	result.Snapshot.Sessions = snapshot
 }
 
 func sessionsSnapshot(values []session.Metadata, limit int, now time.Time, location *time.Location) SessionsSnapshot {
@@ -467,31 +520,113 @@ func sessionsSnapshot(values []session.Metadata, limit int, now time.Time, locat
 // rejects a present one whose `items` is null.
 func emptySessionsSnapshot() SessionsSnapshot {
 	return SessionsSnapshot{
-		Periods: SessionsPeriods{Items: []SessionsPeriodItem{}},
-		Items:   []RecentSession{},
+		Periods:     SessionsPeriods{Items: []SessionsPeriodItem{}},
+		WorkSignals: emptyWorkSignalsSnapshot(),
+		Items:       []RecentSession{},
 	}
+}
+
+func emptyWorkSignalsSnapshot() WorkSignalsSnapshot {
+	return WorkSignalsSnapshot{
+		Activity: WorkSignalActivityFamily{Items: []WorkSignalActivityItem{}},
+		Workflow: WorkSignalWorkflowFamily{Items: []WorkSignalWorkflowItem{}},
+		Tooling:  WorkSignalToolingFamily{Items: []WorkSignalToolingItem{}},
+	}
+}
+
+type desktopPeriodRange struct {
+	name       string
+	start, end time.Time
+}
+
+func desktopPeriodRanges(now time.Time, location *time.Location) []desktopPeriodRange {
+	if location == nil {
+		location = time.Local
+	}
+	today, tomorrow := localDay(now, location)
+	return []desktopPeriodRange{
+		{name: "today", start: today, end: tomorrow},
+		{name: "7d", start: today.AddDate(0, 0, -6), end: tomorrow},
+		{name: "30d", start: today.AddDate(0, 0, -29), end: tomorrow},
+	}
+}
+
+func (s Service) loadWorkSignals(ctx context.Context, core *store.Store, now time.Time, result *Result) {
+	service := usage.New(core, s.Home)
+	service.Now = func() time.Time { return now }
+	snapshot := WorkSignalsSnapshot{
+		Activity: WorkSignalActivityFamily{Available: true, Items: []WorkSignalActivityItem{}},
+		Workflow: WorkSignalWorkflowFamily{Available: true, Items: []WorkSignalWorkflowItem{}},
+		Tooling:  WorkSignalToolingFamily{Available: true, Items: []WorkSignalToolingItem{}},
+	}
+	for _, period := range desktopPeriodRanges(now, s.location()) {
+		for _, client := range []string{"all", "codex", "claude"} {
+			queryClient := client
+			if queryClient == "all" {
+				queryClient = ""
+			}
+			report, err := service.Signals(ctx, usage.SignalOptions{
+				Period: period.name, From: period.start, To: period.end,
+				Client: queryClient, IncludeSub: true,
+			})
+			if err != nil {
+				result.warn("work_signals_unavailable")
+				return
+			}
+			if report.Activity != nil && report.Activity.Available {
+				if len(report.Activity.Kinds) != 4 {
+					result.warn("work_signals_unavailable")
+					return
+				}
+				for _, kind := range report.Activity.Kinds {
+					if len(kind.Sub) > 4 {
+						result.warn("work_signals_unavailable")
+						return
+					}
+				}
+				snapshot.Activity.Items = append(snapshot.Activity.Items, WorkSignalActivityItem{
+					Period: period.name, Client: client, CostBasis: report.Activity.CostBasis,
+					Kinds: report.Activity.Kinds,
+				})
+			}
+			if report.Workflow != nil && report.Workflow.Available {
+				snapshot.Workflow.Items = append(snapshot.Workflow.Items, WorkSignalWorkflowItem{
+					Period: period.name, Client: client,
+					FirstEditSeconds: report.Workflow.FirstEditSeconds,
+					FilesTouched:     report.Workflow.FilesTouched,
+					Retries:          report.Workflow.Retries,
+					EditsPerSession:  report.Workflow.EditsPerSession,
+					TopFile:          report.Workflow.TopFile,
+					TopFileEdits:     report.Workflow.TopFileEdits,
+				})
+			}
+			if report.Tooling != nil && report.Tooling.Available {
+				if report.Tooling.Groups != len(report.Tooling.Rows) || len(report.Tooling.Rows) > 5 {
+					result.warn("work_signals_unavailable")
+					return
+				}
+				snapshot.Tooling.Items = append(snapshot.Tooling.Items, WorkSignalToolingItem{
+					Period: period.name, Client: client,
+					Calls: report.Tooling.Calls, Groups: report.Tooling.Groups,
+					Rows:         report.Tooling.Rows,
+					TopMCPServer: report.Tooling.TopMCPServer,
+					TopMCPCalls:  report.Tooling.TopMCPCalls,
+				})
+			}
+		}
+	}
+	result.Snapshot.Sessions.WorkSignals = snapshot
 }
 
 // sessionsPeriods emits one record for every supported period and client scope,
 // in a fixed order, so a payload always carries the record a filter selects.
 // A session belongs to a period when its last event falls inside it.
 func sessionsPeriods(values []session.Metadata, now time.Time, location *time.Location) SessionsPeriods {
-	if location == nil {
-		location = time.Local
-	}
-	today, tomorrow := localDay(now, location)
-	periods := []struct {
-		name  string
-		start time.Time
-	}{
-		{name: "today", start: today},
-		{name: "7d", start: today.AddDate(0, 0, -6)},
-		{name: "30d", start: today.AddDate(0, 0, -29)},
-	}
+	periods := desktopPeriodRanges(now, location)
 	items := make([]SessionsPeriodItem, 0, len(periods)*3)
 	for _, period := range periods {
 		for _, client := range []string{"all", "codex", "claude"} {
-			items = append(items, sessionsPeriodItem(values, period.name, period.start, tomorrow, client, location))
+			items = append(items, sessionsPeriodItem(values, period.name, period.start, period.end, client, location))
 		}
 	}
 	return SessionsPeriods{Available: true, Items: items}

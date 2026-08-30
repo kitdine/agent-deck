@@ -366,7 +366,7 @@ reviewed against a specimen that does not yet show what they describe.
 | 1. `work-signal-extraction` | [x] | [x] |
 | 2. `activity-classification` | [x] | [x] |
 | 3. `work-signal-cli` | [x] | [x] |
-| 4. `work-signal-projection` | [ ] | [ ] |
+| 4. `work-signal-projection` | [x] | [x] |
 | 5. `work-signal-surface` | [ ] | [ ] |
 | 6. `work-signals-contract` | [ ] | [ ] |
 
@@ -460,6 +460,66 @@ entry, and every production file's diff statistic is identical to Round 1 — so
 Round 1's verification of the other ten criteria is reused unchanged. No finding
 was carried forward, regressed, or newly raised. Both task cells tick; task 4
 `work-signal-projection` is the next implementation task.
+
+Task 4 Development (2026-08-29): `sessions.work_signals` now carries additive
+Activity, Workflow, and Tooling families as producer-bounded keyed item lists.
+The Go producer reuses the CLI's `usage.Service.Signals` derivation over the
+same fixed `today` / `7d` / `30d` × `all` / `codex` / `claude` order used by
+session periods, enforces four Activity kinds and at most five non-empty Tooling
+rows, and keeps family availability separate from empty positions. The Swift
+wire decoder consumes every Decision 9 field and defaults a missing
+`work_signals` object to three unavailable families, so the retained legacy
+fixture still decodes at `wire_version: 1`. Complete, partial, and empty-client
+fixtures were regenerated through the Go producer; the derived GUI command
+schema fixture was regenerated through its own phase7 producer. The full Go
+suite and `AgentDeckSharedTests` pass (39/39). The aggregate Xcode scheme reaches
+and passes the Task 4 tests, then fails one pre-existing App test whose hardcoded
+English `wrapper` / `direct` expectation receives the active Chinese
+localization; no Task 4 code is on that failure path. Independent Review is
+next.
+
+Task 4 Review Round 1 (2026-08-29): **REOPEN** on R1-F1. The keyed family shape,
+the producer-enforced bounds, the unchanged `wire_version`, the legacy default,
+and the nested types shared with the CLI all hold, checked against the decoded
+fixtures rather than argued. What does not hold is the acceptance clause on
+identical field names: six workflow metrics and the tooling MCP pair decode into
+Swift optionals that no test reads, so a renamed producer tag would blank the
+panel's whole Workflow module while every test stays green. Required keys are
+protected by the decode itself; these eight are not, and the phase7 GUI contract
+captured `items: []`, pinning no item-level name either.
+`reviews/work-signal-projection.md` owns the finding, its bounded test-only
+remediation, and the two verification limits this round hit — `xcodebuild` is
+unavailable on this machine, and the CLT fallback verifier's failure was shown
+pre-existing by reverting the fixtures to HEAD. Both task cells remain unticked.
+
+Task 4 Repair Round 1 (2026-08-30): **R1-F1 closed, awaiting independent
+Re-review.** `DesktopWireTests` now unwraps the complete fixture's
+`today/codex` Workflow item and asserts all six optional metric values, then
+unwraps `today/claude` Tooling and asserts `top_mcp_server` and
+`top_mcp_calls`. A producer-tag rename now decodes the affected value as `nil`
+and fails the exact assertion instead of rendering honest-looking unavailable
+data. The focused XCTest passes through the installed full Xcode toolchain and
+the repository-wide Go L2 suite passes. Production code, wire schema, canonical
+fixtures, and the derived GUI contract are unchanged; the CLT fallback verifier
+still reaches the pre-existing refresh/read assertion recorded by Review.
+
+Task 4 Re-review Round 1 (2026-08-30): **PASS.** R1-F1 is closed on evidence
+rather than on the repair's account of itself. The eight assertions exist at the
+named fixture positions, and renaming `top_file`, `top_mcp_server`, and
+`first_edit_seconds` in `snapshot-complete.json` made exactly those assertions
+fail with `nil` against the expected value, then the fixture was restored
+byte-identical — the acceptance clause on identical field names is now held by a
+falsifier instead of by inspection. Round 1's residual uncertainty is closed too:
+the installed full Xcode was addressed by a command-local `DEVELOPER_DIR`, so
+`AgentDeckSharedTests` ran here for the first time and passed 39/39. The
+production side is unchanged since Review Round 1 by diff and by the recomputed
+manifest, so that round's verification of the other eight criteria is reused. Two
+environment facts are recorded as non-findings: the aggregate scheme's single App
+test failure is this machine's Chinese localization meeting a hardcoded English
+expectation on a path the additive `DesktopWire.swift` diff never touches, and
+`scripts/check-topic-docs.sh` now exits 1 on `schema-version-signal`, an untracked
+topic created concurrently and outside this candidate's manifest. Both task cells
+tick; task 5 `work-signal-surface` is the next implementation task.
 
 Task 1 Review Round 1 (2026-08-27): **REOPEN** on R1-F1. Schema v20, the parser
 version bump and backfill, both fixture regenerations, Decision 1's turn

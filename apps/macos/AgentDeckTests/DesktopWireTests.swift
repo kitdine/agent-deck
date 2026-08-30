@@ -48,19 +48,51 @@ final class DesktopWireTests: XCTestCase {
         XCTAssertTrue(periods.available)
         XCTAssertEqual(periods.items.count, 9)
         XCTAssertEqual(Set(periods.items.map(\.client)), ["all", "codex", "claude"])
-        let todayAll = try XCTUnwrap(periods.items.first { $0.period == "today" && $0.client == "all" })
-        XCTAssertGreaterThanOrEqual(todayAll.sessions, 0)
-        XCTAssertGreaterThanOrEqual(todayAll.medianDurationSeconds, 0)
+		let todayAll = try XCTUnwrap(periods.items.first { $0.period == "today" && $0.client == "all" })
+		XCTAssertGreaterThanOrEqual(todayAll.sessions, 0)
+		XCTAssertGreaterThanOrEqual(todayAll.medianDurationSeconds, 0)
+
+		let workSignals = complete.data.sessions.workSignals
+		XCTAssertTrue(workSignals.activity.available)
+		XCTAssertTrue(workSignals.workflow.available)
+		XCTAssertTrue(workSignals.tooling.available)
+		let signalKeys = [
+			"today/all", "today/codex", "today/claude",
+			"7d/all", "7d/codex", "7d/claude",
+			"30d/all", "30d/codex", "30d/claude",
+		]
+		XCTAssertEqual(workSignals.activity.items.map { $0.period + "/" + $0.client }, signalKeys)
+		XCTAssertEqual(workSignals.workflow.items.map { $0.period + "/" + $0.client }, signalKeys)
+		XCTAssertEqual(workSignals.tooling.items.map { $0.period + "/" + $0.client }, signalKeys)
+		XCTAssertTrue(workSignals.activity.items.allSatisfy { $0.kinds.count == 4 })
+		XCTAssertTrue(workSignals.tooling.items.allSatisfy { $0.groups == $0.rows.count && $0.rows.count <= 5 })
+
+		let todayCodexWorkflow = try XCTUnwrap(workSignals.workflow.items.first {
+			$0.period == "today" && $0.client == "codex"
+		})
+		XCTAssertEqual(todayCodexWorkflow.firstEditSeconds, 0)
+		XCTAssertEqual(todayCodexWorkflow.filesTouched, 1)
+		XCTAssertEqual(todayCodexWorkflow.retries, 0)
+		XCTAssertEqual(todayCodexWorkflow.editsPerSession, 1.0)
+		XCTAssertEqual(todayCodexWorkflow.topFile, "main.go")
+		XCTAssertEqual(todayCodexWorkflow.topFileEdits, 1)
+
+		let todayClaudeTooling = try XCTUnwrap(workSignals.tooling.items.first {
+			$0.period == "today" && $0.client == "claude"
+		})
+		XCTAssertEqual(todayClaudeTooling.topMCPServer, "codegraph")
+		XCTAssertEqual(todayClaudeTooling.topMCPCalls, 1)
     }
 
 	func testLegacyFixtureDefaultsMissingAdditiveFields() throws {
 		let legacy = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-legacy.json"))
 		XCTAssertTrue(legacy.data.provider.candidates.isEmpty)
-		XCTAssertEqual(legacy.data.usage.presentation, .unavailable)
+			XCTAssertEqual(legacy.data.usage.presentation, .unavailable)
 		// A payload that predates the additive session periods decodes as an
 		// unavailable family, not as an error: the change raises no wire version.
-		XCTAssertEqual(legacy.data.sessions.periods, .unavailable)
-		XCTAssertTrue(legacy.data.sessions.available)
+			XCTAssertEqual(legacy.data.sessions.periods, .unavailable)
+			XCTAssertEqual(legacy.data.sessions.workSignals, .unavailable)
+			XCTAssertTrue(legacy.data.sessions.available)
 	}
 
 	func testMissingAdditiveHourlyRhythmHoverAndSessionProjectFamiliesDefaultWithoutRaisingTheWireVersion() throws {
@@ -106,7 +138,7 @@ final class DesktopWireTests: XCTestCase {
 
 	func testPresentMalformedAdditiveFieldsAreRejected() throws {
 		let complete = try desktopFixtureData("snapshot-complete.json")
-		for mutation in ["candidates", "options", "presentation", "hourly", "rhythm-cost"] {
+			for mutation in ["candidates", "options", "presentation", "hourly", "rhythm-cost", "work-signals"] {
 			var object = try XCTUnwrap(JSONSerialization.jsonObject(with: complete) as? [String: Any])
 			var data = try XCTUnwrap(object["data"] as? [String: Any])
 			switch mutation {
@@ -132,17 +164,21 @@ final class DesktopWireTests: XCTestCase {
 				presentation["scopes"] = scopes
 				usage["presentation"] = presentation
 				data["usage"] = usage
-			default:
-				var usage = try XCTUnwrap(data["usage"] as? [String: Any])
+				case "rhythm-cost":
+					var usage = try XCTUnwrap(data["usage"] as? [String: Any])
 				var presentation = try XCTUnwrap(usage["presentation"] as? [String: Any])
 				var scopes = try XCTUnwrap(presentation["scopes"] as? [[String: Any]])
 				var rhythm = try XCTUnwrap(scopes[0]["rhythm"] as? [String: Any])
 				rhythm["provider_costs"] = ["not": "an-array"]
 				scopes[0]["rhythm"] = rhythm
 				presentation["scopes"] = scopes
-				usage["presentation"] = presentation
-				data["usage"] = usage
-			}
+					usage["presentation"] = presentation
+					data["usage"] = usage
+				default:
+					var sessions = try XCTUnwrap(data["sessions"] as? [String: Any])
+					sessions["work_signals"] = "not-an-object"
+					data["sessions"] = sessions
+				}
 			object["data"] = data
 			let malformed = try JSONSerialization.data(withJSONObject: object)
 			XCTAssertThrowsError(try decodeDesktopWireEnvelopeV1(malformed), mutation)
