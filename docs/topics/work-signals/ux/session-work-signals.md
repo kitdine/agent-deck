@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-08-20
-updated: 2026-08-20
+updated: 2026-08-31
 ---
 
 # Sessions Panel — Work Signals
@@ -137,7 +137,15 @@ a zero row. Its parent row still renders.
 
 ## Copy
 
-Both languages ship together. New strings, and only these:
+Both languages ship together. The table below is the **design delta against the
+approved prototype dictionary**: these are the strings introduced or changed by
+the work-signals design itself, and only these belong to that delta.
+
+The shipping macOS catalog also imports the prototype's already-approved labels
+needed to render this surface — Activity category names, Workflow metric labels,
+Tooling labels, `Back`, and the legacy pending hint. Those are verbatim ports of
+existing prototype copy rather than new product wording, so this table is not an
+exhaustive diff of every key newly entering `DesktopCopy`.
 
 | Key | 中文 | English |
 | --- | --- | --- |
@@ -179,6 +187,10 @@ key that row renders as a missing string in both languages.
 - Share is never carried by the bar alone. Every bar has its percentage as text
   beside it, and every colour-coded row has a text label.
 
-Manual acceptance on real macOS 26 covers both appearances, both languages, the
-280 pt narrow bound, VoiceOver order through both levels including one expanded
-subcategory block, and focus return.
+Acceptance on real macOS 26 covers both appearances, both languages, the 280 pt
+narrow bound, native expanded-state structure, textual alternatives, and the
+detail-navigation return target through synthetic state and rendered/XCTest
+evidence. Actual VoiceOver speech, TCC changes, or system accessibility-setting
+automation are deliberately **not run and are not completion requirements**.
+The acceptance record names that non-execution explicitly rather than implying
+those system-level checks passed.

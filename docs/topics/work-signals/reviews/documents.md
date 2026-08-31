@@ -1829,3 +1829,48 @@ git diff --check                 -> exit 0
 All five `Review` cells are ticked together. Task 2 `activity-classification` is
 the next implementation task; commit and push remain separate recommendations
 at the document Task checkpoints.
+
+## Round 9 — targeted ratification after independent Task Review — 2026-08-31
+
+- Reviewed state:
+  - HEAD `7a1160a86e549a3ae3532bbfe8b782fdbfbfef82`
+  - `ux/session-work-signals.md`
+    `0b8556212d82640312777464787aa145c7c94528`
+- Independent review basis: Claude Code's `work-signal-surface` Review Round 1
+  R1-F2 inspected the materially changed acceptance paragraph, accepted the
+  operator decision's substance, and required this ratification rather than a
+  re-litigation.
+- Recorder: Codex. This round records the independent finding's exact
+  bookkeeping disposition; it does not represent Codex as an independent
+  reviewer of its own implementation.
+- Scope: `ux/session-work-signals.md` frontmatter, the Copy table's ownership
+  sentence, and the operator-approved non-execution boundary. The other four
+  design documents are unchanged and retain Round 8.
+
+### Ratified disposition
+
+- Frontmatter now says `updated: 2026-08-31`.
+- The Copy table now identifies itself as the design delta against the approved
+  prototype dictionary. It no longer claims to enumerate every key entering the
+  macOS catalog; the Activity, Workflow, Tooling, Back, and pending labels ported
+  verbatim from the prototype are explicitly distinguished from new wording.
+- Actual VoiceOver speech, TCC changes, and system accessibility automation are
+  stated as not run and not required, exactly matching the operator's
+  2026-08-31 decision. No execution claim was added.
+
+### Evidence
+
+```text
+git hash-object docs/topics/work-signals/ux/session-work-signals.md
+  -> 0b8556212d82640312777464787aa145c7c94528
+prototype/src/i18n.js versus DesktopCopy.swift / Localizable.xcstrings
+  -> imported labels are verbatim in both languages; the UX table remains the
+     narrower design delta
+```
+
+- Completion gate: VERIFIED — the new Document content state binds HEAD plus
+  blob `0b855621…`; its pass evidence records this targeted ratification.
+- Verdict: PASS
+
+The `ux/session-work-signals.md` Review cell remains ticked. No other Document
+cell or historical round changes.

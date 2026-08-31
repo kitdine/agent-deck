@@ -135,9 +135,73 @@ struct RecentSessionRow: Identifiable, Equatable, Sendable {
 	let when: String
 }
 
+enum WorkSignalSection: String, CaseIterable, Identifiable, Equatable, Hashable, Sendable {
+	case activity
+	case workflow
+	case tooling
+
+	var id: Self { self }
+}
+
+enum WorkSignalPresentationState: Equatable, Sendable {
+	case captured
+	case empty
+	case uncaptured
+}
+
+struct WorkSignalSummary: Identifiable, Equatable, Sendable {
+	let id: WorkSignalSection
+	let title: String
+	let value: String?
+}
+
+struct WorkSignalActivitySubrow: Identifiable, Equatable, Sendable {
+	let id: String
+	let label: String
+	let shareText: String
+	let costText: String
+}
+
+struct WorkSignalActivityRow: Identifiable, Equatable, Sendable {
+	let id: String
+	let label: String
+	let share: Double?
+	let shareText: String
+	let costText: String
+	let eventsText: String
+	let seriesIndex: Int
+	let subrows: [WorkSignalActivitySubrow]
+}
+
+struct WorkSignalMetric: Identifiable, Equatable, Sendable {
+	let id: String
+	let label: String
+	let value: String
+	let note: String?
+}
+
+struct WorkSignalToolRow: Identifiable, Equatable, Sendable {
+	let id: String
+	let label: String
+	let callsText: String
+	let shareText: String
+}
+
+struct WorkSignalPanelModel: Equatable, Sendable {
+	let state: WorkSignalPresentationState
+	let uncapturedSections: Set<WorkSignalSection>
+	let summaries: [WorkSignalSummary]
+	let activityRows: [WorkSignalActivityRow]
+	let workflowMetrics: [WorkSignalMetric]
+	let topFileText: String
+	let toolingRows: [WorkSignalToolRow]
+	let topMCPText: String
+}
+
 struct SessionsPanelModel: Equatable, Sendable {
 	let available: Bool
 	let stats: [StatChip]
+	let workSignals: WorkSignalPanelModel
 	let projects: [ShareRow]
 	let recent: [RecentSessionRow]
 	let emptyCopy: String?
@@ -660,7 +724,14 @@ final class MenuBarViewModel {
 
 	var sessionsPanel: SessionsPanelModel {
 		guard let snapshot, snapshot.sessions.available else {
-			return SessionsPanelModel(available: false, stats: [], projects: [], recent: [], emptyCopy: nil)
+			return SessionsPanelModel(
+				available: false,
+				stats: [],
+				workSignals: workSignalPanel(nil, statistics: nil),
+				projects: [],
+				recent: [],
+				emptyCopy: nil
+			)
 		}
 		let statistics = sessionStatistics
 		let stats: [StatChip] = [
@@ -710,10 +781,237 @@ final class MenuBarViewModel {
 		return SessionsPanelModel(
 			available: snapshot.sessions.periods.available,
 			stats: stats,
+			workSignals: workSignalPanel(snapshot.sessions.workSignals, statistics: statistics),
 			projects: projects,
 			recent: recent,
 			emptyCopy: rows.isEmpty ? t(DesktopCopy.sessionsEmpty) : nil
 		)
+	}
+
+	private func workSignalPanel(
+		_ signals: DesktopWorkSignalsV1?,
+		statistics: DesktopSessionsPeriodItemV1?
+	) -> WorkSignalPanelModel {
+		let unavailableSummaries = WorkSignalSection.allCases.map {
+			WorkSignalSummary(id: $0, title: workSignalTitle($0), value: nil)
+		}
+		guard let signals else {
+			return WorkSignalPanelModel(
+				state: .uncaptured,
+				uncapturedSections: Set(WorkSignalSection.allCases),
+				summaries: unavailableSummaries,
+				activityRows: [],
+				workflowMetrics: [],
+				topFileText: "—",
+				toolingRows: [],
+				topMCPText: "—"
+			)
+		}
+		guard (statistics?.sessions ?? 0) > 0 else {
+			return WorkSignalPanelModel(
+				state: .empty,
+				uncapturedSections: [],
+				summaries: [],
+				activityRows: [],
+				workflowMetrics: [],
+				topFileText: "—",
+				toolingRows: [],
+				topMCPText: "—"
+			)
+		}
+
+		var uncapturedSections = Set<WorkSignalSection>()
+		if !signals.activity.available { uncapturedSections.insert(.activity) }
+		if !signals.workflow.available { uncapturedSections.insert(.workflow) }
+		if !signals.tooling.available { uncapturedSections.insert(.tooling) }
+		let activity = signals.activity.available
+			? signals.activity.items.first { $0.period == selectedPeriod && $0.client == selectedClient }
+			: nil
+		let workflow = signals.workflow.available
+			? signals.workflow.items.first { $0.period == selectedPeriod && $0.client == selectedClient }
+			: nil
+		let tooling = signals.tooling.available
+			? signals.tooling.items.first { $0.period == selectedPeriod && $0.client == selectedClient }
+			: nil
+
+		let categoryOrder = ["coding", "debugging", "conversation", "delegation"]
+		let activityRows: [WorkSignalActivityRow]
+		let activitySummary: String
+		if let activity {
+			let costAvailable = activity.costBasis != "none"
+			activityRows = categoryOrder.enumerated().compactMap { index, kind -> WorkSignalActivityRow? in
+				guard let row = activity.kinds.first(where: { $0.kind == kind }) else { return nil }
+				let subrows = row.sub.compactMap { child -> WorkSignalActivitySubrow? in
+					guard child.share != 0 || child.cost != 0 || child.events != 0 else { return nil }
+					return WorkSignalActivitySubrow(
+						id: child.kind,
+						label: workSignalSubcategoryLabel(child.kind),
+						shareText: DesktopFormat.workSignalPercent(costAvailable ? child.share : nil),
+						costText: DesktopFormat.workSignalCost(costAvailable ? child.cost : nil)
+					)
+				}
+				return WorkSignalActivityRow(
+					id: row.kind,
+					label: workSignalActivityLabel(row.kind),
+					share: costAvailable ? min(1, max(0, row.share / 100)) : nil,
+					shareText: DesktopFormat.workSignalPercent(costAvailable ? row.share : nil),
+					costText: DesktopFormat.workSignalCost(costAvailable ? row.cost : nil),
+					eventsText: DesktopFormat.count(row.events),
+					seriesIndex: index,
+					subrows: subrows
+				)
+			}
+			let leading = activityRows.max { ($0.share ?? -1) < ($1.share ?? -1) }
+			activitySummary = costAvailable
+				? [leading?.label, leading?.shareText].compactMap(\.self).joined(separator: " ")
+				: "—"
+		} else {
+			activityRows = categoryOrder.enumerated().map { index, kind in
+				WorkSignalActivityRow(
+					id: kind,
+					label: workSignalActivityLabel(kind),
+					share: nil,
+					shareText: "—",
+					costText: "—",
+					eventsText: "—",
+					seriesIndex: index,
+					subrows: []
+				)
+			}
+			activitySummary = "—"
+		}
+
+		let workflowMetrics = [
+			WorkSignalMetric(
+				id: "first-edit",
+				label: t(DesktopCopy.sessionsFirstEdit),
+				value: DesktopFormat.workSignalDuration(workflow?.firstEditSeconds),
+				note: t(DesktopCopy.sessionsMetricMedian)
+			),
+			WorkSignalMetric(
+				id: "files-touched",
+				label: t(DesktopCopy.sessionsFilesTouched),
+				value: DesktopFormat.workSignalCount(workflow?.filesTouched),
+				note: nil
+			),
+			WorkSignalMetric(
+				id: "retries",
+				label: t(DesktopCopy.sessionsRetries),
+				value: DesktopFormat.workSignalCount(workflow?.retries),
+				note: t(DesktopCopy.sessionsRetriesNote)
+			),
+			WorkSignalMetric(
+				id: "edits-per-session",
+				label: t(DesktopCopy.sessionsEditsPerSession),
+				value: DesktopFormat.workSignalDecimal(workflow?.editsPerSession),
+				note: nil
+			),
+		]
+		let topFileText: String
+		if let workflow, let topFile = workflow.topFile, let topFileEdits = workflow.topFileEdits {
+			topFileText = "\(topFile) ×\(DesktopFormat.count(Int64(topFileEdits)))"
+		} else {
+			topFileText = "—"
+		}
+
+		let toolingRows = (tooling?.rows ?? []).sorted { lhs, rhs in
+			if lhs.kind == "other" { return false }
+			if rhs.kind == "other" { return true }
+			if lhs.calls != rhs.calls { return lhs.calls > rhs.calls }
+			return lhs.kind < rhs.kind
+		}.map { row in
+			WorkSignalToolRow(
+				id: row.kind,
+				label: workSignalToolLabel(row.kind),
+				callsText: "\(DesktopFormat.count(row.calls)) \(t(DesktopCopy.sessionsToolCalls))",
+				shareText: DesktopFormat.workSignalPercent(row.share)
+			)
+		}
+		let topMCPText: String
+		if let tooling, let server = tooling.topMCPServer, let calls = tooling.topMCPCalls {
+			topMCPText = "\(server) · \(DesktopFormat.count(calls))"
+		} else {
+			topMCPText = "—"
+		}
+
+		return WorkSignalPanelModel(
+			state: uncapturedSections.count == WorkSignalSection.allCases.count ? .uncaptured : .captured,
+			uncapturedSections: uncapturedSections,
+			summaries: [
+				WorkSignalSummary(
+					id: .activity,
+					title: workSignalTitle(.activity),
+					value: uncapturedSections.contains(.activity) ? nil : activitySummary
+				),
+				WorkSignalSummary(
+					id: .workflow,
+					title: workSignalTitle(.workflow),
+					value: uncapturedSections.contains(.workflow)
+						? nil
+						: workflow.map {
+							"\(t(DesktopCopy.sessionsFirstEdit)) \(DesktopFormat.workSignalDuration($0.firstEditSeconds))"
+						} ?? "—"
+				),
+				WorkSignalSummary(
+					id: .tooling,
+					title: workSignalTitle(.tooling),
+					value: uncapturedSections.contains(.tooling)
+						? nil
+						: tooling.map { "\(DesktopFormat.count($0.calls)) \(t(DesktopCopy.sessionsToolCalls))" } ?? "—"
+				),
+			],
+			activityRows: activityRows,
+			workflowMetrics: workflowMetrics,
+			topFileText: topFileText,
+			toolingRows: toolingRows,
+			topMCPText: topMCPText
+		)
+	}
+
+	private func workSignalTitle(_ section: WorkSignalSection) -> String {
+		switch section {
+		case .activity: t(DesktopCopy.sessionsActivity)
+		case .workflow: t(DesktopCopy.sessionsWorkflow)
+		case .tooling: t(DesktopCopy.sessionsTooling)
+		}
+	}
+
+	private func workSignalActivityLabel(_ kind: String) -> String {
+		switch kind {
+		case "coding": t(DesktopCopy.sessionsActivityCoding)
+		case "debugging": t(DesktopCopy.sessionsActivityDebugging)
+		case "conversation": t(DesktopCopy.sessionsActivityConversation)
+		case "delegation": t(DesktopCopy.sessionsActivityDelegation)
+		default: kind
+		}
+	}
+
+	private func workSignalSubcategoryLabel(_ kind: String) -> String {
+		switch kind {
+		case "feature": t(DesktopCopy.sessionsSubFeature)
+		case "refactoring": t(DesktopCopy.sessionsSubRefactoring)
+		case "testing": t(DesktopCopy.sessionsSubTesting)
+		case "maintenance": t(DesktopCopy.sessionsSubMaintenance)
+		case "investigation": t(DesktopCopy.sessionsSubInvestigation)
+		case "repair": t(DesktopCopy.sessionsSubRepair)
+		case "exploration": t(DesktopCopy.sessionsSubExploration)
+		case "brainstorming": t(DesktopCopy.sessionsSubBrainstorming)
+		case "planning": t(DesktopCopy.sessionsSubPlanning)
+		case "subagent": t(DesktopCopy.sessionsSubagent)
+		case "workflow": t(DesktopCopy.sessionsSubWorkflow)
+		default: kind
+		}
+	}
+
+	private func workSignalToolLabel(_ kind: String) -> String {
+		switch kind {
+		case "bash": t(DesktopCopy.sessionsToolBash)
+		case "read": t(DesktopCopy.sessionsToolRead)
+		case "edit": t(DesktopCopy.sessionsToolEdit)
+		case "mcp": t(DesktopCopy.sessionsToolMCP)
+		case "other": t(DesktopCopy.sessionsToolOther)
+		default: kind
+		}
 	}
 
 	private func sessionDuration(_ session: DesktopRecentSessionV1) -> String {

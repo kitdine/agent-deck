@@ -671,22 +671,50 @@ struct AttributionPanelView: View {
 struct SessionsPanelView: View {
 	let panel: SessionsPanelModel
 	let expansion: SectionExpansion
+	@State private var signalNavigation = WorkSignalNavigationState()
+	@FocusState private var focusedSignal: WorkSignalSection?
+	@AccessibilityFocusState private var accessibilityFocus: WorkSignalAccessibilityTarget?
 
-	init(panel: SessionsPanelModel, expansion: @escaping SectionExpansion = { _ in .constant(true) }) {
+	init(
+		panel: SessionsPanelModel,
+		initialNavigation: WorkSignalNavigationState = WorkSignalNavigationState(),
+		expansion: @escaping SectionExpansion = { _ in .constant(true) }
+	) {
 		self.panel = panel
 		self.expansion = expansion
+		_signalNavigation = State(initialValue: initialNavigation)
 	}
 
 	var body: some View {
-			VStack(alignment: .leading, spacing: MenuBarGeometry.betweenSections) {
-				if panel.available {
-					StatChipRow(chips: panel.stats)
-					VStack(alignment: .leading, spacing: MenuBarGeometry.betweenRows) {
-						HStack(alignment: .firstTextBaseline) {
-							Text(t(DesktopCopy.sessionsSignals))
-								.font(.caption.weight(.semibold))
-								.foregroundStyle(DesktopVisualTheme.muted)
-							Spacer()
+		VStack(alignment: .leading, spacing: MenuBarGeometry.betweenSections) {
+			if panel.available {
+				if let detail = signalNavigation.detail {
+					signalDetail(detail)
+				} else {
+					overview
+				}
+			} else {
+				UnavailableRow()
+			}
+		}
+		.onChange(of: panel.workSignals.state) { _, state in
+			if state == .empty {
+				_ = signalNavigation.close()
+			}
+		}
+	}
+
+	private var overview: some View {
+		VStack(alignment: .leading, spacing: MenuBarGeometry.betweenSections) {
+			StatChipRow(chips: panel.stats)
+			if panel.workSignals.state != .empty {
+				VStack(alignment: .leading, spacing: MenuBarGeometry.betweenRows) {
+					HStack(alignment: .firstTextBaseline) {
+						Text(t(DesktopCopy.sessionsSignals))
+							.font(.caption.weight(.semibold))
+							.foregroundStyle(DesktopVisualTheme.muted)
+						Spacer()
+						if !panel.workSignals.uncapturedSections.isEmpty {
 							Text(t(DesktopCopy.notCapturedYet))
 								.font(.caption2.weight(.medium))
 								.foregroundStyle(DesktopVisualTheme.warning)
@@ -694,57 +722,114 @@ struct SessionsPanelView: View {
 								.padding(.vertical, 2)
 								.background(DesktopVisualTheme.warning.opacity(0.14), in: Capsule())
 						}
-						HStack(alignment: .top, spacing: MenuBarGeometry.betweenRows) {
-							WorkSignalPlaceholder(
-								title: t(DesktopCopy.sessionsActivity),
-								symbol: "chevron.left.forwardslash.chevron.right",
-								tint: DesktopVisualTheme.info
-							)
-							WorkSignalPlaceholder(
-								title: t(DesktopCopy.sessionsWorkflow),
-								symbol: "doc.text",
-								tint: DesktopVisualTheme.series[1]
-							)
-							WorkSignalPlaceholder(
-								title: t(DesktopCopy.sessionsTooling),
-								symbol: "wrench.and.screwdriver",
-								tint: DesktopVisualTheme.accent
-							)
-						}
 					}
-					CollapsibleSection(title: t(DesktopCopy.sessionsProjectRows), isExpanded: expansion("sessions.projects")) {
-					if let emptyCopy = panel.emptyCopy {
-						Text(emptyCopy)
-							.font(.caption)
-							.foregroundStyle(.secondary)
-							.fixedSize(horizontal: false, vertical: true)
-					} else {
-							SessionProjectRowsView(rows: panel.projects)
-						}
-					}
-					if !panel.recent.isEmpty {
-					CollapsibleSection(title: t(DesktopCopy.sessionsRecent), isExpanded: expansion("sessions.recent")) {
-						ForEach(Array(panel.recent.enumerated()), id: \.element.id) { index, row in
-							HStack(alignment: .firstTextBaseline) {
-								VStack(alignment: .leading, spacing: MenuBarGeometry.withinRow) {
-									Text(row.title).font(.body).lineLimit(1).truncationMode(.middle)
-									Text(row.detail).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+					HStack(alignment: .top, spacing: MenuBarGeometry.betweenRows) {
+						ForEach(panel.workSignals.summaries) { summary in
+							Button {
+								signalNavigation.open(summary.id)
+								Task { @MainActor in
+									await Task.yield()
+									accessibilityFocus = .detailHeading
 								}
-								Spacer()
-								Text(row.when).font(.caption).foregroundStyle(.secondary)
+							} label: {
+								WorkSignalSummaryCard(summary: summary)
 							}
-							.frame(minHeight: MenuBarGeometry.rowMinimumHeight)
-							.accessibilityElement(children: .combine)
-							if index < panel.recent.count - 1 {
-								Divider().overlay(DesktopVisualTheme.lineSoft)
-							}
-							}
+							.buttonStyle(.plain)
+							.focused($focusedSignal, equals: summary.id)
+							.accessibilityFocused($accessibilityFocus, equals: .summary(summary.id))
+							.accessibilityLabel(summary.title)
+							.accessibilityValue(summary.value ?? t(DesktopCopy.notCapturedYet))
 						}
 					}
-			} else {
-				UnavailableRow()
+				}
+			}
+			CollapsibleSection(title: t(DesktopCopy.sessionsProjectRows), isExpanded: expansion("sessions.projects")) {
+				if let emptyCopy = panel.emptyCopy {
+					Text(emptyCopy)
+						.font(.caption)
+						.foregroundStyle(.secondary)
+						.fixedSize(horizontal: false, vertical: true)
+				} else {
+					SessionProjectRowsView(rows: panel.projects)
+				}
+			}
+			if !panel.recent.isEmpty {
+				CollapsibleSection(title: t(DesktopCopy.sessionsRecent), isExpanded: expansion("sessions.recent")) {
+					ForEach(Array(panel.recent.enumerated()), id: \.element.id) { index, row in
+						HStack(alignment: .firstTextBaseline) {
+							VStack(alignment: .leading, spacing: MenuBarGeometry.withinRow) {
+								Text(row.title).font(.body).lineLimit(1).truncationMode(.middle)
+								Text(row.detail).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+							}
+							Spacer()
+							Text(row.when).font(.caption).foregroundStyle(.secondary)
+						}
+						.frame(minHeight: MenuBarGeometry.rowMinimumHeight)
+						.accessibilityElement(children: .combine)
+						if index < panel.recent.count - 1 {
+							Divider().overlay(DesktopVisualTheme.lineSoft)
+						}
+					}
+				}
 			}
 		}
+	}
+
+	@ViewBuilder
+	private func signalDetail(_ section: WorkSignalSection) -> some View {
+		VStack(alignment: .leading, spacing: MenuBarGeometry.betweenRows) {
+			HStack {
+				Button {
+					let origin = signalNavigation.close()
+					Task { @MainActor in
+						await Task.yield()
+						focusedSignal = origin
+						if let origin {
+							accessibilityFocus = .summary(origin)
+						}
+					}
+				} label: {
+					Label(t(DesktopCopy.healthBack), systemImage: "chevron.left")
+				}
+				.buttonStyle(.borderless)
+				.keyboardShortcut(.cancelAction)
+				Spacer()
+				Label(workSignalTitle(section), systemImage: section.symbol)
+					.font(.headline)
+					.foregroundStyle(section.tint)
+					.accessibilityAddTraits(.isHeader)
+					.accessibilityFocused($accessibilityFocus, equals: .detailHeading)
+			}
+			.frame(minHeight: MenuBarGeometry.rowMinimumHeight)
+
+			if panel.workSignals.uncapturedSections.contains(section) {
+				Label(t(DesktopCopy.sessionsPendingHint), systemImage: "exclamationmark.triangle.fill")
+					.font(.caption)
+					.foregroundStyle(DesktopVisualTheme.warning)
+					.padding(MenuBarGeometry.betweenRows)
+					.frame(maxWidth: .infinity, alignment: .leading)
+					.background(DesktopVisualTheme.warning.opacity(0.14), in: RoundedRectangle(cornerRadius: 8))
+			} else {
+				switch section {
+				case .activity:
+					WorkSignalActivityDetail(rows: panel.workSignals.activityRows, navigation: $signalNavigation)
+				case .workflow:
+					WorkSignalWorkflowDetail(
+						metrics: panel.workSignals.workflowMetrics,
+						topFileText: panel.workSignals.topFileText
+					)
+				case .tooling:
+					WorkSignalToolingDetail(
+						rows: panel.workSignals.toolingRows,
+						topMCPText: panel.workSignals.topMCPText
+					)
+				}
+			}
+		}
+	}
+
+	private func workSignalTitle(_ section: WorkSignalSection) -> String {
+		panel.workSignals.summaries.first(where: { $0.id == section })?.title ?? section.rawValue
 	}
 }
 
@@ -780,21 +865,275 @@ private struct SessionProjectRowsView: View {
 	}
 }
 
-private struct WorkSignalPlaceholder: View {
-	let title: String
-	let symbol: String
-	let tint: Color
+struct WorkSignalNavigationState: Equatable {
+	private(set) var detail: WorkSignalSection?
+	private(set) var expandedActivityKind: String?
+
+	init(detail: WorkSignalSection? = nil, expandedActivityKind: String? = nil) {
+		self.detail = detail
+		self.expandedActivityKind = expandedActivityKind
+	}
+
+	mutating func open(_ section: WorkSignalSection) {
+		detail = section
+		expandedActivityKind = nil
+	}
+
+	@discardableResult
+	mutating func close() -> WorkSignalSection? {
+		let origin = detail
+		detail = nil
+		expandedActivityKind = nil
+		return origin
+	}
+
+	mutating func setActivity(_ kind: String, expanded: Bool) {
+		expandedActivityKind = expanded ? kind : expandedActivityKind == kind ? nil : expandedActivityKind
+	}
+}
+
+private enum WorkSignalAccessibilityTarget: Hashable {
+	case summary(WorkSignalSection)
+	case detailHeading
+}
+
+private extension WorkSignalSection {
+	var symbol: String {
+		switch self {
+		case .activity: "chevron.left.forwardslash.chevron.right"
+		case .workflow: "doc.text"
+		case .tooling: "wrench.and.screwdriver"
+		}
+	}
+
+	var tint: Color {
+		switch self {
+		case .activity: DesktopVisualTheme.info
+		case .workflow: DesktopVisualTheme.series[1]
+		case .tooling: DesktopVisualTheme.accent
+		}
+	}
+}
+
+private struct WorkSignalSummaryCard: View {
+	let summary: WorkSignalSummary
+
+	var body: some View {
+		VStack(alignment: .leading, spacing: 5) {
+			ViewThatFits(in: .horizontal) {
+				HStack(spacing: MenuBarGeometry.withinRow) {
+					Image(systemName: summary.id.symbol)
+						.foregroundStyle(summary.id.tint)
+					Text(summary.title)
+						.font(.caption.weight(.semibold))
+						.fixedSize(horizontal: true, vertical: false)
+					Spacer(minLength: 0)
+					Image(systemName: "chevron.right")
+						.font(.caption2)
+						.foregroundStyle(DesktopVisualTheme.dim)
+				}
+				HStack(spacing: MenuBarGeometry.withinRow) {
+					Image(systemName: summary.id.symbol)
+						.foregroundStyle(summary.id.tint)
+					Text(summary.title)
+						.font(.caption.weight(.semibold))
+						.lineLimit(1)
+						.minimumScaleFactor(0.7)
+						.layoutPriority(1)
+				}
+			}
+			if let value = summary.value {
+				Text(value)
+					.font(.caption.weight(.semibold))
+					.lineLimit(1)
+					.minimumScaleFactor(0.72)
+					.truncationMode(.tail)
+			}
+		}
+		.padding(9)
+		.frame(maxWidth: .infinity, minHeight: summary.value == nil ? 44 : 58, alignment: .leading)
+		.background(DesktopVisualTheme.surface, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+		.overlay {
+			RoundedRectangle(cornerRadius: 7, style: .continuous)
+				.stroke(DesktopVisualTheme.lineSoft, lineWidth: 1)
+		}
+	}
+}
+
+private struct WorkSignalActivityDetail: View {
+	let rows: [WorkSignalActivityRow]
+	@Binding var navigation: WorkSignalNavigationState
+
+	var body: some View {
+		VStack(alignment: .leading, spacing: 0) {
+			ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
+				DisclosureGroup(
+					isExpanded: Binding(
+						get: { navigation.expandedActivityKind == row.id },
+						set: { navigation.setActivity(row.id, expanded: $0) }
+					)
+				) {
+					if !row.subrows.isEmpty {
+						VStack(alignment: .leading, spacing: 0) {
+							ForEach(row.subrows) { subrow in
+								HStack(alignment: .firstTextBaseline, spacing: MenuBarGeometry.betweenRows) {
+									Text(subrow.label)
+										.font(.caption)
+										.lineLimit(1)
+									Spacer()
+									Text(subrow.shareText)
+										.font(.caption2)
+										.foregroundStyle(DesktopVisualTheme.dim)
+									Text(subrow.costText)
+										.font(.caption.weight(.semibold))
+										.monospacedDigit()
+								}
+								.frame(minHeight: 26)
+								.accessibilityElement(children: .combine)
+							}
+						}
+						.padding(.leading, 10)
+						.overlay(alignment: .leading) {
+							Rectangle().fill(DesktopVisualTheme.line).frame(width: 1)
+						}
+						.padding(.leading, 8)
+					}
+				} label: {
+					WorkSignalActivityParent(row: row)
+				}
+				.tint(DesktopVisualTheme.series[row.seriesIndex % DesktopVisualTheme.series.count])
+				.accessibilityLabel(row.label)
+				.accessibilityValue("\(row.shareText), \(row.costText), \(row.eventsText)")
+				.padding(.horizontal, MenuBarGeometry.betweenRows)
+				if index < rows.count - 1 {
+					Divider().overlay(DesktopVisualTheme.lineSoft)
+				}
+			}
+		}
+		.desktopCard(padding: 0)
+	}
+}
+
+private struct WorkSignalActivityParent: View {
+	let row: WorkSignalActivityRow
 
 	var body: some View {
 		VStack(alignment: .leading, spacing: MenuBarGeometry.withinRow) {
-			HStack(spacing: MenuBarGeometry.withinRow) {
-				Image(systemName: symbol).foregroundStyle(tint)
-				Text(title).font(.caption.weight(.semibold)).lineLimit(1)
+			HStack(alignment: .firstTextBaseline, spacing: MenuBarGeometry.betweenRows) {
+				Text(row.label).font(.body).lineLimit(1)
+				Spacer()
+				Text("\(row.costText) · \(row.eventsText)")
+					.font(.caption)
+					.foregroundStyle(DesktopVisualTheme.dim)
+					.lineLimit(1)
+				Text(row.shareText)
+					.font(.body.weight(.semibold))
+					.monospacedDigit()
+					.frame(minWidth: 42, alignment: .trailing)
 			}
+			GeometryReader { geometry in
+				Capsule().fill(DesktopVisualTheme.lineSoft)
+				if let share = row.share {
+					Capsule()
+						.fill(DesktopVisualTheme.series[row.seriesIndex % DesktopVisualTheme.series.count])
+						.frame(width: max(0, geometry.size.width * share))
+				}
+			}
+			.frame(height: 5)
+			.accessibilityHidden(true)
+		}
+		.padding(.vertical, MenuBarGeometry.betweenRows)
+	}
+}
+
+private struct WorkSignalWorkflowDetail: View {
+	let metrics: [WorkSignalMetric]
+	let topFileText: String
+	private let columns = [GridItem(.flexible(), spacing: 6), GridItem(.flexible(), spacing: 6)]
+
+	var body: some View {
+		VStack(alignment: .leading, spacing: MenuBarGeometry.betweenRows) {
+			LazyVGrid(columns: columns, alignment: .leading, spacing: 6) {
+				ForEach(metrics) { metric in
+					VStack(alignment: .leading, spacing: 2) {
+						Text(metric.label)
+							.font(.caption2)
+							.foregroundStyle(DesktopVisualTheme.dim)
+						Text(metric.value)
+							.font(.title2.weight(.semibold))
+							.monospacedDigit()
+						if let note = metric.note {
+							Text(note)
+								.font(.caption2)
+								.foregroundStyle(DesktopVisualTheme.dim)
+								.fixedSize(horizontal: false, vertical: true)
+						}
+					}
+					.padding(10)
+					.frame(maxWidth: .infinity, minHeight: 74, alignment: .topLeading)
+					.background(DesktopVisualTheme.surfaceRaised, in: RoundedRectangle(cornerRadius: 7))
+					.accessibilityElement(children: .combine)
+				}
+			}
+			WorkSignalInlineRow(label: t(DesktopCopy.sessionsTopFile), value: topFileText)
+		}
+	}
+}
+
+private struct WorkSignalToolingDetail: View {
+	let rows: [WorkSignalToolRow]
+	let topMCPText: String
+
+	var body: some View {
+		VStack(alignment: .leading, spacing: MenuBarGeometry.betweenRows) {
+			if !rows.isEmpty {
+				VStack(alignment: .leading, spacing: 0) {
+					ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
+						HStack(alignment: .firstTextBaseline, spacing: MenuBarGeometry.betweenRows) {
+							Text(row.label).font(.body).lineLimit(1)
+							Spacer()
+							Text(row.callsText)
+								.font(.caption)
+								.foregroundStyle(DesktopVisualTheme.dim)
+								.lineLimit(1)
+							Text(row.shareText)
+								.font(.body.weight(.semibold))
+								.monospacedDigit()
+								.frame(minWidth: 50, alignment: .trailing)
+						}
+						.padding(.horizontal, MenuBarGeometry.betweenRows)
+						.frame(minHeight: 32)
+						.accessibilityElement(children: .combine)
+						if index < rows.count - 1 {
+							Divider().overlay(DesktopVisualTheme.lineSoft)
+						}
+					}
+				}
+				.desktopCard(padding: 0)
+			}
+			WorkSignalInlineRow(label: t(DesktopCopy.sessionsTopMCPServer), value: topMCPText)
+		}
+	}
+}
+
+private struct WorkSignalInlineRow: View {
+	let label: String
+	let value: String
+
+	var body: some View {
+		HStack(alignment: .firstTextBaseline, spacing: MenuBarGeometry.betweenRows) {
+			Text(label)
+				.font(.caption)
+				.foregroundStyle(DesktopVisualTheme.dim)
+			Spacer()
+			Text(value)
+				.font(.body.weight(.semibold))
+				.monospacedDigit()
+				.lineLimit(1)
+				.truncationMode(.middle)
 		}
 		.padding(MenuBarGeometry.betweenRows)
-		.frame(maxWidth: .infinity, alignment: .leading)
-		.background(DesktopVisualTheme.surfaceEmphasis, in: RoundedRectangle(cornerRadius: 7))
+		.background(DesktopVisualTheme.surfaceRaised, in: RoundedRectangle(cornerRadius: 7))
 		.accessibilityElement(children: .combine)
 	}
 }

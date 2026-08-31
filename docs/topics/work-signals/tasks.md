@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-08-20
-updated: 2026-08-29
+updated: 2026-08-31
 ---
 
 # Work Signals — Tasks
@@ -16,6 +16,7 @@ This file is the only status authority for this topic.
 | architecture.md | [x] | [x] |
 | ux/session-work-signals.md | [x] | [x] |
 | ux/cli-work-signals.md | [x] | [x] |
+| acceptance/work-signal-surface.md | [x] | [ ] |
 | tasks.md | [x] | [x] |
 
 **Re-opened 2026-08-27 (second time) by two blockers found entering task 2.**
@@ -338,10 +339,11 @@ reviewed against a specimen that does not yet show what they describe.
 - Both languages ship together; add only the strings the `ux` document lists,
   including `sessions.toolKinds.other`.
 - The uncaptured rendering is **retained**, not deleted.
-- Manual acceptance on real macOS 26 covers both appearances, both languages, the
-  280 pt narrow bound, VoiceOver order through both levels including an expanded
-  subcategory block, and focus return from a detail view to its card. Recorded
-  under `acceptance/`.
+- Acceptance on real macOS 26 covers both appearances, both languages, the
+  280 pt narrow bound, native expanded-state structure, textual alternatives,
+  and the detail-navigation return target. Actual VoiceOver, TCC, and system
+  accessibility-setting automation are explicitly not run and not required;
+  the non-execution is recorded under `acceptance/`.
 - Depends on task 4.
 - The uncaptured form this task replaces belongs to `desktop-app` task 3. If it
   is there when this task starts, replace it; if it is not, build it here. Both
@@ -367,7 +369,7 @@ reviewed against a specimen that does not yet show what they describe.
 | 2. `activity-classification` | [x] | [x] |
 | 3. `work-signal-cli` | [x] | [x] |
 | 4. `work-signal-projection` | [x] | [x] |
-| 5. `work-signal-surface` | [ ] | [ ] |
+| 5. `work-signal-surface` | [x] | [x] |
 | 6. `work-signals-contract` | [ ] | [ ] |
 
 Task 1 Development (2026-08-27): schema v20 adds `turn_index` to usage events,
@@ -520,6 +522,78 @@ expectation on a path the additive `DesktopWire.swift` diff never touches, and
 `scripts/check-topic-docs.sh` now exits 1 on `schema-version-signal`, an untracked
 topic created concurrently and outside this candidate's manifest. Both task cells
 tick; task 5 `work-signal-surface` is the next implementation task.
+
+Task 5 Development (2026-08-31): the Sessions panel now reads Task 4's selected
+Client × Period work-signal item directly and renders the captured two-level
+surface: three summary cards; fixed, singly expandable Activity rows; the
+Workflow metric grid and most-touched row; and call-sorted Tooling rows with
+`other` last and no cost column. Legacy/unavailable families retain the shipped
+Not captured yet cards and gain a detail banner; an empty selected scope omits
+the cards. `partial` renders like `turn`, `none` renders unavailable values, and
+measured zero remains distinct from `—`. The approved prototype copy is present
+in both shipped catalogs, native DisclosureGroup/accessibility focus preserves
+parent-child order and the opening-card return target, and 420/280 pt Light/Dark
+English/Chinese rendered attachments were generated and visually inspected.
+Focused state, navigation, localization and rendering tests, complete App and
+Shared XCTest, and the repository-wide Go L2 suite pass. By explicit operator
+decision on 2026-08-31, actual VoiceOver speech, TCC, and system accessibility
+automation are not run and are not acceptance gates; the record states that
+non-execution instead of presenting it as tested. `acceptance/work-signal-surface.md`
+owns the evidence and policy disposition. Task 5 Development is complete and
+awaits independent Review.
+
+Task 5 Review Round 1 (2026-08-31): **REOPEN** on R1-F1, with R1-F2 also open.
+The captured rendering itself holds — fixed orders, the subcategory omission
+rule, the three cost bases, the two deliberately withheld strings, both
+catalogs, the 256 pt content width, and the navigation/expanded-state model were
+each verified against `ux/session-work-signals.md` and the prototype, and the
+focused App tests pass. The panel's *state* does not. It requires an item from
+all three families for the selected scope and otherwise renders the legacy
+`Not captured yet` surface, while the producer projects the three families
+independently — activity and workflow from classified turns, tooling from
+`total > 0` over tool calls — so a captured scope that simply had no tool call
+is reported as a snapshot missing its fields. The sibling CLI names that same
+scope `No tool call in the selected scope.`, and no canonical fixture or test
+can reach the divergence, which is why nine CEv1 criteria answered `pass` over a
+state that does not satisfy `state-and-legacy`. R1-F2 is the unratified change
+to `ux/session-work-signals.md`: its acceptance paragraph was rewritten during
+development while the set's last PASS still binds the earlier blob, the
+Documents matrix still ticks it, and its frontmatter still reads
+`updated: 2026-08-20`. `reviews/work-signal-surface.md` owns the exact findings,
+evidence, and bounded remediation. Both task cells remain unticked until Repair
+and independent Re-review close both findings.
+
+Task 5 Repair Round 1 (2026-08-31): **R1-F1 and R1-F2 closed, awaiting
+independent Re-review.** Empty scope now comes from selected session statistics,
+while each Work Signal family independently records unavailable versus captured
+with no item. A captured scope with no Tooling item keeps Activity and Workflow,
+shows `—` for Tooling, and never claims the snapshot lacks fields; a sessionful
+scope with no family items shows three captured `—` cards. The focused
+asymmetric-family regression and complete App/Shared XCTest pass. The UX
+frontmatter and Copy-delta wording are corrected, `reviews/documents.md` Round 9
+ratifies the independently reviewed operator decision, and the new Document gate
+is VERIFIED. `reviews/work-signal-surface.md` owns the full finding-to-change
+mapping. Task 5's Dev cell ticks; Review remains pending.
+
+Task 5 Re-review Round 1 (2026-08-31): **PASS.** R1-F1 is closed on a falsifier
+rather than on the repair's account of itself: reinstating the unanimity rule as
+a one-line edit made `testCapturedWorkSignalScopeKeepsEachMissingFamilyHonest`
+fail at all three of its boundaries, and the file was restored byte-identical by
+SHA-256 and `git hash-object`. Emptiness now comes from the selected scope's
+session statistics — the same last-event-in-period rule the panel's own empty
+note uses — and each family carries its own uncaptured state, so a captured
+scope with no tool call keeps Activity and Workflow and renders `—` for Tooling
+instead of claiming the snapshot lacks fields. R1-F2 is closed against the
+repository rather than the note: `updated: 2026-08-31`, the Copy table restated
+as the design delta against the prototype dictionary with all sixteen imported
+labels accounted for, `reviews/documents.md` Round 9, and a Document gate whose
+digest reproduces from its recorded recipe. Nothing regressed: the full scheme
+passes under an explicit English locale (Shared 39, App 59, Widget 22), the
+eight narrow renderings were re-executed against the changed views, and no Go
+file changed. The single non-English App failure is this machine's Chinese
+localization against a hardcoded English expectation, isolated by the English
+run. Both task cells tick; the Task gate is VERIFIED. Task 6
+`work-signals-contract` is the last remaining implementation task.
 
 Task 1 Review Round 1 (2026-08-27): **REOPEN** on R1-F1. Schema v20, the parser
 version bump and backfill, both fixture regenerations, Decision 1's turn

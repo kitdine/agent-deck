@@ -295,6 +295,123 @@ final class MenuBarViewModelTests: XCTestCase {
 		XCTAssertEqual(model.sessionsPanel.recent[0].when, DesktopFormat.duration(18 * 60))
 	}
 
+	func testCapturedWorkSignalsUseTheSelectedScopeAndFixedOrders() async {
+		let model = await readyModel()
+		model.selectedClient = "all"
+		model.selectedPeriod = "today"
+
+		let today = model.sessionsPanel.workSignals
+		XCTAssertEqual(today.state, .captured)
+		XCTAssertEqual(today.summaries.map(\.id), [.activity, .workflow, .tooling])
+		XCTAssertEqual(
+			today.summaries[0].value,
+			"\(t(DesktopCopy.sessionsActivityCoding)) \(DesktopFormat.workSignalPercent(52))"
+		)
+		XCTAssertEqual(
+			today.summaries[1].value,
+			"\(t(DesktopCopy.sessionsFirstEdit)) \(DesktopFormat.workSignalDuration(120))"
+		)
+		XCTAssertEqual(
+			today.summaries[2].value,
+			"\(DesktopFormat.count(181)) \(t(DesktopCopy.sessionsToolCalls))"
+		)
+		XCTAssertEqual(today.activityRows.map(\.id), ["coding", "debugging", "conversation", "delegation"])
+		XCTAssertEqual(today.activityRows[0].subrows.map(\.id), ["feature", "refactoring", "testing", "maintenance"])
+		XCTAssertEqual(today.workflowMetrics.map(\.id), ["first-edit", "files-touched", "retries", "edits-per-session"])
+		XCTAssertEqual(today.workflowMetrics[2].note, t(DesktopCopy.sessionsRetriesNote))
+		XCTAssertEqual(today.topFileText, "tasks.md ×4")
+		XCTAssertEqual(today.toolingRows.map(\.id), ["bash", "read", "edit", "mcp", "other"])
+		XCTAssertEqual(today.topMCPText, "codegraph · 7")
+
+		model.selectedClient = "codex"
+		model.selectedPeriod = "30d"
+		let thirtyDays = model.sessionsPanel.workSignals
+		XCTAssertEqual(thirtyDays.state, .captured)
+		XCTAssertEqual(thirtyDays.workflowMetrics[0].value, DesktopFormat.workSignalDuration(180))
+		XCTAssertEqual(thirtyDays.topFileText, "tasks.md ×6")
+	}
+
+	func testWorkSignalStateDistinguishesEmptyScopeFromLegacyUncapturedPayload() async {
+		let captured = await readyModel()
+		captured.selectedClient = "claude"
+		captured.selectedPeriod = "today"
+		XCTAssertEqual(captured.sessionsPanel.workSignals.state, .empty)
+		XCTAssertTrue(captured.sessionsPanel.workSignals.summaries.isEmpty)
+
+		let legacy = await readyModel(envelope: WireFixture.envelope(includeWorkSignals: false))
+		XCTAssertEqual(legacy.sessionsPanel.workSignals.state, .uncaptured)
+		XCTAssertEqual(legacy.sessionsPanel.workSignals.summaries.map(\.id), [.activity, .workflow, .tooling])
+		XCTAssertTrue(legacy.sessionsPanel.workSignals.summaries.allSatisfy { $0.value == nil })
+
+		let unavailable = await readyModel(envelope: WireFixture.envelope(workSignalsAvailable: false))
+		XCTAssertEqual(unavailable.sessionsPanel.workSignals.state, .uncaptured)
+	}
+
+	func testCapturedWorkSignalScopeKeepsEachMissingFamilyHonest() async {
+		let noToolCalls = await readyModel(
+			envelope: WireFixture.envelope(
+				workSignalsPayload: WireFixture.workSignals(omitToolingForTodayAll: true)
+			)
+		)
+		let noToolingItem = noToolCalls.sessionsPanel.workSignals
+		XCTAssertEqual(noToolingItem.state, .captured)
+		XCTAssertTrue(noToolingItem.uncapturedSections.isEmpty)
+		XCTAssertNotEqual(noToolingItem.summaries[0].value, "—")
+		XCTAssertNotEqual(noToolingItem.summaries[1].value, "—")
+		XCTAssertEqual(noToolingItem.summaries[2].value, "—")
+		XCTAssertTrue(noToolingItem.toolingRows.isEmpty)
+		XCTAssertEqual(noToolingItem.topMCPText, "—")
+
+		let pendingTurns = await readyModel(
+			envelope: WireFixture.envelope(
+				workSignalsPayload: WireFixture.workSignals(omitAllForTodayAll: true)
+			)
+		)
+		let noFamilyItems = pendingTurns.sessionsPanel.workSignals
+		XCTAssertEqual(noFamilyItems.state, .captured)
+		XCTAssertTrue(noFamilyItems.uncapturedSections.isEmpty)
+		XCTAssertEqual(noFamilyItems.summaries.map(\.value), ["—", "—", "—"])
+		XCTAssertEqual(noFamilyItems.activityRows.count, 4)
+		XCTAssertTrue(noFamilyItems.workflowMetrics.allSatisfy { $0.value == "—" })
+
+		let toolingUnavailable = await readyModel(
+			envelope: WireFixture.envelope(
+				workSignalsPayload: WireFixture.workSignals(toolingFamilyAvailable: false)
+			)
+		)
+		let oneUncapturedFamily = toolingUnavailable.sessionsPanel.workSignals
+		XCTAssertEqual(oneUncapturedFamily.state, .captured)
+		XCTAssertEqual(oneUncapturedFamily.uncapturedSections, [.tooling])
+		XCTAssertNil(oneUncapturedFamily.summaries[2].value)
+		XCTAssertNotNil(oneUncapturedFamily.summaries[0].value)
+	}
+
+	func testWorkSignalUnavailableFiguresAndPartialCostFollowTheStateTable() async {
+		let noCost = await readyModel(
+			envelope: WireFixture.envelope(workSignalsPayload: WireFixture.workSignals(costBasis: "none"))
+		)
+		let noCostSignals = noCost.sessionsPanel.workSignals
+		XCTAssertEqual(noCostSignals.state, .captured)
+		XCTAssertEqual(noCostSignals.summaries[0].value, "—")
+		XCTAssertTrue(noCostSignals.activityRows.allSatisfy { $0.shareText == "—" && $0.costText == "—" })
+		XCTAssertEqual(noCostSignals.activityRows[0].eventsText, DesktopFormat.count(21))
+
+		let partial = await readyModel(
+			envelope: WireFixture.envelope(workSignalsPayload: WireFixture.workSignals(costBasis: "partial"))
+		)
+		XCTAssertNotEqual(partial.sessionsPanel.workSignals.summaries[0].value, "—")
+
+		let missingMetrics = await readyModel(
+			envelope: WireFixture.envelope(
+				workSignalsPayload: WireFixture.workSignals(missingWorkflowMetrics: true, emptyMaintenance: true)
+			)
+		)
+		let workflow = missingMetrics.sessionsPanel.workSignals
+		XCTAssertTrue(workflow.workflowMetrics.allSatisfy { $0.value == "—" })
+		XCTAssertEqual(workflow.topFileText, "—")
+		XCTAssertEqual(workflow.activityRows[0].subrows.map(\.id), ["feature", "refactoring", "testing"])
+	}
+
 	func testTrendUsesOnlyTheSelectedDailyWindowAndCarriesRealDetail() async {
 		let model = await readyModel()
 

@@ -71,6 +71,33 @@ final class MenuBarChromeTests: XCTestCase {
 		XCTAssertNil(hover.calendarBucketID)
 	}
 
+	func testWorkSignalNavigationKeepsOneExpandedCategoryAndReturnsToItsOpeningCard() {
+		var navigation = WorkSignalNavigationState()
+		navigation.open(.activity)
+		XCTAssertEqual(navigation.detail, .activity)
+
+		navigation.setActivity("coding", expanded: true)
+		XCTAssertEqual(navigation.expandedActivityKind, "coding")
+		navigation.setActivity("debugging", expanded: true)
+		XCTAssertEqual(navigation.expandedActivityKind, "debugging")
+		navigation.setActivity("debugging", expanded: false)
+		XCTAssertNil(navigation.expandedActivityKind)
+
+		XCTAssertEqual(navigation.close(), .activity)
+		XCTAssertNil(navigation.detail)
+	}
+
+	func testWorkSignalFormattingKeepsMeasuredZeroDistinctFromUnavailable() {
+		XCTAssertEqual(DesktopFormat.workSignalCount(nil), "—")
+		XCTAssertNotEqual(DesktopFormat.workSignalCount(0), "—")
+		XCTAssertEqual(DesktopFormat.workSignalDecimal(nil), "—")
+		XCTAssertNotEqual(DesktopFormat.workSignalDecimal(0), "—")
+		XCTAssertEqual(DesktopFormat.workSignalDuration(nil), "—")
+		XCTAssertNotEqual(DesktopFormat.workSignalDuration(0), "—")
+		XCTAssertEqual(DesktopFormat.workSignalPercent(nil), "—")
+		XCTAssertEqual(DesktopFormat.workSignalCost(nil), "—")
+	}
+
 	func testStatusItemGlyphRendersNormalAndBadgedAcceptanceImages() throws {
 		XCTAssertNotNil(MenuBarItemController.glyph(badged: false), "the built app must load its raw status-item resource")
 		let source = try XCTUnwrap(NSImage(contentsOf: menuBarIconURL))
@@ -126,6 +153,92 @@ final class MenuBarChromeTests: XCTestCase {
 		let aboutPNG = try renderedViewPNG(content)
 		XCTAssertGreaterThan(aboutPNG.count, 5_000)
 		add(renderingAttachment(aboutPNG, named: "AgentDeck About — built bundle candidate @2x"))
+	}
+
+	func testWorkSignalNarrowCapturedAndLegacyDetailRenderingsAreAttached() async throws {
+		let capturedHost = StubDesktopHost(behavior: .envelope(WireFixture.envelope()))
+		let capturedModel = await makeModel(host: capturedHost)
+		await capturedModel.coordinator.refresh()
+		let legacyHost = StubDesktopHost(behavior: .envelope(WireFixture.envelope(includeWorkSignals: false)))
+		let legacyModel = await makeModel(host: legacyHost)
+		await legacyModel.coordinator.refresh()
+
+		let summaryDark = SessionsPanelView(panel: capturedModel.sessionsPanel)
+			.environment(\.colorScheme, .dark)
+			.tint(DesktopVisualTheme.accent)
+			.foregroundStyle(DesktopVisualTheme.text)
+			.background(DesktopVisualTheme.background)
+		let activityLight = SessionsPanelView(
+			panel: capturedModel.sessionsPanel,
+			initialNavigation: WorkSignalNavigationState(detail: .activity, expandedActivityKind: "coding")
+		)
+		.environment(\.colorScheme, .light)
+		.tint(DesktopVisualTheme.accent)
+		.foregroundStyle(DesktopVisualTheme.text)
+		.background(DesktopVisualTheme.background)
+		let activityDark = SessionsPanelView(
+			panel: capturedModel.sessionsPanel,
+			initialNavigation: WorkSignalNavigationState(detail: .activity, expandedActivityKind: "coding")
+		)
+		.environment(\.colorScheme, .dark)
+		.tint(DesktopVisualTheme.accent)
+		.foregroundStyle(DesktopVisualTheme.text)
+		.background(DesktopVisualTheme.background)
+		let workflowLight = SessionsPanelView(
+			panel: capturedModel.sessionsPanel,
+			initialNavigation: WorkSignalNavigationState(detail: .workflow)
+		)
+		.environment(\.colorScheme, .light)
+		.tint(DesktopVisualTheme.accent)
+		.foregroundStyle(DesktopVisualTheme.text)
+		.background(DesktopVisualTheme.background)
+		let workflowDark = SessionsPanelView(
+			panel: capturedModel.sessionsPanel,
+			initialNavigation: WorkSignalNavigationState(detail: .workflow)
+		)
+		.environment(\.colorScheme, .dark)
+		.tint(DesktopVisualTheme.accent)
+		.foregroundStyle(DesktopVisualTheme.text)
+		.background(DesktopVisualTheme.background)
+		let toolingLight = SessionsPanelView(
+			panel: capturedModel.sessionsPanel,
+			initialNavigation: WorkSignalNavigationState(detail: .tooling)
+		)
+		.environment(\.colorScheme, .light)
+		.tint(DesktopVisualTheme.accent)
+		.foregroundStyle(DesktopVisualTheme.text)
+		.background(DesktopVisualTheme.background)
+		let toolingDark = SessionsPanelView(
+			panel: capturedModel.sessionsPanel,
+			initialNavigation: WorkSignalNavigationState(detail: .tooling)
+		)
+		.environment(\.colorScheme, .dark)
+		.tint(DesktopVisualTheme.accent)
+		.foregroundStyle(DesktopVisualTheme.text)
+		.background(DesktopVisualTheme.background)
+		let legacyLight = SessionsPanelView(
+			panel: legacyModel.sessionsPanel,
+			initialNavigation: WorkSignalNavigationState(detail: .activity)
+		)
+		.environment(\.colorScheme, .light)
+		.tint(DesktopVisualTheme.accent)
+		.foregroundStyle(DesktopVisualTheme.text)
+		.background(DesktopVisualTheme.background)
+
+		let renderings: [(String, Data)] = try [
+			("summary-dark", renderedViewPNG(summaryDark, size: NSSize(width: 256, height: 620))),
+			("activity-light", renderedViewPNG(activityLight, size: NSSize(width: 256, height: 620))),
+			("activity-dark", renderedViewPNG(activityDark, size: NSSize(width: 256, height: 620))),
+			("workflow-light", renderedViewPNG(workflowLight, size: NSSize(width: 256, height: 420))),
+			("workflow-dark", renderedViewPNG(workflowDark, size: NSSize(width: 256, height: 420))),
+			("tooling-light", renderedViewPNG(toolingLight, size: NSSize(width: 256, height: 420))),
+			("tooling-dark", renderedViewPNG(toolingDark, size: NSSize(width: 256, height: 420))),
+			("legacy-light", renderedViewPNG(legacyLight, size: NSSize(width: 256, height: 220))),
+		]
+		for (name, png) in renderings {
+			XCTAssertGreaterThan(png.count, 4_000, "\(name) should contain rendered surface content")
+			add(renderingAttachment(png, named: "Work signals narrow — \(name) — \(DesktopLocale.current.identifier) @2x"))
+		}
 	}
 
 	func testApprovedDarkPopoverAndSettingsRenderingsAreAttached() async throws {

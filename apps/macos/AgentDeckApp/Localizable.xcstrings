@@ -1441,6 +1441,186 @@
         }
       }
     },
+    "These fields are not in the snapshot yet": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "These fields are not in the snapshot yet" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "当前快照没有这些字段，需要新增采集" } }
+      }
+    },
+    "Coding": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Coding" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "编码" } }
+      }
+    },
+    "Debugging": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Debugging" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "调试" } }
+      }
+    },
+    "Conversation": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Conversation" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "对话" } }
+      }
+    },
+    "Delegation": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Delegation" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "委派" } }
+      }
+    },
+    "First edit": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "First edit" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "首次编辑" } }
+      }
+    },
+    "Files touched": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Files touched" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "触及文件" } }
+      }
+    },
+    "Rework": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Rework" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "返工" } }
+      }
+    },
+    "edit, verify, edit again": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "edit, verify, edit again" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "改后验证再改" } }
+      }
+    },
+    "Edits per session": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Edits per session" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "每会话编辑" } }
+      }
+    },
+    "median": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "median" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "中位数" } }
+      }
+    },
+    "Most touched": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Most touched" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "最常改动" } }
+      }
+    },
+    "Tool calls": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Tool calls" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "工具调用" } }
+      }
+    },
+    "Top MCP server": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Top MCP server" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "主要 MCP 服务" } }
+      }
+    },
+    "Bash": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Bash" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "Bash" } }
+      }
+    },
+    "Read": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Read" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "读取" } }
+      }
+    },
+    "Edit": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Edit" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "编辑" } }
+      }
+    },
+    "MCP": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "MCP" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "MCP" } }
+      }
+    },
+    "Other": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Other" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "其他" } }
+      }
+    },
+    "Feature": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Feature" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "新增" } }
+      }
+    },
+    "Refactoring": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Refactoring" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "重构" } }
+      }
+    },
+    "Testing": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Testing" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "测试" } }
+      }
+    },
+    "Maintenance": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Maintenance" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "维护" } }
+      }
+    },
+    "Investigation": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Investigation" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "定位" } }
+      }
+    },
+    "Repair": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Repair" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "修复" } }
+      }
+    },
+    "Exploration": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Exploration" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "查阅" } }
+      }
+    },
+    "Brainstorming": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Brainstorming" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "构思" } }
+      }
+    },
+    "Planning": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Planning" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "计划" } }
+      }
+    },
+    "Subagent": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Subagent" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "子 Agent" } }
+      }
+    },
+    "Skill / workflow": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Skill / workflow" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "技能流程" } }
+      }
+    },
     "Now": {
       "localizations": {
         "en": {

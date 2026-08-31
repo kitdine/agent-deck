@@ -166,12 +166,138 @@ enum WireFixture {
 		]
 	}
 
+	static func workSignals(
+		available: Bool = true,
+		costBasis: String = "turn",
+		missingWorkflowMetrics: Bool = false,
+		emptyMaintenance: Bool = false,
+		omitToolingForTodayAll: Bool = false,
+		omitAllForTodayAll: Bool = false,
+		toolingFamilyAvailable: Bool = true
+	) -> [String: Any] {
+		guard available else {
+			return [
+				"activity": ["available": false, "items": [[String: Any]]()] as [String: Any],
+				"workflow": ["available": false, "items": [[String: Any]]()] as [String: Any],
+				"tooling": ["available": false, "items": [[String: Any]]()] as [String: Any],
+			]
+		}
+		let periods = ["today", "7d", "30d"]
+		let clients = ["all", "codex"]
+		let activityItems: [[String: Any]] = periods.flatMap { period in
+			clients.compactMap { client -> [String: Any]? in
+				guard !(omitAllForTodayAll && period == "today" && client == "all") else { return nil }
+				return [
+					"period": period,
+					"client": client,
+					"cost_basis": costBasis,
+					"kinds": [
+						[
+							"kind": "coding", "share": 52.0, "cost": 2.74, "events": 21,
+							"sub": [
+								["kind": "feature", "share": 24.0, "cost": 1.25, "events": 10],
+								["kind": "refactoring", "share": 13.0, "cost": 0.68, "events": 5],
+								["kind": "testing", "share": 9.0, "cost": 0.47, "events": 4],
+								[
+									"kind": "maintenance",
+									"share": emptyMaintenance ? 0.0 : 6.0,
+									"cost": emptyMaintenance ? 0.0 : 0.34,
+									"events": emptyMaintenance ? 0 : 2,
+								],
+							],
+						],
+						[
+							"kind": "debugging", "share": 21.0, "cost": 1.11, "events": 10,
+							"sub": [
+								["kind": "investigation", "share": 12.0, "cost": 0.63, "events": 6],
+								["kind": "repair", "share": 9.0, "cost": 0.48, "events": 4],
+							],
+						],
+						[
+							"kind": "conversation", "share": 17.0, "cost": 0.89, "events": 8,
+							"sub": [
+								["kind": "exploration", "share": 7.0, "cost": 0.37, "events": 3],
+								["kind": "brainstorming", "share": 5.0, "cost": 0.26, "events": 2],
+								["kind": "planning", "share": 5.0, "cost": 0.26, "events": 3],
+							],
+						],
+						[
+							"kind": "delegation", "share": 10.0, "cost": 0.53, "events": 4,
+							"sub": [
+								["kind": "subagent", "share": 6.0, "cost": 0.32, "events": 2],
+								["kind": "workflow", "share": 4.0, "cost": 0.21, "events": 2],
+							],
+						],
+					],
+				] as [String: Any]
+			}
+		}
+		let workflowItems: [[String: Any]] = periods.flatMap { period in
+			clients.compactMap { client -> [String: Any]? in
+				guard !(omitAllForTodayAll && period == "today" && client == "all") else { return nil }
+				let periodIndex = periods.firstIndex(of: period) ?? 0
+				let firstEdit: Any = missingWorkflowMetrics
+					? NSNull()
+					: (periodIndex + 1) * (client == "codex" ? 60 : 120)
+				let filesTouched: Any = missingWorkflowMetrics ? NSNull() : periodIndex + 3
+				let retries: Any = missingWorkflowMetrics ? NSNull() : periodIndex
+				let editsPerSession: Any = missingWorkflowMetrics
+					? NSNull()
+					: Double(periodIndex + 1) + (client == "codex" ? 0.5 : 0)
+				let topFile: Any = missingWorkflowMetrics ? NSNull() : "tasks.md"
+				let topFileEdits: Any = missingWorkflowMetrics ? NSNull() : periodIndex + 4
+				return [
+					"period": period,
+					"client": client,
+					"first_edit_seconds": firstEdit,
+					"files_touched": filesTouched,
+					"retries": retries,
+					"edits_per_session": editsPerSession,
+					"top_file": topFile,
+					"top_file_edits": topFileEdits,
+				] as [String: Any]
+			}
+		}
+		let toolingItems: [[String: Any]] = periods.flatMap { period in
+			clients.compactMap { client -> [String: Any]? in
+				let omitted = period == "today" && client == "all"
+				guard !(omitted && (omitToolingForTodayAll || omitAllForTodayAll)) else { return nil }
+				return [
+					"period": period,
+					"client": client,
+					"calls": 181,
+					"groups": 5,
+					"rows": [
+						["kind": "other", "calls": 99, "share": 54.7],
+						["kind": "edit", "calls": 18, "share": 9.9],
+						["kind": "bash", "calls": 32, "share": 17.7],
+						["kind": "mcp", "calls": 10, "share": 5.5],
+						["kind": "read", "calls": 22, "share": 12.2],
+					],
+					"top_mcp_server": "codegraph",
+					"top_mcp_calls": 7,
+				] as [String: Any]
+			}
+		}
+		return [
+			"activity": ["available": true, "items": activityItems] as [String: Any],
+			"workflow": ["available": true, "items": workflowItems] as [String: Any],
+			"tooling": [
+				"available": toolingFamilyAvailable,
+				"items": toolingFamilyAvailable ? toolingItems : [],
+			] as [String: Any],
+		]
+	}
+
 	static func envelope(
 		scopes: [[String: Any]] = [scope(client: "all"), scope(client: "codex"), scope(client: "claude")],
 		clientSubtotalsAvailable: Bool = true,
 		presentationAvailable: Bool = true,
 		sessionsAvailable: Bool = true,
 		sessionsPeriodsAvailable: Bool = true,
+		includeWorkSignals: Bool = true,
+		workSignalsAvailable: Bool = true,
+		workSignalsPayload: [String: Any]? = nil,
 		sessionItems: [[String: Any]] = [defaultSessionItem],
 		health: [String: Any] = healthyHealth,
 		warnings: [String] = [],
@@ -235,12 +361,15 @@ enum WireFixture {
 			"presentation": presentation,
 		]
 
-		let sessions: [String: Any] = [
+		var sessions: [String: Any] = [
 			"available": sessionsAvailable,
 			"total": sessionItems.count,
 			"periods": ["available": sessionsPeriodsAvailable, "items": sessionPeriodItems] as [String: Any],
 			"items": sessionItems,
 		]
+		if includeWorkSignals {
+			sessions["work_signals"] = workSignalsPayload ?? workSignals(available: workSignalsAvailable)
+		}
 
 		let provider: [String: Any] = [
 			"available": true,

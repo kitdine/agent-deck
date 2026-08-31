@@ -86,6 +86,36 @@ enum DesktopCopy {
 	static let sessionsActivity = "Activity"
 	static let sessionsWorkflow = "Workflow"
 	static let sessionsTooling = "Tooling"
+	static let sessionsPendingHint = "These fields are not in the snapshot yet"
+	static let sessionsActivityCoding = "Coding"
+	static let sessionsActivityDebugging = "Debugging"
+	static let sessionsActivityConversation = "Conversation"
+	static let sessionsActivityDelegation = "Delegation"
+	static let sessionsFirstEdit = "First edit"
+	static let sessionsFilesTouched = "Files touched"
+	static let sessionsRetries = "Rework"
+	static let sessionsRetriesNote = "edit, verify, edit again"
+	static let sessionsEditsPerSession = "Edits per session"
+	static let sessionsMetricMedian = "median"
+	static let sessionsTopFile = "Most touched"
+	static let sessionsToolCalls = "Tool calls"
+	static let sessionsTopMCPServer = "Top MCP server"
+	static let sessionsToolBash = "Bash"
+	static let sessionsToolRead = "Read"
+	static let sessionsToolEdit = "Edit"
+	static let sessionsToolMCP = "MCP"
+	static let sessionsToolOther = "Other"
+	static let sessionsSubFeature = "Feature"
+	static let sessionsSubRefactoring = "Refactoring"
+	static let sessionsSubTesting = "Testing"
+	static let sessionsSubMaintenance = "Maintenance"
+	static let sessionsSubInvestigation = "Investigation"
+	static let sessionsSubRepair = "Repair"
+	static let sessionsSubExploration = "Exploration"
+	static let sessionsSubBrainstorming = "Brainstorming"
+	static let sessionsSubPlanning = "Planning"
+	static let sessionsSubagent = "Subagent"
+	static let sessionsSubWorkflow = "Skill / workflow"
 
 	// Rhythm block.
 	static let rhythmTitle = "Rhythm"
@@ -204,7 +234,17 @@ enum DesktopCopy {
 		sessionsCount, sessionsAverage, sessionsTotalTime, sessionsMedian, sessionsProjects,
 		sessionsProjectRows, sessionsRecent, sessionsEmpty,
 		sessionsProjectUnnamed, sessionsProjectCount, sessionsSignals,
-		sessionsActivity, sessionsWorkflow, sessionsTooling,
+		sessionsActivity, sessionsWorkflow, sessionsTooling, sessionsPendingHint,
+		sessionsActivityCoding, sessionsActivityDebugging,
+		sessionsActivityConversation, sessionsActivityDelegation,
+		sessionsFirstEdit, sessionsFilesTouched, sessionsRetries,
+		sessionsRetriesNote, sessionsEditsPerSession, sessionsMetricMedian,
+		sessionsTopFile, sessionsToolCalls, sessionsTopMCPServer,
+		sessionsToolBash, sessionsToolRead, sessionsToolEdit, sessionsToolMCP,
+		sessionsToolOther, sessionsSubFeature, sessionsSubRefactoring,
+		sessionsSubTesting, sessionsSubMaintenance, sessionsSubInvestigation,
+		sessionsSubRepair, sessionsSubExploration, sessionsSubBrainstorming,
+		sessionsSubPlanning, sessionsSubagent, sessionsSubWorkflow,
 		rhythmTitle, rhythmScope, rhythmActive, rhythmBusiest, rhythmQuietest,
 		rhythmPeakWindow, rhythmHourOfWeek, rhythmActiveNote, rhythmBusiestNote,
 		rhythmQuietestNote, rhythmPeakNote, rhythmActiveValue, rhythmCell, calendarTitle,
@@ -300,6 +340,33 @@ enum DesktopFormat {
 	static func percent(_ raw: String?) -> String {
 		guard let raw, let value = Double(raw) else { return "—" }
 		return (value / 100).formatted(.percent.precision(.fractionLength(0 ... 1)).locale(DesktopLocale.current))
+	}
+
+	static func workSignalPercent(_ value: Double?) -> String {
+		guard let value else { return "—" }
+		return (value / 100).formatted(.percent.precision(.fractionLength(0 ... 1)).locale(DesktopLocale.current))
+	}
+
+	static func workSignalCost(_ value: Double?) -> String {
+		guard let value else { return "—" }
+		return value.formatted(.currency(code: "USD").precision(.fractionLength(2)).locale(DesktopLocale.current))
+	}
+
+	static func workSignalCount(_ value: Int?) -> String {
+		guard let value else { return "—" }
+		return value.formatted(.number.locale(DesktopLocale.current))
+	}
+
+	static func workSignalDecimal(_ value: Double?) -> String {
+		guard let value else { return "—" }
+		return value.formatted(.number.precision(.fractionLength(0 ... 1)).locale(DesktopLocale.current))
+	}
+
+	static func workSignalDuration(_ seconds: Int?) -> String {
+		guard let seconds else { return "—" }
+		return Duration.seconds(max(0, seconds)).formatted(
+			.units(allowed: [.hours, .minutes], width: .narrow).locale(DesktopLocale.current)
+		)
 	}
 
 	static func decimalCompact(_ raw: String) -> String {
