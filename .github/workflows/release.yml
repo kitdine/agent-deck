@@ -251,12 +251,17 @@ jobs:
           MACOS_NOTARY_PASSWORD: ${{ secrets.MACOS_NOTARY_PASSWORD }}
           MACOS_KEYCHAIN_PASSWORD: ${{ secrets.MACOS_KEYCHAIN_PASSWORD }}
         run: |
+          # notarytool has no --keychain-password; it writes into an already
+          # unlocked keychain. The import step unlocked this one, but that
+          # keychain carries `-lut 900`, so unlock it here too rather than
+          # depend on how long the preceding build took.
+          security unlock-keychain -p "$MACOS_KEYCHAIN_PASSWORD" \
+            "$RUNNER_TEMP/agentdeck-signing.keychain-db"
           xcrun notarytool store-credentials agentdeck-release \
             --apple-id "$MACOS_NOTARY_APPLE_ID" \
             --team-id "$MACOS_NOTARY_TEAM_ID" \
             --password "$MACOS_NOTARY_PASSWORD" \
-            --keychain "$RUNNER_TEMP/agentdeck-signing.keychain-db" \
-            --keychain-password "$MACOS_KEYCHAIN_PASSWORD"
+            --keychain "$RUNNER_TEMP/agentdeck-signing.keychain-db"
       - name: Sign, notarize, staple, and assess the desktop artifacts
         env:
           AGENTDECK_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
