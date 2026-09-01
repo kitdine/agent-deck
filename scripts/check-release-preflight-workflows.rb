@@ -47,7 +47,9 @@ end
 raise "the desktop preflight must not sign with a release identity" if desktop_run.include?("MACOS_SIGN_IDENTITY")
 
 job = preflight.fetch("jobs").fetch("preflight")
-raise "preflight must run on macos-15" unless job.fetch("runs-on") == "macos-15"
+# The aggregate this job runs audits the macOS 26 desktop surfaces, so it needs
+# that SDK. The pin was macos-15 while the job validated the CLI alone.
+raise "preflight must run on macos-26" unless job.fetch("runs-on") == "macos-26"
 
 checkout = step(job, "Check out exact target")
 raise "preflight checkout must use target_sha" unless checkout.dig("with", "ref") == "${{ inputs.target_sha }}"

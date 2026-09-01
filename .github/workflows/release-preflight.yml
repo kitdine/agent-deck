@@ -17,7 +17,14 @@ permissions:
 
 jobs:
   preflight:
-    runs-on: macos-15
+    # macos-26, matching MACOSX_DEPLOYMENT_TARGET. `make release-verify` is the
+    # release aggregate, not the Go gate: since a190186 it reaches
+    # check-widget-sandbox and check-macos-distribution, which audit the macOS 26
+    # desktop surfaces, and scripts/test-macos-distribution.sh asserts it still
+    # reaches them. The macos-15 pin predates the desktop app — it came from
+    # fea8da4, when this job validated the CLI alone. ci.yml keeps the Go-only
+    # `verify` gate on macos-15, which is the separation that file documents.
+    runs-on: macos-26
     steps:
       - name: Check out exact target
         uses: actions/checkout@v4

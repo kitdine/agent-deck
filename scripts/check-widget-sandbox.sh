@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Most assertions below are bare `test` and `grep -Fq`, which exit non-zero and
+# print nothing. Under `set -e` that makes a real violation indistinguishable
+# from a broken assertion, and both look identical to a caller: `Error 1` with
+# no output. This gate already exists because a check that cannot be seen to run
+# is indistinguishable from passing; a check that cannot be seen to fail is the
+# same defect one step later. The trap names the line, so the next reader starts
+# from the assertion instead of from the whole file.
+trap 'status=$?; echo "check-widget-sandbox.sh: assertion failed at line $LINENO (exit $status)" >&2' ERR
+
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 app_entitlements="$repo_root/apps/macos/AgentDeck.entitlements"
 widget_entitlements="$repo_root/apps/macos/AgentDeckWidget.entitlements"
