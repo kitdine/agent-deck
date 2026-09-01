@@ -269,8 +269,28 @@ evidence.
 
 | Task | Dev | Review |
 | --- | --- | --- |
-| 1. `assemble` | [ ] | [ ] |
+| 1. `assemble` | [x] | [x] |
 | 2. `v0-5-0-contract` | [ ] | [ ] |
+
+`assemble` Review Round 1 (2026-09-01): **REOPEN** on R1-F1. The
+nothing-to-merge classification, ancestry proof, empty integration scope, and
+absence of `unit_kind: integration` evidence are correct, but the delivery
+boundary says this task staged its files while the Git index is empty. The
+Review cell remains unticked; [`reviews/assemble.md`](reviews/assemble.md) owns
+the finding and bounded remediation.
+
+`assemble` Repair Round 1 (2026-09-01): R1-F1 is closed. The delivery boundary no
+longer claims the task staged its files; it states that the Git index remained
+empty and that Development carries no staging or commit authority, so isolating
+the index belongs to the commit checkpoint. The classification, ancestry,
+integration-scope, and integration-evidence sections are unchanged. The Review
+cell stays unticked pending independent Re-review.
+
+`assemble` Re-review Round 2 (2026-09-01): **PASS**. R1-F1 is closed: the live
+Delivery boundary describes only the candidate changes and explicitly states
+that the Git index remained empty. The previously verified nothing-to-merge,
+ancestry, integration-scope, and integration-evidence conclusions remain
+unchanged. The Review cell is ticked; final contract work is now the next task.
 
 Both tasks are blocked until every selected topic is fully reviewed, and
 `assemble` precedes the contract task. Commit boundaries follow task boundaries. This topic does not authorize commits, pushes,
