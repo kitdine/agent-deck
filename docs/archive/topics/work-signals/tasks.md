@@ -681,8 +681,12 @@ unexamined by repair. The CEv1 `predecessor-delivery` pass at candidate
 rewriting either, and the four remaining criteria legitimately reuse
 `714ed56d…`. Both task cells tick on this round; the Task gate is re-bound to
 this round's post-synchronization candidate and is VERIFIED across all five
-criteria. Task 6 is the last implementation task of this topic, so what remains
-is the commit checkpoint and the topic-level closure that depends on it.
+criteria. Task 6 is the last implementation task of this topic. Signed commit
+`a83ae2ba3fb0d8201043f7f8a5abcaff3b9fec2d` delivers it at tree
+`4509475566df23e84ffec4879b10774cf793ee18`; the immutable Task gate is VERIFIED
+5/5 and the `work-signals` Topic gate is VERIFIED 4/4 by rolling up all five
+Document gates and Tasks 0–6. The topic is complete. Push and the separate
+`v0.5.0` contract closure remain outside this checkpoint.
 
 Task 1 Review Round 1 (2026-08-27): **REOPEN** on R1-F1. Schema v20, the parser
 version bump and backfill, both fixture regenerations, Decision 1's turn
