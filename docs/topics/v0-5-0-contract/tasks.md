@@ -1,18 +1,22 @@
 ---
 status: active
 created: 2026-08-06
-updated: 2026-08-26
+updated: 2026-09-01
 ---
 
 # v0.5.0 Contract Closure — Tasks
 
 Target version: `v0.5.0`.
 
-This contract topic owns only the final reconciliation after the
-[native desktop app topic](../desktop-app/tasks.md) is fully reviewed. It owns
-no product behavior and does not decide whether the completed version proceeds
-to an RC, a stable release, or remains unpublished. It originates no
-requirement, surface, or architecture of its own, so it carries only this file.
+This contract topic owns only the final reconciliation after every topic in the
+[assembly list](#assembly-list) has reached the terminal reviewed state the
+[entry condition](#entry-condition) defines. The
+[native desktop app topic](../desktop-app/tasks.md) is one of those five and not
+a gate of its own; those two sections are the single place the prerequisite set
+is maintained, and it is deliberately not restated here. It owns no product
+behavior and does not decide whether the completed version proceeds to an RC, a
+stable release, or remains unpublished. It originates no requirement, surface,
+or architecture of its own, so it carries only this file.
 The corrected ownership model is recorded by the historical
 [v0.4.0 contract closure](../../archive/plans/v0-4-0-contract.md).
 
@@ -59,15 +63,32 @@ authorization.
 
 ## Entry condition
 
-Every task in each selected topic must have Review PASS — the desktop topic
-including its own feature contract task; work-signals including both CLI and
-desktop surfaces; error classification including its contract change; switch
-effectiveness including its first-key, key-rotation, key-removal, and restart
-real-session acceptance; and attribution precision including the effective-route
-state machine and quality redesign. Non-attribution planning candidates remain
-separate. The attribution gate must prove that no determinable event is
-downgraded to `inferred`. This topic does not start early and does not absorb
-unfinished work from any of them.
+Every task in each selected topic must have reached its terminal reviewed state
+in that topic's own status authority — the desktop topic including its own
+feature contract task; work-signals including both CLI and desktop surfaces;
+error classification including its contract change; switch effectiveness
+including its shared Hook delivery ledger, advisory/file contract, and
+effective-route policy; and attribution precision including the effective-route
+state machine and quality redesign. Terminal means Review PASS everywhere except
+the one case recorded below.
+
+`switch-effectiveness-boundary`'s fourth task, `real-session-acceptance`, is
+`n/a` / `n/a` because the operator waived it on 2026-08-26, and
+[that topic's `tasks.md`](../switch-effectiveness-boundary/tasks.md) — its only
+status authority — is where that decision lives. **The waiver is this gate's
+terminal state for that task.** This entry condition does not require a Review
+PASS for it, does not treat the waiver as one, and does not reopen or rewrite
+it. The limitation the waiver itself records travels with it and is not softened
+here: the manual first-key, key-rotation, key-removal, and restart procedure was
+not executed, no review record exists for it and none should be created, and
+that behavior rests on standing operator experience rather than on the recorded
+provider-audit evidence the procedure specifies. Switch effectiveness's other
+three tasks still require independent Review PASS like every other selected
+task.
+
+Non-attribution planning candidates remain separate. The attribution gate must
+prove that no determinable event is downgraded to `inferred`. This topic does
+not start early and does not absorb unfinished work from any of them.
 
 ## Later preflight considerations
 
@@ -101,8 +122,37 @@ Passing those checks still does not select RC or stable publication.
   tree, and append each merge as a round in `reviews/assemble.md`.
 - Nothing to merge is a valid outcome while `v0.5.0` development happens
   directly on `main`; say so in the record rather than skipping the task.
+- **File lists below are stated against the commit baseline**, not against the
+  working tree. A path that exists only as uncommitted work is a file this task
+  creates, because this task's commit is what first puts it under version
+  control. Both tasks in this topic are worked in a tree other topics write to
+  at the same time, so the lists exist to bound what each one stages.
+- Files, existing at the commit baseline: this `tasks.md` (its `Tasks` matrix
+  row for `assemble` only) and `docs/status.md` (the single `v0.5.0` Contract
+  Closure row, in the one content-state step the ownership bullet below assigns
+  to this task). A merge commit carries whatever the merged topic branches
+  already own and already reviewed; `assemble` adds no product file, no
+  specification text, and no changelog entry of its own — those are task 2's.
+- Creates: `reviews/assemble.md`, one round appended per merge, and the record
+  stating "nothing to merge" when that is the outcome. Integration evidence is a
+  `completion-evidence/v1` record with `unit_kind: integration` bound to the
+  merge tree; it is not a file in this repository, so it appears in no list here.
+- Hunk ownership on the two shared files. **`docs/status.md` carries exactly one
+  row for this topic — the `v0.5.0` Contract Closure row — and no task-specific
+  `assemble` row exists or is to be created.** A second row would put one topic's
+  status in two places, which is the thing that row is the single authority
+  against. The two tasks therefore divide that one row by sequential content
+  state rather than by row identity: `assemble` owns only the hunk carrying it
+  from its baseline at the time the task starts to *assembly complete, final
+  contract pending*, and stages nothing past that step. Every later state of the
+  same row through final contract closure is task 2's, as are the `Documents`
+  matrix in this `tasks.md` and every version-identity or specification line in
+  `docs/status.md`. Because `assemble` commits first, task 2 takes its hunk
+  against the baseline `assemble` has already committed, so the two tasks never
+  hold a competing edit of the same line in the shared worktree.
 - Verification level and merge class requirements come from
-  `.agent-instructions/branching.md`.
+  `.agent-instructions/branching.md`, which selects them per merge class; this
+  task does not fix a level in advance.
 
 ### 2. `v0-5-0-contract`
 
@@ -111,18 +161,59 @@ Passing those checks still does not select RC or stable publication.
   by the selected topics.
 - Raise the specification version exactly once and record one version-level
   changelog entry, including the error-contract break under a compatibility
-  heading.
-- Confirm every task in every selected topic has independent Review PASS and that
-  release identities — app version, CLI version, wire-contract version, and Cask
-  version — agree.
-- Synchronize the documentation index and archive lifecycle state.
+  heading. **The changelog is the `## Changelog` table in
+  `docs/specs/cli-design.md`**, raised together with that file's `version:`
+  frontmatter. This repository has no `CHANGELOG.md`, and release notes are the
+  separately authorized release workflow's; this task writes neither.
+- Confirm every task in every selected topic has reached the terminal reviewed
+  state the [entry condition](#entry-condition) defines, including the recorded
+  `real-session-acceptance` waiver it names. That section is the single
+  statement of the gate; this bullet does not restate it.
+- Confirm the release identities agree, each read from its own authority rather
+  than from a value copied into this file:
+  - app version — `AGENTDECK_MARKETING_VERSION` in
+    `apps/macos/Config/AgentDeck.xcconfig`, which a release build overrides from
+    `Makefile`'s `APP_VERSION` (the latest tag with its `v` stripped) through
+    `scripts/build-macos-app.sh`;
+  - CLI version — `internal/buildinfo`'s `Version`, injected by `Makefile`'s
+    `BUILD_LDFLAGS` from `git describe --tags --abbrev=0`, so the Git tag is the
+    authority and no tracked file carries the number;
+  - wire-contract version — `desktop.WireVersion` in `internal/desktop/desktop.go`,
+    with `DesktopSnapshotV1.wireVersion` in
+    `apps/macos/AgentDeckShared/DesktopWire.swift` and the `desktop/fixtures/v1/`
+    fixtures as its consumers;
+  - Cask version — the `@VERSION@` substitution in
+    `packaging/homebrew/agentdeck.rb.tmpl`, rendered by
+    `scripts/render-homebrew-formula.sh` from the same tag.
+  A disagreement is a finding against the task that set the value. This task
+  changes no version in product code or build configuration.
+- Synchronize the documentation index and archive lifecycle state, per the
+  Document Lifecycle rules in `docs/documentation-workflow.md`: one
+  `git mv docs/topics/<topic>/ docs/archive/topics/<topic>/` per completed
+  selected topic, `status: historical` plus `retired:` in each moved document,
+  and one concise entry per topic in `docs/archive/README.md`. `docs/README.md`
+  changes only if the documentation topology itself changes.
+- Files, existing at the commit baseline: `docs/specs/cli-design.md` (the
+  reconciled contract text, the `version:` raise, and exactly one new `Changelog`
+  row), `docs/specs/cli-manual.md` (the reconciled command text),
+  `docs/status.md` (the same single Contract Closure row, in its later content
+  state — the hunk from the baseline `assemble` committed through final contract
+  closure — plus the version status lines; **not** the earlier step task 1
+  owns), `docs/archive/README.md`, `docs/README.md` only
+  under the condition above, this `tasks.md` (its `Documents` and `Tasks`
+  matrices), and every document of each selected topic that the `git mv` above
+  moves and re-stamps.
+- Creates: `reviews/v0-5-0-contract.md`, when this task's first review round
+  runs. The archived paths under `docs/archive/topics/` are the lifecycle move's
+  result rather than files this task authors, which is why they are described in
+  the bullet above instead of listed here.
 - Verification level: L2 contract state.
 
 ## Documents
 
 | Document | Draft | Review |
 | --- | --- | --- |
-| tasks.md | [x] | [ ] |
+| tasks.md | [x] | [x] |
 | requirements.md | n/a | n/a |
 | architecture.md | n/a | n/a |
 | `ux/` | n/a | n/a |
@@ -131,6 +222,48 @@ A `vX-Y-Z-contract` topic needs only this file: it reconciles what other topics
 already delivered and originates no requirement, surface, or architecture of its
 own. The three rows are stated rather than omitted so the emptiness reads as a
 decision.
+
+`tasks.md` Review Round 1 (2026-08-31): **REOPEN** on R1-F1, R1-F2, and R1-F3.
+The assembly list and merge-class routing are useful, but the entry condition
+cannot be satisfied while it requires Review PASS for switch effectiveness's
+operator-waived `real-session-acceptance` task, the two task definitions do not
+name their complete Files/creates and identity authorities, and the opening
+ownership premise names only desktop while the actual gate covers five selected
+topics. The Review cell remains unticked. `reviews/tasks.md` owns the findings
+and bounded remediation.
+
+`tasks.md` Repair Round 1 (2026-09-01): R1-F1, R1-F2, and R1-F3 are closed in
+this content state. The entry condition now names the recorded 2026-08-26
+operator waiver as `real-session-acceptance`'s terminal state while preserving
+its stated limitation, both tasks carry commit-baseline `Files` / `Creates`
+lists with shared-file hunk ownership and named identity authorities, and the
+opening premise routes the prerequisite set to the assembly list and entry
+condition instead of naming desktop alone. The Review cell stays unticked
+pending independent Re-review; see [`reviews/tasks.md`](reviews/tasks.md).
+
+`tasks.md` Re-review Round 2 (2026-09-01): **REOPEN** on R1-F2. R1-F1 and
+R1-F3 are closed, but the two task definitions still assign the sole
+`docs/status.md` Contract Closure row inconsistently: `assemble` claims this
+topic's stage row while task 2 also owns the `v0-5-0-contract` row and excludes
+an `assemble` row that does not exist. The Review cell remains unticked;
+[`reviews/tasks.md`](reviews/tasks.md) owns the finding disposition and bounded
+remediation.
+
+`tasks.md` Repair Round 2 (2026-09-01): R1-F2 is closed. Both task definitions
+now state that `docs/status.md` carries exactly one Contract Closure row, that
+no task-specific `assemble` row exists or is to be created, and that the two
+tasks divide that single row by sequential content state — `assemble` through
+*assembly complete, final contract pending*, task 2 from the baseline `assemble`
+committed through final contract closure. No other `Files` list, identity
+authority, or entry-condition text changed. The Review cell stays unticked
+pending independent Re-review; see [`reviews/tasks.md`](reviews/tasks.md).
+
+`tasks.md` Re-review Round 3 (2026-09-01): **PASS**. R1-F1 and R1-F3 remain
+closed, and R1-F2 is now closed by assigning the single Contract Closure status
+row sequentially across the two task baselines without inventing a separate
+`assemble` row. The Review cell is ticked and this topic is now developable;
+[`reviews/tasks.md`](reviews/tasks.md) owns the complete finding disposition and
+evidence.
 
 ## Tasks
 
