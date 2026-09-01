@@ -5,7 +5,58 @@ created: 2026-07-22
 
 # Archived Documents
 
-Last updated: 2026-08-16
+Last updated: 2026-09-01
+
+## 2026-09-01 retirement: the `v0.5.0` feature topics
+
+The five topics the [`v0-5-0-contract`](../topics/v0-5-0-contract/tasks.md)
+assembly list selected retired together when that topic's closure task raised
+`docs/specs/cli-design.md` to version 28. Each reached its terminal reviewed
+state first; the move carries each topic's `reviews/` directory with it, because
+the records live inside the topic.
+
+`topics/desktop-app/` — the native macOS line. Six tasks: the wire contract,
+the application foundation, the menu-bar experience, the WidgetKit extension,
+unified signed distribution with the Homebrew Cask and direct DMG, and the
+topic's own contract reconciliation. All six independently reviewed and
+delivered.
+
+`topics/work-signals/` — activity classification, workflow metrics, and
+tool-call attribution on two first-class surfaces: the menu-bar `Sessions`
+panel's three captured modules and `agentdeck usage signals`. A prototype task
+plus six implementation tasks, all reviewed.
+
+`topics/cli-error-classification/` — stable typed not-found codes, and no
+storage text in a documented JSON contract. It is the source of `v0.5.0`'s one
+compatibility break; the version-level announcement lives in `cli-design.md`'s
+Error-Code Compatibility section, which names the old `runtime_error` and the
+five codes replacing it.
+
+`topics/switch-effectiveness-boundary/` — one client-neutral Hook delivery
+operation persists every accepted Codex or Claude delivery before any route
+effect, and effective-route effects stay event-specific. Three code-bearing
+tasks reviewed. Its fourth task, `real-session-acceptance`, is `n/a`/`n/a`: the
+operator waived it on 2026-08-26, so the procedure was never executed and no
+review record exists. That distinction travels with the topic — tasks 1-3 rest
+on reviewed automated evidence, the waived assumption rests on standing
+operator experience.
+
+`topics/usage-attribution-precision/` — determinable effective routes resolve
+as `exact`, every event carries one of six attribution reasons, and the
+calculable catalog base for `before_adoption` and `coverage_gap` is reported
+separately from real provider spend, which no unattributed event may enter.
+Three tasks reviewed.
+
+Integration: none. `assemble` classified every selected topic and found nothing
+to merge — no `feature/*` branch existed, because `main` is unprotected and was
+`v0.5.0`'s feature line. No merge tree was produced and therefore no
+`unit_kind: integration` evidence exists; the reasoning is in
+[`topics/v0-5-0-contract/reviews/assemble.md`](../topics/v0-5-0-contract/reviews/assemble.md).
+No merge produced behavior that no source topic described.
+
+The `v0-5-0-contract` topic itself stays live until its closure task passes
+review, and retires separately with its own `assemble` and contract records.
+
 
 ## 2026-08-16 retirement: two terminal design documents left in `docs/specs/`
 

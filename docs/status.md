@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-08-25
-updated: 2026-08-30
+updated: 2026-09-01
 ---
 
 # AgentDeck Project Status
@@ -63,15 +63,28 @@ agentdeck version
 
 | Topic | Version | Status | Purpose |
 | --- | --- | --- | --- |
-| [Native macOS Desktop App](topics/desktop-app/tasks.md) | `v0.5.0` | Delivered — 6/6 tasks reviewed and committed; the immutable commit-tree CEv1 Task and Plan gates are VERIFIED at `0aefed1`; version-wide contract closure and any release action remain separate | macOS 26 menu-bar app, settings window, WidgetKit extension, unified desktop distribution, Cask, and direct-download delivery. |
-| [Work Signals](topics/work-signals/tasks.md) | `v0.5.0` | Active — tasks 0–5 reviewed and committed; task 4 is immutable at `7a1160a` / tree `98a2ef6c`, and task 5 at `9e5adde` / tree `8924952c`; task 5's Task gate is VERIFIED, with actual VoiceOver/TCC/system accessibility automation explicitly not run and not required. Task 6 `work-signals-contract` PASS at independent Re-review Round 3: Repair Round 1 closed R1-F1/R1-F2/R1-F3 in the two CLI specifications, and Repair Round 2 closed the record-keeping findings R2-F1/R2-F2 without touching either specification. Both task cells tick; the Task gate is VERIFIED at this round's post-synchronization candidate, with the superseded Round 1 and Round 2 fails retained as immutable history. Production behavior is unchanged throughout. 6/6 implemented, 6/6 reviewed — the commit checkpoint and the topic-level closure that depends on it remain outstanding | Activity classification, workflow metrics, and tool-call attribution on two first-class surfaces: the menu-bar `Sessions` panel's three captured modules and `agentdeck usage signals`. |
-| [`v0.5.0` Contract Closure](topics/v0-5-0-contract/tasks.md) | `v0.5.0` | Assembly complete and reviewed — `assemble` correctly found nothing to merge and produced no merge tree or `unit_kind: integration` evidence. 1/2 tasks are implemented and reviewed; final contract work is next and has not started | Version-wide specification raise and documentation reconciliation after every selected topic's tasks pass review. |
-| [Usage Attribution Precision](topics/usage-attribution-precision/tasks.md) | `v0.5.0` | Complete — 3/3 tasks reviewed and committed at `9035b80` / tree `d3ffe3ac`; immutable Task and Topic CEv1 gates VERIFIED; v0.5.0 contract closure remains separate and not started; release blockers held: no determinable event is downgraded to `inferred`, and no unattributed event enters provider spend | Effective-session attribution semantics, determinability-based quality, and an unattributed boundary that never enters a real-spend total. |
-| [CLI Error Classification](topics/cli-error-classification/tasks.md) | `v0.5.0` | Complete — 2/2 tasks reviewed and committed; immutable Task and Topic CEv1 gates VERIFIED at `574a7ad` / tree `6d26f205`; v0.5.0 contract closure remains separate and not started | Stable not-found codes, and no storage text in a documented JSON contract. Breaks the documented `runtime_error` value; announced in this version's notes. |
-| [Switch Effectiveness Boundary](topics/switch-effectiveness-boundary/tasks.md) | `v0.5.0` | Active — all three design documents PASS; implementation tasks 1–3 PASS; `real-session-acceptance` waived by the operator 2026-08-26 (not executed, no review record); all 3 code-bearing tasks reviewed | Every accepted Codex or Claude Hook delivery uses one observation/transaction pipeline; effective-route effects remain event-specific, including Claude's sole live `no key -> first key` transition. |
+| [`v0.5.0` Contract Closure](topics/v0-5-0-contract/tasks.md) | `v0.5.0` | Contract complete and reviewed; awaiting commit — `cli-design.md` is at version 28, the five selected topics are retired under [`archive/topics/`](archive/topics/), and both contract Tasks have passed independent review. The untracked schema-version-signal topic remains separate and unstaged. 2/2 implemented and reviewed; preflight, channel selection, tagging, and publication remain separate decisions | Version-wide specification raise and documentation reconciliation after every selected topic's tasks pass review. |
+| [Schema Version Signal](topics/schema-version-signal/tasks.md) | unassigned | Active — boundary stage; `requirements.md` drafted and awaiting review; version membership not yet decided by a contract topic, so this row is deliberately not marked `v0.5.0`; the Documents matrix declares `ux/menubar-schema-signal.md` and `architecture.md` as required and unwritten, which `check-topic-docs.sh` reports as gaps until `tasks.md` review ratifies the set; 0/4 documents passed | One stable, actionable report when the core database's schema version exceeds the running binary's supported version, across `doctor`, the command paths, and the desktop snapshot. Promoted from a measured defect: schema 21 on disk against two installed binaries supporting 18, reported five different ways. |
 
-**`v0.5.0` contains exactly the rows marked `v0.5.0` above**, plus the contract
-closure that reconciles them. The count is deliberately not written here: it was
+#### Retired into `v0.5.0`
+
+These five topics reached their terminal reviewed state, were retired by the
+`v0-5-0-contract` closure task on 2026-09-01, and now live under
+[`archive/topics/`](archive/topics/) with every document marked
+`status: historical`. They remain `v0.5.0` members: retirement moves the
+documents, not the version membership.
+
+| Topic | Version | Status | Purpose |
+| --- | --- | --- | --- |
+| [Native macOS Desktop App](archive/topics/desktop-app/tasks.md) | `v0.5.0` | Retired 2026-09-01 into `v0.5.0`; documents are historical under `archive/topics/`. Delivered — 6/6 tasks reviewed and committed; the immutable commit-tree CEv1 Task and Plan gates are VERIFIED at `0aefed1`; version-wide contract closure and any release action remain separate | macOS 26 menu-bar app, settings window, WidgetKit extension, unified desktop distribution, Cask, and direct-download delivery. |
+| [Work Signals](archive/topics/work-signals/tasks.md) | `v0.5.0` | Retired 2026-09-01 into `v0.5.0`; documents are historical under `archive/topics/`. Complete — prototype task 0 and implementation tasks 1–6 are independently reviewed and committed. Final Task 6 is signed commit `a83ae2b` / tree `45094755`; its immutable Task gate is VERIFIED 5/5, and the `work-signals` Topic gate is VERIFIED 4/4 by rolling up all five Document gates and Tasks 0–6. Superseded Review failures remain immutable evidence; actual VoiceOver/TCC/system accessibility automation remains explicitly not run and not required. Push and the separate `v0.5.0` contract closure are not part of this checkpoint | Activity classification, workflow metrics, and tool-call attribution on two first-class surfaces: the menu-bar `Sessions` panel's three captured modules and `agentdeck usage signals`. |
+| [Usage Attribution Precision](archive/topics/usage-attribution-precision/tasks.md) | `v0.5.0` | Retired 2026-09-01 into `v0.5.0`; documents are historical under `archive/topics/`. Complete — 3/3 tasks reviewed and committed at `9035b80` / tree `d3ffe3ac`; immutable Task and Topic CEv1 gates VERIFIED; v0.5.0 contract closure remains separate and not started; release blockers held: no determinable event is downgraded to `inferred`, and no unattributed event enters provider spend | Effective-session attribution semantics, determinability-based quality, and an unattributed boundary that never enters a real-spend total. |
+| [CLI Error Classification](archive/topics/cli-error-classification/tasks.md) | `v0.5.0` | Retired 2026-09-01 into `v0.5.0`; documents are historical under `archive/topics/`. Complete — 2/2 tasks reviewed and committed; immutable Task and Topic CEv1 gates VERIFIED at `574a7ad` / tree `6d26f205`; v0.5.0 contract closure remains separate and not started | Stable not-found codes, and no storage text in a documented JSON contract. Breaks the documented `runtime_error` value; announced in this version's notes. |
+| [Switch Effectiveness Boundary](archive/topics/switch-effectiveness-boundary/tasks.md) | `v0.5.0` | Retired 2026-09-01 into `v0.5.0`; documents are historical under `archive/topics/`. Active — all three design documents PASS; implementation tasks 1–3 PASS; `real-session-acceptance` waived by the operator 2026-08-26 (not executed, no review record); all 3 code-bearing tasks reviewed | Every accepted Codex or Claude Hook delivery uses one observation/transaction pipeline; effective-route effects remain event-specific, including Claude's sole live `no key -> first key` transition. |
+
+**`v0.5.0` contains exactly the rows marked `v0.5.0` above**, in both the active
+and the retired table, plus the contract closure that reconciles them. The count
+is deliberately not written here: it was
 stated as a number twice and was wrong both times, once when a topic was
 selected into the version and once when a topic's task count changed. The rows
 are the list. The authoritative scope statement is
@@ -93,8 +106,8 @@ Candidates), the three work-signal modules get their own topic, and the former
 Everything else
 about that re-open — which defects, what survives unchanged, the dependency order
 the set is re-reviewed in, and every round and finding — belongs to the topic and
-lives in [`topics/desktop-app/tasks.md`](topics/desktop-app/tasks.md) and
-[`topics/desktop-app/reviews/`](topics/desktop-app/reviews/).
+lives in [`archive/topics/desktop-app/tasks.md`](archive/topics/desktop-app/tasks.md) and
+[`archive/topics/desktop-app/reviews/`](archive/topics/desktop-app/reviews/).
 
 Two corrections were made on 2026-08-20, both cross-topic and both recorded here
 because they change version membership and process, not because they narrate a
@@ -106,7 +119,7 @@ cut a committed feature out of the version without asking, and the stated ground
 — that no field exists behind them — was only partly true: `internal/activity`
 already extracts tool calls and `usage_tool_calls` has persisted them since
 schema v13. The capability is restored as its own topic,
-[`work-signals`](topics/work-signals/tasks.md), which supplies the data, turns
+[`work-signals`](archive/topics/work-signals/tasks.md), which supplies the data, turns
 the panel's pending cards into real ones, and adds `agentdeck usage signals` so
 the numbers are checkable from a terminal rather than visible only in a GUI. `menubar-experience` is unaffected: it
 ships the three modules in their `Not captured yet` form, which stays a valid
@@ -119,7 +132,7 @@ Review is deferred, not cancelled — after every implementation task is done, t
 whole set is reconciled against the final prototype and the shipped
 implementation and reviewed once, scoped as a bullet on that topic's task 6. The
 reason and the consequences are stated in
-[`topics/desktop-app/tasks.md`](topics/desktop-app/tasks.md). As of 2026-08-23
+[`archive/topics/desktop-app/tasks.md`](archive/topics/desktop-app/tasks.md). As of 2026-08-23
 the set is reconciled and submitted; the closing round has not run.
 
 This is specific to `desktop-app`, whose documents were being re-reviewed against

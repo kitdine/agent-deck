@@ -20,7 +20,7 @@ type SessionRoute struct {
 // HookDelivery is one accepted client Hook event, normalized at the client
 // adapter boundary. Every accepted Codex or Claude delivery reaches
 // RecordHookDelivery through this one shape; see
-// docs/topics/switch-effectiveness-boundary/architecture.md Contract 0.
+// docs/archive/topics/switch-effectiveness-boundary/architecture.md Contract 0.
 type HookDelivery struct {
 	Client, SessionID, HookEvent, Source string
 	// DeliveryID is generated once by the caller when a delivery is accepted
@@ -288,7 +288,7 @@ func boolToInt64(value bool) int64 {
 // RecordHookDelivery persists the one accepted-Hook operation shared by every
 // client: an append-only observation for every accepted delivery, plus zero
 // or one effective-route row, in one atomic transaction. See
-// docs/topics/switch-effectiveness-boundary/architecture.md Contract 0's
+// docs/archive/topics/switch-effectiveness-boundary/architecture.md Contract 0's
 // whole-operation idempotence for the exact executable order this follows.
 //
 // The transaction is opened as BEGIN IMMEDIATE on a connection pinned to this

@@ -1,6 +1,6 @@
 ---
 status: active
-version: 27
+version: 28
 created: 2026-07-14
 ---
 
@@ -2196,6 +2196,37 @@ returns no potentially misleading summary.
 Text and JSON must explicitly report estimated attribution, historical data,
 unknown models, unpriced components, and incomplete scans.
 
+### Error-Code Compatibility
+
+`v0.5.0` narrows `runtime_error`. Five conditions that a `v0.4.x` consumer
+received as `runtime_error` now return a specific stable code:
+
+| Condition | `v0.4.x` | `v0.5.0` |
+| --- | --- | --- |
+| The named provider definition does not exist | `runtime_error` | `provider_not_found` |
+| The named provider credential does not exist | `runtime_error` | `credential_not_found` |
+| The requested backup archive does not exist | `runtime_error` | `backup_not_found` |
+| The requested backup archive cannot be opened | `runtime_error` | `backup_unreadable` |
+| The requested session is absent or missing from the session index | `runtime_error` | `session_not_found` |
+
+Exit codes do not change: every row was exit `1` and remains exit `1`.
+`extension_not_found` is not part of this change. It was already stable in
+`v0.4.x`, and it is the shape the five new codes follow. `runtime_error` is not
+removed either: it keeps its documented meaning as the residual for a failure
+with no more specific classification, and it still covers the passphrase-input
+failure `backup inspect` can report before it reaches an archive at all.
+
+**A consumer matching `runtime_error` to detect a missing provider, credential,
+archive, or session stops matching at `v0.5.0`** and must match the specific code
+instead. That is the break: the value a working `v0.4.x` integration depends on
+is no longer the value it receives. Under the release-position rules above,
+renaming a stable typed error code is MINOR, which `v0.5.0` is.
+
+The messages change with the codes. A not-found failure no longer renders
+`database/sql` sentinel text, driver text, filesystem paths, or errno strings. It
+names only the identifier the caller supplied, and a backup message identifies
+the archive by kind without echoing the path.
+
 ### Time Representation
 
 Instants cross one boundary and only one: they are stored and transported in
@@ -2488,6 +2519,7 @@ here changes; do not create a dated copy of this file.
 
 | Version | Date | Contract change |
 | --- | --- | --- |
+| 28 | 2026-09-01 | Closes the `v0.5.0` contract across its five selected lines. The desktop wire contract (version 25) and Work Signals (version 27) already have their own rows; this entry adds the version-level statement and the three lines that had none. **Compatibility break:** `runtime_error` is narrowed — the provider, credential, backup-absent, backup-unreadable, and session not-found conditions a `v0.4.x` consumer received as `runtime_error` now return `provider_not_found`, `credential_not_found`, `backup_not_found`, `backup_unreadable`, and `session_not_found` at unchanged exit codes, and not-found messages no longer carry `database/sql`, driver, path, or errno text; see Error-Code Compatibility. `runtime_error` remains as the documented residual. **Switch effectiveness:** one client-neutral Hook delivery operation persists every accepted Codex or Claude delivery before any route effect, route quality is derived at read time from the event, the positioned route, and the prior effective state rather than read back from storage, and only Claude's `no key -> first key` transition applies to a running session while rotation and removal retain the prior route until restart. **Attribution precision:** a determinable effective route resolves as `exact`, every event carries exactly one of six reasons — `exact_run`, `effective_route`, `ambiguous_route`, `timeline_snapshot`, `before_adoption`, `coverage_gap` — `usage summary` exposes all six initialized keys in JSON, and `unattributed_catalog_base_cost` reports the calculable catalog base for `before_adoption` and `coverage_gap` separately from real provider spend, which no unattributed event may enter. **Desktop application:** `v0.5.0` ships the signed menu-bar application, its settings window, and the WidgetKit extension against the unchanged wire version 1; everything the version added to that wire is additive. |
 | 27 | 2026-08-31 | Reconciles delivered Work Signals behavior: schema v20 extraction and schema v21 classification with parser-version backfill; the narrowed transient-read/persisted-reduction privacy boundary; default `usage stats` sections, `usage signals`, and the `session show --activity` summary; and additive wire-v1 keyed Activity, Workflow, and Tooling families consumed by the captured desktop surface. |
 | 26 | 2026-08-16 | Records the `v0.4.1` patch, which shipped on 2026-08-13 without a row. Codex `cache_write_input_tokens` is captured into a `cache_write_tokens` column and already-indexed Codex sources are re-scanned on upgrade, so Codex cache-write token volumes that previously reported zero now report their real values and any total derived from them changes for existing data. The cache-write semantics themselves are unchanged: a cache write remains a token volume rather than a second hit-rate percentage, and pricing still uses the documented five-minute cache-write default. |
 | 25 | 2026-08-13 | Adds the v0.5.0 `desktop snapshot` wire v1 contract: JSON-only request flags, coherent Go-owned provider/usage/session/health response, privacy redaction, per-section availability, partial warning semantics, stable input error codes, read-only/no-network behavior, shared Go/Swift canonical fixtures, and opt-in privacy-bounded stable-release update-check connectivity. |

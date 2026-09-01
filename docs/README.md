@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-07-14
-updated: 2026-08-27
+updated: 2026-09-01
 ---
 
 # AgentDeck Documentation
@@ -33,7 +33,7 @@ changes.
 | [Project Status](status.md) | Active | Current release, cross-topic execution status, and active-version projection; topic detail remains in each `tasks.md`. |
 | [Roadmap and Backlog](roadmap.md) | Active | Later version direction, planning intake, and withdrawn candidates. |
 | [Product Prototype](../prototype/README.md) | Active | The design truth for every user-visible surface: menu-bar panel, widgets, settings, and CLI output. A document that disagrees with it is repaired. |
-| [CLI Design](specs/cli-design.md) | Active, version 26 | System, persistence, security, compatibility, and distribution contracts. |
+| [CLI Design](specs/cli-design.md) | Active, version 28 | System, persistence, security, compatibility, and distribution contracts. |
 | [CLI Manual](specs/cli-manual.md) | Active | Implemented commands, flags, output shapes, and interaction behavior. |
 | [Documentation Workflow](documentation-workflow.md) | Active | Documentation naming, topic structure, lifecycle, readiness matrices, size policy, and status vocabulary. |
 | [Brand Asset Provenance](legal/brand-assets.md) | Active | Generation history, derivative chain, canonical hashes, and the boundary between recorded provenance and unresolved trademark/legal review. |

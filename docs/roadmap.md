@@ -60,7 +60,7 @@ until design evidence justifies merging them):
 `v0.5.0`, but version membership does not merge the independent candidates
 below. The attribution-classification defect is no longer a Backlog candidate:
 it is owned by the active
-[`usage-attribution-precision`](topics/usage-attribution-precision/tasks.md)
+[`usage-attribution-precision`](archive/topics/usage-attribution-precision/tasks.md)
 topic. That topic corrects the current contract that reserves `exact` for
 `agentdeck run` while hardcoding otherwise determinable Hook routes as
 `estimated`; a determinable event classified as `inferred` is not publishable.

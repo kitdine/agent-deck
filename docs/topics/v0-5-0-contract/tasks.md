@@ -11,7 +11,7 @@ Target version: `v0.5.0`.
 This contract topic owns only the final reconciliation after every topic in the
 [assembly list](#assembly-list) has reached the terminal reviewed state the
 [entry condition](#entry-condition) defines. The
-[native desktop app topic](../desktop-app/tasks.md) is one of those five and not
+[native desktop app topic](../../archive/topics/desktop-app/tasks.md) is one of those five and not
 a gate of its own; those two sections are the single place the prerequisite set
 is maintained, and it is deliberately not restated here. It owns no product
 behavior and does not decide whether the completed version proceeds to an RC, a
@@ -32,11 +32,11 @@ evidence moves when it changes.
 
 | Topic | Included | Reason |
 | --- | --- | --- |
-| [`desktop-app`](../desktop-app/tasks.md) | **Yes** | All six tasks ship together; a topic is merged whole or not at all. |
-| [`work-signals`](../work-signals/tasks.md) | **Yes** | Restores the captured activity, workflow, and tooling data behind the desktop Sessions surface and adds the matching CLI surface. Its six implementation tasks and contract task ship as one topic. |
-| [`cli-error-classification`](../cli-error-classification/requirements.md) | **Yes** | It changes the documented JSON error contract, turning `runtime_error` into specific not-found codes. That is an observable break for any consumer matching the old code, so it ships in the same tag as the desktop line rather than trailing it: the desktop surface reads those codes, and a version whose UI classifies errors one way while its CLI classifies them another is the worse outcome. The break is announced once, in this version's notes. |
-| [`switch-effectiveness-boundary`](../switch-effectiveness-boundary/requirements.md) | **Yes** | One client-neutral Hook operation must persist every accepted Codex or Claude delivery before applying an event-specific route effect. Real-session evidence still fixes Claude's state machine: only `no key -> first key` may apply live; key rotation and removal retain the prior route until restart. Its four tasks cover the shared ledger, advisory/file contract, effective-route policy, and cross-client real-lifecycle acceptance. |
-| [`usage-attribution-precision`](../usage-attribution-precision/requirements.md) | **Yes** | The cancelled `v0.6.0` attribution line moves into `v0.5.0` as this active topic, not as a future Backlog reconciliation. It promotes determinable effective routes to `exact`, publishes six attribution-reason counts, separates timeline gaps from real provider spend, and reports their calculable catalog base independently. Pricing, credit, Context Efficiency, and subscription candidates remain independent. A determinable event downgraded to `inferred`, or an unattributed event included in provider spend, is a release blocker and cannot ship. |
+| [`desktop-app`](../../archive/topics/desktop-app/tasks.md) | **Yes** | All six tasks ship together; a topic is merged whole or not at all. |
+| [`work-signals`](../../archive/topics/work-signals/tasks.md) | **Yes** | Restores the captured activity, workflow, and tooling data behind the desktop Sessions surface and adds the matching CLI surface. Its six implementation tasks and contract task ship as one topic. |
+| [`cli-error-classification`](../../archive/topics/cli-error-classification/requirements.md) | **Yes** | It changes the documented JSON error contract, turning `runtime_error` into specific not-found codes. That is an observable break for any consumer matching the old code, so it ships in the same tag as the desktop line rather than trailing it: the desktop surface reads those codes, and a version whose UI classifies errors one way while its CLI classifies them another is the worse outcome. The break is announced once, in this version's notes. |
+| [`switch-effectiveness-boundary`](../../archive/topics/switch-effectiveness-boundary/requirements.md) | **Yes** | One client-neutral Hook operation must persist every accepted Codex or Claude delivery before applying an event-specific route effect. Real-session evidence still fixes Claude's state machine: only `no key -> first key` may apply live; key rotation and removal retain the prior route until restart. Its four tasks cover the shared ledger, advisory/file contract, effective-route policy, and cross-client real-lifecycle acceptance. |
+| [`usage-attribution-precision`](../../archive/topics/usage-attribution-precision/requirements.md) | **Yes** | The cancelled `v0.6.0` attribution line moves into `v0.5.0` as this active topic, not as a future Backlog reconciliation. It promotes determinable effective routes to `exact`, publishes six attribution-reason counts, separates timeline gaps from real provider spend, and reports their calculable catalog base independently. Pricing, credit, Context Efficiency, and subscription candidates remain independent. A determinable event downgraded to `inferred`, or an unattributed event included in provider spend, is a release blocker and cannot ship. |
 
 Excluding a topic costs nothing here and everything later: a topic already
 merged but no longer wanted has no clean removal, because `revert` propagates
@@ -74,7 +74,7 @@ the one case recorded below.
 
 `switch-effectiveness-boundary`'s fourth task, `real-session-acceptance`, is
 `n/a` / `n/a` because the operator waived it on 2026-08-26, and
-[that topic's `tasks.md`](../switch-effectiveness-boundary/tasks.md) — its only
+[that topic's `tasks.md`](../../archive/topics/switch-effectiveness-boundary/tasks.md) — its only
 status authority — is where that decision lives. **The waiver is this gate's
 terminal state for that task.** This entry condition does not require a Review
 PASS for it, does not treat the waiver as one, and does not reopen or rewrite
@@ -203,6 +203,40 @@ Passing those checks still does not select RC or stable publication.
   under the condition above, this `tasks.md` (its `Documents` and `Tasks`
   matrices), and every document of each selected topic that the `git mv` above
   moves and re-stamps.
+- **Consumers of the moved paths.** The retirement above changes where five
+  topics live, so it also changes every citation of those paths. The side that
+  moves a path updates its consumers — `.agent-instructions/branching.md` states
+  the same rule for a contract change — so they belong to this task rather than
+  to whoever next trips over a broken link. Each is a link-only or comment-only
+  hunk; none carries a behavior change. **Each is tracked at the commit
+  baseline**, which is what makes "this hunk and not the rest of the file"
+  deliverable at all — Git can stage part of a modification, but an addition is
+  all-or-nothing:
+  - `docs/roadmap.md` — the one `usage-attribution-precision` link.
+  - `internal/usage/routes.go` — the two `switch-effectiveness-boundary/architecture.md`
+    documentation-path comments only. **No Go statement, signature, or test
+    changes**; this is the one production file this task may touch, and only
+    because a moved document's path is written inside it.
+  - `reviews/assemble.md` — the five archived-topic links in its ancestry table
+    only. No round, verdict, finding, or disposition text changes.
+- Not this task's, and not to be staged with it. Both entries follow the same
+  attribution rule: an edit this task made does not become this task's to
+  deliver when the file belongs to someone else.
+  - The pre-existing uncommitted hunk in `work-signals/tasks.md`, authored by
+    the already-closed work-signals task 6 delivery sync. It travels into the
+    archive with the document it belongs to, and it is neither modified nor
+    discarded here.
+  - The two `cli-error-classification` link corrections in
+    `docs/topics/schema-version-signal/requirements.md`. That file is **absent
+    from HEAD** — `git cat-file -e HEAD:<path>` reports it exists on disk but not
+    in `HEAD`, and `git status --short` returns the whole topic as a single `??`
+    — so it has no baseline against which a hunk exists. Staging it would add an
+    entire unreviewed requirements document to the final-contract commit; not
+    staging it would drop the link fix. Neither is a commit boundary this task
+    can hold, so the edits stay in the working tree, correct and unstaged, and
+    belong to the `schema-version-signal` task that will first commit that file.
+    The authorization to make the edit was real; it is the deliverability that
+    is not this task's.
 - Creates: `reviews/v0-5-0-contract.md`, when this task's first review round
   runs. The archived paths under `docs/archive/topics/` are the lifecycle move's
   result rather than files this task authors, which is why they are described in
@@ -270,7 +304,7 @@ evidence.
 | Task | Dev | Review |
 | --- | --- | --- |
 | 1. `assemble` | [x] | [x] |
-| 2. `v0-5-0-contract` | [ ] | [ ] |
+| 2. `v0-5-0-contract` | [x] | [x] |
 
 `assemble` Review Round 1 (2026-09-01): **REOPEN** on R1-F1. The
 nothing-to-merge classification, ancestry proof, empty integration scope, and
@@ -291,6 +325,51 @@ Delivery boundary describes only the candidate changes and explicitly states
 that the Git index remained empty. The previously verified nothing-to-merge,
 ancestry, integration-scope, and integration-evidence conclusions remain
 unchanged. The Review cell is ticked; final contract work is now the next task.
+
+`v0-5-0-contract` Development (2026-09-01): delivered. `cli-design.md` is at
+version 28 with one new Changelog row and a new Error-Code Compatibility
+section; the entry condition and the four release identities are confirmed, with
+three of the four tag-derived and therefore unresolved until the authorized
+`v0.5.0` tag exists; the five selected topics are retired under
+`docs/archive/topics/` with every document `status: historical`. The archive move
+also repointed the consumers of the moved paths, under an explicit user
+authorization recorded in this round. **Three are this task's to deliver**,
+because each is tracked at the commit baseline: `docs/roadmap.md`, two
+`internal/usage/routes.go` documentation-path comments, and the five
+archived-topic links in `reviews/assemble.md`. The Consumers bullet above names
+them, so the ratified boundary and the change set agree instead of the plan
+trailing the delivery. **A fourth edit is not**: the two link corrections in the
+untracked `schema-version-signal/requirements.md` stay in the working tree and
+belong to that topic's own task, for the reason the bullet above records — a
+file absent from HEAD has no hunk to isolate. A relative
+link resolver run against a clean `git archive` of HEAD and against the working
+tree returns identical broken sets except that five `reviews/assemble.md` links,
+already broken at HEAD by a wrong relative depth, are now fixed: the move
+introduced no new broken link. `git mv` necessarily stages its 62 renames, so the
+index is not empty; nothing is committed or pushed. The `Review` cell stays
+unticked pending independent review.
+
+`v0-5-0-contract` Review Round 1 (2026-09-01): **REOPEN** on R1-F1. The
+Development candidate changed four authorized consumer paths outside the
+ratified Task 2 `Files` list while its scoped-delivery criterion still requires
+only ratified Files; `reviews/assemble.md` is the fourth path and is also absent
+from the Development summary's gap list. The Review cell remains unticked;
+[`reviews/v0-5-0-contract.md`](reviews/v0-5-0-contract.md) owns the finding and
+bounded remediation.
+
+`v0-5-0-contract` Re-review Round 2 (2026-09-01): **REOPEN** on R2-F1. R1-F1
+is closed, but `docs/topics/schema-version-signal/requirements.md` is absent
+from HEAD and remains part of an untracked, unreviewed topic, so its two link
+edits cannot be isolated as Task 2 hunks: Git can only add the whole file. The
+Review cell remains unticked; [`reviews/v0-5-0-contract.md`](reviews/v0-5-0-contract.md)
+owns the new finding and bounded remediation.
+
+`v0-5-0-contract` Re-review Round 3 (2026-09-01): **PASS**. R1-F1 and R2-F1
+are closed: Task 2 owns exactly three tracked consumers, while the untracked
+schema-version-signal requirements edit remains correct in the working tree but
+belongs to its own Task and is excluded from the 71-file final-contract
+candidate. The other four criteria remain verified. The Review cell is ticked;
+all Tasks in this topic have passed review.
 
 Both tasks are blocked until every selected topic is fully reviewed, and
 `assemble` precedes the contract task. Commit boundaries follow task boundaries. This topic does not authorize commits, pushes,
