@@ -148,14 +148,7 @@ check-macos-distribution:
 	bash scripts/test-macos-distribution.sh
 	bash scripts/test-cask-migration.sh
 
-# check-widget-sandbox is deliberately absent. It audits the macOS 26 desktop
-# surfaces, and ci.yml keeps those on their own runner for a stated reason: the
-# Go gate must not wait on Xcode, and a Swift-side failure must not be reported
-# as a Go verification failure. release-preflight.yml runs this aggregate in its
-# macos-15 job, so including a desktop gate here ran it on an image CI never
-# exercises it on, where it failed silently. The desktop lane still owns it —
-# ci.yml and release-preflight.yml both invoke it directly on macos-26.
-release-verify: verify build-all check-arm64-size check-install check-privacy check-release-distribution check-macos-distribution
+release-verify: verify build-all check-arm64-size check-install check-privacy check-widget-sandbox check-release-distribution check-macos-distribution
 
 clean:
 	rm -rf $(DIST_DIR)
