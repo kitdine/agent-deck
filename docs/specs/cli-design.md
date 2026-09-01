@@ -1,6 +1,6 @@
 ---
 status: active
-version: 26
+version: 27
 created: 2026-07-14
 ---
 
@@ -1040,8 +1040,9 @@ Collection-shaped `text` results that use the shared ASCII grid renderer include
 provider list/status/recovery collections, credential lists, session
 list/search/document collections, extension lists, backup lists, and price
 history. The usage report family (`usage summary`, `usage stats`, `usage
-sessions`, and `usage diagnose`) is explicitly excluded and follows the
-dedicated responsive section, bar, and continuation-line contract below. The
+signals`, `usage sessions`, and `usage diagnose`) is explicitly excluded and
+follows the dedicated responsive section, bar, and continuation-line contract
+below. The
 ASCII grid renderer uses only `+`, `-`, and `|`, adds one space of horizontal
 cell padding, and draws a horizontal separator around the header and every data
 row. It does not use Unicode box-drawing characters. Empty collections keep
@@ -1091,13 +1092,19 @@ Usage scanning reads existing JSONL files read-only:
 ~/.claude/projects/**/*.jsonl
 ```
 
-The importer retains timestamps, logical session and event identifiers, model
-IDs, token components, source identity, byte ranges, parser version,
-attribution metadata, and an allowlisted tool-call record containing only tool
-name, start/completion time, terminal status, and duration when derivable. It
-does not retain prompt text, response text, tool arguments or results, command
-text, attachments, environment data, reasoning, or credentials in the usage
-database.
+The importer may read user-message text, allowlisted tool arguments, and shell
+command strings transiently while it classifies a turn and derives file and
+workflow signals. It reduces those values before constructing the persisted
+record. The usage database retains timestamps, logical session/event/turn
+identifiers, model IDs, token components, source ownership and byte ranges,
+parser version, attribution metadata, and safe tool-call metadata: tool name,
+start/completion time, terminal status, duration, bounded tool kind and MCP
+server, a read-shaped-command flag, and a bounded `testing`/`chore`/empty
+command hint. Per-file rows retain only a machine-salted path digest, a capped
+base name, and write direction. The database does not retain raw prompt or
+response text, raw tool arguments or results, shell command text, directory
+structure or full target paths, attachments, environment data, reasoning, or
+credentials.
 
 Codex treats `total_token_usage` as a cumulative snapshot and imports the
 non-negative component-wise delta from the previous valid cumulative snapshot
@@ -1153,16 +1160,19 @@ NDJSON output stays machine-parseable. Nothing is emitted for the first second,
 leaving the common fast path silent; after that the scan reports processed and
 total source files. `--quiet` suppresses progress entirely, and output that is
 not an interactive terminal carries no ANSI escapes. Progress covers the
-implicit scan performed by `usage stats` and `usage summary` as well as
-explicit `usage scan` and `usage rebuild`. When a scan is triggered by a parser
+implicit scans performed by `usage stats`, `usage summary`, and `usage signals`
+as well as explicit `usage scan` and `usage rebuild`. When a scan is triggered by a parser
 version change rather than by new data, the progress output says so, because an
 unexplained multi-minute wait after an upgrade is indistinguishable from a hang.
 
-`usage stats` and `usage summary` scan synchronously before reporting so a
-report always reflects current sources; `--no-scan` returns the stored
-aggregate immediately for callers that prefer staleness to waiting. The scan is
-never moved to the background, which would make report contents depend on a
-race.
+`usage stats`, `usage summary`, and `usage signals` scan synchronously before
+reporting so a report reflects current sources. Stats and summary provide
+`--no-scan` to return the stored aggregate immediately for callers that prefer
+staleness to waiting. `usage signals` deliberately has no stored-only mode: its
+contract always attempts the scan before reading the persisted derivation. If
+that scan fails, it returns the last committed signals with `partial: true` and
+the stable `scan_incomplete` warning. No implicit scan moves to the background,
+which would make report contents depend on a race.
 
 Attribution has three explicit qualities:
 
@@ -1292,6 +1302,18 @@ deletes its tool metadata. Source mutation, parser-version rebuild, and failed
 candidate retry retain the same atomicity and unchanged-source isolation
 guarantees as usage events.
 
+Schema v20 adds `turn_index` to usage events and tool calls, adds bounded
+`tool_kind` and `mcp_server` metadata, creates `usage_tool_files`, and reserves
+`usage_work_signals`. Parser version 5 re-reads already indexed sources so
+Codex and Claude histories backfill the same turn and tool reductions. Schema
+v21 is the delivered classifier schema: it replaces the still-empty reserved
+signals table with pending/classified state, message and intent reductions,
+source ownership, and the final activity category fields; it also adds the
+bounded command-read and command-hint reductions used by workflow and
+cross-scan classification. Parser version 6 re-reads version-5 sources so an
+upgraded database backfills classifications instead of showing empty signals.
+The current core database schema after this work is v21.
+
 When an event-owning source disappears, its events remain temporarily orphaned
 until the same scan can re-home matching stable keys. Recovery combines each
 inventory entry's client with its persisted source-session cursor and force
@@ -1356,6 +1378,27 @@ one effective-price load, and one metadata-only provider-timeline load; run
 multiplier, session attribution, provider snapshots, and price selection are
 resolved during the single in-memory aggregation without per-event SQL or
 credential-value access.
+
+Non-interactive `usage stats` includes `WORK KIND`, `WORKFLOW`, and `TOOLING`
+after `ACTIVITY BY WEEKDAY / HOUR` and before `COVERAGE`, with no enabling
+flag. `usage stats --interactive` remains unchanged and carries no work-signal
+sections.
+
+`usage signals` reads the same persisted derivation directly. It reuses the
+usage family's `--period`, `--client`, `--format`, and `--no-color` semantics;
+adds repeatable `--kind` plus `--sub` and `--activity`; and deliberately has no
+`--top`. `--kind` selects Activity, Workflow, or Tooling families. `--activity`
+accepts a category or subcategory, restricts every family to the same turns,
+implies `--sub`, renormalizes displayed shares inside that filtered scope, and
+leaves absolute cost and event counts unchanged. Text distinguishes measured zero from an
+unavailable em dash and exits `0` for data-present, empty, and partially
+attributed scopes. JSON uses the normal `usage.signals` envelope and lifts
+`period` and `client` beside additive `activity`, `workflow`, and `tooling`
+objects. Activity carries `cost_basis` and ordered kind/subcategory rows;
+Workflow carries nullable `first_edit_seconds`, `files_touched`, `retries`,
+`edits_per_session`, `top_file`, and `top_file_edits`; Tooling carries calls,
+groups, kind rows, and the top MCP server/count. Only bounded base names reach
+either surface.
 
 The runtime provider dimension groups events by the provider configuration
 selected through AgentDeck (for example `official` or a custom relay), not by
@@ -1447,8 +1490,10 @@ creation and ordinary `usage stats` is the fallback for unsupported terminals.
 
 `usage stats --model <model> --activity` adds that model's active session/day
 range, safe tool-call totals, completion/failure counts, available durations,
-and deterministic tool-name distribution. No tool arguments or results are
-read into the report.
+and deterministic tool-name distribution. Signal derivation may transiently
+read the allowlisted inputs described above, but raw arguments, results,
+commands, messages, and paths are neither persisted nor returned by the
+report.
 
 For `metric=cost`, complete average, metric, share, and peak values are nullable.
 They are present only when every event in the applicable range or dimension is
@@ -1680,8 +1725,12 @@ bootstraps the deleted index without invalidating usage or extension checkpoints
 Session IDs shared by Codex and Claude are ambiguous unless `--client` is given.
 `session show <id> --client <client> --activity` opens the selected source only
 on demand and displays the same allowlisted tool name, timestamps, status, and
-duration metadata. It never persists activity in `sessions.sqlite3` and never
-returns tool arguments, results, command text, environment, or reasoning.
+duration metadata. When the session has a classified signal row it also emits
+one `SIGNALS` summary line containing the cost-based activity category (omitted
+when `cost_basis` is `none`), tool-call count, files touched, and first-edit
+latency; the line is absent when no signal row exists. It never persists
+activity in `sessions.sqlite3` and never returns tool arguments, results,
+command text, environment, or reasoning.
 
 Session text collections are bounded for readable terminal use. `session list`
 and the document and activity-detail collections in `session show` default to
@@ -1785,6 +1834,15 @@ coherent refresh result with:
 - `sessions.available`, total indexed sessions, and at most `recent-limit`
   stable recent rows containing client, session ID, project basename, model,
   and first/last times;
+- `sessions.work_signals.activity`, `.workflow`, and `.tooling`, each an
+  additive family with its own `available` flag and bounded `items[]` keyed by
+  `period` and `client`; the producer emits the fixed `today`, `7d`, and `30d`
+  by `all`, `codex`, and `claude` positions, Activity uses the fixed four-kind
+  order and bounded subcategories, Workflow uses the six nullable fields named
+  by `usage signals`, and Tooling emits at most the five fixed non-empty kind
+  rows plus its top MCP pair. A payload without `work_signals` decodes all three
+  families as unavailable, while one missing family item does not invalidate
+  captured sibling families;
 - `health.available`, aggregate doctor status/counts, and safe check name,
   status, code, count, and recovery command.
 
@@ -1835,9 +1893,12 @@ write action; it holds no state of its own that matters.
 - **Menu-bar surface.** Four filtered panels — provider, usage, sessions, and
   health — plus an unfiltered rhythm block, a notice strip carrying health
   detail, and a provider footer. Two filters (client and period) govern every
-  filtered panel. The three work-signal modules render in their
-  `Not captured yet` form; the data behind them is the `work-signals` topic's,
-  not this one's.
+  filtered panel. The three work-signal modules read the selected
+  Client-by-Period wire items and render captured summary cards plus Activity,
+  Workflow, and Tooling detail views. Each family independently retains the
+  `Not captured yet` form only when that family is unavailable; an otherwise
+  captured scope with no item renders an honest empty or em-dash state without
+  hiding captured sibling families.
 - **The one write.** Switching the active provider is the only action that
   changes anything outside the app, and it goes through the same CLI path a
   terminal switch uses. Every other surface is read-only.
@@ -2427,6 +2488,7 @@ here changes; do not create a dated copy of this file.
 
 | Version | Date | Contract change |
 | --- | --- | --- |
+| 27 | 2026-08-31 | Reconciles delivered Work Signals behavior: schema v20 extraction and schema v21 classification with parser-version backfill; the narrowed transient-read/persisted-reduction privacy boundary; default `usage stats` sections, `usage signals`, and the `session show --activity` summary; and additive wire-v1 keyed Activity, Workflow, and Tooling families consumed by the captured desktop surface. |
 | 26 | 2026-08-16 | Records the `v0.4.1` patch, which shipped on 2026-08-13 without a row. Codex `cache_write_input_tokens` is captured into a `cache_write_tokens` column and already-indexed Codex sources are re-scanned on upgrade, so Codex cache-write token volumes that previously reported zero now report their real values and any total derived from them changes for existing data. The cache-write semantics themselves are unchanged: a cache write remains a token volume rather than a second hit-rate percentage, and pricing still uses the documented five-minute cache-write default. |
 | 25 | 2026-08-13 | Adds the v0.5.0 `desktop snapshot` wire v1 contract: JSON-only request flags, coherent Go-owned provider/usage/session/health response, privacy redaction, per-section availability, partial warning semantics, stable input error codes, read-only/no-network behavior, shared Go/Swift canonical fixtures, and opt-in privacy-bounded stable-release update-check connectivity. |
 | 24 | 2026-08-10 | Establishes the v0.4.0 version contract across the completed session-experience and usage-report-presentation lines: session search/show gains bounded, additive document, activity, usage, invocation, pagination, and interactive-viewer surfaces; usage reports use responsive text presentation without changing JSON values, pricing, or attribution; the session parser/index format change requires rebuildable-index migration and an exact-commit technical preflight citing isolated-real-state validation before the user selects RC, stable release, or no publication; invocation-level pricing reads event-time prices without rewriting stored usage or historical price rows. The bounded session DTO is the v0.5.0 desktop dependency and unblocks `desktop-wire-contract`, which still owns the later coherent snapshot, wire version, and Go-owned redaction contract. |

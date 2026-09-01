@@ -435,7 +435,8 @@ Detail，并立即把高度归还给列表；
 | --- | --- | --- | --- | --- |
 | `usage scan` | 增量扫描本地 Codex/Claude usage sources | 无 | 无 | `agentdeck usage scan` |
 | `usage summary [daily\|weekly\|monthly]` | 默认扫描后汇总全部历史，或按本机时区快捷查看今天、本周（周一开始）、本月 | 可选周期位置参数、`--no-scan` | 否；`--no-scan` 直接使用已存聚合 | `agentdeck usage summary weekly --no-scan` |
-| `usage stats` | 默认扫描后输出 KPI、趋势、封顶模型列表、cache hit、client/provider 占比、均值、峰值、计价覆盖和 activity；`--interactive` 显式打开只读 TTY viewer；`--activity` 的 `MODEL ACTIVITY` range 在 text 中使用本机时区并在值后标出 | `--period`、`--from/--to`、`--group-by`、`--metric`、`--client`、`--model`、`--provider`、`--activity`、`--no-scan`、`--top`、`--interactive` | 默认 `7d/auto/tokens`；日期必须成对；`--provider` 接受精确 runtime provider 名称且不做枚举校验；`--activity` 必须与 `--model` 同用；`--no-scan` 直接使用已存聚合；`--top` 必须为非负整数，不传使用各区块默认封顶，`0` 还原未封顶完整文本列表，正整数 N 统一覆盖该次输出的封顶值；`--interactive` 仅允许 text、TTY stdin/stdout、非 dumb TERM 且至少 48x10 | `agentdeck usage stats --provider official --no-scan` |
+| `usage stats` | 默认扫描后输出 KPI、趋势、封顶模型列表、cache hit、client/provider 占比、均值、峰值、计价覆盖和 activity，并在非交互 text 中加入 Work Kind、Workflow、Tooling；`--interactive` 显式打开不含 work signals 的只读 TTY viewer；`--activity` 的 `MODEL ACTIVITY` range 在 text 中使用本机时区并在值后标出 | `--period`、`--from/--to`、`--group-by`、`--metric`、`--client`、`--model`、`--provider`、`--activity`、`--no-scan`、`--top`、`--interactive` | 默认 `7d/auto/tokens`；日期必须成对；`--provider` 接受精确 runtime provider 名称且不做枚举校验；`--activity` 必须与 `--model` 同用；`--no-scan` 直接使用已存聚合；`--top` 必须为非负整数，不传使用各区块默认封顶，`0` 还原未封顶完整文本列表，正整数 N 统一覆盖该次输出的封顶值；`--interactive` 仅允许 text、TTY stdin/stdout、非 dumb TERM 且至少 48x10 | `agentdeck usage stats --provider official --no-scan` |
+| `usage signals` | 默认同步扫描后读取持久化 Work Signals 派生，按同一 scope 展示 Activity、Workflow、Tooling；扫描失败时返回上次已提交数据并标记 `partial: true` / `scan_incomplete` | 复用 `--period`、`--client`、`--format`、`--no-color`；新增可重复 `--kind`，以及 `--sub`、`--activity`；没有 `--top` 或 `--no-scan` | 每次报告前都尝试扫描，没有 stored-only 模式；`--kind` 选择模块；`--activity` 接受 category 或 subcategory、隐含 `--sub`、让三组模块使用同一批 turns，并在过滤 scope 内重算 share 而不改变绝对 cost/event | `agentdeck usage signals --period 7d --client codex --kind activity --sub` |
 | `usage sessions` | 按 session 分列展示各类 token、成本和计价状态；使用共享响应式列原语，窄终端将次要 token 放到 continuation 行；`FIRST`/`LAST` 在 text 中使用本机时区并在列名标出 | 无 | 无 | `agentdeck usage sessions` |
 | `usage diagnose` | 展示 source、event、session、run、价格覆盖和 attribution 诊断 | 无 | 无 | `agentdeck usage diagnose` |
 | `usage rebuild` | 逐 source 原子重建 usage metadata；失败 source 保留旧数据并返回 partial warning | 无 | 无 | `agentdeck usage rebuild` |
@@ -487,7 +488,20 @@ resume 的主要归属机制；并发 managed runs 不阻止 client，而将受�
   `coverage_gap` 的可计算 catalog base，任一此类 event 有未计价组件时为
   unavailable。priced/unpriced event 数和逐 model coverage 继续展示 catalog 计价
   覆盖；warning 使用 `estimated attribution` 与 `unattributed attribution`。
-- `usage summary` 和 `usage stats` 默认在输出前同步扫描；`--no-scan` 跳过该扫描并立即使用已存聚合，不会将扫描移到后台。
+- `usage summary`、`usage stats` 和 `usage signals` 默认在输出前同步扫描，长扫描共享
+  stderr progress。summary 与 stats 的 `--no-scan` 可跳过扫描并立即使用已存聚合；
+  signals 没有 `--no-scan` 或 stored-only 模式，始终先尝试扫描再读取持久化派生。
+  signals 扫描失败时返回上次已提交数据，envelope 标记 `partial: true` 并加入稳定的
+  `scan_incomplete` warning。扫描不会移到后台。
+- 非交互 `usage stats` 在 `ACTIVITY BY WEEKDAY / HOUR` 之后、`COVERAGE`
+  之前固定输出 `WORK KIND`、`WORKFLOW`、`TOOLING`；交互 viewer 不增加这三节。
+  `usage signals` 独立使用 `ACTIVITY`、`WORKFLOW`、`TOOLING` 标题。无数据、部分归属
+  和单项不可确定都退出 `0`；已测得的零显示 `0`，不可确定显示 `—`。JSON 使用
+  `usage.signals` 标准 envelope，顶层 data 放 `period`、`client` 与 additive
+  `activity`、`workflow`、`tooling`。Activity 含 `cost_basis` 与固定顺序的 kind/sub
+  rows；Workflow 含 nullable `first_edit_seconds`、`files_touched`、`retries`、
+  `edits_per_session`、`top_file`、`top_file_edits`；Tooling 含 calls、groups、kind rows
+  与 top MCP server/count。两种输出只暴露有界 base name。
 - `usage stats --metric cost` 的 complete total、average、bucket、dimension
   share 和 peak 只在范围内每个 event 都完整计价且 spend-eligible 时提供；已完整
   计价但不可归属的 event 仍保留 catalog 覆盖，却不能让 provider real-spend 数字
@@ -559,8 +573,11 @@ resume 的主要归属机制；并发 managed runs 不阻止 client，而将受�
   totals 和混合 bucket 不生成语义不一致的跨 client 单一比率。
 - 未计价 model 只排除在费用计算之外，仍正常参与 token/share/session/event/cache/
   activity/tool 汇总。`usage stats --model <model> --activity` 展示 active session/day、
-  时间范围、工具总数、完成/失败、可用耗时和按安全工具名的分布；usage DB 只保存工具名、
-  时间、状态、耗时及来源所有权，不保存参数、结果、命令文本、环境或 reasoning。
+  时间范围、工具总数、完成/失败、可用耗时和按安全工具名的分布。派生阶段可暂时读取
+  user message、allowlisted tool arguments 与 shell command；构造持久化记录前必须缩减。
+  usage DB 保存 turn、bounded tool kind/MCP、read-shaped flag、`testing`/`chore`/empty
+  command hint，以及每个文件的 machine-salted digest、capped base name 和 write flag；
+  不保存原始参数、结果、message、命令文本、目录结构、完整目标路径、环境或 reasoning。
 - `metric=cost` 只在对应范围全部计价时提供 `metric_value`、`share`、peak `value`
   和 `average_cost_per_session`。混合 priced/unpriced 数据将这些完整值设为 `null`，
   另由 `known_metric_value`、`known_share`、`known_value` 和
@@ -571,6 +588,11 @@ resume 的主要归属机制；并发 managed runs 不阻止 client，而将受�
 - Schema v10 将已有和新写入的 `usage_events.event_at` 统一为 UTC RFC3339Nano，
   并从规范化事件重算 session `first_at/last_at`。SummaryRange、Stats、最早事件和
   session 边界均按绝对时间工作，不对保留 offset 的原始文本做范围比较。
+- Schema v20 增加 turn/tool/file reductions 与预留的 `usage_work_signals`，parser
+  version 5 重读既有 sources；schema v21 以 pending/classified、source ownership、
+  message/intent reduction 和最终 category shape 重建 signals 表，并加入 bounded
+  command reductions，parser version 6 再次重读 version-5 sources 完成分类回填。
+  Work Signals 交付后的 core database schema 为 v21。
 - Stats 对范围事件只做一次索引扫描，并分别批量加载价格层与 metadata-only provider
   timeline；run multiplier、session attribution、历史 provider snapshot 和有效价格
   在内存中一次聚合，不按 event 追加 SQL，也不读取 credential value。
@@ -678,7 +700,14 @@ Session interactive 内容在最多 120 个 visible cells 的左对齐画布内�
 Claude 时返回歧义错误并要求 `--client`。Session 与 credential 的 `--client` 都只接受
 `codex|claude`。
 `session show --activity` 只在调用时读取所选 source，显示工具名、时间、状态和可用耗时；
-这些数据不写入 `sessions.sqlite3`，参数、结果、命令文本、环境和 reasoning 始终不显示。Text 默认每页 20 条并显示总数与可复制的下一页命令（保留 `--state-dir`、`--client`、`--activity` 与 limit）；`--limit` 必须为 1 至 1000。JSON 仅在显式分页时加入确定的 `pagination`，否则保持完整集合。`--activity` 始终先输出完整 session 的调用、状态、时长与按工具汇总，再分页显示安全明细。
+存在 classified session signal 时先增加一行 `SIGNALS`：cost basis 可用时显示 activity
+category，并继续显示 tool calls、files touched 与 first-edit latency；没有 signal row 时整行
+省略，`cost_basis=none` 时只省略 category 而保留可计数值。这些数据不写入
+`sessions.sqlite3`，参数、结果、命令文本、环境和 reasoning 始终不显示。Text 默认每页
+20 条并显示总数与可复制的下一页命令（保留 `--state-dir`、`--client`、`--activity` 与
+limit）；`--limit` 必须为 1 至 1000。JSON 仅在显式分页时加入确定的 `pagination`，否则
+保持完整集合。`--activity` 始终先输出完整 session 的 signals、调用、状态、时长与按工具
+汇总，再分页显示安全明细。
 普通 text 的 Documents、Activity 与 Invocations 记录时间会在可换行的值中明确本机显示时区；
 空值或无法解析的时间不会虚构时区，JSON 继续保留 UTC RFC 3339。
 
@@ -755,7 +784,14 @@ envelope 写入 stderr 并退出 `2`。省略 `--format json` 或选择 text/NDJ
 
 成功响应使用标准 envelope、`command: "desktop.snapshot"` 和独立的
 `data.wire_version: 1`。`data` 始终包含 `provider`、`usage`、`sessions`、
-`health` 四个 section 及各自的 `available`。任一只读 section 失败时，
+`health` 四个 section 及各自的 `available`。`sessions.work_signals` additively
+包含 `activity`、`workflow`、`tooling` 三个 family；每个 family 都有自己的
+`available` 与按 `period`、`client` keyed 的 bounded `items[]`。producer 固定生成
+`today|7d|30d` x `all|codex|claude` positions；Activity 保持四个 category 的固定顺序，
+Workflow 使用与 `usage signals` 相同的六个 nullable fields，Tooling 最多五个 non-empty
+fixed-kind rows 和 top MCP pair。旧 payload 缺少整个 `work_signals` 时三族均解码为
+unavailable；单族缺少一个 position 不会让同 scope 的其它已捕获族失效，也不提高
+`wire_version`。任一只读 section 失败时，
 其余 section 仍返回；命令退出 `0`，envelope 标记 `partial: true` 并加入
 稳定的 `*_unavailable` warning。只读数据库 close 失败会加入
 `state_close_failed` 或 `sessions_close_failed`，但不丢弃已解码 section。
@@ -790,8 +826,10 @@ v0.5.0 随发布提供 `AgentDeck.app`，一个 macOS 26 菜单栏应用，其�
   投影。
 - **菜单栏表面**：provider、usage、sessions、health 四个受筛选面板，加上
   不受筛选的 rhythm 区块、承载 health 详情的通知条，以及 provider 页脚。
-  client 与 period 两个筛选器统辖全部受筛选面板。三个 work-signal 模块以
-  `Not captured yet` 形态渲染，其背后的数据属于 `work-signals` topic。
+  client 与 period 两个筛选器统辖全部受筛选面板。三个 work-signal 模块读取所选
+  Client x Period item，渲染 captured summary cards 与 Activity、Workflow、Tooling
+  details；每族只有在自身 unavailable 时保留 `Not captured yet`，可读但无该族数据的
+  scope 使用 empty 或 `—`，不隐藏同 scope 已捕获的 sibling families。
 - **唯一的写操作**：切换当前 provider 是唯一会改变应用之外状态的动作，且
   走与终端切换相同的 CLI 路径。其余表面全部只读。
 - **设置**：恰好四项偏好——周期刷新（默认关闭，因为那是用户没有要求的后台
@@ -945,6 +983,9 @@ passphrase 输入本身失败仍属于未分类 CLI 输入层故障，继续返�
   只由 `provider status` 的复数 `credentials`、`credential ...` 或 doctor 检查。
 - Usage 新分类采用 additive JSON 字段；旧 `unsupported` 可在一个过渡期作为总和保留，
   但不再用于 text 输出。
+- Work Signals 使用 additive `usage.signals` 与 `sessions.work_signals` 字段；输出只含
+  category、aggregate、bounded base name 和 tool/MCP reductions，不含原始 message、
+  argument、result、command、directory、完整目标 path 或 machine identity。
 - Doctor 增加权威 `status` 和 warning/error counts；旧字段只作为 JSON 兼容字段，
   text 不再依赖单一 boolean。
 

@@ -370,7 +370,7 @@ reviewed against a specimen that does not yet show what they describe.
 | 3. `work-signal-cli` | [x] | [x] |
 | 4. `work-signal-projection` | [x] | [x] |
 | 5. `work-signal-surface` | [x] | [x] |
-| 6. `work-signals-contract` | [ ] | [ ] |
+| 6. `work-signals-contract` | [x] | [x] |
 
 Task 1 Development (2026-08-27): schema v20 adds `turn_index` to usage events,
 turn/tool-kind/MCP fields to tool calls, `usage_tool_files`, and the reserved
@@ -594,6 +594,94 @@ file changed. The single non-English App failure is this machine's Chinese
 localization against a hardcoded English expectation, isolated by the English
 run. Both task cells tick; the Task gate is VERIFIED. Task 6
 `work-signals-contract` is the last remaining implementation task.
+
+Task 6 Development (2026-08-31): CLI Design version 27 and the Chinese command
+manual now reconcile the delivered Work Signals contract. They record schema
+v20 extraction and schema v21 classification with parser-version 5/6 backfill;
+the transient-read, safe-persisted-reduction privacy boundary; the default
+`usage stats` sections, `usage signals` command/flags, and the conditional
+`session show --activity` `SIGNALS` line; and the additive wire-v1 keyed
+Activity, Workflow, and Tooling families consumed by the captured menu-bar
+surface. The repository-wide L2 Go suite passes. Task 6 Development is complete
+and awaits independent Review. `make check-whitespace` and `git diff --check`
+pass. The all-topic audit reports only the two declared-but-unwritten files in
+the concurrent, untracked `schema-version-signal` topic and no Work Signals
+finding; the audit has no scoped mode, so that unrelated failure remains
+isolated rather than being repaired from this task.
+
+Task 6 Review Round 1 (2026-08-31): **REOPEN** on R1-F1, R1-F2, and R1-F3.
+The delivered schema/privacy, JSON, wire-v1, Session, and captured-surface
+claims all hold, but the stable specifications omit three registrations for the
+new command: `usage signals` synchronously scans with progress and no
+`--no-scan`; the responsive-renderer exemption does not name it; and
+`--activity` implying `--sub` is absent. The review record under
+`reviews/work-signals-contract.md` owns the findings and bounded remediation.
+The Development-phase CEv1 evidence at candidate `08d63448…` is disproven on
+its `cli-contract` criterion and must not be reused; Repair produces a new
+content state. The Review cell remains unticked.
+
+Task 6 Repair Round 1 (2026-08-31): **R1-F1, R1-F2, and R1-F3 closed,
+awaiting independent Re-review.** CLI Design now includes `usage signals` in
+the progress, synchronous-scan, and responsive-renderer enumerations; it states
+that the command has no stored-only mode, returns last committed signals with
+`partial: true` / `scan_incomplete` after scan failure, and makes `--activity`
+imply `--sub`. The Chinese manual records the same scan contract and flag
+interaction in both its command row and default-output rules. Production code,
+tests, schema/privacy, JSON, wire, Session, and desktop contracts are unchanged;
+the Development L2 Go result remains reusable. Independent Re-review is next.
+
+Task 6 Re-review Round 2 (2026-08-31): **REOPEN** on R2-F1 and R2-F2. All three
+Round 1 findings are closed and the repair introduced no false assertion. Both
+specifications now name `usage signals` in the progress and synchronous-scan
+enumerations, state that it has no stored-only mode and returns the last
+committed signals with `partial: true` and `scan_incomplete` after a failed
+scan, list it in the responsive-renderer exemption, and record `--activity`
+implying `--sub`. Exhausting the usage command tree confirms the repaired
+enumeration is complete rather than one entry longer: `s.Scan(ctx)` is reached
+by exactly `usage summary`, `usage stats`, and `usage signals`, plus the
+explicit `usage scan` and `usage rebuild`. The contract itself would have
+passed. What fails is the audit trail the repair left behind. R2-F1: this file
+now holds two differently worded records of the same Task 6 Review Round 1, and
+only the later one carries the fact that the Development-phase CEv1
+`cli-contract` evidence at candidate `08d63448…` is disproven. R2-F2:
+`docs/status.md` says `6/6 implemented` while the matrix here — the authority
+that file names for these cells — keeps both Task 6 cells unticked. Both
+findings are minor and neither changes delivered behavior, but no finding
+survives a round open, and a second copy of one record is the defect this
+repository has already paid for repeatedly. Both task cells remain unticked.
+`reviews/work-signals-contract.md` owns the findings and their bounded
+remediation. The re-reviewed content state is CEv1 candidate `714ed56d…`, whose
+`predecessor-delivery` evidence claims the required task and status
+synchronization was complete; this round disproves that part, and the failure is
+recorded against that candidate rather than by rewriting it.
+
+Task 6 Repair Round 2 (2026-08-31): **R2-F1 and R2-F2 closed, awaiting
+independent Re-review.** This file now carries exactly one Task 6 Review Round 1
+record, in the Task 6 Development → Review → Repair chain, and that record
+retains the CEv1 `08d63448…` invalidation fact from the removed duplicate.
+`docs/status.md` now projects the authoritative matrix literally as `5/6
+implemented, 5/6 reviewed`; both Task 6 cells remain unticked until independent
+Re-review PASS. No product contract, production code, test, dependency,
+configuration, or toolchain input changed. Independent Re-review is next.
+
+Task 6 Re-review Round 3 (2026-08-31): **PASS**. R2-F1 and R2-F2 are both closed
+and the repair introduced no new false assertion. This file now carries exactly
+one `Task 6 Review Round 1` record, inside the Development → Review → Repair
+chain, and it retains the removed duplicate's unique conclusion that candidate
+`08d63448…` is disproven on `cli-contract`. The rest of the deleted block was
+Round 1's itemized verification list, which the retained record summarizes and
+`reviews/work-signals-contract.md` still holds in full, so the status authority
+and the evidence authority each keep one copy of their own concern rather than
+two copies of the same one. `docs/status.md` was aligned to this matrix rather
+than the matrix to it. Both CLI specification blobs are byte-identical to the
+Round 2 reviewed state, so the contract conclusions of that round carry over
+unexamined by repair. The CEv1 `predecessor-delivery` pass at candidate
+`8f870b32…` supersedes both the Round 2 fail and the earlier pass instead of
+rewriting either, and the four remaining criteria legitimately reuse
+`714ed56d…`. Both task cells tick on this round; the Task gate is re-bound to
+this round's post-synchronization candidate and is VERIFIED across all five
+criteria. Task 6 is the last implementation task of this topic, so what remains
+is the commit checkpoint and the topic-level closure that depends on it.
 
 Task 1 Review Round 1 (2026-08-27): **REOPEN** on R1-F1. Schema v20, the parser
 version bump and backfill, both fixture regenerations, Decision 1's turn
