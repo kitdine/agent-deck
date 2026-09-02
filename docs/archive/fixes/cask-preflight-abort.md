@@ -1,6 +1,7 @@
 ---
-status: active
+status: historical
 created: 2026-09-02
+retired: 2026-09-02
 ---
 
 # 缺陷：Cask 互斥守卫拒绝后留下已安装记录

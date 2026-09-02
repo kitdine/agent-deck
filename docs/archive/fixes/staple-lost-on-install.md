@@ -1,6 +1,7 @@
 ---
-status: active
+status: historical
 created: 2026-09-02
+retired: 2026-09-02
 ---
 
 # 缺陷：Cask DMG 内的 bundle 丢失公证票据
