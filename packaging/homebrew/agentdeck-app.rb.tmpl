@@ -28,7 +28,10 @@ cask "@CASK_TOKEN@" do
     ["agentdeck", "agentdeck-rc"].each do |conflicting_formula|
       next unless (HOMEBREW_CELLAR/conflicting_formula).directory?
 
-      odie <<~ERROR
+      # `odie` raises SystemExit, which bypasses Homebrew's Cask rollback and
+      # leaves a Caskroom receipt behind. A regular exception is unwound by the
+      # installer before it reports the refusal.
+      raise <<~ERROR
         The CLI-only #{conflicting_formula} formula is installed and already owns
         the `agentdeck` command. Migrate rather than installing both:
           brew uninstall #{conflicting_formula}

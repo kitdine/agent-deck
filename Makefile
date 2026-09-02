@@ -140,10 +140,11 @@ check-release-distribution:
 # Desktop distribution, in isolation: cask rendering, Homebrew's acceptance of
 # the rendered cask, signing order, the notarization and stapling invocations,
 # artifact assembly, Formula-to-Cask migration, and mutual exclusion. Reaches no
-# Apple service and no published tap, and installs nothing. It does require
-# Homebrew: the cask load check creates and removes a throwaway tap inside the
-# local Homebrew prefix, and fails the run when `brew` is absent rather than
-# skipping the only check that reads Homebrew's own verdict.
+# Apple service or published tap and leaves no installation behind. It requires
+# Homebrew twice: the load check creates and removes a throwaway tap inside the
+# local prefix, while the migration check runs `brew install --cask` inside a
+# fully temporary prefix and verifies that a preflight refusal rolls back. Both
+# fail when `brew` is absent rather than skipping Homebrew's own verdict.
 check-macos-distribution:
 	bash scripts/test-macos-distribution.sh
 	bash scripts/test-cask-migration.sh

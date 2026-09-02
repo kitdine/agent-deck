@@ -5,16 +5,12 @@ set -euo pipefail
 # in a temporary HOME, a temporary application directory, and a temporary
 # Homebrew prefix.
 #
-# Boundary, stated rather than implied: this drives the artifact set the cask
-# DECLARES — its app, its binary links and their targets, its conflicts_with
-# entries, and what its zap list omits — through a local installer that applies
-# those declarations. It is not Homebrew, and it asserts nothing about
-# Homebrew's implementation. Whether Homebrew accepts the rendered cask at all is
-# scripts/test-macos-distribution.sh's section 4, which loads it through a
-# throwaway tap inside the local Homebrew prefix; this file needs no Homebrew and
-# writes only inside its own temporary directories. Installing the real cask with
-# the real `brew` belongs to the separately authorized release path, which runs
-# against a published artifact this task is not permitted to produce.
+# Boundary, stated rather than implied: the formula preflight is exercised by a
+# real `brew install --cask` command whose prefix, Cellar, Caskroom, cache, HOME,
+# and application directory all live below this test's temporary directory. The
+# remaining artifact declarations — app, binary links and targets,
+# conflicts_with, and the zap omission — are driven through the local installer
+# below so no published artifact or real user installation is touched.
 
 root=$(cd "$(dirname "$0")/.." && pwd)
 temporary=$(mktemp -d "${TMPDIR:-/private/tmp}/agentdeck-cask-migration.XXXXXX")
@@ -55,10 +51,10 @@ render_cask() {
 
 cask_conflicting_formulae() {
   # Homebrew's conflicts_with accepts casks only, so the formula exclusion is
-  # declared by the cask's preflight refusal rather than by a stanza. This reads
-  # that declaration; whether Homebrew accepts the cask carrying it is
-  # scripts/test-macos-distribution.sh's tap-backed load check, per the boundary
-  # stated at the top of this file.
+  # declared by the cask's preflight refusal rather than by a stanza. This parser
+  # feeds the declaration-driven checks below; real_brew_install_refusal exercises
+  # the refusal through `brew install --cask`, while test-macos-distribution.sh
+  # separately checks that Homebrew can load the rendered cask from a throwaway tap.
   awk '/\]\.each do \|conflicting_formula\|/ {
     line = $0
     while (match(line, /"[^"]+"/)) {
@@ -154,6 +150,99 @@ cask_uninstall() {
   rm -rf "$appdir/AgentDeck.app"
 }
 
+real_brew_install_refusal() {
+  local source_root="$temporary/real-brew-source"
+  local source_bundle
+  source_bundle=$(make_app "$source_root" 1.2.3)
+
+  local archive="$temporary/AgentDeck_v1.2.3_universal.zip"
+  ditto -c -k --sequesterRsrc --keepParent "$source_bundle" "$archive"
+
+  local cask_file="$temporary/agentdeck-app-real-brew.rb"
+  local checksums="$temporary/real-brew-checksums.txt"
+  local archive_sha
+  archive_sha=$(shasum -a 256 "$archive" | awk '{ print $1 }')
+  printf '%s  AgentDeck_v1.2.3_universal.dmg\n' "$archive_sha" >"$checksums"
+  bash "$root/scripts/render-homebrew-cask.sh" \
+    "$root/packaging/homebrew/agentdeck-app.rb.tmpl" v1.2.3 "$checksums" "$cask_file"
+
+  ruby -e '
+    path, url = ARGV
+    lines = File.readlines(path)
+    start = lines.index { |line| line.start_with?("  url ") }
+    abort "rendered cask has no url stanza" unless start
+    count = lines[start].end_with?("\\\\\n") ? 2 : 1
+    lines[start, count] = ["  url #{url.dump}\n"]
+    File.write(path, lines.join)
+  ' "$cask_file" "file://$archive"
+
+  command -v brew >/dev/null || {
+    echo "real Homebrew is required for the cask preflight regression" >&2
+    exit 1
+  }
+  local brew_repository
+  brew_repository=$(brew --repository)
+
+  local isolated_prefix="$temporary/isolated-brew"
+  local isolated_cellar="$isolated_prefix/Cellar"
+  local isolated_brew="$isolated_prefix/bin/brew"
+  local isolated_appdir="$temporary/real-brew-applications"
+  local tap_cask="$isolated_prefix/Library/Taps/agentdeck/homebrew-test/Casks/agentdeck-app.rb"
+  mkdir -p \
+    "$isolated_prefix/bin" \
+    "$isolated_prefix/Library/Taps/agentdeck/homebrew-test/Casks" \
+    "$isolated_cellar/agentdeck/1.2.3" \
+    "$isolated_appdir"
+  cp "$brew_repository/bin/brew" "$isolated_brew"
+  ln -s "$brew_repository/Library/Homebrew" "$isolated_prefix/Library/Homebrew"
+  cp "$cask_file" "$tap_cask"
+
+  local isolated_prefix_real
+  isolated_prefix_real=$(cd "$isolated_prefix" && pwd -P)
+  if [[ $($isolated_brew --prefix) != "$isolated_prefix_real" ]]; then
+    echo "isolated brew escaped its temporary prefix" >&2
+    exit 1
+  fi
+
+  local brew_output="$temporary/real-brew-install.log"
+  if env \
+    HOME="$home" \
+    HOMEBREW_CACHE="$temporary/brew-cache" \
+    HOMEBREW_LOGS="$temporary/brew-logs" \
+    HOMEBREW_TEMP="$temporary/brew-temp" \
+    HOMEBREW_NO_ANALYTICS=1 \
+    HOMEBREW_NO_AUTO_UPDATE=1 \
+    HOMEBREW_NO_ENV_HINTS=1 \
+    HOMEBREW_NO_INSTALL_CLEANUP=1 \
+    HOMEBREW_NO_INSTALL_FROM_API=1 \
+    "$isolated_brew" install --cask \
+      --appdir="$isolated_appdir" agentdeck/test/agentdeck-app >"$brew_output" 2>&1; then
+    echo "real brew installed the cask alongside the conflicting agentdeck formula" >&2
+    exit 1
+  fi
+
+  if ! grep -F 'The CLI-only agentdeck formula is installed' "$brew_output" >/dev/null; then
+    echo "real brew refusal omitted the formula migration message" >&2
+    tail -40 "$brew_output" >&2
+    exit 1
+  fi
+  if [[ ! -d $isolated_cellar/agentdeck/1.2.3 ]]; then
+    echo "real brew refusal removed the conflicting formula" >&2
+    exit 1
+  fi
+
+  local unexpected
+  for unexpected in \
+    "$isolated_prefix/Caskroom/agentdeck-app" \
+    "$isolated_appdir/AgentDeck.app" \
+    "$isolated_prefix/bin/agentdeck"; do
+    if [[ -e $unexpected || -L $unexpected ]]; then
+      echo "real brew refusal left an installed cask artifact: $unexpected" >&2
+      exit 1
+    fi
+  done
+}
+
 # --- 1. install, upgrade, uninstall --------------------------------------
 
 stable_cask="$temporary/agentdeck-app.rb"
@@ -199,6 +288,12 @@ test -f "$home/.agentdeck/credential.key"
 test -f "$home/.codex/config.toml"
 test -f "$home/.claude/settings.json"
 test -f "$home/.zshrc"
+
+# The real Homebrew path owns the preflight control-flow contract. In
+# particular, a refusal must unwind the Caskroom receipt as well as leave the
+# app and command absent; checking only stderr and the process status misses the
+# partial installation caused by an exit that bypasses Homebrew's rollback.
+real_brew_install_refusal
 
 # --- 2. mutual exclusion with the CLI-only formula -----------------------
 
