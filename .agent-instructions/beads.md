@@ -367,6 +367,99 @@ The same rule read forwards: `设计：<topic>` creates document tasks only. The
 first command that may create development tasks is the one that follows the
 `tasks.md` task reaching `awaiting_commit`.
 
+## Bug lane
+
+A defect in released behavior does not automatically become a topic. `bug` is a
+built-in `bd` issue type — `bd create -t` accepts it with no `types.custom`
+entry, the same way `gate` is built in — so what was missing here was never the
+type. It was the question that decides how much process a defect earns.
+
+**That question is not size.** A one-line change can move a contract, and a
+refactor spanning twenty files can leave every contract exactly where it was.
+Size measures the diff; what the process protects is the decision. So the
+triage question is:
+
+> Does fixing it require deciding any new user-visible behavior?
+
+| Answer | Lane | What it means |
+| --- | --- | --- |
+| No — the implementation never met a contract that already exists | **A** | Fix it directly. No topic, no design documents. |
+| Yes — a new code, state, output shape, or precedence rule has to be decided | **B** | Promote to a topic and run the full progression. |
+| Yes, but not now | **C** | `deferred`, recorded as a Backlog candidate in `docs/roadmap.md`. |
+
+The two lanes are calibrated against work this repository has already done.
+`schema-version-signal` is Lane B and correctly so: it has to decide a stable
+error code, two new version fields, a menu-bar presentation state, and a
+precedence over `state_busy` — four decisions with no existing answer. The
+release defects found on 2026-09-01, by contrast, were all Lane A: a Homebrew
+Cask guard that printed its refusal without aborting, a notarization ticket
+lost on copy, and a Hook that dropped every `startup` route. Nothing about the
+intended behavior was in question in any of them; only the implementation was
+wrong. Eight of nine defects fell on the Lane A side, which is the measured
+reason this lane exists — routing all nine through a four-document topic is
+what made ordinary repair feel unaffordable.
+
+**The user decides the lane, not the agent.** An agent proposes it with its
+ground — "Lane A: `usage_session_routes` already contracts that an accepted
+SessionStart writes a route; only the admission check is wrong" — and the user
+confirms. Self-assignment is unsafe in one specific direction: the cheaper lane
+is always the more attractive one, so an agent judging its own process load
+drifts toward Lane A, and a contract change slips through with no design review
+behind it.
+
+### Lane A in Beads
+
+Lane A reuses the single lifecycle above without modification. What it skips is
+the six document stages in front of it, not any state:
+
+```text
+ad-bug-<slug>     缺陷：<one-line observed symptom>
+```
+
+No topic segment, because a Lane A fix has no topic. Its work product is a code
+change plus one `docs/fixes/<slug>.md` record; see
+`docs/documentation-workflow.md` for that file's structure and lifecycle.
+
+- Type `bug`, created with `create -t bug`.
+- Status walks `open → in_progress → in_review → awaiting_commit → closed`,
+  unchanged, and `closed` still means the authorized commit exists.
+- One `Authorize Development` Gate, blocking the task by `depends-on`. There is
+  no `Authorize Design` Gate, because there is no design stage to authorize.
+- Review is **not** waived. Reducing the documents does not reduce the verdict:
+  a Lane A fix is independently reviewed like anything else, and the verdict
+  lives in its `docs/fixes/<slug>.md` record, never only in a Beads comment.
+  Beads is not a review-verdict authority, and a verdict recorded only here
+  would be the second, staler copy of a fact the repository owns.
+
+The stage commands are the project's existing ones, with `fix` as the containing
+unit:
+
+```text
+开发：fix / <slug>
+评审：fix / <slug>
+修复：fix / <slug> / <finding ids>
+复评：fix / <slug>
+```
+
+This invents no command. The Skill states that the containing unit is named by
+the project, and that where a project does not review a design document before
+implementation the design route runs straight to implementation — Lane A is
+exactly that case, declared here.
+
+### Lane B and Lane C in Beads
+
+Lane B keeps the `bug` issue as the origin record and does not convert it. The
+topic gets its own document tasks under `ad-<topic>-doc-*` as usual, and the
+`bug` issue takes a `depends-on` edge to the topic's `tasks` document task, so
+the defect closes when the work that fixes it is delivered rather than when the
+topic is created. `requirements.md` names the defect as its origin — "a measured
+defect in released behavior" is already one of the five recognized origins.
+
+Lane C sets `deferred` and records the candidate in `docs/roadmap.md`'s Backlog.
+A deferred bug carries no Gate; promoting it later is a planning decision, and
+re-triage starts from the same question, because a defect that was Lane C last
+month may be Lane A once the surrounding contract is settled.
+
 ## State transitions and authority
 
 Beads state transitions must preserve the project workflow boundaries. A Beads

@@ -48,6 +48,7 @@ version: N            # versioned specifications only
 | Directory | Purpose | Lifecycle |
 | --- | --- | --- |
 | `docs/topics/<topic>/` | One coherent behavior change, from requirements through tasks | Keep `active` until every required gate passes; then archive the whole directory. |
+| `docs/fixes/` | One Lane A defect repair: observation, cause, boundary, verification, and its review record in one file | Keep `active` while the repair is open; archive the file once its commit exists. |
 | `docs/specs/` | Current product and interaction contracts only | Revise in place while authoritative. Receives a topic's stable contracts after its last task passes review. |
 | `docs/archive/` | Retired topics and superseded material | Preserve history; never use as the starting point for new work. |
 | `docs/README.md` | Stable documentation navigation | Change only when the documentation topology or stable entry contract changes. |
@@ -175,7 +176,11 @@ A topic is promoted from one of five origins, and the origin belongs in
 - a Roadmap version theme, narrowed to one coherent behavior change;
 - a Backlog candidate;
 - a finding recorded in another topic's review;
-- a measured defect in released behavior;
+- a measured defect in released behavior **that requires deciding new
+  user-visible behavior to fix** — a defect whose repair only makes the
+  implementation meet a contract that already exists is a Lane A fix and
+  never becomes a topic; see the Bug lane in
+  [`.agent-instructions/beads.md`](../.agent-instructions/beads.md);
 - a direct request.
 
 Promote with the design trigger, naming a topic that does not exist yet:
@@ -303,6 +308,74 @@ The Documents matrix therefore exists from the moment the topic does but is
 ratified at the end. That is not a contradiction: it is a claim from the start
 and a verdict at the finish, which is the same shape as `Draft` and `Review` on
 every other row.
+
+### Fix records
+
+A Lane A defect repair produces one file, `docs/fixes/<slug>.md`, and no topic
+directory. The lane and the triage question that selects it are defined in
+[`.agent-instructions/beads.md`](../.agent-instructions/beads.md); what belongs
+here is the file.
+
+**Why one file and not four.** The same test that splits a topic into four
+documents keeps a fix at one: a document earns its existence by having a
+distinct review question answered against distinct evidence. A Lane A fix has
+exactly one question —
+
+> Does this change make the implementation meet the contract that already
+> exists, and would the regression test fail if it stopped meeting it?
+
+— answered against one body of evidence: the observed defect, the code, and the
+test. There is no boundary question, because Lane A is defined by the boundary
+already being decided; no surface question, because no user-visible state is
+being invented; no decomposition question, because there is one change. Four
+rows would be four ways of asking one thing.
+
+The file carries the observation for the same reason `requirements.md` does: a
+repair for a defect nobody measured cannot be judged complete, only believed.
+
+```markdown
+---
+status: active
+created: YYYY-MM-DD
+---
+
+# 缺陷：<one-line observed symptom>
+
+## 现象        what was observed, where, and how it was measured
+## 根因        the located cause, named by file and line
+## 修复边界    what changes and what deliberately does not
+## 验证        the commands run and their output, at the stated level
+## Review — Round N
+Verdict: PASS | REOPEN
+```
+
+Ready to review when the observation is reproducible from what the file records,
+the cause names where it was verified in the code, the boundary states what is
+deliberately left alone, and a regression test exists that fails without the
+fix. That last clause is the whole readiness condition in practice: a repair
+with no failing-first test is a claim, and Lane A has no design review standing
+behind it to catch a wrong claim.
+
+The review record lives in this same file rather than under `reviews/`, because
+there is one artifact and one review question; the round structure and verdict
+vocabulary are unchanged and follow
+[`.agent-instructions/review-records.md`](../.agent-instructions/review-records.md).
+A reopened finding returns the fix to work and increments the round, exactly as
+elsewhere.
+
+Retire a delivered fix with one `git mv` to `docs/archive/fixes/<slug>.md`, set
+`status: historical` and `retired:`, and add no archive-index entry — a fix is
+too small to earn a line in `docs/archive/README.md`, and the file's own header
+carries everything a later reader needs. `docs/fixes/` therefore holds only open
+repairs, which makes an accumulating backlog of unfixed defects visible by
+listing the directory.
+
+**A fix record is not a place to grow a design.** If repairing it turns out to
+need a decision — a new code, a new state, a rule about precedence — the triage
+was wrong. Stop, say so, and re-triage to Lane B; do not let the fix file
+quietly become an undersized `requirements.md`. That failure has a specific
+shape worth naming: the file grows a "考虑的方案" section, and a decision that
+was never independently reviewed ships behind a repair.
 
 ### Status
 

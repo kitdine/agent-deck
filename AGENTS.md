@@ -260,6 +260,7 @@ each applicable file; do not read every conditional guide by default.
 | Commit, push, release notes, release preparation, or preflight | [Project Rules](.agent-instructions/project-rules.md) — delivery and release sections |
 | Documentation, topic lifecycle, status matrices, or handoff | [Documentation Workflow](docs/documentation-workflow.md) and the documentation/handoff sections of [Project Rules](.agent-instructions/project-rules.md) |
 | Beads dispatch, claims, dependencies, comments, or lifecycle | [Beads](.agent-instructions/beads.md) |
+| Defect triage, bug-lane selection, or a Lane A fix record | [Beads](.agent-instructions/beads.md) — Bug lane, and [Documentation Workflow](docs/documentation-workflow.md) — Fix records |
 | Completion evidence, WorkUnits, Topic gates, or Neo4j project memory | [Evidence](.agent-instructions/evidence.md) |
 | Review-record creation or updates | [Review Records](.agent-instructions/review-records.md) |
 | Branching, merging, version assembly, or integration review | [Branching](.agent-instructions/branching.md) |
