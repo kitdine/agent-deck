@@ -1,6 +1,7 @@
 ---
-status: active
+status: historical
 created: 2026-09-02
+retired: 2026-09-02
 ---
 
 # 缺陷：残留 state.lock 会永久锁死 CLI
