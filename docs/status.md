@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-08-25
-updated: 2026-09-01
+updated: 2026-09-02
 ---
 
 # AgentDeck Project Status
@@ -16,6 +16,48 @@ is recorded in `roadmap.md`.
 
 ### Release
 
+- **Latest prerelease:** [`v0.5.0-rc.5`](https://github.com/kitdine/agent-deck/releases/tag/v0.5.0-rc.5)
+  at commit `dd09acc96ad12b94e67a32bea30ba2007cfdd769`, tree `32773386`,
+  published 2026-09-02. It is the fifth `v0.5.0` candidate and the first whose
+  local `make release-verify` passed as a single command rather than as a
+  CI/local split. [Release run 33658932481](https://github.com/kitdine/agent-deck/actions/runs/33658932481)
+  succeeded on all four jobs and published six artifacts: the two CLI archives
+  with checksums, and the universal DMG and ZIP with their own checksum file.
+  Tap PRs [#24](https://github.com/kitdine/homebrew-tap/pull/24) for the
+  `agentdeck-rc` formula and [#25](https://github.com/kitdine/homebrew-tap/pull/25)
+  for the `agentdeck-app-rc` cask are open and unmerged, so neither channel is
+  installable yet.
+- The `v0.5.0` CEv1 Release boundary is `VERIFIED` for tree
+  `32773386ad632a593e63d005ba57b04e7eebc83d`: both required criteria carry one
+  `pass` record each — the aggregate L4 gate, and
+  [exact-SHA preflight run 33657506153](https://github.com/kitdine/agent-deck/actions/runs/33657506153)
+  with both jobs successful. Each supersedes the `rc.4` record it replaces.
+- **`rc.5` exists because `rc.4` published cleanly and then failed in use.**
+  The first three candidates each failed one step further along a publication
+  path that had never run end to end: `rc.1` could not sign, `rc.2` was refused
+  by Gatekeeper, `rc.3` collided two asset names. `rc.4` published all six
+  artifacts and moved the failures one stage later still — into what a real
+  install does with what was published, which found eight defects. Five are
+  fixed in `rc.5`: the DMG shipped an unstapled bundle, the Cask exclusion guard
+  refused and left a Caskroom receipt anyway, a leftover `state.lock` locked the
+  CLI out permanently, determinable attribution was reported as inferred, and
+  Claude startup sessions lost their route. Each carries a reviewed record under
+  [`archive/fixes/`](archive/fixes/).
+- The `rc.5` DMG was measured after publication: the image validates, and a
+  read-only mount shows the `AgentDeck.app` inside it validating too, with
+  `spctl` reporting `accepted` / `Notarized Developer ID`. That is the exact
+  assertion that failed on `rc.4`, so the two-submission packaging fix reached
+  the published artifact. **The acceptance is still incomplete** — a Cask
+  install, ticket validation on the installed copy, and an offline first launch
+  have not run, and are owned by `ad-verify-staple-offline-first-launch`. The
+  published release notes were written before the release ran and therefore
+  understate what is now verified; they are left as tagged, because the tag
+  annotation and the release body must stay identical.
+- Three of the eight `rc.4` findings are carried rather than fixed: the
+  remaining hook-transcript admission edges, actionable recovery guidance for
+  `state_busy`, and the schema-version signal — the one defect whose repair
+  requires deciding new user-visible behaviour, which is why it is a topic
+  rather than a fix.
 - **Latest stable:** [`v0.4.1`](https://github.com/kitdine/agent-deck/releases/tag/v0.4.1)
   at commit `3b709a8fb09494a8d8fdd37ee154e3baedbce9ea`, published 2026-08-13.
   It is a patch on `v0.4.0`: Codex `cache_write_input_tokens` is backfilled into
@@ -63,7 +105,7 @@ agentdeck version
 
 | Topic | Version | Status | Purpose |
 | --- | --- | --- | --- |
-| [`v0.5.0` Contract Closure](topics/v0-5-0-contract/tasks.md) | `v0.5.0` | Contract complete and reviewed; awaiting commit — `cli-design.md` is at version 28, the five selected topics are retired under [`archive/topics/`](archive/topics/), and both contract Tasks have passed independent review. The untracked schema-version-signal topic remains separate and unstaged. 2/2 implemented and reviewed; preflight, channel selection, tagging, and publication remain separate decisions | Version-wide specification raise and documentation reconciliation after every selected topic's tasks pass review. |
+| [`v0.5.0` Contract Closure](topics/v0-5-0-contract/tasks.md) | `v0.5.0` | Contract complete, reviewed, and committed at `a547362` — `cli-design.md` is at version 28, the five selected topics are retired under [`archive/topics/`](archive/topics/), and both contract Tasks have passed independent review. 2/2 implemented and reviewed. Five release candidates have since been published from `main`, the current one being `v0.5.0-rc.5`; stable channel selection and publication remain separate decisions. The specification stays at version 28 across the five Lane A fixes `rc.5` carries: only one of them touched `cli-design.md`, and it corrected an untrue paragraph about notarization submissions without changing the promise that paragraph supports, which the Changelog rule makes a correction rather than a contract change. The untracked schema-version-signal topic remains separate and unstaged | Version-wide specification raise and documentation reconciliation after every selected topic's tasks pass review. |
 | [Schema Version Signal](topics/schema-version-signal/tasks.md) | unassigned | Active — boundary stage; `requirements.md` drafted and awaiting review; version membership not yet decided by a contract topic, so this row is deliberately not marked `v0.5.0`; the Documents matrix declares `ux/menubar-schema-signal.md` and `architecture.md` as required and unwritten, which `check-topic-docs.sh` reports as gaps until `tasks.md` review ratifies the set; 0/4 documents passed | One stable, actionable report when the core database's schema version exceeds the running binary's supported version, across `doctor`, the command paths, and the desktop snapshot. Promoted from a measured defect: schema 21 on disk against two installed binaries supporting 18, reported five different ways. |
 
 #### Retired into `v0.5.0`
