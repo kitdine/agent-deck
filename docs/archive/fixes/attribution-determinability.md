@@ -1,7 +1,8 @@
 ---
-status: active
+status: historical
 created: 2026-09-01
 updated: 2026-09-02
+retired: 2026-09-02
 ---
 
 # 缺陷：可确定的归因被判为推断

@@ -1,6 +1,7 @@
 ---
-status: active
+status: historical
 created: 2026-09-01
+retired: 2026-09-02
 ---
 
 # 缺陷：Claude startup 会话丢失归因 route
