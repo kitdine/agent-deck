@@ -119,6 +119,93 @@ func TestUsageHookEventRejectsInvalidTranscriptAndNonBoundaryEvents(t *testing.T
 	}
 }
 
+func TestUsageHookEventAcceptsClaudeStartupBeforeTranscriptExists(t *testing.T) {
+	ctx := context.Background()
+	state := filepath.Join(t.TempDir(), "state")
+	home := t.TempDir()
+	database, err := store.Open(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = database.Exec(ctx, `
+		INSERT INTO providers(id,name,endpoint,credential_ref,multiplier,created_at,updated_at)
+		VALUES(1,'official','x','','1','2026-09-01T00:00:00Z','2026-09-01T00:00:00Z');
+		INSERT INTO provider_selections(provider_id,client,provider_name_snapshot,endpoint_snapshot,multiplier_snapshot,selected_at)
+		VALUES(1,'claude','official','x','1','2026-09-01T00:00:00Z');
+	`); err != nil {
+		database.Close()
+		t.Fatal(err)
+	}
+	if err = database.Close(); err != nil {
+		t.Fatal(err)
+	}
+	projectDir := filepath.Join(home, ".claude", "projects", "-fixture")
+	if err = os.MkdirAll(projectDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	oldHome := userHomeDir
+	userHomeDir = func() (string, error) { return home, nil }
+	t.Cleanup(func() { userHomeDir = oldHome })
+
+	deliver := func(sessionID, source, transcriptPath string) {
+		t.Helper()
+		payload, marshalErr := json.Marshal(map[string]string{
+			"session_id":      sessionID,
+			"transcript_path": transcriptPath,
+			"hook_event_name": "SessionStart",
+			"source":          source,
+		})
+		if marshalErr != nil {
+			t.Fatal(marshalErr)
+		}
+		var stdout bytes.Buffer
+		if runErr := run([]string{"--state-dir", state, "usage", "hook", "event", "claude"}, bytes.NewReader(payload), &stdout); runErr != nil {
+			t.Fatal(runErr)
+		}
+		if stdout.Len() != 0 {
+			t.Fatalf("hook event stdout = %q", stdout.String())
+		}
+	}
+	countRoutes := func() int {
+		t.Helper()
+		database, openErr := store.Open(ctx, state)
+		if openErr != nil {
+			t.Fatal(openErr)
+		}
+		defer database.Close()
+		var count int
+		if queryErr := database.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM usage_session_routes`).Scan(&count); queryErr != nil {
+			t.Fatal(queryErr)
+		}
+		return count
+	}
+
+	deliver("startup-session", "startup", filepath.Join(projectDir, "startup-session.jsonl"))
+	if got := countRoutes(); got != 1 {
+		t.Fatalf("startup before transcript wrote %d routes, want 1", got)
+	}
+	deliver("resume-session", "resume", filepath.Join(projectDir, "resume-session.jsonl"))
+	if got := countRoutes(); got != 1 {
+		t.Fatalf("missing resume transcript changed routes to %d, want 1", got)
+	}
+	outsideDir := filepath.Join(home, "outside")
+	if err = os.MkdirAll(outsideDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	deliver("outside-session", "startup", filepath.Join(outsideDir, "outside-session.jsonl"))
+	if got := countRoutes(); got != 1 {
+		t.Fatalf("outside startup transcript changed routes to %d, want 1", got)
+	}
+	symlinkDir := filepath.Join(home, ".claude", "projects", "-linked")
+	if err = os.Symlink(outsideDir, symlinkDir); err != nil {
+		t.Fatal(err)
+	}
+	deliver("linked-session", "startup", filepath.Join(symlinkDir, "linked-session.jsonl"))
+	if got := countRoutes(); got != 1 {
+		t.Fatalf("symlinked startup transcript changed routes to %d, want 1", got)
+	}
+}
+
 func TestUsageHookEventRejectsUnmanagedClaudeConfigChangeSources(t *testing.T) {
 	ctx := context.Background()
 	state := filepath.Join(t.TempDir(), "state")

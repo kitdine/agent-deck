@@ -3085,15 +3085,24 @@ func validHookTranscript(home string, client usagehook.Client, event usagehook.E
 	if client == usagehook.ClientClaude {
 		root = filepath.Join(home, ".claude", "projects")
 	}
-	info, err := os.Lstat(event.TranscriptPath)
-	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
-		return false
-	}
 	resolvedRoot, err := filepath.EvalSymlinks(root)
 	if err != nil {
 		return false
 	}
-	resolvedPath, err := filepath.EvalSymlinks(event.TranscriptPath)
+	info, err := os.Lstat(event.TranscriptPath)
+	var resolvedPath string
+	switch {
+	case err == nil:
+		if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
+			return false
+		}
+		resolvedPath, err = filepath.EvalSymlinks(event.TranscriptPath)
+	case client == usagehook.ClientClaude && event.Source == "startup" && errors.Is(err, os.ErrNotExist):
+		resolvedPath, err = filepath.EvalSymlinks(filepath.Dir(event.TranscriptPath))
+		resolvedPath = filepath.Join(resolvedPath, filepath.Base(event.TranscriptPath))
+	default:
+		return false
+	}
 	if err != nil {
 		return false
 	}
