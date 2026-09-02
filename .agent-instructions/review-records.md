@@ -47,6 +47,50 @@ Documents and tasks use the same records directory and the same rounds, but thei
 matrices differ: a document has `Draft` and `Review`, a task has `Dev` and
 `Review`. See the Status section of `docs/documentation-workflow.md`.
 
+## Findings must reach a carrier before PASS
+
+A `PASS` does not require zero findings. It requires zero **ownerless** findings.
+
+Give every finding an ID — `<round-prefix><N>-F<n>`, the shape already in use
+(`A6-F1`, `DW-R11-F2`, `D1-F1`) — and before a round may end in `PASS`, every
+finding in that record must be in one of these states:
+
+| State | How it is written |
+| --- | --- |
+| Closed in a later round | that round names the ID: `A1-F1 closed:`, `DW-R11-F2 -> repaired in candidate.` |
+| Carried elsewhere | `-> open`, **followed on the same finding by a carrier**: a Beads issue ID, or `roadmap.md Backlog: <item>` |
+
+A bare `-> open`, `follow-up`, `后续处理`, or `待定` is **not** a destination.
+A review record retires with its topic; once it is under `docs/archive/`, nobody
+opens it looking for outstanding work. The record is where a finding is stated,
+not where it is remembered.
+
+**This rule has one measured origin.** A 2026-09-02 audit across every review
+record found 103 finding IDs, of which 102 carried an explicit closure trace —
+the project's finding discipline is sound. The exception is `A6-F1`, raised as
+a blocking `[P1]` in Round 6 of
+`docs/archive/topics/switch-effectiveness-boundary/reviews/architecture.md`
+and never named again through Round 20, which passed with a `VERIFIED` gate.
+Whether a later architecture round covered it substantively is now unknown
+without re-reading fourteen rounds, and the topic is archived. One in a hundred
+is a good rate and still leaves a live `[P1]` about Claude key-state
+classification unaccounted for — which is exactly the finding class that is
+expensive to lose.
+
+### What separates REOPEN from PASS-with-a-carrier
+
+The verdict turns on what the finding points at, not on how severe it is:
+
+| The finding points at | Verdict |
+| --- | --- |
+| A defect **in the change under review** | `REOPEN` — fix it in this round |
+| Something **outside that change** — the same class of defect at another entry point, a pre-existing condition, a process gap | `PASS`, with a carrier |
+
+Without this split the rule collapses into "any finding blocks", and that has a
+predictable cost: raising a finding then obliges the reviewer to run another
+round, so borderline observations stop being written down. A rule that
+suppresses findings protects nothing.
+
 ## Retirement
 
 Records retire with their topic. One `git mv` of `docs/topics/<topic>/` to

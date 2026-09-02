@@ -72,6 +72,19 @@ COMPLETION_GATE = re.compile(
     r"Completion gate:\s*`?(VERIFIED|NOT_VERIFIED|FAILED|BLOCKED|NOT_REQUIRED)`?",
     re.IGNORECASE,
 )
+# A finding ID as `.agent-instructions/review-records.md` defines it: A6-F1,
+# DW-R11-F2, D1-F1. The audit that produced that rule found 103 of them across
+# every review record.
+FINDING_ID = re.compile(r"\b([A-Z]+[0-9]+-F[0-9]+)\b")
+# Words a later round actually uses to close one, gathered from the records
+# themselves rather than invented: `A1-F1 closed:`, `-> repaired in candidate.`
+FINDING_CLOSED = re.compile(
+    r"repaired|closed|resolved|addressed|fixed|已修复|已关闭|已解决|已处理", re.I
+)
+# A carrier is a Beads issue or a named Backlog item. Nothing else counts,
+# because nothing else is read again after the record is archived.
+FINDING_CARRIER = re.compile(r"\bad-[a-z0-9][a-z0-9-]*\b|roadmap\.md Backlog:")
+
 AUTHORIZATION_WAIT = re.compile(
     r"(?m)^WORKFLOW_AUTHORIZATION_WAIT:\s*"
     r"[A-Za-z0-9][A-Za-z0-9._:/-]*(?:\s+[A-Za-z0-9_-]+)?[ \t]*$"
@@ -193,6 +206,48 @@ def latest_review_state(path: Path) -> tuple[str | None, str | None]:
 
 def latest_verdict(path: Path) -> str | None:
     return latest_review_state(path)[0]
+
+
+def ownerless_findings(path: Path) -> list[str]:
+    """Finding IDs in `path` that are neither closed nor carried.
+
+    A review record retires with its topic. Once it is under `docs/archive/`,
+    nobody opens it looking for outstanding work, so a finding left with a bare
+    `-> open` stops existing the moment the topic is archived. `A6-F1` did
+    exactly that: raised as a blocking P1 in Round 6 and never named again
+    through the Round 20 that passed.
+
+    A finding is accounted for when a later line names its ID alongside a
+    closure word, or when its own bullet names a carrier. The bullet is read to
+    its end rather than one line, because these findings run several lines and
+    the carrier is usually on the last of them.
+    """
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return []
+    first_seen: dict[str, int] = {}
+    closed: set[str] = set()
+    for number, line in enumerate(lines):
+        for match in FINDING_ID.finditer(line):
+            identifier = match.group(1)
+            first_seen.setdefault(identifier, number)
+            if FINDING_CLOSED.search(line):
+                closed.add(identifier)
+    ownerless: list[str] = []
+    for identifier, start in sorted(first_seen.items(), key=lambda item: item[1]):
+        if identifier in closed:
+            continue
+        # The bullet the finding was raised in: up to the next bullet at the
+        # same or shallower indent, or a blank line followed by a new block.
+        bullet = [lines[start]]
+        for line in lines[start + 1 :]:
+            if re.match(r"^\s*-\s", line) or line.startswith("#") or not line.strip():
+                break
+            bullet.append(line)
+        if not FINDING_CARRIER.search("\n".join(bullet)):
+            ownerless.append(identifier)
+    return ownerless
 
 
 def doc_subject_of(bead: dict[str, Any]) -> tuple[str, str] | None:
@@ -440,6 +495,33 @@ def findings(root: Path, deadline: float) -> list[str]:
             f"instead of restating it, so the next contract change does not have "
             f"to be backfilled into every task."
         )
+
+    # A record reached PASS while one of its findings has no carrier. PASS does
+    # not require zero findings; it requires zero ownerless ones. See
+    # `.agent-instructions/review-records.md`, "Findings must reach a carrier
+    # before PASS". Only records touched in this working tree are scanned, so
+    # this stays a check on work in progress rather than a repository audit.
+    for rel in changed:
+        if not rel.endswith(".md"):
+            continue
+        if "/reviews/" not in rel and not rel.startswith("docs/fixes/"):
+            continue
+        record = root / rel
+        if not record.is_file():
+            continue
+        if latest_verdict(record) != "PASS":
+            continue
+        stranded = ownerless_findings(record)
+        if stranded:
+            notes.append(
+                f"{rel} ends in PASS while {', '.join(stranded)} "
+                f"{'has' if len(stranded) == 1 else 'have'} no carrier. Close "
+                f"the finding by naming its ID in a later round, or give it a "
+                f"Beads issue or a roadmap.md Backlog item on its own bullet. "
+                f"A bare `-> open` is not a destination: this record retires "
+                f"with its topic and nobody reads an archived record looking "
+                f"for outstanding work."
+            )
 
     return notes
 

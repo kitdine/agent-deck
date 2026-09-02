@@ -4,6 +4,7 @@ import importlib.util
 import io
 import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -379,6 +380,59 @@ class BeadsConsistencyHookTest(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(stderr.getvalue(), "")
         self.assertEqual(set(json.loads(stdout.getvalue())), {"systemMessage"})
+
+
+class OwnerlessFindingsTest(unittest.TestCase):
+    """`.agent-instructions/review-records.md` — findings must reach a carrier.
+
+    The rule exists because `A6-F1` was raised as a blocking P1 and never named
+    again through the round that passed, so these cases pin the three shapes a
+    finding can legitimately take and the one it cannot.
+    """
+
+    def record(self, body: str) -> Path:
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        path = Path(directory.name) / "r.md"
+        path.write_text(body, encoding="utf-8")
+        return path
+
+    def test_bare_open_finding_is_ownerless(self):
+        path = self.record(
+            "## Round 1\n- Findings:\n"
+            "  - [P1] **X1-F1** a defect\n    spanning two lines -> open\n"
+            "- Verdict: PASS\n"
+        )
+        self.assertEqual(MODULE.ownerless_findings(path), ["X1-F1"])
+
+    def test_beads_carrier_on_the_bullet_accounts_for_it(self):
+        path = self.record(
+            "## Round 1\n- Findings:\n"
+            "  - [P1] **X1-F1** a defect -> `ad-bug-something`\n"
+            "- Verdict: PASS\n"
+        )
+        self.assertEqual(MODULE.ownerless_findings(path), [])
+
+    def test_backlog_carrier_accounts_for_it(self):
+        path = self.record(
+            "## Round 1\n- Findings:\n"
+            "  - [P1] **X1-F1** a defect -> roadmap.md Backlog: pricing tiers\n"
+            "- Verdict: PASS\n"
+        )
+        self.assertEqual(MODULE.ownerless_findings(path), [])
+
+    def test_later_round_naming_the_id_closes_it(self):
+        path = self.record(
+            "## Round 1\n- Findings:\n  - [P1] **Y1-F1** a defect -> open\n"
+            "- Verdict: REOPEN\n"
+            "## Round 2\n- Y1-F1 closed: repaired in candidate.\n"
+            "- Verdict: PASS\n"
+        )
+        self.assertEqual(MODULE.ownerless_findings(path), [])
+
+    def test_missing_file_is_not_an_error(self):
+        self.assertEqual(MODULE.ownerless_findings(Path("/nonexistent/x.md")), [])
+
 
 if __name__ == "__main__":
     unittest.main()
