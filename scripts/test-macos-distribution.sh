@@ -334,7 +334,13 @@ if grep -F -- '--timestamp=none' "$stub_log" >/dev/null; then
   echo "a real identity must not sign without a secure timestamp" >&2
   exit 1
 fi
-grep -F 'notarytool submit' "$stub_log" >/dev/null
+notary_submissions=$(grep -c '^notarytool submit ' "$stub_log")
+if [[ $notary_submissions -ne 2 ]]; then
+  echo "packaging made $notary_submissions notarization submissions, want bundle and DMG" >&2
+  exit 1
+fi
+grep -E 'notarytool submit .*/AgentDeck_v1\.2\.3_bundle-notarization\.zip ' "$stub_log" >/dev/null
+grep -E 'notarytool submit .*/AgentDeck_v1\.2\.3_universal\.dmg ' "$stub_log" >/dev/null
 # A profile stored into a non-default keychain is unreadable unless submit names
 # the same keychain, so the two must be asserted as a pair rather than singly.
 grep -F -- "--keychain-profile agentdeck-test --keychain $stub_keychain --wait" "$stub_log" >/dev/null
@@ -344,6 +350,17 @@ grep -E 'stapler staple .*/AgentDeck_v1\.2\.3_universal\.dmg$' "$stub_log" >/dev
 grep -E 'stapler validate .*/AgentDeck_v1\.2\.3_universal\.dmg$' "$stub_log" >/dev/null
 grep -E 'stapler staple .*/StubAgentDeck\.app$' "$stub_log" >/dev/null
 grep -E 'stapler validate .*/StubAgentDeck\.app$' "$stub_log" >/dev/null
+bundle_submit_line=$(grep -nE 'notarytool submit .*/AgentDeck_v1\.2\.3_bundle-notarization\.zip ' "$stub_log" | cut -d: -f1)
+bundle_staple_line=$(grep -nE 'stapler staple .*/StubAgentDeck\.app$' "$stub_log" | cut -d: -f1)
+bundle_validate_line=$(grep -nE 'stapler validate .*/StubAgentDeck\.app$' "$stub_log" | cut -d: -f1)
+dmg_submit_line=$(grep -nE 'notarytool submit .*/AgentDeck_v1\.2\.3_universal\.dmg ' "$stub_log" | cut -d: -f1)
+dmg_staple_line=$(grep -nE 'stapler staple .*/AgentDeck_v1\.2\.3_universal\.dmg$' "$stub_log" | cut -d: -f1)
+dmg_validate_line=$(grep -nE 'stapler validate .*/AgentDeck_v1\.2\.3_universal\.dmg$' "$stub_log" | cut -d: -f1)
+test "$bundle_submit_line" -lt "$bundle_staple_line"
+test "$bundle_staple_line" -lt "$bundle_validate_line"
+test "$bundle_validate_line" -lt "$dmg_submit_line"
+test "$dmg_submit_line" -lt "$dmg_staple_line"
+test "$dmg_staple_line" -lt "$dmg_validate_line"
 grep -F 'spctl --assess --type execute' "$stub_log" >/dev/null
 
 # The ZIP is the direct-download artifact and carries the bundle unwrapped, so
@@ -354,6 +371,23 @@ mkdir -p "$stub_extracted"
 ditto -x -k "$stub_dist/AgentDeck_v1.2.3_universal.zip" "$stub_extracted"
 if [[ ! -f "$stub_extracted/StubAgentDeck.app/Contents/CodeResources.staple-marker" ]]; then
   echo "the direct-download ZIP was assembled before the bundle was stapled" >&2
+  exit 1
+fi
+
+# The Cask installs the bundle from inside the DMG, so that copy must carry the
+# same staple amendment as the direct-download ZIP. Read the image contents,
+# then detach before reporting a missing marker so a RED run leaves no mount.
+stub_mount="$temporary/stub-dmg-mount"
+mkdir -p "$stub_mount"
+hdiutil attach -quiet -readonly -nobrowse -mountpoint "$stub_mount" \
+  "$stub_dist/AgentDeck_v1.2.3_universal.dmg"
+stub_dmg_has_ticket=0
+if [[ -f "$stub_mount/AgentDeck.app/Contents/CodeResources.staple-marker" ]]; then
+  stub_dmg_has_ticket=1
+fi
+hdiutil detach -quiet "$stub_mount"
+if [[ $stub_dmg_has_ticket -ne 1 ]]; then
+  echo "the Cask DMG was assembled before the bundle was stapled" >&2
   exit 1
 fi
 

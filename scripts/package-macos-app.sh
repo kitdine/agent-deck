@@ -184,21 +184,20 @@ sign "$app" "$resolved_app_entitlements"
 dmg="$dist_dir/AgentDeck_${tag}_universal.dmg"
 zip_archive="$dist_dir/AgentDeck_${tag}_universal.zip"
 checksums="$dist_dir/AgentDeck_${tag}_checksums.txt"
-staging=$(mktemp -d "${TMPDIR:-/tmp}/agentdeck-macos-package.XXXXXX")
-trap 'rm -rf "$staging"' EXIT
+package_root=$(mktemp -d "${TMPDIR:-/tmp}/agentdeck-macos-package.XXXXXX")
+staging="$package_root/dmg"
+bundle_notary_archive="$package_root/AgentDeck_${tag}_bundle-notarization.zip"
+mkdir -p "$staging"
+trap 'rm -rf "$package_root"' EXIT
 
-ditto "$app" "$staging/AgentDeck.app"
 rm -f "$dmg" "$zip_archive"
-hdiutil create -quiet -srcfolder "$staging" -volname "AgentDeck $version" \
-  -fs HFS+ -format UDZO -ov "$dmg"
 
-# 6. Notarization and stapling. Missing credentials fail closed rather than
+# 6. Bundle notarization and stapling. Missing credentials fail closed rather than
 # silently producing an unnotarized artifact that looks released.
 #
-# Both published artifacts are stapled, not just the DMG: the ZIP carries the
-# bundle directly, so a ZIP made from an unstapled bundle needs the network to
-# clear Gatekeeper and fails first launch offline. One submission covers both,
-# because the ticket is issued against the code signature the two share.
+# A scratch ZIP is only a carrier for notarytool. Stapling the bundle before it
+# enters the DMG makes the Cask-installed copy self-sufficient for first launch
+# offline; the published ZIP is assembled from the same amended bundle later.
 notary_keychain_argument=()
 if [[ -n $notary_keychain ]]; then
   notary_keychain_argument=(--keychain "$notary_keychain")
@@ -206,6 +205,22 @@ fi
 if [[ $skip_notarization == 1 ]]; then
   printf '%s\n' "notarization skipped by AGENTDECK_SKIP_NOTARIZATION=1"
 else
+  ditto -c -k --keepParent "$app" "$bundle_notary_archive"
+  # shellcheck disable=SC2086
+  $notary_tool submit "$bundle_notary_archive" --keychain-profile "$notary_profile" \
+    ${notary_keychain_argument[@]+"${notary_keychain_argument[@]}"} --wait
+  # shellcheck disable=SC2086
+  $stapler_tool staple "$app"
+  # shellcheck disable=SC2086
+  $stapler_tool validate "$app"
+fi
+
+# 7. The DMG is built from the already-stapled bundle, then submitted and stapled
+# independently because its ticket is keyed to the finished disk image.
+ditto "$app" "$staging/AgentDeck.app"
+hdiutil create -quiet -srcfolder "$staging" -volname "AgentDeck $version" \
+  -fs HFS+ -format UDZO -ov "$dmg"
+if [[ $skip_notarization != 1 ]]; then
   # shellcheck disable=SC2086
   $notary_tool submit "$dmg" --keychain-profile "$notary_profile" \
     ${notary_keychain_argument[@]+"${notary_keychain_argument[@]}"} --wait
@@ -213,17 +228,12 @@ else
   $stapler_tool staple "$dmg"
   # shellcheck disable=SC2086
   $stapler_tool validate "$dmg"
-  # shellcheck disable=SC2086
-  $stapler_tool staple "$app"
-  # shellcheck disable=SC2086
-  $stapler_tool validate "$app"
 fi
 
-# 7. The ZIP is assembled last, from the bundle stapling has already amended, so
-# the direct-download archive and the DMG carry the same ticket.
+# 8. The ZIP is assembled last from the same stapled bundle copied into the DMG.
 ditto -c -k --keepParent "$app" "$zip_archive"
 
-# 8. Gatekeeper assessment. Its verdict is reported for every build; only a
+# 9. Gatekeeper assessment. Its verdict is reported for every build; only a
 # release run requires it to pass, because an ad-hoc or unnotarized bundle is
 # correctly rejected and that rejection is itself the observable behavior.
 assessment_status=0

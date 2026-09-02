@@ -404,11 +404,12 @@ dist/AgentDeck_<tag>_checksums.txt
 ```
 
 `make package-macos-app` signs the built bundle inside-out — nested code sealed
-before the enclosing signature — submits the DMG for notarization, and staples
-both the DMG and the bundle. The ZIP is assembled last, from the stapled
-bundle, so neither direct-download artifact needs the network to clear
-Gatekeeper on first launch. One submission covers both, because the ticket is
-issued against the code signature they share. Missing credentials fail the run
+before the enclosing signature — submits a scratch ZIP carrier, and staples and
+validates the bundle before copying it into the DMG. The finished DMG is then
+submitted, stapled, and validated independently; its ticket is keyed to the disk
+image rather than to the bundle inside it. The published ZIP is assembled last
+from that same stapled bundle, so neither direct-download artifact needs the
+network to clear Gatekeeper on first launch. Missing credentials fail the run
 rather than leaving an unnotarized artifact that looks released, and
 notarization is refused outright under the ad-hoc identity.
 
