@@ -277,10 +277,21 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # A release asset name is the basename of the uploaded file, and
+          # GitHub compares those names case-insensitively. The release job
+          # already published agentdeck_<tag>_checksums.txt, so uploading
+          # AgentDeck_<tag>_checksums.txt collides with it and returns
+          # "ReleaseAsset.name already exists". --clobber cannot help: it
+          # deletes an asset of the same name, and under that comparison the two
+          # are the same name while to gh they are different files. Rename on
+          # the way out. The dist/ layout docs/specs/cli-design.md documents is
+          # the local build output and stays as it is.
+          mv "dist/AgentDeck_${RELEASE_TAG}_checksums.txt" \
+             "dist/AgentDeck_${RELEASE_TAG}_desktop_checksums.txt"
           gh release upload "$RELEASE_TAG" \
             "dist/AgentDeck_${RELEASE_TAG}_universal.dmg" \
             "dist/AgentDeck_${RELEASE_TAG}_universal.zip" \
-            "dist/AgentDeck_${RELEASE_TAG}_checksums.txt" \
+            "dist/AgentDeck_${RELEASE_TAG}_desktop_checksums.txt" \
             --clobber
       - name: Remove the signing keychain
         if: always()
@@ -310,7 +321,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release download "$RELEASE_TAG" \
-            --pattern "AgentDeck_${RELEASE_TAG}_checksums.txt" \
+            --pattern "AgentDeck_${RELEASE_TAG}_desktop_checksums.txt" \
             --dir "$RUNNER_TEMP"
       - name: Select Homebrew cask
         id: cask
@@ -329,7 +340,7 @@ jobs:
           bash scripts/render-homebrew-cask.sh \
             packaging/homebrew/agentdeck-app.rb.tmpl \
             "$RELEASE_TAG" \
-            "$RUNNER_TEMP/AgentDeck_${RELEASE_TAG}_checksums.txt" \
+            "$RUNNER_TEMP/AgentDeck_${RELEASE_TAG}_desktop_checksums.txt" \
             "$RUNNER_TEMP/${{ steps.cask.outputs.token }}.rb"
       - name: Verify cask install, completions, and uninstall
         run: |
