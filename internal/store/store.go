@@ -8,9 +8,12 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/kitdine/agent-deck/internal/platform"
@@ -390,6 +393,18 @@ func AcquireScanLock(ctx context.Context, stateRoot string, timeout time.Duratio
 }
 
 func acquireNamedLock(ctx context.Context, stateRoot, name string, timeout time.Duration) (*Lock, error) {
+	return acquireNamedLockWithProcessCheck(ctx, stateRoot, name, timeout, lockProcessAlive)
+}
+
+type lockProcessCheck func(int) (alive, known bool)
+
+func acquireNamedLockWithProcessCheck(ctx context.Context, stateRoot, name string, timeout time.Duration, processAlive lockProcessCheck) (*Lock, error) {
+	return acquireNamedLockWithChecks(ctx, stateRoot, name, timeout, processAlive, tryLockReclaimFile)
+}
+
+type reclaimFileLock func(*os.File) (bool, error)
+
+func acquireNamedLockWithChecks(ctx context.Context, stateRoot, name string, timeout time.Duration, processAlive lockProcessCheck, tryReclaimLock reclaimFileLock) (*Lock, error) {
 	path := filepath.Join(stateRoot, name)
 	token, err := newLockToken()
 	if err != nil {
@@ -412,6 +427,13 @@ func acquireNamedLock(ctx context.Context, stateRoot, name string, timeout time.
 		if !errors.Is(err, fs.ErrExist) {
 			return nil, err
 		}
+		reclaimed, reclaimErr := reclaimLockFromDeadProcess(path, processAlive, tryReclaimLock)
+		if reclaimErr != nil {
+			return nil, reclaimErr
+		}
+		if reclaimed {
+			continue
+		}
 		if timeout <= 0 || !time.Now().Before(deadline) {
 			return nil, fmt.Errorf("%w: timed out waiting for state lock", ErrStateBusy)
 		}
@@ -421,6 +443,66 @@ func acquireNamedLock(ctx context.Context, stateRoot, name string, timeout time.
 		case <-time.After(min(25*time.Millisecond, time.Until(deadline))):
 		}
 	}
+}
+
+func reclaimLockFromDeadProcess(path string, processAlive lockProcessCheck, tryReclaimLock reclaimFileLock) (bool, error) {
+	file, err := os.OpenFile(path, os.O_RDWR, 0)
+	if errors.Is(err, fs.ErrNotExist) {
+		return true, nil
+	}
+	if err != nil {
+		return false, nil
+	}
+	defer file.Close()
+	guarded, err := tryReclaimLock(file)
+	if err != nil {
+		return false, nil
+	}
+	if !guarded {
+		return false, nil
+	}
+	openedInfo, err := file.Stat()
+	if err != nil {
+		return false, nil
+	}
+	pathInfo, err := os.Stat(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return true, nil
+	}
+	if err != nil || !os.SameFile(openedInfo, pathInfo) {
+		return false, nil
+	}
+	contents, err := io.ReadAll(file)
+	if err != nil {
+		return false, nil
+	}
+	pid, ok := lockOwnerPID(string(contents))
+	if !ok {
+		// Legacy and malformed tokens carry no trustworthy owner identity.
+		return false, nil
+	}
+	alive, known := processAlive(pid)
+	if !known || alive {
+		return false, nil
+	}
+	pathInfo, err = os.Stat(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return true, nil
+	}
+	if err != nil || !os.SameFile(openedInfo, pathInfo) {
+		return false, nil
+	}
+	latest, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return true, nil
+	}
+	if err != nil || string(latest) != string(contents) {
+		return false, nil
+	}
+	if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return false, err
+	}
+	return true, nil
 }
 
 func (l *Lock) Release() error {
@@ -442,5 +524,17 @@ func newLockToken() (string, error) {
 	if _, err := rand.Read(bytes); err != nil {
 		return "", err
 	}
-	return hex.EncodeToString(bytes), nil
+	return fmt.Sprintf("v1:%d:%s", os.Getpid(), hex.EncodeToString(bytes)), nil
+}
+
+func lockOwnerPID(token string) (int, bool) {
+	parts := strings.Split(token, ":")
+	if len(parts) != 3 || parts[0] != "v1" || len(parts[2]) != 32 {
+		return 0, false
+	}
+	if decoded, err := hex.DecodeString(parts[2]); err != nil || len(decoded) != 16 {
+		return 0, false
+	}
+	pid, err := strconv.Atoi(parts[1])
+	return pid, err == nil && pid > 0
 }

@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -1214,6 +1216,202 @@ func TestLockIsExclusiveAndPrivate(t *testing.T) {
 	}
 	if err := first.Release(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestAcquireNamedLockReclaimsDeadOwner(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("process liveness is currently supported on macOS")
+	}
+	command := exec.Command(os.Args[0], "-test.run=^$")
+	if err := command.Start(); err != nil {
+		t.Fatal(err)
+	}
+	deadPID := command.Process.Pid
+	if err := command.Wait(); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, test := range []struct {
+		name     string
+		lockName string
+		acquire  func(context.Context, string, time.Duration) (*Lock, error)
+	}{
+		{name: "state lock", lockName: "state.lock", acquire: AcquireLock},
+		{name: "scan lock", lockName: "scan.lock", acquire: AcquireScanLock},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			root := t.TempDir()
+			path := filepath.Join(root, test.lockName)
+			staleToken := fmt.Sprintf("v1:%d:%s", deadPID, strings.Repeat("a", 32))
+			if err := os.WriteFile(path, []byte(staleToken), platform.FileMode); err != nil {
+				t.Fatal(err)
+			}
+
+			lock, err := test.acquire(context.Background(), root, 0)
+			if err != nil {
+				t.Fatalf("acquire after owner exit: %v", err)
+			}
+			defer lock.Release()
+			contents, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(contents) == staleToken {
+				t.Fatal("dead owner's lock token was not replaced")
+			}
+			wantPrefix := fmt.Sprintf("v1:%d:", os.Getpid())
+			if !strings.HasPrefix(string(contents), wantPrefix) {
+				t.Fatalf("lock token = %q, want prefix %q", contents, wantPrefix)
+			}
+		})
+	}
+}
+
+func TestAcquireNamedLockKeepsLiveAndUnverifiableOwners(t *testing.T) {
+	for _, test := range []struct {
+		name          string
+		token         string
+		alive         bool
+		known         bool
+		wantPIDChecks int
+	}{
+		{name: "live owner", token: "v1:4242:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", alive: true, known: true, wantPIDChecks: 1},
+		{name: "unknown owner", token: "v1:4242:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", known: false, wantPIDChecks: 1},
+		{name: "legacy token", token: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", wantPIDChecks: 0},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			root := t.TempDir()
+			path := filepath.Join(root, "state.lock")
+			if err := os.WriteFile(path, []byte(test.token), platform.FileMode); err != nil {
+				t.Fatal(err)
+			}
+			pidChecks := 0
+			_, err := acquireNamedLockWithProcessCheck(context.Background(), root, "state.lock", 0, func(pid int) (bool, bool) {
+				pidChecks++
+				if pid != 4242 {
+					t.Fatalf("checked PID = %d, want 4242", pid)
+				}
+				return test.alive, test.known
+			})
+			if !errors.Is(err, ErrStateBusy) {
+				t.Fatalf("acquire error = %v, want state_busy", err)
+			}
+			if pidChecks != test.wantPIDChecks {
+				t.Fatalf("PID checks = %d, want %d", pidChecks, test.wantPIDChecks)
+			}
+			contents, readErr := os.ReadFile(path)
+			if readErr != nil {
+				t.Fatal(readErr)
+			}
+			if string(contents) != test.token {
+				t.Fatalf("lock token = %q, want unchanged %q", contents, test.token)
+			}
+		})
+	}
+}
+
+func TestAcquireNamedLockDoesNotDeleteReplacementDuringReclaim(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "state.lock")
+	staleToken := "v1:4242:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	replacementToken := "v1:4343:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	if err := os.WriteFile(path, []byte(staleToken), platform.FileMode); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := acquireNamedLockWithProcessCheck(context.Background(), root, "state.lock", 0, func(pid int) (bool, bool) {
+		if pid != 4242 {
+			t.Fatalf("checked PID = %d, want 4242", pid)
+		}
+		if err := os.WriteFile(path, []byte(replacementToken), platform.FileMode); err != nil {
+			t.Fatal(err)
+		}
+		return false, true
+	})
+	if !errors.Is(err, ErrStateBusy) {
+		t.Fatalf("acquire error = %v, want state_busy", err)
+	}
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(contents) != replacementToken {
+		t.Fatalf("lock token = %q, want replacement %q", contents, replacementToken)
+	}
+}
+
+func TestAcquireNamedLockTreatsReclaimGuardFailureAsBusy(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "state.lock")
+	token := "v1:4242:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	if err := os.WriteFile(path, []byte(token), platform.FileMode); err != nil {
+		t.Fatal(err)
+	}
+	guardErr := errors.New("reclaim guard unavailable")
+	processChecks := 0
+	_, err := acquireNamedLockWithChecks(
+		context.Background(),
+		root,
+		"state.lock",
+		0,
+		func(int) (bool, bool) {
+			processChecks++
+			return false, true
+		},
+		func(*os.File) (bool, error) {
+			return false, guardErr
+		},
+	)
+	if !errors.Is(err, ErrStateBusy) {
+		t.Fatalf("acquire error = %v, want state_busy", err)
+	}
+	if errors.Is(err, guardErr) {
+		t.Fatalf("acquire exposed reclaim guard error: %v", err)
+	}
+	if processChecks != 0 {
+		t.Fatalf("process checks = %d, want 0", processChecks)
+	}
+	contents, readErr := os.ReadFile(path)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if string(contents) != token {
+		t.Fatalf("lock token = %q, want unchanged %q", contents, token)
+	}
+}
+
+func TestReclaimLockFileGuardSerializesReclaimers(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("reclaim serialization is currently supported on macOS")
+	}
+	path := filepath.Join(t.TempDir(), "state.lock")
+	if err := os.WriteFile(path, []byte("v1:4242:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"), platform.FileMode); err != nil {
+		t.Fatal(err)
+	}
+	first, err := os.OpenFile(path, os.O_RDWR, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := os.OpenFile(path, os.O_RDWR, 0)
+	if err != nil {
+		_ = first.Close()
+		t.Fatal(err)
+	}
+	defer second.Close()
+	if guarded, err := tryLockReclaimFile(first); err != nil || !guarded {
+		_ = first.Close()
+		t.Fatalf("first reclaim guard = %v, %v; want true, nil", guarded, err)
+	}
+	if guarded, err := tryLockReclaimFile(second); err != nil || guarded {
+		_ = first.Close()
+		t.Fatalf("second reclaim guard = %v, %v; want false, nil", guarded, err)
+	}
+	if err := first.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if guarded, err := tryLockReclaimFile(second); err != nil || !guarded {
+		t.Fatalf("second reclaim guard after release = %v, %v; want true, nil", guarded, err)
 	}
 }
 
