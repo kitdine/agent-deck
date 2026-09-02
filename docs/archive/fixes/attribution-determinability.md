@@ -459,6 +459,17 @@ Repair RED 精确复现 R1-F3 至 R1-F7：整段跨切换会话的早期事件�
   是唯一热生效转换」；无 route 分支已在 R1-F7 修复中固定为 `estimated`，不再
   依赖该前提。route 分支的这一保留由 `A6-F1` 继续承载，承载体同为
   `ad-chore-a6f1-nokey-premise`。
+  **更正（2026-09-02，交付后）：以上这条保留不成立，原文保留以存证。**
+  `A6-F1` 并非「唯一没有闭环痕迹的一条」。
+  `docs/archive/topics/switch-effectiveness-boundary/reviews/architecture.md`
+  的 Round 8 记着 `A6-F1 — SUPERSEDED`，依据是用户本人对运行时与持久化的更正，
+  并由 `A8-F1` 取代；`A8-F1` 的三个部分在 Round 14 各自 `CLOSED`，Round 20 PASS。
+  当日审计漏掉它，是因为闭合词表只有
+  `repaired|closed|resolved|addressed|fixed` 加四个中文词，不含 `SUPERSEDED`。
+  因此本记录 Claude 有 route 分支所依赖的「无 key → 首次加 key 是唯一热生效
+  转换」在 2026-08-25 就已定论，不带保留；`ad-chore-a6f1-nokey-premise` 已作为
+  误建关闭。该漏判与另一个方向的误判由
+  `ad-bug-ownerless-findings-same-line` 承载。
 - Claude 的 `SessionStart` 接受 `fork` source，本机无数据，行为未验证。
 - `ConfigMatched=false` 写入 `provider='unknown'` 的分支本机零数据，未被真实
   数据验证过。

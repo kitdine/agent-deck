@@ -65,17 +65,33 @@ A review record retires with its topic; once it is under `docs/archive/`, nobody
 opens it looking for outstanding work. The record is where a finding is stated,
 not where it is remembered.
 
-**This rule has one measured origin.** A 2026-09-02 audit across every review
-record found 103 finding IDs, of which 102 carried an explicit closure trace —
-the project's finding discipline is sound. The exception is `A6-F1`, raised as
-a blocking `[P1]` in Round 6 of
-`docs/archive/topics/switch-effectiveness-boundary/reviews/architecture.md`
-and never named again through Round 20, which passed with a `VERIFIED` gate.
-Whether a later architecture round covered it substantively is now unknown
-without re-reading fourteen rounds, and the topic is archived. One in a hundred
-is a good rate and still leaves a live `[P1]` about Claude key-state
-classification unaccounted for — which is exactly the finding class that is
-expensive to lose.
+**Why the rule is structural, and why its first example was wrong.** The
+argument above stands on its own: a record retires with its topic, so a bare
+`-> open` stops existing the moment the directory moves. It needs no incident
+to justify it, which matters, because the incident this section originally
+cited did not happen.
+
+A 2026-09-02 audit across every review record reported 103 finding IDs with one
+apparent exception — `A6-F1`, raised as a blocking `[P1]` in Round 6 of
+`docs/archive/topics/switch-effectiveness-boundary/reviews/architecture.md` —
+and this rule was written around it as a live `[P1]` nobody had accounted for.
+Round 8 of that same record disposes of it: `A6-F1 — SUPERSEDED`, on the user's
+own runtime and persistence correction, replaced by `A8-F1`, whose three parts
+are each marked `CLOSED` in Round 14 before Round 20 passed. The audit missed it
+because its closure vocabulary is `repaired|closed|resolved|addressed|fixed`
+plus four Chinese equivalents, and `SUPERSEDED` is in none of them. That single
+false positive produced a `[P1]` chore chasing a settled question, a reservation
+recorded against delivered attribution work, and this paragraph.
+
+So the episode teaches the opposite of what it was written to teach, and the
+lesson is worth more than the one it replaced: **the mechanical check is not the
+rule.** `beads-consistency.py` decides closure by matching a word list against a
+whole line, which both invents ownerless findings whose disposition it does not
+recognise and misses real ones whenever a summary line names several IDs beside
+a single closure word. Both directions are carried by
+`ad-bug-ownerless-findings-same-line`. Until they are fixed — and after — a round
+satisfies this rule when the record itself names the disposition or the carrier,
+not when the hook prints an empty list.
 
 ### What separates REOPEN from PASS-with-a-carrier
 
