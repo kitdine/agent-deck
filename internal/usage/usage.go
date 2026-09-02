@@ -2263,6 +2263,7 @@ type storedEvent struct {
 	// from rather than from the session start, which may predate a switch.
 	runStart     sql.NullString
 	sessionStart sql.NullString
+	sessionEnd   sql.NullString
 }
 
 func (s *Service) Summary(ctx context.Context) (Summary, error) {
@@ -2561,6 +2562,7 @@ type sessionRouteMatch struct {
 	route      readSessionRoute
 	prior      readSessionRoute
 	priorFound bool
+	routes     []readSessionRoute
 }
 
 type readPriceResolver struct {
@@ -2689,7 +2691,7 @@ func positionedSessionRoute(routes []readSessionRoute, at time.Time) (sessionRou
 	if index == 0 {
 		return sessionRouteMatch{}, false
 	}
-	match := sessionRouteMatch{route: routes[index-1]}
+	match := sessionRouteMatch{route: routes[index-1], routes: routes[:index]}
 	if index > 1 {
 		match.prior, match.priorFound = routes[index-2], true
 	}
@@ -2770,12 +2772,29 @@ func runtimeRouteWasWrapped(timeline store.ProviderTimeline, client, provider st
 	return runtimeProviderName(snapshot.Name) == provider && snapshot.ViaWrapper
 }
 
-func sessionStartAt(event storedEvent) (time.Time, error) {
-	value := event.EventAt
-	if event.sessionStart.Valid && event.sessionStart.String != "" {
-		value = event.sessionStart.String
+func sessionSpan(event storedEvent) (start, end time.Time, startKnown bool, err error) {
+	eventAt, err := time.Parse(time.RFC3339Nano, event.EventAt)
+	if err != nil {
+		return time.Time{}, time.Time{}, false, err
 	}
-	return time.Parse(time.RFC3339Nano, value)
+	start, end = eventAt, eventAt
+	if event.sessionStart.Valid && event.sessionStart.String != "" {
+		start, err = time.Parse(time.RFC3339Nano, event.sessionStart.String)
+		if err != nil {
+			return time.Time{}, time.Time{}, false, err
+		}
+		startKnown = true
+	}
+	if event.sessionEnd.Valid && event.sessionEnd.String != "" {
+		sessionEnd, parseErr := time.Parse(time.RFC3339Nano, event.sessionEnd.String)
+		if parseErr != nil {
+			return time.Time{}, time.Time{}, false, parseErr
+		}
+		if sessionEnd.After(end) {
+			end = sessionEnd
+		}
+	}
+	return start, end, startKnown, nil
 }
 
 const (
@@ -2809,42 +2828,10 @@ type resolvedSessionAttribution struct {
 
 type sessionRouteLookup func(client, sessionID string, at time.Time) (sessionRouteMatch, bool, error)
 type providerSnapshotLookup func(client string, at time.Time) (store.ProviderSnapshot, error)
-type providerTimelineExistenceLookup func(client string) (bool, error)
+type providerTimelineCoverageLookup func(client string, at time.Time) (bool, error)
+type providerTimelineSnapshotsLookup func(client string, start, end time.Time) ([]store.ProviderSnapshot, error)
 
-// storedSessionRouteAt is the database-backed counterpart to
-// readPriceResolver.sessionRouteAt. RFC3339Nano strings are not lexically
-// ordered when one timestamp has fractional seconds and the other does not, so
-// compare parsed instants and use id only as the equal-instant tie breaker.
-func (s *Service) storedSessionRouteAt(ctx context.Context, client, sessionID string, at time.Time) (sessionRouteMatch, bool, error) {
-	rows, err := s.Store.DB.QueryContext(ctx, `SELECT id,observed_at,provider,multiplier,via_wrapper,hook_event FROM usage_session_routes WHERE client=? AND session_id=?`, client, sessionID)
-	if err != nil {
-		return sessionRouteMatch{}, false, err
-	}
-	defer rows.Close()
-
-	routes := []readSessionRoute{}
-	for rows.Next() {
-		var route readSessionRoute
-		var observedText string
-		if err = rows.Scan(&route.id, &observedText, &route.provider, &route.multiplier, &route.viaWrapper, &route.hookEvent); err != nil {
-			return sessionRouteMatch{}, false, err
-		}
-		route.observedAt, err = time.Parse(time.RFC3339Nano, observedText)
-		parseErr := err
-		if parseErr != nil {
-			return sessionRouteMatch{}, false, parseErr
-		}
-		routes = append(routes, route)
-	}
-	if err = rows.Err(); err != nil {
-		return sessionRouteMatch{}, false, err
-	}
-	sortSessionRoutes(routes)
-	match, found := positionedSessionRoute(routes, at)
-	return match, found, nil
-}
-
-func routeQuality(client string, route readSessionRoute, priorProvider string, priorFound bool) string {
+func routeQuality(client string, route readSessionRoute, prior, current store.ProviderSnapshot, priorFound, priorCredentialFound, currentFound bool) string {
 	if runtimeProviderName(route.provider) == "unknown" {
 		return "estimated"
 	}
@@ -2854,25 +2841,151 @@ func routeQuality(client string, route readSessionRoute, priorProvider string, p
 	case "ConfigChange":
 		// Codex applies configuration only when a process starts, so a
 		// mid-session ConfigChange can never be an adopted route boundary.
-		if client != "claude" || !priorFound || priorProvider == "unknown" {
+		if client != "claude" || !priorFound || runtimeProviderName(prior.Name) == "unknown" {
 			return "estimated"
 		}
-		if route.provider == priorProvider || priorProvider == "official" && route.provider != "official" {
+		if route.provider == prior.Name && route.multiplier == prior.Multiplier && route.viaWrapper == prior.ViaWrapper {
 			return "exact"
 		}
+		if !priorCredentialFound || !currentFound || runtimeProviderName(current.Name) != route.provider {
+			return "estimated"
+		}
+		// A resolved no-key to first-key transition advances to the route;
+		// keyed rotation and removal retain the resolved prior route. Both
+		// outcomes determine the effective provider and multiplier exactly.
+		return "exact"
+	default:
+		return "estimated"
+	}
+}
+
+func timelineSnapshotQuality(client string, initial store.ProviderSnapshot, changes []store.ProviderSnapshot) string {
+	switch client {
+	case "codex":
+		for _, change := range changes {
+			if runtimeProviderName(change.Name) != runtimeProviderName(initial.Name) || change.Multiplier != initial.Multiplier || change.ViaWrapper != initial.ViaWrapper {
+				return "estimated"
+			}
+		}
+		return "exact"
+	case "claude":
+		// Claude session IDs and transcripts do not carry a trustworthy process
+		// start. Without a session route, a snapshot at first_at cannot prove
+		// whether the process started before an earlier live key transition.
 		return "estimated"
 	default:
 		return "estimated"
 	}
 }
 
+func resolvedRouteSnapshot(route readSessionRoute) store.ProviderSnapshot {
+	return store.ProviderSnapshot{
+		Name:       runtimeProviderName(route.provider),
+		Multiplier: route.multiplier,
+		ViaWrapper: route.viaWrapper,
+		SelectedAt: route.observedAt,
+	}
+}
+
+func snapshotCredential(snapshotAt providerSnapshotLookup, client string, route readSessionRoute) (store.ProviderSnapshot, bool, error) {
+	snapshot, err := snapshotAt(client, route.observedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return store.ProviderSnapshot{}, false, nil
+	}
+	if err != nil {
+		return store.ProviderSnapshot{}, false, err
+	}
+	if runtimeProviderName(snapshot.Name) != runtimeProviderName(route.provider) {
+		return store.ProviderSnapshot{}, false, nil
+	}
+	return snapshot, true, nil
+}
+
+func configChangeRetainsPrior(prior, current store.ProviderSnapshot) bool {
+	return !(prior.Credential == "" && current.Credential != "")
+}
+
+func resolvePositionedRoutes(client string, routes []readSessionRoute, sessionStart time.Time, sessionStartKnown bool, snapshotAt providerSnapshotLookup) (resolvedSessionAttribution, error) {
+	result := resolvedSessionAttribution{provider: "unknown", multiplier: "1", quality: "unattributed"}
+	effective := store.ProviderSnapshot{}
+	effectiveFound, effectiveCredentialFound := false, false
+
+	for _, route := range routes {
+		if route.hookEvent == "SessionStart" {
+			effective = resolvedRouteSnapshot(route)
+			effectiveFound, effectiveCredentialFound = true, false
+			result = resolvedSessionAttribution{
+				provider: runtimeProviderName(effective.Name), multiplier: effective.Multiplier,
+				quality: "exact", reason: attributionReasonEffectiveRoute,
+				viaWrapper: effective.ViaWrapper, spendEligible: runtimeProviderName(effective.Name) != "unknown",
+			}
+			continue
+		}
+
+		prior, priorFound, priorCredentialFound := effective, effectiveFound, effectiveCredentialFound
+		if priorFound && !priorCredentialFound {
+			credentialRoute := readSessionRoute{provider: prior.Name, observedAt: prior.SelectedAt}
+			credentialSnapshot, credentialFound, credentialErr := snapshotCredential(snapshotAt, client, credentialRoute)
+			if credentialErr != nil {
+				return resolvedSessionAttribution{}, credentialErr
+			}
+			if credentialFound {
+				prior.Credential = credentialSnapshot.Credential
+				priorCredentialFound = true
+			}
+		}
+
+		current, currentFound, currentErr := snapshotCredential(snapshotAt, client, route)
+		if currentErr != nil {
+			return resolvedSessionAttribution{}, currentErr
+		}
+		if !priorFound && sessionStartKnown {
+			sessionSnapshot, snapshotErr := snapshotAt(client, sessionStart)
+			if snapshotErr == nil {
+				routeBeforeStart := route.observedAt.Before(sessionStart)
+				matchesRoute := runtimeProviderName(sessionSnapshot.Name) == runtimeProviderName(route.provider) && sessionSnapshot.Multiplier == route.multiplier && sessionSnapshot.ViaWrapper == route.viaWrapper
+				if !routeBeforeStart || matchesRoute {
+					prior, priorFound, priorCredentialFound = sessionSnapshot, true, true
+				}
+			} else if !errors.Is(snapshotErr, sql.ErrNoRows) {
+				return resolvedSessionAttribution{}, snapshotErr
+			}
+		}
+
+		quality := routeQuality(client, route, prior, current, priorFound, priorCredentialFound, currentFound)
+		selected := resolvedRouteSnapshot(route)
+		selectedCredentialFound := false
+		if currentFound {
+			selected.Credential = current.Credential
+			selectedCredentialFound = true
+		}
+		if quality == "exact" && priorCredentialFound && currentFound && configChangeRetainsPrior(prior, current) {
+			selected = prior
+			selectedCredentialFound = true
+		}
+		reason := attributionReasonAmbiguousRoute
+		if quality == "exact" {
+			reason = attributionReasonEffectiveRoute
+			effective, effectiveFound, effectiveCredentialFound = selected, true, selectedCredentialFound
+		} else {
+			effective, effectiveFound, effectiveCredentialFound = store.ProviderSnapshot{}, false, false
+		}
+		result = resolvedSessionAttribution{
+			provider: runtimeProviderName(selected.Name), multiplier: selected.Multiplier,
+			quality: quality, reason: reason,
+			viaWrapper: selected.ViaWrapper, spendEligible: runtimeProviderName(selected.Name) != "unknown",
+		}
+	}
+	return result, nil
+}
+
 // resolveSessionAttribution owns the shared time-positioning policy for both
 // pricing paths. Effective session routes are positioned at the event time;
-// the provider timeline is only a fallback and is always positioned at the
-// logical session start. Route quality is derived from whether the positioned
+// the provider timeline fallback starts at the logical session start and uses
+// later effective transitions only to decide whether that starting snapshot is
+// still determinable. Route quality is derived from whether the positioned
 // boundary took effect; the persisted quality column is legacy capture data.
-// Observable reason reporting remains task 3's boundary.
-func resolveSessionAttribution(event storedEvent, routeAt sessionRouteLookup, snapshotAt providerSnapshotLookup, timelineExists providerTimelineExistenceLookup) (resolvedSessionAttribution, error) {
+func resolveSessionAttribution(event storedEvent, routeAt sessionRouteLookup, snapshotAt providerSnapshotLookup, timelineCovers providerTimelineCoverageLookup, snapshotsBetween providerTimelineSnapshotsLookup) (resolvedSessionAttribution, error) {
 	result := resolvedSessionAttribution{
 		provider: "unknown", multiplier: "1", quality: "unattributed",
 	}
@@ -2880,50 +2993,28 @@ func resolveSessionAttribution(event storedEvent, routeAt sessionRouteLookup, sn
 	if err != nil {
 		return resolvedSessionAttribution{}, err
 	}
-	if match, found, routeErr := routeAt(event.Client, event.SessionID, eventAt); routeErr != nil {
-		return resolvedSessionAttribution{}, routeErr
-	} else if found {
-		route := match.route
-		priorProvider, priorFound := "unknown", match.priorFound
-		if priorFound {
-			priorProvider = runtimeProviderName(match.prior.provider)
-		} else if route.hookEvent == "ConfigChange" {
-			startAt, startErr := sessionStartAt(event)
-			if startErr != nil {
-				return resolvedSessionAttribution{}, startErr
-			}
-			snapshot, snapshotErr := snapshotAt(event.Client, startAt)
-			if snapshotErr == nil {
-				priorProvider, priorFound = runtimeProviderName(snapshot.Name), true
-			} else if !errors.Is(snapshotErr, sql.ErrNoRows) {
-				return resolvedSessionAttribution{}, snapshotErr
-			}
-		}
-		provider := runtimeProviderName(route.provider)
-		quality := routeQuality(event.Client, route, priorProvider, priorFound)
-		reason := attributionReasonAmbiguousRoute
-		if quality == "exact" {
-			reason = attributionReasonEffectiveRoute
-		}
-		return resolvedSessionAttribution{
-			provider: provider, multiplier: route.multiplier,
-			quality: quality, reason: reason,
-			viaWrapper: route.viaWrapper, spendEligible: provider != "unknown",
-		}, nil
-	}
-
-	startAt, err := sessionStartAt(event)
+	startAt, endAt, startKnown, err := sessionSpan(event)
 	if err != nil {
 		return resolvedSessionAttribution{}, err
 	}
+	if match, found, routeErr := routeAt(event.Client, event.SessionID, eventAt); routeErr != nil {
+		return resolvedSessionAttribution{}, routeErr
+	} else if found {
+		routes := match.routes
+		if len(routes) == 0 {
+			routes = []readSessionRoute{match.route}
+		}
+		return resolvePositionedRoutes(event.Client, routes, startAt, startKnown, snapshotAt)
+	}
+
 	snapshot, err := snapshotAt(event.Client, startAt)
 	if errors.Is(err, sql.ErrNoRows) {
-		exists, existsErr := timelineExists(event.Client)
-		if existsErr != nil {
-			return resolvedSessionAttribution{}, existsErr
+		covered, coverageErr := timelineCovers(event.Client, startAt)
+		if coverageErr != nil {
+			return resolvedSessionAttribution{}, coverageErr
 		}
 		result.reason = attributionReasonBeforeAdoption
-		if exists {
+		if covered {
 			result.reason = attributionReasonCoverageGap
 		}
 		return result, nil
@@ -2933,7 +3024,18 @@ func resolveSessionAttribution(event storedEvent, routeAt sessionRouteLookup, sn
 	}
 	result.provider = runtimeProviderName(snapshot.Name)
 	result.multiplier = snapshot.Multiplier
-	result.quality = "estimated"
+	if !startKnown {
+		result.quality = "estimated"
+		result.reason = attributionReasonTimelineSnapshot
+		result.viaWrapper = result.provider != "unknown" && snapshot.ViaWrapper
+		result.spendEligible = result.provider != "unknown"
+		return result, nil
+	}
+	changes, changesErr := snapshotsBetween(event.Client, startAt, endAt)
+	if changesErr != nil {
+		return resolvedSessionAttribution{}, changesErr
+	}
+	result.quality = timelineSnapshotQuality(event.Client, snapshot, changes)
 	result.reason = attributionReasonTimelineSnapshot
 	result.viaWrapper = result.provider != "unknown" && snapshot.ViaWrapper
 	result.spendEligible = result.provider != "unknown"
@@ -2983,7 +3085,8 @@ func (r readPriceResolver) priceForEvent(event storedEvent) (eventAttribution, e
 				return match, found, nil
 			},
 			r.timeline.SnapshotAt,
-			func(client string) (bool, error) { return r.timeline.HasClient(client), nil },
+			func(client string, at time.Time) (bool, error) { return r.timeline.HasClientAt(client, at), nil },
+			r.timeline.SnapshotsBetween,
 		)
 		if resolveErr != nil {
 			return eventAttribution{}, resolveErr
@@ -3389,7 +3492,7 @@ func (s *Service) Sessions(ctx context.Context) ([]SessionSummary, error) {
 	return out, nil
 }
 func (s *Service) events(ctx context.Context, client, session string) ([]storedEvent, error) {
-	q := `SELECT e.event_key,e.client,e.session_id,e.event_id,e.event_at,e.model,COALESCE(e.turn_index,0),e.input_tokens,e.cached_input_tokens,e.output_tokens,e.cache_read_tokens,e.cache_creation_tokens,e.cache_write_5m_tokens,e.cache_write_1h_tokens,e.cache_write_tokens,e.source_path,e.source_offset,COALESCE(b.run_id,e.run_id),r.exact,r.multiplier,r.provider,r.started_at,us.first_at FROM usage_events e LEFT JOIN usage_run_bindings b ON b.event_key=e.event_key LEFT JOIN usage_runs r ON r.id=COALESCE(b.run_id,e.run_id) LEFT JOIN usage_sessions us ON us.client=e.client AND us.session_id=e.session_id`
+	q := `SELECT e.event_key,e.client,e.session_id,e.event_id,e.event_at,e.model,COALESCE(e.turn_index,0),e.input_tokens,e.cached_input_tokens,e.output_tokens,e.cache_read_tokens,e.cache_creation_tokens,e.cache_write_5m_tokens,e.cache_write_1h_tokens,e.cache_write_tokens,e.source_path,e.source_offset,COALESCE(b.run_id,e.run_id),r.exact,r.multiplier,r.provider,r.started_at,us.first_at,us.last_at FROM usage_events e LEFT JOIN usage_run_bindings b ON b.event_key=e.event_key LEFT JOIN usage_runs r ON r.id=COALESCE(b.run_id,e.run_id) LEFT JOIN usage_sessions us ON us.client=e.client AND us.session_id=e.session_id`
 	args := []any{}
 	where := []string{}
 	if client != "" {
@@ -3413,7 +3516,7 @@ func (s *Service) events(ctx context.Context, client, session string) ([]storedE
 	for rows.Next() {
 		var e storedEvent
 		var in, cached, outTokens, read, creation, write5, write1, write int64
-		err = rows.Scan(&e.Key, &e.Client, &e.SessionID, &e.EventID, &e.EventAt, &e.Model, &e.TurnIndex, &in, &cached, &outTokens, &read, &creation, &write5, &write1, &write, &e.SourcePath, &e.SourceOffset, &e.runID, &e.runExact, &e.runMultiplier, &e.runProvider, &e.runStart, &e.sessionStart)
+		err = rows.Scan(&e.Key, &e.Client, &e.SessionID, &e.EventID, &e.EventAt, &e.Model, &e.TurnIndex, &in, &cached, &outTokens, &read, &creation, &write5, &write1, &write, &e.SourcePath, &e.SourceOffset, &e.runID, &e.runExact, &e.runMultiplier, &e.runProvider, &e.runStart, &e.sessionStart, &e.sessionEnd)
 		if err != nil {
 			return nil, err
 		}
@@ -3424,7 +3527,7 @@ func (s *Service) events(ctx context.Context, client, session string) ([]storedE
 }
 
 func (s *Service) eventsRange(ctx context.Context, from, to time.Time, client, model string) ([]storedEvent, error) {
-	query := `SELECT e.event_key,e.client,e.session_id,e.event_id,e.event_at,e.model,COALESCE(e.turn_index,0),e.input_tokens,e.cached_input_tokens,e.output_tokens,e.cache_read_tokens,e.cache_creation_tokens,e.cache_write_5m_tokens,e.cache_write_1h_tokens,e.cache_write_tokens,e.source_path,e.source_offset,COALESCE(b.run_id,e.run_id),r.exact,r.multiplier,r.provider,r.started_at,us.first_at FROM usage_events e LEFT JOIN usage_run_bindings b ON b.event_key=e.event_key LEFT JOIN usage_runs r ON r.id=COALESCE(b.run_id,e.run_id) LEFT JOIN usage_sessions us ON us.client=e.client AND us.session_id=e.session_id WHERE e.event_at>=? AND e.event_at<?`
+	query := `SELECT e.event_key,e.client,e.session_id,e.event_id,e.event_at,e.model,COALESCE(e.turn_index,0),e.input_tokens,e.cached_input_tokens,e.output_tokens,e.cache_read_tokens,e.cache_creation_tokens,e.cache_write_5m_tokens,e.cache_write_1h_tokens,e.cache_write_tokens,e.source_path,e.source_offset,COALESCE(b.run_id,e.run_id),r.exact,r.multiplier,r.provider,r.started_at,us.first_at,us.last_at FROM usage_events e LEFT JOIN usage_run_bindings b ON b.event_key=e.event_key LEFT JOIN usage_runs r ON r.id=COALESCE(b.run_id,e.run_id) LEFT JOIN usage_sessions us ON us.client=e.client AND us.session_id=e.session_id WHERE e.event_at>=? AND e.event_at<?`
 	args := []any{from.UTC().Format(time.RFC3339Nano), to.UTC().Format(time.RFC3339Nano)}
 	if client != "" {
 		query += ` AND e.client=?`
@@ -3444,7 +3547,7 @@ func (s *Service) eventsRange(ctx context.Context, from, to time.Time, client, m
 	for rows.Next() {
 		var event storedEvent
 		var input, cached, output, read, creation, write5, write1, write int64
-		if err = rows.Scan(&event.Key, &event.Client, &event.SessionID, &event.EventID, &event.EventAt, &event.Model, &event.TurnIndex, &input, &cached, &output, &read, &creation, &write5, &write1, &write, &event.SourcePath, &event.SourceOffset, &event.runID, &event.runExact, &event.runMultiplier, &event.runProvider, &event.runStart, &event.sessionStart); err != nil {
+		if err = rows.Scan(&event.Key, &event.Client, &event.SessionID, &event.EventID, &event.EventAt, &event.Model, &event.TurnIndex, &input, &cached, &output, &read, &creation, &write5, &write1, &write, &event.SourcePath, &event.SourceOffset, &event.runID, &event.runExact, &event.runMultiplier, &event.runProvider, &event.runStart, &event.sessionStart, &event.sessionEnd); err != nil {
 			return nil, err
 		}
 		event.Tokens = map[string]int64{"input_tokens": input, "cached_input_tokens": cached, "output_tokens": output, "cache_read_tokens": read, "cache_creation_tokens": creation, "cache_write_5m_tokens": write5, "cache_write_1h_tokens": write1, "cache_write_tokens": write}
@@ -3456,9 +3559,11 @@ func (s *Service) eventsRange(ctx context.Context, from, to time.Time, client, m
 type eventPricing func(storedEvent) (eventAttribution, error)
 
 func (s *Service) summarize(ctx context.Context, events []storedEvent) (Summary, error) {
-	return summarizeEvents(events, func(event storedEvent) (eventAttribution, error) {
-		return s.eventAttributionForEvent(ctx, event)
-	})
+	resolver, err := s.loadReadPriceResolver(ctx, s.now())
+	if err != nil {
+		return Summary{}, err
+	}
+	return summarizeWithReadPriceResolver(events, resolver)
 }
 
 func summarizeWithReadPriceResolver(events []storedEvent, resolver readPriceResolver) (Summary, error) {
@@ -3577,156 +3682,6 @@ func aggregateAttributedResult(result Result, attribution eventAttribution) Resu
 	return result
 }
 
-func (s *Service) eventAttributionForEvent(ctx context.Context, e storedEvent) (eventAttribution, error) {
-	attribution := eventAttribution{multiplier: "1", quality: "unattributed", provider: "unknown"}
-	if e.runID.Valid && e.runExact.Valid && e.runExact.Int64 == 1 {
-		provider, multiplier, routeErr := exactRunRoute(e)
-		if routeErr != nil {
-			return eventAttribution{}, routeErr
-		}
-		attribution.quality, attribution.reason, attribution.provider, attribution.multiplier, attribution.spendEligible = "exact", attributionReasonExactRun, provider, multiplier, true
-	} else {
-		resolved, resolveErr := resolveSessionAttribution(
-			e,
-			func(client, sessionID string, at time.Time) (sessionRouteMatch, bool, error) {
-				return s.storedSessionRouteAt(ctx, client, sessionID, at)
-			},
-			func(client string, at time.Time) (store.ProviderSnapshot, error) {
-				return s.Store.ProviderSnapshotAt(ctx, client, at)
-			},
-			func(client string) (bool, error) {
-				return s.Store.ProviderTimelineExists(ctx, client)
-			},
-		)
-		if resolveErr != nil {
-			return eventAttribution{}, resolveErr
-		}
-		attribution.multiplier, attribution.quality, attribution.reason = resolved.multiplier, resolved.quality, resolved.reason
-		attribution.provider, attribution.viaWrapper, attribution.spendEligible = resolved.provider, resolved.viaWrapper, resolved.spendEligible
-	}
-	historical, historicalFound, err := s.mergedPriceAt(ctx, e.Client, e.Model, e.EventAt)
-	if err != nil {
-		return eventAttribution{}, err
-	}
-	current, currentFound, err := s.mergedPriceAt(ctx, e.Client, e.Model, s.now().Format(time.RFC3339Nano))
-	if err != nil {
-		return eventAttribution{}, err
-	}
-	if !historicalFound && !currentFound {
-		attribution.price = modelPrice{Provider: "unknown", Prices: map[string]string{}}
-		return attribution, nil
-	}
-	if !historicalFound {
-		attribution.price = current
-		return attribution, nil
-	}
-	// Current prices fill only components missing from the historical result.
-	// A component that was calculable at event time is never repriced.
-	for component, value := range current.Prices {
-		if _, exists := historical.Prices[component]; !exists {
-			historical.Prices[component] = value
-		}
-	}
-	attribution.price = historical
-	return attribution, nil
-}
-
-func (s *Service) priceForEvent(ctx context.Context, e storedEvent) (modelPrice, string, string, error) {
-	attribution, err := s.eventAttributionForEvent(ctx, e)
-	if err != nil {
-		return modelPrice{}, "", "", err
-	}
-	return attribution.price, attribution.multiplier, attribution.quality, nil
-}
-
-func (s *Service) mergedPriceAt(ctx context.Context, client, eventModel, at string) (modelPrice, bool, error) {
-	target, err := time.Parse(time.RFC3339Nano, at)
-	if err != nil {
-		return modelPrice{}, false, err
-	}
-	rows, err := s.Store.DB.QueryContext(ctx, `SELECT mp.model,mp.provider,mp.effective_from,mp.prices_json,mp.aliases_json,c.source_kind,c.effective_from,c.imported_at,c.version FROM model_prices mp JOIN price_catalogs c ON c.version=mp.catalog_version`)
-	if err != nil {
-		return modelPrice{}, false, err
-	}
-	defer rows.Close()
-	type row struct {
-		model, aliases string
-		price          modelPrice
-		modelEffective time.Time
-		order          priceLayerOrder
-	}
-	var priceRows []row
-	for rows.Next() {
-		var item row
-		var raw, modelText, sourceKind, catalogText, importedText, version string
-		if err = rows.Scan(&item.model, &item.price.Provider, &modelText, &raw, &item.aliases, &sourceKind, &catalogText, &importedText, &version); err != nil {
-			return modelPrice{}, false, err
-		}
-		item.price.EffectiveFrom = modelText
-		item.modelEffective, err = time.Parse(time.RFC3339Nano, modelText)
-		if err != nil {
-			return modelPrice{}, false, err
-		}
-		item.order = priceLayerOrder{sourceKind: sourceKind, version: version}
-		item.order.catalogEffective, err = time.Parse(time.RFC3339Nano, catalogText)
-		if err != nil {
-			return modelPrice{}, false, err
-		}
-		item.order.importedAt, err = time.Parse(time.RFC3339Nano, importedText)
-		if err != nil {
-			return modelPrice{}, false, err
-		}
-		if item.order.catalogEffective.After(target) || item.modelEffective.After(target) {
-			continue
-		}
-		if err = json.Unmarshal([]byte(raw), &item.price.Prices); err != nil {
-			return modelPrice{}, false, err
-		}
-		priceRows = append(priceRows, item)
-	}
-	if err = rows.Err(); err != nil {
-		return modelPrice{}, false, err
-	}
-	sort.SliceStable(priceRows, func(i, j int) bool { return priceLayerBefore(priceRows[i].order, priceRows[j].order) })
-	expected := map[string]string{"codex": "openai", "claude": "anthropic"}[client]
-	merged := modelPrice{Provider: expected, Prices: map[string]string{}}
-	found := false
-	for _, priceRow := range priceRows {
-		if priceRow.price.Provider != expected {
-			continue
-		}
-		matches := usageModelMatches(client, priceRow.model, eventModel)
-		var a []string
-		_ = json.Unmarshal([]byte(priceRow.aliases), &a)
-		for _, x := range a {
-			if usageModelMatches(client, x, eventModel) {
-				matches = true
-			}
-		}
-		if !matches {
-			continue
-		}
-		// Rows are newest-first. Preserve the first value of each component so an
-		// official layer can override only one verified component.
-		for k, v := range priceRow.price.Prices {
-			if _, ok := merged.Prices[k]; !ok {
-				merged.Prices[k] = v
-			}
-		}
-		found = true
-	}
-	return merged, found, nil
-}
-
-func usageModelMatches(client, catalogModel, eventModel string) bool {
-	if catalogModel == eventModel {
-		return true
-	}
-	if client != "claude" || !strings.HasPrefix(catalogModel, "claude-") || !strings.HasPrefix(eventModel, "claude-") {
-		return false
-	}
-	return strings.ReplaceAll(catalogModel, ".", "-") == strings.ReplaceAll(eventModel, ".", "-")
-}
 func ParseMultiplier(v string) (string, error) {
 	r, e := decimal(v)
 	if e != nil {

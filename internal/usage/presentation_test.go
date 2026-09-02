@@ -69,8 +69,8 @@ INSERT INTO usage_run_bindings(event_key,run_id) VALUES ('exact',1)`); err != ni
 	if today.Period != "today" || today.Totals.Tokens != 66 || today.Totals.Events != 3 || today.Totals.Sessions != 3 || len(today.Models) != 3 {
 		t.Fatalf("today period = %#v", today)
 	}
-	if got := qualityEventCounts(all.Quality.Items[0]); got != [3]int64{1, 1, 1} {
-		t.Fatalf("quality event counts = %v, want [1 1 1]", got)
+	if got := qualityEventCounts(all.Quality.Items[0]); got != [3]int64{2, 0, 1} {
+		t.Fatalf("quality event counts = %v, want [2 0 1]", got)
 	}
 	// quality and pricing are the Client x Period product, not current-period
 	// only: every supported period carries its own record set, in periods order,
@@ -81,7 +81,7 @@ INSERT INTO usage_run_bindings(event_key,run_id) VALUES ('exact',1)`); err != ni
 	if all.Quality.Items[0].Period != "today" || all.Quality.Items[0].Provider != nil {
 		t.Fatalf("first quality record = %#v, want the today client-scope aggregate", all.Quality.Items[0])
 	}
-	if report.Summary.Counts["exact"] != 1 || report.Summary.Counts["estimated"] != 1 || report.Summary.Counts["unattributed"] != 1 {
+	if report.Summary.Counts["exact"] != 2 || report.Summary.Counts["estimated"] != 0 || report.Summary.Counts["unattributed"] != 1 {
 		t.Fatalf("summary quality counts = %#v", report.Summary.Counts)
 	}
 	if report.Summary.AttributionReasons["exact_run"] != 1 || report.Summary.AttributionReasons["timeline_snapshot"] != 1 || report.Summary.AttributionReasons["before_adoption"] != 1 {

@@ -371,14 +371,15 @@ func TestProviderSnapshotTracksBearerOfficialBearerOperations(t *testing.T) {
 			t.Fatalf("timeline snapshot at %s = %#v, %v want %#v, %v", at, got, gotErr, want, wantErr)
 		}
 	}
-	if !timeline.HasClient("codex") || timeline.HasClient("claude") {
-		t.Fatalf("timeline client coverage = codex:%t claude:%t", timeline.HasClient("codex"), timeline.HasClient("claude"))
+	if timeline.HasClientAt("codex", base.Add(-time.Second)) || !timeline.HasClientAt("codex", base.Add(750*time.Millisecond)) || timeline.HasClientAt("claude", base.Add(6*time.Second)) {
+		t.Fatalf("positioned timeline coverage = before:%t covered:%t absent:%t", timeline.HasClientAt("codex", base.Add(-time.Second)), timeline.HasClientAt("codex", base.Add(750*time.Millisecond)), timeline.HasClientAt("claude", base.Add(6*time.Second)))
 	}
-	if exists, existsErr := s.ProviderTimelineExists(ctx, "codex"); existsErr != nil || !exists {
-		t.Fatalf("database timeline coverage = %t, %v", exists, existsErr)
+	changes, err := timeline.SnapshotsBetween("codex", base.Add(1500*time.Millisecond), base.Add(5500*time.Millisecond))
+	if err != nil {
+		t.Fatal(err)
 	}
-	if exists, existsErr := s.ProviderTimelineExists(ctx, "claude"); existsErr != nil || exists {
-		t.Fatalf("absent database timeline coverage = %t, %v", exists, existsErr)
+	if len(changes) != 2 || changes[0].Name != "official" || changes[1].Name != "bearer" || changes[1].Multiplier != "3" {
+		t.Fatalf("timeline changes = %#v, want official then bearer/3 at completed operation instants", changes)
 	}
 }
 

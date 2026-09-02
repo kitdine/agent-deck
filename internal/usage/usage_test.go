@@ -1692,6 +1692,15 @@ func TestPriceReadPathsKeepQueryCountConstantForLargeFixture(t *testing.T) {
 	}
 
 	queries.Store(0)
+	summary, err := service.Summary(ctx)
+	if err != nil || summary.Counts["events"] != 1003 {
+		t.Fatalf("Summary = %#v, err:%v", summary, err)
+	}
+	if got := queries.Load(); got > 6 {
+		t.Fatalf("Summary SQL queries for 1003 events = %d, want at most 6", got)
+	}
+
+	queries.Store(0)
 	sessions, err := service.Sessions(ctx)
 	if err != nil || len(sessions) != 2 || sessions[0].Tokens["input_tokens"] != 502 || sessions[1].Tokens["input_tokens"] != 501 {
 		t.Fatalf("Sessions = %#v, err:%v", sessions, err)
@@ -1730,7 +1739,7 @@ func TestReadPriceResolverFallsBackToEventAtWithoutSessionStart(t *testing.T) {
 	}
 }
 
-func TestAttributionResolversShareClientTimeSemantics(t *testing.T) {
+func TestReadPriceResolverUsesClientTimeSemantics(t *testing.T) {
 	ctx := context.Background()
 	database, err := store.Open(ctx, filepath.Join(t.TempDir(), "state"))
 	if err != nil {
@@ -1745,6 +1754,11 @@ func TestAttributionResolversShareClientTimeSemantics(t *testing.T) {
 
 	if err = database.RecordSelection(ctx, store.Selection{
 		Client: "codex", ProviderName: "codexA", MultiplierSnapshot: "2", SelectedAt: t0,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err = database.RecordSelection(ctx, store.Selection{
+		Client: "claude", ProviderName: "official", MultiplierSnapshot: "1", SelectedAt: t0,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -1764,6 +1778,11 @@ func TestAttributionResolversShareClientTimeSemantics(t *testing.T) {
 
 	matched := true
 	now = t0.Add(time.Second)
+	if err = database.RecordSelection(ctx, store.Selection{
+		Client: "claude", ProviderName: "custom", MultiplierSnapshot: "3", CredentialName: "default", SelectedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
 	if err = service.RecordHookDelivery(ctx, HookDelivery{
 		Client: "claude", SessionID: "claude-session", HookEvent: "ConfigChange", Source: "user_settings", DeliveryID: "claude-first-key",
 		ConfigMatched: &matched, HasSelection: true, Selection: store.ProviderSnapshot{Name: "custom", Multiplier: "3", Credential: "default"},
@@ -1777,6 +1796,11 @@ func TestAttributionResolversShareClientTimeSemantics(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+	if err = database.RecordSelection(ctx, store.Selection{
+		Client: "claude", ProviderName: "keyB", MultiplierSnapshot: "9", CredentialName: "other", SelectedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
 	if err = service.RecordHookDelivery(ctx, HookDelivery{
 		Client: "claude", SessionID: "claude-session", HookEvent: "ConfigChange", Source: "user_settings", DeliveryID: "claude-rotation",
 		ConfigMatched: &matched, HasSelection: true, Selection: store.ProviderSnapshot{Name: "keyB", Multiplier: "9", Credential: "other"},
@@ -1785,6 +1809,11 @@ func TestAttributionResolversShareClientTimeSemantics(t *testing.T) {
 	}
 
 	now = t0.Add(3 * time.Second)
+	if err = database.RecordSelection(ctx, store.Selection{
+		Client: "claude", ProviderName: "official", MultiplierSnapshot: "1", SelectedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
 	if err = service.RecordHookDelivery(ctx, HookDelivery{
 		Client: "claude", SessionID: "claude-session", HookEvent: "ConfigChange", Source: "user_settings", DeliveryID: "claude-removal",
 		ConfigMatched: &matched, HasSelection: true, Selection: store.ProviderSnapshot{Name: "official", Multiplier: "1"},
@@ -1793,6 +1822,11 @@ func TestAttributionResolversShareClientTimeSemantics(t *testing.T) {
 	}
 
 	now = t0.Add(4 * time.Second)
+	if err = database.RecordSelection(ctx, store.Selection{
+		Client: "claude", ProviderName: "keyB", MultiplierSnapshot: "9", CredentialName: "other", SelectedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
 	if err = service.RecordHookDelivery(ctx, HookDelivery{
 		Client: "claude", SessionID: "claude-session", HookEvent: "SessionStart", Source: "resume", DeliveryID: "claude-restart",
 		HasSelection: true, Selection: store.ProviderSnapshot{Name: "keyB", Multiplier: "9", Credential: "other"},
@@ -1832,21 +1866,154 @@ func TestAttributionResolversShareClientTimeSemantics(t *testing.T) {
 			if readErr != nil {
 				t.Fatal(readErr)
 			}
-			_, serviceMultiplier, serviceQuality, serviceErr := service.priceForEvent(ctx, event)
-			if serviceErr != nil {
-				t.Fatal(serviceErr)
-			}
 			if readAttribution.provider != test.provider || readAttribution.multiplier != test.multiplier || readAttribution.quality != test.quality {
 				t.Fatalf("read resolver = %#v, want provider=%s multiplier=%s quality=%s", readAttribution, test.provider, test.multiplier, test.quality)
-			}
-			if serviceMultiplier != test.multiplier || serviceQuality != test.quality {
-				t.Fatalf("service resolver = multiplier %s quality %s, want %s/%s", serviceMultiplier, serviceQuality, test.multiplier, test.quality)
 			}
 		})
 	}
 }
 
-func TestAttributionResolversSortMixedRFC3339RouteInstants(t *testing.T) {
+func TestReadPriceResolverClassifiesTimelineDeterminability(t *testing.T) {
+	t0 := time.Date(2026, 8, 4, 0, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name                         string
+		client                       string
+		selections                   []store.Selection
+		wantProvider, wantMultiplier string
+		wantQuality, wantReason      string
+	}{
+		{
+			name: "codex without a switch is determinable", client: "codex",
+			selections:   []store.Selection{{Client: "codex", ProviderName: "codexA", MultiplierSnapshot: "2", CredentialName: "default", SelectedAt: t0}},
+			wantProvider: "codexA", wantMultiplier: "2", wantQuality: "exact", wantReason: attributionReasonTimelineSnapshot,
+		},
+		{
+			name: "codex spanning a switch remains inferred", client: "codex",
+			selections: []store.Selection{
+				{Client: "codex", ProviderName: "codexA", MultiplierSnapshot: "2", CredentialName: "default", SelectedAt: t0},
+				{Client: "codex", ProviderName: "codexB", MultiplierSnapshot: "9", CredentialName: "other", SelectedAt: t0.Add(time.Second)},
+			},
+			wantProvider: "codexA", wantMultiplier: "2", wantQuality: "estimated", wantReason: attributionReasonTimelineSnapshot,
+		},
+		{
+			name: "claude without a reliable start remains inferred", client: "claude",
+			selections:   []store.Selection{{Client: "claude", ProviderName: "official", MultiplierSnapshot: "1", SelectedAt: t0}},
+			wantProvider: "official", wantMultiplier: "1", wantQuality: "estimated", wantReason: attributionReasonTimelineSnapshot,
+		},
+		{
+			name: "claude first key transition remains inferred without a route", client: "claude",
+			selections: []store.Selection{
+				{Client: "claude", ProviderName: "official", MultiplierSnapshot: "1", SelectedAt: t0},
+				{Client: "claude", ProviderName: "keyA", MultiplierSnapshot: "2", CredentialName: "default", SelectedAt: t0.Add(time.Second)},
+			},
+			wantProvider: "official", wantMultiplier: "1", wantQuality: "estimated", wantReason: attributionReasonTimelineSnapshot,
+		},
+		{
+			name: "claude keyed rotation remains inferred without a reliable start", client: "claude",
+			selections: []store.Selection{
+				{Client: "claude", ProviderName: "keyA", MultiplierSnapshot: "2", CredentialName: "default", SelectedAt: t0},
+				{Client: "claude", ProviderName: "keyB", MultiplierSnapshot: "9", CredentialName: "other", SelectedAt: t0.Add(time.Second)},
+			},
+			wantProvider: "keyA", wantMultiplier: "2", wantQuality: "estimated", wantReason: attributionReasonTimelineSnapshot,
+		},
+		{
+			name: "claude key removal remains inferred without a reliable start", client: "claude",
+			selections: []store.Selection{
+				{Client: "claude", ProviderName: "keyA", MultiplierSnapshot: "2", CredentialName: "default", SelectedAt: t0},
+				{Client: "claude", ProviderName: "official", MultiplierSnapshot: "1", SelectedAt: t0.Add(time.Second)},
+			},
+			wantProvider: "keyA", wantMultiplier: "2", wantQuality: "estimated", wantReason: attributionReasonTimelineSnapshot,
+		},
+		{
+			name: "claude keyed session remains inferred across later global changes", client: "claude",
+			selections: []store.Selection{
+				{Client: "claude", ProviderName: "keyA", MultiplierSnapshot: "2", CredentialName: "default", SelectedAt: t0},
+				{Client: "claude", ProviderName: "official", MultiplierSnapshot: "1", SelectedAt: t0.Add(time.Second)},
+				{Client: "claude", ProviderName: "keyB", MultiplierSnapshot: "9", CredentialName: "other", SelectedAt: t0.Add(1500 * time.Millisecond)},
+			},
+			wantProvider: "keyA", wantMultiplier: "2", wantQuality: "estimated", wantReason: attributionReasonTimelineSnapshot,
+		},
+		{
+			name: "event before the first selection is before adoption", client: "claude",
+			selections:   []store.Selection{{Client: "claude", ProviderName: "keyA", MultiplierSnapshot: "2", CredentialName: "default", SelectedAt: t0.Add(time.Second)}},
+			wantProvider: "unknown", wantMultiplier: "1", wantQuality: "unattributed", wantReason: attributionReasonBeforeAdoption,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := context.Background()
+			database, err := store.Open(ctx, filepath.Join(t.TempDir(), "state"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer database.Close()
+			for _, selection := range test.selections {
+				if err = database.RecordSelection(ctx, selection); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			service := New(database, "")
+			resolver, err := service.loadReadPriceResolver(ctx, t0.Add(time.Hour))
+			if err != nil {
+				t.Fatal(err)
+			}
+			event := storedEvent{
+				Event:        Event{Client: test.client, SessionID: "no-route", EventAt: t0.Add(2 * time.Second).Format(time.RFC3339Nano), Model: "fixture"},
+				sessionStart: sql.NullString{String: t0.Add(100 * time.Millisecond).Format(time.RFC3339Nano), Valid: true},
+			}
+			readAttribution, err := resolver.priceForEvent(event)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if readAttribution.provider != test.wantProvider || readAttribution.multiplier != test.wantMultiplier || readAttribution.quality != test.wantQuality || readAttribution.reason != test.wantReason {
+				t.Errorf("attribution = %#v, want %s/%s/%s/%s", readAttribution, test.wantProvider, test.wantMultiplier, test.wantQuality, test.wantReason)
+			}
+		})
+	}
+}
+
+func TestReadPriceResolverKeepsPositionedTimelineGapUnattributed(t *testing.T) {
+	ctx := context.Background()
+	database, err := store.Open(ctx, filepath.Join(t.TempDir(), "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	provider, err := database.CreateProvider(ctx, store.Provider{
+		Name: "gap", Endpoint: "https://gap.invalid", CredentialRef: "ref", Multiplier: "2", Clients: []store.ClientMapping{{Client: "claude"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t0 := time.Date(2026, 8, 4, 0, 0, 0, 0, time.UTC)
+	providerID := provider.ID
+	if err = database.CreateOperation(ctx, store.Operation{
+		ID: "missing-selection", Kind: "provider.use", State: "completed", ProviderID: &providerID, Client: "claude", StartedAt: t0, UpdatedAt: t0.Add(time.Second),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	service := New(database, "")
+	resolver, err := service.loadReadPriceResolver(ctx, t0.Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	event := storedEvent{
+		Event:        Event{Client: "claude", SessionID: "gap", EventAt: t0.Add(3 * time.Second).Format(time.RFC3339Nano), Model: "fixture"},
+		sessionStart: sql.NullString{String: t0.Add(2 * time.Second).Format(time.RFC3339Nano), Valid: true},
+	}
+	readAttribution, err := resolver.priceForEvent(event)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if readAttribution.provider != "unknown" || readAttribution.quality != "unattributed" || readAttribution.reason != attributionReasonCoverageGap || readAttribution.spendEligible {
+		t.Errorf("attribution = %#v, want unknown/unattributed/%s/not-spend-eligible", readAttribution, attributionReasonCoverageGap)
+	}
+}
+
+func TestReadPriceResolverSortsMixedRFC3339RouteInstants(t *testing.T) {
 	ctx := context.Background()
 	database, err := store.Open(ctx, filepath.Join(t.TempDir(), "state"))
 	if err != nil {
@@ -1880,40 +2047,36 @@ func TestAttributionResolversSortMixedRFC3339RouteInstants(t *testing.T) {
 			if readErr != nil {
 				t.Fatal(readErr)
 			}
-			_, serviceMultiplier, serviceQuality, serviceErr := service.priceForEvent(ctx, event)
-			if serviceErr != nil {
-				t.Fatal(serviceErr)
-			}
 			if readAttribution.provider != test.provider || readAttribution.multiplier != test.multiplier || readAttribution.quality != "exact" {
 				t.Fatalf("read resolver = %#v, want %s/%s/exact", readAttribution, test.provider, test.multiplier)
-			}
-			if serviceMultiplier != test.multiplier || serviceQuality != "exact" {
-				t.Fatalf("service resolver = %s/%s, want %s/exact", serviceMultiplier, serviceQuality, test.multiplier)
 			}
 		})
 	}
 }
 
-func TestRouteQualityMatchesLegacySixGroupReference(t *testing.T) {
+func TestRouteQualityMatchesDeterminabilityReference(t *testing.T) {
 	type group struct {
-		name, client, hookEvent, provider, priorProvider, want string
-		priorFound                                             bool
-		rows, events                                           int
+		name, client, hookEvent, provider  string
+		prior, current                     store.ProviderSnapshot
+		priorFound                         bool
+		priorCredentialFound, currentFound bool
+		want                               string
+		rows, events                       int
 	}
 	groups := []group{
-		{"SessionStart codex", "codex", "SessionStart", "codexA", "", "exact", false, 104, 0},
-		{"SessionStart claude", "claude", "SessionStart", "official", "", "exact", false, 31, 9953},
-		{"ConfigChange same provider", "claude", "ConfigChange", "custom", "custom", "exact", true, 9, 810},
-		{"ConfigChange no prior route uses official timeline", "claude", "ConfigChange", "custom", "official", "exact", true, 15, 1350},
-		{"ConfigChange no-key to first key", "claude", "ConfigChange", "custom", "official", "exact", true, 3, 282},
-		{"ConfigChange keyed removal", "claude", "ConfigChange", "official", "custom", "estimated", true, 4, 534},
+		{"SessionStart codex", "codex", "SessionStart", "codexA", store.ProviderSnapshot{}, store.ProviderSnapshot{}, false, false, false, "exact", 104, 0},
+		{"SessionStart claude", "claude", "SessionStart", "official", store.ProviderSnapshot{}, store.ProviderSnapshot{}, false, false, false, "exact", 31, 9953},
+		{"ConfigChange same provider", "claude", "ConfigChange", "custom", store.ProviderSnapshot{Name: "custom", Credential: "default"}, store.ProviderSnapshot{Name: "custom", Credential: "default"}, true, true, true, "exact", 9, 810},
+		{"ConfigChange no prior route uses official timeline", "claude", "ConfigChange", "custom", store.ProviderSnapshot{Name: "official"}, store.ProviderSnapshot{Name: "custom", Credential: "default"}, true, true, true, "exact", 15, 1350},
+		{"ConfigChange no-key to first key", "claude", "ConfigChange", "custom", store.ProviderSnapshot{Name: "official"}, store.ProviderSnapshot{Name: "custom", Credential: "default"}, true, true, true, "exact", 3, 282},
+		{"ConfigChange keyed removal", "claude", "ConfigChange", "official", store.ProviderSnapshot{Name: "custom", Credential: "default"}, store.ProviderSnapshot{Name: "official"}, true, true, true, "exact", 4, 534},
 	}
 	exactRows, estimatedRows := 0, 0
 	exactClaudeEvents, estimatedClaudeEvents := 0, 0
 	configChangeEvents, exactConfigChangeEvents := 0, 0
 	for _, group := range groups {
 		route := readSessionRoute{provider: group.provider, hookEvent: group.hookEvent}
-		got := routeQuality(group.client, route, group.priorProvider, group.priorFound)
+		got := routeQuality(group.client, route, group.prior, group.current, group.priorFound, group.priorCredentialFound, group.currentFound)
 		if got != group.want {
 			t.Fatalf("%s quality = %q, want %q", group.name, got, group.want)
 		}
@@ -1931,21 +2094,73 @@ func TestRouteQualityMatchesLegacySixGroupReference(t *testing.T) {
 			}
 		}
 	}
-	if exactRows != 162 || estimatedRows != 4 {
-		t.Fatalf("route classification = exact %d estimated %d, want 162/4 (135 SessionStart + 27 ConfigChange exact, 4 removal estimated)", exactRows, estimatedRows)
+	if exactRows != 166 || estimatedRows != 0 {
+		t.Fatalf("route classification = exact %d estimated %d, want 166/0 after four retained removals become determinable", exactRows, estimatedRows)
 	}
-	if exactClaudeEvents != 12395 || estimatedClaudeEvents != 534 || exactClaudeEvents+estimatedClaudeEvents != 12929 {
-		t.Fatalf("Claude events = exact %d estimated %d total %d, want 12395/534/12929", exactClaudeEvents, estimatedClaudeEvents, exactClaudeEvents+estimatedClaudeEvents)
+	if exactClaudeEvents != 12929 || estimatedClaudeEvents != 0 || exactClaudeEvents+estimatedClaudeEvents != 12929 {
+		t.Fatalf("Claude events = exact %d estimated %d total %d, want 12929/0/12929", exactClaudeEvents, estimatedClaudeEvents, exactClaudeEvents+estimatedClaudeEvents)
 	}
 	if configChangeEvents != 2976 {
 		t.Fatalf("ConfigChange-positioned events = %d, want 2976; a blanket pre-cutoff exclusion would incorrectly hold all of them at estimated", configChangeEvents)
 	}
-	if exactConfigChangeEvents != 2442 {
-		t.Fatalf("exact ConfigChange-positioned events = %d, want 2442; a blanket pre-cutoff exclusion would demote classifier-exact events", exactConfigChangeEvents)
+	if exactConfigChangeEvents != 2976 {
+		t.Fatalf("exact ConfigChange-positioned events = %d, want 2976 after retained legacy removals resolve through the prior route", exactConfigChangeEvents)
 	}
 }
 
-func TestExactRunRequiresProviderAndMultiplierOnBothResolvers(t *testing.T) {
+func TestRouteQualityRequiresCredentialEvidenceForAttributionChange(t *testing.T) {
+	route := readSessionRoute{provider: "custom", multiplier: "9", hookEvent: "ConfigChange"}
+	prior := store.ProviderSnapshot{Name: "custom", Multiplier: "2"}
+	if got := routeQuality("claude", route, prior, store.ProviderSnapshot{}, true, false, false); got != "estimated" {
+		t.Fatalf("same-provider multiplier change quality = %q, want estimated without credential evidence", got)
+	}
+}
+
+func TestConfigChangeAdoptionUsesCredentialSnapshotNotProviderName(t *testing.T) {
+	for _, test := range []struct {
+		name           string
+		prior, current store.ProviderSnapshot
+		wantRetain     bool
+	}{
+		{"custom provider without a key adopts its first key", store.ProviderSnapshot{Name: "relay-no-key"}, store.ProviderSnapshot{Name: "keyA", Credential: "default"}, false},
+		{"official provider with a key retains it across rotation", store.ProviderSnapshot{Name: "official", Credential: "default"}, store.ProviderSnapshot{Name: "keyB", Credential: "other"}, true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := configChangeRetainsPrior(test.prior, test.current); got != test.wantRetain {
+				t.Fatalf("retain prior = %t, want %t", got, test.wantRetain)
+			}
+		})
+	}
+}
+
+func TestResolveSessionAttributionDoesNotReadTimelineForSessionStartRoute(t *testing.T) {
+	event := storedEvent{Event: Event{Client: "claude", SessionID: "session", EventAt: "2026-08-04T00:00:01Z"}}
+	resolved, err := resolveSessionAttribution(
+		event,
+		func(string, string, time.Time) (sessionRouteMatch, bool, error) {
+			return sessionRouteMatch{route: readSessionRoute{provider: "keyA", multiplier: "2", hookEvent: "SessionStart"}}, true, nil
+		},
+		func(string, time.Time) (store.ProviderSnapshot, error) {
+			return store.ProviderSnapshot{}, errors.New("timeline must not be read")
+		},
+		func(string, time.Time) (bool, error) {
+			t.Fatal("timeline coverage must not be read")
+			return false, nil
+		},
+		func(string, time.Time, time.Time) ([]store.ProviderSnapshot, error) {
+			t.Fatal("timeline changes must not be read")
+			return nil, nil
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved.provider != "keyA" || resolved.multiplier != "2" || resolved.quality != "exact" || resolved.reason != attributionReasonEffectiveRoute {
+		t.Fatalf("resolved route = %#v, want keyA/2/exact/%s", resolved, attributionReasonEffectiveRoute)
+	}
+}
+
+func TestReadPriceResolverExactRunRequiresProviderAndMultiplier(t *testing.T) {
 	base := storedEvent{
 		Event:    Event{Client: "codex", EventAt: "2026-08-04T00:00:00Z"},
 		runID:    sql.NullInt64{Int64: 1, Valid: true},
@@ -1970,14 +2185,11 @@ func TestExactRunRequiresProviderAndMultiplierOnBothResolvers(t *testing.T) {
 			if _, err := (readPriceResolver{}).priceForEvent(test.event); err == nil {
 				t.Fatal("read resolver accepted invalid exact run")
 			}
-			if _, _, _, err := (&Service{}).priceForEvent(context.Background(), test.event); err == nil {
-				t.Fatal("service resolver accepted invalid exact run")
-			}
 		})
 	}
 }
 
-func TestAttributionResolversClassifyRouteEffectFromPriorState(t *testing.T) {
+func TestReadPriceResolverClassifiesRouteEffectFromPriorState(t *testing.T) {
 	ctx := context.Background()
 	database, err := store.Open(ctx, filepath.Join(t.TempDir(), "state"))
 	if err != nil {
@@ -1998,10 +2210,10 @@ func TestAttributionResolversClassifyRouteEffectFromPriorState(t *testing.T) {
 			 ('claude','claude-start','2026-08-04T00:00:01Z','official','1',0,'SessionStart','fixture','estimated','claude-start'),
 			 ('claude','same','2026-08-04T00:00:01Z','custom','2',0,'SessionStart','fixture','estimated','same-start'),
 			 ('claude','same','2026-08-04T00:00:02Z','custom','2',0,'ConfigChange','fixture','estimated','same-change'),
-			 ('claude','no-prior','2026-08-04T00:00:02Z','custom','2',0,'ConfigChange','fixture','estimated','no-prior-change'),
+			 ('claude','unresolved-current-selection','2026-08-04T00:00:02Z','custom','2',0,'ConfigChange','fixture','estimated','no-prior-change'),
 			 ('claude','no-prior-keyed','2026-08-04T00:00:11Z','official','1',0,'ConfigChange','fixture','estimated','no-prior-keyed-change'),
-			 ('claude','first-key','2026-08-04T00:00:01Z','official','1',0,'SessionStart','fixture','estimated','first-key-start'),
-		 ('claude','first-key','2026-08-04T00:00:02Z','custom','2',0,'ConfigChange','fixture','estimated','first-key-change'),
+			 ('claude','unresolved-first-key-selection','2026-08-04T00:00:01Z','official','1',0,'SessionStart','fixture','estimated','first-key-start'),
+		 ('claude','unresolved-first-key-selection','2026-08-04T00:00:02Z','custom','2',0,'ConfigChange','fixture','estimated','first-key-change'),
 		 ('claude','removal','2026-08-04T00:00:01Z','custom','2',0,'SessionStart','fixture','estimated','removal-start'),
 		 ('claude','removal','2026-08-04T00:00:02Z','official','1',0,'ConfigChange','fixture','estimated','removal-change'),
 		 ('claude','unknown','2026-08-04T00:00:02Z','unknown','1',0,'ConfigChange','fixture','estimated','unknown-change')`); err != nil {
@@ -2019,12 +2231,12 @@ func TestAttributionResolversClassifyRouteEffectFromPriorState(t *testing.T) {
 		{"codex", "codex-start", "exact", "effective_route", 3 * time.Second, 500 * time.Millisecond},
 		{"codex", "no-timeline", "estimated", "ambiguous_route", 3 * time.Second, 500 * time.Millisecond},
 		{"codex", "before-adoption", "unattributed", "before_adoption", 3 * time.Second, 500 * time.Millisecond},
-		{"claude", "coverage-gap", "unattributed", "coverage_gap", 3 * time.Second, -500 * time.Millisecond},
+		{"claude", "future-selection", "unattributed", "before_adoption", 3 * time.Second, -500 * time.Millisecond},
 		{"claude", "claude-start", "exact", "effective_route", 3 * time.Second, 500 * time.Millisecond},
 		{"claude", "same", "exact", "effective_route", 3 * time.Second, 500 * time.Millisecond},
-		{"claude", "no-prior", "exact", "effective_route", 3 * time.Second, 500 * time.Millisecond},
+		{"claude", "unresolved-current-selection", "estimated", "ambiguous_route", 3 * time.Second, 500 * time.Millisecond},
 		{"claude", "no-prior-keyed", "estimated", "ambiguous_route", 12 * time.Second, 10500 * time.Millisecond},
-		{"claude", "first-key", "exact", "effective_route", 3 * time.Second, 500 * time.Millisecond},
+		{"claude", "unresolved-first-key-selection", "estimated", "ambiguous_route", 3 * time.Second, 500 * time.Millisecond},
 		{"claude", "removal", "estimated", "ambiguous_route", 3 * time.Second, 500 * time.Millisecond},
 		{"claude", "unknown", "estimated", "ambiguous_route", 3 * time.Second, 500 * time.Millisecond},
 	}
@@ -2038,13 +2250,183 @@ func TestAttributionResolversClassifyRouteEffectFromPriorState(t *testing.T) {
 			if readErr != nil {
 				t.Fatal(readErr)
 			}
-			serviceAttribution, serviceErr := service.eventAttributionForEvent(ctx, event)
-			if serviceErr != nil {
-				t.Fatal(serviceErr)
+			if readAttribution.quality != test.wantQuality || readAttribution.reason != test.wantReason {
+				t.Fatalf("attribution = %#v, want %s/%s", readAttribution, test.wantQuality, test.wantReason)
 			}
-			if readAttribution.quality != test.wantQuality || serviceAttribution.quality != test.wantQuality ||
-				readAttribution.reason != test.wantReason || serviceAttribution.reason != test.wantReason {
-				t.Fatalf("attribution = read %#v service %#v, want %s/%s", readAttribution, serviceAttribution, test.wantQuality, test.wantReason)
+		})
+	}
+}
+
+func TestSummaryUsesWholeSessionSpanForTimelineDeterminability(t *testing.T) {
+	ctx := context.Background()
+	database, err := store.Open(ctx, filepath.Join(t.TempDir(), "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	t0 := time.Date(2026, 8, 4, 0, 0, 0, 0, time.UTC)
+	for _, selection := range []store.Selection{
+		{Client: "codex", ProviderName: "before", MultiplierSnapshot: "1", SelectedAt: t0},
+		{Client: "codex", ProviderName: "after", MultiplierSnapshot: "2", SelectedAt: t0.Add(2 * time.Second)},
+	} {
+		if err = database.RecordSelection(ctx, selection); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err = database.Exec(ctx, `
+		INSERT INTO usage_sessions(client,session_id,first_at,last_at) VALUES
+		 ('codex','spanning','2026-08-04T00:00:01Z','2026-08-04T00:00:03Z');
+		INSERT INTO usage_events(event_key,client,session_id,event_id,event_at,model,input_tokens,source_path,source_offset) VALUES
+		 ('before-switch','codex','spanning','before-switch','2026-08-04T00:00:01.5Z','fixture',1,'fixture',0)`); err != nil {
+		t.Fatal(err)
+	}
+	service := New(database, "")
+	summary, err := service.Summary(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.Counts["exact"] != 0 || summary.Counts["estimated"] != 1 || summary.AttributionReasons[attributionReasonTimelineSnapshot] != 1 {
+		t.Fatalf("spanning-session attribution = counts %#v reasons %#v, want one estimated timeline snapshot", summary.Counts, summary.AttributionReasons)
+	}
+}
+
+func TestReadPriceResolverFoldsLegacyClaudeRouteHistory(t *testing.T) {
+	ctx := context.Background()
+	database, err := store.Open(ctx, filepath.Join(t.TempDir(), "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	t0 := time.Date(2026, 8, 4, 0, 0, 0, 0, time.UTC)
+	for _, selection := range []store.Selection{
+		{Client: "claude", ProviderName: "keyA", MultiplierSnapshot: "2", CredentialName: "a", SelectedAt: t0},
+		{Client: "claude", ProviderName: "keyB", MultiplierSnapshot: "9", CredentialName: "b", SelectedAt: t0.Add(time.Second)},
+		{Client: "claude", ProviderName: "official", MultiplierSnapshot: "1", SelectedAt: t0.Add(2 * time.Second)},
+	} {
+		if err = database.RecordSelection(ctx, selection); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err = database.Exec(ctx, `
+		INSERT INTO usage_session_routes(client,session_id,observed_at,provider,multiplier,via_wrapper,hook_event,source,quality,semantic_key) VALUES
+		 ('claude','route-before-first-at','2026-08-06T00:00:00Z','official','1',0,'ConfigChange','fixture','estimated','early-removal'),
+		 ('claude','consecutive-retains','2026-08-04T00:00:00.1Z','keyA','2',0,'SessionStart','fixture','estimated','start'),
+		 ('claude','consecutive-retains','2026-08-04T00:00:01.1Z','keyB','9',0,'ConfigChange','fixture','estimated','rotation'),
+		 ('claude','consecutive-retains','2026-08-04T00:00:02.1Z','official','1',0,'ConfigChange','fixture','estimated','removal')`); err != nil {
+		t.Fatal(err)
+	}
+	service := New(database, "")
+	resolver, err := service.loadReadPriceResolver(ctx, t0.Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		name, session, provider, multiplier, sessionStart, eventAt string
+	}{
+		{"route long after selection uses matching session snapshot", "route-before-first-at", "official", "1", "2026-08-06T00:00:50Z", "2026-08-06T00:01:00Z"},
+		{"consecutive retained routes keep the effective start", "consecutive-retains", "keyA", "2", "2026-08-04T00:00:00Z", "2026-08-04T00:00:03Z"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			event := storedEvent{
+				Event:        Event{Client: "claude", SessionID: test.session, EventAt: test.eventAt, Model: "fixture"},
+				sessionStart: sql.NullString{String: test.sessionStart, Valid: true},
+			}
+			readAttribution, readErr := resolver.priceForEvent(event)
+			if readErr != nil {
+				t.Fatal(readErr)
+			}
+			if readAttribution.provider != test.provider || readAttribution.multiplier != test.multiplier || readAttribution.quality != "exact" || readAttribution.reason != attributionReasonEffectiveRoute {
+				t.Errorf("attribution = %#v, want %s/%s/exact/%s", readAttribution, test.provider, test.multiplier, attributionReasonEffectiveRoute)
+			}
+		})
+	}
+}
+
+func TestReadPriceResolverKeepsClaudeTimelineFallbackInferredWithoutSessionBoundary(t *testing.T) {
+	ctx := context.Background()
+	database, err := store.Open(ctx, filepath.Join(t.TempDir(), "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	t0 := time.Date(2026, 8, 4, 0, 0, 0, 0, time.UTC)
+	for _, selection := range []store.Selection{
+		{Client: "claude", ProviderName: "official", MultiplierSnapshot: "1", SelectedAt: t0},
+		{Client: "claude", ProviderName: "keyA", MultiplierSnapshot: "2", CredentialName: "default", SelectedAt: t0.Add(time.Minute)},
+	} {
+		if err = database.RecordSelection(ctx, selection); err != nil {
+			t.Fatal(err)
+		}
+	}
+	service := New(database, "")
+	resolver, err := service.loadReadPriceResolver(ctx, t0.Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	event := storedEvent{
+		Event:        Event{Client: "claude", SessionID: "no-route", EventAt: t0.Add(3 * time.Minute).Format(time.RFC3339Nano), Model: "fixture"},
+		sessionStart: sql.NullString{String: t0.Add(123300 * time.Millisecond).Format(time.RFC3339Nano), Valid: true},
+	}
+	readAttribution, err := resolver.priceForEvent(event)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if readAttribution.provider != "keyA" || readAttribution.multiplier != "2" || readAttribution.quality != "estimated" || readAttribution.reason != attributionReasonTimelineSnapshot {
+		t.Errorf("attribution = %#v, want keyA/2/estimated/%s", readAttribution, attributionReasonTimelineSnapshot)
+	}
+}
+
+func TestReadPriceResolverRetainsPriorForLegacyClaudeConfigChange(t *testing.T) {
+	ctx := context.Background()
+	database, err := store.Open(ctx, filepath.Join(t.TempDir(), "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	t0 := time.Date(2026, 8, 4, 0, 0, 0, 0, time.UTC)
+	for _, selection := range []store.Selection{
+		{Client: "claude", ProviderName: "cubence", MultiplierSnapshot: "1.2", CredentialName: "default", SelectedAt: t0},
+		{Client: "claude", ProviderName: "official", MultiplierSnapshot: "1", SelectedAt: t0.Add(time.Second)},
+		{Client: "claude", ProviderName: "keyA", MultiplierSnapshot: "3", CredentialName: "default", SelectedAt: t0.Add(3 * time.Second)},
+		{Client: "claude", ProviderName: "keyB", MultiplierSnapshot: "9", CredentialName: "other", SelectedAt: t0.Add(4 * time.Second)},
+	} {
+		if err = database.RecordSelection(ctx, selection); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err = database.Exec(ctx, `
+		INSERT INTO usage_session_routes(client,session_id,observed_at,provider,multiplier,via_wrapper,hook_event,source,quality,semantic_key) VALUES
+		 ('claude','legacy-removal','2026-08-04T00:00:00.1Z','cubence','1.2',0,'SessionStart','fixture','estimated','legacy-start'),
+		 ('claude','legacy-removal','2026-08-04T00:00:01.1Z','official','1',0,'ConfigChange','fixture','estimated','legacy-removal'),
+		 ('claude','legacy-rotation','2026-08-04T00:00:03.1Z','keyA','3',0,'SessionStart','fixture','estimated','legacy-rotation-start'),
+		 ('claude','legacy-rotation','2026-08-04T00:00:04.1Z','keyB','9',0,'ConfigChange','fixture','estimated','legacy-rotation-change')`); err != nil {
+		t.Fatal(err)
+	}
+
+	service := New(database, "")
+	resolver, err := service.loadReadPriceResolver(ctx, t0.Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		name, session, provider, multiplier string
+		startAt, eventAt                    time.Time
+	}{
+		{"key removal", "legacy-removal", "cubence", "1.2", t0, t0.Add(2 * time.Second)},
+		{"key rotation", "legacy-rotation", "keyA", "3", t0.Add(3 * time.Second), t0.Add(5 * time.Second)},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			event := storedEvent{
+				Event:        Event{Client: "claude", SessionID: test.session, EventAt: test.eventAt.Format(time.RFC3339Nano), Model: "fixture"},
+				sessionStart: sql.NullString{String: test.startAt.Format(time.RFC3339Nano), Valid: true},
+			}
+			readAttribution, readErr := resolver.priceForEvent(event)
+			if readErr != nil {
+				t.Fatal(readErr)
+			}
+			if readAttribution.provider != test.provider || readAttribution.multiplier != test.multiplier || readAttribution.quality != "exact" || readAttribution.reason != attributionReasonEffectiveRoute {
+				t.Errorf("attribution = %#v, want %s/%s/exact/%s", readAttribution, test.provider, test.multiplier, attributionReasonEffectiveRoute)
 			}
 		})
 	}
@@ -2184,7 +2566,7 @@ func TestSessionsRetainsSessionStartProviderCost(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(sessions) != 1 || sessions[0].ProviderCost == nil || *sessions[0].ProviderCost != "5.000000000" || !reflect.DeepEqual(sessions[0].Warnings, []string{"estimated attribution"}) {
+	if len(sessions) != 1 || sessions[0].ProviderCost == nil || *sessions[0].ProviderCost != "5.000000000" || len(sessions[0].Warnings) != 0 {
 		t.Fatalf("sessions = %#v", sessions)
 	}
 }

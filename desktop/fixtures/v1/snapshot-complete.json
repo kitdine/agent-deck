@@ -94,8 +94,8 @@
       },
       "attribution_reasons": {
         "ambiguous_route": 0,
-        "before_adoption": 0,
-        "coverage_gap": 2,
+        "before_adoption": 2,
+        "coverage_gap": 0,
         "effective_route": 0,
         "exact_run": 0,
         "timeline_snapshot": 0

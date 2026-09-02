@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/kitdine/agent-deck/internal/errdefs"
@@ -206,36 +207,74 @@ func (t ProviderTimeline) SnapshotAt(client string, at time.Time) (ProviderSnaps
 	return ProviderSnapshot{}, sql.ErrNoRows
 }
 
-// HasClient reports whether the timeline has any completed provider operation
-// or usable selection for a client, independent of a particular snapshot time.
-func (t ProviderTimeline) HasClient(client string) bool {
+// HasClientAt reports whether a completed provider operation or usable
+// selection exists at or before at. A future selection does not make an
+// earlier session look like a timeline coverage gap.
+func (t ProviderTimeline) HasClientAt(client string, at time.Time) bool {
+	at = at.UTC()
 	for _, operation := range t.operations {
-		if operation.client == client && operation.state == "completed" {
+		if operation.client == client && operation.state == "completed" && !operation.updatedAt.After(at) {
 			return true
 		}
 	}
 	for _, selection := range t.selections {
-		if selection.client != client {
+		if selection.client != client || selection.snapshot.SelectedAt.After(at) {
 			continue
 		}
-		if !selection.operationID.Valid || t.operationStates[selection.operationID.String] == "completed" {
+		// Linked selections become visible through their completed operation's
+		// updated_at above, never their potentially earlier selected_at.
+		if !selection.operationID.Valid {
 			return true
 		}
 	}
 	return false
 }
 
-// ProviderTimelineExists is the database-backed counterpart to
-// ProviderTimeline.HasClient.
-func (s *Store) ProviderTimelineExists(ctx context.Context, client string) (bool, error) {
-	var exists bool
-	err := s.DB.QueryRowContext(ctx, `SELECT EXISTS(
-		SELECT 1 FROM operations WHERE kind='provider.use' AND client=? AND state='completed'
-		UNION ALL
-		SELECT 1 FROM provider_selections ps LEFT JOIN operations o ON o.id=ps.operation_id
-		WHERE ps.client=? AND (ps.operation_id IS NULL OR o.state='completed')
-	)`, client, client).Scan(&exists)
-	return exists, err
+// SnapshotsBetween returns each effective provider snapshot transition after
+// start and at or before end. Operation-backed selections become visible when
+// their operation completes; legacy standalone selections use selected_at.
+func (t ProviderTimeline) SnapshotsBetween(client string, start, end time.Time) ([]ProviderSnapshot, error) {
+	start, end = start.UTC(), end.UTC()
+	if end.Before(start) {
+		return nil, nil
+	}
+
+	instants := make([]time.Time, 0, len(t.operations)+len(t.selections))
+	for _, operation := range t.operations {
+		if operation.client == client && operation.state == "completed" && operation.updatedAt.After(start) && !operation.updatedAt.After(end) {
+			instants = append(instants, operation.updatedAt)
+		}
+	}
+	for _, selection := range t.selections {
+		if selection.client != client || selection.operationID.Valid {
+			continue
+		}
+		selectedAt := selection.snapshot.SelectedAt
+		if selectedAt.After(start) && !selectedAt.After(end) {
+			instants = append(instants, selectedAt)
+		}
+	}
+	sort.Slice(instants, func(i, j int) bool { return instants[i].Before(instants[j]) })
+
+	snapshots := make([]ProviderSnapshot, 0, len(instants))
+	for index, instant := range instants {
+		if index > 0 && instant.Equal(instants[index-1]) {
+			continue
+		}
+		snapshot, err := t.SnapshotAt(client, instant)
+		if err != nil {
+			return nil, err
+		}
+		if len(snapshots) > 0 && sameProviderSnapshotState(snapshots[len(snapshots)-1], snapshot) {
+			continue
+		}
+		snapshots = append(snapshots, snapshot)
+	}
+	return snapshots, nil
+}
+
+func sameProviderSnapshotState(left, right ProviderSnapshot) bool {
+	return left.Name == right.Name && left.Endpoint == right.Endpoint && left.Multiplier == right.Multiplier && left.Credential == right.Credential && left.ViaWrapper == right.ViaWrapper && left.Official == right.Official
 }
 
 func (t ProviderTimeline) latestSelection(client string, providerID *int64, notBefore, notAfter *time.Time) (ProviderSnapshot, bool) {
