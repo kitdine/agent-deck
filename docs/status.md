@@ -25,8 +25,10 @@ is recorded in `roadmap.md`.
   with checksums, and the universal DMG and ZIP with their own checksum file.
   Tap PRs [#24](https://github.com/kitdine/homebrew-tap/pull/24) for the
   `agentdeck-rc` formula and [#25](https://github.com/kitdine/homebrew-tap/pull/25)
-  for the `agentdeck-app-rc` cask are open and unmerged, so neither channel is
-  installable yet.
+  for the `agentdeck-app-rc` cask were merged as `cb31f5b` and `09a039a` after
+  all three of their `sha256` values were compared against the published
+  checksum files and against a locally recomputed hash of the DMG. Both rc
+  channels are installable.
 - The `v0.5.0` CEv1 Release boundary is `VERIFIED` for tree
   `32773386ad632a593e63d005ba57b04e7eebc83d`: both required criteria carry one
   `pass` record each — the aggregate L4 gate, and
@@ -43,16 +45,33 @@ is recorded in `roadmap.md`.
   CLI out permanently, determinable attribution was reported as inferred, and
   Claude startup sessions lost their route. Each carries a reviewed record under
   [`archive/fixes/`](archive/fixes/).
-- The `rc.5` DMG was measured after publication: the image validates, and a
-  read-only mount shows the `AgentDeck.app` inside it validating too, with
-  `spctl` reporting `accepted` / `Notarized Developer ID`. That is the exact
-  assertion that failed on `rc.4`, so the two-submission packaging fix reached
-  the published artifact. **The acceptance is still incomplete** — a Cask
-  install, ticket validation on the installed copy, and an offline first launch
-  have not run, and are owned by `ad-verify-staple-offline-first-launch`. The
-  published release notes were written before the release ran and therefore
-  understate what is now verified; they are left as tagged, because the tag
-  annotation and the release body must stay identical.
+- **The notarization ticket now survives the Cask install, measured rather than
+  inferred.** The stapled ticket for an app bundle is `Contents/CodeResources`,
+  1800 bytes with the `s8ch` magic; it is present in the `rc.5` DMG's inner
+  bundle and in the copy Homebrew placed in `/Applications`, and absent at that
+  path in `rc.4`'s inner bundle. That is a filesystem fact, so it depends on
+  neither network state nor the Gatekeeper assessment cache. The `rc.4` baseline
+  was reproduced live on the same machine first: its installed copy reported no
+  stapled ticket while `spctl` still accepted it, because the machine was
+  online. With Wi-Fi off and three Apple endpoints proven unreachable over real
+  HTTP, the upgraded app launched and stayed running with no Gatekeeper alert.
+  **That launch alone does not attribute the result to the ticket** — this
+  machine had already assessed the signature online during the install, so a
+  cache-free differential would need a machine that has never seen it. The
+  acceptance record is on `ad-verify-staple-offline-first-launch`, which is
+  `in_review`; the verdict belongs to an independent round, not to the run.
+- Two `rc.5` fixes were also confirmed on the real store, read-only:
+  `usage summary --no-scan` completed in 2.28s over 96,874 events against the
+  fix record's 2.4s and a pre-fix 9m18s, and attribution quality read
+  58,736 `exact` / 17,945 `estimated` / 20,193 `before_adoption` with
+  `coverage_gap` at 0, which is the predicted shape. The Cask exclusion guard
+  was not exercised live, because reproducing it means installing the
+  conflicting CLI-only formula; it rests on the real `brew install --cask`
+  regression that passed in this commit's L4 aggregate.
+- The published release notes were written before the release ran and therefore
+  understate what is now verified. They are left as tagged, because the release
+  body is published from the tag annotation and editing one without the other
+  splits the record in two.
 - Three of the eight `rc.4` findings are carried rather than fixed: the
   remaining hook-transcript admission edges, actionable recovery guidance for
   `state_busy`, and the schema-version signal — the one defect whose repair
