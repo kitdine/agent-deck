@@ -34,6 +34,27 @@ named `completion-evidence`.
   A merge additionally records `unit_kind: integration`; see
   `.agent-instructions/branching.md`.
 
+- **A Lane A fix reads `fix` in the `<topic>` position.** Its repair is a task
+  boundary like any other — `unit_kind: task`, `work_unit_id: fix:<slug>`,
+  `target_content_state` the Git tree — because `.agent-instructions/beads.md`
+  already names `fix` as the containing unit for that lane's stage commands
+  (`开发：fix / <slug>`). Nothing new is invented here; the table above is read
+  with `fix` where a topic would otherwise stand, which is what the repository
+  has been doing since `fix:claude-startup-route`.
+
+  Two consequences follow. There is **no topic boundary above it**: a Lane A fix
+  belongs to no topic, so its task boundary is the outermost one, and a Lane A
+  review has no outer gate to query. And `NOT_REQUIRED` is **not** the answer
+  for the task boundary itself — a Lane A review resolves its WorkUnit, records
+  evidence per criterion, and queries the gate exactly as a topic task does.
+  Records written before this rule cite `NOT_REQUIRED` against the absence of a
+  rule; they stand as what was true then and are not rewritten.
+
+  A Lane A WorkUnit finishes the same way as any other: once an authorized
+  commit exists, re-record the evidence against the immutable Git tree and set
+  the unit to `complete`. Leaving it at `in_progress` after delivery is the one
+  drift this boundary is prone to.
+
 - Write `unit_kind` in lowercase. Historical nodes carry mixed casing and the
   retired value `plan`; leave them as they are, since they record work that
   already completed, and use `topic` for anything new.

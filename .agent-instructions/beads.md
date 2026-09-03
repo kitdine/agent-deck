@@ -430,6 +430,12 @@ change plus one `docs/fixes/<slug>.md` record; see
   lives in its `docs/fixes/<slug>.md` record, never only in a Beads comment.
   Beads is not a review-verdict authority, and a verdict recorded only here
   would be the second, staler copy of a fact the repository owns.
+- **Completion evidence applies, and it has a defined shape.** A Lane A repair
+  is a CEv1 task boundary with `work_unit_id: fix:<slug>` — `fix` sits where a
+  topic would, matching the containing unit the stage commands below already
+  use. See `.agent-instructions/evidence.md`. A Lane A review therefore cites
+  that rule rather than recording `NOT_REQUIRED` for want of one; there is
+  simply no topic boundary above the task, since a Lane A fix has no topic.
 
 The stage commands are the project's existing ones, with `fix` as the containing
 unit:
