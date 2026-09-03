@@ -47,9 +47,13 @@ is recorded in `roadmap.md`.
   [`archive/fixes/`](archive/fixes/).
 - **The notarization ticket now survives the Cask install, measured rather than
   inferred.** The stapled ticket for an app bundle is `Contents/CodeResources`,
-  1800 bytes with the `s8ch` magic; it is present in the `rc.5` DMG's inner
-  bundle and in the copy Homebrew placed in `/Applications`, and absent at that
-  path in `rc.4`'s inner bundle. That is a filesystem fact, so it depends on
+  1800 bytes with the `s8ch` magic. Both published artifacts were checked, not
+  only the one the Cask installs: it is present in the `rc.5` DMG's inner
+  bundle, in the bundle unpacked from the published ZIP, and in the copy
+  Homebrew placed in `/Applications`, and absent at that path in `rc.4`'s inner
+  bundle. The DMG and ZIP checksums both match
+  `AgentDeck_v0.5.0-rc.5_desktop_checksums.txt` and `xcrun stapler validate`
+  passes on both. Ticket presence is a filesystem fact, so it depends on
   neither network state nor the Gatekeeper assessment cache. The `rc.4` baseline
   was reproduced live on the same machine first: its installed copy reported no
   stapled ticket while `spctl` still accepted it, because the machine was
@@ -58,16 +62,42 @@ is recorded in `roadmap.md`.
   **That launch alone does not attribute the result to the ticket** — this
   machine had already assessed the signature online during the install, so a
   cache-free differential would need a machine that has never seen it. The
-  acceptance record is on `ad-verify-staple-offline-first-launch`, which is
-  `in_review`; the verdict belongs to an independent round, not to the run.
-- Two `rc.5` fixes were also confirmed on the real store, read-only:
+  acceptance record is `docs/fixes/staple-offline-first-launch.md` on
+  `ad-verify-staple-offline-first-launch`. The notarization acceptance remains
+  measured, and its record reached `PASS` at Round 5 with all six required
+  completion criteria recorded `pass`; that round's partial independence is
+  stated in the record itself.
+- The `rc.5` scan-performance fix was confirmed on the real store, read-only:
   `usage summary --no-scan` completed in 2.28s over 96,874 events against the
-  fix record's 2.4s and a pre-fix 9m18s, and attribution quality read
-  58,736 `exact` / 17,945 `estimated` / 20,193 `before_adoption` with
-  `coverage_gap` at 0, which is the predicted shape. The Cask exclusion guard
-  was not exercised live, because reproducing it means installing the
-  conflicting CLI-only formula; it rests on the real `brew install --cask`
-  regression that passed in this commit's L4 aggregate.
+  fix record's 2.4s and a pre-fix 9m18s.
+- **The attribution fix is confirmed for Codex; Claude remains fail-closed
+  pending better evidence.**
+  Whole-history counts are the predicted shape — 58,758 `exact` /
+  18,009 `estimated` / 20,193 `unattributed`, every one of the last from
+  `before_adoption`, with `coverage_gap` at 0 — but that is an event count
+  over all time and answers for no surface anyone sees. The surface the
+  `attribution-determinability` record names is the menu bar's `today` panel,
+  which shares by **cost**, not by event count. Measured 2026-09-02 20:32 PDT
+  it reads 33.90% determinable, and split by client the two halves are
+  nothing alike: Codex is 100.00% determinable (590 of 590 events), Claude is
+  1.16% (22 of 803). Those 22 are the first `claude|startup` route this store
+  has ever held, written at 2026-09-03T03:26:37Z by an `rc.5` interactive
+  Claude Code session; one session is a signal, not the acceptance, and
+  `ad-verify-claude-startup-route-live` owns that.
+  Of 47 route-less Claude sessions in that snapshot, 46 are claude-mem
+  `observer-sessions/` SDK sessions with one event each; the other two started
+  before `rc.5` was installed and hold 675 events. Those events remain
+  `inferred` under the reviewed fail-closed contract because no accepted
+  process-start lower bound exists. Three interactive-session samples place
+  transcript birthtime 5–12 seconds before `first_at`, but they do not cover
+  resume, SDK observer sessions, transcript copies, or restore behavior and do
+  not yet establish a general process-start boundary. Whether the repository
+  can accept such a source belongs to the read-only investigation on
+  `ad-bug-claude-no-route-quality`; it is not a defect conclusion of this
+  release status or the notarization acceptance.
+- The Cask exclusion guard was not exercised live, because reproducing it means
+  installing the conflicting CLI-only formula; it rests on the real
+  `brew install --cask` regression that passed in this commit's L4 aggregate.
 - The published release notes were written before the release ran and therefore
   understate what is now verified. They are left as tagged, because the release
   body is published from the tag annotation and editing one without the other
