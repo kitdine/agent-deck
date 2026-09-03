@@ -82,8 +82,13 @@ is recorded in `roadmap.md`.
   nothing alike: Codex is 100.00% determinable (590 of 590 events), Claude is
   1.16% (22 of 803). Those 22 are the first `claude|startup` route this store
   has ever held, written at 2026-09-03T03:26:37Z by an `rc.5` interactive
-  Claude Code session; one session is a signal, not the acceptance, and
-  `ad-verify-claude-startup-route-live` owns that.
+  Claude Code session. Its task-owned acceptance is now recorded in
+  [`claude-startup-route-live.md`](fixes/claude-startup-route-live.md): every
+  invocation present in its timestamped acceptance snapshot reads determinable,
+  and the desktop 7d determinable bucket matches that snapshot's session events,
+  tokens, and cost. The sample remains one qualifying startup; the record
+  reached `PASS` at Round 2 with all six required completion criteria recorded
+  `pass`.
   Of 47 route-less Claude sessions in that snapshot, 46 are claude-mem
   `observer-sessions/` SDK sessions with one event each; the other two started
   before `rc.5` was installed and hold 675 events. Those events remain
