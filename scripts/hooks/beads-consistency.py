@@ -77,10 +77,16 @@ COMPLETION_GATE = re.compile(
 # every review record.
 FINDING_ID = re.compile(r"\b([A-Z]+[0-9]+-F[0-9]+)\b")
 # Words a later round actually uses to close one, gathered from the records
-# themselves rather than invented: `A1-F1 closed:`, `-> repaired in candidate.`
+# themselves rather than invented: `A1-F1 closed:`, `A6-F1 — SUPERSEDED.`
 FINDING_CLOSED = re.compile(
-    r"repaired|closed|resolved|addressed|fixed|已修复|已关闭|已解决|已处理", re.I
+    r"repaired|closed|resolved|addressed|fixed|superseded|已修复|已关闭|已解决|已处理",
+    re.I,
 )
+# Group dispositions occur on both sides of the IDs in existing records:
+# `all closed: A1-F1 ...` and `A1-F1、A1-F2 均已关闭`.
+FINDING_SUFFIX_GROUP = re.compile(r"\b(?:all|both|are|were)\b|均|都|全部", re.I)
+FINDING_CLAUSE_BREAK = re.compile(r"[.;。；](?:[*_`]+)?\s+")
+FINDING_REFERENCE_CLAUSE = re.compile(r"^(?:see\b|参见)", re.I)
 # A carrier is a Beads issue or a named Backlog item. Nothing else counts,
 # because nothing else is read again after the record is archived.
 FINDING_CARRIER = re.compile(r"\bad-[a-z0-9][a-z0-9-]*\b|roadmap\.md Backlog:")
@@ -208,32 +214,98 @@ def latest_verdict(path: Path) -> str | None:
     return latest_review_state(path)[0]
 
 
+def finding_clauses(lines: list[str]) -> list[str]:
+    """Join wrapped Markdown bullets, then split their disposition clauses."""
+    blocks: list[str] = []
+    current: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            if current:
+                blocks.append(" ".join(current))
+                current = []
+            continue
+        if line.startswith("#") or re.match(r"^\s*-\s", line):
+            if current:
+                blocks.append(" ".join(current))
+            current = []
+        current.append(stripped)
+    if current:
+        blocks.append(" ".join(current))
+    return [
+        clause
+        for block in blocks
+        for clause in FINDING_CLAUSE_BREAK.split(block)
+        if clause
+    ]
+
+
+def direct_disposition_bridge(value: str) -> bool:
+    """Whether only Markdown punctuation or a small copula joins ID and state."""
+    if re.search(r"(?:->|[—–-])\s*(?:[*_`]+)?$", value):
+        return True
+    normalized = re.sub(r"[\s`*_~\[\](){}<>:：,，\-—–>]", "", value).lower()
+    return normalized in {"", "is", "was", "isnow", "hasbeen", "noregression", "处置"}
+
+
+def closed_finding_ids(lines: list[str]) -> set[str]:
+    """Bind closure tokens to direct or explicitly grouped finding clauses."""
+    closed: set[str] = set()
+    for clause in finding_clauses(lines):
+        identifiers = list(FINDING_ID.finditer(clause))
+        if not identifiers:
+            continue
+        if FINDING_REFERENCE_CLAUSE.match(clause):
+            closed.update(match.group(1) for match in identifiers)
+            continue
+        for disposition in FINDING_CLOSED.finditer(clause):
+            before = [match for match in identifiers if match.end() <= disposition.start()]
+            after = [match for match in identifiers if match.start() >= disposition.end()]
+
+            if not before and after:
+                closed.update(match.group(1) for match in after)
+                continue
+
+            if len(before) > 1 and disposition.start() >= before[-1].end():
+                group = clause[before[0].start() : disposition.start()]
+                suffix = clause[disposition.end() : disposition.end() + 24]
+                if FINDING_SUFFIX_GROUP.search(group + suffix):
+                    closed.update(match.group(1) for match in before)
+                    continue
+
+            if before:
+                match = before[-1]
+                if direct_disposition_bridge(clause[match.end() : disposition.start()]):
+                    closed.add(match.group(1))
+                    continue
+
+    return closed
+
+
 def ownerless_findings(path: Path) -> list[str]:
     """Finding IDs in `path` that are neither closed nor carried.
 
     A review record retires with its topic. Once it is under `docs/archive/`,
     nobody opens it looking for outstanding work, so a finding left with a bare
-    `-> open` stops existing the moment the topic is archived. `A6-F1` did
-    exactly that: raised as a blocking P1 in Round 6 and never named again
-    through the Round 20 that passed.
+    `-> open` stops existing the moment the topic is archived. `A6-F1` is the
+    opposite regression: Round 8 marks it SUPERSEDED, which is a real closure.
 
-    A finding is accounted for when a later line names its ID alongside a
-    closure word, or when its own bullet names a carrier. The bullet is read to
-    its end rather than one line, because these findings run several lines and
-    the carrier is usually on the last of them.
+    A finding is accounted for when a logical clause directly or collectively
+    disposes of its ID, or when its own bullet names a carrier. Prefix closure
+    applies to the IDs that follow in that clause; suffix closure applies to the
+    nearest preceding ID unless an explicit group marker covers its siblings.
+    The bullet is read to its end rather than one line, because these findings
+    run several lines and the carrier is usually on the last of them.
     """
     try:
         lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
     except OSError:
         return []
     first_seen: dict[str, int] = {}
-    closed: set[str] = set()
     for number, line in enumerate(lines):
         for match in FINDING_ID.finditer(line):
-            identifier = match.group(1)
-            first_seen.setdefault(identifier, number)
-            if FINDING_CLOSED.search(line):
-                closed.add(identifier)
+            first_seen.setdefault(match.group(1), number)
+    closed = closed_finding_ids(lines)
     ownerless: list[str] = []
     for identifier, start in sorted(first_seen.items(), key=lambda item: item[1]):
         if identifier in closed:

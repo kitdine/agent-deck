@@ -385,9 +385,9 @@ class BeadsConsistencyHookTest(unittest.TestCase):
 class OwnerlessFindingsTest(unittest.TestCase):
     """`.agent-instructions/review-records.md` — findings must reach a carrier.
 
-    The rule exists because `A6-F1` was raised as a blocking P1 and never named
-    again through the round that passed, so these cases pin the three shapes a
-    finding can legitimately take and the one it cannot.
+    The rule is structural: a review record retires with its topic, so every
+    finding must be closed or carried before PASS. `A6-F1` is the regression
+    for an existing SUPERSEDED disposition, not the reason the rule exists.
     """
 
     def record(self, body: str) -> Path:
@@ -427,6 +427,79 @@ class OwnerlessFindingsTest(unittest.TestCase):
             "- Verdict: REOPEN\n"
             "## Round 2\n- Y1-F1 closed: repaired in candidate.\n"
             "- Verdict: PASS\n"
+        )
+        self.assertEqual(MODULE.ownerless_findings(path), [])
+
+    def test_closure_word_applies_only_to_the_id_it_follows(self):
+        path = self.record(
+            "## Round 1\n- Findings:\n"
+            "  - [P1] **X1-F1** first defect -> open\n"
+            "  - [P1] **X1-F2** second defect -> open\n"
+            "- Verdict: REOPEN\n"
+            "## Repair — Round 1\n"
+            "- Verdict: REOPEN — X1-F1 closed; X1-F2 moved to follow-up.\n"
+            "## Round 2\n- Verdict: PASS\n"
+        )
+        self.assertEqual(MODULE.ownerless_findings(path), ["X1-F2"])
+
+    def test_archived_superseded_disposition_counts_as_closed(self):
+        path = (
+            SCRIPT.parents[2]
+            / "docs/archive/topics/switch-effectiveness-boundary/reviews/architecture.md"
+        )
+        self.assertNotIn("A6-F1", MODULE.ownerless_findings(path))
+
+    def test_prefix_group_closure_accounts_for_each_named_finding(self):
+        path = self.record(
+            "## Round 1\n- Findings:\n"
+            "  - [P1] **X1-F1** first defect -> open\n"
+            "  - [P1] **X1-F2** second defect -> open\n"
+            "- Verdict: REOPEN\n"
+            "## Round 2\n"
+            "- Both findings are closed: X1-F1 changed one path, and X1-F2 changed another.\n"
+            "- Verdict: PASS\n"
+        )
+        self.assertEqual(MODULE.ownerless_findings(path), [])
+
+    def test_suffix_group_closure_accounts_for_each_named_finding(self):
+        path = self.record(
+            "## Round 1\n- Findings:\n"
+            "  - [P1] **X1-F1** first defect -> open\n"
+            "  - [P1] **X1-F2** second defect -> open\n"
+            "- Verdict: REOPEN\n"
+            "## Round 2\n- X1-F1、X1-F2 均已关闭。\n- Verdict: PASS\n"
+        )
+        self.assertEqual(MODULE.ownerless_findings(path), [])
+
+    def test_real_prefix_group_record_introduces_no_ownerless_findings(self):
+        path = (
+            SCRIPT.parents[2]
+            / "docs/archive/topics/desktop-app/reviews/desktop-app-contract.md"
+        )
+        self.assertNotIn("CD1-F1", MODULE.ownerless_findings(path))
+        self.assertNotIn("CD1-F2", MODULE.ownerless_findings(path))
+        self.assertNotIn("CD1-F3", MODULE.ownerless_findings(path))
+
+    def test_cross_record_see_clause_does_not_introduce_a_finding(self):
+        path = self.record(
+            "## Round 1\n"
+            "- [P1] R1-F1 local defect -> open. See A1-F1 for the other record.\n"
+            "- Verdict: REOPEN\n"
+            "## Round 2\n- R1-F1 closed: repaired locally.\n- Verdict: PASS\n"
+        )
+        self.assertEqual(MODULE.ownerless_findings(path), [])
+
+    def test_reference_ids_do_not_make_a_passing_record_ownerless(self):
+        path = self.record(
+            "# Fix record\n"
+            "Example syntax: X1-F1 closed; X1-F2 moved to follow-up.\n"
+            "## Review — Round 1\n"
+            "- [P1] R1-F1 parser compatibility -> open\n"
+            "- Evidence references CD1-F1, R9-F2, A1-F1, and H3-F1.\n"
+            "- Verdict: REOPEN\n"
+            "## Repair — Round 1\n- R1-F1 closed: clause parsing repaired.\n"
+            "- Reference IDs X1-F2, CD1-F1, R9-F2, A1-F1, and H3-F1 are closed as examples.\n"
+            "## Review — Round 2\n- Verdict: PASS\n"
         )
         self.assertEqual(MODULE.ownerless_findings(path), [])
 
