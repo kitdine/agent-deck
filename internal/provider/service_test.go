@@ -1246,10 +1246,10 @@ func TestUseRecordsWhetherTheClaudeClientAlreadyHeldACredential(t *testing.T) {
 	}{
 		{"subscription client holds nothing", `{"model":"opus"}`, 0},
 		{"client already carries a managed token", `{"env":{"ANTHROPIC_AUTH_TOKEN":"synthetic-secret"}}`, 1},
-		// Distinct literal: the redactor only strips ANTHROPIC_AUTH_TOKEN, so an
-		// unmanaged key would still be present and the leak assertion below is
-		// deliberately scoped to the credential AgentDeck itself writes. That
-		// gap is real but belongs to its own triage, not to this fix.
+		// Distinct literal so the leak assertion below covers the unmanaged
+		// credential separately from the managed one. The redactor once
+		// stripped only ANTHROPIC_AUTH_TOKEN and copied this key into the
+		// backup verbatim; see docs/fixes/claude-backup-api-key-redaction.md.
 		{"client carries an unmanaged api key", `{"env":{"ANTHROPIC_API_KEY":"unmanaged-key-literal"}}`, 1},
 		{"client carries an api key helper", `{"apiKeyHelper":"/bin/echo"}`, 1},
 	} {
@@ -1278,13 +1278,16 @@ func TestUseRecordsWhetherTheClaudeClientAlreadyHeldACredential(t *testing.T) {
 			if !priorKeyed.Valid || priorKeyed.Int64 != test.wantPriorKeyed {
 				t.Fatalf("prior_keyed = %v, want %d", priorKeyed, test.wantPriorKeyed)
 			}
-			// The backup must still not carry the credential AgentDeck manages.
+			// The backup must carry neither the credential AgentDeck manages nor
+			// the one it only observes.
 			backup, err := os.ReadFile(filepath.Join(root, "backup.json"))
 			if err != nil {
 				t.Fatal(err)
 			}
-			if strings.Contains(string(backup), "synthetic-secret") {
-				t.Fatalf("backup leaked the credential: %s", backup)
+			for _, secret := range []string{"synthetic-secret", "unmanaged-key-literal"} {
+				if strings.Contains(string(backup), secret) {
+					t.Fatalf("backup leaked %s: %s", secret, backup)
+				}
 			}
 		})
 	}

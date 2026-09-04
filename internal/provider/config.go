@@ -803,6 +803,20 @@ func WriteRedactedBackup(client Client, source, destination string) error {
 		}
 		if env, ok := document["env"].(map[string]any); ok {
 			delete(env, "ANTHROPIC_AUTH_TOKEN")
+			// ANTHROPIC_API_KEY is a credential AgentDeck never writes into the
+			// client file, but the backup is AgentDeck's own file and excludes
+			// credential values rather than only the one key it manages. Not
+			// owning the key in settings.json is a reason never to clear it
+			// there; it is not a reason to copy it into a second file.
+			// apiKeyHelper stays, scoped deliberately: this redactor drops
+			// direct API-key values, and the helper is a command setting
+			// rather than one of them, so dropping it would lose restorable
+			// configuration. That is not a claim that the helper cannot carry
+			// a secret -- a command line can embed one -- only that whether a
+			// command string counts as a credential here is a separate
+			// decision, triaged on its own. See
+			// docs/fixes/claude-backup-api-key-redaction.md.
+			delete(env, "ANTHROPIC_API_KEY")
 		}
 		contents, err = json.MarshalIndent(document, "", "  ")
 		if err != nil {

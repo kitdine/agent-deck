@@ -944,6 +944,53 @@ func TestWriteRedactedBackupForCodexAndClaudeCreatesParentAndRedactsCredential(t
 	}
 }
 
+// The backup exists to keep an interrupted operation diagnosable, and Recover
+// documents that it "intentionally excludes credential values" -- values, not
+// the single key AgentDeck happens to write. ANTHROPIC_API_KEY holds a value
+// Claude honors, so leaving it in place copies a credential AgentDeck does not
+// own into a second file. apiKeyHelper is asserted to survive for a scoped
+// reason: it is a command setting rather than a direct API-key value, and this
+// redactor drops the latter, so removing it would cost restorable
+// configuration. A helper command line can still embed a secret; whether such a
+// string counts as a credential here is a separate decision left to its own
+// triage, so this assertion pins today's boundary rather than declaring the
+// helper credential-free.
+func TestWriteRedactedBackupDropsTheUnmanagedClaudeAPIKey(t *testing.T) {
+	root := t.TempDir()
+	source, destination := filepath.Join(root, "settings.json"), filepath.Join(root, "backup", "settings.json.redacted")
+	contents := `{"env":{"ANTHROPIC_API_KEY":"unmanaged-secret","ANTHROPIC_BASE_URL":"https://provider.example","OTHER":"keep"},"apiKeyHelper":"/bin/echo helper","model":"opus"}`
+	if err := os.WriteFile(source, []byte(contents), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteRedactedBackup(ClientClaude, source, destination); err != nil {
+		t.Fatal(err)
+	}
+	backup, err := os.ReadFile(destination)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(backup), "unmanaged-secret") {
+		t.Fatalf("claude backup contains the unmanaged api key: %s", backup)
+	}
+	var document struct {
+		Env          map[string]string `json:"env"`
+		APIKeyHelper string            `json:"apiKeyHelper"`
+		Model        string            `json:"model"`
+	}
+	if err = json.Unmarshal(backup, &document); err != nil {
+		t.Fatalf("claude backup is not parseable JSON: %v\n%s", err, backup)
+	}
+	if _, present := document.Env["ANTHROPIC_API_KEY"]; present {
+		t.Fatalf("claude backup retained the api key: %#v", document)
+	}
+	if document.Env["ANTHROPIC_BASE_URL"] != "https://provider.example" || document.Env["OTHER"] != "keep" || document.Model != "opus" {
+		t.Fatalf("claude backup dropped restorable configuration: %#v\n%s", document, backup)
+	}
+	if document.APIKeyHelper != "/bin/echo helper" {
+		t.Fatalf("claude backup dropped the helper command, which this redactor scopes out as a command setting rather than a direct API-key value: %#v", document)
+	}
+}
+
 func TestWriteRedactedBackupRejectsUnsupportedClient(t *testing.T) {
 	root := t.TempDir()
 	source := filepath.Join(root, "config.toml")
