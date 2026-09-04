@@ -92,14 +92,16 @@ is recorded in `roadmap.md`.
   Of 47 route-less Claude sessions in that snapshot, 46 are claude-mem
   `observer-sessions/` SDK sessions with one event each; the other two started
   before `rc.5` was installed and hold 675 events. Those events remain
-  `inferred` under the reviewed fail-closed contract because no accepted
-  process-start lower bound exists. Three interactive-session samples place
-  transcript birthtime 5–12 seconds before `first_at`, but they do not cover
-  resume, SDK observer sessions, transcript copies, or restore behavior and do
-  not yet establish a general process-start boundary. Whether the repository
-  can accept such a source belongs to the read-only investigation on
-  `ad-bug-claude-no-route-quality`; it is not a defect conclusion of this
-  release status or the notarization acceptance.
+  `inferred` in the released `rc.5` behavior under the reviewed fail-closed
+  contract. The uncommitted Lane A candidate on
+  `ad-bug-claude-no-route-quality` now attempts to derive a process boundary
+  from transcript timestamps. Re-review Round 7 passed: the exact implementation
+  state has eight active required criteria with relation-bound pass evidence,
+  the Development Gate and Beads task boundary are synchronized, and all scoped
+  findings are closed. The Task is at its commit checkpoint with gate
+  `VERIFIED`; the plaintext `ANTHROPIC_API_KEY` backup path remains carried by
+  `ad-bug-claude-backup-api-key-redaction`. None of that candidate state changes
+  this release status or the notarization acceptance.
 - The Cask exclusion guard was not exercised live, because reproducing it means
   installing the conflicting CLI-only formula; it rests on the real
   `brew install --cask` regression that passed in this commit's L4 aggregate.

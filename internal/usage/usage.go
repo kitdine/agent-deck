@@ -35,11 +35,25 @@ var bundledCatalog []byte
 const (
 	bundledCatalogSourceURL       = "bundled://agentdeck/model-prices.json"
 	legacyBundledCatalogSourceURL = "bundled://config/model-prices.json"
+	// usageParserVersion 7 captures each transcript's opening record as the
+	// session's process start. It is only readable from offset zero, so version 6
+	// sources must be re-read: an incremental scan skips a file whose size and
+	// mtime are unchanged, which is every existing source, and the attribution
+	// would keep falling back to the anchor walk for the whole store.
+	//
 	// usageParserVersion 6 adds the activity-classification reduction and the
 	// read-shaped shell flag used by workflow rework metrics. Version 5 sources
 	// must be re-read after schema v21 replaces the reserved signal table, or an
 	// upgraded store would expose empty signals until every source changed.
-	usageParserVersion = 6
+	usageParserVersion = 7
+	// sessionStartLayout is RFC3339 with the fraction always written to nine
+	// digits. time.RFC3339Nano drops trailing zeros, which makes its lexical
+	// order disagree with time order inside a second — "…00Z" sorts after
+	// "…00.5Z" because '.' precedes 'Z'. This value is compared as text by
+	// SQL MIN when a session is rebuilt from several transcripts, so a padded
+	// fraction is what keeps that aggregate a real minimum. It parses back with
+	// time.RFC3339Nano unchanged.
+	sessionStartLayout = "2006-01-02T15:04:05.000000000Z07:00"
 )
 
 var tokenNames = []string{"input_tokens", "cached_input_tokens", "output_tokens", "cache_read_tokens", "cache_creation_tokens", "cache_write_5m_tokens", "cache_write_1h_tokens", "cache_write_tokens"}
@@ -925,8 +939,13 @@ func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceR
 	var cumulativeJSON string
 	var parserVersion int
 	state := parseState{codexCumulative: map[string]map[string]int64{}}
-	row := s.Store.DB.QueryRowContext(ctx, "SELECT cursor,identity,size,modified_at,prefix_hash,COALESCE(session_id,''),COALESCE(turn_id,''),COALESCE(model,''),parser_version,codex_cumulative_json FROM usage_source_files WHERE path=?", path)
-	loadErr := row.Scan(&cursor, &oldIdentity, &oldSize, &oldModified, &oldHash, &state.session, &state.turn, &state.model, &parserVersion, &cumulativeJSON)
+	// priorStarted survives the reset below on purpose. A rewritten transcript
+	// has already dropped its earliest records, so the value captured before the
+	// rewrite is the better observation and the one that stays.
+	var priorStarted string
+	row := s.Store.DB.QueryRowContext(ctx, "SELECT cursor,identity,size,modified_at,prefix_hash,COALESCE(session_id,''),COALESCE(turn_id,''),COALESCE(model,''),COALESCE(session_started_at,''),parser_version,codex_cumulative_json FROM usage_source_files WHERE path=?", path)
+	loadErr := row.Scan(&cursor, &oldIdentity, &oldSize, &oldModified, &oldHash, &state.session, &state.turn, &state.model, &priorStarted, &parserVersion, &cumulativeJSON)
+	state.startedAt = priorStarted
 	found := loadErr == nil
 	if loadErr != nil && !errors.Is(loadErr, sql.ErrNoRows) {
 		return r, loadErr
@@ -1012,6 +1031,15 @@ func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceR
 			offset += next
 			line = line[idx+1:]
 			continue
+		}
+		// Claude only: Codex encodes its session creation time in a UUIDv7 id and
+		// its branch of the judgement is unchanged, so nothing reads this for it.
+		if client == "claude" && state.startedAt == "" {
+			if ts, ok := value["timestamp"].(string); ok {
+				if parsed, parseErr := time.Parse(time.RFC3339Nano, ts); parseErr == nil {
+					state.startedAt = parsed.UTC().Format(sessionStartLayout)
+				}
+			}
 		}
 		ev, ok := parse(client, value, &state, path, offset)
 		toolActivities = append(toolActivities, activityParser.Parse(value, offset)...)
@@ -1120,7 +1148,11 @@ func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceR
 	if err != nil {
 		return r, err
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO usage_source_files(path,identity,size,cursor,prefix_hash,session_id,turn_id,model,parser_version,codex_cumulative_json,imported,replaced,malformed,unsupported,modified_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(path) DO UPDATE SET identity=excluded.identity,size=excluded.size,cursor=excluded.cursor,prefix_hash=excluded.prefix_hash,session_id=excluded.session_id,turn_id=excluded.turn_id,model=excluded.model,parser_version=excluded.parser_version,codex_cumulative_json=excluded.codex_cumulative_json,imported=usage_source_files.imported+excluded.imported,replaced=usage_source_files.replaced+excluded.replaced,malformed=usage_source_files.malformed+excluded.malformed,unsupported=usage_source_files.unsupported+excluded.unsupported,modified_at=excluded.modified_at`, path, entry.Identity, entry.Size, cursor, hash(anchor), state.session, state.turn, state.model, usageParserVersion, string(cumulativeBytes), r["imported"], r["replaced"], r["malformed"], r["unsupported"], entry.ModifiedAt)
+	// The stored start is a lower bound: whichever observation is earlier wins,
+	// so a rewrite that lost the opening records cannot move a session's start
+	// later and widen its span into a segment the process never ran in.
+	startedAt := earlierSessionStart(priorStarted, state.startedAt)
+	_, err = tx.ExecContext(ctx, `INSERT INTO usage_source_files(path,identity,size,cursor,prefix_hash,session_id,turn_id,model,session_started_at,parser_version,codex_cumulative_json,imported,replaced,malformed,unsupported,modified_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(path) DO UPDATE SET identity=excluded.identity,size=excluded.size,cursor=excluded.cursor,prefix_hash=excluded.prefix_hash,session_id=excluded.session_id,turn_id=excluded.turn_id,model=excluded.model,session_started_at=excluded.session_started_at,parser_version=excluded.parser_version,codex_cumulative_json=excluded.codex_cumulative_json,imported=usage_source_files.imported+excluded.imported,replaced=usage_source_files.replaced+excluded.replaced,malformed=usage_source_files.malformed+excluded.malformed,unsupported=usage_source_files.unsupported+excluded.unsupported,modified_at=excluded.modified_at`, path, entry.Identity, entry.Size, cursor, hash(anchor), state.session, state.turn, state.model, startedAt, usageParserVersion, string(cumulativeBytes), r["imported"], r["replaced"], r["malformed"], r["unsupported"], entry.ModifiedAt)
 	if err != nil {
 		return r, err
 	}
@@ -1183,9 +1215,16 @@ func hash(b []byte) string { sum := sha256.Sum256(b); return hex.EncodeToString(
 
 type parseState struct {
 	session, turn, model string
-	turnIndex            int
-	claudePending        bool
-	codexCumulative      map[string]map[string]int64
+	// startedAt is the first record timestamp in this transcript. Claude writes
+	// that record when the process creates the session file, so it dates the
+	// process start: measured against the one startup route this store holds,
+	// it trails the hook by 2.078 seconds, while first_at trails it by 26.6.
+	// Only a scan that reads from offset zero can see it, so it is carried
+	// forward from the stored value on every incremental scan.
+	startedAt       string
+	turnIndex       int
+	claudePending   bool
+	codexCumulative map[string]map[string]int64
 	// signals accumulates the reduction of each turn-opening message seen in
 	// this scan. Only the reduction is kept, per Decision 2; the text does not
 	// leave the parse call that read it.
@@ -1529,7 +1568,10 @@ func rebuildSessions(ctx context.Context, tx *sql.Tx, affected map[string][2]str
 		if _, err := tx.ExecContext(ctx, "DELETE FROM usage_sessions WHERE client=? AND session_id=?", pair[0], pair[1]); err != nil {
 			return err
 		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO usage_sessions(client,session_id,first_at,last_at) SELECT client,session_id,MIN(event_at),MAX(event_at) FROM usage_events WHERE client=? AND session_id=? GROUP BY client,session_id`, pair[0], pair[1]); err != nil {
+		// A session can span several transcripts — subagent files carry the same
+		// session id — and every one of them opens after the session did, so the
+		// earliest observation is the session's own start.
+		if _, err := tx.ExecContext(ctx, `INSERT INTO usage_sessions(client,session_id,first_at,last_at,started_at) SELECT client,session_id,MIN(event_at),MAX(event_at),COALESCE((SELECT MIN(f.session_started_at) FROM usage_source_files f WHERE f.session_id=? AND f.session_started_at<>''),'') FROM usage_events WHERE client=? AND session_id=? GROUP BY client,session_id`, pair[1], pair[0], pair[1]); err != nil {
 			return err
 		}
 	}
@@ -2261,8 +2303,12 @@ type storedEvent struct {
 	// runStart is the instant the run pinned its provider, so an exact
 	// run-bound event reads its route from the same moment its provider came
 	// from rather than from the session start, which may predate a switch.
-	runStart     sql.NullString
+	runStart sql.NullString
+	// sessionStart is first_at, the first billable event. processStart is the
+	// transcript's opening record, which dates the process itself; it is empty
+	// for a session scanned only after its transcript was rewritten.
 	sessionStart sql.NullString
+	processStart sql.NullString
 	sessionEnd   sql.NullString
 }
 
@@ -2772,29 +2818,47 @@ func runtimeRouteWasWrapped(timeline store.ProviderTimeline, client, provider st
 	return runtimeProviderName(snapshot.Name) == provider && snapshot.ViaWrapper
 }
 
-func sessionSpan(event storedEvent) (start, end time.Time, startKnown bool, err error) {
+// sessionSpan bounds the session an event belongs to. processObserved reports
+// whether the opening bound is the process start itself rather than the first
+// billable event, which is what decides if the span may be read as the interval
+// the process actually ran in.
+func sessionSpan(event storedEvent) (start, end time.Time, startKnown, processObserved bool, err error) {
 	eventAt, err := time.Parse(time.RFC3339Nano, event.EventAt)
 	if err != nil {
-		return time.Time{}, time.Time{}, false, err
+		return time.Time{}, time.Time{}, false, false, err
 	}
 	start, end = eventAt, eventAt
 	if event.sessionStart.Valid && event.sessionStart.String != "" {
 		start, err = time.Parse(time.RFC3339Nano, event.sessionStart.String)
 		if err != nil {
-			return time.Time{}, time.Time{}, false, err
+			return time.Time{}, time.Time{}, false, false, err
 		}
 		startKnown = true
+	}
+	// The process start opens the span whenever it is the earlier of the two.
+	// Taking the earlier one keeps it a lower bound, so a transcript rewritten
+	// before it was ever scanned — its opening records already gone, leaving a
+	// value later than first_at — narrows nothing and is simply ignored.
+	if startKnown && event.processStart.Valid && event.processStart.String != "" {
+		processStart, parseErr := time.Parse(time.RFC3339Nano, event.processStart.String)
+		if parseErr != nil {
+			return time.Time{}, time.Time{}, false, false, parseErr
+		}
+		if processStart.Before(start) {
+			start = processStart
+			processObserved = true
+		}
 	}
 	if event.sessionEnd.Valid && event.sessionEnd.String != "" {
 		sessionEnd, parseErr := time.Parse(time.RFC3339Nano, event.sessionEnd.String)
 		if parseErr != nil {
-			return time.Time{}, time.Time{}, false, parseErr
+			return time.Time{}, time.Time{}, false, false, parseErr
 		}
 		if sessionEnd.After(end) {
 			end = sessionEnd
 		}
 	}
-	return start, end, startKnown, nil
+	return start, end, startKnown, processObserved, nil
 }
 
 const (
@@ -2859,22 +2923,126 @@ func routeQuality(client string, route readSessionRoute, prior, current store.Pr
 	}
 }
 
-func timelineSnapshotQuality(client string, initial store.ProviderSnapshot, changes []store.ProviderSnapshot) string {
+// earlierSessionStart merges two observations of the same session's start by
+// time, not by text. A value carried over from before a rewrite and one just
+// read can differ in fractional digits, and comparing those as strings picks the
+// wrong one inside a shared second.
+func earlierSessionStart(left, right string) string {
+	if left == "" {
+		return right
+	}
+	if right == "" {
+		return left
+	}
+	leftAt, leftErr := time.Parse(time.RFC3339Nano, left)
+	rightAt, rightErr := time.Parse(time.RFC3339Nano, right)
+	if leftErr != nil {
+		return right
+	}
+	if rightErr != nil {
+		return left
+	}
+	if leftAt.Before(rightAt) {
+		return left
+	}
+	return right
+}
+
+// lastLiveAnchor returns the latest transition a running Claude process would
+// have adopted. Such a transition is a synchronisation point: whenever the
+// process started before it, it was re-authenticated there, so every possible
+// start collapses onto the same provider and the history in front of it stops
+// mattering. It is what makes a session determinable when its own start is not
+// observed.
+//
+// Only a transition with both sides recorded qualifies. The timeline's own first
+// snapshot does not: nothing says what the machine was configured with before
+// AgentDeck first saw it, so a process that started earlier may still be holding
+// that, and a first entry which is itself a rotation is evidence something
+// preceded it. With no qualifying anchor the span is not determinable and the
+// caller stays inferred.
+// The anchor must hold against every start the evidence leaves open, so it
+// cannot be found by comparing two adjacent timeline entries: writing a key is
+// only picked up by a process that holds none, and once any keyed state exists
+// in the history a process may be carrying it — precisely because the change
+// that removed it was one no running process adopts. The transition safe against
+// all of them is the first credential ever recorded, reached while everything
+// before it was keyless.
+//
+// Whether the very first entry qualifies is a question about the state that
+// preceded the timeline, and the two ways of not knowing are not the same.
+//
+// PriorKeyed false is recorded proof the client held nothing, so the write
+// re-authenticated whatever was running. PriorKeyed true is recorded proof it
+// held something AgentDeck never managed, and that is a live possibility rather
+// than a hypothetical — on a store whose timeline is days old, a process from
+// before it is an ordinary process — so that entry does not anchor.
+//
+// Unrecorded is the third case, and it is decided rather than derived: it would
+// require a process older than the entire provider timeline to still be running
+// and billing. Treating that as open would leave no reachable anchor on any
+// store predating this column, which is every existing one, and an `exact` tier
+// that no history can ever reach is not a tier. Such a selection therefore
+// anchors, and the assumption is recorded in the fix record instead of being
+// paid for in permanent fail-closed.
+func firstKeyAnchor(timeline []store.ProviderSnapshot) (store.ProviderSnapshot, int, bool) {
+	for index, snapshot := range timeline {
+		if snapshot.Credential == "" {
+			continue
+		}
+		if index == 0 && snapshot.PriorKeyed.Valid && snapshot.PriorKeyed.Bool {
+			return store.ProviderSnapshot{}, 0, false
+		}
+		return snapshot, index, true
+	}
+	return store.ProviderSnapshot{}, 0, false
+}
+
+func sameRuntimeAttribution(left, right store.ProviderSnapshot) bool {
+	return runtimeProviderName(left.Name) == runtimeProviderName(right.Name) &&
+		left.Multiplier == right.Multiplier && left.ViaWrapper == right.ViaWrapper
+}
+
+// timelineSnapshotAttribution decides what a session without a route was billing
+// at, and whether that is determinable. A session adopts the provider it started
+// under and keeps it until something the process actually acts on changes it, so
+// a span with no change is exact for both clients — the reading is fixed by the
+// start, not by whatever the file names later.
+//
+// Claude has one transition a running process does adopt: writing its first
+// credential while it holds none re-authenticates it mid-session. Rotating a
+// key, removing one, or editing an endpoint does not, so those leave the process
+// on what it already presented. That is why Claude resolves at least as much as
+// Codex here rather than less, and it returns the effective snapshot because a
+// live transition moves the provider the event must be priced at.
+//
+// A change the process does not adopt is only determinable while nothing could
+// have restarted across it. A restart writes a route, and this path has none, so
+// the span stops being determinable there.
+func timelineSnapshotAttribution(client string, initial store.ProviderSnapshot, changes []store.ProviderSnapshot) (string, store.ProviderSnapshot) {
 	switch client {
 	case "codex":
 		for _, change := range changes {
-			if runtimeProviderName(change.Name) != runtimeProviderName(initial.Name) || change.Multiplier != initial.Multiplier || change.ViaWrapper != initial.ViaWrapper {
-				return "estimated"
+			if !sameRuntimeAttribution(initial, change) {
+				return "estimated", initial
 			}
 		}
-		return "exact"
+		return "exact", initial
 	case "claude":
-		// Claude session IDs and transcripts do not carry a trustworthy process
-		// start. Without a session route, a snapshot at first_at cannot prove
-		// whether the process started before an earlier live key transition.
-		return "estimated"
+		effective := initial
+		for _, change := range changes {
+			if !configChangeRetainsPrior(effective, change) {
+				effective = change
+				continue
+			}
+			if sameRuntimeAttribution(effective, change) {
+				continue
+			}
+			return "estimated", effective
+		}
+		return "exact", effective
 	default:
-		return "estimated"
+		return "estimated", initial
 	}
 }
 
@@ -2993,7 +3161,7 @@ func resolveSessionAttribution(event storedEvent, routeAt sessionRouteLookup, sn
 	if err != nil {
 		return resolvedSessionAttribution{}, err
 	}
-	startAt, endAt, startKnown, err := sessionSpan(event)
+	startAt, endAt, startKnown, processObserved, err := sessionSpan(event)
 	if err != nil {
 		return resolvedSessionAttribution{}, err
 	}
@@ -3031,13 +3199,48 @@ func resolveSessionAttribution(event storedEvent, routeAt sessionRouteLookup, sn
 		result.spendEligible = result.provider != "unknown"
 		return result, nil
 	}
-	changes, changesErr := snapshotsBetween(event.Client, startAt, endAt)
-	if changesErr != nil {
-		return resolvedSessionAttribution{}, changesErr
+	// Claude walks only as far as the event being priced, because a live
+	// transition after it cannot have changed what this event billed at. Codex
+	// keeps the whole session span it already used: it adopts nothing live, so
+	// the two ends agree, and narrowing it would be an unrelated change.
+	spanEnd := endAt
+	if event.Client == "claude" {
+		spanEnd = eventAt
 	}
-	result.quality = timelineSnapshotQuality(event.Client, snapshot, changes)
+	// walkStart is where the process is known to have been. With an observed
+	// process start that is the start itself. Without one — a transcript
+	// rewritten before it was ever scanned, or a session stored before this was
+	// captured — first_at only bounds the process from the wrong side, so the
+	// walk falls back to the last transition a running process would have
+	// adopted, which every earlier start collapses onto.
+	walkFrom := snapshot
+	var changes []store.ProviderSnapshot
+	if event.Client == "claude" && !processObserved {
+		timeline, timelineErr := snapshotsBetween(event.Client, time.Time{}, spanEnd)
+		if timelineErr != nil {
+			return resolvedSessionAttribution{}, timelineErr
+		}
+		anchor, index, anchored := firstKeyAnchor(timeline)
+		if !anchored {
+			result.quality = "estimated"
+			result.reason = attributionReasonTimelineSnapshot
+			result.viaWrapper = result.provider != "unknown" && snapshot.ViaWrapper
+			result.spendEligible = result.provider != "unknown"
+			return result, nil
+		}
+		walkFrom, changes = anchor, timeline[index+1:]
+	} else {
+		var changesErr error
+		if changes, changesErr = snapshotsBetween(event.Client, startAt, spanEnd); changesErr != nil {
+			return resolvedSessionAttribution{}, changesErr
+		}
+	}
+	quality, effective := timelineSnapshotAttribution(event.Client, walkFrom, changes)
+	result.quality = quality
+	result.provider = runtimeProviderName(effective.Name)
+	result.multiplier = effective.Multiplier
 	result.reason = attributionReasonTimelineSnapshot
-	result.viaWrapper = result.provider != "unknown" && snapshot.ViaWrapper
+	result.viaWrapper = result.provider != "unknown" && effective.ViaWrapper
 	result.spendEligible = result.provider != "unknown"
 	return result, nil
 }
@@ -3492,7 +3695,7 @@ func (s *Service) Sessions(ctx context.Context) ([]SessionSummary, error) {
 	return out, nil
 }
 func (s *Service) events(ctx context.Context, client, session string) ([]storedEvent, error) {
-	q := `SELECT e.event_key,e.client,e.session_id,e.event_id,e.event_at,e.model,COALESCE(e.turn_index,0),e.input_tokens,e.cached_input_tokens,e.output_tokens,e.cache_read_tokens,e.cache_creation_tokens,e.cache_write_5m_tokens,e.cache_write_1h_tokens,e.cache_write_tokens,e.source_path,e.source_offset,COALESCE(b.run_id,e.run_id),r.exact,r.multiplier,r.provider,r.started_at,us.first_at,us.last_at FROM usage_events e LEFT JOIN usage_run_bindings b ON b.event_key=e.event_key LEFT JOIN usage_runs r ON r.id=COALESCE(b.run_id,e.run_id) LEFT JOIN usage_sessions us ON us.client=e.client AND us.session_id=e.session_id`
+	q := `SELECT e.event_key,e.client,e.session_id,e.event_id,e.event_at,e.model,COALESCE(e.turn_index,0),e.input_tokens,e.cached_input_tokens,e.output_tokens,e.cache_read_tokens,e.cache_creation_tokens,e.cache_write_5m_tokens,e.cache_write_1h_tokens,e.cache_write_tokens,e.source_path,e.source_offset,COALESCE(b.run_id,e.run_id),r.exact,r.multiplier,r.provider,r.started_at,us.first_at,us.started_at,us.last_at FROM usage_events e LEFT JOIN usage_run_bindings b ON b.event_key=e.event_key LEFT JOIN usage_runs r ON r.id=COALESCE(b.run_id,e.run_id) LEFT JOIN usage_sessions us ON us.client=e.client AND us.session_id=e.session_id`
 	args := []any{}
 	where := []string{}
 	if client != "" {
@@ -3516,7 +3719,7 @@ func (s *Service) events(ctx context.Context, client, session string) ([]storedE
 	for rows.Next() {
 		var e storedEvent
 		var in, cached, outTokens, read, creation, write5, write1, write int64
-		err = rows.Scan(&e.Key, &e.Client, &e.SessionID, &e.EventID, &e.EventAt, &e.Model, &e.TurnIndex, &in, &cached, &outTokens, &read, &creation, &write5, &write1, &write, &e.SourcePath, &e.SourceOffset, &e.runID, &e.runExact, &e.runMultiplier, &e.runProvider, &e.runStart, &e.sessionStart, &e.sessionEnd)
+		err = rows.Scan(&e.Key, &e.Client, &e.SessionID, &e.EventID, &e.EventAt, &e.Model, &e.TurnIndex, &in, &cached, &outTokens, &read, &creation, &write5, &write1, &write, &e.SourcePath, &e.SourceOffset, &e.runID, &e.runExact, &e.runMultiplier, &e.runProvider, &e.runStart, &e.sessionStart, &e.processStart, &e.sessionEnd)
 		if err != nil {
 			return nil, err
 		}
@@ -3527,7 +3730,7 @@ func (s *Service) events(ctx context.Context, client, session string) ([]storedE
 }
 
 func (s *Service) eventsRange(ctx context.Context, from, to time.Time, client, model string) ([]storedEvent, error) {
-	query := `SELECT e.event_key,e.client,e.session_id,e.event_id,e.event_at,e.model,COALESCE(e.turn_index,0),e.input_tokens,e.cached_input_tokens,e.output_tokens,e.cache_read_tokens,e.cache_creation_tokens,e.cache_write_5m_tokens,e.cache_write_1h_tokens,e.cache_write_tokens,e.source_path,e.source_offset,COALESCE(b.run_id,e.run_id),r.exact,r.multiplier,r.provider,r.started_at,us.first_at,us.last_at FROM usage_events e LEFT JOIN usage_run_bindings b ON b.event_key=e.event_key LEFT JOIN usage_runs r ON r.id=COALESCE(b.run_id,e.run_id) LEFT JOIN usage_sessions us ON us.client=e.client AND us.session_id=e.session_id WHERE e.event_at>=? AND e.event_at<?`
+	query := `SELECT e.event_key,e.client,e.session_id,e.event_id,e.event_at,e.model,COALESCE(e.turn_index,0),e.input_tokens,e.cached_input_tokens,e.output_tokens,e.cache_read_tokens,e.cache_creation_tokens,e.cache_write_5m_tokens,e.cache_write_1h_tokens,e.cache_write_tokens,e.source_path,e.source_offset,COALESCE(b.run_id,e.run_id),r.exact,r.multiplier,r.provider,r.started_at,us.first_at,us.started_at,us.last_at FROM usage_events e LEFT JOIN usage_run_bindings b ON b.event_key=e.event_key LEFT JOIN usage_runs r ON r.id=COALESCE(b.run_id,e.run_id) LEFT JOIN usage_sessions us ON us.client=e.client AND us.session_id=e.session_id WHERE e.event_at>=? AND e.event_at<?`
 	args := []any{from.UTC().Format(time.RFC3339Nano), to.UTC().Format(time.RFC3339Nano)}
 	if client != "" {
 		query += ` AND e.client=?`
@@ -3547,7 +3750,7 @@ func (s *Service) eventsRange(ctx context.Context, from, to time.Time, client, m
 	for rows.Next() {
 		var event storedEvent
 		var input, cached, output, read, creation, write5, write1, write int64
-		if err = rows.Scan(&event.Key, &event.Client, &event.SessionID, &event.EventID, &event.EventAt, &event.Model, &event.TurnIndex, &input, &cached, &output, &read, &creation, &write5, &write1, &write, &event.SourcePath, &event.SourceOffset, &event.runID, &event.runExact, &event.runMultiplier, &event.runProvider, &event.runStart, &event.sessionStart, &event.sessionEnd); err != nil {
+		if err = rows.Scan(&event.Key, &event.Client, &event.SessionID, &event.EventID, &event.EventAt, &event.Model, &event.TurnIndex, &input, &cached, &output, &read, &creation, &write5, &write1, &write, &event.SourcePath, &event.SourceOffset, &event.runID, &event.runExact, &event.runMultiplier, &event.runProvider, &event.runStart, &event.sessionStart, &event.processStart, &event.sessionEnd); err != nil {
 			return nil, err
 		}
 		event.Tokens = map[string]int64{"input_tokens": input, "cached_input_tokens": cached, "output_tokens": output, "cache_read_tokens": read, "cache_creation_tokens": creation, "cache_write_5m_tokens": write5, "cache_write_1h_tokens": write1, "cache_write_tokens": write}

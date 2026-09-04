@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -199,6 +201,32 @@ func ClaudeCredentialConflicts(path string) ([]string, error) {
 		return nil, err
 	}
 	return conflictsFromClaudeDocument(document), nil
+}
+
+// ClaudeConfigIsKeyed reports whether the Claude configuration presents any
+// credential at all, counting the one AgentDeck manages and the two it only ever
+// observes. A running process re-authenticates when a credential is written to a
+// client that had none, so this is the fact that decides whether a selection was
+// adopted live -- and it must be read before the file is replaced, since
+// afterwards the previous state is gone. A missing file is keyless, not an
+// error: that is a client with nothing configured.
+func ClaudeConfigIsKeyed(path string) (bool, error) {
+	contents, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	var document map[string]any
+	if err := json.Unmarshal(contents, &document); err != nil {
+		return false, err
+	}
+	environment, _ := document["env"].(map[string]any)
+	if _, present := environment["ANTHROPIC_AUTH_TOKEN"]; present {
+		return true, nil
+	}
+	return configuresCredential(environment["ANTHROPIC_API_KEY"]) || configuresCredential(document["apiKeyHelper"]), nil
 }
 
 func conflictsFromClaudeDocument(document map[string]any) []string {

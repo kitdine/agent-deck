@@ -1232,3 +1232,60 @@ func newProviderSelectionIsolationFixture(t *testing.T) providerSelectionIsolati
 		nextProviderID:  nextProvider.ID,
 	}
 }
+
+// The prior credential state has to be read before the config is replaced, and
+// the redacted backup written moments later deliberately drops the token — so
+// this is the only point at which the fact still exists. It decides whether a
+// selection re-authenticated a running process, which is what lets attribution
+// classify the very first selection a machine ever recorded.
+func TestUseRecordsWhetherTheClaudeClientAlreadyHeldACredential(t *testing.T) {
+	ctx := context.Background()
+	for _, test := range []struct {
+		name, existing string
+		wantPriorKeyed int64
+	}{
+		{"subscription client holds nothing", `{"model":"opus"}`, 0},
+		{"client already carries a managed token", `{"env":{"ANTHROPIC_AUTH_TOKEN":"synthetic-secret"}}`, 1},
+		// Distinct literal: the redactor only strips ANTHROPIC_AUTH_TOKEN, so an
+		// unmanaged key would still be present and the leak assertion below is
+		// deliberately scoped to the credential AgentDeck itself writes. That
+		// gap is real but belongs to its own triage, not to this fix.
+		{"client carries an unmanaged api key", `{"env":{"ANTHROPIC_API_KEY":"unmanaged-key-literal"}}`, 1},
+		{"client carries an api key helper", `{"apiKeyHelper":"/bin/echo"}`, 1},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			root := t.TempDir()
+			database, err := store.Open(ctx, filepath.Join(root, "state"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer database.Close()
+			service := Service{Store: database, Vault: testCredentialVault(t)}
+			if _, err := service.Add(ctx, Definition{Name: "example", Endpoint: "https://provider.example", Clients: []Client{ClientClaude}, CredentialRef: "agentdeck:provider:example"}, "synthetic-secret"); err != nil {
+				t.Fatal(err)
+			}
+			config := filepath.Join(root, "settings.json")
+			if err := os.WriteFile(config, []byte(test.existing), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := service.Use(ctx, "example", ClientClaude, config, filepath.Join(root, "backup.json")); err != nil {
+				t.Fatal(err)
+			}
+			var priorKeyed sql.NullInt64
+			if err := database.DB.QueryRowContext(ctx, `SELECT prior_keyed FROM provider_selections WHERE client='claude' ORDER BY id DESC LIMIT 1`).Scan(&priorKeyed); err != nil {
+				t.Fatal(err)
+			}
+			if !priorKeyed.Valid || priorKeyed.Int64 != test.wantPriorKeyed {
+				t.Fatalf("prior_keyed = %v, want %d", priorKeyed, test.wantPriorKeyed)
+			}
+			// The backup must still not carry the credential AgentDeck manages.
+			backup, err := os.ReadFile(filepath.Join(root, "backup.json"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(string(backup), "synthetic-secret") {
+				t.Fatalf("backup leaked the credential: %s", backup)
+			}
+		})
+	}
+}

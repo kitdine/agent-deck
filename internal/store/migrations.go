@@ -193,6 +193,28 @@ var migrations = []migration{
 		`CREATE INDEX usage_work_signals_kind ON usage_work_signals(activity_kind, started_at)`,
 		`CREATE INDEX usage_work_signals_source ON usage_work_signals(source_path)`,
 	}},
+	// A session's process start is in the transcript's first record; first_at is
+	// its first billable event, a median 61 seconds later. The judgement needs
+	// the former: a span that opens at first_at cannot rule out that the process
+	// started inside an earlier provider segment, which is the whole reason the
+	// Claude branch of timelineSnapshotQuality was removed. session_started_at
+	// is per file because that is where the record is read; started_at is its
+	// aggregate on the session, rebuilt with first_at and last_at.
+	{version: 22, statements: []string{
+		`ALTER TABLE usage_source_files ADD COLUMN session_started_at TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE usage_sessions ADD COLUMN started_at TEXT NOT NULL DEFAULT ''`,
+	}},
+	// Whether the client already presented a credential at the instant a
+	// selection replaced it. Only a write that reaches a keyless client is
+	// adopted by a process already running, so this is what makes the very first
+	// recorded selection classifiable at all: without it, nothing says whether a
+	// process older than the timeline is still holding something AgentDeck never
+	// saw. NULL means the selection predates this column and stays unknown --
+	// the existing conservative reading applies there and is not backfilled,
+	// because the state it would describe is genuinely unrecorded.
+	{version: 23, statements: []string{
+		`ALTER TABLE provider_selections ADD COLUMN prior_keyed INTEGER`,
+	}},
 }
 
 func normalizeUsageEventTimes(ctx context.Context, tx *sql.Tx) error {

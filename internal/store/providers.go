@@ -82,6 +82,9 @@ type Selection struct {
 	CredentialID       *int64
 	CredentialName     string
 	OperationID        string
+	// PriorKeyed records whether the client already presented a credential at
+	// the instant this selection replaced it. nil means unrecorded.
+	PriorKeyed *bool
 }
 
 type ProviderSnapshot struct {
@@ -92,6 +95,9 @@ type ProviderSnapshot struct {
 	ViaWrapper bool
 	SelectedAt time.Time
 	Official   bool
+	// PriorKeyed carries the same fact onto the timeline, so the first recorded
+	// selection can be classified rather than assumed. Invalid means unrecorded.
+	PriorKeyed sql.NullBool
 }
 
 type providerTimelineOperation struct {
@@ -149,7 +155,7 @@ func (s *Store) LoadProviderTimeline(ctx context.Context) (ProviderTimeline, err
 	if err = operationRows.Close(); err != nil {
 		return ProviderTimeline{}, err
 	}
-	selectionRows, err := s.DB.QueryContext(ctx, `SELECT id,provider_id,client,provider_name_snapshot,endpoint_snapshot,multiplier_snapshot,credential_name_snapshot,via_wrapper,operation_id,selected_at FROM provider_selections`)
+	selectionRows, err := s.DB.QueryContext(ctx, `SELECT id,provider_id,client,provider_name_snapshot,endpoint_snapshot,multiplier_snapshot,credential_name_snapshot,via_wrapper,operation_id,selected_at,prior_keyed FROM provider_selections`)
 	if err != nil {
 		return ProviderTimeline{}, err
 	}
@@ -157,7 +163,7 @@ func (s *Store) LoadProviderTimeline(ctx context.Context) (ProviderTimeline, err
 		var item providerTimelineSelection
 		var selected string
 		var viaWrapper int64
-		if err = selectionRows.Scan(&item.id, &item.providerID, &item.client, &item.snapshot.Name, &item.snapshot.Endpoint, &item.snapshot.Multiplier, &item.snapshot.Credential, &viaWrapper, &item.operationID, &selected); err != nil {
+		if err = selectionRows.Scan(&item.id, &item.providerID, &item.client, &item.snapshot.Name, &item.snapshot.Endpoint, &item.snapshot.Multiplier, &item.snapshot.Credential, &viaWrapper, &item.operationID, &selected, &item.snapshot.PriorKeyed); err != nil {
 			selectionRows.Close()
 			return ProviderTimeline{}, err
 		}
@@ -555,7 +561,7 @@ func (s *Store) RecordSelection(ctx context.Context, selection Selection) error 
 			return err
 		}
 	}
-	_, err := s.DB.ExecContext(ctx, "INSERT INTO provider_selections(provider_id,client,provider_name_snapshot,endpoint_snapshot,multiplier_snapshot,via_wrapper,credential_id,credential_name_snapshot,operation_id,selected_at) VALUES (?,?,?,?,?,?,?,?,?,?)", nullableProviderID(selection.ProviderID), selection.Client, selection.ProviderName, selection.EndpointSnapshot, selection.MultiplierSnapshot, boolToInt(selection.ViaWrapper), selection.CredentialID, selection.CredentialName, nullableString(selection.OperationID), selection.SelectedAt.Format(time.RFC3339Nano))
+	_, err := s.DB.ExecContext(ctx, "INSERT INTO provider_selections(provider_id,client,provider_name_snapshot,endpoint_snapshot,multiplier_snapshot,via_wrapper,credential_id,credential_name_snapshot,operation_id,selected_at,prior_keyed) VALUES (?,?,?,?,?,?,?,?,?,?,?)", nullableProviderID(selection.ProviderID), selection.Client, selection.ProviderName, selection.EndpointSnapshot, selection.MultiplierSnapshot, boolToInt(selection.ViaWrapper), selection.CredentialID, selection.CredentialName, nullableString(selection.OperationID), selection.SelectedAt.Format(time.RFC3339Nano), nullableBool(selection.PriorKeyed))
 	if err != nil {
 		return err
 	}
@@ -584,7 +590,7 @@ func (s *Store) CompleteProviderUse(ctx context.Context, operationID string, sel
 	} else if n != 1 {
 		return sql.ErrNoRows
 	}
-	_, err = tx.ExecContext(ctx, "INSERT INTO provider_selections(provider_id,client,provider_name_snapshot,endpoint_snapshot,multiplier_snapshot,via_wrapper,credential_id,credential_name_snapshot,operation_id,selected_at) VALUES(?,?,?,?,?,?,?,?,?,?)", nullableProviderID(selection.ProviderID), selection.Client, selection.ProviderName, selection.EndpointSnapshot, selection.MultiplierSnapshot, boolToInt(selection.ViaWrapper), selection.CredentialID, selection.CredentialName, operationID, completedAt.Format(time.RFC3339Nano))
+	_, err = tx.ExecContext(ctx, "INSERT INTO provider_selections(provider_id,client,provider_name_snapshot,endpoint_snapshot,multiplier_snapshot,via_wrapper,credential_id,credential_name_snapshot,operation_id,selected_at,prior_keyed) VALUES(?,?,?,?,?,?,?,?,?,?,?)", nullableProviderID(selection.ProviderID), selection.Client, selection.ProviderName, selection.EndpointSnapshot, selection.MultiplierSnapshot, boolToInt(selection.ViaWrapper), selection.CredentialID, selection.CredentialName, operationID, completedAt.Format(time.RFC3339Nano), nullableBool(selection.PriorKeyed))
 	if err != nil {
 		return err
 	}
@@ -606,6 +612,16 @@ func nullableString(value string) any {
 		return nil
 	}
 	return value
+}
+
+// nullableBool keeps an unrecorded prior state NULL rather than collapsing it to
+// false: "the client held no credential" and "nobody wrote down what it held"
+// are different facts, and only the first one licenses a conclusion.
+func nullableBool(value *bool) any {
+	if value == nil {
+		return nil
+	}
+	return boolToInt(*value)
 }
 
 func boolToInt(value bool) int {

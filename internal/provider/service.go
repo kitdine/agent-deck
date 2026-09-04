@@ -959,6 +959,18 @@ func (s Service) UseCredential(ctx context.Context, name string, client Client, 
 	if err != nil {
 		return err
 	}
+	// Read the prior credential state here, while the file still holds it. The
+	// redacted backup written next deliberately drops the token, so afterwards
+	// nothing on disk can answer whether this selection reached a keyless
+	// client -- which is the one transition a running process adopts.
+	var priorKeyed *bool
+	if client == ClientClaude {
+		keyed, keyedErr := ClaudeConfigIsKeyed(configPath)
+		if keyedErr != nil {
+			return keyedErr
+		}
+		priorKeyed = &keyed
+	}
 	if err := WriteRedactedBackup(client, configPath, backupPath); err != nil {
 		return err
 	}
@@ -1012,7 +1024,7 @@ func (s Service) UseCredential(ctx context.Context, name string, client Client, 
 	if err := s.Store.UpdateOperation(ctx, opID, "external_written", ""); err != nil {
 		return s.failOperation(ctx, opID, "external_written_transition_failed", err)
 	}
-	selection := store.Selection{Client: string(client), ProviderName: name, MultiplierSnapshot: "1", CredentialID: credentialID, CredentialName: selectedCredentialName, OperationID: opID, EndpointSnapshot: writtenEndpoint, ViaWrapper: via}
+	selection := store.Selection{Client: string(client), ProviderName: name, MultiplierSnapshot: "1", CredentialID: credentialID, CredentialName: selectedCredentialName, OperationID: opID, EndpointSnapshot: writtenEndpoint, ViaWrapper: via, PriorKeyed: priorKeyed}
 	if definition != nil {
 		selection.ProviderID = definition.ID
 		selection.MultiplierSnapshot = selectedCredential.Multiplier

@@ -1876,8 +1876,12 @@ func TestReadPriceResolverUsesClientTimeSemantics(t *testing.T) {
 func TestReadPriceResolverClassifiesTimelineDeterminability(t *testing.T) {
 	t0 := time.Date(2026, 8, 4, 0, 0, 0, 0, time.UTC)
 	tests := []struct {
-		name                         string
-		client                       string
+		name   string
+		client string
+		// processObserved supplies a transcript-derived process start half a
+		// second ahead of the session's first event. Without one the span opens
+		// at first_at, which bounds the process from the wrong side.
+		processObserved              bool
 		selections                   []store.Selection
 		wantProvider, wantMultiplier string
 		wantQuality, wantReason      string
@@ -1895,18 +1899,86 @@ func TestReadPriceResolverClassifiesTimelineDeterminability(t *testing.T) {
 			},
 			wantProvider: "codexA", wantMultiplier: "2", wantQuality: "estimated", wantReason: attributionReasonTimelineSnapshot,
 		},
+		// R1-F7 replaced the whole Claude branch with an unconditional
+		// "estimated", on the premise that a transcript carries no process start.
+		// It carries one, and these pairs separate what that evidence buys from
+		// what holds without it.
+		//
+		// Without an observed start, one recorded provider is not enough: the
+		// process may predate the timeline and still hold whatever the machine
+		// was configured with before AgentDeck saw it.
 		{
-			name: "claude without a reliable start remains inferred", client: "claude",
+			name: "claude without a switch stays inferred when the start is unobserved", client: "claude",
 			selections:   []store.Selection{{Client: "claude", ProviderName: "official", MultiplierSnapshot: "1", SelectedAt: t0}},
 			wantProvider: "official", wantMultiplier: "1", wantQuality: "estimated", wantReason: attributionReasonTimelineSnapshot,
 		},
 		{
-			name: "claude first key transition remains inferred without a route", client: "claude",
+			name: "claude without a switch is determinable from an observed start", client: "claude",
+			processObserved: true,
+			selections:      []store.Selection{{Client: "claude", ProviderName: "official", MultiplierSnapshot: "1", SelectedAt: t0}},
+			wantProvider:    "official", wantMultiplier: "1", wantQuality: "exact", wantReason: attributionReasonTimelineSnapshot,
+		},
+		// Writing the first credential re-authenticates a running process, so it
+		// resolves either way: as the anchor every earlier start collapses onto,
+		// and as a live transition inside an observed span.
+		{
+			name: "claude first key transition anchors an unobserved start", client: "claude",
 			selections: []store.Selection{
 				{Client: "claude", ProviderName: "official", MultiplierSnapshot: "1", SelectedAt: t0},
 				{Client: "claude", ProviderName: "keyA", MultiplierSnapshot: "2", CredentialName: "default", SelectedAt: t0.Add(time.Second)},
 			},
-			wantProvider: "official", wantMultiplier: "1", wantQuality: "estimated", wantReason: attributionReasonTimelineSnapshot,
+			wantProvider: "keyA", wantMultiplier: "2", wantQuality: "exact", wantReason: attributionReasonTimelineSnapshot,
+		},
+		{
+			name: "claude first key transition is adopted live", client: "claude",
+			processObserved: true,
+			selections: []store.Selection{
+				{Client: "claude", ProviderName: "official", MultiplierSnapshot: "1", SelectedAt: t0},
+				{Client: "claude", ProviderName: "keyA", MultiplierSnapshot: "2", CredentialName: "default", SelectedAt: t0.Add(time.Second)},
+			},
+			wantProvider: "keyA", wantMultiplier: "2", wantQuality: "exact", wantReason: attributionReasonTimelineSnapshot,
+		},
+		// A timeline opening on a keyed state with no recorded prior state anchors
+		// by decision, not by proof: the alternative requires a process older
+		// than the whole timeline to still be billing, and refusing every such
+		// store would leave `exact` unreachable on all existing data. The
+		// assumption is carried in the fix record.
+		{
+			name: "claude keyed timeline start anchors when the prior state is unrecorded", client: "claude",
+			selections: []store.Selection{
+				{Client: "claude", ProviderName: "keyA", MultiplierSnapshot: "2", CredentialName: "default", SelectedAt: t0},
+			},
+			wantProvider: "keyA", wantMultiplier: "2", wantQuality: "exact", wantReason: attributionReasonTimelineSnapshot,
+		},
+		{
+			name: "claude keyed timeline start resolves from an observed start", client: "claude",
+			processObserved: true,
+			selections: []store.Selection{
+				{Client: "claude", ProviderName: "keyA", MultiplierSnapshot: "2", CredentialName: "default", SelectedAt: t0},
+			},
+			wantProvider: "keyA", wantMultiplier: "2", wantQuality: "exact", wantReason: attributionReasonTimelineSnapshot,
+		},
+		// A recorded prior state closes the gap the case above leaves open. The
+		// first selection is the same keyed one, but it is now known to have
+		// reached a client holding nothing, so it re-authenticated even a process
+		// older than the timeline and anchors the walk without an observed start.
+		{
+			name: "claude first selection reaching a keyless client anchors", client: "claude",
+			selections: []store.Selection{
+				{Client: "claude", ProviderName: "keyA", MultiplierSnapshot: "2", CredentialName: "default", SelectedAt: t0, PriorKeyed: boolPointer(false)},
+			},
+			wantProvider: "keyA", wantMultiplier: "2", wantQuality: "exact", wantReason: attributionReasonTimelineSnapshot,
+		},
+		// A recorded keyed prior state is different from an unrecorded one, and
+		// keeps its fail-closed: this is proof the client held something
+		// AgentDeck never managed, and on a store only days old a process from
+		// before that switch is ordinary rather than hypothetical.
+		{
+			name: "claude first selection replacing a recorded existing key does not anchor", client: "claude",
+			selections: []store.Selection{
+				{Client: "claude", ProviderName: "keyA", MultiplierSnapshot: "2", CredentialName: "default", SelectedAt: t0, PriorKeyed: boolPointer(true)},
+			},
+			wantProvider: "keyA", wantMultiplier: "2", wantQuality: "estimated", wantReason: attributionReasonTimelineSnapshot,
 		},
 		{
 			name: "claude keyed rotation remains inferred without a reliable start", client: "claude",
@@ -1962,6 +2034,9 @@ func TestReadPriceResolverClassifiesTimelineDeterminability(t *testing.T) {
 			event := storedEvent{
 				Event:        Event{Client: test.client, SessionID: "no-route", EventAt: t0.Add(2 * time.Second).Format(time.RFC3339Nano), Model: "fixture"},
 				sessionStart: sql.NullString{String: t0.Add(100 * time.Millisecond).Format(time.RFC3339Nano), Valid: true},
+			}
+			if test.processObserved {
+				event.processStart = sql.NullString{String: t0.Add(50 * time.Millisecond).Format(sessionStartLayout), Valid: true}
 			}
 			readAttribution, err := resolver.priceForEvent(event)
 			if err != nil {
@@ -2342,7 +2417,12 @@ func TestReadPriceResolverFoldsLegacyClaudeRouteHistory(t *testing.T) {
 	}
 }
 
-func TestReadPriceResolverKeepsClaudeTimelineFallbackInferredWithoutSessionBoundary(t *testing.T) {
+// A session whose own start is not observed still resolves when the transition
+// in front of it is one a running process adopts: a process that started before
+// it was re-authenticated there, one that started after began there, and both
+// arrive at the same provider. R1-F7 read this shape as unresolvable and
+// downgraded it; the two starts it could not tell apart do not differ.
+func TestReadPriceResolverConvergesClaudeFallbackAcrossALiveAnchor(t *testing.T) {
 	ctx := context.Background()
 	database, err := store.Open(ctx, filepath.Join(t.TempDir(), "state"))
 	if err != nil {
@@ -2371,8 +2451,98 @@ func TestReadPriceResolverKeepsClaudeTimelineFallbackInferredWithoutSessionBound
 	if err != nil {
 		t.Fatal(err)
 	}
-	if readAttribution.provider != "keyA" || readAttribution.multiplier != "2" || readAttribution.quality != "estimated" || readAttribution.reason != attributionReasonTimelineSnapshot {
-		t.Errorf("attribution = %#v, want keyA/2/estimated/%s", readAttribution, attributionReasonTimelineSnapshot)
+	if readAttribution.provider != "keyA" || readAttribution.multiplier != "2" || readAttribution.quality != "exact" || readAttribution.reason != attributionReasonTimelineSnapshot {
+		t.Errorf("attribution = %#v, want keyA/2/exact/%s", readAttribution, attributionReasonTimelineSnapshot)
+	}
+}
+
+// The converse of the anchor case: the transition in front of an unobserved
+// start is a key rotation, which a running process does not adopt. A process
+// started before it still bills keyA, one started after bills keyB, and nothing
+// in the store says which — so this one stays inferred.
+func TestReadPriceResolverKeepsClaudeFallbackInferredAcrossAnUnadoptedSwitch(t *testing.T) {
+	ctx := context.Background()
+	database, err := store.Open(ctx, filepath.Join(t.TempDir(), "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	t0 := time.Date(2026, 8, 4, 0, 0, 0, 0, time.UTC)
+	for _, selection := range []store.Selection{
+		{Client: "claude", ProviderName: "official", MultiplierSnapshot: "1", SelectedAt: t0},
+		{Client: "claude", ProviderName: "keyA", MultiplierSnapshot: "2", CredentialName: "default", SelectedAt: t0.Add(time.Minute)},
+		{Client: "claude", ProviderName: "keyB", MultiplierSnapshot: "9", CredentialName: "other", SelectedAt: t0.Add(2 * time.Minute)},
+	} {
+		if err = database.RecordSelection(ctx, selection); err != nil {
+			t.Fatal(err)
+		}
+	}
+	service := New(database, "")
+	resolver, err := service.loadReadPriceResolver(ctx, t0.Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	event := storedEvent{
+		Event:        Event{Client: "claude", SessionID: "no-route", EventAt: t0.Add(4 * time.Minute).Format(time.RFC3339Nano), Model: "fixture"},
+		sessionStart: sql.NullString{String: t0.Add(3 * time.Minute).Format(time.RFC3339Nano), Valid: true},
+	}
+	readAttribution, err := resolver.priceForEvent(event)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if readAttribution.quality != "estimated" || readAttribution.reason != attributionReasonTimelineSnapshot {
+		t.Errorf("attribution = %#v, want estimated/%s", readAttribution, attributionReasonTimelineSnapshot)
+	}
+}
+
+// With the process start observed, the rotation above is no longer ambiguous:
+// the session demonstrably began after it, so it never held the earlier key.
+// This is the whole point of capturing the transcript's first record.
+func TestReadPriceResolverResolvesClaudeAcrossAnUnadoptedSwitchWithAProcessStart(t *testing.T) {
+	ctx := context.Background()
+	database, err := store.Open(ctx, filepath.Join(t.TempDir(), "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	t0 := time.Date(2026, 8, 4, 0, 0, 0, 0, time.UTC)
+	for _, selection := range []store.Selection{
+		{Client: "claude", ProviderName: "official", MultiplierSnapshot: "1", SelectedAt: t0},
+		{Client: "claude", ProviderName: "keyA", MultiplierSnapshot: "2", CredentialName: "default", SelectedAt: t0.Add(time.Minute)},
+		{Client: "claude", ProviderName: "keyB", MultiplierSnapshot: "9", CredentialName: "other", SelectedAt: t0.Add(2 * time.Minute)},
+	} {
+		if err = database.RecordSelection(ctx, selection); err != nil {
+			t.Fatal(err)
+		}
+	}
+	service := New(database, "")
+	resolver, err := service.loadReadPriceResolver(ctx, t0.Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		name, processStart, wantQuality string
+	}{
+		{"observed start after the rotation", t0.Add(150 * time.Second).Format(time.RFC3339Nano), "exact"},
+		// A transcript rewritten before it was first scanned reports an opening
+		// record later than first_at. That is not a start, so it is ignored and
+		// the session falls back to the anchor walk, which cannot resolve here.
+		{"rewritten transcript reports a later opening record", t0.Add(210 * time.Second).Format(time.RFC3339Nano), "estimated"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			event := storedEvent{
+				Event:        Event{Client: "claude", SessionID: "no-route", EventAt: t0.Add(4 * time.Minute).Format(time.RFC3339Nano), Model: "fixture"},
+				sessionStart: sql.NullString{String: t0.Add(3 * time.Minute).Format(time.RFC3339Nano), Valid: true},
+				processStart: sql.NullString{String: test.processStart, Valid: true},
+			}
+			readAttribution, readErr := resolver.priceForEvent(event)
+			if readErr != nil {
+				t.Fatal(readErr)
+			}
+			if readAttribution.quality != test.wantQuality {
+				t.Errorf("quality = %q, want %q (attribution %#v)", readAttribution.quality, test.wantQuality, readAttribution)
+			}
+		})
 	}
 }
 
@@ -4605,3 +4775,189 @@ func TestParseMultiplierAndParseIntBoundaries(t *testing.T) {
 		})
 	}
 }
+
+// R2-F4: every other test in this file hands the resolver a hand-built
+// storedEvent. This one starts from real transcripts on disk and asserts what
+// the resolver makes of what the scanner actually stored, so the capture,
+// both tables and the read path are covered as one chain. It is failure-first:
+// with the capture removed the session has no start, the timeline opens on a
+// keyed state that offers no anchor, and the attribution drops to estimated.
+//
+// It also pins the ordering R2-F5 identified. The two transcripts of this one
+// session open within the same second, at .0 and .5; under time.RFC3339Nano
+// those persist as "…00Z" and "…00.5Z", whose SQL MIN is the later of the two
+// because '.' sorts before 'Z'.
+func TestScanCapturesClaudeSessionStartThroughToAttribution(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	home := filepath.Join(root, "home")
+	projects := filepath.Join(home, ".claude", "projects", "fixture")
+	if err := os.MkdirAll(filepath.Join(projects, "subagents"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t0 := time.Date(2026, 8, 4, 0, 0, 0, 0, time.UTC)
+	processStart := t0.Add(time.Minute)
+	// The opening record carries no timestamp, which is the common shape: the
+	// capture has to keep reading to the first record that does.
+	main := filepath.Join(projects, "session.jsonl")
+	mainLines := `{"type":"queue-operation","sessionId":"session"}` + "\n" +
+		`{"type":"user","timestamp":"` + processStart.Format(time.RFC3339Nano) + `","sessionId":"session","message":{"role":"user","content":"go"}}` + "\n" +
+		`{"type":"assistant","timestamp":"` + t0.Add(2*time.Minute).Format(time.RFC3339Nano) + `","sessionId":"session","message":{"role":"assistant","id":"m1","model":"claude-opus","usage":{"input_tokens":10,"output_tokens":1}}}` + "\n"
+	if err := os.WriteFile(main, []byte(mainLines), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// A second transcript of the same session, opening half a second later.
+	sub := filepath.Join(projects, "subagents", "agent.jsonl")
+	subLines := `{"type":"user","timestamp":"` + processStart.Add(500*time.Millisecond).Format(time.RFC3339Nano) + `","sessionId":"session","message":{"role":"user","content":"sub"}}` + "\n" +
+		`{"type":"assistant","timestamp":"` + t0.Add(3*time.Minute).Format(time.RFC3339Nano) + `","sessionId":"session","message":{"role":"assistant","id":"m2","model":"claude-opus","usage":{"input_tokens":4,"output_tokens":1}}}` + "\n"
+	if err := os.WriteFile(sub, []byte(subLines), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	database, err := store.Open(ctx, filepath.Join(root, "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	// One keyed selection before the session, recorded as having replaced a
+	// credential the client already held. That is the one shape with no
+	// reachable anchor, so only an observed process start can resolve this
+	// session and the capture is what the assertions below actually test.
+	if err = database.RecordSelection(ctx, store.Selection{
+		Client: "claude", ProviderName: "keyA", MultiplierSnapshot: "2",
+		CredentialName: "default", SelectedAt: t0, PriorKeyed: boolPointer(true),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	service := New(database, home)
+	service.MachineIdentity = func(context.Context) (string, error) { return "machine-a", nil }
+	if _, err = service.Scan(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	var mainStart, subStart, sessionStart string
+	if err = database.DB.QueryRowContext(ctx, `SELECT session_started_at FROM usage_source_files WHERE path=?`, main).Scan(&mainStart); err != nil {
+		t.Fatal(err)
+	}
+	if err = database.DB.QueryRowContext(ctx, `SELECT session_started_at FROM usage_source_files WHERE path=?`, sub).Scan(&subStart); err != nil {
+		t.Fatal(err)
+	}
+	if err = database.DB.QueryRowContext(ctx, `SELECT started_at FROM usage_sessions WHERE client='claude' AND session_id='session'`).Scan(&sessionStart); err != nil {
+		t.Fatal(err)
+	}
+	wantMain := processStart.Format(sessionStartLayout)
+	wantSub := processStart.Add(500 * time.Millisecond).Format(sessionStartLayout)
+	if mainStart != wantMain || subStart != wantSub {
+		t.Fatalf("captured starts main=%q sub=%q, want %q and %q", mainStart, subStart, wantMain, wantSub)
+	}
+	if sessionStart != wantMain {
+		t.Fatalf("session started_at = %q, want the earlier transcript %q", sessionStart, wantMain)
+	}
+
+	resolver, err := service.loadReadPriceResolver(ctx, t0.Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	events, err := service.events(ctx, "claude", "session")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 2 {
+		t.Fatalf("events = %d, want 2", len(events))
+	}
+	for _, event := range events {
+		attribution, resolveErr := resolver.priceForEvent(event)
+		if resolveErr != nil {
+			t.Fatal(resolveErr)
+		}
+		if attribution.provider != "keyA" || attribution.quality != "exact" {
+			t.Fatalf("attribution = %#v, want keyA/exact", attribution)
+		}
+	}
+
+	// Removing only the captured start reproduces the pre-fix state and must
+	// flip the same events to estimated.
+	if _, err = database.Exec(ctx, `UPDATE usage_sessions SET started_at=''`); err != nil {
+		t.Fatal(err)
+	}
+	events, err = service.events(ctx, "claude", "session")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, event := range events {
+		attribution, resolveErr := resolver.priceForEvent(event)
+		if resolveErr != nil {
+			t.Fatal(resolveErr)
+		}
+		if attribution.quality != "estimated" {
+			t.Fatalf("without a captured start attribution = %#v, want estimated", attribution)
+		}
+	}
+}
+
+// The start is only readable from offset zero, so an upgraded store depends on
+// the parser-version reset to obtain it, and a later rewrite must not push it
+// forward once it is known.
+func TestScanRecoversClaudeSessionStartOnUpgradeAndKeepsItAcrossRewrite(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	home := filepath.Join(root, "home")
+	projects := filepath.Join(home, ".claude", "projects", "fixture")
+	if err := os.MkdirAll(projects, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t0 := time.Date(2026, 8, 4, 0, 0, 0, 0, time.UTC)
+	processStart := t0.Add(time.Minute)
+	source := filepath.Join(projects, "session.jsonl")
+	opening := `{"type":"user","timestamp":"` + processStart.Format(time.RFC3339Nano) + `","sessionId":"session","message":{"role":"user","content":"go"}}` + "\n"
+	event := `{"type":"assistant","timestamp":"` + t0.Add(2*time.Minute).Format(time.RFC3339Nano) + `","sessionId":"session","message":{"role":"assistant","id":"m1","model":"claude-opus","usage":{"input_tokens":10,"output_tokens":1}}}` + "\n"
+	if err := os.WriteFile(source, []byte(opening+event), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	database, err := store.Open(ctx, filepath.Join(root, "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	service := New(database, home)
+	service.MachineIdentity = func(context.Context) (string, error) { return "machine-a", nil }
+	if _, err = service.Scan(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	// Rewind to a version-6 store: scanned, but with no start captured.
+	if _, err = database.Exec(ctx, `UPDATE usage_source_files SET parser_version=?, session_started_at='' WHERE path=?`, usageParserVersion-1, source); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = database.Exec(ctx, `UPDATE usage_sessions SET started_at=''`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = service.Scan(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var recovered string
+	if err = database.DB.QueryRowContext(ctx, `SELECT started_at FROM usage_sessions WHERE client='claude' AND session_id='session'`).Scan(&recovered); err != nil {
+		t.Fatal(err)
+	}
+	if want := processStart.Format(sessionStartLayout); recovered != want {
+		t.Fatalf("after the parser upgrade started_at = %q, want %q", recovered, want)
+	}
+
+	// A rewrite that drops the opening record: the file now reports a later
+	// first timestamp, and the stored earlier one has to win.
+	if err = os.WriteFile(source, []byte(event), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = service.Scan(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var afterRewrite string
+	if err = database.DB.QueryRowContext(ctx, `SELECT started_at FROM usage_sessions WHERE client='claude' AND session_id='session'`).Scan(&afterRewrite); err != nil {
+		t.Fatal(err)
+	}
+	if want := processStart.Format(sessionStartLayout); afterRewrite != want {
+		t.Fatalf("after the rewrite started_at = %q, want the earlier %q", afterRewrite, want)
+	}
+}
+
+func boolPointer(value bool) *bool { return &value }
