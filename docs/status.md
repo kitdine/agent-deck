@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-08-25
-updated: 2026-09-02
+updated: 2026-09-04
 ---
 
 # AgentDeck Project Status
@@ -16,24 +16,17 @@ is recorded in `roadmap.md`.
 
 ### Release
 
-- **Latest prerelease:** [`v0.5.0-rc.5`](https://github.com/kitdine/agent-deck/releases/tag/v0.5.0-rc.5)
-  at commit `dd09acc96ad12b94e67a32bea30ba2007cfdd769`, tree `32773386`,
-  published 2026-09-02. It is the fifth `v0.5.0` candidate and the first whose
-  local `make release-verify` passed as a single command rather than as a
-  CI/local split. [Release run 33658932481](https://github.com/kitdine/agent-deck/actions/runs/33658932481)
-  succeeded on all four jobs and published six artifacts: the two CLI archives
-  with checksums, and the universal DMG and ZIP with their own checksum file.
-  Tap PRs [#24](https://github.com/kitdine/homebrew-tap/pull/24) for the
-  `agentdeck-rc` formula and [#25](https://github.com/kitdine/homebrew-tap/pull/25)
-  for the `agentdeck-app-rc` cask were merged as `cb31f5b` and `09a039a` after
-  all three of their `sha256` values were compared against the published
-  checksum files and against a locally recomputed hash of the DMG. Both rc
-  channels are installable.
+- **Latest prerelease:** [`v0.5.0-rc.6`](https://github.com/kitdine/agent-deck/releases/tag/v0.5.0-rc.6)
+  at commit `acb8384073f59a3cb07b06ad4cebc670e0d9419d`, tree `9ab5d243`,
+  published 2026-09-04. [Release run 33857667232](https://github.com/kitdine/agent-deck/actions/runs/33857667232)
+  succeeded on all four jobs and published all six CLI and desktop artifacts.
+  It is the exact commit promoted to stable `v0.5.0`; only tag-derived version
+  and build identities differ.
 - The `v0.5.0` CEv1 Release boundary is `VERIFIED` for tree
-  `32773386ad632a593e63d005ba57b04e7eebc83d`: both required criteria carry one
-  `pass` record each — the aggregate L4 gate, and
-  [exact-SHA preflight run 33657506153](https://github.com/kitdine/agent-deck/actions/runs/33657506153)
-  with both jobs successful. Each supersedes the `rc.4` record it replaces.
+  `9ab5d243ba5054853cd927b2bb9087a275f1703c`: both required criteria carry a
+  current `pass` record — the aggregate isolated-real-state L4 gate, and
+  [exact-SHA preflight run 33856799256](https://github.com/kitdine/agent-deck/actions/runs/33856799256)
+  with both jobs successful.
 - **`rc.5` exists because `rc.4` published cleanly and then failed in use.**
   The first three candidates each failed one step further along a publication
   path that had never run end to end: `rc.1` could not sign, `rc.2` was refused
@@ -99,9 +92,7 @@ is recorded in `roadmap.md`.
   `5ff2e80` removes the unmanaged `ANTHROPIC_API_KEY` from Claude redacted
   backups, and `29039f9` admits `clear` and `fork` session starts and
   brand-new-project transcripts without weakening root containment. All three
-  are on `main` only: none of them changes the released `rc.5` behavior, this
-  release status, or the notarization acceptance, and reaching users needs a
-  later candidate.
+  shipped in `v0.5.0-rc.6` and in the exact-SHA stable `v0.5.0` promotion.
 - The Cask exclusion guard was not exercised live, because reproducing it means
   installing the conflicting CLI-only formula; it rests on the real
   `brew install --cask` regression that passed in this commit's L4 aggregate.
@@ -109,12 +100,22 @@ is recorded in `roadmap.md`.
   understate what is now verified. They are left as tagged, because the release
   body is published from the tag annotation and editing one without the other
   splits the record in two.
-- Three of the eight `rc.4` findings are carried rather than fixed: the
-  remaining hook-transcript admission edges, actionable recovery guidance for
-  `state_busy`, and the schema-version signal — the one defect whose repair
-  requires deciding new user-visible behaviour, which is why it is a topic
-  rather than a fix.
-- **Latest stable:** [`v0.4.1`](https://github.com/kitdine/agent-deck/releases/tag/v0.4.1)
+- Two of the eight `rc.4` findings remain carried rather than fixed: actionable
+  recovery guidance for `state_busy`, and the schema-version signal — the
+  defect whose repair requires deciding new user-visible behaviour, which is
+  why it is a topic rather than a fix.
+- **Latest stable:** [`v0.5.0`](https://github.com/kitdine/agent-deck/releases/tag/v0.5.0)
+  at commit `acb8384073f59a3cb07b06ad4cebc670e0d9419d`, tree `9ab5d243`,
+  published 2026-09-04. [Release run 33889905280](https://github.com/kitdine/agent-deck/actions/runs/33889905280)
+  passed all four jobs: same-SHA release gating and CLI publication, stable
+  formula installation, Developer ID signing/notarization/stapling and desktop
+  publication, and stable Cask installation. Six assets are published. Tap PR
+  [#28](https://github.com/kitdine/homebrew-tap/pull/28) for `agentdeck` merged
+  as `eae1b6c`; tap PR [#29](https://github.com/kitdine/homebrew-tap/pull/29)
+  for `agentdeck-app` merged as `ca54bc8`. The generated formula and Cask hashes
+  match the published assets. `main` protection now requires pull requests for
+  administrators too and rejects force-pushes and branch deletion.
+- **Previous stable:** [`v0.4.1`](https://github.com/kitdine/agent-deck/releases/tag/v0.4.1)
   at commit `3b709a8fb09494a8d8fdd37ee154e3baedbce9ea`, published 2026-08-13.
   It is a patch on `v0.4.0`: Codex `cache_write_input_tokens` is backfilled into
   a new `cache_write_tokens` column and already-indexed Codex sources are
@@ -161,7 +162,7 @@ agentdeck version
 
 | Topic | Version | Status | Purpose |
 | --- | --- | --- | --- |
-| [`v0.5.0` Contract Closure](topics/v0-5-0-contract/tasks.md) | `v0.5.0` | Contract complete, reviewed, and committed at `a547362` — `cli-design.md` is at version 28, the five selected topics are retired under [`archive/topics/`](archive/topics/), and both contract Tasks have passed independent review. 2/2 implemented and reviewed. Five release candidates have since been published from `main`, the current one being `v0.5.0-rc.5`; stable channel selection and publication remain separate decisions. The specification stays at version 28 across the five Lane A fixes `rc.5` carries: only one of them touched `cli-design.md`, and it corrected an untrue paragraph about notarization submissions without changing the promise that paragraph supports, which the Changelog rule makes a correction rather than a contract change. The untracked schema-version-signal topic remains separate and unstaged | Version-wide specification raise and documentation reconciliation after every selected topic's tasks pass review. |
+| [`v0.5.0` Contract Closure](topics/v0-5-0-contract/tasks.md) | `v0.5.0` | Released — contract complete, independently reviewed, and committed at `a547362`; `cli-design.md` is at version 28 and both contract Tasks are 2/2 implemented and reviewed. Six release candidates culminated in `v0.5.0-rc.6`, and stable `v0.5.0` published the exact `acb8384` commit. The directory remains live only until the separately owned, currently untracked schema-version-signal topic becomes commit-addressable, so a clean checkout retains the required `docs/topics/` audit root; no v0.5.0 work remains. | Version-wide specification raise and documentation reconciliation after every selected topic's tasks pass review. |
 | [Schema Version Signal](topics/schema-version-signal/tasks.md) | unassigned | Active — boundary stage; `requirements.md` drafted and awaiting review; version membership not yet decided by a contract topic, so this row is deliberately not marked `v0.5.0`; the Documents matrix declares `ux/menubar-schema-signal.md` and `architecture.md` as required and unwritten, which `check-topic-docs.sh` reports as gaps until `tasks.md` review ratifies the set; 0/4 documents passed; `requirements.md` was widened on 2026-09-04 while in review, after a triage found a sixth reporting path — the Hook — and it is the one that reports nothing at all | One stable, actionable report when the core database's schema version exceeds the running binary's supported version, across `doctor`, the command paths, the desktop snapshot, and Hook delivery. Promoted from a measured defect: schema 21 on disk against two installed binaries supporting 18, reported six different ways. The sixth is silent: `usage hook event` exits 0 with empty streams and writes no row, which cost 19 Codex sessions their provider route between 2026-08-30 and 2026-09-01, unrecoverably. |
 
 #### Retired into `v0.5.0`
@@ -176,9 +177,9 @@ documents, not the version membership.
 | --- | --- | --- | --- |
 | [Native macOS Desktop App](archive/topics/desktop-app/tasks.md) | `v0.5.0` | Retired 2026-09-01 into `v0.5.0`; documents are historical under `archive/topics/`. Delivered — 6/6 tasks reviewed and committed; the immutable commit-tree CEv1 Task and Plan gates are VERIFIED at `0aefed1`; version-wide contract closure and any release action remain separate | macOS 26 menu-bar app, settings window, WidgetKit extension, unified desktop distribution, Cask, and direct-download delivery. |
 | [Work Signals](archive/topics/work-signals/tasks.md) | `v0.5.0` | Retired 2026-09-01 into `v0.5.0`; documents are historical under `archive/topics/`. Complete — prototype task 0 and implementation tasks 1–6 are independently reviewed and committed. Final Task 6 is signed commit `a83ae2b` / tree `45094755`; its immutable Task gate is VERIFIED 5/5, and the `work-signals` Topic gate is VERIFIED 4/4 by rolling up all five Document gates and Tasks 0–6. Superseded Review failures remain immutable evidence; actual VoiceOver/TCC/system accessibility automation remains explicitly not run and not required. Push and the separate `v0.5.0` contract closure are not part of this checkpoint | Activity classification, workflow metrics, and tool-call attribution on two first-class surfaces: the menu-bar `Sessions` panel's three captured modules and `agentdeck usage signals`. |
-| [Usage Attribution Precision](archive/topics/usage-attribution-precision/tasks.md) | `v0.5.0` | Retired 2026-09-01 into `v0.5.0`; documents are historical under `archive/topics/`. Complete — 3/3 tasks reviewed and committed at `9035b80` / tree `d3ffe3ac`; immutable Task and Topic CEv1 gates VERIFIED; v0.5.0 contract closure remains separate and not started; release blockers held: no determinable event is downgraded to `inferred`, and no unattributed event enters provider spend | Effective-session attribution semantics, determinability-based quality, and an unattributed boundary that never enters a real-spend total. |
-| [CLI Error Classification](archive/topics/cli-error-classification/tasks.md) | `v0.5.0` | Retired 2026-09-01 into `v0.5.0`; documents are historical under `archive/topics/`. Complete — 2/2 tasks reviewed and committed; immutable Task and Topic CEv1 gates VERIFIED at `574a7ad` / tree `6d26f205`; v0.5.0 contract closure remains separate and not started | Stable not-found codes, and no storage text in a documented JSON contract. Breaks the documented `runtime_error` value; announced in this version's notes. |
-| [Switch Effectiveness Boundary](archive/topics/switch-effectiveness-boundary/tasks.md) | `v0.5.0` | Retired 2026-09-01 into `v0.5.0`; documents are historical under `archive/topics/`. Active — all three design documents PASS; implementation tasks 1–3 PASS; `real-session-acceptance` waived by the operator 2026-08-26 (not executed, no review record); all 3 code-bearing tasks reviewed | Every accepted Codex or Claude Hook delivery uses one observation/transaction pipeline; effective-route effects remain event-specific, including Claude's sole live `no key -> first key` transition. |
+| [Usage Attribution Precision](archive/topics/usage-attribution-precision/tasks.md) | `v0.5.0` | Retired 2026-09-01 into `v0.5.0`; documents are historical under `archive/topics/`. Complete — 3/3 tasks reviewed and committed at `9035b80` / tree `d3ffe3ac`; immutable Task and Topic CEv1 gates VERIFIED; stable `v0.5.0` is published; release blockers held: no determinable event is downgraded to `inferred`, and no unattributed event enters provider spend | Effective-session attribution semantics, determinability-based quality, and an unattributed boundary that never enters a real-spend total. |
+| [CLI Error Classification](archive/topics/cli-error-classification/tasks.md) | `v0.5.0` | Retired 2026-09-01 into `v0.5.0`; documents are historical under `archive/topics/`. Complete — 2/2 tasks reviewed and committed; immutable Task and Topic CEv1 gates VERIFIED at `574a7ad` / tree `6d26f205`; stable `v0.5.0` is published | Stable not-found codes, and no storage text in a documented JSON contract. Breaks the documented `runtime_error` value; announced in this version's notes. |
+| [Switch Effectiveness Boundary](archive/topics/switch-effectiveness-boundary/tasks.md) | `v0.5.0` | Retired 2026-09-01 into `v0.5.0`; documents are historical under `archive/topics/`. Complete — all three design documents PASS; implementation tasks 1–3 PASS; `real-session-acceptance` waived by the operator 2026-08-26 (not executed, no review record); all 3 code-bearing tasks reviewed | Every accepted Codex or Claude Hook delivery uses one observation/transaction pipeline; effective-route effects remain event-specific, including Claude's sole live `no key -> first key` transition. |
 
 **`v0.5.0` contains exactly the rows marked `v0.5.0` above**, in both the active
 and the retired table, plus the contract closure that reconciles them. The count
