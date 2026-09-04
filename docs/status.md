@@ -162,11 +162,8 @@ agentdeck version
 
 | Topic | Version | Status | Purpose |
 | --- | --- | --- | --- |
+| [`v0.5.0` Contract Closure](topics/v0-5-0-contract/tasks.md) | `v0.5.0` | Released — contract complete, independently reviewed, and committed at `a547362`; `cli-design.md` is at version 28 and both contract Tasks are 2/2 implemented and reviewed. Six release candidates culminated in `v0.5.0-rc.6`, and stable `v0.5.0` published the exact `acb8384` commit. The directory remains live only until the separately owned, currently untracked schema-version-signal topic becomes commit-addressable, so a clean checkout retains the required `docs/topics/` audit root; no v0.5.0 work remains. | Version-wide specification raise and documentation reconciliation after every selected topic's tasks pass review. |
 | [Schema Version Signal](topics/schema-version-signal/tasks.md) | unassigned | Active — boundary stage; `requirements.md` drafted and awaiting review; version membership not yet decided by a contract topic, so this row is deliberately not marked `v0.5.0`; the Documents matrix declares `ux/menubar-schema-signal.md` and `architecture.md` as required and unwritten, which `check-topic-docs.sh` reports as gaps until `tasks.md` review ratifies the set; 0/4 documents passed; `requirements.md` was widened on 2026-09-04 while in review, after a triage found a sixth reporting path — the Hook — and it is the one that reports nothing at all | One stable, actionable report when the core database's schema version exceeds the running binary's supported version, across `doctor`, the command paths, the desktop snapshot, and Hook delivery. Promoted from a measured defect: schema 21 on disk against two installed binaries supporting 18, reported six different ways. The sixth is silent: `usage hook event` exits 0 with empty streams and writes no row, which cost 19 Codex sessions their provider route between 2026-08-30 and 2026-09-01, unrecoverably. |
-
-The completed [`v0.5.0` Contract Closure](archive/topics/v0-5-0-contract/tasks.md)
-retired after stable publication on 2026-09-04. Its two tasks remain 2/2
-implemented and reviewed; `cli-design.md` remains at specification version 28.
 
 #### Retired into `v0.5.0`
 
@@ -184,13 +181,13 @@ documents, not the version membership.
 | [CLI Error Classification](archive/topics/cli-error-classification/tasks.md) | `v0.5.0` | Retired 2026-09-01 into `v0.5.0`; documents are historical under `archive/topics/`. Complete — 2/2 tasks reviewed and committed; immutable Task and Topic CEv1 gates VERIFIED at `574a7ad` / tree `6d26f205`; stable `v0.5.0` is published | Stable not-found codes, and no storage text in a documented JSON contract. Breaks the documented `runtime_error` value; announced in this version's notes. |
 | [Switch Effectiveness Boundary](archive/topics/switch-effectiveness-boundary/tasks.md) | `v0.5.0` | Retired 2026-09-01 into `v0.5.0`; documents are historical under `archive/topics/`. Complete — all three design documents PASS; implementation tasks 1–3 PASS; `real-session-acceptance` waived by the operator 2026-08-26 (not executed, no review record); all 3 code-bearing tasks reviewed | Every accepted Codex or Claude Hook delivery uses one observation/transaction pipeline; effective-route effects remain event-specific, including Claude's sole live `no key -> first key` transition. |
 
-**`v0.5.0` contains exactly the feature rows below**, plus the archived
-contract closure that reconciles them. The count is deliberately not written
-here: it was
+**`v0.5.0` contains exactly the rows marked `v0.5.0` above**, in both the active
+and the retired table, plus the contract closure that reconciles them. The count
+is deliberately not written here: it was
 stated as a number twice and was wrong both times, once when a topic was
 selected into the version and once when a topic's task count changed. The rows
 are the list. The authoritative scope statement is
-[`archive/topics/v0-5-0-contract/tasks.md`](archive/topics/v0-5-0-contract/tasks.md); per-task
+[`topics/v0-5-0-contract/tasks.md`](topics/v0-5-0-contract/tasks.md); per-task
 state lives in each topic's own `tasks.md`, which is the only status authority
 for that topic. A topic carries no version number of its own — membership is
 decided here and in the contract topic, so a reschedule changes those two places

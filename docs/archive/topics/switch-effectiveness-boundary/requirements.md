@@ -9,7 +9,7 @@ retired: 2026-09-01
 
 `v0.5.0` has selected this topic. Version membership is decided by a
 `vX-Y-Z-contract` topic's assembly list, not here; the
-[`v0.5.0` contract topic](../v0-5-0-contract/tasks.md#assembly-list) records the
+[`v0.5.0` contract topic](../../../topics/v0-5-0-contract/tasks.md#assembly-list) records the
 selection and the reason. See `.agent-instructions/branching.md` for how a
 selected topic's branch reaches a tag.
 

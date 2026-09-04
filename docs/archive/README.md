@@ -5,11 +5,11 @@ created: 2026-07-22
 
 # Archived Documents
 
-Last updated: 2026-09-04
+Last updated: 2026-09-01
 
 ## 2026-09-01 retirement: the `v0.5.0` feature topics
 
-The five topics the [`v0-5-0-contract`](topics/v0-5-0-contract/tasks.md)
+The five topics the [`v0-5-0-contract`](../topics/v0-5-0-contract/tasks.md)
 assembly list selected retired together when that topic's closure task raised
 `docs/specs/cli-design.md` to version 28. Each reached its terminal reviewed
 state first; the move carries each topic's `reviews/` directory with it, because
@@ -51,12 +51,11 @@ Integration: none. `assemble` classified every selected topic and found nothing
 to merge — no `feature/*` branch existed, because `main` is unprotected and was
 `v0.5.0`'s feature line. No merge tree was produced and therefore no
 `unit_kind: integration` evidence exists; the reasoning is in
-[`topics/v0-5-0-contract/reviews/assemble.md`](topics/v0-5-0-contract/reviews/assemble.md).
+[`topics/v0-5-0-contract/reviews/assemble.md`](../topics/v0-5-0-contract/reviews/assemble.md).
 No merge produced behavior that no source topic described.
 
-The `v0-5-0-contract` topic itself stayed live through its closure review and
-retired separately on 2026-09-04 after the exact `acb8384` tree was published
-as stable `v0.5.0`. Its `assemble` and contract review records moved with it.
+The `v0-5-0-contract` topic itself stays live until its closure task passes
+review, and retires separately with its own `assemble` and contract records.
 
 
 ## 2026-08-16 retirement: two terminal design documents left in `docs/specs/`
