@@ -8,7 +8,7 @@ retired: 2026-09-01
 # Native macOS Desktop App — Requirements
 
 Version membership is decided by the [`v0.5.0` contract
-topic](../../../topics/v0-5-0-contract/tasks.md#assembly-list) and mirrored in
+topic](../v0-5-0-contract/tasks.md#assembly-list) and mirrored in
 [the active-topic status](../../../status.md#active-development); this topic
 carries no version of its own.
 

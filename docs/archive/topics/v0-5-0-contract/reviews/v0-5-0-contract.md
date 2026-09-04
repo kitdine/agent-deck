@@ -1,5 +1,6 @@
 ---
-status: active
+status: historical
+retired: 2026-09-04
 topic: v0-5-0-contract
 subject: v0-5-0-contract
 ---

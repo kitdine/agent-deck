@@ -487,7 +487,7 @@ This file is the only status authority for this topic.
   level, not something task 6 re-asserts under an L2 gate it cannot support.
 - **This task does not raise the specification version, run technical preflight,
   choose a release channel, or write release notes.** The version-wide raise is
-  owned by the [v0.5.0 contract closure](../../../topics/v0-5-0-contract/tasks.md). Preflight
+  owned by the [v0.5.0 contract closure](../v0-5-0-contract/tasks.md). Preflight
   and any RC or stable publication remain separate, explicitly authorized
   workflows.
 - Depends on tasks 1 through 5, each at Review PASS.
@@ -1482,7 +1482,7 @@ state; task 6 ran no build.
 Not done here, by contract: the specification version is not raised and no
 changelog row is added. `docs/specs/cli-design.md`'s changelog rule requires
 both when promised behavior changes, and this task's edits do change it — that
-row is [`v0-5-0-contract`](../../../topics/v0-5-0-contract/tasks.md) task 2's, which raises
+row is [`v0-5-0-contract`](../v0-5-0-contract/tasks.md) task 2's, which raises
 the version exactly once across every topic in the version and lands on top of
 the feature-contract text this task just wrote. Row 25's mention of an
 "opt-in privacy-bounded stable-release update-check" is the historical record of
@@ -1574,7 +1574,7 @@ tasks 2 and 3 because its App Group usage projection consumes the
 `usage.presentation` producer task 3 delivers; it does not start as an
 independent sibling. Task 5 integrates tasks 2-4. Task 6 runs last within this
 topic, and in turn gates the
-[v0.5.0 contract closure](../../../topics/v0-5-0-contract/tasks.md).
+[v0.5.0 contract closure](../v0-5-0-contract/tasks.md).
 
 Commit boundaries follow task boundaries. This topic does not authorize commits,
 pushes, certificate creation, secret changes, release publication, Homebrew tap

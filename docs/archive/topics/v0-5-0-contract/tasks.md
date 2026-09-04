@@ -1,7 +1,8 @@
 ---
-status: active
+status: historical
 created: 2026-08-06
-updated: 2026-09-01
+updated: 2026-09-04
+retired: 2026-09-04
 ---
 
 # v0.5.0 Contract Closure — Tasks
@@ -11,14 +12,14 @@ Target version: `v0.5.0`.
 This contract topic owns only the final reconciliation after every topic in the
 [assembly list](#assembly-list) has reached the terminal reviewed state the
 [entry condition](#entry-condition) defines. The
-[native desktop app topic](../../archive/topics/desktop-app/tasks.md) is one of those five and not
+[native desktop app topic](../desktop-app/tasks.md) is one of those five and not
 a gate of its own; those two sections are the single place the prerequisite set
 is maintained, and it is deliberately not restated here. It owns no product
 behavior and does not decide whether the completed version proceeds to an RC, a
 stable release, or remains unpublished. It originates no requirement, surface,
 or architecture of its own, so it carries only this file.
 The corrected ownership model is recorded by the historical
-[v0.4.0 contract closure](../../archive/plans/v0-4-0-contract.md).
+[v0.4.0 contract closure](../../plans/v0-4-0-contract.md).
 
 This file is the only status authority for this topic.
 
@@ -26,17 +27,17 @@ This file is the only status authority for this topic.
 
 This list decides what `v0.5.0` contains. A topic carries no version number of
 its own, so membership exists here and in
-[the active-topic status](../../status.md#active-development) and nowhere else. Changing the
+[the active-topic status](../../../status.md#active-development) and nowhere else. Changing the
 list is how a topic is added or deferred; no commit, branch, review record, or
 evidence moves when it changes.
 
 | Topic | Included | Reason |
 | --- | --- | --- |
-| [`desktop-app`](../../archive/topics/desktop-app/tasks.md) | **Yes** | All six tasks ship together; a topic is merged whole or not at all. |
-| [`work-signals`](../../archive/topics/work-signals/tasks.md) | **Yes** | Restores the captured activity, workflow, and tooling data behind the desktop Sessions surface and adds the matching CLI surface. Its six implementation tasks and contract task ship as one topic. |
-| [`cli-error-classification`](../../archive/topics/cli-error-classification/requirements.md) | **Yes** | It changes the documented JSON error contract, turning `runtime_error` into specific not-found codes. That is an observable break for any consumer matching the old code, so it ships in the same tag as the desktop line rather than trailing it: the desktop surface reads those codes, and a version whose UI classifies errors one way while its CLI classifies them another is the worse outcome. The break is announced once, in this version's notes. |
-| [`switch-effectiveness-boundary`](../../archive/topics/switch-effectiveness-boundary/requirements.md) | **Yes** | One client-neutral Hook operation must persist every accepted Codex or Claude delivery before applying an event-specific route effect. Real-session evidence still fixes Claude's state machine: only `no key -> first key` may apply live; key rotation and removal retain the prior route until restart. Its four tasks cover the shared ledger, advisory/file contract, effective-route policy, and cross-client real-lifecycle acceptance. |
-| [`usage-attribution-precision`](../../archive/topics/usage-attribution-precision/requirements.md) | **Yes** | The cancelled `v0.6.0` attribution line moves into `v0.5.0` as this active topic, not as a future Backlog reconciliation. It promotes determinable effective routes to `exact`, publishes six attribution-reason counts, separates timeline gaps from real provider spend, and reports their calculable catalog base independently. Pricing, credit, Context Efficiency, and subscription candidates remain independent. A determinable event downgraded to `inferred`, or an unattributed event included in provider spend, is a release blocker and cannot ship. |
+| [`desktop-app`](../desktop-app/tasks.md) | **Yes** | All six tasks ship together; a topic is merged whole or not at all. |
+| [`work-signals`](../work-signals/tasks.md) | **Yes** | Restores the captured activity, workflow, and tooling data behind the desktop Sessions surface and adds the matching CLI surface. Its six implementation tasks and contract task ship as one topic. |
+| [`cli-error-classification`](../cli-error-classification/requirements.md) | **Yes** | It changes the documented JSON error contract, turning `runtime_error` into specific not-found codes. That is an observable break for any consumer matching the old code, so it ships in the same tag as the desktop line rather than trailing it: the desktop surface reads those codes, and a version whose UI classifies errors one way while its CLI classifies them another is the worse outcome. The break is announced once, in this version's notes. |
+| [`switch-effectiveness-boundary`](../switch-effectiveness-boundary/requirements.md) | **Yes** | One client-neutral Hook operation must persist every accepted Codex or Claude delivery before applying an event-specific route effect. Real-session evidence still fixes Claude's state machine: only `no key -> first key` may apply live; key rotation and removal retain the prior route until restart. Its four tasks cover the shared ledger, advisory/file contract, effective-route policy, and cross-client real-lifecycle acceptance. |
+| [`usage-attribution-precision`](../usage-attribution-precision/requirements.md) | **Yes** | The cancelled `v0.6.0` attribution line moves into `v0.5.0` as this active topic, not as a future Backlog reconciliation. It promotes determinable effective routes to `exact`, publishes six attribution-reason counts, separates timeline gaps from real provider spend, and reports their calculable catalog base independently. Pricing, credit, Context Efficiency, and subscription candidates remain independent. A determinable event downgraded to `inferred`, or an unattributed event included in provider spend, is a release blocker and cannot ship. |
 
 Excluding a topic costs nothing here and everything later: a topic already
 merged but no longer wanted has no clean removal, because `revert` propagates
@@ -74,7 +75,7 @@ the one case recorded below.
 
 `switch-effectiveness-boundary`'s fourth task, `real-session-acceptance`, is
 `n/a` / `n/a` because the operator waived it on 2026-08-26, and
-[that topic's `tasks.md`](../../archive/topics/switch-effectiveness-boundary/tasks.md) — its only
+[that topic's `tasks.md`](../switch-effectiveness-boundary/tasks.md) — its only
 status authority — is where that decision lives. **The waiver is this gate's
 terminal state for that task.** This entry condition does not require a Review
 PASS for it, does not treat the waiver as one, and does not reopen or rewrite

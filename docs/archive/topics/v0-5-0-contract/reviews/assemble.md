@@ -1,5 +1,6 @@
 ---
-status: active
+status: historical
+retired: 2026-09-04
 topic: v0-5-0-contract
 subject: assemble
 ---
@@ -51,11 +52,11 @@ landed. Each selected topic's delivered content is therefore checked to be in
 
 | Topic | Delivering commit | `git merge-base --is-ancestor <commit> HEAD` |
 | --- | --- | --- |
-| [`desktop-app`](../../../archive/topics/desktop-app/tasks.md) | `0aefed1` — `docs(macos): close desktop app topic` | ancestor |
-| [`work-signals`](../../../archive/topics/work-signals/tasks.md) | `a83ae2b` — `docs(work-signals): reconcile delivered signal contract` | ancestor |
-| [`cli-error-classification`](../../../archive/topics/cli-error-classification/requirements.md) | `574a7ad` — `feat: add stable CLI error codes` | ancestor |
-| [`switch-effectiveness-boundary`](../../../archive/topics/switch-effectiveness-boundary/tasks.md) | `7db5618` — `fix(usage): retain effective routes across Claude switches`; `5f21895` — `docs(switch-effectiveness): waive the real-session acceptance task` | ancestor |
-| [`usage-attribution-precision`](../../../archive/topics/usage-attribution-precision/tasks.md) | `9035b80` — `feat(usage): expose attribution observability` | ancestor |
+| [`desktop-app`](../../desktop-app/tasks.md) | `0aefed1` — `docs(macos): close desktop app topic` | ancestor |
+| [`work-signals`](../../work-signals/tasks.md) | `a83ae2b` — `docs(work-signals): reconcile delivered signal contract` | ancestor |
+| [`cli-error-classification`](../../cli-error-classification/requirements.md) | `574a7ad` — `feat: add stable CLI error codes` | ancestor |
+| [`switch-effectiveness-boundary`](../../switch-effectiveness-boundary/tasks.md) | `7db5618` — `fix(usage): retain effective routes across Claude switches`; `5f21895` — `docs(switch-effectiveness): waive the real-session acceptance task` | ancestor |
+| [`usage-attribution-precision`](../../usage-attribution-precision/tasks.md) | `9035b80` — `feat(usage): expose attribution observability` | ancestor |
 
 All five topic directories are present at HEAD under `docs/topics/`. Membership
 of each topic is whole, per the assembly list; no topic is partially present.
