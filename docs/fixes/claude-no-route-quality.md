@@ -118,6 +118,8 @@ closed。判据本不依赖时间窗口，所以窗口被证伪不构成移除�
 - 不做数据回填：quality 是读时派生的，规则修正后历史事件在下次读取时自动重算。
 - 不处理 route 写入链路自 `2026-08-27T12:31` 起中断 6 天、100+ 会话零 route 的
   缺陷。它独立于本判据，且是本次误判长期未被发现的直接原因，另行 triage。
+  **更正见「后续调查 — 2026-09-04」**：该 triage 已完成，这条边界描述的起点、
+  规模与归属三项均不准确，真正的窗口、根因与承载 topic 记在那一节。
 
 **Lane A 判定依据**：契约已存在——`switch-effectiveness-boundary` 的解析层级与
 Claude 活性状态机已评审确立，本修复只让实现回到该契约。不新增状态、不新增
@@ -428,7 +430,8 @@ F1 已实现，范围与「修复边界」一致。
   （21 → 22），已核对无其他差异。
 
 未做：route 写入链路自 `2026-08-27T12:31` 中断 6 天的缺陷仍未处理，按「修复边界」
-另行 triage。
+另行 triage。**该 triage 已于 2026-09-04 完成，结论见本记录末尾的「后续调查」一节**：
+不新建任务，根因由 `schema-version-signal` topic 承载，且此处的起点与规模描述不准确。
 
 - Verdict: 等待独立 Review。
 
@@ -1572,5 +1575,95 @@ files/hunks、完整 message/body/trailers 与 SSH signature。
 ## Post-review carrier reconciliation — 2026-09-03
 
 - R1-F7 closed: `docs/archive/fixes/attribution-determinability.md` Repair Round 1 explicitly closes it; this record cites R1-F7 only as the historical source of the removed Claude branch.
-- R4-F1 -> open; carrier: `ad-bug-claude-backup-api-key-redaction` (live Beads bug, priority 0, awaiting user Lane A/B/C triage).
+- R4-F1 -> carried, and the carrier has since been delivered; see the
+  reconciliation dated 2026-09-04 below for its terminal state.
 - Round 7 `Verdict: PASS`, the `c4a77435…` VERIFIED gate, Task checkpoint, and delivery recommendations remain unchanged.
+
+## Post-review carrier reconciliation — 2026-09-04
+
+**R4-F1 is closed at its carrier, not reopened here.** The 2026-09-03 entry
+above recorded the carrier while it was still awaiting the user's Lane
+decision; that state has since been reached and passed, so this record's last
+mention of R4-F1 is no longer its current one. The carrier's terminal state:
+
+| | |
+| --- | --- |
+| Carrier | `ad-bug-claude-backup-api-key-redaction`, Beads `closed` 2026-09-04T07:41:23Z |
+| Lane | A, decided by the user after the defect was confirmed against the repository |
+| Delivered | `5ff2e80` `fix(provider): redact unmanaged Claude API keys from backups` |
+| Beads close_reason | `Delivered in inspected signed commit 5ff2e80f22dc…` |
+| Record | [`claude-backup-api-key-redaction.md`](claude-backup-api-key-redaction.md), Review Round 1 `FAIL` → Repair Round 1 → re-review; both findings were textual, with production behaviour unchanged by the repair |
+
+Nothing in this record's own scope changed: the Round 7 `PASS`, the
+`c4a77435…` VERIFIED gate, and the Task checkpoint stand exactly as recorded.
+R4-F1 always pointed outside this fix's boundary — `WriteRedactedBackup` is not
+on the attribution path — which is why it was carried rather than repaired
+here, and the carrier is where its verdict lives.
+
+## 后续调查 — 2026-09-04
+
+「修复边界」里那条「route 写入链路自 `2026-08-27T12:31` 起中断 6 天、100+ 会话零
+route，另行 triage」的 triage 已完成。**该 triage 不产生新任务**：根因已有归属。
+同时，那条描述的起点、规模、归属三项都不准确，逐条更正如下。
+
+### 起点错了：`2026-08-27T12:31` 不是链路中断的起点
+
+那个时间戳是 **Claude 侧最后一条 `resume` route** 的 `observed_at`，不是链路状态发生
+变化的时刻。按会话逐条核对 `usage_sessions` 与 `usage_session_routes`，Claude 侧在
+08-27 之前就长期大量零 route（`08-20` 0/3、`08-21` 0/2、`08-24` 0/1、`08-25` 0/1、
+`08-26` 2/4），而且**从来没有过一条 `startup` route**，直到 `claude-startup-route`
+修复后的 `2026-09-03T03:26:37`。所以 Claude 侧的零 route 主因是那个已修复的 startup
+准入缺陷，它一直存在，不是从 08-27 开始的新故障。
+
+真正呈现「中断」形状的是 **Codex 侧**，且窗口不同：
+
+| 边界 | 会话 | route |
+| --- | --- | --- |
+| `2026-08-29T08:22` | 最后一个正常会话 | 有 |
+| `2026-08-30T14:09` — `2026-09-01T18:28` | **19 个会话** | **全部无** |
+| `2026-09-02T05:20` | 恢复 | 有 |
+
+窗口内含 306 / 277 / 228 / 153 事件的大会话，不是边缘情况。Codex 侧此前
+`08-20`～`08-29` 几乎每个会话都有 route，所以这里的落差是真实的状态变化。
+
+### 规模错了：`100+` 会话绝大多数本就不该有 route
+
+`100+` 来自 `09-01`（45）与 `09-02`（53）两天的 Claude 会话数，但按 `source_path`
+拆开后，其中 **40 与 50 个是 claude-mem 的 `observer-sessions/` SDK 会话**，各 1 个
+事件、不跑交互式 Hook，本来就不写 route。同期真正的交互式无 route 会话是
+`08-28`(1) + `08-30`(2) + `08-31`(1) + `09-01`(5) + `09-02`(3) + `09-03`(1) = **13 个**，
+与 `100+` 差一个数量级。
+
+### 归属错了：根因已有承载 topic，不是待 triage 的孤儿
+
+Codex 侧那个窗口的根因是 **schema 超前**，即
+[`schema-version-signal`](../topics/schema-version-signal/requirements.md) 这个 Lane B
+topic 已经承载的同一个条件：开发构建把 `~/.agentdeck` 迁到 schema `21`（迁移 19/20/21
+分别落于 `8703fed` 08-26、`cf539a2` 08-27、`276986e` 08-29），而 Hook 调用的
+`/usr/local/bin/agentdeck` 当时是 v0.4.1、`CurrentSchemaVersion` 为 `18`。该 topic 的
+`requirements.md` 记录的正是 2026-08-30 报告的这一条件。窗口结束于
+`2026-09-01T19:58` 装上支持 21 的 `rc.4` 之后的第一个会话。
+
+**实测确证**（可控三段对照，用当前 `main` 构建，临时 state 目录，测后删除）：
+
+| 情形 | exit | stdout | stderr | route |
+| --- | --- | --- | --- | --- |
+| schema `23`（受支持） | 0 | 空 | 空 | **+1** |
+| schema `999`（超前） | **0** | **空** | **空** | **+0** |
+| 改回 `23` | 0 | 空 | 空 | **+1** |
+
+原因在 `cmd/agentdeck/main.go` 的 `runUsageHookEvent`：`opts.openStore(ctx)` 失败时
+`return nil`。这是 Hook 交付有意的 fail-open —— 客户端启动不能被 AgentDeck 阻断 ——
+但它把一个**持续性**的 schema 不匹配变成了完全静默的数据丢失：退出码 0、两个流都空，
+与成功交付在外部无法区分。同一条件下 `provider list` 会明确报
+`unknown_schema: database version 999 exceeds supported version 23`。
+
+这条路径**不在** `schema-version-signal` 的 Measured behavior 表里，且后果性质与表中
+其余五条不同（静默丢数据，而非报错难懂），因此已补进该 topic 的 `requirements.md`，
+而不是另开缺陷任务。
+
+### 对本修复结论的影响
+
+无。本修复的判据、实现与验证都不依赖这条边界描述；受影响的只是「残余风险」里
+「样本随 route 写入链路修复自然积累」一句的措辞——该链路并无待修缺陷，样本的积累
+条件是 Hook 调用方与 state 目录的 schema 保持匹配。

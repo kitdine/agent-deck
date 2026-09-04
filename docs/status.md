@@ -93,15 +93,15 @@ is recorded in `roadmap.md`.
   `observer-sessions/` SDK sessions with one event each; the other two started
   before `rc.5` was installed and hold 675 events. Those events remain
   `inferred` in the released `rc.5` behavior under the reviewed fail-closed
-  contract. The uncommitted Lane A candidate on
-  `ad-bug-claude-no-route-quality` now attempts to derive a process boundary
-  from transcript timestamps. Re-review Round 7 passed: the exact implementation
-  state has eight active required criteria with relation-bound pass evidence,
-  the Development Gate and Beads task boundary are synchronized, and all scoped
-  findings are closed. The Task is at its commit checkpoint with gate
-  `VERIFIED`; the plaintext `ANTHROPIC_API_KEY` backup path remains carried by
-  `ad-bug-claude-backup-api-key-redaction`. None of that candidate state changes
-  this release status or the notarization acceptance.
+  contract. The Lane A repair on `ad-bug-claude-no-route-quality`, which derives
+  a process boundary from transcript timestamps, is committed at `be7da8b`
+  after Re-review Round 7; two further Lane A repairs followed it on `main` —
+  `5ff2e80` removes the unmanaged `ANTHROPIC_API_KEY` from Claude redacted
+  backups, and `29039f9` admits `clear` and `fork` session starts and
+  brand-new-project transcripts without weakening root containment. All three
+  are on `main` only: none of them changes the released `rc.5` behavior, this
+  release status, or the notarization acceptance, and reaching users needs a
+  later candidate.
 - The Cask exclusion guard was not exercised live, because reproducing it means
   installing the conflicting CLI-only formula; it rests on the real
   `brew install --cask` regression that passed in this commit's L4 aggregate.
@@ -162,7 +162,7 @@ agentdeck version
 | Topic | Version | Status | Purpose |
 | --- | --- | --- | --- |
 | [`v0.5.0` Contract Closure](topics/v0-5-0-contract/tasks.md) | `v0.5.0` | Contract complete, reviewed, and committed at `a547362` — `cli-design.md` is at version 28, the five selected topics are retired under [`archive/topics/`](archive/topics/), and both contract Tasks have passed independent review. 2/2 implemented and reviewed. Five release candidates have since been published from `main`, the current one being `v0.5.0-rc.5`; stable channel selection and publication remain separate decisions. The specification stays at version 28 across the five Lane A fixes `rc.5` carries: only one of them touched `cli-design.md`, and it corrected an untrue paragraph about notarization submissions without changing the promise that paragraph supports, which the Changelog rule makes a correction rather than a contract change. The untracked schema-version-signal topic remains separate and unstaged | Version-wide specification raise and documentation reconciliation after every selected topic's tasks pass review. |
-| [Schema Version Signal](topics/schema-version-signal/tasks.md) | unassigned | Active — boundary stage; `requirements.md` drafted and awaiting review; version membership not yet decided by a contract topic, so this row is deliberately not marked `v0.5.0`; the Documents matrix declares `ux/menubar-schema-signal.md` and `architecture.md` as required and unwritten, which `check-topic-docs.sh` reports as gaps until `tasks.md` review ratifies the set; 0/4 documents passed | One stable, actionable report when the core database's schema version exceeds the running binary's supported version, across `doctor`, the command paths, and the desktop snapshot. Promoted from a measured defect: schema 21 on disk against two installed binaries supporting 18, reported five different ways. |
+| [Schema Version Signal](topics/schema-version-signal/tasks.md) | unassigned | Active — boundary stage; `requirements.md` drafted and awaiting review; version membership not yet decided by a contract topic, so this row is deliberately not marked `v0.5.0`; the Documents matrix declares `ux/menubar-schema-signal.md` and `architecture.md` as required and unwritten, which `check-topic-docs.sh` reports as gaps until `tasks.md` review ratifies the set; 0/4 documents passed; `requirements.md` was widened on 2026-09-04 while in review, after a triage found a sixth reporting path — the Hook — and it is the one that reports nothing at all | One stable, actionable report when the core database's schema version exceeds the running binary's supported version, across `doctor`, the command paths, the desktop snapshot, and Hook delivery. Promoted from a measured defect: schema 21 on disk against two installed binaries supporting 18, reported six different ways. The sixth is silent: `usage hook event` exits 0 with empty streams and writes no row, which cost 19 Codex sessions their provider route between 2026-08-30 and 2026-09-01, unrecoverably. |
 
 #### Retired into `v0.5.0`
 
