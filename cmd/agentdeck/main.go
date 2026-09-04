@@ -3097,9 +3097,8 @@ func validHookTranscript(home string, client usagehook.Client, event usagehook.E
 			return false
 		}
 		resolvedPath, err = filepath.EvalSymlinks(event.TranscriptPath)
-	case client == usagehook.ClientClaude && event.Source == "startup" && errors.Is(err, os.ErrNotExist):
-		resolvedPath, err = filepath.EvalSymlinks(filepath.Dir(event.TranscriptPath))
-		resolvedPath = filepath.Join(resolvedPath, filepath.Base(event.TranscriptPath))
+	case client == usagehook.ClientClaude && claudeSourceStartsTranscript(event.Source) && errors.Is(err, os.ErrNotExist):
+		resolvedPath, err = resolveWithinExistingAncestor(event.TranscriptPath)
 	default:
 		return false
 	}
@@ -3108,6 +3107,61 @@ func validHookTranscript(home string, client usagehook.Client, event usagehook.E
 	}
 	relative, err := filepath.Rel(resolvedRoot, resolvedPath)
 	return err == nil && relative != "." && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
+}
+
+// claudeSourceStartsTranscript reports whether a Claude SessionStart source
+// begins a session with a new id and a transcript Claude has not written yet.
+// The hook fires before that file exists, so these sources are admitted by
+// resolved path instead of by stat. resume names an already written
+// transcript, and compact continues the current session without a route, so
+// neither belongs here: for them a missing file is a mismatch, not timing.
+func claudeSourceStartsTranscript(source string) bool {
+	switch source {
+	case "startup", "clear", "fork":
+		return true
+	default:
+		return false
+	}
+}
+
+// resolveWithinExistingAncestor resolves a path whose leaf, and possibly whose
+// directories, do not exist yet. A brand-new project has its
+// ~/.claude/projects/<project>/ directory created together with the first
+// transcript rather than before it, so resolving only the immediate parent
+// fails on that session. Walking up to the nearest existing ancestor and
+// rejoining the remainder keeps the symlink containment check meaningful --
+// every component that does exist is still resolved -- without requiring the
+// leaf to be there.
+//
+// Whether a component is absent is decided by Lstat, never by EvalSymlinks:
+// a dangling symlink is a component that does exist, yet EvalSymlinks reports
+// ErrNotExist for it too. Stepping over one would rejoin its name lexically
+// and let the containment check pass on a path that resolves outside the root
+// the moment its target appears. So an existing component must resolve or the
+// path is rejected; only a component Lstat itself cannot find is treated as
+// not created yet.
+func resolveWithinExistingAncestor(path string) (string, error) {
+	remainder := make([]string, 0, 4)
+	current := path
+	for {
+		parent := filepath.Dir(current)
+		if parent == current {
+			return "", os.ErrNotExist
+		}
+		remainder = append([]string{filepath.Base(current)}, remainder...)
+		if _, err := os.Lstat(parent); err != nil {
+			if !errors.Is(err, os.ErrNotExist) {
+				return "", err
+			}
+			current = parent
+			continue
+		}
+		resolved, err := filepath.EvalSymlinks(parent)
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(append([]string{resolved}, remainder...)...), nil
+	}
 }
 
 func newUsageCommand(opts *commandOptions) *cobra.Command {
