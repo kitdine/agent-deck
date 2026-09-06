@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-08-25
-updated: 2026-09-04
+updated: 2026-09-06
 ---
 
 # AgentDeck Project Status
@@ -163,7 +163,7 @@ agentdeck version
 | Topic | Version | Status | Purpose |
 | --- | --- | --- | --- |
 | [`v0.5.0` Contract Closure](topics/v0-5-0-contract/tasks.md) | `v0.5.0` | Released — contract complete, independently reviewed, and committed at `a547362`; `cli-design.md` is at version 28 and both contract Tasks are 2/2 implemented and reviewed. Six release candidates culminated in `v0.5.0-rc.6`, and stable `v0.5.0` published the exact `acb8384` commit. The directory remains live only until the separately owned, currently untracked schema-version-signal topic becomes commit-addressable, so a clean checkout retains the required `docs/topics/` audit root; no v0.5.0 work remains. | Version-wide specification raise and documentation reconciliation after every selected topic's tasks pass review. |
-| [Schema Version Signal](topics/schema-version-signal/tasks.md) | unassigned | Active — boundary stage; `requirements.md` drafted and awaiting review; version membership not yet decided by a contract topic, so this row is deliberately not marked `v0.5.0`; the Documents matrix declares `ux/menubar-schema-signal.md` and `architecture.md` as required and unwritten, which `check-topic-docs.sh` reports as gaps until `tasks.md` review ratifies the set; 0/4 documents passed; `requirements.md` was widened on 2026-09-04 while in review, after a triage found a sixth reporting path — the Hook — and it is the one that reports nothing at all | One stable, actionable report when the core database's schema version exceeds the running binary's supported version, across `doctor`, the command paths, the desktop snapshot, and Hook delivery. Promoted from a measured defect: schema 21 on disk against two installed binaries supporting 18, reported six different ways. The sixth is silent: `usage hook event` exits 0 with empty streams and writes no row, which cost 19 Codex sessions their provider route between 2026-08-30 and 2026-09-01, unrecoverably. |
+| [Schema Version Signal](topics/schema-version-signal/tasks.md) | unassigned | Active — boundary stage passed; `requirements.md` is 1/4 documents reviewed, PASS at Round 2 on 2026-09-06 after a Round 1 REOPEN over four findings, with its `document` CEv1 gate VERIFIED against `head=8d283cd`/`document=b0854d00`; version membership not yet decided by a contract topic, so this row is deliberately not marked `v0.5.0`; the Documents matrix declares `ux/menubar-schema-signal.md` and `architecture.md` as required and unwritten, which `check-topic-docs.sh` reports as gaps until `tasks.md` review ratifies the set; `requirements.md` was widened on 2026-09-04 while in review, after a triage found a sixth reporting path — the Hook — and it is the one that reports nothing at all | One stable, actionable report when the core database's schema version exceeds the running binary's supported version, across `doctor`, the command paths, the desktop snapshot, and Hook delivery. Promoted from a measured defect: schema 21 on disk against two installed binaries supporting 18, reported six different ways. The sixth is silent: `usage hook event` exits 0 with empty streams and writes no row, which cost 19 Codex sessions their provider route between 2026-08-30 and 2026-09-01, unrecoverably. |
 
 #### Retired into `v0.5.0`
 
