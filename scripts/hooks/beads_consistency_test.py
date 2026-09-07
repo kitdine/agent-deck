@@ -639,5 +639,43 @@ class OwnerlessFindingsTest(unittest.TestCase):
         self.assertEqual(MODULE.ownerless_findings(Path("/nonexistent/x.md")), [])
 
 
+class SkillReportInteropTest(unittest.TestCase):
+    def state(self, body):
+        return MODULE.latest_review_state(mock.Mock(read_text=mock.Mock(return_value=body)))
+
+    def test_skill_reports_read_gate_after_verdict_and_across_nested_heading(self):
+        for verdict, gate in (("✅ Verdict: PASS", "Completion gate: VERIFIED"),
+                              ("✅ **结论**：**PASS**", "完成门禁：VERIFIED")):
+            with self.subTest(verdict=verdict):
+                self.assertEqual(self.state(
+                    "## Round 1\n## 📋 Review\n📊 Score: 9/10\n" + verdict +
+                    "\n### 📝 Summary\n" + gate + "\n"), ("PASS", "VERIFIED"))
+
+    def test_latest_localized_or_incomplete_round_never_reuses_old_pass(self):
+        previous = "## Round 1\nVerdict: PASS\nCompletion gate: VERIFIED\n"
+        self.assertEqual(self.state(previous +
+            "## Round 2\n## 📋 复评\n✅ 结论: FAIL\n完成门禁: BLOCKED\n"),
+            ("FAIL", "BLOCKED"))
+        self.assertEqual(self.state(previous + "## Round 2\nWork pending.\n"), (None, None))
+
+    def test_metadata_before_report_title_is_in_the_same_round(self):
+        self.assertEqual(self.state("## Review — Round 2\nCompletion gate: VERIFIED\n"
+                                    "## 📋 Review\n✅ Verdict: PASS\n"), ("PASS", "VERIFIED"))
+
+    def test_quoted_examples_do_not_supply_verdict_or_round(self):
+        self.assertEqual(self.state("## Round 1\nVerdict: FAIL\nCompletion gate: BLOCKED\n"
+            "```markdown\n## Round 99\nVerdict: PASS\nCompletion gate: VERIFIED\n```\n"),
+            ("FAIL", "BLOCKED"))
+
+    def test_conflicting_fields_fail_closed(self):
+        self.assertEqual(self.state("## Round 1\nVerdict: PASS\n结论: FAIL\n"
+                                    "Completion gate: VERIFIED\n"), (None, None))
+
+    def test_finding_prefixes_cannot_cancel_each_other(self):
+        body = "DW-R11-F1 CLOSED: repaired.\nXY-R11-F1 open: still broken.\n"
+        self.assertEqual(MODULE.ownerless_findings(
+            mock.Mock(read_text=mock.Mock(return_value=body))), ["XY-R11-F1"])
+
+
 if __name__ == "__main__":
     unittest.main()

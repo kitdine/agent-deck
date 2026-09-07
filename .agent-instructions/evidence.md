@@ -92,12 +92,13 @@ named `completion-evidence`.
 
 ### Record shape / 记录形状
 
-The rules above are the contract. They do not describe how a record is shaped,
-and a writer who reconstructs that by memory writes nodes the gate cannot see.
-On 2026-08-19 that happened: six evidence nodes were written in the single-node
-form this store retired on 2026-08-17, and the gate query — which walks
-`work_unit -> criterion <- evidence` and matches `outcome = 'pass'` — returned
-nothing from them. They looked recorded and proved nothing.
+Evidence counts only when its record shape, relationships, and outcome match
+the gate query. Verify the applicable store convention before writing; do not
+reconstruct it from memory.
+
+Historical rationale: commit `acbd91186d27bfb9f799f7a6751d09fa718403f5`
+records the incident that motivated this rule; it is historical context,
+not the current schema authority.
 
 **Inspect the store before writing.** The convention lives in the graph, not in
 memory and not in this file's history. One read settles it:
@@ -156,17 +157,16 @@ pre-synchronization blob is stale the moment the round finishes. Bind to the
 final blob, and if evidence was already recorded against the earlier one,
 supersede it rather than leaving two live records.
 
-A denied write is not automatically `BLOCKED`. Retry as a smaller idempotent
-upsert first: an environment may reject one statement's shape while permitting
-the same intent expressed as the profile's template. Report `BLOCKED` only after
-that, and say which statement was refused.
+Classify a failed write before retrying:
 
-证据记录的形状以库中现状为准，不以记忆为准；写入前先聚合查询 `kind` 与其最后使用
-时间，被淘汰的词汇不因历史条数多而正确。当前为四类小写节点加三种关系，
-`outcome` 必须小写 `pass`，`content_state` 是独立节点且 `target_content_state`
-是指向它的外键，`subject_digest` 由上面那条 `shasum` 得出。记录只追加，内容变化用
-`supersedes` 而非改写。证据应绑定本轮状态同步之后的最终 blob，并在写完后用门禁
-查询自查。写入被拒时先改用更小的幂等 upsert 重试，再决定是否报告 `BLOCKED`。
+- If a permission system denies the action, follow `AUTHORIZATION_WAIT` in
+  AGENTS.md. Do not reformulate the write to bypass the denial.
+- If the error identifies a statement-shape or validation problem, correct that
+  specific problem using the profile's idempotent templates. Retry only when
+  the error supports the correction and the action remains authorized.
+- If the cause is unclear or the provider is unavailable, report the exact
+  failure and keep the evidence gate open. Do not retry speculatively or treat
+  an unavailable configured provider as absent.
 
 ## Neo4j Project Memory / Neo4j 项目记忆
 

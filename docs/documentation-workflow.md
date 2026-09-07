@@ -346,7 +346,7 @@ created: YYYY-MM-DD
 ## 修复边界    what changes and what deliberately does not
 ## 验证        the commands run and their output, at the stated level
 ## Review — Round N
-Verdict: PASS | REOPEN
+Verdict: PASS | FAIL
 ```
 
 Ready to review when the observation is reproducible from what the file records,
@@ -355,6 +355,10 @@ deliberately left alone, and a regression test exists that fails without the
 fix. That last clause is the whole readiness condition in practice: a repair
 with no failing-first test is a claim, and Lane A has no design review standing
 behind it to catch a wrong claim.
+
+The sample above shows the fix carrier only. Append the full report using the
+current workflow Skill format; do not treat the sample as a replacement report
+template.
 
 The review record lives in this same file rather than under `reviews/`, because
 there is one artifact and one review question; the round structure and verdict
@@ -415,8 +419,9 @@ breakdown is sound and complete against the other documents, and whether the
 document set that matrix declares is itself complete — both are different
 questions from whether any task's implementation is correct.
 
-This index records only a coarse `X/N` rollup per topic and never duplicates
-per-document or per-task status.
+`docs/status.md` records cross-topic progress, using a coarse `X/N` rollup
+where applicable. Per-document and per-task status remains in each topic's
+`tasks.md`.
 
 - A `Review` tick requires a review record whose latest applicable round is
   `Verdict: PASS`. A reopened finding returns that document or task to work.
@@ -430,8 +435,8 @@ per-document or per-task status.
   `docs/archive/topics/<topic>/`, set `status: historical` and `retired:` in each
   document, and add one concise entry to `docs/archive/README.md`. Reviews travel
   with the topic because they live inside it.
-- Do not re-list individual archived files in this index. Link the archive index
-  instead.
+- In `docs/README.md`, link to `docs/archive/README.md` rather than listing
+  individual archived files.
 
 ### Document size
 

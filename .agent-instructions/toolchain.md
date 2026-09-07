@@ -32,9 +32,9 @@ Two operational facts that have already cost time in this repository:
   while the tools remain unavailable. Report both facts rather than concluding
   the capability does not exist.
 - **Never route around an unavailable MCP by calling its backend directly.**
-  Writing CEv1 records over raw HTTP skips the profile's upsert templates and
-  relationship preflight, which is exactly how six orphan evidence nodes were
-  once created that the gate could not see. `BLOCKED` is the correct answer.
+  Report `BLOCKED`. Preserve the profile's upsert templates and relationship
+  preflight; see [Evidence record shape](evidence.md#record-shape--记录形状)
+  for the record contract and historical rationale.
 
 `.agent-instructions/evidence.md` owns what a CEv1 record must contain and how
 the gate is queried. This file only owns whether the capability is reachable.
@@ -70,6 +70,22 @@ Three properties to rely on:
 The hook stays inert outside this repository: it identifies its own checkout by
 the presence of `.agent-instructions/beads.md`, never by a path.
 
+## Shared workflow and handoff Hooks
+
+The workflow and handoff Skills remain usable without their optional Hooks.
+Registration, available runtime tools, and verified behavior are distinct facts.
+Inspect the active runtime's registration before attributing an error to a Hook.
+
+The workflow Hook distinguishes progress from completion: a claim or write can
+satisfy its anti-idling guard without proving the phase complete. Its Skill owns
+the completion receipt and continuation contracts. Do not infer completion from
+a silent Stop or a successful tool call.
+
+The handoff Hook requires project synchronization rules. Without a configured
+rule, it does not enforce automatic status synchronization; explicit Skill use
+still discovers the project's existing authorities and pointers. Do not create
+a handoff file merely to satisfy the Hook.
+
 ## Required command wrappers / 必用命令包装
 
 Three commands must not be invoked directly. Each has a wrapper that supplies
@@ -95,24 +111,10 @@ The stage commands `设计` / `开发` / `评审` / `修复` / `复评` are defi
 `development-workflow` Skill, not by this repository. Its
 `references/protocol-commands.md` is the syntax authority.
 
-**This file deliberately does not copy that syntax.** A copied specification
-goes stale silently, and this repository has been bitten by exactly that more
-than once — most recently when a design document named `schema v19`, a number
-another topic had already landed. What is recorded here is an obligation, which
-belongs to the project and does not expire:
-
-> Before emitting any `下一步指令` / `Next instruction`, treat it as input the
-> user is about to paste verbatim, and self-check it against that Skill's
-> Matching rules: is the command the first non-whitespace text, is it followed
-> immediately by `:` or `：`, and is the scope written as `<topic> / <anchor>`?
-
-The failure this prevents: a short stage command followed by a **space** does
-not match, so the instruction reads as ordinary prose and no route, stage
-authority, Beads transition, or evidence boundary is activated. The Skill's own
-Matching section lists `评审 cache_test.go` as a non-matching example. An agent
-that has read the parsing rule but applies it only to incoming text will keep
-producing unusable instructions; the rule is a specification for both
-directions.
+Before emitting a workflow next instruction, apply the command self-check
+defined in [AGENTS.md](../AGENTS.md#runtime-contract--运行时契约).
+Use the Skill's current Matching rules for accepted command forms; do not
+maintain a separate parser specification in this file.
 
 Scope form follows this repository's own usage: `work-signals / architecture.md`,
 `work-signals / reviews/documents.md / R4-F1`. Keep review rules and round
@@ -137,21 +139,3 @@ a file whose parent directory is itself excluded.
 
 `CLAUDE.md` is a symlink to `AGENTS.md`. There is one file; editing either edits
 both, and they must never be allowed to diverge into two documents.
-
-## 中文摘要
-
-本仓库只声明依赖哪些运行时能力以及缺失时如何降级，不记录它们的地址——端点与安装
-路径因机器而异，写进来只会对一台机器正确。
-
-- MCP 三个：`neo4j`（CEv1 证据，不可达时报 `BLOCKED`，绝不静默降级，也绝不绕过
-  MCP 直接写后端）、`neo4j-mem`（项目记忆，缺失不影响证据门禁）、`codegraph`
-  （符号检索，缺失即回退 `rg`/`fd`）。MCP 连接在会话启动时一次性建立，服务端事后
-  恢复不会让本会话重新获得工具，需要客户端重连。
-- Hook `beads-consistency.py` 在两个运行时的 `Stop` 上运行，只报告不写 Beads，
-  分歧会让 turn 保持打开。它的输出是数据不是契约：Beads 命令形式、库位置与状态
-  词汇一律以 `.agent-instructions/beads.md` 为准。
-- 三条必用包装：`run-go-test.sh`、带 `BEADS_ACTOR` 的 `agentdeck-bd`、以及按
-  `project-rules.md` 的 L0–L4 选择验证命令。裸 `bd` 会把 agent 的写入记成操作者
-  本人，且评论无法撤销。
-- 阶段命令语法属于 Skill，本文件只记录**自检义务**而不复制规则：输出下一步指令
-  前，按 Skill 的 Matching 规则自检命令后是否紧跟 `:` 或 `：`。空格分隔不匹配。

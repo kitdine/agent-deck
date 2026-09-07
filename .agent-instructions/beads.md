@@ -208,17 +208,12 @@ passed. A `PASS` moves the task to `awaiting_commit`; the authorized commit is
 what closes it. Collapsing `awaiting_commit` into `closed` is exactly what makes
 "review passed" and "delivered" indistinguishable in dispatch.
 
-**This includes document tasks**, and the commit checkpoint for one is the
-project's to emit. The Skill deliberately emits no commit recommendation over a
-document, contract, or process target — nothing was implemented, so it has
-nothing to recommend — but that is a statement about the Skill's output, not
-about whether the work is delivered. A passing document leaves the document
-itself, its review record, and the `tasks.md` / `docs/status.md` status
-synchronization to be committed, and CEv1 binds an uncommitted review candidate
-to HEAD plus a blob fingerprint that must be re-recorded against the immutable
-Git tree once an authorized commit exists. `awaiting_commit` is precisely that
-interval. Closing a document at `PASS` would drop both the commit and the
-evidence re-record on the floor.
+**This includes document tasks.** The workflow Skill selects checkpoints by
+whether the project delivers the subject as a task, not by whether the artifact
+is code or a document. Every passing task gets commit and push recommendations;
+neither recommendation authorizes delivery. An uncommitted document candidate
+and its status/review records remain at the commit checkpoint until the authorized
+commit exists and required evidence is bound to the final content identity.
 
 **A review verdict is not an evidence gate.** `PASS` with a required completion
 gate still `NOT_VERIFIED`, `FAILED`, or `BLOCKED` does NOT reach
@@ -227,6 +222,9 @@ the verdict and the open gate. The status name reads oddly for a few hours, and
 that is the correct trade — the alternative asserts a completion the evidence
 does not support. Do not add a status for this; the gate is CEv1's to answer and
 mirroring it here would make Beads a second, stale evidence record.
+
+New review records use `PASS`/`FAIL`; historical `REOPEN` records remain valid
+failed-review history and are not rewritten.
 
 Nothing moves a status by itself. Each phase command owns exactly one
 transition on the task it names, and performing the command without the
@@ -237,7 +235,7 @@ transition is what made an entire day of document work invisible to dispatch:
 | `设计：<topic>` | create the topic's document tasks at `open` | — |
 | `设计：<topic> / <document>` | `open` → `in_progress`, → `in_review` when the draft is complete | claim it |
 | `开发：<topic> / <task-anchor>` | `open` → `in_progress`, → `in_review` when the implementation is complete | claim it |
-| `评审：<topic> / <subject>` | stays `in_review` | claim it as the reviewer; on `PASS` → `awaiting_commit`, on `REOPEN` → `in_progress` and increment `round-N` |
+| `评审：<topic> / <subject>` | stays `in_review` | claim it as the reviewer; on `PASS` → `awaiting_commit`, on `FAIL` → `in_progress` and increment `round-N` |
 | `修复：<topic> / reviews/<record>.md / <ids>` | stays `in_progress`, → `in_review` when the repair is complete | comment the disposition |
 | `复评：<topic> / reviews/<record>.md` | as for `评审` | — |
 | commit checkpoint | `awaiting_commit` → `closed`, after the authorized commit | — |
@@ -314,14 +312,14 @@ after the authorized commit object has been inspected successfully.
 
 Repair and re-review are transitions on this one task, never new tasks. A
 `round-N` label counts how many times review sent it back; it increments on
-every `REOPEN` and is never reset, so a task that keeps bouncing is visible as a
+every failed review (`FAIL`, historically `REOPEN`) and is never reset, so a task that keeps bouncing is visible as a
 number rather than as a comment someone has to read.
 
 Derive the status from the command being performed, not from the last verdict
-word in a review record. `REOPEN` marks the round that returns work to `Dev`,
-but a repair round appends its own closing line to the same record, and those
-lines read `Verdict: REOPEN — repair complete, awaiting independent Re-review`:
-still-not-PASS, yet the work is finished and waiting for a reviewer. Read
+word in a review record. `FAIL` returns the subject to authorized repair.
+Historical repair records also contain lines such as
+`Verdict: REOPEN — repair complete, awaiting independent Re-review`:
+still-not-PASS, yet the repair is finished and waiting for a reviewer. Read
 literally, the record's last `REOPEN` says `in_progress` for a task that is
 correctly `in_review`.
 

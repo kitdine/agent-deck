@@ -88,7 +88,7 @@ while the test process is still running.
 | ----- | -------------- | ----------------- |
 | L0 | Documentation, comments, ignore rules | Relevant format/link/discovery checks, `make check-whitespace`, and `git diff --check` |
 | L1 | Localized package or renderer behavior | Affected targeted tests |
-| L2 | Shared CLI, parser, SQLite schema, persisted or JSON/text contract | Targeted tests plus `go test -mod=vendor ./...` |
+| L2 | Shared CLI, parser, SQLite schema, persisted or JSON/text contract | Targeted tests plus `scripts/run-go-test.sh ./...` |
 | L3 | Concurrency, credentials/privacy, migration execution, build or installer behavior | L2 plus only the relevant race, vet, cross-build, size, install, or privacy checks |
 | L4 | Release artifact readiness or explicit full release validation | `make release-verify` as the aggregate gate |
 
@@ -337,7 +337,24 @@ labeled as examples.
 
 ## Documentation / 文档规范
 
-Authoritative documents:
+### Document language / 文档语言
+
+- Write reusable agent instruction files in English, with one authoritative statement
+  per rule. Do not add translated summaries that duplicate those instructions.
+- Preserve existing bilingual headings unless their links and anchors are
+  updated together.
+- Preserve protocol commands, markers, field names, paths, and quoted evidence
+  in their original form.
+- Keep requirements, designs, reviews, and status documents in their established
+  primary language. Do not translate them as part of unrelated changes.
+- Maintain user-facing documentation and product copy in the languages required
+  by the product.
+- Communicate proposals, approval requests, and results in the user's language.
+- Review reports use the active Skill's presentation contract. Preserve stable
+  machine values and IDs; localizing prose must not silently change the record
+  fields consumed by Hooks. Status summaries follow their own project format.
+
+### Documentation authorities and maintenance / 文档权威与维护
 
 | Purpose                                        | Path                                                       |
 | ---------------------------------------------- | ---------------------------------------------------------- |
@@ -404,12 +421,17 @@ store.
 - Requirements source / 需求来源:
   `docs/specs/cli-design.md`
 - Agent task dispatch source / Agent 任务调度来源:
-  `/Users/jobshen/.local/state/agentdeck-beads/.beads`
+  Beads; resolve its current store and required wrapper through
+  [Beads coordination](beads.md).
 - Repository history / 仓库历史: `.` (`.git`)
 
 At the start of resumed work:
 
-1. Read this instruction file and the handoff pointer.
+1. Follow the current documentation index and lifecycle rules to identify
+   relevant handoff pointers and status authorities. Read the applicable
+   repository instructions and discovered targets; do not require a particular
+   handoff filename. Reuse previously loaded content when it remains current
+   and complete.
 2. Inspect status and recent history for every repository in scope.
 3. Read the relevant authoritative status, requirement, and contract documents.
 4. When current work uses Beads coordination, inspect the matching task,
@@ -552,8 +574,9 @@ updates required by that topic:
   transition leaves dispatch asserting the previous state, which is how a task
   sat `in_progress` for a day while nothing was being implemented;
 - append the current round and verdict under the topic's `reviews/` directory;
-- keep Review unchecked while medium-or-higher findings remain, or tick it when
-  the document or task passes;
+- apply the workflow Skill's finding policy: keep Review unchecked while any
+  finding against the target remains open, regardless of severity; record an
+  explicit user decision when it closes a finding, and tick Review only on PASS;
 - synchronize the topic's `tasks.md` and `docs/status.md` when their status
   changes — and only then. "Status" means the matrix cell and the topic's stage,
   not the account of what happened. A `PASS` that ticks a `Review` cell is a
@@ -571,18 +594,20 @@ Review cell, documentation index, and next instruction agree.
 
 ### Where a Review Round Is Written Down / 评审轮次写在哪里
 
-One review round produces one account of itself, in one file. Three files can
-receive something from a round, and each has a different job:
+Each review round has one authoritative record. The table below defines what
+each related document may contain; update a document only when its own subject
+changes.
 
 | File | Carries | Never carries |
 | --- | --- | --- |
 | `docs/topics/<topic>/reviews/<record>.md` | The whole round: reviewed content state, method, scope, findings, dispositions, evidence, verdict | — |
-| `docs/topics/<topic>/tasks.md` | The `Draft`/`Review` matrix cells, plus the short statement of what the topic's current review state is | Findings, dispositions, evidence, or a narrative of a round |
+| `docs/topics/<topic>/tasks.md` | Document `Draft`/`Review` and task `Dev`/`Review` matrix cells, plus a short statement of the topic's current review state | Findings, dispositions, evidence, or a narrative of a round |
 | `docs/status.md` | The topic's cross-topic execution stage | Any finding, round number, verdict, per-document cell, or version-planning decision |
 | `docs/roadmap.md` | Version membership, roadmap direction, withdrawals, and additions | Execution detail or any review-round content |
 
-The direction is one-way. A round is written into its review record; the other two
-files are read *from* that record and only when their own subject changes.
+Write the round's findings, evidence, and verdict only in its review record.
+Update related status documents with only the information assigned to them
+in the table above, and only when their own subject changes.
 Restating a round's content in `tasks.md` or `docs/status.md` produces two or
 three copies of one fact, which then drift: a copy in `tasks.md` asserted a
 prototype self-check count of 39 that a later round in the same session had
@@ -598,9 +623,3 @@ Two consequences follow, and they are the ones that get missed:
 - **A `PASS` writes the cell, not the story.** Tick the matrix cell, state the new
   current review state in one or two sentences if the topic's convention has such
   a statement, and leave the findings and evidence in the record.
-
-一轮评审只产生一份记录，写在一个文件里。`reviews/` 承载整轮内容，`tasks.md` 只承载
-矩阵单元格与当前评审状态的简短陈述，`docs/status.md` 只承载跨 topic 执行阶段，
-`docs/roadmap.md` 承载版本归属与规划状态。
-方向是单向的：轮次写进评审记录，另两份文件只在自己的主题发生变化时按记录更新。修复轮
-不改变任何单元格与阶段，因此只写评审记录。

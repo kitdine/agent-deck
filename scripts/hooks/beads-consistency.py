@@ -11,7 +11,7 @@ how a task once sat `in_progress` for a day while nothing was being implemented.
 This hook closes the loop from the project side rather than by binding the Skill
 to an implementation. It compares two facts that are both cheap and unambiguous:
 what the working tree shows was just done, and what Beads currently claims. It
-only ever reports; it never writes to Beads and never blocks a stop.
+only reports; it never writes to Beads. A detected mismatch may block Stop once.
 
 Runs on Stop for both Codex and Claude Code. Silent unless something disagrees.
 It never writes to Beads. A disagreement holds the turn open in both runtimes so
@@ -40,8 +40,8 @@ from typing import Any
 REPO_MARKER = Path(".agent-instructions/beads.md")
 BEADS_ROOT = Path.home() / ".local/state/agentdeck-beads"
 # NOT the agent-facing way to call Beads. This hook is a non-interactive reader
-# that supplies its own -C and needs no audit identity, so it invokes the raw
-# binary. An agent MUST instead use the wrapper, which requires an actor and
+# that supplies its own -C and explicit audit actor when invoking the binary.
+# An agent MUST instead use the wrapper, which requires an actor and
 # sets BEADS_DIR itself:
 #     env BEADS_ACTOR=claude-code BEADS_ROOT/bin/agentdeck-bd <command>
 # Calling this path directly leaves BEADS_ACTOR unset, and bd then falls back to
@@ -67,15 +67,23 @@ DOC_TITLE = re.compile(r"^文档：\s*([^/\s]+)\s*/\s*(.+)$")
 TASK_TITLE = re.compile(r"^任务：\s*(.+)$")
 
 # A review record's verdict line, e.g. "- Verdict: PASS".
-VERDICT = re.compile(r"Verdict:\s*(PASS|FAIL|REOPEN)", re.IGNORECASE)
+VERDICT = re.compile(
+    r"^[ \t]*(?:[-*]\s+|✅\s*)?(?:Verdict|结论|裁决|评审结论|复评结论)"
+    r"\s*[:：]\s*(PASS|FAIL|REOPEN)\b", re.IGNORECASE | re.MULTILINE
+)
 COMPLETION_GATE = re.compile(
-    r"Completion gate:\s*`?(VERIFIED|NOT_VERIFIED|FAILED|BLOCKED|NOT_REQUIRED)`?",
-    re.IGNORECASE,
+    r"^[ \t]*(?:[-*]\s+)?(?:Completion gate|完成门禁|证据门禁|验收门禁)"
+    r"\s*[:：]\s*(VERIFIED|NOT_VERIFIED|FAILED|BLOCKED|NOT_REQUIRED)\b",
+    re.IGNORECASE | re.MULTILINE,
+)
+REVIEW_ROUND = re.compile(
+    r"^##\s+(?:(?:Review\s*[—–-]\s*)?Round\s+\d+\b|(?:评审|复评)\s*[—–-]?\s*第?\d+轮)",
+    re.IGNORECASE | re.MULTILINE,
 )
 # A finding ID as `.agent-instructions/review-records.md` defines it: A6-F1,
 # DW-R11-F2, D1-F1. The audit that produced that rule found 103 of them across
 # every review record.
-FINDING_ID = re.compile(r"\b([A-Z]+[0-9]+-F[0-9]+)\b")
+FINDING_ID = re.compile(r"\b((?:[A-Z][A-Z0-9]*-)*[A-Z]+[0-9]+-F[0-9]+)\b")
 # Words a later round actually uses to close one, gathered from the records
 # themselves rather than invented: `A1-F1 closed:`, `A6-F1 — SUPERSEDED.`
 FINDING_CLOSED = re.compile(
@@ -191,23 +199,37 @@ def changed_paths(root: Path, deadline: float) -> list[str]:
 def latest_review_state(path: Path) -> tuple[str | None, str | None]:
     """Return the latest round's verdict and completion gate.
 
-    Records append rounds. Restrict the gate lookup to the section containing
-    the final verdict so an older VERIFIED gate cannot leak across a later
-    REOPEN or BLOCKED round.
+    Read the whole latest round, including nested Skill report headings and
+    metadata after the verdict. Never borrow a result from an earlier round.
     """
     try:
         text = path.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return None, None
-    verdicts = list(VERDICT.finditer(text))
-    if not verdicts:
+    # Fenced examples are not declarations of the current review state.
+    visible: list[str] = []
+    fence = ""
+    for line in text.splitlines():
+        marker = re.match(r"^ {0,3}(`{3,}|~{3,})(.*)$", line)
+        if marker:
+            run, tail = marker.groups()
+            if not fence:
+                fence = run
+            elif run[0] == fence[0] and len(run) >= len(fence) and not tail.strip():
+                fence = ""
+            continue
+        if not fence:
+            visible.append(line.replace("**", "").replace("__", "").replace("`", ""))
+    text = "\n".join(visible)
+    rounds = list(REVIEW_ROUND.finditer(text))
+    if not rounds:
+        rounds = list(re.finditer(r"^##\s+📋", text, re.MULTILINE))
+    section = text[rounds[-1].start():] if rounds else text
+    verdicts = {value.upper() for value in VERDICT.findall(section)}
+    gates = {value.upper() for value in COMPLETION_GATE.findall(section)}
+    if len(verdicts) != 1 or len(gates) > 1:
         return None, None
-    latest = verdicts[-1]
-    round_start = text.rfind("\n## ", 0, latest.start())
-    section = text[round_start if round_start >= 0 else 0 : latest.end()]
-    gates = COMPLETION_GATE.findall(section)
-    gate = gates[-1].upper() if gates else None
-    return latest.group(1).upper(), gate
+    return next(iter(verdicts)), next(iter(gates)) if gates else None
 
 
 def latest_verdict(path: Path) -> str | None:
