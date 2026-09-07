@@ -798,6 +798,10 @@ function Notices({ lang, state, refreshFailed, onOpenHealth }) {
       action: onOpenHealth,
     });
   }
+  // 独立会话库不可读不是核心库版本超前的后果；URL 开关覆盖两者并存的标本。
+  if (schema && new URLSearchParams(window.location.search).get("sessions") === "unavailable") {
+    rows.push({ key: "sessions_unavailable", tone: "warn", text: dict.status.warningSessionsUnavailable });
+  }
   if (rows.length === 0) return null;
   return (
     <div className="notices">
@@ -838,17 +842,24 @@ function HealthDetail({ lang, state, onBack }) {
       </div>
       <div className="card">
         {health.checks.map((check) => (
-          <div className={`list-row${check.code === "unknown_schema" ? " expanded" : ""}`} key={check.name}>
+          <div className={`list-row${check.code === "schema_ahead" || check.code === "hook_deliveries_dropped" ? " expanded" : ""}`} key={check.name}>
             <b>{dict.status.checks[check.name]}</b>
             <small />
             <strong className={check.status === "failed" ? "tone-text-bad" : check.status === "warning" ? "tone-text-warn" : "tone-text-good"}>
               {dict.status.checkStatus[check.status]}
             </strong>
             {/* 两行都是散文：这一条没有可运行的命令，所以既不等宽也没有复制按钮。 */}
-            {check.code === "unknown_schema" && (
+            {check.code === "schema_ahead" && (
               <div className="row-detail">
-                <p>{dict.status.schemaSignalCause(check.storedVersion, check.supportedVersion)}</p>
+                <p>{dict.status.schemaSignalCause(check.count, check.supported_count)}</p>
                 <p>{dict.status.schemaSignalRecovery}</p>
+              </div>
+            )}
+            {/* 丢弃计数是这一条唯一的信息量，不给它因由行就只剩一个没有解释的警告。
+                同样没有可运行的命令，所以只有一行、没有复制按钮。 */}
+            {check.code === "hook_deliveries_dropped" && (
+              <div className="row-detail">
+                <p>{dict.status.schemaSignalHookDropped(check.count)}</p>
               </div>
             )}
           </div>

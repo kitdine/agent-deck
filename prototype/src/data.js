@@ -424,10 +424,11 @@ export const HEALTH = {
   ],
 };
 
-// schema-version-signal 这一条件下 doctor 的实测返回（见
-// docs/topics/schema-version-signal/ux/menubar-schema-signal.md 的「实测起点」）：
-// 库里的 schema 版本高于这个二进制支持的版本，database 检查以 error 收场并带稳定 code。
-// 版本号是 check 上的两个整数，不是 count——面板要把它们分别读出来。
+// schema-version-signal 这一条件下 doctor 的返回。稳定码与两个版本号的键名由
+// docs/topics/schema-version-signal/architecture.md 的 C1 与 C2 决定：码是
+// `schema_ahead`（不是 `unknown_schema`——那个码同时还盖着三种元数据损坏，没有版本
+// 对可报），库里的版本走既有的 `count`，这个二进制支持的版本走新增的 `supported_count`。
+// 两个键名跟 wire 走，因为这两个对象就是那份 wire payload 的替身。
 export const HEALTH_SCHEMA = {
   status: "unhealthy",
   problems: 1,
@@ -436,11 +437,14 @@ export const HEALTH_SCHEMA = {
   checks: [
     { name: "state_permissions", status: "ok" },
     { name: "state_lock", status: "ok" },
-    { name: "database", status: "failed", code: "unknown_schema", storedVersion: 999, supportedVersion: 23 },
+    { name: "database", status: "failed", code: "schema_ahead", count: 999, supported_count: 23 },
   ],
 };
 
-// 同一条件叠加其他问题：助手连不上（S2）＋一项与本条件无关的检查也没过（S4）。
+// 同一条件叠加其他问题：助手连不上（S2）＋另一项检查也没过（S4）。
+// 第二项检查用 `hook_deliveries`，因为那是契约保证会与本条件同时出现的那一条：
+// architecture.md 的 C5 规定 Hook 投递被本条件拒绝时留下一份有界记录，doctor 在
+// 条件仍然成立时把它报成一条 warning，于是 health.problems 变成 2。
 // 这一态存在的目的是并列比较排布——因由的位次、以及计数条什么时候才是信息。
 export const HEALTH_SCHEMA_STACKED = {
   status: "unhealthy",
@@ -450,8 +454,8 @@ export const HEALTH_SCHEMA_STACKED = {
   checks: [
     { name: "state_permissions", status: "ok" },
     { name: "state_lock", status: "ok" },
-    { name: "usage_index", status: "warning" },
-    { name: "database", status: "failed", code: "unknown_schema", storedVersion: 999, supportedVersion: 23 },
+    { name: "hook_deliveries", status: "warning", code: "hook_deliveries_dropped", count: 137 },
+    { name: "database", status: "failed", code: "schema_ahead", count: 999, supported_count: 23 },
   ],
 };
 

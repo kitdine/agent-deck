@@ -136,9 +136,11 @@ const zh = {
       state_permissions: "state_permissions",
       state_lock: "state_lock",
       database: "database",
+      hook_deliveries: "hook_deliveries",
     },
     checkStatus: { ok: "正常", warning: "警告", failed: "失败" },
-    // schema-version-signal 的七条文案。键名与
+    warningSessionsUnavailable: "无法读取会话数据",
+    // schema-version-signal 的八条文案。键名与
     // docs/topics/schema-version-signal/ux/menubar-schema-signal.md 的 Copy 表一一对应，
     // 也与实现里将要进 DesktopCopy.allKeys 的键同名，改一处就得改另一处。
     // 恢复措施写「升级 AgentDeck」而不是「下载新版本」：v0.5.0 撤回了更新检查，
@@ -149,6 +151,7 @@ const zh = {
     schemaSignalSectionUnavailable: "不可用 · AgentDeck 比其数据库旧",
     schemaSignalFooter: "不可用 · 应用版本过旧",
     schemaSignalSwitchUnavailable: "AgentDeck 比其数据库旧，暂时无法切换服务商",
+    schemaSignalHookDropped: (count) => `本 AgentDeck 无法打开数据库期间，${count} 次 Hook 投递被丢弃`,
     badgedSchemaSignal: "AgentDeck — 版本比数据库旧",
   },
   menu: {
@@ -366,14 +369,17 @@ const en = {
       state_permissions: "state_permissions",
       state_lock: "state_lock",
       database: "database",
+      hook_deliveries: "hook_deliveries",
     },
     checkStatus: { ok: "OK", warning: "Warning", failed: "Failed" },
+    warningSessionsUnavailable: "Session data could not be read",
     schemaSignalNotice: "This AgentDeck is older than its database, so local data cannot be read",
     schemaSignalCause: (stored, supported) => `Database version ${stored} · this app supports ${supported}`,
     schemaSignalRecovery: "Upgrade AgentDeck to open this database",
     schemaSignalSectionUnavailable: "Unavailable · AgentDeck is older than its database",
     schemaSignalFooter: "Unavailable · app is older",
     schemaSignalSwitchUnavailable: "Switching is unavailable while AgentDeck is older than its database",
+    schemaSignalHookDropped: (count) => `${count} Hook deliveries were dropped while this AgentDeck could not open its database`,
     badgedSchemaSignal: "AgentDeck — older than its database",
   },
   menu: {

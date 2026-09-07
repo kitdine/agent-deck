@@ -47,6 +47,12 @@ the widget's existing `Data unavailable` state, on the ground that
 `WidgetDesktopSnapshotV1` decodes no `health` at all, so presenting the cause
 would mean extending the widget projection. No row is added.
 
+The final stage-7 surface passed re-review at Round 6 on 2026-09-07, reusing
+the unchanged Round 5 specimen measurements. See
+`reviews/ux-menubar-schema-signal.md` for the full review and completion gate.
+The UX Review cell is checked; delivery remains pending. Decomposition has not
+started and is the next design task.
+
 ## Task breakdown
 
 Not yet decomposed. Anchors are defined at stage 8

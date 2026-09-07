@@ -41,13 +41,17 @@ CLI 那一页渲染的是逐字符的真实输出，不是示意图。终端里�
 URL 参数：`lang=zh|en`、`theme=dark|light`、
 `state=normal|empty|aged|partial|pending|unavailable|schema|schemaStacked`、
 `width=420|280`、`tab=usage|breakdown|attribution|sessions`、
-`signal=activity|workflow|tooling`、`settings=1`。
+`sessions=readable|unavailable`、`signal=activity|workflow|tooling`、`settings=1`。
 页面顶部的控制条不是产品界面，是原型舞台自己的开关。
 
 `schema` 与 `schemaStacked` 是 `schema-version-signal` 这一条件的两种排布：
 库里的 schema 版本高于本二进制支持的版本时只有它一项问题，以及它叠加助手连不上
 与另一项检查没过。设计见
 [`docs/topics/schema-version-signal/ux/menubar-schema-signal.md`](../docs/topics/schema-version-signal/ux/menubar-schema-signal.md)。
+
+仅在这两种 schema 状态下，`sessions=unavailable` 叠加独立会话库不可读的警告；
+`sessions=readable`（省略参数时的默认值）不加该警告。它与选择会话面板的
+`tab=sessions` 是不同参数。
 
 `width` 的 280 对应实现里的 `AGENTDECK_TEST_WIDTH=280` 窄边界。有了它，
 「这一行在窄边界会不会被截断」才是标本阶段能判定的问题，而不是留给真机观察。
