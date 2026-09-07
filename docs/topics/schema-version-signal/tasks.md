@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-08-30
-updated: 2026-09-06
+updated: 2026-09-07
 ---
 
 # Schema Version Signal — Tasks
@@ -14,15 +14,15 @@ This file is the only status authority for this topic.
 | --- | --- | --- |
 | requirements.md | [x] | [x] |
 | ux/menubar-schema-signal.md | [x] | [x] |
-| architecture.md | [ ] | [ ] |
+| architecture.md | [x] | [x] |
 | tasks.md | [ ] | [ ] |
 
-The set is a claim, and this matrix is the only place it lives. Two rows are
-deliberately unticked rather than absent: the documents are required and not yet
-written, and an empty row is what makes that visible. `check-topic-docs.sh`
-reports them as gaps until they are written, which is the intended state for a
-topic at its boundary stage; the audit is ratified when this file reaches
-review, not before.
+The set is a claim, and this matrix is the only place it lives. `tasks.md` is
+deliberately unticked rather than absent: it is required and not yet written,
+and an empty row is what makes that visible. `check-topic-docs.sh` reports it as
+a gap until it is written, which is the intended state for a topic at its
+decomposition stage; the audit is ratified when this file reaches review, not
+before. `architecture.md` passed review at Round 2 on 2026-09-07.
 
 Why each row exists, against the review question that justifies it:
 
