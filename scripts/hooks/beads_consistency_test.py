@@ -181,6 +181,138 @@ class BeadsConsistencyHookTest(unittest.TestCase):
         # dropped, so demanding tasks for them would assert work that may not exist.
         self.assertFalse(MODULE.decomposition_passed(text))
 
+    def test_head_text_returns_committed_content_and_empty_for_an_unrecorded_path(
+        self,
+    ) -> None:
+        # The guard for `tasks.md` rests on this contract in both directions: an
+        # unrecorded path must read as empty, or a topic created at stage 1 would
+        # be reported, and a recorded one must read back its content, or a real
+        # stage-8 draft would compare against nothing and always look changed. The
+        # regressions below mock `head_text`, so without this test the mock's
+        # assumed contract is bound to nothing.
+        root = SCRIPT.parents[2]
+        deadline = MODULE.time.monotonic() + MODULE.HOOK_BUDGET
+
+        self.assertNotEqual(
+            MODULE.head_text(root, ".agent-instructions/beads.md", deadline), ""
+        )
+        self.assertEqual(
+            MODULE.head_text(root, "docs/topics/zzz-not-a-topic/tasks.md", deadline), ""
+        )
+
+        # An exhausted budget yields the same empty reading without spending a
+        # subprocess, so a slow git can never be the reason a session cannot stop.
+        with (
+            mock.patch.object(MODULE.time, "monotonic", return_value=101.0),
+            mock.patch.object(MODULE.subprocess, "run") as run,
+        ):
+            self.assertEqual(MODULE.head_text(root, "AGENTS.md", 100.0), "")
+            run.assert_not_called()
+
+    def test_documents_matrix_sync_does_not_claim_the_decomposition_task(self) -> None:
+        # `tasks.md` is both a deliverable and the topic's status authority. Every
+        # stage ticks the Documents matrix row it just drafted; only stage 8 writes
+        # the Tasks matrix. Reporting the first asks an agent to claim
+        # decomposition that has not started.
+        root = Path("/repo")
+        current = (
+            "| Document | Draft | Review |\n"
+            "| requirements.md | [x] | [x] |\n"
+            "| ux/menubar.md | [x] | [ ] |\n"
+            "| tasks.md | [ ] | [ ] |\n"
+            "\n## Task breakdown\n\nNot yet decomposed.\n"
+        )
+        head = current.replace(
+            "| ux/menubar.md | [x] | [ ] |", "| ux/menubar.md | [ ] | [ ] |"
+        )
+
+        def beads(args: list[str], _deadline: float) -> list[dict[str, str]]:
+            if args == ["list", "--status", "open"]:
+                return [{"id": "doc-tasks", "title": "文档：example / tasks.md"}]
+            return []
+
+        with (
+            mock.patch.object(
+                MODULE, "changed_paths", return_value=["docs/topics/example/tasks.md"]
+            ),
+            mock.patch.object(MODULE.Path, "read_text", return_value=current),
+            mock.patch.object(MODULE, "head_text", return_value=head),
+            mock.patch.object(MODULE.Path, "glob", return_value=[]),
+            mock.patch.object(MODULE, "bd_json", side_effect=beads),
+        ):
+            self.assertEqual(MODULE.findings(root, 123.0), [])
+
+    def test_tasks_matrix_drafting_still_claims_the_decomposition_task(self) -> None:
+        root = Path("/repo")
+        head = "| Document | Draft | Review |\n| tasks.md | [ ] | [ ] |\n"
+        current = head + "| 1. `store-boundaries` | [ ] | [ ] |\n"
+
+        def beads(args: list[str], _deadline: float) -> list[dict[str, str]]:
+            if args == ["list", "--status", "open"]:
+                return [{"id": "doc-tasks", "title": "文档：example / tasks.md"}]
+            return []
+
+        with (
+            mock.patch.object(
+                MODULE, "changed_paths", return_value=["docs/topics/example/tasks.md"]
+            ),
+            mock.patch.object(MODULE.Path, "read_text", return_value=current),
+            mock.patch.object(MODULE, "head_text", return_value=head),
+            mock.patch.object(MODULE.Path, "glob", return_value=[]),
+            mock.patch.object(MODULE, "bd_json", side_effect=beads),
+        ):
+            notes = MODULE.findings(root, 123.0)
+
+        self.assertEqual(len(notes), 1)
+        self.assertIn("doc-tasks", notes[0])
+        self.assertIn("is still `open`", notes[0])
+
+    def test_an_untracked_tasks_file_holding_no_task_rows_is_not_reported(self) -> None:
+        # A topic created at stage 1 has a `tasks.md` with a Documents matrix and
+        # nothing else, and no committed version to compare against.
+        root = Path("/repo")
+        current = "| Document | Draft | Review |\n| requirements.md | [x] | [ ] |\n"
+
+        def beads(args: list[str], _deadline: float) -> list[dict[str, str]]:
+            if args == ["list", "--status", "open"]:
+                return [{"id": "doc-tasks", "title": "文档：example / tasks.md"}]
+            return []
+
+        with (
+            mock.patch.object(
+                MODULE, "changed_paths", return_value=["docs/topics/example/tasks.md"]
+            ),
+            mock.patch.object(MODULE.Path, "read_text", return_value=current),
+            mock.patch.object(MODULE, "head_text", return_value=""),
+            mock.patch.object(MODULE.Path, "glob", return_value=[]),
+            mock.patch.object(MODULE, "bd_json", side_effect=beads),
+        ):
+            self.assertEqual(MODULE.findings(root, 123.0), [])
+
+    def test_every_other_document_still_reports_on_a_path_match(self) -> None:
+        # The exception is `tasks.md` alone; drafting any other document is still
+        # the `in_progress` state and a path match is still the whole trigger.
+        root = Path("/repo")
+
+        def beads(args: list[str], _deadline: float) -> list[dict[str, str]]:
+            if args == ["list", "--status", "open"]:
+                return [{"id": "doc-req", "title": "文档：example / requirements.md"}]
+            return []
+
+        with (
+            mock.patch.object(
+                MODULE,
+                "changed_paths",
+                return_value=["docs/topics/example/requirements.md"],
+            ),
+            mock.patch.object(MODULE.Path, "glob", return_value=[]),
+            mock.patch.object(MODULE, "bd_json", side_effect=beads),
+        ):
+            notes = MODULE.findings(root, 123.0)
+
+        self.assertEqual(len(notes), 1)
+        self.assertIn("doc-req", notes[0])
+
     def test_missing_development_task_is_reported_after_pass(self) -> None:
         root = Path("/repo")
         plan = mock.MagicMock()

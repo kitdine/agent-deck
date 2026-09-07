@@ -387,6 +387,43 @@ def matrix_rows(text: str) -> list[tuple[str, str, str]]:
     return rows
 
 
+def head_text(root: Path, rel: str, deadline: float) -> str:
+    """The committed content of one path, or `""` when it has none.
+
+    A path that is new, untracked, or unreadable has nothing recorded for it
+    yet, and an empty string is the honest reading of that rather than a reason
+    to report.
+    """
+    timeout = remaining_timeout(deadline)
+    if timeout is None:
+        return ""
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(root), "show", f"HEAD:{rel}"],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return out.stdout if out.returncode == 0 else ""
+
+
+def decomposition_changed(root: Path, rel: str, deadline: float) -> bool:
+    """True when an edit to a topic's `tasks.md` touched its Tasks matrix.
+
+    `matrix_rows` reads task rows only — the Documents matrix never matches it,
+    because its subject cell carries no backticks — so a Draft tick, a row
+    added to the document set, or any prose change around them leaves this
+    False.
+    """
+    try:
+        current = (root / rel).read_text(encoding="utf-8")
+    except OSError:
+        return False
+    return matrix_rows(current) != matrix_rows(head_text(root, rel, deadline))
+
+
 def decomposition_passed(text: str) -> bool:
     """True when the topic's own `tasks.md` row shows a ticked Review cell."""
     for line in text.splitlines():
@@ -478,6 +515,16 @@ def findings(root: Path, deadline: float) -> list[str]:
 
     # 3. A topic document changed while its task says nobody is producing it.
     #    Writing the document IS the `in_progress` state.
+    #
+    #    `tasks.md` is the one document in the set that is both a deliverable and
+    #    the topic's only status authority, so a path match alone cannot tell the
+    #    two apart. Every stage writes its Documents matrix — stage 1 creates it,
+    #    each later stage ticks the row it just drafted — while the task named
+    #    here produces only the Tasks matrix, at stage 8. Reporting a Documents
+    #    matrix edit asked an agent to claim decomposition that had not started,
+    #    which is the same false dispatch state this hook exists to catch, in the
+    #    other direction. So for `tasks.md`, and only for it, the trigger is the
+    #    Tasks matrix actually changing.
     touched_docs = [
         p
         for p in changed
@@ -500,6 +547,8 @@ def findings(root: Path, deadline: float) -> list[str]:
             subject = (parts[2], "/".join(parts[3:]))
             stuck = idle.get(subject)
             if not stuck:
+                continue
+            if subject[1] == "tasks.md" and not decomposition_changed(root, rel, deadline):
                 continue
             notes.append(
                 f"{rel} is being edited, but its task {stuck} "
