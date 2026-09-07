@@ -153,6 +153,21 @@ done
 rm -rf "$fixture_root"
 trap 'rm -rf "$temporary"' EXIT
 
+# The fixtures below are real bundles that macOS registers. The packaging script
+# writes them into a DMG and section 6 mounts it, and `hdiutil attach` registers
+# whatever identifier the image carries: `-nobrowse` withholds the mount from
+# Finder, not the registration, and the `trap rm -rf` deletes the files without
+# ever unregistering them. A fixture declaring the shipping identifier therefore
+# claimed the installed AgentDeck.app's LaunchServices record under a build
+# number this script invented, WidgetKit validated its timeline archive against
+# that wrong host version, and every widget on the machine stopped refreshing.
+# The fixtures carry their own identifier so no run of this script can reach the
+# shipping app's record.
+fixture_bundle_id=com.kitdine.agentdeck.disttest
+fixture_widget_bundle_id=com.kitdine.agentdeck.disttest.widget
+shipping_bundle_id=com.kitdine.agentdeck
+shipping_widget_bundle_id=com.kitdine.agentdeck.widget
+
 # 5. A synthetic bundle drives the real packaging script. Its executables are
 # real Mach-O binaries because entitlements only attach to real code.
 make_bundle() {
@@ -167,7 +182,7 @@ make_bundle() {
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-<key>CFBundleIdentifier</key><string>com.kitdine.agentdeck</string>
+<key>CFBundleIdentifier</key><string>$fixture_bundle_id</string>
 <key>CFBundleName</key><string>AgentDeck</string>
 <key>CFBundleExecutable</key><string>AgentDeck</string>
 <key>CFBundleShortVersionString</key><string>$version</string>
@@ -179,7 +194,7 @@ PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-<key>CFBundleIdentifier</key><string>com.kitdine.agentdeck.widget</string>
+<key>CFBundleIdentifier</key><string>$fixture_widget_bundle_id</string>
 <key>CFBundleName</key><string>AgentDeckWidget</string>
 <key>CFBundleExecutable</key><string>AgentDeckWidget</string>
 <key>CFBundleShortVersionString</key><string>$version</string>
@@ -199,6 +214,28 @@ esac
 HELPER
   sed -i '' "s/@TAG@/v$version/" "$bundle/Contents/Helpers/agentdeck"
   chmod 0755 "$bundle/Contents/Helpers/agentdeck"
+  # The isolation is the identifier, so read it back off every bundle this
+  # function writes rather than trusting the heredocs above to stay as written.
+  assert_fixture_identifier "$bundle/Contents/Info.plist" \
+    "$fixture_bundle_id" "$shipping_bundle_id"
+  assert_fixture_identifier "$widget/Contents/Info.plist" \
+    "$fixture_widget_bundle_id" "$shipping_widget_bundle_id"
+}
+
+assert_fixture_identifier() {
+  local plist=$1 want=$2 shipping=$3 actual
+  actual=$(plutil -extract CFBundleIdentifier raw -o - "$plist")
+  if [[ $actual == "$shipping" ]]; then
+    echo "a distribution fixture declares the shipping bundle identifier" >&2
+    echo "$shipping ($plist); mounting a DMG built from it registers the fixture" >&2
+    echo "over the installed app's LaunchServices record and stops every widget" >&2
+    echo "on this machine from refreshing" >&2
+    exit 1
+  fi
+  if [[ $actual != "$want" ]]; then
+    echo "a distribution fixture declares $actual ($plist), want $want" >&2
+    exit 1
+  fi
 }
 
 bundle="$temporary/AgentDeck.app"
