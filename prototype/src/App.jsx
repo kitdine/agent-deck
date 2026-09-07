@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { CaretRight, Check } from "@phosphor-icons/react";
+import { CaretRight, Check, WarningCircle } from "@phosphor-icons/react";
 import { Popover } from "./Popover.jsx";
 import { DEFAULT_PREFS, SettingsWindow } from "./Settings.jsx";
 import { scope } from "./data.js";
@@ -80,7 +80,7 @@ function MenuBarMenu({ lang, prefs, onPrefs, onSettings, onClose }) {
 
 export function App() {
   const stage = useStagePrefs();
-  const { lang, theme, state } = stage;
+  const { lang, theme, state, width } = stage;
   const dict = catalogs[lang];
   const params = new URLSearchParams(window.location.search);
   const [open, setOpen] = useState(true);
@@ -103,12 +103,17 @@ export function App() {
   const menubarClient = prefs.menubarScope === "follow" ? client : "all";
   const view = scope(menubarClient, "today");
   const incomplete = !view.pricingComplete;
+  const schema = state === "schema";
+  // schema 态下没有可显示的数值，因此标题为空——与「仅图标」偏好逐字节相同。
+  // 一个永久条件不能和一个偏好长得一样，所以角标是这一态唯一还看得见的信号。
   const value =
     state === "unavailable"
       ? "—"
-      : prefs.menubarValue === "tokens"
-        ? formatTokens(state === "empty" ? 0 : view.totals.tokens)
-        : `${incomplete ? "≈" : ""}${formatCost(state === "empty" ? 0 : view.totals.cost, lang)}`;
+      : schema
+        ? ""
+        : prefs.menubarValue === "tokens"
+          ? formatTokens(state === "empty" ? 0 : view.totals.tokens)
+          : `${incomplete ? "≈" : ""}${formatCost(state === "empty" ? 0 : view.totals.cost, lang)}`;
 
   return (
     <main className="stage" data-theme={theme}>
@@ -118,9 +123,9 @@ export function App() {
           <div className="menubar-item-wrap">
             <button
               type="button"
-              className={`menubar-item${open ? " open" : ""}`}
+              className={`menubar-item${open ? " open" : ""}${schema ? " badged" : ""}`}
               aria-expanded={open}
-              aria-label={dict.app}
+              aria-label={schema ? dict.status.badgedSchemaSignal : dict.app}
               onClick={() => setOpen((current) => !current)}
               onDoubleClick={() => setMenu(true)}
               onContextMenu={(event) => {
@@ -129,7 +134,8 @@ export function App() {
               }}
             >
               <img src="/agentdeck-robot.png" alt="" width={17} height={17} />
-              {prefs.menubarValue !== "icon" && <strong>{value}</strong>}
+              {schema && <WarningCircle className="menubar-badge" size={11} weight="fill" aria-hidden="true" />}
+              {prefs.menubarValue !== "icon" && value !== "" && <strong>{value}</strong>}
             </button>
             {menu && (
               <MenuBarMenu
@@ -146,7 +152,7 @@ export function App() {
           </div>
           <p className="hint">{dict.menu.hint}</p>
         </div>
-        {open && <Popover lang={lang} state={state} onClientChange={setClient} />}
+        {open && <Popover lang={lang} state={state} width={width} onClientChange={setClient} />}
       </div>
       {settings && (
         <div className="window-backdrop" onMouseDown={() => setSettings(false)}>

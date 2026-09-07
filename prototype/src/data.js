@@ -424,6 +424,37 @@ export const HEALTH = {
   ],
 };
 
+// schema-version-signal 这一条件下 doctor 的实测返回（见
+// docs/topics/schema-version-signal/ux/menubar-schema-signal.md 的「实测起点」）：
+// 库里的 schema 版本高于这个二进制支持的版本，database 检查以 error 收场并带稳定 code。
+// 版本号是 check 上的两个整数，不是 count——面板要把它们分别读出来。
+export const HEALTH_SCHEMA = {
+  status: "unhealthy",
+  problems: 1,
+  warnings: 0,
+  errors: 1,
+  checks: [
+    { name: "state_permissions", status: "ok" },
+    { name: "state_lock", status: "ok" },
+    { name: "database", status: "failed", code: "unknown_schema", storedVersion: 999, supportedVersion: 23 },
+  ],
+};
+
+// 同一条件叠加其他问题：助手连不上（S2）＋一项与本条件无关的检查也没过（S4）。
+// 这一态存在的目的是并列比较排布——因由的位次、以及计数条什么时候才是信息。
+export const HEALTH_SCHEMA_STACKED = {
+  status: "unhealthy",
+  problems: 2,
+  warnings: 1,
+  errors: 1,
+  checks: [
+    { name: "state_permissions", status: "ok" },
+    { name: "state_lock", status: "ok" },
+    { name: "usage_index", status: "warning" },
+    { name: "database", status: "failed", code: "unknown_schema", storedVersion: 999, supportedVersion: 23 },
+  ],
+};
+
 export const PROVIDER = {
   routes: [
     { client: "codex", provider: "aigocode", viaWrapper: true },

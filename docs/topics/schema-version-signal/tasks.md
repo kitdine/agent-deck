@@ -13,11 +13,11 @@ This file is the only status authority for this topic.
 | Document | Draft | Review |
 | --- | --- | --- |
 | requirements.md | [x] | [x] |
-| ux/menubar-schema-signal.md | [ ] | [ ] |
+| ux/menubar-schema-signal.md | [x] | [x] |
 | architecture.md | [ ] | [ ] |
 | tasks.md | [ ] | [ ] |
 
-The set is a claim, and this matrix is the only place it lives. Three rows are
+The set is a claim, and this matrix is the only place it lives. Two rows are
 deliberately unticked rather than absent: the documents are required and not yet
 written, and an empty row is what makes that visible. `check-topic-docs.sh`
 reports them as gaps until they are written, which is the intended state for a
@@ -42,7 +42,10 @@ document, matching how `cli-error-classification` handled the same question. The
 widget extension reads the same snapshot as the menu bar and its presentation is
 decided inside `ux/menubar-schema-signal.md`; if that document concludes the
 widget needs its own state set, this matrix gains a row and returns here for
-re-ratification.
+re-ratification. It concluded on 2026-09-06 that it does not: decision D8 keeps
+the widget's existing `Data unavailable` state, on the ground that
+`WidgetDesktopSnapshotV1` decodes no `health` at all, so presenting the cause
+would mean extending the widget projection. No row is added.
 
 ## Task breakdown
 

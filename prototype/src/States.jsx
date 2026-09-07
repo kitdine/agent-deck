@@ -12,6 +12,8 @@ const CAUSE = {
     partial: "部分数据域不可用，或上一次刷新失败但保留了旧快照",
     pending: "快照可读，但早于工作信号字段——只保留待采集模块",
     unavailable: "没有快照，或缓存版本不受支持——一律不显示零，而是让用户去打开主程序",
+    schema: "核心库的 schema 版本高于本二进制支持的版本——因由说一次，由它派生的症状不再各自成行",
+    schemaStacked: "同一条件，但助手也连不上、且另有一项检查没过——因由让位给刷新状态，计数条这时才是信息",
   },
   en: {
     normal: "Snapshot readable, pricing complete, refresh succeeded",
@@ -20,6 +22,8 @@ const CAUSE = {
     partial: "Some domains unavailable, or the last refresh failed while an old snapshot was kept",
     pending: "Snapshot readable, but predates work-signal fields — keep only the pending modules",
     unavailable: "No snapshot, or an unsupported cache version — never render a zero, ask the user to open the app",
+    schema: "The core database's schema version exceeds what this binary supports — the cause is stated once and its symptoms stop competing with it",
+    schemaStacked: "The same condition, but the helper is also unreachable and another check is failing — the cause yields to refresh state, and the count notice is information again",
   },
 };
 
@@ -80,7 +84,7 @@ function WidgetState({ kind, lang }) {
 
 export function StateBoard() {
   const prefs = useStagePrefs();
-  const { lang, theme } = prefs;
+  const { lang, theme, width } = prefs;
   const dict = catalogs[lang];
   return (
     <main className="board states-board" data-theme={theme}>
@@ -97,7 +101,7 @@ export function StateBoard() {
               <small>{CAUSE[lang][state]}</small>
             </div>
             <div className="state-frame">
-              <Popover lang={lang} state={state} embedded />
+              <Popover lang={lang} state={state} width={width} embedded />
             </div>
           </div>
         ))}

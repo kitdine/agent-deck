@@ -251,6 +251,18 @@ a:focus-visible {
   font-variant-numeric: tabular-nums;
 }
 
+/* 角标压在图标右下角，复用既有的「需要注意」语义色，不引入第三种字形 */
+.menubar-item.badged {
+  position: relative;
+}
+
+.menubar-item .menubar-badge {
+  position: absolute;
+  right: 5px;
+  bottom: 3px;
+  color: var(--bad);
+}
+
 .hint {
   margin: 0;
   color: var(--dim);
@@ -328,7 +340,8 @@ a:focus-visible {
   position: relative;
   display: flex;
   flex-direction: column;
-  width: 420px;
+  /* 420 是常规宽度；280 是实现里 AGENTDECK_TEST_WIDTH 的窄边界，由舞台的宽度开关切换 */
+  width: var(--popover-w, 420px);
   height: 760px;
   margin-top: 10px;
   overflow: hidden;
@@ -1005,6 +1018,34 @@ a:focus-visible {
 
 .list-row:last-child {
   border-bottom: 0;
+}
+
+/* 展开的检查行：因由与恢复各占一行，缩进对齐行首，散文而非等宽 */
+.list-row.expanded {
+  grid-template-rows: auto auto;
+  padding-bottom: 6px;
+}
+
+.list-row .row-detail {
+  grid-column: 1 / -1;
+  padding-left: 12px;
+}
+
+.list-row .row-detail p {
+  margin: 2px 0 0;
+  color: var(--dim);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.provider-menu .menu-note {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--dim);
+  line-height: 1.45;
 }
 
 .list-row b {

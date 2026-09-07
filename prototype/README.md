@@ -38,9 +38,19 @@ CLI 那一页渲染的是逐字符的真实输出，不是示意图。终端里�
 以及一个数字读不出来时写什么，所以那三件事必须以最终形态出现才可评。它的文本不随
 语言开关变化：AgentDeck 的 CLI 输出是单一英文的，与面板不同。
 
-URL 参数：`lang=zh|en`、`theme=dark|light`、`state=normal|empty|aged|partial|unavailable`、
-`tab=usage|breakdown|attribution|sessions`、`signal=activity|workflow|tooling`、`settings=1`。
+URL 参数：`lang=zh|en`、`theme=dark|light`、
+`state=normal|empty|aged|partial|pending|unavailable|schema|schemaStacked`、
+`width=420|280`、`tab=usage|breakdown|attribution|sessions`、
+`signal=activity|workflow|tooling`、`settings=1`。
 页面顶部的控制条不是产品界面，是原型舞台自己的开关。
+
+`schema` 与 `schemaStacked` 是 `schema-version-signal` 这一条件的两种排布：
+库里的 schema 版本高于本二进制支持的版本时只有它一项问题，以及它叠加助手连不上
+与另一项检查没过。设计见
+[`docs/topics/schema-version-signal/ux/menubar-schema-signal.md`](../docs/topics/schema-version-signal/ux/menubar-schema-signal.md)。
+
+`width` 的 280 对应实现里的 `AGENTDECK_TEST_WIDTH=280` 窄边界。有了它，
+「这一行在窄边界会不会被截断」才是标本阶段能判定的问题，而不是留给真机观察。
 
 菜单栏图标：左键开关面板，**右键或双击**弹出菜单（菜单栏显示内容 / 设置… / 关于 / 退出），
 `⌘,` 也能直接打开设置。设置是**独立窗口**，不是面板里的一页。
@@ -110,8 +120,9 @@ popover 内字号下限 10px、小组件内 9px；分段控件改成 macOS 的�
 ## 自检工具
 
 ```bash
-# 布局：列出所有被裁切的容器（正常输出 NO OVERFLOW）
+# 布局：列出所有被裁切的容器，以及所有被 ellipsis 吃掉的一行文字（正常输出 NO OVERFLOW）
 open 'http://127.0.0.1:4175/?surface=widgets&measure=1'
+open 'http://127.0.0.1:4175/?state=schema&width=280&measure=1'
 
 # 交互：模拟真实事件走一遍关键路径并断言（正常输出 ALL PASS）
 open 'http://127.0.0.1:4175/?probe=1'
@@ -136,8 +147,12 @@ live region 里、其余控件是否仍可用、以及失败行是否在下一�
 `contract` 查的是 specimen 有没有兑现 `ux/widget.md:133-135` 的 size-as-depth 表：small 的
 7 桶、medium 三期各带 cost 与 tokens 且柱子正好 20 根、轴跟着这 20 天、large 的 90 桶填充线
 与三个 stat chip 且 peak 带日期，共 13 项断言，中英各跑一轮。它还查 chip 有没有被
-`text-overflow` 吃掉——溢出量具只看容器有没有被裁，看不见一行文字被 ellipsis 截断，peak
-的日期第一版就是这样 DOM 里有、屏幕上没有。
+`text-overflow` 吃掉——peak 的日期第一版就是这样 DOM 里有、屏幕上没有。
+
+溢出量具原本只看容器有没有被裁，同样看不见这一类截断，所以 `schema-version-signal`
+给它补了第二段：面板与设置窗口里凡是 `text-overflow: ellipsis` 的元素都逐个量一遍，
+报 `TRUNCATED @<宽度>pt … short by <n>px`。它与 `contract` 的区别是覆盖面——
+`contract` 只查 widget 的 chip，量具查所有面板文字，且带宽度维度。
 
 `contract.js` 里的 7 / 20 / 90 是从文档另抄的一份，**不要**改成从 `Widgets.jsx` import
 常量：共用一个常量时，把它改错会同时挪动渲染和期望，断言就永远为真。断言要能失败，

@@ -133,8 +133,23 @@ const zh = {
       usage_index: "用量索引",
       price_catalog: "价格目录",
       session_index: "会话索引",
+      state_permissions: "state_permissions",
+      state_lock: "state_lock",
+      database: "database",
     },
     checkStatus: { ok: "正常", warning: "警告", failed: "失败" },
+    // schema-version-signal 的七条文案。键名与
+    // docs/topics/schema-version-signal/ux/menubar-schema-signal.md 的 Copy 表一一对应，
+    // 也与实现里将要进 DesktopCopy.allKeys 的键同名，改一处就得改另一处。
+    // 恢复措施写「升级 AgentDeck」而不是「下载新版本」：v0.5.0 撤回了更新检查，
+    // DesktopCopyTests.testNoStringOffersAnUpdateCheck 会拦掉后一种写法。
+    schemaSignalNotice: "此 AgentDeck 比其数据库旧，无法读取本地数据",
+    schemaSignalCause: (stored, supported) => `数据库版本 ${stored} · 此应用支持 ${supported}`,
+    schemaSignalRecovery: "升级 AgentDeck 后才能打开该数据库",
+    schemaSignalSectionUnavailable: "不可用 · AgentDeck 比其数据库旧",
+    schemaSignalFooter: "不可用 · 应用版本过旧",
+    schemaSignalSwitchUnavailable: "AgentDeck 比其数据库旧，暂时无法切换服务商",
+    badgedSchemaSignal: "AgentDeck — 版本比数据库旧",
   },
   menu: {
     menubarDisplay: "菜单栏显示",
@@ -196,18 +211,21 @@ const zh = {
   },
   states: {
     boardTitle: "状态一览",
-    boardSubtitle: "同一份界面在六种数据状态下的样子",
+    boardSubtitle: "同一份界面在八种数据状态下的样子",
     normal: "正常",
     empty: "今日无花费",
     aged: "数据过期",
     partial: "部分不可用",
     pending: "工作信号待采集",
     unavailable: "完全不可用",
+    schema: "应用比数据库旧",
+    schemaStacked: "应用比数据库旧 · 叠加其他问题",
     language: "语言",
     theme: "外观",
     themeDark: "深色",
     themeLight: "浅色",
     state: "状态",
+    width: "宽度",
   },
 };
 
@@ -345,8 +363,18 @@ const en = {
       usage_index: "Usage index",
       price_catalog: "Price catalog",
       session_index: "Session index",
+      state_permissions: "state_permissions",
+      state_lock: "state_lock",
+      database: "database",
     },
     checkStatus: { ok: "OK", warning: "Warning", failed: "Failed" },
+    schemaSignalNotice: "This AgentDeck is older than its database, so local data cannot be read",
+    schemaSignalCause: (stored, supported) => `Database version ${stored} · this app supports ${supported}`,
+    schemaSignalRecovery: "Upgrade AgentDeck to open this database",
+    schemaSignalSectionUnavailable: "Unavailable · AgentDeck is older than its database",
+    schemaSignalFooter: "Unavailable · app is older",
+    schemaSignalSwitchUnavailable: "Switching is unavailable while AgentDeck is older than its database",
+    badgedSchemaSignal: "AgentDeck — older than its database",
   },
   menu: {
     menubarDisplay: "Menu bar shows",
@@ -410,18 +438,21 @@ const en = {
   states: {
     ...zh.states,
     boardTitle: "Surface states",
-    boardSubtitle: "The same surface across six data states",
+    boardSubtitle: "The same surface across eight data states",
     normal: "Normal",
     empty: "No spend today",
     aged: "Stale data",
     partial: "Partially unavailable",
     pending: "Work signals pending",
     unavailable: "Unavailable",
+    schema: "App older than its database",
+    schemaStacked: "App older than its database · with other problems",
     language: "Language",
     theme: "Appearance",
     themeDark: "Dark",
     themeLight: "Light",
     state: "State",
+    width: "Width",
   },
 };
 

@@ -17,7 +17,18 @@ import {
   WarningCircle,
   Wrench,
 } from "@phosphor-icons/react";
-import { HEALTH, PENDING_CAPTURE, PROVIDER, WORK_SIGNALS, buckets, meta, rhythm, scope } from "./data.js";
+import {
+  HEALTH,
+  HEALTH_SCHEMA,
+  HEALTH_SCHEMA_STACKED,
+  PENDING_CAPTURE,
+  PROVIDER,
+  WORK_SIGNALS,
+  buckets,
+  meta,
+  rhythm,
+  scope,
+} from "./data.js";
 import {
   catalogs,
   formatCost,
@@ -40,7 +51,17 @@ const TABS = [
 ];
 
 // 数据状态。normal 以外的五种都是这一版新增的，用来检验界面在数据不好时还站不站得住。
-export const SURFACE_STATES = ["normal", "empty", "aged", "partial", "pending", "unavailable"];
+export const SURFACE_STATES = ["normal", "empty", "aged", "partial", "pending", "unavailable", "schema", "schemaStacked"];
+
+// 本条件的两种排布：仅此一项问题，以及叠加其他问题。
+const SCHEMA_STATES = ["schema", "schemaStacked"];
+
+// schema 两态的健康负载与其余六态不同：它们是本条件下 doctor 的实测返回及其叠加变体。
+function healthOf(state) {
+  if (state === "schema") return HEALTH_SCHEMA;
+  if (state === "schemaStacked") return HEALTH_SCHEMA_STACKED;
+  return HEALTH;
+}
 
 function useDict(lang) {
   return catalogs[lang];
@@ -628,6 +649,23 @@ function SignalDetail({ kind, lang, state, onBack }) {
   );
 }
 
+// D6：标记只是指针，解释在面板体里。四个面板各自换成归因后的不可用行，
+// 而不是整屏接管——整屏接管是 unavailable 态（连快照都没有）的处理。
+function SchemaPanel({ lang, label }) {
+  const dict = useDict(lang);
+  return (
+    <section className="panel">
+      <div className="card">
+        <div className="domain-missing">
+          <WarningCircle size={20} />
+          <strong>{dict.status.schemaSignalSectionUnavailable}</strong>
+          <small>{label}</small>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 /* ------------------------------------------------------------------ 节律块 */
 
 function RhythmBlock({ lang, state }) {
@@ -638,7 +676,7 @@ function RhythmBlock({ lang, state }) {
   const maxDaily = Math.max(...calendar.map((item) => item.value), 0.0001);
   const level = (value) => (value <= 0 ? 0 : Math.min(5, Math.max(1, Math.ceil((value / maxDaily) * 5))));
 
-  if (state === "unavailable") return null;
+  if (state === "unavailable" || SCHEMA_STATES.includes(state)) return null;
 
   return (
     <section className="rhythm" aria-labelledby="rhythm-title">
@@ -736,14 +774,26 @@ function Legend({ dict }) {
 // 既不像浮层那样压住下面的数据，也不去挤已经很窄的 footer。
 function Notices({ lang, state, refreshFailed, onOpenHealth }) {
   const dict = useDict(lang);
-  const failing = HEALTH.checks.filter((check) => check.status !== "ok");
+  const schema = SCHEMA_STATES.includes(state);
+  const health = healthOf(state);
+  const failing = health.checks.filter((check) => check.status !== "ok");
   const rows = [];
   if (state === "unavailable") rows.push({ key: "unreadable", tone: "bad", text: dict.status.unreadable });
-  if (state === "partial" || refreshFailed) rows.push({ key: "partial", tone: "warn", text: dict.status.partial });
-  if (failing.length > 0 && state !== "unavailable") {
+  // 刷新不上的快照没法断言这个条件此刻还成立，只能断言取快照时成立，所以它排在因由前面。
+  if (state === "schemaStacked") rows.push({ key: "offline", tone: "bad", text: dict.status.offline });
+  // 因由排在症状前面，而症状不再单独成行：partial 说的是这一条已经解释过的事。
+  if (schema) {
+    rows.push({ key: "schema", tone: "bad", text: dict.status.schemaSignalNotice, action: onOpenHealth });
+  }
+  if (!schema && (state === "partial" || refreshFailed)) {
+    rows.push({ key: "partial", tone: "warn", text: dict.status.partial });
+  }
+  // 计数条只在还有别的东西可数时才是信息：problems === 1 时它说的正是上面那一行。
+  const countIsRedundant = schema && failing.length <= 1;
+  if (failing.length > 0 && state !== "unavailable" && !countIsRedundant) {
     rows.push({
       key: "health",
-      tone: "warn",
+      tone: schema ? "bad" : "warn",
       text: dict.status.healthProblem(failing.length),
       action: onOpenHealth,
     });
@@ -771,8 +821,9 @@ function Notices({ lang, state, refreshFailed, onOpenHealth }) {
 
 // 健康详情做成二级页面，和工作信号详情同一套模式：
 // 展开式的行内列表要么挡住内容，要么把 footer 顶变形，这里两个问题都不存在。
-function HealthDetail({ lang, onBack }) {
+function HealthDetail({ lang, state, onBack }) {
   const dict = useDict(lang);
+  const health = healthOf(state);
   return (
     <section className="panel">
       <div className="detail-head">
@@ -786,13 +837,20 @@ function HealthDetail({ lang, onBack }) {
         </span>
       </div>
       <div className="card">
-        {HEALTH.checks.map((check) => (
-          <div className="list-row" key={check.name}>
+        {health.checks.map((check) => (
+          <div className={`list-row${check.code === "unknown_schema" ? " expanded" : ""}`} key={check.name}>
             <b>{dict.status.checks[check.name]}</b>
             <small />
             <strong className={check.status === "failed" ? "tone-text-bad" : check.status === "warning" ? "tone-text-warn" : "tone-text-good"}>
               {dict.status.checkStatus[check.status]}
             </strong>
+            {/* 两行都是散文：这一条没有可运行的命令，所以既不等宽也没有复制按钮。 */}
+            {check.code === "unknown_schema" && (
+              <div className="row-detail">
+                <p>{dict.status.schemaSignalCause(check.storedVersion, check.supportedVersion)}</p>
+                <p>{dict.status.schemaSignalRecovery}</p>
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -801,7 +859,7 @@ function HealthDetail({ lang, onBack }) {
   );
 }
 
-function ProviderMenu({ lang, onChoose, onClose }) {
+function ProviderMenu({ lang, schema, onChoose, onClose }) {
   const dict = useDict(lang);
   const ref = useRef(null);
   useEffect(() => {
@@ -811,6 +869,14 @@ function ProviderMenu({ lang, onChoose, onClose }) {
     window.addEventListener("mousedown", onDown);
     return () => window.removeEventListener("mousedown", onDown);
   }, [onClose]);
+  // 弹层 250 pt 宽且会换行，所以这里放得下一整句，不必压缩成 footer 那样的短语。
+  if (schema) {
+    return (
+      <div className="provider-menu" ref={ref} role="status">
+        <p className="menu-note">{dict.status.schemaSignalSwitchUnavailable}</p>
+      </div>
+    );
+  }
   return (
     <div className="provider-menu" ref={ref} role="menu">
       {["codex", "claude"].map((client) => (
@@ -885,7 +951,7 @@ function ConfirmDialog({ pending, lang, onCancel, onConfirm }) {
 
 /* ------------------------------------------------------------------ Popover */
 
-export function Popover({ lang, state = "normal", embedded = false, onClientChange }) {
+export function Popover({ lang, state = "normal", embedded = false, width = "420", onClientChange }) {
   const dict = useDict(lang);
   const [client, setClientState] = useState("all");
   const setClient = (value) => {
@@ -927,6 +993,10 @@ export function Popover({ lang, state = "normal", embedded = false, onClientChan
 
   const view = useMemo(() => scope(client, period), [client, period]);
   const unavailable = state === "unavailable";
+  // schema 态：快照是新的、也读得到，读不到的是核心库。所以时间戳照常显示，
+  // 而每一个数据域都空——两件事在这一态里同时为真，unavailable 态里不是。
+  const schema = SCHEMA_STATES.includes(state);
+  const noData = unavailable || schema;
 
   const showToast = (message) => {
     window.clearTimeout(toastTimer.current);
@@ -974,12 +1044,20 @@ export function Popover({ lang, state = "normal", embedded = false, onClientChan
     return () => window.removeEventListener("keydown", onKey);
   }, [pending, providerMenu, signal, refresh]);
 
-  const heroCost = unavailable ? null : state === "empty" ? 0 : view.totals.cost;
-  const incomplete = !unavailable && state !== "empty" && !view.pricingComplete;
-  const providerText = PROVIDER.routes.map((route) => `${dict.clients[route.client]} ${route.provider}`).join(" · ");
+  const heroCost = noData ? null : state === "empty" ? 0 : view.totals.cost;
+  const incomplete = !noData && state !== "empty" && !view.pricingComplete;
+  // 面板体、footer、弹层三处的归因文案：同一个条件谓词，三种长度。
+  const providerText = schema
+    ? dict.status.schemaSignalFooter
+    : PROVIDER.routes.map((route) => `${dict.clients[route.client]} ${route.provider}`).join(" · ");
 
   return (
-    <section className={`popover${embedded ? " embedded" : ""}`} aria-label={dict.app}>
+    <section
+      className={`popover${embedded ? " embedded" : ""}`}
+      style={{ "--popover-w": `${width}px` }}
+      data-width={width}
+      aria-label={dict.app}
+    >
       <header>
         <div className="brand">
           <img src="/agentdeck-robot.png" alt="" width={22} height={22} />
@@ -1037,7 +1115,7 @@ export function Popover({ lang, state = "normal", embedded = false, onClientChan
             onClick={() => setClient(key)}
           >
             {dict.clients[key]}
-            <b>{unavailable ? "—" : formatCost(state === "empty" ? 0 : scope(key, period).totals.cost, lang, { compact: true })}</b>
+            <b>{noData ? "—" : formatCost(state === "empty" ? 0 : scope(key, period).totals.cost, lang, { compact: true })}</b>
           </button>
         ))}
       </div>
@@ -1058,10 +1136,12 @@ export function Popover({ lang, state = "normal", embedded = false, onClientChan
           )}
         </div>
         <div>
-          <strong>{unavailable ? "—" : formatTokens(state === "empty" ? 0 : view.totals.tokens)}</strong>
+          <strong>{noData ? "—" : formatTokens(state === "empty" ? 0 : view.totals.tokens)}</strong>
           <span>
-            {unavailable
-              ? dict.status.unavailable
+            {noData
+              ? schema
+                ? dict.status.schemaSignalSectionUnavailable
+                : dict.status.unavailable
               : `${formatNumber(state === "empty" ? 0 : view.totals.events, lang)} ${dict.hero.events} · ${formatNumber(
                   state === "empty" ? 0 : view.totals.sessions,
                   lang,
@@ -1102,14 +1182,21 @@ export function Popover({ lang, state = "normal", embedded = false, onClientChan
           >
             <Icon size={14} weight={tab === key ? "fill" : "regular"} />
             {dict.tabs[key]}
-            {state === "partial" && key === "attribution" && <i className="tab-warn" aria-label={dict.status.partial} />}
+            {((state === "partial" && key === "attribution") || schema) && (
+              <i className="tab-warn" aria-label={schema ? dict.status.schemaSignalSectionUnavailable : dict.status.partial} />
+            )}
           </button>
         ))}
       </nav>
 
       <div className="scroll">
         {healthOpen ? (
-          <HealthDetail lang={lang} onBack={() => setHealthOpen(false)} />
+          <HealthDetail lang={lang} state={state} onBack={() => setHealthOpen(false)} />
+        ) : schema ? (
+          <>
+            <Notices lang={lang} state={state} refreshFailed={refreshStatus === "failed"} onOpenHealth={() => setHealthOpen(true)} />
+            <SchemaPanel lang={lang} label={dict.tabs[tab]} />
+          </>
         ) : unavailable ? (
           <>
             <Notices lang={lang} state={state} refreshFailed={refreshStatus === "failed"} onOpenHealth={() => setHealthOpen(true)} />
@@ -1144,7 +1231,9 @@ export function Popover({ lang, state = "normal", embedded = false, onClientChan
             <strong>{providerText}</strong>
             <CaretUp size={13} className={providerMenu ? "flip" : undefined} />
           </button>
-          {providerMenu && <ProviderMenu lang={lang} onChoose={choose} onClose={() => setProviderMenu(false)} />}
+          {providerMenu && (
+            <ProviderMenu lang={lang} schema={schema} onChoose={choose} onClose={() => setProviderMenu(false)} />
+          )}
         </div>
       </footer>
 
