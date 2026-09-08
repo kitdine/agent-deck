@@ -15,6 +15,22 @@
           }
         ]
       }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3",
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/scripts/hooks/beads-consistency.py",
+              "--runtime",
+              "claude"
+            ],
+            "timeout": 15
+          }
+        ]
+      }
     ]
   }
 }

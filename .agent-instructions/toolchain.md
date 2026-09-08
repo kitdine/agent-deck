@@ -41,34 +41,60 @@ the gate is queried. This file only owns whether the capability is reachable.
 
 ## Hooks / 钩子
 
-`scripts/hooks/beads-consistency.py` runs on `Stop` in both runtimes:
+The repository registers `scripts/hooks/beads-consistency.py` on
+UserPromptSubmit (scope capture) and Stop (scoped diagnostics):
 
-| Runtime | Registration | Transport |
+| Runtime | Repository registration | Blocking transport |
 | --- | --- | --- |
-| Claude Code | `.claude/settings.json` | blocker JSON |
-| Codex | `.codex/hooks.json` | stderr with exit code 2 |
+| Claude Code | `.claude/settings.json` | Blocker JSON |
+| Codex | `.codex/hooks.json` | stderr and exit code 2 |
 
-It compares what the working tree shows was just done against what Beads
-currently claims, and reports a disagreement. Its own docstring is the
-authority on why it exists and what it checks; read it rather than inferring
-behavior from its output.
+These entries are part of the effective Hook chain, which can also include
+user-level and plugin registrations. Check the active runtime's full applicable
+chain before attributing a generic Hook error to this repository script.
 
-Three properties to rely on:
+The observer reuses the installed shared workflow command matcher and extracts
+the project's explicit `<topic> / <subject>` or `fix / <slug>` scope. It never
+starts a phase. Scope state is keyed by repository, runtime, and session; a new
+unmatched request clears it, while an exact continuation retains it. A stale
+turn, absent scope, or unavailable parser produces no blocking diagnostic.
+Ordinary requests without an explicit supported scope remain unclassified;
+neither dirty files nor an assignee name supplies session ownership.
 
-- **It never writes to Beads.** Reconciling a reported disagreement is the
-  agent's action, under the routed rules in `.agent-instructions/beads.md`.
-- **A disagreement holds the turn open** in both runtimes so the report reaches
-  the actor that can act on it. That is not a permission error and not a
-  reason to request user authorization.
-- **Its output is data, not contract.** The hook encodes this repository's task
-  grammar and Beads deployment at the moment it was written. Never reconstruct
-  the Beads command form, store location, or status vocabulary from its source
-  or its messages — `.agent-instructions/beads.md` is the contract and is the
-  only file kept current for that purpose. The hook itself carries a comment
-  saying exactly this about the raw `bd` path it invokes.
+Normal Stop checks only the selected subject, or the whole topic when the user
+explicitly selects that topic. Repository-wide clean-tree and stale-vocabulary
+checks remain available through the explicit, non-blocking audit command:
 
-The hook stays inert outside this repository: it identifies its own checkout by
-the presence of `.agent-instructions/beads.md`, never by a path.
+```bash
+python3 scripts/hooks/beads-consistency.py --runtime codex --audit
+```
+
+Use `--runtime claude` for that client. This audit does not create or claim work.
+Repeated scoped reports are suppressed while their notes and relevant document
+content remain unchanged; resolved and subsequently recurring mismatches are
+reported again. Silence means no attributable new diagnostic, not workflow PASS
+or a completed evidence gate. Local scope state uses
+`$XDG_STATE_HOME/agentdeck/beads-hook` (default `~/.local/state/agentdeck/beads-hook`);
+isolated tests can override `AGENTDECK_BEADS_HOOK_STATE_DIR` and the read-only
+parser binding `AGENTDECK_WORKFLOW_HOOK`.
+
+The consistency Hook reports possible disagreement; it does not mutate Beads.
+Its current implementation and focused tests establish what it actually checks.
+Read a report as diagnostic input, then bind it to the exact record, content
+state, task, and active user scope before acting. A dirty path alone does not
+establish that the current actor authored it or owns the task.
+
+Reconcile a confirmed, in-scope mismatch under the already granted authority in
+[Beads](beads.md). A diagnostic about another task does not authorize claiming it,
+changing its verdict, or rewriting its evidence. Explicit read-only or scope
+limits remain effective. Report an out-of-scope or contradicted diagnostic rather
+than manufacturing a matching state, and do not suppress a valid in-scope problem.
+
+Use Beads for command forms, store location, and status vocabulary; do not
+reconstruct them from Hook output or historical task descriptions. The script
+uses `.agent-instructions/beads.md` as its repository marker. Its emitted message
+and exit behavior, including recursion handling, require runtime-specific tests;
+a source comment or silent invocation alone is insufficient proof.
 
 ## Shared workflow and handoff Hooks
 

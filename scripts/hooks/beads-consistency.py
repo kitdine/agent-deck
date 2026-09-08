@@ -13,7 +13,8 @@ to an implementation. It compares two facts that are both cheap and unambiguous:
 what the working tree shows was just done, and what Beads currently claims. It
 only reports; it never writes to Beads. A detected mismatch may block Stop once.
 
-Runs on Stop for both Codex and Claude Code. Silent unless something disagrees.
+UserPromptSubmit records explicit session scope; Stop checks only that scope.
+Unattributed work is left for the explicit --audit command, which never blocks.
 It never writes to Beads. A disagreement holds the turn open in both runtimes so
 the agent reconciles it before finishing — Claude Code through the blocker JSON,
 Codex through the stderr exit-code-2 transport it accepts. Either way the report
@@ -24,6 +25,8 @@ not.
 from __future__ import annotations
 
 import argparse
+import hashlib
+import importlib.util
 import json
 import os
 import re
@@ -106,6 +109,145 @@ AUTHORIZATION_WAIT = re.compile(
 
 TIMEOUT = 8
 HOOK_BUDGET = 10.0
+
+
+def session_state_path(root: Path, event: dict[str, Any], runtime: str) -> Path | None:
+    session = event.get("session_id")
+    if not isinstance(session, str) or not session:
+        return None
+    identity = "\0".join((str(root.resolve()), runtime, session))
+    base = Path(os.environ.get("AGENTDECK_BEADS_HOOK_STATE_DIR", str(
+        Path(os.environ.get("XDG_STATE_HOME", str(Path.home() / ".local/state")))
+        / "agentdeck/beads-hook"
+    )))
+    return base / (hashlib.sha256(identity.encode()).hexdigest() + ".json")
+
+
+def event_turn(event: dict[str, Any], runtime: str) -> str | None:
+    fields = ("turn_id", "prompt_id") if runtime == "codex" else ("prompt_id", "turn_id")
+    return next((event[k] for k in fields if isinstance(event.get(k), str) and event[k]), None)
+
+
+def read_session(path: Path | None) -> dict[str, Any]:
+    if path is None:
+        return {}
+    try:
+        data = json.loads(path.read_text())
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def write_session(path: Path, state: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    temporary = path.with_suffix(f".{os.getpid()}.tmp")
+    try:
+        temporary.write_text(json.dumps(state, ensure_ascii=False))
+        temporary.chmod(0o600)
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def valid_scope(scope: object) -> bool:
+    if not isinstance(scope, dict):
+        return False
+    topic, target = scope.get("topic"), scope.get("subject")
+    if not isinstance(topic, str) or not re.fullmatch(r"[a-z0-9][a-z0-9-]*", topic):
+        return False
+    if not isinstance(target, str):
+        return False
+    if target and (not re.fullmatch(r"[a-zA-Z0-9_./-]+", target)
+                   or any(p in {"", ".", ".."} for p in target.split("/"))):
+        return False
+    return topic != "fix" or bool(re.fullmatch(r"[a-z0-9][a-z0-9-]*", target))
+
+
+def selected_scope(prompt: str, runtime: str) -> dict[str, str] | None:
+    """Reuse the workflow's command matcher; this observer never starts a phase."""
+    hook = Path(os.environ.get("AGENTDECK_WORKFLOW_HOOK", str(
+        Path.home() / f".{runtime}/hooks/development-workflow/workflow_hook.py"
+    )))
+    try:
+        spec = importlib.util.spec_from_file_location("beads_workflow_router", hook)
+        if spec is None or spec.loader is None:
+            return None
+        router = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(router)
+        if router.route_prompt(prompt) not in {"DESIGN", "IMPLEMENT", "REVIEW", "REPAIR", "REREVIEW"}:
+            return None
+        text = prompt.lstrip()
+        for prefix in router.INVOCATION_PREFIXES:
+            if text.startswith(prefix) and text[len(prefix):len(prefix)+1].isspace():
+                text = text[len(prefix):].lstrip()
+                break
+        command = next(c for c in sorted(router.COMMAND_ROUTES, key=len, reverse=True)
+                       if text.startswith(c))
+        subject = text[len(command):].lstrip("\r\n:：").strip().splitlines()[0]
+        parts = re.split(r"\s+/\s+", subject)
+        topic = parts[0]
+        target = parts[1] if len(parts) > 1 else ""
+        scope = {"topic": topic, "subject": target}
+        return scope if valid_scope(scope) else None
+    except (OSError, ValueError, AttributeError, ImportError, IndexError, StopIteration):
+        return None
+
+
+def scope_paths(scope: dict[str, str]) -> list[str]:
+    topic, subject = scope["topic"], scope["subject"]
+    if topic == "fix":
+        return [f"docs/fixes/{subject}.md"]
+    base = f"docs/topics/{topic}/"
+    if not subject:
+        return [base]
+    if subject.startswith("reviews/"):
+        return [base + subject]
+    if subject.endswith(".md"):
+        return [base + subject, base + "reviews/" + record_stem(subject) + ".md"]
+    return [base + "reviews/" + subject + ".md"]
+
+
+def in_scope(path: str, scope: dict[str, str]) -> bool:
+    return any(path.startswith(p) if p.endswith("/") else path == p for p in scope_paths(scope))
+
+
+def remember_prompt(root: Path, event: dict[str, Any], runtime: str) -> None:
+    path = session_state_path(root, event, runtime)
+    prompt = event.get("prompt")
+    if path is None or not isinstance(prompt, str):
+        return
+    old = read_session(path)
+    if prompt.strip().lower() in {"继续", "继续开发", "继续执行", "continue"}:
+        state = old
+    else:
+        scope = selected_scope(prompt, runtime)
+        state = {"scope": scope}
+        if scope and scope == old.get("scope"):
+            state["reported"] = old.get("reported")
+    if not valid_scope(state.get("scope")):
+        path.unlink(missing_ok=True)
+        return
+    state["turn"] = event_turn(event, runtime)
+    write_session(path, state)
+
+
+def report_fingerprint(root: Path, scope: dict[str, str], notes: list[str]) -> str:
+    # Bind deduplication to the current scoped document content, not timestamps.
+    paths = scope_paths(scope)
+    if scope["topic"] != "fix":
+        paths.append(f"docs/topics/{scope['topic']}/tasks.md")
+    files: set[Path] = set()
+    for rel in paths:
+        path = root / rel
+        files.update(path.rglob("*.md") if rel.endswith("/") else [path])
+    digest = hashlib.sha256(json.dumps(notes).encode())
+    for path in sorted(files):
+        digest.update(str(path.relative_to(root)).encode())
+        try:
+            digest.update(path.read_bytes())
+        except OSError:
+            digest.update(b"missing")
+    return digest.hexdigest()
 
 
 def remaining_timeout(deadline: float) -> float | None:
@@ -457,8 +599,53 @@ def decomposition_passed(text: str) -> bool:
     return False
 
 
-def findings(root: Path, deadline: float) -> list[str]:
-    changed = changed_paths(root, deadline)
+def implementation_subject(
+    root: Path, bead: dict[str, Any], deadline: float
+) -> tuple[str, str] | None:
+    """Resolve an anchor through its unique structured decomposition dependency.
+
+    Description links are references, never ownership. List responses may omit
+    dependency details; load only this candidate's detail within the Hook budget.
+    Multiple decompositions or a missing matrix anchor remain unattributed.
+    """
+    anchor = anchor_of(bead)
+    if not anchor:
+        return None
+    if "dependencies" not in bead:
+        task_id = bead.get("id")
+        if not isinstance(task_id, str) or not task_id:
+            return None
+        detail = bd_json(["show", task_id], deadline)
+        if isinstance(detail, list) and len(detail) == 1:
+            detail = detail[0]
+        if not isinstance(detail, dict) or detail.get("id") != task_id or anchor_of(detail) != anchor:
+            return None
+        bead = detail
+    dependencies = bead.get("dependencies")
+    if not isinstance(dependencies, list):
+        return None
+    topics = set()
+    for dependency in dependencies:
+        if not isinstance(dependency, dict) or dependency.get("dependency_type") != "blocks":
+            continue
+        subject = doc_subject_of(dependency)
+        if subject and subject[1] == "tasks.md":
+            topics.add(subject[0])
+    if len(topics) != 1:
+        return None
+    topic = next(iter(topics))
+    if not re.fullmatch(r"[a-z0-9][a-z0-9-]*", topic):
+        return None
+    try:
+        matrix = (root / "docs/topics" / topic / "tasks.md").read_text(encoding="utf-8")
+    except OSError:
+        return None
+    return (topic, anchor) if any(row[0] == anchor for row in matrix_rows(matrix)) else None
+
+
+def findings(root: Path, deadline: float, scope: dict[str, str] | None = None) -> list[str]:
+    all_changed = changed_paths(root, deadline)
+    changed = [p for p in all_changed if in_scope(p, scope)] if scope else all_changed
     notes: list[str] = []
 
     # 1. A review record was written or updated, but dispatch does not reflect
@@ -472,7 +659,8 @@ def findings(root: Path, deadline: float) -> list[str]:
         }
         # Keyed by the record each task is reviewed under, so a verdict reaches
         # exactly the one task whose subject it is.
-        by_record: dict[tuple[str, str], tuple[str, str]] = {}
+        by_record: dict[tuple[str, str], set[tuple[str, str]]] = {}
+        reviewed = {review_subject(path) for path in touched_reviews}
         for status, beads in by_status.items():
             for bead in beads:
                 if not isinstance(bead, dict):
@@ -481,14 +669,13 @@ def findings(root: Path, deadline: float) -> list[str]:
                 subject = doc_subject_of(bead)
                 if subject:
                     topic, document = subject
-                    by_record[(topic, record_stem(document))] = identity
+                    by_record.setdefault((topic, record_stem(document)), set()).add(identity)
                     continue
                 anchor = anchor_of(bead)
-                if anchor:
-                    # A task-anchor record carries the topic in its own task title
-                    # only loosely, so match it under every topic; the stem is what
-                    # disambiguates.
-                    by_record[("", anchor)] = identity
+                if anchor and any(subject and subject[1] == anchor for subject in reviewed):
+                    subject = implementation_subject(root, bead, deadline)
+                    if subject in reviewed:
+                        by_record.setdefault(subject, set()).add(identity)
         for rel in touched_reviews:
             subject = review_subject(rel)
             if not subject:
@@ -497,10 +684,10 @@ def findings(root: Path, deadline: float) -> list[str]:
             verdict, gate = latest_review_state(root / rel)
             if verdict != "PASS" or gate is None:
                 continue
-            task = by_record.get((topic, stem)) or by_record.get(("", stem))
-            if not task:
+            candidates = by_record.get((topic, stem), set())
+            if len(candidates) != 1:
                 continue
-            task_id, status = task
+            task_id, status = next(iter(candidates))
             if gate in {"VERIFIED", "NOT_REQUIRED"} and status == "in_review":
                 notes.append(
                     f"{rel} records Verdict: PASS, but its subject's task "
@@ -521,7 +708,7 @@ def findings(root: Path, deadline: float) -> list[str]:
     #    actually in the tree. Both are worth a look; neither is guessable here.
     awaiting = (
         bd_json(["list", "--status", "awaiting_commit"], deadline) or []
-        if not changed
+        if not all_changed and scope is None
         else []
     )
     if awaiting:
@@ -583,7 +770,14 @@ def findings(root: Path, deadline: float) -> list[str]:
     #    development tasks to be created only after `tasks.md` passes, and nothing
     #    creates them when it does, so the window between the two is exactly where
     #    they get forgotten. A `开发：` command then has no task ID to claim.
-    plans = sorted((root / "docs" / "topics").glob("*/tasks.md"))
+    if scope is None:
+        plans = sorted((root / "docs" / "topics").glob("*/tasks.md"))
+    elif scope["topic"] != "fix" and scope["subject"] in {"", "tasks.md", "reviews/tasks.md"}:
+        plans = [root / "docs/topics" / scope["topic"] / "tasks.md"]
+    elif scope["topic"] != "fix" and not scope["subject"].endswith(".md"):
+        plans = [root / "docs/topics" / scope["topic"] / "tasks.md"]
+    else:
+        plans = []
     pending: list[tuple[str, str]] = []
     for plan in plans:
         try:
@@ -594,7 +788,8 @@ def findings(root: Path, deadline: float) -> list[str]:
             continue
         topic = plan.parent.name
         for anchor, _dev, review in matrix_rows(text):
-            if review != "[x]":
+            selected = not scope or scope["subject"] in {"", "tasks.md", "reviews/tasks.md", anchor}
+            if review != "[x]" and selected:
                 pending.append((topic, anchor))
     if pending:
         known = bd_json(["list", "--all"], deadline) or []
@@ -623,7 +818,7 @@ def findings(root: Path, deadline: float) -> list[str]:
     #    copy already stamped into a description stayed behind, unreferenced by
     #    anything that would notice. Closed tasks are history and are left alone.
     stale_terms = tuple(sorted(RETIRED_STATUS_NAMES))
-    live = bd_json(["list", "--status", ",".join(sorted(LIVE_STATUSES))], deadline) or []
+    live = (bd_json(["list", "--status", ",".join(sorted(LIVE_STATUSES))], deadline) or []) if scope is None else []
     for bead in live:
         if not isinstance(bead, dict):
             continue
@@ -731,13 +926,20 @@ def emit_output(output: dict[str, Any], event_name: object, runtime: str) -> int
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--runtime", choices=("codex", "claude"), required=True)
+    parser.add_argument("--audit", action="store_true", help="Explicit non-blocking repository-wide coordination audit")
     args = parser.parse_args()
+
+    if args.audit:
+        deadline = time.monotonic() + HOOK_BUDGET
+        root = repo_root(deadline)
+        print(json.dumps({"notes": findings(root, deadline) if root else []}, ensure_ascii=False))
+        return 0
 
     try:
         event = json.load(sys.stdin)
     except (json.JSONDecodeError, OSError):
         return 0
-    if not isinstance(event, dict) or event.get("hook_event_name") != "Stop":
+    if not isinstance(event, dict) or event.get("hook_event_name") not in {"Stop", "UserPromptSubmit"}:
         return 0
     if authorization_wait(event):
         return 0
@@ -749,7 +951,24 @@ def main() -> int:
         return 0
 
     try:
-        notes = findings(root, deadline)
+        if event.get("hook_event_name") == "UserPromptSubmit":
+            remember_prompt(root, event, args.runtime)
+            return 0
+        path = session_state_path(root, event, args.runtime)
+        state = read_session(path)
+        scope = state.get("scope")
+        if not valid_scope(scope):
+            return 0
+        turn = event_turn(event, args.runtime)
+        if turn != state.get("turn"):
+            return 0
+        notes = findings(root, deadline, scope=scope)
+        fingerprint = report_fingerprint(root, scope, notes) if notes else None
+        if fingerprint == state.get("reported"):
+            return 0
+        state["reported"] = fingerprint
+        assert path is not None
+        write_session(path, state)
     except Exception:  # noqa: BLE001 - a hook must never break the session
         return 0
     if not notes:

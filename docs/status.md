@@ -14,6 +14,10 @@ column below is its current execution-status projection. Later version direction
 is recorded in `roadmap.md`.
 ## Current State
 
+- Repository Hook maintenance: [Beads Stop session scope](fixes/beads-stop-session-scope.md#review--round-2--2026-09-07)
+  passed independent re-review and real-client observer acceptance. Authorized
+  delivery remains pending; its fix record owns the evidence and boundary.
+
 ### Release
 
 - **Latest prerelease:** [`v0.5.0-rc.6`](https://github.com/kitdine/agent-deck/releases/tag/v0.5.0-rc.6)

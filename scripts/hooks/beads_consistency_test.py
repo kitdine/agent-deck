@@ -17,7 +17,228 @@ MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)
 
 
+class SessionScopeTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.root = Path(self.directory.name)
+        self.enterContext(mock.patch.dict(MODULE.os.environ, {
+            "AGENTDECK_BEADS_HOOK_STATE_DIR": str(self.root / "state")
+        }))
+        self.enterContext(mock.patch.object(MODULE, "repo_root", return_value=self.root))
+
+    def event(self, kind: str, *, session: str = "a", runtime: str = "codex",
+              turn: str = "1", prompt: str = "") -> tuple[int, str, str]:
+        data = {"hook_event_name": kind, "session_id": session, "turn_id": turn, "prompt": prompt}
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with (
+            mock.patch.object(sys, "argv", [str(SCRIPT), "--runtime", runtime]),
+            mock.patch.object(sys, "stdin", io.StringIO(json.dumps(data))),
+            mock.patch.object(sys, "stdout", stdout),
+            mock.patch.object(sys, "stderr", stderr),
+        ):
+            code = MODULE.main()
+        return code, stdout.getvalue(), stderr.getvalue()
+
+    def select(self, **kwargs: str) -> None:
+        with mock.patch.object(MODULE, "selected_scope", return_value={"topic": "current", "subject": "tasks.md"}):
+            self.event("UserPromptSubmit", prompt="评审：current / tasks.md", **kwargs)
+
+    def test_current_scope_blocks_in_both_runtimes(self) -> None:
+        for runtime in ("codex", "claude"):
+            with self.subTest(runtime=runtime):
+                self.select(runtime=runtime)
+                with mock.patch.object(MODULE, "findings", return_value=["current mismatch"]) as scan:
+                    code, out, err = self.event("Stop", runtime=runtime)
+                scan.assert_called_once()
+                self.assertEqual(scan.call_args.kwargs['scope'], {"topic": "current", "subject": "tasks.md"})
+                if runtime == "codex":
+                    self.assertEqual(code, 2)
+                    self.assertIn("current mismatch", err)
+                else:
+                    self.assertEqual(json.loads(out)['decision'], "block")
+
+    def test_other_session_runtime_and_old_turn_cannot_borrow_scope(self) -> None:
+        self.select()
+        with mock.patch.object(MODULE, "findings") as scan:
+            self.event("Stop", session="b")
+            self.event("Stop", runtime="claude")
+            self.event("Stop", turn="old")
+            scan.assert_not_called()
+
+    def test_unmatched_new_task_clears_old_scope(self) -> None:
+        self.select()
+        with mock.patch.object(MODULE, "selected_scope", return_value=None):
+            self.event("UserPromptSubmit", turn="2", prompt="Explain a different problem")
+        with mock.patch.object(MODULE, "findings") as scan:
+            self.event("Stop", turn="2")
+            scan.assert_not_called()
+
+    def test_continue_preserves_scope_with_new_turn(self) -> None:
+        self.select()
+        self.event("UserPromptSubmit", turn="2", prompt="继续")
+        with mock.patch.object(MODULE, "findings", return_value=["still missing"]):
+            self.assertEqual(self.event("Stop", turn="2")[0], 2)
+
+    def test_identical_content_is_reported_once_but_changed_content_is_new(self) -> None:
+        self.select()
+        with mock.patch.object(MODULE, "findings", return_value=["missing dispatch"]):
+            self.assertEqual(self.event("Stop")[0], 2)
+            self.assertEqual(self.event("Stop"), (0, "", ""))
+            path = self.root / "docs/topics/current/tasks.md"
+            path.parent.mkdir(parents=True)
+            path.write_text("changed content\n")
+            self.assertEqual(self.event("Stop")[0], 2)
+
+    def test_unrelated_dirty_file_does_not_change_fingerprint(self) -> None:
+        scope = {"topic": "current", "subject": "tasks.md"}
+        before = MODULE.report_fingerprint(self.root, scope, ["missing"])
+        path = self.root / "docs/topics/other/tasks.md"
+        path.parent.mkdir(parents=True)
+        path.write_text("unrelated\n")
+        self.assertEqual(before, MODULE.report_fingerprint(self.root, scope, ["missing"]))
+
+    def test_unknown_router_is_nonblocking(self) -> None:
+        with mock.patch.dict(MODULE.os.environ, {"AGENTDECK_WORKFLOW_HOOK": str(self.root / "missing.py")}):
+            self.assertIsNone(MODULE.selected_scope("评审：current / tasks.md", "codex"))
+
+    def test_invalid_persisted_scope_cannot_escape_repository(self) -> None:
+        for scope in ({"topic": "../other", "subject": "tasks.md"},
+                      {"topic": "current", "subject": "../../secret.md"},
+                      {"topic": "fix", "subject": ""}, {"topic": "current"}):
+            self.assertFalse(MODULE.valid_scope(scope))
+
+    def test_session_identity_includes_repository(self) -> None:
+        event = {"session_id": "same"}
+        self.assertNotEqual(MODULE.session_state_path(self.root / "one", event, "codex"),
+                            MODULE.session_state_path(self.root / "two", event, "codex"))
+
+    def test_turn_identity_uses_runtime_field_precedence(self) -> None:
+        event = {"turn_id": "turn", "prompt_id": "prompt"}
+        self.assertEqual(MODULE.event_turn(event, "codex"), "turn")
+        self.assertEqual(MODULE.event_turn(event, "claude"), "prompt")
+        self.assertIsNone(MODULE.event_turn({"turn_id": 123}, "codex"))
+
+    def test_explicit_audit_is_nonblocking_without_session_state(self) -> None:
+        output = io.StringIO()
+        with (
+            mock.patch.object(sys, "argv", [str(SCRIPT), "--runtime", "codex", "--audit"]),
+            mock.patch.object(sys, "stdout", output),
+            mock.patch.object(MODULE, "findings", return_value=["outside current work"]),
+        ):
+            self.assertEqual(MODULE.main(), 0)
+        self.assertEqual(json.loads(output.getvalue()), {"notes": ["outside current work"]})
+
+    def test_fixed_then_reintroduced_mismatch_is_reported_again(self) -> None:
+        self.select()
+        with mock.patch.object(MODULE, "findings", side_effect=[["missing"], [], ["missing"]]):
+            self.assertEqual(self.event("Stop")[0], 2)
+            self.assertEqual(self.event("Stop")[0], 0)
+            self.assertEqual(self.event("Stop")[0], 2)
+
+    def test_subject_scope_excludes_other_tasks_in_same_topic(self) -> None:
+        scope = {"topic": "current", "subject": "alpha"}
+        self.assertTrue(MODULE.in_scope("docs/topics/current/reviews/alpha.md", scope))
+        self.assertFalse(MODULE.in_scope("docs/topics/current/reviews/beta.md", scope))
+        self.assertFalse(MODULE.in_scope("docs/topics/other/reviews/alpha.md", scope))
+
+
+class ReviewTaskOwnershipTest(unittest.TestCase):
+    def setUp(self) -> None:
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.root = Path(directory.name)
+        for topic in ("alpha", "beta"):
+            base = self.root / "docs/topics" / topic
+            (base / "reviews").mkdir(parents=True)
+            (base / "tasks.md").write_text("| 1 | `build` | [x] | [ ] |\n")
+            (base / "reviews/build.md").write_text("Verdict: PASS\nCompletion gate: VERIFIED\n")
+
+    def task(self, topic: str, *, structured: bool = True) -> dict:
+        task = {"id": f"{topic}-build", "title": "任务：build",
+                "description": f"Implement docs/topics/{topic}/tasks.md; dependency: docs/topics/alpha/architecture.md."}
+        if structured:
+            task['dependencies'] = [{"id": f"{topic}-decomposition", "title": f"文档：{topic} / tasks.md", "dependency_type": "blocks"}]
+        return task
+
+    def diagnose(self, tasks: list[dict], *, scope: bool = True) -> list[str]:
+        def query(args, deadline):
+            return tasks if args == ['list', '--status', 'in_review'] else []
+        with (
+            mock.patch.object(MODULE, 'changed_paths', return_value=['docs/topics/alpha/reviews/build.md']),
+            mock.patch.object(MODULE, 'bd_json', side_effect=query),
+        ):
+            return MODULE.findings(self.root, 123.0, scope={'topic':'alpha', 'subject':'build'} if scope else None)
+
+    def test_cross_topic_references_cannot_override_unique_structured_owner(self) -> None:
+        alpha, beta = self.task('alpha'), self.task('beta')
+        for tasks in ([alpha, beta], [beta, alpha]):
+            for scope in (True, False):
+                notes = self.diagnose(tasks, scope=scope)
+                self.assertEqual(len(notes), 1)
+                self.assertIn('alpha-build (alpha)', notes[0])
+                self.assertNotIn('beta-build', notes[0])
+
+    def test_description_only_reproducer_has_no_proven_owner(self) -> None:
+        alpha, beta = self.task('alpha', structured=False), self.task('beta', structured=False)
+        for tasks in ([alpha, beta], [beta, alpha]):
+            self.assertEqual(self.diagnose(tasks), [])
+
+    def test_multiple_decomposition_owners_and_duplicate_subjects_are_ambiguous(self) -> None:
+        alpha = self.task('alpha')
+        alpha['dependencies'] += self.task('beta')['dependencies']
+        self.assertEqual(self.diagnose([alpha]), [])
+        first, second = self.task('alpha'), self.task('alpha')
+        second['id'] = 'another-alpha-build'
+        for tasks in ([first, second], [second, first]):
+            self.assertEqual(self.diagnose(tasks), [])
+
+    def test_decomposition_must_actually_contain_the_task_anchor(self) -> None:
+        (self.root/'docs/topics/alpha/tasks.md').write_text('| 1 | `different` | [ ] | [ ] |\n')
+        self.assertEqual(self.diagnose([self.task('alpha')]), [])
+
+    def test_list_candidate_loads_its_own_structured_detail(self) -> None:
+        candidate = self.task('alpha', structured=False)
+        with mock.patch.object(MODULE, 'bd_json', return_value=[self.task('alpha')]) as query:
+            self.assertEqual(MODULE.implementation_subject(self.root, candidate, 123.0), ('alpha', 'build'))
+        query.assert_called_once_with(['show', 'alpha-build'], 123.0)
+
+    def test_wrong_detail_or_unavailable_provider_does_not_invent_ownership(self) -> None:
+        for response in (None, [], [self.task('beta')], [self.task('alpha'), self.task('beta')]):
+            with mock.patch.object(MODULE, 'bd_json', return_value=response):
+                self.assertIsNone(MODULE.implementation_subject(self.root, self.task('alpha', structured=False), 123.0))
+
+
 class BeadsConsistencyHookTest(unittest.TestCase):
+    def test_stop_without_session_scope_does_not_scan_repository(self) -> None:
+        event = {"hook_event_name": "Stop", "session_id": "unrelated-session"}
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            mock.patch.dict(MODULE.os.environ, {"AGENTDECK_BEADS_HOOK_STATE_DIR": directory}),
+            mock.patch.object(sys, "argv", [str(SCRIPT), "--runtime", "codex"]),
+            mock.patch.object(sys, "stdin", io.StringIO(json.dumps(event))),
+            mock.patch.object(MODULE, "repo_root", return_value=Path(directory)),
+            mock.patch.object(MODULE, "findings", return_value=[]) as scan,
+        ):
+            self.assertEqual(MODULE.main(), 0)
+            scan.assert_not_called()
+
+    def test_missing_decomposition_tasks_are_scoped_to_selected_topic(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for topic in ("current", "other"):
+                plan = root / "docs" / "topics" / topic / "tasks.md"
+                plan.parent.mkdir(parents=True)
+                plan.write_text("| tasks.md | [x] | [x] |\n| 1 | `build` | [ ] | [ ] |\n")
+            with (
+                mock.patch.object(MODULE, "changed_paths", return_value=[]),
+                mock.patch.object(MODULE, "bd_json", return_value=[]),
+            ):
+                notes = MODULE.findings(root, 123.0, scope={"topic": "current", "subject": "tasks.md"})
+            self.assertEqual(len(notes), 1)
+            self.assertIn("current passed", notes[0])
+            self.assertNotIn("other", notes[0])
+
     def test_authorization_wait_skips_all_heavy_consistency_work(self) -> None:
         event = {
             "hook_event_name": "Stop",
@@ -373,7 +594,7 @@ class BeadsConsistencyHookTest(unittest.TestCase):
 
         def beads(args: list[str], _deadline: float) -> list[dict[str, str]]:
             if args == ["list", "--status", "in_review"]:
-                return [{"id": "task-1", "title": "任务：anchor"}]
+                return [{"id": "task-1", "title": "任务：anchor", "dependencies": [{"title": "文档：example / tasks.md", "dependency_type": "blocks"}]}]
             return []
 
         with (
@@ -385,7 +606,7 @@ class BeadsConsistencyHookTest(unittest.TestCase):
             mock.patch.object(
                 MODULE.Path,
                 "read_text",
-                return_value="- Completion gate: BLOCKED\n- Verdict: PASS\n",
+                return_value="- Completion gate: BLOCKED\n- Verdict: PASS\n| 1 | `anchor` | [x] | [ ] |\n",
             ),
             mock.patch.object(MODULE.Path, "glob", return_value=[]),
             mock.patch.object(MODULE, "bd_json", side_effect=beads),
@@ -397,7 +618,7 @@ class BeadsConsistencyHookTest(unittest.TestCase):
 
         def beads(args: list[str], _deadline: float) -> list[dict[str, str]]:
             if args == ["list", "--status", "in_review"]:
-                return [{"id": "task-1", "title": "任务：anchor"}]
+                return [{"id": "task-1", "title": "任务：anchor", "dependencies": [{"title": "文档：example / tasks.md", "dependency_type": "blocks"}]}]
             return []
 
         with (
@@ -409,7 +630,7 @@ class BeadsConsistencyHookTest(unittest.TestCase):
             mock.patch.object(
                 MODULE.Path,
                 "read_text",
-                return_value="- Completion gate: VERIFIED\n- Verdict: PASS\n",
+                return_value="- Completion gate: VERIFIED\n- Verdict: PASS\n| 1 | `anchor` | [x] | [ ] |\n",
             ),
             mock.patch.object(MODULE.Path, "glob", return_value=[]),
             mock.patch.object(MODULE, "bd_json", side_effect=beads),
@@ -424,7 +645,7 @@ class BeadsConsistencyHookTest(unittest.TestCase):
 
         def beads(args: list[str], _deadline: float) -> list[dict[str, str]]:
             if args == ["list", "--status", "awaiting_commit"]:
-                return [{"id": "task-1", "title": "任务：anchor"}]
+                return [{"id": "task-1", "title": "任务：anchor", "dependencies": [{"title": "文档：example / tasks.md", "dependency_type": "blocks"}]}]
             return []
 
         with (
@@ -436,7 +657,7 @@ class BeadsConsistencyHookTest(unittest.TestCase):
             mock.patch.object(
                 MODULE.Path,
                 "read_text",
-                return_value="- Completion gate: BLOCKED\n- Verdict: PASS\n",
+                return_value="- Completion gate: BLOCKED\n- Verdict: PASS\n| 1 | `anchor` | [x] | [ ] |\n",
             ),
             mock.patch.object(MODULE.Path, "glob", return_value=[]),
             mock.patch.object(MODULE, "bd_json", side_effect=beads),
