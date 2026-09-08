@@ -11,10 +11,24 @@ from unittest import mock
 
 
 SCRIPT = Path(__file__).with_name("beads-consistency.py")
+ROOT = SCRIPT.parents[2]
 SPEC = importlib.util.spec_from_file_location("beads_consistency", SCRIPT)
 assert SPEC is not None and SPEC.loader is not None
 MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)
+
+
+class ProjectWorkspacePolicyTest(unittest.TestCase):
+    def test_development_requires_project_entry_without_global_skill_mandate(self) -> None:
+        agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+        branching = (ROOT / ".agent-instructions/branching.md").read_text(
+            encoding="utf-8"
+        )
+        for text in (agents, branching):
+            self.assertIn("进入工作：<topic>", text)
+            self.assertIn("task claim", text)
+        self.assertIn("AgentDeck project rule", agents)
+        self.assertIn("shared Skill", agents)
 
 
 class SessionScopeTest(unittest.TestCase):
@@ -22,6 +36,8 @@ class SessionScopeTest(unittest.TestCase):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
         self.root = Path(self.directory.name)
+        (self.root / ".agent-instructions").mkdir()
+        (self.root / ".agent-instructions/beads.md").write_text("test contract\n")
         self.enterContext(mock.patch.dict(MODULE.os.environ, {
             "AGENTDECK_BEADS_HOOK_STATE_DIR": str(self.root / "state")
         }))
@@ -57,6 +73,27 @@ class SessionScopeTest(unittest.TestCase):
                     self.assertIn("current mismatch", err)
                 else:
                     self.assertEqual(json.loads(out)['decision'], "block")
+
+    def test_workspace_binding_redirects_prompt_and_stop_scan(self) -> None:
+        workspace = self.root / "workspace"
+        (workspace / ".agent-instructions").mkdir(parents=True)
+        (workspace / ".agent-instructions/beads.md").write_text("workspace\n")
+        scope = {"topic": "current", "subject": "tasks.md"}
+        with (
+            mock.patch.object(MODULE, "selected_workspace_root", return_value=workspace),
+            mock.patch.object(MODULE, "selected_scope", return_value=scope),
+            mock.patch.object(MODULE, "repository_identity", return_value="repo"),
+        ):
+            self.event(
+                "UserPromptSubmit",
+                prompt="评审：current / tasks.md\nWORKFLOW_WORKSPACE: current",
+            )
+        with (
+            mock.patch.object(MODULE, "repository_identity", return_value="repo"),
+            mock.patch.object(MODULE, "findings", return_value=["current mismatch"]) as scan,
+        ):
+            self.assertEqual(self.event("Stop")[0], 2)
+        self.assertEqual(scan.call_args.args[0], workspace.resolve())
 
     def test_other_session_runtime_and_old_turn_cannot_borrow_scope(self) -> None:
         self.select()
@@ -101,6 +138,27 @@ class SessionScopeTest(unittest.TestCase):
     def test_unknown_router_is_nonblocking(self) -> None:
         with mock.patch.dict(MODULE.os.environ, {"AGENTDECK_WORKFLOW_HOOK": str(self.root / "missing.py")}):
             self.assertIsNone(MODULE.selected_scope("评审：current / tasks.md", "codex"))
+
+    def test_workspace_root_comes_from_shared_router_binding(self) -> None:
+        workspace = self.root / "bound"
+        (workspace / ".agent-instructions").mkdir(parents=True)
+        (workspace / ".agent-instructions/beads.md").write_text("bound\n")
+        router = self.root / "workflow_router.py"
+        router.write_text(
+            "def workspace_binding_for_prompt(prompt, event_root):\n"
+            f"    return ({{'workspace_path': {str(workspace)!r}}}, None)\n"
+        )
+        with mock.patch.dict(
+            MODULE.os.environ, {"AGENTDECK_WORKFLOW_HOOK": str(router)}
+        ):
+            self.assertEqual(
+                MODULE.selected_workspace_root(
+                    "评审：current / tasks.md\nWORKFLOW_WORKSPACE: current",
+                    "codex",
+                    self.root,
+                ),
+                workspace,
+            )
 
     def test_invalid_persisted_scope_cannot_escape_repository(self) -> None:
         for scope in ({"topic": "../other", "subject": "tasks.md"},

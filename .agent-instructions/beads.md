@@ -76,6 +76,19 @@ Do not maintain a static task-ID map. If a coordination step only partly succeed
 read back the result and complete the missing part; do not repeat successful
 comment creation or describe several CLI calls as one atomic transaction.
 
+## Workspace handoff
+
+When work occurs outside the canonical `main` workspace, task handoff records
+reference the verified workflow workspace ID and branch. Resolve the local path
+through that binding and the live Git worktree inventory; do not maintain a
+second independently updated absolute-path registry in Beads.
+
+Workspace entry does not claim a product task or change its lifecycle. Claim and
+handoff the task only when its authorized phase starts. Multiple sessions using
+the same actor or workspace remain distinct; record a session correlation and
+bounded collaboration scope when ambiguity matters. A workspace binding is not
+a lease or exclusive ownership claim.
+
 ## Document work is dispatched too
 
 Each applicable document declared by a topic's Documents matrix has one task;

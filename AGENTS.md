@@ -100,6 +100,21 @@ tool calls or writes. Generated next instructions neither grant nor revoke it.
 Stage authority excludes commit, push, release, or deploy, destructive actions,
 and out-of-scope work. Follow Scope and Authorization for those actions.
 
+A real-user `进入工作` or `Enter work` command authorizes the idempotent
+branch/worktree preparation and local workspace-binding writes required by
+[Branching](.agent-instructions/branching.md) for the named scope. It does not
+authorize a product phase, task claim, Git delivery, destructive cleanup, or a
+change to another active workspace. Resolve the working context before topic
+work; use [Beads](.agent-instructions/beads.md) for task coordination and
+[Toolchain](.agent-instructions/toolchain.md) for client and Hook location rules.
+
+An AgentDeck topic-scoped `开发` or `Implement` command requires an existing,
+valid topic workspace binding. If it is missing or invalid, do not create the
+workspace under Development authority, claim the task, or edit product content.
+Return `进入工作：<topic>` or `Enter work: <topic>` as the prerequisite command.
+This is an AgentDeck project rule, not a requirement imposed by the shared Skill
+on repositories without a workspace policy.
+
 If a permission system denies an exact action, enter the non-phase
 `AUTHORIZATION_WAIT` state. Preserve the pending action and active stage;
 skip unrelated hooks, checks, status work, CEv1 discovery, and Beads queries.
@@ -183,6 +198,7 @@ them, under the relevant authority's evidence rules.
 | Completion evidence, WorkUnits, Topic gates, or Neo4j project memory | [Evidence](.agent-instructions/evidence.md) |
 | Review-record creation or updates | [Review Records](.agent-instructions/review-records.md) |
 | Branching, merging, version assembly, or integration review | [Branching](.agent-instructions/branching.md) |
+| Topic entry, branch/worktree preparation, or workspace resolution | [Branching](.agent-instructions/branching.md), [Beads](.agent-instructions/beads.md), and [Toolchain](.agent-instructions/toolchain.md) |
 | MCP availability, hook behavior, command wrappers, or local-only runtime files | [Toolchain](.agent-instructions/toolchain.md) |
 
 The stable documentation index is [`docs/README.md`](docs/README.md), current

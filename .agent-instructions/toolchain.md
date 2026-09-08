@@ -148,6 +148,25 @@ contain multiple checks and are used only when the selected scope requires them.
 Resolve source, test, and dependency paths before invoking commands rather than
 reusing a stale machine-specific command from an old report.
 
+## Working location / 工作位置
+
+Before topic execution, resolve the workspace through the shared workflow
+contract and [Branching](branching.md). Use explicit working directories for
+commands and verify targets against that context. Workspace entry is ready only
+when the target is the current writable execution root or one of its descendants.
+
+A shell `cd` does not relocate the client session, its permissions, or Hook event
+`cwd`. The shared workflow Hook validates the workspace binding and uses its path
+for phase progress. The Beads observer resolves the same binding while retaining
+its separate coordination responsibility.
+
+Use the current client's supported workspace/session capability when needed. If
+the target cannot be accessed, report the exact capability or permission
+prerequisite; do not work in another checkout or broaden permissions silently.
+When locating instructions across linked worktrees, verify the common Git
+repository and instruction provenance. A path in one checkout does not establish
+the state of another.
+
 ## Workflow command syntax / 工作流命令语法
 
 The `development-workflow` Skill's `references/protocol-commands.md` owns command

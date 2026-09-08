@@ -115,7 +115,7 @@ def session_state_path(root: Path, event: dict[str, Any], runtime: str) -> Path 
     session = event.get("session_id")
     if not isinstance(session, str) or not session:
         return None
-    identity = "\0".join((str(root.resolve()), runtime, session))
+    identity = "\0".join((repository_identity(root), runtime, session))
     base = Path(os.environ.get("AGENTDECK_BEADS_HOOK_STATE_DIR", str(
         Path(os.environ.get("XDG_STATE_HOME", str(Path.home() / ".local/state")))
         / "agentdeck/beads-hook"
@@ -163,8 +163,24 @@ def valid_scope(scope: object) -> bool:
     return topic != "fix" or bool(re.fullmatch(r"[a-z0-9][a-z0-9-]*", target))
 
 
-def selected_scope(prompt: str, runtime: str) -> dict[str, str] | None:
-    """Reuse the workflow's command matcher; this observer never starts a phase."""
+def repository_identity(root: Path) -> str:
+    try:
+        result = subprocess.run(
+            ("git", "rev-parse", "--path-format=absolute", "--git-common-dir"),
+            cwd=root,
+            capture_output=True,
+            text=True,
+            timeout=3,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        result = None
+    if result is not None and result.returncode == 0 and result.stdout.strip():
+        return f"git:{Path(result.stdout.strip()).resolve()}"
+    return f"path:{root.resolve()}"
+
+
+def workflow_router(runtime: str) -> Any | None:
     hook = Path(os.environ.get("AGENTDECK_WORKFLOW_HOOK", str(
         Path.home() / f".{runtime}/hooks/development-workflow/workflow_hook.py"
     )))
@@ -174,6 +190,32 @@ def selected_scope(prompt: str, runtime: str) -> dict[str, str] | None:
             return None
         router = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(router)
+        return router
+    except (OSError, ValueError, AttributeError, ImportError):
+        return None
+
+
+def selected_workspace_root(
+    prompt: str, runtime: str, fallback: Path
+) -> Path | None:
+    router = workflow_router(runtime)
+    if router is None or not hasattr(router, "workspace_binding_for_prompt"):
+        return fallback
+    binding, error = router.workspace_binding_for_prompt(prompt, str(fallback))
+    if error is not None:
+        return None
+    if binding is None:
+        return fallback
+    path = Path(binding["workspace_path"])
+    return path if path.is_dir() and (path / REPO_MARKER).is_file() else None
+
+
+def selected_scope(prompt: str, runtime: str) -> dict[str, str] | None:
+    """Reuse the workflow's command matcher; this observer never starts a phase."""
+    router = workflow_router(runtime)
+    if router is None:
+        return None
+    try:
         if router.route_prompt(prompt) not in {"DESIGN", "IMPLEMENT", "REVIEW", "REPAIR", "REREVIEW"}:
             return None
         text = prompt.lstrip()
@@ -189,7 +231,7 @@ def selected_scope(prompt: str, runtime: str) -> dict[str, str] | None:
         target = parts[1] if len(parts) > 1 else ""
         scope = {"topic": topic, "subject": target}
         return scope if valid_scope(scope) else None
-    except (OSError, ValueError, AttributeError, ImportError, IndexError, StopIteration):
+    except (ValueError, AttributeError, IndexError, StopIteration):
         return None
 
 
@@ -221,13 +263,14 @@ def remember_prompt(root: Path, event: dict[str, Any], runtime: str) -> None:
         state = old
     else:
         scope = selected_scope(prompt, runtime)
-        state = {"scope": scope}
+        state = {"scope": scope, "workspace_root": str(root.resolve())}
         if scope and scope == old.get("scope"):
             state["reported"] = old.get("reported")
     if not valid_scope(state.get("scope")):
         path.unlink(missing_ok=True)
         return
     state["turn"] = event_turn(event, runtime)
+    state["workspace_root"] = str(root.resolve())
     write_session(path, state)
 
 
@@ -946,18 +989,34 @@ def main() -> int:
     stop_hook_active = bool(event.get("stop_hook_active"))
 
     deadline = time.monotonic() + HOOK_BUDGET
-    root = repo_root(deadline)
-    if root is None:
+    default_root = repo_root(deadline)
+    if default_root is None:
         return 0
 
     try:
         if event.get("hook_event_name") == "UserPromptSubmit":
+            prompt = event.get("prompt")
+            if not isinstance(prompt, str):
+                return 0
+            root = selected_workspace_root(prompt, args.runtime, default_root)
+            if root is None:
+                return 0
             remember_prompt(root, event, args.runtime)
             return 0
-        path = session_state_path(root, event, args.runtime)
+        path = session_state_path(default_root, event, args.runtime)
         state = read_session(path)
         scope = state.get("scope")
         if not valid_scope(scope):
+            return 0
+        stored_root = state.get("workspace_root")
+        if not isinstance(stored_root, str):
+            return 0
+        root = Path(stored_root)
+        if (
+            not root.is_dir()
+            or not (root / REPO_MARKER).is_file()
+            or repository_identity(root) != repository_identity(default_root)
+        ):
             return 0
         turn = event_turn(event, args.runtime)
         if turn != state.get("turn"):

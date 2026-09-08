@@ -15,6 +15,7 @@ apps/macos/.swiftpm/
 .vscode
 .idea
 .superpowers/
+.worktrees/
 
 # Locally generated diagram exports. They are produced on demand from the
 # documents that describe them and are not a build input, so the repository

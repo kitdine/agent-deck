@@ -35,6 +35,52 @@ Workflow files own their current triggers and artifact checks. Consult
 `.github/workflows/ci.yml`, `release-preflight.yml`, and `release.yml` for actual
 behavior rather than assuming branch names alone enforce release policy.
 
+## Topic workspace entry
+
+For an ordinary feature topic, `进入工作：<topic>` or `Enter work: <topic>`
+resolves `feature/<topic>` and reuses its existing registered worktree. If
+neither exists, create both from the resolved local `main` commit. If only the
+branch exists, attach a worktree to it.
+
+The default new-worktree location is
+`<canonical-main>/.worktrees/<topic>`, inside the session's writable project
+root. An explicitly authorized location overrides the default only when the
+client is already running with that location inside its writable execution root.
+Reuse an existing valid location instead of moving it. Record the creation base
+and any known unpushed or divergent baseline.
+Do not fetch, pull, merge, reset, or push merely to make entry appear synchronized;
+a materially different base requires an explicit selection.
+
+Do not report workspace entry ready when the selected path is outside the current
+execution root. Normal filesystem permissions, shell `cd`, and a command working
+directory do not establish sandbox write access. Start or rebind the client at
+that path before entry if an external location is explicitly required.
+
+If the branch is already checked out in the current shared directory, reuse it.
+Relocation requires explicit authorization and a check that no uncommitted work
+would be moved or lost. Another session using that worktree is coordination
+context, not an exclusive lock or a reason to invent a duplicate checkout.
+
+Topic entry does not require implementation readiness and does not claim a task.
+Resolve the next design or implementation subject from the topic's actual state.
+Conversely, a topic-scoped Development command does not create a missing
+branch/worktree or workspace binding. If no valid workspace exists, stop before
+task claim or product work and return `进入工作：<topic>` as the prerequisite.
+After entry, topic design documents, task matrices, implementation, and topic
+review records belong to the topic branch. Existing topic history committed on
+`main` is inherited without rewriting it. `main` remains canonical for project
+governance, stable indexes, roadmap, cross-topic status, and authorized version
+assembly.
+
+Cross-topic status identifies unmerged branch work without claiming that its
+content exists on `main`. Coordinate a required `main` status update explicitly;
+do not mix its staging or delivery with feature work.
+
+A worktree may be shared by multiple agents. Workspace placement grants neither
+task ownership nor exclusive write access. Coordinate overlapping edits and Git
+operations using the applicable task and delivery authorities, and bind reviews
+and verification to the actual content state.
+
 ## Merging is a contract topic action
 
 Completing feature work does not merge it. The version-contract topic selects
@@ -219,15 +265,15 @@ records, while recording the actual branch and content identity for each claim:
 | --- | --- |
 | `AGENTS.md`, `.agent-instructions/*` | Canonical project governance on `main`; synchronize branch copies only through authorized work |
 | Stable index, cross-topic status, roadmap | Canonical coordination on `main`; they do not prove unmerged feature content is present there |
-| Topic requirements, UX, architecture, decomposition | Planning authorities on `main` under the existing convention; topic-local implementation status changes with the branch where work occurs |
+| Topic requirements, UX, architecture, decomposition | Belong to the topic branch after topic entry; existing history on `main` is inherited without rewriting it |
 | Task/integration review of branch code | Stored with or explicitly bound to that code's reviewed state |
 | Document review | Bound to the reviewed document and any dependent specimen, not to an unrelated branch's latest round |
 | Shipped behavior in specifications/manuals | Reconciled with the implementation being delivered |
 
 A path existing on two branches is not permission to combine their current state
 or round history. Identify which branch/state a review, matrix, or handoff refers
-to. Planning documents on `main` grant neither implementation authority nor
-release membership by themselves.
+to. Topic documents grant neither implementation authority nor release membership
+by themselves.
 
 ## Patching a released version
 
