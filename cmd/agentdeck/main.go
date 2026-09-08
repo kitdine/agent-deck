@@ -360,6 +360,8 @@ func errorCode(err error) string {
 		return credentialvault.ErrMachineIdentityMissing.Error()
 	case errors.As(err, &notFound):
 		return notFound.Code
+	case errors.Is(err, store.ErrSchemaAhead):
+		return store.ErrSchemaAhead.Code
 	case errors.Is(err, store.ErrStateBusy):
 		return store.ErrStateBusy.Code
 	case errors.Is(err, desktop.ErrUnsupportedWireVersion):
@@ -2796,7 +2798,7 @@ func newDoctorCommand(opts *commandOptions) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		return writeResult(opts.stdout, opts.format, "doctor", report)
+		return writeDoctorResult(opts.stdout, opts.format, report)
 	}}
 	command.Flags().BoolVar(&full, "full", false, "Run full integrity and source checks")
 	return command
@@ -3676,6 +3678,28 @@ func writeResult(w io.Writer, format, command string, data any, quiet ...bool) e
 	}
 	return nil
 }
+func writeDoctorResult(w io.Writer, format string, report doctor.Report) error {
+	if format == "json" {
+		envelope := output.New("doctor", report, time.Now())
+		envelope.Partial = report.Partial
+		if report.Partial {
+			envelope.Warnings = []string{"checks_skipped"}
+		}
+		return json.NewEncoder(w).Encode(envelope)
+	}
+	if format == "ndjson" {
+		return &inputError{err: fmt.Errorf("ndjson format is supported only by watch")}
+	}
+	if err := renderDoctorText(w, report); err != nil {
+		return err
+	}
+	if report.Partial {
+		_, err := fmt.Fprintln(w, "checks_skipped: remaining diagnostics require a readable core database")
+		return err
+	}
+	return nil
+}
+
 func writeEnvelope(w io.Writer, format, command string, data any, partial bool, warnings []string, quiet ...bool) error {
 	quietOutput := len(quiet) > 0 && quiet[0]
 	return writeUsageEnvelope(w, format, command, data, partial, warnings, quietOutput, usageTextRenderOptions{})
@@ -4435,12 +4459,15 @@ func renderDoctorText(w io.Writer, report doctor.Report) error {
 		if _, err := fmt.Fprintf(w, "%s: %s", check.Name, check.Status); err != nil {
 			return err
 		}
-		details := make([]string, 0, 2)
+		details := make([]string, 0, 3)
 		if check.Code != "" {
 			details = append(details, check.Code)
 		}
 		if check.Count != 0 {
 			details = append(details, "count="+strconv.Itoa(check.Count))
+		}
+		if check.SupportedCount != 0 {
+			details = append(details, "supported_count="+strconv.Itoa(check.SupportedCount))
 		}
 		if len(details) > 0 {
 			if _, err := fmt.Fprintf(w, " (%s)", strings.Join(details, "; ")); err != nil {
@@ -4450,7 +4477,11 @@ func renderDoctorText(w io.Writer, report doctor.Report) error {
 		if _, err := fmt.Fprintln(w); err != nil {
 			return err
 		}
-		if check.Recovery != "" {
+		if check.Code == store.ErrSchemaAhead.Code {
+			if _, err := fmt.Fprintln(w, "  recovery: upgrade AgentDeck to open it"); err != nil {
+				return err
+			}
+		} else if check.Recovery != "" {
 			if _, err := fmt.Fprintf(w, "  recovery: %s\n", check.Recovery); err != nil {
 				return err
 			}

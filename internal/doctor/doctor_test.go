@@ -22,7 +22,7 @@ func doctorVault(stateRoot string) *credentialvault.Vault {
 func TestCheckMissingStateIsReadOnly(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "missing")
 	report, err := (Service{StateRoot: root}).Check(context.Background(), false)
-	if err != nil || report.Healthy || report.Problems != 1 || report.Checks[0].Code != "state_missing" {
+	if err != nil || !report.Partial || report.Healthy || report.Problems != 1 || report.Checks[0].Code != "state_missing" {
 		t.Fatalf("Check = %#v, %v", report, err)
 	}
 	if _, err = os.Stat(root); !os.IsNotExist(err) {
@@ -132,9 +132,11 @@ func TestCheckReportsInsecureStatePermissionsWithoutRepairingThem(t *testing.T) 
 func TestCheckClassifiesDatabaseFailuresWithoutMutatingPersistentState(t *testing.T) {
 	ctx := context.Background()
 	for _, test := range []struct {
-		name  string
-		setup func(t *testing.T, state string)
-		code  string
+		name           string
+		setup          func(t *testing.T, state string)
+		code           string
+		count          int
+		supportedCount int
 	}{
 		{
 			name: "missing",
@@ -175,7 +177,9 @@ func TestCheckClassifiesDatabaseFailuresWithoutMutatingPersistentState(t *testin
 					t.Fatal(err)
 				}
 			},
-			code: store.ErrUnknownSchema.Code,
+			code:           store.ErrSchemaAhead.Code,
+			count:          99,
+			supportedCount: store.CurrentSchemaVersion,
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -203,8 +207,8 @@ func TestCheckClassifiesDatabaseFailuresWithoutMutatingPersistentState(t *testin
 				t.Fatal(err)
 			}
 			assertDiagnosticReport(t, report,
-				Check{Name: "database", Status: "error", Code: test.code},
-				reportContract{Mode: "quick", Status: "unhealthy", Healthy: false, Problems: 1, Errors: 1},
+				Check{Name: "database", Status: "error", Code: test.code, Count: test.count, SupportedCount: test.supportedCount},
+				reportContract{Mode: "quick", Partial: true, Status: "unhealthy", Healthy: false, Problems: 1, Errors: 1},
 			)
 			if afterNote := fileDigest(t, note); beforeNote != afterNote || fileMode(t, note) != beforeNoteMode {
 				t.Fatal("doctor changed persistent note while reporting database failure")
@@ -315,7 +319,8 @@ func TestCheckOlderAndFutureSchemasAreSafeAndReadable(t *testing.T) {
 		t.Fatal(err)
 	}
 	report, err := (Service{StateRoot: state, Home: t.TempDir(), Workdir: t.TempDir(), Vault: doctorVault(state)}).Check(ctx, true)
-	if err != nil || !hasCode(report, "schema_outdated") {
+	older := findCheck(report, "schema", "schema_outdated")
+	if err != nil || report.Partial || older == nil || older.Count != 12 || older.SupportedCount != store.CurrentSchemaVersion {
 		t.Fatalf("schema 12 report = %#v, %v", report, err)
 	}
 	future := filepath.Join(t.TempDir(), "future")
@@ -331,7 +336,8 @@ func TestCheckOlderAndFutureSchemasAreSafeAndReadable(t *testing.T) {
 		t.Fatal(err)
 	}
 	report, err = (Service{StateRoot: future}).Check(ctx, false)
-	if err != nil || !hasCode(report, store.ErrUnknownSchema.Code) {
+	ahead := findCheck(report, "database", store.ErrSchemaAhead.Code)
+	if err != nil || !report.Partial || ahead == nil || ahead.Count != 99 || ahead.SupportedCount != store.CurrentSchemaVersion || ahead.Recovery != "" {
 		t.Fatalf("future schema report = %#v, %v", report, err)
 	}
 }
@@ -340,13 +346,13 @@ func TestCheckUsageSchemaMatrixNeverLeaksSQL(t *testing.T) {
 	ctx := context.Background()
 	for _, test := range []struct {
 		name, checkName, status, code, recovery string
-		version, count                          int
-		drop                                    bool
+		version, count, supportedCount          int
+		drop, partial                           bool
 	}{
-		{"schema12", "schema", "warning", "schema_outdated", "agentdeck state migrate", 12, 12, true},
-		{"schema_current", "schema", "ok", "", "", store.CurrentSchemaVersion, store.CurrentSchemaVersion, false},
-		{"schema_current_missing_tool_calls", "schema", "error", "schema_incompatible", "", store.CurrentSchemaVersion, store.CurrentSchemaVersion, true},
-		{"future", "database", "error", "unknown_schema", "", 99, 0, false},
+		{"schema12", "schema", "warning", "schema_outdated", "agentdeck state migrate", 12, 12, store.CurrentSchemaVersion, true, false},
+		{"schema_current", "schema", "ok", "", "", store.CurrentSchemaVersion, store.CurrentSchemaVersion, 0, false, false},
+		{"schema_current_missing_tool_calls", "schema", "error", "schema_incompatible", "", store.CurrentSchemaVersion, store.CurrentSchemaVersion, 0, true, false},
+		{"future", "database", "error", store.ErrSchemaAhead.Code, "", 99, 99, store.CurrentSchemaVersion, false, true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			for _, full := range []bool{false, true} {
@@ -385,8 +391,8 @@ func TestCheckUsageSchemaMatrixNeverLeaksSQL(t *testing.T) {
 						matched = &copy
 					}
 				}
-				if matched == nil || matched.Status != test.status || matched.Code != test.code || matched.Count != test.count || matched.Recovery != test.recovery {
-					t.Fatalf("full=%t check=%#v, want name=%s status=%s code=%s count=%d recovery=%q", full, matched, test.checkName, test.status, test.code, test.count, test.recovery)
+				if matched == nil || matched.Status != test.status || matched.Code != test.code || matched.Count != test.count || matched.SupportedCount != test.supportedCount || matched.Recovery != test.recovery || report.Partial != test.partial {
+					t.Fatalf("full=%t report.partial=%t check=%#v, want name=%s status=%s code=%s count=%d supported_count=%d recovery=%q partial=%t", full, report.Partial, matched, test.checkName, test.status, test.code, test.count, test.supportedCount, test.recovery, test.partial)
 				}
 				if test.name == "schema_current" && (hasCode(report, "schema_outdated") || hasCode(report, "schema_incompatible")) {
 					t.Fatalf("full=%t normal schema report=%#v", full, report)
@@ -986,6 +992,7 @@ func fileModTime(t *testing.T, path string) time.Time {
 
 type reportContract struct {
 	Mode     string
+	Partial  bool
 	Status   string
 	Healthy  bool
 	Problems int
@@ -1025,7 +1032,7 @@ func assertDiagnosticReport(t *testing.T, report Report, wantCheck Check, wantRe
 	if report.Problems != problems || report.Warnings != warnings || report.Errors != errors || report.Healthy != (problems == 0) || report.Status != computedStatus {
 		t.Fatalf("report aggregates do not reconcile with checks: report=%#v computed status=%q healthy=%t problems=%d warnings=%d errors=%d", report, computedStatus, problems == 0, problems, warnings, errors)
 	}
-	gotReport := reportContract{Mode: report.Mode, Status: report.Status, Healthy: report.Healthy, Problems: report.Problems, Warnings: report.Warnings, Errors: report.Errors}
+	gotReport := reportContract{Mode: report.Mode, Partial: report.Partial, Status: report.Status, Healthy: report.Healthy, Problems: report.Problems, Warnings: report.Warnings, Errors: report.Errors}
 	if gotReport != wantReport {
 		t.Fatalf("report contract = %#v, want %#v", gotReport, wantReport)
 	}

@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kitdine/agent-deck/internal/doctor"
 	"github.com/kitdine/agent-deck/internal/provider"
 	"github.com/kitdine/agent-deck/internal/session"
 	"github.com/kitdine/agent-deck/internal/store"
@@ -35,6 +36,31 @@ func TestRequestValidate(t *testing.T) {
 				t.Fatalf("Validate() error = %v, want %v", err, test.want)
 			}
 		})
+	}
+}
+
+func TestHealthSnapshotCopiesSupportedCountAndOmitsZero(t *testing.T) {
+	report := doctor.Report{
+		Status: "unhealthy", Healthy: false, Problems: 1, Errors: 1,
+		Checks: []doctor.Check{
+			{Name: "database", Status: "error", Code: store.ErrSchemaAhead.Code, Count: 99, SupportedCount: store.CurrentSchemaVersion},
+			{Name: "state_lock", Status: "ok"},
+		},
+	}
+	snapshot := healthSnapshot(report)
+	if !snapshot.Available || snapshot.Status != report.Status || snapshot.Problems != 1 || snapshot.Errors != 1 || len(snapshot.Checks) != 2 {
+		t.Fatalf("health snapshot = %#v", snapshot)
+	}
+	want := HealthCheck{Name: "database", Status: "error", Code: store.ErrSchemaAhead.Code, Count: 99, SupportedCount: store.CurrentSchemaVersion}
+	if snapshot.Checks[0] != want {
+		t.Fatalf("schema check = %#v, want %#v", snapshot.Checks[0], want)
+	}
+	encoded, err := json.Marshal(snapshot.Checks)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(string(encoded), `"supported_count"`) != 1 {
+		t.Fatalf("supported_count omission = %s", encoded)
 	}
 }
 

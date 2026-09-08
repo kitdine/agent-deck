@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-08-30
-updated: 2026-09-07
+updated: 2026-09-08
 ---
 
 # Schema Version Signal — Tasks
@@ -19,8 +19,9 @@ This file is the only status authority for this topic.
 
 The document set is unchanged. Requirements, architecture, and the final UX
 surface have passed review. This decomposition passed Round 1 review on 2026-09-07; see
-`reviews/tasks.md` for evidence and the completion gate. Implementation still
-requires its own development-stage authorization.
+`reviews/tasks.md` for evidence and the completion gate. Task 1 passed re-review
+with its required evidence gate VERIFIED. See [its review record](reviews/core-schema-contract.md) for the Task checkpoint.
+The remaining tasks still require their own development-stage authorization.
 
 Why each row exists, against the review question that justifies it:
 
@@ -69,7 +70,7 @@ carrier or rewrite its architecture record.
 
 | Task | Dev | Review |
 | --- | --- | --- |
-| 1. `core-schema-contract` | [ ] | [ ] |
+| 1. `core-schema-contract` | [x] | [x] |
 | 2. `hook-refusal-lifecycle` | [ ] | [ ] |
 | 3. `desktop-schema-wire` | [ ] | [ ] |
 | 4. `menubar-schema-presentation` | [ ] | [ ] |
@@ -323,5 +324,5 @@ Each Task has a corresponding `<topic>:<task-anchor>` evidence scope; actual
 WorkUnits and atomic criteria are resolved under Evidence before implementation.
 This design does not pre-create implementation dispatch or declare those gates
 verified. The document review does not check any implementation Dev or Review cell.
-The six implementation tasks remain pending; the next task is
-`core-schema-contract` under its own development-stage authorization.
+Task 1 has passed review and its evidence gate; five implementation tasks remain.
+The next task is `hook-refusal-lifecycle` under its own development-stage authorization.

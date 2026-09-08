@@ -21,15 +21,17 @@ import (
 )
 
 type Check struct {
-	Name     string `json:"name"`
-	Status   string `json:"status"`
-	Code     string `json:"code,omitempty"`
-	Count    int    `json:"count,omitempty"`
-	Recovery string `json:"recovery_command,omitempty"`
+	Name           string `json:"name"`
+	Status         string `json:"status"`
+	Code           string `json:"code,omitempty"`
+	Count          int    `json:"count,omitempty"`
+	SupportedCount int    `json:"supported_count,omitempty"`
+	Recovery       string `json:"recovery_command,omitempty"`
 }
 
 type Report struct {
 	Mode     string  `json:"mode"`
+	Partial  bool    `json:"-"`
 	Status   string  `json:"status"`
 	Healthy  bool    `json:"healthy"`
 	Checks   []Check `json:"checks"`
@@ -50,6 +52,7 @@ func (s Service) Check(ctx context.Context, full bool) (Report, error) {
 	report := Report{Mode: map[bool]string{false: "quick", true: "full"}[full], Status: "healthy", Healthy: true, Checks: []Check{}}
 	stateInfo, err := os.Stat(s.StateRoot)
 	if errors.Is(err, fs.ErrNotExist) {
+		report.Partial = true
 		report.add(Check{Name: "state", Status: "warning", Code: "state_missing"})
 		return report, nil
 	}
@@ -65,7 +68,14 @@ func (s Service) Check(ctx context.Context, full bool) (Report, error) {
 
 	database, err := store.OpenReadOnly(ctx, s.StateRoot)
 	if err != nil {
-		report.add(Check{Name: "database", Status: "error", Code: databaseCode(err)})
+		report.Partial = true
+		check := Check{Name: "database", Status: "error", Code: databaseCode(err)}
+		var ahead *store.SchemaAhead
+		if errors.As(err, &ahead) {
+			check.Count = ahead.Stored
+			check.SupportedCount = ahead.Supported
+		}
+		report.add(check)
 		return report, nil
 	}
 	defer database.Close()
@@ -79,7 +89,7 @@ func (s Service) Check(ctx context.Context, full bool) (Report, error) {
 	} else if version == store.CurrentSchemaVersion && !hasToolCalls {
 		report.add(Check{Name: "schema", Status: "error", Code: "schema_incompatible", Count: version})
 	} else if version != store.CurrentSchemaVersion {
-		report.add(Check{Name: "schema", Status: "warning", Code: "schema_outdated", Count: version, Recovery: "agentdeck state migrate"})
+		report.add(Check{Name: "schema", Status: "warning", Code: "schema_outdated", Count: version, SupportedCount: store.CurrentSchemaVersion, Recovery: "agentdeck state migrate"})
 	} else {
 		report.add(Check{Name: "schema", Status: "ok", Count: version})
 	}
@@ -472,6 +482,9 @@ func (s Service) checkUsage(ctx context.Context, database *store.Store, report *
 }
 
 func databaseCode(err error) string {
+	if errors.Is(err, store.ErrSchemaAhead) {
+		return store.ErrSchemaAhead.Code
+	}
 	if errors.Is(err, store.ErrUnknownSchema) {
 		return store.ErrUnknownSchema.Code
 	}
