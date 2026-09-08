@@ -14,9 +14,9 @@ column below is its current execution-status projection. Later version direction
 is recorded in `roadmap.md`.
 ## Current State
 
-- Repository Hook maintenance: [Beads Stop session scope](fixes/beads-stop-session-scope.md#review--round-2--2026-09-07)
-  passed independent re-review and real-client observer acceptance. Authorized
-  delivery remains pending; its fix record owns the evidence and boundary.
+- Repository Hook maintenance: [Beads Stop session scope](archive/fixes/beads-stop-session-scope.md#review--round-2--2026-09-07)
+  was delivered in signed commit `2d53d8e` after independent re-review and real-client
+  observer acceptance. Its immutable Task gate is VERIFIED; the record is archived.
 
 ### Release
 

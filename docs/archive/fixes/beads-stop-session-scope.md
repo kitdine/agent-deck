@@ -1,5 +1,6 @@
 ---
-status: active
+status: historical
+retired: 2026-09-07
 created: 2026-09-07
 ---
 
@@ -83,9 +84,10 @@ no post-repair live-client observer acceptance is claimed here.
 ## Review readiness
 
 Implementation, scoped tests, Round 2 independent re-review, and post-repair
-real-client observer acceptance have passed. Evidence synchronization is recorded
-in the acceptance section below; authorized delivery remains pending. No commit
-or push is authorized by this record.
+real-client observer acceptance passed. The fix was delivered in signed commit
+`2d53d8e4c235f97ea037d7120bf5aae01188d99d`; its immutable Task gate is VERIFIED.
+This record is retired after delivery and evidence finalization. No push was
+performed.
 
 ## Review — Round 1 — 2026-09-07
 
@@ -308,3 +310,10 @@ the synchronized candidate; its manifest and final gate response are retained
 in `/private/tmp/bss-observer-live-20260907/final-state.json` and `final-gate.json`.
 Historical Round 2 gate status records what was known during that review; its
 PASS is not replaced or reissued by this acceptance step.
+
+## Delivery and retirement — 2026-09-07
+
+Signed implementation commit: `2d53d8e4c235f97ea037d7120bf5aae01188d99d`.
+Immutable delivery evidence: `/private/tmp/bss-delivery-20260907/implementation-gate.json`.
+The Task gate returned VERIFIED for that commit. Retirement changes only this
+record location/status and its current status pointer; review history is retained.
