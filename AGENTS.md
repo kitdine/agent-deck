@@ -97,6 +97,10 @@ Perform these transitions without additional user authorization. Authority
 persists through required post-phase synchronization and is not consumed by
 tool calls or writes. Generated next instructions neither grant nor revoke it.
 
+For topic stages, status synchronization is topic-local. Follow
+[Status ownership across worktrees](docs/documentation-workflow.md#status-ownership-across-worktrees);
+stage authority does not require a parallel update or commit on `main`.
+
 Stage authority excludes commit, push, release, or deploy, destructive actions,
 and out-of-scope work. Follow Scope and Authorization for those actions.
 
@@ -201,6 +205,8 @@ them, under the relevant authority's evidence rules.
 | Topic entry, branch/worktree preparation, or workspace resolution | [Branching](.agent-instructions/branching.md), [Beads](.agent-instructions/beads.md), and [Toolchain](.agent-instructions/toolchain.md) |
 | MCP availability, hook behavior, command wrappers, or local-only runtime files | [Toolchain](.agent-instructions/toolchain.md) |
 
-The stable documentation index is [`docs/README.md`](docs/README.md), current
-execution state is [`docs/status.md`](docs/status.md), and the primary product
-contract is [`docs/specs/cli-design.md`](docs/specs/cli-design.md).
+The stable documentation index is [`docs/README.md`](docs/README.md). Topic
+execution state lives in its worktree's `tasks.md` and review records; Beads
+owns cross-worktree coordination. [`docs/status.md`](docs/status.md) projects
+integrated project state. The primary product contract is
+[`docs/specs/cli-design.md`](docs/specs/cli-design.md).

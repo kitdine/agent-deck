@@ -19,9 +19,34 @@ This file is the only status authority for this topic.
 
 The document set is unchanged. Requirements, architecture, and the final UX
 surface have passed review. This decomposition passed Round 1 review on 2026-09-07; see
-`reviews/tasks.md` for evidence and the completion gate. Task 1 passed re-review
-with its required evidence gate VERIFIED. See [its review record](reviews/core-schema-contract.md) for the Task checkpoint.
-Task 2 passed review with its required evidence gate VERIFIED; see [its review record](reviews/hook-refusal-lifecycle.md) for the Task checkpoint. Task 3 passed review with its required evidence gate VERIFIED; see [its review record](reviews/desktop-schema-wire.md). Task 4 passed review with its required evidence gate VERIFIED; see [its review record](reviews/menubar-schema-presentation.md); Tasks 5–6 still require their own development-stage authorization.
+`reviews/tasks.md` for evidence and the completion gate. Tasks 1–4 passed review
+and their required gates, and are committed on `feature/schema-version-signal`:
+`6cc1d6f` (core), `4285979` (Hook lifecycle), `64956c6` (wire), and `dc588f8`
+(menu-bar presentation). Their review records and immutable CEv1 states retain
+the evidence. Tasks 5–6 remain unstarted and require their own development-stage
+authorization; full layout and VoiceOver acceptance remain Task 5.
+
+### Current worktree handoff — 2026-09-08
+
+The user corrected status ownership after Task 4 delivery. Apply
+[Status ownership across worktrees](../../documentation-workflow.md#status-ownership-across-worktrees):
+topic progress belongs here and in the topic review records; Beads owns
+cross-worktree dispatch. Inherited `docs/status.md` describes the integrated
+baseline and must not be updated to mirror these task transitions.
+
+The earlier Task 1–4 checkpoint advice to include global status changes or
+create companion `main` status commits is superseded. The four unpushed
+status-only main commits (`cedc8a8`, `9fd7af9`, `a0418e6`, `2cb558f`) have been
+removed from main. The feature worktree restores `docs/status.md` to its inherited
+baseline; the four product commits and historical review/evidence facts remain
+unchanged. Their Beads tasks remain closed. No product tests or acceptance gates
+are invalidated merely by this documentation/governance cleanup.
+
+The rule correction and status cleanup belong to this feature worktree and its
+authorized delivery. They must not be copied into the main checkout.
+Task 6's file boundary below now excludes the global status row; integration
+will update that row with the integrated product state.
+The next product task remains `schema-signal-acceptance`.
 
 Why each row exists, against the review question that justifies it:
 
@@ -453,8 +478,9 @@ open; a successful Foundation fallback is not a waiver.
 
 **Files:** `docs/specs/cli-design.md`, `docs/specs/cli-manual.md` only for affected
 existing doctor/Hook examples, `docs/README.md` only for its spec-version pointer;
-this topic's `tasks.md`, `reviews/contract-reconciliation.md` when reviewed, and
-the topic row in `docs/status.md`.
+this topic's `tasks.md` and `reviews/contract-reconciliation.md` when reviewed.
+The global `docs/status.md` row belongs to the authorized integration/version-
+assembly change, not to this unmerged topic's task completion.
 
 Apply every architecture **Contract edits** row in one pass: stable error code,
 compatibility narrowing, both formerly contradictory future-schema statements,
