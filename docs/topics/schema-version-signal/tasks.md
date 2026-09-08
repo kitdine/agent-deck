@@ -23,8 +23,11 @@ surface have passed review. This decomposition passed Round 1 review on 2026-09-
 and their required gates, and are committed on `feature/schema-version-signal`:
 `6cc1d6f` (core), `4285979` (Hook lifecycle), `64956c6` (wire), and `dc588f8`
 (menu-bar presentation). Their review records and immutable CEv1 states retain
-the evidence. Tasks 5–6 remain unstarted and require their own development-stage
-authorization; full layout and VoiceOver acceptance remain Task 5.
+the evidence. Task 5 passed re-review with its required gate VERIFIED, including the two user-waived criteria; see
+[its review record](reviews/schema-signal-acceptance.md). Binary and isolated native rendering
+probes pass; the user explicitly waived the remaining manual acceptance and
+accepted its risks. Those manual checks were not performed.
+Task 6 is unstarted and requires its own development-stage authorization.
 
 ### Current worktree handoff — 2026-09-08
 
@@ -46,7 +49,8 @@ The rule correction and status cleanup belong to this feature worktree and its
 authorized delivery. They must not be copied into the main checkout.
 Task 6's file boundary below now excludes the global status row; integration
 will update that row with the integrated product state.
-The next product task remains `schema-signal-acceptance`.
+The active product task is `schema-signal-acceptance`, ready for review under
+the explicit manual-acceptance waiver recorded below.
 
 Why each row exists, against the review question that justifies it:
 
@@ -99,7 +103,7 @@ carrier or rewrite its architecture record.
 | 2. `hook-refusal-lifecycle` | [x] | [x] |
 | 3. `desktop-schema-wire` | [x] | [x] |
 | 4. `menubar-schema-presentation` | [x] | [x] |
-| 5. `schema-signal-acceptance` | [ ] | [ ] |
+| 5. `schema-signal-acceptance` | [x] | [x] |
 | 6. `contract-reconciliation` | [ ] | [ ] |
 
 Execute in order. Each task is independently reviewable and must leave its
@@ -471,6 +475,61 @@ No release-verify, installation, real authentication or user database mutation.
 If native acceptance is unavailable, leave this task and its evidence boundary
 open; a successful Foundation fallback is not a waiver.
 
+#### Task 5 current acceptance handoff — 2026-09-08
+
+At the initial handoff Task 5 remained `in_progress`, with Dev and Review unchecked. Added the focused
+built-binary regression and isolated native matrix test; no production files
+changed. Binary cross-path checks and the isolated native test pass. Actual
+VoiceOver order/disclosure/navigation and actual larger-text/layout acceptance
+remain pending; the injected type-size PNGs are identical and are not a waiver.
+
+Evidence manifest and manual steps:
+`/private/tmp/agentdeck-schema-acceptance-evidence.json`.
+Safe fixture launcher: `/private/tmp/agentdeck-schema-acceptance-launch.sh`.
+These artifacts retain binary, fixture, log and PNG digests, test commands,
+reused evidence scope and the excluded initial non-isolated host run. The
+launcher targets only `/private/tmp/agentdeck-menubar-acceptance.Zxtd3b`.
+
+Candidate `b52b94e946fd3fc3267316a12bef9e38bc6dcb6c354565a9ab39c123ab5c8a92`
+at HEAD `488e787`, covering the two changed test files. CEv1 WorkUnit:
+`urn:ce:agent-deck:work-unit:schema-version-signal-schema-signal-acceptance`;
+target `urn:ce:agent-deck:state:implement:schema-signal-acceptance:YQcgzs1dU_fQB7wt`.
+The native acceptance boundary must remain open until actual observations are
+provided. Fixed gate result is BLOCKED (two criteria pass, two native criteria
+await observations); five nodes and eight relations were confirmed. Whitespace,
+topic-document and diff checks pass. No review record is created before review,
+and no commit/push is implied.
+
+#### Task 5 user waiver and review handoff — 2026-09-08
+
+The user explicitly confirmed the assistant's precise question: formally waive
+unperformed text-size/layout and VoiceOver/interaction acceptance and accept
+its risks. This is an acceptance-authority decision, **not** an observation that
+those checks ran or passed. The earlier blocked observations remain historical.
+
+Waived scope: actual larger-text effects and narrow-layout judgment, actual
+VoiceOver speech order and disclosure operation, and actual notice-to-Health
+navigation. Standard/accessibility3 PNG equality and the narrow English header
+wrap remain unverified limitations. The first native host run lacking explicit
+Home isolation remains excluded; the later isolated run is the reused evidence.
+
+Binary cross-path and isolated render/model checks retain their real passing
+results. Dev is now checked and the task is ready for independent review; Review
+remains unchecked. CEv1 must distinguish the two reused tested criteria from the
+two user-waived criteria, and must not report four executed passing checks.
+No production change, commit or push is authorized by this waiver.
+
+#### Task 5 repaired entry handoff — 2026-09-08
+
+The native matrix is now explicitly opt-in. Set
+`TEST_RUNNER_AGENTDECK_TEST_SCHEMA_ACCEPTANCE=1` together with an isolated
+`TEST_RUNNER_AGENTDECK_TEST_HOME` before launching XCTest to run it. Without
+valid prerequisites it skips, which is not manual acceptance or a tested pass.
+The ordinary suite and explicit matrix run passed on the repair candidate;
+see the repair evidence in [the review record](reviews/schema-signal-acceptance.md).
+The earlier user waiver remains effective. Dev is ready, Review remains unchecked;
+no product changes or delivery were performed.
+
 ### 6. `contract-reconciliation`
 
 **Depends on:** Tasks 1–5 passing review with their required evidence.
@@ -530,5 +589,5 @@ Each Task has a corresponding `<topic>:<task-anchor>` evidence scope; actual
 WorkUnits and atomic criteria are resolved under Evidence before implementation.
 This design does not pre-create implementation dispatch or declare those gates
 verified. The document review does not check any implementation Dev or Review cell.
-Tasks 1–4 have passed review and their evidence gates; two implementation tasks remain.
-The next task is `schema-signal-acceptance` under its own development-stage authorization.
+Tasks 1–5 have passed review and their evidence gates, including Task 5's explicit user waivers; one implementation task remains.
+The next task is `contract-reconciliation` under its own development-stage authorization.

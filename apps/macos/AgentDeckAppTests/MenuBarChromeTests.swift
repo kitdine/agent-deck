@@ -441,3 +441,95 @@ final class MenuBarChromeTests: XCTestCase {
 		return attachment
 	}
 }
+
+@MainActor
+final class SchemaSignalAcceptanceTests: XCTestCase {
+	private static func fixtureHome(in environment: [String: String]) throws -> String {
+		guard environment["AGENTDECK_TEST_SCHEMA_ACCEPTANCE"] == "1" else {
+			throw XCTSkip("Schema acceptance matrix is opt-in; skipping is not manual acceptance evidence")
+		}
+		guard let home = environment["AGENTDECK_TEST_HOME"],
+			home.hasPrefix("/private/tmp/agentdeck-menubar-acceptance.")
+		else {
+			throw XCTSkip("Explicit schema acceptance requires an isolated Home configured before App startup")
+		}
+		return home
+	}
+
+	func testSchemaSignalMatrixEntryIsExplicitAndIsolated() throws {
+		let home = "/private/tmp/agentdeck-menubar-acceptance.fixture"
+		let skipped: [[String: String]] = [
+			[:], ["AGENTDECK_TEST_HOME": home],
+			["AGENTDECK_TEST_SCHEMA_ACCEPTANCE": "1"],
+			["AGENTDECK_TEST_SCHEMA_ACCEPTANCE": "1", "AGENTDECK_TEST_HOME": "/tmp/not-an-acceptance-home"],
+			["AGENTDECK_TEST_SCHEMA_ACCEPTANCE": "0", "AGENTDECK_TEST_HOME": home],
+		]
+		for environment in skipped {
+			XCTAssertThrowsError(try Self.fixtureHome(in: environment)) { error in
+				XCTAssertTrue(error is XCTSkip, "unconfigured entry must skip, not fail")
+			}
+		}
+		XCTAssertEqual(try Self.fixtureHome(in: ["AGENTDECK_TEST_SCHEMA_ACCEPTANCE": "1", "AGENTDECK_TEST_HOME": home]), home)
+	}
+
+	func testSchemaSignalNativeMatrix() async throws {
+		_ = try Self.fixtureHome(in: ProcessInfo.processInfo.environment)
+		let oldWidth = ProcessInfo.processInfo.environment["AGENTDECK_TEST_WIDTH"]
+		let oldLocale = ProcessInfo.processInfo.environment["AGENTDECK_TEST_LOCALE"]
+		defer {
+			if let oldWidth { setenv("AGENTDECK_TEST_WIDTH", oldWidth, 1) } else { unsetenv("AGENTDECK_TEST_WIDTH") }
+			if let oldLocale { setenv("AGENTDECK_TEST_LOCALE", oldLocale, 1) } else { unsetenv("AGENTDECK_TEST_LOCALE") }
+		}
+		let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+		let fixture = try Data(contentsOf: repository.appendingPathComponent("desktop/fixtures/v1/snapshot-schema-ahead.json"))
+		let envelope = try decodeDesktopWireEnvelopeV1(fixture)
+		let directory = URL(fileURLWithPath: "/private/tmp/agentdeck-schema-acceptance-native")
+		try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+		for language in ["en", "zh-Hans"] {
+			setenv("AGENTDECK_TEST_LOCALE", language, 1)
+			for width in [280, 420] {
+				setenv("AGENTDECK_TEST_WIDTH", String(width), 1)
+				XCTAssertEqual(MenuBarGeometry.width, CGFloat(width))
+				let host = StubDesktopHost(behavior: .envelope(envelope))
+				let model = await makeModel(host: host)
+				await model.coordinator.refresh()
+				XCTAssertTrue(model.hasSchemaSignal)
+				XCTAssertTrue(model.notices.contains { $0.id == "schema" && $0.opensHealthDetail })
+				XCTAssertEqual(model.footer.routesText, t(DesktopCopy.schemaSignalFooter))
+				for mode in MenuBarValueMode.allCases {
+					model.preferences.menuBarValue = mode
+					XCTAssertTrue(model.menuBarBadged, "schema badge must survive \(mode)")
+					XCTAssertEqual(model.menuBarAccessibilityLabel, t(DesktopCopy.badgedSchemaSignal))
+				}
+				for large in [false, true] {
+					for health in [false, true] {
+						model.showsHealthDetail = health
+						let label = "\(language)-\(width)-\(large ? "large" : "standard")-\(health ? "health" : "surface")"
+						let view = MenuBarSurfaceView(model: model)
+							.environment(\.dynamicTypeSize, large ? .accessibility3 : .large)
+						let hosting = NSHostingView(rootView: view)
+						hosting.frame = NSRect(x: 0, y: 0, width: CGFloat(width), height: 760)
+						hosting.layoutSubtreeIfNeeded()
+						hosting.displayIfNeeded()
+						XCTAssertLessThanOrEqual(hosting.fittingSize.width, CGFloat(width) + 1)
+						let bitmap = try XCTUnwrap(hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds))
+						hosting.cacheDisplay(in: hosting.bounds, to: bitmap)
+						let png = try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
+						try png.write(to: directory.appendingPathComponent(label + ".png"))
+						let attachment = XCTAttachment(data: png, uniformTypeIdentifier: "public.png")
+						attachment.name = "Schema acceptance \(label)"
+						attachment.lifetime = .keepAlways
+						add(attachment)
+					}
+				}
+				host.behavior = .envelope(WireFixture.envelope())
+				await model.coordinator.refresh()
+				XCTAssertFalse(model.hasSchemaSignal)
+				XCTAssertFalse(model.menuBarBadged)
+				XCTAssertFalse(model.notices.contains { $0.id == "schema" })
+			}
+		}
+		// Rendering and model-driven navigation do not assert real VoiceOver
+		// speech order or disclosure operation; those remain manual acceptance.
+	}
+}
