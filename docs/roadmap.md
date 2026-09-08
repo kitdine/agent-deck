@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-08-25
-updated: 2026-08-25
+updated: 2026-09-05
 ---
 
 # AgentDeck Roadmap and Backlog
@@ -10,17 +10,62 @@ This file is the authority for later version direction, unapproved planning
 intake, and withdrawn candidates. Active version membership is owned by the
 applicable `vX-Y-Z-contract` topic and projected in `status.md`. Moving an item
 between these sections is a planning decision, not implementation authorization.
+## v0.6.0 — Trusted usage and subscription visibility
+
+Re-planned by the operator on 2026-09-05 after stable v0.5.0. This decision
+reuses the version number with a new scope; the old cancelled cost-truthfulness
+epic remains historical. The iteration entry is `ad-v060-iteration`.
+
+These are six selected feature areas for topic design, not an approved
+implementation breakdown. Beads carries planning coordination; this section
+owns the selection. A version-contract topic assembles the delivered topics
+later. Do not create development tasks before each topic's tasks.md passes.
+
+| Feature | Planning carrier | Reason and boundary |
+| --- | --- | --- |
+| Schema compatibility and Hook failure visibility | `ad-schema-compatibility` | Prevent permanent schema refusal from silently losing Hook observations; reuse the existing schema-version-signal document tasks. |
+| Menu-bar and Widget refresh | `ad-desktop-refresh` | Make freshness and errors truthful; target approximately 1 minute for the menu bar and 3–5 minutes for widgets with change-driven updates. |
+| Snapshot performance | `ad-snapshot-performance` | Reduce repeated aggregation before increasing refresh frequency; verify invalidation and output equivalence. |
+| Cost and price transparency | `ad-cost-transparency` | Distinguish actual-spend estimates from API-equivalent estimates; audit catalog, model mapping, and request price tiers separately. |
+| Actionable health recovery | `ad-health-recovery` | Resolve lock recovery guidance and stale extension inventory with cause-specific actions; retain the two origin bugs. |
+| Codex/Claude subscription accounts, quota, reset and alerts | `ad-subscription-quota` | Make subscription capacity actionable, including Codex reset-count information, reset times, and opt-in reminders. |
+
+Subscription design must verify each field's source and supported semantics.
+Codex reset counts are explicitly in scope: distinguish any official total,
+used or remaining reset allowance from natural quota-window resets and locally
+observed reset events. Unsupported fields report unavailable with a reason,
+never zero or an invented count. A missing critical source is a named delivery
+gap requiring disposition, not permission to silently remove this feature.
+Account/plan discovery, quota retrieval and reminder evaluation may have separate
+sources. Authentication, staleness, polling budgets, account isolation and
+notification deduplication are part of the design. No reset action, account
+login switching, automatic app updater, or plaintext credential persistence is
+included.
+
+Design subscription-source feasibility early alongside schema and performance
+work. Refresh delivery depends on snapshot performance; subscription reminder
+presentation coordinates with refresh and billing labels with cost transparency,
+without treating those coordination points as blanket design blockers.
+
+Structured session search is excluded from v0.6.0 and remains an unscheduled
+candidate. Credits conversion, Context Efficiency, Linux, a public adapter
+protocol, full extension observability and multi-device aggregation remain
+later candidates. Existing withdrawal decisions remain effective.
+
+The old v0.7.0 subscription epic/plan/Gate are superseded by this selection;
+their historical records remain parked. The remaining old version rows are
+directional candidates rather than a required release order.
+
 ## Roadmap
 
-Planned after `v0.5.0`. Re-planned on 2026-08-13; this table supersedes the
-release sequence previously recorded in the desktop plan. Each version has a
-Beads tracking epic and a blocked design task, and needs a bounded topic under
-`docs/topics/` before development starts. Version themes are commitments of
-sequence, not of scope detail.
+The v0.6.0 selection above is current. Later rows retain the 2026-08-13
+planning references for traceability; their version numbers and ordering are
+provisional and can be reconsidered. Each feature needs a bounded topic before
+development starts.
 
 | Version | Theme | Scope |
 | --- | --- | --- |
-| `v0.7.0` | Subscription quota | Quota interface feasibility, in-app network quota lookup, allowance-window and reset modelling, quota alerting, automatic update download, prerelease channel selection. |
+| `v0.6.0` | Trusted usage and subscription visibility | The six feature areas selected above; subscription quota includes Codex reset-count information. |
 | `v0.8.0` | Boundary consolidation and Linux | Versioned client adapter contract, Linux machine identity, de-darwin PTY tests, Linux CI matrix and release artifacts. |
 | `v0.9.0` | Observability completion | Extension enabled state, cross-client duplication and drift, source authenticity, structured session search filters, wrapper health probing, richer desktop session window. |
 | `v1.0.0` | Multi-device and trust | Device dimension, backup merge import, read-only aggregation views, CLI archive signing and notarization. |
@@ -53,22 +98,24 @@ labelled as planning intake for a version is only scheduled for separate design
 and disposition while that version is planned; it is not yet part of that
 version's delivery scope.
 
-Planning intake for `v0.5.0` cost truthfulness (keep these as separate candidates
+Pricing intake selected for v0.6.0 and remaining candidates (keep them separate
 until design evidence justifies merging them):
 
-`v0.6.0` is cancelled as a release unit. Its cost-truthfulness scope moves into
-`v0.5.0`, but version membership does not merge the independent candidates
-below. The attribution-classification defect is no longer a Backlog candidate:
-it is owned by the active
+The earlier v0.6.0 cost-truthfulness release was cancelled and its attribution
+scope shipped in v0.5.0. The new v0.6.0 selection above supersedes that release
+sequence. Pricing investigations below belong to its cost-transparency design;
+credits and Context Efficiency remain unscheduled. The attribution defect is
+no longer a Backlog candidate:
+it was delivered by the archived
 [`usage-attribution-precision`](archive/topics/usage-attribution-precision/tasks.md)
 topic. That topic corrects the current contract that reserves `exact` for
 `agentdeck run` while hardcoding otherwise determinable Hook routes as
 `estimated`; a determinable event classified as `inferred` is not publishable.
 There is no later attribution item to reconcile from this checklist.
 
-Pricing catalogs and tiers, credits, Context Efficiency, subscription
-discovery, and the other candidates below remain independent even though they
-share the `v0.5.0` planning boundary.
+Pricing catalogs and tiers remain independent investigations within v0.6.0.
+Credits and Context Efficiency remain later candidates. Subscription discovery
+is selected into v0.6.0 with quota, reset information and reminders.
 
 - [ ] Model the two public-API price tiers for the GPT-5.6 family around the
   `272K` context boundary. Determine the tier for each request from the concrete
@@ -94,16 +141,15 @@ share the `v0.5.0` planning boundary.
   marker, long-context multiplier, credit cost, and API-equivalent cost; define
   an observable meaning for "useful context" and "wasted context" rather than
   deriving those values from input-token count alone.
-- [ ] Investigate a Codex and Claude subscription-query surface as its own
-  capability. Keep plan/account discovery separate from the existing `v0.7.0`
-  allowance-window, reset, quota-alerting, and quota-cycle cost work unless the
-  later design proves that they share one authoritative data source and
-  lifecycle.
+- [ ] Deliver the selected v0.6.0 Codex and Claude subscription feature above.
+  Keep account discovery and quota/reset sources independently verifiable even
+  when they share a user-facing feature.
 
 - [ ] Revisit ChatGPT app project attribution only if the app exposes a stable,
   reachable project configuration surface.
 
-- [ ] Give `state_busy` actionable recovery guidance. `internal/store/store.go`
+- [ ] Give `state_busy` actionable recovery guidance, now selected for v0.6.0
+  design under health-recovery. `internal/store/store.go`
   returns one hardcoded `timed out waiting for state lock` for both locks, so the
   message never says whether `state.lock` or `scan.lock` is held, never points at
   `agentdeck doctor`, and states no safe recovery path. Deferred from the `rc.5`

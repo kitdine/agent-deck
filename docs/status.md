@@ -164,6 +164,15 @@ agentdeck version
 
 ### Active Development
 
+Next iteration planning: **v0.6.0**, re-selected on 2026-09-05. The six feature
+areas and their boundaries are recorded in
+[the roadmap](roadmap.md#v060--trusted-usage-and-subscription-visibility), with
+Beads coordination under `ad-v060-iteration`: schema/Hook visibility, desktop
+refresh, snapshot performance, cost transparency, health recovery, and
+Codex/Claude subscription accounts, quota, reset information and reminders.
+Structured session search is excluded. Feature-level planning is selected;
+implementation decomposition and version-contract assembly are still pending.
+
 | Topic | Version | Status | Purpose |
 | --- | --- | --- | --- |
 | [`v0.5.0` Contract Closure](topics/v0-5-0-contract/tasks.md) | `v0.5.0` | Released — contract complete, independently reviewed, and committed at `a547362`; `cli-design.md` is at version 28 and both contract Tasks are 2/2 implemented and reviewed. Six release candidates culminated in `v0.5.0-rc.6`, and stable `v0.5.0` published the exact `acb8384` commit. The directory remains live only until the separately owned, currently untracked schema-version-signal topic becomes commit-addressable, so a clean checkout retains the required `docs/topics/` audit root; no v0.5.0 work remains. | Version-wide specification raise and documentation reconciliation after every selected topic's tasks pass review. |
