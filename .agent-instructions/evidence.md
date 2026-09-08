@@ -1,220 +1,203 @@
 # Completion Evidence and Neo4j Project Memory
 
-Read this file only when current work crosses a new Document, Task, Topic, or
-Release completion boundary, creates or invalidates completion evidence, or
-materially depends on prior durable project knowledge.
+Read this file when crossing a new Document, Task, Topic, Integration, or Release
+completion boundary, creating or invalidating relevant evidence, or materially
+depending on durable project knowledge. Ordinary phase changes and Beads-only
+coordination do not by themselves create evidence work.
 
 ## Completion Evidence and Neo4j / 验收证据与 Neo4j
 
-AgentDeck opts into `completion-evidence/v1` whenever the current environment
-exposes a compatible provider or local store. The current Neo4j binding is
-capability-based: a Cypher read/write interface whose schema contains
-`CEv1Node` and `CEv1Relation` is a configured provider even when no tool is
-named `completion-evidence`.
+The shared `completion-evidence/v1` profile owns canonical record semantics and
+provider operations. This file supplies AgentDeck's namespace and work-unit
+bindings. The workflow Skill owns phase execution; [Review Records](review-records.md)
+owns review artifacts, and [Beads](beads.md) owns coordination.
 
-- Before using fallback evidence rules, probe available capabilities once per
-  repository session. When a Neo4j Cypher interface is available, inspect its
-  schema and treat the CEv1 labels above as provider discovery.
-- Use repository namespace `github.com/kitdine/agent-deck`. Never read, write,
-  merge, invalidate, or delete another repository's CEv1 records as part of an
-  AgentDeck workflow.
-- Before claiming a Document, Task, Topic, or Release complete, query every newly
-  crossed WorkUnit boundary from inner to outer with its `work_unit_id` and exact
-  `target_content_state`.
-- The four boundaries and their bindings. Repository and evidence terminology are
-  identical; there is no mapping to remember:
+A compatible Neo4j MCP exposes Cypher operations and the `CEv1Node` /
+`CEv1Relation` mapping. Discovery establishes availability, not correct gate
+behavior, namespace scope, or write authorization. Resolve these separately.
+Use namespace `github.com/kitdine/agent-deck`; do not inspect or mutate another
+repository's evidence as part of this workflow.
 
-  | Boundary | `unit_kind` | `work_unit_id` | `target_content_state` |
-  | --- | --- | --- | --- |
-  | A reviewed document | `document` | `<topic>:<document>` | HEAD SHA plus that document's blob hash |
-  | A task's implementation | `task` | `<topic>:<task-anchor>` | Git tree |
-  | A whole topic | `topic` | `<topic>` | Git tree |
-  | A release | `release` | the version | Git tree plus the preflight SHA |
+Discover configured capability once per session and reuse the result until it
+changes or an operation fails. An enabled provider that is unavailable or denies
+required access is not an absent provider. Follow [Toolchain](toolchain.md) and
+[AGENTS.md](../AGENTS.md#runtime-contract--运行时契约) for availability and
+transport limits; never bypass the MCP by writing its backend directly.
 
-  A merge additionally records `unit_kind: integration`; see
-  `.agent-instructions/branching.md`.
+| Boundary | unit_kind | work_unit_id | Content identity |
+| --- | --- | --- | --- |
+| Reviewed document | `document` | `<topic>:<document>` | HEAD plus scoped document blob; include required specimen identity |
+| Task implementation | `task` | `<topic>:<task-anchor>` | Committed Git tree, or HEAD plus scoped candidate fingerprint before commit |
+| Whole topic | `topic` | `<topic>` | Applicable Git tree or scoped candidate identity |
+| Integration | `integration` | Resolve through the integration contract | Parent/result content identities under [Branching](branching.md) |
+| Release | `release` | Version | Release content identity plus the required preflight SHA |
 
-- **A Lane A fix reads `fix` in the `<topic>` position.** Its repair is a task
-  boundary like any other — `unit_kind: task`, `work_unit_id: fix:<slug>`,
-  `target_content_state` the Git tree — because `.agent-instructions/beads.md`
-  already names `fix` as the containing unit for that lane's stage commands
-  (`开发：fix / <slug>`). Nothing new is invented here; the table above is read
-  with `fix` where a topic would otherwise stand, which is what the repository
-  has been doing since `fix:claude-startup-route`.
+These are repository WorkUnit bindings, not extra canonical node kinds. Preserve
+historical identifiers and values; do not rename old records to normalize them.
 
-  Two consequences follow. There is **no topic boundary above it**: a Lane A fix
-  belongs to no topic, so its task boundary is the outermost one, and a Lane A
-  review has no outer gate to query. And `NOT_REQUIRED` is **not** the answer
-  for the task boundary itself — a Lane A review resolves its WorkUnit, records
-  evidence per criterion, and queries the gate exactly as a topic task does.
-  Records written before this rule cite `NOT_REQUIRED` against the absence of a
-  rule; they stand as what was true then and are not rewritten.
+A Lane A fix uses `unit_kind: task` and `work_unit_id: fix:<slug>`. It has no
+containing topic gate, but its own required task gate still applies. Do not use
+NOT_REQUIRED merely because no topic exists. After an authorized commit, bind
+its reusable evidence to the immutable delivered content and finish the existing
+WorkUnit lifecycle through the permitted operation; do not equate a Beads closure
+with this evidence result.
 
-  A Lane A WorkUnit finishes the same way as any other: once an authorized
-  commit exists, re-record the evidence against the immutable Git tree and set
-  the unit to `complete`. Leaving it at `in_progress` after delivery is the one
-  drift this boundary is prone to.
+### Gate evaluation and reuse
 
-- Write `unit_kind` in lowercase. Historical nodes carry mixed casing and the
-  retired value `plan`; leave them as they are, since they record work that
-  already completed, and use `topic` for anything new.
-- A document boundary is crossed when its review reaches `Verdict: PASS`, so a
-  frozen requirement or an approved design is queryable rather than only narrated
-  in a review record.
-- A CEv1 WorkUnit is an evidence scope, not a dispatch task. It may cover work
-  coordinated through several Beads tasks, and one Beads task may reference
-  several WorkUnits. Store only correlation identifiers across systems.
-- Beads-only changes do not change `target_content_state` and do not trigger
-  CEv1 discovery, queries, invalidation, or upserts. A CEv1 result does not
-  mutate Beads or replace repository phase and review state.
-- If local verification creates new evidence or an impact assessment, record it
-  with idempotent CEv1 upserts and query the gate again. Only `VERIFIED` closes
-  the evidence gate; `NOT_VERIFIED`, `FAILED`, and `BLOCKED` keep the WorkUnit
-  open according to the development workflow contract.
-- Bind evidence to the exact content identity required by this repository's
-  evidence-reuse rules. Use the Git tree for committed content. For an
-  uncommitted review candidate, record HEAD plus the scoped blob or diff
-  fingerprint, then relate or re-record the immutable Git tree if an authorized
-  delivery later creates a commit.
-- Provider discovery and gate reads are read-only diagnostics. Idempotent CEv1
-  node and relationship upserts limited to this repository namespace are
-  standing workflow authority when they record evidence produced within the
-  already authorized phase. This authority does not permit schema changes,
-  deletions, arbitrary Cypher writes, or changes to evidence owned by another
-  repository.
-- Fallback is allowed only when no compatible provider or local store exists.
-  Report it explicitly as `COMPLETION_EVIDENCE_FALLBACK: <reason>`; never
-  silently degrade. A configured provider that is unreachable, rejects a
-  query, or lacks required write authority is `BLOCKED`, not absent.
-- CEv1 synchronization never grants commit, push, release, deployment, or
-  product-change authority. A Review `PASS` remains distinct from a
-  `VERIFIED` WorkUnit gate.
+Before claiming a required boundary complete:
+
+1. Resolve the actual WorkUnit, repository namespace, applicable target content,
+   expected criteria, and direct hierarchy from their authorities. Document
+   dispatch tasks and CEv1 WorkUnits need not map one-to-one.
+2. Confirm the expected required criterion set and its `requires` relationships.
+   The provider evaluates the graph's declared criteria; it cannot infer an
+   unwritten or undeclared requirement. A missing WorkUnit, missing relationship,
+   empty set, or optional-only set cannot prove a required gate complete. NOT_REQUIRED is a project decision that no gate applies,
+   not a substitute for missing graph data.
+3. Call the Neo4j gate with `namespace`, `work_unit_id`, and
+   `target_content_state`. The last two are stable node IDs in that namespace;
+   a commit SHA, digest, or description is not a substitute for resolving the
+   ContentState ID. A top-level passing observation must bind that exact target
+   through `observed_at`; inspect its lineage and applicability diagnostics.
+4. Query each newly crossed boundary from inner to outer. Query a containing
+   unit only when its actual hierarchy reaches that boundary. Do not rerun all
+   child checks or gates merely because a parent or release is being evaluated.
+5. Record only new or changed evidence/impact decisions and query the affected
+   gate again. Preserve reusable exact-state results instead of repeating tests.
+
+Reuse requires passing evidence for the right criterion and compatible subjects,
+valid dependencies, no applicable contradictory supersession or invalidation,
+and resolved candidate impacts. Follow the shared profile's `change`,
+`impact_assessment`, `depends_on`, `rolls_up`, `may_invalidate`, `preserves`, and
+`invalidates` semantics rather than treating the basic three-edge path as a
+complete reuse algorithm.
+
+For a different target ContentState, do not silently relabel old observations or
+assume equal digests are sufficient. After the profile's scope-aware assessment,
+record an explicitly target-bound roll-up referencing still-valid earlier
+evidence when appropriate. The child observations retain their original state.
+A preserves decision alone does not retarget an old top-level observation, and
+new roll-up records must not manufacture a passing outcome without support.
+This reuses verified checks rather than rerunning them merely for a new phase.
+
+| Result | Meaning and action |
+| --- | --- |
+| VERIFIED | All expected required criteria have reusable passing evidence for the target; continue only within existing authorization |
+| NOT_VERIFIED | Evidence is missing, insufficient, invalidated, or has unresolved impacts; keep the boundary open and report the scoped gap |
+| FAILED | Current applicable evidence disproves a required criterion; keep the boundary open and report it |
+| BLOCKED | Required evidence or an authoritative operation cannot be obtained; report the exact prerequisite |
+
+Check the result envelope, not only its status string. The Neo4j provider reports
+`missing_work_unit`, `missing_target_state`, `invalid_criterion`, and
+`no_required_criteria` as NOT_VERIFIED input/data gaps. Missing query parameters
+are errors, never an implicit target selection. Transport or permission failures
+must not be treated as an empty result. Follow the provider contract for the
+returned diagnostics; invalidated/unresolved lists identify affected top-level
+evidence IDs, whose lineage explains the underlying assessments.
+
+Check review and delivery state independently. Review PASS, CEv1 VERIFIED,
+commit, and Beads status remain distinct. Evidence work grants no product-change,
+Git, release, or deployment authority.
+
+Fallback follows the configured authoritative profile and project policy. Never
+create an empty local store to mask an unavailable external provider. Use a mirror
+only when it is already configured, complete, synchronized, and permitted by the
+applicable policy; otherwise report BLOCKED. Report any permitted fallback and
+its reason explicitly. Do not install or initialize a provider as an incidental
+step in a review.
 
 ### Record shape / 记录形状
 
-Evidence counts only when its record shape, relationships, and outcome match
-the gate query. Verify the applicable store convention before writing; do not
-reconstruct it from memory.
+Resolve the current profile, schema, provider mapping, and parameterized templates
+before writing. Store inventory is diagnostic evidence, not a schema authority:
+an old last-used timestamp does not prove that a record kind was retired, and a
+recent timestamp does not prove that a shape is valid. Mixed timestamp types
+also prevent treating a simple sort or aggregate as a migration/version check.
 
-Historical rationale: commit `acbd91186d27bfb9f799f7a6751d09fa718403f5`
-records the incident that motivated this rule; it is historical context,
-not the current schema authority.
-
-**Inspect the store before writing.** The convention lives in the graph, not in
-memory and not in this file's history. One read settles it:
-
-```cypher
-MATCH (n:CEv1Node) WHERE n.ce_namespace = 'github.com/kitdine/agent-deck'
-RETURN n.kind AS kind, min(n.recorded_at) AS first, max(n.recorded_at) AS last,
-       count(*) AS c ORDER BY last DESC
-```
-
-A `kind` whose `last` is old is retired vocabulary, however many rows it has.
-Mixed property types make this trap worse: ordering by a property that is a
-string on some nodes and `DATE_TIME` on others sorts by type before value, so
-`ORDER BY … DESC LIMIT n` can hide every recent record. Aggregate, do not
-sample.
-
-The current shape, as the store holds it:
+The basic evidence path is:
 
 ```text
 work_unit ──requires──▶ criterion ◀──satisfies── evidence ──observed_at──▶ content_state
 ```
 
-- Node `kind` is lowercase: `work_unit`, `criterion`, `content_state`,
-  `evidence`. Every node and relation carries
-  `profile: 'completion-evidence/v1'`, `ce_namespace`, and `attributes_json`
-  holding the same properties as JSON. Timestamps use `datetime()`, never a
-  string.
-- `content_state` is its own node, identified by its `subject_digest`, and it is
-  where `head`, `git_commit`, `scoped_blob_fingerprint`, `subject_path`, and
-  `manifest_sha256` live. An evidence node's `target_content_state` is a foreign
-  key to that node's `id`, not a description of the state.
-- The digest is computed from the bound identity, so two writers agree on the
-  same state without coordinating:
+- Canonical node/edge vocabulary follows the profile. The basic path uses
+  lowercase `work_unit`, `criterion`, `evidence`, and `content_state`; change and
+  impact records are additional profile kinds used for reuse decisions.
+- Use stable IDs, the project namespace, profile identifier, and canonical
+  attributes. Keep provider query properties consistent with `attributes_json`;
+  do not infer identity from Neo4j internal IDs.
+- Evidence identifies its observed ContentState through the canonical
+  `observed_state_id` and `observed_at` relation. If a provider also uses a
+  `target_content_state` property, follow its declared mapping; a descriptive
+  string is not a substitute for a valid state reference.
+- Use lowercase outcomes `pass`, `fail`, `blocked`, or `not_verified` as defined
+  by the profile. Only applicable passing evidence satisfies a criterion.
+- The ContentState records the relevant commit/tree or scoped fingerprint and
+  required dependency, configuration, toolchain, environment, or specimen
+  identity. Keep raw logs, diffs, plans, and artifacts outside the graph; retain
+  their URI and digest with the concise check result.
+- Preserve established digest recipes for existing subjects. For an uncommitted
+  document, the established form is SHA-256 of `head=<HEAD-SHA>;document=<blob>`;
+  append `;prototype=<manifest_sha256>` when the specimen is part of the state.
+  Do not silently change the identity recipe or conflate content identity with
+  the node ID that references it.
+- Evidence and observed content are append-only facts. New observations use new
+  identities and explicit supersession; do not overwrite an old observation to
+  make it describe new content. Follow permitted WorkUnit lifecycle operations
+  for administrative state rather than treating them as verification evidence.
+- An upsert template alone does not guarantee append-only behavior. Before
+  reusing an existing record ID, check that it denotes the same fact or an
+  explicitly permitted lifecycle update. Report incompatible identity/payload
+  changes instead of silently overwriting them.
+- Run the provider's relation preflight before each relationship batch. Reject
+  missing endpoints and identity conflicts; compare processed and submitted
+  counts, then read back/query the affected gate. Use stable IDs for retries.
 
-  ```bash
-  printf '%s' 'head=<HEAD-SHA>;document=<blob>' | shasum -a 256
-  # append ';prototype=<manifest_sha256>' when a specimen is part of the state
-  ```
+Bind evidence after required local status synchronization reaches its final
+content state. If synchronization changes a reviewed document or specimen,
+evidence for the earlier state cannot simply be relabeled; add the correct
+state/evidence or an explicit permitted reuse assessment.
 
-- **`outcome` MUST be lowercase `pass`.** The gate filters on that exact value;
-  `PASS` records a node the gate will never count.
-- Records are append-only facts. When content changes, add a new
-  `content_state` and `evidence` and point the new evidence at the old one with
-  a `supersedes` relation. Do not rewrite an existing node — the previous state
-  is what makes reuse decisions auditable, and this store's write path may
-  reject the update anyway.
-- Upsert with the profile's own templates: `UNWIND $nodes` for nodes, the
-  relation preflight that reports `missing_endpoint` / `identity_conflict`, then
-  `UNWIND $relations`. Compare the returned count with the submitted count, then
-  re-run the gate query. Recording is not finished until the gate answers.
+### Failure handling and provider compatibility
 
-**Record after the round's own status synchronization, not before.** A review
-round ticks a matrix cell and writes a current-state paragraph in the document
-it reviewed, which changes that document's blob. Evidence bound to the
-pre-synchronization blob is stale the moment the round finishes. Bind to the
-final blob, and if evidence was already recorded against the earlier one,
-supersede it rather than leaving two live records.
+Classify a failed write before retrying. Permission denial follows
+AUTHORIZATION_WAIT in AGENTS.md; do not reformulate a denied action to bypass it.
+A specific statement-shape or validation error may justify a corrected,
+authorized idempotent retry. For ambiguous partial failure, inspect the exact
+intended records before repeating writes. Unknown causes or unavailable providers
+keep the evidence boundary open.
 
-Classify a failed write before retrying:
+Provider behavior must satisfy the profile, including target-state checks and
+missing-WorkUnit handling. A query that returns VERIFIED for an unresolved ID or
+ignores the requested target is not a valid completion gate for this project.
+Do not compensate by claiming success from the status word; surface the provider
+contract gap and require scoped repair/verification before relying on it.
 
-- If a permission system denies the action, follow `AUTHORIZATION_WAIT` in
-  AGENTS.md. Do not reformulate the write to bypass the denial.
-- If the error identifies a statement-shape or validation problem, correct that
-  specific problem using the profile's idempotent templates. Retry only when
-  the error supports the correction and the action remains authorized.
-- If the cause is unclear or the provider is unavailable, report the exact
-  failure and keep the evidence gate open. Do not retry speculatively or treat
-  an unavailable configured provider as absent.
+Historical rationale for the evidence-shape rule is retained in commit
+`acbd91186d27bfb9f799f7a6751d09fa718403f5`. It is provenance, not the current schema.
 
 ## Neo4j Project Memory / Neo4j 项目记忆
 
-`neo4j-memory` is a non-authoritative, durable project-knowledge aid. It is a
-separate concern from `completion-evidence/v1`: project memory explains durable
-decisions and relationships, while CEv1 proves an exact content state passed a
-defined gate.
+Durable project memory is optional and non-authoritative. It explains decisions
+and reusable lessons; CEv1 establishes evidence for a defined content state.
+Memory availability does not determine whether the evidence provider is usable.
 
-- Query relevant project memory when resuming work or investigating prior
-  architecture decisions, release policies, workflow conventions, or recurring
-  failures. Do not query it mechanically for unrelated, self-contained work.
-- Record only durable, reusable, non-sensitive knowledge supported by an
-  authoritative repository source, or knowledge the user explicitly requests
-  to preserve. Suitable facts include approved architecture and product
-  decisions, stable workflow and release conventions, reusable diagnostic
-  conclusions, known pitfalls, and relationships among topics, versions,
-  components, and contracts.
-- The durability test: record a fact only when it would still be true and useful
-  in a session holding none of the current context, **and** could not be derived
-  by reading the repository at that later time. A decision and the reason it was
-  chosen pass both. The repository's present state passes neither — it is
-  derivable, so recording it only creates something that can go stale.
-- The line against evidence follows from that test. A conclusion about why an
-  approach failed is durable; the measurement that produced it is evidence.
-  Record the conclusion here and leave the measurement in CEv1 or the review
-  record. "The gate scans a diff, so a committed violation never fails" is
-  memory; "the gate passed on tree X" is not.
-- Writing is not gated on asking. Bounded creates and observation additions in
-  the `agent-deck:` namespace are standing authority, so record a qualifying
-  fact when it is established rather than deferring it to a confirmation.
-- Correct a stale entry by adding a dated correcting observation. Deletion and
-  replacement need explicit approval, so an addition that supersedes is the
-  available repair, and it preserves what the earlier reader believed.
-- Use namespaced entity names such as `agent-deck:project`,
-  `agent-deck:decision:<topic>`, `agent-deck:topic:<topic>`, and
-  `agent-deck:version:<version>`. Prefer small, idempotent entity, observation,
-  and relationship updates over duplicated narrative documents.
-- Bounded idempotent creates, observation additions, and relationship upserts in
-  the `agent-deck:` namespace are standing knowledge-synchronization authority
-  when the fact already has an authoritative source. Deletion, replacement,
-  broad imports, and mutation of another namespace require explicit approval.
-- Do not store Task verification evidence, PASS/FAIL state, raw command output,
-  ordinary progress logs, current Git status, credentials, session content,
-  private source paths, or other sensitive data. Task and release evidence
-  belongs in CEv1, not project memory.
-- Code, tests, configuration, living documentation, and Git history remain the
-  source of truth. If project memory conflicts with repository truth, follow
-  the repository and report the stale memory before correcting or deleting it.
-- Missing or unavailable `neo4j-memory` does not affect CEv1 gates and does not
-  trigger completion-evidence fallback. Continue with repository sources and
-  report the memory limitation only when it materially affects the task.
+- Query memory when a relevant prior decision or recurring failure may help.
+  Do not query it mechanically for unrelated, self-contained tasks.
+- Preserve supported, reusable, non-sensitive decisions and their rationale;
+  do not duplicate current repository state, ordinary progress, gate results,
+  raw logs, session content, credentials, or private source material.
+- A useful memory adds durable context that a future reader could not recover
+  merely by inspecting the repository at that time. Keep measurements and their
+  content identities in evidence or review records, not in project memory.
+- Use `agent-deck:` namespaced entities and small idempotent additions within
+  the standing scope. Explicit user limits and higher-priority runtime memory
+  policies still apply. Do not interpret this repository convention as permission
+  to edit a different memory store or another namespace.
+- Correct outdated memory with a dated, supported observation when permitted.
+  Deletion, replacement, broad imports, and cross-namespace changes need explicit
+  authority. Prefer correction over erasing historical context.
+- Repository code, tests, configuration, living documents, and Git history remain
+  authoritative. Report material conflicts instead of silently following stale
+  memory. If memory is unavailable, continue from repository sources and report
+  the limitation only when it affects the task.

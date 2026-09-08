@@ -1,442 +1,264 @@
-# Beads Agent Coordination
+## Beads Agent Coordination
 
-Read this file only when a task requires Beads coordination. Repository plans,
-contracts, review records, status documents, and evidence remain authoritative
-for their respective concerns.
+Read this file when the active request requires Beads coordination. Beads owns
+dispatch, dependency readiness, assignment, and handoff. Repository documents own
+requirements and review verdicts; CEv1 owns evidence for defined content states.
+Do not infer authority or completion in one system from another system's label.
 
 ## Local deployment
 
-The user-level Beads deployment coordinates Codex and Claude Code without
-placing `.beads`, hooks, generated instructions, or database files in this
-repository.
+Use the operator's existing Beads deployment. The current installation's wrapper
+is `$HOME/.local/state/agentdeck-beads/bin/agentdeck-bd`; its state lives outside
+this repository. If that binding is unavailable, resolve the operator's actual
+installation rather than guessing from old Hook output, provisioning a new store,
+or changing services as part of an ordinary task.
 
-- State root: `/Users/jobshen/.local/state/agentdeck-beads`
-- Required CLI wrapper:
-  `/Users/jobshen/.local/state/agentdeck-beads/bin/agentdeck-bd`
-- Human UI: `http://127.0.0.1:13308`
-- Services: `com.kitdine.agentdeck.beads-dolt` and
-  `com.kitdine.agentdeck.beads-ui`
-- The Dolt and UI listeners must remain bound to `127.0.0.1`; do not expose
-  them to LAN or public interfaces.
-
-Every Beads CLI invocation must identify its actor. Use `codex` for Codex and
-`claude-code` for Claude Code. The wrapper rejects an omitted actor:
+Every agent read or write must identify its actor. Use `codex` or `claude-code`;
+do not substitute the human operator or fabricate an actor identity.
 
 ```bash
-env BEADS_ACTOR=codex /Users/jobshen/.local/state/agentdeck-beads/bin/agentdeck-bd ready --label agent-task --json
-env BEADS_ACTOR=claude-code /Users/jobshen/.local/state/agentdeck-beads/bin/agentdeck-bd ready --label agent-task --json
+beads_cli="$HOME/.local/state/agentdeck-beads/bin/agentdeck-bd"
+env BEADS_ACTOR=codex "$beads_cli" ready --label agent-task --json
+env BEADS_ACTOR=claude-code "$beads_cli" list --status in_review --json
 ```
 
-`ready` covers work waiting to START. It cannot see a custom status, so work
-waiting for a REVIEWER needs `list --status in_review`; see One lifecycle.
+Use the actor-qualified wrapper for all command examples below. Subcommand names
+in prose are not permission to use bare `bd`. Keep any existing Dolt/UI listeners
+loopback-bound; do not expose them or change network configuration to make a task
+or check succeed.
 
 ## Automatic backup warnings
 
-Mutating `agentdeck-bd` commands may complete their primary database write and
-then report `auto-backup failed`. The backup is an internal `bd` side effect,
-not a separate Beads workflow action and not a new user-authorization boundary.
+A mutation may persist successfully and then report `auto-backup failed`.
+Treat the primary write and its backup side effect separately:
 
-When this warning appears:
+1. Read back the exact intended task change or comment.
+2. If it persisted, report the backup warning once without replaying the write,
+   changing permissions, or requesting approval merely to silence the warning.
+3. If it did not persist, diagnose that failure before retrying. Escalate backup
+   work only when successful backup is an explicit requirement.
 
-1. Read back the exact primary mutation: task status, assignee, dependency, or
-   comment.
-2. If the read-back matches, treat the primary operation as successful and
-   report the backup warning once as a non-blocking operational risk.
-3. Do not retry the mutation, change permissions, request sandbox escalation,
-   or describe extra user authorization as necessary merely to silence the
-   warning.
-4. Escalate only when successful backup creation is itself an explicit task
-   requirement or the primary mutation did not persist.
-
-Keep the three authorities distinct in explanations: the user's workflow
-instruction authorizes the Beads mutation; the Codex sandbox determines which
-paths a command can technically write; and `bd` owns its internal backup side
-effect. Use wording such as `primary write succeeded; the internal backup was
-unavailable and did not block this task`, never `the user must authorize the
-automatic backup`.
+User authorization, sandbox write access, and the backup implementation are
+different concerns. A backup warning does not revoke an already authorized phase
+or prove that its primary operation failed.
 
 ## Scoped task procedure
 
-1. Resolve the repository workflow route and read its authoritative plan and
-   contract before consulting Beads.
-2. Resolve the selected task from current Beads state, then read it with `show
-   --json`, its blockers with `blocked --json` or `dep tree`, and its comments.
-3. A phase command accepted by the project workflow authorizes resolving only
-   the matching `Authorize <Phase>: <task-anchor>` human Gate, where `<Phase>`
-   is `Design` or `Development` — review has no Gate, see One lifecycle below.
-   Never resolve a later Gate, a different task's Gate, or a Gate based only on
-   `bd ready`.
-4. Atomically claim the exact resolved task ID with `bd update <id> --claim`.
-   Do not use an unfiltered ready claim when the user named a task anchor.
-5. **Frozen, pending upstream.** `bd heartbeat` does not exist in the installed
-   `bd`; see Installed-version limits below. Until it returns, treat a claim as
-   live only while the same actor is demonstrably working: before continuing
-   after a long command or pause, re-read the task and stop if `assignee` is no
-   longer you. A claim whose `updated_at` is older than the current working
-   session, with no comment explaining why, is stale rather than active — say so
-   in a comment instead of assuming either way.
-6. Write concise durable handoff comments before releasing a claim or ending
-   with unfinished work. Never put credentials, raw session content, private
-   prompts, or sensitive paths in Beads.
+1. Resolve the active user scope, applicable workflow, and authoritative work
+   product before consulting dispatch. An advisory read-only audit does not become
+   a formal phase or a task claim because a Hook mentions another dirty path.
+2. Find the exact existing task by current subject, anchor, labels, and relations.
+   Read its details, relevant dependencies, and comments. Do not claim an arbitrary
+   ready item or create a duplicate because a remembered ID is absent.
+3. A real user stage command may resolve its matching Design or Development
+   authorization Gate under `AGENTS.md`. Do not resolve another task's Gate, a
+   later stage's Gate, or infer phase authority from `ready` or Gate status alone.
+4. Resolve ownership before claiming. Use the supported atomic claim operation
+   for an available task; an existing assignment requires a verified handoff or
+   separately authorized takeover. Do not overwrite an unknown active owner with
+   `--assignee` merely because claiming failed.
+5. Preserve the phase's intended status when claiming or transferring ownership.
+   The current CLI documents that `--claim` sets `in_progress`; do not leave a
+   review task there simply because the ownership operation succeeded. Complete
+   the authorized status adjustment and verify assignee and status before doing
+   the phase's work. Do not assume claim/status options compose atomically unless
+   the installed behavior has been verified.
+6. After a pause that makes ownership uncertain, recheck the exact task. An actor
+   name identifies a client role, not a unique session; another Codex or Claude
+   session can use the same actor. Use handoff context and a session/correlation
+   reference when necessary to distinguish active work. An old `updated_at` is a
+   reason to investigate, not proof that an owner is dead or a claim is free.
+7. Record a concise handoff when leaving unfinished work or transferring ownership.
+   Do not record credentials, private prompts, raw session content, or sensitive
+   paths. Preserve enough context for the next actor to locate authoritative work.
 
-Do not keep a version-specific task-ID map here. Resolve task IDs from the live
-store by anchor, labels, dependencies, and comments.
+Do not maintain a static task-ID map. If a coordination step only partly succeeds,
+read back the result and complete the missing part; do not repeat successful
+comment creation or describe several CLI calls as one atomic transaction.
 
 ## Document work is dispatched too
 
-A topic reaches development through six document stages before any task exists;
-see the progression in `docs/documentation-workflow.md`. Beads carried only
-`Development:` and `Review:` pairs per task anchor, so that entire span was
-invisible to dispatch —
-during it a `Development:` task sat claimed and `in_progress` while nothing was
-being implemented, which is the opposite of what dispatch should report.
+Each applicable document declared by a topic's Documents matrix has one task;
+design, review, repair, and re-review are stages of that object. Do not create a
+new task for each round. Follow [Documentation Workflow](../docs/documentation-workflow.md)
+for artifact dependencies, including framework and final-surface review scope.
 
-Each document a topic's Documents matrix declares gets **one** task, whose
-status walks its lifecycle:
+The established title forms are:
 
 ```text
-ad-<topic>-doc-<document>-design     文档：<topic> / <document>
+文档：<topic> / <document>
+任务：<task-anchor>
+缺陷：<one-line observed symptom>
 ```
 
-One task, not a design/review pair. A document is one object and these are
-stages of that object, so a second task duplicates it. The pair model also does
-not survive contact with a real review: under the Repair and Re-review rule
-below, one document that failed review three times would carry a design task, a
-review task, three repair tasks and three re-review tasks — eight objects for
-one file. `ux/menubar.md` reached eight rounds.
+These titles identify different work products and are consumed by project
+coordination tooling. Preserve their grammar. Resolve actual IDs from live state;
+examples such as `ad-<topic>-doc-<document>-design`, `ad-<...>-dev`, and
+`ad-bug-<slug>` illustrate naming, not lookup or creation authority.
+
+Use stable topic-scoped IDs without release-version segments. Flatten document
+paths consistently (`req`, `arch`, `tasks`, `ux-<surface>`) according to the existing
+project mapping. An `n/a` document row gets no task.
+
+Create document tasks when the topic's document set is declared. Create
+implementation tasks only after the Tasks matrix is approved and the applicable
+evidence/checkpoint conditions are satisfied. A draft decomposition may rename,
+split, or remove anchors; it must not populate dispatch as if already approved.
+
+Express prerequisite relationships from the authoritative progression. Document
+tasks may exist before implementation decomposition; do not say that no task
+exists during design. Keep one task per implementation anchor, not a separate
+Development/Review pair.
 
 ## One lifecycle
 
-One lifecycle covers every task — a document, a task anchor, a test, anything
-else. What differs between them is the work product (`.md`, code, a test run),
-not the states it passes through, so the status model has no
-document-versus-development split:
+Work-product tasks use this coordination lifecycle:
 
 ```text
-open ──→ in_progress ──→ in_review ──→ awaiting_commit ──→ closed
-              ↑______________│
-                (review sends it back)
+open → in_progress → in_review → awaiting_commit → closed
+           ↑______________|
+             failed review
 ```
 
-| Status | Kind | Category | Meaning |
-| --- | --- | --- | --- |
-| `open` | built-in | active | Not started |
-| `in_progress` | built-in | wip | Being produced — document, code, or anything else |
-| `in_review` | custom | active | Awaiting or under review |
-| `awaiting_commit` | custom | wip | Review passed; awaiting the commit checkpoint |
-| `closed` | built-in | done | Committed |
-
-**Never set `blocked` by hand.** Express blocking as a dependency and let it be
-derived: a hand-set `blocked` is a second, silent record of the same fact, and
-the two diverge the moment the blocker closes — the dependency graph says the
-task is workable while the status still says it is not, and nothing brings it
-back. `deferred` parks work indefinitely and is set deliberately. `pinned`
-exists for work that never closes; nothing in this workflow qualifies, since
-every task here ends at `closed`.
-
-**A task description points at this lifecycle; it never restates it.** Write
-what the task produces and what makes it ready, then refer here for the status
-contract. A copied lifecycle is a fork with no owner: when this file changed on
-2026-08-17 (`b3ca412`, `drafting`/`repairing` → `in_progress`/`awaiting_commit`)
-twelve descriptions kept the retired vocabulary, and nothing referenced them, so
-nothing noticed. Descriptions are the worst place for that copy, because an
-agent meets one already attached to the task it was dispatched to — it reads as
-this task's own rule rather than as a document that might be out of date, and it
-arrives before the agent has any reason to open this file. One did exactly that
-and tried to set `--status repairing`. `scripts/hooks/beads-consistency.py`
-reports any live task whose description names a retired status; closed tasks are
-left alone, because they record what happened under the contract in force then.
-
-The custom pair is registered once:
-
-```bash
-bd config set status.custom "in_review:active,awaiting_commit:wip"
-```
-
-**`bd ready` never returns a custom status.** Its query hardcodes
-`status IN ('open', 'in_progress')` (`internal/storage/sqlbuild/ready.go`), so
-category has no bearing on it, and `internal/types/types.go`'s comment that
-"active statuses appear in bd ready" states an intent the query does not
-implement. Verified against bd 1.2.2 in an isolated repository: two unblocked,
-unassigned tasks in an `active` custom status, and `bd ready` returned nothing.
-
-Dispatch a reviewer with `bd list --status in_review`. Using `bd ready` for it
-silently finds no work forever, which looks identical to there being none.
-
-What category does control is default `bd list` visibility: `active` and `wip`
-are listed, `frozen` and `done` are hidden. Same isolated check — `in_progress`,
-`in_review` and `qa_testing` listed; `closed`, `on_hold` and `pinned` absent.
-Both custom statuses must stay visible there, so both must be `active` or `wip`,
-and bd draws no behavioural distinction between the two. `in_review` as `active`
-and `awaiting_commit` as `wip` is therefore a semantic label — one is waiting for
-someone to pick it up, the other is a waiting state of work already done — plus
-the board's column colour, which is derived from category.
-
-**Entering review needs no authorization.** Work that is finished moves to
-`in_review` in the same action that finishes it. There is no `Authorize Review`
-Gate: such a gate only records that nobody has started reviewing yet, which is
-what the status already says. `Authorize Design` and `Authorize Development`
-Gates remain — when work *starts* is the user's decision.
-
-**A Gate's description is written for the user, not for an agent.** Its only
-reader is the person deciding, so it states what approving starts, what it
-changes that is observable from outside, what it is based on, and what it
-unblocks — with the consequential part first, since the board truncates. Machine
-release conditions belong in a comment. A description reading "Resolve only
-after X Review PASS and explicit user Development authorization" tells the
-decider nothing they can act on, and on an authorization Gate it is circular:
-the approval it demands is the very approval being asked for.
-
-**Create a Gate with `create --id <name>-gate -t gate`, not `bd gate create`.**
-`gate` is a built-in `bd` issue type, so it needs no `types.custom` entry —
-`bd create -t`'s help text lists only `bug|feature|task|epic|chore|decision`
-and is simply incomplete, which is how one of these Gates first got created as
-a `task`. Block the work the normal way, with a `depends-on` edge from the task
-to its Gate, and let the user close the Gate to authorize the start.
-
-`bd gate create` is the other route and this project does not use it. It mints
-an auto-generated ID and sets an `Await Type` such as `human`, `timer`, or
-`gh:run`, which is the field `bd gate check` evaluates when it closes resolved
-Gates automatically. A Gate made the way above leaves `Await Type` empty, so
-`bd gate check` skips it and reports "Checked 0 gates". That is the intended
-outcome, not a defect: an authorization Gate is waiting for a person, and there
-is nothing for an evaluator to resolve. Expect these Gates to appear in
-`bd gate list` and `bd gate show` while never being touched by `bd gate check`.
-
-`closed` means the work is delivered, not that it was produced or that review
-passed. A `PASS` moves the task to `awaiting_commit`; the authorized commit is
-what closes it. Collapsing `awaiting_commit` into `closed` is exactly what makes
-"review passed" and "delivered" indistinguishable in dispatch.
-
-**This includes document tasks.** The workflow Skill selects checkpoints by
-whether the project delivers the subject as a task, not by whether the artifact
-is code or a document. Every passing task gets commit and push recommendations;
-neither recommendation authorizes delivery. An uncommitted document candidate
-and its status/review records remain at the commit checkpoint until the authorized
-commit exists and required evidence is bound to the final content identity.
-
-**A review verdict is not an evidence gate.** `PASS` with a required completion
-gate still `NOT_VERIFIED`, `FAILED`, or `BLOCKED` does NOT reach
-`awaiting_commit` or `closed`: the task stays `in_review` and a comment records
-the verdict and the open gate. The status name reads oddly for a few hours, and
-that is the correct trade — the alternative asserts a completion the evidence
-does not support. Do not add a status for this; the gate is CEv1's to answer and
-mirroring it here would make Beads a second, stale evidence record.
-
-New review records use `PASS`/`FAIL`; historical `REOPEN` records remain valid
-failed-review history and are not rewritten.
-
-Nothing moves a status by itself. Each phase command owns exactly one
-transition on the task it names, and performing the command without the
-transition is what made an entire day of document work invisible to dispatch:
-
-| Command | Transition | Also |
+| Status | Category | Meaning for a work-product task |
 | --- | --- | --- |
-| `设计：<topic>` | create the topic's document tasks at `open` | — |
-| `设计：<topic> / <document>` | `open` → `in_progress`, → `in_review` when the draft is complete | claim it |
-| `开发：<topic> / <task-anchor>` | `open` → `in_progress`, → `in_review` when the implementation is complete | claim it |
-| `评审：<topic> / <subject>` | stays `in_review` | claim it as the reviewer; on `PASS` → `awaiting_commit`, on `FAIL` → `in_progress` and increment `round-N` |
-| `修复：<topic> / reviews/<record>.md / <ids>` | stays `in_progress`, → `in_review` when the repair is complete | comment the disposition |
-| `复评：<topic> / reviews/<record>.md` | as for `评审` | — |
-| commit checkpoint | `awaiting_commit` → `closed`, after the authorized commit | — |
+| `open` | active | Not started |
+| `in_progress` | wip | Being produced or repaired |
+| `in_review` | active | Awaiting or under review; also used while a passed review's required evidence gate remains open |
+| `awaiting_commit` | wip | Review and applicable required gates passed; waiting for authorized delivery |
+| `closed` | done | The task's authorized delivery boundary has been satisfied |
+
+Authorization Gates and administrative disposition records are not product
+implementation tasks. A Gate closes on the corresponding authorization decision;
+that closure does not claim that code was committed or start a new phase.
+Do not fabricate a product commit to justify closing a Gate or an explicitly
+superseded coordination record.
+
+Use dependencies for blockers rather than manually duplicating them in a
+`blocked` status. `deferred` deliberately parks work. Do not repurpose `pinned`
+as another workflow phase. Task descriptions state the work product and point at
+this lifecycle; they do not copy status sequences or obsolete vocabulary.
+
+For reviewer dispatch, query `list --status in_review` explicitly instead of
+assuming `ready` includes the custom review queue. Use `ready` for work waiting
+to start. The current custom configuration is
+`in_review:active,awaiting_commit:wip`; verify it when setup or diagnostics require
+it, not on every task. Reconfiguring statuses is a separately scoped setup action.
+
+Moving finished work to `in_review` is a required handoff within its authorized
+production stage and does not need another Review-authorization Gate. Actually
+performing a review still requires its own real user command or an already
+confirmed automatic workflow. Do not confuse dispatch readiness with authority
+to run the next phase.
+
+Design and Development authorization Gates remain user decision points. Create
+one with the supported `create --id <name>-gate -t gate` subcommand and an ordinary
+blocking dependency under the existing convention, rather than substituting the
+async `gate create` mechanism. A Gate's human-facing description explains what
+approval starts and unblocks; machine release details belong in a concise comment.
+Do not infer that an evaluator closing a Gate grants broader business authority.
+
+For a work-product task, review PASS alone does not mean delivered. Its authorized
+commit must exist before it closes. A required NOT_VERIFIED, FAILED, or BLOCKED
+evidence gate keeps the task in `in_review`.
+When review and required gates pass, follow the Skill's Task checkpoint and move
+to `awaiting_commit`. Every work-product task gets that checkpoint, including tasks whose
+work product is a document; recommendations do not authorize commit or push.
+
+Use a short coordination comment to explain the transition and link the applicable
+review round, WorkUnit, and content identity. Such a comment is a historical
+handoff pointer, not another maintained copy of findings, criteria, test output,
+or current review/evidence status. The referenced authorities remain decisive.
+
+New review records use PASS/FAIL; historical REOPEN records remain unchanged.
+A `round-N` label counts review returns on that task, not the global review-round
+number across different records. Never merge record histories just because their
+round numbers or actors match. Preserve unrelated labels when changing round labels.
+
+| Authorized work | Coordination result |
+| --- | --- |
+| Topic/document design | Create only justified document tasks; produce the subject at `in_progress`, then hand it to `in_review` when its declared stage is ready |
+| Implementation | Claim the approved task; `in_progress` until its implementation and proportionate checks are ready for review |
+| Review or re-review | Preserve `in_review` while reviewing; FAIL returns it to `in_progress`; PASS reaches `awaiting_commit` only after applicable required gates pass |
+| Repair | Keep the same task; hand completed repair to `in_review` without self-issuing a review PASS |
+| Authorized commit/delivery | Inspect the actual delivered boundary, then close only the matched task whose obligations are satisfied |
+
+These are project coordination rules, not a second phase-command parser. The
+Skill and `AGENTS.md` own command matching, authorization ceilings, and completion
+receipts. A claim or a silent Hook never proves that a phase is complete.
 
 ### Commit-checkpoint contributor attribution
 
-The commit checkpoint uses Beads as durable evidence for co-author attribution;
-it does not guess from the current chat, the last editor, or the task's current
-`assignee`. The current assignee may be a reviewer, while the material author is
-recorded in an earlier claim, completion, repair, or handoff comment.
+For an authorized commit, use durable task history to identify material
+contributors to the exact staged scope:
 
-Before creating an authorized commit:
-
-1. Resolve the exact staged files and hunks, then identify only the
-   `awaiting_commit` Beads tasks whose work products are included. Do not scan
-   unrelated tasks or infer contributors from a topic or version epic.
-2. Read each task with `show --json` and read its comments. Collect actors whose
-   recorded Design, Development, Repair, or content-producing handoff work is
-   materially present in the staged content. A Review-only claim, status sync,
-   dispatch action, or evidence query is not authorship unless its comment also
-   records a content change included in the commit.
-3. Treat `assignee` and `updated_at` as supporting evidence only. They identify
-   current ownership and recency, not the complete contributor set. Prefer the
-   actor and role on the task's durable comments; union contributors across all
-   staged tasks and de-duplicate them.
-4. Print this checkpoint block before showing or executing the commit command:
+1. Identify only the included work-product tasks at their delivery checkpoint.
+   Do not scan unrelated tasks or infer authorship from the topic epic.
+2. Read those tasks and their comments. Include supported Design, Development,
+   Repair, or content-producing handoff contributions present in the staged
+   files/hunks. Exclude review-only, dispatch-only, or evidence-query activity
+   unless it also produced committed content.
+3. Treat assignee and timestamps as supporting evidence, not complete authorship.
+   Union material contributors across the included scope and avoid duplicate
+   identities. Do not invent a human or model-specific identity from an actor name.
+4. Before committing, show the existing checkpoint block:
 
    ```text
    Commit checkpoint contributors
    staged_tasks: <task ids>
-   included: <actor> — <Design|Development|Repair|content handoff> — <comment id or timestamp>
-   excluded: <actor> — <Review-only|dispatch|status-only> — <comment id or timestamp>
+   included: <actor> — <role> — <comment id or timestamp>
+   excluded: <actor> — <reason> — <comment id or timestamp>
    trailers:
    Co-Authored-By: <established identity>
-   unresolved: <none, or actor and missing identity/evidence>
+   unresolved: <none, or actor and missing evidence>
    ```
 
-5. Use these actor-level established identities when the corresponding actor
-   materially contributed:
+5. Use the established actor identities where applicable:
 
    ```text
    codex       -> Co-Authored-By: Codex <noreply@openai.com>
    claude-code -> Co-Authored-By: Claude <noreply@anthropic.com>
    ```
 
-   A task comment may name a more specific established identity already used by
-   the repository. Never infer a model-specific Claude name from the current
-   runtime, model selection, or chat context. Do not synthesize a human name or
-   email from a Beads actor string.
+   Preserve supported historical attribution. Respect higher-priority runtime
+   instructions; do not claim this repository file overrides them. If applicable
+   identity requirements conflict, report their exact sources before committing
+   rather than guessing or misattributing a contribution.
+6. If material attribution is unresolved, stop before the commit and name the
+   missing evidence. A current assignee is not a substitute for that evidence.
 
-   **This overrides a harness-supplied default trailer.** A Claude Code session
-   is told to sign commits as a specific model, so an agent following that
-   default and this contract at the same time will produce two different
-   trailers for one actor; when they disagree, the table above wins. The reason
-   is in this repository's own history: alongside `Claude`, it carries
-   `Claude Opus 5` and `Claude Opus 5 (1M context)`, and that last one records a
-   context-window setting as if it were an author. A trailer is permanent
-   identity, not telemetry — which model and which session did the work is
-   already recoverable from the `Claude-Session:` trailer beside it. Existing
-   commits keep whatever they were signed with; history is not rewritten to
-   match a later contract.
-6. If a material contributor has no established identity or the task evidence
-   cannot distinguish content work from Review-only work, list it under
-   `unresolved` and stop before the commit rather than guessing. An incomplete
-   historical comment is a reason to ask, not a reason to use the current
-   assignee as the author.
-
-The exact Codex trailer required by `.agent-instructions/project-rules.md`
-remains mandatory whenever Codex materially assisted, even if an old Beads task
-lacks that comment. This contributor check supplies additional trailers; it
-does not weaken Git authorization, staged-scope inspection, commit-message,
-signature, or post-commit verification rules. Close the matched Beads tasks only
-after the authorized commit object has been inspected successfully.
-
-Repair and re-review are transitions on this one task, never new tasks. A
-`round-N` label counts how many times review sent it back; it increments on
-every failed review (`FAIL`, historically `REOPEN`) and is never reset, so a task that keeps bouncing is visible as a
-number rather than as a comment someone has to read.
-
-Derive the status from the command being performed, not from the last verdict
-word in a review record. `FAIL` returns the subject to authorized repair.
-Historical repair records also contain lines such as
-`Verdict: REOPEN — repair complete, awaiting independent Re-review`:
-still-not-PASS, yet the repair is finished and waiting for a reviewer. Read
-literally, the record's last `REOPEN` says `in_progress` for a task that is
-correctly `in_review`.
-
-The comment matters as much as the status: a status says where the work is, a
-comment says why it moved. Write it in the same action, not afterwards —
-"afterwards" is reliably never.
-
-**The same holds for a task anchor.** `menubar-experience` is one unit of work
-and development, review, repair, and re-review are its stages, exactly as they
-are a document's. An earlier version of this file kept a `Development:` /
-`Review:` pair there, justified as "implementation and review are separate
-objects with separate claims" — which is not a reason for two tasks, because a
-changing owner is what `assignee` is for. The pair was inherited from the bulk
-import and the justification written afterwards. One task per anchor:
-
-```text
-ad-<...>-dev     任务：<task-anchor>
-```
-
-`<document>` is the matrix row flattened: `req`, `arch`, `tasks`,
-`ux-<surface>`. Use topic-scoped IDs with no version segment, following the
-`ad-clierr-*` precedent — a topic carries no version, and embedding one would
-put version membership in a second place. A row marked `n/a` gets no task.
-
-Ordering follows the review order, expressed as dependencies: every other
-document task depends on the requirements document task, and the `tasks`
-document task depends on every other one. A task anchor's task depends on the
-`tasks` document task, which is what makes "the specification has not passed" a
-dispatch fact rather than something a reader must infer.
-
-**Create a topic's development tasks only after its `tasks.md` passes review.**
-The task matrix is what defines which anchors exist, and before `PASS` that
-matrix is a draft: anchors get renamed, merged, split, or dropped. Tasks created
-from a draft therefore assert work that may never exist, and the Gates created
-alongside them ask the user to authorize it — which is how nineteen objects
-(ten development tasks and nine `Authorize Development` Gates) came to sit in
-dispatch for topics whose requirements document had not yet passed round 4. They
-were deleted rather than repositioned, because dependency edges cannot fix an
-object that should not have been created: without a passed document there are no
-development tasks to order.
-
-The same rule read forwards: `设计：<topic>` creates document tasks only. The
-first command that may create development tasks is the one that follows the
-`tasks.md` task reaching `awaiting_commit`.
+[Project Rules](project-rules.md) owns the mandatory Codex trailer, full commit
+message, staged-scope, SSH-signature, and history-rewrite requirements. This check
+does not add delivery authority. Close matched tasks only after the authorized
+commit object and remaining delivery obligations have been verified.
 
 ## Bug lane
 
-A defect in released behavior does not automatically become a topic. `bug` is a
-built-in `bd` issue type — `bd create -t` accepts it with no `types.custom`
-entry, the same way `gate` is built in — so what was missing here was never the
-type. It was the question that decides how much process a defect earns.
+Propose the lane from the required decision, not diff size:
 
-**That question is not size.** A one-line change can move a contract, and a
-refactor spanning twenty files can leave every contract exactly where it was.
-Size measures the diff; what the process protects is the decision. So the
-triage question is:
-
-> Does fixing it require deciding any new user-visible behavior?
-
-| Answer | Lane | What it means |
+| Required work | Lane | Treatment |
 | --- | --- | --- |
-| No — the implementation never met a contract that already exists | **A** | Fix it directly. No topic, no design documents. |
-| Yes — a new code, state, output shape, or precedence rule has to be decided | **B** | Promote to a topic and run the full progression. |
-| Yes, but not now | **C** | `deferred`, recorded as a Backlog candidate in `docs/roadmap.md`. |
+| Restore an existing contract without deciding new user-visible behavior | A | Bounded repair with a fix record and independent review |
+| Decide a new code, state, output shape, or precedence rule | B | Feature topic with the applicable design/review progression |
+| Defer the decision/work | C | Park the bug and record the planning candidate |
 
-The two lanes are calibrated against work this repository has already done.
-`schema-version-signal` is Lane B and correctly so: it has to decide a stable
-error code, two new version fields, a menu-bar presentation state, and a
-precedence over `state_busy` — four decisions with no existing answer. The
-release defects found on 2026-09-01, by contrast, were all Lane A: a Homebrew
-Cask guard that printed its refusal without aborting, a notarization ticket
-lost on copy, and a Hook that dropped every `startup` route. Nothing about the
-intended behavior was in question in any of them; only the implementation was
-wrong. Eight of nine defects fell on the Lane A side, which is the measured
-reason this lane exists — routing all nine through a four-document topic is
-what made ordinary repair feel unaffordable.
-
-**The user decides the lane, not the agent.** An agent proposes it with its
-ground — "Lane A: `usage_session_routes` already contracts that an accepted
-SessionStart writes a route; only the admission check is wrong" — and the user
-confirms. Self-assignment is unsafe in one specific direction: the cheaper lane
-is always the more attractive one, so an agent judging its own process load
-drifts toward Lane A, and a contract change slips through with no design review
-behind it.
+The user confirms a new lane choice. Reuse an already selected lane in the active
+instruction or approved plan instead of asking again. Do not choose the cheaper
+lane solely to reduce process, and do not keep using Lane A when the repair
+reveals a new product or contract decision.
 
 ### Lane A in Beads
 
-Lane A reuses the single lifecycle above without modification. What it skips is
-the six document stages in front of it, not any state:
+Use one `bug` task and one `docs/fixes/<slug>.md` carrier under Documentation
+Workflow. Keep its ordinary work-product lifecycle and Development authorization
+Gate; there is no design Gate because no new design is being approved.
 
-```text
-ad-bug-<slug>     缺陷：<one-line observed symptom>
-```
+Independent review is required. Its full report belongs in the fix record, not
+only in a Beads comment. [Evidence](evidence.md) defines its task boundary as
+`fix:<slug>` with no containing topic gate; absence of a topic does not waive
+that task's required evidence gate.
 
-No topic segment, because a Lane A fix has no topic. Its work product is a code
-change plus one `docs/fixes/<slug>.md` record; see
-`docs/documentation-workflow.md` for that file's structure and lifecycle.
-
-- Type `bug`, created with `create -t bug`.
-- Status walks `open → in_progress → in_review → awaiting_commit → closed`,
-  unchanged, and `closed` still means the authorized commit exists.
-- One `Authorize Development` Gate, blocking the task by `depends-on`. There is
-  no `Authorize Design` Gate, because there is no design stage to authorize.
-- Review is **not** waived. Reducing the documents does not reduce the verdict:
-  a Lane A fix is independently reviewed like anything else, and the verdict
-  lives in its `docs/fixes/<slug>.md` record, never only in a Beads comment.
-  Beads is not a review-verdict authority, and a verdict recorded only here
-  would be the second, staler copy of a fact the repository owns.
-- **Completion evidence applies, and it has a defined shape.** A Lane A repair
-  is a CEv1 task boundary with `work_unit_id: fix:<slug>` — `fix` sits where a
-  topic would, matching the containing unit the stage commands below already
-  use. See `.agent-instructions/evidence.md`. A Lane A review therefore cites
-  that rule rather than recording `NOT_REQUIRED` for want of one; there is
-  simply no topic boundary above the task, since a Lane A fix has no topic.
-
-The stage commands are the project's existing ones, with `fix` as the containing
-unit:
+The established project scopes remain:
 
 ```text
 开发：fix / <slug>
@@ -445,90 +267,79 @@ unit:
 复评：fix / <slug>
 ```
 
-This invents no command. The Skill states that the containing unit is named by
-the project, and that where a project does not review a design document before
-implementation the design route runs straight to implementation — Lane A is
-exactly that case, declared here.
+These examples name the work product; the shared Skill still defines command
+matching and stage behavior.
 
 ### Lane B and Lane C in Beads
 
-Lane B keeps the `bug` issue as the origin record and does not convert it. The
-topic gets its own document tasks under `ad-<topic>-doc-*` as usual, and the
-`bug` issue takes a `depends-on` edge to the topic's `tasks` document task, so
-the defect closes when the work that fixes it is delivered rather than when the
-topic is created. `requirements.md` names the defect as its origin — "a measured
-defect in released behavior" is already one of the five recognized origins.
+Keep a Lane B bug as the origin record and create the topic's document tasks
+under the normal convention. Link the origin from `requirements.md`.
 
-Lane C sets `deferred` and records the candidate in `docs/roadmap.md`'s Backlog.
-A deferred bug carries no Gate; promoting it later is a planning decision, and
-re-triage starts from the same question, because a defect that was Lane C last
-month may be Lane A once the surrounding contract is settled.
+Document/decomposition dependencies are planning prerequisites, not proof that
+the defect was repaired. Once approved decomposition identifies the actual fix,
+link the origin bug to its fix-delivery tasks or the applicable topic delivery
+boundary. Do not close the bug because requirements or `tasks.md` were approved
+or committed; close it only when the work that remedies the defect is delivered
+under its required review/evidence and authorization conditions.
+
+Lane C uses `deferred` and a Backlog candidate in `docs/roadmap.md`, with no Gate
+for work that is not starting. Re-triage when it is promoted, using the current
+contract and the user's decision; do not create a replacement bug merely to
+restart its history.
 
 ## State transitions and authority
 
-Beads state transitions must preserve the project workflow boundaries. A Beads
-task is a schedulable coordination record; its lifecycle does not own
-requirements, phase state, review verdicts, or evidence.
+Apply repository and evidence obligations in their own stores; derive the task's
+coordination transition afterward. Do not mirror a complete state machine or
+criterion set into Beads, and do not create a CEv1 gate for a Beads-only change.
 
-Apply repository workflow and CEv1 transitions in their own authoritative
-stores first, then close the corresponding Beads task last as a derived
-coordination projection. Beads closure adds no completion gate.
-
-- Move a task to `in_review` only after the owning plan's `Dev` field is
-  synchronized and every completion gate required for that transition is
-  satisfied. Reaching `in_review` grants nothing: it reports that the work
-  product exists and needs a reviewer.
-- Move a task to `awaiting_commit` only after the latest applicable independent review
-  record says `Verdict: PASS`, the owning plan's `Review` field is
-  synchronized, and every required completion gate is satisfied.
-- If review finds a blocker, the task does not reach `awaiting_commit`. Record the
-  finding, release the reviewer's claim, move it back to `in_progress`, and
-  increment `round-N`. Do not create Repair or Re-review tasks — there is one
-  object, and repair and re-review are transitions on it.
-- Close a task only after its authorized commit exists. `closed` is a
-  delivery fact, not a review verdict.
-- A Beads task and a CEv1 WorkUnit need not map one-to-one. A concise handoff
-  comment may link stable task, WorkUnit, content-state, and evidence
-  identifiers; do not copy criteria, raw evidence, test output, review
-  verdicts, or CEv1 status into Beads.
-- Beads dependency, claim, heartbeat, comment, handoff, and closure changes do
-  not trigger CEv1 discovery, queries, invalidation, or upserts. CEv1 results
-  do not mutate Beads.
-- If Beads and authoritative repository state disagree, stop dispatch, inspect
-  the exact repository state and Beads history, then reconcile only within the
-  currently authorized workflow phase. Do not silently choose either side.
-- **Frozen, pending upstream.** `bd reclaim` does not exist in the installed
-  `bd`. A claim believed abandoned is taken over by re-reading the task,
-  recording in a comment why the previous actor is judged not to be working,
-  and then claiming it. When `reclaim` returns, never use `--any-replica` in
-  this single-server deployment.
+- Before `in_review`, verify the subject's actual readiness: document Draft,
+  implementation Dev, or the standalone fix's readiness contract as applicable.
+  Only gates required for that handoff apply; do not require a future review PASS
+  as a prerequisite for dispatching its reviewer.
+- Before `awaiting_commit`, verify the latest applicable independent PASS,
+  corresponding Review state, and required evidence gates for the exact subject.
+- A failed review returns the same task to repair. Release/transfer the reviewer's
+  ownership through the supported handoff operation and increment the task's
+  return counter; do not create separate Repair or Re-review tasks.
+- Before closing a work-product task, verify its actual authorized delivery.
+  Closing a Gate or administratively disposing of an erroneous record follows
+  its own explicit decision and is not a product completion claim.
+- Beads-only dependencies, assignment, comments, and handoff changes do not
+  invalidate or query CEv1. A CEv1 result does not itself mutate Beads; the active
+  workflow performs any required coordination transition.
+- If a Hook or task record disagrees with repository authority, inspect only the
+  exact relevant subject and history. Reconcile a confirmed in-scope mismatch
+  under the active authority; do not claim another actor's unrelated work from
+  a dirty-path signal or change a verdict to silence a warning.
+- An ownership conflict or unavailable capability is a named coordination
+  blocker. Do not infer a valid lease from a timestamp or repeatedly retry an
+  unsupported claim/reclaim form.
 
 ## Installed-version limits
 
-`bd` v1.2.2 is the v1.1.2 code re-released under a higher version number. v1.2.0
-and v1.2.1 were published accidentally on 2026-08-11 without release testing,
-and running v1.2.1 once migrated this database from schema v53 to v65; the
-cursor was rolled back to v53 on 2026-08-16 following the upstream runbook, and
-the 12 migrations' additive tables remain in the database, unused.
+A read-only inspection on 2026-09-07 reported bd 1.2.2 and the custom status
+configuration above. Its help documents `--claim` as setting the current actor
+and `in_progress`, with same-actor idempotence; `heartbeat` and `reclaim` were not
+listed as top-level commands. Help output is a capability clue, not an isolated
+behavior test or proof of a lease contract.
 
-The 1.2.x-only features are therefore absent: **work leases, `bd heartbeat`,
-`bd reclaim`, the events journal, sync federation, the HTTP API server, and
-provenance events.** Upstream states they return in a properly tested release.
+Verify version-specific operations when they are needed or fail; do not poll
+version/configuration on every turn or automatically change the deployment.
+Until a supported ownership/lease mechanism is verified for this installation,
+use explicit handoff and ownership checks. Do not invoke absent commands or use
+a different binary against the live store merely to obtain newer features.
 
-Two consequences bind dispatch today. There is no lease, so two agents can hold
-a claim simultaneously if one dies without releasing it — the comment discipline
-above is the only guard. And a `bd` that predates the migrations will re-migrate
-this database silently, so no v1.2.1 binary may touch it.
+The historical migration incident and earlier deployment limits are retained in
+commit `36e4b0e87f0ac0eda603e022afd52db26517a043`, file
+`.agent-instructions/beads.md`. They are provenance, not a blanket claim about
+all future versions. In particular, do not use the historically rejected v1.2.1
+binary on this live store or perform migrations as incidental task coordination.
 
-Clauses marked **Frozen, pending upstream** are unfrozen when a release restores
-the command, not rewritten around it.
+The convenience UI does not own workflow authority. Human board actions may
+coordinate work when explicitly intended, but do not replace phase authorization,
+review, evidence, or commit verification. Agent writes retain their own actor,
+not the UI's human identity.
 
-Bead Me Up, Scotty is a write-capable convenience UI, not a workflow authority.
-Use it for visibility, comments, dependency inspection, and deliberate human
-actions. Do not drag official phase tasks across columns, close them, delete
-them, or approve their Gates as a substitute for an explicit workflow command.
-Its human actor is `jobshen-human`; Agent writes must retain their own actor.
-
-Beads does not authorize repository or external delivery actions. Commit, push,
-tag, release, publication, PR creation, branch/worktree creation, installation,
-and deployment retain their existing explicit authorization boundaries.
+Beads grants no Git, release, installation, or deployment authority. Those actions
+remain under the user's explicit request and the applicable project rules.

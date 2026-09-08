@@ -1,43 +1,44 @@
 # Runtime Toolchain
 
-Read this file when a runtime capability this repository expects is missing,
-misbehaving, or being configured for the first time. `AGENTS.md` carries the
-short form; this file carries the detail and the degradation rules.
+Read this file when a required capability is missing, misbehaving, or being
+configured. `AGENTS.md` is the short entry point; this file owns capability
+availability and runtime diagnostics. [Evidence](evidence.md) owns gate semantics
+and records; [Project Rules](project-rules.md) owns verification scope.
 
-The distinction that matters throughout: **this repository declares which
-capabilities it depends on and how to behave without them. It does not store
-their addresses.** Endpoints, ports, and install paths differ per machine and
-per operator, so recording them here would produce a file that is wrong for
-every clone but one — the same failure mode `scripts/hooks/beads-consistency.py`
-avoids by identifying the repository through a file it owns rather than a path.
+Declare capability requirements rather than machine-specific endpoints, ports,
+credentials, or install paths. Resolve those from the operator's effective
+configuration and the applicable installation authority. Do not change a working
+configuration merely to match an example server name or path in documentation.
 
 ## MCP servers / MCP 服务
 
-Configuration lives at the user level, not in the repository. There is no
-`.mcp.json`, deliberately: an MCP endpoint is an operator's local deployment,
-and a committed address would be a credential-adjacent fact that goes stale.
+MCP connection configuration is operator-owned. This repository does not provide
+a `.mcp.json`. Typical server labels below identify capabilities, not a requirement
+to rename equivalent tools or assume one transport on every machine.
 
-| Server | Used for | Transport | Without it |
-| --- | --- | --- | --- |
-| `neo4j` | `completion-evidence/v1` gates, WorkUnit and criterion records | HTTP | Evidence work is `BLOCKED`, never silently skipped. Report the exact failure. A configured-but-unreachable provider is not an absent one. |
-| `neo4j-mem` | Durable project memory in the `agent-deck:` namespace | HTTP | Continue with repository sources. Report the limitation only when it materially affects the task; this never triggers completion-evidence fallback. |
-| `codegraph` | Symbol/callgraph lookup over the indexed tree; `.codegraph/` sits at the repository root and its daemon is local | stdio | Fall back to `rg`/`fd` immediately. Indexing is the operator's decision, so a missing index is not an error to fix. |
+| Capability | Typical server | Without usable access |
+| --- | --- | --- |
+| CEv1 query and authorized record operations | `neo4j` | Required evidence remains unresolved under Evidence's failure/fallback rules; never silently skip the gate |
+| Optional durable project knowledge | `neo4j-mem` | Continue from repository sources; memory availability does not control CEv1 gates |
+| Indexed symbol/call-path lookup | `codegraph` | Use `rg`/`fd` for the needed scope; do not create an index without authorization |
 
-Two operational facts that have already cost time in this repository:
+Distinguish configuration, installation, current-session tool exposure, and
+successful operation. A reachable backend does not prove that the current client
+has a usable MCP tool; an exposed tool does not prove a query or write succeeded.
+Use the client's supported reconnect or tool-refresh mechanism when available.
+If access cannot be refreshed in the current session, report that limitation and
+the required reconnect/new-session step rather than repeatedly probing the same
+endpoint. Do not assert that every client always connects only once.
 
-- **A client establishes MCP connections once, at session start.** If a server
-  was down then, restoring the server does not restore the session's access —
-  the tools stay absent until the client reconnects (`/mcp` in Claude Code, or a
-  new session). Probing the endpoint directly can therefore show it healthy
-  while the tools remain unavailable. Report both facts rather than concluding
-  the capability does not exist.
-- **Never route around an unavailable MCP by calling its backend directly.**
-  Report `BLOCKED`. Preserve the profile's upsert templates and relationship
-  preflight; see [Evidence record shape](evidence.md#record-shape--记录形状)
-  for the record contract and historical rationale.
+Never route around an unavailable MCP by directly writing its backend. Provider
+schema, namespace, authorization, target-state binding, and data-gap handling
+remain under Evidence. A NOT_VERIFIED result for missing graph records is not a
+transport outage; a successful RPC is not proof of a VERIFIED gate.
 
-`.agent-instructions/evidence.md` owns what a CEv1 record must contain and how
-the gate is queried. This file only owns whether the capability is reachable.
+For indexed code, use the project's CodeGraph routing before broad structural
+search. If it does not cover the requested script or metadata, inspect the named
+source directly. Graph relationships guide investigation but do not prove runtime
+configuration, SQL behavior, or client integration.
 
 ## Hooks / 钩子
 
@@ -98,70 +99,86 @@ a source comment or silent invocation alone is insufficient proof.
 
 ## Shared workflow and handoff Hooks
 
-The workflow and handoff Skills remain usable without their optional Hooks.
-Registration, available runtime tools, and verified behavior are distinct facts.
-Inspect the active runtime's registration before attributing an error to a Hook.
+The workflow and handoff Skills work without their optional Hooks. Their source
+packages own routing and output contracts; installed copies and runtime links
+must match the authorized source when a repair is delivered.
 
-The workflow Hook distinguishes progress from completion: a claim or write can
-satisfy its anti-idling guard without proving the phase complete. Its Skill owns
-the completion receipt and continuation contracts. Do not infer completion from
-a silent Stop or a successful tool call.
+The workflow Hook distinguishes progress from phase completion. Claims and writes
+can satisfy its anti-idling guard while the route remains unfinished. Use the
+Skill's current completion and continuation contract, including the current
+phase token after compaction; do not infer completion from silence or a successful
+tool call. Do not duplicate receipt grammar in this file.
 
-The handoff Hook requires project synchronization rules. Without a configured
-rule, it does not enforce automatic status synchronization; explicit Skill use
-still discovers the project's existing authorities and pointers. Do not create
-a handoff file merely to satisfy the Hook.
+The handoff Hook requires configured synchronization rules. Without a rule it
+does not enforce automatic synchronization, while explicit Skill use still
+finds the project's current authorities and pointers. Do not invent a handoff
+file or a timestamp-only update to satisfy a Hook.
+
+For a Hook failure, use the smallest evidence chain that identifies the layer:
+
+1. Identify the runtime, event, registered command, exit status, and relevant
+   stderr or structured output. Distinguish failure from an intentional blocker.
+2. Resolve the active source or plugin cache, installed file, and runtime link.
+   A previously working version or cache path is not evidence for the current one.
+3. Check the implicated interpreter, dependency, path, or permission operation.
+   A process health check alone does not prove that the failing Hook can load.
+4. Repair only the established, authorized boundary. If shared source code must
+   change, update its maintenance source and verify the intended installation.
+   Restoring missing dependencies from an existing lockfile does not by itself
+   require a source change. Do not alter credentials, unrelated settings, or
+   broad permissions just to make validation pass.
+5. Test relevant event payloads with isolated state; perform real-client
+   acceptance when required and authorized. Label those evidence types separately
+   and preserve the source/install content identity used by the checks.
+
+Do not execute real-session Hooks directly as a diagnostic shortcut. Use isolated
+fixtures or normal lifecycle invocation under the applicable authorization.
 
 ## Required command wrappers / 必用命令包装
 
-Three commands must not be invoked directly. Each has a wrapper that supplies
-something the bare command cannot infer, and in two cases the bare form silently
-produces a wrong record rather than failing.
+| Operation | Required entry point |
+| --- | --- |
+| Go tests | `scripts/run-go-test.sh` with the required package/filter arguments; runner options and log handling are documented in Project Rules |
+| Beads reads and writes | The current actor-qualified wrapper documented in Beads; never substitute bare `bd` or guess the deployment path |
+| Verification selection | Project Rules' L0–L4 matrix and affected-subsystem scope |
 
-| Instead of | Use | Why |
-| --- | --- | --- |
-| `go test …` | `scripts/run-go-test.sh …` | Keeps a large suite from flooding the transcript while preserving the full log and the real exit status. `make check-go-test-runner` keeps the wrapper honest via `scripts/test-run-go-test.sh`. Its exact flags, log handling, and environment variables are documented in `project-rules.md` — read them there, not here. |
-| `bd …` | `env BEADS_ACTOR=<codex\|claude-code> ~/.local/state/agentdeck-beads/bin/agentdeck-bd …` | The wrapper requires an actor and sets `BEADS_DIR`. Bare `bd` leaves `BEADS_ACTOR` unset and falls back to `git user.name`, recording the human operator as the author of an agent's comments and status transitions. Comments cannot be retracted. |
-| ad-hoc verification | The L0–L4 matrix in `.agent-instructions/project-rules.md` | Only the commands the current risk level selects are required. `make verify` is the aggregate gate; `make release-verify` is L4 and is not a default development, review, commit, or push check. |
-
-`make` targets are the build and verification entry points. `Makefile` is the
-list; `project-rules.md` decides which of them the current work actually owes and
-documents how each wrapper behaves. This table exists to say *that* a wrapper is
-mandatory and what the bare command costs; it deliberately does not restate the
-wrappers' behavior, because a second copy of a specification is the thing this
-repository keeps having to repair.
+[Makefile](../Makefile) owns build/verification target implementations. Do not
+copy an aggregate into every phase: `make verify` and `make release-verify`
+contain multiple checks and are used only when the selected scope requires them.
+Resolve source, test, and dependency paths before invoking commands rather than
+reusing a stale machine-specific command from an old report.
 
 ## Workflow command syntax / 工作流命令语法
 
-The stage commands `设计` / `开发` / `评审` / `修复` / `复评` are defined by the
-`development-workflow` Skill, not by this repository. Its
-`references/protocol-commands.md` is the syntax authority.
+The `development-workflow` Skill's `references/protocol-commands.md` owns command
+matching. Before emitting a next instruction, apply the self-check in
+[AGENTS.md](../AGENTS.md#runtime-contract--运行时契约) against the current Skill.
+The command must be usable as pasted; do not maintain a second parser here.
 
-Before emitting a workflow next instruction, apply the command self-check
-defined in [AGENTS.md](../AGENTS.md#runtime-contract--运行时契约).
-Use the Skill's current Matching rules for accepted command forms; do not
-maintain a separate parser specification in this file.
-
-Scope form follows this repository's own usage: `work-signals / architecture.md`,
-`work-signals / reviews/documents.md / R4-F1`. Keep review rules and round
-counts out of the scope field — those belong to the topic's `tasks.md`.
+Use the project's subject scope, such as `work-signals / architecture.md`, or
+`<topic> / reviews/<record>.md / <finding IDs>` for the applicable repair scope.
+Resolve the record's actual subject and history before selecting that scope.
+A generated next instruction never grants authority to run the next phase.
 
 ## Local-only runtime files / 仅本地的运行时文件
 
-`.gitignore` excludes `.claude/*` and `.codex/*` and then re-includes exactly
-the two files that are contract:
+The repository includes only these two runtime registration files under
+`.claude/` and `.codex/`: `.claude/settings.json` and `.codex/hooks.json`.
+The `.gitignore` patterns use `dir/*` so these files can be re-included.
 
-| Path | Committed | What it is |
-| --- | --- | --- |
-| `.claude/settings.json` | Yes | Claude Code hook registration |
-| `.codex/hooks.json` | Yes | Codex hook registration |
-| `.claude/settings.local.json` | No | Per-operator permissions and overrides |
-| `.claude/RESUME.md` | No | A session checkpoint Claude Code writes on its own; it names a `refs/claude/checkpoint-*` snapshot that expires. It is a local artifact, not project state — do not read it as a handoff and do not act on a stale one. |
-| `.codegraph/` | No | Local index and daemon state |
-| `output/` | No | Locally generated diagram exports, reproducible from the documents that describe them |
+| Path | Role |
+| --- | --- |
+| `.claude/settings.json`, `.codex/hooks.json` | Tracked repository Hook registrations; they are not the entire user/plugin configuration |
+| `.claude/settings.local.json` | Local permissions and overrides; not a shared product contract |
+| `.claude/RESUME.md` | Local session checkpoint, not project handoff authority; do not act on an expired checkpoint reference |
+| `.codegraph/` | Optional local index; its absence is not an instruction to generate one |
+| `output/` | Local generated exports, kept out of the source distribution |
 
-The entries are written `dir/*` rather than `dir/` because git cannot re-include
-a file whose parent directory is itself excluded.
+Resolve local state through its owning runtime; do not read authentication or
+session files merely to infer configuration. Preserve unrelated local files.
+`CLAUDE.md` remains a symlink to `AGENTS.md`, not an independently maintained copy.
 
-`CLAUDE.md` is a symlink to `AGENTS.md`. There is one file; editing either edits
-both, and they must never be allowed to diverge into two documents.
+Historical toolchain explanations remain available in commit
+`36e4b0e87f0ac0eda603e022afd52db26517a043`, file
+`.agent-instructions/toolchain.md`. Treat that snapshot as provenance rather than
+proof of current client behavior or deployment configuration.

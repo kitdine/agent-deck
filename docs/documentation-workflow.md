@@ -1,43 +1,46 @@
 ---
 status: active
+updated: 2026-09-07
 ---
 
 # Documentation Workflow
 
-This document is the authority for AgentDeck's documentation naming, topic
-structure, lifecycle, readiness matrices, size policy, and status vocabulary.
-Current release/topic execution state lives in [`docs/status.md`](status.md),
-and roadmap/backlog state lives in [`docs/roadmap.md`](roadmap.md). The stable
-documentation entry is [`docs/README.md`](README.md).
+This document owns documentation naming, topic structure, lifecycle, readiness
+matrices, size policy, and status vocabulary. The shared `development-workflow`
+Skill owns phase commands, review execution and presentation, completion
+receipts, and next instructions. This document supplies project-specific
+prerequisites and artifacts without defining a second phase protocol.
+
+Use [Project Status](status.md) for cross-topic execution state,
+[Roadmap](roadmap.md) for later planning and backlog, and [Documentation](README.md)
+for stable navigation. [Review Records](../.agent-instructions/review-records.md)
+owns record locations and metadata; [Evidence](../.agent-instructions/evidence.md)
+owns exact-content-state gates; [Beads](../.agent-instructions/beads.md) owns
+coordination. A review verdict, evidence result, and dispatch status are distinct.
 
 ## Naming Convention
 
-- Use lowercase kebab-case topic names, with no date prefix and no version
-  number.
-- A topic is a directory: `docs/topics/<topic>/`, with the fixed document names
-  in the Topic structure section below.
-- Review records live inside the topic and are named after what they review:
-  `docs/topics/<topic>/reviews/requirements.md`,
-  `.../reviews/ux-<surface>.md`, `.../reviews/architecture.md`,
-  `.../reviews/tasks.md`, and `.../reviews/<task-anchor>.md`.
-- `docs/specs/` holds contracts, not designs. A file there describes behavior the
-  product guarantees, not how a topic intends to build it.
-- Established living authorities such as `cli-design.md` and `cli-manual.md` keep
+- Use lowercase kebab-case feature-topic names without date or version prefixes.
+  Version-contract topics are the explicit exception: `vX-Y-Z-contract`.
+- Keep each feature topic under `docs/topics/<topic>/` using the structure below.
+  Use the record naming rules in Review Records instead of inventing another
+  review directory or naming scheme.
+- `docs/specs/` holds guaranteed product contracts, not unfinished designs.
+  Existing living authorities such as `cli-design.md` and `cli-manual.md` retain
   their stable names.
-- A follow-up that remains part of an unfinished plan uses a dated
-  `## Follow-Up — YYYY-MM-DD` subsection. Work with a distinct goal or acceptance
-  boundary gets a new plan.
-- Unscoped plan-local ideas belong in that plan's `Backlog` or
-  `Future Feature Ideas` section. Only repository-wide candidates belong in
-  `docs/roadmap.md`'s Backlog.
+- Keep a follow-up inside its unfinished topic when its goal and acceptance
+  boundary remain the same. Use a dated `## Follow-Up — YYYY-MM-DD` subsection
+  when useful. A distinct goal or acceptance boundary becomes a separate topic.
+- Keep topic-local candidates in that topic's Backlog or Future Feature Ideas;
+  repository-wide candidates belong in `docs/roadmap.md`.
 
-Use frontmatter appropriate to the document:
+Use frontmatter appropriate to the document; do not invent historical dates:
 
 ```yaml
 ---
 status: active | reference | historical
 created: YYYY-MM-DD
-updated: YYYY-MM-DD   # when a current document materially changes
+updated: YYYY-MM-DD   # material change to a living document
 retired: YYYY-MM-DD   # archived documents only
 version: N            # versioned specifications only
 ---
@@ -47,291 +50,193 @@ version: N            # versioned specifications only
 
 | Directory | Purpose | Lifecycle |
 | --- | --- | --- |
-| `docs/topics/<topic>/` | One coherent behavior change, from requirements through tasks | Keep `active` until every required gate passes; then archive the whole directory. |
-| `docs/fixes/` | One Lane A defect repair: observation, cause, boundary, verification, and its review record in one file | Keep `active` while the repair is open; archive the file once its commit exists. |
-| `docs/specs/` | Current product and interaction contracts only | Revise in place while authoritative. Receives a topic's stable contracts after its last task passes review. |
-| `docs/archive/` | Retired topics and superseded material | Preserve history; never use as the starting point for new work. |
-| `docs/README.md` | Stable documentation navigation | Change only when the documentation topology or stable entry contract changes. |
-| `docs/status.md` | Current release and cross-topic execution status | Update in place; keep topic detail in each `tasks.md`. |
-| `docs/roadmap.md` | Later version direction, backlog, and withdrawals | Update only for planning/version decisions. |
+| `docs/topics/<topic>/` | One coherent behavior change | Keep active through its required reviews, evidence gates, contract reconciliation, and applicable delivery boundary; retire the topic as a whole. |
+| `docs/fixes/` | One Lane A repair and its review history | Keep active while open; retire under Fix records after its authorized commit and required evidence finalization. |
+| `docs/specs/` | Guaranteed product contracts | Maintain in place; reconcile stable topic contracts at the topic's closure boundary. |
+| `docs/archive/` | Historical topics and supporting records | Preserve history; consult it for provenance, not as the default current authority. |
+| `docs/README.md` | Stable navigation | Update for documentation topology or authority changes. |
+| `docs/status.md` | Release and cross-topic execution state | Update changed state and pointers; keep topic detail in the topic. |
+| `docs/roadmap.md` | Later direction, backlog, and withdrawals | Update planning decisions; do not mirror review rounds or execution detail. |
 
 ### Topic structure
 
-A topic owns one coherent behavior change and carries no version number. Version
-membership is decided by a `vX-Y-Z-contract` topic and recorded in
-[`docs/roadmap.md`](roadmap.md); nothing about a topic changes when its target
-version does.
+A feature topic owns one coherent behavior change. Active version membership is
+owned by the version-contract topic and projected in `docs/status.md`; later
+version direction and unscheduled planning belong in `docs/roadmap.md`.
+See [Branching](../.agent-instructions/branching.md). Changing a proposed release
+assignment does not rename the feature topic or invalidate its review by itself.
 
 ```text
 docs/topics/<topic>/
   requirements.md        goals, non-goals, acceptance boundary
-  ux/<surface>.md        interaction design, one file per user-visible surface
-  architecture.md        development design, contracts, boundaries
-  tasks.md               task breakdown and the status matrices
-  reviews/<name>.md      one record per document and per task
+  ux/<surface>.md        interaction design for each applicable surface
+  architecture.md        contracts and development design
+  tasks.md               Documents and Tasks matrices
+  reviews/<name>.md      review history for each subject
 ```
 
 #### Why these documents, and how many
 
-A document exists to be reviewed as its own artifact — that is the reason a
-topic keeps its design next to its tasks instead of scattering it. So a document
-earns its existence by having a **distinct review question**, answered against
-different evidence:
+A document earns its own review when it answers a distinct question against
+specific evidence. Combine documents with the same question and evidence; split
+only when genuinely independent subjects require different judgments.
 
 | Document | Review question | Evidence |
 | --- | --- | --- |
-| `requirements.md` | Is the boundary decided? | Goals, non-goals, acceptance; no TBD |
-| `ux/<surface>.md` | Does every user-visible state have a presentation rule and copy? | The state set, in every shipped language |
-| `architecture.md` | Is every new contract fully specified, and every claim about existing code located? | Contract text and the code it names |
-| `tasks.md` | Does the decomposition cover the others, with nothing missing and nothing beyond? | The other documents |
+| `requirements.md` | Is the boundary decided? | Goals, non-goals, acceptance, and supported premises |
+| `ux/<surface>.md` | Is the declared design stage complete for every relevant state? | Copy, presentation rules, data requirements, and rendered specimens |
+| `architecture.md` | Are contracts specified and current-code claims verified? | Contract definitions, source locations, and field provisioning decisions |
+| `tasks.md` | Does the decomposition cover the approved documents without gaps or added scope? | The document set, task scopes, and verification levels |
 
-That gives the test for splitting or merging: **two candidate documents that
-would be reviewed by asking the same question against the same evidence are one
-document, and one document that needs two unrelated questions to judge complete
-is two.** Apply the test to content, not to length.
+Use one requirements document and one task matrix per feature topic, one UX
+document per applicable surface, and one architecture document unless independent
+contract domains justify a split in `tasks.md`. Explicitly mark non-applicable
+document kinds in the Documents matrix rather than silently omitting them.
 
-The count follows from the same test, which is why `ux/` is plural and
-`architecture.md` is not:
-
-- One `requirements.md`, because a topic is one coherent behavior change and so
-  has one boundary question.
-- One `tasks.md`, because there is one decomposition.
-- One `ux/<surface>.md` **per surface**, because reviewing one surface says
-  nothing about whether another is complete — each has its own state set and
-  copy.
-- One `architecture.md`, because "are the contracts specified" is a single
-  question. Split it only for genuinely independent contract domains, and argue
-  the split in `tasks.md` rather than assuming it.
-
-A `vX-Y-Z-contract` topic needs only `tasks.md`: it reconciles what other topics
-already delivered and originates no requirement, surface, or architecture of its
-own.
+A version-contract topic uses `tasks.md` to select and reconcile feature topics.
+It does not originate feature requirements, UX, or architecture; route new
+product decisions to their owning feature topic.
 
 #### The specimen requirement
 
-A `ux/<surface>.md` carries a rendered specimen of each state, not only rules
-about it. Rules and specimen are one document because they are reviewed against
-each other: a specimen with no rules cannot be checked, and rules with no
-specimen can satisfy every stated condition while remaining illegible. A
-geometry table of `340 pt` and `280 pt` does not let anyone see what the surface
-looks like at either bound.
+A UX document includes rendered specimens of the states it defines and the
+rules needed to evaluate them. For product surfaces, use the shared
+[Product Prototype](../prototype/README.md) as the design authority; cite its
+relevant surface and state instead of creating a competing prototype or an
+unrelated hand-drawn substitute.
 
-Be explicit about what a specimen settles. For a terminal surface it is close to
-exact, because the specimen and the output share a medium. For a GUI it is an
-approximation that settles hierarchy, copy, state coverage, and wrap or
-truncation at the narrow bound, and settles nothing about real typography,
-Dynamic Type, or assistive-technology order. Those need the manual acceptance
-the topic's tasks already require; a specimen is presentation evidence and never
-substitutes for runtime evidence.
+State what each specimen proves. Terminal specimens can closely represent
+character output. GUI specimens establish hierarchy, copy, state coverage, and
+narrow-bound wrapping or truncation; they do not establish native typography,
+Dynamic Type, accessibility order, or runtime correctness. Keep the applicable
+manual acceptance requirements in the task scope.
 
-The cost of omitting one is not hypothetical. An independent UI audit of the
-menu-bar design scored it zero on aesthetics because no prototype existed, which
-under that tool's own rules forced a redesign verdict its total contradicted.
-The score was invalid, and the document was also genuinely missing the evidence
-class the question needed.
+If a review depends on a specimen, include its content identity in the reviewed
+state as required by Evidence. A document-only fingerprint cannot establish the
+state of an independently changing specimen.
 
 #### When the set is decided, and by whom
 
-The set cannot be fixed when the topic is created. A surface or contract domain
-often becomes knowable only when a later task's scope is written, and pretending
-otherwise is how a required document goes missing without anyone noticing.
+The Documents matrix in `tasks.md` is the sole declaration of the topic's document
+set. The author proposes it; the `tasks.md` reviewer ratifies it against the
+requirements, surfaces, contracts, and implementation scope.
 
-So the set is a claim, and the `Documents` matrix in `tasks.md` is the only
-place that claim lives. Do not also declare it in prose elsewhere; a second
-writer is how the two drift apart.
+- Declare required but unwritten documents with Draft unchecked. Do not create
+  empty files merely to fill rows.
+- Mark non-applicable kinds explicitly. Update the declared set when a newly
+  identified surface or contract domain changes it.
+- Changing the set returns `tasks.md` to review. Other documents retain their
+  verdicts only if the change does not invalidate their content or assumptions;
+  assess affected subjects instead of resetting every review mechanically.
+- Authoring a newly required document is separate design work under the applicable
+  phase authorization; a matrix row does not authorize implementation of it.
 
-- List a document that is required but **not yet written** as a row with `Draft`
-  unticked. An empty row is the point — it makes the gap visible. Never commit
-  an empty file to fill it.
-- List a kind that does not apply as a row saying so, rather than omitting it
-  silently, so a reader can tell "decided not to" from "forgot".
-- Revise the set — the matrix rows — whenever a task's scope names a surface or
-  contract domain it does not cover. Revising the set adds a row; it does not
-  write the document. That is a later `设计：<topic> / <document>`.
-- `bash scripts/check-topic-docs.sh` audits the result, and the `tasks.md` reviewer runs
-  it, because that review is where the set is ratified. It compares three things
-  that must agree — what the matrix declares, what exists on disk, and what the
-  topic's own `requirements.md` names as a surface — so a required document that
-  nobody remembered fails a check instead of waiting to be noticed. That third
-  comparison only works because `requirements.md` names each surface by its
-  path; a surface described in prose alone is invisible to it, which is how
-  `ux/widget.md` stayed missing.
-- It is a workflow tool, not a build step. It reads only `docs/topics/**`, so no
-  code change can fail it, and putting it in `make verify` would fail a
-  code-only CI run for a missing design document. Documentation obligations bind
-  the phase that owns them, not the build.
+Run `bash scripts/check-topic-docs.sh` when reviewing `tasks.md`. The checker
+compares declared rows, on-disk topic documents, and local `ux/<surface>.md`
+references across topic-root and UX Markdown files. It excludes review and
+prototype files from the on-disk document inventory and excludes recognized
+cross-topic surface references. It also flags files shorter than ten lines as
+possible stubs. These are structural checks, not proof of semantic completeness.
 
-The author proposes the set; **the `tasks.md` reviewer ratifies it**. This adds
-no reviewer role, because `tasks.md`'s review question already asks whether the
-breakdown covers the other documents with nothing missing — whether the set
-itself is complete is that same question. It follows that changing the set
-returns `tasks.md` to review, and only `tasks.md`; the other documents keep
-their verdicts.
+The checker scans all active topics and currently has no topic-selection flag.
+Attribute its findings to their topics; report unrelated gaps without repairing
+or claiming unrelated work. Missing drafts are expected during design but must
+be resolved before the document set can pass review. Do not add filler to evade
+a checker result or silently waive a required check; report any mismatch between
+a valid lifecycle case and the checker for scoped resolution.
+
+Keep this check in the documentation workflow, not in product build or release
+aggregates. Its exit codes are 0 for clean, 1 for gaps, and 2 for harness failure.
 
 #### Creating a topic
 
-A topic is promoted from one of five origins, and the origin belongs in
-`requirements.md`'s opening so a later reader can tell why the work exists:
+Record the topic's origin in `requirements.md`: a narrowed roadmap theme, backlog
+candidate, another review's finding, a measured defect requiring a new contract,
+or a direct user request. A repair that restores an existing contract is Lane A
+and follows Fix records instead of creating a topic.
 
-- a Roadmap version theme, narrowed to one coherent behavior change;
-- a Backlog candidate;
-- a finding recorded in another topic's review;
-- a measured defect in released behavior **that requires deciding new
-  user-visible behavior to fix** — a defect whose repair only makes the
-  implementation meet a contract that already exists is a Lane A fix and
-  never becomes a topic; see the Bug lane in
-  [`.agent-instructions/beads.md`](../.agent-instructions/beads.md);
-- a direct request.
+Use `设计：<topic>` for a new topic. The Skill's initialization command adapts
+project guidance; it does not create a product topic. Follow its current command
+matching rules, without duplicating the parser specification here.
 
-Promote with the design trigger, naming a topic that does not exist yet:
-
-```text
-设计：`<topic>`
-```
-
-Not `初始化`. That command is the workflow's project-initialization route, which
-refreshes the managed guidance block in `AGENTS.md` and runs once per
-repository; reusing the word for topic creation would make one trigger mean two
-things. Creating a topic is design work anyway — `requirements.md` is the
-boundary decision, which is exactly what the design phase produces.
-
-**A topic starts from an observation, not from an idea.** Both topics promoted
-so far open with measurement — one with a table of `error.code` and
-`error.message` values captured from the released binary, the other with counted
-attribution shares from the real local store. That is not a stylistic habit. The
-review question for `requirements.md` is whether the boundary is decided, and a
-boundary around a problem nobody has observed cannot be decided, only guessed.
-So the minimum input is the observed behavior and how it was measured, the
-surfaces and contracts it touches, and what is deliberately excluded.
+Start from a concrete problem or user-requested outcome. For a defect, record
+the observed behavior and how it was measured. For a new capability, record the
+user's goal, the current limitation, and available supporting evidence; distinguish
+unverified assumptions from observations. Do not invent runtime measurements for
+behavior that does not exist. Define affected surfaces, contracts, exclusions,
+and acceptance before approving the requirement boundary.
 
 #### The progression from a topic to development
 
-A new topic is a name and an observation. Nothing else exists, so the useful
-question is not which documents a topic may carry but what to do next. Each
-stage below states what it produces and when it is finished.
+The table defines artifact dependencies, not new workflow phases. Its completion
+column describes the local design or review result; use the Skill, Evidence, and
+Beads authorities for mandatory synchronization, gates, and checkpoints.
+A local PASS alone does not mean a task is committed or a topic is complete.
 
 | Stage | Command | Produces | Finished when |
 | --- | --- | --- | --- |
-| 1. Boundary | `设计：<topic>` | `requirements.md`, plus `tasks.md` holding only the Documents matrix | The boundary is decided and the intended document set is declared |
-| 2. Boundary review | `评审：<topic> / requirements.md` | A review record | `Verdict: PASS` |
-| 3. Surface framework | `设计：<topic> / ux/<surface>.md` | Layout, hierarchy, states, and a **data requirements list** naming the field each element needs | A reviewer can see the surface and read what it demands |
-| 4. Framework review | `评审：<topic> / ux/<surface>.md` | A review record | `Verdict: PASS` on the framework and its requirements list |
-| 5. Contract | `设计：<topic> / architecture.md` | Contracts and boundaries, provisioning each requested field or vetoing it with a stated ground | Every requested field is provisioned or refused in writing |
-| 6. Contract review | `评审：<topic> / architecture.md` | A review record | `Verdict: PASS` |
-| 7. Surface final | `设计：<topic> / ux/<surface>.md` | The surface absorbing any veto | No element depends on a field the contract refused |
-| 8. Decomposition | `设计：<topic> / tasks.md` | The Tasks matrix | Every task has an anchor, its files, and a verification level |
-| 9. Decomposition review | `评审：<topic> / tasks.md` | A review record | `Verdict: PASS`; the topic is now developable |
-| 10. Development | `开发：<topic> / <task-anchor>` and its review | Code and tests | Per the Tasks matrix |
+| 1. Boundary | `设计：<topic>` | `requirements.md` and `tasks.md` with the Documents matrix | Boundary and intended document set are declared |
+| 2. Boundary review | `评审：<topic> / requirements.md` | Full review record | Current boundary passes review |
+| 3. Surface framework | `设计：<topic> / ux/<surface>.md` | Layout, hierarchy, states, specimens, and data requirements | A reviewer can assess the framework and requested fields |
+| 4. Framework review | `评审：<topic> / ux/<surface>.md` | Full review record identifying framework scope | The framework and its data requirements pass review |
+| 5. Contract | `设计：<topic> / architecture.md` | Contracts provisioning each requested field or refusing it with a reason | Every requested field has a written disposition |
+| 6. Contract review | `评审：<topic> / architecture.md` | Full review record | Current contract passes review |
+| 7. Surface final | `设计：<topic> / ux/<surface>.md` | Surface reconciled with the settled contract | Dependencies, copy, states, and specimens agree with that contract |
+| 7a. Final surface review, when required | `评审：<topic> / ux/<surface>.md` | Review of material changes, or documented reuse of valid evidence | The final surface has a valid review for the content used by decomposition |
+| 8. Decomposition | `设计：<topic> / tasks.md` | Tasks matrix | Tasks cover the approved documents and name files and verification levels |
+| 9. Decomposition review | `评审：<topic> / tasks.md` | Full review record and document-set check | Decomposition and document set pass review |
+| 10. Development | `开发：<topic> / <task-anchor>` | Approved implementation and proportionate verification | Follow the Tasks matrix and the Skill's completion and review contracts |
 
-A topic with no user-visible surface skips stages 3, 4, and 7 and runs
-requirements → contract → decomposition.
+A topic without a user-visible surface skips the surface stages. If final-surface
+reconciliation changes reviewed behavior, copy, contracts, or specimens, clear
+that surface's current Review approval and review the affected content before
+decomposition. Do not carry a framework PASS over material final-surface changes.
+If content and assumptions remain valid, document the impact assessment and reuse
+applicable evidence instead of automatically adding a broad review round.
 
-Stages 1 through 9 turn a topic into something developable; stage 10 builds it.
-The boundary between them is `tasks.md` passing review — before that there is no
-task to implement, and after it every task's scope is fixed.
+The Documents matrix exists from topic creation. Populate the implementation
+Tasks matrix during Decomposition, after its inputs are ready. Document dispatch
+tasks may already exist; they are not implementation task decomposition.
 
 ##### Why the surface leads the contract
 
-An earlier version of this table put `ux/` and `architecture.md` in one stage,
-reviewed in parallel, on the reasoning that their questions and evidence are
-independent. They are not, and the desktop topic proved it: the menu-bar surface
-needed a daily series, model shares, and attribution counts that the App Group
-projection did not carry, and rather than asking for them the surface document
-recorded them as rejected — citing a contract written days earlier as though it
-were a fact about the world. The result was a poor surface justified by a
-constraint nobody had defended.
+The surface states what data it needs; architecture must provision each requested
+field or refuse it with an explicit reason such as privacy, cost, or availability.
+An existing omission is a constraint to evaluate, not sufficient justification
+for rejecting the requirement. The final surface must reflect the settled answer.
 
-The dependency is real and it is a cycle: the surface cannot be finished without
-knowing what data exists, and the contract cannot be sized without knowing what
-the surface needs. What breaks the cycle is that the two sides are not
-symmetric. **A contract can nearly always be extended to carry more derived,
-non-sensitive data; a surface can never invent data that is not there.** So the
-surface goes first and states what it needs, and the contract answers.
-
-That gives architecture a specific obligation and a specific power. It must
-provision each requested field or refuse it, and a refusal names its ground —
-privacy, cost, or genuine unavailability — in writing, where a reviewer can
-disagree with it. "The contract does not carry that" is not a ground; it is the
-thing under discussion.
-
-**Decomposition is stage 5, not stage 1.** A task is a unit of development work,
-and what work exists is not knowable from a boundary alone; it is knowable from
-the specification. Producing the Tasks matrix earlier would mean writing a claim
-about documents that do not exist, which is exactly what its review question
-asks about — "does the decomposition cover the others" — and exactly what the
-evidence column names: the other documents. That is why `tasks.md` is reviewed
-last, and it has to be produced last for the same reason.
-
-`tasks.md` still exists from stage 1, because it is the topic's only status
-authority and the Documents matrix has to live somewhere. Its Tasks matrix is
-simply empty until stage 5.
-
-The verbs are the workflow's, unchanged; no command is invented here. What
-varies is the target after the colon, and one rule covers all of it: **the verb
-is the phase, and what follows the colon is what that phase acts on.**
-
-Repair and re-review take the same shape as the rest, and name the record rather
-than the subject:
+Repair and re-review name the applicable review record and finding scope:
 
 ```text
 修复：<topic> / reviews/<record>.md / <finding ids>
 复评：<topic> / reviews/<record>.md
 ```
 
-Naming the record, not the document or task, is what keeps the target
-unambiguous. A record's findings can span more than one document — the menu-bar
-round does — and a record's name can collide with a task anchor, so `修复：
-<anchor>` alone cannot say whether the design or the implementation is being
-repaired. A path can.
+Map each record to its subject and its own history before choosing findings or
+round numbers. The example scope does not create a new route or authorize a
+later phase; use the Skill's matching and next-instruction contracts.
 
-`开发` never writes a design document; it writes the code a reviewed document
-already specified. When a task's scope reveals a surface or contract the matrix
-does not cover, that is a `tasks.md` revision plus a later `设计：<topic> /
-<document>` — not something the task absorbs.
+Implementation may update documentation required by its approved scope. It must
+not silently invent an unresolved product or architecture decision. If a task
+exposes an undeclared surface or contract, revise the document set and return the
+new decision to its authorized design/review boundary.
 
 #### Why the progression is ordered that way
 
-The stage order is not a convention; it falls out of the review questions.
-
-- **`requirements.md` first** because every other document's scope derives from
-  its boundary. Findings raised against a surface or contract whose boundary is
-  still open evaporate when the boundary moves, so that review is spent twice.
-- **`ux/<surface>.md` before `architecture.md`**, because a surface states what
-  data it needs and a contract answers. Reviewing them in parallel invites the
-  contract to be treated as fixed and the surface to be trimmed to fit it, which
-  is exactly the failure the desktop topic recorded.
-- **`tasks.md` last** because its question is whether the breakdown covers the
-  other documents, which cannot be answered — or even written — before they
-  exist.
-
-The Documents matrix therefore exists from the moment the topic does but is
-ratified at the end. That is not a contradiction: it is a claim from the start
-and a verdict at the finish, which is the same shape as `Draft` and `Review` on
-every other row.
+Requirements define scope, the surface declares data needs, architecture settles
+contracts, and decomposition covers the approved result. Readiness follows these
+dependencies, not a fixed number of documents or repeated restatements of stage
+numbers. Do not use a prior verdict after its relevant premises have changed.
 
 ### Fix records
 
-A Lane A defect repair produces one file, `docs/fixes/<slug>.md`, and no topic
-directory. The lane and the triage question that selects it are defined in
-[`.agent-instructions/beads.md`](../.agent-instructions/beads.md); what belongs
-here is the file.
+A Lane A defect repair uses one `docs/fixes/<slug>.md` file containing the
+observation, verified cause, repair boundary, verification, and review history.
+[Beads](../.agent-instructions/beads.md) owns lane selection. This file's review
+question is whether the change restores the existing contract and whether its
+regression protection detects the original defect.
 
-**Why one file and not four.** The same test that splits a topic into four
-documents keeps a fix at one: a document earns its existence by having a
-distinct review question answered against distinct evidence. A Lane A fix has
-exactly one question —
-
-> Does this change make the implementation meet the contract that already
-> exists, and would the regression test fail if it stopped meeting it?
-
-— answered against one body of evidence: the observed defect, the code, and the
-test. There is no boundary question, because Lane A is defined by the boundary
-already being decided; no surface question, because no user-visible state is
-being invented; no decomposition question, because there is one change. Four
-rows would be four ways of asking one thing.
-
-The file carries the observation for the same reason `requirements.md` does: a
-repair for a defect nobody measured cannot be judged complete, only believed.
+Retain the established fix-carrier layout:
 
 ```markdown
 ---
@@ -341,50 +246,36 @@ created: YYYY-MM-DD
 
 # 缺陷：<one-line observed symptom>
 
-## 现象        what was observed, where, and how it was measured
-## 根因        the located cause, named by file and line
-## 修复边界    what changes and what deliberately does not
-## 验证        the commands run and their output, at the stated level
+## 现象
+## 根因
+## 修复边界
+## 验证
 ## Review — Round N
-Verdict: PASS | FAIL
 ```
 
-Ready to review when the observation is reproducible from what the file records,
-the cause names where it was verified in the code, the boundary states what is
-deliberately left alone, and a regression test exists that fails without the
-fix. That last clause is the whole readiness condition in practice: a repair
-with no failing-first test is a claim, and Lane A has no design review standing
-behind it to catch a wrong claim.
+This is a carrier example, not a report template. Append the full report using
+the current Skill format and [Review Records](../.agent-instructions/review-records.md)
+metadata, preserving earlier rounds and explicit finding dispositions.
 
-The sample above shows the fix carrier only. Append the full report using the
-current workflow Skill format; do not treat the sample as a replacement report
-template.
+A fix is ready for review when its record supports reproducing the observation,
+locates the cause, defines the bounded repair, and provides a regression test that
+fails without the fix. Preserve the project's existing failure-first requirement;
+do not substitute an unsupported completion claim.
 
-The review record lives in this same file rather than under `reviews/`, because
-there is one artifact and one review question; the round structure and verdict
-vocabulary are unchanged and follow
-[`.agent-instructions/review-records.md`](../.agent-instructions/review-records.md).
-A reopened finding returns the fix to work and increments the round, exactly as
-elsewhere.
+A failed review returns the fix to repair; only a subsequent review records its
+new verdict. Completing the repair does not self-issue PASS. If a new product or
+contract decision is necessary, re-triage to Lane B under its authority rather
+than expanding the fix record into an unreviewed design.
 
-Retire a delivered fix with one `git mv` to `docs/archive/fixes/<slug>.md`, set
-`status: historical` and `retired:`, and add no archive-index entry — a fix is
-too small to earn a line in `docs/archive/README.md`, and the file's own header
-carries everything a later reader needs. `docs/fixes/` therefore holds only open
-repairs, which makes an accumulating backlog of unfixed defects visible by
-listing the directory.
-
-**A fix record is not a place to grow a design.** If repairing it turns out to
-need a decision — a new code, a new state, a rule about precedence — the triage
-was wrong. Stop, say so, and re-triage to Lane B; do not let the fix file
-quietly become an undersized `requirements.md`. That failure has a specific
-shape worth naming: the file grows a "考虑的方案" section, and a decision that
-was never independently reviewed ships behind a repair.
+Retire the delivered fix to `docs/archive/fixes/<slug>.md` after its authorized
+commit and required evidence finalization. Set `status: historical` and `retired:`;
+retain its own provenance and add no archive-index entry under the existing
+fix-record convention. Do not rewrite older records to match a new format.
 
 ### Status
 
-`tasks.md` is the only status authority for its topic, and it carries two
-matrices because documents and tasks are different kinds of work:
+`tasks.md` owns the topic's document and implementation status. Preserve these
+headings and matrix columns because project tooling consumes them:
 
 ```markdown
 ## Documents
@@ -401,77 +292,74 @@ matrices because documents and tasks are different kinds of work:
 | 1. `<anchor>` | [ ] | [ ] |
 ```
 
-`Draft` means the author asserts the document is complete enough to review. It is
-not a formatting claim: a document may be marked ready for review only when it
-meets its readiness condition. Each condition below is the author's side of the
-review question that justifies that document existing at all, in Topic
-structure above — the author asserts it, the reviewer asks it.
+Draft asserts readiness for the document's declared design stage; Review reflects
+its latest applicable review. For a staged UX document, identify framework or
+final scope in the record. Before development, use the reviewed final scope,
+not an earlier framework state. Do not add findings or round narratives to the
+matrices.
 
 | Document | Ready to review when |
 | --- | --- |
-| `requirements.md` | Goals, non-goals, and acceptance boundary are stated; no TBD remains; it lists every user-visible surface **by its `ux/<surface>.md` path**, or says the topic adds none, and declares whether new contracts are in scope |
-| `ux/<surface>.md` | Every user-visible state has a presentation rule, copy in every shipped language, and a rendered specimen; every element names the data field it needs; no placeholder remains |
-| `architecture.md` | Every new contract is fully specified, every claim about existing code names where it was verified, and every field a surface requested is provisioned or refused with a stated ground |
-| `tasks.md` | Every task has an anchor, its files, and a verification level, and the set covers the other documents' scope with nothing missing and nothing beyond it |
+| `requirements.md` | Goals, non-goals, acceptance, and supported premises are stated; no TBD remains; each surface is named by its local `ux/<surface>.md` path or declared absent; new contract scope is identified |
+| `ux/<surface>.md` | The declared design stage covers relevant states, copy in shipped languages, rendered specimens, and each element's data requirements; final-stage content agrees with the settled contract |
+| `architecture.md` | New contracts are specified, current-code claims are verified, and each requested field is provisioned or refused with a reason |
+| `tasks.md` | The document set and task decomposition cover approved scope, with anchors, file boundaries, and proportionate verification levels |
 
-`tasks.md` appears in its own Documents matrix. Reviewing it asks whether the
-breakdown is sound and complete against the other documents, and whether the
-document set that matrix declares is itself complete — both are different
-questions from whether any task's implementation is correct.
+`tasks.md` appears in its own Documents matrix. Its review checks the decomposition
+and the completeness of the document set; it does not replace implementation
+reviews. A required unresolved boundary decision prevents requirements approval.
 
-`docs/status.md` records cross-topic progress, using a coarse `X/N` rollup
-where applicable. Per-document and per-task status remains in each topic's
-`tasks.md`.
+Keep cross-topic progress and pointers in `docs/status.md`. Apply the Skill's
+status-summary contract: no finding IDs, descriptions, dispositions, scores, or
+repair instructions in status-only summaries. Full reports remain in their
+own records. A Review tick requires the latest applicable PASS, while evidence
+gates remain separate under Evidence.
 
-- A `Review` tick requires a review record whose latest applicable round is
-  `Verdict: PASS`. A reopened finding returns that document or task to work.
-- A topic reconciles its stable contracts into `docs/specs/` only after its last
-  task passes review, not while it is still executing.
-- A `vX-Y-Z-contract` topic begins only after its included topics pass review,
-  raises the specification version exactly once, and ends at Review PASS.
-  Preflight, release-channel selection, tagging, publication, and local
-  installation remain separately authorized delivery stages.
-- Retire a completed topic with one `git mv` of `docs/topics/<topic>/` to
-  `docs/archive/topics/<topic>/`, set `status: historical` and `retired:` in each
-  document, and add one concise entry to `docs/archive/README.md`. Reviews travel
-  with the topic because they live inside it.
-- In `docs/README.md`, link to `docs/archive/README.md` rather than listing
-  individual archived files.
+Reconcile stable contracts into `docs/specs/` at the topic's closure boundary,
+after its last task passes review and applicable evidence gates are resolved.
+Version-contract planning may record intended membership before all feature
+work is finished; actual assembly and contract closure must follow Branching's
+review and evidence prerequisites. A version-contract topic does not create
+release authority. Preflight, tagging, publication, and installation retain
+their separate authorization boundaries.
+
+Retire a completed topic as a whole to `docs/archive/topics/<topic>/`, set
+`status: historical` and `retired:` in its documents, and add one concise entry
+to `docs/archive/README.md`. Reviews travel with the topic. The stable
+`docs/README.md` links to the archive index rather than listing individual
+archived files. Passing one document or committing one incremental change does
+not retire an unfinished topic or close a broader audit.
 
 ### Document size
 
-Length is judged by what produced it, not by a line count. A long document is
-correct when the length comes from recorded design argument — rejected
-alternatives with their reasons, retracted judgements, measured baselines — and
-wrong when it comes from accumulating unrelated work. Retired topics in the
-archive include several documents past a thousand lines that were deliberately
-never split.
+Keep the evidence and rationale needed to understand a document's decisions.
+Length alone does not justify splitting a coherent topic or removing historical
+evidence. Remove duplicate operational rules and unrelated material; preserve
+useful historical context through existing records or precise Git references.
 
-Do not split a document to hit a size target. Split a topic only when it stops
-owning one coherent behavior change.
+Historical explanations retained by the earlier form of this document are
+available in commit `36e4b0e87f0ac0eda603e022afd52db26517a043`, file
+`docs/documentation-workflow.md`. That snapshot preserves prior statements and
+their context; it is not a claim that every historical observation was reverified
+or that the snapshot is the current workflow contract.
 
 ### Entry document discipline
 
-Entry documents are routers, not accumulators:
+- `AGENTS.md` contains always-needed repository rules and conditional authority
+  routing, not every detailed workflow rule.
+- `docs/README.md` contains stable navigation and authority pointers.
+- `docs/status.md` contains current cross-topic execution and residual risk;
+  `docs/roadmap.md` contains later planning, backlog, and withdrawals.
+- Detailed rules have one routed owner. Topic status stays in `tasks.md` and
+  full review history stays in its review record.
 
-- `AGENTS.md` contains only rules every repository task must load plus the table
-  that routes conditional work to `.agent-instructions/` authorities.
-- `docs/README.md` contains only stable navigation and authority pointers.
-- `docs/status.md` contains current cross-topic release, execution status, and
-  residual risk; `docs/roadmap.md` contains roadmap, backlog, and withdrawals.
-- Detailed rules enter an existing routed authority or a new coherent authority
-  linked from the router; topic-internal status remains in that topic's
-  `tasks.md` and `reviews/`.
-
-Before adding a section to either entry document, ask whether every reader of
-that entry needs the section. If not, add or update the routed authority and
-place only a concise pointer in the entry document. Do not duplicate the moved
-text in both places.
+Before extending an entry document, determine whether every reader needs that
+content. Otherwise update its routed authority and add only a concise pointer;
+do not retain duplicate copies of the moved rule.
 
 ## Status Vocabulary
 
 - `active`: current authority, pointer, or unfinished execution plan.
 - `reference`: delivered supporting design retained for consultation; living
   authorities take precedence if behavior evolves.
-- `historical`: completed, superseded, or audit-only material under
-  `docs/archive/`.
+- `historical`: completed, superseded, or audit-only material under `docs/archive/`.

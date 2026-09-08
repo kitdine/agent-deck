@@ -1,7 +1,7 @@
 # AGENTS.md
 
-This file defines the operating rules for AI agents working in this project.
-本文件定义 AI Agent 在本项目中的工作规则。
+This file defines always-needed project rules and routes conditional work to
+its authoritative instructions.
 
 ## Project Overview / 项目概览
 
@@ -71,13 +71,13 @@ Each system owns a distinct kind of state:
 | --- | --- |
 | Repository plans, contracts, review records, and status documents | Requirements, phase state, and review verdicts |
 | CEv1 | Evidence status of a named WorkUnit for one exact target_content_state |
-| Beads | Dispatch, dependencies, claims, leases, and cross-agent handoff |
+| Beads | Dispatch, dependency readiness, assignment, and cross-agent handoff; supported ownership mechanisms are defined in its authority |
 
-Before the first Beads operation in a session, read
-`.agent-instructions/beads.md`. This applies to stage-internal coordination
-even when the user does not name Beads. Resolve task IDs from live state;
-take command forms, store location, and status vocabulary from that authority,
-not hooks, task descriptions, or previous transcripts.
+Before the first Beads operation, load its current routed authority or reuse a
+complete, still-valid copy already provided in this session. This includes
+stage-internal coordination. Resolve task IDs from live state and command forms,
+store location, and status vocabulary from that authority; Hook output or a
+remembered task description is not a substitute.
 
 Beads tasks and CEv1 WorkUnits need not map one-to-one. Cross-system IDs
 correlate records; do not mirror state between systems. Beads `closed` means
@@ -107,7 +107,9 @@ skip unrelated hooks, checks, status work, CEv1 discovery, and Beads queries.
 Report the denied action and the permission system's stated reason. Offer
 approval of that exact action or stopping to do another task. On approval,
 resume from the pending action without repeating completed work. Do not ask
-the user to restate stage authority already granted.
+the user to restate stage authority already granted. When a workflow route is
+active, use its current token-bound wait protocol; do not create a phase or invent
+a token for an ordinary permission pause.
 
 ### Supporting Skills / 辅助技能
 
@@ -140,33 +142,36 @@ capability-specific degradation rules.
 the user will paste verbatim. Use this project's `<topic> / <anchor>` scope
 form. Do not infer phase authority from a command that does not match.
 
-**Runtime capabilities.** This repository declares what it depends on and how to
-behave without it; it does not store endpoints, which differ per machine.
+**Runtime capabilities.** Resolve actual tools and deployment bindings through
+Toolchain; names below describe roles, not a mandate to reconfigure equivalent
+providers.
 
-| Capability | Used for | Without it |
+| Capability | Used for | Failure handling |
 | --- | --- | --- |
-| `neo4j` MCP | `completion-evidence/v1` gates and records | `BLOCKED`, reported exactly; never silently skipped and never worked around by calling the backend directly |
-| `neo4j-mem` MCP | Durable project memory | Continue from repository sources; does not trigger evidence fallback |
-| `codegraph` MCP | Symbol and callgraph lookup | Fall back to `rg`/`fd`; a missing index is a choice, not a defect |
-| `scripts/hooks/beads-consistency.py` | `Stop` hook in both runtimes; reports Beads state the tree has moved past | Reconciliation is the agent's action — the hook only ever reports and never writes to Beads |
+| CEv1 provider, normally Neo4j MCP | Evidence gates and authorized records | Follow Evidence's scoped failure/fallback rules; never silently skip a required gate or bypass MCP access |
+| Project-memory provider | Optional durable project context | Continue from repository sources; memory availability does not control evidence gates |
+| CodeGraph | Indexed symbols and call paths | Use scoped source inspection when unavailable or unsuitable; do not create an index without authorization |
+| Repository Beads consistency Hook | Stop-time coordination diagnostics | Validate the subject, content state, and active scope before reconciling; a report alone does not authorize unrelated work |
 
-MCP connections are established once at session start, so a server restored
-mid-session stays unavailable until the client reconnects. A reachable endpoint
-and an available tool are two different facts.
+Configuration, installation, current tool exposure, and successful operation are
+different facts. Use the current client's supported refresh/reconnect behavior;
+do not infer usable tools from backend health or repeat unchanged probes.
 
-**Required wrappers.** `scripts/run-go-test.sh` instead of bare `go test`;
-`env BEADS_ACTOR=<actor> …/agentdeck-bd` instead of bare `bd`, which otherwise
-records the human operator as the author of an agent's writes. Verification
-commands are selected by the L0–L4 matrix in
-[Project Rules](.agent-instructions/project-rules.md), not chosen ad hoc.
+**Required wrappers.** Use `scripts/run-go-test.sh` for Go tests and the
+actor-qualified Beads wrapper from its authority. Select verification through
+Project Rules' L0–L4 matrix and affected-subsystem scope, not the phase name or
+an unconditional full-suite checklist.
 
 `CLAUDE.md` is a symlink to this file. Editing either edits both.
 
 ## Routed Project Instructions / 按需项目规则
 
-Read `AGENTS.md` for every repository task, then load only the routed
-authorities required by the current work. A task spanning multiple rows reads
-each applicable file; do not read every conditional guide by default.
+Use this current entry for repository work and load only the authorities routed
+by the active task. Reuse complete, still-valid instructions already supplied or
+read; reload after a known change or when needed context is incomplete. Do not
+reread or poll instructions merely because a turn, phase, or model changed.
+Refresh live task/content/environment facts when the actual operation depends on
+them, under the relevant authority's evidence rules.
 
 | Current work | Additional authority |
 | --- | --- |

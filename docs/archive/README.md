@@ -5,7 +5,16 @@ created: 2026-07-22
 
 # Archived Documents
 
-Last updated: 2026-09-01
+Last updated: 2026-09-07
+
+## 2026-09-07 closeout: workflow-instruction optimization
+
+[Workflow-instruction optimization](workflow-instruction-optimization.md)
+preserves the independent advisory review, seven-file identity, and 26-session
+Codex acceptance and cost comparison. The living routed authorities own the
+revised rules. Claude acceptance is deferred; the operator stopped before new
+CEv1 recording. The separately delivered Beads observer Fix retains its existing
+review and immutable evidence gates.
 
 ## 2026-09-01 retirement: the `v0.5.0` feature topics
 

@@ -17,6 +17,7 @@ is recorded in `roadmap.md`.
 - Repository Hook maintenance: [Beads Stop session scope](archive/fixes/beads-stop-session-scope.md#review--round-2--2026-09-07)
   was delivered in signed commit `2d53d8e` after independent re-review and real-client
   observer acceptance. Its immutable Task gate is VERIFIED; the record is archived.
+  Beads coordination was closed after the local store recovered.
 
 ### Release
 
@@ -164,6 +165,16 @@ agentdeck version
 
 ### Active Development
 
+**Workflow-instruction optimization: Codex acceptance complete.** The seven
+approved instruction revisions passed independent advisory inspection and
+representative Codex runtime acceptance. The [archived assessment](archive/workflow-instruction-optimization.md)
+records scope, content identity, measured costs, retained components and limits.
+Claude acceptance is deferred by the operator and does not block this closeout.
+The operator elected to stop before new CEv1 recording; no new VERIFIED gate is
+claimed. The separately delivered Beads observer Fix keeps its existing review,
+real-client acceptance and immutable gates. Further instruction changes require
+one complete per-document proposal and approval.
+
 Next iteration planning: **v0.6.0**, re-selected on 2026-09-05. The six feature
 areas and their boundaries are recorded in
 [the roadmap](roadmap.md#v060--trusted-usage-and-subscription-visibility), with
@@ -175,8 +186,8 @@ implementation decomposition and version-contract assembly are still pending.
 
 | Topic | Version | Status | Purpose |
 | --- | --- | --- | --- |
-| [`v0.5.0` Contract Closure](topics/v0-5-0-contract/tasks.md) | `v0.5.0` | Released — contract complete, independently reviewed, and committed at `a547362`; `cli-design.md` is at version 28 and both contract Tasks are 2/2 implemented and reviewed. Six release candidates culminated in `v0.5.0-rc.6`, and stable `v0.5.0` published the exact `acb8384` commit. The directory remains live only until the separately owned, currently untracked schema-version-signal topic becomes commit-addressable, so a clean checkout retains the required `docs/topics/` audit root; no v0.5.0 work remains. | Version-wide specification raise and documentation reconciliation after every selected topic's tasks pass review. |
-| [Schema Version Signal](topics/schema-version-signal/tasks.md) | unassigned | Active — 4/4 documents reviewed. The final UX surface is committed; the six-task implementation decomposition passed review and awaits its commit checkpoint. Implementation has not started. See the topic status and review record. | One stable, actionable report when the core database's schema version exceeds the running binary's supported version, across `doctor`, the command paths, the desktop snapshot, and Hook delivery. Promoted from a measured defect: schema 21 on disk against two installed binaries supporting 18, reported six different ways. The sixth is silent: `usage hook event` exits 0 with empty streams and writes no row, which cost 19 Codex sessions their provider route between 2026-08-30 and 2026-09-01, unrecoverably. |
+| [`v0.5.0` Contract Closure](topics/v0-5-0-contract/tasks.md) | `v0.5.0` | Released — contract complete, independently reviewed, and committed at `a547362`; `cli-design.md` is at version 28 and both contract Tasks are 2/2 implemented and reviewed. Six release candidates culminated in `v0.5.0-rc.6`, and stable `v0.5.0` published the exact `acb8384` commit. The schema-version-signal documents and decomposition are now committed; this contract directory remains live pending its separately scoped retirement. No v0.5.0 product work remains. | Version-wide specification raise and documentation reconciliation after every selected topic's tasks pass review. |
+| [Schema Version Signal](topics/schema-version-signal/tasks.md) | unassigned | Active — 4/4 documents reviewed. The final UX surface and reviewed six-task implementation decomposition are committed (`66924c4` and `eb56415`). Implementation has not started. See the topic status and review record. | One stable, actionable report when the core database's schema version exceeds the running binary's supported version, across `doctor`, the command paths, the desktop snapshot, and Hook delivery. Promoted from a measured defect: schema 21 on disk against two installed binaries supporting 18, reported six different ways. The sixth is silent: `usage hook event` exits 0 with empty streams and writes no row, which cost 19 Codex sessions their provider route between 2026-08-30 and 2026-09-01, unrecoverably. |
 
 #### Retired into `v0.5.0`
 

@@ -6,30 +6,19 @@ authorization, and workflow-authority rules remain in `AGENTS.md`.
 
 ## Standard Work Stages / 标准工作阶段
 
-Unless the project workflow or user request defines otherwise, keep these stages
-separate:
+Use the shared `development-workflow` Skill for phase matching, execution,
+completion receipts, checkpoints, and next instructions. `AGENTS.md` owns scope
+and authorization; [Documentation Workflow](../docs/documentation-workflow.md)
+owns project artifact dependencies. Do not maintain a second phase sequence here.
 
-1. **Design / 设计**: clarify requirements, constraints, alternatives, and
-   acceptance criteria. Do not implement without approval when a design gate is
-   required.
-2. **Development / 开发**: implement only the approved scope and add
-   proportionate tests.
-3. **Review / 评审**: inspect correctness, regressions, security, deployment
-   behavior, data risk, and missing coverage. Review is read-only with respect
-   to product code, tests, configuration, and behavior unless fixes are
-   explicitly authorized. Project-mandated review logs, plan status fields, and
-   authoritative documentation indexes are review artifacts and must still be
-   updated when the active workflow requires them.
-4. **Fix / 修改**: address only approved findings and rerun relevant checks.
-5. **Re-review / 复评**: independently confirm previous findings are closed and
-   no new regressions were introduced.
-6. **Delivery / 交付**: commit, push, release, deploy, or open a PR only to the
-   extent explicitly authorized.
+Review and re-review keep product code, tests, configuration, and runtime behavior
+read-only unless repairs are explicitly authorized. Required review/status
+artifacts remain in scope under the active stage. An implemented repair is not
+an independent review result, and an incremental commit does not complete a
+broader unfinished task, topic, or audit.
 
-Do not collapse "fix implemented" and "review passed" into the same state.
-Stage boundaries do not invalidate verification evidence by themselves. Bind
-evidence to the exact content state and risk; do not rerun the same full suite
-merely because work moved from development to review, re-review, or delivery.
+Apply the verification rules below to the exact content state. A phase change
+alone does not invalidate prior evidence.
 
 ## Change Discipline / 修改纪律
 
@@ -46,77 +35,73 @@ merely because work moved from development to review, re-review, or delivery.
 
 ## Testing and Verification / 测试与验证
 
-AgentDeck has the verification command catalog below. It is not an
-unconditional checklist for every stage or every change:
+Select checks by affected behavior, subsystem, and risk. The command catalog is
+not an unconditional checklist. For Go work in the managed sandbox, use
+`GOCACHE=/private/tmp/agent-deck-go-build`; when downloads are needed, use
+`GOMODCACHE=/private/tmp/agent-deck-go-mod` rather than the user's module cache.
 
-In the managed sandbox, set `GOCACHE=/private/tmp/agent-deck-go-build` for
-every Go test, vet, and build command. If a first cross-build also needs to
-download modules, set `GOMODCACHE=/private/tmp/agent-deck-go-mod` for that
-command rather than writing to the user Go module cache.
+| Purpose | Command |
+| --- | --- |
+| Whitespace | `make check-whitespace` |
+| Scoped Go behavior | `scripts/run-go-test.sh <packages and -run selection>` |
+| Go core regression suite | `scripts/run-go-test.sh ./...` |
+| Relevant Go race checks | `scripts/run-go-test.sh -race <affected packages>` |
+| Go vet | `make vet` |
+| Go runner contract | `make check-go-test-runner` |
+| Both macOS CLI architectures | `make build-all` |
+| arm64 artifact size | `make check-arm64-size` |
+| Hook behavior | The affected Python/shell Hook tests; use isolated state and fixtures |
+| Release readiness | `make release-verify` |
 
-```bash
-make check-whitespace
-scripts/run-go-test.sh ./...
-scripts/run-go-test.sh -race ./...
-env GOCACHE=/private/tmp/agent-deck-go-build go vet -mod=vendor ./...
-env GOCACHE=/private/tmp/agent-deck-go-build GOOS=darwin GOARCH=arm64 go build -mod=vendor -trimpath ./cmd/agentdeck
-env GOCACHE=/private/tmp/agent-deck-go-build GOOS=darwin GOARCH=amd64 go build -mod=vendor -trimpath ./cmd/agentdeck
-make check-arm64-size
-make release-verify
-```
+`make build-all` uses the configured output directory and build metadata rather
+than leaving a bare `go build` binary in the repository root. `make verify`
+includes whitespace, runner, full Go tests, race tests, and vet; select it only
+when that complete set is required. `make release-verify` adds the release build
+and distribution checks and remains the L4 aggregate.
 
-`make check-whitespace` scans tracked and untracked content for trailing
-whitespace, CRLF line endings, and a missing final newline, excluding
-`vendor/` and binary files. It scans content rather than a diff, so a violation
-that is already committed stays visible instead of surfacing only in diffs that
-happen to touch it. It runs inside `make verify`, and therefore inside CI and
-`make release-verify`; run it alone as L0 evidence.
+`make check-whitespace` checks tracked and untracked non-binary content, excluding
+vendor content, for trailing whitespace, CRLF, and missing final newlines. It
+checks content, not only changed lines. Record unrelated violations separately
+without repairing or staging them as part of the current task.
 
-`scripts/run-go-test.sh` runs Go tests once with `-mod=vendor -count=1 -v`,
-captures combined stdout and stderr in a unique temporary log, preserves the Go
-test exit status, and prints both focused failure matches and the log tail on
-failure. It defaults `GOCACHE` to `/private/tmp/agent-deck-go-build`; pass normal
-`go test` arguments after the script name for a targeted package or `-run`
-selection. Use `AGENTDECK_GO_TEST_LOG` only when a stable task-specific log path
-is required. Set that path before a long run when the log may need inspection
-while the test process is still running.
-
-- Scale verification to the risk and blast radius of the change.
-- Select the smallest complete evidence set from this risk matrix:
+The Go test runner invokes tests once with `-mod=vendor -count=1 -v`, preserves
+the real exit status and full combined log, and prints a failure summary and tail.
+It defaults GOCACHE to the path above. Use `AGENTDECK_GO_TEST_LOG` for a known,
+task-specific log path when a long run may need inspection while still running.
+Do not rerun merely to recover output that is already in that log.
 
 | Level | Typical change | Required evidence |
-| ----- | -------------- | ----------------- |
+| --- | --- | --- |
 | L0 | Documentation, comments, ignore rules | Relevant format/link/discovery checks, `make check-whitespace`, and `git diff --check` |
-| L1 | Localized package or renderer behavior | Affected targeted tests |
-| L2 | Shared CLI, parser, SQLite schema, persisted or JSON/text contract | Targeted tests plus `scripts/run-go-test.sh ./...` |
-| L3 | Concurrency, credentials/privacy, migration execution, build or installer behavior | L2 plus only the relevant race, vet, cross-build, size, install, or privacy checks |
-| L4 | Release artifact readiness or explicit full release validation | `make release-verify` as the aggregate gate |
+| L1 | Localized package, renderer, or helper behavior | Affected targeted tests |
+| L2 | Shared parser, schema, persisted state, or wire/text contract | Targeted tests plus the affected subsystem's regression suite; Go core contract changes require `scripts/run-go-test.sh ./...` |
+| L3 | Concurrency, credentials/privacy, migration execution, build or installer behavior | L2 plus the relevant race, vet, cross-build, size, install, or privacy checks |
+| L4 | Release artifacts or explicit full release validation | `make release-verify` as the aggregate gate |
 
-- Path-based routing is a hint; assess actual behavior and failure modes.
-- During development, run fast targeted checks. Run the selected broader level
-  once after the final relevant edit, not once per workflow stage.
-- Review and re-review may add independent targeted evidence while reusing a
-  broader result bound to the same unchanged content state.
-- A prior result may be reused only when its command/result is available in the
-  current continuous workflow and a fresh status/diff/tree check proves relevant
-  content, dependencies, toolchain, configuration, generated files, and relevant
-  environment are unchanged. If any premise is unknown, rerun the relevant check.
-- Do not run every component and then `release-verify`, which already contains
-  those components, unless diagnosing a failing aggregate gate.
-- Commit and push of an already verified unchanged tree require staged/commit
-  tree and hook-effect checks, not another product test run.
-- Verify behavior at the source of truth. Browser-visible behavior requires
-  browser verification; database behavior requires database checks; deployment
-  behavior requires a real runtime or documented equivalent.
-- A successful build does not prove runtime correctness.
-- Do not claim success based on unverifiable historical output, source inspection
-  alone, or tests run before the final relevant edit without an exact-state check.
-- Record commands that could not be run and state the remaining risk.
-- Remove generated caches and temporary artifacts before delivery:
-
-```bash
-rm -rf bin/__pycache__
-```
+- Treat paths as routing hints, not proof of impact. A shared Hook/Skill contract
+  needs its own cross-runtime checks; an unchanged Go product does not gain a
+  full-suite obligation solely because the modified helper is also a parser.
+- Run fast targeted checks during implementation. Run the selected broader set
+  once after the final relevant change; do not run aggregate gates and all their
+  components again without a new failure or unresolved question.
+- Reuse evidence when its command/result and exact content identity are available
+  and the relevant tests, dependencies, configuration, toolchain, generated files,
+  and environment remain valid. Refresh only the uncertain or changed premise;
+  do not poll unchanged files or repeat a suite because a phase changed.
+- Existing review or delivery checks may establish current identity. Do not add
+  another equivalent status/diff/hash check merely to restate the same evidence.
+- Review may add independent focused evidence while reusing an unchanged broader
+  result. Commit/push checks concern the staged or committed tree, message,
+  signature, and Hook effects; they do not rerun unchanged product verification.
+- Verify the behavior at the layer claimed. Builds do not prove runtime behavior;
+  browser behavior needs rendered checks, database claims need database evidence,
+  and runtime integration needs a real client or an explicitly bounded equivalent.
+- Label simulated events, isolated fixtures, and real-session acceptance distinctly.
+  Report unavailable checks and residual uncertainty; do not convert an unrun
+  check or an unrelated health result into proof of completion.
+- Remove only temporary materials created by the current task when no longer
+  needed. Retain referenced evidence through handoff and preserve pre-existing
+  user files, caches, and unrelated diagnostics.
 
 ## Failure Diagnosis / 故障诊断
 
@@ -153,102 +138,60 @@ For Go test failures and timeouts:
 
 ## Commit and Push Rules / 提交与推送规则
 
-Commits and pushes require explicit authorization unless the user has invoked a
-documented workflow that explicitly grants that authority.
+Use only the exact Git action authorized by the user or an explicitly confirmed
+workflow delivery ceiling. Commit, push, tag, release, and history rewriting
+remain separate authorization boundaries under `AGENTS.md`.
 
-- Every commit materially produced with Codex assistance must include this
-  exact trailer, including documentation-only, review-artifact, plan-retirement,
-  fixup, and release-preparation commits:
+Every Codex-assisted commit requires an English Conventional Commit subject,
+a non-empty body explaining what changed and why, and this exact trailer:
 
 ```text
 Co-Authored-By: Codex <noreply@openai.com>
 ```
 
-- Do not substitute another agent's identity for Codex. If another AI agent
-  materially contributed, use that agent's established identity in an
-  additional trailer.
-- At the commit checkpoint, run the staged-scope contributor-attribution check
-  defined in `.agent-instructions/beads.md` for every staged work product backed
-  by Beads tasks. Show its included, excluded, trailer, and unresolved output
-  before showing or executing the commit command. Use task comments and roles as
-  the durable evidence; current `assignee` alone is never proof of authorship.
-  If a material contributor remains unresolved, stop before committing rather
-  than guessing an identity. This check does not replace the mandatory Codex
-  trailer above and does not grant commit authorization.
-- Before creating a commit, inspect the complete proposed commit message and
-  confirm the required trailer is present. After creating it, inspect the
-  committed message and verify the trailer and signature before reporting the
-  commit complete.
-- If a required trailer is missing from an existing commit, report it
-  explicitly. Do not amend, rebase, force-push, or otherwise rewrite history
-  without explicit authorization.
+Use additional established identities only for material contributors. For staged
+work backed by Beads tasks, perform the contributor check in [Beads](beads.md),
+including its included/excluded/trailer/unresolved output before the commit.
+Do not infer authorship from the current assignee, model name, or a review-only
+claim. Stop for unresolved material attribution rather than inventing an identity.
 
-- Use English Conventional Commit messages:
-
-```text
-feat: ...
-fix: ...
-docs: ...
-test: ...
-refactor: ...
-chore: ...
-```
-
-- Each commit must contain one logical change.
-- Do not mix behavior changes, dependency upgrades, generated output, and
-  unrelated documentation unless explicitly requested.
+Inspect the full proposed message before committing. Afterward inspect the actual
+commit object, confirm its subject, body, trailer, changed paths and content, and
+verify its SSH signature. Never amend or rewrite a commit to fix attribution
+without explicit authorization.
 
 ### Task-Level Commit Boundary / Task 级提交边界
 
-- The default commit unit is one completed plan task after Review PASS. When the
-  task is still entirely uncommitted, its implementation, tests, task-local
-  documentation, review record, and status updates normally belong in one
-  atomic commit.
-- Do not mechanically split development, review, fix, and re-review artifacts.
-  Review round count alone is not a split reason. Split only when the task has
-  independently deliverable or revertible slices, substantial multi-round
-  fixes, an earlier commit boundary, or an explicit project/user requirement.
-- Never combine multiple task anchors merely because they belong to the same
-  plan. Classify shared code, test, plan, and index files by hunk; stage only the
-  current task or stop and report why it cannot be isolated safely.
-- After a task reaches Review PASS, the workflow must present one commit
-  checkpoint before advancing: name the target task, proposed included scope,
-  excluded dirty work, and verification evidence, then ask whether to commit
-  that task now. The checkpoint is a reminder, not commit or push authority.
-- A plain `commit`, `提交`, or `提交目前变更` response to that checkpoint
-  authorizes only the named task. Outside a checkpoint, bind a commit request to
-  the just-completed user-authorized task; do not interpret it as the entire
-  dirty worktree. If multiple task candidates remain, report the split and ask
-  for the target instead of guessing.
-- If implementation was committed earlier, a later review/status commit may
-  contain only the remaining artifacts. Do not amend or rebase to recreate one
-  task commit without explicit history-rewrite authorization.
-
-默认一个已 Review PASS 的完整 task 对应一个原子 commit；开发、测试、评审记录和
-task 状态通常随该 task 一起提交。不得因同属一个 plan 而合并多个 task，也不得因工作
-流阶段或 Review 轮数机械拆分。共享文件必须按 hunk 判断归属。Review PASS 后只提醒
-一次是否提交当前 task；该提醒本身不授权 commit/push，紧随其后的简短“提交”只授权
-checkpoint 点名的 task。
-
-- Stage only intended files. Before committing, inspect:
-
-```bash
-git diff --cached --stat
-git diff --cached --name-only
-git diff --cached
-```
-
-- When the staged tree is the exact tree already verified, committing does not
-  trigger product verification again. After commit, verify the commit tree,
-  repository status, and whether hooks rewrote files; rerun affected checks only
-  if content changed.
-
-- Before pushing, verify the target repository, branch, remote, commit range,
-  and required checks.
-- Never force-push, rewrite shared history, or delete branches without explicit
-  approval.
-- Never use destructive commands such as `git reset --hard` or
-  `git checkout -- <path>` to discard work unless explicitly authorized.
+- Default to one reviewed, completed task per logical commit, including its code,
+  tests, necessary documentation, review record, and status changes. Do not split
+  one task mechanically by development/review/repair phases.
+- Split independently deliverable scopes or separately authorized boundaries.
+  Do not combine different task anchors merely because they share a topic, file,
+  or working tree. Classify shared files by hunk and preserve unrelated changes.
+- Present the Skill's Task checkpoint with the proposed scope, exclusions,
+  evidence, and delivery recommendations. Ask for commit authorization only when
+  it has not already been granted for that exact action. Do not turn an advisory
+  checkpoint into another approval loop or imply that it authorizes delivery.
+- A commit request responding to a checkpoint selects that named scope. Otherwise
+  bind it to the current user-authorized work; do not interpret it as permission
+  to commit every dirty file. If multiple candidates remain, prepare their
+  concrete scope split and ask which one is intended before committing.
+- Later fixes or status records may form a new authorized commit when the original
+  implementation was already committed. Do not rewrite history to recreate a
+  single task commit. Record the broader task/audit as still in progress when an
+  incremental commit leaves required work outstanding.
+- Before committing, verify staged paths, hunks, content identity, the full message,
+  and applicable review/verification evidence. A complete staged diff and scoped
+  content comparisons can establish these facts; use additional stat/name views
+  only when they answer a separate scope question.
+- After committing, compare the actual commit against the intended scope and
+  inspect status and Hook effects once. Re-verify product behavior only if a Hook
+  or another writer changed relevant content.
+- Before pushing, verify branch, remote, commit range, signed commit objects, and
+  required checks. Commit permission does not grant push permission.
+- Never use destructive reset/checkout operations to discard user work. Force
+  push, rebase, branch deletion, and other history rewrites need their own
+  explicit authorization.
 
 ## Dependencies and Vendoring / 依赖与 Vendor
 
@@ -301,22 +244,22 @@ Reasonable code defaults may include documented development ports, non-secret
 timeouts, and user-interface defaults. Examples in documentation must be clearly
 labeled as examples.
 
-不得为切换本地或部署环境而提交硬编码改动。优先使用环境变量、配置文件、密钥系统或
-项目已有的运行时注入方式。
-
 ## Runtime and Deployment Verification / 运行与部署验证
 
 - Runtime topology / 运行拓扑: One on-demand `agentdeck` binary uses
   `~/.agentdeck/agentdeck.sqlite3`, a machine-bound private
   `~/.agentdeck/credential.key`, `~/.codex/config.toml`, and
   `~/.claude/settings.json`. The optional watcher is foreground-only.
-- Allowed connectivity / 允许的连接方式: Normal commands and tests require no
-  network. Only an explicit `agentdeck usage price update` downloads the
+- Allowed connectivity / 允许的连接方式: Normal AgentDeck product commands and
+  automated product tests require no network. Only an explicit `agentdeck usage price update` downloads the
   configured public price catalog, and the desktop app may check for a newer
   stable release when that check is explicitly enabled; it defaults off, sends
   no local state, and only opens the official release page. Provider hosts are
   consumed by Codex or Claude, not probed by AgentDeck.
-- Prohibited exposure / 禁止的暴露方式: The tools must not expose network ports or alter host network configuration.
+- Prohibited exposure / 禁止的暴露方式: Normal product operations must not add
+  listening ports or alter host network configuration. Explicitly authorized
+  local development/test servers must stay scoped and loopback-bound; they do
+  not authorize new product listeners or public exposure.
 - Test-data policy / 测试数据策略: Tests use temporary homes, synthetic machine
   identities, synthetic session logs, fake credentials, and isolated encrypted
   credential stores. Real credentials, real key files, and real session sources
@@ -356,93 +299,52 @@ labeled as examples.
 
 ### Documentation authorities and maintenance / 文档权威与维护
 
-| Purpose                                        | Path                                                       |
-| ---------------------------------------------- | ---------------------------------------------------------- |
-| Stable documentation index / 稳定文档索引      | `docs/README.md`                                  |
-| Current release, topic stage, and active-version projection / 当前发布、topic 阶段与活动版本投影 | `docs/status.md` |
-| Later roadmap, backlog, and withdrawals / 后续路线图、backlog 与撤回项 | `docs/roadmap.md`            |
-| Requirements catalog / 需求目录                | `docs/topics/<topic>/requirements.md`            |
-| Interaction design / 交互设计                  | `docs/topics/<topic>/ux/<surface>.md`            |
-| Architecture or API contract / 架构或 API 契约 | `docs/topics/<topic>/architecture.md` while in progress, then `docs/specs/cli-design.md` |
-| Task breakdown and status / 任务划分与状态     | `docs/topics/<topic>/tasks.md`                   |
-| Review records / 评审记录                      | `docs/topics/<topic>/reviews/`                    |
-| Development guide / 开发指南                   | `AGENTS.md` (core/router) and `.agent-instructions/project-rules.md` (routed details) |
-| Documentation workflow / 文档工作流            | `docs/documentation-workflow.md`                           |
-| Deployment guide / 部署指南                    | Not applicable; this repository has no deployment process. |
-| Archived / superseded documents / 归档文档      | `docs/archive/` (see `docs/archive/README.md`)              |
+Use [Documentation](../docs/README.md) to discover current authorities.
+[Documentation Workflow](../docs/documentation-workflow.md) owns names, document
+sets, readiness, lifecycle, and retirement; [Review Records](review-records.md)
+owns record metadata and locations. Keep the table below as the state-routing
+contract, not a copy of document templates or phase instructions.
 
-A topic owns one coherent behavior change and carries requirements, interaction
-design, architecture, tasks, and reviews in one directory. `docs/specs/` holds
-only contracts the product guarantees, and receives a topic's stable contracts
-after its last task passes review.
-
-`docs/README.md` is the stable documentation router. `docs/status.md` answers
-which release is out and roughly how far each topic has got. Active version
-membership is owned by the applicable version-contract topic and projected in
-`docs/status.md`; `docs/roadmap.md` owns later version direction, planning
-intake, and withdrawals.
-Anything internal to one topic — its `Draft`/`Review` cells, round history,
-findings, dispositions, verification evidence — belongs to that topic's `tasks.md`
-and `reviews/`, and `tasks.md` is the only status authority for its topic. See
-**Where a Review Round Is Written Down** for the file-by-file split and the two
-rules agents most often break.
-
-Naming, structure, required documents, readiness conditions, status matrices, and
-lifecycle are documented once in `docs/documentation-workflow.md`. Do not
-duplicate that authority here; it changes as documents are added or archived.
-Review-record format lives in
-`.agent-instructions/review-records.md`.
-
-- Treat code, tests, configuration, and repository history as current truth.
-- Update the closest living document when behavior, contracts, requirements, or
-  operational procedures change.
-- Prefer updating a living document over creating a dated review or record.
-- Create a one-off document only for a genuinely temporary investigation,
-  incident, or phased plan.
-- Archive superseded documents into `docs/archive/` instead of deleting them
-  (`git mv`, not `rm`). Record why they were archived and where their
-  conclusions now live in `docs/archive/README.md`.
-- Keep `docs/README.md` synchronized only with documentation topology, update
-  `docs/status.md` for cross-topic execution state, and update `docs/roadmap.md`
-  for planning/version changes. Do not re-list archived files in the stable index.
-- Mark substantial documents with a status such as `active`, `reference`, or
-  `historical`.
-- Do not leave completed one-off plans marked active.
-- Sweep documentation at the close of major delivery milestones.
+- Update the closest living authority when approved behavior or requirements
+  change. Preserve historical records; do not rewrite them to current conventions.
+- Prefer existing authorities over new narrative logs. Create a distinct record
+  only when the approved investigation, incident, or plan needs one.
+- Follow the subject's retirement rules, including the distinct topic and Lane A
+  archive/index conventions. Do not require an archive-index entry for a fix when
+  its lifecycle explicitly omits it.
+- Update navigation only when topology changes. Update status only when its
+  subject changes; do not touch timestamps merely to appear synchronized.
+- Keep unfinished work active. A successful commit or local check does not close
+  a larger project objective whose requirements remain unfinished.
+- Review documentation at major delivery milestones, limited to the affected
+  authorities and their pointers.
 
 ## Handoff and Project State / 交接与项目状态
 
-The handoff file is a pointer to authoritative state, not a duplicate narrative
-store.
+A handoff pointer directs readers to current authority; it is not a second
+narrative store. This project currently uses its document indexes and topic
+records rather than a dedicated handoff file. Discover current targets instead
+of assuming that a particular filename must exist.
 
-- Handoff file / 交接文件: Not applicable; no dedicated handoff file exists.
-- Authoritative status source / 权威状态来源:
-  `docs/status.md`
-- Requirements source / 需求来源:
-  `docs/specs/cli-design.md`
-- Agent task dispatch source / Agent 任务调度来源:
-  Beads; resolve its current store and required wrapper through
-  [Beads coordination](beads.md).
-- Repository history / 仓库历史: `.` (`.git`)
+When resuming work:
 
-At the start of resumed work:
+1. Follow the documentation index and lifecycle to the relevant status, topic,
+   requirements, contracts, and any handoff pointers. Reuse complete, still-valid
+   instructions and evidence already loaded in this session.
+2. Check relevant repository drift when it can affect the work. Inspect history
+   for a specific provenance or change question rather than rereading it on every
+   turn. A new phase alone is not evidence of a content change.
+3. If coordination is required, resolve the matching task, blockers, claim, and
+   handoff comments through [Beads](beads.md). Do not use dispatch state as a
+   substitute for product or review evidence.
+4. Refresh drift-prone environment facts when the task depends on them. Treat
+   chat and memory as discovery aids and verify material claims at their source.
 
-1. Follow the current documentation index and lifecycle rules to identify
-   relevant handoff pointers and status authorities. Read the applicable
-   repository instructions and discovered targets; do not require a particular
-   handoff filename. Reuse previously loaded content when it remains current
-   and complete.
-2. Inspect status and recent history for every repository in scope.
-3. Read the relevant authoritative status, requirement, and contract documents.
-4. When current work uses Beads coordination, inspect the matching task,
-   blockers, claim, and handoff comments using the wrapper documented in
-   `.agent-instructions/beads.md`.
-5. Verify drift-prone facts in the current environment.
-6. Do not rely only on prior chat summaries or Beads state.
-
-Use `handoff-sync` when the user requests status synchronization or when the
-project's documented hook or workflow requires it. Do not hand-edit generated or
-skill-owned handoff sections outside that workflow.
+Use `handoff-sync` for an explicit synchronization request or its documented
+mandatory Hook trigger. It discovers existing authorities and pointers; an
+absent automatic Hook configuration does not disable explicit Skill use.
+Do not invent a handoff file, parallel status hierarchy, or generated-section
+edit outside that workflow.
 
 ## Unresolved Issues / 未解决事项
 
@@ -482,9 +384,10 @@ re-review, commit, or push check.
 
 ### Release Decision and Preflight / 发布决策与技术预检
 
-- A version-development workflow ends when its version contract task reaches
-  Review PASS. Do not create release-candidate or release tasks under that plan,
-  and do not infer an RC or stable-release decision from Review or CEv1 status.
+- When the version contract task reaches Review PASS, resolve its required
+  evidence gates and applicable delivery checkpoint before declaring version
+  development complete. Do not create release-candidate or release tasks under
+  that plan, or infer an RC/stable-release decision from review or evidence status.
 - At that terminal checkpoint, offer to commit the contract task. After an
   authorized commit, a push to any remote branch may make the commit eligible
   for technical preflight; pushing does not start preflight automatically.
@@ -530,96 +433,76 @@ re-review, commit, or push check.
 
 ### Completion Evidence and Project Memory / 验收证据与项目记忆
 
-`completion-evidence/v1` is the authority for exact-content-state completion
-evidence; it is distinct from Beads coordination and a review verdict. When
-current work crosses a new Task, Plan, or Release completion boundary, or
-creates or invalidates relevant evidence, read
-`.agent-instructions/evidence.md`. Reuse unchanged exact-state evidence rather
-than querying mechanically.
+Read [Evidence](evidence.md) when crossing a new Document, Task, Topic, or Release
+completion boundary, handling integration evidence, creating/invalidating
+relevant evidence, or materially depending on durable project knowledge.
+Use its WorkUnit identity, exact content binding, provider discovery, and failure
+rules; do not invent a separate Plan boundary or query gates merely because a
+workflow phase changed.
 
-`neo4j-memory` is an optional, non-authoritative store for durable project
-knowledge. Read `.agent-instructions/evidence.md` when resuming work or
-investigating a prior project decision where that knowledge is materially
-relevant. Code, tests, configuration, living documentation, and Git history
-remain the source of truth.
+CEv1 evidence, review verdicts, and Beads coordination remain distinct. Durable
+project memory is non-authoritative and separate from evidence; repository facts
+remain authoritative. Record only within the active scope and authorization.
 
 ### Branch Model and Integration / 分支模型与集成
 
-Plan-topic feature branches, release patch lines, and `main` are defined in
-`.agent-instructions/branching.md`. Read it only when current work crosses a
-branch, merge, or version assembly boundary.
+Read [Branching](branching.md) for a branch, merge, or version-assembly operation.
+Completing a feature does not itself authorize a merge; version-contract work
+owns assembly. Active version membership is recorded in that contract topic and
+projected in status, while later planning belongs in the roadmap.
 
-Two consequences bind other workflows. A feature plan finishing does not merge
-anything: merging into `main` is a task of the version contract plan that
-includes the plan, which is what keeps version membership reversible. And a merge
-produces a content state no prior evidence covers, so it carries its own review
-and evidence requirements that scale with the merge class.
+Classify the merge before selecting review/evidence work. Fast-forwarding to an
+already verified identical tree can reuse its evidence; a new combined tree or
+hand-written resolution follows the integration obligations defined in Branching.
+Do not describe every merge as a previously unverified content state.
 
 ### Review Artifact Finalization / 评审产物收口
 
-For an active topic that defines per-document and per-task review records and
-status matrices, `评审：...` and `复评：...` authorize only the review-artifact
-updates required by that topic:
+A real review/re-review stage authorizes its mandatory in-scope artifact and
+coordination work under `AGENTS.md`. Explicit user limits, such as a read-only
+advisory audit with no formal phase transition, still control the task.
 
-- run `bash scripts/check-topic-docs.sh` when the reviewed subject is a topic's
-  `tasks.md`, because that review ratifies the document set and the audit is
-  what makes the set falsifiable. It is a workflow obligation, not a build
-  step: it reads only `docs/topics/**`, belongs to no build, `verify`, or
-  release path, and therefore has no make target — a make alias would only
-  imply the opposite;
-- move the subject's Beads task to the status that phase owns and comment the
-  disposition, in the same action rather than afterwards. The transition table
-  is in `.agent-instructions/beads.md`, and it covers documents and task anchors
-  alike, each being one task. A phase that changes its subject without the
-  transition leaves dispatch asserting the previous state, which is how a task
-  sat `in_progress` for a day while nothing was being implemented;
-- append the current round and verdict under the topic's `reviews/` directory;
-- apply the workflow Skill's finding policy: keep Review unchecked while any
-  finding against the target remains open, regardless of severity; record an
-  explicit user decision when it closes a finding, and tick Review only on PASS;
-- synchronize the topic's `tasks.md` and `docs/status.md` when their status
-  changes — and only then. "Status" means the matrix cell and the topic's stage,
-  not the account of what happened. A `PASS` that ticks a `Review` cell is a
-  status change; a repair round is not, because the cell reads the same before and
-  after it. See **Where a review round is written down** below for what each file
-  may carry;
-- derive the next workflow instruction from the authoritative status matrices.
+- Use the current Skill's full report format, finding policy, checkpoints,
+  post-phase-blocker behavior, and token-bound receipt.
+- Map each review record to its subject and local history. Append the round to
+  the location defined by Review Records; Lane A fixes use their existing file.
+- For `tasks.md` review, run the document-set check required by Documentation
+  Workflow. Interpret its scope and limitations there; an unrelated topic's gap
+  does not authorize claiming or repairing that topic.
+- Keep Review unchecked while a finding against the target remains open,
+  regardless of severity. Record an explicit user decision when it closes a
+  finding. PASS and a required non-VERIFIED evidence gate remain distinct.
+- Perform the applicable Beads transition and durable comment under its own
+  contract, only for the subject being handled. A status change does not by
+  itself prove authorship, independent review, or evidence completion.
+- Update matrix readiness and cross-topic state only when they actually change.
+  A repair may affect readiness or handoff state but cannot self-issue a review
+  PASS. Do not force timestamp-only updates or copy review findings into status.
+- Confirm that the record, content identity, gate result, appropriate matrix
+  cell, and next instruction describe the same subject and stage. They need not
+  have identical status words because they own different kinds of state.
 
-These triggers do not authorize product changes, commits, pushes, releases, or
-environment updates except the repository-scoped, idempotent CEv1 evidence
-synchronization explicitly authorized above. Neo4j project-memory operations
-remain governed by the separate authority and scope above. Before reporting a
-review or re-review complete, confirm that the latest verdict, CEv1 gate,
-Review cell, documentation index, and next instruction agree.
+Review does not authorize product repair or delivery. Perform only the record,
+evidence, and coordination mutations already authorized by the active request.
 
 ### Where a Review Round Is Written Down / 评审轮次写在哪里
 
-Each review round has one authoritative record. The table below defines what
-each related document may contain; update a document only when its own subject
-changes.
+Each round has one full review record. Keep state summaries in their own
+formats, following the shared Skill's status-summary contract.
 
 | File | Carries | Never carries |
 | --- | --- | --- |
-| `docs/topics/<topic>/reviews/<record>.md` | The whole round: reviewed content state, method, scope, findings, dispositions, evidence, verdict | — |
-| `docs/topics/<topic>/tasks.md` | Document `Draft`/`Review` and task `Dev`/`Review` matrix cells, plus a short statement of the topic's current review state | Findings, dispositions, evidence, or a narrative of a round |
-| `docs/status.md` | The topic's cross-topic execution stage | Any finding, round number, verdict, per-document cell, or version-planning decision |
-| `docs/roadmap.md` | Version membership, roadmap direction, withdrawals, and additions | Execution detail or any review-round content |
+| Topic review record or Lane A fix record | Full round: subject, content identity, method, findings, dispositions, evidence, verdict | Another subject's history without an explicit relationship |
+| `docs/topics/<topic>/tasks.md` | Document Draft/Review and task Dev/Review cells, plus concise current state and report pointers | Finding IDs, finding descriptions or dispositions, scores, repair instructions, or round narratives |
+| `docs/status.md` | Cross-topic execution state, active-version projection, and pointers | Topic review details, scores, repair instructions, or per-document matrix copies |
+| `docs/roadmap.md` | Later version direction, unscheduled candidates, and withdrawals | Active-version membership authority, execution details, or review-round content |
 
-Write the round's findings, evidence, and verdict only in its review record.
-Update related status documents with only the information assigned to them
-in the table above, and only when their own subject changes.
-Restating a round's content in `tasks.md` or `docs/status.md` produces two or
-three copies of one fact, which then drift: a copy in `tasks.md` asserted a
-prototype self-check count of 39 that a later round in the same session had
-already moved to 49, and the former `docs/README.md` status paragraph had grown into a
-forty-line run-on of nineteen rounds before it was collapsed on 2026-08-19.
+Write the full report once. Update related documents only with information they
+own and only when their subject changes. A PASS updates the applicable Review
+cell, not a second account of the round. A repair updates status only if its
+actual readiness or handoff changed; it does not manufacture a new verdict.
 
-Two consequences follow, and they are the ones that get missed:
-
-- **A repair round writes only to its review record.** It changes no cell and no
-  stage, so `tasks.md` and `docs/status.md` are not touched. If a repair
-  genuinely needs one of them changed, that is a finding about that file, not a
-  status synchronization.
-- **A `PASS` writes the cell, not the story.** Tick the matrix cell, state the new
-  current review state in one or two sentences if the topic's convention has such
-  a statement, and leave the findings and evidence in the record.
+Historical rationale for these governance rules is preserved in commit
+`36e4b0e87f0ac0eda603e022afd52db26517a043`, file
+`.agent-instructions/project-rules.md`. The snapshot is provenance, not current
+runtime or completion evidence; do not duplicate its incident narratives here.
