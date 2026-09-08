@@ -6,8 +6,8 @@ import AgentDeckShared
 enum AgentDeckFoundationVerifier {
     static func main() async {
         let paths = Array(CommandLine.arguments.dropFirst())
-        guard paths.count == 4 else {
-            fail("expected the complete, partial, empty-client and legacy fixture paths")
+        guard paths.count == 5 else {
+            fail("expected the complete, partial, empty-client, legacy and schema-ahead fixture paths")
         }
 
         do {
@@ -15,7 +15,8 @@ enum AgentDeckFoundationVerifier {
                 completeData: Data(contentsOf: URL(fileURLWithPath: paths[0])),
                 partialData: Data(contentsOf: URL(fileURLWithPath: paths[1])),
                 emptyClientData: Data(contentsOf: URL(fileURLWithPath: paths[2])),
-                legacyData: Data(contentsOf: URL(fileURLWithPath: paths[3]))
+                legacyData: Data(contentsOf: URL(fileURLWithPath: paths[3])),
+                schemaAheadData: Data(contentsOf: URL(fileURLWithPath: paths[4]))
             )
             print("verified AgentDeck macOS foundation fixtures and helper boundaries")
         } catch {
@@ -75,7 +76,8 @@ enum AgentDeckFoundationVerifier {
         completeData: Data,
         partialData: Data,
         emptyClientData: Data,
-        legacyData: Data
+        legacyData: Data,
+        schemaAheadData: Data
     ) async throws {
         let complete = try decodeDesktopWireEnvelopeV1(completeData)
         let partial = try decodeDesktopWireEnvelopeV1(partialData)
@@ -113,6 +115,17 @@ enum AgentDeckFoundationVerifier {
         // Both additive families are absent from a legacy v1 payload. It decodes
         // as unavailable rather than failing, and wire_version stays 1.
         let legacy = try decodeDesktopWireEnvelopeV1(legacyData)
+        try require(legacy.data.health.checks.isEmpty, "legacy health check list remains empty")
+        let oldCheck = try JSONDecoder().decode(DesktopHealthCheckV1.self, from: Data(#"{"name":"database","status":"ok","count":23}"#.utf8))
+        try require(oldCheck.supportedCount == nil, "old check omits supported count")
+        let ahead = try decodeDesktopWireEnvelopeV1(schemaAheadData)
+        let schema = ahead.data.health.checks.first { $0.code == "schema_ahead" }
+        let hook = ahead.data.health.checks.first { $0.code == "hook_deliveries_dropped" }
+        try require(ahead.data.wireVersion == 1 && ahead.partial && !ahead.data.provider.available && !ahead.data.usage.available && !ahead.data.sessions.available && ahead.data.health.available, "schema-ahead section availability")
+        try require(ahead.warnings.contains("sessions_unavailable"), "independent session warning survives")
+        try require(schema?.count == 99 && schema?.supportedCount == 23 && schema?.recoveryCommand == nil, "schema version pair")
+        try require(hook?.count == 2 && hook?.supportedCount == nil && hook?.recoveryCommand == nil, "Hook refusal count")
+
         try require(legacy.data.wireVersion == 1, "the legacy fixture stays at wire version 1")
         try require(
             !legacy.data.usage.presentation.available && legacy.data.usage.presentation.scopes.isEmpty,
@@ -138,10 +151,8 @@ enum AgentDeckFoundationVerifier {
         )
         _ = try await embeddedRunner.snapshot()
         let invocations = await recordingProcess.recordedInvocations()
-        // A refresh updates the rebuildable usage and session indexes first and
-        // then reads one snapshot, so three invocations are the contract rather
-        // than a regression on the single snapshot read.
-        try require(invocations.count == 3, "expected two index refreshes followed by one snapshot read")
+        // One helper request refreshes both indexes before the streamed snapshot.
+        try require(invocations.count == 2, "expected one combined index refresh followed by one streamed snapshot")
         for invocation in invocations {
             try require(
                 invocation.executableURL.path == bundleURL.appendingPathComponent("Contents/Helpers/agentdeck").path,
@@ -149,15 +160,11 @@ enum AgentDeckFoundationVerifier {
             )
         }
         try require(
-            invocations[0].arguments == ["--quiet", "--format", "json", "usage", "scan"],
-            "the usage index refresh must use the approved argument array"
+            invocations[0].arguments == ["--quiet", "--format", "json", "desktop", "refresh-indexes"],
+            "the combined index refresh must use the approved argument array"
         )
         try require(
-            invocations[1].arguments == ["--quiet", "--format", "json", "session", "scan"],
-            "the session index refresh must use the approved argument array"
-        )
-        try require(
-            invocations[2].arguments == ["--format", "json", "desktop", "snapshot", "--wire-version", "1", "--recent-limit", "5"],
+            invocations[1].arguments == ["--format", "json", "desktop", "snapshot", "--wire-version", "1", "--recent-limit", "5", "--stream"],
             "helper command must use the approved argument array"
         )
 

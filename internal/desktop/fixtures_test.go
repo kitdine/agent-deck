@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kitdine/agent-deck/internal/hookrefusal"
 	"github.com/kitdine/agent-deck/internal/output"
 	"github.com/kitdine/agent-deck/internal/session"
 	"github.com/kitdine/agent-deck/internal/store"
@@ -34,6 +35,7 @@ func TestCanonicalFixturesAreReproducibleProducerOutput(t *testing.T) {
 		{name: "snapshot-complete.json", build: buildCompleteFixture},
 		{name: "snapshot-partial.json", build: buildPartialFixture},
 		{name: "snapshot-empty-client.json", build: buildEmptyClientFixture},
+		{name: "snapshot-schema-ahead.json", build: buildSchemaAheadFixture},
 	} {
 		t.Run(fixture.name, func(t *testing.T) {
 			generated := fixture.build(t)
@@ -143,6 +145,33 @@ func buildCompleteFixture(t *testing.T) string {
 func buildPartialFixture(t *testing.T) string {
 	t.Helper()
 	return encodeFixture(t, buildFixtureResult(t, fixtureStateRoot(t)))
+}
+
+func schemaAheadFixtureRoot(t *testing.T) string {
+	t.Helper()
+	root := fixtureStateRoot(t)
+	db, err := store.Open(context.Background(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(context.Background(), "UPDATE schema_metadata SET version=99"); err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 2; i++ {
+		if err := hookrefusal.Write(root, 99, store.CurrentSchemaVersion); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return root
+}
+
+func buildSchemaAheadFixture(t *testing.T) string {
+	t.Helper()
+	return encodeFixture(t, buildFixtureResult(t, schemaAheadFixtureRoot(t)))
 }
 
 // buildEmptyClientFixture covers the contract's empty concrete client: the

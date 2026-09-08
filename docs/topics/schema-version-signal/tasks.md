@@ -21,7 +21,7 @@ The document set is unchanged. Requirements, architecture, and the final UX
 surface have passed review. This decomposition passed Round 1 review on 2026-09-07; see
 `reviews/tasks.md` for evidence and the completion gate. Task 1 passed re-review
 with its required evidence gate VERIFIED. See [its review record](reviews/core-schema-contract.md) for the Task checkpoint.
-Task 2 passed review with its required evidence gate VERIFIED; see [its review record](reviews/hook-refusal-lifecycle.md) for the Task checkpoint. Tasks 3–6 still require their own development-stage authorization.
+Task 2 passed review with its required evidence gate VERIFIED; see [its review record](reviews/hook-refusal-lifecycle.md) for the Task checkpoint. Task 3 passed review with its required evidence gate VERIFIED; see [its review record](reviews/desktop-schema-wire.md). Tasks 4–6 still require their own development-stage authorization.
 
 Why each row exists, against the review question that justifies it:
 
@@ -72,7 +72,7 @@ carrier or rewrite its architecture record.
 | --- | --- | --- |
 | 1. `core-schema-contract` | [x] | [x] |
 | 2. `hook-refusal-lifecycle` | [x] | [x] |
-| 3. `desktop-schema-wire` | [ ] | [ ] |
+| 3. `desktop-schema-wire` | [x] | [x] |
 | 4. `menubar-schema-presentation` | [ ] | [ ] |
 | 5. `schema-signal-acceptance` | [ ] | [ ] |
 | 6. `contract-reconciliation` | [ ] | [ ] |
@@ -249,6 +249,85 @@ check without the update flag to establish reproducibility. The standalone
 verifier must also accept all five fixture paths, including the unchanged legacy
 payload. CLT fallback is decoding evidence only, never native UI acceptance.
 
+#### Task 3 implementation handoff — 2026-09-08
+
+- Codex implemented the producer-generated schema-ahead fixture, optional Swift
+  `supportedCount`, Go privacy/availability checks, XCTest assertions, and both
+  Swift fixture entry points. Workspace `agent-deck.schema-version-signal`,
+  branch `feature/schema-version-signal`, HEAD
+  `4285979ecec296ea8123090f2085161ef700e89d`.
+- The fixture carries schema 99/supported 23 and two synthetic Hook refusals.
+  Independent session-index availability is tested both ways. Existing producer
+  fixtures remain unchanged; legacy SHA-256 remains
+  `b4fc86e306b3ce557a744f4da2416faeb3e74b0fa60b95a354c7f116765400f2`.
+  Legacy has an empty health-check list; a separate old-shape check without
+  `supported_count` proves nil decoding without changing legacy bytes.
+- Passed: fixture generation, reproducibility without the update flag, targeted
+  producer/fixture/privacy tests, full vendored Go suite, and the standalone
+  Swift verifier over all five fixtures. Go logs in local TMPDIR:
+  `agentdeck-go-test.OpE7n7` (generation), `agentdeck-go-test.5LGGwu` (targeted),
+  `agentdeck-go-test.gOXap9` (full, SHA-256
+  `65d8e6925cb5b0ca861c9f64cbfe1b698c91e65fd252d2917e47b4e42ccb5733`).
+  The final changes after the Go suite only correct Swift verifier assertions;
+  unchanged Go evidence is reused. Swift 6.3.3, x86_64-apple-macosx26.0.
+- Harness diagnosis: the standalone decoder mirror already referred to nonexistent
+  `rhythm.cells` at HEAD. Its fixed-bound assertions now check the four serialized
+  arrays directly, preserving 168-cell/empty-array checks; all five fixtures pass.
+  The newly introduced nonempty-legacy assertion was corrected against the
+  unchanged legacy payload, and missing-field decoding remains explicitly tested.
+- **Initial blocking prerequisite (resolved below):** `bash scripts/test-macos-app.sh` builds the shared
+  decoder and runs the CLT fallback, passes the new schema and old-shape decoding
+  assertions, then fails at the pre-existing helper assertion:
+  `expected two index refreshes followed by one snapshot read`.
+  `EmbeddedHelperRunner.snapshot` actually performs one
+  `desktop refresh-indexes` request and one `desktop snapshot ... --stream`
+  request. The verifier still expects `usage scan`, `session scan`, then a
+  non-stream snapshot. This is a test-harness mismatch, not evidence of a
+  schema-wire failure. Updating those helper assertions exceeds Task 3's stated
+  permission to register the new fixture in that entry point. Separate scoped
+  repair authorization is required before rerunning this mandatory gate.
+  Final failure log: `/private/tmp/agentdeck-desktop-schema-wire-macos.log`.
+  CLT fallback establishes decoding only; XCTest/native UI acceptance was not run.
+- Current content fingerprint:
+  `47a97341a0680f75f8b23ea9a12c4f8b3ef05902a5f791549c5d707f0bab408f`.
+  Recipe: SHA-256 of `head=<HEAD>` followed by sorted `;<path>=<git hash-object>`
+  entries for the nine Task 3 changed files (eight tracked plus the new JSON),
+  excluding tasks.md/status.md. This includes both Swift verifier corrections.
+- At the initial blocked handoff, Task remained `in_progress`, Dev/Review unchecked; no completion, review PASS,
+  commit or push. CEv1 target:
+  `urn:ce:agent-deck:state:implement:desktop-schema-wire:F6Y6pjgFEZSajayT`.
+  Producer and Swift compatibility evidence are available; the mandatory
+  canonical-macOS verification criterion is blocked by the prerequisite above.
+  Fixed gate query confirms BLOCKED: two criteria pass, verification remains
+  blocked; four nodes and six relations were confirmed, six preflights passed.
+  Whitespace, topic-document and both workspace diff checks pass.
+
+#### Task 3 completion after supplemental authorization — 2026-09-08
+
+- The user explicitly authorized synchronizing the verifier's obsolete helper
+  assertions. They now require exactly `desktop refresh-indexes`, followed by
+  `desktop snapshot --wire-version 1 --recent-limit 5 --stream`, with the existing
+  flags and embedded-helper path assertion preserved. No runner behavior changed.
+- `bash scripts/test-macos-app.sh` now passes: shared Swift compilation, five
+  fixture checks and helper boundaries. Final log:
+  `/private/tmp/agentdeck-desktop-schema-wire-macos-final.log`.
+  This is CLT fallback decoding/helper evidence; native XCTest/UI was not run.
+  SwiftPM emitted user-cache warnings but completed successfully.
+- Reused the preceding targeted/full Go and standalone five-fixture Swift
+  results: their producer, tests, fixtures, shared decoder, standalone verifier,
+  dependencies and toolchain are unchanged by this helper-assertion-only update.
+- Final fingerprint `9b305fcd70ff0395b2f94bf6bab543e5644ac24454aa26d3a876f9fcf88156a5`,
+  using the same nine-file recipe and HEAD as above. The old blocked state remains
+  historical evidence, not the final candidate's gate result. Final target:
+  `urn:ce:agent-deck:state:implement:desktop-schema-wire:lfplhKUqIpF5bKrK`.
+- Implementation is ready for review; Dev checked and Review unchecked. No
+  review verdict, commit or push is implied. The final gate and handoff are
+  synchronized against this content state. Fixed CEv1 gate: VERIFIED (3/3),
+  no missing/invalidated/unresolved evidence. Four nodes and eight relations
+  were confirmed, including two explicit reuse links; all relation preflights
+  passed. Final macOS log SHA-256:
+  `80b5f27adca4fa700db94f3df29509b4c70b05007e1fe63c7807df07f8ec6bcb`.
+
 ### 4. `menubar-schema-presentation`
 
 **Depends on:** Task 3. **Result:** implement the approved D1–D9 surface without
@@ -373,5 +452,5 @@ Each Task has a corresponding `<topic>:<task-anchor>` evidence scope; actual
 WorkUnits and atomic criteria are resolved under Evidence before implementation.
 This design does not pre-create implementation dispatch or declare those gates
 verified. The document review does not check any implementation Dev or Review cell.
-Tasks 1–2 have passed review and their evidence gates; four implementation tasks remain.
-The next task is `desktop-schema-wire` under its own development-stage authorization.
+Tasks 1–3 have passed review and their evidence gates; three implementation tasks remain.
+The next task is `menubar-schema-presentation` under its own development-stage authorization.

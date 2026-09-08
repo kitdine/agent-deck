@@ -1,0 +1,99 @@
+{
+  "schema_version": 1,
+  "command": "desktop.snapshot",
+  "generated_at": "2026-08-13T10:00:00Z",
+  "data": {
+    "wire_version": 1,
+    "generated_at": "2026-08-13T10:00:00Z",
+    "next_refresh_at": "2026-08-13T10:05:00Z",
+    "provider": {
+      "available": false,
+      "routes": [],
+      "candidates": []
+    },
+    "usage": {
+      "available": false,
+      "from": "2026-08-13T00:00:00Z",
+      "to": "2026-08-14T00:00:00Z",
+      "tokens": {},
+      "counts": {},
+      "attribution_reasons": {},
+      "catalog_base_cost": null,
+      "provider_cost": null,
+      "known_catalog_base_cost": null,
+      "known_provider_cost": null,
+      "unattributed_catalog_base_cost": null,
+      "pricing_complete": false,
+      "unpriced_components": 0,
+      "warnings": [],
+      "presentation": {
+        "available": false,
+        "scopes": [],
+        "client_subtotals": {
+          "available": false,
+          "items": []
+        }
+      }
+    },
+    "sessions": {
+      "available": false,
+      "total": 0,
+      "periods": {
+        "available": false,
+        "items": []
+      },
+      "work_signals": {
+        "activity": {
+          "available": false,
+          "items": []
+        },
+        "workflow": {
+          "available": false,
+          "items": []
+        },
+        "tooling": {
+          "available": false,
+          "items": []
+        }
+      },
+      "items": []
+    },
+    "health": {
+      "available": true,
+      "status": "unhealthy",
+      "healthy": false,
+      "problems": 2,
+      "warnings": 1,
+      "errors": 1,
+      "checks": [
+        {
+          "name": "state_permissions",
+          "status": "ok"
+        },
+        {
+          "name": "state_lock",
+          "status": "ok"
+        },
+        {
+          "name": "hook_deliveries",
+          "status": "warning",
+          "code": "hook_deliveries_dropped",
+          "count": 2
+        },
+        {
+          "name": "database",
+          "status": "error",
+          "code": "schema_ahead",
+          "count": 99,
+          "supported_count": 23
+        }
+      ]
+    }
+  },
+  "warnings": [
+    "provider_unavailable",
+    "sessions_unavailable",
+    "usage_unavailable"
+  ],
+  "partial": true
+}
