@@ -1,6 +1,6 @@
 ---
 status: active
-version: 28
+version: 29
 created: 2026-07-14
 ---
 
@@ -1245,7 +1245,12 @@ only known, bounded lifecycle payloads. It writes nothing to standard output
 and fails open at every step: oversized, malformed, or unrecognized input,
 unavailable state, and any recording failure all end in success without output,
 because no attribution outcome may delay or prevent a client from starting,
-resuming, reloading settings, or exiting. When Hooks are absent, untrusted,
+resuming, reloading settings, or exiting. A store-open refusal identified as
+`schema_ahead` additionally attempts to write the bounded, private
+`hook-refusals.json` diagnostic described under [Doctor](#doctor); this is not a
+session route or a client payload. A diagnostic write failure is also swallowed,
+and both stdout and stderr remain empty with exit `0`. The hidden handler uses
+text format, not a JSON error envelope. When Hooks are absent, untrusted,
 disabled, or failing, attribution falls back to the file-only estimated
 behavior above; a client is never reported as unattributed merely because its
 Hooks never ran.
@@ -1845,7 +1850,11 @@ coherent refresh result with:
   families as unavailable, while one missing family item does not invalidate
   captured sibling families;
 - `health.available`, aggregate doctor status/counts, and safe check name,
-  status, code, count, and recovery command.
+  status, code, `count`, optional `supported_count`, and `recovery_command`.
+  Schema-ahead checks carry the stored version in `count` and the binary's
+  supported version in `supported_count`. The latter is additive at wire v1;
+  older payloads omit it and Swift decodes it as nil. Upgrade prose is not a
+  recovery command.
 
 Every section always exists and owns an `available` flag. Failure to read one
 local section does not discard the other sections: the command still exits
@@ -1900,6 +1909,21 @@ write action; it holds no state of its own that matters.
   `Not captured yet` form only when that family is unavailable; an otherwise
   captured scope with no item renders an honest empty or em-dash state without
   hiding captured sibling families.
+- **Schema-ahead presentation.** A health check with code `schema_ahead` adds
+  one error notice opening Health, after offline/failing notices. It suppresses
+  only the partial notice and `provider_unavailable` / `usage_unavailable`;
+  independent warnings, including `sessions_unavailable`, remain. A health-count
+  notice is retained when `health.problems > 1`. Unavailable panel bodies,
+  provider footer and switching popover name the cause. Health discloses localized
+  upgrade prose and, when both numbers are present, the version pair, without a
+  copy button;
+  `hook_deliveries_dropped` discloses its count only. Missing numbers are not
+  invented. Other recovery commands, including `agentdeck state migrate`, keep
+  their copyable command treatment. The App badges the existing menu-bar item
+  even in Icon-only mode; offline/failing accessible labels take precedence.
+  A later snapshot without the code removes this treatment. Shared refresh-state
+  badge semantics, tab availability marks and widget projection are unchanged;
+  the widget retains its existing Data unavailable state.
 - **The one write.** Switching the active provider is the only action that
   changes anything outside the app, and it goes through the same CLI path a
   terminal switch uses. Every other surface is read-only.
@@ -2084,11 +2108,18 @@ because native client configuration is still external filesystem state.
 The database uses WAL. One state root permits only one migration, provider
 switch, extension mutation, restore, or rebuild at a time. Reads may run while
 short scan transactions commit. Locks time out with `state_busy`; processes are
-never killed to acquire a lock.
+never killed to acquire a lock. After a core open fails to acquire its state
+lock, a bounded, source-read-only schema probe may establish a committed future
+version. That definite condition takes precedence as `schema_ahead`; a supported,
+missing, malformed, changing or otherwise inconclusive source preserves the
+original lock error. The probe includes committed WAL data via a private copy
+without creating or modifying source database sidecars, honors cancellation,
+and is not added to successful opens.
 
 Migrations are explicit and ordered. Known older schemas migrate
-transactionally. Unknown newer schemas are rejected. Migration or rebuild
-failure preserves the last usable database. The v6-to-v7 provider selection
+transactionally. Schemas newer than this binary supports are rejected as
+`schema_ahead`, with their stored and supported versions and an upgrade hint.
+Migration or rebuild failure preserves the last usable database. The v6-to-v7 provider selection
 backfill associates a selection only with a completed `provider.use` whose
 started/updated time window contains `selected_at`. A selection inside any
 failed or incomplete `provider.use` window is discarded instead of becoming an
@@ -2178,6 +2209,7 @@ failure that has no more specific classification.
 | `credential_ciphertext_invalid` | Stored credential ciphertext is invalid or cannot be authenticated. | 1 |
 | `machine_identity_unavailable` | The stable local machine identity cannot be obtained. | 1 |
 | `state_busy` | Another process holds the required state lock. | 1 |
+| `schema_ahead` | The database schema version is newer than this binary supports. | 1 |
 | `unsupported_wire_version` | A desktop request uses an unsupported wire version. | 2 |
 | `invalid_recent_limit` | A desktop request uses an invalid recent-item limit. | 2 |
 | `invalid_argument` | Command syntax, flags, or another user input is invalid. | 2 |
@@ -2198,6 +2230,19 @@ Text and JSON must explicitly report estimated attribution, historical data,
 unknown models, unpriced components, and incomplete scans.
 
 ### Error-Code Compatibility
+
+The release that first ships the schema-version-signal behavior adds this
+narrowing, without assigning a product release version in this specification:
+
+| Condition | `v0.4.x` and `v0.5.0` | Release shipping schema-version-signal |
+| --- | --- | --- |
+| Core database schema exceeds binary support | `runtime_error` | `schema_ahead` |
+
+The ordinary command refusal remains exit `1`; its message carries the version
+pair and names upgrading AgentDeck. Consumers must match `schema_ahead` rather
+than the old generic code for this condition. This does not change the separate
+success envelopes of doctor and desktop snapshot or the Hook's silent fail-open
+contract. Metadata-damage paths are not reclassified as future-version errors.
 
 `v0.5.0` narrows `runtime_error`. Five conditions that a `v0.4.x` consumer
 received as `runtime_error` now return a specific stable code:
@@ -2274,23 +2319,58 @@ fingerprints, duplicate IDs, and missing paths.
 
 Doctor must remain usable before an upgrade migration has run. It reads the
 stored schema version before domain queries, reports `schema_outdated` with the
-stored and supported versions, and runs only checks whose tables and columns
+stored version in `count` and the supported version in optional
+`supported_count`, and runs only checks whose tables and columns
 exist at that version. A table introduced by a later schema, including
 `usage_tool_calls` in schema v13, is reported as not yet applicable rather than
 queried. Doctor never migrates, creates, chmods, or otherwise repairs state; its
 schema warning gives an explicit current-version state command as the recovery
-path. A schema newer than the binary remains an `unknown_schema` error. Raw SQL
-errors caused only by a known older schema must never escape from quick or full
-doctor output.
+path. A schema newer than the binary reports a `database` check with code
+`schema_ahead`, the stored and supported versions, and upgrade recovery prose.
+It has no `recovery_command`. Existing `unknown_schema` paths remain reserved
+for missing or malformed schema metadata, not a future version. Raw SQL errors
+caused only by a known older schema must never escape from quick or full doctor
+output.
 
-Quick and full mode share the exact schema-state matrix: schema 12 reports one
-`schema_outdated` schema check with count 12 and recovery command
-`agentdeck state migrate`; complete schema 13 reports one `ok` schema check with
-count 13; schema 13 without `usage_tool_calls` reports only
-`schema_incompatible`; and a future schema reports `unknown_schema` without a
-recovery command. Text and JSON never expose raw SQL, SQLite query text, or
-driver errors. A successful explicit migration has normal text output and JSON
-`migrated: true`, and upgrades both the stored version and required tables.
+Missing-state and failed-open short circuits mark the envelope `partial: true`
+and add `checks_skipped` to envelope warnings. Text output names the skipped
+checks; schema-ahead text also names the upgrade recovery. A successfully
+rendered doctor report still exits `0`, even when its findings are unhealthy;
+this is distinct from an ordinary command's schema-ahead error envelope.
+
+Quick and full mode share the schema-state matrix. With this binary supporting
+schema 23, schema 12 reports a `schema_outdated` schema check with `count: 12`,
+`supported_count: 23` and recovery command `agentdeck state migrate`. A complete
+supported schema reports an `ok` schema check with `count: 23`; its optional
+`supported_count` is omitted. A database claiming the supported version but
+missing `usage_tool_calls` reports `schema_incompatible`. A future schema, for
+example 99, reports a `database` check with code `schema_ahead`, `count: 99`,
+`supported_count: 23`, and no recovery command, in a partial report. These
+numbers describe stored/binary support, not product release versions. Text and
+JSON never expose raw SQL, SQLite query text, or driver errors. A successful
+explicit migration has normal text output and JSON `migrated: true`, and
+upgrades both the stored version and required tables.
+
+A refused Hook delivery can leave `<state>/hook-refusals.json`. This one bounded
+object has exactly `schema_version` (1), `code` (`schema_ahead`), `stored`,
+`supported`, `first_at`, `last_at`, and `count`. It contains no session ID, path
+or client payload, is written at mode 0600 by replacing a temporary sibling,
+and is excluded from portable backups. The owner ignores absent, unreadable,
+malformed or incompatible records and limits reads to 2 KiB. Writes are
+best-effort without a state lock; concurrent replacement can lose increments,
+so the count and recorded span are diagnostic rather than an exact ledger.
+
+Before opening the database, doctor reads this diagnostic after its lock check.
+Only while the recorded `stored` exceeds this binary's supported version, it
+emits `hook_deliveries` as a warning with code `hook_deliveries_dropped` and
+`count`; it contributes normally to health problem counts and has no recovery
+command. Any successful read-write core open, whether from a Hook or another
+command, attempts to clear the file only after final open/lock-release success.
+Failed opens retain it, and deletion failure does not fail an otherwise usable
+open. Read-only callers never clear, chmod or repair it. Upgrading a binary so
+that it supports the recorded version suppresses the warning without deleting
+the record: successful-open clearing and version-based presentation suppression
+are different events, not two deletion triggers.
 
 `--full` additionally performs full SQLite integrity checks and traverses all
 indexed sources. Neither mode accesses the network, prints credentials, or
@@ -2520,6 +2600,7 @@ here changes; do not create a dated copy of this file.
 
 | Version | Date | Contract change |
 | --- | --- | --- |
+| 29 | 2026-09-08 | Reconciles schema-version-signal: narrows future core-schema refusal to `schema_ahead` at unchanged ordinary-error exit 1; defines lock-failure probe precedence, stored/supported version pairs and additive `supported_count` at desktop wire v1; makes doctor short-circuit reports partial with `checks_skipped`; documents the bounded silent Hook refusal diagnostic, successful-read-write-open clearing versus upgrade suppression, and App-side schema attribution. No product release version is assigned. |
 | 28 | 2026-09-01 | Closes the `v0.5.0` contract across its five selected lines. The desktop wire contract (version 25) and Work Signals (version 27) already have their own rows; this entry adds the version-level statement and the three lines that had none. **Compatibility break:** `runtime_error` is narrowed — the provider, credential, backup-absent, backup-unreadable, and session not-found conditions a `v0.4.x` consumer received as `runtime_error` now return `provider_not_found`, `credential_not_found`, `backup_not_found`, `backup_unreadable`, and `session_not_found` at unchanged exit codes, and not-found messages no longer carry `database/sql`, driver, path, or errno text; see Error-Code Compatibility. `runtime_error` remains as the documented residual. **Switch effectiveness:** one client-neutral Hook delivery operation persists every accepted Codex or Claude delivery before any route effect, route quality is derived at read time from the event, the positioned route, and the prior effective state rather than read back from storage, and only Claude's `no key -> first key` transition applies to a running session while rotation and removal retain the prior route until restart. **Attribution precision:** a determinable effective route resolves as `exact`, every event carries exactly one of six reasons — `exact_run`, `effective_route`, `ambiguous_route`, `timeline_snapshot`, `before_adoption`, `coverage_gap` — `usage summary` exposes all six initialized keys in JSON, and `unattributed_catalog_base_cost` reports the calculable catalog base for `before_adoption` and `coverage_gap` separately from real provider spend, which no unattributed event may enter. **Desktop application:** `v0.5.0` ships the signed menu-bar application, its settings window, and the WidgetKit extension against the unchanged wire version 1; everything the version added to that wire is additive. |
 | 27 | 2026-08-31 | Reconciles delivered Work Signals behavior: schema v20 extraction and schema v21 classification with parser-version backfill; the narrowed transient-read/persisted-reduction privacy boundary; default `usage stats` sections, `usage signals`, and the `session show --activity` summary; and additive wire-v1 keyed Activity, Workflow, and Tooling families consumed by the captured desktop surface. |
 | 26 | 2026-08-16 | Records the `v0.4.1` patch, which shipped on 2026-08-13 without a row. Codex `cache_write_input_tokens` is captured into a `cache_write_tokens` column and already-indexed Codex sources are re-scanned on upgrade, so Codex cache-write token volumes that previously reported zero now report their real values and any total derived from them changes for existing data. The cache-write semantics themselves are unchanged: a cache write remains a token volume rather than a second hit-rate percentage, and pricing still uses the documented five-minute cache-write default. |

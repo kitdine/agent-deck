@@ -27,7 +27,13 @@ the evidence. Task 5 passed re-review with its required gate VERIFIED, including
 [its review record](reviews/schema-signal-acceptance.md). Binary and isolated native rendering
 probes pass; the user explicitly waived the remaining manual acceptance and
 accepted its risks. Those manual checks were not performed.
-Task 6 is unstarted and requires its own development-stage authorization.
+Task 6 contract reconciliation passed review and its required gate (4/4);
+see [its review record](reviews/contract-reconciliation.md). All six Tasks are
+reviewed and the topic candidate gate is VERIFIED (3/3), retaining Task 5's
+explicit manual waivers. The final Task delivery follows that checkpoint;
+immutable delivery identities are recorded in CEv1 and Beads. The topic remains
+active pending its separately authorized integration/retirement boundary.
+No archive, integration, or release is implied.
 
 ### Current worktree handoff — 2026-09-08
 
@@ -104,7 +110,7 @@ carrier or rewrite its architecture record.
 | 3. `desktop-schema-wire` | [x] | [x] |
 | 4. `menubar-schema-presentation` | [x] | [x] |
 | 5. `schema-signal-acceptance` | [x] | [x] |
-| 6. `contract-reconciliation` | [ ] | [ ] |
+| 6. `contract-reconciliation` | [x] | [x] |
 
 Execute in order. Each task is independently reviewable and must leave its
 selected checks passing; later tasks are not excuses for a failing intermediate
@@ -562,6 +568,25 @@ Do not rerun unchanged product suites for a documentation closure. Query each
 newly crossed task/topic evidence boundary during its authorized closure; topic
 completion, archive/version assembly and delivery follow their own authorities.
 
+#### Task 6 current handoff — 2026-09-08
+
+Spec revision 29, the affected doctor/Hook manual examples and the index pointer
+are reconciled with delivered behavior. The ten architecture Contract edits
+were mapped to current sections and source/evidence; older schema examples now
+refer to the binary's supported version rather than obsolete schema 13 cases.
+Successful-open clearing and upgrade-based warning suppression remain distinct.
+Task 5's manual user waivers are preserved as waivers, not tested guarantees.
+
+Candidate `92f912c1e79966341b3deedccd2a7938376b912c1bc2803154666805243e7fa1` at HEAD `7510e7181f67dd4313d40f956236c1b907466773` covers the three reconciled documents.
+Audit map and blob recipe: `/private/tmp/agentdeck-contract-reconciliation-audit.json`.
+Local-link, topic-document, whitespace and diff checks pass. No product test
+rerun is required for this documentation-only change. Dev is ready and Review
+remains unchecked; the topic is not archived, merged, or assigned a release.
+Task gate VERIFIED (4/4):
+`urn:ce:agent-deck:state:implement:contract-reconciliation:i8iZjSKZvc_1I7eL`.
+Five state/evidence nodes and eight relationships were confirmed; all relation
+preflights passed. This is Task 6 implementation readiness, not topic closure.
+
 ## Acceptance coverage
 
 | Requirements item | Owning task(s) | Evidence boundary |
@@ -589,5 +614,7 @@ Each Task has a corresponding `<topic>:<task-anchor>` evidence scope; actual
 WorkUnits and atomic criteria are resolved under Evidence before implementation.
 This design does not pre-create implementation dispatch or declare those gates
 verified. The document review does not check any implementation Dev or Review cell.
-Tasks 1–5 have passed review and their evidence gates, including Task 5's explicit user waivers; one implementation task remains.
-The next task is `contract-reconciliation` under its own development-stage authorization.
+Tasks 1–6 have passed review and their evidence gates, including Task 5's explicit
+user waivers. The topic candidate gate is VERIFIED; the final checkpoint is in
+reviews/contract-reconciliation.md; immutable delivery is recorded in CEv1/Beads.
+archive, integration and release retain their separate boundaries.
