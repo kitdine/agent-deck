@@ -32,6 +32,7 @@ import (
 	"github.com/kitdine/agent-deck/internal/doctor"
 	"github.com/kitdine/agent-deck/internal/errdefs"
 	"github.com/kitdine/agent-deck/internal/extension"
+	"github.com/kitdine/agent-deck/internal/hookrefusal"
 	"github.com/kitdine/agent-deck/internal/output"
 	"github.com/kitdine/agent-deck/internal/platform"
 	"github.com/kitdine/agent-deck/internal/provider"
@@ -2950,8 +2951,12 @@ func runUsageHookEvent(ctx context.Context, opts *commandOptions, client usageho
 	if parseErr != nil {
 		return nil
 	}
-	database, _, openErr := opts.openStore(ctx)
+	database, stateRoot, openErr := opts.openStore(ctx)
 	if openErr != nil {
+		var ahead *store.SchemaAhead
+		if errors.As(openErr, &ahead) {
+			_ = hookrefusal.Write(stateRoot, ahead.Stored, ahead.Supported)
+		}
 		return nil
 	}
 	defer database.Close()

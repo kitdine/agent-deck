@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kitdine/agent-deck/internal/hookrefusal"
 	"github.com/kitdine/agent-deck/internal/platform"
 	_ "modernc.org/sqlite"
 )
@@ -1750,4 +1751,65 @@ func assertNotExist(t *testing.T, path string) {
 	} else if !errors.Is(err, fs.ErrNotExist) {
 		t.Fatal(err)
 	}
+}
+
+func TestHookRefusalClearedOnlyAfterSuccessfulOpen(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	db, err := Open(ctx, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := hookrefusal.Write(root, 99, CurrentSchemaVersion); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, hookrefusal.Filename)
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	readOnly, err := OpenReadOnly(ctx, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	readOnly.Close()
+	after, _ := os.ReadFile(path)
+	if !reflect.DeepEqual(before, after) {
+		t.Fatal("read-only open changed diagnostic")
+	}
+	_, err = open(ctx, root, func(context.Context, string, time.Duration) (stateLock, error) { return failingLock{ErrLockLost}, nil })
+	if !errors.Is(err, ErrLockLost) {
+		t.Fatalf("release error = %v", err)
+	}
+	after, _ = os.ReadFile(path)
+	if !reflect.DeepEqual(before, after) {
+		t.Fatal("failed final lock release cleared diagnostic")
+	}
+	_, err = open(ctx, root, func(context.Context, string, time.Duration) (stateLock, error) { return nil, ErrStateBusy })
+	if !errors.Is(err, ErrStateBusy) {
+		t.Fatalf("lock error = %v", err)
+	}
+	if _, ok := hookrefusal.Read(root); !ok {
+		t.Fatal("failed acquisition cleared diagnostic")
+	}
+	db, err = Open(ctx, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+	assertNotExist(t, path)
+	if err := os.Mkdir(path, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(path, "keep"), []byte("fixture"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	db, err = Open(ctx, root)
+	if err != nil {
+		t.Fatalf("cleanup failure broke open: %v", err)
+	}
+	db.Close()
 }

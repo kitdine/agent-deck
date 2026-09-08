@@ -13,6 +13,7 @@ import (
 
 	"github.com/kitdine/agent-deck/internal/credentialvault"
 	"github.com/kitdine/agent-deck/internal/extension"
+	"github.com/kitdine/agent-deck/internal/hookrefusal"
 	"github.com/kitdine/agent-deck/internal/platform"
 	"github.com/kitdine/agent-deck/internal/provider"
 	"github.com/kitdine/agent-deck/internal/session"
@@ -65,6 +66,9 @@ func (s Service) Check(ctx context.Context, full bool) (Report, error) {
 		report.add(Check{Name: "state_permissions", Status: "ok"})
 	}
 	s.checkLock(&report)
+	if refusal, live := hookrefusal.Live(s.StateRoot, store.CurrentSchemaVersion); live {
+		report.add(Check{Name: "hook_deliveries", Status: "warning", Code: "hook_deliveries_dropped", Count: refusal.Count})
+	}
 
 	database, err := store.OpenReadOnly(ctx, s.StateRoot)
 	if err != nil {

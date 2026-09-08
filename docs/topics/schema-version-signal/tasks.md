@@ -21,7 +21,7 @@ The document set is unchanged. Requirements, architecture, and the final UX
 surface have passed review. This decomposition passed Round 1 review on 2026-09-07; see
 `reviews/tasks.md` for evidence and the completion gate. Task 1 passed re-review
 with its required evidence gate VERIFIED. See [its review record](reviews/core-schema-contract.md) for the Task checkpoint.
-The remaining tasks still require their own development-stage authorization.
+Task 2 passed review with its required evidence gate VERIFIED; see [its review record](reviews/hook-refusal-lifecycle.md) for the Task checkpoint. Tasks 3–6 still require their own development-stage authorization.
 
 Why each row exists, against the review question that justifies it:
 
@@ -71,7 +71,7 @@ carrier or rewrite its architecture record.
 | Task | Dev | Review |
 | --- | --- | --- |
 | 1. `core-schema-contract` | [x] | [x] |
-| 2. `hook-refusal-lifecycle` | [ ] | [ ] |
+| 2. `hook-refusal-lifecycle` | [x] | [x] |
 | 3. `desktop-schema-wire` | [ ] | [ ] |
 | 4. `menubar-schema-presentation` | [ ] | [ ] |
 | 5. `schema-signal-acceptance` | [ ] | [ ] |
@@ -167,6 +167,55 @@ write failure, corrupt/absent record, repeated writes, concurrent replacement,
 successful non-Hook clearing, failed-open retention, read-only immutability,
 and upgrade-without-write suppression. Assert exit 0, empty streams and no
 route on refusal, a bounded private record, and a real route on success.
+
+#### Task 2 implementation handoff — 2026-09-08
+
+- Implementer: Codex; workspace `agent-deck.schema-version-signal`, branch
+  `feature/schema-version-signal`. Task 1 is delivered in `6cc1d6f`.
+- `internal/hookrefusal` owns the seven fixed keys, 2 KiB read bound, 0600
+  temporary-sibling replacement, live-version comparison and deletion. It adds
+  no client payload, path or session ID to the record. Concurrent increments
+  remain approximate; there is no state-lock acquisition or exact ledger claim.
+- The Hook writes only after a typed schema-ahead open refusal and swallows
+  diagnostic failures. Core open clears only after successful final lock
+  release. Doctor reads before database open, suppresses upgraded history
+  without mutation and emits no diagnostic-about-diagnostic warning.
+- Tests cover both clients through the command entry point with empty stdout
+  and stderr, supported/future/supported transitions, held-lock future refusal,
+  supported state_busy without a refusal record, no new refused route, real
+  successful routes, write failure, sequential/concurrent replacement, corrupt
+  and absent records, read-only retention, failed lock-release retention,
+  non-Hook successful clearing, deletion failure, doctor quick/full upgrade
+  suppression, and encrypted backup member exclusion. These use synthetic
+  fixtures, not installed clients, real session Hooks or user databases.
+- Final product state: HEAD `6cc1d6f56428ea66b00a3a46944b5c47d0556044`,
+  SHA-256 `d37d73a60f66e0dfa763cec9292522fa7820bf821c76081edad7c0468336ff35`.
+  Recipe: `git diff --binary` for the seven changed tracked Go files, in sorted
+  path order, followed by `git diff --no-index --binary -- /dev/null <path>`
+  for `internal/hookrefusal/record.go`, then `record_test.go`; hash concatenated
+  stdout. Status documents are excluded from this product/test fingerprint.
+- Verification passed: targeted owner/store/doctor/CLI/backup tests, then
+  `scripts/run-go-test.sh ./...`,
+  `scripts/run-go-test.sh -race ./internal/hookrefusal ./internal/store ./internal/doctor`,
+  and `make vet`. The final full suite includes the added supported-lock and
+  backup-fixture assertions. Go 1.27.1 darwin/amd64, vendored dependencies,
+  `GOCACHE=/private/tmp/agent-deck-go-build`; no dependency changes.
+  Logs are retained in the local TMPDIR: targeted `agentdeck-go-test.X14O9U`,
+  full `agentdeck-go-test.YNms5w`, race `agentdeck-go-test.AnuDWH`.
+- CEv1 WorkUnit:
+  `urn:ce:agent-deck:work-unit:schema-version-signal-hook-refusal-lifecycle`;
+  target `urn:ce:agent-deck:state:implement:hook-refusal-lifecycle:6hf-2V_qpB0yYQHf`.
+  Five required criteria cover the record, Hook, clearing, doctor/backup and L3
+  verification. Fixed gate query confirms VERIFIED (5/5), with no missing,
+  invalidated or unresolved evidence. Six state/evidence nodes and ten relations
+  were confirmed; all ten relationship preflights passed. No review PASS or
+  delivery is claimed. Review remains unchecked.
+- Documentation checks passed: `make check-whitespace`,
+  `bash scripts/check-topic-docs.sh`, and topic/canonical `git diff --check`.
+  The full Go log SHA-256 is
+  `775b846e73b05ae5be85e59819f9115584240d9e841df911398d6fe209a12619`;
+  race log SHA-256 is
+  `64189197b5a47b5e372e8d19f0c655b6f791118d873a8847df4dff451bb8a65d`.
 
 ### 3. `desktop-schema-wire`
 
@@ -324,5 +373,5 @@ Each Task has a corresponding `<topic>:<task-anchor>` evidence scope; actual
 WorkUnits and atomic criteria are resolved under Evidence before implementation.
 This design does not pre-create implementation dispatch or declare those gates
 verified. The document review does not check any implementation Dev or Review cell.
-Task 1 has passed review and its evidence gate; five implementation tasks remain.
-The next task is `hook-refusal-lifecycle` under its own development-stage authorization.
+Tasks 1–2 have passed review and their evidence gates; four implementation tasks remain.
+The next task is `desktop-schema-wire` under its own development-stage authorization.

@@ -25,6 +25,7 @@ import (
 	"github.com/kitdine/agent-deck/internal/doctor"
 	"github.com/kitdine/agent-deck/internal/errdefs"
 	"github.com/kitdine/agent-deck/internal/extension"
+	"github.com/kitdine/agent-deck/internal/hookrefusal"
 	"github.com/kitdine/agent-deck/internal/output"
 	"github.com/kitdine/agent-deck/internal/provider"
 	"github.com/kitdine/agent-deck/internal/session"
@@ -3168,5 +3169,118 @@ func TestEstimatePricingNotesFitTheDisclosureWidth(t *testing.T) {
 	}
 	if checked == 0 {
 		t.Skip("no equivalent estimates are shipped")
+	}
+}
+
+func TestHookRefusalLifecycleBothClients(t *testing.T) {
+	for _, client := range []string{"codex", "claude"} {
+		t.Run(client, func(t *testing.T) {
+			ctx := context.Background()
+			root, home := t.TempDir(), t.TempDir()
+			oldHome := userHomeDir
+			userHomeDir = func() (string, error) { return home, nil }
+			defer func() { userHomeDir = oldHome }()
+			db, err := store.Open(ctx, root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer db.Close()
+			if _, err := db.Exec(ctx, `INSERT INTO providers(id,name,endpoint,credential_ref,multiplier,created_at,updated_at) VALUES(1,'official','x','','1','2026-09-08T00:00:00Z','2026-09-08T00:00:00Z');`); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := db.Exec(ctx, `INSERT INTO provider_selections(provider_id,client,provider_name_snapshot,endpoint_snapshot,multiplier_snapshot,selected_at) VALUES(1,?,'official','x','1','2026-09-08T00:00:00Z')`, client); err != nil {
+				t.Fatal(err)
+			}
+			deliver := func(id string) {
+				t.Helper()
+				dir := filepath.Join(home, ".codex", "sessions")
+				if client == "claude" {
+					dir = filepath.Join(home, ".claude", "projects", "-fixture")
+				}
+				if err := os.MkdirAll(dir, 0700); err != nil {
+					t.Fatal(err)
+				}
+				transcript := filepath.Join(dir, id+".jsonl")
+				if err := os.WriteFile(transcript, nil, 0600); err != nil {
+					t.Fatal(err)
+				}
+				payload, err := json.Marshal(map[string]string{"session_id": id, "transcript_path": transcript, "hook_event_name": "SessionStart", "source": "resume"})
+				if err != nil {
+					t.Fatal(err)
+				}
+				var out, stderr bytes.Buffer
+				command := newRootCommandWithError(bytes.NewReader(payload), &out, &stderr)
+				command.SetArgs([]string{"--state-dir", root, "usage", "hook", "event", client})
+				if err := command.Execute(); err != nil || out.Len() != 0 || stderr.Len() != 0 {
+					t.Fatalf("hook = %v stdout=%q stderr=%q", err, out.String(), stderr.String())
+				}
+			}
+			routes := func(want int) {
+				t.Helper()
+				var got int
+				if err := db.DB.QueryRow("SELECT count(*) FROM usage_session_routes").Scan(&got); err != nil || got != want {
+					t.Fatalf("routes=%d want=%d err=%v", got, want, err)
+				}
+			}
+			deliver("supported-before")
+			routes(1)
+			if _, ok := hookrefusal.Read(root); ok {
+				t.Fatal("successful hook wrote refusal")
+			}
+			busyLock, err := store.AcquireLock(ctx, root, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			deliver("supported-locked")
+			if err := busyLock.Release(); err != nil {
+				t.Fatal(err)
+			}
+			routes(1)
+			if _, ok := hookrefusal.Read(root); ok {
+				t.Fatal("state_busy wrote schema refusal")
+			}
+			if _, err := db.Exec(ctx, "UPDATE schema_metadata SET version=99"); err != nil {
+				t.Fatal(err)
+			}
+			deliver("future-one")
+			deliver("future-two")
+			routes(1)
+			if r, ok := hookrefusal.Read(root); !ok || r.Count != 2 || r.Stored != 99 {
+				t.Fatalf("record=%+v, %v", r, ok)
+			}
+			lock, err := store.AcquireLock(ctx, root, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			deliver("future-locked")
+			if err := lock.Release(); err != nil {
+				t.Fatal(err)
+			}
+			if r, ok := hookrefusal.Read(root); !ok || r.Count != 3 {
+				t.Fatalf("locked record=%+v, %v", r, ok)
+			}
+			routes(1)
+			if err := hookrefusal.Clear(root); err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(root, hookrefusal.Filename)
+			if err := os.Mkdir(path, 0700); err != nil {
+				t.Fatal(err)
+			}
+			deliver("future-write-failed")
+			routes(1)
+			if err := os.Remove(path); err != nil {
+				t.Fatal(err)
+			}
+			deliver("future-again")
+			if _, err := db.Exec(ctx, "UPDATE schema_metadata SET version=?", store.CurrentSchemaVersion); err != nil {
+				t.Fatal(err)
+			}
+			deliver("supported-after")
+			routes(2)
+			if _, err := os.Stat(path); !os.IsNotExist(err) {
+				t.Fatalf("successful hook did not clear record: %v", err)
+			}
+		})
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/kitdine/agent-deck/internal/credentialvault"
+	"github.com/kitdine/agent-deck/internal/hookrefusal"
 	"github.com/kitdine/agent-deck/internal/provider"
 	"github.com/kitdine/agent-deck/internal/store"
 )
@@ -1054,4 +1056,64 @@ func findCheck(report Report, name, code string) *Check {
 		}
 	}
 	return nil
+}
+
+func TestHookRefusalCheckLifetimeAndReadOnly(t *testing.T) {
+	for _, full := range []bool{false, true} {
+		for _, kind := range []string{"future", "upgraded", "corrupt", "absent"} {
+			t.Run(fmt.Sprintf("%t/%s", full, kind), func(t *testing.T) {
+				root := t.TempDir()
+				if err := os.Chmod(root, 0700); err != nil {
+					t.Fatal(err)
+				}
+				path := filepath.Join(root, hookrefusal.Filename)
+				switch kind {
+				case "future":
+					if err := hookrefusal.Write(root, 99, store.CurrentSchemaVersion); err != nil {
+						t.Fatal(err)
+					}
+				case "upgraded":
+					if err := hookrefusal.Write(root, store.CurrentSchemaVersion, store.CurrentSchemaVersion-1); err != nil {
+						t.Fatal(err)
+					}
+				case "corrupt":
+					if err := os.WriteFile(path, []byte("{"), 0600); err != nil {
+						t.Fatal(err)
+					}
+				}
+				before, _ := os.ReadFile(path)
+				info, _ := os.Stat(path)
+				report, err := (Service{StateRoot: root}).Check(context.Background(), full)
+				if err != nil || !report.Partial {
+					t.Fatalf("report = %+v, %v", report, err)
+				}
+				found, database := -1, -1
+				for i, check := range report.Checks {
+					if check.Name == "database" {
+						database = i
+					}
+					if check.Name == "hook_deliveries" {
+						found = i
+						if check.Code != "hook_deliveries_dropped" || check.Status != "warning" || check.Count != 1 || check.Recovery != "" {
+							t.Fatalf("check = %+v", check)
+						}
+					}
+				}
+				if (found >= 0) != (kind == "future") || (found >= 0 && found >= database) {
+					t.Fatalf("wrong check lifetime/order: %+v", report)
+				}
+				if kind == "future" && report.Problems < 2 {
+					t.Fatal("warning missing from health problems")
+				}
+				after, _ := os.ReadFile(path)
+				if string(before) != string(after) {
+					t.Fatal("doctor changed diagnostic bytes")
+				}
+				afterInfo, _ := os.Stat(path)
+				if info != nil && (afterInfo == nil || !info.ModTime().Equal(afterInfo.ModTime()) || info.Mode() != afterInfo.Mode()) {
+					t.Fatal("doctor changed diagnostic metadata")
+				}
+			})
+		}
+	}
 }

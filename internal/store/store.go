@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kitdine/agent-deck/internal/hookrefusal"
 	"github.com/kitdine/agent-deck/internal/platform"
 	"modernc.org/sqlite"
 )
@@ -253,6 +254,9 @@ func open(ctx context.Context, stateRoot string, acquire lockAcquirer) (store *S
 	}
 	defer func() {
 		releaseErr := lock.Release()
+		if err == nil && releaseErr == nil {
+			_ = hookrefusal.Clear(stateRoot)
+		}
 		if err != nil || releaseErr == nil {
 			return
 		}
