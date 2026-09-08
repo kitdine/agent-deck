@@ -21,7 +21,7 @@ The document set is unchanged. Requirements, architecture, and the final UX
 surface have passed review. This decomposition passed Round 1 review on 2026-09-07; see
 `reviews/tasks.md` for evidence and the completion gate. Task 1 passed re-review
 with its required evidence gate VERIFIED. See [its review record](reviews/core-schema-contract.md) for the Task checkpoint.
-Task 2 passed review with its required evidence gate VERIFIED; see [its review record](reviews/hook-refusal-lifecycle.md) for the Task checkpoint. Task 3 passed review with its required evidence gate VERIFIED; see [its review record](reviews/desktop-schema-wire.md). Tasks 4–6 still require their own development-stage authorization.
+Task 2 passed review with its required evidence gate VERIFIED; see [its review record](reviews/hook-refusal-lifecycle.md) for the Task checkpoint. Task 3 passed review with its required evidence gate VERIFIED; see [its review record](reviews/desktop-schema-wire.md). Task 4 passed review with its required evidence gate VERIFIED; see [its review record](reviews/menubar-schema-presentation.md); Tasks 5–6 still require their own development-stage authorization.
 
 Why each row exists, against the review question that justifies it:
 
@@ -73,7 +73,7 @@ carrier or rewrite its architecture record.
 | 1. `core-schema-contract` | [x] | [x] |
 | 2. `hook-refusal-lifecycle` | [x] | [x] |
 | 3. `desktop-schema-wire` | [x] | [x] |
-| 4. `menubar-schema-presentation` | [ ] | [ ] |
+| 4. `menubar-schema-presentation` | [x] | [x] |
 | 5. `schema-signal-acceptance` | [ ] | [ ] |
 | 6. `contract-reconciliation` | [ ] | [ ] |
 
@@ -364,6 +364,58 @@ values. Compare with the existing prototype; do not edit it to make an
 implementation discrepancy disappear. Native layout/accessibility acceptance
 is completed in Task 5, not inferred from model tests.
 
+#### Task 4 implementation handoff — 2026-09-08
+
+- Implementer: Codex. Workspace `agent-deck.schema-version-signal`, branch
+  `feature/schema-version-signal`; Task 3 delivered at `64956c6`.
+- App-only schema predicate now drives the primary notice, two-code suppression,
+  health-count threshold, attributed unavailable bodies/footer/provider popover,
+  badge and accessible label. Offline/failing precedence, aged freshness,
+  independent warnings and normal-snapshot reset remain explicit model tests.
+  Shared refresh semantics, Widget projection, tab marks and geometry are unchanged.
+- Health rows retain optional stable code and version/count fields. Schema cause
+  and recovery are proportional caption prose; Hook refusals have count prose
+  only. Missing numbers remain absent. Disclosure defaults open and exposes a
+  native accessible DisclosureGroup representation whose label combines name,
+  status and visible prose without duplicate speech; command copying remains a
+  separate operable branch for schema_outdated and other command recoveries.
+- Eight keys match the approved UX/prototype bilingual copy and join allKeys.
+  Both-language catalog tests and the existing no-update-check rule pass.
+- Verification: full Xcode 26.4 native build and test entry passed, 128 tests:
+  Shared 40, App 66, Widget 22. Command:
+  `env DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer AGENTDECK_TEST_LOCALE=en TEST_RUNNER_AGENTDECK_TEST_LOCALE=en make test-macos-app`.
+  Controlled elevated execution was needed because nested sandbox-exec blocked
+  Swift Observation macros. The initial source compile error in the disclosure
+  branch was corrected before the final candidate.
+- The first native suite in the system Chinese locale passed every new schema
+  test but failed the pre-existing English-literal assertion in
+  `testProviderWithMultipleReadyTargetsUsesOneRowAndASecondLevel` (wrapper/direct
+  versus 包装器/直连). No unrelated assertion or product language policy was
+  changed; the full final run pins its test locale to English. This is not a
+  claim that the entire suite passes under arbitrary system languages.
+- Native NSHostingView renderings cover expanded/collapsed states in both
+  languages. Inspected `/private/tmp/agentdeck-schema-presentation/health-*.png`:
+  expanded rows show 99 and 23, cause and upgrade prose, no copy button; collapsed
+  rows retain just status and disclosure. Compared with prototype/src/Popover.jsx
+  HealthDetail and i18n.js plus the approved Health specimens. This bounded row
+  rendering is not the Task 5 full-surface layout/VoiceOver acceptance.
+- Final HEAD `64956c603b9b9802b18c1ee9a728344baf161bbd`, fingerprint
+  `cbfcf5df79bf3dd3e4ae169e2c3eb4c1a56504a8ea94b2673abcfcbf83f14913`.
+  Recipe: SHA-256 of `head=<HEAD>` plus sorted `;<path>=<git hash-object>` for
+  the nine App/AppTests files named in this task, excluding status documents.
+  Final log `/private/tmp/agentdeck-menubar-schema-native-en.log`, SHA-256
+  `e22f34d17abccf09fff247057d1831e0259dc070fb480bb6d5f91c3ade24aecd`.
+  Native xcresult: `apps/macos/build/DerivedData/Logs/Test/Test-AgentDeck-2026.09.08_06-47-21--0700.xcresult`.
+- CEv1 WorkUnit
+  `urn:ce:agent-deck:work-unit:schema-version-signal-menubar-schema-presentation`,
+  target `urn:ce:agent-deck:state:implement:menubar-schema-presentation:di7gVes8KvamLBPG`.
+  Four criteria cover notice policy, Health disclosure, copy/chrome and native
+  checks. Implementation is ready for review; Review remains unchecked. No
+  commit, push or Task 5 acceptance is implied. Fixed gate query confirms
+  VERIFIED (4/4), with no missing, invalidated or unresolved evidence. Five
+  state/evidence nodes and eight relations were confirmed; all preflights passed.
+  Whitespace, topic-document and both workspace diff checks passed.
+
 ### 5. `schema-signal-acceptance`
 
 **Depends on:** Tasks 1–4 and their reviews. **Result:** state-bound evidence for
@@ -452,5 +504,5 @@ Each Task has a corresponding `<topic>:<task-anchor>` evidence scope; actual
 WorkUnits and atomic criteria are resolved under Evidence before implementation.
 This design does not pre-create implementation dispatch or declare those gates
 verified. The document review does not check any implementation Dev or Review cell.
-Tasks 1–3 have passed review and their evidence gates; three implementation tasks remain.
-The next task is `menubar-schema-presentation` under its own development-stage authorization.
+Tasks 1–4 have passed review and their evidence gates; two implementation tasks remain.
+The next task is `schema-signal-acceptance` under its own development-stage authorization.

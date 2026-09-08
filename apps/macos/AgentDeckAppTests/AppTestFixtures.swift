@@ -14,6 +14,16 @@ import XCTest
 /// synchronization invariant exists here to justify that.
 @MainActor
 enum WireFixture {
+	static func schemaSignal(refusals: Bool = false, sessionsUnavailable: Bool = false, numbers: Bool = true, extraWarnings: [String] = []) -> DesktopWireEnvelopeV1 {
+		var checks: [[String: Any]] = [["name": "database", "status": "error", "code": "schema_ahead", "count": numbers ? 99 : NSNull(), "supported_count": numbers ? 23 : NSNull()]]
+		if refusals { checks.append(["name": "hook_deliveries", "status": "warning", "code": "hook_deliveries_dropped", "count": 2]) }
+		return envelope(scopes: [], clientSubtotalsAvailable: false, presentationAvailable: false,
+			sessionsAvailable: !sessionsUnavailable, sessionsPeriodsAvailable: !sessionsUnavailable,
+			health: ["available": true, "status": "unhealthy", "healthy": false, "problems": checks.count, "warnings": refusals ? 1 : 0, "errors": 1, "checks": checks],
+			warnings: ["provider_unavailable", "usage_unavailable"] + (sessionsUnavailable ? ["sessions_unavailable"] : []) + extraWarnings,
+			partial: true, candidates: [], routes: [])
+	}
+
 	static func totals(
 		tokens: Int64,
 		events: Int64 = 1,

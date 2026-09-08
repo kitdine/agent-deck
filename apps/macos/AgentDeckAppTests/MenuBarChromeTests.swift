@@ -6,6 +6,34 @@ import XCTest
 
 @MainActor
 final class MenuBarChromeTests: XCTestCase {
+	func testSchemaHealthProseRendersExpandedAndCollapsed() async throws {
+		let model = await makeModel(host: StubDesktopHost(behavior: .envelope(WireFixture.schemaSignal(refusals: true))))
+		await model.coordinator.refresh()
+		let source = try XCTUnwrap(model.healthDetail.rows.first)
+		let directory = URL(fileURLWithPath: "/private/tmp/agentdeck-schema-presentation")
+		try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+		for language in ["en", "zh-Hans"] {
+			let bundle = try XCTUnwrap(Bundle(path: XCTUnwrap(Bundle.main.path(forResource: language, ofType: "lproj"))))
+			let cause = String(format: bundle.localizedString(forKey: DesktopCopy.schemaSignalCause, value: nil, table: nil), arguments: [Int64(99), Int64(23)])
+			let row = HealthCheckRow(id: source.id, name: source.name,
+				status: bundle.localizedString(forKey: DesktopCopy.healthStatusFailed, value: nil, table: nil),
+				severity: source.severity, recovery: source.recovery, code: source.code,
+				count: source.count, supportedCount: source.supportedCount, cause: cause,
+				recoveryProse: bundle.localizedString(forKey: DesktopCopy.schemaSignalRecovery, value: nil, table: nil))
+			XCTAssertNil(row.recovery, "schema prose must not offer a command-copy button")
+			let expanded = NSHostingView(rootView: HealthCheckRowView(row: row).frame(width: 396).padding(12))
+			let collapsed = NSHostingView(rootView: HealthCheckRowView(row: row, initiallyExpanded: false).frame(width: 396).padding(12))
+			XCTAssertGreaterThan(expanded.fittingSize.height, collapsed.fittingSize.height)
+			for (name, expanded) in [("expanded", true), ("collapsed", false)] {
+				let content = HealthCheckRowView(row: row, initiallyExpanded: expanded).padding(12)
+					.foregroundStyle(Color.black).background(Color.white).environment(\.colorScheme, .light)
+				let png = try renderedViewPNG(content, size: NSSize(width: 420, height: 150))
+				try png.write(to: directory.appendingPathComponent("health-\(language)-\(name).png"))
+				add(renderingAttachment(png, named: "Schema Health — \(language) — \(name)"))
+			}
+		}
+	}
+
 	func testPopoverHeightUsesTheStatusItemScreensVisibleFrame() {
 		let shorterSecondaryDisplay = MenuBarGeometry.height(visibleFrameHeight: 600)
 		let tallerMainDisplay = MenuBarGeometry.height(visibleFrameHeight: 1_200)
