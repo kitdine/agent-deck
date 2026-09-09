@@ -23,6 +23,9 @@ import (
 
 const desktopSnapshotChunkBytes = 48 * 1024
 
+var desktopNow = time.Now
+var desktopIndexRefreshObserver func(desktopIndexRefreshResult)
+
 type desktopSnapshotChunkEnvelope struct {
 	SchemaVersion int                      `json:"schema_version"`
 	Command       string                   `json:"command"`
@@ -50,6 +53,7 @@ type desktopIndexDomainResult struct {
 	DurationMilliseconds int64  `json:"duration_ms"`
 	Changes              any    `json:"changes,omitempty"`
 	ErrorCode            string `json:"error_code,omitempty"`
+	failureStage         string
 }
 
 type desktopIndexScan func() (any, error)
@@ -86,6 +90,7 @@ func newDesktopCommand(opts *commandOptions) *cobra.Command {
 				Home:      home,
 				Workdir:   workdir,
 				Vault:     newCredentialVault(stateRoot),
+				Now:       desktopNow,
 				Location:  displayLocation(),
 			}).Build(cmd.Context(), desktop.Request{WireVersion: wireVersion, RecentLimit: recentLimit})
 			if err != nil {
@@ -119,6 +124,9 @@ func newDesktopCommand(opts *commandOptions) *cobra.Command {
 			result, partial, warnings, err := refreshDesktopIndexes(cmd.Context(), stateRoot, home)
 			if err != nil {
 				return err
+			}
+			if desktopIndexRefreshObserver != nil {
+				desktopIndexRefreshObserver(result)
 			}
 			return writeEnvelope(opts.stdout, opts.format, "desktop.refresh-indexes", result, partial, warnings)
 		},
@@ -161,6 +169,7 @@ func refreshDesktopIndexes(ctx context.Context, stateRoot, home string) (desktop
 		if fingerprintErr != nil {
 			result.Sessions.Success = false
 			result.Sessions.ErrorCode = errorCode(fingerprintErr)
+			result.Sessions.failureStage = "checkpoint_persistence"
 		}
 	}
 	warnings := []string{}
@@ -200,12 +209,16 @@ func runDesktopIndexScan(scan desktopIndexScan) desktopIndexDomainResult {
 	if err != nil {
 		result.Changes = nil
 		result.ErrorCode = errorCode(err)
+		result.failureStage = "scan"
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+			result.failureStage = "deadline"
+		}
 	}
 	return result
 }
 
 func writeDesktopSnapshotStream(w interface{ Write([]byte) (int, error) }, result desktop.Result) error {
-	envelope := output.New("desktop.snapshot", result.Snapshot, time.Now())
+	envelope := output.New("desktop.snapshot", result.Snapshot, desktopNow())
 	warnings := result.Warnings
 	if warnings == nil {
 		warnings = []string{}
@@ -225,7 +238,7 @@ func writeDesktopSnapshotStream(w interface{ Write([]byte) (int, error) }, resul
 		frame := desktopSnapshotChunkEnvelope{
 			SchemaVersion: output.SchemaVersion,
 			Command:       "desktop.snapshot.chunk",
-			GeneratedAt:   time.Now().UTC(),
+			GeneratedAt:   desktopNow().UTC(),
 			Data: desktopSnapshotChunkData{
 				Index: index, Count: count, TotalBytes: len(payload), SHA256: digestText,
 				Payload: base64.StdEncoding.EncodeToString(payload[start:end]),

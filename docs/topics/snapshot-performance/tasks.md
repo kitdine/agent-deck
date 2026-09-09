@@ -32,7 +32,7 @@ or authorize implementation before the document set passes.
 
 | Task | Dev | Review |
 | --- | --- | --- |
-| 1. `performance-contract` | [ ] | [ ] |
+| 1. `performance-contract` | [x] | [x] |
 | 2. `shared-ingestion` | [ ] | [ ] |
 | 3. `generation-checkpoints` | [ ] | [ ] |
 | 4. `derived-snapshot-cache` | [ ] | [ ] |
@@ -151,12 +151,28 @@ Depends on Tasks 1–5.
 
 Requirements and architecture reviews passed: [requirements record](reviews/requirements.md)
 and [architecture record](reviews/architecture.md). The decomposition and document
-set also passed [tasks review](reviews/tasks.md). Implementation begins with
-`performance-contract` only under a real user Development command. The initial-import
-performance target remains to be verified during implementation under the user's
-2026-09-09 design-stage decision. No production implementation or release is
-claimed by the temporary research prototypes. Implementation dispatch starts
-only after the document set and decomposition are approved.
+set also passed [tasks review](reviews/tasks.md). Task 1 `performance-contract`
+re-review passed: [performance-contract record](reviews/performance-contract.md).
+The task awaits authorized commit; the next implementation task is `shared-ingestion`.
+Its fixed synthetic corpus covers
+cold, unchanged and changed-input cycles; the producer reference compares the
+complete stream, internal fields omitted from JSON, and relevant usage/session
+logical tables.
+
+The final representative baseline used 1,706 private JSONL files / 2,199,173,587
+bytes (corpus SHA-256 `4e8bb4d539c0ae16c2b40511ee4200c00b4b618429ad2ac7a13fd23541e10ddf`),
+Go 1.27.1 on darwin/amd64 with 12 logical CPUs, UTC and a fixed business clock.
+The repaired end-to-end harness launches separate refresh and snapshot CLI
+helpers and includes both command initializations and stream decode in the target
+metric. One complete cold sample took 86.539 s wall / 147.332 s CPU / 347.2 MiB
+peak RSS; one complete unchanged-refresh sample took 7.691 s wall / 8.222 s CPU /
+175.9 MiB peak RSS. Logical-row verification ran outside those target metrics and
+took 2.496 s / 2.899 s respectively. Both samples produced the same snapshot and
+logical-row digests, but both remain over target; OS cache state and external load
+were uncontrolled.
+The private full report includes every sample and has SHA-256
+`598057c029391a5b408019bde01c7577ce8d1854bc135d439260591f58d69343`.
+No production optimization, release or performance waiver is claimed by Task 1.
 
 Review order: requirements, architecture, then tasks. If an earlier review changes
 the contract, reconcile affected later drafts before their review. Topic progress

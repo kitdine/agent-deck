@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
@@ -90,6 +91,31 @@ func TestDesktopRefreshIndexesRunsIndependentIncrementalScansInParallel(t *testi
 	result := <-completed
 	if !result.Usage.Success || !result.Sessions.Success {
 		t.Fatalf("parallel result = %#v", result)
+	}
+}
+
+func TestDesktopIndexScanRecordsFailureStageWithoutChangingWireOutput(t *testing.T) {
+	for _, test := range []struct {
+		name, want string
+		err        error
+	}{
+		{name: "parser or scan", want: "scan", err: errors.New("synthetic parse failure")},
+		{name: "deadline", want: "deadline", err: context.DeadlineExceeded},
+		{name: "cancellation", want: "deadline", err: context.Canceled},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			result := runDesktopIndexScan(func() (any, error) { return nil, test.err })
+			if result.Success || result.failureStage != test.want || result.ErrorCode == "" {
+				t.Fatalf("result = %#v, want failure stage %q", result, test.want)
+			}
+			encoded, err := json.Marshal(result)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if bytes.Contains(encoded, []byte("failureStage")) || bytes.Contains(encoded, []byte("failure_stage")) {
+				t.Fatalf("internal failure stage leaked into public JSON: %s", encoded)
+			}
+		})
 	}
 }
 
