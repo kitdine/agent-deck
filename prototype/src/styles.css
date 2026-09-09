@@ -2903,3 +2903,144 @@ button.notice:hover {
   font-size: 10px;
   text-align: center;
 }
+
+/* 归属说明：三个尺寸共用一条 9px 的暗行。不缩写成图标，也不只留给读屏——
+   看数字的人和听数字的人要看到同一句话。large 里它挂在端名旁边，因为归属
+   是"这一端"的性质；small / medium 只有一端，挂在卡片底部同样无歧义。 */
+.w-attribution {
+  color: var(--dim);
+  font-size: 9px;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.w-quota-client header .w-attribution {
+  margin-left: auto;
+}
+
+/* 额度小组件：small 只显示配置中选定的一端；medium / large 按端分块、上下排列。
+   没有窗口的端不生成 block，避免用“不可用”占掉另一端真正数据的空间。 */
+/* large：上下等分，每一半里的内容各自垂直居中。等分而不是按窗口数分配，
+   是因为两端的相对重要性不随各自窗口的多少变化——按内容分会让窗口多的那端
+   看起来更重要。 */
+/* medium 的窗口容器：吸收 frame 的余量并把各行均匀铺开，
+   这样四窗口的 Codex Plus 与两窗口的 Claude 用同一条规则都排得住。 */
+.w-quota-rows {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: space-evenly;
+  gap: 4px;
+  margin-top: 5px;
+  min-height: 0;
+}
+
+.w-quota-split {
+  display: grid;
+  grid-auto-rows: 1fr;
+  gap: 8px;
+  /* flex:1 是「上下等分」成立的前提：没有它，grid 只有内容那么高，
+     1fr 分的是内容高度而不是卡片高度——两块确实等高，却一起挤在顶部，
+     底下留一大片空白。等分与居中都必须相对整张卡，不是相对内容。
+     契约板的"填满"断言就是为这条：只断言等高时它照样通过。 */
+  flex: 1;
+  min-height: 0;
+}
+
+/* 只有一个端时不要把它拉满整张卡：等分是两端之间的关系，一个端没有对手可分，
+   拉满只会得到一大片空的底色。改为整体居中，底色仍然贴着内容。 */
+.w-quota-split:has(> :only-child) {
+  grid-auto-rows: auto;
+  align-content: center;
+}
+
+.w-quota-split > .w-quota-client {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 0;
+}
+
+/* 左侧色条 + 淡底 + 明文端名共同区分两端；颜色不是唯一载体。 */
+.w-quota-client {
+  --client-color: var(--model-b);
+  padding: 5px 6px 5px 8px;
+  border-left: 3px solid var(--client-color);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--client-color) 8%, transparent);
+}
+
+.w-quota-client[data-client="codex"] {
+  --client-color: var(--accent);
+}
+
+.w-quota-client[data-client="claude"] {
+  --client-color: var(--model-b);
+}
+
+.w-quota-client > header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.w-quota-client > header strong {
+  color: var(--text);
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.w-quota-client > header small {
+  color: var(--dim);
+  font-size: 9px;
+}
+
+.w-quota-client-windows {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.w-quota-row > div:first-child {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 6px;
+  align-items: baseline;
+  font-size: 10px;
+  /* 四行标签在 medium 里各付一次行高。原先压到 1.25 是为了给重置次数腾位置；
+     重置次数移出小组件后那个约束不复存在，回到 1.4 并由量具确认四窗口仍不溢出。
+     为一个已经拆掉的约束继续付字距代价，是没人会记得去还的债。 */
+  line-height: 1.4;
+}
+
+.w-quota-row b {
+  color: var(--dim);
+  font-weight: 500;
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.w-quota-row span {
+  overflow: hidden;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.w-quota-row strong {
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.w-quota-row .w-track {
+  margin-top: 1px;
+}
+
+.w-quota-none {
+  margin: 8px 0 0;
+  color: var(--dim);
+  font-size: 11px;
+}

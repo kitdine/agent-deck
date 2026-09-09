@@ -6,6 +6,7 @@ const STATES = ["normal", "empty", "aged", "partial", "pending", "unavailable", 
 // 额度读取状态是独立的标本轴。它不能并进 STATES：用量数据状态与额度读取状态
 // 可以同时发生，合成一个控件就无法检验“用量过期 + 额度也过期”。
 const QUOTAS = ["normal", "bothOfficial", "codexPlus", "prose", "parseFailed", "stale", "neverProbed", "readingOff"];
+const WIDGET_CLIENTS = ["codex", "claude"];
 
 // 菜单栏图标可以贴在屏幕任意水平位置，而弹层朝左还是朝右正是由此决定。
 // 舞台默认居中，居中时左右余量恒等，左侧分支就永远走不到——一条标本演示不了
@@ -24,6 +25,9 @@ export function useStagePrefs() {
   const [state, setState] = useState(STATES.includes(params.get("state")) ? params.get("state") : "normal");
   const [width, setWidth] = useState(WIDTHS.includes(params.get("width")) ? params.get("width") : "420");
   const [quota, setQuota] = useState(QUOTAS.includes(params.get("quota")) ? params.get("quota") : "normal");
+  const [widgetClient, setWidgetClient] = useState(
+    WIDGET_CLIENTS.includes(params.get("widgetClient")) ? params.get("widgetClient") : "codex",
+  );
   const [anchor, setAnchor] = useState(ANCHORS.includes(params.get("anchor")) ? params.get("anchor") : "center");
 
   useEffect(() => {
@@ -31,7 +35,7 @@ export function useStagePrefs() {
     document.documentElement.setAttribute("lang", lang === "zh" ? "zh-Hans" : "en");
   }, [theme, lang]);
 
-  return { lang, setLang, theme, setTheme, state, setState, width, setWidth, quota, setQuota, anchor, setAnchor };
+  return { lang, setLang, theme, setTheme, state, setState, width, setWidth, quota, setQuota, widgetClient, setWidgetClient, anchor, setAnchor };
 }
 
 function Group({ label, value, options, onChange }) {
@@ -55,8 +59,8 @@ function Group({ label, value, options, onChange }) {
   );
 }
 
-export function StageControls({ prefs, showState = true, showWidth = true, showQuota = true, showAnchor = false }) {
-  const { lang, setLang, theme, setTheme, state, setState, width, setWidth, quota, setQuota, anchor, setAnchor } = prefs;
+export function StageControls({ prefs, showState = true, showWidth = true, showQuota = true, showWidgetClient = false, showAnchor = false }) {
+  const { lang, setLang, theme, setTheme, state, setState, width, setWidth, quota, setQuota, widgetClient, setWidgetClient, anchor, setAnchor } = prefs;
   const dict = catalogs[lang];
   const surface = new URLSearchParams(window.location.search).get("surface");
   const link = (target, text) => {
@@ -93,6 +97,14 @@ export function StageControls({ prefs, showState = true, showWidth = true, showQ
             value={quota}
             options={QUOTAS.map((key) => [key, dict.states.quotaVariants[key]])}
             onChange={setQuota}
+          />
+        )}
+        {showWidgetClient && (
+          <Group
+            label={dict.states.widgetClient}
+            value={widgetClient}
+            options={WIDGET_CLIENTS.map((key) => [key, dict.clients[key]])}
+            onChange={setWidgetClient}
           />
         )}
         {showAnchor && (

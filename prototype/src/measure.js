@@ -43,7 +43,7 @@ export function runMeasure() {
     // 面板里凡是 text-overflow:ellipsis 的元素都在这里逐个量一遍，报出还差多少像素——
     // 「这一行在窄边界会不会被截断」于是成为标本阶段能判定的问题，而不是留给真机观察。
     const seen = new Set();
-    document.querySelectorAll(".popover, .settings-window, .quota-flyout, .stage-controls, .stage-body").forEach((root) => {
+    document.querySelectorAll(".popover, .settings-window, .quota-flyout, .stage-controls, .stage-body, .board").forEach((root) => {
       root.querySelectorAll("*").forEach((node) => {
         if (seen.has(node)) return;
         seen.add(node);

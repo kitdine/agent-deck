@@ -51,6 +51,8 @@ const zh = {
     readingOff: "未读取",
     readingOffHint: "在设置中开启「读取额度」后开始读取",
     attributionUnconfirmed: "无法确认账号归属",
+    // 小组件用短式：一张 148px 的卡放不下整句，但"看得见"是需求，不是版面偏好。
+    attributionShort: "账号未确认",
     unavailable: "不可用",
     reasons: {
       not_reported: "该客户端不提供此字段",
@@ -219,13 +221,14 @@ const zh = {
   },
   widgets: {
     boardTitle: "AgentDeck 桌面小组件",
-    boardSubtitle: "四个问题，三种深度，十二个原生尺寸",
+    boardSubtitle: "五个问题，三种深度，十五个原生尺寸",
     backToPopover: "← 返回 Popover",
     kinds: {
       magnitude: { name: "用量", title: "用量", question: "花了多少？" },
       composition: { name: "构成", title: "构成", question: "花在哪儿？" },
       trust: { name: "归因", title: "归因", question: "数字可信吗？" },
       rhythm: { name: "节律", title: "活动", question: "什么时候在干活？" },
+      quota: { name: "额度", title: "额度", question: "还剩多少？" },
     },
     sizes: { small: "小", medium: "中", large: "大" },
     allClients: "全部客户端",
@@ -236,6 +239,7 @@ const zh = {
     context90: "90 天活动",
     measurement: "归因质量",
     determinateCost: "可确定成本",
+    quotaNoData: "无额度数据",
   },
   settings: {
     title: "AgentDeck 设置",
@@ -275,6 +279,7 @@ const zh = {
     state: "状态",
     width: "宽度",
     quota: "额度状态",
+    widgetClient: "小号端",
     anchor: "锚点",
     anchors: { left: "贴左", center: "居中", right: "贴右" },
     quotaVariants: {
@@ -338,6 +343,7 @@ const en = {
     readingOff: "Not read",
     readingOffHint: "Turn on Read quota in Settings to start reading",
     attributionUnconfirmed: "account attribution unconfirmed",
+    attributionShort: "account unconfirmed",
     unavailable: "Unavailable",
     reasons: {
       not_reported: "this client does not report it",
@@ -511,13 +517,14 @@ const en = {
   widgets: {
     ...zh.widgets,
     boardTitle: "AgentDeck Widgets",
-    boardSubtitle: "Four questions, three depths, twelve native surfaces",
+    boardSubtitle: "Five questions, three depths, fifteen native surfaces",
     backToPopover: "← Back to popover",
     kinds: {
       magnitude: { name: "Magnitude", title: "Usage", question: "How much am I spending?" },
       composition: { name: "Composition", title: "Breakdown", question: "Where does it go?" },
       trust: { name: "Trust", title: "Attribution", question: "Is the number real?" },
       rhythm: { name: "Rhythm", title: "Activity", question: "When do I actually work?" },
+      quota: { name: "Quota", title: "Quota", question: "How much is left?" },
     },
     sizes: { small: "Small", medium: "Medium", large: "Large" },
     allClients: "All clients",
@@ -528,6 +535,7 @@ const en = {
     context90: "90-day activity",
     measurement: "Measurement quality",
     determinateCost: "determinate cost",
+    quotaNoData: "No quota data",
   },
   settings: {
     title: "AgentDeck Settings",
@@ -568,6 +576,7 @@ const en = {
     state: "State",
     width: "Width",
     quota: "Quota state",
+    widgetClient: "Small client",
     anchor: "Anchor",
     anchors: { left: "Left", center: "Center", right: "Right" },
     quotaVariants: {

@@ -43,11 +43,12 @@ URL 参数：`lang=zh|en`、`theme=dark|light`、
 `width=420|280`、`tab=usage|breakdown|attribution|sessions|quota`、
 `sessions=readable|unavailable`、`signal=activity|workflow|tooling`、
 `quota=normal|bothOfficial|codexPlus|prose|parseFailed|stale|neverProbed`、
-`anchor=left|center|right`、`settings=1`。
+`widgetClient=codex|claude`、`anchor=left|center|right`、`settings=1`。
 
 subscription-quota 新增两个**可见**的舞台开关，不要求评审者手写参数：
 
 - `额度状态 / Quota state` 与 `state=` 正交：一个描述用量数据，一个描述额度读取；
+- 小组件页另有 `小号端 / Small client`，在 Codex 与 Claude 之间选择 small 与 medium 呈现的那一端；
 - Popover 页另有 `锚点 / Anchor`，把面板推到屏幕左/中/右。真机上菜单栏图标可以贴在
   任意水平位置，而重置次数弹层朝左还是朝右正由可用空间决定；舞台默认居中时左右余量
   恒等，左侧分支永远走不到，那条规则就没有任何标本能证明它成立。
