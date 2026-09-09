@@ -66,17 +66,18 @@ Evidence:
 - Inherited implementation evidence is retained at its original ContentStates;
   the batch uses explicit target-bound roll-ups, not relabeled historical facts.
 
-完成门禁：NOT_VERIFIED
+完成门禁：VERIFIED（2/2，候选树 `1322e76c1bed6ad6c9434d4bd26472eb43e6d6c9`）
 
-This records the local integration review. The integration gate remains open
-until the final content is checked and evidence is bound; exact gate/CI/merge
-receipts are recorded in CEv1 and Beads before delivery is claimed complete.
+The fixed integration gate returned VERIFIED with no missing, invalidated or
+unresolved evidence. L0 checks passed; signed synchronization commit `0d7a0e6`
+contains that exact tree. This receipt-only update changes no integration
+behavior. Final commit/CI/merge receipts are retained in CEv1 and Beads.
 
 Retained limits: Task 5 manual larger-text/narrow-layout and VoiceOver/interaction
 checks were explicitly waived by the user. No actual layout judgment, speech,
 disclosure operation or notice click navigation is claimed verified here.
 This batch does not complete aggregate assemble, archive topics or release v0.6.0.
 
-Task checkpoint：ad-v060c-assemble-dev / batch schema-version-signal；aggregate open。
+Task checkpoint：ad-v060c-assemble-dev / batch schema-version-signal；content_state=1322e76c1bed6ad6c9434d4bd26472eb43e6d6c9；gate=VERIFIED；aggregate open。
 提交建议：本批门禁 VERIFIED 后提交同步结果与三份集成记录/状态文件；用户已授权完整合入。
 推送建议：检查签名、提交消息和目标后推送 feature/schema-version-signal，PR 指向 main，保留历史并等待 CI。
