@@ -314,7 +314,7 @@ func migrate(ctx context.Context, db *sql.DB, ordered []migration) error {
 		return err
 	}
 	if version > CurrentSchemaVersion {
-		return fmt.Errorf("%w: database version %d exceeds supported version %d", ErrUnknownSchema, version, CurrentSchemaVersion)
+		return &SchemaAhead{Stored: version, Supported: CurrentSchemaVersion}
 	}
 	for _, migration := range ordered {
 		if migration.version <= version {

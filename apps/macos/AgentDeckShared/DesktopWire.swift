@@ -943,6 +943,7 @@ public struct DesktopHealthCheckV1: Codable, Equatable, Sendable {
     public let status: String
     public let code: String?
     public let count: Int?
+    public let supportedCount: Int?
     public let recoveryCommand: String?
 
     enum CodingKeys: String, CodingKey {
@@ -950,6 +951,7 @@ public struct DesktopHealthCheckV1: Codable, Equatable, Sendable {
         case status
         case code
         case count
+        case supportedCount = "supported_count"
         case recoveryCommand = "recovery_command"
     }
 }

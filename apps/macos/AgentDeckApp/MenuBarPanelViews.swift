@@ -2,9 +2,21 @@ import SwiftUI
 
 /// A panel whose own data is absent shows this in place of its values rather
 /// than an empty header, and never lets the whole surface claim emptiness.
+private struct SchemaSignalEnvironmentKey: EnvironmentKey {
+	static let defaultValue = false
+}
+
+extension EnvironmentValues {
+	var schemaSignal: Bool {
+		get { self[SchemaSignalEnvironmentKey.self] }
+		set { self[SchemaSignalEnvironmentKey.self] = newValue }
+	}
+}
+
 struct UnavailableRow: View {
+	@Environment(\.schemaSignal) private var schemaSignal
 	var body: some View {
-		Label(t(DesktopCopy.sectionUnavailable), systemImage: "minus.circle")
+		Label(t(schemaSignal ? DesktopCopy.schemaSignalSectionUnavailable : DesktopCopy.sectionUnavailable), systemImage: "minus.circle")
 			.font(.caption)
 			.foregroundStyle(DesktopVisualTheme.muted)
 			.frame(minHeight: MenuBarGeometry.rowMinimumHeight)

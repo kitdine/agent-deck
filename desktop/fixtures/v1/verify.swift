@@ -327,6 +327,7 @@ struct DesktopHealthCheckV1: Codable, Sendable {
     let status: String
     let code: String?
     let count: Int?
+    let supportedCount: Int?
     let recoveryCommand: String?
 
     enum CodingKeys: String, CodingKey {
@@ -334,6 +335,7 @@ struct DesktopHealthCheckV1: Codable, Sendable {
         case status
         case code
         case count
+        case supportedCount = "supported_count"
         case recoveryCommand = "recovery_command"
     }
 }
@@ -396,16 +398,33 @@ func verifyFixture(at path: String) throws -> DesktopWireEnvelopeV1 {
               !empty.daily.available, empty.daily.items.isEmpty,
               !empty.quality.available, empty.quality.items.isEmpty,
               !empty.pricing.available, empty.pricing.items.isEmpty,
-              !empty.rhythm.available, empty.rhythm.cells.isEmpty
+              !empty.rhythm.available, empty.rhythm.intensities.isEmpty,
+              empty.rhythm.tokens.isEmpty, empty.rhythm.providerCosts.isEmpty,
+              empty.rhythm.costIncomplete.isEmpty
         else {
             throw DesktopWireError.invalidEnvelope("invalid empty-client fixture scope")
         }
+    } else if path.hasSuffix("snapshot-schema-ahead.json") {
+        let schema = envelope.data.health.checks.first { $0.code == "schema_ahead" }
+        let hook = envelope.data.health.checks.first { $0.code == "hook_deliveries_dropped" }
+        guard envelope.data.wireVersion == 1, envelope.partial,
+              !envelope.data.provider.available, !envelope.data.usage.available,
+              !envelope.data.sessions.available, envelope.data.health.available,
+              envelope.warnings.contains("sessions_unavailable"),
+              schema?.count == 99, schema?.supportedCount == 23,
+              schema?.recoveryCommand == nil, hook?.count == 2,
+              hook?.supportedCount == nil, hook?.recoveryCommand == nil
+        else { throw DesktopWireError.invalidEnvelope("invalid schema-ahead fixture") }
     } else if path.hasSuffix("snapshot-legacy.json") {
         // Both additive families this task owns are absent here. A legacy
         // payload must decode as unavailable rather than fail, without raising
         // wire_version. `provider.candidates` is another task's additive object
         // and is asserted by that task's decoder path, not by this one.
+        let oldCheck = try JSONDecoder().decode(DesktopHealthCheckV1.self, from: Data(#"{"name":"database","status":"ok","count":23}"#.utf8))
         guard envelope.data.wireVersion == 1,
+              envelope.data.health.checks.isEmpty,
+              oldCheck.supportedCount == nil,
+              envelope.data.health.checks.allSatisfy({ $0.supportedCount == nil }),
               !envelope.data.usage.presentation.available,
               envelope.data.usage.presentation.scopes.isEmpty,
               !envelope.data.usage.presentation.clientSubtotals.available,
@@ -433,7 +452,9 @@ func verifyPresentationBounds(_ envelope: DesktopWireEnvelopeV1, distinguishPeri
     for scope in presentation.scopes where scope.periods.available {
         guard scope.periods.items.map(\.period) == ["today", "7d", "30d"],
               scope.daily.available, scope.daily.items.count == 90,
-              scope.rhythm.available, scope.rhythm.cells.count == 168,
+              scope.rhythm.available, scope.rhythm.intensities.count == 168,
+              scope.rhythm.tokens.count == 168, scope.rhythm.providerCosts.count == 168,
+              scope.rhythm.costIncomplete.count == 168,
               scope.pricing.available, scope.pricing.items.map(\.period) == ["today", "7d", "30d"],
               scope.quality.available, Set(scope.quality.items.map(\.period)) == ["today", "7d", "30d"]
         else {

@@ -165,6 +165,9 @@ without explicit authorization.
 - Default to one reviewed, completed task per logical commit, including its code,
   tests, necessary documentation, review record, and status changes. Do not split
   one task mechanically by development/review/repair phases.
+- Topic status changes in that boundary are its `tasks.md` and review records.
+  Follow Documentation Workflow's worktree status ownership; do not add global
+  `docs/status.md` progress changes or a companion `main` commit to a Task checkpoint.
 - Split independently deliverable scopes or separately authorized boundaries.
   Do not combine different task anchors merely because they share a topic, file,
   or working tree. Classify shared files by hunk and preserve unrelated changes.
@@ -314,6 +317,9 @@ contract, not a copy of document templates or phase instructions.
   its lifecycle explicitly omits it.
 - Update navigation only when topology changes. Update status only when its
   subject changes; do not touch timestamps merely to appear synchronized.
+  Select the owning document through
+  [Status ownership across worktrees](../docs/documentation-workflow.md#status-ownership-across-worktrees),
+  rather than copying a topic transition into the global project status.
 - Keep unfinished work active. A successful commit or local check does not close
   a larger project objective whose requirements remain unfinished.
 - Review documentation at major delivery milestones, limited to the affected
@@ -475,7 +481,8 @@ advisory audit with no formal phase transition, still control the task.
 - Perform the applicable Beads transition and durable comment under its own
   contract, only for the subject being handled. A status change does not by
   itself prove authorship, independent review, or evidence completion.
-- Update matrix readiness and cross-topic state only when they actually change.
+- Update the owning topic's matrix readiness and handoff only when they change;
+  a topic review does not update global project status in either checkout.
   A repair may affect readiness or handoff state but cannot self-issue a review
   PASS. Do not force timestamp-only updates or copy review findings into status.
 - Confirm that the record, content identity, gate result, appropriate matrix
@@ -494,7 +501,7 @@ formats, following the shared Skill's status-summary contract.
 | --- | --- | --- |
 | Topic review record or Lane A fix record | Full round: subject, content identity, method, findings, dispositions, evidence, verdict | Another subject's history without an explicit relationship |
 | `docs/topics/<topic>/tasks.md` | Document Draft/Review and task Dev/Review cells, plus concise current state and report pointers | Finding IDs, finding descriptions or dispositions, scores, repair instructions, or round narratives |
-| `docs/status.md` | Cross-topic execution state, active-version projection, and pointers | Topic review details, scores, repair instructions, or per-document matrix copies |
+| `docs/status.md` | Integrated project/release state, version-assembly projection, and pointers | Unmerged topic task progress, review details, scores, repair instructions, or matrix copies |
 | `docs/roadmap.md` | Later version direction, unscheduled candidates, and withdrawals | Active-version membership authority, execution details, or review-round content |
 
 Write the full report once. Update related documents only with information they

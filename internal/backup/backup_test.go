@@ -18,6 +18,7 @@ import (
 
 	"github.com/kitdine/agent-deck/internal/credentialvault"
 	"github.com/kitdine/agent-deck/internal/errdefs"
+	"github.com/kitdine/agent-deck/internal/hookrefusal"
 	"github.com/kitdine/agent-deck/internal/platform"
 	providerpkg "github.com/kitdine/agent-deck/internal/provider"
 	"github.com/kitdine/agent-deck/internal/store"
@@ -243,6 +244,9 @@ func TestEncryptedBackupInspectAndEmptyRootRestore(t *testing.T) {
 		t.Fatal(err)
 	}
 	archive := filepath.Join(stateRoot, "backups", "portable", "sample.adb")
+	if err := hookrefusal.Write(stateRoot, 99, store.CurrentSchemaVersion); err != nil {
+		t.Fatal(err)
+	}
 	service := Service{Core: database, StateRoot: stateRoot, Vault: vault, Version: "test", Now: func() time.Time { return time.Unix(1, 0) }}
 	manifest, err := service.Create(ctx, archive, "correct horse battery staple", false)
 	if err != nil {
@@ -269,8 +273,14 @@ func TestEncryptedBackupInspectAndEmptyRootRestore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, ok := hookrefusal.Read(stateRoot); !ok {
+		t.Fatal("backup unexpectedly removed source refusal fixture")
+	}
 	if _, included := archiveEntries["credential.key"]; included {
 		t.Fatal("portable backup included credential.key")
+	}
+	if _, included := archiveEntries[hookrefusal.Filename]; included || contains(manifest.Included, hookrefusal.Filename) {
+		t.Fatal("portable backup included Hook refusal diagnostic")
 	}
 	if _, included := archiveEntries[providerpkg.ProjectAttributionGateFilename]; included {
 		t.Fatal("portable backup included project-attribution eligibility marker")

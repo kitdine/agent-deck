@@ -4,6 +4,15 @@ import Foundation
 // key inventory below is what the localization test iterates: a key that is not
 // listed is a key nobody proves resolves in both shipped languages.
 enum DesktopCopy {
+	static let schemaSignalNotice = "This AgentDeck is older than its database, so local data cannot be read"
+	static let schemaSignalCause = "Database version %1$lld · this app supports %2$lld"
+	static let schemaSignalRecovery = "Upgrade AgentDeck to open this database"
+	static let schemaSignalSectionUnavailable = "Unavailable · AgentDeck is older than its database"
+	static let schemaSignalFooter = "Unavailable · app is older"
+	static let schemaSignalSwitchUnavailable = "Switching is unavailable while AgentDeck is older than its database"
+	static let badgedSchemaSignal = "AgentDeck — older than its database"
+	static let schemaSignalHookDropped = "%1$lld Hook deliveries were dropped while this AgentDeck could not open its database"
+
 	// Surface and qualifier copy.
 	static let loading = "Loading…"
 	static let offline = "Cannot reach the AgentDeck helper"
@@ -216,6 +225,7 @@ enum DesktopCopy {
 
 	/// The inventory the localization test walks. Every key above appears here.
 	static let allKeys: [String] = [
+		schemaSignalNotice, schemaSignalCause, schemaSignalRecovery, schemaSignalSectionUnavailable, schemaSignalFooter, schemaSignalSwitchUnavailable, badgedSchemaSignal, schemaSignalHookDropped,
 		loading, offline, failing, partial, emptyToday, emptySnapshot,
 		freshnessUpdated, freshnessLastUpdated, retry, refreshNow, refreshTimedOut, appName,
 		badgedOffline, badgedFailing, qualifierList,

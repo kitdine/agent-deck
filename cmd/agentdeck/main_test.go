@@ -25,6 +25,7 @@ import (
 	"github.com/kitdine/agent-deck/internal/doctor"
 	"github.com/kitdine/agent-deck/internal/errdefs"
 	"github.com/kitdine/agent-deck/internal/extension"
+	"github.com/kitdine/agent-deck/internal/hookrefusal"
 	"github.com/kitdine/agent-deck/internal/output"
 	"github.com/kitdine/agent-deck/internal/provider"
 	"github.com/kitdine/agent-deck/internal/session"
@@ -546,7 +547,7 @@ func TestPhase9TextAndJSONGoldenContracts(t *testing.T) {
 
 	report := doctor.Report{Mode: "quick", Status: "degraded", Warnings: 1, Checks: []doctor.Check{{Name: "credential", Status: "warning", Code: "credential_missing"}}}
 	textOutput.Reset()
-	if err := writeResult(&textOutput, "text", "doctor", report); err != nil {
+	if err := writeDoctorResult(&textOutput, "text", report); err != nil {
 		t.Fatal(err)
 	}
 	wantDoctor := "status: degraded\nmode: quick\nwarnings: 1\nerrors: 0\ncredential: warning (credential_missing)\n"
@@ -1448,17 +1449,91 @@ func TestPhase6RejectsNDJSONBeforeAnyBackupOrDoctorSideEffect(t *testing.T) {
 	}
 }
 
+func TestDoctorCLIMarksMissingStateAsPartial(t *testing.T) {
+	oldHome := userHomeDir
+	userHomeDir = func() (string, error) { return t.TempDir(), nil }
+	t.Cleanup(func() { userHomeDir = oldHome })
+
+	for _, full := range []bool{false, true} {
+		args := []string{"--state-dir", filepath.Join(t.TempDir(), "missing")}
+		if full {
+			args = append(args, "doctor", "--full")
+		} else {
+			args = append(args, "doctor")
+		}
+		var textOutput bytes.Buffer
+		if err := run(args, bytes.NewReader(nil), &textOutput); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(textOutput.String(), "state: warning (state_missing)") || !strings.Contains(textOutput.String(), "checks_skipped") {
+			t.Fatalf("full=%t missing-state text = %s", full, textOutput.String())
+		}
+
+		var jsonOutput bytes.Buffer
+		if err := run(append([]string{"--format", "json"}, args...), bytes.NewReader(nil), &jsonOutput); err != nil {
+			t.Fatal(err)
+		}
+		var envelope struct {
+			Data     map[string]any `json:"data"`
+			Warnings []string       `json:"warnings"`
+			Partial  bool           `json:"partial"`
+		}
+		if err := json.Unmarshal(jsonOutput.Bytes(), &envelope); err != nil {
+			t.Fatal(err)
+		}
+		if !envelope.Partial || !reflect.DeepEqual(envelope.Warnings, []string{"checks_skipped"}) {
+			t.Fatalf("full=%t missing-state envelope = %#v", full, envelope)
+		}
+		if _, serializedInsideData := envelope.Data["partial"]; serializedInsideData {
+			t.Fatalf("full=%t report serialized its internal partial field: %s", full, jsonOutput.String())
+		}
+	}
+}
+
+func TestSchemaAheadCLIErrorUsesStableCodeAndUpgradeMessage(t *testing.T) {
+	ctx := context.Background()
+	state := filepath.Join(t.TempDir(), "state")
+	database, err := store.Open(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = database.Exec(ctx, "UPDATE schema_metadata SET version=?", store.CurrentSchemaVersion+1); err != nil {
+		database.Close()
+		t.Fatal(err)
+	}
+	if err = database.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	exit := execute([]string{"--state-dir", state, "--format", "json", "provider", "list"}, bytes.NewReader(nil), &stdout, &stderr)
+	if exit != 1 || stdout.Len() != 0 {
+		t.Fatalf("schema-ahead exit=%d stdout=%q stderr=%q", exit, stdout.String(), stderr.String())
+	}
+	var envelope map[string]any
+	if err = json.Unmarshal(stderr.Bytes(), &envelope); err != nil {
+		t.Fatalf("decode schema-ahead error: %q: %v", stderr.String(), err)
+	}
+	errorValue, ok := envelope["error"].(map[string]any)
+	if !ok || errorValue["code"] != store.ErrSchemaAhead.Code || errorValue["message"] != fmt.Sprintf("schema_ahead: database version %d exceeds supported version %d; upgrade AgentDeck to open it", store.CurrentSchemaVersion+1, store.CurrentSchemaVersion) {
+		t.Fatalf("schema-ahead envelope = %#v", envelope)
+	}
+	if envelope["command"] != "provider.list" || len(errorValue) != 2 {
+		t.Fatalf("schema-ahead error shape = %#v", envelope)
+	}
+}
+
 func TestDoctorCLIReportsExactSchemaMatrixWithoutSQLLeakage(t *testing.T) {
 	ctx := context.Background()
 	tests := []struct {
 		name, checkName, status, code, recovery string
-		version, count                          int
-		drop                                    bool
+		version, count, supportedCount          int
+		drop, partial                           bool
 	}{
-		{"schema12", "schema", "warning", "schema_outdated", "agentdeck state migrate", 12, 12, true},
-		{"schema_current", "schema", "ok", "", "", store.CurrentSchemaVersion, store.CurrentSchemaVersion, false},
-		{"schema_current_missing_tool_calls", "schema", "error", "schema_incompatible", "", store.CurrentSchemaVersion, store.CurrentSchemaVersion, true},
-		{"future", "database", "error", "unknown_schema", "", 99, 0, false},
+		{"schema12", "schema", "warning", "schema_outdated", "agentdeck state migrate", 12, 12, store.CurrentSchemaVersion, true, false},
+		{"schema_current", "schema", "ok", "", "", store.CurrentSchemaVersion, store.CurrentSchemaVersion, 0, false, false},
+		{"schema_current_missing_tool_calls", "schema", "error", "schema_incompatible", "", store.CurrentSchemaVersion, store.CurrentSchemaVersion, 0, true, false},
+		{"future", "database", "error", store.ErrSchemaAhead.Code, "", 99, 99, store.CurrentSchemaVersion, false, true},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -1499,8 +1574,14 @@ func TestDoctorCLIReportsExactSchemaMatrixWithoutSQLLeakage(t *testing.T) {
 						t.Fatalf("full=%t text leaked %q: %s", full, forbidden, textOutput.String())
 					}
 				}
-				if !strings.Contains(textOutput.String(), test.checkName+": "+test.status) || !strings.Contains(textOutput.String(), test.code) || (test.count != 0 && !strings.Contains(textOutput.String(), fmt.Sprintf("count=%d", test.count))) || !strings.Contains(textOutput.String(), test.recovery) {
+				if !strings.Contains(textOutput.String(), test.checkName+": "+test.status) || !strings.Contains(textOutput.String(), test.code) || (test.count != 0 && !strings.Contains(textOutput.String(), fmt.Sprintf("count=%d", test.count))) || (test.supportedCount != 0 && !strings.Contains(textOutput.String(), fmt.Sprintf("supported_count=%d", test.supportedCount))) || !strings.Contains(textOutput.String(), test.recovery) {
 					t.Fatalf("full=%t text schema output = %s", full, textOutput.String())
+				}
+				if strings.Contains(textOutput.String(), "checks_skipped") != test.partial {
+					t.Fatalf("full=%t text partial marker = %s, want partial=%t", full, textOutput.String(), test.partial)
+				}
+				if strings.Contains(textOutput.String(), "upgrade AgentDeck to open it") != (test.code == store.ErrSchemaAhead.Code) {
+					t.Fatalf("full=%t text recovery = %s", full, textOutput.String())
 				}
 				jsonArgs := append([]string{"--format", "json"}, args...)
 				var jsonOutput bytes.Buffer
@@ -1514,7 +1595,9 @@ func TestDoctorCLIReportsExactSchemaMatrixWithoutSQLLeakage(t *testing.T) {
 					}
 				}
 				var envelope struct {
-					Data doctor.Report `json:"data"`
+					Data     doctor.Report `json:"data"`
+					Warnings []string      `json:"warnings"`
+					Partial  bool          `json:"partial"`
 				}
 				if err = json.Unmarshal(jsonOutput.Bytes(), &envelope); err != nil {
 					t.Fatal(err)
@@ -1529,8 +1612,15 @@ func TestDoctorCLIReportsExactSchemaMatrixWithoutSQLLeakage(t *testing.T) {
 						matched = check
 					}
 				}
-				if matched == nil || matched.Status != test.status || matched.Code != test.code || matched.Count != test.count || matched.Recovery != test.recovery {
+				if matched == nil || matched.Status != test.status || matched.Code != test.code || matched.Count != test.count || matched.SupportedCount != test.supportedCount || matched.Recovery != test.recovery {
 					t.Fatalf("full=%t JSON check=%#v", full, matched)
+				}
+				wantWarnings := []string{}
+				if test.partial {
+					wantWarnings = []string{"checks_skipped"}
+				}
+				if envelope.Partial != test.partial || !reflect.DeepEqual(envelope.Warnings, wantWarnings) {
+					t.Fatalf("full=%t JSON partial=%t warnings=%#v, want partial=%t warnings=%#v", full, envelope.Partial, envelope.Warnings, test.partial, wantWarnings)
 				}
 			}
 		})
@@ -3079,5 +3169,118 @@ func TestEstimatePricingNotesFitTheDisclosureWidth(t *testing.T) {
 	}
 	if checked == 0 {
 		t.Skip("no equivalent estimates are shipped")
+	}
+}
+
+func TestHookRefusalLifecycleBothClients(t *testing.T) {
+	for _, client := range []string{"codex", "claude"} {
+		t.Run(client, func(t *testing.T) {
+			ctx := context.Background()
+			root, home := t.TempDir(), t.TempDir()
+			oldHome := userHomeDir
+			userHomeDir = func() (string, error) { return home, nil }
+			defer func() { userHomeDir = oldHome }()
+			db, err := store.Open(ctx, root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer db.Close()
+			if _, err := db.Exec(ctx, `INSERT INTO providers(id,name,endpoint,credential_ref,multiplier,created_at,updated_at) VALUES(1,'official','x','','1','2026-09-08T00:00:00Z','2026-09-08T00:00:00Z');`); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := db.Exec(ctx, `INSERT INTO provider_selections(provider_id,client,provider_name_snapshot,endpoint_snapshot,multiplier_snapshot,selected_at) VALUES(1,?,'official','x','1','2026-09-08T00:00:00Z')`, client); err != nil {
+				t.Fatal(err)
+			}
+			deliver := func(id string) {
+				t.Helper()
+				dir := filepath.Join(home, ".codex", "sessions")
+				if client == "claude" {
+					dir = filepath.Join(home, ".claude", "projects", "-fixture")
+				}
+				if err := os.MkdirAll(dir, 0700); err != nil {
+					t.Fatal(err)
+				}
+				transcript := filepath.Join(dir, id+".jsonl")
+				if err := os.WriteFile(transcript, nil, 0600); err != nil {
+					t.Fatal(err)
+				}
+				payload, err := json.Marshal(map[string]string{"session_id": id, "transcript_path": transcript, "hook_event_name": "SessionStart", "source": "resume"})
+				if err != nil {
+					t.Fatal(err)
+				}
+				var out, stderr bytes.Buffer
+				command := newRootCommandWithError(bytes.NewReader(payload), &out, &stderr)
+				command.SetArgs([]string{"--state-dir", root, "usage", "hook", "event", client})
+				if err := command.Execute(); err != nil || out.Len() != 0 || stderr.Len() != 0 {
+					t.Fatalf("hook = %v stdout=%q stderr=%q", err, out.String(), stderr.String())
+				}
+			}
+			routes := func(want int) {
+				t.Helper()
+				var got int
+				if err := db.DB.QueryRow("SELECT count(*) FROM usage_session_routes").Scan(&got); err != nil || got != want {
+					t.Fatalf("routes=%d want=%d err=%v", got, want, err)
+				}
+			}
+			deliver("supported-before")
+			routes(1)
+			if _, ok := hookrefusal.Read(root); ok {
+				t.Fatal("successful hook wrote refusal")
+			}
+			busyLock, err := store.AcquireLock(ctx, root, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			deliver("supported-locked")
+			if err := busyLock.Release(); err != nil {
+				t.Fatal(err)
+			}
+			routes(1)
+			if _, ok := hookrefusal.Read(root); ok {
+				t.Fatal("state_busy wrote schema refusal")
+			}
+			if _, err := db.Exec(ctx, "UPDATE schema_metadata SET version=99"); err != nil {
+				t.Fatal(err)
+			}
+			deliver("future-one")
+			deliver("future-two")
+			routes(1)
+			if r, ok := hookrefusal.Read(root); !ok || r.Count != 2 || r.Stored != 99 {
+				t.Fatalf("record=%+v, %v", r, ok)
+			}
+			lock, err := store.AcquireLock(ctx, root, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			deliver("future-locked")
+			if err := lock.Release(); err != nil {
+				t.Fatal(err)
+			}
+			if r, ok := hookrefusal.Read(root); !ok || r.Count != 3 {
+				t.Fatalf("locked record=%+v, %v", r, ok)
+			}
+			routes(1)
+			if err := hookrefusal.Clear(root); err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(root, hookrefusal.Filename)
+			if err := os.Mkdir(path, 0700); err != nil {
+				t.Fatal(err)
+			}
+			deliver("future-write-failed")
+			routes(1)
+			if err := os.Remove(path); err != nil {
+				t.Fatal(err)
+			}
+			deliver("future-again")
+			if _, err := db.Exec(ctx, "UPDATE schema_metadata SET version=?", store.CurrentSchemaVersion); err != nil {
+				t.Fatal(err)
+			}
+			deliver("supported-after")
+			routes(2)
+			if _, err := os.Stat(path); !os.IsNotExist(err) {
+				t.Fatalf("successful hook did not clear record: %v", err)
+			}
+		})
 	}
 }

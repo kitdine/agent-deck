@@ -274,6 +274,16 @@ struct HealthCheckRow: Identifiable, Equatable, Sendable {
 	let status: String
 	let severity: NoticeSeverity?
 	let recovery: String?
+	let code: String?
+	let count: Int?
+	let supportedCount: Int?
+	let cause: String?
+	let recoveryProse: String?
+
+	var hasDisclosure: Bool { cause != nil || recoveryProse != nil || !(recovery ?? "").isEmpty }
+	func accessibilityText(expanded: Bool) -> String {
+		([name, status] + (expanded ? [cause, recoveryProse].compactMap { $0 } : [])).joined(separator: ", ")
+	}
 }
 
 struct HealthDetailModel: Equatable, Sendable {
@@ -371,6 +381,10 @@ final class MenuBarViewModel {
 		return qualifiers.contains(.failing) ? t(DesktopCopy.failing) : t(DesktopCopy.offline)
 	}
 
+	var hasSchemaSignal: Bool { snapshot?.health.checks.contains { $0.code == "schema_ahead" } ?? false }
+	var sectionUnavailableText: String { t(hasSchemaSignal ? DesktopCopy.schemaSignalSectionUnavailable : DesktopCopy.sectionUnavailable) }
+	var switchingUnavailableText: String { t(hasSchemaSignal ? DesktopCopy.schemaSignalSwitchUnavailable : DesktopCopy.switchingUnavailable) }
+
 	// MARK: Notice strip
 
 	var notices: [MenuBarNotice] {
@@ -381,11 +395,14 @@ final class MenuBarViewModel {
 		} else if qualifiers.contains(.failing) {
 			result.append(MenuBarNotice(id: "failing", text: errorCopy, severity: .error, opensHealthDetail: false))
 		}
-		if qualifiers.contains(.partial) {
+		if hasSchemaSignal {
+			result.append(MenuBarNotice(id: "schema", text: t(DesktopCopy.schemaSignalNotice), severity: .error, opensHealthDetail: true))
+		}
+		if qualifiers.contains(.partial), !hasSchemaSignal {
 			result.append(MenuBarNotice(id: "partial", text: t(DesktopCopy.partial), severity: .warning, opensHealthDetail: false))
 		}
 		let health = envelope.data.health
-		if health.available, health.problems > 0 {
+		if health.available, health.problems > (hasSchemaSignal ? 1 : 0) {
 			result.append(
 				MenuBarNotice(
 					id: "health",
@@ -395,7 +412,7 @@ final class MenuBarViewModel {
 				)
 			)
 		}
-		let warnings = envelope.warnings
+		let warnings = envelope.warnings.filter { !hasSchemaSignal || !["provider_unavailable", "usage_unavailable"].contains($0) }
 		for code in warnings.prefix(3) {
 			result.append(MenuBarNotice(id: "warning.\(code)", text: warningCopy(code), severity: .warning, opensHealthDetail: false))
 		}
@@ -1150,7 +1167,7 @@ final class MenuBarViewModel {
 			return FooterModel(routesText: t(DesktopCopy.footerProviderUnavailable), sections: [], switchingAvailable: false)
 		}
 		let routes = snapshot.provider.routes
-		let routesText = routes.isEmpty
+		let routesText = hasSchemaSignal ? t(DesktopCopy.schemaSignalFooter) : routes.isEmpty
 			? t(DesktopCopy.footerProviderUnavailable)
 			: routes.map { "\(clientLabel($0.client)) \($0.provider)" }.joined(separator: " · ")
 		let candidates = snapshot.provider.candidates
@@ -1267,10 +1284,23 @@ final class MenuBarViewModel {
 				name: check.name,
 				status: healthStatusLabel(check.status),
 				severity: healthSeverity(check.status),
-				recovery: check.recoveryCommand
+				recovery: check.recoveryCommand,
+				code: check.code, count: check.count, supportedCount: check.supportedCount,
+				cause: healthCause(check),
+				recoveryProse: check.code == "schema_ahead" ? t(DesktopCopy.schemaSignalRecovery) : nil
 			)
 		}
 		return HealthDetailModel(rows: rows, source: t(DesktopCopy.healthSource))
+	}
+
+	private func healthCause(_ check: DesktopHealthCheckV1) -> String? {
+		if check.code == "schema_ahead", let stored = check.count, let supported = check.supportedCount {
+			return t(DesktopCopy.schemaSignalCause, Int64(stored), Int64(supported))
+		}
+		if check.code == "hook_deliveries_dropped", let count = check.count {
+			return t(DesktopCopy.schemaSignalHookDropped, Int64(count))
+		}
+		return nil
 	}
 
 	func healthStatusLabel(_ status: String) -> String {
@@ -1312,11 +1342,12 @@ final class MenuBarViewModel {
 		return preferences.menuBarValue == .cost ? costText(totals) : DesktopFormat.tokens(totals.tokens)
 	}
 
-	var menuBarBadged: Bool { presentation.isBadged }
+	var menuBarBadged: Bool { presentation.isBadged || hasSchemaSignal }
 
 	var menuBarAccessibilityLabel: String {
 		if qualifiers.contains(.offline) { return t(DesktopCopy.badgedOffline) }
 		if qualifiers.contains(.failing) { return t(DesktopCopy.badgedFailing) }
+		if hasSchemaSignal { return t(DesktopCopy.badgedSchemaSignal) }
 		return t(DesktopCopy.appName)
 	}
 

@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kitdine/agent-deck/internal/hookrefusal"
 	"github.com/kitdine/agent-deck/internal/platform"
 	_ "modernc.org/sqlite"
 )
@@ -217,15 +218,33 @@ func TestOpenReadOnlyRejectsFutureSchema(t *testing.T) {
 	if err = db.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := OpenReadOnly(ctx, state); !errors.Is(err, ErrUnknownSchema) {
-		t.Fatalf("OpenReadOnly error = %v, want unknown_schema", err)
-	}
+	_, err = OpenReadOnly(ctx, state)
+	assertSchemaAhead(t, err, CurrentSchemaVersion+1)
 	for _, path := range []string{
 		filepath.Join(state, "agentdeck.sqlite3-wal"),
 		filepath.Join(state, "agentdeck.sqlite3-shm"),
 		filepath.Join(state, "agentdeck.sqlite3-journal"),
 	} {
 		assertNotExist(t, path)
+	}
+}
+
+func assertSchemaAhead(t *testing.T, err error, stored int) {
+	t.Helper()
+	wrapped := fmt.Errorf("open core store: %w", err)
+	if !errors.Is(wrapped, ErrSchemaAhead) {
+		t.Fatalf("error = %v, want schema_ahead", err)
+	}
+	if errors.Is(wrapped, ErrUnknownSchema) {
+		t.Fatalf("schema_ahead also matched unknown_schema: %v", err)
+	}
+	var ahead *SchemaAhead
+	if !errors.As(wrapped, &ahead) || ahead.Stored != stored || ahead.Supported != CurrentSchemaVersion {
+		t.Fatalf("SchemaAhead = %#v from %v, want stored=%d supported=%d", ahead, err, stored, CurrentSchemaVersion)
+	}
+	wantMessage := fmt.Sprintf("schema_ahead: database version %d exceeds supported version %d; upgrade AgentDeck to open it", stored, CurrentSchemaVersion)
+	if ahead.Error() != wantMessage {
+		t.Fatalf("SchemaAhead.Error() = %q, want %q", ahead.Error(), wantMessage)
 	}
 }
 
@@ -457,9 +476,8 @@ func TestMigrationsRejectUnknownNewerSchema(t *testing.T) {
 	if _, err := db.ExecContext(ctx, "CREATE TABLE schema_metadata (version INTEGER NOT NULL); INSERT INTO schema_metadata VALUES (?)", CurrentSchemaVersion+1); err != nil {
 		t.Fatal(err)
 	}
-	if err := migrate(ctx, db, migrations); !errors.Is(err, ErrUnknownSchema) {
-		t.Fatalf("migrate error = %v, want unknown schema", err)
-	}
+	err = migrate(ctx, db, migrations)
+	assertSchemaAhead(t, err, CurrentSchemaVersion+1)
 }
 
 func TestV10MigrationCanonicalizesUsageEventAndSessionTimes(t *testing.T) {
@@ -1501,6 +1519,188 @@ func TestAcquireScanLockReleaseOwnsOnlyCurrentLock(t *testing.T) {
 	}
 }
 
+func TestSchemaAheadAtRestHonorsCanceledContext(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "agentdeck.sqlite3")
+	database, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = database.Exec("CREATE TABLE schema_metadata (singleton INTEGER PRIMARY KEY CHECK(singleton = 1), version INTEGER NOT NULL CHECK(version >= 0)); INSERT INTO schema_metadata(singleton, version) VALUES (1, ?)", CurrentSchemaVersion+1); err != nil {
+		database.Close()
+		t.Fatal(err)
+	}
+	if err = database.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	done := make(chan *SchemaAhead, 1)
+	go func() { done <- schemaAheadAtRest(ctx, root) }()
+	select {
+	case ahead := <-done:
+		if ahead != nil {
+			t.Fatalf("canceled probe returned %#v", ahead)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("canceled schema probe did not return promptly")
+	}
+}
+
+func TestOpenReportsFutureSchemaAheadWhileStateLockIsHeld(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	path := filepath.Join(root, "agentdeck.sqlite3")
+	database, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = database.ExecContext(ctx, "CREATE TABLE schema_metadata (singleton INTEGER PRIMARY KEY CHECK(singleton = 1), version INTEGER NOT NULL CHECK(version >= 0)); INSERT INTO schema_metadata(singleton, version) VALUES (1, ?)", CurrentSchemaVersion+1); err != nil {
+		database.Close()
+		t.Fatal(err)
+	}
+	if err = database.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	beforeInfo, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, suffix := range []string{"-wal", "-shm", "-journal"} {
+		assertNotExist(t, path+suffix)
+	}
+
+	lock, err := AcquireLock(ctx, root, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lock.Release()
+	previousWait := lockWait
+	lockWait = 0
+	defer func() { lockWait = previousWait }()
+
+	_, err = Open(ctx, root)
+	assertSchemaAhead(t, err, CurrentSchemaVersion+1)
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	afterInfo, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(after, before) || afterInfo.Mode().Perm() != beforeInfo.Mode().Perm() || !afterInfo.ModTime().Equal(beforeInfo.ModTime()) {
+		t.Fatal("schema-ahead lock probe modified the database bytes, mode, or modification time")
+	}
+	for _, suffix := range []string{"-wal", "-shm", "-journal"} {
+		assertNotExist(t, path+suffix)
+	}
+}
+
+func TestOpenPreservesStateBusyWhenSchemaAheadProbeIsInconclusive(t *testing.T) {
+	ctx := context.Background()
+	previousWait := lockWait
+	lockWait = 0
+	defer func() { lockWait = previousWait }()
+
+	for _, test := range []struct {
+		name  string
+		setup func(t *testing.T, root string)
+	}{
+		{
+			name: "supported",
+			setup: func(t *testing.T, root string) {
+				if err := os.MkdirAll(root, platform.DirectoryMode); err != nil {
+					t.Fatal(err)
+				}
+				database, err := sql.Open("sqlite", filepath.Join(root, "agentdeck.sqlite3"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err = database.ExecContext(ctx, "CREATE TABLE schema_metadata (singleton INTEGER PRIMARY KEY CHECK(singleton = 1), version INTEGER NOT NULL CHECK(version >= 0)); INSERT INTO schema_metadata(singleton, version) VALUES (1, ?)", CurrentSchemaVersion); err != nil {
+					database.Close()
+					t.Fatal(err)
+				}
+				if err = database.Close(); err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
+		{
+			name: "missing",
+			setup: func(t *testing.T, root string) {
+				if err := os.MkdirAll(root, platform.DirectoryMode); err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
+		{
+			name: "malformed",
+			setup: func(t *testing.T, root string) {
+				if err := os.MkdirAll(root, platform.DirectoryMode); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(root, "agentdeck.sqlite3"), []byte("not sqlite"), platform.FileMode); err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
+		{
+			name: "damaged_metadata",
+			setup: func(t *testing.T, root string) {
+				if err := os.MkdirAll(root, platform.DirectoryMode); err != nil {
+					t.Fatal(err)
+				}
+				db, err := sql.Open("sqlite", filepath.Join(root, "agentdeck.sqlite3"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err = db.ExecContext(ctx, "CREATE TABLE unrelated (id INTEGER)"); err != nil {
+					db.Close()
+					t.Fatal(err)
+				}
+				if err = db.Close(); err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			root := filepath.Join(t.TempDir(), "state")
+			test.setup(t, root)
+			path := filepath.Join(root, "agentdeck.sqlite3")
+			before, readErr := os.ReadFile(path)
+			lock, err := AcquireLock(ctx, root, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer lock.Release()
+
+			_, err = Open(ctx, root)
+			if !errors.Is(err, ErrStateBusy) || errors.Is(err, ErrSchemaAhead) {
+				t.Fatalf("Open error = %v, want state_busy", err)
+			}
+			after, afterErr := os.ReadFile(path)
+			if readErr == nil {
+				if afterErr != nil || !reflect.DeepEqual(after, before) {
+					t.Fatalf("schema probe changed database: before=%v after=%v", readErr, afterErr)
+				}
+			} else if !errors.Is(readErr, os.ErrNotExist) || !errors.Is(afterErr, os.ErrNotExist) {
+				t.Fatalf("missing database probe state: before=%v after=%v", readErr, afterErr)
+			}
+			for _, suffix := range []string{"-wal", "-shm", "-journal"} {
+				assertNotExist(t, path+suffix)
+			}
+		})
+	}
+}
+
 func TestOpenRespectsMigrationLock(t *testing.T) {
 	root := t.TempDir()
 	if err := platform.EnsureStateRoot(root); err != nil {
@@ -1551,4 +1751,65 @@ func assertNotExist(t *testing.T, path string) {
 	} else if !errors.Is(err, fs.ErrNotExist) {
 		t.Fatal(err)
 	}
+}
+
+func TestHookRefusalClearedOnlyAfterSuccessfulOpen(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	db, err := Open(ctx, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := hookrefusal.Write(root, 99, CurrentSchemaVersion); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, hookrefusal.Filename)
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	readOnly, err := OpenReadOnly(ctx, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	readOnly.Close()
+	after, _ := os.ReadFile(path)
+	if !reflect.DeepEqual(before, after) {
+		t.Fatal("read-only open changed diagnostic")
+	}
+	_, err = open(ctx, root, func(context.Context, string, time.Duration) (stateLock, error) { return failingLock{ErrLockLost}, nil })
+	if !errors.Is(err, ErrLockLost) {
+		t.Fatalf("release error = %v", err)
+	}
+	after, _ = os.ReadFile(path)
+	if !reflect.DeepEqual(before, after) {
+		t.Fatal("failed final lock release cleared diagnostic")
+	}
+	_, err = open(ctx, root, func(context.Context, string, time.Duration) (stateLock, error) { return nil, ErrStateBusy })
+	if !errors.Is(err, ErrStateBusy) {
+		t.Fatalf("lock error = %v", err)
+	}
+	if _, ok := hookrefusal.Read(root); !ok {
+		t.Fatal("failed acquisition cleared diagnostic")
+	}
+	db, err = Open(ctx, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+	assertNotExist(t, path)
+	if err := os.Mkdir(path, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(path, "keep"), []byte("fixture"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	db, err = Open(ctx, root)
+	if err != nil {
+		t.Fatalf("cleanup failure broke open: %v", err)
+	}
+	db.Close()
 }

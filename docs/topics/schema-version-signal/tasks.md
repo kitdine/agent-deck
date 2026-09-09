@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-08-30
-updated: 2026-09-07
+updated: 2026-09-08
 ---
 
 # Schema Version Signal — Tasks
@@ -19,8 +19,44 @@ This file is the only status authority for this topic.
 
 The document set is unchanged. Requirements, architecture, and the final UX
 surface have passed review. This decomposition passed Round 1 review on 2026-09-07; see
-`reviews/tasks.md` for evidence and the completion gate. Implementation still
-requires its own development-stage authorization.
+`reviews/tasks.md` for evidence and the completion gate. Tasks 1–4 passed review
+and their required gates, and are committed on `feature/schema-version-signal`:
+`6cc1d6f` (core), `4285979` (Hook lifecycle), `64956c6` (wire), and `dc588f8`
+(menu-bar presentation). Their review records and immutable CEv1 states retain
+the evidence. Task 5 passed re-review with its required gate VERIFIED, including the two user-waived criteria; see
+[its review record](reviews/schema-signal-acceptance.md). Binary and isolated native rendering
+probes pass; the user explicitly waived the remaining manual acceptance and
+accepted its risks. Those manual checks were not performed.
+Task 6 contract reconciliation passed review and its required gate (4/4);
+see [its review record](reviews/contract-reconciliation.md). All six Tasks are
+reviewed and the topic candidate gate is VERIFIED (3/3), retaining Task 5's
+explicit manual waivers. The final Task delivery follows that checkpoint;
+immutable delivery identities are recorded in CEv1 and Beads. The topic remains
+active pending its separately authorized integration/retirement boundary.
+No archive, integration, or release is implied.
+
+### Current worktree handoff — 2026-09-08
+
+The user corrected status ownership after Task 4 delivery. Apply
+[Status ownership across worktrees](../../documentation-workflow.md#status-ownership-across-worktrees):
+topic progress belongs here and in the topic review records; Beads owns
+cross-worktree dispatch. Inherited `docs/status.md` describes the integrated
+baseline and must not be updated to mirror these task transitions.
+
+The earlier Task 1–4 checkpoint advice to include global status changes or
+create companion `main` status commits is superseded. The four unpushed
+status-only main commits (`cedc8a8`, `9fd7af9`, `a0418e6`, `2cb558f`) have been
+removed from main. The feature worktree restores `docs/status.md` to its inherited
+baseline; the four product commits and historical review/evidence facts remain
+unchanged. Their Beads tasks remain closed. No product tests or acceptance gates
+are invalidated merely by this documentation/governance cleanup.
+
+The rule correction and status cleanup belong to this feature worktree and its
+authorized delivery. They must not be copied into the main checkout.
+Task 6's file boundary below now excludes the global status row; integration
+will update that row with the integrated product state.
+The active product task is `schema-signal-acceptance`, ready for review under
+the explicit manual-acceptance waiver recorded below.
 
 Why each row exists, against the review question that justifies it:
 
@@ -69,12 +105,12 @@ carrier or rewrite its architecture record.
 
 | Task | Dev | Review |
 | --- | --- | --- |
-| 1. `core-schema-contract` | [ ] | [ ] |
-| 2. `hook-refusal-lifecycle` | [ ] | [ ] |
-| 3. `desktop-schema-wire` | [ ] | [ ] |
-| 4. `menubar-schema-presentation` | [ ] | [ ] |
-| 5. `schema-signal-acceptance` | [ ] | [ ] |
-| 6. `contract-reconciliation` | [ ] | [ ] |
+| 1. `core-schema-contract` | [x] | [x] |
+| 2. `hook-refusal-lifecycle` | [x] | [x] |
+| 3. `desktop-schema-wire` | [x] | [x] |
+| 4. `menubar-schema-presentation` | [x] | [x] |
+| 5. `schema-signal-acceptance` | [x] | [x] |
+| 6. `contract-reconciliation` | [x] | [x] |
 
 Execute in order. Each task is independently reviewable and must leave its
 selected checks passing; later tasks are not excuses for a failing intermediate
@@ -167,6 +203,55 @@ successful non-Hook clearing, failed-open retention, read-only immutability,
 and upgrade-without-write suppression. Assert exit 0, empty streams and no
 route on refusal, a bounded private record, and a real route on success.
 
+#### Task 2 implementation handoff — 2026-09-08
+
+- Implementer: Codex; workspace `agent-deck.schema-version-signal`, branch
+  `feature/schema-version-signal`. Task 1 is delivered in `6cc1d6f`.
+- `internal/hookrefusal` owns the seven fixed keys, 2 KiB read bound, 0600
+  temporary-sibling replacement, live-version comparison and deletion. It adds
+  no client payload, path or session ID to the record. Concurrent increments
+  remain approximate; there is no state-lock acquisition or exact ledger claim.
+- The Hook writes only after a typed schema-ahead open refusal and swallows
+  diagnostic failures. Core open clears only after successful final lock
+  release. Doctor reads before database open, suppresses upgraded history
+  without mutation and emits no diagnostic-about-diagnostic warning.
+- Tests cover both clients through the command entry point with empty stdout
+  and stderr, supported/future/supported transitions, held-lock future refusal,
+  supported state_busy without a refusal record, no new refused route, real
+  successful routes, write failure, sequential/concurrent replacement, corrupt
+  and absent records, read-only retention, failed lock-release retention,
+  non-Hook successful clearing, deletion failure, doctor quick/full upgrade
+  suppression, and encrypted backup member exclusion. These use synthetic
+  fixtures, not installed clients, real session Hooks or user databases.
+- Final product state: HEAD `6cc1d6f56428ea66b00a3a46944b5c47d0556044`,
+  SHA-256 `d37d73a60f66e0dfa763cec9292522fa7820bf821c76081edad7c0468336ff35`.
+  Recipe: `git diff --binary` for the seven changed tracked Go files, in sorted
+  path order, followed by `git diff --no-index --binary -- /dev/null <path>`
+  for `internal/hookrefusal/record.go`, then `record_test.go`; hash concatenated
+  stdout. Status documents are excluded from this product/test fingerprint.
+- Verification passed: targeted owner/store/doctor/CLI/backup tests, then
+  `scripts/run-go-test.sh ./...`,
+  `scripts/run-go-test.sh -race ./internal/hookrefusal ./internal/store ./internal/doctor`,
+  and `make vet`. The final full suite includes the added supported-lock and
+  backup-fixture assertions. Go 1.27.1 darwin/amd64, vendored dependencies,
+  `GOCACHE=/private/tmp/agent-deck-go-build`; no dependency changes.
+  Logs are retained in the local TMPDIR: targeted `agentdeck-go-test.X14O9U`,
+  full `agentdeck-go-test.YNms5w`, race `agentdeck-go-test.AnuDWH`.
+- CEv1 WorkUnit:
+  `urn:ce:agent-deck:work-unit:schema-version-signal-hook-refusal-lifecycle`;
+  target `urn:ce:agent-deck:state:implement:hook-refusal-lifecycle:6hf-2V_qpB0yYQHf`.
+  Five required criteria cover the record, Hook, clearing, doctor/backup and L3
+  verification. Fixed gate query confirms VERIFIED (5/5), with no missing,
+  invalidated or unresolved evidence. Six state/evidence nodes and ten relations
+  were confirmed; all ten relationship preflights passed. No review PASS or
+  delivery is claimed. Review remains unchecked.
+- Documentation checks passed: `make check-whitespace`,
+  `bash scripts/check-topic-docs.sh`, and topic/canonical `git diff --check`.
+  The full Go log SHA-256 is
+  `775b846e73b05ae5be85e59819f9115584240d9e841df911398d6fe209a12619`;
+  race log SHA-256 is
+  `64189197b5a47b5e372e8d19f0c655b6f791118d873a8847df4dff451bb8a65d`.
+
 ### 3. `desktop-schema-wire`
 
 **Depends on:** Tasks 1–2. **Result:** producer-generated schema-ahead data reaches
@@ -198,6 +283,85 @@ shared Swift decoding and the canonical macOS test entry point. Regenerate with
 check without the update flag to establish reproducibility. The standalone
 verifier must also accept all five fixture paths, including the unchanged legacy
 payload. CLT fallback is decoding evidence only, never native UI acceptance.
+
+#### Task 3 implementation handoff — 2026-09-08
+
+- Codex implemented the producer-generated schema-ahead fixture, optional Swift
+  `supportedCount`, Go privacy/availability checks, XCTest assertions, and both
+  Swift fixture entry points. Workspace `agent-deck.schema-version-signal`,
+  branch `feature/schema-version-signal`, HEAD
+  `4285979ecec296ea8123090f2085161ef700e89d`.
+- The fixture carries schema 99/supported 23 and two synthetic Hook refusals.
+  Independent session-index availability is tested both ways. Existing producer
+  fixtures remain unchanged; legacy SHA-256 remains
+  `b4fc86e306b3ce557a744f4da2416faeb3e74b0fa60b95a354c7f116765400f2`.
+  Legacy has an empty health-check list; a separate old-shape check without
+  `supported_count` proves nil decoding without changing legacy bytes.
+- Passed: fixture generation, reproducibility without the update flag, targeted
+  producer/fixture/privacy tests, full vendored Go suite, and the standalone
+  Swift verifier over all five fixtures. Go logs in local TMPDIR:
+  `agentdeck-go-test.OpE7n7` (generation), `agentdeck-go-test.5LGGwu` (targeted),
+  `agentdeck-go-test.gOXap9` (full, SHA-256
+  `65d8e6925cb5b0ca861c9f64cbfe1b698c91e65fd252d2917e47b4e42ccb5733`).
+  The final changes after the Go suite only correct Swift verifier assertions;
+  unchanged Go evidence is reused. Swift 6.3.3, x86_64-apple-macosx26.0.
+- Harness diagnosis: the standalone decoder mirror already referred to nonexistent
+  `rhythm.cells` at HEAD. Its fixed-bound assertions now check the four serialized
+  arrays directly, preserving 168-cell/empty-array checks; all five fixtures pass.
+  The newly introduced nonempty-legacy assertion was corrected against the
+  unchanged legacy payload, and missing-field decoding remains explicitly tested.
+- **Initial blocking prerequisite (resolved below):** `bash scripts/test-macos-app.sh` builds the shared
+  decoder and runs the CLT fallback, passes the new schema and old-shape decoding
+  assertions, then fails at the pre-existing helper assertion:
+  `expected two index refreshes followed by one snapshot read`.
+  `EmbeddedHelperRunner.snapshot` actually performs one
+  `desktop refresh-indexes` request and one `desktop snapshot ... --stream`
+  request. The verifier still expects `usage scan`, `session scan`, then a
+  non-stream snapshot. This is a test-harness mismatch, not evidence of a
+  schema-wire failure. Updating those helper assertions exceeds Task 3's stated
+  permission to register the new fixture in that entry point. Separate scoped
+  repair authorization is required before rerunning this mandatory gate.
+  Final failure log: `/private/tmp/agentdeck-desktop-schema-wire-macos.log`.
+  CLT fallback establishes decoding only; XCTest/native UI acceptance was not run.
+- Current content fingerprint:
+  `47a97341a0680f75f8b23ea9a12c4f8b3ef05902a5f791549c5d707f0bab408f`.
+  Recipe: SHA-256 of `head=<HEAD>` followed by sorted `;<path>=<git hash-object>`
+  entries for the nine Task 3 changed files (eight tracked plus the new JSON),
+  excluding tasks.md/status.md. This includes both Swift verifier corrections.
+- At the initial blocked handoff, Task remained `in_progress`, Dev/Review unchecked; no completion, review PASS,
+  commit or push. CEv1 target:
+  `urn:ce:agent-deck:state:implement:desktop-schema-wire:F6Y6pjgFEZSajayT`.
+  Producer and Swift compatibility evidence are available; the mandatory
+  canonical-macOS verification criterion is blocked by the prerequisite above.
+  Fixed gate query confirms BLOCKED: two criteria pass, verification remains
+  blocked; four nodes and six relations were confirmed, six preflights passed.
+  Whitespace, topic-document and both workspace diff checks pass.
+
+#### Task 3 completion after supplemental authorization — 2026-09-08
+
+- The user explicitly authorized synchronizing the verifier's obsolete helper
+  assertions. They now require exactly `desktop refresh-indexes`, followed by
+  `desktop snapshot --wire-version 1 --recent-limit 5 --stream`, with the existing
+  flags and embedded-helper path assertion preserved. No runner behavior changed.
+- `bash scripts/test-macos-app.sh` now passes: shared Swift compilation, five
+  fixture checks and helper boundaries. Final log:
+  `/private/tmp/agentdeck-desktop-schema-wire-macos-final.log`.
+  This is CLT fallback decoding/helper evidence; native XCTest/UI was not run.
+  SwiftPM emitted user-cache warnings but completed successfully.
+- Reused the preceding targeted/full Go and standalone five-fixture Swift
+  results: their producer, tests, fixtures, shared decoder, standalone verifier,
+  dependencies and toolchain are unchanged by this helper-assertion-only update.
+- Final fingerprint `9b305fcd70ff0395b2f94bf6bab543e5644ac24454aa26d3a876f9fcf88156a5`,
+  using the same nine-file recipe and HEAD as above. The old blocked state remains
+  historical evidence, not the final candidate's gate result. Final target:
+  `urn:ce:agent-deck:state:implement:desktop-schema-wire:lfplhKUqIpF5bKrK`.
+- Implementation is ready for review; Dev checked and Review unchecked. No
+  review verdict, commit or push is implied. The final gate and handoff are
+  synchronized against this content state. Fixed CEv1 gate: VERIFIED (3/3),
+  no missing/invalidated/unresolved evidence. Four nodes and eight relations
+  were confirmed, including two explicit reuse links; all relation preflights
+  passed. Final macOS log SHA-256:
+  `80b5f27adca4fa700db94f3df29509b4c70b05007e1fe63c7807df07f8ec6bcb`.
 
 ### 4. `menubar-schema-presentation`
 
@@ -235,6 +399,58 @@ values. Compare with the existing prototype; do not edit it to make an
 implementation discrepancy disappear. Native layout/accessibility acceptance
 is completed in Task 5, not inferred from model tests.
 
+#### Task 4 implementation handoff — 2026-09-08
+
+- Implementer: Codex. Workspace `agent-deck.schema-version-signal`, branch
+  `feature/schema-version-signal`; Task 3 delivered at `64956c6`.
+- App-only schema predicate now drives the primary notice, two-code suppression,
+  health-count threshold, attributed unavailable bodies/footer/provider popover,
+  badge and accessible label. Offline/failing precedence, aged freshness,
+  independent warnings and normal-snapshot reset remain explicit model tests.
+  Shared refresh semantics, Widget projection, tab marks and geometry are unchanged.
+- Health rows retain optional stable code and version/count fields. Schema cause
+  and recovery are proportional caption prose; Hook refusals have count prose
+  only. Missing numbers remain absent. Disclosure defaults open and exposes a
+  native accessible DisclosureGroup representation whose label combines name,
+  status and visible prose without duplicate speech; command copying remains a
+  separate operable branch for schema_outdated and other command recoveries.
+- Eight keys match the approved UX/prototype bilingual copy and join allKeys.
+  Both-language catalog tests and the existing no-update-check rule pass.
+- Verification: full Xcode 26.4 native build and test entry passed, 128 tests:
+  Shared 40, App 66, Widget 22. Command:
+  `env DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer AGENTDECK_TEST_LOCALE=en TEST_RUNNER_AGENTDECK_TEST_LOCALE=en make test-macos-app`.
+  Controlled elevated execution was needed because nested sandbox-exec blocked
+  Swift Observation macros. The initial source compile error in the disclosure
+  branch was corrected before the final candidate.
+- The first native suite in the system Chinese locale passed every new schema
+  test but failed the pre-existing English-literal assertion in
+  `testProviderWithMultipleReadyTargetsUsesOneRowAndASecondLevel` (wrapper/direct
+  versus 包装器/直连). No unrelated assertion or product language policy was
+  changed; the full final run pins its test locale to English. This is not a
+  claim that the entire suite passes under arbitrary system languages.
+- Native NSHostingView renderings cover expanded/collapsed states in both
+  languages. Inspected `/private/tmp/agentdeck-schema-presentation/health-*.png`:
+  expanded rows show 99 and 23, cause and upgrade prose, no copy button; collapsed
+  rows retain just status and disclosure. Compared with prototype/src/Popover.jsx
+  HealthDetail and i18n.js plus the approved Health specimens. This bounded row
+  rendering is not the Task 5 full-surface layout/VoiceOver acceptance.
+- Final HEAD `64956c603b9b9802b18c1ee9a728344baf161bbd`, fingerprint
+  `cbfcf5df79bf3dd3e4ae169e2c3eb4c1a56504a8ea94b2673abcfcbf83f14913`.
+  Recipe: SHA-256 of `head=<HEAD>` plus sorted `;<path>=<git hash-object>` for
+  the nine App/AppTests files named in this task, excluding status documents.
+  Final log `/private/tmp/agentdeck-menubar-schema-native-en.log`, SHA-256
+  `e22f34d17abccf09fff247057d1831e0259dc070fb480bb6d5f91c3ade24aecd`.
+  Native xcresult: `apps/macos/build/DerivedData/Logs/Test/Test-AgentDeck-2026.09.08_06-47-21--0700.xcresult`.
+- CEv1 WorkUnit
+  `urn:ce:agent-deck:work-unit:schema-version-signal-menubar-schema-presentation`,
+  target `urn:ce:agent-deck:state:implement:menubar-schema-presentation:di7gVes8KvamLBPG`.
+  Four criteria cover notice policy, Health disclosure, copy/chrome and native
+  checks. Implementation is ready for review; Review remains unchecked. No
+  commit, push or Task 5 acceptance is implied. Fixed gate query confirms
+  VERIFIED (4/4), with no missing, invalidated or unresolved evidence. Five
+  state/evidence nodes and eight relations were confirmed; all preflights passed.
+  Whitespace, topic-document and both workspace diff checks passed.
+
 ### 5. `schema-signal-acceptance`
 
 **Depends on:** Tasks 1–4 and their reviews. **Result:** state-bound evidence for
@@ -265,6 +481,61 @@ No release-verify, installation, real authentication or user database mutation.
 If native acceptance is unavailable, leave this task and its evidence boundary
 open; a successful Foundation fallback is not a waiver.
 
+#### Task 5 current acceptance handoff — 2026-09-08
+
+At the initial handoff Task 5 remained `in_progress`, with Dev and Review unchecked. Added the focused
+built-binary regression and isolated native matrix test; no production files
+changed. Binary cross-path checks and the isolated native test pass. Actual
+VoiceOver order/disclosure/navigation and actual larger-text/layout acceptance
+remain pending; the injected type-size PNGs are identical and are not a waiver.
+
+Evidence manifest and manual steps:
+`/private/tmp/agentdeck-schema-acceptance-evidence.json`.
+Safe fixture launcher: `/private/tmp/agentdeck-schema-acceptance-launch.sh`.
+These artifacts retain binary, fixture, log and PNG digests, test commands,
+reused evidence scope and the excluded initial non-isolated host run. The
+launcher targets only `/private/tmp/agentdeck-menubar-acceptance.Zxtd3b`.
+
+Candidate `b52b94e946fd3fc3267316a12bef9e38bc6dcb6c354565a9ab39c123ab5c8a92`
+at HEAD `488e787`, covering the two changed test files. CEv1 WorkUnit:
+`urn:ce:agent-deck:work-unit:schema-version-signal-schema-signal-acceptance`;
+target `urn:ce:agent-deck:state:implement:schema-signal-acceptance:YQcgzs1dU_fQB7wt`.
+The native acceptance boundary must remain open until actual observations are
+provided. Fixed gate result is BLOCKED (two criteria pass, two native criteria
+await observations); five nodes and eight relations were confirmed. Whitespace,
+topic-document and diff checks pass. No review record is created before review,
+and no commit/push is implied.
+
+#### Task 5 user waiver and review handoff — 2026-09-08
+
+The user explicitly confirmed the assistant's precise question: formally waive
+unperformed text-size/layout and VoiceOver/interaction acceptance and accept
+its risks. This is an acceptance-authority decision, **not** an observation that
+those checks ran or passed. The earlier blocked observations remain historical.
+
+Waived scope: actual larger-text effects and narrow-layout judgment, actual
+VoiceOver speech order and disclosure operation, and actual notice-to-Health
+navigation. Standard/accessibility3 PNG equality and the narrow English header
+wrap remain unverified limitations. The first native host run lacking explicit
+Home isolation remains excluded; the later isolated run is the reused evidence.
+
+Binary cross-path and isolated render/model checks retain their real passing
+results. Dev is now checked and the task is ready for independent review; Review
+remains unchecked. CEv1 must distinguish the two reused tested criteria from the
+two user-waived criteria, and must not report four executed passing checks.
+No production change, commit or push is authorized by this waiver.
+
+#### Task 5 repaired entry handoff — 2026-09-08
+
+The native matrix is now explicitly opt-in. Set
+`TEST_RUNNER_AGENTDECK_TEST_SCHEMA_ACCEPTANCE=1` together with an isolated
+`TEST_RUNNER_AGENTDECK_TEST_HOME` before launching XCTest to run it. Without
+valid prerequisites it skips, which is not manual acceptance or a tested pass.
+The ordinary suite and explicit matrix run passed on the repair candidate;
+see the repair evidence in [the review record](reviews/schema-signal-acceptance.md).
+The earlier user waiver remains effective. Dev is ready, Review remains unchecked;
+no product changes or delivery were performed.
+
 ### 6. `contract-reconciliation`
 
 **Depends on:** Tasks 1–5 passing review with their required evidence.
@@ -272,8 +543,9 @@ open; a successful Foundation fallback is not a waiver.
 
 **Files:** `docs/specs/cli-design.md`, `docs/specs/cli-manual.md` only for affected
 existing doctor/Hook examples, `docs/README.md` only for its spec-version pointer;
-this topic's `tasks.md`, `reviews/contract-reconciliation.md` when reviewed, and
-the topic row in `docs/status.md`.
+this topic's `tasks.md` and `reviews/contract-reconciliation.md` when reviewed.
+The global `docs/status.md` row belongs to the authorized integration/version-
+assembly change, not to this unmerged topic's task completion.
 
 Apply every architecture **Contract edits** row in one pass: stable error code,
 compatibility narrowing, both formerly contradictory future-schema statements,
@@ -295,6 +567,25 @@ contract edits against implemented behavior and the acceptance evidence map.
 Do not rerun unchanged product suites for a documentation closure. Query each
 newly crossed task/topic evidence boundary during its authorized closure; topic
 completion, archive/version assembly and delivery follow their own authorities.
+
+#### Task 6 current handoff — 2026-09-08
+
+Spec revision 29, the affected doctor/Hook manual examples and the index pointer
+are reconciled with delivered behavior. The ten architecture Contract edits
+were mapped to current sections and source/evidence; older schema examples now
+refer to the binary's supported version rather than obsolete schema 13 cases.
+Successful-open clearing and upgrade-based warning suppression remain distinct.
+Task 5's manual user waivers are preserved as waivers, not tested guarantees.
+
+Candidate `92f912c1e79966341b3deedccd2a7938376b912c1bc2803154666805243e7fa1` at HEAD `7510e7181f67dd4313d40f956236c1b907466773` covers the three reconciled documents.
+Audit map and blob recipe: `/private/tmp/agentdeck-contract-reconciliation-audit.json`.
+Local-link, topic-document, whitespace and diff checks pass. No product test
+rerun is required for this documentation-only change. Dev is ready and Review
+remains unchecked; the topic is not archived, merged, or assigned a release.
+Task gate VERIFIED (4/4):
+`urn:ce:agent-deck:state:implement:contract-reconciliation:i8iZjSKZvc_1I7eL`.
+Five state/evidence nodes and eight relationships were confirmed; all relation
+preflights passed. This is Task 6 implementation readiness, not topic closure.
 
 ## Acceptance coverage
 
@@ -323,5 +614,7 @@ Each Task has a corresponding `<topic>:<task-anchor>` evidence scope; actual
 WorkUnits and atomic criteria are resolved under Evidence before implementation.
 This design does not pre-create implementation dispatch or declare those gates
 verified. The document review does not check any implementation Dev or Review cell.
-The six implementation tasks remain pending; the next task is
-`core-schema-contract` under its own development-stage authorization.
+Tasks 1–6 have passed review and their evidence gates, including Task 5's explicit
+user waivers. The topic candidate gate is VERIFIED; the final checkpoint is in
+reviews/contract-reconciliation.md; immutable delivery is recorded in CEv1/Beads.
+archive, integration and release retain their separate boundaries.

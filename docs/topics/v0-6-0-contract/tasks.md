@@ -188,11 +188,12 @@ installation remain separate exact-SHA workflows requiring explicit authority.
 
 ## Current handoff
 
-Document re-review passed; see [the review record](reviews/tasks.md).
-The reviewed version plan awaits authorized delivery. No feature has been integrated by this contract,
-neither task has started, and no implementation dispatch is created before this
-decomposition passes review. The first executable batch candidate is
-schema-version-signal; four inherited Documents and six completed Task records
-remain in its own feature worktree until authorized integration.
+The version plan was delivered through PR #2 at main `4737076`.
+The first assembly batch is `schema-version-signal`, with its six delivered
+tasks and preserved manual acceptance waivers. The batch is prepared in
+`agent-deck.schema-version-signal` for its direct-to-main PR; its merge receipt
+and exact result identity are recorded in Beads and CEv1 after delivery.
+See [the batch integration review](reviews/assemble.md).
 
-Current scope: version-plan delivery checkpoint; implementation remains unstarted.
+`assemble` remains open for the other five selected areas; neither aggregate
+Task checkbox is completed by this batch. Version closure and release remain pending.

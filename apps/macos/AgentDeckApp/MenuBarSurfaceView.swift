@@ -135,6 +135,7 @@ struct MenuBarSurfaceView: View {
 				dataSurface
 			}
 		}
+		.environment(\.schemaSignal, model.hasSchemaSignal)
 		.frame(width: MenuBarGeometry.width)
 		.frame(height: height)
 		.modifier(AcceptanceAppearance())
@@ -504,12 +505,17 @@ struct HealthDetailView: View {
 	}
 }
 
-private struct HealthCheckRowView: View {
+struct HealthCheckRowView: View {
 	let row: HealthCheckRow
-	@State private var isExpanded = true
+	@State private var isExpanded: Bool
+
+	init(row: HealthCheckRow, initiallyExpanded: Bool = true) {
+		self.row = row
+		_isExpanded = State(initialValue: initiallyExpanded)
+	}
 
 	var body: some View {
-		if let recovery = row.recovery, !recovery.isEmpty {
+		if row.hasDisclosure {
 			VStack(alignment: .leading, spacing: 0) {
 				Button {
 					isExpanded.toggle()
@@ -525,8 +531,19 @@ private struct HealthCheckRowView: View {
 					.contentShape(Rectangle())
 				}
 				.buttonStyle(.plain)
+				.accessibilityRepresentation {
+					DisclosureGroup(isExpanded: $isExpanded) {
+						Text("").accessibilityHidden(true)
+					} label: {
+						Text(row.accessibilityText(expanded: isExpanded))
+					}
+				}
 				if isExpanded {
-					recoveryRow(recovery)
+					VStack(alignment: .leading, spacing: MenuBarGeometry.withinRow) {
+						if let cause = row.cause { proseRow(cause) }
+						if let recovery = row.recoveryProse { proseRow(recovery) }
+						if let command = row.recovery, !command.isEmpty { recoveryRow(command) }
+					}
 					.padding(.leading, MenuBarGeometry.rowMinimumHeight)
 					.padding(.bottom, MenuBarGeometry.withinRow)
 				}
@@ -550,6 +567,13 @@ private struct HealthCheckRowView: View {
 		}
 		.frame(minHeight: MenuBarGeometry.rowMinimumHeight)
 		.accessibilityElement(children: .combine)
+	}
+
+	private func proseRow(_ text: String) -> some View {
+		Text(text)
+			.font(.caption)
+			.fixedSize(horizontal: false, vertical: true)
+			.accessibilityHidden(true) // The operable disclosure label speaks it once.
 	}
 
 	private func recoveryRow(_ recovery: String) -> some View {
@@ -663,7 +687,7 @@ struct ProviderMenuView: View {
 				}
 			}
 		} else {
-			Text(t(DesktopCopy.switchingUnavailable))
+			Text(model.switchingUnavailableText)
 				.font(.caption)
 				.foregroundStyle(DesktopVisualTheme.muted)
 				.padding(MenuBarGeometry.betweenRows)

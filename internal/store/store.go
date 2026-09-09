@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kitdine/agent-deck/internal/hookrefusal"
 	"github.com/kitdine/agent-deck/internal/platform"
 	"modernc.org/sqlite"
 )
@@ -131,6 +132,7 @@ func migrateSessionSchema(ctx context.Context, db *sql.DB) error {
 
 var (
 	ErrStateBusy     = &Error{Code: "state_busy"}
+	ErrSchemaAhead   = &Error{Code: "schema_ahead"}
 	ErrUnknownSchema = &Error{Code: "unknown_schema"}
 	ErrLockLost      = &Error{Code: "lock_lost"}
 )
@@ -150,6 +152,19 @@ func (e *Error) Error() string {
 }
 
 func (e *Error) Unwrap() error { return e.Err }
+
+// SchemaAhead reports a database whose schema version exceeds the version this
+// binary supports. It is permanent until the binary is upgraded.
+type SchemaAhead struct {
+	Stored    int
+	Supported int
+}
+
+func (e *SchemaAhead) Error() string {
+	return fmt.Sprintf("%s: database version %d exceeds supported version %d; upgrade AgentDeck to open it", ErrSchemaAhead.Code, e.Stored, e.Supported)
+}
+
+func (e *SchemaAhead) Unwrap() error { return ErrSchemaAhead }
 
 type Store struct {
 	DB       *sql.DB
@@ -199,9 +214,29 @@ func OpenReadOnly(ctx context.Context, stateRoot string) (*Store, error) {
 	}
 	if version > CurrentSchemaVersion {
 		db.Close()
-		return nil, ErrUnknownSchema
+		return nil, &SchemaAhead{Stored: version, Supported: CurrentSchemaVersion}
 	}
 	return &Store{DB: db, path: path, readOnly: true}, nil
+}
+
+// schemaAheadAtRest only probes after lock acquisition fails. It never creates
+// state, migrates the database, or changes its permissions.
+func schemaAheadAtRest(ctx context.Context, stateRoot string) *SchemaAhead {
+	path, cleanup, err := schemaProbeSnapshot(ctx, stateRoot)
+	if err != nil {
+		return nil
+	}
+	defer cleanup()
+	db, err := sql.Open("sqlite", "file:"+path+"?mode=rw")
+	if err != nil {
+		return nil
+	}
+	defer db.Close()
+	version, err := schemaVersion(ctx, db)
+	if err != nil || version <= CurrentSchemaVersion {
+		return nil
+	}
+	return &SchemaAhead{Stored: version, Supported: CurrentSchemaVersion}
 }
 
 func open(ctx context.Context, stateRoot string, acquire lockAcquirer) (store *Store, err error) {
@@ -210,10 +245,18 @@ func open(ctx context.Context, stateRoot string, acquire lockAcquirer) (store *S
 	}
 	lock, err := acquire(ctx, stateRoot, lockWait)
 	if err != nil {
+		if errors.Is(err, ErrStateBusy) {
+			if ahead := schemaAheadAtRest(ctx, stateRoot); ahead != nil {
+				return nil, ahead
+			}
+		}
 		return nil, err
 	}
 	defer func() {
 		releaseErr := lock.Release()
+		if err == nil && releaseErr == nil {
+			_ = hookrefusal.Clear(stateRoot)
+		}
 		if err != nil || releaseErr == nil {
 			return
 		}

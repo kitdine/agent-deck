@@ -181,13 +181,15 @@ areas and their boundaries are recorded in
 Beads coordination under `ad-v060-iteration`: schema/Hook visibility, desktop
 refresh, snapshot performance, cost transparency, health recovery, and
 Codex/Claude subscription accounts, quota, reset information and reminders.
-Structured session search is excluded. Feature-level planning is selected;
-implementation decomposition and version-contract assembly are still pending.
+Structured session search is excluded. Active version membership is owned by
+[the v0.6.0 contract](topics/v0-6-0-contract/tasks.md), delivered through PR #2.
+This integration includes schema-version-signal as the first of six selected
+areas; the other five areas and aggregate assembly/version closure remain open.
 
 | Topic | Version | Status | Purpose |
 | --- | --- | --- | --- |
 | [`v0.5.0` Contract Closure](topics/v0-5-0-contract/tasks.md) | `v0.5.0` | Released — contract complete, independently reviewed, and committed at `a547362`; `cli-design.md` is at version 28 and both contract Tasks are 2/2 implemented and reviewed. Six release candidates culminated in `v0.5.0-rc.6`, and stable `v0.5.0` published the exact `acb8384` commit. The schema-version-signal documents and decomposition are now committed; this contract directory remains live pending its separately scoped retirement. No v0.5.0 product work remains. | Version-wide specification raise and documentation reconciliation after every selected topic's tasks pass review. |
-| [Schema Version Signal](topics/schema-version-signal/tasks.md) | unassigned | Active — 4/4 documents reviewed. The final UX surface and reviewed six-task implementation decomposition are committed (`66924c4` and `eb56415`). Implementation has not started. See the topic status and review record. | One stable, actionable report when the core database's schema version exceeds the running binary's supported version, across `doctor`, the command paths, the desktop snapshot, and Hook delivery. Promoted from a measured defect: schema 21 on disk against two installed binaries supporting 18, reported six different ways. The sixth is silent: `usage hook event` exits 0 with empty streams and writes no row, which cost 19 Codex sessions their provider route between 2026-08-30 and 2026-09-01, unrecoverably. |
+| [Schema Version Signal](topics/schema-version-signal/tasks.md) | `v0.6.0` | First assembly batch — 4/4 documents and 6/6 tasks reviewed and delivered; source `58df42d`. This integration carries the product, stable contracts and worktree-status governance correction. Task 5 manual text-size/layout and VoiceOver/interaction acceptance remain user-waived, not tested. See the [integration record](topics/v0-6-0-contract/reviews/assemble.md); retirement and release remain separate. | Stable schema-ahead reporting across doctor, CLI, desktop and Hook delivery, with actionable recovery and preserved independent session availability. |
 
 #### Retired into `v0.5.0`
 

@@ -466,6 +466,9 @@ JSON（Codex `hooks.json`、Claude `settings.json`），shell 管理文本 block
 
 安装的 handler 调用隐藏的 `agentdeck usage hook event <codex|claude>`。它只接受已知、
 有界的生命周期事件，stdout 保持为空且失败不会阻止 client 启动、恢复、设置更新或退出。
+当 core store 因 `schema_ahead` 拒绝打开时，会尽力写入私有、有界的
+`<state>/hook-refusals.json`；写入失败仍保持 stdout/stderr 为空、退出 `0`，
+不会创建有效 session route。该隐藏入口使用 text 格式，不接受 `--format json`。
 Hook 缺失、未信任、禁用或失败时，usage attribution 回退到既有的 estimated
 session-start 行为。`agentdeck run` 仍是兼容的低层 exact-attribution launcher，不再是
 resume 的主要归属机制；并发 managed runs 不阻止 client，而将受影响的 open runs 降级为
@@ -919,13 +922,24 @@ restore 为目标机器创建新 key，并在一个 transaction 中替换 snapsh
 release/support identity，不是运行时领域 instant，因此保持固定 UTC 格式，并在字段名中
 明确标出 UTC。
 
-Doctor 对 core schema 使用四态契约：schema 12 quick/full 报告
-`schema_outdated`、`count=12` 和 `agentdeck state migrate`；完整 schema 13
-报告 `ok`、`count=13`；schema 13 缺 `usage_tool_calls` 只报告
-`schema_incompatible`，不再附加旧 schema warning；未来 schema 报告
-`unknown_schema` 且不提供虚假 recovery。Text 和 JSON 都不输出原始 SQL、
-SQLite 查询或驱动错误。`state migrate` 的 text 成功信息明确确认完成，JSON
-返回 `migrated: true`。
+Doctor quick/full 使用同一 core schema 契约。以当前支持 schema 23 的二进制为例：
+旧 schema 12 报告 `schema_outdated`、`count=12`、`supported_count=23` 和可复制的
+`agentdeck state migrate`；完整受支持 schema 报告 `ok`、`count=23`；声明受支持版本
+却缺少 `usage_tool_calls` 时报告 `schema_incompatible`。未来 schema 99 报告
+`database` check，`code=schema_ahead`、`count=99`、`supported_count=23`，没有
+`recovery_command`；text 提示升级 AgentDeck。这里的数字是数据库 schema，不是产品版本。
+
+缺失状态或无法打开 core 库而提前结束时，JSON envelope 设置 `partial: true`，
+`warnings` 包含 `checks_skipped`，text 明示剩余检查未运行。成功输出诊断报告仍退出
+`0`；普通读写命令因 `schema_ahead` 拒绝时退出 `1`。已有元数据损坏处理不改成
+未来版本错误。Text 和 JSON 都不输出原始 SQL、SQLite 查询或驱动错误。
+`state migrate` 的 text 成功信息明确确认完成，JSON 返回 `migrated: true`。
+
+若此前 Hook 投递被拒绝，doctor 还会在数据库检查前读取 `hook-refusals.json`，
+显示 `hook_deliveries_dropped` 和丢弃计数，且只在记录的 `stored` 仍高于当前支持版本时
+显示。任何成功读写打开 core 库的命令都会尽力清除记录；失败打开保留它。升级到支持
+该版本的二进制会停止显示警告，但不等于删除文件；doctor 等只读入口不会清除它。
+记录不进入备份，并发下的计数不是精确投递账本。
 
 ### Watch 扫描规则
 

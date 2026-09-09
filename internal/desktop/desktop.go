@@ -212,11 +212,12 @@ type HealthSnapshot struct {
 }
 
 type HealthCheck struct {
-	Name     string `json:"name"`
-	Status   string `json:"status"`
-	Code     string `json:"code,omitempty"`
-	Count    int    `json:"count,omitempty"`
-	Recovery string `json:"recovery_command,omitempty"`
+	Name           string `json:"name"`
+	Status         string `json:"status"`
+	Code           string `json:"code,omitempty"`
+	Count          int    `json:"count,omitempty"`
+	SupportedCount int    `json:"supported_count,omitempty"`
+	Recovery       string `json:"recovery_command,omitempty"`
 }
 
 type Service struct {
@@ -760,7 +761,7 @@ func healthSnapshot(report doctor.Report) HealthSnapshot {
 	for _, check := range report.Checks {
 		checks = append(checks, HealthCheck{
 			Name: check.Name, Status: check.Status, Code: check.Code,
-			Count: check.Count, Recovery: check.Recovery,
+			Count: check.Count, SupportedCount: check.SupportedCount, Recovery: check.Recovery,
 		})
 	}
 	return HealthSnapshot{

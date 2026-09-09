@@ -3,6 +3,30 @@ import XCTest
 @testable import AgentDeckShared
 
 final class DesktopWireTests: XCTestCase {
+    func testSchemaAheadFixtureDecodesVersionsAndHookRefusals() throws {
+        let envelope = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-schema-ahead.json"))
+        XCTAssertEqual(envelope.data.wireVersion, 1)
+        XCTAssertTrue(envelope.partial)
+        XCTAssertFalse(envelope.data.provider.available)
+        XCTAssertFalse(envelope.data.usage.available)
+        XCTAssertFalse(envelope.data.sessions.available)
+        XCTAssertTrue(envelope.data.health.available)
+        XCTAssertTrue(envelope.warnings.contains("sessions_unavailable"))
+        let schema = try XCTUnwrap(envelope.data.health.checks.first { $0.code == "schema_ahead" })
+        XCTAssertEqual(schema.count, 99)
+        XCTAssertEqual(schema.supportedCount, 23)
+        XCTAssertNil(schema.recoveryCommand)
+        let hook = try XCTUnwrap(envelope.data.health.checks.first { $0.code == "hook_deliveries_dropped" })
+        XCTAssertEqual(hook.count, 2)
+        XCTAssertNil(hook.supportedCount)
+        XCTAssertNil(hook.recoveryCommand)
+        let legacy = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-legacy.json"))
+        XCTAssertTrue(legacy.data.health.checks.isEmpty)
+        let oldCheck = try JSONDecoder().decode(DesktopHealthCheckV1.self, from: Data(#"{"name":"database","status":"ok","count":23}"#.utf8))
+        XCTAssertNil(oldCheck.supportedCount)
+        XCTAssertTrue(legacy.data.health.checks.allSatisfy { $0.supportedCount == nil })
+    }
+
     func testCanonicalCompleteAndPartialFixturesDecode() throws {
         let complete = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
         let partial = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-partial.json"))
