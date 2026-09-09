@@ -3,6 +3,15 @@ import { catalogs } from "./i18n.js";
 
 const STATES = ["normal", "empty", "aged", "partial", "pending", "unavailable", "schema", "schemaStacked"];
 
+// 额度读取状态是独立的标本轴。它不能并进 STATES：用量数据状态与额度读取状态
+// 可以同时发生，合成一个控件就无法检验“用量过期 + 额度也过期”。
+const QUOTAS = ["normal", "bothOfficial", "codexPlus", "prose", "parseFailed", "stale", "neverProbed", "readingOff"];
+
+// 菜单栏图标可以贴在屏幕任意水平位置，而弹层朝左还是朝右正是由此决定。
+// 舞台默认居中，居中时左右余量恒等，左侧分支就永远走不到——一条标本演示不了
+// 的规则等于没有被评审过。这个轴让三种锚点都能看见。
+const ANCHORS = ["left", "center", "right"];
+
 // 面板的两个宽度：420 是常规宽度，280 是实现里 AGENTDECK_TEST_WIDTH 的窄边界。
 // 有了它，「这一行在窄边界会不会被截断」才是标本阶段能判定的问题，而不是留给真机。
 const WIDTHS = ["420", "280"];
@@ -14,13 +23,15 @@ export function useStagePrefs() {
   const [theme, setTheme] = useState(params.get("theme") === "light" ? "light" : "dark");
   const [state, setState] = useState(STATES.includes(params.get("state")) ? params.get("state") : "normal");
   const [width, setWidth] = useState(WIDTHS.includes(params.get("width")) ? params.get("width") : "420");
+  const [quota, setQuota] = useState(QUOTAS.includes(params.get("quota")) ? params.get("quota") : "normal");
+  const [anchor, setAnchor] = useState(ANCHORS.includes(params.get("anchor")) ? params.get("anchor") : "center");
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
     document.documentElement.setAttribute("lang", lang === "zh" ? "zh-Hans" : "en");
   }, [theme, lang]);
 
-  return { lang, setLang, theme, setTheme, state, setState, width, setWidth };
+  return { lang, setLang, theme, setTheme, state, setState, width, setWidth, quota, setQuota, anchor, setAnchor };
 }
 
 function Group({ label, value, options, onChange }) {
@@ -29,7 +40,13 @@ function Group({ label, value, options, onChange }) {
       <span>{label}</span>
       <div>
         {options.map(([key, text]) => (
-          <button type="button" key={key} className={value === key ? "active" : ""} onClick={() => onChange(key)}>
+          <button
+            type="button"
+            key={key}
+            data-value={key}
+            className={value === key ? "active" : ""}
+            onClick={() => onChange(key)}
+          >
             {text}
           </button>
         ))}
@@ -38,8 +55,8 @@ function Group({ label, value, options, onChange }) {
   );
 }
 
-export function StageControls({ prefs, showState = true, showWidth = true }) {
-  const { lang, setLang, theme, setTheme, state, setState, width, setWidth } = prefs;
+export function StageControls({ prefs, showState = true, showWidth = true, showQuota = true, showAnchor = false }) {
+  const { lang, setLang, theme, setTheme, state, setState, width, setWidth, quota, setQuota, anchor, setAnchor } = prefs;
   const dict = catalogs[lang];
   const surface = new URLSearchParams(window.location.search).get("surface");
   const link = (target, text) => {
@@ -68,6 +85,22 @@ export function StageControls({ prefs, showState = true, showWidth = true }) {
             value={state}
             options={STATES.map((key) => [key, dict.states[key === "normal" ? "normal" : key]])}
             onChange={setState}
+          />
+        )}
+        {showQuota && (
+          <Group
+            label={dict.states.quota}
+            value={quota}
+            options={QUOTAS.map((key) => [key, dict.states.quotaVariants[key]])}
+            onChange={setQuota}
+          />
+        )}
+        {showAnchor && (
+          <Group
+            label={dict.states.anchor}
+            value={anchor}
+            options={ANCHORS.map((key) => [key, dict.states.anchors[key]])}
+            onChange={setAnchor}
           />
         )}
         {showWidth && (

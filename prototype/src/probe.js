@@ -1,3 +1,5 @@
+import { catalogs } from "./i18n.js";
+
 // 交互探针：用真实事件走一遍关键路径并断言结果。
 // 截图只能证明"长什么样"，证明不了"点了会怎样"，这段补的是后者。
 export function runProbe() {
@@ -14,15 +16,24 @@ export function runProbe() {
   const leave = (node) => node?.dispatchEvent(new MouseEvent("mouseout", { bubbles: true, relatedTarget: document.body }));
   const key = (node, k) => node?.dispatchEvent(new KeyboardEvent("keydown", { key: k, bubbles: true }));
   const wait = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
+  // 按 key 找 tab，不按位置。位置写死过一次的代价：额度 tab 插到最前面之后，
+  // nth-child(1) 变成了额度，探针在趋势图上取到空集合并崩在下一行，
+  // 而崩掉的探针什么都不渲染——看上去和"没跑"一模一样。
+  const tabButton = (key) => $(`.tabs button[data-tab="${key}"]`);
+  // 探针跑在当前语言下，断言不能写死中文字面量——文案表才是真相。
+  // 语言要在断言执行时读，不能在 runProbe 进来时读：那一刻 React 还没把
+  // lang 落到 <html> 上，en 会静默拿到中文文案表，断言于是永远为假。
+  const dict = () => catalogs[document.documentElement.lang.startsWith("en") ? "en" : "zh"];
 
   window.setTimeout(async () => {
+    try {
     // 客户端筛选联动四个面板
     const before = $(".hero strong").textContent;
     click($$(".segmented.clients button")[1]);
     await wait(60);
     check("切客户端后 hero 跟着变", $(".hero strong").textContent !== before);
 
-    click($(".tabs button:nth-child(3)"));
+    click(tabButton("attribution"));
     await wait(60);
     const codexTrust = $(".data-row b")?.textContent;
     click($$(".segmented.clients button")[2]);
@@ -37,7 +48,7 @@ export function runProbe() {
 
     click($$(".segmented.clients button")[0]);
     click($$(".segmented.periods button")[0]);
-    click($(".tabs button:nth-child(1)"));
+    click(tabButton("usage"));
     await wait(80);
 
     // 趋势图：悬停出读数、移出清掉、点击钉住
@@ -102,12 +113,12 @@ export function runProbe() {
     check("能从健康详情返回", !$(".detail-head"));
 
     // 会话 tab 的三块信号进得去、回得来，且详情态 tab 仍保持选中
-    click($(".tabs button:nth-child(4)"));
+    click(tabButton("sessions"));
     await wait(60);
     click($(".signal-card"));
     await wait(60);
     check("工作信号可进入详情", !!$(".detail-head"));
-    check("详情态下所属 tab 仍选中（v6 会四个全灰）", $(".tabs button:nth-child(4)").classList.contains("active"));
+    check("详情态下所属 tab 仍选中（v6 会四个全灰）", tabButton("sessions").classList.contains("active"));
     check("详情里标注了待采集", !!$(".pending-banner"));
     click($(".detail-head button"));
     await wait(60);
@@ -193,11 +204,91 @@ export function runProbe() {
     check("Esc 关闭设置窗口", !$(".settings-window"));
 
 
+    // 额度 tab。这一段是 ux/menubar-quota.md 的交互合同：明细弹层悬停即开、
+    // 账号归属声明只挂在 Claude、读取关闭是自成一格的第三种状态。
+    // 截图证明不了其中任何一条。
+    const quotaVariant = (key) => click($(`.stage-group button[data-value="${key}"]`));
+    const card = (client) => $(`.quota-client[data-client="${client}"]`);
+
+    click(tabButton("quota"));
+    await wait(80);
+    check("额度 tab 可选中", tabButton("quota").classList.contains("active"));
+
+    check("Claude 卡声明账号归属不可确认", !!card("claude")?.querySelector(".quota-attribution"));
+    check("Codex 卡不带这句声明（它有 accountId）", !card("codex")?.querySelector(".quota-attribution"));
+
+    quotaVariant("bothOfficial");
+    await wait(80);
+    const allowance = card("codex")?.querySelector(".quota-allowance");
+    hover(allowance);
+    await wait(60);
+    check("悬停官方重置次数直接弹出明细", !!$(".quota-flyout"));
+    check("明细弹层里逐条列出重置次数", ($$(".quota-credits li").length ?? 0) > 0);
+
+    // 触发行 → 通路 → 明细 → 继续阅读 → 离开。这一段是 SQ-MB-R1-F1 的回归。
+    // 关键是走真实坐标：先前这里紧接着派发 leave(触发行) 与 hover(明细)，
+    // 指针从未经过两者之间那段几何空白，于是断言全绿而真实鼠标停在空白里
+    // 明细照样消失。间隙宽度也不是 CSS 里的 10px——它由卡片和面板的内边距
+    // 一起决定，所以坐标要从两个真实 rect 现算，不能写死。
+    const at = (x, y) =>
+      window.dispatchEvent(new MouseEvent("mousemove", { clientX: x, clientY: y, bubbles: true }));
+    const triggerBox = allowance.getBoundingClientRect();
+    const flyoutBox = $(".quota-flyout").getBoundingClientRect();
+    const gapMidX =
+      flyoutBox.left >= triggerBox.right
+        ? (triggerBox.right + flyoutBox.left) / 2
+        : (flyoutBox.right + triggerBox.left) / 2;
+    const gapY = (triggerBox.top + triggerBox.bottom) / 2;
+    check(
+      "触发行与明细之间确实有一段空白要跨",
+      Math.abs(flyoutBox.left - triggerBox.right) > 12 || Math.abs(triggerBox.left - flyoutBox.right) > 12,
+    );
+
+    leave(allowance);
+    at(gapMidX, gapY);
+    await wait(500);
+    check("指针停在触发行与明细之间的通路上，明细不关闭", !!$(".quota-flyout"));
+
+    at(flyoutBox.left + 20, flyoutBox.top + 20);
+    await wait(500);
+    check("走完通路进入明细后明细留在原地", !!$(".quota-flyout"));
+    check("停在明细上阅读时不会自己关闭", ($$(".quota-credits li").length ?? 0) > 0);
+
+    at(triggerBox.left - 60, triggerBox.top - 120);
+    await wait(500);
+    check("离开整个交互区域后明细才关闭", !$(".quota-flyout"));
+
+    // 纯键盘路径：只用 focus 与 Escape，不掺任何 hover，否则它证明的是鼠标。
+    const allowanceAgain = card("codex")?.querySelector(".quota-allowance");
+    allowanceAgain?.focus();
+    await wait(80);
+    check("键盘聚焦触发行同样打开明细", !!$(".quota-flyout"));
+    key(window, "Escape");
+    await wait(80);
+    check("Escape 关闭明细", !$(".quota-flyout"));
+
+    quotaVariant("readingOff");
+    await wait(80);
+    const offText = $(".panel")?.textContent ?? "";
+    check("读取关闭时两端都收成一行", $$(".quota-client").length === 2 && !$(".data-row"));
+    check("读取关闭说的是「未读取」，不是不可用或不适用", offText.includes(dict().quota.readingOff));
+    check("读取关闭时不再渲染任何百分比", !/\d%/.test(offText));
+    check("去设置开启的提示只出现一次", $$(".quota-alerts-note").length === 1);
+
     const box = document.createElement("pre");
     box.id = "probe-out";
     box.style.cssText = "position:fixed;inset:0;z-index:9999;margin:0;padding:16px;overflow:auto;background:#000;color:#0f0;font:12px ui-monospace;white-space:pre-wrap";
     const failed = results.filter((line) => line.startsWith("FAIL")).length;
     box.textContent = `${results.join("\n")}\n\n${failed === 0 ? "ALL PASS" : failed + " FAILED"}`;
     document.body.appendChild(box);
+    } catch (error) {
+      // 探针抛异常时原本什么都不渲染，读者只看到一张普通页面，会当成"没跑"
+      // 而不是"跑挂了"。一个静默失败的量具比没有量具更危险。
+      const box = document.createElement("pre");
+      box.id = "probe-out";
+      box.style.cssText = "position:fixed;inset:0;z-index:9999;margin:0;padding:16px;overflow:auto;background:#000;color:#f66;font:12px ui-monospace;white-space:pre-wrap";
+      box.textContent = `${results.join("\n")}\n\nPROBE CRASHED after ${results.length} checks\n${error?.stack ?? error}`;
+      document.body.appendChild(box);
+    }
   }, 700);
 }

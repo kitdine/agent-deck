@@ -215,6 +215,18 @@ a:focus-visible {
   padding-top: 18px;
 }
 
+/* 锚点：真机上菜单栏图标可以贴在屏幕任意水平位置，弹层朝左还是朝右由此决定。
+   居中时左右余量恒等，左侧分支演示不出来，所以舞台要能把面板推到两端。 */
+.stage-body[data-anchor="left"] {
+  align-items: flex-start;
+  padding-left: 12px;
+}
+
+.stage-body[data-anchor="right"] {
+  align-items: flex-end;
+  padding-right: 12px;
+}
+
 .menubar-strip {
   position: relative;
   width: 420px;
@@ -548,7 +560,7 @@ a:focus-visible {
 /* tab 只留图标与名字：数值和 hero 重复，去掉后这一条从 61px 收到 40px */
 .tabs {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 2px;
   margin: 10px 12px 0;
   padding: 2px;
@@ -560,13 +572,23 @@ a:focus-visible {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
+  gap: 4px;
   min-height: 30px;
   border: 0;
   border-radius: 6px;
   background: transparent;
   color: var(--muted);
-  font-size: 12px;
+  /* 五个英文标签在 420pt 下比 nav 宽 14px——量具原话 over 14px (408/394)。
+     四个标签时 12px/5px 放得下，第五个把它顶了出去，所以这是加 tab 逼出来的
+     调整，不是顺手改的字号。11px 与面板里其他次级标签一致，省下约 25px。 */
+  font-size: 11px;
+}
+
+.tabs button > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .tabs button.active {
@@ -577,6 +599,34 @@ a:focus-visible {
 
 .tabs button.active svg {
   color: var(--accent);
+}
+
+/* 窄边界：五个标签在任何语言下都放不进 280pt，所以只留图标。
+   标签仍在 aria-label 里，读屏顺序不变；截断成「归」或「Attrib…」比没有更糟。 */
+.popover.narrow .tabs button {
+  gap: 0;
+}
+
+/* 头部在 280pt 英文下装不下「AgentDeck ＋ 更新时刻 ＋ ↻ Refresh」，刷新的文字
+   会顶出面板右缘。按钮的 aria-label 本来就带「Refresh ⌘R」，所以这段文字对读屏
+   是冗余的，也是头部最宽的可选项——与 tab 栏、每模型窗口标签、服务商页脚同一条
+   规则：窄边界下限定语让位给事实。 */
+.popover.narrow > header .refresh > span {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.popover.narrow .tabs button .tab-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .scroll {
@@ -697,6 +747,13 @@ a:focus-visible {
   grid-template-columns: repeat(var(--columns), minmax(0, 1fr));
   gap: 6px;
   margin-top: 10px;
+}
+
+/* MB-Q-F1：四列在 280pt 下每列只剩约 52pt，而「15–17 时」要 54pt——量具原话是
+   short by 11px。折成两行两列，四项一个都不少；三列的网格宽裕，所以规则只针对
+   dense 的那一种，不去动本来就放得下的。 */
+.popover.narrow .stat-grid[data-dense="1"] {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .stat-grid > div {
@@ -1283,6 +1340,17 @@ a:focus-visible {
 
 .provider-entry:hover {
   background: var(--surface-2);
+}
+
+/* MB-Q-F2：英文标签占掉约 55pt，而它标注的服务商列表才是读者要看的那半边——
+   量具报 short by 2px。窄边界下去掉标签列，标签退到按钮的 accessible name 里，
+   与 tab 栏和每模型窗口标签同一条规则。 */
+.popover.narrow .provider-entry {
+  grid-template-columns: minmax(0, 1fr) 16px;
+}
+
+.popover.narrow .provider-entry > span {
+  display: none;
 }
 
 .provider-entry > span {
@@ -2610,4 +2678,228 @@ button.notice:hover {
   font-style: normal;
   font-weight: 600;
   color: var(--accent);
+}
+
+/* ---------------------------------------------------------------- 额度 */
+
+/* 每个客户端一张卡。两个客户端并排会把 280px 宽度挤爆，所以永远纵向堆叠。 */
+.quota-client + .quota-client {
+  margin-top: 0;
+}
+
+/* 套餐是个不透明标签：厂商取值集合未知，所以只显示不分支，
+   样式上也不按取值变色，避免暗示一套并不存在的等级。 */
+.quota-plan {
+  padding: 1px 6px;
+  border: 1px solid var(--line-soft);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+.quota-client .card-head {
+  align-items: center;
+}
+
+.quota-client .card-head small {
+  margin-left: auto;
+  color: var(--dim);
+  text-align: right;
+}
+
+/* 官方重置次数与本地观察到的重置：两行同构但各带标题，
+   刻意不合并成一个 stat-grid——合并就等于暗示它们是同一类事实。 */
+.quota-allowance,
+.quota-observed {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 2px 8px;
+  margin-top: 9px;
+  padding-top: 9px;
+  border-top: 1px solid var(--line-soft);
+  font-size: 12px;
+}
+
+.quota-allowance span,
+.quota-observed span {
+  color: var(--muted);
+}
+
+.quota-allowance b,
+.quota-observed b {
+  font-weight: 560;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.quota-allowance small {
+  grid-column: 1 / -1;
+  color: var(--dim);
+  font-size: 10px;
+}
+
+/* 重置次数明细。就地展开而不是换页：三行内容换掉整页，读者会丢掉上面那些
+   窗口作为对照，而「还剩几次」的意义恰恰要对着窗口用量才读得出来。
+   没有明细时按钮 disabled 而不是变回 div——形态一致，可点与否才是差别。 */
+.quota-allowance.expandable {
+  cursor: default;
+}
+
+.quota-allowance.expandable:hover,
+.quota-allowance.expandable:focus-visible {
+  background: var(--surface-2);
+}
+
+.quota-allowance b {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.quota-allowance svg {
+  color: var(--dim);
+  transition: transform 0.12s ease;
+}
+
+.quota-allowance svg.turn {
+  transform: rotate(90deg);
+}
+
+/* 明细弹层。面板 overflow: hidden 是为了裁圆角，弹层要出去就得在打开时放开它；
+   可滚动区自己带 overflow-y，所以放开外层不会让列表内容跟着漏出来。 */
+.popover.flyout-open {
+  overflow: visible;
+}
+
+.quota-flyout {
+  position: absolute;
+  z-index: 40;
+  width: 232px;
+  padding: 10px 12px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+/* 左右由 JS 按实际可用空间选择：菜单栏图标可能贴着屏幕任一侧，
+   固定朝右会在靠近右缘时把明细推出屏幕。 */
+.quota-flyout-right {
+  left: calc(100% + 10px);
+}
+
+.quota-flyout-left {
+  right: calc(100% + 10px);
+}
+
+/* 通路不在 CSS 里。触发行与明细之间的实际空白由卡片内边距、面板内边距和
+   这里的 10px 共同决定，实测约 35px，随宽度与开合方向变化——铺一个写死宽度
+   的伪元素只会盖住其中一段，而且还要替面板内容吃掉悬停事件。
+   判定改成读指针位置，见 Popover.jsx 的 withinCreditsRegion。 */
+
+.quota-flyout-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.quota-flyout-head strong {
+  font-size: 12px;
+  font-weight: 560;
+}
+
+.quota-flyout-head span {
+  color: var(--dim);
+  font-size: 11px;
+}
+
+.quota-flyout-note {
+  margin: 6px 0 0;
+  color: var(--dim);
+  font-size: 10px;
+}
+
+.quota-credits {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.quota-credits li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1px 8px;
+  padding: 5px 0;
+  font-size: 11px;
+}
+
+.quota-credits li + li {
+  border-top: 1px solid var(--line-soft);
+}
+
+.quota-credits span {
+  color: var(--muted);
+}
+
+.quota-credits b {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.quota-credits small {
+  grid-column: 1 / -1;
+  color: var(--dim);
+  font-size: 10px;
+}
+
+/* 缺失字段的唯一形态：标签、"不可用/不适用"、以及原因。
+   三者缺一不可——只写"不可用"而不给原因，与写 0 一样没有信息。 */
+.quota-missing {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 8px;
+  margin-top: 9px;
+  padding-top: 9px;
+  border-top: 1px solid var(--line-soft);
+  font-size: 12px;
+}
+
+.quota-missing span {
+  color: var(--muted);
+}
+
+.quota-missing b {
+  color: var(--dim);
+  font-weight: 500;
+}
+
+.quota-missing small {
+  grid-column: 1 / -1;
+  color: var(--dim);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+/* 账号归属声明。它是这一端所有数字的性质，不是某一行的缺失，所以不用
+   .quota-missing 的三段式，也不带上下分隔线——一条横线会把它读成又一个
+   缺失字段。位置紧贴 card-head，因为它限定的正是上面那行来源与年龄。 */
+.quota-attribution {
+  margin: 3px 0 0;
+  color: var(--dim);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.quota-alerts-note {
+  margin: 2px 0 0;
+  color: var(--dim);
+  font-size: 10px;
+  text-align: center;
 }

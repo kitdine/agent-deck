@@ -538,3 +538,265 @@ export function buckets(client, period) {
 }
 
 export const meta = { today: TODAY, days: DAYS, firstDate: daily[0].date, lastDate: daily[DAYS - 1].date };
+
+/* ------------------------------------------------------------------ 订阅额度 */
+
+// 订阅额度。字段名跟 wire 走，因为这个对象就是那份 wire payload 的替身——
+// 与 HEALTH_SCHEMA 同样的理由：一个能被 diff 的对象，比一段描述更能评审。
+//
+// 三种 reset 语义在结构上就分开，不靠文案区分：
+//   resets_at         窗口自然重置的时刻（每个 window 自带）
+//   reset_allowance   官方给的重置次数（只有 Codex 有）
+//   observed_reset_at AgentDeck 本地观察到 used_percent 掉下去的时刻
+// 把任意两个画进同一行，就是 requirements.md「三类 reset 保持分离」那条的反例。
+//
+// 每个字段的缺失都必须带原因：`null` 加一个 *_reason，而不是 0 或者不渲染这一行。
+// Claude 不报 plan 与重置次数，这是产品事实，不是数据没准备好。
+
+const QUOTA_NOW = Date.UTC(2026, 7, 18, 14, 30) / 1000; // 与 TODAY 同一天，便于对齐倒计时
+
+// 未报告的原因取值。闭集，界面据此选文案，不接受自由文本。
+export const QUOTA_REASONS = [
+  "not_reported", // 客户端根本不提供这个字段
+  "not_official", // 当前 provider 不是 official，不探测
+  "never_probed", // 还没成功探测过
+  "probe_failed", // 探测失败（子进程非零退出、超时）
+  "parse_failed", // 拿到输出但形状不认识
+  "not_consented", // statusline 通路未获用户同意
+  "probe_disabled", // 用户把「读取额度」关掉了，什么都没问
+];
+
+function codexClient(overrides = {}) {
+  return {
+    client: "codex",
+    applicable: true,
+    source: "codex_app_server",
+    observed_at: QUOTA_NOW,
+    stale: false,
+    plan: "prolite",
+    plan_reason: null,
+    windows: [
+      {
+        key: "codex",
+        label: null, // 主限额没有 limit_name，界面回落到客户端名
+        window_minutes: 10080,
+        used_percent: 79,
+        resets_at: QUOTA_NOW + 5 * 86400 + 3 * 3600,
+      },
+      {
+        key: "codex_bengalfox",
+        label: "GPT-5.3-Codex-Spark",
+        window_minutes: 300,
+        used_percent: 12,
+        resets_at: QUOTA_NOW + 2 * 3600 + 40 * 60,
+      },
+      {
+        key: "codex_bengalfox_secondary",
+        label: "GPT-5.3-Codex-Spark",
+        window_minutes: 10080,
+        used_percent: 4,
+        resets_at: QUOTA_NOW + 6 * 86400,
+      },
+    ],
+    // remaining 有值，total 没有：厂商只列当前可见的额度，
+    // 算不出总数就不算，requirements.md 的开放问题 1。
+    reset_allowance: {
+      remaining: 3,
+      total: null,
+      total_reason: "not_reported",
+      // 明细来自 rateLimitResetCredits.credits[]。id 与 description 不进界面：
+      // 前者是账号内标识，后者是厂商营销文案。
+      credits: [
+        { key: "c1", title: "Full reset", status: "available", granted_at: QUOTA_NOW - 18 * 86400, expires_at: QUOTA_NOW + 12 * 86400 },
+        { key: "c2", title: "Full reset", status: "available", granted_at: QUOTA_NOW - 5 * 86400, expires_at: QUOTA_NOW + 25 * 86400 },
+        { key: "c3", title: "Full reset", status: "available", granted_at: QUOTA_NOW - 4 * 86400, expires_at: QUOTA_NOW + 26 * 86400 },
+      ],
+    },
+    reset_allowance_reason: null,
+    billing: { has_credits: false, unlimited: false, balance: "0" },
+    account_id: "codex-account-a",
+    // Codex 回了 accountId，归属可确认；Claude 两条通路都没有，见下。
+    attribution_confirmed: true,
+    observed_reset_at: QUOTA_NOW - 4 * 86400,
+    ...overrides,
+  };
+}
+
+function claudeClient(overrides = {}) {
+  return {
+    client: "claude",
+    applicable: true,
+    source: "claude_statusline",
+    observed_at: QUOTA_NOW - 90,
+    stale: false,
+    plan: null,
+    plan_reason: "not_reported",
+    windows: [
+      { key: "five_hour", label: null, window_minutes: 300, used_percent: 22, resets_at: QUOTA_NOW + 3 * 3600 + 20 * 60 },
+      { key: "seven_day", label: null, window_minutes: 10080, used_percent: 3, resets_at: QUOTA_NOW + 6 * 86400 + 5 * 3600 },
+    ],
+    reset_allowance: null,
+    reset_allowance_reason: "not_reported",
+    billing: null,
+    account_id: null,
+    // Claude 没有账号标识可拿。这不是"暂时缺数据"，是产品已接受的降级，
+    // 界面必须把它说出来——requirements.md 的 Named gap 与验收 11。
+    attribution_confirmed: false,
+    observed_reset_at: null,
+    ...overrides,
+  };
+}
+
+// 变体。默认这一支必须与 PROVIDER.routes 一致：那份 fixture 给 Codex 选的是
+// aigocode，所以默认状态下 Codex 根本不该被探测。这不是"数据缺失"，是本主题
+// 最重要的那条门禁规则——非 official 不探测——在默认标本上就该看得见。
+//
+// 需要 Codex 满额报告的变体自带 routes 覆盖，页脚跟着同一个对象走，
+// 两者因此无法各说各话。
+const AIGOCODE_ROUTES = [
+  { client: "codex", provider: "aigocode", viaWrapper: true },
+  { client: "claude", provider: "official", viaWrapper: false },
+];
+
+const OFFICIAL_ROUTES = [
+  { client: "codex", provider: "official", viaWrapper: false },
+  { client: "claude", provider: "official", viaWrapper: false },
+];
+
+const CODEX_NOT_OFFICIAL = codexClient({
+  applicable: false,
+  source: null,
+  plan: null,
+  plan_reason: "not_official",
+  windows: [],
+  reset_allowance: null,
+  reset_allowance_reason: "not_official",
+  billing: null,
+  account_id: null,
+  observed_at: null,
+  observed_reset_at: null,
+});
+
+// Codex Plus：主限额同时有 5 小时与 7 天两个窗口。采样账号是 prolite，主限额
+// 只回了 7 天窗，照着它写死会得到一个「主限额没有 5 小时窗」的错误契约。
+const CODEX_PLUS = codexClient({
+  plan: "plus",
+  windows: [
+    { key: "codex_primary", label: null, window_minutes: 300, used_percent: 45, resets_at: QUOTA_NOW + 3 * 3600 + 10 * 60 },
+    { key: "codex_secondary", label: null, window_minutes: 10080, used_percent: 62, resets_at: QUOTA_NOW + 4 * 86400 },
+    { key: "codex_bengalfox_primary", label: "GPT-5.3-Codex-Spark", window_minutes: 300, used_percent: 12, resets_at: QUOTA_NOW + 2 * 3600 + 40 * 60 },
+    { key: "codex_bengalfox_secondary", label: "GPT-5.3-Codex-Spark", window_minutes: 10080, used_percent: 4, resets_at: QUOTA_NOW + 6 * 86400 },
+  ],
+});
+
+export const QUOTA_VARIANTS = {
+  // 默认：Codex 走第三方 provider，不探测；Claude 是 official，走状态栏
+  normal: { routes: AIGOCODE_ROUTES, clients: [CODEX_NOT_OFFICIAL, claudeClient()] },
+
+  // 两侧都是 official，Codex 满额报告——这一支才是字段最全的标本
+  bothOfficial: { routes: OFFICIAL_ROUTES, clients: [codexClient(), claudeClient()] },
+
+  // Codex Plus：主限额的 5 小时窗与 7 天窗都在，共四个窗口
+  codexPlus: { routes: OFFICIAL_ROUTES, clients: [CODEX_PLUS, claudeClient()] },
+
+  // Claude 未同意状态栏通路，回落到 /usage 散文
+  prose: {
+    routes: OFFICIAL_ROUTES,
+    clients: [
+      codexClient(),
+      claudeClient({ source: "claude_usage_prose", observed_at: QUOTA_NOW - 240 }),
+    ],
+  },
+
+  // 散文形状变了：拿到输出但读不懂。不吐半个数，也不把旧值当现值。
+  parseFailed: {
+    routes: OFFICIAL_ROUTES,
+    clients: [
+      codexClient(),
+      claudeClient({
+        source: "claude_usage_prose",
+        windows: [],
+        failure: "parse_failed",
+        observed_at: QUOTA_NOW - 30,
+      }),
+    ],
+  },
+
+  // 两侧都过期：数字还在，但必须标为陈旧并带观察时刻
+  stale: {
+    routes: OFFICIAL_ROUTES,
+    clients: [
+      codexClient({ stale: true, observed_at: QUOTA_NOW - 3 * 3600 }),
+      claudeClient({ stale: true, observed_at: QUOTA_NOW - 5 * 3600 }),
+    ],
+  },
+
+  // 用户把「读取额度」关掉了。与"门禁不适用"和"探测失败"都不是一回事：
+  // 什么都没问，而且开关就在设置里。已读到的观测仍在库里，只是不展示。
+  readingOff: {
+    routes: OFFICIAL_ROUTES,
+    clients: [
+      codexClient({
+        source: null,
+        observed_at: null,
+        windows: [],
+        plan: null,
+        plan_reason: "probe_disabled",
+        reset_allowance: null,
+        reset_allowance_reason: "probe_disabled",
+        billing: null,
+        observed_reset_at: null,
+        failure: "probe_disabled",
+      }),
+      claudeClient({
+        source: null,
+        observed_at: null,
+        windows: [],
+        reset_allowance_reason: "probe_disabled",
+        failure: "probe_disabled",
+      }),
+    ],
+  },
+
+  // 从未成功探测过。与"探测失败"是两件事，文案不同。
+  neverProbed: {
+    routes: OFFICIAL_ROUTES,
+    clients: [
+      codexClient({
+        source: null,
+        observed_at: null,
+        windows: [],
+        plan: null,
+        plan_reason: "never_probed",
+        reset_allowance: null,
+        reset_allowance_reason: "never_probed",
+        billing: null,
+        observed_reset_at: null,
+        failure: "never_probed",
+      }),
+      claudeClient({
+        source: null,
+        observed_at: null,
+        windows: [],
+        reset_allowance_reason: "never_probed",
+        failure: "never_probed",
+      }),
+    ],
+  },
+};
+
+
+export const QUOTA_STATES = Object.keys(QUOTA_VARIANTS);
+
+export function quota(variant) {
+  return QUOTA_VARIANTS[variant] ?? QUOTA_VARIANTS.normal;
+}
+
+export const QUOTA_ALERTS = {
+  enabled: false,
+  thresholds: [75, 90],
+  notifyOnReset: true,
+  statuslineConsented: false,
+};
+
+export const quotaMeta = { now: QUOTA_NOW };
