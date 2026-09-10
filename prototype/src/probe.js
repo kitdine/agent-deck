@@ -147,8 +147,12 @@ export function runProbe() {
     click($(".menu-settings"));
     await wait(80);
     check("菜单里能打开设置窗口", !!$(".settings-window"));
-    const switches = $$(".settings-window .switch");
-    check("设置里有开关", switches.length === 2);
+    // 按分组定位，不按窗口内的序号。额度分组加进来之后，"窗口里有几个开关"
+    // 这个数字就不再是常规分组的性质了——它变成一个每加一个偏好就要改一次的
+    // 常量，而改它的人未必知道原来那条断言想说什么。
+    const group = (name) => $(`.settings-window [data-group="${name}"]`);
+    const switches = $$('[data-group="general"] .switch');
+    check("常规分组有两个开关", switches.length === 2);
     // 定时刷新没有被拒路径，普通切换用它验；登录项的拒绝路径在下面单独走。
     const wasOn = switches[1].classList.contains("on");
     click(switches[1]);
@@ -157,10 +161,15 @@ export function runProbe() {
 
     // 每个偏好的解释文字必须是控件的 accessible description，靠 aria-describedby 指过去，
     // 而不是靠视觉上排在下面。这里连 ID 指向的文本一起比，空 ID 或指向不存在的节点都会挂。
-    const described = $$(".settings-window [role=switch], .settings-window [role=radiogroup]");
-    check("四项偏好都有控件", described.length === 4);
+    // 断言的是"渲染出解释文字的控件，那段文字必须真的是它的 accessible
+    // description"。没有解释文字的控件没有可错配的东西，把它们算进一个写死的
+    // 总数只会让断言在下一次加偏好时失效，而失效的方式是报告一个不存在的缺陷。
+    const described = $$(".settings-window [role=switch], .settings-window [role=radiogroup]").filter((node) =>
+      node.hasAttribute("aria-describedby"),
+    );
+    check("带解释文字的偏好控件不止一个", described.length >= 4);
     check(
-      "每项偏好的解释文字都是控件的 description",
+      "每项解释文字都是控件的 description",
       described.every((node) => {
         const target = document.getElementById(node.getAttribute("aria-describedby") ?? "");
         return !!target?.textContent.trim();
@@ -180,14 +189,98 @@ export function runProbe() {
       "一次失败只落在一个 live region 里",
       $$(".settings-window [role=status]").filter((node) => node.textContent.trim()).length === 1,
     );
+    // 原文是"其余控件都没被禁用"。额度分组里的依赖控件本来就该在父开关关闭时
+    // 置灰，那是 ux/settings-quota.md 的设计，不是这次拒绝造成的。断言要问的是
+    // "这次拒绝有没有波及无关控件"，所以范围收到与它无关的那一组。
     check(
-      "登录项被拒不禁用其余控件，也不弹 modal",
-      $$(".settings-window button").every((node) => !node.disabled) && $$("[role=dialog]").length === 1,
+      "登录项被拒不禁用同组的其余控件，也不弹 modal",
+      [...group("general").querySelectorAll("button")].every((node) => !node.disabled) &&
+        $$("[role=dialog]").length === 1,
     );
     click(switches[0]);
     await wait(60);
     check("再次开启成功后开关打开", switches[0].classList.contains("on"));
     check("失败行在下一次成功修改时清除", !loginError().textContent.trim());
+
+    // 状态栏通路的两种失败。这是本产品唯一写别人文件的开关，两种结果必须
+    // 分得开：写入被拒是没做成，开关必须留在关闭；关闭时的恢复冲突是做了一半，
+    // 命令移除了但原值没还原，只能报告并请人工检查。
+    // 语义色要按最终计算颜色断言，不能按类名。类名对不等于颜色渲染出来了：
+    // 上一轮 .settings-label small 的权重压过 .tone-text-*，两条提示实际都是灰的，
+    // 而只查类名的断言照样全绿——一个只会在改类名时失败的断言，防不住样式覆盖。
+    // 期望值从 :root 上现取，因为深浅两套外观的 token 值不同。
+    const token = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    const rgb = (value) => {
+      const probeNode = document.createElement("span");
+      probeNode.style.color = value;
+      document.body.appendChild(probeNode);
+      const resolved = getComputedStyle(probeNode).color;
+      probeNode.remove();
+      return resolved;
+    };
+    const paintedColor = (node) => (node ? getComputedStyle(node).color : null);
+
+    const quotaSwitch = (index) => $$('[data-group="quota"] .switch')[index];
+    const statusRow = () => quotaSwitch(1)?.closest(".settings-field")?.querySelector(".settings-error");
+    check("读取额度关闭时状态栏开关是禁用而不是隐藏", !!quotaSwitch(1) && quotaSwitch(1).disabled);
+    click(quotaSwitch(0));
+    await wait(60);
+    check("打开读取额度后状态栏开关可用", !quotaSwitch(1).disabled);
+    check("失败行的 live region 在失败前就已存在且为空", !!statusRow() && !statusRow().textContent.trim());
+
+    // "不禁用其余控件"要按变化量问，不按当下有没有禁用的控件问：额度分组本来
+    // 就有依赖置灰的控件——提醒关着时"窗口重置时提醒"就是灰的，那是这个分组的
+    // 设计。断言要抓的是"这次拒绝有没有额外灰掉什么"。
+    const disabledSet = () =>
+      [...group("quota").querySelectorAll("button")].map((node) => (node.disabled ? "1" : "0")).join("");
+    const disabledBefore = disabledSet();
+
+    click(quotaSwitch(1));
+    await wait(60);
+    check("写入被拒后状态栏开关留在关闭", !quotaSwitch(1).classList.contains("on"));
+    check("写入被拒出现失败行", !!statusRow().textContent.trim());
+    check("写入被拒的失败行带图标而不是只靠颜色", !!statusRow().querySelector("svg"));
+    check(
+      "写入被拒真的画成了错误色（比计算颜色，不比类名）",
+      paintedColor(statusRow().querySelector("small")) === rgb(token("--bad")),
+    );
+    check(
+      "写入被拒的颜色不是普通灰",
+      paintedColor(statusRow().querySelector("small")) !== rgb(token("--dim")),
+    );
+    const refusedColor = paintedColor(statusRow().querySelector("small"));
+    check(
+      "写入被拒时只有一个 live region 有内容",
+      $$(".settings-window [role=status]").filter((node) => node.textContent.trim()).length === 1,
+    );
+    check("写入被拒没有额外禁用任何控件", disabledSet() === disabledBefore);
+
+    click(quotaSwitch(1));
+    await wait(60);
+    check("再打开一次即重试，成功后开关打开", quotaSwitch(1).classList.contains("on"));
+    check("成功后失败行清除", !statusRow().textContent.trim());
+
+    click(quotaSwitch(1));
+    await wait(60);
+    check("恢复不完整时开关确实关闭了（移除本身做成了）", !quotaSwitch(1).classList.contains("on"));
+    check("恢复不完整出现提示行", !!statusRow().textContent.trim());
+    check(
+      "恢复不完整真的画成了警告色（比计算颜色，不比类名）",
+      paintedColor(statusRow().querySelector("small")) === rgb(token("--warn")),
+    );
+    // 拿这一轮真实画出来的两个颜色互比，而不是比两个 token。比 token 的话，
+    // 两条提示都被覆盖成同一个灰色时它照样通过——那正是要防的情形。
+    check(
+      "两种失败画出来的颜色确实不同",
+      !!refusedColor && paintedColor(statusRow().querySelector("small")) !== refusedColor,
+    );
+    click(quotaSwitch(1));
+    await wait(60);
+    check("下一次成功修改清除恢复提示", !statusRow().textContent.trim());
+    click(quotaSwitch(1));
+    await wait(60);
+    click(quotaSwitch(0));
+    await wait(60);
 
     // 菜单栏显示模式：切到仅图标后金额不再常驻
     click($$(".settings-segmented button")[2]);

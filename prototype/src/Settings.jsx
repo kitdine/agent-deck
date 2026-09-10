@@ -45,7 +45,7 @@ function Segmented({ value, options, onChange, label, describedBy }) {
   );
 }
 
-function Field({ id, label, hint, children, error }) {
+function Field({ id, label, hint, children, error, errorTone = "bad" }) {
   return (
     <div className="settings-field">
       <div className="settings-label">
@@ -56,7 +56,7 @@ function Field({ id, label, hint, children, error }) {
             不会。空 region 只有这一个，所以一次失败只宣布一次。 */}
         <div className="settings-error" role="status" aria-live="polite">
           {error && (
-            <small className="tone-text-bad">
+            <small className={`tone-text-${errorTone}`}>
               <WarningCircle size={11} weight="fill" aria-hidden="true" /> {error}
             </small>
           )}
@@ -91,6 +91,43 @@ export function SettingsWindow({ lang, prefs, onChange, onClose, embedded = fals
   // 成功修改时清除，而不是定时消失"——只有真走一遍开关才验得到。第一次开启被拒，
   // 再开一次成功，正好把两条都走完。拒绝时只存一个布尔，文案在渲染时取，
   // 这样切换语言后失败行跟着换语言而不是留在旧语言上。
+  // 状态栏通路是本产品唯一一个写别人文件的开关，所以它有两种失败，而且必须
+  // 分开说：写入被拒是"没做成"——开关必须留在关闭，否则界面在替一个没发生的
+  // 操作打包票；关闭时的恢复冲突是"做了一半"——AgentDeck 的命令确实移除了，
+  // 但原值在此期间被改过，不能覆盖用户自己编辑的东西，所以只能报告并请人工检查。
+  // 标本按 launch-at-login 已有的那条路子模拟：第一次拒绝、再来一次成功，
+  // 这样"出现时被宣布"和"下一次成功修改时清除"两条契约都走得到。
+  const statuslineRefusedOnce = useRef(false);
+  const statuslineConflictOnce = useRef(false);
+  const toggleQuotaStatusline = (value) => {
+    if (value && !statuslineRefusedOnce.current) {
+      statuslineRefusedOnce.current = true;
+      onChange({
+        ...prefs,
+        quotaStatusline: false,
+        quotaStatuslineWriteRefused: true,
+        quotaStatuslineRestoreIncomplete: false,
+      });
+      return;
+    }
+    if (!value && prefs.quotaStatusline && !statuslineConflictOnce.current) {
+      statuslineConflictOnce.current = true;
+      onChange({
+        ...prefs,
+        quotaStatusline: false,
+        quotaStatuslineWriteRefused: false,
+        quotaStatuslineRestoreIncomplete: true,
+      });
+      return;
+    }
+    onChange({
+      ...prefs,
+      quotaStatusline: value,
+      quotaStatuslineWriteRefused: false,
+      quotaStatuslineRestoreIncomplete: false,
+    });
+  };
+
   const toggleLaunchAtLogin = (value) => {
     if (value && !loginRefusedOnce.current) {
       loginRefusedOnce.current = true;
@@ -122,7 +159,7 @@ export function SettingsWindow({ lang, prefs, onChange, onClose, embedded = fals
       </header>
 
       <div className="settings-body">
-        <div className="settings-group">
+        <div className="settings-group" data-group="general">
           <span className="settings-group-title">{dict.settings.general}</span>
           <Field
             id="launchAtLogin"
@@ -176,6 +213,91 @@ export function SettingsWindow({ lang, prefs, onChange, onClose, embedded = fals
           </Field>
         </div>
 
+        {/* 订阅额度。三个开关的层级是有依赖的，不是并列：
+            不读取额度 → 状态栏通路与提醒都无从谈起；
+            不开提醒 → 阈值不可编辑。禁用而不是隐藏，
+            因为隐藏会让人以为产品没有这个能力。 */}
+        <div className="settings-group" data-group="quota">
+          <span className="settings-group-title">{dict.settings.quota}</span>
+          <Field id="quotaProbe" label={dict.settings.quotaProbe} hint={dict.settings.quotaProbeHint}>
+            <Switch
+              checked={prefs.quotaProbe}
+              onChange={set("quotaProbe")}
+              label={dict.settings.quotaProbe}
+              describedBy={hintId("quotaProbe")}
+            />
+          </Field>
+          <Field id="quotaInterval" label={dict.settings.quotaInterval} hint={dict.settings.quotaIntervalHint}>
+            <Segmented
+              value={prefs.quotaInterval}
+              label={dict.settings.quotaInterval}
+              describedBy={hintId("quotaInterval")}
+              onChange={set("quotaInterval")}
+              options={[
+                ["5m", "5m"],
+                ["15m", "15m"],
+                ["30m", "30m"],
+              ]}
+            />
+          </Field>
+          {/* 写入 ~/.claude/settings.json 需要显式同意，所以提示里必须写清
+              「会串接哪一条既有命令」。同意一个看不见后果的动作不算同意。 */}
+          <Field
+            id="quotaStatusline"
+            label={dict.settings.quotaStatusline}
+            hint={
+              prefs.existingStatusLine
+                ? `${dict.settings.quotaStatuslineHint} · ${dict.settings.quotaStatuslineChained(prefs.existingStatusLine)}`
+                : `${dict.settings.quotaStatuslineHint} · ${dict.settings.quotaStatuslineNone}`
+            }
+            error={
+              prefs.quotaStatuslineWriteRefused
+                ? dict.settings.quotaStatuslineWriteRefused
+                : prefs.quotaStatuslineRestoreIncomplete
+                  ? dict.settings.quotaStatuslineRestoreIncomplete
+                  : null
+            }
+            errorTone={prefs.quotaStatuslineWriteRefused ? "bad" : "warn"}
+          >
+            <Switch
+              checked={prefs.quotaStatusline}
+              onChange={toggleQuotaStatusline}
+              label={dict.settings.quotaStatusline}
+              describedBy={hintId("quotaStatusline")}
+              disabled={!prefs.quotaProbe}
+            />
+          </Field>
+          <Field id="quotaAlerts" label={dict.settings.quotaAlerts} hint={dict.settings.quotaAlertsHint}>
+            <Switch
+              checked={prefs.quotaAlerts}
+              onChange={set("quotaAlerts")}
+              label={dict.settings.quotaAlerts}
+              describedBy={hintId("quotaAlerts")}
+              disabled={!prefs.quotaProbe}
+            />
+          </Field>
+          <Field id="quotaThresholds" label={dict.settings.quotaThresholds} hint={null}>
+            <Segmented
+              value={prefs.quotaThresholds}
+              label={dict.settings.quotaThresholds}
+              onChange={set("quotaThresholds")}
+              options={[
+                ["75", "75%"],
+                ["90", "90%"],
+                ["75+90", "75% · 90%"],
+              ]}
+            />
+          </Field>
+          <Field id="quotaResetNotice" label={dict.settings.quotaResetNotice} hint={null}>
+            <Switch
+              checked={prefs.quotaResetNotice}
+              onChange={set("quotaResetNotice")}
+              label={dict.settings.quotaResetNotice}
+              disabled={!prefs.quotaProbe || !prefs.quotaAlerts}
+            />
+          </Field>
+        </div>
+
       </div>
     </section>
   );
@@ -187,4 +309,16 @@ export const DEFAULT_PREFS = {
   menubarValue: "cost",
   menubarScope: "all",
   loginItemRefused: false,
+  // 三个额度开关默认全关：requirements.md 的 opt-in 契约写在这里，
+  // 不写在文档的散文里——默认值是唯一会被真机读到的那一份。
+  quotaProbe: false,
+  quotaStatuslineWriteRefused: false,
+  quotaStatuslineRestoreIncomplete: false,
+  quotaInterval: "5m",
+  quotaStatusline: false,
+  quotaAlerts: false,
+  quotaThresholds: "75+90",
+  quotaResetNotice: false,
+  // 用户已有的 statusLine 命令，用于在同意前把「会串接什么」说清楚。
+  existingStatusLine: "python3 ~/.claude/statusline.py",
 };

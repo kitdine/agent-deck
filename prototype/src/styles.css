@@ -2484,6 +2484,19 @@ button.notice:hover {
   line-height: 1.4;
 }
 
+/* 失败行的语义色必须真的落地。.settings-label small 的权重（0,1,1）高过单类
+   .tone-text-bad / .tone-text-warn（0,1,0），提示行因此一直是 --dim 的灰色：
+   类名对、文案对、图标在，唯独"这有多严重"这一层信息没有渲染出来。
+   在同一容器下把语义色写回去，权重 0,3,1，不动全局的 tone-text-* 定义。
+   图标用 currentColor，颜色对了它自然跟上。 */
+.settings-error small.tone-text-bad {
+  color: var(--bad);
+}
+
+.settings-error small.tone-text-warn {
+  color: var(--warn);
+}
+
 .settings-control {
   display: flex;
   align-items: center;
@@ -2515,6 +2528,20 @@ button.notice:hover {
   background: #fff;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
   transition: transform 140ms ease;
+}
+
+/* 依赖关系必须看得见：额度提醒依赖读取额度，未读取时提醒开关是禁用而不是关闭。
+   两者都渲染成灰色滑块，用户会以为自己关过它——所以禁用态要另有形态。
+   禁用也不隐藏：隐藏会让人以为产品没有这个能力。 */
+.switch:disabled,
+.settings-segmented button:disabled {
+  cursor: not-allowed;
+  opacity: 0.38;
+}
+
+.settings-field:has(.switch:disabled) .settings-label > span,
+.settings-field:has(.switch:disabled) .settings-label > small {
+  opacity: 0.55;
 }
 
 .switch.on i {
