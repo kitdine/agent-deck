@@ -7,9 +7,9 @@ updated: 2026-09-10
 # Subscription Quota — Tasks
 
 Version membership belongs to the v0-6-0-contract assembly list.
-This checkpoint delivers the requirements, menu-bar UX, Widget UX and Settings
-UX documents. Remaining documents and implementation decomposition are local
-drafts pending their own review.
+This checkpoint delivers the requirements, menu-bar UX, Widget UX, Settings UX
+and architecture documents. The implementation decomposition is a local draft
+pending its own review.
 
 ## Documents
 
@@ -19,7 +19,7 @@ drafts pending their own review.
 | ux/menubar-quota.md | [x] | [x] |
 | ux/widget-quota.md | [x] | [x] |
 | ux/settings-quota.md | [x] | [x] |
-| architecture.md | [ ] | [ ] |
+| architecture.md | [x] | [x] |
 | tasks.md | [ ] | [ ] |
 
 ## Tasks
@@ -32,5 +32,6 @@ Requirements review is complete; see
 [the review record](reviews/requirements.md). Menu-bar review is complete; see [its review record](reviews/ux-menubar-quota.md).
 Widget review is complete; see [its review record](reviews/ux-widget-quota.md).
 Settings review is complete; see [its review record](reviews/ux-settings-quota.md).
-Architecture review is next.
+Architecture review is complete; see [its review record](reviews/architecture.md).
+Tasks review is next.
 No implementation task is approved by this checkpoint.
