@@ -1,0 +1,13 @@
+{
+  "accountId": "acct_demo_0003",
+  "rateLimits": {
+    "planType": "free",
+    "primary": {
+      "usedPercent": 42,
+      "windowDurationMins": 300,
+      "resetsAt": 1757516400
+    },
+    "secondary": null
+  },
+  "rateLimitsByLimitId": {}
+}

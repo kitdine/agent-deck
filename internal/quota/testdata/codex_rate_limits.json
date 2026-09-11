@@ -1,0 +1,72 @@
+{
+  "accountId": "acct_demo_0001",
+  "rateLimitResetCredits": {
+    "availableCount": 3,
+    "credits": [
+      {
+        "id": "credit_1",
+        "title": "Monthly reset credit",
+        "description": "Granted at account creation",
+        "status": "available",
+        "resetType": "codexRateLimits",
+        "grantedAt": 1755000000,
+        "expiresAt": 1762776000
+      }
+    ]
+  },
+  "rateLimits": {
+    "planType": "prolite",
+    "credits": {
+      "hasCredits": true,
+      "unlimited": false,
+      "balance": "12.50"
+    },
+    "primary": {
+      "usedPercent": 79,
+      "windowDurationMins": 10080,
+      "resetsAt": 1758121200
+    },
+    "secondary": null,
+    "limitId": null,
+    "limitName": null,
+    "spendControlReached": false,
+    "rateLimitReachedType": null,
+    "individualLimit": null
+  },
+  "rateLimitsByLimitId": {
+    "codex": {
+      "primary": {
+        "usedPercent": 79,
+        "windowDurationMins": 10080,
+        "resetsAt": 1758121200
+      },
+      "secondary": null,
+      "limitId": "codex",
+      "limitName": null,
+      "planType": "prolite",
+      "credits": {
+        "hasCredits": true,
+        "unlimited": false,
+        "balance": "12.50"
+      }
+    },
+    "codex_bengalfox": {
+      "primary": {
+        "usedPercent": 12.5,
+        "windowDurationMins": 300,
+        "resetsAt": 1757516400
+      },
+      "secondary": {
+        "usedPercent": 3,
+        "windowDurationMins": 10080,
+        "resetsAt": 1758121200
+      },
+      "limitId": "codex_bengalfox",
+      "limitName": "bengalfox",
+      "planType": null,
+      "credits": null
+    }
+  },
+  "rateLimitUpsell": null,
+  "ordinaryUsageAllowed": true
+}

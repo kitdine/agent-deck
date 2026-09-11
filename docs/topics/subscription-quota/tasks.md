@@ -95,7 +95,7 @@ repaired under `ux/settings-quota.md`, whose group had invalidated them.
 | Task | Dev | Review |
 | --- | --- | --- |
 | 1. `quota-domain` | [x] | [x] |
-| 2. `codex-adapter` | [ ] | [ ] |
+| 2. `codex-adapter` | [x] | [x] |
 | 3. `claude-adapters` | [ ] | [ ] |
 | 4. `gate-and-schedule` | [ ] | [ ] |
 | 5. `quota-alerts` | [ ] | [ ] |
@@ -172,6 +172,35 @@ scheduler, alert, or Swift surface file.
 
 **Verification:** L1 against captured fixtures, including the malformed and
 missing-`rateLimits` cases. No test spawns `codex`.
+
+Clarified by a Round 1 review follow-up on CA-R1-F1, approved by the operator
+on 2026-09-11 during that repair turn (in-session `AskUserQuestion`, not a
+Beads comment alone): the real `GetAccountRateLimitsResponse` protocol schema
+(`codex app-server generate-json-schema`, codex-cli 0.154.0) shows
+`rateLimitsByLimitId` as one of two parallel views — the required top-level
+`rateLimits` snapshot is itself "a backward-compatible single-bucket view"
+with its own `primary`/`secondary`. C2's table names only
+`rateLimitsByLimitId[k].primary/.secondary` as the window source and does not
+address this duality.
+
+Decision, exact scope: when `rateLimitsByLimitId` is **absent or null** (an
+older backend, or an account with no bucketed view), `parseCodexResult` falls
+back to `rateLimits.primary`/`.secondary`, using `rateLimits.limitId` for the
+window key when present, or the placeholder limitId `"codex"` when it is
+also absent — chosen because it matches the per-limit key this topic's own
+fixtures and requirements.md's observed sample use for the account's main
+limit. When `rateLimitsByLimitId` is present as an **explicit empty object**
+(`{}`), this does **not** apply: an empty object is a bucketed view the
+backend supplied and found empty, distinct from no bucketed view existing,
+and yields zero windows. (Round 2 review finding CA-R2-F1 found the code,
+`CodexResult`'s doc comment, and `parseCodexResult`'s doc comment disagreeing
+on whether "empty" also falls back — repaired to all agree with the exact
+scope recorded here.) Neither case is a probe failure.
+
+This decision fixes the `window_key` later tasks 5 (alert dedup) and 6 (wire)
+will see for an unbucketed account, and departs from what C2's table names as
+the sole window source; reconciling `architecture.md` C2 itself, if desired,
+is that document's own review and is not part of this task.
 
 ### 3. `claude-adapters`
 
@@ -410,7 +439,13 @@ The schema expansion into `internal/store` described in task 1's
 Files note is part of the reviewed content. See
 [`reviews/quota-domain.md`](reviews/quota-domain.md) for the findings, their
 dispositions, the evidence, and the completion gate.
-Tasks 2–7 exist in Beads (`ad-sq-codex-adapter-dev` through
+
+Task 2 `codex-adapter` passed Round 3 re-review on 2026-09-11 after two failed
+rounds; its delivery state is tracked in Beads `ad-sq-codex-adapter-dev`. The
+`rateLimits` fallback decision is recorded in task 2's own section above. See
+[`reviews/codex-adapter.md`](reviews/codex-adapter.md) for the findings,
+evidence, and completion gate.
+Tasks 3–7 exist in Beads (`ad-sq-claude-adapters-dev` through
 `ad-sq-desktop-surfaces-dev`) with dependency ordering matching this file; none
 have started.
 
