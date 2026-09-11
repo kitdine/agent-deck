@@ -170,3 +170,11 @@ Task checkpoint：ad-sp-performance-contract；最终 content_state d3a1dca4a04c
 
 下一步指令：开发：snapshot-performance / shared-ingestion
 WORKFLOW_WORKSPACE: agent-deck.snapshot-performance
+
+## Replanning disposition — 2026-09-10
+
+The user requested a complete topic replan and permitted topic-code replacement.
+See [whole-topic review and replacement plan](tasks.md#round-2--2026-09-10).
+The rounds above remain historical facts for their own content. They do not
+approve the revised document set, authorize delivery, or prescribe the current
+next command. The current Tasks matrix is the only execution plan.

@@ -8,6 +8,7 @@ import "./styles.css";
 import { runContract } from "./contract.js";
 import { runMeasure } from "./measure.js";
 import { runProbe } from "./probe.js";
+import { runScanProbe } from "./scan-probe.js";
 
 const surface = new URLSearchParams(window.location.search).get("surface");
 const Surface =
@@ -16,6 +17,7 @@ const Surface =
 runContract();
 runMeasure();
 runProbe();
+runScanProbe();
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>
