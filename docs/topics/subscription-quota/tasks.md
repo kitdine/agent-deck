@@ -94,7 +94,7 @@ repaired under `ux/settings-quota.md`, whose group had invalidated them.
 
 | Task | Dev | Review |
 | --- | --- | --- |
-| 1. `quota-domain` | [ ] | [ ] |
+| 1. `quota-domain` | [x] | [x] |
 | 2. `codex-adapter` | [ ] | [ ] |
 | 3. `claude-adapters` | [ ] | [ ] |
 | 4. `gate-and-schedule` | [ ] | [ ] |
@@ -111,6 +111,15 @@ confused by construction.
 `internal/quota/store.go`, and focused `*_test.go` files in `internal/quota/`.
 This task owns the domain and persistence; client adapters, scheduling, alerts,
 wire/CLI, and Swift surfaces stay in later tasks.
+
+Expanded by Round 1 review finding QD-R1-F5, with operator approval: the quota
+schema (`quota_windows`, `quota_envelopes`) is registered as
+`internal/store/migrations.go` version 24 rather than owned by a package-local
+`CREATE TABLE IF NOT EXISTS`, so it versions like every other production table.
+That also touches `internal/store/store.go` (`CurrentSchemaVersion`) and the
+schema-count-dependent fixtures/tests it ripples into
+(`cmd/agentdeck/main_test.go`'s schema-12-upgrade test,
+`desktop/fixtures/v1/snapshot-complete.json` and `snapshot-empty-client.json`).
 
 - Types for the per-client envelope, windows, reset allowance, billing, and the
   closed reason set from `architecture.md` C6.
@@ -394,8 +403,16 @@ are:
 [`architecture.md`](reviews/architecture.md). This `tasks.md` decomposition
 passed Round 3 re-review on 2026-09-10; see
 [`reviews/tasks.md`](reviews/tasks.md) for the complete record and evidence gate.
-No implementation task has started; approved implementation begins with
-`quota-domain` under its own Development authorization.
+
+Task 1 `quota-domain` passed Round 4 re-review on 2026-09-11 after three
+failed rounds; its delivery state is tracked in Beads `ad-sq-quota-domain-dev`.
+The schema expansion into `internal/store` described in task 1's
+Files note is part of the reviewed content. See
+[`reviews/quota-domain.md`](reviews/quota-domain.md) for the findings, their
+dispositions, the evidence, and the completion gate.
+Tasks 2–7 exist in Beads (`ad-sq-codex-adapter-dev` through
+`ad-sq-desktop-surfaces-dev`) with dependency ordering matching this file; none
+have started.
 
 The base of this worktree is `4737076`; `main` has since advanced by ten
 commits, including the assembled `schema-version-signal` surfaces. The surface

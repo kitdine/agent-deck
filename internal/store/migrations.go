@@ -215,6 +215,59 @@ var migrations = []migration{
 	{version: 23, statements: []string{
 		`ALTER TABLE provider_selections ADD COLUMN prior_keyed INTEGER`,
 	}},
+	// Subscription-quota persistence (architecture.md C7, subscription-quota
+	// topic): the latest observation per (client, account_id, window_key)
+	// plus one prior — no time series — and the latest per-client envelope.
+	// internal/quota (task 1) owns the domain rules and query/write API;
+	// this package only owns the versioned schema, like every other
+	// production table, so a later column or table change here actually
+	// reaches an already-provisioned database (QD-R1-F5).
+	//
+	// account_id in both tables holds only internal/quota's one-way digest of
+	// the vendor account ID, never the raw value (QD-R3-F2, architecture.md
+	// C8 — account_id must never reach an exported file, and this core
+	// database is captured verbatim by internal/backup). Amended in place
+	// rather than a new migration version: this table has not shipped
+	// (main's schema is still version 23 as of this change).
+	{version: 24, statements: []string{
+		`CREATE TABLE quota_windows (
+			client TEXT NOT NULL,
+			account_id TEXT NOT NULL DEFAULT '',
+			window_key TEXT NOT NULL,
+			source TEXT NOT NULL,
+			observed_at TEXT NOT NULL,
+			vendor_order INTEGER NOT NULL DEFAULT 0,
+			window_minutes INTEGER NOT NULL DEFAULT 0,
+			window_minutes_reason TEXT NOT NULL DEFAULT '',
+			label TEXT NOT NULL DEFAULT '',
+			used_percent REAL NOT NULL,
+			resets_at TEXT NOT NULL,
+			observed_reset_at TEXT NOT NULL DEFAULT '',
+			prior_used_percent REAL,
+			prior_observed_at TEXT,
+			PRIMARY KEY (client, account_id, window_key)
+		)`,
+		`CREATE TABLE quota_envelopes (
+			client TEXT PRIMARY KEY,
+			account_id TEXT NOT NULL DEFAULT '',
+			applicable INTEGER NOT NULL DEFAULT 0,
+			applicable_reason TEXT NOT NULL DEFAULT '',
+			source TEXT NOT NULL DEFAULT '',
+			observed_at TEXT NOT NULL DEFAULT '',
+			plan TEXT NOT NULL DEFAULT '',
+			plan_reason TEXT NOT NULL DEFAULT '',
+			reset_allowance_reason TEXT NOT NULL DEFAULT '',
+			reset_total INTEGER NOT NULL DEFAULT 0,
+			reset_total_reason TEXT NOT NULL DEFAULT '',
+			reset_remaining INTEGER NOT NULL DEFAULT 0,
+			reset_has_remaining INTEGER NOT NULL DEFAULT 0,
+			reset_credits_json TEXT NOT NULL DEFAULT '[]',
+			billing_balance REAL NOT NULL DEFAULT 0,
+			billing_has_balance INTEGER NOT NULL DEFAULT 0,
+			failure TEXT NOT NULL DEFAULT '',
+			failure_at TEXT NOT NULL DEFAULT ''
+		)`,
+	}},
 }
 
 func normalizeUsageEventTimes(ctx context.Context, tx *sql.Tx) error {
