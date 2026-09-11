@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { CliScan } from "./ScanProgress.jsx";
 import { StageControls, useStagePrefs } from "./Stage.jsx";
 import { WORK_SIGNALS } from "./data.js";
 import { catalogs } from "./i18n.js";
@@ -201,7 +202,7 @@ export function CliSurface() {
   const stage = useStagePrefs();
   const { lang, theme } = stage;
   const dict = catalogs[lang];
-  const [active, setActive] = useState(SAMPLES[0].id);
+  const [active, setActive] = useState(new URLSearchParams(window.location.search).has("scan") ? "scan" : SAMPLES[0].id);
   const sample = SAMPLES.find((item) => item.id === active);
 
   return (
@@ -209,12 +210,14 @@ export function CliSurface() {
       <StageControls prefs={stage} showState={false} />
       <div className="stage-body cli-body">
         <nav className="cli-tabs">
+          <button type="button" data-cli-scan-tab className={active === "scan" ? "active" : ""} onClick={() => setActive("scan")}>scan</button>
           {SAMPLES.map((item) => (
             <button type="button" key={item.id} className={item.id === active ? "active" : ""} onClick={() => setActive(item.id)}>
               {item.id}
             </button>
           ))}
         </nav>
+        {active === "scan" ? <CliScan stage={stage} /> : <>
         <p className="cli-note">{sample.note[lang]}</p>
         <div className="terminal">
           <div className="terminal-bar">
@@ -250,6 +253,7 @@ export function CliSurface() {
             <code>{JSON_SAMPLE}</code>
           </pre>
         </div>
+        </>}
       </div>
     </main>
   );

@@ -73,3 +73,47 @@ export function ScanEmptyPopover({ scan, lang, width }) {
     <div className="scan-loading-body"><ScanStatus scan={scan} lang={lang} empty /></div>
   </section>;
 }
+
+export function CliScan({ stage }) {
+  const scan = useScanScenario();
+  const params = new URLSearchParams(window.location.search);
+  const [scope, setScope] = useState(["usage", "session"].includes(params.get("scope")) ? params.get("scope") : "all");
+  const [mode, setMode] = useState(["pipe", "json", "quiet"].includes(params.get("mode")) ? params.get("mode") : "tty");
+  const [receipt, setReceipt] = useState(null);
+  const [detached, setDetached] = useState(false);
+  const [columns, setColumns] = useState(params.get("cols") === "40" ? 40 : 80);
+  useEffect(() => { setReceipt(null); setDetached(false); }, [scan.round, scope]);
+  const usageDone = ["usage-complete", "statistics", "completed", "partial", "failed"].includes(scan.phase);
+  const sessionDone = ["statistics", "completed"].includes(scan.phase);
+  const failed = ["partial", "failed"].includes(scan.phase);
+  useEffect(() => {
+    if (receipt || detached) return;
+    if ((scope === "usage" && usageDone) || (scope !== "usage" && (sessionDone || failed))) {
+      setReceipt({ scope, usage: "completed", sessions: sessionDone ? "completed" : failed ? "failed" : "processing", exit: scope === "usage" || !failed ? 0 : 1 });
+    }
+  }, [scope, usageDone, sessionDone, failed, receipt, detached]);
+  let progress = "";
+  if (!receipt && !detached && mode === "tty") {
+    progress = ["waiting", "checking"].includes(scan.phase) ? copy.en[scan.phase] : scope === "all" ? (columns === 40 ? "Usage 640/1720 · Sessions 512/1720" : "Usage 640/1720 · Sessions 512/1720 files committed · 240 skipped") : (scope === "usage" ? "Usage 640" : "Sessions 512") + "/1720 files committed";
+    if (scan.phase === "usage-complete" && scope === "session") progress = "Sessions 1280/1720 files committed";
+    if (scan.phase === "usage-complete" && scope === "all") progress = columns === 40 ? "Usage done · Sessions 1280/1720" : "Usage complete · Sessions 1280/1720 files committed";
+  }
+  const stdout = receipt ? mode === "json" ? JSON.stringify({ command: "scan", data: { scope: receipt.scope, usage: receipt.usage, sessions: receipt.sessions }, partial: receipt.exit !== 0 }, null, 2) : receipt.exit ? "Scan incomplete: sessions failed." : scope === "all" ? "Scan complete: usage and sessions." : "Scan complete: " + scope + "." : "";
+  const stderr = detached ? "Detached from scan." : receipt?.exit ? "Session scan failed." : progress;
+  return <>
+    <ScanStageControls scan={scan} lang={stage.lang} attached={!detached && !receipt} />
+    <div className="scan-cli-options">
+      <label>Scope<select data-cli-scope value={scope} onChange={(e) => setScope(e.target.value)}>{["all", "usage", "session"].map((s) => <option key={s}>{s}</option>)}</select></label>
+      <label>Output<select data-cli-mode value={mode} onChange={(e) => setMode(e.target.value)}>{["tty", "pipe", "quiet", "json"].map((s) => <option key={s}>{s}</option>)}</select></label>
+      <label>Columns<select data-cli-cols value={columns} onChange={(e) => setColumns(Number(e.target.value))}><option>80</option><option>40</option></select></label>
+      <button type="button" data-cli-detach disabled={detached || !!receipt} onClick={() => setDetached(true)}>Ctrl-C · detach</button>
+    </div>
+    <p className="cli-note">{stage.lang === "zh" ? "舞台标本：stdout 与 stderr 分开呈现；退出后输出冻结，后台流程仍可继续。JSON 展示新 scan 命令的结果草案，不替换旧命令格式。" : "Specimen: stdout and stderr are separate. Output freezes after exit while background work continues. JSON is the proposed new scan result, not a replacement for legacy formats."}</p>
+    <div className="terminal scan-terminal" data-columns={columns} style={{ maxWidth: (columns + 6) + "ch" }}>
+      <div className="terminal-bar"><span>agentdeck scan{scope !== "all" ? " --scope " + scope : ""}{mode === "quiet" ? " --quiet" : mode === "json" ? " --format json" : ""}</span></div>
+      <div className="scan-stream-label">stdout</div><pre data-scan-stdout>{stdout || "\u00a0"}</pre>
+      <div className="scan-stream-label">stderr</div><pre data-scan-stderr aria-live="off">{stderr || "\u00a0"}</pre>
+    </div>
+    <p className="cli-note" data-scan-exit>{receipt ? "Exit " + receipt.exit : detached ? "Exit 130" : "Foreground running"}</p>
+  </>;
+}
