@@ -74,3 +74,60 @@ Task checkpoint：ad-sp-doc-req-design；上述 content state；门禁 VERIFIED�
 
 下一步指令：评审：snapshot-performance / architecture.md
 WORKFLOW_WORKSPACE: agent-deck.snapshot-performance
+
+## Replanning disposition — 2026-09-10
+
+The user requested a complete topic replan and permitted topic-code replacement.
+See [whole-topic review and replacement plan](tasks.md#round-2--2026-09-10).
+The rounds above remain historical facts for their own content. They do not
+approve the revised document set, authorize delivery, or prescribe the current
+next command. The current Tasks matrix is the only execution plan.
+## Round 2 — 2026-09-11
+
+## 📋 requirements.md 现行设计复评
+
+📊 总体评分：9/10
+
+✅ 复评结论：PASS
+
+### 🔴 严重问题 — 必须修复
+
+无未关闭 finding。
+
+### 🟡 改进建议 — 推荐
+
+无。
+
+### 🟢 优点
+
+统一全域扫描、scope 仅控制前台等待、有限观察轮次和旧代码替换边界已决定；1 秒/10 秒及 CPU/RSS 目标保留，未把原型或历史研究当作性能达标。TOPIC-R2-F2 的需求范围冲突 CLOSED。
+
+### 📝 总结
+
+Reviewer：Codex 主代理。Method：development-workflow REREVIEW，单代理，
+逐项 finding 处置、当前源码/合同交叉核验、共享原型浏览器观察；未委派，
+不声称冷上下文独立性。Scope：requirements.md。
+
+详细跨文档证据、原型验证复用和历史 finding 处置见
+[整套复评](tasks.md#round-4--2026-09-11)。本记录与该轮有明确共享审查关系。
+本 subject 无其他未关闭 finding；历史 PASS 仍仅适用于其原内容。
+
+Reviewed state：HEAD 446a58f1f6716f257680879e5dbf3b61365c8cb2；
+Git blob e106da96b4af57e648972e4528ad68fb0d4d675f；content_state 534a92e2c117e61d5c4bb1a18febd5d5723f4d51f78c4eb3f9527a4332f9075e。
+配方：SHA-256(head=<HEAD>;document=<blob>)。
+Workspace：agent-deck.snapshot-performance / feature/snapshot-performance。
+Task：ad-sp-doc-req-design；WorkUnit：snapshot-performance:requirements.md。
+
+完成门禁：VERIFIED。固定 gate-status.cypher 对本轮精确 ContentState 查询通过；
+required criteria 为 3 项，missing/invalidated/unresolved 均为空。
+本轮追加 37 个节点、58 条关系；关系预检 58/58 ok，实际创建数量匹配。
+没有复写历史观察或把旧已交付实现的证据改成新引擎验收。
+
+Task checkpoint：ad-sp-doc-req-design；content_state 534a92e2c117e61d5c4bb1a18febd5d5723f4d51f78c4eb3f9527a4332f9075e；门禁 VERIFIED。
+提交建议：单独授权后提交 requirements.md、对应评审和 topic 矩阵；与其他本轮文档协调暂存边界，不混入未评审 Go 候选。
+推送建议：origin/feature/snapshot-performance（候选目标）；须单独授权，核验暂存范围、提交正文/署名/SSH 签名和实际远端配置。本轮未推送。
+原生 worker/IPC/SQLite/Swift/VoiceOver/Dynamic Type 和完整性能指标不属于文档
+PASS 的证明范围；任务 1–3 及 topic 完成边界仍开放。未提交、推送或启动实现。
+
+下一步指令：开发：snapshot-performance / unified-scan-runtime
+WORKFLOW_WORKSPACE: agent-deck.snapshot-performance
