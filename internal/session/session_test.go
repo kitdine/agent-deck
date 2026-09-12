@@ -10,8 +10,10 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kitdine/agent-deck/internal/activity"
+	"github.com/kitdine/agent-deck/internal/ingest"
 	"github.com/kitdine/agent-deck/internal/store"
 )
 
@@ -1059,6 +1061,95 @@ func TestScanAndRebuildWithOptionsReportAggregateProgress(t *testing.T) {
 	}
 	if canceled.starts != 1 || canceled.stops != 1 {
 		t.Fatalf("canceled lifecycle starts=%d stops=%d", canceled.starts, canceled.stops)
+	}
+}
+
+func TestScanWithCoordinatorReducesBeforeBeginningPublicationTransaction(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	home := filepath.Join(root, "home")
+	path := filepath.Join(home, ".codex", "sessions", "shared.jsonl")
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("{\"type\":\"session_meta\",\"payload\":{\"session_id\":\"shared\"}}\n{\"type\":\"visible_user_prompt\",\"payload\":{\"text\":\"shared reduction\"}}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	database, err := store.OpenSessions(ctx, filepath.Join(root, "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	sources, err := ingest.Discover(home)
+	if err != nil || len(sources) != 1 {
+		t.Fatalf("discover sources=%#v err=%v", sources, err)
+	}
+	coordinator := ingest.NewCoordinator(sources, ingest.Options{RequirePlans: true})
+	t.Cleanup(coordinator.Close)
+	if err = coordinator.Plan(sources[0].Path, ingest.ConsumerSession, ingest.ReadRange{End: sources[0].Size}); err != nil {
+		t.Fatal(err)
+	}
+	coordinator.Skip(sources[0].Path, ingest.ConsumerUsage)
+	if err = coordinator.Seal(ingest.ConsumerUsage); err != nil {
+		t.Fatal(err)
+	}
+	if err = coordinator.Seal(ingest.ConsumerSession); err != nil {
+		t.Fatal(err)
+	}
+	coordinator.Start(ctx)
+
+	reductionStarted := make(chan struct{})
+	releaseReduction := make(chan struct{})
+	released := false
+	release := func() {
+		if !released {
+			close(releaseReduction)
+			released = true
+		}
+	}
+	oldReductionBarrier := beforeSharedSessionReduction
+	beforeSharedSessionReduction = func() {
+		close(reductionStarted)
+		<-releaseReduction
+	}
+	t.Cleanup(func() { beforeSharedSessionReduction = oldReductionBarrier })
+	t.Cleanup(release)
+
+	transactionStarted := make(chan struct{})
+	oldBegin := beginSessionTx
+	beginSessionTx = func(ctx context.Context, db *sql.DB) (*sql.Tx, error) {
+		close(transactionStarted)
+		return oldBegin(ctx, db)
+	}
+	t.Cleanup(func() { beginSessionTx = oldBegin })
+
+	type outcome struct {
+		result ScanResult
+		err    error
+	}
+	done := make(chan outcome, 1)
+	go func() {
+		result, scanErr := ScanWithOptions(ctx, database.DB, home, ScanOptions{PreparedSources: sources, Coordinator: coordinator})
+		done <- outcome{result: result, err: scanErr}
+	}()
+	select {
+	case <-reductionStarted:
+	case <-time.After(time.Second):
+		t.Fatal("shared session reduction did not begin")
+	}
+	select {
+	case <-transactionStarted:
+		t.Fatal("publication transaction started before shared reduction completed")
+	default:
+	}
+	release()
+	select {
+	case got := <-done:
+		if got.err != nil || got.result.Sources != 1 || got.result.Documents != 1 {
+			t.Fatalf("coordinated scan result=%#v err=%v", got.result, got.err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("coordinated scan did not finish after reduction released")
 	}
 }
 

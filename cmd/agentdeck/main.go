@@ -36,6 +36,7 @@ import (
 	"github.com/kitdine/agent-deck/internal/output"
 	"github.com/kitdine/agent-deck/internal/platform"
 	"github.com/kitdine/agent-deck/internal/provider"
+	"github.com/kitdine/agent-deck/internal/scanruntime"
 	"github.com/kitdine/agent-deck/internal/session"
 	"github.com/kitdine/agent-deck/internal/shellconfig"
 	"github.com/kitdine/agent-deck/internal/store"
@@ -498,7 +499,7 @@ func newRootCommandWithError(stdin io.Reader, stdout, stderr io.Writer) *cobra.C
 	flags.BoolVar(&opts.verbose, "verbose", false, "Include technical provenance in text output")
 	root.Flags().BoolVar(&showVersion, "version", false, "Print build identity")
 	root.CompletionOptions.DisableDefaultCmd = true
-	root.AddCommand(newProviderCommand(opts), newCredentialCommand(opts), newUsageCommand(opts), newPriceCommand(opts), newSessionCommand(opts), newExtensionCommand(opts), newWatchCommand(opts), newBackupCommand(opts), newDoctorCommand(opts), newDesktopCommand(opts), newStateCommand(opts), newRunCommand(opts), newVersionCommand(opts), newCompletionCommand(opts), newShellCommand(opts), newShellInitCommand(opts))
+	root.AddCommand(newProviderCommand(opts), newCredentialCommand(opts), newUsageCommand(opts), newPriceCommand(opts), newSessionCommand(opts), newExtensionCommand(opts), newWatchCommand(opts), newBackupCommand(opts), newDoctorCommand(opts), newDesktopCommand(opts), newScanCommand(opts), newScanWorkerCommand(opts), newStateCommand(opts), newRunCommand(opts), newVersionCommand(opts), newCompletionCommand(opts), newShellCommand(opts), newShellInitCommand(opts))
 	applyHelpCatalog(root)
 	wrapArgumentValidators(root)
 	return root
@@ -573,6 +574,7 @@ func applyHelpCatalog(root *cobra.Command) {
 			example: "  agentdeck credential remove aigocode --credential work",
 		},
 		"session scan":        {short: "Incrementally scan local client sessions"},
+		"scan":                {short: "Run one shared usage and session scan round"},
 		"session list":        {short: "List indexed sessions"},
 		"session rebuild":     {short: "Rebuild the purgeable session index"},
 		"session purge-index": {short: "Delete only the rebuildable session index"},
@@ -735,6 +737,7 @@ type shellTarget struct {
 
 const shellLifecycleSurfaceOnlyAnnotation = "agentdeck.shell-lifecycle-surface-only"
 const humanInteractiveSurfaceOnlyAnnotation = "agentdeck.human-interactive-surface-only"
+const internalRuntimeSurfaceOnlyAnnotation = "agentdeck.internal-runtime-surface-only"
 const shellSetupDeclinedSetting = "shell.setup.declined"
 
 func newShellCommand(opts *commandOptions) *cobra.Command {
@@ -1381,6 +1384,132 @@ func (o *commandOptions) stateRoot() (string, error) {
 		return "", err
 	}
 	return platform.StateRoot("", home), nil
+}
+
+func requestScanRound(ctx context.Context, opts *commandOptions, scope scanruntime.Scope) (scanruntime.Result, error) {
+	stateRoot, err := opts.stateRoot()
+	if err != nil {
+		return scanruntime.Result{}, err
+	}
+	home, err := userHomeDir()
+	if err != nil {
+		return scanruntime.Result{}, err
+	}
+	return (scanruntime.Client{
+		StateRoot:  stateRoot,
+		Home:       home,
+		ForceLocal: scanRuntimeLocalTestMode(),
+	}).Request(ctx, scope)
+}
+
+func scanRuntimeLocalTestMode() bool {
+	name := filepath.Base(os.Args[0])
+	return strings.HasSuffix(name, ".test") || strings.HasSuffix(name, ".test.exe")
+}
+
+func runUsageScanRound(ctx context.Context, opts *commandOptions, progress usage.ScanProgressReporter) (map[string]int, error) {
+	if progress != nil {
+		progress.Start()
+		progress.Update(usage.ScanProgress{})
+		defer progress.Stop()
+	}
+	result, err := requestScanRound(ctx, opts, scanruntime.ScopeUsage)
+	if err != nil {
+		return nil, err
+	}
+	if err = result.ErrorFor(scanruntime.ScopeUsage); err != nil {
+		return nil, err
+	}
+	return result.Usage.Changes, nil
+}
+
+func runSessionScanRound(ctx context.Context, opts *commandOptions, progress session.ScanProgressReporter) (session.ScanResult, error) {
+	if progress != nil {
+		progress.Start()
+		progress.Update(session.ScanProgress{})
+		defer progress.Stop()
+	}
+	result, err := requestScanRound(ctx, opts, scanruntime.ScopeSession)
+	if err != nil {
+		return session.ScanResult{}, err
+	}
+	if err = result.ErrorFor(scanruntime.ScopeSession); err != nil {
+		return session.ScanResult{}, err
+	}
+	stateRoot, err := opts.stateRoot()
+	if err != nil {
+		return session.ScanResult{}, err
+	}
+	home, err := userHomeDir()
+	if err != nil {
+		return session.ScanResult{}, err
+	}
+	fingerprint, err := watch.FingerprintRoots(sessionWatchRoots(home)...)
+	if err != nil {
+		return session.ScanResult{}, err
+	}
+	core, err := store.Open(ctx, stateRoot)
+	if err != nil {
+		return session.ScanResult{}, err
+	}
+	defer core.Close()
+	if err = core.SetSetting(ctx, "watch.fingerprint.session", fingerprint); err != nil {
+		return session.ScanResult{}, err
+	}
+	return result.Session.Scan, nil
+}
+
+func parseScanScope(value string) (scanruntime.Scope, error) {
+	if value == "" || value == string(scanruntime.ScopeBoth) {
+		return scanruntime.ScopeBoth, nil
+	}
+	scope := scanruntime.Scope(value)
+	if scope != scanruntime.ScopeUsage && scope != scanruntime.ScopeSession {
+		return "", &inputError{err: fmt.Errorf("invalid scan scope %q", value)}
+	}
+	return scope, nil
+}
+
+func newScanCommand(opts *commandOptions) *cobra.Command {
+	var scopeValue string
+	command := &cobra.Command{
+		Use:   "scan",
+		Short: "Run one shared usage and session scan round",
+		Args:  exactArgs(0),
+		RunE: func(command *cobra.Command, _ []string) error {
+			scope, err := parseScanScope(scopeValue)
+			if err != nil {
+				return err
+			}
+			result, err := requestScanRound(command.Context(), opts, scope)
+			if err != nil {
+				return err
+			}
+			if err = result.ErrorFor(scope); err != nil {
+				return err
+			}
+			return writeResult(opts.stdout, opts.format, commandOutputName(command), result, opts.quiet)
+		},
+	}
+	command.Flags().StringVar(&scopeValue, "scope", "", "Wait for usage or session; omit to wait for both")
+	return command
+}
+
+func newScanWorkerCommand(opts *commandOptions) *cobra.Command {
+	return &cobra.Command{
+		Use:         "scan-worker",
+		Short:       "Run the internal shared scan worker",
+		Hidden:      true,
+		Annotations: map[string]string{internalRuntimeSurfaceOnlyAnnotation: "true"},
+		Args:        exactArgs(0),
+		RunE: func(command *cobra.Command, _ []string) error {
+			stateRoot, err := opts.stateRoot()
+			if err != nil {
+				return err
+			}
+			return scanruntime.Serve(command.Context(), stateRoot)
+		},
+	}
 }
 
 func (o *commandOptions) shellStateRoot() string {
@@ -2350,13 +2479,55 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 	_ = exclude.MarkFlagRequired("kind")
 	_ = exclude.MarkFlagRequired("value")
 	cmd.AddCommand(
-		&cobra.Command{Use: "scan", Args: cobra.NoArgs, RunE: withSessions(func(ctx context.Context, s *store.Store, home string, _ []string) (any, error) {
-			return session.ScanWithOptions(ctx, s.DB, home, session.ScanOptions{Progress: newSessionProgress(opts.stderr, opts.quiet)})
-		})},
+		&cobra.Command{Use: "scan", Args: cobra.NoArgs, RunE: func(command *cobra.Command, _ []string) error {
+			data, err := runSessionScanRound(command.Context(), opts, newSessionProgress(opts.stderr, opts.quiet))
+			if err != nil {
+				return err
+			}
+			return writeResult(opts.stdout, opts.format, commandOutputName(command), data, opts.quiet)
+		}},
 		list, search, show, exclude,
-		&cobra.Command{Use: "rebuild", Args: cobra.NoArgs, RunE: withSessions(func(ctx context.Context, s *store.Store, home string, _ []string) (any, error) {
-			return session.RebuildWithOptions(ctx, s.DB, home, session.ScanOptions{Progress: newSessionProgress(opts.stderr, opts.quiet)})
-		})},
+		&cobra.Command{Use: "rebuild", Args: cobra.NoArgs, RunE: func(command *cobra.Command, _ []string) error {
+			stateRoot, err := opts.stateRoot()
+			if err != nil {
+				return err
+			}
+			home, err := userHomeDir()
+			if err != nil {
+				return err
+			}
+			var data session.ScanResult
+			err = scanruntime.WithMaintenance(command.Context(), stateRoot, 5*time.Second, func(ctx context.Context) error {
+				lock, err := store.AcquireLock(ctx, stateRoot, 5*time.Second)
+				if err != nil {
+					return err
+				}
+				defer lock.Release()
+				sessions, err := store.OpenSessions(ctx, stateRoot)
+				if err != nil {
+					return err
+				}
+				defer sessions.Close()
+				data, err = session.RebuildWithOptions(ctx, sessions.DB, home, session.ScanOptions{Progress: newSessionProgress(opts.stderr, opts.quiet)})
+				if err != nil {
+					return err
+				}
+				fingerprint, err := watch.FingerprintRoots(sessionWatchRoots(home)...)
+				if err != nil {
+					return err
+				}
+				core, err := store.OpenWithLockHeld(ctx, stateRoot)
+				if err != nil {
+					return err
+				}
+				defer core.Close()
+				return core.SetSetting(ctx, "watch.fingerprint.session", fingerprint)
+			})
+			if err != nil {
+				return err
+			}
+			return writeResult(opts.stdout, opts.format, commandOutputName(command), data, opts.quiet)
+		}},
 		newSessionPurgeCommand(opts),
 	)
 	return cmd
@@ -2640,11 +2811,7 @@ func newWatchCommand(opts *commandOptions) *cobra.Command {
 			InitialFingerprints: initial,
 			Sources:             filtered,
 			Lock: func(ctx context.Context) (func() error, error) {
-				lock, err := store.AcquireScanLock(ctx, stateDir, 0)
-				if err != nil {
-					return nil, err
-				}
-				return lock.Release, nil
+				return scanruntime.AcquireMaintenance(ctx, stateDir, 0)
 			},
 			PersistFingerprint: func(ctx context.Context, domain, value string) error {
 				if err := openCore(ctx); err != nil {
@@ -3223,7 +3390,7 @@ func newUsageCommand(opts *commandOptions) *cobra.Command {
 	summary := &cobra.Command{Use: "summary [daily|weekly|monthly]", Args: cobra.MaximumNArgs(1), RunE: withUsage(func(ctx context.Context, s *usage.Service, _ *store.Store, args []string) (any, bool, []string, error) {
 		var scanErr error
 		if !summaryNoScan {
-			_, scanErr = s.Scan(ctx)
+			_, scanErr = runUsageScanRound(ctx, opts, s.Progress)
 		}
 		if len(args) == 0 {
 			data, err := s.Summary(ctx)
@@ -3259,7 +3426,7 @@ func newUsageCommand(opts *commandOptions) *cobra.Command {
 		}
 		var scanErr error
 		if !statsNoScan {
-			_, scanErr = s.Scan(ctx)
+			_, scanErr = runUsageScanRound(ctx, opts, s.Progress)
 		}
 		now := time.Now()
 		location := displayLocation()
@@ -3308,7 +3475,7 @@ func newUsageCommand(opts *commandOptions) *cobra.Command {
 		if signalsActivity != "" && !usage.ValidActivityFilter(signalsActivity) {
 			return nil, false, nil, &inputError{err: fmt.Errorf("usage signals activity must be a documented category or subcategory")}
 		}
-		_, scanErr := s.Scan(ctx)
+		_, scanErr := runUsageScanRound(ctx, opts, s.Progress)
 		now := time.Now()
 		from, to, err := resolveUsageRange(ctx, s, signalsPeriod, "", "", now, displayLocation())
 		if err != nil {
@@ -3327,10 +3494,13 @@ func newUsageCommand(opts *commandOptions) *cobra.Command {
 	signals.Flags().StringVar(&signalsActivity, "activity", "", "Filter turns by an activity category or subcategory")
 	cmd.AddCommand(
 		newUsageHookCommand(opts),
-		&cobra.Command{Use: "scan", Args: cobra.NoArgs, RunE: withUsage(func(ctx context.Context, s *usage.Service, _ *store.Store, _ []string) (any, bool, []string, error) {
-			data, err := s.Scan(ctx)
-			return data, false, nil, err
-		})},
+		&cobra.Command{Use: "scan", Args: cobra.NoArgs, RunE: func(command *cobra.Command, _ []string) error {
+			data, err := runUsageScanRound(command.Context(), opts, newUsageProgress(opts.stderr, opts.quiet))
+			if err != nil {
+				return err
+			}
+			return writeUsageEnvelope(opts.stdout, opts.format, commandOutputName(command), data, false, nil, opts.quiet, newUsageTextRenderOptions(opts.stdout, opts.noColor))
+		}},
 		summary,
 		stats,
 		signals,
@@ -3342,10 +3512,33 @@ func newUsageCommand(opts *commandOptions) *cobra.Command {
 			data, err := s.Diagnose(ctx)
 			return data, false, nil, err
 		})},
-		&cobra.Command{Use: "rebuild", Args: cobra.NoArgs, RunE: withUsage(func(ctx context.Context, s *usage.Service, _ *store.Store, _ []string) (any, bool, []string, error) {
-			data, warnings, err := s.Rebuild(ctx)
-			return data, len(warnings) > 0, warnings, err
-		})},
+		&cobra.Command{Use: "rebuild", Args: cobra.NoArgs, RunE: func(command *cobra.Command, _ []string) error {
+			stateRoot, err := opts.stateRoot()
+			if err != nil {
+				return err
+			}
+			home, err := userHomeDir()
+			if err != nil {
+				return err
+			}
+			var data map[string]int
+			var warnings []string
+			err = scanruntime.WithMaintenance(command.Context(), stateRoot, 5*time.Second, func(ctx context.Context) error {
+				core, err := store.Open(ctx, stateRoot)
+				if err != nil {
+					return err
+				}
+				defer core.Close()
+				service := usage.New(core, home)
+				service.Progress = newUsageProgress(opts.stderr, opts.quiet)
+				data, warnings, err = service.Rebuild(ctx)
+				return err
+			})
+			if err != nil {
+				return err
+			}
+			return writeUsageEnvelope(opts.stdout, opts.format, commandOutputName(command), data, len(warnings) > 0, warnings, opts.quiet, newUsageTextRenderOptions(opts.stdout, opts.noColor))
+		}},
 	)
 	return cmd
 }

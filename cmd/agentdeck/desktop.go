@@ -8,16 +8,14 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
-	"sync"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/kitdine/agent-deck/internal/desktop"
 	"github.com/kitdine/agent-deck/internal/output"
-	"github.com/kitdine/agent-deck/internal/session"
+	"github.com/kitdine/agent-deck/internal/scanruntime"
 	"github.com/kitdine/agent-deck/internal/store"
-	"github.com/kitdine/agent-deck/internal/usage"
 	"github.com/kitdine/agent-deck/internal/watch"
 )
 
@@ -55,8 +53,6 @@ type desktopIndexDomainResult struct {
 	ErrorCode            string `json:"error_code,omitempty"`
 	failureStage         string
 }
-
-type desktopIndexScan func() (any, error)
 
 func newDesktopCommand(opts *commandOptions) *cobra.Command {
 	command := &cobra.Command{Use: "desktop", Short: "Read desktop integration data"}
@@ -136,40 +132,28 @@ func newDesktopCommand(opts *commandOptions) *cobra.Command {
 }
 
 func refreshDesktopIndexes(ctx context.Context, stateRoot, home string) (desktopIndexRefreshResult, bool, []string, error) {
-	lock, err := store.AcquireLock(ctx, stateRoot, 5*time.Second)
+	round, err := (scanruntime.Client{StateRoot: stateRoot, Home: home, ForceLocal: scanRuntimeLocalTestMode()}).Request(ctx, scanruntime.ScopeBoth)
 	if err != nil {
 		return desktopIndexRefreshResult{}, false, nil, err
 	}
-	defer lock.Release()
-
-	core, err := store.OpenWithLockHeld(ctx, stateRoot)
-	if err != nil {
-		return desktopIndexRefreshResult{}, false, nil, err
-	}
-	defer core.Close()
-	sessions, err := store.OpenSessions(ctx, stateRoot)
-	if err != nil {
-		return desktopIndexRefreshResult{}, false, nil, err
-	}
-	defer sessions.Close()
-
-	result := runDesktopIndexScans(
-		func() (any, error) {
-			return usage.New(core, home).Scan(ctx)
-		},
-		func() (any, error) {
-			return session.Scan(ctx, sessions.DB, home)
-		},
-	)
+	result := desktopIndexResultFromRound(round)
 	if result.Sessions.Success {
-		fingerprint, fingerprintErr := watch.FingerprintRoots(sessionWatchRoots(home)...)
-		if fingerprintErr == nil {
-			fingerprintErr = core.SetSetting(ctx, "watch.fingerprint.session", fingerprint)
-		}
-		if fingerprintErr != nil {
+		core, openErr := store.Open(ctx, stateRoot)
+		if openErr != nil {
 			result.Sessions.Success = false
-			result.Sessions.ErrorCode = errorCode(fingerprintErr)
+			result.Sessions.ErrorCode = errorCode(openErr)
 			result.Sessions.failureStage = "checkpoint_persistence"
+		} else {
+			fingerprint, fingerprintErr := watch.FingerprintRoots(sessionWatchRoots(home)...)
+			if fingerprintErr == nil {
+				fingerprintErr = core.SetSetting(ctx, "watch.fingerprint.session", fingerprint)
+			}
+			_ = core.Close()
+			if fingerprintErr != nil {
+				result.Sessions.Success = false
+				result.Sessions.ErrorCode = errorCode(fingerprintErr)
+				result.Sessions.failureStage = "checkpoint_persistence"
+			}
 		}
 	}
 	warnings := []string{}
@@ -182,39 +166,37 @@ func refreshDesktopIndexes(ctx context.Context, stateRoot, home string) (desktop
 	return result, len(warnings) > 0, warnings, nil
 }
 
-func runDesktopIndexScans(usageScan, sessionScan desktopIndexScan) desktopIndexRefreshResult {
-	var wait sync.WaitGroup
-	wait.Add(2)
-	var usageResult, sessionResult desktopIndexDomainResult
-	go func() {
-		defer wait.Done()
-		usageResult = runDesktopIndexScan(usageScan)
-	}()
-	go func() {
-		defer wait.Done()
-		sessionResult = runDesktopIndexScan(sessionScan)
-	}()
-	wait.Wait()
-	return desktopIndexRefreshResult{Usage: usageResult, Sessions: sessionResult}
-}
-
-func runDesktopIndexScan(scan desktopIndexScan) desktopIndexDomainResult {
-	startedAt := time.Now()
-	changes, err := scan()
-	result := desktopIndexDomainResult{
-		Success:              err == nil,
-		DurationMilliseconds: time.Since(startedAt).Milliseconds(),
-		Changes:              changes,
+func desktopIndexResultFromRound(round scanruntime.Result) desktopIndexRefreshResult {
+	result := desktopIndexRefreshResult{
+		Usage: desktopIndexDomainResult{
+			Success:              round.Usage.State == "completed",
+			DurationMilliseconds: round.Usage.DurationMS,
+			Changes:              round.Usage.Changes,
+			ErrorCode:            round.Usage.ErrorCode,
+		},
+		Sessions: desktopIndexDomainResult{
+			Success:              round.Session.State == "completed",
+			DurationMilliseconds: round.Session.DurationMS,
+			Changes:              round.Session.Scan,
+			ErrorCode:            round.Session.ErrorCode,
+		},
 	}
-	if err != nil {
-		result.Changes = nil
-		result.ErrorCode = errorCode(err)
-		result.failureStage = "scan"
-		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
-			result.failureStage = "deadline"
-		}
+	if !result.Usage.Success {
+		result.Usage.failureStage = scanRuntimeFailureStage(round.Usage.ErrorCode)
+		result.Usage.Changes = nil
+	}
+	if !result.Sessions.Success {
+		result.Sessions.failureStage = scanRuntimeFailureStage(round.Session.ErrorCode)
+		result.Sessions.Changes = nil
 	}
 	return result
+}
+
+func scanRuntimeFailureStage(code string) string {
+	if code == "deadline_exceeded" || code == "cancelled" {
+		return "deadline"
+	}
+	return "scan"
 }
 
 func writeDesktopSnapshotStream(w interface{ Write([]byte) (int, error) }, result desktop.Result) error {

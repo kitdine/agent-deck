@@ -135,6 +135,7 @@ func TestIsolatedEndToEndFlow(t *testing.T) {
 		t.Fatalf("exact run = %#v, %v", runEnvelope.Data, err)
 	}
 	runJSON("run.claude", "", "run", "claude", "--", "phase7")
+	runJSON("scan", "", "scan")
 	runJSON("usage.scan", "", "usage", "scan")
 	runJSON("usage.summary", "", "usage", "summary")
 	runJSON("usage.stats", "", "usage", "stats", "--from", "2026-07-14", "--to", "2026-07-20")

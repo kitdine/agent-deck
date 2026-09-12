@@ -40,7 +40,7 @@ remains with the three tasks below.
 
 | Task | Dev | Review |
 | --- | --- | --- |
-| 1. `unified-scan-runtime` | [ ] | [ ] |
+| 1. `unified-scan-runtime` | [x] | [x] |
 | 2. `snapshot-computation-reuse` | [ ] | [ ] |
 | 3. `scan-experience-acceptance` | [ ] | [ ] |
 
@@ -172,6 +172,9 @@ The current six-document set, including the shared UX specimens, passed
 The document Review cells reflect the corresponding current records. Completion
 evidence and delivery checkpoints are recorded there separately from the verdict.
 Native implementation and performance acceptance remain open.
+Task 1 full delivery-scope re-review passed with a VERIFIED completion gate; see
+[runtime review](reviews/unified-scan-runtime.md#round-4--2026-09-12).
+It awaits separately authorized Git delivery; Task 2 has not started.
 Then execute the three tasks above in order; a task contains its investigation,
 implementation and verification and needs no further task decomposition.
 No old-code repair is a prerequisite. Git delivery requires a new, scoped

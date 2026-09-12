@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -23,13 +24,196 @@ import (
 	"time"
 
 	"github.com/kitdine/agent-deck/internal/desktop"
+	"github.com/kitdine/agent-deck/internal/scanruntime"
+	"github.com/kitdine/agent-deck/internal/session"
 	"github.com/kitdine/agent-deck/internal/store"
+	"github.com/kitdine/agent-deck/internal/usage"
 )
 
 var snapshotPerformanceNow = time.Date(2026, 8, 13, 10, 0, 0, 0, time.UTC)
 
 type snapshotPerformanceCorpus struct {
-	Home, Codex string
+	Home, Codex, Claude string
+}
+
+func TestUnifiedScanRuntimeMatchesLegacyAcrossSourceMutations(t *testing.T) {
+	corpus := writeSnapshotPerformanceCorpus(t)
+	legacyState := newSnapshotPerformanceState(t)
+	sharedState := newSnapshotPerformanceState(t)
+	assertEquivalent := func(stage string) {
+		t.Helper()
+		if err := scanSnapshotPerformanceDomains(context.Background(), legacyState, corpus.Home, false); err != nil {
+			t.Fatalf("%s legacy scan: %v", stage, err)
+		}
+		if err := scanSnapshotPerformanceDomains(context.Background(), sharedState, corpus.Home, true); err != nil {
+			t.Fatalf("%s shared scan: %v", stage, err)
+		}
+		legacy := captureSnapshotPerformanceRows(t, legacyState)
+		shared := captureSnapshotPerformanceRows(t, sharedState)
+		if !reflect.DeepEqual(shared, legacy) {
+			t.Fatalf("%s shared rows differ from legacy\nshared=%#v\nlegacy=%#v", stage, shared, legacy)
+		}
+	}
+
+	assertEquivalent("initial")
+	file, err := os.OpenFile(corpus.Codex, os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = file.WriteString(`{"type":"visible_user_prompt","session_id":"partial","payload":{"text":"split`); err != nil {
+		t.Fatal(err)
+	}
+	file.Close()
+	assertEquivalent("partial append")
+	file, err = os.OpenFile(corpus.Codex, os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = file.WriteString(" record" + `"}}` + "\n"); err != nil {
+		t.Fatal(err)
+	}
+	file.Close()
+	assertEquivalent("completed append")
+
+	contents, err := os.ReadFile(corpus.Codex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rewritten := bytes.Replace(contents, []byte("synthetic answer"), []byte("synthetic reply!"), 1)
+	if len(rewritten) != len(contents) {
+		t.Fatal("same-size rewrite fixture changed length")
+	}
+	if err = os.WriteFile(corpus.Codex, rewritten, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	assertEquivalent("same-size rewrite")
+
+	renamed := filepath.Join(filepath.Dir(corpus.Codex), "renamed.jsonl")
+	if err = os.Rename(corpus.Codex, renamed); err != nil {
+		t.Fatal(err)
+	}
+	corpus.Codex = renamed
+	assertEquivalent("rename")
+
+	duplicate := filepath.Join(corpus.Home, ".codex", "archived_sessions", "duplicate.jsonl")
+	if err = os.MkdirAll(filepath.Dir(duplicate), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(duplicate, rewritten, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	assertEquivalent("duplicate")
+
+	before := captureSnapshotPerformanceRows(t, sharedState)
+	cancelled, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err = scanSnapshotPerformanceDomains(cancelled, sharedState, corpus.Home, true); !errors.Is(err, context.Canceled) {
+		t.Fatalf("detached shared scan error=%v", err)
+	}
+	if err = scanSnapshotPerformanceDomains(context.Background(), sharedState, corpus.Home, true); err != nil {
+		t.Fatalf("detached shared scan did not reach a terminal result: %v", err)
+	}
+	after := captureSnapshotPerformanceRows(t, sharedState)
+	if !reflect.DeepEqual(after, before) {
+		t.Fatal("detached shared scan did not preserve the completed domain state")
+	}
+}
+
+func TestUnifiedScanRuntimeReleasesBudgetForChangedSourceAfterUnchangedSource(t *testing.T) {
+	corpus := writeSnapshotPerformanceCorpus(t)
+	file, err := os.OpenFile(corpus.Claude, os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = file.WriteString(strings.Repeat(" ", 1<<20) + "{}\n"); err != nil {
+		file.Close()
+		t.Fatal(err)
+	}
+	if err = file.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	legacyState := newSnapshotPerformanceState(t)
+	sharedState := newSnapshotPerformanceState(t)
+	for name, state := range map[string]string{"legacy": legacyState, "shared": sharedState} {
+		if err = scanSnapshotPerformanceDomains(context.Background(), state, corpus.Home, name == "shared"); err != nil {
+			t.Fatalf("%s initial scan: %v", name, err)
+		}
+	}
+	appendSnapshotPerformanceChange(t, corpus)
+	if err = scanSnapshotPerformanceDomains(context.Background(), legacyState, corpus.Home, false); err != nil {
+		t.Fatalf("legacy incremental scan: %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if err = scanSnapshotPerformanceDomains(ctx, sharedState, corpus.Home, true); err != nil {
+		t.Fatalf("shared incremental scan with an unchanged leading source: %v", err)
+	}
+	legacy := captureSnapshotPerformanceRows(t, legacyState)
+	shared := captureSnapshotPerformanceRows(t, sharedState)
+	if !reflect.DeepEqual(shared, legacy) {
+		t.Fatalf("shared incremental rows differ from legacy\nshared=%#v\nlegacy=%#v", shared, legacy)
+	}
+
+	beforeCancellation := captureSnapshotPerformanceRows(t, sharedState)
+	cancelled, cancelImmediately := context.WithCancel(context.Background())
+	cancelImmediately()
+	if err = scanSnapshotPerformanceDomains(cancelled, sharedState, corpus.Home, true); !errors.Is(err, context.Canceled) {
+		t.Fatalf("detached shared scan error=%v", err)
+	}
+	if err = scanSnapshotPerformanceDomains(context.Background(), sharedState, corpus.Home, true); err != nil {
+		t.Fatalf("detached shared scan did not reach a terminal result: %v", err)
+	}
+	afterCancellation := captureSnapshotPerformanceRows(t, sharedState)
+	if !reflect.DeepEqual(afterCancellation, beforeCancellation) {
+		t.Fatal("detached shared scan did not preserve the completed domain state")
+	}
+}
+
+func TestUnifiedScanRuntimeRecordsStageProfile(t *testing.T) {
+	corpus := writeSnapshotPerformanceCorpus(t)
+	state := newSnapshotPerformanceState(t)
+	started := time.Now()
+	result, err := (scanruntime.Client{StateRoot: state, Home: corpus.Home, ForceLocal: true}).Request(context.Background(), scanruntime.ScopeBoth)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = result.ErrorFor(scanruntime.ScopeBoth); err != nil {
+		t.Fatal(err)
+	}
+	if result.Stages.DiscoveryMS < 0 || result.Stages.UsageMS < 0 || result.Stages.SessionMS < 0 || result.Stages.TotalMS < 0 {
+		t.Fatalf("negative worker stage profile: %#v", result.Stages)
+	}
+	if result.Stages.TotalMS > time.Since(started).Milliseconds()+1000 {
+		t.Fatalf("worker total stage profile exceeds observed wall time: %#v", result.Stages)
+	}
+	t.Logf("worker stage profile: discovery=%dms usage=%dms session=%dms total=%dms", result.Stages.DiscoveryMS, result.Stages.UsageMS, result.Stages.SessionMS, result.Stages.TotalMS)
+}
+
+func scanSnapshotPerformanceDomains(ctx context.Context, state, home string, shared bool) error {
+	if shared {
+		result, err := (scanruntime.Client{StateRoot: state, Home: home, ForceLocal: true}).Request(ctx, scanruntime.ScopeBoth)
+		if err != nil {
+			return err
+		}
+		return result.ErrorFor(scanruntime.ScopeBoth)
+	}
+	core, err := store.Open(ctx, state)
+	if err != nil {
+		return err
+	}
+	defer core.Close()
+	sessions, err := store.OpenSessions(ctx, state)
+	if err != nil {
+		return err
+	}
+	defer sessions.Close()
+	usageService := usage.New(core, home)
+	if _, err = usageService.Scan(ctx); err != nil {
+		return err
+	}
+	_, err = session.Scan(ctx, sessions.DB, home)
+	return err
 }
 
 type snapshotPerformanceReference struct {
@@ -178,6 +362,39 @@ func TestSnapshotPerformanceContractSyntheticCorpus(t *testing.T) {
 	}
 }
 
+func TestIngestionStageProfile(t *testing.T) {
+	corpus := os.Getenv("AGENTDECK_INGEST_STAGE_CORPUS")
+	out := os.Getenv("AGENTDECK_INGEST_STAGE_REPORT")
+	if corpus == "" || out == "" {
+		t.Skip("isolated corpus and report not configured")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	started := time.Now()
+	result, err := (scanruntime.Client{StateRoot: newSnapshotPerformanceState(t), Home: corpus, ForceLocal: true}).Request(ctx, scanruntime.ScopeBoth)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = result.ErrorFor(scanruntime.ScopeBoth); err != nil {
+		t.Fatal(err)
+	}
+	elapsed := time.Since(started)
+	report := map[string]float64{
+		"discovery_ms":   float64(result.Stages.DiscoveryMS),
+		"usage_ms":       float64(result.Stages.UsageMS),
+		"session_ms":     float64(result.Stages.SessionMS),
+		"worker_wall_ms": float64(result.Stages.TotalMS),
+		"wall_ms":        float64(elapsed) / float64(time.Millisecond),
+	}
+	data, err := json.MarshalIndent(report, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(out, append(data, '\n'), 0600); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestSnapshotPerformanceRepresentativeCorpus(t *testing.T) {
 	if os.Getenv("AGENTDECK_SNAPSHOT_PERFORMANCE_WORKER") == "1" {
 		runSnapshotPerformanceWorker(t)
@@ -217,14 +434,14 @@ func TestSnapshotPerformanceRepresentativeCorpus(t *testing.T) {
 		DeadlineMS:    deadline.Milliseconds(),
 		Method:        "two fresh CLI helper subprocesses per sample; end-to-end wall includes both command initializations, refresh-indexes, streamed snapshot and parent decode; logical-row verification is timed separately",
 	}
+	var completedColdState string
 	for _, scenario := range []string{"cold_import", "unchanged_refresh"} {
 		var reusableState string
 		var setupErr error
 		if scenario == "unchanged_refresh" {
-			reusableState = newSnapshotPerformanceState(t)
-			result, partial, warnings, err := refreshDesktopIndexes(context.Background(), reusableState, corpus)
-			if err != nil || partial || len(warnings) != 0 || !result.Usage.Success || !result.Sessions.Success {
-				setupErr = fmt.Errorf("prepare unchanged state: err=%v partial=%t warnings=%v result=%#v", err, partial, warnings, result)
+			reusableState = completedColdState
+			if reusableState == "" {
+				setupErr = errors.New("no completed cold import available for unchanged measurement")
 			}
 		}
 		for index := 1; index <= sampleCount; index++ {
@@ -236,7 +453,15 @@ func TestSnapshotPerformanceRepresentativeCorpus(t *testing.T) {
 				report.Samples = append(report.Samples, snapshotPerformanceSample{Scenario: scenario, Index: index, Outcome: "setup_failure", ExternalLoad: "uncontrolled", OSCacheState: "uncontrolled"})
 				continue
 			}
-			report.Samples = append(report.Samples, runSnapshotPerformanceSample(scenario, index, corpus, state, deadline))
+			sample := runSnapshotPerformanceSample(scenario, index, corpus, state, deadline)
+			report.Samples = append(report.Samples, sample)
+			if scenario == "cold_import" && sample.Complete {
+				completedColdState = state
+			}
+			report.Summaries = summarizeSnapshotPerformance(report.Samples)
+			if err = writeSnapshotPerformanceReport(reportPath, report); err != nil {
+				t.Fatalf("persist sample: %v", err)
+			}
 		}
 	}
 	report.Summaries = summarizeSnapshotPerformance(report.Samples)
@@ -532,6 +757,22 @@ func newSnapshotPerformanceState(t *testing.T) string {
 	return state
 }
 
+func TestSnapshotPerformanceCorpusDigestIncludesArchives(t *testing.T) {
+	corpus := writeSnapshotPerformanceCorpus(t)
+	before := snapshotPerformanceCorpusDigest(t, corpus.Home)
+	archive := filepath.Join(corpus.Home, ".codex", "archived_sessions", "archived.jsonl")
+	if err := os.MkdirAll(filepath.Dir(archive), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(archive, []byte("{}\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	after := snapshotPerformanceCorpusDigest(t, corpus.Home)
+	if after.Files != before.Files+1 || after.Bytes != before.Bytes+3 || after.SHA256 == before.SHA256 {
+		t.Fatalf("archive missing from corpus identity: before=%+v after=%+v", before, after)
+	}
+}
+
 func snapshotPerformanceCorpusDigest(t *testing.T, root string) snapshotPerformanceCorpusID {
 	t.Helper()
 	hash := sha256.New()
@@ -548,6 +789,7 @@ func snapshotPerformanceCorpusDigest(t *testing.T, root string) snapshotPerforma
 			return relErr
 		}
 		if !strings.Contains(relative, string(filepath.Separator)+"sessions"+string(filepath.Separator)) &&
+			!strings.Contains(relative, string(filepath.Separator)+"archived_sessions"+string(filepath.Separator)) &&
 			!strings.Contains(relative, string(filepath.Separator)+"projects"+string(filepath.Separator)) {
 			return nil
 		}
@@ -655,7 +897,7 @@ func writeSnapshotPerformanceCorpus(t *testing.T) snapshotPerformanceCorpus {
 	if err := os.WriteFile(claude, []byte(strings.Join(claudeLines, "\n")+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	return snapshotPerformanceCorpus{Home: home, Codex: codex}
+	return snapshotPerformanceCorpus{Home: home, Codex: codex, Claude: claude}
 }
 
 func appendSnapshotPerformanceChange(t *testing.T, corpus snapshotPerformanceCorpus) {
@@ -785,11 +1027,13 @@ func captureSnapshotPerformanceRows(t *testing.T, state string) map[string][]str
 		query string
 	}{
 		"usage_events":       {core.DB, `SELECT event_key,client,session_id,event_at,model,input_tokens,cached_input_tokens,output_tokens,source_path,source_offset,COALESCE(turn_index,0) FROM usage_events ORDER BY event_key`},
+		"usage_sources":      {core.DB, `SELECT path,identity,size,cursor,prefix_hash,session_id,turn_id,model,parser_version,codex_cumulative_json,imported,replaced,malformed,unsupported,modified_at FROM usage_source_files ORDER BY path`},
 		"usage_tool_calls":   {core.DB, `SELECT activity_key,client,session_id,tool_name,status,source_path,source_offset,COALESCE(turn_index,0),tool_kind,COALESCE(mcp_server,'') FROM usage_tool_calls ORDER BY activity_key`},
 		"usage_tool_files":   {core.DB, `SELECT activity_key,path_digest,base_name,wrote FROM usage_tool_files ORDER BY activity_key,path_digest`},
 		"usage_work_signals": {core.DB, `SELECT client,session_id,turn_index,started_at,state,message_class,intent_sub,activity_kind,activity_sub,source_path FROM usage_work_signals ORDER BY client,session_id,turn_index`},
 		"session_metadata":   {sessions.DB, `SELECT client,session_id,project,model,first_at,last_at FROM session_metadata ORDER BY client,session_id,source_path`},
 		"session_documents":  {sessions.DB, `SELECT client,session_id,event_at,kind,text FROM session_documents ORDER BY client,session_id,event_at,kind,text`},
+		"session_sources":    {sessions.DB, `SELECT source_path,identity,cursor,partial_line,size,modified_at,prefix_hash,priority,parser_version FROM session_sources ORDER BY source_path`},
 	}
 	out := make(map[string][]string, len(queries))
 	for name, query := range queries {
@@ -844,11 +1088,13 @@ func snapshotPerformanceRowsDigest(ctx context.Context, state string) (string, e
 		query string
 	}{
 		"usage_events":       {core.DB, `SELECT event_key,client,session_id,event_at,model,input_tokens,cached_input_tokens,output_tokens,source_path,source_offset,COALESCE(turn_index,0) FROM usage_events ORDER BY event_key`},
+		"usage_sources":      {core.DB, `SELECT path,identity,size,cursor,prefix_hash,session_id,turn_id,model,parser_version,codex_cumulative_json,imported,replaced,malformed,unsupported,modified_at FROM usage_source_files ORDER BY path`},
 		"usage_tool_calls":   {core.DB, `SELECT activity_key,client,session_id,tool_name,status,source_path,source_offset,COALESCE(turn_index,0),tool_kind,COALESCE(mcp_server,'') FROM usage_tool_calls ORDER BY activity_key`},
 		"usage_tool_files":   {core.DB, `SELECT activity_key,path_digest,base_name,wrote FROM usage_tool_files ORDER BY activity_key,path_digest`},
 		"usage_work_signals": {core.DB, `SELECT client,session_id,turn_index,started_at,state,message_class,intent_sub,activity_kind,activity_sub,source_path FROM usage_work_signals ORDER BY client,session_id,turn_index`},
 		"session_metadata":   {sessions.DB, `SELECT client,session_id,project,model,first_at,last_at FROM session_metadata ORDER BY client,session_id,source_path`},
 		"session_documents":  {sessions.DB, `SELECT client,session_id,event_at,kind,text FROM session_documents ORDER BY client,session_id,event_at,kind,text`},
+		"session_sources":    {sessions.DB, `SELECT source_path,identity,cursor,partial_line,size,modified_at,prefix_hash,priority,parser_version FROM session_sources ORDER BY source_path`},
 	}
 	valuesByTable := make(map[string][]string, len(queries))
 	for name, query := range queries {
