@@ -59,6 +59,24 @@ func TestRootCommandRegistersGlobalFlags(t *testing.T) {
 	}
 }
 
+func TestQuotaCaptureCommandIsRegisteredAndHidden(t *testing.T) {
+	root := newRootCommand(bytes.NewReader(nil), &bytes.Buffer{})
+	command, _, err := root.Find([]string{"quota", "capture"})
+	if err != nil {
+		t.Fatalf("Find quota capture: %v", err)
+	}
+	if !command.Hidden {
+		t.Fatal("quota capture must stay Hidden until task 6 adds the public quota surface")
+	}
+	quotaCommand, _, err := root.Find([]string{"quota"})
+	if err != nil {
+		t.Fatalf("Find quota: %v", err)
+	}
+	if !quotaCommand.Hidden {
+		t.Fatal("the quota parent command must stay Hidden until task 6 gives it a public RunE")
+	}
+}
+
 type accessCountingCredentialVault struct{ calls int }
 
 func (s *accessCountingCredentialVault) called() error {

@@ -96,7 +96,7 @@ repaired under `ux/settings-quota.md`, whose group had invalidated them.
 | --- | --- | --- |
 | 1. `quota-domain` | [x] | [x] |
 | 2. `codex-adapter` | [x] | [x] |
-| 3. `claude-adapters` | [ ] | [ ] |
+| 3. `claude-adapters` | [x] | [x] |
 | 4. `gate-and-schedule` | [ ] | [ ] |
 | 5. `quota-alerts` | [ ] | [ ] |
 | 6. `wire-and-cli` | [ ] | [ ] |
@@ -445,7 +445,16 @@ rounds; its delivery state is tracked in Beads `ad-sq-codex-adapter-dev`. The
 `rateLimits` fallback decision is recorded in task 2's own section above. See
 [`reviews/codex-adapter.md`](reviews/codex-adapter.md) for the findings,
 evidence, and completion gate.
-Tasks 3–7 exist in Beads (`ad-sq-claude-adapters-dev` through
+Task 3 `claude-adapters` passed Round 3 re-review on 2026-09-11 after two
+failed rounds; its delivery state is tracked in Beads
+`ad-sq-claude-adapters-dev`. The statusLine prior value lives in AgentDeck's
+own state (a sidecar file under the state directory), never in
+`~/.claude/settings.json` alongside the `statusLine` key itself;
+`quota.MaxStatusLinePayloadBytes` bounds only capture's own parsing, never
+what the status-line chain forwards to the prior command. See
+[`reviews/claude-adapters.md`](reviews/claude-adapters.md) for the findings,
+evidence, and completion gate.
+Tasks 4–7 exist in Beads (`ad-sq-gate-and-schedule-dev` through
 `ad-sq-desktop-surfaces-dev`) with dependency ordering matching this file; none
 have started.
 

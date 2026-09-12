@@ -53,6 +53,7 @@
     "provider.status",
     "provider.update",
     "provider.use",
+    "quota.capture",
     "run",
     "session.exclude",
     "session.list",
@@ -1869,6 +1870,23 @@
       },
       "error_code": "invalid_argument",
       "error_command": "provider.use"
+    },
+    "quota.capture": {
+      "success_schema": null,
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "quota.capture"
     },
     "run.claude": {
       "success_schema": {

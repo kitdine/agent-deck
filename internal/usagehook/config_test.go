@@ -482,10 +482,254 @@ func TestCodexTrustGuidance(t *testing.T) {
 	}
 }
 
+func TestSetupStatusLineRegistersAndIsIdempotent(t *testing.T) {
+	manager, home := newTestManager(t)
+
+	first, err := manager.SetupStatusLine()
+	if err != nil {
+		t.Fatalf("SetupStatusLine: %v", err)
+	}
+	if first.Outcome != OutcomeConfigured || first.Configuration != ConfigurationConfigured {
+		t.Fatalf("first SetupStatusLine = %+v", first)
+	}
+
+	document := readDocument(t, configPath(home, ClientClaude))
+	var entry statusLineCommandEntry
+	if err := json.Unmarshal(document[statusLineKey], &entry); err != nil {
+		t.Fatalf("decode statusLine: %v", err)
+	}
+	if entry.Type != "command" || entry.Command != "agentdeck quota capture" {
+		t.Fatalf("statusLine entry = %+v", entry)
+	}
+	// CLA-R1-F1: the only key SetupStatusLine ever writes to
+	// ~/.claude/settings.json is "statusLine" itself — no bookkeeping key of
+	// AgentDeck's own belongs in another tool's config file.
+	for key := range document {
+		if key != "statusLine" {
+			t.Fatalf("unexpected key %q written to settings.json; only statusLine may be written", key)
+		}
+	}
+	if command, ok := manager.PriorStatusLineCommand(); ok {
+		t.Fatalf("PriorStatusLineCommand = (%q, true), want ok=false (nothing was registered before)", command)
+	}
+
+	second, err := manager.SetupStatusLine()
+	if err != nil {
+		t.Fatalf("second SetupStatusLine: %v", err)
+	}
+	if second.Outcome != OutcomeUnchanged || second.Configuration != ConfigurationConfigured {
+		t.Fatalf("second SetupStatusLine = %+v, want unchanged/configured", second)
+	}
+}
+
+func TestSetupStatusLineRecordsExistingPriorCommand(t *testing.T) {
+	manager, home := newTestManager(t)
+	path := configPath(home, ClientClaude)
+	writeDocument(t, path, map[string]json.RawMessage{
+		"statusLine": json.RawMessage(`{"type":"command","command":"ccstatusline"}`),
+	}, privateFileMode)
+
+	if _, err := manager.SetupStatusLine(); err != nil {
+		t.Fatalf("SetupStatusLine: %v", err)
+	}
+
+	command, ok := manager.PriorStatusLineCommand()
+	if !ok || command != "ccstatusline" {
+		t.Fatalf("PriorStatusLineCommand = (%q, %v), want (ccstatusline, true)", command, ok)
+	}
+}
+
+func TestSetupStatusLinePreservesUnrelatedFields(t *testing.T) {
+	manager, home := newTestManager(t)
+	path := configPath(home, ClientClaude)
+	writeDocument(t, path, map[string]json.RawMessage{
+		"theme": json.RawMessage(`"dark"`),
+		"hooks": json.RawMessage(`{"SessionStart":[{"hooks":[{"type":"command","command":"other"}]}]}`),
+	}, privateFileMode)
+
+	if _, err := manager.SetupStatusLine(); err != nil {
+		t.Fatalf("SetupStatusLine: %v", err)
+	}
+
+	document := readDocument(t, path)
+	if string(document["theme"]) != `"dark"` {
+		t.Fatalf(`theme = %s, want "dark" preserved`, document["theme"])
+	}
+	if _, ok := document["hooks"]; !ok {
+		t.Fatal("hooks key must be preserved")
+	}
+}
+
+func TestRestoreStatusLineRestoresPriorValue(t *testing.T) {
+	manager, home := newTestManager(t)
+	path := configPath(home, ClientClaude)
+	writeDocument(t, path, map[string]json.RawMessage{
+		"statusLine": json.RawMessage(`{"type":"command","command":"ccstatusline"}`),
+	}, privateFileMode)
+
+	if _, err := manager.SetupStatusLine(); err != nil {
+		t.Fatalf("SetupStatusLine: %v", err)
+	}
+	restore, err := manager.RestoreStatusLine()
+	if err != nil {
+		t.Fatalf("RestoreStatusLine: %v", err)
+	}
+	if restore.Outcome != OutcomeRemoved || restore.Configuration != ConfigurationAbsent {
+		t.Fatalf("RestoreStatusLine = %+v, want removed/absent", restore)
+	}
+
+	document := readDocument(t, path)
+	if !jsonEquivalent(document[statusLineKey], json.RawMessage(`{"type":"command","command":"ccstatusline"}`)) {
+		t.Fatalf("statusLine = %s, want the original prior command restored", document[statusLineKey])
+	}
+}
+
+func TestRestoreStatusLineWithNoPriorRemovesTheKeyEntirely(t *testing.T) {
+	// CLA-R1-F1: "nothing before AgentDeck" must restore to the key being
+	// entirely absent, never a literal statusLine:null standing in for it.
+	manager, home := newTestManager(t)
+	path := configPath(home, ClientClaude)
+	writeDocument(t, path, map[string]json.RawMessage{"theme": json.RawMessage(`"dark"`)}, privateFileMode)
+
+	if _, err := manager.SetupStatusLine(); err != nil {
+		t.Fatalf("SetupStatusLine: %v", err)
+	}
+	restore, err := manager.RestoreStatusLine()
+	if err != nil {
+		t.Fatalf("RestoreStatusLine: %v", err)
+	}
+	if restore.Outcome != OutcomeRemoved || restore.Configuration != ConfigurationAbsent {
+		t.Fatalf("RestoreStatusLine = %+v, want removed/absent", restore)
+	}
+
+	document := readDocument(t, path)
+	if _, ok := document[statusLineKey]; ok {
+		t.Fatalf("statusLine = %s, want the key entirely absent", document[statusLineKey])
+	}
+	if string(document["theme"]) != `"dark"` {
+		t.Fatalf(`theme = %s, want "dark" preserved`, document["theme"])
+	}
+}
+
+func TestRestoreStatusLineWhenModifiedUnderneathRemovesAgentDeckCommand(t *testing.T) {
+	// CLA-R1-F2: when AgentDeck's own entry has been altered (still
+	// recognizably AgentDeck's by the "quota capture" marker, but with an
+	// unexpected extra field), restore must not leave that command
+	// installed — it removes the key outright rather than restoring the old
+	// prior value over an edit it cannot interpret.
+	manager, home := newTestManager(t)
+	path := configPath(home, ClientClaude)
+
+	writeDocument(t, path, map[string]json.RawMessage{
+		"statusLine": json.RawMessage(`{"type":"command","command":"ccstatusline"}`),
+	}, privateFileMode)
+	if _, err := manager.SetupStatusLine(); err != nil {
+		t.Fatalf("SetupStatusLine: %v", err)
+	}
+	document := readDocument(t, path)
+	document[statusLineKey] = json.RawMessage(`{"type":"command","command":"agentdeck quota capture","padding":5}`)
+	writeDocument(t, path, document, privateFileMode)
+
+	restore, err := manager.RestoreStatusLine()
+	if err != nil {
+		t.Fatalf("RestoreStatusLine: %v", err)
+	}
+	if restore.Outcome != OutcomeRestoreIncomplete || restore.Configuration != ConfigurationAbsent {
+		t.Fatalf("RestoreStatusLine = %+v, want restore_incomplete/absent", restore)
+	}
+	if restore.Error == "" {
+		t.Fatal("RestoreStatusLine must explain why a manual check is needed")
+	}
+
+	after := readDocument(t, path)
+	if _, ok := after[statusLineKey]; ok {
+		t.Fatalf("statusLine = %s, want AgentDeck's altered command removed rather than left installed", after[statusLineKey])
+	}
+}
+
+func TestRestoreStatusLineWhenReplacedBySomethingElseLeavesItUntouched(t *testing.T) {
+	// When the current value is not AgentDeck's command at all anymore
+	// (already replaced by something unrelated), restore must not touch it.
+	manager, home := newTestManager(t)
+	path := configPath(home, ClientClaude)
+
+	if _, err := manager.SetupStatusLine(); err != nil {
+		t.Fatalf("SetupStatusLine: %v", err)
+	}
+	replaced := map[string]json.RawMessage{"statusLine": json.RawMessage(`{"type":"command","command":"some-other-tool"}`)}
+	writeDocument(t, path, replaced, privateFileMode)
+
+	restore, err := manager.RestoreStatusLine()
+	if err != nil {
+		t.Fatalf("RestoreStatusLine: %v", err)
+	}
+	if restore.Outcome != OutcomeRestoreIncomplete || restore.Configuration != ConfigurationModified {
+		t.Fatalf("RestoreStatusLine = %+v, want restore_incomplete/modified", restore)
+	}
+
+	after := readDocument(t, path)
+	if !jsonEquivalent(after[statusLineKey], replaced[statusLineKey]) {
+		t.Fatalf("statusLine = %s, want left exactly as the unrelated tool set it", after[statusLineKey])
+	}
+}
+
+func TestRestoreStatusLineAbsentWhenNeverRegistered(t *testing.T) {
+	manager, _ := newTestManager(t)
+	result, err := manager.RestoreStatusLine()
+	if err != nil {
+		t.Fatalf("RestoreStatusLine: %v", err)
+	}
+	if result.Outcome != OutcomeAbsent || result.Configuration != ConfigurationAbsent {
+		t.Fatalf("RestoreStatusLine = %+v, want absent/absent", result)
+	}
+}
+
+func TestStatusLineStatusReportsConfiguredAndModified(t *testing.T) {
+	manager, home := newTestManager(t)
+	path := configPath(home, ClientClaude)
+
+	absent, err := manager.StatusLineStatus()
+	if err != nil {
+		t.Fatalf("StatusLineStatus (absent): %v", err)
+	}
+	if absent.Configuration != ConfigurationAbsent {
+		t.Fatalf("absent status = %+v", absent)
+	}
+
+	if _, err := manager.SetupStatusLine(); err != nil {
+		t.Fatalf("SetupStatusLine: %v", err)
+	}
+	configured, err := manager.StatusLineStatus()
+	if err != nil {
+		t.Fatalf("StatusLineStatus (configured): %v", err)
+	}
+	if configured.Configuration != ConfigurationConfigured {
+		t.Fatalf("configured status = %+v", configured)
+	}
+
+	document := readDocument(t, path)
+	document[statusLineKey] = json.RawMessage(`{"type":"command","command":"agentdeck quota capture","padding":5}`)
+	writeDocument(t, path, document, privateFileMode)
+	modified, err := manager.StatusLineStatus()
+	if err != nil {
+		t.Fatalf("StatusLineStatus (modified): %v", err)
+	}
+	if modified.Configuration != ConfigurationModified {
+		t.Fatalf("modified status = %+v", modified)
+	}
+}
+
+func TestPriorStatusLineCommandNoneWhenNeverRegistered(t *testing.T) {
+	manager, _ := newTestManager(t)
+	if command, ok := manager.PriorStatusLineCommand(); ok {
+		t.Fatalf("PriorStatusLineCommand = (%q, true), want ok=false", command)
+	}
+}
+
 func newTestManager(t *testing.T) (*Manager, string) {
 	t.Helper()
 	home := t.TempDir()
-	return New(Environment{Home: home, AgentDeckCommand: "agentdeck"}), home
+	return New(Environment{Home: home, AgentDeckCommand: "agentdeck", StateDir: t.TempDir()}), home
 }
 
 func configPath(home string, client Client) string {
