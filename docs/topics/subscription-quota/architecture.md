@@ -373,7 +373,7 @@ does not run at all, and no row applies.
 | Trigger | Behavior |
 | --- | --- |
 | Any trigger, reading off | No probe. The scheduler is not started, no subprocess is spawned, and no status-line route is installed — see the transition below for how it gets that way. |
-| User-initiated refresh | Quota is probed with the snapshot. The interval does not gate a refresh the user asked for; the reading switch and the provider gate still do. |
+| User-initiated refresh | Quota is probed with the snapshot. Neither the interval nor backoff gates a refresh the user asked for; the reading switch and the provider gate still do. |
 | Background snapshot refresh | Quota is **not** probed unless its own interval has elapsed. |
 | Quota interval elapsed during background refresh | Probed once, then the interval restarts. |
 
@@ -437,9 +437,20 @@ five-hour or weekly window.
 **Backoff.** Consecutive failures back off geometrically from the configured
 interval to a bounded maximum, and a success resets it. A backed-off client is
 still displayed, with its last figure and its real age, or as never-observed.
+Only a background failure advances this chain. A manual refresh is neither
+gated by backoff nor a contributor to it (gate-and-schedule task, GS-R2-F1):
+a manual failure is recorded, but leaves the background schedule's backoff
+exactly where it already was, so repeated manual retries cannot push a
+background probe out by pushing the same chain forward.
 
-**Concurrency.** At most one probe per client in flight. A refresh arriving
-while a probe is running joins the running probe rather than starting a second.
+**Concurrency.** At most one probe per client in flight, per process. A
+refresh arriving while a probe is running in the same process does not start
+a second. This is an in-process guard, not a cross-process one: each trigger
+runs as its own short-lived process, so it cannot itself observe or wait for
+a probe another process happens to have in flight at the same moment — that
+case is accepted as out of scope rather than solved with a new cross-process
+lock, since the one production caller never issues concurrent probes for the
+same client to begin with (gate-and-schedule task, GS-R1-F3).
 
 ## C10 — Alerts
 

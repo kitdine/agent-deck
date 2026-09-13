@@ -383,7 +383,7 @@ func TestStoreFailedProbeRetainsWindows(t *testing.T) {
 	}
 
 	t2 := t1.Add(time.Minute)
-	if err := store.PutEnvelopeFailure(ctx, ClientCodex, ReasonProbeFailed, t2); err != nil {
+	if err := store.PutEnvelopeFailure(ctx, ClientCodex, ReasonProbeFailed, t2, time.Time{}); err != nil {
 		t.Fatalf("PutEnvelopeFailure: %v", err)
 	}
 
@@ -428,7 +428,7 @@ func TestStoreEnvelopeFailurePreservesLastKnownGoodFields(t *testing.T) {
 	}
 
 	t2 := t1.Add(5 * time.Minute)
-	if err := store.PutEnvelopeFailure(ctx, ClientCodex, ReasonProbeFailed, t2); err != nil {
+	if err := store.PutEnvelopeFailure(ctx, ClientCodex, ReasonProbeFailed, t2, time.Time{}); err != nil {
 		t.Fatalf("PutEnvelopeFailure: %v", err)
 	}
 
@@ -455,7 +455,7 @@ func TestStoreEnvelopeSuccessClearsPriorFailure(t *testing.T) {
 	ctx := context.Background()
 	t1 := time.Date(2026, 9, 10, 10, 0, 0, 0, time.UTC)
 
-	if err := store.PutEnvelopeFailure(ctx, ClientCodex, ReasonProbeFailed, t1); err != nil {
+	if err := store.PutEnvelopeFailure(ctx, ClientCodex, ReasonProbeFailed, t1, time.Time{}); err != nil {
 		t.Fatalf("PutEnvelopeFailure: %v", err)
 	}
 
@@ -635,7 +635,7 @@ func TestStoreFailureRowWithoutEnvelopeDoesNotDiscardSameAccountWindows(t *testi
 	}
 
 	t2 := t1.Add(time.Minute)
-	if err := store.PutEnvelopeFailure(ctx, ClientCodex, ReasonProbeFailed, t2); err != nil {
+	if err := store.PutEnvelopeFailure(ctx, ClientCodex, ReasonProbeFailed, t2, time.Time{}); err != nil {
 		t.Fatalf("PutEnvelopeFailure: %v", err)
 	}
 
@@ -692,5 +692,79 @@ func TestStoreCorruptStickyResetPropagatesError(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("a corrupt stored observed_reset_at must surface as an error, not be silently erased")
+	}
+}
+
+func TestStorePutEnvelopeFailureRoundTripsBackoffUntil(t *testing.T) {
+	store, _ := openTestStore(t)
+	ctx := context.Background()
+	failureAt := time.Date(2026, 9, 10, 10, 0, 0, 0, time.UTC)
+	backoffUntil := failureAt.Add(20 * time.Minute)
+
+	if err := store.PutEnvelopeFailure(ctx, ClientCodex, ReasonProbeFailed, failureAt, backoffUntil); err != nil {
+		t.Fatalf("PutEnvelopeFailure: %v", err)
+	}
+
+	got, ok, err := store.Envelope(ctx, ClientCodex)
+	if err != nil {
+		t.Fatalf("Envelope: %v", err)
+	}
+	if !ok || !got.BackoffUntil.Equal(backoffUntil) {
+		t.Fatalf("Envelope BackoffUntil = %v (ok=%v), want %v", got.BackoffUntil, ok, backoffUntil)
+	}
+}
+
+// rawEnvelopeInstants reads failure_at and backoff_until as stored text.
+// Reading them through Envelope() cannot tell "" from 0001-01-01T00:00:00Z:
+// both parse back to a zero time.Time (GS-R5-F1).
+func rawEnvelopeInstants(t *testing.T, db *sql.DB, client Client) (failureAt, backoffUntil string) {
+	t.Helper()
+	if err := db.QueryRowContext(context.Background(),
+		`SELECT failure_at, backoff_until FROM quota_envelopes WHERE client = ?`, string(client),
+	).Scan(&failureAt, &backoffUntil); err != nil {
+		t.Fatalf("read raw envelope instants: %v", err)
+	}
+	return failureAt, backoffUntil
+}
+
+func TestStorePutEnvelopeFailureStoresZeroFailureAtAsAbsent(t *testing.T) {
+	// GS-R4-F1: a zero failureAt must be stored as empty text, not as a
+	// persisted 0001-01-01 instant.
+	store, db := openTestStore(t)
+	ctx := context.Background()
+
+	if err := store.PutEnvelopeFailure(ctx, ClientCodex, ReasonProbeFailed, time.Time{}, time.Time{}); err != nil {
+		t.Fatalf("PutEnvelopeFailure: %v", err)
+	}
+
+	if failureAt, backoffUntil := rawEnvelopeInstants(t, db, ClientCodex); failureAt != "" || backoffUntil != "" {
+		t.Fatalf("stored failure_at=%q backoff_until=%q, want both empty", failureAt, backoffUntil)
+	}
+	got, ok, err := store.Envelope(ctx, ClientCodex)
+	if err != nil || !ok || got.Failure != ReasonProbeFailed {
+		t.Fatalf("Envelope = (%+v, %v, %v), want Failure=probe_failed", got, ok, err)
+	}
+}
+
+func TestStorePutEnvelopeSuccessClearsBackoffUntil(t *testing.T) {
+	store, _ := openTestStore(t)
+	ctx := context.Background()
+	t1 := time.Date(2026, 9, 10, 10, 0, 0, 0, time.UTC)
+
+	if err := store.PutEnvelopeFailure(ctx, ClientCodex, ReasonProbeFailed, t1, t1.Add(20*time.Minute)); err != nil {
+		t.Fatalf("PutEnvelopeFailure: %v", err)
+	}
+
+	t2 := t1.Add(21 * time.Minute)
+	if err := store.PutEnvelope(ctx, EnvelopeRecord{Client: ClientCodex, Applicable: true, ObservedAt: t2, Plan: "pro"}); err != nil {
+		t.Fatalf("PutEnvelope success: %v", err)
+	}
+
+	got, ok, err := store.Envelope(ctx, ClientCodex)
+	if err != nil {
+		t.Fatalf("Envelope: %v", err)
+	}
+	if !ok || !got.BackoffUntil.IsZero() {
+		t.Fatalf("a success must clear BackoffUntil alongside Failure/FailureAt, got %+v (ok=%v)", got, ok)
 	}
 }

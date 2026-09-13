@@ -282,4 +282,13 @@ type EnvelopeRecord struct {
 	// overwrite ObservedAt or any other last-known-good field (QD-R2-F2).
 	Failure   Reason
 	FailureAt time.Time
+
+	// BackoffUntil is C9's geometric-backoff state: the earliest instant a
+	// background probe may run again after a run of consecutive failures.
+	// Zero means no backoff is in effect. It is cleared in the same write
+	// that clears Failure/FailureAt on a success, and the scheduler derives
+	// each next backoff step from this field and FailureAt together (the
+	// prior step's duration is BackoffUntil.Sub(FailureAt)) rather than from
+	// a separate consecutive-failure counter.
+	BackoffUntil time.Time
 }

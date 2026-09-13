@@ -97,7 +97,7 @@ repaired under `ux/settings-quota.md`, whose group had invalidated them.
 | 1. `quota-domain` | [x] | [x] |
 | 2. `codex-adapter` | [x] | [x] |
 | 3. `claude-adapters` | [x] | [x] |
-| 4. `gate-and-schedule` | [ ] | [ ] |
+| 4. `gate-and-schedule` | [x] | [x] |
 | 5. `quota-alerts` | [ ] | [ ] |
 | 6. `wire-and-cli` | [ ] | [ ] |
 | 7. `desktop-surfaces` | [ ] | [ ] |
@@ -254,24 +254,220 @@ the subscription wire shape.
 - The reading switch precedes the provider gate: with `quotaProbe` off no
   scheduler runs, no subprocess is spawned by any trigger, and every field
   reports `probe_disabled` while stored observations are retained — C1, C9.
-- Turning reading off while a status-line route is installed unregisters it
-  through the C3 restore, clears the consent flag, and reports `restore
-  incomplete` when the file changed underneath. Stored observations are
-  untouched — C9.
 - The gate on `provider.Service.Current` against `OfficialProviderName`, with
-  suppression when an available observed provider disagrees — C1.
-- Manual refresh probes with the snapshot, bypassing the interval but neither
-  the reading switch nor the provider gate; background refresh respects the
-  quota interval — C9.
-- Geometric backoff to a bounded maximum, reset on success.
-- Single-flight per client.
+  suppression when an available observed provider disagrees, *provided* that
+  observation is not older than the current selection itself — an observation
+  predating the switch must never suppress a probe after it (GS-R1-F1) — C1.
+- Manual refresh probes with the snapshot, bypassing the interval and backoff
+  but neither the reading switch nor the provider gate; background refresh
+  respects the quota interval and backoff — C9. (GS-R1-F2: an earlier version
+  also applied backoff to manual; C9 names only the reading switch and the
+  provider gate as still applying to a user-initiated refresh.)
+- Geometric backoff to a bounded maximum, reset on success. Only a background
+  failure advances it; a manual failure is recorded but does not (GS-R2-F1) —
+  manual is neither gated by backoff nor a contributor to it.
+- Single-flight per client, in-process only — a best-effort guard against a
+  future concurrent caller, not a cross-process guarantee (GS-R1-F3). This
+  task's one production caller, `RefreshQuota`, visits both clients
+  sequentially, so the guard does not currently trigger in production; a
+  cross-process lock was considered and rejected as out of this task's scope.
 - The no-credential property asserted over this topic's packages — C0.
+- Turning reading off while a status-line route is installed must eventually
+  unregister it through the C3 restore, clear the consent flag, and report
+  `restore incomplete` when the file changed underneath, with stored
+  observations left untouched — C9. **Deferred to task 6** (GS-R1-F4): this
+  transition needs a CLI surface for `usagehook.RestoreStatusLine` that does
+  not exist yet, and task 6 is the task that adds one (`cmd/agentdeck/
+  quota.go`). This task's `DesktopPreferences.swift` stores the reading
+  switch and interval only; it does not perform this transition.
 
 **Verification:** L2 for the scheduler with a controlled clock, including the
 reading-off case across every trigger, the retention of stored observations
-across a toggle, and the unregister-on-off transition against a temporary
-settings file including its restore-incomplete path; L1 for the gate including
-the disagreement case; L1 for the credential assertion.
+across a toggle, manual bypassing both the interval and backoff, and the
+stale-observation case (GS-R1-F1); L1 for the gate including the disagreement
+case; L1 for the credential assertion. The unregister-on-off transition's
+verification moves to task 6 along with the behavior itself.
+
+Four operator-approved decisions made during implementation, each because the
+architecture text required something this task's declared file list did not
+by itself provide for:
+
+1. C1's observed-provider cross-check needed a reader for
+   `usage_session_observations.observed_provider`, which
+   `internal/usage/routes.go` owned but had never exported (only
+   `RecordHookDelivery` wrote it). Added a minimal read-only export,
+   `usage.Service.LatestObservedProvider(ctx, client) (provider string,
+   observedAt time.Time, ok bool, err error)` — `observedAt` was added during
+   Round 1 repair (GS-R1-F1 below) — with its own tests in
+   `internal/usage/routes_test.go`.
+2. Geometric backoff needs state that survives a process restart — every
+   `agentdeck desktop snapshot` invocation is a fresh process. Added
+   `EnvelopeRecord.BackoffUntil` (`internal/quota/model.go`), persisted as
+   `quota_envelopes.backoff_until` in `internal/store/migrations.go` version
+   25 (`CurrentSchemaVersion` 24 → 25); `PutEnvelope`/`PutEnvelopeFailure` in
+   `internal/quota/store.go` clear/set it alongside `Failure`/`FailureAt`. The
+   scheduler derives each next step from `BackoffUntil` and `FailureAt`
+   together rather than a separate counter column. `desktop/fixtures/v1/
+   snapshot-complete.json` and `snapshot-empty-client.json` were regenerated
+   (`AGENTDECK_UPDATE_FIXTURES=1`) because the Doctor `schema` health check's
+   `count` field is the schema version number — confirmed by diff that this
+   is the only change in either file.
+3. Turning `quotaProbe` off must synchronously unregister an installed
+   status-line route (C9) via `usagehook.RestoreStatusLine`, which task 3
+   built but exposed through no CLI verb. **Deferred to task 6**
+   (`wire-and-cli`), which already touches `cmd/agentdeck`. This task's
+   `DesktopPreferences.swift` adds `quotaProbeEnabled`/`quotaProbeInterval` as
+   control-path storage only; no unregister call is wired yet.
+4. Running a probe is a side-effecting operation, but the existing `desktop
+   snapshot` command is documented and implemented as strictly read-only
+   (`store.OpenReadOnly`; "without scanning sources, creating state, or using
+   the network"), and reusing `desktop refresh-indexes` was also rejected.
+   Quota probing is its own, independent mechanism instead:
+   `internal/desktop.Service.RefreshQuota(ctx, core *store.Store, home
+   string, trigger quota.Trigger, probeEnabled bool, interval, maxBackoff
+   time.Duration)`, which takes an already-writable `core` and is never
+   called from `Build`. No CLI command calls it yet — task 6 adds that
+   surface and the real preference plumbing; this lands the mechanism ahead
+   of that wiring, the same sequencing task 3 used for
+   `usagehook.SetupStatusLine`/`RestoreStatusLine`. Consequently
+   `apps/macos/AgentDeckShared/EmbeddedHelperRunner.swift` and its tests were
+   **not touched** this round: there is nothing for them to call yet. Its
+   tests landed in a new co-located `internal/desktop/quota_test.go` rather
+   than in `desktop_test.go` itself, to keep the addition reviewable as one
+   unit; both are the same package and the same declared file's spirit.
+
+**Round 1 repair (2026-09-12), five operator-approved decisions** — see
+[`reviews/gate-and-schedule.md`](reviews/gate-and-schedule.md) for the full
+findings:
+
+1. **GS-R1-F1 (high, fixed):** the observed-provider cross-check compared
+   against the recorded selection with no regard for which was newer, so a
+   Hook observation predating a switch to `official` suppressed every probe
+   indefinitely. `LatestObservedProvider` now also returns the observation's
+   instant; `desktop.go`'s `quotaObservedOfficial` treats an observation
+   older than the current selection's `SelectedAt` as unknown rather than
+   disagreeing.
+2. **GS-R1-F2 (medium, fixed):** manual refresh was also gated by backoff,
+   an unrecorded narrowing of C9's text (which names only the reading switch
+   and the provider gate as still applying to manual). `Scheduler.due` now
+   lets a manual trigger bypass backoff too; the scope bullet above and this
+   section's decision record the change. Single-flight is unaffected.
+3. **GS-R1-F3 (medium, fixed as a documentation correction, not a behavior
+   change):** single-flight's package-level guard neither "joins" a running
+   probe (a second caller returns immediately with pre-probe state) nor
+   reaches across the separate OS processes each `agentdeck desktop snapshot`
+   invocation actually is — and this task's one production caller never even
+   calls it concurrently. Operator chose to record this as an accepted,
+   disclosed in-process-only degradation (scope bullet above,
+   `scheduler.go`'s doc comment) rather than build a new cross-process lock.
+4. **GS-R1-F4 (medium, fixed):** this file contradicted itself — the scope
+   and verification lines still required the status-line unregister-on-off
+   transition in full, while decision 3 above had already deferred it to
+   task 6. The scope and verification lines above are now updated to match
+   the deferral; task 6's own section gained the corresponding scope bullet
+   and verification line.
+5. **GS-R1-F5 (low, fixed):** `RefreshQuota` discarded the `Reason`
+   `quota.Allowed` computed per client. It now returns `map[quota.Client]
+   quota.Reason` (empty per client when the gate allowed that cycle's
+   attempt) instead of a bare discard, so a future caller does not have to
+   re-derive C1's full gate — including the timestamp-gated observed-provider
+   check from GS-R1-F1 — from scratch to learn why a client wasn't probed.
+
+New/changed tests for this round: `internal/quota/scheduler_test.go`
+(`TestSchedulerManualBypassesBackoff`, replacing the prior
+`TestSchedulerManualStillRespectsBackoff`); `internal/desktop/quota_test.go`
+(`TestRefreshQuotaIgnoresStaleObservedProviderPredatingCurrentSelection`,
+`TestRefreshQuotaSuppressesOnCurrentDisagreeingObservation`,
+`TestRefreshQuotaReturnsGateOutcomePerClient`); `internal/usage/routes_test.go`
+(updated for `LatestObservedProvider`'s new `observedAt` return).
+
+**Round 2 repair (2026-09-12), one operator-approved decision** — see
+[`reviews/gate-and-schedule.md`](reviews/gate-and-schedule.md):
+
+1. **GS-R2-F1 (low, fixed):** GS-R1-F2 made manual bypass backoff as a
+   *consumer*, but a manual failure still advanced the same background
+   backoff chain as a *producer* — a few manual retries in quick succession
+   could push the next background probe out by as much as `MaxBackoff`, an
+   unrecorded mirror of GS-R1-F2's own narrowing. Fixed: `recordFailure` now
+   takes the trigger, and a manual failure leaves `BackoffUntil` exactly as
+   it already was rather than advancing it; only a background failure still
+   does. New test: `internal/quota/scheduler_test.go`'s
+   `TestSchedulerManualFailureDoesNotAdvanceBackgroundBackoff`, reproducing
+   the review's exact scenario (one background failure, four rapid manual
+   retries, a background attempt still due at the original deadline).
+
+**Round 3 repair (2026-09-12), one operator-approved decision** — see
+[`reviews/gate-and-schedule.md`](reviews/gate-and-schedule.md):
+
+1. **GS-R3-F1 (medium, fixed):** the Round 2 fix left `BackoffUntil`
+   untouched by a manual failure but still moved `FailureAt` forward.
+   `nextBackoff` derives the prior step's length from `BackoffUntil.Sub(
+   FailureAt)` (decision 2 above), so moving only one half of that pair
+   shrank — and could invert — the derived step, corrupting every later
+   background failure's doubling: repeated manual retries could compress
+   backoff all the way back to the base interval on a persistently failing
+   endpoint, defeating the protection backoff exists for. Fixed: a manual
+   failure now leaves `FailureAt` untouched too (reusing the envelope's
+   existing value), so the pair moves together only on a background failure;
+   only `Failure` (the reason) reflects a manual attempt. This does not
+   revisit decision 2 — no counter or second anchor field was added. New
+   tests: `internal/quota/scheduler_test.go`'s
+   `TestSchedulerManualFailureDoesNotCorruptBackoffStepDerivation` (a manual
+   retry between two background failures must not change the second
+   failure's doubled step) and
+   `TestSchedulerRepeatedManualRetriesBetweenBackgroundFailuresStillDoubleCorrectly`
+   (five cycles of background-failure-then-manual-retry must still climb
+   5m/10m/20m/40m/1h, not flatten to 5m every cycle).
+2. **GS-R3-F2 (low, fixed):** `recordFailure`'s doc comment retained a
+   sentence from before the Round 2 fix claiming a manual failure "advances
+   C9's geometric backoff," directly above a newer sentence saying the
+   opposite. Removed the stale sentence; the comment now states only the
+   current (correct) behavior.
+
+**Round 4 repair (2026-09-13)** — see
+[`reviews/gate-and-schedule.md`](reviews/gate-and-schedule.md):
+
+1. **GS-R4-F1 (medium, fixed):** Round 3's fix has a manual failure inherit
+   `FailureAt` from the envelope. With nothing to inherit — never probed, or
+   the last probe succeeded and `PutEnvelope` cleared it — that value is
+   zero, and `PutEnvelopeFailure` formatted it unconditionally, persisting
+   `0001-01-01T00:00:00Z` beside a real `Failure`. Fixed with the review's
+   prescribed direction: `PutEnvelopeFailure` now stores a zero `failureAt`
+   as empty, matching its own `backoffUntil` guard and `PutEnvelope`'s
+   handling of both. The read side already treated empty as zero. This
+   touches `internal/quota/store.go`, a task 1 file, as decision 2 already
+   did. New tests: `internal/quota/store_test.go`'s
+   `TestStorePutEnvelopeFailureStoresZeroFailureAtAsAbsent` and
+   `internal/quota/scheduler_test.go`'s
+   `TestSchedulerManualFailureWithNoPriorFailureStoresNoFailureInstant`
+   (both review cases: never probed, and a success followed by a manual
+   failure).
+
+**Round 5 repair (2026-09-13)** — see
+[`reviews/gate-and-schedule.md`](reviews/gate-and-schedule.md):
+
+1. **GS-R5-F1 (low, fixed):** both GS-R4-F1 regression tests asserted
+   `FailureAt.IsZero()` through `Store.Envelope()`, but the pre-fix text
+   `0001-01-01T00:00:00Z` also parses back to a zero `time.Time`, so neither
+   test failed with the guard removed. Both now read `failure_at` and
+   `backoff_until` as stored text via a new `rawEnvelopeInstants` helper in
+   `internal/quota/store_test.go` and assert empty strings. Confirmed as a
+   negative control with `go test -overlay` substituting a `store.go` whose
+   only difference is the removed guard: all three cases fail on
+   `failure_at="0001-01-01T00:00:00Z"`, and pass against the real file.
+
+**Swift verification note:** this environment has only Xcode Command Line
+Tools, not full Xcode. `swiftc -parse` on both changed Swift files is clean
+(syntax only). `swift test` cannot run at all — XCTest is unavailable outside
+Xcode (confirmed: the SwiftPM test invocation itself fails with "no such
+module 'XCTest'", on files this task never touched). The Foundation-only
+verifier (`bash scripts/test-macos-app.sh`) built successfully but reported a
+pre-existing, unrelated runtime failure ("expected two index refreshes
+followed by one snapshot read") in `AgentDeckShared`/`AgentDeckVerification`
+files this task did not modify (confirmed via `git ls-files --modified
+apps/macos`) — noted here rather than silently passed over, but fixing it is
+out of this task's scope. Full XCTest execution of
+`DesktopPreferencesTests.swift` is manual acceptance pending real Xcode.
 
 ### 5. `quota-alerts`
 
@@ -326,9 +522,19 @@ decoder. Focused fixtures stay beside those tests.
   reaching both the wire and the CLI as `probe_disabled` rather than an absent
   section — C8, C11.
 - The CLI page of the prototype is the rendered form of the text output.
+- Turning `quotaProbe` off unregisters an installed status-line route through
+  the C3 restore, clears the consent flag, and reports `restore incomplete`
+  when the file changed underneath; stored observations are untouched — C9.
+  Deferred here from task 4 (`gate-and-schedule`'s GS-R1-F4): this needs a
+  CLI verb over `usagehook.RestoreStatusLine`, which only this task's
+  `cmd/agentdeck/quota.go` addition provides. `DesktopPreferences.swift`'s
+  `quotaProbeEnabled`/`quotaProbeInterval` (added in task 4) are this
+  transition's trigger; this task wires the call itself.
 
 **Verification:** L1 for the payload shape including the absent-section case;
-L2 for the CLI surface and its exit codes. Reconcile
+L2 for the CLI surface and its exit codes, including the unregister-on-off
+transition against a temporary settings file and its restore-incomplete path
+(moved here from task 4's verification per GS-R1-F4). Reconcile
 `docs/specs/cli-design.md` in task 7's closure, not here.
 
 ### 7. `desktop-surfaces`
@@ -454,9 +660,23 @@ own state (a sidecar file under the state directory), never in
 what the status-line chain forwards to the prior command. See
 [`reviews/claude-adapters.md`](reviews/claude-adapters.md) for the findings,
 evidence, and completion gate.
-Tasks 4–7 exist in Beads (`ad-sq-gate-and-schedule-dev` through
-`ad-sq-desktop-surfaces-dev`) with dependency ordering matching this file; none
-have started.
+Task 4 `gate-and-schedule` passed Round 6 re-review on 2026-09-13 after five
+failed rounds; its delivery state is tracked in Beads
+`ad-sq-gate-and-schedule-dev`. All ten findings (GS-R1-F1 through GS-R5-F1)
+are closed. Four operator-approved decisions
+made during implementation are recorded in task 4's own section above: a new
+read-only `usage.Service.LatestObservedProvider` export, a new persisted
+`EnvelopeRecord.BackoffUntil` field (schema version 24 → 25), the status-line
+unregister-on-off transition deferred to task 6, and quota probing landing as
+its own independent `desktop.Service.RefreshQuota` mechanism — not on `Build`,
+not on `refresh-indexes` — with no CLI caller yet. See that section for the
+Swift verification limitations in this environment (no full Xcode), and
+[`reviews/gate-and-schedule.md`](reviews/gate-and-schedule.md) for the
+findings, the reproducers, and the completion gate.
+
+Tasks 5–7 exist in Beads (`ad-sq-quota-alerts-dev` through
+`ad-sq-desktop-surfaces-dev`) with dependency ordering matching this file;
+none have started.
 
 The base of this worktree is `4737076`; `main` has since advanced by ten
 commits, including the assembled `schema-version-signal` surfaces. The surface

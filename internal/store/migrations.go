@@ -268,6 +268,15 @@ var migrations = []migration{
 			failure_at TEXT NOT NULL DEFAULT ''
 		)`,
 	}},
+	// backoff_until is C9's geometric-backoff state: the earliest instant a
+	// background probe may run again after a run of consecutive failures.
+	// Empty means no backoff in effect. A success always clears it in the same
+	// write that clears failure/failure_at (gate-and-schedule task); the
+	// scheduler derives the next backoff step from it and failure_at rather
+	// than from a separate counter column.
+	{version: 25, statements: []string{
+		`ALTER TABLE quota_envelopes ADD COLUMN backoff_until TEXT NOT NULL DEFAULT ''`,
+	}},
 }
 
 func normalizeUsageEventTimes(ctx context.Context, tx *sql.Tx) error {

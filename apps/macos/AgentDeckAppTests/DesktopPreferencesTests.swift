@@ -11,6 +11,8 @@ final class DesktopPreferencesTests: XCTestCase {
 		XCTAssertEqual(preferences.menuBarValue, .cost)
 		XCTAssertEqual(preferences.menuBarScope, .allClients)
 		XCTAssertEqual(preferences.loginItem, .disabled)
+		XCTAssertFalse(preferences.quotaProbeEnabled, "requirements.md clause 1: reading is off by default")
+		XCTAssertEqual(preferences.quotaProbeInterval, .fiveMinutes)
 	}
 
 	func testPreferencesPersistAcrossARelaunch() {
@@ -19,11 +21,24 @@ final class DesktopPreferencesTests: XCTestCase {
 		first.periodicRefreshEnabled = true
 		first.menuBarValue = .tokens
 		first.menuBarScope = .followPanel
+		first.quotaProbeEnabled = true
+		first.quotaProbeInterval = .thirtyMinutes
 
 		let second = DesktopPreferences(defaults: defaults, registrar: StubLoginItemRegistrar())
 		XCTAssertTrue(second.periodicRefreshEnabled)
 		XCTAssertEqual(second.menuBarValue, .tokens)
 		XCTAssertEqual(second.menuBarScope, .followPanel)
+		XCTAssertTrue(second.quotaProbeEnabled)
+		XCTAssertEqual(second.quotaProbeInterval, .thirtyMinutes)
+	}
+
+	func testQuotaProbeIntervalFallsBackToFiveMinutesForAnUnrecognizedStoredValue() {
+		let defaults = isolatedDefaults()
+		defaults.set(7, forKey: "quota.probeIntervalMinutes")
+
+		let preferences = DesktopPreferences(defaults: defaults, registrar: StubLoginItemRegistrar())
+
+		XCTAssertEqual(preferences.quotaProbeInterval, .fiveMinutes)
 	}
 
 	func testLoginItemEnableAndDisableAreIdempotent() {

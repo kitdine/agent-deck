@@ -293,6 +293,72 @@ func readObservationSelection(t *testing.T, ctx context.Context, database *store
 	return
 }
 
+func TestLatestObservedProviderReturnsMostRecentNonEmptyValue(t *testing.T) {
+	ctx := context.Background()
+	database, err := store.Open(ctx, filepath.Join(t.TempDir(), "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	service := New(database, "")
+
+	if _, _, ok, err := service.LatestObservedProvider(ctx, "codex"); err != nil || ok {
+		t.Fatalf("LatestObservedProvider before any delivery = (ok=%v, err=%v), want ok=false", ok, err)
+	}
+
+	before := service.now()
+	if err := service.RecordHookDelivery(ctx, HookDelivery{
+		Client: "codex", SessionID: "session", HookEvent: "SessionStart", Source: "resume", DeliveryID: "d1",
+		HasSelection: true, Selection: store.ProviderSnapshot{Name: "official", Multiplier: "1"},
+	}); err != nil {
+		t.Fatalf("RecordHookDelivery d1: %v", err)
+	}
+	provider, observedAt, ok, err := service.LatestObservedProvider(ctx, "codex")
+	if err != nil || !ok || provider != "official" {
+		t.Fatalf("LatestObservedProvider = (%q, %v, %v), want (official, true, nil)", provider, ok, err)
+	}
+	if observedAt.Before(before) {
+		t.Fatalf("observedAt = %v, want at or after %v", observedAt, before)
+	}
+
+	if err := service.RecordHookDelivery(ctx, HookDelivery{
+		Client: "codex", SessionID: "session2", HookEvent: "SessionStart", Source: "resume", DeliveryID: "d2",
+		HasSelection: true, Selection: store.ProviderSnapshot{Name: "custom", Multiplier: "2"},
+	}); err != nil {
+		t.Fatalf("RecordHookDelivery d2: %v", err)
+	}
+	if provider, _, ok, err := service.LatestObservedProvider(ctx, "codex"); err != nil || !ok || provider != "custom" {
+		t.Fatalf("LatestObservedProvider after a second delivery = (%q, %v, %v), want (custom, true, nil)", provider, ok, err)
+	}
+
+	// A different client's own observations must not leak across.
+	if _, _, ok, err := service.LatestObservedProvider(ctx, "claude"); err != nil || ok {
+		t.Fatalf("LatestObservedProvider for a client with no delivery = (ok=%v, err=%v), want ok=false", ok, err)
+	}
+}
+
+func TestLatestObservedProviderIgnoresDeliveriesWithNoObservedProvider(t *testing.T) {
+	ctx := context.Background()
+	database, err := store.Open(ctx, filepath.Join(t.TempDir(), "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	service := New(database, "")
+
+	// SessionEnd never carries an observed provider (classifyHookDelivery's
+	// default branch): this delivery is accepted and recorded, but must not
+	// make LatestObservedProvider report an empty string as "known".
+	if err := service.RecordHookDelivery(ctx, HookDelivery{
+		Client: "codex", SessionID: "session", HookEvent: "SessionEnd", Source: "resume", DeliveryID: "d1",
+	}); err != nil {
+		t.Fatalf("RecordHookDelivery: %v", err)
+	}
+	if _, _, ok, err := service.LatestObservedProvider(ctx, "codex"); err != nil || ok {
+		t.Fatalf("LatestObservedProvider = (ok=%v, err=%v), want ok=false for a delivery with no observed provider", ok, err)
+	}
+}
+
 // TestRecordHookDeliveryConfigChangeRecordsConfirmedFirstKeyOrUnknownRoute
 // covers Contract 3's two behaviors this task did not change: a confirmed
 // no-key -> first-key transition still advances the route, and an explicit

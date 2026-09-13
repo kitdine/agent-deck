@@ -393,6 +393,38 @@ func (s *Service) RecordHookDelivery(ctx context.Context, delivery HookDelivery)
 	return nil
 }
 
+// LatestObservedProvider returns the most recently Hook-observed provider for
+// a client, and the instant it was observed at — architecture.md
+// subscription-quota/C1's "available observed provider" cross-check,
+// distinct from AgentDeck's own recorded selection (provider.Service.
+// Current). ok is false whenever no delivery for the client has ever carried
+// a non-empty observed provider, which is the ordinary state for a client
+// with no Hook integration; callers must never treat that as a disagreement.
+//
+// observedAt is returned so a caller can reject a stale observation — one
+// recorded before the current selection was made — rather than letting an
+// old Hook delivery permanently suppress a probe after the user has since
+// switched providers within AgentDeck (GS-R1-F1): this function only reports
+// what was observed and when, and takes no position on staleness itself.
+func (s *Service) LatestObservedProvider(ctx context.Context, client string) (provider string, observedAt time.Time, ok bool, err error) {
+	var observedAtText string
+	err = s.Store.DB.QueryRowContext(ctx, `
+		SELECT observed_provider, observed_at FROM usage_session_observations
+		WHERE client = ? AND observed_provider IS NOT NULL AND observed_provider != ''
+		ORDER BY observed_at DESC LIMIT 1`, client).Scan(&provider, &observedAtText)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", time.Time{}, false, nil
+	}
+	if err != nil {
+		return "", time.Time{}, false, err
+	}
+	observedAt, err = time.Parse(time.RFC3339Nano, observedAtText)
+	if err != nil {
+		return "", time.Time{}, false, err
+	}
+	return provider, observedAt, true, nil
+}
+
 func (s *Service) recordSessionRouteConn(ctx context.Context, conn *sql.Conn, route SessionRoute, observedAt, provider, multiplier string, viaWrapper bool) error {
 	key := strings.Join([]string{route.Client, route.SessionID, route.HookEvent, route.Source, provider, multiplier, fmt.Sprint(viaWrapper), observedAt}, "\x00")
 	if s.beforeSessionRouteWrite != nil {
