@@ -922,11 +922,11 @@ restore 为目标机器创建新 key，并在一个 transaction 中替换 snapsh
 release/support identity，不是运行时领域 instant，因此保持固定 UTC 格式，并在字段名中
 明确标出 UTC。
 
-Doctor quick/full 使用同一 core schema 契约。以当前支持 schema 23 的二进制为例：
-旧 schema 12 报告 `schema_outdated`、`count=12`、`supported_count=23` 和可复制的
-`agentdeck state migrate`；完整受支持 schema 报告 `ok`、`count=23`；声明受支持版本
+Doctor quick/full 使用同一 core schema 契约。以当前支持 schema 24 的二进制为例：
+旧 schema 12 报告 `schema_outdated`、`count=12`、`supported_count=24` 和可复制的
+`agentdeck state migrate`；完整受支持 schema 报告 `ok`、`count=24`；声明受支持版本
 却缺少 `usage_tool_calls` 时报告 `schema_incompatible`。未来 schema 99 报告
-`database` check，`code=schema_ahead`、`count=99`、`supported_count=23`，没有
+`database` check，`code=schema_ahead`、`count=99`、`supported_count=24`，没有
 `recovery_command`；text 提示升级 AgentDeck。这里的数字是数据库 schema，不是产品版本。
 
 缺失状态或无法打开 core 库而提前结束时，JSON envelope 设置 `partial: true`，

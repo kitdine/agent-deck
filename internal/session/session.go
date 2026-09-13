@@ -21,6 +21,7 @@ import (
 
 	"github.com/kitdine/agent-deck/internal/activity"
 	"github.com/kitdine/agent-deck/internal/ingest"
+	"github.com/kitdine/agent-deck/internal/store"
 )
 
 const (
@@ -1509,6 +1510,9 @@ func RebuildWithOptions(ctx context.Context, db *sql.DB, home string, options Sc
 	)
 	if err != nil {
 		return result, err
+	}
+	if _, err = store.MintSessionIndexEpoch(ctx, tx); err != nil {
+		return ScanResult{}, err
 	}
 	if err = tx.Commit(); err != nil {
 		return ScanResult{}, err

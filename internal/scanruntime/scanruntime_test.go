@@ -419,6 +419,10 @@ func TestUnixWorkerServesAClientRound(t *testing.T) {
 	if result.RoundID == "" || result.Usage.State != "completed" || result.Session.State != "completed" {
 		t.Fatalf("worker result = %#v", result)
 	}
+	cache, err := os.Stat(filepath.Join(state, "desktop-derived-cache.json"))
+	if err != nil || cache.Mode().Perm() != 0o600 {
+		t.Fatalf("worker derived cache=%#v err=%v", cache, err)
+	}
 	replayed, err := client.Request(requestCtx, ScopeBoth)
 	if err != nil || replayed.RoundID != result.RoundID {
 		t.Fatalf("stable request replay=%#v err=%v, want round %q", replayed, err, result.RoundID)

@@ -16,13 +16,13 @@ import (
 	"github.com/kitdine/agent-deck/internal/output"
 	"github.com/kitdine/agent-deck/internal/scanruntime"
 	"github.com/kitdine/agent-deck/internal/store"
-	"github.com/kitdine/agent-deck/internal/watch"
 )
 
 const desktopSnapshotChunkBytes = 48 * 1024
 
 var desktopNow = time.Now
 var desktopIndexRefreshObserver func(desktopIndexRefreshResult)
+var desktopSnapshotObserver func(desktop.Result)
 
 type desktopSnapshotChunkEnvelope struct {
 	SchemaVersion int                      `json:"schema_version"`
@@ -42,8 +42,9 @@ type desktopSnapshotChunkData struct {
 }
 
 type desktopIndexRefreshResult struct {
-	Usage    desktopIndexDomainResult `json:"usage"`
-	Sessions desktopIndexDomainResult `json:"sessions"`
+	Usage          desktopIndexDomainResult `json:"usage"`
+	Sessions       desktopIndexDomainResult `json:"sessions"`
+	derivedCacheMS int64
 }
 
 type desktopIndexDomainResult struct {
@@ -92,6 +93,9 @@ func newDesktopCommand(opts *commandOptions) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if desktopSnapshotObserver != nil {
+				desktopSnapshotObserver(result)
+			}
 			if stream {
 				return writeDesktopSnapshotStream(opts.stdout, result)
 			}
@@ -132,23 +136,33 @@ func newDesktopCommand(opts *commandOptions) *cobra.Command {
 }
 
 func refreshDesktopIndexes(ctx context.Context, stateRoot, home string) (desktopIndexRefreshResult, bool, []string, error) {
-	round, err := (scanruntime.Client{StateRoot: stateRoot, Home: home, ForceLocal: scanRuntimeLocalTestMode()}).Request(ctx, scanruntime.ScopeBoth)
+	round, err := (scanruntime.Client{StateRoot: stateRoot, Home: home, ForceLocal: scanRuntimeLocalTestMode(), Now: desktopNow}).Request(ctx, scanruntime.ScopeBoth)
 	if err != nil {
 		return desktopIndexRefreshResult{}, false, nil, err
 	}
 	result := desktopIndexResultFromRound(round)
 	if result.Sessions.Success {
-		core, openErr := store.Open(ctx, stateRoot)
+		sessions, openErr := store.OpenSessionsReadOnly(ctx, stateRoot)
 		if openErr != nil {
 			result.Sessions.Success = false
 			result.Sessions.ErrorCode = errorCode(openErr)
 			result.Sessions.failureStage = "checkpoint_persistence"
 		} else {
-			fingerprint, fingerprintErr := watch.FingerprintRoots(sessionWatchRoots(home)...)
-			if fingerprintErr == nil {
-				fingerprintErr = core.SetSetting(ctx, "watch.fingerprint.session", fingerprint)
+			fingerprint, fingerprintErr := sessionCheckpointFingerprint(ctx, sessions, home)
+			if closeErr := sessions.Close(); fingerprintErr == nil {
+				fingerprintErr = closeErr
 			}
-			_ = core.Close()
+			if fingerprintErr == nil {
+				core, coreErr := store.Open(ctx, stateRoot)
+				if coreErr != nil {
+					fingerprintErr = coreErr
+				} else {
+					fingerprintErr = core.SetSetting(ctx, "watch.fingerprint.session", fingerprint)
+					if closeErr := core.Close(); fingerprintErr == nil {
+						fingerprintErr = closeErr
+					}
+				}
+			}
 			if fingerprintErr != nil {
 				result.Sessions.Success = false
 				result.Sessions.ErrorCode = errorCode(fingerprintErr)
@@ -168,6 +182,7 @@ func refreshDesktopIndexes(ctx context.Context, stateRoot, home string) (desktop
 
 func desktopIndexResultFromRound(round scanruntime.Result) desktopIndexRefreshResult {
 	result := desktopIndexRefreshResult{
+		derivedCacheMS: round.Stages.DerivedCacheMS,
 		Usage: desktopIndexDomainResult{
 			Success:              round.Usage.State == "completed",
 			DurationMilliseconds: round.Usage.DurationMS,

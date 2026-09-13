@@ -30,14 +30,16 @@ AGENTDECK_SNAPSHOT_PERFORMANCE_DEADLINE=5m \
 ```
 
 Each measured sample launches the real `refresh-indexes` and streamed `snapshot`
-CLI command paths in two fresh helper processes. The end-to-end wall and CPU
-metrics include both command initializations, helper processes and stream decode;
+CLI command paths in two fresh helper processes. The campaign records cold import,
+derived-cache full recomputation after an explicit generation invalidation, and
+unchanged refresh. The end-to-end wall and CPU metrics include both command
+initializations, helper processes, worker-derived-cache work and stream decode;
 logical-row verification runs afterward and is timed separately. One deadline
 bounds the whole sample and terminates unresponsive helpers.
 
 The report records every sample, corpus digest and scale, hardware/toolchain,
-fixed time/timezone, process startup, wall and CPU time, peak RSS, domain stage
-times, verification time, output and logical-row digests, deadline, cache/load
-status, and explicit failure stage. Timeout, non-zero, partial and missing-result
+fixed time/timezone, process startup, wall and CPU time, peak RSS, domain and
+derived-cache stage times, verification time, output and logical-row digests,
+deadline, cache/load status, and explicit failure stage. Timeout, non-zero, partial and missing-result
 samples are written before the test reports failure. A complete over-target
 sample remains `within_target: false`.

@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-09-09
-updated: 2026-09-11
+updated: 2026-09-13
 ---
 
 # Snapshot Performance — Tasks
@@ -41,7 +41,7 @@ remains with the three tasks below.
 | Task | Dev | Review |
 | --- | --- | --- |
 | 1. `unified-scan-runtime` | [x] | [x] |
-| 2. `snapshot-computation-reuse` | [ ] | [ ] |
+| 2. `snapshot-computation-reuse` | [x] | [x] |
 | 3. `scan-experience-acceptance` | [ ] | [ ] |
 
 ### 1. `unified-scan-runtime`
@@ -174,9 +174,30 @@ evidence and delivery checkpoints are recorded there separately from the verdict
 Native implementation and performance acceptance remain open.
 Task 1 full delivery-scope re-review passed with a VERIFIED completion gate; see
 [runtime review](reviews/unified-scan-runtime.md#round-4--2026-09-12).
-It awaits separately authorized Git delivery; Task 2 has not started.
-Then execute the three tasks above in order; a task contains its investigation,
-implementation and verification and needs no further task decomposition.
+It was delivered in signed local commit `7ea8dc3e` without push.
+Task 2 implementation and L3 verification reached
+[Round 1 review](reviews/snapshot-computation-reuse.md#round-1--2026-09-12),
+which returned FAIL; [Round 2 re-review](reviews/snapshot-computation-reuse.md#round-2--2026-09-13)
+closed its repair and returned PASS. Its Review cell is checked and the task now
+awaits separately authorized Git delivery. The reviewed 36-file candidate fingerprint is
+`a9627671b780b12bc624d1677b0dd67f1459f5e8fabdc3f5a756a090ee9f4be0`,
+and its completion gate is VERIFIED. The refreshed representative
+worker-accounted report used 2,200 isolated JSONL
+files / 2,343,100,564 bytes with corpus SHA-256
+`84a0c345e0f8c505134dfe81a3a27d7b785a231ed9a7fc8beeaa26a6baa110d8`.
+All three complete samples produced snapshot SHA-256
+`db82eb84d1da0260204473d23fc4cfad4905ff2f54fb8fa2eab8dd0ff873f10e`
+and logical-row SHA-256
+`b1e1be6961abe5e8924774b8b5f40ad94584e68e934f5856b4217b7322560507`:
+cold import took 59.054 s wall / 88.528 s CPU / 213.0 MiB peak RSS;
+full recomputation took 6.181 s / 7.183 s / 195.3 MiB; unchanged refresh took
+5.791 s / 6.754 s / 195.8 MiB. Only full recomputation met its 10-second wall
+target. The complete private report SHA-256 is
+`5f6af73fcd43b270afa1fef87b72c50c533544e008879bb2acaa5b0412c61b89`.
+Cold and unchanged targets remain unmet and are not passing measurements; Task 3
+owns the final 20-sample campaign and explicit disposition before topic delivery.
+Each task contains its investigation, implementation and verification and needs
+no further task decomposition.
 No old-code repair is a prerequisite. Git delivery requires a new, scoped
 checkpoint for the chosen content and separate authorization; the old document
 commit request must not be expanded into delivery of rewritten code.

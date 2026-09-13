@@ -1444,9 +1444,17 @@ func runSessionScanRound(ctx context.Context, opts *commandOptions, progress ses
 	if err != nil {
 		return session.ScanResult{}, err
 	}
-	fingerprint, err := watch.FingerprintRoots(sessionWatchRoots(home)...)
+	sessions, err := store.OpenSessionsReadOnly(ctx, stateRoot)
 	if err != nil {
 		return session.ScanResult{}, err
+	}
+	fingerprint, err := sessionCheckpointFingerprint(ctx, sessions, home)
+	closeErr := sessions.Close()
+	if err != nil {
+		return session.ScanResult{}, err
+	}
+	if closeErr != nil {
+		return session.ScanResult{}, closeErr
 	}
 	core, err := store.Open(ctx, stateRoot)
 	if err != nil {
@@ -1457,6 +1465,25 @@ func runSessionScanRound(ctx context.Context, opts *commandOptions, progress ses
 		return session.ScanResult{}, err
 	}
 	return result.Session.Scan, nil
+}
+
+func sessionCheckpointFingerprint(ctx context.Context, sessions *store.Store, home string) (string, error) {
+	epoch, err := sessions.SessionIndexEpoch(ctx)
+	if err != nil {
+		return "", err
+	}
+	fingerprint, err := watch.FingerprintRoots(sessionWatchRoots(home)...)
+	if err != nil {
+		return "", err
+	}
+	after, err := sessions.SessionIndexEpoch(ctx)
+	if err != nil {
+		return "", err
+	}
+	if after != epoch {
+		return "", errors.New("session index changed while recording checkpoint")
+	}
+	return fmt.Sprintf("v1:%d:%s", epoch, fingerprint), nil
 }
 
 func parseScanScope(value string) (scanruntime.Scope, error) {
@@ -2204,7 +2231,7 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 				return nil
 			}
 			if command.Name() == "scan" || command.Name() == "rebuild" {
-				fingerprint, fingerprintErr := watch.FingerprintRoots(sessionWatchRoots(home)...)
+				fingerprint, fingerprintErr := sessionCheckpointFingerprint(command.Context(), sessions, home)
 				if fingerprintErr != nil {
 					return fingerprintErr
 				}
@@ -2512,7 +2539,7 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				fingerprint, err := watch.FingerprintRoots(sessionWatchRoots(home)...)
+				fingerprint, err := sessionCheckpointFingerprint(ctx, sessions, home)
 				if err != nil {
 					return err
 				}

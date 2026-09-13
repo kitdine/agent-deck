@@ -504,6 +504,7 @@ func TestSessionShowActivityReadsOnlySafeMetadataOnDemand(t *testing.T) {
 			t.Fatalf("model activity leaked %q: %s", secret, stats.String())
 		}
 	}
+	waitForBackgroundScan(t, state)
 }
 
 func TestPhase9TextAndJSONGoldenContracts(t *testing.T) {
@@ -917,6 +918,7 @@ func TestUsageCommandsUseProgressForExplicitAndImplicitScans(t *testing.T) {
 	if quietValues[6] != true {
 		t.Fatalf("--quiet did not reach progress output: %v", quietValues)
 	}
+	waitForBackgroundScan(t, state)
 }
 
 func TestUsageNoScanUsesStoredAggregateUntilDefaultScan(t *testing.T) {
@@ -1030,6 +1032,7 @@ func TestUsageNoScanUsesStoredAggregateUntilDefaultScan(t *testing.T) {
 			}
 			assertReport("no-scan", 1, 10)
 			assertReport("default", 2, 30)
+			waitForBackgroundScan(t, state)
 		})
 	}
 }
@@ -1073,6 +1076,7 @@ func TestUsageProgressReporterUsesStderrAndPreservesJSONStdout(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil || envelope["command"] != "usage.scan" {
 		t.Fatalf("JSON stdout=%q envelope=%#v err=%v", stdout.String(), envelope, err)
 	}
+	waitForBackgroundScan(t, state)
 }
 
 type manualUsageProgressTimer struct{ channel chan time.Time }
@@ -1634,7 +1638,32 @@ func TestStateMigrateTextAndJSONUpgradeSchema12(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = database.Exec(ctx, "DROP TABLE usage_work_signals; DROP TABLE usage_tool_files; DROP TABLE usage_tool_calls; DROP INDEX usage_events_client_session; ALTER TABLE providers DROP COLUMN wrapper_url; ALTER TABLE providers DROP COLUMN wrapper_kind; ALTER TABLE provider_selections DROP COLUMN via_wrapper; ALTER TABLE usage_events DROP COLUMN cache_write_tokens; ALTER TABLE usage_events DROP COLUMN turn_index; ALTER TABLE usage_source_files DROP COLUMN session_started_at; ALTER TABLE usage_sessions DROP COLUMN started_at; ALTER TABLE provider_selections DROP COLUMN prior_keyed; UPDATE schema_metadata SET version=12"); err != nil {
+	rows, err := database.DB.QueryContext(ctx, `SELECT name FROM sqlite_master WHERE type='trigger' AND name LIKE 'derived_snapshot_generation_%'`)
+	if err != nil {
+		database.Close()
+		t.Fatal(err)
+	}
+	var generationTriggers []string
+	for rows.Next() {
+		var name string
+		if err = rows.Scan(&name); err != nil {
+			rows.Close()
+			database.Close()
+			t.Fatal(err)
+		}
+		generationTriggers = append(generationTriggers, name)
+	}
+	if err = rows.Close(); err != nil {
+		database.Close()
+		t.Fatal(err)
+	}
+	for _, name := range generationTriggers {
+		if _, err = database.Exec(ctx, "DROP TRIGGER "+name); err != nil {
+			database.Close()
+			t.Fatal(err)
+		}
+	}
+	if _, err = database.Exec(ctx, "DROP TABLE derived_snapshot_generation; DROP TABLE usage_work_signals; DROP TABLE usage_tool_files; DROP TABLE usage_tool_calls; DROP INDEX usage_events_client_session; ALTER TABLE providers DROP COLUMN wrapper_url; ALTER TABLE providers DROP COLUMN wrapper_kind; ALTER TABLE provider_selections DROP COLUMN via_wrapper; ALTER TABLE usage_events DROP COLUMN cache_write_tokens; ALTER TABLE usage_events DROP COLUMN turn_index; ALTER TABLE usage_source_files DROP COLUMN session_started_at; ALTER TABLE usage_sessions DROP COLUMN started_at; ALTER TABLE provider_selections DROP COLUMN prior_keyed; UPDATE schema_metadata SET version=12"); err != nil {
 		database.Close()
 		t.Fatal(err)
 	}
@@ -2300,6 +2329,42 @@ func TestSessionShowMissingCoreDoesNotCreateIt(t *testing.T) {
 	}
 	if _, err = os.Stat(filepath.Join(state, "agentdeck.sqlite3")); !os.IsNotExist(err) {
 		t.Fatalf("core database exists after missing-core session show: err=%v", err)
+	}
+}
+
+func TestSessionCheckpointFingerprintBindsSessionEpoch(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	home := filepath.Join(root, "home")
+	sessions, err := store.OpenSessions(ctx, filepath.Join(root, "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sessions.Close()
+	raw, err := watch.FingerprintRoots(sessionWatchRoots(home)...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	epoch, err := sessions.SessionIndexEpoch(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkpoint, err := sessionCheckpointFingerprint(ctx, sessions, home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := fmt.Sprintf("v1:%d:%s", epoch, raw); checkpoint != want {
+		t.Fatalf("checkpoint=%q want=%q", checkpoint, want)
+	}
+	if _, err = store.MintSessionIndexEpoch(ctx, sessions.DB); err != nil {
+		t.Fatal(err)
+	}
+	after, err := sessionCheckpointFingerprint(ctx, sessions, home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after == checkpoint {
+		t.Fatalf("checkpoint retained rebuilt session identity %q", checkpoint)
 	}
 }
 

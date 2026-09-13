@@ -36,17 +36,18 @@ var bundledCatalog []byte
 const (
 	bundledCatalogSourceURL       = "bundled://agentdeck/model-prices.json"
 	legacyBundledCatalogSourceURL = "bundled://config/model-prices.json"
-	// usageParserVersion 7 captures each transcript's opening record as the
+	// ParserVersion 7 captures each transcript's opening record as the
 	// session's process start. It is only readable from offset zero, so version 6
 	// sources must be re-read: an incremental scan skips a file whose size and
 	// mtime are unchanged, which is every existing source, and the attribution
 	// would keep falling back to the anchor walk for the whole store.
 	//
-	// usageParserVersion 6 adds the activity-classification reduction and the
+	// ParserVersion 6 adds the activity-classification reduction and the
 	// read-shaped shell flag used by workflow rework metrics. Version 5 sources
 	// must be re-read after schema v21 replaces the reserved signal table, or an
 	// upgraded store would expose empty signals until every source changed.
-	usageParserVersion = 7
+	ParserVersion      = 7
+	usageParserVersion = ParserVersion
 	// sessionStartLayout is RFC3339 with the fraction always written to nine
 	// digits. time.RFC3339Nano drops trailing zeros, which makes its lexical
 	// order disagree with time order inside a second — "…00Z" sorts after
@@ -855,7 +856,7 @@ func (s *Service) Inventory(ctx context.Context) (Inventory, error) {
 		switch {
 		case !found:
 			inventory.Added = append(inventory.Added, entry.Path)
-		case previous.parserVersion != usageParserVersion:
+		case previous.parserVersion != ParserVersion:
 			inventory.Mutated = append(inventory.Mutated, entry.Path)
 			if previous.identity == entry.Identity && previous.size == entry.Size && previous.modified == entry.ModifiedAt {
 				parserVersionRereads++
@@ -933,7 +934,7 @@ func (s *Service) plannedAppendStart(ctx context.Context, entry InventoryEntry) 
 	if err != nil {
 		return 0, err
 	}
-	if identity != entry.Identity || parserVersion != usageParserVersion || cursor <= 0 || cursor >= entry.Size {
+	if identity != entry.Identity || parserVersion != ParserVersion || cursor <= 0 || cursor >= entry.Size {
 		return 0, nil
 	}
 	file, err := s.open(entry.Path)
@@ -1072,7 +1073,7 @@ func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceR
 		}
 	}
 	activityParser.SetMachineIdentity(s.activityMachineIdentity(ctx))
-	parserOutdated := found && parserVersion != usageParserVersion
+	parserOutdated := found && parserVersion != ParserVersion
 	stableMetadata := found && !parserOutdated && oldIdentity == entry.Identity && oldSize == entry.Size && oldModified == entry.ModifiedAt
 	if !forceRebuild && stableMetadata {
 		if s.Coordinator != nil {
@@ -1293,7 +1294,7 @@ func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceR
 	// so a rewrite that lost the opening records cannot move a session's start
 	// later and widen its span into a segment the process never ran in.
 	startedAt := earlierSessionStart(priorStarted, state.startedAt)
-	_, err = tx.ExecContext(ctx, `INSERT INTO usage_source_files(path,identity,size,cursor,prefix_hash,session_id,turn_id,model,session_started_at,parser_version,codex_cumulative_json,imported,replaced,malformed,unsupported,modified_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(path) DO UPDATE SET identity=excluded.identity,size=excluded.size,cursor=excluded.cursor,prefix_hash=excluded.prefix_hash,session_id=excluded.session_id,turn_id=excluded.turn_id,model=excluded.model,session_started_at=excluded.session_started_at,parser_version=excluded.parser_version,codex_cumulative_json=excluded.codex_cumulative_json,imported=usage_source_files.imported+excluded.imported,replaced=usage_source_files.replaced+excluded.replaced,malformed=usage_source_files.malformed+excluded.malformed,unsupported=usage_source_files.unsupported+excluded.unsupported,modified_at=excluded.modified_at`, path, entry.Identity, entry.Size, cursor, hash(anchor), state.session, state.turn, state.model, startedAt, usageParserVersion, string(cumulativeBytes), r["imported"], r["replaced"], r["malformed"], r["unsupported"], entry.ModifiedAt)
+	_, err = tx.ExecContext(ctx, `INSERT INTO usage_source_files(path,identity,size,cursor,prefix_hash,session_id,turn_id,model,session_started_at,parser_version,codex_cumulative_json,imported,replaced,malformed,unsupported,modified_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(path) DO UPDATE SET identity=excluded.identity,size=excluded.size,cursor=excluded.cursor,prefix_hash=excluded.prefix_hash,session_id=excluded.session_id,turn_id=excluded.turn_id,model=excluded.model,session_started_at=excluded.session_started_at,parser_version=excluded.parser_version,codex_cumulative_json=excluded.codex_cumulative_json,imported=usage_source_files.imported+excluded.imported,replaced=usage_source_files.replaced+excluded.replaced,malformed=usage_source_files.malformed+excluded.malformed,unsupported=usage_source_files.unsupported+excluded.unsupported,modified_at=excluded.modified_at`, path, entry.Identity, entry.Size, cursor, hash(anchor), state.session, state.turn, state.model, startedAt, ParserVersion, string(cumulativeBytes), r["imported"], r["replaced"], r["malformed"], r["unsupported"], entry.ModifiedAt)
 	if err != nil {
 		return r, err
 	}

@@ -181,13 +181,13 @@ func TestUnifiedScanRuntimeRecordsStageProfile(t *testing.T) {
 	if err = result.ErrorFor(scanruntime.ScopeBoth); err != nil {
 		t.Fatal(err)
 	}
-	if result.Stages.DiscoveryMS < 0 || result.Stages.UsageMS < 0 || result.Stages.SessionMS < 0 || result.Stages.TotalMS < 0 {
+	if result.Stages.DiscoveryMS < 0 || result.Stages.UsageMS < 0 || result.Stages.SessionMS < 0 || result.Stages.DerivedCacheMS < 0 || result.Stages.TotalMS < 0 {
 		t.Fatalf("negative worker stage profile: %#v", result.Stages)
 	}
 	if result.Stages.TotalMS > time.Since(started).Milliseconds()+1000 {
 		t.Fatalf("worker total stage profile exceeds observed wall time: %#v", result.Stages)
 	}
-	t.Logf("worker stage profile: discovery=%dms usage=%dms session=%dms total=%dms", result.Stages.DiscoveryMS, result.Stages.UsageMS, result.Stages.SessionMS, result.Stages.TotalMS)
+	t.Logf("worker stage profile: discovery=%dms usage=%dms session=%dms derived-cache=%dms total=%dms", result.Stages.DiscoveryMS, result.Stages.UsageMS, result.Stages.SessionMS, result.Stages.DerivedCacheMS, result.Stages.TotalMS)
 }
 
 func scanSnapshotPerformanceDomains(ctx context.Context, state, home string, shared bool) error {
@@ -263,6 +263,8 @@ type snapshotPerformanceSample struct {
 	ProcessStartupMS    int64  `json:"process_startup_ms"`
 	UsageRefreshMS      int64  `json:"usage_refresh_ms"`
 	SessionRefreshMS    int64  `json:"session_refresh_ms"`
+	DerivedCacheMS      int64  `json:"derived_cache_ms"`
+	DerivedCacheHit     bool   `json:"derived_cache_hit"`
 	VerificationMS      int64  `json:"verification_ms"`
 	SnapshotSHA256      string `json:"snapshot_sha256,omitempty"`
 	LogicalRowsSHA256   string `json:"logical_rows_sha256,omitempty"`
@@ -282,6 +284,8 @@ type snapshotPerformanceHelperResult struct {
 	StderrSHA256        string `json:"stderr_sha256,omitempty"`
 	UsageRefreshMS      int64  `json:"usage_refresh_ms,omitempty"`
 	SessionRefreshMS    int64  `json:"session_refresh_ms,omitempty"`
+	DerivedCacheMS      int64  `json:"derived_cache_ms,omitempty"`
+	DerivedCacheHit     bool   `json:"derived_cache_hit,omitempty"`
 	UsageErrorCode      string `json:"usage_error_code,omitempty"`
 	SessionErrorCode    string `json:"session_error_code,omitempty"`
 	UsageFailureStage   string `json:"usage_failure_stage,omitempty"`
@@ -380,11 +384,12 @@ func TestIngestionStageProfile(t *testing.T) {
 	}
 	elapsed := time.Since(started)
 	report := map[string]float64{
-		"discovery_ms":   float64(result.Stages.DiscoveryMS),
-		"usage_ms":       float64(result.Stages.UsageMS),
-		"session_ms":     float64(result.Stages.SessionMS),
-		"worker_wall_ms": float64(result.Stages.TotalMS),
-		"wall_ms":        float64(elapsed) / float64(time.Millisecond),
+		"discovery_ms":     float64(result.Stages.DiscoveryMS),
+		"usage_ms":         float64(result.Stages.UsageMS),
+		"session_ms":       float64(result.Stages.SessionMS),
+		"derived_cache_ms": float64(result.Stages.DerivedCacheMS),
+		"worker_wall_ms":   float64(result.Stages.TotalMS),
+		"wall_ms":          float64(elapsed) / float64(time.Millisecond),
 	}
 	data, err := json.MarshalIndent(report, "", "  ")
 	if err != nil {
@@ -432,16 +437,16 @@ func TestSnapshotPerformanceRepresentativeCorpus(t *testing.T) {
 		FixedTime:     snapshotPerformanceNow.Format(time.RFC3339Nano),
 		Timezone:      "UTC",
 		DeadlineMS:    deadline.Milliseconds(),
-		Method:        "two fresh CLI helper subprocesses per sample; end-to-end wall includes both command initializations, refresh-indexes, streamed snapshot and parent decode; logical-row verification is timed separately",
+		Method:        "two fresh CLI helper subprocesses per sample; end-to-end wall includes both command initializations, refresh-indexes with worker-derived-cache publication/recomputation, streamed snapshot and parent decode; logical-row verification is timed separately",
 	}
 	var completedColdState string
-	for _, scenario := range []string{"cold_import", "unchanged_refresh"} {
+	for _, scenario := range []string{"cold_import", "full_recomputation", "unchanged_refresh"} {
 		var reusableState string
 		var setupErr error
-		if scenario == "unchanged_refresh" {
+		if scenario != "cold_import" {
 			reusableState = completedColdState
 			if reusableState == "" {
-				setupErr = errors.New("no completed cold import available for unchanged measurement")
+				setupErr = errors.New("no completed cold import available for derived-cache measurement")
 			}
 		}
 		for index := 1; index <= sampleCount; index++ {
@@ -452,6 +457,12 @@ func TestSnapshotPerformanceRepresentativeCorpus(t *testing.T) {
 			if setupErr != nil {
 				report.Samples = append(report.Samples, snapshotPerformanceSample{Scenario: scenario, Index: index, Outcome: "setup_failure", ExternalLoad: "uncontrolled", OSCacheState: "uncontrolled"})
 				continue
+			}
+			if scenario == "full_recomputation" {
+				if invalidateErr := invalidateSnapshotPerformanceDerivedCache(state); invalidateErr != nil {
+					report.Samples = append(report.Samples, snapshotPerformanceSample{Scenario: scenario, Index: index, Outcome: "setup_failure", ExternalLoad: "uncontrolled", OSCacheState: "uncontrolled"})
+					continue
+				}
 			}
 			sample := runSnapshotPerformanceSample(scenario, index, corpus, state, deadline)
 			report.Samples = append(report.Samples, sample)
@@ -560,6 +571,29 @@ func TestSnapshotPerformanceFailuresAreBoundedAndReportable(t *testing.T) {
 	}
 }
 
+func TestSnapshotPerformanceFullRecomputationInvalidatesAndRebuildsDerivedCache(t *testing.T) {
+	corpus := writeSnapshotPerformanceCorpus(t)
+	state := newSnapshotPerformanceState(t)
+	cold := runSnapshotPerformanceSample("cold_import", 1, corpus.Home, state, 30*time.Second)
+	if !cold.Complete {
+		t.Fatalf("cold sample=%#v", cold)
+	}
+	cache := filepath.Join(state, "desktop-derived-cache.json")
+	if _, err := os.Stat(cache); err != nil {
+		t.Fatalf("cold cache: %v", err)
+	}
+	if err := invalidateSnapshotPerformanceDerivedCache(state); err != nil {
+		t.Fatal(err)
+	}
+	recomputed := runSnapshotPerformanceSample("full_recomputation", 1, corpus.Home, state, 30*time.Second)
+	if !recomputed.Complete || !recomputed.DerivedCacheHit || recomputed.TargetMS != 10000 || recomputed.DerivedCacheMS < 0 {
+		t.Fatalf("recomputation sample=%#v", recomputed)
+	}
+	if _, err := os.Stat(cache); err != nil {
+		t.Fatalf("recomputed cache: %v", err)
+	}
+}
+
 func runSnapshotPerformanceWorker(t *testing.T) {
 	action := os.Getenv("AGENTDECK_SNAPSHOT_PERFORMANCE_ACTION")
 	behavior := os.Getenv("AGENTDECK_SNAPSHOT_PERFORMANCE_TEST_BEHAVIOR")
@@ -571,13 +605,15 @@ func runSnapshotPerformanceWorker(t *testing.T) {
 	}
 	home := os.Getenv("AGENTDECK_SNAPSHOT_PERFORMANCE_CORPUS")
 	state := os.Getenv("AGENTDECK_SNAPSHOT_PERFORMANCE_STATE")
-	oldHome, oldNow, oldObserver := userHomeDir, desktopNow, desktopIndexRefreshObserver
+	oldHome, oldNow, oldRefreshObserver, oldSnapshotObserver := userHomeDir, desktopNow, desktopIndexRefreshObserver, desktopSnapshotObserver
 	userHomeDir = func() (string, error) { return home, nil }
 	desktopNow = func() time.Time { return snapshotPerformanceNow }
 	var observed desktopIndexRefreshResult
 	desktopIndexRefreshObserver = func(result desktopIndexRefreshResult) { observed = result }
+	var snapshotObserved desktop.Result
+	desktopSnapshotObserver = func(result desktop.Result) { snapshotObserved = result }
 	t.Cleanup(func() {
-		userHomeDir, desktopNow, desktopIndexRefreshObserver = oldHome, oldNow, oldObserver
+		userHomeDir, desktopNow, desktopIndexRefreshObserver, desktopSnapshotObserver = oldHome, oldNow, oldRefreshObserver, oldSnapshotObserver
 	})
 	args := []string{"--state-dir", state, "--format", "json", "desktop"}
 	switch action {
@@ -596,6 +632,8 @@ func runSnapshotPerformanceWorker(t *testing.T) {
 		StdoutBase64:        base64.StdEncoding.EncodeToString(stdout.Bytes()),
 		UsageRefreshMS:      observed.Usage.DurationMilliseconds,
 		SessionRefreshMS:    observed.Sessions.DurationMilliseconds,
+		DerivedCacheMS:      observed.derivedCacheMS,
+		DerivedCacheHit:     snapshotObserved.DerivedCacheHit,
 		UsageErrorCode:      observed.Usage.ErrorCode,
 		SessionErrorCode:    observed.Sessions.ErrorCode,
 		UsageFailureStage:   observed.Usage.failureStage,
@@ -635,6 +673,7 @@ func runSnapshotPerformanceSample(scenario string, index int, corpus, state stri
 	}
 	sample.UsageRefreshMS = refresh.Helper.UsageRefreshMS
 	sample.SessionRefreshMS = refresh.Helper.SessionRefreshMS
+	sample.DerivedCacheMS = refresh.Helper.DerivedCacheMS
 	sample.UsageErrorCode = refresh.Helper.UsageErrorCode
 	sample.SessionErrorCode = refresh.Helper.SessionErrorCode
 	sample.UsageFailureStage = refresh.Helper.UsageFailureStage
@@ -662,6 +701,7 @@ func runSnapshotPerformanceSample(scenario string, index int, corpus, state stri
 		applySnapshotPerformanceTarget(&sample)
 		return sample
 	}
+	sample.DerivedCacheHit = snapshot.Helper.DerivedCacheHit
 	stream, err := base64.StdEncoding.DecodeString(snapshot.Helper.StdoutBase64)
 	if err != nil {
 		sample.Outcome = "snapshot_output_invalid"
@@ -746,6 +786,15 @@ func applySnapshotPerformanceTarget(sample *snapshotPerformanceSample) {
 	if sample.Scenario == "unchanged_refresh" {
 		sample.WithinTarget = sample.WithinTarget && sample.CPUTimeMS <= 500 && sample.PeakRSSBytes <= 100*1024*1024
 	}
+}
+
+func invalidateSnapshotPerformanceDerivedCache(state string) error {
+	core, err := store.Open(context.Background(), state)
+	if err != nil {
+		return err
+	}
+	defer core.Close()
+	return core.MintDerivedSnapshotEpoch(context.Background())
 }
 
 func newSnapshotPerformanceState(t *testing.T) string {

@@ -57,51 +57,80 @@ func upsertWorkSignalTx(ctx context.Context, tx *sql.Tx, signal turnSignal, path
 // carrying its turn_index records. The computation is a pure function of the
 // stored message reduction and the turn's rows in usage_tool_calls, so running
 // it again over unchanged content produces identical rows.
+// sourceTurnShapes aggregates each source's logical turns in one query.
+// Tool ownership may differ from signal ownership, so the join deliberately
+// uses client/session/turn rather than restricting tool.source_path.
+const sourceTurnShapesSQL = `
+WITH shapes AS MATERIALIZED (
+ SELECT a.client,a.session_id,a.turn_index,
+        1 AS any_call,
+        MAX(a.tool_kind='edit') AS edited,
+        MAX(a.tool_kind='read') AS read_call,
+        MAX(a.tool_name IN ('spawn_agent','Task','Agent')) AS delegated,
+        MAX(a.tool_name IN ('Skill','Workflow')) AS workflow,
+        MAX(a.tool_name IN ('update_plan','TodoWrite')) AS planned,
+        MAX(a.command_hint='testing') AS testing,
+        MAX(a.command_hint='chore') AS chore
+ FROM usage_tool_calls a CROSS JOIN usage_work_signals owned
+ ON owned.client=a.client AND owned.session_id=a.session_id AND owned.turn_index=a.turn_index
+ WHERE owned.source_path=?1
+ GROUP BY a.client,a.session_id,a.turn_index
+)
+SELECT w.client,w.session_id,w.turn_index,w.message_class,w.intent_sub,
+       EXISTS(SELECT 1 FROM usage_events e
+              WHERE e.client=w.client AND e.session_id=w.session_id AND e.turn_index=w.turn_index),
+       COALESCE(a.any_call,0),COALESCE(a.edited,0),COALESCE(a.read_call,0),
+       COALESCE(a.delegated,0),COALESCE(a.workflow,0),COALESCE(a.planned,0),
+       COALESCE(a.testing,0),COALESCE(a.chore,0)
+FROM usage_work_signals w
+LEFT JOIN shapes a
+ ON a.client=w.client AND a.session_id=w.session_id AND a.turn_index=w.turn_index
+WHERE w.source_path=?1`
+
 func classifySourceTurns(ctx context.Context, tx *sql.Tx, path string) error {
-	rows, err := tx.QueryContext(ctx, `SELECT client,session_id,turn_index,message_class,intent_sub FROM usage_work_signals WHERE source_path=?`, path)
+	rows, err := tx.QueryContext(ctx, sourceTurnShapesSQL, path)
 	if err != nil {
 		return err
 	}
-	type pending struct {
-		client, session         string
-		turnIndex               int
-		messageClass, intentSub string
+	type classified struct {
+		client, session string
+		turn            int
+		kind, sub       string
 	}
-	var candidates []pending
+	var results []classified
 	for rows.Next() {
-		var candidate pending
-		if err = rows.Scan(&candidate.client, &candidate.session, &candidate.turnIndex, &candidate.messageClass, &candidate.intentSub); err != nil {
+		var candidate classified
+		var message, intent string
+		var assistant bool
+		var shape activity.TurnShape
+		if err = rows.Scan(&candidate.client, &candidate.session, &candidate.turn, &message, &intent, &assistant,
+			&shape.AnyCall, &shape.Edited, &shape.Read, &shape.Delegated, &shape.Workflow, &shape.Planned, &shape.TestingCmd, &shape.ChoreCmd); err != nil {
 			rows.Close()
 			return err
 		}
-		candidates = append(candidates, candidate)
-	}
-	if err = rows.Err(); err != nil {
-		rows.Close()
-		return err
-	}
-	rows.Close()
-	for _, candidate := range candidates {
-		var assistantCalls int
-		if err = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM usage_events WHERE client=? AND session_id=? AND turn_index=?`,
-			candidate.client, candidate.session, candidate.turnIndex).Scan(&assistantCalls); err != nil {
-			return err
-		}
-		if assistantCalls == 0 {
+		if !assistant {
 			continue
 		}
-		shape, shapeErr := turnShape(ctx, tx, candidate.client, candidate.session, candidate.turnIndex)
-		if shapeErr != nil {
-			return shapeErr
-		}
-		// brainstorming is false here by construction: it is answered from the
-		// message in hand, and Decision 2's persisted set carries message_class
-		// and intent_sub and nothing else. A tool-less turn whose message and
-		// reply fall in different scans takes the visible `exploration`
-		// fallback. Widening the persisted set is a design change.
-		kind, sub := activity.Classify(candidate.messageClass, candidate.intentSub, shape, false)
-		if _, err = tx.ExecContext(ctx, `UPDATE usage_work_signals SET state=?,activity_kind=?,activity_sub=? WHERE client=? AND session_id=? AND turn_index=?`,
-			signalStateClassified, kind, sub, candidate.client, candidate.session, candidate.turnIndex); err != nil {
+		candidate.kind, candidate.sub = activity.Classify(message, intent, shape, false)
+		results = append(results, candidate)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return err
+	}
+	if len(results) == 0 {
+		return nil
+	}
+	update, err := tx.PrepareContext(ctx, `UPDATE usage_work_signals SET state=?,activity_kind=?,activity_sub=?
+ WHERE client=? AND session_id=? AND turn_index=?
+ AND (state,activity_kind,activity_sub) IS NOT (?,?,?)`)
+	if err != nil {
+		return err
+	}
+	defer update.Close()
+	for _, c := range results {
+		if _, err = update.ExecContext(ctx, signalStateClassified, c.kind, c.sub, c.client, c.session, c.turn, signalStateClassified, c.kind, c.sub); err != nil {
 			return err
 		}
 	}

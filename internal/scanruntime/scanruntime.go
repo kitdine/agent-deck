@@ -24,6 +24,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/kitdine/agent-deck/internal/desktop"
 	"github.com/kitdine/agent-deck/internal/ingest"
 	"github.com/kitdine/agent-deck/internal/platform"
 	"github.com/kitdine/agent-deck/internal/session"
@@ -78,10 +79,11 @@ type SessionResult struct {
 // compact diagnostic record for the Task 1 baseline; it is not a user-facing
 // progress stream.
 type StageProfile struct {
-	DiscoveryMS int64 `json:"discovery_ms"`
-	UsageMS     int64 `json:"usage_ms"`
-	SessionMS   int64 `json:"session_ms"`
-	TotalMS     int64 `json:"total_ms"`
+	DiscoveryMS    int64 `json:"discovery_ms"`
+	UsageMS        int64 `json:"usage_ms"`
+	SessionMS      int64 `json:"session_ms"`
+	DerivedCacheMS int64 `json:"derived_cache_ms"`
+	TotalMS        int64 `json:"total_ms"`
 }
 
 // Result is the finite observation returned by a round.
@@ -149,6 +151,9 @@ type Client struct {
 	// ForceLocal is intended only for tests and controlled in-process callers.
 	// The normal CLI path always uses the detached worker when it is executable.
 	ForceLocal bool
+	// Now is carried only by ForceLocal test callers so a test's scan and
+	// snapshot observe one business clock. Detached workers use their own clock.
+	Now func() time.Time
 }
 
 type wireRequest struct {
@@ -179,7 +184,7 @@ func (c Client) Request(ctx context.Context, scope Scope) (Result, error) {
 		return Result{}, err
 	}
 	if c.ForceLocal {
-		return localRequest(ctx, stateRoot, c.Home, scope)
+		return localRequest(ctx, stateRoot, c.Home, scope, c.Now)
 	}
 	endpoint, err := socketPath(stateID)
 	if err != nil {
@@ -650,6 +655,7 @@ type round struct {
 	mu          sync.RWMutex
 	result      Result
 	terminalErr error
+	cacheNow    func() time.Time
 }
 
 type roundRunner func(context.Context, string, string, string, bool) Result
@@ -765,7 +771,7 @@ func (r *round) executeProduction(ctx context.Context, stateRoot string, lockHel
 	}
 	coordinator.Start(ctx)
 	var wait sync.WaitGroup
-	wait.Add(2)
+	wait.Add(3)
 	go func() {
 		defer wait.Done()
 		defer coordinator.ConsumerDone(ingest.ConsumerUsage)
@@ -777,6 +783,22 @@ func (r *round) executeProduction(ctx context.Context, stateRoot string, lockHel
 			return
 		}
 		r.setUsage(UsageResult{State: "completed", Changes: changes, DurationMS: duration})
+	}()
+	go func() {
+		defer wait.Done()
+		<-r.usageDone
+		r.mu.Lock()
+		usageResult := r.result.Usage
+		r.mu.Unlock()
+		if usageResult.State != "completed" {
+			return
+		}
+		// Cache publication is best effort and remains independent from the
+		// durable usage outcome. Scope-specific callers have already observed
+		// their terminal domain result before this derived work completes.
+		started := time.Now()
+		_ = (desktop.Service{StateRoot: stateRoot, Home: r.home, Now: r.cacheNow}).PublishDerivedSnapshotCache(ctx, desktop.WireVersion)
+		r.setDerivedCache(time.Since(started).Milliseconds())
 	}()
 	go func() {
 		defer wait.Done()
@@ -826,6 +848,12 @@ func (r *round) setSession(result SessionResult) {
 	r.result.Stages.SessionMS = result.DurationMS
 	r.mu.Unlock()
 	r.sessionOnce.Do(func() { close(r.sessionDone) })
+}
+
+func (r *round) setDerivedCache(duration int64) {
+	r.mu.Lock()
+	r.result.Stages.DerivedCacheMS = duration
+	r.mu.Unlock()
 }
 
 func (r *round) complete() {
@@ -973,11 +1001,12 @@ var localRounds = struct {
 	byState map[string]*round
 }{byState: map[string]*round{}}
 
-func localRequest(ctx context.Context, stateRoot, home string, scope Scope) (Result, error) {
+func localRequest(ctx context.Context, stateRoot, home string, scope Scope, now func() time.Time) (Result, error) {
 	localRounds.Lock()
 	round := localRounds.byState[stateRoot]
 	if round == nil || round.completed() {
 		round = newRound(home)
+		round.cacheNow = now
 		localRounds.byState[stateRoot] = round
 		go round.execute(context.Background(), stateRoot, false)
 	}

@@ -959,6 +959,10 @@ func TestRebuildFailurePreservesIndex(t *testing.T) {
 	}
 	beforeTables := captureSessionIndex(t, database.DB)
 	beforePublic := captureSessionPublicState(t, database.DB, "earlierrebuild OR laterrebuild")
+	beforeEpoch, err := database.SessionIndexEpoch(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	progress := &sessionProgressRecorder{}
 	_, err = RebuildWithOptions(ctx, database.DB, home, ScanOptions{Progress: progress})
@@ -975,6 +979,41 @@ func TestRebuildFailurePreservesIndex(t *testing.T) {
 	}
 	if !reflect.DeepEqual(afterPublic, beforePublic) {
 		t.Fatalf("Rebuild failure changed Search/List: before=%#v after=%#v", beforePublic, afterPublic)
+	}
+	if afterEpoch, epochErr := database.SessionIndexEpoch(ctx); epochErr != nil || afterEpoch != beforeEpoch {
+		t.Fatalf("failed rebuild changed session epoch: before=%d after=%d err=%v", beforeEpoch, afterEpoch, epochErr)
+	}
+}
+
+func TestRebuildMintsSessionIndexEpoch(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	home := filepath.Join(root, "home")
+	source := filepath.Join(home, ".codex", "sessions", "rebuild.jsonl")
+	if err := os.MkdirAll(filepath.Dir(source), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(source, []byte("{\"type\":\"visible_user_prompt\",\"session_id\":\"rebuild-epoch\",\"payload\":{\"text\":\"visible\"}}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	database, err := store.OpenSessions(ctx, filepath.Join(root, "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	before, err := database.SessionIndexEpoch(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = Rebuild(ctx, database.DB, home); err != nil {
+		t.Fatal(err)
+	}
+	after, err := database.SessionIndexEpoch(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after == before {
+		t.Fatalf("session rebuild retained epoch %d", before)
 	}
 }
 
