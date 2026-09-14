@@ -17,6 +17,7 @@ import (
 
 	"github.com/kitdine/agent-deck/internal/credentialvault"
 	"github.com/kitdine/agent-deck/internal/output"
+	"github.com/kitdine/agent-deck/internal/scanruntime"
 	"github.com/kitdine/agent-deck/internal/store"
 	"github.com/kitdine/agent-deck/internal/usage"
 )
@@ -194,6 +195,13 @@ func TestIsolatedEndToEndFlow(t *testing.T) {
 	runJSON("session.list", "", "session", "list")
 	runJSON("session.show", "", "session", "show", "phase7-run")
 	search := runJSON("session.search", "", "session", "search", "phase7")
+	releaseScan, err := scanruntime.AcquireMaintenance(context.Background(), state, 5*time.Second)
+	if err != nil {
+		t.Fatalf("wait for complete scan round before desktop snapshot: %v", err)
+	}
+	if err = releaseScan(); err != nil {
+		t.Fatalf("release scan maintenance boundary: %v", err)
+	}
 	runJSON("desktop.snapshot", "", "desktop", "snapshot", "--wire-version", "1", "--recent-limit", "5")
 	if !bytes.Contains(search, []byte("phase7 visible prompt")) {
 		t.Fatalf("session search did not return approved synthetic content: %s", search)
