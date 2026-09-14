@@ -277,6 +277,23 @@ var migrations = []migration{
 	{version: 25, statements: []string{
 		`ALTER TABLE quota_envelopes ADD COLUMN backoff_until TEXT NOT NULL DEFAULT ''`,
 	}},
+	// quota_alert_notices is C10's deduplication ledger (quota-alerts task):
+	// one row per notification already delivered, keyed by client, window,
+	// kind, threshold, and window instance. instance_unix is the window's
+	// resets_at for a threshold notice and its observed_reset_at for a reset
+	// notice, in epoch seconds, so instance tolerance and pruning are plain
+	// integer comparisons. It holds no account identifier and no quota figure.
+	{version: 26, statements: []string{
+		`CREATE TABLE quota_alert_notices (
+			client TEXT NOT NULL,
+			window_key TEXT NOT NULL,
+			kind TEXT NOT NULL,
+			threshold REAL NOT NULL DEFAULT 0,
+			instance_unix INTEGER NOT NULL,
+			notified_at TEXT NOT NULL,
+			PRIMARY KEY (client, window_key, kind, threshold, instance_unix)
+		)`,
+	}},
 }
 
 func normalizeUsageEventTimes(ctx context.Context, tx *sql.Tx) error {

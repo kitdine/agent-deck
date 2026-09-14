@@ -468,6 +468,53 @@ threshold produce no further notification.
 same local evidence that sets `observed_reset_at`, not the passing of
 `resets_at`.
 
+Four readings of the above, fixed so an implementer does not have to choose.
+Their sources differ: the first two are operator-approved decisions of the
+quota-alerts task; the last two were added while repairing that task's review
+findings, and are defensive choices open to revision rather than operator
+decisions.
+
+- **Same instance** (operator-approved). Two `resets_at` values within 15
+  minutes of each other name the same occurrence. The routes report one
+  occurrence at different precision — the prose route to the minute, the
+  status-line payload and Codex to the second — so exact equality would notify
+  twice in one occurrence; 15 minutes is far below the shortest window, so two
+  real occurrences are never merged. A window with no `resets_at` has no
+  identifiable occurrence and gets no threshold notice.
+- **Crossing** (operator-approved). A threshold notice is due when the used
+  share is at or above the threshold and none has been sent for that
+  occurrence. The evaluator does not require having seen the previous figure
+  below it: the status-line capture writes observations without passing
+  through the evaluator, so an edge-triggered rule would miss those crossings.
+  Alerts switched on while a window already sits above a threshold therefore
+  notify once for that occurrence.
+- **Only an ongoing occurrence notifies** (review finding QA-R1-F1). A stored
+  window whose `resets_at` is already more than 15 minutes in the past
+  describes an occurrence that has ended; it sends neither notice. When probes
+  stop succeeding, the last good window stays stored (C9), and notifying from
+  it would report a past figure — and, once its ledger entry is pruned, report
+  it again on every evaluation.
+- **Reset notice, once per occurrence** (review findings QA-R1-F2 and QA-R2-F1;
+  the unknown-length narrowing below was chosen by the repair, not decided by
+  the operator). A reset notice is deduplicated by the
+  occurrence's `resets_at`, with the same tolerance, not by
+  `observed_reset_at`: a small same-source drop later in the same occurrence
+  moves `observed_reset_at` forward (C6) but is not a second reset. It is sent
+  only when that `observed_reset_at` falls inside the current occurrence, so a
+  reset observed while alerts were off does not notify after the window has
+  moved on. A window without `resets_at`, or whose length is not reported,
+  gets no reset notice: without a length the current occurrence cannot be
+  bounded, and a sticky `observed_reset_at` from an earlier occurrence would
+  otherwise notify again in every later one — a false notice, where skipping
+  costs only a missed one.
+
+Deduplication state is a small ledger of sent notices (`quota_alert_notices`),
+recorded only after delivery succeeds so a failed delivery is retried, and
+pruned once an occurrence ended more than 31 days ago. Because only ongoing
+occurrences are evaluated, and an instance matches within 15 minutes, no
+pruned entry can ever be needed again. It holds no account identifier and no
+quota figure.
+
 Notification content names the client, the window, and the figure. It carries no
 account identifier.
 

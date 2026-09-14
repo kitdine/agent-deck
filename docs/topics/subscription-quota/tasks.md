@@ -98,7 +98,7 @@ repaired under `ux/settings-quota.md`, whose group had invalidated them.
 | 2. `codex-adapter` | [x] | [x] |
 | 3. `claude-adapters` | [x] | [x] |
 | 4. `gate-and-schedule` | [x] | [x] |
-| 5. `quota-alerts` | [ ] | [ ] |
+| 5. `quota-alerts` | [x] | [x] |
 | 6. `wire-and-cli` | [ ] | [ ] |
 | 7. `desktop-surfaces` | [ ] | [ ] |
 
@@ -495,6 +495,100 @@ fires once, then again after a reset; repeated probes above a threshold produce
 nothing; nothing is evaluated with reading off. Real notification delivery is
 manual acceptance, named below.
 
+Four operator-approved decisions made during implementation. Decisions 1–3 are
+also recorded in architecture.md C10 (the ledger paragraph, and the Same
+instance and Crossing readings); decision 4 is recorded only here:
+
+1. **Deduplication ledger.** Every probe or refresh runs as its own process, so
+   "once per occurrence" needs persisted state. Added `quota_alert_notices` as
+   `internal/store/migrations.go` version 26 (`CurrentSchemaVersion` 25 → 26),
+   keyed by client, window, kind, threshold, and instance in epoch seconds; its
+   read/write methods live in `internal/quota/alerts.go`, so `store.go` is
+   unchanged. `desktop/fixtures/v1/snapshot-complete.json` and
+   `snapshot-empty-client.json` were regenerated for the Doctor `schema` count,
+   and `cmd/agentdeck/main_test.go`'s schema-12 upgrade test now also drops
+   the new table when it downgrades a current database to version 12.
+   A notice is recorded only after delivery succeeds, and pruned 31 days after
+   its occurrence ended. The ledger holds no account identifier or figure.
+2. **Instance tolerance.** Two `resets_at` within 15 minutes are the same
+   occurrence, because the routes report one occurrence at different
+   precision. A window without `resets_at` gets no threshold notice.
+3. **At or above, not edge-triggered.** A threshold notice is due when the used
+   share is at or above the threshold with none sent for that occurrence, so a
+   crossing written by the status-line capture is not missed, and alerts
+   switched on while a window is already above a threshold notify once. A reset
+   notice is sent only for an `observed_reset_at` in the window's current
+   occurrence.
+4. **No caller yet.** `EvaluateAlerts` and `OSANotifier` are the mechanism;
+   calling the evaluator after probes, and supplying `AlertConfig` from the
+   user's settings, is wired in task 6 alongside `RefreshQuota`. `scheduler.go`,
+   `statusline.go`, and `desktop.go` are unchanged. Notification text is
+   English: no approved copy exists for it, so localized wording is left to the
+   surfaces task that owns copy.
+
+**Round 1 repair (2026-09-13)** — see
+[`reviews/quota-alerts.md`](reviews/quota-alerts.md):
+
+1. **QA-R1-F1 (high, fixed):** the evaluator treated the latest stored window
+   as the current occurrence even after its `resets_at` had passed. When probes
+   stop succeeding the last good window stays stored, so alerts switched on
+   later reported a past figure, and once the ledger entry was pruned after 31
+   days every evaluation notified again. A window whose `resets_at` is more
+   than the 15-minute instance tolerance in the past now sends neither notice;
+   with only ongoing occurrences evaluated, pruning can no longer remove an
+   entry the evaluator could still match. New test
+   `TestEvaluateAlertsIgnoresAnOccurrenceThatHasEnded` (repeated evaluation
+   before and after retention; alerts switched on 47 hours after the
+   occurrence ended).
+2. **QA-R1-F2 (medium, fixed):** reset notices were deduplicated by
+   `observed_reset_at`, which any same-source drop moves forward, so a small
+   drop later in the same occurrence notified "has reset" a second time. The
+   ledger instance for a reset notice is now the occurrence's `resets_at`,
+   with the same tolerance as thresholds; `observed_reset_at` only decides
+   whether a reset was observed in this occurrence. A window without
+   `resets_at` gets no reset notice. `TestEvaluateAlertsResetNoticeOncePerObservedReset`
+   became `TestEvaluateAlertsResetNoticeOncePerOccurrence` and now drops 0.5
+   points inside the same occurrence; new test
+   `TestEvaluateAlertsNoResetNoticeWithoutResetsAt`.
+
+**Round 2 repair (2026-09-13)** — see
+[`reviews/quota-alerts.md`](reviews/quota-alerts.md):
+
+1. **QA-R2-F1 (medium, fixed):** introduced by QA-R1-F2's fix. With reset
+   notices deduplicated per occurrence, `resetInCurrentOccurrence` accepted
+   any `observed_reset_at` for a window whose length is not reported, so one
+   real reset's sticky `observed_reset_at` notified "has reset" again in each
+   later occurrence, even one where usage only rose. Of the review's two
+   directions, the conservative one: a window of unknown length gets no reset
+   notice, since its current occurrence cannot be bounded — a missed notice
+   rather than a false one. Recorded in architecture.md C10. New test
+   `TestEvaluateAlertsNoResetNoticeWhenWindowLengthUnknown` (real reset, then
+   a later occurrence with no decrease: no notice).
+
+**Round 3 repair (2026-09-13)** — see
+[`reviews/quota-alerts.md`](reviews/quota-alerts.md):
+
+1. **QA-R3-F1 (low, fixed):** architecture.md C10 introduced four readings as
+   "Three readings … (quota-alerts task, operator-approved)", but only the
+   first two (Same instance, Crossing) are operator decisions (decisions 2 and
+   3 above); the last two came from review repairs, including QA-R2-F1's
+   narrowing that a window of unknown length gets no reset notice, which no
+   operator decided. Took the review's option (a), text only: the intro now
+   counts four and says which are which, and each bullet names its source —
+   operator-approved, or QA-R1-F1, or QA-R1-F2 and QA-R2-F1. No code or test
+   changed.
+
+**Round 4 repair (2026-09-13)** — see
+[`reviews/quota-alerts.md`](reviews/quota-alerts.md):
+
+1. **QA-R4-F1 (low, fixed):** the introduction to task 5's four decisions
+   said they were "recorded in architecture.md C10 as well", but decision 4
+   (no caller yet; English notification text) appears nowhere in
+   architecture.md. Took the review's option (a), text only: the introduction
+   now says decisions 1–3 are also recorded in C10 and names where, and that
+   decision 4 is recorded only in this file. No contract text was added to
+   C10, and no code or test changed.
+
 ### 6. `wire-and-cli`
 
 **Depends on:** tasks 1–5.
@@ -530,6 +624,11 @@ decoder. Focused fixtures stay beside those tests.
   `cmd/agentdeck/quota.go` addition provides. `DesktopPreferences.swift`'s
   `quotaProbeEnabled`/`quotaProbeInterval` (added in task 4) are this
   transition's trigger; this task wires the call itself.
+- Calling `quota.EvaluateAlerts` after each quota refresh with the user's alert
+  settings (`quotaAlerts`, `quotaThresholds`, `quotaResetNotice`) and
+  `quota.OSANotifier` — C10. Deferred here from task 5 (`quota-alerts`), which
+  provides the evaluator, ledger, and notifier but no caller, the same way task
+  4's `RefreshQuota` has none yet.
 
 **Verification:** L1 for the payload shape including the absent-section case;
 L2 for the CLI surface and its exit codes, including the unregister-on-off
@@ -674,9 +773,16 @@ Swift verification limitations in this environment (no full Xcode), and
 [`reviews/gate-and-schedule.md`](reviews/gate-and-schedule.md) for the
 findings, the reproducers, and the completion gate.
 
-Tasks 5–7 exist in Beads (`ad-sq-quota-alerts-dev` through
+Task 5 `quota-alerts` passed Round 5 re-review on 2026-09-13 and awaits an
+authorized commit; its coordination state is tracked in Beads
+`ad-sq-quota-alerts-dev`. All five findings — QA-R1-F1, QA-R1-F2, QA-R2-F1,
+QA-R3-F1, and QA-R4-F1 — are closed. See
+[`reviews/quota-alerts.md`](reviews/quota-alerts.md) for the findings, the
+reproducers, and the completion gate.
+
+Tasks 6–7 exist in Beads (`ad-sq-wire-and-cli-dev` and
 `ad-sq-desktop-surfaces-dev`) with dependency ordering matching this file;
-none have started.
+neither has started.
 
 The base of this worktree is `4737076`; `main` has since advanced by ten
 commits, including the assembled `schema-version-signal` surfaces. The surface
