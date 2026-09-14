@@ -1591,6 +1591,24 @@ func sessionCheckpointFingerprint(ctx context.Context, sessions *store.Store, ho
 	return fmt.Sprintf("v1:%d:%s", epoch, fingerprint), nil
 }
 
+func sessionWatchFingerprint(ctx context.Context, stateRoot, home string) (string, error) {
+	fingerprint, err := watch.FingerprintRoots(sessionWatchRoots(home)...)
+	if err != nil {
+		return "", err
+	}
+	if _, err = os.Stat(filepath.Join(stateRoot, "sessions.sqlite3")); errors.Is(err, os.ErrNotExist) {
+		return "v1:0:" + fingerprint, nil
+	} else if err != nil {
+		return "", err
+	}
+	sessions, err := store.OpenSessionsReadOnly(ctx, stateRoot)
+	if err != nil {
+		return "", err
+	}
+	defer sessions.Close()
+	return sessionCheckpointFingerprint(ctx, sessions, home)
+}
+
 func parseScanScope(value string) (scanruntime.Scope, error) {
 	if value == "" || value == string(scanruntime.ScopeBoth) {
 		return scanruntime.ScopeBoth, nil
@@ -2993,10 +3011,7 @@ func newWatchCommand(opts *commandOptions) *cobra.Command {
 		}
 		if requested["session"] {
 			filtered = append(filtered, watch.Source{Domain: "session", Snapshot: func(ctx context.Context) (string, error) {
-				if err := openSessions(ctx); err != nil {
-					return "", err
-				}
-				return sessionCheckpointFingerprint(ctx, sessions, home)
+				return sessionWatchFingerprint(ctx, stateDir, home)
 			}, Scan: func(ctx context.Context) (int, error) {
 				if err := openSessions(ctx); err != nil {
 					return 0, err

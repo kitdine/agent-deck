@@ -194,6 +194,16 @@ func TestLateScopeQueuesOneFollowUpBeforeOtherDomainCompletes(t *testing.T) {
 	}
 }
 
+func TestRequestAfterInventoryObservationQueuesFollowUp(t *testing.T) {
+	current := newRoundWithID("home", "round-1", 1)
+	current.inventoryOnce.Do(func() { close(current.inventoryObserved) })
+	server := &server{round: current, rounds: map[string]*round{current.id: current}, nextObservation: 1}
+	next, start, err := server.selectRoundLocked("home", ScopeUsage)
+	if err != nil || !start || next == current || next.observation != 2 {
+		t.Fatalf("follow-up=%#v start=%t err=%v", next, start, err)
+	}
+}
+
 func TestReceiptJournalPersistsAcceptanceAndReplaysTerminalResult(t *testing.T) {
 	state := t.TempDir()
 	journal, err := openReceiptJournal(state)

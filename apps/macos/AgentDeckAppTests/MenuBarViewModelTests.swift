@@ -150,6 +150,7 @@ final class MenuBarViewModelTests: XCTestCase {
 		let host = StubDesktopHost(behavior: .failure(HelperExecutionError.timedOut))
 		let model = await makeModel(host: host)
 		await model.coordinator.refresh()
+		await Task.yield()
 
 		XCTAssertEqual(model.surface, .errorSurface)
 		XCTAssertEqual(model.errorCopy, t(DesktopCopy.refreshTimedOut))

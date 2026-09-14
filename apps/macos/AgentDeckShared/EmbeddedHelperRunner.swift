@@ -1387,7 +1387,7 @@ public final class DesktopRefreshCoordinator {
 	}
 
 	private func publishProgress(_ progress: DesktopScanProgress, generation: Int) {
-		guard generation == self.generation, case .refreshing = state else {
+		guard generation == self.generation else {
 			return
 		}
 		if let current = scanProgress, progress.sequence < current.sequence {

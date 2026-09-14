@@ -3,9 +3,12 @@
 package scanruntime
 
 import (
+	"os/exec"
 	"syscall"
 	"time"
 )
+
+func detachWorkerProcess(cmd *exec.Cmd) { cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true} }
 
 func currentProcessResources() processResources {
 	var usage syscall.Rusage

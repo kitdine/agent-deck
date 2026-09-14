@@ -2371,6 +2371,18 @@ func TestSessionCheckpointFingerprintBindsSessionEpoch(t *testing.T) {
 	}
 }
 
+func TestSessionWatchFingerprintMissingStateIsReadOnly(t *testing.T) {
+	state := filepath.Join(t.TempDir(), "missing")
+	home := t.TempDir()
+	fingerprint, err := sessionWatchFingerprint(context.Background(), state, home)
+	if err != nil || !strings.HasPrefix(fingerprint, "v1:0:") {
+		t.Fatalf("fingerprint=%q err=%v", fingerprint, err)
+	}
+	if _, err = os.Stat(state); !os.IsNotExist(err) {
+		t.Fatalf("read-only fingerprint created state: %v", err)
+	}
+}
+
 func TestSessionPurgeClearsOnlySessionCheckpointAndWatchBootstraps(t *testing.T) {
 	ctx := context.Background()
 	root := t.TempDir()

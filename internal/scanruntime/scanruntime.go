@@ -329,6 +329,7 @@ func launchWorker(ctx context.Context, executable, stateRoot string) error {
 	cmd.Stdin = devNull
 	cmd.Stdout = devNull
 	cmd.Stderr = devNull
+	detachWorkerProcess(cmd)
 	if err = cmd.Start(); err != nil {
 		_ = devNull.Close()
 		return err
@@ -575,7 +576,7 @@ func (s *server) selectRoundLocked(home string, scope Scope) (*round, bool, erro
 	if !s.round.completed() && s.round.home != home {
 		return nil, false, errors.New("incompatible scan worker configuration")
 	}
-	if s.round.covers(scope) {
+	if !s.round.observedInventory() && s.round.covers(scope) {
 		return s.round, false, nil
 	}
 	if s.pending != nil {
@@ -722,20 +723,22 @@ type round struct {
 	predecessor *round
 	onTerminal  func(Result) error
 
-	done         chan struct{}
-	usageDone    chan struct{}
-	sessionDone  chan struct{}
-	once         sync.Once
-	usageOnce    sync.Once
-	sessionOnce  sync.Once
-	mu           sync.RWMutex
-	result       Result
-	progress     Progress
-	progressSeq  uint64
-	terminalErr  error
-	cacheNow     func() time.Time
-	openCore     func(context.Context, string) (*store.Store, error)
-	openSessions func(context.Context, string) (*store.Store, error)
+	done              chan struct{}
+	usageDone         chan struct{}
+	sessionDone       chan struct{}
+	once              sync.Once
+	usageOnce         sync.Once
+	sessionOnce       sync.Once
+	mu                sync.RWMutex
+	result            Result
+	progress          Progress
+	progressSeq       uint64
+	terminalErr       error
+	cacheNow          func() time.Time
+	openCore          func(context.Context, string) (*store.Store, error)
+	openSessions      func(context.Context, string) (*store.Store, error)
+	inventoryObserved chan struct{}
+	inventoryOnce     sync.Once
 }
 
 type roundRunner func(context.Context, string, string, string, bool) Result
@@ -746,17 +749,27 @@ func newRound(home string) *round {
 
 func newRoundWithID(home, id string, observation uint64) *round {
 	return &round{
-		id:          id,
-		home:        home,
-		observation: observation,
-		done:        make(chan struct{}),
-		usageDone:   make(chan struct{}),
-		sessionDone: make(chan struct{}),
+		id:                id,
+		home:              home,
+		observation:       observation,
+		done:              make(chan struct{}),
+		usageDone:         make(chan struct{}),
+		sessionDone:       make(chan struct{}),
+		inventoryObserved: make(chan struct{}),
 		progress: Progress{
 			Stage:   "waiting",
 			Usage:   DomainProgress{State: "pending"},
 			Session: DomainProgress{State: "pending"},
 		},
+	}
+}
+
+func (r *round) observedInventory() bool {
+	select {
+	case <-r.inventoryObserved:
+		return true
+	default:
+		return false
 	}
 }
 
@@ -806,6 +819,7 @@ func (r *round) executeProduction(ctx context.Context, stateRoot string, lockHel
 	discoverStarted := time.Now()
 	sources, discoverErr := ingest.Discover(r.home)
 	r.setDiscovery(time.Since(discoverStarted).Milliseconds())
+	r.inventoryOnce.Do(func() { close(r.inventoryObserved) })
 	if discoverErr != nil {
 		r.setUsage(failedUsage(discoverErr, 0))
 		r.setSession(failedSession(discoverErr, 0))

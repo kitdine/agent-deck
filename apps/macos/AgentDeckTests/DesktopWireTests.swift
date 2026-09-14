@@ -14,7 +14,7 @@ final class DesktopWireTests: XCTestCase {
         XCTAssertTrue(envelope.warnings.contains("sessions_unavailable"))
         let schema = try XCTUnwrap(envelope.data.health.checks.first { $0.code == "schema_ahead" })
         XCTAssertEqual(schema.count, 99)
-		XCTAssertEqual(schema.supportedCount, 25)
+		XCTAssertEqual(schema.supportedCount, 26)
         XCTAssertNil(schema.recoveryCommand)
         let hook = try XCTUnwrap(envelope.data.health.checks.first { $0.code == "hook_deliveries_dropped" })
         XCTAssertEqual(hook.count, 2)
