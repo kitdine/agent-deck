@@ -6,11 +6,13 @@ import XCTest
 final class DesktopRefreshCoordinatorTests: XCTestCase {
 	func testInitialRefreshPublishesMemoryAndAppGroupProjection() async throws {
 		let complete = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
+		let quotaRefresher = RecordingQuotaRefresher()
 		let temporaryDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
 		defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
 		let store = AppGroupSnapshotStore(directoryURL: temporaryDirectory)
 		let coordinator = DesktopRefreshCoordinator(
 			host: ScriptedSnapshotRefresher(responses: [.snapshot(complete)]),
+			quotaRefresher: quotaRefresher,
 			snapshotStore: store
 		)
 
@@ -19,6 +21,24 @@ final class DesktopRefreshCoordinatorTests: XCTestCase {
 		XCTAssertEqual(coordinator.state, .ready(complete))
 		XCTAssertEqual(coordinator.latestSnapshot, complete)
 		XCTAssertEqual(try store.read(), AppGroupDesktopSnapshotV1(envelope: complete))
+		let quotaCalls = await quotaRefresher.recordedManualValues()
+		XCTAssertEqual(quotaCalls, [false])
+	}
+
+	func testUserRefreshRequestsManualQuotaBeforeReadingTheSnapshot() async throws {
+		let complete = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
+		let quotaRefresher = RecordingQuotaRefresher()
+		let coordinator = DesktopRefreshCoordinator(
+			host: ScriptedSnapshotRefresher(responses: [.snapshot(complete)]),
+			quotaRefresher: quotaRefresher,
+			snapshotStore: nil
+		)
+
+		await coordinator.refresh()
+
+		let quotaCalls = await quotaRefresher.recordedManualValues()
+		XCTAssertEqual(quotaCalls, [true])
+		XCTAssertEqual(coordinator.latestSnapshot, complete)
 	}
 
 	func testRefreshFailureRetainsLastGoodStateAndCache() async throws {
@@ -134,6 +154,13 @@ final class DesktopRefreshCoordinatorTests: XCTestCase {
 
 private enum CacheReplacementError: Error {
 	case failed
+}
+
+private actor RecordingQuotaRefresher: DesktopQuotaRefreshing {
+	private var manualValues = [Bool]()
+
+	func refreshQuota(manual: Bool) async { manualValues.append(manual) }
+	func recordedManualValues() -> [Bool] { manualValues }
 }
 
 @MainActor

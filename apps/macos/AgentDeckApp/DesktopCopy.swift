@@ -214,6 +214,64 @@ enum DesktopCopy {
 	static let settingsMenuBarScopeAll = "All clients"
 	static let settingsMenuBarScopeFollow = "Follow panel filter"
 
+	// Settings window — subscription quota (ux/settings-quota.md).
+	static let settingsGroupQuota = "Subscription quota"
+	static let settingsQuotaProbe = "Read quota"
+	static let settingsQuotaProbeHint =
+		"Only for clients whose provider is official. Invokes your already-signed-in client command; reads no credential"
+	static let settingsQuotaInterval = "Read interval"
+	static let settingsQuotaIntervalHint =
+		"A manual refresh reads quota with the snapshot; background refresh keeps this separate, slower interval"
+	static let settingsQuotaInterval5m = "5m"
+	static let settingsQuotaInterval15m = "15m"
+	static let settingsQuotaInterval30m = "30m"
+	static let settingsQuotaStatusline = "Enable the Claude status-line route"
+	static let settingsQuotaStatuslineHint =
+		"Writes statusLine into ~/.claude/settings.json and chains your existing command; turning it off restores the previous configuration"
+	static let settingsQuotaStatuslineChained = "Will chain: %@"
+	static let settingsQuotaStatuslineNone = "No statusLine is currently configured"
+	static let settingsQuotaStatuslineWriteRefused =
+		"Could not write ~/.claude/settings.json, so the switch stayed off. Check the file's permissions, then turn it on again to retry."
+	static let settingsQuotaStatuslineRestoreIncomplete =
+		"AgentDeck's statusLine was removed, but the previous value had changed in the meantime and was not restored. Check ~/.claude/settings.json by hand."
+	static let settingsQuotaAlerts = "Quota alerts"
+	static let settingsQuotaAlertsHint = "Off by default. When on, each window notifies once per threshold crossing"
+	static let settingsQuotaThresholds = "Alert thresholds"
+	static let settingsQuotaThreshold75 = "75%"
+	static let settingsQuotaThreshold90 = "90%"
+	static let settingsQuotaThresholdBoth = "75% · 90%"
+	static let settingsQuotaResetNotice = "Notify when a window resets"
+	/// Not part of ux/settings-quota.md's own copy table: that document's two
+	/// named failures are specific to the status-line file write. A plain
+	/// settings write goes to AgentDeck's own core state and fails only on a
+	/// helper transport problem (missing helper, timeout) — an edge case the
+	/// document does not name because it assumes AgentDeck's own database
+	/// write succeeds. Reuses the existing failure-row component with its own
+	/// generic wording rather than inventing a second row shape for it.
+	static let settingsQuotaWriteFailed = "Could not save this setting. Check the AgentDeck helper and try again."
+	static let panelQuota = "Quota"
+	static let quotaTitle = "Subscription quota"
+	static let quotaNotRead = "Not read"
+	static let quotaNotApplicable = "Not applicable"
+	static let quotaUnavailable = "Unavailable"
+	static let quotaAttributionUnconfirmed = "Account attribution unconfirmed"
+	static let quotaNoWindows = "No quota window to show"
+	static let quotaOfficialResets = "Official resets"
+	static let quotaLocallyObservedReset = "Locally observed reset"
+	static let quotaLeft = "%lld left"
+	static let quotaWindow5h = "5h window"
+	static let quotaWindow7d = "7d window"
+	static let quotaResetsIn = "Resets in %@"
+	static let quotaReasonNotReported = "This client does not report it"
+	static let quotaReasonNotOfficial = "Provider is not official; not probed"
+	static let quotaReasonNeverProbed = "Never probed successfully"
+	static let quotaReasonProbeFailed = "Probe failed"
+	static let quotaReasonParseFailed = "Output shape not recognized"
+	static let quotaReasonNotConsented = "Status-line route not enabled"
+	static let quotaReasonProbeDisabled = "Quota reading is off"
+	static let quotaCreditGranted = "Granted %@"
+	static let quotaCreditExpires = "Expires in %@"
+
 	/// The inventory the localization test walks. Every key above appears here.
 	static let allKeys: [String] = [
 		loading, offline, failing, partial, emptyToday, emptySnapshot,
@@ -221,7 +279,13 @@ enum DesktopCopy {
 		badgedOffline, badgedFailing, qualifierList,
 		clientFilter, periodFilter, clientAll, periodToday, period7d, period30d,
 		costIncomplete, costIncompleteAttribution, heroCounts,
-		panelUsage, panelBreakdown, panelAttribution, panelSessions,
+		panelQuota, panelUsage, panelBreakdown, panelAttribution, panelSessions,
+		quotaNotRead, quotaNotApplicable, quotaUnavailable,
+		quotaAttributionUnconfirmed, quotaNoWindows, quotaOfficialResets,
+		quotaLocallyObservedReset, quotaLeft, quotaWindow5h, quotaWindow7d,
+		quotaResetsIn, quotaReasonNotReported, quotaReasonNotOfficial,
+		quotaReasonNeverProbed, quotaReasonProbeFailed, quotaReasonParseFailed,
+		quotaReasonNotConsented, quotaReasonProbeDisabled, quotaCreditGranted, quotaCreditExpires,
 		panelUnavailableMark, sectionUnavailable,
 		trendTitle, trendWindow, trendHours, trendEvents, trendNow,
 		chipAveragePerDay, chipPeak, chipCacheHit,
@@ -273,6 +337,15 @@ enum DesktopCopy {
 		settingsMenuBarValueTokens, settingsMenuBarValueIcon,
 		settingsMenuBarScope, settingsMenuBarScopeNote, settingsMenuBarScopeAll,
 		settingsMenuBarScopeFollow,
+		settingsGroupQuota, settingsQuotaProbe, settingsQuotaProbeHint,
+		settingsQuotaInterval, settingsQuotaIntervalHint,
+		settingsQuotaInterval5m, settingsQuotaInterval15m, settingsQuotaInterval30m,
+		settingsQuotaStatusline, settingsQuotaStatuslineHint,
+		settingsQuotaStatuslineChained, settingsQuotaStatuslineNone,
+		settingsQuotaStatuslineWriteRefused, settingsQuotaStatuslineRestoreIncomplete,
+		settingsQuotaAlerts, settingsQuotaAlertsHint, settingsQuotaThresholds,
+		settingsQuotaThreshold75, settingsQuotaThreshold90, settingsQuotaThresholdBoth,
+		settingsQuotaResetNotice, settingsQuotaWriteFailed,
 	]
 }
 

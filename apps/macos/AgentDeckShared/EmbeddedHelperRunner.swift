@@ -817,6 +817,227 @@ private func classifyProviderUseOutput(_ output: HelperProcessOutput) -> Provide
 	return .opaque
 }
 
+// MARK: - Quota settings transport (subscription-quota task 7)
+//
+// `desktop quota-settings` and `desktop quota-statusline` always write their
+// full result to stdout before returning a non-zero exit on a partial
+// failure (task 6's `runDesktopQuotaSettings`/`runDesktopQuotaStatusLine`):
+// the settings view or the statusline outcome, including a `failed` or
+// `restore_incomplete` sub-result, is data on stdout, not something read off
+// the exit code or a stderr error envelope. So unlike `switchProvider`'s
+// `classifyProviderUseOutput`, these two only need to decode stdout — an
+// exit status is not part of their presentation contract.
+
+/// C9's three background cadences, spelled the way `time.Duration.String()`
+/// renders them (`5m0s`) — the wire form `QuotaProbeInterval`'s own raw value
+/// does not share, since it decodes an integer number of minutes, not text.
+public enum DesktopQuotaIntervalV1: String, Codable, Equatable, Sendable {
+	case fiveMinutes = "5m0s"
+	case fifteenMinutes = "15m0s"
+	case thirtyMinutes = "30m0s"
+
+	public var flagValue: String {
+		switch self {
+		case .fiveMinutes: "5m"
+		case .fifteenMinutes: "15m"
+		case .thirtyMinutes: "30m"
+		}
+	}
+}
+
+public struct DesktopQuotaSettingsValuesV1: Codable, Equatable, Sendable {
+	public let reading: Bool
+	public let interval: DesktopQuotaIntervalV1
+	public let alerts: Bool
+	public let thresholds: [Double]
+	public let resetNotice: Bool
+	public let statusline: Bool
+
+	enum CodingKeys: String, CodingKey {
+		case reading, alerts, thresholds, statusline, interval
+		case resetNotice = "reset_notice"
+	}
+
+	public init(reading: Bool, interval: DesktopQuotaIntervalV1, alerts: Bool, thresholds: [Double], resetNotice: Bool, statusline: Bool) {
+		self.reading = reading
+		self.interval = interval
+		self.alerts = alerts
+		self.thresholds = thresholds
+		self.resetNotice = resetNotice
+		self.statusline = statusline
+	}
+}
+
+/// `usagehook.Outcome`'s closed set (internal/usagehook/config.go). An
+/// unrecognized raw value decodes as `.unknown` rather than failing the whole
+/// settings read — a forward-compatible outcome must still let the rest of
+/// the result render.
+public enum DesktopUsageHookOutcomeV1: String, Codable, Equatable, Sendable {
+	case configured
+	case unchanged
+	case removed
+	case absent
+	case skipped
+	case failed
+	case restoreIncomplete = "restore_incomplete"
+	case unknown
+
+	public init(from decoder: Decoder) throws {
+		let raw = try decoder.singleValueContainer().decode(String.self)
+		self = DesktopUsageHookOutcomeV1(rawValue: raw) ?? .unknown
+	}
+}
+
+/// The status-line write/restore result the settings-quota UX names: only
+/// `outcome` and `error` reach presentation, so the client/path/configuration
+/// state fields `usagehook.Result` also carries are not decoded here.
+public struct DesktopUsageHookResultV1: Codable, Equatable, Sendable {
+	public let outcome: DesktopUsageHookOutcomeV1
+	public let error: String?
+
+	enum CodingKeys: String, CodingKey {
+		case outcome, error
+	}
+
+	public init(outcome: DesktopUsageHookOutcomeV1, error: String? = nil) {
+		self.outcome = outcome
+		self.error = error
+	}
+
+	public init(from decoder: Decoder) throws {
+		let container = try decoder.container(keyedBy: CodingKeys.self)
+		outcome = try container.decodeIfPresent(DesktopUsageHookOutcomeV1.self, forKey: .outcome) ?? .unknown
+		error = try container.decodeIfPresent(String.self, forKey: .error)
+	}
+}
+
+public struct DesktopQuotaSettingsResultV1: Codable, Equatable, Sendable {
+	public let settings: DesktopQuotaSettingsValuesV1
+	public let statuslineRestore: DesktopUsageHookResultV1?
+
+	enum CodingKeys: String, CodingKey {
+		case settings
+		case statuslineRestore = "statusline_restore"
+	}
+}
+
+public struct DesktopQuotaStatusLineResultV1: Codable, Equatable, Sendable {
+	public let consent: Bool
+	public let result: DesktopUsageHookResultV1
+}
+
+private struct DesktopQuotaEnvelopeV1<Data: Codable & Equatable & Sendable>: Codable, Equatable, Sendable {
+	let data: Data
+}
+
+/// What the desired write leaves unspecified stays at its current value —
+/// callers always resend every field they know, matching `quota-settings`'
+/// per-flag `Changed()` semantics without needing to track which single field
+/// moved.
+public struct DesktopQuotaSettingsDesiredV1: Equatable, Sendable {
+	public var reading: Bool
+	public var interval: DesktopQuotaIntervalV1
+	public var alerts: Bool
+	public var thresholds: [Double]
+	public var resetNotice: Bool
+
+	public init(reading: Bool, interval: DesktopQuotaIntervalV1, alerts: Bool, thresholds: [Double], resetNotice: Bool) {
+		self.reading = reading
+		self.interval = interval
+		self.alerts = alerts
+		self.thresholds = thresholds
+		self.resetNotice = resetNotice
+	}
+}
+
+/// One transport call's outcome as the controller needs to render it: a
+/// decoded result, or a reason nothing could be decoded at all (the helper is
+/// missing, the call timed out, or stdout was not the expected JSON) — as
+/// distinct from a *decoded* `failed`/`restore_incomplete` sub-result, which
+/// is success at the transport layer carrying a real failure as data.
+public enum DesktopQuotaTransportOutcome<Value: Equatable & Sendable>: Equatable, Sendable {
+	case decoded(Value)
+	case undecodable
+}
+
+public protocol QuotaSettingsTransport: Sendable {
+	func loadQuotaSettings() async -> DesktopQuotaTransportOutcome<DesktopQuotaSettingsResultV1>
+	func applyQuotaSettings(_ desired: DesktopQuotaSettingsDesiredV1) async -> DesktopQuotaTransportOutcome<DesktopQuotaSettingsResultV1>
+	func setQuotaStatusLine(enabled: Bool) async -> DesktopQuotaTransportOutcome<DesktopQuotaStatusLineResultV1>
+}
+
+public protocol DesktopQuotaRefreshing: Sendable {
+	func refreshQuota(manual: Bool) async
+}
+
+extension EmbeddedHelperRunner: DesktopQuotaRefreshing {
+	public func refreshQuota(manual: Bool) async {
+		var arguments = ["desktop", "quota-refresh"]
+		if manual { arguments.append("--manual") }
+		let _: DesktopQuotaTransportOutcome<DesktopQuotaRefreshResultV1> = await runQuotaCommand(arguments)
+	}
+}
+
+public struct DesktopQuotaRefreshResultV1: Codable, Equatable, Sendable {
+	public let clients: [String]
+	public let gateReasons: [String: String?]
+
+	enum CodingKeys: String, CodingKey {
+		case clients
+		case gateReasons = "gate_reasons"
+	}
+}
+
+extension EmbeddedHelperRunner: QuotaSettingsTransport {
+	public func loadQuotaSettings() async -> DesktopQuotaTransportOutcome<DesktopQuotaSettingsResultV1> {
+		await runQuotaSettings(arguments: [])
+	}
+
+	public func applyQuotaSettings(_ desired: DesktopQuotaSettingsDesiredV1) async -> DesktopQuotaTransportOutcome<DesktopQuotaSettingsResultV1> {
+		await runQuotaSettings(arguments: [
+			"--reading", desired.reading ? "on" : "off",
+			"--interval", desired.interval.flagValue,
+			"--alerts", desired.alerts ? "on" : "off",
+			"--thresholds", desired.thresholds.map { String(format: $0.truncatingRemainder(dividingBy: 1) == 0 ? "%.0f" : "%g", $0) }.joined(separator: ","),
+			"--reset-notice", desired.resetNotice ? "on" : "off",
+		])
+	}
+
+	private func runQuotaSettings(arguments: [String]) async -> DesktopQuotaTransportOutcome<DesktopQuotaSettingsResultV1> {
+		await runQuotaCommand(["desktop", "quota-settings"] + arguments)
+	}
+
+	public func setQuotaStatusLine(enabled: Bool) async -> DesktopQuotaTransportOutcome<DesktopQuotaStatusLineResultV1> {
+		await runQuotaCommand(["desktop", "quota-statusline", enabled ? "enable" : "disable"])
+	}
+
+	private func runQuotaCommand<Value: Codable & Equatable & Sendable>(_ subcommand: [String]) async -> DesktopQuotaTransportOutcome<Value> {
+		let executableURL: URL
+		do {
+			executableURL = try embeddedHelperURL()
+		} catch {
+			return .undecodable
+		}
+		let output: HelperProcessOutput
+		do {
+			output = try await process.run(
+				executableURL: executableURL,
+				arguments: ["--format", "json"] + subcommand,
+				environment: environment,
+				timeout: timeout
+			)
+		} catch {
+			return .undecodable
+		}
+		guard !output.stdout.isEmpty,
+			let envelope = try? JSONDecoder().decode(DesktopQuotaEnvelopeV1<Value>.self, from: output.stdout)
+		else {
+			return .undecodable
+		}
+		return .decoded(envelope.data)
+	}
+}
+
 @MainActor
 public protocol DesktopSnapshotRefreshing: AnyObject {
 	func refresh(recentLimit: Int) async throws -> DesktopWireEnvelopeV1
@@ -1077,15 +1298,18 @@ public final class DesktopRefreshCoordinator {
 	public private(set) var latestSnapshot: DesktopWireEnvelopeV1?
 
 	private let host: any DesktopSnapshotRefreshing
+	private let quotaRefresher: (any DesktopQuotaRefreshing)?
 	private let snapshotStore: AppGroupSnapshotStore?
 	@ObservationIgnored private var activeRefresh: Task<Void, Never>?
 	@ObservationIgnored private var generation = 0
 
 	public init(
 		host: any DesktopSnapshotRefreshing = DesktopHost(),
+		quotaRefresher: (any DesktopQuotaRefreshing)? = nil,
 		snapshotStore: AppGroupSnapshotStore? = AppGroupSnapshotStore()
 	) {
 		self.host = host
+		self.quotaRefresher = quotaRefresher
 		self.snapshotStore = snapshotStore
 	}
 
@@ -1094,13 +1318,14 @@ public final class DesktopRefreshCoordinator {
 	@discardableResult
 	public func startInitialRefresh() -> Task<Void, Never> {
 		Task { [weak self] in
-			await self?.refresh()
+			await self?.refresh(manualQuota: false)
 		}
 	}
 
 	public func refresh(
 		recentLimit: Int = EmbeddedHelperRunner.defaultRecentLimit,
-		replacingActiveRefresh: Bool = false
+		replacingActiveRefresh: Bool = false,
+		manualQuota: Bool = true
 	) async {
 		if let activeRefresh {
 			guard replacingActiveRefresh else {
@@ -1122,6 +1347,8 @@ public final class DesktopRefreshCoordinator {
 				return
 			}
 			do {
+				await self.quotaRefresher?.refreshQuota(manual: manualQuota)
+				guard !Task.isCancelled else { return }
 				let envelope = try await self.host.refresh(recentLimit: recentLimit)
 				guard !Task.isCancelled else {
 					return

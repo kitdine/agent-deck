@@ -8,13 +8,24 @@ struct WidgetDesktopSnapshotV1: Codable, Equatable, Sendable {
 	let nextRefreshAt: String
 	let partial: Bool
 	let usage: WidgetUsageSnapshotV1
+	let subscription: DesktopSubscriptionSnapshotV1
 
 	enum CodingKeys: String, CodingKey {
 		case schemaVersion = "schema_version"
 		case generatedAt = "generated_at"
 		case nextRefreshAt = "next_refresh_at"
 		case partial
-		case usage
+		case usage, subscription
+	}
+
+	init(from decoder: Decoder) throws {
+		let container = try decoder.container(keyedBy: CodingKeys.self)
+		schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
+		generatedAt = try container.decode(String.self, forKey: .generatedAt)
+		nextRefreshAt = try container.decode(String.self, forKey: .nextRefreshAt)
+		partial = try container.decode(Bool.self, forKey: .partial)
+		usage = try container.decode(WidgetUsageSnapshotV1.self, forKey: .usage)
+		subscription = try container.decodeIfPresent(DesktopSubscriptionSnapshotV1.self, forKey: .subscription) ?? .unavailable
 	}
 }
 

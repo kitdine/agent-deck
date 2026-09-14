@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-09-08
-updated: 2026-09-10
+updated: 2026-09-14
 ---
 
 # Subscription Quota — Tasks
@@ -100,7 +100,7 @@ repaired under `ux/settings-quota.md`, whose group had invalidated them.
 | 4. `gate-and-schedule` | [x] | [x] |
 | 5. `quota-alerts` | [x] | [x] |
 | 6. `wire-and-cli` | [x] | [x] |
-| 7. `desktop-surfaces` | [ ] | [ ] |
+| 7. `desktop-surfaces` | [x] | [x] |
 
 ### 1. `quota-domain`
 
@@ -801,10 +801,44 @@ manual acceptance below. Where the implementation and a ux document disagree,
 the prototype decides; where the prototype and a document disagree, the
 prototype is right and the document is corrected.
 
+**Round 1 repair (2026-09-14)** — see
+[`reviews/desktop-surfaces.md`](reviews/desktop-surfaces.md):
+
+1. **DS-R1-F1 (medium, repaired after Round 2 remained open):** the systemLarge
+   quota Widget stacks Codex and Claude vertically. Both client blocks receive
+   the remaining body height through equal `maxHeight` slots and are vertically
+   centred inside their own slot; the divider exists only between two rendered
+   clients, and a one-client result uses a single slot with no empty reserved
+   half. The regression renders the real `AgentDeckWidgetView`, captures each
+   slot and intrinsic client-content frame through SwiftUI geometry preferences,
+   and asserts equal slot heights plus matching content/slot midpoints. Changing
+   the production slot back to `.top` moves those midpoints apart and fails the
+   test; this replaces the earlier enum-only protection that Round 2 rejected.
+2. **DS-R1-F2 (medium, repaired):** quota freshness no longer reads the desktop
+   snapshot generation clock. Each Widget family derives the oldest
+   `observed_at` among the clients/windows it actually presents; both footer
+   time and aging qualifiers use that instant. With no successful observation,
+   the footer reports the applicable closed reason instead of saying it was
+   updated now. The regression separates a fresh snapshot from older Codex and
+   Claude observations and asserts the oldest displayed observation wins.
+3. **DS-R1-F3 (medium, repaired):** settings writes now stage user intent
+   optimistically and coalesce overlapping changes into the latest complete
+   desired state. A response cannot overwrite a newer pending intent; after it
+   completes, the queued full state is submitted. A failed write keeps the
+   desired state for a later retrying change while retaining the explicit error
+   row. Suspended-transport tests cover overlapping changes and failure/retry,
+   including final agreement between core response, controller, and local
+   reading/interval mirrors.
+
 ## Manual acceptance
 
 Named here because no specimen settles them. Each needs an explicit result —
 performed, or waived by the operator with the waiver recorded:
+
+**Task 7 operator waiver (2026-09-14):** the operator explicitly waived every
+`desktop-surfaces` manual-acceptance row below for this implementation round.
+No row is represented as performed. Task 3 and task 5 rows are outside this
+waiver and retain their existing owners and status.
 
 | What | Owning task |
 | --- | --- |
@@ -904,8 +938,17 @@ WC-R2-F1 — are closed. The Round 2 repair's operator-approved storage change
 task 6's own section above. See [`reviews/wire-and-cli.md`](reviews/wire-and-cli.md)
 for the findings, the reproducers, and the completion gate.
 
-Task 7 exists in Beads (`ad-sq-desktop-surfaces-dev`) with dependency ordering
-matching this file; it has not started.
+Task 7 `desktop-surfaces` completed implementation on 2026-09-14 and passed
+Round 3 re-review after two failed rounds; see
+[`reviews/desktop-surfaces.md`](reviews/desktop-surfaces.md). It is tracked in
+Beads `ad-sq-desktop-surfaces-dev` and awaits an authorized commit. Its native
+manual-acceptance rows were explicitly waived by the operator for this
+implementation round; they were not represented as performed. The
+implementation includes a fail-closed hosted-test guard: `AgentDeckAppTests`
+cannot construct a real-home helper without an isolated
+`AGENTDECK_TEST_HOME`. Automated macOS verification used an isolated bundle
+identifier, App Group, HOME, DerivedData, and result bundle; see the Beads
+implementation handoff for the exact identities and results.
 
 The base of this worktree is `4737076`; `main` has since advanced by ten
 commits, including the assembled `schema-version-signal` surfaces. The surface

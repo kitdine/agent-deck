@@ -135,7 +135,8 @@ final class MenuBarChromeTests: XCTestCase {
 	func testStandardAboutPanelMetadataAndApplicationIconArePresent() throws {
 		let info = try XCTUnwrap(Bundle.main.infoDictionary)
 		XCTAssertEqual(info["CFBundleDisplayName"] as? String, "AgentDeck")
-		XCTAssertEqual(info["CFBundleIdentifier"] as? String, "com.kitdine.agentdeck")
+		XCTAssertEqual(info["CFBundleIdentifier"] as? String, Bundle.main.bundleIdentifier)
+		XCTAssertTrue(Bundle.main.bundleIdentifier?.hasPrefix("com.kitdine.agentdeck") == true)
 		XCTAssertFalse(try XCTUnwrap(info["CFBundleShortVersionString"] as? String).isEmpty)
 		XCTAssertFalse(try XCTUnwrap(info["CFBundleVersion"] as? String).isEmpty)
 		XCTAssertFalse(try XCTUnwrap(info["NSHumanReadableCopyright"] as? String).isEmpty)
@@ -253,7 +254,7 @@ final class MenuBarChromeTests: XCTestCase {
 
 		let popover = MenuBarSurfaceView(model: model, height: MenuBarGeometry.maximumHeight)
 			.environment(\.colorScheme, .dark)
-		let settings = SettingsWindowView(preferences: model.preferences)
+		let settings = SettingsWindowView(preferences: model.preferences, quotaSettings: makeQuotaSettingsController(preferences: model.preferences))
 			.environment(\.colorScheme, .dark)
 		let providers = ProviderMenuView(model: multiTargetModel, dismiss: {})
 			.environment(\.colorScheme, .dark)

@@ -531,6 +531,81 @@ actor StubSwitchTransport: ProviderSwitching {
 	func recordedTargets() -> [ProviderSwitchTarget] { targets }
 }
 
+/// A fake `QuotaSettingsTransport` that behaves like the real CLI round trip
+/// without spawning a subprocess: `applyQuotaSettings`/`setQuotaStatusLine`
+/// update the same in-memory record `loadQuotaSettings` next reads, matching
+/// core state's own read-your-writes behavior.
+actor StubQuotaSettingsTransport: QuotaSettingsTransport {
+	private var settings: DesktopQuotaSettingsValuesV1
+	private var statuslineOutcome: DesktopUsageHookOutcomeV1
+	private(set) var applyCalls = [DesktopQuotaSettingsDesiredV1]()
+	private(set) var statuslineCalls = [Bool]()
+
+	static let defaultSettings = DesktopQuotaSettingsValuesV1(
+		reading: false, interval: .fiveMinutes, alerts: false, thresholds: [], resetNotice: false, statusline: false
+	)
+
+	init(
+		settings: DesktopQuotaSettingsValuesV1 = StubQuotaSettingsTransport.defaultSettings,
+		statuslineOutcome: DesktopUsageHookOutcomeV1 = .configured
+	) {
+		self.settings = settings
+		self.statuslineOutcome = statuslineOutcome
+	}
+
+	func loadQuotaSettings() async -> DesktopQuotaTransportOutcome<DesktopQuotaSettingsResultV1> {
+		.decoded(DesktopQuotaSettingsResultV1(settings: settings, statuslineRestore: nil))
+	}
+
+	func applyQuotaSettings(_ desired: DesktopQuotaSettingsDesiredV1) async -> DesktopQuotaTransportOutcome<DesktopQuotaSettingsResultV1> {
+		applyCalls.append(desired)
+		let wasReading = settings.reading
+		settings = DesktopQuotaSettingsValuesV1(
+			reading: desired.reading, interval: desired.interval, alerts: desired.alerts,
+			thresholds: desired.thresholds, resetNotice: desired.resetNotice,
+			// Mirrors runDesktopQuotaSettings: turning reading off clears consent.
+			statusline: (wasReading && !desired.reading) ? false : settings.statusline
+		)
+		let restore: DesktopUsageHookResultV1? = (wasReading && !desired.reading && statuslineOutcome != .configured)
+			? DesktopUsageHookResultV1(outcome: statuslineOutcome)
+			: nil
+		return .decoded(DesktopQuotaSettingsResultV1(settings: settings, statuslineRestore: restore))
+	}
+
+	func setQuotaStatusLine(enabled: Bool) async -> DesktopQuotaTransportOutcome<DesktopQuotaStatusLineResultV1> {
+		statuslineCalls.append(enabled)
+		let succeeded = statuslineOutcome != .failed
+		let consent = enabled ? succeeded : false
+		settings = DesktopQuotaSettingsValuesV1(
+			reading: settings.reading, interval: settings.interval, alerts: settings.alerts,
+			thresholds: settings.thresholds, resetNotice: settings.resetNotice, statusline: consent
+		)
+		return .decoded(DesktopQuotaStatusLineResultV1(consent: consent, result: DesktopUsageHookResultV1(outcome: statuslineOutcome)))
+	}
+}
+
+/// Every call fails to decode, as a real launch failure (missing helper,
+/// timeout, or non-JSON stdout) would — as distinct from `StubQuotaSettingsTransport`
+/// deliberately returning a decoded `failed`/`restore_incomplete` sub-result.
+struct AlwaysUndecodableQuotaSettingsTransport: QuotaSettingsTransport {
+	func loadQuotaSettings() async -> DesktopQuotaTransportOutcome<DesktopQuotaSettingsResultV1> { .undecodable }
+	func applyQuotaSettings(_: DesktopQuotaSettingsDesiredV1) async -> DesktopQuotaTransportOutcome<DesktopQuotaSettingsResultV1> { .undecodable }
+	func setQuotaStatusLine(enabled _: Bool) async -> DesktopQuotaTransportOutcome<DesktopQuotaStatusLineResultV1> { .undecodable }
+}
+
+@MainActor
+func makeQuotaSettingsController(
+	preferences: DesktopPreferences? = nil,
+	transport: any QuotaSettingsTransport = StubQuotaSettingsTransport(),
+	claudeSettingsURL: URL = URL(fileURLWithPath: "/nonexistent/agentdeck-test/.claude/settings.json")
+) -> QuotaSettingsController {
+	QuotaSettingsController(
+		preferences: preferences ?? DesktopPreferences(defaults: isolatedDefaults(), registrar: StubLoginItemRegistrar()),
+		transport: transport,
+		claudeSettingsURL: claudeSettingsURL
+	)
+}
+
 final class StubLoginItemRegistrar: LoginItemRegistering {
 	var status: SMAppService.Status = .notRegistered
 	var registerError: (any Error)?

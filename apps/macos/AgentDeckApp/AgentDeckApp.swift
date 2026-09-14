@@ -35,6 +35,7 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 	private let refreshCoordinator: DesktopRefreshCoordinator
 	private let switchController: SwitchController
 	private let model: MenuBarViewModel
+	private let quotaSettings: QuotaSettingsController
 	private let settingsController: SettingsWindowController
 	private var itemController: MenuBarItemController?
 	private var periodicRefresh: Task<Void, Never>?
@@ -44,10 +45,31 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 		var runner = EmbeddedHelperRunner()
 		var snapshotStore = AppGroupSnapshotStore()
 		var defaults: UserDefaults = .standard
+		// ~/.claude/settings.json's real location; overridden below to the
+		// same isolated home the acceptance harness already points the
+		// embedded helper's own subprocess environment at, so the
+		// status-line consent preview (a direct, read-only local file read —
+		// see QuotaSettingsController) never reads or reasons about a real
+		// user's file just because the harness is running.
+		var claudeSettingsURL = FileManager.default.homeDirectoryForCurrentUser
+			.appendingPathComponent(".claude", isDirectory: true)
+			.appendingPathComponent("settings.json", isDirectory: false)
 		#if DEBUG
+		let processEnvironment = ProcessInfo.processInfo.environment
+		// AgentDeckAppTests is a hosted XCTest target: starting the test bundle
+		// starts this application delegate, including its initial helper refresh.
+		// Refuse to construct a production-home runner when a test command forgot
+		// to pass TEST_RUNNER_AGENTDECK_TEST_HOME (Xcode strips TEST_RUNNER_ for
+		// the launched test host). A mistaken test must fail before it can open or
+		// migrate the operator's real database.
+		if processEnvironment["XCTestConfigurationFilePath"] != nil,
+			processEnvironment["AGENTDECK_TEST_HOME"] == nil
+		{
+			preconditionFailure("Hosted AgentDeck tests require an isolated AGENTDECK_TEST_HOME")
+		}
 		// The acceptance harness runs the app against an isolated home so the
 		// manual checklist never reads real AgentDeck or client state.
-		if let rawTestHome = ProcessInfo.processInfo.environment["AGENTDECK_TEST_HOME"] {
+		if let rawTestHome = processEnvironment["AGENTDECK_TEST_HOME"] {
 			let testHome = URL(fileURLWithPath: rawTestHome, isDirectory: true).standardizedFileURL
 			let accepted = testHome.path.hasPrefix("/tmp/agentdeck-menubar-acceptance.")
 				|| testHome.path.hasPrefix("/private/tmp/agentdeck-menubar-acceptance.")
@@ -66,20 +88,24 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 			)
 			defaults = UserDefaults(suiteName: "com.kitdine.agentdeck.acceptance") ?? .standard
 			defaults.setVolatileDomain([:], forName: "com.kitdine.agentdeck.acceptance")
+			claudeSettingsURL = testHome.appendingPathComponent(".claude", isDirectory: true)
+				.appendingPathComponent("settings.json", isDirectory: false)
 		}
 		#endif
 		let preferences = DesktopPreferences(defaults: defaults)
-		let coordinator = DesktopRefreshCoordinator(host: DesktopHost(runner: runner), snapshotStore: snapshotStore)
+		let coordinator = DesktopRefreshCoordinator(host: DesktopHost(runner: runner), quotaRefresher: runner, snapshotStore: snapshotStore)
 		let switchController = SwitchController(transport: runner, refreshCoordinator: coordinator)
+		let quotaSettings = QuotaSettingsController(preferences: preferences, transport: runner, claudeSettingsURL: claudeSettingsURL)
 		self.preferences = preferences
 		refreshCoordinator = coordinator
 		self.switchController = switchController
+		self.quotaSettings = quotaSettings
 		model = MenuBarViewModel(
 			coordinator: coordinator,
 			switchController: switchController,
 			preferences: preferences
 		)
-		settingsController = SettingsWindowController(preferences: preferences)
+		settingsController = SettingsWindowController(preferences: preferences, quotaSettings: quotaSettings)
 		super.init()
 	}
 
@@ -129,7 +155,7 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 					let due = DesktopFormat.timestamp(snapshot.nextRefreshAt)
 				else { continue }
 				guard due <= Date() else { continue }
-				await self.refreshCoordinator.refresh()
+				await self.refreshCoordinator.refresh(manualQuota: false)
 			}
 		}
 	}
@@ -147,6 +173,9 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 		NSApp.setActivationPolicy(.regular)
 		NSApp.activate(ignoringOtherApps: true)
 		window.makeKeyAndOrderFront(nil)
+		if ProcessInfo.processInfo.environment["AGENTDECK_TEST_SETTINGS_WINDOW"] == "1" {
+			settingsController.show()
+		}
 	}
 	#endif
 }

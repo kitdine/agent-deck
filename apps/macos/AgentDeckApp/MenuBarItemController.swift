@@ -194,14 +194,16 @@ final class SettingsWindow: NSWindow {
 final class SettingsWindowController {
 	private var window: SettingsWindow?
 	private let preferences: DesktopPreferences
+	private let quotaSettings: QuotaSettingsController
 
-	init(preferences: DesktopPreferences) {
+	init(preferences: DesktopPreferences, quotaSettings: QuotaSettingsController) {
 		self.preferences = preferences
+		self.quotaSettings = quotaSettings
 	}
 
 	func show() {
 		if window == nil {
-			let hosting = NSHostingController(rootView: SettingsWindowView(preferences: preferences))
+			let hosting = NSHostingController(rootView: SettingsWindowView(preferences: preferences, quotaSettings: quotaSettings))
 			let created = SettingsWindow(contentViewController: hosting)
 			created.title = t(DesktopCopy.settingsTitle)
 			created.styleMask = [.titled, .closable]

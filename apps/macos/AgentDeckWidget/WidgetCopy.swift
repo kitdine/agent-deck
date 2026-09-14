@@ -6,7 +6,7 @@ enum WidgetCopy {
 	static let resourceBundle = Bundle(for: WidgetBundleToken.self)
 
 	static let allKeys = [
-		"Magnitude", "Composition", "Trust", "Rhythm",
+		"Magnitude", "Composition", "Trust", "Rhythm", "Quota",
 		"Usage", "Breakdown", "Attribution", "Activity",
 		"All clients", "Client", "Period", "Today", "7 days", "30 days",
 		"Some data unavailable", "Updated over 15 minutes ago", "Updated over 6 hours ago", "No activity",
@@ -19,6 +19,7 @@ enum WidgetCopy {
 		"Measurement quality", "Determinate cost", "Unpriced identifiers", "Cost remains visibly incomplete",
 		"Active days", "Busiest", "Busiest at", "Quietest", "Activity by hour", "Hour of week",
 		"Low", "High", "90-day context", "Updated now", "Updated %@", "Last updated %@", "unpriced",
+		"Not read", "Not applicable", "No quota window to show", "Account attribution unconfirmed", "Quota window", "5h window", "7d window",
 	]
 
 	static func text(_ key: String, bundle: Bundle? = nil) -> String {

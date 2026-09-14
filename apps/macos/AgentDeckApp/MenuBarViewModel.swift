@@ -3,6 +3,7 @@ import Foundation
 import Observation
 
 enum MenuBarPanel: String, CaseIterable, Identifiable, Sendable {
+	case quota
 	case usage
 	case breakdown
 	case attribution
@@ -12,6 +13,7 @@ enum MenuBarPanel: String, CaseIterable, Identifiable, Sendable {
 
 	var title: String {
 		switch self {
+		case .quota: t(DesktopCopy.panelQuota)
 		case .usage: t(DesktopCopy.panelUsage)
 		case .breakdown: t(DesktopCopy.panelBreakdown)
 		case .attribution: t(DesktopCopy.panelAttribution)
@@ -21,6 +23,7 @@ enum MenuBarPanel: String, CaseIterable, Identifiable, Sendable {
 
 	var symbol: String {
 		switch self {
+		case .quota: "gauge.with.dots.needle.67percent"
 		case .usage: "chart.line.uptrend.xyaxis"
 		case .breakdown: "chart.pie"
 		case .attribution: "checkmark.shield"
@@ -293,7 +296,7 @@ final class MenuBarViewModel {
 
 	var selectedClient = "all"
 	var selectedPeriod = "today"
-	var selectedPanel: MenuBarPanel = .usage
+	var selectedPanel: MenuBarPanel = .quota
 	var showsHealthDetail = false
 	var pendingConfirmation: ProviderSwitchTarget?
 	private(set) var collapsedSectionIDs = Set<String>()
@@ -464,8 +467,10 @@ final class MenuBarViewModel {
 
 	private func panelHasUnavailableData(_ panel: MenuBarPanel) -> Bool {
 		guard let snapshot else { return false }
+		if panel == .quota { return !snapshot.subscription.available }
 		guard let scope = activeScope else { return true }
 		switch panel {
+		case .quota: return !snapshot.subscription.available
 		case .usage:
 			return !scope.periods.available || !scope.daily.available
 		case .breakdown:
@@ -475,6 +480,10 @@ final class MenuBarViewModel {
 		case .sessions:
 			return !snapshot.sessions.available || !snapshot.sessions.periods.available
 		}
+	}
+
+	var quotaClients: [DesktopSubscriptionClientV1] {
+		snapshot?.subscription.clients ?? []
 	}
 
 	var activeScope: DesktopUsageScopeV1? {

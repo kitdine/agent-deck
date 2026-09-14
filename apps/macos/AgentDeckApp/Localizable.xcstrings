@@ -1443,182 +1443,482 @@
     },
     "These fields are not in the snapshot yet": {
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "These fields are not in the snapshot yet" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "当前快照没有这些字段，需要新增采集" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "These fields are not in the snapshot yet"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前快照没有这些字段，需要新增采集"
+          }
+        }
       }
     },
     "Coding": {
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Coding" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "编码" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Coding"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "编码"
+          }
+        }
       }
     },
     "Debugging": {
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Debugging" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "调试" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Debugging"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "调试"
+          }
+        }
       }
     },
     "Conversation": {
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Conversation" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "对话" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conversation"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "对话"
+          }
+        }
       }
     },
     "Delegation": {
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Delegation" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "委派" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delegation"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "委派"
+          }
+        }
       }
     },
     "First edit": {
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "First edit" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "首次编辑" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "First edit"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "首次编辑"
+          }
+        }
       }
     },
     "Files touched": {
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Files touched" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "触及文件" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Files touched"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "触及文件"
+          }
+        }
       }
     },
     "Rework": {
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Rework" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "返工" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rework"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "返工"
+          }
+        }
       }
     },
     "edit, verify, edit again": {
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "edit, verify, edit again" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "改后验证再改" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "edit, verify, edit again"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "改后验证再改"
+          }
+        }
       }
     },
     "Edits per session": {
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Edits per session" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "每会话编辑" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Edits per session"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每会话编辑"
+          }
+        }
       }
     },
     "median": {
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "median" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "中位数" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "median"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "中位数"
+          }
+        }
       }
     },
     "Most touched": {
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Most touched" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "最常改动" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Most touched"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "最常改动"
+          }
+        }
       }
     },
     "Tool calls": {
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Tool calls" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "工具调用" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tool calls"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "工具调用"
+          }
+        }
       }
     },
     "Top MCP server": {
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Top MCP server" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "主要 MCP 服务" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Top MCP server"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "主要 MCP 服务"
+          }
+        }
       }
     },
     "Bash": {
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Bash" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "Bash" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bash"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bash"
+          }
+        }
       }
     },
     "Read": {
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Read" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "读取" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Read"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "读取"
+          }
+        }
       }
     },
     "Edit": {
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Edit" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "编辑" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Edit"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "编辑"
+          }
+        }
       }
     },
     "MCP": {
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "MCP" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "MCP" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "MCP"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "MCP"
+          }
+        }
       }
     },
     "Other": {
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Other" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "其他" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Other"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "其他"
+          }
+        }
       }
     },
     "Feature": {
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Feature" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "新增" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Feature"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新增"
+          }
+        }
       }
     },
     "Refactoring": {
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Refactoring" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "重构" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Refactoring"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重构"
+          }
+        }
       }
     },
     "Testing": {
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Testing" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "测试" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Testing"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "测试"
+          }
+        }
       }
     },
     "Maintenance": {
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Maintenance" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "维护" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Maintenance"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "维护"
+          }
+        }
       }
     },
     "Investigation": {
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Investigation" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "定位" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Investigation"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "定位"
+          }
+        }
       }
     },
     "Repair": {
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Repair" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "修复" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Repair"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "修复"
+          }
+        }
       }
     },
     "Exploration": {
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Exploration" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "查阅" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Exploration"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "查阅"
+          }
+        }
       }
     },
     "Brainstorming": {
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Brainstorming" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "构思" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Brainstorming"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "构思"
+          }
+        }
       }
     },
     "Planning": {
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Planning" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "计划" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Planning"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "计划"
+          }
+        }
       }
     },
     "Subagent": {
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Subagent" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "子 Agent" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Subagent"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "子 Agent"
+          }
+        }
       }
     },
     "Skill / workflow": {
       "localizations": {
-        "en": { "stringUnit": { "state": "translated", "value": "Skill / workflow" } },
-        "zh-Hans": { "stringUnit": { "state": "translated", "value": "技能流程" } }
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skill / workflow"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "技能流程"
+          }
+        }
       }
     },
     "Now": {
@@ -2689,6 +2989,379 @@
           "stringUnit": {
             "state": "translated",
             "value": "包装器"
+          }
+        }
+      }
+    },
+    "Subscription quota": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Subscription quota"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "订阅额度"
+          }
+        }
+      }
+    },
+    "Read quota": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Read quota"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "读取额度"
+          }
+        }
+      }
+    },
+    "Only for clients whose provider is official. Invokes your already-signed-in client command; reads no credential": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Only for clients whose provider is official. Invokes your already-signed-in client command; reads no credential"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "只对 provider 为 official 的客户端读取；调用本机已登录的客户端命令，不读取任何凭证"
+          }
+        }
+      }
+    },
+    "Read interval": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Read interval"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "读取间隔"
+          }
+        }
+      }
+    },
+    "A manual refresh reads quota with the snapshot; background refresh keeps this separate, slower interval": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A manual refresh reads quota with the snapshot; background refresh keeps this separate, slower interval"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手动刷新时随快照一起读取；后台刷新按此间隔单独计时"
+          }
+        }
+      }
+    },
+    "5m": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "5m"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "5m"
+          }
+        }
+      }
+    },
+    "15m": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "15m"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "15m"
+          }
+        }
+      }
+    },
+    "30m": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "30m"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "30m"
+          }
+        }
+      }
+    },
+    "Enable the Claude status-line route": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enable the Claude status-line route"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "启用 Claude 状态栏通路"
+          }
+        }
+      }
+    },
+    "Writes statusLine into ~/.claude/settings.json and chains your existing command; turning it off restores the previous configuration": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Writes statusLine into ~/.claude/settings.json and chains your existing command; turning it off restores the previous configuration"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "写入 ~/.claude/settings.json 的 statusLine，并串接你已有的命令；关闭后恢复原配置"
+          }
+        }
+      }
+    },
+    "Will chain: %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Will chain: %@"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "将串接：%@"
+          }
+        }
+      }
+    },
+    "No statusLine is currently configured": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No statusLine is currently configured"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "当前没有已配置的 statusLine"
+          }
+        }
+      }
+    },
+    "Could not write ~/.claude/settings.json, so the switch stayed off. Check the file's permissions, then turn it on again to retry.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not write ~/.claude/settings.json, so the switch stayed off. Check the file's permissions, then turn it on again to retry."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "写入 ~/.claude/settings.json 失败，开关保持关闭。检查该文件的权限后再打开一次即可重试。"
+          }
+        }
+      }
+    },
+    "AgentDeck's statusLine was removed, but the previous value had changed in the meantime and was not restored. Check ~/.claude/settings.json by hand.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AgentDeck's statusLine was removed, but the previous value had changed in the meantime and was not restored. Check ~/.claude/settings.json by hand."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已移除 AgentDeck 写入的 statusLine，但原有配置在此期间被改过，没有自动还原。请手动检查 ~/.claude/settings.json。"
+          }
+        }
+      }
+    },
+    "Quota alerts": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quota alerts"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "额度提醒"
+          }
+        }
+      }
+    },
+    "Off by default. When on, each window notifies once per threshold crossing": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Off by default. When on, each window notifies once per threshold crossing"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "默认关闭。开启后每个窗口每次跨过阈值只提醒一次"
+          }
+        }
+      }
+    },
+    "Alert thresholds": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alert thresholds"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "提醒阈值"
+          }
+        }
+      }
+    },
+    "75%": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "75%"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "75%"
+          }
+        }
+      }
+    },
+    "90%": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "90%"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "90%"
+          }
+        }
+      }
+    },
+    "75% · 90%": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "75% · 90%"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "75% · 90%"
+          }
+        }
+      }
+    },
+    "Notify when a window resets": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Notify when a window resets"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "窗口重置时提醒"
+          }
+        }
+      }
+    },
+    "%lld left": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"%lld left"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"剩 %lld 次"}}}},
+    "5h window": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"5h window"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"5 小时窗"}}}},
+    "7d window": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"7d window"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"7 天窗"}}}},
+    "Account attribution unconfirmed": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Account attribution unconfirmed"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"无法确认账号归属"}}}},
+    "Expires in %@": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Expires in %@"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"%@后到期"}}}},
+    "Granted %@": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Granted %@"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"%@获得"}}}},
+    "Locally observed reset": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Locally observed reset"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"本地观察到重置"}}}},
+    "Never probed successfully": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Never probed successfully"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"尚未成功探测"}}}},
+    "No quota window to show": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"No quota window to show"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"无可显示的额度窗口"}}}},
+    "Not applicable": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Not applicable"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"不适用"}}}},
+    "Not read": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Not read"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"未读取"}}}},
+    "Official resets": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Official resets"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"官方重置次数"}}}},
+    "Output shape not recognized": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Output shape not recognized"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"输出格式无法识别"}}}},
+    "Probe failed": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Probe failed"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"探测失败"}}}},
+    "Provider is not official; not probed": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Provider is not official; not probed"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"当前 provider 不是 official，不探测"}}}},
+    "Quota": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Quota"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"额度"}}}},
+    "Quota reading is off": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Quota reading is off"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"读取额度已关闭"}}}},
+    "Resets in %@": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Resets in %@"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"%@后重置"}}}},
+    "Status-line route not enabled": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Status-line route not enabled"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"状态栏通路未启用"}}}},
+    "This client does not report it": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"This client does not report it"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"该客户端不提供此字段"}}}},
+    "Unavailable": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Unavailable"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"不可用"}}}},
+    "Could not save this setting. Check the AgentDeck helper and try again.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not save this setting. Check the AgentDeck helper and try again."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法保存该设置，请检查 AgentDeck 助手后重试。"
           }
         }
       }

@@ -8,6 +8,7 @@ struct AgentDeckWidgetBundle: WidgetBundle {
 		CompositionWidget()
 		TrustWidget()
 		RhythmWidget()
+		QuotaWidget()
 	}
 }
 
@@ -51,6 +52,17 @@ private struct RhythmWidget: Widget {
 		}
 		.configurationDisplayName("Rhythm")
 		.description("When do I actually work?")
+		.supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
+	}
+}
+
+private struct QuotaWidget: Widget {
+	var body: some WidgetConfiguration {
+		AppIntentConfiguration(kind: "com.kitdine.agentdeck.widget.quota", intent: ClientWidgetIntent.self, provider: ClientTimelineProvider(kind: .quota)) { entry in
+			AgentDeckWidgetView(entry: entry)
+		}
+		.configurationDisplayName("Quota")
+		.description("See subscription quota windows for Codex or Claude.")
 		.supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
 	}
 }

@@ -7,6 +7,7 @@ enum AgentDeckWidgetKind: String, CaseIterable, Codable, Sendable {
 	case composition
 	case trust
 	case rhythm
+	case quota
 
 	var titleKey: String {
 		switch self {
@@ -14,6 +15,7 @@ enum AgentDeckWidgetKind: String, CaseIterable, Codable, Sendable {
 		case .composition: "Composition"
 		case .trust: "Trust"
 		case .rhythm: "Rhythm"
+		case .quota: "Quota"
 		}
 	}
 
@@ -23,6 +25,7 @@ enum AgentDeckWidgetKind: String, CaseIterable, Codable, Sendable {
 		case .composition: "No model usage in this period"
 		case .trust: "No attribution data"
 		case .rhythm: "No activity in the last 30 days"
+		case .quota: "No quota window to show"
 		}
 	}
 }
@@ -54,9 +57,11 @@ struct WidgetFooterPresentation: Equatable {
 	let qualifierText: String
 	let isOld: Bool
 
-	init(qualifiers: [WidgetQualifier], relativeTime: String?, bundle: Bundle? = nil) {
+	init(qualifiers: [WidgetQualifier], relativeTime: String?, unavailableText: String? = nil, bundle: Bundle? = nil) {
 		isOld = qualifiers.contains(.old)
-		if let relativeTime {
+		if let unavailableText {
+			updateText = unavailableText
+		} else if let relativeTime {
 			updateText = WidgetCopy.format(
 				isOld ? "Last updated %@" : "Updated %@",
 				value: relativeTime,
@@ -90,12 +95,12 @@ struct WidgetSurfaceModel {
 			return .placeholder
 		}
 		guard let snapshot = entry.snapshot,
-			snapshot.schemaVersion == WidgetDesktopSnapshotV1.schemaVersion,
-			snapshot.usage.presentation.available,
-			scope != nil
+			snapshot.schemaVersion == WidgetDesktopSnapshotV1.schemaVersion
 		else {
 			return .unavailable
 		}
+		if entry.kind == .quota { return snapshot.subscription.available ? .data : .unavailable }
+		guard snapshot.usage.presentation.available, scope != nil else { return .unavailable }
 		return .data
 	}
 
@@ -109,12 +114,19 @@ struct WidgetSurfaceModel {
 	}
 
 	var qualifiers: [WidgetQualifier] {
+		qualifiers(family: .systemLarge)
+	}
+
+	func qualifiers(family: WidgetFamily) -> [WidgetQualifier] {
 		guard surface == .data, let snapshot = entry.snapshot else { return [] }
 		var result = [WidgetQualifier]()
 		if snapshot.partial {
 			result.append(.partial)
 		}
-		if let generated = WidgetTimelinePolicy.date(snapshot.generatedAt) {
+		let freshnessInstant = entry.kind == .quota
+			? quotaFooterObservedAt(family: family).flatMap(WidgetTimelinePolicy.date)
+			: WidgetTimelinePolicy.date(snapshot.generatedAt)
+		if let generated = freshnessInstant {
 			let age = now.timeIntervalSince(generated)
 			if age > 6 * 60 * 60 {
 				result.append(.old)
@@ -142,7 +154,46 @@ struct WidgetSurfaceModel {
 			return current.isEmpty || current.flatMap(\.tiers).allSatisfy { $0.value.tokens == 0 }
 		case .rhythm:
 			return !scope.rhythm.available || scope.rhythm.activeDays == 0 || scope.rhythm.intensities.allSatisfy { $0 == 0 }
+		case .quota:
+			return quotaClients.allSatisfy { $0.windows.isEmpty }
 		}
+	}
+
+	var quotaClients: [DesktopSubscriptionClientV1] {
+		guard let subscription = entry.snapshot?.subscription else { return [] }
+		if entry.client == .all { return subscription.clients }
+		return subscription.clients.filter { $0.client == entry.client.rawValue }
+	}
+
+	func presentedQuotaClients(family: WidgetFamily) -> [DesktopSubscriptionClientV1] {
+		guard let all = entry.snapshot?.subscription.clients else { return [] }
+		if family == .systemLarge {
+			return Array(all.filter { !$0.windows.isEmpty }.prefix(2))
+		}
+		return Array(quotaClients.prefix(1))
+	}
+
+	func quotaFooterObservedAt(family: WidgetFamily) -> String? {
+		presentedQuotaClients(family: family)
+			.filter { !quotaWindows(for: $0, family: family).isEmpty }
+			.compactMap(\.observedAt)
+			.compactMap { value in WidgetTimelinePolicy.date(value).map { (value, $0) } }
+			.min { $0.1 < $1.1 }?.0
+	}
+
+	func quotaFooterReason(family: WidgetFamily) -> DesktopQuotaReasonV1? {
+		let shown = presentedQuotaClients(family: family)
+		guard quotaFooterObservedAt(family: family) == nil else { return nil }
+		return shown.compactMap { !$0.applicable ? ($0.applicableReason ?? .notOfficial) : $0.failure }.first ?? .neverProbed
+	}
+
+	func quotaWindows(for client: DesktopSubscriptionClientV1, family: WidgetFamily) -> [DesktopSubscriptionWindowV1] {
+		if family == .systemSmall {
+			return Array(client.windows.sorted { lhs, rhs in
+				lhs.usedPercent == rhs.usedPercent ? lhs.key < rhs.key : lhs.usedPercent > rhs.usedPercent
+			}.prefix(1))
+		}
+		return Array(client.windows.prefix(family == .systemLarge ? 4 : 3))
 	}
 
 	var chartValues: [Double] {
@@ -189,6 +240,9 @@ enum WidgetLayoutContract {
 		case (.rhythm, .systemMedium): ["hour-axis", "legend", "hour-grid"]
 		case (.rhythm, .systemLarge): ["legend", "hour-axis", "hour-grid", "daily-grid", "day-statistics"]
 		case (.rhythm, _): ["eyebrow", "active-days", "busiest"]
+		case (.quota, .systemMedium): ["client", "windows", "attribution"]
+		case (.quota, .systemLarge): ["codex", "claude", "windows", "attribution"]
+		case (.quota, _): ["client", "tightest-window", "attribution"]
 		}
 	}
 
@@ -206,6 +260,20 @@ enum WidgetLayoutContract {
 		case .systemLarge: 90
 		default: 7
 		}
+	}
+}
+
+enum QuotaWidgetAxis: Equatable { case single, vertical }
+
+struct QuotaWidgetLayoutContract: Equatable {
+	let axis: QuotaWidgetAxis
+	let equalHeightSlots: Int
+
+	static func presentation(family: WidgetFamily, clientCount: Int) -> Self {
+		guard family == .systemLarge, clientCount > 1 else {
+			return Self(axis: .single, equalHeightSlots: 1)
+		}
+		return Self(axis: .vertical, equalHeightSlots: clientCount)
 	}
 }
 

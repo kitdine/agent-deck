@@ -172,12 +172,14 @@ struct MenuBarSurfaceView: View {
 
 	private var dataSurface: some View {
 		VStack(spacing: 0) {
-			VStack(alignment: .leading, spacing: MenuBarGeometry.betweenRows) {
-				header
-				clientTabs
-				hero
-				periodSwitcher
-				panelSwitcher
+				VStack(alignment: .leading, spacing: MenuBarGeometry.betweenRows) {
+					header
+					if model.selectedPanel != .quota {
+						clientTabs
+						hero
+						periodSwitcher
+					}
+					panelSwitcher
 			}
 			.padding(.horizontal, MenuBarGeometry.padding)
 			.padding(.top, MenuBarGeometry.betweenRows)
@@ -375,9 +377,11 @@ struct MenuBarSurfaceView: View {
 	}
 
 	@ViewBuilder
-	private var panel: some View {
-		switch model.selectedPanel {
-		case .usage:
+		private var panel: some View {
+			switch model.selectedPanel {
+			case .quota:
+				QuotaPanelView(clients: model.quotaClients)
+			case .usage:
 			UsagePanelView(panel: model.usagePanel)
 			case .breakdown:
 				BreakdownPanelView(panel: model.breakdownPanel)

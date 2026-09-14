@@ -59,6 +59,19 @@ func snapshotWithPartial(_ snapshot: WidgetDesktopSnapshotV1) throws -> WidgetDe
 	)
 }
 
+func snapshotWithQuotaObservedAt(_ snapshot: WidgetDesktopSnapshotV1, values: [String: String]) throws -> WidgetDesktopSnapshotV1 {
+	var object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(snapshot)) as? [String: Any])
+	var subscription = try XCTUnwrap(object["subscription"] as? [String: Any])
+	var clients = try XCTUnwrap(subscription["clients"] as? [[String: Any]])
+	for index in clients.indices {
+		guard let client = clients[index]["client"] as? String, let value = values[client] else { continue }
+		clients[index]["observed_at"] = value
+	}
+	subscription["clients"] = clients
+	object["subscription"] = subscription
+	return try JSONDecoder().decode(WidgetDesktopSnapshotV1.self, from: JSONSerialization.data(withJSONObject: object))
+}
+
 func snapshotWithPricedToday(_ snapshot: WidgetDesktopSnapshotV1, client: String) throws -> WidgetDesktopSnapshotV1 {
 	var object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(snapshot)) as? [String: Any])
 	var usage = try XCTUnwrap(object["usage"] as? [String: Any])

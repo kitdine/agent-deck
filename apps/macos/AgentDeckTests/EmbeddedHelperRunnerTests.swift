@@ -194,6 +194,25 @@ final class EmbeddedHelperRunnerTests: XCTestCase {
 		])
 	}
 
+	func testQuotaRefreshUsesBackgroundAndManualCommandShapes() async throws {
+		let payload = Data(#"{"data":{"clients":["codex","claude"],"gate_reasons":{"codex":null,"claude":"not_official"}}}"#.utf8)
+		let process = RecordingHelperProcess(behaviors: [
+			.output(HelperProcessOutput(exitStatus: 0, stdout: payload)),
+			.output(HelperProcessOutput(exitStatus: 0, stdout: payload)),
+		])
+		let runner = try makeRunner(process: process)
+
+		await runner.refreshQuota(manual: false)
+		await runner.refreshQuota(manual: true)
+
+		let invocations = await process.recordedInvocations()
+		XCTAssertEqual(invocations.map(\.arguments), [
+			["--format", "json", "desktop", "quota-refresh"],
+			["--format", "json", "desktop", "quota-refresh", "--manual"],
+		])
+		XCTAssertTrue(invocations.allSatisfy { $0.environment["HOME"] == "/tmp/isolated-home" })
+	}
+
 	func testProviderSwitchClassifiesCanonicalFailureAndDiscardsMessage() async throws {
 		let failure = providerUseEnvelope(code: "state_busy", message: "sql: secret storage detail")
 		let runner = try makeRunner(

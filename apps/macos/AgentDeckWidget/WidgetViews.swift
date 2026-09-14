@@ -147,12 +147,17 @@ struct AgentDeckWidgetView: View {
 	}
 
 	@ViewBuilder private func widgetContent(_ model: WidgetSurfaceModel) -> some View {
-		WidgetFrame(entry: entry, qualifiers: model.qualifiers, family: family) {
+		WidgetFrame(
+			entry: entry, qualifiers: model.qualifiers(family: family), family: family,
+			quotaObservedAt: entry.kind == .quota ? model.quotaFooterObservedAt(family: family) : nil,
+			quotaReason: entry.kind == .quota ? model.quotaFooterReason(family: family) : nil
+		) {
 			switch entry.kind {
 			case .magnitude: MagnitudeWidgetView(model: model, family: family)
 			case .composition: CompositionWidgetView(model: model, family: family)
 			case .trust: TrustWidgetView(model: model, family: family)
 			case .rhythm: RhythmWidgetView(model: model, family: family)
+			case .quota: QuotaWidgetView(model: model, family: family)
 			}
 		}
 	}
@@ -162,17 +167,23 @@ private struct WidgetFrame<Content: View>: View {
 	let entry: AgentDeckWidgetEntry
 	let qualifiers: [WidgetQualifier]
 	let family: WidgetFamily
+	let quotaObservedAt: String?
+	let quotaReason: DesktopQuotaReasonV1?
 	let content: Content
 
 	init(
 		entry: AgentDeckWidgetEntry,
 		qualifiers: [WidgetQualifier],
 		family: WidgetFamily,
+		quotaObservedAt: String? = nil,
+		quotaReason: DesktopQuotaReasonV1? = nil,
 		@ViewBuilder content: () -> Content
 	) {
 		self.entry = entry
 		self.qualifiers = qualifiers
 		self.family = family
+		self.quotaObservedAt = quotaObservedAt
+		self.quotaReason = quotaReason
 		self.content = content()
 	}
 
@@ -180,7 +191,7 @@ private struct WidgetFrame<Content: View>: View {
 		VStack(alignment: .leading, spacing: 0) {
 			WidgetHeader(entry: entry, family: family)
 			content.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-			WidgetFooter(entry: entry, qualifiers: qualifiers)
+			WidgetFooter(entry: entry, qualifiers: qualifiers, quotaObservedAt: quotaObservedAt, quotaReason: quotaReason)
 		}
 		.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 	}
@@ -217,6 +228,7 @@ private struct WidgetHeader: View {
 		case .composition: "Breakdown"
 		case .trust: "Attribution"
 		case .rhythm: "Activity"
+		case .quota: "Quota"
 		}
 	}
 
@@ -230,6 +242,8 @@ private struct WidgetHeader: View {
 			return WidgetCopy.period(.today)
 		case .rhythm:
 			return WidgetCopy.period(.thirtyDays)
+		case .quota:
+			return WidgetCopy.client(entry.client)
 		}
 	}
 
@@ -239,16 +253,101 @@ private struct WidgetHeader: View {
 		case .composition: "chart.pie.fill"
 		case .trust: "checkmark.shield.fill"
 		case .rhythm: "clock.arrow.circlepath"
+		case .quota: "gauge.with.dots.needle.67percent"
 		}
+	}
+}
+
+private struct QuotaWidgetView: View {
+	let model: WidgetSurfaceModel
+	let family: WidgetFamily
+
+	var body: some View {
+		let clients = model.presentedQuotaClients(family: family)
+		let layout = QuotaWidgetLayoutContract.presentation(family: family, clientCount: clients.count)
+		if clients.isEmpty {
+			UnavailableWidget(kind: .quota)
+		} else if layout.axis == .vertical {
+			VStack(alignment: .leading, spacing: 0) {
+				ForEach(Array(clients.enumerated()), id: \.element.client) { index, client in
+					ZStack(alignment: .center) {
+						clientBlock(client)
+							.background(quotaGeometry("content.\(client.client)"))
+					}
+					.frame(maxHeight: .infinity)
+					.background(quotaGeometry("slot.\(client.client)"))
+					if index < clients.count - 1 { Divider() }
+				}
+			}
+			.frame(maxHeight: .infinity)
+			.coordinateSpace(name: "quota-large-body")
+		} else {
+			clientBlock(clients[0])
+		}
+	}
+
+	private func quotaGeometry(_ id: String) -> some View {
+		GeometryReader { proxy in
+			Color.clear.preference(
+				key: QuotaWidgetGeometryPreferenceKey.self,
+				value: [id: proxy.frame(in: .named("quota-large-body"))]
+			)
+		}
+	}
+
+	private func clientBlock(_ client: DesktopSubscriptionClientV1) -> some View {
+		let selected = model.quotaWindows(for: client, family: family)
+		return VStack(alignment: .leading, spacing: 5) {
+			HStack {
+				Text(client.client.capitalized).font(.system(size: 11, weight: .semibold))
+				Spacer()
+				if let plan = client.plan { Text(plan).font(.system(size: 9)).foregroundStyle(.secondary) }
+			}
+			if client.failure == .probeDisabled {
+				Text(WidgetCopy.text("Not read")).font(.caption).foregroundStyle(.secondary)
+			} else if selected.isEmpty {
+				Text(WidgetCopy.text("No quota window to show")).font(.caption).foregroundStyle(.secondary)
+			} else {
+				ForEach(Array(selected), id: \.key) { window in
+					VStack(alignment: .leading, spacing: 2) {
+						HStack { Text(window.label ?? windowName(window)); Spacer(); Text(String(format: "%.0f%%", window.usedPercent)).monospacedDigit() }
+							.font(.system(size: 9.5)).lineLimit(1)
+						ProgressView(value: min(max(window.usedPercent, 0), 100), total: 100)
+							.tint(window.usedPercent >= 90 ? WidgetPalette.warn : WidgetPalette.accent)
+					}
+				}
+			}
+			if client.client == "claude", !client.attributionConfirmed, client.failure != .probeDisabled {
+				Text(WidgetCopy.text("Account attribution unconfirmed")).font(.system(size: 8.5)).foregroundStyle(.secondary).lineLimit(1)
+			}
+		}
+		.frame(maxWidth: .infinity, alignment: .leading)
+	}
+
+	private func windowName(_ window: DesktopSubscriptionWindowV1) -> String {
+		guard let minutes = window.windowMinutes else { return WidgetCopy.text("Quota window") }
+		return minutes == 300 ? WidgetCopy.text("5h window") : minutes == 10080 ? WidgetCopy.text("7d window") : "\(minutes)m"
+	}
+}
+
+struct QuotaWidgetGeometryPreferenceKey: PreferenceKey {
+	static let defaultValue = [String: CGRect]()
+	static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
+		value.merge(nextValue(), uniquingKeysWith: { _, new in new })
 	}
 }
 
 private struct WidgetFooter: View {
 	let entry: AgentDeckWidgetEntry
 	let qualifiers: [WidgetQualifier]
+	let quotaObservedAt: String?
+	let quotaReason: DesktopQuotaReasonV1?
 
 	var body: some View {
-		let presentation = WidgetFooterPresentation(qualifiers: qualifiers, relativeTime: relativeTime)
+		let presentation = WidgetFooterPresentation(
+			qualifiers: qualifiers, relativeTime: relativeTime,
+			unavailableText: quotaReason.map(quotaReasonText)
+		)
 		HStack(spacing: 5) {
 			Text(presentation.updateText)
 				.foregroundStyle(presentation.isOld ? WidgetPalette.warn : Color.secondary)
@@ -270,7 +369,7 @@ private struct WidgetFooter: View {
 	}
 
 	private var relativeTime: String? {
-		guard let generatedAt = entry.snapshot?.generatedAt,
+		guard let generatedAt = quotaObservedAt ?? entry.snapshot?.generatedAt,
 			let generated = WidgetTimelinePolicy.date(generatedAt),
 			entry.date.timeIntervalSince(generated) >= 60
 		else {
@@ -279,6 +378,14 @@ private struct WidgetFooter: View {
 		let formatter = RelativeDateTimeFormatter()
 		formatter.unitsStyle = .full
 		return formatter.localizedString(for: generated, relativeTo: entry.date)
+	}
+
+	private func quotaReasonText(_ reason: DesktopQuotaReasonV1) -> String {
+		switch reason {
+		case .probeDisabled: WidgetCopy.text("Not read")
+		case .notOfficial: WidgetCopy.text("Not applicable")
+		default: WidgetCopy.text("Data unavailable")
+		}
 	}
 }
 

@@ -1,3 +1,4 @@
+import AgentDeckShared
 import SwiftUI
 
 /// A panel whose own data is absent shows this in place of its values rather
@@ -1295,4 +1296,96 @@ struct RhythmBlockView: View {
 			}
 		}
 	}
+}
+
+struct QuotaPanelView: View {
+	let clients: [DesktopSubscriptionClientV1]
+	@State private var hoveredAllowance: String?
+
+	var body: some View {
+		VStack(alignment: .leading, spacing: MenuBarGeometry.betweenSections) {
+			Text(t(DesktopCopy.quotaTitle)).font(.headline)
+			if clients.isEmpty {
+				Text(t(DesktopCopy.quotaNoWindows)).foregroundStyle(DesktopVisualTheme.dim)
+			} else {
+				ForEach(clients, id: \.client) { client in clientCard(client) }
+			}
+		}
+	}
+
+	private func clientCard(_ client: DesktopSubscriptionClientV1) -> some View {
+		VStack(alignment: .leading, spacing: MenuBarGeometry.betweenRows) {
+			HStack(alignment: .firstTextBaseline) {
+				Text(client.client.capitalized).font(.headline)
+				if let plan = client.plan { Text(plan).font(.caption).padding(.horizontal, 6).background(DesktopVisualTheme.surfaceRaised, in: Capsule()) }
+				Spacer()
+				if let source = client.source { Text(sourceLabel(source)).font(.caption).foregroundStyle(DesktopVisualTheme.dim) }
+			}
+			if client.client == "claude", !client.attributionConfirmed, client.failure != .probeDisabled {
+				Text(t(DesktopCopy.quotaAttributionUnconfirmed)).font(.caption2).foregroundStyle(DesktopVisualTheme.warning)
+			}
+			if let reason = primaryReason(client) {
+				VStack(alignment: .leading, spacing: 3) {
+					Text(missingWord(reason)).font(.body.weight(.semibold))
+					Text(reasonLabel(reason)).font(.caption).foregroundStyle(DesktopVisualTheme.dim)
+				}
+			} else {
+				ForEach(client.windows, id: \.key) { window in windowRow(window) }
+			}
+			if let allowance = client.resetAllowance {
+				Divider()
+				allowanceRow(client: client.client, allowance: allowance)
+			}
+			if let observed = client.observedResetAt {
+				LabeledContent(t(DesktopCopy.quotaLocallyObservedReset), value: DesktopFormat.relative(observed, now: Date())).font(.caption)
+			}
+		}
+		.padding(12)
+		.background(DesktopVisualTheme.surfaceRaised, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+	}
+
+	private func windowRow(_ window: DesktopSubscriptionWindowV1) -> some View {
+		VStack(alignment: .leading, spacing: 4) {
+			HStack {
+				Text(window.label ?? windowLabel(window)).lineLimit(1)
+				Spacer()
+				if let resets = window.resetsAt { Text(t(DesktopCopy.quotaResetsIn, DesktopFormat.relative(resets, now: Date()))) }
+				Text(String(format: "%.0f%%", window.usedPercent)).monospacedDigit()
+			}.font(.caption)
+			ProgressView(value: min(max(window.usedPercent, 0), 100), total: 100)
+				.tint(window.usedPercent >= 90 ? DesktopVisualTheme.warning : window.usedPercent >= 75 ? DesktopVisualTheme.info : DesktopVisualTheme.accent)
+				.accessibilityLabel(window.label ?? windowLabel(window))
+				.accessibilityValue(String(format: "%.0f%%", window.usedPercent))
+		}
+	}
+
+	private func allowanceRow(client: String, allowance: DesktopResetAllowanceV1) -> some View {
+		let key = "\(client).allowance"
+		return HStack { Text(t(DesktopCopy.quotaOfficialResets)); Spacer(); Text(allowance.remaining.map { t(DesktopCopy.quotaLeft, Int64($0)) } ?? t(DesktopCopy.quotaUnavailable)) }
+			.font(.caption).contentShape(Rectangle())
+			.onHover { hoveredAllowance = $0 && !allowance.credits.isEmpty ? key : nil }
+			.popover(isPresented: Binding(get: { hoveredAllowance == key }, set: { if !$0 { hoveredAllowance = nil } }), arrowEdge: .trailing) {
+				VStack(alignment: .leading, spacing: 8) {
+					ForEach(allowance.credits, id: \.key) { credit in
+						VStack(alignment: .leading, spacing: 2) {
+							Text(credit.title).font(.body.weight(.semibold)); Text(credit.status).font(.caption)
+							Text([credit.grantedAt.map { t(DesktopCopy.quotaCreditGranted, DesktopFormat.relative($0, now: Date())) }, credit.expiresAt.map { t(DesktopCopy.quotaCreditExpires, DesktopFormat.relative($0, now: Date())) }].compactMap { $0 }.joined(separator: " · ")).font(.caption).foregroundStyle(DesktopVisualTheme.dim)
+						}
+					}
+				}.padding(12).frame(width: 260)
+			}
+	}
+
+	private func primaryReason(_ client: DesktopSubscriptionClientV1) -> DesktopQuotaReasonV1? {
+		if !client.applicable { return client.applicableReason ?? .notOfficial }
+		if client.failure == .probeDisabled { return .probeDisabled }
+		if client.windows.isEmpty { return client.failure ?? .neverProbed }
+		return nil
+	}
+	private func missingWord(_ reason: DesktopQuotaReasonV1) -> String { reason == .notOfficial ? t(DesktopCopy.quotaNotApplicable) : reason == .probeDisabled ? t(DesktopCopy.quotaNotRead) : t(DesktopCopy.quotaUnavailable) }
+	private func reasonLabel(_ reason: DesktopQuotaReasonV1) -> String {
+		switch reason { case .notReported: t(DesktopCopy.quotaReasonNotReported); case .notOfficial: t(DesktopCopy.quotaReasonNotOfficial); case .neverProbed: t(DesktopCopy.quotaReasonNeverProbed); case .probeFailed: t(DesktopCopy.quotaReasonProbeFailed); case .parseFailed: t(DesktopCopy.quotaReasonParseFailed); case .notConsented: t(DesktopCopy.quotaReasonNotConsented); case .probeDisabled: t(DesktopCopy.quotaReasonProbeDisabled) }
+	}
+	private func windowLabel(_ window: DesktopSubscriptionWindowV1) -> String { window.windowMinutes == 300 ? t(DesktopCopy.quotaWindow5h) : window.windowMinutes == 10080 ? t(DesktopCopy.quotaWindow7d) : window.windowMinutes.map { "\($0)m" } ?? t(DesktopCopy.quotaUnavailable) }
+	private func sourceLabel(_ source: DesktopQuotaSourceV1) -> String { switch source { case .codexAppServer: "Codex app-server"; case .claudeStatusLine: "Claude status line"; case .claudeUsageProse: "claude /usage" } }
 }
