@@ -154,6 +154,8 @@ final class MenuBarViewModelTests: XCTestCase {
 		XCTAssertEqual(model.surface, .errorSurface)
 		XCTAssertEqual(model.errorCopy, t(DesktopCopy.refreshTimedOut))
 		XCTAssertTrue(model.notices.isEmpty, "an error surface has no snapshot to qualify")
+		XCTAssertEqual(model.scanProgressStageText, t(DesktopCopy.scanStatistics))
+		XCTAssertTrue(model.scanProgressCountsText?.contains(t(DesktopCopy.failing)) == true)
 	}
 
 	// MARK: Filter propagation

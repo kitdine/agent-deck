@@ -28,6 +28,7 @@ import (
 	"github.com/kitdine/agent-deck/internal/hookrefusal"
 	"github.com/kitdine/agent-deck/internal/output"
 	"github.com/kitdine/agent-deck/internal/provider"
+	"github.com/kitdine/agent-deck/internal/scanruntime"
 	"github.com/kitdine/agent-deck/internal/session"
 	"github.com/kitdine/agent-deck/internal/store"
 	"github.com/kitdine/agent-deck/internal/usage"
@@ -2832,6 +2833,14 @@ INSERT INTO model_prices(catalog_version,model,provider,effective_from,prices_js
 
 func TestUsageSummaryShortcutsAndStatsJSONContract(t *testing.T) {
 	state := filepath.Join(t.TempDir(), "state")
+	t.Cleanup(func() {
+		release, err := scanruntime.AcquireMaintenance(context.Background(), state, 5*time.Second)
+		if err != nil {
+			t.Errorf("wait for detached scan cleanup: %v", err)
+			return
+		}
+		_ = release()
+	})
 	home := t.TempDir()
 	oldHome := userHomeDir
 	userHomeDir = func() (string, error) { return home, nil }

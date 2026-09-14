@@ -354,10 +354,18 @@ final class MenuBarViewModel {
 		guard let progress = coordinator.scanProgress else { return nil }
 		var parts = [String]()
 		if progress.usage.total > 0 {
-			parts.append(t(DesktopCopy.scanUsageProgress, Int64(progress.usage.committed), Int64(progress.usage.total)))
+			var value = t(DesktopCopy.scanUsageProgress, Int64(progress.usage.committed), Int64(progress.usage.total))
+			if progress.usage.state == "failed" {
+				value += " · " + t(DesktopCopy.failing)
+			}
+			parts.append(value)
 		}
 		if progress.session.total > 0 {
-			parts.append(t(DesktopCopy.scanSessionProgress, Int64(progress.session.committed), Int64(progress.session.total)))
+			var value = t(DesktopCopy.scanSessionProgress, Int64(progress.session.committed), Int64(progress.session.total))
+			if progress.session.state == "failed" {
+				value += " · " + t(DesktopCopy.failing)
+			}
+			parts.append(value)
 		}
 		if progress.session.skipped > 0 {
 			parts.append(t(DesktopCopy.scanSkipped, Int64(progress.session.skipped)))

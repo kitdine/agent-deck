@@ -7,6 +7,7 @@ import (
 	"github.com/kitdine/agent-deck/internal/activity"
 	"github.com/kitdine/agent-deck/internal/store"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -92,6 +93,7 @@ func TestSourceClassificationMatchesPerTurnReference(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer rows.Close()
+	var plan []string
 	for rows.Next() {
 		var id, parent, unused int
 		var detail string
@@ -99,6 +101,11 @@ func TestSourceClassificationMatchesPerTurnReference(t *testing.T) {
 			t.Fatal(err)
 		}
 		t.Log(detail)
+		plan = append(plan, detail)
+	}
+	joined := strings.Join(plan, "\n")
+	if !strings.Contains(joined, "usage_work_signals_source") || !strings.Contains(joined, "usage_tool_calls_turn") {
+		t.Fatalf("source classification plan lacks bounded indexes:\n%s", joined)
 	}
 }
 func BenchmarkSourceClassification(b *testing.B) {

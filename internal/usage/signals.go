@@ -71,7 +71,7 @@ WITH shapes AS MATERIALIZED (
         MAX(a.tool_name IN ('update_plan','TodoWrite')) AS planned,
         MAX(a.command_hint='testing') AS testing,
         MAX(a.command_hint='chore') AS chore
- FROM usage_tool_calls a CROSS JOIN usage_work_signals owned
+ FROM usage_work_signals owned CROSS JOIN usage_tool_calls a
  ON owned.client=a.client AND owned.session_id=a.session_id AND owned.turn_index=a.turn_index
  WHERE owned.source_path=?1
  GROUP BY a.client,a.session_id,a.turn_index

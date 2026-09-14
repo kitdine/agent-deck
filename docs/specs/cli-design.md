@@ -2379,13 +2379,13 @@ rendered doctor report still exits `0`, even when its findings are unhealthy;
 this is distinct from an ordinary command's schema-ahead error envelope.
 
 Quick and full mode share the schema-state matrix. With this binary supporting
-schema 25, schema 12 reports a `schema_outdated` schema check with `count: 12`,
-`supported_count: 25` and recovery command `agentdeck state migrate`. A complete
-supported schema reports an `ok` schema check with `count: 24`; its optional
+schema 26, schema 12 reports a `schema_outdated` schema check with `count: 12`,
+`supported_count: 26` and recovery command `agentdeck state migrate`. A complete
+supported schema reports an `ok` schema check with `count: 26`; its optional
 `supported_count` is omitted. A database claiming the supported version but
 missing `usage_tool_calls` reports `schema_incompatible`. A future schema, for
 example 99, reports a `database` check with code `schema_ahead`, `count: 99`,
-`supported_count: 25`, and no recovery command, in a partial report. These
+`supported_count: 26`, and no recovery command, in a partial report. These
 numbers describe stored/binary support, not product release versions. Text and
 JSON never expose raw SQL, SQLite query text, or driver errors. A successful
 explicit migration has normal text output and JSON `migrated: true`, and

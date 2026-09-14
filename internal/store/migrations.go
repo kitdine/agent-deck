@@ -232,6 +232,12 @@ var migrations = []migration{
 	{version: 25, statements: []string{
 		`ALTER TABLE usage_source_files ADD COLUMN changed_at INTEGER NOT NULL DEFAULT 0`,
 	}},
+	// Source-scoped turn classification joins the selected work-signal rows to
+	// tool calls by logical turn. Without this index every source rescans the
+	// complete accumulated tool-call table during cold import.
+	{version: 26, statements: []string{
+		`CREATE INDEX usage_tool_calls_turn ON usage_tool_calls(client,session_id,turn_index)`,
+	}},
 }
 
 var derivedSnapshotGenerationTables = []string{
