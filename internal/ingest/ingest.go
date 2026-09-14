@@ -580,24 +580,18 @@ func (c *Coordinator) read(ctx context.Context, source Source, readRange ReadRan
 	if readRange.Start < 0 || readRange.End < readRange.Start || readRange.End > source.Size {
 		return nil, ErrPlanMismatch
 	}
-	input := io.Reader(file)
-	if readRange.Start != 0 || readRange.End != source.Size {
-		readerAt, ok := file.(io.ReaderAt)
-		if !ok {
-			return nil, ErrPlanMismatch
-		}
-		input = io.NewSectionReader(readerAt, readRange.Start, readRange.End-readRange.Start)
+	readerAt, ok := file.(io.ReaderAt)
+	if !ok {
+		return nil, ErrPlanMismatch
 	}
+	input := io.Reader(io.NewSectionReader(readerAt, readRange.Start, readRange.End-readRange.Start))
 	if c.metrics != nil {
 		start := time.Now()
 		active := c.metrics.active.Add(1)
 		for peak := c.metrics.peak.Load(); active > peak && !c.metrics.peak.CompareAndSwap(peak, active); peak = c.metrics.peak.Load() {
 		}
 		defer func() { c.metrics.sourceNS.Add(time.Since(start).Nanoseconds()); c.metrics.active.Add(-1) }()
-		if input == file {
-			file = measuredReader{sourceFile: file, metrics: c.metrics}
-			input = file
-		}
+		input = measuredInput{Reader: input, metrics: c.metrics}
 	}
 	// Large transcripts otherwise issue tens of thousands of small reads.
 	// Bound each active reader to 1 MiB; small files use only their own size.
@@ -671,7 +665,10 @@ func (c *Coordinator) read(ctx context.Context, source Source, readRange ReadRan
 	if err != nil {
 		return nil, err
 	}
-	if !SameGeneration(source, latest) {
+	identity, _, stable := fileGeneration(latest)
+	unchanged := latest.Size() == source.Size && SameGeneration(source, latest)
+	appendOnlyGrowth := latest.Size() > source.Size && source.Stable && stable && identity == source.Identity && latest.Size() >= readRange.End
+	if !unchanged && !appendOnlyGrowth {
 		return nil, ErrSourceChanged
 	}
 	return tail, nil

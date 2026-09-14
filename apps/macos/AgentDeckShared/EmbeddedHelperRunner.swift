@@ -669,12 +669,16 @@ public struct EmbeddedHelperRunner: Sendable {
 	}
 
     private static func defaultEnvironment() -> [String: String] {
-        [
+        var environment = [
             "HOME": FileManager.default.homeDirectoryForCurrentUser.path,
             "LANG": "en_US_POSIX",
             "LC_ALL": "en_US_POSIX",
             "PATH": "/usr/bin:/bin",
         ]
+		if let temporaryDirectory = ProcessInfo.processInfo.environment["TMPDIR"], !temporaryDirectory.isEmpty {
+			environment["TMPDIR"] = temporaryDirectory
+		}
+		return environment
     }
 }
 

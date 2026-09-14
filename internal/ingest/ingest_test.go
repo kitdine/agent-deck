@@ -120,13 +120,30 @@ func TestCoordinatorRejectsChangedSource(t *testing.T) {
 		t.Fatal(err)
 	}
 	source := testSource(t, path)
-	if err := os.WriteFile(path, []byte("{}\n{}\n"), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte("[]\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	coordinator := NewCoordinator([]Source{source}, Options{})
 	coordinator.ConsumerDone(ConsumerSession)
 	if _, shared, err := coordinator.Snapshot(context.Background(), path, ConsumerUsage); !shared || !errors.Is(err, ErrSourceChanged) {
 		t.Fatalf("shared=%t err=%v", shared, err)
+	}
+}
+
+func TestCoordinatorReadsCapturedPrefixAfterAppendOnlyGrowth(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "growing.jsonl")
+	if err := os.WriteFile(path, []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	source := testSource(t, path)
+	if err := os.WriteFile(path, []byte("{}\n{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	coordinator := NewCoordinator([]Source{source}, Options{})
+	coordinator.ConsumerDone(ConsumerSession)
+	snapshot, shared, err := coordinator.Snapshot(context.Background(), path, ConsumerUsage)
+	if err != nil || !shared || len(snapshot.Records) != 1 || snapshot.Records[0].End != source.Size {
+		t.Fatalf("snapshot=%#v shared=%t err=%v", snapshot, shared, err)
 	}
 }
 
@@ -319,37 +336,23 @@ func testSource(t *testing.T, path string) Source {
 	return Source{Path: path, Identity: identity, Size: info.Size(), ModifiedAt: info.ModTime().UnixNano(), ChangedAt: changedAt, Stable: stable}
 }
 
-type countedSource struct {
-	*os.File
-	reads *atomic.Int64
-}
-
-func (f countedSource) Read(p []byte) (int, error) { f.reads.Add(1); return f.File.Read(p) }
-
 func TestReaderAmortizesFileReadsWithoutChangingRecords(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "large.jsonl")
 	line := `{"text":"` + strings.Repeat("a", 6000) + `"}` + "\n"
 	if err := os.WriteFile(path, []byte(strings.Repeat(line, 100)), 0600); err != nil {
 		t.Fatal(err)
 	}
-	var reads atomic.Int64
 	metrics := &Metrics{}
-	c := NewCoordinator([]Source{testSource(t, path)}, Options{Metrics: metrics, Open: func(name string) (sourceFile, error) {
-		f, err := os.Open(name)
-		return countedSource{File: f, reads: &reads}, err
-	}})
+	c := NewCoordinator([]Source{testSource(t, path)}, Options{Metrics: metrics})
 	defer c.Close()
 	first, second := consumePair(t, c, path)
 	c.Close()
 	report := metrics.Report(time.Second)
-	if report["read_bytes"] != float64(len(line)*100) || report["read_calls"] != float64(reads.Load()) || report["peak_open_readers"] != 1 {
+	if report["read_bytes"] != float64(len(line)*100) || report["read_calls"] > 3 || report["peak_open_readers"] != 1 {
 		t.Fatalf("invalid read metrics: %v", report)
 	}
 	if len(first.Records) != 100 || !reflect.DeepEqual(first.Records, second.Records) {
 		t.Fatal("reader changed record stream")
-	}
-	if n := reads.Load(); n > 3 {
-		t.Fatalf("600KiB file required %d underlying reads; want at most 3 including EOF", n)
 	}
 }
 

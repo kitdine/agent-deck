@@ -1,6 +1,7 @@
 package ingest
 
 import (
+	"io"
 	"sync/atomic"
 	"time"
 )
@@ -24,14 +25,14 @@ func (m *Metrics) Report(wall time.Duration) map[string]float64 {
 	}
 }
 
-type measuredReader struct {
-	sourceFile
+type measuredInput struct {
+	io.Reader
 	metrics *Metrics
 }
 
-func (r measuredReader) Read(p []byte) (int, error) {
+func (r measuredInput) Read(p []byte) (int, error) {
 	start := time.Now()
-	n, err := r.sourceFile.Read(p)
+	n, err := r.Reader.Read(p)
 	r.metrics.readNS.Add(time.Since(start).Nanoseconds())
 	r.metrics.reads.Add(1)
 	r.metrics.bytes.Add(int64(n))
