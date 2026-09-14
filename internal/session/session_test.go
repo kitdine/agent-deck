@@ -1231,6 +1231,18 @@ func TestSharedAppendPlanIncludesStoredPartialRecord(t *testing.T) {
 	if err = PlanForCoordinator(ctx, database.DB, home, sources, coordinator); err != nil {
 		t.Fatal(err)
 	}
+	late := []byte("{\"type\":\"visible_user_prompt\",\"payload\":{\"session_id\":\"partial\",\"text\":\"late suffix\"}}\n")
+	file, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = file.Write(late); err != nil {
+		file.Close()
+		t.Fatal(err)
+	}
+	if err = file.Close(); err != nil {
+		t.Fatal(err)
+	}
 	coordinator.Start(ctx)
 	if _, err = ScanWithOptions(ctx, database.DB, home, ScanOptions{PreparedSources: sources, Coordinator: coordinator}); err != nil {
 		t.Fatal(err)
@@ -1238,6 +1250,15 @@ func TestSharedAppendPlanIncludesStoredPartialRecord(t *testing.T) {
 	got, err := Search(ctx, database.DB, "shared AND append")
 	if err != nil || len(got) != 1 || got[0].Text != "shared append" {
 		t.Fatalf("completed partial record = %#v, %v", got, err)
+	}
+	if lateResult, searchErr := Search(ctx, database.DB, "late AND suffix"); searchErr != nil || len(lateResult) != 0 {
+		t.Fatalf("late suffix entered captured round = %#v, %v", lateResult, searchErr)
+	}
+	if _, err = Scan(ctx, database.DB, home); err != nil {
+		t.Fatal(err)
+	}
+	if lateResult, searchErr := Search(ctx, database.DB, "late AND suffix"); searchErr != nil || len(lateResult) != 1 {
+		t.Fatalf("next round missed late suffix = %#v, %v", lateResult, searchErr)
 	}
 }
 

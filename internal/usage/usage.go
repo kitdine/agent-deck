@@ -1198,7 +1198,7 @@ func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceR
 		}
 	}
 	if sharedStream != nil {
-		if err = ingest.Validate(sharedStream.Source); err != nil {
+		if err = ingest.ValidateCapturedRange(sharedStream.Source, entry.Size); err != nil {
 			return r, errUsageSourceChanged
 		}
 	} else if err = s.validateSnapshot(path, file, entry, cursor, data, previousAnchorStart, previousAnchor); err != nil {

@@ -483,6 +483,7 @@ type sourceUpdate struct {
 
 type sourcePrecondition struct {
 	found                       bool
+	bounded                     bool
 	state                       sourceState
 	identity, prefixHash        string
 	size, modifiedAt, changedAt int64
@@ -618,15 +619,30 @@ func prepareSourceUpdate(ctx context.Context, executor sessionExecutor, src sour
 		return sourceUpdate{}, false, err
 	}
 	if sharedSource != nil {
-		if err = ingest.Validate(*sharedSource); err != nil {
+		if err = ingest.ValidateCapturedRange(*sharedSource, sharedSource.Size); err != nil {
 			return sourceUpdate{}, false, err
 		}
+		prefix, err = prefixHash(path, sharedSource.Size)
+		if err != nil {
+			return sourceUpdate{}, false, err
+		}
+		update.precondition.bounded = true
+		update.precondition.identity = sharedSource.Identity
+		update.precondition.size = sharedSource.Size
+		update.precondition.modifiedAt = sharedSource.ModifiedAt
+		update.precondition.changedAt = sharedSource.ChangedAt
+		update.precondition.prefixHash = prefix
+		identity, info = sharedSource.Identity, nil
 	}
 	if partial == nil {
 		partial = []byte{}
 	}
 	update.writeState = true
-	update.state = sourceState{path: path, identity: identity, cursor: info.Size(), size: info.Size(), modifiedAt: info.ModTime().UnixNano(), changedAt: changedAt, prefixHash: prefix, priority: int64(src.priority), parserVersion: ParserVersion, partial: partial}
+	if sharedSource != nil {
+		update.state = sourceState{path: path, identity: identity, cursor: sharedSource.Size, size: sharedSource.Size, modifiedAt: sharedSource.ModifiedAt, changedAt: sharedSource.ChangedAt, prefixHash: prefix, priority: int64(src.priority), parserVersion: ParserVersion, partial: partial}
+	} else {
+		update.state = sourceState{path: path, identity: identity, cursor: info.Size(), size: info.Size(), modifiedAt: info.ModTime().UnixNano(), changedAt: changedAt, prefixHash: prefix, priority: int64(src.priority), parserVersion: ParserVersion, partial: partial}
+	}
 	return update, true, nil
 }
 
@@ -639,13 +655,19 @@ func validateSourceUpdate(ctx context.Context, executor sessionExecutor, update 
 	if err != nil {
 		return err
 	}
-	prefix, err := prefixHash(update.path, info.Size())
+	limit := info.Size()
+	if update.precondition.bounded {
+		limit = update.precondition.size
+	}
+	prefix, err := prefixHash(update.path, limit)
 	if err != nil {
 		return err
 	}
 	precondition := update.precondition
 	_, changedAt, stable := ingest.FileGeneration(info)
-	if identity != precondition.identity || info.Size() != precondition.size || info.ModTime().UnixNano() != precondition.modifiedAt || (precondition.changedAt != 0 && (!stable || changedAt != precondition.changedAt)) || prefix != precondition.prefixHash {
+	exactMismatch := info.Size() != precondition.size || info.ModTime().UnixNano() != precondition.modifiedAt || (precondition.changedAt != 0 && (!stable || changedAt != precondition.changedAt))
+	boundedMismatch := info.Size() < precondition.size
+	if identity != precondition.identity || ((!precondition.bounded && exactMismatch) || (precondition.bounded && boundedMismatch)) || prefix != precondition.prefixHash {
 		return ingest.ErrSourceChanged
 	}
 	state, found, err := loadSource(ctx, executor, update.path)

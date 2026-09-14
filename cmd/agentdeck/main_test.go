@@ -2360,6 +2360,16 @@ func TestSessionCheckpointFingerprintBindsSessionEpoch(t *testing.T) {
 	if want := fmt.Sprintf("v1:%d:%s", epoch, raw); checkpoint != want {
 		t.Fatalf("checkpoint=%q want=%q", checkpoint, want)
 	}
+	if err = os.MkdirAll(filepath.Join(home, ".codex", "sessions"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(filepath.Join(home, ".codex", "sessions", "late.jsonl"), []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	bound, err := sessionCheckpointFingerprintFromRaw(ctx, sessions, raw)
+	if err != nil || bound != fmt.Sprintf("v1:%d:%s", epoch, raw) {
+		t.Fatalf("captured checkpoint=%q err=%v", bound, err)
+	}
 	if _, err = store.MintSessionIndexEpoch(ctx, sessions.DB); err != nil {
 		t.Fatal(err)
 	}

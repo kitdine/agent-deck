@@ -778,6 +778,20 @@ func Validate(source Source) error {
 	return nil
 }
 
+// ValidateCapturedRange permits same-identity growth after discovery while
+// requiring the complete captured byte interval to remain present.
+func ValidateCapturedRange(source Source, end int64) error {
+	info, err := os.Stat(source.Path)
+	if err != nil {
+		return err
+	}
+	identity, _, stable := fileGeneration(info)
+	if !source.Stable || !stable || identity != source.Identity || end < 0 || end > source.Size || info.Size() < end {
+		return ErrSourceChanged
+	}
+	return nil
+}
+
 func fileGeneration(info os.FileInfo) (string, int64, bool) {
 	stat, ok := info.Sys().(*syscall.Stat_t)
 	if !ok {

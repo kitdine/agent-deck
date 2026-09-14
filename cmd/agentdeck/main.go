@@ -1530,6 +1530,18 @@ func runSessionScanRound(ctx context.Context, opts *commandOptions, progress ses
 		progress.Update(session.ScanProgress{})
 		defer progress.Stop()
 	}
+	stateRoot, err := opts.stateRoot()
+	if err != nil {
+		return session.ScanResult{}, err
+	}
+	home, err := userHomeDir()
+	if err != nil {
+		return session.ScanResult{}, err
+	}
+	inventoryFingerprint, err := watch.FingerprintRoots(sessionWatchRoots(home)...)
+	if err != nil {
+		return session.ScanResult{}, err
+	}
 	result, err := requestScanRoundWithProgress(ctx, opts, scanruntime.ScopeSession, func(value scanruntime.Progress) {
 		if progress != nil {
 			progress.Update(session.ScanProgress{Processed: value.Session.Committed, Total: value.Session.Total, Skipped: value.Session.Skipped})
@@ -1541,19 +1553,11 @@ func runSessionScanRound(ctx context.Context, opts *commandOptions, progress ses
 	if err = result.ErrorFor(scanruntime.ScopeSession); err != nil {
 		return session.ScanResult{}, err
 	}
-	stateRoot, err := opts.stateRoot()
-	if err != nil {
-		return session.ScanResult{}, err
-	}
-	home, err := userHomeDir()
-	if err != nil {
-		return session.ScanResult{}, err
-	}
 	sessions, err := store.OpenSessionsReadOnly(ctx, stateRoot)
 	if err != nil {
 		return session.ScanResult{}, err
 	}
-	fingerprint, err := sessionCheckpointFingerprint(ctx, sessions, home)
+	fingerprint, err := sessionCheckpointFingerprintFromRaw(ctx, sessions, inventoryFingerprint)
 	closeErr := sessions.Close()
 	if err != nil {
 		return session.ScanResult{}, err
@@ -1573,11 +1577,15 @@ func runSessionScanRound(ctx context.Context, opts *commandOptions, progress ses
 }
 
 func sessionCheckpointFingerprint(ctx context.Context, sessions *store.Store, home string) (string, error) {
-	epoch, err := sessions.SessionIndexEpoch(ctx)
+	fingerprint, err := watch.FingerprintRoots(sessionWatchRoots(home)...)
 	if err != nil {
 		return "", err
 	}
-	fingerprint, err := watch.FingerprintRoots(sessionWatchRoots(home)...)
+	return sessionCheckpointFingerprintFromRaw(ctx, sessions, fingerprint)
+}
+
+func sessionCheckpointFingerprintFromRaw(ctx context.Context, sessions *store.Store, fingerprint string) (string, error) {
+	epoch, err := sessions.SessionIndexEpoch(ctx)
 	if err != nil {
 		return "", err
 	}
