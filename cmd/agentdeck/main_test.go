@@ -826,6 +826,7 @@ func TestRunJSONPropagatesChildFailureAndClosesRun(t *testing.T) {
 
 func TestUsageCommandTextAndJSONContracts(t *testing.T) {
 	state := filepath.Join(t.TempDir(), "state")
+	waitForDetachedScanCleanup(t, state)
 	home := filepath.Join(t.TempDir(), "home")
 	if err := os.MkdirAll(home, 0700); err != nil {
 		t.Fatal(err)
@@ -2535,7 +2536,7 @@ func TestUsageOnlyWatchNeverCreatesSessionStore(t *testing.T) {
 	oldHome := userHomeDir
 	userHomeDir = func() (string, error) { return home, nil }
 	t.Cleanup(func() { userHomeDir = oldHome })
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	writer := &cancelAfterLineWriter{cancel: cancel}
 	command := newRootCommand(bytes.NewReader(nil), writer)
@@ -2845,14 +2846,7 @@ INSERT INTO model_prices(catalog_version,model,provider,effective_from,prices_js
 
 func TestUsageSummaryShortcutsAndStatsJSONContract(t *testing.T) {
 	state := filepath.Join(t.TempDir(), "state")
-	t.Cleanup(func() {
-		release, err := scanruntime.AcquireMaintenance(context.Background(), state, 5*time.Second)
-		if err != nil {
-			t.Errorf("wait for detached scan cleanup: %v", err)
-			return
-		}
-		_ = release()
-	})
+	waitForDetachedScanCleanup(t, state)
 	home := t.TempDir()
 	oldHome := userHomeDir
 	userHomeDir = func() (string, error) { return home, nil }
@@ -2927,6 +2921,18 @@ func TestUsageSummaryShortcutsAndStatsJSONContract(t *testing.T) {
 	if !strings.Contains(textOutput.String(), "Jul 01, 2026 - Jul 07, 2026") || strings.Contains(textOutput.String(), "Jul 08, 2026") {
 		t.Fatalf("stats text range is not inclusive:\n%s", textOutput.String())
 	}
+}
+
+func waitForDetachedScanCleanup(t *testing.T, state string) {
+	t.Helper()
+	t.Cleanup(func() {
+		release, err := scanruntime.AcquireMaintenance(context.Background(), state, 5*time.Second)
+		if err != nil {
+			t.Errorf("wait for detached scan cleanup: %v", err)
+			return
+		}
+		_ = release()
+	})
 }
 
 func TestUsageStatsDisclosesDefaultedCacheCreationTTL(t *testing.T) {

@@ -1390,6 +1390,16 @@ public final class DesktopRefreshCoordinator {
 		guard generation == self.generation else {
 			return
 		}
+		switch state {
+		case .refreshing, .degraded:
+			break
+		default:
+			return
+		}
+		acceptProgress(progress)
+	}
+
+	private func acceptProgress(_ progress: DesktopScanProgress) {
 		if let current = scanProgress, progress.sequence < current.sequence {
 			return
 		}
