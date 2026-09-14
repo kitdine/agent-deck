@@ -340,7 +340,7 @@ final class MenuBarViewModel {
 	}
 
 	var scanProgressStageText: String? {
-		guard isRefreshing, let progress = coordinator.scanProgress else { return nil }
+		guard let progress = coordinator.scanProgress else { return nil }
 		return switch progress.stage {
 		case .waiting: t(DesktopCopy.scanWaiting)
 		case .checking: t(DesktopCopy.scanChecking)
@@ -351,7 +351,7 @@ final class MenuBarViewModel {
 	}
 
 	var scanProgressCountsText: String? {
-		guard isRefreshing, let progress = coordinator.scanProgress, progress.stage == .importing else { return nil }
+		guard let progress = coordinator.scanProgress else { return nil }
 		var parts = [String]()
 		if progress.usage.total > 0 {
 			parts.append(t(DesktopCopy.scanUsageProgress, Int64(progress.usage.committed), Int64(progress.usage.total)))

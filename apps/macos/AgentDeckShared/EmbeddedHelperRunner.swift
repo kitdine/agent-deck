@@ -1419,7 +1419,6 @@ public final class DesktopRefreshCoordinator {
 			return
 		}
 		state = .degraded(previous: latestSnapshot, issue: issue)
-		scanProgress = nil
 		activeRefresh = nil
 	}
 }

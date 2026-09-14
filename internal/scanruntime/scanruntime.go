@@ -1267,7 +1267,7 @@ func prepareStateRoot(stateRoot string) (string, string, error) {
 }
 
 func socketPath(stateID string) (string, error) {
-	parent := filepath.Join(scanRuntimeBase(), "agentdeck-scan")
+	parent := filepath.Join(scanRuntimeBase(), fmt.Sprintf("agentdeck-scan-%d", os.Geteuid()))
 	if err := secureRuntimeDirectory(parent); err != nil {
 		return "", err
 	}

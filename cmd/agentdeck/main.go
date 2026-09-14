@@ -2775,16 +2775,15 @@ func newSessionPurgeCommand(opts *commandOptions) *cobra.Command {
 		if err = platform.EnsureStateRoot(stateDir); err != nil {
 			return err
 		}
-		lock, err := store.AcquireLock(cmd.Context(), stateDir, 5*time.Second)
-		if err != nil {
-			return err
-		}
-		defer func() {
-			if lock != nil {
-				_ = lock.Release()
+		err = scanruntime.WithMaintenance(cmd.Context(), stateDir, 5*time.Second, func(ctx context.Context) error {
+			lock, lockErr := store.AcquireLock(ctx, stateDir, 5*time.Second)
+			if lockErr != nil {
+				return lockErr
 			}
-		}()
-		if err = purgeSessionIndex(cmd.Context(), stateDir, store.OpenWithLockHeld, os.Remove); err != nil {
+			defer lock.Release()
+			return purgeSessionIndex(ctx, stateDir, store.OpenWithLockHeld, os.Remove)
+		})
+		if err != nil {
 			return err
 		}
 		return writeResult(opts.stdout, opts.format, "session.purge-index", map[string]any{"purged": true}, opts.quiet)
@@ -2939,7 +2938,6 @@ func newWatchCommand(opts *commandOptions) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		sessionRoots := sessionWatchRoots(home)
 		extensionRoots := extensionWatchRoots(home, workdir)
 		fingerprint := func(roots []string) func(context.Context) (string, error) {
 			return func(context.Context) (string, error) { return watch.FingerprintRoots(roots...) }
@@ -2994,7 +2992,12 @@ func newWatchCommand(opts *commandOptions) *cobra.Command {
 			}})
 		}
 		if requested["session"] {
-			filtered = append(filtered, watch.Source{Domain: "session", Snapshot: fingerprint(sessionRoots), Scan: func(ctx context.Context) (int, error) {
+			filtered = append(filtered, watch.Source{Domain: "session", Snapshot: func(ctx context.Context) (string, error) {
+				if err := openSessions(ctx); err != nil {
+					return "", err
+				}
+				return sessionCheckpointFingerprint(ctx, sessions, home)
+			}, Scan: func(ctx context.Context) (int, error) {
 				if err := openSessions(ctx); err != nil {
 					return 0, err
 				}

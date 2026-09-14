@@ -162,6 +162,9 @@ struct MenuBarSurfaceView: View {
 			Label(model.errorCopy, systemImage: NoticeSeverity.error.symbol)
 				.font(.body)
 				.fixedSize(horizontal: false, vertical: true)
+			if model.coordinator.scanProgress != nil {
+				scanProgressStatus
+			}
 			Button(t(DesktopCopy.retry)) { model.refresh() }
 				.keyboardShortcut(.defaultAction)
 		}
