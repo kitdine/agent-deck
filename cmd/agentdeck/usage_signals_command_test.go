@@ -21,6 +21,7 @@ func withUsageSignalsHome(t *testing.T) string {
 func TestUsageSignalsCommandUsesEnvelopeAndHasNoTopFlag(t *testing.T) {
 	withUsageSignalsHome(t)
 	state := filepath.Join(t.TempDir(), "state")
+	waitForDetachedScanCleanup(t, state)
 	var output bytes.Buffer
 	if err := run([]string{"--state-dir", state, "--format", "json", "usage", "signals", "--period", "7d", "--client", "codex", "--kind", "workflow"}, bytes.NewReader(nil), &output); err != nil {
 		t.Fatal(err)
@@ -44,6 +45,7 @@ func TestUsageSignalsCommandUsesEnvelopeAndHasNoTopFlag(t *testing.T) {
 func TestUsageSignalsAndSessionShowReadTheSameSafeDerivation(t *testing.T) {
 	home := withUsageSignalsHome(t)
 	state := filepath.Join(t.TempDir(), "state")
+	waitForDetachedScanCleanup(t, state)
 	source := filepath.Join(home, ".claude", "projects", "safe.jsonl")
 	if err := os.MkdirAll(filepath.Dir(source), 0700); err != nil {
 		t.Fatal(err)
