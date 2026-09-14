@@ -246,6 +246,34 @@ func TestCoordinatorReadsOnlyPlannedUnionRange(t *testing.T) {
 	}
 }
 
+func TestCoordinatorAbandonsOnePartialPlanWithoutBlockingOtherConsumer(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "source.jsonl")
+	if err := os.WriteFile(path, []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	source := testSource(t, path)
+	coordinator := NewCoordinator([]Source{source}, Options{RequirePlans: true})
+	defer coordinator.Close()
+	if err := coordinator.Plan(path, ConsumerUsage, ReadRange{End: source.Size}); err != nil {
+		t.Fatal(err)
+	}
+	if err := coordinator.AbandonPlan(ConsumerUsage); err != nil {
+		t.Fatal(err)
+	}
+	if err := coordinator.Plan(path, ConsumerSession, ReadRange{End: source.Size}); err != nil {
+		t.Fatal(err)
+	}
+	if err := coordinator.Seal(ConsumerSession); err != nil {
+		t.Fatal(err)
+	}
+	coordinator.ConsumerDone(ConsumerUsage)
+	coordinator.Start(context.Background())
+	snapshot, shared, err := coordinator.Snapshot(context.Background(), path, ConsumerSession)
+	if err != nil || !shared || len(snapshot.Records) != 1 {
+		t.Fatalf("session snapshot=%#v shared=%t err=%v", snapshot, shared, err)
+	}
+}
+
 func TestDynamicWorkersUsesEnvironmentAndTaskBounds(t *testing.T) {
 	if got := DynamicWorkers(1); got != 1 {
 		t.Fatalf("one task workers=%d", got)

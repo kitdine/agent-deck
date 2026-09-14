@@ -3,6 +3,7 @@ package scanruntime
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -11,6 +12,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/kitdine/agent-deck/internal/store"
 )
 
 const scanWorkerHelperEnv = "AGENTDECK_SCANRUNTIME_TEST_WORKER"
@@ -105,6 +108,35 @@ func TestAcceptedRoundContinuesAfterWaiterDetachesAndUsesFiniteFollowUp(t *testi
 	defer mu.Unlock()
 	if calls != 2 {
 		t.Fatalf("round executions = %d, want 2", calls)
+	}
+}
+
+func TestRoundKeepsHealthyDomainWhenOtherStoreCannotOpen(t *testing.T) {
+	for _, test := range []struct {
+		name        string
+		failCore    bool
+		wantUsage   string
+		wantSession string
+	}{
+		{name: "session store unavailable", wantUsage: "completed", wantSession: "failed"},
+		{name: "core store unavailable", failCore: true, wantUsage: "failed", wantSession: "completed"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			round := newRound(t.TempDir())
+			if test.failCore {
+				round.openCore = func(context.Context, string) (*store.Store, error) {
+					return nil, errors.New("synthetic core open failure")
+				}
+			} else {
+				round.openSessions = func(context.Context, string) (*store.Store, error) {
+					return nil, errors.New("synthetic session open failure")
+				}
+			}
+			round.executeProduction(context.Background(), t.TempDir(), false)
+			if round.result.Usage.State != test.wantUsage || round.result.Session.State != test.wantSession {
+				t.Fatalf("result usage=%#v session=%#v", round.result.Usage, round.result.Session)
+			}
+		})
 	}
 }
 

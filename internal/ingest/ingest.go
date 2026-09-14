@@ -404,6 +404,37 @@ func (c *Coordinator) Seal(consumer string) error {
 	return nil
 }
 
+// AbandonPlan removes one failed consumer's partial plan and seals that domain
+// as skipped. The other consumer can still read and publish its independent
+// result instead of inheriting the planning failure.
+func (c *Coordinator) AbandonPlan(consumer string) error {
+	if consumer != ConsumerUsage && consumer != ConsumerSession {
+		return ErrPlanMismatch
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.planning || c.sealed[consumer] {
+		return nil
+	}
+	for _, entry := range c.entries {
+		delete(entry.planned, consumer)
+		entry.planningComplete[consumer] = true
+		if !entry.skipped[consumer] {
+			entry.skipped[consumer] = true
+			close(entry.skipCh[consumer])
+		}
+		if !entry.allSkippedClosed && entry.skipped[ConsumerUsage] && entry.skipped[ConsumerSession] {
+			entry.allSkippedClosed = true
+			close(entry.allSkipped)
+		}
+	}
+	c.sealed[consumer] = true
+	if c.sealed[ConsumerUsage] && c.sealed[ConsumerSession] {
+		c.planOnce.Do(func() { close(c.planReady) })
+	}
+	return nil
+}
+
 func (c *Coordinator) admissionFor(path string) (*streamEntry, ReadRange, bool, error) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()

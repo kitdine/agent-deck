@@ -1442,6 +1442,8 @@ func TestPhase6RejectsNDJSONBeforeAnyBackupOrDoctorSideEffect(t *testing.T) {
 	}{
 		{[]string{"--state-dir", state, "--format", "ndjson", "backup", "create", archive}, "backup.create"},
 		{[]string{"--state-dir", state, "--format", "ndjson", "doctor"}, "doctor"},
+		{[]string{"--state-dir", state, "--format", "ndjson", "usage", "scan"}, "usage.scan"},
+		{[]string{"--state-dir", state, "--format", "ndjson", "session", "scan"}, "session.scan"},
 	} {
 		assertExtensionCLIErrorArgs(t, test.args, 2, test.command, "invalid_argument")
 	}

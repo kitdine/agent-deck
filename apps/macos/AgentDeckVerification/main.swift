@@ -163,11 +163,11 @@ enum AgentDeckFoundationVerifier {
             )
         }
         try require(
-            invocations[0].arguments == ["--format", "ndjson", "scan"],
+            invocations[0].arguments == ["--state-dir", "/tmp/agentdeck-fixture-home/.agentdeck", "--format", "ndjson", "scan"],
             "the global scan must use the approved event-stream argument array"
         )
         try require(
-            invocations[1].arguments == ["--format", "json", "desktop", "snapshot", "--wire-version", "1", "--recent-limit", "5", "--stream"],
+            invocations[1].arguments == ["--state-dir", "/tmp/agentdeck-fixture-home/.agentdeck", "--format", "json", "desktop", "snapshot", "--wire-version", "1", "--recent-limit", "5", "--stream"],
             "helper command must use the approved argument array"
         )
 
@@ -238,7 +238,7 @@ enum AgentDeckFoundationVerifier {
 		let scanText = String(decoding: successfulScanStream(), as: UTF8.self)
 		let timeoutScript = """
 		#!/bin/sh
-		if [ "$2" = "ndjson" ] && [ "$3" = "scan" ]; then
+		if [ "$4" = "ndjson" ] && [ "$5" = "scan" ]; then
 		cat <<'AGENTDECK_SCAN'
 		\(scanText)AGENTDECK_SCAN
 		exit 0

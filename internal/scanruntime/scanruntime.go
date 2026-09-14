@@ -722,18 +722,20 @@ type round struct {
 	predecessor *round
 	onTerminal  func(Result) error
 
-	done        chan struct{}
-	usageDone   chan struct{}
-	sessionDone chan struct{}
-	once        sync.Once
-	usageOnce   sync.Once
-	sessionOnce sync.Once
-	mu          sync.RWMutex
-	result      Result
-	progress    Progress
-	progressSeq uint64
-	terminalErr error
-	cacheNow    func() time.Time
+	done         chan struct{}
+	usageDone    chan struct{}
+	sessionDone  chan struct{}
+	once         sync.Once
+	usageOnce    sync.Once
+	sessionOnce  sync.Once
+	mu           sync.RWMutex
+	result       Result
+	progress     Progress
+	progressSeq  uint64
+	terminalErr  error
+	cacheNow     func() time.Time
+	openCore     func(context.Context, string) (*store.Store, error)
+	openSessions func(context.Context, string) (*store.Store, error)
 }
 
 type roundRunner func(context.Context, string, string, string, bool) Result
@@ -810,11 +812,19 @@ func (r *round) executeProduction(ctx context.Context, stateRoot string, lockHel
 		return
 	}
 
-	core, coreErr := store.Open(ctx, stateRoot)
+	openCore := r.openCore
+	if openCore == nil {
+		openCore = store.Open
+	}
+	openSessions := r.openSessions
+	if openSessions == nil {
+		openSessions = store.OpenSessions
+	}
+	core, coreErr := openCore(ctx, stateRoot)
 	if coreErr == nil {
 		defer core.Close()
 	}
-	sessions, sessionsErr := store.OpenSessions(ctx, stateRoot)
+	sessions, sessionsErr := openSessions(ctx, stateRoot)
 	if sessionsErr == nil {
 		defer sessions.Close()
 	}
@@ -844,34 +854,49 @@ func (r *round) executeProduction(ctx context.Context, stateRoot string, lockHel
 			sessionPlanErr = sessionsErr
 		}
 	}
-	if usagePlanErr != nil || sessionPlanErr != nil {
-		if usagePlanErr == nil {
-			usagePlanErr = sessionPlanErr
-		}
-		if sessionPlanErr == nil {
-			sessionPlanErr = usagePlanErr
-		}
+	if usagePlanErr != nil && sessionPlanErr != nil {
 		r.setUsage(failedUsage(usagePlanErr, 0))
 		r.setSession(failedSession(sessionPlanErr, 0))
 		return
 	}
-	r.setProgressStage("importing")
-	usageService.Progress = usageRoundProgress{round: r}
-	coordinator.Start(ctx)
-	var wait sync.WaitGroup
-	wait.Add(3)
-	go func() {
-		defer wait.Done()
-		defer coordinator.ConsumerDone(ingest.ConsumerUsage)
-		started := time.Now()
-		changes, err := usageService.ScanInventory(ctx, usageInventory)
-		duration := time.Since(started).Milliseconds()
-		if err != nil {
-			r.setUsage(failedUsage(err, duration))
+	if usagePlanErr != nil {
+		if err := coordinator.AbandonPlan(ingest.ConsumerUsage); err != nil {
+			r.setUsage(failedUsage(usagePlanErr, 0))
+			r.setSession(failedSession(err, 0))
 			return
 		}
-		r.setUsage(UsageResult{State: "completed", Changes: changes, DurationMS: duration})
-	}()
+		r.setUsage(failedUsage(usagePlanErr, 0))
+		coordinator.ConsumerDone(ingest.ConsumerUsage)
+	}
+	if sessionPlanErr != nil {
+		if err := coordinator.AbandonPlan(ingest.ConsumerSession); err != nil {
+			r.setUsage(failedUsage(err, 0))
+			r.setSession(failedSession(sessionPlanErr, 0))
+			return
+		}
+		r.setSession(failedSession(sessionPlanErr, 0))
+		coordinator.ConsumerDone(ingest.ConsumerSession)
+	}
+	r.setProgressStage("importing")
+	coordinator.Start(ctx)
+	var wait sync.WaitGroup
+	wait.Add(1)
+	if usagePlanErr == nil {
+		usageService.Progress = usageRoundProgress{round: r}
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			defer coordinator.ConsumerDone(ingest.ConsumerUsage)
+			started := time.Now()
+			changes, err := usageService.ScanInventory(ctx, usageInventory)
+			duration := time.Since(started).Milliseconds()
+			if err != nil {
+				r.setUsage(failedUsage(err, duration))
+				return
+			}
+			r.setUsage(UsageResult{State: "completed", Changes: changes, DurationMS: duration})
+		}()
+	}
 	go func() {
 		defer wait.Done()
 		<-r.usageDone
@@ -890,18 +915,21 @@ func (r *round) executeProduction(ctx context.Context, stateRoot string, lockHel
 		_ = (desktop.Service{StateRoot: stateRoot, Home: r.home, Now: r.cacheNow}).PublishDerivedSnapshotCache(ctx, desktop.WireVersion)
 		r.setDerivedCache(time.Since(started).Milliseconds())
 	}()
-	go func() {
-		defer wait.Done()
-		defer coordinator.ConsumerDone(ingest.ConsumerSession)
-		started := time.Now()
-		scan, err := session.ScanWithOptions(ctx, sessions.DB, r.home, session.ScanOptions{PreparedSources: sources, Coordinator: coordinator, Progress: sessionRoundProgress{round: r}})
-		duration := time.Since(started).Milliseconds()
-		if err != nil {
-			r.setSession(failedSession(err, duration))
-			return
-		}
-		r.setSession(SessionResult{State: "completed", Scan: scan, DurationMS: duration})
-	}()
+	if sessionPlanErr == nil {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			defer coordinator.ConsumerDone(ingest.ConsumerSession)
+			started := time.Now()
+			scan, err := session.ScanWithOptions(ctx, sessions.DB, r.home, session.ScanOptions{PreparedSources: sources, Coordinator: coordinator, Progress: sessionRoundProgress{round: r}})
+			duration := time.Since(started).Milliseconds()
+			if err != nil {
+				r.setSession(failedSession(err, duration))
+				return
+			}
+			r.setSession(SessionResult{State: "completed", Scan: scan, DurationMS: duration})
+		}()
+	}
 	wait.Wait()
 }
 

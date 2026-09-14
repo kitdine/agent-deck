@@ -1192,6 +1192,55 @@ func TestScanWithCoordinatorReducesBeforeBeginningPublicationTransaction(t *test
 	}
 }
 
+func TestSharedAppendPlanIncludesStoredPartialRecord(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	home := filepath.Join(root, "home")
+	path := filepath.Join(home, ".codex", "sessions", "partial.jsonl")
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	initial := []byte("{\"type\":\"session_meta\",\"payload\":{\"session_id\":\"partial\"}}\n{\"type\":\"visible_user_prompt\",\"payload\":{\"session_id\":\"partial\",\"text\":\"shared")
+	if err := os.WriteFile(path, initial, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	database, err := store.OpenSessions(ctx, filepath.Join(root, "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if _, err = Scan(ctx, database.DB, home); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(path, append(initial, []byte(" append\"}}\n")...), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	sources, err := ingest.Discover(home)
+	if err != nil || len(sources) != 1 {
+		t.Fatalf("discover sources=%#v err=%v", sources, err)
+	}
+	if !sources[0].Stable {
+		t.Skip("stable file generations unavailable")
+	}
+	coordinator := ingest.NewCoordinator(sources, ingest.Options{RequirePlans: true})
+	t.Cleanup(coordinator.Close)
+	coordinator.Skip(path, ingest.ConsumerUsage)
+	if err = coordinator.Seal(ingest.ConsumerUsage); err != nil {
+		t.Fatal(err)
+	}
+	if err = PlanForCoordinator(ctx, database.DB, home, sources, coordinator); err != nil {
+		t.Fatal(err)
+	}
+	coordinator.Start(ctx)
+	if _, err = ScanWithOptions(ctx, database.DB, home, ScanOptions{PreparedSources: sources, Coordinator: coordinator}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Search(ctx, database.DB, "shared AND append")
+	if err != nil || len(got) != 1 || got[0].Text != "shared append" {
+		t.Fatalf("completed partial record = %#v, %v", got, err)
+	}
+}
+
 func storedSessionTexts(t *testing.T, database *sql.DB) []string {
 	t.Helper()
 	rows, err := database.Query(`SELECT text FROM session_documents ORDER BY text`)

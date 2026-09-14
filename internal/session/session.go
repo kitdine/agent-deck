@@ -440,7 +440,10 @@ func plannedReadRange(ctx context.Context, executor sessionExecutor, src source)
 	appendOnly := found && state.identity == src.identity && state.parserVersion == ParserVersion && src.size > state.cursor && oldPrefix == state.prefixHash
 	start := int64(0)
 	if appendOnly {
-		start = state.cursor
+		start = state.cursor - int64(len(state.partial))
+		if start < 0 {
+			return ingest.ReadRange{}, false, ingest.ErrSourceChanged
+		}
 	}
 	return ingest.ReadRange{Start: start, End: src.size}, true, nil
 }

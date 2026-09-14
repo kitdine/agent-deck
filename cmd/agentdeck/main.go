@@ -562,7 +562,8 @@ func newRootCommandWithError(stdin io.Reader, stdout, stderr io.Writer) *cobra.C
 			if err := opts.validateFormat(); err != nil {
 				return err
 			}
-			if opts.format == "ndjson" && command.Name() != "watch" && command.Name() != "scan" {
+			commandPath := command.CommandPath()
+			if opts.format == "ndjson" && commandPath != "agentdeck watch" && commandPath != "agentdeck scan" {
 				return &inputError{err: fmt.Errorf("ndjson format is supported only by watch and scan")}
 			}
 			return nil
