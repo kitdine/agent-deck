@@ -386,6 +386,15 @@ func (s Service) PublishDerivedSnapshotCache(ctx context.Context, wireVersion in
 	}
 	defer core.Close()
 	now := s.now().UTC()
+	current, err := core.DerivedSnapshotGeneration(ctx)
+	if err != nil {
+		return err
+	}
+	if !current.Dirty {
+		if _, found := s.loadDerivedSnapshotCache(ctx, core, now, wireVersion); found {
+			return nil
+		}
+	}
 	before, err := core.BeginDerivedSnapshotGenerationBuild(ctx)
 	if err != nil {
 		return err

@@ -42,9 +42,13 @@ type desktopSnapshotChunkData struct {
 }
 
 type desktopIndexRefreshResult struct {
-	Usage          desktopIndexDomainResult `json:"usage"`
-	Sessions       desktopIndexDomainResult `json:"sessions"`
-	derivedCacheMS int64
+	Usage              desktopIndexDomainResult `json:"usage"`
+	Sessions           desktopIndexDomainResult `json:"sessions"`
+	discoveryMS        int64
+	workerTotalMS      int64
+	derivedCacheMS     int64
+	workerCPUTimeMS    int64
+	workerPeakRSSBytes int64
 }
 
 type desktopIndexDomainResult struct {
@@ -136,7 +140,7 @@ func newDesktopCommand(opts *commandOptions) *cobra.Command {
 }
 
 func refreshDesktopIndexes(ctx context.Context, stateRoot, home string) (desktopIndexRefreshResult, bool, []string, error) {
-	round, err := (scanruntime.Client{StateRoot: stateRoot, Home: home, ForceLocal: scanRuntimeLocalTestMode(), Now: desktopNow}).Request(ctx, scanruntime.ScopeBoth)
+	round, err := (scanruntime.Client{StateRoot: stateRoot, Home: home, Executable: scanRuntimeExecutable(), ForceLocal: scanRuntimeForceLocal(), Now: desktopNow}).Request(ctx, scanruntime.ScopeBoth)
 	if err != nil {
 		return desktopIndexRefreshResult{}, false, nil, err
 	}
@@ -182,7 +186,11 @@ func refreshDesktopIndexes(ctx context.Context, stateRoot, home string) (desktop
 
 func desktopIndexResultFromRound(round scanruntime.Result) desktopIndexRefreshResult {
 	result := desktopIndexRefreshResult{
-		derivedCacheMS: round.Stages.DerivedCacheMS,
+		discoveryMS:        round.Stages.DiscoveryMS,
+		workerTotalMS:      round.Stages.TotalMS,
+		derivedCacheMS:     round.Stages.DerivedCacheMS,
+		workerCPUTimeMS:    round.Stages.WorkerCPUTimeMS,
+		workerPeakRSSBytes: round.Stages.WorkerPeakRSSBytes,
 		Usage: desktopIndexDomainResult{
 			Success:              round.Usage.State == "completed",
 			DurationMilliseconds: round.Usage.DurationMS,

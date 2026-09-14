@@ -1933,8 +1933,7 @@
       "success_schema": {
         "command": "string",
         "data": {
-          "completed_at": "string",
-          "round_id": "string",
+          "scope": "string",
           "session": {
             "duration_ms": "number",
             "scan": {
@@ -1945,14 +1944,6 @@
             },
             "state": "string"
           },
-          "stages": {
-            "derived_cache_ms": "number",
-            "discovery_ms": "number",
-            "session_ms": "number",
-            "total_ms": "number",
-            "usage_ms": "number"
-          },
-          "started_at": "string",
           "usage": {
             "changes": {
               "files": "number",

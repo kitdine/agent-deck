@@ -106,6 +106,16 @@ final class MenuBarViewModelTests: XCTestCase {
 		}
 
 		XCTAssertTrue(model.isRefreshing)
+		await Task.yield()
+		XCTAssertEqual(model.scanProgressStageText, t(DesktopCopy.scanImporting))
+		XCTAssertEqual(
+			model.scanProgressCountsText,
+			[
+				t(DesktopCopy.scanUsageProgress, Int64(3), Int64(8)),
+				t(DesktopCopy.scanSessionProgress, Int64(2), Int64(8)),
+				t(DesktopCopy.scanSkipped, Int64(1)),
+			].joined(separator: " · ")
+		)
 		host.resume()
 		await refresh.value
 		XCTAssertFalse(model.isRefreshing)
@@ -532,7 +542,7 @@ final class MenuBarViewModelTests: XCTestCase {
 		let provider = try! XCTUnwrap(rows.first(where: { $0.label == "aigocode" }))
 
 		XCTAssertNil(provider.target)
-		XCTAssertEqual(provider.choices.map(\.label), ["work · wrapper", "work · direct"])
+		XCTAssertEqual(provider.choices.map(\.label), ["work · \(t(DesktopCopy.switchWrapper))", "work · \(t(DesktopCopy.switchDirect))"])
 		XCTAssertEqual(provider.detail, t(DesktopCopy.switchChooseTarget, Int64(2)))
 	}
 

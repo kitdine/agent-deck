@@ -206,6 +206,11 @@ func TestReceiptJournalPersistsAcceptanceAndReplaysTerminalResult(t *testing.T) 
 		t.Fatalf("replayed terminal result=%#v", replay)
 	}
 	close(release)
+	select {
+	case <-round.done:
+	case <-time.After(time.Second):
+		t.Fatal("accepted round did not finish before receipt test cleanup")
+	}
 }
 
 func TestReceiptJournalRetainsExpiredIdentityAfterRetention(t *testing.T) {
@@ -444,6 +449,7 @@ func TestClientLaunchesDetachedWorkerHelper(t *testing.T) {
 	var worker *exec.Cmd
 	requestCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+	var progress []Progress
 	result, err := (Client{
 		StateRoot: state,
 		Home:      home,
@@ -455,12 +461,22 @@ func TestClientLaunchesDetachedWorkerHelper(t *testing.T) {
 			worker.Stderr = io.Discard
 			return worker.Start()
 		},
-	}).Request(requestCtx, ScopeBoth)
+	}).RequestWithProgress(requestCtx, ScopeBoth, func(value Progress) {
+		progress = append(progress, value)
+	})
 	if err != nil {
 		t.Fatalf("detached worker request: %v", err)
 	}
 	if result.RoundID == "" || result.Usage.State != "completed" || result.Session.State != "completed" {
 		t.Fatalf("detached worker result = %#v", result)
+	}
+	if len(progress) == 0 || progress[len(progress)-1].Stage != "completed" {
+		t.Fatalf("detached worker progress=%#v", progress)
+	}
+	for index := 1; index < len(progress); index++ {
+		if progress[index].Sequence <= progress[index-1].Sequence {
+			t.Fatalf("progress sequence=%#v", progress)
+		}
 	}
 	if worker == nil {
 		t.Fatal("worker launch was not attempted")

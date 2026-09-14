@@ -181,7 +181,7 @@ func TestUnifiedScanRuntimeRecordsStageProfile(t *testing.T) {
 	if err = result.ErrorFor(scanruntime.ScopeBoth); err != nil {
 		t.Fatal(err)
 	}
-	if result.Stages.DiscoveryMS < 0 || result.Stages.UsageMS < 0 || result.Stages.SessionMS < 0 || result.Stages.DerivedCacheMS < 0 || result.Stages.TotalMS < 0 {
+	if result.Stages.DiscoveryMS < 0 || result.Stages.UsageMS < 0 || result.Stages.SessionMS < 0 || result.Stages.DerivedCacheMS < 0 || result.Stages.TotalMS < 0 || result.Stages.WorkerCPUTimeMS < 0 || result.Stages.WorkerPeakRSSBytes < 0 {
 		t.Fatalf("negative worker stage profile: %#v", result.Stages)
 	}
 	if result.Stages.TotalMS > time.Since(started).Milliseconds()+1000 {
@@ -251,29 +251,36 @@ type snapshotPerformanceCorpusID struct {
 }
 
 type snapshotPerformanceSample struct {
-	Scenario            string `json:"scenario"`
-	Index               int    `json:"index"`
-	Outcome             string `json:"outcome"`
-	Complete            bool   `json:"complete"`
-	WithinTarget        bool   `json:"within_target"`
-	TargetMS            int64  `json:"target_ms"`
-	WallMS              int64  `json:"wall_ms"`
-	CPUTimeMS           int64  `json:"cpu_time_ms"`
-	PeakRSSBytes        int64  `json:"peak_rss_bytes"`
-	ProcessStartupMS    int64  `json:"process_startup_ms"`
-	UsageRefreshMS      int64  `json:"usage_refresh_ms"`
-	SessionRefreshMS    int64  `json:"session_refresh_ms"`
-	DerivedCacheMS      int64  `json:"derived_cache_ms"`
-	DerivedCacheHit     bool   `json:"derived_cache_hit"`
-	VerificationMS      int64  `json:"verification_ms"`
-	SnapshotSHA256      string `json:"snapshot_sha256,omitempty"`
-	LogicalRowsSHA256   string `json:"logical_rows_sha256,omitempty"`
-	UsageErrorCode      string `json:"usage_error_code,omitempty"`
-	SessionErrorCode    string `json:"session_error_code,omitempty"`
-	UsageFailureStage   string `json:"usage_failure_stage,omitempty"`
-	SessionFailureStage string `json:"session_failure_stage,omitempty"`
-	OSCacheState        string `json:"os_cache_state"`
-	ExternalLoad        string `json:"external_load"`
+	Scenario                       string `json:"scenario"`
+	Index                          int    `json:"index"`
+	Outcome                        string `json:"outcome"`
+	Complete                       bool   `json:"complete"`
+	WithinTarget                   bool   `json:"within_target"`
+	TargetMS                       int64  `json:"target_ms"`
+	WallMS                         int64  `json:"wall_ms"`
+	CPUTimeMS                      int64  `json:"cpu_time_ms"`
+	PeakRSSBytes                   int64  `json:"peak_rss_bytes"`
+	HelperCPUTimeMS                int64  `json:"helper_cpu_time_ms"`
+	HelperPeakRSSBytes             int64  `json:"helper_peak_rss_bytes"`
+	WorkerCPUTimeMS                int64  `json:"worker_cpu_time_ms"`
+	WorkerPeakRSSBytes             int64  `json:"worker_peak_rss_bytes"`
+	SimultaneousRSSUpperBoundBytes int64  `json:"simultaneous_rss_upper_bound_bytes"`
+	ProcessStartupMS               int64  `json:"process_startup_ms"`
+	UsageRefreshMS                 int64  `json:"usage_refresh_ms"`
+	SessionRefreshMS               int64  `json:"session_refresh_ms"`
+	DiscoveryMS                    int64  `json:"discovery_ms"`
+	WorkerWallMS                   int64  `json:"worker_wall_ms"`
+	DerivedCacheMS                 int64  `json:"derived_cache_ms"`
+	DerivedCacheHit                bool   `json:"derived_cache_hit"`
+	VerificationMS                 int64  `json:"verification_ms"`
+	SnapshotSHA256                 string `json:"snapshot_sha256,omitempty"`
+	LogicalRowsSHA256              string `json:"logical_rows_sha256,omitempty"`
+	UsageErrorCode                 string `json:"usage_error_code,omitempty"`
+	SessionErrorCode               string `json:"session_error_code,omitempty"`
+	UsageFailureStage              string `json:"usage_failure_stage,omitempty"`
+	SessionFailureStage            string `json:"session_failure_stage,omitempty"`
+	OSCacheState                   string `json:"os_cache_state"`
+	ExternalLoad                   string `json:"external_load"`
 }
 
 type snapshotPerformanceHelperResult struct {
@@ -284,8 +291,12 @@ type snapshotPerformanceHelperResult struct {
 	StderrSHA256        string `json:"stderr_sha256,omitempty"`
 	UsageRefreshMS      int64  `json:"usage_refresh_ms,omitempty"`
 	SessionRefreshMS    int64  `json:"session_refresh_ms,omitempty"`
+	DiscoveryMS         int64  `json:"discovery_ms,omitempty"`
+	WorkerWallMS        int64  `json:"worker_wall_ms,omitempty"`
 	DerivedCacheMS      int64  `json:"derived_cache_ms,omitempty"`
 	DerivedCacheHit     bool   `json:"derived_cache_hit,omitempty"`
+	WorkerCPUTimeMS     int64  `json:"worker_cpu_time_ms,omitempty"`
+	WorkerPeakRSSBytes  int64  `json:"worker_peak_rss_bytes,omitempty"`
 	UsageErrorCode      string `json:"usage_error_code,omitempty"`
 	SessionErrorCode    string `json:"session_error_code,omitempty"`
 	UsageFailureStage   string `json:"usage_failure_stage,omitempty"`
@@ -428,6 +439,10 @@ func TestSnapshotPerformanceRepresentativeCorpus(t *testing.T) {
 			t.Fatalf("invalid deadline %q", raw)
 		}
 	}
+	method := "two fresh CLI helper subprocesses per sample; end-to-end wall includes both command initializations, refresh-indexes with worker-derived-cache publication/recomputation, streamed snapshot and parent decode; logical-row verification is timed separately"
+	if os.Getenv("AGENTDECK_SNAPSHOT_PERFORMANCE_EXECUTABLE") != "" {
+		method = "two fresh CLI test-controller subprocesses per sample driving a detached production worker executable; end-to-end wall and combined CPU include helper startup, worker election/execution, derived-cache work, streamed snapshot and parent decode; helper and worker peak RSS plus their conservative simultaneous RSS upper bound are reported separately; logical-row verification is timed separately"
+	}
 	report := snapshotPerformanceReport{
 		SchemaVersion: 1,
 		GeneratedAt:   time.Now().UTC().Format(time.RFC3339Nano),
@@ -437,7 +452,7 @@ func TestSnapshotPerformanceRepresentativeCorpus(t *testing.T) {
 		FixedTime:     snapshotPerformanceNow.Format(time.RFC3339Nano),
 		Timezone:      "UTC",
 		DeadlineMS:    deadline.Milliseconds(),
-		Method:        "two fresh CLI helper subprocesses per sample; end-to-end wall includes both command initializations, refresh-indexes with worker-derived-cache publication/recomputation, streamed snapshot and parent decode; logical-row verification is timed separately",
+		Method:        method,
 	}
 	var completedColdState string
 	for _, scenario := range []string{"cold_import", "full_recomputation", "unchanged_refresh"} {
@@ -606,14 +621,20 @@ func runSnapshotPerformanceWorker(t *testing.T) {
 	home := os.Getenv("AGENTDECK_SNAPSHOT_PERFORMANCE_CORPUS")
 	state := os.Getenv("AGENTDECK_SNAPSHOT_PERFORMANCE_STATE")
 	oldHome, oldNow, oldRefreshObserver, oldSnapshotObserver := userHomeDir, desktopNow, desktopIndexRefreshObserver, desktopSnapshotObserver
+	oldExecutable, oldForceLocal := scanRuntimeExecutable, scanRuntimeForceLocal
 	userHomeDir = func() (string, error) { return home, nil }
 	desktopNow = func() time.Time { return snapshotPerformanceNow }
 	var observed desktopIndexRefreshResult
 	desktopIndexRefreshObserver = func(result desktopIndexRefreshResult) { observed = result }
 	var snapshotObserved desktop.Result
 	desktopSnapshotObserver = func(result desktop.Result) { snapshotObserved = result }
+	if executable := os.Getenv("AGENTDECK_SNAPSHOT_PERFORMANCE_EXECUTABLE"); executable != "" {
+		scanRuntimeExecutable = func() string { return executable }
+		scanRuntimeForceLocal = func() bool { return false }
+	}
 	t.Cleanup(func() {
 		userHomeDir, desktopNow, desktopIndexRefreshObserver, desktopSnapshotObserver = oldHome, oldNow, oldRefreshObserver, oldSnapshotObserver
+		scanRuntimeExecutable, scanRuntimeForceLocal = oldExecutable, oldForceLocal
 	})
 	args := []string{"--state-dir", state, "--format", "json", "desktop"}
 	switch action {
@@ -632,8 +653,12 @@ func runSnapshotPerformanceWorker(t *testing.T) {
 		StdoutBase64:        base64.StdEncoding.EncodeToString(stdout.Bytes()),
 		UsageRefreshMS:      observed.Usage.DurationMilliseconds,
 		SessionRefreshMS:    observed.Sessions.DurationMilliseconds,
+		DiscoveryMS:         observed.discoveryMS,
+		WorkerWallMS:        observed.workerTotalMS,
 		DerivedCacheMS:      observed.derivedCacheMS,
 		DerivedCacheHit:     snapshotObserved.DerivedCacheHit,
+		WorkerCPUTimeMS:     observed.workerCPUTimeMS,
+		WorkerPeakRSSBytes:  observed.workerPeakRSSBytes,
 		UsageErrorCode:      observed.Usage.ErrorCode,
 		SessionErrorCode:    observed.Sessions.ErrorCode,
 		UsageFailureStage:   observed.Usage.failureStage,
@@ -673,6 +698,8 @@ func runSnapshotPerformanceSample(scenario string, index int, corpus, state stri
 	}
 	sample.UsageRefreshMS = refresh.Helper.UsageRefreshMS
 	sample.SessionRefreshMS = refresh.Helper.SessionRefreshMS
+	sample.DiscoveryMS = refresh.Helper.DiscoveryMS
+	sample.WorkerWallMS = refresh.Helper.WorkerWallMS
 	sample.DerivedCacheMS = refresh.Helper.DerivedCacheMS
 	sample.UsageErrorCode = refresh.Helper.UsageErrorCode
 	sample.SessionErrorCode = refresh.Helper.SessionErrorCode
@@ -776,8 +803,13 @@ func runSnapshotPerformanceHelper(ctx context.Context, action, corpus, state str
 }
 
 func mergeSnapshotPerformanceProcess(sample *snapshotPerformanceSample, process snapshotPerformanceProcessResult) {
-	sample.CPUTimeMS += process.CPUTimeMS
-	sample.PeakRSSBytes = max(sample.PeakRSSBytes, process.PeakRSS)
+	sample.HelperCPUTimeMS += process.CPUTimeMS
+	sample.HelperPeakRSSBytes = max(sample.HelperPeakRSSBytes, process.PeakRSS)
+	sample.WorkerCPUTimeMS += process.Helper.WorkerCPUTimeMS
+	sample.WorkerPeakRSSBytes = max(sample.WorkerPeakRSSBytes, process.Helper.WorkerPeakRSSBytes)
+	sample.CPUTimeMS = sample.HelperCPUTimeMS + sample.WorkerCPUTimeMS
+	sample.PeakRSSBytes = max(sample.HelperPeakRSSBytes, sample.WorkerPeakRSSBytes)
+	sample.SimultaneousRSSUpperBoundBytes = max(sample.SimultaneousRSSUpperBoundBytes, process.PeakRSS+process.Helper.WorkerPeakRSSBytes)
 	sample.ProcessStartupMS += process.StartupMS
 }
 

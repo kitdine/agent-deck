@@ -53,7 +53,14 @@ func TestIsolatedEndToEndFlow(t *testing.T) {
 		"'{\"timestamp\":\"2026-07-14T00:00:01Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"token_count\",\"info\":{\"last_token_usage\":{\"input_tokens\":10,\"cached_input_tokens\":0,\"output_tokens\":2}}}}' " +
 		"'{\"type\":\"visible_user_prompt\",\"session_id\":\"phase7-run\",\"payload\":{\"text\":\"phase7 visible prompt\"}}' > \"$AGENTDECK_PHASE7_LOG\"\n"
 	for _, client := range []string{"codex", "claude"} {
-		if err := os.WriteFile(filepath.Join(bin, client), []byte(script), 0700); err != nil {
+		clientScript := script
+		if client == "claude" {
+			// This stub exercises the Claude launcher envelope, not Codex
+			// ingestion. Rewriting the same Codex source here invalidates the
+			// earlier exact-run binding once ctime changes are honored.
+			clientScript = "#!/bin/sh\nexit 0\n"
+		}
+		if err := os.WriteFile(filepath.Join(bin, client), []byte(clientScript), 0700); err != nil {
 			t.Fatal(err)
 		}
 	}

@@ -339,6 +339,32 @@ final class MenuBarViewModel {
 		return false
 	}
 
+	var scanProgressStageText: String? {
+		guard isRefreshing, let progress = coordinator.scanProgress else { return nil }
+		return switch progress.stage {
+		case .waiting: t(DesktopCopy.scanWaiting)
+		case .checking: t(DesktopCopy.scanChecking)
+		case .importing: t(DesktopCopy.scanImporting)
+		case .statistics: t(DesktopCopy.scanStatistics)
+		case .completed: t(DesktopCopy.scanStatistics)
+		}
+	}
+
+	var scanProgressCountsText: String? {
+		guard isRefreshing, let progress = coordinator.scanProgress, progress.stage == .importing else { return nil }
+		var parts = [String]()
+		if progress.usage.total > 0 {
+			parts.append(t(DesktopCopy.scanUsageProgress, Int64(progress.usage.committed), Int64(progress.usage.total)))
+		}
+		if progress.session.total > 0 {
+			parts.append(t(DesktopCopy.scanSessionProgress, Int64(progress.session.committed), Int64(progress.session.total)))
+		}
+		if progress.session.skipped > 0 {
+			parts.append(t(DesktopCopy.scanSkipped, Int64(progress.session.skipped)))
+		}
+		return parts.isEmpty ? nil : parts.joined(separator: " · ")
+	}
+
 	var snapshot: DesktopSnapshotV1? { presentation.snapshot?.data }
 
 	/// `aged` replaces `stale`'s wording rather than adding a second freshness

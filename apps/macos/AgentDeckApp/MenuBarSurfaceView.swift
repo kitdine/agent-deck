@@ -151,12 +151,10 @@ struct MenuBarSurfaceView: View {
 			} else {
 				ProgressView()
 			}
-			Text(t(DesktopCopy.loading))
-				.font(.body)
+			scanProgressStatus
 		}
 		.frame(maxWidth: .infinity, maxHeight: .infinity)
-		.accessibilityElement(children: .combine)
-		.accessibilityLabel(t(DesktopCopy.loading))
+		.accessibilityElement(children: .contain)
 	}
 
 	private var errorSurface: some View {
@@ -175,6 +173,9 @@ struct MenuBarSurfaceView: View {
 		VStack(spacing: 0) {
 			VStack(alignment: .leading, spacing: MenuBarGeometry.betweenRows) {
 				header
+				if model.isRefreshing {
+					scanProgressStatus
+				}
 				clientTabs
 				hero
 				periodSwitcher
@@ -197,6 +198,22 @@ struct MenuBarSurfaceView: View {
 			FooterView(model: model)
 		}
 		.background(DesktopVisualTheme.background)
+	}
+
+	private var scanProgressStatus: some View {
+		VStack(alignment: .leading, spacing: 2) {
+			Text(model.scanProgressStageText ?? t(DesktopCopy.loading))
+				.font(.body)
+				.fixedSize(horizontal: false, vertical: true)
+				.accessibilityAddTraits(.updatesFrequently)
+			if let counts = model.scanProgressCountsText {
+				Text(counts)
+					.font(.caption)
+					.foregroundStyle(DesktopVisualTheme.dim)
+					.fixedSize(horizontal: false, vertical: true)
+			}
+		}
+		.frame(maxWidth: .infinity, alignment: .leading)
 	}
 
 	private var header: some View {
@@ -234,7 +251,7 @@ struct MenuBarSurfaceView: View {
 				.keyboardShortcut("r")
 				.disabled(model.switchPresentation.blocksSurface || model.isRefreshing)
 				.accessibilityLabel(t(DesktopCopy.refreshNow))
-				.accessibilityValue(model.isRefreshing ? t(DesktopCopy.loading) : "")
+				.accessibilityValue(model.isRefreshing ? model.scanProgressStageText ?? t(DesktopCopy.loading) : "")
 		}
 		.frame(minHeight: MenuBarGeometry.rowMinimumHeight)
 		.accessibilityValue(model.qualifierSummary ?? "")

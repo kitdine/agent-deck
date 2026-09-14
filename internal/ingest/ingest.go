@@ -205,6 +205,13 @@ func FileIdentity(info os.FileInfo) string {
 	return identity
 }
 
+// FileGeneration returns the strongest portable metadata tuple available to
+// the shared planner. Stable is false when the platform cannot expose the
+// change-time component required to skip a content anchor read safely.
+func FileGeneration(info os.FileInfo) (identity string, changedAt int64, stable bool) {
+	return fileGeneration(info)
+}
+
 type streamEntry struct {
 	source           Source
 	channels         map[string]chan Batch
@@ -593,7 +600,7 @@ func (c *Coordinator) read(ctx context.Context, source Source, readRange ReadRan
 			return nil, nil
 		default:
 		}
-		line, readErr := reader.ReadBytes('\n')
+		line, readErr := readRecordLine(reader)
 		if len(line) > 0 {
 			if line[len(line)-1] != '\n' {
 				tail = append([]byte(nil), line...)

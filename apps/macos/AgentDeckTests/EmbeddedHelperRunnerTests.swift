@@ -68,12 +68,30 @@ final class EmbeddedHelperRunnerTests: XCTestCase {
 		}
 	}
 
+	func testScanEventStreamRequiresOrderedProgressAndTerminalResult() throws {
+		let bytes = [UInt8](successfulScanStream())
+		let slices = bytes.split(separator: UInt8(0x0A), omittingEmptySubsequences: true)
+		let lines = slices.map { Data($0) }
+		let progress = try decodeDesktopScanEventStream(lines)
+		XCTAssertEqual(progress.map(\.stage), [.waiting, .checking, .completed])
+		XCTAssertEqual(progress.map(\.sequence), [0, 1, 2])
+
+		var malformed = lines
+		malformed.insert(Data(#"{"schema_version":1,"command":"scan","type":"unknown","partial":false}"#.utf8), at: 1)
+		XCTAssertThrowsError(try decodeDesktopScanEventStream(malformed)) { error in
+			XCTAssertEqual(error as? HelperExecutionError, .malformedOutput)
+		}
+	}
+
     func testUsesOnlyEmbeddedHelperAndArrayArguments() async throws {
         let temporaryDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
         let bundleURL = try makeEmbeddedHelperBundle(in: temporaryDirectory)
         let process = RecordingHelperProcess(
-            behavior: .output(HelperProcessOutput(exitStatus: 0, stdout: try desktopFixtureData("snapshot-complete.json")))
+			behaviors: [
+				.output(HelperProcessOutput(exitStatus: 0, stdout: successfulScanStream())),
+				.output(HelperProcessOutput(exitStatus: 0, stdout: try desktopFixtureData("snapshot-complete.json"))),
+			]
         )
         let runner = EmbeddedHelperRunner(
             appBundleURL: bundleURL,
@@ -88,7 +106,7 @@ final class EmbeddedHelperRunnerTests: XCTestCase {
 		XCTAssertTrue(invocations.allSatisfy {
 			$0.executableURL.path == bundleURL.appendingPathComponent("Contents/Helpers/agentdeck").path
 		})
-		XCTAssertEqual(invocations[0].arguments, ["--quiet", "--format", "json", "desktop", "refresh-indexes"])
+		XCTAssertEqual(invocations[0].arguments, ["--format", "ndjson", "scan"])
 		XCTAssertEqual(
 			invocations[1].arguments,
 			["--format", "json", "desktop", "snapshot", "--wire-version", "1", "--recent-limit", "5", "--stream"]
@@ -98,22 +116,20 @@ final class EmbeddedHelperRunnerTests: XCTestCase {
 		XCTAssertTrue(invocations.allSatisfy { $0.environment["PATH"] == "/tmp/untrusted-path" })
 	}
 
-	func testIndexRefreshFailureFallsBackToLastCommittedSnapshot() async throws {
+	func testScanFailureDoesNotPublishAReplacementSnapshot() async throws {
 		let process = RecordingHelperProcess(behaviors: [
 			.output(HelperProcessOutput(exitStatus: 7, stdout: Data(), stderr: Data("scan failed".utf8))),
 			.output(HelperProcessOutput(exitStatus: 0, stdout: try desktopFixtureData("snapshot-complete.json"))),
 		])
 		let runner = try makeRunner(process: process)
 
-		let envelope = try await runner.snapshot()
-
-		XCTAssertFalse(envelope.partial)
+		await assertHelperError(runner, equals: .nonZeroExit(7))
 		let invocations = await process.recordedInvocations()
-		XCTAssertEqual(invocations.count, 2)
+		XCTAssertEqual(invocations.count, 1)
 	}
 
     func testPartialSnapshotRemainsUsable() async throws {
-        let runner = try makeRunner(
+        let runner = try makeSnapshotRunner(
             behavior: .output(HelperProcessOutput(exitStatus: 0, stdout: try desktopFixtureData("snapshot-partial.json")))
         )
 
@@ -128,13 +144,13 @@ final class EmbeddedHelperRunnerTests: XCTestCase {
         data["wire_version"] = 2
         object["data"] = data
         let unsupported = try JSONSerialization.data(withJSONObject: object)
-        let runner = try makeRunner(behavior: .output(HelperProcessOutput(exitStatus: 0, stdout: unsupported)))
+        let runner = try makeSnapshotRunner(behavior: .output(HelperProcessOutput(exitStatus: 0, stdout: unsupported)))
 
         await assertDesktopWireError(runner, equals: .unsupportedWireVersion(2))
     }
 
     func testHelperFailureDoesNotExposeStderr() async throws {
-        let runner = try makeRunner(
+        let runner = try makeSnapshotRunner(
             behavior: .output(
                 HelperProcessOutput(
                     exitStatus: 23,
@@ -148,13 +164,13 @@ final class EmbeddedHelperRunnerTests: XCTestCase {
     }
 
     func testTimeoutCancellationAndOutputLimitAreClassified() async throws {
-        let timeoutRunner = try makeRunner(behavior: .helperError(.timedOut))
+		let timeoutRunner = try makeSnapshotRunner(behavior: .helperError(.timedOut))
         await assertHelperError(timeoutRunner, equals: .timedOut)
 
-        let cancelledRunner = try makeRunner(behavior: .cancellation)
+		let cancelledRunner = try makeSnapshotRunner(behavior: .cancellation)
         await assertHelperError(cancelledRunner, equals: .cancelled)
 
-        let limitedRunner = try makeRunner(
+		let limitedRunner = try makeSnapshotRunner(
             behavior: .output(
                 HelperProcessOutput(
                     exitStatus: 0,
@@ -274,8 +290,15 @@ final class EmbeddedHelperRunnerTests: XCTestCase {
 			process: helperProcess,
             environment: ["HOME": "/tmp/isolated-home"],
             timeout: .milliseconds(50)
-        )
-    }
+		)
+	}
+
+	private func makeSnapshotRunner(behavior: TestHelperBehavior) throws -> EmbeddedHelperRunner {
+		try makeRunner(process: RecordingHelperProcess(behaviors: [
+			.output(HelperProcessOutput(exitStatus: 0, stdout: successfulScanStream())),
+			behavior,
+		]))
+	}
 
     private func assertDesktopWireError(
         _ runner: EmbeddedHelperRunner,
@@ -330,6 +353,17 @@ private func snapshotChunkLines(_ payload: Data, chunkBytes: Int) throws -> [Dat
 			"partial": false,
 		], options: [.sortedKeys])
 	}
+}
+
+private func successfulScanStream() -> Data {
+	let domain = #"{"state":"pending","committed":0,"total":0,"skipped":0}"#
+	let completed = #"{"state":"completed","committed":0,"total":0,"skipped":0}"#
+	return Data(([
+		#"{"schema_version":1,"command":"scan","generated_at":"2026-08-20T12:00:00Z","type":"progress","scope":"both","data":{"sequence":0,"stage":"waiting","usage":\#(domain),"session":\#(domain)},"partial":false}"#,
+		#"{"schema_version":1,"command":"scan","generated_at":"2026-08-20T12:00:01Z","type":"progress","scope":"both","data":{"sequence":1,"stage":"checking","usage":\#(domain),"session":\#(domain)},"partial":false}"#,
+		#"{"schema_version":1,"command":"scan","generated_at":"2026-08-20T12:00:02Z","type":"progress","scope":"both","data":{"sequence":2,"stage":"completed","usage":\#(completed),"session":\#(completed)},"partial":false}"#,
+		#"{"schema_version":1,"command":"scan","generated_at":"2026-08-20T12:00:02Z","type":"result","scope":"both","data":{"scope":"both","usage":{"state":"completed","duration_ms":1},"session":{"state":"completed","duration_ms":1}},"partial":false}"#,
+	].joined(separator: "\n") + "\n").utf8)
 }
 
 private func providerUseEnvelope(code: String? = nil, message: String = "discarded") -> Data {

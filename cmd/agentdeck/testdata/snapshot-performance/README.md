@@ -23,10 +23,11 @@ path:
 ```sh
 AGENTDECK_SNAPSHOT_PERFORMANCE_CORPUS=/private/path/to/corpus \
 AGENTDECK_SNAPSHOT_PERFORMANCE_REPORT=/private/path/to/report.json \
+AGENTDECK_SNAPSHOT_PERFORMANCE_EXECUTABLE=/private/path/to/agentdeck \
 AGENTDECK_SNAPSHOT_PERFORMANCE_SAMPLES=1 \
 AGENTDECK_SNAPSHOT_PERFORMANCE_DEADLINE=5m \
   scripts/run-go-test.sh ./cmd/agentdeck \
-  -run '^TestSnapshotPerformanceRepresentativeCorpus$'
+  -run '^TestSnapshotPerformanceRepresentativeCorpus$' -timeout 30m
 ```
 
 Each measured sample launches the real `refresh-indexes` and streamed `snapshot`
@@ -38,8 +39,15 @@ logical-row verification runs afterward and is timed separately. One deadline
 bounds the whole sample and terminates unresponsive helpers.
 
 The report records every sample, corpus digest and scale, hardware/toolchain,
-fixed time/timezone, process startup, wall and CPU time, peak RSS, domain and
-derived-cache stage times, verification time, output and logical-row digests,
+fixed time/timezone, process startup, end-to-end wall time, separate helper and
+worker CPU/peak RSS, a conservative simultaneous RSS upper bound, discovery/domain/worker/cache
+stage times, verification time, output and logical-row digests,
 deadline, cache/load status, and explicit failure stage. Timeout, non-zero, partial and missing-result
 samples are written before the test reports failure. A complete over-target
 sample remains `within_target: false`.
+
+Task 3 final acceptance builds the candidate executable first, supplies it via
+`AGENTDECK_SNAPSHOT_PERFORMANCE_EXECUTABLE`, and sets the sample count to at
+least 20. This makes refresh helpers attach to a real detached worker process;
+omitting the executable retains the in-process test topology and is not final
+worker CPU/RSS evidence.

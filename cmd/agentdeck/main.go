@@ -79,6 +79,13 @@ var newSessionProgress = func(stderr io.Writer, quiet bool) session.ScanProgress
 	return newSessionProgressOutput(stderr, quiet, usageProgressIsTerminal(stderr))
 }
 
+var newScanProgress = func(stderr io.Writer, quiet bool, scope scanruntime.Scope) *scanProgressOutput {
+	return &scanProgressOutput{stderr: stderr, quiet: quiet, terminal: usageProgressIsTerminal(stderr), scope: scope, now: time.Now}
+}
+
+var scanRuntimeExecutable = func() string { return "" }
+var scanRuntimeForceLocal = scanRuntimeLocalTestMode
+
 type sessionUsageContextKey struct{}
 
 func sessionUsageFromContext(ctx context.Context) (*usage.Service, bool) {
@@ -157,6 +164,86 @@ type usageProgressOutput struct {
 }
 
 type sessionProgressOutput struct{ *usageProgressOutput }
+
+type scanProgressOutput struct {
+	stderr    io.Writer
+	quiet     bool
+	terminal  bool
+	scope     scanruntime.Scope
+	now       func() time.Time
+	mu        sync.Mutex
+	lastStage string
+	lastWrite time.Time
+	emitted   bool
+}
+
+func (p *scanProgressOutput) Update(progress scanruntime.Progress) {
+	if p == nil || p.quiet || progress.Stage == "completed" {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	now := p.now()
+	if progress.Stage == p.lastStage && !p.lastWrite.IsZero() && now.Sub(p.lastWrite) < 200*time.Millisecond {
+		return
+	}
+	message := scanProgressMessage(progress, p.scope)
+	if message == "" {
+		return
+	}
+	if p.terminal {
+		_, _ = fmt.Fprintf(p.stderr, "\r\x1b[2K%s", message)
+	} else {
+		_, _ = fmt.Fprintln(p.stderr, message)
+	}
+	p.lastStage = progress.Stage
+	p.lastWrite = now
+	p.emitted = true
+}
+
+func (p *scanProgressOutput) Stop() {
+	if p == nil || p.quiet || !p.terminal {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.emitted {
+		_, _ = io.WriteString(p.stderr, "\n")
+	}
+}
+
+func scanProgressMessage(progress scanruntime.Progress, scope scanruntime.Scope) string {
+	switch progress.Stage {
+	case "waiting":
+		return "Waiting for current scan"
+	case "checking":
+		return "Checking source files"
+	case "statistics":
+		return "Calculating statistics"
+	case "importing":
+		parts := make([]string, 0, 2)
+		if scope != scanruntime.ScopeSession {
+			parts = append(parts, scanDomainProgressMessage("usage", progress.Usage))
+		}
+		if scope != scanruntime.ScopeUsage {
+			parts = append(parts, scanDomainProgressMessage("session", progress.Session))
+		}
+		return "Importing: " + strings.Join(parts, "; ")
+	default:
+		return ""
+	}
+}
+
+func scanDomainProgressMessage(name string, progress scanruntime.DomainProgress) string {
+	if progress.Total > 0 {
+		message := fmt.Sprintf("%s %d/%d committed", name, progress.Committed, progress.Total)
+		if progress.Skipped > 0 {
+			message += fmt.Sprintf(", %d skipped", progress.Skipped)
+		}
+		return message
+	}
+	return name + " processing"
+}
 
 func newUsageProgressOutput(stderr io.Writer, quiet, terminal bool) *usageProgressOutput {
 	return newUsageProgressOutputWithClock(stderr, quiet, terminal, realUsageProgressClock{})
@@ -475,8 +562,8 @@ func newRootCommandWithError(stdin io.Reader, stdout, stderr io.Writer) *cobra.C
 			if err := opts.validateFormat(); err != nil {
 				return err
 			}
-			if opts.format == "ndjson" && command.Name() != "watch" {
-				return &inputError{err: fmt.Errorf("ndjson format is supported only by watch")}
+			if opts.format == "ndjson" && command.Name() != "watch" && command.Name() != "scan" {
+				return &inputError{err: fmt.Errorf("ndjson format is supported only by watch and scan")}
 			}
 			return nil
 		},
@@ -493,7 +580,7 @@ func newRootCommandWithError(stdin io.Reader, stdout, stderr io.Writer) *cobra.C
 	root.SetErr(stderr)
 	flags := root.PersistentFlags()
 	flags.StringVar(&opts.stateDir, "state-dir", "", "AgentDeck state directory")
-	flags.StringVar(&opts.format, "format", "text", "Output format: text, json, or ndjson for watch")
+	flags.StringVar(&opts.format, "format", "text", "Output format: text, json, or ndjson for watch/scan streams")
 	flags.BoolVar(&opts.noColor, "no-color", false, "Disable color output")
 	flags.BoolVar(&opts.quiet, "quiet", false, "Suppress non-essential output")
 	flags.BoolVar(&opts.verbose, "verbose", false, "Include technical provenance in text output")
@@ -1387,6 +1474,10 @@ func (o *commandOptions) stateRoot() (string, error) {
 }
 
 func requestScanRound(ctx context.Context, opts *commandOptions, scope scanruntime.Scope) (scanruntime.Result, error) {
+	return requestScanRoundWithProgress(ctx, opts, scope, nil)
+}
+
+func requestScanRoundWithProgress(ctx context.Context, opts *commandOptions, scope scanruntime.Scope, onProgress func(scanruntime.Progress)) (scanruntime.Result, error) {
 	stateRoot, err := opts.stateRoot()
 	if err != nil {
 		return scanruntime.Result{}, err
@@ -1395,11 +1486,16 @@ func requestScanRound(ctx context.Context, opts *commandOptions, scope scanrunti
 	if err != nil {
 		return scanruntime.Result{}, err
 	}
-	return (scanruntime.Client{
+	client := scanruntime.Client{
 		StateRoot:  stateRoot,
 		Home:       home,
-		ForceLocal: scanRuntimeLocalTestMode(),
-	}).Request(ctx, scope)
+		Executable: scanRuntimeExecutable(),
+		ForceLocal: scanRuntimeForceLocal(),
+	}
+	if onProgress != nil {
+		return client.RequestWithProgress(ctx, scope, onProgress)
+	}
+	return client.Request(ctx, scope)
 }
 
 func scanRuntimeLocalTestMode() bool {
@@ -1413,7 +1509,11 @@ func runUsageScanRound(ctx context.Context, opts *commandOptions, progress usage
 		progress.Update(usage.ScanProgress{})
 		defer progress.Stop()
 	}
-	result, err := requestScanRound(ctx, opts, scanruntime.ScopeUsage)
+	result, err := requestScanRoundWithProgress(ctx, opts, scanruntime.ScopeUsage, func(value scanruntime.Progress) {
+		if progress != nil {
+			progress.Update(usage.ScanProgress{Processed: value.Usage.Committed, Total: value.Usage.Total})
+		}
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -1429,7 +1529,11 @@ func runSessionScanRound(ctx context.Context, opts *commandOptions, progress ses
 		progress.Update(session.ScanProgress{})
 		defer progress.Stop()
 	}
-	result, err := requestScanRound(ctx, opts, scanruntime.ScopeSession)
+	result, err := requestScanRoundWithProgress(ctx, opts, scanruntime.ScopeSession, func(value scanruntime.Progress) {
+		if progress != nil {
+			progress.Update(session.ScanProgress{Processed: value.Session.Committed, Total: value.Session.Total, Skipped: value.Session.Skipped})
+		}
+	})
 	if err != nil {
 		return session.ScanResult{}, err
 	}
@@ -1508,18 +1612,90 @@ func newScanCommand(opts *commandOptions) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			result, err := requestScanRound(command.Context(), opts, scope)
+			progress := newScanProgress(opts.stderr, opts.quiet || opts.format == "ndjson", scope)
+			var streamErr error
+			result, err := requestScanRoundWithProgress(command.Context(), opts, scope, func(value scanruntime.Progress) {
+				if opts.format == "ndjson" {
+					if streamErr == nil {
+						streamErr = writeScanEvent(opts.stdout, "progress", scope, value, false)
+					}
+					return
+				}
+				progress.Update(value)
+			})
+			progress.Stop()
 			if err != nil {
 				return err
 			}
-			if err = result.ErrorFor(scope); err != nil {
+			if streamErr != nil {
+				return streamErr
+			}
+			resultErr := result.ErrorFor(scope)
+			if err = writeScanResult(opts.stdout, opts.format, scope, result, resultErr != nil); err != nil {
 				return err
 			}
-			return writeResult(opts.stdout, opts.format, commandOutputName(command), result, opts.quiet)
+			return resultErr
 		},
 	}
 	command.Flags().StringVar(&scopeValue, "scope", "", "Wait for usage or session; omit to wait for both")
 	return command
+}
+
+type scanCommandData struct {
+	Scope   scanruntime.Scope         `json:"scope"`
+	Usage   scanruntime.UsageResult   `json:"usage"`
+	Session scanruntime.SessionResult `json:"session"`
+}
+
+type scanEventEnvelope struct {
+	SchemaVersion int               `json:"schema_version"`
+	Command       string            `json:"command"`
+	GeneratedAt   time.Time         `json:"generated_at"`
+	Type          string            `json:"type"`
+	Scope         scanruntime.Scope `json:"scope"`
+	Data          any               `json:"data"`
+	Partial       bool              `json:"partial"`
+}
+
+func writeScanEvent(w io.Writer, eventType string, scope scanruntime.Scope, data any, partial bool) error {
+	return json.NewEncoder(w).Encode(scanEventEnvelope{SchemaVersion: 1, Command: "scan", GeneratedAt: time.Now().UTC(), Type: eventType, Scope: scope, Data: data, Partial: partial})
+}
+
+func writeScanResult(w io.Writer, format string, scope scanruntime.Scope, result scanruntime.Result, partial bool) error {
+	data := scanCommandData{Scope: scope, Usage: result.Usage, Session: result.Session}
+	switch format {
+	case "json":
+		envelope := output.New("scan", data, time.Now())
+		envelope.Partial = partial
+		return json.NewEncoder(w).Encode(envelope)
+	case "ndjson":
+		return writeScanEvent(w, "result", scope, data, partial)
+	case "text":
+		label := "usage and sessions"
+		if scope == scanruntime.ScopeUsage {
+			label = "usage"
+		} else if scope == scanruntime.ScopeSession {
+			label = "session"
+		}
+		if partial {
+			failed := make([]string, 0, 2)
+			if scope != scanruntime.ScopeSession && result.Usage.State != "completed" {
+				failed = append(failed, "usage")
+			}
+			if scope != scanruntime.ScopeUsage && result.Session.State != "completed" {
+				failed = append(failed, "sessions")
+			}
+			if len(failed) > 0 {
+				label = strings.Join(failed, " and ")
+			}
+			_, err := fmt.Fprintf(w, "Scan incomplete: %s failed.\n", label)
+			return err
+		}
+		_, err := fmt.Fprintf(w, "Scan complete: %s.\n", label)
+		return err
+	default:
+		return &inputError{err: fmt.Errorf("invalid format %q", format)}
+	}
 }
 
 func newScanWorkerCommand(opts *commandOptions) *cobra.Command {

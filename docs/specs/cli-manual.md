@@ -40,7 +40,7 @@ credential-owned provider configuration 的正式命令契约。执行状态以
 
 | Flag | 含义 | 是否必填 | 示例 |
 | --- | --- | --- | --- |
-| `--format text\|json\|ndjson` | 输出格式；`ndjson` 仅允许 `watch` | 否，默认 `text` | `agentdeck provider list --format json` |
+| `--format text\|json\|ndjson` | 输出格式；`ndjson` 仅允许 `watch` 与 `scan` 事件流 | 否，默认 `text` | `agentdeck scan --format ndjson` |
 | `--state-dir <path>` | 覆盖 AgentDeck 状态根目录 | 否，默认 `~/.agentdeck` | `agentdeck doctor --state-dir /tmp/ad-state` |
 | `--no-color` | 禁用终端颜色 | 否 | `agentdeck doctor --no-color` |
 | `--quiet` | 抑制非必要 text 输出；错误和机器输出不受影响 | 否 | `agentdeck usage scan --quiet` |
@@ -770,6 +770,27 @@ selected activity 只展开 safe metadata，selected invocation 展开全部 tok
 named pagination、warnings 和 partial state。后续 desktop wire contract 仍必须负责
 一个 coherent snapshot、wire version 和 Go-owned redaction，而不是解析 CLI text。
 
+## Scan
+
+`agentdeck scan` 通过每个 state root 唯一的按需 worker 同时扫描 usage 与 session。
+省略 `--scope` 等待两个 domain；`--scope usage|session` 仅选择前台等待与显示，另一
+domain 仍在后台完成。Text 成功输出固定为 `Scan complete: usage.`、
+`Scan complete: session.` 或 `Scan complete: usage and sessions.`；所选 domain
+失败时输出 `Scan incomplete: <domains> failed.` 并非零退出。Ctrl-C、超时或终端断开
+只分离当前 subscriber，不取消已接受的全局工作。
+
+Text/JSON 的 progress 使用英文 stderr，最多每秒五次：等待当前扫描、检查源文件、
+导入已提交的 aggregate counts、计算统计数据。非 TTY 不含 ANSI cursor control，
+`--quiet` 只抑制 progress。Final JSON 保持单一标准 envelope，`data` 含 `scope`、
+`usage` 与 `session`。
+
+`--format ndjson` 明确选择 version-1 scan event stream。每行固定包含
+`schema_version=1`、`command=scan`、UTC `generated_at`、`type`、`scope`、`data`
+与 `partial`。progress 的 `sequence` 单调递增，`stage` 为
+`waiting|checking|importing|statistics|completed`；最后恰有一行 `type=result`。
+未知、乱序、损坏、截断或超限事件视为失败。事件仅含 aggregate state/count，绝不
+包含 source path、session 文本、credential 或猜测百分比。
+
 ## Desktop
 
 `desktop snapshot` 是 macOS host 每次刷新调用的稳定 JSON-only helper
@@ -823,8 +844,12 @@ CLI 读取本地状态。没有任何菜单项、偏好或文案提到更新，�
 v0.5.0 随发布提供 `AgentDeck.app`，一个 macOS 26 菜单栏应用，其唯一数据源
 是内嵌的本 CLI 副本。它是一个阅读表面加一个写操作。
 
-- **边界**：应用运行内嵌 helper 并解码 `desktop snapshot` 的 wire-v1
-  envelope。它不解析 text 输出、不直接读数据库、不监听端口、不联网。Go
+- **边界**：应用先消费内嵌 helper 的 version-1 `scan` NDJSON stream，再解码
+  `desktop snapshot` 的 wire-v1 envelope。helper 运行期间显示等待、检查、已提交
+  导入计数和统计阶段；已有 snapshot 保持可见，只有完整新 envelope 校验通过后才
+  原子替换。scan/event/snapshot 失败保留旧数据与 retry；关闭 popover 只分离显示，
+  worker 继续，重开后读取当前 coordinator state。它不解析 text 输出、不直接读
+  数据库、不监听端口、不联网。Go
   helper 与既有 AgentDeck 状态始终是权威，应用持有的一切都是它们的可丢弃
   投影。
 - **菜单栏表面**：provider、usage、sessions、health 四个受筛选面板，加上
@@ -922,11 +947,11 @@ restore 为目标机器创建新 key，并在一个 transaction 中替换 snapsh
 release/support identity，不是运行时领域 instant，因此保持固定 UTC 格式，并在字段名中
 明确标出 UTC。
 
-Doctor quick/full 使用同一 core schema 契约。以当前支持 schema 24 的二进制为例：
-旧 schema 12 报告 `schema_outdated`、`count=12`、`supported_count=24` 和可复制的
-`agentdeck state migrate`；完整受支持 schema 报告 `ok`、`count=24`；声明受支持版本
+Doctor quick/full 使用同一 core schema 契约。以当前支持 schema 25 的二进制为例：
+旧 schema 12 报告 `schema_outdated`、`count=12`、`supported_count=25` 和可复制的
+`agentdeck state migrate`；完整受支持 schema 报告 `ok`、`count=25`；声明受支持版本
 却缺少 `usage_tool_calls` 时报告 `schema_incompatible`。未来 schema 99 报告
-`database` check，`code=schema_ahead`、`count=99`、`supported_count=24`，没有
+`database` check，`code=schema_ahead`、`count=99`、`supported_count=25`，没有
 `recovery_command`；text 提示升级 AgentDeck。这里的数字是数据库 schema，不是产品版本。
 
 缺失状态或无法打开 core 库而提前结束时，JSON envelope 设置 `partial: true`，

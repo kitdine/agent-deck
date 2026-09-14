@@ -42,7 +42,7 @@ remains with the three tasks below.
 | --- | --- | --- |
 | 1. `unified-scan-runtime` | [x] | [x] |
 | 2. `snapshot-computation-reuse` | [x] | [x] |
-| 3. `scan-experience-acceptance` | [ ] | [ ] |
+| 3. `scan-experience-acceptance` | [x] | [x] |
 
 ### 1. `unified-scan-runtime`
 
@@ -143,6 +143,10 @@ final integrated content. Acceptance belongs to this task, not a fourth plan.
   separately authorized and is not claimed by this task.
 - Remove temporary experiment switches and test-only legacy live bypasses;
   reconcile contracts and handoff to desktop-refresh without changing its policy.
+- Current-round completion follows the user's explicit
+  [current-state disposition](#task-3-current-state-completion-decision--2026-09-13).
+  The named residual gaps are accepted/deferred for this development boundary,
+  not represented as passing measurements or completed manual checks.
 
 ## Historical task disposition
 
@@ -166,20 +170,62 @@ historical next-instruction text.
 
 ## Current handoff
 
+All three tasks reached their development handoff. Tasks 1 and 2 passed independent
+review and were delivered in signed local commits; Task 3 reached that boundary
+by the user's explicit current-state disposition. Its
+[Round 2 re-review](reviews/scan-experience-acceptance.md#round-2--2026-09-13)
+returned PASS for the repaired candidate
+`9762c53ea4fba19e3493d6ad1852e216149c1bca271b95a87a65362abd08aaa0`, and the
+same task is included in the user-authorized local Task 3 delivery commit under
+the explicit delivery acceptance exceptions recorded below. Its Review cell is checked; the Task acceptance gate
+is VERIFIED under those exceptions, not a claim that the original technical
+targets or missing manual checks passed.
+Topic development handoffs are 3/3; task review is 3/3. The commit containing this
+handoff is Task 3's local delivery boundary; its immutable identity and verification
+are recorded in CEv1 and Beads after signing. The topic is not integrated, pushed,
+released or retired. Continue from the
+review record in workspace `agent-deck.snapshot-performance`; the accepted
+optimization/evidence disposition below remains effective. Integration and
+retirement remain open; local delivery does not authorize push or assembly.
+
+### Task 3 delivery acceptance exceptions — 2026-09-13
+
+The user explicitly confirmed: "确认 snapshot-performance / scan-experience-acceptance 已列明的性能、最终 20 样本及 V01-V19/native 证据缺口可作为本次交付验收例外，并据此同步验收门禁，保留原始失败和未验证记录。"
+
+This extends the earlier development-only decision to this delivery acceptance
+boundary for candidate `9762c53ea4fba19e3493d6ad1852e216149c1bca271b95a87a65362abd08aaa0`.
+It accepts the previously named cold-import and unchanged-CPU shortfalls, defers
+the final 20-sample campaign, and accepts the incomplete V01-V19 and real-helper/
+manual native proof. No new measurements or manual checks are asserted.
+
+CEv1 appends explicit user-disposition observations for the three affected
+criteria and supersedes their previous active acceptance evaluations for this
+candidate. Original fail/not_verified observations, measurements and review
+history remain intact. The other three passing criteria are reused. The resulting
+Task gate is VERIFIED by accepted exceptions; original technical outcomes remain
+fail/not_verified. Round 2 PASS is unchanged; no new review round is created.
+See [acceptance synchronization](reviews/scan-experience-acceptance.md#delivery-acceptance-exceptions--2026-09-13).
+
+This grants no commit, push, integration, release, installation, CGO adoption or
+further optimization authority. Task 3 waits for its authorized commit; the topic
+is not closed or retired by this decision.
+
 The user's full replan replaces the prior code-first repair/delivery sequence.
 The current six-document set, including the shared UX specimens, passed
 [document-set re-review](reviews/tasks.md#round-4--2026-09-11).
 The document Review cells reflect the corresponding current records. Completion
 evidence and delivery checkpoints are recorded there separately from the verdict.
-Native implementation and performance acceptance remain open.
+The outstanding technical acceptance gaps are now explicitly accepted/deferred
+for Task 3's current development boundary as recorded below. Their original
+measurement and verification outcomes remain unchanged.
 Task 1 full delivery-scope re-review passed with a VERIFIED completion gate; see
 [runtime review](reviews/unified-scan-runtime.md#round-4--2026-09-12).
 It was delivered in signed local commit `7ea8dc3e` without push.
 Task 2 implementation and L3 verification reached
 [Round 1 review](reviews/snapshot-computation-reuse.md#round-1--2026-09-12),
 which returned FAIL; [Round 2 re-review](reviews/snapshot-computation-reuse.md#round-2--2026-09-13)
-closed its repair and returned PASS. Its Review cell is checked and the task now
-awaits separately authorized Git delivery. The reviewed 36-file candidate fingerprint is
+closed its repair and returned PASS. It was subsequently delivered in signed
+local commit `e1311ce1` without push. The reviewed 36-file candidate fingerprint is
 `a9627671b780b12bc624d1677b0dd67f1459f5e8fabdc3f5a756a090ee9f4be0`,
 and its completion gate is VERIFIED. The refreshed representative
 worker-accounted report used 2,200 isolated JSONL
@@ -201,6 +247,322 @@ no further task decomposition.
 No old-code repair is a prerequisite. Git delivery requires a new, scoped
 checkpoint for the chosen content and separate authorization; the old document
 commit request must not be expanded into delivery of rewritten code.
+
+### Task 3 current-state completion decision — 2026-09-13
+
+Authority: the user's explicit instruction, "task 3 就保留目前现状为完成，记录原因等内容，后续可以继续优化 然后整理整体topic进度，给出下一步指令".
+This supersedes the earlier stop-only instruction and the pending CGO adoption
+decision for the current iteration. Accept the existing pure-Go implementation
+as Task 3's completed development result. No additional optimization, benchmark
+campaign or CGO adoption is required before its review handoff.
+
+The accepted implementation remains the 48-file candidate at HEAD `e1311ce1`,
+fingerprint `ed6ff6c0a4a77e372e8545c3350541dd5b89265fd0cb2423f4d8888cd4b78755`.
+This status/decision update changes no product code, tests, dependencies or build
+configuration. CGO remains an isolated experiment and is excluded from the
+accepted candidate. Existing exact-state product evidence is reused.
+
+The disposition explicitly carries the following known limits; accepting the
+current result does not assert that any missing check ran or any target passed:
+
+| Known limit | Current evidence | Current-round disposition |
+| --- | --- | --- |
+| Cold import <=10 s | Final pure-Go n=3 median 37.170 s, max 37.850 s; 0/3 met target | Accept current behavior; retain <=10 s as a future optimization goal |
+| Unchanged combined CPU <=0.5 s | 2/3 met target; max 0.610 s; wall and RSS met targets in all three samples | Accept current CPU variance; retain the original budget for follow-up |
+| Final-content 20-sample campaign | Final candidate has 3 samples/scenario; earlier 20-sample campaign belongs to older code | Defer the final 20-sample acceptance campaign; do not relabel historical evidence |
+| Complete V01-V19 and real-helper/manual native acceptance | Automated Go/native checks and differential output pass within their recorded scope; full scenario-specific/manual proof remains incomplete | Accept/defer the named evidence gap; do not claim blanket native or V01-V19 PASS |
+| CGO trial | No established complete-cycle benefit; driver-specific error and FTS checks remain failing | Do not adopt it in this iteration; preserve isolated evidence only |
+
+Engineering rationale: the candidate delivers the CLI/App progress and snapshot
+reuse work, retains the measured pure-Go improvements, and has passing scoped
+L3 and differential evidence. Further cold gains require additional pipeline/
+memory-admission work; the isolated driver swap did not justify adoption.
+The user chose to finish this iteration at that known state and leave further
+optimization possible later. This is an explicit scope/risk disposition, not a
+lowered benchmark, fabricated technical PASS, or approval to weaken durability.
+
+The Dev cell is checked; Review remains unchecked. Beads moves to `in_review`,
+not `closed` or `awaiting_commit`. The original technical CEv1 gate for `ed6ff6c0a4a7`
+remains FAILED on its measured/unverified claims; this approval is a separate
+development-completion decision. Independent review must evaluate the candidate
+and this accepted exception boundary, then reconcile the applicable completion
+evidence before delivery. Do not mechanically reopen development solely because
+an explicitly accepted/deferred item retains its original failing or unverified
+technical result. No Review PASS, commit, push or topic closure is implied.
+
+Non-blocking follow-up options, not newly dispatched tasks or an active plan:
+
+- Replace conservative whole-file-times-64 admission with properly accounted
+  reader/reducer/publication budgets and investigate pipeline overlap.
+- Revisit cold-import and unchanged-CPU targets on a representative, controlled
+  environment, retaining every failure and a predeclared 20-sample campaign.
+- Complete the remaining scenario-specific real-helper/manual native evidence.
+- Reconsider alternative SQLite drivers only if new evidence justifies their
+  compatibility and build costs; no automatic CGO continuation is authorized.
+
+### Task 3 pre-optimization checkpoint (historical)
+
+Task 3 initially produced a 39-file candidate at HEAD `e1311ce1`, fingerprint
+`306840dcdc93ec22d2cd37ec3900169f9dfe6c1130548135b97565a2255312d8`.
+This checkpoint and its campaign predate the user's subsequent optimization
+request; they do not identify the current implementation or its performance.
+At that checkpoint the Dev cell was unchecked pending the original targets and
+integrated acceptance; no user disposition had yet been granted.
+
+- CLI and App now consume one versioned aggregate progress stream from the same
+  worker. Text/JSON progress stays on stderr; explicit NDJSON carries monotonic
+  safe events and one frozen result. Scoped callers detach without trailing
+  output or cancelling the global obligation.
+- The App consumes events while the helper is running, retains previous data,
+  atomically publishes only after successful scan plus snapshot validation, and
+  rejects malformed/truncated/unknown/out-of-order streams. English/Chinese,
+  420/280 widths, accessibility3, keyboard refresh, first use, failure and
+  retained-data states have automated Xcode App coverage. The rendering tests
+  use a stub host; this is not evidence of a full real-helper popover lifecycle
+  or manual keyboard/VoiceOver acceptance.
+- V01-V06 and V10-V13/V17-V18 are covered by worker election, receipt,
+  follow-up, detach, maintenance, bounded transport and protocol tests; V07-V09
+  and V14-V16 by final usage/session/ingest/store/backup/cache differential and
+  mutation tests; V19 by the native helper/coordinator/view-model/rendering suite.
+  These are package-level coverage pointers, not a scenario-by-scenario proof
+  that the final CLI/App topology passed every V01-V19 condition.
+  Full vendored Go, the affected race net, vet, darwin builds, arm64 size and
+  full Xcode build/tests pass. The unchanged shared prototype manifest remains
+  `cf26b5d5f7afd30bf57eca9f4e7fa6c373eaec0b786e2be5eb02c7de973def8f`.
+- The final detached-worker campaign used 2,200 files / 2,343,100,564 bytes,
+  corpus SHA-256
+  `84a0c345e0f8c505134dfe81a3a27d7b785a231ed9a7fc8beeaa26a6baa110d8`.
+  All 60 samples completed with one snapshot digest and one logical-row digest.
+  Cold import median/P95/max was 45.080/46.522/48.655 s: 0/20 met 10 s.
+  Full recomputation was 4.506/4.805/4.929 s: 20/20 met 10 s. Unchanged was
+  1.106/1.272/1.279 s: 0/20 met 1 s wall and 0/20 met 0.5 s combined CPU, while
+  20/20 met 100 MiB peak RSS. Report SHA-256 is
+  `83db86973cb7100af09c8a88bfd2c7b71303453786ab1f682d7f1bfe6ea4b427`.
+  The first campaign attempt was retained separately after the outer Go runner's
+  10-minute timeout stopped it at 11 completed cold samples; it was not merged
+  into or hidden by the successful 60-sample campaign.
+- The user chose further optimization in this Task. The historical request for
+  a decision is resolved by that direction, not by waiving any target.
+
+### Task 3 first optimization checkpoint — 2026-09-13
+
+The user authorized another optimization round, including departures from the
+current implementation design. This remains Task 3, not a new task matrix or
+permission to waive targets, modify live data, commit or push.
+
+That round's 44-file implementation/contract candidate at HEAD `e1311ce1` has
+fingerprint `b05c782b02e3fabe81256319f5c8feb65f179f6d27941a692caa9ec5e5c60aaf`.
+The recipe remains SHA-256 of newline-delimited `head=<HEAD>` followed by sorted
+`<git hash-object --no-filters>  <path>` entries; topic status and review records
+are excluded. The shared prototype is unchanged from the checkpoint above.
+
+Retained changes (implementation details in architecture section 8.1):
+
+- Session scans prove the complete unchanged source set with one registry query
+  and revalidate captured file generations. Proven no-write scans avoid two full
+  visible-document materializations and per-source SQL planning.
+- Session FTS insertion uses bounded 64-row / 1 MiB text batches within the
+  original atomic source transaction. Usage orphan recovery subtracts the
+  registered path set before reading orphan session identities.
+- A same-length rewrite with restored mtime must not pass a weaker prefix/suffix
+  anchor fallback after ctime changes. New session and usage regressions mutate
+  content beyond those anchors and assert updated search/token results. The
+  session reproducer failed before repair; both now pass. Batch rollback restores
+  the exact previous index after an injected metadata failure.
+- The isolated end-to-end test's Claude stub no longer rewrites its Codex source:
+  doing so correctly invalidates the earlier exact-run binding under the new
+  ctime check. Provider-attribution assertions are retained and pass.
+
+Rejected experiments: memory-only SQLite scratch storage, extra composite turn
+indexes, plain event inserts and transition coalescing did not establish a
+repeatable cold-import benefit. They are removed; source transaction boundaries,
+UPSERT ownership behavior, constraints and durability are preserved. Private
+diagnostic reports retain failed samples, including a worker startup timeout in
+the rejected extra-index/plain-insert candidate. No failed sample is erased or
+merged into the final candidate's results.
+
+Final-code verification passed:
+
+- Full Go regression: `/private/tmp/agentdeck-opt-round-full-final.log`, SHA-256
+  `5c790fb72dcc447b740e61e791b8592fe517b548a69f22211b429debe650a79c`.
+- Race: session, usage, scanruntime, store, desktop and cmd/agentdeck;
+  `/private/tmp/agentdeck-opt-round-race-final.log`, SHA-256
+  `abdfcd3d63169736820b8bd38d15f69630d4617f8cf782ea1612e3e813fd67d4`.
+- Vet and darwin arm64/amd64 builds passed; arm64 is 13,879,362 bytes, under
+  26,214,400. Artifacts: `/private/tmp/agentdeck-opt-round-verified-bin`.
+- Reused automated Xcode evidence: the 13 changed native source/test blobs
+  match the prior manifest, and this optimization does not change Swift,
+  localization, helper wire format or build configuration. The original log is
+  `1789297394_make_test-macos-app.log` in the private RTK tee directory, SHA-256
+  `c04e61a47d4241215c2df6be0559fd0bf894f337e1d215bdde50eace34932f57`.
+  This reuse covers the actual automated tests, including stub-host native-width
+  rendering and malformed stream checks; it does not fill the manual/real-helper
+  acceptance gaps described above.
+
+Final-code diagnostic measurement (predeclared 3 samples per scenario, sequential
+after race tests, not the required 20-sample acceptance campaign):
+
+| Scenario | Wall median / max | Max combined CPU | Max peak RSS | Within original targets |
+| --- | --- | --- | --- | --- |
+| Cold import | 61.953 / 62.207 s | 93.141 s | 215,801,856 B | 0/3 |
+| Full recomputation | 5.068 / 5.472 s | 5.432 s | 184,889,344 B | 3/3 |
+| Unchanged refresh | 0.473 / 0.482 s | 0.486 s | 35,082,240 B | 3/3 |
+
+All 9 samples completed. The report includes every sample and its failure/target
+flags: `/private/tmp/agentdeck-opt-round-verified-measure.json`, SHA-256
+`db71c304747ad5ece69592c9af4aaace39ee923495a9eb52fb748fc44e6a5151`.
+The harness passed because it completed and preserved its measurements; this is
+not a passing performance gate. No meaningful P95 claim is made from n=3.
+Environment: Go 1.27.1, darwin/amd64, 12 logical CPUs, fixed business time and
+UTC; OS cache and external load uncontrolled. The unchanged 2,200-file /
+2,343,100,564-byte corpus has SHA-256
+`84a0c345e0f8c505134dfe81a3a27d7b785a231ed9a7fc8beeaa26a6baa110d8`.
+Every sample matches the same-session old-binary control's snapshot SHA-256
+`7e3544e6af5bd2639175411d534434dc93fa3e7fbfec24601b61f0ebde050e5e`
+and logical-row SHA-256
+`b1e1be6961abe5e8924774b8b5f40ad94584e68e934f5856b4217b7322560507`.
+
+The single old-binary control's unchanged cycle was 1.195 s wall / 1.593 s CPU /
+76,079,104 B RSS. The final three-sample unchanged medians are 0.473 s wall /
+0.485 s CPU / 34,304,000 B RSS (observed reductions of approximately 60% / 70% /
+55%). This is a small uncontrolled comparison, not final acceptance or an
+isolated attribution to each optimization. Cold final median 61.953 s is slower
+than that control's 54.895 s and the earlier selected candidate's 51.744 s;
+no repeatable cold gain is established. The CPU profile still motivates a
+subsequent cold reduction/publication redesign inside this Task, preserving
+atomicity and differential proof; it does not authorize durability weakening.
+
+At that checkpoint Dev/Review remained unchecked: cold import still needed the original <=10 s target,
+the final content needs the prescribed 20-sample acceptance campaign, and the
+integrated V01-V19/native real-helper lifecycle needs scenario-specific evidence.
+The previous package-level/native PASS claims are not promoted into those missing
+acceptance results.
+
+That checkpoint's Task CEv1 gate is `FAILED`: performance has an applicable failing
+observation; integrated V01-V19 and native real-helper/manual acceptance remain
+`not_verified`. CLI progress, reconciled contracts and scoped L3/automated-native
+checks have applicable passing evidence. Native reuse has an explicit
+scope-preserving assessment; there are no unresolved candidate impacts. Beads
+remained `in_progress`; no Task/topic completion, independent review, commit or
+push was claimed. L0 whitespace/topic-document/diff checks passed; this status
+projection does not change the implementation fingerprint above.
+
+### Task 3 cold-publication continuation and native trial — 2026-09-13
+
+The user renewed Development authority and separately approved an isolated CGO
+trial, with adoption to be decided after verification. The pure-Go worktree is
+still the implementation candidate; no native driver, dependency or build-tag
+change has been copied into it. The current 48-file fingerprint is
+`ed6ff6c0a4a77e372e8545c3350541dd5b89265fd0cb2423f4d8888cd4b78755`
+at HEAD `e1311ce1`, using the same recipe and exclusions above.
+
+Retained pure-Go changes:
+
+- Transaction-local absent-key proof and bounded cold-source bulk publication.
+  Sequential-reference tests compare all event/tool/file-link columns, duplicate
+  logical-change counts, restart/completion semantics and ordering. Existing
+  keys fall back before writes; a late injected failure rolls back every batch.
+- Ordinary record lines borrow the reader buffer until JSON decoding completes;
+  oversized records and retained partial tails retain their previous semantics.
+  A 1 MiB read-loop microbenchmark (100 iterations) changed from 1,025 allocations
+  / 1,059,202 B per iteration to 1 allocation / 10,518 B. This is allocation
+  evidence, not a complete-cycle throughput claim.
+- INSERT OR ROLLBACK and a fixed four-worker record decoder were evaluated then
+  removed: single-sample results did not justify retaining the extra policy or
+  concurrency. Their private reports remain as discarded-candidate evidence.
+
+Final pure-Go full regression and affected race selection pass:
+`/private/tmp/agentdeck-cold-selected-full.log` SHA-256
+`f2c136dcfa9585b6fd2b3880edcbe10e47ea06c90e1dee5473ceb4a3c4e14c29`;
+`/private/tmp/agentdeck-cold-selected-race.log` SHA-256
+`08aaf4e504d6b032e7ab9221608e3531f48fd68a53bb9bc5b8572145ba4b4bf1`.
+The race selection covers Scan/Source/Ingestion/Cold/RecordLine/Coordinator/
+Snapshot/Derived tests in usage, ingest, session, scanruntime, store, desktop and
+cmd/agentdeck. Vet, darwin arm64/amd64 and arm64 size pass (13,895,954 B).
+The unchanged automated native App evidence remains reusable with its previously
+recorded limits; no manual or real-helper acceptance is inferred.
+
+The private CGO trial is `/private/tmp/agentdeck-native-sqlite.YE0M8t`, based on
+the same product code and pinned `github.com/mattn/go-sqlite3 v1.14.52`. It changes
+store-owned core/session connections and online backup; existing direct raw
+doctor/test connections still use modernc. SQLite versions are 3.53.2 (modernc)
+and 3.53.4 (CGO), so the comparison is not an isolated driver-only attribution.
+Both paths were checked for WAL, synchronous FULL, foreign keys ON, busy timeout
+5000 and FTS5. The adapter overrides the native driver's weaker NORMAL default.
+Both native darwin architectures build and satisfy the size limit; the first
+arm64 artifact is 15,420,258 B and links only Apple system libraries/frameworks,
+not a separately installed SQLite dylib. This is build evidence, not execution
+evidence for arm64 or adoption approval.
+
+CGO compatibility remains incomplete. The original FULL-durability suite failed
+on a connection-open lock race and five driver-specific error assertions.
+Instrumented repetition localized the lock race to native connection setup
+before the source's busy timeout was applied (6/20 failures). Applying the same
+timeout in the native DSN before opening passes 20/20 and removes that failure
+from the refreshed broad suite. Original driver-specific assertions remain
+unchanged and failing. Separate native-error diagnostics preserve the joined
+provider error cause and prove exclusion/rebuild atomicity; two FTS insert-failure
+diagnostics still fail the expected extended-code check before their complete
+state comparisons, so those cases are not claimed verified. No failing test was
+waived, relabelled or removed from the original suite.
+
+The refreshed native broad log is `/private/tmp/agentdeck-native-full-adapted.log`,
+SHA-256 `24662914d7b704a488473237fb3195b3b27ad0f148512ef10540e1b71971ef25`.
+Five original tests plus two additional FTS diagnostic tests fail; it is not a
+passing replacement candidate. The lock reproducer/fix logs are
+`/private/tmp/agentdeck-native-lock-repro.log` and
+`/private/tmp/agentdeck-native-lock-fixed.log`.
+
+The sequential pure-Go/CGO diagnostic comparison used three complete samples per
+scenario per implementation (18 total), not a 20-sample acceptance campaign:
+
+| Implementation | Cold wall median / max | Recompute wall median / max | Unchanged wall median / max | Unchanged CPU target |
+| --- | --- | --- | --- | --- |
+| Current pure Go | 37.170 / 37.850 s | 6.448 / 7.868 s | 0.489 / 0.631 s | 2/3 <=0.5 s; max 0.610 s |
+| Isolated CGO, FULL | 55.498 / 58.065 s | 6.076 / 6.104 s | 0.610 / 0.627 s | 0/3 <=0.5 s; max 0.615 s |
+
+Every sample completed and matches the prior snapshot and logical-row digests.
+All unchanged wall/RSS samples meet 1 s / 100 MiB; cold remains 0/3 <=10 s in
+both variants. Pure-Go cold max CPU/RSS is 53.874 s / 207,060,992 B; CGO is
+85.576 s / 208,723,968 B. CGO cold samples were 34.746, 58.065 and 55.498 s;
+the large variation and uncontrolled OS cache/external load prevent a universal
+driver ranking or clean attribution. No meaningful P95 claim is made for n=3.
+The repeated measurements support keeping the source-batch optimization; they
+do not establish a repeatable CGO advantage or satisfy the original targets.
+
+- Pure-Go report: `/private/tmp/agentdeck-cold-selected-3.json`, SHA-256
+  `116c208982d25ce457d6f36c2289d8a8096a70addc8b946b350596cf4e116aef`;
+  measured executable SHA-256
+  `822cdaa3c0b16aaaf169c30ce21247903f979de3639ae92f92f9a5da23cbc975`.
+- CGO report: `/private/tmp/agentdeck-native-adapted-3.json`, SHA-256
+  `daaf549d35dc723cecc2ca25d88880ba1fc8a1aba510f3de50cfc73db3a67f47`;
+  measured executable SHA-256
+  `1367a87fdcb309dc918ace029dc9f7665f4be417f3ed33ce83be75c7cb3a980c`.
+
+Recommendation at the user-requested adoption decision: do not merge this CGO
+trial into the candidate. It has no established complete-cycle advantage, still
+requires error-contract/FTS compatibility work, and adds C-toolchain/build-tag
+obligations. Retain the isolated sources and logs as evidence, not shipped code.
+Only the isolated experiment was authorized; CGO adoption was not authorized.
+A possible later pure-Go opportunity is the shared reduction/publication pipeline and
+its conservative whole-file-times-64 admission, not another unproven driver swap.
+At that checkpoint the work and V01-V19/manual/native acceptance remained inside
+Task 3; no fourth task matrix, target waiver, Dev/Review completion, commit or push
+had been recorded.
+The technical `ed6ff6c0a4a7` Task CEv1 gate is `FAILED`: performance fails, while
+real-helper/manual native and integrated V01-V19 acceptance remain
+`not_verified`. CLI, stable-contract reconciliation and scoped L3/automated
+native evidence pass, with no unresolved candidate impacts. At this historical
+checkpoint Beads remained `in_progress`; the current-state completion decision
+above supersedes that administrative status.
+
+The user's earlier stop-only instruction, "不再继续优化", stopped further optimization.
+Preserve the current pure-Go candidate, isolated CGO sources and all evidence;
+do not merge CGO or start another optimization/measurement round. This instruction
+does not waive the original targets, establish acceptance, authorize delivery or
+complete Task 3 at that point. The later explicit current-state completion
+decision above now governs the development result and review handoff. The
+optimization suggestions remain historical options, not active instructions.
 
 ## Historical implementation and research evidence
 

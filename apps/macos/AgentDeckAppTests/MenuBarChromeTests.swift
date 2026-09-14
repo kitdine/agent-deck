@@ -6,6 +6,40 @@ import XCTest
 
 @MainActor
 final class MenuBarChromeTests: XCTestCase {
+	func testScanProgressRendersAtNativeWidthsInBothLanguages() async throws {
+		let oldWidth = ProcessInfo.processInfo.environment["AGENTDECK_TEST_WIDTH"]
+		let oldLocale = ProcessInfo.processInfo.environment["AGENTDECK_TEST_LOCALE"]
+		defer {
+			if let oldWidth { setenv("AGENTDECK_TEST_WIDTH", oldWidth, 1) } else { unsetenv("AGENTDECK_TEST_WIDTH") }
+			if let oldLocale { setenv("AGENTDECK_TEST_LOCALE", oldLocale, 1) } else { unsetenv("AGENTDECK_TEST_LOCALE") }
+		}
+		for language in ["en", "zh-Hans"] {
+			setenv("AGENTDECK_TEST_LOCALE", language, 1)
+			for width in [280, 420] {
+				setenv("AGENTDECK_TEST_WIDTH", String(width), 1)
+				let host = StubDesktopHost(behavior: .suspendedEnvelope(WireFixture.envelope()))
+				let model = await makeModel(host: host)
+				let refresh = Task { await model.coordinator.refresh() }
+				while host.refreshCount == 0 || model.coordinator.scanProgress?.stage != .importing {
+					await Task.yield()
+				}
+				XCTAssertEqual(model.scanProgressStageText, t(DesktopCopy.scanImporting))
+				XCTAssertNotNil(model.scanProgressCountsText)
+				let view = MenuBarSurfaceView(model: model).environment(\.dynamicTypeSize, .accessibility3)
+				let hosting = NSHostingView(rootView: view)
+				hosting.frame = NSRect(x: 0, y: 0, width: CGFloat(width), height: 760)
+				hosting.layoutSubtreeIfNeeded()
+				hosting.displayIfNeeded()
+				XCTAssertLessThanOrEqual(hosting.fittingSize.width, CGFloat(width) + 1)
+				let png = try renderedViewPNG(hosting)
+				XCTAssertGreaterThan(png.count, 4_000)
+				add(renderingAttachment(png, named: "Scan progress — \(language) — \(width) — accessibility3"))
+				host.resume()
+				await refresh.value
+			}
+		}
+	}
+
 	func testSchemaHealthProseRendersExpandedAndCollapsed() async throws {
 		let model = await makeModel(host: StubDesktopHost(behavior: .envelope(WireFixture.schemaSignal(refusals: true))))
 		await model.coordinator.refresh()

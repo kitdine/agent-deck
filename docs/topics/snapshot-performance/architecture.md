@@ -448,6 +448,48 @@ foreign keys, classification and file links, and suppress proven no-op writes.
 FTS/index maintenance must be measured; fewer API calls do not eliminate trigger
 or index work. Do not drop constraints or reduce synchronous durability.
 
+The 2026-09-13 optimization round uses session INSERT batches capped at 64
+documents and 1 MiB of text (one larger supported document remains admissible).
+The existing source transaction still commits FTS rows, metadata and checkpoints
+together. Whole-index unchanged eligibility compares the complete discovered
+source set to committed identity/size/cursor/mtime/ctime/priority/parser tuples
+in one registry query, then validates the observed files again. A proven no-write
+round returns zero document changes without materializing the whole visible FTS
+view twice. Missing tables, unknown change times, missing/extra sources and stale
+checkpoints disable the shortcut. Per-source planning remains the fallback.
+The fallback must not downgrade a changed ctime into an unchanged decision
+merely because mtime and a 4 KiB prefix/suffix anchor match. Equal-length changes
+and unknown generations force a reread; completed source checkpoints still
+commit with their rows, and a captured append retains its finite byte boundary.
+
+Usage orphan recovery first deduplicates paths using covering source indexes,
+subtracts registered paths, and fetches session identities only for orphan paths.
+Event/tool UPSERT and source transaction boundaries retain their prior behavior.
+Experimental composite turn indexes, plain inserts, transition coalescing and
+memory-only SQLite scratch storage were not retained: this round did not establish
+a repeatable cold-import advantage sufficient to justify them. Composite indexes
+improved recomputation but added maintenance cost to the already over-target cold
+path; the retained candidate prioritizes the proven unchanged-path reduction.
+
+The subsequent cold-source continuation adds a transaction-local absent-key
+proof before bulk publication. Only unregistered sources with no existing event
+or activity keys use it; any existing key falls back before writes to the normal
+ownership-aware path. Duplicate events retain reference logical-change counts
+and first-insertion order. Tool transitions reduce in source order, including
+restart resets, completion durations and final file links. The final rows use
+48-row / 1 MiB string-argument batches; the source checkpoint, classification and
+rows still commit in the same transaction. This is different from the rejected
+per-row plain-insert experiment. An explicit INSERT OR ROLLBACK variant and a
+four-worker record decoder were also tested and removed without a demonstrated
+additional advantage. Ordinary reader lines now borrow the bounded read buffer
+until decoding completes; retained tails and oversized records remain owned.
+
+The user separately authorized an isolated CGO/SQLite driver trial, not adoption
+into the shipped implementation. Keep the pure-Go driver and dependency graph in
+the topic worktree until that decision. The comparison must preserve FULL
+synchronous durability, WAL, foreign keys, source atomicity and complete logical
+output; a driver's weaker default is not a performance improvement.
+
 Initially keep existing recoverable source publication boundaries while
 separating reduction from writes. Merge several small sources into a transaction
 only if commit time is material, all included source cursors commit with their

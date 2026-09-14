@@ -294,6 +294,8 @@ type InventoryEntry struct {
 	Identity   string `json:"identity"`
 	Size       int64  `json:"size"`
 	ModifiedAt int64  `json:"modified_at"`
+	ChangedAt  int64  `json:"changed_at"`
+	Stable     bool   `json:"stable"`
 }
 
 type Inventory struct {
@@ -827,21 +829,21 @@ func (s *Service) Inventory(ctx context.Context) (Inventory, error) {
 		return Inventory{}, err
 	}
 	inventory := Inventory{Entries: entries, Fingerprint: inventoryFingerprint(entries)}
-	rows, err := s.Store.DB.QueryContext(ctx, "SELECT path,identity,size,cursor,modified_at,parser_version FROM usage_source_files")
+	rows, err := s.Store.DB.QueryContext(ctx, "SELECT path,identity,size,cursor,modified_at,changed_at,parser_version FROM usage_source_files")
 	if err != nil {
 		return Inventory{}, err
 	}
 	defer rows.Close()
 	type storedEntry struct {
-		identity               string
-		size, cursor, modified int64
-		parserVersion          int
+		identity                          string
+		size, cursor, modified, changedAt int64
+		parserVersion                     int
 	}
 	stored := map[string]storedEntry{}
 	for rows.Next() {
 		var path string
 		var item storedEntry
-		if err = rows.Scan(&path, &item.identity, &item.size, &item.cursor, &item.modified, &item.parserVersion); err != nil {
+		if err = rows.Scan(&path, &item.identity, &item.size, &item.cursor, &item.modified, &item.changedAt, &item.parserVersion); err != nil {
 			return Inventory{}, err
 		}
 		stored[path] = item
@@ -858,10 +860,10 @@ func (s *Service) Inventory(ctx context.Context) (Inventory, error) {
 			inventory.Added = append(inventory.Added, entry.Path)
 		case previous.parserVersion != ParserVersion:
 			inventory.Mutated = append(inventory.Mutated, entry.Path)
-			if previous.identity == entry.Identity && previous.size == entry.Size && previous.modified == entry.ModifiedAt {
+			if entry.Stable && previous.identity == entry.Identity && previous.size == entry.Size && previous.modified == entry.ModifiedAt && previous.changedAt == entry.ChangedAt {
 				parserVersionRereads++
 			}
-		case previous.identity == entry.Identity && previous.size == entry.Size && previous.modified == entry.ModifiedAt:
+		case entry.Stable && previous.identity == entry.Identity && previous.size == entry.Size && previous.modified == entry.ModifiedAt && previous.changedAt == entry.ChangedAt:
 		case previous.identity == entry.Identity && entry.Size > previous.size && entry.Size >= previous.cursor:
 			inventory.Appended = append(inventory.Appended, entry.Path)
 		default:
@@ -959,7 +961,7 @@ func (s *Service) inventoryEntries() ([]InventoryEntry, error) {
 		for _, source := range s.PreparedSources {
 			entries = append(entries, InventoryEntry{
 				Path: source.Path, Client: source.Client, Identity: source.Identity,
-				Size: source.Size, ModifiedAt: source.ModifiedAt,
+				Size: source.Size, ModifiedAt: source.ModifiedAt, ChangedAt: source.ChangedAt, Stable: source.Stable,
 			})
 		}
 		sort.Slice(entries, func(i, j int) bool { return entries[i].Path < entries[j].Path })
@@ -976,7 +978,8 @@ func (s *Service) inventoryEntries() ([]InventoryEntry, error) {
 			if err != nil {
 				return nil, err
 			}
-			entries = append(entries, InventoryEntry{Path: path, Client: client, Identity: usageFileIdentity(info), Size: info.Size(), ModifiedAt: info.ModTime().UnixNano()})
+			identity, changedAt, stable := ingest.FileGeneration(info)
+			entries = append(entries, InventoryEntry{Path: path, Client: client, Identity: identity, Size: info.Size(), ModifiedAt: info.ModTime().UnixNano(), ChangedAt: changedAt, Stable: stable})
 		}
 	}
 	sort.Slice(entries, func(i, j int) bool { return entries[i].Path < entries[j].Path })
@@ -986,7 +989,7 @@ func (s *Service) inventoryEntries() ([]InventoryEntry, error) {
 func inventoryFingerprint(entries []InventoryEntry) string {
 	records := make([]string, 0, len(entries))
 	for _, entry := range entries {
-		records = append(records, strings.Join([]string{entry.Path, entry.Identity, fmt.Sprint(entry.Size), fmt.Sprint(entry.ModifiedAt)}, "\x00"))
+		records = append(records, strings.Join([]string{entry.Path, entry.Identity, fmt.Sprint(entry.Size), fmt.Sprint(entry.ModifiedAt), fmt.Sprint(entry.ChangedAt)}, "\x00"))
 	}
 	return hash([]byte(strings.Join(records, "\n")))
 }
@@ -1029,7 +1032,7 @@ func (s *Service) scanFile(ctx context.Context, entry InventoryEntry) (map[strin
 func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceRebuild bool) (map[string]int, error) {
 	r := map[string]int{"imported": 0, "updated": 0, "ignored_non_usage": 0, "unsupported_usage": 0, "malformed": 0, "source_resets": 0, "replaced": 0, "unsupported": 0}
 	path, client := entry.Path, entry.Client
-	var cursor, oldSize, oldModified int64
+	var cursor, oldSize, oldModified, oldChanged int64
 	var oldIdentity, oldHash string
 	var cumulativeJSON string
 	var parserVersion int
@@ -1038,8 +1041,8 @@ func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceR
 	// has already dropped its earliest records, so the value captured before the
 	// rewrite is the better observation and the one that stays.
 	var priorStarted string
-	row := s.Store.DB.QueryRowContext(ctx, "SELECT cursor,identity,size,modified_at,prefix_hash,COALESCE(session_id,''),COALESCE(turn_id,''),COALESCE(model,''),COALESCE(session_started_at,''),parser_version,codex_cumulative_json FROM usage_source_files WHERE path=?", path)
-	loadErr := row.Scan(&cursor, &oldIdentity, &oldSize, &oldModified, &oldHash, &state.session, &state.turn, &state.model, &priorStarted, &parserVersion, &cumulativeJSON)
+	row := s.Store.DB.QueryRowContext(ctx, "SELECT cursor,identity,size,modified_at,changed_at,prefix_hash,COALESCE(session_id,''),COALESCE(turn_id,''),COALESCE(model,''),COALESCE(session_started_at,''),parser_version,codex_cumulative_json FROM usage_source_files WHERE path=?", path)
+	loadErr := row.Scan(&cursor, &oldIdentity, &oldSize, &oldModified, &oldChanged, &oldHash, &state.session, &state.turn, &state.model, &priorStarted, &parserVersion, &cumulativeJSON)
 	state.startedAt = priorStarted
 	found := loadErr == nil
 	if loadErr != nil && !errors.Is(loadErr, sql.ErrNoRows) {
@@ -1074,7 +1077,7 @@ func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceR
 	}
 	activityParser.SetMachineIdentity(s.activityMachineIdentity(ctx))
 	parserOutdated := found && parserVersion != ParserVersion
-	stableMetadata := found && !parserOutdated && oldIdentity == entry.Identity && oldSize == entry.Size && oldModified == entry.ModifiedAt
+	stableMetadata := found && !parserOutdated && entry.Stable && oldChanged != 0 && oldChanged == entry.ChangedAt && oldIdentity == entry.Identity && oldSize == entry.Size && oldModified == entry.ModifiedAt
 	if !forceRebuild && stableMetadata {
 		if s.Coordinator != nil {
 			s.Coordinator.Skip(path, ingest.ConsumerUsage)
@@ -1087,6 +1090,11 @@ func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceR
 	}
 	defer file.Close()
 	appendOnly := found && oldIdentity == entry.Identity && entry.Size >= cursor
+	// An unchanged length with changed/unknown ctime is a rewrite candidate,
+	// even when the suffix anchor and restored mtime happen to match.
+	if entry.Size == oldSize && (!entry.Stable || oldChanged == 0 || oldChanged != entry.ChangedAt) {
+		appendOnly = false
+	}
 	var previousAnchor []byte
 	var previousAnchorStart int64
 	if appendOnly && cursor > 0 {
@@ -1244,30 +1252,44 @@ func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceR
 			}
 		}
 	}
-	prepared, err := prepareIngestion(ctx, tx)
-	if err != nil {
-		return r, err
-	}
-	defer prepared.Close()
 	for _, event := range events {
 		affected[event.Client+"\x00"+event.SessionID] = [2]string{event.Client, event.SessionID}
-		inserted, changed, upsertErr := upsertTx(ctx, prepared, event)
-		if upsertErr != nil {
-			return r, upsertErr
+	}
+	cold := false
+	if !found {
+		var imported, updated int
+		cold, imported, updated, err = publishColdSource(ctx, tx, path, events, toolActivities)
+		if err != nil {
+			return r, err
 		}
-		if !changed {
-			continue
-		}
-		if inserted {
-			r["imported"]++
-		} else {
-			r["updated"]++
-			r["replaced"]++
+		if cold {
+			r["imported"], r["updated"], r["replaced"] = imported, updated, updated
 		}
 	}
-	for _, item := range toolActivities {
-		if err = upsertToolActivityTx(ctx, prepared, item); err != nil {
-			return r, err
+	if !cold {
+		prepared, prepareErr := prepareIngestion(ctx, tx)
+		if prepareErr != nil {
+			return r, prepareErr
+		}
+		defer prepared.Close()
+		for _, event := range events {
+			inserted, changed, upsertErr := upsertTx(ctx, prepared, event)
+			if upsertErr != nil {
+				return r, upsertErr
+			}
+			if changed {
+				if inserted {
+					r["imported"]++
+				} else {
+					r["updated"]++
+					r["replaced"]++
+				}
+			}
+		}
+		for _, item := range toolActivities {
+			if err = upsertToolActivityTx(ctx, prepared, item); err != nil {
+				return r, err
+			}
 		}
 	}
 	for _, signal := range state.signals {
@@ -1294,7 +1316,7 @@ func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceR
 	// so a rewrite that lost the opening records cannot move a session's start
 	// later and widen its span into a segment the process never ran in.
 	startedAt := earlierSessionStart(priorStarted, state.startedAt)
-	_, err = tx.ExecContext(ctx, `INSERT INTO usage_source_files(path,identity,size,cursor,prefix_hash,session_id,turn_id,model,session_started_at,parser_version,codex_cumulative_json,imported,replaced,malformed,unsupported,modified_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(path) DO UPDATE SET identity=excluded.identity,size=excluded.size,cursor=excluded.cursor,prefix_hash=excluded.prefix_hash,session_id=excluded.session_id,turn_id=excluded.turn_id,model=excluded.model,session_started_at=excluded.session_started_at,parser_version=excluded.parser_version,codex_cumulative_json=excluded.codex_cumulative_json,imported=usage_source_files.imported+excluded.imported,replaced=usage_source_files.replaced+excluded.replaced,malformed=usage_source_files.malformed+excluded.malformed,unsupported=usage_source_files.unsupported+excluded.unsupported,modified_at=excluded.modified_at`, path, entry.Identity, entry.Size, cursor, hash(anchor), state.session, state.turn, state.model, startedAt, ParserVersion, string(cumulativeBytes), r["imported"], r["replaced"], r["malformed"], r["unsupported"], entry.ModifiedAt)
+	_, err = tx.ExecContext(ctx, `INSERT INTO usage_source_files(path,identity,size,cursor,prefix_hash,session_id,turn_id,model,session_started_at,parser_version,codex_cumulative_json,imported,replaced,malformed,unsupported,modified_at,changed_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(path) DO UPDATE SET identity=excluded.identity,size=excluded.size,cursor=excluded.cursor,prefix_hash=excluded.prefix_hash,session_id=excluded.session_id,turn_id=excluded.turn_id,model=excluded.model,session_started_at=excluded.session_started_at,parser_version=excluded.parser_version,codex_cumulative_json=excluded.codex_cumulative_json,imported=usage_source_files.imported+excluded.imported,replaced=usage_source_files.replaced+excluded.replaced,malformed=usage_source_files.malformed+excluded.malformed,unsupported=usage_source_files.unsupported+excluded.unsupported,modified_at=excluded.modified_at,changed_at=excluded.changed_at`, path, entry.Identity, entry.Size, cursor, hash(anchor), state.session, state.turn, state.model, startedAt, ParserVersion, string(cumulativeBytes), r["imported"], r["replaced"], r["malformed"], r["unsupported"], entry.ModifiedAt, entry.ChangedAt)
 	if err != nil {
 		return r, err
 	}
@@ -1330,7 +1352,8 @@ func (s *Service) validateSnapshot(path string, file SourceFile, entry Inventory
 			return errUsageSourceChanged
 		}
 	}
-	if latest.Size() == entry.Size && latest.ModTime().UnixNano() != entry.ModifiedAt {
+	identity, changedAt, stable := ingest.FileGeneration(latest)
+	if identity != entry.Identity || latest.Size() < entry.Size || (latest.Size() == entry.Size && (latest.ModTime().UnixNano() != entry.ModifiedAt || (entry.Stable && (!stable || changedAt != entry.ChangedAt)))) {
 		return errUsageSourceChanged
 	}
 	return nil
@@ -1738,7 +1761,15 @@ func (s *Service) detachSource(ctx context.Context, path string) error {
 }
 
 func (s *Service) orphanRecoveryCandidates(ctx context.Context, entries []InventoryEntry) (bool, map[string]bool, error) {
-	rows, err := s.Store.DB.QueryContext(ctx, `SELECT client,session_id FROM (SELECT DISTINCT e.client,e.session_id FROM usage_events e LEFT JOIN usage_source_files f ON f.path=e.source_path WHERE f.path IS NULL UNION SELECT DISTINCT a.client,a.session_id FROM usage_tool_calls a LEFT JOIN usage_source_files f ON f.path=a.source_path WHERE f.path IS NULL)`)
+	// Subtract registered paths using the covering source indexes first. The
+	// usual no-orphan case then avoids joining every event/tool row to the
+	// registry twice per scan. Only orphan paths need their logical session IDs.
+	rows, err := s.Store.DB.QueryContext(ctx, `SELECT client,session_id FROM (
+SELECT e.client,e.session_id FROM usage_events e WHERE e.source_path IN (
+ SELECT source_path FROM (SELECT DISTINCT source_path FROM usage_events) EXCEPT SELECT path FROM usage_source_files)
+UNION
+SELECT a.client,a.session_id FROM usage_tool_calls a WHERE a.source_path IN (
+ SELECT source_path FROM (SELECT DISTINCT source_path FROM usage_tool_calls) EXCEPT SELECT path FROM usage_source_files))`)
 	if err != nil {
 		return false, nil, err
 	}

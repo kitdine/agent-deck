@@ -26,7 +26,7 @@ additive families existed, so no current producer can emit it.
 | `snapshot-complete.json` | Every domain available, both clients populated with values that differ per client and per period |
 | `snapshot-partial.json` | An unreadable state root: every domain unavailable, every collection an empty array |
 | `snapshot-empty-client.json` | One populated client and one concrete client with no data, whose record reports unavailable families rather than synthetic zeros |
-| `snapshot-schema-ahead.json` | Future core schema 99 against supported 23, two Hook refusals, and an independently unavailable session index; produced from synthetic state |
+| `snapshot-schema-ahead.json` | Future core schema 99 against supported 25, two Hook refusals, and an independently unavailable session index; produced from synthetic state |
 | `snapshot-legacy.json` | A v1 payload without the additive families, which must decode as unavailable rather than fail |
 
 Run the standalone Foundation verifier without creating an Xcode project:

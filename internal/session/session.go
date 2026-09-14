@@ -231,6 +231,21 @@ func ScanWithOptions(ctx context.Context, db *sql.DB, home string, options ScanO
 	if err != nil {
 		return ScanResult{}, err
 	}
+	unchanged, err := unchangedSources(ctx, db, paths)
+	if err != nil {
+		return ScanResult{}, err
+	}
+	if unchanged {
+		for _, src := range paths {
+			if options.Coordinator != nil {
+				options.Coordinator.Skip(src.path, ingest.ConsumerSession)
+			}
+		}
+		if options.Progress != nil {
+			options.Progress.Update(ScanProgress{Processed: len(paths), Total: len(paths), Skipped: len(paths)})
+		}
+		return ScanResult{Skipped: len(paths)}, nil
+	}
 	return scan(ctx, db, paths, options.Progress,
 		func(src source) (bool, int, error) {
 			return scanSourceWithCoordinator(ctx, db, src, options.Coordinator)
@@ -350,7 +365,7 @@ func sessionSources(home string, prepared []ingest.Source) ([]source, error) {
 	}
 	paths := make([]source, 0, len(prepared))
 	for _, item := range prepared {
-		paths = append(paths, source{client: item.Client, path: item.Path, priority: item.Priority})
+		paths = append(paths, source{client: item.Client, path: item.Path, priority: item.Priority, identity: item.Identity, size: item.Size, modifiedAt: item.ModifiedAt, changedAt: item.ChangedAt, stable: item.Stable})
 	}
 	sort.Slice(paths, func(i, j int) bool {
 		if paths[i].priority != paths[j].priority {
@@ -373,6 +388,16 @@ func PlanForCoordinator(ctx context.Context, db *sql.DB, home string, prepared [
 	if err != nil {
 		return err
 	}
+	unchanged, err := unchangedSources(ctx, db, paths)
+	if err != nil {
+		return err
+	}
+	if unchanged {
+		for _, src := range paths {
+			coordinator.Skip(src.path, ingest.ConsumerSession)
+		}
+		return coordinator.Seal(ingest.ConsumerSession)
+	}
 	for _, src := range paths {
 		read, needed, err := plannedReadRange(ctx, db, src)
 		if err != nil {
@@ -391,27 +416,19 @@ func PlanForCoordinator(ctx context.Context, db *sql.DB, home string, prepared [
 
 func plannedReadRange(ctx context.Context, executor sessionExecutor, src source) (ingest.ReadRange, bool, error) {
 	path := filepath.Clean(src.path)
-	info, err := os.Stat(path)
-	if err != nil {
-		return ingest.ReadRange{}, false, err
-	}
-	identity, err := fileIdentity(info)
-	if err != nil {
-		return ingest.ReadRange{}, false, err
-	}
-	prefix, err := prefixHash(path, info.Size())
-	if err != nil {
-		return ingest.ReadRange{}, false, err
-	}
 	state, found, err := loadSource(ctx, executor, path)
 	if err != nil {
 		return ingest.ReadRange{}, false, err
 	}
 	if !found {
-		state, found, err = loadSourceByIdentity(ctx, executor, identity)
+		state, found, err = loadSourceByIdentity(ctx, executor, src.identity)
 		if err != nil {
 			return ingest.ReadRange{}, false, err
 		}
+	}
+	unchangedMetadata := found && src.stable && state.identity == src.identity && state.parserVersion == ParserVersion && src.size == state.size && state.modifiedAt == src.modifiedAt && state.changedAt == src.changedAt && state.priority == int64(src.priority)
+	if unchangedMetadata {
+		return ingest.ReadRange{}, false, nil
 	}
 	oldPrefix := ""
 	if found {
@@ -420,28 +437,28 @@ func plannedReadRange(ctx context.Context, executor sessionExecutor, src source)
 			return ingest.ReadRange{}, false, err
 		}
 	}
-	unchanged := found && state.identity == identity && state.parserVersion == ParserVersion && info.Size() == state.size && state.modifiedAt == info.ModTime().UnixNano() && prefix == state.prefixHash && state.priority == int64(src.priority)
-	if unchanged {
-		return ingest.ReadRange{}, false, nil
-	}
-	appendOnly := found && state.identity == identity && state.parserVersion == ParserVersion && info.Size() > state.cursor && oldPrefix == state.prefixHash
+	appendOnly := found && state.identity == src.identity && state.parserVersion == ParserVersion && src.size > state.cursor && oldPrefix == state.prefixHash
 	start := int64(0)
 	if appendOnly {
 		start = state.cursor
 	}
-	return ingest.ReadRange{Start: start, End: info.Size()}, true, nil
+	return ingest.ReadRange{Start: start, End: src.size}, true, nil
 }
 
 type source struct {
 	client, path      string
 	priority          int
 	noOrphanDocuments bool
+	identity          string
+	size, modifiedAt  int64
+	changedAt         int64
+	stable            bool
 }
 
 type sourceState struct {
-	path, identity, prefixHash                        string
-	cursor, size, modifiedAt, priority, parserVersion int64
-	partial                                           []byte
+	path, identity, prefixHash                                   string
+	cursor, size, modifiedAt, changedAt, priority, parserVersion int64
+	partial                                                      []byte
 }
 
 type sessionExecutor interface {
@@ -462,10 +479,10 @@ type sourceUpdate struct {
 }
 
 type sourcePrecondition struct {
-	found                bool
-	state                sourceState
-	identity, prefixHash string
-	size, modifiedAt     int64
+	found                       bool
+	state                       sourceState
+	identity, prefixHash        string
+	size, modifiedAt, changedAt int64
 }
 
 func scanSource(ctx context.Context, db *sql.DB, src source) (bool, int, error) {
@@ -527,15 +544,12 @@ func prepareSourceUpdate(ctx context.Context, executor sessionExecutor, src sour
 	if err != nil {
 		return sourceUpdate{}, false, err
 	}
-	prefix, err := prefixHash(path, info.Size())
-	if err != nil {
-		return sourceUpdate{}, false, err
-	}
+	_, changedAt, stable := ingest.FileGeneration(info)
 	state, found, err := loadSource(ctx, executor, path)
 	if err != nil {
 		return sourceUpdate{}, false, err
 	}
-	update := sourceUpdate{path: path, precondition: sourcePrecondition{identity: identity, size: info.Size(), modifiedAt: info.ModTime().UnixNano(), prefixHash: prefix}}
+	update := sourceUpdate{path: path, precondition: sourcePrecondition{identity: identity, size: info.Size(), modifiedAt: info.ModTime().UnixNano(), changedAt: changedAt}}
 	if !found {
 		// A rename preserves source ownership and avoids a full index rebuild.
 		state, found, err = loadSourceByIdentity(ctx, executor, identity)
@@ -551,6 +565,18 @@ func prepareSourceUpdate(ctx context.Context, executor sessionExecutor, src sour
 			state.path = path
 		}
 	}
+	unchangedMetadata := found && update.movedFrom == "" && stable && state.identity == identity && state.parserVersion == ParserVersion && info.Size() == state.size && state.modifiedAt == info.ModTime().UnixNano() && state.changedAt == changedAt && state.priority == int64(src.priority)
+	if unchangedMetadata {
+		if coordinator != nil {
+			coordinator.Skip(path, ingest.ConsumerSession)
+		}
+		return update, false, nil
+	}
+	prefix, err := prefixHash(path, info.Size())
+	if err != nil {
+		return sourceUpdate{}, false, err
+	}
+	update.precondition.prefixHash = prefix
 	oldPrefix := ""
 	update.newSource = !found && src.noOrphanDocuments
 	if found {
@@ -558,13 +584,6 @@ func prepareSourceUpdate(ctx context.Context, executor sessionExecutor, src sour
 		if err != nil {
 			return sourceUpdate{}, false, err
 		}
-	}
-	unchanged := found && state.identity == identity && state.parserVersion == ParserVersion && info.Size() == state.size && state.modifiedAt == info.ModTime().UnixNano() && prefix == state.prefixHash && state.priority == int64(src.priority)
-	if unchanged {
-		if coordinator != nil {
-			coordinator.Skip(path, ingest.ConsumerSession)
-		}
-		return update, false, nil
 	}
 	update.appendOnly = found && state.identity == identity && state.parserVersion == ParserVersion && info.Size() > state.cursor && oldPrefix == state.prefixHash
 	var partial []byte
@@ -604,7 +623,7 @@ func prepareSourceUpdate(ctx context.Context, executor sessionExecutor, src sour
 		partial = []byte{}
 	}
 	update.writeState = true
-	update.state = sourceState{path: path, identity: identity, cursor: info.Size(), size: info.Size(), modifiedAt: info.ModTime().UnixNano(), prefixHash: prefix, priority: int64(src.priority), parserVersion: ParserVersion, partial: partial}
+	update.state = sourceState{path: path, identity: identity, cursor: info.Size(), size: info.Size(), modifiedAt: info.ModTime().UnixNano(), changedAt: changedAt, prefixHash: prefix, priority: int64(src.priority), parserVersion: ParserVersion, partial: partial}
 	return update, true, nil
 }
 
@@ -622,7 +641,8 @@ func validateSourceUpdate(ctx context.Context, executor sessionExecutor, update 
 		return err
 	}
 	precondition := update.precondition
-	if identity != precondition.identity || info.Size() != precondition.size || info.ModTime().UnixNano() != precondition.modifiedAt || prefix != precondition.prefixHash {
+	_, changedAt, stable := ingest.FileGeneration(info)
+	if identity != precondition.identity || info.Size() != precondition.size || info.ModTime().UnixNano() != precondition.modifiedAt || (precondition.changedAt != 0 && (!stable || changedAt != precondition.changedAt)) || prefix != precondition.prefixHash {
 		return ingest.ErrSourceChanged
 	}
 	state, found, err := loadSource(ctx, executor, update.path)
@@ -650,7 +670,7 @@ func validateSourceUpdate(ctx context.Context, executor sessionExecutor, update 
 }
 
 func sameSourceState(left, right sourceState) bool {
-	return left.path == right.path && left.identity == right.identity && left.prefixHash == right.prefixHash && left.cursor == right.cursor && left.size == right.size && left.modifiedAt == right.modifiedAt && left.priority == right.priority && left.parserVersion == right.parserVersion && bytes.Equal(left.partial, right.partial)
+	return left.path == right.path && left.identity == right.identity && left.prefixHash == right.prefixHash && left.cursor == right.cursor && left.size == right.size && left.modifiedAt == right.modifiedAt && left.changedAt == right.changedAt && left.priority == right.priority && left.parserVersion == right.parserVersion && bytes.Equal(left.partial, right.partial)
 }
 
 func applySourceUpdate(ctx context.Context, executor sessionExecutor, update sourceUpdate) (int, error) {
@@ -691,7 +711,7 @@ func applySourceUpdate(ctx context.Context, executor sessionExecutor, update sou
 func loadSource(ctx context.Context, executor sessionExecutor, path string) (sourceState, bool, error) {
 	var s sourceState
 	s.path = path
-	err := executor.QueryRowContext(ctx, "SELECT identity,cursor,partial_line,size,modified_at,prefix_hash,priority,parser_version FROM session_sources WHERE source_path=?", path).Scan(&s.identity, &s.cursor, &s.partial, &s.size, &s.modifiedAt, &s.prefixHash, &s.priority, &s.parserVersion)
+	err := executor.QueryRowContext(ctx, "SELECT identity,cursor,partial_line,size,modified_at,changed_at,prefix_hash,priority,parser_version FROM session_sources WHERE source_path=?", path).Scan(&s.identity, &s.cursor, &s.partial, &s.size, &s.modifiedAt, &s.changedAt, &s.prefixHash, &s.priority, &s.parserVersion)
 	if errors.Is(err, sql.ErrNoRows) {
 		return s, false, nil
 	}
@@ -699,14 +719,14 @@ func loadSource(ctx context.Context, executor sessionExecutor, path string) (sou
 }
 func loadSourceByIdentity(ctx context.Context, executor sessionExecutor, identity string) (sourceState, bool, error) {
 	var s sourceState
-	err := executor.QueryRowContext(ctx, "SELECT source_path,identity,cursor,partial_line,size,modified_at,prefix_hash,priority,parser_version FROM session_sources WHERE identity=?", identity).Scan(&s.path, &s.identity, &s.cursor, &s.partial, &s.size, &s.modifiedAt, &s.prefixHash, &s.priority, &s.parserVersion)
+	err := executor.QueryRowContext(ctx, "SELECT source_path,identity,cursor,partial_line,size,modified_at,changed_at,prefix_hash,priority,parser_version FROM session_sources WHERE identity=?", identity).Scan(&s.path, &s.identity, &s.cursor, &s.partial, &s.size, &s.modifiedAt, &s.changedAt, &s.prefixHash, &s.priority, &s.parserVersion)
 	if errors.Is(err, sql.ErrNoRows) {
 		return s, false, nil
 	}
 	return s, err == nil, err
 }
 func moveSource(ctx context.Context, executor sessionExecutor, old, new string) error {
-	if _, err := executor.ExecContext(ctx, "INSERT INTO session_sources(source_path,identity,cursor,partial_line,size,modified_at,prefix_hash,priority,parser_version,scanned_at) SELECT ?,identity,cursor,partial_line,size,modified_at,prefix_hash,priority,parser_version,scanned_at FROM session_sources WHERE source_path=?", new, old); err != nil {
+	if _, err := executor.ExecContext(ctx, "INSERT INTO session_sources(source_path,identity,cursor,partial_line,size,modified_at,changed_at,prefix_hash,priority,parser_version,scanned_at) SELECT ?,identity,cursor,partial_line,size,modified_at,changed_at,prefix_hash,priority,parser_version,scanned_at FROM session_sources WHERE source_path=?", new, old); err != nil {
 		return err
 	}
 	if _, err := executor.ExecContext(ctx, "UPDATE session_documents SET source_path=? WHERE source_path=?; UPDATE session_metadata SET source_path=? WHERE source_path=?; DELETE FROM session_sources WHERE source_path=?", new, old, new, old, old); err != nil {
@@ -724,7 +744,7 @@ func deleteSource(ctx context.Context, executor sessionExecutor, path string) er
 	return nil
 }
 func saveSource(ctx context.Context, executor sessionExecutor, s sourceState) error {
-	_, err := executor.ExecContext(ctx, "INSERT INTO session_sources(source_path,identity,cursor,partial_line,size,modified_at,prefix_hash,priority,parser_version,scanned_at) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(source_path) DO UPDATE SET identity=excluded.identity,cursor=excluded.cursor,partial_line=excluded.partial_line,size=excluded.size,modified_at=excluded.modified_at,prefix_hash=excluded.prefix_hash,priority=excluded.priority,parser_version=excluded.parser_version,scanned_at=excluded.scanned_at", s.path, s.identity, s.cursor, s.partial, s.size, s.modifiedAt, s.prefixHash, s.priority, s.parserVersion, time.Now().UTC().Format(time.RFC3339Nano))
+	_, err := executor.ExecContext(ctx, "INSERT INTO session_sources(source_path,identity,cursor,partial_line,size,modified_at,changed_at,prefix_hash,priority,parser_version,scanned_at) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(source_path) DO UPDATE SET identity=excluded.identity,cursor=excluded.cursor,partial_line=excluded.partial_line,size=excluded.size,modified_at=excluded.modified_at,changed_at=excluded.changed_at,prefix_hash=excluded.prefix_hash,priority=excluded.priority,parser_version=excluded.parser_version,scanned_at=excluded.scanned_at", s.path, s.identity, s.cursor, s.partial, s.size, s.modifiedAt, s.changedAt, s.prefixHash, s.priority, s.parserVersion, time.Now().UTC().Format(time.RFC3339Nano))
 	return err
 }
 func removeMissingSources(ctx context.Context, db *sql.DB, seen map[string]bool) error {
@@ -1272,10 +1292,21 @@ func replaceExec(ctx context.Context, executor sessionExecutor, r Result) error 
 	return insertResult(ctx, executor, r)
 }
 func insertResult(ctx context.Context, executor sessionExecutor, r Result) error {
-	for _, d := range r.Documents {
-		if _, err := executor.ExecContext(ctx, "INSERT INTO session_documents(source_path,client,session_id,event_at,kind,text) VALUES(?,?,?,?,?,?)", r.SourcePath, d.Client, d.SessionID, d.EventAt, d.Kind, d.Text); err != nil {
+	for start := 0; start < len(r.Documents); {
+		end, bytes := start, 0
+		for end < len(r.Documents) && end-start < 64 && (end == start || bytes+len(r.Documents[end].Text) <= 1<<20) {
+			bytes += len(r.Documents[end].Text)
+			end++
+		}
+		args := make([]any, 0, (end-start)*6)
+		for _, d := range r.Documents[start:end] {
+			args = append(args, r.SourcePath, d.Client, d.SessionID, d.EventAt, d.Kind, d.Text)
+		}
+		query := "INSERT INTO session_documents(source_path,client,session_id,event_at,kind,text) VALUES" + strings.TrimSuffix(strings.Repeat("(?,?,?,?,?,?),", end-start), ",")
+		if _, err := executor.ExecContext(ctx, query, args...); err != nil {
 			return err
 		}
+		start = end
 	}
 	_, err := executor.ExecContext(ctx, "INSERT INTO session_metadata(source_path,client,session_id,project,model,parser_version,first_at,last_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(source_path,client,session_id) DO UPDATE SET project=CASE WHEN excluded.project='' THEN session_metadata.project ELSE excluded.project END,model=CASE WHEN excluded.model='' THEN session_metadata.model ELSE excluded.model END,parser_version=excluded.parser_version,first_at=CASE WHEN session_metadata.first_at='' OR excluded.first_at<session_metadata.first_at THEN excluded.first_at ELSE session_metadata.first_at END,last_at=CASE WHEN excluded.last_at>session_metadata.last_at THEN excluded.last_at ELSE session_metadata.last_at END", r.SourcePath, r.Client, r.SessionID, r.Project, r.Model, ParserVersion, r.FirstAt, r.LastAt)
 	return err

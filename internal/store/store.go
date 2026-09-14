@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	CurrentSchemaVersion   = 24
+	CurrentSchemaVersion   = 25
 	CodeProviderNotFound   = "provider_not_found"
 	CodeCredentialNotFound = "credential_not_found"
 )
@@ -53,7 +53,7 @@ func OpenSessions(ctx context.Context, stateRoot string) (*Store, error) {
 	}
 	for _, statement := range []string{
 		"CREATE TABLE IF NOT EXISTS session_exclusions (kind TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY(kind, value))",
-		"CREATE TABLE IF NOT EXISTS session_sources (source_path TEXT PRIMARY KEY, identity TEXT NOT NULL, cursor INTEGER NOT NULL, partial_line BLOB NOT NULL DEFAULT X'', size INTEGER NOT NULL, modified_at INTEGER NOT NULL, prefix_hash TEXT NOT NULL, priority INTEGER NOT NULL, parser_version INTEGER NOT NULL, scanned_at TEXT NOT NULL)",
+		"CREATE TABLE IF NOT EXISTS session_sources (source_path TEXT PRIMARY KEY, identity TEXT NOT NULL, cursor INTEGER NOT NULL, partial_line BLOB NOT NULL DEFAULT X'', size INTEGER NOT NULL, modified_at INTEGER NOT NULL, changed_at INTEGER NOT NULL DEFAULT 0, prefix_hash TEXT NOT NULL, priority INTEGER NOT NULL, parser_version INTEGER NOT NULL, scanned_at TEXT NOT NULL)",
 		"CREATE TABLE IF NOT EXISTS session_metadata (source_path TEXT NOT NULL REFERENCES session_sources(source_path) ON DELETE CASCADE, client TEXT NOT NULL, session_id TEXT NOT NULL, project TEXT NOT NULL DEFAULT '', model TEXT NOT NULL DEFAULT '', parser_version INTEGER NOT NULL, first_at TEXT NOT NULL, last_at TEXT NOT NULL, PRIMARY KEY(source_path, client, session_id))",
 		"CREATE VIRTUAL TABLE IF NOT EXISTS session_documents USING fts5(source_path UNINDEXED, client UNINDEXED, session_id UNINDEXED, event_at UNINDEXED, kind UNINDEXED, text)",
 	} {
@@ -105,7 +105,8 @@ func OpenSessionsReadOnly(ctx context.Context, stateRoot string) (*Store, error)
 // deliberately discards the old client/session view instead of trying to
 // invent source ownership for rows that never recorded it.
 func migrateSessionSchema(ctx context.Context, db *sql.DB) (bool, error) {
-	var hasDocuments, hasSources, hasSourcePath, hasEventAt int
+	var hasDocuments, hasSources, hasSourcePath, hasChangedAt, hasEventAt int
+	rebuilt := false
 	if err := db.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='session_documents'").Scan(&hasDocuments); err != nil {
 		return false, err
 	}
@@ -127,17 +128,32 @@ func migrateSessionSchema(ctx context.Context, db *sql.DB) (bool, error) {
 		}
 		if sourceColumn == 0 {
 			hasSourcePath = 0
+		} else if err := db.QueryRowContext(ctx, "SELECT count(*) FROM pragma_table_info('session_sources') WHERE name='changed_at'").Scan(&hasChangedAt); err != nil {
+			return false, err
 		}
 	}
 	if (hasDocuments != 0 || hasSources != 0) && hasSourcePath == 0 {
 		_, err := db.ExecContext(ctx, "DROP TABLE IF EXISTS session_documents; DROP TABLE IF EXISTS session_metadata; DROP TABLE IF EXISTS session_sources")
-		return true, err
+		if err != nil {
+			return false, err
+		}
+		rebuilt = true
 	}
 	if hasDocuments != 0 && hasEventAt == 0 {
 		_, err := db.ExecContext(ctx, "DROP TABLE IF EXISTS session_documents")
-		return true, err
+		if err != nil {
+			return false, err
+		}
+		rebuilt = true
 	}
-	return false, nil
+	if hasSources != 0 && hasSourcePath != 0 && hasChangedAt == 0 {
+		_, err := db.ExecContext(ctx, "ALTER TABLE session_sources ADD COLUMN changed_at INTEGER NOT NULL DEFAULT 0")
+		if err != nil {
+			return false, err
+		}
+		rebuilt = true
+	}
+	return rebuilt, nil
 }
 
 var (

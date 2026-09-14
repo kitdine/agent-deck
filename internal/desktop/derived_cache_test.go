@@ -69,6 +69,43 @@ func TestDerivedSnapshotCachePublishesAndReadOnlySnapshotReusesIt(t *testing.T) 
 	}
 }
 
+func TestDerivedSnapshotCachePublisherReusesValidEntryWithoutAdvancingGeneration(t *testing.T) {
+	ctx := context.Background()
+	service, root := derivedCacheFixtureService(t)
+	if err := service.PublishDerivedSnapshotCache(ctx, WireVersion); err != nil {
+		t.Fatal(err)
+	}
+	core, err := store.OpenReadOnly(ctx, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := core.DerivedSnapshotGeneration(ctx)
+	if closeErr := core.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest := snapshotFileDigest(t, service.derivedSnapshotCachePath())
+	if err = service.PublishDerivedSnapshotCache(ctx, WireVersion); err != nil {
+		t.Fatal(err)
+	}
+	core, err = store.OpenReadOnly(ctx, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	after, err := core.DerivedSnapshotGeneration(ctx)
+	if closeErr := core.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after != before || snapshotFileDigest(t, service.derivedSnapshotCachePath()) != digest {
+		t.Fatalf("valid cache rebuild changed state: before=%#v after=%#v", before, after)
+	}
+}
+
 func TestDerivedSnapshotCacheRejectsChangedGenerationAndCorruption(t *testing.T) {
 	ctx := context.Background()
 	service, root := derivedCacheFixtureService(t)

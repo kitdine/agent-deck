@@ -226,6 +226,12 @@ var migrations = []migration{
 		  dirty INTEGER NOT NULL CHECK(dirty IN (0,1))
 		)`,
 	}, apply: initializeDerivedSnapshotGeneration},
+	// Stable change-time metadata lets unchanged scans avoid reopening every
+	// source merely to recompute a content anchor. A zero migrated value forces
+	// one conservative reread before the optimized checkpoint can be trusted.
+	{version: 25, statements: []string{
+		`ALTER TABLE usage_source_files ADD COLUMN changed_at INTEGER NOT NULL DEFAULT 0`,
+	}},
 }
 
 var derivedSnapshotGenerationTables = []string{

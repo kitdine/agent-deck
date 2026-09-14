@@ -35,7 +35,7 @@ import (
 const (
 	// ProtocolVersion prevents a client from treating an incompatible worker as
 	// an accepted scan.  It is intentionally small and private to this runtime.
-	ProtocolVersion = 1
+	ProtocolVersion = 2
 
 	defaultStartupTimeout = 5 * time.Second
 	defaultIdleTimeout    = time.Second
@@ -79,11 +79,35 @@ type SessionResult struct {
 // compact diagnostic record for the Task 1 baseline; it is not a user-facing
 // progress stream.
 type StageProfile struct {
-	DiscoveryMS    int64 `json:"discovery_ms"`
-	UsageMS        int64 `json:"usage_ms"`
-	SessionMS      int64 `json:"session_ms"`
-	DerivedCacheMS int64 `json:"derived_cache_ms"`
-	TotalMS        int64 `json:"total_ms"`
+	DiscoveryMS        int64 `json:"discovery_ms"`
+	UsageMS            int64 `json:"usage_ms"`
+	SessionMS          int64 `json:"session_ms"`
+	DerivedCacheMS     int64 `json:"derived_cache_ms"`
+	TotalMS            int64 `json:"total_ms"`
+	WorkerCPUTimeMS    int64 `json:"worker_cpu_time_ms"`
+	WorkerPeakRSSBytes int64 `json:"worker_peak_rss_bytes"`
+}
+
+type processResources struct {
+	cpuTime time.Duration
+	peakRSS int64
+}
+
+// DomainProgress contains only aggregate committed work. It is safe to expose
+// to CLI and App subscribers because it never contains source paths or content.
+type DomainProgress struct {
+	State     string `json:"state"`
+	Committed int    `json:"committed"`
+	Total     int    `json:"total"`
+	Skipped   int    `json:"skipped"`
+}
+
+// Progress is the versioned, bounded subscriber view of one scan round.
+type Progress struct {
+	Sequence uint64         `json:"sequence"`
+	Stage    string         `json:"stage"`
+	Usage    DomainProgress `json:"usage"`
+	Session  DomainProgress `json:"session"`
 }
 
 // Result is the finite observation returned by a round.
@@ -162,20 +186,33 @@ type wireRequest struct {
 	StateID  string `json:"state_id"`
 	Home     string `json:"home"`
 	Scope    Scope  `json:"scope"`
+	Events   bool   `json:"events,omitempty"`
+	CacheNow string `json:"cache_now,omitempty"`
 }
 
 type wireResponse struct {
-	Type     string  `json:"type"`
-	WorkerID string  `json:"worker_id,omitempty"`
-	RoundID  string  `json:"round_id,omitempty"`
-	Result   *Result `json:"result,omitempty"`
-	Error    string  `json:"error,omitempty"`
+	Type     string    `json:"type"`
+	WorkerID string    `json:"worker_id,omitempty"`
+	RoundID  string    `json:"round_id,omitempty"`
+	Result   *Result   `json:"result,omitempty"`
+	Progress *Progress `json:"progress,omitempty"`
+	Error    string    `json:"error,omitempty"`
 }
 
 // Request joins a covered running round or starts one finite follow-up round.
 // Client cancellation only stops this wait; it never cancels the worker's
 // globally accepted scan.
 func (c Client) Request(ctx context.Context, scope Scope) (Result, error) {
+	return c.request(ctx, scope, nil)
+}
+
+// RequestWithProgress delivers coalesced aggregate progress while preserving
+// Request's final result and subscriber-only cancellation semantics.
+func (c Client) RequestWithProgress(ctx context.Context, scope Scope, onProgress func(Progress)) (Result, error) {
+	return c.request(ctx, scope, onProgress)
+}
+
+func (c Client) request(ctx context.Context, scope Scope, onProgress func(Progress)) (Result, error) {
 	if !scope.valid() {
 		return Result{}, ErrInvalidScope
 	}
@@ -184,7 +221,7 @@ func (c Client) Request(ctx context.Context, scope Scope) (Result, error) {
 		return Result{}, err
 	}
 	if c.ForceLocal {
-		return localRequest(ctx, stateRoot, c.Home, scope, c.Now)
+		return localRequest(ctx, stateRoot, c.Home, scope, c.Now, onProgress)
 	}
 	endpoint, err := socketPath(stateID)
 	if err != nil {
@@ -194,7 +231,10 @@ func (c Client) Request(ctx context.Context, scope Scope) (Result, error) {
 	if requestID == "" {
 		requestID = newID()
 	}
-	request := wireRequest{Protocol: ProtocolVersion, Request: requestID, StateID: stateID, Home: c.Home, Scope: scope}
+	request := wireRequest{Protocol: ProtocolVersion, Request: requestID, StateID: stateID, Home: c.Home, Scope: scope, Events: onProgress != nil}
+	if c.Executable != "" && c.Now != nil {
+		request.CacheNow = c.Now().UTC().Format(time.RFC3339Nano)
+	}
 	conn, err := c.connectOrLaunch(ctx, endpoint, stateRoot)
 	if err != nil {
 		return Result{}, err
@@ -214,17 +254,32 @@ func (c Client) Request(ctx context.Context, scope Scope) (Result, error) {
 		}
 		return Result{}, errors.New("scan worker did not acknowledge request")
 	}
-	last, err := decodeResponse(ctx, conn, decoder)
-	if err != nil {
-		return Result{}, err
-	}
-	if last.Type != "terminal" || last.Result == nil || last.WorkerID != first.WorkerID {
-		if last.Error != "" {
-			return Result{}, errors.New(last.Error)
+	for {
+		response, decodeErr := decodeResponse(ctx, conn, decoder)
+		if decodeErr != nil {
+			return Result{}, decodeErr
 		}
-		return Result{}, errors.New("scan worker returned an invalid terminal response")
+		if response.WorkerID != first.WorkerID {
+			return Result{}, errors.New("scan worker response changed identity")
+		}
+		switch response.Type {
+		case "progress":
+			if response.Progress == nil || onProgress == nil {
+				return Result{}, errors.New("scan worker returned an invalid progress response")
+			}
+			onProgress(*response.Progress)
+		case "terminal":
+			if response.Result == nil {
+				return Result{}, errors.New("scan worker returned an invalid terminal response")
+			}
+			return *response.Result, nil
+		default:
+			if response.Error != "" {
+				return Result{}, errors.New(response.Error)
+			}
+			return Result{}, errors.New("scan worker returned an unknown response")
+		}
 	}
-	return *last.Result, nil
 }
 
 func (c Client) connectOrLaunch(ctx context.Context, endpoint, stateRoot string) (net.Conn, error) {
@@ -422,7 +477,14 @@ func (s *server) handle(conn *net.UnixConn) {
 		_ = encoder.Encode(wireResponse{Type: "terminal", WorkerID: s.nonce, RoundID: round.id, Result: terminal})
 		return
 	}
-	result, err := round.wait(s.ctx, request.Scope)
+	var result Result
+	if request.Events {
+		result, err = round.waitWithProgress(s.ctx, request.Scope, func(progress Progress) error {
+			return encoder.Encode(wireResponse{Type: "progress", WorkerID: s.nonce, RoundID: round.id, Progress: &progress})
+		})
+	} else {
+		result, err = round.wait(s.ctx, request.Scope)
+	}
 	if err != nil {
 		return
 	}
@@ -472,6 +534,20 @@ func (s *server) accept(request wireRequest) (*round, *Result, error) {
 	round, start, err := s.selectRoundLocked(request.Home, request.Scope)
 	if err != nil {
 		return nil, nil, err
+	}
+	if request.CacheNow != "" {
+		cacheNow, parseErr := time.Parse(time.RFC3339Nano, request.CacheNow)
+		if parseErr != nil {
+			s.rollbackSelectedRoundLocked(round, start)
+			return nil, nil, errors.New("invalid scan worker cache clock")
+		}
+		if !start && round.cacheNow == nil {
+			return nil, nil, errors.New("incompatible scan worker cache clock")
+		}
+		if round.cacheNow != nil && !round.cacheNow().Equal(cacheNow) {
+			return nil, nil, errors.New("incompatible scan worker cache clock")
+		}
+		round.cacheNow = func() time.Time { return cacheNow }
 	}
 	if s.journal != nil {
 		receipt := scanReceipt{
@@ -654,6 +730,8 @@ type round struct {
 	sessionOnce sync.Once
 	mu          sync.RWMutex
 	result      Result
+	progress    Progress
+	progressSeq uint64
 	terminalErr error
 	cacheNow    func() time.Time
 }
@@ -672,6 +750,11 @@ func newRoundWithID(home, id string, observation uint64) *round {
 		done:        make(chan struct{}),
 		usageDone:   make(chan struct{}),
 		sessionDone: make(chan struct{}),
+		progress: Progress{
+			Stage:   "waiting",
+			Usage:   DomainProgress{State: "pending"},
+			Session: DomainProgress{State: "pending"},
+		},
 	}
 }
 
@@ -690,11 +773,13 @@ func (r *round) execute(ctx context.Context, stateRoot string, lockHeld bool) {
 
 func (r *round) executeWith(ctx context.Context, stateRoot string, lockHeld bool, run roundRunner) {
 	r.once.Do(func() {
+		resourcesBefore := currentProcessResources()
 		if run == nil {
 			r.executeProduction(ctx, stateRoot, lockHeld)
 		} else {
 			r.setResult(run(ctx, stateRoot, r.home, r.id, lockHeld))
 		}
+		r.setProcessResources(resourcesBefore, currentProcessResources())
 		r.complete()
 	})
 }
@@ -706,6 +791,7 @@ func (r *round) executeProduction(ctx context.Context, stateRoot string, lockHel
 		Usage:   UsageResult{State: "pending"},
 		Session: SessionResult{State: "pending"},
 	})
+	r.setProgressStage("checking")
 	if !lockHeld {
 		lock, err := store.AcquireScanLock(ctx, stateRoot, 5*time.Second)
 		if err != nil {
@@ -769,6 +855,8 @@ func (r *round) executeProduction(ctx context.Context, stateRoot string, lockHel
 		r.setSession(failedSession(sessionPlanErr, 0))
 		return
 	}
+	r.setProgressStage("importing")
+	usageService.Progress = usageRoundProgress{round: r}
 	coordinator.Start(ctx)
 	var wait sync.WaitGroup
 	wait.Add(3)
@@ -787,6 +875,7 @@ func (r *round) executeProduction(ctx context.Context, stateRoot string, lockHel
 	go func() {
 		defer wait.Done()
 		<-r.usageDone
+		<-r.sessionDone
 		r.mu.Lock()
 		usageResult := r.result.Usage
 		r.mu.Unlock()
@@ -797,6 +886,7 @@ func (r *round) executeProduction(ctx context.Context, stateRoot string, lockHel
 		// durable usage outcome. Scope-specific callers have already observed
 		// their terminal domain result before this derived work completes.
 		started := time.Now()
+		r.setProgressStage("statistics")
 		_ = (desktop.Service{StateRoot: stateRoot, Home: r.home, Now: r.cacheNow}).PublishDerivedSnapshotCache(ctx, desktop.WireVersion)
 		r.setDerivedCache(time.Since(started).Milliseconds())
 	}()
@@ -804,7 +894,7 @@ func (r *round) executeProduction(ctx context.Context, stateRoot string, lockHel
 		defer wait.Done()
 		defer coordinator.ConsumerDone(ingest.ConsumerSession)
 		started := time.Now()
-		scan, err := session.ScanWithOptions(ctx, sessions.DB, r.home, session.ScanOptions{PreparedSources: sources, Coordinator: coordinator})
+		scan, err := session.ScanWithOptions(ctx, sessions.DB, r.home, session.ScanOptions{PreparedSources: sources, Coordinator: coordinator, Progress: sessionRoundProgress{round: r}})
 		duration := time.Since(started).Milliseconds()
 		if err != nil {
 			r.setSession(failedSession(err, duration))
@@ -828,6 +918,44 @@ func (r *round) setResult(result Result) {
 	r.mu.Unlock()
 }
 
+type usageRoundProgress struct{ round *round }
+
+func (p usageRoundProgress) Start() {}
+func (p usageRoundProgress) Stop()  {}
+func (p usageRoundProgress) Update(value usage.ScanProgress) {
+	p.round.setDomainProgress(true, DomainProgress{State: "processing", Committed: value.Processed, Total: value.Total})
+}
+
+type sessionRoundProgress struct{ round *round }
+
+func (p sessionRoundProgress) Start() {}
+func (p sessionRoundProgress) Stop()  {}
+func (p sessionRoundProgress) Update(value session.ScanProgress) {
+	p.round.setDomainProgress(false, DomainProgress{State: "processing", Committed: value.Processed, Total: value.Total, Skipped: value.Skipped})
+}
+
+func (r *round) setProgressStage(stage string) {
+	r.mu.Lock()
+	if r.progress.Stage != stage {
+		r.progress.Stage = stage
+		r.progressSeq++
+		r.progress.Sequence = r.progressSeq
+	}
+	r.mu.Unlock()
+}
+
+func (r *round) setDomainProgress(usageDomain bool, progress DomainProgress) {
+	r.mu.Lock()
+	if usageDomain {
+		r.progress.Usage = progress
+	} else {
+		r.progress.Session = progress
+	}
+	r.progressSeq++
+	r.progress.Sequence = r.progressSeq
+	r.mu.Unlock()
+}
+
 func (r *round) setDiscovery(duration int64) {
 	r.mu.Lock()
 	r.result.Stages.DiscoveryMS = duration
@@ -838,6 +966,9 @@ func (r *round) setUsage(result UsageResult) {
 	r.mu.Lock()
 	r.result.Usage = result
 	r.result.Stages.UsageMS = result.DurationMS
+	r.progress.Usage.State = result.State
+	r.progressSeq++
+	r.progress.Sequence = r.progressSeq
 	r.mu.Unlock()
 	r.usageOnce.Do(func() { close(r.usageDone) })
 }
@@ -846,6 +977,9 @@ func (r *round) setSession(result SessionResult) {
 	r.mu.Lock()
 	r.result.Session = result
 	r.result.Stages.SessionMS = result.DurationMS
+	r.progress.Session.State = result.State
+	r.progressSeq++
+	r.progress.Sequence = r.progressSeq
 	r.mu.Unlock()
 	r.sessionOnce.Do(func() { close(r.sessionDone) })
 }
@@ -853,6 +987,15 @@ func (r *round) setSession(result SessionResult) {
 func (r *round) setDerivedCache(duration int64) {
 	r.mu.Lock()
 	r.result.Stages.DerivedCacheMS = duration
+	r.mu.Unlock()
+}
+
+func (r *round) setProcessResources(before, after processResources) {
+	r.mu.Lock()
+	if after.cpuTime >= before.cpuTime {
+		r.result.Stages.WorkerCPUTimeMS = (after.cpuTime - before.cpuTime).Milliseconds()
+	}
+	r.result.Stages.WorkerPeakRSSBytes = after.peakRSS
 	r.mu.Unlock()
 }
 
@@ -865,6 +1008,9 @@ func (r *round) complete() {
 		r.result.Stages.TotalMS = r.result.CompletedAt.Sub(r.result.StartedAt).Milliseconds()
 	}
 	result := r.result
+	r.progress.Stage = "completed"
+	r.progressSeq++
+	r.progress.Sequence = r.progressSeq
 	r.mu.Unlock()
 	if r.onTerminal != nil {
 		if err := r.onTerminal(result); err != nil {
@@ -882,17 +1028,29 @@ func (r *round) snapshot() Result {
 	return r.result
 }
 
-func (r *round) wait(ctx context.Context, scope Scope) (Result, error) {
-	var done <-chan struct{}
+func (r *round) progressSnapshot() Progress {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.progress
+}
+
+func (r *round) scopeDone(scope Scope) (<-chan struct{}, error) {
 	switch scope {
 	case ScopeUsage:
-		done = r.usageDone
+		return r.usageDone, nil
 	case ScopeSession:
-		done = r.sessionDone
+		return r.sessionDone, nil
 	case ScopeBoth:
-		done = r.done
+		return r.done, nil
 	default:
-		return Result{}, ErrInvalidScope
+		return nil, ErrInvalidScope
+	}
+}
+
+func (r *round) wait(ctx context.Context, scope Scope) (Result, error) {
+	done, err := r.scopeDone(scope)
+	if err != nil {
+		return Result{}, err
 	}
 	select {
 	case <-ctx.Done():
@@ -908,6 +1066,47 @@ func (r *round) wait(ctx context.Context, scope Scope) (Result, error) {
 			}
 		}
 		return result, nil
+	}
+}
+
+func (r *round) waitWithProgress(ctx context.Context, scope Scope, emit func(Progress) error) (Result, error) {
+	done, err := r.scopeDone(scope)
+	if err != nil {
+		return Result{}, err
+	}
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	var lastSequence uint64
+	hasEmitted := false
+	emitLatest := func() error {
+		progress := r.progressSnapshot()
+		if hasEmitted && progress.Sequence == lastSequence {
+			return nil
+		}
+		if err := emit(progress); err != nil {
+			return err
+		}
+		lastSequence = progress.Sequence
+		hasEmitted = true
+		return nil
+	}
+	if err := emitLatest(); err != nil {
+		return Result{}, err
+	}
+	for {
+		select {
+		case <-ctx.Done():
+			return Result{}, ctx.Err()
+		case <-ticker.C:
+			if err := emitLatest(); err != nil {
+				return Result{}, err
+			}
+		case <-done:
+			if err := emitLatest(); err != nil {
+				return Result{}, err
+			}
+			return r.wait(ctx, scope)
+		}
 	}
 }
 
@@ -1001,7 +1200,7 @@ var localRounds = struct {
 	byState map[string]*round
 }{byState: map[string]*round{}}
 
-func localRequest(ctx context.Context, stateRoot, home string, scope Scope, now func() time.Time) (Result, error) {
+func localRequest(ctx context.Context, stateRoot, home string, scope Scope, now func() time.Time, onProgress func(Progress)) (Result, error) {
 	localRounds.Lock()
 	round := localRounds.byState[stateRoot]
 	if round == nil || round.completed() {
@@ -1011,6 +1210,12 @@ func localRequest(ctx context.Context, stateRoot, home string, scope Scope, now 
 		go round.execute(context.Background(), stateRoot, false)
 	}
 	localRounds.Unlock()
+	if onProgress != nil {
+		return round.waitWithProgress(ctx, scope, func(progress Progress) error {
+			onProgress(progress)
+			return nil
+		})
+	}
 	return round.wait(ctx, scope)
 }
 
