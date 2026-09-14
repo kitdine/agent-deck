@@ -9,6 +9,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -482,6 +484,19 @@ func TestUnixWorkerServesAClientRound(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("worker did not stop after context cancellation")
+	}
+}
+
+func TestDarwinRuntimeParentUsesProtectedPerUserTemporaryDirectory(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("macOS runtime path contract")
+	}
+	parent := scanRuntimeParent()
+	if parent != filepath.Join(os.TempDir(), "ad-s") {
+		t.Fatalf("runtime parent=%q", parent)
+	}
+	if endpoint := filepath.Join(parent, strings.Repeat("f", 24), "w"); len(endpoint) >= 104 {
+		t.Fatalf("runtime endpoint exceeds macOS sockaddr_un limit: %d %q", len(endpoint), endpoint)
 	}
 }
 

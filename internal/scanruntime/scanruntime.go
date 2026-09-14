@@ -1281,7 +1281,7 @@ func prepareStateRoot(stateRoot string) (string, string, error) {
 }
 
 func socketPath(stateID string) (string, error) {
-	parent := filepath.Join(scanRuntimeBase(), fmt.Sprintf("agentdeck-scan-%d", os.Geteuid()))
+	parent := scanRuntimeParent()
 	if err := secureRuntimeDirectory(parent); err != nil {
 		return "", err
 	}
@@ -1296,11 +1296,18 @@ func socketPath(stateID string) (string, error) {
 	return filepath.Join(directory, "w"), nil
 }
 
+func scanRuntimeParent() string {
+	if runtime.GOOS == "darwin" {
+		// launchd supplies each macOS account a protected per-user temporary
+		// directory. A compact child keeps the Unix socket below sockaddr_un's
+		// path limit without exposing a predictable /tmp directory to other users.
+		return filepath.Join(os.TempDir(), "ad-s")
+	}
+	return filepath.Join(scanRuntimeBase(), fmt.Sprintf("agentdeck-scan-%d", os.Geteuid()))
+}
+
 func scanRuntimeBase() string {
 	if runtime.GOOS != "windows" {
-		// /tmp is intentionally used instead of os.TempDir(): macOS commonly
-		// gives applications a long per-user TMPDIR that exceeds the Unix socket
-		// pathname ceiling before the state identity can be represented.
 		return "/tmp"
 	}
 	return os.TempDir()
