@@ -147,6 +147,32 @@ func TestCoordinatorReadsCapturedPrefixAfterAppendOnlyGrowth(t *testing.T) {
 	}
 }
 
+func TestCoordinatorRejectsRewritePlusGrowthAgainstPlannedAnchor(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "rewrite-growth.jsonl")
+	if err := os.WriteFile(path, []byte("{}\n{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	source := testSource(t, path)
+	coordinator := NewCoordinator([]Source{source}, Options{RequirePlans: true})
+	if err := coordinator.Plan(path, ConsumerUsage, ReadRange{Start: 3, End: source.Size}); err != nil {
+		t.Fatal(err)
+	}
+	coordinator.Skip(path, ConsumerSession)
+	if err := coordinator.Seal(ConsumerSession); err != nil {
+		t.Fatal(err)
+	}
+	if err := coordinator.Seal(ConsumerUsage); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("[]\n{}\n{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	coordinator.Start(context.Background())
+	if _, shared, err := coordinator.Snapshot(context.Background(), path, ConsumerUsage); !shared || !errors.Is(err, ErrSourceChanged) {
+		t.Fatalf("shared=%t err=%v", shared, err)
+	}
+}
+
 func TestCoordinatorConsumerExitReleasesBackpressureForRemainingDomain(t *testing.T) {
 	root := t.TempDir()
 	var sources []Source

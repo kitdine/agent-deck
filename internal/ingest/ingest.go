@@ -4,6 +4,8 @@ package ingest
 import (
 	"bufio"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -95,8 +97,10 @@ type Options struct {
 // ReadRange is a validated byte interval needed by one domain. The coordinator
 // reads the union only after both domains seal their finite source plans.
 type ReadRange struct {
-	Start int64
-	End   int64
+	Start       int64
+	End         int64
+	AnchorStart int64
+	AnchorHash  string
 }
 
 type discoveryRoot struct {
@@ -369,6 +373,29 @@ func (c *Coordinator) Plan(path, consumer string, read ReadRange) error {
 	entry := c.entries[filepath.Clean(path)]
 	if entry == nil || entry.skipped[consumer] || read.Start < 0 || read.End < read.Start || read.End > entry.source.Size {
 		return ErrPlanMismatch
+	}
+	if read.Start > 0 && read.AnchorHash == "" {
+		read.AnchorStart = max(int64(0), read.Start-4096)
+		file, err := c.open(entry.source.Path)
+		if err != nil {
+			return err
+		}
+		readerAt, ok := file.(io.ReaderAt)
+		if !ok {
+			file.Close()
+			return ErrPlanMismatch
+		}
+		anchor := make([]byte, read.Start-read.AnchorStart)
+		_, err = io.ReadFull(io.NewSectionReader(readerAt, read.AnchorStart, int64(len(anchor))), anchor)
+		closeErr := file.Close()
+		if err != nil {
+			return err
+		}
+		if closeErr != nil {
+			return closeErr
+		}
+		digest := sha256.Sum256(anchor)
+		read.AnchorHash = hex.EncodeToString(digest[:])
 	}
 	if existing, found := entry.planned[consumer]; found && existing != read {
 		return ErrPlanMismatch
@@ -670,6 +697,19 @@ func (c *Coordinator) read(ctx context.Context, source Source, readRange ReadRan
 	appendOnlyGrowth := latest.Size() > source.Size && source.Stable && stable && identity == source.Identity && latest.Size() >= readRange.End
 	if !unchanged && !appendOnlyGrowth {
 		return nil, ErrSourceChanged
+	}
+	for _, planned := range c.entries[filepath.Clean(source.Path)].planned {
+		if planned.AnchorHash == "" {
+			continue
+		}
+		anchor := make([]byte, planned.Start-planned.AnchorStart)
+		if _, err = io.ReadFull(io.NewSectionReader(readerAt, planned.AnchorStart, int64(len(anchor))), anchor); err != nil {
+			return nil, ErrSourceChanged
+		}
+		digest := sha256.Sum256(anchor)
+		if hex.EncodeToString(digest[:]) != planned.AnchorHash {
+			return nil, ErrSourceChanged
+		}
 	}
 	return tail, nil
 }

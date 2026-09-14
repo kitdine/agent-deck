@@ -1492,6 +1492,7 @@ func requestScanRoundWithProgress(ctx context.Context, opts *commandOptions, sco
 		Home:       home,
 		Executable: scanRuntimeExecutable(),
 		ForceLocal: scanRuntimeForceLocal(),
+		WaitForAll: scanRuntimeLocalTestMode(),
 	}
 	if onProgress != nil {
 		return client.RequestWithProgress(ctx, scope, onProgress)

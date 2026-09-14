@@ -16,6 +16,7 @@ import (
 	"github.com/kitdine/agent-deck/internal/output"
 	"github.com/kitdine/agent-deck/internal/scanruntime"
 	"github.com/kitdine/agent-deck/internal/store"
+	"github.com/kitdine/agent-deck/internal/watch"
 )
 
 const desktopSnapshotChunkBytes = 48 * 1024
@@ -140,6 +141,10 @@ func newDesktopCommand(opts *commandOptions) *cobra.Command {
 }
 
 func refreshDesktopIndexes(ctx context.Context, stateRoot, home string) (desktopIndexRefreshResult, bool, []string, error) {
+	inventoryFingerprint, err := watch.FingerprintRoots(sessionWatchRoots(home)...)
+	if err != nil {
+		return desktopIndexRefreshResult{}, false, nil, err
+	}
 	round, err := (scanruntime.Client{StateRoot: stateRoot, Home: home, Executable: scanRuntimeExecutable(), ForceLocal: scanRuntimeForceLocal(), Now: desktopNow}).Request(ctx, scanruntime.ScopeBoth)
 	if err != nil {
 		return desktopIndexRefreshResult{}, false, nil, err
@@ -152,7 +157,7 @@ func refreshDesktopIndexes(ctx context.Context, stateRoot, home string) (desktop
 			result.Sessions.ErrorCode = errorCode(openErr)
 			result.Sessions.failureStage = "checkpoint_persistence"
 		} else {
-			fingerprint, fingerprintErr := sessionCheckpointFingerprint(ctx, sessions, home)
+			fingerprint, fingerprintErr := sessionCheckpointFingerprintFromRaw(ctx, sessions, inventoryFingerprint)
 			if closeErr := sessions.Close(); fingerprintErr == nil {
 				fingerprintErr = closeErr
 			}
