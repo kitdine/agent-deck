@@ -33,6 +33,7 @@ func TestIsolatedEndToEndFlow(t *testing.T) {
 	observed := make(map[string]guiCommandContract, len(fixture.Contracts))
 	root := t.TempDir()
 	state, restoredState := filepath.Join(root, "state"), filepath.Join(root, "restored")
+	waitForDetachedScanCleanup(t, state)
 	home, bin := filepath.Join(root, "home"), filepath.Join(root, "bin")
 	if err := os.MkdirAll(filepath.Join(home, ".codex", "sessions"), 0700); err != nil {
 		t.Fatal(err)
@@ -480,6 +481,11 @@ func assertCommandContracts(t *testing.T, expected, actual map[string]guiCommand
 	t.Helper()
 	if reflect.DeepEqual(expected, actual) {
 		return
+	}
+	for command, want := range expected {
+		if got, found := actual[command]; !found || !reflect.DeepEqual(want, got) {
+			t.Fatalf("command contract %s differs\nwant=%#v\ngot=%#v", command, want, got)
+		}
 	}
 	encoded, err := json.MarshalIndent(actual, "", "  ")
 	if err != nil {
