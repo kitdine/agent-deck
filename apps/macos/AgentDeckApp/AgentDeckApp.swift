@@ -3,6 +3,33 @@ import AppKit
 import SwiftUI
 import WidgetKit
 
+#if DEBUG
+enum DebugTestIsolationError: Error, Equatable {
+	case unsafeHome
+}
+
+func debugTestHome(environment: [String: String]) throws -> URL? {
+	if let rawTestHome = environment["AGENTDECK_TEST_HOME"] {
+		let testHome = URL(fileURLWithPath: rawTestHome, isDirectory: true).standardizedFileURL
+		let acceptedPrefixes = [
+			"/tmp/agentdeck-menubar-acceptance.",
+			"/private/tmp/agentdeck-menubar-acceptance.",
+			"/tmp/agentdeck-macos-xctest.",
+			"/private/tmp/agentdeck-macos-xctest.",
+		]
+		guard acceptedPrefixes.contains(where: testHome.path.hasPrefix) else {
+			throw DebugTestIsolationError.unsafeHome
+		}
+		return testHome
+	}
+	return nil
+}
+
+func debugAutomaticRefreshEnabled(environment: [String: String]) -> Bool {
+	environment["XCTestConfigurationFilePath"] == nil
+}
+#endif
+
 @main
 enum AgentDeckMain {
 	static let widgetReloadArgument = "--reload-widget-timelines"
@@ -36,6 +63,7 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 	private let switchController: SwitchController
 	private let model: MenuBarViewModel
 	private let settingsController: SettingsWindowController
+	private let automaticRefreshEnabled: Bool
 	private var itemController: MenuBarItemController?
 	private var periodicRefresh: Task<Void, Never>?
 	private var acceptanceWindow: NSWindow?
@@ -44,34 +72,38 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 		var runner = EmbeddedHelperRunner()
 		var snapshotStore = AppGroupSnapshotStore()
 		var defaults: UserDefaults = .standard
+		var automaticRefreshEnabled = true
 		#if DEBUG
-		// The acceptance harness runs the app against an isolated home so the
-		// manual checklist never reads real AgentDeck or client state.
-		if let rawTestHome = ProcessInfo.processInfo.environment["AGENTDECK_TEST_HOME"] {
-			let testHome = URL(fileURLWithPath: rawTestHome, isDirectory: true).standardizedFileURL
-			let accepted = testHome.path.hasPrefix("/tmp/agentdeck-menubar-acceptance.")
-				|| testHome.path.hasPrefix("/private/tmp/agentdeck-menubar-acceptance.")
-			precondition(accepted, "AGENTDECK_TEST_HOME must be an isolated AgentDeck acceptance directory")
-			runner = EmbeddedHelperRunner(
-				appBundleURL: Bundle.main.bundleURL,
-				environment: [
-					"HOME": testHome.path,
-					"LANG": "en_US_POSIX",
-					"LC_ALL": "en_US_POSIX",
-					"PATH": "/usr/bin:/bin",
-				]
-			)
-			snapshotStore = AppGroupSnapshotStore(
-				directoryURL: testHome.appendingPathComponent("app-group", isDirectory: true)
-			)
-			defaults = UserDefaults(suiteName: "com.kitdine.agentdeck.acceptance") ?? .standard
-			defaults.setVolatileDomain([:], forName: "com.kitdine.agentdeck.acceptance")
+		automaticRefreshEnabled = debugAutomaticRefreshEnabled(environment: ProcessInfo.processInfo.environment)
+		// Acceptance harnesses may supply a controlled temporary home. XCTest
+		// hosts never launch the helper, so a direct xcodebuild cannot read or
+		// migrate the user's real AgentDeck or client state.
+		do {
+			if let testHome = try debugTestHome(environment: ProcessInfo.processInfo.environment) {
+				runner = EmbeddedHelperRunner(
+					appBundleURL: Bundle.main.bundleURL,
+					environment: [
+						"HOME": testHome.path,
+						"LANG": "en_US_POSIX",
+						"LC_ALL": "en_US_POSIX",
+						"PATH": "/usr/bin:/bin",
+					]
+				)
+				snapshotStore = AppGroupSnapshotStore(
+					directoryURL: testHome.appendingPathComponent("app-group", isDirectory: true)
+				)
+				defaults = UserDefaults(suiteName: "com.kitdine.agentdeck.acceptance") ?? .standard
+				defaults.setVolatileDomain([:], forName: "com.kitdine.agentdeck.acceptance")
+			}
+		} catch {
+			preconditionFailure("AgentDeck test harness requires a safe temporary home")
 		}
 		#endif
 		let preferences = DesktopPreferences(defaults: defaults)
 		let coordinator = DesktopRefreshCoordinator(host: DesktopHost(runner: runner), snapshotStore: snapshotStore)
 		let switchController = SwitchController(transport: runner, refreshCoordinator: coordinator)
 		self.preferences = preferences
+		self.automaticRefreshEnabled = automaticRefreshEnabled
 		refreshCoordinator = coordinator
 		self.switchController = switchController
 		model = MenuBarViewModel(
@@ -88,8 +120,10 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 		itemController = MenuBarItemController(model: model) { [weak self] in
 			self?.settingsController.show()
 		}
-		refreshCoordinator.startInitialRefresh()
-		startPeriodicRefresh()
+		if automaticRefreshEnabled {
+			refreshCoordinator.startInitialRefresh()
+			startPeriodicRefresh()
+		}
 		#if DEBUG
 		presentAcceptanceWindowIfRequested()
 		#endif

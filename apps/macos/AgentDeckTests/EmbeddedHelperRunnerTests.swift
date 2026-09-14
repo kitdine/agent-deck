@@ -106,10 +106,16 @@ final class EmbeddedHelperRunnerTests: XCTestCase {
 		XCTAssertTrue(invocations.allSatisfy {
 			$0.executableURL.path == bundleURL.appendingPathComponent("Contents/Helpers/agentdeck").path
 		})
-		XCTAssertEqual(invocations[0].arguments, ["--format", "ndjson", "scan"])
+		XCTAssertEqual(invocations[0].arguments, [
+			"--state-dir", "/tmp/isolated-home/.agentdeck",
+			"--format", "ndjson", "scan",
+		])
 		XCTAssertEqual(
 			invocations[1].arguments,
-			["--format", "json", "desktop", "snapshot", "--wire-version", "1", "--recent-limit", "5", "--stream"]
+			[
+				"--state-dir", "/tmp/isolated-home/.agentdeck",
+				"--format", "json", "desktop", "snapshot", "--wire-version", "1", "--recent-limit", "5", "--stream",
+			]
 		)
 		XCTAssertEqual(invocations[0].timeout, EmbeddedHelperRunner.indexRefreshTimeout)
 		XCTAssertEqual(invocations[1].timeout, .seconds(1))
@@ -205,6 +211,7 @@ final class EmbeddedHelperRunnerTests: XCTestCase {
 		let invocations = await process.recordedInvocations()
 		let invocation = try XCTUnwrap(invocations.only)
 		XCTAssertEqual(invocation.arguments, [
+			"--state-dir", "/tmp/isolated-home/.agentdeck",
 			"--quiet", "--format", "json", "provider", "use", "relay",
 			"--client", "codex", "--credential", "work", "--via", "--no-shell-setup",
 		])

@@ -403,6 +403,7 @@ public struct EmbeddedHelperRunner: Sendable {
     private let appBundleURL: URL
     private let process: any EmbeddedHelperProcess
     private let environment: [String: String]
+    private let stateRoot: String
     private let timeout: Duration
 
     public init(
@@ -411,9 +412,16 @@ public struct EmbeddedHelperRunner: Sendable {
         environment: [String: String]? = nil,
         timeout: Duration = Self.defaultTimeout
     ) {
+        var resolvedEnvironment = environment ?? Self.defaultEnvironment()
+        if resolvedEnvironment["HOME"] == nil {
+            resolvedEnvironment["HOME"] = Self.defaultEnvironment()["HOME"]
+        }
         self.appBundleURL = appBundleURL
         self.process = process
-        self.environment = environment ?? Self.defaultEnvironment()
+        self.environment = resolvedEnvironment
+        stateRoot = URL(fileURLWithPath: resolvedEnvironment["HOME"]!, isDirectory: true)
+            .appendingPathComponent(".agentdeck", isDirectory: true)
+            .standardizedFileURL.path
         self.timeout = timeout
     }
 
@@ -456,13 +464,13 @@ public struct EmbeddedHelperRunner: Sendable {
         do {
 			output = try await process.runLines(
                 executableURL: executableURL,
-                arguments: [
+				arguments: helperArguments([
                     "--format", "json",
                     "desktop", "snapshot",
                     "--wire-version", "1",
                     "--recent-limit", String(recentLimit),
 					"--stream",
-                ],
+				]),
                 environment: environment,
 				timeout: timeout,
 				maximumLineBytes: Self.maximumStreamLineBytes,
@@ -556,7 +564,7 @@ public struct EmbeddedHelperRunner: Sendable {
 		do {
 			let output = try await process.runLines(
 				executableURL: executableURL,
-				arguments: ["--format", "ndjson", "scan"],
+				arguments: helperArguments(["--format", "ndjson", "scan"]),
 				environment: environment,
 				timeout: Self.indexRefreshTimeout,
 				maximumLineBytes: Self.maximumStreamLineBytes,
@@ -641,7 +649,7 @@ public struct EmbeddedHelperRunner: Sendable {
 		do {
 			let output = try await process.run(
 				executableURL: executableURL,
-				arguments: arguments,
+				arguments: helperArguments(arguments),
 				environment: environment,
 				timeout: timeout
 			)
@@ -654,6 +662,10 @@ public struct EmbeddedHelperRunner: Sendable {
 		} catch {
 			return .opaque
 		}
+	}
+
+	private func helperArguments(_ arguments: [String]) -> [String] {
+		["--state-dir", stateRoot] + arguments
 	}
 
     private static func defaultEnvironment() -> [String: String] {

@@ -6,8 +6,53 @@ scratch_root=${AGENTDECK_MACOS_SWIFT_SCRATCH:-/private/tmp/agentdeck-macos-swift
 module_cache=${AGENTDECK_MACOS_SWIFT_MODULE_CACHE:-/private/tmp/agentdeck-swift-module-cache}
 
 if xcodebuild -version >/dev/null 2>&1; then
+	test_root=$(mktemp -d /private/tmp/agentdeck-macos-xctest.XXXXXX)
+	case "$test_root" in
+		/private/tmp/agentdeck-macos-xctest.*) ;;
+		*) echo "refusing unsafe XCTest root: $test_root" >&2; exit 1 ;;
+	esac
+	test_home="$test_root/home"
+	mkdir -p "$test_home"
+	test_helper="$repo_root/apps/macos/build/DerivedData/Build/Products/Debug/AgentDeck.app/Contents/Helpers/agentdeck"
+
+	isolation_pids() {
+		ps -axo pid=,command= | awk -v helper="$test_helper" '$2 == helper { print $1 }'
+	}
+	baseline_pids=" $(isolation_pids | tr '\n' ' ') "
+	new_isolation_pids() {
+		local pid
+		for pid in $(isolation_pids); do
+			case "$baseline_pids" in
+				*" $pid "*) ;;
+				*) echo "$pid" ;;
+			esac
+		done
+	}
+	cleanup() {
+		local pid
+		for pid in $(new_isolation_pids); do
+			kill "$pid" 2>/dev/null || true
+		done
+		for _ in {1..20}; do
+			[[ -z "$(new_isolation_pids)" ]] && break
+			sleep 0.1
+		done
+		for pid in $(new_isolation_pids); do
+			kill -KILL "$pid" 2>/dev/null || true
+		done
+		rm -rf "$test_root"
+	}
+	trap cleanup EXIT
+	trap 'exit 130' INT
+	trap 'exit 143' TERM
+
   bash "$repo_root/scripts/build-macos-app.sh"
-  xcodebuild \
+	set +e
+	env \
+		HOME="$test_home" \
+		CFFIXED_USER_HOME="$test_home" \
+		AGENTDECK_TEST_HOME="$test_home" \
+		xcodebuild \
     -project "$repo_root/apps/macos/AgentDeck.xcodeproj" \
     -scheme AgentDeck \
     -configuration Debug \
@@ -16,7 +61,19 @@ if xcodebuild -version >/dev/null 2>&1; then
     CODE_SIGNING_REQUIRED=NO \
     CODE_SIGN_IDENTITY= \
     test
-  exit 0
+	test_status=$?
+	set -e
+
+	for _ in {1..50}; do
+		[[ -z "$(new_isolation_pids)" ]] && break
+		sleep 0.1
+	done
+	leaked=$(new_isolation_pids)
+	if [[ -n "$leaked" ]]; then
+		echo "XCTest left AgentDeck helper processes from this worktree: $leaked" >&2
+		test_status=1
+	fi
+	exit "$test_status"
 fi
 
 # Command Line Tools do not ship XCTest. The verifier executes the same
