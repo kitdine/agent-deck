@@ -80,11 +80,16 @@
           "code": "database_unreadable"
         }
       ]
+    },
+    "subscription": {
+      "available": false,
+      "clients": []
     }
   },
   "warnings": [
     "provider_unavailable",
     "sessions_unavailable",
+    "subscription_unavailable",
     "usage_unavailable"
   ],
   "partial": true

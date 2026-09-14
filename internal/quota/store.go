@@ -337,13 +337,17 @@ func (s *Store) PutEnvelope(ctx context.Context, rec EnvelopeRecord) error {
 	if !rec.BackoffUntil.IsZero() {
 		backoffUntilText = rec.BackoffUntil.Format(timeLayout)
 	}
+	failureObservedAtText := ""
+	if !rec.FailureObservedAt.IsZero() {
+		failureObservedAtText = rec.FailureObservedAt.Format(timeLayout)
+	}
 
 	if _, err := tx.ExecContext(ctx, `INSERT INTO quota_envelopes(
 			client, account_id, applicable, applicable_reason, source, observed_at,
 			plan, plan_reason, reset_allowance_reason,
 			reset_total, reset_total_reason, reset_remaining, reset_has_remaining, reset_credits_json,
-			billing_balance, billing_has_balance, failure, failure_at, backoff_until
-		) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+			billing_balance, billing_has_balance, failure, failure_at, backoff_until, failure_observed_at
+		) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(client) DO UPDATE SET
 			account_id=excluded.account_id,
 			applicable=excluded.applicable, applicable_reason=excluded.applicable_reason,
@@ -353,11 +357,12 @@ func (s *Store) PutEnvelope(ctx context.Context, rec EnvelopeRecord) error {
 			reset_remaining=excluded.reset_remaining, reset_has_remaining=excluded.reset_has_remaining,
 			reset_credits_json=excluded.reset_credits_json,
 			billing_balance=excluded.billing_balance, billing_has_balance=excluded.billing_has_balance,
-			failure=excluded.failure, failure_at=excluded.failure_at, backoff_until=excluded.backoff_until`,
+			failure=excluded.failure, failure_at=excluded.failure_at, backoff_until=excluded.backoff_until,
+			failure_observed_at=excluded.failure_observed_at`,
 		string(rec.Client), digest, boolToInt(rec.Applicable), string(rec.ApplicableReason), string(rec.Source), rec.ObservedAt.Format(timeLayout),
 		rec.Plan, string(rec.PlanReason), string(rec.ResetAllowanceReason),
 		rec.ResetAllowance.Total, string(rec.ResetAllowance.TotalReason), rec.ResetAllowance.Remaining, boolToInt(rec.ResetAllowance.HasRemaining), string(creditsJSON),
-		rec.Billing.Balance, boolToInt(rec.Billing.HasBalance), string(rec.Failure), failureAtText, backoffUntilText,
+		rec.Billing.Balance, boolToInt(rec.Billing.HasBalance), string(rec.Failure), failureAtText, backoffUntilText, failureObservedAtText,
 	); err != nil {
 		return err
 	}
@@ -367,11 +372,11 @@ func (s *Store) PutEnvelope(ctx context.Context, rec EnvelopeRecord) error {
 
 // PutEnvelopeFailure records that a probe attempt for client failed, without
 // disturbing any field a prior success wrote (QD-R2-F2): only failure,
-// failureAt, and backoffUntil change. A client's very first probe attempt
-// failing has nothing to preserve, so the row is created with every other
-// column at its schema default in that case. It does not run the
-// account-isolation discard: a failed attempt provides no new account
-// evidence to isolate against.
+// failureAt, backoffUntil, and failureObservedAt change. A client's very
+// first probe attempt failing has nothing to preserve, so the row is created
+// with every other column at its schema default in that case. It does not
+// run the account-isolation discard: a failed attempt provides no new
+// account evidence to isolate against.
 //
 // backoffUntil is the caller's (the scheduler's) already-computed C9 backoff
 // state — the earliest instant a background probe may run again — not
@@ -383,7 +388,12 @@ func (s *Store) PutEnvelope(ctx context.Context, rec EnvelopeRecord) error {
 // zero failureAt for a manual failure with no prior background failure to
 // inherit from; formatting it would persist 0001-01-01 as if it were a real
 // failure instant.
-func (s *Store) PutEnvelopeFailure(ctx context.Context, client Client, failure Reason, failureAt, backoffUntil time.Time) error {
+//
+// failureObservedAt is always the real instant of this attempt, for both a
+// manual and a background failure alike (WC-R2-F1): unlike failureAt, it
+// carries no backoff-chain meaning, so a manual failure need not leave it
+// untouched the way it must leave failureAt and backoffUntil untouched.
+func (s *Store) PutEnvelopeFailure(ctx context.Context, client Client, failure Reason, failureAt, backoffUntil, failureObservedAt time.Time) error {
 	failureAtText := ""
 	if !failureAt.IsZero() {
 		failureAtText = failureAt.Format(timeLayout)
@@ -392,10 +402,14 @@ func (s *Store) PutEnvelopeFailure(ctx context.Context, client Client, failure R
 	if !backoffUntil.IsZero() {
 		backoffUntilText = backoffUntil.Format(timeLayout)
 	}
-	_, err := s.db.ExecContext(ctx, `INSERT INTO quota_envelopes(client, failure, failure_at, backoff_until)
-		VALUES (?,?,?,?)
-		ON CONFLICT(client) DO UPDATE SET failure=excluded.failure, failure_at=excluded.failure_at, backoff_until=excluded.backoff_until`,
-		string(client), string(failure), failureAtText, backoffUntilText,
+	failureObservedAtText := ""
+	if !failureObservedAt.IsZero() {
+		failureObservedAtText = failureObservedAt.Format(timeLayout)
+	}
+	_, err := s.db.ExecContext(ctx, `INSERT INTO quota_envelopes(client, failure, failure_at, backoff_until, failure_observed_at)
+		VALUES (?,?,?,?,?)
+		ON CONFLICT(client) DO UPDATE SET failure=excluded.failure, failure_at=excluded.failure_at, backoff_until=excluded.backoff_until, failure_observed_at=excluded.failure_observed_at`,
+		string(client), string(failure), failureAtText, backoffUntilText, failureObservedAtText,
 	)
 	return err
 }
@@ -408,16 +422,16 @@ func (s *Store) Envelope(ctx context.Context, client Client) (rec EnvelopeRecord
 	row := s.db.QueryRowContext(ctx, `SELECT account_id, applicable, applicable_reason, source, observed_at,
 			plan, plan_reason, reset_allowance_reason,
 			reset_total, reset_total_reason, reset_remaining, reset_has_remaining, reset_credits_json,
-			billing_balance, billing_has_balance, failure, failure_at, backoff_until
+			billing_balance, billing_has_balance, failure, failure_at, backoff_until, failure_observed_at
 		FROM quota_envelopes WHERE client = ?`, string(client))
 
 	rec.Client = client
 	var applicableInt, hasRemainingInt, hasBalanceInt int
-	var applicableReason, source, observedAtText, planReason, resetAllowanceReason, totalReason, failure, failureAtText, backoffUntilText, creditsJSON string
+	var applicableReason, source, observedAtText, planReason, resetAllowanceReason, totalReason, failure, failureAtText, backoffUntilText, failureObservedAtText, creditsJSON string
 	switch scanErr := row.Scan(&rec.AccountID, &applicableInt, &applicableReason, &source, &observedAtText,
 		&rec.Plan, &planReason, &resetAllowanceReason,
 		&rec.ResetAllowance.Total, &totalReason, &rec.ResetAllowance.Remaining, &hasRemainingInt, &creditsJSON,
-		&rec.Billing.Balance, &hasBalanceInt, &failure, &failureAtText, &backoffUntilText); {
+		&rec.Billing.Balance, &hasBalanceInt, &failure, &failureAtText, &backoffUntilText, &failureObservedAtText); {
 	case scanErr == sql.ErrNoRows:
 		return EnvelopeRecord{}, false, nil
 	case scanErr != nil:
@@ -447,6 +461,11 @@ func (s *Store) Envelope(ctx context.Context, client Client) (rec EnvelopeRecord
 	}
 	if backoffUntilText != "" {
 		if rec.BackoffUntil, err = time.Parse(timeLayout, backoffUntilText); err != nil {
+			return EnvelopeRecord{}, false, err
+		}
+	}
+	if failureObservedAtText != "" {
+		if rec.FailureObservedAt, err = time.Parse(timeLayout, failureObservedAtText); err != nil {
 			return EnvelopeRecord{}, false, err
 		}
 	}

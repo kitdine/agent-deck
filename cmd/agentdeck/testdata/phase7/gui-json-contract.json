@@ -27,6 +27,10 @@
     "credential.remove",
     "credential.show",
     "credential.update",
+    "desktop.quota-refresh",
+    "desktop.quota-settings",
+    "desktop.quota-statusline.disable",
+    "desktop.quota-statusline.enable",
     "desktop.refresh-indexes",
     "desktop.snapshot",
     "doctor",
@@ -53,6 +57,7 @@
     "provider.status",
     "provider.update",
     "provider.use",
+    "quota",
     "quota.capture",
     "run",
     "session.exclude",
@@ -401,6 +406,74 @@
       "error_code": "invalid_argument",
       "error_command": "credential.update"
     },
+    "desktop.quota-refresh": {
+      "success_schema": null,
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "desktop.quota-refresh"
+    },
+    "desktop.quota-settings": {
+      "success_schema": null,
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "desktop.quota-settings"
+    },
+    "desktop.quota-statusline.disable": {
+      "success_schema": null,
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "desktop.quota-statusline.disable"
+    },
+    "desktop.quota-statusline.enable": {
+      "success_schema": null,
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "desktop.quota-statusline.enable"
+    },
     "desktop.refresh-indexes": {
       "success_schema": null,
       "error_schema": {
@@ -595,6 +668,28 @@
                 "items": []
               }
             }
+          },
+          "subscription": {
+            "available": "boolean",
+            "clients": [
+              {
+                "applicable": "boolean",
+                "applicable_reason": null,
+                "attribution_confirmed": "boolean",
+                "client": "string",
+                "failure": "string",
+                "observed_at": null,
+                "observed_reset_at": null,
+                "plan": null,
+                "plan_reason": "string",
+                "reset_allowance": null,
+                "reset_allowance_reason": "string",
+                "source": null,
+                "stale": "boolean",
+                "tightest_window_key": null,
+                "windows": []
+              }
+            ]
           },
           "usage": {
             "attribution_reasons": {
@@ -1870,6 +1965,23 @@
       },
       "error_code": "invalid_argument",
       "error_command": "provider.use"
+    },
+    "quota": {
+      "success_schema": null,
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "quota"
     },
     "quota.capture": {
       "success_schema": null,

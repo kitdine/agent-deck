@@ -59,21 +59,21 @@ func TestRootCommandRegistersGlobalFlags(t *testing.T) {
 	}
 }
 
-func TestQuotaCaptureCommandIsRegisteredAndHidden(t *testing.T) {
+func TestQuotaCommandIsPublicAndCaptureStaysHidden(t *testing.T) {
 	root := newRootCommand(bytes.NewReader(nil), &bytes.Buffer{})
+	quotaCommand, _, err := root.Find([]string{"quota"})
+	if err != nil {
+		t.Fatalf("Find quota: %v", err)
+	}
+	if quotaCommand.Hidden || quotaCommand.RunE == nil {
+		t.Fatal("agentdeck quota must be a public command with its own RunE (C12)")
+	}
 	command, _, err := root.Find([]string{"quota", "capture"})
 	if err != nil {
 		t.Fatalf("Find quota capture: %v", err)
 	}
 	if !command.Hidden {
-		t.Fatal("quota capture must stay Hidden until task 6 adds the public quota surface")
-	}
-	quotaCommand, _, err := root.Find([]string{"quota"})
-	if err != nil {
-		t.Fatalf("Find quota: %v", err)
-	}
-	if !quotaCommand.Hidden {
-		t.Fatal("the quota parent command must stay Hidden until task 6 gives it a public RunE")
+		t.Fatal("quota capture is Claude Code's status-line entry and must stay Hidden")
 	}
 }
 

@@ -189,8 +189,11 @@ func (s Scheduler) runClaudeProse(ctx context.Context, observedAt time.Time, rec
 	})
 }
 
-// recordFailure persists a failed probe attempt. A manual failure records
-// the failure itself (the Reason) but leaves the background backoff chain —
+// recordFailure persists a failed probe attempt. attemptedAt is the real
+// instant of this attempt, background or manual alike, and is always written
+// to FailureObservedAt (WC-R2-F1) so a manual failure has an attempt instant
+// to show even though it leaves the background backoff chain alone. A manual
+// failure records the failure itself (the Reason) but leaves that chain —
 // both BackoffUntil and FailureAt — exactly as it already was, whether zero
 // or already advanced by an earlier background failure: manual is neither
 // consumer nor producer of that chain (GS-R2-F1, GS-R3-F1). Manual already
@@ -200,10 +203,11 @@ func (s Scheduler) runClaudeProse(ctx context.Context, observedAt time.Time, rec
 // FailureAt alone, as an earlier version of this fix did, shrinks or
 // inverts that derived step and corrupts every later background failure's
 // doubling. Only a background failure advances the chain.
-func (s Scheduler) recordFailure(ctx context.Context, client Client, reason Reason, failureAt time.Time, rec EnvelopeRecord, hasRecord bool, trigger Trigger) {
+func (s Scheduler) recordFailure(ctx context.Context, client Client, reason Reason, attemptedAt time.Time, rec EnvelopeRecord, hasRecord bool, trigger Trigger) {
+	failureAt := attemptedAt
 	backoffUntil := rec.BackoffUntil
 	if trigger != TriggerManual {
-		backoffUntil = failureAt.Add(s.nextBackoff(rec, hasRecord))
+		backoffUntil = attemptedAt.Add(s.nextBackoff(rec, hasRecord))
 	} else {
 		// GS-R3-F1: nextBackoff derives the prior step's length from
 		// BackoffUntil and FailureAt together (BackoffUntil.Sub(FailureAt)).
@@ -211,12 +215,13 @@ func (s Scheduler) recordFailure(ctx context.Context, client Client, reason Reas
 		// must leave FailureAt untouched too, or that pairing is broken —
 		// moving FailureAt forward while BackoffUntil stays put shrinks, and
 		// can even invert, the derived step, corrupting every subsequent
-		// background failure's doubling. Only Failure (the reason) reflects
-		// this manual attempt; the pair that anchors the background chain is
-		// exclusively a background failure's to move.
+		// background failure's doubling. Only Failure (the reason) and
+		// FailureObservedAt (below) reflect this manual attempt; the pair
+		// that anchors the background chain is exclusively a background
+		// failure's to move.
 		failureAt = rec.FailureAt
 	}
-	_ = s.Store.PutEnvelopeFailure(ctx, client, reason, failureAt, backoffUntil)
+	_ = s.Store.PutEnvelopeFailure(ctx, client, reason, failureAt, backoffUntil, attemptedAt)
 }
 
 // nextBackoff computes C9's next backoff step: the interval on the first

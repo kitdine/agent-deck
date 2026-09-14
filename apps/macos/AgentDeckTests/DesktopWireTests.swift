@@ -328,6 +328,62 @@ final class DesktopWireTests: XCTestCase {
 		XCTAssertEqual(populated.daily.items.count, 90)
 	}
 
+	func testSubscriptionSectionDecodesInVendorOrderWithTheProducerTightestWindow() throws {
+		let complete = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
+		let subscription = complete.data.subscription
+		XCTAssertTrue(subscription.available)
+		XCTAssertEqual(subscription.clients.map(\.client), ["codex", "claude"])
+
+		let codex = try XCTUnwrap(subscription.clients.first { $0.client == "codex" })
+		XCTAssertEqual(codex.source, .codexAppServer)
+		// Vendor order, not sorted by used share (C11); the tightest window is
+		// the producer's answer, read rather than recomputed.
+		XCTAssertEqual(codex.windows.map(\.key), ["codex", "codex_bengalfox"])
+		XCTAssertEqual(codex.tightestWindowKey, "codex")
+		XCTAssertEqual(codex.windows[1].label, "GPT-5.3-Codex-Spark")
+		XCTAssertEqual(codex.plan, "prolite")
+		XCTAssertTrue(codex.attributionConfirmed)
+		XCTAssertEqual(codex.resetAllowance?.remaining, 3)
+		XCTAssertNil(codex.resetAllowance?.total)
+		XCTAssertEqual(codex.resetAllowance?.totalReason, .notReported)
+
+		let claude = try XCTUnwrap(subscription.clients.first { $0.client == "claude" })
+		XCTAssertEqual(claude.source, .claudeStatusLine)
+		XCTAssertFalse(claude.attributionConfirmed)
+		XCTAssertNil(claude.resetAllowance)
+		XCTAssertEqual(claude.resetAllowanceReason, .notReported)
+		XCTAssertEqual(claude.tightestWindowKey, "five_hour")
+	}
+
+	func testMissingSubscriptionSectionDecodesAsUnavailable() throws {
+		// The section is additive at wire_version 1: a payload that predates it
+		// decodes, and reads as not probed.
+		let legacy = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-legacy.json"))
+		XCTAssertEqual(legacy.data.subscription, .unavailable)
+	}
+
+	func testPresentMalformedSubscriptionFieldsAreRejected() throws {
+		let complete = try desktopFixtureData("snapshot-complete.json")
+		let mutations: [(String, (inout [String: Any]) -> Void)] = [
+			("reason outside the closed set", { $0["failure"] = "unavailable" }),
+			("tightest window not among the windows", { $0["tightest_window_key"] = "missing" }),
+			("malformed timestamp", { $0["observed_at"] = "2026-08-13 09:58:00" }),
+			("unknown client", { $0["client"] = "gemini" }),
+		]
+		for (name, mutate) in mutations {
+			var object = try XCTUnwrap(JSONSerialization.jsonObject(with: complete) as? [String: Any])
+			var data = try XCTUnwrap(object["data"] as? [String: Any])
+			var subscription = try XCTUnwrap(data["subscription"] as? [String: Any])
+			var clients = try XCTUnwrap(subscription["clients"] as? [[String: Any]])
+			mutate(&clients[0])
+			subscription["clients"] = clients
+			data["subscription"] = subscription
+			object["data"] = data
+			let encoded = try JSONSerialization.data(withJSONObject: object)
+			XCTAssertThrowsError(try decodeDesktopWireEnvelopeV1(encoded), name)
+		}
+	}
+
 	func testUnsupportedWireVersionIsRejected() throws {
         let complete = try desktopFixtureData("snapshot-complete.json")
         var object = try XCTUnwrap(JSONSerialization.jsonObject(with: complete) as? [String: Any])

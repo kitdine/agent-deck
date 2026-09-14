@@ -90,6 +90,7 @@ public struct DesktopSnapshotV1: Codable, Equatable, Sendable {
     public let usage: DesktopUsageSnapshotV1
     public let sessions: DesktopSessionsSnapshotV1
     public let health: DesktopHealthSnapshotV1
+    public let subscription: DesktopSubscriptionSnapshotV1
 
     enum CodingKeys: String, CodingKey {
         case wireVersion = "wire_version"
@@ -99,6 +100,21 @@ public struct DesktopSnapshotV1: Codable, Equatable, Sendable {
         case usage
         case sessions
         case health
+        case subscription
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        wireVersion = try container.decode(Int.self, forKey: .wireVersion)
+        generatedAt = try container.decode(String.self, forKey: .generatedAt)
+        nextRefreshAt = try container.decode(String.self, forKey: .nextRefreshAt)
+        provider = try container.decode(DesktopProviderSnapshotV1.self, forKey: .provider)
+        usage = try container.decode(DesktopUsageSnapshotV1.self, forKey: .usage)
+        sessions = try container.decode(DesktopSessionsSnapshotV1.self, forKey: .sessions)
+        health = try container.decode(DesktopHealthSnapshotV1.self, forKey: .health)
+        // C11's section is additive and does not raise `wire_version`: a payload
+        // that predates it decodes as unavailable, which renders as not probed.
+        subscription = try container.decodeIfPresent(DesktopSubscriptionSnapshotV1.self, forKey: .subscription) ?? .unavailable
     }
 }
 
@@ -1007,6 +1023,180 @@ public struct ProviderUseEnvelopeV1: Decodable, Equatable, Sendable {
 
 public func decodeProviderUseEnvelopeV1(_ data: Data) throws -> ProviderUseEnvelopeV1 {
 	try JSONDecoder().decode(ProviderUseEnvelopeV1.self, from: data)
+}
+
+/// C11's additive subscription section. `available` is false only when the
+/// producer could not build it; every per-client state, including the gate and
+/// reading off, is a client record.
+public struct DesktopSubscriptionSnapshotV1: Codable, Equatable, Sendable {
+	public static let unavailable = DesktopSubscriptionSnapshotV1(available: false, clients: [])
+
+	public let available: Bool
+	public let clients: [DesktopSubscriptionClientV1]
+
+	public init(available: Bool, clients: [DesktopSubscriptionClientV1]) {
+		self.available = available
+		self.clients = clients
+	}
+}
+
+/// C6's closed reason set. Any other value is rejected.
+public enum DesktopQuotaReasonV1: String, Codable, Equatable, Sendable {
+	case notReported = "not_reported"
+	case notOfficial = "not_official"
+	case neverProbed = "never_probed"
+	case probeFailed = "probe_failed"
+	case parseFailed = "parse_failed"
+	case notConsented = "not_consented"
+	case probeDisabled = "probe_disabled"
+}
+
+public enum DesktopQuotaSourceV1: String, Codable, Equatable, Sendable {
+	case codexAppServer = "codex_app_server"
+	case claudeStatusLine = "claude_statusline"
+	case claudeUsageProse = "claude_usage_prose"
+}
+
+public struct DesktopSubscriptionClientV1: Codable, Equatable, Sendable {
+	public let client: String
+	public let applicable: Bool
+	public let applicableReason: DesktopQuotaReasonV1?
+	public let source: DesktopQuotaSourceV1?
+	public let observedAt: String?
+	public let stale: Bool
+	public let attributionConfirmed: Bool
+	public let plan: String?
+	public let planReason: DesktopQuotaReasonV1?
+	public let windows: [DesktopSubscriptionWindowV1]
+	/// Resolved once by the producer (C11); a surface reads it and never
+	/// recomputes it, so the popover and the widget cannot disagree.
+	public let tightestWindowKey: String?
+	public let resetAllowance: DesktopResetAllowanceV1?
+	public let resetAllowanceReason: DesktopQuotaReasonV1?
+	public let observedResetAt: String?
+	public let failure: DesktopQuotaReasonV1?
+
+	enum CodingKeys: String, CodingKey {
+		case client
+		case applicable
+		case applicableReason = "applicable_reason"
+		case source
+		case observedAt = "observed_at"
+		case stale
+		case attributionConfirmed = "attribution_confirmed"
+		case plan
+		case planReason = "plan_reason"
+		case windows
+		case tightestWindowKey = "tightest_window_key"
+		case resetAllowance = "reset_allowance"
+		case resetAllowanceReason = "reset_allowance_reason"
+		case observedResetAt = "observed_reset_at"
+		case failure
+	}
+
+	public init(from decoder: Decoder) throws {
+		let container = try decoder.container(keyedBy: CodingKeys.self)
+		client = try container.decode(String.self, forKey: .client)
+		guard client == "codex" || client == "claude" else {
+			throw DecodingError.dataCorruptedError(forKey: .client, in: container, debugDescription: "unknown quota client")
+		}
+		applicable = try container.decode(Bool.self, forKey: .applicable)
+		applicableReason = try container.decodeIfPresent(DesktopQuotaReasonV1.self, forKey: .applicableReason)
+		source = try container.decodeIfPresent(DesktopQuotaSourceV1.self, forKey: .source)
+		observedAt = try decodeQuotaTimestamp(container, .observedAt)
+		stale = try container.decode(Bool.self, forKey: .stale)
+		attributionConfirmed = try container.decode(Bool.self, forKey: .attributionConfirmed)
+		plan = try container.decodeIfPresent(String.self, forKey: .plan)
+		planReason = try container.decodeIfPresent(DesktopQuotaReasonV1.self, forKey: .planReason)
+		windows = try container.decode([DesktopSubscriptionWindowV1].self, forKey: .windows)
+		tightestWindowKey = try container.decodeIfPresent(String.self, forKey: .tightestWindowKey)
+		if let key = tightestWindowKey, !windows.contains(where: { $0.key == key }) {
+			throw DecodingError.dataCorruptedError(forKey: .tightestWindowKey, in: container, debugDescription: "tightest window is not one of the windows")
+		}
+		resetAllowance = try container.decodeIfPresent(DesktopResetAllowanceV1.self, forKey: .resetAllowance)
+		resetAllowanceReason = try container.decodeIfPresent(DesktopQuotaReasonV1.self, forKey: .resetAllowanceReason)
+		observedResetAt = try decodeQuotaTimestamp(container, .observedResetAt)
+		failure = try container.decodeIfPresent(DesktopQuotaReasonV1.self, forKey: .failure)
+	}
+}
+
+public struct DesktopSubscriptionWindowV1: Codable, Equatable, Sendable {
+	public let key: String
+	public let label: String?
+	public let windowMinutes: Int?
+	public let windowMinutesReason: DesktopQuotaReasonV1?
+	public let usedPercent: Double
+	public let resetsAt: String?
+
+	enum CodingKeys: String, CodingKey {
+		case key
+		case label
+		case windowMinutes = "window_minutes"
+		case windowMinutesReason = "window_minutes_reason"
+		case usedPercent = "used_percent"
+		case resetsAt = "resets_at"
+	}
+
+	public init(from decoder: Decoder) throws {
+		let container = try decoder.container(keyedBy: CodingKeys.self)
+		key = try container.decode(String.self, forKey: .key)
+		label = try container.decodeIfPresent(String.self, forKey: .label)
+		windowMinutes = try container.decodeIfPresent(Int.self, forKey: .windowMinutes)
+		windowMinutesReason = try container.decodeIfPresent(DesktopQuotaReasonV1.self, forKey: .windowMinutesReason)
+		usedPercent = try container.decode(Double.self, forKey: .usedPercent)
+		resetsAt = try decodeQuotaTimestamp(container, .resetsAt)
+	}
+}
+
+public struct DesktopResetAllowanceV1: Codable, Equatable, Sendable {
+	public let remaining: Int?
+	public let remainingReason: DesktopQuotaReasonV1?
+	public let total: Int?
+	public let totalReason: DesktopQuotaReasonV1?
+	public let credits: [DesktopResetCreditV1]
+
+	enum CodingKeys: String, CodingKey {
+		case remaining
+		case remainingReason = "remaining_reason"
+		case total
+		case totalReason = "total_reason"
+		case credits
+	}
+}
+
+public struct DesktopResetCreditV1: Codable, Equatable, Sendable {
+	public let key: String
+	public let title: String
+	public let status: String
+	public let grantedAt: String?
+	public let expiresAt: String?
+
+	enum CodingKeys: String, CodingKey {
+		case key
+		case title
+		case status
+		case grantedAt = "granted_at"
+		case expiresAt = "expires_at"
+	}
+
+	public init(from decoder: Decoder) throws {
+		let container = try decoder.container(keyedBy: CodingKeys.self)
+		key = try container.decode(String.self, forKey: .key)
+		title = try container.decode(String.self, forKey: .title)
+		status = try container.decode(String.self, forKey: .status)
+		grantedAt = try decodeQuotaTimestamp(container, .grantedAt)
+		expiresAt = try decodeQuotaTimestamp(container, .expiresAt)
+	}
+}
+
+private func decodeQuotaTimestamp<Key: CodingKey>(_ container: KeyedDecodingContainer<Key>, _ key: Key) throws -> String? {
+	guard let value = try container.decodeIfPresent(String.self, forKey: key) else {
+		return nil
+	}
+	guard isRFC3339Timestamp(value) else {
+		throw DecodingError.dataCorruptedError(forKey: key, in: container, debugDescription: "not an RFC 3339 timestamp")
+	}
+	return value
 }
 
 private func isRFC3339Timestamp(_ value: String) -> Bool {

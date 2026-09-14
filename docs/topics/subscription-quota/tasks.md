@@ -99,7 +99,7 @@ repaired under `ux/settings-quota.md`, whose group had invalidated them.
 | 3. `claude-adapters` | [x] | [x] |
 | 4. `gate-and-schedule` | [x] | [x] |
 | 5. `quota-alerts` | [x] | [x] |
-| 6. `wire-and-cli` | [ ] | [ ] |
+| 6. `wire-and-cli` | [x] | [x] |
 | 7. `desktop-surfaces` | [ ] | [ ] |
 
 ### 1. `quota-domain`
@@ -636,6 +636,114 @@ transition against a temporary settings file and its restore-incomplete path
 (moved here from task 4's verification per GS-R1-F4). Reconcile
 `docs/specs/cli-design.md` in task 7's closure, not here.
 
+Three operator-approved decisions made during implementation:
+
+1. **Preferences live in core state.** `agentdeck quota` run from a terminal
+   must present reading off by default, and it cannot read the app's
+   UserDefaults. The settings group (reading, interval, alerts, thresholds,
+   reset notice, status-line consent) is stored in the existing core
+   `settings` table under `quota.*` keys, through new
+   `internal/quota/settings.go`; no migration. The CLI, the desktop snapshot,
+   and the quota refresh all read it. A stored value that does not parse is an
+   error, not a silent default.
+2. **One public read command; writes under `desktop`.** `agentdeck quota` is
+   public and read-only (C12): it reads stored state, probes nothing, and on a
+   fresh installation with no state reports reading off. The desktop-driven
+   writes sit beside `desktop refresh-indexes`: `desktop quota-refresh`
+   (`RefreshQuota`, then `EvaluateAlerts` with `quota.DefaultNotifier`),
+   `desktop quota-settings` (turning reading off restores an installed
+   status-line route, clears consent, and reports `restore_incomplete` when the
+   file changed; a user's own `statusLine` is left alone), and
+   `desktop quota-statusline enable|disable` (enable requires reading on).
+   `quota capture` stays hidden. This closes the two items deferred here from
+   tasks 4 and 5.
+3. **Swift callers belong to task 7.** This task delivers the Go commands and
+   `DesktopWire.swift`'s optional decoder; `EmbeddedHelperRunner`,
+   `DesktopPreferences`, and the refresh coordinator calling these commands
+   are added to task 7's scope below.
+
+Implementation choices within that scope, recorded so a reviewer need not
+derive them: the section builder lives in new `internal/desktop/subscription.go`
+beside `desktop.go`, and the CLI tests in `cmd/agentdeck/quota_test.go`; the
+wire's `source` values use the prototype's names (`codex_app_server`,
+`claude_statusline`, `claude_usage_prose`) mapped from the domain's; reading
+off keeps `applicable: true` with `failure: probe_disabled`, as the
+prototype's reading-off variant does, while a provider other than official
+sets `applicable: false`; a parse failure after the last success presents no
+figure (requirements.md clause 6), while a probe failure keeps the last figure
+with its real age (C9); client-level `observed_reset_at` is the most recent
+window's; backoff is bounded at one hour; `internal/quota/notifier_unsupported.go`
+gives non-darwin builds a nil notifier. The prototype's CLI page has no quota
+specimen, so the text output follows the CLI's existing plain-English form.
+The complete canonical desktop fixture is seeded with quota data so the Swift
+decoder is exercised on every field.
+
+**Round 1 repair (2026-09-13)** — see
+[`reviews/wire-and-cli.md`](reviews/wire-and-cli.md):
+
+1. **WC-R1-F1 (high, fixed):** task 4's `Scheduler.recordFailure` deliberately
+   leaves a manual failure's `FailureAt` at whatever it already was (GS-R3-F1),
+   to protect the background backoff chain — after a success clears it, that
+   leaves it zero. `subscriptionClient` judged "did this failure happen after
+   the last known-good observation" by comparing `FailureAt` against
+   `observedAt`, so a zero `FailureAt` could never be after anything: a manual
+   failure right after a success vanished from both the wire and the CLI, and
+   a manual parse failure kept re-presenting the prior figure instead of
+   showing none (requirements.md clause 6). Took the review's option (a):
+   `PutEnvelope` clears `Failure` only on a genuine success, so `Failure != ""`
+   alone already proves the envelope's own route failed more recently than its
+   own `ObservedAt` — true for a manual failure exactly as for a background
+   one — without comparing timestamps at all. The one route that bypasses the
+   envelope, Claude's status-line, is handled separately: a status-line window
+   newer than the envelope's `ObservedAt` is a success the envelope never
+   recorded, and it still supersedes a stale prose failure. New test
+   `TestDesktopQuotaRefreshManualFailureAfterSuccessStaysVisible` drives
+   `desktop quota-refresh --manual` success then failure for both clients and
+   asserts Codex's `probe_failed` stays visible with its figure kept, and
+   Claude's `parse_failed` shows no figure.
+2. **WC-R1-F2 (low, fixed):** the CLI text line concatenated `"last probe "`
+   with `quotaReasonPhrase(client.Failure)`, and the only reason that reaches
+   that branch, `probe_failed`, phrases as `"probe failed"`, producing
+   `"last probe probe failed"`. Dropped the redundant word: the line now reads
+   `"last " + quotaReasonPhrase(...)`, giving `"last probe failed"`. Asserted
+   in the same new test above.
+
+**Round 2 repair (2026-09-13)** — see
+[`reviews/wire-and-cli.md`](reviews/wire-and-cli.md):
+
+1. **WC-R2-F1 (medium, fixed; new, exposed by the Round 1 repair):** the
+   Round 1 fix let a manual failure reach the parse-failure branch, but that
+   branch still took the attempt instant from `FailureAt` — which task 4's
+   `recordFailure` deliberately leaves untouched for a manual failure
+   (GS-R3-F1), and which is zero after a success clears it or when the client
+   was never probed. A manual parse failure therefore showed the right reason
+   and correctly withheld the figure, but `observed_at` came back `null`,
+   missing requirements.md clause 6's "the observation instant of the failed
+   attempt". Operator-approved (asked because it touches task 1's schema and
+   task 4's scheduler): took the review's option (b) — a new
+   `EnvelopeRecord.FailureObservedAt` field, independent of the
+   `FailureAt`/`BackoffUntil` backoff-chain pair, that `recordFailure` writes
+   on every failed attempt, manual or background alike. `internal/store`
+   schema version 26 → 27 (`ALTER TABLE quota_envelopes ADD COLUMN
+   failure_observed_at`); `PutEnvelopeFailure` gained a `failureObservedAt`
+   parameter, always the real attempt instant; `PutEnvelope` clears it on a
+   success in the same write that clears `Failure`/`FailureAt`/`BackoffUntil`.
+   `subscriptionClient`'s parse-failure branch now reads `FailureObservedAt`
+   instead of `FailureAt`. `FailureAt`/`BackoffUntil` themselves are
+   unchanged — a manual failure still leaves them exactly as they were, so
+   the backoff-step derivation GS-R3-F1 protects is untouched. Canonical
+   desktop fixtures regenerated for the schema-count bump
+   (`AGENTDECK_UPDATE_FIXTURES=1`); no fixture content other than that count
+   changed. New/extended tests: `TestStorePutEnvelopeFailureRoundTripsFailureObservedAt`
+   and the extended `TestStorePutEnvelopeFailureStoresZeroFailureAtAsAbsent`
+   (`internal/quota/store_test.go`); the renamed
+   `TestSchedulerManualFailureWithNoPriorFailureStoresNoBackoffChainInstant`
+   now also asserts `FailureObservedAt` is written while `FailureAt`/
+   `BackoffUntil` stay empty (`internal/quota/scheduler_test.go`); the
+   existing `TestDesktopQuotaRefreshManualFailureAfterSuccessStaysVisible`
+   (`cmd/agentdeck/quota_test.go`) now also asserts a non-null `observed_at`
+   on the manual parse failure and that the CLI text carries `attempted`.
+
 ### 7. `desktop-surfaces`
 
 **Depends on:** task 6.
@@ -675,6 +783,14 @@ preference files, task 4 owns control-path behavior and task 7 owns presentation
   in the frame footer, per `ux/widget-quota.md`.
 - Settings group with defaults off, dependency shown as disabled, and consent
   copy naming the chained command, per `ux/settings-quota.md`.
+- The Swift callers of task 6's desktop commands, moved here by task 6's
+  decision 3: the settings group writes through `desktop quota-settings` and
+  `desktop quota-statusline enable|disable` (core state is the authority; the
+  app's UserDefaults at most mirror it), and a refresh runs
+  `desktop quota-refresh` — with `--manual` for a user-initiated refresh — so
+  probes and alert evaluation follow C9 and C10. This touches
+  `apps/macos/AgentDeckShared/EmbeddedHelperRunner.swift` and its tests and the
+  app's refresh coordination, in addition to the files listed above.
 - The specification revision described in `requirements.md` — Contract changes —
   narrowing `docs/specs/cli-design.md:53-55`. Read the then-current revision;
   do not prescribe a revision number, following task 2 (`v0-6-0-contract`) in
@@ -773,16 +889,23 @@ Swift verification limitations in this environment (no full Xcode), and
 [`reviews/gate-and-schedule.md`](reviews/gate-and-schedule.md) for the
 findings, the reproducers, and the completion gate.
 
-Task 5 `quota-alerts` passed Round 5 re-review on 2026-09-13 and awaits an
-authorized commit; its coordination state is tracked in Beads
+Task 5 `quota-alerts` passed Round 5 re-review on 2026-09-13 and is delivered
+in signed commit `dbd119f`; its coordination state is tracked in Beads
 `ad-sq-quota-alerts-dev`. All five findings — QA-R1-F1, QA-R1-F2, QA-R2-F1,
 QA-R3-F1, and QA-R4-F1 — are closed. See
 [`reviews/quota-alerts.md`](reviews/quota-alerts.md) for the findings, the
 reproducers, and the completion gate.
 
-Tasks 6–7 exist in Beads (`ad-sq-wire-and-cli-dev` and
-`ad-sq-desktop-surfaces-dev`) with dependency ordering matching this file;
-neither has started.
+Task 6 `wire-and-cli` passed Round 3 re-review on 2026-09-13 and awaits an
+authorized commit; its coordination state is tracked in Beads
+`ad-sq-wire-and-cli-dev`. All three findings — WC-R1-F1, WC-R1-F2, and
+WC-R2-F1 — are closed. The Round 2 repair's operator-approved storage change
+(`EnvelopeRecord.FailureObservedAt`, schema version 26 → 27) is recorded in
+task 6's own section above. See [`reviews/wire-and-cli.md`](reviews/wire-and-cli.md)
+for the findings, the reproducers, and the completion gate.
+
+Task 7 exists in Beads (`ad-sq-desktop-surfaces-dev`) with dependency ordering
+matching this file; it has not started.
 
 The base of this worktree is `4737076`; `main` has since advanced by ten
 commits, including the assembled `schema-version-signal` surfaces. The surface

@@ -294,6 +294,15 @@ var migrations = []migration{
 			PRIMARY KEY (client, window_key, kind, threshold, instance_unix)
 		)`,
 	}},
+	// failure_observed_at is the real instant of the most recent failed probe
+	// attempt, independent of failure_at/backoff_until (wire-and-cli task,
+	// WC-R2-F1). recordFailure writes it on every failure, manual or
+	// background, unlike failure_at, which a manual failure leaves untouched
+	// to protect the backoff chain's derived step (GS-R3-F1). A success
+	// clears it in the same write that clears failure/failure_at.
+	{version: 27, statements: []string{
+		`ALTER TABLE quota_envelopes ADD COLUMN failure_observed_at TEXT NOT NULL DEFAULT ''`,
+	}},
 }
 
 func normalizeUsageEventTimes(ctx context.Context, tx *sql.Tx) error {

@@ -11,15 +11,6 @@ import (
 	"github.com/kitdine/agent-deck/internal/usagehook"
 )
 
-// newQuotaCommand groups subscription-quota commands. It is hidden for now:
-// task 3 adds only the runtime capture entry Claude Code's statusLine
-// invokes; the public `agentdeck quota` text/json surface is task 6's.
-func newQuotaCommand(opts *commandOptions) *cobra.Command {
-	command := &cobra.Command{Use: "quota", Short: "Subscription quota", Hidden: true, Args: exactArgs(0)}
-	command.AddCommand(newQuotaCaptureCommand(opts))
-	return command
-}
-
 func newQuotaCaptureCommand(opts *commandOptions) *cobra.Command {
 	return &cobra.Command{
 		Use: "capture",

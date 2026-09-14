@@ -245,11 +245,15 @@ func TestSchedulerManualFailureDoesNotAdvanceBackgroundBackoff(t *testing.T) {
 	}
 }
 
-func TestSchedulerManualFailureWithNoPriorFailureStoresNoFailureInstant(t *testing.T) {
+func TestSchedulerManualFailureWithNoPriorFailureStoresNoBackoffChainInstant(t *testing.T) {
 	// GS-R4-F1: a manual failure inherits FailureAt from the envelope
 	// (GS-R3-F1). With nothing to inherit — never probed, or the last probe
 	// succeeded and cleared it — that value is zero and must stay absent,
 	// not be persisted as 0001-01-01 beside a real Failure reason.
+	//
+	// WC-R2-F1: FailureObservedAt is not part of that backoff-chain pair — a
+	// manual failure always writes its own real attempt instant there, even
+	// though FailureAt/BackoffUntil stay empty.
 	ctx := context.Background()
 	t1 := time.Date(2026, 9, 10, 10, 0, 0, 0, time.UTC)
 
@@ -263,8 +267,11 @@ func TestSchedulerManualFailureWithNoPriorFailureStoresNoFailureInstant(t *testi
 		if err != nil || !ok || env.Failure != ReasonProbeFailed {
 			t.Fatalf("Envelope = (%+v, %v, %v), want Failure=probe_failed", env, ok, err)
 		}
-		if failureAt, backoffUntil := rawEnvelopeInstants(t, db, ClientCodex); failureAt != "" || backoffUntil != "" {
-			t.Fatalf("stored failure_at=%q backoff_until=%q, want both empty", failureAt, backoffUntil)
+		if failureAt, backoffUntil, failureObservedAt := rawEnvelopeInstants(t, db, ClientCodex); failureAt != "" || backoffUntil != "" || failureObservedAt == "" {
+			t.Fatalf("stored failure_at=%q backoff_until=%q failure_observed_at=%q, want the first two empty and the third the attempt instant", failureAt, backoffUntil, failureObservedAt)
+		}
+		if !env.FailureObservedAt.Equal(t1) {
+			t.Fatalf("FailureObservedAt = %v, want the manual attempt instant %v", env.FailureObservedAt, t1)
 		}
 	})
 
@@ -275,16 +282,20 @@ func TestSchedulerManualFailureWithNoPriorFailureStoresNoFailureInstant(t *testi
 		sched := Scheduler{Store: store, Interval: 5 * time.Minute, MaxBackoff: time.Hour, Now: func() time.Time { return t1 }}
 		sched.Run(ctx, ClientCodex, TriggerBackground, true)
 
+		manualAt := t1.Add(time.Hour)
 		countingFailingFakeCodex(t, counter)
-		sched.Now = func() time.Time { return t1.Add(time.Hour) }
+		sched.Now = func() time.Time { return manualAt }
 		sched.Run(ctx, ClientCodex, TriggerManual, true)
 
 		env, ok, err := store.Envelope(ctx, ClientCodex)
 		if err != nil || !ok || env.Failure != ReasonProbeFailed {
 			t.Fatalf("Envelope = (%+v, %v, %v), want Failure=probe_failed", env, ok, err)
 		}
-		if failureAt, backoffUntil := rawEnvelopeInstants(t, db, ClientCodex); failureAt != "" || backoffUntil != "" {
+		if failureAt, backoffUntil, _ := rawEnvelopeInstants(t, db, ClientCodex); failureAt != "" || backoffUntil != "" {
 			t.Fatalf("stored failure_at=%q backoff_until=%q, want both empty", failureAt, backoffUntil)
+		}
+		if !env.FailureObservedAt.Equal(manualAt) {
+			t.Fatalf("FailureObservedAt = %v, want the manual attempt instant %v", env.FailureObservedAt, manualAt)
 		}
 		if !env.ObservedAt.Equal(t1) {
 			t.Fatalf("ObservedAt = %v, want the last success %v retained", env.ObservedAt, t1)

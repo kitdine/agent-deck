@@ -135,6 +135,7 @@ func buildCompleteFixture(t *testing.T) string {
 		{client: "claude", id: "claude-today", project: "/Users/example/private/notes", model: "claude-sonnet-5", first: "2026-08-13T09:00:00Z", last: "2026-08-13T09:20:00Z"},
 		{client: "claude", id: "claude-month", project: "/Users/example/private/notes", model: "claude-opus-5", first: "2026-07-25T09:00:00Z", last: "2026-07-25T10:00:00Z"},
 	})
+	seedQuota(t, root)
 	return encodeFixture(t, buildFixtureResult(t, root))
 }
 

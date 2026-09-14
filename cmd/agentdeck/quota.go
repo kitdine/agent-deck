@@ -1,0 +1,486 @@
+package main
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/spf13/cobra"
+
+	"github.com/kitdine/agent-deck/internal/desktop"
+	"github.com/kitdine/agent-deck/internal/quota"
+	"github.com/kitdine/agent-deck/internal/store"
+	"github.com/kitdine/agent-deck/internal/usagehook"
+)
+
+// quotaMaxBackoff bounds C9's geometric backoff for the desktop quota refresh.
+const quotaMaxBackoff = time.Hour
+
+// Seams so tests never spawn a real client or post a real notification.
+var (
+	quotaRefreshService = func(stateRoot, home string) desktop.Service {
+		return desktop.Service{StateRoot: stateRoot, Home: home}
+	}
+	quotaAlertNotifier = quota.DefaultNotifier
+)
+
+func newQuotaCommand(opts *commandOptions) *cobra.Command {
+	command := &cobra.Command{
+		Use:   "quota",
+		Short: "Show subscription quota",
+		Long: "Show each client's subscription quota as last recorded: the gate, source, freshness, windows, and reset allowance. " +
+			"It reads stored state only, probes no client, and writes nothing.",
+		Example: "  agentdeck quota\n  agentdeck --format json quota",
+		Args:    exactArgs(0),
+		RunE: func(command *cobra.Command, _ []string) error {
+			return runQuota(command.Context(), opts)
+		},
+	}
+	command.AddCommand(newQuotaCaptureCommand(opts))
+	return command
+}
+
+// runQuota is C12. The gate and probe failures are payload states at exit 0;
+// only a condition that prevents producing a payload returns an error.
+func runQuota(ctx context.Context, opts *commandOptions) error {
+	if opts.format != "text" && opts.format != "json" {
+		return &inputError{err: errors.New("quota supports only text or json format")}
+	}
+	subscription, err := loadQuotaSubscription(ctx, opts)
+	if err != nil {
+		return err
+	}
+	if opts.format == "json" {
+		return writeResult(opts.stdout, opts.format, "quota", subscription)
+	}
+	return renderQuotaText(opts.stdout, subscription)
+}
+
+func loadQuotaSubscription(ctx context.Context, opts *commandOptions) (desktop.SubscriptionSnapshot, error) {
+	stateRoot, err := opts.stateRoot()
+	if err != nil {
+		return desktop.SubscriptionSnapshot{}, err
+	}
+	home, err := userHomeDir()
+	if err != nil {
+		return desktop.SubscriptionSnapshot{}, err
+	}
+	if _, err := os.Stat(filepath.Join(stateRoot, "agentdeck.sqlite3")); errors.Is(err, os.ErrNotExist) {
+		// A fresh installation has no state: every setting is its default, so
+		// reading is off (requirements.md clause 1).
+		return desktop.ReadingOffSubscription(), nil
+	}
+	core, err := store.OpenReadOnly(ctx, stateRoot)
+	if err != nil {
+		return desktop.SubscriptionSnapshot{}, err
+	}
+	defer core.Close()
+	return desktop.Service{StateRoot: stateRoot, Home: home}.BuildSubscription(ctx, core, time.Now())
+}
+
+func renderQuotaText(w io.Writer, subscription desktop.SubscriptionSnapshot) error {
+	var b strings.Builder
+	if !subscription.Available {
+		b.WriteString("Subscription quota is unavailable.\n")
+	}
+	for i, client := range subscription.Clients {
+		if i > 0 {
+			b.WriteString("\n")
+		}
+		name := quotaClientName(client.Client)
+		if !client.Applicable {
+			fmt.Fprintf(&b, "%s: not applicable, %s\n", name, quotaReasonPhrase(client.ApplicableReason))
+			continue
+		}
+		if client.Failure != nil && len(client.Windows) == 0 {
+			fmt.Fprintf(&b, "%s: no figures, %s", name, quotaReasonPhrase(client.Failure))
+			if client.ObservedAt != nil {
+				fmt.Fprintf(&b, " (attempted %s)", *client.ObservedAt)
+			}
+			b.WriteString("\n")
+			continue
+		}
+		header := []string{name}
+		if client.Plan != nil {
+			header = append(header, "plan "+*client.Plan)
+		}
+		if client.Source != nil {
+			header = append(header, "via "+*client.Source)
+		}
+		if client.ObservedAt != nil {
+			header = append(header, "observed "+*client.ObservedAt)
+		}
+		if client.Stale {
+			header = append(header, "stale")
+		}
+		if client.Failure != nil {
+			header = append(header, "last "+quotaReasonPhrase(client.Failure))
+		}
+		b.WriteString(strings.Join(header, ", ") + "\n")
+		if !client.AttributionConfirmed {
+			b.WriteString("  account attribution cannot be confirmed\n")
+		}
+		for _, window := range client.Windows {
+			resets := "reset time not reported"
+			if window.ResetsAt != nil {
+				resets = "resets " + *window.ResetsAt
+			}
+			marker := ""
+			if client.TightestWindowKey != nil && *client.TightestWindowKey == window.Key {
+				marker = "  tightest"
+			}
+			fmt.Fprintf(&b, "  %-32s %4.0f%%  %s%s\n", quotaWindowName(window), window.UsedPercent, resets, marker)
+		}
+		if allowance := client.ResetAllowance; allowance != nil && allowance.Remaining != nil {
+			fmt.Fprintf(&b, "  reset allowance: %d remaining\n", *allowance.Remaining)
+		}
+		if client.ObservedResetAt != nil {
+			fmt.Fprintf(&b, "  last observed reset: %s\n", *client.ObservedResetAt)
+		}
+	}
+	_, err := io.WriteString(w, b.String())
+	return err
+}
+
+func quotaClientName(client string) string {
+	switch client {
+	case "codex":
+		return "Codex"
+	case "claude":
+		return "Claude"
+	default:
+		return client
+	}
+}
+
+func quotaReasonPhrase(reason *string) string {
+	if reason == nil {
+		return "unknown"
+	}
+	switch quota.Reason(*reason) {
+	case quota.ReasonProbeDisabled:
+		return "quota reading is off"
+	case quota.ReasonNotOfficial:
+		return "provider is not official"
+	case quota.ReasonNeverProbed:
+		return "not yet observed"
+	case quota.ReasonProbeFailed:
+		return "probe failed"
+	case quota.ReasonParseFailed:
+		return "output not recognized"
+	case quota.ReasonNotConsented:
+		return "status-line route not consented"
+	case quota.ReasonNotReported:
+		return "not reported"
+	default:
+		return *reason
+	}
+}
+
+// quotaWindowName labels a window from its vendor label and length. The
+// window key is opaque and never shown (C6).
+func quotaWindowName(window desktop.SubscriptionWindow) string {
+	length := ""
+	if window.WindowMinutes != nil {
+		minutes := *window.WindowMinutes
+		switch {
+		case minutes%1440 == 0:
+			length = fmt.Sprintf("%d-day", minutes/1440)
+		case minutes%60 == 0:
+			length = fmt.Sprintf("%d-hour", minutes/60)
+		default:
+			length = fmt.Sprintf("%d-minute", minutes)
+		}
+	}
+	switch {
+	case window.Label != nil && length != "":
+		return fmt.Sprintf("%s (%s)", *window.Label, length)
+	case window.Label != nil:
+		return *window.Label
+	case length != "":
+		return length + " window"
+	default:
+		return "window"
+	}
+}
+
+// quotaAgentDeckCommand is the command registered in Claude's statusLine,
+// built the same way as the usage hook's so RestoreStatusLine recognizes it.
+func quotaAgentDeckCommand(opts *commandOptions) string {
+	command := "agentdeck"
+	if opts.stateDir != "" {
+		command += " --state-dir " + shellQuote(opts.stateDir)
+	}
+	return command
+}
+
+func quotaStatusLineManager(opts *commandOptions, stateRoot string) (*usagehook.Manager, error) {
+	home, err := userHomeDir()
+	if err != nil {
+		return nil, err
+	}
+	return usagehook.New(usagehook.Environment{Home: home, AgentDeckCommand: quotaAgentDeckCommand(opts), StateDir: stateRoot}), nil
+}
+
+type desktopQuotaRefreshResult struct {
+	GateReasons map[string]*string `json:"gate_reasons"`
+}
+
+func newDesktopQuotaRefreshCommand(opts *commandOptions) *cobra.Command {
+	manual := false
+	command := &cobra.Command{
+		Use:   "quota-refresh",
+		Short: "Probe subscription quota per the stored settings, then evaluate quota alerts",
+		Args:  exactArgs(0),
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if opts.format != "json" {
+				return &inputError{err: errors.New("desktop quota-refresh requires --format json")}
+			}
+			return runDesktopQuotaRefresh(cmd.Context(), opts, manual)
+		},
+	}
+	command.Flags().BoolVar(&manual, "manual", false, "A user-initiated refresh: bypass the quota interval and backoff")
+	return command
+}
+
+// runDesktopQuotaRefresh runs C9's schedule for both clients and then C10's
+// evaluator, both under the stored settings. With reading off neither probes
+// nor evaluates anything.
+func runDesktopQuotaRefresh(ctx context.Context, opts *commandOptions, manual bool) error {
+	core, stateRoot, err := opts.openStore(ctx)
+	if err != nil {
+		return err
+	}
+	defer core.Close()
+	home, err := userHomeDir()
+	if err != nil {
+		return err
+	}
+	settings, err := quota.LoadSettings(ctx, core)
+	if err != nil {
+		return err
+	}
+	trigger := quota.TriggerBackground
+	if manual {
+		trigger = quota.TriggerManual
+	}
+	outcome := quotaRefreshService(stateRoot, home).RefreshQuota(ctx, core, home, trigger, settings.ProbeEnabled, settings.ProbeInterval, quotaMaxBackoff)
+
+	warnings := []string{}
+	if err := quota.EvaluateAlerts(ctx, quota.NewStore(core.DB), settings.ProbeEnabled, settings.AlertConfig(), quotaAlertNotifier(), time.Now()); err != nil {
+		warnings = append(warnings, "quota_alerts_failed")
+	}
+	result := desktopQuotaRefreshResult{GateReasons: map[string]*string{}}
+	for client, reason := range outcome {
+		var text *string
+		if reason != "" {
+			value := string(reason)
+			text = &value
+		}
+		result.GateReasons[string(client)] = text
+	}
+	return writeEnvelope(opts.stdout, opts.format, "desktop.quota-refresh", result, len(warnings) > 0, warnings)
+}
+
+type desktopQuotaSettingsView struct {
+	Reading     bool      `json:"reading"`
+	Interval    string    `json:"interval"`
+	Alerts      bool      `json:"alerts"`
+	Thresholds  []float64 `json:"thresholds"`
+	ResetNotice bool      `json:"reset_notice"`
+	StatusLine  bool      `json:"statusline"`
+}
+
+func quotaSettingsView(s quota.Settings) desktopQuotaSettingsView {
+	return desktopQuotaSettingsView{
+		Reading: s.ProbeEnabled, Interval: s.ProbeInterval.String(), Alerts: s.AlertsEnabled,
+		Thresholds: s.AlertThresholds, ResetNotice: s.ResetNotice, StatusLine: s.StatusLineConsent,
+	}
+}
+
+type desktopQuotaSettingsResult struct {
+	Settings          desktopQuotaSettingsView `json:"settings"`
+	StatusLineRestore *usagehook.Result        `json:"statusline_restore"`
+}
+
+func newDesktopQuotaSettingsCommand(opts *commandOptions) *cobra.Command {
+	var reading, interval, alerts, thresholds, resetNotice string
+	command := &cobra.Command{
+		Use:   "quota-settings",
+		Short: "Show or change subscription-quota settings",
+		Args:  exactArgs(0),
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if opts.format != "json" {
+				return &inputError{err: errors.New("desktop quota-settings requires --format json")}
+			}
+			flags := cmd.Flags()
+			return runDesktopQuotaSettings(cmd.Context(), opts, func(next *quota.Settings) error {
+				var err error
+				if flags.Changed("reading") {
+					if next.ProbeEnabled, err = quota.ParseSwitch(reading); err != nil {
+						return err
+					}
+				}
+				if flags.Changed("interval") {
+					if next.ProbeInterval, err = quota.ParseProbeInterval(interval); err != nil {
+						return err
+					}
+				}
+				if flags.Changed("alerts") {
+					if next.AlertsEnabled, err = quota.ParseSwitch(alerts); err != nil {
+						return err
+					}
+				}
+				if flags.Changed("thresholds") {
+					if next.AlertThresholds, err = quota.ParseAlertThresholds(thresholds); err != nil {
+						return err
+					}
+				}
+				if flags.Changed("reset-notice") {
+					if next.ResetNotice, err = quota.ParseSwitch(resetNotice); err != nil {
+						return err
+					}
+				}
+				return nil
+			})
+		},
+	}
+	command.Flags().StringVar(&reading, "reading", "", "Quota reading: on or off")
+	command.Flags().StringVar(&interval, "interval", "", "Background probe interval: 5m, 15m, or 30m")
+	command.Flags().StringVar(&alerts, "alerts", "", "Quota alerts: on or off")
+	command.Flags().StringVar(&thresholds, "thresholds", "", "Alert thresholds: 75, 90, or 75,90")
+	command.Flags().StringVar(&resetNotice, "reset-notice", "", "Notify when a window resets: on or off")
+	return command
+}
+
+// runDesktopQuotaSettings applies requested changes. Turning reading off
+// performs C9's transition as part of the same action: it restores an
+// installed status-line route and clears the consent flag, and a file that
+// changed underneath reports restore_incomplete. Stored observations are not
+// touched.
+func runDesktopQuotaSettings(ctx context.Context, opts *commandOptions, apply func(*quota.Settings) error) error {
+	core, stateRoot, err := opts.openStore(ctx)
+	if err != nil {
+		return err
+	}
+	defer core.Close()
+	current, err := quota.LoadSettings(ctx, core)
+	if err != nil {
+		return err
+	}
+	next := current
+	if err := apply(&next); err != nil {
+		return &inputError{err: err}
+	}
+
+	var restore *usagehook.Result
+	if current.ProbeEnabled && !next.ProbeEnabled {
+		manager, err := quotaStatusLineManager(opts, stateRoot)
+		if err != nil {
+			return err
+		}
+		status, err := manager.StatusLineStatus()
+		if err != nil {
+			return err
+		}
+		// Restore only a route AgentDeck installed. A statusLine that is not
+		// AgentDeck's command belongs to the user and is left alone.
+		if current.StatusLineConsent || status.Configuration == usagehook.ConfigurationConfigured || status.Configuration == usagehook.ConfigurationModified {
+			result, err := manager.RestoreStatusLine()
+			if err != nil {
+				return err
+			}
+			restore = &result
+		}
+		next.StatusLineConsent = false
+	}
+	if err := next.Validate(); err != nil {
+		return &inputError{err: err}
+	}
+	if err := quota.SaveSettings(ctx, core, next); err != nil {
+		return err
+	}
+	if err := writeResult(opts.stdout, opts.format, "desktop.quota-settings", desktopQuotaSettingsResult{Settings: quotaSettingsView(next), StatusLineRestore: restore}); err != nil {
+		return err
+	}
+	if restore != nil && restore.Outcome == usagehook.OutcomeFailed {
+		return fmt.Errorf("quota status-line restore failed: %s", restore.Error)
+	}
+	return nil
+}
+
+type desktopQuotaStatusLineResult struct {
+	Consent bool             `json:"consent"`
+	Result  usagehook.Result `json:"result"`
+}
+
+func newDesktopQuotaStatusLineCommand(opts *commandOptions) *cobra.Command {
+	command := &cobra.Command{Use: "quota-statusline", Short: "Consent to or withdraw the Claude status-line route"}
+	for _, operation := range []string{"enable", "disable"} {
+		operation := operation
+		command.AddCommand(&cobra.Command{
+			Use:   operation,
+			Short: "Status-line route: " + operation,
+			Args:  exactArgs(0),
+			RunE: func(cmd *cobra.Command, _ []string) error {
+				if opts.format != "json" {
+					return &inputError{err: fmt.Errorf("desktop quota-statusline %s requires --format json", operation)}
+				}
+				return runDesktopQuotaStatusLine(cmd.Context(), opts, operation)
+			},
+		})
+	}
+	return command
+}
+
+// runDesktopQuotaStatusLine is the consent switch's control path (C3):
+// enabling registers AgentDeck's capture command and requires reading to be
+// on (requirements.md clause 14); disabling restores the prior configuration.
+func runDesktopQuotaStatusLine(ctx context.Context, opts *commandOptions, operation string) error {
+	core, stateRoot, err := opts.openStore(ctx)
+	if err != nil {
+		return err
+	}
+	defer core.Close()
+	settings, err := quota.LoadSettings(ctx, core)
+	if err != nil {
+		return err
+	}
+	manager, err := quotaStatusLineManager(opts, stateRoot)
+	if err != nil {
+		return err
+	}
+	var result usagehook.Result
+	switch operation {
+	case "enable":
+		if !settings.ProbeEnabled {
+			return &inputError{err: errors.New("the status-line route requires quota reading to be on")}
+		}
+		if result, err = manager.SetupStatusLine(); err != nil {
+			return err
+		}
+		if result.Outcome == usagehook.OutcomeConfigured || result.Outcome == usagehook.OutcomeUnchanged {
+			settings.StatusLineConsent = true
+		}
+	default:
+		if result, err = manager.RestoreStatusLine(); err != nil {
+			return err
+		}
+		settings.StatusLineConsent = false
+	}
+	if err := quota.SaveSettings(ctx, core, settings); err != nil {
+		return err
+	}
+	if err := writeResult(opts.stdout, opts.format, "desktop.quota-statusline."+operation, desktopQuotaStatusLineResult{Consent: settings.StatusLineConsent, Result: result}); err != nil {
+		return err
+	}
+	if result.Outcome == usagehook.OutcomeFailed {
+		return fmt.Errorf("quota status-line %s failed: %s", operation, result.Error)
+	}
+	return nil
+}

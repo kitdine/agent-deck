@@ -23,6 +23,9 @@ var notifierCommandArgs = []string{
 	"-e", "end run",
 }
 
+// DefaultNotifier is the platform's notification delivery.
+func DefaultNotifier() Notifier { return OSANotifier{} }
+
 // OSANotifier delivers C10 notifications through macOS Notification Centre
 // via osascript. It reads no credential and opens no network connection (C0).
 type OSANotifier struct {

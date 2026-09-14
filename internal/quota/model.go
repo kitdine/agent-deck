@@ -291,4 +291,13 @@ type EnvelopeRecord struct {
 	// prior step's duration is BackoffUntil.Sub(FailureAt)) rather than from
 	// a separate consecutive-failure counter.
 	BackoffUntil time.Time
+
+	// FailureObservedAt is the real instant of the most recent failed probe
+	// attempt, recorded on every failure regardless of Trigger (wire-and-cli
+	// task, WC-R2-F1). It is independent of FailureAt/BackoffUntil, which a
+	// manual failure deliberately leaves untouched to protect the backoff
+	// chain's derived step (GS-R3-F1) — that protection would otherwise leave
+	// a manual failure with no attempt instant to show at all. Cleared in the
+	// same write that clears Failure/FailureAt/BackoffUntil on a success.
+	FailureObservedAt time.Time
 }

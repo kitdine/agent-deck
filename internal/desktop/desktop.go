@@ -53,6 +53,9 @@ type Snapshot struct {
 	Usage         UsageSnapshot    `json:"usage"`
 	Sessions      SessionsSnapshot `json:"sessions"`
 	Health        HealthSnapshot   `json:"health"`
+	// Subscription is architecture.md C11's additive section; WireVersion is
+	// unchanged because an older consumer ignores the key.
+	Subscription SubscriptionSnapshot `json:"subscription"`
 }
 
 type ProviderSnapshot struct {
@@ -255,16 +258,19 @@ func (s Service) Build(ctx context.Context, request Request) (Result, error) {
 		Usage:         emptyUsageSnapshot(now, s.location()),
 		Sessions:      emptySessionsSnapshot(),
 		Health:        HealthSnapshot{Checks: []HealthCheck{}},
+		Subscription:  unavailableSubscription(),
 	}}
 
 	core, err := store.OpenReadOnly(ctx, s.StateRoot)
 	if err != nil {
 		result.warn("provider_unavailable")
 		result.warn("usage_unavailable")
+		result.warn("subscription_unavailable")
 	} else {
 		s.loadProvider(ctx, core, &result)
 		s.loadUsage(ctx, core, now, &result)
 		s.loadWorkSignals(ctx, core, now, &result)
+		s.loadSubscription(ctx, core, now, &result)
 		if closeErr := core.Close(); closeErr != nil {
 			result.warn("state_close_failed")
 		}
