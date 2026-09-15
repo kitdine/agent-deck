@@ -19,6 +19,7 @@ enum DesktopCopy {
 	static let scanChecking = "Checking source files"
 	static let scanImporting = "Importing"
 	static let scanStatistics = "Calculating statistics"
+	static let scanFinished = "Scan finished"
 	static let scanUsageProgress = "Usage %1$lld/%2$lld committed"
 	static let scanSessionProgress = "Sessions %1$lld/%2$lld committed"
 	static let scanSkipped = "%lld skipped"
@@ -233,7 +234,7 @@ enum DesktopCopy {
 	/// The inventory the localization test walks. Every key above appears here.
 	static let allKeys: [String] = [
 		schemaSignalNotice, schemaSignalCause, schemaSignalRecovery, schemaSignalSectionUnavailable, schemaSignalFooter, schemaSignalSwitchUnavailable, badgedSchemaSignal, schemaSignalHookDropped,
-		loading, scanWaiting, scanChecking, scanImporting, scanStatistics,
+		loading, scanWaiting, scanChecking, scanImporting, scanStatistics, scanFinished,
 		scanUsageProgress, scanSessionProgress, scanSkipped,
 		offline, failing, partial, emptyToday, emptySnapshot,
 		freshnessUpdated, freshnessLastUpdated, retry, refreshNow, refreshTimedOut, appName,

@@ -339,6 +339,16 @@ final class MenuBarViewModel {
 		return false
 	}
 
+	var showsScanProgressStatus: Bool {
+		guard coordinator.scanProgress != nil else { return false }
+		switch coordinator.state {
+		case .refreshing, .degraded:
+			return true
+		default:
+			return false
+		}
+	}
+
 	var scanProgressStageText: String? {
 		guard let progress = coordinator.scanProgress else { return nil }
 		return switch progress.stage {
@@ -346,7 +356,7 @@ final class MenuBarViewModel {
 		case .checking: t(DesktopCopy.scanChecking)
 		case .importing: t(DesktopCopy.scanImporting)
 		case .statistics: t(DesktopCopy.scanStatistics)
-		case .completed: t(DesktopCopy.scanStatistics)
+		case .completed: t(DesktopCopy.scanFinished)
 		}
 	}
 

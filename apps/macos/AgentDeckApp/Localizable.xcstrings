@@ -1345,6 +1345,22 @@
         }
       }
     },
+    "Scan finished": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scan finished"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "扫描完成"
+          }
+        }
+      }
+    },
     "Usage %1$lld/%2$lld committed": {
       "localizations": {
         "en": {

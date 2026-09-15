@@ -2,12 +2,14 @@ package session
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/kitdine/agent-deck/internal/ingest"
 	"github.com/kitdine/agent-deck/internal/store"
 )
 
@@ -76,6 +78,59 @@ func TestUnchangedSourcesRequireCompleteCurrentCheckpoints(t *testing.T) {
 	}
 	if ok, err := unchangedSources(ctx, db.DB, refreshed); err != nil || ok {
 		t.Fatalf("fresh inventory skipped appended suffix: %v, %v", ok, err)
+	}
+}
+
+func TestUnchangedSourcesRejectRewriteAfterDiscovery(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		rewrite func([]byte) []byte
+	}{
+		{name: "equal size", rewrite: func(contents []byte) []byte {
+			return []byte(strings.Replace(string(contents), "original", "modified", 1))
+		}},
+		{name: "rewrite plus growth", rewrite: func(contents []byte) []byte {
+			changed := strings.Replace(string(contents), "original", "modified", 1)
+			return []byte(changed + `{"type":"visible_user_prompt","session_id":"s","payload":{"text":"later"}}` + "\n")
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := context.Background()
+			home := t.TempDir()
+			path := filepath.Join(home, ".codex", "sessions", "s.jsonl")
+			if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			contents := []byte(`{"type":"visible_user_prompt","session_id":"s","payload":{"text":"original"}}` + "\n")
+			if err := os.WriteFile(path, contents, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			db, err := store.OpenSessions(ctx, t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer db.Close()
+			if _, err = Scan(ctx, db.DB, home); err != nil {
+				t.Fatal(err)
+			}
+			paths, err := sessionSources(home, nil)
+			if err != nil || len(paths) != 1 || !paths[0].stable {
+				t.Skipf("stable file generation unavailable: paths=%#v err=%v", paths, err)
+			}
+			info, err := os.Stat(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = os.WriteFile(path, test.rewrite(contents), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err = os.Chtimes(path, info.ModTime(), info.ModTime()); err != nil {
+				t.Fatal(err)
+			}
+			if unchanged, validateErr := unchangedSources(ctx, db.DB, paths); unchanged || !errors.Is(validateErr, ingest.ErrSourceChanged) {
+				t.Fatalf("rewrite accepted: unchanged=%t err=%v", unchanged, validateErr)
+			}
+		})
 	}
 }
 

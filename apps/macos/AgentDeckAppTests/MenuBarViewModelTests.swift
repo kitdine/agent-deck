@@ -155,7 +155,22 @@ final class MenuBarViewModelTests: XCTestCase {
 		XCTAssertEqual(model.surface, .errorSurface)
 		XCTAssertEqual(model.errorCopy, t(DesktopCopy.refreshTimedOut))
 		XCTAssertTrue(model.notices.isEmpty, "an error surface has no snapshot to qualify")
-		XCTAssertEqual(model.scanProgressStageText, t(DesktopCopy.scanStatistics))
+		XCTAssertTrue(model.showsScanProgressStatus)
+		XCTAssertEqual(model.scanProgressStageText, t(DesktopCopy.scanFinished))
+		XCTAssertTrue(model.scanProgressCountsText?.contains(t(DesktopCopy.failing)) == true)
+	}
+
+	func testDegradedDataSurfaceShowsRetainedTerminalDomainOutcome() async {
+		let host = StubDesktopHost(behavior: .envelope(WireFixture.envelope()))
+		let model = await makeModel(host: host)
+		await model.coordinator.refresh()
+		host.behavior = .failure(HelperExecutionError.timedOut)
+		await model.coordinator.refresh()
+		await Task.yield()
+
+		XCTAssertEqual(model.surface, .dataSurface)
+		XCTAssertTrue(model.showsScanProgressStatus)
+		XCTAssertEqual(model.scanProgressStageText, t(DesktopCopy.scanFinished))
 		XCTAssertTrue(model.scanProgressCountsText?.contains(t(DesktopCopy.failing)) == true)
 	}
 

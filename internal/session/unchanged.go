@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"database/sql"
+	"os"
 	"path/filepath"
 
 	"github.com/kitdine/agent-deck/internal/ingest"
@@ -21,22 +22,23 @@ func unchangedSources(ctx context.Context, db *sql.DB, paths []source) (bool, er
 		return false, nil
 	}
 	expected := make(map[string]source, len(paths))
+	anchors := make(map[string]string, len(paths))
 	for _, src := range paths {
 		if !src.stable || src.changedAt == 0 {
 			return false, nil
 		}
 		expected[filepath.Clean(src.path)] = src
 	}
-	rows, err := db.QueryContext(ctx, `SELECT source_path,identity,size,cursor,modified_at,changed_at,priority,parser_version FROM session_sources`)
+	rows, err := db.QueryContext(ctx, `SELECT source_path,identity,size,cursor,modified_at,changed_at,prefix_hash,priority,parser_version FROM session_sources`)
 	if err != nil {
 		return false, err
 	}
 	defer rows.Close()
 	matched := 0
 	for rows.Next() {
-		var path, identity string
+		var path, identity, anchor string
 		var size, cursor, modified, changed, priority, parser int64
-		if err := rows.Scan(&path, &identity, &size, &cursor, &modified, &changed, &priority, &parser); err != nil {
+		if err := rows.Scan(&path, &identity, &size, &cursor, &modified, &changed, &anchor, &priority, &parser); err != nil {
 			return false, err
 		}
 		src, found := expected[path]
@@ -44,6 +46,7 @@ func unchangedSources(ctx context.Context, db *sql.DB, paths []source) (bool, er
 			modified != src.modifiedAt || changed != src.changedAt || priority != int64(src.priority) || parser != ParserVersion {
 			return false, nil
 		}
+		anchors[path] = anchor
 		matched++
 	}
 	if err := rows.Err(); err != nil {
@@ -58,10 +61,32 @@ func unchangedSources(ctx context.Context, db *sql.DB, paths []source) (bool, er
 		if err := ctx.Err(); err != nil {
 			return false, err
 		}
-		if err := ingest.ValidateCapturedRange(ingest.Source{Path: src.path, Identity: src.identity, Size: src.size,
-			ModifiedAt: src.modifiedAt, ChangedAt: src.changedAt, Stable: src.stable}, src.size); err != nil {
+		if err := validateUnchangedObservation(src, anchors[filepath.Clean(src.path)]); err != nil {
 			return false, err
 		}
 	}
 	return true, nil
+}
+
+func validateUnchangedObservation(src source, storedAnchor string) error {
+	info, err := os.Stat(src.path)
+	if err != nil {
+		return err
+	}
+	observed := ingest.Source{Path: src.path, Identity: src.identity, Size: src.size,
+		ModifiedAt: src.modifiedAt, ChangedAt: src.changedAt, Stable: src.stable}
+	if info.Size() == src.size {
+		return ingest.Validate(observed)
+	}
+	if err = ingest.ValidateCapturedRange(observed, src.size); err != nil {
+		return err
+	}
+	anchor, err := prefixHash(src.path, src.size)
+	if err != nil {
+		return err
+	}
+	if anchor != storedAnchor {
+		return ingest.ErrSourceChanged
+	}
+	return nil
 }
