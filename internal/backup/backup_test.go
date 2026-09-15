@@ -372,6 +372,14 @@ func TestBackupIncludesSessionsOnlyWhenRequested(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	sourceCoreGeneration, err := database.DerivedSnapshotGeneration(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sourceSessionEpoch, err := sessions.SessionIndexEpoch(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err = sessions.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -386,6 +394,38 @@ func TestBackupIncludesSessionsOnlyWhenRequested(t *testing.T) {
 	}
 	if manifest.DatabaseSchemas[sessionsName] != sessionSnapshotSchemaVersion {
 		t.Fatalf("session schema = %#v", manifest.DatabaseSchemas)
+	}
+	target := filepath.Join(t.TempDir(), "restored")
+	if _, err = Restore(ctx, archive, target, "passphrase", syntheticMachineIdentity("target-machine")); err != nil {
+		t.Fatal(err)
+	}
+	restoredCore, err := store.OpenReadOnly(ctx, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restoredCoreGeneration, err := restoredCore.DerivedSnapshotGeneration(ctx)
+	if closeErr := restoredCore.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	if restoredCoreGeneration.Epoch == sourceCoreGeneration.Epoch || !restoredCoreGeneration.Dirty {
+		t.Fatalf("restored core generation=%#v source=%#v", restoredCoreGeneration, sourceCoreGeneration)
+	}
+	restoredSessions, err := store.OpenSessionsReadOnly(ctx, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restoredSessionEpoch, err := restoredSessions.SessionIndexEpoch(ctx)
+	if closeErr := restoredSessions.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	if restoredSessionEpoch == sourceSessionEpoch {
+		t.Fatalf("restored session epoch=%d source=%d", restoredSessionEpoch, sourceSessionEpoch)
 	}
 }
 

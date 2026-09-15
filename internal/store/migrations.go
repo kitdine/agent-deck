@@ -215,6 +215,71 @@ var migrations = []migration{
 	{version: 23, statements: []string{
 		`ALTER TABLE provider_selections ADD COLUMN prior_keyed INTEGER`,
 	}},
+	// The derived desktop cache is not a source checkpoint. Its generation is
+	// bumped by every table that contributes to the allowlisted usage and work
+	// signal projections so an old cache can never certify newer committed data.
+	{version: 24, statements: []string{
+		`CREATE TABLE derived_snapshot_generation (
+		  singleton INTEGER PRIMARY KEY CHECK(singleton = 1),
+		  epoch INTEGER NOT NULL CHECK(epoch > 0),
+		  revision INTEGER NOT NULL CHECK(revision >= 0),
+		  dirty INTEGER NOT NULL CHECK(dirty IN (0,1))
+		)`,
+	}, apply: initializeDerivedSnapshotGeneration},
+	// Stable change-time metadata lets unchanged scans avoid reopening every
+	// source merely to recompute a content anchor. A zero migrated value forces
+	// one conservative reread before the optimized checkpoint can be trusted.
+	{version: 25, statements: []string{
+		`ALTER TABLE usage_source_files ADD COLUMN changed_at INTEGER NOT NULL DEFAULT 0`,
+	}},
+	// Source-scoped turn classification joins the selected work-signal rows to
+	// tool calls by logical turn. Without this index every source rescans the
+	// complete accumulated tool-call table during cold import.
+	{version: 26, statements: []string{
+		`CREATE INDEX usage_tool_calls_turn ON usage_tool_calls(client,session_id,turn_index)`,
+	}},
+}
+
+var derivedSnapshotGenerationTables = []string{
+	"providers", "provider_clients", "provider_selections", "provider_credentials", "provider_credential_clients",
+	"usage_source_files", "usage_sessions", "usage_events", "usage_runs", "usage_run_bindings",
+	"price_catalogs", "model_prices", "usage_tool_calls", "usage_tool_files", "usage_session_routes",
+	"usage_session_observations", "usage_work_signals",
+}
+
+func initializeDerivedSnapshotGeneration(ctx context.Context, tx *sql.Tx) error {
+	epoch, err := generateGenerationEpoch()
+	if err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, `INSERT INTO derived_snapshot_generation(singleton,epoch,revision,dirty) VALUES (1,?,0,1)`, epoch); err != nil {
+		return err
+	}
+	return installDerivedSnapshotGenerationTriggers(ctx, tx)
+}
+
+func installDerivedSnapshotGenerationTriggers(ctx context.Context, tx *sql.Tx) error {
+	for _, table := range derivedSnapshotGenerationTables {
+		for _, operation := range []struct {
+			name  string
+			event string
+		}{
+			{name: "insert", event: "INSERT"},
+			{name: "update", event: "UPDATE"},
+			{name: "delete", event: "DELETE"},
+		} {
+			statement := fmt.Sprintf(`CREATE TRIGGER derived_snapshot_generation_%s_%s
+AFTER %s ON %s
+WHEN (SELECT dirty FROM derived_snapshot_generation WHERE singleton=1)=0
+BEGIN
+  UPDATE derived_snapshot_generation SET revision=revision+1,dirty=1 WHERE singleton=1 AND dirty=0;
+END`, table, operation.name, operation.event, table)
+			if _, err := tx.ExecContext(ctx, statement); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func normalizeUsageEventTimes(ctx context.Context, tx *sql.Tx) error {

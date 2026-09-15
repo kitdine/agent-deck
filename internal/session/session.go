@@ -20,6 +20,8 @@ import (
 	"time"
 
 	"github.com/kitdine/agent-deck/internal/activity"
+	"github.com/kitdine/agent-deck/internal/ingest"
+	"github.com/kitdine/agent-deck/internal/store"
 )
 
 const (
@@ -30,6 +32,14 @@ const (
 )
 
 const MaxPageLimit = 1000
+
+var beginSessionTx = func(ctx context.Context, db *sql.DB) (*sql.Tx, error) {
+	return db.BeginTx(ctx, nil)
+}
+
+// beforeSharedSessionReduction is a deterministic test barrier for the point
+// at which shared input begins domain reduction, before publication starts.
+var beforeSharedSessionReduction = func() {}
 
 type Document struct {
 	Client    string `json:"client"`
@@ -184,7 +194,9 @@ type ScanProgressReporter interface {
 
 // ScanOptions configures optional observers for a session scan.
 type ScanOptions struct {
-	Progress ScanProgressReporter
+	Progress        ScanProgressReporter
+	PreparedSources []ingest.Source
+	Coordinator     *ingest.Coordinator
 }
 
 // ApprovedDocument is the privacy boundary: only text already classified by a
@@ -215,9 +227,28 @@ func ScanWithOptions(ctx context.Context, db *sql.DB, home string, options ScanO
 		options.Progress.Start()
 		defer options.Progress.Stop()
 	}
-	return scan(ctx, db, home, options.Progress,
+	paths, err := sessionSources(home, options.PreparedSources)
+	if err != nil {
+		return ScanResult{}, err
+	}
+	unchanged, err := unchangedSources(ctx, db, paths)
+	if err != nil {
+		return ScanResult{}, err
+	}
+	if unchanged {
+		for _, src := range paths {
+			if options.Coordinator != nil {
+				options.Coordinator.Skip(src.path, ingest.ConsumerSession)
+			}
+		}
+		if options.Progress != nil {
+			options.Progress.Update(ScanProgress{Processed: len(paths), Total: len(paths), Skipped: len(paths)})
+		}
+		return ScanResult{Skipped: len(paths)}, nil
+	}
+	return scan(ctx, db, paths, options.Progress,
 		func(src source) (bool, int, error) {
-			return scanSource(ctx, db, src)
+			return scanSourceWithCoordinator(ctx, db, src, options.Coordinator)
 		},
 		func(seen map[string]bool) error {
 			return removeMissingSources(ctx, db, seen)
@@ -228,43 +259,64 @@ func ScanWithOptions(ctx context.Context, db *sql.DB, home string, options ScanO
 func scan(
 	ctx context.Context,
 	executor sessionExecutor,
-	home string,
+	paths []source,
 	progress ScanProgressReporter,
 	scanOne func(source) (bool, int, error),
 	removeMissing func(map[string]bool) error,
 ) (ScanResult, error) {
+	// Only new paths need an orphan check. Unchanged scans must not walk FTS
+	// merely to establish that they have no new projections to insert.
+	registered := map[string]bool{}
+	registeredRows, err := executor.QueryContext(ctx, "SELECT source_path FROM session_sources")
+	if err != nil {
+		return ScanResult{}, err
+	}
+	for registeredRows.Next() {
+		var path string
+		if err := registeredRows.Scan(&path); err != nil {
+			registeredRows.Close()
+			return ScanResult{}, err
+		}
+		registered[path] = true
+	}
+	err = registeredRows.Err()
+	registeredRows.Close()
+	if err != nil {
+		return ScanResult{}, err
+	}
+	needsOrphanCheck := false
+	for _, item := range paths {
+		if !registered[filepath.Clean(item.path)] {
+			needsOrphanCheck = true
+			break
+		}
+	}
+	// FTS source_path is UNINDEXED. Find orphan projections once, rather
+	// than probing the growing FTS table for every new file.
+	orphans := map[string]bool{}
+	if needsOrphanCheck {
+		rows, orphanErr := executor.QueryContext(ctx, `SELECT DISTINCT d.source_path FROM session_documents d WHERE NOT EXISTS (SELECT 1 FROM session_sources s WHERE s.source_path=d.source_path)`)
+		if orphanErr != nil {
+			return ScanResult{}, orphanErr
+		}
+		for rows.Next() {
+			var path string
+			if err := rows.Scan(&path); err != nil {
+				rows.Close()
+				return ScanResult{}, err
+			}
+			orphans[path] = true
+		}
+		orphanErr = rows.Err()
+		rows.Close()
+		if orphanErr != nil {
+			return ScanResult{}, orphanErr
+		}
+	}
 	before, err := visibleDocuments(ctx, executor)
 	if err != nil {
 		return ScanResult{}, err
 	}
-	var paths []source
-	for _, root := range []struct {
-		client, path string
-		priority     int
-	}{
-		{"codex", filepath.Join(home, ".codex", "archived_sessions"), 0},
-		{"claude", filepath.Join(home, ".claude", "projects"), 0},
-		{"codex", filepath.Join(home, ".codex", "sessions"), 1},
-	} {
-		err = filepath.WalkDir(root.path, func(path string, d fs.DirEntry, err error) error {
-			if err != nil {
-				return err
-			}
-			if !d.IsDir() && strings.HasSuffix(d.Name(), ".jsonl") {
-				paths = append(paths, source{root.client, path, root.priority})
-			}
-			return nil
-		})
-		if err != nil && !errors.Is(err, fs.ErrNotExist) {
-			return ScanResult{}, err
-		}
-	}
-	sort.Slice(paths, func(i, j int) bool {
-		if paths[i].priority != paths[j].priority {
-			return paths[i].priority < paths[j].priority
-		}
-		return paths[i].path < paths[j].path
-	})
 	result := ScanResult{}
 	progressDocuments := 0
 	if progress != nil {
@@ -272,6 +324,7 @@ func scan(
 	}
 	seen := make(map[string]bool, len(paths))
 	for index, p := range paths {
+		p.noOrphanDocuments = !orphans[filepath.Clean(p.path)]
 		seen[filepath.Clean(p.path)] = true
 		changed, documents, err := scanOne(p)
 		if err != nil {
@@ -302,15 +355,113 @@ func scan(
 	return result, nil
 }
 
+func sessionSources(home string, prepared []ingest.Source) ([]source, error) {
+	if prepared == nil {
+		var err error
+		prepared, err = ingest.Discover(home)
+		if err != nil {
+			return nil, err
+		}
+	}
+	paths := make([]source, 0, len(prepared))
+	for _, item := range prepared {
+		paths = append(paths, source{client: item.Client, path: item.Path, priority: item.Priority, identity: item.Identity, size: item.Size, modifiedAt: item.ModifiedAt, changedAt: item.ChangedAt, stable: item.Stable})
+	}
+	sort.Slice(paths, func(i, j int) bool {
+		if paths[i].priority != paths[j].priority {
+			return paths[i].priority < paths[j].priority
+		}
+		return paths[i].path < paths[j].path
+	})
+	return paths, nil
+}
+
+// PlanForCoordinator seals the session domain's eligibility decisions before
+// a shared reader can admit source bodies. ScanWithOptions performs the same
+// checks again at publication time; a source mutation between those phases is
+// rejected as a plan mismatch instead of falling back to an unplanned read.
+func PlanForCoordinator(ctx context.Context, db *sql.DB, home string, prepared []ingest.Source, coordinator *ingest.Coordinator) error {
+	if coordinator == nil {
+		return errors.New("shared ingestion coordinator is required")
+	}
+	paths, err := sessionSources(home, prepared)
+	if err != nil {
+		return err
+	}
+	unchanged, err := unchangedSources(ctx, db, paths)
+	if err != nil {
+		return err
+	}
+	if unchanged {
+		for _, src := range paths {
+			coordinator.Skip(src.path, ingest.ConsumerSession)
+		}
+		return coordinator.Seal(ingest.ConsumerSession)
+	}
+	for _, src := range paths {
+		read, needed, err := plannedReadRange(ctx, db, src)
+		if err != nil {
+			return err
+		}
+		if !needed {
+			coordinator.Skip(src.path, ingest.ConsumerSession)
+			continue
+		}
+		if err = coordinator.Plan(src.path, ingest.ConsumerSession, read); err != nil {
+			return err
+		}
+	}
+	return coordinator.Seal(ingest.ConsumerSession)
+}
+
+func plannedReadRange(ctx context.Context, executor sessionExecutor, src source) (ingest.ReadRange, bool, error) {
+	path := filepath.Clean(src.path)
+	state, found, err := loadSource(ctx, executor, path)
+	if err != nil {
+		return ingest.ReadRange{}, false, err
+	}
+	if !found {
+		state, found, err = loadSourceByIdentity(ctx, executor, src.identity)
+		if err != nil {
+			return ingest.ReadRange{}, false, err
+		}
+	}
+	unchangedMetadata := found && src.stable && state.identity == src.identity && state.parserVersion == ParserVersion && src.size == state.size && state.modifiedAt == src.modifiedAt && state.changedAt == src.changedAt && state.priority == int64(src.priority)
+	if unchangedMetadata {
+		return ingest.ReadRange{}, false, nil
+	}
+	oldPrefix := ""
+	if found {
+		oldPrefix, err = prefixHash(path, state.cursor)
+		if err != nil {
+			return ingest.ReadRange{}, false, err
+		}
+	}
+	appendOnly := found && state.identity == src.identity && state.parserVersion == ParserVersion && src.size > state.cursor && oldPrefix == state.prefixHash
+	start := int64(0)
+	if appendOnly {
+		start = state.cursor - int64(len(state.partial))
+		if start < 0 {
+			return ingest.ReadRange{}, false, ingest.ErrSourceChanged
+		}
+	}
+	return ingest.ReadRange{Start: start, End: src.size}, true, nil
+}
+
 type source struct {
-	client, path string
-	priority     int
+	client, path      string
+	priority          int
+	noOrphanDocuments bool
+	identity          string
+	size, modifiedAt  int64
+	changedAt         int64
+	stable            bool
 }
 
 type sourceState struct {
-	path, identity, prefixHash                        string
-	cursor, size, modifiedAt, priority, parserVersion int64
-	partial                                           []byte
+	path, identity, prefixHash                                   string
+	cursor, size, modifiedAt, changedAt, priority, parserVersion int64
+	partial                                                      []byte
 }
 
 type sessionExecutor interface {
@@ -320,26 +471,43 @@ type sessionExecutor interface {
 }
 
 type sourceUpdate struct {
-	movedFrom  string
-	path       string
-	appendOnly bool
-	writeState bool
-	state      sourceState
-	results    []Result
+	newSource    bool
+	movedFrom    string
+	path         string
+	appendOnly   bool
+	writeState   bool
+	state        sourceState
+	results      []Result
+	precondition sourcePrecondition
+}
+
+type sourcePrecondition struct {
+	found                       bool
+	bounded                     bool
+	state                       sourceState
+	identity, prefixHash        string
+	size, modifiedAt, changedAt int64
 }
 
 func scanSource(ctx context.Context, db *sql.DB, src source) (bool, int, error) {
-	tx, err := db.BeginTx(ctx, nil)
-	if err != nil {
-		return false, 0, err
-	}
-	defer tx.Rollback()
-	update, changed, err := prepareSourceUpdate(ctx, tx, src)
+	return scanSourceWithCoordinator(ctx, db, src, nil)
+}
+
+func scanSourceWithCoordinator(ctx context.Context, db *sql.DB, src source, coordinator *ingest.Coordinator) (bool, int, error) {
+	update, changed, err := prepareSourceUpdate(ctx, db, src, coordinator)
 	if err != nil {
 		return false, 0, err
 	}
 	if !changed && update.movedFrom == "" {
 		return false, 0, nil
+	}
+	tx, err := beginSessionTx(ctx, db)
+	if err != nil {
+		return false, 0, err
+	}
+	defer tx.Rollback()
+	if err = validateSourceUpdate(ctx, tx, update); err != nil {
+		return false, 0, err
 	}
 	docs, err := applySourceUpdate(ctx, tx, update)
 	if err != nil {
@@ -352,7 +520,11 @@ func scanSource(ctx context.Context, db *sql.DB, src source) (bool, int, error) 
 }
 
 func scanSourceExec(ctx context.Context, executor sessionExecutor, src source) (bool, int, error) {
-	update, changed, err := prepareSourceUpdate(ctx, executor, src)
+	return scanSourceExecWithCoordinator(ctx, executor, src, nil)
+}
+
+func scanSourceExecWithCoordinator(ctx context.Context, executor sessionExecutor, src source, coordinator *ingest.Coordinator) (bool, int, error) {
+	update, changed, err := prepareSourceUpdate(ctx, executor, src, coordinator)
 	if err != nil {
 		return false, 0, err
 	}
@@ -366,7 +538,7 @@ func scanSourceExec(ctx context.Context, executor sessionExecutor, src source) (
 	return changed, docs, nil
 }
 
-func prepareSourceUpdate(ctx context.Context, executor sessionExecutor, src source) (sourceUpdate, bool, error) {
+func prepareSourceUpdate(ctx context.Context, executor sessionExecutor, src source, coordinator *ingest.Coordinator) (sourceUpdate, bool, error) {
 	path := filepath.Clean(src.path)
 	info, err := os.Stat(path)
 	if err != nil {
@@ -376,40 +548,69 @@ func prepareSourceUpdate(ctx context.Context, executor sessionExecutor, src sour
 	if err != nil {
 		return sourceUpdate{}, false, err
 	}
-	prefix, err := prefixHash(path, info.Size())
-	if err != nil {
-		return sourceUpdate{}, false, err
-	}
+	_, changedAt, stable := ingest.FileGeneration(info)
 	state, found, err := loadSource(ctx, executor, path)
 	if err != nil {
 		return sourceUpdate{}, false, err
 	}
-	update := sourceUpdate{path: path}
+	update := sourceUpdate{path: path, precondition: sourcePrecondition{identity: identity, size: info.Size(), modifiedAt: info.ModTime().UnixNano(), changedAt: changedAt}}
 	if !found {
 		// A rename preserves source ownership and avoids a full index rebuild.
 		state, found, err = loadSourceByIdentity(ctx, executor, identity)
 		if err != nil {
 			return sourceUpdate{}, false, err
 		}
-		if found {
+	}
+	if found {
+		update.precondition.found = true
+		update.precondition.state = state
+		if state.path != path {
 			update.movedFrom = state.path
 			state.path = path
 		}
 	}
+	unchangedMetadata := found && update.movedFrom == "" && stable && state.identity == identity && state.parserVersion == ParserVersion && info.Size() == state.size && state.modifiedAt == info.ModTime().UnixNano() && state.changedAt == changedAt && state.priority == int64(src.priority)
+	if unchangedMetadata {
+		if coordinator != nil {
+			coordinator.Skip(path, ingest.ConsumerSession)
+		}
+		return update, false, nil
+	}
+	prefix, err := prefixHash(path, info.Size())
+	if err != nil {
+		return sourceUpdate{}, false, err
+	}
+	update.precondition.prefixHash = prefix
 	oldPrefix := ""
+	update.newSource = !found && src.noOrphanDocuments
 	if found {
 		oldPrefix, err = prefixHash(path, state.cursor)
 		if err != nil {
 			return sourceUpdate{}, false, err
 		}
 	}
-	unchanged := found && state.identity == identity && state.parserVersion == ParserVersion && info.Size() == state.size && state.modifiedAt == info.ModTime().UnixNano() && prefix == state.prefixHash && state.priority == int64(src.priority)
-	if unchanged {
-		return update, false, nil
-	}
 	update.appendOnly = found && state.identity == identity && state.parserVersion == ParserVersion && info.Size() > state.cursor && oldPrefix == state.prefixHash
 	var partial []byte
-	if update.appendOnly {
+	var sharedSource *ingest.Source
+	if coordinator != nil {
+		stream, shared, streamErr := coordinator.Stream(ctx, path, ingest.ConsumerSession)
+		if streamErr != nil {
+			return sourceUpdate{}, false, streamErr
+		}
+		if shared {
+			sharedSource = &stream.Source
+			offset, previous := int64(0), []byte(nil)
+			if update.appendOnly {
+				offset, previous = state.cursor, state.partial
+			}
+			beforeSharedSessionReduction()
+			update.results, partial, err = parsePreparedStream(ctx, src.client, path, stream, offset, previous)
+		} else if update.appendOnly {
+			update.results, partial, err = parseRange(src.client, path, state.cursor, state.partial)
+		} else {
+			update.results, partial, err = parseRange(src.client, path, 0, nil)
+		}
+	} else if update.appendOnly {
 		update.results, partial, err = parseRange(src.client, path, state.cursor, state.partial)
 	} else {
 		update.results, partial, err = parseRange(src.client, path, 0, nil)
@@ -417,12 +618,84 @@ func prepareSourceUpdate(ctx context.Context, executor sessionExecutor, src sour
 	if err != nil {
 		return sourceUpdate{}, false, err
 	}
+	if sharedSource != nil {
+		if err = ingest.ValidateCapturedRange(*sharedSource, sharedSource.Size); err != nil {
+			return sourceUpdate{}, false, err
+		}
+		prefix, err = prefixHash(path, sharedSource.Size)
+		if err != nil {
+			return sourceUpdate{}, false, err
+		}
+		update.precondition.bounded = true
+		update.precondition.identity = sharedSource.Identity
+		update.precondition.size = sharedSource.Size
+		update.precondition.modifiedAt = sharedSource.ModifiedAt
+		update.precondition.changedAt = sharedSource.ChangedAt
+		update.precondition.prefixHash = prefix
+		identity, info = sharedSource.Identity, nil
+	}
 	if partial == nil {
 		partial = []byte{}
 	}
 	update.writeState = true
-	update.state = sourceState{path: path, identity: identity, cursor: info.Size(), size: info.Size(), modifiedAt: info.ModTime().UnixNano(), prefixHash: prefix, priority: int64(src.priority), parserVersion: ParserVersion, partial: partial}
+	if sharedSource != nil {
+		update.state = sourceState{path: path, identity: identity, cursor: sharedSource.Size, size: sharedSource.Size, modifiedAt: sharedSource.ModifiedAt, changedAt: sharedSource.ChangedAt, prefixHash: prefix, priority: int64(src.priority), parserVersion: ParserVersion, partial: partial}
+	} else {
+		update.state = sourceState{path: path, identity: identity, cursor: info.Size(), size: info.Size(), modifiedAt: info.ModTime().UnixNano(), changedAt: changedAt, prefixHash: prefix, priority: int64(src.priority), parserVersion: ParserVersion, partial: partial}
+	}
 	return update, true, nil
+}
+
+func validateSourceUpdate(ctx context.Context, executor sessionExecutor, update sourceUpdate) error {
+	info, err := os.Stat(update.path)
+	if err != nil {
+		return err
+	}
+	identity, err := fileIdentity(info)
+	if err != nil {
+		return err
+	}
+	limit := info.Size()
+	if update.precondition.bounded {
+		limit = update.precondition.size
+	}
+	prefix, err := prefixHash(update.path, limit)
+	if err != nil {
+		return err
+	}
+	precondition := update.precondition
+	_, changedAt, stable := ingest.FileGeneration(info)
+	exactMismatch := info.Size() != precondition.size || info.ModTime().UnixNano() != precondition.modifiedAt || (precondition.changedAt != 0 && (!stable || changedAt != precondition.changedAt))
+	boundedMismatch := info.Size() < precondition.size
+	if identity != precondition.identity || ((!precondition.bounded && exactMismatch) || (precondition.bounded && boundedMismatch)) || prefix != precondition.prefixHash {
+		return ingest.ErrSourceChanged
+	}
+	state, found, err := loadSource(ctx, executor, update.path)
+	if err != nil {
+		return err
+	}
+	if update.movedFrom != "" {
+		if found {
+			return ingest.ErrSourceChanged
+		}
+		state, found, err = loadSourceByIdentity(ctx, executor, precondition.identity)
+		if err != nil {
+			return err
+		}
+	} else if !found && !precondition.found {
+		state, found, err = loadSourceByIdentity(ctx, executor, precondition.identity)
+		if err != nil {
+			return err
+		}
+	}
+	if found != precondition.found || (found && !sameSourceState(state, precondition.state)) {
+		return ingest.ErrSourceChanged
+	}
+	return nil
+}
+
+func sameSourceState(left, right sourceState) bool {
+	return left.path == right.path && left.identity == right.identity && left.prefixHash == right.prefixHash && left.cursor == right.cursor && left.size == right.size && left.modifiedAt == right.modifiedAt && left.changedAt == right.changedAt && left.priority == right.priority && left.parserVersion == right.parserVersion && bytes.Equal(left.partial, right.partial)
 }
 
 func applySourceUpdate(ctx context.Context, executor sessionExecutor, update sourceUpdate) (int, error) {
@@ -434,7 +707,7 @@ func applySourceUpdate(ctx context.Context, executor sessionExecutor, update sou
 	if !update.writeState {
 		return 0, nil
 	}
-	if !update.appendOnly {
+	if !update.appendOnly && !update.newSource {
 		if err := deleteSource(ctx, executor, update.path); err != nil {
 			return 0, err
 		}
@@ -463,7 +736,7 @@ func applySourceUpdate(ctx context.Context, executor sessionExecutor, update sou
 func loadSource(ctx context.Context, executor sessionExecutor, path string) (sourceState, bool, error) {
 	var s sourceState
 	s.path = path
-	err := executor.QueryRowContext(ctx, "SELECT identity,cursor,partial_line,size,modified_at,prefix_hash,priority,parser_version FROM session_sources WHERE source_path=?", path).Scan(&s.identity, &s.cursor, &s.partial, &s.size, &s.modifiedAt, &s.prefixHash, &s.priority, &s.parserVersion)
+	err := executor.QueryRowContext(ctx, "SELECT identity,cursor,partial_line,size,modified_at,changed_at,prefix_hash,priority,parser_version FROM session_sources WHERE source_path=?", path).Scan(&s.identity, &s.cursor, &s.partial, &s.size, &s.modifiedAt, &s.changedAt, &s.prefixHash, &s.priority, &s.parserVersion)
 	if errors.Is(err, sql.ErrNoRows) {
 		return s, false, nil
 	}
@@ -471,14 +744,14 @@ func loadSource(ctx context.Context, executor sessionExecutor, path string) (sou
 }
 func loadSourceByIdentity(ctx context.Context, executor sessionExecutor, identity string) (sourceState, bool, error) {
 	var s sourceState
-	err := executor.QueryRowContext(ctx, "SELECT source_path,identity,cursor,partial_line,size,modified_at,prefix_hash,priority,parser_version FROM session_sources WHERE identity=?", identity).Scan(&s.path, &s.identity, &s.cursor, &s.partial, &s.size, &s.modifiedAt, &s.prefixHash, &s.priority, &s.parserVersion)
+	err := executor.QueryRowContext(ctx, "SELECT source_path,identity,cursor,partial_line,size,modified_at,changed_at,prefix_hash,priority,parser_version FROM session_sources WHERE identity=?", identity).Scan(&s.path, &s.identity, &s.cursor, &s.partial, &s.size, &s.modifiedAt, &s.changedAt, &s.prefixHash, &s.priority, &s.parserVersion)
 	if errors.Is(err, sql.ErrNoRows) {
 		return s, false, nil
 	}
 	return s, err == nil, err
 }
 func moveSource(ctx context.Context, executor sessionExecutor, old, new string) error {
-	if _, err := executor.ExecContext(ctx, "INSERT INTO session_sources(source_path,identity,cursor,partial_line,size,modified_at,prefix_hash,priority,parser_version,scanned_at) SELECT ?,identity,cursor,partial_line,size,modified_at,prefix_hash,priority,parser_version,scanned_at FROM session_sources WHERE source_path=?", new, old); err != nil {
+	if _, err := executor.ExecContext(ctx, "INSERT INTO session_sources(source_path,identity,cursor,partial_line,size,modified_at,changed_at,prefix_hash,priority,parser_version,scanned_at) SELECT ?,identity,cursor,partial_line,size,modified_at,changed_at,prefix_hash,priority,parser_version,scanned_at FROM session_sources WHERE source_path=?", new, old); err != nil {
 		return err
 	}
 	if _, err := executor.ExecContext(ctx, "UPDATE session_documents SET source_path=? WHERE source_path=?; UPDATE session_metadata SET source_path=? WHERE source_path=?; DELETE FROM session_sources WHERE source_path=?", new, old, new, old, old); err != nil {
@@ -496,7 +769,7 @@ func deleteSource(ctx context.Context, executor sessionExecutor, path string) er
 	return nil
 }
 func saveSource(ctx context.Context, executor sessionExecutor, s sourceState) error {
-	_, err := executor.ExecContext(ctx, "INSERT INTO session_sources(source_path,identity,cursor,partial_line,size,modified_at,prefix_hash,priority,parser_version,scanned_at) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(source_path) DO UPDATE SET identity=excluded.identity,cursor=excluded.cursor,partial_line=excluded.partial_line,size=excluded.size,modified_at=excluded.modified_at,prefix_hash=excluded.prefix_hash,priority=excluded.priority,parser_version=excluded.parser_version,scanned_at=excluded.scanned_at", s.path, s.identity, s.cursor, s.partial, s.size, s.modifiedAt, s.prefixHash, s.priority, s.parserVersion, time.Now().UTC().Format(time.RFC3339Nano))
+	_, err := executor.ExecContext(ctx, "INSERT INTO session_sources(source_path,identity,cursor,partial_line,size,modified_at,changed_at,prefix_hash,priority,parser_version,scanned_at) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(source_path) DO UPDATE SET identity=excluded.identity,cursor=excluded.cursor,partial_line=excluded.partial_line,size=excluded.size,modified_at=excluded.modified_at,changed_at=excluded.changed_at,prefix_hash=excluded.prefix_hash,priority=excluded.priority,parser_version=excluded.parser_version,scanned_at=excluded.scanned_at", s.path, s.identity, s.cursor, s.partial, s.size, s.modifiedAt, s.changedAt, s.prefixHash, s.priority, s.parserVersion, time.Now().UTC().Format(time.RFC3339Nano))
 	return err
 }
 func removeMissingSources(ctx context.Context, db *sql.DB, seen map[string]bool) error {
@@ -677,6 +950,61 @@ func fileIdentity(info fs.FileInfo) (string, error) {
 // parseRange consumes only complete JSONL records.  The unterminated suffix is
 // returned byte-for-byte so a later append resumes it without indexing a
 // partial prompt or reply.
+func parsePreparedStream(ctx context.Context, client, path string, stream ingest.Stream, offset int64, previous []byte) ([]Result, []byte, error) {
+	start := offset - int64(len(previous))
+	if start < 0 || offset > stream.Source.Size {
+		return nil, nil, ingest.ErrSourceChanged
+	}
+	byID := map[string]*Result{}
+	currentID := ""
+	for batch := range stream.Batches {
+		for _, record := range batch.Records {
+			if record.Offset < start || record.Malformed {
+				continue
+			}
+			v := record.Value
+			id, doc, meta := extract(client, v)
+			if id != "" {
+				currentID = id
+			}
+			if id == "" {
+				id = currentID
+			}
+			if id == "" {
+				continue
+			}
+			if doc.Kind == "" {
+				doc = fixtureDocument(client, id, v)
+			}
+			if doc.SessionID == "" && doc.Kind != "" {
+				doc.SessionID = id
+			}
+			meta.SessionID = id
+			result := byID[id]
+			if result == nil {
+				result = &Result{Metadata: Metadata{Client: client, SessionID: id, SourcePath: filepath.Clean(path)}}
+				byID[id] = result
+			}
+			mergeMeta(&result.Metadata, meta)
+			if doc.Kind != "" {
+				result.Documents = append(result.Documents, doc)
+			}
+		}
+	}
+	tail, err := stream.Wait(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	out := make([]Result, 0, len(byID))
+	for _, result := range byID {
+		if result.Project == "" {
+			result.Project = NormalizeProject(filepath.Dir(path))
+		}
+		out = append(out, *result)
+	}
+	return out, tail, nil
+}
+
 func parseRange(client, path string, offset int64, previous []byte) ([]Result, []byte, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -989,10 +1317,21 @@ func replaceExec(ctx context.Context, executor sessionExecutor, r Result) error 
 	return insertResult(ctx, executor, r)
 }
 func insertResult(ctx context.Context, executor sessionExecutor, r Result) error {
-	for _, d := range r.Documents {
-		if _, err := executor.ExecContext(ctx, "INSERT INTO session_documents(source_path,client,session_id,event_at,kind,text) VALUES(?,?,?,?,?,?)", r.SourcePath, d.Client, d.SessionID, d.EventAt, d.Kind, d.Text); err != nil {
+	for start := 0; start < len(r.Documents); {
+		end, bytes := start, 0
+		for end < len(r.Documents) && end-start < 64 && (end == start || bytes+len(r.Documents[end].Text) <= 1<<20) {
+			bytes += len(r.Documents[end].Text)
+			end++
+		}
+		args := make([]any, 0, (end-start)*6)
+		for _, d := range r.Documents[start:end] {
+			args = append(args, r.SourcePath, d.Client, d.SessionID, d.EventAt, d.Kind, d.Text)
+		}
+		query := "INSERT INTO session_documents(source_path,client,session_id,event_at,kind,text) VALUES" + strings.TrimSuffix(strings.Repeat("(?,?,?,?,?,?),", end-start), ",")
+		if _, err := executor.ExecContext(ctx, query, args...); err != nil {
 			return err
 		}
+		start = end
 	}
 	_, err := executor.ExecContext(ctx, "INSERT INTO session_metadata(source_path,client,session_id,project,model,parser_version,first_at,last_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(source_path,client,session_id) DO UPDATE SET project=CASE WHEN excluded.project='' THEN session_metadata.project ELSE excluded.project END,model=CASE WHEN excluded.model='' THEN session_metadata.model ELSE excluded.model END,parser_version=excluded.parser_version,first_at=CASE WHEN session_metadata.first_at='' OR excluded.first_at<session_metadata.first_at THEN excluded.first_at ELSE session_metadata.first_at END,last_at=CASE WHEN excluded.last_at>session_metadata.last_at THEN excluded.last_at ELSE session_metadata.last_at END", r.SourcePath, r.Client, r.SessionID, r.Project, r.Model, ParserVersion, r.FirstAt, r.LastAt)
 	return err
@@ -1213,9 +1552,13 @@ func RebuildWithOptions(ctx context.Context, db *sql.DB, home string, options Sc
 	if _, err = tx.ExecContext(ctx, "DELETE FROM session_documents; DELETE FROM session_metadata; DELETE FROM session_sources"); err != nil {
 		return ScanResult{}, err
 	}
-	result, err := scan(ctx, tx, home, options.Progress,
+	paths, err := sessionSources(home, options.PreparedSources)
+	if err != nil {
+		return ScanResult{}, err
+	}
+	result, err := scan(ctx, tx, paths, options.Progress,
 		func(src source) (bool, int, error) {
-			return scanSourceExec(ctx, tx, src)
+			return scanSourceExecWithCoordinator(ctx, tx, src, options.Coordinator)
 		},
 		func(seen map[string]bool) error {
 			return removeMissingSourcesExec(ctx, tx, seen)
@@ -1223,6 +1566,9 @@ func RebuildWithOptions(ctx context.Context, db *sql.DB, home string, options Sc
 	)
 	if err != nil {
 		return result, err
+	}
+	if _, err = store.MintSessionIndexEpoch(ctx, tx); err != nil {
+		return ScanResult{}, err
 	}
 	if err = tx.Commit(); err != nil {
 		return ScanResult{}, err

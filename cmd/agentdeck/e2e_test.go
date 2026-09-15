@@ -17,6 +17,7 @@ import (
 
 	"github.com/kitdine/agent-deck/internal/credentialvault"
 	"github.com/kitdine/agent-deck/internal/output"
+	"github.com/kitdine/agent-deck/internal/scanruntime"
 	"github.com/kitdine/agent-deck/internal/store"
 	"github.com/kitdine/agent-deck/internal/usage"
 )
@@ -33,6 +34,7 @@ func TestIsolatedEndToEndFlow(t *testing.T) {
 	observed := make(map[string]guiCommandContract, len(fixture.Contracts))
 	root := t.TempDir()
 	state, restoredState := filepath.Join(root, "state"), filepath.Join(root, "restored")
+	waitForDetachedScanCleanup(t, state)
 	home, bin := filepath.Join(root, "home"), filepath.Join(root, "bin")
 	if err := os.MkdirAll(filepath.Join(home, ".codex", "sessions"), 0700); err != nil {
 		t.Fatal(err)
@@ -53,7 +55,14 @@ func TestIsolatedEndToEndFlow(t *testing.T) {
 		"'{\"timestamp\":\"2026-07-14T00:00:01Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"token_count\",\"info\":{\"last_token_usage\":{\"input_tokens\":10,\"cached_input_tokens\":0,\"output_tokens\":2}}}}' " +
 		"'{\"type\":\"visible_user_prompt\",\"session_id\":\"phase7-run\",\"payload\":{\"text\":\"phase7 visible prompt\"}}' > \"$AGENTDECK_PHASE7_LOG\"\n"
 	for _, client := range []string{"codex", "claude"} {
-		if err := os.WriteFile(filepath.Join(bin, client), []byte(script), 0700); err != nil {
+		clientScript := script
+		if client == "claude" {
+			// This stub exercises the Claude launcher envelope, not Codex
+			// ingestion. Rewriting the same Codex source here invalidates the
+			// earlier exact-run binding once ctime changes are honored.
+			clientScript = "#!/bin/sh\nexit 0\n"
+		}
+		if err := os.WriteFile(filepath.Join(bin, client), []byte(clientScript), 0700); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -135,6 +144,7 @@ func TestIsolatedEndToEndFlow(t *testing.T) {
 		t.Fatalf("exact run = %#v, %v", runEnvelope.Data, err)
 	}
 	runJSON("run.claude", "", "run", "claude", "--", "phase7")
+	runJSON("scan", "", "scan")
 	runJSON("usage.scan", "", "usage", "scan")
 	runJSON("usage.summary", "", "usage", "summary")
 	runJSON("usage.stats", "", "usage", "stats", "--from", "2026-07-14", "--to", "2026-07-20")
@@ -185,6 +195,13 @@ func TestIsolatedEndToEndFlow(t *testing.T) {
 	runJSON("session.list", "", "session", "list")
 	runJSON("session.show", "", "session", "show", "phase7-run")
 	search := runJSON("session.search", "", "session", "search", "phase7")
+	releaseScan, err := scanruntime.AcquireMaintenance(context.Background(), state, 5*time.Second)
+	if err != nil {
+		t.Fatalf("wait for complete scan round before desktop snapshot: %v", err)
+	}
+	if err = releaseScan(); err != nil {
+		t.Fatalf("release scan maintenance boundary: %v", err)
+	}
 	runJSON("desktop.snapshot", "", "desktop", "snapshot", "--wire-version", "1", "--recent-limit", "5")
 	if !bytes.Contains(search, []byte("phase7 visible prompt")) {
 		t.Fatalf("session search did not return approved synthetic content: %s", search)
@@ -472,6 +489,11 @@ func assertCommandContracts(t *testing.T, expected, actual map[string]guiCommand
 	t.Helper()
 	if reflect.DeepEqual(expected, actual) {
 		return
+	}
+	for command, want := range expected {
+		if got, found := actual[command]; !found || !reflect.DeepEqual(want, got) {
+			t.Fatalf("command contract %s differs\nwant=%#v\ngot=%#v", command, want, got)
+		}
 	}
 	encoded, err := json.MarshalIndent(actual, "", "  ")
 	if err != nil {

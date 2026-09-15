@@ -10,8 +10,10 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kitdine/agent-deck/internal/activity"
+	"github.com/kitdine/agent-deck/internal/ingest"
 	"github.com/kitdine/agent-deck/internal/store"
 )
 
@@ -957,6 +959,10 @@ func TestRebuildFailurePreservesIndex(t *testing.T) {
 	}
 	beforeTables := captureSessionIndex(t, database.DB)
 	beforePublic := captureSessionPublicState(t, database.DB, "earlierrebuild OR laterrebuild")
+	beforeEpoch, err := database.SessionIndexEpoch(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	progress := &sessionProgressRecorder{}
 	_, err = RebuildWithOptions(ctx, database.DB, home, ScanOptions{Progress: progress})
@@ -973,6 +979,41 @@ func TestRebuildFailurePreservesIndex(t *testing.T) {
 	}
 	if !reflect.DeepEqual(afterPublic, beforePublic) {
 		t.Fatalf("Rebuild failure changed Search/List: before=%#v after=%#v", beforePublic, afterPublic)
+	}
+	if afterEpoch, epochErr := database.SessionIndexEpoch(ctx); epochErr != nil || afterEpoch != beforeEpoch {
+		t.Fatalf("failed rebuild changed session epoch: before=%d after=%d err=%v", beforeEpoch, afterEpoch, epochErr)
+	}
+}
+
+func TestRebuildMintsSessionIndexEpoch(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	home := filepath.Join(root, "home")
+	source := filepath.Join(home, ".codex", "sessions", "rebuild.jsonl")
+	if err := os.MkdirAll(filepath.Dir(source), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(source, []byte("{\"type\":\"visible_user_prompt\",\"session_id\":\"rebuild-epoch\",\"payload\":{\"text\":\"visible\"}}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	database, err := store.OpenSessions(ctx, filepath.Join(root, "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	before, err := database.SessionIndexEpoch(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = Rebuild(ctx, database.DB, home); err != nil {
+		t.Fatal(err)
+	}
+	after, err := database.SessionIndexEpoch(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after == before {
+		t.Fatalf("session rebuild retained epoch %d", before)
 	}
 }
 
@@ -1059,6 +1100,165 @@ func TestScanAndRebuildWithOptionsReportAggregateProgress(t *testing.T) {
 	}
 	if canceled.starts != 1 || canceled.stops != 1 {
 		t.Fatalf("canceled lifecycle starts=%d stops=%d", canceled.starts, canceled.stops)
+	}
+}
+
+func TestScanWithCoordinatorReducesBeforeBeginningPublicationTransaction(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	home := filepath.Join(root, "home")
+	path := filepath.Join(home, ".codex", "sessions", "shared.jsonl")
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("{\"type\":\"session_meta\",\"payload\":{\"session_id\":\"shared\"}}\n{\"type\":\"visible_user_prompt\",\"payload\":{\"text\":\"shared reduction\"}}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	database, err := store.OpenSessions(ctx, filepath.Join(root, "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	sources, err := ingest.Discover(home)
+	if err != nil || len(sources) != 1 {
+		t.Fatalf("discover sources=%#v err=%v", sources, err)
+	}
+	coordinator := ingest.NewCoordinator(sources, ingest.Options{RequirePlans: true})
+	t.Cleanup(coordinator.Close)
+	if err = coordinator.Plan(sources[0].Path, ingest.ConsumerSession, ingest.ReadRange{End: sources[0].Size}); err != nil {
+		t.Fatal(err)
+	}
+	coordinator.Skip(sources[0].Path, ingest.ConsumerUsage)
+	if err = coordinator.Seal(ingest.ConsumerUsage); err != nil {
+		t.Fatal(err)
+	}
+	if err = coordinator.Seal(ingest.ConsumerSession); err != nil {
+		t.Fatal(err)
+	}
+	coordinator.Start(ctx)
+
+	reductionStarted := make(chan struct{})
+	releaseReduction := make(chan struct{})
+	released := false
+	release := func() {
+		if !released {
+			close(releaseReduction)
+			released = true
+		}
+	}
+	oldReductionBarrier := beforeSharedSessionReduction
+	beforeSharedSessionReduction = func() {
+		close(reductionStarted)
+		<-releaseReduction
+	}
+	t.Cleanup(func() { beforeSharedSessionReduction = oldReductionBarrier })
+	t.Cleanup(release)
+
+	transactionStarted := make(chan struct{})
+	oldBegin := beginSessionTx
+	beginSessionTx = func(ctx context.Context, db *sql.DB) (*sql.Tx, error) {
+		close(transactionStarted)
+		return oldBegin(ctx, db)
+	}
+	t.Cleanup(func() { beginSessionTx = oldBegin })
+
+	type outcome struct {
+		result ScanResult
+		err    error
+	}
+	done := make(chan outcome, 1)
+	go func() {
+		result, scanErr := ScanWithOptions(ctx, database.DB, home, ScanOptions{PreparedSources: sources, Coordinator: coordinator})
+		done <- outcome{result: result, err: scanErr}
+	}()
+	select {
+	case <-reductionStarted:
+	case <-time.After(time.Second):
+		t.Fatal("shared session reduction did not begin")
+	}
+	select {
+	case <-transactionStarted:
+		t.Fatal("publication transaction started before shared reduction completed")
+	default:
+	}
+	release()
+	select {
+	case got := <-done:
+		if got.err != nil || got.result.Sources != 1 || got.result.Documents != 1 {
+			t.Fatalf("coordinated scan result=%#v err=%v", got.result, got.err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("coordinated scan did not finish after reduction released")
+	}
+}
+
+func TestSharedAppendPlanIncludesStoredPartialRecord(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	home := filepath.Join(root, "home")
+	path := filepath.Join(home, ".codex", "sessions", "partial.jsonl")
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	initial := []byte("{\"type\":\"session_meta\",\"payload\":{\"session_id\":\"partial\"}}\n{\"type\":\"visible_user_prompt\",\"payload\":{\"session_id\":\"partial\",\"text\":\"shared")
+	if err := os.WriteFile(path, initial, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	database, err := store.OpenSessions(ctx, filepath.Join(root, "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if _, err = Scan(ctx, database.DB, home); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(path, append(initial, []byte(" append\"}}\n")...), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	sources, err := ingest.Discover(home)
+	if err != nil || len(sources) != 1 {
+		t.Fatalf("discover sources=%#v err=%v", sources, err)
+	}
+	if !sources[0].Stable {
+		t.Skip("stable file generations unavailable")
+	}
+	coordinator := ingest.NewCoordinator(sources, ingest.Options{RequirePlans: true})
+	t.Cleanup(coordinator.Close)
+	coordinator.Skip(path, ingest.ConsumerUsage)
+	if err = coordinator.Seal(ingest.ConsumerUsage); err != nil {
+		t.Fatal(err)
+	}
+	if err = PlanForCoordinator(ctx, database.DB, home, sources, coordinator); err != nil {
+		t.Fatal(err)
+	}
+	late := []byte("{\"type\":\"visible_user_prompt\",\"payload\":{\"session_id\":\"partial\",\"text\":\"late suffix\"}}\n")
+	file, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = file.Write(late); err != nil {
+		file.Close()
+		t.Fatal(err)
+	}
+	if err = file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	coordinator.Start(ctx)
+	if _, err = ScanWithOptions(ctx, database.DB, home, ScanOptions{PreparedSources: sources, Coordinator: coordinator}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Search(ctx, database.DB, "shared AND append")
+	if err != nil || len(got) != 1 || got[0].Text != "shared append" {
+		t.Fatalf("completed partial record = %#v, %v", got, err)
+	}
+	if lateResult, searchErr := Search(ctx, database.DB, "late AND suffix"); searchErr != nil || len(lateResult) != 0 {
+		t.Fatalf("late suffix entered captured round = %#v, %v", lateResult, searchErr)
+	}
+	if _, err = Scan(ctx, database.DB, home); err != nil {
+		t.Fatal(err)
+	}
+	if lateResult, searchErr := Search(ctx, database.DB, "late AND suffix"); searchErr != nil || len(lateResult) != 1 {
+		t.Fatalf("next round missed late suffix = %#v, %v", lateResult, searchErr)
 	}
 }
 

@@ -13,7 +13,7 @@ import (
 	"testing"
 )
 
-func TestNetworkImportsAreLimitedToPriceUpdate(t *testing.T) {
+func TestNetworkImportsAreLimitedToPriceUpdateAndLocalScanTransport(t *testing.T) {
 	root := filepath.Join("..", "..")
 	if err := auditNetworkImports(root); err != nil {
 		t.Fatal(err)
@@ -39,7 +39,10 @@ func TestNetworkImportAuditSkipsUntrackedEditorState(t *testing.T) {
 }
 
 func auditNetworkImports(root string) error {
-	allowed := filepath.Clean(filepath.Join(root, "internal", "usage", "price_update.go"))
+	allowed := map[string]string{
+		filepath.Clean(filepath.Join(root, "internal", "usage", "price_update.go")):      "net/http",
+		filepath.Clean(filepath.Join(root, "internal", "scanruntime", "scanruntime.go")): "net",
+	}
 	return filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -57,7 +60,7 @@ func auditNetworkImports(root string) error {
 		for _, imported := range file.Imports {
 			name := strings.Trim(imported.Path.Value, "\"")
 			if name == "net" || name == "net/http" {
-				if filepath.Clean(path) != allowed || name != "net/http" {
+				if allowed[filepath.Clean(path)] != name {
 					return &networkImportError{path: path, name: name}
 				}
 			}

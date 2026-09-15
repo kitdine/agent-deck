@@ -177,8 +177,12 @@ func newPresentationAccumulator() *presentationAccumulator {
 	return &presentationAccumulator{stats: newStatsAccumulator()}
 }
 
-func (a *presentationAccumulator) add(event storedEvent, result Result) error {
-	if err := a.stats.add(event, result); err != nil {
+func (a *presentationAccumulator) add(event storedEvent, result Result, costs ...*big.Rat) error {
+	var base, provider *big.Rat
+	if len(costs) == 2 {
+		base, provider = costs[0], costs[1]
+	}
+	if err := a.stats.addWithParsedCosts(event, result, base, provider); err != nil {
 		return err
 	}
 	a.logicalInput += event.Tokens["input_tokens"]
@@ -281,6 +285,14 @@ func (s *Service) Presentation(ctx context.Context, now time.Time, location *tim
 			summary.add(event, attribution, calculated)
 		}
 		aggregated := aggregateAttributedResult(calculated, attribution)
+		baseCost, err := decimal(aggregated.KnownCatalogBaseCost)
+		if err != nil {
+			return PresentationReport{}, err
+		}
+		providerCost, err := decimal(aggregated.KnownProviderCost)
+		if err != nil {
+			return PresentationReport{}, err
+		}
 
 		for _, scopeName := range []string{"all", event.Client} {
 			scope := scopes[scopeName]
@@ -291,14 +303,14 @@ func (s *Service) Presentation(ctx context.Context, now time.Time, location *tim
 			if scope.daily[date] == nil {
 				scope.daily[date] = newPresentationAccumulator()
 			}
-			if err = scope.daily[date].add(event, aggregated); err != nil {
+			if err = scope.daily[date].add(event, aggregated, baseCost, providerCost); err != nil {
 				return PresentationReport{}, err
 			}
 			if !at.Before(today) {
 				if scope.hourly[at.Hour()] == nil {
 					scope.hourly[at.Hour()] = newPresentationAccumulator()
 				}
-				if err = scope.hourly[at.Hour()].add(event, aggregated); err != nil {
+				if err = scope.hourly[at.Hour()].add(event, aggregated, baseCost, providerCost); err != nil {
 					return PresentationReport{}, err
 				}
 			}
@@ -308,7 +320,7 @@ func (s *Service) Presentation(ctx context.Context, now time.Time, location *tim
 				if scope.rhythm[key] == nil {
 					scope.rhythm[key] = newPresentationAccumulator()
 				}
-				if err = scope.rhythm[key].add(event, aggregated); err != nil {
+				if err = scope.rhythm[key].add(event, aggregated, baseCost, providerCost); err != nil {
 					return PresentationReport{}, err
 				}
 			}
@@ -317,10 +329,10 @@ func (s *Service) Presentation(ctx context.Context, now time.Time, location *tim
 				if at.Before(period.start) {
 					continue
 				}
-				if err = addPresentationQuality(scope, period.name, attribution, event, aggregated); err != nil {
+				if err = addPresentationQuality(scope, period.name, attribution, event, aggregated, baseCost, providerCost); err != nil {
 					return PresentationReport{}, err
 				}
-				if err = scope.pricing[period.name].add(event, aggregated); err != nil {
+				if err = scope.pricing[period.name].add(event, aggregated, baseCost, providerCost); err != nil {
 					return PresentationReport{}, err
 				}
 				if len(calculated.Unpriced) > 0 {
@@ -331,14 +343,14 @@ func (s *Service) Presentation(ctx context.Context, now time.Time, location *tim
 					scope.unpriced[period.name][identifier] = struct{}{}
 				}
 				periodValue := scope.periods[period.name]
-				if err = periodValue.total.add(event, aggregated); err != nil {
+				if err = periodValue.total.add(event, aggregated, baseCost, providerCost); err != nil {
 					return PresentationReport{}, err
 				}
 				modelKey := event.Client + "\x00" + event.Model
 				if periodValue.models[modelKey] == nil {
 					periodValue.models[modelKey] = newPresentationAccumulator()
 				}
-				if err = periodValue.models[modelKey].add(event, aggregated); err != nil {
+				if err = periodValue.models[modelKey].add(event, aggregated, baseCost, providerCost); err != nil {
 					return PresentationReport{}, err
 				}
 			}
@@ -359,7 +371,7 @@ func (s *Service) Presentation(ctx context.Context, now time.Time, location *tim
 	return report, nil
 }
 
-func addPresentationQuality(scope *presentationScopeAccumulator, period string, attribution eventAttribution, event storedEvent, result Result) error {
+func addPresentationQuality(scope *presentationScopeAccumulator, period string, attribution eventAttribution, event storedEvent, result Result, costs ...*big.Rat) error {
 	quality := "unattributed"
 	switch attribution.quality {
 	case "exact":
@@ -379,7 +391,7 @@ func addPresentationQuality(scope *presentationScopeAccumulator, period string, 
 			byPeriod[providerName][quality] = newPresentationAccumulator()
 		}
 		tier := byPeriod[providerName][quality]
-		if err := tier.add(event, result); err != nil {
+		if err := tier.add(event, result, costs...); err != nil {
 			return err
 		}
 		if !attribution.spendEligible {

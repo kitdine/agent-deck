@@ -519,6 +519,27 @@ final class StubDesktopHost: DesktopSnapshotRefreshing {
 		}
 	}
 
+	func refresh(recentLimit: Int, progress: @escaping @Sendable (DesktopScanProgress) -> Void) async throws -> DesktopWireEnvelopeV1 {
+		progress(.waiting)
+		if case .suspendedEnvelope = behavior {
+			progress(DesktopScanProgress(
+				sequence: 1,
+				stage: .importing,
+				usage: DesktopScanDomainProgress(state: "processing", committed: 3, total: 8, skipped: 0),
+				session: DesktopScanDomainProgress(state: "processing", committed: 2, total: 8, skipped: 1)
+			))
+		}
+		if case .failure = behavior {
+			progress(DesktopScanProgress(
+				sequence: 2,
+				stage: .completed,
+				usage: DesktopScanDomainProgress(state: "completed", committed: 8, total: 8, skipped: 0),
+				session: DesktopScanDomainProgress(state: "failed", committed: 0, total: 0, skipped: 0)
+			))
+		}
+		return try await refresh(recentLimit: recentLimit)
+	}
+
 	func resume() {
 		continuation?.resume()
 		continuation = nil

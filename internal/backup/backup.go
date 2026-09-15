@@ -318,15 +318,21 @@ func Restore(ctx context.Context, archivePath, targetRoot, passphrase string, ma
 		}
 	}
 	corePath := filepath.Join(targetRoot, coreName)
-	for _, suffix := range []string{"-wal", "-shm", "-journal"} {
-		path := corePath + suffix
-		created, reserveErr := writeNewPrivateFile(path, nil)
-		if created {
-			ownedPaths = append(ownedPaths, path)
-		}
-		if reserveErr != nil {
-			err = reserveErr
-			return Manifest{}, err
+	databasePaths := []string{corePath}
+	if _, included := entries[sessionsName]; included {
+		databasePaths = append(databasePaths, filepath.Join(targetRoot, sessionsName))
+	}
+	for _, databasePath := range databasePaths {
+		for _, suffix := range []string{"-wal", "-shm", "-journal"} {
+			path := databasePath + suffix
+			created, reserveErr := writeNewPrivateFile(path, nil)
+			if created {
+				ownedPaths = append(ownedPaths, path)
+			}
+			if reserveErr != nil {
+				err = reserveErr
+				return Manifest{}, err
+			}
 		}
 	}
 	database, openErr := store.OpenWithLockHeld(ctx, targetRoot)
@@ -382,8 +388,26 @@ func Restore(ctx context.Context, archivePath, targetRoot, passphrase string, ma
 		_ = database.Close()
 		return Manifest{}, err
 	}
+	if err = database.MintDerivedSnapshotEpoch(ctx); err != nil {
+		_ = database.Close()
+		return Manifest{}, err
+	}
 	if err = database.Close(); err != nil {
 		return Manifest{}, err
+	}
+	if _, included := entries[sessionsName]; included {
+		sessions, openErr := sql.Open("sqlite", "file:"+filepath.Join(targetRoot, sessionsName)+"?mode=rw")
+		if openErr != nil {
+			return Manifest{}, openErr
+		}
+		_, mintErr := store.MintSessionIndexEpoch(ctx, sessions)
+		closeErr := sessions.Close()
+		if mintErr != nil {
+			return Manifest{}, mintErr
+		}
+		if closeErr != nil {
+			return Manifest{}, closeErr
+		}
 	}
 	return manifest, nil
 }

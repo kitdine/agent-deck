@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/kitdine/agent-deck/internal/activity"
+	"github.com/kitdine/agent-deck/internal/ingest"
 	"github.com/kitdine/agent-deck/internal/platform"
 	"github.com/kitdine/agent-deck/internal/store"
 )
@@ -35,17 +36,18 @@ var bundledCatalog []byte
 const (
 	bundledCatalogSourceURL       = "bundled://agentdeck/model-prices.json"
 	legacyBundledCatalogSourceURL = "bundled://config/model-prices.json"
-	// usageParserVersion 7 captures each transcript's opening record as the
+	// ParserVersion 7 captures each transcript's opening record as the
 	// session's process start. It is only readable from offset zero, so version 6
 	// sources must be re-read: an incremental scan skips a file whose size and
 	// mtime are unchanged, which is every existing source, and the attribution
 	// would keep falling back to the anchor walk for the whole store.
 	//
-	// usageParserVersion 6 adds the activity-classification reduction and the
+	// ParserVersion 6 adds the activity-classification reduction and the
 	// read-shaped shell flag used by workflow rework metrics. Version 5 sources
 	// must be re-read after schema v21 replaces the reserved signal table, or an
 	// upgraded store would expose empty signals until every source changed.
-	usageParserVersion = 7
+	ParserVersion      = 7
+	usageParserVersion = ParserVersion
 	// sessionStartLayout is RFC3339 with the fraction always written to nine
 	// digits. time.RFC3339Nano drops trailing zeros, which makes its lexical
 	// order disagree with time order inside a second — "…00Z" sorts after
@@ -292,6 +294,8 @@ type InventoryEntry struct {
 	Identity   string `json:"identity"`
 	Size       int64  `json:"size"`
 	ModifiedAt int64  `json:"modified_at"`
+	ChangedAt  int64  `json:"changed_at"`
+	Stable     bool   `json:"stable"`
 }
 
 type Inventory struct {
@@ -334,6 +338,8 @@ type Service struct {
 	Open                    func(string) (SourceFile, error)
 	MachineIdentity         func(context.Context) (string, error)
 	Progress                ScanProgressReporter
+	PreparedSources         []ingest.Source
+	Coordinator             *ingest.Coordinator
 	machineIdentityOnce     sync.Once
 	machineIdentityValue    string
 }
@@ -710,6 +716,9 @@ func (s *Service) scanInventory(ctx context.Context, inventory Inventory, progre
 	for index, entry := range inventory.Entries {
 		candidate := recoveryCandidates[entry.Path]
 		if !candidate && !changed[entry.Path] {
+			if s.Coordinator != nil {
+				s.Coordinator.Skip(entry.Path, ingest.ConsumerUsage)
+			}
 			if progress != nil {
 				progress.Update(ScanProgress{Processed: index + 1, Total: len(inventory.Entries), Reason: reason})
 			}
@@ -820,21 +829,21 @@ func (s *Service) Inventory(ctx context.Context) (Inventory, error) {
 		return Inventory{}, err
 	}
 	inventory := Inventory{Entries: entries, Fingerprint: inventoryFingerprint(entries)}
-	rows, err := s.Store.DB.QueryContext(ctx, "SELECT path,identity,size,cursor,modified_at,parser_version FROM usage_source_files")
+	rows, err := s.Store.DB.QueryContext(ctx, "SELECT path,identity,size,cursor,modified_at,changed_at,parser_version FROM usage_source_files")
 	if err != nil {
 		return Inventory{}, err
 	}
 	defer rows.Close()
 	type storedEntry struct {
-		identity               string
-		size, cursor, modified int64
-		parserVersion          int
+		identity                          string
+		size, cursor, modified, changedAt int64
+		parserVersion                     int
 	}
 	stored := map[string]storedEntry{}
 	for rows.Next() {
 		var path string
 		var item storedEntry
-		if err = rows.Scan(&path, &item.identity, &item.size, &item.cursor, &item.modified, &item.parserVersion); err != nil {
+		if err = rows.Scan(&path, &item.identity, &item.size, &item.cursor, &item.modified, &item.changedAt, &item.parserVersion); err != nil {
 			return Inventory{}, err
 		}
 		stored[path] = item
@@ -849,12 +858,12 @@ func (s *Service) Inventory(ctx context.Context) (Inventory, error) {
 		switch {
 		case !found:
 			inventory.Added = append(inventory.Added, entry.Path)
-		case previous.parserVersion != usageParserVersion:
+		case previous.parserVersion != ParserVersion:
 			inventory.Mutated = append(inventory.Mutated, entry.Path)
-			if previous.identity == entry.Identity && previous.size == entry.Size && previous.modified == entry.ModifiedAt {
+			if entry.Stable && previous.identity == entry.Identity && previous.size == entry.Size && previous.modified == entry.ModifiedAt && previous.changedAt == entry.ChangedAt {
 				parserVersionRereads++
 			}
-		case previous.identity == entry.Identity && previous.size == entry.Size && previous.modified == entry.ModifiedAt:
+		case entry.Stable && previous.identity == entry.Identity && previous.size == entry.Size && previous.modified == entry.ModifiedAt && previous.changedAt == entry.ChangedAt:
 		case previous.identity == entry.Identity && entry.Size > previous.size && entry.Size >= previous.cursor:
 			inventory.Appended = append(inventory.Appended, entry.Path)
 		default:
@@ -869,7 +878,95 @@ func (s *Service) Inventory(ctx context.Context) (Inventory, error) {
 	return inventory, nil
 }
 
+// PlanForCoordinator completes usage eligibility before any shared body reader
+// is admitted. It returns the exact inventory consumed by ScanInventory so a
+// later scan cannot silently replace the sealed plan with a second discovery.
+func (s *Service) PlanForCoordinator(ctx context.Context, coordinator *ingest.Coordinator) (Inventory, error) {
+	if coordinator == nil {
+		return Inventory{}, errors.New("shared ingestion coordinator is required")
+	}
+	inventory, err := s.Inventory(ctx)
+	if err != nil {
+		return Inventory{}, err
+	}
+	_, recoveryCandidates, err := s.orphanRecoveryCandidates(ctx, inventory.Entries)
+	if err != nil {
+		return Inventory{}, err
+	}
+	changed := make(map[string]bool, len(inventory.Added)+len(inventory.Appended)+len(inventory.Mutated))
+	appended := make(map[string]bool, len(inventory.Appended))
+	for _, paths := range [][]string{inventory.Added, inventory.Appended, inventory.Mutated} {
+		for _, path := range paths {
+			changed[path] = true
+		}
+	}
+	for _, path := range inventory.Appended {
+		appended[path] = true
+	}
+	for _, entry := range inventory.Entries {
+		if !recoveryCandidates[entry.Path] && !changed[entry.Path] {
+			coordinator.Skip(entry.Path, ingest.ConsumerUsage)
+			continue
+		}
+		start := int64(0)
+		if appended[entry.Path] && !recoveryCandidates[entry.Path] {
+			start, err = s.plannedAppendStart(ctx, entry)
+			if err != nil {
+				return Inventory{}, err
+			}
+		}
+		if err = coordinator.Plan(entry.Path, ingest.ConsumerUsage, ingest.ReadRange{Start: start, End: entry.Size}); err != nil {
+			return Inventory{}, err
+		}
+	}
+	if err = coordinator.Seal(ingest.ConsumerUsage); err != nil {
+		return Inventory{}, err
+	}
+	return inventory, nil
+}
+
+func (s *Service) plannedAppendStart(ctx context.Context, entry InventoryEntry) (int64, error) {
+	var cursor int64
+	var identity, prefix string
+	var parserVersion int
+	err := s.Store.DB.QueryRowContext(ctx, "SELECT cursor,identity,prefix_hash,parser_version FROM usage_source_files WHERE path=?", entry.Path).Scan(&cursor, &identity, &prefix, &parserVersion)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	if identity != entry.Identity || parserVersion != ParserVersion || cursor <= 0 || cursor >= entry.Size {
+		return 0, nil
+	}
+	file, err := s.open(entry.Path)
+	if err != nil {
+		return 0, err
+	}
+	defer file.Close()
+	anchorStart := max(int64(0), cursor-4096)
+	anchor := make([]byte, cursor-anchorStart)
+	if _, err = io.ReadFull(io.NewSectionReader(file, anchorStart, int64(len(anchor))), anchor); err != nil {
+		return 0, err
+	}
+	if hash(anchor) != prefix {
+		return 0, nil
+	}
+	return cursor, nil
+}
+
 func (s *Service) inventoryEntries() ([]InventoryEntry, error) {
+	if s.PreparedSources != nil {
+		entries := make([]InventoryEntry, 0, len(s.PreparedSources))
+		for _, source := range s.PreparedSources {
+			entries = append(entries, InventoryEntry{
+				Path: source.Path, Client: source.Client, Identity: source.Identity,
+				Size: source.Size, ModifiedAt: source.ModifiedAt, ChangedAt: source.ChangedAt, Stable: source.Stable,
+			})
+		}
+		sort.Slice(entries, func(i, j int) bool { return entries[i].Path < entries[j].Path })
+		return entries, nil
+	}
 	var entries []InventoryEntry
 	for _, client := range []string{"codex", "claude"} {
 		paths, err := s.sourcePaths(client)
@@ -881,7 +978,8 @@ func (s *Service) inventoryEntries() ([]InventoryEntry, error) {
 			if err != nil {
 				return nil, err
 			}
-			entries = append(entries, InventoryEntry{Path: path, Client: client, Identity: usageFileIdentity(info), Size: info.Size(), ModifiedAt: info.ModTime().UnixNano()})
+			identity, changedAt, stable := ingest.FileGeneration(info)
+			entries = append(entries, InventoryEntry{Path: path, Client: client, Identity: identity, Size: info.Size(), ModifiedAt: info.ModTime().UnixNano(), ChangedAt: changedAt, Stable: stable})
 		}
 	}
 	sort.Slice(entries, func(i, j int) bool { return entries[i].Path < entries[j].Path })
@@ -891,7 +989,7 @@ func (s *Service) inventoryEntries() ([]InventoryEntry, error) {
 func inventoryFingerprint(entries []InventoryEntry) string {
 	records := make([]string, 0, len(entries))
 	for _, entry := range entries {
-		records = append(records, strings.Join([]string{entry.Path, entry.Identity, fmt.Sprint(entry.Size), fmt.Sprint(entry.ModifiedAt)}, "\x00"))
+		records = append(records, strings.Join([]string{entry.Path, entry.Identity, fmt.Sprint(entry.Size), fmt.Sprint(entry.ModifiedAt), fmt.Sprint(entry.ChangedAt)}, "\x00"))
 	}
 	return hash([]byte(strings.Join(records, "\n")))
 }
@@ -934,7 +1032,7 @@ func (s *Service) scanFile(ctx context.Context, entry InventoryEntry) (map[strin
 func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceRebuild bool) (map[string]int, error) {
 	r := map[string]int{"imported": 0, "updated": 0, "ignored_non_usage": 0, "unsupported_usage": 0, "malformed": 0, "source_resets": 0, "replaced": 0, "unsupported": 0}
 	path, client := entry.Path, entry.Client
-	var cursor, oldSize, oldModified int64
+	var cursor, oldSize, oldModified, oldChanged int64
 	var oldIdentity, oldHash string
 	var cumulativeJSON string
 	var parserVersion int
@@ -943,8 +1041,8 @@ func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceR
 	// has already dropped its earliest records, so the value captured before the
 	// rewrite is the better observation and the one that stays.
 	var priorStarted string
-	row := s.Store.DB.QueryRowContext(ctx, "SELECT cursor,identity,size,modified_at,prefix_hash,COALESCE(session_id,''),COALESCE(turn_id,''),COALESCE(model,''),COALESCE(session_started_at,''),parser_version,codex_cumulative_json FROM usage_source_files WHERE path=?", path)
-	loadErr := row.Scan(&cursor, &oldIdentity, &oldSize, &oldModified, &oldHash, &state.session, &state.turn, &state.model, &priorStarted, &parserVersion, &cumulativeJSON)
+	row := s.Store.DB.QueryRowContext(ctx, "SELECT cursor,identity,size,modified_at,changed_at,prefix_hash,COALESCE(session_id,''),COALESCE(turn_id,''),COALESCE(model,''),COALESCE(session_started_at,''),parser_version,codex_cumulative_json FROM usage_source_files WHERE path=?", path)
+	loadErr := row.Scan(&cursor, &oldIdentity, &oldSize, &oldModified, &oldChanged, &oldHash, &state.session, &state.turn, &state.model, &priorStarted, &parserVersion, &cumulativeJSON)
 	state.startedAt = priorStarted
 	found := loadErr == nil
 	if loadErr != nil && !errors.Is(loadErr, sql.ErrNoRows) {
@@ -978,9 +1076,12 @@ func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceR
 		}
 	}
 	activityParser.SetMachineIdentity(s.activityMachineIdentity(ctx))
-	parserOutdated := found && parserVersion != usageParserVersion
-	stableMetadata := found && !parserOutdated && oldIdentity == entry.Identity && oldSize == entry.Size && oldModified == entry.ModifiedAt
+	parserOutdated := found && parserVersion != ParserVersion
+	stableMetadata := found && !parserOutdated && entry.Stable && oldChanged != 0 && oldChanged == entry.ChangedAt && oldIdentity == entry.Identity && oldSize == entry.Size && oldModified == entry.ModifiedAt
 	if !forceRebuild && stableMetadata {
+		if s.Coordinator != nil {
+			s.Coordinator.Skip(path, ingest.ConsumerUsage)
+		}
 		return r, nil
 	}
 	file, err := s.open(path)
@@ -989,6 +1090,11 @@ func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceR
 	}
 	defer file.Close()
 	appendOnly := found && oldIdentity == entry.Identity && entry.Size >= cursor
+	// An unchanged length with changed/unknown ctime is a rewrite candidate,
+	// even when the suffix anchor and restored mtime happen to match.
+	if entry.Size == oldSize && (!entry.Stable || oldChanged == 0 || oldChanged != entry.ChangedAt) {
+		appendOnly = false
+	}
 	var previousAnchor []byte
 	var previousAnchorStart int64
 	if appendOnly && cursor > 0 {
@@ -1011,26 +1117,36 @@ func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceR
 		}
 		r["replaced"]++
 	}
-	data, err := io.ReadAll(io.NewSectionReader(file, cursor, entry.Size-cursor))
-	if err != nil {
-		return r, err
+	var data []byte
+	var sharedStream *ingest.Stream
+	if s.Coordinator != nil {
+		stream, shared, streamErr := s.Coordinator.Stream(ctx, path, ingest.ConsumerUsage)
+		if streamErr != nil {
+			if errors.Is(streamErr, ingest.ErrSourceChanged) {
+				return r, errUsageSourceChanged
+			}
+			return r, streamErr
+		}
+		if shared {
+			if cursor < 0 || stream.Source.Size != entry.Size || cursor > entry.Size {
+				return r, errUsageSourceChanged
+			}
+			sharedStream = &stream
+		}
+	}
+	if sharedStream == nil {
+		data, err = io.ReadAll(io.NewSectionReader(file, cursor, entry.Size-cursor))
+		if err != nil {
+			return r, err
+		}
 	}
 	events := make([]Event, 0)
 	toolActivities := make([]activity.Record, 0)
-	offset, line := cursor, data
-	for len(line) > 0 {
-		idx := bytes.IndexByte(line, '\n')
-		if idx < 0 {
-			break
-		}
-		raw := line[:idx]
-		next := int64(idx + 1)
-		var value map[string]any
-		if err := json.Unmarshal(raw, &value); err != nil {
+	offset := cursor
+	consume := func(value map[string]any, malformed bool, recordOffset int64) {
+		if malformed {
 			r["malformed"]++
-			offset += next
-			line = line[idx+1:]
-			continue
+			return
 		}
 		// Claude only: Codex encodes its session creation time in a UUIDv7 id and
 		// its branch of the judgement is unchanged, so nothing reads this for it.
@@ -1041,8 +1157,8 @@ func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceR
 				}
 			}
 		}
-		ev, ok := parse(client, value, &state, path, offset)
-		toolActivities = append(toolActivities, activityParser.Parse(value, offset)...)
+		ev, ok := parse(client, value, &state, path, recordOffset)
+		toolActivities = append(toolActivities, activityParser.Parse(value, recordOffset)...)
 		if !ok {
 			if looksLikeUsage(client, value) {
 				r["unsupported_usage"]++
@@ -1053,10 +1169,39 @@ func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceR
 		} else if ev.Key != "" {
 			events = append(events, ev)
 		}
-		offset += next
-		line = line[idx+1:]
 	}
-	if err = s.validateSnapshot(path, file, entry, cursor, data, previousAnchorStart, previousAnchor); err != nil {
+	if sharedStream != nil {
+		for batch := range sharedStream.Batches {
+			for _, record := range batch.Records {
+				if record.Offset < cursor || record.End > entry.Size {
+					continue
+				}
+				consume(record.Value, record.Malformed, record.Offset)
+				offset = record.End
+			}
+		}
+		if _, err = sharedStream.Wait(ctx); err != nil {
+			return r, err
+		}
+	} else {
+		line := data
+		for len(line) > 0 {
+			idx := bytes.IndexByte(line, '\n')
+			if idx < 0 {
+				break
+			}
+			raw, next := line[:idx], int64(idx+1)
+			var value map[string]any
+			consume(value, json.Unmarshal(raw, &value) != nil, offset)
+			offset += next
+			line = line[idx+1:]
+		}
+	}
+	if sharedStream != nil {
+		if err = ingest.ValidateCapturedRange(sharedStream.Source, entry.Size); err != nil {
+			return r, errUsageSourceChanged
+		}
+	} else if err = s.validateSnapshot(path, file, entry, cursor, data, previousAnchorStart, previousAnchor); err != nil {
 		return r, err
 	}
 	// A cursor is always the end of a complete record.  The unfinished suffix is
@@ -1109,23 +1254,42 @@ func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceR
 	}
 	for _, event := range events {
 		affected[event.Client+"\x00"+event.SessionID] = [2]string{event.Client, event.SessionID}
-		inserted, changed, upsertErr := upsertTx(ctx, tx, event)
-		if upsertErr != nil {
-			return r, upsertErr
+	}
+	cold := false
+	if !found {
+		var imported, updated int
+		cold, imported, updated, err = publishColdSource(ctx, tx, path, events, toolActivities)
+		if err != nil {
+			return r, err
 		}
-		if !changed {
-			continue
-		}
-		if inserted {
-			r["imported"]++
-		} else {
-			r["updated"]++
-			r["replaced"]++
+		if cold {
+			r["imported"], r["updated"], r["replaced"] = imported, updated, updated
 		}
 	}
-	for _, item := range toolActivities {
-		if err = upsertToolActivityTx(ctx, tx, item); err != nil {
-			return r, err
+	if !cold {
+		prepared, prepareErr := prepareIngestion(ctx, tx)
+		if prepareErr != nil {
+			return r, prepareErr
+		}
+		defer prepared.Close()
+		for _, event := range events {
+			inserted, changed, upsertErr := upsertTx(ctx, prepared, event)
+			if upsertErr != nil {
+				return r, upsertErr
+			}
+			if changed {
+				if inserted {
+					r["imported"]++
+				} else {
+					r["updated"]++
+					r["replaced"]++
+				}
+			}
+		}
+		for _, item := range toolActivities {
+			if err = upsertToolActivityTx(ctx, prepared, item); err != nil {
+				return r, err
+			}
 		}
 	}
 	for _, signal := range state.signals {
@@ -1152,7 +1316,7 @@ func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceR
 	// so a rewrite that lost the opening records cannot move a session's start
 	// later and widen its span into a segment the process never ran in.
 	startedAt := earlierSessionStart(priorStarted, state.startedAt)
-	_, err = tx.ExecContext(ctx, `INSERT INTO usage_source_files(path,identity,size,cursor,prefix_hash,session_id,turn_id,model,session_started_at,parser_version,codex_cumulative_json,imported,replaced,malformed,unsupported,modified_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(path) DO UPDATE SET identity=excluded.identity,size=excluded.size,cursor=excluded.cursor,prefix_hash=excluded.prefix_hash,session_id=excluded.session_id,turn_id=excluded.turn_id,model=excluded.model,session_started_at=excluded.session_started_at,parser_version=excluded.parser_version,codex_cumulative_json=excluded.codex_cumulative_json,imported=usage_source_files.imported+excluded.imported,replaced=usage_source_files.replaced+excluded.replaced,malformed=usage_source_files.malformed+excluded.malformed,unsupported=usage_source_files.unsupported+excluded.unsupported,modified_at=excluded.modified_at`, path, entry.Identity, entry.Size, cursor, hash(anchor), state.session, state.turn, state.model, startedAt, usageParserVersion, string(cumulativeBytes), r["imported"], r["replaced"], r["malformed"], r["unsupported"], entry.ModifiedAt)
+	_, err = tx.ExecContext(ctx, `INSERT INTO usage_source_files(path,identity,size,cursor,prefix_hash,session_id,turn_id,model,session_started_at,parser_version,codex_cumulative_json,imported,replaced,malformed,unsupported,modified_at,changed_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(path) DO UPDATE SET identity=excluded.identity,size=excluded.size,cursor=excluded.cursor,prefix_hash=excluded.prefix_hash,session_id=excluded.session_id,turn_id=excluded.turn_id,model=excluded.model,session_started_at=excluded.session_started_at,parser_version=excluded.parser_version,codex_cumulative_json=excluded.codex_cumulative_json,imported=usage_source_files.imported+excluded.imported,replaced=usage_source_files.replaced+excluded.replaced,malformed=usage_source_files.malformed+excluded.malformed,unsupported=usage_source_files.unsupported+excluded.unsupported,modified_at=excluded.modified_at,changed_at=excluded.changed_at`, path, entry.Identity, entry.Size, cursor, hash(anchor), state.session, state.turn, state.model, startedAt, ParserVersion, string(cumulativeBytes), r["imported"], r["replaced"], r["malformed"], r["unsupported"], entry.ModifiedAt, entry.ChangedAt)
 	if err != nil {
 		return r, err
 	}
@@ -1188,7 +1352,8 @@ func (s *Service) validateSnapshot(path string, file SourceFile, entry Inventory
 			return errUsageSourceChanged
 		}
 	}
-	if latest.Size() == entry.Size && latest.ModTime().UnixNano() != entry.ModifiedAt {
+	identity, changedAt, stable := ingest.FileGeneration(latest)
+	if identity != entry.Identity || latest.Size() < entry.Size || (latest.Size() == entry.Size && (latest.ModTime().UnixNano() != entry.ModifiedAt || (entry.Stable && (!stable || changedAt != entry.ChangedAt)))) {
 		return errUsageSourceChanged
 	}
 	return nil
@@ -1427,7 +1592,7 @@ func parse(client string, v map[string]any, state *parseState, path string, offs
 	return Event{Key: "claude:" + sid + ":" + id, Client: client, SessionID: sid, EventID: id, EventAt: stringValue(v, "timestamp"), Model: model, SourcePath: path, SourceOffset: offset, TurnIndex: state.turnIndex, Tokens: t}, true
 }
 func stringValue(v map[string]any, k string) string { x, _ := v[k].(string); return x }
-func upsertTx(ctx context.Context, tx *sql.Tx, e Event) (inserted, changed bool, err error) {
+func upsertTx(ctx context.Context, tx ingestionExecutor, e Event) (inserted, changed bool, err error) {
 	at, err := time.Parse(time.RFC3339Nano, e.EventAt)
 	if err != nil {
 		return false, false, fmt.Errorf("invalid usage event timestamp %q: %w", e.EventAt, err)
@@ -1437,7 +1602,7 @@ func upsertTx(ctx context.Context, tx *sql.Tx, e Event) (inserted, changed bool,
 	var existingSourceIndexed int
 	var existingInput, existingCachedInput, existingOutput, existingCacheRead, existingCacheCreation, existingCacheWrite5m, existingCacheWrite1h, existingCacheWrite int64
 	var existingTurnIndex int
-	lookupErr := tx.QueryRowContext(ctx, `SELECT e.source_path,CASE WHEN f.path IS NULL THEN 0 ELSE 1 END,e.event_at,e.model,COALESCE(e.turn_index,0),e.input_tokens,e.cached_input_tokens,e.output_tokens,e.cache_read_tokens,e.cache_creation_tokens,e.cache_write_5m_tokens,e.cache_write_1h_tokens,e.cache_write_tokens FROM usage_events e LEFT JOIN usage_source_files f ON f.path=e.source_path WHERE e.event_key=?`, e.Key).Scan(&existingPath, &existingSourceIndexed, &existingEventAt, &existingModel, &existingTurnIndex, &existingInput, &existingCachedInput, &existingOutput, &existingCacheRead, &existingCacheCreation, &existingCacheWrite5m, &existingCacheWrite1h, &existingCacheWrite)
+	lookupErr := tx.QueryRowContext(ctx, lookupUsageEventSQL, e.Key).Scan(&existingPath, &existingSourceIndexed, &existingEventAt, &existingModel, &existingTurnIndex, &existingInput, &existingCachedInput, &existingOutput, &existingCacheRead, &existingCacheCreation, &existingCacheWrite5m, &existingCacheWrite1h, &existingCacheWrite)
 	exists := lookupErr == nil
 	if lookupErr != nil && !errors.Is(lookupErr, sql.ErrNoRows) {
 		return false, false, lookupErr
@@ -1446,15 +1611,15 @@ func upsertTx(ctx context.Context, tx *sql.Tx, e Event) (inserted, changed bool,
 		return false, false, nil
 	}
 	vals := []any{e.Key, e.Client, e.SessionID, e.EventID, e.EventAt, e.Model, nullableInt(e.TurnIndex), e.Tokens["input_tokens"], e.Tokens["cached_input_tokens"], e.Tokens["output_tokens"], e.Tokens["cache_read_tokens"], e.Tokens["cache_creation_tokens"], e.Tokens["cache_write_5m_tokens"], e.Tokens["cache_write_1h_tokens"], e.Tokens["cache_write_tokens"], e.SourcePath, e.SourceOffset}
-	_, err = tx.ExecContext(ctx, `INSERT INTO usage_events(event_key,client,session_id,event_id,event_at,model,turn_index,input_tokens,cached_input_tokens,output_tokens,cache_read_tokens,cache_creation_tokens,cache_write_5m_tokens,cache_write_1h_tokens,cache_write_tokens,source_path,source_offset)VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(event_key) DO UPDATE SET event_at=excluded.event_at,model=excluded.model,turn_index=excluded.turn_index,input_tokens=excluded.input_tokens,cached_input_tokens=excluded.cached_input_tokens,output_tokens=excluded.output_tokens,cache_read_tokens=excluded.cache_read_tokens,cache_creation_tokens=excluded.cache_creation_tokens,cache_write_5m_tokens=excluded.cache_write_5m_tokens,cache_write_1h_tokens=excluded.cache_write_1h_tokens,cache_write_tokens=excluded.cache_write_tokens,source_path=excluded.source_path,source_offset=excluded.source_offset`, vals...)
+	_, err = tx.ExecContext(ctx, upsertUsageEventSQL, vals...)
 	logicalChanged := !exists || existingEventAt != e.EventAt || existingModel != e.Model || existingTurnIndex != e.TurnIndex || existingInput != e.Tokens["input_tokens"] || existingCachedInput != e.Tokens["cached_input_tokens"] || existingOutput != e.Tokens["output_tokens"] || existingCacheRead != e.Tokens["cache_read_tokens"] || existingCacheCreation != e.Tokens["cache_creation_tokens"] || existingCacheWrite5m != e.Tokens["cache_write_5m_tokens"] || existingCacheWrite1h != e.Tokens["cache_write_1h_tokens"] || existingCacheWrite != e.Tokens["cache_write_tokens"]
 	return !exists, err == nil && logicalChanged, err
 }
 
-func upsertToolActivityTx(ctx context.Context, tx *sql.Tx, record activity.Record) error {
+func upsertToolActivityTx(ctx context.Context, tx ingestionExecutor, record activity.Record) error {
 	var existingPath, startedAt string
 	var existingSourceIndexed int
-	lookupErr := tx.QueryRowContext(ctx, `SELECT a.source_path,a.started_at,CASE WHEN f.path IS NULL THEN 0 ELSE 1 END FROM usage_tool_calls a LEFT JOIN usage_source_files f ON f.path=a.source_path WHERE a.activity_key=?`, record.Key).Scan(&existingPath, &startedAt, &existingSourceIndexed)
+	lookupErr := tx.QueryRowContext(ctx, lookupToolActivitySQL, record.Key).Scan(&existingPath, &startedAt, &existingSourceIndexed)
 	exists := lookupErr == nil
 	if lookupErr != nil && !errors.Is(lookupErr, sql.ErrNoRows) {
 		return lookupErr
@@ -1463,15 +1628,17 @@ func upsertToolActivityTx(ctx context.Context, tx *sql.Tx, record activity.Recor
 		return nil
 	}
 	if record.StartedAt != "" {
-		_, err := tx.ExecContext(ctx, `INSERT INTO usage_tool_calls(activity_key,client,session_id,model,tool_name,started_at,completed_at,status,duration_ms,source_path,source_offset,turn_index,tool_kind,mcp_server,command_read,command_hint) VALUES(?,?,?,?,?,?,NULL,'started',NULL,?,?,?,?,?,?,?) ON CONFLICT(activity_key) DO UPDATE SET client=excluded.client,session_id=excluded.session_id,model=excluded.model,tool_name=excluded.tool_name,started_at=excluded.started_at,completed_at=NULL,status='started',duration_ms=NULL,source_path=excluded.source_path,source_offset=excluded.source_offset,turn_index=excluded.turn_index,tool_kind=excluded.tool_kind,mcp_server=excluded.mcp_server,command_read=excluded.command_read,command_hint=excluded.command_hint`, record.Key, record.Client, record.SessionID, record.Model, record.Tool, record.StartedAt, record.SourcePath, record.SourceOffset, nullableInt(record.TurnIndex), record.ToolKind, nullableString(record.MCPServer), record.CommandRead, record.CommandHint)
+		_, err := tx.ExecContext(ctx, startToolActivitySQL, record.Key, record.Client, record.SessionID, record.Model, record.Tool, record.StartedAt, record.SourcePath, record.SourceOffset, nullableInt(record.TurnIndex), record.ToolKind, nullableString(record.MCPServer), record.CommandRead, record.CommandHint)
 		if err != nil {
 			return err
 		}
-		if _, err = tx.ExecContext(ctx, `DELETE FROM usage_tool_files WHERE activity_key=?`, record.Key); err != nil {
-			return err
+		if exists {
+			if _, err = tx.ExecContext(ctx, deleteToolFilesSQL, record.Key); err != nil {
+				return err
+			}
 		}
 		for _, file := range record.Files {
-			if _, err = tx.ExecContext(ctx, `INSERT INTO usage_tool_files(activity_key,path_digest,base_name,wrote) VALUES(?,?,?,?) ON CONFLICT(activity_key,path_digest) DO UPDATE SET base_name=excluded.base_name,wrote=MAX(usage_tool_files.wrote,excluded.wrote)`, record.Key, file.PathDigest, file.BaseName, file.Wrote); err != nil {
+			if _, err = tx.ExecContext(ctx, upsertToolFileSQL, record.Key, file.PathDigest, file.BaseName, file.Wrote); err != nil {
 				return err
 			}
 		}
@@ -1486,7 +1653,7 @@ func upsertToolActivityTx(ctx context.Context, tx *sql.Tx, record activity.Recor
 	if startErr == nil && completeErr == nil && !completed.Before(started) {
 		duration = completed.Sub(started).Milliseconds()
 	}
-	_, err := tx.ExecContext(ctx, `UPDATE usage_tool_calls SET completed_at=?,status=?,duration_ms=?,source_path=? WHERE activity_key=?`, record.CompletedAt, record.Status, duration, record.SourcePath, record.Key)
+	_, err := tx.ExecContext(ctx, completeToolActivitySQL, record.CompletedAt, record.Status, duration, record.SourcePath, record.Key)
 	return err
 }
 
@@ -1594,7 +1761,15 @@ func (s *Service) detachSource(ctx context.Context, path string) error {
 }
 
 func (s *Service) orphanRecoveryCandidates(ctx context.Context, entries []InventoryEntry) (bool, map[string]bool, error) {
-	rows, err := s.Store.DB.QueryContext(ctx, `SELECT client,session_id FROM (SELECT DISTINCT e.client,e.session_id FROM usage_events e LEFT JOIN usage_source_files f ON f.path=e.source_path WHERE f.path IS NULL UNION SELECT DISTINCT a.client,a.session_id FROM usage_tool_calls a LEFT JOIN usage_source_files f ON f.path=a.source_path WHERE f.path IS NULL)`)
+	// Subtract registered paths using the covering source indexes first. The
+	// usual no-orphan case then avoids joining every event/tool row to the
+	// registry twice per scan. Only orphan paths need their logical session IDs.
+	rows, err := s.Store.DB.QueryContext(ctx, `SELECT client,session_id FROM (
+SELECT e.client,e.session_id FROM usage_events e WHERE e.source_path IN (
+ SELECT source_path FROM (SELECT DISTINCT source_path FROM usage_events) EXCEPT SELECT path FROM usage_source_files)
+UNION
+SELECT a.client,a.session_id FROM usage_tool_calls a WHERE a.source_path IN (
+ SELECT source_path FROM (SELECT DISTINCT source_path FROM usage_tool_calls) EXCEPT SELECT path FROM usage_source_files))`)
 	if err != nil {
 		return false, nil, err
 	}
@@ -2414,6 +2589,10 @@ func newStatsAccumulator() *statsAccumulator {
 }
 
 func (a *statsAccumulator) add(event storedEvent, result Result) error {
+	return a.addWithParsedCosts(event, result, nil, nil)
+}
+
+func (a *statsAccumulator) addWithParsedCosts(event storedEvent, result Result, base, providerCost *big.Rat) error {
 	a.tokens += eventTokenTotal(event.Client, event.Tokens)
 	a.input += event.Tokens["input_tokens"]
 	a.output += event.Tokens["output_tokens"]
@@ -2433,11 +2612,16 @@ func (a *statsAccumulator) add(event storedEvent, result Result) error {
 	for _, component := range result.Unpriced {
 		a.missing[component] = struct{}{}
 	}
-	base, err := decimal(result.KnownCatalogBaseCost)
+	var err error
+	if base == nil {
+		base, err = decimal(result.KnownCatalogBaseCost)
+	}
 	if err != nil {
 		return err
 	}
-	providerCost, err := decimal(result.KnownProviderCost)
+	if providerCost == nil {
+		providerCost, err = decimal(result.KnownProviderCost)
+	}
 	if err != nil {
 		return err
 	}

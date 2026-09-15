@@ -100,6 +100,7 @@ agentdeck extension scan|list|show|doctor
 agentdeck extension adopt|enable|disable|release
 
 agentdeck run codex|claude -- <client arguments>
+agentdeck scan [--scope usage|session]
 agentdeck watch [--interval <duration>] [--domains usage,session,extension]
 
 agentdeck backup create|list|inspect|restore
@@ -120,7 +121,8 @@ Global flags are:
 
 `--state-dir` exists for tests and portable isolated execution. It does not
 change Codex or Claude source paths unless their adapter-specific test paths are
-also explicitly overridden. NDJSON remains valid only for `watch`.
+also explicitly overridden. NDJSON is valid only for `watch` and the explicit
+`scan` event stream.
 
 Default `text` output is a human-facing interactive contract, not a serialized
 representation of internal DTOs. List and metric collections use the shared
@@ -1154,6 +1156,11 @@ verification means unchanged content is never re-read. A full re-read happens
 only when a source is mutated, when a rebuild is forced, or when the stored
 parser version differs from the current one — the last of which makes the first
 scan after a parser-version release cost as much as a first-ever scan.
+Schema 25 stores the platform change-time component beside identity, size, and
+mtime. On supported filesystems an unchanged tuple avoids reopening every source
+for an anchor hash; migrated zero values and platforms without stable change time
+take the conservative reread path, so a same-size/mtime-preserving rewrite is not
+certified unchanged.
 
 Because that full re-read is expensive on real histories, long scans report
 progress on standard error. Progress never goes to standard output, so JSON and
@@ -1165,6 +1172,32 @@ implicit scans performed by `usage stats`, `usage summary`, and `usage signals`
 as well as explicit `usage scan` and `usage rebuild`. When a scan is triggered by a parser
 version change rather than by new data, the progress output says so, because an
 unexplained multi-minute wait after an upgrade is indistinguishable from a hang.
+
+### Global Scan Contract
+
+`agentdeck scan` requests one shared worker round for both usage and sessions.
+Without `--scope` it waits for both domains; `--scope usage` or
+`--scope session` changes only foreground waiting and presentation. The worker
+continues the other domain after a scoped caller exits or disconnects. Text
+success is exactly `Scan complete: usage.`, `Scan complete: session.`, or
+`Scan complete: usage and sessions.`. A requested-domain failure returns a
+non-zero exit and `Scan incomplete: <domains> failed.` without changing an
+already exited scoped result.
+
+Text and JSON modes put bounded English progress on stderr: waiting, checking,
+importing committed aggregate counts, and calculating statistics. Non-TTY
+progress has no cursor control; TTY uses one redrawn line; `--quiet` suppresses
+progress but not final output or errors. No progress value contains a path,
+source text, credential, percentage, or guessed total.
+
+`--format ndjson` is the explicit version-1 `scan` event stream. Each line has
+`schema_version: 1`, `command: "scan"`, UTC `generated_at`, `type`, `scope`,
+`data`, and `partial`. Progress data carries a monotonic `sequence`, one of
+`waiting|checking|importing|statistics|completed`, and aggregate usage/session
+state plus committed/total/skipped counts. Exactly one final `type: "result"`
+line carries `data.scope`, `data.usage`, and `data.session`. Unknown, malformed,
+out-of-order, truncated, or over-limit events are failures; a slow or detached
+subscriber cannot block ingestion or receive later console output.
 
 `usage stats`, `usage summary`, and `usage signals` scan synchronously before
 reporting so a report reflects current sources. Stats and summary provide
@@ -1896,7 +1929,14 @@ copy of this CLI as its only data source. It is a reading surface plus one
 write action; it holds no state of its own that matters.
 
 - **Boundary.** The app runs the embedded helper and decodes
-  `desktop snapshot`'s wire-v1 envelope. It parses no text output, reads no
+  the versioned `scan` NDJSON stream before decoding `desktop snapshot`'s
+  wire-v1 envelope. Waiting, source checking, committed import counts, and
+  statistics are shown while the helper is still running. The previous snapshot
+  remains visible until a complete new envelope is validated and atomically
+  published; scan/event/snapshot failure keeps the previous snapshot and retry
+  state. Closing the popover detaches only its presentation while the helper and
+  worker continue; reopening observes current coordinator state without replaying
+  every event. The app parses no text output, reads no
   database directly, opens no port, and makes no network request. The Go helper
   and the existing AgentDeck state stay authoritative; everything the app holds
   is a disposable projection of them.
@@ -2339,13 +2379,13 @@ rendered doctor report still exits `0`, even when its findings are unhealthy;
 this is distinct from an ordinary command's schema-ahead error envelope.
 
 Quick and full mode share the schema-state matrix. With this binary supporting
-schema 23, schema 12 reports a `schema_outdated` schema check with `count: 12`,
-`supported_count: 23` and recovery command `agentdeck state migrate`. A complete
-supported schema reports an `ok` schema check with `count: 23`; its optional
+schema 26, schema 12 reports a `schema_outdated` schema check with `count: 12`,
+`supported_count: 26` and recovery command `agentdeck state migrate`. A complete
+supported schema reports an `ok` schema check with `count: 26`; its optional
 `supported_count` is omitted. A database claiming the supported version but
 missing `usage_tool_calls` reports `schema_incompatible`. A future schema, for
 example 99, reports a `database` check with code `schema_ahead`, `count: 99`,
-`supported_count: 23`, and no recovery command, in a partial report. These
+`supported_count: 26`, and no recovery command, in a partial report. These
 numbers describe stored/binary support, not product release versions. Text and
 JSON never expose raw SQL, SQLite query text, or driver errors. A successful
 explicit migration has normal text output and JSON `migrated: true`, and

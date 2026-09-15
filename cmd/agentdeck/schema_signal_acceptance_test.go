@@ -162,7 +162,7 @@ func TestSchemaSignalBuiltBinaryAcceptance(t *testing.T) {
 		assertChecks(envelope["data"].(map[string]any))
 	}
 	doctorText := string(runBinary("", 0, "doctor", "--format", "text"))
-	if !strings.Contains(strings.ToLower(doctorText), "upgrade agentdeck") || !strings.Contains(doctorText, "99") || !strings.Contains(doctorText, "23") {
+	if !strings.Contains(strings.ToLower(doctorText), "upgrade agentdeck") || !strings.Contains(doctorText, "99") || !strings.Contains(doctorText, fmt.Sprintf("%d", store.CurrentSchemaVersion)) {
 		t.Fatalf("doctor text missing upgrade/version pair: %s", doctorText)
 	}
 	snapshot := decode(runBinary("", 0, "desktop", "snapshot", "--wire-version", "1", "--recent-limit", "5"))

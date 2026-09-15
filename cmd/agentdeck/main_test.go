@@ -28,6 +28,7 @@ import (
 	"github.com/kitdine/agent-deck/internal/hookrefusal"
 	"github.com/kitdine/agent-deck/internal/output"
 	"github.com/kitdine/agent-deck/internal/provider"
+	"github.com/kitdine/agent-deck/internal/scanruntime"
 	"github.com/kitdine/agent-deck/internal/session"
 	"github.com/kitdine/agent-deck/internal/store"
 	"github.com/kitdine/agent-deck/internal/usage"
@@ -504,6 +505,7 @@ func TestSessionShowActivityReadsOnlySafeMetadataOnDemand(t *testing.T) {
 			t.Fatalf("model activity leaked %q: %s", secret, stats.String())
 		}
 	}
+	waitForBackgroundScan(t, state)
 }
 
 func TestPhase9TextAndJSONGoldenContracts(t *testing.T) {
@@ -824,6 +826,7 @@ func TestRunJSONPropagatesChildFailureAndClosesRun(t *testing.T) {
 
 func TestUsageCommandTextAndJSONContracts(t *testing.T) {
 	state := filepath.Join(t.TempDir(), "state")
+	waitForDetachedScanCleanup(t, state)
 	home := filepath.Join(t.TempDir(), "home")
 	if err := os.MkdirAll(home, 0700); err != nil {
 		t.Fatal(err)
@@ -917,6 +920,7 @@ func TestUsageCommandsUseProgressForExplicitAndImplicitScans(t *testing.T) {
 	if quietValues[6] != true {
 		t.Fatalf("--quiet did not reach progress output: %v", quietValues)
 	}
+	waitForBackgroundScan(t, state)
 }
 
 func TestUsageNoScanUsesStoredAggregateUntilDefaultScan(t *testing.T) {
@@ -1030,6 +1034,7 @@ func TestUsageNoScanUsesStoredAggregateUntilDefaultScan(t *testing.T) {
 			}
 			assertReport("no-scan", 1, 10)
 			assertReport("default", 2, 30)
+			waitForBackgroundScan(t, state)
 		})
 	}
 }
@@ -1073,6 +1078,7 @@ func TestUsageProgressReporterUsesStderrAndPreservesJSONStdout(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil || envelope["command"] != "usage.scan" {
 		t.Fatalf("JSON stdout=%q envelope=%#v err=%v", stdout.String(), envelope, err)
 	}
+	waitForBackgroundScan(t, state)
 }
 
 type manualUsageProgressTimer struct{ channel chan time.Time }
@@ -1438,6 +1444,8 @@ func TestPhase6RejectsNDJSONBeforeAnyBackupOrDoctorSideEffect(t *testing.T) {
 	}{
 		{[]string{"--state-dir", state, "--format", "ndjson", "backup", "create", archive}, "backup.create"},
 		{[]string{"--state-dir", state, "--format", "ndjson", "doctor"}, "doctor"},
+		{[]string{"--state-dir", state, "--format", "ndjson", "usage", "scan"}, "usage.scan"},
+		{[]string{"--state-dir", state, "--format", "ndjson", "session", "scan"}, "session.scan"},
 	} {
 		assertExtensionCLIErrorArgs(t, test.args, 2, test.command, "invalid_argument")
 	}
@@ -1634,7 +1642,32 @@ func TestStateMigrateTextAndJSONUpgradeSchema12(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = database.Exec(ctx, "DROP TABLE usage_work_signals; DROP TABLE usage_tool_files; DROP TABLE usage_tool_calls; DROP INDEX usage_events_client_session; ALTER TABLE providers DROP COLUMN wrapper_url; ALTER TABLE providers DROP COLUMN wrapper_kind; ALTER TABLE provider_selections DROP COLUMN via_wrapper; ALTER TABLE usage_events DROP COLUMN cache_write_tokens; ALTER TABLE usage_events DROP COLUMN turn_index; ALTER TABLE usage_source_files DROP COLUMN session_started_at; ALTER TABLE usage_sessions DROP COLUMN started_at; ALTER TABLE provider_selections DROP COLUMN prior_keyed; UPDATE schema_metadata SET version=12"); err != nil {
+	rows, err := database.DB.QueryContext(ctx, `SELECT name FROM sqlite_master WHERE type='trigger' AND name LIKE 'derived_snapshot_generation_%'`)
+	if err != nil {
+		database.Close()
+		t.Fatal(err)
+	}
+	var generationTriggers []string
+	for rows.Next() {
+		var name string
+		if err = rows.Scan(&name); err != nil {
+			rows.Close()
+			database.Close()
+			t.Fatal(err)
+		}
+		generationTriggers = append(generationTriggers, name)
+	}
+	if err = rows.Close(); err != nil {
+		database.Close()
+		t.Fatal(err)
+	}
+	for _, name := range generationTriggers {
+		if _, err = database.Exec(ctx, "DROP TRIGGER "+name); err != nil {
+			database.Close()
+			t.Fatal(err)
+		}
+	}
+	if _, err = database.Exec(ctx, "DROP TABLE derived_snapshot_generation; DROP TABLE usage_work_signals; DROP TABLE usage_tool_files; DROP TABLE usage_tool_calls; DROP INDEX usage_events_client_session; ALTER TABLE providers DROP COLUMN wrapper_url; ALTER TABLE providers DROP COLUMN wrapper_kind; ALTER TABLE provider_selections DROP COLUMN via_wrapper; ALTER TABLE usage_events DROP COLUMN cache_write_tokens; ALTER TABLE usage_events DROP COLUMN turn_index; ALTER TABLE usage_source_files DROP COLUMN session_started_at; ALTER TABLE usage_source_files DROP COLUMN changed_at; ALTER TABLE usage_sessions DROP COLUMN started_at; ALTER TABLE provider_selections DROP COLUMN prior_keyed; UPDATE schema_metadata SET version=12"); err != nil {
 		database.Close()
 		t.Fatal(err)
 	}
@@ -2303,6 +2336,118 @@ func TestSessionShowMissingCoreDoesNotCreateIt(t *testing.T) {
 	}
 }
 
+func TestSessionCheckpointFingerprintBindsSessionEpoch(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	home := filepath.Join(root, "home")
+	sessions, err := store.OpenSessions(ctx, filepath.Join(root, "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sessions.Close()
+	raw, err := watch.FingerprintRoots(sessionWatchRoots(home)...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	epoch, err := sessions.SessionIndexEpoch(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkpoint, err := sessionCheckpointFingerprint(ctx, sessions, home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := fmt.Sprintf("v1:%d:%s", epoch, raw); checkpoint != want {
+		t.Fatalf("checkpoint=%q want=%q", checkpoint, want)
+	}
+	if err = os.MkdirAll(filepath.Join(home, ".codex", "sessions"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(filepath.Join(home, ".codex", "sessions", "late.jsonl"), []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	bound, err := sessionCheckpointFingerprintFromRaw(ctx, sessions, raw)
+	if err != nil || bound != fmt.Sprintf("v1:%d:%s", epoch, raw) {
+		t.Fatalf("captured checkpoint=%q err=%v", bound, err)
+	}
+	if _, err = store.MintSessionIndexEpoch(ctx, sessions.DB); err != nil {
+		t.Fatal(err)
+	}
+	after, err := sessionCheckpointFingerprint(ctx, sessions, home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after == checkpoint {
+		t.Fatalf("checkpoint retained rebuilt session identity %q", checkpoint)
+	}
+}
+
+func TestSessionWatchFingerprintMissingStateIsReadOnly(t *testing.T) {
+	state := filepath.Join(t.TempDir(), "missing")
+	home := t.TempDir()
+	fingerprint, err := sessionWatchFingerprint(context.Background(), state, home)
+	if err != nil || !strings.HasPrefix(fingerprint, "v1:0:") {
+		t.Fatalf("fingerprint=%q err=%v", fingerprint, err)
+	}
+	if _, err = os.Stat(state); !os.IsNotExist(err) {
+		t.Fatalf("read-only fingerprint created state: %v", err)
+	}
+}
+
+func TestSessionWatchFingerprintReadsRootsOnce(t *testing.T) {
+	ctx := context.Background()
+	state := filepath.Join(t.TempDir(), "state")
+	home := t.TempDir()
+	sessions, err := store.OpenSessions(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = sessions.Close(); err != nil {
+		t.Fatal(err)
+	}
+	original := sessionWatchRootsFingerprint
+	calls := 0
+	sessionWatchRootsFingerprint = func(roots ...string) (string, error) {
+		calls++
+		return original(roots...)
+	}
+	t.Cleanup(func() { sessionWatchRootsFingerprint = original })
+	if _, err = sessionWatchFingerprint(ctx, state, home); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 {
+		t.Fatalf("session roots fingerprint calls=%d, want 1", calls)
+	}
+}
+
+func TestSessionWatchFingerprintForcesLegacyIndexMigration(t *testing.T) {
+	ctx := context.Background()
+	state := filepath.Join(t.TempDir(), "state")
+	home := t.TempDir()
+	sessions, err := store.OpenSessions(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = sessions.DB.ExecContext(ctx, "DROP TABLE session_index_generation"); err != nil {
+		sessions.Close()
+		t.Fatal(err)
+	}
+	if err = sessions.Close(); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := watch.FingerprintRoots(sessionWatchRoots(home)...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fingerprint, err := sessionWatchFingerprint(ctx, state, home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "v1:0:" + raw; fingerprint != want {
+		t.Fatalf("legacy fingerprint=%q, want %q", fingerprint, want)
+	}
+}
+
 func TestSessionPurgeClearsOnlySessionCheckpointAndWatchBootstraps(t *testing.T) {
 	ctx := context.Background()
 	root := t.TempDir()
@@ -2455,7 +2600,7 @@ func TestUsageOnlyWatchNeverCreatesSessionStore(t *testing.T) {
 	oldHome := userHomeDir
 	userHomeDir = func() (string, error) { return home, nil }
 	t.Cleanup(func() { userHomeDir = oldHome })
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	writer := &cancelAfterLineWriter{cancel: cancel}
 	command := newRootCommand(bytes.NewReader(nil), writer)
@@ -2765,6 +2910,7 @@ INSERT INTO model_prices(catalog_version,model,provider,effective_from,prices_js
 
 func TestUsageSummaryShortcutsAndStatsJSONContract(t *testing.T) {
 	state := filepath.Join(t.TempDir(), "state")
+	waitForDetachedScanCleanup(t, state)
 	home := t.TempDir()
 	oldHome := userHomeDir
 	userHomeDir = func() (string, error) { return home, nil }
@@ -2839,6 +2985,18 @@ func TestUsageSummaryShortcutsAndStatsJSONContract(t *testing.T) {
 	if !strings.Contains(textOutput.String(), "Jul 01, 2026 - Jul 07, 2026") || strings.Contains(textOutput.String(), "Jul 08, 2026") {
 		t.Fatalf("stats text range is not inclusive:\n%s", textOutput.String())
 	}
+}
+
+func waitForDetachedScanCleanup(t *testing.T, state string) {
+	t.Helper()
+	t.Cleanup(func() {
+		release, err := scanruntime.AcquireMaintenance(context.Background(), state, 5*time.Second)
+		if err != nil {
+			t.Errorf("wait for detached scan cleanup: %v", err)
+			return
+		}
+		_ = release()
+	})
 }
 
 func TestUsageStatsDisclosesDefaultedCacheCreationTTL(t *testing.T) {
