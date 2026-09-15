@@ -218,17 +218,21 @@ public final class FoundationEmbeddedHelperProcess: EmbeddedHelperProcess, @unch
         process.standardOutput = stdoutPipe
         process.standardError = stderrPipe
 
-        startCapture(from: stdoutPipe.fileHandleForReading, into: stdout)
-        startCapture(from: stderrPipe.fileHandleForReading, into: stderr)
+        let stdoutBarrier = startCapture(from: stdoutPipe.fileHandleForReading, into: stdout)
+        let stderrBarrier = startCapture(from: stderrPipe.fileHandleForReading, into: stderr)
 
         let running = RunningProcess(process)
         do {
             try process.run()
         } catch {
-            finishCapture(from: stdoutPipe.fileHandleForReading, into: stdout)
-            finishCapture(from: stderrPipe.fileHandleForReading, into: stderr)
+            try? stdoutPipe.fileHandleForWriting.close()
+            try? stderrPipe.fileHandleForWriting.close()
+            finishCapture(from: stdoutPipe.fileHandleForReading, into: stdout, barrier: stdoutBarrier)
+            finishCapture(from: stderrPipe.fileHandleForReading, into: stderr, barrier: stderrBarrier)
             throw HelperExecutionError.launchFailed
         }
+        try? stdoutPipe.fileHandleForWriting.close()
+        try? stderrPipe.fileHandleForWriting.close()
 
         do {
             let exitStatus = try await withTaskCancellationHandler(
@@ -238,8 +242,8 @@ public final class FoundationEmbeddedHelperProcess: EmbeddedHelperProcess, @unch
             if Task.isCancelled {
                 throw HelperExecutionError.cancelled
             }
-            finishCapture(from: stdoutPipe.fileHandleForReading, into: stdout)
-            finishCapture(from: stderrPipe.fileHandleForReading, into: stderr)
+            finishCapture(from: stdoutPipe.fileHandleForReading, into: stdout, barrier: stdoutBarrier)
+            finishCapture(from: stderrPipe.fileHandleForReading, into: stderr, barrier: stderrBarrier)
             return HelperProcessOutput(
                 exitStatus: exitStatus,
                 stdout: stdout.value,
@@ -249,13 +253,13 @@ public final class FoundationEmbeddedHelperProcess: EmbeddedHelperProcess, @unch
             )
         } catch is CancellationError {
             running.terminate()
-            finishCapture(from: stdoutPipe.fileHandleForReading, into: stdout)
-            finishCapture(from: stderrPipe.fileHandleForReading, into: stderr)
+            finishCapture(from: stdoutPipe.fileHandleForReading, into: stdout, barrier: stdoutBarrier)
+            finishCapture(from: stderrPipe.fileHandleForReading, into: stderr, barrier: stderrBarrier)
             throw HelperExecutionError.cancelled
         } catch {
             running.terminate()
-            finishCapture(from: stdoutPipe.fileHandleForReading, into: stdout)
-            finishCapture(from: stderrPipe.fileHandleForReading, into: stderr)
+            finishCapture(from: stdoutPipe.fileHandleForReading, into: stdout, barrier: stdoutBarrier)
+            finishCapture(from: stderrPipe.fileHandleForReading, into: stderr, barrier: stderrBarrier)
             if let helperError = error as? HelperExecutionError {
                 throw helperError
             }
@@ -308,17 +312,21 @@ public final class FoundationEmbeddedHelperProcess: EmbeddedHelperProcess, @unch
 		process.standardOutput = stdoutPipe
 		process.standardError = stderrPipe
 
-		startCapture(from: stdoutPipe.fileHandleForReading, into: stdout)
-		startCapture(from: stderrPipe.fileHandleForReading, into: stderr)
+		let stdoutBarrier = startCapture(from: stdoutPipe.fileHandleForReading, into: stdout)
+		let stderrBarrier = startCapture(from: stderrPipe.fileHandleForReading, into: stderr)
 
 		let running = RunningProcess(process)
 		do {
 			try process.run()
 		} catch {
-			finishCapture(from: stdoutPipe.fileHandleForReading, into: stdout)
-			finishCapture(from: stderrPipe.fileHandleForReading, into: stderr)
+			try? stdoutPipe.fileHandleForWriting.close()
+			try? stderrPipe.fileHandleForWriting.close()
+			finishCapture(from: stdoutPipe.fileHandleForReading, into: stdout, barrier: stdoutBarrier)
+			finishCapture(from: stderrPipe.fileHandleForReading, into: stderr, barrier: stderrBarrier)
 			throw HelperExecutionError.launchFailed
 		}
+		try? stdoutPipe.fileHandleForWriting.close()
+		try? stderrPipe.fileHandleForWriting.close()
 
 		do {
 			let exitStatus = try await withTaskCancellationHandler(
@@ -328,8 +336,8 @@ public final class FoundationEmbeddedHelperProcess: EmbeddedHelperProcess, @unch
 			if Task.isCancelled {
 				throw HelperExecutionError.cancelled
 			}
-			finishCapture(from: stdoutPipe.fileHandleForReading, into: stdout)
-			finishCapture(from: stderrPipe.fileHandleForReading, into: stderr)
+			finishCapture(from: stdoutPipe.fileHandleForReading, into: stdout, barrier: stdoutBarrier)
+			finishCapture(from: stderrPipe.fileHandleForReading, into: stderr, barrier: stderrBarrier)
 			return HelperProcessLinesOutput(
 				exitStatus: exitStatus,
 				stdoutLines: stdout.lines,
@@ -340,13 +348,13 @@ public final class FoundationEmbeddedHelperProcess: EmbeddedHelperProcess, @unch
 			)
 		} catch is CancellationError {
 			running.terminate()
-			finishCapture(from: stdoutPipe.fileHandleForReading, into: stdout)
-			finishCapture(from: stderrPipe.fileHandleForReading, into: stderr)
+			finishCapture(from: stdoutPipe.fileHandleForReading, into: stdout, barrier: stdoutBarrier)
+			finishCapture(from: stderrPipe.fileHandleForReading, into: stderr, barrier: stderrBarrier)
 			throw HelperExecutionError.cancelled
 		} catch {
 			running.terminate()
-			finishCapture(from: stdoutPipe.fileHandleForReading, into: stdout)
-			finishCapture(from: stderrPipe.fileHandleForReading, into: stderr)
+			finishCapture(from: stdoutPipe.fileHandleForReading, into: stdout, barrier: stdoutBarrier)
+			finishCapture(from: stderrPipe.fileHandleForReading, into: stderr, barrier: stderrBarrier)
 			if let helperError = error as? HelperExecutionError {
 				throw helperError
 			}
@@ -354,39 +362,90 @@ public final class FoundationEmbeddedHelperProcess: EmbeddedHelperProcess, @unch
 		}
 	}
 
-    private func startCapture(from handle: FileHandle, into capture: BoundedData) {
+    private func startCapture(from handle: FileHandle, into capture: BoundedData) -> CaptureBarrier {
+        let barrier = CaptureBarrier()
         handle.readabilityHandler = { readableHandle in
-            let chunk = readableHandle.availableData
-            if chunk.isEmpty {
-                readableHandle.readabilityHandler = nil
-                return
+            barrier.withCallback {
+                let chunk = readableHandle.availableData
+                if chunk.isEmpty {
+                    readableHandle.readabilityHandler = nil
+                    return
+                }
+                capture.append(chunk)
             }
-            capture.append(chunk)
         }
+        return barrier
     }
 
-    private func finishCapture(from handle: FileHandle, into capture: BoundedData) {
+    private func finishCapture(from handle: FileHandle, into capture: BoundedData, barrier: CaptureBarrier) {
+        barrier.stopAccepting()
         handle.readabilityHandler = nil
+        barrier.waitUntilIdle()
         capture.append(handle.readDataToEndOfFile())
         try? handle.close()
     }
 
-	private func startCapture(from handle: FileHandle, into capture: BoundedLines) {
+	private func startCapture(from handle: FileHandle, into capture: BoundedLines) -> CaptureBarrier {
+		let barrier = CaptureBarrier()
 		handle.readabilityHandler = { readableHandle in
-			let chunk = readableHandle.availableData
-			if chunk.isEmpty {
-				readableHandle.readabilityHandler = nil
-				return
+			barrier.withCallback {
+				let chunk = readableHandle.availableData
+				if chunk.isEmpty {
+					readableHandle.readabilityHandler = nil
+					return
+				}
+				capture.append(chunk)
 			}
-			capture.append(chunk)
 		}
+		return barrier
 	}
 
-	private func finishCapture(from handle: FileHandle, into capture: BoundedLines) {
+	private func finishCapture(from handle: FileHandle, into capture: BoundedLines, barrier: CaptureBarrier) {
+		barrier.stopAccepting()
 		handle.readabilityHandler = nil
+		barrier.waitUntilIdle()
 		capture.append(handle.readDataToEndOfFile())
 		capture.finish()
 		try? handle.close()
+	}
+}
+
+private final class CaptureBarrier: @unchecked Sendable {
+	private let condition = NSCondition()
+	private var accepting = true
+	private var activeCallbacks = 0
+
+	func withCallback(_ body: () -> Void) {
+		condition.lock()
+		guard accepting else {
+			condition.unlock()
+			return
+		}
+		activeCallbacks += 1
+		condition.unlock()
+
+		body()
+
+		condition.lock()
+		activeCallbacks -= 1
+		if activeCallbacks == 0 {
+			condition.broadcast()
+		}
+		condition.unlock()
+	}
+
+	func stopAccepting() {
+		condition.lock()
+		accepting = false
+		condition.unlock()
+	}
+
+	func waitUntilIdle() {
+		condition.lock()
+		while activeCallbacks > 0 {
+			condition.wait()
+		}
+		condition.unlock()
 	}
 }
 
