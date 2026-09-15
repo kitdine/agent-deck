@@ -9,7 +9,10 @@ import (
 	"fmt"
 )
 
-var ErrDerivedSnapshotGenerationReadOnly = errors.New("derived snapshot generation is read-only")
+var (
+	ErrDerivedSnapshotGenerationReadOnly = errors.New("derived snapshot generation is read-only")
+	ErrSessionIndexGenerationMissing     = errors.New("session index generation is missing")
+)
 
 var generateGenerationEpoch = randomGenerationEpoch
 
@@ -154,5 +157,11 @@ func MintSessionIndexEpoch(ctx context.Context, executor sessionGenerationExecut
 func (s *Store) SessionIndexEpoch(ctx context.Context) (int64, error) {
 	var epoch int64
 	err := s.DB.QueryRowContext(ctx, `SELECT epoch FROM session_index_generation WHERE singleton=1`).Scan(&epoch)
+	if err != nil {
+		var present int
+		if inspectErr := s.DB.QueryRowContext(ctx, `SELECT count(*) FROM sqlite_master WHERE type='table' AND name='session_index_generation'`).Scan(&present); inspectErr == nil && present == 0 {
+			return 0, ErrSessionIndexGenerationMissing
+		}
+	}
 	return epoch, err
 }

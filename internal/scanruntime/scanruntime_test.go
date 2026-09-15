@@ -196,6 +196,50 @@ func TestLateScopeQueuesOneFollowUpBeforeOtherDomainCompletes(t *testing.T) {
 	}
 }
 
+func TestTerminalReceiptFailureStillAdvancesRoundQueue(t *testing.T) {
+	state := t.TempDir()
+	current := newRoundWithID("home", "round-1", 1)
+	pending := newRoundWithID("home", "round-2", 2)
+	pending.predecessor = current
+	journal := &receiptJournal{
+		path: filepath.Join(state, "missing", receiptJournalFilename),
+		entries: map[string]scanReceipt{
+			"current": {ID: "current", StateID: "state", Home: "home", Scope: ScopeBoth, RoundID: current.id, State: receiptAccepted},
+			"pending": {ID: "pending", StateID: "state", Home: "home", Scope: ScopeBoth, RoundID: pending.id, State: receiptAccepted},
+		},
+	}
+	server := &server{
+		ctx:       context.Background(),
+		stateRoot: state,
+		stateID:   "state",
+		journal:   journal,
+		round:     current,
+		pending:   pending,
+		rounds:    map[string]*round{current.id: current, pending.id: pending},
+		run: func(_ context.Context, _ string, _ string, id string, _ bool) Result {
+			return Result{RoundID: id, Usage: UsageResult{State: "completed"}, Session: SessionResult{State: "completed"}}
+		},
+	}
+	server.launchRoundLocked(current)
+	server.launchRoundLocked(pending)
+	select {
+	case <-pending.done:
+	case <-time.After(time.Second):
+		t.Fatal("pending round did not complete after terminal receipt failure")
+	}
+	server.mu.Lock()
+	defer server.mu.Unlock()
+	if server.pending != nil || server.round != pending {
+		t.Fatalf("queue current=%p pending=%p, want promoted round %p and no pending round", server.round, server.pending, pending)
+	}
+	if len(server.rounds) != 0 {
+		t.Fatalf("completed rounds retained after receipt failures: %#v", server.rounds)
+	}
+	if current.terminalErr == nil || pending.terminalErr == nil {
+		t.Fatalf("terminal errors current=%v pending=%v, want both journal failures", current.terminalErr, pending.terminalErr)
+	}
+}
+
 func TestRequestAfterInventoryObservationQueuesFollowUp(t *testing.T) {
 	current := newRoundWithID("home", "round-1", 1)
 	current.inventoryOnce.Do(func() { close(current.inventoryObserved) })
@@ -484,6 +528,35 @@ func TestUnixWorkerServesAClientRound(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("worker did not stop after context cancellation")
+	}
+}
+
+func TestPrepareStateRootRecanonicalizesNewDirectoryBelowSymlink(t *testing.T) {
+	root := t.TempDir()
+	realParent := filepath.Join(root, "real")
+	if err := os.MkdirAll(realParent, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	alias := filepath.Join(root, "alias")
+	if err := os.Symlink(realParent, alias); err != nil {
+		t.Fatal(err)
+	}
+	state := filepath.Join(alias, "new-state")
+	firstRoot, firstID, err := prepareStateRoot(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondRoot, secondID, err := prepareStateRoot(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantParent, err := filepath.EvalSymlinks(realParent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantRoot := filepath.Join(wantParent, "new-state")
+	if firstRoot != wantRoot || secondRoot != wantRoot || firstID != secondID {
+		t.Fatalf("first=(%q,%q) second=(%q,%q), want stable canonical root %q", firstRoot, firstID, secondRoot, secondID, wantRoot)
 	}
 }
 

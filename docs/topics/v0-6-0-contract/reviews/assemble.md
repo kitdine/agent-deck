@@ -165,3 +165,43 @@ Residual uncertainty: 远端 ref、PR 保护与 CI 尚未检查，因为本轮�
 完成门禁：VERIFIED（2/2；上述 ContentState）。本轮确认
 `integration-readiness` 与 `source-continuity`，无 missing、invalidated 或
 unresolved evidence。aggregate assemble 仍保持开放。
+
+## Repair handoff — PR4-E6 — 2026-09-15 — snapshot-performance
+
+GitHub Codex 在 PR #4 的当前 HEAD
+`e6d59e565ca61b5adf493173fdac502920b6415a` 上完成新一轮 review，并记录四条
+source-branch finding。本节仅记录 Repair 的逐条处置与复评候选，不改写 Round 2
+针对 `7e455a8f` 的历史 PASS，也不自行给出新的评审结论。修复后的五文件候选以
+HEAD 加 code/test diff SHA-256
+`1bc27d3de2dd5c23b688618136fb6983e77f61e00c2c78ae0d4c229d4f66cd06`
+标识。
+
+- `PR4-E6-F1`（P1，GitHub discussion `r4012545716`）closed in candidate：
+  `SessionIndexEpoch` 在 generation 表缺失时返回稳定的迁移哨兵；session watch
+  将其映射为过期 checkpoint，使后续受锁 scan 以可写方式完成旧索引迁移，
+  不再因只读 epoch 查询直接退出。
+- `PR4-E6-F2`（P2，GitHub discussion `r4012545730`）closed in candidate：
+  session watch 把本轮已采集的 raw source fingerprint 直接传给 epoch 绑定逻辑，
+  不再在同一次未变化 poll 中重复遍历全部 session roots。
+- `PR4-E6-F3`（P1，GitHub discussion `r4012545742`）closed in candidate：
+  terminal receipt 持久化失败仍作为调用方可见错误保留，但 server 总会删除已完成
+  round、提升 pending round 并恢复 idle/later-request 队列状态。
+- `PR4-E6-F4`（P2，GitHub discussion `r4012545748`）closed in candidate：
+  `EnsureStateRoot` 创建新目录后再次解析 symlink，并仅用最终 canonical path 计算
+  state ID，保证首次 client 与随后 worker 派生同一 socket。
+
+Repair verification：
+
+- 聚焦回归：`TestTerminalReceiptFailureStillAdvancesRoundQueue`、
+  `TestPrepareStateRootRecanonicalizesNewDirectoryBelowSymlink`、
+  `TestSessionWatchFingerprintReadsRootsOnce`、
+  `TestSessionWatchFingerprintForcesLegacyIndexMigration` 全部通过。
+- `scripts/run-go-test.sh ./...`：PASS。
+- `scripts/run-go-test.sh -race ./internal/scanruntime ./cmd/agentdeck`：PASS。
+- `make vet`：PASS。
+- `make build-all`：PASS（darwin/arm64、darwin/amd64）。
+- 修复前 PR HEAD 的两组 `verify` 与两组 `desktop` CI 均为 SUCCESS；这些远端结果
+  不覆盖本地未提交候选，新的 CI 仍属于后续 push 后验证。
+
+Repair complete；四条 finding 均已进入同一复评候选。aggregate `assemble` 仍保持
+开放，提交、推送、PR 更新与 merge 均未在本阶段执行。

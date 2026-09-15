@@ -633,10 +633,9 @@ func (s *server) launchRoundLocked(round *round) {
 func (s *server) completeRound(round *round, result Result) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	var journalErr error
 	if s.journal != nil {
-		if err := s.journal.terminal(round.id, result); err != nil {
-			return err
-		}
+		journalErr = s.journal.terminal(round.id, result)
 	}
 	delete(s.rounds, round.id)
 	if s.round == round && s.pending != nil {
@@ -645,7 +644,7 @@ func (s *server) completeRound(round *round, result Result) error {
 		s.round = next
 	}
 	s.lastActivity = time.Now()
-	return nil
+	return journalErr
 }
 
 func (s *server) terminalReceipt(id string, result Result) error {
@@ -1276,6 +1275,11 @@ func prepareStateRoot(stateRoot string) (string, string, error) {
 	if err = platform.EnsureStateRoot(resolved); err != nil {
 		return "", "", err
 	}
+	evaluated, err := filepath.EvalSymlinks(resolved)
+	if err != nil {
+		return "", "", err
+	}
+	resolved = filepath.Clean(evaluated)
 	digest := sha256.Sum256([]byte(resolved))
 	return resolved, hex.EncodeToString(digest[:]), nil
 }

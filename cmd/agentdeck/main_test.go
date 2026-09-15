@@ -2394,6 +2394,60 @@ func TestSessionWatchFingerprintMissingStateIsReadOnly(t *testing.T) {
 	}
 }
 
+func TestSessionWatchFingerprintReadsRootsOnce(t *testing.T) {
+	ctx := context.Background()
+	state := filepath.Join(t.TempDir(), "state")
+	home := t.TempDir()
+	sessions, err := store.OpenSessions(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = sessions.Close(); err != nil {
+		t.Fatal(err)
+	}
+	original := sessionWatchRootsFingerprint
+	calls := 0
+	sessionWatchRootsFingerprint = func(roots ...string) (string, error) {
+		calls++
+		return original(roots...)
+	}
+	t.Cleanup(func() { sessionWatchRootsFingerprint = original })
+	if _, err = sessionWatchFingerprint(ctx, state, home); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 {
+		t.Fatalf("session roots fingerprint calls=%d, want 1", calls)
+	}
+}
+
+func TestSessionWatchFingerprintForcesLegacyIndexMigration(t *testing.T) {
+	ctx := context.Background()
+	state := filepath.Join(t.TempDir(), "state")
+	home := t.TempDir()
+	sessions, err := store.OpenSessions(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = sessions.DB.ExecContext(ctx, "DROP TABLE session_index_generation"); err != nil {
+		sessions.Close()
+		t.Fatal(err)
+	}
+	if err = sessions.Close(); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := watch.FingerprintRoots(sessionWatchRoots(home)...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fingerprint, err := sessionWatchFingerprint(ctx, state, home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "v1:0:" + raw; fingerprint != want {
+		t.Fatalf("legacy fingerprint=%q, want %q", fingerprint, want)
+	}
+}
+
 func TestSessionPurgeClearsOnlySessionCheckpointAndWatchBootstraps(t *testing.T) {
 	ctx := context.Background()
 	root := t.TempDir()

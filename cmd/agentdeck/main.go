@@ -1599,8 +1599,10 @@ func sessionCheckpointFingerprintFromRaw(ctx context.Context, sessions *store.St
 	return fmt.Sprintf("v1:%d:%s", epoch, fingerprint), nil
 }
 
+var sessionWatchRootsFingerprint = watch.FingerprintRoots
+
 func sessionWatchFingerprint(ctx context.Context, stateRoot, home string) (string, error) {
-	fingerprint, err := watch.FingerprintRoots(sessionWatchRoots(home)...)
+	fingerprint, err := sessionWatchRootsFingerprint(sessionWatchRoots(home)...)
 	if err != nil {
 		return "", err
 	}
@@ -1614,7 +1616,11 @@ func sessionWatchFingerprint(ctx context.Context, stateRoot, home string) (strin
 		return "", err
 	}
 	defer sessions.Close()
-	return sessionCheckpointFingerprint(ctx, sessions, home)
+	checkpoint, err := sessionCheckpointFingerprintFromRaw(ctx, sessions, fingerprint)
+	if errors.Is(err, store.ErrSessionIndexGenerationMissing) {
+		return "v1:0:" + fingerprint, nil
+	}
+	return checkpoint, err
 }
 
 func parseScanScope(value string) (scanruntime.Scope, error) {
