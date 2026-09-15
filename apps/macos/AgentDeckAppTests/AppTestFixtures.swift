@@ -534,7 +534,7 @@ final class StubDesktopHost: DesktopSnapshotRefreshing {
 				sequence: 2,
 				stage: .completed,
 				usage: DesktopScanDomainProgress(state: "completed", committed: 8, total: 8, skipped: 0),
-				session: DesktopScanDomainProgress(state: "failed", committed: 2, total: 8, skipped: 1)
+				session: DesktopScanDomainProgress(state: "failed", committed: 0, total: 0, skipped: 0)
 			))
 		}
 		return try await refresh(recentLimit: recentLimit)

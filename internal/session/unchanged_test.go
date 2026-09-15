@@ -55,8 +55,8 @@ func TestUnchangedSourcesRequireCompleteCurrentCheckpoints(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	// A captured inventory cannot certify a file changed before the registry
-	// check, even when the source count and mtime are restored.
+	// Pure growth after discovery does not invalidate the already committed
+	// captured range; a fresh inventory will schedule the suffix next time.
 	info, err := os.Stat(path)
 	if err != nil {
 		t.Fatal(err)
@@ -67,8 +67,15 @@ func TestUnchangedSourcesRequireCompleteCurrentCheckpoints(t *testing.T) {
 	if err := os.Chtimes(path, info.ModTime(), info.ModTime()); err != nil {
 		t.Fatal(err)
 	}
-	if ok, err := unchangedSources(ctx, db.DB, paths); err == nil || ok {
-		t.Fatalf("stale inventory accepted: %v, %v", ok, err)
+	if ok, err := unchangedSources(ctx, db.DB, paths); err != nil || !ok {
+		t.Fatalf("captured range rejected append growth: %v, %v", ok, err)
+	}
+	refreshed, err := sessionSources(home, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := unchangedSources(ctx, db.DB, refreshed); err != nil || ok {
+		t.Fatalf("fresh inventory skipped appended suffix: %v, %v", ok, err)
 	}
 }
 

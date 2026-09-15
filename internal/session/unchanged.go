@@ -58,8 +58,8 @@ func unchangedSources(ctx context.Context, db *sql.DB, paths []source) (bool, er
 		if err := ctx.Err(); err != nil {
 			return false, err
 		}
-		if err := ingest.Validate(ingest.Source{Path: src.path, Identity: src.identity, Size: src.size,
-			ModifiedAt: src.modifiedAt, ChangedAt: src.changedAt, Stable: src.stable}); err != nil {
+		if err := ingest.ValidateCapturedRange(ingest.Source{Path: src.path, Identity: src.identity, Size: src.size,
+			ModifiedAt: src.modifiedAt, ChangedAt: src.changedAt, Stable: src.stable}, src.size); err != nil {
 			return false, err
 		}
 	}

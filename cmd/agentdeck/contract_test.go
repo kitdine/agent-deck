@@ -258,6 +258,7 @@ func TestEveryLeafSyntaxErrorUsesStableJSON(t *testing.T) {
 
 func TestJSONCommandsUseSyntheticStateAndDoNotExposeSecrets(t *testing.T) {
 	state, home := filepath.Join(t.TempDir(), "state"), filepath.Join(t.TempDir(), "home")
+	waitForDetachedScanCleanup(t, state)
 	if err := os.MkdirAll(filepath.Join(home, ".codex"), 0700); err != nil {
 		t.Fatal(err)
 	}

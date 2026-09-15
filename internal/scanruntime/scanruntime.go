@@ -175,9 +175,6 @@ type Client struct {
 	// ForceLocal is intended only for tests and controlled in-process callers.
 	// The normal CLI path always uses the detached worker when it is executable.
 	ForceLocal bool
-	// WaitForAll is a test-harness boundary: scoped callers still receive their
-	// scoped result, but no in-process round remains after the request returns.
-	WaitForAll bool
 	// Now is carried only by ForceLocal test callers so a test's scan and
 	// snapshot observe one business clock. Detached workers use their own clock.
 	Now func() time.Time
@@ -224,7 +221,7 @@ func (c Client) request(ctx context.Context, scope Scope, onProgress func(Progre
 		return Result{}, err
 	}
 	if c.ForceLocal {
-		return localRequest(ctx, stateRoot, c.Home, scope, c.Now, onProgress, c.WaitForAll)
+		return localRequest(ctx, stateRoot, c.Home, scope, c.Now, onProgress)
 	}
 	endpoint, err := socketPath(stateID)
 	if err != nil {
@@ -1245,7 +1242,7 @@ var localRounds = struct {
 	byState map[string]*round
 }{byState: map[string]*round{}}
 
-func localRequest(ctx context.Context, stateRoot, home string, scope Scope, now func() time.Time, onProgress func(Progress), waitForAll bool) (Result, error) {
+func localRequest(ctx context.Context, stateRoot, home string, scope Scope, now func() time.Time, onProgress func(Progress)) (Result, error) {
 	localRounds.Lock()
 	round := localRounds.byState[stateRoot]
 	if round == nil || round.completed() {
@@ -1255,20 +1252,13 @@ func localRequest(ctx context.Context, stateRoot, home string, scope Scope, now 
 		go round.execute(context.Background(), stateRoot, false)
 	}
 	localRounds.Unlock()
-	var result Result
-	var err error
 	if onProgress != nil {
-		result, err = round.waitWithProgress(ctx, scope, func(progress Progress) error {
+		return round.waitWithProgress(ctx, scope, func(progress Progress) error {
 			onProgress(progress)
 			return nil
 		})
-	} else {
-		result, err = round.wait(ctx, scope)
 	}
-	if err != nil || !waitForAll {
-		return result, err
-	}
-	return round.wait(ctx, ScopeBoth)
+	return round.wait(ctx, scope)
 }
 
 func prepareStateRoot(stateRoot string) (string, string, error) {
