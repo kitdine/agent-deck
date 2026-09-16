@@ -214,6 +214,45 @@ func TestCoordinatorCancelsProducerWhenAllConsumersExit(t *testing.T) {
 	}
 }
 
+func TestCoordinatorCancellationFinishesEveryUnadmittedStream(t *testing.T) {
+	root := t.TempDir()
+	sources := make([]Source, 3)
+	for index := range sources {
+		path := filepath.Join(root, string(rune('a'+index))+".jsonl")
+		if err := os.WriteFile(path, []byte("{}\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		sources[index] = testSource(t, path)
+	}
+	opened := make(chan struct{}, 1)
+	coordinator := NewCoordinator(sources, Options{
+		Budget:  sources[0].Size * decodedWeightFactor,
+		Workers: 1,
+		Open: func(path string) (sourceFile, error) {
+			opened <- struct{}{}
+			return os.Open(path)
+		},
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	coordinator.Start(ctx)
+	select {
+	case <-opened:
+	case <-time.After(time.Second):
+		t.Fatal("first source was not admitted")
+	}
+	cancel()
+	select {
+	case <-coordinator.done:
+	case <-time.After(time.Second):
+		t.Fatal("coordinator workers did not stop after cancellation")
+	}
+	for _, source := range sources {
+		if _, shared, err := coordinator.Snapshot(context.Background(), source.Path, ConsumerUsage); !shared || !errors.Is(err, context.Canceled) {
+			t.Fatalf("%s shared=%t err=%v, want terminal cancellation", source.Path, shared, err)
+		}
+	}
+}
+
 func TestCoordinatorRequiresBothSealedPlansBeforeBodyAdmission(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "source.jsonl")
 	if err := os.WriteFile(path, []byte("{}\n{}\n"), 0o600); err != nil {

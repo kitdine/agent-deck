@@ -21,7 +21,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/kitdine/agent-deck/internal/desktop"
@@ -39,6 +41,7 @@ const (
 
 	defaultStartupTimeout = 5 * time.Second
 	defaultIdleTimeout    = time.Second
+	runtimeParentLocator  = ".scan-runtime-parent"
 )
 
 // Scope selects the terminal outcome a caller waits for.  It never changes the
@@ -63,7 +66,7 @@ type UsageResult struct {
 	State      string         `json:"state"`
 	Changes    map[string]int `json:"changes,omitempty"`
 	ErrorCode  string         `json:"error_code,omitempty"`
-	Error      string         `json:"error,omitempty"`
+	Error      string         `json:"-"`
 	DurationMS int64          `json:"duration_ms"`
 }
 
@@ -71,7 +74,7 @@ type SessionResult struct {
 	State      string             `json:"state"`
 	Scan       session.ScanResult `json:"scan,omitempty"`
 	ErrorCode  string             `json:"error_code,omitempty"`
-	Error      string             `json:"error,omitempty"`
+	Error      string             `json:"-"`
 	DurationMS int64              `json:"duration_ms"`
 }
 
@@ -124,6 +127,7 @@ type Result struct {
 // request without pretending that the other domain has the same outcome.
 type DomainError struct {
 	Domain string
+	Code   string
 	Cause  string
 }
 
@@ -144,18 +148,18 @@ func (r Result) ErrorFor(scope Scope) error {
 	switch scope {
 	case ScopeUsage:
 		if r.Usage.State != "completed" {
-			return &DomainError{Domain: "usage", Cause: r.Usage.Error}
+			return &DomainError{Domain: "usage", Code: r.Usage.ErrorCode}
 		}
 	case ScopeSession:
 		if r.Session.State != "completed" {
-			return &DomainError{Domain: "session", Cause: r.Session.Error}
+			return &DomainError{Domain: "session", Code: r.Session.ErrorCode}
 		}
 	default:
 		if r.Usage.State != "completed" {
-			return &DomainError{Domain: "usage", Cause: r.Usage.Error}
+			return &DomainError{Domain: "usage", Code: r.Usage.ErrorCode}
 		}
 		if r.Session.State != "completed" {
-			return &DomainError{Domain: "session", Cause: r.Session.Error}
+			return &DomainError{Domain: "session", Code: r.Session.ErrorCode}
 		}
 	}
 	return nil
@@ -223,7 +227,7 @@ func (c Client) request(ctx context.Context, scope Scope, onProgress func(Progre
 	if c.ForceLocal {
 		return localRequest(ctx, stateRoot, c.Home, scope, c.Now, onProgress)
 	}
-	endpoint, err := socketPath(stateID)
+	endpoint, err := socketPath(stateRoot, stateID)
 	if err != nil {
 		return Result{}, err
 	}
@@ -376,7 +380,7 @@ func Serve(ctx context.Context, stateRoot string) error {
 	if err != nil {
 		return err
 	}
-	endpoint, err := socketPath(stateID)
+	endpoint, err := socketPath(stateRoot, stateID)
 	if err != nil {
 		return err
 	}
@@ -556,7 +560,14 @@ func (s *server) accept(request wireRequest) (*round, *Result, error) {
 			RoundID: round.id, Observation: round.observation,
 		}
 		if err = s.journal.accept(receipt); err != nil {
-			s.rollbackSelectedRoundLocked(round, start)
+			if receiptWasInstalled(err) {
+				if start {
+					s.launchRoundLocked(round)
+				}
+				s.lastActivity = time.Now()
+			} else {
+				s.rollbackSelectedRoundLocked(round, start)
+			}
 			return nil, nil, err
 		}
 	}
@@ -736,6 +747,7 @@ type round struct {
 	cacheNow          func() time.Time
 	openCore          func(context.Context, string) (*store.Store, error)
 	openSessions      func(context.Context, string) (*store.Store, error)
+	afterDiscovery    func([]ingest.Source)
 	inventoryObserved chan struct{}
 	inventoryOnce     sync.Once
 }
@@ -823,6 +835,9 @@ func (r *round) executeProduction(ctx context.Context, stateRoot string, lockHel
 		r.setUsage(failedUsage(discoverErr, 0))
 		r.setSession(failedSession(discoverErr, 0))
 		return
+	}
+	if r.afterDiscovery != nil {
+		r.afterDiscovery(sources)
 	}
 
 	openCore := r.openCore
@@ -935,11 +950,24 @@ func (r *round) executeProduction(ctx context.Context, stateRoot string, lockHel
 			defer coordinator.ConsumerDone(ingest.ConsumerSession)
 			started := time.Now()
 			scan, err := session.ScanWithOptions(ctx, sessions.DB, r.home, session.ScanOptions{PreparedSources: sources, Coordinator: coordinator, Progress: sessionRoundProgress{round: r}})
-			duration := time.Since(started).Milliseconds()
 			if err != nil {
-				r.setSession(failedSession(err, duration))
+				r.setSession(failedSession(err, time.Since(started).Milliseconds()))
 				return
 			}
+			epoch, err := sessions.SessionIndexEpoch(ctx)
+			if err != nil {
+				r.setSession(failedSession(err, time.Since(started).Milliseconds()))
+				return
+			}
+			if coreErr == nil {
+				checkpoint := fmt.Sprintf("v1:%d:%s", epoch, ingest.FingerprintSources(sources))
+				// This core setting only enables watch fast-skip. Session rows,
+				// cursors and completion markers are committed in the independent
+				// session store, so publication failure must not rewrite that
+				// successful domain outcome.
+				_ = core.SetSetting(ctx, "watch.fingerprint.session", checkpoint)
+			}
+			duration := time.Since(started).Milliseconds()
 			r.setSession(SessionResult{State: "completed", Scan: scan, DurationMS: duration})
 		}()
 	}
@@ -1185,11 +1213,11 @@ func (r *round) covers(scope Scope) bool {
 }
 
 func failedUsage(err error, duration int64) UsageResult {
-	return UsageResult{State: "failed", ErrorCode: failureCode(err), Error: err.Error(), DurationMS: duration}
+	return UsageResult{State: "failed", ErrorCode: failureCode(err), DurationMS: duration}
 }
 
 func failedSession(err error, duration int64) SessionResult {
-	return SessionResult{State: "failed", ErrorCode: failureCode(err), Error: err.Error(), DurationMS: duration}
+	return SessionResult{State: "failed", ErrorCode: failureCode(err), DurationMS: duration}
 }
 
 func failureCode(err error) string {
@@ -1284,8 +1312,11 @@ func prepareStateRoot(stateRoot string) (string, string, error) {
 	return resolved, hex.EncodeToString(digest[:]), nil
 }
 
-func socketPath(stateID string) (string, error) {
-	parent := scanRuntimeParent()
+func socketPath(stateRoot, stateID string) (string, error) {
+	parent, err := scanRuntimeParent(stateRoot)
+	if err != nil {
+		return "", err
+	}
 	if err := secureRuntimeDirectory(parent); err != nil {
 		return "", err
 	}
@@ -1300,14 +1331,115 @@ func socketPath(stateID string) (string, error) {
 	return filepath.Join(directory, "w"), nil
 }
 
-func scanRuntimeParent() string {
+func scanRuntimeParent(stateRoot string) (string, error) {
 	if runtime.GOOS == "darwin" {
 		// launchd supplies each macOS account a protected per-user temporary
 		// directory. A compact child keeps the Unix socket below sockaddr_un's
 		// path limit without exposing a predictable /tmp directory to other users.
-		return filepath.Join(os.TempDir(), "ad-s")
+		parent := filepath.Join(os.TempDir(), "ad-s")
+		if len(filepath.Join(parent, strings.Repeat("f", 24), "w")) < 104 {
+			return parent, nil
+		}
+		return compactDarwinRuntimeParent(stateRoot)
 	}
-	return filepath.Join(scanRuntimeBase(), fmt.Sprintf("agentdeck-scan-%d", os.Geteuid()))
+	return filepath.Join(scanRuntimeBase(), fmt.Sprintf("agentdeck-scan-%d", os.Geteuid())), nil
+}
+
+// compactDarwinRuntimeParent stores only a random basename in the private
+// state root. The corresponding /tmp directory is established atomically, so
+// another account cannot predict and pre-create the fallback while independent
+// client and worker processes still resolve the same short path.
+func compactDarwinRuntimeParent(stateRoot string) (string, error) {
+	locator := filepath.Join(stateRoot, runtimeParentLocator)
+	for attempt := 0; attempt < 8; attempt++ {
+		if parent, found, err := readRuntimeParentLocator(locator); err != nil {
+			return "", err
+		} else if found {
+			if err = secureRuntimeDirectory(parent); err == nil {
+				return parent, nil
+			}
+			if removeErr := os.Remove(locator); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
+				return "", removeErr
+			}
+		}
+
+		bytes := make([]byte, 16)
+		if _, err := rand.Read(bytes); err != nil {
+			return "", err
+		}
+		name := fmt.Sprintf("ad-s-%d-%s", os.Geteuid(), hex.EncodeToString(bytes))
+		parent := filepath.Join("/tmp", name)
+		if err := os.Mkdir(parent, 0o700); err != nil {
+			if errors.Is(err, os.ErrExist) {
+				continue
+			}
+			return "", err
+		}
+		installed, err := installRuntimeParentLocator(stateRoot, locator, name)
+		if err != nil {
+			_ = os.Remove(parent)
+			return "", err
+		}
+		if installed {
+			return parent, nil
+		}
+		_ = os.Remove(parent)
+	}
+	return "", errors.New("could not establish private scan runtime directory")
+}
+
+func readRuntimeParentLocator(path string) (string, bool, error) {
+	info, err := os.Lstat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Size() > 128 {
+		return "", false, errors.New("scan runtime parent locator is invalid")
+	}
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		return "", false, err
+	}
+	name := strings.TrimSpace(string(contents))
+	prefix := fmt.Sprintf("ad-s-%d-", os.Geteuid())
+	if filepath.Base(name) != name || !strings.HasPrefix(name, prefix) || len(name) != len(prefix)+32 {
+		return "", false, errors.New("scan runtime parent locator is invalid")
+	}
+	if _, err = hex.DecodeString(strings.TrimPrefix(name, prefix)); err != nil {
+		return "", false, errors.New("scan runtime parent locator is invalid")
+	}
+	return filepath.Join("/tmp", name), true, nil
+}
+
+func installRuntimeParentLocator(stateRoot, locator, name string) (bool, error) {
+	temporary, err := os.CreateTemp(stateRoot, ".scan-runtime-parent-*")
+	if err != nil {
+		return false, err
+	}
+	temporaryPath := temporary.Name()
+	defer os.Remove(temporaryPath)
+	if err = temporary.Chmod(platform.FileMode); err == nil {
+		_, err = temporary.WriteString(name + "\n")
+	}
+	if err == nil {
+		err = temporary.Sync()
+	}
+	if closeErr := temporary.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		return false, err
+	}
+	if err = os.Link(temporaryPath, locator); errors.Is(err, os.ErrExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func scanRuntimeBase() string {
@@ -1327,6 +1459,9 @@ func secureRuntimeDirectory(path string) error {
 	}
 	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 		return fmt.Errorf("scan runtime path is not an owned directory: %s", path)
+	}
+	if stat, ok := info.Sys().(*syscall.Stat_t); ok && uint32(stat.Uid) != uint32(os.Geteuid()) {
+		return fmt.Errorf("scan runtime path is not owned by the current user: %s", path)
 	}
 	return os.Chmod(path, 0o700)
 }

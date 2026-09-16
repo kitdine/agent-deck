@@ -15,7 +15,8 @@ import (
 
 func TestScanCommandReturnsOneCompletedSharedRound(t *testing.T) {
 	state := t.TempDir()
-	t.Setenv("HOME", t.TempDir())
+	home := t.TempDir()
+	t.Setenv("HOME", home)
 	var stdout, stderr bytes.Buffer
 	exit := execute([]string{"--state-dir", state, "--format", "json", "scan"}, bytes.NewReader(nil), &stdout, &stderr)
 	if exit != 0 {
@@ -36,6 +37,17 @@ func TestScanCommandReturnsOneCompletedSharedRound(t *testing.T) {
 	}
 	if envelope.Data.Usage.State != "completed" || envelope.Data.Session.State != "completed" {
 		t.Fatalf("scan terminal states = usage=%#v session=%#v", envelope.Data.Usage, envelope.Data.Session)
+	}
+	core, err := store.OpenReadOnly(context.Background(), state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkpoint, found, settingErr := core.Setting(context.Background(), "watch.fingerprint.session")
+	if closeErr := core.Close(); settingErr != nil || closeErr != nil || !found {
+		t.Fatalf("session checkpoint found=%t settingErr=%v closeErr=%v", found, settingErr, closeErr)
+	}
+	if checkpoint == "" {
+		t.Fatal("top-level scan persisted an empty session checkpoint")
 	}
 }
 

@@ -11,6 +11,7 @@ import (
 	"github.com/kitdine/agent-deck/internal/errdefs"
 	"github.com/kitdine/agent-deck/internal/extension"
 	"github.com/kitdine/agent-deck/internal/provider"
+	"github.com/kitdine/agent-deck/internal/scanruntime"
 	"github.com/kitdine/agent-deck/internal/session"
 	"github.com/kitdine/agent-deck/internal/store"
 )
@@ -39,6 +40,9 @@ func TestWrappedErrorCodeAndExitCodeMatrix(t *testing.T) {
 		{"backup unreadable", errdefs.NewNotFound(backup.CodeArchiveUnreadable, "synthetic backup", errors.New("synthetic cause")), "backup_unreadable", 1},
 		{"session not found", errdefs.NewNotFound(session.CodeSessionNotFound, "synthetic session", errors.New("synthetic cause")), "session_not_found", 1},
 		{"state busy", store.ErrStateBusy, "state_busy", 1},
+		{"scan domain state busy", &scanruntime.DomainError{Domain: "usage", Code: store.ErrStateBusy.Code}, "state_busy", 1},
+		{"scan domain schema ahead", &scanruntime.DomainError{Domain: "session", Code: store.ErrSchemaAhead.Code}, "schema_ahead", 1},
+		{"scan domain internal code", &scanruntime.DomainError{Domain: "session", Code: "scan_failed"}, "runtime_error", 1},
 		{"unsupported desktop wire version", desktop.ErrUnsupportedWireVersion, "unsupported_wire_version", 2},
 		{"invalid desktop recent limit", desktop.ErrInvalidRecentLimit, "invalid_recent_limit", 2},
 		{"input error", &inputError{err: errors.New("synthetic invalid input")}, "invalid_argument", 2},

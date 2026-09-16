@@ -22,6 +22,18 @@ const (
 
 var ErrReceiptJournalFull = errors.New("scan receipt journal is full")
 
+var syncReceiptDirectory = syncDirectory
+
+type installedReceiptError struct{ err error }
+
+func (e *installedReceiptError) Error() string { return e.err.Error() }
+func (e *installedReceiptError) Unwrap() error { return e.err }
+
+func receiptWasInstalled(err error) bool {
+	var installed *installedReceiptError
+	return errors.As(err, &installed)
+}
+
 type receiptState string
 
 const (
@@ -119,9 +131,12 @@ func (j *receiptJournal) accept(receipt scanReceipt) error {
 	}
 	receipt.State = receiptAccepted
 	j.entries[receipt.ID] = receipt
-	if err := j.save(); err != nil {
-		j.entries = before
-		return err
+	if installed, err := j.save(); err != nil {
+		if !installed {
+			j.entries = before
+			return err
+		}
+		return &installedReceiptError{err: err}
 	}
 	return nil
 }
@@ -147,9 +162,12 @@ func (j *receiptJournal) terminal(roundID string, result Result) error {
 	if !changed {
 		return nil
 	}
-	if err := j.save(); err != nil {
-		j.entries = before
-		return err
+	if installed, err := j.save(); err != nil {
+		if !installed {
+			j.entries = before
+			return err
+		}
+		return &installedReceiptError{err: err}
 	}
 	return nil
 }
@@ -172,9 +190,12 @@ func (j *receiptJournal) terminalReceipt(id string, result Result) error {
 	receipt.TerminalAt = &now
 	receipt.Result = &copy
 	j.entries[id] = receipt
-	if err := j.save(); err != nil {
-		j.entries = before
-		return err
+	if installed, err := j.save(); err != nil {
+		if !installed {
+			j.entries = before
+			return err
+		}
+		return &installedReceiptError{err: err}
 	}
 	return nil
 }
@@ -278,14 +299,20 @@ func (j *receiptJournal) prune(now time.Time) error {
 		return nil
 	}
 	j.trimExpired()
-	if err := j.save(); err != nil {
-		j.entries = before
-		return err
+	if installed, err := j.save(); err != nil {
+		if !installed {
+			j.entries = before
+			return err
+		}
+		return &installedReceiptError{err: err}
 	}
 	return nil
 }
 
-func (j *receiptJournal) save() error {
+// save reports whether the replacement document was installed. An error after
+// rename means durability is uncertain, but memory must continue to describe
+// the document that live readers and a restarted worker can already observe.
+func (j *receiptJournal) save() (bool, error) {
 	entries := make([]scanReceipt, 0, len(j.entries))
 	for _, receipt := range j.entries {
 		entries = append(entries, receipt)
@@ -298,31 +325,43 @@ func (j *receiptJournal) save() error {
 	})
 	contents, err := json.Marshal(receiptJournalDocument{Version: receiptJournalVersion, Entries: entries})
 	if err != nil {
-		return err
+		return false, err
 	}
 	temporary, err := os.CreateTemp(filepath.Dir(j.path), ".scan-receipts-*")
 	if err != nil {
-		return err
+		return false, err
 	}
 	temporaryPath := temporary.Name()
 	defer os.Remove(temporaryPath)
 	if err = temporary.Chmod(platform.FileMode); err != nil {
 		_ = temporary.Close()
-		return err
+		return false, err
 	}
 	if _, err = temporary.Write(append(contents, '\n')); err != nil {
 		_ = temporary.Close()
-		return err
+		return false, err
 	}
 	if err = temporary.Sync(); err != nil {
 		_ = temporary.Close()
-		return err
+		return false, err
 	}
 	if err = temporary.Close(); err != nil {
-		return err
+		return false, err
 	}
 	if err = os.Rename(temporaryPath, j.path); err != nil {
+		return false, err
+	}
+	if err = syncReceiptDirectory(filepath.Dir(j.path)); err != nil {
+		return true, err
+	}
+	return true, os.Chmod(j.path, platform.FileMode)
+}
+
+func syncDirectory(path string) error {
+	directory, err := os.Open(path)
+	if err != nil {
 		return err
 	}
-	return os.Chmod(j.path, platform.FileMode)
+	defer directory.Close()
+	return directory.Sync()
 }

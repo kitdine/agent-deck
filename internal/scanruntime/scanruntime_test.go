@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kitdine/agent-deck/internal/ingest"
 	"github.com/kitdine/agent-deck/internal/store"
 )
 
@@ -139,6 +140,106 @@ func TestRoundKeepsHealthyDomainWhenOtherStoreCannotOpen(t *testing.T) {
 				t.Fatalf("result usage=%#v session=%#v", round.result.Usage, round.result.Session)
 			}
 		})
+	}
+}
+
+func TestSessionCompletionPersistsDiscoveredInventoryCheckpoint(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	state, home := filepath.Join(root, "state"), filepath.Join(root, "home")
+	if err := os.MkdirAll(state, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	source := filepath.Join(home, ".codex", "sessions", "finite.jsonl")
+	if err := os.MkdirAll(filepath.Dir(source), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	first := "{\"type\":\"visible_user_prompt\",\"session_id\":\"finite\",\"payload\":{\"text\":\"first\"}}\n"
+	if err := os.WriteFile(source, []byte(first), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	round := newRound(home)
+	discovered := make(chan []ingest.Source, 1)
+	resume := make(chan struct{})
+	round.afterDiscovery = func(sources []ingest.Source) {
+		discovered <- append([]ingest.Source(nil), sources...)
+		<-resume
+	}
+	finished := make(chan struct{})
+	go func() {
+		defer close(finished)
+		round.executeProduction(ctx, state, false)
+	}()
+	captured := <-discovered
+	late := filepath.Join(home, ".codex", "sessions", "late.jsonl")
+	if err := os.WriteFile(late, []byte("{\"type\":\"visible_user_prompt\",\"session_id\":\"late\",\"payload\":{\"text\":\"unobserved\"}}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	close(resume)
+	<-finished
+	if round.result.Session.State != "completed" {
+		t.Fatalf("session result=%#v", round.result.Session)
+	}
+	core, err := store.OpenReadOnly(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	persisted, found, settingErr := core.Setting(ctx, "watch.fingerprint.session")
+	if closeErr := core.Close(); settingErr != nil || closeErr != nil || !found {
+		t.Fatalf("checkpoint found=%t settingErr=%v closeErr=%v", found, settingErr, closeErr)
+	}
+	sessions, err := store.OpenSessionsReadOnly(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	epoch, epochErr := sessions.SessionIndexEpoch(ctx)
+	if closeErr := sessions.Close(); epochErr != nil || closeErr != nil {
+		t.Fatalf("session epoch error=%v closeErr=%v", epochErr, closeErr)
+	}
+	want := fmt.Sprintf("v1:%d:%s", epoch, ingest.FingerprintSources(captured))
+	if persisted != want {
+		t.Fatalf("persisted checkpoint=%q want finite inventory %q", persisted, want)
+	}
+	current, err := ingest.Discover(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ingest.FingerprintSources(current) == ingest.FingerprintSources(captured) {
+		t.Fatal("source growth did not change the finite inventory fingerprint")
+	}
+}
+
+func TestSessionWatchCheckpointFailureDisablesFastSkipWithoutFailingResult(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	state, home := filepath.Join(root, "state"), filepath.Join(root, "home")
+	if err := os.MkdirAll(filepath.Join(home, ".codex", "sessions"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	core, err := store.Open(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = core.Exec(ctx, `CREATE TRIGGER fail_session_checkpoint BEFORE INSERT ON settings WHEN NEW.key='watch.fingerprint.session' BEGIN SELECT RAISE(FAIL,'injected session checkpoint failure'); END`); err != nil {
+		core.Close()
+		t.Fatal(err)
+	}
+	round := newRound(home)
+	round.openCore = func(context.Context, string) (*store.Store, error) { return core, nil }
+	round.executeProduction(ctx, state, false)
+	if round.result.Session.State != "completed" {
+		t.Fatalf("session result=%#v, want independent completion", round.result.Session)
+	}
+	readOnly, err := store.OpenReadOnly(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, found, settingErr := readOnly.Setting(ctx, "watch.fingerprint.session")
+	if closeErr := readOnly.Close(); settingErr != nil || closeErr != nil {
+		t.Fatalf("checkpoint read error=%v closeErr=%v", settingErr, closeErr)
+	}
+	if found {
+		t.Fatal("failed watch checkpoint publication remained eligible for fast skip")
 	}
 }
 
@@ -301,6 +402,51 @@ func TestReceiptJournalPersistsAcceptanceAndReplaysTerminalResult(t *testing.T) 
 	}
 }
 
+func TestInstalledAcceptanceFailureRetainsAndLaunchesRound(t *testing.T) {
+	state := t.TempDir()
+	journal, err := openReceiptJournal(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	original := syncReceiptDirectory
+	syncReceiptDirectory = func(string) error { return errors.New("injected directory sync failure") }
+	t.Cleanup(func() { syncReceiptDirectory = original })
+	started := make(chan struct{}, 1)
+	release := make(chan struct{})
+	server := &server{
+		ctx:       context.Background(),
+		stateRoot: state,
+		stateID:   "state",
+		journal:   journal,
+		rounds:    map[string]*round{},
+		run: func(_ context.Context, _ string, _ string, id string, _ bool) Result {
+			started <- struct{}{}
+			<-release
+			return Result{RoundID: id, Usage: UsageResult{State: "completed"}, Session: SessionResult{State: "completed"}}
+		},
+	}
+	request := wireRequest{Protocol: ProtocolVersion, Request: "installed-acceptance", StateID: "state", Home: "home", Scope: ScopeBoth}
+	if _, _, err = server.accept(request); err == nil || !receiptWasInstalled(err) {
+		t.Fatalf("accept error=%v, want installed persistence error", err)
+	}
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("installed acceptance did not launch its round")
+	}
+	syncReceiptDirectory = original
+	round, terminal, err := server.accept(request)
+	if err != nil || terminal != nil || round == nil {
+		t.Fatalf("retry round=%#v terminal=%#v err=%v", round, terminal, err)
+	}
+	close(release)
+	select {
+	case <-round.done:
+	case <-time.After(time.Second):
+		t.Fatal("retained round did not complete")
+	}
+}
+
 func TestReceiptJournalRetainsExpiredIdentityAfterRetention(t *testing.T) {
 	state := t.TempDir()
 	journal, err := openReceiptJournal(state)
@@ -456,6 +602,32 @@ func TestScopedOutcomeDoesNotAdoptOtherDomainFailure(t *testing.T) {
 	}
 }
 
+func TestFailedResultsDoNotExposeRawErrors(t *testing.T) {
+	secret := "/Users/private/.codex/sessions/secret.jsonl: database query failed"
+	result := Result{
+		Usage:   failedUsage(errors.New(secret), 1),
+		Session: failedSession(errors.New(secret), 1),
+	}
+	encoded, err := json.Marshal(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), secret) || strings.Contains(string(encoded), "/Users/private") {
+		t.Fatalf("public result exposed raw error: %s", encoded)
+	}
+	if err = result.ErrorFor(ScopeBoth); err == nil || strings.Contains(err.Error(), secret) {
+		t.Fatalf("public domain error=%v", err)
+	}
+	var domainErr *DomainError
+	if !errors.As(err, &domainErr) || domainErr.Code != "scan_failed" || domainErr.Cause != "" {
+		t.Fatalf("public domain error=%#v, want classified code without cause", err)
+	}
+	classified := Result{Usage: UsageResult{State: "failed", ErrorCode: store.ErrStateBusy.Code}}
+	if err = classified.ErrorFor(ScopeUsage); !errors.As(err, &domainErr) || domainErr.Code != store.ErrStateBusy.Code || strings.Contains(err.Error(), store.ErrStateBusy.Error()) {
+		t.Fatalf("classified domain error=%#v", err)
+	}
+}
+
 func TestUnixWorkerServesAClientRound(t *testing.T) {
 	state := t.TempDir()
 	home := t.TempDir()
@@ -467,7 +639,7 @@ func TestUnixWorkerServesAClientRound(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	endpoint, err := socketPath(stateID)
+	endpoint, err := socketPath(state, stateID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -564,12 +736,153 @@ func TestDarwinRuntimeParentUsesProtectedPerUserTemporaryDirectory(t *testing.T)
 	if runtime.GOOS != "darwin" {
 		t.Skip("macOS runtime path contract")
 	}
-	parent := scanRuntimeParent()
-	if parent != filepath.Join(os.TempDir(), "ad-s") {
-		t.Fatalf("runtime parent=%q", parent)
+	longTemp := filepath.Join(t.TempDir(), strings.Repeat("x", 98))
+	t.Setenv("TMPDIR", longTemp)
+	state := t.TempDir()
+	parent, err := scanRuntimeParent(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Remove(parent) })
+	if parent == filepath.Join(os.TempDir(), "ad-s") {
+		t.Fatalf("long TMPDIR was not replaced with compact runtime parent: %q", parent)
+	}
+	if parent == filepath.Join("/tmp", fmt.Sprintf("ad-s-%d", os.Geteuid())) {
+		t.Fatalf("long TMPDIR used predictable pre-creatable parent: %q", parent)
+	}
+	again, err := scanRuntimeParent(state)
+	if err != nil || again != parent {
+		t.Fatalf("stable compact runtime parent=%q err=%v, want %q", again, err, parent)
 	}
 	if endpoint := filepath.Join(parent, strings.Repeat("f", 24), "w"); len(endpoint) >= 104 {
 		t.Fatalf("runtime endpoint exceeds macOS sockaddr_un limit: %d %q", len(endpoint), endpoint)
+	}
+}
+
+func TestCompactDarwinRuntimeParentConvergesAcrossConcurrentCallers(t *testing.T) {
+	state := t.TempDir()
+	const callers = 16
+	parents := make(chan string, callers)
+	errorsFound := make(chan error, callers)
+	var wait sync.WaitGroup
+	for index := 0; index < callers; index++ {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			parent, err := compactDarwinRuntimeParent(state)
+			if err != nil {
+				errorsFound <- err
+				return
+			}
+			parents <- parent
+		}()
+	}
+	wait.Wait()
+	close(parents)
+	close(errorsFound)
+	for err := range errorsFound {
+		t.Fatal(err)
+	}
+	want := ""
+	for parent := range parents {
+		if want == "" {
+			want = parent
+			t.Cleanup(func() { _ = os.Remove(want) })
+		}
+		if parent != want {
+			t.Fatalf("concurrent runtime parent=%q want=%q", parent, want)
+		}
+	}
+	if want == "" {
+		t.Fatal("no concurrent caller resolved a runtime parent")
+	}
+	info, err := os.Lstat(want)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !info.IsDir() || info.Mode().Perm() != 0o700 {
+		t.Fatalf("runtime parent mode=%v isDir=%t", info.Mode(), info.IsDir())
+	}
+}
+
+func TestReceiptJournalSyncsParentDirectoryAfterRename(t *testing.T) {
+	state := t.TempDir()
+	journal, err := openReceiptJournal(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	called := 0
+	original := syncReceiptDirectory
+	syncReceiptDirectory = func(path string) error {
+		called++
+		if path != state {
+			t.Fatalf("sync directory=%q, want %q", path, state)
+		}
+		return nil
+	}
+	t.Cleanup(func() { syncReceiptDirectory = original })
+	if err = journal.accept(scanReceipt{ID: "sync-dir", StateID: "state", Home: "home", Scope: ScopeBoth, RoundID: "round"}); err != nil {
+		t.Fatal(err)
+	}
+	if called != 1 {
+		t.Fatalf("directory sync calls=%d, want 1", called)
+	}
+}
+
+func TestReceiptJournalKeepsInstalledStateAfterDirectorySyncFailure(t *testing.T) {
+	original := syncReceiptDirectory
+	t.Cleanup(func() { syncReceiptDirectory = original })
+	for _, operation := range []string{"accept", "terminal", "prune"} {
+		t.Run(operation, func(t *testing.T) {
+			syncReceiptDirectory = original
+			state := t.TempDir()
+			journal, err := openReceiptJournal(state)
+			if err != nil {
+				t.Fatal(err)
+			}
+			receipt := scanReceipt{ID: "installed", StateID: "state", Home: "home", Scope: ScopeBoth, RoundID: "round"}
+			if operation != "accept" {
+				if err = journal.accept(receipt); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if operation == "prune" {
+				if err = journal.terminal("round", Result{RoundID: "round", Usage: UsageResult{State: "completed"}, Session: SessionResult{State: "completed"}}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			syncReceiptDirectory = func(string) error { return errors.New("injected directory sync failure") }
+			switch operation {
+			case "accept":
+				err = journal.accept(receipt)
+			case "terminal":
+				err = journal.terminal("round", Result{RoundID: "round", Usage: UsageResult{State: "completed"}, Session: SessionResult{State: "completed"}})
+			case "prune":
+				stored, _ := journal.get(receipt.ID)
+				err = journal.prune(stored.TerminalAt.Add(receiptRetention + time.Nanosecond))
+			}
+			if err == nil {
+				t.Fatalf("%s unexpectedly succeeded after directory sync failure", operation)
+			}
+			want := receiptAccepted
+			if operation == "terminal" {
+				want = receiptTerminal
+			} else if operation == "prune" {
+				want = receiptExpired
+			}
+			installed, found := journal.get(receipt.ID)
+			if !found || installed.State != want {
+				t.Fatalf("in-memory installed receipt=%#v found=%t want=%s", installed, found, want)
+			}
+			reopened, openErr := openReceiptJournal(state)
+			if openErr != nil {
+				t.Fatal(openErr)
+			}
+			onDisk, found := reopened.get(receipt.ID)
+			if !found || onDisk.State != want {
+				t.Fatalf("on-disk installed receipt=%#v found=%t want=%s", onDisk, found, want)
+			}
+		})
 	}
 }
 

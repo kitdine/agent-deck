@@ -33,6 +33,7 @@ import (
 	"github.com/kitdine/agent-deck/internal/errdefs"
 	"github.com/kitdine/agent-deck/internal/extension"
 	"github.com/kitdine/agent-deck/internal/hookrefusal"
+	"github.com/kitdine/agent-deck/internal/ingest"
 	"github.com/kitdine/agent-deck/internal/output"
 	"github.com/kitdine/agent-deck/internal/platform"
 	"github.com/kitdine/agent-deck/internal/provider"
@@ -424,6 +425,7 @@ func commandOutputName(command *cobra.Command) string {
 
 func errorCode(err error) string {
 	var notFound *errdefs.NotFound
+	var scanDomain *scanruntime.DomainError
 	switch {
 	case errors.Is(err, extension.ErrReadOnly):
 		return extension.ErrReadOnly.Error()
@@ -449,6 +451,13 @@ func errorCode(err error) string {
 		return credentialvault.ErrMachineIdentityMissing.Error()
 	case errors.As(err, &notFound):
 		return notFound.Code
+	case errors.As(err, &scanDomain):
+		switch scanDomain.Code {
+		case store.ErrSchemaAhead.Code, store.ErrStateBusy.Code:
+			return scanDomain.Code
+		default:
+			return "runtime_error"
+		}
 	case errors.Is(err, store.ErrSchemaAhead):
 		return store.ErrSchemaAhead.Code
 	case errors.Is(err, store.ErrStateBusy):
@@ -1530,18 +1539,6 @@ func runSessionScanRound(ctx context.Context, opts *commandOptions, progress ses
 		progress.Update(session.ScanProgress{})
 		defer progress.Stop()
 	}
-	stateRoot, err := opts.stateRoot()
-	if err != nil {
-		return session.ScanResult{}, err
-	}
-	home, err := userHomeDir()
-	if err != nil {
-		return session.ScanResult{}, err
-	}
-	inventoryFingerprint, err := watch.FingerprintRoots(sessionWatchRoots(home)...)
-	if err != nil {
-		return session.ScanResult{}, err
-	}
 	result, err := requestScanRoundWithProgress(ctx, opts, scanruntime.ScopeSession, func(value scanruntime.Progress) {
 		if progress != nil {
 			progress.Update(session.ScanProgress{Processed: value.Session.Committed, Total: value.Session.Total, Skipped: value.Session.Skipped})
@@ -1553,31 +1550,11 @@ func runSessionScanRound(ctx context.Context, opts *commandOptions, progress ses
 	if err = result.ErrorFor(scanruntime.ScopeSession); err != nil {
 		return session.ScanResult{}, err
 	}
-	sessions, err := store.OpenSessionsReadOnly(ctx, stateRoot)
-	if err != nil {
-		return session.ScanResult{}, err
-	}
-	fingerprint, err := sessionCheckpointFingerprintFromRaw(ctx, sessions, inventoryFingerprint)
-	closeErr := sessions.Close()
-	if err != nil {
-		return session.ScanResult{}, err
-	}
-	if closeErr != nil {
-		return session.ScanResult{}, closeErr
-	}
-	core, err := store.Open(ctx, stateRoot)
-	if err != nil {
-		return session.ScanResult{}, err
-	}
-	defer core.Close()
-	if err = core.SetSetting(ctx, "watch.fingerprint.session", fingerprint); err != nil {
-		return session.ScanResult{}, err
-	}
 	return result.Session.Scan, nil
 }
 
 func sessionCheckpointFingerprint(ctx context.Context, sessions *store.Store, home string) (string, error) {
-	fingerprint, err := watch.FingerprintRoots(sessionWatchRoots(home)...)
+	fingerprint, err := sessionInventoryFingerprint(home)
 	if err != nil {
 		return "", err
 	}
@@ -1599,14 +1576,42 @@ func sessionCheckpointFingerprintFromRaw(ctx context.Context, sessions *store.St
 	return fmt.Sprintf("v1:%d:%s", epoch, fingerprint), nil
 }
 
-var sessionWatchRootsFingerprint = watch.FingerprintRoots
+var discoverSessionInventory = ingest.Discover
 
-func sessionWatchFingerprint(ctx context.Context, stateRoot, home string) (string, error) {
-	fingerprint, err := sessionWatchRootsFingerprint(sessionWatchRoots(home)...)
+func sessionInventoryFingerprint(home string) (string, error) {
+	sources, err := discoverSessionInventory(home)
 	if err != nil {
 		return "", err
 	}
-	if _, err = os.Stat(filepath.Join(stateRoot, "sessions.sqlite3")); errors.Is(err, os.ErrNotExist) {
+	return ingest.FingerprintSources(sources), nil
+}
+
+func sessionWatchFingerprint(ctx context.Context, stateRoot, home string) (string, error) {
+	fingerprint, err := sessionInventoryFingerprint(home)
+	if err != nil {
+		return "", err
+	}
+	return sessionWatchFingerprintFromRaw(ctx, stateRoot, fingerprint)
+}
+
+func persistedSessionWatchFingerprint(ctx context.Context, stateRoot string) (string, error) {
+	core, err := store.OpenReadOnly(ctx, stateRoot)
+	if err != nil {
+		return "", err
+	}
+	defer core.Close()
+	fingerprint, found, err := core.Setting(ctx, "watch.fingerprint.session")
+	if err != nil {
+		return "", err
+	}
+	if !found {
+		return "", errors.New("session scan checkpoint is missing")
+	}
+	return fingerprint, nil
+}
+
+func sessionWatchFingerprintFromRaw(ctx context.Context, stateRoot, fingerprint string) (string, error) {
+	if _, err := os.Stat(filepath.Join(stateRoot, "sessions.sqlite3")); errors.Is(err, os.ErrNotExist) {
 		return "v1:0:" + fingerprint, nil
 	} else if err != nil {
 		return "", err
@@ -3024,14 +3029,31 @@ func newWatchCommand(opts *commandOptions) *cobra.Command {
 			}})
 		}
 		if requested["session"] {
+			var sessionInventory []ingest.Source
 			filtered = append(filtered, watch.Source{Domain: "session", Snapshot: func(ctx context.Context) (string, error) {
-				return sessionWatchFingerprint(ctx, stateDir, home)
+				sessionInventory, err = discoverSessionInventory(home)
+				if err != nil {
+					return "", err
+				}
+				return sessionWatchFingerprintFromRaw(ctx, stateDir, ingest.FingerprintSources(sessionInventory))
 			}, Scan: func(ctx context.Context) (int, error) {
 				if err := openSessions(ctx); err != nil {
 					return 0, err
 				}
-				result, scanErr := session.Scan(ctx, sessions.DB, home)
-				return result.Documents + result.Removed, scanErr
+				if err := openCore(ctx); err != nil {
+					return 0, err
+				}
+				result, scanErr := session.ScanWithOptions(ctx, sessions.DB, home, session.ScanOptions{PreparedSources: sessionInventory})
+				if scanErr != nil {
+					return 0, scanErr
+				}
+				checkpoint, checkpointErr := sessionCheckpointFingerprintFromRaw(ctx, sessions, ingest.FingerprintSources(sessionInventory))
+				if checkpointErr == nil {
+					checkpointErr = database.SetSetting(ctx, "watch.fingerprint.session", checkpoint)
+				}
+				return result.Documents + result.Removed, checkpointErr
+			}, PostScanFingerprint: func(ctx context.Context, _ string) (string, error) {
+				return persistedSessionWatchFingerprint(ctx, stateDir)
 			}})
 		}
 		if requested["extension"] {
@@ -3086,9 +3108,6 @@ func renderWatchText(w io.Writer, event watch.Event) error {
 	return err
 }
 
-func sessionWatchRoots(home string) []string {
-	return []string{filepath.Join(home, ".codex", "sessions"), filepath.Join(home, ".codex", "archived_sessions"), filepath.Join(home, ".claude", "projects")}
-}
 func extensionWatchRoots(home, workdir string) []string {
 	return []string{filepath.Join(home, ".codex", "config.toml"), filepath.Join(home, ".codex", "skills"), filepath.Join(home, ".codex", "plugins", "cache"), filepath.Join(home, ".claude.json"), filepath.Join(home, ".claude", "skills"), filepath.Join(home, ".claude", "plugins", "installed_plugins.json"), filepath.Join(workdir, ".codex", "config.toml"), filepath.Join(workdir, ".codex", "skills"), filepath.Join(workdir, ".codex", "plugins"), filepath.Join(workdir, ".claude", "skills"), filepath.Join(workdir, ".mcp.json")}
 }

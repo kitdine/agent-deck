@@ -187,6 +187,27 @@ func Discover(home string) ([]Source, error) {
 	return sources, nil
 }
 
+// FingerprintSources binds a checkpoint to the finite metadata inventory used
+// by a shared scan round. It intentionally does not restat paths: growth after
+// discovery must produce a different fingerprint on the next observation, not
+// advance the checkpoint for the current round.
+func FingerprintSources(sources []Source) string {
+	ordered := append([]Source(nil), sources...)
+	sort.Slice(ordered, func(i, j int) bool {
+		if ordered[i].Priority != ordered[j].Priority {
+			return ordered[i].Priority < ordered[j].Priority
+		}
+		return ordered[i].Path < ordered[j].Path
+	})
+	hash := sha256.New()
+	for _, source := range ordered {
+		_, _ = fmt.Fprintf(hash, "%s\x00%s\x00%d\x00%s\x00%d\x00%d\x00%d\x00%t\n",
+			source.Client, source.Path, source.Priority, source.Identity, source.Size,
+			source.ModifiedAt, source.ChangedAt, source.Stable)
+	}
+	return hex.EncodeToString(hash.Sum(nil))
+}
+
 func DynamicWorkers(tasks int) int {
 	if tasks <= 0 {
 		return 0
@@ -317,11 +338,12 @@ func (c *Coordinator) schedule(ctx context.Context, jobs chan<- admission) {
 	if c.planning {
 		select {
 		case <-ctx.Done():
+			c.finishRemaining(0, ctx.Err())
 			return
 		case <-c.planReady:
 		}
 	}
-	for _, source := range c.sources {
+	for index, source := range c.sources {
 		entry, read, need, planErr := c.admissionFor(source.Path)
 		if planErr != nil {
 			c.finish(source.Path, nil, planErr)
@@ -344,12 +366,14 @@ func (c *Coordinator) schedule(ctx context.Context, jobs chan<- admission) {
 		}
 		if err := c.acquire(ctx, source.Path, weight); err != nil {
 			c.finish(source.Path, nil, err)
+			c.finishRemaining(index+1, err)
 			return
 		}
 		select {
 		case jobs <- admission{source: source, read: read}:
 		case <-ctx.Done():
 			c.finish(source.Path, nil, ctx.Err())
+			c.finishRemaining(index+1, ctx.Err())
 			return
 		}
 	}
@@ -754,18 +778,32 @@ func (c *Coordinator) finish(path string, tail []byte, err error) {
 	c.mu.Lock()
 	entry := c.entries[filepath.Clean(path)]
 	if entry != nil {
-		entry.tail, entry.err = tail, err
-		for _, channel := range entry.channels {
-			close(channel)
+		select {
+		case <-entry.finished:
+			entry = nil
+		default:
+			entry.tail, entry.err = tail, err
+			for _, channel := range entry.channels {
+				close(channel)
+			}
+			close(entry.finished)
+			c.used -= entry.weight
+			entry.weight = 0
 		}
-		close(entry.finished)
-		c.used -= entry.weight
-		entry.weight = 0
 	}
 	c.mu.Unlock()
+	if entry == nil {
+		return
+	}
 	select {
 	case c.wake <- struct{}{}:
 	default:
+	}
+}
+
+func (c *Coordinator) finishRemaining(start int, err error) {
+	for _, source := range c.sources[start:] {
+		c.finish(source.Path, nil, err)
 	}
 }
 

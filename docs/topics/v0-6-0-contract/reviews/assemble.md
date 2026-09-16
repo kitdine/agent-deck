@@ -205,3 +205,97 @@ Repair verification：
 
 Repair complete；四条 finding 均已进入同一复评候选。aggregate `assemble` 仍保持
 开放，提交、推送、PR 更新与 merge 均未在本阶段执行。
+
+## Repair handoff — PR4-C847 — 2026-09-15 — snapshot-performance
+
+GitHub Codex 对 PR #4 commit
+`c8477711867d10e5dfdd0024784503143a6257ea` 的后续 review 新增三条 finding。
+本节记录其 Repair 处置，不给出复评结论。修复后的八文件 code/test diff
+SHA-256 为
+`5c65b26fa6ba714f26c940978fba8e9a3d57149e7c35fbcb33c8d0c4e4663aa5`。
+
+- `PR4-C847-F1`（P2，GitHub discussion `r4016831849`）closed in candidate：
+  watch source 可在成功 scan 后重绑定 fingerprint；session watch 使用 scan 前捕获
+  的 raw inventory 与 scan 后非零 session epoch，持久化值和进程内值保持一致，
+  首次创建或迁移索引后不再多执行一轮 bootstrap scan。
+- `PR4-C847-F2`（P1，GitHub discussion `r4016831863`）closed in candidate：
+  usage/session 的内部 raw error 不再序列化到 JSON、NDJSON 或 receipt journal，
+  scope error 只返回稳定的 domain-level 公共消息；`error_code` 继续保留。
+- `PR4-C847-F3`（P1，GitHub discussion `r4016831878`）closed in candidate：
+  admission 在 planning、budget wait 或 job send 阶段被取消时，会幂等终结当前及
+  所有尚未 admission 的 stream，保证消费者、round 和 scan lock 都能收尾。
+
+Repair verification：
+
+- 四个新聚焦回归以及真实 session watch bootstrap checkpoint 断言：PASS。
+- `scripts/run-go-test.sh ./...`：PASS。
+- `scripts/run-go-test.sh -race ./internal/watch ./internal/ingest
+  ./internal/scanruntime ./cmd/agentdeck`：PASS。
+- `make vet`：PASS。
+- `make build-all`：PASS（darwin/arm64、darwin/amd64）。
+- PR `c847771` 的两组 `verify` 与两组 `desktop` CI：SUCCESS；这些结果不覆盖
+  当前未提交候选，新的 GitHub Codex review 仍需先提交并推送候选。
+
+Repair complete；三条 finding 均已进入同一远端复评候选。aggregate `assemble`
+保持开放，本轮未执行 commit、push 或 merge。
+
+## Repair handoff — PR4-C847-R2 — 2026-09-15 — snapshot-performance
+
+The full local review of the uncommitted `PR4-C847` candidate recorded two
+additional findings. This repair remains part of the same assemble task and does
+not alter the earlier review verdicts. The current candidate's scanruntime repair
+delta covers `internal/scanruntime/{scanruntime.go,receipts.go,scanruntime_test.go}`.
+
+- `PR4-C847-R2-F1` (P2, macOS socket path) closed in candidate: a caller-supplied
+  long `TMPDIR` no longer makes the per-user socket endpoint exceed the Darwin
+  `sockaddr_un` limit. The compact fallback is checked for symlink/type and
+  current-user ownership before use.
+- `PR4-C847-R2-F2` (P2, receipt durability) closed in candidate: after the
+  temporary receipt file is synced and renamed, the containing directory is
+  opened and synced before `save` reports success, preserving the
+  persist-before-acknowledge contract across restart.
+
+Repair verification:
+
+- Long-`TMPDIR` endpoint and parent-directory-sync regressions: PASS.
+- `scripts/run-go-test.sh ./internal/scanruntime`: PASS.
+- `scripts/run-go-test.sh -race ./internal/scanruntime`: PASS.
+- `make vet`, `git diff --check`: PASS.
+
+Repair complete; independent remote re-review remains required before delivery.
+
+## Repair handoff — PR4-C847-R3 — 2026-09-15 — snapshot-performance
+
+The next full review of the uncommitted `PR4-C847-R2` candidate recorded two
+additional findings. This Repair remains in the same aggregate `assemble` task,
+preserves all earlier review history and does not issue a re-review verdict. The
+current eleven-file code/test diff SHA-256 is
+`cdafa3053b8d1beef2bca4e5a33db9611589fa39fd332edbff05401c5dbe4bd0`.
+
+- `PR4-C847-R3-F1` (P1, finite session checkpoint) closed in candidate: the
+  worker derives the session watch checkpoint from the exact `ingest.Discover`
+  inventory used by its round and persists it before publishing session
+  `completed`. The session CLI and desktop refresh no longer overwrite that
+  checkpoint from a pre-request observation; the locked watch path scans its
+  captured inventory and then adopts the persisted value. A top-level `scan`
+  now persists the same checkpoint without a legacy caller.
+- `PR4-C847-R3-F2` (P2, post-rename receipt state) closed in candidate:
+  receipt-journal save reports whether rename installed the replacement.
+  `accept`, `terminal`, `terminalReceipt` and `prune` roll memory back only for
+  pre-rename failures. A directory-sync or later permission error remains
+  caller-visible while live memory continues to match the document already
+  visible on disk and after restart.
+
+Repair verification:
+
+- Focused finite-inventory, checkpoint-before-completion, top-level scan and
+  post-rename `accept`/`terminal`/`prune` regressions: PASS.
+- `scripts/run-go-test.sh ./internal/ingest ./internal/scanruntime
+  ./internal/watch ./cmd/agentdeck -count=1`: PASS.
+- `scripts/run-go-test.sh -race ./internal/ingest ./internal/scanruntime
+  ./internal/watch ./cmd/agentdeck -count=1`: PASS.
+- `scripts/run-go-test.sh ./... -count=1`, `make vet`, `make build-all` and
+  `git diff --check`: PASS.
+
+Repair complete; both findings are ready for independent re-review. No commit,
+push, PR mutation or merge was performed.

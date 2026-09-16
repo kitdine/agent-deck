@@ -26,6 +26,7 @@ import (
 	"github.com/kitdine/agent-deck/internal/errdefs"
 	"github.com/kitdine/agent-deck/internal/extension"
 	"github.com/kitdine/agent-deck/internal/hookrefusal"
+	"github.com/kitdine/agent-deck/internal/ingest"
 	"github.com/kitdine/agent-deck/internal/output"
 	"github.com/kitdine/agent-deck/internal/provider"
 	"github.com/kitdine/agent-deck/internal/scanruntime"
@@ -2345,7 +2346,7 @@ func TestSessionCheckpointFingerprintBindsSessionEpoch(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer sessions.Close()
-	raw, err := watch.FingerprintRoots(sessionWatchRoots(home)...)
+	raw, err := sessionInventoryFingerprint(home)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2394,7 +2395,7 @@ func TestSessionWatchFingerprintMissingStateIsReadOnly(t *testing.T) {
 	}
 }
 
-func TestSessionWatchFingerprintReadsRootsOnce(t *testing.T) {
+func TestSessionWatchFingerprintDiscoversInventoryOnce(t *testing.T) {
 	ctx := context.Background()
 	state := filepath.Join(t.TempDir(), "state")
 	home := t.TempDir()
@@ -2405,18 +2406,18 @@ func TestSessionWatchFingerprintReadsRootsOnce(t *testing.T) {
 	if err = sessions.Close(); err != nil {
 		t.Fatal(err)
 	}
-	original := sessionWatchRootsFingerprint
+	original := discoverSessionInventory
 	calls := 0
-	sessionWatchRootsFingerprint = func(roots ...string) (string, error) {
+	discoverSessionInventory = func(home string) ([]ingest.Source, error) {
 		calls++
-		return original(roots...)
+		return original(home)
 	}
-	t.Cleanup(func() { sessionWatchRootsFingerprint = original })
+	t.Cleanup(func() { discoverSessionInventory = original })
 	if _, err = sessionWatchFingerprint(ctx, state, home); err != nil {
 		t.Fatal(err)
 	}
 	if calls != 1 {
-		t.Fatalf("session roots fingerprint calls=%d, want 1", calls)
+		t.Fatalf("session inventory discovery calls=%d, want 1", calls)
 	}
 }
 
@@ -2435,7 +2436,7 @@ func TestSessionWatchFingerprintForcesLegacyIndexMigration(t *testing.T) {
 	if err = sessions.Close(); err != nil {
 		t.Fatal(err)
 	}
-	raw, err := watch.FingerprintRoots(sessionWatchRoots(home)...)
+	raw, err := sessionInventoryFingerprint(home)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2506,6 +2507,17 @@ func TestSessionPurgeClearsOnlySessionCheckpointAndWatchBootstraps(t *testing.T)
 	}
 	if !strings.Contains(writer.String(), `"domain":"session"`) {
 		t.Fatalf("watch output = %s", writer.String())
+	}
+	core, err = store.OpenReadOnly(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	persisted, found, settingErr := core.Setting(ctx, "watch.fingerprint.session")
+	if closeErr := core.Close(); settingErr != nil || closeErr != nil || !found {
+		t.Fatalf("persisted session checkpoint found=%t settingErr=%v closeErr=%v", found, settingErr, closeErr)
+	}
+	if strings.HasPrefix(persisted, "v1:0:") {
+		t.Fatalf("watch persisted pre-scan session epoch: %q", persisted)
 	}
 	var output bytes.Buffer
 	if err = run([]string{"--state-dir", state, "--format", "json", "session", "show", "bootstrap"}, bytes.NewReader(nil), &output); err != nil || !strings.Contains(output.String(), "rebuilt") {
@@ -2665,7 +2677,7 @@ func TestDeleteOnlyWatchTextAndNDJSONUseLogicalUnitsFromRealScans(t *testing.T) 
 		if result, scanErr := session.Scan(ctx, database.DB, home); scanErr != nil || result.Documents != 3 {
 			t.Fatalf("initial session scan = %#v, %v", result, scanErr)
 		}
-		initialFingerprint, err := watch.FingerprintRoots(sessionWatchRoots(home)...)
+		initialFingerprint, err := sessionInventoryFingerprint(home)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -2675,7 +2687,7 @@ func TestDeleteOnlyWatchTextAndNDJSONUseLogicalUnitsFromRealScans(t *testing.T) 
 			InitialFingerprints: map[string]string{"session": initialFingerprint},
 			Sources: watch.SourceSet{{
 				Domain:   "session",
-				Snapshot: func(context.Context) (string, error) { return watch.FingerprintRoots(sessionWatchRoots(home)...) },
+				Snapshot: func(context.Context) (string, error) { return sessionInventoryFingerprint(home) },
 				Scan: func(ctx context.Context) (int, error) {
 					var scanErr error
 					scanResult, scanErr = session.Scan(ctx, database.DB, home)
