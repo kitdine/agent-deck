@@ -1197,11 +1197,17 @@ func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceR
 			line = line[idx+1:]
 		}
 	}
-	if sharedStream != nil {
-		if err = ingest.ValidateCapturedRange(sharedStream.Source, entry.Size); err != nil {
-			return r, errUsageSourceChanged
+	capturedCursor := cursor
+	validateCaptured := func() error {
+		if sharedStream != nil {
+			if err := ingest.ValidateCapturedRange(sharedStream.Source, entry.Size); err != nil {
+				return errUsageSourceChanged
+			}
+			return nil
 		}
-	} else if err = s.validateSnapshot(path, file, entry, cursor, data, previousAnchorStart, previousAnchor); err != nil {
+		return s.validateSnapshot(path, file, entry, capturedCursor, data, previousAnchorStart, previousAnchor)
+	}
+	if err = validateCaptured(); err != nil {
 		return r, err
 	}
 	// A cursor is always the end of a complete record.  The unfinished suffix is
@@ -1219,6 +1225,12 @@ func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceR
 		return r, err
 	}
 	defer tx.Rollback()
+	// Re-validate immediately before publication: identity/size alone cannot
+	// see a same-size rewrite, but it closes the window a rewrite+growth could
+	// otherwise use between the check above and this transaction's writes.
+	if err = validateCaptured(); err != nil {
+		return r, err
+	}
 	affected, err := affectedSessions(ctx, tx, path)
 	if err != nil {
 		return r, err
