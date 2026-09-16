@@ -236,8 +236,8 @@ func scanProgressMessage(progress scanruntime.Progress, scope scanruntime.Scope)
 }
 
 func scanDomainProgressMessage(name string, progress scanruntime.DomainProgress) string {
-	if progress.Total > 0 {
-		message := fmt.Sprintf("%s %d/%d committed", name, progress.Committed, progress.Total)
+	if progress.Total != nil && *progress.Total > 0 {
+		message := fmt.Sprintf("%s %d/%d committed", name, progress.Committed, *progress.Total)
 		if progress.Skipped > 0 {
 			message += fmt.Sprintf(", %d skipped", progress.Skipped)
 		}
@@ -1521,7 +1521,11 @@ func runUsageScanRound(ctx context.Context, opts *commandOptions, progress usage
 	}
 	result, err := requestScanRoundWithProgress(ctx, opts, scanruntime.ScopeUsage, func(value scanruntime.Progress) {
 		if progress != nil {
-			progress.Update(usage.ScanProgress{Processed: value.Usage.Committed, Total: value.Usage.Total})
+			total := 0
+			if value.Usage.Total != nil {
+				total = *value.Usage.Total
+			}
+			progress.Update(usage.ScanProgress{Processed: value.Usage.Committed, Skipped: value.Usage.Skipped, Total: total})
 		}
 	})
 	if err != nil {
@@ -1541,7 +1545,11 @@ func runSessionScanRound(ctx context.Context, opts *commandOptions, progress ses
 	}
 	result, err := requestScanRoundWithProgress(ctx, opts, scanruntime.ScopeSession, func(value scanruntime.Progress) {
 		if progress != nil {
-			progress.Update(session.ScanProgress{Processed: value.Session.Committed, Total: value.Session.Total, Skipped: value.Session.Skipped})
+			total := 0
+			if value.Session.Total != nil {
+				total = *value.Session.Total
+			}
+			progress.Update(session.ScanProgress{Processed: value.Session.Committed, Total: total, Skipped: value.Session.Skipped})
 		}
 	})
 	if err != nil {

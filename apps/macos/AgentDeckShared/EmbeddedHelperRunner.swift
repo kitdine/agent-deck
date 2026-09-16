@@ -169,7 +169,9 @@ public enum DesktopScanStage: String, Codable, Equatable, Sendable {
 public struct DesktopScanDomainProgress: Codable, Equatable, Sendable {
 	public let state: String
 	public let committed: Int
-	public let total: Int
+	/// Absent until discovery/planning establishes the domain's inventory
+	/// size — never a guessed zero.
+	public let total: Int?
 	public let skipped: Int
 }
 

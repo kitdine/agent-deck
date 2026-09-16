@@ -310,9 +310,11 @@ type Inventory struct {
 
 // ScanProgress is the source-file progress for one scan or rebuild operation.
 // Processed counts entries whose scan decision has completed, including entries
-// that were checked and found unchanged.
+// that were checked and found unchanged; Skipped is the subset of Processed
+// that was unchanged and not re-scanned, so committed work is Processed-Skipped.
 type ScanProgress struct {
 	Processed int
+	Skipped   int
 	Total     int
 	Reason    string
 }
@@ -683,7 +685,7 @@ func (s *Service) Scan(ctx context.Context) (map[string]int, error) {
 }
 
 func (s *Service) ScanInventory(ctx context.Context, inventory Inventory) (map[string]int, error) {
-	return s.scanInventory(ctx, inventory, nil)
+	return s.scanInventory(ctx, inventory, s.Progress)
 }
 
 func (s *Service) scanInventory(ctx context.Context, inventory Inventory, progress ScanProgressReporter) (map[string]int, error) {
@@ -713,20 +715,22 @@ func (s *Service) scanInventory(ctx context.Context, inventory Inventory, progre
 			changed[path] = true
 		}
 	}
+	skipped := 0
 	for index, entry := range inventory.Entries {
 		candidate := recoveryCandidates[entry.Path]
 		if !candidate && !changed[entry.Path] {
 			if s.Coordinator != nil {
 				s.Coordinator.Skip(entry.Path, ingest.ConsumerUsage)
 			}
+			skipped++
 			if progress != nil {
-				progress.Update(ScanProgress{Processed: index + 1, Total: len(inventory.Entries), Reason: reason})
+				progress.Update(ScanProgress{Processed: index + 1, Skipped: skipped, Total: len(inventory.Entries), Reason: reason})
 			}
 			continue
 		}
 		stats, err := s.scanFileMode(ctx, entry, candidate)
 		if progress != nil {
-			progress.Update(ScanProgress{Processed: index + 1, Total: len(inventory.Entries), Reason: reason})
+			progress.Update(ScanProgress{Processed: index + 1, Skipped: skipped, Total: len(inventory.Entries), Reason: reason})
 		}
 		if err != nil {
 			return nil, err

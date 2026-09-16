@@ -98,10 +98,12 @@ type processResources struct {
 
 // DomainProgress contains only aggregate committed work. It is safe to expose
 // to CLI and App subscribers because it never contains source paths or content.
+// Total is nil until discovery/planning establishes the domain's inventory
+// size, so an unknown total is never encoded as a guessed zero.
 type DomainProgress struct {
 	State     string `json:"state"`
 	Committed int    `json:"committed"`
-	Total     int    `json:"total"`
+	Total     *int   `json:"total,omitempty"`
 	Skipped   int    `json:"skipped"`
 }
 
@@ -991,7 +993,8 @@ type usageRoundProgress struct{ round *round }
 func (p usageRoundProgress) Start() {}
 func (p usageRoundProgress) Stop()  {}
 func (p usageRoundProgress) Update(value usage.ScanProgress) {
-	p.round.setDomainProgress(true, DomainProgress{State: "processing", Committed: value.Processed, Total: value.Total})
+	total := value.Total
+	p.round.setDomainProgress(true, DomainProgress{State: "processing", Committed: value.Processed - value.Skipped, Total: &total, Skipped: value.Skipped})
 }
 
 type sessionRoundProgress struct{ round *round }
@@ -999,7 +1002,8 @@ type sessionRoundProgress struct{ round *round }
 func (p sessionRoundProgress) Start() {}
 func (p sessionRoundProgress) Stop()  {}
 func (p sessionRoundProgress) Update(value session.ScanProgress) {
-	p.round.setDomainProgress(false, DomainProgress{State: "processing", Committed: value.Processed, Total: value.Total, Skipped: value.Skipped})
+	total := value.Total
+	p.round.setDomainProgress(false, DomainProgress{State: "processing", Committed: value.Processed - value.Skipped, Total: &total, Skipped: value.Skipped})
 }
 
 func (r *round) setProgressStage(stage string) {
@@ -1142,7 +1146,10 @@ func (r *round) waitWithProgress(ctx context.Context, scope Scope, emit func(Pro
 	if err != nil {
 		return Result{}, err
 	}
-	ticker := time.NewTicker(100 * time.Millisecond)
+	// No more than five coalesced updates per second per subscriber; the
+	// terminal state on <-done is always emitted immediately below regardless
+	// of ticker cadence.
+	ticker := time.NewTicker(200 * time.Millisecond)
 	defer ticker.Stop()
 	var lastSequence uint64
 	hasEmitted := false
