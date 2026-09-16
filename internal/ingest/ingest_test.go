@@ -173,6 +173,51 @@ func TestCoordinatorRejectsRewritePlusGrowthAgainstPlannedAnchor(t *testing.T) {
 	}
 }
 
+func TestCoordinatorRejectsRewritePlusGrowthAfterCapturedRead(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "rewrite-growth-after-read.jsonl")
+	initial := []byte("{\"n\":0}\n{\"n\":1}\n")
+	if err := os.WriteFile(path, initial, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	source := testSource(t, path)
+	coordinator := NewCoordinator([]Source{source}, Options{
+		RequirePlans: true,
+		Open: func(name string) (sourceFile, error) {
+			file, err := os.Open(name)
+			if err != nil {
+				return nil, err
+			}
+			return &rewriteOnStatFile{File: file, path: name}, nil
+		},
+	})
+	if err := coordinator.Plan(path, ConsumerUsage, ReadRange{Start: int64(len("{\"n\":0}\n")), End: source.Size}); err != nil {
+		t.Fatal(err)
+	}
+	coordinator.Skip(path, ConsumerSession)
+	if err := coordinator.Seal(ConsumerSession); err != nil {
+		t.Fatal(err)
+	}
+	if err := coordinator.Seal(ConsumerUsage); err != nil {
+		t.Fatal(err)
+	}
+	coordinator.Start(context.Background())
+	if _, shared, err := coordinator.Snapshot(context.Background(), path, ConsumerUsage); !shared || !errors.Is(err, ErrSourceChanged) {
+		t.Fatalf("shared=%t err=%v", shared, err)
+	}
+}
+
+type rewriteOnStatFile struct {
+	*os.File
+	path string
+}
+
+func (f *rewriteOnStatFile) Stat() (os.FileInfo, error) {
+	if err := os.WriteFile(f.path, []byte("{\"n\":0}\n{\"n\":2}\n{\"n\":3}\n"), 0o600); err != nil {
+		return nil, err
+	}
+	return f.File.Stat()
+}
+
 func TestCoordinatorConsumerExitReleasesBackpressureForRemainingDomain(t *testing.T) {
 	root := t.TempDir()
 	var sources []Source

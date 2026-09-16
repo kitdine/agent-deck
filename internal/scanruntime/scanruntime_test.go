@@ -209,11 +209,14 @@ func TestSessionCompletionPersistsDiscoveredInventoryCheckpoint(t *testing.T) {
 	}
 }
 
-func TestSessionWatchCheckpointFailureDisablesFastSkipWithoutFailingResult(t *testing.T) {
+func TestSessionWatchCheckpointFailurePreservesRowsAndFailsSessionDomain(t *testing.T) {
 	ctx := context.Background()
 	root := t.TempDir()
 	state, home := filepath.Join(root, "state"), filepath.Join(root, "home")
 	if err := os.MkdirAll(filepath.Join(home, ".codex", "sessions"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".codex", "sessions", "committed.jsonl"), []byte("{\"type\":\"visible_user_prompt\",\"session_id\":\"committed\",\"payload\":{\"text\":\"preserved\"}}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	core, err := store.Open(ctx, state)
@@ -227,8 +230,8 @@ func TestSessionWatchCheckpointFailureDisablesFastSkipWithoutFailingResult(t *te
 	round := newRound(home)
 	round.openCore = func(context.Context, string) (*store.Store, error) { return core, nil }
 	round.executeProduction(ctx, state, false)
-	if round.result.Session.State != "completed" {
-		t.Fatalf("session result=%#v, want independent completion", round.result.Session)
+	if round.result.Session.State != "failed" || round.result.Session.ErrorCode != "scan_failed" {
+		t.Fatalf("session result=%#v, want classified checkpoint failure", round.result.Session)
 	}
 	readOnly, err := store.OpenReadOnly(ctx, state)
 	if err != nil {
@@ -240,6 +243,18 @@ func TestSessionWatchCheckpointFailureDisablesFastSkipWithoutFailingResult(t *te
 	}
 	if found {
 		t.Fatal("failed watch checkpoint publication remained eligible for fast skip")
+	}
+	sessions, err := store.OpenSessionsReadOnly(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var imported int
+	queryErr := sessions.DB.QueryRowContext(ctx, "SELECT COUNT(*) FROM session_documents").Scan(&imported)
+	if closeErr := sessions.Close(); queryErr != nil || closeErr != nil {
+		t.Fatalf("session row read error=%v closeErr=%v", queryErr, closeErr)
+	}
+	if imported == 0 {
+		t.Fatal("checkpoint failure discarded already committed session rows")
 	}
 }
 

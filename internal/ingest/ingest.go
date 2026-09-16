@@ -3,6 +3,7 @@ package ingest
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -635,7 +636,8 @@ func (c *Coordinator) read(ctx context.Context, source Source, readRange ReadRan
 	if !ok {
 		return nil, ErrPlanMismatch
 	}
-	input := io.Reader(io.NewSectionReader(readerAt, readRange.Start, readRange.End-readRange.Start))
+	captured := sha256.New()
+	input := io.Reader(io.TeeReader(io.NewSectionReader(readerAt, readRange.Start, readRange.End-readRange.Start), captured))
 	if c.metrics != nil {
 		start := time.Now()
 		active := c.metrics.active.Add(1)
@@ -720,6 +722,10 @@ func (c *Coordinator) read(ctx context.Context, source Source, readRange ReadRan
 	unchanged := latest.Size() == source.Size && SameGeneration(source, latest)
 	appendOnlyGrowth := latest.Size() > source.Size && source.Stable && stable && identity == source.Identity && latest.Size() >= readRange.End
 	if !unchanged && !appendOnlyGrowth {
+		return nil, ErrSourceChanged
+	}
+	observed := sha256.New()
+	if _, err = io.Copy(observed, io.NewSectionReader(readerAt, readRange.Start, readRange.End-readRange.Start)); err != nil || !bytes.Equal(observed.Sum(nil), captured.Sum(nil)) {
 		return nil, ErrSourceChanged
 	}
 	for _, planned := range c.entries[filepath.Clean(source.Path)].planned {

@@ -961,11 +961,10 @@ func (r *round) executeProduction(ctx context.Context, stateRoot string, lockHel
 			}
 			if coreErr == nil {
 				checkpoint := fmt.Sprintf("v1:%d:%s", epoch, ingest.FingerprintSources(sources))
-				// This core setting only enables watch fast-skip. Session rows,
-				// cursors and completion markers are committed in the independent
-				// session store, so publication failure must not rewrite that
-				// successful domain outcome.
-				_ = core.SetSetting(ctx, "watch.fingerprint.session", checkpoint)
+				if err := core.SetSetting(ctx, "watch.fingerprint.session", checkpoint); err != nil {
+					r.setSession(failedSession(err, time.Since(started).Milliseconds()))
+					return
+				}
 			}
 			duration := time.Since(started).Milliseconds()
 			r.setSession(SessionResult{State: "completed", Scan: scan, DurationMS: duration})
