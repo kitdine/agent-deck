@@ -12,9 +12,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 
+	"github.com/kitdine/agent-deck/internal/ingest"
 	"github.com/kitdine/agent-deck/internal/platform"
 	"github.com/kitdine/agent-deck/internal/session"
 	"github.com/kitdine/agent-deck/internal/store"
@@ -148,11 +148,11 @@ func derivedSnapshotDatabaseIdentity(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	stat, ok := info.Sys().(*syscall.Stat_t)
-	if !ok {
+	identity, _, stable := ingest.FileGeneration(info)
+	if !stable {
 		return "", errors.New("unsupported derived cache database identity")
 	}
-	return fmt.Sprintf("%d:%d", stat.Dev, stat.Ino), nil
+	return identity, nil
 }
 
 func nextDerivedSnapshotValidityBoundary(ctx context.Context, core *store.Store, now time.Time, location *time.Location, nextDay time.Time) (time.Time, error) {

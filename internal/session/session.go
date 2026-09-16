@@ -16,7 +16,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/kitdine/agent-deck/internal/activity"
@@ -949,11 +948,11 @@ func prefixHash(path string, limit int64) (string, error) {
 	return fmt.Sprintf("%x", sum[:]), nil
 }
 func fileIdentity(info fs.FileInfo) (string, error) {
-	stat, ok := info.Sys().(*syscall.Stat_t)
-	if !ok {
+	identity, _, stable := ingest.FileGeneration(info)
+	if !stable {
 		return "", errors.New("unsupported file identity")
 	}
-	return fmt.Sprintf("%d:%d", stat.Dev, stat.Ino), nil
+	return identity, nil
 }
 
 // parseRange consumes only complete JSONL records.  The unterminated suffix is

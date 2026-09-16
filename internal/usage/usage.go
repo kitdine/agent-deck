@@ -21,7 +21,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/kitdine/agent-deck/internal/activity"
@@ -1349,7 +1348,7 @@ func (s *Service) validateSnapshot(path string, file SourceFile, entry Inventory
 	if err != nil {
 		return err
 	}
-	if usageFileIdentity(latest) != entry.Identity || latest.Size() < entry.Size {
+	if ingest.FileIdentity(latest) != entry.Identity || latest.Size() < entry.Size {
 		return errUsageSourceChanged
 	}
 	current := make([]byte, len(data))
@@ -1375,12 +1374,6 @@ func (s *Service) validateSnapshot(path string, file SourceFile, entry Inventory
 		return errUsageSourceChanged
 	}
 	return nil
-}
-func usageFileIdentity(info os.FileInfo) string {
-	if stat, ok := info.Sys().(*syscall.Stat_t); ok {
-		return fmt.Sprintf("%d:%d", stat.Dev, stat.Ino)
-	}
-	return info.Name()
 }
 func looksLikeUsage(client string, value map[string]any) bool {
 	if client == "codex" {
