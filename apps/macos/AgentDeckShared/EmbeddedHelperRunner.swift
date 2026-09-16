@@ -1450,7 +1450,12 @@ public final class DesktopRefreshCoordinator {
 	}
 
 	private func publishProgress(_ progress: DesktopScanProgress, generation: Int) {
-		guard generation == self.generation else {
+		// The default DesktopSnapshotRefreshing.refresh(recentLimit:progress:)
+		// reports its synthetic .waiting through an unawaited Task, so it can
+		// still be queued when the same generation's refresh fails fast. Once
+		// that generation has published its outcome (activeRefresh cleared),
+		// reject the stale report instead of re-populating scanProgress.
+		guard generation == self.generation, activeRefresh != nil else {
 			return
 		}
 		switch state {
