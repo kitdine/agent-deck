@@ -205,11 +205,11 @@ integrated through PR #3 at main `f2b7d23`. Its exact result identity and retain
 manual acceptance waivers are recorded in [the batch integration review](reviews/assemble.md),
 Beads and CEv1.
 
-The second batch candidate is `snapshot-performance` at `7e455a8f` / tree
-`74f62318`, prepared in `agent-deck.snapshot-performance` for independent
-integration review and a direct-to-main PR. The source contains current main and
-needs no synchronization merge. Its performance and native-evidence exceptions
-remain explicit, and its trailing XCTest isolation fix retains its separate
-review and gate. `assemble` remains open for the other four selected areas;
-neither aggregate Task checkbox is completed by this batch. Version closure and
-release remain pending.
+The second batch candidate is `snapshot-performance` at `15584e8` / tree
+`cb238e76`, prepared in `agent-deck.snapshot-performance` as PR #4 for a
+direct-to-main fast-forward. Integration re-review passed at this exact head and
+its two-criterion integration gate is VERIFIED. The source contains current main
+and needs no synchronization merge. Its performance and native-evidence
+exceptions remain explicit. `assemble` remains open for the other four selected
+areas; neither aggregate Task checkbox is completed by this batch. Merge,
+retirement, version closure and release remain pending.
