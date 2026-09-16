@@ -176,4 +176,5 @@ func TestSessionCommandsUseProgressWithoutPollutingJSONOrCompletionOrder(t *test
 			t.Fatalf("command %d progress starts=%d stops=%d updates=%#v", index, reporter.starts, reporter.stops, reporter.updates)
 		}
 	}
+	waitForBackgroundScan(t, state)
 }

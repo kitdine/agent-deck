@@ -81,3 +81,378 @@ This batch does not complete aggregate assemble, archive topics or release v0.6.
 Task checkpoint：ad-v060c-assemble-dev / batch schema-version-signal；content_state=1322e76c1bed6ad6c9434d4bd26472eb43e6d6c9；gate=VERIFIED；aggregate open。
 提交建议：本批门禁 VERIFIED 后提交同步结果与三份集成记录/状态文件；用户已授权完整合入。
 推送建议：检查签名、提交消息和目标后推送 feature/schema-version-signal，PR 指向 main，保留历史并等待 CI。
+
+## Round 2 — 2026-09-14 — snapshot-performance
+
+## 📋 snapshot-performance 集成评审
+
+📊 总体评分：9.5/10
+
+✅ 评审结论：PASS
+
+Reviewer: Codex。Method: 单评审者的独立集成检查；复用已完成的源 topic 与
+Lane A fix 评审，不重新评审其未变化的产品实现。Scope: 第二批
+snapshot-performance；其余四个未完成方向及 aggregate assemble 不在本批。
+
+Reviewed state: HEAD `7e455a8f1d6cf99152ea75c925f9194542ad9303`，源树
+`74f6231890fa9895a83c73f100d392c224230ccc`；两份未提交集成文档候选的
+workspace diff SHA-256 为
+`6bb600fe36f838afbd7d2912315e60864795594485b2a247f08dd6ea5bb03f7a`，
+对应 ContentState
+`v0-6-0-contract:integration:snapshot-performance:candidate:6bb600fe36f838afbd7d2912315e60864795594485b2a247f08dd6ea5bb03f7a`。
+
+### 🔴 严重问题 — 必须修复
+
+无。
+
+### 🟡 建议改进 — 推荐
+
+无。
+
+### 🟢 优点
+
+- 当前 main `f2b7d23accfbb0ba1e940ef77ee794cab0cf7c7f` 是源 HEAD 的
+  merge base 和祖先；本地操作类准确归为 fast-forward，不需要制造同步 merge。
+- 候选把 topic delivery commit `cbeaa4b2` 与其后的独立
+  `xctest-state-isolation` 修复 `7e455a8f` 分开描述，并保留两者各自的评审与
+  证据边界。
+- contract tasks 与 integrated status 对性能未达标、最终 20 样本、V01-V19
+  完整性及 real-helper/manual native 缺口使用一致的 accepted-exception 表述，
+  没有把用户处置改写成技术 PASS。
+- 批次状态明确保持 aggregate assemble、其余四个方向、PR、retirement 与
+  release 未完成，避免部分批次越权关闭版本单元。
+
+### 📝 总结
+
+Target: main `f2b7d23accfbb0ba1e940ef77ee794cab0cf7c7f`，tree
+`f95e1a3a264337a52ab8de0182c60615c520c849`。Source:
+feature/snapshot-performance `7e455a8f1d6cf99152ea75c925f9194542ad9303`，
+tree `74f6231890fa9895a83c73f100d392c224230ccc`。Common base 与 target
+commit 相同。
+
+Operation: direct-to-main fast-forward candidate；当前评审未执行 commit、push、
+PR 或 merge。main 在分支创建后没有额外产品、配置或依赖改动，因此不存在
+target-only consumer、冲突解决或组合状态。实际 result 产品树将与 source tree
+一致；本批额外内容仅为 version-contract batch/status projection 和本评审记录。
+
+Interactions checked: `internal/scanruntime` 的统一 worker/receipt 生命周期，
+usage/session/desktop 调用路径，CLI 与 embedded helper stream/progress 协议，
+derived cache generation/invalidation，store migration，以及尾部 XCTest state-dir
+隔离。源分支的对应实现、消费者、回归与评审内容在 target 上未发生改变；因此
+其 exact-state 证据可继续适用。CodeGraph 当前索引绑定 main worktree，工具明确
+警告其结果可能缺少本分支符号；本轮未把该图输出作为关系证据，而以精确 Git
+拓扑、源 diff、源评审记录与现有测试覆盖核验这些边界。
+
+Evidence:
+
+- `git merge-base main HEAD` 返回 `f2b7d23...`，且
+  `git merge-base --is-ancestor main HEAD` 成功；`main...HEAD` 共 116 个源路径，
+  没有 target-only 增量或冲突结果。
+- `git diff --binary -- docs/topics/v0-6-0-contract/tasks.md docs/status.md |
+  shasum -a 256` 返回上述 `6bb600fe...` 候选指纹；`git diff --check` 与
+  `bash scripts/check-topic-docs.sh` 均通过。
+- snapshot-performance 当前矩阵为 6/6 文档与 3/3 Tasks 通过；Task 3 的
+  delivery acceptance exceptions 明确保留原始 fail/not_verified 技术结果。
+- `7e455a8f` 具有 Good ED25519 signature、完整提交正文和要求的 Codex trailer；
+  `docs/fixes/xctest-state-isolation.md` Round 1 为 PASS，修复门禁 VERIFIED。
+- 源 topic 与 fix 的既有产品测试证据绑定其未变化提交；本轮只改变文档并复用，
+  未因工作流阶段变化重复运行 Go、race 或 XCTest 套件。
+
+Residual uncertainty: 远端 ref、PR 保护与 CI 尚未检查，因为本轮没有 push/PR/merge
+授权；它们属于后续交付前提，不影响本地快进候选的 REVIEW PASS。已接受的性能
+与 native/manual 缺口仍是显式残余限制，不在本轮被关闭或弱化。
+
+完成门禁：VERIFIED（2/2；上述 ContentState）。本轮确认
+`integration-readiness` 与 `source-continuity`，无 missing、invalidated 或
+unresolved evidence。aggregate assemble 仍保持开放。
+
+## Repair handoff — PR4-E6 — 2026-09-15 — snapshot-performance
+
+GitHub Codex 在 PR #4 的当前 HEAD
+`e6d59e565ca61b5adf493173fdac502920b6415a` 上完成新一轮 review，并记录四条
+source-branch finding。本节仅记录 Repair 的逐条处置与复评候选，不改写 Round 2
+针对 `7e455a8f` 的历史 PASS，也不自行给出新的评审结论。修复后的五文件候选以
+HEAD 加 code/test diff SHA-256
+`1bc27d3de2dd5c23b688618136fb6983e77f61e00c2c78ae0d4c229d4f66cd06`
+标识。
+
+- `PR4-E6-F1`（P1，GitHub discussion `r4012545716`）closed in candidate：
+  `SessionIndexEpoch` 在 generation 表缺失时返回稳定的迁移哨兵；session watch
+  将其映射为过期 checkpoint，使后续受锁 scan 以可写方式完成旧索引迁移，
+  不再因只读 epoch 查询直接退出。
+- `PR4-E6-F2`（P2，GitHub discussion `r4012545730`）closed in candidate：
+  session watch 把本轮已采集的 raw source fingerprint 直接传给 epoch 绑定逻辑，
+  不再在同一次未变化 poll 中重复遍历全部 session roots。
+- `PR4-E6-F3`（P1，GitHub discussion `r4012545742`）closed in candidate：
+  terminal receipt 持久化失败仍作为调用方可见错误保留，但 server 总会删除已完成
+  round、提升 pending round 并恢复 idle/later-request 队列状态。
+- `PR4-E6-F4`（P2，GitHub discussion `r4012545748`）closed in candidate：
+  `EnsureStateRoot` 创建新目录后再次解析 symlink，并仅用最终 canonical path 计算
+  state ID，保证首次 client 与随后 worker 派生同一 socket。
+
+Repair verification：
+
+- 聚焦回归：`TestTerminalReceiptFailureStillAdvancesRoundQueue`、
+  `TestPrepareStateRootRecanonicalizesNewDirectoryBelowSymlink`、
+  `TestSessionWatchFingerprintReadsRootsOnce`、
+  `TestSessionWatchFingerprintForcesLegacyIndexMigration` 全部通过。
+- `scripts/run-go-test.sh ./...`：PASS。
+- `scripts/run-go-test.sh -race ./internal/scanruntime ./cmd/agentdeck`：PASS。
+- `make vet`：PASS。
+- `make build-all`：PASS（darwin/arm64、darwin/amd64）。
+- 修复前 PR HEAD 的两组 `verify` 与两组 `desktop` CI 均为 SUCCESS；这些远端结果
+  不覆盖本地未提交候选，新的 CI 仍属于后续 push 后验证。
+
+Repair complete；四条 finding 均已进入同一复评候选。aggregate `assemble` 仍保持
+开放，提交、推送、PR 更新与 merge 均未在本阶段执行。
+
+## Repair handoff — PR4-C847 — 2026-09-15 — snapshot-performance
+
+GitHub Codex 对 PR #4 commit
+`c8477711867d10e5dfdd0024784503143a6257ea` 的后续 review 新增三条 finding。
+本节记录其 Repair 处置，不给出复评结论。修复后的八文件 code/test diff
+SHA-256 为
+`5c65b26fa6ba714f26c940978fba8e9a3d57149e7c35fbcb33c8d0c4e4663aa5`。
+
+- `PR4-C847-F1`（P2，GitHub discussion `r4016831849`）closed in candidate：
+  watch source 可在成功 scan 后重绑定 fingerprint；session watch 使用 scan 前捕获
+  的 raw inventory 与 scan 后非零 session epoch，持久化值和进程内值保持一致，
+  首次创建或迁移索引后不再多执行一轮 bootstrap scan。
+- `PR4-C847-F2`（P1，GitHub discussion `r4016831863`）closed in candidate：
+  usage/session 的内部 raw error 不再序列化到 JSON、NDJSON 或 receipt journal，
+  scope error 只返回稳定的 domain-level 公共消息；`error_code` 继续保留。
+- `PR4-C847-F3`（P1，GitHub discussion `r4016831878`）closed in candidate：
+  admission 在 planning、budget wait 或 job send 阶段被取消时，会幂等终结当前及
+  所有尚未 admission 的 stream，保证消费者、round 和 scan lock 都能收尾。
+
+Repair verification：
+
+- 四个新聚焦回归以及真实 session watch bootstrap checkpoint 断言：PASS。
+- `scripts/run-go-test.sh ./...`：PASS。
+- `scripts/run-go-test.sh -race ./internal/watch ./internal/ingest
+  ./internal/scanruntime ./cmd/agentdeck`：PASS。
+- `make vet`：PASS。
+- `make build-all`：PASS（darwin/arm64、darwin/amd64）。
+- PR `c847771` 的两组 `verify` 与两组 `desktop` CI：SUCCESS；这些结果不覆盖
+  当前未提交候选，新的 GitHub Codex review 仍需先提交并推送候选。
+
+Repair complete；三条 finding 均已进入同一远端复评候选。aggregate `assemble`
+保持开放，本轮未执行 commit、push 或 merge。
+
+## Repair handoff — PR4-C847-R2 — 2026-09-15 — snapshot-performance
+
+The full local review of the uncommitted `PR4-C847` candidate recorded two
+additional findings. This repair remains part of the same assemble task and does
+not alter the earlier review verdicts. The current candidate's scanruntime repair
+delta covers `internal/scanruntime/{scanruntime.go,receipts.go,scanruntime_test.go}`.
+
+- `PR4-C847-R2-F1` (P2, macOS socket path) closed in candidate: a caller-supplied
+  long `TMPDIR` no longer makes the per-user socket endpoint exceed the Darwin
+  `sockaddr_un` limit. The compact fallback is checked for symlink/type and
+  current-user ownership before use.
+- `PR4-C847-R2-F2` (P2, receipt durability) closed in candidate: after the
+  temporary receipt file is synced and renamed, the containing directory is
+  opened and synced before `save` reports success, preserving the
+  persist-before-acknowledge contract across restart.
+
+Repair verification:
+
+- Long-`TMPDIR` endpoint and parent-directory-sync regressions: PASS.
+- `scripts/run-go-test.sh ./internal/scanruntime`: PASS.
+- `scripts/run-go-test.sh -race ./internal/scanruntime`: PASS.
+- `make vet`, `git diff --check`: PASS.
+
+Repair complete; independent remote re-review remains required before delivery.
+
+## Repair handoff — PR4-C847-R3 — 2026-09-15 — snapshot-performance
+
+The next full review of the uncommitted `PR4-C847-R2` candidate recorded two
+additional findings. This Repair remains in the same aggregate `assemble` task,
+preserves all earlier review history and does not issue a re-review verdict. The
+current eleven-file code/test diff SHA-256 is
+`cdafa3053b8d1beef2bca4e5a33db9611589fa39fd332edbff05401c5dbe4bd0`.
+
+- `PR4-C847-R3-F1` (P1, finite session checkpoint) closed in candidate: the
+  worker derives the session watch checkpoint from the exact `ingest.Discover`
+  inventory used by its round and persists it before publishing session
+  `completed`. The session CLI and desktop refresh no longer overwrite that
+  checkpoint from a pre-request observation; the locked watch path scans its
+  captured inventory and then adopts the persisted value. A top-level `scan`
+  now persists the same checkpoint without a legacy caller.
+- `PR4-C847-R3-F2` (P2, post-rename receipt state) closed in candidate:
+  receipt-journal save reports whether rename installed the replacement.
+  `accept`, `terminal`, `terminalReceipt` and `prune` roll memory back only for
+  pre-rename failures. A directory-sync or later permission error remains
+  caller-visible while live memory continues to match the document already
+  visible on disk and after restart.
+
+Repair verification:
+
+- Focused finite-inventory, checkpoint-before-completion, top-level scan and
+  post-rename `accept`/`terminal`/`prune` regressions: PASS.
+- `scripts/run-go-test.sh ./internal/ingest ./internal/scanruntime
+  ./internal/watch ./cmd/agentdeck -count=1`: PASS.
+- `scripts/run-go-test.sh -race ./internal/ingest ./internal/scanruntime
+  ./internal/watch ./cmd/agentdeck -count=1`: PASS.
+- `scripts/run-go-test.sh ./... -count=1`, `make vet`, `make build-all` and
+  `git diff --check`: PASS.
+
+Repair complete; both findings are ready for independent re-review. No commit,
+push, PR mutation or merge was performed.
+
+## Repair handoff — PR4-1077 — 2026-09-16 — snapshot-performance
+
+This handoff covers three signed commits made on top of PR #4 head `1077fbc`:
+`b898577`, `44d0395` and `15584e8`. It records Repair dispositions only; it keeps
+all earlier review history and issues no re-review verdict. Delivered state:
+HEAD `15584e86d3067cd4c435e935057c33039b49316a`, tree
+`cb238e76f49c61a29b3d77731a878d5187083507`, pushed to
+`origin/feature/snapshot-performance`.
+
+Scope note for the re-reviewer: commits `51b948a`, `51bb758`, `34ee4e3`,
+`7705692`, `00729f1`, `d5298b2`, `3d71e36` and `1077fbc` landed after the
+PR4-C847-R3 handoff. This record has no handoff section for them, and this
+handoff asserts no disposition for their content. The complete unreviewed
+integration delta since the Round 2 PASS is `7e455a8f..15584e8`.
+
+- `PR4-1077-CI1` (CI `verify`, run `35098804057`) closed by `b898577`:
+  `TestUnifiedScanRuntimeMatchesLegacyAcrossSourceMutations` failed under
+  `make test-race` with `partial append shared scan: usage scan failed`. The
+  underlying error was SQLite extended code 517 (`SQLITE_BUSY_SNAPSHOT`). Usage
+  source publication uses deferred transactions that read before writing, and
+  the round's session goroutine committed `watch.fingerprint.session` to the same
+  core database in between. The session checkpoint now waits for the usage
+  domain's terminal state after the session consumer is released, restoring one
+  core writer per round. Out-of-round concurrent writers can still trigger 517;
+  that pre-existing defect is tracked separately as Lane A
+  `ad-bug-usage-scan-busy-snapshot` and is not repaired here.
+- PR #4 review `5222665284` (2026-09-16, recorded here as `PR4-R5222-F1` to
+  `PR4-R5222-F13`), verified against current code:
+  - `F9` double range hashing, closed by `44d0395`: the coordinator and
+    `ValidateCapturedRange` skip the second read when identity, size, mtime and
+    ctime are unchanged; growth and same-size rewrites are still hashed and
+    rejected.
+  - `F10` lock contention, partly valid, closed by `44d0395`: admission already
+    blocks on `wake` rather than spinning; the per-record coordinator lock in the
+    reader is removed.
+  - `F11` duplicated dev:inode extraction, closed by `15584e8`: session, usage
+    and the derived cache use `ingest.FileGeneration` / `ingest.FileIdentity`.
+  - `F1`, `F3`, `F4`, `F6`, `F7`, `F8`, `F12` not reproduced in current code:
+    legacy refresh also returned errors rather than stale data; shared streams
+    still pass through the batch orphan check; restore already reserves the
+    sessions WAL, SHM and journal files; `OpenSessions` mints an epoch on rebuild;
+    source updates still validate and commit in a transaction; helper capture
+    drains output on timeout; `failureStage` is read by the contract report and
+    tests.
+  - `F2` by design: metadata is read outside the transaction and revalidated
+    inside it by identity, size, change time and prefix hash. `F5` is no
+    regression: the PR adds the XCTest refresh guard where none existed.
+    No change for either.
+  - `F13` commit attribution was corrected before this handoff and is not a
+    code finding.
+
+Repair verification:
+
+- RED/GREEN: `TestSessionCheckpointWaitsForUsageCoreWrites` failed 5/5 with the
+  checkpoint wait removed and passes with it. Under `GOMAXPROCS=1` and `-race`,
+  the CI contract test failed 4 of 45 runs before `b898577` and 0 of 45 after.
+- New ingest regressions `TestCoordinatorReadsUnchangedSourceBodyOnce` and
+  `TestStreamRejectsSameSizeRewriteInDomainPublicationWindow`: PASS.
+- `make check-whitespace`, `make check-go-test-runner`,
+  `scripts/run-go-test.sh ./...`, `scripts/run-go-test.sh -race ./...` and
+  `make vet`: PASS on the final code.
+- PR #4 CI at `15584e8` (two `verify`, two `desktop`): SUCCESS.
+- The three commits carry verified SSH signatures and
+  `Co-Authored-By: Claude <noreply@anthropic.com>`.
+
+Repair complete. An independent integration re-review of `7e455a8f..15584e8` and
+a target-bound integration gate remain required before merge. This handoff
+section itself is uncommitted.
+
+## Round 3 — 2026-09-16 — snapshot-performance
+
+## 📋 snapshot-performance 集成复评
+
+📊 总体评分：9.5/10
+
+✅ 复评结论：PASS
+
+Checklist: 54/54 complete. Incomplete: None.
+
+Reviewer: Codex。Method: `ln-12-delivery-reviewer` 的 Blue-only 复评；按项目
+禁止未获请求的委派，因此未启动 subagent。逐项复核本记录 Round 2 之后的全部
+Repair finding，并审查完整增量 `7e455a8f..15584e8`、受影响运行路径、最新 PR
+拓扑与精确 HEAD CI。Scope: 第二批 `snapshot-performance` 的集成候选；其余四个
+未完成方向、aggregate `assemble`、PR merge、topic retirement 与 release 不在本轮。
+
+Reviewed state: target main
+`f2b7d23accfbb0ba1e940ef77ee794cab0cf7c7f` / tree
+`f95e1a3a264337a52ab8de0182c60615c520c849`；source and PR head
+`15584e86d3067cd4c435e935057c33039b49316a` / tree
+`cb238e76f49c61a29b3d77731a878d5187083507`。main 仍是 source 的 merge base
+和祖先，operation class 仍为 direct-to-main fast-forward candidate。Reviewed
+ContentState:
+`v0-6-0-contract:integration:snapshot-performance:pr4:15584e86d3067cd4c435e935057c33039b49316a`。
+
+### 🔴 严重问题 — 必须修复
+
+无。
+
+### 🟡 建议改进 — 推荐
+
+无未关闭问题，无新增 finding。
+
+### 🟢 优点
+
+- `PR4-E6-F1`、`PR4-E6-F2`、`PR4-E6-F3`、`PR4-E6-F4` 均 CLOSED：迁移
+  哨兵、单次 inventory 复用、terminal receipt 失败后的 round 推进及新建 state
+  root 再规范化都保留在当前实现和聚焦回归中。
+- `PR4-C847-F1`、`PR4-C847-F2`、`PR4-C847-F3` 均 CLOSED：session
+  checkpoint 重绑定、公开结果/receipt 的 raw error 脱敏及 admission 取消后的全部
+  stream 终结均存在于当前路径；稳定 `error_code` 保留。
+- `PR4-C847-R2-F1`、`PR4-C847-R2-F2`、`PR4-C847-R3-F1`、
+  `PR4-C847-R3-F2` 均 CLOSED：Darwin 长路径 fallback 的私有目录约束、receipt
+  rename 后目录同步、有限 inventory checkpoint 及 post-rename 内存/磁盘一致性均有
+  对应失败态测试。
+- `PR4-1077-CI1` CLOSED：session checkpoint 等待 usage core writer，当前 HEAD
+  的 race contract 与两套远端 `verify` 均通过；独立 Lane A carrier
+  `ad-bug-usage-scan-busy-snapshot` 继续承接 out-of-round writer 问题。
+- `PR4-R5222-F9`、`PR4-R5222-F10`、`PR4-R5222-F11` CLOSED；
+  `PR4-R5222-F1`、`F3`、`F4`、`F6`、`F7`、`F8`、`F12` 在当前代码中仍不可
+  复现；`F2` 是事务内再验证的既定设计，`F5` 未形成回归，`F13` 已在交付提交前
+  纠正归因。逐项复核未发现 disposition 回退。
+
+### 📝 总结
+
+完整变更为 50 个文件、2559 insertions / 358 deletions。受影响交互包括 shared
+ingest 的有限范围与 source identity、scanruntime admission/round/receipt 生命周期、
+usage/session/core writer 时序、watch checkpoint、CLI/embedded-helper progress 与
+公开错误边界、macOS 菜单栏失败呈现及 schema 26 fixture。当前实现把 source rewrite
+防护放在读取后和领域发布前，把所有未 admission stream 在取消时终结，并让 receipt
+在 rename 后错误时继续反映已安装文档；这些是前轮 finding 的 owning boundaries，
+未以调用方特例遮盖。
+
+Evidence:
+
+- Git topology：`git merge-base main HEAD` 返回 `f2b7d23...`；PR #4 的 base/head
+  分别为 `f2b7d23...` / `15584e8...`，GitHub 报告 `MERGEABLE`、`CLEAN`。
+- 当前 HEAD 的两套 `verify` 与两套 `desktop` checks 均为 SUCCESS。复用同一 HEAD
+  已记录的 `scripts/run-go-test.sh ./...`、`scripts/run-go-test.sh -race ./...`、
+  `make vet`、`make build-all`、whitespace 与 runner checks；代码、测试、依赖、
+  配置和 toolchain 未在这些结果后改变，因此不因复评阶段重复执行。
+- 用户提供的最终 branch review 结果为无 actionable correctness defects，且受影响
+  Go packages 与 command package 的 scoped regression tests 通过；本轮又直接核对
+  finding 对应实现、测试与 consumer path，没有把该结论单独当作门禁。
+- `git diff --check 7e455a8f..HEAD` 通过。已接受的 cold-import、unchanged-refresh
+  CPU、20-sample、V01-V19 与 native/manual 例外继续按原技术结果保留，未改写为 PASS。
+
+Residual uncertainty: merge 尚未执行，merge 后 main result identity、remote branch
+protection 与 merge receipt 仍属于后续交付；四个剩余版本方向和 aggregate assemble
+也保持开放。这些不是当前 fast-forward candidate 的复评 finding。
+
+完成门禁：VERIFIED（2/2；上述 ContentState）。`integration-readiness` 与
+`source-continuity` 均绑定当前 PR head，missing、invalidated 与 unresolved 为空。
+
+Task checkpoint：ad-v060c-assemble-dev / batch snapshot-performance；content_state=v0-6-0-contract:integration:snapshot-performance:pr4:15584e86d3067cd4c435e935057c33039b49316a；gate=VERIFIED；aggregate open。
+提交建议：提交本轮复评记录及同批 contract/status 同步；产品修复已在 `15584e8`，门禁 VERIFIED 后不再修改产品代码。
+推送建议：取得推送授权、检查新文档提交的消息/归因/签名及远端仍指向 `15584e8` 后，推送 `feature/snapshot-performance`；PR #4 merge 仍需独立授权并保持 CI/branch protection 成功。

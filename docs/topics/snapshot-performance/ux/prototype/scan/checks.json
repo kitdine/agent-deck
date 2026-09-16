@@ -1,0 +1,334 @@
+{
+  "date": "2026-09-11",
+  "kind": "browser-prototype-verification",
+  "not_native_acceptance": true,
+  "probes": {
+    "menubar-zh": {
+      "failed": [],
+      "passed": 14,
+      "results": [
+        {
+          "name": "unknown totals do not display fictitious count",
+          "pass": true
+        },
+        {
+          "name": "first use shows loading without fabricated data cards",
+          "pass": true
+        },
+        {
+          "name": "source counts represent committed work",
+          "pass": true
+        },
+        {
+          "name": "popover closes independently of worker",
+          "pass": true
+        },
+        {
+          "name": "background advances without reopening popover",
+          "pass": true
+        },
+        {
+          "name": "reopen receives latest phase",
+          "pass": true
+        },
+        {
+          "name": "indexes complete does not publish before statistics",
+          "pass": true
+        },
+        {
+          "name": "completed snapshot published as whole result",
+          "pass": true
+        },
+        {
+          "name": "refresh retains newly obtained prior snapshot",
+          "pass": true
+        },
+        {
+          "name": "failure retains prior data and retry",
+          "pass": true
+        },
+        {
+          "name": "partial outcomes expose independent session failure",
+          "pass": true
+        },
+        {
+          "name": "one atomic stage live region",
+          "pass": true
+        },
+        {
+          "name": "stage updates do not move focus",
+          "pass": true
+        },
+        {
+          "name": "progress text fits narrow card",
+          "pass": true
+        }
+      ]
+    },
+    "menubar-en": {
+      "failed": [],
+      "passed": 14,
+      "results": [
+        {
+          "name": "unknown totals do not display fictitious count",
+          "pass": true
+        },
+        {
+          "name": "first use shows loading without fabricated data cards",
+          "pass": true
+        },
+        {
+          "name": "source counts represent committed work",
+          "pass": true
+        },
+        {
+          "name": "popover closes independently of worker",
+          "pass": true
+        },
+        {
+          "name": "background advances without reopening popover",
+          "pass": true
+        },
+        {
+          "name": "reopen receives latest phase",
+          "pass": true
+        },
+        {
+          "name": "indexes complete does not publish before statistics",
+          "pass": true
+        },
+        {
+          "name": "completed snapshot published as whole result",
+          "pass": true
+        },
+        {
+          "name": "refresh retains newly obtained prior snapshot",
+          "pass": true
+        },
+        {
+          "name": "failure retains prior data and retry",
+          "pass": true
+        },
+        {
+          "name": "partial outcomes expose independent session failure",
+          "pass": true
+        },
+        {
+          "name": "one atomic stage live region",
+          "pass": true
+        },
+        {
+          "name": "stage updates do not move focus",
+          "pass": true
+        },
+        {
+          "name": "progress text fits narrow card",
+          "pass": true
+        }
+      ]
+    },
+    "cli-zh": {
+      "failed": [],
+      "passed": 11,
+      "results": [
+        {
+          "name": "running progress on stderr only",
+          "pass": true
+        },
+        {
+          "name": "usage scope returns before session completion",
+          "pass": true
+        },
+        {
+          "name": "scoped receipt reports ongoing session truthfully",
+          "pass": true
+        },
+        {
+          "name": "background emits no trailing foreground output",
+          "pass": true
+        },
+        {
+          "name": "non TTY has no progress or control sequences",
+          "pass": true
+        },
+        {
+          "name": "quiet suppresses progress",
+          "pass": true
+        },
+        {
+          "name": "quiet preserves errors",
+          "pass": true
+        },
+        {
+          "name": "machine result is parseable, no mixed progress",
+          "pass": true
+        },
+        {
+          "name": "Ctrl-C detaches and freezes output",
+          "pass": true
+        },
+        {
+          "name": "session waiter does not return with usage",
+          "pass": true
+        },
+        {
+          "name": "narrow terminal stream has no horizontal overflow",
+          "pass": true
+        }
+      ]
+    },
+    "cli-en": {
+      "failed": [],
+      "passed": 11,
+      "results": [
+        {
+          "name": "running progress on stderr only",
+          "pass": true
+        },
+        {
+          "name": "usage scope returns before session completion",
+          "pass": true
+        },
+        {
+          "name": "scoped receipt reports ongoing session truthfully",
+          "pass": true
+        },
+        {
+          "name": "background emits no trailing foreground output",
+          "pass": true
+        },
+        {
+          "name": "non TTY has no progress or control sequences",
+          "pass": true
+        },
+        {
+          "name": "quiet suppresses progress",
+          "pass": true
+        },
+        {
+          "name": "quiet preserves errors",
+          "pass": true
+        },
+        {
+          "name": "machine result is parseable, no mixed progress",
+          "pass": true
+        },
+        {
+          "name": "Ctrl-C detaches and freezes output",
+          "pass": true
+        },
+        {
+          "name": "session waiter does not return with usage",
+          "pass": true
+        },
+        {
+          "name": "narrow terminal stream has no horizontal overflow",
+          "pass": true
+        }
+      ]
+    }
+  },
+  "layout": {
+    "count": 128,
+    "failures": []
+  },
+  "new_scan_region_axe": {
+    "dark": {
+      "success": true,
+      "data": {
+        "axeVersion": "4.12.1",
+        "counts": {
+          "inapplicable": 49,
+          "incomplete": 0,
+          "passes": 10,
+          "violations": 0
+        },
+        "incomplete": [],
+        "lifecycle": {
+          "effectiveLaunch": {
+            "browserLaunched": true,
+            "engine": "chrome",
+            "launchHash": 11677035664275010974
+          },
+          "launched": false,
+          "relaunchedBrowser": false,
+          "restartedBackground": false,
+          "restoreStatus": "not_configured",
+          "reused": true,
+          "saveStatus": "not_attempted"
+        },
+        "url": "http://127.0.0.1:4188/?scan=importing&lang=zh&theme=dark",
+        "violations": []
+      },
+      "error": null
+    },
+    "light": {
+      "success": true,
+      "data": {
+        "axeVersion": "4.12.1",
+        "counts": {
+          "inapplicable": 49,
+          "incomplete": 0,
+          "passes": 10,
+          "violations": 0
+        },
+        "incomplete": [],
+        "lifecycle": {
+          "effectiveLaunch": {
+            "browserLaunched": true,
+            "engine": "chrome",
+            "launchHash": 11677035664275010974
+          },
+          "launched": false,
+          "relaunchedBrowser": false,
+          "restartedBackground": false,
+          "restoreStatus": "not_configured",
+          "reused": true,
+          "saveStatus": "not_attempted"
+        },
+        "url": "http://127.0.0.1:4188/?scan=importing&lang=en&theme=light",
+        "violations": []
+      },
+      "error": null
+    }
+  },
+  "browser_ax": {
+    "url": "http://127.0.0.1:4188/?scan=checking&prior=0&lang=zh&theme=dark&width=420",
+    "statuses": [
+      {
+        "role": "status",
+        "properties": [
+          {
+            "name": "live",
+            "value": {
+              "type": "token",
+              "value": "polite"
+            }
+          },
+          {
+            "name": "atomic",
+            "value": {
+              "type": "boolean",
+              "value": true
+            }
+          },
+          {
+            "name": "relevant",
+            "value": {
+              "type": "tokenList",
+              "value": "additions text"
+            }
+          }
+        ],
+        "childIds": [
+          "13879"
+        ]
+      }
+    ]
+  },
+  "limitations": [
+    "No real worker, IPC, SQLite or native Swift executed.",
+    "Full existing popover axe audit has one incomplete aria-prohibited-attr on unchanged .calendar; scoped new scan region has none.",
+    "Model reuses the fixed synthetic snapshot values; completion swaps availability/generation, not production data."
+  ]
+}

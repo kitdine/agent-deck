@@ -3056,6 +3056,14 @@ func TestScanAndRebuildReportProcessedAndTotalSourceFiles(t *testing.T) {
 		t.Fatalf("scan progress=%#v want=%#v", progress.updates, want)
 	}
 	progress.starts, progress.stops, progress.updates = 0, 0, nil
+	if _, err := service.Scan(ctx); err != nil {
+		t.Fatal(err)
+	}
+	wantSkipped := []ScanProgress{{Total: 2}, {Processed: 1, Skipped: 1, Total: 2}, {Processed: 2, Skipped: 2, Total: 2}}
+	if !reflect.DeepEqual(progress.updates, wantSkipped) {
+		t.Fatalf("unchanged scan progress=%#v want=%#v", progress.updates, wantSkipped)
+	}
+	progress.starts, progress.stops, progress.updates = 0, 0, nil
 	if _, _, err := service.Rebuild(ctx); err != nil {
 		t.Fatal(err)
 	}

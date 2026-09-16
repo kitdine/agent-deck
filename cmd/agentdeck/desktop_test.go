@@ -11,10 +11,11 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
-	"time"
 
 	"github.com/kitdine/agent-deck/internal/desktop"
 	"github.com/kitdine/agent-deck/internal/output"
+	"github.com/kitdine/agent-deck/internal/scanruntime"
+	"github.com/kitdine/agent-deck/internal/session"
 )
 
 func TestDesktopSnapshotMissingStateReturnsStablePartialEnvelope(t *testing.T) {
@@ -62,34 +63,40 @@ func TestDesktopSnapshotMissingStateReturnsStablePartialEnvelope(t *testing.T) {
 	}
 }
 
-func TestDesktopRefreshIndexesRunsIndependentIncrementalScansInParallel(t *testing.T) {
-	started := make(chan string, 2)
-	release := make(chan struct{})
-	completed := make(chan desktopIndexRefreshResult, 1)
-	scan := func(name string) desktopIndexScan {
-		return func() (any, error) {
-			started <- name
-			<-release
-			return map[string]int{"changed": 1}, nil
-		}
+func TestDesktopRefreshIndexesKeepsIndependentWorkerDomainOutcomes(t *testing.T) {
+	result := desktopIndexResultFromRound(scanruntime.Result{
+		Usage:   scanruntime.UsageResult{State: "failed", ErrorCode: "scan_failed", Error: "usage parse failed"},
+		Session: scanruntime.SessionResult{State: "completed", Scan: session.ScanResult{Documents: 2}},
+	})
+	if result.Usage.Success || result.Usage.failureStage != "scan" || result.Usage.Changes != nil {
+		t.Fatalf("usage result = %#v", result.Usage)
 	}
-	go func() {
-		completed <- runDesktopIndexScans(scan("usage"), scan("sessions"))
-	}()
+	if !result.Sessions.Success || !reflect.DeepEqual(result.Sessions.Changes, session.ScanResult{Documents: 2}) || result.Sessions.failureStage != "" {
+		t.Fatalf("session result = %#v", result.Sessions)
+	}
+}
 
-	seen := map[string]bool{}
-	for len(seen) < 2 {
-		select {
-		case name := <-started:
-			seen[name] = true
-		case <-time.After(time.Second):
-			t.Fatal("incremental scans did not start in parallel")
-		}
-	}
-	close(release)
-	result := <-completed
-	if !result.Usage.Success || !result.Sessions.Success {
-		t.Fatalf("parallel result = %#v", result)
+func TestDesktopIndexResultRecordsFailureStageWithoutChangingWireOutput(t *testing.T) {
+	for _, test := range []struct {
+		name, code, want string
+	}{
+		{name: "parser or scan", code: "scan_failed", want: "scan"},
+		{name: "deadline", code: "deadline_exceeded", want: "deadline"},
+		{name: "cancellation", code: "cancelled", want: "deadline"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			result := desktopIndexResultFromRound(scanruntime.Result{Usage: scanruntime.UsageResult{State: "failed", ErrorCode: test.code, Error: "synthetic failure"}}).Usage
+			if result.Success || result.failureStage != test.want || result.ErrorCode == "" {
+				t.Fatalf("result = %#v, want failure stage %q", result, test.want)
+			}
+			encoded, err := json.Marshal(result)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if bytes.Contains(encoded, []byte("failureStage")) || bytes.Contains(encoded, []byte("failure_stage")) {
+				t.Fatalf("internal failure stage leaked into public JSON: %s", encoded)
+			}
+		})
 	}
 }
 

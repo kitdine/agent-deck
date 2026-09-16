@@ -15,6 +15,14 @@ enum DesktopCopy {
 
 	// Surface and qualifier copy.
 	static let loading = "Loading…"
+	static let scanWaiting = "Waiting for current scan"
+	static let scanChecking = "Checking source files"
+	static let scanImporting = "Importing"
+	static let scanStatistics = "Calculating statistics"
+	static let scanFinished = "Scan finished"
+	static let scanUsageProgress = "Usage %1$lld/%2$lld committed"
+	static let scanSessionProgress = "Sessions %1$lld/%2$lld committed"
+	static let scanSkipped = "%lld skipped"
 	static let offline = "Cannot reach the AgentDeck helper"
 	static let failing = "Data could not be read"
 	static let partial = "Some data unavailable"
@@ -226,7 +234,9 @@ enum DesktopCopy {
 	/// The inventory the localization test walks. Every key above appears here.
 	static let allKeys: [String] = [
 		schemaSignalNotice, schemaSignalCause, schemaSignalRecovery, schemaSignalSectionUnavailable, schemaSignalFooter, schemaSignalSwitchUnavailable, badgedSchemaSignal, schemaSignalHookDropped,
-		loading, offline, failing, partial, emptyToday, emptySnapshot,
+		loading, scanWaiting, scanChecking, scanImporting, scanStatistics, scanFinished,
+		scanUsageProgress, scanSessionProgress, scanSkipped,
+		offline, failing, partial, emptyToday, emptySnapshot,
 		freshnessUpdated, freshnessLastUpdated, retry, refreshNow, refreshTimedOut, appName,
 		badgedOffline, badgedFailing, qualifierList,
 		clientFilter, periodFilter, clientAll, periodToday, period7d, period30d,

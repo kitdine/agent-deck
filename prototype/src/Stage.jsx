@@ -60,6 +60,7 @@ export function StageControls({ prefs, showState = true, showWidth = true }) {
         {link("widgets", lang === "zh" ? "小组件" : "Widgets")}
         {link("states", lang === "zh" ? "状态" : "States")}
         {link("cli", "CLI")}
+        <a href="?scan=waiting">{lang === "zh" ? "扫描进度" : "Scan progress"}</a>
       </nav>
       <div className="stage-groups">
         {showState && (

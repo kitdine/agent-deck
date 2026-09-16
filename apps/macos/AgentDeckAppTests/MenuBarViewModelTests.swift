@@ -106,6 +106,16 @@ final class MenuBarViewModelTests: XCTestCase {
 		}
 
 		XCTAssertTrue(model.isRefreshing)
+		await Task.yield()
+		XCTAssertEqual(model.scanProgressStageText, t(DesktopCopy.scanImporting))
+		XCTAssertEqual(
+			model.scanProgressCountsText,
+			[
+				t(DesktopCopy.scanUsageProgress, Int64(3), Int64(8)),
+				t(DesktopCopy.scanSessionProgress, Int64(2), Int64(8)),
+				t(DesktopCopy.scanSkipped, Int64(1)),
+			].joined(separator: " · ")
+		)
 		host.resume()
 		await refresh.value
 		XCTAssertFalse(model.isRefreshing)
@@ -140,10 +150,28 @@ final class MenuBarViewModelTests: XCTestCase {
 		let host = StubDesktopHost(behavior: .failure(HelperExecutionError.timedOut))
 		let model = await makeModel(host: host)
 		await model.coordinator.refresh()
+		await Task.yield()
 
 		XCTAssertEqual(model.surface, .errorSurface)
 		XCTAssertEqual(model.errorCopy, t(DesktopCopy.refreshTimedOut))
 		XCTAssertTrue(model.notices.isEmpty, "an error surface has no snapshot to qualify")
+		XCTAssertTrue(model.showsScanProgressStatus)
+		XCTAssertEqual(model.scanProgressStageText, t(DesktopCopy.scanFinished))
+		XCTAssertTrue(model.scanProgressCountsText?.contains(t(DesktopCopy.failing)) == true)
+	}
+
+	func testDegradedDataSurfaceShowsRetainedTerminalDomainOutcome() async {
+		let host = StubDesktopHost(behavior: .envelope(WireFixture.envelope()))
+		let model = await makeModel(host: host)
+		await model.coordinator.refresh()
+		host.behavior = .failure(HelperExecutionError.timedOut)
+		await model.coordinator.refresh()
+		await Task.yield()
+
+		XCTAssertEqual(model.surface, .dataSurface)
+		XCTAssertTrue(model.showsScanProgressStatus)
+		XCTAssertEqual(model.scanProgressStageText, t(DesktopCopy.scanFinished))
+		XCTAssertTrue(model.scanProgressCountsText?.contains(t(DesktopCopy.failing)) == true)
 	}
 
 	// MARK: Filter propagation
@@ -532,7 +560,7 @@ final class MenuBarViewModelTests: XCTestCase {
 		let provider = try! XCTUnwrap(rows.first(where: { $0.label == "aigocode" }))
 
 		XCTAssertNil(provider.target)
-		XCTAssertEqual(provider.choices.map(\.label), ["work · wrapper", "work · direct"])
+		XCTAssertEqual(provider.choices.map(\.label), ["work · \(t(DesktopCopy.switchWrapper))", "work · \(t(DesktopCopy.switchDirect))"])
 		XCTAssertEqual(provider.detail, t(DesktopCopy.switchChooseTarget, Int64(2)))
 	}
 

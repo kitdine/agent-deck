@@ -5,6 +5,7 @@ import { DEFAULT_PREFS, SettingsWindow } from "./Settings.jsx";
 import { scope } from "./data.js";
 import { catalogs, formatCost, formatTokens } from "./i18n.js";
 import { StageControls, useStagePrefs } from "./Stage.jsx";
+import { ScanStageControls, useScanScenario } from "./ScanProgress.jsx";
 
 // 菜单栏图标：左键开关 popover，右键或双击弹出原生风格菜单。
 // 设置 / 检查更新 / 关于 / 退出 都在这个菜单里，所以 popover 底部不必再堆入口。
@@ -80,6 +81,7 @@ function MenuBarMenu({ lang, prefs, onPrefs, onSettings, onClose }) {
 
 export function App() {
   const stage = useStagePrefs();
+  const scan = useScanScenario();
   const { lang, theme, state, width } = stage;
   const dict = catalogs[lang];
   const params = new URLSearchParams(window.location.search);
@@ -107,7 +109,7 @@ export function App() {
   // schema 态下没有可显示的数值，因此标题为空——与「仅图标」偏好逐字节相同。
   // 一个永久条件不能和一个偏好长得一样，所以角标是这一态唯一还看得见的信号。
   const value =
-    state === "unavailable"
+    (state === "unavailable" || (scan.enabled && !scan.hasSnapshot))
       ? "—"
       : schema
         ? ""
@@ -118,6 +120,7 @@ export function App() {
   return (
     <main className="stage" data-theme={theme}>
       <StageControls prefs={stage} />
+      {scan.enabled && <ScanStageControls scan={scan} lang={lang} attached={open} />}
       <div className="stage-body">
         <div className="menubar-strip">
           <div className="menubar-item-wrap">
@@ -152,7 +155,7 @@ export function App() {
           </div>
           <p className="hint">{dict.menu.hint}</p>
         </div>
-        {open && <Popover lang={lang} state={state} width={width} onClientChange={setClient} />}
+        {open && <Popover lang={lang} state={state} width={width} scan={scan.enabled ? scan : null} onClientChange={setClient} />}
       </div>
       {settings && (
         <div className="window-backdrop" onMouseDown={() => setSettings(false)}>

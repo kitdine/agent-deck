@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ScanStatus, ScanEmptyPopover } from "./ScanProgress.jsx";
 import {
   ArrowClockwise,
   ArrowsClockwise,
@@ -962,7 +963,7 @@ function ConfirmDialog({ pending, lang, onCancel, onConfirm }) {
 
 /* ------------------------------------------------------------------ Popover */
 
-export function Popover({ lang, state = "normal", embedded = false, width = "420", onClientChange }) {
+export function Popover({ lang, state = "normal", embedded = false, width = "420", scan = null, onClientChange }) {
   const dict = useDict(lang);
   const [client, setClientState] = useState("all");
   const setClient = (value) => {
@@ -1016,6 +1017,7 @@ export function Popover({ lang, state = "normal", embedded = false, width = "420
   };
 
   const refresh = useCallback(() => {
+    if (scan) { scan.restart(); return; }
     window.clearTimeout(timer.current);
     attempts.current += 1;
     setRefreshStatus("refreshing");
@@ -1028,7 +1030,7 @@ export function Popover({ lang, state = "normal", embedded = false, width = "420
       setAgeMinutes(0);
       timer.current = window.setTimeout(() => setRefreshStatus("idle"), 1600);
     }, 1100);
-  }, []);
+  }, [scan]);
 
   const choose = (item) => {
     setProviderMenu(false);
@@ -1062,8 +1064,13 @@ export function Popover({ lang, state = "normal", embedded = false, width = "420
     ? dict.status.schemaSignalFooter
     : PROVIDER.routes.map((route) => `${dict.clients[route.client]} ${route.provider}`).join(" · ");
 
+  const visibleRefreshStatus = scan ? (scan.active ? "refreshing" : scan.phase === "completed" ? "success" : "idle") : refreshStatus;
+  if (scan && !scan.hasSnapshot) return <ScanEmptyPopover scan={scan} lang={lang} width={width} />;
+
   return (
     <section
+      data-scan-enabled={scan ? "true" : undefined}
+      data-scan-snapshot={scan ? (scan.published ? "new" : "previous") : undefined}
       className={`popover${embedded ? " embedded" : ""}`}
       style={{ "--popover-w": `${width}px` }}
       data-width={width}
@@ -1077,10 +1084,10 @@ export function Popover({ lang, state = "normal", embedded = false, width = "420
         <div className="header-right">
           {!unavailable && (
             <span className="freshness">
-              {refreshStatus === "success" ? dict.status.justNow : relativeTime(ageMinutes, lang)}
+              {visibleRefreshStatus === "success" ? dict.status.justNow : relativeTime(ageMinutes, lang)}
             </span>
           )}
-          {refreshStatus === "failed" ? (
+          {visibleRefreshStatus === "failed" ? (
           <div className="refresh failed" role="status">
             <WarningCircle size={14} weight="fill" />
             <span>{dict.refreshFailed}</span>
@@ -1093,20 +1100,20 @@ export function Popover({ lang, state = "normal", embedded = false, width = "420
             type="button"
             className="refresh"
             onClick={refresh}
-            disabled={refreshStatus === "refreshing"}
+            disabled={scan ? scan.active : visibleRefreshStatus === "refreshing"}
             aria-label={`${dict.refresh} ⌘R`}
           >
-            {refreshStatus === "refreshing" ? (
+            {visibleRefreshStatus === "refreshing" ? (
               <SpinnerGap size={15} className="spin" />
-            ) : refreshStatus === "success" ? (
+            ) : visibleRefreshStatus === "success" ? (
               <Check size={15} weight="bold" />
             ) : (
               <ArrowClockwise size={15} />
             )}
             <span>
-              {refreshStatus === "refreshing"
+              {visibleRefreshStatus === "refreshing"
                 ? dict.refreshing
-                : refreshStatus === "success"
+                : visibleRefreshStatus === "success"
                   ? dict.updated
                   : dict.refresh}
             </span>
@@ -1115,6 +1122,7 @@ export function Popover({ lang, state = "normal", embedded = false, width = "420
         </div>
       </header>
 
+      {scan && <ScanStatus scan={scan} lang={lang} />}
       <div className="segmented clients" role="tablist" aria-label={dict.clients.all}>
         {["all", "codex", "claude"].map((key) => (
           <button
@@ -1205,12 +1213,12 @@ export function Popover({ lang, state = "normal", embedded = false, width = "420
           <HealthDetail lang={lang} state={state} onBack={() => setHealthOpen(false)} />
         ) : schema ? (
           <>
-            <Notices lang={lang} state={state} refreshFailed={refreshStatus === "failed"} onOpenHealth={() => setHealthOpen(true)} />
+            <Notices lang={lang} state={state} refreshFailed={visibleRefreshStatus === "failed"} onOpenHealth={() => setHealthOpen(true)} />
             <SchemaPanel lang={lang} label={dict.tabs[tab]} />
           </>
         ) : unavailable ? (
           <>
-            <Notices lang={lang} state={state} refreshFailed={refreshStatus === "failed"} onOpenHealth={() => setHealthOpen(true)} />
+            <Notices lang={lang} state={state} refreshFailed={visibleRefreshStatus === "failed"} onOpenHealth={() => setHealthOpen(true)} />
             <div className="unavailable">
               <WarningCircle size={26} />
               <p>{dict.status.unavailable}</p>
@@ -1218,7 +1226,7 @@ export function Popover({ lang, state = "normal", embedded = false, width = "420
           </>
         ) : (
           <>
-            <Notices lang={lang} state={state} refreshFailed={refreshStatus === "failed"} onOpenHealth={() => setHealthOpen(true)} />
+            <Notices lang={lang} state={state} refreshFailed={visibleRefreshStatus === "failed"} onOpenHealth={() => setHealthOpen(true)} />
             {tab === "usage" && <UsagePanel view={view} lang={lang} state={state} />}
             {tab === "breakdown" && <BreakdownPanel view={view} lang={lang} state={state} />}
             {tab === "attribution" && <AttributionPanel view={view} lang={lang} state={state} />}

@@ -65,9 +65,42 @@ public protocol EmbeddedHelperProcess: Sendable {
 		maximumLineBytes: Int,
 		maximumLines: Int
 	) async throws -> HelperProcessLinesOutput
+
+	func runLines(
+		executableURL: URL,
+		arguments: [String],
+		environment: [String: String],
+		timeout: Duration,
+		maximumLineBytes: Int,
+		maximumLines: Int,
+		onLine: @escaping @Sendable (Data) -> Void
+	) async throws -> HelperProcessLinesOutput
 }
 
 public extension EmbeddedHelperProcess {
+	func runLines(
+		executableURL: URL,
+		arguments: [String],
+		environment: [String: String],
+		timeout: Duration,
+		maximumLineBytes: Int,
+		maximumLines: Int,
+		onLine: @escaping @Sendable (Data) -> Void
+	) async throws -> HelperProcessLinesOutput {
+		let output = try await runLines(
+			executableURL: executableURL,
+			arguments: arguments,
+			environment: environment,
+			timeout: timeout,
+			maximumLineBytes: maximumLineBytes,
+			maximumLines: maximumLines
+		)
+		for line in output.stdoutLines {
+			onLine(line)
+		}
+		return output
+	}
+
 	func runLines(
 		executableURL: URL,
 		arguments: [String],
@@ -125,6 +158,37 @@ public enum HelperExecutionError: Error, Equatable, Sendable, LocalizedError {
     }
 }
 
+public enum DesktopScanStage: String, Codable, Equatable, Sendable {
+	case waiting
+	case checking
+	case importing
+	case statistics
+	case completed
+}
+
+public struct DesktopScanDomainProgress: Codable, Equatable, Sendable {
+	public let state: String
+	public let committed: Int
+	/// Absent until discovery/planning establishes the domain's inventory
+	/// size — never a guessed zero.
+	public let total: Int?
+	public let skipped: Int
+}
+
+public struct DesktopScanProgress: Codable, Equatable, Sendable {
+	public let sequence: UInt64
+	public let stage: DesktopScanStage
+	public let usage: DesktopScanDomainProgress
+	public let session: DesktopScanDomainProgress
+
+	public static let waiting = DesktopScanProgress(
+		sequence: 0,
+		stage: .waiting,
+		usage: DesktopScanDomainProgress(state: "pending", committed: 0, total: nil, skipped: 0),
+		session: DesktopScanDomainProgress(state: "pending", committed: 0, total: nil, skipped: 0)
+	)
+}
+
 public final class FoundationEmbeddedHelperProcess: EmbeddedHelperProcess, @unchecked Sendable {
 	/// The compact desktop snapshot is held below 128 KiB by contract tests. The
 	/// process cap keeps one additional bounded margin for environment-dependent
@@ -156,17 +220,21 @@ public final class FoundationEmbeddedHelperProcess: EmbeddedHelperProcess, @unch
         process.standardOutput = stdoutPipe
         process.standardError = stderrPipe
 
-        startCapture(from: stdoutPipe.fileHandleForReading, into: stdout)
-        startCapture(from: stderrPipe.fileHandleForReading, into: stderr)
+        let stdoutBarrier = startCapture(from: stdoutPipe.fileHandleForReading, into: stdout)
+        let stderrBarrier = startCapture(from: stderrPipe.fileHandleForReading, into: stderr)
 
         let running = RunningProcess(process)
         do {
             try process.run()
         } catch {
-            finishCapture(from: stdoutPipe.fileHandleForReading, into: stdout)
-            finishCapture(from: stderrPipe.fileHandleForReading, into: stderr)
+            try? stdoutPipe.fileHandleForWriting.close()
+            try? stderrPipe.fileHandleForWriting.close()
+            finishCapture(from: stdoutPipe.fileHandleForReading, into: stdout, barrier: stdoutBarrier)
+            finishCapture(from: stderrPipe.fileHandleForReading, into: stderr, barrier: stderrBarrier)
             throw HelperExecutionError.launchFailed
         }
+        try? stdoutPipe.fileHandleForWriting.close()
+        try? stderrPipe.fileHandleForWriting.close()
 
         do {
             let exitStatus = try await withTaskCancellationHandler(
@@ -176,8 +244,8 @@ public final class FoundationEmbeddedHelperProcess: EmbeddedHelperProcess, @unch
             if Task.isCancelled {
                 throw HelperExecutionError.cancelled
             }
-            finishCapture(from: stdoutPipe.fileHandleForReading, into: stdout)
-            finishCapture(from: stderrPipe.fileHandleForReading, into: stderr)
+            finishCapture(from: stdoutPipe.fileHandleForReading, into: stdout, barrier: stdoutBarrier)
+            finishCapture(from: stderrPipe.fileHandleForReading, into: stderr, barrier: stderrBarrier)
             return HelperProcessOutput(
                 exitStatus: exitStatus,
                 stdout: stdout.value,
@@ -187,13 +255,13 @@ public final class FoundationEmbeddedHelperProcess: EmbeddedHelperProcess, @unch
             )
         } catch is CancellationError {
             running.terminate()
-            finishCapture(from: stdoutPipe.fileHandleForReading, into: stdout)
-            finishCapture(from: stderrPipe.fileHandleForReading, into: stderr)
+            finishCapture(from: stdoutPipe.fileHandleForReading, into: stdout, barrier: stdoutBarrier)
+            finishCapture(from: stderrPipe.fileHandleForReading, into: stderr, barrier: stderrBarrier)
             throw HelperExecutionError.cancelled
         } catch {
             running.terminate()
-            finishCapture(from: stdoutPipe.fileHandleForReading, into: stdout)
-            finishCapture(from: stderrPipe.fileHandleForReading, into: stderr)
+            finishCapture(from: stdoutPipe.fileHandleForReading, into: stdout, barrier: stdoutBarrier)
+            finishCapture(from: stderrPipe.fileHandleForReading, into: stderr, barrier: stderrBarrier)
             if let helperError = error as? HelperExecutionError {
                 throw helperError
             }
@@ -209,6 +277,26 @@ public final class FoundationEmbeddedHelperProcess: EmbeddedHelperProcess, @unch
 		maximumLineBytes: Int,
 		maximumLines: Int
 	) async throws -> HelperProcessLinesOutput {
+		try await runLines(
+			executableURL: executableURL,
+			arguments: arguments,
+			environment: environment,
+			timeout: timeout,
+			maximumLineBytes: maximumLineBytes,
+			maximumLines: maximumLines,
+			onLine: { _ in }
+		)
+	}
+
+	public func runLines(
+		executableURL: URL,
+		arguments: [String],
+		environment: [String: String],
+		timeout: Duration,
+		maximumLineBytes: Int,
+		maximumLines: Int,
+		onLine: @escaping @Sendable (Data) -> Void
+	) async throws -> HelperProcessLinesOutput {
 		if Task.isCancelled {
 			throw HelperExecutionError.cancelled
 		}
@@ -216,7 +304,7 @@ public final class FoundationEmbeddedHelperProcess: EmbeddedHelperProcess, @unch
 		let process = Process()
 		let stdoutPipe = Pipe()
 		let stderrPipe = Pipe()
-		let stdout = BoundedLines(maximumLineBytes: maximumLineBytes, maximumLines: maximumLines)
+		let stdout = BoundedLines(maximumLineBytes: maximumLineBytes, maximumLines: maximumLines, onLine: onLine)
 		let stderr = BoundedData(maximumBytes: Self.maximumCapturedBytes)
 
 		process.executableURL = executableURL
@@ -226,17 +314,21 @@ public final class FoundationEmbeddedHelperProcess: EmbeddedHelperProcess, @unch
 		process.standardOutput = stdoutPipe
 		process.standardError = stderrPipe
 
-		startCapture(from: stdoutPipe.fileHandleForReading, into: stdout)
-		startCapture(from: stderrPipe.fileHandleForReading, into: stderr)
+		let stdoutBarrier = startCapture(from: stdoutPipe.fileHandleForReading, into: stdout)
+		let stderrBarrier = startCapture(from: stderrPipe.fileHandleForReading, into: stderr)
 
 		let running = RunningProcess(process)
 		do {
 			try process.run()
 		} catch {
-			finishCapture(from: stdoutPipe.fileHandleForReading, into: stdout)
-			finishCapture(from: stderrPipe.fileHandleForReading, into: stderr)
+			try? stdoutPipe.fileHandleForWriting.close()
+			try? stderrPipe.fileHandleForWriting.close()
+			finishCapture(from: stdoutPipe.fileHandleForReading, into: stdout, barrier: stdoutBarrier)
+			finishCapture(from: stderrPipe.fileHandleForReading, into: stderr, barrier: stderrBarrier)
 			throw HelperExecutionError.launchFailed
 		}
+		try? stdoutPipe.fileHandleForWriting.close()
+		try? stderrPipe.fileHandleForWriting.close()
 
 		do {
 			let exitStatus = try await withTaskCancellationHandler(
@@ -246,8 +338,8 @@ public final class FoundationEmbeddedHelperProcess: EmbeddedHelperProcess, @unch
 			if Task.isCancelled {
 				throw HelperExecutionError.cancelled
 			}
-			finishCapture(from: stdoutPipe.fileHandleForReading, into: stdout)
-			finishCapture(from: stderrPipe.fileHandleForReading, into: stderr)
+			finishCapture(from: stdoutPipe.fileHandleForReading, into: stdout, barrier: stdoutBarrier)
+			finishCapture(from: stderrPipe.fileHandleForReading, into: stderr, barrier: stderrBarrier)
 			return HelperProcessLinesOutput(
 				exitStatus: exitStatus,
 				stdoutLines: stdout.lines,
@@ -258,13 +350,13 @@ public final class FoundationEmbeddedHelperProcess: EmbeddedHelperProcess, @unch
 			)
 		} catch is CancellationError {
 			running.terminate()
-			finishCapture(from: stdoutPipe.fileHandleForReading, into: stdout)
-			finishCapture(from: stderrPipe.fileHandleForReading, into: stderr)
+			finishCapture(from: stdoutPipe.fileHandleForReading, into: stdout, barrier: stdoutBarrier)
+			finishCapture(from: stderrPipe.fileHandleForReading, into: stderr, barrier: stderrBarrier)
 			throw HelperExecutionError.cancelled
 		} catch {
 			running.terminate()
-			finishCapture(from: stdoutPipe.fileHandleForReading, into: stdout)
-			finishCapture(from: stderrPipe.fileHandleForReading, into: stderr)
+			finishCapture(from: stdoutPipe.fileHandleForReading, into: stdout, barrier: stdoutBarrier)
+			finishCapture(from: stderrPipe.fileHandleForReading, into: stderr, barrier: stderrBarrier)
 			if let helperError = error as? HelperExecutionError {
 				throw helperError
 			}
@@ -272,39 +364,90 @@ public final class FoundationEmbeddedHelperProcess: EmbeddedHelperProcess, @unch
 		}
 	}
 
-    private func startCapture(from handle: FileHandle, into capture: BoundedData) {
+    private func startCapture(from handle: FileHandle, into capture: BoundedData) -> CaptureBarrier {
+        let barrier = CaptureBarrier()
         handle.readabilityHandler = { readableHandle in
-            let chunk = readableHandle.availableData
-            if chunk.isEmpty {
-                readableHandle.readabilityHandler = nil
-                return
+            barrier.withCallback {
+                let chunk = readableHandle.availableData
+                if chunk.isEmpty {
+                    readableHandle.readabilityHandler = nil
+                    return
+                }
+                capture.append(chunk)
             }
-            capture.append(chunk)
         }
+        return barrier
     }
 
-    private func finishCapture(from handle: FileHandle, into capture: BoundedData) {
+    private func finishCapture(from handle: FileHandle, into capture: BoundedData, barrier: CaptureBarrier) {
+        barrier.stopAccepting()
         handle.readabilityHandler = nil
+        barrier.waitUntilIdle()
         capture.append(handle.readDataToEndOfFile())
         try? handle.close()
     }
 
-	private func startCapture(from handle: FileHandle, into capture: BoundedLines) {
+	private func startCapture(from handle: FileHandle, into capture: BoundedLines) -> CaptureBarrier {
+		let barrier = CaptureBarrier()
 		handle.readabilityHandler = { readableHandle in
-			let chunk = readableHandle.availableData
-			if chunk.isEmpty {
-				readableHandle.readabilityHandler = nil
-				return
+			barrier.withCallback {
+				let chunk = readableHandle.availableData
+				if chunk.isEmpty {
+					readableHandle.readabilityHandler = nil
+					return
+				}
+				capture.append(chunk)
 			}
-			capture.append(chunk)
 		}
+		return barrier
 	}
 
-	private func finishCapture(from handle: FileHandle, into capture: BoundedLines) {
+	private func finishCapture(from handle: FileHandle, into capture: BoundedLines, barrier: CaptureBarrier) {
+		barrier.stopAccepting()
 		handle.readabilityHandler = nil
+		barrier.waitUntilIdle()
 		capture.append(handle.readDataToEndOfFile())
 		capture.finish()
 		try? handle.close()
+	}
+}
+
+private final class CaptureBarrier: @unchecked Sendable {
+	private let condition = NSCondition()
+	private var accepting = true
+	private var activeCallbacks = 0
+
+	func withCallback(_ body: () -> Void) {
+		condition.lock()
+		guard accepting else {
+			condition.unlock()
+			return
+		}
+		activeCallbacks += 1
+		condition.unlock()
+
+		body()
+
+		condition.lock()
+		activeCallbacks -= 1
+		if activeCallbacks == 0 {
+			condition.broadcast()
+		}
+		condition.unlock()
+	}
+
+	func stopAccepting() {
+		condition.lock()
+		accepting = false
+		condition.unlock()
+	}
+
+	func waitUntilIdle() {
+		condition.lock()
+		while activeCallbacks > 0 {
+			condition.wait()
+		}
+		condition.unlock()
 	}
 }
 
@@ -321,6 +464,7 @@ public struct EmbeddedHelperRunner: Sendable {
     private let appBundleURL: URL
     private let process: any EmbeddedHelperProcess
     private let environment: [String: String]
+    private let stateRoot: String
     private let timeout: Duration
 
     public init(
@@ -329,9 +473,16 @@ public struct EmbeddedHelperRunner: Sendable {
         environment: [String: String]? = nil,
         timeout: Duration = Self.defaultTimeout
     ) {
+        var resolvedEnvironment = environment ?? Self.defaultEnvironment()
+        if resolvedEnvironment["HOME"] == nil {
+            resolvedEnvironment["HOME"] = Self.defaultEnvironment()["HOME"]
+        }
         self.appBundleURL = appBundleURL
         self.process = process
-        self.environment = environment ?? Self.defaultEnvironment()
+        self.environment = resolvedEnvironment
+        stateRoot = URL(fileURLWithPath: resolvedEnvironment["HOME"]!, isDirectory: true)
+            .appendingPathComponent(".agentdeck", isDirectory: true)
+            .standardizedFileURL.path
         self.timeout = timeout
     }
 
@@ -343,9 +494,10 @@ public struct EmbeddedHelperRunner: Sendable {
         self.init(appBundleURL: bundle.bundleURL, process: process, timeout: timeout)
     }
 
-    public func snapshot(
-        recentLimit: Int = Self.defaultRecentLimit
-    ) async throws -> DesktopWireEnvelopeV1 {
+	public func snapshot(
+		recentLimit: Int = Self.defaultRecentLimit,
+		progress: @escaping @Sendable (DesktopScanProgress) -> Void = { _ in }
+	) async throws -> DesktopWireEnvelopeV1 {
         guard (Self.minimumRecentLimit ... Self.maximumRecentLimit).contains(recentLimit) else {
             throw HelperExecutionError.invalidRecentLimit(recentLimit)
         }
@@ -367,19 +519,19 @@ public struct EmbeddedHelperRunner: Sendable {
 			)
 			throw error
 		}
-		try await refreshIndexes(executableURL: executableURL, refreshID: refreshID)
+		try await scanIndexes(executableURL: executableURL, refreshID: refreshID, progress: progress)
 		let requestStartedAt = Date()
 		let output: HelperProcessLinesOutput
         do {
 			output = try await process.runLines(
                 executableURL: executableURL,
-                arguments: [
+				arguments: helperArguments([
                     "--format", "json",
                     "desktop", "snapshot",
                     "--wire-version", "1",
                     "--recent-limit", String(recentLimit),
 					"--stream",
-                ],
+				]),
                 environment: environment,
 				timeout: timeout,
 				maximumLineBytes: Self.maximumStreamLineBytes,
@@ -463,43 +615,46 @@ public struct EmbeddedHelperRunner: Sendable {
 		}
 	}
 
-	private func refreshIndexes(executableURL: URL, refreshID: String) async throws {
-		let stage = "index_refresh_parallel"
+	private func scanIndexes(
+		executableURL: URL,
+		refreshID: String,
+		progress: @escaping @Sendable (DesktopScanProgress) -> Void
+	) async throws {
+		let stage = "global_scan_stream"
 		let startedAt = Date()
 		do {
-			let output = try await process.run(
+			let output = try await process.runLines(
 				executableURL: executableURL,
-				arguments: ["--quiet", "--format", "json", "desktop", "refresh-indexes"],
+				arguments: helperArguments(["--format", "ndjson", "scan"]),
 				environment: environment,
-				timeout: Self.indexRefreshTimeout
+				timeout: Self.indexRefreshTimeout,
+				maximumLineBytes: Self.maximumStreamLineBytes,
+				maximumLines: Self.maximumStreamLines,
+				onLine: { line in
+					if let value = try? decodeDesktopScanProgress(line) {
+						progress(value)
+					}
+				}
 			)
 			DesktopLogger.recordHelperRequest(
 				id: refreshID,
 				stage: stage,
 				durationMilliseconds: elapsedMilliseconds(since: startedAt),
-				stdoutBytes: output.stdout.count,
+				stdoutBytes: output.stdoutBytes,
 				stderrBytes: output.stderr.count,
-				chunks: 0,
+				chunks: output.stdoutLines.count,
 				exitStatus: output.exitStatus,
-				stdoutTruncated: output.stdoutTruncated,
+				stdoutTruncated: output.stdoutLineTruncated,
 				stderrTruncated: output.stderrTruncated,
 				errorCode: desktopHelperErrorCode(stderr: output.stderr)
 			)
-			if output.exitStatus == 0,
-				!output.stdoutTruncated,
-				!output.stderrTruncated,
-				let result = try? decodeDesktopIndexRefreshResult(output.stdout)
-			{
-				for (domain, value) in [("usage", result.usage), ("sessions", result.sessions)] {
-					DesktopLogger.recordIndexDomain(
-						id: refreshID,
-						domain: domain,
-						success: value.success,
-						durationMilliseconds: value.durationMilliseconds,
-						errorCode: value.errorCode
-					)
-				}
+			guard !output.stdoutLineTruncated, !output.stderrTruncated else {
+				throw HelperExecutionError.outputLimitExceeded
 			}
+			guard output.exitStatus == 0 else {
+				throw HelperExecutionError.nonZeroExit(output.exitStatus)
+			}
+			_ = try decodeDesktopScanEventStream(output.stdoutLines)
 			if Task.isCancelled {
 				throw HelperExecutionError.cancelled
 			}
@@ -507,15 +662,17 @@ public struct EmbeddedHelperRunner: Sendable {
 			throw HelperExecutionError.cancelled
 		} catch let error as HelperExecutionError where error == .cancelled {
 			throw error
-		} catch {
+		} catch let error as HelperExecutionError {
 			DesktopLogger.recordHelperRequestFailure(
 				id: refreshID,
 				stage: stage,
-				error: (error as? HelperExecutionError) ?? .launchFailed,
+				error: error,
 				durationMilliseconds: elapsedMilliseconds(since: startedAt)
 			)
-			// A refresh remains useful with the last committed indexes. The
-			// read-only desktop snapshot below still returns that bounded state.
+			throw error
+		} catch {
+			DesktopLogger.recordHelperRequestFailure(id: refreshID, stage: stage, error: .malformedOutput, durationMilliseconds: elapsedMilliseconds(since: startedAt))
+			throw HelperExecutionError.malformedOutput
 		}
 	}
 
@@ -553,7 +710,7 @@ public struct EmbeddedHelperRunner: Sendable {
 		do {
 			let output = try await process.run(
 				executableURL: executableURL,
-				arguments: arguments,
+				arguments: helperArguments(arguments),
 				environment: environment,
 				timeout: timeout
 			)
@@ -568,13 +725,21 @@ public struct EmbeddedHelperRunner: Sendable {
 		}
 	}
 
+	private func helperArguments(_ arguments: [String]) -> [String] {
+		["--state-dir", stateRoot] + arguments
+	}
+
     private static func defaultEnvironment() -> [String: String] {
-        [
+        var environment = [
             "HOME": FileManager.default.homeDirectoryForCurrentUser.path,
             "LANG": "en_US_POSIX",
             "LC_ALL": "en_US_POSIX",
             "PATH": "/usr/bin:/bin",
         ]
+		if let temporaryDirectory = ProcessInfo.processInfo.environment["TMPDIR"], !temporaryDirectory.isEmpty {
+			environment["TMPDIR"] = temporaryDirectory
+		}
+		return environment
     }
 }
 
@@ -655,6 +820,127 @@ func decodeDesktopIndexRefreshResult(_ data: Data) throws -> DesktopIndexRefresh
 		throw HelperExecutionError.malformedOutput
 	}
 	return envelope.data
+}
+
+private struct DesktopScanEventProbe: Decodable {
+	let schemaVersion: Int
+	let command: String
+	let type: String
+	let scope: String
+	let partial: Bool
+
+	enum CodingKeys: String, CodingKey {
+		case schemaVersion = "schema_version"
+		case command, type, scope, partial
+	}
+}
+
+private struct DesktopScanProgressEnvelope: Decodable {
+	let schemaVersion: Int
+	let command: String
+	let type: String
+	let scope: String
+	let data: DesktopScanProgress
+
+	enum CodingKeys: String, CodingKey {
+		case schemaVersion = "schema_version"
+		case command, type, scope, data
+	}
+}
+
+private struct DesktopScanResultEnvelope: Decodable {
+	struct DataValue: Decodable {
+		struct Domain: Decodable { let state: String }
+		let scope: String
+		let usage: Domain
+		let session: Domain
+	}
+
+	let schemaVersion: Int
+	let command: String
+	let type: String
+	let scope: String
+	let data: DataValue
+	let partial: Bool
+
+	enum CodingKeys: String, CodingKey {
+		case schemaVersion = "schema_version"
+		case command, type, scope, data, partial
+	}
+}
+
+func decodeDesktopScanProgress(_ line: Data) throws -> DesktopScanProgress {
+	let envelope = try JSONDecoder().decode(DesktopScanProgressEnvelope.self, from: line)
+	guard envelope.schemaVersion == DesktopWireEnvelopeV1.schemaVersion,
+		envelope.command == "scan",
+		envelope.type == "progress",
+		envelope.scope == "both"
+	else {
+		throw HelperExecutionError.malformedOutput
+	}
+	return envelope.data
+}
+
+@discardableResult
+func decodeDesktopScanEventStream(_ lines: [Data]) throws -> [DesktopScanProgress] {
+	do {
+		return try decodeDesktopScanEventStreamUnchecked(lines)
+	} catch let error as HelperExecutionError {
+		throw error
+	} catch {
+		throw HelperExecutionError.malformedOutput
+	}
+}
+
+private func decodeDesktopScanEventStreamUnchecked(_ lines: [Data]) throws -> [DesktopScanProgress] {
+	guard !lines.isEmpty else {
+		throw HelperExecutionError.malformedOutput
+	}
+	var progress = [DesktopScanProgress]()
+	var lastSequence: UInt64?
+	var resultCount = 0
+	for (index, line) in lines.enumerated() {
+		let probe = try JSONDecoder().decode(DesktopScanEventProbe.self, from: line)
+		guard probe.schemaVersion == DesktopWireEnvelopeV1.schemaVersion,
+			probe.command == "scan",
+			probe.scope == "both"
+		else {
+			throw HelperExecutionError.malformedOutput
+		}
+		switch probe.type {
+		case "progress":
+			guard resultCount == 0 else {
+				throw HelperExecutionError.malformedOutput
+			}
+			let value = try decodeDesktopScanProgress(line)
+			if let lastSequence, value.sequence <= lastSequence {
+				throw HelperExecutionError.malformedOutput
+			}
+			lastSequence = value.sequence
+			progress.append(value)
+		case "result":
+			let result = try JSONDecoder().decode(DesktopScanResultEnvelope.self, from: line)
+			guard index == lines.count - 1,
+				!probe.partial,
+				result.schemaVersion == DesktopWireEnvelopeV1.schemaVersion,
+				result.command == "scan",
+				result.type == "result",
+				result.scope == "both",
+				result.data.scope == "both",
+				result.data.usage.state == "completed",
+				result.data.session.state == "completed"
+			else {
+				throw HelperExecutionError.malformedOutput
+			}
+			resultCount += 1
+		default:
+			throw HelperExecutionError.malformedOutput
+		}
+	}
+	guard resultCount == 1, progress.last?.stage == .completed else {
+		throw HelperExecutionError.malformedOutput
+	}
+	return progress
 }
 
 func desktopHelperErrorCode(stderr: Data) -> String? {
@@ -745,9 +1031,16 @@ public final class DesktopHost {
         self.runner = runner
     }
 
-    public func refresh(recentLimit: Int = EmbeddedHelperRunner.defaultRecentLimit) async throws -> DesktopWireEnvelopeV1 {
-        do {
-            let envelope = try await runner.snapshot(recentLimit: recentLimit)
+	public func refresh(recentLimit: Int = EmbeddedHelperRunner.defaultRecentLimit) async throws -> DesktopWireEnvelopeV1 {
+		try await refresh(recentLimit: recentLimit, progress: { _ in })
+	}
+
+	public func refresh(
+		recentLimit: Int,
+		progress: @escaping @Sendable (DesktopScanProgress) -> Void
+	) async throws -> DesktopWireEnvelopeV1 {
+		do {
+			let envelope = try await runner.snapshot(recentLimit: recentLimit, progress: progress)
             DesktopLogger.recordSnapshot(envelope)
             return envelope
         } catch let error as HelperExecutionError {
@@ -820,6 +1113,14 @@ private func classifyProviderUseOutput(_ output: HelperProcessOutput) -> Provide
 @MainActor
 public protocol DesktopSnapshotRefreshing: AnyObject {
 	func refresh(recentLimit: Int) async throws -> DesktopWireEnvelopeV1
+	func refresh(recentLimit: Int, progress: @escaping @Sendable (DesktopScanProgress) -> Void) async throws -> DesktopWireEnvelopeV1
+}
+
+public extension DesktopSnapshotRefreshing {
+	func refresh(recentLimit: Int, progress: @escaping @Sendable (DesktopScanProgress) -> Void) async throws -> DesktopWireEnvelopeV1 {
+		progress(.waiting)
+		return try await refresh(recentLimit: recentLimit)
+	}
 }
 
 extension DesktopHost: DesktopSnapshotRefreshing {}
@@ -1075,6 +1376,7 @@ public final class SwitchController {
 public final class DesktopRefreshCoordinator {
 	public private(set) var state: DesktopRefreshState = .uninitialized
 	public private(set) var latestSnapshot: DesktopWireEnvelopeV1?
+	public private(set) var scanProgress: DesktopScanProgress?
 
 	private let host: any DesktopSnapshotRefreshing
 	private let snapshotStore: AppGroupSnapshotStore?
@@ -1116,13 +1418,18 @@ public final class DesktopRefreshCoordinator {
 		let currentGeneration = generation
 		let previousSnapshot = latestSnapshot
 		state = .refreshing(previous: previousSnapshot)
+		scanProgress = .waiting
 
 		let task = Task { [weak self] in
 			guard let self else {
 				return
 			}
 			do {
-				let envelope = try await self.host.refresh(recentLimit: recentLimit)
+				let envelope = try await self.host.refresh(recentLimit: recentLimit) { [weak self] progress in
+					Task { @MainActor in
+						self?.publishProgress(progress, generation: currentGeneration)
+					}
+				}
 				guard !Task.isCancelled else {
 					return
 				}
@@ -1144,12 +1451,42 @@ public final class DesktopRefreshCoordinator {
 		await task.value
 	}
 
+	private func publishProgress(_ progress: DesktopScanProgress, generation: Int) {
+		guard generation == self.generation else {
+			return
+		}
+		switch state {
+		case .refreshing:
+			break
+		case .degraded where progress.stage == .completed:
+			break
+		default:
+			return
+		}
+		acceptProgress(progress)
+	}
+
+	private func acceptProgress(_ progress: DesktopScanProgress) {
+		// The synthetic .waiting seed is reported by DesktopSnapshotRefreshing's
+		// default extension through an unawaited Task, so it can arrive at any
+		// point relative to the refresh's own completion — including after a
+		// fast failure has already cleared it (see publishFailure). It never
+		// carries information beyond the seed refresh() already set directly,
+		// so it is never worth accepting, early or late.
+		guard progress.stage != .waiting else { return }
+		if let current = scanProgress, progress.sequence < current.sequence {
+			return
+		}
+		scanProgress = progress
+	}
+
 	private func publishSuccess(_ envelope: DesktopWireEnvelopeV1, generation: Int) {
 		guard generation == self.generation else {
 			return
 		}
 
 		latestSnapshot = envelope
+		scanProgress = nil
 		do {
 			if let snapshotStore {
 				try snapshotStore.write(AppGroupDesktopSnapshotV1(envelope: envelope))
@@ -1166,6 +1503,13 @@ public final class DesktopRefreshCoordinator {
 			return
 		}
 		state = .degraded(previous: latestSnapshot, issue: issue)
+		// A retained terminal progress report (e.g. completed with a domain
+		// marked failed) is meaningful and the menu bar displays it alongside
+		// the failure. Only the synthetic seed set at refresh start — meaning
+		// the helper never reported real progress before failing — is stale.
+		if scanProgress == .waiting {
+			scanProgress = nil
+		}
 		activeRefresh = nil
 	}
 }
@@ -1271,10 +1615,12 @@ private final class BoundedLines: @unchecked Sendable {
 	private var byteCount = 0
 	private var truncated = false
 	private var discardingLine = false
+	private let onLine: @Sendable (Data) -> Void
 
-	init(maximumLineBytes: Int, maximumLines: Int) {
+	init(maximumLineBytes: Int, maximumLines: Int, onLine: @escaping @Sendable (Data) -> Void = { _ in }) {
 		self.maximumLineBytes = maximumLineBytes
 		self.maximumLines = maximumLines
+		self.onLine = onLine
 	}
 
 	func append(_ data: Data) {
@@ -1316,6 +1662,7 @@ private final class BoundedLines: @unchecked Sendable {
 			return
 		}
 		storage.append(current)
+		onLine(current)
 	}
 
 	var lines: [Data] {

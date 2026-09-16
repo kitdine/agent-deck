@@ -45,6 +45,43 @@ func TestPollUsesPersistedFingerprintsAfterRestartWithoutWriting(t *testing.T) {
 	}
 }
 
+func TestPollPersistsAndRetainsPostScanFingerprint(t *testing.T) {
+	scans := 0
+	current := "pre-scan"
+	persisted := ""
+	service := Service{
+		Sources: SourceSet{{
+			Domain:   "session",
+			Snapshot: func(context.Context) (string, error) { return current, nil },
+			Scan: func(context.Context) (int, error) {
+				scans++
+				current = "post-scan"
+				return 1, nil
+			},
+			PostScanFingerprint: func(_ context.Context, captured string) (string, error) {
+				if captured != "pre-scan" {
+					t.Fatalf("captured fingerprint=%q, want pre-scan", captured)
+				}
+				return current, nil
+			},
+		}},
+		Lock: func(context.Context) (func() error, error) { return func() error { return nil }, nil },
+		PersistFingerprint: func(_ context.Context, _ string, value string) error {
+			persisted = value
+			return nil
+		},
+	}
+	if events, err := service.Poll(context.Background()); err != nil || len(events) != 1 {
+		t.Fatalf("first Poll=%#v err=%v", events, err)
+	}
+	if persisted != "post-scan" {
+		t.Fatalf("persisted fingerprint=%q, want post-scan", persisted)
+	}
+	if events, err := service.Poll(context.Background()); err != nil || len(events) != 0 || scans != 1 {
+		t.Fatalf("second Poll=%#v scans=%d err=%v", events, scans, err)
+	}
+}
+
 func TestPollReportsBusyWithoutScanning(t *testing.T) {
 	scans := 0
 	service := Service{
