@@ -270,6 +270,67 @@ func TestStreamCapturedRangeAllowsAppendOnlyGrowthBeforePublication(t *testing.T
 	}
 }
 
+func TestStreamRejectsSameSizeRewriteInDomainPublicationWindow(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "same-size-rewrite-before-publication.jsonl")
+	if err := os.WriteFile(path, []byte("{\"n\":0}\n{\"n\":1}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	source := testSource(t, path)
+	coordinator := NewCoordinator([]Source{source}, Options{})
+	coordinator.ConsumerDone(ConsumerSession)
+	coordinator.Start(context.Background())
+	stream, shared, err := coordinator.Stream(context.Background(), path, ConsumerUsage)
+	if err != nil || !shared {
+		t.Fatalf("shared=%t err=%v", shared, err)
+	}
+	for range stream.Batches {
+	}
+	if _, err = stream.Wait(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err = stream.ValidateCapturedRange(); err != nil {
+		t.Fatalf("unchanged generation rejected: %v", err)
+	}
+	if err = os.WriteFile(path, []byte("{\"n\":9}\n{\"n\":1}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err = stream.ValidateCapturedRange(); !errors.Is(err, ErrSourceChanged) {
+		t.Fatalf("same-size rewrite validation err=%v, want %v", err, ErrSourceChanged)
+	}
+}
+
+func TestCoordinatorReadsUnchangedSourceBodyOnce(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "unchanged.jsonl")
+	body := []byte(strings.Repeat("{\"n\":1}\n", 64))
+	if err := os.WriteFile(path, body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	source := testSource(t, path)
+	var readBytes atomic.Int64
+	coordinator := NewCoordinator([]Source{source}, Options{Open: func(name string) (sourceFile, error) {
+		file, err := os.Open(name)
+		if err != nil {
+			return nil, err
+		}
+		return &countingReaderAtFile{File: file, bytes: &readBytes}, nil
+	}})
+	consumePair(t, coordinator, path)
+	if got := readBytes.Load(); got != int64(len(body)) {
+		t.Fatalf("read bytes=%d, want one pass of %d", got, len(body))
+	}
+}
+
+type countingReaderAtFile struct {
+	*os.File
+	bytes *atomic.Int64
+}
+
+func (f *countingReaderAtFile) ReadAt(buffer []byte, offset int64) (int, error) {
+	count, err := f.File.ReadAt(buffer, offset)
+	f.bytes.Add(int64(count))
+	return count, err
+}
+
 type rewriteOnStatFile struct {
 	*os.File
 	path string

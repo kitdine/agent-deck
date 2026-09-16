@@ -105,6 +105,11 @@ func (s Stream) ValidateCapturedRange() error {
 	if !s.Source.Stable || !stable || identity != s.Source.Identity || info.Size() < s.entry.capturedEnd {
 		return ErrSourceChanged
 	}
+	// Any write updates the change time, so an identical generation proves the
+	// captured bytes without reading them again.
+	if SameGeneration(s.Source, info) {
+		return nil
+	}
 	hash := sha256.New()
 	if _, err = io.Copy(hash, io.NewSectionReader(file, s.entry.capturedStart, s.entry.capturedEnd-s.entry.capturedStart)); err != nil {
 		return err
@@ -687,6 +692,9 @@ func (c *Coordinator) read(ctx context.Context, source Source, readRange ReadRan
 	// Large transcripts otherwise issue tens of thousands of small reads.
 	// Bound each active reader to 1 MiB; small files use only their own size.
 	reader := bufio.NewReaderSize(input, int(min(int64(1<<20), max(int64(4096), readRange.End-readRange.Start))))
+	c.mu.RLock()
+	allSkipped := c.entries[filepath.Clean(source.Path)].allSkipped
+	c.mu.RUnlock()
 	var tail []byte
 	offset := readRange.Start
 	var sequence uint64
@@ -707,10 +715,6 @@ func (c *Coordinator) read(ctx context.Context, source Source, readRange ReadRan
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		c.mu.RLock()
-		entry := c.entries[filepath.Clean(source.Path)]
-		allSkipped := entry.allSkipped
-		c.mu.RUnlock()
 		select {
 		case <-allSkipped:
 			return nil, nil
@@ -762,9 +766,13 @@ func (c *Coordinator) read(ctx context.Context, source Source, readRange ReadRan
 	if !unchanged && !appendOnlyGrowth {
 		return nil, ErrSourceChanged
 	}
-	observed := sha256.New()
-	if _, err = io.Copy(observed, io.NewSectionReader(readerAt, readRange.Start, readRange.End-readRange.Start)); err != nil || !bytes.Equal(observed.Sum(nil), captured.Sum(nil)) {
-		return nil, ErrSourceChanged
+	// An unchanged generation already proves the bytes just read; only growth
+	// with a new change time needs the captured range hashed a second time.
+	if !unchanged {
+		observed := sha256.New()
+		if _, err = io.Copy(observed, io.NewSectionReader(readerAt, readRange.Start, readRange.End-readRange.Start)); err != nil || !bytes.Equal(observed.Sum(nil), captured.Sum(nil)) {
+			return nil, ErrSourceChanged
+		}
 	}
 	for _, planned := range c.entries[filepath.Clean(source.Path)].planned {
 		if planned.AnchorHash == "" {
