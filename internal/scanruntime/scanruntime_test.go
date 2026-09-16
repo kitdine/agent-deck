@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/kitdine/agent-deck/internal/ingest"
+	"github.com/kitdine/agent-deck/internal/session"
 	"github.com/kitdine/agent-deck/internal/store"
 )
 
@@ -305,6 +306,48 @@ func TestSessionWatchCheckpointFailurePreservesRowsAndFailsSessionDomain(t *test
 	}
 	if imported == 0 {
 		t.Fatal("checkpoint failure discarded already committed session rows")
+	}
+}
+
+func TestSessionCheckpointWaitsForUsageCoreWrites(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	state, home := filepath.Join(root, "state"), filepath.Join(root, "home")
+	directory := filepath.Join(home, ".codex", "sessions")
+	if err := os.MkdirAll(directory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	const sources = 40
+	for index := 0; index < sources; index++ {
+		line := fmt.Sprintf("{\"type\":\"visible_user_prompt\",\"session_id\":\"s%d\",\"payload\":{\"text\":\"prompt %d\"}}\n", index, index)
+		if err := os.WriteFile(filepath.Join(directory, fmt.Sprintf("s%02d.jsonl", index)), []byte(strings.Repeat(line, 20)), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A committed session index makes the session domain finish almost
+	// immediately, while usage still publishes every source to the core
+	// database. The checkpoint must not interleave with those writes.
+	sessions, err := store.OpenSessions(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, scanErr := session.Scan(ctx, sessions.DB, home)
+	if closeErr := sessions.Close(); scanErr != nil || closeErr != nil {
+		t.Fatalf("session prescan error=%v closeErr=%v", scanErr, closeErr)
+	}
+	core, err := store.Open(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = core.Exec(ctx, fmt.Sprintf(`CREATE TRIGGER checkpoint_after_usage BEFORE INSERT ON settings WHEN NEW.key='watch.fingerprint.session' AND (SELECT COUNT(*) FROM usage_source_files) < %d BEGIN SELECT RAISE(FAIL,'session checkpoint interleaved with usage publication'); END`, sources)); err != nil {
+		core.Close()
+		t.Fatal(err)
+	}
+	round := newRound(home)
+	round.openCore = func(context.Context, string) (*store.Store, error) { return core, nil }
+	round.executeProduction(ctx, state, false)
+	if round.result.Usage.State != "completed" || round.result.Session.State != "completed" {
+		t.Fatalf("usage=%#v session=%#v", round.result.Usage, round.result.Session)
 	}
 }
 

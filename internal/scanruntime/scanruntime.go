@@ -962,6 +962,13 @@ func (r *round) executeProduction(ctx context.Context, stateRoot string, lockHel
 				return
 			}
 			if coreErr == nil {
+				// The core database has one writer per round. Usage publishes
+				// through deferred transactions that read before writing, so a
+				// concurrent checkpoint commit fails them with SQLITE_BUSY_SNAPSHOT
+				// instead of waiting. Every session stream is drained here, so
+				// releasing the consumer first cannot block the usage readers.
+				coordinator.ConsumerDone(ingest.ConsumerSession)
+				<-r.usageDone
 				checkpoint := fmt.Sprintf("v1:%d:%s", epoch, ingest.FingerprintSources(sources))
 				if err := core.SetSetting(ctx, "watch.fingerprint.session", checkpoint); err != nil {
 					r.setSession(failedSession(err, time.Since(started).Milliseconds()))
