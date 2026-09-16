@@ -68,6 +68,10 @@ final class DesktopRefreshCoordinatorTests: XCTestCase {
 		)
 		XCTAssertEqual(coordinator.latestSnapshot, complete)
 		XCTAssertEqual(try store.read(), AppGroupDesktopSnapshotV1(envelope: complete))
+		// The failing helper never reported real progress past the synthetic
+		// `.waiting` set at refresh start, so the failure surface must not keep
+		// showing a stale "waiting to scan" state.
+		XCTAssertNil(coordinator.scanProgress)
 	}
 
 	func testMalformedTimestampFailureDoesNotReplaceLastGoodStateOrCache() async throws {
