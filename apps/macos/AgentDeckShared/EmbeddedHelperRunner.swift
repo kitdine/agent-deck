@@ -1450,12 +1450,7 @@ public final class DesktopRefreshCoordinator {
 	}
 
 	private func publishProgress(_ progress: DesktopScanProgress, generation: Int) {
-		// The default DesktopSnapshotRefreshing.refresh(recentLimit:progress:)
-		// reports its synthetic .waiting through an unawaited Task, so it can
-		// still be queued when the same generation's refresh fails fast. Once
-		// that generation has published its outcome (activeRefresh cleared),
-		// reject the stale report instead of re-populating scanProgress.
-		guard generation == self.generation, activeRefresh != nil else {
+		guard generation == self.generation else {
 			return
 		}
 		switch state {
@@ -1468,6 +1463,13 @@ public final class DesktopRefreshCoordinator {
 	}
 
 	private func acceptProgress(_ progress: DesktopScanProgress) {
+		// The synthetic .waiting seed is reported by DesktopSnapshotRefreshing's
+		// default extension through an unawaited Task, so it can arrive at any
+		// point relative to the refresh's own completion — including after a
+		// fast failure has already cleared it (see publishFailure). It never
+		// carries information beyond the seed refresh() already set directly,
+		// so it is never worth accepting, early or late.
+		guard progress.stage != .waiting else { return }
 		if let current = scanProgress, progress.sequence < current.sequence {
 			return
 		}
@@ -1497,7 +1499,13 @@ public final class DesktopRefreshCoordinator {
 			return
 		}
 		state = .degraded(previous: latestSnapshot, issue: issue)
-		scanProgress = nil
+		// A retained terminal progress report (e.g. completed with a domain
+		// marked failed) is meaningful and the menu bar displays it alongside
+		// the failure. Only the synthetic seed set at refresh start — meaning
+		// the helper never reported real progress before failing — is stale.
+		if scanProgress == .waiting {
+			scanProgress = nil
+		}
 		activeRefresh = nil
 	}
 }
