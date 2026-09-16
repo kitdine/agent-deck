@@ -1,8 +1,10 @@
 package session
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -1189,6 +1191,62 @@ func TestScanWithCoordinatorReducesBeforeBeginningPublicationTransaction(t *test
 		}
 	case <-time.After(time.Second):
 		t.Fatal("coordinated scan did not finish after reduction released")
+	}
+}
+
+func TestScanWithCoordinatorRejectsRewriteGrowthAtPublication(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	home := filepath.Join(root, "home")
+	path := filepath.Join(home, ".codex", "sessions", "publication.jsonl")
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	initial := []byte("{\"type\":\"session_meta\",\"payload\":{\"session_id\":\"publication\"}}\n{\"type\":\"visible_user_prompt\",\"payload\":{\"text\":\"before\"}}\n")
+	if err := os.WriteFile(path, initial, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	database, err := store.OpenSessions(ctx, filepath.Join(root, "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	sources, err := ingest.Discover(home)
+	if err != nil || len(sources) != 1 {
+		t.Fatalf("discover sources=%#v err=%v", sources, err)
+	}
+	coordinator := ingest.NewCoordinator(sources, ingest.Options{RequirePlans: true})
+	t.Cleanup(coordinator.Close)
+	if err = coordinator.Plan(path, ingest.ConsumerSession, ingest.ReadRange{End: sources[0].Size}); err != nil {
+		t.Fatal(err)
+	}
+	coordinator.Skip(path, ingest.ConsumerUsage)
+	if err = coordinator.Seal(ingest.ConsumerUsage); err != nil {
+		t.Fatal(err)
+	}
+	if err = coordinator.Seal(ingest.ConsumerSession); err != nil {
+		t.Fatal(err)
+	}
+	coordinator.Start(ctx)
+
+	originalBegin := beginSessionTx
+	beginSessionTx = func(ctx context.Context, db *sql.DB) (*sql.Tx, error) {
+		rewritten := bytes.Replace(initial, []byte("before"), []byte("mutate"), 1)
+		rewritten = append(rewritten, []byte("{\"type\":\"visible_user_prompt\",\"payload\":{\"text\":\"late\"}}\n")...)
+		if writeErr := os.WriteFile(path, rewritten, 0o600); writeErr != nil {
+			return nil, writeErr
+		}
+		return originalBegin(ctx, db)
+	}
+	t.Cleanup(func() { beginSessionTx = originalBegin })
+
+	_, err = ScanWithOptions(ctx, database.DB, home, ScanOptions{PreparedSources: sources, Coordinator: coordinator})
+	if !errors.Is(err, ingest.ErrSourceChanged) {
+		t.Fatalf("scan error=%v, want captured-range mutation", err)
+	}
+	var documents int
+	if queryErr := database.DB.QueryRowContext(ctx, "SELECT COUNT(*) FROM session_documents").Scan(&documents); queryErr != nil || documents != 0 {
+		t.Fatalf("published documents=%d queryErr=%v", documents, queryErr)
 	}
 }
 

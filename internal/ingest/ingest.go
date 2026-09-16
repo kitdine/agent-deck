@@ -81,6 +81,40 @@ func (s Stream) Wait(ctx context.Context) ([]byte, error) {
 	}
 }
 
+// ValidateCapturedRange revalidates the exact finite byte range decoded by
+// the coordinator. Append-only growth beyond that range remains valid, while
+// any rewrite of captured bytes is rejected before domain publication.
+func (s Stream) ValidateCapturedRange() error {
+	<-s.entry.finished
+	if s.entry.err != nil {
+		return s.entry.err
+	}
+	if !s.entry.capturedReady {
+		return ErrSourceChanged
+	}
+	file, err := os.Open(s.Source.Path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return err
+	}
+	identity, _, stable := fileGeneration(info)
+	if !s.Source.Stable || !stable || identity != s.Source.Identity || info.Size() < s.entry.capturedEnd {
+		return ErrSourceChanged
+	}
+	hash := sha256.New()
+	if _, err = io.Copy(hash, io.NewSectionReader(file, s.entry.capturedStart, s.entry.capturedEnd-s.entry.capturedStart)); err != nil {
+		return err
+	}
+	if !bytes.Equal(hash.Sum(nil), s.entry.capturedDigest[:]) {
+		return ErrSourceChanged
+	}
+	return nil
+}
+
 type sourceFile interface {
 	io.Reader
 	io.Closer
@@ -253,6 +287,10 @@ type streamEntry struct {
 	planned          map[string]ReadRange
 	planningComplete map[string]bool
 	planErr          error
+	capturedStart    int64
+	capturedEnd      int64
+	capturedDigest   [sha256.Size]byte
+	capturedReady    bool
 }
 
 type Coordinator struct {
@@ -741,6 +779,13 @@ func (c *Coordinator) read(ctx context.Context, source Source, readRange ReadRan
 			return nil, ErrSourceChanged
 		}
 	}
+	c.mu.Lock()
+	entry := c.entries[filepath.Clean(source.Path)]
+	entry.capturedStart = readRange.Start
+	entry.capturedEnd = readRange.End
+	copy(entry.capturedDigest[:], captured.Sum(nil))
+	entry.capturedReady = true
+	c.mu.Unlock()
 	return tail, nil
 }
 

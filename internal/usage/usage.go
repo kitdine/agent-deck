@@ -729,11 +729,11 @@ func (s *Service) scanInventory(ctx context.Context, inventory Inventory, progre
 			continue
 		}
 		stats, err := s.scanFileMode(ctx, entry, candidate)
-		if progress != nil {
-			progress.Update(ScanProgress{Processed: index + 1, Skipped: skipped, Total: len(inventory.Entries), Reason: reason})
-		}
 		if err != nil {
 			return nil, err
+		}
+		if progress != nil {
+			progress.Update(ScanProgress{Processed: index + 1, Skipped: skipped, Total: len(inventory.Entries), Reason: reason})
 		}
 		for key, value := range stats {
 			out[key] += value
@@ -777,12 +777,10 @@ func (s *Service) Rebuild(ctx context.Context) (map[string]int, []string, error)
 	// Rebuild higher-priority paths first. Event ownership uses the same path
 	// ordering, so a failed owner remains authoritative and a lower-priority
 	// duplicate cannot take its row in a separately committed transaction.
+	processed := 0
 	for index := len(inventory.Entries) - 1; index >= 0; index-- {
 		entry := inventory.Entries[index]
 		stats, rebuildErr := s.scanFileMode(ctx, entry, true)
-		if s.Progress != nil {
-			s.Progress.Update(ScanProgress{Processed: len(inventory.Entries) - index, Total: len(inventory.Entries)})
-		}
 		if rebuildErr != nil {
 			warning := "usage_source_rebuild_failed"
 			if errors.Is(rebuildErr, errUsageSourceChanged) {
@@ -790,6 +788,10 @@ func (s *Service) Rebuild(ctx context.Context) (map[string]int, []string, error)
 			}
 			warningSet[warning] = true
 			continue
+		}
+		processed++
+		if s.Progress != nil {
+			s.Progress.Update(ScanProgress{Processed: processed, Total: len(inventory.Entries)})
 		}
 		mergeScanResult(out, stats)
 	}
@@ -1204,7 +1206,7 @@ func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceR
 	capturedCursor := cursor
 	validateCaptured := func() error {
 		if sharedStream != nil {
-			if err := ingest.ValidateCapturedRange(sharedStream.Source, entry.Size); err != nil {
+			if err := sharedStream.ValidateCapturedRange(); err != nil {
 				return errUsageSourceChanged
 			}
 			return nil

@@ -206,6 +206,70 @@ func TestCoordinatorRejectsRewritePlusGrowthAfterCapturedRead(t *testing.T) {
 	}
 }
 
+func TestStreamRejectsRewritePlusGrowthInDomainPublicationWindow(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "rewrite-growth-before-publication.jsonl")
+	initial := []byte("{\"n\":0}\n{\"n\":1}\n")
+	if err := os.WriteFile(path, initial, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	source := testSource(t, path)
+	coordinator := NewCoordinator([]Source{source}, Options{})
+	coordinator.ConsumerDone(ConsumerSession)
+	coordinator.Start(context.Background())
+	stream, shared, err := coordinator.Stream(context.Background(), path, ConsumerUsage)
+	if err != nil || !shared {
+		t.Fatalf("shared=%t err=%v", shared, err)
+	}
+	for range stream.Batches {
+	}
+	if _, err = stream.Wait(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	// The coordinator has completed its final rehash. Rewrite the captured
+	// prefix and grow the same inode before the domain starts publication.
+	if err = os.WriteFile(path, []byte("{\"n\":9}\n{\"n\":1}\n{\"n\":2}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err = stream.ValidateCapturedRange(); !errors.Is(err, ErrSourceChanged) {
+		t.Fatalf("publication-window validation err=%v, want %v", err, ErrSourceChanged)
+	}
+}
+
+func TestStreamCapturedRangeAllowsAppendOnlyGrowthBeforePublication(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "append-before-publication.jsonl")
+	initial := []byte("{\"n\":0}\n")
+	if err := os.WriteFile(path, initial, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	source := testSource(t, path)
+	coordinator := NewCoordinator([]Source{source}, Options{})
+	coordinator.ConsumerDone(ConsumerSession)
+	coordinator.Start(context.Background())
+	stream, shared, err := coordinator.Stream(context.Background(), path, ConsumerUsage)
+	if err != nil || !shared {
+		t.Fatalf("shared=%t err=%v", shared, err)
+	}
+	for range stream.Batches {
+	}
+	if _, err = stream.Wait(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	file, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = file.Write([]byte("{\"n\":1}\n")); err != nil {
+		file.Close()
+		t.Fatal(err)
+	}
+	if err = file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err = stream.ValidateCapturedRange(); err != nil {
+		t.Fatalf("append-only growth rejected: %v", err)
+	}
+}
+
 type rewriteOnStatFile struct {
 	*os.File
 	path string

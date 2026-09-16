@@ -22,6 +22,56 @@ import (
 const scanWorkerHelperEnv = "AGENTDECK_SCANRUNTIME_TEST_WORKER"
 const scanWorkerStateEnv = "AGENTDECK_SCANRUNTIME_TEST_STATE"
 
+func TestDomainProgressJSONDistinguishesUnknownFromKnownZeroTotal(t *testing.T) {
+	unknown, err := json.Marshal(DomainProgress{State: "pending"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(unknown), `"total"`) {
+		t.Fatalf("unknown total encoded as %s", unknown)
+	}
+	zero := 0
+	known, err := json.Marshal(DomainProgress{State: "processing", Total: &zero})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(known), `"total":0`) {
+		t.Fatalf("known zero total omitted from %s", known)
+	}
+}
+
+func TestProgressSubscriberCoalescesWithinRateLimitAndEmitsTerminalImmediately(t *testing.T) {
+	round := newRound(t.TempDir())
+	var emitted []Progress
+	done := make(chan error, 1)
+	initial := make(chan struct{})
+	go func() {
+		_, err := round.waitWithProgress(context.Background(), ScopeBoth, func(progress Progress) error {
+			emitted = append(emitted, progress)
+			if len(emitted) == 1 {
+				close(initial)
+			}
+			return nil
+		})
+		done <- err
+	}()
+	<-initial
+	for sequence := 0; sequence < 10; sequence++ {
+		round.setProgressStage(fmt.Sprintf("stage-%d", sequence))
+	}
+	started := time.Now()
+	round.complete()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if elapsed := time.Since(started); elapsed >= 150*time.Millisecond {
+		t.Fatalf("terminal progress waited for rate-limit tick: %v", elapsed)
+	}
+	if len(emitted) > 2 || emitted[len(emitted)-1].Stage != "completed" {
+		t.Fatalf("emitted progress=%#v", emitted)
+	}
+}
+
 func TestScanRuntimeWorkerHelper(t *testing.T) {
 	if os.Getenv(scanWorkerHelperEnv) != "1" {
 		return

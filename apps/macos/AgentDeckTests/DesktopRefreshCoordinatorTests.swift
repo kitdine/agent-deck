@@ -4,6 +4,11 @@ import XCTest
 
 @MainActor
 final class DesktopRefreshCoordinatorTests: XCTestCase {
+	func testWaitingProgressKeepsInventoryTotalUnknown() {
+		XCTAssertNil(DesktopScanProgress.waiting.usage.total)
+		XCTAssertNil(DesktopScanProgress.waiting.session.total)
+	}
+
 	func testRefreshPublishesLiveProgressAndKeepsPreviousSnapshotUntilSuccess() async throws {
 		let previous = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
 		let next = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-empty-client.json"))
@@ -72,6 +77,28 @@ final class DesktopRefreshCoordinatorTests: XCTestCase {
 		// `.waiting` set at refresh start, so the failure surface must not keep
 		// showing a stale "waiting to scan" state.
 		XCTAssertNil(coordinator.scanProgress)
+	}
+
+	func testLateQueuedNonterminalProgressIsRejectedAfterFailure() async {
+		let host = LateFailureProgressRefresher(stage: .importing)
+		let coordinator = DesktopRefreshCoordinator(host: host, snapshotStore: nil)
+
+		await coordinator.refresh()
+		await host.releaseProgress()
+		await Task.yield()
+
+		XCTAssertNil(coordinator.scanProgress)
+	}
+
+	func testLateQueuedCompletedProgressIsRetainedAfterFailure() async {
+		let host = LateFailureProgressRefresher(stage: .completed)
+		let coordinator = DesktopRefreshCoordinator(host: host, snapshotStore: nil)
+
+		await coordinator.refresh()
+		await host.releaseProgress()
+		await Task.yield()
+
+		XCTAssertEqual(coordinator.scanProgress?.stage, .completed)
 	}
 
 	func testMalformedTimestampFailureDoesNotReplaceLastGoodStateOrCache() async throws {
@@ -163,6 +190,34 @@ final class DesktopRefreshCoordinatorTests: XCTestCase {
 
 private enum CacheReplacementError: Error {
 	case failed
+}
+
+@MainActor
+private final class LateFailureProgressRefresher: DesktopSnapshotRefreshing {
+	private let stage: DesktopScanStage
+	private var queuedProgress: (@Sendable (DesktopScanProgress) -> Void)?
+
+	init(stage: DesktopScanStage) {
+		self.stage = stage
+	}
+
+	func refresh(recentLimit: Int) async throws -> DesktopWireEnvelopeV1 {
+		throw HelperExecutionError.nonZeroExit(1)
+	}
+
+	func refresh(recentLimit: Int, progress: @escaping @Sendable (DesktopScanProgress) -> Void) async throws -> DesktopWireEnvelopeV1 {
+		queuedProgress = progress
+		throw HelperExecutionError.nonZeroExit(1)
+	}
+
+	func releaseProgress() async {
+		queuedProgress?(DesktopScanProgress(
+			sequence: 1,
+			stage: stage,
+			usage: DesktopScanDomainProgress(state: stage == .completed ? "failed" : "processing", committed: 0, total: 1, skipped: 0),
+			session: DesktopScanDomainProgress(state: stage == .completed ? "completed" : "processing", committed: 1, total: 1, skipped: 0)
+		))
+	}
 }
 
 @MainActor

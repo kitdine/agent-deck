@@ -476,6 +476,7 @@ type sourceUpdate struct {
 	path         string
 	appendOnly   bool
 	writeState   bool
+	sharedStream *ingest.Stream
 	state        sourceState
 	results      []Result
 	precondition sourcePrecondition
@@ -591,6 +592,7 @@ func prepareSourceUpdate(ctx context.Context, executor sessionExecutor, src sour
 	}
 	update.appendOnly = found && state.identity == identity && state.parserVersion == ParserVersion && info.Size() > state.cursor && oldPrefix == state.prefixHash
 	var partial []byte
+	var sharedStream *ingest.Stream
 	var sharedSource *ingest.Source
 	if coordinator != nil {
 		stream, shared, streamErr := coordinator.Stream(ctx, path, ingest.ConsumerSession)
@@ -598,6 +600,7 @@ func prepareSourceUpdate(ctx context.Context, executor sessionExecutor, src sour
 			return sourceUpdate{}, false, streamErr
 		}
 		if shared {
+			sharedStream = &stream
 			sharedSource = &stream.Source
 			offset, previous := int64(0), []byte(nil)
 			if update.appendOnly {
@@ -618,8 +621,8 @@ func prepareSourceUpdate(ctx context.Context, executor sessionExecutor, src sour
 	if err != nil {
 		return sourceUpdate{}, false, err
 	}
-	if sharedSource != nil {
-		if err = ingest.ValidateCapturedRange(*sharedSource, sharedSource.Size); err != nil {
+	if sharedStream != nil {
+		if err = sharedStream.ValidateCapturedRange(); err != nil {
 			return sourceUpdate{}, false, err
 		}
 		prefix, err = prefixHash(path, sharedSource.Size)
@@ -633,6 +636,7 @@ func prepareSourceUpdate(ctx context.Context, executor sessionExecutor, src sour
 		update.precondition.changedAt = sharedSource.ChangedAt
 		update.precondition.prefixHash = prefix
 		identity, info = sharedSource.Identity, nil
+		update.sharedStream = sharedStream
 	}
 	if partial == nil {
 		partial = []byte{}
@@ -647,6 +651,11 @@ func prepareSourceUpdate(ctx context.Context, executor sessionExecutor, src sour
 }
 
 func validateSourceUpdate(ctx context.Context, executor sessionExecutor, update sourceUpdate) error {
+	if update.sharedStream != nil {
+		if err := update.sharedStream.ValidateCapturedRange(); err != nil {
+			return err
+		}
+	}
 	info, err := os.Stat(update.path)
 	if err != nil {
 		return err

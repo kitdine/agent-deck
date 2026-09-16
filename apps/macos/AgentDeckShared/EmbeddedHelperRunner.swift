@@ -184,8 +184,8 @@ public struct DesktopScanProgress: Codable, Equatable, Sendable {
 	public static let waiting = DesktopScanProgress(
 		sequence: 0,
 		stage: .waiting,
-		usage: DesktopScanDomainProgress(state: "pending", committed: 0, total: 0, skipped: 0),
-		session: DesktopScanDomainProgress(state: "pending", committed: 0, total: 0, skipped: 0)
+		usage: DesktopScanDomainProgress(state: "pending", committed: 0, total: nil, skipped: 0),
+		session: DesktopScanDomainProgress(state: "pending", committed: 0, total: nil, skipped: 0)
 	)
 }
 
@@ -1456,7 +1456,9 @@ public final class DesktopRefreshCoordinator {
 			return
 		}
 		switch state {
-		case .refreshing, .degraded:
+		case .refreshing:
+			break
+		case .degraded where progress.stage == .completed:
 			break
 		default:
 			return
