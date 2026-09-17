@@ -2,6 +2,19 @@ import XCTest
 @testable import AgentDeck
 
 final class DesktopCopyTests: XCTestCase {
+	func testSchemaCopyResolvesVersionPairsAndDroppedCount() throws {
+		for language in ["en", "zh-Hans"] {
+			let localized = try bundle(language)
+			let cause = localized.localizedString(forKey: DesktopCopy.schemaSignalCause, value: nil, table: nil)
+			let text = String(format: cause, locale: Locale(identifier: language), arguments: [Int64(99), Int64(23)])
+			XCTAssertTrue(text.contains("99"))
+			XCTAssertTrue(text.contains("23"))
+			XCTAssertFalse(text.contains("%"))
+			let recovery = localized.localizedString(forKey: DesktopCopy.schemaSignalRecovery, value: nil, table: nil)
+			XCTAssertEqual(recovery, language == "en" ? "Upgrade AgentDeck to open this database" : "升级 AgentDeck 后才能打开该数据库")
+		}
+	}
+
 	private func bundle(_ identifier: String) throws -> Bundle {
 		let path = try XCTUnwrap(
 			Bundle.main.path(forResource: identifier, ofType: "lproj"),

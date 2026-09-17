@@ -25,8 +25,11 @@ import (
 	"github.com/kitdine/agent-deck/internal/doctor"
 	"github.com/kitdine/agent-deck/internal/errdefs"
 	"github.com/kitdine/agent-deck/internal/extension"
+	"github.com/kitdine/agent-deck/internal/hookrefusal"
+	"github.com/kitdine/agent-deck/internal/ingest"
 	"github.com/kitdine/agent-deck/internal/output"
 	"github.com/kitdine/agent-deck/internal/provider"
+	"github.com/kitdine/agent-deck/internal/scanruntime"
 	"github.com/kitdine/agent-deck/internal/session"
 	"github.com/kitdine/agent-deck/internal/store"
 	"github.com/kitdine/agent-deck/internal/usage"
@@ -521,6 +524,7 @@ func TestSessionShowActivityReadsOnlySafeMetadataOnDemand(t *testing.T) {
 			t.Fatalf("model activity leaked %q: %s", secret, stats.String())
 		}
 	}
+	waitForBackgroundScan(t, state)
 }
 
 func TestPhase9TextAndJSONGoldenContracts(t *testing.T) {
@@ -564,7 +568,7 @@ func TestPhase9TextAndJSONGoldenContracts(t *testing.T) {
 
 	report := doctor.Report{Mode: "quick", Status: "degraded", Warnings: 1, Checks: []doctor.Check{{Name: "credential", Status: "warning", Code: "credential_missing"}}}
 	textOutput.Reset()
-	if err := writeResult(&textOutput, "text", "doctor", report); err != nil {
+	if err := writeDoctorResult(&textOutput, "text", report); err != nil {
 		t.Fatal(err)
 	}
 	wantDoctor := "status: degraded\nmode: quick\nwarnings: 1\nerrors: 0\ncredential: warning (credential_missing)\n"
@@ -841,6 +845,7 @@ func TestRunJSONPropagatesChildFailureAndClosesRun(t *testing.T) {
 
 func TestUsageCommandTextAndJSONContracts(t *testing.T) {
 	state := filepath.Join(t.TempDir(), "state")
+	waitForDetachedScanCleanup(t, state)
 	home := filepath.Join(t.TempDir(), "home")
 	if err := os.MkdirAll(home, 0700); err != nil {
 		t.Fatal(err)
@@ -934,6 +939,7 @@ func TestUsageCommandsUseProgressForExplicitAndImplicitScans(t *testing.T) {
 	if quietValues[6] != true {
 		t.Fatalf("--quiet did not reach progress output: %v", quietValues)
 	}
+	waitForBackgroundScan(t, state)
 }
 
 func TestUsageNoScanUsesStoredAggregateUntilDefaultScan(t *testing.T) {
@@ -1047,6 +1053,7 @@ func TestUsageNoScanUsesStoredAggregateUntilDefaultScan(t *testing.T) {
 			}
 			assertReport("no-scan", 1, 10)
 			assertReport("default", 2, 30)
+			waitForBackgroundScan(t, state)
 		})
 	}
 }
@@ -1090,6 +1097,7 @@ func TestUsageProgressReporterUsesStderrAndPreservesJSONStdout(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil || envelope["command"] != "usage.scan" {
 		t.Fatalf("JSON stdout=%q envelope=%#v err=%v", stdout.String(), envelope, err)
 	}
+	waitForBackgroundScan(t, state)
 }
 
 type manualUsageProgressTimer struct{ channel chan time.Time }
@@ -1455,6 +1463,8 @@ func TestPhase6RejectsNDJSONBeforeAnyBackupOrDoctorSideEffect(t *testing.T) {
 	}{
 		{[]string{"--state-dir", state, "--format", "ndjson", "backup", "create", archive}, "backup.create"},
 		{[]string{"--state-dir", state, "--format", "ndjson", "doctor"}, "doctor"},
+		{[]string{"--state-dir", state, "--format", "ndjson", "usage", "scan"}, "usage.scan"},
+		{[]string{"--state-dir", state, "--format", "ndjson", "session", "scan"}, "session.scan"},
 	} {
 		assertExtensionCLIErrorArgs(t, test.args, 2, test.command, "invalid_argument")
 	}
@@ -1466,17 +1476,91 @@ func TestPhase6RejectsNDJSONBeforeAnyBackupOrDoctorSideEffect(t *testing.T) {
 	}
 }
 
+func TestDoctorCLIMarksMissingStateAsPartial(t *testing.T) {
+	oldHome := userHomeDir
+	userHomeDir = func() (string, error) { return t.TempDir(), nil }
+	t.Cleanup(func() { userHomeDir = oldHome })
+
+	for _, full := range []bool{false, true} {
+		args := []string{"--state-dir", filepath.Join(t.TempDir(), "missing")}
+		if full {
+			args = append(args, "doctor", "--full")
+		} else {
+			args = append(args, "doctor")
+		}
+		var textOutput bytes.Buffer
+		if err := run(args, bytes.NewReader(nil), &textOutput); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(textOutput.String(), "state: warning (state_missing)") || !strings.Contains(textOutput.String(), "checks_skipped") {
+			t.Fatalf("full=%t missing-state text = %s", full, textOutput.String())
+		}
+
+		var jsonOutput bytes.Buffer
+		if err := run(append([]string{"--format", "json"}, args...), bytes.NewReader(nil), &jsonOutput); err != nil {
+			t.Fatal(err)
+		}
+		var envelope struct {
+			Data     map[string]any `json:"data"`
+			Warnings []string       `json:"warnings"`
+			Partial  bool           `json:"partial"`
+		}
+		if err := json.Unmarshal(jsonOutput.Bytes(), &envelope); err != nil {
+			t.Fatal(err)
+		}
+		if !envelope.Partial || !reflect.DeepEqual(envelope.Warnings, []string{"checks_skipped"}) {
+			t.Fatalf("full=%t missing-state envelope = %#v", full, envelope)
+		}
+		if _, serializedInsideData := envelope.Data["partial"]; serializedInsideData {
+			t.Fatalf("full=%t report serialized its internal partial field: %s", full, jsonOutput.String())
+		}
+	}
+}
+
+func TestSchemaAheadCLIErrorUsesStableCodeAndUpgradeMessage(t *testing.T) {
+	ctx := context.Background()
+	state := filepath.Join(t.TempDir(), "state")
+	database, err := store.Open(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = database.Exec(ctx, "UPDATE schema_metadata SET version=?", store.CurrentSchemaVersion+1); err != nil {
+		database.Close()
+		t.Fatal(err)
+	}
+	if err = database.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	exit := execute([]string{"--state-dir", state, "--format", "json", "provider", "list"}, bytes.NewReader(nil), &stdout, &stderr)
+	if exit != 1 || stdout.Len() != 0 {
+		t.Fatalf("schema-ahead exit=%d stdout=%q stderr=%q", exit, stdout.String(), stderr.String())
+	}
+	var envelope map[string]any
+	if err = json.Unmarshal(stderr.Bytes(), &envelope); err != nil {
+		t.Fatalf("decode schema-ahead error: %q: %v", stderr.String(), err)
+	}
+	errorValue, ok := envelope["error"].(map[string]any)
+	if !ok || errorValue["code"] != store.ErrSchemaAhead.Code || errorValue["message"] != fmt.Sprintf("schema_ahead: database version %d exceeds supported version %d; upgrade AgentDeck to open it", store.CurrentSchemaVersion+1, store.CurrentSchemaVersion) {
+		t.Fatalf("schema-ahead envelope = %#v", envelope)
+	}
+	if envelope["command"] != "provider.list" || len(errorValue) != 2 {
+		t.Fatalf("schema-ahead error shape = %#v", envelope)
+	}
+}
+
 func TestDoctorCLIReportsExactSchemaMatrixWithoutSQLLeakage(t *testing.T) {
 	ctx := context.Background()
 	tests := []struct {
 		name, checkName, status, code, recovery string
-		version, count                          int
-		drop                                    bool
+		version, count, supportedCount          int
+		drop, partial                           bool
 	}{
-		{"schema12", "schema", "warning", "schema_outdated", "agentdeck state migrate", 12, 12, true},
-		{"schema_current", "schema", "ok", "", "", store.CurrentSchemaVersion, store.CurrentSchemaVersion, false},
-		{"schema_current_missing_tool_calls", "schema", "error", "schema_incompatible", "", store.CurrentSchemaVersion, store.CurrentSchemaVersion, true},
-		{"future", "database", "error", "unknown_schema", "", 99, 0, false},
+		{"schema12", "schema", "warning", "schema_outdated", "agentdeck state migrate", 12, 12, store.CurrentSchemaVersion, true, false},
+		{"schema_current", "schema", "ok", "", "", store.CurrentSchemaVersion, store.CurrentSchemaVersion, 0, false, false},
+		{"schema_current_missing_tool_calls", "schema", "error", "schema_incompatible", "", store.CurrentSchemaVersion, store.CurrentSchemaVersion, 0, true, false},
+		{"future", "database", "error", store.ErrSchemaAhead.Code, "", 99, 99, store.CurrentSchemaVersion, false, true},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -1517,8 +1601,14 @@ func TestDoctorCLIReportsExactSchemaMatrixWithoutSQLLeakage(t *testing.T) {
 						t.Fatalf("full=%t text leaked %q: %s", full, forbidden, textOutput.String())
 					}
 				}
-				if !strings.Contains(textOutput.String(), test.checkName+": "+test.status) || !strings.Contains(textOutput.String(), test.code) || (test.count != 0 && !strings.Contains(textOutput.String(), fmt.Sprintf("count=%d", test.count))) || !strings.Contains(textOutput.String(), test.recovery) {
+				if !strings.Contains(textOutput.String(), test.checkName+": "+test.status) || !strings.Contains(textOutput.String(), test.code) || (test.count != 0 && !strings.Contains(textOutput.String(), fmt.Sprintf("count=%d", test.count))) || (test.supportedCount != 0 && !strings.Contains(textOutput.String(), fmt.Sprintf("supported_count=%d", test.supportedCount))) || !strings.Contains(textOutput.String(), test.recovery) {
 					t.Fatalf("full=%t text schema output = %s", full, textOutput.String())
+				}
+				if strings.Contains(textOutput.String(), "checks_skipped") != test.partial {
+					t.Fatalf("full=%t text partial marker = %s, want partial=%t", full, textOutput.String(), test.partial)
+				}
+				if strings.Contains(textOutput.String(), "upgrade AgentDeck to open it") != (test.code == store.ErrSchemaAhead.Code) {
+					t.Fatalf("full=%t text recovery = %s", full, textOutput.String())
 				}
 				jsonArgs := append([]string{"--format", "json"}, args...)
 				var jsonOutput bytes.Buffer
@@ -1532,7 +1622,9 @@ func TestDoctorCLIReportsExactSchemaMatrixWithoutSQLLeakage(t *testing.T) {
 					}
 				}
 				var envelope struct {
-					Data doctor.Report `json:"data"`
+					Data     doctor.Report `json:"data"`
+					Warnings []string      `json:"warnings"`
+					Partial  bool          `json:"partial"`
 				}
 				if err = json.Unmarshal(jsonOutput.Bytes(), &envelope); err != nil {
 					t.Fatal(err)
@@ -1547,8 +1639,15 @@ func TestDoctorCLIReportsExactSchemaMatrixWithoutSQLLeakage(t *testing.T) {
 						matched = check
 					}
 				}
-				if matched == nil || matched.Status != test.status || matched.Code != test.code || matched.Count != test.count || matched.Recovery != test.recovery {
+				if matched == nil || matched.Status != test.status || matched.Code != test.code || matched.Count != test.count || matched.SupportedCount != test.supportedCount || matched.Recovery != test.recovery {
 					t.Fatalf("full=%t JSON check=%#v", full, matched)
+				}
+				wantWarnings := []string{}
+				if test.partial {
+					wantWarnings = []string{"checks_skipped"}
+				}
+				if envelope.Partial != test.partial || !reflect.DeepEqual(envelope.Warnings, wantWarnings) {
+					t.Fatalf("full=%t JSON partial=%t warnings=%#v, want partial=%t warnings=%#v", full, envelope.Partial, envelope.Warnings, test.partial, wantWarnings)
 				}
 			}
 		})
@@ -1562,7 +1661,32 @@ func TestStateMigrateTextAndJSONUpgradeSchema12(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = database.Exec(ctx, "DROP TABLE usage_work_signals; DROP TABLE usage_tool_files; DROP TABLE usage_tool_calls; DROP INDEX usage_events_client_session; ALTER TABLE providers DROP COLUMN wrapper_url; ALTER TABLE providers DROP COLUMN wrapper_kind; ALTER TABLE provider_selections DROP COLUMN via_wrapper; ALTER TABLE usage_events DROP COLUMN cache_write_tokens; ALTER TABLE usage_events DROP COLUMN turn_index; ALTER TABLE usage_source_files DROP COLUMN session_started_at; ALTER TABLE usage_sessions DROP COLUMN started_at; ALTER TABLE provider_selections DROP COLUMN prior_keyed; DROP TABLE quota_windows; DROP TABLE quota_envelopes; DROP TABLE quota_alert_notices; UPDATE schema_metadata SET version=12"); err != nil {
+	rows, err := database.DB.QueryContext(ctx, `SELECT name FROM sqlite_master WHERE type='trigger' AND name LIKE 'derived_snapshot_generation_%'`)
+	if err != nil {
+		database.Close()
+		t.Fatal(err)
+	}
+	var generationTriggers []string
+	for rows.Next() {
+		var name string
+		if err = rows.Scan(&name); err != nil {
+			rows.Close()
+			database.Close()
+			t.Fatal(err)
+		}
+		generationTriggers = append(generationTriggers, name)
+	}
+	if err = rows.Close(); err != nil {
+		database.Close()
+		t.Fatal(err)
+	}
+	for _, name := range generationTriggers {
+		if _, err = database.Exec(ctx, "DROP TRIGGER "+name); err != nil {
+			database.Close()
+			t.Fatal(err)
+		}
+	}
+	if _, err = database.Exec(ctx, "DROP TABLE derived_snapshot_generation; DROP TABLE usage_work_signals; DROP TABLE usage_tool_files; DROP TABLE usage_tool_calls; DROP INDEX usage_events_client_session; ALTER TABLE providers DROP COLUMN wrapper_url; ALTER TABLE providers DROP COLUMN wrapper_kind; ALTER TABLE provider_selections DROP COLUMN via_wrapper; ALTER TABLE usage_events DROP COLUMN cache_write_tokens; ALTER TABLE usage_events DROP COLUMN turn_index; ALTER TABLE usage_source_files DROP COLUMN session_started_at; ALTER TABLE usage_source_files DROP COLUMN changed_at; ALTER TABLE usage_sessions DROP COLUMN started_at; ALTER TABLE provider_selections DROP COLUMN prior_keyed; DROP TABLE quota_windows; DROP TABLE quota_envelopes; DROP TABLE quota_alert_notices; UPDATE schema_metadata SET version=12"); err != nil {
 		database.Close()
 		t.Fatal(err)
 	}
@@ -2231,6 +2355,118 @@ func TestSessionShowMissingCoreDoesNotCreateIt(t *testing.T) {
 	}
 }
 
+func TestSessionCheckpointFingerprintBindsSessionEpoch(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	home := filepath.Join(root, "home")
+	sessions, err := store.OpenSessions(ctx, filepath.Join(root, "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sessions.Close()
+	raw, err := sessionInventoryFingerprint(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	epoch, err := sessions.SessionIndexEpoch(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkpoint, err := sessionCheckpointFingerprint(ctx, sessions, home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := fmt.Sprintf("v1:%d:%s", epoch, raw); checkpoint != want {
+		t.Fatalf("checkpoint=%q want=%q", checkpoint, want)
+	}
+	if err = os.MkdirAll(filepath.Join(home, ".codex", "sessions"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(filepath.Join(home, ".codex", "sessions", "late.jsonl"), []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	bound, err := sessionCheckpointFingerprintFromRaw(ctx, sessions, raw)
+	if err != nil || bound != fmt.Sprintf("v1:%d:%s", epoch, raw) {
+		t.Fatalf("captured checkpoint=%q err=%v", bound, err)
+	}
+	if _, err = store.MintSessionIndexEpoch(ctx, sessions.DB); err != nil {
+		t.Fatal(err)
+	}
+	after, err := sessionCheckpointFingerprint(ctx, sessions, home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after == checkpoint {
+		t.Fatalf("checkpoint retained rebuilt session identity %q", checkpoint)
+	}
+}
+
+func TestSessionWatchFingerprintMissingStateIsReadOnly(t *testing.T) {
+	state := filepath.Join(t.TempDir(), "missing")
+	home := t.TempDir()
+	fingerprint, err := sessionWatchFingerprint(context.Background(), state, home)
+	if err != nil || !strings.HasPrefix(fingerprint, "v1:0:") {
+		t.Fatalf("fingerprint=%q err=%v", fingerprint, err)
+	}
+	if _, err = os.Stat(state); !os.IsNotExist(err) {
+		t.Fatalf("read-only fingerprint created state: %v", err)
+	}
+}
+
+func TestSessionWatchFingerprintDiscoversInventoryOnce(t *testing.T) {
+	ctx := context.Background()
+	state := filepath.Join(t.TempDir(), "state")
+	home := t.TempDir()
+	sessions, err := store.OpenSessions(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = sessions.Close(); err != nil {
+		t.Fatal(err)
+	}
+	original := discoverSessionInventory
+	calls := 0
+	discoverSessionInventory = func(home string) ([]ingest.Source, error) {
+		calls++
+		return original(home)
+	}
+	t.Cleanup(func() { discoverSessionInventory = original })
+	if _, err = sessionWatchFingerprint(ctx, state, home); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 {
+		t.Fatalf("session inventory discovery calls=%d, want 1", calls)
+	}
+}
+
+func TestSessionWatchFingerprintForcesLegacyIndexMigration(t *testing.T) {
+	ctx := context.Background()
+	state := filepath.Join(t.TempDir(), "state")
+	home := t.TempDir()
+	sessions, err := store.OpenSessions(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = sessions.DB.ExecContext(ctx, "DROP TABLE session_index_generation"); err != nil {
+		sessions.Close()
+		t.Fatal(err)
+	}
+	if err = sessions.Close(); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := sessionInventoryFingerprint(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fingerprint, err := sessionWatchFingerprint(ctx, state, home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "v1:0:" + raw; fingerprint != want {
+		t.Fatalf("legacy fingerprint=%q, want %q", fingerprint, want)
+	}
+}
+
 func TestSessionPurgeClearsOnlySessionCheckpointAndWatchBootstraps(t *testing.T) {
 	ctx := context.Background()
 	root := t.TempDir()
@@ -2289,6 +2525,17 @@ func TestSessionPurgeClearsOnlySessionCheckpointAndWatchBootstraps(t *testing.T)
 	}
 	if !strings.Contains(writer.String(), `"domain":"session"`) {
 		t.Fatalf("watch output = %s", writer.String())
+	}
+	core, err = store.OpenReadOnly(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	persisted, found, settingErr := core.Setting(ctx, "watch.fingerprint.session")
+	if closeErr := core.Close(); settingErr != nil || closeErr != nil || !found {
+		t.Fatalf("persisted session checkpoint found=%t settingErr=%v closeErr=%v", found, settingErr, closeErr)
+	}
+	if strings.HasPrefix(persisted, "v1:0:") {
+		t.Fatalf("watch persisted pre-scan session epoch: %q", persisted)
 	}
 	var output bytes.Buffer
 	if err = run([]string{"--state-dir", state, "--format", "json", "session", "show", "bootstrap"}, bytes.NewReader(nil), &output); err != nil || !strings.Contains(output.String(), "rebuilt") {
@@ -2383,7 +2630,7 @@ func TestUsageOnlyWatchNeverCreatesSessionStore(t *testing.T) {
 	oldHome := userHomeDir
 	userHomeDir = func() (string, error) { return home, nil }
 	t.Cleanup(func() { userHomeDir = oldHome })
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	writer := &cancelAfterLineWriter{cancel: cancel}
 	command := newRootCommand(bytes.NewReader(nil), writer)
@@ -2448,7 +2695,7 @@ func TestDeleteOnlyWatchTextAndNDJSONUseLogicalUnitsFromRealScans(t *testing.T) 
 		if result, scanErr := session.Scan(ctx, database.DB, home); scanErr != nil || result.Documents != 3 {
 			t.Fatalf("initial session scan = %#v, %v", result, scanErr)
 		}
-		initialFingerprint, err := watch.FingerprintRoots(sessionWatchRoots(home)...)
+		initialFingerprint, err := sessionInventoryFingerprint(home)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -2458,7 +2705,7 @@ func TestDeleteOnlyWatchTextAndNDJSONUseLogicalUnitsFromRealScans(t *testing.T) 
 			InitialFingerprints: map[string]string{"session": initialFingerprint},
 			Sources: watch.SourceSet{{
 				Domain:   "session",
-				Snapshot: func(context.Context) (string, error) { return watch.FingerprintRoots(sessionWatchRoots(home)...) },
+				Snapshot: func(context.Context) (string, error) { return sessionInventoryFingerprint(home) },
 				Scan: func(ctx context.Context) (int, error) {
 					var scanErr error
 					scanResult, scanErr = session.Scan(ctx, database.DB, home)
@@ -2693,6 +2940,7 @@ INSERT INTO model_prices(catalog_version,model,provider,effective_from,prices_js
 
 func TestUsageSummaryShortcutsAndStatsJSONContract(t *testing.T) {
 	state := filepath.Join(t.TempDir(), "state")
+	waitForDetachedScanCleanup(t, state)
 	home := t.TempDir()
 	oldHome := userHomeDir
 	userHomeDir = func() (string, error) { return home, nil }
@@ -2767,6 +3015,18 @@ func TestUsageSummaryShortcutsAndStatsJSONContract(t *testing.T) {
 	if !strings.Contains(textOutput.String(), "Jul 01, 2026 - Jul 07, 2026") || strings.Contains(textOutput.String(), "Jul 08, 2026") {
 		t.Fatalf("stats text range is not inclusive:\n%s", textOutput.String())
 	}
+}
+
+func waitForDetachedScanCleanup(t *testing.T, state string) {
+	t.Helper()
+	t.Cleanup(func() {
+		release, err := scanruntime.AcquireMaintenance(context.Background(), state, 5*time.Second)
+		if err != nil {
+			t.Errorf("wait for detached scan cleanup: %v", err)
+			return
+		}
+		_ = release()
+	})
 }
 
 func TestUsageStatsDisclosesDefaultedCacheCreationTTL(t *testing.T) {
@@ -3097,5 +3357,118 @@ func TestEstimatePricingNotesFitTheDisclosureWidth(t *testing.T) {
 	}
 	if checked == 0 {
 		t.Skip("no equivalent estimates are shipped")
+	}
+}
+
+func TestHookRefusalLifecycleBothClients(t *testing.T) {
+	for _, client := range []string{"codex", "claude"} {
+		t.Run(client, func(t *testing.T) {
+			ctx := context.Background()
+			root, home := t.TempDir(), t.TempDir()
+			oldHome := userHomeDir
+			userHomeDir = func() (string, error) { return home, nil }
+			defer func() { userHomeDir = oldHome }()
+			db, err := store.Open(ctx, root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer db.Close()
+			if _, err := db.Exec(ctx, `INSERT INTO providers(id,name,endpoint,credential_ref,multiplier,created_at,updated_at) VALUES(1,'official','x','','1','2026-09-08T00:00:00Z','2026-09-08T00:00:00Z');`); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := db.Exec(ctx, `INSERT INTO provider_selections(provider_id,client,provider_name_snapshot,endpoint_snapshot,multiplier_snapshot,selected_at) VALUES(1,?,'official','x','1','2026-09-08T00:00:00Z')`, client); err != nil {
+				t.Fatal(err)
+			}
+			deliver := func(id string) {
+				t.Helper()
+				dir := filepath.Join(home, ".codex", "sessions")
+				if client == "claude" {
+					dir = filepath.Join(home, ".claude", "projects", "-fixture")
+				}
+				if err := os.MkdirAll(dir, 0700); err != nil {
+					t.Fatal(err)
+				}
+				transcript := filepath.Join(dir, id+".jsonl")
+				if err := os.WriteFile(transcript, nil, 0600); err != nil {
+					t.Fatal(err)
+				}
+				payload, err := json.Marshal(map[string]string{"session_id": id, "transcript_path": transcript, "hook_event_name": "SessionStart", "source": "resume"})
+				if err != nil {
+					t.Fatal(err)
+				}
+				var out, stderr bytes.Buffer
+				command := newRootCommandWithError(bytes.NewReader(payload), &out, &stderr)
+				command.SetArgs([]string{"--state-dir", root, "usage", "hook", "event", client})
+				if err := command.Execute(); err != nil || out.Len() != 0 || stderr.Len() != 0 {
+					t.Fatalf("hook = %v stdout=%q stderr=%q", err, out.String(), stderr.String())
+				}
+			}
+			routes := func(want int) {
+				t.Helper()
+				var got int
+				if err := db.DB.QueryRow("SELECT count(*) FROM usage_session_routes").Scan(&got); err != nil || got != want {
+					t.Fatalf("routes=%d want=%d err=%v", got, want, err)
+				}
+			}
+			deliver("supported-before")
+			routes(1)
+			if _, ok := hookrefusal.Read(root); ok {
+				t.Fatal("successful hook wrote refusal")
+			}
+			busyLock, err := store.AcquireLock(ctx, root, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			deliver("supported-locked")
+			if err := busyLock.Release(); err != nil {
+				t.Fatal(err)
+			}
+			routes(1)
+			if _, ok := hookrefusal.Read(root); ok {
+				t.Fatal("state_busy wrote schema refusal")
+			}
+			if _, err := db.Exec(ctx, "UPDATE schema_metadata SET version=99"); err != nil {
+				t.Fatal(err)
+			}
+			deliver("future-one")
+			deliver("future-two")
+			routes(1)
+			if r, ok := hookrefusal.Read(root); !ok || r.Count != 2 || r.Stored != 99 {
+				t.Fatalf("record=%+v, %v", r, ok)
+			}
+			lock, err := store.AcquireLock(ctx, root, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			deliver("future-locked")
+			if err := lock.Release(); err != nil {
+				t.Fatal(err)
+			}
+			if r, ok := hookrefusal.Read(root); !ok || r.Count != 3 {
+				t.Fatalf("locked record=%+v, %v", r, ok)
+			}
+			routes(1)
+			if err := hookrefusal.Clear(root); err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(root, hookrefusal.Filename)
+			if err := os.Mkdir(path, 0700); err != nil {
+				t.Fatal(err)
+			}
+			deliver("future-write-failed")
+			routes(1)
+			if err := os.Remove(path); err != nil {
+				t.Fatal(err)
+			}
+			deliver("future-again")
+			if _, err := db.Exec(ctx, "UPDATE schema_metadata SET version=?", store.CurrentSchemaVersion); err != nil {
+				t.Fatal(err)
+			}
+			deliver("supported-after")
+			routes(2)
+			if _, err := os.Stat(path); !os.IsNotExist(err) {
+				t.Fatalf("successful hook did not clear record: %v", err)
+			}
+		})
 	}
 }

@@ -215,6 +215,29 @@ var migrations = []migration{
 	{version: 23, statements: []string{
 		`ALTER TABLE provider_selections ADD COLUMN prior_keyed INTEGER`,
 	}},
+	// The derived desktop cache is not a source checkpoint. Its generation is
+	// bumped by every table that contributes to the allowlisted usage and work
+	// signal projections so an old cache can never certify newer committed data.
+	{version: 24, statements: []string{
+		`CREATE TABLE derived_snapshot_generation (
+		  singleton INTEGER PRIMARY KEY CHECK(singleton = 1),
+		  epoch INTEGER NOT NULL CHECK(epoch > 0),
+		  revision INTEGER NOT NULL CHECK(revision >= 0),
+		  dirty INTEGER NOT NULL CHECK(dirty IN (0,1))
+		)`,
+	}, apply: initializeDerivedSnapshotGeneration},
+	// Stable change-time metadata lets unchanged scans avoid reopening every
+	// source merely to recompute a content anchor. A zero migrated value forces
+	// one conservative reread before the optimized checkpoint can be trusted.
+	{version: 25, statements: []string{
+		`ALTER TABLE usage_source_files ADD COLUMN changed_at INTEGER NOT NULL DEFAULT 0`,
+	}},
+	// Source-scoped turn classification joins the selected work-signal rows to
+	// tool calls by logical turn. Without this index every source rescans the
+	// complete accumulated tool-call table during cold import.
+	{version: 26, statements: []string{
+		`CREATE INDEX usage_tool_calls_turn ON usage_tool_calls(client,session_id,turn_index)`,
+	}},
 	// Subscription-quota persistence (architecture.md C7, subscription-quota
 	// topic): the latest observation per (client, account_id, window_key)
 	// plus one prior — no time series — and the latest per-client envelope.
@@ -226,10 +249,11 @@ var migrations = []migration{
 	// account_id in both tables holds only internal/quota's one-way digest of
 	// the vendor account ID, never the raw value (QD-R3-F2, architecture.md
 	// C8 — account_id must never reach an exported file, and this core
-	// database is captured verbatim by internal/backup). Amended in place
-	// rather than a new migration version: this table has not shipped
-	// (main's schema is still version 23 as of this change).
-	{version: 24, statements: []string{
+	// database is captured verbatim by internal/backup). Renumbered to 27 when
+	// the subscription-quota and schema-version-signal/snapshot-performance
+	// topics were both assembled onto main, since both had independently
+	// claimed versions 24-26 off the same fork point.
+	{version: 27, statements: []string{
 		`CREATE TABLE quota_windows (
 			client TEXT NOT NULL,
 			account_id TEXT NOT NULL DEFAULT '',
@@ -274,7 +298,7 @@ var migrations = []migration{
 	// write that clears failure/failure_at (gate-and-schedule task); the
 	// scheduler derives the next backoff step from it and failure_at rather
 	// than from a separate counter column.
-	{version: 25, statements: []string{
+	{version: 28, statements: []string{
 		`ALTER TABLE quota_envelopes ADD COLUMN backoff_until TEXT NOT NULL DEFAULT ''`,
 	}},
 	// quota_alert_notices is C10's deduplication ledger (quota-alerts task):
@@ -283,7 +307,7 @@ var migrations = []migration{
 	// resets_at for a threshold notice and its observed_reset_at for a reset
 	// notice, in epoch seconds, so instance tolerance and pruning are plain
 	// integer comparisons. It holds no account identifier and no quota figure.
-	{version: 26, statements: []string{
+	{version: 29, statements: []string{
 		`CREATE TABLE quota_alert_notices (
 			client TEXT NOT NULL,
 			window_key TEXT NOT NULL,
@@ -300,9 +324,51 @@ var migrations = []migration{
 	// background, unlike failure_at, which a manual failure leaves untouched
 	// to protect the backoff chain's derived step (GS-R3-F1). A success
 	// clears it in the same write that clears failure/failure_at.
-	{version: 27, statements: []string{
+	{version: 30, statements: []string{
 		`ALTER TABLE quota_envelopes ADD COLUMN failure_observed_at TEXT NOT NULL DEFAULT ''`,
 	}},
+}
+
+var derivedSnapshotGenerationTables = []string{
+	"providers", "provider_clients", "provider_selections", "provider_credentials", "provider_credential_clients",
+	"usage_source_files", "usage_sessions", "usage_events", "usage_runs", "usage_run_bindings",
+	"price_catalogs", "model_prices", "usage_tool_calls", "usage_tool_files", "usage_session_routes",
+	"usage_session_observations", "usage_work_signals",
+}
+
+func initializeDerivedSnapshotGeneration(ctx context.Context, tx *sql.Tx) error {
+	epoch, err := generateGenerationEpoch()
+	if err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, `INSERT INTO derived_snapshot_generation(singleton,epoch,revision,dirty) VALUES (1,?,0,1)`, epoch); err != nil {
+		return err
+	}
+	return installDerivedSnapshotGenerationTriggers(ctx, tx)
+}
+
+func installDerivedSnapshotGenerationTriggers(ctx context.Context, tx *sql.Tx) error {
+	for _, table := range derivedSnapshotGenerationTables {
+		for _, operation := range []struct {
+			name  string
+			event string
+		}{
+			{name: "insert", event: "INSERT"},
+			{name: "update", event: "UPDATE"},
+			{name: "delete", event: "DELETE"},
+		} {
+			statement := fmt.Sprintf(`CREATE TRIGGER derived_snapshot_generation_%s_%s
+AFTER %s ON %s
+WHEN (SELECT dirty FROM derived_snapshot_generation WHERE singleton=1)=0
+BEGIN
+  UPDATE derived_snapshot_generation SET revision=revision+1,dirty=1 WHERE singleton=1 AND dirty=0;
+END`, table, operation.name, operation.event, table)
+			if _, err := tx.ExecContext(ctx, statement); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func normalizeUsageEventTimes(ctx context.Context, tx *sql.Tx) error {
@@ -402,7 +468,7 @@ func migrate(ctx context.Context, db *sql.DB, ordered []migration) error {
 		return err
 	}
 	if version > CurrentSchemaVersion {
-		return fmt.Errorf("%w: database version %d exceeds supported version %d", ErrUnknownSchema, version, CurrentSchemaVersion)
+		return &SchemaAhead{Stored: version, Supported: CurrentSchemaVersion}
 	}
 	for _, migration := range ordered {
 		if migration.version <= version {

@@ -80,6 +80,34 @@ actor RecordingHelperProcess: EmbeddedHelperProcess {
         }
     }
 
+	func runLines(
+		executableURL: URL,
+		arguments: [String],
+		environment: [String: String],
+		timeout: Duration,
+		maximumLineBytes: Int,
+		maximumLines: Int,
+		onLine: @escaping @Sendable (Data) -> Void
+	) async throws -> HelperProcessLinesOutput {
+		let output = try await run(executableURL: executableURL, arguments: arguments, environment: environment, timeout: timeout)
+		let bytes = [UInt8](output.stdout)
+		let slices = bytes.split(separator: UInt8(0x0A), omittingEmptySubsequences: true)
+		let lines = slices.map { Data($0) }
+		let truncated = output.stdoutTruncated || lines.count > maximumLines || lines.contains { $0.count > maximumLineBytes }
+		let bounded = Array(lines.prefix(maximumLines)).map { Data($0.prefix(maximumLineBytes)) }
+		for line in bounded {
+			onLine(line)
+		}
+		return HelperProcessLinesOutput(
+			exitStatus: output.exitStatus,
+			stdoutLines: bounded,
+			stdoutBytes: output.stdout.count,
+			stderr: output.stderr,
+			stdoutLineTruncated: truncated,
+			stderrTruncated: output.stderrTruncated
+		)
+	}
+
     func recordedInvocations() -> [RecordedHelperInvocation] {
         invocations
     }

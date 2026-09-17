@@ -90,6 +90,10 @@ type SessionSignalSummary struct {
 }
 
 func (s *Service) Signals(ctx context.Context, options SignalOptions) (SignalReport, error) {
+	return s.signalsWithCost(ctx, options, nil)
+}
+
+func (s *Service) signalsWithCost(ctx context.Context, options SignalOptions, precomputed *ActivityCost) (SignalReport, error) {
 	if !options.From.Before(options.To) {
 		return SignalReport{}, fmt.Errorf("usage signals range must have from before to")
 	}
@@ -110,9 +114,15 @@ func (s *Service) Signals(ctx context.Context, options SignalOptions) (SignalRep
 	report := SignalReport{Period: options.Period, Client: client}
 	scope := SignalScope{From: options.From, To: options.To, Client: options.Client, Activity: options.Activity}
 	if selected["activity"] {
-		cost, costErr := s.ActivityCostForScope(ctx, scope)
-		if costErr != nil {
-			return SignalReport{}, costErr
+		var cost ActivityCost
+		if precomputed != nil {
+			cost = *precomputed
+		} else {
+			var costErr error
+			cost, costErr = s.ActivityCostForScope(ctx, scope)
+			if costErr != nil {
+				return SignalReport{}, costErr
+			}
 		}
 		activity, convertErr := signalActivity(cost, options.IncludeSub, options.Activity)
 		if convertErr != nil {

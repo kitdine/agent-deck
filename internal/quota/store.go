@@ -12,7 +12,7 @@ import (
 // Store persists the latest observation per (client, account_id, window_key)
 // plus one prior (C7 — no time series), and the latest per-client envelope,
 // on a caller-provided *sql.DB. The schema is owned by
-// internal/store/migrations.go (version 24: quota_windows, quota_envelopes),
+// internal/store/migrations.go (version 27: quota_windows, quota_envelopes),
 // like every other production table, so a caller obtains db from
 // store.Open's already-migrated *store.Store.DB (QD-R1-F5) rather than from
 // this package. Store itself only owns the C5/C7/C8 query and write rules.

@@ -216,11 +216,12 @@ type HealthSnapshot struct {
 }
 
 type HealthCheck struct {
-	Name     string `json:"name"`
-	Status   string `json:"status"`
-	Code     string `json:"code,omitempty"`
-	Count    int    `json:"count,omitempty"`
-	Recovery string `json:"recovery_command,omitempty"`
+	Name           string `json:"name"`
+	Status         string `json:"status"`
+	Code           string `json:"code,omitempty"`
+	Count          int    `json:"count,omitempty"`
+	SupportedCount int    `json:"supported_count,omitempty"`
+	Recovery       string `json:"recovery_command,omitempty"`
 }
 
 type Service struct {
@@ -240,9 +241,10 @@ type Service struct {
 }
 
 type Result struct {
-	Snapshot Snapshot
-	Partial  bool
-	Warnings []string
+	Snapshot        Snapshot
+	Partial         bool
+	Warnings        []string
+	DerivedCacheHit bool
 }
 
 func (s Service) Build(ctx context.Context, request Request) (Result, error) {
@@ -268,8 +270,13 @@ func (s Service) Build(ctx context.Context, request Request) (Result, error) {
 		result.warn("subscription_unavailable")
 	} else {
 		s.loadProvider(ctx, core, &result)
-		s.loadUsage(ctx, core, now, &result)
-		s.loadWorkSignals(ctx, core, now, &result)
+		if payload, cached := s.loadDerivedSnapshotCache(ctx, core, now, request.WireVersion); cached {
+			s.applyDerivedSnapshotPayload(now, &result, payload)
+			result.DerivedCacheHit = true
+		} else {
+			s.loadUsage(ctx, core, now, &result)
+			s.loadWorkSignals(ctx, core, now, &result)
+		}
 		s.loadSubscription(ctx, core, now, &result)
 		if closeErr := core.Close(); closeErr != nil {
 			result.warn("state_close_failed")
@@ -656,8 +663,28 @@ func desktopPeriodRanges(now time.Time, location *time.Location) []desktopPeriod
 }
 
 func (s Service) loadWorkSignals(ctx context.Context, core *store.Store, now time.Time, result *Result) {
+	snapshot, err := s.workSignalsSnapshot(ctx, core, now)
+	if err != nil {
+		result.warn("work_signals_unavailable")
+		return
+	}
+	result.Snapshot.Sessions.WorkSignals = snapshot
+}
+
+func (s Service) workSignalsSnapshot(ctx context.Context, core *store.Store, now time.Time) (WorkSignalsSnapshot, error) {
 	service := usage.New(core, s.Home)
 	service.Now = func() time.Time { return now }
+	var options []usage.SignalOptions
+	for _, period := range desktopPeriodRanges(now, s.location()) {
+		for _, client := range []string{"", "codex", "claude"} {
+			options = append(options, usage.SignalOptions{Period: period.name, From: period.start, To: period.end, Client: client, IncludeSub: true})
+		}
+	}
+	reports, err := service.SignalsBatch(ctx, options)
+	if err != nil {
+		return WorkSignalsSnapshot{}, err
+	}
+	reportIndex := 0
 	snapshot := WorkSignalsSnapshot{
 		Activity: WorkSignalActivityFamily{Available: true, Items: []WorkSignalActivityItem{}},
 		Workflow: WorkSignalWorkflowFamily{Available: true, Items: []WorkSignalWorkflowItem{}},
@@ -665,27 +692,15 @@ func (s Service) loadWorkSignals(ctx context.Context, core *store.Store, now tim
 	}
 	for _, period := range desktopPeriodRanges(now, s.location()) {
 		for _, client := range []string{"all", "codex", "claude"} {
-			queryClient := client
-			if queryClient == "all" {
-				queryClient = ""
-			}
-			report, err := service.Signals(ctx, usage.SignalOptions{
-				Period: period.name, From: period.start, To: period.end,
-				Client: queryClient, IncludeSub: true,
-			})
-			if err != nil {
-				result.warn("work_signals_unavailable")
-				return
-			}
+			report := reports[reportIndex]
+			reportIndex++
 			if report.Activity != nil && report.Activity.Available {
 				if len(report.Activity.Kinds) != 4 {
-					result.warn("work_signals_unavailable")
-					return
+					return WorkSignalsSnapshot{}, errors.New("invalid work signal activity kinds")
 				}
 				for _, kind := range report.Activity.Kinds {
 					if len(kind.Sub) > 4 {
-						result.warn("work_signals_unavailable")
-						return
+						return WorkSignalsSnapshot{}, errors.New("invalid work signal activity subcategories")
 					}
 				}
 				snapshot.Activity.Items = append(snapshot.Activity.Items, WorkSignalActivityItem{
@@ -706,8 +721,7 @@ func (s Service) loadWorkSignals(ctx context.Context, core *store.Store, now tim
 			}
 			if report.Tooling != nil && report.Tooling.Available {
 				if report.Tooling.Groups != len(report.Tooling.Rows) || len(report.Tooling.Rows) > 5 {
-					result.warn("work_signals_unavailable")
-					return
+					return WorkSignalsSnapshot{}, errors.New("invalid work signal tooling rows")
 				}
 				snapshot.Tooling.Items = append(snapshot.Tooling.Items, WorkSignalToolingItem{
 					Period: period.name, Client: client,
@@ -719,7 +733,7 @@ func (s Service) loadWorkSignals(ctx context.Context, core *store.Store, now tim
 			}
 		}
 	}
-	result.Snapshot.Sessions.WorkSignals = snapshot
+	return snapshot, nil
 }
 
 // sessionsPeriods emits one record for every supported period and client scope,
@@ -864,7 +878,7 @@ func healthSnapshot(report doctor.Report) HealthSnapshot {
 	for _, check := range report.Checks {
 		checks = append(checks, HealthCheck{
 			Name: check.Name, Status: check.Status, Code: check.Code,
-			Count: check.Count, Recovery: check.Recovery,
+			Count: check.Count, SupportedCount: check.SupportedCount, Recovery: check.Recovery,
 		})
 	}
 	return HealthSnapshot{

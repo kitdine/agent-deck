@@ -135,6 +135,7 @@ struct MenuBarSurfaceView: View {
 				dataSurface
 			}
 		}
+		.environment(\.schemaSignal, model.hasSchemaSignal)
 		.frame(width: MenuBarGeometry.width)
 		.frame(height: height)
 		.modifier(AcceptanceAppearance())
@@ -150,12 +151,10 @@ struct MenuBarSurfaceView: View {
 			} else {
 				ProgressView()
 			}
-			Text(t(DesktopCopy.loading))
-				.font(.body)
+			scanProgressStatus
 		}
 		.frame(maxWidth: .infinity, maxHeight: .infinity)
-		.accessibilityElement(children: .combine)
-		.accessibilityLabel(t(DesktopCopy.loading))
+		.accessibilityElement(children: .contain)
 	}
 
 	private var errorSurface: some View {
@@ -163,6 +162,9 @@ struct MenuBarSurfaceView: View {
 			Label(model.errorCopy, systemImage: NoticeSeverity.error.symbol)
 				.font(.body)
 				.fixedSize(horizontal: false, vertical: true)
+			if model.showsScanProgressStatus {
+				scanProgressStatus
+			}
 			Button(t(DesktopCopy.retry)) { model.refresh() }
 				.keyboardShortcut(.defaultAction)
 		}
@@ -172,14 +174,17 @@ struct MenuBarSurfaceView: View {
 
 	private var dataSurface: some View {
 		VStack(spacing: 0) {
-				VStack(alignment: .leading, spacing: MenuBarGeometry.betweenRows) {
-					header
-					if model.selectedPanel != .quota {
-						clientTabs
-						hero
-						periodSwitcher
-					}
-					panelSwitcher
+			VStack(alignment: .leading, spacing: MenuBarGeometry.betweenRows) {
+				header
+				if model.showsScanProgressStatus {
+					scanProgressStatus
+				}
+				if model.selectedPanel != .quota {
+					clientTabs
+					hero
+					periodSwitcher
+				}
+				panelSwitcher
 			}
 			.padding(.horizontal, MenuBarGeometry.padding)
 			.padding(.top, MenuBarGeometry.betweenRows)
@@ -198,6 +203,22 @@ struct MenuBarSurfaceView: View {
 			FooterView(model: model)
 		}
 		.background(DesktopVisualTheme.background)
+	}
+
+	private var scanProgressStatus: some View {
+		VStack(alignment: .leading, spacing: 2) {
+			Text(model.scanProgressStageText ?? t(DesktopCopy.loading))
+				.font(.body)
+				.fixedSize(horizontal: false, vertical: true)
+				.accessibilityAddTraits(.updatesFrequently)
+			if let counts = model.scanProgressCountsText {
+				Text(counts)
+					.font(.caption)
+					.foregroundStyle(DesktopVisualTheme.dim)
+					.fixedSize(horizontal: false, vertical: true)
+			}
+		}
+		.frame(maxWidth: .infinity, alignment: .leading)
 	}
 
 	private var header: some View {
@@ -235,7 +256,7 @@ struct MenuBarSurfaceView: View {
 				.keyboardShortcut("r")
 				.disabled(model.switchPresentation.blocksSurface || model.isRefreshing)
 				.accessibilityLabel(t(DesktopCopy.refreshNow))
-				.accessibilityValue(model.isRefreshing ? t(DesktopCopy.loading) : "")
+				.accessibilityValue(model.isRefreshing ? model.scanProgressStageText ?? t(DesktopCopy.loading) : "")
 		}
 		.frame(minHeight: MenuBarGeometry.rowMinimumHeight)
 		.accessibilityValue(model.qualifierSummary ?? "")
@@ -508,12 +529,17 @@ struct HealthDetailView: View {
 	}
 }
 
-private struct HealthCheckRowView: View {
+struct HealthCheckRowView: View {
 	let row: HealthCheckRow
-	@State private var isExpanded = true
+	@State private var isExpanded: Bool
+
+	init(row: HealthCheckRow, initiallyExpanded: Bool = true) {
+		self.row = row
+		_isExpanded = State(initialValue: initiallyExpanded)
+	}
 
 	var body: some View {
-		if let recovery = row.recovery, !recovery.isEmpty {
+		if row.hasDisclosure {
 			VStack(alignment: .leading, spacing: 0) {
 				Button {
 					isExpanded.toggle()
@@ -529,8 +555,19 @@ private struct HealthCheckRowView: View {
 					.contentShape(Rectangle())
 				}
 				.buttonStyle(.plain)
+				.accessibilityRepresentation {
+					DisclosureGroup(isExpanded: $isExpanded) {
+						Text("").accessibilityHidden(true)
+					} label: {
+						Text(row.accessibilityText(expanded: isExpanded))
+					}
+				}
 				if isExpanded {
-					recoveryRow(recovery)
+					VStack(alignment: .leading, spacing: MenuBarGeometry.withinRow) {
+						if let cause = row.cause { proseRow(cause) }
+						if let recovery = row.recoveryProse { proseRow(recovery) }
+						if let command = row.recovery, !command.isEmpty { recoveryRow(command) }
+					}
 					.padding(.leading, MenuBarGeometry.rowMinimumHeight)
 					.padding(.bottom, MenuBarGeometry.withinRow)
 				}
@@ -554,6 +591,13 @@ private struct HealthCheckRowView: View {
 		}
 		.frame(minHeight: MenuBarGeometry.rowMinimumHeight)
 		.accessibilityElement(children: .combine)
+	}
+
+	private func proseRow(_ text: String) -> some View {
+		Text(text)
+			.font(.caption)
+			.fixedSize(horizontal: false, vertical: true)
+			.accessibilityHidden(true) // The operable disclosure label speaks it once.
 	}
 
 	private func recoveryRow(_ recovery: String) -> some View {
@@ -667,7 +711,7 @@ struct ProviderMenuView: View {
 				}
 			}
 		} else {
-			Text(t(DesktopCopy.switchingUnavailable))
+			Text(model.switchingUnavailableText)
 				.font(.caption)
 				.foregroundStyle(DesktopVisualTheme.muted)
 				.padding(MenuBarGeometry.betweenRows)

@@ -18,6 +18,7 @@ import (
 
 	"github.com/kitdine/agent-deck/internal/credentialvault"
 	"github.com/kitdine/agent-deck/internal/errdefs"
+	"github.com/kitdine/agent-deck/internal/hookrefusal"
 	"github.com/kitdine/agent-deck/internal/platform"
 	providerpkg "github.com/kitdine/agent-deck/internal/provider"
 	"github.com/kitdine/agent-deck/internal/store"
@@ -243,6 +244,9 @@ func TestEncryptedBackupInspectAndEmptyRootRestore(t *testing.T) {
 		t.Fatal(err)
 	}
 	archive := filepath.Join(stateRoot, "backups", "portable", "sample.adb")
+	if err := hookrefusal.Write(stateRoot, 99, store.CurrentSchemaVersion); err != nil {
+		t.Fatal(err)
+	}
 	service := Service{Core: database, StateRoot: stateRoot, Vault: vault, Version: "test", Now: func() time.Time { return time.Unix(1, 0) }}
 	manifest, err := service.Create(ctx, archive, "correct horse battery staple", false)
 	if err != nil {
@@ -269,8 +273,14 @@ func TestEncryptedBackupInspectAndEmptyRootRestore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, ok := hookrefusal.Read(stateRoot); !ok {
+		t.Fatal("backup unexpectedly removed source refusal fixture")
+	}
 	if _, included := archiveEntries["credential.key"]; included {
 		t.Fatal("portable backup included credential.key")
+	}
+	if _, included := archiveEntries[hookrefusal.Filename]; included || contains(manifest.Included, hookrefusal.Filename) {
+		t.Fatal("portable backup included Hook refusal diagnostic")
 	}
 	if _, included := archiveEntries[providerpkg.ProjectAttributionGateFilename]; included {
 		t.Fatal("portable backup included project-attribution eligibility marker")
@@ -362,6 +372,14 @@ func TestBackupIncludesSessionsOnlyWhenRequested(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	sourceCoreGeneration, err := database.DerivedSnapshotGeneration(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sourceSessionEpoch, err := sessions.SessionIndexEpoch(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err = sessions.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -376,6 +394,38 @@ func TestBackupIncludesSessionsOnlyWhenRequested(t *testing.T) {
 	}
 	if manifest.DatabaseSchemas[sessionsName] != sessionSnapshotSchemaVersion {
 		t.Fatalf("session schema = %#v", manifest.DatabaseSchemas)
+	}
+	target := filepath.Join(t.TempDir(), "restored")
+	if _, err = Restore(ctx, archive, target, "passphrase", syntheticMachineIdentity("target-machine")); err != nil {
+		t.Fatal(err)
+	}
+	restoredCore, err := store.OpenReadOnly(ctx, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restoredCoreGeneration, err := restoredCore.DerivedSnapshotGeneration(ctx)
+	if closeErr := restoredCore.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	if restoredCoreGeneration.Epoch == sourceCoreGeneration.Epoch || !restoredCoreGeneration.Dirty {
+		t.Fatalf("restored core generation=%#v source=%#v", restoredCoreGeneration, sourceCoreGeneration)
+	}
+	restoredSessions, err := store.OpenSessionsReadOnly(ctx, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restoredSessionEpoch, err := restoredSessions.SessionIndexEpoch(ctx)
+	if closeErr := restoredSessions.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	if restoredSessionEpoch == sourceSessionEpoch {
+		t.Fatalf("restored session epoch=%d source=%d", restoredSessionEpoch, sourceSessionEpoch)
 	}
 }
 

@@ -4,6 +4,28 @@ import XCTest
 
 @MainActor
 final class DesktopPreferencesTests: XCTestCase {
+	func testDebugXCTestHostDisablesAutomaticRefreshAndRejectsUnsafeAcceptanceHome() throws {
+		XCTAssertFalse(debugAutomaticRefreshEnabled(environment: [
+			"XCTestConfigurationFilePath": "/private/tmp/test.xctestconfiguration",
+		]))
+		XCTAssertTrue(debugAutomaticRefreshEnabled(environment: [:]))
+		XCTAssertThrowsError(try debugTestHome(environment: [
+			"AGENTDECK_TEST_HOME": NSHomeDirectory(),
+		])) { error in
+			XCTAssertEqual(error as? DebugTestIsolationError, .unsafeHome)
+		}
+
+		let isolated = try XCTUnwrap(debugTestHome(environment: [
+			"AGENTDECK_TEST_HOME": "/private/tmp/agentdeck-menubar-acceptance.fixture/home",
+		]))
+		XCTAssertEqual(isolated.path, "/private/tmp/agentdeck-menubar-acceptance.fixture/home")
+		let xctestHome = try XCTUnwrap(debugTestHome(environment: [
+			"AGENTDECK_TEST_HOME": "/private/tmp/agentdeck-macos-xctest.fixture/home",
+		]))
+		XCTAssertEqual(xctestHome.path, "/private/tmp/agentdeck-macos-xctest.fixture/home")
+		XCTAssertNil(try debugTestHome(environment: [:]))
+	}
+
 	func testDefaultsOnACleanDomainAreTheQuietChoice() {
 		let preferences = DesktopPreferences(defaults: isolatedDefaults(), registrar: StubLoginItemRegistrar())
 

@@ -61,6 +61,7 @@
     "quota",
     "quota.capture",
     "run",
+    "scan",
     "session.exclude",
     "session.list",
     "session.purge-index",
@@ -2075,6 +2076,58 @@
       },
       "error_code": "invalid_argument",
       "error_command": "run"
+    },
+    "scan": {
+      "success_schema": {
+        "command": "string",
+        "data": {
+          "scope": "string",
+          "session": {
+            "duration_ms": "number",
+            "scan": {
+              "documents": "number",
+              "removed": "number",
+              "skipped": "number",
+              "sources": "number"
+            },
+            "state": "string"
+          },
+          "usage": {
+            "changes": {
+              "files": "number",
+              "ignored_non_usage": "number",
+              "imported": "number",
+              "malformed": "number",
+              "removed": "number",
+              "replaced": "number",
+              "source_resets": "number",
+              "unsupported": "number",
+              "unsupported_usage": "number",
+              "updated": "number"
+            },
+            "duration_ms": "number",
+            "state": "string"
+          }
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "scan"
     },
     "session.exclude": {
       "success_schema": {

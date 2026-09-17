@@ -89,6 +89,10 @@ the same actor or workspace remain distinct; record a session correlation and
 bounded collaboration scope when ambiguity matters. A workspace binding is not
 a lease or exclusive ownership claim.
 
+Beads is the cross-worktree dispatch view. Follow
+[Status ownership across worktrees](../docs/documentation-workflow.md#status-ownership-across-worktrees);
+a task handoff does not require a parallel global-status update or `main` commit.
+
 ## Document work is dispatched too
 
 Each applicable document declared by a topic's Documents matrix has one task;

@@ -30,9 +30,10 @@ type Event struct {
 }
 
 type Source struct {
-	Domain   string
-	Snapshot func(context.Context) (string, error)
-	Scan     func(context.Context) (int, error)
+	Domain              string
+	Snapshot            func(context.Context) (string, error)
+	Scan                func(context.Context) (int, error)
+	PostScanFingerprint func(context.Context, string) (string, error)
 }
 
 type LockFunc func(context.Context) (release func() error, err error)
@@ -90,15 +91,25 @@ func (s *Service) Poll(ctx context.Context) ([]Event, error) {
 			}
 			return nil, fmt.Errorf("scan %s: %w", item.source.Domain, err)
 		}
+		fingerprint := item.fingerprint
+		if item.source.PostScanFingerprint != nil {
+			fingerprint, err = item.source.PostScanFingerprint(ctx, item.fingerprint)
+			if err != nil {
+				if releaseErr := release(); releaseErr != nil {
+					return nil, errors.Join(fmt.Errorf("refresh %s fingerprint: %w", item.source.Domain, err), fmt.Errorf("release scan lock: %w", releaseErr))
+				}
+				return nil, fmt.Errorf("refresh %s fingerprint: %w", item.source.Domain, err)
+			}
+		}
 		if s.PersistFingerprint != nil {
-			if err = s.PersistFingerprint(ctx, item.source.Domain, item.fingerprint); err != nil {
+			if err = s.PersistFingerprint(ctx, item.source.Domain, fingerprint); err != nil {
 				if releaseErr := release(); releaseErr != nil {
 					return nil, errors.Join(fmt.Errorf("persist scan fingerprint: %w", err), fmt.Errorf("release scan lock: %w", releaseErr))
 				}
 				return nil, fmt.Errorf("persist scan fingerprint: %w", err)
 			}
 		}
-		s.fingerprints[item.source.Domain] = item.fingerprint
+		s.fingerprints[item.source.Domain] = fingerprint
 		events = append(events, s.event("scan_completed", item.source.Domain, changes, false, ""))
 	}
 	if err = release(); err != nil {

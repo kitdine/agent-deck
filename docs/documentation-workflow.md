@@ -1,6 +1,6 @@
 ---
 status: active
-updated: 2026-09-07
+updated: 2026-09-08
 ---
 
 # Documentation Workflow
@@ -11,7 +11,7 @@ Skill owns phase commands, review execution and presentation, completion
 receipts, and next instructions. This document supplies project-specific
 prerequisites and artifacts without defining a second phase protocol.
 
-Use [Project Status](status.md) for cross-topic execution state,
+Use [Project Status](status.md) for integrated project and release state,
 [Roadmap](roadmap.md) for later planning and backlog, and [Documentation](README.md)
 for stable navigation. [Review Records](../.agent-instructions/review-records.md)
 owns record locations and metadata; [Evidence](../.agent-instructions/evidence.md)
@@ -55,8 +55,35 @@ version: N            # versioned specifications only
 | `docs/specs/` | Guaranteed product contracts | Maintain in place; reconcile stable topic contracts at the topic's closure boundary. |
 | `docs/archive/` | Historical topics and supporting records | Preserve history; consult it for provenance, not as the default current authority. |
 | `docs/README.md` | Stable navigation | Update for documentation topology or authority changes. |
-| `docs/status.md` | Release and cross-topic execution state | Update changed state and pointers; keep topic detail in the topic. |
+| `docs/status.md` | Integrated project and release state | Update at the authorized integration/version-assembly boundary; do not mirror unmerged topic task progress. |
 | `docs/roadmap.md` | Later direction, backlog, and withdrawals | Update planning decisions; do not mirror review rounds or execution detail. |
+
+### Status ownership across worktrees
+
+An unmerged topic has one execution-status authority: its own `tasks.md` in
+the selected worktree. Full findings and verdicts belong to its review records;
+Beads carries dispatch and cross-worktree handoff; CEv1 binds evidence to exact
+content states. These responsibilities do not require a second progress log.
+
+During topic design, implementation, review, repair, acceptance, or task delivery:
+
+- Update only the topic's applicable matrix, review record, evidence and dispatch.
+- Do not update `docs/status.md` in either the feature worktree or the `main`
+  checkout merely because a task starts, passes, is committed, or is handed off.
+- Do not create a companion `main` status commit or a status-only PR for that
+  task. A Task checkpoint covers its owning worktree and does not imply those
+  extra delivery actions.
+
+`docs/status.md` describes the integrated project/release baseline. Reconcile
+its summary and pointers once in the authorized topic-integration or version-
+assembly change, with the relevant product state. Explicit project planning,
+governance, or release changes may update their own global authorities, but are
+not implied by a topic phase or a handoff reminder.
+
+A feature worktree inherits global documents from its base. Their older topic
+summary is not a stale-handoff defect: consult the topic matrix and Beads for
+unmerged work. Preserve historical review/evidence facts; a later policy decision
+can supersede their pending delivery advice without rewriting the old rounds.
 
 ### Topic structure
 
@@ -309,11 +336,13 @@ matrices.
 and the completeness of the document set; it does not replace implementation
 reviews. A required unresolved boundary decision prevents requirements approval.
 
-Keep cross-topic progress and pointers in `docs/status.md`. Apply the Skill's
-status-summary contract: no finding IDs, descriptions, dispositions, scores, or
-repair instructions in status-only summaries. Full reports remain in their
-own records. A Review tick requires the latest applicable PASS, while evidence
-gates remain separate under Evidence.
+Apply [Status ownership across worktrees](#status-ownership-across-worktrees)
+before selecting a status target. Topic phase progress stays in its matrix;
+integrated project summaries and pointers belong to `docs/status.md`. Apply the
+Skill's status-summary contract: no finding IDs, descriptions, dispositions,
+scores, or repair instructions in status-only summaries. Full reports remain in
+their own records. A Review tick requires the latest applicable PASS, while
+evidence gates remain separate under Evidence.
 
 Reconcile stable contracts into `docs/specs/` at the topic's closure boundary,
 after its last task passes review and applicable evidence gates are resolved.
@@ -348,7 +377,7 @@ or that the snapshot is the current workflow contract.
 - `AGENTS.md` contains always-needed repository rules and conditional authority
   routing, not every detailed workflow rule.
 - `docs/README.md` contains stable navigation and authority pointers.
-- `docs/status.md` contains current cross-topic execution and residual risk;
+- `docs/status.md` contains integrated project/release state and residual risk;
   `docs/roadmap.md` contains later planning, backlog, and withdrawals.
 - Detailed rules have one routed owner. Topic status stays in `tasks.md` and
   full review history stays in its review record.

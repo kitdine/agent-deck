@@ -14,6 +14,16 @@ import XCTest
 /// synchronization invariant exists here to justify that.
 @MainActor
 enum WireFixture {
+	static func schemaSignal(refusals: Bool = false, sessionsUnavailable: Bool = false, numbers: Bool = true, extraWarnings: [String] = []) -> DesktopWireEnvelopeV1 {
+		var checks: [[String: Any]] = [["name": "database", "status": "error", "code": "schema_ahead", "count": numbers ? 99 : NSNull(), "supported_count": numbers ? 23 : NSNull()]]
+		if refusals { checks.append(["name": "hook_deliveries", "status": "warning", "code": "hook_deliveries_dropped", "count": 2]) }
+		return envelope(scopes: [], clientSubtotalsAvailable: false, presentationAvailable: false,
+			sessionsAvailable: !sessionsUnavailable, sessionsPeriodsAvailable: !sessionsUnavailable,
+			health: ["available": true, "status": "unhealthy", "healthy": false, "problems": checks.count, "warnings": refusals ? 1 : 0, "errors": 1, "checks": checks],
+			warnings: ["provider_unavailable", "usage_unavailable"] + (sessionsUnavailable ? ["sessions_unavailable"] : []) + extraWarnings,
+			partial: true, candidates: [], routes: [])
+	}
+
 	static func totals(
 		tokens: Int64,
 		events: Int64 = 1,
@@ -507,6 +517,27 @@ final class StubDesktopHost: DesktopSnapshotRefreshing {
 			await withCheckedContinuation { continuation = $0 }
 			return envelope
 		}
+	}
+
+	func refresh(recentLimit: Int, progress: @escaping @Sendable (DesktopScanProgress) -> Void) async throws -> DesktopWireEnvelopeV1 {
+		progress(.waiting)
+		if case .suspendedEnvelope = behavior {
+			progress(DesktopScanProgress(
+				sequence: 1,
+				stage: .importing,
+				usage: DesktopScanDomainProgress(state: "processing", committed: 3, total: 8, skipped: 0),
+				session: DesktopScanDomainProgress(state: "processing", committed: 2, total: 8, skipped: 1)
+			))
+		}
+		if case .failure = behavior {
+			progress(DesktopScanProgress(
+				sequence: 2,
+				stage: .completed,
+				usage: DesktopScanDomainProgress(state: "completed", committed: 8, total: 8, skipped: 0),
+				session: DesktopScanDomainProgress(state: "failed", committed: 0, total: 0, skipped: 0)
+			))
+		}
+		return try await refresh(recentLimit: recentLimit)
 	}
 
 	func resume() {

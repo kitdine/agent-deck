@@ -195,3 +195,27 @@ partial/unavailable）× `tab`（usage/breakdown/attribution/sessions）共 80 �
 设置窗口（`settings=1`，scope 用 `.settings-window`）、`surface=widgets` 与
 `surface=states`（scope 用 `.stage-body`）。确认层 `.dialog` 渲染在 `.popover`
 之外，scoped 运行覆盖不到它，靠 `probe` 与手算覆盖。
+
+
+## 扫描进度标本（snapshot-performance）
+
+沿用共享原型，无独立 topic 页面或第二份产品原型。菜单栏入口 `?scan=waiting`；
+CLI 入口 `?surface=cli&scan=waiting`。`scan` 可为 waiting、checking、importing、
+usage-complete、statistics、completed、partial、failed；`prior=0` 为无旧快照。
+语言、主题、420/280 宽度沿用原舞台。CLI 另有 `scope=usage|session`（省略为 all）、
+`mode=tty|pipe|quiet|json`、`cols=40|80`，均有对应舞台控件。
+
+状态选择/下一阶段/播放是原型舞台控制，非产品功能。菜单栏按钮关闭前台后，
+继续推进阶段再重开，可观察后台独立生命周期；完成前不显示新快照。CLI 的
+scoped receipt 在选定域完成后冻结，后台后续阶段不会追加已退出前台的输出。
+这里是模拟数据与 UI 标本，不运行真实扫描或 IPC。
+
+加 `scanProbe=1` 运行可复现的扫描交互检查；结果在 `window.scanProbeResult`，
+失败列表必须为空。不要与原有 `probe=1` 同时运行。当前菜单栏中英各 14 项，
+CLI 中英各 11 项；另有 128 组布局/状态组合、浏览器 AX 和 scoped axe 证据。
+
+设计与图像证据见
+[CLI scan](../docs/topics/snapshot-performance/ux/cli-scan.md)、
+[menu-bar scan](../docs/topics/snapshot-performance/ux/menubar-scan.md) 和
+[specimen manifest](../docs/topics/snapshot-performance/ux/prototype/scan/manifest.json)。
+原生辅助功能、真实进程生存期和性能验收仍由实现承担。

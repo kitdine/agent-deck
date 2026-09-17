@@ -1,0 +1,117 @@
+{
+  "kind": "snapshot-performance-scan-specimen-v1",
+  "files": [
+    {
+      "path": "prototype/src/App.jsx",
+      "sha256": "d6907587a33e67963037a0c9121e12ac37f9181dfef8abcf44ff28db06295407"
+    },
+    {
+      "path": "prototype/src/Cli.jsx",
+      "sha256": "8446755d7da0b10ad0ce8bc2e2395ed9716df40ed209c1384951c1be7f203ca6"
+    },
+    {
+      "path": "prototype/src/Popover.jsx",
+      "sha256": "93612fe6b07877513937a220f7499fe60a6371ad6ad878021b8da12757be8dc2"
+    },
+    {
+      "path": "prototype/src/ScanProgress.jsx",
+      "sha256": "6b80b30f96728e2c55355bb1a5a84ebfe81512beefb8dd85434e2cd1abcd32b2"
+    },
+    {
+      "path": "prototype/src/Settings.jsx",
+      "sha256": "8dad7038e4142b7c6807cc234e8a169bb4b8bdd12fcf4d1f625ba46b05444e64"
+    },
+    {
+      "path": "prototype/src/Stage.jsx",
+      "sha256": "7c6ca06f9137f0c0e7938a1a8b2acb24a00b2711dd7bba891ad48fa4d1e8ec63"
+    },
+    {
+      "path": "prototype/src/States.jsx",
+      "sha256": "a7e7e0e087eb0057f001f79b3913a6cc520dadde4710abedba8313e5c78ad91a"
+    },
+    {
+      "path": "prototype/src/Widgets.jsx",
+      "sha256": "b9b35925ad6d6121627e85107a2d6cf14b2325f4c617c237f3904ca09fc1cd9f"
+    },
+    {
+      "path": "prototype/src/contract.js",
+      "sha256": "138d83c70b76d1ea3b95c11923881e4148a4e9fe4df10286ee975f1b23038675"
+    },
+    {
+      "path": "prototype/src/data.js",
+      "sha256": "376ab46f476e3c53bd58b3d1bb70e0da7f6eb90fb538a9786c8e61e306c84e3c"
+    },
+    {
+      "path": "prototype/src/i18n.js",
+      "sha256": "d95eba713b10cf17a4b328f25b408dc62edfec3b8854d7ee3e0dd110b094db44"
+    },
+    {
+      "path": "prototype/src/main.jsx",
+      "sha256": "448d6f288077e51bfca61d6ba9c6cdcf486a56d37565a0da4c7a13619b75ac70"
+    },
+    {
+      "path": "prototype/src/measure.js",
+      "sha256": "29d61f676490934dbefe712324b10ce0fdf67466cd78864f641f9c01f393d449"
+    },
+    {
+      "path": "prototype/src/probe.js",
+      "sha256": "5f1ec5735de3e845edfafa5172240ee320a6038d6600b5240b053f0c57e4ebce"
+    },
+    {
+      "path": "prototype/src/scan-probe.js",
+      "sha256": "ddcdbaecd4d779525a96e3aa740141fd36651c4d2b45f7d90f1eb9c981ba8b01"
+    },
+    {
+      "path": "prototype/src/styles.css",
+      "sha256": "bf1f9a5af379ca450757c4df36f7c61eb00b33c8bc037fec898dc645137fb95f"
+    },
+    {
+      "path": "prototype/public/agentdeck-robot.png",
+      "sha256": "fe48b51ebe825dca1affe845b7a50f89304f8f9fd0f86f5897dfb5d131618972"
+    },
+    {
+      "path": "prototype/package.json",
+      "sha256": "72154f25919edbfc1c1cfdc413867860ab51d34487d31ad19d0601e40b791329"
+    },
+    {
+      "path": "prototype/package-lock.json",
+      "sha256": "7879a0539bb9d0631c56cc2e1d6b91f6edec5dc1bddf6ab9efb52ac0dae97e97"
+    },
+    {
+      "path": "prototype/vite.config.mjs",
+      "sha256": "43b692035160a7133df467a694bf1110656b0d4e8ec91ad24efd57835ec6de55"
+    },
+    {
+      "path": "prototype/index.html",
+      "sha256": "a6201105351c1e3148a070cde1b2e4dc315a3a5cd71a06eedb66d3d9a4aa12aa"
+    },
+    {
+      "path": "docs/topics/snapshot-performance/ux/prototype/scan/cli-session-en-dark-40.png",
+      "sha256": "206f838d97bdea47dc3af4ea06a309c8b59f1911f904e4dc088fc05fff3a52ad"
+    },
+    {
+      "path": "docs/topics/snapshot-performance/ux/prototype/scan/cli-usage-json-en-light-80.png",
+      "sha256": "2b9c221f687dc80f1fa021d8e3bd60054e11210a7acfc4d7c8f446d7ba10f08b"
+    },
+    {
+      "path": "docs/topics/snapshot-performance/ux/prototype/scan/menubar-failed-en-light-280.png",
+      "sha256": "5ef52eb64df61ecaa8bd5d879f1897e4894494aefcf9391113bb4b6e6786fe1f"
+    },
+    {
+      "path": "docs/topics/snapshot-performance/ux/prototype/scan/menubar-first-zh-dark-420.png",
+      "sha256": "d843847810119531ed215949fe3c7b9e2c33395973598faaf31fc2d0d34e9089"
+    },
+    {
+      "path": "docs/topics/snapshot-performance/ux/prototype/scan/menubar-import-zh-dark-280.png",
+      "sha256": "1941e1382b73b22e50cd5d82273afdad79690d712e5a65ffa7878f106bb56774"
+    },
+    {
+      "path": "docs/topics/snapshot-performance/ux/prototype/scan/menubar-statistics-en-light-420.png",
+      "sha256": "7f6b9d90545d94fd6a37fbbc67b614f035f2ed7f06c3f61d08dd9e6e1eb26e9b"
+    },
+    {
+      "path": "docs/topics/snapshot-performance/ux/prototype/scan/checks.json",
+      "sha256": "40b640c153c46043828c378dd42736f5421bf6b9e2e8bbbf3dde4e9e71036e7e"
+    }
+  ]
+}

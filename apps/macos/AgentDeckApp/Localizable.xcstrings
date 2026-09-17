@@ -1,6 +1,134 @@
 {
   "sourceLanguage": "en",
   "strings": {
+  "This AgentDeck is older than its database, so local data cannot be read": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "This AgentDeck is older than its database, so local data cannot be read"
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "此 AgentDeck 比其数据库旧，无法读取本地数据"
+        }
+      }
+    }
+  },
+  "Database version %1$lld · this app supports %2$lld": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Database version %1$lld · this app supports %2$lld"
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "数据库版本 %1$lld · 此应用支持 %2$lld"
+        }
+      }
+    }
+  },
+  "Upgrade AgentDeck to open this database": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Upgrade AgentDeck to open this database"
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "升级 AgentDeck 后才能打开该数据库"
+        }
+      }
+    }
+  },
+  "Unavailable · AgentDeck is older than its database": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Unavailable · AgentDeck is older than its database"
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "不可用 · AgentDeck 比其数据库旧"
+        }
+      }
+    }
+  },
+  "Unavailable · app is older": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Unavailable · app is older"
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "不可用 · 应用版本过旧"
+        }
+      }
+    }
+  },
+  "Switching is unavailable while AgentDeck is older than its database": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Switching is unavailable while AgentDeck is older than its database"
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "AgentDeck 比其数据库旧，暂时无法切换服务商"
+        }
+      }
+    }
+  },
+  "AgentDeck — older than its database": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "AgentDeck — older than its database"
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "AgentDeck — 版本比数据库旧"
+        }
+      }
+    }
+  },
+  "%1$lld Hook deliveries were dropped while this AgentDeck could not open its database": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "%1$lld Hook deliveries were dropped while this AgentDeck could not open its database"
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "本 AgentDeck 无法打开数据库期间，%1$lld 次 Hook 投递被丢弃"
+        }
+      }
+    }
+  },
     "%1$@ %2$@": {
       "localizations": {
         "en": {
@@ -1149,6 +1277,134 @@
           "stringUnit": {
             "state": "translated",
             "value": "开机时启动"
+          }
+        }
+      }
+    },
+    "Waiting for current scan": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Waiting for current scan"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "等待当前扫描"
+          }
+        }
+      }
+    },
+    "Checking source files": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Checking source files"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "检查源文件"
+          }
+        }
+      }
+    },
+    "Importing": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Importing"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在导入"
+          }
+        }
+      }
+    },
+    "Calculating statistics": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Calculating statistics"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "计算统计数据"
+          }
+        }
+      }
+    },
+    "Scan finished": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scan finished"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "扫描完成"
+          }
+        }
+      }
+    },
+    "Usage %1$lld/%2$lld committed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Usage %1$lld/%2$lld committed"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用量已提交 %1$lld/%2$lld"
+          }
+        }
+      }
+    },
+    "Sessions %1$lld/%2$lld committed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sessions %1$lld/%2$lld committed"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "会话已提交 %1$lld/%2$lld"
+          }
+        }
+      }
+    },
+    "%lld skipped": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld skipped"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已跳过 %lld"
           }
         }
       }

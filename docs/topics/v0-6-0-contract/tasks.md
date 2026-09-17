@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-09-08
-updated: 2026-09-08
+updated: 2026-09-14
 ---
 
 # v0.6.0 Contract — Tasks
@@ -51,7 +51,7 @@ completed feature topic or an approved implementation decomposition.
 | --- | --- | --- |
 | Schema compatibility and Hook failure visibility | `ad-schema-compatibility` | `schema-version-signal`; first integration candidate, subject to the exact-state entry checks below |
 | Menu-bar and Widget refresh | `ad-desktop-refresh` | Topic decomposition/delivery pending; preserve menu-bar approximately 1 minute and widget 3–5 minute targets with change-driven refresh |
-| Snapshot performance | `ad-snapshot-performance` | Topic decomposition/delivery pending; aggregation reuse must verify invalidation and output equivalence before increased refresh frequency |
+| Snapshot performance | `ad-snapshot-performance` | `snapshot-performance`; 3/3 tasks reviewed and delivered, with explicit performance/native acceptance exceptions retained; final branch also carries the reviewed `xctest-state-isolation` fix |
 | Cost and price transparency | `ad-cost-transparency` | Topic decomposition/delivery pending; distinguish actual-spend and API-equivalent estimates, with separate catalog/model/tier audits |
 | Actionable health recovery | `ad-health-recovery` | Topic decomposition/delivery pending; cause-specific lock guidance and stale extension inventory, retaining the original bug carriers |
 | Codex/Claude subscription accounts, quota, reset and alerts | `ad-subscription-quota` | Topic decomposition/delivery pending; source feasibility, reset-count semantics, freshness, account isolation and opt-in notification deduplication remain required |
@@ -111,6 +111,18 @@ were explicitly waived by the user. Actual larger-text effects, narrow-layout
 judgment, speech/disclosure operation and notice click navigation were not
 verified. Preserve that decision and its risks through integration and version
 closure; do not reopen the accepted waiver or claim those checks ran.
+
+`snapshot-performance` is the second candidate: feature branch
+`feature/snapshot-performance`, workspace `agent-deck.snapshot-performance`,
+commit `7e455a8f1d6cf99152ea75c925f9194542ad9303`, tree
+`74f6231890fa9895a83c73f100d392c224230ccc`. Current `main`
+`f2b7d23accfbb0ba1e940ef77ee794cab0cf7c7f` is its merge base and ancestor, so
+the local reference class is fast-forward with no main-to-feature synchronization
+required. The topic boundary is VERIFIED 3/3 at its delivery commit `cbeaa4b2`;
+the later `xctest-state-isolation` repair is independently reviewed and VERIFIED
+5/5 at the branch head. Integration review must preserve the recorded cold-import,
+unchanged-refresh CPU, final 20-sample, V01-V19 and manual/native acceptance
+exceptions as accepted limitations, not technical passing results.
 
 ## Tasks
 
@@ -188,11 +200,16 @@ installation remain separate exact-SHA workflows requiring explicit authority.
 
 ## Current handoff
 
-Document re-review passed; see [the review record](reviews/tasks.md).
-The reviewed version plan awaits authorized delivery. No feature has been integrated by this contract,
-neither task has started, and no implementation dispatch is created before this
-decomposition passes review. The first executable batch candidate is
-schema-version-signal; four inherited Documents and six completed Task records
-remain in its own feature worktree until authorized integration.
+The version plan was delivered through PR #2, and `schema-version-signal` was
+integrated through PR #3 at main `f2b7d23`. Its exact result identity and retained
+manual acceptance waivers are recorded in [the batch integration review](reviews/assemble.md),
+Beads and CEv1.
 
-Current scope: version-plan delivery checkpoint; implementation remains unstarted.
+The second batch candidate is `snapshot-performance` at `15584e8` / tree
+`cb238e76`, prepared in `agent-deck.snapshot-performance` as PR #4 for a
+direct-to-main fast-forward. Integration re-review passed at this exact head and
+its two-criterion integration gate is VERIFIED. The source contains current main
+and needs no synchronization merge. Its performance and native-evidence
+exceptions remain explicit. `assemble` remains open for the other four selected
+areas; neither aggregate Task checkbox is completed by this batch. Merge,
+retirement, version closure and release remain pending.

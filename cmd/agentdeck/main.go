@@ -32,9 +32,12 @@ import (
 	"github.com/kitdine/agent-deck/internal/doctor"
 	"github.com/kitdine/agent-deck/internal/errdefs"
 	"github.com/kitdine/agent-deck/internal/extension"
+	"github.com/kitdine/agent-deck/internal/hookrefusal"
+	"github.com/kitdine/agent-deck/internal/ingest"
 	"github.com/kitdine/agent-deck/internal/output"
 	"github.com/kitdine/agent-deck/internal/platform"
 	"github.com/kitdine/agent-deck/internal/provider"
+	"github.com/kitdine/agent-deck/internal/scanruntime"
 	"github.com/kitdine/agent-deck/internal/session"
 	"github.com/kitdine/agent-deck/internal/shellconfig"
 	"github.com/kitdine/agent-deck/internal/store"
@@ -76,6 +79,13 @@ var newUsageProgress = func(stderr io.Writer, quiet bool) usage.ScanProgressRepo
 var newSessionProgress = func(stderr io.Writer, quiet bool) session.ScanProgressReporter {
 	return newSessionProgressOutput(stderr, quiet, usageProgressIsTerminal(stderr))
 }
+
+var newScanProgress = func(stderr io.Writer, quiet bool, scope scanruntime.Scope) *scanProgressOutput {
+	return &scanProgressOutput{stderr: stderr, quiet: quiet, terminal: usageProgressIsTerminal(stderr), scope: scope, now: time.Now}
+}
+
+var scanRuntimeExecutable = func() string { return "" }
+var scanRuntimeForceLocal = scanRuntimeLocalTestMode
 
 type sessionUsageContextKey struct{}
 
@@ -155,6 +165,86 @@ type usageProgressOutput struct {
 }
 
 type sessionProgressOutput struct{ *usageProgressOutput }
+
+type scanProgressOutput struct {
+	stderr    io.Writer
+	quiet     bool
+	terminal  bool
+	scope     scanruntime.Scope
+	now       func() time.Time
+	mu        sync.Mutex
+	lastStage string
+	lastWrite time.Time
+	emitted   bool
+}
+
+func (p *scanProgressOutput) Update(progress scanruntime.Progress) {
+	if p == nil || p.quiet || progress.Stage == "completed" {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	now := p.now()
+	if progress.Stage == p.lastStage && !p.lastWrite.IsZero() && now.Sub(p.lastWrite) < 200*time.Millisecond {
+		return
+	}
+	message := scanProgressMessage(progress, p.scope)
+	if message == "" {
+		return
+	}
+	if p.terminal {
+		_, _ = fmt.Fprintf(p.stderr, "\r\x1b[2K%s", message)
+	} else {
+		_, _ = fmt.Fprintln(p.stderr, message)
+	}
+	p.lastStage = progress.Stage
+	p.lastWrite = now
+	p.emitted = true
+}
+
+func (p *scanProgressOutput) Stop() {
+	if p == nil || p.quiet || !p.terminal {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.emitted {
+		_, _ = io.WriteString(p.stderr, "\n")
+	}
+}
+
+func scanProgressMessage(progress scanruntime.Progress, scope scanruntime.Scope) string {
+	switch progress.Stage {
+	case "waiting":
+		return "Waiting for current scan"
+	case "checking":
+		return "Checking source files"
+	case "statistics":
+		return "Calculating statistics"
+	case "importing":
+		parts := make([]string, 0, 2)
+		if scope != scanruntime.ScopeSession {
+			parts = append(parts, scanDomainProgressMessage("usage", progress.Usage))
+		}
+		if scope != scanruntime.ScopeUsage {
+			parts = append(parts, scanDomainProgressMessage("session", progress.Session))
+		}
+		return "Importing: " + strings.Join(parts, "; ")
+	default:
+		return ""
+	}
+}
+
+func scanDomainProgressMessage(name string, progress scanruntime.DomainProgress) string {
+	if progress.Total != nil && *progress.Total > 0 {
+		message := fmt.Sprintf("%s %d/%d committed", name, progress.Committed, *progress.Total)
+		if progress.Skipped > 0 {
+			message += fmt.Sprintf(", %d skipped", progress.Skipped)
+		}
+		return message
+	}
+	return name + " processing"
+}
 
 func newUsageProgressOutput(stderr io.Writer, quiet, terminal bool) *usageProgressOutput {
 	return newUsageProgressOutputWithClock(stderr, quiet, terminal, realUsageProgressClock{})
@@ -335,6 +425,7 @@ func commandOutputName(command *cobra.Command) string {
 
 func errorCode(err error) string {
 	var notFound *errdefs.NotFound
+	var scanDomain *scanruntime.DomainError
 	switch {
 	case errors.Is(err, extension.ErrReadOnly):
 		return extension.ErrReadOnly.Error()
@@ -360,6 +451,15 @@ func errorCode(err error) string {
 		return credentialvault.ErrMachineIdentityMissing.Error()
 	case errors.As(err, &notFound):
 		return notFound.Code
+	case errors.As(err, &scanDomain):
+		switch scanDomain.Code {
+		case store.ErrSchemaAhead.Code, store.ErrStateBusy.Code:
+			return scanDomain.Code
+		default:
+			return "runtime_error"
+		}
+	case errors.Is(err, store.ErrSchemaAhead):
+		return store.ErrSchemaAhead.Code
 	case errors.Is(err, store.ErrStateBusy):
 		return store.ErrStateBusy.Code
 	case errors.Is(err, desktop.ErrUnsupportedWireVersion):
@@ -471,8 +571,9 @@ func newRootCommandWithError(stdin io.Reader, stdout, stderr io.Writer) *cobra.C
 			if err := opts.validateFormat(); err != nil {
 				return err
 			}
-			if opts.format == "ndjson" && command.Name() != "watch" {
-				return &inputError{err: fmt.Errorf("ndjson format is supported only by watch")}
+			commandPath := command.CommandPath()
+			if opts.format == "ndjson" && commandPath != "agentdeck watch" && commandPath != "agentdeck scan" {
+				return &inputError{err: fmt.Errorf("ndjson format is supported only by watch and scan")}
 			}
 			return nil
 		},
@@ -489,13 +590,13 @@ func newRootCommandWithError(stdin io.Reader, stdout, stderr io.Writer) *cobra.C
 	root.SetErr(stderr)
 	flags := root.PersistentFlags()
 	flags.StringVar(&opts.stateDir, "state-dir", "", "AgentDeck state directory")
-	flags.StringVar(&opts.format, "format", "text", "Output format: text, json, or ndjson for watch")
+	flags.StringVar(&opts.format, "format", "text", "Output format: text, json, or ndjson for watch/scan streams")
 	flags.BoolVar(&opts.noColor, "no-color", false, "Disable color output")
 	flags.BoolVar(&opts.quiet, "quiet", false, "Suppress non-essential output")
 	flags.BoolVar(&opts.verbose, "verbose", false, "Include technical provenance in text output")
 	root.Flags().BoolVar(&showVersion, "version", false, "Print build identity")
 	root.CompletionOptions.DisableDefaultCmd = true
-	root.AddCommand(newProviderCommand(opts), newCredentialCommand(opts), newUsageCommand(opts), newQuotaCommand(opts), newPriceCommand(opts), newSessionCommand(opts), newExtensionCommand(opts), newWatchCommand(opts), newBackupCommand(opts), newDoctorCommand(opts), newDesktopCommand(opts), newStateCommand(opts), newRunCommand(opts), newVersionCommand(opts), newCompletionCommand(opts), newShellCommand(opts), newShellInitCommand(opts))
+	root.AddCommand(newProviderCommand(opts), newCredentialCommand(opts), newUsageCommand(opts), newQuotaCommand(opts), newPriceCommand(opts), newSessionCommand(opts), newExtensionCommand(opts), newWatchCommand(opts), newBackupCommand(opts), newDoctorCommand(opts), newDesktopCommand(opts), newScanCommand(opts), newScanWorkerCommand(opts), newStateCommand(opts), newRunCommand(opts), newVersionCommand(opts), newCompletionCommand(opts), newShellCommand(opts), newShellInitCommand(opts))
 	applyHelpCatalog(root)
 	wrapArgumentValidators(root)
 	return root
@@ -570,6 +671,7 @@ func applyHelpCatalog(root *cobra.Command) {
 			example: "  agentdeck credential remove aigocode --credential work",
 		},
 		"session scan":        {short: "Incrementally scan local client sessions"},
+		"scan":                {short: "Run one shared usage and session scan round"},
 		"session list":        {short: "List indexed sessions"},
 		"session rebuild":     {short: "Rebuild the purgeable session index"},
 		"session purge-index": {short: "Delete only the rebuildable session index"},
@@ -732,6 +834,7 @@ type shellTarget struct {
 
 const shellLifecycleSurfaceOnlyAnnotation = "agentdeck.shell-lifecycle-surface-only"
 const humanInteractiveSurfaceOnlyAnnotation = "agentdeck.human-interactive-surface-only"
+const internalRuntimeSurfaceOnlyAnnotation = "agentdeck.internal-runtime-surface-only"
 const shellSetupDeclinedSetting = "shell.setup.declined"
 
 func newShellCommand(opts *commandOptions) *cobra.Command {
@@ -1378,6 +1481,284 @@ func (o *commandOptions) stateRoot() (string, error) {
 		return "", err
 	}
 	return platform.StateRoot("", home), nil
+}
+
+func requestScanRound(ctx context.Context, opts *commandOptions, scope scanruntime.Scope) (scanruntime.Result, error) {
+	return requestScanRoundWithProgress(ctx, opts, scope, nil)
+}
+
+func requestScanRoundWithProgress(ctx context.Context, opts *commandOptions, scope scanruntime.Scope, onProgress func(scanruntime.Progress)) (scanruntime.Result, error) {
+	stateRoot, err := opts.stateRoot()
+	if err != nil {
+		return scanruntime.Result{}, err
+	}
+	home, err := userHomeDir()
+	if err != nil {
+		return scanruntime.Result{}, err
+	}
+	client := scanruntime.Client{
+		StateRoot:  stateRoot,
+		Home:       home,
+		Executable: scanRuntimeExecutable(),
+		ForceLocal: scanRuntimeForceLocal(),
+	}
+	if onProgress != nil {
+		return client.RequestWithProgress(ctx, scope, onProgress)
+	}
+	return client.Request(ctx, scope)
+}
+
+func scanRuntimeLocalTestMode() bool {
+	name := filepath.Base(os.Args[0])
+	return strings.HasSuffix(name, ".test") || strings.HasSuffix(name, ".test.exe")
+}
+
+func runUsageScanRound(ctx context.Context, opts *commandOptions, progress usage.ScanProgressReporter) (map[string]int, error) {
+	if progress != nil {
+		progress.Start()
+		progress.Update(usage.ScanProgress{})
+		defer progress.Stop()
+	}
+	result, err := requestScanRoundWithProgress(ctx, opts, scanruntime.ScopeUsage, func(value scanruntime.Progress) {
+		if progress != nil {
+			total := 0
+			if value.Usage.Total != nil {
+				total = *value.Usage.Total
+			}
+			progress.Update(usage.ScanProgress{Processed: value.Usage.Committed, Skipped: value.Usage.Skipped, Total: total})
+		}
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err = result.ErrorFor(scanruntime.ScopeUsage); err != nil {
+		return nil, err
+	}
+	return result.Usage.Changes, nil
+}
+
+func runSessionScanRound(ctx context.Context, opts *commandOptions, progress session.ScanProgressReporter) (session.ScanResult, error) {
+	if progress != nil {
+		progress.Start()
+		progress.Update(session.ScanProgress{})
+		defer progress.Stop()
+	}
+	result, err := requestScanRoundWithProgress(ctx, opts, scanruntime.ScopeSession, func(value scanruntime.Progress) {
+		if progress != nil {
+			total := 0
+			if value.Session.Total != nil {
+				total = *value.Session.Total
+			}
+			progress.Update(session.ScanProgress{Processed: value.Session.Committed, Total: total, Skipped: value.Session.Skipped})
+		}
+	})
+	if err != nil {
+		return session.ScanResult{}, err
+	}
+	if err = result.ErrorFor(scanruntime.ScopeSession); err != nil {
+		return session.ScanResult{}, err
+	}
+	return result.Session.Scan, nil
+}
+
+func sessionCheckpointFingerprint(ctx context.Context, sessions *store.Store, home string) (string, error) {
+	fingerprint, err := sessionInventoryFingerprint(home)
+	if err != nil {
+		return "", err
+	}
+	return sessionCheckpointFingerprintFromRaw(ctx, sessions, fingerprint)
+}
+
+func sessionCheckpointFingerprintFromRaw(ctx context.Context, sessions *store.Store, fingerprint string) (string, error) {
+	epoch, err := sessions.SessionIndexEpoch(ctx)
+	if err != nil {
+		return "", err
+	}
+	after, err := sessions.SessionIndexEpoch(ctx)
+	if err != nil {
+		return "", err
+	}
+	if after != epoch {
+		return "", errors.New("session index changed while recording checkpoint")
+	}
+	return fmt.Sprintf("v1:%d:%s", epoch, fingerprint), nil
+}
+
+var discoverSessionInventory = ingest.Discover
+
+func sessionInventoryFingerprint(home string) (string, error) {
+	sources, err := discoverSessionInventory(home)
+	if err != nil {
+		return "", err
+	}
+	return ingest.FingerprintSources(sources), nil
+}
+
+func sessionWatchFingerprint(ctx context.Context, stateRoot, home string) (string, error) {
+	fingerprint, err := sessionInventoryFingerprint(home)
+	if err != nil {
+		return "", err
+	}
+	return sessionWatchFingerprintFromRaw(ctx, stateRoot, fingerprint)
+}
+
+func persistedSessionWatchFingerprint(ctx context.Context, stateRoot string) (string, error) {
+	core, err := store.OpenReadOnly(ctx, stateRoot)
+	if err != nil {
+		return "", err
+	}
+	defer core.Close()
+	fingerprint, found, err := core.Setting(ctx, "watch.fingerprint.session")
+	if err != nil {
+		return "", err
+	}
+	if !found {
+		return "", errors.New("session scan checkpoint is missing")
+	}
+	return fingerprint, nil
+}
+
+func sessionWatchFingerprintFromRaw(ctx context.Context, stateRoot, fingerprint string) (string, error) {
+	if _, err := os.Stat(filepath.Join(stateRoot, "sessions.sqlite3")); errors.Is(err, os.ErrNotExist) {
+		return "v1:0:" + fingerprint, nil
+	} else if err != nil {
+		return "", err
+	}
+	sessions, err := store.OpenSessionsReadOnly(ctx, stateRoot)
+	if err != nil {
+		return "", err
+	}
+	defer sessions.Close()
+	checkpoint, err := sessionCheckpointFingerprintFromRaw(ctx, sessions, fingerprint)
+	if errors.Is(err, store.ErrSessionIndexGenerationMissing) {
+		return "v1:0:" + fingerprint, nil
+	}
+	return checkpoint, err
+}
+
+func parseScanScope(value string) (scanruntime.Scope, error) {
+	if value == "" || value == string(scanruntime.ScopeBoth) {
+		return scanruntime.ScopeBoth, nil
+	}
+	scope := scanruntime.Scope(value)
+	if scope != scanruntime.ScopeUsage && scope != scanruntime.ScopeSession {
+		return "", &inputError{err: fmt.Errorf("invalid scan scope %q", value)}
+	}
+	return scope, nil
+}
+
+func newScanCommand(opts *commandOptions) *cobra.Command {
+	var scopeValue string
+	command := &cobra.Command{
+		Use:   "scan",
+		Short: "Run one shared usage and session scan round",
+		Args:  exactArgs(0),
+		RunE: func(command *cobra.Command, _ []string) error {
+			scope, err := parseScanScope(scopeValue)
+			if err != nil {
+				return err
+			}
+			progress := newScanProgress(opts.stderr, opts.quiet || opts.format == "ndjson", scope)
+			var streamErr error
+			result, err := requestScanRoundWithProgress(command.Context(), opts, scope, func(value scanruntime.Progress) {
+				if opts.format == "ndjson" {
+					if streamErr == nil {
+						streamErr = writeScanEvent(opts.stdout, "progress", scope, value, false)
+					}
+					return
+				}
+				progress.Update(value)
+			})
+			progress.Stop()
+			if err != nil {
+				return err
+			}
+			if streamErr != nil {
+				return streamErr
+			}
+			resultErr := result.ErrorFor(scope)
+			if err = writeScanResult(opts.stdout, opts.format, scope, result, resultErr != nil); err != nil {
+				return err
+			}
+			return resultErr
+		},
+	}
+	command.Flags().StringVar(&scopeValue, "scope", "", "Wait for usage or session; omit to wait for both")
+	return command
+}
+
+type scanCommandData struct {
+	Scope   scanruntime.Scope         `json:"scope"`
+	Usage   scanruntime.UsageResult   `json:"usage"`
+	Session scanruntime.SessionResult `json:"session"`
+}
+
+type scanEventEnvelope struct {
+	SchemaVersion int               `json:"schema_version"`
+	Command       string            `json:"command"`
+	GeneratedAt   time.Time         `json:"generated_at"`
+	Type          string            `json:"type"`
+	Scope         scanruntime.Scope `json:"scope"`
+	Data          any               `json:"data"`
+	Partial       bool              `json:"partial"`
+}
+
+func writeScanEvent(w io.Writer, eventType string, scope scanruntime.Scope, data any, partial bool) error {
+	return json.NewEncoder(w).Encode(scanEventEnvelope{SchemaVersion: 1, Command: "scan", GeneratedAt: time.Now().UTC(), Type: eventType, Scope: scope, Data: data, Partial: partial})
+}
+
+func writeScanResult(w io.Writer, format string, scope scanruntime.Scope, result scanruntime.Result, partial bool) error {
+	data := scanCommandData{Scope: scope, Usage: result.Usage, Session: result.Session}
+	switch format {
+	case "json":
+		envelope := output.New("scan", data, time.Now())
+		envelope.Partial = partial
+		return json.NewEncoder(w).Encode(envelope)
+	case "ndjson":
+		return writeScanEvent(w, "result", scope, data, partial)
+	case "text":
+		label := "usage and sessions"
+		if scope == scanruntime.ScopeUsage {
+			label = "usage"
+		} else if scope == scanruntime.ScopeSession {
+			label = "session"
+		}
+		if partial {
+			failed := make([]string, 0, 2)
+			if scope != scanruntime.ScopeSession && result.Usage.State != "completed" {
+				failed = append(failed, "usage")
+			}
+			if scope != scanruntime.ScopeUsage && result.Session.State != "completed" {
+				failed = append(failed, "sessions")
+			}
+			if len(failed) > 0 {
+				label = strings.Join(failed, " and ")
+			}
+			_, err := fmt.Fprintf(w, "Scan incomplete: %s failed.\n", label)
+			return err
+		}
+		_, err := fmt.Fprintf(w, "Scan complete: %s.\n", label)
+		return err
+	default:
+		return &inputError{err: fmt.Errorf("invalid format %q", format)}
+	}
+}
+
+func newScanWorkerCommand(opts *commandOptions) *cobra.Command {
+	return &cobra.Command{
+		Use:         "scan-worker",
+		Short:       "Run the internal shared scan worker",
+		Hidden:      true,
+		Annotations: map[string]string{internalRuntimeSurfaceOnlyAnnotation: "true"},
+		Args:        exactArgs(0),
+		RunE: func(command *cobra.Command, _ []string) error {
+			stateRoot, err := opts.stateRoot()
+			if err != nil {
+				return err
+			}
+			return scanruntime.Serve(command.Context(), stateRoot)
+		},
+	}
 }
 
 func (o *commandOptions) shellStateRoot() string {
@@ -2072,7 +2453,7 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 				return nil
 			}
 			if command.Name() == "scan" || command.Name() == "rebuild" {
-				fingerprint, fingerprintErr := watch.FingerprintRoots(sessionWatchRoots(home)...)
+				fingerprint, fingerprintErr := sessionCheckpointFingerprint(command.Context(), sessions, home)
 				if fingerprintErr != nil {
 					return fingerprintErr
 				}
@@ -2347,13 +2728,55 @@ func newSessionCommand(opts *commandOptions) *cobra.Command {
 	_ = exclude.MarkFlagRequired("kind")
 	_ = exclude.MarkFlagRequired("value")
 	cmd.AddCommand(
-		&cobra.Command{Use: "scan", Args: cobra.NoArgs, RunE: withSessions(func(ctx context.Context, s *store.Store, home string, _ []string) (any, error) {
-			return session.ScanWithOptions(ctx, s.DB, home, session.ScanOptions{Progress: newSessionProgress(opts.stderr, opts.quiet)})
-		})},
+		&cobra.Command{Use: "scan", Args: cobra.NoArgs, RunE: func(command *cobra.Command, _ []string) error {
+			data, err := runSessionScanRound(command.Context(), opts, newSessionProgress(opts.stderr, opts.quiet))
+			if err != nil {
+				return err
+			}
+			return writeResult(opts.stdout, opts.format, commandOutputName(command), data, opts.quiet)
+		}},
 		list, search, show, exclude,
-		&cobra.Command{Use: "rebuild", Args: cobra.NoArgs, RunE: withSessions(func(ctx context.Context, s *store.Store, home string, _ []string) (any, error) {
-			return session.RebuildWithOptions(ctx, s.DB, home, session.ScanOptions{Progress: newSessionProgress(opts.stderr, opts.quiet)})
-		})},
+		&cobra.Command{Use: "rebuild", Args: cobra.NoArgs, RunE: func(command *cobra.Command, _ []string) error {
+			stateRoot, err := opts.stateRoot()
+			if err != nil {
+				return err
+			}
+			home, err := userHomeDir()
+			if err != nil {
+				return err
+			}
+			var data session.ScanResult
+			err = scanruntime.WithMaintenance(command.Context(), stateRoot, 5*time.Second, func(ctx context.Context) error {
+				lock, err := store.AcquireLock(ctx, stateRoot, 5*time.Second)
+				if err != nil {
+					return err
+				}
+				defer lock.Release()
+				sessions, err := store.OpenSessions(ctx, stateRoot)
+				if err != nil {
+					return err
+				}
+				defer sessions.Close()
+				data, err = session.RebuildWithOptions(ctx, sessions.DB, home, session.ScanOptions{Progress: newSessionProgress(opts.stderr, opts.quiet)})
+				if err != nil {
+					return err
+				}
+				fingerprint, err := sessionCheckpointFingerprint(ctx, sessions, home)
+				if err != nil {
+					return err
+				}
+				core, err := store.OpenWithLockHeld(ctx, stateRoot)
+				if err != nil {
+					return err
+				}
+				defer core.Close()
+				return core.SetSetting(ctx, "watch.fingerprint.session", fingerprint)
+			})
+			if err != nil {
+				return err
+			}
+			return writeResult(opts.stdout, opts.format, commandOutputName(command), data, opts.quiet)
+		}},
 		newSessionPurgeCommand(opts),
 	)
 	return cmd
@@ -2397,16 +2820,15 @@ func newSessionPurgeCommand(opts *commandOptions) *cobra.Command {
 		if err = platform.EnsureStateRoot(stateDir); err != nil {
 			return err
 		}
-		lock, err := store.AcquireLock(cmd.Context(), stateDir, 5*time.Second)
-		if err != nil {
-			return err
-		}
-		defer func() {
-			if lock != nil {
-				_ = lock.Release()
+		err = scanruntime.WithMaintenance(cmd.Context(), stateDir, 5*time.Second, func(ctx context.Context) error {
+			lock, lockErr := store.AcquireLock(ctx, stateDir, 5*time.Second)
+			if lockErr != nil {
+				return lockErr
 			}
-		}()
-		if err = purgeSessionIndex(cmd.Context(), stateDir, store.OpenWithLockHeld, os.Remove); err != nil {
+			defer lock.Release()
+			return purgeSessionIndex(ctx, stateDir, store.OpenWithLockHeld, os.Remove)
+		})
+		if err != nil {
 			return err
 		}
 		return writeResult(opts.stdout, opts.format, "session.purge-index", map[string]any{"purged": true}, opts.quiet)
@@ -2561,7 +2983,6 @@ func newWatchCommand(opts *commandOptions) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		sessionRoots := sessionWatchRoots(home)
 		extensionRoots := extensionWatchRoots(home, workdir)
 		fingerprint := func(roots []string) func(context.Context) (string, error) {
 			return func(context.Context) (string, error) { return watch.FingerprintRoots(roots...) }
@@ -2616,12 +3037,31 @@ func newWatchCommand(opts *commandOptions) *cobra.Command {
 			}})
 		}
 		if requested["session"] {
-			filtered = append(filtered, watch.Source{Domain: "session", Snapshot: fingerprint(sessionRoots), Scan: func(ctx context.Context) (int, error) {
+			var sessionInventory []ingest.Source
+			filtered = append(filtered, watch.Source{Domain: "session", Snapshot: func(ctx context.Context) (string, error) {
+				sessionInventory, err = discoverSessionInventory(home)
+				if err != nil {
+					return "", err
+				}
+				return sessionWatchFingerprintFromRaw(ctx, stateDir, ingest.FingerprintSources(sessionInventory))
+			}, Scan: func(ctx context.Context) (int, error) {
 				if err := openSessions(ctx); err != nil {
 					return 0, err
 				}
-				result, scanErr := session.Scan(ctx, sessions.DB, home)
-				return result.Documents + result.Removed, scanErr
+				if err := openCore(ctx); err != nil {
+					return 0, err
+				}
+				result, scanErr := session.ScanWithOptions(ctx, sessions.DB, home, session.ScanOptions{PreparedSources: sessionInventory})
+				if scanErr != nil {
+					return 0, scanErr
+				}
+				checkpoint, checkpointErr := sessionCheckpointFingerprintFromRaw(ctx, sessions, ingest.FingerprintSources(sessionInventory))
+				if checkpointErr == nil {
+					checkpointErr = database.SetSetting(ctx, "watch.fingerprint.session", checkpoint)
+				}
+				return result.Documents + result.Removed, checkpointErr
+			}, PostScanFingerprint: func(ctx context.Context, _ string) (string, error) {
+				return persistedSessionWatchFingerprint(ctx, stateDir)
 			}})
 		}
 		if requested["extension"] {
@@ -2637,11 +3077,7 @@ func newWatchCommand(opts *commandOptions) *cobra.Command {
 			InitialFingerprints: initial,
 			Sources:             filtered,
 			Lock: func(ctx context.Context) (func() error, error) {
-				lock, err := store.AcquireScanLock(ctx, stateDir, 0)
-				if err != nil {
-					return nil, err
-				}
-				return lock.Release, nil
+				return scanruntime.AcquireMaintenance(ctx, stateDir, 0)
 			},
 			PersistFingerprint: func(ctx context.Context, domain, value string) error {
 				if err := openCore(ctx); err != nil {
@@ -2680,9 +3116,6 @@ func renderWatchText(w io.Writer, event watch.Event) error {
 	return err
 }
 
-func sessionWatchRoots(home string) []string {
-	return []string{filepath.Join(home, ".codex", "sessions"), filepath.Join(home, ".codex", "archived_sessions"), filepath.Join(home, ".claude", "projects")}
-}
 func extensionWatchRoots(home, workdir string) []string {
 	return []string{filepath.Join(home, ".codex", "config.toml"), filepath.Join(home, ".codex", "skills"), filepath.Join(home, ".codex", "plugins", "cache"), filepath.Join(home, ".claude.json"), filepath.Join(home, ".claude", "skills"), filepath.Join(home, ".claude", "plugins", "installed_plugins.json"), filepath.Join(workdir, ".codex", "config.toml"), filepath.Join(workdir, ".codex", "skills"), filepath.Join(workdir, ".codex", "plugins"), filepath.Join(workdir, ".claude", "skills"), filepath.Join(workdir, ".mcp.json")}
 }
@@ -2796,7 +3229,7 @@ func newDoctorCommand(opts *commandOptions) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		return writeResult(opts.stdout, opts.format, "doctor", report)
+		return writeDoctorResult(opts.stdout, opts.format, report)
 	}}
 	command.Flags().BoolVar(&full, "full", false, "Run full integrity and source checks")
 	return command
@@ -2948,8 +3381,12 @@ func runUsageHookEvent(ctx context.Context, opts *commandOptions, client usageho
 	if parseErr != nil {
 		return nil
 	}
-	database, _, openErr := opts.openStore(ctx)
+	database, stateRoot, openErr := opts.openStore(ctx)
 	if openErr != nil {
+		var ahead *store.SchemaAhead
+		if errors.As(openErr, &ahead) {
+			_ = hookrefusal.Write(stateRoot, ahead.Stored, ahead.Supported)
+		}
 		return nil
 	}
 	defer database.Close()
@@ -3216,7 +3653,7 @@ func newUsageCommand(opts *commandOptions) *cobra.Command {
 	summary := &cobra.Command{Use: "summary [daily|weekly|monthly]", Args: cobra.MaximumNArgs(1), RunE: withUsage(func(ctx context.Context, s *usage.Service, _ *store.Store, args []string) (any, bool, []string, error) {
 		var scanErr error
 		if !summaryNoScan {
-			_, scanErr = s.Scan(ctx)
+			_, scanErr = runUsageScanRound(ctx, opts, s.Progress)
 		}
 		if len(args) == 0 {
 			data, err := s.Summary(ctx)
@@ -3252,7 +3689,7 @@ func newUsageCommand(opts *commandOptions) *cobra.Command {
 		}
 		var scanErr error
 		if !statsNoScan {
-			_, scanErr = s.Scan(ctx)
+			_, scanErr = runUsageScanRound(ctx, opts, s.Progress)
 		}
 		now := time.Now()
 		location := displayLocation()
@@ -3301,7 +3738,7 @@ func newUsageCommand(opts *commandOptions) *cobra.Command {
 		if signalsActivity != "" && !usage.ValidActivityFilter(signalsActivity) {
 			return nil, false, nil, &inputError{err: fmt.Errorf("usage signals activity must be a documented category or subcategory")}
 		}
-		_, scanErr := s.Scan(ctx)
+		_, scanErr := runUsageScanRound(ctx, opts, s.Progress)
 		now := time.Now()
 		from, to, err := resolveUsageRange(ctx, s, signalsPeriod, "", "", now, displayLocation())
 		if err != nil {
@@ -3320,10 +3757,13 @@ func newUsageCommand(opts *commandOptions) *cobra.Command {
 	signals.Flags().StringVar(&signalsActivity, "activity", "", "Filter turns by an activity category or subcategory")
 	cmd.AddCommand(
 		newUsageHookCommand(opts),
-		&cobra.Command{Use: "scan", Args: cobra.NoArgs, RunE: withUsage(func(ctx context.Context, s *usage.Service, _ *store.Store, _ []string) (any, bool, []string, error) {
-			data, err := s.Scan(ctx)
-			return data, false, nil, err
-		})},
+		&cobra.Command{Use: "scan", Args: cobra.NoArgs, RunE: func(command *cobra.Command, _ []string) error {
+			data, err := runUsageScanRound(command.Context(), opts, newUsageProgress(opts.stderr, opts.quiet))
+			if err != nil {
+				return err
+			}
+			return writeUsageEnvelope(opts.stdout, opts.format, commandOutputName(command), data, false, nil, opts.quiet, newUsageTextRenderOptions(opts.stdout, opts.noColor))
+		}},
 		summary,
 		stats,
 		signals,
@@ -3335,10 +3775,33 @@ func newUsageCommand(opts *commandOptions) *cobra.Command {
 			data, err := s.Diagnose(ctx)
 			return data, false, nil, err
 		})},
-		&cobra.Command{Use: "rebuild", Args: cobra.NoArgs, RunE: withUsage(func(ctx context.Context, s *usage.Service, _ *store.Store, _ []string) (any, bool, []string, error) {
-			data, warnings, err := s.Rebuild(ctx)
-			return data, len(warnings) > 0, warnings, err
-		})},
+		&cobra.Command{Use: "rebuild", Args: cobra.NoArgs, RunE: func(command *cobra.Command, _ []string) error {
+			stateRoot, err := opts.stateRoot()
+			if err != nil {
+				return err
+			}
+			home, err := userHomeDir()
+			if err != nil {
+				return err
+			}
+			var data map[string]int
+			var warnings []string
+			err = scanruntime.WithMaintenance(command.Context(), stateRoot, 5*time.Second, func(ctx context.Context) error {
+				core, err := store.Open(ctx, stateRoot)
+				if err != nil {
+					return err
+				}
+				defer core.Close()
+				service := usage.New(core, home)
+				service.Progress = newUsageProgress(opts.stderr, opts.quiet)
+				data, warnings, err = service.Rebuild(ctx)
+				return err
+			})
+			if err != nil {
+				return err
+			}
+			return writeUsageEnvelope(opts.stdout, opts.format, commandOutputName(command), data, len(warnings) > 0, warnings, opts.quiet, newUsageTextRenderOptions(opts.stdout, opts.noColor))
+		}},
 	)
 	return cmd
 }
@@ -3676,6 +4139,28 @@ func writeResult(w io.Writer, format, command string, data any, quiet ...bool) e
 	}
 	return nil
 }
+func writeDoctorResult(w io.Writer, format string, report doctor.Report) error {
+	if format == "json" {
+		envelope := output.New("doctor", report, time.Now())
+		envelope.Partial = report.Partial
+		if report.Partial {
+			envelope.Warnings = []string{"checks_skipped"}
+		}
+		return json.NewEncoder(w).Encode(envelope)
+	}
+	if format == "ndjson" {
+		return &inputError{err: fmt.Errorf("ndjson format is supported only by watch")}
+	}
+	if err := renderDoctorText(w, report); err != nil {
+		return err
+	}
+	if report.Partial {
+		_, err := fmt.Fprintln(w, "checks_skipped: remaining diagnostics require a readable core database")
+		return err
+	}
+	return nil
+}
+
 func writeEnvelope(w io.Writer, format, command string, data any, partial bool, warnings []string, quiet ...bool) error {
 	quietOutput := len(quiet) > 0 && quiet[0]
 	return writeUsageEnvelope(w, format, command, data, partial, warnings, quietOutput, usageTextRenderOptions{})
@@ -4435,12 +4920,15 @@ func renderDoctorText(w io.Writer, report doctor.Report) error {
 		if _, err := fmt.Fprintf(w, "%s: %s", check.Name, check.Status); err != nil {
 			return err
 		}
-		details := make([]string, 0, 2)
+		details := make([]string, 0, 3)
 		if check.Code != "" {
 			details = append(details, check.Code)
 		}
 		if check.Count != 0 {
 			details = append(details, "count="+strconv.Itoa(check.Count))
+		}
+		if check.SupportedCount != 0 {
+			details = append(details, "supported_count="+strconv.Itoa(check.SupportedCount))
 		}
 		if len(details) > 0 {
 			if _, err := fmt.Fprintf(w, " (%s)", strings.Join(details, "; ")); err != nil {
@@ -4450,7 +4938,11 @@ func renderDoctorText(w io.Writer, report doctor.Report) error {
 		if _, err := fmt.Fprintln(w); err != nil {
 			return err
 		}
-		if check.Recovery != "" {
+		if check.Code == store.ErrSchemaAhead.Code {
+			if _, err := fmt.Fprintln(w, "  recovery: upgrade AgentDeck to open it"); err != nil {
+				return err
+			}
+		} else if check.Recovery != "" {
 			if _, err := fmt.Fprintf(w, "  recovery: %s\n", check.Recovery); err != nil {
 				return err
 			}

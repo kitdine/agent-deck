@@ -13,7 +13,7 @@ import (
 
 // openTestStore opens a quota Store backed by internal/store's real,
 // versioned migrations (QD-R1-F5): quota_windows/quota_envelopes are schema
-// version 24 there, not a package-local CREATE TABLE.
+// version 27 there, not a package-local CREATE TABLE.
 func openTestStore(t *testing.T) (*Store, *sql.DB) {
 	t.Helper()
 	database, err := agentdeckstore.Open(context.Background(), filepath.Join(t.TempDir(), "state"))

@@ -16,12 +16,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kitdine/agent-deck/internal/hookrefusal"
 	"github.com/kitdine/agent-deck/internal/platform"
 	"modernc.org/sqlite"
 )
 
 const (
-	CurrentSchemaVersion   = 27
+	CurrentSchemaVersion   = 30
 	CodeProviderNotFound   = "provider_not_found"
 	CodeCredentialNotFound = "credential_not_found"
 )
@@ -45,13 +46,14 @@ func OpenSessions(ctx context.Context, stateRoot string) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
-	if err := migrateSessionSchema(ctx, db); err != nil {
+	rebuilt, err := migrateSessionSchema(ctx, db)
+	if err != nil {
 		db.Close()
 		return nil, err
 	}
 	for _, statement := range []string{
 		"CREATE TABLE IF NOT EXISTS session_exclusions (kind TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY(kind, value))",
-		"CREATE TABLE IF NOT EXISTS session_sources (source_path TEXT PRIMARY KEY, identity TEXT NOT NULL, cursor INTEGER NOT NULL, partial_line BLOB NOT NULL DEFAULT X'', size INTEGER NOT NULL, modified_at INTEGER NOT NULL, prefix_hash TEXT NOT NULL, priority INTEGER NOT NULL, parser_version INTEGER NOT NULL, scanned_at TEXT NOT NULL)",
+		"CREATE TABLE IF NOT EXISTS session_sources (source_path TEXT PRIMARY KEY, identity TEXT NOT NULL, cursor INTEGER NOT NULL, partial_line BLOB NOT NULL DEFAULT X'', size INTEGER NOT NULL, modified_at INTEGER NOT NULL, changed_at INTEGER NOT NULL DEFAULT 0, prefix_hash TEXT NOT NULL, priority INTEGER NOT NULL, parser_version INTEGER NOT NULL, scanned_at TEXT NOT NULL)",
 		"CREATE TABLE IF NOT EXISTS session_metadata (source_path TEXT NOT NULL REFERENCES session_sources(source_path) ON DELETE CASCADE, client TEXT NOT NULL, session_id TEXT NOT NULL, project TEXT NOT NULL DEFAULT '', model TEXT NOT NULL DEFAULT '', parser_version INTEGER NOT NULL, first_at TEXT NOT NULL, last_at TEXT NOT NULL, PRIMARY KEY(source_path, client, session_id))",
 		"CREATE VIRTUAL TABLE IF NOT EXISTS session_documents USING fts5(source_path UNINDEXED, client UNINDEXED, session_id UNINDEXED, event_at UNINDEXED, kind UNINDEXED, text)",
 	} {
@@ -59,6 +61,15 @@ func OpenSessions(ctx context.Context, stateRoot string) (*Store, error) {
 			db.Close()
 			return nil, err
 		}
+	}
+	if rebuilt {
+		_, err = MintSessionIndexEpoch(ctx, db)
+	} else {
+		err = ensureSessionIndexGeneration(ctx, db)
+	}
+	if err != nil {
+		db.Close()
+		return nil, err
 	}
 	s := &Store{DB: db, path: path}
 	if err = s.secureFiles(); err != nil {
@@ -93,44 +104,61 @@ func OpenSessionsReadOnly(ctx context.Context, stateRoot string) (*Store, error)
 // Session indexes are rebuildable. The first source-level schema upgrade
 // deliberately discards the old client/session view instead of trying to
 // invent source ownership for rows that never recorded it.
-func migrateSessionSchema(ctx context.Context, db *sql.DB) error {
-	var hasDocuments, hasSources, hasSourcePath, hasEventAt int
+func migrateSessionSchema(ctx context.Context, db *sql.DB) (bool, error) {
+	var hasDocuments, hasSources, hasSourcePath, hasChangedAt, hasEventAt int
+	rebuilt := false
 	if err := db.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='session_documents'").Scan(&hasDocuments); err != nil {
-		return err
+		return false, err
 	}
 	if hasDocuments != 0 {
 		if err := db.QueryRowContext(ctx, "SELECT count(*) FROM pragma_table_info('session_documents') WHERE name='source_path'").Scan(&hasSourcePath); err != nil {
-			return err
+			return false, err
 		}
 		if err := db.QueryRowContext(ctx, "SELECT count(*) FROM pragma_table_info('session_documents') WHERE name='event_at'").Scan(&hasEventAt); err != nil {
-			return err
+			return false, err
 		}
 	}
 	if err := db.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='session_sources'").Scan(&hasSources); err != nil {
-		return err
+		return false, err
 	}
 	if hasSources != 0 {
 		var sourceColumn int
 		if err := db.QueryRowContext(ctx, "SELECT count(*) FROM pragma_table_info('session_sources') WHERE name='source_path'").Scan(&sourceColumn); err != nil {
-			return err
+			return false, err
 		}
 		if sourceColumn == 0 {
 			hasSourcePath = 0
+		} else if err := db.QueryRowContext(ctx, "SELECT count(*) FROM pragma_table_info('session_sources') WHERE name='changed_at'").Scan(&hasChangedAt); err != nil {
+			return false, err
 		}
 	}
 	if (hasDocuments != 0 || hasSources != 0) && hasSourcePath == 0 {
 		_, err := db.ExecContext(ctx, "DROP TABLE IF EXISTS session_documents; DROP TABLE IF EXISTS session_metadata; DROP TABLE IF EXISTS session_sources")
-		return err
+		if err != nil {
+			return false, err
+		}
+		rebuilt = true
 	}
 	if hasDocuments != 0 && hasEventAt == 0 {
 		_, err := db.ExecContext(ctx, "DROP TABLE IF EXISTS session_documents")
-		return err
+		if err != nil {
+			return false, err
+		}
+		rebuilt = true
 	}
-	return nil
+	if hasSources != 0 && hasSourcePath != 0 && hasChangedAt == 0 {
+		_, err := db.ExecContext(ctx, "ALTER TABLE session_sources ADD COLUMN changed_at INTEGER NOT NULL DEFAULT 0")
+		if err != nil {
+			return false, err
+		}
+		rebuilt = true
+	}
+	return rebuilt, nil
 }
 
 var (
 	ErrStateBusy     = &Error{Code: "state_busy"}
+	ErrSchemaAhead   = &Error{Code: "schema_ahead"}
 	ErrUnknownSchema = &Error{Code: "unknown_schema"}
 	ErrLockLost      = &Error{Code: "lock_lost"}
 )
@@ -151,6 +179,19 @@ func (e *Error) Error() string {
 
 func (e *Error) Unwrap() error { return e.Err }
 
+// SchemaAhead reports a database whose schema version exceeds the version this
+// binary supports. It is permanent until the binary is upgraded.
+type SchemaAhead struct {
+	Stored    int
+	Supported int
+}
+
+func (e *SchemaAhead) Error() string {
+	return fmt.Sprintf("%s: database version %d exceeds supported version %d; upgrade AgentDeck to open it", ErrSchemaAhead.Code, e.Stored, e.Supported)
+}
+
+func (e *SchemaAhead) Unwrap() error { return ErrSchemaAhead }
+
 type Store struct {
 	DB       *sql.DB
 	path     string
@@ -169,6 +210,30 @@ func Open(ctx context.Context, stateRoot string) (*Store, error) {
 	return open(ctx, stateRoot, func(ctx context.Context, stateRoot string, timeout time.Duration) (stateLock, error) {
 		return AcquireLock(ctx, stateRoot, timeout)
 	})
+}
+
+// OpenExisting opens an already-created private core state without creating a
+// missing root or database. Background derived-cache publication uses it so a
+// detached worker can never resurrect state that its owner has removed.
+func OpenExisting(ctx context.Context, stateRoot string) (*Store, error) {
+	info, err := os.Stat(stateRoot)
+	if err != nil {
+		return nil, err
+	}
+	if !info.IsDir() || info.Mode().Perm() != platform.DirectoryMode {
+		return nil, errors.New("invalid existing state root")
+	}
+	path := filepath.Join(stateRoot, "agentdeck.sqlite3")
+	file, err := os.Lstat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !file.Mode().IsRegular() || file.Mode()&os.ModeSymlink != 0 {
+		return nil, errors.New("existing core database is not a regular private file")
+	}
+	return openAtExistingRoot(ctx, stateRoot, func(ctx context.Context, stateRoot string, timeout time.Duration) (stateLock, error) {
+		return AcquireLock(ctx, stateRoot, timeout)
+	}, false)
 }
 
 type alreadyHeldLock struct{}
@@ -199,21 +264,53 @@ func OpenReadOnly(ctx context.Context, stateRoot string) (*Store, error) {
 	}
 	if version > CurrentSchemaVersion {
 		db.Close()
-		return nil, ErrUnknownSchema
+		return nil, &SchemaAhead{Stored: version, Supported: CurrentSchemaVersion}
 	}
 	return &Store{DB: db, path: path, readOnly: true}, nil
+}
+
+// schemaAheadAtRest only probes after lock acquisition fails. It never creates
+// state, migrates the database, or changes its permissions.
+func schemaAheadAtRest(ctx context.Context, stateRoot string) *SchemaAhead {
+	path, cleanup, err := schemaProbeSnapshot(ctx, stateRoot)
+	if err != nil {
+		return nil
+	}
+	defer cleanup()
+	db, err := sql.Open("sqlite", "file:"+path+"?mode=rw")
+	if err != nil {
+		return nil
+	}
+	defer db.Close()
+	version, err := schemaVersion(ctx, db)
+	if err != nil || version <= CurrentSchemaVersion {
+		return nil
+	}
+	return &SchemaAhead{Stored: version, Supported: CurrentSchemaVersion}
 }
 
 func open(ctx context.Context, stateRoot string, acquire lockAcquirer) (store *Store, err error) {
 	if err := platform.EnsureStateRoot(stateRoot); err != nil {
 		return nil, err
 	}
+	return openAtExistingRoot(ctx, stateRoot, acquire, true)
+}
+
+func openAtExistingRoot(ctx context.Context, stateRoot string, acquire lockAcquirer, create bool) (store *Store, err error) {
 	lock, err := acquire(ctx, stateRoot, lockWait)
 	if err != nil {
+		if errors.Is(err, ErrStateBusy) {
+			if ahead := schemaAheadAtRest(ctx, stateRoot); ahead != nil {
+				return nil, ahead
+			}
+		}
 		return nil, err
 	}
 	defer func() {
 		releaseErr := lock.Release()
+		if err == nil && releaseErr == nil {
+			_ = hookrefusal.Clear(stateRoot)
+		}
 		if err != nil || releaseErr == nil {
 			return
 		}
@@ -225,10 +322,19 @@ func open(ctx context.Context, stateRoot string, acquire lockAcquirer) (store *S
 	}()
 
 	path := filepath.Join(stateRoot, "agentdeck.sqlite3")
-	if err := preparePrivateSQLiteFiles(path); err != nil {
+	if create {
+		err = preparePrivateSQLiteFiles(path)
+	} else {
+		err = prepareExistingPrivateSQLiteFile(path)
+	}
+	if err != nil {
 		return nil, err
 	}
-	db, err := sql.Open("sqlite", path+"?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)")
+	databasePath := path + "?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)"
+	if !create {
+		databasePath = "file:" + path + "?mode=rw&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)"
+	}
+	db, err := sql.Open("sqlite", databasePath)
 	if err != nil {
 		return nil, err
 	}
@@ -368,6 +474,22 @@ func preparePrivateSQLiteFiles(path string) error {
 	return nil
 }
 
+func prepareExistingPrivateSQLiteFile(path string) error {
+	file, err := os.OpenFile(path, os.O_RDWR, platform.FileMode)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() || info.Mode().Perm() != platform.FileMode {
+		return errors.New("existing core database is not a regular private file")
+	}
+	return nil
+}
+
 func (s *Store) secureFiles() error {
 	for _, path := range []string{s.path, s.path + "-wal", s.path + "-shm", s.path + "-journal"} {
 		if err := os.Chmod(path, platform.FileMode); err != nil && !errors.Is(err, fs.ErrNotExist) {
@@ -390,6 +512,12 @@ func AcquireLock(ctx context.Context, stateRoot string, timeout time.Duration) (
 // or read commands that use the short-lived state lock.
 func AcquireScanLock(ctx context.Context, stateRoot string, timeout time.Duration) (*Lock, error) {
 	return acquireNamedLock(ctx, stateRoot, "scan.lock", timeout)
+}
+
+// AcquireDerivedSnapshotCacheLock serializes cache publishers without sharing
+// the scan or state-mutation lock domains.
+func AcquireDerivedSnapshotCacheLock(ctx context.Context, stateRoot string, timeout time.Duration) (*Lock, error) {
+	return acquireNamedLock(ctx, stateRoot, "derived-snapshot-cache.lock", timeout)
 }
 
 func acquireNamedLock(ctx context.Context, stateRoot, name string, timeout time.Duration) (*Lock, error) {

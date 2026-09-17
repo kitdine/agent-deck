@@ -3,6 +3,33 @@ import AppKit
 import SwiftUI
 import WidgetKit
 
+#if DEBUG
+enum DebugTestIsolationError: Error, Equatable {
+	case unsafeHome
+}
+
+func debugTestHome(environment: [String: String]) throws -> URL? {
+	if let rawTestHome = environment["AGENTDECK_TEST_HOME"] {
+		let testHome = URL(fileURLWithPath: rawTestHome, isDirectory: true).standardizedFileURL
+		let acceptedPrefixes = [
+			"/tmp/agentdeck-menubar-acceptance.",
+			"/private/tmp/agentdeck-menubar-acceptance.",
+			"/tmp/agentdeck-macos-xctest.",
+			"/private/tmp/agentdeck-macos-xctest.",
+		]
+		guard acceptedPrefixes.contains(where: testHome.path.hasPrefix) else {
+			throw DebugTestIsolationError.unsafeHome
+		}
+		return testHome
+	}
+	return nil
+}
+
+func debugAutomaticRefreshEnabled(environment: [String: String]) -> Bool {
+	environment["XCTestConfigurationFilePath"] == nil
+}
+#endif
+
 @main
 enum AgentDeckMain {
 	static let widgetReloadArgument = "--reload-widget-timelines"
@@ -37,6 +64,7 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 	private let model: MenuBarViewModel
 	private let quotaSettings: QuotaSettingsController
 	private let settingsController: SettingsWindowController
+	private let automaticRefreshEnabled: Bool
 	private var itemController: MenuBarItemController?
 	private var periodicRefresh: Task<Void, Never>?
 	private var acceptanceWindow: NSWindow?
@@ -54,42 +82,42 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 		var claudeSettingsURL = FileManager.default.homeDirectoryForCurrentUser
 			.appendingPathComponent(".claude", isDirectory: true)
 			.appendingPathComponent("settings.json", isDirectory: false)
+		var automaticRefreshEnabled = true
 		#if DEBUG
-		let processEnvironment = ProcessInfo.processInfo.environment
 		// AgentDeckAppTests is a hosted XCTest target: starting the test bundle
 		// starts this application delegate, including its initial helper refresh.
-		// Refuse to construct a production-home runner when a test command forgot
-		// to pass TEST_RUNNER_AGENTDECK_TEST_HOME (Xcode strips TEST_RUNNER_ for
-		// the launched test host). A mistaken test must fail before it can open or
-		// migrate the operator's real database.
-		if processEnvironment["XCTestConfigurationFilePath"] != nil,
-			processEnvironment["AGENTDECK_TEST_HOME"] == nil
-		{
-			preconditionFailure("Hosted AgentDeck tests require an isolated AGENTDECK_TEST_HOME")
-		}
-		// The acceptance harness runs the app against an isolated home so the
-		// manual checklist never reads real AgentDeck or client state.
-		if let rawTestHome = processEnvironment["AGENTDECK_TEST_HOME"] {
-			let testHome = URL(fileURLWithPath: rawTestHome, isDirectory: true).standardizedFileURL
-			let accepted = testHome.path.hasPrefix("/tmp/agentdeck-menubar-acceptance.")
-				|| testHome.path.hasPrefix("/private/tmp/agentdeck-menubar-acceptance.")
-			precondition(accepted, "AGENTDECK_TEST_HOME must be an isolated AgentDeck acceptance directory")
-			runner = EmbeddedHelperRunner(
-				appBundleURL: Bundle.main.bundleURL,
-				environment: [
-					"HOME": testHome.path,
-					"LANG": "en_US_POSIX",
-					"LC_ALL": "en_US_POSIX",
-					"PATH": "/usr/bin:/bin",
-				]
-			)
-			snapshotStore = AppGroupSnapshotStore(
-				directoryURL: testHome.appendingPathComponent("app-group", isDirectory: true)
-			)
-			defaults = UserDefaults(suiteName: "com.kitdine.agentdeck.acceptance") ?? .standard
-			defaults.setVolatileDomain([:], forName: "com.kitdine.agentdeck.acceptance")
-			claudeSettingsURL = testHome.appendingPathComponent(".claude", isDirectory: true)
-				.appendingPathComponent("settings.json", isDirectory: false)
+		// debugAutomaticRefreshEnabled is what actually keeps an ordinary hosted
+		// test from touching real state: it disables the periodic refresh (and
+		// therefore the embedded helper launch) whenever XCTestConfigurationFilePath
+		// is set, regardless of whether AGENTDECK_TEST_HOME is also present
+		// (docs/fixes/xctest-state-isolation.md). A hosted test that explicitly
+		// wants the real helper against an isolated home still goes through
+		// debugTestHome below, which fails closed on an unsafe prefix.
+		automaticRefreshEnabled = debugAutomaticRefreshEnabled(environment: ProcessInfo.processInfo.environment)
+		// Acceptance harnesses may supply a controlled temporary home. XCTest
+		// hosts never launch the helper, so a direct xcodebuild cannot read or
+		// migrate the user's real AgentDeck or client state.
+		do {
+			if let testHome = try debugTestHome(environment: ProcessInfo.processInfo.environment) {
+				runner = EmbeddedHelperRunner(
+					appBundleURL: Bundle.main.bundleURL,
+					environment: [
+						"HOME": testHome.path,
+						"LANG": "en_US_POSIX",
+						"LC_ALL": "en_US_POSIX",
+						"PATH": "/usr/bin:/bin",
+					]
+				)
+				snapshotStore = AppGroupSnapshotStore(
+					directoryURL: testHome.appendingPathComponent("app-group", isDirectory: true)
+				)
+				defaults = UserDefaults(suiteName: "com.kitdine.agentdeck.acceptance") ?? .standard
+				defaults.setVolatileDomain([:], forName: "com.kitdine.agentdeck.acceptance")
+				claudeSettingsURL = testHome.appendingPathComponent(".claude", isDirectory: true)
+					.appendingPathComponent("settings.json", isDirectory: false)
+			}
+		} catch {
+			preconditionFailure("AgentDeck test harness requires a safe temporary home")
 		}
 		#endif
 		let preferences = DesktopPreferences(defaults: defaults)
@@ -108,6 +136,7 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 			notifications: notifications
 		)
 		self.preferences = preferences
+		self.automaticRefreshEnabled = automaticRefreshEnabled
 		refreshCoordinator = coordinator
 		self.switchController = switchController
 		self.quotaSettings = quotaSettings
@@ -125,8 +154,10 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 		itemController = MenuBarItemController(model: model) { [weak self] in
 			self?.settingsController.show()
 		}
-		refreshCoordinator.startInitialRefresh()
-		startPeriodicRefresh()
+		if automaticRefreshEnabled {
+			refreshCoordinator.startInitialRefresh()
+			startPeriodicRefresh()
+		}
 		#if DEBUG
 		presentAcceptanceWindowIfRequested()
 		#endif

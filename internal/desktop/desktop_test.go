@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kitdine/agent-deck/internal/doctor"
 	"github.com/kitdine/agent-deck/internal/provider"
 	"github.com/kitdine/agent-deck/internal/session"
 	"github.com/kitdine/agent-deck/internal/store"
@@ -35,6 +36,31 @@ func TestRequestValidate(t *testing.T) {
 				t.Fatalf("Validate() error = %v, want %v", err, test.want)
 			}
 		})
+	}
+}
+
+func TestHealthSnapshotCopiesSupportedCountAndOmitsZero(t *testing.T) {
+	report := doctor.Report{
+		Status: "unhealthy", Healthy: false, Problems: 1, Errors: 1,
+		Checks: []doctor.Check{
+			{Name: "database", Status: "error", Code: store.ErrSchemaAhead.Code, Count: 99, SupportedCount: store.CurrentSchemaVersion},
+			{Name: "state_lock", Status: "ok"},
+		},
+	}
+	snapshot := healthSnapshot(report)
+	if !snapshot.Available || snapshot.Status != report.Status || snapshot.Problems != 1 || snapshot.Errors != 1 || len(snapshot.Checks) != 2 {
+		t.Fatalf("health snapshot = %#v", snapshot)
+	}
+	want := HealthCheck{Name: "database", Status: "error", Code: store.ErrSchemaAhead.Code, Count: 99, SupportedCount: store.CurrentSchemaVersion}
+	if snapshot.Checks[0] != want {
+		t.Fatalf("schema check = %#v, want %#v", snapshot.Checks[0], want)
+	}
+	encoded, err := json.Marshal(snapshot.Checks)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(string(encoded), `"supported_count"`) != 1 {
+		t.Fatalf("supported_count omission = %s", encoded)
 	}
 }
 
@@ -282,7 +308,7 @@ func TestCanonicalFixturesDecodeAndExcludeForbiddenKeys(t *testing.T) {
 			Message string `json:"message"`
 		} `json:"error,omitempty"`
 	}
-	for _, name := range []string{"snapshot-complete.json", "snapshot-partial.json", "snapshot-empty-client.json"} {
+	for _, name := range []string{"snapshot-complete.json", "snapshot-partial.json", "snapshot-empty-client.json", "snapshot-schema-ahead.json"} {
 		t.Run(name, func(t *testing.T) {
 			contents, err := os.ReadFile(filepath.Join("..", "..", "desktop", "fixtures", "v1", name))
 			if err != nil {
@@ -315,7 +341,7 @@ func TestCanonicalFixturesDecodeAndExcludeForbiddenKeys(t *testing.T) {
 			if name == "snapshot-empty-client.json" {
 				assertEmptyClientScope(t, envelope.Data)
 			}
-			if name != "snapshot-partial.json" {
+			if name != "snapshot-partial.json" && name != "snapshot-schema-ahead.json" {
 				assertPresentationBounds(t, envelope.Data, name == "snapshot-complete.json")
 				assertSessionPeriodKeys(t, envelope.Data)
 			}
@@ -683,5 +709,45 @@ func TestSessionPeriodsUseCalendarDaysAcrossADaylightSavingTransition(t *testing
 	}
 	if got := byKey["today/all"]; got.Sessions != 0 {
 		t.Fatalf("today/all = %#v", got)
+	}
+}
+
+func TestSchemaAheadProducerKeepsIndependentSessionAvailability(t *testing.T) {
+	for _, sessionsAvailable := range []bool{false, true} {
+		root := schemaAheadFixtureRoot(t)
+		if sessionsAvailable {
+			seedSessions(t, root, nil)
+		}
+		result := buildFixtureResult(t, root)
+		if !result.Partial || result.Snapshot.WireVersion != 1 || result.Snapshot.Provider.Available || result.Snapshot.Usage.Available || !result.Snapshot.Health.Available || result.Snapshot.Sessions.Available != sessionsAvailable {
+			t.Fatalf("schema snapshot availability = %+v", result)
+		}
+		hasSessionWarning := false
+		for _, warning := range result.Warnings {
+			if warning == "sessions_unavailable" {
+				hasSessionWarning = true
+			}
+		}
+		if hasSessionWarning == sessionsAvailable {
+			t.Fatalf("independent session warning = %v", result.Warnings)
+		}
+		foundSchema, foundHook := false, false
+		for _, check := range result.Snapshot.Health.Checks {
+			switch check.Code {
+			case "schema_ahead":
+				foundSchema = true
+				if check.Count != 99 || check.SupportedCount != store.CurrentSchemaVersion || check.Recovery != "" {
+					t.Fatalf("schema check = %+v", check)
+				}
+			case "hook_deliveries_dropped":
+				foundHook = true
+				if check.Count != 2 || check.Recovery != "" {
+					t.Fatalf("hook check = %+v", check)
+				}
+			}
+		}
+		if !foundSchema || !foundHook {
+			t.Fatalf("missing diagnostics: %+v", result.Snapshot.Health)
+		}
 	}
 }

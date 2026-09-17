@@ -68,7 +68,8 @@ func leafCommands(root *cobra.Command) []*cobra.Command {
 		if (command.RunE != nil || command.Run != nil) &&
 			!emitsShellScript(command) &&
 			command.Annotations[shellLifecycleSurfaceOnlyAnnotation] != "true" &&
-			command.Annotations[humanInteractiveSurfaceOnlyAnnotation] != "true" {
+			command.Annotations[humanInteractiveSurfaceOnlyAnnotation] != "true" &&
+			command.Annotations[internalRuntimeSurfaceOnlyAnnotation] != "true" {
 			leaves = append(leaves, command)
 		}
 		for _, child := range command.Commands() {
@@ -257,6 +258,7 @@ func TestEveryLeafSyntaxErrorUsesStableJSON(t *testing.T) {
 
 func TestJSONCommandsUseSyntheticStateAndDoNotExposeSecrets(t *testing.T) {
 	state, home := filepath.Join(t.TempDir(), "state"), filepath.Join(t.TempDir(), "home")
+	waitForDetachedScanCleanup(t, state)
 	if err := os.MkdirAll(filepath.Join(home, ".codex"), 0700); err != nil {
 		t.Fatal(err)
 	}

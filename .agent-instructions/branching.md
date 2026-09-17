@@ -68,13 +68,15 @@ branch/worktree or workspace binding. If no valid workspace exists, stop before
 task claim or product work and return `进入工作：<topic>` as the prerequisite.
 After entry, topic design documents, task matrices, implementation, and topic
 review records belong to the topic branch. Existing topic history committed on
-`main` is inherited without rewriting it. `main` remains canonical for project
-governance, stable indexes, roadmap, cross-topic status, and authorized version
-assembly.
+`main` is inherited without rewriting it. `main` holds the integrated baseline
+for project governance, stable indexes, roadmap, and project status. Authorized
+governance changes are prepared in the selected worktree and delivered through
+the applicable PR/integration boundary; canonical ownership is not an instruction
+to edit or commit another checkout during a topic task.
 
-Cross-topic status identifies unmerged branch work without claiming that its
-content exists on `main`. Coordinate a required `main` status update explicitly;
-do not mix its staging or delivery with feature work.
+Use [Status ownership across worktrees](../docs/documentation-workflow.md#status-ownership-across-worktrees)
+for status synchronization. Topic task progress creates neither a `main` status
+commit nor a duplicate global-status change in the feature branch.
 
 A worktree may be shared by multiple agents. Workspace placement grants neither
 task ownership nor exclusive write access. Coordinate overlapping edits and Git
@@ -263,8 +265,8 @@ records, while recording the actual branch and content identity for each claim:
 
 | Document | Location responsibility |
 | --- | --- |
-| `AGENTS.md`, `.agent-instructions/*` | Canonical project governance on `main`; synchronize branch copies only through authorized work |
-| Stable index, cross-topic status, roadmap | Canonical coordination on `main`; they do not prove unmerged feature content is present there |
+| `AGENTS.md`, `.agent-instructions/*` | `main` holds the integrated baseline; prepare explicitly authorized rule changes in the selected worktree for PR/integration |
+| Stable index, project status, roadmap | Integrated project view on `main`; update under their own topology, integration, or planning scope, not for each feature task |
 | Topic requirements, UX, architecture, decomposition | Belong to the topic branch after topic entry; existing history on `main` is inherited without rewriting it |
 | Task/integration review of branch code | Stored with or explicitly bound to that code's reviewed state |
 | Document review | Bound to the reviewed document and any dependent specimen, not to an unrelated branch's latest round |

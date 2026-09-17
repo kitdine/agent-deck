@@ -6,8 +6,8 @@ import AgentDeckShared
 enum AgentDeckFoundationVerifier {
     static func main() async {
         let paths = Array(CommandLine.arguments.dropFirst())
-        guard paths.count == 4 else {
-            fail("expected the complete, partial, empty-client and legacy fixture paths")
+        guard paths.count == 5 else {
+            fail("expected the complete, partial, empty-client, legacy and schema-ahead fixture paths")
         }
 
         do {
@@ -15,7 +15,8 @@ enum AgentDeckFoundationVerifier {
                 completeData: Data(contentsOf: URL(fileURLWithPath: paths[0])),
                 partialData: Data(contentsOf: URL(fileURLWithPath: paths[1])),
                 emptyClientData: Data(contentsOf: URL(fileURLWithPath: paths[2])),
-                legacyData: Data(contentsOf: URL(fileURLWithPath: paths[3]))
+                legacyData: Data(contentsOf: URL(fileURLWithPath: paths[3])),
+                schemaAheadData: Data(contentsOf: URL(fileURLWithPath: paths[4]))
             )
             print("verified AgentDeck macOS foundation fixtures and helper boundaries")
         } catch {
@@ -75,7 +76,8 @@ enum AgentDeckFoundationVerifier {
         completeData: Data,
         partialData: Data,
         emptyClientData: Data,
-        legacyData: Data
+        legacyData: Data,
+        schemaAheadData: Data
     ) async throws {
         let complete = try decodeDesktopWireEnvelopeV1(completeData)
         let partial = try decodeDesktopWireEnvelopeV1(partialData)
@@ -113,6 +115,17 @@ enum AgentDeckFoundationVerifier {
         // Both additive families are absent from a legacy v1 payload. It decodes
         // as unavailable rather than failing, and wire_version stays 1.
         let legacy = try decodeDesktopWireEnvelopeV1(legacyData)
+        try require(legacy.data.health.checks.isEmpty, "legacy health check list remains empty")
+        let oldCheck = try JSONDecoder().decode(DesktopHealthCheckV1.self, from: Data(#"{"name":"database","status":"ok","count":23}"#.utf8))
+        try require(oldCheck.supportedCount == nil, "old check omits supported count")
+        let ahead = try decodeDesktopWireEnvelopeV1(schemaAheadData)
+        let schema = ahead.data.health.checks.first { $0.code == "schema_ahead" }
+        let hook = ahead.data.health.checks.first { $0.code == "hook_deliveries_dropped" }
+        try require(ahead.data.wireVersion == 1 && ahead.partial && !ahead.data.provider.available && !ahead.data.usage.available && !ahead.data.sessions.available && ahead.data.health.available, "schema-ahead section availability")
+        try require(ahead.warnings.contains("sessions_unavailable"), "independent session warning survives")
+		try require(schema?.count == 99 && schema?.supportedCount == 26 && schema?.recoveryCommand == nil, "schema version pair")
+        try require(hook?.count == 2 && hook?.supportedCount == nil && hook?.recoveryCommand == nil, "Hook refusal count")
+
         try require(legacy.data.wireVersion == 1, "the legacy fixture stays at wire version 1")
         try require(
             !legacy.data.usage.presentation.available && legacy.data.usage.presentation.scopes.isEmpty,
@@ -128,7 +141,10 @@ enum AgentDeckFoundationVerifier {
         let bundleURL = try makeEmbeddedHelperBundle(in: temporaryDirectory, script: "#!/bin/sh\nexit 0\n")
 
         let recordingProcess = VerifierProcess(
-            behavior: .output(HelperProcessOutput(exitStatus: 0, stdout: completeData))
+			behaviors: [
+				.output(HelperProcessOutput(exitStatus: 0, stdout: successfulScanStream())),
+				.output(HelperProcessOutput(exitStatus: 0, stdout: completeData)),
+			]
         )
         let embeddedRunner = EmbeddedHelperRunner(
             appBundleURL: bundleURL,
@@ -138,10 +154,8 @@ enum AgentDeckFoundationVerifier {
         )
         _ = try await embeddedRunner.snapshot()
         let invocations = await recordingProcess.recordedInvocations()
-        // A refresh updates the rebuildable usage and session indexes first and
-        // then reads one snapshot, so three invocations are the contract rather
-        // than a regression on the single snapshot read.
-        try require(invocations.count == 3, "expected two index refreshes followed by one snapshot read")
+        // One streamed global scan completes before the read-only snapshot.
+        try require(invocations.count == 2, "expected one global scan followed by one streamed snapshot")
         for invocation in invocations {
             try require(
                 invocation.executableURL.path == bundleURL.appendingPathComponent("Contents/Helpers/agentdeck").path,
@@ -149,21 +163,20 @@ enum AgentDeckFoundationVerifier {
             )
         }
         try require(
-            invocations[0].arguments == ["--quiet", "--format", "json", "usage", "scan"],
-            "the usage index refresh must use the approved argument array"
+            invocations[0].arguments == ["--state-dir", "/tmp/agentdeck-fixture-home/.agentdeck", "--format", "ndjson", "scan"],
+            "the global scan must use the approved event-stream argument array"
         )
         try require(
-            invocations[1].arguments == ["--quiet", "--format", "json", "session", "scan"],
-            "the session index refresh must use the approved argument array"
-        )
-        try require(
-            invocations[2].arguments == ["--format", "json", "desktop", "snapshot", "--wire-version", "1", "--recent-limit", "5"],
+            invocations[1].arguments == ["--state-dir", "/tmp/agentdeck-fixture-home/.agentdeck", "--format", "json", "desktop", "snapshot", "--wire-version", "1", "--recent-limit", "5", "--stream"],
             "helper command must use the approved argument array"
         )
 
         let partialRunner = EmbeddedHelperRunner(
             appBundleURL: bundleURL,
-            process: VerifierProcess(behavior: .output(HelperProcessOutput(exitStatus: 0, stdout: partialData)))
+			process: VerifierProcess(behaviors: [
+				.output(HelperProcessOutput(exitStatus: 0, stdout: successfulScanStream())),
+				.output(HelperProcessOutput(exitStatus: 0, stdout: partialData)),
+			])
         )
         let partialEnvelope = try await partialRunner.snapshot()
         try require(partialEnvelope.partial, "partial helper output must be returned, not discarded")
@@ -171,7 +184,10 @@ enum AgentDeckFoundationVerifier {
         let unsupportedData = try replacingWireVersion(in: completeData, with: 2)
         let unsupportedRunner = EmbeddedHelperRunner(
             appBundleURL: bundleURL,
-            process: VerifierProcess(behavior: .output(HelperProcessOutput(exitStatus: 0, stdout: unsupportedData)))
+			process: VerifierProcess(behaviors: [
+				.output(HelperProcessOutput(exitStatus: 0, stdout: successfulScanStream())),
+				.output(HelperProcessOutput(exitStatus: 0, stdout: unsupportedData)),
+			])
         )
         try await expectDesktopWireError(.unsupportedWireVersion(2)) {
             _ = try await unsupportedRunner.snapshot()
@@ -219,7 +235,17 @@ enum AgentDeckFoundationVerifier {
             _ = try await limitedRunner.snapshot()
         }
 
-        try Data("#!/bin/sh\nsleep 1\n".utf8).write(
+		let scanText = String(decoding: successfulScanStream(), as: UTF8.self)
+		let timeoutScript = """
+		#!/bin/sh
+		if [ "$4" = "ndjson" ] && [ "$5" = "scan" ]; then
+		cat <<'AGENTDECK_SCAN'
+		\(scanText)AGENTDECK_SCAN
+		exit 0
+		fi
+		sleep 1
+		"""
+		try Data(timeoutScript.utf8).write(
             to: bundleURL.appendingPathComponent("Contents/Helpers/agentdeck"),
             options: .atomic
         )
@@ -292,7 +318,7 @@ private func expectHelperError(
         try await operation()
         throw VerificationError.failed("expected helper error \(expected)")
     } catch let error as HelperExecutionError {
-        try require(error == expected, "unexpected helper error")
+		try require(error == expected, "unexpected helper error: got \(error), expected \(expected)")
     }
 }
 
@@ -332,11 +358,16 @@ private struct VerifierInvocation: Sendable {
 }
 
 private actor VerifierProcess: EmbeddedHelperProcess {
-    private let behavior: VerifierProcessBehavior
+	private var behaviors: [VerifierProcessBehavior]
     private var invocations = [VerifierInvocation]()
 
     init(behavior: VerifierProcessBehavior) {
-        self.behavior = behavior
+		behaviors = [behavior]
+	}
+
+	init(behaviors: [VerifierProcessBehavior]) {
+		precondition(!behaviors.isEmpty)
+		self.behaviors = behaviors
     }
 
     func run(
@@ -346,7 +377,8 @@ private actor VerifierProcess: EmbeddedHelperProcess {
         timeout _: Duration
     ) async throws -> HelperProcessOutput {
         invocations.append(VerifierInvocation(executableURL: executableURL, arguments: arguments))
-        switch behavior {
+		let behavior = behaviors.count == 1 ? behaviors[0] : behaviors.removeFirst()
+		switch behavior {
         case let .output(output):
             return output
         case let .helperError(error):
@@ -356,9 +388,41 @@ private actor VerifierProcess: EmbeddedHelperProcess {
         }
     }
 
+	func runLines(
+		executableURL: URL,
+		arguments: [String],
+		environment: [String: String],
+		timeout: Duration,
+		maximumLineBytes: Int,
+		maximumLines: Int,
+		onLine: @escaping @Sendable (Data) -> Void
+	) async throws -> HelperProcessLinesOutput {
+		let output = try await run(executableURL: executableURL, arguments: arguments, environment: environment, timeout: timeout)
+		let bytes = [UInt8](output.stdout)
+		let slices = bytes.split(separator: UInt8(0x0A), omittingEmptySubsequences: true)
+		let lines = slices.map { Data($0) }
+		let truncated = output.stdoutTruncated || lines.count > maximumLines || lines.contains { $0.count > maximumLineBytes }
+		let bounded = Array(lines.prefix(maximumLines)).map { Data($0.prefix(maximumLineBytes)) }
+		for line in bounded {
+			onLine(line)
+		}
+		return HelperProcessLinesOutput(exitStatus: output.exitStatus, stdoutLines: bounded, stdoutBytes: output.stdout.count, stderr: output.stderr, stdoutLineTruncated: truncated, stderrTruncated: output.stderrTruncated)
+	}
+
     func recordedInvocations() -> [VerifierInvocation] {
         invocations
     }
+}
+
+private func successfulScanStream() -> Data {
+	let domain = #"{"state":"pending","committed":0,"total":0,"skipped":0}"#
+	let completed = #"{"state":"completed","committed":0,"total":0,"skipped":0}"#
+	return Data(([
+		#"{"schema_version":1,"command":"scan","generated_at":"2026-08-20T12:00:00Z","type":"progress","scope":"both","data":{"sequence":0,"stage":"waiting","usage":\#(domain),"session":\#(domain)},"partial":false}"#,
+		#"{"schema_version":1,"command":"scan","generated_at":"2026-08-20T12:00:01Z","type":"progress","scope":"both","data":{"sequence":1,"stage":"checking","usage":\#(domain),"session":\#(domain)},"partial":false}"#,
+		#"{"schema_version":1,"command":"scan","generated_at":"2026-08-20T12:00:02Z","type":"progress","scope":"both","data":{"sequence":2,"stage":"completed","usage":\#(completed),"session":\#(completed)},"partial":false}"#,
+		#"{"schema_version":1,"command":"scan","generated_at":"2026-08-20T12:00:02Z","type":"result","scope":"both","data":{"scope":"both","usage":{"state":"completed","duration_ms":1},"session":{"state":"completed","duration_ms":1}},"partial":false}"#,
+	].joined(separator: "\n") + "\n").utf8)
 }
 
 private func fail(_ message: String) -> Never {

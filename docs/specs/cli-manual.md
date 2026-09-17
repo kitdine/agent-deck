@@ -40,7 +40,7 @@ credential-owned provider configuration 的正式命令契约。执行状态以
 
 | Flag | 含义 | 是否必填 | 示例 |
 | --- | --- | --- | --- |
-| `--format text\|json\|ndjson` | 输出格式；`ndjson` 仅允许 `watch` | 否，默认 `text` | `agentdeck provider list --format json` |
+| `--format text\|json\|ndjson` | 输出格式；`ndjson` 仅允许 `watch` 与 `scan` 事件流 | 否，默认 `text` | `agentdeck scan --format ndjson` |
 | `--state-dir <path>` | 覆盖 AgentDeck 状态根目录 | 否，默认 `~/.agentdeck` | `agentdeck doctor --state-dir /tmp/ad-state` |
 | `--no-color` | 禁用终端颜色 | 否 | `agentdeck doctor --no-color` |
 | `--quiet` | 抑制非必要 text 输出；错误和机器输出不受影响 | 否 | `agentdeck usage scan --quiet` |
@@ -466,6 +466,9 @@ JSON（Codex `hooks.json`、Claude `settings.json`），shell 管理文本 block
 
 安装的 handler 调用隐藏的 `agentdeck usage hook event <codex|claude>`。它只接受已知、
 有界的生命周期事件，stdout 保持为空且失败不会阻止 client 启动、恢复、设置更新或退出。
+当 core store 因 `schema_ahead` 拒绝打开时，会尽力写入私有、有界的
+`<state>/hook-refusals.json`；写入失败仍保持 stdout/stderr 为空、退出 `0`，
+不会创建有效 session route。该隐藏入口使用 text 格式，不接受 `--format json`。
 Hook 缺失、未信任、禁用或失败时，usage attribution 回退到既有的 estimated
 session-start 行为。`agentdeck run` 仍是兼容的低层 exact-attribution launcher，不再是
 resume 的主要归属机制；并发 managed runs 不阻止 client，而将受影响的 open runs 降级为
@@ -767,6 +770,27 @@ selected activity 只展开 safe metadata，selected invocation 展开全部 tok
 named pagination、warnings 和 partial state。后续 desktop wire contract 仍必须负责
 一个 coherent snapshot、wire version 和 Go-owned redaction，而不是解析 CLI text。
 
+## Scan
+
+`agentdeck scan` 通过每个 state root 唯一的按需 worker 同时扫描 usage 与 session。
+省略 `--scope` 等待两个 domain；`--scope usage|session` 仅选择前台等待与显示，另一
+domain 仍在后台完成。Text 成功输出固定为 `Scan complete: usage.`、
+`Scan complete: session.` 或 `Scan complete: usage and sessions.`；所选 domain
+失败时输出 `Scan incomplete: <domains> failed.` 并非零退出。Ctrl-C、超时或终端断开
+只分离当前 subscriber，不取消已接受的全局工作。
+
+Text/JSON 的 progress 使用英文 stderr，最多每秒五次：等待当前扫描、检查源文件、
+导入已提交的 aggregate counts、计算统计数据。非 TTY 不含 ANSI cursor control，
+`--quiet` 只抑制 progress。Final JSON 保持单一标准 envelope，`data` 含 `scope`、
+`usage` 与 `session`。
+
+`--format ndjson` 明确选择 version-1 scan event stream。每行固定包含
+`schema_version=1`、`command=scan`、UTC `generated_at`、`type`、`scope`、`data`
+与 `partial`。progress 的 `sequence` 单调递增，`stage` 为
+`waiting|checking|importing|statistics|completed`；最后恰有一行 `type=result`。
+未知、乱序、损坏、截断或超限事件视为失败。事件仅含 aggregate state/count，绝不
+包含 source path、session 文本、credential 或猜测百分比。
+
 ## Desktop
 
 `desktop snapshot` 是 macOS host 每次刷新调用的稳定 JSON-only helper
@@ -820,8 +844,12 @@ CLI 读取本地状态。没有任何菜单项、偏好或文案提到更新，�
 v0.5.0 随发布提供 `AgentDeck.app`，一个 macOS 26 菜单栏应用，其唯一数据源
 是内嵌的本 CLI 副本。它是一个阅读表面加一个写操作。
 
-- **边界**：应用运行内嵌 helper 并解码 `desktop snapshot` 的 wire-v1
-  envelope。它不解析 text 输出、不直接读数据库、不监听端口、不联网。Go
+- **边界**：应用先消费内嵌 helper 的 version-1 `scan` NDJSON stream，再解码
+  `desktop snapshot` 的 wire-v1 envelope。helper 运行期间显示等待、检查、已提交
+  导入计数和统计阶段；已有 snapshot 保持可见，只有完整新 envelope 校验通过后才
+  原子替换。scan/event/snapshot 失败保留旧数据与 retry；关闭 popover 只分离显示，
+  worker 继续，重开后读取当前 coordinator state。它不解析 text 输出、不直接读
+  数据库、不监听端口、不联网。Go
   helper 与既有 AgentDeck 状态始终是权威，应用持有的一切都是它们的可丢弃
   投影。
 - **菜单栏表面**：provider、usage、sessions、health 四个受筛选面板，加上
@@ -919,13 +947,24 @@ restore 为目标机器创建新 key，并在一个 transaction 中替换 snapsh
 release/support identity，不是运行时领域 instant，因此保持固定 UTC 格式，并在字段名中
 明确标出 UTC。
 
-Doctor 对 core schema 使用四态契约：schema 12 quick/full 报告
-`schema_outdated`、`count=12` 和 `agentdeck state migrate`；完整 schema 13
-报告 `ok`、`count=13`；schema 13 缺 `usage_tool_calls` 只报告
-`schema_incompatible`，不再附加旧 schema warning；未来 schema 报告
-`unknown_schema` 且不提供虚假 recovery。Text 和 JSON 都不输出原始 SQL、
-SQLite 查询或驱动错误。`state migrate` 的 text 成功信息明确确认完成，JSON
-返回 `migrated: true`。
+Doctor quick/full 使用同一 core schema 契约。以当前支持 schema 26 的二进制为例：
+旧 schema 12 报告 `schema_outdated`、`count=12`、`supported_count=26` 和可复制的
+`agentdeck state migrate`；完整受支持 schema 报告 `ok`、`count=26`；声明受支持版本
+却缺少 `usage_tool_calls` 时报告 `schema_incompatible`。未来 schema 99 报告
+`database` check，`code=schema_ahead`、`count=99`、`supported_count=26`，没有
+`recovery_command`；text 提示升级 AgentDeck。这里的数字是数据库 schema，不是产品版本。
+
+缺失状态或无法打开 core 库而提前结束时，JSON envelope 设置 `partial: true`，
+`warnings` 包含 `checks_skipped`，text 明示剩余检查未运行。成功输出诊断报告仍退出
+`0`；普通读写命令因 `schema_ahead` 拒绝时退出 `1`。已有元数据损坏处理不改成
+未来版本错误。Text 和 JSON 都不输出原始 SQL、SQLite 查询或驱动错误。
+`state migrate` 的 text 成功信息明确确认完成，JSON 返回 `migrated: true`。
+
+若此前 Hook 投递被拒绝，doctor 还会在数据库检查前读取 `hook-refusals.json`，
+显示 `hook_deliveries_dropped` 和丢弃计数，且只在记录的 `stored` 仍高于当前支持版本时
+显示。任何成功读写打开 core 库的命令都会尽力清除记录；失败打开保留它。升级到支持
+该版本的二进制会停止显示警告，但不等于删除文件；doctor 等只读入口不会清除它。
+记录不进入备份，并发下的计数不是精确投递账本。
 
 ### Watch 扫描规则
 

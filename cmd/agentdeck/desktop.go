@@ -8,20 +8,20 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
-	"sync"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/kitdine/agent-deck/internal/desktop"
 	"github.com/kitdine/agent-deck/internal/output"
-	"github.com/kitdine/agent-deck/internal/session"
-	"github.com/kitdine/agent-deck/internal/store"
-	"github.com/kitdine/agent-deck/internal/usage"
-	"github.com/kitdine/agent-deck/internal/watch"
+	"github.com/kitdine/agent-deck/internal/scanruntime"
 )
 
 const desktopSnapshotChunkBytes = 48 * 1024
+
+var desktopNow = time.Now
+var desktopIndexRefreshObserver func(desktopIndexRefreshResult)
+var desktopSnapshotObserver func(desktop.Result)
 
 type desktopSnapshotChunkEnvelope struct {
 	SchemaVersion int                      `json:"schema_version"`
@@ -41,8 +41,13 @@ type desktopSnapshotChunkData struct {
 }
 
 type desktopIndexRefreshResult struct {
-	Usage    desktopIndexDomainResult `json:"usage"`
-	Sessions desktopIndexDomainResult `json:"sessions"`
+	Usage              desktopIndexDomainResult `json:"usage"`
+	Sessions           desktopIndexDomainResult `json:"sessions"`
+	discoveryMS        int64
+	workerTotalMS      int64
+	derivedCacheMS     int64
+	workerCPUTimeMS    int64
+	workerPeakRSSBytes int64
 }
 
 type desktopIndexDomainResult struct {
@@ -50,9 +55,8 @@ type desktopIndexDomainResult struct {
 	DurationMilliseconds int64  `json:"duration_ms"`
 	Changes              any    `json:"changes,omitempty"`
 	ErrorCode            string `json:"error_code,omitempty"`
+	failureStage         string
 }
-
-type desktopIndexScan func() (any, error)
 
 func newDesktopCommand(opts *commandOptions) *cobra.Command {
 	command := &cobra.Command{Use: "desktop", Short: "Read desktop integration data"}
@@ -86,10 +90,14 @@ func newDesktopCommand(opts *commandOptions) *cobra.Command {
 				Home:      home,
 				Workdir:   workdir,
 				Vault:     newCredentialVault(stateRoot),
+				Now:       desktopNow,
 				Location:  displayLocation(),
 			}).Build(cmd.Context(), desktop.Request{WireVersion: wireVersion, RecentLimit: recentLimit})
 			if err != nil {
 				return err
+			}
+			if desktopSnapshotObserver != nil {
+				desktopSnapshotObserver(result)
 			}
 			if stream {
 				return writeDesktopSnapshotStream(opts.stdout, result)
@@ -120,6 +128,9 @@ func newDesktopCommand(opts *commandOptions) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if desktopIndexRefreshObserver != nil {
+				desktopIndexRefreshObserver(result)
+			}
 			return writeEnvelope(opts.stdout, opts.format, "desktop.refresh-indexes", result, partial, warnings)
 		},
 	}
@@ -128,41 +139,11 @@ func newDesktopCommand(opts *commandOptions) *cobra.Command {
 }
 
 func refreshDesktopIndexes(ctx context.Context, stateRoot, home string) (desktopIndexRefreshResult, bool, []string, error) {
-	lock, err := store.AcquireLock(ctx, stateRoot, 5*time.Second)
+	round, err := (scanruntime.Client{StateRoot: stateRoot, Home: home, Executable: scanRuntimeExecutable(), ForceLocal: scanRuntimeForceLocal(), Now: desktopNow}).Request(ctx, scanruntime.ScopeBoth)
 	if err != nil {
 		return desktopIndexRefreshResult{}, false, nil, err
 	}
-	defer lock.Release()
-
-	core, err := store.OpenWithLockHeld(ctx, stateRoot)
-	if err != nil {
-		return desktopIndexRefreshResult{}, false, nil, err
-	}
-	defer core.Close()
-	sessions, err := store.OpenSessions(ctx, stateRoot)
-	if err != nil {
-		return desktopIndexRefreshResult{}, false, nil, err
-	}
-	defer sessions.Close()
-
-	result := runDesktopIndexScans(
-		func() (any, error) {
-			return usage.New(core, home).Scan(ctx)
-		},
-		func() (any, error) {
-			return session.Scan(ctx, sessions.DB, home)
-		},
-	)
-	if result.Sessions.Success {
-		fingerprint, fingerprintErr := watch.FingerprintRoots(sessionWatchRoots(home)...)
-		if fingerprintErr == nil {
-			fingerprintErr = core.SetSetting(ctx, "watch.fingerprint.session", fingerprint)
-		}
-		if fingerprintErr != nil {
-			result.Sessions.Success = false
-			result.Sessions.ErrorCode = errorCode(fingerprintErr)
-		}
-	}
+	result := desktopIndexResultFromRound(round)
 	warnings := []string{}
 	if !result.Usage.Success {
 		warnings = append(warnings, "usage_index_refresh_failed")
@@ -173,39 +154,46 @@ func refreshDesktopIndexes(ctx context.Context, stateRoot, home string) (desktop
 	return result, len(warnings) > 0, warnings, nil
 }
 
-func runDesktopIndexScans(usageScan, sessionScan desktopIndexScan) desktopIndexRefreshResult {
-	var wait sync.WaitGroup
-	wait.Add(2)
-	var usageResult, sessionResult desktopIndexDomainResult
-	go func() {
-		defer wait.Done()
-		usageResult = runDesktopIndexScan(usageScan)
-	}()
-	go func() {
-		defer wait.Done()
-		sessionResult = runDesktopIndexScan(sessionScan)
-	}()
-	wait.Wait()
-	return desktopIndexRefreshResult{Usage: usageResult, Sessions: sessionResult}
-}
-
-func runDesktopIndexScan(scan desktopIndexScan) desktopIndexDomainResult {
-	startedAt := time.Now()
-	changes, err := scan()
-	result := desktopIndexDomainResult{
-		Success:              err == nil,
-		DurationMilliseconds: time.Since(startedAt).Milliseconds(),
-		Changes:              changes,
+func desktopIndexResultFromRound(round scanruntime.Result) desktopIndexRefreshResult {
+	result := desktopIndexRefreshResult{
+		discoveryMS:        round.Stages.DiscoveryMS,
+		workerTotalMS:      round.Stages.TotalMS,
+		derivedCacheMS:     round.Stages.DerivedCacheMS,
+		workerCPUTimeMS:    round.Stages.WorkerCPUTimeMS,
+		workerPeakRSSBytes: round.Stages.WorkerPeakRSSBytes,
+		Usage: desktopIndexDomainResult{
+			Success:              round.Usage.State == "completed",
+			DurationMilliseconds: round.Usage.DurationMS,
+			Changes:              round.Usage.Changes,
+			ErrorCode:            round.Usage.ErrorCode,
+		},
+		Sessions: desktopIndexDomainResult{
+			Success:              round.Session.State == "completed",
+			DurationMilliseconds: round.Session.DurationMS,
+			Changes:              round.Session.Scan,
+			ErrorCode:            round.Session.ErrorCode,
+		},
 	}
-	if err != nil {
-		result.Changes = nil
-		result.ErrorCode = errorCode(err)
+	if !result.Usage.Success {
+		result.Usage.failureStage = scanRuntimeFailureStage(round.Usage.ErrorCode)
+		result.Usage.Changes = nil
+	}
+	if !result.Sessions.Success {
+		result.Sessions.failureStage = scanRuntimeFailureStage(round.Session.ErrorCode)
+		result.Sessions.Changes = nil
 	}
 	return result
 }
 
+func scanRuntimeFailureStage(code string) string {
+	if code == "deadline_exceeded" || code == "cancelled" {
+		return "deadline"
+	}
+	return "scan"
+}
+
 func writeDesktopSnapshotStream(w interface{ Write([]byte) (int, error) }, result desktop.Result) error {
-	envelope := output.New("desktop.snapshot", result.Snapshot, time.Now())
+	envelope := output.New("desktop.snapshot", result.Snapshot, desktopNow())
 	warnings := result.Warnings
 	if warnings == nil {
 		warnings = []string{}
@@ -225,7 +213,7 @@ func writeDesktopSnapshotStream(w interface{ Write([]byte) (int, error) }, resul
 		frame := desktopSnapshotChunkEnvelope{
 			SchemaVersion: output.SchemaVersion,
 			Command:       "desktop.snapshot.chunk",
-			GeneratedAt:   time.Now().UTC(),
+			GeneratedAt:   desktopNow().UTC(),
 			Data: desktopSnapshotChunkData{
 				Index: index, Count: count, TotalBytes: len(payload), SHA256: digestText,
 				Payload: base64.StdEncoding.EncodeToString(payload[start:end]),

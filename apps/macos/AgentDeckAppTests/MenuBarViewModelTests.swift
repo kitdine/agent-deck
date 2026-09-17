@@ -14,6 +14,87 @@ final class MenuBarViewModelTests: XCTestCase {
 		return model
 	}
 
+	func testSchemaSignalNoticeVariantsAndHealthProse() async throws {
+		for refusals in [false, true] {
+			for unavailable in [false, true] {
+				let model = await readyModel(envelope: WireFixture.schemaSignal(refusals: refusals, sessionsUnavailable: unavailable))
+				XCTAssertEqual(model.notices.map(\.id), ["schema"] + (refusals ? ["health"] : []) + (unavailable ? ["warning.sessions_unavailable"] : []))
+				XCTAssertEqual(model.notices.first?.severity, .error)
+				XCTAssertTrue(model.notices.first?.opensHealthDetail ?? false)
+				XCTAssertTrue(model.menuBarBadged)
+				XCTAssertFalse(model.presentation.isBadged)
+				XCTAssertEqual(model.menuBarAccessibilityLabel, t(DesktopCopy.badgedSchemaSignal))
+				XCTAssertEqual(model.footer.routesText, t(DesktopCopy.schemaSignalFooter))
+				XCTAssertEqual(model.sectionUnavailableText, t(DesktopCopy.schemaSignalSectionUnavailable))
+				XCTAssertEqual(model.switchingUnavailableText, t(DesktopCopy.schemaSignalSwitchUnavailable))
+				let row = try XCTUnwrap(model.healthDetail.rows.first)
+				XCTAssertEqual(row.code, "schema_ahead")
+				XCTAssertEqual(row.count, 99)
+				XCTAssertEqual(row.supportedCount, 23)
+				XCTAssertEqual(row.cause, t(DesktopCopy.schemaSignalCause, Int64(99), Int64(23)))
+				XCTAssertEqual(row.recoveryProse, t(DesktopCopy.schemaSignalRecovery))
+				XCTAssertNil(row.recovery)
+				XCTAssertTrue(row.hasDisclosure)
+				XCTAssertEqual(row.accessibilityText(expanded: true), [row.name, row.status, row.cause!, row.recoveryProse!].joined(separator: ", "))
+				XCTAssertEqual(row.accessibilityText(expanded: false), [row.name, row.status].joined(separator: ", "))
+				if refusals {
+					let hook = try XCTUnwrap(model.healthDetail.rows.last)
+					XCTAssertEqual(hook.cause, t(DesktopCopy.schemaSignalHookDropped, Int64(2)))
+					XCTAssertNil(hook.recoveryProse)
+					XCTAssertNil(hook.recovery)
+				}
+			}
+		}
+	}
+
+	func testSchemaSignalPreservesIndependentWarningsAndMissingNumbers() async {
+		let model = await readyModel(envelope: WireFixture.schemaSignal(numbers: false, extraWarnings: ["state_close_failed", "sessions_close_failed", "provider_candidates_unavailable", "unknown"]))
+		XCTAssertEqual(model.notices.map(\.id), ["schema", "warning.state_close_failed", "warning.sessions_close_failed", "warning.provider_candidates_unavailable", "warning.more"])
+		XCTAssertNil(model.healthDetail.rows.first?.count)
+		XCTAssertNil(model.healthDetail.rows.first?.supportedCount)
+		XCTAssertNil(model.healthDetail.rows.first?.cause)
+		XCTAssertNotNil(model.healthDetail.rows.first?.recoveryProse)
+	}
+
+	func testSchemaSignalFailurePrecedenceAndHealthyReset() async {
+		let host = StubDesktopHost(behavior: .envelope(WireFixture.schemaSignal()))
+		let model = await makeModel(host: host)
+		await model.coordinator.refresh()
+		host.behavior = .failure(HelperExecutionError.timedOut)
+		await model.coordinator.refresh()
+		XCTAssertEqual(Array(model.notices.prefix(2).map(\.id)), ["failing", "schema"])
+		XCTAssertEqual(model.menuBarAccessibilityLabel, t(DesktopCopy.badgedFailing))
+		host.behavior = .envelope(WireFixture.envelope())
+		await model.coordinator.refresh()
+		XCTAssertFalse(model.hasSchemaSignal)
+		XCTAssertFalse(model.menuBarBadged)
+		XCTAssertTrue(model.notices.isEmpty)
+		XCTAssertEqual(model.sectionUnavailableText, t(DesktopCopy.sectionUnavailable))
+		XCTAssertTrue(model.healthDetail.rows.allSatisfy { $0.cause == nil && $0.recoveryProse == nil })
+	}
+
+	func testSchemaSignalOfflineAndAgedPrecedence() async {
+		let host = StubDesktopHost(behavior: .envelope(WireFixture.schemaSignal()))
+		let model = await makeModel(host: host, now: { Date(timeIntervalSince1970: 1_786_701_600) })
+		await model.coordinator.refresh()
+		XCTAssertTrue(model.qualifiers.contains(.aged))
+		XCTAssertEqual(model.notices.first?.id, "schema")
+		XCTAssertNotNil(model.freshnessText)
+		host.behavior = .failure(HelperExecutionError.missingEmbeddedHelper)
+		await model.coordinator.refresh()
+		XCTAssertEqual(Array(model.notices.prefix(2).map(\.id)), ["offline", "schema"])
+		XCTAssertEqual(model.menuBarAccessibilityLabel, t(DesktopCopy.badgedOffline))
+	}
+
+	func testSchemaOutdatedRetainsItsCopyableCommand() async {
+		let health: [String: Any] = ["available": true, "status": "warning", "healthy": false, "problems": 1, "warnings": 1, "errors": 0, "checks": [["name": "schema", "status": "warning", "code": "schema_outdated", "count": 22, "supported_count": 23, "recovery_command": "agentdeck state migrate"]]]
+		let model = await readyModel(envelope: WireFixture.envelope(health: health))
+		XCTAssertFalse(model.hasSchemaSignal)
+		XCTAssertEqual(model.healthDetail.rows.first?.recovery, "agentdeck state migrate")
+		XCTAssertNil(model.healthDetail.rows.first?.cause)
+		XCTAssertNil(model.healthDetail.rows.first?.recoveryProse)
+	}
+
 	// MARK: Surface
 
 	func testRefreshingStateIsVisibleUntilTheHelperCompletes() async {
@@ -25,6 +106,16 @@ final class MenuBarViewModelTests: XCTestCase {
 		}
 
 		XCTAssertTrue(model.isRefreshing)
+		await Task.yield()
+		XCTAssertEqual(model.scanProgressStageText, t(DesktopCopy.scanImporting))
+		XCTAssertEqual(
+			model.scanProgressCountsText,
+			[
+				t(DesktopCopy.scanUsageProgress, Int64(3), Int64(8)),
+				t(DesktopCopy.scanSessionProgress, Int64(2), Int64(8)),
+				t(DesktopCopy.scanSkipped, Int64(1)),
+			].joined(separator: " · ")
+		)
 		host.resume()
 		await refresh.value
 		XCTAssertFalse(model.isRefreshing)
@@ -59,10 +150,28 @@ final class MenuBarViewModelTests: XCTestCase {
 		let host = StubDesktopHost(behavior: .failure(HelperExecutionError.timedOut))
 		let model = await makeModel(host: host)
 		await model.coordinator.refresh()
+		await Task.yield()
 
 		XCTAssertEqual(model.surface, .errorSurface)
 		XCTAssertEqual(model.errorCopy, t(DesktopCopy.refreshTimedOut))
 		XCTAssertTrue(model.notices.isEmpty, "an error surface has no snapshot to qualify")
+		XCTAssertTrue(model.showsScanProgressStatus)
+		XCTAssertEqual(model.scanProgressStageText, t(DesktopCopy.scanFinished))
+		XCTAssertTrue(model.scanProgressCountsText?.contains(t(DesktopCopy.failing)) == true)
+	}
+
+	func testDegradedDataSurfaceShowsRetainedTerminalDomainOutcome() async {
+		let host = StubDesktopHost(behavior: .envelope(WireFixture.envelope()))
+		let model = await makeModel(host: host)
+		await model.coordinator.refresh()
+		host.behavior = .failure(HelperExecutionError.timedOut)
+		await model.coordinator.refresh()
+		await Task.yield()
+
+		XCTAssertEqual(model.surface, .dataSurface)
+		XCTAssertTrue(model.showsScanProgressStatus)
+		XCTAssertEqual(model.scanProgressStageText, t(DesktopCopy.scanFinished))
+		XCTAssertTrue(model.scanProgressCountsText?.contains(t(DesktopCopy.failing)) == true)
 	}
 
 	// MARK: Filter propagation
@@ -451,7 +560,7 @@ final class MenuBarViewModelTests: XCTestCase {
 		let provider = try! XCTUnwrap(rows.first(where: { $0.label == "aigocode" }))
 
 		XCTAssertNil(provider.target)
-		XCTAssertEqual(provider.choices.map(\.label), ["work · wrapper", "work · direct"])
+		XCTAssertEqual(provider.choices.map(\.label), ["work · \(t(DesktopCopy.switchWrapper))", "work · \(t(DesktopCopy.switchDirect))"])
 		XCTAssertEqual(provider.detail, t(DesktopCopy.switchChooseTarget, Int64(2)))
 	}
 

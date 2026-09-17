@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-07-14
-updated: 2026-09-01
+updated: 2026-09-08
 ---
 
 # AgentDeck Documentation
@@ -14,7 +14,8 @@ the source of truth when they disagree with documentation.
 
 | Need | Authority |
 | --- | --- |
-| Current release and active topic status | [Project Status](status.md) |
+| Integrated project and release state | [Project Status](status.md) |
+| Unmerged topic progress and cross-worktree handoff | The selected worktree's `docs/topics/<topic>/tasks.md` and [Beads](../.agent-instructions/beads.md) |
 | Version roadmap, backlog, and withdrawn candidates | [Roadmap and Backlog](roadmap.md) |
 | Documentation naming, topic structure, and lifecycle | [Documentation Workflow](documentation-workflow.md) |
 | Product, persistence, security, compatibility, and distribution contract | [CLI Design](specs/cli-design.md) |
@@ -30,17 +31,18 @@ changes.
 
 | Document | Status | Authority |
 | --- | --- | --- |
-| [Project Status](status.md) | Active | Current release, cross-topic execution status, and active-version projection; topic detail remains in each `tasks.md`. |
+| [Project Status](status.md) | Active | Integrated project/release state and version-assembly projection; unmerged topic progress remains in its worktree's `tasks.md`. |
 | [Roadmap and Backlog](roadmap.md) | Active | Later version direction, planning intake, and withdrawn candidates. |
 | [Product Prototype](../prototype/README.md) | Active | The design truth for every user-visible surface: menu-bar panel, widgets, settings, and CLI output. A document that disagrees with it is repaired. |
-| [CLI Design](specs/cli-design.md) | Active, version 28 | System, persistence, security, compatibility, and distribution contracts. |
+| [CLI Design](specs/cli-design.md) | Active, version 29 | System, persistence, security, compatibility, and distribution contracts. |
 | [CLI Manual](specs/cli-manual.md) | Active | Implemented commands, flags, output shapes, and interaction behavior. |
 | [Documentation Workflow](documentation-workflow.md) | Active | Documentation naming, topic structure, lifecycle, readiness matrices, size policy, and status vocabulary. |
 | [Brand Asset Provenance](legal/brand-assets.md) | Active | Generation history, derivative chain, canonical hashes, and the boundary between recorded provenance and unresolved trademark/legal review. |
 | [Archived Documents](archive/README.md) | Active index | Retirement history and pointers to historical topics, plans, and reviews. |
 
-A topic's own documents are authoritative for that topic while it executes; use
-the links in [Project Status](status.md) to reach each `tasks.md`. Review-record format lives in
+A topic's own worktree documents are authoritative while it executes. Resolve its
+`tasks.md` through the workspace binding and Beads; inherited Project Status is
+not a live dispatch view. Review-record format lives in
 `.agent-instructions/review-records.md`.
 
 User-facing entry points are the [English README](../README.md) and
@@ -61,7 +63,7 @@ their own historical or in-progress changes remain uncommitted. These stable
 anchors preserve navigation without copying dynamic content:
 
 <a id="current-state"></a><a id="release"></a><a id="active-development"></a>
-[Current release and active development](status.md)
+[Integrated project and release state](status.md)
 
 <a id="known-residual-risk"></a>
 [Known residual risk](status.md#known-residual-risk)
