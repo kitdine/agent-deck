@@ -374,3 +374,93 @@ Task checkpoint：`ad-sq-claude-adapters-dev`，content state
 提交与推送都需要单独授权。
 
 下一步指令：开发：subscription-quota / gate-and-schedule
+
+## Repair handoff — MA-F1 — 2026-09-16
+
+本节只记录人工验收发现 `MA-F1` 的修复与验证，不给出复评结论，也不改写既有各轮记录。
+修复者：claude-code。候选内容：HEAD `f7f6865869ecd8160006ccc474c7937a6386e9e3` 加未提交改动，
+身份见 `tasks.md` Manual acceptance 与本节末尾的清单摘要。
+
+- `MA-F1`（中，`internal/usagehook/config.go` `statusLinePriorRecord`）repaired in candidate：
+  隔离验收中，关闭授权与关闭读取后写回的原 `statusLine` 被 `json.Marshal` 压缩为单行，
+  与原文件 JSON 等价但不是逐字节还原，与代码注释 "verbatim" 及 ux/settings-quota.md 的
+  逐字节还原要求不符。现记录原值的精确字节（`raw`，JSON 字符串）并据此还原；
+  旧版只含 `value` 的记录仍按原方式还原和串接。
+
+修复验证：
+
+- RED/GREEN：`TestRestoreStatusLineRestoresFormattedPriorByteForByte` 修复前失败、修复后通过；
+  `TestPriorStatusLineRecordWithoutRawBytesStillRestores` 覆盖旧记录兼容。
+- `scripts/run-go-test.sh ./internal/usagehook`：PASS。
+- 隔离验收复跑（临时 HOME/state、本分支构建、真实 settings.json 与 statusline.py 的副本、`env -i`）：
+  关闭授权与关闭读取两条路径均逐字节还原；其余 9 项断言保持通过；真实文件核对未变，副本已删除。
+
+Repair complete；等待 task 3 独立复评。本节未执行 commit 或 push。
+
+## Round 4 — 2026-09-16
+
+## 📋 claude-adapters 人工验收修复复评
+
+📊 总体评分：9/10
+
+✅ 复评结论：PASS
+
+### 🔴 严重问题 — 必须修复
+
+无。
+
+### 🟡 改进建议 — 建议处理
+
+无。
+
+### 🟢 做得好的方面
+
+- **MA-F1 → CLOSED。** `SetupStatusLine` 仍从用户的 `settings.json` 精确切出原
+  `statusLine` JSON 值；`writeStatusLinePrior` 现在除兼容用的 `value` 外，还把这段原始字节保存为
+  JSON 字符串 `raw`。`readStatusLinePrior` 校验 `raw` 是合法 JSON 后优先把它作为恢复值，因此
+  `setTopLevelValue` 写回的是原始多行字节，不再是 `json.Marshal` 压缩后的等价值。
+- 新增回归测试 `TestRestoreStatusLineRestoresFormattedPriorByteForByte` 覆盖人工验收中的多行
+  `statusLine`，逐字节比较整个恢复后文件；
+  `TestPriorStatusLineRecordWithoutRawBytesStillRestores` 证明旧版只含 `value` 的 sidecar 仍可串接并恢复。
+- CLA-R1-F1 至 CLA-R1-F5、CLA-R2-F1 仍保持 CLOSED；本轮改动只扩展 prior sidecar 的兼容字段与
+  对应测试，没有改变状态栏串接、载荷上限、探测分类或冲突恢复分支。
+
+### 📝 总结
+
+Reviewer：Codex 主会话（actor `codex`）；未参与本次修复。Method：单代理正式复评——核对
+`MA-F1` repair handoff，审读 `statusLinePriorRecord`、`SetupStatusLine`、`RestoreStatusLine`、
+`readStatusLinePrior`、`writeStatusLinePrior` 及两条新增回归测试；未使用子代理，未修改生产代码、
+仓库测试或配置。
+
+逐项处置：MA-F1 CLOSED；CLA-R1-F1 至 CLA-R1-F5、CLA-R2-F1 仍为 CLOSED。本记录中没有未关闭
+发现，也没有新增发现。
+
+Scope：`internal/usagehook/config.go`、`internal/usagehook/config_test.go`，以及用于确认任务边界、
+人工验收和历史发现处置的 `docs/topics/subscription-quota/tasks.md` 与本评审记录。其它未提交任务的
+代码与记录不属于本轮复评。
+
+残余不确定（不计为发现）：状态栏载荷 `used_percentage` 的 0-100 假设仍未用真实载荷核实；它未被
+本轮 sidecar 修复改变。旧 sidecar 只能恢复其历史上已经压缩保存的 `value`，无法重建当时未保存的
+排版字节；这是兼容既有记录的必然边界，不影响新记录满足逐字节恢复合同。
+
+Reviewed state：branch `feature/subscription-quota`，HEAD
+`f7f6865869ecd8160006ccc474c7937a6386e9e3`；Task 3 的 12 路径 manifest SHA-256
+`f3d920c11daea7cdbf758d0969ccc5784bf62609cfff74918ea24ee6adfb3455`，ContentState
+`urn:agent-deck:content-state:subscription-quota:claude-adapters:f7f6865:f3d920c11dae`。
+
+Evidence：
+
+- `GOCACHE=/private/tmp/agent-deck-go-build scripts/run-go-test.sh ./internal/usagehook`：exit 0；覆盖当前
+  候选的字节级恢复、旧 sidecar 兼容以及该包既有注册/恢复回归。
+- Repair handoff 已在相同生产代码与测试内容上记录 RED/GREEN、全 Go suite、vet 与隔离 consent
+  acceptance 复跑通过；本轮只同步评审与任务状态，不因阶段变化重复这些未失效检查。
+- CodeGraph 明确提示索引属于主工作区、不是当前 topic worktree；因此仅把它当定位线索，结论以本
+  worktree 的当前源码、diff 和定向测试为准。
+
+完成门禁：VERIFIED。WorkUnit
+`urn:agent-deck:work-unit:subscription-quota:claude-adapters` 的目标为
+`urn:agent-deck:content-state:subscription-quota:claude-adapters:f7f6865:f3d920c11dae`；
+`adapter-contract`、`verification`、`review` 三项的状态见本轮 CEv1 查询。
+
+Task 状态：Dev 与 Review 均已勾选；Beads `ad-sq-claude-adapters-dev` 的本轮流转见协调记录。
+本轮没有 commit 或 push。

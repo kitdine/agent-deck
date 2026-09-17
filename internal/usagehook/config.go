@@ -884,9 +884,14 @@ const statusLinePriorFileName = "usagehook-statusline-prior.json"
 // AgentDeck" (Existed == false, Value unset) from "there was one, and this
 // is it" — the two restore to different outcomes (removing the key entirely
 // vs. writing the recorded value back).
+//
+// Raw carries the value's exact bytes as a JSON string. Encoding Value alone
+// compacts it, so a hand-formatted statusLine would come back on one line.
+// Records written before Raw existed restore from Value.
 type statusLinePriorRecord struct {
 	Existed bool            `json:"existed"`
 	Value   json.RawMessage `json:"value,omitempty"`
+	Raw     string          `json:"raw,omitempty"`
 }
 
 type statusLineCommandEntry struct {
@@ -1162,6 +1167,12 @@ func (m *Manager) readStatusLinePrior() (statusLinePriorRecord, bool, error) {
 	if err := json.Unmarshal(contents, &record); err != nil {
 		return statusLinePriorRecord{}, false, err
 	}
+	if record.Raw != "" {
+		if !json.Valid([]byte(record.Raw)) {
+			return statusLinePriorRecord{}, false, errors.New("recorded prior statusLine is not valid JSON")
+		}
+		record.Value = json.RawMessage(record.Raw)
+	}
 	return record, true, nil
 }
 
@@ -1169,6 +1180,9 @@ func (m *Manager) writeStatusLinePrior(record statusLinePriorRecord) error {
 	path, err := m.statusLinePriorPath()
 	if err != nil {
 		return err
+	}
+	if len(record.Value) > 0 {
+		record.Raw = string(record.Value)
 	}
 	encoded, err := json.Marshal(record)
 	if err != nil {

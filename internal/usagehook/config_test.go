@@ -584,6 +584,69 @@ func TestRestoreStatusLineRestoresPriorValue(t *testing.T) {
 	}
 }
 
+func TestRestoreStatusLineRestoresFormattedPriorByteForByte(t *testing.T) {
+	// A hand-edited settings.json keeps statusLine indented across lines.
+	// Disabling must put the file back exactly, not a compacted equivalent.
+	manager, home := newTestManager(t)
+	path := configPath(home, ClientClaude)
+	original := []byte("{\n  \"model\": \"opus\",\n  \"statusLine\": {\n    \"command\": \"python3 ~/.claude/statusline.py\",\n    \"padding\": 1,\n    \"type\": \"command\"\n  },\n  \"theme\": \"auto\"\n}\n")
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, original, privateFileMode); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := manager.SetupStatusLine(); err != nil {
+		t.Fatalf("SetupStatusLine: %v", err)
+	}
+	restore, err := manager.RestoreStatusLine()
+	if err != nil {
+		t.Fatalf("RestoreStatusLine: %v", err)
+	}
+	if restore.Outcome != OutcomeRemoved {
+		t.Fatalf("RestoreStatusLine = %+v, want removed", restore)
+	}
+	restored, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(restored, original) {
+		t.Fatalf("restored settings differ from the original\nrestored:\n%s\noriginal:\n%s", restored, original)
+	}
+}
+
+func TestPriorStatusLineRecordWithoutRawBytesStillRestores(t *testing.T) {
+	// A sidecar written before raw bytes were recorded carries only the
+	// decoded value; it must keep restoring and chaining.
+	manager, home := newTestManager(t)
+	path := configPath(home, ClientClaude)
+	writeDocument(t, path, map[string]json.RawMessage{
+		"statusLine": json.RawMessage(`{"type":"command","command":"ccstatusline"}`),
+	}, privateFileMode)
+	if _, err := manager.SetupStatusLine(); err != nil {
+		t.Fatalf("SetupStatusLine: %v", err)
+	}
+	priorPath, err := manager.statusLinePriorPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy := []byte(`{"existed":true,"value":{"type":"command","command":"ccstatusline"}}`)
+	if err := os.WriteFile(priorPath, legacy, privateFileMode); err != nil {
+		t.Fatal(err)
+	}
+	if command, ok := manager.PriorStatusLineCommand(); !ok || command != "ccstatusline" {
+		t.Fatalf("PriorStatusLineCommand = %q, %t, want ccstatusline", command, ok)
+	}
+	if _, err := manager.RestoreStatusLine(); err != nil {
+		t.Fatalf("RestoreStatusLine: %v", err)
+	}
+	document := readDocument(t, path)
+	if !jsonEquivalent(document[statusLineKey], json.RawMessage(`{"type":"command","command":"ccstatusline"}`)) {
+		t.Fatalf("statusLine = %s, want the legacy prior value restored", document[statusLineKey])
+	}
+}
+
 func TestRestoreStatusLineWithNoPriorRemovesTheKeyEntirely(t *testing.T) {
 	// CLA-R1-F1: "nothing before AgentDeck" must restore to the key being
 	// entirely absent, never a literal statusLine:null standing in for it.

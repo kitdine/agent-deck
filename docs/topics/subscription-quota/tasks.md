@@ -840,6 +840,30 @@ performed, or waived by the operator with the waiver recorded:
 No row is represented as performed. Task 3 and task 5 rows are outside this
 waiver and retain their existing owners and status.
 
+**Task 3 consent-flow row, isolated run (2026-09-16).** Performed by
+claude-code on the operator's instruction, never against real state: a
+temporary HOME and state directory, the branch's own `agentdeck` build first on
+a PATH that contains no `codex` or `claude`, a copy of the operator's real
+`~/.claude/settings.json` (which has a multi-line `statusLine` chaining
+`python3 ~/.claude/statusline.py`) and of that script, and `env -i`. The real
+file was verified unchanged afterwards; the copies were deleted.
+
+Enable was refused with reading off; enable wrote only `statusLine`; re-enable
+was `unchanged`; the chained output equalled the prior command's; both Claude
+windows were captured; an edited AgentDeck entry was removed with
+`restore_incomplete`; and a foreign value was left byte for byte. The run found
+`MA-F1`: disable and reading-off restored the prior value compacted onto one
+line — equal as JSON, not byte for byte.
+
+**`MA-F1` repaired and independently re-reviewed** (operator decision,
+2026-09-16: repair on the topic branch). `internal/usagehook/config.go` records
+the prior value's exact bytes as a JSON string beside the decoded value and
+restores from them; records written before carry only the value and still
+restore. `TestRestoreStatusLineRestoresFormattedPriorByteForByte` failed before
+the repair and passes after it; the isolated consent run then restored byte for
+byte in both the disable and reading-off paths. Round 4 re-review passed; record:
+`reviews/claude-adapters.md`.
+
 | What | Owning task |
 | --- | --- |
 | Real SF typography and Dynamic Type at accessibility sizes, five tabs | 7 |
@@ -878,6 +902,10 @@ not evidence.
 
 ## Current handoff
 
+**2026-09-16:** isolated consent-flow acceptance found `MA-F1`; the repair in
+the uncommitted candidate on `feature/subscription-quota` passed independent
+Round 4 re-review. Task 3 awaits an authorized commit.
+
 All six documents are drafted and have passed review. The five upstream records
 are:
 [`requirements.md`](reviews/requirements.md),
@@ -900,13 +928,14 @@ rounds; its delivery state is tracked in Beads `ad-sq-codex-adapter-dev`. The
 `rateLimits` fallback decision is recorded in task 2's own section above. See
 [`reviews/codex-adapter.md`](reviews/codex-adapter.md) for the findings,
 evidence, and completion gate.
-Task 3 `claude-adapters` passed Round 3 re-review on 2026-09-11 after two
-failed rounds; its delivery state is tracked in Beads
-`ad-sq-claude-adapters-dev`. The statusLine prior value lives in AgentDeck's
-own state (a sidecar file under the state directory), never in
-`~/.claude/settings.json` alongside the `statusLine` key itself;
-`quota.MaxStatusLinePayloadBytes` bounds only capture's own parsing, never
-what the status-line chain forwards to the prior command. See
+Task 3 `claude-adapters` passed Round 4 re-review on 2026-09-16 after isolated
+manual acceptance found and repair closed `MA-F1`; its delivery state is tracked
+in Beads `ad-sq-claude-adapters-dev`. The statusLine prior value lives in
+AgentDeck's own state (a sidecar file under the state directory), never in
+`~/.claude/settings.json` alongside the `statusLine` key itself. New sidecars
+retain the prior value's exact JSON bytes for byte-for-byte restoration, while
+legacy sidecars remain compatible; `quota.MaxStatusLinePayloadBytes` bounds only
+capture's own parsing, never what the status-line chain forwards to the prior command. See
 [`reviews/claude-adapters.md`](reviews/claude-adapters.md) for the findings,
 evidence, and completion gate.
 Task 4 `gate-and-schedule` passed Round 6 re-review on 2026-09-13 after five
