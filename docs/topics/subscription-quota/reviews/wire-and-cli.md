@@ -287,3 +287,56 @@ wire 与 CLI 的契约条目在本内容状态上全部成立：C11 的追加节
 完成门禁：VERIFIED（CEv1 WorkUnit `subscription-quota:wire-and-cli`，目标内容状态
 `urn:agent-deck:content-state:subscription-quota:wire-and-cli:r3:5975112f91f4`；review、wire-cli-contract、
 verification 三项均为 pass）。
+
+## Round 4 — 2026-09-17
+
+## 📋 wire-and-cli App-delivery 修复复评
+
+📊 总体评分：10/10
+
+✅ 复评结论：PASS
+
+被评审内容状态：HEAD `f9f76461fe3bd19c7f9835c4e32d35e00f3a81b9` 加 Task 6 的 31 路径 scoped
+manifest SHA-256 `8a45e6354c4242311552e631ac2965ac50e1fbec16e2f5e1e66d430a464f0f82`，ContentState
+`urn:agent-deck:content-state:subscription-quota:wire-and-cli:f9f7646:8a45e6354c42`。评审记录自身不计入 manifest。
+
+评审方：Codex 主会话（actor `codex`，默认模型层级；未参与 MA-F2 产品修复）。方法：复用 Round 3 对
+WC-R1/WC-R2 的精确证据，逐段审读 MA-F2 新增的 Go due-alert/ack CLI、Swift decoder/transport、refresh
+coordinator post-then-ack 顺序及回归测试，并核对真实 App permission/Focus/去重验收结果。
+
+### 🔴 严重问题 — 必须修复
+
+无。
+
+### 🟡 改进建议 — 建议处理
+
+无。
+
+### 🟢 做得好的方面
+
+- **WC-R1-F1、WC-R1-F2、WC-R2-F1 保持 CLOSED。** FailureObservedAt、失败投影、CLI 文案与 schema 27
+  路径未被 MA-F2 改动，Round 3 的复现、变异对照与全仓证据继续适用。
+- `desktop quota-refresh` 现在只计算并返回 `alerts[]`，不提前记账；未回执时下一次返回相同 opaque ID，回执后
+  不再返回。reading off 仍同时阻止 probe 与 alert evaluation。
+- `desktop quota-alerts ack` 在打开 store 前校验整批 ID；任一 malformed ID 使整批成为 input error 且不写台账。
+  JSON-only 与至少一个 `--id` 的命令约束均有回归保护。
+- Swift transport 对旧 payload 缺失 `alerts` 向后兼容为空数组；完整 payload 保留 id、kind、client、label、
+  window length、figure 与 threshold。不可解码输出 fail closed，不向 App 虚构提醒。
+- `DesktopRefreshCoordinator` 只向 helper 回执 notification service 接受的 ID；空 due 集合既不投递也不回执。
+  ack 失败会让同一 request ID 下次重试，而不是误记已送达。
+- operator 在独立 `AgentDeck Acceptance` bundle 上确认权限、真实投递、Focus 延迟与重复刷新去重均正常，
+  证明 Go wire、Swift transport、App delivery 与 ack 台账的完整路径成立。
+
+### 📝 总结
+
+处置矩阵：WC-R1-F1 CLOSED；WC-R1-F2 CLOSED；WC-R2-F1 CLOSED。MA-F2 的 Task 6 部分——due-alert wire、
+ack CLI 与 Swift transport——和 Tasks 5/7 的 evaluator/App delivery 边界一致；无新增 finding，Round 4 PASS。
+
+验证记录：当前候选复用 `scripts/run-go-test.sh ./cmd/agentdeck ./internal/quota ./internal/usagehook
+./internal/desktop` PASS、隔离 macOS XCTest 32 项 PASS，以及 Task 7 MA-F3 修复后的 80/80 AgentDeckAppTests；
+本轮没有相关产品 blob 变化，不因阶段转换重复运行。真实系统验收截图 SHA-256 为
+`15f986a4814dda3dd391f534edf7025356fcb127454a59a4fde96add64f5424c` 与
+`c7550807d7d73ec5734b7abb7b95fc8c3f23c8828520dd2cd285608aee026e66`。
+
+完成门禁：VERIFIED（CEv1 WorkUnit `subscription-quota:wire-and-cli`；`wire-cli-contract`、`verification` 与
+本轮独立 `review` 均为 pass）。

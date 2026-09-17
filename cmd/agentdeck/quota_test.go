@@ -218,20 +218,12 @@ func TestQuotaCommandRejectsAnUnsupportedFormat(t *testing.T) {
 	}
 }
 
-type recordingQuotaNotifier struct{ sent []quota.Notification }
-
-func (r *recordingQuotaNotifier) Notify(_ context.Context, n quota.Notification) error {
-	r.sent = append(r.sent, n)
-	return nil
-}
-
 type fakeQuotaRefresh struct{ codexCalls, claudeCalls int }
 
-func withFakeQuotaRefresh(t *testing.T, used float64) (*fakeQuotaRefresh, *recordingQuotaNotifier) {
+func withFakeQuotaRefresh(t *testing.T, used float64) *fakeQuotaRefresh {
 	t.Helper()
 	fake := &fakeQuotaRefresh{}
-	notifier := &recordingQuotaNotifier{}
-	previousService, previousNotifier := quotaRefreshService, quotaAlertNotifier
+	previousService := quotaRefreshService
 	quotaRefreshService = func(stateRoot, home string) desktop.Service {
 		return desktop.Service{
 			StateRoot: stateRoot, Home: home,
@@ -248,29 +240,60 @@ func withFakeQuotaRefresh(t *testing.T, used float64) (*fakeQuotaRefresh, *recor
 			},
 		}
 	}
-	quotaAlertNotifier = func() quota.Notifier { return notifier }
-	t.Cleanup(func() { quotaRefreshService, quotaAlertNotifier = previousService, previousNotifier })
-	return fake, notifier
+	t.Cleanup(func() { quotaRefreshService = previousService })
+	return fake
 }
 
-func TestDesktopQuotaRefreshProbesAndEvaluatesAlertsUnderStoredSettings(t *testing.T) {
+func quotaRefreshAlerts(t *testing.T, data map[string]any) []map[string]any {
+	t.Helper()
+	raw, ok := data["alerts"].([]any)
+	if !ok {
+		t.Fatalf("alerts = %#v, want an array", data["alerts"])
+	}
+	alerts := make([]map[string]any, 0, len(raw))
+	for _, item := range raw {
+		alerts = append(alerts, item.(map[string]any))
+	}
+	return alerts
+}
+
+func TestDesktopQuotaRefreshReturnsDueAlertsForTheAppToDeliver(t *testing.T) {
 	state := filepath.Join(t.TempDir(), "state")
 	withTestHome(t, t.TempDir())
 	seedQuotaState(t, state, func(s *quota.Settings) {
 		s.ProbeEnabled, s.AlertsEnabled, s.AlertThresholds = true, true, []float64{75}
 	}, "codex", "claude")
-	fake, notifier := withFakeQuotaRefresh(t, 80)
+	fake := withFakeQuotaRefresh(t, 80)
 
 	data := runJSON(t, "--state-dir", state, "--format", "json", "desktop", "quota-refresh", "--manual")
 	if fake.codexCalls != 1 || fake.claudeCalls != 1 {
 		t.Fatalf("probes = codex %d, claude %d, want one each", fake.codexCalls, fake.claudeCalls)
 	}
-	if len(notifier.sent) != 1 || notifier.sent[0].Client != quota.ClientCodex || notifier.sent[0].Threshold != 75 {
-		t.Fatalf("notifications = %+v, want one Codex notice at 75", notifier.sent)
+	alerts := quotaRefreshAlerts(t, data)
+	if len(alerts) != 1 || alerts[0]["client"] != "codex" || alerts[0]["kind"] != "threshold" || alerts[0]["threshold"] != 75.0 ||
+		alerts[0]["used_percent"] != 80.0 || alerts[0]["window_minutes"] != 300.0 || alerts[0]["id"] == "" {
+		t.Fatalf("alerts = %+v, want one Codex threshold notice at 75 naming the window length and figure", alerts)
+	}
+	if encoded, _ := json.Marshal(alerts); strings.Contains(string(encoded), "acct") {
+		t.Fatalf("alerts %s carry an account identifier", encoded)
 	}
 	gates, _ := data["gate_reasons"].(map[string]any)
 	if gates["codex"] != nil || gates["claude"] != nil {
 		t.Fatalf("gate_reasons = %v, want both allowed", gates)
+	}
+
+	// Not acknowledged: the app could not post it, so it is offered again.
+	again := quotaRefreshAlerts(t, runJSON(t, "--state-dir", state, "--format", "json", "desktop", "quota-refresh", "--manual"))
+	if len(again) != 1 || again[0]["id"] != alerts[0]["id"] {
+		t.Fatalf("unacknowledged alert on the next refresh = %+v, want the same id again", again)
+	}
+
+	ack := runJSON(t, "--state-dir", state, "--format", "json", "desktop", "quota-alerts", "ack", "--id", alerts[0]["id"].(string))
+	if ack["acknowledged"] != 1.0 {
+		t.Fatalf("ack = %v, want acknowledged 1", ack)
+	}
+	if after := quotaRefreshAlerts(t, runJSON(t, "--state-dir", state, "--format", "json", "desktop", "quota-refresh", "--manual")); len(after) != 0 {
+		t.Fatalf("alerts after acknowledgement = %+v, want none", after)
 	}
 }
 
@@ -278,15 +301,41 @@ func TestDesktopQuotaRefreshWithReadingOffProbesAndEvaluatesNothing(t *testing.T
 	state := filepath.Join(t.TempDir(), "state")
 	withTestHome(t, t.TempDir())
 	seedQuotaState(t, state, func(s *quota.Settings) { s.AlertsEnabled = true }, "codex", "claude")
-	fake, notifier := withFakeQuotaRefresh(t, 95)
+	fake := withFakeQuotaRefresh(t, 95)
 
 	data := runJSON(t, "--state-dir", state, "--format", "json", "desktop", "quota-refresh", "--manual")
-	if fake.codexCalls != 0 || fake.claudeCalls != 0 || len(notifier.sent) != 0 {
-		t.Fatalf("with reading off: probes codex %d claude %d, notifications %d, want none", fake.codexCalls, fake.claudeCalls, len(notifier.sent))
+	if alerts := quotaRefreshAlerts(t, data); fake.codexCalls != 0 || fake.claudeCalls != 0 || len(alerts) != 0 {
+		t.Fatalf("with reading off: probes codex %d claude %d, alerts %d, want none", fake.codexCalls, fake.claudeCalls, len(alerts))
 	}
 	gates, _ := data["gate_reasons"].(map[string]any)
 	if gates["codex"] != "probe_disabled" || gates["claude"] != "probe_disabled" {
 		t.Fatalf("gate_reasons = %v, want probe_disabled for both", gates)
+	}
+}
+
+func TestDesktopQuotaAlertsAckRejectsAnInvalidIDAndRecordsNothing(t *testing.T) {
+	state := filepath.Join(t.TempDir(), "state")
+	withTestHome(t, t.TempDir())
+	seedQuotaState(t, state, func(s *quota.Settings) {
+		s.ProbeEnabled, s.AlertsEnabled, s.AlertThresholds = true, true, []float64{75}
+	}, "codex", "claude")
+	withFakeQuotaRefresh(t, 80)
+	alerts := quotaRefreshAlerts(t, runJSON(t, "--state-dir", state, "--format", "json", "desktop", "quota-refresh", "--manual"))
+	if len(alerts) != 1 {
+		t.Fatalf("alerts = %+v, want one", alerts)
+	}
+
+	var out bytes.Buffer
+	err := run([]string{"--state-dir", state, "--format", "json", "desktop", "quota-alerts", "ack", "--id", alerts[0]["id"].(string), "--id", "qa1.forged"}, bytes.NewReader(nil), &out)
+	var input *inputError
+	if !errors.As(err, &input) {
+		t.Fatalf("ack with a forged id = %v, want an input error", err)
+	}
+	if still := quotaRefreshAlerts(t, runJSON(t, "--state-dir", state, "--format", "json", "desktop", "quota-refresh", "--manual")); len(still) != 1 {
+		t.Fatalf("after a rejected batch = %+v, want the valid alert still due (nothing recorded)", still)
+	}
+	if err := run([]string{"--state-dir", state, "desktop", "quota-alerts", "ack", "--id", alerts[0]["id"].(string)}, bytes.NewReader(nil), &bytes.Buffer{}); err == nil {
+		t.Fatal("ack accepted a non-json format")
 	}
 }
 

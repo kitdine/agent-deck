@@ -86,6 +86,7 @@ final class QuotaSettingsController {
 	private let preferences: DesktopPreferences
 	private let transport: any QuotaSettingsTransport
 	private let claudeSettingsURL: URL
+	private let notifications: any NotificationPermissionChecking
 
 	private(set) var settings: DesktopQuotaSettingsValuesV1?
 	private(set) var chainedStatusLineCommand: String?
@@ -94,15 +95,32 @@ final class QuotaSettingsController {
 	/// triggered it, not every future glance at the window.
 	private(set) var settingsRow: SettingsRowStatus?
 	private(set) var statuslineRow: SettingsRowStatus?
+	/// True while alerts are on but AgentDeck may not post notifications
+	/// (ux/settings-quota.md: "When notifications are not allowed"). The alerts
+	/// setting itself stays on.
+	private(set) var notificationsDenied = false
 	@ObservationIgnored private var isApplyingSettings = false
 	@ObservationIgnored private var desiredSettings: DesktopQuotaSettingsDesiredV1?
 	@ObservationIgnored private var pendingSettings: DesktopQuotaSettingsDesiredV1?
 	@ObservationIgnored private var isApplyingStatusline = false
 
-	init(preferences: DesktopPreferences, transport: any QuotaSettingsTransport, claudeSettingsURL: URL) {
+	init(
+		preferences: DesktopPreferences,
+		transport: any QuotaSettingsTransport,
+		claudeSettingsURL: URL,
+		notifications: any NotificationPermissionChecking
+	) {
 		self.preferences = preferences
 		self.transport = transport
 		self.claudeSettingsURL = claudeSettingsURL
+		self.notifications = notifications
+	}
+
+	/// The alerts field's warning row. Empty with alerts off, whatever the
+	/// permission is.
+	var alertsRow: SettingsRowStatus? {
+		guard notificationsDenied, settings?.alerts == true else { return nil }
+		return SettingsRowStatus(text: t(DesktopCopy.settingsQuotaAlertsNotificationsDenied), severity: .warning)
 	}
 
 	/// Reads core state once (the window's `onAppear`); a preference change
@@ -115,6 +133,18 @@ final class QuotaSettingsController {
 			return
 		}
 		adopt(result.settings)
+		await refreshNotificationPermission()
+	}
+
+	/// Re-reads the permission without prompting — on load and whenever the
+	/// window becomes active again, so returning from System Settings clears
+	/// the row without a restart.
+	func refreshNotificationPermission() async {
+		guard settings?.alerts == true else {
+			notificationsDenied = false
+			return
+		}
+		notificationsDenied = await !notifications.authorizationGranted()
 	}
 
 	func setReading(_ on: Bool) async {
@@ -133,11 +163,18 @@ final class QuotaSettingsController {
 		await applySettings(desired)
 	}
 
+	/// Turning alerts on is when notification permission is requested; a
+	/// refusal keeps the setting on and shows the warning row instead.
 	func setAlerts(_ on: Bool) async {
 		var desired = currentDesired()
 		desired.alerts = on
 		stage(desired)
 		await applySettings(desired)
+		if on {
+			notificationsDenied = await !notifications.requestAuthorization()
+		} else {
+			notificationsDenied = false
+		}
 	}
 
 	func setThresholds(_ choice: QuotaAlertThresholdChoice) async {

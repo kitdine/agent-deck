@@ -27,6 +27,7 @@
     "credential.remove",
     "credential.show",
     "credential.update",
+    "desktop.quota-alerts.ack",
     "desktop.quota-refresh",
     "desktop.quota-settings",
     "desktop.quota-statusline.disable",
@@ -405,6 +406,23 @@
       },
       "error_code": "invalid_argument",
       "error_command": "credential.update"
+    },
+    "desktop.quota-alerts.ack": {
+      "success_schema": null,
+      "error_schema": {
+        "command": "string",
+        "data": null,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "generated_at": "string",
+        "partial": "boolean",
+        "schema_version": "number",
+        "warnings": []
+      },
+      "error_code": "invalid_argument",
+      "error_command": "desktop.quota-alerts.ack"
     },
     "desktop.quota-refresh": {
       "success_schema": null,

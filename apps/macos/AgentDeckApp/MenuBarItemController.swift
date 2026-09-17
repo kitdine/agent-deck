@@ -191,8 +191,18 @@ final class SettingsWindow: NSWindow {
 }
 
 @MainActor
+final class FittingSizeHostingController<Content: View>: NSHostingController<Content> {
+	var fittingSizeDidChange: ((NSSize) -> Void)?
+
+	override func viewDidLayout() {
+		super.viewDidLayout()
+		fittingSizeDidChange?(view.fittingSize)
+	}
+}
+
+@MainActor
 final class SettingsWindowController {
-	private var window: SettingsWindow?
+	private(set) var window: SettingsWindow?
 	private let preferences: DesktopPreferences
 	private let quotaSettings: QuotaSettingsController
 
@@ -203,17 +213,28 @@ final class SettingsWindowController {
 
 	func show() {
 		if window == nil {
-			let hosting = NSHostingController(rootView: SettingsWindowView(preferences: preferences, quotaSettings: quotaSettings))
+			let hosting = FittingSizeHostingController(
+				rootView: SettingsWindowView(preferences: preferences, quotaSettings: quotaSettings)
+			)
 			let created = SettingsWindow(contentViewController: hosting)
 			created.title = t(DesktopCopy.settingsTitle)
 			created.styleMask = [.titled, .closable]
 			created.isReleasedWhenClosed = false
 			created.setContentSize(hosting.view.fittingSize)
+			hosting.fittingSizeDidChange = { [weak created] size in
+				guard let created,
+					abs(created.contentLayoutRect.width - size.width) > 0.5
+						|| abs(created.contentLayoutRect.height - size.height) > 0.5
+				else { return }
+				created.setContentSize(size)
+			}
 			created.center()
 			window = created
 		}
 		NSApp.activate(ignoringOtherApps: true)
 		window?.makeKeyAndOrderFront(nil)
 		window?.makeFirstResponder(nil)
+		let quotaSettings = quotaSettings
+		Task { await quotaSettings.refreshNotificationPermission() }
 	}
 }

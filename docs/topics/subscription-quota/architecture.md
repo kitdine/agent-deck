@@ -518,6 +518,35 @@ quota figure.
 Notification content names the client, the window, and the figure. It carries no
 account identifier.
 
+**Delivery belongs to the app** (operator decision, 2026-09-16, from manual
+acceptance). The helper does not post notifications. A notification posted from
+a helper process through `osascript` is attributed to Script Editor: the user
+sees the wrong sender, cannot switch AgentDeck's notifications off on their own,
+and a disabled Script Editor still reports success, so a notice is recorded that
+nobody saw. Instead:
+
+1. `desktop quota-refresh` runs the evaluator and returns the notices that are
+   due in its result's `alerts` array, without recording them. Each carries an
+   opaque `id` naming its ledger key, the client, the kind, the used figure, the
+   threshold for a threshold notice, and the window's vendor label and length
+   so the app can name the window. It still carries no account identifier.
+2. The app posts each notice through the user-notification service under its
+   own bundle identity, using the notice `id` as the request identifier, and
+   builds the title and body from its localized copy in the app's language.
+3. For each notice the service accepted, the app runs
+   `desktop quota-alerts ack --id <id>`, which records the ledger entry. A
+   notice the service refused — permission denied or not yet granted — is not
+   acknowledged, stays due, and is offered again by the next refresh. Recording
+   an unrecognized or malformed `id` is an input error and records nothing.
+
+Delivery is therefore at least once per occurrence rather than exactly once: a
+crash between posting and acknowledging offers the notice again, and the
+repeated request identifier replaces the earlier notification instead of adding
+a second one. Notification permission is requested when the user turns
+`quotaAlerts` on, never at launch; a denied or disabled permission leaves the
+switch on and is presented in Settings (ux/settings-quota.md). With alerts or
+reading off the evaluator still does not run, and `alerts` is empty.
+
 ## C11 — Desktop wire
 
 The snapshot gains one optional top-level section beside `provider`, `usage`,

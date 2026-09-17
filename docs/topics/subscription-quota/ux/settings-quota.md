@@ -134,11 +134,42 @@ systems with their own opinions.
 | `settings.quotaAlertsHint` | 默认关闭。开启后每个窗口每次跨过阈值只提醒一次 | Off by default. When on, each window notifies once per threshold crossing |
 | `settings.quotaThresholds` | 提醒阈值 | Alert thresholds |
 | `settings.quotaResetNotice` | 窗口重置时提醒 | Notify when a window resets |
+| `settings.quotaAlertsNotificationsDenied` | 系统已关闭 AgentDeck 的通知，额度提醒不会显示。 | Notifications for AgentDeck are turned off in System Settings, so quota alerts will not appear. |
+| `settings.quotaAlertsOpenNotificationSettings` | 打开通知设置 | Open Notification Settings |
+| `notification.quotaTitle(client)` | {client} 额度 | {client} quota |
+| `notification.quotaThresholdBody(window, used, threshold)` | {window} 已用 {used}%（提醒阈值 {threshold}%） | {window} at {used}% (alert threshold {threshold}%) |
+| `notification.quotaResetBody(window, used)` | {window} 已重置，当前 {used}% | {window} has reset — now at {used}% |
+| `notification.quotaWindowFallback` | 额度窗口 | Quota window |
 
 The probe hint carries "不读取任何凭证" / "reads no credential" deliberately. It
 is the one claim in this topic a user cannot verify by looking, it is the
 boundary the operator drew on 2026-09-08, and a settings screen that asks for
 permission to read account data should say what it will not touch.
+
+## When notifications are not allowed
+
+Quota alerts are posted by the app under AgentDeck's own name (architecture.md
+C10), so whether they appear is decided by the user's notification permission
+for AgentDeck. Operator decision, 2026-09-16:
+
+- **Permission is asked when 额度提醒 is turned on**, not at launch. The system
+  prompt then appears right after the user asked for alerts, which is the only
+  moment its question makes sense.
+- **A refusal does not turn the switch back off.** The user asked for alerts;
+  the setting is kept, and nothing is recorded as sent, so turning notifications
+  on later starts delivering without another trip to this window.
+- **While alerts are on and permission is denied or switched off**, the alerts
+  field's failure row shows `settings.quotaAlertsNotificationsDenied` in the
+  warning tone, followed by a `settings.quotaAlertsOpenNotificationSettings`
+  button that opens AgentDeck's page in System Settings. The row is re-checked
+  when the window becomes active, so returning from System Settings clears it
+  without a restart. With alerts off the row is empty whatever the permission
+  is.
+
+This row reuses the same failure-row component as the two write outcomes below.
+It is a warning rather than an error: nothing failed in AgentDeck, and the
+setting took effect. The prototype specimen does not render this state; its
+presentation is settled here and verified on the native window.
 
 ## When the write does not go through
 

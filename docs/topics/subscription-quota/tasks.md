@@ -475,11 +475,11 @@ out of this task's scope. Full XCTest execution of
 
 **Result:** opt-in alerts that do not repeat.
 
-**Files:** new `internal/quota/alerts.go`,
-`internal/quota/alerts_test.go`, `internal/quota/notifier_darwin.go`, and
-`internal/quota/notifier_darwin_test.go`. This task owns evaluation,
-deduplication, and delivery, not Settings presentation or any other Swift
-surface.
+**Files:** new `internal/quota/alerts.go` and
+`internal/quota/alerts_test.go`. This task owns evaluation, deduplication,
+due-alert identification, and the acknowledgement ledger, not delivery,
+Settings presentation, or any other Swift surface — delivery belongs to the
+App, per task 7 and `MA-F2` below.
 
 - Off by default, and with alerts off the evaluator does not run — C10. The
   same holds with reading off, whatever the alert switch says, because the
@@ -519,12 +519,17 @@ instance and Crossing readings); decision 4 is recorded only here:
    switched on while a window is already above a threshold notify once. A reset
    notice is sent only for an `observed_reset_at` in the window's current
    occurrence.
-4. **No caller yet.** `EvaluateAlerts` and `OSANotifier` are the mechanism;
-   calling the evaluator after probes, and supplying `AlertConfig` from the
-   user's settings, is wired in task 6 alongside `RefreshQuota`. `scheduler.go`,
-   `statusline.go`, and `desktop.go` are unchanged. Notification text is
-   English: no approved copy exists for it, so localized wording is left to the
-   surfaces task that owns copy.
+4. **No caller yet at authoring time; delivery moved to the App by `MA-F2`
+   (2026-09-16)** (see Manual acceptance below). The evaluator exposes
+   `DueAlerts`, `AcknowledgeAlert`, and `ValidateAlertIDs` — not
+   `EvaluateAlerts`/`OSANotifier`, both removed. Task 6's
+   `desktop quota-refresh` calls `DueAlerts` after each refresh and returns
+   the due alerts on the wire; its new `desktop quota-alerts ack` calls
+   `AcknowledgeAlert`/`ValidateAlertIDs` for the ids the App's delivery
+   accepted. `scheduler.go` and `statusline.go` are unchanged. The App
+   (task 7) delivers each notification through `UNUserNotificationCenter` via
+   `QuotaAlertNotifier.swift` and owns the localized copy; this task's helper
+   computes and records due alerts but never delivers.
 
 **Round 1 repair (2026-09-13)** — see
 [`reviews/quota-alerts.md`](reviews/quota-alerts.md):
@@ -589,6 +594,23 @@ instance and Crossing readings); decision 4 is recorded only here:
    decision 4 is recorded only in this file. No contract text was added to
    C10, and no code or test changed.
 
+**Round 6 repair (2026-09-16)** — see
+[`reviews/quota-alerts.md`](reviews/quota-alerts.md):
+
+1. **QA-R6-F1 (medium, fixed):** this task's `Files`/ownership line, decision
+   4, and task 6's call-boundary bullet and decision 2 still described the
+   deleted `notifier_darwin.go`/`notifier_darwin_test.go`, `EvaluateAlerts`,
+   and `OSANotifier` as the current delivery mechanism, contradicting `MA-F2`'s
+   App-delivery outcome and the current code (`DueAlerts`, `AcknowledgeAlert`,
+   `ValidateAlertIDs`, and `QuotaAlertNotifier.swift`). Text only, no product
+   code changed: task 5's Files/ownership now name only `alerts.go`/
+   `alerts_test.go` and the acknowledgement ledger; decision 4 describes the
+   current `DueAlerts`/ack flow and the App's `UNUserNotificationCenter`
+   delivery; task 6's bullet and decision 2 describe `DueAlerts` and
+   `desktop quota-alerts ack` instead of the removed calls; and task 7's
+   `Files` and scope now name `QuotaAlertNotifier.swift` and the notification
+   delivery/localization/permission-denied ownership explicitly.
+
 ### 6. `wire-and-cli`
 
 **Depends on:** tasks 1–5.
@@ -624,11 +646,14 @@ decoder. Focused fixtures stay beside those tests.
   `cmd/agentdeck/quota.go` addition provides. `DesktopPreferences.swift`'s
   `quotaProbeEnabled`/`quotaProbeInterval` (added in task 4) are this
   transition's trigger; this task wires the call itself.
-- Calling `quota.EvaluateAlerts` after each quota refresh with the user's alert
+- Calling `quota.DueAlerts` after each quota refresh with the user's alert
   settings (`quotaAlerts`, `quotaThresholds`, `quotaResetNotice`) and
-  `quota.OSANotifier` — C10. Deferred here from task 5 (`quota-alerts`), which
-  provides the evaluator, ledger, and notifier but no caller, the same way task
-  4's `RefreshQuota` has none yet.
+  returning the due alerts on the `desktop quota-refresh` wire, plus a new
+  `desktop quota-alerts ack` command calling `quota.AcknowledgeAlert` and
+  `quota.ValidateAlertIDs` for the ids the App's delivery accepted — C10.
+  Deferred here from task 5 (`quota-alerts`), which provides the evaluator and
+  ledger but neither caller nor delivery; delivery belongs to the App, per
+  task 7.
 
 **Verification:** L1 for the payload shape including the absent-section case;
 L2 for the CLI surface and its exit codes, including the unregister-on-off
@@ -650,7 +675,8 @@ Three operator-approved decisions made during implementation:
    public and read-only (C12): it reads stored state, probes nothing, and on a
    fresh installation with no state reports reading off. The desktop-driven
    writes sit beside `desktop refresh-indexes`: `desktop quota-refresh`
-   (`RefreshQuota`, then `EvaluateAlerts` with `quota.DefaultNotifier`),
+   (`RefreshQuota`, then `DueAlerts`, returning the due alerts on the wire for
+   the App to deliver and acknowledge via `desktop quota-alerts ack`),
    `desktop quota-settings` (turning reading off restores an installed
    status-line route, clears consent, and reports `restore_incomplete` when the
    file changed; a user's own `statusLine` is left alone), and
@@ -752,8 +778,9 @@ decoder is exercised on every field.
 
 **Files:** `apps/macos/AgentDeckApp/DesktopPreferences.swift`,
 `SettingsWindowView.swift`, `MenuBarSurfaceView.swift`, `MenuBarPanelViews.swift`,
-`MenuBarViewModel.swift`, `DesktopCopy.swift`, and `Localizable.xcstrings`, with
-focused files in `AgentDeckAppTests`;
+`MenuBarViewModel.swift`, `DesktopCopy.swift`, `Localizable.xcstrings`, and
+`QuotaAlertNotifier.swift` (quota alert notification delivery, added by
+`MA-F2`), with focused files in `AgentDeckAppTests`;
 `apps/macos/AgentDeckShared/AppGroupSnapshotStore.swift` and its tests;
 `apps/macos/AgentDeckWidget/WidgetDomain.swift`,
 `apps/macos/AgentDeckWidget/WidgetIntents.swift`,
@@ -791,6 +818,13 @@ preference files, task 4 owns control-path behavior and task 7 owns presentation
   probes and alert evaluation follow C9 and C10. This touches
   `apps/macos/AgentDeckShared/EmbeddedHelperRunner.swift` and its tests and the
   app's refresh coordination, in addition to the files listed above.
+- Quota alert notification delivery and its localized copy, per `MA-F2` and
+  architecture.md C10 ("Delivery belongs to the app"): `QuotaAlertNotifier.swift`
+  requests permission, posts each due alert through `UNUserNotificationCenter`,
+  and returns the accepted ids; the refresh coordinator in
+  `EmbeddedHelperRunner.swift` then calls `desktop quota-alerts ack` for those
+  ids only. This task also owns the permission-denied warning row and its
+  "open notification settings" entry point in Settings.
 - The specification revision described in `requirements.md` — Contract changes —
   narrowing `docs/specs/cli-design.md:53-55`. Read the then-current revision;
   do not prescribe a revision number, following task 2 (`v0-6-0-contract`) in
@@ -840,7 +874,7 @@ performed, or waived by the operator with the waiver recorded:
 No row is represented as performed. Task 3 and task 5 rows are outside this
 waiver and retain their existing owners and status.
 
-**Task 3 consent-flow row, isolated run (2026-09-16).** Performed by
+**Task 3 and task 5 rows, isolated run (2026-09-16).** Performed by
 claude-code on the operator's instruction, never against real state: a
 temporary HOME and state directory, the branch's own `agentdeck` build first on
 a PATH that contains no `codex` or `claude`, a copy of the operator's real
@@ -848,21 +882,75 @@ a PATH that contains no `codex` or `claude`, a copy of the operator's real
 `python3 ~/.claude/statusline.py`) and of that script, and `env -i`. The real
 file was verified unchanged afterwards; the copies were deleted.
 
-Enable was refused with reading off; enable wrote only `statusLine`; re-enable
-was `unchanged`; the chained output equalled the prior command's; both Claude
-windows were captured; an edited AgentDeck entry was removed with
-`restore_incomplete`; and a foreign value was left byte for byte. The run found
-`MA-F1`: disable and reading-off restored the prior value compacted onto one
-line — equal as JSON, not byte for byte.
+| Row | Result |
+| --- | --- |
+| Consent flow, task 3 | Enable is refused with reading off; enable writes only `statusLine`; re-enable is `unchanged`; the chained output equals the prior command's; both Claude windows are captured; an edited AgentDeck entry is removed with `restore_incomplete`; a foreign value is left byte for byte. **Finding `MA-F1`:** disable and reading-off restored the prior value compacted onto one line — equal as JSON, not byte for byte. |
+| Notification delivery, task 5 | A threshold notice was delivered: `usernoted` completed the request, and with a Focus mode active it was deferred into Notification Centre rather than interrupting. A second refresh sent nothing. **Finding `MA-F2`:** `osascript` posts as Script Editor (`com.apple.ScriptEditor2`), so the sender is wrong, the permission cannot be controlled for AgentDeck, and a disabled Script Editor still reports success, recording a notice nobody saw. The permission-denied state was not executed, because that needs a real system setting changed. |
 
-**`MA-F1` repaired and independently re-reviewed** (operator decision,
-2026-09-16: repair on the topic branch). `internal/usagehook/config.go` records
-the prior value's exact bytes as a JSON string beside the decoded value and
-restores from them; records written before carry only the value and still
-restore. `TestRestoreStatusLineRestoresFormattedPriorByteForByte` failed before
-the repair and passes after it; the isolated consent run then restored byte for
-byte in both the disable and reading-off paths. Round 4 re-review passed; record:
-`reviews/claude-adapters.md`.
+**`MA-F1` repaired in candidate** (operator decision, 2026-09-16: repair on the
+topic branch). `internal/usagehook/config.go` records the prior value's exact
+bytes as a JSON string beside the decoded value, and restores from them;
+records written before carry only the value and still restore.
+`TestRestoreStatusLineRestoresFormattedPriorByteForByte` failed before the
+repair and passes after it; the isolated consent run then restored byte for
+byte in both the disable and reading-off paths. Record: `reviews/claude-adapters.md`.
+
+**`MA-F2` repaired in candidate** (operator decisions, 2026-09-16: the app
+delivers; acknowledgement after delivery; permission requested when alerts are
+turned on; a denial keeps the switch on and shows a warning row with a link to
+System Settings; copy follows the app language). Contract: architecture.md C10
+"Delivery belongs to the app" and ux/settings-quota.md "When notifications are
+not allowed". Files: `internal/quota/alerts.go` (`DueAlerts`,
+`AcknowledgeAlert`, `ValidateAlertIDs`; `notifier_*.go` removed),
+`cmd/agentdeck/quota.go` (`quota-refresh` returns `alerts`; new
+`desktop quota-alerts ack --id`), the GUI JSON contract fixture,
+`EmbeddedHelperRunner.swift` (alert wire type, acknowledgement transport, and
+the coordinator posting then acknowledging only accepted ids), new
+`AgentDeckApp/QuotaAlertNotifier.swift`, `QuotaSettingsController.swift`,
+`SettingsWindowView.swift`, `MenuBarItemController.swift`, `AgentDeckApp.swift`,
+`DesktopCopy.swift`, `Localizable.xcstrings`, and their tests. Record:
+`reviews/quota-alerts.md`. Real delivery under AgentDeck's own bundle identity,
+including the permission prompt, a denial, and Focus, remains manual acceptance
+for the next review.
+
+**Task 5 App-delivery follow-up (2026-09-16): FAILED / BLOCKED.** A separately
+signed App with its own bundle id, temporary HOME/database, isolated defaults,
+and no production App Group was used; the production App and state were not
+touched. Even after Developer ID signing and LaunchServices launch, no system
+permission prompt appeared and the App was absent from System Settings ›
+Notifications, so permission and Focus remained blocked. The native denied-state
+row did render with the alert switch still on, but its warning, action, and the
+following threshold controls visibly overlapped (`MA-F3`). Full evidence and the
+screenshot digest are in `reviews/quota-alerts.md`. The temporary App was stopped,
+unregistered, and deleted after the run.
+
+**`MA-F3` repaired in candidate (2026-09-16).** The failed acceptance bundle was
+not a valid notification client: only a team-signed App outside `/tmp` reached
+the permission prompt in the controlled comparison. New
+`scripts/run-macos-acceptance-app.sh` builds an independent bundle identifier,
+removes the Widget extension, applies a real team signature, runs from the
+ignored `apps/macos/build/acceptance/` directory, and isolates all AgentDeck and
+client state. The visible overlap had a separate AppKit cause: the Settings
+window used the SwiftUI fitting height only once, before the asynchronous denied
+row appeared. `FittingSizeHostingController` now resizes the reusable window when
+that fitting size changes. The new real-window regression failed at unchanged
+`734.0` pt before the fix and passes after it. Permission allow/deny and Focus
+still require a fresh native acceptance run during independent re-review.
+
+**`MA-F3` independently re-reviewed and accepted (2026-09-16).** Round 4 PASS
+confirmed the dynamic Settings sizing and the isolated acceptance launcher.
+On `com.kitdine.agentdeck.acceptance.ma3rereview`, the operator confirmed the
+system permission identity, delivery, Focus deferral, repeat-refresh deduplication,
+permission-off warning and System Settings entry point. The repaired native
+window shows the warning, action, thresholds and reset switch without overlap.
+The temporary App was stopped, unregistered and deleted; its isolated HOME was
+removed. Record: `reviews/desktop-surfaces.md`.
+
+The `MA-F1` repair changed task 3 content; its independent Round 4 re-review
+passed on 2026-09-16. Task 6 passed independent Round 4 re-review. Task 5 passed
+Round 7 re-review, and the shared post-repair acceptance closes its verification
+gap. Task 7 passed independent Round 4 re-review with MA-F3 and its manual
+acceptance closed.
 
 | What | Owning task |
 | --- | --- |
@@ -902,9 +990,17 @@ not evidence.
 
 ## Current handoff
 
-**2026-09-16:** isolated consent-flow acceptance found `MA-F1`; the repair in
-the uncommitted candidate on `feature/subscription-quota` passed independent
-Round 4 re-review. Task 3 awaits an authorized commit.
+**2026-09-16:** manual acceptance of tasks 3 and 5 found `MA-F1` and `MA-F2`,
+and the task 5 follow-up found task 7 layout defect `MA-F3` (see Manual
+acceptance). All three are repaired in the uncommitted candidate on
+`feature/subscription-quota`. Task 3 passed independent Round 4 re-review;
+task 5 passed independent Round 7 re-review before that follow-up. The corrected
+acceptance harness has now passed permission, Focus, deduplication and denied-state
+layout checks, closing task 5's shared verification gap. Tasks 6 and 7 passed
+independent Round 4 re-review; all task Review cells are now checked. Tasks 5–7
+await separately authorized repair delivery.
+Everything below describes the state before these repairs except where the
+task-specific paragraphs say otherwise.
 
 All six documents are drafted and have passed review. The five upstream records
 are:
@@ -952,32 +1048,31 @@ Swift verification limitations in this environment (no full Xcode), and
 [`reviews/gate-and-schedule.md`](reviews/gate-and-schedule.md) for the
 findings, the reproducers, and the completion gate.
 
-Task 5 `quota-alerts` passed Round 5 re-review on 2026-09-13 and is delivered
-in signed commit `dbd119f`; its coordination state is tracked in Beads
-`ad-sq-quota-alerts-dev`. All five findings — QA-R1-F1, QA-R1-F2, QA-R2-F1,
-QA-R3-F1, and QA-R4-F1 — are closed. See
-[`reviews/quota-alerts.md`](reviews/quota-alerts.md) for the findings, the
-reproducers, and the completion gate.
+Task 5 `quota-alerts` was delivered in signed commit `dbd119f`, then reopened
+after manual acceptance invalidated its notification-delivery path. The repaired
+candidate passed Round 7 re-review; the subsequent repaired App-delivery
+acceptance passed permission, delivery, Focus, deduplication and denied-state
+layout checks, so its completion gate is VERIFIED. Its coordination state
+is tracked in Beads `ad-sq-quota-alerts-dev`. See
+[`reviews/quota-alerts.md`](reviews/quota-alerts.md) for the full finding
+dispositions, evidence, and completion gate.
 
-Task 6 `wire-and-cli` passed Round 3 re-review on 2026-09-13 and awaits an
-authorized commit; its coordination state is tracked in Beads
-`ad-sq-wire-and-cli-dev`. All three findings — WC-R1-F1, WC-R1-F2, and
-WC-R2-F1 — are closed. The Round 2 repair's operator-approved storage change
-(`EnvelopeRecord.FailureObservedAt`, schema version 26 → 27) is recorded in
-task 6's own section above. See [`reviews/wire-and-cli.md`](reviews/wire-and-cli.md)
-for the findings, the reproducers, and the completion gate.
+Task 6 `wire-and-cli` was delivered in signed commit `cfcc395`, then reopened
+for MA-F2. The repaired candidate passed Round 4 re-review; its coordination
+state is tracked in Beads `ad-sq-wire-and-cli-dev` and awaits an authorized
+repair commit. WC-R1-F1, WC-R1-F2, and WC-R2-F1 remain closed. The Round 2
+repair's operator-approved storage change (`EnvelopeRecord.FailureObservedAt`,
+schema version 26 → 27) is recorded in task 6's own section above. See
+[`reviews/wire-and-cli.md`](reviews/wire-and-cli.md) for the full evidence and
+completion gate.
 
-Task 7 `desktop-surfaces` completed implementation on 2026-09-14 and passed
-Round 3 re-review after two failed rounds; see
-[`reviews/desktop-surfaces.md`](reviews/desktop-surfaces.md). It is tracked in
-Beads `ad-sq-desktop-surfaces-dev` and awaits an authorized commit. Its native
-manual-acceptance rows were explicitly waived by the operator for this
-implementation round; they were not represented as performed. The
-implementation includes a fail-closed hosted-test guard: `AgentDeckAppTests`
-cannot construct a real-home helper without an isolated
-`AGENTDECK_TEST_HOME`. Automated macOS verification used an isolated bundle
-identifier, App Group, HOME, DerivedData, and result bundle; see the Beads
-implementation handoff for the exact identities and results.
+Task 7 `desktop-surfaces` was delivered in signed commit `f7f6865`, then reopened
+for MA-F2/MA-F3. The repaired candidate passed Round 4 re-review with real native
+notification acceptance; see [`reviews/desktop-surfaces.md`](reviews/desktop-surfaces.md).
+It is tracked in Beads `ad-sq-desktop-surfaces-dev` and awaits an authorized
+repair commit. The implementation retains the fail-closed hosted-test guard:
+`AgentDeckAppTests` cannot construct a real-home helper without an isolated
+`AGENTDECK_TEST_HOME`.
 
 The base of this worktree is `4737076`; `main` has since advanced by ten
 commits, including the assembled `schema-version-signal` surfaces. The surface

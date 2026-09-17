@@ -21,13 +21,11 @@ import (
 // quotaMaxBackoff bounds C9's geometric backoff for the desktop quota refresh.
 const quotaMaxBackoff = time.Hour
 
-// Seams so tests never spawn a real client or post a real notification.
-var (
-	quotaRefreshService = func(stateRoot, home string) desktop.Service {
-		return desktop.Service{StateRoot: stateRoot, Home: home}
-	}
-	quotaAlertNotifier = quota.DefaultNotifier
-)
+// Seam so tests never spawn a real client. The helper posts no notification:
+// due alerts are returned to the app, which delivers them (C10).
+var quotaRefreshService = func(stateRoot, home string) desktop.Service {
+	return desktop.Service{StateRoot: stateRoot, Home: home}
+}
 
 func newQuotaCommand(opts *commandOptions) *cobra.Command {
 	command := &cobra.Command{
@@ -228,7 +226,38 @@ func quotaStatusLineManager(opts *commandOptions, stateRoot string) (*usagehook.
 }
 
 type desktopQuotaRefreshResult struct {
-	GateReasons map[string]*string `json:"gate_reasons"`
+	GateReasons map[string]*string  `json:"gate_reasons"`
+	Alerts      []desktopQuotaAlert `json:"alerts"`
+}
+
+// desktopQuotaAlert is one due notice for the app to post (C10). Threshold is
+// present only for a threshold notice; label is the vendor's window label, and
+// window_minutes is null when the length is not reported.
+type desktopQuotaAlert struct {
+	ID            string   `json:"id"`
+	Kind          string   `json:"kind"`
+	Client        string   `json:"client"`
+	Label         string   `json:"label,omitempty"`
+	WindowMinutes *int     `json:"window_minutes"`
+	UsedPercent   float64  `json:"used_percent"`
+	Threshold     *float64 `json:"threshold,omitempty"`
+}
+
+func desktopQuotaAlerts(due []quota.DueAlert) []desktopQuotaAlert {
+	alerts := make([]desktopQuotaAlert, 0, len(due))
+	for _, alert := range due {
+		item := desktopQuotaAlert{ID: alert.ID, Kind: string(alert.Kind), Client: string(alert.Client), Label: alert.Label, UsedPercent: alert.UsedPercent}
+		if alert.WindowMinutes > 0 {
+			minutes := alert.WindowMinutes
+			item.WindowMinutes = &minutes
+		}
+		if alert.Kind == quota.AlertThreshold {
+			threshold := alert.Threshold
+			item.Threshold = &threshold
+		}
+		alerts = append(alerts, item)
+	}
+	return alerts
 }
 
 func newDesktopQuotaRefreshCommand(opts *commandOptions) *cobra.Command {
@@ -249,8 +278,9 @@ func newDesktopQuotaRefreshCommand(opts *commandOptions) *cobra.Command {
 }
 
 // runDesktopQuotaRefresh runs C9's schedule for both clients and then C10's
-// evaluator, both under the stored settings. With reading off neither probes
-// nor evaluates anything.
+// evaluator, both under the stored settings, and returns the due alerts for
+// the app to deliver; nothing is recorded as sent here. With reading off
+// neither probes nor evaluates anything.
 func runDesktopQuotaRefresh(ctx context.Context, opts *commandOptions, manual bool) error {
 	core, stateRoot, err := opts.openStore(ctx)
 	if err != nil {
@@ -272,10 +302,11 @@ func runDesktopQuotaRefresh(ctx context.Context, opts *commandOptions, manual bo
 	outcome := quotaRefreshService(stateRoot, home).RefreshQuota(ctx, core, home, trigger, settings.ProbeEnabled, settings.ProbeInterval, quotaMaxBackoff)
 
 	warnings := []string{}
-	if err := quota.EvaluateAlerts(ctx, quota.NewStore(core.DB), settings.ProbeEnabled, settings.AlertConfig(), quotaAlertNotifier(), time.Now()); err != nil {
+	due, err := quota.DueAlerts(ctx, quota.NewStore(core.DB), settings.ProbeEnabled, settings.AlertConfig(), time.Now())
+	if err != nil {
 		warnings = append(warnings, "quota_alerts_failed")
 	}
-	result := desktopQuotaRefreshResult{GateReasons: map[string]*string{}}
+	result := desktopQuotaRefreshResult{GateReasons: map[string]*string{}, Alerts: desktopQuotaAlerts(due)}
 	for client, reason := range outcome {
 		var text *string
 		if reason != "" {
@@ -285,6 +316,54 @@ func runDesktopQuotaRefresh(ctx context.Context, opts *commandOptions, manual bo
 		result.GateReasons[string(client)] = text
 	}
 	return writeEnvelope(opts.stdout, opts.format, "desktop.quota-refresh", result, len(warnings) > 0, warnings)
+}
+
+type desktopQuotaAlertsAckResult struct {
+	Acknowledged int `json:"acknowledged"`
+}
+
+func newDesktopQuotaAlertsCommand(opts *commandOptions) *cobra.Command {
+	command := &cobra.Command{Use: "quota-alerts", Short: "Acknowledge quota alerts the app delivered"}
+	var ids []string
+	ack := &cobra.Command{
+		Use:   "ack",
+		Short: "Record delivered quota alerts so they are not offered again",
+		Args:  exactArgs(0),
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if opts.format != "json" {
+				return &inputError{err: errors.New("desktop quota-alerts ack requires --format json")}
+			}
+			if len(ids) == 0 {
+				return &inputError{err: errors.New("desktop quota-alerts ack requires at least one --id")}
+			}
+			return runDesktopQuotaAlertsAck(cmd.Context(), opts, ids)
+		},
+	}
+	ack.Flags().StringArrayVar(&ids, "id", nil, "The id of a delivered alert, as returned by desktop quota-refresh; repeatable")
+	command.AddCommand(ack)
+	return command
+}
+
+// runDesktopQuotaAlertsAck records the ledger entries for alerts the app
+// posted (C10). Every id is validated before any is recorded, so a malformed
+// id records nothing.
+func runDesktopQuotaAlertsAck(ctx context.Context, opts *commandOptions, ids []string) error {
+	if err := quota.ValidateAlertIDs(ids); err != nil {
+		return &inputError{err: err}
+	}
+	core, _, err := opts.openStore(ctx)
+	if err != nil {
+		return err
+	}
+	defer core.Close()
+	store := quota.NewStore(core.DB)
+	now := time.Now()
+	for _, id := range ids {
+		if err := quota.AcknowledgeAlert(ctx, store, id, now); err != nil {
+			return err
+		}
+	}
+	return writeResult(opts.stdout, opts.format, "desktop.quota-alerts.ack", desktopQuotaAlertsAckResult{Acknowledged: len(ids)})
 }
 
 type desktopQuotaSettingsView struct {

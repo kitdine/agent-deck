@@ -164,3 +164,120 @@ subject: desktop-surfaces
 - CEv1 `manual-waiver-r3`：operator 的 Task 7 native manual-acceptance 豁免继续绑定该候选，无项目被记为 performed。
 
 **完成门禁：** VERIFIED。`surface-contract`、`verification`、`manual-acceptance` 与本轮独立 `review` 四项 required criterion 均有绑定本 Target ContentState 的适用 pass 证据，无缺失、失效或未决影响。
+
+## Repair handoff — MA-F3 — 2026-09-16
+
+本节记录用户在 `修复：subscription-quota / desktop-surfaces / MA-F3` 中报告的人工验收发现及其修复，不给出复评结论。
+修复者：claude-code、codex。候选：HEAD `f9f76461fe3bd19c7f9835c4e32d35e00f3a81b9` 加未提交改动（含 `MA-F1`、`MA-F2` 修复）。
+
+- `MA-F3`（高，人工验收，AgentDeck 自身身份的额度通知真机验收失败）。
+  - 现象（系统日志取证）：验收构建 `com.kitdine.agentdeck.acceptance.quotaalerts.r7` 在 2026-09-16 22:24–22:36
+    每次打开"额度提醒"时 `requestAuthorization` 均被 `usernoted` 拒绝：`Failed to find or validate client of identifier …`，
+    `didGrant: 0 hasError: 1`；同一进程 `Unable to get teamId`，从终端直接启动。于是从未出现权限弹窗，设置页显示
+    "系统已关闭 AgentDeck 的通知"，System Settings › Notifications 中也没有该应用，通知无法验收。
+  - 根因（对照实验，同一最小探针 App 仅变更签名与位置）：ad-hoc 签名 + `/private/tmp` → `UNErrorDomain Code=1
+    "Notifications are not allowed for this application"`；Developer ID 签名 + `/private/tmp` → 同样失败；
+    ad-hoc 签名 + 已忽略的构建目录 → 同样失败；Developer ID 签名 + 已忽略的构建目录 → 无校验错误，进入权限确认。
+    通知服务只接纳团队签名且不在 `/tmp` 下的应用；项目的 Debug 构建脚本产出未签名 App，验收构建沿用它，因此必然失败。
+    探针 App 与其注册已删除并反注册。
+  - repaired in candidate：新增 `scripts/run-macos-acceptance-app.sh`。它复用 Debug 构建，复制为独立 bundle id
+    `com.kitdine.agentdeck.acceptance.<suffix>`，移除 Widget 扩展与测试包（不向真实 Widget 库注册），用钥匙串中的
+    Developer ID / Apple Development 身份签名并拒绝 ad-hoc，放入已被 Git 忽略的 `apps/macos/build/acceptance/`，
+    `lsregister` 注册后以 `AGENTDECK_TEST_HOME=/private/tmp/agentdeck-menubar-acceptance.*/home` 启动；
+    `--seed-quota-alert` 在隔离 home 内开启读取、阈值 75、写入一个 80% 的 Claude 五小时窗口并保持提醒关闭，
+    使"在设置中打开额度提醒"就是权限申请路径；`--cleanup` 反注册并删除副本。
+  - 布局根因：`SettingsWindowController.show()` 只在创建窗口时调用一次
+    `setContentSize(hosting.view.fittingSize)`。通知权限拒绝是异步状态；警告与 action 出现后 SwiftUI 内容高度增加，
+    但窗口仍保持原高度，内容被压缩后与下一行 threshold control 重叠。
+  - repaired in candidate：`FittingSizeHostingController` 在 SwiftUI 完成布局后报告新的 `fittingSize`；
+    `SettingsWindowController` 仅在宽或高实际变化超过 0.5 pt 时同步窗口 content size，保留既有初始尺寸与窗口复用行为。
+    `SettingsWindowLayoutTests.testWindowGrowsWhenTheNotificationWarningAppears` 使用真实 `NSWindow`，先记录无警告高度，
+    再触发拒绝状态，并断言窗口增长且 hosting view 的 fitting height 不超过 content layout height。
+
+修复验证：
+
+- `bash scripts/run-macos-acceptance-app.sh --seed-quota-alert ma3`：exit 0；`codesign --verify --strict` 通过，
+  TeamIdentifier `N2FZ2FNRTU`；进程以隔离 home 运行；隔离库中 `claude|five_hour|80.0`、`quota.probe=on`、
+  `quota.alerts=off`、`quota.thresholds=75`；未读写真实 AgentDeck、Codex 或 Claude 状态。
+- MA-F3 focused XCTest 在修复前失败：窗口在警告出现前后均为 `734.0` pt，命中
+  `the window did not grow for the warning row`；加入动态 sizing 后同一测试通过（1/1）。
+- `bash -n scripts/run-macos-acceptance-app.sh` 与 `git diff --check`：PASS。
+- 权限弹窗、允许后的真实投递、拒绝后的设置提示与专注模式需要在屏幕上操作。本会话的 computer-use 因宿主缺少
+  macOS 辅助功能与屏幕录制授权而不可用，这些步骤未执行，需由 operator 按下方步骤在该验收 App 上完成。
+
+复评时需注意的两个观察（未作为本次修复范围，未改代码）：一是通知服务拒绝客户端的错误目前与"用户关闭通知"同样
+呈现为警告行；二是提醒在权限尚未决定（notDetermined）时已处于开启状态（例如核心状态中早已开启），加载后同样显示
+"已关闭"警告且不会再次申请权限。二者是否需要单独的状态与文案属于 ux/settings-quota.md 的设计决策。
+
+Repair complete；下一轮需用该验收 App 重新执行权限允许、拒绝与 Focus 真机验收，并独立复评 task 7。
+CEv1 目标内容状态为 `urn:agent-deck:content-state:subscription-quota:desktop-surfaces:f9f7646:bd384757fd47`：
+`surface-contract` 与 `verification` 为 pass，`manual-acceptance` 因本会话无法执行屏幕操作为 blocked，
+新内容状态尚无独立 `review` 证据，因此当前 Task gate 为 BLOCKED。
+本节未执行 commit 或 push。
+
+## Round 4 — 2026-09-16
+
+## 📋 Desktop Surfaces MA-F3 修复复评
+
+📊 总体评分：10/10
+
+✅ 复评结论：PASS
+
+**Reviewed state：** HEAD `f9f76461fe3bd19c7f9835c4e32d35e00f3a81b9` 加 Task 7 的 17 路径 scoped
+manifest SHA-256 `f9c7c1b106861ea638d0a1cbaf12e21c974577b399a3aedd0022de9d641e13d5`，ContentState
+`urn:agent-deck:content-state:subscription-quota:desktop-surfaces:f9f7646:f9c7c1b10686`。评审记录自身不计入 manifest。
+
+**Reviewer：** Codex 主会话（actor `codex`，默认模型层级；未参与 MA-F3 产品修复）。
+
+**Method：** 逐项核对 MA-F3 的通知客户端资格与窗口动态 sizing 修复，审读
+`FittingSizeHostingController`、`SettingsWindowController`、真实窗口回归测试和隔离验收脚本；复用绑定候选的
+80/80 AgentDeckAppTests、failure-first focused test 与既有 DS-R1 evidence；最后由 operator 在新的
+`ma3rereview` 独立 bundle 上执行权限允许、Focus、权限关闭、返回窗口与设置入口验收。
+
+**Scope：** MA-F3、DS-R1-F1 至 DS-R1-F3 的最终处置，以及 Task 7 的 `surface-contract`、`verification`、
+`manual-acceptance` 与 `review` 四项门禁。Task 1–6 的产品实现不重开。
+
+### 🔴 严重问题 — 必须修复
+
+无。
+
+### 🟡 改进建议 — 建议处理
+
+无。
+
+### 🟢 做得好的方面
+
+- **MA-F3 → CLOSED。** `FittingSizeHostingController` 在异步 warning/action 改变 SwiftUI fitting size 后扩展
+  可复用 Settings window；operator 截图确认警告、`Open Notification Settings`、threshold picker 与 reset
+  switch 各占独立行，不再重叠。
+- 新增真实 `NSWindow` 回归在修复前稳定失败（警告出现前后均为 734 pt），修复后断言窗口增长且 content
+  layout height 覆盖 hosting fitting height，直接保护原始重叠条件。
+- 新验收脚本建立了有效通知客户端：独立 bundle id、团队签名、非 `/tmp` App 路径、无 Widget extension、
+  隔离 HOME/数据库，并用 80% Claude 五小时窗口与 75% 阈值建立可重复路径。
+- **真实系统验收通过。** System Settings 显示独立 `AgentDeck Acceptance` 通知主体且允许通知；operator 确认
+  权限、实际投递、Focus 延迟、重复刷新去重、关闭权限后的 warning 与设置入口均正常。
+- DS-R1-F1、DS-R1-F2、DS-R1-F3 保持 CLOSED；相关 Widget geometry、freshness 与 Settings write
+  coalescing 路径未被本轮修复改变。
+
+### 📝 总结
+
+处置矩阵：DS-R1-F1 CLOSED；DS-R1-F2 CLOSED；DS-R1-F3 CLOSED；MA-F3 CLOSED。没有新增 finding。
+修复同时解决了验收载体资格与异步 warning 行导致的窗口高度问题，并由自动回归和真实系统交互共同验证，
+因此 Round 4 为 PASS。
+
+**Evidence：**
+
+- `apps/macos/AgentDeckApp/MenuBarItemController.swift:193-241`：动态 fitting-size controller 与窗口同步。
+- `apps/macos/AgentDeckAppTests/QuotaSettingsControllerTests.swift:397-430`：真实窗口 failure-first regression。
+- `scripts/run-macos-acceptance-app.sh`：`ma3rereview` bundle
+  `com.kitdine.agentdeck.acceptance.ma3rereview`，Developer ID team `N2FZ2FNRTU`，隔离 home
+  `/private/tmp/agentdeck-menubar-acceptance.oXvCpb/home`。
+- System Settings 截图：1446×1928 PNG，SHA-256
+  `15f986a4814dda3dd391f534edf7025356fcb127454a59a4fde96add64f5424c`。
+- 修复后 Settings 截图：920×1626 PNG，SHA-256
+  `c7550807d7d73ec5734b7abb7b95fc8c3f23c8828520dd2cd285608aee026e66`。
+- Operator 结论：权限、投递、Focus、去重、关闭权限后的 warning/入口与布局均正常。
+- 验收后 App 已停止、反注册并删除，临时 HOME 已删除；`com.apple.ncprefs` 中未检出验收 bundle id。
+
+**完成门禁：** VERIFIED。`surface-contract`、`verification`、`manual-acceptance` 与本轮独立 `review` 四项
+required criterion 均有绑定本 Target ContentState 的适用 pass 证据。

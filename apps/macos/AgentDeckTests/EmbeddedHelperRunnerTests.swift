@@ -195,15 +195,20 @@ final class EmbeddedHelperRunnerTests: XCTestCase {
 	}
 
 	func testQuotaRefreshUsesBackgroundAndManualCommandShapes() async throws {
-		let payload = Data(#"{"data":{"clients":["codex","claude"],"gate_reasons":{"codex":null,"claude":"not_official"}}}"#.utf8)
+		let payload = Data(#"{"data":{"gate_reasons":{"codex":null,"claude":"not_official"},"alerts":[{"id":"qa1.abc","kind":"threshold","client":"codex","label":"GPT-5 Codex","window_minutes":300,"used_percent":80,"threshold":75},{"id":"qa1.def","kind":"reset","client":"claude","window_minutes":null,"used_percent":3}]}}"#.utf8)
 		let process = RecordingHelperProcess(behaviors: [
 			.output(HelperProcessOutput(exitStatus: 0, stdout: payload)),
 			.output(HelperProcessOutput(exitStatus: 0, stdout: payload)),
 		])
 		let runner = try makeRunner(process: process)
 
-		await runner.refreshQuota(manual: false)
-		await runner.refreshQuota(manual: true)
+		let alerts = await runner.refreshQuota(manual: false)
+		_ = await runner.refreshQuota(manual: true)
+
+		XCTAssertEqual(alerts, [
+			DesktopQuotaAlertV1(id: "qa1.abc", kind: .threshold, client: "codex", label: "GPT-5 Codex", windowMinutes: 300, usedPercent: 80, threshold: 75),
+			DesktopQuotaAlertV1(id: "qa1.def", kind: .reset, client: "claude", usedPercent: 3),
+		])
 
 		let invocations = await process.recordedInvocations()
 		XCTAssertEqual(invocations.map(\.arguments), [
@@ -211,6 +216,29 @@ final class EmbeddedHelperRunnerTests: XCTestCase {
 			["--format", "json", "desktop", "quota-refresh", "--manual"],
 		])
 		XCTAssertTrue(invocations.allSatisfy { $0.environment["HOME"] == "/tmp/isolated-home" })
+	}
+
+	func testQuotaAlertAcknowledgementPassesEveryIDAndSkipsAnEmptyBatch() async throws {
+		let payload = Data(#"{"data":{"acknowledged":2}}"#.utf8)
+		let process = RecordingHelperProcess(behaviors: [.output(HelperProcessOutput(exitStatus: 0, stdout: payload))])
+		let runner = try makeRunner(process: process)
+
+		await runner.acknowledgeQuotaAlerts(ids: [])
+		await runner.acknowledgeQuotaAlerts(ids: ["qa1.abc", "qa1.def"])
+
+		let invocations = await process.recordedInvocations()
+		XCTAssertEqual(invocations.map(\.arguments), [
+			["--format", "json", "desktop", "quota-alerts", "ack", "--id", "qa1.abc", "--id", "qa1.def"],
+		])
+	}
+
+	func testQuotaRefreshWithUndecodableOutputOffersNoAlerts() async throws {
+		let process = RecordingHelperProcess(behaviors: [.output(HelperProcessOutput(exitStatus: 0, stdout: Data("not json".utf8)))])
+		let runner = try makeRunner(process: process)
+
+		let alerts = await runner.refreshQuota(manual: false)
+
+		XCTAssertEqual(alerts, [])
 	}
 
 	func testProviderSwitchClassifiesCanonicalFailureAndDiscardsMessage() async throws {

@@ -141,7 +141,11 @@ struct SettingsWindowView: View {
 				SettingsRow(
 					label: t(DesktopCopy.settingsQuotaAlerts),
 					note: t(DesktopCopy.settingsQuotaAlertsHint),
-					status: nil
+					status: quotaSettings.alertsRow,
+					statusAction: quotaSettings.alertsRow == nil ? nil : SettingsRowAction(
+						title: t(DesktopCopy.settingsQuotaAlertsOpenNotificationSettings),
+						perform: openNotificationSettings
+					)
 				) {
 					Toggle(
 						t(DesktopCopy.settingsQuotaAlerts),
@@ -249,6 +253,14 @@ struct SettingsRowStatus: Equatable {
 	let severity: NoticeSeverity
 }
 
+/// A follow-up the failure row offers, such as opening System Settings. It is
+/// rendered outside the row's combined accessibility element so it stays a
+/// separately actionable button.
+struct SettingsRowAction {
+	let title: String
+	let perform: () -> Void
+}
+
 struct SettingsRow<Control: View>: View {
 	let label: String
 	/// `nil` when the row has no documented hint (ux/settings-quota.md's
@@ -257,27 +269,35 @@ struct SettingsRow<Control: View>: View {
 	/// which would still reserve a line of caption height nothing occupies.
 	let note: String?
 	let status: SettingsRowStatus?
+	var statusAction: SettingsRowAction? = nil
 	@ViewBuilder let control: () -> Control
 
 	var body: some View {
 		HStack(alignment: .firstTextBaseline, spacing: MenuBarGeometry.betweenSections) {
 			VStack(alignment: .leading, spacing: MenuBarGeometry.withinRow) {
-				Text(label).font(.body)
-				if let note {
-					Text(note)
-						.font(.caption)
-						.foregroundStyle(DesktopVisualTheme.dim)
-						.fixedSize(horizontal: false, vertical: true)
+				VStack(alignment: .leading, spacing: MenuBarGeometry.withinRow) {
+					Text(label).font(.body)
+					if let note {
+						Text(note)
+							.font(.caption)
+							.foregroundStyle(DesktopVisualTheme.dim)
+							.fixedSize(horizontal: false, vertical: true)
+					}
+					if let status {
+						Label(status.text, systemImage: status.severity.symbol)
+							.font(.caption)
+							.foregroundStyle(status.severity.tint)
+							.fixedSize(horizontal: false, vertical: true)
+					}
 				}
-				if let status {
-					Label(status.text, systemImage: status.severity.symbol)
+				.accessibilityElement(children: .combine)
+				if let statusAction {
+					Button(statusAction.title, action: statusAction.perform)
+						.buttonStyle(.link)
 						.font(.caption)
-						.foregroundStyle(status.severity.tint)
-						.fixedSize(horizontal: false, vertical: true)
 				}
 			}
 			.frame(maxWidth: .infinity, alignment: .leading)
-			.accessibilityElement(children: .combine)
 			control()
 		}
 		.frame(minHeight: MenuBarGeometry.rowMinimumHeight)

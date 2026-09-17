@@ -241,6 +241,15 @@ enum DesktopCopy {
 	static let settingsQuotaThreshold90 = "90%"
 	static let settingsQuotaThresholdBoth = "75% · 90%"
 	static let settingsQuotaResetNotice = "Notify when a window resets"
+	static let settingsQuotaAlertsNotificationsDenied =
+		"Notifications for AgentDeck are turned off in System Settings, so quota alerts will not appear."
+	static let settingsQuotaAlertsOpenNotificationSettings = "Open Notification Settings"
+
+	// Quota alert notifications (architecture.md C10; ux/settings-quota.md copy).
+	static let notificationQuotaTitle = "%@ quota"
+	static let notificationQuotaThresholdBody = "%1$@ at %2$lld%% (alert threshold %3$lld%%)"
+	static let notificationQuotaResetBody = "%1$@ has reset — now at %2$lld%%"
+	static let notificationQuotaWindowFallback = "Quota window"
 	/// Not part of ux/settings-quota.md's own copy table: that document's two
 	/// named failures are specific to the status-line file write. A plain
 	/// settings write goes to AgentDeck's own core state and fails only on a
@@ -346,6 +355,9 @@ enum DesktopCopy {
 		settingsQuotaAlerts, settingsQuotaAlertsHint, settingsQuotaThresholds,
 		settingsQuotaThreshold75, settingsQuotaThreshold90, settingsQuotaThresholdBoth,
 		settingsQuotaResetNotice, settingsQuotaWriteFailed,
+		settingsQuotaAlertsNotificationsDenied, settingsQuotaAlertsOpenNotificationSettings,
+		notificationQuotaTitle, notificationQuotaThresholdBody, notificationQuotaResetBody,
+		notificationQuotaWindowFallback,
 	]
 }
 

@@ -41,6 +41,49 @@ final class DesktopRefreshCoordinatorTests: XCTestCase {
 		XCTAssertEqual(coordinator.latestSnapshot, complete)
 	}
 
+	/// architecture.md C10: the app acknowledges only what the notification
+	/// service accepted, so a refused alert stays due for the next refresh.
+	func testRefreshAcknowledgesOnlyTheAlertsTheDelivererAccepted() async throws {
+		let complete = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
+		let posted = DesktopQuotaAlertV1(id: "qa1.posted", kind: .threshold, client: "codex", windowMinutes: 300, usedPercent: 80, threshold: 75)
+		let refused = DesktopQuotaAlertV1(id: "qa1.refused", kind: .reset, client: "claude", windowMinutes: 10080, usedPercent: 3)
+		let quotaRefresher = RecordingQuotaRefresher(alerts: [posted, refused])
+		let deliverer = RecordingAlertDeliverer(accepts: ["qa1.posted"])
+		let coordinator = DesktopRefreshCoordinator(
+			host: ScriptedSnapshotRefresher(responses: [.snapshot(complete)]),
+			quotaRefresher: quotaRefresher,
+			alertDeliverer: deliverer,
+			snapshotStore: nil
+		)
+
+		await coordinator.refresh()
+
+		let offers = await deliverer.recordedOffers()
+		XCTAssertEqual(offers, [[posted, refused]])
+		let acknowledgements = await quotaRefresher.recordedAcknowledgements()
+		XCTAssertEqual(acknowledgements, [["qa1.posted"]])
+		XCTAssertEqual(coordinator.latestSnapshot, complete)
+	}
+
+	func testRefreshWithNoDueAlertsNeitherDeliversNorAcknowledges() async throws {
+		let complete = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
+		let quotaRefresher = RecordingQuotaRefresher()
+		let deliverer = RecordingAlertDeliverer(accepts: [])
+		let coordinator = DesktopRefreshCoordinator(
+			host: ScriptedSnapshotRefresher(responses: [.snapshot(complete)]),
+			quotaRefresher: quotaRefresher,
+			alertDeliverer: deliverer,
+			snapshotStore: nil
+		)
+
+		await coordinator.refresh()
+
+		let offers = await deliverer.recordedOffers()
+		XCTAssertTrue(offers.isEmpty)
+		let acknowledgements = await quotaRefresher.recordedAcknowledgements()
+		XCTAssertTrue(acknowledgements.isEmpty)
+	}
+
 	func testRefreshFailureRetainsLastGoodStateAndCache() async throws {
 		let complete = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
 		let temporaryDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -158,9 +201,37 @@ private enum CacheReplacementError: Error {
 
 private actor RecordingQuotaRefresher: DesktopQuotaRefreshing {
 	private var manualValues = [Bool]()
+	private var acknowledgements = [[String]]()
+	private let alerts: [DesktopQuotaAlertV1]
 
-	func refreshQuota(manual: Bool) async { manualValues.append(manual) }
+	init(alerts: [DesktopQuotaAlertV1] = []) {
+		self.alerts = alerts
+	}
+
+	func refreshQuota(manual: Bool) async -> [DesktopQuotaAlertV1] {
+		manualValues.append(manual)
+		return alerts
+	}
+
+	func acknowledgeQuotaAlerts(ids: [String]) async { acknowledgements.append(ids) }
 	func recordedManualValues() -> [Bool] { manualValues }
+	func recordedAcknowledgements() -> [[String]] { acknowledgements }
+}
+
+private actor RecordingAlertDeliverer: QuotaAlertDelivering {
+	private var offered = [[DesktopQuotaAlertV1]]()
+	private let accepts: Set<String>
+
+	init(accepts: Set<String>) {
+		self.accepts = accepts
+	}
+
+	func deliver(_ alerts: [DesktopQuotaAlertV1]) async -> [String] {
+		offered.append(alerts)
+		return alerts.map(\.id).filter { accepts.contains($0) }
+	}
+
+	func recordedOffers() -> [[DesktopQuotaAlertV1]] { offered }
 }
 
 @MainActor

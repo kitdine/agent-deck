@@ -1,3 +1,4 @@
+import AppKit
 import XCTest
 @testable import AgentDeck
 @testable import AgentDeckShared
@@ -268,3 +269,168 @@ private actor SuspendingQuotaSettingsTransport: QuotaSettingsTransport {
 		continuation.resume(returning: .decoded(DesktopQuotaSettingsResultV1(settings: settings, statuslineRestore: nil)))
 	}
 }
+
+@MainActor
+final class QuotaAlertPermissionTests: XCTestCase {
+	func testTurningAlertsOnRequestsPermissionAndARefusalKeepsTheSwitchOnWithAWarning() async {
+		let transport = StubQuotaSettingsTransport(settings: DesktopQuotaSettingsValuesV1(
+			reading: true, interval: .fiveMinutes, alerts: false, thresholds: [75, 90], resetNotice: false, statusline: false
+		))
+		let permission = StubNotificationPermission(granted: false)
+		let controller = makeQuotaSettingsController(transport: transport, notifications: permission)
+		await controller.load()
+		let checksBeforeEnabling = await permission.checkCount
+		XCTAssertEqual(checksBeforeEnabling, 0, "with alerts off, loading never consults the notification service")
+
+		await controller.setAlerts(true)
+
+		let requests = await permission.requestCount
+		XCTAssertEqual(requests, 1)
+		XCTAssertEqual(controller.settings?.alerts, true, "a refused permission must not turn the setting back off")
+		XCTAssertEqual(
+			controller.alertsRow,
+			SettingsRowStatus(text: t(DesktopCopy.settingsQuotaAlertsNotificationsDenied), severity: .warning)
+		)
+		let calls = await transport.applyCalls
+		XCTAssertEqual(calls.last?.alerts, true)
+	}
+
+	func testGrantedPermissionShowsNoRowAndTurningAlertsOffClearsItWithoutPrompting() async {
+		let granted = StubNotificationPermission(granted: true)
+		let controller = makeQuotaSettingsController(
+			transport: StubQuotaSettingsTransport(settings: DesktopQuotaSettingsValuesV1(
+				reading: true, interval: .fiveMinutes, alerts: false, thresholds: [75], resetNotice: false, statusline: false
+			)),
+			notifications: granted
+		)
+		await controller.load()
+		await controller.setAlerts(true)
+		XCTAssertNil(controller.alertsRow)
+
+		let denied = StubNotificationPermission(granted: false)
+		let deniedController = makeQuotaSettingsController(
+			transport: StubQuotaSettingsTransport(settings: DesktopQuotaSettingsValuesV1(
+				reading: true, interval: .fiveMinutes, alerts: true, thresholds: [75], resetNotice: false, statusline: false
+			)),
+			notifications: denied
+		)
+		await deniedController.load()
+		XCTAssertNotNil(deniedController.alertsRow, "alerts already on with permission denied shows the row on load")
+		let promptsOnLoad = await denied.requestCount
+		XCTAssertEqual(promptsOnLoad, 0, "loading re-reads permission but never prompts")
+
+		await deniedController.setAlerts(false)
+		XCTAssertNil(deniedController.alertsRow)
+		let promptsAfterOff = await denied.requestCount
+		XCTAssertEqual(promptsAfterOff, 0)
+	}
+}
+
+private actor RecordingNotificationPoster: NotificationPosting {
+	struct Posted: Equatable {
+		let identifier: String
+		let title: String
+		let body: String
+	}
+
+	private(set) var posted = [Posted]()
+	private let failing: Set<String>
+
+	init(failing: Set<String> = []) {
+		self.failing = failing
+	}
+
+	func post(identifier: String, title: String, body: String) async throws {
+		if failing.contains(identifier) {
+			throw CocoaError(.featureUnsupported)
+		}
+		posted.append(Posted(identifier: identifier, title: title, body: body))
+	}
+}
+
+@MainActor
+final class QuotaAlertNotifierTests: XCTestCase {
+	private let threshold = DesktopQuotaAlertV1(id: "qa1.threshold", kind: .threshold, client: "codex", windowMinutes: 300, usedPercent: 80.4, threshold: 75)
+	private let reset = DesktopQuotaAlertV1(id: "qa1.reset", kind: .reset, client: "claude", label: "Opus", windowMinutes: 10080, usedPercent: 3)
+
+	func testWithoutPermissionNothingIsPostedAndNothingIsReturnedForAcknowledgement() async {
+		let poster = RecordingNotificationPoster()
+		let notifier = QuotaAlertNotifier(permission: StubNotificationPermission(granted: false), poster: poster)
+
+		let delivered = await notifier.deliver([threshold, reset])
+
+		XCTAssertEqual(delivered, [])
+		let posted = await poster.posted
+		XCTAssertTrue(posted.isEmpty)
+	}
+
+	func testOnlyAcceptedPostsAreReturnedAndEachUsesTheAlertIDAsItsIdentifier() async {
+		let poster = RecordingNotificationPoster(failing: ["qa1.reset"])
+		let notifier = QuotaAlertNotifier(permission: StubNotificationPermission(granted: true), poster: poster)
+
+		let delivered = await notifier.deliver([threshold, reset])
+
+		XCTAssertEqual(delivered, ["qa1.threshold"])
+		let posted = await poster.posted
+		XCTAssertEqual(posted.map(\.identifier), ["qa1.threshold"])
+	}
+
+	func testContentNamesTheClientWindowAndFigureInTheActiveLanguage() {
+		let thresholdContent = QuotaAlertContent(threshold)
+		XCTAssertEqual(thresholdContent.title, t(DesktopCopy.notificationQuotaTitle, "Codex"))
+		XCTAssertEqual(
+			thresholdContent.body,
+			t(DesktopCopy.notificationQuotaThresholdBody, t(DesktopCopy.quotaWindow5h), Int64(80), Int64(75))
+		)
+		XCTAssertTrue(thresholdContent.body.contains("80") && thresholdContent.body.contains("75"))
+
+		let resetContent = QuotaAlertContent(reset)
+		XCTAssertEqual(resetContent.title, t(DesktopCopy.notificationQuotaTitle, "Claude"))
+		XCTAssertEqual(resetContent.body, t(DesktopCopy.notificationQuotaResetBody, "Opus", Int64(3)))
+
+		let unnamed = QuotaAlertContent(DesktopQuotaAlertV1(id: "qa1.x", kind: .reset, client: "codex", usedPercent: 1))
+		XCTAssertTrue(unnamed.body.contains(t(DesktopCopy.notificationQuotaWindowFallback)))
+	}
+}
+
+@MainActor
+final class SettingsWindowLayoutTests: XCTestCase {
+	/// MA-F3: the denied-permission warning and its action appear after the
+	/// window was sized. The window must grow to hold them instead of letting
+	/// SwiftUI overlap the warning, the action, and the threshold control.
+	func testWindowGrowsWhenTheNotificationWarningAppears() async throws {
+		let preferences = DesktopPreferences(defaults: isolatedDefaults(), registrar: StubLoginItemRegistrar())
+		let transport = StubQuotaSettingsTransport(settings: DesktopQuotaSettingsValuesV1(
+			reading: true, interval: .fiveMinutes, alerts: false, thresholds: [75, 90], resetNotice: false, statusline: false
+		))
+		let quotaSettings = makeQuotaSettingsController(
+			preferences: preferences, transport: transport, notifications: StubNotificationPermission(granted: false)
+		)
+		let controller = SettingsWindowController(preferences: preferences, quotaSettings: quotaSettings)
+		controller.show()
+		let window = try XCTUnwrap(controller.window)
+		defer { window.close() }
+		await quotaSettings.load()
+		settle(window)
+		let heightWithoutWarning = window.contentLayoutRect.height
+
+		await quotaSettings.setAlerts(true)
+		XCTAssertNotNil(quotaSettings.alertsRow)
+		settle(window)
+
+		let hosting = try XCTUnwrap(window.contentViewController?.view)
+		XCTAssertGreaterThan(window.contentLayoutRect.height, heightWithoutWarning, "the window did not grow for the warning row")
+		XCTAssertGreaterThanOrEqual(
+			window.contentLayoutRect.height + 0.5, hosting.fittingSize.height,
+			"content taller than the window is compressed and overlaps"
+		)
+	}
+
+	private func settle(_ window: NSWindow) {
+		for _ in 0..<10 {
+			window.contentView?.layoutSubtreeIfNeeded()
+			RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+		}
+	}
+}
+

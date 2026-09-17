@@ -3365,6 +3365,102 @@
           }
         }
       }
+    },
+    "Notifications for AgentDeck are turned off in System Settings, so quota alerts will not appear.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Notifications for AgentDeck are turned off in System Settings, so quota alerts will not appear."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "系统已关闭 AgentDeck 的通知，额度提醒不会显示。"
+          }
+        }
+      }
+    },
+    "Open Notification Settings": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open Notification Settings"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开通知设置"
+          }
+        }
+      }
+    },
+    "%@ quota": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ quota"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 额度"
+          }
+        }
+      }
+    },
+    "%1$@ at %2$lld%% (alert threshold %3$lld%%)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ at %2$lld%% (alert threshold %3$lld%%)"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ 已用 %2$lld%%（提醒阈值 %3$lld%%）"
+          }
+        }
+      }
+    },
+    "%1$@ has reset — now at %2$lld%%": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ has reset — now at %2$lld%%"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ 已重置，当前 %2$lld%%"
+          }
+        }
+      }
+    },
+    "Quota window": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quota window"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "额度窗口"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

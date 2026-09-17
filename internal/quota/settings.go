@@ -47,7 +47,7 @@ func DefaultSettings() Settings {
 	return Settings{ProbeInterval: 5 * time.Minute, AlertThresholds: []float64{75, 90}, ResetNotice: true}
 }
 
-// AlertConfig projects the alert half for EvaluateAlerts.
+// AlertConfig projects the alert half for DueAlerts.
 func (s Settings) AlertConfig() AlertConfig {
 	return AlertConfig{Enabled: s.AlertsEnabled, Thresholds: slices.Clone(s.AlertThresholds), ResetNotice: s.ResetNotice}
 }

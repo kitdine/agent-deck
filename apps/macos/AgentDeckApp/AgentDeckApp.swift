@@ -93,9 +93,20 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 		}
 		#endif
 		let preferences = DesktopPreferences(defaults: defaults)
-		let coordinator = DesktopRefreshCoordinator(host: DesktopHost(runner: runner), quotaRefresher: runner, snapshotStore: snapshotStore)
+		let notifications = SystemUserNotifications()
+		let coordinator = DesktopRefreshCoordinator(
+			host: DesktopHost(runner: runner),
+			quotaRefresher: runner,
+			alertDeliverer: QuotaAlertNotifier(permission: notifications, poster: notifications),
+			snapshotStore: snapshotStore
+		)
 		let switchController = SwitchController(transport: runner, refreshCoordinator: coordinator)
-		let quotaSettings = QuotaSettingsController(preferences: preferences, transport: runner, claudeSettingsURL: claudeSettingsURL)
+		let quotaSettings = QuotaSettingsController(
+			preferences: preferences,
+			transport: runner,
+			claudeSettingsURL: claudeSettingsURL,
+			notifications: notifications
+		)
 		self.preferences = preferences
 		refreshCoordinator = coordinator
 		self.switchController = switchController

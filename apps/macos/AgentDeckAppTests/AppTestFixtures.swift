@@ -597,13 +597,37 @@ struct AlwaysUndecodableQuotaSettingsTransport: QuotaSettingsTransport {
 func makeQuotaSettingsController(
 	preferences: DesktopPreferences? = nil,
 	transport: any QuotaSettingsTransport = StubQuotaSettingsTransport(),
-	claudeSettingsURL: URL = URL(fileURLWithPath: "/nonexistent/agentdeck-test/.claude/settings.json")
+	claudeSettingsURL: URL = URL(fileURLWithPath: "/nonexistent/agentdeck-test/.claude/settings.json"),
+	notifications: any NotificationPermissionChecking = StubNotificationPermission(granted: true)
 ) -> QuotaSettingsController {
 	QuotaSettingsController(
 		preferences: preferences ?? DesktopPreferences(defaults: isolatedDefaults(), registrar: StubLoginItemRegistrar()),
 		transport: transport,
-		claudeSettingsURL: claudeSettingsURL
+		claudeSettingsURL: claudeSettingsURL,
+		notifications: notifications
 	)
+}
+
+/// Stands in for the notification service so hosted tests never reach it or
+/// its permission prompt.
+actor StubNotificationPermission: NotificationPermissionChecking {
+	private let granted: Bool
+	private(set) var requestCount = 0
+	private(set) var checkCount = 0
+
+	init(granted: Bool) {
+		self.granted = granted
+	}
+
+	func authorizationGranted() async -> Bool {
+		checkCount += 1
+		return granted
+	}
+
+	func requestAuthorization() async -> Bool {
+		requestCount += 1
+		return granted
+	}
 }
 
 final class StubLoginItemRegistrar: LoginItemRegistering {

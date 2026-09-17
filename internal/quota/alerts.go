@@ -2,9 +2,11 @@ package quota
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
-	"fmt"
 	"math"
+	"strings"
 	"time"
 )
 
@@ -25,39 +27,59 @@ type AlertConfig struct {
 	ResetNotice bool
 }
 
-// Notification is what C10 delivers. It names the client, the window, and the
-// figure, and has no field an account identifier could travel in.
-type Notification struct {
-	Kind        AlertKind
-	Client      Client
-	Window      string
-	UsedPercent float64
-	Threshold   float64
+// DueAlert is one notice C10 has decided is due. The helper does not deliver
+// it: the app posts it under its own bundle identity and then acknowledges it
+// with AcknowledgeAlert. It names the client, the window, and the figure, and
+// has no field an account identifier could travel in; ID is an opaque ledger
+// key the app passes back unchanged.
+type DueAlert struct {
+	ID            string
+	Kind          AlertKind
+	Client        Client
+	Label         string
+	WindowMinutes int
+	UsedPercent   float64
+	Threshold     float64
 }
 
-func (n Notification) Title() string {
-	switch n.Client {
-	case ClientCodex:
-		return "Codex quota"
-	case ClientClaude:
-		return "Claude quota"
-	default:
-		return "Quota"
+// ErrInvalidAlertID reports an acknowledgement that does not name a notice
+// this evaluator could have produced. Nothing is recorded for it.
+var ErrInvalidAlertID = errors.New("invalid quota alert id")
+
+const alertIDPrefix = "qa1."
+
+type alertKey struct {
+	Client    Client    `json:"c"`
+	WindowKey string    `json:"w"`
+	Kind      AlertKind `json:"k"`
+	Threshold float64   `json:"t"`
+	Instance  int64     `json:"i"`
+}
+
+func (k alertKey) id() string {
+	encoded, _ := json.Marshal(k)
+	return alertIDPrefix + base64.RawURLEncoding.EncodeToString(encoded)
+}
+
+func parseAlertID(id string) (alertKey, error) {
+	raw, ok := strings.CutPrefix(id, alertIDPrefix)
+	if !ok {
+		return alertKey{}, ErrInvalidAlertID
 	}
-}
-
-func (n Notification) Body() string {
-	if n.Kind == AlertReset {
-		return fmt.Sprintf("%s has reset — now at %.0f%%", n.Window, n.UsedPercent)
+	decoded, err := base64.RawURLEncoding.DecodeString(raw)
+	if err != nil {
+		return alertKey{}, ErrInvalidAlertID
 	}
-	return fmt.Sprintf("%s at %.0f%% (alert threshold %.0f%%)", n.Window, n.UsedPercent, n.Threshold)
-}
-
-// Notifier delivers one notification. EvaluateAlerts records a notice as sent
-// only after Notify returns nil, so a failed delivery is retried by the next
-// evaluation rather than silently lost.
-type Notifier interface {
-	Notify(ctx context.Context, n Notification) error
+	var key alertKey
+	if err := json.Unmarshal(decoded, &key); err != nil {
+		return alertKey{}, ErrInvalidAlertID
+	}
+	validClient := key.Client == ClientCodex || key.Client == ClientClaude
+	validKind := (key.Kind == AlertThreshold && key.Threshold > 0 && key.Threshold <= 100) || (key.Kind == AlertReset && key.Threshold == 0)
+	if !validClient || !validKind || key.WindowKey == "" || key.Instance <= 0 || key.id() != id {
+		return alertKey{}, ErrInvalidAlertID
+	}
+	return key, nil
 }
 
 // alertInstanceTolerance decides when two resets_at values name the same
@@ -76,9 +98,11 @@ const alertInstanceTolerance = 15 * time.Minute
 // beyond that bound (QA-R1-F1).
 const alertNoticeRetention = 31 * 24 * time.Hour
 
-// EvaluateAlerts is C10's evaluator. With reading off or alerts off it returns
-// immediately without touching the store or the notifier — nothing is
-// evaluated, not merely nothing delivered (C9, C10).
+// DueAlerts is C10's evaluator. With reading off or alerts off it returns
+// immediately without touching the store — nothing is evaluated, not merely
+// nothing delivered (C9, C10). It records nothing: a notice enters the ledger
+// only when the app acknowledges a delivery it made, so a notice the app could
+// not post stays due and is offered again by the next evaluation.
 //
 // A threshold notice is due when a window's used share is at or above the
 // threshold and no notice has been recorded for that (client, window_key,
@@ -103,15 +127,17 @@ const alertNoticeRetention = 31 * 24 * time.Hour
 // forward, and a small drop later in the same occurrence is not a second
 // reset.
 //
-// Errors from individual windows are collected and returned together; one
-// failing window does not stop the rest from being evaluated.
-func EvaluateAlerts(ctx context.Context, store *Store, probeEnabled bool, cfg AlertConfig, notifier Notifier, now time.Time) error {
-	if !probeEnabled || !cfg.Enabled || notifier == nil {
-		return nil
+// Errors from individual windows are collected and returned together with
+// the notices found elsewhere; one failing window does not stop the rest from
+// being evaluated.
+func DueAlerts(ctx context.Context, store *Store, probeEnabled bool, cfg AlertConfig, now time.Time) ([]DueAlert, error) {
+	if !probeEnabled || !cfg.Enabled {
+		return nil, nil
 	}
 	if err := store.pruneAlertNotices(ctx, now.Add(-alertNoticeRetention)); err != nil {
-		return err
+		return nil, err
 	}
+	var due []DueAlert
 	thresholds := normalizeThresholds(cfg.Thresholds)
 	var errs []error
 	for _, client := range []Client{ClientCodex, ClientClaude} {
@@ -128,20 +154,45 @@ func EvaluateAlerts(ctx context.Context, store *Store, probeEnabled bool, cfg Al
 				if w.UsedPercent < threshold {
 					continue
 				}
-				note := Notification{Kind: AlertThreshold, Client: client, Window: alertWindowLabel(w), UsedPercent: w.UsedPercent, Threshold: threshold}
-				if err := store.notifyOnce(ctx, notifier, note, w.WindowKey, w.ResetsAt, alertInstanceTolerance, now); err != nil {
+				alert, isDue, err := store.dueAlert(ctx, client, w, AlertThreshold, threshold)
+				if err != nil {
 					errs = append(errs, err)
+				} else if isDue {
+					due = append(due, alert)
 				}
 			}
 			if cfg.ResetNotice && w.HasObservedResetAt && resetInCurrentOccurrence(w) {
-				note := Notification{Kind: AlertReset, Client: client, Window: alertWindowLabel(w), UsedPercent: w.UsedPercent}
-				if err := store.notifyOnce(ctx, notifier, note, w.WindowKey, w.ResetsAt, alertInstanceTolerance, now); err != nil {
+				alert, isDue, err := store.dueAlert(ctx, client, w, AlertReset, 0)
+				if err != nil {
 					errs = append(errs, err)
+				} else if isDue {
+					due = append(due, alert)
 				}
 			}
 		}
 	}
-	return errors.Join(errs...)
+	return due, errors.Join(errs...)
+}
+
+// AcknowledgeAlert records that the app delivered the notice id names. It is
+// idempotent, so an acknowledgement repeated after a crash records nothing
+// new. An id this evaluator could not have produced is rejected.
+func AcknowledgeAlert(ctx context.Context, store *Store, id string, now time.Time) error {
+	key, err := parseAlertID(id)
+	if err != nil {
+		return err
+	}
+	return store.recordAlertNotice(ctx, key.Client, key.WindowKey, key.Kind, key.Threshold, time.Unix(key.Instance, 0), now)
+}
+
+// ValidateAlertIDs checks every id before a caller records any of them.
+func ValidateAlertIDs(ids []string) error {
+	for _, id := range ids {
+		if _, err := parseAlertID(id); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // occurrenceOngoing reports whether a stored window still describes a live
@@ -186,48 +237,20 @@ func resetInCurrentOccurrence(w Window) bool {
 	return !w.ObservedResetAt.Before(start)
 }
 
-// alertWindowLabel names a window for a person. window_key is opaque and
-// never shown (C6); the label comes from the vendor label and the window
-// length.
-func alertWindowLabel(w Window) string {
-	length := ""
-	if w.WindowMinutesReason == "" && w.WindowMinutes > 0 {
-		length = windowLengthLabel(w.WindowMinutes)
-	}
-	switch {
-	case w.Label != "" && length != "":
-		return fmt.Sprintf("%s (%s)", w.Label, length)
-	case w.Label != "":
-		return w.Label
-	case length != "":
-		return length + " window"
-	default:
-		return "Quota window"
-	}
-}
-
-func windowLengthLabel(minutes int) string {
-	switch {
-	case minutes%1440 == 0:
-		return fmt.Sprintf("%d-day", minutes/1440)
-	case minutes%60 == 0:
-		return fmt.Sprintf("%d-hour", minutes/60)
-	default:
-		return fmt.Sprintf("%d-minute", minutes)
-	}
-}
-
-// notifyOnce delivers note unless the ledger already holds a matching notice,
-// and records the notice only after a successful delivery.
-func (s *Store) notifyOnce(ctx context.Context, notifier Notifier, note Notification, windowKey string, instance time.Time, tolerance time.Duration, now time.Time) error {
-	noticed, err := s.alertNoticed(ctx, note.Client, windowKey, note.Kind, note.Threshold, instance, tolerance)
+// dueAlert reports a notice for w unless the ledger already holds one for the
+// same occurrence. The window's vendor label and length travel so the app can
+// name the window; window_key stays opaque and is carried only inside the id.
+func (s *Store) dueAlert(ctx context.Context, client Client, w Window, kind AlertKind, threshold float64) (DueAlert, bool, error) {
+	noticed, err := s.alertNoticed(ctx, client, w.WindowKey, kind, threshold, w.ResetsAt, alertInstanceTolerance)
 	if err != nil || noticed {
-		return err
+		return DueAlert{}, false, err
 	}
-	if err := notifier.Notify(ctx, note); err != nil {
-		return err
+	minutes := 0
+	if w.WindowMinutesReason == "" && w.WindowMinutes > 0 {
+		minutes = w.WindowMinutes
 	}
-	return s.recordAlertNotice(ctx, note.Client, windowKey, note.Kind, note.Threshold, instance, now)
+	key := alertKey{Client: client, WindowKey: w.WindowKey, Kind: kind, Threshold: threshold, Instance: w.ResetsAt.Unix()}
+	return DueAlert{ID: key.id(), Kind: kind, Client: client, Label: w.Label, WindowMinutes: minutes, UsedPercent: w.UsedPercent, Threshold: threshold}, true, nil
 }
 
 func (s *Store) alertNoticed(ctx context.Context, client Client, windowKey string, kind AlertKind, threshold float64, instance time.Time, tolerance time.Duration) (bool, error) {

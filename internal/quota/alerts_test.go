@@ -2,23 +2,33 @@ package quota
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
 	"time"
 )
 
+// recordingNotifier stands in for the app: it "posts" each due notice and
+// acknowledges only the ones it posted, as C10's delivery contract requires.
 type recordingNotifier struct {
-	sent []Notification
+	sent []DueAlert
 	err  error
 }
 
-func (r *recordingNotifier) Notify(_ context.Context, n Notification) error {
-	if r.err != nil {
-		return r.err
+func evaluate(ctx context.Context, store *Store, probeEnabled bool, cfg AlertConfig, notifier *recordingNotifier, now time.Time) error {
+	due, err := DueAlerts(ctx, store, probeEnabled, cfg, now)
+	errs := []error{err}
+	for _, alert := range due {
+		if notifier.err != nil {
+			errs = append(errs, notifier.err)
+			continue
+		}
+		notifier.sent = append(notifier.sent, alert)
+		errs = append(errs, AcknowledgeAlert(ctx, store, alert.ID, now))
 	}
-	r.sent = append(r.sent, n)
-	return nil
+	return errors.Join(errs...)
 }
 
 func recordWindow(t *testing.T, store *Store, obs Observation) {
@@ -42,9 +52,9 @@ func TestEvaluateAlertsDoesNotRunWhenAlertsOrReadingAreOff(t *testing.T) {
 	notifier := &recordingNotifier{}
 	now := time.Date(2026, 9, 10, 10, 0, 0, 0, time.UTC)
 	for name, run := range map[string]func() error{
-		"alerts off":             func() error { return EvaluateAlerts(context.Background(), nil, true, AlertConfig{}, notifier, now) },
-		"reading off":            func() error { return EvaluateAlerts(context.Background(), nil, false, bothThresholds, notifier, now) },
-		"both off (the default)": func() error { return EvaluateAlerts(context.Background(), nil, false, AlertConfig{}, notifier, now) },
+		"alerts off":             func() error { return evaluate(context.Background(), nil, true, AlertConfig{}, notifier, now) },
+		"reading off":            func() error { return evaluate(context.Background(), nil, false, bothThresholds, notifier, now) },
+		"both off (the default)": func() error { return evaluate(context.Background(), nil, false, AlertConfig{}, notifier, now) },
 	} {
 		if err := run(); err != nil {
 			t.Fatalf("%s: EvaluateAlerts = %v, want nil", name, err)
@@ -65,7 +75,7 @@ func TestEvaluateAlertsThresholdFiresOncePerOccurrenceAndAgainAfterReset(t *test
 	step := func(offset time.Duration, resetsAt time.Time, used float64) {
 		t.Helper()
 		recordWindow(t, store, claudeFiveHour(t0.Add(offset), resetsAt, used, SourceClaudeStatusLine))
-		if err := EvaluateAlerts(ctx, store, true, bothThresholds, notifier, t0.Add(offset)); err != nil {
+		if err := evaluate(ctx, store, true, bothThresholds, notifier, t0.Add(offset)); err != nil {
 			t.Fatalf("EvaluateAlerts: %v", err)
 		}
 	}
@@ -107,11 +117,11 @@ func TestEvaluateAlertsInstanceTolerance(t *testing.T) {
 	resetsAt := time.Date(2026, 9, 10, 13, 49, 58, 0, time.UTC)
 
 	recordWindow(t, store, claudeFiveHour(t0, resetsAt, 80, SourceClaudeStatusLine))
-	if err := EvaluateAlerts(ctx, store, true, cfg, notifier, t0); err != nil {
+	if err := evaluate(ctx, store, true, cfg, notifier, t0); err != nil {
 		t.Fatalf("EvaluateAlerts: %v", err)
 	}
 	recordWindow(t, store, claudeFiveHour(t0.Add(time.Minute), resetsAt.Truncate(time.Minute).Add(time.Minute), 81, SourceClaudeProse))
-	if err := EvaluateAlerts(ctx, store, true, cfg, notifier, t0.Add(time.Minute)); err != nil {
+	if err := evaluate(ctx, store, true, cfg, notifier, t0.Add(time.Minute)); err != nil {
 		t.Fatalf("EvaluateAlerts: %v", err)
 	}
 	if len(notifier.sent) != 1 {
@@ -119,7 +129,7 @@ func TestEvaluateAlertsInstanceTolerance(t *testing.T) {
 	}
 
 	recordWindow(t, store, claudeFiveHour(t0.Add(2*time.Minute), resetsAt.Add(alertInstanceTolerance+time.Minute), 82, SourceClaudeProse))
-	if err := EvaluateAlerts(ctx, store, true, cfg, notifier, t0.Add(2*time.Minute)); err != nil {
+	if err := evaluate(ctx, store, true, cfg, notifier, t0.Add(2*time.Minute)); err != nil {
 		t.Fatalf("EvaluateAlerts: %v", err)
 	}
 	if len(notifier.sent) != 2 {
@@ -139,7 +149,7 @@ func TestEvaluateAlertsResetNoticeOncePerOccurrence(t *testing.T) {
 	step := func(at, resetsAt time.Time, used float64) {
 		t.Helper()
 		recordWindow(t, store, claudeFiveHour(at, resetsAt, used, SourceClaudeStatusLine))
-		if err := EvaluateAlerts(ctx, store, true, cfg, notifier, at); err != nil {
+		if err := evaluate(ctx, store, true, cfg, notifier, at); err != nil {
 			t.Fatalf("EvaluateAlerts: %v", err)
 		}
 	}
@@ -180,7 +190,7 @@ func TestEvaluateAlertsIgnoresAnOccurrenceThatHasEnded(t *testing.T) {
 		store, _ := openTestStore(t)
 		notifier := &recordingNotifier{}
 		recordWindow(t, store, claudeFiveHour(t0, t0.Add(3*time.Hour), 80, SourceClaudeStatusLine))
-		if err := EvaluateAlerts(ctx, store, true, cfg, notifier, t0); err != nil {
+		if err := evaluate(ctx, store, true, cfg, notifier, t0); err != nil {
 			t.Fatalf("EvaluateAlerts: %v", err)
 		}
 		if len(notifier.sent) != 1 {
@@ -193,7 +203,7 @@ func TestEvaluateAlertsIgnoresAnOccurrenceThatHasEnded(t *testing.T) {
 			t0.Add(alertNoticeRetention + 10*24*time.Hour + 5*time.Minute),
 			t0.Add(alertNoticeRetention + 10*24*time.Hour + 10*time.Minute),
 		} {
-			if err := EvaluateAlerts(ctx, store, true, cfg, notifier, at); err != nil {
+			if err := evaluate(ctx, store, true, cfg, notifier, at); err != nil {
 				t.Fatalf("EvaluateAlerts at %v: %v", at, err)
 			}
 		}
@@ -208,7 +218,7 @@ func TestEvaluateAlertsIgnoresAnOccurrenceThatHasEnded(t *testing.T) {
 		recordWindow(t, store, claudeFiveHour(t0, t0.Add(time.Hour), 50, SourceClaudeStatusLine))
 		recordWindow(t, store, claudeFiveHour(t0.Add(time.Minute), t0.Add(time.Hour), 95, SourceClaudeStatusLine))
 		recordWindow(t, store, claudeFiveHour(t0.Add(2*time.Minute), t0.Add(time.Hour), 94, SourceClaudeStatusLine)) // observed decrease too
-		if err := EvaluateAlerts(ctx, store, true, cfg, notifier, t0.Add(48*time.Hour)); err != nil {
+		if err := evaluate(ctx, store, true, cfg, notifier, t0.Add(48*time.Hour)); err != nil {
 			t.Fatalf("EvaluateAlerts: %v", err)
 		}
 		if len(notifier.sent) != 0 {
@@ -227,7 +237,7 @@ func TestEvaluateAlertsNoResetNoticeWithoutResetsAt(t *testing.T) {
 	recordWindow(t, store, claudeFiveHour(t0, time.Time{}, 50, SourceClaudeStatusLine))
 	recordWindow(t, store, claudeFiveHour(t0.Add(time.Minute), time.Time{}, 3, SourceClaudeStatusLine))
 
-	if err := EvaluateAlerts(ctx, store, true, AlertConfig{Enabled: true, ResetNotice: true}, notifier, t0.Add(time.Minute)); err != nil {
+	if err := evaluate(ctx, store, true, AlertConfig{Enabled: true, ResetNotice: true}, notifier, t0.Add(time.Minute)); err != nil {
 		t.Fatalf("EvaluateAlerts: %v", err)
 	}
 	if len(notifier.sent) != 0 {
@@ -250,7 +260,7 @@ func TestEvaluateAlertsIgnoresResetFromAnEarlierOccurrence(t *testing.T) {
 	recordWindow(t, store, claudeFiveHour(r2.Add(time.Minute), r3, 30, SourceClaudeStatusLine)) // next occurrence, no decrease
 
 	notifier := &recordingNotifier{}
-	if err := EvaluateAlerts(ctx, store, true, AlertConfig{Enabled: true, ResetNotice: true}, notifier, r2.Add(2*time.Minute)); err != nil {
+	if err := evaluate(ctx, store, true, AlertConfig{Enabled: true, ResetNotice: true}, notifier, r2.Add(2*time.Minute)); err != nil {
 		t.Fatalf("EvaluateAlerts: %v", err)
 	}
 	if len(notifier.sent) != 0 {
@@ -269,19 +279,29 @@ func TestEvaluateAlertsNotificationCarriesNoAccountIdentifier(t *testing.T) {
 		Client: ClientCodex, AccountID: account, WindowKey: "codex", Source: SourceCodex,
 		ObservedAt: t0, WindowMinutes: 300, UsedPercent: 91, ResetsAt: t0.Add(3 * time.Hour),
 	})
-	if err := EvaluateAlerts(ctx, store, true, bothThresholds, notifier, t0); err != nil {
+	if err := evaluate(ctx, store, true, bothThresholds, notifier, t0); err != nil {
 		t.Fatalf("EvaluateAlerts: %v", err)
 	}
 	if len(notifier.sent) != 2 {
 		t.Fatalf("notifications = %+v, want one per crossed threshold", notifier.sent)
 	}
 	for _, n := range notifier.sent {
-		text := n.Title() + " " + n.Body()
-		if strings.Contains(text, account) || strings.Contains(text, accountDigest(ClientCodex, account)) {
-			t.Fatalf("notification %q carries an account identifier", text)
+		encoded, err := json.Marshal(n)
+		if err != nil {
+			t.Fatal(err)
 		}
-		if !strings.Contains(n.Title(), "Codex") || !strings.Contains(n.Body(), "5-hour window") || !strings.Contains(n.Body(), "91%") {
-			t.Fatalf("notification %q, want client, window, and figure named", text)
+		key, err := parseAlertID(n.ID)
+		if err != nil {
+			t.Fatalf("parseAlertID(%q): %v", n.ID, err)
+		}
+		keyJSON, _ := json.Marshal(key)
+		for _, text := range []string{string(encoded), string(keyJSON)} {
+			if strings.Contains(text, account) || strings.Contains(text, accountDigest(ClientCodex, account)) {
+				t.Fatalf("notice %s carries an account identifier", text)
+			}
+		}
+		if n.Client != ClientCodex || n.WindowMinutes != 300 || n.UsedPercent != 91 {
+			t.Fatalf("notice %+v, want client, window length, and figure named", n)
 		}
 	}
 }
@@ -294,12 +314,12 @@ func TestEvaluateAlertsRetriesAFailedDelivery(t *testing.T) {
 	recordWindow(t, store, claudeFiveHour(t0, t0.Add(4*time.Hour), 80, SourceClaudeStatusLine))
 
 	notifier := &recordingNotifier{err: errors.New("notification centre unavailable")}
-	if err := EvaluateAlerts(ctx, store, true, cfg, notifier, t0); err == nil {
+	if err := evaluate(ctx, store, true, cfg, notifier, t0); err == nil {
 		t.Fatal("EvaluateAlerts returned nil after a failed delivery")
 	}
 	notifier.err = nil
 	for i := 0; i < 2; i++ {
-		if err := EvaluateAlerts(ctx, store, true, cfg, notifier, t0.Add(time.Minute)); err != nil {
+		if err := evaluate(ctx, store, true, cfg, notifier, t0.Add(time.Minute)); err != nil {
 			t.Fatalf("EvaluateAlerts: %v", err)
 		}
 	}
@@ -315,7 +335,7 @@ func TestEvaluateAlertsSkipsThresholdsWithoutResetsAt(t *testing.T) {
 	t0 := time.Date(2026, 9, 10, 10, 0, 0, 0, time.UTC)
 	recordWindow(t, store, claudeFiveHour(t0, time.Time{}, 95, SourceClaudeStatusLine))
 
-	if err := EvaluateAlerts(ctx, store, true, bothThresholds, notifier, t0); err != nil {
+	if err := evaluate(ctx, store, true, bothThresholds, notifier, t0); err != nil {
 		t.Fatalf("EvaluateAlerts: %v", err)
 	}
 	if len(notifier.sent) != 0 {
@@ -332,7 +352,7 @@ func TestEvaluateAlertsPrunesExpiredNotices(t *testing.T) {
 	}
 
 	later := t0.Add(alertNoticeRetention + time.Hour)
-	if err := EvaluateAlerts(ctx, store, true, bothThresholds, &recordingNotifier{}, later); err != nil {
+	if err := evaluate(ctx, store, true, bothThresholds, &recordingNotifier{}, later); err != nil {
 		t.Fatalf("EvaluateAlerts: %v", err)
 	}
 	var rows int
@@ -364,7 +384,7 @@ func TestEvaluateAlertsNoResetNoticeWhenWindowLengthUnknown(t *testing.T) {
 			Client: ClientCodex, AccountID: "acct-1", WindowKey: "codex_bengalfox", Source: SourceCodex,
 			ObservedAt: at, WindowMinutesReason: ReasonNotReported, UsedPercent: used, ResetsAt: resetsAt,
 		})
-		if err := EvaluateAlerts(ctx, store, true, cfg, notifier, at); err != nil {
+		if err := evaluate(ctx, store, true, cfg, notifier, at); err != nil {
 			t.Fatalf("EvaluateAlerts: %v", err)
 		}
 	}
@@ -377,21 +397,69 @@ func TestEvaluateAlertsNoResetNoticeWhenWindowLengthUnknown(t *testing.T) {
 	}
 }
 
-func TestAlertWindowLabel(t *testing.T) {
-	cases := []struct {
-		window Window
-		want   string
-	}{
-		{Window{WindowMinutes: 300}, "5-hour window"},
-		{Window{WindowMinutes: 10080}, "7-day window"},
-		{Window{WindowMinutes: 90}, "90-minute window"},
-		{Window{Label: "GPT-5 Codex", WindowMinutes: 300}, "GPT-5 Codex (5-hour)"},
-		{Window{Label: "GPT-5 Codex", WindowMinutesReason: ReasonNotReported}, "GPT-5 Codex"},
-		{Window{WindowKey: "codex_bengalfox", WindowMinutesReason: ReasonNotReported}, "Quota window"},
+func TestDueAlertsRecordNothingUntilAcknowledged(t *testing.T) {
+	// A notice the app could not post is never acknowledged, so it must stay
+	// due with the same id — the retry C10 promises — until an ack arrives.
+	store, db := openTestStore(t)
+	ctx := context.Background()
+	cfg := AlertConfig{Enabled: true, Thresholds: []float64{75}}
+	t0 := time.Date(2026, 9, 10, 10, 0, 0, 0, time.UTC)
+	recordWindow(t, store, claudeFiveHour(t0, t0.Add(4*time.Hour), 80, SourceClaudeStatusLine))
+
+	first, err := DueAlerts(ctx, store, true, cfg, t0)
+	if err != nil || len(first) != 1 {
+		t.Fatalf("DueAlerts = %+v, %v; want one notice", first, err)
 	}
-	for _, c := range cases {
-		if got := alertWindowLabel(c.window); got != c.want {
-			t.Fatalf("alertWindowLabel(%+v) = %q, want %q", c.window, got, c.want)
+	second, err := DueAlerts(ctx, store, true, cfg, t0.Add(time.Minute))
+	if err != nil || len(second) != 1 || second[0].ID != first[0].ID {
+		t.Fatalf("unacknowledged notice: second evaluation = %+v, %v; want the same id again", second, err)
+	}
+	var rows int
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM quota_alert_notices`).Scan(&rows); err != nil || rows != 0 {
+		t.Fatalf("ledger rows before acknowledgement = %d, %v; want 0", rows, err)
+	}
+	for i := 0; i < 2; i++ {
+		if err := AcknowledgeAlert(ctx, store, first[0].ID, t0.Add(2*time.Minute)); err != nil {
+			t.Fatalf("AcknowledgeAlert: %v", err)
 		}
+	}
+	if after, err := DueAlerts(ctx, store, true, cfg, t0.Add(3*time.Minute)); err != nil || len(after) != 0 {
+		t.Fatalf("after acknowledgement = %+v, %v; want none", after, err)
+	}
+}
+
+func TestAcknowledgeAlertRejectsIDsTheEvaluatorCannotProduce(t *testing.T) {
+	store, db := openTestStore(t)
+	ctx := context.Background()
+	now := time.Date(2026, 9, 10, 10, 0, 0, 0, time.UTC)
+	valid := alertKey{Client: ClientClaude, WindowKey: ClaudeWindowFiveHour, Kind: AlertThreshold, Threshold: 75, Instance: now.Unix()}
+	forge := func(key alertKey) string {
+		encoded, _ := json.Marshal(key)
+		return alertIDPrefix + base64.RawURLEncoding.EncodeToString(encoded)
+	}
+	cases := map[string]string{
+		"empty":             "",
+		"no prefix":         strings.TrimPrefix(valid.id(), alertIDPrefix),
+		"not base64":        alertIDPrefix + "!!!",
+		"not json":          alertIDPrefix + base64.RawURLEncoding.EncodeToString([]byte("nope")),
+		"unknown client":    forge(alertKey{Client: "gemini", WindowKey: "w", Kind: AlertThreshold, Threshold: 75, Instance: 1}),
+		"unknown kind":      forge(alertKey{Client: ClientCodex, WindowKey: "w", Kind: "spam", Threshold: 75, Instance: 1}),
+		"reset with figure": forge(alertKey{Client: ClientCodex, WindowKey: "w", Kind: AlertReset, Threshold: 75, Instance: 1}),
+		"threshold of 0":    forge(alertKey{Client: ClientCodex, WindowKey: "w", Kind: AlertThreshold, Threshold: 0, Instance: 1}),
+		"no window":         forge(alertKey{Client: ClientCodex, Kind: AlertThreshold, Threshold: 75, Instance: 1}),
+		"no instance":       forge(alertKey{Client: ClientCodex, WindowKey: "w", Kind: AlertThreshold, Threshold: 75}),
+		"extra field":       alertIDPrefix + base64.RawURLEncoding.EncodeToString([]byte(`{"c":"claude","w":"five_hour","k":"threshold","t":75,"i":1,"x":1}`)),
+	}
+	for name, id := range cases {
+		if err := AcknowledgeAlert(ctx, store, id, now); !errors.Is(err, ErrInvalidAlertID) {
+			t.Fatalf("%s: AcknowledgeAlert(%q) = %v, want ErrInvalidAlertID", name, id, err)
+		}
+	}
+	var rows int
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM quota_alert_notices`).Scan(&rows); err != nil || rows != 0 {
+		t.Fatalf("ledger rows after rejected acknowledgements = %d, %v; want 0", rows, err)
+	}
+	if err := AcknowledgeAlert(ctx, store, valid.id(), now); err != nil {
+		t.Fatalf("AcknowledgeAlert(valid) = %v", err)
 	}
 }

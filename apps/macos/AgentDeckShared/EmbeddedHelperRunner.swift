@@ -967,25 +967,93 @@ public protocol QuotaSettingsTransport: Sendable {
 }
 
 public protocol DesktopQuotaRefreshing: Sendable {
-	func refreshQuota(manual: Bool) async
+	/// Runs one quota refresh and returns the alerts that are due. The helper
+	/// records none of them as sent (architecture.md C10): the app posts them
+	/// and acknowledges only the ones the notification service accepted.
+	func refreshQuota(manual: Bool) async -> [DesktopQuotaAlertV1]
+	func acknowledgeQuotaAlerts(ids: [String]) async
+}
+
+/// Posts due quota alerts under the app's own identity and returns the ids the
+/// notification service accepted. Anything not returned stays due and is
+/// offered again by the next refresh.
+public protocol QuotaAlertDelivering: Sendable {
+	func deliver(_ alerts: [DesktopQuotaAlertV1]) async -> [String]
 }
 
 extension EmbeddedHelperRunner: DesktopQuotaRefreshing {
-	public func refreshQuota(manual: Bool) async {
+	public func refreshQuota(manual: Bool) async -> [DesktopQuotaAlertV1] {
 		var arguments = ["desktop", "quota-refresh"]
 		if manual { arguments.append("--manual") }
-		let _: DesktopQuotaTransportOutcome<DesktopQuotaRefreshResultV1> = await runQuotaCommand(arguments)
+		let outcome: DesktopQuotaTransportOutcome<DesktopQuotaRefreshResultV1> = await runQuotaCommand(arguments)
+		guard case let .decoded(result) = outcome else { return [] }
+		return result.alerts
+	}
+
+	public func acknowledgeQuotaAlerts(ids: [String]) async {
+		guard !ids.isEmpty else { return }
+		let arguments = ["desktop", "quota-alerts", "ack"] + ids.flatMap { ["--id", $0] }
+		let _: DesktopQuotaTransportOutcome<DesktopQuotaAlertsAckResultV1> = await runQuotaCommand(arguments)
 	}
 }
 
 public struct DesktopQuotaRefreshResultV1: Codable, Equatable, Sendable {
-	public let clients: [String]
 	public let gateReasons: [String: String?]
+	public let alerts: [DesktopQuotaAlertV1]
 
 	enum CodingKeys: String, CodingKey {
-		case clients
 		case gateReasons = "gate_reasons"
+		case alerts
 	}
+
+	public init(gateReasons: [String: String?], alerts: [DesktopQuotaAlertV1]) {
+		self.gateReasons = gateReasons
+		self.alerts = alerts
+	}
+
+	public init(from decoder: Decoder) throws {
+		let container = try decoder.container(keyedBy: CodingKeys.self)
+		gateReasons = try container.decodeIfPresent([String: String?].self, forKey: .gateReasons) ?? [:]
+		alerts = try container.decodeIfPresent([DesktopQuotaAlertV1].self, forKey: .alerts) ?? []
+	}
+}
+
+/// One due quota alert (architecture.md C10). `id` is opaque and passed back
+/// unchanged on acknowledgement; it doubles as the notification request
+/// identifier so a re-offered alert replaces rather than duplicates.
+public struct DesktopQuotaAlertV1: Codable, Equatable, Sendable {
+	public enum Kind: String, Codable, Sendable {
+		case threshold
+		case reset
+	}
+
+	public let id: String
+	public let kind: Kind
+	public let client: String
+	public let label: String?
+	public let windowMinutes: Int?
+	public let usedPercent: Double
+	public let threshold: Double?
+
+	enum CodingKeys: String, CodingKey {
+		case id, kind, client, label, threshold
+		case windowMinutes = "window_minutes"
+		case usedPercent = "used_percent"
+	}
+
+	public init(id: String, kind: Kind, client: String, label: String? = nil, windowMinutes: Int? = nil, usedPercent: Double, threshold: Double? = nil) {
+		self.id = id
+		self.kind = kind
+		self.client = client
+		self.label = label
+		self.windowMinutes = windowMinutes
+		self.usedPercent = usedPercent
+		self.threshold = threshold
+	}
+}
+
+public struct DesktopQuotaAlertsAckResultV1: Codable, Equatable, Sendable {
+	public let acknowledged: Int
 }
 
 extension EmbeddedHelperRunner: QuotaSettingsTransport {
@@ -1299,6 +1367,7 @@ public final class DesktopRefreshCoordinator {
 
 	private let host: any DesktopSnapshotRefreshing
 	private let quotaRefresher: (any DesktopQuotaRefreshing)?
+	private let alertDeliverer: (any QuotaAlertDelivering)?
 	private let snapshotStore: AppGroupSnapshotStore?
 	@ObservationIgnored private var activeRefresh: Task<Void, Never>?
 	@ObservationIgnored private var generation = 0
@@ -1306,10 +1375,12 @@ public final class DesktopRefreshCoordinator {
 	public init(
 		host: any DesktopSnapshotRefreshing = DesktopHost(),
 		quotaRefresher: (any DesktopQuotaRefreshing)? = nil,
+		alertDeliverer: (any QuotaAlertDelivering)? = nil,
 		snapshotStore: AppGroupSnapshotStore? = AppGroupSnapshotStore()
 	) {
 		self.host = host
 		self.quotaRefresher = quotaRefresher
+		self.alertDeliverer = alertDeliverer
 		self.snapshotStore = snapshotStore
 	}
 
@@ -1347,7 +1418,13 @@ public final class DesktopRefreshCoordinator {
 				return
 			}
 			do {
-				await self.quotaRefresher?.refreshQuota(manual: manualQuota)
+				if let quotaRefresher = self.quotaRefresher {
+					let alerts = await quotaRefresher.refreshQuota(manual: manualQuota)
+					if !alerts.isEmpty, let alertDeliverer = self.alertDeliverer {
+						let delivered = await alertDeliverer.deliver(alerts)
+						await quotaRefresher.acknowledgeQuotaAlerts(ids: delivered)
+					}
+				}
 				guard !Task.isCancelled else { return }
 				let envelope = try await self.host.refresh(recentLimit: recentLimit)
 				guard !Task.isCancelled else {
