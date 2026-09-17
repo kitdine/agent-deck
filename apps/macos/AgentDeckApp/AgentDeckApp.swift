@@ -28,6 +28,33 @@ func debugTestHome(environment: [String: String]) throws -> URL? {
 func debugAutomaticRefreshEnabled(environment: [String: String]) -> Bool {
 	environment["XCTestConfigurationFilePath"] == nil
 }
+
+/// What `AgentDeckApplicationDelegate.init()` builds its real-HOME-touching
+/// objects (the embedded helper runner, its snapshot store/defaults, and the
+/// `~/.claude/settings.json` URL `QuotaSettingsController.load()` reads from
+/// Settings' `onAppear`) from, resolved once as a pure function so a hosted
+/// test's fail-closed behavior is directly testable without constructing the
+/// real delegate. `.real` is reachable only when `XCTestConfigurationFilePath`
+/// is absent (docs/fixes/xctest-state-isolation.md); a hosted run that never
+/// resolves an isolated home must not silently fall through to it merely
+/// because automatic refresh is separately disabled.
+enum DebugHomeResolution: Equatable {
+	case real
+	case isolated(URL)
+	case unsafeHome
+	case missingForHostedTest
+}
+
+func resolveDebugHome(environment: [String: String]) -> DebugHomeResolution {
+	do {
+		if let testHome = try debugTestHome(environment: environment) {
+			return .isolated(testHome)
+		}
+	} catch {
+		return .unsafeHome
+	}
+	return debugAutomaticRefreshEnabled(environment: environment) ? .real : .missingForHostedTest
+}
 #endif
 
 @main
@@ -86,37 +113,39 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 		#if DEBUG
 		// AgentDeckAppTests is a hosted XCTest target: starting the test bundle
 		// starts this application delegate, including its initial helper refresh.
-		// debugAutomaticRefreshEnabled is what actually keeps an ordinary hosted
-		// test from touching real state: it disables the periodic refresh (and
-		// therefore the embedded helper launch) whenever XCTestConfigurationFilePath
-		// is set, regardless of whether AGENTDECK_TEST_HOME is also present
-		// (docs/fixes/xctest-state-isolation.md). A hosted test that explicitly
-		// wants the real helper against an isolated home still goes through
-		// debugTestHome below, which fails closed on an unsafe prefix.
+		// resolveDebugHome is the single fail-closed decision for every
+		// real-HOME-touching object built below (docs/fixes/xctest-state-isolation.md
+		// covers automatic refresh; QuotaSettingsController.load(), reachable
+		// from Settings' onAppear independent of automatic refresh, needed the
+		// same guard). A hosted test that never resolves an isolated home --
+		// a command that forgot to pass TEST_RUNNER_AGENTDECK_TEST_HOME (Xcode
+		// strips TEST_RUNNER_ for the launched test host), or supplied an
+		// unsafe prefix -- must fail before the delegate can read or reason
+		// about real state.
 		automaticRefreshEnabled = debugAutomaticRefreshEnabled(environment: ProcessInfo.processInfo.environment)
-		// Acceptance harnesses may supply a controlled temporary home. XCTest
-		// hosts never launch the helper, so a direct xcodebuild cannot read or
-		// migrate the user's real AgentDeck or client state.
-		do {
-			if let testHome = try debugTestHome(environment: ProcessInfo.processInfo.environment) {
-				runner = EmbeddedHelperRunner(
-					appBundleURL: Bundle.main.bundleURL,
-					environment: [
-						"HOME": testHome.path,
-						"LANG": "en_US_POSIX",
-						"LC_ALL": "en_US_POSIX",
-						"PATH": "/usr/bin:/bin",
-					]
-				)
-				snapshotStore = AppGroupSnapshotStore(
-					directoryURL: testHome.appendingPathComponent("app-group", isDirectory: true)
-				)
-				defaults = UserDefaults(suiteName: "com.kitdine.agentdeck.acceptance") ?? .standard
-				defaults.setVolatileDomain([:], forName: "com.kitdine.agentdeck.acceptance")
-				claudeSettingsURL = testHome.appendingPathComponent(".claude", isDirectory: true)
-					.appendingPathComponent("settings.json", isDirectory: false)
-			}
-		} catch {
+		switch resolveDebugHome(environment: ProcessInfo.processInfo.environment) {
+		case .real:
+			break
+		case .isolated(let testHome):
+			runner = EmbeddedHelperRunner(
+				appBundleURL: Bundle.main.bundleURL,
+				environment: [
+					"HOME": testHome.path,
+					"LANG": "en_US_POSIX",
+					"LC_ALL": "en_US_POSIX",
+					"PATH": "/usr/bin:/bin",
+				]
+			)
+			snapshotStore = AppGroupSnapshotStore(
+				directoryURL: testHome.appendingPathComponent("app-group", isDirectory: true)
+			)
+			defaults = UserDefaults(suiteName: "com.kitdine.agentdeck.acceptance") ?? .standard
+			defaults.setVolatileDomain([:], forName: "com.kitdine.agentdeck.acceptance")
+			claudeSettingsURL = testHome.appendingPathComponent(".claude", isDirectory: true)
+				.appendingPathComponent("settings.json", isDirectory: false)
+		case .missingForHostedTest:
+			preconditionFailure("Hosted AgentDeck tests require an isolated AGENTDECK_TEST_HOME")
+		case .unsafeHome:
 			preconditionFailure("AgentDeck test harness requires a safe temporary home")
 		}
 		#endif

@@ -52,6 +52,7 @@ if xcodebuild -version >/dev/null 2>&1; then
 		HOME="$test_home" \
 		CFFIXED_USER_HOME="$test_home" \
 		AGENTDECK_TEST_HOME="$test_home" \
+		TEST_RUNNER_AGENTDECK_TEST_HOME="$test_home" \
 		xcodebuild \
     -project "$repo_root/apps/macos/AgentDeck.xcodeproj" \
     -scheme AgentDeck \

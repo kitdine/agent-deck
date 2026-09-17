@@ -26,6 +26,37 @@ final class DesktopPreferencesTests: XCTestCase {
 		XCTAssertNil(try debugTestHome(environment: [:]))
 	}
 
+	/// A4-F1: automatic-refresh suppression alone does not stop
+	/// `AgentDeckApplicationDelegate.init()` from building a real-HOME
+	/// `EmbeddedHelperRunner` and `~/.claude/settings.json` URL that
+	/// `QuotaSettingsController.load()` (Settings' `onAppear`) reads
+	/// independent of that flag. `resolveDebugHome` is `init()`'s actual
+	/// decision; `.real` -- the only case that keeps the real defaults --
+	/// must be unreachable whenever a hosted XCTest is running, regardless
+	/// of whether it also supplied an isolated home.
+	func testResolveDebugHomeNeverFallsBackToRealStateUnderAHostedXCTest() {
+		XCTAssertEqual(
+			resolveDebugHome(environment: ["XCTestConfigurationFilePath": "/private/tmp/test.xctestconfiguration"]),
+			.missingForHostedTest
+		)
+		XCTAssertEqual(
+			resolveDebugHome(environment: [
+				"XCTestConfigurationFilePath": "/private/tmp/test.xctestconfiguration",
+				"AGENTDECK_TEST_HOME": NSHomeDirectory(),
+			]),
+			.unsafeHome
+		)
+		let isolatedHome = URL(fileURLWithPath: "/private/tmp/agentdeck-macos-xctest.fixture/home", isDirectory: true).standardizedFileURL
+		XCTAssertEqual(
+			resolveDebugHome(environment: [
+				"XCTestConfigurationFilePath": "/private/tmp/test.xctestconfiguration",
+				"AGENTDECK_TEST_HOME": isolatedHome.path,
+			]),
+			.isolated(isolatedHome)
+		)
+		XCTAssertEqual(resolveDebugHome(environment: [:]), .real)
+	}
+
 	func testDefaultsOnACleanDomainAreTheQuietChoice() {
 		let preferences = DesktopPreferences(defaults: isolatedDefaults(), registrar: StubLoginItemRegistrar())
 

@@ -54,7 +54,7 @@ completed feature topic or an approved implementation decomposition.
 | Snapshot performance | `ad-snapshot-performance` | `snapshot-performance`; 3/3 tasks reviewed and delivered, with explicit performance/native acceptance exceptions retained; final branch also carries the reviewed `xctest-state-isolation` fix |
 | Cost and price transparency | `ad-cost-transparency` | Topic decomposition/delivery pending; distinguish actual-spend and API-equivalent estimates, with separate catalog/model/tier audits |
 | Actionable health recovery | `ad-health-recovery` | Topic decomposition/delivery pending; cause-specific lock guidance and stale extension inventory, retaining the original bug carriers |
-| Codex/Claude subscription accounts, quota, reset and alerts | `ad-subscription-quota` | Topic decomposition/delivery pending; source feasibility, reset-count semantics, freshness, account isolation and opt-in notification deduplication remain required |
+| Codex/Claude subscription accounts, quota, reset and alerts | `ad-subscription-quota` | `subscription-quota`; seven tasks reviewed and delivered, but integration candidate `aac6bb1` failed Round 4 because its conflict resolution removed the topic's fail-closed hosted-XCTest isolation guard |
 
 Bind the five remaining areas to their actual reviewed topics before assembly;
 do not invent topic directories or implementation tasks for them in this file.
@@ -199,6 +199,18 @@ Technical preflight, signing/notarization, tags, RC/stable publication and local
 installation remain separate exact-SHA workflows requiring explicit authority.
 
 ## Current handoff
+
+The third batch candidate is `subscription-quota` at merge commit `aac6bb1` /
+tree `adf6ed43`, after refreshing the feature from main `4dd10f4`. Round 4
+integration review failed with `A4-F1`: the `AgentDeckApp.swift` conflict
+resolution removed the topic's delivered fail-closed hosted-XCTest guard while
+still constructing a real-home helper and injecting the real
+`~/.claude/settings.json` URL when `AGENTDECK_TEST_HOME` is absent. The
+replacement `automaticRefreshEnabled` check prevents only automatic refresh;
+opening Settings still reads that URL and calls the real helper transport.
+Repair must preserve main's ordinary hosted-XCTest execution while restoring a
+fail-closed isolation boundary for every quota settings/helper path. No push or
+feature-to-main assembly was performed; aggregate `assemble` remains open.
 
 The version plan was delivered through PR #2, and `schema-version-signal` was
 integrated through PR #3 at main `f2b7d23`. Its exact result identity and retained
