@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-09-08
-updated: 2026-09-14
+updated: 2026-09-17
 ---
 
 # Subscription Quota — Tasks
@@ -990,15 +990,19 @@ not evidence.
 
 ## Current handoff
 
-**2026-09-16:** manual acceptance of tasks 3 and 5 found `MA-F1` and `MA-F2`,
+**2026-09-16/17:** manual acceptance of tasks 3 and 5 found `MA-F1` and `MA-F2`,
 and the task 5 follow-up found task 7 layout defect `MA-F3` (see Manual
-acceptance). All three are repaired in the uncommitted candidate on
-`feature/subscription-quota`. Task 3 passed independent Round 4 re-review;
-task 5 passed independent Round 7 re-review before that follow-up. The corrected
-acceptance harness has now passed permission, Focus, deduplication and denied-state
-layout checks, closing task 5's shared verification gap. Tasks 6 and 7 passed
-independent Round 4 re-review; all task Review cells are now checked. Tasks 5–7
-await separately authorized repair delivery.
+acceptance). Task 3 passed independent Round 4 re-review and `MA-F1` was
+delivered in signed commit `f9f7646` on `feature/subscription-quota`. Task 5
+passed independent Round 7 re-review before the App-delivery follow-up; tasks 6
+and 7 passed independent Round 4 re-review. `MA-F2` (tasks 5/6/7) and `MA-F3`
+(task 7) were delivered together in signed commit `dc4d556` on
+`feature/subscription-quota`. All task Review cells are checked, all seven
+tasks are closed in Beads with CEv1 task gates VERIFIED at their delivered
+commit content, and the topic gate's three criteria (documents-passed,
+tasks-reviewed-and-committed, manual-acceptance-dispositions) are VERIFIED at
+`dc4d556`. Neither commit has been pushed; assembly into `main` is tracked by
+the `v0-6-0-contract` topic's `assemble` task, not here.
 Everything below describes the state before these repairs except where the
 task-specific paragraphs say otherwise.
 
@@ -1052,15 +1056,15 @@ Task 5 `quota-alerts` was delivered in signed commit `dbd119f`, then reopened
 after manual acceptance invalidated its notification-delivery path. The repaired
 candidate passed Round 7 re-review; the subsequent repaired App-delivery
 acceptance passed permission, delivery, Focus, deduplication and denied-state
-layout checks, so its completion gate is VERIFIED. Its coordination state
-is tracked in Beads `ad-sq-quota-alerts-dev`. See
+layout checks, so its completion gate is VERIFIED. The repair was delivered in
+signed commit `dc4d556`; Beads `ad-sq-quota-alerts-dev` is closed. See
 [`reviews/quota-alerts.md`](reviews/quota-alerts.md) for the full finding
 dispositions, evidence, and completion gate.
 
 Task 6 `wire-and-cli` was delivered in signed commit `cfcc395`, then reopened
-for MA-F2. The repaired candidate passed Round 4 re-review; its coordination
-state is tracked in Beads `ad-sq-wire-and-cli-dev` and awaits an authorized
-repair commit. WC-R1-F1, WC-R1-F2, and WC-R2-F1 remain closed. The Round 2
+for MA-F2. The repaired candidate passed Round 4 re-review and was delivered in
+signed commit `dc4d556`; Beads `ad-sq-wire-and-cli-dev` is closed. WC-R1-F1,
+WC-R1-F2, and WC-R2-F1 remain closed. The Round 2
 repair's operator-approved storage change (`EnvelopeRecord.FailureObservedAt`,
 schema version 26 → 27) is recorded in task 6's own section above. See
 [`reviews/wire-and-cli.md`](reviews/wire-and-cli.md) for the full evidence and
@@ -1069,8 +1073,9 @@ completion gate.
 Task 7 `desktop-surfaces` was delivered in signed commit `f7f6865`, then reopened
 for MA-F2/MA-F3. The repaired candidate passed Round 4 re-review with real native
 notification acceptance; see [`reviews/desktop-surfaces.md`](reviews/desktop-surfaces.md).
-It is tracked in Beads `ad-sq-desktop-surfaces-dev` and awaits an authorized
-repair commit. The implementation retains the fail-closed hosted-test guard:
+The repair was delivered in signed commit `dc4d556`; Beads
+`ad-sq-desktop-surfaces-dev` is closed. The implementation retains the
+fail-closed hosted-test guard:
 `AgentDeckAppTests` cannot construct a real-home helper without an isolated
 `AGENTDECK_TEST_HOME`.
 
