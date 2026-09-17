@@ -62,11 +62,31 @@ func readChainedStatusLineCommand(claudeSettingsURL: URL) -> String? {
 	guard let data = try? Data(contentsOf: claudeSettingsURL),
 		let decoded = try? JSONDecoder().decode(ClaudeStatusLinePreview.self, from: data),
 		let command = decoded.statusLine?.command,
-		!command.isEmpty
+		!command.isEmpty,
+		!isManagedStatusLineCommand(command)
 	else {
 		return nil
 	}
 	return command
+}
+
+// Codex PR #5 second review, P2: once AgentDeck's own status-line route is
+// registered, the "current" ~/.claude/settings.json value IS AgentDeck's
+// command, not the prior one it will chain to. Mirrors
+// internal/usagehook/config.go's managedStatusLineCommand suffix/prefix
+// check so that case is never shown back to the user as its own preview.
+private func isManagedStatusLineCommand(_ command: String) -> Bool {
+	let trimmed = command.trimmingCharacters(in: .whitespacesAndNewlines)
+	let marker = " quota capture"
+	guard trimmed.hasSuffix(marker) else { return false }
+	let prefix = String(trimmed.dropLast(marker.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+	if prefix == "agentdeck" { return true }
+	let statePrefix = "agentdeck --state-dir "
+	guard prefix.hasPrefix(statePrefix) else { return false }
+	let stateDir = String(prefix.dropFirst(statePrefix.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+	if stateDir.isEmpty { return false }
+	if stateDir.hasPrefix("'"), stateDir.hasSuffix("'") { return true }
+	return !stateDir.contains(where: { $0 == " " || $0 == "\t" || $0 == "\r" || $0 == "\n" })
 }
 
 /// Drives the subscription-quota settings group (ux/settings-quota.md).
@@ -165,12 +185,19 @@ final class QuotaSettingsController {
 
 	/// Turning alerts on is when notification permission is requested; a
 	/// refusal keeps the setting on and shows the warning row instead.
+	///
+	/// Codex PR #5 second review, P2: `on` is this call's own stale intent —
+	/// while this write is in flight, a later `setAlerts(false)` can coalesce
+	/// into the same in-progress round trip (`applySettings`'s queue) and
+	/// finish alerts off before this call resumes. Requesting permission is
+	/// therefore keyed on `settings?.alerts` (what actually persisted after
+	/// every coalesced write), not the `on` this call was invoked with.
 	func setAlerts(_ on: Bool) async {
 		var desired = currentDesired()
 		desired.alerts = on
 		stage(desired)
 		await applySettings(desired)
-		if on {
+		if settings?.alerts == true {
 			notificationsDenied = await !notifications.requestAuthorization()
 		} else {
 			notificationsDenied = false
@@ -208,15 +235,26 @@ final class QuotaSettingsController {
 	/// re-reading `settings` (last confirmed by the *previous* round trip)
 	/// would be. `alerts`/`thresholds`/`resetNotice` have no local mirror
 	/// (core state is their only home), so they come from `settings` and
-	/// default off/empty — matching `requirements.md`'s default-off contract —
-	/// only when core state has not been read yet at all.
+	/// default off — matching `requirements.md`'s default-off contract — only
+	/// when core state has not been read yet at all.
+	///
+	/// Codex PR #5 second review, P2: `thresholds` cannot default to `[]`
+	/// here. `EmbeddedHelperRunner.applyQuotaSettings` always resends
+	/// `--thresholds` (task 6's "callers always resend every field they
+	/// know"), and the CLI's `ParseAlertThresholds` rejects an empty value
+	/// outright -- so a reading/interval change made before `load()` resolves
+	/// would otherwise fail the whole write, not just leave thresholds
+	/// unset. `[75, 90]` is `internal/quota/settings.go`'s own
+	/// `DefaultSettings()` value, so this matches what core state would use
+	/// if it had never been read at all, exactly like `alerts`/`resetNotice`
+	/// already do.
 	private func currentDesired() -> DesktopQuotaSettingsDesiredV1 {
 		if let desiredSettings { return desiredSettings }
 		return DesktopQuotaSettingsDesiredV1(
 			reading: preferences.quotaProbeEnabled,
 			interval: DesktopQuotaIntervalV1(preferences.quotaProbeInterval),
 			alerts: settings?.alerts ?? false,
-			thresholds: settings?.thresholds ?? [],
+			thresholds: settings?.thresholds ?? [75, 90],
 			resetNotice: settings?.resetNotice ?? false
 		)
 	}

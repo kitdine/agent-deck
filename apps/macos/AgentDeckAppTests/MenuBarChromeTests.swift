@@ -510,6 +510,30 @@ final class MenuBarChromeTests: XCTestCase {
 		let neverCaption = panel.headerCaption(never, source: .claudeStatusLine)
 		XCTAssertEqual(neverCaption, "Claude status line", "no observed_at means no age clause to show")
 	}
+
+	// Codex PR #5 second review, P2: a Codex limit's primary and secondary
+	// windows share the same vendor label, so the label alone cannot tell a
+	// 5-hour row from a 7-day row for the same limit.
+	func testQuotaWindowLabelAppendsTheSpanRatherThanReplacingItWithTheVendorLabel() throws {
+		let panel = QuotaPanelView(clients: [])
+		let labeled = try JSONDecoder().decode(
+			DesktopSubscriptionWindowV1.self,
+			from: JSONSerialization.data(withJSONObject: [
+				"key": "codex", "label": "GPT-5.3-Codex-Spark", "window_minutes": 300,
+				"window_minutes_reason": NSNull(), "used_percent": 12, "resets_at": NSNull(),
+			])
+		)
+		XCTAssertEqual(panel.windowLabel(labeled), "GPT-5.3-Codex-Spark · " + t(DesktopCopy.quotaWindow5h))
+
+		let unlabeled = try JSONDecoder().decode(
+			DesktopSubscriptionWindowV1.self,
+			from: JSONSerialization.data(withJSONObject: [
+				"key": "five_hour", "label": NSNull(), "window_minutes": 300,
+				"window_minutes_reason": NSNull(), "used_percent": 22, "resets_at": NSNull(),
+			])
+		)
+		XCTAssertEqual(panel.windowLabel(unlabeled), t(DesktopCopy.quotaWindow5h))
+	}
 }
 
 @MainActor

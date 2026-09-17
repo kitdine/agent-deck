@@ -49,6 +49,13 @@ type SubscriptionWindow struct {
 	WindowMinutesReason *string `json:"window_minutes_reason"`
 	UsedPercent         float64 `json:"used_percent"`
 	ResetsAt            *string `json:"resets_at"`
+	// ObservedAt is this window's own observation instant (additive at
+	// unchanged WireVersion=1, matching the subscription section itself):
+	// the client-level observed_at is derived from the newest window or
+	// envelope (BuildSubscription), so a surface that must date the windows
+	// it actually displays -- not the client as a whole -- needs each
+	// window's own instant, not the client's.
+	ObservedAt *string `json:"observed_at"`
 }
 
 // SubscriptionResetAllowance is the Codex reset allowance (C6). Credits carry
@@ -259,7 +266,7 @@ func newestWindowSource(windows []quota.Window) (quota.Source, time.Time) {
 }
 
 func subscriptionWindow(w quota.Window) SubscriptionWindow {
-	out := SubscriptionWindow{Key: w.WindowKey, UsedPercent: w.UsedPercent, ResetsAt: timeText(w.ResetsAt)}
+	out := SubscriptionWindow{Key: w.WindowKey, UsedPercent: w.UsedPercent, ResetsAt: timeText(w.ResetsAt), ObservedAt: timeText(w.ObservedAt)}
 	if w.Label != "" {
 		label := w.Label
 		out.Label = &label

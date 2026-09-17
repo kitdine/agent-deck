@@ -1,3 +1,4 @@
+import Foundation
 import XCTest
 
 final class WidgetTimelineTests: XCTestCase {
@@ -67,6 +68,26 @@ final class WidgetTimelineTests: XCTestCase {
 		XCTAssertEqual(quotaResetETA(at(3 * 86400 + 5 * 3600), now: now), "3d5h")
 		XCTAssertNil(quotaResetETA(at(-60), now: now), "a reset already in the past must not show a countdown")
 		XCTAssertNil(quotaResetETA("not a timestamp", now: now))
+	}
+
+	// Codex PR #5 second review, P2: a Codex limit's primary and secondary
+	// windows share the same vendor label, so the label alone cannot tell a
+	// 5-hour row from a 7-day row for the same limit.
+	func testQuotaWindowNameAppendsTheSpanRatherThanReplacingItWithTheVendorLabel() throws {
+		func window(label: String?, minutes: Int?) throws -> DesktopSubscriptionWindowV1 {
+			try JSONDecoder().decode(
+				DesktopSubscriptionWindowV1.self,
+				from: JSONSerialization.data(withJSONObject: [
+					"key": "codex", "label": label as Any, "window_minutes": minutes as Any,
+					"window_minutes_reason": NSNull(), "used_percent": 12, "resets_at": NSNull(),
+				])
+			)
+		}
+		XCTAssertEqual(
+			quotaWindowName(try window(label: "GPT-5.3-Codex-Spark", minutes: 300)),
+			"GPT-5.3-Codex-Spark · " + WidgetCopy.text("5h window")
+		)
+		XCTAssertEqual(quotaWindowName(try window(label: nil, minutes: 300)), WidgetCopy.text("5h window"))
 	}
 
 	// Codex PR #5 P2: the large family's presentedQuotaClients filtered out

@@ -74,23 +74,25 @@ func MapStatusLineObservations(payload StatusLinePayload, observedAt time.Time) 
 		return nil
 	}
 	var windows []Observation
-	if w := payload.RateLimits.FiveHour; w != nil {
-		windows = append(windows, mapStatusLineWindow(ClaudeWindowFiveHour, *w, observedAt))
+	// used_percentage absent or null is an incomplete window, not a real 0%:
+	// persisting it as zero would replace a valid prior figure and, if that
+	// prior figure was nonzero, read back as an observed decrease -- a false
+	// reset notice for a window that was never actually reported.
+	if w := payload.RateLimits.FiveHour; w != nil && w.UsedPercentage != nil {
+		windows = append(windows, mapStatusLineWindow(ClaudeWindowFiveHour, *w, observedAt, 0))
 	}
-	if w := payload.RateLimits.SevenDay; w != nil {
-		windows = append(windows, mapStatusLineWindow(ClaudeWindowSevenDay, *w, observedAt))
+	if w := payload.RateLimits.SevenDay; w != nil && w.UsedPercentage != nil {
+		windows = append(windows, mapStatusLineWindow(ClaudeWindowSevenDay, *w, observedAt, 1))
 	}
 	return windows
 }
 
-func mapStatusLineWindow(windowKey string, w StatusLineWindow, observedAt time.Time) Observation {
+func mapStatusLineWindow(windowKey string, w StatusLineWindow, observedAt time.Time, vendorOrder int) Observation {
 	minutes, reason := ClaudeWindowMinutes(windowKey)
 	obs := Observation{
 		Client: ClientClaude, WindowKey: windowKey, Source: SourceClaudeStatusLine,
 		ObservedAt: observedAt, WindowMinutes: minutes, WindowMinutesReason: reason,
-	}
-	if w.UsedPercentage != nil {
-		obs.UsedPercent = *w.UsedPercentage
+		VendorOrder: vendorOrder, UsedPercent: *w.UsedPercentage,
 	}
 	if w.ResetsAt != nil {
 		obs.ResetsAt = time.Unix(*w.ResetsAt, 0).UTC()

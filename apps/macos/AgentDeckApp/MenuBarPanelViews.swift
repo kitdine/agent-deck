@@ -1359,14 +1359,14 @@ struct QuotaPanelView: View {
 	private func windowRow(_ window: DesktopSubscriptionWindowV1) -> some View {
 		VStack(alignment: .leading, spacing: 4) {
 			HStack {
-				Text(window.label ?? windowLabel(window)).lineLimit(1)
+				Text(windowLabel(window)).lineLimit(1)
 				Spacer()
 				if let resets = window.resetsAt { Text(t(DesktopCopy.quotaResetsIn, DesktopFormat.relative(resets, now: Date()))) }
 				Text(String(format: "%.0f%%", window.usedPercent)).monospacedDigit()
 			}.font(.caption)
 			ProgressView(value: min(max(window.usedPercent, 0), 100), total: 100)
 				.tint(window.usedPercent >= 90 ? DesktopVisualTheme.warning : window.usedPercent >= 75 ? DesktopVisualTheme.info : DesktopVisualTheme.accent)
-				.accessibilityLabel(window.label ?? windowLabel(window))
+				.accessibilityLabel(windowLabel(window))
 				.accessibilityValue(String(format: "%.0f%%", window.usedPercent))
 		}
 	}
@@ -1398,7 +1398,16 @@ struct QuotaPanelView: View {
 	private func reasonLabel(_ reason: DesktopQuotaReasonV1) -> String {
 		switch reason { case .notReported: t(DesktopCopy.quotaReasonNotReported); case .notOfficial: t(DesktopCopy.quotaReasonNotOfficial); case .neverProbed: t(DesktopCopy.quotaReasonNeverProbed); case .probeFailed: t(DesktopCopy.quotaReasonProbeFailed); case .parseFailed: t(DesktopCopy.quotaReasonParseFailed); case .notConsented: t(DesktopCopy.quotaReasonNotConsented); case .probeDisabled: t(DesktopCopy.quotaReasonProbeDisabled) }
 	}
-	private func windowLabel(_ window: DesktopSubscriptionWindowV1) -> String { window.windowMinutes == 300 ? t(DesktopCopy.quotaWindow5h) : window.windowMinutes == 10080 ? t(DesktopCopy.quotaWindow7d) : window.windowMinutes.map { "\($0)m" } ?? t(DesktopCopy.quotaUnavailable) }
+	// A Codex limit's primary and secondary windows share the same vendor
+	// label (its limit name): the label alone cannot distinguish a 5-hour row
+	// from a 7-day row for the same limit, so the span is always appended,
+	// never replaced by the label (ux/menubar-quota.md; the prototype does
+	// the same in widgetWindowLabel).
+	func windowLabel(_ window: DesktopSubscriptionWindowV1) -> String {
+		let span = window.windowMinutes == 300 ? t(DesktopCopy.quotaWindow5h) : window.windowMinutes == 10080 ? t(DesktopCopy.quotaWindow7d) : window.windowMinutes.map { "\($0)m" } ?? t(DesktopCopy.quotaUnavailable)
+		guard let label = window.label, !label.isEmpty else { return span }
+		return "\(label) · \(span)"
+	}
 	private func sourceLabel(_ source: DesktopQuotaSourceV1) -> String { switch source { case .codexAppServer: "Codex app-server"; case .claudeStatusLine: "Claude status line"; case .claudeUsageProse: "claude /usage" } }
 	/// ux/menubar-quota.md's header line for a card whose windows are shown
 	/// (source, then age, then a stale marker): freshness is never implied by

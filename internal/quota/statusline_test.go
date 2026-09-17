@@ -95,6 +95,34 @@ func TestMapStatusLineObservationsPartialPayload(t *testing.T) {
 	}
 }
 
+// Codex PR #5 second review, P1: a window present but missing
+// used_percentage must not persist as a fake 0% -- that would replace a
+// valid prior figure and a decrease from it could read as an observed reset.
+func TestMapStatusLineObservationsSkipsAWindowMissingUsedPercentage(t *testing.T) {
+	payload, err := ParseStatusLinePayload([]byte(`{"rate_limits": {"five_hour": {"resets_at": 1}, "seven_day": {"used_percentage": 40, "resets_at": 2}}}`))
+	if err != nil {
+		t.Fatalf("ParseStatusLinePayload: %v", err)
+	}
+	windows := MapStatusLineObservations(payload, time.Now())
+	if len(windows) != 1 || windows[0].WindowKey != ClaudeWindowSevenDay {
+		t.Fatalf("windows = %+v, want only seven_day (five_hour has no used_percentage)", windows)
+	}
+}
+
+// Codex PR #5 second review, P2: both Claude windows previously left
+// VendorOrder at its zero value, so Store.Windows' vendor_order ordering
+// could not tell five_hour from seven_day once both had been written.
+func TestMapStatusLineObservationsAssignsStableVendorOrder(t *testing.T) {
+	payload, err := ParseStatusLinePayload([]byte(statusLineSample))
+	if err != nil {
+		t.Fatalf("ParseStatusLinePayload: %v", err)
+	}
+	windows := MapStatusLineObservations(payload, time.Now())
+	if len(windows) != 2 || windows[0].VendorOrder != 0 || windows[1].VendorOrder != 1 {
+		t.Fatalf("VendorOrder = (%d, %d), want (0, 1) for (five_hour, seven_day)", windows[0].VendorOrder, windows[1].VendorOrder)
+	}
+}
+
 func TestMapStatusLineObservationsNilRateLimits(t *testing.T) {
 	windows := MapStatusLineObservations(StatusLinePayload{}, time.Now())
 	if windows != nil {

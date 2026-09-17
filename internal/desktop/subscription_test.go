@@ -178,6 +178,49 @@ func TestBuildSubscriptionCarriesFiguresInVendorOrderWithTheTightestWindow(t *te
 	}
 }
 
+// Codex PR #5 second review, P1: BuildSubscription derives the client-level
+// observed_at from the newest window or envelope, so a widget dating the
+// windows it actually displays needs each window's own observation instant,
+// not the client's aggregate one -- especially after a partial update leaves
+// the client's windows at different ages.
+func TestBuildSubscriptionCarriesEachWindowsOwnObservedAt(t *testing.T) {
+	core := openSubscriptionStore(t)
+	saveQuotaSettings(t, core, func(s *quota.Settings) { s.ProbeEnabled = true })
+	recordOfficial(t, core, "claude")
+	older := time.Date(2026, 9, 10, 8, 0, 0, 0, time.UTC)
+	newer := older.Add(time.Hour)
+
+	recordQuotaWindow(t, core, quota.Observation{
+		Client: quota.ClientClaude, WindowKey: quota.ClaudeWindowFiveHour, Source: quota.SourceClaudeStatusLine,
+		ObservedAt: older, WindowMinutes: 300, UsedPercent: 80, ResetsAt: newer.Add(3 * time.Hour),
+	})
+	recordQuotaWindow(t, core, quota.Observation{
+		Client: quota.ClientClaude, WindowKey: quota.ClaudeWindowSevenDay, Source: quota.SourceClaudeStatusLine,
+		ObservedAt: newer, WindowMinutes: 10080, UsedPercent: 3, ResetsAt: newer.Add(6 * 24 * time.Hour),
+	})
+
+	subscription, err := Service{Home: t.TempDir()}.BuildSubscription(context.Background(), core, newer)
+	if err != nil {
+		t.Fatalf("BuildSubscription: %v", err)
+	}
+	claude := subscriptionFor(t, subscription, "claude")
+	if len(claude.Windows) != 2 {
+		t.Fatalf("windows = %+v, want both five_hour and seven_day", claude.Windows)
+	}
+	five, seven := claude.Windows[0], claude.Windows[1]
+	if five.Key != quota.ClaudeWindowFiveHour || five.ObservedAt == nil || *five.ObservedAt != older.UTC().Format(time.RFC3339Nano) {
+		t.Fatalf("five_hour.ObservedAt = %v, want its own %v, not the client's newer aggregate", five.ObservedAt, older)
+	}
+	if seven.Key != quota.ClaudeWindowSevenDay || seven.ObservedAt == nil || *seven.ObservedAt != newer.UTC().Format(time.RFC3339Nano) {
+		t.Fatalf("seven_day.ObservedAt = %v, want its own %v", seven.ObservedAt, newer)
+	}
+	// The client-level field stays the newest-across-windows aggregate
+	// (existing contract); it must not collapse to match either window.
+	if claude.ObservedAt == nil || *claude.ObservedAt != newer.UTC().Format(time.RFC3339Nano) {
+		t.Fatalf("client.ObservedAt = %v, want the newest aggregate %v", claude.ObservedAt, newer)
+	}
+}
+
 func TestBuildSubscriptionTightestWindowIsNullWithoutWindows(t *testing.T) {
 	core := openSubscriptionStore(t)
 	saveQuotaSettings(t, core, func(s *quota.Settings) { s.ProbeEnabled = true })

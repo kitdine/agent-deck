@@ -38,6 +38,10 @@ final class QuotaSettingsControllerTests: XCTestCase {
 	/// returns must not invent an on value for alerts/thresholds/reset-notice —
 	/// it sends the quiet defaults alongside the one field the user actually
 	/// touched.
+	// Codex PR #5 second review, P2: thresholds must default to a value
+	// ParseAlertThresholds actually accepts ([]float64{} fails it outright),
+	// since EmbeddedHelperRunner.applyQuotaSettings always resends
+	// --thresholds regardless of whether alerts are on.
 	func testAChangeBeforeLoadCompletesSendsDefaultOffAlertFieldsAlongsideTheOneFieldTouched() async {
 		let preferences = DesktopPreferences(defaults: isolatedDefaults(), registrar: StubLoginItemRegistrar())
 		let transport = StubQuotaSettingsTransport()
@@ -49,7 +53,7 @@ final class QuotaSettingsControllerTests: XCTestCase {
 		XCTAssertEqual(calls.count, 1)
 		XCTAssertEqual(calls[0].reading, true)
 		XCTAssertFalse(calls[0].alerts)
-		XCTAssertEqual(calls[0].thresholds, [])
+		XCTAssertEqual(calls[0].thresholds, [75, 90], "must be a value ParseAlertThresholds accepts, not empty")
 		XCTAssertFalse(calls[0].resetNotice)
 	}
 
@@ -178,6 +182,24 @@ final class QuotaSettingsControllerTests: XCTestCase {
 
 	func testChainedStatusLineCommandPreviewIsNilWithoutAFile() async {
 		let controller = makeQuotaSettingsController()
+		await controller.load()
+
+		XCTAssertNil(controller.chainedStatusLineCommand)
+	}
+
+	// Codex PR #5 second review, P2: once AgentDeck's own route is registered,
+	// the file's "current" command is AgentDeck's, not the prior one it will
+	// chain to -- previewing it back would falsely claim AgentDeck chains
+	// itself.
+	func testChainedStatusLineCommandPreviewOmitsAgentDecksOwnRegisteredCommand() async throws {
+		let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+		try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+		defer { try? FileManager.default.removeItem(at: directory) }
+		let settingsURL = directory.appendingPathComponent("settings.json")
+		try #"{"statusLine":{"type":"command","command":"agentdeck --state-dir /tmp/state quota capture"}}"#
+			.write(to: settingsURL, atomically: true, encoding: .utf8)
+
+		let controller = makeQuotaSettingsController(claudeSettingsURL: settingsURL)
 		await controller.load()
 
 		XCTAssertNil(controller.chainedStatusLineCommand)
@@ -324,6 +346,32 @@ final class QuotaAlertPermissionTests: XCTestCase {
 		let promptsAfterOff = await denied.requestCount
 		XCTAssertEqual(promptsAfterOff, 0)
 	}
+
+	// Codex PR #5 second review, P2: turning alerts on then off again while the
+	// first write is still in flight coalesces into one queued round trip
+	// (QuotaSettingsController.applySettings). The "on" call's own stale
+	// intent must not still show the system permission prompt once the
+	// coalesced write has actually persisted alerts off.
+	func testSetAlertsRechecksTheFinalPersistedStateBeforeRequestingPermission() async {
+		let transport = SuspendingQuotaSettingsTransport()
+		let permission = StubNotificationPermission(granted: true)
+		let controller = makeQuotaSettingsController(transport: transport, notifications: permission)
+		await controller.load()
+
+		let turnOn = Task { await controller.setAlerts(true) }
+		await transport.waitForApplyCount(1)
+		let turnOff = Task { await controller.setAlerts(false) }
+		await turnOff.value
+
+		await transport.completeNext(.success)
+		await transport.waitForApplyCount(2)
+		await transport.completeNext(.success)
+		await turnOn.value
+
+		let requests = await permission.requestCount
+		XCTAssertEqual(requests, 0, "alerts were already persisted off by the coalesced write; turnOn's stale intent must not still prompt")
+		XCTAssertEqual(controller.settings?.alerts, false)
+	}
 }
 
 private actor RecordingNotificationPoster: NotificationPosting {
@@ -386,7 +434,11 @@ final class QuotaAlertNotifierTests: XCTestCase {
 
 		let resetContent = QuotaAlertContent(reset)
 		XCTAssertEqual(resetContent.title, t(DesktopCopy.notificationQuotaTitle, "Claude"))
-		XCTAssertEqual(resetContent.body, t(DesktopCopy.notificationQuotaResetBody, "Opus", Int64(3)))
+		// Codex PR #5 second review, P2: a vendor label alone cannot
+		// distinguish this limit's 5-hour and 7-day windows, so the span is
+		// always appended.
+		let resetWindowName = "Opus · " + t(DesktopCopy.quotaWindow7d)
+		XCTAssertEqual(resetContent.body, t(DesktopCopy.notificationQuotaResetBody, resetWindowName, Int64(3)))
 
 		let unnamed = QuotaAlertContent(DesktopQuotaAlertV1(id: "qa1.x", kind: .reset, client: "codex", usedPercent: 1))
 		XCTAssertTrue(unnamed.body.contains(t(DesktopCopy.notificationQuotaWindowFallback)))

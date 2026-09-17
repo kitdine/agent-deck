@@ -159,8 +159,8 @@ func ParseClaudeProse(output string, observedAt time.Time) (ClaudeProseResult, e
 	}
 
 	return ClaudeProseResult{Windows: []Observation{
-		mapClaudeProseWindow(session, observedAt),
-		mapClaudeProseWindow(week, observedAt),
+		mapClaudeProseWindow(session, observedAt, 0),
+		mapClaudeProseWindow(week, observedAt, 1),
 	}}, nil
 }
 
@@ -235,11 +235,17 @@ func resolveClaudeProseInstant(dateText, timeText string, location *time.Locatio
 	return parsed.UTC(), nil
 }
 
-func mapClaudeProseWindow(line claudeProseLine, observedAt time.Time) Observation {
+// vendorOrder is a stable, assigned order (0=session/five_hour,
+// 1=week/seven_day), not vendor data: the prose route has no vendor order of
+// its own, but Store.Windows sorts by vendor_order, and both Claude routes
+// must agree on that order so a mixed-source client never shows week before
+// session merely because of insertion order (QD-R1-F3's sibling gap on the
+// status-line route).
+func mapClaudeProseWindow(line claudeProseLine, observedAt time.Time, vendorOrder int) Observation {
 	minutes, reason := ClaudeWindowMinutes(line.windowKey)
 	return Observation{
 		Client: ClientClaude, WindowKey: line.windowKey, Source: SourceClaudeProse,
 		ObservedAt: observedAt, WindowMinutes: minutes, WindowMinutesReason: reason,
-		UsedPercent: line.usedPercent, ResetsAt: line.resetsAt,
+		VendorOrder: vendorOrder, UsedPercent: line.usedPercent, ResetsAt: line.resetsAt,
 	}
 }

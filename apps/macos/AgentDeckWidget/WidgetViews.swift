@@ -333,7 +333,7 @@ private struct QuotaWidgetView: View {
 				ForEach(Array(selected), id: \.key) { window in
 					VStack(alignment: .leading, spacing: 2) {
 						HStack {
-							Text(window.label ?? windowName(window))
+							Text(quotaWindowName(window))
 							if let resetsAt = window.resetsAt, let eta = quotaResetETA(resetsAt, now: model.now) {
 								Text(eta).foregroundStyle(.secondary)
 							}
@@ -353,10 +353,22 @@ private struct QuotaWidgetView: View {
 		.frame(maxWidth: .infinity, alignment: .leading)
 	}
 
-	private func windowName(_ window: DesktopSubscriptionWindowV1) -> String {
-		guard let minutes = window.windowMinutes else { return WidgetCopy.text("Quota window") }
-		return minutes == 300 ? WidgetCopy.text("5h window") : minutes == 10080 ? WidgetCopy.text("7d window") : "\(minutes)m"
+}
+
+// A Codex limit's primary and secondary windows share the same vendor label:
+// the span is always appended, never replaced by the label, or a limit's two
+// rows would render identically named. Top-level (not a QuotaWidgetView
+// method) so AgentDeckWidgetTests can assert its composition directly,
+// matching quotaResetETA's pattern above.
+func quotaWindowName(_ window: DesktopSubscriptionWindowV1) -> String {
+	let span: String
+	if let minutes = window.windowMinutes {
+		span = minutes == 300 ? WidgetCopy.text("5h window") : minutes == 10080 ? WidgetCopy.text("7d window") : "\(minutes)m"
+	} else {
+		span = WidgetCopy.text("Quota window")
 	}
+	guard let label = window.label, !label.isEmpty else { return span }
+	return "\(label) · \(span)"
 }
 
 struct QuotaWidgetGeometryPreferenceKey: PreferenceKey {

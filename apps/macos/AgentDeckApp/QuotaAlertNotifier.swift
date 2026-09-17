@@ -92,17 +92,20 @@ struct QuotaAlertContent: Equatable {
 		}
 	}
 
+	// A Codex limit's primary and secondary windows share the same vendor
+	// label: the span is always appended, never replaced by the label, or a
+	// limit's two notices would name the same window.
 	@MainActor
 	private static func windowName(label: String?, minutes: Int?) -> String {
-		if let label, !label.isEmpty {
-			return label
-		}
+		let span: String
 		switch minutes {
-		case 300: return t(DesktopCopy.quotaWindow5h)
-		case 10080: return t(DesktopCopy.quotaWindow7d)
-		case let .some(value): return "\(value)m"
-		case .none: return t(DesktopCopy.notificationQuotaWindowFallback)
+		case 300: span = t(DesktopCopy.quotaWindow5h)
+		case 10080: span = t(DesktopCopy.quotaWindow7d)
+		case let .some(value): span = "\(value)m"
+		case .none: span = t(DesktopCopy.notificationQuotaWindowFallback)
 		}
+		guard let label, !label.isEmpty else { return span }
+		return "\(label) · \(span)"
 	}
 }
 

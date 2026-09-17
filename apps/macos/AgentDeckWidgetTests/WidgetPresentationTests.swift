@@ -115,6 +115,60 @@ final class WidgetPresentationTests: XCTestCase {
 		XCTAssertNotEqual(model.quotaFooterObservedAt(family: .systemLarge), snapshot.generatedAt)
 	}
 
+	// Codex PR #5 second review, P1: after a partial update leaves one
+	// client's windows at different ages, the footer must date the window
+	// actually displayed on small (the tightest one), not whichever window
+	// happens to be newest -- even when that newer window is not shown.
+	func testQuotaFooterDatesTheDisplayedWindowNotAnUndisplayedNewerOne() throws {
+		let original = try widgetFixture("snapshot-complete")
+		// codex's tightest window (used 79%, small's only displayed window)
+		// becomes the oldest; the other codex window -- never shown on
+		// small -- becomes the newest. The footer must still report the
+		// tightest window's own (older) instant.
+		let snapshot = try snapshotWithWindowObservedAt(
+			snapshotWithWindowObservedAt(original, client: "codex", windowKey: "codex", value: "2026-08-13T08:00:00Z"),
+			client: "codex", windowKey: "codex_bengalfox", value: "2026-08-13T11:00:00Z"
+		)
+		let entry = AgentDeckWidgetEntry(
+			date: try XCTUnwrap(WidgetTimelinePolicy.date(snapshot.generatedAt)), snapshot: snapshot,
+			kind: .quota, client: .codex, period: .today, isPlaceholder: false
+		)
+		let model = WidgetSurfaceModel(entry: entry, now: entry.date)
+
+		XCTAssertEqual(model.quotaWindows(for: model.quotaClients[0], family: .systemSmall).first?.key, "codex")
+		XCTAssertEqual(model.quotaFooterObservedAt(family: .systemSmall), "2026-08-13T08:00:00Z")
+	}
+
+	// Codex PR #5 second review, P2: the wire resolves the tightest window
+	// once, from vendor order; the small widget must use that selection
+	// rather than recomputing its own tie-break by key, which can disagree
+	// when two windows share the highest percentage.
+	func testSmallQuotaWidgetHonorsTheWiresTightestWindowOnATie() throws {
+		let original = try widgetFixture("snapshot-complete")
+		var object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(original)) as? [String: Any])
+		var subscription = try XCTUnwrap(object["subscription"] as? [String: Any])
+		var clients = try XCTUnwrap(subscription["clients"] as? [[String: Any]])
+		let codexIndex = try XCTUnwrap(clients.firstIndex { ($0["client"] as? String) == "codex" })
+		var windows = try XCTUnwrap(clients[codexIndex]["windows"] as? [[String: Any]])
+		// Tie both windows at the same used_percent: "codex" sorts before
+		// "codex_bengalfox" by key, so a local by-key tie-break would pick
+		// "codex" even though tightest_window_key (vendor order) names
+		// "codex_bengalfox" here.
+		for index in windows.indices { windows[index]["used_percent"] = 50 }
+		clients[codexIndex]["windows"] = windows
+		clients[codexIndex]["tightest_window_key"] = "codex_bengalfox"
+		subscription["clients"] = clients
+		object["subscription"] = subscription
+		let snapshot = try JSONDecoder().decode(WidgetDesktopSnapshotV1.self, from: JSONSerialization.data(withJSONObject: object))
+		let entry = AgentDeckWidgetEntry(
+			date: try XCTUnwrap(WidgetTimelinePolicy.date(snapshot.generatedAt)), snapshot: snapshot,
+			kind: .quota, client: .codex, period: .today, isPlaceholder: false
+		)
+		let model = WidgetSurfaceModel(entry: entry, now: entry.date)
+
+		XCTAssertEqual(model.quotaWindows(for: model.quotaClients[0], family: .systemSmall).first?.key, "codex_bengalfox")
+	}
+
 	func testLargestDynamicTypeDegradesToTheNextFamily() {
 		XCTAssertEqual(
 			WidgetLayoutContract.presentationFamily(.systemLarge, dynamicTypeSize: .accessibility5),

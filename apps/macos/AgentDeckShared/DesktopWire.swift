@@ -1129,6 +1129,10 @@ public struct DesktopSubscriptionWindowV1: Codable, Equatable, Sendable {
 	public let windowMinutesReason: DesktopQuotaReasonV1?
 	public let usedPercent: Double
 	public let resetsAt: String?
+	/// This window's own observation instant, distinct from the client's
+	/// aggregate observed_at (the newest across windows/envelope): a surface
+	/// dating the windows it actually displays needs each window's own age.
+	public let observedAt: String?
 
 	enum CodingKeys: String, CodingKey {
 		case key
@@ -1137,6 +1141,7 @@ public struct DesktopSubscriptionWindowV1: Codable, Equatable, Sendable {
 		case windowMinutesReason = "window_minutes_reason"
 		case usedPercent = "used_percent"
 		case resetsAt = "resets_at"
+		case observedAt = "observed_at"
 	}
 
 	public init(from decoder: Decoder) throws {
@@ -1147,6 +1152,7 @@ public struct DesktopSubscriptionWindowV1: Codable, Equatable, Sendable {
 		windowMinutesReason = try container.decodeIfPresent(DesktopQuotaReasonV1.self, forKey: .windowMinutesReason)
 		usedPercent = try container.decode(Double.self, forKey: .usedPercent)
 		resetsAt = try decodeQuotaTimestamp(container, .resetsAt)
+		observedAt = try decodeQuotaTimestamp(container, .observedAt)
 	}
 }
 

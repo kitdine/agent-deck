@@ -32,6 +32,12 @@ func TestParseClaudeProseFullMapping(t *testing.T) {
 	if session.WindowKey != ClaudeWindowFiveHour || session.UsedPercent != 22 {
 		t.Fatalf("session window = %+v, want WindowKey=five_hour used=22", session)
 	}
+	// Codex PR #5 second review, P2: both windows previously left VendorOrder
+	// at its zero value, so Store.Windows' vendor_order ordering could not
+	// tell session from week once both had been written.
+	if session.VendorOrder != 0 {
+		t.Fatalf("session.VendorOrder = %d, want 0", session.VendorOrder)
+	}
 	if session.WindowMinutes != 300 || session.WindowMinutesReason != "" {
 		t.Fatalf("session.WindowMinutes = (%d, %q), want (300, \"\")", session.WindowMinutes, session.WindowMinutesReason)
 	}
@@ -50,6 +56,9 @@ func TestParseClaudeProseFullMapping(t *testing.T) {
 	week := result.Windows[1]
 	if week.WindowKey != ClaudeWindowSevenDay || week.UsedPercent != 3 {
 		t.Fatalf("week window = %+v, want WindowKey=seven_day used=3", week)
+	}
+	if week.VendorOrder != 1 {
+		t.Fatalf("week.VendorOrder = %d, want 1", week.VendorOrder)
 	}
 	if week.WindowMinutes != 10080 || week.WindowMinutesReason != "" {
 		t.Fatalf("week.WindowMinutes = (%d, %q), want (10080, \"\")", week.WindowMinutes, week.WindowMinutesReason)

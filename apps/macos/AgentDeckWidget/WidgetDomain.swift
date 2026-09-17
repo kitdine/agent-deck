@@ -194,9 +194,14 @@ struct WidgetSurfaceModel {
 		return resolved
 	}
 
+	/// The oldest observation among the windows actually displayed -- not
+	/// the client-level observed_at, which BuildSubscription derives from
+	/// the newest window or envelope and can therefore be fresher than a
+	/// displayed window after a partial update leaves the client's windows
+	/// at different ages.
 	func quotaFooterObservedAt(family: WidgetFamily) -> String? {
 		presentedQuotaClients(family: family)
-			.filter { !quotaWindows(for: $0, family: family).isEmpty }
+			.flatMap { quotaWindows(for: $0, family: family) }
 			.compactMap(\.observedAt)
 			.compactMap { value in WidgetTimelinePolicy.date(value).map { (value, $0) } }
 			.min { $0.1 < $1.1 }?.0
@@ -210,6 +215,16 @@ struct WidgetSurfaceModel {
 
 	func quotaWindows(for client: DesktopSubscriptionClientV1, family: WidgetFamily) -> [DesktopSubscriptionWindowV1] {
 		if family == .systemSmall {
+			// The wire resolves the tightest window once, from vendor order
+			// (C11); recomputing a tie-break here by key could disagree with
+			// that producer-selected choice whenever two windows share the
+			// highest percentage and their key order differs from vendor
+			// order. Honor tightestWindowKey when it names one of this
+			// client's windows; fall back to the local tie-break only when
+			// it does not (defensive, not expected in practice).
+			if let key = client.tightestWindowKey, let tightest = client.windows.first(where: { $0.key == key }) {
+				return [tightest]
+			}
 			return Array(client.windows.sorted { lhs, rhs in
 				lhs.usedPercent == rhs.usedPercent ? lhs.key < rhs.key : lhs.usedPercent > rhs.usedPercent
 			}.prefix(1))
