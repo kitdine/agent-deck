@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -475,5 +476,42 @@ func TestDesktopQuotaStatusLineEnableRequiresReadingOn(t *testing.T) {
 	}
 	if _, err := os.Stat(claudeSettingsPath(home)); !os.IsNotExist(err) {
 		t.Fatalf("settings.json was written (stat err %v)", err)
+	}
+}
+
+// Codex PR #5 P1: RestoreStatusLine reports a failed write as Outcome=Failed
+// with no Go error; runDesktopQuotaStatusLine must not record consent as
+// withdrawn when the file's actual on-disk state is unknown -- AgentDeck's
+// registration may still be active there.
+func TestDesktopQuotaStatusLineDisableKeepsConsentWhenTheRestoreWriteFails(t *testing.T) {
+	home := t.TempDir()
+	withTestHome(t, home)
+	state := filepath.Join(t.TempDir(), "state")
+	writeClaudeSettings(t, home, `{"statusLine":{"type":"command","command":"printf prior"}}`)
+
+	runJSON(t, "--state-dir", state, "--format", "json", "desktop", "quota-settings", "--reading", "on")
+	runJSON(t, "--state-dir", state, "--format", "json", "desktop", "quota-statusline", "enable")
+
+	settingsPath := claudeSettingsPath(home)
+	if err := exec.Command("chflags", "uchg", settingsPath).Run(); err != nil {
+		t.Skipf("chflags unavailable in this environment: %v", err)
+	}
+	t.Cleanup(func() { _ = exec.Command("chflags", "nouchg", settingsPath).Run() })
+
+	if err := run([]string{"--state-dir", state, "--format", "json", "desktop", "quota-statusline", "disable"}, bytes.NewReader(nil), &bytes.Buffer{}); err == nil {
+		t.Fatal("disable succeeded against an immutable settings.json")
+	}
+
+	database, err := store.Open(context.Background(), state)
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	defer database.Close()
+	settings, err := quota.LoadSettings(context.Background(), database)
+	if err != nil {
+		t.Fatalf("LoadSettings: %v", err)
+	}
+	if !settings.StatusLineConsent {
+		t.Fatalf("StatusLineConsent = false after a failed restore, want it preserved as true")
 	}
 }

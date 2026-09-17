@@ -389,6 +389,27 @@ func (s *Store) SetSetting(ctx context.Context, key, value string) error {
 	return err
 }
 
+// SetSettings writes every key in values in a single transaction, so a
+// caller that groups several settings into one logical change (quota's
+// SaveSettings, for example) cannot leave the settings table with only some
+// of them written when a later key in the batch fails to persist.
+func (s *Store) SetSettings(ctx context.Context, values map[string]string) error {
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for key, value := range values {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value WHERE settings.value IS NOT excluded.value`, key, value); err != nil {
+			return err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	return s.secureFiles()
+}
+
 func (s *Store) DeleteSetting(ctx context.Context, key string) error {
 	_, err := s.Exec(ctx, "DELETE FROM settings WHERE key=?", key)
 	return err

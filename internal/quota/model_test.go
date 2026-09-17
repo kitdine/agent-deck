@@ -107,37 +107,48 @@ func TestAllowedAgeBothWindowLengthsAtEachInterval(t *testing.T) {
 
 func TestStaleBoundaryOneMinuteEitherSide(t *testing.T) {
 	// 5-hour window at a 30m interval: allowed_age = 60m (the floor takes over).
-	windows := []Window{{WindowKey: "codex", WindowMinutes: 300}}
 	now := time.Date(2026, 9, 10, 12, 0, 0, 0, time.UTC)
 
-	justUnder := now.Add(-59 * time.Minute)
-	if Stale(justUnder, now, windows, 30*time.Minute) {
+	justUnder := []Window{{WindowKey: "codex", WindowMinutes: 300, ObservedAt: now.Add(-59 * time.Minute)}}
+	if Stale(now, justUnder, 30*time.Minute) {
 		t.Error("age one minute under the 60m threshold must not be stale")
 	}
 
-	justOver := now.Add(-61 * time.Minute)
-	if !Stale(justOver, now, windows, 30*time.Minute) {
+	justOver := []Window{{WindowKey: "codex", WindowMinutes: 300, ObservedAt: now.Add(-61 * time.Minute)}}
+	if !Stale(now, justOver, 30*time.Minute) {
 		t.Error("age one minute over the 60m threshold must be stale")
 	}
 }
 
-func TestStaleFollowsShortestWindowOnTheClient(t *testing.T) {
-	// A fresh weekly figure and a stale five-hour figure: the card is stale.
-	windows := []Window{
-		{WindowKey: "seven_day", WindowMinutes: 10080},
-		{WindowKey: "five_hour", WindowMinutes: 300},
-	}
+func TestStaleFollowsShortestWindowsOwnObservationNotTheNewestAcrossWindows(t *testing.T) {
 	now := time.Date(2026, 9, 10, 12, 0, 0, 0, time.UTC)
-	observedAt := now.Add(-90 * time.Minute) // stale for the 30m allowed_age of the 5h window at a 5m interval
-	if !Stale(observedAt, now, windows, 5*time.Minute) {
-		t.Fatal("a card with any stale window must be flagged stale, per its shortest window")
+
+	// Codex PR #5 P1: a fresh weekly figure must not mask a stale five-hour
+	// figure -- staleness is the shortest window's *own* age, never the
+	// newest timestamp across every window.
+	staleShort := []Window{
+		{WindowKey: "seven_day", WindowMinutes: 10080, ObservedAt: now},                      // fresh
+		{WindowKey: "five_hour", WindowMinutes: 300, ObservedAt: now.Add(-90 * time.Minute)}, // stale for the 30m allowed_age at a 5m interval
+	}
+	if !Stale(now, staleShort, 5*time.Minute) {
+		t.Fatal("a stale shortest window must flag the card stale even when a longer window is fresh")
+	}
+
+	// The inverse: a stale (long-untouched) weekly figure must not flag the
+	// card when the determinative five-hour figure is actually fresh.
+	freshShort := []Window{
+		{WindowKey: "seven_day", WindowMinutes: 10080, ObservedAt: now.Add(-1000 * time.Hour)}, // very stale
+		{WindowKey: "five_hour", WindowMinutes: 300, ObservedAt: now.Add(-time.Minute)},        // fresh
+	}
+	if Stale(now, freshShort, 5*time.Minute) {
+		t.Fatal("a fresh shortest window must not be flagged stale by a stale longer window")
 	}
 }
 
 func TestStaleWithNoPresentWindowLength(t *testing.T) {
-	windows := []Window{{WindowKey: "seven_day", WindowMinutesReason: ReasonNotReported}}
+	windows := []Window{{WindowKey: "seven_day", WindowMinutesReason: ReasonNotReported, ObservedAt: time.Now().Add(-1000 * time.Hour)}}
 	now := time.Now()
-	if Stale(now.Add(-1000*time.Hour), now, windows, 5*time.Minute) {
+	if Stale(now, windows, 5*time.Minute) {
 		t.Fatal("staleness cannot be computed with no present window length")
 	}
 }

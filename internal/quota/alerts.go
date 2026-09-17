@@ -130,7 +130,13 @@ const alertNoticeRetention = 31 * 24 * time.Hour
 // Errors from individual windows are collected and returned together with
 // the notices found elsewhere; one failing window does not stop the rest from
 // being evaluated.
-func DueAlerts(ctx context.Context, store *Store, probeEnabled bool, cfg AlertConfig, now time.Time) ([]DueAlert, error) {
+// officialClients reports, per client, whether C1's provider gate currently
+// resolves to the official provider. A client absent from the map, or
+// mapped to false, is skipped entirely: when reading switched away from
+// official for that client (Reason=not_official), its retained windows are
+// no longer this account's current quota and must not still generate
+// threshold or reset alerts, even though they have not yet been probed away.
+func DueAlerts(ctx context.Context, store *Store, probeEnabled bool, officialClients map[Client]bool, cfg AlertConfig, now time.Time) ([]DueAlert, error) {
 	if !probeEnabled || !cfg.Enabled {
 		return nil, nil
 	}
@@ -141,6 +147,9 @@ func DueAlerts(ctx context.Context, store *Store, probeEnabled bool, cfg AlertCo
 	thresholds := normalizeThresholds(cfg.Thresholds)
 	var errs []error
 	for _, client := range []Client{ClientCodex, ClientClaude} {
+		if !officialClients[client] {
+			continue
+		}
 		windows, err := store.Windows(ctx, client)
 		if err != nil {
 			errs = append(errs, err)

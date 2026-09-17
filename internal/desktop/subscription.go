@@ -202,7 +202,7 @@ func subscriptionClient(ctx context.Context, qs *quota.Store, client quota.Clien
 
 	out.Source = sourceText(source)
 	out.ObservedAt = timeText(observedAt)
-	out.Stale = quota.Stale(observedAt, now, windows, interval)
+	out.Stale = quota.Stale(now, windows, interval)
 	if failed {
 		out.Failure = reasonText(rec.Failure)
 	}

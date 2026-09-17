@@ -17,8 +17,10 @@ type recordingNotifier struct {
 	err  error
 }
 
+var bothClientsOfficial = map[Client]bool{ClientCodex: true, ClientClaude: true}
+
 func evaluate(ctx context.Context, store *Store, probeEnabled bool, cfg AlertConfig, notifier *recordingNotifier, now time.Time) error {
-	due, err := DueAlerts(ctx, store, probeEnabled, cfg, now)
+	due, err := DueAlerts(ctx, store, probeEnabled, bothClientsOfficial, cfg, now)
 	errs := []error{err}
 	for _, alert := range due {
 		if notifier.err != nil {
@@ -406,11 +408,11 @@ func TestDueAlertsRecordNothingUntilAcknowledged(t *testing.T) {
 	t0 := time.Date(2026, 9, 10, 10, 0, 0, 0, time.UTC)
 	recordWindow(t, store, claudeFiveHour(t0, t0.Add(4*time.Hour), 80, SourceClaudeStatusLine))
 
-	first, err := DueAlerts(ctx, store, true, cfg, t0)
+	first, err := DueAlerts(ctx, store, true, bothClientsOfficial, cfg, t0)
 	if err != nil || len(first) != 1 {
 		t.Fatalf("DueAlerts = %+v, %v; want one notice", first, err)
 	}
-	second, err := DueAlerts(ctx, store, true, cfg, t0.Add(time.Minute))
+	second, err := DueAlerts(ctx, store, true, bothClientsOfficial, cfg, t0.Add(time.Minute))
 	if err != nil || len(second) != 1 || second[0].ID != first[0].ID {
 		t.Fatalf("unacknowledged notice: second evaluation = %+v, %v; want the same id again", second, err)
 	}
@@ -423,7 +425,7 @@ func TestDueAlertsRecordNothingUntilAcknowledged(t *testing.T) {
 			t.Fatalf("AcknowledgeAlert: %v", err)
 		}
 	}
-	if after, err := DueAlerts(ctx, store, true, cfg, t0.Add(3*time.Minute)); err != nil || len(after) != 0 {
+	if after, err := DueAlerts(ctx, store, true, bothClientsOfficial, cfg, t0.Add(3*time.Minute)); err != nil || len(after) != 0 {
 		t.Fatalf("after acknowledgement = %+v, %v; want none", after, err)
 	}
 }
@@ -461,5 +463,35 @@ func TestAcknowledgeAlertRejectsIDsTheEvaluatorCannotProduce(t *testing.T) {
 	}
 	if err := AcknowledgeAlert(ctx, store, valid.id(), now); err != nil {
 		t.Fatalf("AcknowledgeAlert(valid) = %v", err)
+	}
+}
+
+// Codex PR #5 P2: when reading is on but a client has switched away from the
+// official provider, that client's retained windows are stale for alerting
+// purposes -- RefreshQuota's own gate skips probing it (Reason=not_official)
+// for the same reason. DueAlerts must not still fire for it.
+func TestDueAlertsSkipsAClientCurrentlyOffTheOfficialProvider(t *testing.T) {
+	store, _ := openTestStore(t)
+	ctx := context.Background()
+	t0 := time.Date(2026, 9, 10, 10, 0, 0, 0, time.UTC)
+
+	recordWindow(t, store, Observation{
+		Client: ClientCodex, AccountID: "acct-1", WindowKey: "codex", Source: SourceCodex,
+		ObservedAt: t0, WindowMinutes: 300, UsedPercent: 91, ResetsAt: t0.Add(3 * time.Hour),
+	})
+	recordWindow(t, store, claudeFiveHour(t0, t0.Add(3*time.Hour), 91, SourceClaudeStatusLine))
+
+	codexOnly := map[Client]bool{ClientCodex: true, ClientClaude: false}
+	due, err := DueAlerts(ctx, store, true, codexOnly, bothThresholds, t0)
+	if err != nil {
+		t.Fatalf("DueAlerts: %v", err)
+	}
+	for _, alert := range due {
+		if alert.Client == ClientClaude {
+			t.Fatalf("due = %+v, want no alert for the non-official client", due)
+		}
+	}
+	if len(due) == 0 {
+		t.Fatalf("due = %+v, want the still-official client's crossed thresholds to still fire", due)
 	}
 }

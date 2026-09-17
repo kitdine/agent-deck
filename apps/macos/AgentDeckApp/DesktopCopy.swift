@@ -288,6 +288,8 @@ enum DesktopCopy {
 	static let quotaWindow5h = "5h window"
 	static let quotaWindow7d = "7d window"
 	static let quotaResetsIn = "Resets in %@"
+	static let quotaObservedAt = "Read %@"
+	static let quotaStale = "Stale"
 	static let quotaReasonNotReported = "This client does not report it"
 	static let quotaReasonNotOfficial = "Provider is not official; not probed"
 	static let quotaReasonNeverProbed = "Never probed successfully"
@@ -312,7 +314,7 @@ enum DesktopCopy {
 		quotaNotRead, quotaNotApplicable, quotaUnavailable,
 		quotaAttributionUnconfirmed, quotaNoWindows, quotaOfficialResets,
 		quotaLocallyObservedReset, quotaLeft, quotaWindow5h, quotaWindow7d,
-		quotaResetsIn, quotaReasonNotReported, quotaReasonNotOfficial,
+		quotaResetsIn, quotaObservedAt, quotaStale, quotaReasonNotReported, quotaReasonNotOfficial,
 		quotaReasonNeverProbed, quotaReasonProbeFailed, quotaReasonParseFailed,
 		quotaReasonNotConsented, quotaReasonProbeDisabled, quotaCreditGranted, quotaCreditExpires,
 		panelUnavailableMark, sectionUnavailable,

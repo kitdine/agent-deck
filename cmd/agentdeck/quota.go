@@ -302,7 +302,15 @@ func runDesktopQuotaRefresh(ctx context.Context, opts *commandOptions, manual bo
 	outcome := quotaRefreshService(stateRoot, home).RefreshQuota(ctx, core, home, trigger, settings.ProbeEnabled, settings.ProbeInterval, quotaMaxBackoff)
 
 	warnings := []string{}
-	due, err := quota.DueAlerts(ctx, quota.NewStore(core.DB), settings.ProbeEnabled, settings.AlertConfig(), time.Now())
+	// outcome's empty reason means this cycle's C1 gate passed for that
+	// client; anything else, in particular not_official, means quota reading
+	// switched away from that client's official provider, and its retained
+	// windows must not generate alerts until it is official again.
+	officialClients := map[quota.Client]bool{
+		quota.ClientCodex:  outcome[quota.ClientCodex] != quota.ReasonNotOfficial,
+		quota.ClientClaude: outcome[quota.ClientClaude] != quota.ReasonNotOfficial,
+	}
+	due, err := quota.DueAlerts(ctx, quota.NewStore(core.DB), settings.ProbeEnabled, officialClients, settings.AlertConfig(), time.Now())
 	if err != nil {
 		warnings = append(warnings, "quota_alerts_failed")
 	}
@@ -550,7 +558,13 @@ func runDesktopQuotaStatusLine(ctx context.Context, opts *commandOptions, operat
 		if result, err = manager.RestoreStatusLine(); err != nil {
 			return err
 		}
-		settings.StatusLineConsent = false
+		// RestoreStatusLine reports a failed removal as Outcome=Failed with no
+		// Go error (checked below, after settings persist); the file's actual
+		// on-disk state is then unknown, so consent must not be recorded as
+		// revoked when AgentDeck's registration may still be active there.
+		if result.Outcome != usagehook.OutcomeFailed {
+			settings.StatusLineConsent = false
+		}
 	}
 	if err := quota.SaveSettings(ctx, core, settings); err != nil {
 		return err

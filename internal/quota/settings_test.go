@@ -23,6 +23,13 @@ func (m mapSettings) SetSetting(_ context.Context, key, value string) error {
 	return nil
 }
 
+func (m mapSettings) SetSettings(_ context.Context, values map[string]string) error {
+	for key, value := range values {
+		m[key] = value
+	}
+	return nil
+}
+
 func TestLoadSettingsAppliesProductDefaultsWhenAbsent(t *testing.T) {
 	got, err := LoadSettings(context.Background(), mapSettings{})
 	if err != nil {

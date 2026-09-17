@@ -537,3 +537,49 @@ func TestSchedulerClaudeSpawnFailureRecordsProbeFailed(t *testing.T) {
 		t.Fatalf("Envelope = (%+v, %v, %v), want Failure=probe_failed for a spawn failure", env, ok, err)
 	}
 }
+
+// Codex PR #5 P1: a successful probe's Record loop only upserts the windows
+// a response actually contains. Without pruning, a bucket the vendor stops
+// reporting for an otherwise-unchanged account lingers under its last
+// observed values forever.
+func TestSchedulerSuccessfulProbeRemovesWindowsTheResponseNoLongerReports(t *testing.T) {
+	store := openSchedulerTestStore(t)
+	withFakeCodex(t, `
+n=0
+while IFS= read -r line; do
+  n=$((n+1))
+  if [ "$n" = "1" ]; then
+    echo '{"id":1,"result":{}}'
+  elif [ "$n" = "3" ]; then
+    echo '{"id":2,"result":{"accountId":"acct_fake","rateLimits":{"primary":{"usedPercent":10},"secondary":{"usedPercent":20}}}}'
+  fi
+done
+`)
+	now := time.Date(2026, 9, 10, 10, 0, 0, 0, time.UTC)
+	sched := Scheduler{Store: store, Interval: 5 * time.Minute, MaxBackoff: time.Hour, Now: func() time.Time { return now }}
+	sched.Run(context.Background(), ClientCodex, TriggerBackground, true)
+
+	before, err := store.Windows(context.Background(), ClientCodex)
+	if err != nil || len(before) != 2 {
+		t.Fatalf("Windows after first probe = (%+v, %v), want both primary and secondary", before, err)
+	}
+
+	withFakeCodex(t, `
+n=0
+while IFS= read -r line; do
+  n=$((n+1))
+  if [ "$n" = "1" ]; then
+    echo '{"id":1,"result":{}}'
+  elif [ "$n" = "3" ]; then
+    echo '{"id":2,"result":{"accountId":"acct_fake","rateLimits":{"primary":{"usedPercent":15}}}}'
+  fi
+done
+`)
+	now = now.Add(5 * time.Minute)
+	sched.Run(context.Background(), ClientCodex, TriggerBackground, true)
+
+	after, err := store.Windows(context.Background(), ClientCodex)
+	if err != nil || len(after) != 1 || after[0].UsedPercent != 15 {
+		t.Fatalf("Windows after second probe = (%+v, %v), want only the still-reported primary window at 15%%", after, err)
+	}
+}

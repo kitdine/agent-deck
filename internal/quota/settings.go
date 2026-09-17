@@ -78,10 +78,13 @@ type SettingReader interface {
 	Setting(ctx context.Context, key string) (string, bool, error)
 }
 
-// SettingStore adds the write half.
+// SettingStore adds the write half. SetSettings must write its whole batch
+// in one transaction (SaveSettings relies on this for the settings group's
+// atomicity), while SetSetting remains for a genuinely single-key write.
 type SettingStore interface {
 	SettingReader
 	SetSetting(ctx context.Context, key, value string) error
+	SetSettings(ctx context.Context, values map[string]string) error
 }
 
 // LoadSettings reads the settings group, applying the product default for any
@@ -124,24 +127,22 @@ func LoadSettings(ctx context.Context, r SettingReader) (Settings, error) {
 	return s, nil
 }
 
-// SaveSettings validates and writes every key of the settings group.
+// SaveSettings validates and writes every key of the settings group in one
+// transaction (SettingStore.SetSettings), so a write error or a concurrent
+// reader can never observe only part of the validated group -- map iteration
+// order made that partial state nondeterministic before this was atomic.
 func SaveSettings(ctx context.Context, w SettingStore, s Settings) error {
 	if err := s.Validate(); err != nil {
 		return err
 	}
-	for key, value := range map[string]string{
+	return w.SetSettings(ctx, map[string]string{
 		settingProbeEnabled:      FormatSwitch(s.ProbeEnabled),
 		settingProbeInterval:     s.ProbeInterval.String(),
 		settingAlertsEnabled:     FormatSwitch(s.AlertsEnabled),
 		settingAlertThresholds:   FormatAlertThresholds(s.AlertThresholds),
 		settingResetNotice:       FormatSwitch(s.ResetNotice),
 		settingStatusLineConsent: FormatSwitch(s.StatusLineConsent),
-	} {
-		if err := w.SetSetting(ctx, key, value); err != nil {
-			return err
-		}
-	}
-	return nil
+	})
 }
 
 // ParseSwitch accepts "on" or "off".

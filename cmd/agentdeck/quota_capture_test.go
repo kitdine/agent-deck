@@ -54,6 +54,18 @@ func TestRunQuotaCaptureChainsAndPersists(t *testing.T) {
 		stderr:   &bytes.Buffer{},
 	}
 
+	// quotaCaptureStoreTimeout deliberately excludes first-run migration from
+	// its 200ms budget (CLA-R1-F3): capture is fail-open, and this test wants
+	// to observe a within-budget open succeeding, not race that budget
+	// against applying every migration on a brand-new state dir under -race.
+	// Pre-migrating once, exactly as the production capture path would on a
+	// warm database, keeps the assertion below deterministic.
+	if warmup, _, err := opts.openStore(context.Background()); err != nil {
+		t.Fatalf("openStore (warmup): %v", err)
+	} else if err := warmup.Close(); err != nil {
+		t.Fatalf("close warmup store: %v", err)
+	}
+
 	if err := runQuotaCapture(context.Background(), opts); err != nil {
 		t.Fatalf("runQuotaCapture: %v", err)
 	}

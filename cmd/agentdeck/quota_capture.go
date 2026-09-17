@@ -74,6 +74,10 @@ func runQuotaCapture(ctx context.Context, opts *commandOptions) error {
 		return nil
 	}
 	defer database.Close()
-	quota.RecordStatusLinePayload(ctx, quota.NewStore(database.DB), payload, time.Now())
+	// captureCtx, not the uncapped parent ctx: another connection can hold the
+	// write lock without holding the state lock, so opening the store can
+	// return quickly while Store.Record's own BeginTx still blocks on that
+	// same busy database (CLA-R1-F3's bound covers persistence, not just open).
+	quota.RecordStatusLinePayload(captureCtx, quota.NewStore(database.DB), payload, time.Now())
 	return nil
 }

@@ -150,7 +150,8 @@ struct AgentDeckWidgetView: View {
 		WidgetFrame(
 			entry: entry, qualifiers: model.qualifiers(family: family), family: family,
 			quotaObservedAt: entry.kind == .quota ? model.quotaFooterObservedAt(family: family) : nil,
-			quotaReason: entry.kind == .quota ? model.quotaFooterReason(family: family) : nil
+			quotaReason: entry.kind == .quota ? model.quotaFooterReason(family: family) : nil,
+			quotaScopeClient: entry.kind == .quota ? model.quotaScopeClient(family: family) : nil
 		) {
 			switch entry.kind {
 			case .magnitude: MagnitudeWidgetView(model: model, family: family)
@@ -169,6 +170,7 @@ private struct WidgetFrame<Content: View>: View {
 	let family: WidgetFamily
 	let quotaObservedAt: String?
 	let quotaReason: DesktopQuotaReasonV1?
+	let quotaScopeClient: WidgetClient?
 	let content: Content
 
 	init(
@@ -177,6 +179,7 @@ private struct WidgetFrame<Content: View>: View {
 		family: WidgetFamily,
 		quotaObservedAt: String? = nil,
 		quotaReason: DesktopQuotaReasonV1? = nil,
+		quotaScopeClient: WidgetClient? = nil,
 		@ViewBuilder content: () -> Content
 	) {
 		self.entry = entry
@@ -184,12 +187,13 @@ private struct WidgetFrame<Content: View>: View {
 		self.family = family
 		self.quotaObservedAt = quotaObservedAt
 		self.quotaReason = quotaReason
+		self.quotaScopeClient = quotaScopeClient
 		self.content = content()
 	}
 
 	var body: some View {
 		VStack(alignment: .leading, spacing: 0) {
-			WidgetHeader(entry: entry, family: family)
+			WidgetHeader(entry: entry, family: family, quotaScopeClient: quotaScopeClient)
 			content.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 			WidgetFooter(entry: entry, qualifiers: qualifiers, quotaObservedAt: quotaObservedAt, quotaReason: quotaReason)
 		}
@@ -200,6 +204,7 @@ private struct WidgetFrame<Content: View>: View {
 private struct WidgetHeader: View {
 	let entry: AgentDeckWidgetEntry
 	let family: WidgetFamily
+	var quotaScopeClient: WidgetClient? = nil
 
 	var body: some View {
 		HStack(spacing: 5) {
@@ -243,7 +248,7 @@ private struct WidgetHeader: View {
 		case .rhythm:
 			return WidgetCopy.period(.thirtyDays)
 		case .quota:
-			return WidgetCopy.client(entry.client)
+			return WidgetCopy.client(quotaScopeClient ?? entry.client)
 		}
 	}
 
@@ -256,6 +261,23 @@ private struct WidgetHeader: View {
 		case .quota: "gauge.with.dots.needle.67percent"
 		}
 	}
+}
+
+/// ux/widget-quota.md's countdown, in the vendor's own compact units (never
+/// translated — the widget's row has no room for a full "resets in" clause,
+/// only the bare span between the window label and its percentage). Returns
+/// nil for an unparseable timestamp or one already in the past, matching the
+/// design's "no negative countdown" expectation.
+func quotaResetETA(_ resetsAt: String, now: Date) -> String? {
+	guard let target = WidgetTimelinePolicy.date(resetsAt) else { return nil }
+	let minutes = Int(target.timeIntervalSince(now) / 60)
+	guard minutes >= 0 else { return nil }
+	if minutes < 60 { return "\(minutes)m" }
+	let hours = minutes / 60
+	if hours < 24 { return "\(hours)h" }
+	let days = hours / 24
+	let remainingHours = hours % 24
+	return remainingHours == 0 ? "\(days)d" : "\(days)d\(remainingHours)h"
 }
 
 private struct QuotaWidgetView: View {
@@ -310,8 +332,15 @@ private struct QuotaWidgetView: View {
 			} else {
 				ForEach(Array(selected), id: \.key) { window in
 					VStack(alignment: .leading, spacing: 2) {
-						HStack { Text(window.label ?? windowName(window)); Spacer(); Text(String(format: "%.0f%%", window.usedPercent)).monospacedDigit() }
-							.font(.system(size: 9.5)).lineLimit(1)
+						HStack {
+							Text(window.label ?? windowName(window))
+							if let resetsAt = window.resetsAt, let eta = quotaResetETA(resetsAt, now: model.now) {
+								Text(eta).foregroundStyle(.secondary)
+							}
+							Spacer()
+							Text(String(format: "%.0f%%", window.usedPercent)).monospacedDigit()
+						}
+						.font(.system(size: 9.5)).lineLimit(1)
 						ProgressView(value: min(max(window.usedPercent, 0), 100), total: 100)
 							.tint(window.usedPercent >= 90 ? WidgetPalette.warn : WidgetPalette.accent)
 					}

@@ -168,9 +168,30 @@ struct WidgetSurfaceModel {
 	func presentedQuotaClients(family: WidgetFamily) -> [DesktopSubscriptionClientV1] {
 		guard let all = entry.snapshot?.subscription.clients else { return [] }
 		if family == .systemLarge {
-			return Array(all.filter { !$0.windows.isEmpty }.prefix(2))
+			// A client legitimately has no windows while reading is off
+			// (failure == .probeDisabled): it must still be presented so
+			// QuotaWidgetView's own "Not read" branch can render, rather than
+			// both clients disappearing and the frame falling back to a
+			// generic unavailable state.
+			return Array(all.filter { !$0.windows.isEmpty || $0.failure == .probeDisabled }.prefix(2))
 		}
 		return Array(quotaClients.prefix(1))
+	}
+
+	/// The header's scope label for a quota widget. Small and medium narrow
+	/// an `.all`-configured widget down to one client (presentedQuotaClients'
+	/// own selection), so the header must name that client rather than
+	/// keep claiming "All clients" while showing only one of them. Large
+	/// keeps the configured client unchanged: it labels each client inside
+	/// its own per-client block instead.
+	func quotaScopeClient(family: WidgetFamily) -> WidgetClient {
+		guard family != .systemLarge, entry.client == .all,
+			let shown = presentedQuotaClients(family: family).first ?? quotaClients.first,
+			let resolved = WidgetClient(rawValue: shown.client)
+		else {
+			return entry.client
+		}
+		return resolved
 	}
 
 	func quotaFooterObservedAt(family: WidgetFamily) -> String? {

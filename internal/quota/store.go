@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"strings"
 	"time"
 )
 
@@ -291,6 +292,34 @@ func (s *Store) Windows(ctx context.Context, client Client) ([]Window, error) {
 		out = append(out, w)
 	}
 	return out, rows.Err()
+}
+
+// PruneWindows removes every stored window for (client, accountID) whose
+// window_key is not in keep. A successful probe's Record loop only upserts
+// the windows a response actually returned; without this, a bucket the
+// vendor stops reporting for an otherwise-unchanged account (including the
+// documented explicit-empty-map case) would linger under its last observed
+// values forever, contradicting C7's "no time series" — a window that no
+// longer exists upstream must not still exist here. accountID is the raw
+// value; only its digest reaches the query, matching every other Store
+// write (QD-R3-F2). Claude's forced-empty AccountID digests to the same ""
+// sentinel Record uses, so this is safe to call unconditionally per client.
+func (s *Store) PruneWindows(ctx context.Context, client Client, accountID string, keep []string) error {
+	digest := accountDigest(client, accountID)
+	if len(keep) == 0 {
+		_, err := s.db.ExecContext(ctx, `DELETE FROM quota_windows WHERE client = ? AND account_id = ?`,
+			string(client), digest)
+		return err
+	}
+	args := make([]any, 0, len(keep)+2)
+	args = append(args, string(client), digest)
+	for _, key := range keep {
+		args = append(args, key)
+	}
+	query := `DELETE FROM quota_windows WHERE client = ? AND account_id = ? AND window_key NOT IN (` +
+		strings.TrimSuffix(strings.Repeat("?,", len(keep)), ",") + `)`
+	_, err := s.db.ExecContext(ctx, query, args...)
+	return err
 }
 
 // PutEnvelope persists the client-level half of Envelope that Window rows do

@@ -72,6 +72,22 @@ func snapshotWithQuotaObservedAt(_ snapshot: WidgetDesktopSnapshotV1, values: [S
 	return try JSONDecoder().decode(WidgetDesktopSnapshotV1.self, from: JSONSerialization.data(withJSONObject: object))
 }
 
+/// Every client with reading off: no windows, and failure == probe_disabled,
+/// matching the desktop wire's real shape for that state (subscription.go).
+func snapshotWithQuotaReadingOff(_ snapshot: WidgetDesktopSnapshotV1) throws -> WidgetDesktopSnapshotV1 {
+	var object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(snapshot)) as? [String: Any])
+	var subscription = try XCTUnwrap(object["subscription"] as? [String: Any])
+	var clients = try XCTUnwrap(subscription["clients"] as? [[String: Any]])
+	for index in clients.indices {
+		clients[index]["windows"] = []
+		clients[index]["failure"] = "probe_disabled"
+		clients[index]["tightest_window_key"] = NSNull()
+	}
+	subscription["clients"] = clients
+	object["subscription"] = subscription
+	return try JSONDecoder().decode(WidgetDesktopSnapshotV1.self, from: JSONSerialization.data(withJSONObject: object))
+}
+
 func snapshotWithPricedToday(_ snapshot: WidgetDesktopSnapshotV1, client: String) throws -> WidgetDesktopSnapshotV1 {
 	var object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(snapshot)) as? [String: Any])
 	var usage = try XCTUnwrap(object["usage"] as? [String: Any])

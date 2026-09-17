@@ -475,6 +475,41 @@ final class MenuBarChromeTests: XCTestCase {
 		attachment.lifetime = .keepAlways
 		return attachment
 	}
+
+	// Codex PR #5 P1: a client with retained windows after a probe stopped
+	// succeeding rendered only its source, dropping observed_at and stale
+	// entirely -- ux/menubar-quota.md's header requires both ("freshness is
+	// never implied").
+	func testQuotaCardHeaderShowsAgeAndStaleMarkerBesideRetainedWindows() throws {
+		func client(observedAt: String?, stale: Bool) throws -> DesktopSubscriptionClientV1 {
+			let json: [String: Any] = [
+				"client": "claude",
+				"applicable": true,
+				"source": "claude_statusline",
+				"observed_at": observedAt as Any,
+				"stale": stale,
+				"attribution_confirmed": true,
+				"windows": [],
+			]
+			let data = try JSONSerialization.data(withJSONObject: json)
+			return try JSONDecoder().decode(DesktopSubscriptionClientV1.self, from: data)
+		}
+
+		let panel = QuotaPanelView(clients: [])
+		let fresh = try client(observedAt: "2026-09-10T09:58:00Z", stale: false)
+		let freshCaption = panel.headerCaption(fresh, source: .claudeStatusLine)
+		XCTAssertTrue(freshCaption.hasPrefix("Claude status line · "), "caption = \(freshCaption)")
+		XCTAssertFalse(freshCaption.contains(t(DesktopCopy.quotaStale)), "caption = \(freshCaption)")
+
+		let stale = try client(observedAt: "2026-09-10T08:00:00Z", stale: true)
+		let staleCaption = panel.headerCaption(stale, source: .claudeStatusLine)
+		XCTAssertTrue(staleCaption.contains(t(DesktopCopy.quotaStale)), "caption = \(staleCaption)")
+		XCTAssertNotEqual(staleCaption, "Claude status line", "must not collapse back to source alone once stale")
+
+		let never = try client(observedAt: nil, stale: false)
+		let neverCaption = panel.headerCaption(never, source: .claudeStatusLine)
+		XCTAssertEqual(neverCaption, "Claude status line", "no observed_at means no age clause to show")
+	}
 }
 
 @MainActor

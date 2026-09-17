@@ -163,6 +163,7 @@ func (s Scheduler) runCodex(ctx context.Context, observedAt time.Time, rec Envel
 	for _, obs := range result.Windows {
 		_, _, _, _ = s.Store.Record(ctx, obs)
 	}
+	_ = s.Store.PruneWindows(ctx, ClientCodex, result.AccountID, observedWindowKeys(result.Windows))
 	_ = s.Store.PutEnvelope(ctx, EnvelopeRecord{
 		Client: ClientCodex, AccountID: result.AccountID, Applicable: true,
 		Source: SourceCodex, ObservedAt: observedAt,
@@ -170,6 +171,17 @@ func (s Scheduler) runCodex(ctx context.Context, observedAt time.Time, rec Envel
 		ResetAllowance: result.ResetAllowance,
 		Billing:        result.Billing,
 	})
+}
+
+// observedWindowKeys extracts the window keys a successful probe actually
+// returned, for PruneWindows to keep; everything else stored for that
+// account is stale.
+func observedWindowKeys(windows []Observation) []string {
+	keys := make([]string, len(windows))
+	for i, obs := range windows {
+		keys[i] = obs.WindowKey
+	}
+	return keys
 }
 
 func (s Scheduler) runClaudeProse(ctx context.Context, observedAt time.Time, rec EnvelopeRecord, hasRecord bool, trigger Trigger) {
@@ -181,6 +193,7 @@ func (s Scheduler) runClaudeProse(ctx context.Context, observedAt time.Time, rec
 	for _, obs := range result.Windows {
 		_, _, _, _ = s.Store.Record(ctx, obs)
 	}
+	_ = s.Store.PruneWindows(ctx, ClientClaude, "", observedWindowKeys(result.Windows))
 	// Claude has neither Plan nor Billing nor ResetAllowance (C6: the reset
 	// allowance is Codex-only) — the envelope carries only source and instant.
 	_ = s.Store.PutEnvelope(ctx, EnvelopeRecord{

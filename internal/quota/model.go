@@ -113,31 +113,29 @@ func AllowedAge(windowMinutes int, probeInterval time.Duration) time.Duration {
 	return floor
 }
 
-// ShortestWindowMinutes returns the smallest WindowMinutes among windows
-// whose length is present (WindowMinutesReason == ""). ok is false when no
-// window has a present length.
-func ShortestWindowMinutes(windows []Window) (minutes int, ok bool) {
-	for _, w := range windows {
+// Stale is C5: a client's card is stale when the age of its shortest
+// window's *own* observation exceeds that window's AllowedAge, not the age
+// of whichever window (or the envelope) happens to carry the newest
+// timestamp — a longer window refreshed more recently must never mask a
+// stale shorter one, and a longer window's own staler timestamp must never
+// flag a client whose determinative short window is actually fresh. With no
+// window carrying a present length, staleness cannot be computed on this
+// basis and is false.
+func Stale(now time.Time, windows []Window, probeInterval time.Duration) bool {
+	var shortest *Window
+	for i := range windows {
+		w := &windows[i]
 		if w.WindowMinutesReason != "" {
 			continue
 		}
-		if !ok || w.WindowMinutes < minutes {
-			minutes = w.WindowMinutes
-			ok = true
+		if shortest == nil || w.WindowMinutes < shortest.WindowMinutes {
+			shortest = w
 		}
 	}
-	return minutes, ok
-}
-
-// Stale is C5: a client's card is stale when the age of its shortest-window
-// observation exceeds that window's AllowedAge. With no window carrying a
-// present length, staleness cannot be computed on this basis and is false.
-func Stale(observedAt, now time.Time, windows []Window, probeInterval time.Duration) bool {
-	shortest, ok := ShortestWindowMinutes(windows)
-	if !ok {
+	if shortest == nil {
 		return false
 	}
-	return now.Sub(observedAt) > AllowedAge(shortest, probeInterval)
+	return now.Sub(shortest.ObservedAt) > AllowedAge(shortest.WindowMinutes, probeInterval)
 }
 
 // Window is one rate-limit window's current state, keyed by WindowKey (C6).

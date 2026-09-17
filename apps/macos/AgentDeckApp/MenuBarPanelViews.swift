@@ -1331,7 +1331,7 @@ struct QuotaPanelView: View {
 				Text(client.client.capitalized).font(.headline)
 				if let plan = client.plan { Text(plan).font(.caption).padding(.horizontal, 6).background(DesktopVisualTheme.surfaceRaised, in: Capsule()) }
 				Spacer()
-				if let source = client.source { Text(sourceLabel(source)).font(.caption).foregroundStyle(DesktopVisualTheme.dim) }
+				if let source = client.source { Text(headerCaption(client, source: source)).font(.caption).foregroundStyle(DesktopVisualTheme.dim) }
 			}
 			if client.client == "claude", !client.attributionConfirmed, client.failure != .probeDisabled {
 				Text(t(DesktopCopy.quotaAttributionUnconfirmed)).font(.caption2).foregroundStyle(DesktopVisualTheme.warning)
@@ -1400,4 +1400,20 @@ struct QuotaPanelView: View {
 	}
 	private func windowLabel(_ window: DesktopSubscriptionWindowV1) -> String { window.windowMinutes == 300 ? t(DesktopCopy.quotaWindow5h) : window.windowMinutes == 10080 ? t(DesktopCopy.quotaWindow7d) : window.windowMinutes.map { "\($0)m" } ?? t(DesktopCopy.quotaUnavailable) }
 	private func sourceLabel(_ source: DesktopQuotaSourceV1) -> String { switch source { case .codexAppServer: "Codex app-server"; case .claudeStatusLine: "Claude status line"; case .claudeUsageProse: "claude /usage" } }
+	/// ux/menubar-quota.md's header line for a card whose windows are shown
+	/// (source, then age, then a stale marker): freshness is never implied by
+	/// retained figures alone, so a probe that has stopped succeeding must
+	/// still surface here even while its last-known windows keep rendering.
+	/// Internal, not private, so AgentDeckAppTests can assert its composition
+	/// directly rather than parsing rendered SwiftUI text.
+	func headerCaption(_ client: DesktopSubscriptionClientV1, source: DesktopQuotaSourceV1) -> String {
+		var caption = sourceLabel(source)
+		if let observedAt = client.observedAt {
+			caption += " · " + t(DesktopCopy.quotaObservedAt, DesktopFormat.relative(observedAt))
+		}
+		if client.stale {
+			caption += " · " + t(DesktopCopy.quotaStale)
+		}
+		return caption
+	}
 }

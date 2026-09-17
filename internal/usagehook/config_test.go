@@ -539,6 +539,39 @@ func TestSetupStatusLineRecordsExistingPriorCommand(t *testing.T) {
 	}
 }
 
+// Codex PR #5 P2: settings.json already registered under a *different*
+// --state-dir (a stale or another profile's AgentDeck route).
+// managedStatusLineCommand alone recognizes it as "AgentDeck's own" and
+// would report Unchanged without ever installing this instance's own route.
+func TestSetupStatusLineReconfiguresARouteRegisteredForADifferentStateDir(t *testing.T) {
+	manager, home := newTestManager(t)
+	otherStateDir := t.TempDir()
+	path := configPath(home, ClientClaude)
+	writeDocument(t, path, map[string]json.RawMessage{
+		"statusLine": json.RawMessage(`{"type":"command","command":"agentdeck --state-dir ` + otherStateDir + ` quota capture"}`),
+	}, privateFileMode)
+
+	result, err := manager.SetupStatusLine()
+	if err != nil {
+		t.Fatalf("SetupStatusLine: %v", err)
+	}
+	if result.Outcome != OutcomeConfigured {
+		t.Fatalf("Outcome = %v, want configured -- a different state dir's route is not this instance's own", result.Outcome)
+	}
+
+	document := readDocument(t, path)
+	var entry statusLineCommandEntry
+	if err := json.Unmarshal(document[statusLineKey], &entry); err != nil {
+		t.Fatalf("decode statusLine: %v", err)
+	}
+	if entry.Command != "agentdeck quota capture" {
+		t.Fatalf("statusLine command = %q, want this instance's own desired entry", entry.Command)
+	}
+	if command, ok := manager.PriorStatusLineCommand(); !ok || command != "agentdeck --state-dir "+otherStateDir+" quota capture" {
+		t.Fatalf("PriorStatusLineCommand = (%q, %v), want the other state dir's entry recorded as prior", command, ok)
+	}
+}
+
 func TestSetupStatusLinePreservesUnrelatedFields(t *testing.T) {
 	manager, home := newTestManager(t)
 	path := configPath(home, ClientClaude)
