@@ -3598,6 +3598,7 @@
     "Not read": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Not read"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"未读取"}}}},
     "Official resets": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Official resets"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"官方重置次数"}}}},
     "Output shape not recognized": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Output shape not recognized"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"输出格式无法识别"}}}},
+    "Plan": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Plan"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"套餐"}}}},
     "Probe failed": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Probe failed"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"探测失败"}}}},
     "Provider is not official; not probed": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Provider is not official; not probed"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"当前 provider 不是 official，不探测"}}}},
     "Quota": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Quota"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"额度"}}}},
@@ -3606,7 +3607,10 @@
     "Resets in %@": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Resets in %@"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"%@后重置"}}}},
     "Stale": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Stale"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"已过期"}}}},
     "Status-line route not enabled": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Status-line route not enabled"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"状态栏通路未启用"}}}},
+    "Show reset credit details": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Show reset credit details"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"显示重置额度详情"}}}},
     "This client does not report it": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"This client does not report it"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"该客户端不提供此字段"}}}},
+    "Total %lld": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Total %lld"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"共 %lld 次"}}}},
+    "Total: %@": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Total: %@"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"总数：%@"}}}},
     "Unavailable": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Unavailable"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"不可用"}}}},
     "Could not save this setting. Check the AgentDeck helper and try again.": {
       "localizations": {

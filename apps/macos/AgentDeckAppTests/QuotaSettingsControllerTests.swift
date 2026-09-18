@@ -38,11 +38,12 @@ final class QuotaSettingsControllerTests: XCTestCase {
 	/// returns must not invent an on value for alerts/thresholds/reset-notice —
 	/// it sends the quiet defaults alongside the one field the user actually
 	/// touched.
-	// Codex PR #5 second review, P2: thresholds must default to a value
-	// ParseAlertThresholds actually accepts ([]float64{} fails it outright),
-	// since EmbeddedHelperRunner.applyQuotaSettings always resends
-	// --thresholds regardless of whether alerts are on.
-	func testAChangeBeforeLoadCompletesSendsDefaultOffAlertFieldsAlongsideTheOneFieldTouched() async {
+	// Codex PR #5 second/third review, P2: alerts default off (requirements.md),
+	// but thresholds and resetNotice must default to internal/quota/settings.go's
+	// own DefaultSettings() values, not the empty/false a naive "off" reading
+	// would suggest -- [] fails ParseAlertThresholds outright, and
+	// DefaultSettings() itself sets ResetNotice: true.
+	func testAChangeBeforeLoadCompletesSendsCoresOwnDefaultsAlongsideTheOneFieldTouched() async {
 		let preferences = DesktopPreferences(defaults: isolatedDefaults(), registrar: StubLoginItemRegistrar())
 		let transport = StubQuotaSettingsTransport()
 		let controller = makeQuotaSettingsController(preferences: preferences, transport: transport)
@@ -54,7 +55,7 @@ final class QuotaSettingsControllerTests: XCTestCase {
 		XCTAssertEqual(calls[0].reading, true)
 		XCTAssertFalse(calls[0].alerts)
 		XCTAssertEqual(calls[0].thresholds, [75, 90], "must be a value ParseAlertThresholds accepts, not empty")
-		XCTAssertFalse(calls[0].resetNotice)
+		XCTAssertTrue(calls[0].resetNotice, "DefaultSettings() itself sets ResetNotice true")
 	}
 
 	func testSetThresholdsSendsExactlyTheChosenPairNeverAPartialUpdate() async {
@@ -232,6 +233,40 @@ final class QuotaSettingsControllerTests: XCTestCase {
 		XCTAssertEqual(preferences.quotaProbeInterval, .fiveMinutes)
 	}
 
+	// Codex PR #5 third review, P1: quota-settings and quota-statusline both
+	// do a full read-modify-write of the one settings row core state keeps,
+	// so this controller must never have one of each write in flight at the
+	// same time -- the slower one's stale read would silently overwrite the
+	// other's already-completed write. A statusline change requested while a
+	// settings write is in flight must queue, not start its own transport
+	// call until the settings write has actually resolved.
+	func testStatuslineAndSettingsWritesNeverOverlap() async {
+		let transport = SuspendingBothQuotaSettingsTransport()
+		let controller = makeQuotaSettingsController(transport: transport)
+		await controller.load()
+
+		let settingsWrite = Task { await controller.setAlerts(true) }
+		await transport.waitForApplyCount(1)
+
+		// Not awaited: a buggy implementation would start its own transport
+		// call immediately and suspend there, so awaiting .value here before
+		// completing anything would deadlock the test rather than surface a
+		// clean assertion failure.
+		let statuslineWrite = Task { await controller.setStatuslineConsent(true) }
+		for _ in 0 ..< 50 { await Task.yield() }
+		let statuslineCallsWhileSettingsInFlight = await transport.statuslineCalls
+		XCTAssertEqual(statuslineCallsWhileSettingsInFlight, 0, "the statusline write must not start until the in-flight settings write resolves")
+
+		await transport.completeNextSettings(.success)
+		await transport.waitForStatuslineCount(1)
+		await transport.completeNextStatusline(.success)
+		await settingsWrite.value
+		await statuslineWrite.value
+
+		XCTAssertEqual(controller.settings?.alerts, true)
+		XCTAssertEqual(controller.settings?.statusline, true)
+	}
+
 	func testFailedWriteRetainsDesiredSettingsForTheNextRetryingChange() async {
 		let transport = SuspendingQuotaSettingsTransport()
 		let controller = makeQuotaSettingsController(transport: transport)
@@ -289,6 +324,66 @@ private actor SuspendingQuotaSettingsTransport: QuotaSettingsTransport {
 			thresholds: desired.thresholds, resetNotice: desired.resetNotice, statusline: settings.statusline
 		)
 		continuation.resume(returning: .decoded(DesktopQuotaSettingsResultV1(settings: settings, statuslineRestore: nil)))
+	}
+}
+
+/// Suspends both `applyQuotaSettings` and `setQuotaStatusLine` independently,
+/// so a test can prove the two never run concurrently through this
+/// controller.
+private actor SuspendingBothQuotaSettingsTransport: QuotaSettingsTransport {
+	enum Completion { case success, failure }
+	private var settings = StubQuotaSettingsTransport.defaultSettings
+	private var pendingSettings = [(DesktopQuotaSettingsDesiredV1, CheckedContinuation<DesktopQuotaTransportOutcome<DesktopQuotaSettingsResultV1>, Never>)]()
+	private var pendingStatusline = [CheckedContinuation<DesktopQuotaTransportOutcome<DesktopQuotaStatusLineResultV1>, Never>]()
+	private(set) var applyCalls = [DesktopQuotaSettingsDesiredV1]()
+	private(set) var statuslineCalls = 0
+
+	func loadQuotaSettings() async -> DesktopQuotaTransportOutcome<DesktopQuotaSettingsResultV1> {
+		.decoded(DesktopQuotaSettingsResultV1(settings: settings, statuslineRestore: nil))
+	}
+
+	func applyQuotaSettings(_ desired: DesktopQuotaSettingsDesiredV1) async -> DesktopQuotaTransportOutcome<DesktopQuotaSettingsResultV1> {
+		applyCalls.append(desired)
+		return await withCheckedContinuation { pendingSettings.append((desired, $0)) }
+	}
+
+	func setQuotaStatusLine(enabled _: Bool) async -> DesktopQuotaTransportOutcome<DesktopQuotaStatusLineResultV1> {
+		statuslineCalls += 1
+		return await withCheckedContinuation { pendingStatusline.append($0) }
+	}
+
+	func waitForApplyCount(_ count: Int) async {
+		while applyCalls.count < count { await Task.yield() }
+	}
+
+	func waitForStatuslineCount(_ count: Int) async {
+		while statuslineCalls < count { await Task.yield() }
+	}
+
+	func completeNextSettings(_ completion: Completion) {
+		let (desired, continuation) = pendingSettings.removeFirst()
+		guard case .success = completion else {
+			continuation.resume(returning: .undecodable)
+			return
+		}
+		settings = DesktopQuotaSettingsValuesV1(
+			reading: desired.reading, interval: desired.interval, alerts: desired.alerts,
+			thresholds: desired.thresholds, resetNotice: desired.resetNotice, statusline: settings.statusline
+		)
+		continuation.resume(returning: .decoded(DesktopQuotaSettingsResultV1(settings: settings, statuslineRestore: nil)))
+	}
+
+	func completeNextStatusline(_ completion: Completion) {
+		let continuation = pendingStatusline.removeFirst()
+		guard case .success = completion else {
+			continuation.resume(returning: .undecodable)
+			return
+		}
+		settings = DesktopQuotaSettingsValuesV1(
+			reading: settings.reading, interval: settings.interval, alerts: settings.alerts,
+			thresholds: settings.thresholds, resetNotice: settings.resetNotice, statusline: true
+		)
+		continuation.resume(returning: .decoded(DesktopQuotaStatusLineResultV1(consent: true, result: DesktopUsageHookResultV1(outcome: .configured))))
 	}
 }
 
@@ -371,6 +466,23 @@ final class QuotaAlertPermissionTests: XCTestCase {
 		let requests = await permission.requestCount
 		XCTAssertEqual(requests, 0, "alerts were already persisted off by the coalesced write; turnOn's stale intent must not still prompt")
 		XCTAssertEqual(controller.settings?.alerts, false)
+	}
+
+	// Codex PR #5 third review, P2: settings?.alerts alone is not "persisted"
+	// -- stage() sets it optimistically before the write, and a failed or
+	// undecodable response never rolls it back. Gating solely on that value
+	// still shows the permission prompt after a write core state never
+	// actually accepted.
+	func testFailedAlertWriteDoesNotPromptOnTheStaleOptimisticValue() async {
+		let permission = StubNotificationPermission(granted: true)
+		let controller = makeQuotaSettingsController(transport: AlwaysUndecodableQuotaSettingsTransport(), notifications: permission)
+
+		await controller.setAlerts(true)
+
+		XCTAssertEqual(controller.settingsRow?.severity, .error)
+		XCTAssertEqual(controller.settings?.alerts, true, "stage() still optimistically shows the toggle on")
+		let requests = await permission.requestCount
+		XCTAssertEqual(requests, 0, "the write was never confirmed; must not still prompt on the unconfirmed optimistic value")
 	}
 }
 

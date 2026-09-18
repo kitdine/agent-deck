@@ -515,3 +515,93 @@ func TestDesktopQuotaStatusLineDisableKeepsConsentWhenTheRestoreWriteFails(t *te
 		t.Fatalf("StatusLineConsent = false after a failed restore, want it preserved as true")
 	}
 }
+
+func TestDesktopQuotaSettingsReadingOffKeepsConsentWhenRestoreFails(t *testing.T) {
+	home := t.TempDir()
+	withTestHome(t, home)
+	state := filepath.Join(t.TempDir(), "state")
+	writeClaudeSettings(t, home, `{"statusLine":{"type":"command","command":"printf prior"}}`)
+
+	runJSON(t, "--state-dir", state, "--format", "json", "desktop", "quota-settings", "--reading", "on")
+	runJSON(t, "--state-dir", state, "--format", "json", "desktop", "quota-statusline", "enable")
+	settingsPath := claudeSettingsPath(home)
+	if err := exec.Command("chflags", "uchg", settingsPath).Run(); err != nil {
+		t.Skipf("chflags unavailable in this environment: %v", err)
+	}
+	t.Cleanup(func() { _ = exec.Command("chflags", "nouchg", settingsPath).Run() })
+
+	if err := run([]string{"--state-dir", state, "--format", "json", "desktop", "quota-settings", "--reading", "off"}, bytes.NewReader(nil), &bytes.Buffer{}); err == nil {
+		t.Fatal("reading-off succeeded against an immutable settings.json")
+	}
+	database, err := store.Open(context.Background(), state)
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	defer database.Close()
+	settings, err := quota.LoadSettings(context.Background(), database)
+	if err != nil {
+		t.Fatalf("LoadSettings: %v", err)
+	}
+	if !settings.StatusLineConsent {
+		t.Fatal("failed restore cleared durable consent while AgentDeck's route may still be installed")
+	}
+}
+
+func TestDesktopQuotaStatusLineEnableRollsBackRouteWhenConsentSaveFails(t *testing.T) {
+	home := t.TempDir()
+	withTestHome(t, home)
+	state := filepath.Join(t.TempDir(), "state")
+	writeClaudeSettings(t, home, `{"statusLine":{"type":"command","command":"printf prior"}}`)
+	runJSON(t, "--state-dir", state, "--format", "json", "desktop", "quota-settings", "--reading", "on")
+
+	previousSave := saveQuotaStatusLineSettings
+	saveQuotaStatusLineSettings = func(context.Context, quota.SettingStore, quota.Settings) error {
+		return errors.New("injected settings write failure")
+	}
+	t.Cleanup(func() { saveQuotaStatusLineSettings = previousSave })
+
+	if err := run([]string{"--state-dir", state, "--format", "json", "desktop", "quota-statusline", "enable"}, bytes.NewReader(nil), &bytes.Buffer{}); err == nil {
+		t.Fatal("enable unexpectedly succeeded when consent persistence failed")
+	}
+	if got := claudeStatusLineCommand(t, home); got != "printf prior" {
+		t.Fatalf("statusLine = %q, want the newly installed route rolled back to the prior command", got)
+	}
+}
+
+func TestDesktopQuotaStatusLineUsesEmbeddedHelperAbsolutePath(t *testing.T) {
+	home := t.TempDir()
+	withTestHome(t, home)
+	state := filepath.Join(t.TempDir(), "state")
+	runJSON(t, "--state-dir", state, "--format", "json", "desktop", "quota-settings", "--reading", "on")
+
+	previousExecutable := quotaExecutable
+	quotaExecutable = func() (string, error) {
+		return "/Applications/AgentDeck.app/Contents/Helpers/agentdeck", nil
+	}
+	t.Cleanup(func() { quotaExecutable = previousExecutable })
+
+	runJSON(t, "--state-dir", state, "--format", "json", "desktop", "quota-statusline", "enable")
+	want := "'/Applications/AgentDeck.app/Contents/Helpers/agentdeck' --state-dir " + shellQuote(state) + " quota capture"
+	if got := claudeStatusLineCommand(t, home); got != want {
+		t.Fatalf("statusLine = %q, want direct-download helper command %q", got, want)
+	}
+}
+
+func TestDesktopQuotaRefreshUsesCrossProcessLock(t *testing.T) {
+	home := t.TempDir()
+	withTestHome(t, home)
+	state := filepath.Join(t.TempDir(), "state")
+	seedQuotaState(t, state, func(s *quota.Settings) { s.ProbeEnabled = true })
+	lock, err := store.AcquireQuotaRefreshLock(context.Background(), state, 0)
+	if err != nil {
+		t.Fatalf("AcquireQuotaRefreshLock: %v", err)
+	}
+	defer lock.Release()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Millisecond)
+	defer cancel()
+	opts := &commandOptions{stateDir: state, format: "json", stdin: bytes.NewReader(nil), stdout: &bytes.Buffer{}, stderr: &bytes.Buffer{}}
+	if err := runDesktopQuotaRefresh(ctx, opts, false); err == nil {
+		t.Fatal("a second refresh crossed the held quota-refresh lock")
+	}
+}

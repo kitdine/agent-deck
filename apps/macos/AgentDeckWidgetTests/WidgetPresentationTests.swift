@@ -99,6 +99,38 @@ final class WidgetPresentationTests: XCTestCase {
 		XCTAssertEqual(claudeContent.midY, claudeSlot.midY, accuracy: 1)
 	}
 
+	func testLargeQuotaWidgetRetainsEveryUnavailableClientReason() throws {
+		let original = try widgetFixture("snapshot-complete")
+		var object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(original)) as? [String: Any])
+		var subscription = try XCTUnwrap(object["subscription"] as? [String: Any])
+		var clients = try XCTUnwrap(subscription["clients"] as? [[String: Any]])
+		for index in clients.indices {
+			clients[index]["windows"] = []
+			clients[index]["tightest_window_key"] = NSNull()
+			if clients[index]["client"] as? String == "codex" {
+				clients[index]["applicable"] = false
+				clients[index]["applicable_reason"] = "not_official"
+				clients[index]["failure"] = NSNull()
+			} else {
+				clients[index]["applicable"] = true
+				clients[index]["applicable_reason"] = NSNull()
+				clients[index]["failure"] = "parse_failed"
+			}
+		}
+		subscription["clients"] = clients
+		object["subscription"] = subscription
+		let snapshot = try JSONDecoder().decode(WidgetDesktopSnapshotV1.self, from: JSONSerialization.data(withJSONObject: object))
+		let entry = AgentDeckWidgetEntry(
+			date: try XCTUnwrap(WidgetTimelinePolicy.date(snapshot.generatedAt)), snapshot: snapshot,
+			kind: .quota, client: .all, period: .today, isPlaceholder: false
+		)
+		let shown = WidgetSurfaceModel(entry: entry, now: entry.date).presentedQuotaClients(family: .systemLarge)
+
+		XCTAssertEqual(shown.map(\.client), ["codex", "claude"])
+		XCTAssertEqual(shown[0].applicableReason, .notOfficial)
+		XCTAssertEqual(shown[1].failure, .parseFailed)
+	}
+
 	func testQuotaFooterUsesOldestDisplayedObservationRatherThanFreshSnapshotTime() throws {
 		let original = try widgetFixture("snapshot-complete")
 		let snapshot = try snapshotWithQuotaObservedAt(original, values: [

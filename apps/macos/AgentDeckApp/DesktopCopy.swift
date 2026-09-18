@@ -282,7 +282,11 @@ enum DesktopCopy {
 	static let quotaUnavailable = "Unavailable"
 	static let quotaAttributionUnconfirmed = "Account attribution unconfirmed"
 	static let quotaNoWindows = "No quota window to show"
+	static let quotaPlan = "Plan"
 	static let quotaOfficialResets = "Official resets"
+	static let quotaTotal = "Total %lld"
+	static let quotaTotalReason = "Total: %@"
+	static let quotaShowCreditDetails = "Show reset credit details"
 	static let quotaLocallyObservedReset = "Locally observed reset"
 	static let quotaLeft = "%lld left"
 	static let quotaWindow5h = "5h window"
@@ -312,7 +316,8 @@ enum DesktopCopy {
 		costIncomplete, costIncompleteAttribution, heroCounts,
 		panelQuota, panelUsage, panelBreakdown, panelAttribution, panelSessions,
 		quotaNotRead, quotaNotApplicable, quotaUnavailable,
-		quotaAttributionUnconfirmed, quotaNoWindows, quotaOfficialResets,
+		quotaAttributionUnconfirmed, quotaNoWindows, quotaPlan, quotaOfficialResets,
+		quotaTotal, quotaTotalReason, quotaShowCreditDetails,
 		quotaLocallyObservedReset, quotaLeft, quotaWindow5h, quotaWindow7d,
 		quotaResetsIn, quotaObservedAt, quotaStale, quotaReasonNotReported, quotaReasonNotOfficial,
 		quotaReasonNeverProbed, quotaReasonProbeFailed, quotaReasonParseFailed,

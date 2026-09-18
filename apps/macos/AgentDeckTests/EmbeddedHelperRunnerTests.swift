@@ -122,6 +122,24 @@ final class EmbeddedHelperRunnerTests: XCTestCase {
 		XCTAssertTrue(invocations.allSatisfy { $0.environment["PATH"] == "/tmp/untrusted-path" })
 	}
 
+	func testDefaultEnvironmentFindsSupportedClientInstallLocations() async throws {
+		let temporaryDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+		defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
+		let bundleURL = try makeEmbeddedHelperBundle(in: temporaryDirectory)
+		let process = RecordingHelperProcess(behaviors: [
+			.output(HelperProcessOutput(exitStatus: 0, stdout: successfulScanStream())),
+			.output(HelperProcessOutput(exitStatus: 0, stdout: try desktopFixtureData("snapshot-complete.json"))),
+		])
+		let runner = EmbeddedHelperRunner(appBundleURL: bundleURL, process: process)
+
+		_ = try await runner.snapshot()
+
+		let invocations = await process.recordedInvocations()
+		XCTAssertTrue(invocations.allSatisfy {
+			$0.environment["PATH"] == "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
+		})
+	}
+
 	func testScanFailureDoesNotPublishAReplacementSnapshot() async throws {
 		let process = RecordingHelperProcess(behaviors: [
 			.output(HelperProcessOutput(exitStatus: 7, stdout: Data(), stderr: Data("scan failed".utf8))),

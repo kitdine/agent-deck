@@ -918,21 +918,45 @@ func managedStatusLineCommand(command string) bool {
 		return false
 	}
 	prefix := strings.TrimSpace(strings.TrimSuffix(trimmed, marker))
-	if prefix == "agentdeck" {
-		return true
+	executable := prefix
+	stateDir := ""
+	if split := strings.Index(prefix, " --state-dir "); split >= 0 {
+		executable = strings.TrimSpace(prefix[:split])
+		stateDir = strings.TrimSpace(prefix[split+len(" --state-dir "):])
 	}
-	const statePrefix = "agentdeck --state-dir "
-	if !strings.HasPrefix(prefix, statePrefix) {
+	if !managedAgentDeckExecutable(executable) {
 		return false
 	}
-	stateDir := strings.TrimSpace(strings.TrimPrefix(prefix, statePrefix))
 	if stateDir == "" {
+		return executable == prefix
+	}
+	// A second option or command fragment after --state-dir is never one of
+	// the exact route shapes AgentDeck generates.
+	if strings.Contains(stateDir, " --") {
 		return false
 	}
 	if strings.HasPrefix(stateDir, "'") && strings.HasSuffix(stateDir, "'") {
 		return true
 	}
 	return !strings.ContainsAny(stateDir, " \t\r\n")
+}
+
+// managedAgentDeckExecutable recognizes both the PATH-based command used by
+// package-manager installs and the shell-quoted absolute helper path used by
+// direct-download AgentDeck.app installs. The latter is required so restore,
+// status, and cycle prevention retain the same managed-command semantics.
+func managedAgentDeckExecutable(executable string) bool {
+	if executable == "agentdeck" {
+		return true
+	}
+	if !strings.HasPrefix(executable, "'") || !strings.HasSuffix(executable, "'") {
+		return false
+	}
+	executable = executable[1 : len(executable)-1]
+	if executable == "" {
+		return false
+	}
+	return filepath.IsAbs(executable) && filepath.Base(executable) == "agentdeck"
 }
 
 func decodeStatusLineCommandEntry(raw json.RawMessage) (command string, ok bool) {
@@ -1139,14 +1163,29 @@ func (m *Manager) StatusLineStatus() (Result, error) {
 // PriorStatusLineCommand reads the command AgentDeck should chain to at
 // runtime, as recorded by SetupStatusLine. ok is false when there is
 // nothing to chain to — no prior command was recorded, the recorded value
-// was not a command entry, or the record could not be read — in which case
-// the caller runs no subprocess.
+// was not a command entry, the recorded value is itself a managed AgentDeck
+// route, or the record could not be read — in which case the caller runs no
+// subprocess.
+//
+// Codex PR #5 third review, P1: SetupStatusLine can record a *different*
+// AgentDeck installation's own managed command as this one's prior (one
+// installation registers over another's still-installed route, at a
+// different --state-dir). Chaining to it would run that installation's own
+// "quota capture", which reads *its* prior and chains again — A -> B -> A
+// recursively, exhausting processes. The prior concept exists to preserve a
+// third-party command (or none); an AgentDeck route is never a legitimate
+// chain target, so this refuses to hand one back regardless of how it got
+// recorded.
 func (m *Manager) PriorStatusLineCommand() (command string, ok bool) {
 	prior, found, err := m.readStatusLinePrior()
 	if err != nil || !found || !prior.Existed {
 		return "", false
 	}
-	return decodeStatusLineCommandEntry(prior.Value)
+	command, ok = decodeStatusLineCommandEntry(prior.Value)
+	if !ok || managedStatusLineCommand(command) {
+		return "", false
+	}
+	return command, true
 }
 
 func (m *Manager) statusLinePriorPath() (string, error) {

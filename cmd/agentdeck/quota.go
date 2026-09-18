@@ -21,11 +21,22 @@ import (
 // quotaMaxBackoff bounds C9's geometric backoff for the desktop quota refresh.
 const quotaMaxBackoff = time.Hour
 
+// A refresh probes Codex (5s) and Claude (10s) sequentially. A small margin
+// lets a second helper process join the serialized refresh boundary without
+// ever allowing an older completion to replace a newer process's state.
+const quotaRefreshLockTimeout = 20 * time.Second
+
 // Seam so tests never spawn a real client. The helper posts no notification:
 // due alerts are returned to the app, which delivers them (C10).
 var quotaRefreshService = func(stateRoot, home string) desktop.Service {
 	return desktop.Service{StateRoot: stateRoot, Home: home}
 }
+
+var quotaExecutable = os.Executable
+
+// Seamed only so the failed-persistence rollback can be exercised without
+// corrupting a real SQLite database in a command test.
+var saveQuotaStatusLineSettings = quota.SaveSettings
 
 func newQuotaCommand(opts *commandOptions) *cobra.Command {
 	command := &cobra.Command{
@@ -211,6 +222,12 @@ func quotaWindowName(window desktop.SubscriptionWindow) string {
 // built the same way as the usage hook's so RestoreStatusLine recognizes it.
 func quotaAgentDeckCommand(opts *commandOptions) string {
 	command := "agentdeck"
+	if executable, err := quotaExecutable(); err == nil && filepath.Base(executable) == "agentdeck" {
+		// Direct-download installs do not create a global `agentdeck` symlink.
+		// The running embedded helper is nevertheless executable at this stable
+		// bundle path, so register that exact path with shell-safe quoting.
+		command = shellQuote(executable)
+	}
 	if opts.stateDir != "" {
 		command += " --state-dir " + shellQuote(opts.stateDir)
 	}
@@ -281,12 +298,21 @@ func newDesktopQuotaRefreshCommand(opts *commandOptions) *cobra.Command {
 // evaluator, both under the stored settings, and returns the due alerts for
 // the app to deliver; nothing is recorded as sent here. With reading off
 // neither probes nor evaluates anything.
-func runDesktopQuotaRefresh(ctx context.Context, opts *commandOptions, manual bool) error {
+func runDesktopQuotaRefresh(ctx context.Context, opts *commandOptions, manual bool) (err error) {
 	core, stateRoot, err := opts.openStore(ctx)
 	if err != nil {
 		return err
 	}
 	defer core.Close()
+	refreshLock, err := store.AcquireQuotaRefreshLock(ctx, stateRoot, quotaRefreshLockTimeout)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if releaseErr := refreshLock.Release(); err == nil && releaseErr != nil {
+			err = releaseErr
+		}
+	}()
 	home, err := userHomeDir()
 	if err != nil {
 		return err
@@ -484,7 +510,9 @@ func runDesktopQuotaSettings(ctx context.Context, opts *commandOptions, apply fu
 			}
 			restore = &result
 		}
-		next.StatusLineConsent = false
+		if restore == nil || restore.Outcome != usagehook.OutcomeFailed {
+			next.StatusLineConsent = false
+		}
 	}
 	if err := next.Validate(); err != nil {
 		return &inputError{err: err}
@@ -566,7 +594,19 @@ func runDesktopQuotaStatusLine(ctx context.Context, opts *commandOptions, operat
 			settings.StatusLineConsent = false
 		}
 	}
-	if err := quota.SaveSettings(ctx, core, settings); err != nil {
+	if err := saveQuotaStatusLineSettings(ctx, core, settings); err != nil {
+		// SetupStatusLine has already changed ~/.claude/settings.json. If the
+		// consent bit cannot be persisted, undo a route this invocation newly
+		// installed so capture cannot run without durable consent.
+		if operation == "enable" && result.Outcome == usagehook.OutcomeConfigured {
+			rollback, rollbackErr := manager.RestoreStatusLine()
+			switch {
+			case rollbackErr != nil:
+				return errors.Join(err, fmt.Errorf("roll back quota status-line route: %w", rollbackErr))
+			case rollback.Outcome == usagehook.OutcomeFailed:
+				return errors.Join(err, fmt.Errorf("roll back quota status-line route: %s", rollback.Error))
+			}
+		}
 		return err
 	}
 	if err := writeResult(opts.stdout, opts.format, "desktop.quota-statusline."+operation, desktopQuotaStatusLineResult{Consent: settings.StatusLineConsent, Result: result}); err != nil {

@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -567,8 +568,43 @@ func TestSetupStatusLineReconfiguresARouteRegisteredForADifferentStateDir(t *tes
 	if entry.Command != "agentdeck quota capture" {
 		t.Fatalf("statusLine command = %q, want this instance's own desired entry", entry.Command)
 	}
-	if command, ok := manager.PriorStatusLineCommand(); !ok || command != "agentdeck --state-dir "+otherStateDir+" quota capture" {
-		t.Fatalf("PriorStatusLineCommand = (%q, %v), want the other state dir's entry recorded as prior", command, ok)
+	// Codex PR #5 third review, P1: the other state dir's own AgentDeck route
+	// is still recorded internally (SetupStatusLine's "record whatever was
+	// there before" contract, unchanged), but PriorStatusLineCommand must
+	// refuse to hand back a managed AgentDeck command as something to chain
+	// to at runtime -- doing so is what let two installations registering
+	// over each other chain A -> B -> A recursively.
+	prior, found, err := manager.readStatusLinePrior()
+	if err != nil || !found || !prior.Existed {
+		t.Fatalf("readStatusLinePrior = (%+v, %v, %v), want the other state dir's entry recorded", prior, found, err)
+	}
+	if command, ok := decodeStatusLineCommandEntry(prior.Value); !ok || command != "agentdeck --state-dir "+otherStateDir+" quota capture" {
+		t.Fatalf("recorded prior command = (%q, %v), want the other state dir's entry", command, ok)
+	}
+	if command, ok := manager.PriorStatusLineCommand(); ok {
+		t.Fatalf("PriorStatusLineCommand = (%q, %v), want ok=false -- must never chain to another AgentDeck installation's own route", command, ok)
+	}
+}
+
+func TestAbsoluteEmbeddedHelperStatusLineIsManagedAndNeverChained(t *testing.T) {
+	manager, home := newTestManager(t)
+	path := configPath(home, ClientClaude)
+	absolute := "'/Applications/AgentDeck.app/Contents/Helpers/agentdeck' --state-dir '/tmp/direct state' quota capture"
+	writeDocument(t, path, map[string]json.RawMessage{
+		"statusLine": json.RawMessage(`{"type":"command","command":` + strconv.Quote(absolute) + `}`),
+	}, privateFileMode)
+
+	if !managedStatusLineCommand(absolute) {
+		t.Fatalf("direct-download route %q was not recognized as managed", absolute)
+	}
+	if managedStatusLineCommand("/tmp/agentdeck quota capture") {
+		t.Fatal("an arbitrary unquoted executable named agentdeck must not be treated as AgentDeck's managed route")
+	}
+	if _, err := manager.SetupStatusLine(); err != nil {
+		t.Fatalf("SetupStatusLine: %v", err)
+	}
+	if command, ok := manager.PriorStatusLineCommand(); ok {
+		t.Fatalf("PriorStatusLineCommand = (%q, %v), want an absolute AgentDeck helper route rejected as a chain target", command, ok)
 	}
 }
 

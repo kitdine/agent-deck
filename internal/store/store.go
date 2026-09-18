@@ -535,6 +535,14 @@ func AcquireScanLock(ctx context.Context, stateRoot string, timeout time.Duratio
 	return acquireNamedLock(ctx, stateRoot, "scan.lock", timeout)
 }
 
+// AcquireQuotaRefreshLock serializes the complete subscription-quota refresh
+// cycle across helper processes. The cycle includes external client probes and
+// the subsequent window replacement, so it deliberately has its own lock
+// domain rather than holding state.lock across network/process I/O.
+func AcquireQuotaRefreshLock(ctx context.Context, stateRoot string, timeout time.Duration) (*Lock, error) {
+	return acquireNamedLock(ctx, stateRoot, "quota-refresh.lock", timeout)
+}
+
 // AcquireDerivedSnapshotCacheLock serializes cache publishers without sharing
 // the scan or state-mutation lock domains.
 func AcquireDerivedSnapshotCacheLock(ctx context.Context, stateRoot string, timeout time.Duration) (*Lock, error) {

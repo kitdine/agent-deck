@@ -168,12 +168,11 @@ struct WidgetSurfaceModel {
 	func presentedQuotaClients(family: WidgetFamily) -> [DesktopSubscriptionClientV1] {
 		guard let all = entry.snapshot?.subscription.clients else { return [] }
 		if family == .systemLarge {
-			// A client legitimately has no windows while reading is off
-			// (failure == .probeDisabled): it must still be presented so
-			// QuotaWidgetView's own "Not read" branch can render, rather than
-			// both clients disappearing and the frame falling back to a
-			// generic unavailable state.
-			return Array(all.filter { !$0.windows.isEmpty || $0.failure == .probeDisabled }.prefix(2))
+			// The wire reports one explicit state per client. A client with no
+			// windows is still meaningful (not official, never probed, parse
+			// failed, reading off, and so on), so preserve it for the large
+			// widget's per-client reason instead of silently dropping the card.
+			return Array(all.prefix(2))
 		}
 		return Array(quotaClients.prefix(1))
 	}

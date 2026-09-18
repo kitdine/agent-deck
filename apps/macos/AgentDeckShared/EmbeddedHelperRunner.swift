@@ -734,7 +734,11 @@ public struct EmbeddedHelperRunner: Sendable {
             "HOME": FileManager.default.homeDirectoryForCurrentUser.path,
             "LANG": "en_US_POSIX",
             "LC_ALL": "en_US_POSIX",
-            "PATH": "/usr/bin:/bin",
+			// App-launched helpers do not inherit an interactive shell PATH.
+			// Keep the search path fixed to supported, trusted installation
+			// roots so quota probes can resolve Homebrew-installed codex/claude
+			// without admitting arbitrary user-writable directories.
+			"PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
         ]
 		if let temporaryDirectory = ProcessInfo.processInfo.environment["TMPDIR"], !temporaryDirectory.isEmpty {
 			environment["TMPDIR"] = temporaryDirectory

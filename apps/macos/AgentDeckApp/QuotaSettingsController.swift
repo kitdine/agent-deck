@@ -119,10 +119,18 @@ final class QuotaSettingsController {
 	/// (ux/settings-quota.md: "When notifications are not allowed"). The alerts
 	/// setting itself stays on.
 	private(set) var notificationsDenied = false
-	@ObservationIgnored private var isApplyingSettings = false
 	@ObservationIgnored private var desiredSettings: DesktopQuotaSettingsDesiredV1?
 	@ObservationIgnored private var pendingSettings: DesktopQuotaSettingsDesiredV1?
-	@ObservationIgnored private var isApplyingStatusline = false
+	@ObservationIgnored private var pendingStatusline: Bool?
+	/// Codex PR #5 third review, P1: `quota-settings` and `quota-statusline`
+	/// both do a full read-modify-write of the one settings row core state
+	/// keeps (internal/quota/settings.go's SaveSettings always writes every
+	/// key). Two separate single-flight flags let this app itself run one of
+	/// each concurrently -- an in-flight statusline write's stale read can
+	/// then overwrite a settings write that completed after it started, or
+	/// vice versa. One shared flag serializes every write this controller
+	/// issues through `drainPendingWrites`, whichever kind it is.
+	@ObservationIgnored private var isApplyingWrite = false
 
 	init(
 		preferences: DesktopPreferences,
@@ -192,12 +200,19 @@ final class QuotaSettingsController {
 	/// finish alerts off before this call resumes. Requesting permission is
 	/// therefore keyed on `settings?.alerts` (what actually persisted after
 	/// every coalesced write), not the `on` this call was invoked with.
+	///
+	/// Codex PR #5 third review, P2: `settings?.alerts` alone is still not
+	/// "persisted" -- `stage()` sets it optimistically before the write, and
+	/// a failed or undecodable response never rolls it back (only
+	/// `settingsRow` records the failure). `settingsRow == nil` is what
+	/// `applySettings` actually uses to mean "the last coalesced write in
+	/// this queue was confirmed", so the prompt is gated on both together.
 	func setAlerts(_ on: Bool) async {
 		var desired = currentDesired()
 		desired.alerts = on
 		stage(desired)
 		await applySettings(desired)
-		if settings?.alerts == true {
+		if settingsRow == nil, settings?.alerts == true {
 			notificationsDenied = await !notifications.requestAuthorization()
 		} else {
 			notificationsDenied = false
@@ -219,14 +234,8 @@ final class QuotaSettingsController {
 	}
 
 	func setStatuslineConsent(_ on: Bool) async {
-		guard !isApplyingStatusline else { return }
-		isApplyingStatusline = true
-		defer { isApplyingStatusline = false }
-		guard case let .decoded(result) = await transport.setQuotaStatusLine(enabled: on) else {
-			statuslineRow = SettingsRowStatus(text: t(DesktopCopy.settingsQuotaWriteFailed), severity: .error)
-			return
-		}
-		applyStatuslineResult(consent: result.consent, outcome: result.result)
+		pendingStatusline = on
+		await drainPendingWrites()
 	}
 
 	/// Builds the write payload. `reading`/`interval` always come from the
@@ -235,8 +244,9 @@ final class QuotaSettingsController {
 	/// re-reading `settings` (last confirmed by the *previous* round trip)
 	/// would be. `alerts`/`thresholds`/`resetNotice` have no local mirror
 	/// (core state is their only home), so they come from `settings` and
-	/// default off — matching `requirements.md`'s default-off contract — only
-	/// when core state has not been read yet at all.
+	/// fall back to `internal/quota/settings.go`'s own `DefaultSettings()`
+	/// values only when core state has not been read yet at all -- what core
+	/// state would use itself, starting fresh.
 	///
 	/// Codex PR #5 second review, P2: `thresholds` cannot default to `[]`
 	/// here. `EmbeddedHelperRunner.applyQuotaSettings` always resends
@@ -244,10 +254,15 @@ final class QuotaSettingsController {
 	/// know"), and the CLI's `ParseAlertThresholds` rejects an empty value
 	/// outright -- so a reading/interval change made before `load()` resolves
 	/// would otherwise fail the whole write, not just leave thresholds
-	/// unset. `[75, 90]` is `internal/quota/settings.go`'s own
-	/// `DefaultSettings()` value, so this matches what core state would use
-	/// if it had never been read at all, exactly like `alerts`/`resetNotice`
-	/// already do.
+	/// unset. `[75, 90]` matches `DefaultSettings()`.
+	///
+	/// Codex PR #5 third review, P2: `resetNotice` has the same failure mode
+	/// and was still defaulting to `false`. `requirements.md`'s "default
+	/// off" describes `alerts` (nothing is evaluated or delivered while
+	/// alerts are off, whatever resetNotice holds) -- `DefaultSettings()`
+	/// itself sets `ResetNotice: true`, so a reading/interval change made
+	/// before load() resolved was silently disabling reset reminders ahead
+	/// of the user ever touching that control.
 	private func currentDesired() -> DesktopQuotaSettingsDesiredV1 {
 		if let desiredSettings { return desiredSettings }
 		return DesktopQuotaSettingsDesiredV1(
@@ -255,7 +270,7 @@ final class QuotaSettingsController {
 			interval: DesktopQuotaIntervalV1(preferences.quotaProbeInterval),
 			alerts: settings?.alerts ?? false,
 			thresholds: settings?.thresholds ?? [75, 90],
-			resetNotice: settings?.resetNotice ?? false
+			resetNotice: settings?.resetNotice ?? true
 		)
 	}
 
@@ -265,25 +280,46 @@ final class QuotaSettingsController {
 
 	private func applySettings(_ desired: DesktopQuotaSettingsDesiredV1) async {
 		pendingSettings = desired
-		guard !isApplyingSettings else { return }
-		isApplyingSettings = true
-		defer { isApplyingSettings = false }
-		while let request = pendingSettings {
-			pendingSettings = nil
-			guard case let .decoded(result) = await transport.applyQuotaSettings(request) else {
-				settingsRow = SettingsRowStatus(text: t(DesktopCopy.settingsQuotaWriteFailed), severity: .error)
-				continue
-			}
-			settingsRow = nil
-			if let restore = result.statuslineRestore {
-				applyStatuslineResult(consent: result.settings.statusline, outcome: restore)
-			} else {
-				statuslineRow = nil
-			}
-			// A newer user intent queued while this request was in flight owns
-			// presentation. Only the last response is allowed to replace it.
-			if pendingSettings == nil {
-				adopt(result.settings)
+		await drainPendingWrites()
+	}
+
+	/// The single worker every settings or statusline write goes through.
+	/// Codex PR #5 third review, P1: both CLI commands do a full
+	/// read-modify-write of the one settings row core state keeps, so running
+	/// one of each concurrently lets the slower one's stale read silently
+	/// overwrite the other's completed write. Draining both queues from one
+	/// `isApplyingWrite` flag guarantees this controller never has two of
+	/// its own writes in flight at once, whichever kind either is.
+	private func drainPendingWrites() async {
+		guard !isApplyingWrite else { return }
+		isApplyingWrite = true
+		defer { isApplyingWrite = false }
+		while pendingSettings != nil || pendingStatusline != nil {
+			if let request = pendingSettings {
+				pendingSettings = nil
+				guard case let .decoded(result) = await transport.applyQuotaSettings(request) else {
+					settingsRow = SettingsRowStatus(text: t(DesktopCopy.settingsQuotaWriteFailed), severity: .error)
+					continue
+				}
+				settingsRow = nil
+				if let restore = result.statuslineRestore {
+					applyStatuslineResult(consent: result.settings.statusline, outcome: restore)
+				} else {
+					statuslineRow = nil
+				}
+				// A newer settings intent queued while this request was in
+				// flight owns presentation. Only the last response is allowed
+				// to replace it.
+				if pendingSettings == nil {
+					adopt(result.settings)
+				}
+			} else if let on = pendingStatusline {
+				pendingStatusline = nil
+				guard case let .decoded(result) = await transport.setQuotaStatusLine(enabled: on) else {
+					statuslineRow = SettingsRowStatus(text: t(DesktopCopy.settingsQuotaWriteFailed), severity: .error)
+					continue
+				}
+				applyStatuslineResult(consent: result.consent, outcome: result.result)
 			}
 		}
 	}

@@ -121,6 +121,13 @@ func AllowedAge(windowMinutes int, probeInterval time.Duration) time.Duration {
 // flag a client whose determinative short window is actually fresh. With no
 // window carrying a present length, staleness cannot be computed on this
 // basis and is false.
+//
+// Codex PR #5 third review, P2: Codex can expose several windows tied for
+// the shortest duration (multiple five-hour limit buckets), and a partial
+// persistence failure can leave their observation times different. Among
+// windows tied for the shortest duration, the oldest observation is kept —
+// the freshest of several displayed tied-shortest windows must never mask a
+// stale sibling the card still shows.
 func Stale(now time.Time, windows []Window, probeInterval time.Duration) bool {
 	var shortest *Window
 	for i := range windows {
@@ -128,7 +135,10 @@ func Stale(now time.Time, windows []Window, probeInterval time.Duration) bool {
 		if w.WindowMinutesReason != "" {
 			continue
 		}
-		if shortest == nil || w.WindowMinutes < shortest.WindowMinutes {
+		switch {
+		case shortest == nil, w.WindowMinutes < shortest.WindowMinutes:
+			shortest = w
+		case w.WindowMinutes == shortest.WindowMinutes && w.ObservedAt.Before(shortest.ObservedAt):
 			shortest = w
 		}
 	}

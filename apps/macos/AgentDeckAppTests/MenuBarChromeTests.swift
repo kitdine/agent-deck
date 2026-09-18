@@ -534,6 +534,33 @@ final class MenuBarChromeTests: XCTestCase {
 		)
 		XCTAssertEqual(panel.windowLabel(unlabeled), t(DesktopCopy.quotaWindow5h))
 	}
+
+	func testQuotaCardShowsMissingPlanAndResetTotalReasons() throws {
+		let panel = QuotaPanelView(clients: [])
+		let client = try JSONDecoder().decode(
+			DesktopSubscriptionClientV1.self,
+			from: JSONSerialization.data(withJSONObject: [
+				"client": "codex", "applicable": true, "applicable_reason": NSNull(),
+				"source": "codex_app_server", "observed_at": "2026-09-10T09:58:00Z",
+				"stale": false, "attribution_confirmed": true,
+				"plan": NSNull(), "plan_reason": "not_reported", "windows": [],
+				"tightest_window_key": NSNull(), "reset_allowance": NSNull(),
+				"reset_allowance_reason": NSNull(), "observed_reset_at": NSNull(), "failure": NSNull(),
+			])
+		)
+		XCTAssertEqual(panel.planUnavailableLabel(client), t(DesktopCopy.quotaReasonNotReported))
+
+		let allowance = try JSONDecoder().decode(
+			DesktopResetAllowanceV1.self,
+			from: JSONSerialization.data(withJSONObject: [
+				"remaining": 3, "remaining_reason": NSNull(),
+				"total": NSNull(), "total_reason": "not_reported", "credits": [],
+			])
+		)
+		let summary = panel.allowanceSummary(allowance)
+		XCTAssertTrue(summary.contains(t(DesktopCopy.quotaLeft, Int64(3))))
+		XCTAssertTrue(summary.contains(t(DesktopCopy.quotaTotalReason, t(DesktopCopy.quotaReasonNotReported))))
+	}
 }
 
 @MainActor

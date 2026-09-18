@@ -145,6 +145,30 @@ func TestStaleFollowsShortestWindowsOwnObservationNotTheNewestAcrossWindows(t *t
 	}
 }
 
+// Codex PR #5 third review, P2: Codex can expose several windows tied for
+// the shortest duration, and a partial persistence failure can leave their
+// observation times different. A fresh first-encountered tied-shortest
+// window must not mask a stale sibling tied at the same duration.
+func TestStaleAmongTiedShortestWindowsUsesTheOldestObservation(t *testing.T) {
+	now := time.Date(2026, 9, 10, 12, 0, 0, 0, time.UTC)
+
+	freshFirst := []Window{
+		{WindowKey: "codex_primary", WindowMinutes: 300, ObservedAt: now},                          // fresh
+		{WindowKey: "codex_secondary", WindowMinutes: 300, ObservedAt: now.Add(-90 * time.Minute)}, // stale for the 30m allowed_age at a 5m interval
+	}
+	if !Stale(now, freshFirst, 5*time.Minute) {
+		t.Fatal("a stale tied-shortest window must flag the card stale even when the first-encountered tied window is fresh")
+	}
+
+	staleFirst := []Window{
+		{WindowKey: "codex_primary", WindowMinutes: 300, ObservedAt: now.Add(-90 * time.Minute)}, // stale
+		{WindowKey: "codex_secondary", WindowMinutes: 300, ObservedAt: now},                      // fresh
+	}
+	if !Stale(now, staleFirst, 5*time.Minute) {
+		t.Fatal("a stale tied-shortest window must flag the card stale regardless of slice order")
+	}
+}
+
 func TestStaleWithNoPresentWindowLength(t *testing.T) {
 	windows := []Window{{WindowKey: "seven_day", WindowMinutesReason: ReasonNotReported, ObservedAt: time.Now().Add(-1000 * time.Hour)}}
 	now := time.Now()

@@ -83,16 +83,12 @@ func (s Scheduler) now() time.Time {
 // does not join its result — it returns immediately, having read whatever
 // was stored before either call started; its own caller sees that
 // unrefreshed state rather than the fresher figure the in-flight call will
-// produce moments later. This is a real gap against the prose, accepted
-// rather than closed, because closing it needs a cross-process lock: each
-// `agentdeck desktop snapshot` invocation is its own short-lived OS process
-// (RefreshQuota's own doc), so a package-level Go value can only ever
-// protect concurrent calls inside one process. In this task's one production
-// caller, RefreshQuota (internal/desktop/desktop.go), the two clients are
-// visited sequentially and nothing else calls Run concurrently, so this
-// guard does not currently trigger in production at all — it exists as a
-// defensive backstop for a future concurrent caller, and is exercised only
-// by this package's own tests. It is a package-level set rather than
+// produce moments later. A package-level Go value cannot protect distinct OS
+// processes; the production `desktop quota-refresh` command closes that
+// boundary with store.AcquireQuotaRefreshLock across the complete two-client
+// cycle. This guard remains a defensive backstop for direct/future callers
+// inside one process and is exercised by this package's tests. It is a
+// package-level set rather than
 // per-Scheduler state because Scheduler values are deliberately cheap and
 // stateless (see the type doc) — two Scheduler values in the same process
 // must still agree on what is in flight.

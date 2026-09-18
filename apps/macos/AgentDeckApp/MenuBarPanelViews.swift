@@ -1313,6 +1313,7 @@ struct RhythmBlockView: View {
 struct QuotaPanelView: View {
 	let clients: [DesktopSubscriptionClientV1]
 	@State private var hoveredAllowance: String?
+	@FocusState private var focusedAllowance: String?
 
 	var body: some View {
 		VStack(alignment: .leading, spacing: MenuBarGeometry.betweenSections) {
@@ -1335,6 +1336,13 @@ struct QuotaPanelView: View {
 			}
 			if client.client == "claude", !client.attributionConfirmed, client.failure != .probeDisabled {
 				Text(t(DesktopCopy.quotaAttributionUnconfirmed)).font(.caption2).foregroundStyle(DesktopVisualTheme.warning)
+			}
+			if let planUnavailable = planUnavailableLabel(client) {
+				LabeledContent(
+					t(DesktopCopy.quotaPlan),
+					value: planUnavailable
+				)
+				.font(.caption)
 			}
 			if let reason = primaryReason(client) {
 				VStack(alignment: .leading, spacing: 3) {
@@ -1373,10 +1381,31 @@ struct QuotaPanelView: View {
 
 	private func allowanceRow(client: String, allowance: DesktopResetAllowanceV1) -> some View {
 		let key = "\(client).allowance"
-		return HStack { Text(t(DesktopCopy.quotaOfficialResets)); Spacer(); Text(allowance.remaining.map { t(DesktopCopy.quotaLeft, Int64($0)) } ?? t(DesktopCopy.quotaUnavailable)) }
+		return HStack { Text(t(DesktopCopy.quotaOfficialResets)); Spacer(); Text(allowanceSummary(allowance)) }
 			.font(.caption).contentShape(Rectangle())
 			.onHover { hoveredAllowance = $0 && !allowance.credits.isEmpty ? key : nil }
-			.popover(isPresented: Binding(get: { hoveredAllowance == key }, set: { if !$0 { hoveredAllowance = nil } }), arrowEdge: .trailing) {
+			.focusable(!allowance.credits.isEmpty)
+			.focused($focusedAllowance, equals: key)
+			.help(allowance.credits.isEmpty ? "" : t(DesktopCopy.quotaShowCreditDetails))
+			.accessibilityLabel(t(DesktopCopy.quotaOfficialResets))
+			.accessibilityValue(allowanceSummary(allowance))
+			.accessibilityAction {
+				guard !allowance.credits.isEmpty else { return }
+				focusedAllowance = focusedAllowance == key ? nil : key
+			}
+			.onExitCommand {
+				hoveredAllowance = nil
+				focusedAllowance = nil
+			}
+			.popover(isPresented: Binding(
+				get: { !allowance.credits.isEmpty && (hoveredAllowance == key || focusedAllowance == key) },
+				set: {
+					if !$0 {
+						hoveredAllowance = nil
+						focusedAllowance = nil
+					}
+				}
+			), arrowEdge: .trailing) {
 				VStack(alignment: .leading, spacing: 8) {
 					ForEach(allowance.credits, id: \.key) { credit in
 						VStack(alignment: .leading, spacing: 2) {
@@ -1386,6 +1415,18 @@ struct QuotaPanelView: View {
 					}
 				}.padding(12).frame(width: 260)
 			}
+	}
+
+	func allowanceSummary(_ allowance: DesktopResetAllowanceV1) -> String {
+		let remaining = allowance.remaining.map { t(DesktopCopy.quotaLeft, Int64($0)) } ?? t(DesktopCopy.quotaUnavailable)
+		let total = allowance.total.map { t(DesktopCopy.quotaTotal, Int64($0)) }
+			?? t(DesktopCopy.quotaTotalReason, reasonLabel(allowance.totalReason ?? .notReported))
+		return remaining + " · " + total
+	}
+
+	func planUnavailableLabel(_ client: DesktopSubscriptionClientV1) -> String? {
+		guard client.client == "codex", client.plan == nil else { return nil }
+		return reasonLabel(client.planReason ?? .notReported)
 	}
 
 	private func primaryReason(_ client: DesktopSubscriptionClientV1) -> DesktopQuotaReasonV1? {
