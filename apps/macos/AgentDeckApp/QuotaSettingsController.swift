@@ -275,6 +275,13 @@ final class QuotaSettingsController {
 		writeGeneration += 1
 		pendingStatusline = on
 		await drainPendingWrites()
+		// Codex PR #5 seventh review, P2: disabling capture restores the
+		// prior command into ~/.claude/settings.json, but this preview was
+		// last read by load() and never rereads the file -- an immediate
+		// re-enable then offered consent while still claiming no command
+		// would be chained. Re-read after every completed write, not only
+		// disable, so the preview always matches what is actually on disk.
+		chainedStatusLineCommand = readChainedStatusLineCommand(claudeSettingsURL: claudeSettingsURL)
 	}
 
 	/// Builds the write payload. `reading`/`interval` always come from the

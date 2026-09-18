@@ -545,6 +545,32 @@ final class MenuBarChromeTests: XCTestCase {
 		XCTAssertEqual(panel.windowLabel(unlabeled), t(DesktopCopy.quotaWindow5h))
 	}
 
+	// Codex PR #5 seventh review, P2: a partial status-line refresh can
+	// leave one window older and prose-derived while the card header names
+	// only the client's newest source/age; the row itself must carry each
+	// window's own age and source instead of implying it shares the
+	// header's freshness and provenance.
+	func testWindowProvenanceCaptionCarriesEachWindowsOwnAgeAndSource() throws {
+		let panel = QuotaPanelView(clients: [])
+		func window(source: String?, observedAt: String?) throws -> DesktopSubscriptionWindowV1 {
+			try JSONDecoder().decode(
+				DesktopSubscriptionWindowV1.self,
+				from: JSONSerialization.data(withJSONObject: [
+					"key": "five_hour", "label": NSNull(), "window_minutes": 300,
+					"window_minutes_reason": NSNull(), "used_percent": 22, "resets_at": NSNull(),
+					"observed_at": observedAt as Any, "source": source as Any,
+				])
+			)
+		}
+
+		let both = try window(source: "claude_statusline", observedAt: "2026-09-10T09:58:00Z")
+		let caption = try XCTUnwrap(panel.windowProvenanceCaption(both))
+		XCTAssertTrue(caption.contains("Claude status line"), "caption = \(caption)")
+
+		let neither = try window(source: nil, observedAt: nil)
+		XCTAssertNil(panel.windowProvenanceCaption(neither))
+	}
+
 	func testQuotaCardShowsMissingPlanAndResetTotalReasons() throws {
 		let panel = QuotaPanelView(clients: [])
 		let client = try JSONDecoder().decode(

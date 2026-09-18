@@ -206,7 +206,15 @@ func subscriptionClient(ctx context.Context, qs *quota.Store, client quota.Clien
 	// bypasses the envelope entirely is Claude's status-line: a status-line
 	// window newer than the envelope's own ObservedAt is a success the
 	// envelope never recorded, and it supersedes a stale prose failure.
-	supersededByStatusLine := windowSource == quota.SourceClaudeStatusLine && windowObservedAt.After(rec.ObservedAt)
+	//
+	// Codex PR #5 seventh review, P2: this must compare against
+	// FailureObservedAt, the failed attempt's own instant, not ObservedAt
+	// (the envelope's last *success*, which PutEnvelopeFailure leaves
+	// untouched). A status-line reading newer than the old success but
+	// older than a later prose failure was wrongly read as superseding that
+	// failure, hiding it even though the failure is the freshest thing that
+	// happened.
+	supersededByStatusLine := windowSource == quota.SourceClaudeStatusLine && windowObservedAt.After(rec.FailureObservedAt)
 	failed := hasRecord && rec.Failure != "" && !supersededByStatusLine
 
 	switch {

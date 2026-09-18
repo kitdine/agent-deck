@@ -634,3 +634,50 @@ done
 		t.Fatalf("Windows after a stale probe completion = (%+v, %v), want only the newer probe's untouched window at 42%%", windows, err)
 	}
 }
+
+// Codex PR #5 seventh review, P2: a Store.Record failure for one window (a
+// corrupt stored observed_reset_at, here) was silently discarded, and the
+// cycle still pruned and wrote a successful envelope -- the corrupt row was
+// kept but never refreshed, while the envelope reported ObservedAt advanced
+// and Failure/backoff cleared, so every later snapshot kept reading that
+// client as healthy. The scheduler must abort the success path instead.
+func TestSchedulerAbortsOnWindowPersistenceFailure(t *testing.T) {
+	store := openSchedulerTestStore(t)
+	ctx := context.Background()
+
+	digest := accountDigest(ClientCodex, "acct_fake")
+	if _, err := store.db.ExecContext(ctx, `INSERT INTO quota_windows(
+			client, account_id, window_key, source, observed_at, vendor_order,
+			window_minutes, window_minutes_reason, label, used_percent, resets_at,
+			observed_reset_at, prior_used_percent, prior_observed_at
+		) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		string(ClientCodex), digest, "codex", string(SourceCodex), "2026-09-10T09:00:00Z", 0,
+		300, "", "", 10.0, "2026-09-10T10:00:00Z",
+		"not-a-valid-timestamp", nil, nil,
+	); err != nil {
+		t.Fatalf("seed corrupt window: %v", err)
+	}
+
+	withFakeCodex(t, `
+n=0
+while IFS= read -r line; do
+  n=$((n+1))
+  if [ "$n" = "1" ]; then
+    echo '{"id":1,"result":{}}'
+  elif [ "$n" = "3" ]; then
+    echo '{"id":2,"result":{"accountId":"acct_fake","rateLimits":{"primary":{"usedPercent":20}}}}'
+  fi
+done
+`)
+	now := time.Date(2026, 9, 10, 11, 0, 0, 0, time.UTC)
+	sched := Scheduler{Store: store, Interval: 5 * time.Minute, MaxBackoff: time.Hour, Now: func() time.Time { return now }}
+	sched.Run(ctx, ClientCodex, TriggerBackground, true)
+
+	env, ok, err := store.Envelope(ctx, ClientCodex)
+	if err != nil || !ok || env.Failure != ReasonProbeFailed {
+		t.Fatalf("Envelope after a window persistence failure = (%+v, %v, %v), want Failure=probe_failed", env, ok, err)
+	}
+	if env.ObservedAt.Equal(now) {
+		t.Fatal("Envelope.ObservedAt was advanced to the failed cycle's instant, want it left alone (no false success)")
+	}
+}

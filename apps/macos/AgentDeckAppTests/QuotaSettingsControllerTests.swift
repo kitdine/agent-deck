@@ -242,6 +242,32 @@ final class QuotaSettingsControllerTests: XCTestCase {
 		XCTAssertNil(controller.chainedStatusLineCommand)
 	}
 
+	// Codex PR #5 seventh review, P2: disabling capture restores the prior
+	// command into ~/.claude/settings.json, but this preview was last read
+	// by load() and never reread the file -- an immediate re-enable then
+	// offered consent while still claiming no command would be chained.
+	func testStatuslineConsentRefreshesTheChainedCommandPreviewAfterAWrite() async throws {
+		let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+		try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+		defer { try? FileManager.default.removeItem(at: directory) }
+		let settingsURL = directory.appendingPathComponent("settings.json")
+		try #"{"statusLine":{"type":"command","command":"agentdeck quota capture"}}"#
+			.write(to: settingsURL, atomically: true, encoding: .utf8)
+
+		let controller = makeQuotaSettingsController(claudeSettingsURL: settingsURL)
+		await controller.load()
+		XCTAssertNil(controller.chainedStatusLineCommand, "AgentDeck's own route must not preview as something it would chain to")
+
+		// Simulate the disable's own restore: the file now has the prior
+		// command back on disk, written by something other than this
+		// controller's own in-memory state.
+		try #"{"statusLine":{"type":"command","command":"python3 ~/.claude/statusline.py"}}"#
+			.write(to: settingsURL, atomically: true, encoding: .utf8)
+		await controller.setStatuslineConsent(false)
+
+		XCTAssertEqual(controller.chainedStatusLineCommand, "python3 ~/.claude/statusline.py", "must reread the file after the write completes instead of keeping the stale load()-time preview")
+	}
+
 	func testResetNoticeControlRequiresBothReadingAndAlerts() async {
 		for (reading, alerts, expected) in [(false, true, false), (true, false, false), (true, true, true)] {
 			let controller = makeQuotaSettingsController(transport: StubQuotaSettingsTransport(settings: DesktopQuotaSettingsValuesV1(

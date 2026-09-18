@@ -285,6 +285,49 @@ func TestBuildSubscriptionFailureStates(t *testing.T) {
 	}
 }
 
+// Codex PR #5 seventh review, P2: a status-line window observed after the
+// envelope's last *success* but before a *later* prose failure was wrongly
+// read as superseding that failure -- the comparison used rec.ObservedAt
+// (the last success) instead of rec.FailureObservedAt (the failed attempt's
+// own instant), hiding a genuinely newer failure.
+func TestBuildSubscriptionStatusLineOlderThanALaterProseFailureDoesNotSupersedeIt(t *testing.T) {
+	core := openSubscriptionStore(t)
+	saveQuotaSettings(t, core, func(s *quota.Settings) { s.ProbeEnabled = true })
+	recordOfficial(t, core, "claude")
+	qs := quota.NewStore(core.DB)
+	t1 := time.Date(2026, 9, 10, 10, 0, 0, 0, time.UTC)
+	statusLineAt := t1.Add(30 * time.Minute)
+	failureAt := t1.Add(time.Hour)
+
+	// t1: prose succeeds.
+	recordQuotaWindow(t, core, quota.Observation{
+		Client: quota.ClientClaude, WindowKey: quota.ClaudeWindowFiveHour, Source: quota.SourceClaudeProse,
+		ObservedAt: t1, WindowMinutes: 300, UsedPercent: 30, ResetsAt: t1.Add(4 * time.Hour),
+	})
+	if err := qs.PutEnvelope(context.Background(), quota.EnvelopeRecord{Client: quota.ClientClaude, Applicable: true, Source: quota.SourceClaudeProse, ObservedAt: t1}); err != nil {
+		t.Fatalf("PutEnvelope: %v", err)
+	}
+	// statusLineAt (between t1 and failureAt): a status-line reading arrives.
+	// It bypasses the envelope entirely, so rec.ObservedAt stays at t1.
+	recordQuotaWindow(t, core, quota.Observation{
+		Client: quota.ClientClaude, WindowKey: quota.ClaudeWindowFiveHour, Source: quota.SourceClaudeStatusLine,
+		ObservedAt: statusLineAt, WindowMinutes: 300, UsedPercent: 35, ResetsAt: statusLineAt.Add(4 * time.Hour),
+	})
+	// failureAt: a later prose probe fails.
+	if err := qs.PutEnvelopeFailure(context.Background(), quota.ClientClaude, quota.ReasonProbeFailed, failureAt, failureAt.Add(5*time.Minute), failureAt); err != nil {
+		t.Fatalf("PutEnvelopeFailure: %v", err)
+	}
+
+	subscription, err := Service{Home: t.TempDir()}.BuildSubscription(context.Background(), core, failureAt.Add(time.Hour))
+	if err != nil {
+		t.Fatalf("BuildSubscription: %v", err)
+	}
+	claude := subscriptionFor(t, subscription, "claude")
+	if !reasonIs(claude.Failure, quota.ReasonProbeFailed) {
+		t.Fatalf("claude.Failure = %v, want probe_failed: the status-line reading at %v is older than the prose failure at %v and must not hide it", claude.Failure, statusLineAt, failureAt)
+	}
+}
+
 func TestReadingOffSubscriptionReportsBothClients(t *testing.T) {
 	subscription := ReadingOffSubscription()
 	if !subscription.Available || len(subscription.Clients) != 2 {

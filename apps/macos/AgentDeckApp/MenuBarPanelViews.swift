@@ -1384,7 +1384,22 @@ struct QuotaPanelView: View {
 				.tint(window.usedPercent >= 90 ? DesktopVisualTheme.warning : window.usedPercent >= 75 ? DesktopVisualTheme.info : DesktopVisualTheme.accent)
 				.accessibilityLabel(windowLabel(window))
 				.accessibilityValue(String(format: "%.0f%%", window.usedPercent))
+			// Codex PR #5 seventh review, P2: a partial status-line refresh
+			// can leave one window older and prose-derived while the card
+			// header names only the client's newest source/age -- render
+			// each window's own age and source so a retained row is never
+			// presented as if it shared a different window's freshness.
+			if let caption = windowProvenanceCaption(window) {
+				Text(caption).font(.caption2).foregroundStyle(DesktopVisualTheme.dim)
+			}
 		}
+	}
+
+	func windowProvenanceCaption(_ window: DesktopSubscriptionWindowV1) -> String? {
+		var parts: [String] = []
+		if let source = window.source { parts.append(sourceLabel(source)) }
+		if let observedAt = window.observedAt { parts.append(t(DesktopCopy.quotaObservedAt, DesktopFormat.relative(observedAt))) }
+		return parts.isEmpty ? nil : parts.joined(separator: " · ")
 	}
 
 	private func allowanceRow(client: String, allowance: DesktopResetAllowanceV1) -> some View {

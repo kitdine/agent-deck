@@ -159,8 +159,19 @@ func (s Scheduler) runCodex(ctx context.Context, observedAt time.Time, rec Envel
 	if s.staleAgainstCurrent(ctx, ClientCodex, observedAt) {
 		return
 	}
+	// Codex PR #5 seventh review, P2: a Record failure for one window (for
+	// example a corrupt stored observed_reset_at) was silently discarded,
+	// and the cycle still pruned and wrote a successful envelope -- the
+	// corrupt row is kept (its key is still in the probe's own keep-set)
+	// but never refreshed, while PutEnvelope advances ObservedAt and clears
+	// Failure/backoff, so every later snapshot keeps reading that client as
+	// healthy. Abort the success path on the first persistence failure
+	// instead.
 	for _, obs := range result.Windows {
-		_, _, _, _ = s.Store.Record(ctx, obs)
+		if _, _, _, err := s.Store.Record(ctx, obs); err != nil {
+			s.recordFailure(ctx, ClientCodex, ReasonProbeFailed, observedAt, rec, hasRecord, trigger)
+			return
+		}
 	}
 	_ = s.Store.PruneWindows(ctx, ClientCodex, result.AccountID, observedWindowKeys(result.Windows))
 	_ = s.Store.PutEnvelope(ctx, EnvelopeRecord{
@@ -212,8 +223,13 @@ func (s Scheduler) runClaudeProse(ctx context.Context, observedAt time.Time, rec
 	if s.staleAgainstCurrent(ctx, ClientClaude, observedAt) {
 		return
 	}
+	// See runCodex's matching comment: a discarded Record error here has the
+	// same false-success effect.
 	for _, obs := range result.Windows {
-		_, _, _, _ = s.Store.Record(ctx, obs)
+		if _, _, _, err := s.Store.Record(ctx, obs); err != nil {
+			s.recordFailure(ctx, ClientClaude, ReasonProbeFailed, observedAt, rec, hasRecord, trigger)
+			return
+		}
 	}
 	_ = s.Store.PruneWindows(ctx, ClientClaude, "", observedWindowKeys(result.Windows))
 	// Claude has neither Plan nor Billing nor ResetAllowance (C6: the reset
