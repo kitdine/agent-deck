@@ -1479,7 +1479,13 @@ struct QuotaPanelView: View {
 		guard let label = window.label, !label.isEmpty else { return span }
 		return "\(label) · \(span)"
 	}
-	private func sourceLabel(_ source: DesktopQuotaSourceV1) -> String { switch source { case .codexAppServer: "Codex app-server"; case .claudeStatusLine: "Claude status line"; case .claudeUsageProse: "claude /usage" } }
+	private func sourceLabel(_ source: DesktopQuotaSourceV1) -> String {
+		switch source {
+		case .codexAppServer: t(DesktopCopy.quotaSourceCodexAppServer)
+		case .claudeStatusLine: t(DesktopCopy.quotaSourceClaudeStatusLine)
+		case .claudeUsageProse: t(DesktopCopy.quotaSourceClaudeUsageProse)
+		}
+	}
 	/// ux/menubar-quota.md's header line for a card whose windows are shown
 	/// (source, then age, then a stale marker): freshness is never implied by
 	/// retained figures alone, so a probe that has stopped succeeding must

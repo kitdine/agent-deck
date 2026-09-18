@@ -307,6 +307,13 @@ enum DesktopCopy {
 	static let quotaReasonProbeDisabled = "Quota reading is off"
 	static let quotaCreditGranted = "Granted %@"
 	static let quotaCreditExpires = "Expires %@"
+	// Codex PR #5 eighth review, P2: sourceLabel returned hard-coded English
+	// strings that Text renders verbatim (runtime values, not literals the
+	// catalog can resolve), leaving source captions unlocalized in the
+	// Chinese UI while every surrounding string was.
+	static let quotaSourceCodexAppServer = "Codex app-server"
+	static let quotaSourceClaudeStatusLine = "Claude status line"
+	static let quotaSourceClaudeUsageProse = "claude /usage"
 
 	/// The inventory the localization test walks. Every key above appears here.
 	static let allKeys: [String] = [
@@ -326,6 +333,7 @@ enum DesktopCopy {
 		quotaResetsIn, quotaObservedAt, quotaStale, quotaReasonNotReported, quotaReasonNotOfficial,
 		quotaReasonNeverProbed, quotaReasonProbeFailed, quotaReasonParseFailed,
 		quotaReasonNotConsented, quotaReasonProbeDisabled, quotaCreditGranted, quotaCreditExpires,
+		quotaSourceCodexAppServer, quotaSourceClaudeStatusLine, quotaSourceClaudeUsageProse,
 		panelUnavailableMark, sectionUnavailable,
 		trendTitle, trendWindow, trendHours, trendEvents, trendNow,
 		chipAveragePerDay, chipPeak, chipCacheHit,

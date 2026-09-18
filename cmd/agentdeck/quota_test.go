@@ -608,6 +608,41 @@ func TestDesktopQuotaSettingsReadingOffKeepsConsentWhenRestoreFails(t *testing.T
 	}
 }
 
+// Codex PR #5 eighth review, P2: a failed restore used to leave next
+// carrying StatusLineConsent=true with ProbeEnabled=false, a combination
+// Settings.Validate() rejects with its own generic message before the
+// caller ever sees the more specific, structured restore-failure result.
+// The app needs that structured result -- a bare validation error is not
+// decodable into the statusline-restore outcome it can present.
+func TestDesktopQuotaSettingsReadingOffReportsTheStructuredRestoreFailure(t *testing.T) {
+	home := t.TempDir()
+	withTestHome(t, home)
+	state := filepath.Join(t.TempDir(), "state")
+	writeClaudeSettings(t, home, `{"statusLine":{"type":"command","command":"printf prior"}}`)
+
+	runJSON(t, "--state-dir", state, "--format", "json", "desktop", "quota-settings", "--reading", "on")
+	runJSON(t, "--state-dir", state, "--format", "json", "desktop", "quota-statusline", "enable")
+	settingsPath := claudeSettingsPath(home)
+	if err := exec.Command("chflags", "uchg", settingsPath).Run(); err != nil {
+		t.Skipf("chflags unavailable in this environment: %v", err)
+	}
+	t.Cleanup(func() { _ = exec.Command("chflags", "nouchg", settingsPath).Run() })
+
+	var stdout bytes.Buffer
+	if err := run([]string{"--state-dir", state, "--format", "json", "desktop", "quota-settings", "--reading", "off"}, bytes.NewReader(nil), &stdout); err == nil {
+		t.Fatal("reading-off succeeded against an immutable settings.json")
+	}
+	var envelope map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+		t.Fatalf("stdout is not decodable JSON (want the structured restore-failure result, not a generic invalid-settings error): %v\n%s", err, stdout.String())
+	}
+	data, _ := envelope["data"].(map[string]any)
+	restore, _ := data["statusline_restore"].(map[string]any)
+	if restore == nil || restore["outcome"] != "failed" {
+		t.Fatalf("data.statusline_restore = %v, want the failed restore result surfaced instead of a generic invalid-settings error", data)
+	}
+}
+
 func TestDesktopQuotaStatusLineEnableRollsBackRouteWhenConsentSaveFails(t *testing.T) {
 	home := t.TempDir()
 	withTestHome(t, home)

@@ -268,6 +268,22 @@ final class QuotaSettingsControllerTests: XCTestCase {
 		XCTAssertEqual(controller.chainedStatusLineCommand, "python3 ~/.claude/statusline.py", "must reread the file after the write completes instead of keeping the stale load()-time preview")
 	}
 
+	// Codex PR #5 eighth review, P2: this control is interactive as soon as
+	// the persisted reading preference mirror says reading is on, before
+	// load() has necessarily supplied `settings`. A confirmed statusline
+	// write arriving in that window must not be silently dropped.
+	func testStatuslineConsentSeedsSettingsWhenTheInitialLoadHasNotResolvedYet() async {
+		let preferences = DesktopPreferences(defaults: isolatedDefaults(), registrar: StubLoginItemRegistrar())
+		preferences.quotaProbeEnabled = true
+		let controller = makeQuotaSettingsController(preferences: preferences)
+		XCTAssertNil(controller.settings, "precondition: load() was deliberately never awaited")
+
+		await controller.setStatuslineConsent(true)
+
+		XCTAssertEqual(controller.settings?.statusline, true, "a confirmed statusline write must not be dropped just because load() has not resolved yet")
+		XCTAssertEqual(controller.settings?.reading, true, "seeded from the persisted reading preference mirror")
+	}
+
 	func testResetNoticeControlRequiresBothReadingAndAlerts() async {
 		for (reading, alerts, expected) in [(false, true, false), (true, false, false), (true, true, true)] {
 			let controller = makeQuotaSettingsController(transport: StubQuotaSettingsTransport(settings: DesktopQuotaSettingsValuesV1(

@@ -60,6 +60,8 @@ final class WidgetTimelineTests: XCTestCase {
 		let now = Date(timeIntervalSince1970: 10_000)
 		func at(_ seconds: TimeInterval) -> String { ISO8601DateFormatter().string(from: now.addingTimeInterval(seconds)) }
 
+		XCTAssertEqual(quotaResetETA(at(30), now: now), "<1m", "Int truncation must not round a sub-minute reset down to 0m")
+		XCTAssertNil(quotaResetETA(at(-30), now: now), "Int truncation toward zero must not round a reset up to 59 seconds in the past to 0 and let it slip past the guard")
 		XCTAssertEqual(quotaResetETA(at(45 * 60), now: now), "45m")
 		XCTAssertEqual(quotaResetETA(at(59 * 60 + 59), now: now), "59m")
 		XCTAssertEqual(quotaResetETA(at(2 * 3600), now: now), "2h")

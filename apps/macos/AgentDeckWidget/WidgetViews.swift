@@ -270,8 +270,15 @@ private struct WidgetHeader: View {
 /// design's "no negative countdown" expectation.
 func quotaResetETA(_ resetsAt: String, now: Date) -> String? {
 	guard let target = WidgetTimelinePolicy.date(resetsAt) else { return nil }
-	let minutes = Int(target.timeIntervalSince(now) / 60)
-	guard minutes >= 0 else { return nil }
+	let interval = target.timeIntervalSince(now)
+	// Codex PR #5 eighth review, P2: checked on the raw interval, before
+	// truncating to minutes -- Int(Double) truncates toward zero, so a
+	// reset up to 59 seconds in the past rounded to 0 and slipped past a
+	// `minutes >= 0` guard, and a reset under 60 seconds away rounded down
+	// to "0m" instead of this function's own documented "<1m".
+	guard interval >= 0 else { return nil }
+	if interval < 60 { return "<1m" }
+	let minutes = Int(interval / 60)
 	if minutes < 60 { return "\(minutes)m" }
 	let hours = minutes / 60
 	if hours < 24 { return "\(hours)h" }

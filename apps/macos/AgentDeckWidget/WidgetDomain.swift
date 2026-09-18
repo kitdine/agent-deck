@@ -142,13 +142,20 @@ struct WidgetSurfaceModel {
 				result.append(.aging)
 			}
 		}
-		if isEmpty {
+		if isEmpty(family: family) {
 			result.append(.empty)
 		}
 		return result
 	}
 
-	var isEmpty: Bool {
+	// Codex PR #5 eighth review, P2: the quota branch must derive emptiness
+	// from the clients actually presented for family, not from
+	// quotaClients, which stays narrowed to the configured single client
+	// even on the large family, where presentedQuotaClients shows both. A
+	// configured client with no windows alongside a client that does have
+	// them was rendering real figures while also appending the "No
+	// activity" qualifier for the other, unpresented client's emptiness.
+	func isEmpty(family: WidgetFamily) -> Bool {
 		guard let scope else { return false }
 		switch entry.kind {
 		case .magnitude:
@@ -163,7 +170,7 @@ struct WidgetSurfaceModel {
 		case .rhythm:
 			return !scope.rhythm.available || scope.rhythm.activeDays == 0 || scope.rhythm.intensities.allSatisfy { $0 == 0 }
 		case .quota:
-			return quotaClients.allSatisfy { $0.windows.isEmpty }
+			return presentedQuotaClients(family: family).allSatisfy { $0.windows.isEmpty }
 		}
 	}
 

@@ -173,7 +173,16 @@ func (s Scheduler) runCodex(ctx context.Context, observedAt time.Time, rec Envel
 			return
 		}
 	}
-	_ = s.Store.PruneWindows(ctx, ClientCodex, result.AccountID, observedWindowKeys(result.Windows))
+	// Codex PR #5 eighth review, P2: PruneWindows is a separate persistence
+	// step from Record above and was not covered by that check -- if it
+	// fails (for example another writer briefly held the database through
+	// its busy timeout), a bucket the successful response actually omitted
+	// stays visible under its stale values while PutEnvelope still records
+	// the cycle as a clean success.
+	if err := s.Store.PruneWindows(ctx, ClientCodex, result.AccountID, observedWindowKeys(result.Windows)); err != nil {
+		s.recordFailure(ctx, ClientCodex, ReasonProbeFailed, observedAt, rec, hasRecord, trigger)
+		return
+	}
 	_ = s.Store.PutEnvelope(ctx, EnvelopeRecord{
 		Client: ClientCodex, AccountID: result.AccountID, Applicable: true,
 		Source: SourceCodex, ObservedAt: observedAt,
@@ -231,7 +240,12 @@ func (s Scheduler) runClaudeProse(ctx context.Context, observedAt time.Time, rec
 			return
 		}
 	}
-	_ = s.Store.PruneWindows(ctx, ClientClaude, "", observedWindowKeys(result.Windows))
+	// See runCodex's matching comment: PruneWindows is a separate
+	// persistence step Record's own check does not cover.
+	if err := s.Store.PruneWindows(ctx, ClientClaude, "", observedWindowKeys(result.Windows)); err != nil {
+		s.recordFailure(ctx, ClientClaude, ReasonProbeFailed, observedAt, rec, hasRecord, trigger)
+		return
+	}
 	// Claude has neither Plan nor Billing nor ResetAllowance (C6: the reset
 	// allowance is Codex-only) — the envelope carries only source and instant.
 	_ = s.Store.PutEnvelope(ctx, EnvelopeRecord{

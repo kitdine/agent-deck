@@ -564,6 +564,18 @@ func runDesktopQuotaSettings(ctx context.Context, opts *commandOptions, apply fu
 			next.StatusLineConsent = false
 		}
 	}
+	// Codex PR #5 eighth review, P2: on a failed restore, next still carries
+	// StatusLineConsent=true with ProbeEnabled=false -- a combination
+	// Validate() correctly refuses to persist, but only with its own generic
+	// message, masking the more specific and actionable restore failure
+	// below. Report that failure directly, before Validate ever sees this
+	// intentionally unpersisted intermediate state; nothing here is saved.
+	if restore != nil && restore.Outcome == usagehook.OutcomeFailed {
+		if err := writeResult(opts.stdout, opts.format, "desktop.quota-settings", desktopQuotaSettingsResult{Settings: quotaSettingsView(current), StatusLineRestore: restore}); err != nil {
+			return err
+		}
+		return fmt.Errorf("quota status-line restore failed: %s", restore.Error)
+	}
 	if err := next.Validate(); err != nil {
 		return &inputError{err: err}
 	}

@@ -389,12 +389,26 @@ final class QuotaSettingsController {
 		case .failed, .unknown:
 			statuslineRow = SettingsRowStatus(text: t(DesktopCopy.settingsQuotaStatuslineWriteRefused), severity: .error)
 		}
-		if let settings {
-			self.settings = DesktopQuotaSettingsValuesV1(
-				reading: settings.reading, interval: settings.interval, alerts: settings.alerts,
-				thresholds: settings.thresholds, resetNotice: settings.resetNotice, statusline: consent
-			)
-		}
+		// Codex PR #5 eighth review, P2: this control is interactive as soon
+		// as the persisted reading preference mirror says reading is on --
+		// before load() has necessarily supplied `settings`. A `settings ==
+		// nil` guard here silently dropped a write this call already
+		// confirmed succeeded, leaving the toggle showing off (or on) while
+		// core state disagreed until another full write or a relaunch. Seed
+		// from the local mirror and product defaults instead of dropping
+		// it; setStatuslineConsent already bumped writeGeneration, so a
+		// still-pending load() will self-discard as stale rather than
+		// overwrite this with an inconsistent read (see load()'s own
+		// generation check).
+		let base = settings ?? DesktopQuotaSettingsValuesV1(
+			reading: preferences.quotaProbeEnabled,
+			interval: DesktopQuotaIntervalV1(preferences.quotaProbeInterval),
+			alerts: false, thresholds: [75, 90], resetNotice: true, statusline: false
+		)
+		settings = DesktopQuotaSettingsValuesV1(
+			reading: base.reading, interval: base.interval, alerts: base.alerts,
+			thresholds: base.thresholds, resetNotice: base.resetNotice, statusline: consent
+		)
 	}
 
 	/// The single point that keeps every read of core state — the initial

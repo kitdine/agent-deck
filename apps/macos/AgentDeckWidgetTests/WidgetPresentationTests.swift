@@ -131,6 +131,34 @@ final class WidgetPresentationTests: XCTestCase {
 		XCTAssertEqual(shown[1].failure, .parseFailed)
 	}
 
+	// Codex PR #5 eighth review, P2: isEmpty's quota branch used
+	// quotaClients, narrowed to the configured single client, even on the
+	// large family, where presentedQuotaClients shows both. With the
+	// configured client empty but the other client still carrying real
+	// windows, the large widget rendered those figures while also claiming
+	// "No activity."
+	func testQuotaEmptyQualifierReflectsThePresentedFamilyNotTheConfiguredClient() throws {
+		let original = try widgetFixture("snapshot-complete")
+		var object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(original)) as? [String: Any])
+		var subscription = try XCTUnwrap(object["subscription"] as? [String: Any])
+		var clients = try XCTUnwrap(subscription["clients"] as? [[String: Any]])
+		for index in clients.indices where clients[index]["client"] as? String == "codex" {
+			clients[index]["windows"] = []
+			clients[index]["tightest_window_key"] = NSNull()
+		}
+		subscription["clients"] = clients
+		object["subscription"] = subscription
+		let snapshot = try JSONDecoder().decode(WidgetDesktopSnapshotV1.self, from: JSONSerialization.data(withJSONObject: object))
+		let entry = AgentDeckWidgetEntry(
+			date: try XCTUnwrap(WidgetTimelinePolicy.date(snapshot.generatedAt)), snapshot: snapshot,
+			kind: .quota, client: .codex, period: .today, isPlaceholder: false
+		)
+		let model = WidgetSurfaceModel(entry: entry, now: entry.date)
+
+		XCTAssertTrue(model.qualifiers(family: .systemSmall).contains(.empty), "small narrows to the configured, now-empty client: genuinely empty")
+		XCTAssertFalse(model.qualifiers(family: .systemLarge).contains(.empty), "large also shows Claude's real windows and must not also claim no activity")
+	}
+
 	func testQuotaFooterUsesOldestDisplayedObservationRatherThanFreshSnapshotTime() throws {
 		let original = try widgetFixture("snapshot-complete")
 		let snapshot = try snapshotWithQuotaObservedAt(original, values: [
