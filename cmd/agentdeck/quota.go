@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -149,13 +150,19 @@ func renderQuotaText(w io.Writer, subscription desktop.SubscriptionSnapshot) err
 			if client.TightestWindowKey != nil && *client.TightestWindowKey == window.Key {
 				marker = "  tightest"
 			}
-			fmt.Fprintf(&b, "  %-32s %4.0f%%  %s%s", quotaWindowName(window), window.UsedPercent, resets, marker)
+			fmt.Fprintf(&b, "  %-32s %s  %s%s", quotaWindowName(window), quotaPercentText(window.UsedPercent), resets, marker)
 			// Codex PR #5 sixth review, P2: a partial mixed-age Claude update
 			// can leave one window observed well before the client-level
 			// timestamp above; print each window's own instant rather than
 			// let it be read as observed then too.
 			if window.ObservedAt != nil {
 				fmt.Fprintf(&b, "  (observed %s)", *window.ObservedAt)
+			}
+			// Codex PR #5 ninth review, P2: the same partial mixed-age
+			// update can leave one window from a different route than the
+			// header's newest-source label; print each row's own source.
+			if window.Source != nil {
+				fmt.Fprintf(&b, "  (via %s)", *window.Source)
 			}
 			b.WriteString("\n")
 		}
@@ -174,6 +181,13 @@ func renderQuotaText(w io.Writer, subscription desktop.SubscriptionSnapshot) err
 			if len(details) > 0 {
 				fmt.Fprintf(&b, "  reset allowance: %s\n", strings.Join(details, ", "))
 			}
+		} else if client.ResetAllowanceReason != nil {
+			// Codex PR #5 ninth review, P2: Claude's normal success path
+			// carries ResetAllowanceReason=not_reported with no allowance
+			// struct at all; this branch previously emitted nothing,
+			// silently dropping the field instead of reporting it
+			// unavailable with its reason like every other field here.
+			fmt.Fprintf(&b, "  reset allowance: %s\n", quotaReasonPhrase(client.ResetAllowanceReason))
 		}
 		if client.ObservedResetAt != nil {
 			fmt.Fprintf(&b, "  last observed reset: %s\n", *client.ObservedResetAt)
@@ -216,6 +230,18 @@ func quotaReasonPhrase(reason *string) string {
 	default:
 		return *reason
 	}
+}
+
+// quotaPercentText renders usedPercent with only as much precision as the
+// value actually needs. Codex PR #5 ninth review, P2: a structured Claude
+// observation can carry a fractional usedPercent, and a flat "%4.0f%%"
+// rounds a value like 89.6 up to a displayed "90%" that has not actually
+// crossed the 90% threshold this same text implies.
+func quotaPercentText(value float64) string {
+	if math.Abs(math.Round(value)-value) < 0.05 {
+		return fmt.Sprintf("%4.0f%%", value)
+	}
+	return fmt.Sprintf("%5.1f%%", value)
 }
 
 // quotaWindowName labels a window from its vendor label and length. The
@@ -660,7 +686,14 @@ func runDesktopQuotaStatusLine(ctx context.Context, opts *commandOptions, operat
 		// SetupStatusLine has already changed ~/.claude/settings.json. If the
 		// consent bit cannot be persisted, undo a route this invocation newly
 		// installed so capture cannot run without durable consent.
-		if operation == "enable" && result.Outcome == usagehook.OutcomeConfigured {
+		//
+		// Codex PR #5 ninth review, P2: SetSettings commits its transaction
+		// before running secureFiles, so a chmod failure there returns
+		// ErrSettingsSecureFilesFailed even though the consent bit is
+		// already durably persisted. Rolling back the just-installed route
+		// in that case would make the stored StatusLineConsent=true
+		// disagree with the route actually left on disk.
+		if operation == "enable" && result.Outcome == usagehook.OutcomeConfigured && !errors.Is(err, store.ErrSettingsSecureFilesFailed) {
 			rollback, rollbackErr := manager.RestoreStatusLine()
 			switch {
 			case rollbackErr != nil:

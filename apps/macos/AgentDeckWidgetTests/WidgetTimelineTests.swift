@@ -72,6 +72,16 @@ final class WidgetTimelineTests: XCTestCase {
 		XCTAssertNil(quotaResetETA("not a timestamp", now: now))
 	}
 
+	// Codex PR #5 ninth review, P2: a flat "%.0f%%" rounded 89.6 up to a
+	// displayed "90%" that had not actually crossed the 90% threshold the
+	// progress bar's tint still correctly evaluates against the raw value.
+	func testQuotaPercentTextPreservesPrecisionAtThresholds() {
+		XCTAssertEqual(quotaPercentText(64), "64%")
+		XCTAssertEqual(quotaPercentText(89.6), "89.6%")
+		XCTAssertEqual(quotaPercentText(74.6), "74.6%")
+		XCTAssertEqual(quotaPercentText(90), "90%")
+	}
+
 	// Codex PR #5 second review, P2: a Codex limit's primary and secondary
 	// windows share the same vendor label, so the label alone cannot tell a
 	// 5-hour row from a 7-day row for the same limit.

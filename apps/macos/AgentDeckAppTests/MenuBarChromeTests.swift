@@ -572,6 +572,18 @@ final class MenuBarChromeTests: XCTestCase {
 		XCTAssertNil(panel.windowProvenanceCaption(neither))
 	}
 
+	// Codex PR #5 ninth review, P2: a flat "%.0f%%" rounded 89.6 up to a
+	// displayed "90%" that had not actually crossed the 90% threshold the
+	// progress bar's tint and the CLI's own threshold both still correctly
+	// evaluate against the raw value.
+	func testQuotaPercentTextPreservesPrecisionAtThresholds() {
+		let panel = QuotaPanelView(clients: [])
+		XCTAssertEqual(panel.quotaPercentText(64), "64%")
+		XCTAssertEqual(panel.quotaPercentText(89.6), "89.6%")
+		XCTAssertEqual(panel.quotaPercentText(74.6), "74.6%")
+		XCTAssertEqual(panel.quotaPercentText(90), "90%")
+	}
+
 	func testQuotaCardShowsMissingPlanAndResetTotalReasons() throws {
 		let panel = QuotaPanelView(clients: [])
 		let client = try JSONDecoder().decode(
@@ -586,6 +598,23 @@ final class MenuBarChromeTests: XCTestCase {
 			])
 		)
 		XCTAssertEqual(panel.planUnavailableLabel(client), t(DesktopCopy.quotaReasonNotReported))
+
+		// Codex PR #5 ninth review, P2: this used to require client ==
+		// "codex", so an applicable Claude client with figures -- whose
+		// planReason is always .notReported (C6: Claude never reports a
+		// plan) -- silently dropped the required row.
+		let claudeClient = try JSONDecoder().decode(
+			DesktopSubscriptionClientV1.self,
+			from: JSONSerialization.data(withJSONObject: [
+				"client": "claude", "applicable": true, "applicable_reason": NSNull(),
+				"source": "claude_statusline", "observed_at": "2026-09-10T09:58:00Z",
+				"stale": false, "attribution_confirmed": true,
+				"plan": NSNull(), "plan_reason": "not_reported", "windows": [],
+				"tightest_window_key": NSNull(), "reset_allowance": NSNull(),
+				"reset_allowance_reason": "not_reported", "observed_reset_at": NSNull(), "failure": NSNull(),
+			])
+		)
+		XCTAssertEqual(panel.planUnavailableLabel(claudeClient), t(DesktopCopy.quotaReasonNotReported))
 
 		let allowance = try JSONDecoder().decode(
 			DesktopResetAllowanceV1.self,

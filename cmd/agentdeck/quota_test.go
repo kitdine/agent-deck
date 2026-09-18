@@ -130,9 +130,36 @@ func TestQuotaCommandRendersFiguresAsText(t *testing.T) {
 	if err := run([]string{"--state-dir", state, "quota"}, bytes.NewReader(nil), &text); err != nil {
 		t.Fatalf("text quota: %v", err)
 	}
-	for _, want := range []string{"Claude, plan not reported, via claude_statusline", "account attribution cannot be confirmed", "5-hour window", "64%", "tightest", "(observed "} {
+	for _, want := range []string{
+		"Claude, plan not reported, via claude_statusline", "account attribution cannot be confirmed",
+		"5-hour window", "64%", "tightest", "(observed ", "(via claude_statusline)",
+		"reset allowance: " + quotaReasonPhrase(strPtr(string(quota.ReasonNotReported))),
+	} {
 		if !strings.Contains(text.String(), want) {
 			t.Fatalf("text output %q does not contain %q", text.String(), want)
+		}
+	}
+}
+
+func strPtr(s string) *string { return &s }
+
+// Codex PR #5 ninth review, P2: a flat "%.0f%%" rounded 89.6 up to a
+// displayed "90%" that had not actually crossed the 90% threshold the tint
+// and alert boundaries both still correctly evaluate against the raw value.
+func TestQuotaPercentTextPreservesPrecisionAtThresholds(t *testing.T) {
+	cases := []struct {
+		value float64
+		want  string
+	}{
+		{64, "  64%"},
+		{89.6, " 89.6%"},
+		{74.6, " 74.6%"},
+		{90, "  90%"},
+		{89.96, "  90%"},
+	}
+	for _, c := range cases {
+		if got := quotaPercentText(c.value); got != c.want {
+			t.Fatalf("quotaPercentText(%v) = %q, want %q", c.value, got, c.want)
 		}
 	}
 }

@@ -241,6 +241,25 @@ func TestBuildSubscriptionTightestWindowIsNullWithoutWindows(t *testing.T) {
 	}
 }
 
+// Codex PR #5 ninth review, P2: provider.Service.Current already treats "no
+// selection recorded" (sql.ErrNoRows) as a normal, errorless empty result,
+// so a non-nil error from it is a genuine read failure. Swallowing it
+// treated both clients as recordedOfficial=false, so agentdeck quota
+// falsely reported "provider is not official" instead of surfacing the
+// real read failure.
+func TestBuildSubscriptionPropagatesProviderSelectionReadFailures(t *testing.T) {
+	core := openSubscriptionStore(t)
+	saveQuotaSettings(t, core, func(s *quota.Settings) { s.ProbeEnabled = true })
+	if _, err := core.DB.ExecContext(context.Background(), "DROP TABLE operations"); err != nil {
+		t.Fatalf("DROP TABLE operations: %v", err)
+	}
+
+	_, err := Service{Home: t.TempDir()}.BuildSubscription(context.Background(), core, time.Now())
+	if err == nil {
+		t.Fatal("BuildSubscription succeeded despite an unreadable provider-selection table, want the read failure propagated instead of a false not_official gate result")
+	}
+}
+
 func TestBuildSubscriptionFailureStates(t *testing.T) {
 	core := openSubscriptionStore(t)
 	saveQuotaSettings(t, core, func(s *quota.Settings) { s.ProbeEnabled = true })

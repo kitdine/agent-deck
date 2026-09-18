@@ -268,6 +268,17 @@ private struct WidgetHeader: View {
 /// only the bare span between the window label and its percentage). Returns
 /// nil for an unparseable timestamp or one already in the past, matching the
 /// design's "no negative countdown" expectation.
+/// Codex PR #5 ninth review, P2: a structured Claude observation can carry a
+/// fractional usedPercent, and a flat "%.0f%%" rounds a value like 89.6 up
+/// to the displayed "90%" even though the tint below and the CLI's own
+/// threshold both still correctly treat it as below 90 -- the displayed
+/// figure must not claim a boundary the value has not actually crossed.
+/// Mirrors WidgetFormat.share's own near-integer rule.
+func quotaPercentText(_ value: Double) -> String {
+	if abs(value.rounded() - value) < 0.05 { return String(format: "%.0f%%", value) }
+	return String(format: "%.1f%%", value)
+}
+
 func quotaResetETA(_ resetsAt: String, now: Date) -> String? {
 	guard let target = WidgetTimelinePolicy.date(resetsAt) else { return nil }
 	let interval = target.timeIntervalSince(now)
@@ -347,7 +358,7 @@ private struct QuotaWidgetView: View {
 								Text(eta).foregroundStyle(.secondary)
 							}
 							Spacer()
-							Text(String(format: "%.0f%%", window.usedPercent)).monospacedDigit()
+							Text(quotaPercentText(window.usedPercent)).monospacedDigit()
 						}
 						.font(.system(size: 9.5)).lineLimit(1)
 						ProgressView(value: min(max(window.usedPercent, 0), 100), total: 100)

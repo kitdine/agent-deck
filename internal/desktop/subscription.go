@@ -128,9 +128,18 @@ func (s Service) BuildSubscription(ctx context.Context, core *store.Store, now t
 	if err != nil {
 		return unavailableSubscription(), err
 	}
+	// Codex PR #5 ninth review, P2: Current already treats "no selection
+	// recorded" (sql.ErrNoRows) as a normal, errorless empty result --
+	// continuing past it inside the loop -- so a non-nil error here is a
+	// genuine read failure (unreadable provider tables, a transient
+	// database error), not the ordinary "nothing selected yet" case.
+	// Swallowing it made both clients read as recordedOfficial=false, so
+	// agentdeck quota exited successfully claiming "provider is not
+	// official" -- a specific, false accusation -- while also hiding any
+	// retained quota windows the subscription would otherwise still show.
 	selections, err := (provider.Service{Store: core}).Current(ctx)
 	if err != nil {
-		selections = nil
+		return unavailableSubscription(), err
 	}
 	usageService := usage.New(core, s.Home)
 	quotaStore := quota.NewStore(core.DB)

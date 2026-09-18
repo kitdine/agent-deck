@@ -183,13 +183,22 @@ func (s Scheduler) runCodex(ctx context.Context, observedAt time.Time, rec Envel
 		s.recordFailure(ctx, ClientCodex, ReasonProbeFailed, observedAt, rec, hasRecord, trigger)
 		return
 	}
-	_ = s.Store.PutEnvelope(ctx, EnvelopeRecord{
+	// Codex PR #5 ninth review, P2: unlike Record/PruneWindows above, the
+	// windows are already committed by the time this runs -- a failure here
+	// cannot be treated as "nothing happened." Retain an explicit failure
+	// state rather than silently leaving the prior envelope's Failure,
+	// Source, and Plan in place beside the freshly written windows (which
+	// could otherwise read, for example, as a stale parse_failed
+	// suppressing the new valid figures).
+	if err := s.Store.PutEnvelope(ctx, EnvelopeRecord{
 		Client: ClientCodex, AccountID: result.AccountID, Applicable: true,
 		Source: SourceCodex, ObservedAt: observedAt,
 		Plan: result.Plan, PlanReason: result.PlanReason,
 		ResetAllowance: result.ResetAllowance,
 		Billing:        result.Billing,
-	})
+	}); err != nil {
+		s.recordFailure(ctx, ClientCodex, ReasonProbeFailed, observedAt, rec, hasRecord, trigger)
+	}
 }
 
 // staleAgainstCurrent reports whether a newer probe cycle has already
@@ -248,10 +257,14 @@ func (s Scheduler) runClaudeProse(ctx context.Context, observedAt time.Time, rec
 	}
 	// Claude has neither Plan nor Billing nor ResetAllowance (C6: the reset
 	// allowance is Codex-only) — the envelope carries only source and instant.
-	_ = s.Store.PutEnvelope(ctx, EnvelopeRecord{
+	// See runCodex's matching comment: this failing after windows are
+	// already committed needs an explicit failure state, not silence.
+	if err := s.Store.PutEnvelope(ctx, EnvelopeRecord{
 		Client: ClientClaude, Applicable: true,
 		Source: SourceClaudeProse, ObservedAt: observedAt,
-	})
+	}); err != nil {
+		s.recordFailure(ctx, ClientClaude, ReasonProbeFailed, observedAt, rec, hasRecord, trigger)
+	}
 }
 
 // recordFailure persists a failed probe attempt. attemptedAt is the real

@@ -1337,19 +1337,28 @@ struct QuotaPanelView: View {
 			if client.client == "claude", !client.attributionConfirmed, client.failure != .probeDisabled {
 				Text(t(DesktopCopy.quotaAttributionUnconfirmed)).font(.caption2).foregroundStyle(DesktopVisualTheme.warning)
 			}
-			if let planUnavailable = planUnavailableLabel(client) {
-				LabeledContent(
-					t(DesktopCopy.quotaPlan),
-					value: planUnavailable
-				)
-				.font(.caption)
-			}
 			if let reason = primaryReason(client) {
 				VStack(alignment: .leading, spacing: 3) {
 					Text(missingWord(reason)).font(.body.weight(.semibold))
 					Text(reasonLabel(reason)).font(.caption).foregroundStyle(DesktopVisualTheme.dim)
 				}
 			} else {
+				// Codex PR #5 ninth review, P2: planUnavailableLabel and the
+				// reset-allowance-unavailable row below used to render
+				// unconditionally, above this branch -- Claude's planReason
+				// is always .notReported regardless of state (C6: it never
+				// reports a plan at all), so showing it outside this
+				// windows-shown branch would also have duplicated the
+				// primaryReason card above during the intentionally
+				// collapsed reading-off/not-applicable/no-figures states.
+				// Both belong only here, beside the figures they qualify.
+				if let planUnavailable = planUnavailableLabel(client) {
+					LabeledContent(
+						t(DesktopCopy.quotaPlan),
+						value: planUnavailable
+					)
+					.font(.caption)
+				}
 				// Codex PR #5 sixth review, P1: after a probe_failed attempt
 				// following an earlier success, the wire retains the last windows
 				// and still sets client.failure (C9) -- primaryReason returns nil
@@ -1363,6 +1372,14 @@ struct QuotaPanelView: View {
 			if let allowance = client.resetAllowance {
 				Divider()
 				allowanceRow(client: client.client, allowance: allowance)
+			} else if let reason = client.resetAllowanceReason, primaryReason(client) == nil {
+				// Codex PR #5 ninth review, P2: a normal Claude client has no
+				// resetAllowance struct at all (Codex-only, C6) but still
+				// carries resetAllowanceReason=not_reported; render the
+				// unsupported field's reason like every other field here,
+				// gated the same way as the plan row above.
+				Divider()
+				LabeledContent(t(DesktopCopy.quotaOfficialResets), value: reasonLabel(reason)).font(.caption)
 			}
 			if let observed = client.observedResetAt {
 				LabeledContent(t(DesktopCopy.quotaLocallyObservedReset), value: DesktopFormat.relative(observed, now: Date())).font(.caption)
@@ -1378,12 +1395,12 @@ struct QuotaPanelView: View {
 				Text(windowLabel(window)).lineLimit(1)
 				Spacer()
 				if let resets = window.resetsAt { Text(t(DesktopCopy.quotaResetsIn, DesktopFormat.relative(resets, now: Date()))) }
-				Text(String(format: "%.0f%%", window.usedPercent)).monospacedDigit()
+				Text(quotaPercentText(window.usedPercent)).monospacedDigit()
 			}.font(.caption)
 			ProgressView(value: min(max(window.usedPercent, 0), 100), total: 100)
 				.tint(window.usedPercent >= 90 ? DesktopVisualTheme.warning : window.usedPercent >= 75 ? DesktopVisualTheme.info : DesktopVisualTheme.accent)
 				.accessibilityLabel(windowLabel(window))
-				.accessibilityValue(String(format: "%.0f%%", window.usedPercent))
+				.accessibilityValue(quotaPercentText(window.usedPercent))
 			// Codex PR #5 seventh review, P2: a partial status-line refresh
 			// can leave one window older and prose-derived while the card
 			// header names only the client's newest source/age -- render
@@ -1447,8 +1464,14 @@ struct QuotaPanelView: View {
 		return remaining + " · " + total
 	}
 
+	// Codex PR #5 ninth review, P2: this used to require client == "codex",
+	// so an applicable Claude client with windows -- whose planReason is
+	// always .notReported (C6: Claude never reports a plan) -- silently
+	// dropped the required Plan/unavailable row instead of rendering it.
+	// The caller now gates this to the windows-shown branch only, so it no
+	// longer needs to guard the collapsed states itself.
 	func planUnavailableLabel(_ client: DesktopSubscriptionClientV1) -> String? {
-		guard client.client == "codex", client.plan == nil else { return nil }
+		guard client.plan == nil else { return nil }
 		return reasonLabel(client.planReason ?? .notReported)
 	}
 
@@ -1478,6 +1501,16 @@ struct QuotaPanelView: View {
 		let span = window.windowMinutes == 300 ? t(DesktopCopy.quotaWindow5h) : window.windowMinutes == 10080 ? t(DesktopCopy.quotaWindow7d) : window.windowMinutes.map { "\($0)m" } ?? t(DesktopCopy.quotaUnavailable)
 		guard let label = window.label, !label.isEmpty else { return span }
 		return "\(label) · \(span)"
+	}
+	// Codex PR #5 ninth review, P2: a structured Claude observation can
+	// carry a fractional usedPercent, and a flat "%.0f%%" rounds a value
+	// like 89.6 up to the displayed "90%" even though the progress bar's
+	// tint just above and the CLI's own threshold both still correctly
+	// treat it as below 90 -- the displayed figure must not claim a
+	// boundary the value has not actually crossed.
+	func quotaPercentText(_ value: Double) -> String {
+		if abs(value.rounded() - value) < 0.05 { return String(format: "%.0f%%", value) }
+		return String(format: "%.1f%%", value)
 	}
 	private func sourceLabel(_ source: DesktopQuotaSourceV1) -> String {
 		switch source {

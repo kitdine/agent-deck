@@ -398,6 +398,17 @@ func (s *Store) SetSetting(ctx context.Context, key, value string) error {
 	return err
 }
 
+// ErrSettingsSecureFilesFailed wraps a secureFiles failure that happens
+// after SetSettings' own transaction has already committed: the settings
+// themselves are durably persisted, and only the defense-in-depth
+// permission-hardening step failed. A caller that would otherwise roll back
+// a compound write on any SetSettings error (Codex PR #5 ninth review, P2)
+// must check for this first -- undoing another already-committed side
+// effect (for example, an installed status-line route) here would make it
+// disagree with what SetSettings durably wrote, which is strictly worse
+// than a bare permissions warning.
+var ErrSettingsSecureFilesFailed = errors.New("settings persisted but securing their file permissions failed")
+
 // SetSettings writes every key in values in a single transaction, so a
 // caller that groups several settings into one logical change (quota's
 // SaveSettings, for example) cannot leave the settings table with only some
@@ -416,7 +427,10 @@ func (s *Store) SetSettings(ctx context.Context, values map[string]string) error
 	if err := tx.Commit(); err != nil {
 		return err
 	}
-	return s.secureFiles()
+	if err := s.secureFiles(); err != nil {
+		return fmt.Errorf("%w: %v", ErrSettingsSecureFilesFailed, err)
+	}
+	return nil
 }
 
 func (s *Store) DeleteSetting(ctx context.Context, key string) error {
