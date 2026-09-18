@@ -7925,7 +7925,8 @@
               "window_minutes_reason": null,
               "used_percent": 79,
               "resets_at": "2026-08-18T13:00:00Z",
-              "observed_at": "2026-08-13T09:58:00Z"
+              "observed_at": "2026-08-13T09:58:00Z",
+              "source": "codex_app_server"
             },
             {
               "key": "codex_bengalfox",
@@ -7934,7 +7935,8 @@
               "window_minutes_reason": null,
               "used_percent": 12,
               "resets_at": "2026-08-13T12:40:00Z",
-              "observed_at": "2026-08-13T09:58:00Z"
+              "observed_at": "2026-08-13T09:58:00Z",
+              "source": "codex_app_server"
             }
           ],
           "tightest_window_key": "codex",
@@ -7975,7 +7977,8 @@
               "window_minutes_reason": null,
               "used_percent": 22,
               "resets_at": "2026-08-13T13:20:00Z",
-              "observed_at": "2026-08-13T09:58:00Z"
+              "observed_at": "2026-08-13T09:58:00Z",
+              "source": "claude_statusline"
             },
             {
               "key": "seven_day",
@@ -7984,7 +7987,8 @@
               "window_minutes_reason": null,
               "used_percent": 3,
               "resets_at": "2026-08-19T15:00:00Z",
-              "observed_at": "2026-08-13T09:58:00Z"
+              "observed_at": "2026-08-13T09:58:00Z",
+              "source": "claude_statusline"
             }
           ],
           "tightest_window_key": "five_hour",

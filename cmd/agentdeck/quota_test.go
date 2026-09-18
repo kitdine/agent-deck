@@ -130,7 +130,7 @@ func TestQuotaCommandRendersFiguresAsText(t *testing.T) {
 	if err := run([]string{"--state-dir", state, "quota"}, bytes.NewReader(nil), &text); err != nil {
 		t.Fatalf("text quota: %v", err)
 	}
-	for _, want := range []string{"Claude, via claude_statusline", "account attribution cannot be confirmed", "5-hour window", "64%", "tightest"} {
+	for _, want := range []string{"Claude, plan not reported, via claude_statusline", "account attribution cannot be confirmed", "5-hour window", "64%", "tightest", "(observed "} {
 		if !strings.Contains(text.String(), want) {
 			t.Fatalf("text output %q does not contain %q", text.String(), want)
 		}
