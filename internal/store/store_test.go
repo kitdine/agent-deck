@@ -203,6 +203,60 @@ func TestOpenSessionsReadOnlyReadsExistingIndex(t *testing.T) {
 	}
 }
 
+// A CI-observed "database is locked (5) (SQLITE_BUSY)" failure inside
+// `agentdeck doctor --full` traced to OpenReadOnly and OpenSessionsReadOnly
+// omitting busy_timeout, unlike every write-path opener (Open,
+// openAtExistingRoot, OpenSessions) which already sets it: a concurrent
+// detached scanner briefly holding a real cross-process SQLite lock made an
+// unretried read fail immediately instead of waiting the same way a write
+// would. These assert the pragma is actually in effect, not just present in
+// the DSN string.
+func TestOpenReadOnlySetsBusyTimeout(t *testing.T) {
+	ctx := context.Background()
+	state := filepath.Join(t.TempDir(), "state")
+	writable, err := Open(ctx, state)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	writable.Close()
+
+	readOnly, err := OpenReadOnly(ctx, state)
+	if err != nil {
+		t.Fatalf("OpenReadOnly: %v", err)
+	}
+	defer readOnly.Close()
+	var timeoutMS int
+	if err = readOnly.DB.QueryRowContext(ctx, "PRAGMA busy_timeout").Scan(&timeoutMS); err != nil {
+		t.Fatalf("PRAGMA busy_timeout: %v", err)
+	}
+	if timeoutMS != 5000 {
+		t.Fatalf("busy_timeout = %d, want 5000 so a concurrent writer's brief lock is retried rather than failing immediately", timeoutMS)
+	}
+}
+
+func TestOpenSessionsReadOnlySetsBusyTimeout(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	writable, err := OpenSessions(ctx, root)
+	if err != nil {
+		t.Fatalf("OpenSessions: %v", err)
+	}
+	writable.Close()
+
+	readOnly, err := OpenSessionsReadOnly(ctx, root)
+	if err != nil {
+		t.Fatalf("OpenSessionsReadOnly: %v", err)
+	}
+	defer readOnly.Close()
+	var timeoutMS int
+	if err = readOnly.DB.QueryRowContext(ctx, "PRAGMA busy_timeout").Scan(&timeoutMS); err != nil {
+		t.Fatalf("PRAGMA busy_timeout: %v", err)
+	}
+	if timeoutMS != 5000 {
+		t.Fatalf("busy_timeout = %d, want 5000 so a concurrent writer's brief lock is retried rather than failing immediately", timeoutMS)
+	}
+}
+
 func TestOpenReadOnlyRejectsFutureSchema(t *testing.T) {
 	ctx := context.Background()
 	state := filepath.Join(t.TempDir(), "state")

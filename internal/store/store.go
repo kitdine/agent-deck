@@ -81,9 +81,12 @@ func OpenSessions(ctx context.Context, stateRoot string) (*Store, error) {
 
 // OpenSessionsReadOnly opens an existing session-search index without creating
 // state, applying migrations, changing permissions, or enabling WAL.
+//
+// busy_timeout mirrors OpenReadOnly's own (see its doc): a detached scanner
+// can still hold a brief write lock on this index while this reads it.
 func OpenSessionsReadOnly(ctx context.Context, stateRoot string) (*Store, error) {
 	path := filepath.Join(stateRoot, "sessions.sqlite3")
-	db, err := sql.Open("sqlite", "file:"+path+"?mode=ro&_pragma=foreign_keys(1)")
+	db, err := sql.Open("sqlite", "file:"+path+"?mode=ro&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)")
 	if err != nil {
 		return nil, err
 	}
@@ -251,9 +254,15 @@ func OpenWithLockHeld(ctx context.Context, stateRoot string) (*Store, error) {
 
 // OpenReadOnly opens an existing core database without creating state,
 // applying migrations, changing permissions, or enabling WAL.
+//
+// busy_timeout matches every write path's connection (Open, above): a
+// detached scan or watcher can still hold a brief write lock while this
+// reads, and without a timeout SQLite fails that read immediately with
+// SQLITE_BUSY instead of retrying, rather than blocking indefinitely --
+// mode=ro already refuses to create or migrate anything.
 func OpenReadOnly(ctx context.Context, stateRoot string) (*Store, error) {
 	path := filepath.Join(stateRoot, "agentdeck.sqlite3")
-	db, err := sql.Open("sqlite", "file:"+path+"?mode=ro&_pragma=foreign_keys(1)")
+	db, err := sql.Open("sqlite", "file:"+path+"?mode=ro&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)")
 	if err != nil {
 		return nil, err
 	}
