@@ -156,6 +156,9 @@ func (s Scheduler) runCodex(ctx context.Context, observedAt time.Time, rec Envel
 		s.recordFailure(ctx, ClientCodex, codexFailureReason(err), observedAt, rec, hasRecord, trigger)
 		return
 	}
+	if s.staleAgainstCurrent(ctx, ClientCodex, observedAt) {
+		return
+	}
 	for _, obs := range result.Windows {
 		_, _, _, _ = s.Store.Record(ctx, obs)
 	}
@@ -167,6 +170,26 @@ func (s Scheduler) runCodex(ctx context.Context, observedAt time.Time, rec Envel
 		ResetAllowance: result.ResetAllowance,
 		Billing:        result.Billing,
 	})
+}
+
+// staleAgainstCurrent reports whether a newer probe cycle has already
+// completed for client since this one started. quotaProbeInFlight's
+// single-flight guard is process-local (Scheduler's own doc: a new instance
+// per `agentdeck desktop ...` invocation, a distinct OS process each time),
+// so two such processes can probe the same client concurrently. Without this
+// check, an earlier-started slow probe finishing after a newer one would
+// prune windows the newer response just added and move ObservedAt, plan,
+// and account state backward -- Codex PR #5 third review, P1. A failed or
+// empty Store read is treated as "not stale": Run already tolerates a Store
+// failure by doing nothing (fail-open), and refusing to persist a
+// successful probe over an unreadable or absent envelope would only
+// compound that.
+func (s Scheduler) staleAgainstCurrent(ctx context.Context, client Client, observedAt time.Time) bool {
+	current, has, err := s.Store.Envelope(ctx, client)
+	if err != nil || !has {
+		return false
+	}
+	return current.ObservedAt.After(observedAt)
 }
 
 // observedWindowKeys extracts the window keys a successful probe actually
@@ -184,6 +207,9 @@ func (s Scheduler) runClaudeProse(ctx context.Context, observedAt time.Time, rec
 	result, err := s.probeClaudeProse(ctx, observedAt)
 	if err != nil {
 		s.recordFailure(ctx, ClientClaude, claudeFailureReason(err), observedAt, rec, hasRecord, trigger)
+		return
+	}
+	if s.staleAgainstCurrent(ctx, ClientClaude, observedAt) {
 		return
 	}
 	for _, obs := range result.Windows {

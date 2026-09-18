@@ -284,10 +284,17 @@ type codexCredits struct {
 
 // codexWindow is RateLimitWindow. It carries no limitName — that field
 // lives one level up, on the RateLimitSnapshot the window belongs to.
+//
+// UsedPercent is a pointer so a window that omits it, or sends it null, is
+// distinguishable from a genuine 0%: encoding/json otherwise leaves a
+// non-pointer float64 at its zero value on either input, and mapCodexWindow
+// would then persist a false 0% that can replace a previously valid
+// percentage and make ApplyObservation record a false reset (Codex PR #5
+// fifth review, P1).
 type codexWindow struct {
-	UsedPercent        float64 `json:"usedPercent"`
-	WindowDurationMins *int    `json:"windowDurationMins"`
-	ResetsAt           *int64  `json:"resetsAt"`
+	UsedPercent        *float64 `json:"usedPercent"`
+	WindowDurationMins *int     `json:"windowDurationMins"`
+	ResetsAt           *int64   `json:"resetsAt"`
 }
 
 type codexResetCredits struct {
@@ -399,7 +406,11 @@ func parseCodexResult(raw []byte, observedAt time.Time) (CodexResult, error) {
 		// view" per the schema: fall back to it rather than reporting zero
 		// windows, per the operator's decision on this open question.
 		if resp.RateLimits != nil {
-			result.Windows = appendCodexSnapshotWindows(nil, resolveCodexLimitID(resp.RateLimits), *resp.RateLimits, observedAt, 0)
+			windows, err := appendCodexSnapshotWindows(nil, resolveCodexLimitID(resp.RateLimits), *resp.RateLimits, observedAt, 0)
+			if err != nil {
+				return CodexResult{}, err
+			}
+			result.Windows = windows
 		}
 	} else {
 		entries, err := decodeOrderedLimits(resp.RateLimitsByLimitID)
@@ -408,7 +419,11 @@ func parseCodexResult(raw []byte, observedAt time.Time) (CodexResult, error) {
 		}
 		order := 0
 		for _, entry := range entries {
-			result.Windows = appendCodexSnapshotWindows(result.Windows, entry.LimitID, entry.Snapshot, observedAt, order)
+			windows, err := appendCodexSnapshotWindows(result.Windows, entry.LimitID, entry.Snapshot, observedAt, order)
+			if err != nil {
+				return CodexResult{}, err
+			}
+			result.Windows = windows
 			order = len(result.Windows)
 		}
 	}
@@ -440,20 +455,28 @@ func resolveCodexLimitID(snapshot *codexRateLimitSnapshot) string {
 // RateLimitSnapshot carries — its primary then its secondary — using the
 // snapshot's own limitName as every appended window's label. vendorOrder
 // continues from orderStart.
-func appendCodexSnapshotWindows(windows []Observation, limitID string, snapshot codexRateLimitSnapshot, observedAt time.Time, orderStart int) []Observation {
+func appendCodexSnapshotWindows(windows []Observation, limitID string, snapshot codexRateLimitSnapshot, observedAt time.Time, orderStart int) ([]Observation, error) {
 	var label string
 	if snapshot.LimitName != nil {
 		label = *snapshot.LimitName
 	}
 	order := orderStart
 	if snapshot.Primary != nil {
-		windows = append(windows, mapCodexWindow(limitID, false, *snapshot.Primary, label, observedAt, order))
+		obs, err := mapCodexWindow(limitID, false, *snapshot.Primary, label, observedAt, order)
+		if err != nil {
+			return windows, err
+		}
+		windows = append(windows, obs)
 		order++
 	}
 	if snapshot.Secondary != nil {
-		windows = append(windows, mapCodexWindow(limitID, true, *snapshot.Secondary, label, observedAt, order))
+		obs, err := mapCodexWindow(limitID, true, *snapshot.Secondary, label, observedAt, order)
+		if err != nil {
+			return windows, err
+		}
+		windows = append(windows, obs)
 	}
-	return windows
+	return windows, nil
 }
 
 // mapCodexBilling maps CreditsSnapshot.balance, a decimal string, onto the
@@ -471,11 +494,17 @@ func mapCodexBilling(credits *codexCredits) Billing {
 	return Billing{Balance: value, HasBalance: true}
 }
 
-func mapCodexWindow(limitID string, secondary bool, w codexWindow, label string, observedAt time.Time, vendorOrder int) Observation {
+// mapCodexWindow errors when w.UsedPercent is absent: an incomplete window
+// is malformed, never a silent 0% (see codexWindow's doc).
+func mapCodexWindow(limitID string, secondary bool, w codexWindow, label string, observedAt time.Time, vendorOrder int) (Observation, error) {
+	windowKey := CodexWindowKey(limitID, secondary)
+	if w.UsedPercent == nil {
+		return Observation{}, fmt.Errorf("codex window %q: missing usedPercent", windowKey)
+	}
 	obs := Observation{
-		Client: ClientCodex, WindowKey: CodexWindowKey(limitID, secondary),
+		Client: ClientCodex, WindowKey: windowKey,
 		Source: SourceCodex, ObservedAt: observedAt, VendorOrder: vendorOrder,
-		UsedPercent: w.UsedPercent, Label: label,
+		UsedPercent: *w.UsedPercent, Label: label,
 	}
 	if w.WindowDurationMins != nil {
 		obs.WindowMinutes = *w.WindowDurationMins
@@ -485,5 +514,5 @@ func mapCodexWindow(limitID string, secondary bool, w codexWindow, label string,
 	if w.ResetsAt != nil {
 		obs.ResetsAt = time.Unix(*w.ResetsAt, 0).UTC()
 	}
-	return obs
+	return obs, nil
 }

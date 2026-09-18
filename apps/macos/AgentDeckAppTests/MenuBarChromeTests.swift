@@ -571,6 +571,32 @@ final class MenuBarChromeTests: XCTestCase {
 		XCTAssertTrue(summary.contains(t(DesktopCopy.quotaLeft, Int64(3))))
 		XCTAssertTrue(summary.contains(t(DesktopCopy.quotaTotalReason, t(DesktopCopy.quotaReasonNotReported))))
 	}
+
+	// Codex PR #5 fifth review, P2: a successful probe that legitimately
+	// returns no windows (Codex's explicit-empty `rateLimitsByLimitId: {}`)
+	// has a current observed_at and no failure; the card must report that as
+	// not_reported, not collapse it into never_probed as if nothing had run.
+	func testQuotaCardReportsSuccessfulEmptyResponseAsNotReportedRatherThanNeverProbed() throws {
+		func client(observedAt: String?) throws -> DesktopSubscriptionClientV1 {
+			let json: [String: Any] = [
+				"client": "codex", "applicable": true, "applicable_reason": NSNull(),
+				"source": observedAt == nil ? NSNull() : "codex_app_server",
+				"observed_at": observedAt as Any, "stale": false, "attribution_confirmed": true,
+				"plan": NSNull(), "plan_reason": NSNull(), "windows": [],
+				"tightest_window_key": NSNull(), "reset_allowance": NSNull(),
+				"reset_allowance_reason": NSNull(), "observed_reset_at": NSNull(), "failure": NSNull(),
+			]
+			let data = try JSONSerialization.data(withJSONObject: json)
+			return try JSONDecoder().decode(DesktopSubscriptionClientV1.self, from: data)
+		}
+
+		let panel = QuotaPanelView(clients: [])
+		let probedEmpty = try client(observedAt: "2026-09-18T02:00:00Z")
+		XCTAssertEqual(panel.primaryReason(probedEmpty), .notReported, "a successful, empty observation must not read as never probed")
+
+		let neverProbed = try client(observedAt: nil)
+		XCTAssertEqual(panel.primaryReason(neverProbed), .neverProbed, "no observed_at at all is still never probed")
+	}
 }
 
 @MainActor

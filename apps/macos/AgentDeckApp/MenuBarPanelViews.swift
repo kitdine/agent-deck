@@ -1429,10 +1429,17 @@ struct QuotaPanelView: View {
 		return reasonLabel(client.planReason ?? .notReported)
 	}
 
-	private func primaryReason(_ client: DesktopSubscriptionClientV1) -> DesktopQuotaReasonV1? {
+	// Codex PR #5 fifth review, P2: a successful probe that legitimately
+	// returns no windows (e.g. Codex's explicit-empty `rateLimitsByLimitId:
+	// {}`) has a current `observedAt` and no `failure`; defaulting it to
+	// `.neverProbed` would contradict that successful observation and hide
+	// the intended `.notReported` state. `observedAt` distinguishes the two.
+	func primaryReason(_ client: DesktopSubscriptionClientV1) -> DesktopQuotaReasonV1? {
 		if !client.applicable { return client.applicableReason ?? .notOfficial }
 		if client.failure == .probeDisabled { return .probeDisabled }
-		if client.windows.isEmpty { return client.failure ?? .neverProbed }
+		if client.windows.isEmpty {
+			return client.failure ?? (client.observedAt != nil ? .notReported : .neverProbed)
+		}
 		return nil
 	}
 	private func missingWord(_ reason: DesktopQuotaReasonV1) -> String { reason == .notOfficial ? t(DesktopCopy.quotaNotApplicable) : reason == .probeDisabled ? t(DesktopCopy.quotaNotRead) : t(DesktopCopy.quotaUnavailable) }

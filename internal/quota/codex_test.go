@@ -234,6 +234,29 @@ func TestParseCodexResultMalformedJSONIsAnError(t *testing.T) {
 	}
 }
 
+// Codex PR #5 fifth review, P1: usedPercent absent or null must not be
+// silently persisted as a false 0% (codexWindow's doc). Both cases are
+// exercised because encoding/json treats an absent key and an explicit null
+// identically for a pointer field, but a naive hand-rolled check of "is the
+// key present" would only catch the first.
+func TestParseCodexResultMissingUsedPercentIsMalformed(t *testing.T) {
+	cases := []struct {
+		name string
+		raw  string
+	}{
+		{"absent", `{"rateLimits":{"primary":{"windowDurationMins":300}}}`},
+		{"null", `{"rateLimits":{"primary":{"usedPercent":null,"windowDurationMins":300}}}`},
+		{"absent in bucketed view", `{"rateLimitsByLimitId":{"codex":{"primary":{"windowDurationMins":300}}}}`},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if _, err := parseCodexResult([]byte(c.raw), time.Now()); err == nil {
+				t.Fatal("a window missing usedPercent must be classified malformed, not accepted as a 0% observation")
+			}
+		})
+	}
+}
+
 func TestCodexFailureKindReason(t *testing.T) {
 	cases := []struct {
 		kind CodexFailureKind

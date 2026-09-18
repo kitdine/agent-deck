@@ -620,6 +620,25 @@ func TestDesktopQuotaStatusLineUsesEmbeddedHelperAbsolutePath(t *testing.T) {
 	}
 }
 
+// Codex PR #5 fifth review, P2: the persisted command is later invoked by
+// Claude from its own session/project working directory, not this
+// process's, so a relative --state-dir must be resolved absolute before it
+// is written into settings.json.
+func TestDesktopQuotaStatusLineResolvesRelativeStateDirToAbsolute(t *testing.T) {
+	home := t.TempDir()
+	withTestHome(t, home)
+	workdir := t.TempDir()
+	t.Chdir(workdir)
+
+	runJSON(t, "--state-dir", "relative-state", "--format", "json", "desktop", "quota-settings", "--reading", "on")
+	runJSON(t, "--state-dir", "relative-state", "--format", "json", "desktop", "quota-statusline", "enable")
+
+	want := "agentdeck --state-dir " + shellQuote(filepath.Join(workdir, "relative-state")) + " quota capture"
+	if got := claudeStatusLineCommand(t, home); got != want {
+		t.Fatalf("statusLine = %q, want the relative --state-dir resolved absolute: %q", got, want)
+	}
+}
+
 func TestDesktopQuotaRefreshUsesCrossProcessLock(t *testing.T) {
 	home := t.TempDir()
 	withTestHome(t, home)

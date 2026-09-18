@@ -325,10 +325,12 @@ private struct QuotaWidgetView: View {
 				Spacer()
 				if let plan = client.plan { Text(plan).font(.system(size: 9)).foregroundStyle(.secondary) }
 			}
-			if client.failure == .probeDisabled {
-				Text(WidgetCopy.text("Not read")).font(.caption).foregroundStyle(.secondary)
-			} else if selected.isEmpty {
-				Text(WidgetCopy.text("No quota window to show")).font(.caption).foregroundStyle(.secondary)
+			if selected.isEmpty {
+				// Codex PR #5 fifth review, P2: two clients in the large
+				// widget's per-client rows can be unavailable for different
+				// reasons (not applicable, never probed, parse failed, ...)
+				// and must not collapse to the same generic string.
+				Text(quotaReasonText(quotaClientReason(client))).font(.caption).foregroundStyle(.secondary)
 			} else {
 				ForEach(Array(selected), id: \.key) { window in
 					VStack(alignment: .leading, spacing: 2) {
@@ -378,6 +380,24 @@ struct QuotaWidgetGeometryPreferenceKey: PreferenceKey {
 	}
 }
 
+/// Each unavailable client's own reason (C6), not a single shared fallback
+/// -- mirrors MenuBarPanelViews' primaryReason. observedAt distinguishes a
+/// successful probe that legitimately returned no windows (.notReported)
+/// from a client that has never been probed at all (.neverProbed).
+func quotaClientReason(_ client: DesktopSubscriptionClientV1) -> DesktopQuotaReasonV1 {
+	if !client.applicable { return client.applicableReason ?? .notOfficial }
+	if let failure = client.failure { return failure }
+	return client.observedAt != nil ? .notReported : .neverProbed
+}
+
+func quotaReasonText(_ reason: DesktopQuotaReasonV1) -> String {
+	switch reason {
+	case .probeDisabled: WidgetCopy.text("Not read")
+	case .notOfficial: WidgetCopy.text("Not applicable")
+	default: WidgetCopy.text("Data unavailable")
+	}
+}
+
 private struct WidgetFooter: View {
 	let entry: AgentDeckWidgetEntry
 	let qualifiers: [WidgetQualifier]
@@ -419,14 +439,6 @@ private struct WidgetFooter: View {
 		let formatter = RelativeDateTimeFormatter()
 		formatter.unitsStyle = .full
 		return formatter.localizedString(for: generated, relativeTo: entry.date)
-	}
-
-	private func quotaReasonText(_ reason: DesktopQuotaReasonV1) -> String {
-		switch reason {
-		case .probeDisabled: WidgetCopy.text("Not read")
-		case .notOfficial: WidgetCopy.text("Not applicable")
-		default: WidgetCopy.text("Data unavailable")
-		}
 	}
 }
 

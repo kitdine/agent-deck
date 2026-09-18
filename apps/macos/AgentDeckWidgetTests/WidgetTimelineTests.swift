@@ -90,6 +90,46 @@ final class WidgetTimelineTests: XCTestCase {
 		XCTAssertEqual(quotaWindowName(try window(label: nil, minutes: 300)), WidgetCopy.text("5h window"))
 	}
 
+	// Codex PR #5 fifth review, P2: the large widget's per-client rows
+	// rendered the same "No quota window to show" text regardless of why a
+	// client had no windows, so two unavailable clients with different
+	// reasons (not applicable vs. never probed vs. a successful-but-empty
+	// response) were indistinguishable. quotaClientReason must resolve each
+	// client's own reason, including the notReported/neverProbed split on
+	// whether a successful observation ever landed.
+	func testQuotaClientReasonDistinguishesEachUnavailableReason() throws {
+		func client(applicable: Bool, applicableReason: String?, observedAt: String?, failure: String?) throws -> DesktopSubscriptionClientV1 {
+			try JSONDecoder().decode(
+				DesktopSubscriptionClientV1.self,
+				from: JSONSerialization.data(withJSONObject: [
+					"client": "codex", "applicable": applicable, "applicable_reason": applicableReason as Any,
+					"source": observedAt == nil ? NSNull() : "codex_app_server",
+					"observed_at": observedAt as Any, "stale": false, "attribution_confirmed": true,
+					"plan": NSNull(), "plan_reason": NSNull(), "windows": [],
+					"tightest_window_key": NSNull(), "reset_allowance": NSNull(),
+					"reset_allowance_reason": NSNull(), "observed_reset_at": NSNull(), "failure": failure as Any,
+				])
+			)
+		}
+
+		let notOfficial = try client(applicable: false, applicableReason: "not_official", observedAt: nil, failure: nil)
+		XCTAssertEqual(quotaClientReason(notOfficial), .notOfficial)
+
+		let probeDisabled = try client(applicable: true, applicableReason: nil, observedAt: nil, failure: "probe_disabled")
+		XCTAssertEqual(quotaClientReason(probeDisabled), .probeDisabled)
+
+		let successfulButEmpty = try client(applicable: true, applicableReason: nil, observedAt: "2026-09-18T02:00:00Z", failure: nil)
+		XCTAssertEqual(quotaClientReason(successfulButEmpty), .notReported, "a successful, empty observation must not read as never probed")
+
+		let neverProbed = try client(applicable: true, applicableReason: nil, observedAt: nil, failure: nil)
+		XCTAssertEqual(quotaClientReason(neverProbed), .neverProbed)
+
+		XCTAssertEqual(quotaReasonText(.notOfficial), WidgetCopy.text("Not applicable"))
+		XCTAssertEqual(quotaReasonText(.probeDisabled), WidgetCopy.text("Not read"))
+		XCTAssertEqual(quotaReasonText(.notReported), WidgetCopy.text("Data unavailable"))
+		XCTAssertEqual(quotaReasonText(.neverProbed), WidgetCopy.text("Data unavailable"))
+	}
+
 	// Codex PR #5 P2: the large family's presentedQuotaClients filtered out
 	// every client whose windows were empty, including the legitimate
 	// reading-off case (failure == .probe_disabled), leaving the frame with

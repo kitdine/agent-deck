@@ -583,3 +583,54 @@ done
 		t.Fatalf("Windows after second probe = (%+v, %v), want only the still-reported primary window at 15%%", after, err)
 	}
 }
+
+// Codex PR #5 third review, P1: quotaProbeInFlight's single-flight guard is
+// process-local, so two `agentdeck desktop ...` processes can probe the same
+// client concurrently. An earlier-started probe that happens to finish after
+// a newer one already persisted its own result must not prune the newer
+// windows or move the envelope's ObservedAt, plan, or account backward.
+// Simulated here by seeding the store with a "newer" envelope and window
+// directly (standing in for the second process's completed write) before
+// running a scheduler whose own probe reports an earlier observedAt.
+func TestSchedulerDiscardsProbeCompletionOlderThanStoredEnvelope(t *testing.T) {
+	store := openSchedulerTestStore(t)
+	ctx := context.Background()
+
+	newer := time.Date(2026, 9, 10, 10, 5, 0, 0, time.UTC)
+	if _, _, _, err := store.Record(ctx, Observation{
+		Client: ClientCodex, AccountID: "acct_new", WindowKey: "codex",
+		Source: SourceCodex, ObservedAt: newer, UsedPercent: 42,
+	}); err != nil {
+		t.Fatalf("seed newer window: %v", err)
+	}
+	if err := store.PutEnvelope(ctx, EnvelopeRecord{
+		Client: ClientCodex, AccountID: "acct_new", Applicable: true,
+		Source: SourceCodex, ObservedAt: newer,
+	}); err != nil {
+		t.Fatalf("seed newer envelope: %v", err)
+	}
+
+	older := newer.Add(-5 * time.Minute)
+	withFakeCodex(t, `
+n=0
+while IFS= read -r line; do
+  n=$((n+1))
+  if [ "$n" = "1" ]; then
+    echo '{"id":1,"result":{}}'
+  elif [ "$n" = "3" ]; then
+    echo '{"id":2,"result":{"accountId":"acct_old","rateLimits":{"primary":{"usedPercent":99}}}}'
+  fi
+done
+`)
+	sched := Scheduler{Store: store, Interval: 5 * time.Minute, MaxBackoff: time.Hour, Now: func() time.Time { return older }}
+	sched.Run(ctx, ClientCodex, TriggerManual, true)
+
+	env, ok, err := store.Envelope(ctx, ClientCodex)
+	if err != nil || !ok || !env.ObservedAt.Equal(newer) {
+		t.Fatalf("Envelope after a stale probe completion = (%+v, %v, %v), want the newer envelope (observedAt=%v) left untouched", env, ok, err, newer)
+	}
+	windows, err := store.Windows(ctx, ClientCodex)
+	if err != nil || len(windows) != 1 || windows[0].UsedPercent != 42 {
+		t.Fatalf("Windows after a stale probe completion = (%+v, %v), want only the newer probe's untouched window at 42%%", windows, err)
+	}
+}

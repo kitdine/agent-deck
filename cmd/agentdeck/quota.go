@@ -242,7 +242,20 @@ func quotaAgentDeckCommand(opts *commandOptions) string {
 		command = shellQuote(executable)
 	}
 	if opts.stateDir != "" {
-		command += " --state-dir " + shellQuote(opts.stateDir)
+		// Codex PR #5 fifth review, P2: this command is persisted into
+		// Claude's settings.json and invoked later from whatever working
+		// directory Claude's own session or project happens to have at
+		// refresh time, not this process's. A relative --state-dir would
+		// then resolve against that different directory and open the wrong
+		// (or a nonexistent) state root. filepath.Abs resolves against this
+		// process's cwd, while it is still known; an already-absolute path
+		// passes through unchanged. A resolution failure falls back to the
+		// original value rather than silently dropping --state-dir.
+		stateDir := opts.stateDir
+		if abs, err := filepath.Abs(stateDir); err == nil {
+			stateDir = abs
+		}
+		command += " --state-dir " + shellQuote(stateDir)
 	}
 	return command
 }
