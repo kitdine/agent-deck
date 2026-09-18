@@ -262,6 +262,9 @@ func TestStoreAccountChangeDiscardsRatherThanMerges(t *testing.T) {
 	if err := store.PutEnvelope(ctx, EnvelopeRecord{Client: ClientCodex, AccountID: "acct-A", Plan: "pro", ObservedAt: t1}); err != nil {
 		t.Fatalf("PutEnvelope acct-A: %v", err)
 	}
+	if err := store.recordAlertNotice(ctx, ClientCodex, "codex", AlertThreshold, 75, t1.Add(time.Hour), t1); err != nil {
+		t.Fatalf("recordAlertNotice acct-A: %v", err)
+	}
 
 	t2 := t1.Add(time.Hour)
 	accepted, reset, _, err := store.Record(ctx, Observation{
@@ -292,6 +295,13 @@ func TestStoreAccountChangeDiscardsRatherThanMerges(t *testing.T) {
 		t.Fatalf("Envelope: %v", err)
 	} else if ok {
 		t.Fatal("account change must also discard the client's previously stored envelope")
+	}
+	var notices int
+	if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM quota_alert_notices WHERE client = ?`, string(ClientCodex)).Scan(&notices); err != nil {
+		t.Fatalf("count alert notices: %v", err)
+	}
+	if notices != 0 {
+		t.Fatalf("account change left %d alert notice(s) from the previous account", notices)
 	}
 }
 

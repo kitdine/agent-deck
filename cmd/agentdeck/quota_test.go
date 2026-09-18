@@ -137,6 +137,39 @@ func TestQuotaCommandRendersFiguresAsText(t *testing.T) {
 	}
 }
 
+func TestQuotaCommandRendersUnavailableResetAllowanceTotal(t *testing.T) {
+	state := filepath.Join(t.TempDir(), "state")
+	withTestHome(t, t.TempDir())
+	seedQuotaState(t, state, func(s *quota.Settings) { s.ProbeEnabled = true }, "codex")
+	database, err := store.Open(context.Background(), state)
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	now := time.Now().UTC()
+	quotaStore := quota.NewStore(database.DB)
+	if _, _, _, err := quotaStore.Record(context.Background(), quota.Observation{
+		Client: quota.ClientCodex, AccountID: "acct", WindowKey: "codex", Source: quota.SourceCodex,
+		ObservedAt: now, WindowMinutes: 300, UsedPercent: 64, ResetsAt: now.Add(2 * time.Hour),
+	}); err != nil {
+		t.Fatalf("Record: %v", err)
+	}
+	if err := quotaStore.PutEnvelope(context.Background(), quota.EnvelopeRecord{
+		Client: quota.ClientCodex, AccountID: "acct", Applicable: true, Source: quota.SourceCodex, ObservedAt: now,
+		ResetAllowance: quota.ResetAllowance{Remaining: 3, HasRemaining: true, TotalReason: quota.ReasonNotReported},
+	}); err != nil {
+		t.Fatalf("PutEnvelope: %v", err)
+	}
+	database.Close()
+
+	var text bytes.Buffer
+	if err := run([]string{"--state-dir", state, "quota"}, bytes.NewReader(nil), &text); err != nil {
+		t.Fatalf("text quota: %v", err)
+	}
+	if want := "reset allowance: 3 remaining, total not reported"; !strings.Contains(text.String(), want) {
+		t.Fatalf("text output %q does not contain %q", text.String(), want)
+	}
+}
+
 // TestDesktopQuotaRefreshManualFailureAfterSuccessStaysVisible is WC-R1-F1's
 // regression: a manual failure leaves the envelope's FailureAt untouched
 // (GS-R3-F1), so a probe that fails manually right after a success must not

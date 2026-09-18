@@ -80,13 +80,29 @@ private func isManagedStatusLineCommand(_ command: String) -> Bool {
 	let marker = " quota capture"
 	guard trimmed.hasSuffix(marker) else { return false }
 	let prefix = String(trimmed.dropLast(marker.count)).trimmingCharacters(in: .whitespacesAndNewlines)
-	if prefix == "agentdeck" { return true }
-	let statePrefix = "agentdeck --state-dir "
-	guard prefix.hasPrefix(statePrefix) else { return false }
-	let stateDir = String(prefix.dropFirst(statePrefix.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+	let stateMarker = " --state-dir "
+	let executable: String
+	let stateDir: String?
+	if let split = prefix.range(of: stateMarker) {
+		executable = String(prefix[..<split.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+		stateDir = String(prefix[split.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+	} else {
+		executable = prefix
+		stateDir = nil
+	}
+	guard isManagedAgentDeckExecutable(executable) else { return false }
+	guard let stateDir else { return true }
 	if stateDir.isEmpty { return false }
+	if stateDir.contains(" --") { return false }
 	if stateDir.hasPrefix("'"), stateDir.hasSuffix("'") { return true }
 	return !stateDir.contains(where: { $0 == " " || $0 == "\t" || $0 == "\r" || $0 == "\n" })
+}
+
+private func isManagedAgentDeckExecutable(_ executable: String) -> Bool {
+	if executable == "agentdeck" { return true }
+	guard executable.hasPrefix("'"), executable.hasSuffix("'") else { return false }
+	let path = String(executable.dropFirst().dropLast())
+	return path.hasPrefix("/") && URL(fileURLWithPath: path).lastPathComponent == "agentdeck"
 }
 
 /// Drives the subscription-quota settings group (ux/settings-quota.md).
@@ -122,6 +138,7 @@ final class QuotaSettingsController {
 	@ObservationIgnored private var desiredSettings: DesktopQuotaSettingsDesiredV1?
 	@ObservationIgnored private var pendingSettings: DesktopQuotaSettingsDesiredV1?
 	@ObservationIgnored private var pendingStatusline: Bool?
+	@ObservationIgnored private var writeGeneration = 0
 	/// Codex PR #5 third review, P1: `quota-settings` and `quota-statusline`
 	/// both do a full read-modify-write of the one settings row core state
 	/// keeps (internal/quota/settings.go's SaveSettings always writes every
@@ -151,15 +168,21 @@ final class QuotaSettingsController {
 		return SettingsRowStatus(text: t(DesktopCopy.settingsQuotaAlertsNotificationsDenied), severity: .warning)
 	}
 
+	var resetNoticeControlEnabled: Bool {
+		settings?.reading == true && settings?.alerts == true
+	}
+
 	/// Reads core state once (the window's `onAppear`); a preference change
 	/// afterward always goes through `applySettings`/`applyStatusline`, whose
 	/// own responses are the next source of truth, so this never needs to
 	/// re-poll on a timer.
 	func load() async {
 		chainedStatusLineCommand = readChainedStatusLineCommand(claudeSettingsURL: claudeSettingsURL)
+		let generation = writeGeneration
 		guard case let .decoded(result) = await transport.loadQuotaSettings() else {
 			return
 		}
+		guard generation == writeGeneration else { return }
 		adopt(result.settings)
 		await refreshNotificationPermission()
 	}
@@ -234,6 +257,7 @@ final class QuotaSettingsController {
 	}
 
 	func setStatuslineConsent(_ on: Bool) async {
+		writeGeneration += 1
 		pendingStatusline = on
 		await drainPendingWrites()
 	}
@@ -325,6 +349,7 @@ final class QuotaSettingsController {
 	}
 
 	private func stage(_ desired: DesktopQuotaSettingsDesiredV1) {
+		writeGeneration += 1
 		desiredSettings = desired
 		settings = DesktopQuotaSettingsValuesV1(
 			reading: desired.reading, interval: desired.interval, alerts: desired.alerts,

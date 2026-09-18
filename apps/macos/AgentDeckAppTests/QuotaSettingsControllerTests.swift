@@ -167,6 +167,28 @@ final class QuotaSettingsControllerTests: XCTestCase {
 		XCTAssertNil(controller.settings)
 	}
 
+	func testInitialLoadCannotOverwriteAWriteThatCompletedWhileItWasInFlight() async {
+		let preferences = DesktopPreferences(defaults: isolatedDefaults(), registrar: StubLoginItemRegistrar())
+		preferences.quotaProbeEnabled = true
+		let stale = DesktopQuotaSettingsValuesV1(
+			reading: true, interval: .fiveMinutes, alerts: false,
+			thresholds: [75, 90], resetNotice: true, statusline: false
+		)
+		let transport = SupersededLoadQuotaSettingsTransport(staleLoad: stale)
+		let controller = makeQuotaSettingsController(preferences: preferences, transport: transport)
+
+		let load = Task { await controller.load() }
+		await transport.waitForLoad()
+		await controller.setAlerts(true)
+		await transport.completeLoad()
+		await load.value
+
+		XCTAssertEqual(controller.settings?.alerts, true, "the stale initial load must not replace the confirmed write")
+		await controller.setResetNotice(false)
+		let calls = await transport.applyCalls
+		XCTAssertEqual(calls.last?.alerts, true, "the next write must not resend the stale load's alerts-off value")
+	}
+
 	func testChainedStatusLineCommandPreviewReadsTheConfiguredCommandReadOnly() async throws {
 		let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
 		try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -204,6 +226,31 @@ final class QuotaSettingsControllerTests: XCTestCase {
 		await controller.load()
 
 		XCTAssertNil(controller.chainedStatusLineCommand)
+	}
+
+	func testChainedStatusLineCommandPreviewOmitsTheEmbeddedHelpersAbsoluteRoute() async throws {
+		let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+		try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+		defer { try? FileManager.default.removeItem(at: directory) }
+		let settingsURL = directory.appendingPathComponent("settings.json")
+		try #"{"statusLine":{"type":"command","command":"'/Applications/AgentDeck.app/Contents/Helpers/agentdeck' --state-dir '/tmp/state dir' quota capture"}}"#
+			.write(to: settingsURL, atomically: true, encoding: .utf8)
+
+		let controller = makeQuotaSettingsController(claudeSettingsURL: settingsURL)
+		await controller.load()
+
+		XCTAssertNil(controller.chainedStatusLineCommand)
+	}
+
+	func testResetNoticeControlRequiresBothReadingAndAlerts() async {
+		for (reading, alerts, expected) in [(false, true, false), (true, false, false), (true, true, true)] {
+			let controller = makeQuotaSettingsController(transport: StubQuotaSettingsTransport(settings: DesktopQuotaSettingsValuesV1(
+				reading: reading, interval: .fiveMinutes, alerts: alerts,
+				thresholds: [75, 90], resetNotice: true, statusline: false
+			)))
+			await controller.load()
+			XCTAssertEqual(controller.resetNoticeControlEnabled, expected, "reading=\(reading) alerts=\(alerts)")
+		}
 	}
 
 	func testOverlappingChangesCoalesceToTheLatestCompleteSettingsWithoutDroppingIntent() async {
@@ -384,6 +431,48 @@ private actor SuspendingBothQuotaSettingsTransport: QuotaSettingsTransport {
 			thresholds: settings.thresholds, resetNotice: settings.resetNotice, statusline: true
 		)
 		continuation.resume(returning: .decoded(DesktopQuotaStatusLineResultV1(consent: true, result: DesktopUsageHookResultV1(outcome: .configured))))
+	}
+}
+
+private actor SupersededLoadQuotaSettingsTransport: QuotaSettingsTransport {
+	private let staleLoad: DesktopQuotaSettingsValuesV1
+	private var current: DesktopQuotaSettingsValuesV1
+	private var loadContinuation: CheckedContinuation<DesktopQuotaTransportOutcome<DesktopQuotaSettingsResultV1>, Never>?
+	private(set) var applyCalls = [DesktopQuotaSettingsDesiredV1]()
+
+	init(staleLoad: DesktopQuotaSettingsValuesV1) {
+		self.staleLoad = staleLoad
+		current = staleLoad
+	}
+
+	func loadQuotaSettings() async -> DesktopQuotaTransportOutcome<DesktopQuotaSettingsResultV1> {
+		await withCheckedContinuation { loadContinuation = $0 }
+	}
+
+	func applyQuotaSettings(_ desired: DesktopQuotaSettingsDesiredV1) async -> DesktopQuotaTransportOutcome<DesktopQuotaSettingsResultV1> {
+		applyCalls.append(desired)
+		current = DesktopQuotaSettingsValuesV1(
+			reading: desired.reading, interval: desired.interval, alerts: desired.alerts,
+			thresholds: desired.thresholds, resetNotice: desired.resetNotice, statusline: current.statusline
+		)
+		return .decoded(DesktopQuotaSettingsResultV1(settings: current, statuslineRestore: nil))
+	}
+
+	func setQuotaStatusLine(enabled: Bool) async -> DesktopQuotaTransportOutcome<DesktopQuotaStatusLineResultV1> {
+		current = DesktopQuotaSettingsValuesV1(
+			reading: current.reading, interval: current.interval, alerts: current.alerts,
+			thresholds: current.thresholds, resetNotice: current.resetNotice, statusline: enabled
+		)
+		return .decoded(DesktopQuotaStatusLineResultV1(consent: enabled, result: DesktopUsageHookResultV1(outcome: .configured)))
+	}
+
+	func waitForLoad() async {
+		while loadContinuation == nil { await Task.yield() }
+	}
+
+	func completeLoad() {
+		loadContinuation?.resume(returning: .decoded(DesktopQuotaSettingsResultV1(settings: staleLoad, statuslineRestore: nil)))
+		loadContinuation = nil
 	}
 }
 
@@ -597,4 +686,3 @@ final class SettingsWindowLayoutTests: XCTestCase {
 		}
 	}
 }
-

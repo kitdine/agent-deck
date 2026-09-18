@@ -456,6 +456,7 @@ public struct EmbeddedHelperRunner: Sendable {
 	public static let minimumRecentLimit = 1
 	public static let maximumRecentLimit = 20
 	public static let defaultTimeout: Duration = .seconds(30)
+	public static let quotaRefreshTimeout: Duration = .seconds(40)
 	public static let indexRefreshTimeout: Duration = .seconds(120)
 	public static let maximumStreamLineBytes = 96 * 1024
 	public static let maximumStreamLines = 2_048
@@ -1282,7 +1283,7 @@ extension EmbeddedHelperRunner: DesktopQuotaRefreshing {
 	public func refreshQuota(manual: Bool) async -> [DesktopQuotaAlertV1] {
 		var arguments = ["desktop", "quota-refresh"]
 		if manual { arguments.append("--manual") }
-		let outcome: DesktopQuotaTransportOutcome<DesktopQuotaRefreshResultV1> = await runQuotaCommand(arguments)
+		let outcome: DesktopQuotaTransportOutcome<DesktopQuotaRefreshResultV1> = await runQuotaCommand(arguments, requestTimeout: Self.quotaRefreshTimeout)
 		guard case let .decoded(result) = outcome else { return [] }
 		return result.alerts
 	}
@@ -1376,7 +1377,10 @@ extension EmbeddedHelperRunner: QuotaSettingsTransport {
 		await runQuotaCommand(["desktop", "quota-statusline", enabled ? "enable" : "disable"])
 	}
 
-	private func runQuotaCommand<Value: Codable & Equatable & Sendable>(_ subcommand: [String]) async -> DesktopQuotaTransportOutcome<Value> {
+	private func runQuotaCommand<Value: Codable & Equatable & Sendable>(
+		_ subcommand: [String],
+		requestTimeout: Duration? = nil
+	) async -> DesktopQuotaTransportOutcome<Value> {
 		let executableURL: URL
 		do {
 			executableURL = try embeddedHelperURL()
@@ -1389,7 +1393,7 @@ extension EmbeddedHelperRunner: QuotaSettingsTransport {
 				executableURL: executableURL,
 				arguments: ["--format", "json"] + subcommand,
 				environment: environment,
-				timeout: timeout
+				timeout: requestTimeout ?? timeout
 			)
 		} catch {
 			return .undecodable

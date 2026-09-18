@@ -65,6 +65,7 @@ enum AgentDeckMain {
 		"com.kitdine.agentdeck.widget.composition",
 		"com.kitdine.agentdeck.widget.trust",
 		"com.kitdine.agentdeck.widget.rhythm",
+		"com.kitdine.agentdeck.widget.quota",
 	]
 
 	static func main() {

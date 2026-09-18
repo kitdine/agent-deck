@@ -169,6 +169,9 @@ func discardOnAccountChange(ctx context.Context, tx *sql.Tx, client Client, acco
 	if _, err := tx.ExecContext(ctx, `DELETE FROM quota_windows WHERE client = ?`, string(client)); err != nil {
 		return err
 	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM quota_alert_notices WHERE client = ?`, string(client)); err != nil {
+		return err
+	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM quota_envelopes WHERE client = ?`, string(client)); err != nil {
 		return err
 	}

@@ -145,8 +145,21 @@ func renderQuotaText(w io.Writer, subscription desktop.SubscriptionSnapshot) err
 			}
 			fmt.Fprintf(&b, "  %-32s %4.0f%%  %s%s\n", quotaWindowName(window), window.UsedPercent, resets, marker)
 		}
-		if allowance := client.ResetAllowance; allowance != nil && allowance.Remaining != nil {
-			fmt.Fprintf(&b, "  reset allowance: %d remaining\n", *allowance.Remaining)
+		if allowance := client.ResetAllowance; allowance != nil {
+			var details []string
+			if allowance.Remaining != nil {
+				details = append(details, fmt.Sprintf("%d remaining", *allowance.Remaining))
+			} else if allowance.RemainingReason != nil {
+				details = append(details, "remaining "+quotaReasonPhrase(allowance.RemainingReason))
+			}
+			if allowance.Total != nil {
+				details = append(details, fmt.Sprintf("%d total", *allowance.Total))
+			} else if allowance.TotalReason != nil {
+				details = append(details, "total "+quotaReasonPhrase(allowance.TotalReason))
+			}
+			if len(details) > 0 {
+				fmt.Fprintf(&b, "  reset allowance: %s\n", strings.Join(details, ", "))
+			}
 		}
 		if client.ObservedResetAt != nil {
 			fmt.Fprintf(&b, "  last observed reset: %s\n", *client.ObservedResetAt)

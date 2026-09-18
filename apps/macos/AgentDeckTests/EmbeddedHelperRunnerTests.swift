@@ -257,6 +257,7 @@ final class EmbeddedHelperRunnerTests: XCTestCase {
 			["--format", "json", "desktop", "quota-refresh", "--manual"],
 		])
 		XCTAssertTrue(invocations.allSatisfy { $0.environment["HOME"] == "/tmp/isolated-home" })
+		XCTAssertTrue(invocations.allSatisfy { $0.timeout == EmbeddedHelperRunner.quotaRefreshTimeout })
 	}
 
 	func testQuotaAlertAcknowledgementPassesEveryIDAndSkipsAnEmptyBatch() async throws {

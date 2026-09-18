@@ -202,7 +202,7 @@ struct SettingsWindowView: View {
 					.toggleStyle(.switch)
 					.tint(DesktopVisualTheme.accent)
 					.labelsHidden()
-					.disabled(!(quotaSettings.settings?.alerts ?? false))
+					.disabled(!quotaSettings.resetNoticeControlEnabled)
 					.accessibilityLabel(t(DesktopCopy.settingsQuotaResetNotice))
 				}
 			}

@@ -6,6 +6,16 @@ import XCTest
 
 @MainActor
 final class MenuBarChromeTests: XCTestCase {
+	func testStandaloneReloadIncludesEveryWidgetKind() {
+		XCTAssertEqual(AgentDeckMain.widgetKinds, [
+			"com.kitdine.agentdeck.widget.magnitude",
+			"com.kitdine.agentdeck.widget.composition",
+			"com.kitdine.agentdeck.widget.trust",
+			"com.kitdine.agentdeck.widget.rhythm",
+			"com.kitdine.agentdeck.widget.quota",
+		])
+	}
+
 	func testScanProgressRendersAtNativeWidthsInBothLanguages() async throws {
 		let oldWidth = ProcessInfo.processInfo.environment["AGENTDECK_TEST_WIDTH"]
 		let oldLocale = ProcessInfo.processInfo.environment["AGENTDECK_TEST_LOCALE"]
