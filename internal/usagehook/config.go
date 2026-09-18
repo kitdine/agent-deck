@@ -1102,6 +1102,24 @@ func (m *Manager) RestoreStatusLine() (Result, error) {
 
 	command, isCommand := decodeStatusLineCommandEntry(currentRaw)
 	if isCommand && managedStatusLineCommand(command) {
+		// Codex PR #5 twelfth review, P2: managedStatusLineCommand
+		// deliberately ignores --state-dir (managedAgentDeckExecutable's own
+		// doc comment: for RestoreStatusLine's dead-lock safety elsewhere),
+		// so it also recognizes a DIFFERENT installation's own currently
+		// active route as "AgentDeck's command" here -- jsonEquivalent above
+		// already ruled out an exact match to this manager's own desired
+		// entry. Removing it regardless would delete that other
+		// installation's capture route out from under it while this call
+		// durably records consent withdrawn, leaving no record to restore
+		// it. Only an exact match to this manager's own command string is
+		// this manager's route to remove.
+		ownCommand, _ := decodeStatusLineCommandEntry(m.desiredStatusLineEntry())
+		if command != ownCommand {
+			result.Outcome = OutcomeRestoreIncomplete
+			result.Configuration = ConfigurationModified
+			result.Error = "statusLine is a different AgentDeck installation's own managed route; left untouched, check " + path + " manually"
+			return result, nil
+		}
 		updated, err := removeTopLevelValue(snap.original, statusLineKey)
 		if err != nil {
 			result.Outcome, result.Configuration, result.Error = OutcomeFailed, ConfigurationInvalid, err.Error()

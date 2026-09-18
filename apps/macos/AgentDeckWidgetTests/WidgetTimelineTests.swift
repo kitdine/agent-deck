@@ -209,7 +209,9 @@ final class WidgetTimelineTests: XCTestCase {
 	// alone already has four), but medium's row list unconditionally kept
 	// only the first three -- silently dropping the fourth bucket even in
 	// that base case. Medium must render every reported window.
-	func testMediumQuotaWidgetRendersEveryReportedWindowWithoutATruncationCap() throws {
+	// Codex PR #5 twelfth review, P2: the large family's own contract calls
+	// for every window from each client too, not just medium's.
+	func testMediumAndLargeQuotaWidgetsRenderEveryReportedWindowWithoutATruncationCap() throws {
 		func window(_ index: Int) throws -> DesktopSubscriptionWindowV1 {
 			try JSONDecoder().decode(
 				DesktopSubscriptionWindowV1.self,
@@ -237,6 +239,7 @@ final class WidgetTimelineTests: XCTestCase {
 		let model = WidgetSurfaceModel(entry: entry, now: entry.date)
 
 		XCTAssertEqual(model.quotaWindows(for: client, family: .systemMedium).count, 5)
+		XCTAssertEqual(model.quotaWindows(for: client, family: .systemLarge).count, 5)
 	}
 
 	// Codex PR #5 P1: small/medium narrow an .all-configured widget to one

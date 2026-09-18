@@ -1270,6 +1270,11 @@ public protocol DesktopQuotaRefreshing: Sendable {
 	/// and acknowledges only the ones the notification service accepted.
 	func refreshQuota(manual: Bool) async -> [DesktopQuotaAlertV1]
 	func acknowledgeQuotaAlerts(ids: [String]) async
+	/// Reads the current subscription section without probing anything --
+	/// the same read-only, no-network `agentdeck quota` (C12) a quota-only
+	/// refresh reuses to publish fresh figures without paying for the full
+	/// desktop snapshot's session/usage scan.
+	func fetchSubscription() async -> DesktopSubscriptionSnapshotV1?
 }
 
 /// Posts due quota alerts under the app's own identity and returns the ids the
@@ -1292,6 +1297,12 @@ extension EmbeddedHelperRunner: DesktopQuotaRefreshing {
 		guard !ids.isEmpty else { return }
 		let arguments = ["desktop", "quota-alerts", "ack"] + ids.flatMap { ["--id", $0] }
 		let _: DesktopQuotaTransportOutcome<DesktopQuotaAlertsAckResultV1> = await runQuotaCommand(arguments)
+	}
+
+	public func fetchSubscription() async -> DesktopSubscriptionSnapshotV1? {
+		let outcome: DesktopQuotaTransportOutcome<DesktopSubscriptionSnapshotV1> = await runQuotaCommand(["quota"])
+		guard case let .decoded(subscription) = outcome else { return nil }
+		return subscription
 	}
 }
 
@@ -1719,9 +1730,64 @@ public final class DesktopRefreshCoordinator {
 	public func refreshQuotaAlertsOnly(manual: Bool) async {
 		guard let quotaRefresher else { return }
 		let alerts = await quotaRefresher.refreshQuota(manual: manual)
-		guard !alerts.isEmpty, let alertDeliverer else { return }
-		let delivered = await alertDeliverer.deliver(alerts)
-		await quotaRefresher.acknowledgeQuotaAlerts(ids: delivered)
+		if !alerts.isEmpty, let alertDeliverer {
+			let delivered = await alertDeliverer.deliver(alerts)
+			await quotaRefresher.acknowledgeQuotaAlerts(ids: delivered)
+		}
+		// Codex PR #5 twelfth review, P2: this is the app's only recurring
+		// caller into the quota probe when the full snapshot refresh (its own
+		// separate, opt-in-and-off-by-default preference) never runs. Without
+		// also publishing the fresher figures this probe just persisted, the
+		// menu bar (latestSnapshot) and widgets (snapshotStore) can keep
+		// showing the startup snapshot's quota state indefinitely even as
+		// probes and alerts keep succeeding underneath.
+		await publishFreshSubscription()
+	}
+
+	/// Splices a freshly read subscription section into the retained
+	/// snapshot without rerunning the session/usage scan the rest of it came
+	/// from. No-ops before any snapshot has ever been published (nothing to
+	/// splice into yet -- startInitialRefresh's own full refresh is what
+	/// establishes it) and is generation-guarded the same way publishSuccess
+	/// is, so it never overwrites a concurrent full refresh's newer result.
+	private func publishFreshSubscription() async {
+		guard let quotaRefresher else { return }
+		let observedGeneration = generation
+		guard let subscription = await quotaRefresher.fetchSubscription() else { return }
+		// Re-checked after the await: a concurrent full refresh may have
+		// started (and possibly already replaced latestSnapshot) while this
+		// read was in flight.
+		guard observedGeneration == generation, let current = latestSnapshot else { return }
+		let updated = current.replacingSubscription(subscription)
+		switch state {
+		case .ready:
+			latestSnapshot = updated
+			do {
+				if let snapshotStore {
+					try snapshotStore.write(AppGroupDesktopSnapshotV1(envelope: updated))
+				}
+				state = .ready(updated)
+			} catch {
+				state = .degraded(previous: updated, issue: .storageUnavailable)
+			}
+		case let .degraded(_, issue):
+			// A pre-existing degraded state names a reason unrelated to this
+			// quota-only read (a prior full refresh's helper/wire/storage
+			// failure); promoting it back to .ready here would hide that
+			// warning over data this call never re-verified. Carry the
+			// fresher quota figures in `previous` while keeping the same
+			// issue and disposition.
+			latestSnapshot = updated
+			if let snapshotStore {
+				try? snapshotStore.write(AppGroupDesktopSnapshotV1(envelope: updated))
+			}
+			state = .degraded(previous: updated, issue: issue)
+		case .uninitialized, .refreshing:
+			// .refreshing belongs to an in-flight full refresh -- already
+			// excluded by the generation check above in practice; kept as an
+			// explicit guard. .uninitialized has nothing stable to replace.
+			return
+		}
 	}
 
 	public func refresh(

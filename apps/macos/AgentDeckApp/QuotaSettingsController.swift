@@ -196,6 +196,17 @@ final class QuotaSettingsController {
 		settings?.reading == true && settings?.alerts == true
 	}
 
+	/// Codex PR #5 twelfth review, P2: currentDesired() falls back to
+	/// product defaults for alerts/thresholds/resetNotice only while
+	/// `settings` (core state's own last read) is nil -- a reading/interval
+	/// change made before load() resolves resends those defaults as a
+	/// complete settings group, silently overwriting an existing
+	/// installation's real alerts/threshold/reset-notice values. The reading
+	/// and interval controls stay disabled until this is true.
+	var readingControlsEnabled: Bool {
+		settings != nil
+	}
+
 	/// Reads core state once (the window's `onAppear`); a preference change
 	/// afterward always goes through `applySettings`/`applyStatusline`, whose
 	/// own responses are the next source of truth, so this never needs to

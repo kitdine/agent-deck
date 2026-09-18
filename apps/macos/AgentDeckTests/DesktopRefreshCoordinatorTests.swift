@@ -81,6 +81,35 @@ final class DesktopRefreshCoordinatorTests: XCTestCase {
 		XCTAssertEqual(coordinator.state, .uninitialized)
 	}
 
+	// Codex PR #5 twelfth review, P2: when the full snapshot refresh's own
+	// separate, opt-in-and-off-by-default preference never runs,
+	// refreshQuotaAlertsOnly is the only recurring caller into the quota
+	// probe -- so it must also publish the fresher figures that probe just
+	// persisted, without rerunning the expensive session/usage scan.
+	func testRefreshQuotaAlertsOnlySplicesFreshSubscriptionIntoTheRetainedSnapshot() async throws {
+		let complete = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
+		let quotaRefresher = RecordingQuotaRefresher()
+		let temporaryDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+		defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
+		let store = AppGroupSnapshotStore(directoryURL: temporaryDirectory)
+		let coordinator = DesktopRefreshCoordinator(
+			host: ScriptedSnapshotRefresher(responses: [.snapshot(complete)]),
+			quotaRefresher: quotaRefresher,
+			snapshotStore: store
+		)
+		await coordinator.startInitialRefresh().value
+		XCTAssertEqual(coordinator.latestSnapshot, complete)
+
+		let freshSubscription = DesktopSubscriptionSnapshotV1(available: true, clients: [])
+		await quotaRefresher.setSubscription(freshSubscription)
+		await coordinator.refreshQuotaAlertsOnly(manual: false)
+
+		XCTAssertEqual(coordinator.latestSnapshot?.data.subscription, freshSubscription)
+		XCTAssertEqual(coordinator.latestSnapshot?.data.usage, complete.data.usage, "the session/usage scan must not be rerun")
+		XCTAssertEqual(coordinator.state, .ready(try XCTUnwrap(coordinator.latestSnapshot)))
+		XCTAssertEqual(try store.read().subscription, freshSubscription, "the App Group projection widgets read must also carry the fresher figures")
+	}
+
 	func testUserRefreshRequestsManualQuotaBeforeReadingTheSnapshot() async throws {
 		let complete = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
 		let quotaRefresher = RecordingQuotaRefresher()
@@ -298,6 +327,10 @@ private actor RecordingQuotaRefresher: DesktopQuotaRefreshing {
 	func acknowledgeQuotaAlerts(ids: [String]) async { acknowledgements.append(ids) }
 	func recordedManualValues() -> [Bool] { manualValues }
 	func recordedAcknowledgements() -> [[String]] { acknowledgements }
+	func fetchSubscription() async -> DesktopSubscriptionSnapshotV1? { subscription }
+
+	private var subscription: DesktopSubscriptionSnapshotV1?
+	func setSubscription(_ value: DesktopSubscriptionSnapshotV1?) { subscription = value }
 }
 
 private actor RecordingAlertDeliverer: QuotaAlertDelivering {

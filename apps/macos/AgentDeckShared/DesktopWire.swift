@@ -78,6 +78,24 @@ public struct DesktopWireEnvelopeV1: Codable, Equatable, Sendable {
         self.partial = partial
         self.error = error
     }
+
+    /// Codex PR #5 twelfth review, P2: see DesktopSnapshotV1.replacingSubscription.
+    func replacingSubscription(_ subscription: DesktopSubscriptionSnapshotV1) -> DesktopWireEnvelopeV1 {
+        DesktopWireEnvelopeV1(
+            schemaVersion: schemaVersion, command: command, generatedAt: generatedAt,
+            data: data.replacingSubscription(subscription), warnings: warnings, partial: partial, error: error
+        )
+    }
+
+    init(schemaVersion: Int, command: String, generatedAt: String, data: DesktopSnapshotV1, warnings: [String], partial: Bool, error: DesktopWireOutputErrorV1?) {
+        self.schemaVersion = schemaVersion
+        self.command = command
+        self.generatedAt = generatedAt
+        self.data = data
+        self.warnings = warnings
+        self.partial = partial
+        self.error = error
+    }
 }
 
 public struct DesktopSnapshotV1: Codable, Equatable, Sendable {
@@ -115,6 +133,32 @@ public struct DesktopSnapshotV1: Codable, Equatable, Sendable {
         // C11's section is additive and does not raise `wire_version`: a payload
         // that predates it decodes as unavailable, which renders as not probed.
         subscription = try container.decodeIfPresent(DesktopSubscriptionSnapshotV1.self, forKey: .subscription) ?? .unavailable
+    }
+
+    /// Codex PR #5 twelfth review, P2: lets a quota-only refresh publish a
+    /// fresher subscription section into an already-retained snapshot
+    /// without rerunning the expensive session/usage scan the rest of it
+    /// came from.
+    func replacingSubscription(_ subscription: DesktopSubscriptionSnapshotV1) -> DesktopSnapshotV1 {
+        DesktopSnapshotV1(
+            wireVersion: wireVersion, generatedAt: generatedAt, nextRefreshAt: nextRefreshAt,
+            provider: provider, usage: usage, sessions: sessions, health: health, subscription: subscription
+        )
+    }
+
+    init(
+        wireVersion: Int, generatedAt: String, nextRefreshAt: String, provider: DesktopProviderSnapshotV1,
+        usage: DesktopUsageSnapshotV1, sessions: DesktopSessionsSnapshotV1, health: DesktopHealthSnapshotV1,
+        subscription: DesktopSubscriptionSnapshotV1
+    ) {
+        self.wireVersion = wireVersion
+        self.generatedAt = generatedAt
+        self.nextRefreshAt = nextRefreshAt
+        self.provider = provider
+        self.usage = usage
+        self.sessions = sessions
+        self.health = health
+        self.subscription = subscription
     }
 }
 

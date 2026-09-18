@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -137,6 +138,51 @@ func TestQuotaCommandRendersFiguresAsText(t *testing.T) {
 	} {
 		if !strings.Contains(text.String(), want) {
 			t.Fatalf("text output %q does not contain %q", text.String(), want)
+		}
+	}
+}
+
+// Codex PR #5 twelfth review, P2: the text renderer printed wire-format
+// RFC3339 timestamps verbatim (UTC offsets and sub-second precision) instead
+// of routing them through the CLI's established local-display formatter,
+// unlike every other human-readable time surface in this repo.
+func TestQuotaCommandRendersTimestampsInTheLocalDisplayZone(t *testing.T) {
+	location, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Skipf("America/New_York zoneinfo unavailable: %v", err)
+	}
+	usePinnedDisplayZone(t, location)
+
+	state := filepath.Join(t.TempDir(), "state")
+	withTestHome(t, t.TempDir())
+	seedQuotaState(t, state, func(s *quota.Settings) { s.ProbeEnabled = true }, "claude")
+	database, err := store.Open(context.Background(), state)
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	observedAt := time.Date(2026, 9, 10, 14, 30, 0, 0, time.UTC)
+	if _, _, _, err := quota.NewStore(database.DB).Record(context.Background(), quota.Observation{
+		Client: quota.ClientClaude, WindowKey: quota.ClaudeWindowFiveHour, Source: quota.SourceClaudeStatusLine,
+		ObservedAt: observedAt, WindowMinutes: 300, UsedPercent: 64, ResetsAt: observedAt.Add(2 * time.Hour),
+	}); err != nil {
+		t.Fatalf("Record: %v", err)
+	}
+	database.Close()
+
+	var text bytes.Buffer
+	if err := run([]string{"--state-dir", state, "quota"}, bytes.NewReader(nil), &text); err != nil {
+		t.Fatalf("text quota: %v", err)
+	}
+	output := text.String()
+	if strings.Contains(output, "2026-09-10T") {
+		t.Fatalf("text output %q still carries a raw RFC3339 timestamp instead of the local display zone", output)
+	}
+	for _, want := range []string{
+		"observed 2026-09-10 10:30:00 America/New_York",
+		"resets 2026-09-10 12:30:00 America/New_York",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("text output %q does not contain %q", output, want)
 		}
 	}
 }
@@ -785,6 +831,47 @@ func TestDesktopQuotaSettingsWithFlagsStillPersists(t *testing.T) {
 
 	if saveCalls != 1 {
 		t.Fatalf("SaveSettings was called %d times for an actual reading change, want exactly 1", saveCalls)
+	}
+}
+
+// Codex PR #5 twelfth review, P2: SetSettings commits before running
+// secureFiles, so a post-commit ErrSettingsSecureFilesFailed means the
+// write already persisted -- returning a bare error here (undecodable to
+// the app, whose transport reads JSON not this process's exit status) made
+// an already-committed change look uncommitted, and would skip the
+// settingsRow==nil-gated snapshot refresh a real reading change triggers.
+func TestDesktopQuotaSettingsReportsAPersistedResultWhenPermissionHardeningFails(t *testing.T) {
+	home := t.TempDir()
+	withTestHome(t, home)
+	state := filepath.Join(t.TempDir(), "state")
+	seedQuotaState(t, state, func(s *quota.Settings) { s.ProbeEnabled = false })
+
+	previousSave := saveQuotaSettings
+	saveQuotaSettings = func(ctx context.Context, database quota.SettingStore, s quota.Settings) error {
+		if err := previousSave(ctx, database, s); err != nil {
+			return err
+		}
+		return fmt.Errorf("%w: chmod denied", store.ErrSettingsSecureFilesFailed)
+	}
+	t.Cleanup(func() { saveQuotaSettings = previousSave })
+
+	data := runJSON(t, "--state-dir", state, "--format", "json", "desktop", "quota-settings", "--reading", "on")
+	settings, _ := data["settings"].(map[string]any)
+	if settings["reading"] != true {
+		t.Fatalf("data = %v, want the structured settings result the caller can decode despite the permission-hardening error", data)
+	}
+
+	database, err := store.Open(context.Background(), state)
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	defer database.Close()
+	persisted, err := quota.LoadSettings(context.Background(), database)
+	if err != nil {
+		t.Fatalf("LoadSettings: %v", err)
+	}
+	if !persisted.ProbeEnabled {
+		t.Fatal("ProbeEnabled = false, want the reading change durably persisted despite the permission-hardening error")
 	}
 }
 

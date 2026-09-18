@@ -251,14 +251,12 @@ struct WidgetSurfaceModel {
 				lhs.usedPercent == rhs.usedPercent ? lhs.key < rhs.key : lhs.usedPercent > rhs.usedPercent
 			}.prefix(1))
 		}
-		if family == .systemLarge {
-			return Array(client.windows.prefix(4))
-		}
-		// Codex PR #5 eleventh review, P2: the Codex adapter deliberately
-		// supports an arbitrary window count, and the documented Codex Plus
-		// presentation alone already has four -- a fixed three-row cap here
-		// silently dropped the fourth (often the limiting) bucket even in
-		// that base case. Render every reported window instead of truncating.
+		// Codex PR #5 eleventh/twelfth review, P2: the Codex adapter
+		// deliberately supports an arbitrary window count, and the large
+		// widget's own contract calls for every window from each client -- a
+		// fixed row cap here silently dropped a bucket beyond it, which can
+		// be the one that actually limits the user. Render every reported
+		// window on both medium and large instead of truncating either.
 		return client.windows
 	}
 

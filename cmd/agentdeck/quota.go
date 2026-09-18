@@ -115,7 +115,7 @@ func renderQuotaText(w io.Writer, subscription desktop.SubscriptionSnapshot) err
 		if client.Failure != nil && len(client.Windows) == 0 {
 			fmt.Fprintf(&b, "%s: no figures, %s", name, quotaReasonPhrase(client.Failure))
 			if client.ObservedAt != nil {
-				fmt.Fprintf(&b, " (attempted %s)", *client.ObservedAt)
+				fmt.Fprintf(&b, " (attempted %s)", renderDisplayTimeWithZone(*client.ObservedAt))
 			}
 			b.WriteString("\n")
 			continue
@@ -134,7 +134,7 @@ func renderQuotaText(w io.Writer, subscription desktop.SubscriptionSnapshot) err
 			header = append(header, "via "+*client.Source)
 		}
 		if client.ObservedAt != nil {
-			header = append(header, "observed "+*client.ObservedAt)
+			header = append(header, "observed "+renderDisplayTimeWithZone(*client.ObservedAt))
 		}
 		if client.Stale {
 			header = append(header, "stale")
@@ -149,7 +149,7 @@ func renderQuotaText(w io.Writer, subscription desktop.SubscriptionSnapshot) err
 		for _, window := range client.Windows {
 			resets := "reset time not reported"
 			if window.ResetsAt != nil {
-				resets = "resets " + *window.ResetsAt
+				resets = "resets " + renderDisplayTimeWithZone(*window.ResetsAt)
 			}
 			marker := ""
 			if client.TightestWindowKey != nil && *client.TightestWindowKey == window.Key {
@@ -161,7 +161,7 @@ func renderQuotaText(w io.Writer, subscription desktop.SubscriptionSnapshot) err
 			// timestamp above; print each window's own instant rather than
 			// let it be read as observed then too.
 			if window.ObservedAt != nil {
-				fmt.Fprintf(&b, "  (observed %s)", *window.ObservedAt)
+				fmt.Fprintf(&b, "  (observed %s)", renderDisplayTimeWithZone(*window.ObservedAt))
 			}
 			// Codex PR #5 ninth review, P2: the same partial mixed-age
 			// update can leave one window from a different route than the
@@ -195,7 +195,7 @@ func renderQuotaText(w io.Writer, subscription desktop.SubscriptionSnapshot) err
 			fmt.Fprintf(&b, "  reset allowance: %s\n", quotaReasonPhrase(client.ResetAllowanceReason))
 		}
 		if client.ObservedResetAt != nil {
-			fmt.Fprintf(&b, "  last observed reset: %s\n", *client.ObservedResetAt)
+			fmt.Fprintf(&b, "  last observed reset: %s\n", renderDisplayTimeWithZone(*client.ObservedResetAt))
 		}
 	}
 	_, err := io.WriteString(w, b.String())
@@ -623,7 +623,25 @@ func runDesktopQuotaSettings(ctx context.Context, opts *commandOptions, apply fu
 		return &inputError{err: err}
 	}
 	if err := saveQuotaSettings(ctx, core, next); err != nil {
-		return err
+		// Codex PR #5 twelfth review, P2: SetSettings commits its transaction
+		// before running secureFiles (mirroring the statusline command's own
+		// rollback exemption above), so this specific error means next is
+		// already durably persisted -- only the post-commit permission
+		// hardening failed. Returning here without writing a result would
+		// make an already-committed write look uncommitted to the app (whose
+		// transport reads decoded JSON, not this process's exit status), and
+		// skip the settingsRow==nil-gated snapshot refresh that a real
+		// reading/interval change is supposed to trigger.
+		if !errors.Is(err, store.ErrSettingsSecureFilesFailed) {
+			return err
+		}
+		if writeErr := writeResult(opts.stdout, opts.format, "desktop.quota-settings", desktopQuotaSettingsResult{Settings: quotaSettingsView(next), StatusLineRestore: restore}); writeErr != nil {
+			return writeErr
+		}
+		if opts.stderr != nil {
+			fmt.Fprintf(opts.stderr, "advisory: quota settings saved but permission hardening failed: %v\n", err)
+		}
+		return nil
 	}
 	if err := writeResult(opts.stdout, opts.format, "desktop.quota-settings", desktopQuotaSettingsResult{Settings: quotaSettingsView(next), StatusLineRestore: restore}); err != nil {
 		return err

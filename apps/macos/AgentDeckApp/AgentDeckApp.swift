@@ -235,7 +235,14 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 			while !Task.isCancelled {
 				try? await Task.sleep(for: .seconds(30))
 				guard let self else { continue }
-				if self.preferences.quotaProbeEnabled, self.preferences.quotaAlertsEnabled {
+				// Codex PR #5 twelfth review, P1: refreshQuotaAlertsOnly is this
+				// app's only recurring caller into the quota probe itself, not
+				// merely alert evaluation -- gating it on alerts too meant a
+				// user with reading on but alerts off (both defaults: alerts
+				// starts off) never got a single background probe after
+				// startup. The helper already no-ops alert delivery on its own
+				// when alerts are disabled; gate this call on reading alone.
+				if self.preferences.quotaProbeEnabled {
 					await self.refreshCoordinator.refreshQuotaAlertsOnly(manual: false)
 				}
 				guard self.preferences.periodicRefreshEnabled else { continue }

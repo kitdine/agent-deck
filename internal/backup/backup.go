@@ -25,6 +25,7 @@ import (
 	"github.com/kitdine/agent-deck/internal/credentialvault"
 	"github.com/kitdine/agent-deck/internal/errdefs"
 	"github.com/kitdine/agent-deck/internal/platform"
+	"github.com/kitdine/agent-deck/internal/quota"
 	"github.com/kitdine/agent-deck/internal/store"
 )
 
@@ -391,6 +392,28 @@ func Restore(ctx context.Context, archivePath, targetRoot, passphrase string, ma
 	if err = database.MintDerivedSnapshotEpoch(ctx); err != nil {
 		_ = database.Close()
 		return Manifest{}, err
+	}
+	// Codex PR #5 twelfth review, P2: quota.statusline asserts a capture
+	// route this restore never installs -- ~/.claude/settings.json and the
+	// prior-command sidecar are both machine-local and neither is carried by
+	// a portable backup, the same reason project-attribution.enabled's own
+	// machine-local marker is excluded from one (docs/specs/cli-design.md).
+	// Restoring consent verbatim from the source state would report capture
+	// enabled with no route actually present and no record to reconcile it
+	// against. Treat it as machine-local too: clear it here rather than
+	// leaving the target to discover the mismatch on its own.
+	quotaSettings, loadErr := quota.LoadSettings(ctx, database)
+	if loadErr != nil {
+		_ = database.Close()
+		err = loadErr
+		return Manifest{}, err
+	}
+	if quotaSettings.StatusLineConsent {
+		quotaSettings.StatusLineConsent = false
+		if err = quota.SaveSettings(ctx, database, quotaSettings); err != nil {
+			_ = database.Close()
+			return Manifest{}, err
+		}
 	}
 	if err = database.Close(); err != nil {
 		return Manifest{}, err

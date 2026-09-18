@@ -357,6 +357,22 @@ final class QuotaSettingsControllerTests: XCTestCase {
 		)
 	}
 
+	// Codex PR #5 twelfth review, P2: currentDesired() falls back to product
+	// defaults for alerts/thresholds/resetNotice only while settings is nil
+	// -- the reading and interval controls this gates must stay disabled
+	// until the initial load resolves, so a change can never resend those
+	// defaults over an existing installation's real values.
+	func testReadingControlsStayDisabledUntilTheInitialLoadResolves() async {
+		let controller = makeQuotaSettingsController(transport: StubQuotaSettingsTransport(settings: DesktopQuotaSettingsValuesV1(
+			reading: false, interval: .fiveMinutes, alerts: true, thresholds: [90], resetNotice: false, statusline: false
+		)))
+		XCTAssertFalse(controller.readingControlsEnabled, "must be disabled before load() resolves")
+
+		await controller.load()
+
+		XCTAssertTrue(controller.readingControlsEnabled, "must be enabled once the initial read has resolved")
+	}
+
 	func testResetNoticeControlRequiresBothReadingAndAlerts() async {
 		for (reading, alerts, expected) in [(false, true, false), (true, false, false), (true, true, true)] {
 			let controller = makeQuotaSettingsController(transport: StubQuotaSettingsTransport(settings: DesktopQuotaSettingsValuesV1(

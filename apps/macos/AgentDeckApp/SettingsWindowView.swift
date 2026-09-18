@@ -90,6 +90,7 @@ struct SettingsWindowView: View {
 					.toggleStyle(.switch)
 					.tint(DesktopVisualTheme.accent)
 					.labelsHidden()
+					.disabled(!quotaSettings.readingControlsEnabled)
 					.accessibilityLabel(t(DesktopCopy.settingsQuotaProbe))
 				}
 				Divider()
@@ -113,6 +114,7 @@ struct SettingsWindowView: View {
 					.tint(DesktopVisualTheme.accent)
 					.labelsHidden()
 					.fixedSize()
+					.disabled(!quotaSettings.readingControlsEnabled)
 					.accessibilityLabel(t(DesktopCopy.settingsQuotaInterval))
 				}
 				Divider()

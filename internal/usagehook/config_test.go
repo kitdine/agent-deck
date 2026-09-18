@@ -842,6 +842,46 @@ func TestRestoreStatusLineWhenReplacedBySomethingElseLeavesItUntouched(t *testin
 	}
 }
 
+// Codex PR #5 twelfth review, P2: managedStatusLineCommand deliberately
+// ignores --state-dir, so it recognizes a DIFFERENT installation's own
+// currently active route as "AgentDeck's command" too. State A previously
+// enabled capture, state B later replaced it with B's own route, and A is
+// then disabled -- A's restore must leave B's still-active route untouched
+// rather than deleting it out from under B while B's own consent record
+// (unaffected by A's call) still reports capture enabled.
+func TestRestoreStatusLineLeavesADifferentInstallationsActiveRouteUntouched(t *testing.T) {
+	home := t.TempDir()
+	path := configPath(home, ClientClaude)
+	writeDocument(t, path, map[string]json.RawMessage{
+		"statusLine": json.RawMessage(`{"type":"command","command":"printf prior"}`),
+	}, privateFileMode)
+
+	stateA, stateB := t.TempDir(), t.TempDir()
+	managerA := New(Environment{Home: home, AgentDeckCommand: "agentdeck --state-dir " + stateA, StateDir: stateA})
+	managerB := New(Environment{Home: home, AgentDeckCommand: "agentdeck --state-dir " + stateB, StateDir: stateB})
+
+	if _, err := managerA.SetupStatusLine(); err != nil {
+		t.Fatalf("A SetupStatusLine: %v", err)
+	}
+	if _, err := managerB.SetupStatusLine(); err != nil {
+		t.Fatalf("B SetupStatusLine: %v", err)
+	}
+	activeBefore := readDocument(t, path)[statusLineKey]
+
+	restore, err := managerA.RestoreStatusLine()
+	if err != nil {
+		t.Fatalf("A RestoreStatusLine: %v", err)
+	}
+	if restore.Outcome != OutcomeRestoreIncomplete || restore.Configuration != ConfigurationModified {
+		t.Fatalf("A RestoreStatusLine = %+v, want restore_incomplete/modified -- B's route is not A's to remove", restore)
+	}
+
+	after := readDocument(t, path)[statusLineKey]
+	if !jsonEquivalent(after, activeBefore) {
+		t.Fatalf("statusLine changed from %s to %s; A's disable must not remove B's still-active route", activeBefore, after)
+	}
+}
+
 func TestRestoreStatusLineAbsentWhenNeverRegistered(t *testing.T) {
 	manager, _ := newTestManager(t)
 	result, err := manager.RestoreStatusLine()
