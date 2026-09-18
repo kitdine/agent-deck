@@ -155,6 +155,23 @@ func DueAlerts(ctx context.Context, store *Store, probeEnabled bool, officialCli
 			errs = append(errs, err)
 			continue
 		}
+		// Codex PR #5 eleventh review, P2: mirror desktop.BuildSubscription's
+		// own suppression of a client whose envelope shows an unsuperseded
+		// parse failure -- those retained windows are not read as this
+		// account's current quota there either, and must not still generate
+		// threshold or reset alerts just because they have not yet been
+		// probed away. Only Claude's own status-line route (a success the
+		// envelope never records) can supersede a fresher prose failure.
+		if rec, ok, err := store.Envelope(ctx, client); err != nil {
+			errs = append(errs, err)
+			continue
+		} else if ok && rec.Failure == ReasonParseFailed {
+			windowSource, windowObservedAt := newestWindowSource(windows)
+			supersededByStatusLine := windowSource == SourceClaudeStatusLine && windowObservedAt.After(rec.FailureObservedAt)
+			if !supersededByStatusLine {
+				continue
+			}
+		}
 		for _, w := range windows {
 			if !occurrenceOngoing(w, now) {
 				continue
@@ -181,6 +198,23 @@ func DueAlerts(ctx context.Context, store *Store, probeEnabled bool, officialCli
 		}
 	}
 	return due, errors.Join(errs...)
+}
+
+// newestWindowSource is C5 at the client level: the newest window's source,
+// preferring the status-line route at equal age. Mirrors
+// desktop.newestWindowSource; kept as a separate, unexported copy here since
+// desktop's is private to that package and DueAlerts needs the same
+// supersession check subscription.go performs.
+func newestWindowSource(windows []Window) (Source, time.Time) {
+	var source Source
+	var observedAt time.Time
+	for _, w := range windows {
+		if w.ObservedAt.After(observedAt) ||
+			(w.ObservedAt.Equal(observedAt) && w.Source == SourceClaudeStatusLine && source != SourceClaudeStatusLine) {
+			source, observedAt = w.Source, w.ObservedAt
+		}
+	}
+	return source, observedAt
 }
 
 // AcknowledgeAlert records that the app delivered the notice id names. It is

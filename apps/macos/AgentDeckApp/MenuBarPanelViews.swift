@@ -1389,12 +1389,32 @@ struct QuotaPanelView: View {
 		.background(DesktopVisualTheme.surfaceRaised, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
 	}
 
+	// Codex PR #5 eleventh review, P2: a missing reset time was silently
+	// omitted from windowRow instead of rendering unavailable with a reason,
+	// unlike every other absent field on this card. Extracted so the
+	// resetsAtReason branch is directly testable without rendering.
+	func windowResetLabel(_ window: DesktopSubscriptionWindowV1, now: Date = Date()) -> String? {
+		if let resets = window.resetsAt {
+			return t(DesktopCopy.quotaResetsIn, DesktopFormat.relative(resets, now: now))
+		}
+		if let reason = window.resetsAtReason {
+			return reasonLabel(reason)
+		}
+		return nil
+	}
+
 	private func windowRow(_ window: DesktopSubscriptionWindowV1) -> some View {
 		VStack(alignment: .leading, spacing: 4) {
 			HStack {
 				Text(windowLabel(window)).lineLimit(1)
 				Spacer()
-				if let resets = window.resetsAt { Text(t(DesktopCopy.quotaResetsIn, DesktopFormat.relative(resets, now: Date()))) }
+				if let label = windowResetLabel(window) {
+					if window.resetsAt == nil {
+						Text(label).foregroundStyle(DesktopVisualTheme.dim)
+					} else {
+						Text(label)
+					}
+				}
 				Text(quotaPercentText(window.usedPercent)).monospacedDigit()
 			}.font(.caption)
 			ProgressView(value: min(max(window.usedPercent, 0), 100), total: 100)

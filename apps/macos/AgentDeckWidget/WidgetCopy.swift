@@ -20,6 +20,7 @@ enum WidgetCopy {
 		"Active days", "Busiest", "Busiest at", "Quietest", "Activity by hour", "Hour of week",
 		"Low", "High", "90-day context", "Updated now", "Updated %@", "Last updated %@", "unpriced",
 		"Not read", "Not applicable", "No quota window to show", "Account attribution unconfirmed", "Quota window", "5h window", "7d window",
+		"Reset not reported",
 	]
 
 	static func text(_ key: String, bundle: Bundle? = nil) -> String {

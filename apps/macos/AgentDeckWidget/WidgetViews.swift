@@ -354,8 +354,8 @@ private struct QuotaWidgetView: View {
 					VStack(alignment: .leading, spacing: 2) {
 						HStack {
 							Text(quotaWindowName(window))
-							if let resetsAt = window.resetsAt, let eta = quotaResetETA(resetsAt, now: model.now) {
-								Text(eta).foregroundStyle(.secondary)
+							if let label = quotaResetLabel(window, now: model.now) {
+								Text(label).foregroundStyle(.secondary)
 							}
 							Spacer()
 							Text(quotaPercentText(window.usedPercent)).monospacedDigit()
@@ -384,6 +384,18 @@ private struct QuotaWidgetView: View {
 // rows would render identically named. Top-level (not a QuotaWidgetView
 // method) so AgentDeckWidgetTests can assert its composition directly,
 // matching quotaResetETA's pattern above.
+// Codex PR #5 eleventh review, P2: a window with no resets_at used to render
+// nothing here, unlike every other absent field on this row.
+func quotaResetLabel(_ window: DesktopSubscriptionWindowV1, now: Date) -> String? {
+	if let resetsAt = window.resetsAt, let eta = quotaResetETA(resetsAt, now: now) {
+		return eta
+	}
+	if window.resetsAtReason != nil {
+		return WidgetCopy.text("Reset not reported")
+	}
+	return nil
+}
+
 func quotaWindowName(_ window: DesktopSubscriptionWindowV1) -> String {
 	let span: String
 	if let minutes = window.windowMinutes {

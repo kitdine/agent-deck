@@ -49,6 +49,15 @@ type SubscriptionWindow struct {
 	WindowMinutesReason *string `json:"window_minutes_reason"`
 	UsedPercent         float64 `json:"used_percent"`
 	ResetsAt            *string `json:"resets_at"`
+	// ResetsAtReason is set only when ResetsAt is absent (C6): both adapters
+	// leave a window's ResetsAt at its zero value whenever the vendor's own
+	// payload omits it, the one cause this can ever have, so it is derived
+	// here at projection time rather than persisted through the domain model
+	// and store the way WindowMinutesReason's several distinct causes are
+	// (Codex PR #5 eleventh review, P2: the menu bar and widget surfaces
+	// conditionally omitted the reset time entirely instead of rendering it
+	// unavailable with a reason, unlike every other absent field here).
+	ResetsAtReason *string `json:"resets_at_reason"`
 	// ObservedAt is this window's own observation instant (additive at
 	// unchanged WireVersion=1, matching the subscription section itself):
 	// the client-level observed_at is derived from the newest window or
@@ -313,6 +322,9 @@ func subscriptionWindow(w quota.Window) SubscriptionWindow {
 	} else {
 		minutes := w.WindowMinutes
 		out.WindowMinutes = &minutes
+	}
+	if w.ResetsAt.IsZero() {
+		out.ResetsAtReason = reasonText(quota.ReasonNotReported)
 	}
 	return out
 }

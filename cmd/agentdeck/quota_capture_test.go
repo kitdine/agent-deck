@@ -62,8 +62,17 @@ func TestRunQuotaCaptureChainsAndPersists(t *testing.T) {
 	// warm database, keeps the assertion below deterministic.
 	if warmup, _, err := opts.openStore(context.Background()); err != nil {
 		t.Fatalf("openStore (warmup): %v", err)
-	} else if err := warmup.Close(); err != nil {
-		t.Fatalf("close warmup store: %v", err)
+	} else {
+		// Codex PR #5 eleventh review, P1: capture now persists only when
+		// both switches authorize it.
+		settings := quota.DefaultSettings()
+		settings.ProbeEnabled, settings.StatusLineConsent = true, true
+		if err := quota.SaveSettings(context.Background(), warmup, settings); err != nil {
+			t.Fatalf("SaveSettings (warmup): %v", err)
+		}
+		if err := warmup.Close(); err != nil {
+			t.Fatalf("close warmup store: %v", err)
+		}
 	}
 
 	if err := runQuotaCapture(context.Background(), opts); err != nil {
@@ -86,6 +95,65 @@ func TestRunQuotaCaptureChainsAndPersists(t *testing.T) {
 	}
 	if len(windows) != 2 {
 		t.Fatalf("windows = %+v, want both five_hour and seven_day captured", windows)
+	}
+}
+
+// Codex PR #5 eleventh review, P1: AgentDeck's capture command can remain
+// registered in ~/.claude/settings.json after its state directory is
+// deleted, reset, or replaced, or after the user has turned reading or
+// status-line consent back off. Persisting on every invocation regardless
+// bypasses the feature's default-off and explicit-consent boundary. Capture
+// must still chain the prior command (the unrelated part of its contract)
+// but must not persist when either switch is off.
+func TestRunQuotaCaptureChainsButDoesNotPersistWhenSwitchesAreOff(t *testing.T) {
+	home := t.TempDir()
+	withTestHome(t, home)
+	stateDir := t.TempDir()
+
+	manager := usagehook.New(usagehook.Environment{Home: home, StateDir: stateDir})
+	if _, err := manager.SetupStatusLine(); err != nil {
+		t.Fatalf("SetupStatusLine: %v", err)
+	}
+	settingsPath := filepath.Join(home, ".claude", "settings.json")
+	if err := os.WriteFile(settingsPath, []byte(`{"statusLine":{"type":"command","command":"printf prior-output"}}`), 0o600); err != nil {
+		t.Fatalf("seed settings.json: %v", err)
+	}
+	if _, err := manager.SetupStatusLine(); err != nil {
+		t.Fatalf("SetupStatusLine (with prior): %v", err)
+	}
+
+	payload := `{"rate_limits":{"five_hour":{"used_percentage":22.4,"resets_at":1757516400}}}`
+	var stdout bytes.Buffer
+	opts := &commandOptions{
+		stateDir: stateDir, format: "text",
+		stdin: strings.NewReader(payload), stdout: &stdout, stderr: &bytes.Buffer{},
+	}
+	// Pre-migrate once (CLA-R1-F3, matching the sibling test above) but seed
+	// no settings: a fresh/deleted state dir defaults every switch off
+	// (requirements.md clause 1).
+	if warmup, _, err := opts.openStore(context.Background()); err != nil {
+		t.Fatalf("openStore (warmup): %v", err)
+	} else if err := warmup.Close(); err != nil {
+		t.Fatalf("close warmup store: %v", err)
+	}
+	if err := runQuotaCapture(context.Background(), opts); err != nil {
+		t.Fatalf("runQuotaCapture: %v", err)
+	}
+	if stdout.String() != "prior-output" {
+		t.Fatalf("stdout = %q, want the prior command's output still passed through even though capture itself is not authorized", stdout.String())
+	}
+
+	database, _, err := opts.openStore(context.Background())
+	if err != nil {
+		t.Fatalf("openStore: %v", err)
+	}
+	defer database.Close()
+	windows, err := quota.NewStore(database.DB).Windows(context.Background(), quota.ClientClaude)
+	if err != nil {
+		t.Fatalf("Windows: %v", err)
+	}
+	if len(windows) != 0 {
+		t.Fatalf("windows = %+v, want none: neither switch authorized capture", windows)
 	}
 }
 

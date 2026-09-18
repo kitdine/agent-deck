@@ -74,6 +74,18 @@ func runQuotaCapture(ctx context.Context, opts *commandOptions) error {
 		return nil
 	}
 	defer database.Close()
+	// Codex PR #5 eleventh review, P1: AgentDeck's command can remain
+	// registered in ~/.claude/settings.json after its state directory is
+	// deleted, reset, or replaced, or after the user has turned reading or
+	// status-line consent back off without the route itself being restored
+	// yet. Persisting on every invocation regardless bypasses the feature's
+	// default-off and explicit-consent boundary. Load the current switches
+	// after the chain has already run (CLA-R1-F3 ordering, unaffected either
+	// way) and persist only when both authorize capture.
+	settings, err := quota.LoadSettings(captureCtx, database)
+	if err != nil || !settings.ProbeEnabled || !settings.StatusLineConsent {
+		return nil
+	}
 	// captureCtx, not the uncapped parent ctx: another connection can hold the
 	// write lock without holding the state lock, so opening the store can
 	// return quickly while Store.Record's own BeginTx still blocks on that

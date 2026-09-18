@@ -1129,6 +1129,10 @@ public struct DesktopSubscriptionWindowV1: Codable, Equatable, Sendable {
 	public let windowMinutesReason: DesktopQuotaReasonV1?
 	public let usedPercent: Double
 	public let resetsAt: String?
+	/// Set only when resetsAt is absent -- mirrors windowMinutesReason,
+	/// except this field has exactly one possible cause (the vendor did not
+	/// report a reset time), unlike window_minutes' several distinct ones.
+	public let resetsAtReason: DesktopQuotaReasonV1?
 	/// This window's own observation instant, distinct from the client's
 	/// aggregate observed_at (the newest across windows/envelope): a surface
 	/// dating the windows it actually displays needs each window's own age.
@@ -1147,6 +1151,7 @@ public struct DesktopSubscriptionWindowV1: Codable, Equatable, Sendable {
 		case windowMinutesReason = "window_minutes_reason"
 		case usedPercent = "used_percent"
 		case resetsAt = "resets_at"
+		case resetsAtReason = "resets_at_reason"
 		case observedAt = "observed_at"
 		case source
 	}
@@ -1159,6 +1164,7 @@ public struct DesktopSubscriptionWindowV1: Codable, Equatable, Sendable {
 		windowMinutesReason = try container.decodeIfPresent(DesktopQuotaReasonV1.self, forKey: .windowMinutesReason)
 		usedPercent = try container.decode(Double.self, forKey: .usedPercent)
 		resetsAt = try decodeQuotaTimestamp(container, .resetsAt)
+		resetsAtReason = try container.decodeIfPresent(DesktopQuotaReasonV1.self, forKey: .resetsAtReason)
 		observedAt = try decodeQuotaTimestamp(container, .observedAt)
 		source = try container.decodeIfPresent(DesktopQuotaSourceV1.self, forKey: .source)
 	}

@@ -400,12 +400,14 @@ func runDesktopQuotaRefresh(ctx context.Context, opts *commandOptions, manual bo
 
 	warnings := []string{}
 	// outcome's empty reason means this cycle's C1 gate passed for that
-	// client; anything else, in particular not_official, means quota reading
-	// switched away from that client's official provider, and its retained
-	// windows must not generate alerts until it is official again.
+	// client; anything else -- not_official, or probe_failed when the gate
+	// itself could not be evaluated (Codex PR #5 eleventh review, P2: an
+	// unknown gate is not a confirmed official one either) -- means the gate
+	// did not affirmatively pass, and its retained windows must not generate
+	// alerts until it does.
 	officialClients := map[quota.Client]bool{
-		quota.ClientCodex:  outcome[quota.ClientCodex] != quota.ReasonNotOfficial,
-		quota.ClientClaude: outcome[quota.ClientClaude] != quota.ReasonNotOfficial,
+		quota.ClientCodex:  outcome[quota.ClientCodex] == "",
+		quota.ClientClaude: outcome[quota.ClientClaude] == "",
 	}
 	due, err := quota.DueAlerts(ctx, quota.NewStore(core.DB), settings.ProbeEnabled, officialClients, settings.AlertConfig(), time.Now())
 	if err != nil {

@@ -584,6 +584,29 @@ final class MenuBarChromeTests: XCTestCase {
 		XCTAssertEqual(panel.quotaPercentText(90), "90%")
 	}
 
+	// Codex PR #5 eleventh review, P2: a window with no resets_at used to
+	// render nothing for it, unlike every other absent field on the card.
+	func testWindowResetLabelRendersTheReasonWhenResetsAtIsAbsent() throws {
+		let panel = QuotaPanelView(clients: [])
+		func window(resetsAt: Any, reason: Any) throws -> DesktopSubscriptionWindowV1 {
+			try JSONDecoder().decode(
+				DesktopSubscriptionWindowV1.self,
+				from: JSONSerialization.data(withJSONObject: [
+					"key": "codex", "label": NSNull(), "window_minutes": 300,
+					"window_minutes_reason": NSNull(), "used_percent": 40, "resets_at": resetsAt,
+					"resets_at_reason": reason,
+				])
+			)
+		}
+
+		let missing = try window(resetsAt: NSNull(), reason: "not_reported")
+		XCTAssertEqual(panel.windowResetLabel(missing), t(DesktopCopy.quotaReasonNotReported))
+
+		let present = try window(resetsAt: "2026-09-18T05:00:00Z", reason: NSNull())
+		XCTAssertNotNil(panel.windowResetLabel(present, now: Date(timeIntervalSince1970: 0)))
+		XCTAssertNotEqual(panel.windowResetLabel(present, now: Date(timeIntervalSince1970: 0)), t(DesktopCopy.quotaReasonNotReported))
+	}
+
 	func testQuotaCardShowsMissingPlanAndResetTotalReasons() throws {
 		let panel = QuotaPanelView(clients: [])
 		let client = try JSONDecoder().decode(

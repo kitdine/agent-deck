@@ -41,6 +41,29 @@ final class WidgetTimelineTests: XCTestCase {
 		XCTAssertEqual(entry.period, .sevenDays)
 	}
 
+	// Codex PR #5 eleventh review, P2: quota clients already carry a
+	// window-aware `stale` flag distinct from the generic snapshot-wide
+	// six-hour/fifteen-minute cutoffs. .old must follow that flag, not the
+	// generic ladder, in both directions.
+	func testQuotaQualifierFollowsThePresentedClientsStaleFlagNotTheGenericAgeLadder() throws {
+		let generated = try XCTUnwrap(WidgetTimelinePolicy.date(try widgetFixture("snapshot-complete").generatedAt))
+
+		let staleSnapshot = try snapshotWithQuotaStale(widgetFixture("snapshot-complete"), client: "codex", stale: true)
+		let staleEntry = AgentDeckWidgetEntry(date: generated, snapshot: staleSnapshot, kind: .quota, client: .codex, period: .today, isPlaceholder: false)
+		XCTAssertTrue(
+			WidgetSurfaceModel(entry: staleEntry, now: generated).qualifiers.contains(.old),
+			"a client marked stale must qualify as .old even at zero snapshot age"
+		)
+
+		let freshSnapshot = try snapshotWithQuotaStale(widgetFixture("snapshot-complete"), client: "codex", stale: false)
+		let freshEntry = AgentDeckWidgetEntry(date: generated, snapshot: freshSnapshot, kind: .quota, client: .codex, period: .today, isPlaceholder: false)
+		let farFuture = generated.addingTimeInterval(7 * 60 * 60)
+		XCTAssertFalse(
+			WidgetSurfaceModel(entry: freshEntry, now: farFuture).qualifiers.contains(.old),
+			"a client the producer marked not stale must not qualify as .old from the generic snapshot-age ladder"
+		)
+	}
+
 	func testAgingOldAndPartialQualifiersUseFixedOrder() throws {
 		let partial = try snapshotWithPartial(widgetFixture("snapshot-complete"))
 		let generated = try XCTUnwrap(WidgetTimelinePolicy.date(partial.generatedAt))
@@ -157,6 +180,63 @@ final class WidgetTimelineTests: XCTestCase {
 		let shown = model.presentedQuotaClients(family: .systemLarge)
 		XCTAssertEqual(Set(shown.map(\.client)), ["codex", "claude"])
 		XCTAssertTrue(shown.allSatisfy { $0.failure == .probeDisabled })
+	}
+
+	// Codex PR #5 eleventh review, P2: a window with no resets_at used to
+	// render nothing here, unlike every other absent field on this row.
+	func testQuotaResetLabelRendersTheReasonWhenResetsAtIsAbsent() throws {
+		let now = Date(timeIntervalSince1970: 10_000)
+		func window(resetsAt: Any, reason: Any) throws -> DesktopSubscriptionWindowV1 {
+			try JSONDecoder().decode(
+				DesktopSubscriptionWindowV1.self,
+				from: JSONSerialization.data(withJSONObject: [
+					"key": "codex", "label": NSNull(), "window_minutes": 300,
+					"window_minutes_reason": NSNull(), "used_percent": 40, "resets_at": resetsAt,
+					"resets_at_reason": reason,
+				])
+			)
+		}
+
+		let missing = try window(resetsAt: NSNull(), reason: "not_reported")
+		XCTAssertEqual(quotaResetLabel(missing, now: now), WidgetCopy.text("Reset not reported"))
+
+		let present = try window(resetsAt: ISO8601DateFormatter().string(from: now.addingTimeInterval(3600)), reason: NSNull())
+		XCTAssertEqual(quotaResetLabel(present, now: now), "1h")
+	}
+
+	// Codex PR #5 eleventh review, P2: the Codex adapter deliberately supports
+	// an arbitrary window count (the documented Codex Plus presentation
+	// alone already has four), but medium's row list unconditionally kept
+	// only the first three -- silently dropping the fourth bucket even in
+	// that base case. Medium must render every reported window.
+	func testMediumQuotaWidgetRendersEveryReportedWindowWithoutATruncationCap() throws {
+		func window(_ index: Int) throws -> DesktopSubscriptionWindowV1 {
+			try JSONDecoder().decode(
+				DesktopSubscriptionWindowV1.self,
+				from: JSONSerialization.data(withJSONObject: [
+					"key": "w\(index)", "label": NSNull(), "window_minutes": 300,
+					"window_minutes_reason": NSNull(), "used_percent": Double(index), "resets_at": NSNull(),
+				])
+			)
+		}
+		let client = try JSONDecoder().decode(
+			DesktopSubscriptionClientV1.self,
+			from: JSONSerialization.data(withJSONObject: [
+				"client": "codex", "applicable": true, "applicable_reason": NSNull(),
+				"source": "codex_app_server", "observed_at": "2026-09-18T02:00:00Z", "stale": false,
+				"attribution_confirmed": true, "plan": NSNull(), "plan_reason": NSNull(),
+				"windows": try (0 ..< 5).map { try JSONSerialization.jsonObject(with: JSONEncoder().encode(window($0))) },
+				"tightest_window_key": NSNull(), "reset_allowance": NSNull(),
+				"reset_allowance_reason": NSNull(), "observed_reset_at": NSNull(), "failure": NSNull(),
+			])
+		)
+		let entry = AgentDeckWidgetEntry(
+			date: Date(), snapshot: try widgetFixture("snapshot-complete"),
+			kind: .quota, client: .codex, period: .today, isPlaceholder: false
+		)
+		let model = WidgetSurfaceModel(entry: entry, now: entry.date)
+
+		XCTAssertEqual(model.quotaWindows(for: client, family: .systemMedium).count, 5)
 	}
 
 	// Codex PR #5 P1: small/medium narrow an .all-configured widget to one

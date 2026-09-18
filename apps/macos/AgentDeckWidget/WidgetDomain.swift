@@ -131,10 +131,18 @@ struct WidgetSurfaceModel {
 		if snapshot.partial || quotaHasFailure {
 			result.append(.partial)
 		}
-		let freshnessInstant = entry.kind == .quota
-			? quotaFooterObservedAt(family: family).flatMap(WidgetTimelinePolicy.date)
-			: WidgetTimelinePolicy.date(snapshot.generatedAt)
-		if let generated = freshnessInstant {
+		if entry.kind == .quota {
+			// Codex PR #5 eleventh review, P2: quota clients already carry a
+			// window-aware `stale` flag (a five-hour window at the default
+			// interval is stale after 30 minutes, per architecture.md C9),
+			// distinct from the generic snapshot-wide six-hour/fifteen-minute
+			// cutoffs below. Deriving quota's freshness qualifier from that
+			// generic ladder instead disagreed with the same client's own
+			// `stale` reading on the CLI and menu bar.
+			if presentedQuotaClients(family: family).contains(where: \.stale) {
+				result.append(.old)
+			}
+		} else if let generated = WidgetTimelinePolicy.date(snapshot.generatedAt) {
 			let age = now.timeIntervalSince(generated)
 			if age > 6 * 60 * 60 {
 				result.append(.old)
@@ -243,7 +251,15 @@ struct WidgetSurfaceModel {
 				lhs.usedPercent == rhs.usedPercent ? lhs.key < rhs.key : lhs.usedPercent > rhs.usedPercent
 			}.prefix(1))
 		}
-		return Array(client.windows.prefix(family == .systemLarge ? 4 : 3))
+		if family == .systemLarge {
+			return Array(client.windows.prefix(4))
+		}
+		// Codex PR #5 eleventh review, P2: the Codex adapter deliberately
+		// supports an arbitrary window count, and the documented Codex Plus
+		// presentation alone already has four -- a fixed three-row cap here
+		// silently dropped the fourth (often the limiting) bucket even in
+		// that base case. Render every reported window instead of truncating.
+		return client.windows
 	}
 
 	var chartValues: [Double] {

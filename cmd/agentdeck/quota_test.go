@@ -374,6 +374,46 @@ func TestDesktopQuotaRefreshWithReadingOffProbesAndEvaluatesNothing(t *testing.T
 	}
 }
 
+// Codex PR #5 eleventh review, P2: a provider-selection read failure now
+// reports ReasonProbeFailed instead of falling through as a false
+// not_official, but this handler's officialClients map still treated every
+// reason other than ReasonNotOfficial as a confirmed official gate --
+// letting a retained window whose gate is genuinely unknown still fire a
+// threshold alert.
+func TestDesktopQuotaRefreshSuppressesAlertsWhenTheProviderGateIsUnknown(t *testing.T) {
+	state := filepath.Join(t.TempDir(), "state")
+	withTestHome(t, t.TempDir())
+	seedQuotaState(t, state, func(s *quota.Settings) {
+		s.ProbeEnabled, s.AlertsEnabled, s.AlertThresholds = true, true, []float64{75}
+	})
+	withFakeQuotaRefresh(t, 80)
+
+	database, err := store.Open(context.Background(), state)
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	now := time.Now().UTC()
+	if _, _, _, err := quota.NewStore(database.DB).Record(context.Background(), quota.Observation{
+		Client: quota.ClientCodex, AccountID: "acct", WindowKey: "codex", Source: quota.SourceCodex,
+		ObservedAt: now, WindowMinutes: 300, UsedPercent: 90, ResetsAt: now.Add(3 * time.Hour),
+	}); err != nil {
+		t.Fatalf("Record: %v", err)
+	}
+	if _, err := database.DB.ExecContext(context.Background(), "DROP TABLE operations"); err != nil {
+		t.Fatalf("DROP TABLE operations: %v", err)
+	}
+	database.Close()
+
+	data := runJSON(t, "--state-dir", state, "--format", "json", "desktop", "quota-refresh", "--manual")
+	gates, _ := data["gate_reasons"].(map[string]any)
+	if gates["codex"] != string(quota.ReasonProbeFailed) {
+		t.Fatalf("gate_reasons = %v, want codex probe_failed", gates)
+	}
+	if alerts := quotaRefreshAlerts(t, data); len(alerts) != 0 {
+		t.Fatalf("alerts = %+v, want none: a client whose gate could not be evaluated must not be treated as confirmed official", alerts)
+	}
+}
+
 func TestDesktopQuotaAlertsAckRejectsAnInvalidIDAndRecordsNothing(t *testing.T) {
 	state := filepath.Join(t.TempDir(), "state")
 	withTestHome(t, t.TempDir())

@@ -83,6 +83,21 @@ func snapshotWithQuotaObservedAt(_ snapshot: WidgetDesktopSnapshotV1, values: [S
 	return try JSONDecoder().decode(WidgetDesktopSnapshotV1.self, from: JSONSerialization.data(withJSONObject: object))
 }
 
+/// Sets one client's own `stale` flag, leaving every other field (including
+/// the snapshot-wide generatedAt) untouched -- for proving the quota
+/// qualifier derives from this producer-computed flag rather than the
+/// generic snapshot-age ladder.
+func snapshotWithQuotaStale(_ snapshot: WidgetDesktopSnapshotV1, client: String, stale: Bool) throws -> WidgetDesktopSnapshotV1 {
+	var object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(snapshot)) as? [String: Any])
+	var subscription = try XCTUnwrap(object["subscription"] as? [String: Any])
+	var clients = try XCTUnwrap(subscription["clients"] as? [[String: Any]])
+	let clientIndex = try XCTUnwrap(clients.firstIndex { ($0["client"] as? String) == client })
+	clients[clientIndex]["stale"] = stale
+	subscription["clients"] = clients
+	object["subscription"] = subscription
+	return try JSONDecoder().decode(WidgetDesktopSnapshotV1.self, from: JSONSerialization.data(withJSONObject: object))
+}
+
 /// Sets one specific window's own observed_at, leaving the client-level
 /// aggregate and every other window untouched -- for exercising the mixed-age
 /// case a partial update leaves behind.

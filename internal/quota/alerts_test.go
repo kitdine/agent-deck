@@ -466,6 +466,57 @@ func TestAcknowledgeAlertRejectsIDsTheEvaluatorCannotProduce(t *testing.T) {
 	}
 }
 
+// Codex PR #5 eleventh review, P2: desktop.BuildSubscription already hides a
+// client's retained windows once its envelope shows an unsuperseded parse
+// failure (they are not read as the account's current quota there either),
+// but DueAlerts read the store directly without that same check -- so an
+// unacknowledged threshold already crossed before the failure, or alerts
+// enabled while the failure is already in effect, could still fire a
+// notification carrying the stale pre-failure percentage.
+func TestDueAlertsSuppressesAClientWithAnUnsupersededParseFailure(t *testing.T) {
+	store, _ := openTestStore(t)
+	ctx := context.Background()
+	t0 := time.Date(2026, 9, 10, 10, 0, 0, 0, time.UTC)
+	failedAt := t0.Add(10 * time.Minute)
+
+	recordWindow(t, store, claudeFiveHour(t0, t0.Add(3*time.Hour), 91, SourceClaudeProse))
+	if err := store.PutEnvelopeFailure(ctx, ClientClaude, ReasonParseFailed, failedAt, time.Time{}, failedAt); err != nil {
+		t.Fatalf("PutEnvelopeFailure: %v", err)
+	}
+
+	due, err := DueAlerts(ctx, store, true, bothClientsOfficial, bothThresholds, failedAt.Add(time.Minute))
+	if err != nil {
+		t.Fatalf("DueAlerts: %v", err)
+	}
+	if len(due) != 0 {
+		t.Fatalf("due = %+v, want none: a client with an unsuperseded parse failure must not still notify from its stale retained figure", due)
+	}
+}
+
+// Companion to the suppression above: a later status-line success must still
+// notify normally, proving the fix does not over-broadly suppress every
+// client that has ever recorded a parse failure.
+func TestDueAlertsStillFiresWhenAStatusLineSuccessSupersedesAnOlderParseFailure(t *testing.T) {
+	store, _ := openTestStore(t)
+	ctx := context.Background()
+	t0 := time.Date(2026, 9, 10, 10, 0, 0, 0, time.UTC)
+	failedAt := t0.Add(10 * time.Minute)
+
+	if err := store.PutEnvelopeFailure(ctx, ClientClaude, ReasonParseFailed, failedAt, time.Time{}, failedAt); err != nil {
+		t.Fatalf("PutEnvelopeFailure: %v", err)
+	}
+	statusLineAt := failedAt.Add(time.Minute)
+	recordWindow(t, store, claudeFiveHour(statusLineAt, statusLineAt.Add(3*time.Hour), 91, SourceClaudeStatusLine))
+
+	due, err := DueAlerts(ctx, store, true, bothClientsOfficial, bothThresholds, statusLineAt.Add(time.Minute))
+	if err != nil {
+		t.Fatalf("DueAlerts: %v", err)
+	}
+	if len(due) == 0 {
+		t.Fatalf("due = %+v, want the status-line success (newer than the failure) to still notify", due)
+	}
+}
+
 // Codex PR #5 P2: when reading is on but a client has switched away from the
 // official provider, that client's retained windows are stale for alerting
 // purposes -- RefreshQuota's own gate skips probing it (Reason=not_official)
