@@ -480,6 +480,34 @@ func TestDesktopQuotaSettingsReadingOffReportsRestoreIncompleteWhenTheFileChange
 	}
 }
 
+// Codex PR #5 sixth review, P2: managedStatusLineCommand recognizes any
+// AgentDeck installation's route regardless of --state-dir (by design, for
+// RestoreStatusLine's own dead-lock safety), so a state directory with no
+// consent of its own must not attempt -- and thereby delete -- a route that
+// belongs to a *different*, actively consented state directory.
+func TestDesktopQuotaSettingsReadingOffPreservesAnotherStateDirsStatusLineRoute(t *testing.T) {
+	home := t.TempDir()
+	withTestHome(t, home)
+
+	stateB := filepath.Join(t.TempDir(), "state-b")
+	runJSON(t, "--state-dir", stateB, "--format", "json", "desktop", "quota-settings", "--reading", "on")
+	runJSON(t, "--state-dir", stateB, "--format", "json", "desktop", "quota-statusline", "enable")
+	commandB := claudeStatusLineCommand(t, home)
+	if commandB == "" {
+		t.Fatal("state B did not register its own statusLine command")
+	}
+
+	stateA := filepath.Join(t.TempDir(), "state-a")
+	runJSON(t, "--state-dir", stateA, "--format", "json", "desktop", "quota-settings", "--reading", "on")
+	data := runJSON(t, "--state-dir", stateA, "--format", "json", "desktop", "quota-settings", "--reading", "off")
+	if restore := data["statusline_restore"]; restore != nil {
+		t.Fatalf("statusline_restore = %v, want no restore attempt: state A has no consent of its own", restore)
+	}
+	if got := claudeStatusLineCommand(t, home); got != commandB {
+		t.Fatalf("statusLine command = %q, want state B's route %q left untouched", got, commandB)
+	}
+}
+
 func TestDesktopQuotaSettingsLeavesAUsersOwnStatusLineAlone(t *testing.T) {
 	home := t.TempDir()
 	withTestHome(t, home)

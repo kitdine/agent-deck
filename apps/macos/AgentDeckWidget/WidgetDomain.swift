@@ -120,7 +120,15 @@ struct WidgetSurfaceModel {
 	func qualifiers(family: WidgetFamily) -> [WidgetQualifier] {
 		guard surface == .data, let snapshot = entry.snapshot else { return [] }
 		var result = [WidgetQualifier]()
-		if snapshot.partial {
+		// Codex PR #5 sixth review, P1: a shown client's latest probe can fail
+		// while its prior windows are retained and displayed (C9); quotaFooterReason
+		// alone stays silent whenever there is still a freshness instant to show,
+		// so the failure needs its own visible qualifier rather than being
+		// suppressed by the retained figures. .partial's existing "Some data
+		// unavailable" wording already fits this: the *current* reading, not the
+		// displayed figures themselves, is what is missing.
+		let quotaHasFailure = entry.kind == .quota && presentedQuotaClients(family: family).contains { $0.failure != nil }
+		if snapshot.partial || quotaHasFailure {
 			result.append(.partial)
 		}
 		let freshnessInstant = entry.kind == .quota

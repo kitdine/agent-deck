@@ -291,7 +291,11 @@ enum DesktopCopy {
 	static let quotaLeft = "%lld left"
 	static let quotaWindow5h = "5h window"
 	static let quotaWindow7d = "7d window"
-	static let quotaResetsIn = "Resets in %@"
+	// Codex PR #5 sixth review, P2: DesktopFormat.relative already returns a
+	// full localized phrase for a future instant ("in 2 hours", or the
+	// Chinese equivalent ending in 后) -- these templates must not add a
+	// second preposition ("Resets in in 2 hours").
+	static let quotaResetsIn = "Resets %@"
 	static let quotaObservedAt = "Read %@"
 	static let quotaStale = "Stale"
 	static let quotaReasonNotReported = "This client does not report it"
@@ -302,7 +306,7 @@ enum DesktopCopy {
 	static let quotaReasonNotConsented = "Status-line route not enabled"
 	static let quotaReasonProbeDisabled = "Quota reading is off"
 	static let quotaCreditGranted = "Granted %@"
-	static let quotaCreditExpires = "Expires in %@"
+	static let quotaCreditExpires = "Expires %@"
 
 	/// The inventory the localization test walks. Every key above appears here.
 	static let allKeys: [String] = [

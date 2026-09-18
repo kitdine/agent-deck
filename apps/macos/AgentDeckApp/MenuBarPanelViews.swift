@@ -1350,6 +1350,14 @@ struct QuotaPanelView: View {
 					Text(reasonLabel(reason)).font(.caption).foregroundStyle(DesktopVisualTheme.dim)
 				}
 			} else {
+				// Codex PR #5 sixth review, P1: after a probe_failed attempt
+				// following an earlier success, the wire retains the last windows
+				// and still sets client.failure (C9) -- primaryReason returns nil
+				// whenever windows remain, so without this the card showed the
+				// retained figures with no indication the last refresh failed.
+				if let failure = client.failure {
+					Text(reasonLabel(failure)).font(.caption2).foregroundStyle(DesktopVisualTheme.warning)
+				}
 				ForEach(client.windows, id: \.key) { window in windowRow(window) }
 			}
 			if let allowance = client.resetAllowance {

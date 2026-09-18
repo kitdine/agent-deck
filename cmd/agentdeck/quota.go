@@ -117,6 +117,12 @@ func renderQuotaText(w io.Writer, subscription desktop.SubscriptionSnapshot) err
 		header := []string{name}
 		if client.Plan != nil {
 			header = append(header, "plan "+*client.Plan)
+		} else if client.PlanReason != nil {
+			// Codex PR #5 sixth review, P2: a nil Plan with a PlanReason (e.g.
+			// Codex omitting planType, or Claude's always-unsupported plan)
+			// must still surface the field as unavailable with its reason,
+			// matching the quota contract, instead of silently omitting it.
+			header = append(header, "plan "+quotaReasonPhrase(client.PlanReason))
 		}
 		if client.Source != nil {
 			header = append(header, "via "+*client.Source)
@@ -143,7 +149,15 @@ func renderQuotaText(w io.Writer, subscription desktop.SubscriptionSnapshot) err
 			if client.TightestWindowKey != nil && *client.TightestWindowKey == window.Key {
 				marker = "  tightest"
 			}
-			fmt.Fprintf(&b, "  %-32s %4.0f%%  %s%s\n", quotaWindowName(window), window.UsedPercent, resets, marker)
+			fmt.Fprintf(&b, "  %-32s %4.0f%%  %s%s", quotaWindowName(window), window.UsedPercent, resets, marker)
+			// Codex PR #5 sixth review, P2: a partial mixed-age Claude update
+			// can leave one window observed well before the client-level
+			// timestamp above; print each window's own instant rather than
+			// let it be read as observed then too.
+			if window.ObservedAt != nil {
+				fmt.Fprintf(&b, "  (observed %s)", *window.ObservedAt)
+			}
+			b.WriteString("\n")
 		}
 		if allowance := client.ResetAllowance; allowance != nil {
 			var details []string
@@ -527,9 +541,19 @@ func runDesktopQuotaSettings(ctx context.Context, opts *commandOptions, apply fu
 		if err != nil {
 			return err
 		}
-		// Restore only a route AgentDeck installed. A statusLine that is not
-		// AgentDeck's command belongs to the user and is left alone.
-		if current.StatusLineConsent || status.Configuration == usagehook.ConfigurationConfigured || status.Configuration == usagehook.ConfigurationModified {
+		// Restore only a route this state installed. ConfigurationModified
+		// means something recognizable as an AgentDeck route is registered
+		// but does not exactly match this state's own desired entry --
+		// managedStatusLineCommand deliberately ignores --state-dir (for
+		// RestoreStatusLine's dead-lock safety elsewhere), so that state is
+		// reached just as readily by a *different* state directory's active,
+		// consented route as by this state's own drifted one. Without
+		// current.StatusLineConsent already true, RestoreStatusLine's
+		// modified-managed branch would delete that other state's route
+		// outright, with no prior record of its own to restore (Codex PR #5
+		// sixth review, P2). A statusLine that is not AgentDeck's command at
+		// all belongs to the user and is left alone either way.
+		if current.StatusLineConsent || status.Configuration == usagehook.ConfigurationConfigured {
 			result, err := manager.RestoreStatusLine()
 			if err != nil {
 				return err

@@ -1133,6 +1133,12 @@ public struct DesktopSubscriptionWindowV1: Codable, Equatable, Sendable {
 	/// aggregate observed_at (the newest across windows/envelope): a surface
 	/// dating the windows it actually displays needs each window's own age.
 	public let observedAt: String?
+	/// This window's own provenance, additive for the same reason as
+	/// observedAt: a status-line refresh that updates only one Claude window
+	/// leaves the other stored window from the prose route (C5), and the
+	/// client-level source alone would mislabel it (Codex PR #5 sixth
+	/// review, P2).
+	public let source: DesktopQuotaSourceV1?
 
 	enum CodingKeys: String, CodingKey {
 		case key
@@ -1142,6 +1148,7 @@ public struct DesktopSubscriptionWindowV1: Codable, Equatable, Sendable {
 		case usedPercent = "used_percent"
 		case resetsAt = "resets_at"
 		case observedAt = "observed_at"
+		case source
 	}
 
 	public init(from decoder: Decoder) throws {
@@ -1153,6 +1160,7 @@ public struct DesktopSubscriptionWindowV1: Codable, Equatable, Sendable {
 		usedPercent = try container.decode(Double.self, forKey: .usedPercent)
 		resetsAt = try decodeQuotaTimestamp(container, .resetsAt)
 		observedAt = try decodeQuotaTimestamp(container, .observedAt)
+		source = try container.decodeIfPresent(DesktopQuotaSourceV1.self, forKey: .source)
 	}
 }
 

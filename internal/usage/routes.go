@@ -407,11 +407,17 @@ func (s *Service) RecordHookDelivery(ctx context.Context, delivery HookDelivery)
 // switched providers within AgentDeck (GS-R1-F1): this function only reports
 // what was observed and when, and takes no position on staleness itself.
 func (s *Service) LatestObservedProvider(ctx context.Context, client string) (provider string, observedAt time.Time, ok bool, err error) {
+	// Ordered by id, not observed_at: RFC3339Nano's fractional part omits
+	// trailing zeros, so its textual length varies and SQLite's lexicographic
+	// TEXT ordering is not always chronological (".1Z" sorts after the later
+	// ".100000001Z"). usage_session_observations is insert-only and unique on
+	// delivery_id, so its rowid-aliased id already reflects arrival order
+	// (Codex PR #5 sixth review, P2).
 	var observedAtText string
 	err = s.Store.DB.QueryRowContext(ctx, `
 		SELECT observed_provider, observed_at FROM usage_session_observations
 		WHERE client = ? AND observed_provider IS NOT NULL AND observed_provider != ''
-		ORDER BY observed_at DESC LIMIT 1`, client).Scan(&provider, &observedAtText)
+		ORDER BY id DESC LIMIT 1`, client).Scan(&provider, &observedAtText)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", time.Time{}, false, nil
 	}

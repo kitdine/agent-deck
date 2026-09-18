@@ -58,7 +58,7 @@ private struct RhythmWidget: Widget {
 
 private struct QuotaWidget: Widget {
 	var body: some WidgetConfiguration {
-		AppIntentConfiguration(kind: "com.kitdine.agentdeck.widget.quota", intent: ClientWidgetIntent.self, provider: ClientTimelineProvider(kind: .quota)) { entry in
+		AppIntentConfiguration(kind: "com.kitdine.agentdeck.widget.quota", intent: QuotaWidgetIntent.self, provider: QuotaTimelineProvider()) { entry in
 			AgentDeckWidgetView(entry: entry)
 		}
 		.configurationDisplayName("Quota")

@@ -56,6 +56,13 @@ type SubscriptionWindow struct {
 	// it actually displays -- not the client as a whole -- needs each
 	// window's own instant, not the client's.
 	ObservedAt *string `json:"observed_at"`
+	// Source is this window's own provenance, additive for the same reason
+	// as ObservedAt: a status-line refresh that updates only one Claude
+	// window leaves the other stored window from the prose route (C5), and
+	// newestWindowSource's single client-level Source would otherwise
+	// mislabel it as coming from whichever route reported most recently
+	// (Codex PR #5 sixth review, P2).
+	Source *string `json:"source"`
 }
 
 // SubscriptionResetAllowance is the Codex reset allowance (C6). Credits carry
@@ -104,6 +111,19 @@ func (s Service) loadSubscription(ctx context.Context, core *store.Store, now ti
 // read-only: it reads the quota settings, the provider gate's inputs, and the
 // stored quota state, and writes nothing.
 func (s Service) BuildSubscription(ctx context.Context, core *store.Store, now time.Time) (SubscriptionSnapshot, error) {
+	// core may be opened read-only (store.OpenReadOnly never migrates) and can
+	// therefore still be on a schema version older than quota.MinSchemaVersion
+	// -- an existing install that has not yet run any write command since
+	// upgrading. Querying quota_windows/quota_envelopes on such a database
+	// would fail with "no such table"; report the same reading-off default a
+	// fresh install reports instead (Codex PR #5 sixth review, P1).
+	version, err := core.SchemaVersion(ctx)
+	if err != nil {
+		return unavailableSubscription(), err
+	}
+	if version < quota.MinSchemaVersion {
+		return ReadingOffSubscription(), nil
+	}
 	settings, err := quota.LoadSettings(ctx, core)
 	if err != nil {
 		return unavailableSubscription(), err
@@ -266,7 +286,7 @@ func newestWindowSource(windows []quota.Window) (quota.Source, time.Time) {
 }
 
 func subscriptionWindow(w quota.Window) SubscriptionWindow {
-	out := SubscriptionWindow{Key: w.WindowKey, UsedPercent: w.UsedPercent, ResetsAt: timeText(w.ResetsAt), ObservedAt: timeText(w.ObservedAt)}
+	out := SubscriptionWindow{Key: w.WindowKey, UsedPercent: w.UsedPercent, ResetsAt: timeText(w.ResetsAt), ObservedAt: timeText(w.ObservedAt), Source: sourceText(w.Source)}
 	if w.Label != "" {
 		label := w.Label
 		out.Label = &label

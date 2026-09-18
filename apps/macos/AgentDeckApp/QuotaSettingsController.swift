@@ -147,6 +147,21 @@ final class QuotaSettingsController {
 	/// then overwrite a settings write that completed after it started, or
 	/// vice versa. One shared flag serializes every write this controller
 	/// issues through `drainPendingWrites`, whichever kind it is.
+	///
+	/// Codex PR #5 sixth review, P2 named a real gap here: a caller that
+	/// finds a write already in flight queues its own request and returns
+	/// immediately, before that request has actually been sent, and
+	/// `setAlerts` can then read `settingsRow`/`settings` before its own
+	/// queued write ever reached core state. A caller-blocks-until-its-own-
+	/// request-is-processed fix was tried and reverted: it deadlocks
+	/// `QuotaSettingsControllerTests.testSetAlertsRechecksTheFinalPersistedStateBeforeRequestingPermission`,
+	/// which deliberately queues a second `setAlerts` behind an in-flight
+	/// first one and awaits the second *before* releasing the first via
+	/// `completeNext` -- the coalescing queue's fire-and-forget return for a
+	/// queued caller is relied upon there, not incidental. Fixing the P2
+	/// without changing that contract needs a per-request completion signal
+	/// narrower than "wait for the whole shared drain to go idle"; left as
+	/// `isApplyingWrite` pending that design.
 	@ObservationIgnored private var isApplyingWrite = false
 
 	init(

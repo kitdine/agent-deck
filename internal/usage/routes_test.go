@@ -359,6 +359,47 @@ func TestLatestObservedProviderIgnoresDeliveriesWithNoObservedProvider(t *testin
 	}
 }
 
+// Codex PR #5 sixth review, P2: observed_at is RFC3339Nano text, whose
+// fractional part omits trailing zeros, so its length varies and SQLite's
+// lexicographic TEXT ordering is not always chronological -- ".1Z" sorts
+// after the later ".100000001Z". Rows are inserted directly (arrival order
+// as the schema itself provides it, via id) with observed_at values chosen
+// so the two orderings disagree, proving LatestObservedProvider follows
+// arrival rather than being fooled by the text comparison.
+func TestLatestObservedProviderOrdersByArrivalNotObservedAtText(t *testing.T) {
+	ctx := context.Background()
+	database, err := store.Open(ctx, filepath.Join(t.TempDir(), "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	service := New(database, "")
+
+	insert := func(deliveryID, observedProvider, observedAt string) {
+		t.Helper()
+		if _, err := database.DB.ExecContext(ctx, `
+			INSERT INTO usage_session_observations(
+				client,session_id,observed_at,hook_event,source,
+				config_matched,observed_provider,observed_multiplier,observed_via_wrapper,
+				prior_state,conflict_scan,conflict_sources,route_effect,settings_changed_at,delivery_id
+			) VALUES ('codex','session',?,'SessionStart','resume',1,?,'1',0,'','','','confirmed','',?)`,
+			observedAt, observedProvider, deliveryID); err != nil {
+			t.Fatalf("insert %s: %v", deliveryID, err)
+		}
+	}
+
+	// Arrives first (lower id); a text-lexicographically LARGER observed_at.
+	insert("d1", "older", "2026-01-01T00:00:00.100000001Z")
+	// Arrives second (higher id, the true latest); a text-lexicographically
+	// SMALLER observed_at than d1's, despite being the more recent row.
+	insert("d2", "newer", "2026-01-01T00:00:00.1Z")
+
+	provider, _, ok, err := service.LatestObservedProvider(ctx, "codex")
+	if err != nil || !ok || provider != "newer" {
+		t.Fatalf("LatestObservedProvider = (%q, %v, %v), want (newer, true, nil): the later-arriving row must win regardless of its observed_at text", provider, ok, err)
+	}
+}
+
 // TestRecordHookDeliveryConfigChangeRecordsConfirmedFirstKeyOrUnknownRoute
 // covers Contract 3's two behaviors this task did not change: a confirmed
 // no-key -> first-key transition still advances the route, and an explicit

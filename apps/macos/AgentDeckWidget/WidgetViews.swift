@@ -344,7 +344,11 @@ private struct QuotaWidgetView: View {
 						}
 						.font(.system(size: 9.5)).lineLimit(1)
 						ProgressView(value: min(max(window.usedPercent, 0), 100), total: 100)
-							.tint(window.usedPercent >= 90 ? WidgetPalette.warn : WidgetPalette.accent)
+							// Codex PR #5 sixth review, P2: the quota contract's three
+							// shared tones (below 75% neutral, 75-89.9% elevated, 90%+
+							// warning) match the menu-bar surface and the 75% alert
+							// threshold; this widget skipped the middle tier.
+							.tint(window.usedPercent >= 90 ? WidgetPalette.warn : window.usedPercent >= 75 ? WidgetPalette.info : WidgetPalette.accent)
 					}
 				}
 			}

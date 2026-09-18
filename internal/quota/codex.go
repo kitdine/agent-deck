@@ -187,7 +187,20 @@ func ProbeCodex(ctx context.Context, observedAt time.Time, timeout time.Duration
 	}
 
 	_ = stdin.Close()
-	_ = cmd.Wait()
+	// Codex PR #5 sixth review, P2: a matching JSON-RPC response arriving
+	// before the process's own exit does not prove the process finished
+	// cleanly. Discarding cmd.Wait()'s error here let a crash after printing
+	// the response still parse and persist that response as a successful
+	// current reading -- bypassing this adapter's own documented nonzero-exit
+	// classification -- and could replace retained data with output from a
+	// crashed process. Classified and returned before parsing, mirroring
+	// readJSONRPCResult's own deadline/exit classification.
+	if waitErr := cmd.Wait(); waitErr != nil {
+		if ctx.Err() != nil {
+			return CodexResult{}, &CodexFailureError{Kind: CodexFailureDeadline, Err: ctx.Err()}
+		}
+		return CodexResult{}, &CodexFailureError{Kind: CodexFailureExit, Err: waitErr}
+	}
 
 	result, err := parseCodexResult(resultBytes, observedAt)
 	if err != nil {
@@ -363,10 +376,19 @@ func parseCodexResult(raw []byte, observedAt time.Time) (CodexResult, error) {
 		return CodexResult{}, err
 	}
 
-	result := CodexResult{}
-	if resp.AccountID != nil {
-		result.AccountID = *resp.AccountID
+	// Codex PR #5 sixth review, P1: an absent or null accountId must not
+	// become a successful observation scoped to the empty-account sentinel.
+	// Store.Record/PutEnvelope compare that sentinel against whatever
+	// account digest is already on record, so an unscoped write here would
+	// read as an account change, discarding the correctly attributed
+	// account's windows, notices, and envelope and replacing them with data
+	// that has no confirmed account -- while the wire still reports Codex
+	// attribution as confirmed.
+	if resp.AccountID == nil || *resp.AccountID == "" {
+		return CodexResult{}, errors.New("codex account/rateLimits/read: missing accountId")
 	}
+
+	result := CodexResult{AccountID: *resp.AccountID}
 
 	if resp.RateLimits != nil {
 		if resp.RateLimits.PlanType != nil {

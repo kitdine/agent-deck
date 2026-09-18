@@ -209,10 +209,10 @@ func TestParseCodexResultBillingAbsentOrUnparseable(t *testing.T) {
 		name string
 		raw  string
 	}{
-		{"no rateLimits", `{}`},
-		{"no credits", `{"rateLimits":{}}`},
-		{"null balance", `{"rateLimits":{"credits":{"hasCredits":false,"unlimited":false,"balance":null}}}`},
-		{"unparseable balance", `{"rateLimits":{"credits":{"hasCredits":true,"unlimited":false,"balance":"not-a-number"}}}`},
+		{"no rateLimits", `{"accountId":"acct_x"}`},
+		{"no credits", `{"accountId":"acct_x","rateLimits":{}}`},
+		{"null balance", `{"accountId":"acct_x","rateLimits":{"credits":{"hasCredits":false,"unlimited":false,"balance":null}}}`},
+		{"unparseable balance", `{"accountId":"acct_x","rateLimits":{"credits":{"hasCredits":true,"unlimited":false,"balance":"not-a-number"}}}`},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -244,14 +244,36 @@ func TestParseCodexResultMissingUsedPercentIsMalformed(t *testing.T) {
 		name string
 		raw  string
 	}{
-		{"absent", `{"rateLimits":{"primary":{"windowDurationMins":300}}}`},
-		{"null", `{"rateLimits":{"primary":{"usedPercent":null,"windowDurationMins":300}}}`},
-		{"absent in bucketed view", `{"rateLimitsByLimitId":{"codex":{"primary":{"windowDurationMins":300}}}}`},
+		{"absent", `{"accountId":"acct_x","rateLimits":{"primary":{"windowDurationMins":300}}}`},
+		{"null", `{"accountId":"acct_x","rateLimits":{"primary":{"usedPercent":null,"windowDurationMins":300}}}`},
+		{"absent in bucketed view", `{"accountId":"acct_x","rateLimitsByLimitId":{"codex":{"primary":{"windowDurationMins":300}}}}`},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			if _, err := parseCodexResult([]byte(c.raw), time.Now()); err == nil {
 				t.Fatal("a window missing usedPercent must be classified malformed, not accepted as a 0% observation")
+			}
+		})
+	}
+}
+
+// Codex PR #5 sixth review, P1: an absent or null accountId must be
+// malformed, not a successful observation scoped to the empty-account
+// sentinel -- see the fix's comment in parseCodexResult for why that
+// sentinel is dangerous even when the response also carries real windows.
+func TestParseCodexResultMissingAccountIDIsMalformed(t *testing.T) {
+	cases := []struct {
+		name string
+		raw  string
+	}{
+		{"absent", `{"rateLimits":{"primary":{"usedPercent":10}}}`},
+		{"null", `{"accountId":null,"rateLimits":{"primary":{"usedPercent":10}}}`},
+		{"empty string", `{"accountId":"","rateLimits":{"primary":{"usedPercent":10}}}`},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if _, err := parseCodexResult([]byte(c.raw), time.Now()); err == nil {
+				t.Fatal("a response missing accountId must be classified malformed, not accepted as an unscoped observation")
 			}
 		})
 	}
@@ -400,6 +422,32 @@ done
 	}
 	if failure.Kind != CodexFailureExit || failure.Kind.Reason() != ReasonProbeFailed {
 		t.Fatalf("Kind = %v, want exit mapping to probe_failed", failure.Kind)
+	}
+}
+
+// Codex PR #5 sixth review, P2: a matching response printed just before a
+// crash must not be treated as a successful reading -- the process's own
+// nonzero exit needs to be surfaced as a failure, not silently discarded.
+func TestProbeCodexNonzeroExitAfterResponseIsAFailure(t *testing.T) {
+	withFakeCodex(t, `
+n=0
+while IFS= read -r line; do
+  n=$((n+1))
+  if [ "$n" = "1" ]; then
+    echo '{"id":1,"result":{}}'
+  elif [ "$n" = "3" ]; then
+    echo '{"id":2,"result":{"accountId":"acct_fake","rateLimits":{"planType":"pro"}}}'
+    exit 1
+  fi
+done
+`)
+	_, err := ProbeCodex(context.Background(), time.Now(), 5*time.Second)
+	var failure *CodexFailureError
+	if !errors.As(err, &failure) {
+		t.Fatalf("err = %v, want a *CodexFailureError for a nonzero exit after a matching response", err)
+	}
+	if failure.Kind != CodexFailureExit {
+		t.Fatalf("Kind = %v, want exit", failure.Kind)
 	}
 }
 

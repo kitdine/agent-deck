@@ -28,6 +28,14 @@ func NewStore(db *sql.DB) *Store {
 
 const timeLayout = time.RFC3339Nano
 
+// MinSchemaVersion is the first internal/store/migrations.go version whose
+// database has quota_windows and quota_envelopes. A read-only caller that
+// cannot migrate (store.OpenReadOnly accepts any version up to and including
+// store.CurrentSchemaVersion) must check this before querying either table,
+// rather than let an older, still-supported install's "no such table" surface
+// as a hard command failure (Codex PR #5 sixth review, P1).
+const MinSchemaVersion = 27
+
 // accountDigestDomain namespaces the one-way account digest so it cannot be
 // correlated with a hash of the same raw value computed for an unrelated
 // purpose elsewhere, and so the digest space differs per client.
