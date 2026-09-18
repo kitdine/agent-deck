@@ -1217,6 +1217,16 @@ func (m *Manager) readStatusLinePrior() (statusLinePriorRecord, bool, error) {
 		}
 		record.Value = json.RawMessage(record.Raw)
 	}
+	// Codex PR #5 tenth review, P2: a syntactically valid but incomplete
+	// sidecar such as {"existed":true} decodes with Existed=true and an
+	// empty Value. RestoreStatusLine splices that empty value verbatim into
+	// statusLine's slot, replacing valid JSON with "statusLine":<nothing>.
+	// Refuse to hand back a record that claims a prior existed but carries
+	// none, so the caller's restore fails loudly instead of corrupting the
+	// external file.
+	if record.Existed && len(bytes.TrimSpace(record.Value)) == 0 {
+		return statusLinePriorRecord{}, false, errors.New("recorded prior statusLine record is missing its value")
+	}
 	return record, true, nil
 }
 

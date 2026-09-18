@@ -1703,6 +1703,27 @@ public final class DesktopRefreshCoordinator {
 		}
 	}
 
+	/// Runs only C9's quota probe and C10's alert delivery, without the full
+	/// desktop snapshot refresh `refresh(...)` otherwise couples it to.
+	///
+	/// Codex PR #5 tenth review, P1: quota alerts were evaluated only as a
+	/// side effect of `refresh(...)`, whose own background schedule
+	/// (`AgentDeckApp.startPeriodicRefresh`) is gated on the separate,
+	/// independently opt-in-and-off-by-default "Periodic refresh" General
+	/// preference -- rescanning sessions/usage on every tick. A user who
+	/// enables quota reading and alerts but leaves that unrelated preference
+	/// untouched got no threshold or reset notifications until a manual
+	/// refresh or relaunch. This lighter entry point lets a caller schedule
+	/// alert evaluation on its own cadence, independent of that preference
+	/// and without paying for a full snapshot rescan every tick.
+	public func refreshQuotaAlertsOnly(manual: Bool) async {
+		guard let quotaRefresher else { return }
+		let alerts = await quotaRefresher.refreshQuota(manual: manual)
+		guard !alerts.isEmpty, let alertDeliverer else { return }
+		let delivered = await alertDeliverer.deliver(alerts)
+		await quotaRefresher.acknowledgeQuotaAlerts(ids: delivered)
+	}
+
 	public func refresh(
 		recentLimit: Int = EmbeddedHelperRunner.defaultRecentLimit,
 		replacingActiveRefresh: Bool = false,
@@ -1729,13 +1750,7 @@ public final class DesktopRefreshCoordinator {
 				return
 			}
 			do {
-				if let quotaRefresher = self.quotaRefresher {
-					let alerts = await quotaRefresher.refreshQuota(manual: manualQuota)
-					if !alerts.isEmpty, let alertDeliverer = self.alertDeliverer {
-						let delivered = await alertDeliverer.deliver(alerts)
-						await quotaRefresher.acknowledgeQuotaAlerts(ids: delivered)
-					}
-				}
+				await self.refreshQuotaAlertsOnly(manual: manualQuota)
 				guard !Task.isCancelled else { return }
 				let envelope = try await self.host.refresh(recentLimit: recentLimit) { [weak self] progress in
 					Task { @MainActor in

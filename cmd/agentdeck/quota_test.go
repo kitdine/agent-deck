@@ -691,6 +691,89 @@ func TestDesktopQuotaStatusLineEnableRollsBackRouteWhenConsentSaveFails(t *testi
 	}
 }
 
+// Codex PR #5 tenth review, P2: mirror image of the enable-side rollback
+// above. A disable can have RestoreStatusLine already remove AgentDeck's
+// route from settings.json before the consent-persistence write fails; core
+// state then still carries the pre-call StatusLineConsent=true (the save
+// never committed), so the next load would present capture as enabled while
+// no route is actually installed. The route must be reinstalled so the file
+// agrees with what core state still says.
+// Codex PR #5 tenth review, P2: the app loads settings by running
+// `quota-settings` with no mutation flags, which used to unconditionally
+// save the just-read value back -- turning a read into a read-modify-write
+// that could silently undo a confirmed write from a concurrent helper
+// process landing between the read and this save. A call with no mutation
+// flags must not persist anything at all.
+func TestDesktopQuotaSettingsNoFlagsDoesNotPersist(t *testing.T) {
+	home := t.TempDir()
+	withTestHome(t, home)
+	state := filepath.Join(t.TempDir(), "state")
+	seedQuotaState(t, state, func(s *quota.Settings) { s.ProbeEnabled = true })
+
+	previousSave := saveQuotaSettings
+	saveCalls := 0
+	saveQuotaSettings = func(ctx context.Context, store quota.SettingStore, s quota.Settings) error {
+		saveCalls++
+		return previousSave(ctx, store, s)
+	}
+	t.Cleanup(func() { saveQuotaSettings = previousSave })
+
+	runJSON(t, "--state-dir", state, "--format", "json", "desktop", "quota-settings")
+
+	if saveCalls != 0 {
+		t.Fatalf("SaveSettings was called %d times for a no-flag (read-only) quota-settings invocation, want 0", saveCalls)
+	}
+}
+
+// Companion to the read-only test above: an actual mutation must still
+// persist normally, so the read-only fast path never swallows a real write.
+func TestDesktopQuotaSettingsWithFlagsStillPersists(t *testing.T) {
+	home := t.TempDir()
+	withTestHome(t, home)
+	state := filepath.Join(t.TempDir(), "state")
+	seedQuotaState(t, state, func(s *quota.Settings) { s.ProbeEnabled = false })
+
+	previousSave := saveQuotaSettings
+	saveCalls := 0
+	saveQuotaSettings = func(ctx context.Context, store quota.SettingStore, s quota.Settings) error {
+		saveCalls++
+		return previousSave(ctx, store, s)
+	}
+	t.Cleanup(func() { saveQuotaSettings = previousSave })
+
+	runJSON(t, "--state-dir", state, "--format", "json", "desktop", "quota-settings", "--reading", "on")
+
+	if saveCalls != 1 {
+		t.Fatalf("SaveSettings was called %d times for an actual reading change, want exactly 1", saveCalls)
+	}
+}
+
+func TestDesktopQuotaStatusLineDisableReinstallsRouteWhenConsentSaveFails(t *testing.T) {
+	home := t.TempDir()
+	withTestHome(t, home)
+	state := filepath.Join(t.TempDir(), "state")
+	writeClaudeSettings(t, home, `{"statusLine":{"type":"command","command":"printf prior"}}`)
+	runJSON(t, "--state-dir", state, "--format", "json", "desktop", "quota-settings", "--reading", "on")
+	runJSON(t, "--state-dir", state, "--format", "json", "desktop", "quota-statusline", "enable")
+	installed := claudeStatusLineCommand(t, home)
+	if !strings.HasSuffix(installed, " quota capture") {
+		t.Fatalf("statusLine = %q after enable, want AgentDeck's own managed command installed", installed)
+	}
+
+	previousSave := saveQuotaStatusLineSettings
+	saveQuotaStatusLineSettings = func(context.Context, quota.SettingStore, quota.Settings) error {
+		return errors.New("injected settings write failure")
+	}
+	t.Cleanup(func() { saveQuotaStatusLineSettings = previousSave })
+
+	if err := run([]string{"--state-dir", state, "--format", "json", "desktop", "quota-statusline", "disable"}, bytes.NewReader(nil), &bytes.Buffer{}); err == nil {
+		t.Fatal("disable unexpectedly succeeded when consent persistence failed")
+	}
+	if got := claudeStatusLineCommand(t, home); got != installed {
+		t.Fatalf("statusLine = %q, want the removed route reinstalled as %q since core state still records consent=true", got, installed)
+	}
+}
+
 func TestDesktopQuotaStatusLineUsesEmbeddedHelperAbsolutePath(t *testing.T) {
 	home := t.TempDir()
 	withTestHome(t, home)

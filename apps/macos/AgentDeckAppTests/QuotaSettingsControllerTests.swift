@@ -19,6 +19,35 @@ final class QuotaSettingsControllerTests: XCTestCase {
 		XCTAssertEqual(preferences.quotaProbeInterval, .fifteenMinutes)
 	}
 
+	// Codex PR #5 tenth review, P2: neither core settings nor this
+	// controller's local preference mirror refresh the desktop snapshot or
+	// App Group projection on their own. Since periodic refresh is
+	// independently opt-in and off by default, turning reading off (or back
+	// on) used to leave the menu bar/widgets stuck on stale or reading-off
+	// figures until an unrelated refresh happened to run.
+	func testSetReadingTriggersASnapshotRefreshAfterAConfirmedChange() async {
+		let refreshCalls = ActorCounter()
+		let controller = makeQuotaSettingsController(refreshQuotaSnapshot: { await refreshCalls.increment() })
+		await controller.load()
+
+		await controller.setReading(true)
+
+		let count = await refreshCalls.count
+		XCTAssertEqual(count, 1, "a confirmed reading change must trigger exactly one snapshot refresh")
+	}
+
+	func testSetReadingDoesNotTriggerASnapshotRefreshWhenTheWriteFails() async {
+		let transport = AlwaysUndecodableQuotaSettingsTransport()
+		let refreshCalls = ActorCounter()
+		let controller = makeQuotaSettingsController(transport: transport, refreshQuotaSnapshot: { await refreshCalls.increment() })
+		await controller.load()
+
+		await controller.setReading(true)
+
+		let count = await refreshCalls.count
+		XCTAssertEqual(count, 0, "a failed write has nothing new to reflect and must not trigger a refresh")
+	}
+
 	func testSetReadingWritesCoreStateAndMirrorsLocallyForTheScheduler() async {
 		let preferences = DesktopPreferences(defaults: isolatedDefaults(), registrar: StubLoginItemRegistrar())
 		let transport = StubQuotaSettingsTransport()
@@ -282,6 +311,50 @@ final class QuotaSettingsControllerTests: XCTestCase {
 
 		XCTAssertEqual(controller.settings?.statusline, true, "a confirmed statusline write must not be dropped just because load() has not resolved yet")
 		XCTAssertEqual(controller.settings?.reading, true, "seeded from the persisted reading preference mirror")
+	}
+
+	// Codex PR #5 tenth review, P2 (refinement of the seventh review's P2
+	// above): when the statusline toggle is queued behind an in-flight
+	// settings write, drainPendingWrites() returns immediately (the guard
+	// sees isApplyingWrite already true), so a reread tied to that immediate
+	// return happens before the queued write is ever processed. The preview
+	// must instead reflect what is on disk once the queued write actually
+	// completes, not whatever was there when it was merely queued.
+	func testChainedStatusLineCommandPreviewRefreshesOnlyAfterAQueuedStatuslineWriteActuallyCompletes() async throws {
+		let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+		try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+		defer { try? FileManager.default.removeItem(at: directory) }
+		let settingsURL = directory.appendingPathComponent("settings.json")
+		try #"{"statusLine":{"type":"command","command":"agentdeck quota capture"}}"#
+			.write(to: settingsURL, atomically: true, encoding: .utf8)
+
+		let transport = SuspendingBothQuotaSettingsTransport()
+		let controller = makeQuotaSettingsController(transport: transport, claudeSettingsURL: settingsURL)
+		await controller.load()
+		XCTAssertNil(controller.chainedStatusLineCommand)
+
+		let settingsWrite = Task { await controller.setAlerts(true) }
+		await transport.waitForApplyCount(1)
+
+		let statuslineWrite = Task { await controller.setStatuslineConsent(false) }
+		for _ in 0 ..< 50 { await Task.yield() }
+
+		// The file changes only now, after the statusline call has already
+		// queued (and, under the old code, already performed its premature
+		// reread) but before either write in this test resolves.
+		try #"{"statusLine":{"type":"command","command":"python3 ~/.claude/statusline.py"}}"#
+			.write(to: settingsURL, atomically: true, encoding: .utf8)
+
+		await transport.completeNextSettings(.success)
+		await transport.waitForStatuslineCount(1)
+		await transport.completeNextStatusline(.success)
+		await settingsWrite.value
+		await statuslineWrite.value
+
+		XCTAssertEqual(
+			controller.chainedStatusLineCommand, "python3 ~/.claude/statusline.py",
+			"must reread after the queued write actually completed, not at the moment it was merely queued"
+		)
 	}
 
 	func testResetNoticeControlRequiresBothReadingAndAlerts() async {

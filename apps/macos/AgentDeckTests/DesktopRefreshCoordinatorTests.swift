@@ -55,6 +55,32 @@ final class DesktopRefreshCoordinatorTests: XCTestCase {
 		XCTAssertEqual(quotaCalls, [false])
 	}
 
+	// Codex PR #5 tenth review, P1: quota alert evaluation must be runnable
+	// on its own, independent of the full desktop snapshot refresh -- so a
+	// caller can schedule it on a cadence that does not also force a
+	// session/usage rescan. `responses: []` makes the host throw if
+	// `refreshQuotaAlertsOnly` ever touches it, proving it does not.
+	func testRefreshQuotaAlertsOnlyDeliversAlertsWithoutTouchingTheSnapshot() async throws {
+		let posted = DesktopQuotaAlertV1(id: "qa1.posted", kind: .threshold, client: "codex", windowMinutes: 300, usedPercent: 80, threshold: 75)
+		let quotaRefresher = RecordingQuotaRefresher(alerts: [posted])
+		let deliverer = RecordingAlertDeliverer(accepts: ["qa1.posted"])
+		let coordinator = DesktopRefreshCoordinator(
+			host: ScriptedSnapshotRefresher(responses: []),
+			quotaRefresher: quotaRefresher,
+			alertDeliverer: deliverer,
+			snapshotStore: nil
+		)
+
+		await coordinator.refreshQuotaAlertsOnly(manual: false)
+
+		let quotaCalls = await quotaRefresher.recordedManualValues()
+		XCTAssertEqual(quotaCalls, [false])
+		let acknowledgements = await quotaRefresher.recordedAcknowledgements()
+		XCTAssertEqual(acknowledgements, [["qa1.posted"]])
+		XCTAssertNil(coordinator.latestSnapshot, "must not have touched the full snapshot refresh")
+		XCTAssertEqual(coordinator.state, .uninitialized)
+	}
+
 	func testUserRefreshRequestsManualQuotaBeforeReadingTheSnapshot() async throws {
 		let complete = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
 		let quotaRefresher = RecordingQuotaRefresher()

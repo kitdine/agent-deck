@@ -265,6 +265,35 @@ func TestRefreshQuotaSuppressesOnCurrentDisagreeingObservation(t *testing.T) {
 	}
 }
 
+// Codex PR #5 tenth review, P2: a provider.Service.Current read failure used
+// to fall through as an empty selection set, which RefreshQuota's gate reads
+// identically to "no selection ever made" -- probing both clients and
+// asserting ReasonNotOfficial even though official use is genuinely unknown,
+// not ruled out. It must instead skip probing (fail-open, like every other
+// error here) while reporting the gate itself as unresolved.
+func TestRefreshQuotaSkipsProbingAndReportsProbeFailedWhenSelectionReadFails(t *testing.T) {
+	root := t.TempDir()
+	seedSelections(t, root) // both clients official
+	core := openWritableQuotaTestStore(t, root)
+	if _, err := core.DB.ExecContext(context.Background(), "DROP TABLE operations"); err != nil {
+		t.Fatalf("DROP TABLE operations: %v", err)
+	}
+	fakes := &fakeQuotaProbes{}
+	service := Service{
+		StateRoot: root, Home: t.TempDir(), Workdir: t.TempDir(),
+		Now:             func() time.Time { return time.Date(2026, 9, 12, 10, 0, 0, 0, time.UTC) },
+		QuotaProbeCodex: fakes.codex, QuotaProbeClaudeProse: fakes.claude,
+	}
+	outcome := service.RefreshQuota(context.Background(), core, service.Home, quota.TriggerBackground, true, 5*time.Minute, time.Hour)
+
+	if fakes.codexCalls != 0 || fakes.claudeCalls != 0 {
+		t.Fatalf("codexCalls=%d claudeCalls=%d, want 0/0: an unreadable provider-selection table must skip probing, not proceed on a false non-official gate", fakes.codexCalls, fakes.claudeCalls)
+	}
+	if outcome[quota.ClientCodex] != quota.ReasonProbeFailed || outcome[quota.ClientClaude] != quota.ReasonProbeFailed {
+		t.Fatalf("outcome = %+v, want %q for both clients, not %q (which would misreport the account as confirmed non-official)", outcome, quota.ReasonProbeFailed, quota.ReasonNotOfficial)
+	}
+}
+
 func TestRefreshQuotaReturnsGateOutcomePerClient(t *testing.T) {
 	// GS-R1-F5 regression: the Reason quota.Allowed computes must not be
 	// silently discarded at RefreshQuota's call site.

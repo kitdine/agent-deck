@@ -123,6 +123,13 @@ final class QuotaSettingsController {
 	private let transport: any QuotaSettingsTransport
 	private let claudeSettingsURL: URL
 	private let notifications: any NotificationPermissionChecking
+	/// Codex PR #5 tenth review, P2: a snapshot refresh this controller can
+	/// trigger without owning `DesktopRefreshCoordinator` itself -- reading
+	/// off must stop the menu bar/widgets from displaying retained figures
+	/// indefinitely (periodic refresh is independently opt-in and off by
+	/// default), and reading back on must not leave them stuck showing the
+	/// prior off-state until some unrelated refresh happens to run.
+	private let refreshQuotaSnapshot: (() async -> Void)?
 
 	private(set) var settings: DesktopQuotaSettingsValuesV1?
 	private(set) var chainedStatusLineCommand: String?
@@ -168,12 +175,14 @@ final class QuotaSettingsController {
 		preferences: DesktopPreferences,
 		transport: any QuotaSettingsTransport,
 		claudeSettingsURL: URL,
-		notifications: any NotificationPermissionChecking
+		notifications: any NotificationPermissionChecking,
+		refreshQuotaSnapshot: (() async -> Void)? = nil
 	) {
 		self.preferences = preferences
 		self.transport = transport
 		self.claudeSettingsURL = claudeSettingsURL
 		self.notifications = notifications
+		self.refreshQuotaSnapshot = refreshQuotaSnapshot
 	}
 
 	/// The alerts field's warning row. Empty with alerts off, whatever the
@@ -219,6 +228,17 @@ final class QuotaSettingsController {
 		desired.reading = on
 		stage(desired)
 		await applySettings(desired)
+		// Codex PR #5 tenth review, P2: neither core settings nor this
+		// controller's own local mirror refresh the desktop snapshot or App
+		// Group projection on their own. Without this, turning reading off
+		// leaves retained figures visible indefinitely, and turning it back
+		// on leaves surfaces stuck on the reading-off presentation, until
+		// periodic refresh (independently opt-in and off by default)
+		// happens to run. Only trigger it once the write actually
+		// persisted (settingsRow == nil), not on a still-queued/failed one.
+		if settingsRow == nil {
+			await refreshQuotaSnapshot?()
+		}
 	}
 
 	func setInterval(_ interval: QuotaProbeInterval) async {
@@ -275,13 +295,6 @@ final class QuotaSettingsController {
 		writeGeneration += 1
 		pendingStatusline = on
 		await drainPendingWrites()
-		// Codex PR #5 seventh review, P2: disabling capture restores the
-		// prior command into ~/.claude/settings.json, but this preview was
-		// last read by load() and never rereads the file -- an immediate
-		// re-enable then offered consent while still claiming no command
-		// would be chained. Re-read after every completed write, not only
-		// disable, so the preview always matches what is actually on disk.
-		chainedStatusLineCommand = readChainedStatusLineCommand(claudeSettingsURL: claudeSettingsURL)
 	}
 
 	/// Builds the write payload. `reading`/`interval` always come from the
@@ -366,6 +379,17 @@ final class QuotaSettingsController {
 					continue
 				}
 				applyStatuslineResult(consent: result.consent, outcome: result.result)
+				// Codex PR #5 seventh review, P2 (refined tenth review): disabling
+				// capture restores the prior command into ~/.claude/settings.json,
+				// but this preview was last read by load() and never rereads the
+				// file on its own. Reread here, in the worker that actually
+				// performed the write, rather than in the caller that merely
+				// queued it -- a caller whose request coalesced behind an
+				// already-in-flight write returns from drainPendingWrites()
+				// immediately, before this iteration ever runs, so a reread tied
+				// to that caller's own await would race ahead of the write it is
+				// supposed to reflect.
+				chainedStatusLineCommand = readChainedStatusLineCommand(claudeSettingsURL: claudeSettingsURL)
 			}
 		}
 	}
@@ -373,6 +397,7 @@ final class QuotaSettingsController {
 	private func stage(_ desired: DesktopQuotaSettingsDesiredV1) {
 		writeGeneration += 1
 		desiredSettings = desired
+		preferences.quotaAlertsEnabled = desired.alerts
 		settings = DesktopQuotaSettingsValuesV1(
 			reading: desired.reading, interval: desired.interval, alerts: desired.alerts,
 			thresholds: desired.thresholds, resetNotice: desired.resetNotice,
@@ -423,6 +448,7 @@ final class QuotaSettingsController {
 		)
 		preferences.quotaProbeEnabled = values.reading
 		preferences.quotaProbeInterval = QuotaProbeInterval(values.interval)
+		preferences.quotaAlertsEnabled = values.alerts
 	}
 }
 

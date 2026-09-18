@@ -615,6 +615,13 @@ actor StubQuotaSettingsTransport: QuotaSettingsTransport {
 	}
 }
 
+/// A trivial async-safe counter for asserting how many times an injected
+/// closure (e.g. a refresh trigger) fired, without racing a plain `var`.
+actor ActorCounter {
+	private(set) var count = 0
+	func increment() { count += 1 }
+}
+
 /// Every call fails to decode, as a real launch failure (missing helper,
 /// timeout, or non-JSON stdout) would — as distinct from `StubQuotaSettingsTransport`
 /// deliberately returning a decoded `failed`/`restore_incomplete` sub-result.
@@ -629,13 +636,15 @@ func makeQuotaSettingsController(
 	preferences: DesktopPreferences? = nil,
 	transport: any QuotaSettingsTransport = StubQuotaSettingsTransport(),
 	claudeSettingsURL: URL = URL(fileURLWithPath: "/nonexistent/agentdeck-test/.claude/settings.json"),
-	notifications: any NotificationPermissionChecking = StubNotificationPermission(granted: true)
+	notifications: any NotificationPermissionChecking = StubNotificationPermission(granted: true),
+	refreshQuotaSnapshot: (() async -> Void)? = nil
 ) -> QuotaSettingsController {
 	QuotaSettingsController(
 		preferences: preferences ?? DesktopPreferences(defaults: isolatedDefaults(), registrar: StubLoginItemRegistrar()),
 		transport: transport,
 		claudeSettingsURL: claudeSettingsURL,
-		notifications: notifications
+		notifications: notifications,
+		refreshQuotaSnapshot: refreshQuotaSnapshot
 	)
 }
 

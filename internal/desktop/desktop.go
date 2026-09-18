@@ -323,13 +323,22 @@ func (s Service) RefreshQuota(ctx context.Context, core *store.Store, home strin
 		Store: quota.NewStore(core.DB), Interval: interval, MaxBackoff: maxBackoff, Now: s.now,
 		ProbeCodex: s.QuotaProbeCodex, ProbeClaudeProse: s.QuotaProbeClaudeProse,
 	}
+	// Codex PR #5 tenth review, P2: a provider.Service.Current read failure
+	// used to fall through as an empty selection set, which
+	// quotaCurrentSelection reads identically to "no selection ever made" --
+	// asserting ReasonNotOfficial for both clients even though official use
+	// is unknown, not ruled out. Skip this cycle's gate for both clients
+	// instead, fail-open like every other error here, but with a reason that
+	// says the gate itself could not be evaluated.
 	selections, err := (provider.Service{Store: core}).Current(ctx)
-	if err != nil {
-		selections = nil
-	}
+	selectionReadFailed := err != nil
 	usageService := usage.New(core, home)
 	outcome := make(map[quota.Client]quota.Reason, 2)
 	for _, client := range []quota.Client{quota.ClientCodex, quota.ClientClaude} {
+		if selectionReadFailed {
+			outcome[client] = quota.ReasonProbeFailed
+			continue
+		}
 		recordedOfficial, selectedAt := quotaCurrentSelection(selections, client)
 		observedKnown, observedOfficial := quotaObservedOfficial(ctx, usageService, client, selectedAt)
 		allowed, reason := quota.Allowed(probeEnabled, recordedOfficial, observedKnown, observedOfficial)

@@ -163,7 +163,10 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 			preferences: preferences,
 			transport: runner,
 			claudeSettingsURL: claudeSettingsURL,
-			notifications: notifications
+			notifications: notifications,
+			refreshQuotaSnapshot: { [weak coordinator] in
+				await coordinator?.refresh(manualQuota: false)
+			}
 		)
 		self.preferences = preferences
 		self.automaticRefreshEnabled = automaticRefreshEnabled
@@ -215,14 +218,27 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 		settingsController.show()
 	}
 
-	/// Opt-in and off by default. The cadence comes from the snapshot's
-	/// `next_refresh_at`; a due time missed while the app was suspended
-	/// refreshes once when it comes back rather than replaying every interval.
+	/// The full snapshot refresh (session/usage rescan) is opt-in and off by
+	/// default; its cadence comes from the snapshot's `next_refresh_at`, and a
+	/// due time missed while the app was suspended refreshes once when it
+	/// comes back rather than replaying every interval.
+	///
+	/// Codex PR #5 tenth review, P1: quota alert evaluation must not depend
+	/// on that same opt-in preference -- a user can turn on quota reading and
+	/// alerts while leaving "Periodic refresh" off, and still expects
+	/// threshold/reset notifications. `refreshQuotaAlertsOnly` runs
+	/// independently of `periodicRefreshEnabled`, gated instead on the
+	/// mirrored reading/alerts preferences so it does not wait on
+	/// `QuotaSettingsController.load()`'s async round trip either.
 	private func startPeriodicRefresh() {
 		periodicRefresh = Task { [weak self] in
 			while !Task.isCancelled {
 				try? await Task.sleep(for: .seconds(30))
-				guard let self, self.preferences.periodicRefreshEnabled else { continue }
+				guard let self else { continue }
+				if self.preferences.quotaProbeEnabled, self.preferences.quotaAlertsEnabled {
+					await self.refreshCoordinator.refreshQuotaAlertsOnly(manual: false)
+				}
+				guard self.preferences.periodicRefreshEnabled else { continue }
 				guard let snapshot = self.refreshCoordinator.latestSnapshot?.data,
 					let due = DesktopFormat.timestamp(snapshot.nextRefreshAt)
 				else { continue }

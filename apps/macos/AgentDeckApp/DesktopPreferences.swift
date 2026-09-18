@@ -83,6 +83,7 @@ final class DesktopPreferences {
 		static let menuBarScope = "desktop.menuBarScope"
 		static let quotaProbeEnabled = "quota.probeEnabled"
 		static let quotaProbeInterval = "quota.probeIntervalMinutes"
+		static let quotaAlertsEnabled = "quota.alertsEnabled"
 	}
 
 	private let defaults: UserDefaults
@@ -124,6 +125,15 @@ final class DesktopPreferences {
 		didSet { defaults.set(quotaProbeInterval.rawValue, forKey: Key.quotaProbeInterval) }
 	}
 
+	/// Mirrors `quota.Settings.AlertsEnabled` for the same reason `reading`/
+	/// `interval` are mirrored above: the alert-capable background schedule
+	/// (Codex PR #5 tenth review, P1) must be able to gate itself
+	/// synchronously at launch, before `QuotaSettingsController.load()`'s
+	/// async round trip to core state has ever resolved.
+	var quotaAlertsEnabled: Bool {
+		didSet { defaults.set(quotaAlertsEnabled, forKey: Key.quotaAlertsEnabled) }
+	}
+
 	private(set) var loginItem: LoginItemState
 
 	init(defaults: UserDefaults = .standard, registrar: any LoginItemRegistering = SystemLoginItemRegistrar()) {
@@ -132,6 +142,7 @@ final class DesktopPreferences {
 		periodicRefreshEnabled = defaults.bool(forKey: Key.periodicRefresh)
 		quotaProbeEnabled = defaults.bool(forKey: Key.quotaProbeEnabled)
 		quotaProbeInterval = QuotaProbeInterval(rawValue: defaults.integer(forKey: Key.quotaProbeInterval)) ?? .fiveMinutes
+		quotaAlertsEnabled = defaults.bool(forKey: Key.quotaAlertsEnabled)
 		menuBarValue = MenuBarValueMode(rawValue: defaults.string(forKey: Key.menuBarValue) ?? "") ?? .cost
 		menuBarScope = MenuBarScopeMode(rawValue: defaults.string(forKey: Key.menuBarScope) ?? "") ?? .allClients
 		loginItem = DesktopPreferences.state(from: registrar.status)

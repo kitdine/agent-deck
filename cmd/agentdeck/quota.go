@@ -8,6 +8,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"time"
 
@@ -38,6 +39,10 @@ var quotaExecutable = os.Executable
 // Seamed only so the failed-persistence rollback can be exercised without
 // corrupting a real SQLite database in a command test.
 var saveQuotaStatusLineSettings = quota.SaveSettings
+
+// Seamed only so a command test can assert a no-op quota-settings read never
+// calls this, without corrupting a real SQLite database.
+var saveQuotaSettings = quota.SaveSettings
 
 func newQuotaCommand(opts *commandOptions) *cobra.Command {
 	command := &cobra.Command{
@@ -556,6 +561,16 @@ func runDesktopQuotaSettings(ctx context.Context, opts *commandOptions, apply fu
 	if err := apply(&next); err != nil {
 		return &inputError{err: err}
 	}
+	// Codex PR #5 tenth review, P2: the app loads settings by invoking this
+	// command with no mutation flags, so apply is a no-op and next stays
+	// equal to the just-read current. Saving unconditionally below turns
+	// that load into a read-modify-write: a concurrent helper process's
+	// confirmed write landing between this read and the save would be
+	// silently undone by this call re-persisting the stale value it read.
+	// Nothing changed, so there is nothing to validate or persist.
+	if reflect.DeepEqual(next, current) {
+		return writeResult(opts.stdout, opts.format, "desktop.quota-settings", desktopQuotaSettingsResult{Settings: quotaSettingsView(current), StatusLineRestore: nil})
+	}
 
 	var restore *usagehook.Result
 	if current.ProbeEnabled && !next.ProbeEnabled {
@@ -605,7 +620,7 @@ func runDesktopQuotaSettings(ctx context.Context, opts *commandOptions, apply fu
 	if err := next.Validate(); err != nil {
 		return &inputError{err: err}
 	}
-	if err := quota.SaveSettings(ctx, core, next); err != nil {
+	if err := saveQuotaSettings(ctx, core, next); err != nil {
 		return err
 	}
 	if err := writeResult(opts.stdout, opts.format, "desktop.quota-settings", desktopQuotaSettingsResult{Settings: quotaSettingsView(next), StatusLineRestore: restore}); err != nil {
@@ -700,6 +715,22 @@ func runDesktopQuotaStatusLine(ctx context.Context, opts *commandOptions, operat
 				return errors.Join(err, fmt.Errorf("roll back quota status-line route: %w", rollbackErr))
 			case rollback.Outcome == usagehook.OutcomeFailed:
 				return errors.Join(err, fmt.Errorf("roll back quota status-line route: %s", rollback.Error))
+			}
+		}
+		// Codex PR #5 tenth review, P2: mirror image of the enable rollback
+		// above. RestoreStatusLine may have already removed AgentDeck's route
+		// from ~/.claude/settings.json before this persistence failure, but
+		// core state still carries the prior (pre-call) StatusLineConsent,
+		// which for a disable call means "true" -- so the next load would
+		// present capture as enabled while no route is actually installed.
+		// Reinstall it so the file agrees with what is (still) persisted.
+		if operation == "disable" && result.Outcome != usagehook.OutcomeFailed && !errors.Is(err, store.ErrSettingsSecureFilesFailed) {
+			reinstall, reinstallErr := manager.SetupStatusLine()
+			switch {
+			case reinstallErr != nil:
+				return errors.Join(err, fmt.Errorf("restore quota status-line route: %w", reinstallErr))
+			case reinstall.Outcome == usagehook.OutcomeFailed:
+				return errors.Join(err, fmt.Errorf("restore quota status-line route: %s", reinstall.Error))
 			}
 		}
 		return err

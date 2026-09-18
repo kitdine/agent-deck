@@ -716,6 +716,43 @@ func TestPriorStatusLineRecordWithoutRawBytesStillRestores(t *testing.T) {
 	}
 }
 
+// Codex PR #5 tenth review, P2: a syntactically valid but incomplete sidecar
+// such as {"existed":true} used to decode successfully with Existed=true and
+// an empty Value, which RestoreStatusLine then spliced verbatim into
+// statusLine's slot -- replacing valid JSON with "statusLine":<nothing>. The
+// restore must fail loudly instead, leaving the external file untouched.
+func TestRestoreStatusLineRejectsAnIncompletePriorRecordInsteadOfCorruptingTheFile(t *testing.T) {
+	manager, home := newTestManager(t)
+	path := configPath(home, ClientClaude)
+	writeDocument(t, path, map[string]json.RawMessage{
+		"statusLine": json.RawMessage(`{"type":"command","command":"ccstatusline"}`),
+	}, privateFileMode)
+	if _, err := manager.SetupStatusLine(); err != nil {
+		t.Fatalf("SetupStatusLine: %v", err)
+	}
+	before := readDocument(t, path)
+
+	priorPath, err := manager.statusLinePriorPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(priorPath, []byte(`{"existed":true}`), privateFileMode); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := manager.RestoreStatusLine()
+	if err != nil {
+		t.Fatalf("RestoreStatusLine returned a Go error %v, want a Result carrying Outcome=Failed instead", err)
+	}
+	if result.Outcome != OutcomeFailed {
+		t.Fatalf("Outcome = %v, want Failed for a prior record claiming existed=true with no value", result.Outcome)
+	}
+	after := readDocument(t, path)
+	if !jsonEquivalent(after[statusLineKey], before[statusLineKey]) {
+		t.Fatalf("statusLine changed from %s to %s; a rejected prior record must leave the external file untouched", before[statusLineKey], after[statusLineKey])
+	}
+}
+
 func TestRestoreStatusLineWithNoPriorRemovesTheKeyEntirely(t *testing.T) {
 	// CLA-R1-F1: "nothing before AgentDeck" must restore to the key being
 	// entirely absent, never a literal statusLine:null standing in for it.
