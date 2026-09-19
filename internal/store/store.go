@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	CurrentSchemaVersion   = 26
+	CurrentSchemaVersion   = 30
 	CodeProviderNotFound   = "provider_not_found"
 	CodeCredentialNotFound = "credential_not_found"
 )
@@ -81,9 +81,12 @@ func OpenSessions(ctx context.Context, stateRoot string) (*Store, error) {
 
 // OpenSessionsReadOnly opens an existing session-search index without creating
 // state, applying migrations, changing permissions, or enabling WAL.
+//
+// busy_timeout mirrors OpenReadOnly's own (see its doc): a detached scanner
+// can still hold a brief write lock on this index while this reads it.
 func OpenSessionsReadOnly(ctx context.Context, stateRoot string) (*Store, error) {
 	path := filepath.Join(stateRoot, "sessions.sqlite3")
-	db, err := sql.Open("sqlite", "file:"+path+"?mode=ro&_pragma=foreign_keys(1)")
+	db, err := sql.Open("sqlite", "file:"+path+"?mode=ro&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)")
 	if err != nil {
 		return nil, err
 	}
@@ -251,9 +254,15 @@ func OpenWithLockHeld(ctx context.Context, stateRoot string) (*Store, error) {
 
 // OpenReadOnly opens an existing core database without creating state,
 // applying migrations, changing permissions, or enabling WAL.
+//
+// busy_timeout matches every write path's connection (Open, above): a
+// detached scan or watcher can still hold a brief write lock while this
+// reads, and without a timeout SQLite fails that read immediately with
+// SQLITE_BUSY instead of retrying, rather than blocking indefinitely --
+// mode=ro already refuses to create or migrate anything.
 func OpenReadOnly(ctx context.Context, stateRoot string) (*Store, error) {
 	path := filepath.Join(stateRoot, "agentdeck.sqlite3")
-	db, err := sql.Open("sqlite", "file:"+path+"?mode=ro&_pragma=foreign_keys(1)")
+	db, err := sql.Open("sqlite", "file:"+path+"?mode=ro&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)")
 	if err != nil {
 		return nil, err
 	}
@@ -389,6 +398,41 @@ func (s *Store) SetSetting(ctx context.Context, key, value string) error {
 	return err
 }
 
+// ErrSettingsSecureFilesFailed wraps a secureFiles failure that happens
+// after SetSettings' own transaction has already committed: the settings
+// themselves are durably persisted, and only the defense-in-depth
+// permission-hardening step failed. A caller that would otherwise roll back
+// a compound write on any SetSettings error (Codex PR #5 ninth review, P2)
+// must check for this first -- undoing another already-committed side
+// effect (for example, an installed status-line route) here would make it
+// disagree with what SetSettings durably wrote, which is strictly worse
+// than a bare permissions warning.
+var ErrSettingsSecureFilesFailed = errors.New("settings persisted but securing their file permissions failed")
+
+// SetSettings writes every key in values in a single transaction, so a
+// caller that groups several settings into one logical change (quota's
+// SaveSettings, for example) cannot leave the settings table with only some
+// of them written when a later key in the batch fails to persist.
+func (s *Store) SetSettings(ctx context.Context, values map[string]string) error {
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for key, value := range values {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value WHERE settings.value IS NOT excluded.value`, key, value); err != nil {
+			return err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	if err := s.secureFiles(); err != nil {
+		return fmt.Errorf("%w: %v", ErrSettingsSecureFilesFailed, err)
+	}
+	return nil
+}
+
 func (s *Store) DeleteSetting(ctx context.Context, key string) error {
 	_, err := s.Exec(ctx, "DELETE FROM settings WHERE key=?", key)
 	return err
@@ -512,6 +556,14 @@ func AcquireLock(ctx context.Context, stateRoot string, timeout time.Duration) (
 // or read commands that use the short-lived state lock.
 func AcquireScanLock(ctx context.Context, stateRoot string, timeout time.Duration) (*Lock, error) {
 	return acquireNamedLock(ctx, stateRoot, "scan.lock", timeout)
+}
+
+// AcquireQuotaRefreshLock serializes the complete subscription-quota refresh
+// cycle across helper processes. The cycle includes external client probes and
+// the subsequent window replacement, so it deliberately has its own lock
+// domain rather than holding state.lock across network/process I/O.
+func AcquireQuotaRefreshLock(ctx context.Context, stateRoot string, timeout time.Duration) (*Lock, error) {
+	return acquireNamedLock(ctx, stateRoot, "quota-refresh.lock", timeout)
 }
 
 // AcquireDerivedSnapshotCacheLock serializes cache publishers without sharing

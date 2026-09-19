@@ -7,6 +7,7 @@ enum AgentDeckWidgetKind: String, CaseIterable, Codable, Sendable {
 	case composition
 	case trust
 	case rhythm
+	case quota
 
 	var titleKey: String {
 		switch self {
@@ -14,6 +15,7 @@ enum AgentDeckWidgetKind: String, CaseIterable, Codable, Sendable {
 		case .composition: "Composition"
 		case .trust: "Trust"
 		case .rhythm: "Rhythm"
+		case .quota: "Quota"
 		}
 	}
 
@@ -23,6 +25,7 @@ enum AgentDeckWidgetKind: String, CaseIterable, Codable, Sendable {
 		case .composition: "No model usage in this period"
 		case .trust: "No attribution data"
 		case .rhythm: "No activity in the last 30 days"
+		case .quota: "No quota window to show"
 		}
 	}
 }
@@ -54,9 +57,11 @@ struct WidgetFooterPresentation: Equatable {
 	let qualifierText: String
 	let isOld: Bool
 
-	init(qualifiers: [WidgetQualifier], relativeTime: String?, bundle: Bundle? = nil) {
+	init(qualifiers: [WidgetQualifier], relativeTime: String?, unavailableText: String? = nil, bundle: Bundle? = nil) {
 		isOld = qualifiers.contains(.old)
-		if let relativeTime {
+		if let unavailableText {
+			updateText = unavailableText
+		} else if let relativeTime {
 			updateText = WidgetCopy.format(
 				isOld ? "Last updated %@" : "Updated %@",
 				value: relativeTime,
@@ -90,12 +95,12 @@ struct WidgetSurfaceModel {
 			return .placeholder
 		}
 		guard let snapshot = entry.snapshot,
-			snapshot.schemaVersion == WidgetDesktopSnapshotV1.schemaVersion,
-			snapshot.usage.presentation.available,
-			scope != nil
+			snapshot.schemaVersion == WidgetDesktopSnapshotV1.schemaVersion
 		else {
 			return .unavailable
 		}
+		if entry.kind == .quota { return snapshot.subscription.available ? .data : .unavailable }
+		guard snapshot.usage.presentation.available, scope != nil else { return .unavailable }
 		return .data
 	}
 
@@ -109,12 +114,35 @@ struct WidgetSurfaceModel {
 	}
 
 	var qualifiers: [WidgetQualifier] {
+		qualifiers(family: .systemLarge)
+	}
+
+	func qualifiers(family: WidgetFamily) -> [WidgetQualifier] {
 		guard surface == .data, let snapshot = entry.snapshot else { return [] }
 		var result = [WidgetQualifier]()
-		if snapshot.partial {
+		// Codex PR #5 sixth review, P1: a shown client's latest probe can fail
+		// while its prior windows are retained and displayed (C9); quotaFooterReason
+		// alone stays silent whenever there is still a freshness instant to show,
+		// so the failure needs its own visible qualifier rather than being
+		// suppressed by the retained figures. .partial's existing "Some data
+		// unavailable" wording already fits this: the *current* reading, not the
+		// displayed figures themselves, is what is missing.
+		let quotaHasFailure = entry.kind == .quota && presentedQuotaClients(family: family).contains { $0.failure != nil }
+		if snapshot.partial || quotaHasFailure {
 			result.append(.partial)
 		}
-		if let generated = WidgetTimelinePolicy.date(snapshot.generatedAt) {
+		if entry.kind == .quota {
+			// Codex PR #5 eleventh review, P2: quota clients already carry a
+			// window-aware `stale` flag (a five-hour window at the default
+			// interval is stale after 30 minutes, per architecture.md C9),
+			// distinct from the generic snapshot-wide six-hour/fifteen-minute
+			// cutoffs below. Deriving quota's freshness qualifier from that
+			// generic ladder instead disagreed with the same client's own
+			// `stale` reading on the CLI and menu bar.
+			if presentedQuotaClients(family: family).contains(where: \.stale) {
+				result.append(.old)
+			}
+		} else if let generated = WidgetTimelinePolicy.date(snapshot.generatedAt) {
 			let age = now.timeIntervalSince(generated)
 			if age > 6 * 60 * 60 {
 				result.append(.old)
@@ -122,13 +150,20 @@ struct WidgetSurfaceModel {
 				result.append(.aging)
 			}
 		}
-		if isEmpty {
+		if isEmpty(family: family) {
 			result.append(.empty)
 		}
 		return result
 	}
 
-	var isEmpty: Bool {
+	// Codex PR #5 eighth review, P2: the quota branch must derive emptiness
+	// from the clients actually presented for family, not from
+	// quotaClients, which stays narrowed to the configured single client
+	// even on the large family, where presentedQuotaClients shows both. A
+	// configured client with no windows alongside a client that does have
+	// them was rendering real figures while also appending the "No
+	// activity" qualifier for the other, unpresented client's emptiness.
+	func isEmpty(family: WidgetFamily) -> Bool {
 		guard let scope else { return false }
 		switch entry.kind {
 		case .magnitude:
@@ -142,7 +177,87 @@ struct WidgetSurfaceModel {
 			return current.isEmpty || current.flatMap(\.tiers).allSatisfy { $0.value.tokens == 0 }
 		case .rhythm:
 			return !scope.rhythm.available || scope.rhythm.activeDays == 0 || scope.rhythm.intensities.allSatisfy { $0 == 0 }
+		case .quota:
+			return presentedQuotaClients(family: family).allSatisfy { $0.windows.isEmpty }
 		}
+	}
+
+	var quotaClients: [DesktopSubscriptionClientV1] {
+		guard let subscription = entry.snapshot?.subscription else { return [] }
+		if entry.client == .all { return subscription.clients }
+		return subscription.clients.filter { $0.client == entry.client.rawValue }
+	}
+
+	func presentedQuotaClients(family: WidgetFamily) -> [DesktopSubscriptionClientV1] {
+		guard let all = entry.snapshot?.subscription.clients else { return [] }
+		if family == .systemLarge {
+			// The wire reports one explicit state per client. A client with no
+			// windows is still meaningful (not official, never probed, parse
+			// failed, reading off, and so on), so preserve it for the large
+			// widget's per-client reason instead of silently dropping the card.
+			return Array(all.prefix(2))
+		}
+		return Array(quotaClients.prefix(1))
+	}
+
+	/// The header's scope label for a quota widget. Small and medium narrow
+	/// an `.all`-configured widget down to one client (presentedQuotaClients'
+	/// own selection), so the header must name that client rather than
+	/// keep claiming "All clients" while showing only one of them. Large
+	/// keeps the configured client unchanged: it labels each client inside
+	/// its own per-client block instead.
+	func quotaScopeClient(family: WidgetFamily) -> WidgetClient {
+		guard family != .systemLarge, entry.client == .all,
+			let shown = presentedQuotaClients(family: family).first ?? quotaClients.first,
+			let resolved = WidgetClient(rawValue: shown.client)
+		else {
+			return entry.client
+		}
+		return resolved
+	}
+
+	/// The oldest observation among the windows actually displayed -- not
+	/// the client-level observed_at, which BuildSubscription derives from
+	/// the newest window or envelope and can therefore be fresher than a
+	/// displayed window after a partial update leaves the client's windows
+	/// at different ages.
+	func quotaFooterObservedAt(family: WidgetFamily) -> String? {
+		presentedQuotaClients(family: family)
+			.flatMap { quotaWindows(for: $0, family: family) }
+			.compactMap(\.observedAt)
+			.compactMap { value in WidgetTimelinePolicy.date(value).map { (value, $0) } }
+			.min { $0.1 < $1.1 }?.0
+	}
+
+	func quotaFooterReason(family: WidgetFamily) -> DesktopQuotaReasonV1? {
+		let shown = presentedQuotaClients(family: family)
+		guard quotaFooterObservedAt(family: family) == nil else { return nil }
+		return shown.compactMap { !$0.applicable ? ($0.applicableReason ?? .notOfficial) : $0.failure }.first ?? .neverProbed
+	}
+
+	func quotaWindows(for client: DesktopSubscriptionClientV1, family: WidgetFamily) -> [DesktopSubscriptionWindowV1] {
+		if family == .systemSmall {
+			// The wire resolves the tightest window once, from vendor order
+			// (C11); recomputing a tie-break here by key could disagree with
+			// that producer-selected choice whenever two windows share the
+			// highest percentage and their key order differs from vendor
+			// order. Honor tightestWindowKey when it names one of this
+			// client's windows; fall back to the local tie-break only when
+			// it does not (defensive, not expected in practice).
+			if let key = client.tightestWindowKey, let tightest = client.windows.first(where: { $0.key == key }) {
+				return [tightest]
+			}
+			return Array(client.windows.sorted { lhs, rhs in
+				lhs.usedPercent == rhs.usedPercent ? lhs.key < rhs.key : lhs.usedPercent > rhs.usedPercent
+			}.prefix(1))
+		}
+		// Codex PR #5 eleventh/twelfth review, P2: the Codex adapter
+		// deliberately supports an arbitrary window count, and the large
+		// widget's own contract calls for every window from each client -- a
+		// fixed row cap here silently dropped a bucket beyond it, which can
+		// be the one that actually limits the user. Render every reported
+		// window on both medium and large instead of truncating either.
+		return client.windows
 	}
 
 	var chartValues: [Double] {
@@ -189,6 +304,9 @@ enum WidgetLayoutContract {
 		case (.rhythm, .systemMedium): ["hour-axis", "legend", "hour-grid"]
 		case (.rhythm, .systemLarge): ["legend", "hour-axis", "hour-grid", "daily-grid", "day-statistics"]
 		case (.rhythm, _): ["eyebrow", "active-days", "busiest"]
+		case (.quota, .systemMedium): ["client", "windows", "attribution"]
+		case (.quota, .systemLarge): ["codex", "claude", "windows", "attribution"]
+		case (.quota, _): ["client", "tightest-window", "attribution"]
 		}
 	}
 
@@ -206,6 +324,20 @@ enum WidgetLayoutContract {
 		case .systemLarge: 90
 		default: 7
 		}
+	}
+}
+
+enum QuotaWidgetAxis: Equatable { case single, vertical }
+
+struct QuotaWidgetLayoutContract: Equatable {
+	let axis: QuotaWidgetAxis
+	let equalHeightSlots: Int
+
+	static func presentation(family: WidgetFamily, clientCount: Int) -> Self {
+		guard family == .systemLarge, clientCount > 1 else {
+			return Self(axis: .single, equalHeightSlots: 1)
+		}
+		return Self(axis: .vertical, equalHeightSlots: clientCount)
 	}
 }
 

@@ -14,6 +14,7 @@ public struct AppGroupDesktopSnapshotV1: Codable, Equatable, Sendable {
 	public let usage: AppGroupUsageSnapshotV1
 	public let sessions: AppGroupSessionsSnapshotV1
 	public let health: AppGroupHealthSnapshotV1
+	public let subscription: DesktopSubscriptionSnapshotV1
 
 	public init(envelope: DesktopWireEnvelopeV1) {
 		schemaVersion = Self.schemaVersion
@@ -25,6 +26,7 @@ public struct AppGroupDesktopSnapshotV1: Codable, Equatable, Sendable {
 		usage = AppGroupUsageSnapshotV1(envelope.data.usage)
 		sessions = AppGroupSessionsSnapshotV1(envelope.data.sessions)
 		health = AppGroupHealthSnapshotV1(envelope.data.health)
+		subscription = envelope.data.subscription
 	}
 
 	enum CodingKeys: String, CodingKey {
@@ -37,6 +39,21 @@ public struct AppGroupDesktopSnapshotV1: Codable, Equatable, Sendable {
 		case usage
 		case sessions
 		case health
+		case subscription
+	}
+
+	public init(from decoder: Decoder) throws {
+		let container = try decoder.container(keyedBy: CodingKeys.self)
+		schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
+		generatedAt = try container.decode(String.self, forKey: .generatedAt)
+		nextRefreshAt = try container.decode(String.self, forKey: .nextRefreshAt)
+		partial = try container.decode(Bool.self, forKey: .partial)
+		issueCodes = try container.decode([String].self, forKey: .issueCodes)
+		provider = try container.decode(AppGroupProviderSnapshotV1.self, forKey: .provider)
+		usage = try container.decode(AppGroupUsageSnapshotV1.self, forKey: .usage)
+		sessions = try container.decode(AppGroupSessionsSnapshotV1.self, forKey: .sessions)
+		health = try container.decode(AppGroupHealthSnapshotV1.self, forKey: .health)
+		subscription = try container.decodeIfPresent(DesktopSubscriptionSnapshotV1.self, forKey: .subscription) ?? .unavailable
 	}
 }
 

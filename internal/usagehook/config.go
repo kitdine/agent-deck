@@ -48,6 +48,14 @@ const (
 	OutcomeAbsent     Outcome = "absent"
 	OutcomeSkipped    Outcome = "skipped"
 	OutcomeFailed     Outcome = "failed"
+	// OutcomeRestoreIncomplete is RestoreStatusLine's disposition when the
+	// current statusLine value no longer matches what AgentDeck registered
+	// (subscription-quota C3/C9): AgentDeck's command is not written back
+	// over, since the file changed underneath in a way that makes silently
+	// restoring the recorded prior value a potential overwrite of a
+	// deliberate edit. Distinct from OutcomeFailed: this is an expected,
+	// reportable disposition, not an error.
+	OutcomeRestoreIncomplete Outcome = "restore_incomplete"
 )
 
 type TrustState string
@@ -60,6 +68,13 @@ const (
 type Environment struct {
 	Home             string
 	AgentDeckCommand string
+	// StateDir is where SetupStatusLine/RestoreStatusLine record the prior
+	// statusLine value (CLA-R1-F1): kept in AgentDeck's own state rather than
+	// in ~/.claude/settings.json, so the only key AgentDeck ever writes
+	// there is "statusLine" itself — matching what registration is
+	// authorized to write (ux/settings-quota.md). Required only for
+	// SetupStatusLine, RestoreStatusLine, and PriorStatusLineCommand.
+	StateDir string
 }
 
 type Request struct {
@@ -850,6 +865,557 @@ func hookEvents(client Client) []string {
 	default:
 		return nil
 	}
+}
+
+// Claude Code's status-line registration (subscription-quota architecture.md
+// C3). Unlike the "hooks" key above — an array AgentDeck adds one entry
+// to — "statusLine" is a singleton: only one command can be configured at a
+// time, so registering AgentDeck's own command means replacing whatever was
+// there, and restoring means putting it back. The prior value therefore has
+// to be remembered somewhere; it is kept in AgentDeck's own state (see
+// statusLinePriorPath), not in ~/.claude/settings.json (CLA-R1-F1) — the
+// only key AgentDeck ever writes there is statusLineKey itself.
+const statusLineKey = "statusLine"
+
+const statusLinePriorFileName = "usagehook-statusline-prior.json"
+
+// statusLinePriorRecord is what SetupStatusLine persists under
+// statusLinePriorPath: Existed distinguishes "there was no statusLine before
+// AgentDeck" (Existed == false, Value unset) from "there was one, and this
+// is it" — the two restore to different outcomes (removing the key entirely
+// vs. writing the recorded value back).
+//
+// Raw carries the value's exact bytes as a JSON string. Encoding Value alone
+// compacts it, so a hand-formatted statusLine would come back on one line.
+// Records written before Raw existed restore from Value.
+type statusLinePriorRecord struct {
+	Existed bool            `json:"existed"`
+	Value   json.RawMessage `json:"value,omitempty"`
+	Raw     string          `json:"raw,omitempty"`
+}
+
+type statusLineCommandEntry struct {
+	Type    string `json:"type"`
+	Command string `json:"command"`
+}
+
+func (m *Manager) desiredStatusLineEntry() json.RawMessage {
+	command := strings.TrimSpace(m.environment.AgentDeckCommand)
+	if command == "" {
+		command = "agentdeck"
+	}
+	encoded, _ := json.Marshal(statusLineCommandEntry{Type: "command", Command: command + " quota capture"})
+	return encoded
+}
+
+// managedStatusLineCommand mirrors managedHookCommand's suffix/prefix check
+// for the "quota capture" marker, so a value that looks like AgentDeck's own
+// command is recognized independent of the exact --state-dir prefix.
+func managedStatusLineCommand(command string) bool {
+	trimmed := strings.TrimSpace(command)
+	const marker = " quota capture"
+	if !strings.HasSuffix(trimmed, marker) {
+		return false
+	}
+	prefix := strings.TrimSpace(strings.TrimSuffix(trimmed, marker))
+	executable := prefix
+	stateDir := ""
+	if split := strings.Index(prefix, " --state-dir "); split >= 0 {
+		executable = strings.TrimSpace(prefix[:split])
+		stateDir = strings.TrimSpace(prefix[split+len(" --state-dir "):])
+	}
+	if !managedAgentDeckExecutable(executable) {
+		return false
+	}
+	if stateDir == "" {
+		return executable == prefix
+	}
+	// A second option or command fragment after --state-dir is never one of
+	// the exact route shapes AgentDeck generates.
+	if strings.Contains(stateDir, " --") {
+		return false
+	}
+	if strings.HasPrefix(stateDir, "'") && strings.HasSuffix(stateDir, "'") {
+		return true
+	}
+	return !strings.ContainsAny(stateDir, " \t\r\n")
+}
+
+// managedAgentDeckExecutable recognizes both the PATH-based command used by
+// package-manager installs and the shell-quoted absolute helper path used by
+// direct-download AgentDeck.app installs. The latter is required so restore,
+// status, and cycle prevention retain the same managed-command semantics.
+func managedAgentDeckExecutable(executable string) bool {
+	if executable == "agentdeck" {
+		return true
+	}
+	if !strings.HasPrefix(executable, "'") || !strings.HasSuffix(executable, "'") {
+		return false
+	}
+	executable = executable[1 : len(executable)-1]
+	if executable == "" {
+		return false
+	}
+	return filepath.IsAbs(executable) && filepath.Base(executable) == "agentdeck"
+}
+
+func decodeStatusLineCommandEntry(raw json.RawMessage) (command string, ok bool) {
+	var entry statusLineCommandEntry
+	if json.Unmarshal(raw, &entry) != nil || entry.Type != "command" {
+		return "", false
+	}
+	return entry.Command, true
+}
+
+// SetupStatusLine registers AgentDeck's status-line capture command in
+// ~/.claude/settings.json — the only key this writes there is "statusLine"
+// itself (CLA-R1-F1) — after recording whatever was previously there,
+// including its absence, to AgentDeck's own state (writeStatusLinePrior), so
+// RestoreStatusLine and runtime chaining (PriorStatusLineCommand) can find
+// it later. Idempotent: re-running once AgentDeck's own command is already
+// registered reports Unchanged rather than re-capturing itself as the prior
+// value.
+func (m *Manager) SetupStatusLine() (Result, error) {
+	path := m.path(ClientClaude)
+	result := Result{Client: ClientClaude, Path: path, Trust: TrustNotApplicable}
+
+	snap, err := m.readSnapshot(path)
+	if err != nil {
+		result.Outcome, result.Configuration, result.Error = OutcomeFailed, ConfigurationInvalid, err.Error()
+		return result, nil
+	}
+
+	currentRaw, currentFound, err := topLevelValueSpanRaw(snap.original, statusLineKey)
+	if err != nil {
+		result.Outcome, result.Configuration, result.Error = OutcomeFailed, ConfigurationInvalid, err.Error()
+		return result, nil
+	}
+	if currentFound && jsonEquivalent(currentRaw, m.desiredStatusLineEntry()) {
+		// Exact match only: managedStatusLineCommand alone recognizes any
+		// AgentDeck installation's route regardless of --state-dir (by
+		// design, for RestoreStatusLine's safety), so using it here would
+		// report Unchanged for a *different* state dir's registration and
+		// leave this instance's own route never actually installed. A
+		// managed entry that is not an exact match falls through below,
+		// recording it as the prior value like any other rewrite.
+		result.Outcome, result.Configuration = OutcomeUnchanged, ConfigurationConfigured
+		return result, nil
+	}
+
+	prior := statusLinePriorRecord{Existed: currentFound}
+	if currentFound {
+		prior.Value = currentRaw
+	}
+	if err := m.writeStatusLinePrior(prior); err != nil {
+		result.Outcome, result.Configuration, result.Error = OutcomeFailed, ConfigurationInvalid, err.Error()
+		return result, nil
+	}
+
+	updated, err := setTopLevelValue(snap.original, statusLineKey, m.desiredStatusLineEntry())
+	if err != nil {
+		result.Outcome, result.Configuration, result.Error = OutcomeFailed, ConfigurationInvalid, err.Error()
+		return result, nil
+	}
+
+	mode := snap.mode.Perm()
+	if !snap.exists {
+		mode = privateFileMode.Perm()
+	}
+	if err := m.writeAtomic(path, updated, mode); err != nil {
+		result.Outcome, result.Configuration, result.Error = OutcomeFailed, ConfigurationInvalid, err.Error()
+		return result, nil
+	}
+	result.Outcome, result.Configuration = OutcomeConfigured, ConfigurationConfigured
+	return result, nil
+}
+
+// RestoreStatusLine implements C3's restore, with three distinct cases
+// (CLA-R1-F1, CLA-R1-F2):
+//
+//  1. The current "statusLine" value is still exactly what SetupStatusLine
+//     wrote: safe to fully restore. The key is removed entirely if there was
+//     no prior value, or replaced with the recorded prior value verbatim if
+//     there was — never left as a literal null standing in for "absent".
+//     Outcome=Removed.
+//  2. The current value has changed but is still recognizably AgentDeck's
+//     (managedStatusLineCommand) — someone added a field to it, for
+//     example. AgentDeck's command is removed outright (the key is deleted)
+//     rather than either leaving it installed or guessing whether the old
+//     recorded prior should win over whatever the edit intended.
+//     Outcome=RestoreIncomplete, and the file is not left with AgentDeck's
+//     command still active.
+//  3. The current value is not AgentDeck's at all anymore (already replaced
+//     by something else): left completely untouched. Outcome=RestoreIncomplete.
+//
+// Case 1 is the only one where the recorded prior value is ever written
+// back; cases 2 and 3 never overwrite a value with something the user might
+// not recognize (C3: "removes AgentDeck's command and reports that a manual
+// check is needed rather than overwriting a value the user may have edited
+// deliberately").
+func (m *Manager) RestoreStatusLine() (Result, error) {
+	path := m.path(ClientClaude)
+	result := Result{Client: ClientClaude, Path: path, Trust: TrustNotApplicable}
+
+	snap, err := m.readSnapshot(path)
+	if err != nil {
+		result.Outcome, result.Configuration, result.Error = OutcomeFailed, ConfigurationInvalid, err.Error()
+		return result, nil
+	}
+	if !snap.exists {
+		result.Outcome, result.Configuration = OutcomeAbsent, ConfigurationAbsent
+		return result, nil
+	}
+
+	currentRaw, currentFound, err := topLevelValueSpanRaw(snap.original, statusLineKey)
+	if err != nil {
+		result.Outcome, result.Configuration, result.Error = OutcomeFailed, ConfigurationInvalid, err.Error()
+		return result, nil
+	}
+	if !currentFound {
+		result.Outcome, result.Configuration = OutcomeAbsent, ConfigurationAbsent
+		return result, nil
+	}
+
+	if jsonEquivalent(currentRaw, m.desiredStatusLineEntry()) {
+		prior, priorFound, priorErr := m.readStatusLinePrior()
+		if priorErr != nil {
+			result.Outcome, result.Configuration, result.Error = OutcomeFailed, ConfigurationInvalid, priorErr.Error()
+			return result, nil
+		}
+		var updated []byte
+		if priorFound && prior.Existed {
+			updated, err = setTopLevelValue(snap.original, statusLineKey, prior.Value)
+		} else {
+			updated, err = removeTopLevelValue(snap.original, statusLineKey)
+		}
+		if err != nil {
+			result.Outcome, result.Configuration, result.Error = OutcomeFailed, ConfigurationInvalid, err.Error()
+			return result, nil
+		}
+		if err := m.writeAtomic(path, updated, snap.mode.Perm()); err != nil {
+			result.Outcome, result.Configuration, result.Error = OutcomeFailed, ConfigurationInvalid, err.Error()
+			return result, nil
+		}
+		result.Outcome, result.Configuration = OutcomeRemoved, ConfigurationAbsent
+		return result, nil
+	}
+
+	command, isCommand := decodeStatusLineCommandEntry(currentRaw)
+	if isCommand && managedStatusLineCommand(command) {
+		// Codex PR #5 twelfth review, P2: managedStatusLineCommand
+		// deliberately ignores --state-dir (managedAgentDeckExecutable's own
+		// doc comment: for RestoreStatusLine's dead-lock safety elsewhere),
+		// so it also recognizes a DIFFERENT installation's own currently
+		// active route as "AgentDeck's command" here -- jsonEquivalent above
+		// already ruled out an exact match to this manager's own desired
+		// entry. Removing it regardless would delete that other
+		// installation's capture route out from under it while this call
+		// durably records consent withdrawn, leaving no record to restore
+		// it. Only an exact match to this manager's own command string is
+		// this manager's route to remove.
+		ownCommand, _ := decodeStatusLineCommandEntry(m.desiredStatusLineEntry())
+		if command != ownCommand {
+			result.Outcome = OutcomeRestoreIncomplete
+			result.Configuration = ConfigurationModified
+			result.Error = "statusLine is a different AgentDeck installation's own managed route; left untouched, check " + path + " manually"
+			return result, nil
+		}
+		updated, err := removeTopLevelValue(snap.original, statusLineKey)
+		if err != nil {
+			result.Outcome, result.Configuration, result.Error = OutcomeFailed, ConfigurationInvalid, err.Error()
+			return result, nil
+		}
+		if err := m.writeAtomic(path, updated, snap.mode.Perm()); err != nil {
+			result.Outcome, result.Configuration, result.Error = OutcomeFailed, ConfigurationInvalid, err.Error()
+			return result, nil
+		}
+		result.Outcome = OutcomeRestoreIncomplete
+		result.Configuration = ConfigurationAbsent
+		result.Error = "statusLine no longer matched AgentDeck's registered command; removed it without restoring the recorded prior value, check " + path + " manually"
+		return result, nil
+	}
+
+	result.Outcome = OutcomeRestoreIncomplete
+	result.Configuration = ConfigurationModified
+	result.Error = "statusLine is no longer AgentDeck's command; left untouched, check " + path + " manually"
+	return result, nil
+}
+
+// StatusLineStatus reports whether AgentDeck's status-line command is
+// currently registered, without changing anything.
+func (m *Manager) StatusLineStatus() (Result, error) {
+	path := m.path(ClientClaude)
+	result := Result{Client: ClientClaude, Path: path, Trust: TrustNotApplicable}
+
+	snap, err := m.readSnapshot(path)
+	if err != nil {
+		result.Configuration, result.Error = ConfigurationInvalid, err.Error()
+		return result, nil
+	}
+	if !snap.exists {
+		result.Configuration = ConfigurationAbsent
+		return result, nil
+	}
+	currentRaw, currentFound, err := topLevelValueSpanRaw(snap.original, statusLineKey)
+	if err != nil {
+		result.Configuration, result.Error = ConfigurationInvalid, err.Error()
+		return result, nil
+	}
+	if !currentFound {
+		result.Configuration = ConfigurationAbsent
+		return result, nil
+	}
+	switch {
+	case jsonEquivalent(currentRaw, m.desiredStatusLineEntry()):
+		result.Configuration = ConfigurationConfigured
+	default:
+		if command, ok := decodeStatusLineCommandEntry(currentRaw); ok && managedStatusLineCommand(command) {
+			result.Configuration = ConfigurationModified
+		} else {
+			result.Configuration = ConfigurationAbsent
+		}
+	}
+	return result, nil
+}
+
+// PriorStatusLineCommand reads the command AgentDeck should chain to at
+// runtime, as recorded by SetupStatusLine. ok is false when there is
+// nothing to chain to — no prior command was recorded, the recorded value
+// was not a command entry, the recorded value is itself a managed AgentDeck
+// route, or the record could not be read — in which case the caller runs no
+// subprocess.
+//
+// Codex PR #5 third review, P1: SetupStatusLine can record a *different*
+// AgentDeck installation's own managed command as this one's prior (one
+// installation registers over another's still-installed route, at a
+// different --state-dir). Chaining to it would run that installation's own
+// "quota capture", which reads *its* prior and chains again — A -> B -> A
+// recursively, exhausting processes. The prior concept exists to preserve a
+// third-party command (or none); an AgentDeck route is never a legitimate
+// chain target, so this refuses to hand one back regardless of how it got
+// recorded.
+func (m *Manager) PriorStatusLineCommand() (command string, ok bool) {
+	prior, found, err := m.readStatusLinePrior()
+	if err != nil || !found || !prior.Existed {
+		return "", false
+	}
+	command, ok = decodeStatusLineCommandEntry(prior.Value)
+	if !ok || managedStatusLineCommand(command) {
+		return "", false
+	}
+	return command, true
+}
+
+func (m *Manager) statusLinePriorPath() (string, error) {
+	if strings.TrimSpace(m.environment.StateDir) == "" {
+		return "", errors.New("status-line registration requires a configured state directory")
+	}
+	return filepath.Join(m.environment.StateDir, statusLinePriorFileName), nil
+}
+
+func (m *Manager) readStatusLinePrior() (statusLinePriorRecord, bool, error) {
+	path, err := m.statusLinePriorPath()
+	if err != nil {
+		return statusLinePriorRecord{}, false, err
+	}
+	contents, err := m.files.readFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return statusLinePriorRecord{}, false, nil
+	}
+	if err != nil {
+		return statusLinePriorRecord{}, false, err
+	}
+	var record statusLinePriorRecord
+	if err := json.Unmarshal(contents, &record); err != nil {
+		return statusLinePriorRecord{}, false, err
+	}
+	if record.Raw != "" {
+		if !json.Valid([]byte(record.Raw)) {
+			return statusLinePriorRecord{}, false, errors.New("recorded prior statusLine is not valid JSON")
+		}
+		record.Value = json.RawMessage(record.Raw)
+	}
+	// Codex PR #5 tenth review, P2: a syntactically valid but incomplete
+	// sidecar such as {"existed":true} decodes with Existed=true and an
+	// empty Value. RestoreStatusLine splices that empty value verbatim into
+	// statusLine's slot, replacing valid JSON with "statusLine":<nothing>.
+	// Refuse to hand back a record that claims a prior existed but carries
+	// none, so the caller's restore fails loudly instead of corrupting the
+	// external file.
+	if record.Existed && len(bytes.TrimSpace(record.Value)) == 0 {
+		return statusLinePriorRecord{}, false, errors.New("recorded prior statusLine record is missing its value")
+	}
+	return record, true, nil
+}
+
+func (m *Manager) writeStatusLinePrior(record statusLinePriorRecord) error {
+	path, err := m.statusLinePriorPath()
+	if err != nil {
+		return err
+	}
+	if len(record.Value) > 0 {
+		record.Raw = string(record.Value)
+	}
+	encoded, err := json.Marshal(record)
+	if err != nil {
+		return err
+	}
+	return m.writeAtomic(path, encoded, privateFileMode)
+}
+
+// topLevelValueSpanRaw wraps topLevelValueSpan to return the located value's
+// bytes directly, copied so the result outlives contents.
+func topLevelValueSpanRaw(contents []byte, target string) (json.RawMessage, bool, error) {
+	if len(bytes.TrimSpace(contents)) == 0 {
+		return nil, false, nil
+	}
+	start, end, found, err := topLevelValueSpan(contents, target)
+	if err != nil {
+		return nil, false, err
+	}
+	if !found {
+		return nil, false, nil
+	}
+	raw := make(json.RawMessage, end-start)
+	copy(raw, contents[start:end])
+	return raw, true, nil
+}
+
+// setTopLevelValue replaces target's value if present, or inserts it as a
+// new top-level key if absent — the same surgical splice encodeDocument
+// already performs for "hooks" specifically, generalized to any top-level
+// key so statusLine's two keys can reuse it instead of duplicating it.
+func setTopLevelValue(contents []byte, target string, value json.RawMessage) ([]byte, error) {
+	if len(bytes.TrimSpace(contents)) == 0 {
+		encoded := append([]byte{'{'}, mustMarshalJSONKey(target)...)
+		encoded = append(encoded, ':')
+		encoded = append(encoded, value...)
+		encoded = append(encoded, '}', '\n')
+		return encoded, nil
+	}
+	start, end, found, err := topLevelValueSpan(contents, target)
+	if err != nil {
+		return nil, err
+	}
+	if found {
+		updated := make([]byte, 0, len(contents)-end+start+len(value))
+		updated = append(updated, contents[:start]...)
+		updated = append(updated, value...)
+		updated = append(updated, contents[end:]...)
+		return updated, nil
+	}
+	order, err := orderedObjectKeys(contents)
+	if err != nil {
+		return nil, err
+	}
+	return insertTopLevelValue(contents, target, value, len(order) > 0)
+}
+
+func mustMarshalJSONKey(key string) []byte {
+	encoded, _ := json.Marshal(key)
+	return encoded
+}
+
+// removeTopLevelValue returns contents with target's "key":value entry
+// deleted entirely — including exactly one adjacent comma, so the result
+// stays valid JSON — or contents unchanged if target is absent. This is
+// RestoreStatusLine's "there was nothing before AgentDeck" case
+// (CLA-R1-F1): the key must disappear, not become a literal null standing
+// in for absence.
+func removeTopLevelValue(contents []byte, target string) ([]byte, error) {
+	entryStart, entryEnd, found, err := topLevelEntrySpan(contents, target)
+	if err != nil {
+		return nil, err
+	}
+	if !found {
+		return contents, nil
+	}
+	updated := make([]byte, 0, len(contents)-(entryEnd-entryStart))
+	updated = append(updated, contents[:entryStart]...)
+	updated = append(updated, contents[entryEnd:]...)
+	return updated, nil
+}
+
+type jsonTopLevelEntry struct{ keyStart, valEnd int }
+
+// topLevelEntrySpan locates one top-level "key":value pair's exact byte
+// span, extended to consume exactly one adjacent comma (the following one
+// if any entry comes after it, else the preceding one), so deleting
+// contents[entryStart:entryEnd] leaves the remaining document valid JSON.
+func topLevelEntrySpan(contents []byte, target string) (entryStart, entryEnd int, found bool, err error) {
+	decoder := json.NewDecoder(bytes.NewReader(contents))
+	token, err := decoder.Token()
+	if err != nil {
+		return 0, 0, false, err
+	}
+	delimiter, ok := token.(json.Delim)
+	if !ok || delimiter != '{' {
+		return 0, 0, false, errors.New("hook configuration must be a JSON object")
+	}
+	var entries []jsonTopLevelEntry
+	targetIndex := -1
+	for decoder.More() {
+		keyOffsetBefore := int(decoder.InputOffset())
+		keyToken, err := decoder.Token()
+		if err != nil {
+			return 0, 0, false, err
+		}
+		key, ok := keyToken.(string)
+		if !ok {
+			return 0, 0, false, errors.New("JSON object key must be a string")
+		}
+		relativeQuote := bytes.IndexByte(contents[keyOffsetBefore:], '"')
+		if relativeQuote < 0 {
+			return 0, 0, false, errors.New("cannot locate JSON object key")
+		}
+		keyStart := keyOffsetBefore + relativeQuote
+
+		valOffset := int(decoder.InputOffset())
+		var raw json.RawMessage
+		if err := decoder.Decode(&raw); err != nil {
+			return 0, 0, false, err
+		}
+		value := bytes.TrimSpace(raw)
+		relative := bytes.Index(contents[valOffset:], value)
+		if relative < 0 {
+			return 0, 0, false, errors.New("cannot locate JSON object value")
+		}
+		valEnd := valOffset + relative + len(value)
+
+		entries = append(entries, jsonTopLevelEntry{keyStart: keyStart, valEnd: valEnd})
+		if key == target {
+			targetIndex = len(entries) - 1
+		}
+	}
+	if _, err := decoder.Token(); err != nil {
+		return 0, 0, false, err
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return 0, 0, false, errors.New("hook configuration has trailing data")
+		}
+		return 0, 0, false, err
+	}
+	if targetIndex < 0 {
+		return 0, 0, false, nil
+	}
+	entry := entries[targetIndex]
+	entryStart, entryEnd = entry.keyStart, entry.valEnd
+	switch {
+	case targetIndex < len(entries)-1:
+		relComma := bytes.IndexByte(contents[entry.valEnd:entries[targetIndex+1].keyStart], ',')
+		if relComma >= 0 {
+			entryEnd = entry.valEnd + relComma + 1
+		}
+	case targetIndex > 0:
+		prevEnd := entries[targetIndex-1].valEnd
+		relComma := bytes.LastIndexByte(contents[prevEnd:entry.keyStart], ',')
+		if relComma >= 0 {
+			entryStart = prevEnd + relComma
+		}
+	}
+	return entryStart, entryEnd, true, nil
 }
 
 func (m *Manager) clients(request Request) ([]Client, error) {

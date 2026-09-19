@@ -12,6 +12,7 @@ import (
 
 	"github.com/kitdine/agent-deck/internal/doctor"
 	"github.com/kitdine/agent-deck/internal/provider"
+	"github.com/kitdine/agent-deck/internal/quota"
 	"github.com/kitdine/agent-deck/internal/session"
 	"github.com/kitdine/agent-deck/internal/store"
 	"github.com/kitdine/agent-deck/internal/usage"
@@ -52,6 +53,9 @@ type Snapshot struct {
 	Usage         UsageSnapshot    `json:"usage"`
 	Sessions      SessionsSnapshot `json:"sessions"`
 	Health        HealthSnapshot   `json:"health"`
+	// Subscription is architecture.md C11's additive section; WireVersion is
+	// unchanged because an older consumer ignores the key.
+	Subscription SubscriptionSnapshot `json:"subscription"`
 }
 
 type ProviderSnapshot struct {
@@ -227,6 +231,13 @@ type Service struct {
 	Vault     provider.CredentialVault
 	Now       func() time.Time
 	Location  *time.Location
+	// QuotaProbeCodex and QuotaProbeClaudeProse are test seams for
+	// RefreshQuota: nil in production, where RefreshQuota's quota.Scheduler
+	// uses that package's own real probes. A test injects a fake here so it
+	// never risks invoking the real "codex" or "claude" binary, mirroring
+	// quota.Scheduler's own ProbeCodex/ProbeClaudeProse fields.
+	QuotaProbeCodex       func(ctx context.Context, observedAt time.Time, timeout time.Duration) (quota.CodexResult, error)
+	QuotaProbeClaudeProse func(ctx context.Context, observedAt time.Time, timeout time.Duration) (quota.ClaudeProseResult, error)
 }
 
 type Result struct {
@@ -249,12 +260,14 @@ func (s Service) Build(ctx context.Context, request Request) (Result, error) {
 		Usage:         emptyUsageSnapshot(now, s.location()),
 		Sessions:      emptySessionsSnapshot(),
 		Health:        HealthSnapshot{Checks: []HealthCheck{}},
+		Subscription:  unavailableSubscription(),
 	}}
 
 	core, err := store.OpenReadOnly(ctx, s.StateRoot)
 	if err != nil {
 		result.warn("provider_unavailable")
 		result.warn("usage_unavailable")
+		result.warn("subscription_unavailable")
 	} else {
 		s.loadProvider(ctx, core, &result)
 		if payload, cached := s.loadDerivedSnapshotCache(ctx, core, now, request.WireVersion); cached {
@@ -264,6 +277,7 @@ func (s Service) Build(ctx context.Context, request Request) (Result, error) {
 			s.loadUsage(ctx, core, now, &result)
 			s.loadWorkSignals(ctx, core, now, &result)
 		}
+		s.loadSubscription(ctx, core, now, &result)
 		if closeErr := core.Close(); closeErr != nil {
 			result.warn("state_close_failed")
 		}
@@ -272,6 +286,105 @@ func (s Service) Build(ctx context.Context, request Request) (Result, error) {
 	s.loadHealth(ctx, &result)
 	sort.Strings(result.Warnings)
 	return result, nil
+}
+
+// RefreshQuota runs architecture.md subscription-quota/C9's probe schedule
+// for both clients against a writable core store. It is deliberately
+// independent of Build/Snapshot, which stay strictly read-only per that
+// command's own documented contract ("without scanning sources, creating
+// state, or using the network") and open core via store.OpenReadOnly, which
+// cannot write. RefreshQuota is for a caller that has already opened core
+// for writing — the same posture refreshDesktopIndexes already uses for the
+// usage/session scans, in cmd/agentdeck/desktop.go's separate
+// `desktop refresh-indexes` command.
+//
+// No CLI command calls RefreshQuota yet. task 6 (wire-and-cli) adds the
+// write-capable command surface and the preference plumbing that supplies
+// probeEnabled/interval/maxBackoff from the user's actual settings; this
+// task lands the scheduling mechanism ahead of that wiring, the same
+// sequencing task 3 used for usagehook.SetupStatusLine/RestoreStatusLine,
+// which also landed before any CLI verb called them.
+//
+// probeEnabled is C1's outer gate (the quotaProbe reading switch) — resolved
+// by the caller, not here. interval and maxBackoff are C9's configured
+// background cadence and backoff ceiling. Fail-open throughout, matching
+// quota.Scheduler.Run: a provider- or usage-service error for one client
+// skips that client's probe for this cycle rather than propagating, and
+// never affects the other client.
+//
+// The returned map carries, per client, the Reason quota.Allowed computed
+// this cycle — empty for a client the gate allowed. Nothing persists this to
+// storage yet (no task has a documented consumer for it), but the caller
+// must not silently discard it either (GS-R1-F5): a future caller (task 6)
+// can read it directly instead of re-deriving C1's full gate — including its
+// observed-provider cross-check — from scratch.
+func (s Service) RefreshQuota(ctx context.Context, core *store.Store, home string, trigger quota.Trigger, probeEnabled bool, interval, maxBackoff time.Duration) map[quota.Client]quota.Reason {
+	scheduler := quota.Scheduler{
+		Store: quota.NewStore(core.DB), Interval: interval, MaxBackoff: maxBackoff, Now: s.now,
+		ProbeCodex: s.QuotaProbeCodex, ProbeClaudeProse: s.QuotaProbeClaudeProse,
+	}
+	// Codex PR #5 tenth review, P2: a provider.Service.Current read failure
+	// used to fall through as an empty selection set, which
+	// quotaCurrentSelection reads identically to "no selection ever made" --
+	// asserting ReasonNotOfficial for both clients even though official use
+	// is unknown, not ruled out. Skip this cycle's gate for both clients
+	// instead, fail-open like every other error here, but with a reason that
+	// says the gate itself could not be evaluated.
+	selections, err := (provider.Service{Store: core}).Current(ctx)
+	selectionReadFailed := err != nil
+	usageService := usage.New(core, home)
+	outcome := make(map[quota.Client]quota.Reason, 2)
+	for _, client := range []quota.Client{quota.ClientCodex, quota.ClientClaude} {
+		if selectionReadFailed {
+			outcome[client] = quota.ReasonProbeFailed
+			continue
+		}
+		recordedOfficial, selectedAt := quotaCurrentSelection(selections, client)
+		observedKnown, observedOfficial := quotaObservedOfficial(ctx, usageService, client, selectedAt)
+		allowed, reason := quota.Allowed(probeEnabled, recordedOfficial, observedKnown, observedOfficial)
+		outcome[client] = reason
+		scheduler.Run(ctx, client, trigger, allowed)
+	}
+	return outcome
+}
+
+// quotaCurrentSelection is C1's recorded-selection half of the gate: official
+// is false both for an explicit non-official selection and for a client with
+// no completed selection at all, since neither establishes official use.
+// selectedAt is the zero time in the no-selection case, which
+// quotaObservedOfficial's staleness check treats as "no floor" — harmless,
+// since quota.Allowed never consults the observed half when official is
+// already false.
+func quotaCurrentSelection(selections []provider.CurrentSelection, client quota.Client) (official bool, selectedAt time.Time) {
+	for _, selection := range selections {
+		if selection.Client == string(client) {
+			selectedAt, _ = time.Parse(time.RFC3339Nano, selection.SelectedAt)
+			return strings.EqualFold(selection.Provider, provider.OfficialProviderName), selectedAt
+		}
+	}
+	return false, time.Time{}
+}
+
+// quotaObservedOfficial is C1's observed-provider cross-check. known is
+// false whenever no Hook delivery has ever reported an observed provider for
+// this client (the ordinary case without Hook integration), the lookup
+// itself failed, or the observation predates selectedAt — the instant
+// AgentDeck's own current selection was made. That last condition is
+// GS-R1-F1's fix: without it, a Hook delivery observed before the user
+// switched providers within AgentDeck would permanently suppress every probe
+// after the switch, until some unrelated later delivery happened to arrive —
+// exactly the silent-failure mode C1 chose the recorded selection to avoid
+// in the first place. quota.Allowed treats known=false as "never suppress on
+// this basis," so both a lookup failure and a stale observation fail open.
+func quotaObservedOfficial(ctx context.Context, usageService *usage.Service, client quota.Client, selectedAt time.Time) (known, official bool) {
+	observed, observedAt, ok, err := usageService.LatestObservedProvider(ctx, string(client))
+	if err != nil || !ok {
+		return false, false
+	}
+	if observedAt.Before(selectedAt) {
+		return false, false
+	}
+	return true, strings.EqualFold(observed, provider.OfficialProviderName)
 }
 
 func (s Service) now() time.Time {

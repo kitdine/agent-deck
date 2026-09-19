@@ -1,3 +1,5 @@
+import { catalogs } from "./i18n.js";
+
 // 交互探针：用真实事件走一遍关键路径并断言结果。
 // 截图只能证明"长什么样"，证明不了"点了会怎样"，这段补的是后者。
 export function runProbe() {
@@ -14,15 +16,24 @@ export function runProbe() {
   const leave = (node) => node?.dispatchEvent(new MouseEvent("mouseout", { bubbles: true, relatedTarget: document.body }));
   const key = (node, k) => node?.dispatchEvent(new KeyboardEvent("keydown", { key: k, bubbles: true }));
   const wait = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
+  // 按 key 找 tab，不按位置。位置写死过一次的代价：额度 tab 插到最前面之后，
+  // nth-child(1) 变成了额度，探针在趋势图上取到空集合并崩在下一行，
+  // 而崩掉的探针什么都不渲染——看上去和"没跑"一模一样。
+  const tabButton = (key) => $(`.tabs button[data-tab="${key}"]`);
+  // 探针跑在当前语言下，断言不能写死中文字面量——文案表才是真相。
+  // 语言要在断言执行时读，不能在 runProbe 进来时读：那一刻 React 还没把
+  // lang 落到 <html> 上，en 会静默拿到中文文案表，断言于是永远为假。
+  const dict = () => catalogs[document.documentElement.lang.startsWith("en") ? "en" : "zh"];
 
   window.setTimeout(async () => {
+    try {
     // 客户端筛选联动四个面板
     const before = $(".hero strong").textContent;
     click($$(".segmented.clients button")[1]);
     await wait(60);
     check("切客户端后 hero 跟着变", $(".hero strong").textContent !== before);
 
-    click($(".tabs button:nth-child(3)"));
+    click(tabButton("attribution"));
     await wait(60);
     const codexTrust = $(".data-row b")?.textContent;
     click($$(".segmented.clients button")[2]);
@@ -37,7 +48,7 @@ export function runProbe() {
 
     click($$(".segmented.clients button")[0]);
     click($$(".segmented.periods button")[0]);
-    click($(".tabs button:nth-child(1)"));
+    click(tabButton("usage"));
     await wait(80);
 
     // 趋势图：悬停出读数、移出清掉、点击钉住
@@ -102,12 +113,12 @@ export function runProbe() {
     check("能从健康详情返回", !$(".detail-head"));
 
     // 会话 tab 的三块信号进得去、回得来，且详情态 tab 仍保持选中
-    click($(".tabs button:nth-child(4)"));
+    click(tabButton("sessions"));
     await wait(60);
     click($(".signal-card"));
     await wait(60);
     check("工作信号可进入详情", !!$(".detail-head"));
-    check("详情态下所属 tab 仍选中（v6 会四个全灰）", $(".tabs button:nth-child(4)").classList.contains("active"));
+    check("详情态下所属 tab 仍选中（v6 会四个全灰）", tabButton("sessions").classList.contains("active"));
     check("详情里标注了待采集", !!$(".pending-banner"));
     click($(".detail-head button"));
     await wait(60);
@@ -136,8 +147,12 @@ export function runProbe() {
     click($(".menu-settings"));
     await wait(80);
     check("菜单里能打开设置窗口", !!$(".settings-window"));
-    const switches = $$(".settings-window .switch");
-    check("设置里有开关", switches.length === 2);
+    // 按分组定位，不按窗口内的序号。额度分组加进来之后，"窗口里有几个开关"
+    // 这个数字就不再是常规分组的性质了——它变成一个每加一个偏好就要改一次的
+    // 常量，而改它的人未必知道原来那条断言想说什么。
+    const group = (name) => $(`.settings-window [data-group="${name}"]`);
+    const switches = $$('[data-group="general"] .switch');
+    check("常规分组有两个开关", switches.length === 2);
     // 定时刷新没有被拒路径，普通切换用它验；登录项的拒绝路径在下面单独走。
     const wasOn = switches[1].classList.contains("on");
     click(switches[1]);
@@ -146,10 +161,15 @@ export function runProbe() {
 
     // 每个偏好的解释文字必须是控件的 accessible description，靠 aria-describedby 指过去，
     // 而不是靠视觉上排在下面。这里连 ID 指向的文本一起比，空 ID 或指向不存在的节点都会挂。
-    const described = $$(".settings-window [role=switch], .settings-window [role=radiogroup]");
-    check("四项偏好都有控件", described.length === 4);
+    // 断言的是"渲染出解释文字的控件，那段文字必须真的是它的 accessible
+    // description"。没有解释文字的控件没有可错配的东西，把它们算进一个写死的
+    // 总数只会让断言在下一次加偏好时失效，而失效的方式是报告一个不存在的缺陷。
+    const described = $$(".settings-window [role=switch], .settings-window [role=radiogroup]").filter((node) =>
+      node.hasAttribute("aria-describedby"),
+    );
+    check("带解释文字的偏好控件不止一个", described.length >= 4);
     check(
-      "每项偏好的解释文字都是控件的 description",
+      "每项解释文字都是控件的 description",
       described.every((node) => {
         const target = document.getElementById(node.getAttribute("aria-describedby") ?? "");
         return !!target?.textContent.trim();
@@ -169,14 +189,98 @@ export function runProbe() {
       "一次失败只落在一个 live region 里",
       $$(".settings-window [role=status]").filter((node) => node.textContent.trim()).length === 1,
     );
+    // 原文是"其余控件都没被禁用"。额度分组里的依赖控件本来就该在父开关关闭时
+    // 置灰，那是 ux/settings-quota.md 的设计，不是这次拒绝造成的。断言要问的是
+    // "这次拒绝有没有波及无关控件"，所以范围收到与它无关的那一组。
     check(
-      "登录项被拒不禁用其余控件，也不弹 modal",
-      $$(".settings-window button").every((node) => !node.disabled) && $$("[role=dialog]").length === 1,
+      "登录项被拒不禁用同组的其余控件，也不弹 modal",
+      [...group("general").querySelectorAll("button")].every((node) => !node.disabled) &&
+        $$("[role=dialog]").length === 1,
     );
     click(switches[0]);
     await wait(60);
     check("再次开启成功后开关打开", switches[0].classList.contains("on"));
     check("失败行在下一次成功修改时清除", !loginError().textContent.trim());
+
+    // 状态栏通路的两种失败。这是本产品唯一写别人文件的开关，两种结果必须
+    // 分得开：写入被拒是没做成，开关必须留在关闭；关闭时的恢复冲突是做了一半，
+    // 命令移除了但原值没还原，只能报告并请人工检查。
+    // 语义色要按最终计算颜色断言，不能按类名。类名对不等于颜色渲染出来了：
+    // 上一轮 .settings-label small 的权重压过 .tone-text-*，两条提示实际都是灰的，
+    // 而只查类名的断言照样全绿——一个只会在改类名时失败的断言，防不住样式覆盖。
+    // 期望值从 :root 上现取，因为深浅两套外观的 token 值不同。
+    const token = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    const rgb = (value) => {
+      const probeNode = document.createElement("span");
+      probeNode.style.color = value;
+      document.body.appendChild(probeNode);
+      const resolved = getComputedStyle(probeNode).color;
+      probeNode.remove();
+      return resolved;
+    };
+    const paintedColor = (node) => (node ? getComputedStyle(node).color : null);
+
+    const quotaSwitch = (index) => $$('[data-group="quota"] .switch')[index];
+    const statusRow = () => quotaSwitch(1)?.closest(".settings-field")?.querySelector(".settings-error");
+    check("读取额度关闭时状态栏开关是禁用而不是隐藏", !!quotaSwitch(1) && quotaSwitch(1).disabled);
+    click(quotaSwitch(0));
+    await wait(60);
+    check("打开读取额度后状态栏开关可用", !quotaSwitch(1).disabled);
+    check("失败行的 live region 在失败前就已存在且为空", !!statusRow() && !statusRow().textContent.trim());
+
+    // "不禁用其余控件"要按变化量问，不按当下有没有禁用的控件问：额度分组本来
+    // 就有依赖置灰的控件——提醒关着时"窗口重置时提醒"就是灰的，那是这个分组的
+    // 设计。断言要抓的是"这次拒绝有没有额外灰掉什么"。
+    const disabledSet = () =>
+      [...group("quota").querySelectorAll("button")].map((node) => (node.disabled ? "1" : "0")).join("");
+    const disabledBefore = disabledSet();
+
+    click(quotaSwitch(1));
+    await wait(60);
+    check("写入被拒后状态栏开关留在关闭", !quotaSwitch(1).classList.contains("on"));
+    check("写入被拒出现失败行", !!statusRow().textContent.trim());
+    check("写入被拒的失败行带图标而不是只靠颜色", !!statusRow().querySelector("svg"));
+    check(
+      "写入被拒真的画成了错误色（比计算颜色，不比类名）",
+      paintedColor(statusRow().querySelector("small")) === rgb(token("--bad")),
+    );
+    check(
+      "写入被拒的颜色不是普通灰",
+      paintedColor(statusRow().querySelector("small")) !== rgb(token("--dim")),
+    );
+    const refusedColor = paintedColor(statusRow().querySelector("small"));
+    check(
+      "写入被拒时只有一个 live region 有内容",
+      $$(".settings-window [role=status]").filter((node) => node.textContent.trim()).length === 1,
+    );
+    check("写入被拒没有额外禁用任何控件", disabledSet() === disabledBefore);
+
+    click(quotaSwitch(1));
+    await wait(60);
+    check("再打开一次即重试，成功后开关打开", quotaSwitch(1).classList.contains("on"));
+    check("成功后失败行清除", !statusRow().textContent.trim());
+
+    click(quotaSwitch(1));
+    await wait(60);
+    check("恢复不完整时开关确实关闭了（移除本身做成了）", !quotaSwitch(1).classList.contains("on"));
+    check("恢复不完整出现提示行", !!statusRow().textContent.trim());
+    check(
+      "恢复不完整真的画成了警告色（比计算颜色，不比类名）",
+      paintedColor(statusRow().querySelector("small")) === rgb(token("--warn")),
+    );
+    // 拿这一轮真实画出来的两个颜色互比，而不是比两个 token。比 token 的话，
+    // 两条提示都被覆盖成同一个灰色时它照样通过——那正是要防的情形。
+    check(
+      "两种失败画出来的颜色确实不同",
+      !!refusedColor && paintedColor(statusRow().querySelector("small")) !== refusedColor,
+    );
+    click(quotaSwitch(1));
+    await wait(60);
+    check("下一次成功修改清除恢复提示", !statusRow().textContent.trim());
+    click(quotaSwitch(1));
+    await wait(60);
+    click(quotaSwitch(0));
+    await wait(60);
 
     // 菜单栏显示模式：切到仅图标后金额不再常驻
     click($$(".settings-segmented button")[2]);
@@ -193,11 +297,91 @@ export function runProbe() {
     check("Esc 关闭设置窗口", !$(".settings-window"));
 
 
+    // 额度 tab。这一段是 ux/menubar-quota.md 的交互合同：明细弹层悬停即开、
+    // 账号归属声明只挂在 Claude、读取关闭是自成一格的第三种状态。
+    // 截图证明不了其中任何一条。
+    const quotaVariant = (key) => click($(`.stage-group button[data-value="${key}"]`));
+    const card = (client) => $(`.quota-client[data-client="${client}"]`);
+
+    click(tabButton("quota"));
+    await wait(80);
+    check("额度 tab 可选中", tabButton("quota").classList.contains("active"));
+
+    check("Claude 卡声明账号归属不可确认", !!card("claude")?.querySelector(".quota-attribution"));
+    check("Codex 卡不带这句声明（它有 accountId）", !card("codex")?.querySelector(".quota-attribution"));
+
+    quotaVariant("bothOfficial");
+    await wait(80);
+    const allowance = card("codex")?.querySelector(".quota-allowance");
+    hover(allowance);
+    await wait(60);
+    check("悬停官方重置次数直接弹出明细", !!$(".quota-flyout"));
+    check("明细弹层里逐条列出重置次数", ($$(".quota-credits li").length ?? 0) > 0);
+
+    // 触发行 → 通路 → 明细 → 继续阅读 → 离开。这一段是 SQ-MB-R1-F1 的回归。
+    // 关键是走真实坐标：先前这里紧接着派发 leave(触发行) 与 hover(明细)，
+    // 指针从未经过两者之间那段几何空白，于是断言全绿而真实鼠标停在空白里
+    // 明细照样消失。间隙宽度也不是 CSS 里的 10px——它由卡片和面板的内边距
+    // 一起决定，所以坐标要从两个真实 rect 现算，不能写死。
+    const at = (x, y) =>
+      window.dispatchEvent(new MouseEvent("mousemove", { clientX: x, clientY: y, bubbles: true }));
+    const triggerBox = allowance.getBoundingClientRect();
+    const flyoutBox = $(".quota-flyout").getBoundingClientRect();
+    const gapMidX =
+      flyoutBox.left >= triggerBox.right
+        ? (triggerBox.right + flyoutBox.left) / 2
+        : (flyoutBox.right + triggerBox.left) / 2;
+    const gapY = (triggerBox.top + triggerBox.bottom) / 2;
+    check(
+      "触发行与明细之间确实有一段空白要跨",
+      Math.abs(flyoutBox.left - triggerBox.right) > 12 || Math.abs(triggerBox.left - flyoutBox.right) > 12,
+    );
+
+    leave(allowance);
+    at(gapMidX, gapY);
+    await wait(500);
+    check("指针停在触发行与明细之间的通路上，明细不关闭", !!$(".quota-flyout"));
+
+    at(flyoutBox.left + 20, flyoutBox.top + 20);
+    await wait(500);
+    check("走完通路进入明细后明细留在原地", !!$(".quota-flyout"));
+    check("停在明细上阅读时不会自己关闭", ($$(".quota-credits li").length ?? 0) > 0);
+
+    at(triggerBox.left - 60, triggerBox.top - 120);
+    await wait(500);
+    check("离开整个交互区域后明细才关闭", !$(".quota-flyout"));
+
+    // 纯键盘路径：只用 focus 与 Escape，不掺任何 hover，否则它证明的是鼠标。
+    const allowanceAgain = card("codex")?.querySelector(".quota-allowance");
+    allowanceAgain?.focus();
+    await wait(80);
+    check("键盘聚焦触发行同样打开明细", !!$(".quota-flyout"));
+    key(window, "Escape");
+    await wait(80);
+    check("Escape 关闭明细", !$(".quota-flyout"));
+
+    quotaVariant("readingOff");
+    await wait(80);
+    const offText = $(".panel")?.textContent ?? "";
+    check("读取关闭时两端都收成一行", $$(".quota-client").length === 2 && !$(".data-row"));
+    check("读取关闭说的是「未读取」，不是不可用或不适用", offText.includes(dict().quota.readingOff));
+    check("读取关闭时不再渲染任何百分比", !/\d%/.test(offText));
+    check("去设置开启的提示只出现一次", $$(".quota-alerts-note").length === 1);
+
     const box = document.createElement("pre");
     box.id = "probe-out";
     box.style.cssText = "position:fixed;inset:0;z-index:9999;margin:0;padding:16px;overflow:auto;background:#000;color:#0f0;font:12px ui-monospace;white-space:pre-wrap";
     const failed = results.filter((line) => line.startsWith("FAIL")).length;
     box.textContent = `${results.join("\n")}\n\n${failed === 0 ? "ALL PASS" : failed + " FAILED"}`;
     document.body.appendChild(box);
+    } catch (error) {
+      // 探针抛异常时原本什么都不渲染，读者只看到一张普通页面，会当成"没跑"
+      // 而不是"跑挂了"。一个静默失败的量具比没有量具更危险。
+      const box = document.createElement("pre");
+      box.id = "probe-out";
+      box.style.cssText = "position:fixed;inset:0;z-index:9999;margin:0;padding:16px;overflow:auto;background:#000;color:#f66;font:12px ui-monospace;white-space:pre-wrap";
+      box.textContent = `${results.join("\n")}\n\nPROBE CRASHED after ${results.length} checks\n${error?.stack ?? error}`;
+      document.body.appendChild(box);
+    }
   }, 700);
 }

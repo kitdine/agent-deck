@@ -68,7 +68,16 @@
     "90-day context": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"90-day context"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"90 天背景"}}}},
     "Updated now": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Updated now"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"刚刚更新"}}}},
 	"Updated %@": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Updated %@"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"%@更新"}}}},
-    "unpriced": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"unpriced"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"未定价"}}}}
+    "unpriced": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"unpriced"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"未定价"}}}},
+    "Quota": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Quota"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"额度"}}}},
+    "Not read": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Not read"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"未读取"}}}},
+    "Not applicable": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Not applicable"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"不适用"}}}},
+    "No quota window to show": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"No quota window to show"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"无可显示的额度窗口"}}}},
+    "Account attribution unconfirmed": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Account attribution unconfirmed"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"无法确认账号归属"}}}},
+    "Quota window": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Quota window"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"额度窗口"}}}},
+    "5h window": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"5h window"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"5 小时窗"}}}},
+    "7d window": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"7d window"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"7 天窗"}}}},
+    "Reset not reported": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Reset not reported"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"重置时间未报告"}}}}
   },
   "version": "1.0"
 }

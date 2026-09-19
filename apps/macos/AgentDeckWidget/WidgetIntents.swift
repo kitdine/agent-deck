@@ -49,3 +49,40 @@ struct ClientWidgetIntent: WidgetConfigurationIntent {
 		client = .all
 	}
 }
+
+// Codex PR #5 sixth review, P2: the quota design supports a single
+// configured Codex or Claude client at small and medium sizes -- there is no
+// honest "all clients" presentation at those sizes, unlike trust and rhythm
+// (which share ClientWidgetIntent/WidgetClient's .all case). presentedQuotaClients
+// silently truncated an .all selection to the first client, showing only
+// Codex while the picker still said "All clients." A quota-specific intent
+// without .all removes that mismatch instead of implementing a presentation
+// the design does not define.
+enum QuotaWidgetClient: String, AppEnum, CaseIterable, Codable, Sendable {
+	case codex
+	case claude
+
+	static let typeDisplayRepresentation = TypeDisplayRepresentation(name: "Client")
+	static let caseDisplayRepresentations: [Self: DisplayRepresentation] = [
+		.codex: "Codex",
+		.claude: "Claude",
+	]
+
+	var widgetClient: WidgetClient {
+		switch self {
+		case .codex: .codex
+		case .claude: .claude
+		}
+	}
+}
+
+struct QuotaWidgetIntent: WidgetConfigurationIntent {
+	static let title: LocalizedStringResource = "AgentDeck quota"
+	static let description = IntentDescription("Choose the client shown by this widget.")
+
+	@Parameter(title: "Client", default: .codex) var client: QuotaWidgetClient?
+
+	init() {
+		client = .codex
+	}
+}

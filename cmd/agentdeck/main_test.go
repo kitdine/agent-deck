@@ -62,6 +62,24 @@ func TestRootCommandRegistersGlobalFlags(t *testing.T) {
 	}
 }
 
+func TestQuotaCommandIsPublicAndCaptureStaysHidden(t *testing.T) {
+	root := newRootCommand(bytes.NewReader(nil), &bytes.Buffer{})
+	quotaCommand, _, err := root.Find([]string{"quota"})
+	if err != nil {
+		t.Fatalf("Find quota: %v", err)
+	}
+	if quotaCommand.Hidden || quotaCommand.RunE == nil {
+		t.Fatal("agentdeck quota must be a public command with its own RunE (C12)")
+	}
+	command, _, err := root.Find([]string{"quota", "capture"})
+	if err != nil {
+		t.Fatalf("Find quota capture: %v", err)
+	}
+	if !command.Hidden {
+		t.Fatal("quota capture is Claude Code's status-line entry and must stay Hidden")
+	}
+}
+
 type accessCountingCredentialVault struct{ calls int }
 
 func (s *accessCountingCredentialVault) called() error {
@@ -1668,7 +1686,7 @@ func TestStateMigrateTextAndJSONUpgradeSchema12(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if _, err = database.Exec(ctx, "DROP TABLE derived_snapshot_generation; DROP TABLE usage_work_signals; DROP TABLE usage_tool_files; DROP TABLE usage_tool_calls; DROP INDEX usage_events_client_session; ALTER TABLE providers DROP COLUMN wrapper_url; ALTER TABLE providers DROP COLUMN wrapper_kind; ALTER TABLE provider_selections DROP COLUMN via_wrapper; ALTER TABLE usage_events DROP COLUMN cache_write_tokens; ALTER TABLE usage_events DROP COLUMN turn_index; ALTER TABLE usage_source_files DROP COLUMN session_started_at; ALTER TABLE usage_source_files DROP COLUMN changed_at; ALTER TABLE usage_sessions DROP COLUMN started_at; ALTER TABLE provider_selections DROP COLUMN prior_keyed; UPDATE schema_metadata SET version=12"); err != nil {
+	if _, err = database.Exec(ctx, "DROP TABLE derived_snapshot_generation; DROP TABLE usage_work_signals; DROP TABLE usage_tool_files; DROP TABLE usage_tool_calls; DROP INDEX usage_events_client_session; ALTER TABLE providers DROP COLUMN wrapper_url; ALTER TABLE providers DROP COLUMN wrapper_kind; ALTER TABLE provider_selections DROP COLUMN via_wrapper; ALTER TABLE usage_events DROP COLUMN cache_write_tokens; ALTER TABLE usage_events DROP COLUMN turn_index; ALTER TABLE usage_source_files DROP COLUMN session_started_at; ALTER TABLE usage_source_files DROP COLUMN changed_at; ALTER TABLE usage_sessions DROP COLUMN started_at; ALTER TABLE provider_selections DROP COLUMN prior_keyed; DROP TABLE quota_windows; DROP TABLE quota_envelopes; DROP TABLE quota_alert_notices; UPDATE schema_metadata SET version=12"); err != nil {
 		database.Close()
 		t.Fatal(err)
 	}

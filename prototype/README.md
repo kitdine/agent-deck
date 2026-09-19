@@ -40,8 +40,26 @@ CLI 那一页渲染的是逐字符的真实输出，不是示意图。终端里�
 
 URL 参数：`lang=zh|en`、`theme=dark|light`、
 `state=normal|empty|aged|partial|pending|unavailable|schema|schemaStacked`、
-`width=420|280`、`tab=usage|breakdown|attribution|sessions`、
-`sessions=readable|unavailable`、`signal=activity|workflow|tooling`、`settings=1`。
+`width=420|280`、`tab=usage|breakdown|attribution|sessions|quota`、
+`sessions=readable|unavailable`、`signal=activity|workflow|tooling`、
+`quota=normal|bothOfficial|codexPlus|prose|parseFailed|stale|neverProbed`、
+`widgetClient=codex|claude`、`anchor=left|center|right`、`settings=1`。
+
+subscription-quota 新增两个**可见**的舞台开关，不要求评审者手写参数：
+
+- `额度状态 / Quota state` 与 `state=` 正交：一个描述用量数据，一个描述额度读取；
+- 小组件页另有 `小号端 / Small client`，在 Codex 与 Claude 之间选择 small 与 medium 呈现的那一端；
+- Popover 页另有 `锚点 / Anchor`，把面板推到屏幕左/中/右。真机上菜单栏图标可以贴在
+  任意水平位置，而重置次数弹层朝左还是朝右正由可用空间决定；舞台默认居中时左右余量
+  恒等，左侧分支永远走不到，那条规则就没有任何标本能证明它成立。
+
+URL 参数只保留作自动化和稳定深链。默认额度状态（`normal`）里 Codex 走 `aigocode`，
+所以它**不被探测**——不是数据缺失，是「非 official 不探测」这条门禁在默认标本上就
+能看见。切到“两侧 official”时页脚的服务商跟着同一个数据对象改变，两者无法各说各话。
+
+`codexPlus` 是 Plus 套餐的形状：主限额同时有 5 小时窗与 7 天窗，加上每模型限额
+共四个窗口。采样账号是 prolite，主限额只回了 7 天窗，照着它写死会得到一个「主限额
+没有 5 小时窗」的错误契约，所以这一支必须单独存在。
 页面顶部的控制条不是产品界面，是原型舞台自己的开关。
 
 `schema` 与 `schemaStacked` 是 `schema-version-signal` 这一条件的两种排布：

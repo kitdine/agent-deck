@@ -85,14 +85,19 @@
           "status": "error",
           "code": "schema_ahead",
           "count": 99,
-          "supported_count": 26
+          "supported_count": 30
         }
       ]
+    },
+    "subscription": {
+      "available": false,
+      "clients": []
     }
   },
   "warnings": [
     "provider_unavailable",
     "sessions_unavailable",
+    "subscription_unavailable",
     "usage_unavailable"
   ],
   "partial": true

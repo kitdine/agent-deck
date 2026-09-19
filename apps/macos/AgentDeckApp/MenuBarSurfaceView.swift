@@ -179,9 +179,11 @@ struct MenuBarSurfaceView: View {
 				if model.showsScanProgressStatus {
 					scanProgressStatus
 				}
-				clientTabs
-				hero
-				periodSwitcher
+				if model.selectedPanel != .quota {
+					clientTabs
+					hero
+					periodSwitcher
+				}
 				panelSwitcher
 			}
 			.padding(.horizontal, MenuBarGeometry.padding)
@@ -396,9 +398,11 @@ struct MenuBarSurfaceView: View {
 	}
 
 	@ViewBuilder
-	private var panel: some View {
-		switch model.selectedPanel {
-		case .usage:
+		private var panel: some View {
+			switch model.selectedPanel {
+			case .quota:
+				QuotaPanelView(clients: model.quotaClients)
+			case .usage:
 			UsagePanelView(panel: model.usagePanel)
 			case .breakdown:
 				BreakdownPanelView(panel: model.breakdownPanel)

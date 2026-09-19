@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -12,12 +13,13 @@ import (
 	"reflect"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/kitdine/agent-deck/internal/hookrefusal"
 	"github.com/kitdine/agent-deck/internal/platform"
-	_ "modernc.org/sqlite"
+	"modernc.org/sqlite"
 )
 
 func TestDriverFoundation(t *testing.T) {
@@ -198,6 +200,60 @@ func TestOpenSessionsReadOnlyReadsExistingIndex(t *testing.T) {
 	}
 	if _, err = readOnly.DB.ExecContext(ctx, "DELETE FROM session_metadata"); err == nil {
 		t.Fatal("read-only session index accepted a write")
+	}
+}
+
+// A CI-observed "database is locked (5) (SQLITE_BUSY)" failure inside
+// `agentdeck doctor --full` traced to OpenReadOnly and OpenSessionsReadOnly
+// omitting busy_timeout, unlike every write-path opener (Open,
+// openAtExistingRoot, OpenSessions) which already sets it: a concurrent
+// detached scanner briefly holding a real cross-process SQLite lock made an
+// unretried read fail immediately instead of waiting the same way a write
+// would. These assert the pragma is actually in effect, not just present in
+// the DSN string.
+func TestOpenReadOnlySetsBusyTimeout(t *testing.T) {
+	ctx := context.Background()
+	state := filepath.Join(t.TempDir(), "state")
+	writable, err := Open(ctx, state)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	writable.Close()
+
+	readOnly, err := OpenReadOnly(ctx, state)
+	if err != nil {
+		t.Fatalf("OpenReadOnly: %v", err)
+	}
+	defer readOnly.Close()
+	var timeoutMS int
+	if err = readOnly.DB.QueryRowContext(ctx, "PRAGMA busy_timeout").Scan(&timeoutMS); err != nil {
+		t.Fatalf("PRAGMA busy_timeout: %v", err)
+	}
+	if timeoutMS != 5000 {
+		t.Fatalf("busy_timeout = %d, want 5000 so a concurrent writer's brief lock is retried rather than failing immediately", timeoutMS)
+	}
+}
+
+func TestOpenSessionsReadOnlySetsBusyTimeout(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	writable, err := OpenSessions(ctx, root)
+	if err != nil {
+		t.Fatalf("OpenSessions: %v", err)
+	}
+	writable.Close()
+
+	readOnly, err := OpenSessionsReadOnly(ctx, root)
+	if err != nil {
+		t.Fatalf("OpenSessionsReadOnly: %v", err)
+	}
+	defer readOnly.Close()
+	var timeoutMS int
+	if err = readOnly.DB.QueryRowContext(ctx, "PRAGMA busy_timeout").Scan(&timeoutMS); err != nil {
+		t.Fatalf("PRAGMA busy_timeout: %v", err)
+	}
+	if timeoutMS != 5000 {
+		t.Fatalf("busy_timeout = %d, want 5000 so a concurrent writer's brief lock is retried rather than failing immediately", timeoutMS)
 	}
 }
 
@@ -1812,4 +1868,96 @@ func TestHookRefusalClearedOnlyAfterSuccessfulOpen(t *testing.T) {
 		t.Fatalf("cleanup failure broke open: %v", err)
 	}
 	db.Close()
+}
+
+// execFailingDriver wraps modernc.org/sqlite so a test can make the Nth
+// INSERT INTO settings statement fail deterministically, without racing a
+// real timeout against however fast SQLite happens to run in this
+// environment (see queryCountingDriver in internal/usage for the same
+// pattern applied to queries instead of execs).
+type execFailingDriver struct {
+	inner   driver.Driver
+	execs   *atomic.Int64
+	failAt  int64
+	failErr error
+}
+
+func (d *execFailingDriver) Open(name string) (driver.Conn, error) {
+	connection, err := d.inner.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	return &execFailingConn{Conn: connection, driver: d}, nil
+}
+
+type execFailingConn struct {
+	driver.Conn
+	driver *execFailingDriver
+}
+
+func (c *execFailingConn) ExecContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Result, error) {
+	execer, ok := c.Conn.(driver.ExecerContext)
+	if !ok {
+		return nil, driver.ErrSkip
+	}
+	if strings.Contains(query, "INSERT INTO settings") {
+		if c.driver.execs.Add(1) == c.driver.failAt {
+			return nil, c.driver.failErr
+		}
+	}
+	return execer.ExecContext(ctx, query, args)
+}
+
+func (c *execFailingConn) PrepareContext(ctx context.Context, query string) (driver.Stmt, error) {
+	preparer, ok := c.Conn.(driver.ConnPrepareContext)
+	if !ok {
+		return c.Conn.Prepare(query)
+	}
+	return preparer.PrepareContext(ctx, query)
+}
+
+// Codex PR #5 P1: SetSettings must write its whole batch in one transaction,
+// so a caller grouping several keys into one logical change (quota's
+// SaveSettings) never leaves the settings table with only some of them
+// written when a later key's write fails.
+func TestSetSettingsRollsBackTheWholeBatchWhenALaterKeyFails(t *testing.T) {
+	ctx := context.Background()
+	root := filepath.Join(t.TempDir(), "state")
+	db, err := Open(ctx, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SetSetting(ctx, "existing", "before"); err != nil {
+		t.Fatalf("seed SetSetting: %v", err)
+	}
+	path := db.path
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	execs := &atomic.Int64{}
+	failErr := errors.New("injected exec failure")
+	driverName := fmt.Sprintf("agentdeck-settings-exec-fail-%p", execs)
+	sql.Register(driverName, &execFailingDriver{inner: &sqlite.Driver{}, execs: execs, failAt: 2, failErr: failErr})
+	rawDB, err := sql.Open(driverName, path+"?_pragma=foreign_keys(1)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	faulty := &Store{DB: rawDB, path: path}
+	defer faulty.Close()
+
+	err = faulty.SetSettings(ctx, map[string]string{"aaa_first": "1", "existing": "after", "zzz_last": "2"})
+	if !errors.Is(err, failErr) {
+		t.Fatalf("SetSettings error = %v, want the injected failure", err)
+	}
+
+	value, ok, err := faulty.Setting(ctx, "existing")
+	if err != nil || !ok || value != "before" {
+		t.Fatalf("existing = (%q, %v, %v), want it untouched by the failed batch", value, ok, err)
+	}
+	for _, key := range []string{"aaa_first", "zzz_last"} {
+		if _, ok, err := faulty.Setting(ctx, key); err != nil || ok {
+			t.Fatalf("%s = (%v, %v), want it never committed by the failed batch", key, ok, err)
+		}
+	}
 }

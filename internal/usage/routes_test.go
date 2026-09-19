@@ -293,6 +293,113 @@ func readObservationSelection(t *testing.T, ctx context.Context, database *store
 	return
 }
 
+func TestLatestObservedProviderReturnsMostRecentNonEmptyValue(t *testing.T) {
+	ctx := context.Background()
+	database, err := store.Open(ctx, filepath.Join(t.TempDir(), "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	service := New(database, "")
+
+	if _, _, ok, err := service.LatestObservedProvider(ctx, "codex"); err != nil || ok {
+		t.Fatalf("LatestObservedProvider before any delivery = (ok=%v, err=%v), want ok=false", ok, err)
+	}
+
+	before := service.now()
+	if err := service.RecordHookDelivery(ctx, HookDelivery{
+		Client: "codex", SessionID: "session", HookEvent: "SessionStart", Source: "resume", DeliveryID: "d1",
+		HasSelection: true, Selection: store.ProviderSnapshot{Name: "official", Multiplier: "1"},
+	}); err != nil {
+		t.Fatalf("RecordHookDelivery d1: %v", err)
+	}
+	provider, observedAt, ok, err := service.LatestObservedProvider(ctx, "codex")
+	if err != nil || !ok || provider != "official" {
+		t.Fatalf("LatestObservedProvider = (%q, %v, %v), want (official, true, nil)", provider, ok, err)
+	}
+	if observedAt.Before(before) {
+		t.Fatalf("observedAt = %v, want at or after %v", observedAt, before)
+	}
+
+	if err := service.RecordHookDelivery(ctx, HookDelivery{
+		Client: "codex", SessionID: "session2", HookEvent: "SessionStart", Source: "resume", DeliveryID: "d2",
+		HasSelection: true, Selection: store.ProviderSnapshot{Name: "custom", Multiplier: "2"},
+	}); err != nil {
+		t.Fatalf("RecordHookDelivery d2: %v", err)
+	}
+	if provider, _, ok, err := service.LatestObservedProvider(ctx, "codex"); err != nil || !ok || provider != "custom" {
+		t.Fatalf("LatestObservedProvider after a second delivery = (%q, %v, %v), want (custom, true, nil)", provider, ok, err)
+	}
+
+	// A different client's own observations must not leak across.
+	if _, _, ok, err := service.LatestObservedProvider(ctx, "claude"); err != nil || ok {
+		t.Fatalf("LatestObservedProvider for a client with no delivery = (ok=%v, err=%v), want ok=false", ok, err)
+	}
+}
+
+func TestLatestObservedProviderIgnoresDeliveriesWithNoObservedProvider(t *testing.T) {
+	ctx := context.Background()
+	database, err := store.Open(ctx, filepath.Join(t.TempDir(), "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	service := New(database, "")
+
+	// SessionEnd never carries an observed provider (classifyHookDelivery's
+	// default branch): this delivery is accepted and recorded, but must not
+	// make LatestObservedProvider report an empty string as "known".
+	if err := service.RecordHookDelivery(ctx, HookDelivery{
+		Client: "codex", SessionID: "session", HookEvent: "SessionEnd", Source: "resume", DeliveryID: "d1",
+	}); err != nil {
+		t.Fatalf("RecordHookDelivery: %v", err)
+	}
+	if _, _, ok, err := service.LatestObservedProvider(ctx, "codex"); err != nil || ok {
+		t.Fatalf("LatestObservedProvider = (ok=%v, err=%v), want ok=false for a delivery with no observed provider", ok, err)
+	}
+}
+
+// Codex PR #5 sixth review, P2: observed_at is RFC3339Nano text, whose
+// fractional part omits trailing zeros, so its length varies and SQLite's
+// lexicographic TEXT ordering is not always chronological -- ".1Z" sorts
+// after the later ".100000001Z". Rows are inserted directly (arrival order
+// as the schema itself provides it, via id) with observed_at values chosen
+// so the two orderings disagree, proving LatestObservedProvider follows
+// arrival rather than being fooled by the text comparison.
+func TestLatestObservedProviderOrdersByArrivalNotObservedAtText(t *testing.T) {
+	ctx := context.Background()
+	database, err := store.Open(ctx, filepath.Join(t.TempDir(), "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	service := New(database, "")
+
+	insert := func(deliveryID, observedProvider, observedAt string) {
+		t.Helper()
+		if _, err := database.DB.ExecContext(ctx, `
+			INSERT INTO usage_session_observations(
+				client,session_id,observed_at,hook_event,source,
+				config_matched,observed_provider,observed_multiplier,observed_via_wrapper,
+				prior_state,conflict_scan,conflict_sources,route_effect,settings_changed_at,delivery_id
+			) VALUES ('codex','session',?,'SessionStart','resume',1,?,'1',0,'','','','confirmed','',?)`,
+			observedAt, observedProvider, deliveryID); err != nil {
+			t.Fatalf("insert %s: %v", deliveryID, err)
+		}
+	}
+
+	// Arrives first (lower id); a text-lexicographically LARGER observed_at.
+	insert("d1", "older", "2026-01-01T00:00:00.100000001Z")
+	// Arrives second (higher id, the true latest); a text-lexicographically
+	// SMALLER observed_at than d1's, despite being the more recent row.
+	insert("d2", "newer", "2026-01-01T00:00:00.1Z")
+
+	provider, _, ok, err := service.LatestObservedProvider(ctx, "codex")
+	if err != nil || !ok || provider != "newer" {
+		t.Fatalf("LatestObservedProvider = (%q, %v, %v), want (newer, true, nil): the later-arriving row must win regardless of its observed_at text", provider, ok, err)
+	}
+}
+
 // TestRecordHookDeliveryConfigChangeRecordsConfirmedFirstKeyOrUnknownRoute
 // covers Contract 3's two behaviors this task did not change: a confirmed
 // no-key -> first-key transition still advances the route, and an explicit

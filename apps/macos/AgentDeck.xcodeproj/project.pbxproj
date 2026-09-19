@@ -65,6 +65,9 @@
 		A10000000000000000000038 /* snapshot-partial.json in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000035 /* snapshot-partial.json */; };
 		A10000000000000000000039 /* WidgetSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000036 /* WidgetSnapshot.swift */; };
 		A1000000000000000000003A /* WidgetSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000036 /* WidgetSnapshot.swift */; };
+		A1000000000000000000003B /* QuotaSettingsController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000037 /* QuotaSettingsController.swift */; };
+		A1000000000000000000003C /* QuotaSettingsControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000038 /* QuotaSettingsControllerTests.swift */; };
+		A1000000000000000000003D /* QuotaAlertNotifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000039 /* QuotaAlertNotifier.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -96,6 +99,9 @@
 		A2000000000000000000001A /* MenuBarPanelViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarPanelViews.swift; sourceTree = "<group>"; };
 		A2000000000000000000001B /* MenuBarItemController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarItemController.swift; sourceTree = "<group>"; };
 		A2000000000000000000001C /* SettingsWindowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsWindowView.swift; sourceTree = "<group>"; };
+		A20000000000000000000037 /* QuotaSettingsController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaSettingsController.swift; sourceTree = "<group>"; };
+		A20000000000000000000039 /* QuotaAlertNotifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaAlertNotifier.swift; sourceTree = "<group>"; };
+		A20000000000000000000038 /* QuotaSettingsControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaSettingsControllerTests.swift; sourceTree = "<group>"; };
 		A2000000000000000000001D /* AppTestFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTestFixtures.swift; sourceTree = "<group>"; };
 		A2000000000000000000001E /* MenuBarViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarViewModelTests.swift; sourceTree = "<group>"; };
 		A2000000000000000000001F /* SwitchFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwitchFlowTests.swift; sourceTree = "<group>"; };
@@ -216,6 +222,8 @@
 				A2000000000000000000001A /* MenuBarPanelViews.swift */,
 				A2000000000000000000001B /* MenuBarItemController.swift */,
 				A2000000000000000000001C /* SettingsWindowView.swift */,
+				A20000000000000000000037 /* QuotaSettingsController.swift */,
+				A20000000000000000000039 /* QuotaAlertNotifier.swift */,
 				A20000000000000000000015 /* Assets.xcassets */,
 				A20000000000000000000024 /* AgentDeckMenuBarIcon.png */,
 				A20000000000000000000025 /* AgentDeckAppIcon.png */,
@@ -282,6 +290,7 @@
 				A20000000000000000000020 /* DesktopPreferencesTests.swift */,
 				A20000000000000000000021 /* DesktopCopyTests.swift */,
 				A20000000000000000000023 /* MenuBarChromeTests.swift */,
+				A20000000000000000000038 /* QuotaSettingsControllerTests.swift */,
 			);
 			path = AgentDeckAppTests;
 			sourceTree = "<group>";
@@ -534,6 +543,8 @@
 				A10000000000000000000015 /* MenuBarPanelViews.swift in Sources */,
 				A10000000000000000000016 /* MenuBarItemController.swift in Sources */,
 				A10000000000000000000017 /* SettingsWindowView.swift in Sources */,
+				A1000000000000000000003B /* QuotaSettingsController.swift in Sources */,
+				A1000000000000000000003D /* QuotaAlertNotifier.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -571,6 +582,7 @@
 				A1000000000000000000001B /* DesktopPreferencesTests.swift in Sources */,
 				A1000000000000000000001C /* DesktopCopyTests.swift in Sources */,
 				A1000000000000000000001E /* MenuBarChromeTests.swift in Sources */,
+				A1000000000000000000003C /* QuotaSettingsControllerTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -147,12 +147,18 @@ struct AgentDeckWidgetView: View {
 	}
 
 	@ViewBuilder private func widgetContent(_ model: WidgetSurfaceModel) -> some View {
-		WidgetFrame(entry: entry, qualifiers: model.qualifiers, family: family) {
+		WidgetFrame(
+			entry: entry, qualifiers: model.qualifiers(family: family), family: family,
+			quotaObservedAt: entry.kind == .quota ? model.quotaFooterObservedAt(family: family) : nil,
+			quotaReason: entry.kind == .quota ? model.quotaFooterReason(family: family) : nil,
+			quotaScopeClient: entry.kind == .quota ? model.quotaScopeClient(family: family) : nil
+		) {
 			switch entry.kind {
 			case .magnitude: MagnitudeWidgetView(model: model, family: family)
 			case .composition: CompositionWidgetView(model: model, family: family)
 			case .trust: TrustWidgetView(model: model, family: family)
 			case .rhythm: RhythmWidgetView(model: model, family: family)
+			case .quota: QuotaWidgetView(model: model, family: family)
 			}
 		}
 	}
@@ -162,25 +168,34 @@ private struct WidgetFrame<Content: View>: View {
 	let entry: AgentDeckWidgetEntry
 	let qualifiers: [WidgetQualifier]
 	let family: WidgetFamily
+	let quotaObservedAt: String?
+	let quotaReason: DesktopQuotaReasonV1?
+	let quotaScopeClient: WidgetClient?
 	let content: Content
 
 	init(
 		entry: AgentDeckWidgetEntry,
 		qualifiers: [WidgetQualifier],
 		family: WidgetFamily,
+		quotaObservedAt: String? = nil,
+		quotaReason: DesktopQuotaReasonV1? = nil,
+		quotaScopeClient: WidgetClient? = nil,
 		@ViewBuilder content: () -> Content
 	) {
 		self.entry = entry
 		self.qualifiers = qualifiers
 		self.family = family
+		self.quotaObservedAt = quotaObservedAt
+		self.quotaReason = quotaReason
+		self.quotaScopeClient = quotaScopeClient
 		self.content = content()
 	}
 
 	var body: some View {
 		VStack(alignment: .leading, spacing: 0) {
-			WidgetHeader(entry: entry, family: family)
+			WidgetHeader(entry: entry, family: family, quotaScopeClient: quotaScopeClient)
 			content.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-			WidgetFooter(entry: entry, qualifiers: qualifiers)
+			WidgetFooter(entry: entry, qualifiers: qualifiers, quotaObservedAt: quotaObservedAt, quotaReason: quotaReason)
 		}
 		.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 	}
@@ -189,6 +204,7 @@ private struct WidgetFrame<Content: View>: View {
 private struct WidgetHeader: View {
 	let entry: AgentDeckWidgetEntry
 	let family: WidgetFamily
+	var quotaScopeClient: WidgetClient? = nil
 
 	var body: some View {
 		HStack(spacing: 5) {
@@ -217,6 +233,7 @@ private struct WidgetHeader: View {
 		case .composition: "Breakdown"
 		case .trust: "Attribution"
 		case .rhythm: "Activity"
+		case .quota: "Quota"
 		}
 	}
 
@@ -230,6 +247,8 @@ private struct WidgetHeader: View {
 			return WidgetCopy.period(.today)
 		case .rhythm:
 			return WidgetCopy.period(.thirtyDays)
+		case .quota:
+			return WidgetCopy.client(quotaScopeClient ?? entry.client)
 		}
 	}
 
@@ -239,16 +258,191 @@ private struct WidgetHeader: View {
 		case .composition: "chart.pie.fill"
 		case .trust: "checkmark.shield.fill"
 		case .rhythm: "clock.arrow.circlepath"
+		case .quota: "gauge.with.dots.needle.67percent"
 		}
+	}
+}
+
+/// ux/widget-quota.md's countdown, in the vendor's own compact units (never
+/// translated — the widget's row has no room for a full "resets in" clause,
+/// only the bare span between the window label and its percentage). Returns
+/// nil for an unparseable timestamp or one already in the past, matching the
+/// design's "no negative countdown" expectation.
+/// Codex PR #5 ninth review, P2: a structured Claude observation can carry a
+/// fractional usedPercent, and a flat "%.0f%%" rounds a value like 89.6 up
+/// to the displayed "90%" even though the tint below and the CLI's own
+/// threshold both still correctly treat it as below 90 -- the displayed
+/// figure must not claim a boundary the value has not actually crossed.
+/// Mirrors WidgetFormat.share's own near-integer rule.
+func quotaPercentText(_ value: Double) -> String {
+	if abs(value.rounded() - value) < 0.05 { return String(format: "%.0f%%", value) }
+	return String(format: "%.1f%%", value)
+}
+
+func quotaResetETA(_ resetsAt: String, now: Date) -> String? {
+	guard let target = WidgetTimelinePolicy.date(resetsAt) else { return nil }
+	let interval = target.timeIntervalSince(now)
+	// Codex PR #5 eighth review, P2: checked on the raw interval, before
+	// truncating to minutes -- Int(Double) truncates toward zero, so a
+	// reset up to 59 seconds in the past rounded to 0 and slipped past a
+	// `minutes >= 0` guard, and a reset under 60 seconds away rounded down
+	// to "0m" instead of this function's own documented "<1m".
+	guard interval >= 0 else { return nil }
+	if interval < 60 { return "<1m" }
+	let minutes = Int(interval / 60)
+	if minutes < 60 { return "\(minutes)m" }
+	let hours = minutes / 60
+	if hours < 24 { return "\(hours)h" }
+	let days = hours / 24
+	let remainingHours = hours % 24
+	return remainingHours == 0 ? "\(days)d" : "\(days)d\(remainingHours)h"
+}
+
+private struct QuotaWidgetView: View {
+	let model: WidgetSurfaceModel
+	let family: WidgetFamily
+
+	var body: some View {
+		let clients = model.presentedQuotaClients(family: family)
+		let layout = QuotaWidgetLayoutContract.presentation(family: family, clientCount: clients.count)
+		if clients.isEmpty {
+			UnavailableWidget(kind: .quota)
+		} else if layout.axis == .vertical {
+			VStack(alignment: .leading, spacing: 0) {
+				ForEach(Array(clients.enumerated()), id: \.element.client) { index, client in
+					ZStack(alignment: .center) {
+						clientBlock(client)
+							.background(quotaGeometry("content.\(client.client)"))
+					}
+					.frame(maxHeight: .infinity)
+					.background(quotaGeometry("slot.\(client.client)"))
+					if index < clients.count - 1 { Divider() }
+				}
+			}
+			.frame(maxHeight: .infinity)
+			.coordinateSpace(name: "quota-large-body")
+		} else {
+			clientBlock(clients[0])
+		}
+	}
+
+	private func quotaGeometry(_ id: String) -> some View {
+		GeometryReader { proxy in
+			Color.clear.preference(
+				key: QuotaWidgetGeometryPreferenceKey.self,
+				value: [id: proxy.frame(in: .named("quota-large-body"))]
+			)
+		}
+	}
+
+	private func clientBlock(_ client: DesktopSubscriptionClientV1) -> some View {
+		let selected = model.quotaWindows(for: client, family: family)
+		return VStack(alignment: .leading, spacing: 5) {
+			HStack {
+				Text(client.client.capitalized).font(.system(size: 11, weight: .semibold))
+				Spacer()
+				if let plan = client.plan { Text(plan).font(.system(size: 9)).foregroundStyle(.secondary) }
+			}
+			if selected.isEmpty {
+				// Codex PR #5 fifth review, P2: two clients in the large
+				// widget's per-client rows can be unavailable for different
+				// reasons (not applicable, never probed, parse failed, ...)
+				// and must not collapse to the same generic string.
+				Text(quotaReasonText(quotaClientReason(client))).font(.caption).foregroundStyle(.secondary)
+			} else {
+				ForEach(Array(selected), id: \.key) { window in
+					VStack(alignment: .leading, spacing: 2) {
+						HStack {
+							Text(quotaWindowName(window))
+							if let label = quotaResetLabel(window, now: model.now) {
+								Text(label).foregroundStyle(.secondary)
+							}
+							Spacer()
+							Text(quotaPercentText(window.usedPercent)).monospacedDigit()
+						}
+						.font(.system(size: 9.5)).lineLimit(1)
+						ProgressView(value: min(max(window.usedPercent, 0), 100), total: 100)
+							// Codex PR #5 sixth review, P2: the quota contract's three
+							// shared tones (below 75% neutral, 75-89.9% elevated, 90%+
+							// warning) match the menu-bar surface and the 75% alert
+							// threshold; this widget skipped the middle tier.
+							.tint(window.usedPercent >= 90 ? WidgetPalette.warn : window.usedPercent >= 75 ? WidgetPalette.info : WidgetPalette.accent)
+					}
+				}
+			}
+			if client.client == "claude", !client.attributionConfirmed, client.failure != .probeDisabled {
+				Text(WidgetCopy.text("Account attribution unconfirmed")).font(.system(size: 8.5)).foregroundStyle(.secondary).lineLimit(1)
+			}
+		}
+		.frame(maxWidth: .infinity, alignment: .leading)
+	}
+
+}
+
+// A Codex limit's primary and secondary windows share the same vendor label:
+// the span is always appended, never replaced by the label, or a limit's two
+// rows would render identically named. Top-level (not a QuotaWidgetView
+// method) so AgentDeckWidgetTests can assert its composition directly,
+// matching quotaResetETA's pattern above.
+// Codex PR #5 eleventh review, P2: a window with no resets_at used to render
+// nothing here, unlike every other absent field on this row.
+func quotaResetLabel(_ window: DesktopSubscriptionWindowV1, now: Date) -> String? {
+	if let resetsAt = window.resetsAt, let eta = quotaResetETA(resetsAt, now: now) {
+		return eta
+	}
+	if window.resetsAtReason != nil {
+		return WidgetCopy.text("Reset not reported")
+	}
+	return nil
+}
+
+func quotaWindowName(_ window: DesktopSubscriptionWindowV1) -> String {
+	let span: String
+	if let minutes = window.windowMinutes {
+		span = minutes == 300 ? WidgetCopy.text("5h window") : minutes == 10080 ? WidgetCopy.text("7d window") : "\(minutes)m"
+	} else {
+		span = WidgetCopy.text("Quota window")
+	}
+	guard let label = window.label, !label.isEmpty else { return span }
+	return "\(label) · \(span)"
+}
+
+struct QuotaWidgetGeometryPreferenceKey: PreferenceKey {
+	static let defaultValue = [String: CGRect]()
+	static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
+		value.merge(nextValue(), uniquingKeysWith: { _, new in new })
+	}
+}
+
+/// Each unavailable client's own reason (C6), not a single shared fallback
+/// -- mirrors MenuBarPanelViews' primaryReason. observedAt distinguishes a
+/// successful probe that legitimately returned no windows (.notReported)
+/// from a client that has never been probed at all (.neverProbed).
+func quotaClientReason(_ client: DesktopSubscriptionClientV1) -> DesktopQuotaReasonV1 {
+	if !client.applicable { return client.applicableReason ?? .notOfficial }
+	if let failure = client.failure { return failure }
+	return client.observedAt != nil ? .notReported : .neverProbed
+}
+
+func quotaReasonText(_ reason: DesktopQuotaReasonV1) -> String {
+	switch reason {
+	case .probeDisabled: WidgetCopy.text("Not read")
+	case .notOfficial: WidgetCopy.text("Not applicable")
+	default: WidgetCopy.text("Data unavailable")
 	}
 }
 
 private struct WidgetFooter: View {
 	let entry: AgentDeckWidgetEntry
 	let qualifiers: [WidgetQualifier]
+	let quotaObservedAt: String?
+	let quotaReason: DesktopQuotaReasonV1?
 
 	var body: some View {
-		let presentation = WidgetFooterPresentation(qualifiers: qualifiers, relativeTime: relativeTime)
+		let presentation = WidgetFooterPresentation(
+			qualifiers: qualifiers, relativeTime: relativeTime,
+			unavailableText: quotaReason.map(quotaReasonText)
+		)
 		HStack(spacing: 5) {
 			Text(presentation.updateText)
 				.foregroundStyle(presentation.isOld ? WidgetPalette.warn : Color.secondary)
@@ -270,7 +464,7 @@ private struct WidgetFooter: View {
 	}
 
 	private var relativeTime: String? {
-		guard let generatedAt = entry.snapshot?.generatedAt,
+		guard let generatedAt = quotaObservedAt ?? entry.snapshot?.generatedAt,
 			let generated = WidgetTimelinePolicy.date(generatedAt),
 			entry.date.timeIntervalSince(generated) >= 60
 		else {

@@ -456,3 +456,168 @@ protection 与 merge receipt 仍属于后续交付；四个剩余版本方向和
 Task checkpoint：ad-v060c-assemble-dev / batch snapshot-performance；content_state=v0-6-0-contract:integration:snapshot-performance:pr4:15584e86d3067cd4c435e935057c33039b49316a；gate=VERIFIED；aggregate open。
 提交建议：提交本轮复评记录及同批 contract/status 同步；产品修复已在 `15584e8`，门禁 VERIFIED 后不再修改产品代码。
 推送建议：取得推送授权、检查新文档提交的消息/归因/签名及远端仍指向 `15584e8` 后，推送 `feature/snapshot-performance`；PR #4 merge 仍需独立授权并保持 CI/branch protection 成功。
+
+## Round 4 — 2026-09-17 — subscription-quota
+
+## 📋 subscription-quota 集成评审
+
+📊 总体评分：6.5/10
+
+✅ 评审结论：FAIL
+
+Checklist: 54/54 complete. Incomplete: None.
+
+Reviewer: Codex。Method: `ln-12-delivery-reviewer` 的 Blue-only 初始集成评审；
+按项目禁止未获请求的委派，因此未启动 subagent。Scope: 第三批
+`subscription-quota` 的 main-to-feature integration-base refresh；审查
+`aac6bb1` 的冲突解法、受影响消费者及 exact-state 开发验证。其余三个未完成
+方向、aggregate `assemble`、push、feature-to-main assembly、topic retirement
+与 release 不在本轮。
+
+Reviewed state: target main
+`4dd10f4bf0bfcea2b4cceede5ac9f24465f6a656` / tree
+`e8f50cf605e520f694a81762d87bfa8592cde1a5`；source pre-refresh
+`9e1e869`；three-way merge candidate
+`aac6bb187b5f42923d8d6994189301833dafcdc0` / tree
+`adf6ed43062daa6bc14c9bc3446ce636d925ed4f`。Parents are `9e1e869` and
+`4dd10f4`；common base `4737076`。Reviewed ContentState:
+`v0-6-0-contract:integration:subscription-quota:candidate:aac6bb187b5f42923d8d6994189301833dafcdc0`。
+
+### 🔴 严重问题 — 必须修复
+
+[`apps/macos/AgentDeckApp/AgentDeckApp.swift:72`] `A4-F1`（P1）— 冲突解法删除了
+subscription-quota 已交付的 fail-closed hosted-XCTest guard，却只以禁止自动
+refresh 替代，未隔离新加入的设置窗口路径。
+
+- 行为风险：当 hosted XCTest 没有收到 `AGENTDECK_TEST_HOME` 时，delegate 仍在
+  第 73、82–84、125–136 行构造使用真实 HOME 的 `EmbeddedHelperRunner`，并把
+  真实 `~/.claude/settings.json` URL 注入 `QuotaSettingsController`。测试或 harness
+  一旦打开 Settings，`QuotaSettingsController.load()` 会先直接读取该文件，再通过
+  同一 runner 调用 quota-settings transport；因此 `automaticRefreshEnabled=false`
+  只能阻止启动时/周期 refresh，不能兑现“hosted test 不构造或触达真实 state”的
+  已交付安全边界。
+- 证据：源 topic 当前权威
+  `docs/topics/subscription-quota/tasks.md:1073-1080` 明确声明 Task 7 保留该 guard；
+  source parent `9e1e869` 在 `XCTestConfigurationFilePath` 存在且
+  `AGENTDECK_TEST_HOME` 缺失时于 delegate 初始化阶段 fail closed。merge candidate
+  删除该判断；`QuotaSettingsController.swift:61-69,126-136` 证明 Settings 的
+  `onAppear` 路径读取注入 URL 并调用 transport。merge message 的安全论证只覆盖
+  embedded helper 的自动 refresh，与此设置路径不等价。
+- 有界修复：在 `AgentDeckApp.swift` 与 XCTest 启动环境的 owning boundary 恢复
+  fail-closed 隔离，使 hosted tests 在构造 quota settings/helper transport 前必然
+  获得并校验受控临时 HOME；同时保留 main 的 automatic-refresh 禁用与
+  `debugTestHome` 前缀校验。增加一个能在移除隔离时失败的回归，覆盖“XCTest +
+  缺失/不安全测试 HOME”以及 Settings load 不得读取或调用真实 HOME。不要仅恢复
+  会让当前 hosted suite SIGILL 的旧判断；应修正 test-host 环境传递或等价的隔离
+  注入，使 suite 可运行且安全边界可证明。
+
+### 🟡 建议改进 — 推荐
+
+无独立改进项；本轮在决定性 P1 finding 后停止扩大验证。
+
+### 🟢 优点
+
+- migration 冲突把 main 的 24–26 与 quota 的 27–30 保持连续，schema 常量、CLI
+  rollback fixture、Swift wire fixture 与 desktop fixtures 同步为 30。
+- desktop cache 与 quota 读取保持职责分离：usage/work-signals 可命中 derived
+  cache，subscription 仍无条件从 core 读取；quota-first refresh 与 scan progress
+  callback 均保留。
+- 菜单栏与 prototype 冲突采用加法合并，quota panel 抑制 usage client controls
+  的规则和 scan progress 状态都没有互相覆盖。
+
+### 📝 总结
+
+本轮检查 18 个 remerge-diff 文件，并把 13 个实际冲突解法映射到 schema、CLI、
+desktop snapshot、macOS refresh/UI、fixture 与 prototype 消费者。实现者在同一
+`aac6bb1` content state 记录的 `go build ./...`、`go vet ./...`、
+`scripts/run-go-test.sh ./... -count=1` 与完整 `scripts/test-macos-app.sh`
+均通过；`git diff --check 4dd10f4..aac6bb1` 也通过。根据 exact-state 复用规则，
+本轮未重复这些未变化的 broad suites。CodeGraph 明确报告索引绑定 main worktree，
+因此仅用于识别其不适用性；所有候选特有冲突路径均以 source 和测试证据核查。
+
+通过的 hosted suite 不能关闭 `A4-F1`：当前 suite 正是通过删除 guard 并禁止自动
+refresh 才恢复运行，且没有覆盖 Settings load 的真实 HOME 路径。该 finding 是
+integration conflict resolution 引入的安全/状态隔离回退，违反源 topic 当前交付
+契约，故本批评审 FAIL。aggregate `assemble`、push、assembly 与 release 继续开放。
+
+完成门禁：FAILED。`integration-readiness` 被 `A4-F1` 的精确候选证据否定；
+`source-continuity` 不足以覆盖该失败。
+
+### 下一步指令
+
+修复：v0-6-0-contract / assemble / A4-F1
+
+## Round 5 — 2026-09-17 — subscription-quota
+
+## 📋 subscription-quota 集成复评
+
+📊 总体评分：9.5/10
+
+✅ 复评结论：PASS
+
+Checklist: 54/54 complete. Incomplete: None.
+
+Reviewer: Codex。Method: `ln-12-delivery-reviewer` 的 Blue-only selective
+follow-up；按项目禁止未获请求的委派，因此未启动 subagent。Scope: 仅复核
+Round 4 `A4-F1`、其修复增量 `aac6bb1..f837666` 及修复触及的 hosted-XCTest
+隔离路径；未重审未变化的 subscription 产品实现、其他三个未完成方向、
+aggregate `assemble`、push、feature-to-main assembly、topic retirement 或 release。
+
+Reviewed state: repaired source HEAD
+`f8376660aeac324d1b7c223e85795707dae3cc29` / tree
+`85a4bc5c9950841c2bce1ff5f6000eb64ffd26d4`；parent and failed state
+`aac6bb187b5f42923d8d6994189301833dafcdc0`；target main remains
+`4dd10f4bf0bfcea2b4cceede5ac9f24465f6a656` / tree
+`e8f50cf605e520f694a81762d87bfa8592cde1a5`。Reviewed ContentState:
+`v0-6-0-contract:integration:subscription-quota:candidate:f8376660aeac324d1b7c223e85795707dae3cc29`。
+
+### 🔴 严重问题 — 必须修复
+
+无。`A4-F1` CLOSED。
+
+### 🟡 建议改进 — 推荐
+
+无未关闭问题，无新增 finding。
+
+### 🟢 优点
+
+- `A4-F1` closed：`resolveDebugHome(environment:)` 现在是 delegate 构造所有
+  real-HOME-touching objects 前的单一决策。存在 `XCTestConfigurationFilePath`
+  时，缺失测试 HOME 返回 `.missingForHostedTest`，不安全 HOME 返回
+  `.unsafeHome`，两者都在构造 runner、snapshot store、defaults 和
+  `~/.claude/settings.json` URL 前 fail closed；只有已校验的临时 HOME 返回
+  `.isolated`，`.real` 仅在非 XCTest 进程可达。
+- `scripts/test-macos-app.sh` 同时保留 xcodebuild 自身的
+  `AGENTDECK_TEST_HOME`，并增加 `TEST_RUNNER_AGENTDECK_TEST_HOME`；Xcode 为
+  launched test host 去除前缀后，delegate 实际收到隔离 HOME，关闭了导致旧 guard
+  SIGILL 的环境传递缺口，而不是再次删除安全边界。
+- 新回归直接覆盖 hosted+missing、hosted+unsafe、hosted+isolated 和 ordinary
+  process 四种决策；断言对象正是 `init()` 使用的 resolver，不以
+  `automaticRefreshEnabled` 的间接结果替代真实安全契约。
+
+### 📝 总结
+
+finding disposition：`A4-F1` 从 OPEN 转为 CLOSED；无 regression、无 superseded
+finding、无新增 finding。修复保持 main 已评审的 XCTest 自动 refresh 禁用，并把
+subscription-quota 新增的 Settings direct-read/helper transport 纳入同一 fail-closed
+HOME 决策。精确提交上的 `scripts/test-macos-app.sh` 通过 54+93+25 项 Swift tests
+（一个既有 expected skip），且无本 worktree helper 泄漏；同一状态的
+`bash -n scripts/test-macos-app.sh`、`make check-whitespace` 与
+`git diff --check` 通过。若 `TEST_RUNNER_` 变量未到达 host，delegate 会在 suite
+启动时进入 `.missingForHostedTest` 并失败，因此该完整套件结果也验证了传递链。
+
+Go 产品代码未被修复提交改变；复用 `aac6bb1` 上已记录的 `go build ./...`、
+`go vet ./...` 与 `scripts/run-go-test.sh ./... -count=1`，不因复评阶段重复执行。
+提交 `f837666` 具有 Good ED25519 signature、完整 body 及 Codex/Claude trailers。
+
+Residual uncertainty: 分支尚未 push，远端 CI、feature-to-main assembly 的最终
+result identity 与 branch protection 尚未产生；这些属于后续交付边界，不是当前
+repaired candidate 的 finding。aggregate `assemble` 仍为 partial batch task。
+
+完成门禁：VERIFIED（2/2；上述 ContentState）。`integration-readiness` 与
+`source-continuity` 均绑定 repaired candidate，missing、invalidated 与 unresolved
+为空。
+
+Task checkpoint：ad-v060c-assemble-dev / batch subscription-quota；content_state=v0-6-0-contract:integration:subscription-quota:candidate:f8376660aeac324d1b7c223e85795707dae3cc29；gate=VERIFIED；aggregate open。
+提交建议：提交 Round 5 复评记录及同批 contract handoff 同步；产品修复已在签名提交 `f837666`，不得夹带其他任务或产品改动。
+推送建议：取得独立推送授权并确认新的复评文档提交消息、贡献者 trailer、SSH 签名及远端基线后，推送 `feature/subscription-quota`；feature-to-main assembly/PR/merge 仍需各自授权和成功 CI/branch protection。

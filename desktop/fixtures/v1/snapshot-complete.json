@@ -7859,7 +7859,7 @@
         {
           "name": "schema",
           "status": "ok",
-          "count": 26
+          "count": 30
         },
         {
           "name": "pending_operations",
@@ -7901,6 +7901,105 @@
         {
           "name": "extensions",
           "status": "ok"
+        }
+      ]
+    },
+    "subscription": {
+      "available": true,
+      "clients": [
+        {
+          "client": "codex",
+          "applicable": true,
+          "applicable_reason": null,
+          "source": "codex_app_server",
+          "observed_at": "2026-08-13T09:58:00Z",
+          "stale": false,
+          "attribution_confirmed": true,
+          "plan": "prolite",
+          "plan_reason": null,
+          "windows": [
+            {
+              "key": "codex",
+              "label": null,
+              "window_minutes": 10080,
+              "window_minutes_reason": null,
+              "used_percent": 79,
+              "resets_at": "2026-08-18T13:00:00Z",
+              "resets_at_reason": null,
+              "observed_at": "2026-08-13T09:58:00Z",
+              "source": "codex_app_server"
+            },
+            {
+              "key": "codex_bengalfox",
+              "label": "GPT-5.3-Codex-Spark",
+              "window_minutes": 300,
+              "window_minutes_reason": null,
+              "used_percent": 12,
+              "resets_at": "2026-08-13T12:40:00Z",
+              "resets_at_reason": null,
+              "observed_at": "2026-08-13T09:58:00Z",
+              "source": "codex_app_server"
+            }
+          ],
+          "tightest_window_key": "codex",
+          "reset_allowance": {
+            "remaining": 3,
+            "remaining_reason": null,
+            "total": null,
+            "total_reason": "not_reported",
+            "credits": [
+              {
+                "key": "c1",
+                "title": "Full reset",
+                "status": "available",
+                "granted_at": "2026-08-08T10:00:00Z",
+                "expires_at": "2026-09-07T10:00:00Z"
+              }
+            ]
+          },
+          "reset_allowance_reason": null,
+          "observed_reset_at": null,
+          "failure": null
+        },
+        {
+          "client": "claude",
+          "applicable": true,
+          "applicable_reason": null,
+          "source": "claude_statusline",
+          "observed_at": "2026-08-13T09:58:00Z",
+          "stale": false,
+          "attribution_confirmed": false,
+          "plan": null,
+          "plan_reason": "not_reported",
+          "windows": [
+            {
+              "key": "five_hour",
+              "label": null,
+              "window_minutes": 300,
+              "window_minutes_reason": null,
+              "used_percent": 22,
+              "resets_at": "2026-08-13T13:20:00Z",
+              "resets_at_reason": null,
+              "observed_at": "2026-08-13T09:58:00Z",
+              "source": "claude_statusline"
+            },
+            {
+              "key": "seven_day",
+              "label": null,
+              "window_minutes": 10080,
+              "window_minutes_reason": null,
+              "used_percent": 3,
+              "resets_at": "2026-08-19T15:00:00Z",
+              "resets_at_reason": null,
+              "observed_at": "2026-08-13T09:58:00Z",
+              "source": "claude_statusline"
+            }
+          ],
+          "tightest_window_key": "five_hour",
+          "reset_allowance": null,
+          "reset_allowance_reason": "not_reported",
+          "observed_reset_at": null,
+          "failure": null
         }
       ]
     }

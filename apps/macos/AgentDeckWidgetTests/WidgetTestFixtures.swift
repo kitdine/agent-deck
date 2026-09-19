@@ -59,6 +59,78 @@ func snapshotWithPartial(_ snapshot: WidgetDesktopSnapshotV1) throws -> WidgetDe
 	)
 }
 
+/// Sets both the client-level observed_at and, matching the real wire
+/// (BuildSubscription stamps every window from the same probe cycle with the
+/// same instant in the ordinary case), each of that client's windows' own
+/// observed_at -- quotaFooterObservedAt reads from the windows actually
+/// displayed, not the client-level aggregate.
+func snapshotWithQuotaObservedAt(_ snapshot: WidgetDesktopSnapshotV1, values: [String: String]) throws -> WidgetDesktopSnapshotV1 {
+	var object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(snapshot)) as? [String: Any])
+	var subscription = try XCTUnwrap(object["subscription"] as? [String: Any])
+	var clients = try XCTUnwrap(subscription["clients"] as? [[String: Any]])
+	for index in clients.indices {
+		guard let client = clients[index]["client"] as? String, let value = values[client] else { continue }
+		clients[index]["observed_at"] = value
+		if var windows = clients[index]["windows"] as? [[String: Any]] {
+			for windowIndex in windows.indices {
+				windows[windowIndex]["observed_at"] = value
+			}
+			clients[index]["windows"] = windows
+		}
+	}
+	subscription["clients"] = clients
+	object["subscription"] = subscription
+	return try JSONDecoder().decode(WidgetDesktopSnapshotV1.self, from: JSONSerialization.data(withJSONObject: object))
+}
+
+/// Sets one client's own `stale` flag, leaving every other field (including
+/// the snapshot-wide generatedAt) untouched -- for proving the quota
+/// qualifier derives from this producer-computed flag rather than the
+/// generic snapshot-age ladder.
+func snapshotWithQuotaStale(_ snapshot: WidgetDesktopSnapshotV1, client: String, stale: Bool) throws -> WidgetDesktopSnapshotV1 {
+	var object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(snapshot)) as? [String: Any])
+	var subscription = try XCTUnwrap(object["subscription"] as? [String: Any])
+	var clients = try XCTUnwrap(subscription["clients"] as? [[String: Any]])
+	let clientIndex = try XCTUnwrap(clients.firstIndex { ($0["client"] as? String) == client })
+	clients[clientIndex]["stale"] = stale
+	subscription["clients"] = clients
+	object["subscription"] = subscription
+	return try JSONDecoder().decode(WidgetDesktopSnapshotV1.self, from: JSONSerialization.data(withJSONObject: object))
+}
+
+/// Sets one specific window's own observed_at, leaving the client-level
+/// aggregate and every other window untouched -- for exercising the mixed-age
+/// case a partial update leaves behind.
+func snapshotWithWindowObservedAt(_ snapshot: WidgetDesktopSnapshotV1, client: String, windowKey: String, value: String) throws -> WidgetDesktopSnapshotV1 {
+	var object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(snapshot)) as? [String: Any])
+	var subscription = try XCTUnwrap(object["subscription"] as? [String: Any])
+	var clients = try XCTUnwrap(subscription["clients"] as? [[String: Any]])
+	let clientIndex = try XCTUnwrap(clients.firstIndex { ($0["client"] as? String) == client })
+	var windows = try XCTUnwrap(clients[clientIndex]["windows"] as? [[String: Any]])
+	let windowIndex = try XCTUnwrap(windows.firstIndex { ($0["key"] as? String) == windowKey })
+	windows[windowIndex]["observed_at"] = value
+	clients[clientIndex]["windows"] = windows
+	subscription["clients"] = clients
+	object["subscription"] = subscription
+	return try JSONDecoder().decode(WidgetDesktopSnapshotV1.self, from: JSONSerialization.data(withJSONObject: object))
+}
+
+/// Every client with reading off: no windows, and failure == probe_disabled,
+/// matching the desktop wire's real shape for that state (subscription.go).
+func snapshotWithQuotaReadingOff(_ snapshot: WidgetDesktopSnapshotV1) throws -> WidgetDesktopSnapshotV1 {
+	var object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(snapshot)) as? [String: Any])
+	var subscription = try XCTUnwrap(object["subscription"] as? [String: Any])
+	var clients = try XCTUnwrap(subscription["clients"] as? [[String: Any]])
+	for index in clients.indices {
+		clients[index]["windows"] = []
+		clients[index]["failure"] = "probe_disabled"
+		clients[index]["tightest_window_key"] = NSNull()
+	}
+	subscription["clients"] = clients
+	object["subscription"] = subscription
+	return try JSONDecoder().decode(WidgetDesktopSnapshotV1.self, from: JSONSerialization.data(withJSONObject: object))
+}
+
 func snapshotWithPricedToday(_ snapshot: WidgetDesktopSnapshotV1, client: String) throws -> WidgetDesktopSnapshotV1 {
 	var object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(snapshot)) as? [String: Any])
 	var usage = try XCTUnwrap(object["usage"] as? [String: Any])

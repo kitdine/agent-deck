@@ -50,11 +50,22 @@ The first release will not:
   separate macOS bundle that *invokes* this CLI and parses its JSON; no command
   gains an interactive graphical mode, and the CLI remains complete and
   supported on its own. See Desktop Application;
-- query provider billing, subscription, or usage APIs;
+- issue an authenticated request of its own to a vendor billing, subscription,
+  or usage API. Subscription quota (menu bar, widget, and `agentdeck quota`;
+  see Local State) does not cross this line: it invokes the user's own
+  already-authenticated Codex or Claude client command and reads what that
+  command reports on stdout, touching no credential and making no request of
+  its own to any vendor endpoint. The reported figures are the client's own
+  report, not an AgentDeck measurement — no vendor field surfaced here is a
+  published API contract, and a field the client does not report renders as an
+  explicit reason rather than an AgentDeck estimate;
 - select, store, or refresh a client account, plan, or OAuth token; probe a
   configured endpoint to verify that a relay or wrapper reaches the upstream its
   provider names or forwards whatever a client's own authentication requires; or
-  model a chain of proxies behind the one address a client can be pointed at;
+  model a chain of proxies behind the one address a client can be pointed at.
+  Subscription quota reads no token, key, or session data of its own to reach
+  the client it invokes, and this prohibition is what keeps that invocation
+  from becoming an exception to it rather than an instance of it;
 - reconcile estimates against invoices;
 - support custom model prices;
 - install, update, uninstall, or resolve dependencies for extensions;

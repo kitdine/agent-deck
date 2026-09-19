@@ -12,6 +12,7 @@ import {
   ClockCounterClockwise,
   Code,
   FileText,
+  Gauge,
   ShieldCheck,
   SpinnerGap,
   Warning,
@@ -27,6 +28,8 @@ import {
   WORK_SIGNALS,
   buckets,
   meta,
+  quota,
+  quotaMeta,
   rhythm,
   scope,
 } from "./data.js";
@@ -44,7 +47,42 @@ import {
   relativeTime,
 } from "./i18n.js";
 
+// 额度排在第一位，并且是默认页：一个被排到首位却不是默认打开的 tab，等于
+// 用位置说它最重要、又用默认值说它不是。
+// 与 styles.css 的 .quota-flyout 一致；判断左右要用真实宽度，不能靠估。
+const FLYOUT_WIDTH = 232;
+const FLYOUT_GAP = 10;
+// 从触发行移到明细要跨过 FLYOUT_GAP。间隙由 .quota-flyout 的 ::before 补成
+// 可悬停区域，这个宽限只用来吸收两个指针事件之间的那一拍。
+const CREDITS_CLOSE_GRACE = 160;
+
+// 触发行和明细之间的实际空白不是 CSS 里那 10px：明细定位在面板坐标系上，
+// 触发行还隔着卡片内边距和面板内边距，实测约 35px，而且随宽度和主题变。
+// 所以通路不能用一个写死的伪元素去铺，只能按两个真实 rect 算。
+// 只读指针位置、不铺任何覆盖层，因此不会替面板内容吃掉悬停。
+function withinCreditsRegion(x, y, trigger, flyout) {
+  const inside = (rect) => x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+  if (inside(trigger) || inside(flyout)) return true;
+  // 水平通路：明细在触发行右侧或左侧时，两者之间那条带子也算"正在路上"。
+  // 覆盖式布局两个矩形本来就重叠，没有通路可言。
+  let lo;
+  let hi;
+  if (flyout.left >= trigger.right) {
+    lo = trigger.right;
+    hi = flyout.left;
+  } else if (flyout.right <= trigger.left) {
+    lo = flyout.right;
+    hi = trigger.left;
+  } else {
+    return false;
+  }
+  if (x < lo || x > hi) return false;
+  // 纵向取两者的并集而不是交集：斜着慢慢挪过去的人不该掉出通路。
+  return y >= Math.min(trigger.top, flyout.top) && y <= Math.max(trigger.bottom, flyout.bottom);
+}
+
 const TABS = [
+  { key: "quota", Icon: Gauge },
   { key: "usage", Icon: ChartBar },
   { key: "breakdown", Icon: ChartPieSlice },
   { key: "attribution", Icon: ShieldCheck },
@@ -94,7 +132,11 @@ function Row({ label, dot, value, share, tone, lang }) {
 
 function StatGrid({ items }) {
   return (
-    <div className="stat-grid" style={{ "--columns": items.length }}>
+    <div
+      className="stat-grid"
+      data-dense={items.length > 3 ? "1" : undefined}
+      style={{ "--columns": items.length }}
+    >
       {items.map((item) => (
         <div key={item.label}>
           <span>{item.label}</span>
@@ -427,6 +469,293 @@ const SIGNALS = [
   { key: "workflow", Icon: FileText, tone: "model-b" },
   { key: "tooling", Icon: Wrench, tone: "accent" },
 ];
+
+/* ------------------------------------------------------------ 额度面板 */
+
+// 倒计时而不是时钟时间：有用的问题是"还有多久能用"，不是"几点解封"。
+// 跨时区、跨夏令时的时钟时间还需要读者自己换算，倒计时不需要。
+// 裸时距与整句分开：把 resetsIn("12d") 再套进 creditExpires 会得到
+// 「12d后重置到期」。凡是需要时距的地方取 etaText，需要整句的地方才包一层。
+function etaText(target, now) {
+  const remaining = target - now;
+  const minutes = Math.max(0, Math.floor(remaining / 60));
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  const restMinutes = minutes % 60;
+  if (hours < 24) return restMinutes ? `${hours}h${restMinutes}m` : `${hours}h`;
+  const days = Math.floor(hours / 24);
+  const restHours = hours % 24;
+  return restHours ? `${days}d${restHours}h` : `${days}d`;
+}
+
+function resetEta(resetsAt, now, dict) {
+  if (resetsAt - now <= 0) return dict.quota.resetsNow;
+  return dict.quota.resetsIn(etaText(resetsAt, now));
+}
+
+// 同一套阈值供 popover 与 widget 使用，一个颜色在两处含义相同。
+export function quotaTone(percent) {
+  if (percent >= 90) return "warn";
+  if (percent >= 75) return "model-b";
+  return "model-a";
+}
+
+// relativeTime() 返回的是"上次更新于 X 前"这样的整句，套进"X 读取"会得到病句。
+// 额度这里要的是裸时距，所以直接走 Intl，不复用那个带语境的封装。
+function plainAgo(seconds, lang) {
+  const dict = catalogs[lang];
+  const minutes = Math.max(0, Math.round(seconds / 60));
+  // null 而不是 status.justNow：那个键是"刚刚更新"整句，套进"X读取"会得到
+  // "刚刚更新读取"。不到一分钟另有专门文案，由调用方选。
+  if (minutes < 1) return null;
+  const formatter = new Intl.RelativeTimeFormat(dict.locale, { numeric: "auto" });
+  if (minutes < 60) return formatter.format(-minutes, "minute");
+  if (minutes < 60 * 24) return formatter.format(-Math.round(minutes / 60), "hour");
+  return formatter.format(-Math.round(minutes / 1440), "day");
+}
+
+// 窄边界下模型名会把这一行截掉 101px（量具原话），所以 280pt 只留窗口跨度。
+// 模型名不是消失，是退到 title/aria 里：窗口是主要事实，型号是限定语，
+// 截断后的「GPT-5.3-Codex-Spar…」比没有型号更糟——它看着像另一个型号。
+function windowLabel(window, dict, narrow) {
+  const span = dict.quota.windowMins(window.window_minutes);
+  if (!window.label) return span;
+  return narrow ? span : `${window.label} · ${span}`;
+}
+
+function windowTitle(window, dict) {
+  const span = dict.quota.windowMins(window.window_minutes);
+  return window.label ? `${window.label} · ${span}` : span;
+}
+
+// 缺失字段的唯一渲染方式。带原因，不带原因就不该调用它。
+// 三个词对应三件事，选词由原因决定，不由调用点各自判断：
+//   not_official   不适用——产品故意没问，provider 不是 official
+//   probe_disabled 未读取——用户把读取关了，谁也没问
+//   其余           不可用——问了，客户端没答上来
+// 把选词收在这里，是因为散在各个调用点的布尔标志迟早会有一处写反，
+// 而写反的代价是告诉用户「坏了」，其实什么都没坏。
+export function missingWord(reason, dict) {
+  if (reason === "not_official") return dict.quota.notApplicable;
+  if (reason === "probe_disabled") return dict.quota.readingOff;
+  return dict.quota.unavailable;
+}
+
+function QuotaMissing({ label, reason, dict }) {
+  return (
+    <div className="quota-missing">
+      <span>{label}</span>
+      <b>{missingWord(reason, dict)}</b>
+      <small>{dict.quota.reasons[reason] ?? reason}</small>
+    </div>
+  );
+}
+
+function QuotaClient({ entry, lang, now, narrow, openCredits, closeCredits, creditsOpenFor }) {
+  const dict = useDict(lang);
+  // 明细向右弹出，不在卡片里就地展开：就地展开会把下面的窗口和
+  // 「本地观察到重置」整段推走，而这几行恰恰是读者要拿来对照的。
+  // 弹层由 Popover 渲染，这里只上报锚点位置——面板 overflow: hidden，
+  // 卡片内部的绝对定位元素出不去。
+  const anchor = useRef(null);
+  const credits = entry.reset_allowance?.credits ?? [];
+  const creditsOpen = creditsOpenFor === entry.client;
+  // 悬停即展开：明细是「看一眼」的信息，不是需要确认的动作，多一次点击
+  // 只是把成本转嫁给每一次查看。键盘焦点走同一条路径，所以读屏与鼠标一致。
+  const showCredits = () => credits.length > 0 && openCredits(entry, anchor.current);
+  // 离开触发行不等于结束阅读——指针可能正朝明细走。真正的关闭交给延后的
+  // 那一拍，进入明细会把它取消掉。
+  const hideCredits = () => credits.length > 0 && closeCredits();
+  const notApplicable = !entry.applicable;
+  const ago = entry.observed_at == null ? null : plainAgo(now - entry.observed_at, lang);
+  const age = entry.observed_at == null ? null : ago == null ? dict.quota.justRead : dict.quota.observedAt(ago);
+
+  // 读取关闭是全局状态，不是这一端的字段缺失：套餐、重置次数、窗口会一起
+  // 变成三行同样的「未读取」，读者要读三遍才知道是同一件事。卡片因此收成
+  // 一行——保留端名，说清是什么状态，其余留给面板末尾那句提示。
+  if (entry.failure === "probe_disabled") {
+    return (
+      <div className="card quota-client" data-client={entry.client}>
+        <div className="card-head">
+          <strong>{dict.clients[entry.client]}</strong>
+          <small>—</small>
+        </div>
+        <QuotaMissing label={dict.quota.title} reason="probe_disabled" dict={dict} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="card quota-client" data-client={entry.client}>
+      <div className="card-head">
+        <strong>{dict.clients[entry.client]}</strong>
+        {entry.plan ? (
+          <span className="quota-plan">{entry.plan}</span>
+        ) : null}
+        <small>
+          {entry.source ? dict.quota.sources[entry.source] : "—"}
+          {age == null ? "" : ` · ${age}`}
+          {entry.stale ? ` · ${dict.quota.stale}` : ""}
+        </small>
+      </div>
+
+      {/* 账号归属不可确认是这一端每个数字的性质，不是某个字段缺失，所以
+          自成一行而不是挤进上面的来源行：来源行在 280pt 下已经要放下
+          来源、年龄和「已过期」，再追加一句会把最该读到的年龄挤掉。 */}
+      {entry.attribution_confirmed === false && (
+        <p className="quota-attribution">{dict.quota.attributionUnconfirmed}</p>
+      )}
+
+      {entry.windows.length === 0 ? (
+        <QuotaMissing
+          label={dict.quota.noWindows}
+          reason={entry.failure ?? (notApplicable ? "not_official" : "not_reported")}
+          dict={dict}
+        />
+      ) : (
+        entry.windows.map((window) => (
+          <div className="data-row" key={window.key}>
+            <div>
+              <span title={windowTitle(window, dict)}>{windowLabel(window, dict, narrow)}</span>
+              <b>{resetEta(window.resets_at, now, dict)}</b>
+              <strong>{formatShare(window.used_percent, lang)}</strong>
+            </div>
+            <Bar share={window.used_percent} tone={quotaTone(window.used_percent)} />
+          </div>
+        ))
+      )}
+
+      {/* 官方重置次数：与上面的窗口重置是两件事，所以自成一行且另有标题 */}
+      {entry.reset_allowance ? (
+        <>
+          <div
+            className={`quota-allowance${credits.length ? " expandable" : ""}`}
+            ref={anchor}
+            tabIndex={credits.length ? 0 : undefined}
+            role={credits.length ? "button" : undefined}
+            aria-expanded={credits.length ? creditsOpen : undefined}
+            aria-haspopup={credits.length ? "dialog" : undefined}
+            onMouseEnter={showCredits}
+            onMouseLeave={hideCredits}
+            onFocus={showCredits}
+            onBlur={hideCredits}
+          >
+            <span>{dict.quota.allowance}</span>
+            <b>
+              {dict.quota.allowanceRemaining(entry.reset_allowance.remaining)}
+              {credits.length > 0 && <CaretRight size={11} weight="bold" />}
+            </b>
+            {entry.reset_allowance.total == null && (
+              <small>{dict.quota.allowanceTotalUnknown}</small>
+            )}
+          </div>
+        </>
+      ) : (
+        <QuotaMissing
+          label={dict.quota.allowance}
+          reason={entry.reset_allowance_reason ?? "not_reported"}
+          dict={dict}
+        />
+      )}
+
+      {/* 本地观察到的重置：第三类语义，永远不与上面两类共用标签 */}
+      {entry.observed_reset_at != null && (
+        <div className="quota-observed">
+          <span>{dict.quota.observedReset}</span>
+          <b>{plainAgo(now - entry.observed_reset_at, lang) ?? dict.quota.justRead}</b>
+        </div>
+      )}
+
+      {entry.plan == null && (
+        <QuotaMissing
+          label={dict.quota.plan}
+          reason={entry.plan_reason ?? "not_reported"}
+          dict={dict}
+        />
+      )}
+    </div>
+  );
+}
+
+// 侧边弹层。锚在触发它的那一行上、面板之外，主面板一行不动，读者可以同时
+// 看见「剩 3 次」和它的明细。左右由实际可用空间决定，不写死一侧——菜单栏图标
+// 可以在屏幕任意位置，固定朝右会在靠近右缘时把明细推出屏幕。
+function CreditsFlyout({ entry, lang, now, top, side, onClose, nodeRef }) {
+  const dict = useDict(lang);
+  const ref = nodeRef;
+  useEffect(() => {
+    const onDown = (event) => {
+      if (!ref.current?.contains(event.target)) onClose();
+    };
+    const onKey = (event) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [onClose]);
+
+  const credits = entry.reset_allowance?.credits ?? [];
+  return (
+    <div
+      className={`quota-flyout quota-flyout-${side}`}
+      style={{ top: `${top}px` }}
+      ref={ref}
+      role="dialog"
+      aria-label={dict.quota.allowance}
+    >
+      <div className="quota-flyout-head">
+        <strong>{dict.quota.allowance}</strong>
+        <span>{dict.clients[entry.client]}</span>
+      </div>
+      <ul className="quota-credits">
+        {credits.map((credit) => (
+          <li key={credit.key}>
+            <span>{credit.title}</span>
+            <b>{dict.quota.creditStatus[credit.status] ?? credit.status}</b>
+            <small>
+              {dict.quota.creditGranted(plainAgo(now - credit.granted_at, lang) ?? dict.quota.justRead)}
+              {" · "}
+              {dict.quota.creditExpires(etaText(credit.expires_at, now))}
+            </small>
+          </li>
+        ))}
+      </ul>
+      {/* 总数未提供是这一层的事实，不是脚注：厂商只列当前可见的额度。 */}
+      <p className="quota-flyout-note">{dict.quota.allowanceTotalUnknown}</p>
+    </div>
+  );
+}
+
+function QuotaPanel({ lang, variant, narrow, openCredits, closeCredits, creditsOpenFor }) {
+  const dict = useDict(lang);
+  const payload = quota(variant);
+  const now = quotaMeta.now;
+  // 提示只出现一次。两张卡各挂一句「去设置里开」，读者会以为是两个开关。
+  const readingOff = payload.clients.every((entry) => entry.failure === "probe_disabled");
+  return (
+    <section className="panel">
+      {payload.clients.map((entry) => (
+        <QuotaClient
+          key={entry.client}
+          entry={entry}
+          lang={lang}
+          now={now}
+          narrow={narrow}
+          openCredits={openCredits}
+          closeCredits={closeCredits}
+          creditsOpenFor={creditsOpenFor}
+        />
+      ))}
+      <p className="quota-alerts-note">
+        {readingOff ? dict.quota.readingOffHint : dict.quota.alertsOff}
+      </p>
+    </section>
+  );
+}
 
 function SessionsPanel({ view, lang, state, signal, onSignal }) {
   const dict = useDict(lang);
@@ -963,7 +1292,7 @@ function ConfirmDialog({ pending, lang, onCancel, onConfirm }) {
 
 /* ------------------------------------------------------------------ Popover */
 
-export function Popover({ lang, state = "normal", embedded = false, width = "420", scan = null, onClientChange }) {
+export function Popover({ lang, state = "normal", quotaState = "normal", embedded = false, width = "420", scan = null, onClientChange }) {
   const dict = useDict(lang);
   const [client, setClientState] = useState("all");
   const setClient = (value) => {
@@ -975,17 +1304,66 @@ export function Popover({ lang, state = "normal", embedded = false, width = "420
   const params = typeof window === "undefined" ? null : new URLSearchParams(window.location.search);
   const [tab, setTab] = useState(() => {
     const value = params?.get("tab");
-    return TABS.some((item) => item.key === value) ? value : "usage";
+    return TABS.some((item) => item.key === value) ? value : TABS[0].key;
   });
   const [signal, setSignal] = useState(() => {
     const value = params?.get("signal");
     return ["activity", "workflow", "tooling"].includes(value) ? value : null;
   });
+  // 额度状态由舞台上方独立开关传入；它与 usage 的 state 正交。
+  const quotaVariant = quotaState;
+  // 页脚的 provider 与额度面板读同一个对象：一个说 official 另一个说 aigocode
+  // 是这份原型最该防的同屏矛盾。
+  const quotaRoutes = quota(quotaVariant).routes ?? PROVIDER.routes;
   const [refreshStatus, setRefreshStatus] = useState("idle");
   const [ageMinutes, setAgeMinutes] = useState(state === "aged" ? 512 : 0);
   const [providerMenu, setProviderMenu] = useState(false);
   const [pending, setPending] = useState(null);
   const [healthOpen, setHealthOpen] = useState(false);
+  // 弹层锚在面板坐标系里：卡片在可滚动区内，滚动后它的 offsetTop 会变，
+  // 所以位置在打开的那一刻用两个 rect 相减算出来，不缓存卡片的布局位置。
+  const [creditsFlyout, setCreditsFlyout] = useState(null);
+  const rootRef = useRef(null);
+  // 关闭要延后一拍，因为「离开触发行」和「进入明细」是两个先后到达的事件：
+  // 立刻关闭会在指针还在 10px 间隙里时把明细卸载掉，用户永远够不到它。
+  // 进入明细会取消这次关闭，此后只要指针还在明细上就不再有计时器——
+  // 阅读期间不会被任何超时打断，这不是"把定时器调长一点"。
+  const creditsHold = useRef(null);
+  const creditsNode = useRef(null);
+  const cancelCreditsClose = useCallback(() => {
+    window.clearTimeout(creditsHold.current);
+    creditsHold.current = null;
+  }, []);
+  const closeCreditsSoon = useCallback(() => {
+    window.clearTimeout(creditsHold.current);
+    creditsHold.current = window.setTimeout(() => setCreditsFlyout(null), CREDITS_CLOSE_GRACE);
+  }, []);
+  const openCredits = useCallback((entry, anchorNode) => {
+    window.clearTimeout(creditsHold.current);
+    creditsHold.current = null;
+    if (!entry || !anchorNode || !rootRef.current) {
+      setCreditsFlyout(null);
+      return;
+    }
+    const rootBox = rootRef.current.getBoundingClientRect();
+    const anchorBox = anchorNode.getBoundingClientRect();
+    // 左右由实际可用空间决定：菜单栏图标可能贴着屏幕右缘，固定朝右会把明细
+    // 推出可视区。右侧放不下就朝左，两侧都放不下才盖在面板内侧。
+    const room = FLYOUT_WIDTH + FLYOUT_GAP;
+    const side =
+      rootBox.right + room <= window.innerWidth
+        ? "right"
+        : rootBox.left - room >= 0
+          ? "left"
+          : "overlay";
+    setCreditsFlyout({
+      client: entry.client,
+      entry,
+      anchorNode,
+      side,
+      top: Math.max(8, anchorBox.top - rootBox.top - 10),
+    });
+  }, []);
   const [toast, setToast] = useState("");
   const attempts = useRef(0);
   const timer = useRef(null);
@@ -995,6 +1373,7 @@ export function Popover({ lang, state = "normal", embedded = false, width = "420
     () => () => {
       window.clearTimeout(timer.current);
       window.clearTimeout(toastTimer.current);
+      window.clearTimeout(creditsHold.current);
     },
     [],
   );
@@ -1002,6 +1381,39 @@ export function Popover({ lang, state = "normal", embedded = false, width = "420
   useEffect(() => {
     setAgeMinutes(state === "aged" ? 512 : 0);
   }, [state]);
+
+  // 弹层锚在某一次布局中的按钮上；切额度状态、切宽度或滚动后那个坐标都失效。
+  // 与其让明细漂在旧位置，直接关闭，下一次打开再从当前 rect 计算。
+  useEffect(() => {
+    setCreditsFlyout(null);
+  }, [quotaVariant, width]);
+
+  // 明细打开期间，唯一的判据是指针到底在不在「触发行 + 通路 + 明细」里。
+  // 之前靠 mouseleave/mouseenter 配一个宽限：那只在指针一口气跨过去时成立，
+  // 慢慢挪或者在通路里停一下，宽限就先到期了。位置是可以直接问的，不必猜。
+  useEffect(() => {
+    if (!creditsFlyout) return undefined;
+    const onMove = (event) => {
+      const trigger = creditsFlyout.anchorNode?.getBoundingClientRect();
+      const flyout = creditsNode.current?.getBoundingClientRect();
+      if (!trigger || !flyout) return;
+      if (withinCreditsRegion(event.clientX, event.clientY, trigger, flyout)) {
+        cancelCreditsClose();
+      } else {
+        closeCreditsSoon();
+      }
+    };
+    // 指针整个移出窗口时不再有 mousemove，单靠上面那条判据会一直开着。
+    const onOut = (event) => {
+      if (!event.relatedTarget) closeCreditsSoon();
+    };
+    window.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseout", onOut);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseout", onOut);
+    };
+  }, [creditsFlyout, cancelCreditsClose, closeCreditsSoon]);
 
   const view = useMemo(() => scope(client, period), [client, period]);
   const unavailable = state === "unavailable";
@@ -1062,20 +1474,37 @@ export function Popover({ lang, state = "normal", embedded = false, width = "420
   // 面板体、footer、弹层三处的归因文案：同一个条件谓词，三种长度。
   const providerText = schema
     ? dict.status.schemaSignalFooter
-    : PROVIDER.routes.map((route) => `${dict.clients[route.client]} ${route.provider}`).join(" · ");
+    : quotaRoutes.map((route) => `${dict.clients[route.client]} ${route.provider}`).join(" · ");
 
   const visibleRefreshStatus = scan ? (scan.active ? "refreshing" : scan.phase === "completed" ? "success" : "idle") : refreshStatus;
   if (scan && !scan.hasSnapshot) return <ScanEmptyPopover scan={scan} lang={lang} width={width} />;
 
   return (
     <section
+      ref={rootRef}
       data-scan-enabled={scan ? "true" : undefined}
       data-scan-snapshot={scan ? (scan.published ? "new" : "previous") : undefined}
-      className={`popover${embedded ? " embedded" : ""}`}
+      className={`popover${embedded ? " embedded" : ""}${String(width) === "280" ? " narrow" : ""}${
+        creditsFlyout ? " flyout-open" : ""
+      }`}
       style={{ "--popover-w": `${width}px` }}
       data-width={width}
       aria-label={dict.app}
     >
+      {creditsFlyout && (
+        <CreditsFlyout
+          side={creditsFlyout.side}
+          entry={creditsFlyout.entry}
+          lang={lang}
+          now={quotaMeta.now}
+          top={creditsFlyout.top}
+          onClose={() => {
+            cancelCreditsClose();
+            setCreditsFlyout(null);
+          }}
+          nodeRef={creditsNode}
+        />
+      )}
       <header>
         <div className="brand">
           <img src="/agentdeck-robot.png" alt="" width={22} height={22} />
@@ -1191,16 +1620,20 @@ export function Popover({ lang, state = "normal", embedded = false, width = "420
           <button
             type="button"
             key={key}
+            data-tab={key}
             role="tab"
             aria-selected={tab === key}
+            aria-label={dict.tabs[key]}
+            title={dict.tabs[key]}
             className={tab === key ? "active" : ""}
             onClick={() => {
               setTab(key);
               setSignal(null);
+              setCreditsFlyout(null);
             }}
           >
             <Icon size={14} weight={tab === key ? "fill" : "regular"} />
-            {dict.tabs[key]}
+            <span className="tab-label">{dict.tabs[key]}</span>
             {((state === "partial" && key === "attribution") || schema) && (
               <i className="tab-warn" aria-label={schema ? dict.status.schemaSignalSectionUnavailable : dict.status.partial} />
             )}
@@ -1208,7 +1641,7 @@ export function Popover({ lang, state = "normal", embedded = false, width = "420
         ))}
       </nav>
 
-      <div className="scroll">
+      <div className="scroll" onScroll={() => setCreditsFlyout(null)}>
         {healthOpen ? (
           <HealthDetail lang={lang} state={state} onBack={() => setHealthOpen(false)} />
         ) : schema ? (
@@ -1230,6 +1663,16 @@ export function Popover({ lang, state = "normal", embedded = false, width = "420
             {tab === "usage" && <UsagePanel view={view} lang={lang} state={state} />}
             {tab === "breakdown" && <BreakdownPanel view={view} lang={lang} state={state} />}
             {tab === "attribution" && <AttributionPanel view={view} lang={lang} state={state} />}
+            {tab === "quota" && (
+              <QuotaPanel
+                lang={lang}
+                variant={quotaVariant}
+                narrow={String(width) === "280"}
+                openCredits={openCredits}
+                closeCredits={closeCreditsSoon}
+                creditsOpenFor={creditsFlyout?.client ?? null}
+              />
+            )}
             {tab === "sessions" && (
               <SessionsPanel view={view} lang={lang} state={state} signal={signal} onSignal={setSignal} />
             )}
@@ -1244,6 +1687,7 @@ export function Popover({ lang, state = "normal", embedded = false, width = "420
             type="button"
             className="provider-entry"
             aria-expanded={providerMenu}
+            aria-label={`${dict.footer.providers}: ${providerText}`}
             onClick={() => setProviderMenu((value) => !value)}
           >
             <span>{dict.footer.providers}</span>

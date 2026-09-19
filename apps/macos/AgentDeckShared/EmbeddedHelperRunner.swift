@@ -456,6 +456,7 @@ public struct EmbeddedHelperRunner: Sendable {
 	public static let minimumRecentLimit = 1
 	public static let maximumRecentLimit = 20
 	public static let defaultTimeout: Duration = .seconds(30)
+	public static let quotaRefreshTimeout: Duration = .seconds(40)
 	public static let indexRefreshTimeout: Duration = .seconds(120)
 	public static let maximumStreamLineBytes = 96 * 1024
 	public static let maximumStreamLines = 2_048
@@ -734,7 +735,11 @@ public struct EmbeddedHelperRunner: Sendable {
             "HOME": FileManager.default.homeDirectoryForCurrentUser.path,
             "LANG": "en_US_POSIX",
             "LC_ALL": "en_US_POSIX",
-            "PATH": "/usr/bin:/bin",
+			// App-launched helpers do not inherit an interactive shell PATH.
+			// Keep the search path fixed to supported, trusted installation
+			// roots so quota probes can resolve Homebrew-installed codex/claude
+			// without admitting arbitrary user-writable directories.
+			"PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
         ]
 		if let temporaryDirectory = ProcessInfo.processInfo.environment["TMPDIR"], !temporaryDirectory.isEmpty {
 			environment["TMPDIR"] = temporaryDirectory
@@ -1110,6 +1115,309 @@ private func classifyProviderUseOutput(_ output: HelperProcessOutput) -> Provide
 	return .opaque
 }
 
+// MARK: - Quota settings transport (subscription-quota task 7)
+//
+// `desktop quota-settings` and `desktop quota-statusline` always write their
+// full result to stdout before returning a non-zero exit on a partial
+// failure (task 6's `runDesktopQuotaSettings`/`runDesktopQuotaStatusLine`):
+// the settings view or the statusline outcome, including a `failed` or
+// `restore_incomplete` sub-result, is data on stdout, not something read off
+// the exit code or a stderr error envelope. So unlike `switchProvider`'s
+// `classifyProviderUseOutput`, these two only need to decode stdout — an
+// exit status is not part of their presentation contract.
+
+/// C9's three background cadences, spelled the way `time.Duration.String()`
+/// renders them (`5m0s`) — the wire form `QuotaProbeInterval`'s own raw value
+/// does not share, since it decodes an integer number of minutes, not text.
+public enum DesktopQuotaIntervalV1: String, Codable, Equatable, Sendable {
+	case fiveMinutes = "5m0s"
+	case fifteenMinutes = "15m0s"
+	case thirtyMinutes = "30m0s"
+
+	public var flagValue: String {
+		switch self {
+		case .fiveMinutes: "5m"
+		case .fifteenMinutes: "15m"
+		case .thirtyMinutes: "30m"
+		}
+	}
+}
+
+public struct DesktopQuotaSettingsValuesV1: Codable, Equatable, Sendable {
+	public let reading: Bool
+	public let interval: DesktopQuotaIntervalV1
+	public let alerts: Bool
+	public let thresholds: [Double]
+	public let resetNotice: Bool
+	public let statusline: Bool
+
+	enum CodingKeys: String, CodingKey {
+		case reading, alerts, thresholds, statusline, interval
+		case resetNotice = "reset_notice"
+	}
+
+	public init(reading: Bool, interval: DesktopQuotaIntervalV1, alerts: Bool, thresholds: [Double], resetNotice: Bool, statusline: Bool) {
+		self.reading = reading
+		self.interval = interval
+		self.alerts = alerts
+		self.thresholds = thresholds
+		self.resetNotice = resetNotice
+		self.statusline = statusline
+	}
+}
+
+/// `usagehook.Outcome`'s closed set (internal/usagehook/config.go). An
+/// unrecognized raw value decodes as `.unknown` rather than failing the whole
+/// settings read — a forward-compatible outcome must still let the rest of
+/// the result render.
+public enum DesktopUsageHookOutcomeV1: String, Codable, Equatable, Sendable {
+	case configured
+	case unchanged
+	case removed
+	case absent
+	case skipped
+	case failed
+	case restoreIncomplete = "restore_incomplete"
+	case unknown
+
+	public init(from decoder: Decoder) throws {
+		let raw = try decoder.singleValueContainer().decode(String.self)
+		self = DesktopUsageHookOutcomeV1(rawValue: raw) ?? .unknown
+	}
+}
+
+/// The status-line write/restore result the settings-quota UX names: only
+/// `outcome` and `error` reach presentation, so the client/path/configuration
+/// state fields `usagehook.Result` also carries are not decoded here.
+public struct DesktopUsageHookResultV1: Codable, Equatable, Sendable {
+	public let outcome: DesktopUsageHookOutcomeV1
+	public let error: String?
+
+	enum CodingKeys: String, CodingKey {
+		case outcome, error
+	}
+
+	public init(outcome: DesktopUsageHookOutcomeV1, error: String? = nil) {
+		self.outcome = outcome
+		self.error = error
+	}
+
+	public init(from decoder: Decoder) throws {
+		let container = try decoder.container(keyedBy: CodingKeys.self)
+		outcome = try container.decodeIfPresent(DesktopUsageHookOutcomeV1.self, forKey: .outcome) ?? .unknown
+		error = try container.decodeIfPresent(String.self, forKey: .error)
+	}
+}
+
+public struct DesktopQuotaSettingsResultV1: Codable, Equatable, Sendable {
+	public let settings: DesktopQuotaSettingsValuesV1
+	public let statuslineRestore: DesktopUsageHookResultV1?
+
+	enum CodingKeys: String, CodingKey {
+		case settings
+		case statuslineRestore = "statusline_restore"
+	}
+}
+
+public struct DesktopQuotaStatusLineResultV1: Codable, Equatable, Sendable {
+	public let consent: Bool
+	public let result: DesktopUsageHookResultV1
+}
+
+private struct DesktopQuotaEnvelopeV1<Data: Codable & Equatable & Sendable>: Codable, Equatable, Sendable {
+	let data: Data
+}
+
+/// What the desired write leaves unspecified stays at its current value —
+/// callers always resend every field they know, matching `quota-settings`'
+/// per-flag `Changed()` semantics without needing to track which single field
+/// moved.
+public struct DesktopQuotaSettingsDesiredV1: Equatable, Sendable {
+	public var reading: Bool
+	public var interval: DesktopQuotaIntervalV1
+	public var alerts: Bool
+	public var thresholds: [Double]
+	public var resetNotice: Bool
+
+	public init(reading: Bool, interval: DesktopQuotaIntervalV1, alerts: Bool, thresholds: [Double], resetNotice: Bool) {
+		self.reading = reading
+		self.interval = interval
+		self.alerts = alerts
+		self.thresholds = thresholds
+		self.resetNotice = resetNotice
+	}
+}
+
+/// One transport call's outcome as the controller needs to render it: a
+/// decoded result, or a reason nothing could be decoded at all (the helper is
+/// missing, the call timed out, or stdout was not the expected JSON) — as
+/// distinct from a *decoded* `failed`/`restore_incomplete` sub-result, which
+/// is success at the transport layer carrying a real failure as data.
+public enum DesktopQuotaTransportOutcome<Value: Equatable & Sendable>: Equatable, Sendable {
+	case decoded(Value)
+	case undecodable
+}
+
+public protocol QuotaSettingsTransport: Sendable {
+	func loadQuotaSettings() async -> DesktopQuotaTransportOutcome<DesktopQuotaSettingsResultV1>
+	func applyQuotaSettings(_ desired: DesktopQuotaSettingsDesiredV1) async -> DesktopQuotaTransportOutcome<DesktopQuotaSettingsResultV1>
+	func setQuotaStatusLine(enabled: Bool) async -> DesktopQuotaTransportOutcome<DesktopQuotaStatusLineResultV1>
+}
+
+public protocol DesktopQuotaRefreshing: Sendable {
+	/// Runs one quota refresh and returns the alerts that are due. The helper
+	/// records none of them as sent (architecture.md C10): the app posts them
+	/// and acknowledges only the ones the notification service accepted.
+	func refreshQuota(manual: Bool) async -> [DesktopQuotaAlertV1]
+	func acknowledgeQuotaAlerts(ids: [String]) async
+	/// Reads the current subscription section without probing anything --
+	/// the same read-only, no-network `agentdeck quota` (C12) a quota-only
+	/// refresh reuses to publish fresh figures without paying for the full
+	/// desktop snapshot's session/usage scan.
+	func fetchSubscription() async -> DesktopSubscriptionSnapshotV1?
+}
+
+/// Posts due quota alerts under the app's own identity and returns the ids the
+/// notification service accepted. Anything not returned stays due and is
+/// offered again by the next refresh.
+public protocol QuotaAlertDelivering: Sendable {
+	func deliver(_ alerts: [DesktopQuotaAlertV1]) async -> [String]
+}
+
+extension EmbeddedHelperRunner: DesktopQuotaRefreshing {
+	public func refreshQuota(manual: Bool) async -> [DesktopQuotaAlertV1] {
+		var arguments = ["desktop", "quota-refresh"]
+		if manual { arguments.append("--manual") }
+		let outcome: DesktopQuotaTransportOutcome<DesktopQuotaRefreshResultV1> = await runQuotaCommand(arguments, requestTimeout: Self.quotaRefreshTimeout)
+		guard case let .decoded(result) = outcome else { return [] }
+		return result.alerts
+	}
+
+	public func acknowledgeQuotaAlerts(ids: [String]) async {
+		guard !ids.isEmpty else { return }
+		let arguments = ["desktop", "quota-alerts", "ack"] + ids.flatMap { ["--id", $0] }
+		let _: DesktopQuotaTransportOutcome<DesktopQuotaAlertsAckResultV1> = await runQuotaCommand(arguments)
+	}
+
+	public func fetchSubscription() async -> DesktopSubscriptionSnapshotV1? {
+		let outcome: DesktopQuotaTransportOutcome<DesktopSubscriptionSnapshotV1> = await runQuotaCommand(["quota"])
+		guard case let .decoded(subscription) = outcome else { return nil }
+		return subscription
+	}
+}
+
+public struct DesktopQuotaRefreshResultV1: Codable, Equatable, Sendable {
+	public let gateReasons: [String: String?]
+	public let alerts: [DesktopQuotaAlertV1]
+
+	enum CodingKeys: String, CodingKey {
+		case gateReasons = "gate_reasons"
+		case alerts
+	}
+
+	public init(gateReasons: [String: String?], alerts: [DesktopQuotaAlertV1]) {
+		self.gateReasons = gateReasons
+		self.alerts = alerts
+	}
+
+	public init(from decoder: Decoder) throws {
+		let container = try decoder.container(keyedBy: CodingKeys.self)
+		gateReasons = try container.decodeIfPresent([String: String?].self, forKey: .gateReasons) ?? [:]
+		alerts = try container.decodeIfPresent([DesktopQuotaAlertV1].self, forKey: .alerts) ?? []
+	}
+}
+
+/// One due quota alert (architecture.md C10). `id` is opaque and passed back
+/// unchanged on acknowledgement; it doubles as the notification request
+/// identifier so a re-offered alert replaces rather than duplicates.
+public struct DesktopQuotaAlertV1: Codable, Equatable, Sendable {
+	public enum Kind: String, Codable, Sendable {
+		case threshold
+		case reset
+	}
+
+	public let id: String
+	public let kind: Kind
+	public let client: String
+	public let label: String?
+	public let windowMinutes: Int?
+	public let usedPercent: Double
+	public let threshold: Double?
+
+	enum CodingKeys: String, CodingKey {
+		case id, kind, client, label, threshold
+		case windowMinutes = "window_minutes"
+		case usedPercent = "used_percent"
+	}
+
+	public init(id: String, kind: Kind, client: String, label: String? = nil, windowMinutes: Int? = nil, usedPercent: Double, threshold: Double? = nil) {
+		self.id = id
+		self.kind = kind
+		self.client = client
+		self.label = label
+		self.windowMinutes = windowMinutes
+		self.usedPercent = usedPercent
+		self.threshold = threshold
+	}
+}
+
+public struct DesktopQuotaAlertsAckResultV1: Codable, Equatable, Sendable {
+	public let acknowledged: Int
+}
+
+extension EmbeddedHelperRunner: QuotaSettingsTransport {
+	public func loadQuotaSettings() async -> DesktopQuotaTransportOutcome<DesktopQuotaSettingsResultV1> {
+		await runQuotaSettings(arguments: [])
+	}
+
+	public func applyQuotaSettings(_ desired: DesktopQuotaSettingsDesiredV1) async -> DesktopQuotaTransportOutcome<DesktopQuotaSettingsResultV1> {
+		await runQuotaSettings(arguments: [
+			"--reading", desired.reading ? "on" : "off",
+			"--interval", desired.interval.flagValue,
+			"--alerts", desired.alerts ? "on" : "off",
+			"--thresholds", desired.thresholds.map { String(format: $0.truncatingRemainder(dividingBy: 1) == 0 ? "%.0f" : "%g", $0) }.joined(separator: ","),
+			"--reset-notice", desired.resetNotice ? "on" : "off",
+		])
+	}
+
+	private func runQuotaSettings(arguments: [String]) async -> DesktopQuotaTransportOutcome<DesktopQuotaSettingsResultV1> {
+		await runQuotaCommand(["desktop", "quota-settings"] + arguments)
+	}
+
+	public func setQuotaStatusLine(enabled: Bool) async -> DesktopQuotaTransportOutcome<DesktopQuotaStatusLineResultV1> {
+		await runQuotaCommand(["desktop", "quota-statusline", enabled ? "enable" : "disable"])
+	}
+
+	private func runQuotaCommand<Value: Codable & Equatable & Sendable>(
+		_ subcommand: [String],
+		requestTimeout: Duration? = nil
+	) async -> DesktopQuotaTransportOutcome<Value> {
+		let executableURL: URL
+		do {
+			executableURL = try embeddedHelperURL()
+		} catch {
+			return .undecodable
+		}
+		let output: HelperProcessOutput
+		do {
+			output = try await process.run(
+				executableURL: executableURL,
+				arguments: ["--format", "json"] + subcommand,
+				environment: environment,
+				timeout: requestTimeout ?? timeout
+			)
+		} catch {
+			return .undecodable
+		}
+		guard !output.stdout.isEmpty,
+			let envelope = try? JSONDecoder().decode(DesktopQuotaEnvelopeV1<Value>.self, from: output.stdout)
+		else {
+			return .undecodable
+		}
+		return .decoded(envelope.data)
+	}
+}
+
 @MainActor
 public protocol DesktopSnapshotRefreshing: AnyObject {
 	func refresh(recentLimit: Int) async throws -> DesktopWireEnvelopeV1
@@ -1379,15 +1687,21 @@ public final class DesktopRefreshCoordinator {
 	public private(set) var scanProgress: DesktopScanProgress?
 
 	private let host: any DesktopSnapshotRefreshing
+	private let quotaRefresher: (any DesktopQuotaRefreshing)?
+	private let alertDeliverer: (any QuotaAlertDelivering)?
 	private let snapshotStore: AppGroupSnapshotStore?
 	@ObservationIgnored private var activeRefresh: Task<Void, Never>?
 	@ObservationIgnored private var generation = 0
 
 	public init(
 		host: any DesktopSnapshotRefreshing = DesktopHost(),
+		quotaRefresher: (any DesktopQuotaRefreshing)? = nil,
+		alertDeliverer: (any QuotaAlertDelivering)? = nil,
 		snapshotStore: AppGroupSnapshotStore? = AppGroupSnapshotStore()
 	) {
 		self.host = host
+		self.quotaRefresher = quotaRefresher
+		self.alertDeliverer = alertDeliverer
 		self.snapshotStore = snapshotStore
 	}
 
@@ -1396,13 +1710,90 @@ public final class DesktopRefreshCoordinator {
 	@discardableResult
 	public func startInitialRefresh() -> Task<Void, Never> {
 		Task { [weak self] in
-			await self?.refresh()
+			await self?.refresh(manualQuota: false)
+		}
+	}
+
+	/// Runs only C9's quota probe and C10's alert delivery, without the full
+	/// desktop snapshot refresh `refresh(...)` otherwise couples it to.
+	///
+	/// Codex PR #5 tenth review, P1: quota alerts were evaluated only as a
+	/// side effect of `refresh(...)`, whose own background schedule
+	/// (`AgentDeckApp.startPeriodicRefresh`) is gated on the separate,
+	/// independently opt-in-and-off-by-default "Periodic refresh" General
+	/// preference -- rescanning sessions/usage on every tick. A user who
+	/// enables quota reading and alerts but leaves that unrelated preference
+	/// untouched got no threshold or reset notifications until a manual
+	/// refresh or relaunch. This lighter entry point lets a caller schedule
+	/// alert evaluation on its own cadence, independent of that preference
+	/// and without paying for a full snapshot rescan every tick.
+	public func refreshQuotaAlertsOnly(manual: Bool) async {
+		guard let quotaRefresher else { return }
+		let alerts = await quotaRefresher.refreshQuota(manual: manual)
+		if !alerts.isEmpty, let alertDeliverer {
+			let delivered = await alertDeliverer.deliver(alerts)
+			await quotaRefresher.acknowledgeQuotaAlerts(ids: delivered)
+		}
+		// Codex PR #5 twelfth review, P2: this is the app's only recurring
+		// caller into the quota probe when the full snapshot refresh (its own
+		// separate, opt-in-and-off-by-default preference) never runs. Without
+		// also publishing the fresher figures this probe just persisted, the
+		// menu bar (latestSnapshot) and widgets (snapshotStore) can keep
+		// showing the startup snapshot's quota state indefinitely even as
+		// probes and alerts keep succeeding underneath.
+		await publishFreshSubscription()
+	}
+
+	/// Splices a freshly read subscription section into the retained
+	/// snapshot without rerunning the session/usage scan the rest of it came
+	/// from. No-ops before any snapshot has ever been published (nothing to
+	/// splice into yet -- startInitialRefresh's own full refresh is what
+	/// establishes it) and is generation-guarded the same way publishSuccess
+	/// is, so it never overwrites a concurrent full refresh's newer result.
+	private func publishFreshSubscription() async {
+		guard let quotaRefresher else { return }
+		let observedGeneration = generation
+		guard let subscription = await quotaRefresher.fetchSubscription() else { return }
+		// Re-checked after the await: a concurrent full refresh may have
+		// started (and possibly already replaced latestSnapshot) while this
+		// read was in flight.
+		guard observedGeneration == generation, let current = latestSnapshot else { return }
+		let updated = current.replacingSubscription(subscription)
+		switch state {
+		case .ready:
+			latestSnapshot = updated
+			do {
+				if let snapshotStore {
+					try snapshotStore.write(AppGroupDesktopSnapshotV1(envelope: updated))
+				}
+				state = .ready(updated)
+			} catch {
+				state = .degraded(previous: updated, issue: .storageUnavailable)
+			}
+		case let .degraded(_, issue):
+			// A pre-existing degraded state names a reason unrelated to this
+			// quota-only read (a prior full refresh's helper/wire/storage
+			// failure); promoting it back to .ready here would hide that
+			// warning over data this call never re-verified. Carry the
+			// fresher quota figures in `previous` while keeping the same
+			// issue and disposition.
+			latestSnapshot = updated
+			if let snapshotStore {
+				try? snapshotStore.write(AppGroupDesktopSnapshotV1(envelope: updated))
+			}
+			state = .degraded(previous: updated, issue: issue)
+		case .uninitialized, .refreshing:
+			// .refreshing belongs to an in-flight full refresh -- already
+			// excluded by the generation check above in practice; kept as an
+			// explicit guard. .uninitialized has nothing stable to replace.
+			return
 		}
 	}
 
 	public func refresh(
 		recentLimit: Int = EmbeddedHelperRunner.defaultRecentLimit,
-		replacingActiveRefresh: Bool = false
+		replacingActiveRefresh: Bool = false,
+		manualQuota: Bool = true
 	) async {
 		if let activeRefresh {
 			guard replacingActiveRefresh else {
@@ -1425,6 +1816,8 @@ public final class DesktopRefreshCoordinator {
 				return
 			}
 			do {
+				await self.refreshQuotaAlertsOnly(manual: manualQuota)
+				guard !Task.isCancelled else { return }
 				let envelope = try await self.host.refresh(recentLimit: recentLimit) { [weak self] progress in
 					Task { @MainActor in
 						self?.publishProgress(progress, generation: currentGeneration)

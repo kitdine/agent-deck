@@ -1,5 +1,5 @@
-import { ChartBar, ChartPieSlice, ClockCounterClockwise, ShieldCheck } from "@phosphor-icons/react";
-import { meta, rhythm, scope } from "./data.js";
+import { ChartBar, ChartPieSlice, ClockCounterClockwise, Gauge, ShieldCheck } from "@phosphor-icons/react";
+import { meta, quota, quotaMeta, rhythm, scope } from "./data.js";
 import { catalogs, formatCost, formatDate, formatHourRangeShort, formatShare, formatTokens } from "./i18n.js";
 import { StageControls, useStagePrefs } from "./Stage.jsx";
 
@@ -16,9 +16,10 @@ const KINDS = [
   { key: "composition", Icon: ChartPieSlice },
   { key: "trust", Icon: ShieldCheck },
   { key: "rhythm", Icon: ClockCounterClockwise },
+  { key: "quota", Icon: Gauge },
 ];
 
-function Frame({ kind, size, lang, scopeText, children, Icon }) {
+function Frame({ kind, size, lang, scopeText, children, Icon, footText }) {
   const dict = catalogs[lang];
   return (
     <article className={`widget widget-${size}`} aria-label={`${dict.widgets.kinds[kind].title} · ${dict.widgets.sizes[size]}`}>
@@ -30,7 +31,7 @@ function Frame({ kind, size, lang, scopeText, children, Icon }) {
         <small>{scopeText}</small>
       </header>
       <div className="widget-body">{children}</div>
-      <footer>{dict.status.justNow}</footer>
+      <footer>{footText ?? dict.status.justNow}</footer>
     </article>
   );
 }
@@ -469,9 +470,237 @@ function Rhythm({ size, lang }) {
   );
 }
 
-const RENDERERS = { magnitude: Magnitude, composition: Composition, trust: Trust, rhythm: Rhythm };
+// 额度。小组件的刷新目标是 3–5 分钟，而额度探测刻意更慢，所以这里显示的
+// 一定是一个比小组件自身周期更旧的数字——每个尺寸都必须带上读取时刻，
+// 否则用户会把上一次探测的百分比当成此刻的百分比。
+//
+// 尺寸决定信息量，不决定信息种类：
+//   small  只放最紧的那个窗口，一个百分比加一条倒计时
+//   medium 每个 official 客户端一行，仍只取各自最紧的窗口
+//   large  展开到每个窗口，并带上官方重置次数
+// 三个尺寸都用 bothOfficial 变体：一个尺寸展示门禁、另一个展示满额数据，
+// 会让同一张画板上的三张卡互相矛盾。
+function worstWindow(entry) {
+  if (!entry.applicable || entry.windows.length === 0) return null;
+  return entry.windows.reduce((worst, item) => (item.used_percent > worst.used_percent ? item : worst));
+}
 
-function Group({ kind, Icon, lang }) {
+function quotaWidgetTone(percent) {
+  if (percent >= 90) return "warn";
+  if (percent >= 75) return "model-b";
+  return "model-a";
+}
+
+function quotaAgo(observedAt, now) {
+  const minutes = Math.max(0, Math.round((now - observedAt) / 60));
+  if (minutes < 1) return "<1m";
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  return `${Math.floor(hours / 24)}d`;
+}
+
+function quotaEta(resetsAt, now) {
+  const minutes = Math.max(0, Math.floor((resetsAt - now) / 60));
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  return `${days}d${hours % 24 ? `${hours % 24}h` : ""}`;
+}
+
+// 窗口标签必须带上额度名称。Codex Plus 的四个窗口里有两对跨度相同——主限额和
+// 每模型限额各有一个 5 小时窗与 7 天窗——只写跨度会得到两组一模一样的标签，
+// 读者无法分辨 62% 是账号主限额还是某个模型的限额。
+function widgetWindowLabel(window, dict) {
+  const span = dict.quota.windowMins(window.window_minutes);
+  return window.label ? `${window.label} · ${span}` : span;
+}
+
+// 归属说明必须是看得见的一行，不能只塞进 title 或辅助名称：需求 11 要的是
+// 「屏幕上说出来」，一个读屏才听得到的声明保护不了用眼睛看数字的人。
+// 三个尺寸都用短式，因为 148px 的卡放不下整句，而"放不下"不是省略的理由。
+function QuotaAttribution({ entry, lang }) {
+  if (entry.attribution_confirmed !== false) return null;
+  return <small className="w-attribution">{catalogs[lang].quota.attributionShort}</small>;
+}
+
+function QuotaClientBlock({ entry, size, lang, now, windows }) {
+  const dict = catalogs[lang];
+  return (
+    <section className="w-quota-client" data-client={entry.client}>
+      <header>
+        <strong>{dict.clients[entry.client]}</strong>
+        {entry.plan && <small>{entry.plan}</small>}
+        <QuotaAttribution entry={entry} lang={lang} />
+      </header>
+      <div className="w-quota-client-windows">
+        {windows.map((window) => (
+          <div className="w-quota-row" key={`${entry.client}-${window.key}`}>
+            <div>
+              <span title={widgetWindowLabel(window, dict)}>{widgetWindowLabel(window, dict)}</span>
+              <b>{quotaEta(window.resets_at, now)}</b>
+              <strong>{formatShare(window.used_percent, lang)}</strong>
+            </div>
+            <div className="w-track">
+              <i
+                className={`tone-${quotaWidgetTone(window.used_percent)}`}
+                style={{ width: `${window.used_percent}%` }}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+// 无数据卡的脚注必须说出真实原因。写死 never_probed 会在「读取已关闭」时
+// 告诉用户"尚未成功探测"，把一个开关问题说成一个故障。
+// 本尺寸下的最终形态由 ux/widget-quota.md 的设计轮次裁定；这里只保证
+// 现在说的是实话。
+function QuotaNoData({ size, lang, scopeText, reason = "never_probed" }) {
+  const dict = catalogs[lang];
+  return (
+    <Frame
+      kind="quota"
+      size={size}
+      lang={lang}
+      scopeText={scopeText}
+      Icon={Gauge}
+      footText={dict.quota.reasons[reason] ?? reason}
+    >
+      <p className="w-quota-none">
+        {reason === "probe_disabled" ? dict.quota.readingOff : dict.widgets.quotaNoData}
+      </p>
+    </Frame>
+  );
+}
+
+function QuotaWidget({ size, lang, quotaVariant = "normal", widgetClient = "codex" }) {
+  const dict = catalogs[lang];
+  const payload = quota(quotaVariant);
+  const now = quotaMeta.now;
+  // “没有时不展示”在结构层执行：没有窗口、门禁不适用或探测失败的端，
+  // 根本不生成 block，不用一张“不可用”卡去占另一个端的空间。
+  const available = payload.clients.filter(
+    (entry) => entry.applicable && !entry.failure && entry.windows.length > 0,
+  );
+  // 无数据时的原因取自实际载荷，而不是假设成「尚未探测」。
+  const noDataReason = payload.clients.every((entry) => entry.failure === "probe_disabled")
+    ? "probe_disabled"
+    : "never_probed";
+
+  // small 与 medium 都只呈现配置里选定的那一端；它们的差别是深度，不是范围。
+  // 选定端无数据时不偷换成另一端——配置说 Codex 却看到 Claude，配置就不可信了。
+  if (size === "small" || size === "medium") {
+    const entry = available.find((item) => item.client === widgetClient);
+    if (!entry) return <QuotaNoData size={size} lang={lang} scopeText="" reason={noDataReason} />;
+    const age = dict.quota.observedAt(quotaAgo(entry.observed_at, now));
+
+    if (size === "small") {
+      // small 只有一个数字的位置，所以给已用最高的那个窗口——会先挡住工作的
+      // 是它，而不是返回顺序里的第一个。
+      const window = worstWindow(entry);
+      return (
+        <Frame
+          kind="quota"
+          size={size}
+          lang={lang}
+          scopeText={dict.clients[entry.client]}
+          Icon={Gauge}
+          footText={age}
+        >
+          <span className="w-eyebrow" title={widgetWindowLabel(window, dict)}>
+            {widgetWindowLabel(window, dict)}
+          </span>
+          <strong className={`w-headline ${quotaWidgetTone(window.used_percent)}`}>
+            {formatShare(window.used_percent, lang)}
+          </strong>
+          <div className="w-track">
+            <i
+              className={`tone-${quotaWidgetTone(window.used_percent)}`}
+              style={{ width: `${window.used_percent}%` }}
+            />
+          </div>
+          <small className="w-support">{dict.quota.resetsIn(quotaEta(window.resets_at, now))}</small>
+          <QuotaAttribution entry={entry} lang={lang} />
+        </Frame>
+      );
+    }
+
+    // medium：同一端的全部窗口。官方重置次数不进小组件——小组件回答
+    // 「还剩多少额度」，而重置次数是一项需要读状态与到期日才有意义的账户资产，
+    // 一个没有展开位置的表面放一个孤零零的计数，只会引出它答不了的问题。
+    return (
+      <Frame
+        kind="quota"
+        size={size}
+        lang={lang}
+        scopeText={dict.clients[entry.client]}
+        Icon={Gauge}
+        footText={age}
+      >
+        <div className="w-quota-rows">
+          {entry.windows.map((window) => (
+            <div className="w-quota-row" key={window.key}>
+              <div>
+                <span title={widgetWindowLabel(window, dict)}>{widgetWindowLabel(window, dict)}</span>
+                <b>{quotaEta(window.resets_at, now)}</b>
+                <strong>{formatShare(window.used_percent, lang)}</strong>
+              </div>
+              <div className="w-track">
+                <i
+                  className={`tone-${quotaWidgetTone(window.used_percent)}`}
+                  style={{ width: `${window.used_percent}%` }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+        <QuotaAttribution entry={entry} lang={lang} />
+      </Frame>
+    );
+  }
+
+  // large：两端同时呈现，上下等分，各自在自己那一半里居中。
+  // 等分而不是按窗口数分配高度，是因为两端的相对重要性不随窗口多少变化。
+  if (available.length === 0)
+    return (
+      <QuotaNoData size={size} lang={lang} scopeText={dict.widgets.allClients} reason={noDataReason} />
+    );
+  const observedAt = available.map((entry) => entry.observed_at).filter((value) => value != null);
+  const age = observedAt.length
+    ? dict.quota.observedAt(quotaAgo(Math.min(...observedAt), now))
+    : dict.quota.reasons.never_probed;
+  return (
+    <Frame
+      kind="quota"
+      size={size}
+      lang={lang}
+      scopeText={dict.widgets.allClients}
+      Icon={Gauge}
+      footText={age}
+    >
+      <div className="w-quota-split">
+        {available.map((entry) => (
+          <QuotaClientBlock
+            key={entry.client}
+            entry={entry}
+            size={size}
+            lang={lang}
+            now={now}
+            windows={entry.windows}
+          />
+        ))}
+      </div>
+    </Frame>
+  );
+}
+
+const RENDERERS = { magnitude: Magnitude, composition: Composition, trust: Trust, rhythm: Rhythm, quota: QuotaWidget };
+
+function Group({ kind, Icon, lang, quotaVariant, widgetClient }) {
   const dict = catalogs[lang];
   const Renderer = RENDERERS[kind];
   return (
@@ -487,9 +716,9 @@ function Group({ kind, Icon, lang }) {
         <div className="size-tag tag-small">{dict.widgets.sizes.small}</div>
         <div className="size-tag tag-medium">{dict.widgets.sizes.medium}</div>
         <div className="size-tag tag-large">{dict.widgets.sizes.large}</div>
-        <Renderer size="small" lang={lang} />
-        <Renderer size="medium" lang={lang} />
-        <Renderer size="large" lang={lang} />
+        <Renderer size="small" lang={lang} quotaVariant={quotaVariant} widgetClient={widgetClient} />
+        <Renderer size="medium" lang={lang} quotaVariant={quotaVariant} widgetClient={widgetClient} />
+        <Renderer size="large" lang={lang} quotaVariant={quotaVariant} widgetClient={widgetClient} />
       </div>
     </section>
   );
@@ -501,14 +730,14 @@ export function WidgetGallery() {
   const dict = catalogs[lang];
   return (
     <main className="board" data-theme={theme}>
-      <StageControls prefs={prefs} showState={false} />
+      <StageControls prefs={prefs} showState={false} showWidgetClient />
       <header className="board-head">
         <h1>{dict.widgets.boardTitle}</h1>
         <p>{dict.widgets.boardSubtitle}</p>
       </header>
       <div className="board-grid">
         {KINDS.map(({ key, Icon }) => (
-          <Group key={key} kind={key} Icon={Icon} lang={lang} />
+          <Group key={key} kind={key} Icon={Icon} lang={lang} quotaVariant={prefs.quota} widgetClient={prefs.widgetClient} />
         ))}
       </div>
     </main>

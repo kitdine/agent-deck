@@ -5185,7 +5185,7 @@
         {
           "name": "schema",
           "status": "ok",
-          "count": 26
+          "count": 30
         },
         {
           "name": "pending_operations",
@@ -5224,6 +5224,45 @@
         {
           "name": "extensions",
           "status": "ok"
+        }
+      ]
+    },
+    "subscription": {
+      "available": true,
+      "clients": [
+        {
+          "client": "codex",
+          "applicable": true,
+          "applicable_reason": null,
+          "source": null,
+          "observed_at": null,
+          "stale": false,
+          "attribution_confirmed": true,
+          "plan": null,
+          "plan_reason": "probe_disabled",
+          "windows": [],
+          "tightest_window_key": null,
+          "reset_allowance": null,
+          "reset_allowance_reason": "probe_disabled",
+          "observed_reset_at": null,
+          "failure": "probe_disabled"
+        },
+        {
+          "client": "claude",
+          "applicable": true,
+          "applicable_reason": null,
+          "source": null,
+          "observed_at": null,
+          "stale": false,
+          "attribution_confirmed": false,
+          "plan": null,
+          "plan_reason": "not_reported",
+          "windows": [],
+          "tightest_window_key": null,
+          "reset_allowance": null,
+          "reset_allowance_reason": "probe_disabled",
+          "observed_reset_at": null,
+          "failure": "probe_disabled"
         }
       ]
     }

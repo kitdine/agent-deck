@@ -168,6 +168,47 @@ is selected into v0.6.0 with quota, reset information and reminders.
   ownerless reclamation is automatic. Promote into a bounded design before
   development rather than repairing the copy in place.
 
+- [ ] Reinstall the status-line route when a reading-off call's RestoreStatusLine
+  succeeds but the subsequent settings save fails before committing. Core state
+  keeps recording `ProbeEnabled=true`/`StatusLineConsent=true` while the route is
+  actually gone, so the next load claims capture enabled with nothing installed.
+  Deferred as Lane C from PR #5 (feature/subscription-quota) review round 13 on
+  2026-09-18, carried by `ad-bug-quota-reading-off-route-not-restored-on-save-failure`.
+  Mirrors the already-fixed quota-statusline disable path's own compensation.
+
+- [ ] Detect a currently-installed status-line route that belongs to a
+  DIFFERENT AgentDeck installation (a different `--state-dir`) before `SetupStatusLine`
+  records it as an ordinary chainable prior command. `PriorStatusLineCommand`
+  deliberately refuses to chain to any managed AgentDeck command, so silently
+  recording another installation's own route this way blanks the user's Claude
+  status line for as long as the newer installation stays active, with no error.
+  Deferred as Lane C from PR #5 review round 13 on 2026-09-18, carried by
+  `ad-bug-quota-statusline-cross-installation-conflict`.
+
+- [ ] Attribute a Claude prose parse failure's projected `source` to the probe
+  route that actually failed (prose), not to the last successfully retained
+  window's route (which can be status-line). The wire and menu-bar header
+  currently misreport which route produced the newer failure. Deferred as Lane C
+  from PR #5 review round 13 on 2026-09-18, carried by
+  `ad-bug-quota-parse-failure-source-misattribution`.
+
+- [ ] Return `.all` (not the configured single client) as the large quota
+  widget's scope label, since `presentedQuotaClients(.systemLarge)` always shows
+  both clients regardless of the widget's configured intent -- the header
+  currently names only one client while the body shows both. Deferred as Lane C
+  from PR #5 review round 13 on 2026-09-18, carried by
+  `ad-bug-widget-large-quota-header-client-label`.
+
+- [ ] Clear account-bound quota state (`quota_windows`, `quota_envelopes`, and
+  the alert-notice ledger) during portable-backup restore, not only status-line
+  consent (already fixed in review round 12). Restoring onto a machine signed
+  into a different Codex account currently keeps presenting the source
+  machine's quota figures as the target account's own, since the restored
+  provider selection still passes the official-provider gate and Codex
+  attribution is hard-coded confirmed. Deferred as Lane C from PR #5 review
+  round 13 on 2026-09-18, carried by
+  `ad-bug-quota-portable-restore-account-bound-state`.
+
 ## Withdrawn Candidates
 
 Recorded so they are not rediscovered as gaps. Reopen only if the stated reason

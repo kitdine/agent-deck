@@ -103,3 +103,24 @@ struct ClientTimelineProvider: AppIntentTimelineProvider {
 		kind == .rhythm ? .thirtyDays : .today
 	}
 }
+
+// Quota's own provider, distinct from ClientTimelineProvider because it takes
+// QuotaWidgetIntent (no .all case -- see that type's doc).
+struct QuotaTimelineProvider: AppIntentTimelineProvider {
+	private let loader = WidgetSnapshotLoader()
+
+	func placeholder(in context: Context) -> AgentDeckWidgetEntry {
+		loader.entry(kind: .quota, client: .codex, period: .today, now: Date(), placeholder: true)
+	}
+
+	func snapshot(for configuration: QuotaWidgetIntent, in context: Context) async -> AgentDeckWidgetEntry {
+		loader.entry(kind: .quota, client: (configuration.client ?? .codex).widgetClient, period: .today, now: Date())
+	}
+
+	func timeline(for configuration: QuotaWidgetIntent, in context: Context) async -> Timeline<AgentDeckWidgetEntry> {
+		let now = Date()
+		let entry = loader.entry(kind: .quota, client: (configuration.client ?? .codex).widgetClient, period: .today, now: now)
+		let refresh = WidgetTimelinePolicy.refreshDate(suggestedAt: entry.snapshot?.nextRefreshAt, now: now)
+		return Timeline(entries: [entry], policy: .after(refresh))
+	}
+}

@@ -238,6 +238,95 @@ var migrations = []migration{
 	{version: 26, statements: []string{
 		`CREATE INDEX usage_tool_calls_turn ON usage_tool_calls(client,session_id,turn_index)`,
 	}},
+	// Subscription-quota persistence (architecture.md C7, subscription-quota
+	// topic): the latest observation per (client, account_id, window_key)
+	// plus one prior — no time series — and the latest per-client envelope.
+	// internal/quota (task 1) owns the domain rules and query/write API;
+	// this package only owns the versioned schema, like every other
+	// production table, so a later column or table change here actually
+	// reaches an already-provisioned database (QD-R1-F5).
+	//
+	// account_id in both tables holds only internal/quota's one-way digest of
+	// the vendor account ID, never the raw value (QD-R3-F2, architecture.md
+	// C8 — account_id must never reach an exported file, and this core
+	// database is captured verbatim by internal/backup). Renumbered to 27 when
+	// the subscription-quota and schema-version-signal/snapshot-performance
+	// topics were both assembled onto main, since both had independently
+	// claimed versions 24-26 off the same fork point.
+	{version: 27, statements: []string{
+		`CREATE TABLE quota_windows (
+			client TEXT NOT NULL,
+			account_id TEXT NOT NULL DEFAULT '',
+			window_key TEXT NOT NULL,
+			source TEXT NOT NULL,
+			observed_at TEXT NOT NULL,
+			vendor_order INTEGER NOT NULL DEFAULT 0,
+			window_minutes INTEGER NOT NULL DEFAULT 0,
+			window_minutes_reason TEXT NOT NULL DEFAULT '',
+			label TEXT NOT NULL DEFAULT '',
+			used_percent REAL NOT NULL,
+			resets_at TEXT NOT NULL,
+			observed_reset_at TEXT NOT NULL DEFAULT '',
+			prior_used_percent REAL,
+			prior_observed_at TEXT,
+			PRIMARY KEY (client, account_id, window_key)
+		)`,
+		`CREATE TABLE quota_envelopes (
+			client TEXT PRIMARY KEY,
+			account_id TEXT NOT NULL DEFAULT '',
+			applicable INTEGER NOT NULL DEFAULT 0,
+			applicable_reason TEXT NOT NULL DEFAULT '',
+			source TEXT NOT NULL DEFAULT '',
+			observed_at TEXT NOT NULL DEFAULT '',
+			plan TEXT NOT NULL DEFAULT '',
+			plan_reason TEXT NOT NULL DEFAULT '',
+			reset_allowance_reason TEXT NOT NULL DEFAULT '',
+			reset_total INTEGER NOT NULL DEFAULT 0,
+			reset_total_reason TEXT NOT NULL DEFAULT '',
+			reset_remaining INTEGER NOT NULL DEFAULT 0,
+			reset_has_remaining INTEGER NOT NULL DEFAULT 0,
+			reset_credits_json TEXT NOT NULL DEFAULT '[]',
+			billing_balance REAL NOT NULL DEFAULT 0,
+			billing_has_balance INTEGER NOT NULL DEFAULT 0,
+			failure TEXT NOT NULL DEFAULT '',
+			failure_at TEXT NOT NULL DEFAULT ''
+		)`,
+	}},
+	// backoff_until is C9's geometric-backoff state: the earliest instant a
+	// background probe may run again after a run of consecutive failures.
+	// Empty means no backoff in effect. A success always clears it in the same
+	// write that clears failure/failure_at (gate-and-schedule task); the
+	// scheduler derives the next backoff step from it and failure_at rather
+	// than from a separate counter column.
+	{version: 28, statements: []string{
+		`ALTER TABLE quota_envelopes ADD COLUMN backoff_until TEXT NOT NULL DEFAULT ''`,
+	}},
+	// quota_alert_notices is C10's deduplication ledger (quota-alerts task):
+	// one row per notification already delivered, keyed by client, window,
+	// kind, threshold, and window instance. instance_unix is the window's
+	// resets_at for a threshold notice and its observed_reset_at for a reset
+	// notice, in epoch seconds, so instance tolerance and pruning are plain
+	// integer comparisons. It holds no account identifier and no quota figure.
+	{version: 29, statements: []string{
+		`CREATE TABLE quota_alert_notices (
+			client TEXT NOT NULL,
+			window_key TEXT NOT NULL,
+			kind TEXT NOT NULL,
+			threshold REAL NOT NULL DEFAULT 0,
+			instance_unix INTEGER NOT NULL,
+			notified_at TEXT NOT NULL,
+			PRIMARY KEY (client, window_key, kind, threshold, instance_unix)
+		)`,
+	}},
+	// failure_observed_at is the real instant of the most recent failed probe
+	// attempt, independent of failure_at/backoff_until (wire-and-cli task,
+	// WC-R2-F1). recordFailure writes it on every failure, manual or
+	// background, unlike failure_at, which a manual failure leaves untouched
+	// to protect the backoff chain's derived step (GS-R3-F1). A success
+	// clears it in the same write that clears failure/failure_at.
+	{version: 30, statements: []string{
+		`ALTER TABLE quota_envelopes ADD COLUMN failure_observed_at TEXT NOT NULL DEFAULT ''`,
+	}},
 }
 
 var derivedSnapshotGenerationTables = []string{

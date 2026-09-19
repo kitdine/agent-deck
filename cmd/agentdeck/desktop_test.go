@@ -49,7 +49,7 @@ func TestDesktopSnapshotMissingStateReturnsStablePartialEnvelope(t *testing.T) {
 	if !envelope.Partial || envelope.Error != nil {
 		t.Fatalf("partial envelope = %#v", envelope)
 	}
-	wantWarnings := []string{"provider_unavailable", "sessions_unavailable", "usage_unavailable"}
+	wantWarnings := []string{"provider_unavailable", "sessions_unavailable", "subscription_unavailable", "usage_unavailable"}
 	if !reflect.DeepEqual(envelope.Warnings, wantWarnings) {
 		t.Fatalf("warnings = %#v, want %#v", envelope.Warnings, wantWarnings)
 	}

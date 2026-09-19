@@ -1,0 +1,13 @@
+{
+  "accountId": "acct_demo_0002",
+  "rateLimitResetCredits": null,
+  "rateLimits": {
+    "planType": "free",
+    "credits": null,
+    "primary": null,
+    "secondary": null,
+    "limitId": null,
+    "limitName": null
+  },
+  "rateLimitsByLimitId": null
+}

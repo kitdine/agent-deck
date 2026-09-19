@@ -21,7 +21,11 @@ type Health struct {
 // read-only may create 0600 -wal and -shm sidecars inside the 0700 state root:
 // immutable=1 assumes the file cannot change and can yield incorrect results or
 // SQLITE_CORRUPT during concurrent watcher or scanner writes, while
-// nolock=1 could return a stale snapshot.
+// nolock=1 could return a stale snapshot. busy_timeout matters for the same
+// reason: a concurrent watcher or detached scanner can still hold a brief
+// write lock while this reads, and without it SQLite fails immediately with
+// SQLITE_BUSY -- callers such as agentdeck doctor treat that as a hard
+// error -- instead of retrying briefly.
 func CheckHealth(ctx context.Context, stateRoot string, full bool) (Health, error) {
 	path := filepath.Join(stateRoot, "sessions.sqlite3")
 	if _, err := os.Stat(path); errors.Is(err, fs.ErrNotExist) {
@@ -29,7 +33,7 @@ func CheckHealth(ctx context.Context, stateRoot string, full bool) (Health, erro
 	} else if err != nil {
 		return Health{}, err
 	}
-	database, err := sql.Open("sqlite", "file:"+path+"?mode=ro")
+	database, err := sql.Open("sqlite", "file:"+path+"?mode=ro&_pragma=busy_timeout(5000)")
 	if err != nil {
 		return Health{}, err
 	}

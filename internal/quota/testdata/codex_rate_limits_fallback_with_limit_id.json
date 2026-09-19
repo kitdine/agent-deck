@@ -1,0 +1,15 @@
+{
+  "accountId": "acct_demo_0005",
+  "rateLimits": {
+    "planType": "team",
+    "primary": {
+      "usedPercent": 10,
+      "windowDurationMins": 300,
+      "resetsAt": 1757516400
+    },
+    "secondary": null,
+    "limitId": "codex_bengalfox",
+    "limitName": "bengalfox"
+  },
+  "rateLimitsByLimitId": null
+}

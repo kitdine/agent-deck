@@ -28,6 +28,33 @@ func debugTestHome(environment: [String: String]) throws -> URL? {
 func debugAutomaticRefreshEnabled(environment: [String: String]) -> Bool {
 	environment["XCTestConfigurationFilePath"] == nil
 }
+
+/// What `AgentDeckApplicationDelegate.init()` builds its real-HOME-touching
+/// objects (the embedded helper runner, its snapshot store/defaults, and the
+/// `~/.claude/settings.json` URL `QuotaSettingsController.load()` reads from
+/// Settings' `onAppear`) from, resolved once as a pure function so a hosted
+/// test's fail-closed behavior is directly testable without constructing the
+/// real delegate. `.real` is reachable only when `XCTestConfigurationFilePath`
+/// is absent (docs/fixes/xctest-state-isolation.md); a hosted run that never
+/// resolves an isolated home must not silently fall through to it merely
+/// because automatic refresh is separately disabled.
+enum DebugHomeResolution: Equatable {
+	case real
+	case isolated(URL)
+	case unsafeHome
+	case missingForHostedTest
+}
+
+func resolveDebugHome(environment: [String: String]) -> DebugHomeResolution {
+	do {
+		if let testHome = try debugTestHome(environment: environment) {
+			return .isolated(testHome)
+		}
+	} catch {
+		return .unsafeHome
+	}
+	return debugAutomaticRefreshEnabled(environment: environment) ? .real : .missingForHostedTest
+}
 #endif
 
 @main
@@ -38,6 +65,7 @@ enum AgentDeckMain {
 		"com.kitdine.agentdeck.widget.composition",
 		"com.kitdine.agentdeck.widget.trust",
 		"com.kitdine.agentdeck.widget.rhythm",
+		"com.kitdine.agentdeck.widget.quota",
 	]
 
 	static func main() {
@@ -62,6 +90,7 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 	private let refreshCoordinator: DesktopRefreshCoordinator
 	private let switchController: SwitchController
 	private let model: MenuBarViewModel
+	private let quotaSettings: QuotaSettingsController
 	private let settingsController: SettingsWindowController
 	private let automaticRefreshEnabled: Bool
 	private var itemController: MenuBarItemController?
@@ -72,46 +101,84 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 		var runner = EmbeddedHelperRunner()
 		var snapshotStore = AppGroupSnapshotStore()
 		var defaults: UserDefaults = .standard
+		// ~/.claude/settings.json's real location; overridden below to the
+		// same isolated home the acceptance harness already points the
+		// embedded helper's own subprocess environment at, so the
+		// status-line consent preview (a direct, read-only local file read —
+		// see QuotaSettingsController) never reads or reasons about a real
+		// user's file just because the harness is running.
+		var claudeSettingsURL = FileManager.default.homeDirectoryForCurrentUser
+			.appendingPathComponent(".claude", isDirectory: true)
+			.appendingPathComponent("settings.json", isDirectory: false)
 		var automaticRefreshEnabled = true
 		#if DEBUG
+		// AgentDeckAppTests is a hosted XCTest target: starting the test bundle
+		// starts this application delegate, including its initial helper refresh.
+		// resolveDebugHome is the single fail-closed decision for every
+		// real-HOME-touching object built below (docs/fixes/xctest-state-isolation.md
+		// covers automatic refresh; QuotaSettingsController.load(), reachable
+		// from Settings' onAppear independent of automatic refresh, needed the
+		// same guard). A hosted test that never resolves an isolated home --
+		// a command that forgot to pass TEST_RUNNER_AGENTDECK_TEST_HOME (Xcode
+		// strips TEST_RUNNER_ for the launched test host), or supplied an
+		// unsafe prefix -- must fail before the delegate can read or reason
+		// about real state.
 		automaticRefreshEnabled = debugAutomaticRefreshEnabled(environment: ProcessInfo.processInfo.environment)
-		// Acceptance harnesses may supply a controlled temporary home. XCTest
-		// hosts never launch the helper, so a direct xcodebuild cannot read or
-		// migrate the user's real AgentDeck or client state.
-		do {
-			if let testHome = try debugTestHome(environment: ProcessInfo.processInfo.environment) {
-				runner = EmbeddedHelperRunner(
-					appBundleURL: Bundle.main.bundleURL,
-					environment: [
-						"HOME": testHome.path,
-						"LANG": "en_US_POSIX",
-						"LC_ALL": "en_US_POSIX",
-						"PATH": "/usr/bin:/bin",
-					]
-				)
-				snapshotStore = AppGroupSnapshotStore(
-					directoryURL: testHome.appendingPathComponent("app-group", isDirectory: true)
-				)
-				defaults = UserDefaults(suiteName: "com.kitdine.agentdeck.acceptance") ?? .standard
-				defaults.setVolatileDomain([:], forName: "com.kitdine.agentdeck.acceptance")
-			}
-		} catch {
+		switch resolveDebugHome(environment: ProcessInfo.processInfo.environment) {
+		case .real:
+			break
+		case .isolated(let testHome):
+			runner = EmbeddedHelperRunner(
+				appBundleURL: Bundle.main.bundleURL,
+				environment: [
+					"HOME": testHome.path,
+					"LANG": "en_US_POSIX",
+					"LC_ALL": "en_US_POSIX",
+					"PATH": "/usr/bin:/bin",
+				]
+			)
+			snapshotStore = AppGroupSnapshotStore(
+				directoryURL: testHome.appendingPathComponent("app-group", isDirectory: true)
+			)
+			defaults = UserDefaults(suiteName: "com.kitdine.agentdeck.acceptance") ?? .standard
+			defaults.setVolatileDomain([:], forName: "com.kitdine.agentdeck.acceptance")
+			claudeSettingsURL = testHome.appendingPathComponent(".claude", isDirectory: true)
+				.appendingPathComponent("settings.json", isDirectory: false)
+		case .missingForHostedTest:
+			preconditionFailure("Hosted AgentDeck tests require an isolated AGENTDECK_TEST_HOME")
+		case .unsafeHome:
 			preconditionFailure("AgentDeck test harness requires a safe temporary home")
 		}
 		#endif
 		let preferences = DesktopPreferences(defaults: defaults)
-		let coordinator = DesktopRefreshCoordinator(host: DesktopHost(runner: runner), snapshotStore: snapshotStore)
+		let notifications = SystemUserNotifications()
+		let coordinator = DesktopRefreshCoordinator(
+			host: DesktopHost(runner: runner),
+			quotaRefresher: runner,
+			alertDeliverer: QuotaAlertNotifier(permission: notifications, poster: notifications),
+			snapshotStore: snapshotStore
+		)
 		let switchController = SwitchController(transport: runner, refreshCoordinator: coordinator)
+		let quotaSettings = QuotaSettingsController(
+			preferences: preferences,
+			transport: runner,
+			claudeSettingsURL: claudeSettingsURL,
+			notifications: notifications,
+			refreshQuotaSnapshot: { [weak coordinator] in
+				await coordinator?.refresh(manualQuota: false)
+			}
+		)
 		self.preferences = preferences
 		self.automaticRefreshEnabled = automaticRefreshEnabled
 		refreshCoordinator = coordinator
 		self.switchController = switchController
+		self.quotaSettings = quotaSettings
 		model = MenuBarViewModel(
 			coordinator: coordinator,
 			switchController: switchController,
 			preferences: preferences
 		)
-		settingsController = SettingsWindowController(preferences: preferences)
+		settingsController = SettingsWindowController(preferences: preferences, quotaSettings: quotaSettings)
 		super.init()
 	}
 
@@ -151,19 +218,39 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 		settingsController.show()
 	}
 
-	/// Opt-in and off by default. The cadence comes from the snapshot's
-	/// `next_refresh_at`; a due time missed while the app was suspended
-	/// refreshes once when it comes back rather than replaying every interval.
+	/// The full snapshot refresh (session/usage rescan) is opt-in and off by
+	/// default; its cadence comes from the snapshot's `next_refresh_at`, and a
+	/// due time missed while the app was suspended refreshes once when it
+	/// comes back rather than replaying every interval.
+	///
+	/// Codex PR #5 tenth review, P1: quota alert evaluation must not depend
+	/// on that same opt-in preference -- a user can turn on quota reading and
+	/// alerts while leaving "Periodic refresh" off, and still expects
+	/// threshold/reset notifications. `refreshQuotaAlertsOnly` runs
+	/// independently of `periodicRefreshEnabled`, gated instead on the
+	/// mirrored reading/alerts preferences so it does not wait on
+	/// `QuotaSettingsController.load()`'s async round trip either.
 	private func startPeriodicRefresh() {
 		periodicRefresh = Task { [weak self] in
 			while !Task.isCancelled {
 				try? await Task.sleep(for: .seconds(30))
-				guard let self, self.preferences.periodicRefreshEnabled else { continue }
+				guard let self else { continue }
+				// Codex PR #5 twelfth review, P1: refreshQuotaAlertsOnly is this
+				// app's only recurring caller into the quota probe itself, not
+				// merely alert evaluation -- gating it on alerts too meant a
+				// user with reading on but alerts off (both defaults: alerts
+				// starts off) never got a single background probe after
+				// startup. The helper already no-ops alert delivery on its own
+				// when alerts are disabled; gate this call on reading alone.
+				if self.preferences.quotaProbeEnabled {
+					await self.refreshCoordinator.refreshQuotaAlertsOnly(manual: false)
+				}
+				guard self.preferences.periodicRefreshEnabled else { continue }
 				guard let snapshot = self.refreshCoordinator.latestSnapshot?.data,
 					let due = DesktopFormat.timestamp(snapshot.nextRefreshAt)
 				else { continue }
 				guard due <= Date() else { continue }
-				await self.refreshCoordinator.refresh()
+				await self.refreshCoordinator.refresh(manualQuota: false)
 			}
 		}
 	}
@@ -181,6 +268,9 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 		NSApp.setActivationPolicy(.regular)
 		NSApp.activate(ignoringOtherApps: true)
 		window.makeKeyAndOrderFront(nil)
+		if ProcessInfo.processInfo.environment["AGENTDECK_TEST_SETTINGS_WINDOW"] == "1" {
+			settingsController.show()
+		}
 	}
 	#endif
 }

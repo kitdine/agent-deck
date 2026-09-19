@@ -36,11 +36,13 @@ final class DesktopRefreshCoordinatorTests: XCTestCase {
 
 	func testInitialRefreshPublishesMemoryAndAppGroupProjection() async throws {
 		let complete = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
+		let quotaRefresher = RecordingQuotaRefresher()
 		let temporaryDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
 		defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
 		let store = AppGroupSnapshotStore(directoryURL: temporaryDirectory)
 		let coordinator = DesktopRefreshCoordinator(
 			host: ScriptedSnapshotRefresher(responses: [.snapshot(complete)]),
+			quotaRefresher: quotaRefresher,
 			snapshotStore: store
 		)
 
@@ -49,6 +51,122 @@ final class DesktopRefreshCoordinatorTests: XCTestCase {
 		XCTAssertEqual(coordinator.state, .ready(complete))
 		XCTAssertEqual(coordinator.latestSnapshot, complete)
 		XCTAssertEqual(try store.read(), AppGroupDesktopSnapshotV1(envelope: complete))
+		let quotaCalls = await quotaRefresher.recordedManualValues()
+		XCTAssertEqual(quotaCalls, [false])
+	}
+
+	// Codex PR #5 tenth review, P1: quota alert evaluation must be runnable
+	// on its own, independent of the full desktop snapshot refresh -- so a
+	// caller can schedule it on a cadence that does not also force a
+	// session/usage rescan. `responses: []` makes the host throw if
+	// `refreshQuotaAlertsOnly` ever touches it, proving it does not.
+	func testRefreshQuotaAlertsOnlyDeliversAlertsWithoutTouchingTheSnapshot() async throws {
+		let posted = DesktopQuotaAlertV1(id: "qa1.posted", kind: .threshold, client: "codex", windowMinutes: 300, usedPercent: 80, threshold: 75)
+		let quotaRefresher = RecordingQuotaRefresher(alerts: [posted])
+		let deliverer = RecordingAlertDeliverer(accepts: ["qa1.posted"])
+		let coordinator = DesktopRefreshCoordinator(
+			host: ScriptedSnapshotRefresher(responses: []),
+			quotaRefresher: quotaRefresher,
+			alertDeliverer: deliverer,
+			snapshotStore: nil
+		)
+
+		await coordinator.refreshQuotaAlertsOnly(manual: false)
+
+		let quotaCalls = await quotaRefresher.recordedManualValues()
+		XCTAssertEqual(quotaCalls, [false])
+		let acknowledgements = await quotaRefresher.recordedAcknowledgements()
+		XCTAssertEqual(acknowledgements, [["qa1.posted"]])
+		XCTAssertNil(coordinator.latestSnapshot, "must not have touched the full snapshot refresh")
+		XCTAssertEqual(coordinator.state, .uninitialized)
+	}
+
+	// Codex PR #5 twelfth review, P2: when the full snapshot refresh's own
+	// separate, opt-in-and-off-by-default preference never runs,
+	// refreshQuotaAlertsOnly is the only recurring caller into the quota
+	// probe -- so it must also publish the fresher figures that probe just
+	// persisted, without rerunning the expensive session/usage scan.
+	func testRefreshQuotaAlertsOnlySplicesFreshSubscriptionIntoTheRetainedSnapshot() async throws {
+		let complete = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
+		let quotaRefresher = RecordingQuotaRefresher()
+		let temporaryDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+		defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
+		let store = AppGroupSnapshotStore(directoryURL: temporaryDirectory)
+		let coordinator = DesktopRefreshCoordinator(
+			host: ScriptedSnapshotRefresher(responses: [.snapshot(complete)]),
+			quotaRefresher: quotaRefresher,
+			snapshotStore: store
+		)
+		await coordinator.startInitialRefresh().value
+		XCTAssertEqual(coordinator.latestSnapshot, complete)
+
+		let freshSubscription = DesktopSubscriptionSnapshotV1(available: true, clients: [])
+		await quotaRefresher.setSubscription(freshSubscription)
+		await coordinator.refreshQuotaAlertsOnly(manual: false)
+
+		XCTAssertEqual(coordinator.latestSnapshot?.data.subscription, freshSubscription)
+		XCTAssertEqual(coordinator.latestSnapshot?.data.usage, complete.data.usage, "the session/usage scan must not be rerun")
+		XCTAssertEqual(coordinator.state, .ready(try XCTUnwrap(coordinator.latestSnapshot)))
+		XCTAssertEqual(try store.read().subscription, freshSubscription, "the App Group projection widgets read must also carry the fresher figures")
+	}
+
+	func testUserRefreshRequestsManualQuotaBeforeReadingTheSnapshot() async throws {
+		let complete = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
+		let quotaRefresher = RecordingQuotaRefresher()
+		let coordinator = DesktopRefreshCoordinator(
+			host: ScriptedSnapshotRefresher(responses: [.snapshot(complete)]),
+			quotaRefresher: quotaRefresher,
+			snapshotStore: nil
+		)
+
+		await coordinator.refresh()
+
+		let quotaCalls = await quotaRefresher.recordedManualValues()
+		XCTAssertEqual(quotaCalls, [true])
+		XCTAssertEqual(coordinator.latestSnapshot, complete)
+	}
+
+	/// architecture.md C10: the app acknowledges only what the notification
+	/// service accepted, so a refused alert stays due for the next refresh.
+	func testRefreshAcknowledgesOnlyTheAlertsTheDelivererAccepted() async throws {
+		let complete = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
+		let posted = DesktopQuotaAlertV1(id: "qa1.posted", kind: .threshold, client: "codex", windowMinutes: 300, usedPercent: 80, threshold: 75)
+		let refused = DesktopQuotaAlertV1(id: "qa1.refused", kind: .reset, client: "claude", windowMinutes: 10080, usedPercent: 3)
+		let quotaRefresher = RecordingQuotaRefresher(alerts: [posted, refused])
+		let deliverer = RecordingAlertDeliverer(accepts: ["qa1.posted"])
+		let coordinator = DesktopRefreshCoordinator(
+			host: ScriptedSnapshotRefresher(responses: [.snapshot(complete)]),
+			quotaRefresher: quotaRefresher,
+			alertDeliverer: deliverer,
+			snapshotStore: nil
+		)
+
+		await coordinator.refresh()
+
+		let offers = await deliverer.recordedOffers()
+		XCTAssertEqual(offers, [[posted, refused]])
+		let acknowledgements = await quotaRefresher.recordedAcknowledgements()
+		XCTAssertEqual(acknowledgements, [["qa1.posted"]])
+		XCTAssertEqual(coordinator.latestSnapshot, complete)
+	}
+
+	func testRefreshWithNoDueAlertsNeitherDeliversNorAcknowledges() async throws {
+		let complete = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
+		let quotaRefresher = RecordingQuotaRefresher()
+		let deliverer = RecordingAlertDeliverer(accepts: [])
+		let coordinator = DesktopRefreshCoordinator(
+			host: ScriptedSnapshotRefresher(responses: [.snapshot(complete)]),
+			quotaRefresher: quotaRefresher,
+			alertDeliverer: deliverer,
+			snapshotStore: nil
+		)
+
+		await coordinator.refresh()
+
+		let offers = await deliverer.recordedOffers()
+		XCTAssertTrue(offers.isEmpty)
+		let acknowledgements = await quotaRefresher.recordedAcknowledgements()
+		XCTAssertTrue(acknowledgements.isEmpty)
 	}
 
 	func testRefreshFailureRetainsLastGoodStateAndCache() async throws {
@@ -190,6 +308,45 @@ final class DesktopRefreshCoordinatorTests: XCTestCase {
 
 private enum CacheReplacementError: Error {
 	case failed
+}
+
+private actor RecordingQuotaRefresher: DesktopQuotaRefreshing {
+	private var manualValues = [Bool]()
+	private var acknowledgements = [[String]]()
+	private let alerts: [DesktopQuotaAlertV1]
+
+	init(alerts: [DesktopQuotaAlertV1] = []) {
+		self.alerts = alerts
+	}
+
+	func refreshQuota(manual: Bool) async -> [DesktopQuotaAlertV1] {
+		manualValues.append(manual)
+		return alerts
+	}
+
+	func acknowledgeQuotaAlerts(ids: [String]) async { acknowledgements.append(ids) }
+	func recordedManualValues() -> [Bool] { manualValues }
+	func recordedAcknowledgements() -> [[String]] { acknowledgements }
+	func fetchSubscription() async -> DesktopSubscriptionSnapshotV1? { subscription }
+
+	private var subscription: DesktopSubscriptionSnapshotV1?
+	func setSubscription(_ value: DesktopSubscriptionSnapshotV1?) { subscription = value }
+}
+
+private actor RecordingAlertDeliverer: QuotaAlertDelivering {
+	private var offered = [[DesktopQuotaAlertV1]]()
+	private let accepts: Set<String>
+
+	init(accepts: Set<String>) {
+		self.accepts = accepts
+	}
+
+	func deliver(_ alerts: [DesktopQuotaAlertV1]) async -> [String] {
+		offered.append(alerts)
+		return alerts.map(\.id).filter { accepts.contains($0) }
+	}
+
+	func recordedOffers() -> [[DesktopQuotaAlertV1]] { offered }
 }
 
 @MainActor

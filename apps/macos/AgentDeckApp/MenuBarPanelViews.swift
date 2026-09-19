@@ -1,3 +1,4 @@
+import AgentDeckShared
 import SwiftUI
 
 /// A panel whose own data is absent shows this in place of its values rather
@@ -1306,5 +1307,252 @@ struct RhythmBlockView: View {
 					.accessibilityValue(bucket.accessibilityValue)
 			}
 		}
+	}
+}
+
+struct QuotaPanelView: View {
+	let clients: [DesktopSubscriptionClientV1]
+	@State private var hoveredAllowance: String?
+	@FocusState private var focusedAllowance: String?
+
+	var body: some View {
+		VStack(alignment: .leading, spacing: MenuBarGeometry.betweenSections) {
+			Text(t(DesktopCopy.quotaTitle)).font(.headline)
+			if clients.isEmpty {
+				Text(t(DesktopCopy.quotaNoWindows)).foregroundStyle(DesktopVisualTheme.dim)
+			} else {
+				ForEach(clients, id: \.client) { client in clientCard(client) }
+			}
+		}
+	}
+
+	private func clientCard(_ client: DesktopSubscriptionClientV1) -> some View {
+		VStack(alignment: .leading, spacing: MenuBarGeometry.betweenRows) {
+			HStack(alignment: .firstTextBaseline) {
+				Text(client.client.capitalized).font(.headline)
+				if let plan = client.plan { Text(plan).font(.caption).padding(.horizontal, 6).background(DesktopVisualTheme.surfaceRaised, in: Capsule()) }
+				Spacer()
+				if let source = client.source { Text(headerCaption(client, source: source)).font(.caption).foregroundStyle(DesktopVisualTheme.dim) }
+			}
+			if client.client == "claude", !client.attributionConfirmed, client.failure != .probeDisabled {
+				Text(t(DesktopCopy.quotaAttributionUnconfirmed)).font(.caption2).foregroundStyle(DesktopVisualTheme.warning)
+			}
+			if let reason = primaryReason(client) {
+				VStack(alignment: .leading, spacing: 3) {
+					Text(missingWord(reason)).font(.body.weight(.semibold))
+					Text(reasonLabel(reason)).font(.caption).foregroundStyle(DesktopVisualTheme.dim)
+				}
+			} else {
+				// Codex PR #5 ninth review, P2: planUnavailableLabel and the
+				// reset-allowance-unavailable row below used to render
+				// unconditionally, above this branch -- Claude's planReason
+				// is always .notReported regardless of state (C6: it never
+				// reports a plan at all), so showing it outside this
+				// windows-shown branch would also have duplicated the
+				// primaryReason card above during the intentionally
+				// collapsed reading-off/not-applicable/no-figures states.
+				// Both belong only here, beside the figures they qualify.
+				if let planUnavailable = planUnavailableLabel(client) {
+					LabeledContent(
+						t(DesktopCopy.quotaPlan),
+						value: planUnavailable
+					)
+					.font(.caption)
+				}
+				// Codex PR #5 sixth review, P1: after a probe_failed attempt
+				// following an earlier success, the wire retains the last windows
+				// and still sets client.failure (C9) -- primaryReason returns nil
+				// whenever windows remain, so without this the card showed the
+				// retained figures with no indication the last refresh failed.
+				if let failure = client.failure {
+					Text(reasonLabel(failure)).font(.caption2).foregroundStyle(DesktopVisualTheme.warning)
+				}
+				ForEach(client.windows, id: \.key) { window in windowRow(window) }
+			}
+			if let allowance = client.resetAllowance {
+				Divider()
+				allowanceRow(client: client.client, allowance: allowance)
+			} else if let reason = client.resetAllowanceReason, primaryReason(client) == nil {
+				// Codex PR #5 ninth review, P2: a normal Claude client has no
+				// resetAllowance struct at all (Codex-only, C6) but still
+				// carries resetAllowanceReason=not_reported; render the
+				// unsupported field's reason like every other field here,
+				// gated the same way as the plan row above.
+				Divider()
+				LabeledContent(t(DesktopCopy.quotaOfficialResets), value: reasonLabel(reason)).font(.caption)
+			}
+			if let observed = client.observedResetAt {
+				LabeledContent(t(DesktopCopy.quotaLocallyObservedReset), value: DesktopFormat.relative(observed, now: Date())).font(.caption)
+			}
+		}
+		.padding(12)
+		.background(DesktopVisualTheme.surfaceRaised, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+	}
+
+	// Codex PR #5 eleventh review, P2: a missing reset time was silently
+	// omitted from windowRow instead of rendering unavailable with a reason,
+	// unlike every other absent field on this card. Extracted so the
+	// resetsAtReason branch is directly testable without rendering.
+	func windowResetLabel(_ window: DesktopSubscriptionWindowV1, now: Date = Date()) -> String? {
+		if let resets = window.resetsAt {
+			return t(DesktopCopy.quotaResetsIn, DesktopFormat.relative(resets, now: now))
+		}
+		if let reason = window.resetsAtReason {
+			return reasonLabel(reason)
+		}
+		return nil
+	}
+
+	private func windowRow(_ window: DesktopSubscriptionWindowV1) -> some View {
+		VStack(alignment: .leading, spacing: 4) {
+			HStack {
+				Text(windowLabel(window)).lineLimit(1)
+				Spacer()
+				if let label = windowResetLabel(window) {
+					if window.resetsAt == nil {
+						Text(label).foregroundStyle(DesktopVisualTheme.dim)
+					} else {
+						Text(label)
+					}
+				}
+				Text(quotaPercentText(window.usedPercent)).monospacedDigit()
+			}.font(.caption)
+			ProgressView(value: min(max(window.usedPercent, 0), 100), total: 100)
+				.tint(window.usedPercent >= 90 ? DesktopVisualTheme.warning : window.usedPercent >= 75 ? DesktopVisualTheme.info : DesktopVisualTheme.accent)
+				.accessibilityLabel(windowLabel(window))
+				.accessibilityValue(quotaPercentText(window.usedPercent))
+			// Codex PR #5 seventh review, P2: a partial status-line refresh
+			// can leave one window older and prose-derived while the card
+			// header names only the client's newest source/age -- render
+			// each window's own age and source so a retained row is never
+			// presented as if it shared a different window's freshness.
+			if let caption = windowProvenanceCaption(window) {
+				Text(caption).font(.caption2).foregroundStyle(DesktopVisualTheme.dim)
+			}
+		}
+	}
+
+	func windowProvenanceCaption(_ window: DesktopSubscriptionWindowV1) -> String? {
+		var parts: [String] = []
+		if let source = window.source { parts.append(sourceLabel(source)) }
+		if let observedAt = window.observedAt { parts.append(t(DesktopCopy.quotaObservedAt, DesktopFormat.relative(observedAt))) }
+		return parts.isEmpty ? nil : parts.joined(separator: " · ")
+	}
+
+	private func allowanceRow(client: String, allowance: DesktopResetAllowanceV1) -> some View {
+		let key = "\(client).allowance"
+		return HStack { Text(t(DesktopCopy.quotaOfficialResets)); Spacer(); Text(allowanceSummary(allowance)) }
+			.font(.caption).contentShape(Rectangle())
+			.onHover { hoveredAllowance = $0 && !allowance.credits.isEmpty ? key : nil }
+			.focusable(!allowance.credits.isEmpty)
+			.focused($focusedAllowance, equals: key)
+			.help(allowance.credits.isEmpty ? "" : t(DesktopCopy.quotaShowCreditDetails))
+			.accessibilityLabel(t(DesktopCopy.quotaOfficialResets))
+			.accessibilityValue(allowanceSummary(allowance))
+			.accessibilityAction {
+				guard !allowance.credits.isEmpty else { return }
+				focusedAllowance = focusedAllowance == key ? nil : key
+			}
+			.onExitCommand {
+				hoveredAllowance = nil
+				focusedAllowance = nil
+			}
+			.popover(isPresented: Binding(
+				get: { !allowance.credits.isEmpty && (hoveredAllowance == key || focusedAllowance == key) },
+				set: {
+					if !$0 {
+						hoveredAllowance = nil
+						focusedAllowance = nil
+					}
+				}
+			), arrowEdge: .trailing) {
+				VStack(alignment: .leading, spacing: 8) {
+					ForEach(allowance.credits, id: \.key) { credit in
+						VStack(alignment: .leading, spacing: 2) {
+							Text(credit.title).font(.body.weight(.semibold)); Text(credit.status).font(.caption)
+							Text([credit.grantedAt.map { t(DesktopCopy.quotaCreditGranted, DesktopFormat.relative($0, now: Date())) }, credit.expiresAt.map { t(DesktopCopy.quotaCreditExpires, DesktopFormat.relative($0, now: Date())) }].compactMap { $0 }.joined(separator: " · ")).font(.caption).foregroundStyle(DesktopVisualTheme.dim)
+						}
+					}
+				}.padding(12).frame(width: 260)
+			}
+	}
+
+	func allowanceSummary(_ allowance: DesktopResetAllowanceV1) -> String {
+		let remaining = allowance.remaining.map { t(DesktopCopy.quotaLeft, Int64($0)) } ?? t(DesktopCopy.quotaUnavailable)
+		let total = allowance.total.map { t(DesktopCopy.quotaTotal, Int64($0)) }
+			?? t(DesktopCopy.quotaTotalReason, reasonLabel(allowance.totalReason ?? .notReported))
+		return remaining + " · " + total
+	}
+
+	// Codex PR #5 ninth review, P2: this used to require client == "codex",
+	// so an applicable Claude client with windows -- whose planReason is
+	// always .notReported (C6: Claude never reports a plan) -- silently
+	// dropped the required Plan/unavailable row instead of rendering it.
+	// The caller now gates this to the windows-shown branch only, so it no
+	// longer needs to guard the collapsed states itself.
+	func planUnavailableLabel(_ client: DesktopSubscriptionClientV1) -> String? {
+		guard client.plan == nil else { return nil }
+		return reasonLabel(client.planReason ?? .notReported)
+	}
+
+	// Codex PR #5 fifth review, P2: a successful probe that legitimately
+	// returns no windows (e.g. Codex's explicit-empty `rateLimitsByLimitId:
+	// {}`) has a current `observedAt` and no `failure`; defaulting it to
+	// `.neverProbed` would contradict that successful observation and hide
+	// the intended `.notReported` state. `observedAt` distinguishes the two.
+	func primaryReason(_ client: DesktopSubscriptionClientV1) -> DesktopQuotaReasonV1? {
+		if !client.applicable { return client.applicableReason ?? .notOfficial }
+		if client.failure == .probeDisabled { return .probeDisabled }
+		if client.windows.isEmpty {
+			return client.failure ?? (client.observedAt != nil ? .notReported : .neverProbed)
+		}
+		return nil
+	}
+	private func missingWord(_ reason: DesktopQuotaReasonV1) -> String { reason == .notOfficial ? t(DesktopCopy.quotaNotApplicable) : reason == .probeDisabled ? t(DesktopCopy.quotaNotRead) : t(DesktopCopy.quotaUnavailable) }
+	private func reasonLabel(_ reason: DesktopQuotaReasonV1) -> String {
+		switch reason { case .notReported: t(DesktopCopy.quotaReasonNotReported); case .notOfficial: t(DesktopCopy.quotaReasonNotOfficial); case .neverProbed: t(DesktopCopy.quotaReasonNeverProbed); case .probeFailed: t(DesktopCopy.quotaReasonProbeFailed); case .parseFailed: t(DesktopCopy.quotaReasonParseFailed); case .notConsented: t(DesktopCopy.quotaReasonNotConsented); case .probeDisabled: t(DesktopCopy.quotaReasonProbeDisabled) }
+	}
+	// A Codex limit's primary and secondary windows share the same vendor
+	// label (its limit name): the label alone cannot distinguish a 5-hour row
+	// from a 7-day row for the same limit, so the span is always appended,
+	// never replaced by the label (ux/menubar-quota.md; the prototype does
+	// the same in widgetWindowLabel).
+	func windowLabel(_ window: DesktopSubscriptionWindowV1) -> String {
+		let span = window.windowMinutes == 300 ? t(DesktopCopy.quotaWindow5h) : window.windowMinutes == 10080 ? t(DesktopCopy.quotaWindow7d) : window.windowMinutes.map { "\($0)m" } ?? t(DesktopCopy.quotaUnavailable)
+		guard let label = window.label, !label.isEmpty else { return span }
+		return "\(label) · \(span)"
+	}
+	// Codex PR #5 ninth review, P2: a structured Claude observation can
+	// carry a fractional usedPercent, and a flat "%.0f%%" rounds a value
+	// like 89.6 up to the displayed "90%" even though the progress bar's
+	// tint just above and the CLI's own threshold both still correctly
+	// treat it as below 90 -- the displayed figure must not claim a
+	// boundary the value has not actually crossed.
+	func quotaPercentText(_ value: Double) -> String {
+		if abs(value.rounded() - value) < 0.05 { return String(format: "%.0f%%", value) }
+		return String(format: "%.1f%%", value)
+	}
+	private func sourceLabel(_ source: DesktopQuotaSourceV1) -> String {
+		switch source {
+		case .codexAppServer: t(DesktopCopy.quotaSourceCodexAppServer)
+		case .claudeStatusLine: t(DesktopCopy.quotaSourceClaudeStatusLine)
+		case .claudeUsageProse: t(DesktopCopy.quotaSourceClaudeUsageProse)
+		}
+	}
+	/// ux/menubar-quota.md's header line for a card whose windows are shown
+	/// (source, then age, then a stale marker): freshness is never implied by
+	/// retained figures alone, so a probe that has stopped succeeding must
+	/// still surface here even while its last-known windows keep rendering.
+	/// Internal, not private, so AgentDeckAppTests can assert its composition
+	/// directly rather than parsing rendered SwiftUI text.
+	func headerCaption(_ client: DesktopSubscriptionClientV1, source: DesktopQuotaSourceV1) -> String {
+		var caption = sourceLabel(source)
+		if let observedAt = client.observedAt {
+			caption += " · " + t(DesktopCopy.quotaObservedAt, DesktopFormat.relative(observedAt))
+		}
+		if client.stale {
+			caption += " · " + t(DesktopCopy.quotaStale)
+		}
+		return caption
 	}
 }

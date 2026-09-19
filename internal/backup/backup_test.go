@@ -21,6 +21,7 @@ import (
 	"github.com/kitdine/agent-deck/internal/hookrefusal"
 	"github.com/kitdine/agent-deck/internal/platform"
 	providerpkg "github.com/kitdine/agent-deck/internal/provider"
+	"github.com/kitdine/agent-deck/internal/quota"
 	"github.com/kitdine/agent-deck/internal/store"
 )
 
@@ -476,6 +477,58 @@ func TestBackupDoesNotOverwriteExistingDestination(t *testing.T) {
 	}
 	if !bytes.Equal(contents, original) {
 		t.Fatalf("existing destination changed: %q", contents)
+	}
+}
+
+// Codex PR #5 twelfth review, P2: quota.statusline asserts a capture route
+// the restore never installs -- ~/.claude/settings.json and the
+// prior-command sidecar are both machine-local and neither travels in the
+// archive. Restoring consent verbatim from the source state would report
+// capture enabled on the target with no route actually present.
+func TestRestoreClearsStatusLineConsentAsMachineLocal(t *testing.T) {
+	ctx := context.Background()
+	stateRoot := filepath.Join(t.TempDir(), "state")
+	database, err := store.Open(ctx, stateRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if err := quota.SaveSettings(ctx, database, quota.Settings{
+		ProbeEnabled: true, ProbeInterval: 5 * time.Minute, AlertThresholds: []float64{75, 90}, ResetNotice: true,
+		StatusLineConsent: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	vault := credentialvault.New(stateRoot, syntheticMachineIdentity("source-machine"))
+	service := Service{Core: database, StateRoot: stateRoot, Vault: vault, Version: "test", Now: func() time.Time { return time.Unix(1, 0) }}
+	archive := filepath.Join(stateRoot, "backups", "portable", "sample.adb")
+	if _, err = service.Create(ctx, archive, "correct horse battery staple", false); err != nil {
+		t.Fatal(err)
+	}
+
+	target := filepath.Join(t.TempDir(), "restored")
+	if err = os.Mkdir(target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = Restore(ctx, archive, target, "correct horse battery staple", syntheticMachineIdentity("target-machine")); err != nil {
+		t.Fatal(err)
+	}
+
+	restored, err := store.OpenReadOnly(ctx, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer restored.Close()
+	settings, err := quota.LoadSettings(ctx, restored)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settings.StatusLineConsent {
+		t.Fatal("StatusLineConsent = true after restore, want it cleared since no route was actually installed on the target")
+	}
+	if !settings.ProbeEnabled {
+		t.Fatal("ProbeEnabled = false after restore, want the unrelated reading switch preserved")
 	}
 }
 

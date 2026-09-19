@@ -122,6 +122,24 @@ final class EmbeddedHelperRunnerTests: XCTestCase {
 		XCTAssertTrue(invocations.allSatisfy { $0.environment["PATH"] == "/tmp/untrusted-path" })
 	}
 
+	func testDefaultEnvironmentFindsSupportedClientInstallLocations() async throws {
+		let temporaryDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+		defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
+		let bundleURL = try makeEmbeddedHelperBundle(in: temporaryDirectory)
+		let process = RecordingHelperProcess(behaviors: [
+			.output(HelperProcessOutput(exitStatus: 0, stdout: successfulScanStream())),
+			.output(HelperProcessOutput(exitStatus: 0, stdout: try desktopFixtureData("snapshot-complete.json"))),
+		])
+		let runner = EmbeddedHelperRunner(appBundleURL: bundleURL, process: process)
+
+		_ = try await runner.snapshot()
+
+		let invocations = await process.recordedInvocations()
+		XCTAssertTrue(invocations.allSatisfy {
+			$0.environment["PATH"] == "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
+		})
+	}
+
 	func testScanFailureDoesNotPublishAReplacementSnapshot() async throws {
 		let process = RecordingHelperProcess(behaviors: [
 			.output(HelperProcessOutput(exitStatus: 7, stdout: Data(), stderr: Data("scan failed".utf8))),
@@ -215,6 +233,54 @@ final class EmbeddedHelperRunnerTests: XCTestCase {
 			"--quiet", "--format", "json", "provider", "use", "relay",
 			"--client", "codex", "--credential", "work", "--via", "--no-shell-setup",
 		])
+	}
+
+	func testQuotaRefreshUsesBackgroundAndManualCommandShapes() async throws {
+		let payload = Data(#"{"data":{"gate_reasons":{"codex":null,"claude":"not_official"},"alerts":[{"id":"qa1.abc","kind":"threshold","client":"codex","label":"GPT-5 Codex","window_minutes":300,"used_percent":80,"threshold":75},{"id":"qa1.def","kind":"reset","client":"claude","window_minutes":null,"used_percent":3}]}}"#.utf8)
+		let process = RecordingHelperProcess(behaviors: [
+			.output(HelperProcessOutput(exitStatus: 0, stdout: payload)),
+			.output(HelperProcessOutput(exitStatus: 0, stdout: payload)),
+		])
+		let runner = try makeRunner(process: process)
+
+		let alerts = await runner.refreshQuota(manual: false)
+		_ = await runner.refreshQuota(manual: true)
+
+		XCTAssertEqual(alerts, [
+			DesktopQuotaAlertV1(id: "qa1.abc", kind: .threshold, client: "codex", label: "GPT-5 Codex", windowMinutes: 300, usedPercent: 80, threshold: 75),
+			DesktopQuotaAlertV1(id: "qa1.def", kind: .reset, client: "claude", usedPercent: 3),
+		])
+
+		let invocations = await process.recordedInvocations()
+		XCTAssertEqual(invocations.map(\.arguments), [
+			["--format", "json", "desktop", "quota-refresh"],
+			["--format", "json", "desktop", "quota-refresh", "--manual"],
+		])
+		XCTAssertTrue(invocations.allSatisfy { $0.environment["HOME"] == "/tmp/isolated-home" })
+		XCTAssertTrue(invocations.allSatisfy { $0.timeout == EmbeddedHelperRunner.quotaRefreshTimeout })
+	}
+
+	func testQuotaAlertAcknowledgementPassesEveryIDAndSkipsAnEmptyBatch() async throws {
+		let payload = Data(#"{"data":{"acknowledged":2}}"#.utf8)
+		let process = RecordingHelperProcess(behaviors: [.output(HelperProcessOutput(exitStatus: 0, stdout: payload))])
+		let runner = try makeRunner(process: process)
+
+		await runner.acknowledgeQuotaAlerts(ids: [])
+		await runner.acknowledgeQuotaAlerts(ids: ["qa1.abc", "qa1.def"])
+
+		let invocations = await process.recordedInvocations()
+		XCTAssertEqual(invocations.map(\.arguments), [
+			["--format", "json", "desktop", "quota-alerts", "ack", "--id", "qa1.abc", "--id", "qa1.def"],
+		])
+	}
+
+	func testQuotaRefreshWithUndecodableOutputOffersNoAlerts() async throws {
+		let process = RecordingHelperProcess(behaviors: [.output(HelperProcessOutput(exitStatus: 0, stdout: Data("not json".utf8)))])
+		let runner = try makeRunner(process: process)
+
+		let alerts = await runner.refreshQuota(manual: false)
+
+		XCTAssertEqual(alerts, [])
 	}
 
 	func testProviderSwitchClassifiesCanonicalFailureAndDiscardsMessage() async throws {

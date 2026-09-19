@@ -6,6 +6,16 @@ import XCTest
 
 @MainActor
 final class MenuBarChromeTests: XCTestCase {
+	func testStandaloneReloadIncludesEveryWidgetKind() {
+		XCTAssertEqual(AgentDeckMain.widgetKinds, [
+			"com.kitdine.agentdeck.widget.magnitude",
+			"com.kitdine.agentdeck.widget.composition",
+			"com.kitdine.agentdeck.widget.trust",
+			"com.kitdine.agentdeck.widget.rhythm",
+			"com.kitdine.agentdeck.widget.quota",
+		])
+	}
+
 	func testScanProgressRendersAtNativeWidthsInBothLanguages() async throws {
 		let oldWidth = ProcessInfo.processInfo.environment["AGENTDECK_TEST_WIDTH"]
 		let oldLocale = ProcessInfo.processInfo.environment["AGENTDECK_TEST_LOCALE"]
@@ -197,7 +207,8 @@ final class MenuBarChromeTests: XCTestCase {
 	func testStandardAboutPanelMetadataAndApplicationIconArePresent() throws {
 		let info = try XCTUnwrap(Bundle.main.infoDictionary)
 		XCTAssertEqual(info["CFBundleDisplayName"] as? String, "AgentDeck")
-		XCTAssertEqual(info["CFBundleIdentifier"] as? String, "com.kitdine.agentdeck")
+		XCTAssertEqual(info["CFBundleIdentifier"] as? String, Bundle.main.bundleIdentifier)
+		XCTAssertTrue(Bundle.main.bundleIdentifier?.hasPrefix("com.kitdine.agentdeck") == true)
 		XCTAssertFalse(try XCTUnwrap(info["CFBundleShortVersionString"] as? String).isEmpty)
 		XCTAssertFalse(try XCTUnwrap(info["CFBundleVersion"] as? String).isEmpty)
 		XCTAssertFalse(try XCTUnwrap(info["NSHumanReadableCopyright"] as? String).isEmpty)
@@ -315,7 +326,7 @@ final class MenuBarChromeTests: XCTestCase {
 
 		let popover = MenuBarSurfaceView(model: model, height: MenuBarGeometry.maximumHeight)
 			.environment(\.colorScheme, .dark)
-		let settings = SettingsWindowView(preferences: model.preferences)
+		let settings = SettingsWindowView(preferences: model.preferences, quotaSettings: makeQuotaSettingsController(preferences: model.preferences))
 			.environment(\.colorScheme, .dark)
 		let providers = ProviderMenuView(model: multiTargetModel, dismiss: {})
 			.environment(\.colorScheme, .dark)
@@ -473,6 +484,197 @@ final class MenuBarChromeTests: XCTestCase {
 		attachment.name = name
 		attachment.lifetime = .keepAlways
 		return attachment
+	}
+
+	// Codex PR #5 P1: a client with retained windows after a probe stopped
+	// succeeding rendered only its source, dropping observed_at and stale
+	// entirely -- ux/menubar-quota.md's header requires both ("freshness is
+	// never implied").
+	func testQuotaCardHeaderShowsAgeAndStaleMarkerBesideRetainedWindows() throws {
+		func client(observedAt: String?, stale: Bool) throws -> DesktopSubscriptionClientV1 {
+			let json: [String: Any] = [
+				"client": "claude",
+				"applicable": true,
+				"source": "claude_statusline",
+				"observed_at": observedAt as Any,
+				"stale": stale,
+				"attribution_confirmed": true,
+				"windows": [],
+			]
+			let data = try JSONSerialization.data(withJSONObject: json)
+			return try JSONDecoder().decode(DesktopSubscriptionClientV1.self, from: data)
+		}
+
+		let panel = QuotaPanelView(clients: [])
+		let statusLineLabel = t(DesktopCopy.quotaSourceClaudeStatusLine)
+		let fresh = try client(observedAt: "2026-09-10T09:58:00Z", stale: false)
+		let freshCaption = panel.headerCaption(fresh, source: .claudeStatusLine)
+		XCTAssertTrue(freshCaption.hasPrefix(statusLineLabel + " · "), "caption = \(freshCaption)")
+		XCTAssertFalse(freshCaption.contains(t(DesktopCopy.quotaStale)), "caption = \(freshCaption)")
+
+		let stale = try client(observedAt: "2026-09-10T08:00:00Z", stale: true)
+		let staleCaption = panel.headerCaption(stale, source: .claudeStatusLine)
+		XCTAssertTrue(staleCaption.contains(t(DesktopCopy.quotaStale)), "caption = \(staleCaption)")
+		XCTAssertNotEqual(staleCaption, statusLineLabel, "must not collapse back to source alone once stale")
+
+		let never = try client(observedAt: nil, stale: false)
+		let neverCaption = panel.headerCaption(never, source: .claudeStatusLine)
+		XCTAssertEqual(neverCaption, statusLineLabel, "no observed_at means no age clause to show")
+	}
+
+	// Codex PR #5 second review, P2: a Codex limit's primary and secondary
+	// windows share the same vendor label, so the label alone cannot tell a
+	// 5-hour row from a 7-day row for the same limit.
+	func testQuotaWindowLabelAppendsTheSpanRatherThanReplacingItWithTheVendorLabel() throws {
+		let panel = QuotaPanelView(clients: [])
+		let labeled = try JSONDecoder().decode(
+			DesktopSubscriptionWindowV1.self,
+			from: JSONSerialization.data(withJSONObject: [
+				"key": "codex", "label": "GPT-5.3-Codex-Spark", "window_minutes": 300,
+				"window_minutes_reason": NSNull(), "used_percent": 12, "resets_at": NSNull(),
+			])
+		)
+		XCTAssertEqual(panel.windowLabel(labeled), "GPT-5.3-Codex-Spark · " + t(DesktopCopy.quotaWindow5h))
+
+		let unlabeled = try JSONDecoder().decode(
+			DesktopSubscriptionWindowV1.self,
+			from: JSONSerialization.data(withJSONObject: [
+				"key": "five_hour", "label": NSNull(), "window_minutes": 300,
+				"window_minutes_reason": NSNull(), "used_percent": 22, "resets_at": NSNull(),
+			])
+		)
+		XCTAssertEqual(panel.windowLabel(unlabeled), t(DesktopCopy.quotaWindow5h))
+	}
+
+	// Codex PR #5 seventh review, P2: a partial status-line refresh can
+	// leave one window older and prose-derived while the card header names
+	// only the client's newest source/age; the row itself must carry each
+	// window's own age and source instead of implying it shares the
+	// header's freshness and provenance.
+	func testWindowProvenanceCaptionCarriesEachWindowsOwnAgeAndSource() throws {
+		let panel = QuotaPanelView(clients: [])
+		func window(source: String?, observedAt: String?) throws -> DesktopSubscriptionWindowV1 {
+			try JSONDecoder().decode(
+				DesktopSubscriptionWindowV1.self,
+				from: JSONSerialization.data(withJSONObject: [
+					"key": "five_hour", "label": NSNull(), "window_minutes": 300,
+					"window_minutes_reason": NSNull(), "used_percent": 22, "resets_at": NSNull(),
+					"observed_at": observedAt as Any, "source": source as Any,
+				])
+			)
+		}
+
+		let both = try window(source: "claude_statusline", observedAt: "2026-09-10T09:58:00Z")
+		let caption = try XCTUnwrap(panel.windowProvenanceCaption(both))
+		XCTAssertTrue(caption.contains(t(DesktopCopy.quotaSourceClaudeStatusLine)), "caption = \(caption)")
+
+		let neither = try window(source: nil, observedAt: nil)
+		XCTAssertNil(panel.windowProvenanceCaption(neither))
+	}
+
+	// Codex PR #5 ninth review, P2: a flat "%.0f%%" rounded 89.6 up to a
+	// displayed "90%" that had not actually crossed the 90% threshold the
+	// progress bar's tint and the CLI's own threshold both still correctly
+	// evaluate against the raw value.
+	func testQuotaPercentTextPreservesPrecisionAtThresholds() {
+		let panel = QuotaPanelView(clients: [])
+		XCTAssertEqual(panel.quotaPercentText(64), "64%")
+		XCTAssertEqual(panel.quotaPercentText(89.6), "89.6%")
+		XCTAssertEqual(panel.quotaPercentText(74.6), "74.6%")
+		XCTAssertEqual(panel.quotaPercentText(90), "90%")
+	}
+
+	// Codex PR #5 eleventh review, P2: a window with no resets_at used to
+	// render nothing for it, unlike every other absent field on the card.
+	func testWindowResetLabelRendersTheReasonWhenResetsAtIsAbsent() throws {
+		let panel = QuotaPanelView(clients: [])
+		func window(resetsAt: Any, reason: Any) throws -> DesktopSubscriptionWindowV1 {
+			try JSONDecoder().decode(
+				DesktopSubscriptionWindowV1.self,
+				from: JSONSerialization.data(withJSONObject: [
+					"key": "codex", "label": NSNull(), "window_minutes": 300,
+					"window_minutes_reason": NSNull(), "used_percent": 40, "resets_at": resetsAt,
+					"resets_at_reason": reason,
+				])
+			)
+		}
+
+		let missing = try window(resetsAt: NSNull(), reason: "not_reported")
+		XCTAssertEqual(panel.windowResetLabel(missing), t(DesktopCopy.quotaReasonNotReported))
+
+		let present = try window(resetsAt: "2026-09-18T05:00:00Z", reason: NSNull())
+		XCTAssertNotNil(panel.windowResetLabel(present, now: Date(timeIntervalSince1970: 0)))
+		XCTAssertNotEqual(panel.windowResetLabel(present, now: Date(timeIntervalSince1970: 0)), t(DesktopCopy.quotaReasonNotReported))
+	}
+
+	func testQuotaCardShowsMissingPlanAndResetTotalReasons() throws {
+		let panel = QuotaPanelView(clients: [])
+		let client = try JSONDecoder().decode(
+			DesktopSubscriptionClientV1.self,
+			from: JSONSerialization.data(withJSONObject: [
+				"client": "codex", "applicable": true, "applicable_reason": NSNull(),
+				"source": "codex_app_server", "observed_at": "2026-09-10T09:58:00Z",
+				"stale": false, "attribution_confirmed": true,
+				"plan": NSNull(), "plan_reason": "not_reported", "windows": [],
+				"tightest_window_key": NSNull(), "reset_allowance": NSNull(),
+				"reset_allowance_reason": NSNull(), "observed_reset_at": NSNull(), "failure": NSNull(),
+			])
+		)
+		XCTAssertEqual(panel.planUnavailableLabel(client), t(DesktopCopy.quotaReasonNotReported))
+
+		// Codex PR #5 ninth review, P2: this used to require client ==
+		// "codex", so an applicable Claude client with figures -- whose
+		// planReason is always .notReported (C6: Claude never reports a
+		// plan) -- silently dropped the required row.
+		let claudeClient = try JSONDecoder().decode(
+			DesktopSubscriptionClientV1.self,
+			from: JSONSerialization.data(withJSONObject: [
+				"client": "claude", "applicable": true, "applicable_reason": NSNull(),
+				"source": "claude_statusline", "observed_at": "2026-09-10T09:58:00Z",
+				"stale": false, "attribution_confirmed": true,
+				"plan": NSNull(), "plan_reason": "not_reported", "windows": [],
+				"tightest_window_key": NSNull(), "reset_allowance": NSNull(),
+				"reset_allowance_reason": "not_reported", "observed_reset_at": NSNull(), "failure": NSNull(),
+			])
+		)
+		XCTAssertEqual(panel.planUnavailableLabel(claudeClient), t(DesktopCopy.quotaReasonNotReported))
+
+		let allowance = try JSONDecoder().decode(
+			DesktopResetAllowanceV1.self,
+			from: JSONSerialization.data(withJSONObject: [
+				"remaining": 3, "remaining_reason": NSNull(),
+				"total": NSNull(), "total_reason": "not_reported", "credits": [],
+			])
+		)
+		let summary = panel.allowanceSummary(allowance)
+		XCTAssertTrue(summary.contains(t(DesktopCopy.quotaLeft, Int64(3))))
+		XCTAssertTrue(summary.contains(t(DesktopCopy.quotaTotalReason, t(DesktopCopy.quotaReasonNotReported))))
+	}
+
+	// Codex PR #5 fifth review, P2: a successful probe that legitimately
+	// returns no windows (Codex's explicit-empty `rateLimitsByLimitId: {}`)
+	// has a current observed_at and no failure; the card must report that as
+	// not_reported, not collapse it into never_probed as if nothing had run.
+	func testQuotaCardReportsSuccessfulEmptyResponseAsNotReportedRatherThanNeverProbed() throws {
+		func client(observedAt: String?) throws -> DesktopSubscriptionClientV1 {
+			let json: [String: Any] = [
+				"client": "codex", "applicable": true, "applicable_reason": NSNull(),
+				"source": observedAt == nil ? NSNull() : "codex_app_server",
+				"observed_at": observedAt as Any, "stale": false, "attribution_confirmed": true,
+				"plan": NSNull(), "plan_reason": NSNull(), "windows": [],
+				"tightest_window_key": NSNull(), "reset_allowance": NSNull(),
+				"reset_allowance_reason": NSNull(), "observed_reset_at": NSNull(), "failure": NSNull(),
+			]
+			let data = try JSONSerialization.data(withJSONObject: json)
+			return try JSONDecoder().decode(DesktopSubscriptionClientV1.self, from: data)
+		}
+
+		let panel = QuotaPanelView(clients: [])
+		let probedEmpty = try client(observedAt: "2026-09-18T02:00:00Z")
+		XCTAssertEqual(panel.primaryReason(probedEmpty), .notReported, "a successful, empty observation must not read as never probed")
+
+		let neverProbed = try client(observedAt: nil)
+		XCTAssertEqual(panel.primaryReason(neverProbed), .neverProbed, "no observed_at at all is still never probed")
 	}
 }
 
