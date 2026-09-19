@@ -621,3 +621,70 @@ repaired candidate 的 finding。aggregate `assemble` 仍为 partial batch task�
 Task checkpoint：ad-v060c-assemble-dev / batch subscription-quota；content_state=v0-6-0-contract:integration:subscription-quota:candidate:f8376660aeac324d1b7c223e85795707dae3cc29；gate=VERIFIED；aggregate open。
 提交建议：提交 Round 5 复评记录及同批 contract handoff 同步；产品修复已在签名提交 `f837666`，不得夹带其他任务或产品改动。
 推送建议：取得独立推送授权并确认新的复评文档提交消息、贡献者 trailer、SSH 签名及远端基线后，推送 `feature/subscription-quota`；feature-to-main assembly/PR/merge 仍需各自授权和成功 CI/branch protection。
+
+## Round 6 — 2026-09-19 — subscription-quota delivery receipt
+
+## 📋 subscription-quota 集成交付核验
+
+📊 总体评分：9.5/10
+
+✅ 评审结论：PASS
+
+Reviewer: Codex automated PR review plus maintainer disposition. Method: reuse
+Round 5's independent integration review for the pre-merge conflict-resolution
+and hosted-XCTest boundary; verify the actual GitHub merge, final protected CI,
+and final review carrier disposition. Scope: third batch's feature-to-main
+assembly only; the remaining three selected v0.6.0 areas, aggregate `assemble`,
+version closure, retirement and release are excluded.
+
+Reviewed result: target parent
+`4dd10f4bf0bfcea2b4cceede5ac9f24465f6a656` / source head
+`f2b4ebb4c0c57e93b1c967f6764672b46905345c`; GitHub PR #5 merged at
+`2026-09-19T12:34:17Z` as two-parent merge
+`7f84749f8bfa96496602560df0b4d5da09e6fd9d`, result tree
+`41cc1390c6a4949c4fbe5cde087925be12f356b7`. Operation class: reviewed
+three-way conflict resolution plus repaired source, then feature-to-main merge.
+The merge preserves the reviewed main parent and source parent; it is not a
+post-hoc reimplementation of the Round 5 candidate.
+
+### 🔴 严重问题 — 必须修复
+
+无。
+
+### 🟡 建议改进 — 已由用户决定延期
+
+The final Codex review (round 13) found no P0/P1 issue. The user explicitly
+instructed: repair review findings only at P0/P1; otherwise merge and record P2
+findings for later work. The following in-scope P2 findings are therefore
+**CLOSED by explicit user decision** and carried as deferred Lane C candidates:
+
+- `R13-F1` -> `ad-bug-quota-reading-off-route-not-restored-on-save-failure` /
+  `docs/roadmap.md` Backlog: reading-off route compensation.
+- `R13-F2` -> `ad-bug-quota-statusline-cross-installation-conflict` /
+  `docs/roadmap.md` Backlog: cross-state-dir managed-route conflict.
+- `R13-F3` -> `ad-bug-quota-parse-failure-source-misattribution` /
+  `docs/roadmap.md` Backlog: parse-failure source attribution.
+- `R13-F4` -> `ad-bug-widget-large-quota-header-client-label` /
+  `docs/roadmap.md` Backlog: large-widget client label.
+- `R13-F5` -> `ad-bug-quota-portable-restore-account-bound-state` /
+  `docs/roadmap.md` Backlog: portable restore account-bound cache.
+
+### 📝 交付与验证
+
+- GitHub reports PR #5 `MERGED`, `CLEAN`, and `MERGEABLE` before delivery;
+  all four final protected checks (`verify` ×2, `desktop` ×2) completed SUCCESS
+  on source head `f2b4ebb`.
+- The first execution of one `verify` job failed only at
+  `TestDesktopQuotaRefreshReturnsDueAlertsForTheAppToDeliver`; that test and its
+  production path were unchanged by the docs-only final head. The retried job
+  completed SUCCESS. This is retained as an unreproduced transient CI event, not
+  misrepresented as a diagnosed or fixed defect.
+- Round 5 candidate evidence remains attached to its original
+  `f837666` ContentState. A new target-bound integration roll-up for the actual
+  merge result is required; prior candidate observations are not relabeled.
+
+Residual uncertainty: P2 carriers are deferred, not technical resolutions. The
+aggregate `assemble` task remains open until the other selected areas are
+integrated or receive an explicit membership decision.
+
+完成门禁：VERIFIED（2/2；target `v0-6-0-contract:integration:subscription-quota:merge:7f84749f8bfa96496602560df0b4d5da09e6fd9d`）。`integration-readiness` 与 `source-continuity` 都具有同一 merge result 的 PASS evidence；旧候选 evidence 保持其原始 ContentState 不变。

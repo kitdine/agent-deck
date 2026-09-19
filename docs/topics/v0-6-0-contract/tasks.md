@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-09-08
-updated: 2026-09-14
+updated: 2026-09-19
 ---
 
 # v0.6.0 Contract — Tasks
@@ -200,7 +200,34 @@ installation remain separate exact-SHA workflows requiring explicit authority.
 
 ## Current handoff
 
-The third batch candidate is `subscription-quota` at merge commit `aac6bb1` /
+### Delivered batch — subscription-quota — 2026-09-19
+
+`subscription-quota` was assembled directly into `main` by PR #5. GitHub merged
+source head `f2b4ebb4c0c57e93b1c967f6764672b46905345c` into target
+`4dd10f4bf0bfcea2b4cceede5ac9f24465f6a656` as merge commit
+`7f84749f8bfa96496602560df0b4d5da09e6fd9d`, result tree
+`41cc1390c6a4949c4fbe5cde087925be12f356b7`, preserving both parents. The
+feature branch had already absorbed main's snapshot-performance integration;
+this is the selected third batch's actual three-way result, not a later
+reconstruction of the candidate.
+
+All four protected PR checks are successful on the final head. One initial
+`verify` execution failed only at
+`TestDesktopQuotaRefreshReturnsDueAlertsForTheAppToDeliver`; the immutable docs
+head did not modify that code or test, and its GitHub retry completed SUCCESS.
+The failure is retained as an observed transient CI result, not claimed repaired
+without a reproducible cause. The final Codex review contained no P0/P1 finding.
+Its five P2 findings are closed by the operator's explicit 2026-09-19 decision
+that this round repairs only P0/P1; they are carried as the deferred Lane C
+Beads candidates named in `docs/roadmap.md`.
+
+The topic's seven Tasks remain 7/7 reviewed and delivered. Its integration
+result needs its own target-bound CEv1 roll-up; the earlier Round 5 candidate
+state is not relabeled. Aggregate `assemble` stays open for the three other
+selected v0.6.0 areas, and this contract's task 2/version closure, retirement,
+and release remain unfinished.
+
+Historical pre-delivery handoff: the third batch candidate was `subscription-quota` at merge commit `aac6bb1` /
 tree `adf6ed43`, after refreshing the feature from main `4dd10f4`. Round 4
 integration review failed with `A4-F1`: the `AgentDeckApp.swift` conflict
 resolution removed the topic's delivered fail-closed hosted-XCTest guard while

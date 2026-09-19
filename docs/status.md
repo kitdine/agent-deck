@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-08-25
-updated: 2026-09-14
+updated: 2026-09-19
 ---
 
 # AgentDeck Project Status
@@ -183,15 +183,20 @@ refresh, snapshot performance, cost transparency, health recovery, and
 Codex/Claude subscription accounts, quota, reset information and reminders.
 Structured session search is excluded. Active version membership is owned by
 [the v0.6.0 contract](topics/v0-6-0-contract/tasks.md), delivered through PR #2.
-This integration includes schema-version-signal and snapshot-performance as the
-first two of six selected areas; the other four areas and aggregate
-assembly/version closure remain open.
+This integration includes schema-version-signal, snapshot-performance, and
+subscription-quota as the first three of six selected areas; the other three
+areas and aggregate assembly/version closure remain open. Subscription-quota
+merged through PR #5 at `7f84749`; its initial `verify` test failure retried
+SUCCESS without a reproduced cause, and its final five P2 review findings are
+explicitly deferred as Lane C candidates in `roadmap.md`, not represented as
+resolved technical defects.
 
 | Topic | Version | Status | Purpose |
 | --- | --- | --- | --- |
 | [`v0.5.0` Contract Closure](topics/v0-5-0-contract/tasks.md) | `v0.5.0` | Released — contract complete, independently reviewed, and committed at `a547362`; `cli-design.md` is at version 28 and both contract Tasks are 2/2 implemented and reviewed. Six release candidates culminated in `v0.5.0-rc.6`, and stable `v0.5.0` published the exact `acb8384` commit. The schema-version-signal documents and decomposition are now committed; this contract directory remains live pending its separately scoped retirement. No v0.5.0 product work remains. | Version-wide specification raise and documentation reconciliation after every selected topic's tasks pass review. |
 | [Schema Version Signal](topics/schema-version-signal/tasks.md) | `v0.6.0` | First assembly batch — 4/4 documents and 6/6 tasks reviewed and delivered; source `58df42d`. This integration carries the product, stable contracts and worktree-status governance correction. Task 5 manual text-size/layout and VoiceOver/interaction acceptance remain user-waived, not tested. See the [integration record](topics/v0-6-0-contract/reviews/assemble.md); retirement and release remain separate. | Stable schema-ahead reporting across doctor, CLI, desktop and Hook delivery, with actionable recovery and preserved independent session availability. |
-| [Snapshot Performance](topics/snapshot-performance/tasks.md) | `v0.6.0` | Second assembly batch candidate — 6/6 documents and 3/3 tasks reviewed and delivered; PR #4 head `15584e8` passed integration re-review and its exact-head integration gate is VERIFIED. Cold-import and unchanged-refresh CPU targets, the final 20-sample campaign, V01-V19 completeness and manual/native checks retain their explicit accepted-exception status; they are not reported as technical passes. Merge, retirement and release remain separate. | One shared scan runtime, reusable snapshot computation and truthful CLI/menu-bar progress with preserved failure and scope semantics. |
+| [Snapshot Performance](topics/snapshot-performance/tasks.md) | `v0.6.0` | Second assembly batch — 6/6 documents and 3/3 tasks reviewed and delivered; PR #4 merged at `4dd10f4`. Cold-import and unchanged-refresh CPU targets, the final 20-sample campaign, V01-V19 completeness and manual/native checks retain their explicit accepted-exception status; they are not reported as technical passes. Retirement and release remain separate. | One shared scan runtime, reusable snapshot computation and truthful CLI/menu-bar progress with preserved failure and scope semantics. |
+| [Subscription Quota](topics/subscription-quota/tasks.md) | `v0.6.0` | Third assembly batch — 6/6 documents and 7/7 tasks reviewed and delivered; PR #5 merged at `7f84749` after all four final protected checks succeeded. One initial `verify` failure on an unchanged quota-alert test retried SUCCESS without a reproduced cause. The final review's five P2 findings are deferred as explicit Lane C carriers in `roadmap.md`; topic integration evidence remains target-bound to the merge result. Retirement and release remain separate. | Opt-in Codex/Claude subscription account visibility, quota windows, reset information, status-line capture, and threshold/reset reminders. |
 
 #### Retired into `v0.5.0`
 
