@@ -1,0 +1,53 @@
+{
+  "kind": "desktop-refresh-menubar-specimen-v1",
+  "files": [
+    {
+      "path": "prototype/src/App.jsx",
+      "sha256": "53cd953aef4a7ab4ce4122041e0a9235f8f50fda927e12054c1cb9ff117a66da"
+    },
+    {
+      "path": "prototype/src/Popover.jsx",
+      "sha256": "6a295c271098750581dcc898b487e495c668b88f5c800a81a155bb46d4103ed8"
+    },
+    {
+      "path": "prototype/src/Stage.jsx",
+      "sha256": "5af23413ec1ce7b4a0726e3311f558a50fb640183f135bdf834b93442a1e7496"
+    },
+    {
+      "path": "prototype/src/i18n.js",
+      "sha256": "82ca2ae383764582c771a2bee91e5edd2e1ffcab38c23b5dff2abccd8d73fb45"
+    },
+    {
+      "path": "prototype/src/styles.css",
+      "sha256": "5c064267cc88f66943f317c1bf7799ec903b25e8f09fbd63028b6fd16d23e36e"
+    },
+    {
+      "path": "docs/topics/desktop-refresh/ux/prototype/menubar-refresh/checks.json",
+      "sha256": "d92c4da07367b0319c91433529ca54bb49b4391a04d1536558864111744b1e0d"
+    },
+    {
+      "path": "docs/topics/desktop-refresh/ux/prototype/menubar-refresh/running-prior-en-light-420.png",
+      "sha256": "b389e7554ee40780b21974b2b98be5690257a786822ce9bee36bf211af9515dc"
+    },
+    {
+      "path": "docs/topics/desktop-refresh/ux/prototype/menubar-refresh/wake-catchup-zh-dark-280.png",
+      "sha256": "13dd07875e6a8eb687a1ed7c78f621f16ea1d216c0c85cac6c38cd1314830779"
+    },
+    {
+      "path": "docs/topics/desktop-refresh/ux/prototype/menubar-refresh/failed-prior-en-light-280.png",
+      "sha256": "47200ff6262608e45b65264f5746adc9a8fc10eaec3891dfbc4e3e4e1eca6644"
+    },
+    {
+      "path": "docs/topics/desktop-refresh/ux/prototype/menubar-refresh/first-failure-zh-dark-420.png",
+      "sha256": "4212dc6e3754d9d1586e5126ef7b5f0480fcc5c8b38dd47291b6f111212ce417"
+    },
+    {
+      "path": "docs/topics/desktop-refresh/ux/prototype/menubar-refresh/storage-failure-en-dark-420.png",
+      "sha256": "4bfb8ce3bff1de9010a1eb602113cd9f19a380f62638f18736607f8e768fadd9"
+    },
+    {
+      "path": "docs/topics/desktop-refresh/ux/prototype/menubar-refresh/recovered-zh-light-280.png",
+      "sha256": "0065d90be3f095b9e7f1577f4686526226e9a13fda65f3a9ea959715eb390e1c"
+    }
+  ]
+}

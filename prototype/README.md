@@ -43,6 +43,7 @@ URL 参数：`lang=zh|en`、`theme=dark|light`、
 `width=420|280`、`tab=usage|breakdown|attribution|sessions|quota`、
 `sessions=readable|unavailable`、`signal=activity|workflow|tooling`、
 `quota=normal|bothOfficial|codexPlus|prose|parseFailed|stale|neverProbed`、
+`refresh=idle|refreshing|failed|storageFailed|wake|recovered|firstFailure`、
 `widgetClient=codex|claude`、`anchor=left|center|right`、`settings=1`。
 
 subscription-quota 新增两个**可见**的舞台开关，不要求评审者手写参数：
@@ -219,3 +220,21 @@ CLI 中英各 11 项；另有 128 组布局/状态组合、浏览器 AX 和 scop
 [menu-bar scan](../docs/topics/snapshot-performance/ux/menubar-scan.md) 和
 [specimen manifest](../docs/topics/snapshot-performance/ux/prototype/scan/manifest.json)。
 原生辅助功能、真实进程生存期和性能验收仍由实现承担。
+
+## 菜单栏刷新可信性标本（desktop-refresh）
+
+Popover 页新增可见的 `刷新状态 / Refresh state` 舞台轴；它与 `state=` 和
+`quota=` 正交，分别描述刷新尝试、用量数据与额度读取。`refresh` 可为 idle、
+refreshing、failed、storageFailed、wake、recovered、firstFailure。舞台控制不是产品
+UI，URL 参数用于稳定深链与自动化。
+
+这组标本保留成功数据年龄，不用刷新尝试时间替换它；失败后继续显示旧数据并给出
+Retry，首次失败不制造零值，App Group 写失败明确说明菜单栏已更新但 Widget 可能仍旧。
+280 pt 下刷新按钮沿用图标化规则，但完整无障碍名称保留。普通刷新使用一个 polite、
+atomic live region；已有 scan live region 出现时不重复播报。
+
+设计、六张截图、浏览器检查与内容哈希见
+[`ux/menubar-refresh.md`](../docs/topics/desktop-refresh/ux/menubar-refresh.md) 和
+[`menubar-refresh/manifest.json`](../docs/topics/desktop-refresh/ux/prototype/menubar-refresh/manifest.json)。
+这些是浏览器标本，不替代原生 VoiceOver、Dynamic Type、AppKit focus、真实睡眠恢复或
+WidgetKit 调度验收。
