@@ -14,10 +14,11 @@ prior data. It implements the surface boundary in
 [`requirements.md`](../requirements.md); it does not choose scheduler, wire, or
 App Group implementation.
 
-This is the stage-3 framework design. Architecture must provision the data named
-below, then this document returns for final-surface reconciliation before task
-decomposition. The shared [product prototype](../../../../prototype/README.md)
-is the visual authority; no second menu-bar surface is introduced.
+The stage-3 framework passed Re-review Round 2 and was delivered in `84fb0b8`.
+This revision is the stage-7 final-surface reconciliation against reviewed
+architecture blob `d5ff801efa8b0d15fb50e939d2726dd6284ca58e`.
+The shared [product prototype](../../../../prototype/README.md) remains the visual
+authority; no second menu-bar or Settings surface is introduced.
 
 ## Inherited contracts
 
@@ -88,6 +89,7 @@ menu-bar success; its notice narrows the failure to Widgets.
 | First-use failure | `First refresh failed · no data is available yet` | `首次刷新失败 · 还没有可显示的数据` |
 | First-use body | `No data available yet` | `还没有可显示的数据` |
 | Widget publication failure | `Menu-bar data is current · Widgets may be out of date` | `菜单栏数据已更新 · 小组件可能仍是旧数据` |
+| Periodic-refresh Settings note | `Refreshes about once a minute while AgentDeck is running; when off, startup and manual refresh still update data` | `AgentDeck 运行时约每分钟刷新一次；关闭后，启动与手动刷新仍会更新数据` |
 
 The notice says what failed and what remains trustworthy. It does not use
 `Some data unavailable` for a failed full refresh whose retained snapshot was
@@ -117,7 +119,7 @@ retry removes only the matching refresh row; unrelated warnings remain.
 2. The successful-data age and all readable content remain visible.
 3. Detailed scan stages, when available, update in the existing live region.
 4. Success atomically replaces the snapshot, resets the age, and shows the
-   transient `Updated` action before returning to `Refresh`.
+   transient `Updated` action for 1.6 seconds before returning to `Refresh`.
 5. Failure leaves the prior snapshot and age unchanged, adds the retained-data
    notice, and changes the action to `Retry`.
 
@@ -131,8 +133,10 @@ copy does not linger as a toast or historical log.
 ### App Group publication failure
 
 The menu-bar snapshot is already successful and remains fully interactive. The
-Widget-publication notice appears once in the content strip. The ordinary manual
-refresh action is the retry path; no second Widget-only control is introduced.
+Widget-publication notice appears once in the content strip for both a definite
+pre-commit failure and an indeterminate post-commit result. That distinction
+changes recovery evidence, not user copy. The ordinary manual refresh action is
+the retry path; no second Widget-only control is introduced.
 A later successful publication clears this notice without changing unrelated
 health or partial notices.
 
@@ -160,6 +164,26 @@ No UI element needs the number of missed intervals, a wake trigger label, a
 Widget render time, or a second freshness timestamp. If architecture cannot
 derive a row without ambiguity, it must provision a typed additive field or
 return here with a stated refusal; the surface must not infer it from timers.
+
+## Final architecture reconciliation
+
+The reviewed architecture resolves every framework candidate:
+
+| Framework request | Final disposition |
+| --- | --- |
+| Header age | Existing `latestSnapshot.data.generatedAt` plus injected presentation date |
+| Attempt action | Process-local `fullAttempt`; succeeded remains visible for 1.6 seconds |
+| Retained/first-use failure | `latestSnapshot` presence composed with `fullAttempt.failed` |
+| Widget publication failure | Separate `widgetPublication.failedBeforeCommit` or `.indeterminateAfterCommit`; neither makes menu data stale or badges the menu-bar item |
+| Scan live region | Existing `scanProgress`; generic attempt announcement is suppressed while scan status is active |
+| Matching recovery | Independent admission/publication generations; only newer matching success clears its notice |
+| Wake presentation | No new field/badge; completion-based monotonic scheduler produces one catch-up while age + running state provide surface truth |
+| Periodic preference | Same opt-in/off-default control; its note now says approximately one minute while AgentDeck runs |
+
+Quota arbitration, publisher admission barriers, shared bounded reads, semantic
+kind diff, and typed Widget failures need no additional menu-bar element. They
+change correctness beneath the reviewed states. The six popover specimens remain
+visually applicable; only the Settings explanatory note is new final content.
 
 ## Accessibility and motion
 
@@ -215,12 +239,19 @@ zero violations in all six states. Five data specimens retain the existing
 error surface has zero incomplete checks. See
 [`checks.json`](prototype/menubar-refresh/checks.json) and the content-bound
 [`manifest.json`](prototype/menubar-refresh/manifest.json).
-Manifest SHA-256: `64083a6a4bad190debac0c96547d3648e59b83a3b0bf11c7115ca634783a5752`.
+Manifest SHA-256: `bd8f5ad3ee0d6420d8d9fe123d4c306d736c0d1556c40c1c5cb0274ae10e0148`.
 
-## Framework review boundary
+Final reconciliation adds two Settings specimens to the same evidence directory:
 
-Framework review decides whether all requirements states have truthful hierarchy,
-copy, composition, interaction, accessibility, and data requirements. It does
-not approve new wire fields or implementation. After architecture settles every
-data requirement, this document returns for final-surface reconciliation and a
-new or explicitly reused applicable review before task decomposition.
+- `settings-periodic-en-light.png`
+- `settings-periodic-zh-dark.png`
+
+They prove the localized note fits the existing 460 pt Settings window and stays
+programmatically associated with the unchanged periodic-refresh switch.
+
+## Final-surface review boundary
+
+Final review decides whether the framework still matches the settled architecture,
+the periodic Settings copy is accurate/localized/fits, and the unchanged six
+popover specimens remain applicable. It does not approve implementation or
+native acceptance. PASS restores this document's Review cell for decomposition.

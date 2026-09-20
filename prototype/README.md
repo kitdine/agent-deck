@@ -237,6 +237,8 @@ atomic live region；已有 scan live region 出现时不重复播报。
 设计、六张截图、浏览器检查与内容哈希见
 [`ux/menubar-refresh.md`](../docs/topics/desktop-refresh/ux/menubar-refresh.md) 和
 [`menubar-refresh/manifest.json`](../docs/topics/desktop-refresh/ux/prototype/menubar-refresh/manifest.json)。
+架构通过后的 final-surface reconciliation 另加入中英两张 Settings 标本，验证周期刷新
+说明改为「运行时约每分钟；关闭后启动与手动仍更新」，控件与布局不变。
 这些是浏览器标本，不替代原生 VoiceOver、Dynamic Type、AppKit focus、真实睡眠恢复或
 WidgetKit 调度验收。
 

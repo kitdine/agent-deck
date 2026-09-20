@@ -11,19 +11,19 @@
     },
     {
       "path": "prototype/src/Stage.jsx",
-      "sha256": "5af23413ec1ce7b4a0726e3311f558a50fb640183f135bdf834b93442a1e7496"
+      "sha256": "b7c086db1760ebe6563a2d183e5db6330343ac3a09770a068a0e229191090371"
     },
     {
       "path": "prototype/src/i18n.js",
-      "sha256": "82ca2ae383764582c771a2bee91e5edd2e1ffcab38c23b5dff2abccd8d73fb45"
+      "sha256": "fd996fbb6c5bba8efa4fa22c25e74cd731ed12f4ac3d980b0e57cc72b69ebd09"
     },
     {
       "path": "prototype/src/styles.css",
-      "sha256": "5c064267cc88f66943f317c1bf7799ec903b25e8f09fbd63028b6fd16d23e36e"
+      "sha256": "718d66a6a96a46955a7a4133e38e122532a3f568e04d90d09f238f6ecb07179b"
     },
     {
       "path": "docs/topics/desktop-refresh/ux/prototype/menubar-refresh/checks.json",
-      "sha256": "d92c4da07367b0319c91433529ca54bb49b4391a04d1536558864111744b1e0d"
+      "sha256": "401b138fa24646a43c42607c45eb465c2b0da70731fcf7102fc46c272e76b453"
     },
     {
       "path": "docs/topics/desktop-refresh/ux/prototype/menubar-refresh/running-prior-en-light-420.png",
@@ -48,6 +48,14 @@
     {
       "path": "docs/topics/desktop-refresh/ux/prototype/menubar-refresh/recovered-zh-light-280.png",
       "sha256": "0065d90be3f095b9e7f1577f4686526226e9a13fda65f3a9ea959715eb390e1c"
+    },
+    {
+      "path": "docs/topics/desktop-refresh/ux/prototype/menubar-refresh/settings-periodic-en-light.png",
+      "sha256": "d62d9b14754e41ca45ebc5b366b8b8ca02fe9d10cce18e479c62dd89ea6e929b"
+    },
+    {
+      "path": "docs/topics/desktop-refresh/ux/prototype/menubar-refresh/settings-periodic-zh-dark.png",
+      "sha256": "1dec20190d0e61d4626d8478a9950d6930bbd3e68b4892a3bc753099c9b60e47"
     }
   ]
 }

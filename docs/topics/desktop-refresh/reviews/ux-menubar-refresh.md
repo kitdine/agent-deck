@@ -104,3 +104,39 @@ Round 1 结论仍为 FAIL，Review 矩阵仍未勾选；以上处置只声明返
 - Completion gate：VERIFIED。固定 CEv1 gate 对 `desktop-refresh:ux/menubar-refresh.md` 和精确 ContentState `urn:agent-deck:content-state:desktop-refresh:ux-menubar-refresh:4e203c5:2342005:64083a6` 回查为 3/3；Round 1 fail evidence 保留在原 ContentState，不适用于本目标；无缺失、反证、blocked、malformed、失效证据或未决 candidate impact。
 
 Round 1 的唯一 finding 已关闭，当前 framework 可进入 Task checkpoint；architecture 仍需在后续阶段处置文档列出的数据要求，final-surface reconciliation 也仍未执行。
+
+## Round 3 — 2026-09-19
+
+## 📋 Desktop Refresh menu-bar final-surface 评审
+
+📊 总体评分：9.5/10
+
+✅ 评审结论：PASS
+
+### 🔴 严重问题——必须修复
+
+无。
+
+### 🟡 建议改进——推荐
+
+无；本轮没有可继续外带的 in-scope finding。
+
+### 🟢 优点
+
+- final reconciliation 精确绑定已评审 architecture blob `d5ff801`，把 1.6 秒 success、definite/indeterminate publication failure、generation-safe recovery、wake catch-up 与 periodic preference 逐项落回既有界面，不新增竞争 surface。
+- 英文浅色与中文深色 Settings specimen 中，约一分钟说明均在 458 px client width 内完整换行，无横向溢出；periodic-refresh switch 的 `aria-describedby` 精确指向本地化说明。
+- 当前运行重新捕获的六个 popover 状态保持既有层级：running 保留数据并禁用动作，retained failure 保留年龄与数据，first-use failure 不伪造数值，Widget publication failure 不把新鲜菜单数据标成 stale，recovery 清除匹配 notice。
+- 两种语言的 Retry accessible name、失败 copy、publication notice 与成功动作仍与 framework PASS 一致；新增 Settings copy 准确反映 completion-based scheduler 与 off-state 的 startup/manual 行为。
+
+### 📝 总结
+
+- Reviewed state：HEAD `c0c6daf8a1808a6b9174a6cb6973a6e2db9687a1`；`docs/topics/desktop-refresh/ux/menubar-refresh.md` blob `48f7fb0b292bfd8e38814d8de4292e4624965107`；prototype manifest SHA-256 `bd8f5ad3ee0d6420d8d9fe123d4c306d736c0d1556c40c1c5cb0274ae10e0148`；内容指纹 `ea141e1ad860e532f876758709d8b2ddd1afe5faa5afb89a56fe3f5a2a298a08`，配方为 `SHA-256(head=<HEAD>;document=<blob>;prototype=<manifest_sha256>)`。
+- Reviewer：Codex。
+- Method：设计/合同维度正式评审与当前运行 combined UX/accessibility audit；使用隔离浏览器重新捕获八个状态，逐张目视检查，并核对当前 accessibility tree、periodic switch `aria-describedby`、精确 copy、构建、manifest/hash 与 L0。未委派。
+- Scope：final `ux/menubar-refresh.md`、共享 prototype 中与菜单栏 final reconciliation 相关的文案/说明、八张 menu-bar/Settings specimens、manifest/checks、prototype 索引和 topic status。未评审 Swift 实现、Widget final reconciliation、任务分解或原生 acceptance。
+- Audit steps：1) 英文 Settings/light——healthy，说明完整且 switch 关联正确；2) 中文 Settings/dark——healthy，双行换行与层级清楚；3) running/prior data——healthy，旧数据保留且动作禁用；4) wake catch-up/narrow——healthy，年龄与 running truth 并存；5) retained failure/narrow——healthy，旧数据与 failure notice 并存；6) first-use failure——healthy，不显示伪造数据；7) Widget publication failure——healthy，菜单数据保持 current 且 notice 仅指向 Widgets；8) recovery/narrow——healthy，匹配 notice 清除并显示瞬时成功。
+- Evidence：`Periodic refresh`/`定时刷新` switch 指向 `settings-periodicRefresh-hint`，其文本与合同逐字一致；`npm run build` PASS（4583 modules）；manifest 14/14 hashes PASS 且 SHA-256 与文档一致；JSON、`scripts/check-topic-docs.sh`、`make check-whitespace`、`git diff --check` 均 PASS。本轮当前运行截图保存在 `/private/tmp/agentdeck-menubar-audit.3oIASI/`，正式 specimens 仍由 manifest 绑定。
+- Residual uncertainty：浏览器 specimen 不能证明原生 VoiceOver、Dynamic Type、AppKit focus、真实 sleep/wake timing 或发布后的 scheduler/runtime 行为；这些仍属于后续实现测试与 native acceptance，不影响本轮设计合同 PASS。
+- Completion gate：VERIFIED。固定 CEv1 gate 对 `desktop-refresh:ux/menubar-refresh.md` 和精确 ContentState `urn:agent-deck:content-state:desktop-refresh:ux-menubar-refresh:c0c6daf:48f7fb0:bd8f5ad` 回查为 3/3；framework delivered evidence 保留在旧 ContentState，无缺失、反证、blocked、malformed、失效证据或未决 candidate impact。
+
+final-surface 与 architecture、双语 copy、现有视觉层级和可访问性关联一致，没有记录新的 finding；可进入该文档 Task checkpoint，之后继续 Widget final reconciliation。
