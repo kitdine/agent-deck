@@ -45,7 +45,7 @@ control are preserved, so no separate settings UX document is applicable.
 
 | Task | Dev | Review |
 | --- | --- | --- |
-| 1. `widget-publication-foundation` | [ ] | [ ] |
+| 1. `widget-publication-foundation` | [x] | [x] |
 | 2. `refresh-coordination-and-scheduling` | [ ] | [ ] |
 | 3. `widget-loading-and-timeline` | [ ] | [ ] |
 | 4. `menubar-refresh-presentation` | [ ] | [ ] |

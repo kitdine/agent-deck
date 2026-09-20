@@ -1689,9 +1689,10 @@ public final class DesktopRefreshCoordinator {
 	private let host: any DesktopSnapshotRefreshing
 	private let quotaRefresher: (any DesktopQuotaRefreshing)?
 	private let alertDeliverer: (any QuotaAlertDelivering)?
-	private let snapshotStore: AppGroupSnapshotStore?
+	private let snapshotPublisher: WidgetSnapshotPublisher?
 	@ObservationIgnored private var activeRefresh: Task<Void, Never>?
 	@ObservationIgnored private var generation = 0
+	@ObservationIgnored private var widgetPublicationGeneration: UInt64 = 0
 
 	public init(
 		host: any DesktopSnapshotRefreshing = DesktopHost(),
@@ -1702,7 +1703,7 @@ public final class DesktopRefreshCoordinator {
 		self.host = host
 		self.quotaRefresher = quotaRefresher
 		self.alertDeliverer = alertDeliverer
-		self.snapshotStore = snapshotStore
+		snapshotPublisher = snapshotStore.map { WidgetSnapshotPublisher(store: $0) }
 	}
 
 	// Starts startup work without making the application launch wait for the
@@ -1762,12 +1763,9 @@ public final class DesktopRefreshCoordinator {
 		switch state {
 		case .ready:
 			latestSnapshot = updated
-			do {
-				if let snapshotStore {
-					try snapshotStore.write(AppGroupDesktopSnapshotV1(envelope: updated))
-				}
+			if publicationSucceeded(await publishWidgetSnapshot(updated)) {
 				state = .ready(updated)
-			} catch {
+			} else {
 				state = .degraded(previous: updated, issue: .storageUnavailable)
 			}
 		case let .degraded(_, issue):
@@ -1778,9 +1776,7 @@ public final class DesktopRefreshCoordinator {
 			// fresher quota figures in `previous` while keeping the same
 			// issue and disposition.
 			latestSnapshot = updated
-			if let snapshotStore {
-				try? snapshotStore.write(AppGroupDesktopSnapshotV1(envelope: updated))
-			}
+			_ = await publishWidgetSnapshot(updated)
 			state = .degraded(previous: updated, issue: issue)
 		case .uninitialized, .refreshing:
 			// .refreshing belongs to an in-flight full refresh -- already
@@ -1826,7 +1822,7 @@ public final class DesktopRefreshCoordinator {
 				guard !Task.isCancelled else {
 					return
 				}
-				self.publishSuccess(envelope, generation: currentGeneration)
+				await self.publishSuccess(envelope, generation: currentGeneration)
 			} catch is CancellationError {
 				return
 			} catch let error as HelperExecutionError {
@@ -1873,22 +1869,37 @@ public final class DesktopRefreshCoordinator {
 		scanProgress = progress
 	}
 
-	private func publishSuccess(_ envelope: DesktopWireEnvelopeV1, generation: Int) {
+	private func publishSuccess(_ envelope: DesktopWireEnvelopeV1, generation: Int) async {
 		guard generation == self.generation else {
 			return
 		}
 
 		latestSnapshot = envelope
 		scanProgress = nil
-		do {
-			if let snapshotStore {
-				try snapshotStore.write(AppGroupDesktopSnapshotV1(envelope: envelope))
-			}
+		if publicationSucceeded(await publishWidgetSnapshot(envelope)) {
 			state = .ready(envelope)
-		} catch {
+		} else {
 			state = .degraded(previous: envelope, issue: .storageUnavailable)
 		}
 		activeRefresh = nil
+	}
+
+	private func publishWidgetSnapshot(_ envelope: DesktopWireEnvelopeV1) async -> WidgetSnapshotPublicationResult? {
+		guard let snapshotPublisher else { return nil }
+		widgetPublicationGeneration &+= 1
+		return await snapshotPublisher.publish(
+			AppGroupDesktopSnapshotV1(envelope: envelope),
+			generation: widgetPublicationGeneration
+		)
+	}
+
+	private func publicationSucceeded(_ result: WidgetSnapshotPublicationResult?) -> Bool {
+		switch result {
+		case nil, .published, .superseded:
+			true
+		case .failedBeforeCommit, .indeterminateAfterCommit:
+			false
+		}
 	}
 
 	private func publishFailure(_ issue: DesktopRefreshIssue, generation: Int) {

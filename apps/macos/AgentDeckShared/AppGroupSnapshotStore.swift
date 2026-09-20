@@ -1,6 +1,5 @@
 import Darwin
 import Foundation
-import WidgetKit
 
 public struct AppGroupDesktopSnapshotV1: Codable, Equatable, Sendable {
 	public static let schemaVersion = 1
@@ -185,9 +184,31 @@ public struct AppGroupHealthSnapshotV1: Codable, Equatable, Sendable {
 	}
 }
 
+public enum AppGroupSnapshotBaselineUnknownReason: Equatable, Sendable {
+	case missing
+	case unsafeFile
+	case oversized
+	case unreadable
+	case unsupportedVersion
+}
+
+public enum AppGroupSnapshotExisting: Equatable, Sendable {
+	case known(AppGroupDesktopSnapshotV1)
+	case unknown(AppGroupSnapshotBaselineUnknownReason)
+}
+
+public struct AppGroupSnapshotPreparedWrite: Sendable {
+	fileprivate let temporaryURL: URL
+}
+
+public enum AppGroupSnapshotCommitError: Error, Equatable, Sendable {
+	case failedBeforeCommit
+	case indeterminateAfterCommit
+}
+
 public struct AppGroupSnapshotStore: Sendable {
 	typealias AtomicReplace = @Sendable (_ temporaryURL: URL, _ destinationURL: URL) throws -> Void
-	typealias TimelineReload = @Sendable () -> Void
+	typealias DurabilitySync = @Sendable (_ directoryURL: URL, _ snapshotURL: URL) throws -> Void
 
 	public static var appGroupIdentifier: String {
 		guard let identifier = Bundle.main.object(
@@ -201,24 +222,24 @@ public struct AppGroupSnapshotStore: Sendable {
 
 	public let directoryURL: URL
 	private let atomicReplace: AtomicReplace
-	private let timelineReload: TimelineReload
+	private let durabilitySync: DurabilitySync
 
 	public init(directoryURL: URL) {
 		self.init(
 			directoryURL: directoryURL,
 			atomicReplace: Self.replaceAtomically,
-			timelineReload: Self.reloadWidgetTimelines
+			durabilitySync: Self.synchronizeDurably
 		)
 	}
 
 	init(
 		directoryURL: URL,
 		atomicReplace: @escaping AtomicReplace,
-		timelineReload: @escaping TimelineReload = Self.reloadWidgetTimelines
+		durabilitySync: @escaping DurabilitySync = Self.synchronizeDurably
 	) {
 		self.directoryURL = directoryURL
 		self.atomicReplace = atomicReplace
-		self.timelineReload = timelineReload
+		self.durabilitySync = durabilitySync
 	}
 
 	public init?(appGroupIdentifier: String = Self.appGroupIdentifier) {
@@ -236,40 +257,94 @@ public struct AppGroupSnapshotStore: Sendable {
 	}
 
 	public func write(_ snapshot: AppGroupDesktopSnapshotV1) throws {
+		let prepared = try prepareWrite(snapshot)
+		do {
+			try commit(prepared)
+		} catch {
+			discard(prepared)
+			throw error
+		}
+	}
+
+	public func readExisting() -> AppGroupSnapshotExisting {
+		do {
+			let snapshot = try JSONDecoder().decode(
+				AppGroupDesktopSnapshotV1.self,
+				from: AppGroupSnapshotBytes.readBounded(at: snapshotURL)
+			)
+			guard snapshot.schemaVersion == AppGroupDesktopSnapshotV1.schemaVersion else {
+				return .unknown(.unsupportedVersion)
+			}
+			return .known(snapshot)
+		} catch let error as AppGroupSnapshotByteReadError {
+			switch error {
+			case .missing: return .unknown(.missing)
+			case .unsafeFile: return .unknown(.unsafeFile)
+			case .oversized: return .unknown(.oversized)
+			case .unreadable: return .unknown(.unreadable)
+			}
+		} catch {
+			return .unknown(.unreadable)
+		}
+	}
+
+	public func read() throws -> AppGroupDesktopSnapshotV1 {
+		switch readExisting() {
+		case let .known(snapshot):
+			return snapshot
+		case .unknown(.unsupportedVersion):
+			let data = try AppGroupSnapshotBytes.readBounded(at: snapshotURL)
+			let snapshot = try JSONDecoder().decode(AppGroupDesktopSnapshotV1.self, from: data)
+			throw AppGroupSnapshotStoreError.unsupportedSchemaVersion(snapshot.schemaVersion)
+		case .unknown(.missing), .unknown(.unreadable):
+			throw AppGroupSnapshotStoreError.unreadableSnapshot
+		case .unknown(.unsafeFile):
+			throw AppGroupSnapshotStoreError.insecureFile
+		case .unknown(.oversized):
+			throw AppGroupSnapshotStoreError.oversizedSnapshot
+		}
+	}
+
+	public func prepareWrite(_ snapshot: AppGroupDesktopSnapshotV1) throws -> AppGroupSnapshotPreparedWrite {
 		let fileManager = FileManager.default
 		try Self.ensurePrivateDirectory(directoryURL, fileManager: fileManager)
 
 		let encoder = JSONEncoder()
 		encoder.outputFormatting = [.sortedKeys]
 		let data = try encoder.encode(snapshot)
+		guard data.count <= AppGroupSnapshotBytes.maximumBytes else {
+			throw AppGroupSnapshotStoreError.oversizedSnapshot
+		}
 		let temporaryURL = directoryURL.appendingPathComponent(
 			".\(Self.fileName).\(UUID().uuidString).tmp",
 			isDirectory: false
 		)
-		var removeTemporaryFile = true
-		defer {
-			if removeTemporaryFile {
-				try? fileManager.removeItem(at: temporaryURL)
-			}
+		do {
+			try Self.writePrivateFile(data, to: temporaryURL)
+			try Self.verifyPrivateRegularFile(temporaryURL, fileManager: fileManager)
+			return AppGroupSnapshotPreparedWrite(temporaryURL: temporaryURL)
+		} catch {
+			try? fileManager.removeItem(at: temporaryURL)
+			throw error
 		}
-
-		try Self.writePrivateFile(data, to: temporaryURL)
-		try Self.verifyPrivateRegularFile(temporaryURL, fileManager: fileManager)
-		try atomicReplace(temporaryURL, snapshotURL)
-		removeTemporaryFile = false
-		try Self.verifyPrivateRegularFile(snapshotURL, fileManager: fileManager)
-		timelineReload()
 	}
 
-	public func read() throws -> AppGroupDesktopSnapshotV1 {
-		let snapshot = try JSONDecoder().decode(
-			AppGroupDesktopSnapshotV1.self,
-			from: Data(contentsOf: snapshotURL)
-		)
-		guard snapshot.schemaVersion == AppGroupDesktopSnapshotV1.schemaVersion else {
-			throw AppGroupSnapshotStoreError.unsupportedSchemaVersion(snapshot.schemaVersion)
+	public func commit(_ prepared: AppGroupSnapshotPreparedWrite) throws {
+		do {
+			try atomicReplace(prepared.temporaryURL, snapshotURL)
+		} catch {
+			throw AppGroupSnapshotCommitError.failedBeforeCommit
 		}
-		return snapshot
+		do {
+			try Self.verifyPrivateRegularFile(snapshotURL, fileManager: .default)
+			try durabilitySync(directoryURL, snapshotURL)
+		} catch {
+			throw AppGroupSnapshotCommitError.indeterminateAfterCommit
+		}
+	}
+
+	public func discard(_ prepared: AppGroupSnapshotPreparedWrite) {
+		try? FileManager.default.removeItem(at: prepared.temporaryURL)
 	}
 
 	private static func ensurePrivateDirectory(_ directoryURL: URL, fileManager: FileManager) throws {
@@ -319,10 +394,6 @@ public struct AppGroupSnapshotStore: Sendable {
 		}
 	}
 
-	private static func reloadWidgetTimelines() {
-		WidgetCenter.shared.reloadAllTimelines()
-	}
-
 	private static func verifyPrivateRegularFile(_ url: URL, fileManager: FileManager) throws {
 		let values = try url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
 		guard values.isRegularFile == true,
@@ -344,6 +415,18 @@ public struct AppGroupSnapshotStore: Sendable {
 	private static func currentPOSIXError() -> POSIXError {
 		POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
 	}
+
+	private static func synchronizeDurably(directoryURL: URL, snapshotURL: URL) throws {
+		try synchronize(path: snapshotURL.path, flags: O_RDONLY | O_NOFOLLOW)
+		try synchronize(path: directoryURL.path, flags: O_RDONLY | O_DIRECTORY | O_NOFOLLOW)
+	}
+
+	private static func synchronize(path: String, flags: Int32) throws {
+		let descriptor = open(path, flags)
+		guard descriptor >= 0 else { throw currentPOSIXError() }
+		defer { close(descriptor) }
+		guard fsync(descriptor) == 0 else { throw currentPOSIXError() }
+	}
 }
 
 private enum AppGroupPresentationCode {
@@ -364,5 +447,7 @@ private enum AppGroupPresentationCode {
 public enum AppGroupSnapshotStoreError: Error, Equatable, Sendable {
 	case insecureDirectory
 	case insecureFile
+	case oversizedSnapshot
+	case unreadableSnapshot
 	case unsupportedSchemaVersion(Int)
 }
