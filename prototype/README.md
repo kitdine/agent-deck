@@ -44,6 +44,7 @@ URL 参数：`lang=zh|en`、`theme=dark|light`、
 `sessions=readable|unavailable`、`signal=activity|workflow|tooling`、
 `quota=normal|bothOfficial|codexPlus|prose|parseFailed|stale|neverProbed`、
 `refresh=idle|refreshing|failed|storageFailed|wake|recovered|firstFailure`、
+`widgetRefresh=fresh|aging|old|hostAbsent|unchanged|changed|missing|containerUnavailable|readFailed|unsupported|recovered`、
 `widgetClient=codex|claude`、`anchor=left|center|right`、`settings=1`。
 
 subscription-quota 新增两个**可见**的舞台开关，不要求评审者手写参数：
@@ -238,3 +239,19 @@ atomic live region；已有 scan live region 出现时不重复播报。
 [`menubar-refresh/manifest.json`](../docs/topics/desktop-refresh/ux/prototype/menubar-refresh/manifest.json)。
 这些是浏览器标本，不替代原生 VoiceOver、Dynamic Type、AppKit focus、真实睡眠恢复或
 WidgetKit 调度验收。
+
+## Widget 刷新可信性标本（desktop-refresh）
+
+Widgets 页新增 `小组件刷新 / Widget refresh` 舞台轴，与用量、额度和菜单栏刷新状态
+独立。它覆盖新鲜、老化、过期、host 缺席、发布有/无变化、四类读取失败与恢复。
+舞台标签不是产品 chip；host 缺席与无变化不会进入 Widget 卡片文案。
+
+所有五种 kind × 三种 size 继续使用同一 frame。可读数据只更新真实 footer 年龄；
+quota 保持最旧 observation 的独立时钟。missing、container unavailable、read/decode
+failure、unsupported schema 在 15 张卡片上都替换数据，不显示零值或旧值。
+
+设计、九张截图、浏览器检查与内容哈希见
+[`ux/widget-refresh.md`](../docs/topics/desktop-refresh/ux/widget-refresh.md) 和
+[`widget-refresh/manifest.json`](../docs/topics/desktop-refresh/ux/prototype/widget-refresh/manifest.json)。
+浏览器标本不证明 WidgetKit 真实调度、原生 Dynamic Type/VoiceOver、App Group 故障注入
+或真实睡眠恢复。

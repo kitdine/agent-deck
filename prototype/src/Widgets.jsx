@@ -1,4 +1,5 @@
-import { ChartBar, ChartPieSlice, ClockCounterClockwise, Gauge, ShieldCheck } from "@phosphor-icons/react";
+import { createContext, useContext } from "react";
+import { ChartBar, ChartPieSlice, ClockCounterClockwise, Gauge, ShieldCheck, WarningCircle } from "@phosphor-icons/react";
 import { meta, quota, quotaMeta, rhythm, scope } from "./data.js";
 import { catalogs, formatCost, formatDate, formatHourRangeShort, formatShare, formatTokens } from "./i18n.js";
 import { StageControls, useStagePrefs } from "./Stage.jsx";
@@ -19,10 +20,39 @@ const KINDS = [
   { key: "quota", Icon: Gauge },
 ];
 
+const WidgetRefreshContext = createContext("fresh");
+
+function refreshPresentation(scenario, dict) {
+  switch (scenario) {
+    case "aging": return { footer: dict.widgets.refresh.aging };
+    case "old":
+    case "hostAbsent": return { footer: dict.widgets.refresh.old };
+    case "unchanged": return { footer: dict.widgets.refresh.unchanged };
+    case "missing": return { failure: dict.widgets.refresh.missing };
+    case "containerUnavailable": return { failure: dict.widgets.refresh.containerUnavailable };
+    case "readFailed": return { failure: dict.widgets.refresh.readFailed };
+    case "unsupported": return { failure: dict.widgets.refresh.unsupported };
+    default: return { footer: dict.status.justNow };
+  }
+}
+
+function WidgetLoadFailure({ copy }) {
+  return (
+    <div className="widget-load-failure">
+      <WarningCircle size={18} weight="fill" />
+      <strong>{copy.title}</strong>
+    </div>
+  );
+}
+
 function Frame({ kind, size, lang, scopeText, children, Icon, footText }) {
   const dict = catalogs[lang];
+  const scenario = useContext(WidgetRefreshContext);
+  const presentation = refreshPresentation(scenario, dict);
+  const footer = presentation.failure?.footer ?? footText ?? presentation.footer;
+  const accessibilityStatus = presentation.failure?.title ?? footer;
   return (
-    <article className={`widget widget-${size}`} aria-label={`${dict.widgets.kinds[kind].title} · ${dict.widgets.sizes[size]}`}>
+    <article className={`widget widget-${size}`} aria-label={`${dict.widgets.kinds[kind].title} · ${dict.widgets.sizes[size]} · ${accessibilityStatus}`}>
       <header>
         <span>
           <Icon size={12} weight="fill" />
@@ -30,8 +60,8 @@ function Frame({ kind, size, lang, scopeText, children, Icon, footText }) {
         </span>
         <small>{scopeText}</small>
       </header>
-      <div className="widget-body">{children}</div>
-      <footer>{footText ?? dict.status.justNow}</footer>
+      <div className="widget-body">{presentation.failure ? <WidgetLoadFailure copy={presentation.failure} /> : children}</div>
+      <footer>{footer}</footer>
     </article>
   );
 }
@@ -730,16 +760,18 @@ export function WidgetGallery() {
   const dict = catalogs[lang];
   return (
     <main className="board" data-theme={theme}>
-      <StageControls prefs={prefs} showState={false} showWidgetClient />
+      <StageControls prefs={prefs} showState={false} showWidgetRefresh showWidgetClient />
       <header className="board-head">
         <h1>{dict.widgets.boardTitle}</h1>
         <p>{dict.widgets.boardSubtitle}</p>
       </header>
-      <div className="board-grid">
-        {KINDS.map(({ key, Icon }) => (
-          <Group key={key} kind={key} Icon={Icon} lang={lang} quotaVariant={prefs.quota} widgetClient={prefs.widgetClient} />
-        ))}
-      </div>
+      <WidgetRefreshContext.Provider value={prefs.widgetRefresh}>
+        <div className="board-grid">
+          {KINDS.map(({ key, Icon }) => (
+            <Group key={key} kind={key} Icon={Icon} lang={lang} quotaVariant={prefs.quota} widgetClient={prefs.widgetClient} />
+          ))}
+        </div>
+      </WidgetRefreshContext.Provider>
     </main>
   );
 }

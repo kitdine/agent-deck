@@ -21,18 +21,19 @@ separate boundaries.
 | --- | --- | --- |
 | requirements.md | [x] | [x] |
 | ux/menubar-refresh.md | [x] | [x] |
-| ux/widget-refresh.md | [ ] | [ ] |
+| ux/widget-refresh.md | [x] | [x] |
 | architecture.md | [ ] | [ ] |
 | tasks.md | [ ] | [ ] |
 
 `requirements.md` passed independent Review Round 1 for its exact document blob,
 and its document gate is CEv1 VERIFIED. The menu-bar refresh framework passed
 Re-review Round 2 after `MR-R1-F1` closed, and its exact framework/specimen gate
-is CEv1 VERIFIED. Widget UX, architecture, final menu-bar reconciliation, and
-task decomposition remain unfinished. Unchecked Draft cells intentionally denote
-unwritten documents, not missing stubs. The existing Settings layout and
-periodic-refresh control are preserved, so no separate settings UX document is
-applicable.
+is CEv1 VERIFIED. The Widget refresh framework and shared-prototype specimens are
+approved by Review Round 1, and their exact framework/specimen gate is CEv1
+VERIFIED. Architecture, both final-surface reconciliations, and task decomposition
+remain unfinished. Unchecked Draft cells intentionally denote unwritten documents,
+not missing stubs. The existing Settings layout and periodic-refresh control are
+preserved, so no separate settings UX document is applicable.
 
 ## Tasks
 

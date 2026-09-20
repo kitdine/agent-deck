@@ -1,0 +1,61 @@
+{
+  "kind": "desktop-refresh-widget-specimen-v1",
+  "files": [
+    {
+      "path": "prototype/src/Stage.jsx",
+      "sha256": "b7c086db1760ebe6563a2d183e5db6330343ac3a09770a068a0e229191090371"
+    },
+    {
+      "path": "prototype/src/Widgets.jsx",
+      "sha256": "38f179a1f4a8313fe9bb498445419cc94309f58ef4b3b900794aada3244f2b75"
+    },
+    {
+      "path": "prototype/src/i18n.js",
+      "sha256": "e39168f7ca03c8442ed05c26e1a0e16d05a7464d720fe0be0095f6b86b1a3832"
+    },
+    {
+      "path": "prototype/src/styles.css",
+      "sha256": "718d66a6a96a46955a7a4133e38e122532a3f568e04d90d09f238f6ecb07179b"
+    },
+    {
+      "path": "docs/topics/desktop-refresh/ux/prototype/widget-refresh/checks.json",
+      "sha256": "fd3738b997ec3e4df50b217dba493d94302bc1cc7362564afde32053cfff6b51"
+    },
+    {
+      "path": "docs/topics/desktop-refresh/ux/prototype/widget-refresh/aging-en-light.png",
+      "sha256": "a7423ce9cf9d58c2549431473867b3328db630aad043558dc995b614708eb77a"
+    },
+    {
+      "path": "docs/topics/desktop-refresh/ux/prototype/widget-refresh/host-absent-zh-dark.png",
+      "sha256": "a4e99d5ac12c29626f98c8e23f2bbaeb6e8aa18c0d1268c07fd77147e54adff6"
+    },
+    {
+      "path": "docs/topics/desktop-refresh/ux/prototype/widget-refresh/unchanged-en-dark.png",
+      "sha256": "6d629bead9e76d5e059ab958396162b50703f2feabeba0dd97f48ae29ec6265b"
+    },
+    {
+      "path": "docs/topics/desktop-refresh/ux/prototype/widget-refresh/changed-zh-light.png",
+      "sha256": "a8edef2bc4f487cc6f55169650e2c667d3ee26b3c33e36ad320fb248ab6cc8ad"
+    },
+    {
+      "path": "docs/topics/desktop-refresh/ux/prototype/widget-refresh/missing-en-light.png",
+      "sha256": "88e4e45b13bab320f23bb57fa019247c6eb2f0d866e6d22a9ed5f207f5e5e6b2"
+    },
+    {
+      "path": "docs/topics/desktop-refresh/ux/prototype/widget-refresh/container-unavailable-zh-dark.png",
+      "sha256": "8cd5018b2b03595b91c62c17c90de8ea9434e8ce33c24f2799587fb6e622ac2c"
+    },
+    {
+      "path": "docs/topics/desktop-refresh/ux/prototype/widget-refresh/read-failed-en-dark.png",
+      "sha256": "53a7bc58cdc397fb9f08f2fbe7b76f379ad912d836338d0343f6be70dad97029"
+    },
+    {
+      "path": "docs/topics/desktop-refresh/ux/prototype/widget-refresh/unsupported-zh-light.png",
+      "sha256": "b173a890f950e027aa2fe8a7a862c220ec67b791ef35a9c9d96a18ce9c0b7423"
+    },
+    {
+      "path": "docs/topics/desktop-refresh/ux/prototype/widget-refresh/recovered-en-light.png",
+      "sha256": "364ad270c8d5b674628f7c973fd5d866dca3c0f5211611e76466e6a1d1efc6e1"
+    }
+  ]
+}
