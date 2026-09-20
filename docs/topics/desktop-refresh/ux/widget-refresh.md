@@ -14,10 +14,12 @@ publication, and recovery. It implements the Widget boundary in
 [`requirements.md`](../requirements.md) without choosing timeline, digest, wire,
 or storage implementation.
 
-This is the stage-3 framework design. Architecture must provision the outcomes
-and clocks below; this document then returns for final-surface reconciliation.
-The shared [product prototype](../../../../prototype/README.md) remains the
-visual authority for all five Widget kinds and three native sizes.
+The stage-3 framework passed Review Round 1 and was delivered in `8279718`.
+This revision is the stage-7 final-surface reconciliation against reviewed
+architecture blob `d5ff801efa8b0d15fb50e939d2726dd6284ca58e` and signed
+architecture commit `c0c6daf`. The shared
+[product prototype](../../../../prototype/README.md) remains the visual authority
+for all five Widget kinds and three native sizes.
 
 ## Inherited contracts
 
@@ -160,6 +162,35 @@ The surface refuses process-presence probing, missed-interval counts, a second
 Widget-refresh timestamp, helper/network errors not present in the projection,
 and any private database or credential field.
 
+## Final architecture reconciliation
+
+The reviewed architecture resolves every framework request without adding a
+Widget element or changing copy:
+
+| Framework request | Final disposition |
+| --- | --- |
+| Generic footer age | Existing projection `generated_at` plus actual injected entry date |
+| Quota footer | Existing oldest displayed quota observation/reason; Widget reread time remains excluded |
+| Typed failure surfaces | Process-local `WidgetLoadOutcome` with missing, container unavailable, unreadable, and unsupported-version failures |
+| Read/decode safety | Shared 8 MiB bounded loader used by host comparison and Widget reader; oversized/unsafe remain diagnostic subcategories of reviewed unreadable UI |
+| 3–5 minute opportunity | Timeline minimum 3m, default 4m, maximum 5m; one actual-time entry per invocation |
+| Host absence | Explicitly unobservable; readable data follows the same age ladder, with no product label |
+| Changed publication | Canonical per-kind semantic comparison requests only affected kind reloads |
+| Unchanged publication | Empty affected-kind set; no immediate reload, event chip, or freshness reset |
+| Unknown old baseline | Next verified publication reloads all five kinds; the current Widget still presents its actual local load outcome |
+| Recovery | A newer loaded outcome atomically replaces the typed failure; unrelated quota/partial/empty qualifiers retain ownership |
+
+Publisher admission barriers, quota/full arbitration, definite versus
+indeterminate host publication results, and generation recovery are intentionally
+not exposed in Widget copy. The extension reports only the file it actually reads.
+
+No architecture decision invalidates the nine framework specimens. The only
+shared prototype source change since framework review is
+`settings.periodicRefreshHint` for menu-bar final reconciliation; `Widgets.jsx`
+does not consume that key, and no `widgets.*` copy, Widget layout, state mapping,
+or screenshot pixel changes. The framework browser/axe evidence is therefore
+reused with an updated manifest binding rather than rerun as a cosmetic ritual.
+
 ## Accessibility and layout
 
 - Each frame's accessibility label includes kind, size, and either truthful
@@ -223,12 +254,12 @@ explicit out-of-scope baseline risk carried by
 `ad-bug-widget-cost-incomplete-contrast`, not a passing accessibility claim. See
 [`checks.json`](prototype/widget-refresh/checks.json) and content-bound
 [`manifest.json`](prototype/widget-refresh/manifest.json).
-Manifest SHA-256: `95b278b6fe9ebf10f40076083236ec3e6625b6f2bb9ea3c38dcdce0251ef321e`.
+Manifest SHA-256: `5cda92a128c6f9cf829389f0c3ae42077d84fef95023e6f9b70bf98a45b0bdfe`.
 
-## Framework review boundary
+## Final-surface review boundary
 
-Framework review decides whether every requirements state has truthful copy,
-composition, recovery, size behavior, accessibility, and data requirements
-across all Widget kinds. It does not approve timeline/digest implementation or
-new projection fields. After architecture resolves each data requirement, this
-document returns for final-surface reconciliation before task decomposition.
+Final review decides whether the framework still matches the settled architecture,
+the no-visible-change impact assessment is valid, and the nine existing
+specimens/evidence remain applicable to current shared source. It does not
+approve implementation or native WidgetKit acceptance. PASS restores this
+document's Review cell for decomposition.

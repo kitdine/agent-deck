@@ -33,7 +33,8 @@ approved by Review Round 1, and their exact framework/specimen gate is CEv1
 VERIFIED. The architecture passed independent Re-review Round 3 for its exact
 document blob and is pending its dependency-safe coordination closure. Menu-bar
 final-surface reconciliation passed Review Round 3 for its architecture-bound
-document and specimens; Widget final reconciliation and task decomposition remain
+document and specimens. Widget final reconciliation passed Review Round 2 for its
+architecture-bound document and rebound specimens; task decomposition remains
 unfinished. Unchecked Draft cells intentionally denote unwritten documents, not
 missing stubs. The existing Settings layout and periodic-refresh control are
 preserved, so no separate settings UX document is applicable.
