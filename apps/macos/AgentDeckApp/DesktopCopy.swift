@@ -219,7 +219,7 @@ enum DesktopCopy {
 	static let settingsLoginItemApproval = "Waiting for approval in System Settings"
 	static let settingsPeriodicRefresh = "Periodic refresh"
 	static let settingsPeriodicRefreshNote =
-		"Refreshes at the time the snapshot suggests; when off, only opening the panel or refreshing manually updates it"
+		"Refreshes about once a minute while AgentDeck is running; when off, startup and manual refresh still update data"
 	static let settingsMenuBarValue = "Shows"
 	static let settingsMenuBarValueNote = "Switch to icon only when sharing your screen"
 	static let settingsMenuBarValueCost = "Cost"

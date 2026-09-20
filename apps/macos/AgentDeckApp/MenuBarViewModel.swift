@@ -1407,7 +1407,7 @@ final class MenuBarViewModel {
 	// MARK: Actions
 
 	func refresh() {
-		Task { await coordinator.refresh(replacingActiveRefresh: true) }
+		Task { await coordinator.requestFullRefresh(trigger: .manual) }
 	}
 
 	func sectionIsExpanded(_ id: String) -> Bool {

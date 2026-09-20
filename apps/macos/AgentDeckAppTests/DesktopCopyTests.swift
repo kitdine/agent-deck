@@ -40,6 +40,20 @@ final class DesktopCopyTests: XCTestCase {
 		XCTAssertEqual(Set(DesktopCopy.allKeys).count, DesktopCopy.allKeys.count)
 	}
 
+	func testPeriodicRefreshNoteMatchesReviewedOneMinuteCopy() throws {
+		let expected = [
+			"en": "Refreshes about once a minute while AgentDeck is running; when off, startup and manual refresh still update data",
+			"zh-Hans": "AgentDeck 运行时约每分钟刷新一次；关闭后，启动与手动刷新仍会更新数据",
+		]
+		for (language, value) in expected {
+			let localized = try bundle(language)
+			XCTAssertEqual(
+				localized.localizedString(forKey: DesktopCopy.settingsPeriodicRefreshNote, value: nil, table: nil),
+				value
+			)
+		}
+	}
+
 	/// The version withdrew the update check entirely, so no shipped string may
 	/// offer one. "Updated <relative>" is freshness, not an update check, which
 	/// is why the assertion names phrases rather than the word.

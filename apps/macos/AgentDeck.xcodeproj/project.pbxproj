@@ -73,6 +73,8 @@
 		A10000000000000000000040 /* AppGroupSnapshotBytes.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000003A /* AppGroupSnapshotBytes.swift */; };
 		A10000000000000000000041 /* WidgetSemanticProjection.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000003B /* WidgetSemanticProjection.swift */; };
 		A10000000000000000000042 /* WidgetSnapshotPublisher.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000003C /* WidgetSnapshotPublisher.swift */; };
+		A10000000000000000000043 /* DesktopRefreshScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000003D /* DesktopRefreshScheduler.swift */; };
+		A10000000000000000000044 /* DesktopRefreshSchedulerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000003E /* DesktopRefreshSchedulerTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -109,6 +111,8 @@
 		A2000000000000000000003A /* AppGroupSnapshotBytes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppGroupSnapshotBytes.swift; sourceTree = "<group>"; };
 		A2000000000000000000003B /* WidgetSemanticProjection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetSemanticProjection.swift; sourceTree = "<group>"; };
 		A2000000000000000000003C /* WidgetSnapshotPublisher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetSnapshotPublisher.swift; sourceTree = "<group>"; };
+		A2000000000000000000003D /* DesktopRefreshScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopRefreshScheduler.swift; sourceTree = "<group>"; };
+		A2000000000000000000003E /* DesktopRefreshSchedulerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesktopRefreshSchedulerTests.swift; sourceTree = "<group>"; };
 		A20000000000000000000038 /* QuotaSettingsControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuotaSettingsControllerTests.swift; sourceTree = "<group>"; };
 		A2000000000000000000001D /* AppTestFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTestFixtures.swift; sourceTree = "<group>"; };
 		A2000000000000000000001E /* MenuBarViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarViewModelTests.swift; sourceTree = "<group>"; };
@@ -250,6 +254,7 @@
 				A2000000000000000000003A /* AppGroupSnapshotBytes.swift */,
 				A2000000000000000000003B /* WidgetSemanticProjection.swift */,
 				A2000000000000000000003C /* WidgetSnapshotPublisher.swift */,
+				A2000000000000000000003D /* DesktopRefreshScheduler.swift */,
 				A20000000000000000000005 /* EmbeddedHelperRunner.swift */,
 				A20000000000000000000006 /* DesktopLog.swift */,
 				A20000000000000000000012 /* Info.plist */,
@@ -266,6 +271,7 @@
 				A2000000000000000000000D /* AppGroupSnapshotStoreTests.swift */,
 				A2000000000000000000000E /* DesktopLogPolicyTests.swift */,
 				A20000000000000000000013 /* DesktopRefreshCoordinatorTests.swift */,
+				A2000000000000000000003E /* DesktopRefreshSchedulerTests.swift */,
 			);
 			path = AgentDeckTests;
 			sourceTree = "<group>";
@@ -568,6 +574,7 @@
 				A1000000000000000000003E /* AppGroupSnapshotBytes.swift in Sources */,
 				A10000000000000000000041 /* WidgetSemanticProjection.swift in Sources */,
 				A10000000000000000000042 /* WidgetSnapshotPublisher.swift in Sources */,
+				A10000000000000000000043 /* DesktopRefreshScheduler.swift in Sources */,
 				A10000000000000000000006 /* EmbeddedHelperRunner.swift in Sources */,
 				A10000000000000000000007 /* DesktopLog.swift in Sources */,
 			);
@@ -583,6 +590,7 @@
 				A1000000000000000000000B /* AppGroupSnapshotStoreTests.swift in Sources */,
 				A1000000000000000000000C /* DesktopLogPolicyTests.swift in Sources */,
 				A1000000000000000000000E /* DesktopRefreshCoordinatorTests.swift in Sources */,
+				A10000000000000000000044 /* DesktopRefreshSchedulerTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

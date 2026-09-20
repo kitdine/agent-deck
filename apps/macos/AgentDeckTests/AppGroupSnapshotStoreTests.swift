@@ -18,7 +18,7 @@ final class AppGroupSnapshotStoreTests: XCTestCase {
 		XCTAssertFalse(encoded.contains("session-1"))
 		XCTAssertFalse(encoded.contains("recovery_command"))
 		XCTAssertFalse(encoded.contains("credential"))
-		XCTAssertEqual(projection.nextRefreshAt, "2026-08-13T10:05:00Z")
+		XCTAssertEqual(projection.nextRefreshAt, "2026-08-13T10:01:00Z")
 		XCTAssertEqual(projection.usage.presentation.scopes.map(\.client), ["all", "codex", "claude"])
 		XCTAssertEqual(
 			projection.usage.presentation.scopes.first?.periods.items.map(\.period),

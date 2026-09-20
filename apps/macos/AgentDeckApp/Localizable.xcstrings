@@ -2497,18 +2497,18 @@
         }
       }
     },
-    "Refreshes at the time the snapshot suggests; when off, only opening the panel or refreshing manually updates it": {
+    "Refreshes about once a minute while AgentDeck is running; when off, startup and manual refresh still update data": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Refreshes at the time the snapshot suggests; when off, only opening the panel or refreshing manually updates it"
+            "value": "Refreshes about once a minute while AgentDeck is running; when off, startup and manual refresh still update data"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "按快照给出的下次刷新时间刷新；关闭时只在打开面板和手动刷新时更新"
+            "value": "AgentDeck 运行时约每分钟刷新一次；关闭后，启动与手动刷新仍会更新数据"
           }
         }
       }

@@ -35,6 +35,7 @@ struct SettingsWindowView: View {
 						.tint(DesktopVisualTheme.accent)
 						.labelsHidden()
 						.accessibilityLabel(t(DesktopCopy.settingsPeriodicRefresh))
+						.accessibilityHint(t(DesktopCopy.settingsPeriodicRefreshNote))
 				}
 			}
 
