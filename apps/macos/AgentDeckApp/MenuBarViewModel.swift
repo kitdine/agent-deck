@@ -51,6 +51,13 @@ struct MenuBarNotice: Identifiable, Equatable, Sendable {
 	let opensHealthDetail: Bool
 }
 
+enum MenuBarRefreshActionState: Equatable, Sendable {
+	case idle
+	case running
+	case succeeded
+	case failed
+}
+
 struct FilterOption: Identifiable, Equatable, Sendable {
 	let id: String
 	let label: String
@@ -336,10 +343,50 @@ final class MenuBarViewModel {
 	var qualifiers: [DesktopPresentationQualifier] { presentation.qualifiers }
 
 	var isRefreshing: Bool {
-		if case .refreshing = coordinator.state {
-			return true
+		refreshActionState == .running
+	}
+
+	var refreshActionState: MenuBarRefreshActionState {
+		switch coordinator.fullAttempt {
+		case .idle: .idle
+		case .running: .running
+		case .succeeded: .succeeded
+		case .failed: .failed
 		}
-		return false
+	}
+
+	var refreshActionText: String {
+		switch refreshActionState {
+		case .idle: t(DesktopCopy.refreshAction)
+		case .running: t(DesktopCopy.refreshingAction)
+		case .succeeded: t(DesktopCopy.updatedAction)
+		case .failed: t(DesktopCopy.retry)
+		}
+	}
+
+	var refreshActionAccessibilityLabel: String {
+		refreshActionState == .failed ? t(DesktopCopy.refreshFailedAction) : refreshActionText
+	}
+
+	var refreshActionSymbol: String {
+		switch refreshActionState {
+		case .idle: "arrow.clockwise"
+		case .running: "hourglass"
+		case .succeeded: "checkmark"
+		case .failed: "exclamationmark.triangle"
+		}
+	}
+
+	var refreshAnnouncement: String? {
+		guard !showsScanProgressStatus else { return nil }
+		return switch refreshActionState {
+		case .idle: nil
+		case .running: t(DesktopCopy.refreshingAction)
+		case .succeeded: t(DesktopCopy.updatedAction)
+		case .failed: presentation.snapshot == nil
+			? t(DesktopCopy.firstRefreshFailed)
+			: t(DesktopCopy.refreshFailedShowingPrevious)
+		}
 	}
 
 	var showsScanProgressStatus: Bool {
@@ -422,10 +469,12 @@ final class MenuBarViewModel {
 	}
 
 	var errorCopy: String {
-		if case .degraded(_, .helper(.timedOut)) = coordinator.state {
-			return t(DesktopCopy.refreshTimedOut)
-		}
-		return qualifiers.contains(.failing) ? t(DesktopCopy.failing) : t(DesktopCopy.offline)
+		guard presentation.snapshot != nil else { return t(DesktopCopy.firstRefreshFailed) }
+		return t(DesktopCopy.refreshFailedShowingPrevious)
+	}
+
+	var errorBodyCopy: String? {
+		presentation.snapshot == nil ? t(DesktopCopy.firstRefreshEmpty) : nil
 	}
 
 	var hasSchemaSignal: Bool { snapshot?.health.checks.contains { $0.code == "schema_ahead" } ?? false }
@@ -437,16 +486,28 @@ final class MenuBarViewModel {
 	var notices: [MenuBarNotice] {
 		guard let envelope = presentation.snapshot else { return [] }
 		var result = [MenuBarNotice]()
-		if qualifiers.contains(.offline) {
-			result.append(MenuBarNotice(id: "offline", text: t(DesktopCopy.offline), severity: .error, opensHealthDetail: false))
-		} else if qualifiers.contains(.failing) {
-			result.append(MenuBarNotice(id: "failing", text: errorCopy, severity: .error, opensHealthDetail: false))
-		}
 		if hasSchemaSignal {
 			result.append(MenuBarNotice(id: "schema", text: t(DesktopCopy.schemaSignalNotice), severity: .error, opensHealthDetail: true))
 		}
-		if qualifiers.contains(.partial), !hasSchemaSignal {
-			result.append(MenuBarNotice(id: "partial", text: t(DesktopCopy.partial), severity: .warning, opensHealthDetail: false))
+		if case .failed = coordinator.fullAttempt {
+			result.append(MenuBarNotice(
+				id: "refresh.failed",
+				text: t(DesktopCopy.refreshFailedShowingPrevious),
+				severity: .error,
+				opensHealthDetail: false
+			))
+		} else {
+			switch coordinator.widgetPublication {
+			case .failedBeforeCommit, .indeterminateAfterCommit:
+				result.append(MenuBarNotice(
+					id: "widget.publication",
+					text: t(DesktopCopy.widgetPublicationFailed),
+					severity: .warning,
+					opensHealthDetail: false
+				))
+			default:
+				break
+			}
 		}
 		let health = envelope.data.health
 		if health.available, health.problems > (hasSchemaSignal ? 1 : 0) {
@@ -472,6 +533,9 @@ final class MenuBarViewModel {
 					opensHealthDetail: true
 				)
 			)
+		}
+		if qualifiers.contains(.partial), !hasSchemaSignal {
+			result.append(MenuBarNotice(id: "partial", text: t(DesktopCopy.partial), severity: .warning, opensHealthDetail: false))
 		}
 		return result
 	}

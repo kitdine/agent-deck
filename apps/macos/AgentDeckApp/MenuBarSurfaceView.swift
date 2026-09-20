@@ -125,14 +125,20 @@ struct MenuBarSurfaceView: View {
 	@Environment(\.accessibilityReduceMotion) private var reduceMotion
 
 	var body: some View {
-		Group {
-			switch model.surface {
-			case .loadingSurface:
-				loadingSurface
-			case .errorSurface:
-				errorSurface
-			case .dataSurface:
-				dataSurface
+		VStack(spacing: 0) {
+			header
+				.padding(.horizontal, MenuBarGeometry.padding)
+				.padding(.top, MenuBarGeometry.betweenRows)
+				.padding(.bottom, MenuBarGeometry.betweenRows)
+			Group {
+				switch model.surface {
+				case .loadingSurface:
+					loadingSurface
+				case .errorSurface:
+					errorSurface
+				case .dataSurface:
+					dataSurface
+				}
 			}
 		}
 		.environment(\.schemaSignal, model.hasSchemaSignal)
@@ -162,20 +168,24 @@ struct MenuBarSurfaceView: View {
 			Label(model.errorCopy, systemImage: NoticeSeverity.error.symbol)
 				.font(.body)
 				.fixedSize(horizontal: false, vertical: true)
+			if let body = model.errorBodyCopy {
+				Text(body)
+					.font(.caption)
+					.foregroundStyle(DesktopVisualTheme.dim)
+					.fixedSize(horizontal: false, vertical: true)
+			}
 			if model.showsScanProgressStatus {
 				scanProgressStatus
 			}
-			Button(t(DesktopCopy.retry)) { model.refresh() }
-				.keyboardShortcut(.defaultAction)
 		}
-		.padding(MenuBarGeometry.padding)
+		.padding(.horizontal, MenuBarGeometry.padding)
+		.padding(.bottom, MenuBarGeometry.padding)
 		.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 	}
 
 	private var dataSurface: some View {
 		VStack(spacing: 0) {
 			VStack(alignment: .leading, spacing: MenuBarGeometry.betweenRows) {
-				header
 				if model.showsScanProgressStatus {
 					scanProgressStatus
 				}
@@ -187,7 +197,6 @@ struct MenuBarSurfaceView: View {
 				panelSwitcher
 			}
 			.padding(.horizontal, MenuBarGeometry.padding)
-			.padding(.top, MenuBarGeometry.betweenRows)
 			.padding(.bottom, MenuBarGeometry.betweenRows)
 
 			Divider()
@@ -235,31 +244,21 @@ struct MenuBarSurfaceView: View {
 					.foregroundStyle(DesktopVisualTheme.dim)
 					.fixedSize(horizontal: false, vertical: true)
 			}
-				Button {
-					model.refresh()
-				} label: {
-					Group {
-						if model.isRefreshing {
-							if reduceMotion {
-								Image(systemName: "hourglass")
-							} else {
-								ProgressView().controlSize(.small)
-							}
-						} else {
-							Image(systemName: "arrow.clockwise")
-						}
-					}
-					.frame(width: MenuBarGeometry.rowMinimumHeight, height: MenuBarGeometry.rowMinimumHeight)
-					.contentShape(Rectangle())
-				}
-				.buttonStyle(.borderless)
-				.keyboardShortcut("r")
-				.disabled(model.switchPresentation.blocksSurface || model.isRefreshing)
-				.accessibilityLabel(t(DesktopCopy.refreshNow))
-				.accessibilityValue(model.isRefreshing ? model.scanProgressStageText ?? t(DesktopCopy.loading) : "")
+			StableRefreshControl(
+				model: model,
+				reduceMotion: reduceMotion
+			)
 		}
 		.frame(minHeight: MenuBarGeometry.rowMinimumHeight)
 		.accessibilityValue(model.qualifierSummary ?? "")
+		.overlay(alignment: .topLeading) {
+			if let announcement = model.refreshAnnouncement {
+				Text(announcement)
+					.frame(width: 1, height: 1)
+					.opacity(0.001)
+					.accessibilityAddTraits(.updatesFrequently)
+			}
+		}
 	}
 
 	@ViewBuilder
@@ -418,6 +417,131 @@ struct MenuBarSurfaceView: View {
 			get: { model.sectionIsExpanded(id) },
 			set: { model.setSection(id, expanded: $0) }
 		)
+	}
+}
+
+struct RefreshControlIdentityPreferenceKey: PreferenceKey {
+	static let defaultValue: UUID? = nil
+	static func reduce(value: inout UUID?, nextValue: () -> UUID?) {
+		value = value ?? nextValue()
+	}
+}
+
+private struct StableRefreshControl: View {
+	@Bindable var model: MenuBarViewModel
+	let reduceMotion: Bool
+	@State private var identity = UUID()
+
+	var body: some View {
+		StableRefreshButtonRepresentable(
+			model: model,
+			reduceMotion: reduceMotion,
+			identity: identity
+		)
+		.frame(minWidth: MenuBarGeometry.rowMinimumHeight, minHeight: MenuBarGeometry.rowMinimumHeight)
+		.preference(key: RefreshControlIdentityPreferenceKey.self, value: identity)
+	}
+}
+
+private struct StableRefreshButtonRepresentable: NSViewRepresentable {
+	@Bindable var model: MenuBarViewModel
+	let reduceMotion: Bool
+	let identity: UUID
+
+	func makeCoordinator() -> Coordinator { Coordinator(model: model) }
+
+	func makeNSView(context: Context) -> StableRefreshNSButton {
+		let button = StableRefreshNSButton(title: "", target: context.coordinator, action: #selector(Coordinator.activate))
+		button.identifier = NSUserInterfaceItemIdentifier("menubar.refresh.\(identity.uuidString)")
+		button.bezelStyle = .inline
+		button.isBordered = false
+		button.focusRingType = .default
+		return button
+	}
+
+	func updateNSView(_ button: StableRefreshNSButton, context: Context) {
+		context.coordinator.model = model
+		let enabled = !model.switchPresentation.blocksSurface && !model.isRefreshing
+		let wasFocused = button.window?.firstResponder === button
+		if context.coordinator.wasEnabled == true, !enabled, wasFocused {
+			context.coordinator.restoreFocusWhenEnabled = true
+		}
+		button.update(
+			title: MenuBarGeometry.width > MenuBarGeometry.narrowWidth ? model.refreshActionText : "",
+			symbol: model.refreshActionSymbol,
+			running: model.isRefreshing,
+			reduceMotion: reduceMotion,
+			enabled: enabled,
+			accessibilityLabel: model.refreshActionAccessibilityLabel,
+			accessibilityValue: model.isRefreshing ? model.scanProgressStageText ?? t(DesktopCopy.loading) : ""
+		)
+		if context.coordinator.wasEnabled == false, enabled {
+			let shouldRestore = context.coordinator.restoreFocusWhenEnabled
+			context.coordinator.restoreFocusWhenEnabled = false
+			if shouldRestore, button.window?.firstResponder !== button {
+				DispatchQueue.main.async { button.window?.makeFirstResponder(button) }
+			}
+		}
+		context.coordinator.wasEnabled = enabled
+	}
+
+	@MainActor
+	final class Coordinator: NSObject {
+		var model: MenuBarViewModel
+		var restoreFocusWhenEnabled = false
+		var wasEnabled: Bool?
+		init(model: MenuBarViewModel) { self.model = model }
+		@objc func activate() { model.refresh() }
+	}
+}
+
+private final class StableRefreshNSButton: NSButton {
+	private let spinner = NSProgressIndicator()
+
+	override init(frame frameRect: NSRect) {
+		super.init(frame: frameRect)
+		configureSpinner()
+	}
+
+	required init?(coder: NSCoder) {
+		super.init(coder: coder)
+		configureSpinner()
+	}
+
+	private func configureSpinner() {
+		spinner.style = .spinning
+		spinner.controlSize = .small
+		spinner.isDisplayedWhenStopped = false
+		addSubview(spinner)
+	}
+
+	override func layout() {
+		super.layout()
+		spinner.frame = NSRect(x: 5, y: (bounds.height - 14) / 2, width: 14, height: 14)
+	}
+
+	func update(
+		title: String,
+		symbol: String,
+		running: Bool,
+		reduceMotion: Bool,
+		enabled: Bool,
+		accessibilityLabel: String,
+		accessibilityValue: String
+	) {
+		self.title = title
+		isEnabled = enabled
+		setAccessibilityLabel(accessibilityLabel)
+		setAccessibilityValue(accessibilityValue)
+		if running, !reduceMotion {
+			image = nil
+			spinner.startAnimation(nil)
+		} else {
+			spinner.stopAnimation(nil)
+			image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
+		}
+		imagePosition = title.isEmpty ? .imageOnly : .imageLeading
+		invalidateIntrinsicContentSize()
 	}
 }
 

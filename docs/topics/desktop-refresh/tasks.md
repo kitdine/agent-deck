@@ -48,7 +48,7 @@ control are preserved, so no separate settings UX document is applicable.
 | 1. `widget-publication-foundation` | [x] | [x] |
 | 2. `refresh-coordination-and-scheduling` | [x] | [x] |
 | 3. `widget-loading-and-timeline` | [x] | [x] |
-| 4. `menubar-refresh-presentation` | [ ] | [ ] |
+| 4. `menubar-refresh-presentation` | [x] | [x] |
 | 5. `refresh-integration-acceptance` | [ ] | [ ] |
 
 Implementation Beads tasks are created only after this document passes review.

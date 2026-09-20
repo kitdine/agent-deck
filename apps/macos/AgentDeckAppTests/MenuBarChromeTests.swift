@@ -6,6 +6,7 @@ import XCTest
 
 @MainActor
 final class MenuBarChromeTests: XCTestCase {
+	private static var retainedFocusWindows = [NSWindow]()
 	func testStandaloneReloadIncludesEveryWidgetKind() {
 		XCTAssertEqual(AgentDeckMain.widgetKinds, [
 			"com.kitdine.agentdeck.widget.magnitude",
@@ -48,6 +49,118 @@ final class MenuBarChromeTests: XCTestCase {
 				await refresh.value
 			}
 		}
+	}
+
+	func testRefreshFailureAndFirstUseRenderAtNativeWidthsInBothLanguagesAndThemes() async throws {
+		let oldWidth = ProcessInfo.processInfo.environment["AGENTDECK_TEST_WIDTH"]
+		let oldLocale = ProcessInfo.processInfo.environment["AGENTDECK_TEST_LOCALE"]
+		defer {
+			if let oldWidth { setenv("AGENTDECK_TEST_WIDTH", oldWidth, 1) } else { unsetenv("AGENTDECK_TEST_WIDTH") }
+			if let oldLocale { setenv("AGENTDECK_TEST_LOCALE", oldLocale, 1) } else { unsetenv("AGENTDECK_TEST_LOCALE") }
+		}
+		for (language, scheme) in [("en", ColorScheme.light), ("zh-Hans", .dark)] {
+			setenv("AGENTDECK_TEST_LOCALE", language, 1)
+			for width in [280, 420] {
+				setenv("AGENTDECK_TEST_WIDTH", String(width), 1)
+				let retainedHost = StubDesktopHost(behavior: .envelope(WireFixture.envelope()))
+				let retained = await makeModel(host: retainedHost)
+				await retained.coordinator.refresh()
+				retainedHost.behavior = .failure(HelperExecutionError.timedOut)
+				await retained.coordinator.refresh()
+				let first = await makeModel(host: StubDesktopHost(behavior: .failure(HelperExecutionError.timedOut)))
+				await first.coordinator.refresh()
+
+				for (name, model) in [("retained", retained), ("first", first)] {
+					let view = MenuBarSurfaceView(model: model).preferredColorScheme(scheme)
+					let hosting = NSHostingView(rootView: view)
+					hosting.frame = NSRect(x: 0, y: 0, width: CGFloat(width), height: 760)
+					hosting.layoutSubtreeIfNeeded()
+					hosting.displayIfNeeded()
+					XCTAssertLessThanOrEqual(hosting.fittingSize.width, CGFloat(width) + 1)
+					let png = try renderedViewPNG(hosting)
+					XCTAssertGreaterThan(png.count, 4_000)
+					add(renderingAttachment(png, named: "Refresh \(name) — \(language) — \(width)"))
+				}
+			}
+		}
+	}
+
+	func testRefreshControlIdentitySurvivesErrorRunningSuccessAndFailure() async throws {
+		let host = StubDesktopHost(behavior: .failure(HelperExecutionError.timedOut))
+		let model = await makeModel(host: host)
+		await model.coordinator.refresh()
+		let capture = RefreshControlIdentityCapture()
+		let view = RefreshControlIdentityProbe(
+			content: MenuBarSurfaceView(model: model),
+			capture: capture
+		)
+		let hosting = NSHostingView(rootView: view)
+		hosting.frame = NSRect(x: 0, y: 0, width: 420, height: 760)
+		let window = NSWindow(contentRect: hosting.frame, styleMask: [.titled], backing: .buffered, defer: false)
+		let container = NSView(frame: hosting.frame)
+		container.addSubview(hosting)
+		let otherButton = NSButton(title: "Other", target: nil, action: nil)
+		otherButton.frame = NSRect(x: 0, y: 0, width: 80, height: 24)
+		container.addSubview(otherButton)
+		window.contentView = container
+		window.makeKeyAndOrderFront(nil)
+		Self.retainedFocusWindows.append(window)
+
+		func renderState() throws -> UUID {
+			hosting.layoutSubtreeIfNeeded()
+			hosting.displayIfNeeded()
+			RunLoop.current.run(until: Date().addingTimeInterval(0.02))
+			hosting.layoutSubtreeIfNeeded()
+			return try XCTUnwrap(capture.identity)
+		}
+
+		_ = try renderState()
+		let button = try XCTUnwrap(findRefreshButton(in: hosting))
+		XCTAssertTrue(window.makeFirstResponder(button))
+		XCTAssertTrue(window.firstResponder === button, "Retry must receive actual AppKit first-responder focus")
+		let errorIdentity = try renderState()
+		host.behavior = .suspendedEnvelope(WireFixture.envelope())
+		let success = Task { await model.coordinator.refresh() }
+		while host.refreshCount < 2 { await Task.yield() }
+		XCTAssertEqual(model.refreshActionState, .running)
+		let runningIdentity = try renderState()
+		XCTAssertEqual(runningIdentity, errorIdentity)
+		XCTAssertTrue(findRefreshButton(in: hosting) === button, "running must keep the same native control")
+		host.resume()
+		await success.value
+		XCTAssertEqual(model.refreshActionState, .succeeded)
+		let successIdentity = try renderState()
+		XCTAssertEqual(successIdentity, errorIdentity)
+		XCTAssertTrue(window.firstResponder === button, "focus must return when the control becomes enabled after success")
+		XCTAssertTrue(window.makeFirstResponder(otherButton))
+		model.selectedPanel = .usage
+		_ = try renderState()
+		XCTAssertTrue(window.firstResponder === otherButton, "an unrelated enabled-state update must not consume a stale restore request")
+		XCTAssertTrue(window.makeFirstResponder(button))
+
+		host.behavior = .suspendedFailure(HelperExecutionError.timedOut)
+		let failure = Task { await model.coordinator.refresh() }
+		while host.refreshCount < 3 { await Task.yield() }
+		XCTAssertEqual(model.refreshActionState, .running)
+		XCTAssertEqual(try renderState(), errorIdentity)
+		host.resume()
+		await failure.value
+		XCTAssertEqual(model.refreshActionState, .failed)
+		let failureIdentity = try renderState()
+		XCTAssertEqual(failureIdentity, errorIdentity)
+		XCTAssertTrue(window.firstResponder === button, "focus must remain on Retry after failure")
+	}
+
+	private func findRefreshButton(in view: NSView) -> NSButton? {
+		if let button = view as? NSButton,
+			button.identifier?.rawValue.hasPrefix("menubar.refresh.") == true
+		{
+			return button
+		}
+		for child in view.subviews {
+			if let result = findRefreshButton(in: child) { return result }
+		}
+		return nil
 	}
 
 	func testSchemaHealthProseRendersExpandedAndCollapsed() async throws {
@@ -675,6 +788,21 @@ final class MenuBarChromeTests: XCTestCase {
 
 		let neverProbed = try client(observedAt: nil)
 		XCTAssertEqual(panel.primaryReason(neverProbed), .neverProbed, "no observed_at at all is still never probed")
+	}
+}
+
+@MainActor
+private final class RefreshControlIdentityCapture {
+	var identity: UUID?
+}
+
+private struct RefreshControlIdentityProbe<Content: View>: View {
+	let content: Content
+	let capture: RefreshControlIdentityCapture
+
+	var body: some View {
+		content
+			.onPreferenceChange(RefreshControlIdentityPreferenceKey.self) { capture.identity = $0 }
 	}
 }
 
