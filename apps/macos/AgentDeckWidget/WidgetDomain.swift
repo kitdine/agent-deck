@@ -36,6 +36,26 @@ enum WidgetSurfaceState: Equatable, Sendable {
 	case unavailable
 }
 
+struct WidgetLoadFailurePresentation: Equatable, Sendable {
+	let titleKey: String
+	let footerKey: String
+}
+
+extension WidgetLoadFailure {
+	var presentation: WidgetLoadFailurePresentation {
+		switch self {
+		case .missing:
+			WidgetLoadFailurePresentation(titleKey: "No Widget data yet", footerKey: "Open AgentDeck to refresh")
+		case .containerUnavailable:
+			WidgetLoadFailurePresentation(titleKey: "Widget storage unavailable", footerKey: "Open AgentDeck to retry")
+		case .unreadable:
+			WidgetLoadFailurePresentation(titleKey: "Widget data could not be read", footerKey: "Will retry on the next refresh")
+		case .unsupportedSchemaVersion:
+			WidgetLoadFailurePresentation(titleKey: "Widget data is from a newer AgentDeck", footerKey: "Upgrade AgentDeck to refresh")
+		}
+	}
+}
+
 enum WidgetQualifier: String, CaseIterable, Equatable, Sendable {
 	case partial
 	case aging
@@ -79,11 +99,42 @@ struct WidgetFooterPresentation: Equatable {
 
 struct AgentDeckWidgetEntry: TimelineEntry {
 	let date: Date
-	let snapshot: WidgetDesktopSnapshotV1?
+	let outcome: WidgetLoadOutcome
 	let kind: AgentDeckWidgetKind
 	let client: WidgetClient
 	let period: WidgetPeriod
-	let isPlaceholder: Bool
+
+	var snapshot: WidgetDesktopSnapshotV1? {
+		guard case let .loaded(snapshot) = outcome else { return nil }
+		return snapshot
+	}
+
+	var isPlaceholder: Bool { outcome == .placeholder }
+
+	init(date: Date, outcome: WidgetLoadOutcome, kind: AgentDeckWidgetKind, client: WidgetClient, period: WidgetPeriod) {
+		self.date = date
+		self.outcome = outcome
+		self.kind = kind
+		self.client = client
+		self.period = period
+	}
+
+	init(
+		date: Date,
+		snapshot: WidgetDesktopSnapshotV1?,
+		kind: AgentDeckWidgetKind,
+		client: WidgetClient,
+		period: WidgetPeriod,
+		isPlaceholder: Bool
+	) {
+		self.init(
+			date: date,
+			outcome: isPlaceholder ? .placeholder : snapshot.map(WidgetLoadOutcome.loaded) ?? .failed(.unreadable(category: .decode)),
+			kind: kind,
+			client: client,
+			period: period
+		)
+	}
 }
 
 struct WidgetSurfaceModel {
@@ -91,17 +142,20 @@ struct WidgetSurfaceModel {
 	let now: Date
 
 	var surface: WidgetSurfaceState {
-		if entry.isPlaceholder {
-			return .placeholder
+		switch entry.outcome {
+		case .placeholder: return .placeholder
+		case .failed: return .unavailable
+		case .loaded: break
 		}
-		guard let snapshot = entry.snapshot,
-			snapshot.schemaVersion == WidgetDesktopSnapshotV1.schemaVersion
-		else {
-			return .unavailable
-		}
+		guard let snapshot = entry.snapshot else { return .unavailable }
 		if entry.kind == .quota { return snapshot.subscription.available ? .data : .unavailable }
 		guard snapshot.usage.presentation.available, scope != nil else { return .unavailable }
 		return .data
+	}
+
+	var loadFailure: WidgetLoadFailure? {
+		guard case let .failed(failure) = entry.outcome else { return nil }
+		return failure
 	}
 
 	var scope: DesktopUsageScopeV1? {

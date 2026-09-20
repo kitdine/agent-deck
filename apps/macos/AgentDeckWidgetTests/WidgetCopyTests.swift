@@ -15,6 +15,39 @@ final class WidgetCopyTests: XCTestCase {
 		}
 	}
 
+	func testReviewedFailureCopyIsExactInBothShippedLanguages() throws {
+		let expected: [String: [String: String]] = [
+			"en": [
+				"No Widget data yet": "No Widget data yet",
+				"Open AgentDeck to refresh": "Open AgentDeck to refresh",
+				"Widget storage unavailable": "Widget storage unavailable",
+				"Open AgentDeck to retry": "Open AgentDeck to retry",
+				"Widget data could not be read": "Widget data could not be read",
+				"Will retry on the next refresh": "Will retry on the next refresh",
+				"Widget data is from a newer AgentDeck": "Widget data is from a newer AgentDeck",
+				"Upgrade AgentDeck to refresh": "Upgrade AgentDeck to refresh",
+			],
+			"zh-Hans": [
+				"No Widget data yet": "还没有小组件数据",
+				"Open AgentDeck to refresh": "打开 AgentDeck 以刷新",
+				"Widget storage unavailable": "小组件存储不可用",
+				"Open AgentDeck to retry": "打开 AgentDeck 以重试",
+				"Widget data could not be read": "无法读取小组件数据",
+				"Will retry on the next refresh": "等待下次刷新重试",
+				"Widget data is from a newer AgentDeck": "小组件数据来自较新版本的 AgentDeck",
+				"Upgrade AgentDeck to refresh": "升级 AgentDeck 后刷新",
+			],
+		]
+		let bundle = Bundle(for: WidgetCopyTests.self)
+		for (identifier, values) in expected {
+			let path = try XCTUnwrap(bundle.path(forResource: identifier, ofType: "lproj"))
+			let localized = try XCTUnwrap(Bundle(path: path))
+			for (key, value) in values {
+				XCTAssertEqual(WidgetCopy.text(key, bundle: localized), value, "\(identifier): \(key)")
+			}
+		}
+	}
+
 	func testInventoryContainsNoDuplicateKeys() {
 		XCTAssertEqual(Set(WidgetCopy.allKeys).count, WidgetCopy.allKeys.count)
 	}

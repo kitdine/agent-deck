@@ -47,7 +47,7 @@ control are preserved, so no separate settings UX document is applicable.
 | --- | --- | --- |
 | 1. `widget-publication-foundation` | [x] | [x] |
 | 2. `refresh-coordination-and-scheduling` | [x] | [x] |
-| 3. `widget-loading-and-timeline` | [ ] | [ ] |
+| 3. `widget-loading-and-timeline` | [x] | [x] |
 | 4. `menubar-refresh-presentation` | [ ] | [ ] |
 | 5. `refresh-integration-acceptance` | [ ] | [ ] |
 
