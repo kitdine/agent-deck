@@ -49,7 +49,7 @@ control are preserved, so no separate settings UX document is applicable.
 | 2. `refresh-coordination-and-scheduling` | [x] | [x] |
 | 3. `widget-loading-and-timeline` | [x] | [x] |
 | 4. `menubar-refresh-presentation` | [x] | [x] |
-| 5. `refresh-integration-acceptance` | [ ] | [ ] |
+| 5. `refresh-integration-acceptance` | [x] | [x] |
 
 Implementation Beads tasks are created only after this document passes review.
 Use one work-product task per anchor and the existing document task lifecycle;
@@ -312,6 +312,26 @@ decisions return to the owning design document.
 - Native English/Chinese, light/dark, Dynamic Type, VoiceOver, Increase Contrast,
   focus and absence of unexpected cross-kind reload are recorded as performed,
   blocked or waived—not silently converted to PASS.
+
+#### Task 5 acceptance evidence — 2026-09-20
+
+| Boundary | Status | Evidence / limitation |
+| --- | --- | --- |
+| Legacy-path and stable-contract integration | **PERFORMED / PASS** | `make check-desktop-refresh-integration`: no `reloadAllTimelines`, no Widget production `Data(contentsOf:)`, one targeted publisher adapter, 60s/30s app constants, 3/4/5m Widget constants, shared bounded reader, and synchronized English/Chinese stable specs. |
+| Widget sandbox/privacy | **PERFORMED / PASS** | `make check-widget-sandbox`; Widget target keeps the read-only App Group boundary and no prohibited private-state path/field. |
+| Isolated Shared/App/Widget regression | **PERFORMED / PASS** | Final `make test-macos-app`: AgentDeckAppTests 121 tests, 1 skip, 0 failures; AgentDeckWidgetTests 45/45; official App and Widget targets plus bilingual catalogs built successfully under isolated HOME. |
+| Go wire producer/concurrency | **PERFORMED / PASS** | `scripts/run-go-test.sh ./internal/desktop` and `scripts/run-go-test.sh -race ./internal/desktop` passed; wire v1 one-minute hint remains covered. |
+| Ten controlled terminal cycles | **PERFORMED / SIMULATED** | Deterministic monotonic-clock scheduler test executes ten terminal→deadline→single-request cycles without overlap/replay. It is not wall-clock native timing evidence. |
+| Local failure/recovery and host absence | **PERFORMED / SIMULATED** | Bounded missing/unsafe/oversized/decode/schema outcomes, actual-time aging/sleep jump, unknown-baseline recovery, targeted/empty/all-kind reload, publication failure, and full/quota interleavings pass isolated deterministic tests. No host-presence field/probe exists. |
+| Native menu focus/layout/localization | **PERFORMED / PARTIAL** | Native AppKit first-responder tests cover one-shot refresh focus restore/no focus theft; 280/420 pt English/Chinese light/dark render matrices and Dynamic Type automation pass. Real VoiceOver speech and Increase Contrast remain unperformed. |
+| Ten real active-app 60–90s cycles | **BLOCKED** | Requires launching and controlling a real signed app for more than ten wall-clock cycles; this Development command grants no installation/GUI acceptance authority. No waiver recorded. |
+| Five real WidgetKit callbacks and installed intents | **BLOCKED** | Requires installing/registering a signed Widget extension and waiting for OS-granted callbacks. Source/XCTest request dates are not claimed as actual WidgetKit delivery. No waiver recorded. |
+| Real sleep/wake and host-absence recovery | **BLOCKED** | Requires operating system sleep/wake and real-process lifecycle control outside this repository mutation scope. No waiver recorded. |
+| Real VoiceOver / Increase Contrast / cross-kind gallery observation | **BLOCKED** | Requires interactive macOS accessibility and installed Widget-gallery operation. Automated semantics/rendering remain supporting evidence only. No waiver recorded. |
+
+The blocked native rows remain Task 5 residual acceptance risk. They do not
+invalidate the performed automated integration checks, and they are not converted
+to technical PASS or silently waived.
 
 **Excluded:** release/tag/push/install authority, performance-target reopening,
 daemon/file watcher, App Group schema fields, host-presence probing, and
