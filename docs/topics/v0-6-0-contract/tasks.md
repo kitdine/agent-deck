@@ -49,14 +49,14 @@ completed feature topic or an approved implementation decomposition.
 
 | Selected area | Planning carrier | Topic / current readiness |
 | --- | --- | --- |
-| Schema compatibility and Hook failure visibility | `ad-schema-compatibility` | `schema-version-signal`; first integration candidate, subject to the exact-state entry checks below |
-| Menu-bar and Widget refresh | `ad-desktop-refresh` | Topic decomposition/delivery pending; preserve menu-bar approximately 1 minute and widget 3–5 minute targets with change-driven refresh |
-| Snapshot performance | `ad-snapshot-performance` | `snapshot-performance`; 3/3 tasks reviewed and delivered, with explicit performance/native acceptance exceptions retained; final branch also carries the reviewed `xctest-state-isolation` fix |
+| Schema compatibility and Hook failure visibility | `ad-schema-compatibility` | `schema-version-signal`; integrated through PR #3 at main `f2b7d23`, with its reviewed manual acceptance waivers retained |
+| Menu-bar and Widget refresh | `ad-desktop-refresh` | `desktop-refresh`; 5/5 tasks reviewed and delivered at signed source `cc4151b`, with commit-bound Task 5 evidence VERIFIED 5/5 and native acceptance rows retained as BLOCKED/no-waiver; fourth direct-to-main integration candidate |
+| Snapshot performance | `ad-snapshot-performance` | `snapshot-performance`; integrated through PR #4 at main `4dd10f4`, with the reviewed performance and native acceptance exceptions retained |
 | Cost and price transparency | `ad-cost-transparency` | Topic decomposition/delivery pending; distinguish actual-spend and API-equivalent estimates, with separate catalog/model/tier audits |
 | Actionable health recovery | `ad-health-recovery` | Topic decomposition/delivery pending; cause-specific lock guidance and stale extension inventory, retaining the original bug carriers |
-| Codex/Claude subscription accounts, quota, reset and alerts | `ad-subscription-quota` | `subscription-quota`; seven tasks reviewed and delivered; integration candidate `f837666` passed Round 5 after restoring the fail-closed hosted-XCTest isolation boundary |
+| Codex/Claude subscription accounts, quota, reset and alerts | `ad-subscription-quota` | `subscription-quota`; integrated through PR #5 at main `7f84749`, with fail-closed hosted-XCTest isolation preserved and deferred P2 dispositions kept explicit |
 
-Bind the five remaining areas to their actual reviewed topics before assembly;
+Bind the two remaining areas to their actual reviewed topics before assembly;
 do not invent topic directories or implementation tasks for them in this file.
 If an area yields more than one coherent topic, update this list explicitly.
 Adding, excluding or deferring selected scope requires an explicit operator
@@ -200,39 +200,46 @@ installation remain separate exact-SHA workflows requiring explicit authority.
 
 ## Current handoff
 
-The third batch candidate is `subscription-quota` at merge commit `aac6bb1` /
-tree `adf6ed43`, after refreshing the feature from main `4dd10f4`. Round 4
-integration review failed with `A4-F1`: the `AgentDeckApp.swift` conflict
-resolution removed the topic's delivered fail-closed hosted-XCTest guard while
-still constructing a real-home helper and injecting the real
-`~/.claude/settings.json` URL when `AGENTDECK_TEST_HOME` is absent. The
-replacement `automaticRefreshEnabled` check prevents only automatic refresh;
-opening Settings still reads that URL and calls the real helper transport.
-Repair must preserve main's ordinary hosted-XCTest execution while restoring a
-fail-closed isolation boundary for every quota settings/helper path. No push or
-feature-to-main assembly was performed; aggregate `assemble` remains open.
+### Fourth batch candidate — desktop-refresh — 2026-09-20
 
-`A4-F1` was repaired in signed child commit `f837666` / tree `85a4bc5c` and
-closed by independent Round 5 re-review. Hosted XCTest now receives the
-isolated home through Xcode's `TEST_RUNNER_` environment convention, while a
-single `resolveDebugHome` decision makes `.real` unreachable whenever
-`XCTestConfigurationFilePath` is present without a valid isolated home. The
-exact commit's full macOS test wrapper passed 54+93+25 tests with one existing
-expected skip and no leaked helper processes. The integration gate is VERIFIED
-2/2 at the repaired candidate. The batch is ready for its documentation/status
-checkpoint; push and feature-to-main assembly remain separately authorized,
-and aggregate `assemble` remains open for the other three selected areas.
+`desktop-refresh` is delivered on `feature/desktop-refresh` at signed commit
+`cc4151bdcae0689dd025da763b2a3b84eab10d54` / tree
+`246ced1b44ae26df83159a548bf37ed9d4bea75d`. Current target `main` is
+`7f84749f8bfa96496602560df0b4d5da09e6fd9d` / tree
+`41cc1390c6a4949c4fbe5cde087925be12f356b7`, is the merge base and an ancestor
+of the source, so the local operation class is direct fast-forward. There is no
+target-side divergence, conflict resolution or need for a main-to-feature
+synchronization merge.
 
-The version plan was delivered through PR #2, and `schema-version-signal` was
-integrated through PR #3 at main `f2b7d23`. Its exact result identity and retained
-manual acceptance waivers are recorded in [the batch integration review](reviews/assemble.md),
-Beads and CEv1.
+The topic matrix is 5/5 implemented and reviewed. Task 5 is delivered by the
+source HEAD, its commit-bound WorkUnit is `delivered`, and all five required
+criteria are target-bound PASS. The batch candidate preserves the already
+integrated schema, snapshot-performance and subscription-quota baselines while
+adding the completion-driven app scheduler/coordinator/publisher path, typed
+bounded Widget loading, 3/4/5-minute timeline requests, semantic targeted reload
+and reconciled English/Chinese stable contracts.
 
-The second batch candidate is `snapshot-performance` at `15584e8` / tree
-`cb238e76`, prepared in `agent-deck.snapshot-performance` as PR #4 for a
-direct-to-main fast-forward. Integration re-review passed at this exact head and
-its two-criterion integration gate is VERIFIED. The source contains current main
-and needs no synchronization merge. Its performance and native-evidence
-exceptions remain explicit. `assemble` remains open for the other four selected
-areas; neither aggregate Task checkbox is completed by this batch. Merge,
-retirement, version closure and release remain pending.
+Round 6 integration review passed for the exact local candidate and covered the shared App lifecycle and
+`EmbeddedHelperRunner` boundary inherited from subscription-quota, App Group
+publication/reader compatibility, the Go wire hint consumed by macOS, and the
+menu/Widget presentation recovery paths. The reviewed candidate preserves Task 5's native
+acceptance accounting: real ten-cycle timing, installed Widget callbacks and
+intents, real sleep/wake, VoiceOver, Increase Contrast and gallery observations
+remain BLOCKED with no waiver and are not technical PASS.
+
+The integration WorkUnit is
+`v0-6-0-contract:integration:desktop-refresh`, with required criteria
+`integration-readiness` and `source-continuity`. Round 6 records PASS and the
+exact synchronized candidate gate is VERIFIED 2/2. No push,
+PR creation, merge, retirement, version closure or release is performed. The
+aggregate `assemble` Task remains open for this batch and the two other selected
+areas that have not yet produced integrated topics.
+
+### Delivered baseline inherited from main
+
+The version plan was delivered through PR #2. `schema-version-signal` was
+integrated through PR #3 at `f2b7d23`, `snapshot-performance` through PR #4 at
+`4dd10f4`, and `subscription-quota` through PR #5 at current main `7f84749`.
+Their integration histories, exact result identities and retained limitations
+remain in [the batch integration review](reviews/assemble.md), Beads and CEv1;
+this fourth-batch preparation does not relabel or replace that evidence.

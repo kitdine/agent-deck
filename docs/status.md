@@ -183,15 +183,21 @@ refresh, snapshot performance, cost transparency, health recovery, and
 Codex/Claude subscription accounts, quota, reset information and reminders.
 Structured session search is excluded. Active version membership is owned by
 [the v0.6.0 contract](topics/v0-6-0-contract/tasks.md), delivered through PR #2.
-This integration includes schema-version-signal and snapshot-performance as the
-first two of six selected areas; the other four areas and aggregate
-assembly/version closure remain open.
+Main contains the first three assembled areas: schema-version-signal,
+snapshot-performance and subscription-quota. `desktop-refresh` is the fourth
+direct-to-main integration candidate at signed source `cc4151b`; its Round 6
+integration review passed for the exact local candidate, but it is not yet
+pushed or merged. Cost transparency and
+health recovery remain selected but unfinished, and aggregate assembly/version
+closure remain open.
 
 | Topic | Version | Status | Purpose |
 | --- | --- | --- | --- |
 | [`v0.5.0` Contract Closure](topics/v0-5-0-contract/tasks.md) | `v0.5.0` | Released — contract complete, independently reviewed, and committed at `a547362`; `cli-design.md` is at version 28 and both contract Tasks are 2/2 implemented and reviewed. Six release candidates culminated in `v0.5.0-rc.6`, and stable `v0.5.0` published the exact `acb8384` commit. The schema-version-signal documents and decomposition are now committed; this contract directory remains live pending its separately scoped retirement. No v0.5.0 product work remains. | Version-wide specification raise and documentation reconciliation after every selected topic's tasks pass review. |
 | [Schema Version Signal](topics/schema-version-signal/tasks.md) | `v0.6.0` | First assembly batch — 4/4 documents and 6/6 tasks reviewed and delivered; source `58df42d`. This integration carries the product, stable contracts and worktree-status governance correction. Task 5 manual text-size/layout and VoiceOver/interaction acceptance remain user-waived, not tested. See the [integration record](topics/v0-6-0-contract/reviews/assemble.md); retirement and release remain separate. | Stable schema-ahead reporting across doctor, CLI, desktop and Hook delivery, with actionable recovery and preserved independent session availability. |
-| [Snapshot Performance](topics/snapshot-performance/tasks.md) | `v0.6.0` | Second assembly batch candidate — 6/6 documents and 3/3 tasks reviewed and delivered; PR #4 head `15584e8` passed integration re-review and its exact-head integration gate is VERIFIED. Cold-import and unchanged-refresh CPU targets, the final 20-sample campaign, V01-V19 completeness and manual/native checks retain their explicit accepted-exception status; they are not reported as technical passes. Merge, retirement and release remain separate. | One shared scan runtime, reusable snapshot computation and truthful CLI/menu-bar progress with preserved failure and scope semantics. |
+| [Snapshot Performance](topics/snapshot-performance/tasks.md) | `v0.6.0` | Second assembly batch — integrated through PR #4 at main `4dd10f4`; 6/6 documents and 3/3 tasks remain reviewed and delivered. Cold-import and unchanged-refresh CPU targets, the final 20-sample campaign, V01-V19 completeness and manual/native checks retain their explicit accepted-exception status; they are not reported as technical passes. Retirement and release remain separate. | One shared scan runtime, reusable snapshot computation and truthful CLI/menu-bar progress with preserved failure and scope semantics. |
+| [Subscription Quota](topics/subscription-quota/tasks.md) | `v0.6.0` | Third assembly batch — integrated through PR #5 at current main `7f84749`; seven Tasks remain reviewed and delivered, and the merge-result integration gate is VERIFIED 2/2. The fail-closed hosted-XCTest HOME boundary remains part of the delivered result; deferred P2 carriers are planning dispositions, not technical resolutions. Retirement and release remain separate. | Codex and Claude account discovery, bounded quota/reset snapshots, menu-bar and Settings presentation, reminders and truthful unavailable-field handling. |
+| [Desktop Refresh](topics/desktop-refresh/tasks.md) | `v0.6.0` | Fourth assembly batch candidate — 5/5 Tasks reviewed and delivered at signed source `cc4151b`; current main `7f84749` is its merge base and ancestor, so the local class is direct fast-forward with no conflict resolution. Round 6 integration review passed and its exact candidate gate is VERIFIED 2/2. Real timing, installed Widget callbacks/intents, sleep/wake and accessibility/gallery observations remain BLOCKED with no waiver. Push, PR, merge, retirement and release remain separate. | Completion-driven app refresh, bounded Widget loading, truthful aging/failure/recovery presentation, semantic targeted reload and 3–5 minute Widget timeline requests. |
 
 #### Retired into `v0.5.0`
 
