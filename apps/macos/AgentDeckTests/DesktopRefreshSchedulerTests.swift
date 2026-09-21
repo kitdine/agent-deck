@@ -23,6 +23,21 @@ final class DesktopRefreshSchedulerTests: XCTestCase {
 		XCTAssertNil(scheduler.deadline)
 	}
 
+	func testWakeCatchUpFiresImmediatelyAfterElapsedDeadline() {
+		let clock = SchedulerClock()
+		let recorder = SchedulerRequestRecorder()
+		let scheduler = DesktopRefreshScheduler(enabled: true, now: { clock.now }) {
+			recorder.triggers.append($0)
+		}
+
+		scheduler.fullAttemptCompleted()
+		clock.advance(by: 600)
+		scheduler.evaluate(.wake)
+
+		XCTAssertEqual(recorder.triggers, [.wake])
+		XCTAssertNil(scheduler.deadline)
+	}
+
 	func testDisableClearsDeadlineAndReenableDoesNotBackfill() {
 		let clock = SchedulerClock()
 		let recorder = SchedulerRequestRecorder()

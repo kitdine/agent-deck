@@ -456,6 +456,8 @@ private struct StableRefreshButtonRepresentable: NSViewRepresentable {
 		button.bezelStyle = .inline
 		button.isBordered = false
 		button.focusRingType = .default
+		button.keyEquivalent = "r"
+		button.keyEquivalentModifierMask = [.command]
 		return button
 	}
 

@@ -116,6 +116,8 @@ final class MenuBarChromeTests: XCTestCase {
 
 		_ = try renderState()
 		let button = try XCTUnwrap(findRefreshButton(in: hosting))
+		XCTAssertEqual(button.keyEquivalent, "r")
+		XCTAssertEqual(button.keyEquivalentModifierMask, NSEvent.ModifierFlags.command)
 		XCTAssertTrue(window.makeFirstResponder(button))
 		XCTAssertTrue(window.firstResponder === button, "Retry must receive actual AppKit first-responder focus")
 		let errorIdentity = try renderState()

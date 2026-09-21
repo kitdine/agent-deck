@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 public enum DesktopRefreshSchedulerReason: Equatable, Sendable {
@@ -25,12 +26,19 @@ public final class DesktopRefreshScheduler {
 
 	public init(
 		enabled: Bool,
-		now: @escaping @MainActor @Sendable () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
+		now: (@MainActor @Sendable () -> TimeInterval)? = nil,
 		request: @escaping @MainActor @Sendable (DesktopFullRefreshTrigger) -> Void
 	) {
 		isEnabled = enabled
-		self.now = now
+		self.now = now ?? { Self.sleepInclusiveUptime() }
 		self.request = request
+	}
+
+	private static func sleepInclusiveUptime() -> TimeInterval {
+		var timebase = mach_timebase_info_data_t()
+		_ = mach_timebase_info(&timebase)
+		return Double(mach_continuous_time())
+			* Double(timebase.numer) / Double(timebase.denom) / 1_000_000_000
 	}
 
 	public func updateEnabled(_ enabled: Bool) {

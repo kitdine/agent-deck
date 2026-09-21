@@ -94,7 +94,7 @@ final class AppGroupSnapshotStoreTests: XCTestCase {
 		XCTAssertEqual(recorder.calls.last, [.quota])
 	}
 
-	func testKindSemanticFieldsRouteToTheirSingleWidget() async throws {
+	func testKindSemanticFieldsRouteToAffectedWidgets() async throws {
 		let original = try AppGroupDesktopSnapshotV1(envelope: decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json")))
 
 		let magnitude = try snapshot(from: original) { object in
@@ -154,7 +154,7 @@ final class AppGroupSnapshotStoreTests: XCTestCase {
 			object["usage"] = usage
 		}
 
-		try await assertAffectedKinds(original: original, changed: magnitude, expected: [.magnitude])
+		try await assertAffectedKinds(original: original, changed: magnitude, expected: [.magnitude, .composition])
 		try await assertAffectedKinds(original: original, changed: composition, expected: [.composition])
 		try await assertAffectedKinds(original: original, changed: trust, expected: [.trust])
 		try await assertAffectedKinds(original: original, changed: rhythm, expected: [.rhythm])
@@ -316,6 +316,53 @@ final class AppGroupSnapshotStoreTests: XCTestCase {
 		XCTAssertFalse(encoded.contains("health check detail /Users/example/secret"))
 		XCTAssertFalse(encoded.contains("recovery_command"))
 		XCTAssertFalse(encoded.contains("unrecognized_private_code"))
+	}
+
+	func testPrepareWriteCleansOnlyBoundedStaleSnapshotTemporaryFiles() throws {
+		let envelope = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
+		let projection = AppGroupDesktopSnapshotV1(envelope: envelope)
+		let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+		defer { try? FileManager.default.removeItem(at: directory) }
+		let store = AppGroupSnapshotStore(directoryURL: directory)
+		try store.write(projection)
+
+		let fileManager = FileManager.default
+		let staleDate = Date().addingTimeInterval(-(AppGroupSnapshotStore.abandonedTemporaryFileMinimumAge + 60))
+		var staleURLs = [URL]()
+		for _ in 0 ..< (AppGroupSnapshotStore.abandonedTemporaryFileCleanupLimit + 4) {
+			let url = directory.appendingPathComponent(
+				"\(AppGroupSnapshotStore.abandonedTemporaryFilePrefix)\(UUID().uuidString)\(AppGroupSnapshotStore.abandonedTemporaryFileSuffix)"
+			)
+			try Data("orphan".utf8).write(to: url)
+			try fileManager.setAttributes([.modificationDate: staleDate], ofItemAtPath: url.path)
+			staleURLs.append(url)
+		}
+
+		let freshURL = directory.appendingPathComponent(
+			"\(AppGroupSnapshotStore.abandonedTemporaryFilePrefix)\(UUID().uuidString)\(AppGroupSnapshotStore.abandonedTemporaryFileSuffix)"
+		)
+		try Data("active".utf8).write(to: freshURL)
+		let malformedURL = directory.appendingPathComponent(
+			"\(AppGroupSnapshotStore.abandonedTemporaryFilePrefix)not-a-uuid\(AppGroupSnapshotStore.abandonedTemporaryFileSuffix)"
+		)
+		try Data("unrelated".utf8).write(to: malformedURL)
+		try fileManager.setAttributes([.modificationDate: staleDate], ofItemAtPath: malformedURL.path)
+		let targetURL = directory.appendingPathComponent("symlink-target")
+		try Data("target".utf8).write(to: targetURL)
+		let symlinkURL = directory.appendingPathComponent(
+			"\(AppGroupSnapshotStore.abandonedTemporaryFilePrefix)\(UUID().uuidString)\(AppGroupSnapshotStore.abandonedTemporaryFileSuffix)"
+		)
+		try fileManager.createSymbolicLink(at: symlinkURL, withDestinationURL: targetURL)
+
+		let prepared = try store.prepareWrite(projection)
+		store.discard(prepared)
+
+		let remainingStale = staleURLs.filter { fileManager.fileExists(atPath: $0.path) }
+		XCTAssertEqual(remainingStale.count, 4, "cleanup must remain bounded per publication")
+		XCTAssertTrue(fileManager.fileExists(atPath: freshURL.path), "fresh temporary files may still be active")
+		XCTAssertTrue(fileManager.fileExists(atPath: malformedURL.path), "only the exact UUID temporary-file pattern is eligible")
+		XCTAssertTrue(fileManager.fileExists(atPath: symlinkURL.path), "cleanup must not follow or remove symlinks")
+		XCTAssertEqual(try store.read(), projection, "cleanup must never touch the destination snapshot")
 	}
 
 	func testPrivatePermissionsExistBeforePublicationAndOnFinalCache() throws {

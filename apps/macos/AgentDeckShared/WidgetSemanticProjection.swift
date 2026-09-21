@@ -69,7 +69,7 @@ public struct WidgetSemanticProjection: Equatable, Sendable {
 		case .composition:
 			semanticScopes = scopes.map { scope in
 				var result = selected(scope, keys: ["client"])
-				result["periods"] = periodView(scope["periods"], itemKeys: ["period", "models"])
+				result["periods"] = periodView(scope["periods"], itemKeys: ["period", "models", "totals"])
 				return result
 			}
 		case .trust:

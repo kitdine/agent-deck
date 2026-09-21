@@ -219,6 +219,10 @@ public struct AppGroupSnapshotStore: Sendable {
 		return identifier
 	}
 	public static let fileName = "desktop-snapshot-v1.json"
+	static let abandonedTemporaryFilePrefix = ".\(fileName)."
+	static let abandonedTemporaryFileSuffix = ".tmp"
+	static let abandonedTemporaryFileCleanupLimit = 16
+	static let abandonedTemporaryFileMinimumAge: TimeInterval = 60 * 60
 
 	public let directoryURL: URL
 	private let atomicReplace: AtomicReplace
@@ -308,6 +312,7 @@ public struct AppGroupSnapshotStore: Sendable {
 	public func prepareWrite(_ snapshot: AppGroupDesktopSnapshotV1) throws -> AppGroupSnapshotPreparedWrite {
 		let fileManager = FileManager.default
 		try Self.ensurePrivateDirectory(directoryURL, fileManager: fileManager)
+		Self.cleanupAbandonedTemporaryFiles(in: directoryURL, fileManager: fileManager)
 
 		let encoder = JSONEncoder()
 		encoder.outputFormatting = [.sortedKeys]
@@ -316,7 +321,7 @@ public struct AppGroupSnapshotStore: Sendable {
 			throw AppGroupSnapshotStoreError.oversizedSnapshot
 		}
 		let temporaryURL = directoryURL.appendingPathComponent(
-			".\(Self.fileName).\(UUID().uuidString).tmp",
+			"\(Self.abandonedTemporaryFilePrefix)\(UUID().uuidString)\(Self.abandonedTemporaryFileSuffix)",
 			isDirectory: false
 		)
 		do {
@@ -345,6 +350,50 @@ public struct AppGroupSnapshotStore: Sendable {
 
 	public func discard(_ prepared: AppGroupSnapshotPreparedWrite) {
 		try? FileManager.default.removeItem(at: prepared.temporaryURL)
+	}
+
+	private static func cleanupAbandonedTemporaryFiles(in directoryURL: URL, fileManager: FileManager) {
+		let resourceKeys: [URLResourceKey] = [
+			.isRegularFileKey,
+			.isSymbolicLinkKey,
+			.contentModificationDateKey,
+		]
+		guard let entries = try? fileManager.contentsOfDirectory(
+			at: directoryURL,
+			includingPropertiesForKeys: resourceKeys,
+			options: []
+		) else {
+			return
+		}
+
+		let cutoff = Date().addingTimeInterval(-abandonedTemporaryFileMinimumAge)
+		let stale = entries.compactMap { url -> (url: URL, modifiedAt: Date)? in
+			let name = url.lastPathComponent
+			guard name.hasPrefix(abandonedTemporaryFilePrefix),
+				name.hasSuffix(abandonedTemporaryFileSuffix)
+			else {
+				return nil
+			}
+			let identifier = String(
+				name.dropFirst(abandonedTemporaryFilePrefix.count)
+					.dropLast(abandonedTemporaryFileSuffix.count)
+			)
+			guard UUID(uuidString: identifier) != nil,
+				let values = try? url.resourceValues(forKeys: Set(resourceKeys)),
+				values.isRegularFile == true,
+				values.isSymbolicLink != true,
+				let modifiedAt = values.contentModificationDate,
+				modifiedAt <= cutoff
+			else {
+				return nil
+			}
+			return (url, modifiedAt)
+		}
+		.sorted { $0.modifiedAt < $1.modifiedAt }
+
+		for candidate in stale.prefix(abandonedTemporaryFileCleanupLimit) {
+			try? fileManager.removeItem(at: candidate.url)
+		}
 	}
 
 	private static func ensurePrivateDirectory(_ directoryURL: URL, fileManager: FileManager) throws {
