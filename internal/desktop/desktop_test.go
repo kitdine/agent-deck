@@ -187,6 +187,12 @@ func TestBuildMissingStateIsPartialWithoutCreatingDatabases(t *testing.T) {
 	if !result.Partial {
 		t.Fatalf("Build partial = false: %#v", result)
 	}
+	if got, want := result.Snapshot.NextRefreshAt, now.Add(time.Minute).Format(time.RFC3339Nano); got != want {
+		t.Fatalf("NextRefreshAt = %q, want %q", got, want)
+	}
+	if result.Snapshot.WireVersion != WireVersion {
+		t.Fatalf("WireVersion = %d, want %d", result.Snapshot.WireVersion, WireVersion)
+	}
 	for _, name := range []string{"agentdeck.sqlite3", "sessions.sqlite3"} {
 		if _, statErr := os.Stat(filepath.Join(root, name)); !errors.Is(statErr, os.ErrNotExist) {
 			t.Fatalf("%s after Build: %v", name, statErr)

@@ -496,6 +496,7 @@ final class StubDesktopHost: DesktopSnapshotRefreshing {
 		case envelope(DesktopWireEnvelopeV1)
 		case failure(any Error)
 		case suspendedEnvelope(DesktopWireEnvelopeV1)
+		case suspendedFailure(any Error)
 	}
 
 	var behavior: Behavior
@@ -516,12 +517,22 @@ final class StubDesktopHost: DesktopSnapshotRefreshing {
 		case let .suspendedEnvelope(envelope):
 			await withCheckedContinuation { continuation = $0 }
 			return envelope
+		case let .suspendedFailure(error):
+			await withCheckedContinuation { continuation = $0 }
+			throw error
 		}
 	}
 
 	func refresh(recentLimit: Int, progress: @escaping @Sendable (DesktopScanProgress) -> Void) async throws -> DesktopWireEnvelopeV1 {
 		progress(.waiting)
 		if case .suspendedEnvelope = behavior {
+			progress(DesktopScanProgress(
+				sequence: 1,
+				stage: .importing,
+				usage: DesktopScanDomainProgress(state: "processing", committed: 3, total: 8, skipped: 0),
+				session: DesktopScanDomainProgress(state: "processing", committed: 2, total: 8, skipped: 1)
+			))
+		} else if case .suspendedFailure = behavior {
 			progress(DesktopScanProgress(
 				sequence: 1,
 				stage: .importing,
@@ -696,13 +707,14 @@ func makeModel(
 	host: StubDesktopHost,
 	preferences: DesktopPreferences? = nil,
 	transport: any ProviderSwitching = StubSwitchTransport(),
+	snapshotStore: AppGroupSnapshotStore? = nil,
 	// One minute after the fixtures' `generated_at`. A clock further out makes
 	// every derived state additionally `aged`, which silently changes the empty
 	// copy from "today" to "this snapshot" and would mask a real regression in
 	// that rule.
 	now: @escaping () -> Date = { Date(timeIntervalSince1970: 1_786_615_260) }
 ) async -> MenuBarViewModel {
-	let coordinator = DesktopRefreshCoordinator(host: host, snapshotStore: nil)
+	let coordinator = DesktopRefreshCoordinator(host: host, snapshotStore: snapshotStore)
 	let controller = SwitchController(transport: transport, refreshCoordinator: coordinator)
 	let resolvedPreferences = preferences ?? DesktopPreferences(
 		defaults: isolatedDefaults(),

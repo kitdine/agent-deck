@@ -852,23 +852,36 @@ v0.5.0 随发布提供 `AgentDeck.app`，一个 macOS 26 菜单栏应用，其�
   数据库、不监听端口、不联网。Go
   helper 与既有 AgentDeck 状态始终是权威，应用持有的一切都是它们的可丢弃
   投影。
-- **菜单栏表面**：provider、usage、sessions、health 四个受筛选面板，加上
-  不受筛选的 rhythm 区块、承载 health 详情的通知条，以及 provider 页脚。
-  client 与 period 两个筛选器统辖全部受筛选面板。三个 work-signal 模块读取所选
+- **菜单栏表面**：quota、usage、breakdown、attribution、sessions 五个面板，加上
+  不受筛选的 rhythm 区块、承载刷新、Widget 发布、schema 与 health 详情的通知条，
+  以及 provider 页脚。成功数据时间、完整刷新尝试与 Widget 发布状态相互独立：
+  running/失败保留已有数据，Widget 发布失败不会把当前菜单栏数据标为 stale 或 badge。
+  client 与 period 两个筛选器统辖适用的数据面板。三个 work-signal 模块读取所选
   Client x Period item，渲染 captured summary cards 与 Activity、Workflow、Tooling
   details；每族只有在自身 unavailable 时保留 `Not captured yet`，可读但无该族数据的
   scope 使用 empty 或 `—`，不隐藏同 scope 已捕获的 sibling families。
 - **唯一的写操作**：切换当前 provider 是唯一会改变应用之外状态的动作，且
   走与终端切换相同的 CLI 路径。其余表面全部只读。
+- **刷新调度**：启动刷新不受偏好影响。周期完整刷新默认关闭；开启后从每次终态完成
+  加 60 秒计算单调 deadline，并由 30 秒 evaluator 评估，因此活跃应用的请求窗口为
+  60–90 秒，且不会重叠或回放错过的周期。关闭周期刷新时，手动刷新与 provider switch
+  仍可用；quota 使用独立 single-flight lane，不能阻塞完整刷新 deadline。
 - **设置**：恰好四项偏好——周期刷新（默认关闭，因为那是用户没有要求的后台
   工作）、菜单栏显示值（cost / tokens / icon）、菜单栏范围（全部 client 或
   跟随面板筛选）、开机启动。开机启动控件渲染的是 `SMAppService` 报告的状态，
   而非开关的意图，因此系统拒绝是可见的而不是被默认成功。
 - **Widget**：沙箱化的 WidgetKit 扩展，提供 magnitude、composition、trust、
-  rhythm 四个族，每族三种系统尺寸，共十二种配置。它只读取应用写出的脱敏
-  App Group 投影，从不运行 helper、访问数据库或看到 source path。
-  签名应用与 Widget 使用 `N2FZ2FNRTU.group.com.kitdine.agentdeck`；macOS 已批准
-  宿主与 Widget 的容器访问，十二种配置均渲染真实数据。
+  rhythm、quota 五种 kind，每种三种系统尺寸，共十五种配置。它只通过共享的
+  8 MiB bounded reader 读取应用写出的脱敏 App Group 投影；missing、container、
+  unreadable 与 unsupported version 保持 typed local outcome。每次 provider 调用只
+  产生一个实际时间 entry，把下次请求限制在 3–5 分钟；hint 缺失、损坏或读取失败时
+  使用 4 分钟。宿主只 reload 语义变化的 kinds，空 diff 不 reload，未知 baseline
+  的下一次成功恢复会 all-kind reload 一次。Widget 从不运行 helper、访问数据库、
+  探测 host presence 或看到 source path。签名应用与 Widget 声明同一个
+  `N2FZ2FNRTU.group.com.kitdine.agentdeck`；自动 build、sandbox、本地化与 render
+  测试覆盖五种 kind 和三种尺寸。安装态 WidgetKit 注册/容器访问、真实 callback
+  timing、代表性 intent 配置，以及十五种配置的真实数据渲染仍是 native acceptance
+  缺口；只有在获得明确安装/GUI 授权后实际执行，或用户明确 waiver，才能关闭。
 - **本地化**：英文与简体中文同时提供。
 - **状态**：应用不创建 state root、不执行迁移、不修改已提交的 SQLite 内容。
   卸载它不会影响 `~/.agentdeck`。

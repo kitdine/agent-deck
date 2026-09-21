@@ -364,6 +364,107 @@ final class WidgetPresentationTests: XCTestCase {
 		}
 	}
 
+	@MainActor
+	func testTypedFailureRenderingsCoverEveryKindFamilyAndTheme() throws {
+		let failures: [WidgetLoadFailure] = [
+			.missing,
+			.containerUnavailable,
+			.unreadable(category: .decode),
+			.unsupportedSchemaVersion(found: 2),
+		]
+		for failure in failures {
+			for kind in AgentDeckWidgetKind.allCases {
+				for family in [WidgetFamily.systemSmall, .systemMedium, .systemLarge] {
+					for (scheme, dynamicType) in [
+						(ColorScheme.light, DynamicTypeSize.large),
+						(.dark, .accessibility5),
+					] {
+						let entry = AgentDeckWidgetEntry(
+							date: Date(timeIntervalSince1970: 42_000),
+							outcome: .failed(failure),
+							kind: kind,
+							client: .all,
+							period: prototypePeriod(kind: kind, family: family)
+						)
+						XCTAssertEqual(WidgetSurfaceModel(entry: entry, now: entry.date).surface, .unavailable)
+						let size = WidgetLayoutContract.canvas(family)
+						let capture = WidgetFailureRenderCapture()
+						let content = AgentDeckWidgetView(
+								entry: entry,
+								familyOverride: family,
+								reduceMotionOverride: true
+							)
+							.environment(\.colorScheme, scheme)
+							.environment(\.dynamicTypeSize, dynamicType)
+							.frame(width: size.width, height: size.height)
+							.background(scheme == .dark ? Color.black : Color.white)
+						let view = WidgetFailureRenderProbe(content: content, capture: capture)
+						let png = try renderedViewPNG(view, size: NSSize(width: size.width, height: size.height))
+						let image = try XCTUnwrap(NSBitmapImageRep(data: png))
+						XCTAssertEqual(image.size.width, size.width)
+						XCTAssertEqual(image.size.height, size.height)
+
+						let expectedSemantics = WidgetFailureSurfaceSemantics(
+							entry: entry, family: WidgetLayoutContract.presentationFamily(family, dynamicTypeSize: dynamicType), failure: failure
+						)
+						XCTAssertEqual(capture.accessibilityNodes, expectedSemantics.accessibilityNodes)
+						XCTAssertEqual(Set(capture.frames.keys), Set([.header, .body, .footer]))
+						let header = try XCTUnwrap(capture.frames[.header])
+						let body = try XCTUnwrap(capture.frames[.body])
+						let footer = try XCTUnwrap(capture.frames[.footer])
+						let canvas = CGRect(origin: .zero, size: size)
+						for frame in [header, body, footer] {
+							XCTAssertGreaterThan(frame.width, 0)
+							XCTAssertGreaterThan(frame.height, 0)
+							XCTAssertTrue(canvas.insetBy(dx: -1, dy: -1).contains(frame), "failure element must remain inside the canvas")
+						}
+						XCTAssertLessThanOrEqual(header.maxY, body.minY + 1)
+						XCTAssertLessThanOrEqual(body.maxY, footer.minY + 1)
+						XCTAssertFalse(header.intersects(footer))
+					}
+				}
+			}
+		}
+	}
+
+	func testTypedFailureSemanticMatrixUsesExactLocalizedAXOrderAndNoMotion() throws {
+		let failures: [WidgetLoadFailure] = [
+			.missing,
+			.containerUnavailable,
+			.unreadable(category: .decode),
+			.unsupportedSchemaVersion(found: 2),
+		]
+		let bundle = Bundle(for: WidgetPresentationTests.self)
+		for identifier in ["en", "zh-Hans"] {
+			let path = try XCTUnwrap(bundle.path(forResource: identifier, ofType: "lproj"))
+			let localized = try XCTUnwrap(Bundle(path: path))
+			for failure in failures {
+				for kind in AgentDeckWidgetKind.allCases {
+					for family in [WidgetFamily.systemSmall, .systemMedium, .systemLarge] {
+						let entry = AgentDeckWidgetEntry(
+							date: Date(timeIntervalSince1970: 42_000),
+							outcome: .failed(failure),
+							kind: kind,
+							client: .all,
+							period: prototypePeriod(kind: kind, family: family)
+						)
+						let semantics = WidgetFailureSurfaceSemantics(
+							entry: entry, family: family, failure: failure, bundle: localized
+						)
+						XCTAssertEqual(semantics.accessibilityNodes.map(\.role), [.header, .body, .footer])
+						XCTAssertEqual(semantics.accessibilityNodes[1].descriptor.label, semantics.title)
+						XCTAssertEqual(semantics.accessibilityNodes[1].descriptor.value, "")
+						XCTAssertEqual(semantics.accessibilityNodes[2].descriptor.label, semantics.footer)
+						XCTAssertEqual(semantics.accessibilityNodes[2].descriptor.value, "")
+						XCTAssertFalse(semantics.accessibilityNodes[0].descriptor.label.isEmpty)
+						XCTAssertFalse(semantics.accessibilityNodes[0].descriptor.value.isEmpty)
+						XCTAssertFalse(semantics.usesMotion)
+					}
+				}
+			}
+		}
+	}
+
 	func testChartsAndDerivedFactsReadTheProjectionSeries() throws {
 		let snapshot = try widgetFixture("snapshot-complete")
 		let generated = try XCTUnwrap(WidgetTimelinePolicy.date(snapshot.generatedAt))
@@ -523,6 +624,23 @@ final class WidgetPresentationTests: XCTestCase {
 @MainActor
 private final class QuotaGeometryCapture {
 	var frames = [String: CGRect]()
+}
+
+@MainActor
+private final class WidgetFailureRenderCapture {
+	var frames = [WidgetFailureAccessibilityRole: CGRect]()
+	var accessibilityNodes = [WidgetFailureAccessibilityNode]()
+}
+
+private struct WidgetFailureRenderProbe<Content: View>: View {
+	let content: Content
+	let capture: WidgetFailureRenderCapture
+
+	var body: some View {
+		content
+			.onPreferenceChange(WidgetFailureGeometryPreferenceKey.self) { capture.frames = $0 }
+			.onPreferenceChange(WidgetFailureAccessibilityPreferenceKey.self) { capture.accessibilityNodes = $0 }
+	}
 }
 
 private struct QuotaGeometryProbe<Content: View>: View {

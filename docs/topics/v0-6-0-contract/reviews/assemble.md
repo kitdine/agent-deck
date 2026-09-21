@@ -621,3 +621,86 @@ repaired candidate 的 finding。aggregate `assemble` 仍为 partial batch task�
 Task checkpoint：ad-v060c-assemble-dev / batch subscription-quota；content_state=v0-6-0-contract:integration:subscription-quota:candidate:f8376660aeac324d1b7c223e85795707dae3cc29；gate=VERIFIED；aggregate open。
 提交建议：提交 Round 5 复评记录及同批 contract handoff 同步；产品修复已在签名提交 `f837666`，不得夹带其他任务或产品改动。
 推送建议：取得独立推送授权并确认新的复评文档提交消息、贡献者 trailer、SSH 签名及远端基线后，推送 `feature/subscription-quota`；feature-to-main assembly/PR/merge 仍需各自授权和成功 CI/branch protection。
+
+## Round 6 — 2026-09-21 — desktop-refresh
+
+## 📋 desktop-refresh 集成评审
+
+Checklist: 54/54 complete. Incomplete: None.
+
+📊 总体评分：9.5/10
+
+✅ 评审结论：PASS
+
+Reviewer: Codex。Method: `ln-12-delivery-reviewer` Blue-only initial
+integration review；项目规则禁止未获请求的委派，因此 independent review panel 为
+None，subagent rounds consumed 为 0。Scope: 第四批 `desktop-refresh` 的
+direct-to-main fast-forward candidate、与已集成 subscription-quota/App lifecycle
+边界的交互、App Group publication/Widget reader、Go wire hint、菜单栏与 Widget
+failure/recovery presentation，以及同批 contract/status 同步。其余两个未完成方向、
+aggregate `assemble`、push、PR、merge、retirement、version closure 与 release 不在本轮。
+
+Reviewed state: target main
+`7f84749f8bfa96496602560df0b4d5da09e6fd9d` / tree
+`41cc1390c6a4949c4fbe5cde087925be12f356b7`；source
+`cc4151bdcae0689dd025da763b2a3b84eab10d54` / tree
+`246ced1b44ae26df83159a548bf37ed9d4bea75d`。Main is the exact merge base and
+ancestor, so the operation class is direct fast-forward with no conflict resolution.
+Synchronized two-document candidate fingerprint:
+`78cae14434c5fae66e5a30366a19b349ea427ec099b876596f9db136c2cb5720`.
+
+### 🔴 严重问题 — 必须修复
+
+无。
+
+### 🟡 建议改进 — 推荐
+
+无。
+
+### 🟢 优点
+
+- Source Task 5 的 signed commit、五项 commit-bound criteria 与 topic 五项汇总
+  criteria 均保持 target-bound PASS；当前 main 是 source 的精确祖先，没有 target-side
+  divergence、手写冲突解法或需要重审的中间 result tree。
+- `DesktopRefreshCoordinator` 保留 subscription quota 的单一 quota lane 与 full lane
+  arbitration；scheduler、publisher、bounded App Group reader、semantic per-kind reload、
+  typed Widget load/timeline 和 presentation recovery 沿已评审 owning boundaries 接入，
+  没有恢复 legacy `reloadAllTimelines` 或 Widget production `Data(contentsOf:)` 路径。
+- stable English/Chinese contracts 与 integration checker 继续区分 automated coverage
+  和 installed/native evidence。真实 60–90 秒 cycles、WidgetKit callbacks/intents、
+  sleep/wake、VoiceOver、Increase Contrast 与 gallery 仍为 BLOCKED/no-waiver，未被
+  integration PASS 改写为技术通过。
+
+### 📝 总结
+
+本轮未发现 change-caused actionable finding。受影响交互按 CodeGraph 定位后直接核对
+`AgentDeckApplicationDelegate`、`DesktopRefreshCoordinator`、
+`WidgetSnapshotPublisher`、App Group store/reader、Widget timeline 和 Go wire producer；
+source continuity 则由精确签名 commit、Task/topic gates 与当前 main 祖先关系支持。
+
+Evidence:
+
+- `git merge-base main HEAD` 返回 `7f84749...`，且
+  `git merge-base --is-ancestor main HEAD` 成功；`main...HEAD` 为 85 路径的完整
+  desktop-refresh delivery，无 target-only change 或 conflict resolution。
+- `git verify-commit HEAD` 报 Good ED25519 signature；commit subject/body 与精确
+  `Co-Authored-By: Codex <noreply@openai.com>` trailer 完整。
+- `make check-desktop-refresh-integration` 与 `make check-widget-sandbox` PASS。
+  Task 5 exact commit 已记录的 App 121（1 skip）、Widget 45/45、Go desktop normal/race、
+  topic-docs、whitespace 与 diff checks 在产品、测试、依赖和 toolchain 未变化时复用，
+  不因 integration phase 重跑 broad suites。
+- CEv1 source Task gate VERIFIED 5/5，desktop-refresh topic gate VERIFIED 5/5；本轮
+  integration WorkUnit 的 `integration-readiness` 与 `source-continuity` 绑定同步后的
+  exact candidate，missing、invalidated 与 unresolved 均为空。
+
+Residual uncertainty: 真实 native acceptance 行仍 BLOCKED/no-waiver；分支未 push，
+remote CI/branch protection、PR 与 merge-result identity 尚未产生。两项均被准确保留为
+后续边界，不构成本地 fast-forward candidate 的评审 finding。aggregate `assemble`
+仍对 cost transparency 和 health recovery 两个方向保持开放。
+
+完成门禁：VERIFIED（2/2；ContentState
+`v0-6-0-contract:integration:desktop-refresh:review-r6:78cae14434c5fae66e5a30366a19b349ea427ec099b876596f9db136c2cb5720`）。
+
+Task checkpoint：ad-v060c-assemble-dev / batch desktop-refresh；content_state=v0-6-0-contract:integration:desktop-refresh:review-r6:78cae14434c5fae66e5a30366a19b349ea427ec099b876596f9db136c2cb5720；gate=VERIFIED；aggregate open。
+提交建议：提交本轮 Round 6 评审记录与同批 `docs/status.md`、contract `tasks.md` 同步；source 产品交付已固定在签名提交 `cc4151b`，不得夹带其他任务或产品改动。
+推送建议：取得独立推送授权并确认 checkpoint commit 的完整 message、贡献者 trailers、SSH 签名与远端目标后，推送 `feature/desktop-refresh`；PR creation 与 feature-to-main merge 仍需各自授权及成功 CI/branch protection。

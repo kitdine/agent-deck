@@ -22,7 +22,7 @@ const (
 	WireVersion        = 1
 	DefaultRecentLimit = 5
 	MaxRecentLimit     = 20
-	RefreshInterval    = 5 * time.Minute
+	RefreshInterval    = time.Minute
 )
 
 var (

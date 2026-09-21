@@ -40,6 +40,51 @@ final class DesktopCopyTests: XCTestCase {
 		XCTAssertEqual(Set(DesktopCopy.allKeys).count, DesktopCopy.allKeys.count)
 	}
 
+	func testPeriodicRefreshNoteMatchesReviewedOneMinuteCopy() throws {
+		let expected = [
+			"en": "Refreshes about once a minute while AgentDeck is running; when off, startup and manual refresh still update data",
+			"zh-Hans": "AgentDeck 运行时约每分钟刷新一次；关闭后，启动与手动刷新仍会更新数据",
+		]
+		for (language, value) in expected {
+			let localized = try bundle(language)
+			XCTAssertEqual(
+				localized.localizedString(forKey: DesktopCopy.settingsPeriodicRefreshNote, value: nil, table: nil),
+				value
+			)
+		}
+	}
+
+	func testRefreshPresentationCopyMatchesReviewedEnglishAndChinese() throws {
+		let expected: [String: [String: String]] = [
+			"en": [
+				DesktopCopy.refreshAction: "Refresh",
+				DesktopCopy.refreshingAction: "Refreshing…",
+				DesktopCopy.updatedAction: "Updated",
+				DesktopCopy.refreshFailedAction: "Refresh failed. Retry",
+				DesktopCopy.refreshFailedShowingPrevious: "Refresh failed · showing previous data",
+				DesktopCopy.firstRefreshFailed: "First refresh failed · no data is available yet",
+				DesktopCopy.firstRefreshEmpty: "No data available yet",
+				DesktopCopy.widgetPublicationFailed: "Menu-bar data is current · Widgets may be out of date",
+			],
+			"zh-Hans": [
+				DesktopCopy.refreshAction: "刷新",
+				DesktopCopy.refreshingAction: "刷新中…",
+				DesktopCopy.updatedAction: "已更新",
+				DesktopCopy.refreshFailedAction: "刷新失败。重试",
+				DesktopCopy.refreshFailedShowingPrevious: "刷新失败 · 正在显示上次数据",
+				DesktopCopy.firstRefreshFailed: "首次刷新失败 · 还没有可显示的数据",
+				DesktopCopy.firstRefreshEmpty: "还没有可显示的数据",
+				DesktopCopy.widgetPublicationFailed: "菜单栏数据已更新 · 小组件可能仍是旧数据",
+			],
+		]
+		for (language, values) in expected {
+			let localized = try bundle(language)
+			for (key, value) in values {
+				XCTAssertEqual(localized.localizedString(forKey: key, value: nil, table: nil), value)
+			}
+		}
+	}
+
 	/// The version withdrew the update check entirely, so no shipped string may
 	/// offer one. "Updated <relative>" is freshness, not an update check, which
 	/// is why the assertion names phrases rather than the word.

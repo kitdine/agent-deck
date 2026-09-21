@@ -62,7 +62,7 @@ final class MenuBarViewModelTests: XCTestCase {
 		await model.coordinator.refresh()
 		host.behavior = .failure(HelperExecutionError.timedOut)
 		await model.coordinator.refresh()
-		XCTAssertEqual(Array(model.notices.prefix(2).map(\.id)), ["failing", "schema"])
+		XCTAssertEqual(Array(model.notices.prefix(2).map(\.id)), ["schema", "refresh.failed"])
 		XCTAssertEqual(model.menuBarAccessibilityLabel, t(DesktopCopy.badgedFailing))
 		host.behavior = .envelope(WireFixture.envelope())
 		await model.coordinator.refresh()
@@ -82,7 +82,7 @@ final class MenuBarViewModelTests: XCTestCase {
 		XCTAssertNotNil(model.freshnessText)
 		host.behavior = .failure(HelperExecutionError.missingEmbeddedHelper)
 		await model.coordinator.refresh()
-		XCTAssertEqual(Array(model.notices.prefix(2).map(\.id)), ["offline", "schema"])
+		XCTAssertEqual(Array(model.notices.prefix(2).map(\.id)), ["schema", "refresh.failed"])
 		XCTAssertEqual(model.menuBarAccessibilityLabel, t(DesktopCopy.badgedOffline))
 	}
 
@@ -142,7 +142,7 @@ final class MenuBarViewModelTests: XCTestCase {
 
 		XCTAssertEqual(model.surface, .dataSurface)
 		XCTAssertTrue(model.qualifiers.contains(.failing))
-		XCTAssertEqual(model.errorCopy, t(DesktopCopy.refreshTimedOut))
+		XCTAssertEqual(model.errorCopy, t(DesktopCopy.refreshFailedShowingPrevious))
 		XCTAssertNotNil(model.hero)
 	}
 
@@ -153,7 +153,7 @@ final class MenuBarViewModelTests: XCTestCase {
 		await Task.yield()
 
 		XCTAssertEqual(model.surface, .errorSurface)
-		XCTAssertEqual(model.errorCopy, t(DesktopCopy.refreshTimedOut))
+		XCTAssertEqual(model.errorCopy, t(DesktopCopy.firstRefreshFailed))
 		XCTAssertTrue(model.notices.isEmpty, "an error surface has no snapshot to qualify")
 		XCTAssertTrue(model.showsScanProgressStatus)
 		XCTAssertEqual(model.scanProgressStageText, t(DesktopCopy.scanFinished))
@@ -172,6 +172,68 @@ final class MenuBarViewModelTests: XCTestCase {
 		XCTAssertTrue(model.showsScanProgressStatus)
 		XCTAssertEqual(model.scanProgressStageText, t(DesktopCopy.scanFinished))
 		XCTAssertTrue(model.scanProgressCountsText?.contains(t(DesktopCopy.failing)) == true)
+	}
+
+	func testRefreshPresentationMatrixKeepsAgeAttemptAndPublicationIndependent() async throws {
+		let envelope = WireFixture.envelope()
+		let host = StubDesktopHost(behavior: .envelope(envelope))
+		let model = await makeModel(host: host)
+
+		await model.coordinator.refresh()
+		XCTAssertEqual(model.refreshActionState, .succeeded)
+		XCTAssertEqual(model.refreshActionText, t(DesktopCopy.updatedAction))
+		XCTAssertEqual(model.refreshAnnouncement, t(DesktopCopy.updatedAction))
+		XCTAssertNotNil(model.freshnessText)
+
+		host.behavior = .suspendedEnvelope(envelope)
+		let running = Task { await model.coordinator.refresh() }
+		while host.refreshCount < 2 { await Task.yield() }
+		XCTAssertEqual(model.refreshActionState, .running)
+		XCTAssertEqual(model.refreshActionText, t(DesktopCopy.refreshingAction))
+		XCTAssertNotNil(model.freshnessText, "running must preserve successful-data age")
+		XCTAssertNil(model.refreshAnnouncement, "scan progress remains the one detailed live region")
+		host.resume()
+		await running.value
+
+		host.behavior = .failure(HelperExecutionError.timedOut)
+		await model.coordinator.refresh()
+		XCTAssertEqual(model.refreshActionState, .failed)
+		XCTAssertEqual(model.refreshActionText, t(DesktopCopy.retry))
+		XCTAssertEqual(model.refreshActionAccessibilityLabel, t(DesktopCopy.refreshFailedAction))
+		XCTAssertEqual(model.notices.first?.id, "refresh.failed")
+		XCTAssertEqual(model.notices.first?.text, t(DesktopCopy.refreshFailedShowingPrevious))
+		XCTAssertNotNil(model.freshnessText, "failure must preserve successful-data age")
+
+		let firstFailure = await makeModel(host: StubDesktopHost(behavior: .failure(HelperExecutionError.timedOut)))
+		await firstFailure.coordinator.refresh()
+		XCTAssertEqual(firstFailure.surface, .errorSurface)
+		XCTAssertNil(firstFailure.freshnessText)
+		XCTAssertEqual(firstFailure.refreshActionState, .failed)
+		XCTAssertEqual(firstFailure.errorCopy, t(DesktopCopy.firstRefreshFailed))
+		XCTAssertEqual(firstFailure.errorBodyCopy, t(DesktopCopy.firstRefreshEmpty))
+	}
+
+	func testWidgetPublicationFailureKeepsFreshMenuDataUnbadgedAndUsesOneNotice() async throws {
+		let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+		defer { try? FileManager.default.removeItem(at: directory) }
+		let store = AppGroupSnapshotStore(
+			directoryURL: directory,
+			atomicReplace: { _, _ in throw MenuBarPublicationError.failed }
+		)
+		let model = await makeModel(
+			host: StubDesktopHost(behavior: .envelope(WireFixture.envelope())),
+			snapshotStore: store
+		)
+
+		await model.coordinator.refresh()
+
+		XCTAssertEqual(model.surface, .dataSurface)
+		XCTAssertFalse(model.qualifiers.contains(.stale))
+		XCTAssertFalse(model.qualifiers.contains(.failing))
+		XCTAssertFalse(model.menuBarBadged)
+		XCTAssertEqual(model.refreshActionState, .succeeded)
+		XCTAssertEqual(model.notices.filter { $0.id == "widget.publication" }.count, 1)
+		XCTAssertEqual(model.notices.first?.text, t(DesktopCopy.widgetPublicationFailed))
 	}
 
 	// MARK: Filter propagation
@@ -239,7 +301,7 @@ final class MenuBarViewModelTests: XCTestCase {
 
 		XCTAssertEqual(
 			model.notices.map(\.id),
-			["failing", "partial", "health", "warning.sessions_unavailable"]
+			["refresh.failed", "health", "warning.sessions_unavailable", "partial"]
 		)
 		XCTAssertTrue(model.notices.contains { $0.opensHealthDetail })
 	}
@@ -648,4 +710,8 @@ final class MenuBarViewModelTests: XCTestCase {
 		XCTAssertTrue(model.menuBarBadged)
 		XCTAssertEqual(model.menuBarAccessibilityLabel, t(DesktopCopy.badgedFailing))
 	}
+}
+
+private enum MenuBarPublicationError: Error {
+	case failed
 }

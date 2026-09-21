@@ -26,7 +26,7 @@ FORCE ?= 0
 COMPLETION_SHELL ?= auto
 COMPLETION_RC ?=
 
-.PHONY: build build-all release-tag release-archive check-arm64-size check-go-test-runner check-install check-privacy check-release-distribution check-whitespace install uninstall release-verify clean test test-race vet verify prices-regen check-prices-reproducible test-macos-app build-macos-app build-macos-release package-macos-app check-widget-sandbox check-macos-distribution
+.PHONY: build build-all release-tag release-archive check-arm64-size check-go-test-runner check-install check-privacy check-release-distribution check-whitespace install uninstall release-verify clean test test-race vet verify prices-regen check-prices-reproducible test-macos-app build-macos-app build-macos-release package-macos-app check-widget-sandbox check-desktop-refresh-integration check-macos-distribution
 
 .PHONY: release-artifact-verify
 
@@ -122,6 +122,9 @@ check-privacy:
 # task that wrote it. The runtime half is a manual macOS acceptance step.
 check-widget-sandbox:
 	@bash scripts/check-widget-sandbox.sh
+
+check-desktop-refresh-integration:
+	@bash scripts/check-desktop-refresh-integration.sh
 
 # Scans tracked and untracked content, not a diff, so a violation already
 # committed stays visible instead of only surfacing in diffs that touch it.

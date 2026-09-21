@@ -1,0 +1,105 @@
+{
+  "date": "2026-09-19",
+  "kind": "desktop-refresh-menubar-browser-verification",
+  "not_native_acceptance": true,
+  "browser": "agent-browser",
+  "axe_version": "4.12.1",
+  "scenarios": [
+    {
+      "name": "running-prior-en-light-420",
+      "query": "refresh=refreshing&lang=en&theme=light&width=420&tab=usage",
+      "screenshot": "running-prior-en-light-420.png",
+      "horizontal_overflow": false,
+      "polite_live_regions": 1,
+      "axe_violations": 0,
+      "axe_incomplete": ["aria-prohibited-attr"]
+    },
+    {
+      "name": "wake-catchup-zh-dark-280",
+      "query": "refresh=wake&lang=zh&theme=dark&width=280&tab=usage",
+      "screenshot": "wake-catchup-zh-dark-280.png",
+      "horizontal_overflow": false,
+      "polite_live_regions": 1,
+      "axe_violations": 0,
+      "axe_incomplete": ["aria-prohibited-attr"]
+    },
+    {
+      "name": "failed-prior-en-light-280",
+      "query": "refresh=failed&lang=en&theme=light&width=280&tab=usage",
+      "screenshot": "failed-prior-en-light-280.png",
+      "horizontal_overflow": false,
+      "polite_live_regions": 1,
+      "axe_violations": 0,
+      "axe_incomplete": ["aria-prohibited-attr"]
+    },
+    {
+      "name": "first-failure-zh-dark-420",
+      "query": "refresh=firstFailure&lang=zh&theme=dark&width=420&tab=usage",
+      "screenshot": "first-failure-zh-dark-420.png",
+      "horizontal_overflow": false,
+      "polite_live_regions": 1,
+      "axe_violations": 0,
+      "axe_incomplete": []
+    },
+    {
+      "name": "storage-failure-en-dark-420",
+      "query": "refresh=storageFailed&lang=en&theme=dark&width=420&tab=usage",
+      "screenshot": "storage-failure-en-dark-420.png",
+      "horizontal_overflow": false,
+      "polite_live_regions": 1,
+      "axe_violations": 0,
+      "axe_incomplete": ["aria-prohibited-attr"]
+    },
+    {
+      "name": "recovered-zh-light-280",
+      "query": "refresh=recovered&lang=zh&theme=light&width=280&tab=usage",
+      "screenshot": "recovered-zh-light-280.png",
+      "horizontal_overflow": false,
+      "polite_live_regions": 1,
+      "axe_violations": 0,
+      "axe_incomplete": ["aria-prohibited-attr"]
+    }
+  ],
+  "interaction": {
+    "retry_keyboard_focus_preserved_during_refresh": true,
+    "retry_keyboard_focus_preserved_after_success": true,
+    "failed_notice_count_after_recovery": 0,
+    "refresh_action_accessible_names": {
+      "en": "Refresh failed. Retry",
+      "zh-Hans": "刷新失败。重试"
+    }
+  },
+  "final_settings": [
+    {
+      "name": "settings-periodic-en-light",
+      "query": "settings=1&lang=en&theme=light&width=420",
+      "screenshot": "settings-periodic-en-light.png",
+      "copy": "Refreshes about once a minute while AgentDeck is running; when off, startup and manual refresh still update data",
+      "switch_described_by": "settings-periodicRefresh-hint",
+      "window_client_width": 458,
+      "window_scroll_width": 458,
+      "axe_violations": 0,
+      "axe_incomplete": ["color-contrast"]
+    },
+    {
+      "name": "settings-periodic-zh-dark",
+      "query": "settings=1&lang=zh&theme=dark&width=420",
+      "screenshot": "settings-periodic-zh-dark.png",
+      "copy": "AgentDeck 运行时约每分钟刷新一次；关闭后，启动与手动刷新仍会更新数据",
+      "switch_described_by": "settings-periodicRefresh-hint",
+      "window_client_width": 458,
+      "window_scroll_width": 458,
+      "axe_violations": 0,
+      "axe_incomplete": ["color-contrast"]
+    }
+  ],
+  "settings_known_incomplete": {
+    "id": "color-contrast",
+    "reason": "Axe could not determine backgrounds for four unchanged overlapping Settings hint nodes; the changed periodic-refresh hint was not among them."
+  },
+  "known_incomplete": {
+    "id": "aria-prohibited-attr",
+    "target": ".calendar",
+    "reason": "Existing 90-day calendar div carries aria-label without a valid role; unchanged by this framework."
+  }
+}

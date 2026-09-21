@@ -28,7 +28,7 @@ final class DesktopRefreshCoordinatorTests: XCTestCase {
 			XCTFail("expected refreshing state")
 		}
 
-		await host.resume()
+		host.resume()
 		await refresh.value
 		XCTAssertEqual(coordinator.latestSnapshot, next)
 		XCTAssertNil(coordinator.scanProgress)
@@ -124,6 +124,137 @@ final class DesktopRefreshCoordinatorTests: XCTestCase {
 		let quotaCalls = await quotaRefresher.recordedManualValues()
 		XCTAssertEqual(quotaCalls, [true])
 		XCTAssertEqual(coordinator.latestSnapshot, complete)
+	}
+
+	func testProviderSwitchDuringFullRefreshCreatesExactlyOneFollowUp() async throws {
+		let first = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
+		let second = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-empty-client.json"))
+		let host = ControlledSnapshotRefresher(responses: [first, second])
+		let coordinator = DesktopRefreshCoordinator(host: host, snapshotStore: nil)
+
+		let initial = Task { await coordinator.requestFullRefresh(trigger: .manual) }
+		await host.waitForCall(1)
+		let passiveJoin = Task { await coordinator.requestFullRefresh(trigger: .periodic) }
+		let providerFollowUp = Task { await coordinator.requestFullRefresh(trigger: .providerSwitch) }
+		host.resumeCall(1)
+		await host.waitForCall(2)
+		XCTAssertEqual(host.callCount, 2)
+		host.resumeCall(2)
+		await initial.value
+		await passiveJoin.value
+		await providerFollowUp.value
+
+		XCTAssertEqual(host.callCount, 2)
+		XCTAssertEqual(coordinator.latestSnapshot, second)
+	}
+
+	func testConcurrentQuotaRequestsShareOneOwnerSideEffectSequence() async throws {
+		let alert = DesktopQuotaAlertV1(id: "quota.shared", kind: .threshold, client: "codex", usedPercent: 80, threshold: 75)
+		let quota = SuspendingQuotaRefresher(alerts: [alert])
+		let deliverer = RecordingAlertDeliverer(accepts: [alert.id])
+		let coordinator = DesktopRefreshCoordinator(
+			host: ScriptedSnapshotRefresher(responses: []),
+			quotaRefresher: quota,
+			alertDeliverer: deliverer,
+			snapshotStore: nil
+		)
+
+		let periodic = Task { await coordinator.requestQuotaRefresh(manual: false) }
+		await quota.waitUntilSuspended()
+		let manualJoiner = Task { await coordinator.requestQuotaRefresh(manual: true) }
+		await Task.yield()
+		let countWhileSuspended = await quota.refreshCount
+		XCTAssertEqual(countWhileSuspended, 1)
+		await quota.resume()
+		await periodic.value
+		await manualJoiner.value
+
+		let finalRefreshCount = await quota.refreshCount
+		let finalFetchCount = await quota.fetchCount
+		let acknowledgements = await quota.recordedAcknowledgements()
+		let offers = await deliverer.recordedOffers()
+		XCTAssertEqual(finalRefreshCount, 1)
+		XCTAssertEqual(finalFetchCount, 1)
+		XCTAssertEqual(acknowledgements, [[alert.id]])
+		XCTAssertEqual(offers, [[alert]])
+	}
+
+	func testQuotaFirstFullRefreshJoinsExistingOperationBeforeSnapshot() async throws {
+		let snapshot = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
+		let quota = SuspendingQuotaRefresher(alerts: [])
+		let host = ScriptedSnapshotRefresher(responses: [.snapshot(snapshot)])
+		let coordinator = DesktopRefreshCoordinator(host: host, quotaRefresher: quota, snapshotStore: nil)
+
+		let quotaRequest = Task { await coordinator.requestQuotaRefresh(manual: false) }
+		await quota.waitUntilSuspended()
+		let full = Task { await coordinator.requestFullRefresh(trigger: .manual) }
+		await Task.yield()
+		let countBeforeResume = await quota.refreshCount
+		XCTAssertEqual(countBeforeResume, 1)
+		await quota.resume()
+		await quotaRequest.value
+		await full.value
+
+		let finalCount = await quota.refreshCount
+		let manualValues = await quota.recordedManualValues()
+		XCTAssertEqual(finalCount, 1)
+		XCTAssertEqual(manualValues, [false])
+		XCTAssertEqual(coordinator.latestSnapshot, snapshot)
+	}
+
+	func testFullFirstQuotaRequestJoinsFullOwnedOperation() async throws {
+		let snapshot = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
+		let quota = SuspendingQuotaRefresher(alerts: [])
+		let coordinator = DesktopRefreshCoordinator(
+			host: ScriptedSnapshotRefresher(responses: [.snapshot(snapshot)]),
+			quotaRefresher: quota,
+			snapshotStore: nil
+		)
+
+		let full = Task { await coordinator.requestFullRefresh(trigger: .manual) }
+		await quota.waitUntilSuspended()
+		let quotaJoiner = Task { await coordinator.requestQuotaRefresh(manual: false) }
+		await Task.yield()
+		let countBeforeResume = await quota.refreshCount
+		XCTAssertEqual(countBeforeResume, 1)
+		await quota.resume()
+		await full.value
+		await quotaJoiner.value
+
+		let finalCount = await quota.refreshCount
+		let manualValues = await quota.recordedManualValues()
+		XCTAssertEqual(finalCount, 1)
+		XCTAssertEqual(manualValues, [true])
+		XCTAssertEqual(coordinator.latestSnapshot, snapshot)
+	}
+
+	func testQuotaTickStormAfterFullQuotaPhaseCollapsesAndManualUpgradesPending() async throws {
+		let snapshot = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
+		let host = ControlledSnapshotRefresher(responses: [snapshot])
+		let quota = SequencedQuotaRefresher()
+		let coordinator = DesktopRefreshCoordinator(
+			host: host,
+			quotaRefresher: quota,
+			snapshotStore: nil
+		)
+
+		let full = Task { await coordinator.requestFullRefresh(trigger: .periodic) }
+		await host.waitForCall(1)
+		let periodicJoiners = (0 ..< 10).map { _ in
+			Task { await coordinator.requestQuotaRefresh(manual: false) }
+		}
+		let manualJoiner = Task { await coordinator.requestQuotaRefresh(manual: true) }
+		host.resumeCall(1)
+		await quota.waitForSecondOperation()
+
+		let manualValuesWhilePending = await quota.manualValues
+		XCTAssertEqual(manualValuesWhilePending, [false, true])
+		await quota.resumeSecondOperation()
+		await full.value
+		for joiner in periodicJoiners { await joiner.value }
+		await manualJoiner.value
+		let finalManualValues = await quota.manualValues
+		XCTAssertEqual(finalManualValues, [false, true])
 	}
 
 	/// architecture.md C10: the app acknowledges only what the notification
@@ -243,7 +374,7 @@ final class DesktopRefreshCoordinatorTests: XCTestCase {
 		XCTAssertEqual(try store.read(), AppGroupDesktopSnapshotV1(envelope: complete))
 	}
 
-	func testCacheWriteFailureKeepsFreshSnapshotAvailableInMemory() async throws {
+	func testCacheWriteFailureKeepsFreshMenuDataAndRecordsPublicationFailure() async throws {
 		let complete = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
 		let temporaryDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
 		defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
@@ -259,13 +390,14 @@ final class DesktopRefreshCoordinatorTests: XCTestCase {
 		await coordinator.startInitialRefresh().value
 
 		XCTAssertEqual(coordinator.latestSnapshot, complete)
+		XCTAssertEqual(coordinator.state, .ready(complete))
 		XCTAssertEqual(
-			coordinator.state,
-			.degraded(previous: complete, issue: .storageUnavailable)
+			coordinator.widgetPublication,
+			.failedBeforeCommit(generation: 1, issue: .storageUnavailable)
 		)
 		let presentation = DesktopPresentationState.derive(from: coordinator.state)
 		XCTAssertEqual(presentation.surface, .dataSurface)
-		XCTAssertTrue(presentation.qualifiers.contains(.failing))
+		XCTAssertFalse(presentation.qualifiers.contains(.failing))
 	}
 
 	func testPresentationDerivesSurfaceAndOrderedOrthogonalQualifiers() throws {
@@ -347,6 +479,101 @@ private actor RecordingAlertDeliverer: QuotaAlertDelivering {
 	}
 
 	func recordedOffers() -> [[DesktopQuotaAlertV1]] { offered }
+}
+
+private actor SuspendingQuotaRefresher: DesktopQuotaRefreshing {
+	private(set) var refreshCount = 0
+	private(set) var fetchCount = 0
+	private var acknowledgements = [[String]]()
+	private var manualValues = [Bool]()
+	private var continuation: CheckedContinuation<Void, Never>?
+	private let alerts: [DesktopQuotaAlertV1]
+
+	init(alerts: [DesktopQuotaAlertV1]) {
+		self.alerts = alerts
+	}
+
+	func refreshQuota(manual: Bool) async -> [DesktopQuotaAlertV1] {
+		refreshCount += 1
+		manualValues.append(manual)
+		await withCheckedContinuation { continuation = $0 }
+		return alerts
+	}
+
+	func acknowledgeQuotaAlerts(ids: [String]) async { acknowledgements.append(ids) }
+	func fetchSubscription() async -> DesktopSubscriptionSnapshotV1? {
+		fetchCount += 1
+		return nil
+	}
+	func recordedAcknowledgements() -> [[String]] { acknowledgements }
+	func recordedManualValues() -> [Bool] { manualValues }
+
+	func waitUntilSuspended() async {
+		while continuation == nil { await Task.yield() }
+	}
+
+	func resume() {
+		continuation?.resume()
+		continuation = nil
+	}
+}
+
+private actor SequencedQuotaRefresher: DesktopQuotaRefreshing {
+	private(set) var manualValues = [Bool]()
+	private var secondContinuation: CheckedContinuation<Void, Never>?
+
+	func refreshQuota(manual: Bool) async -> [DesktopQuotaAlertV1] {
+		manualValues.append(manual)
+		if manualValues.count == 2 {
+			await withCheckedContinuation { secondContinuation = $0 }
+		}
+		return []
+	}
+
+	func acknowledgeQuotaAlerts(ids: [String]) async {}
+	func fetchSubscription() async -> DesktopSubscriptionSnapshotV1? { nil }
+
+	func waitForSecondOperation() async {
+		while manualValues.count < 2 || secondContinuation == nil { await Task.yield() }
+	}
+
+	func resumeSecondOperation() {
+		secondContinuation?.resume()
+		secondContinuation = nil
+	}
+}
+
+@MainActor
+private final class ControlledSnapshotRefresher: DesktopSnapshotRefreshing {
+	private var responses: [DesktopWireEnvelopeV1]
+	private var continuations = [Int: CheckedContinuation<Void, Never>]()
+	private(set) var callCount = 0
+
+	init(responses: [DesktopWireEnvelopeV1]) {
+		self.responses = responses
+	}
+
+	func refresh(recentLimit: Int) async throws -> DesktopWireEnvelopeV1 {
+		try await refresh(recentLimit: recentLimit, progress: { _ in })
+	}
+
+	func refresh(
+		recentLimit: Int,
+		progress: @escaping @Sendable (DesktopScanProgress) -> Void
+	) async throws -> DesktopWireEnvelopeV1 {
+		callCount += 1
+		let call = callCount
+		await withCheckedContinuation { continuations[call] = $0 }
+		return responses.removeFirst()
+	}
+
+	func waitForCall(_ expected: Int) async {
+		while callCount < expected || continuations[expected] == nil { await Task.yield() }
+	}
+
+	func resumeCall(_ call: Int) {
+		continuations.removeValue(forKey: call)?.resume()
+	}
 }
 
 @MainActor
