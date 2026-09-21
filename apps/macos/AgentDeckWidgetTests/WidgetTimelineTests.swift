@@ -7,26 +7,114 @@ final class WidgetTimelineTests: XCTestCase {
 		let entry = loader.entry(kind: .magnitude, client: .all, period: .today, now: Date(), placeholder: true)
 
 		XCTAssertNil(entry.snapshot)
+		XCTAssertEqual(entry.outcome, .placeholder)
 		XCTAssertEqual(WidgetSurfaceModel(entry: entry, now: entry.date).surface, .placeholder)
 	}
 
-	func testRefreshAfterClampsToFifteenAndSixtyMinutes() {
+	func testRefreshAfterClampsToThreeAndFiveMinutesWithFourMinuteDefault() {
 		let now = Date(timeIntervalSince1970: 10_000)
 		let below = ISO8601DateFormatter().string(from: now.addingTimeInterval(60))
 		let above = ISO8601DateFormatter().string(from: now.addingTimeInterval(2 * 60 * 60))
+		let past = ISO8601DateFormatter().string(from: now.addingTimeInterval(-60))
 
-		XCTAssertEqual(WidgetTimelinePolicy.refreshDate(suggestedAt: below, now: now), now.addingTimeInterval(15 * 60))
-		XCTAssertEqual(WidgetTimelinePolicy.refreshDate(suggestedAt: above, now: now), now.addingTimeInterval(60 * 60))
-		XCTAssertEqual(WidgetTimelinePolicy.refreshDate(suggestedAt: "malformed", now: now), now.addingTimeInterval(60 * 60))
+		XCTAssertEqual(WidgetTimelinePolicy.refreshDate(suggestedAt: below, now: now), now.addingTimeInterval(3 * 60))
+		XCTAssertEqual(WidgetTimelinePolicy.refreshDate(suggestedAt: past, now: now), now.addingTimeInterval(3 * 60))
+		XCTAssertEqual(WidgetTimelinePolicy.refreshDate(suggestedAt: above, now: now), now.addingTimeInterval(5 * 60))
+		XCTAssertEqual(WidgetTimelinePolicy.refreshDate(suggestedAt: nil, now: now), now.addingTimeInterval(4 * 60))
+		XCTAssertEqual(WidgetTimelinePolicy.refreshDate(suggestedAt: "malformed", now: now), now.addingTimeInterval(4 * 60))
 	}
 
 	func testUnsupportedOrMalformedReadRendersUnavailable() {
 		let loader = WidgetSnapshotLoader(readSnapshot: {
-			throw WidgetSnapshotError.unsupportedSchemaVersion(2)
+			throw WidgetLoadFailure.unsupportedSchemaVersion(found: 2)
 		})
 		let entry = loader.entry(kind: .trust, client: .all, period: .today, now: Date())
 
+		XCTAssertEqual(entry.outcome, .failed(.unsupportedSchemaVersion(found: 2)))
 		XCTAssertEqual(WidgetSurfaceModel(entry: entry, now: entry.date).surface, .unavailable)
+	}
+
+	func testTypedReaderOutcomesCoverContainerMissingUnsafeOversizedDecodeAndVersion() throws {
+		let container = WidgetSnapshotLoader(reader: nil).entry(
+			kind: .magnitude, client: .all, period: .today, now: Date()
+		)
+		XCTAssertEqual(container.outcome, .failed(.containerUnavailable))
+
+		let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+		defer { try? FileManager.default.removeItem(at: directory) }
+		try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+		let reader = WidgetSnapshotReader(directoryURL: directory)
+		XCTAssertThrowsError(try reader.read()) { XCTAssertEqual($0 as? WidgetLoadFailure, .missing) }
+
+		let snapshotURL = directory.appendingPathComponent(WidgetSnapshotReader.fileName)
+		try Data("not-json".utf8).write(to: snapshotURL)
+		XCTAssertThrowsError(try reader.read()) {
+			XCTAssertEqual($0 as? WidgetLoadFailure, .unreadable(category: .decode))
+		}
+
+		let unsupportedHeader = Data("{\"schema_version\":2}".utf8)
+		try unsupportedHeader.write(to: snapshotURL)
+		XCTAssertThrowsError(try reader.read()) {
+			XCTAssertEqual($0 as? WidgetLoadFailure, .unsupportedSchemaVersion(found: 2))
+		}
+
+		var exactLimit = unsupportedHeader
+		exactLimit.append(Data(repeating: UInt8(ascii: " "), count: AppGroupSnapshotBytes.maximumBytes - exactLimit.count))
+		try exactLimit.write(to: snapshotURL)
+		XCTAssertThrowsError(try reader.read()) {
+			XCTAssertEqual($0 as? WidgetLoadFailure, .unsupportedSchemaVersion(found: 2), "exactly N bytes must reach schema decoding")
+		}
+
+		try Data(repeating: 0, count: AppGroupSnapshotBytes.maximumBytes + 1).write(to: snapshotURL)
+		XCTAssertThrowsError(try reader.read()) {
+			XCTAssertEqual($0 as? WidgetLoadFailure, .unreadable(category: .oversized))
+		}
+
+		try FileManager.default.removeItem(at: snapshotURL)
+		let target = directory.appendingPathComponent("target")
+		try Data("safe".utf8).write(to: target)
+		try FileManager.default.createSymbolicLink(at: snapshotURL, withDestinationURL: target)
+		XCTAssertThrowsError(try reader.read()) {
+			XCTAssertEqual($0 as? WidgetLoadFailure, .unreadable(category: .unsafeFile))
+		}
+	}
+
+	func testAllProviderFamiliesUseInjectedInvocationTime() {
+		let invocation = Date(timeIntervalSince1970: 42_000)
+		let loader = WidgetSnapshotLoader(loadOutcome: { .failed(.missing) })
+		let clientPeriod = ClientPeriodTimelineProvider(kind: .magnitude, loader: loader, now: { invocation })
+		let client = ClientTimelineProvider(kind: .trust, loader: loader, now: { invocation })
+		let quota = QuotaTimelineProvider(loader: loader, now: { invocation })
+
+		XCTAssertEqual(clientPeriod.entry(client: .all, period: .sevenDays).date, invocation)
+		XCTAssertEqual(client.entry(client: .claude).date, invocation)
+		XCTAssertEqual(quota.entry(client: .codex).date, invocation)
+	}
+
+	func testFailurePresentationUsesReviewedCopyKeys() {
+		XCTAssertEqual(WidgetLoadFailure.missing.presentation, .init(titleKey: "No Widget data yet", footerKey: "Open AgentDeck to refresh"))
+		XCTAssertEqual(WidgetLoadFailure.containerUnavailable.presentation, .init(titleKey: "Widget storage unavailable", footerKey: "Open AgentDeck to retry"))
+		XCTAssertEqual(WidgetLoadFailure.unreadable(category: .io).presentation, .init(titleKey: "Widget data could not be read", footerKey: "Will retry on the next refresh"))
+		XCTAssertEqual(WidgetLoadFailure.unsupportedSchemaVersion(found: 2).presentation, .init(titleKey: "Widget data is from a newer AgentDeck", footerKey: "Upgrade AgentDeck to refresh"))
+	}
+
+	func testGenericAgeEdgesAndSleepJumpUseGeneratedAtAgainstActualEntryTime() throws {
+		let snapshot = try widgetFixture("snapshot-complete")
+		let generated = try XCTUnwrap(WidgetTimelinePolicy.date(snapshot.generatedAt))
+		func qualifiers(after seconds: TimeInterval) -> [WidgetQualifier] {
+			let entry = AgentDeckWidgetEntry(
+				date: generated.addingTimeInterval(seconds), outcome: .loaded(snapshot),
+				kind: .magnitude, client: .all, period: .today
+			)
+			return WidgetSurfaceModel(entry: entry, now: entry.date).qualifiers
+		}
+
+		XCTAssertFalse(qualifiers(after: 14 * 60 + 59).contains(.aging))
+		XCTAssertTrue(qualifiers(after: 15 * 60).contains(.aging))
+		XCTAssertTrue(qualifiers(after: 6 * 60 * 60).contains(.aging))
+		XCTAssertFalse(qualifiers(after: 6 * 60 * 60).contains(.old))
+		XCTAssertTrue(qualifiers(after: 6 * 60 * 60 + 1).contains(.old))
+		XCTAssertTrue(qualifiers(after: 24 * 60 * 60).contains(.old), "sleep may jump directly to old")
 	}
 
 	func testConfiguredMissingClientRendersUnavailableWithoutChangingConfiguration() throws {

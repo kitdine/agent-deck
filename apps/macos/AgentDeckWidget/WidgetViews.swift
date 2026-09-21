@@ -103,11 +103,115 @@ enum WidgetAccessibility {
 	}
 }
 
+enum WidgetFailureAccessibilityRole: Hashable {
+	case header
+	case body
+	case footer
+}
+
+struct WidgetFailureGeometryPreferenceKey: PreferenceKey {
+	static let defaultValue = [WidgetFailureAccessibilityRole: CGRect]()
+
+	static func reduce(
+		value: inout [WidgetFailureAccessibilityRole: CGRect],
+		nextValue: () -> [WidgetFailureAccessibilityRole: CGRect]
+	) {
+		value.merge(nextValue(), uniquingKeysWith: { _, new in new })
+	}
+}
+
+struct WidgetFailureAccessibilityNode: Equatable {
+	let role: WidgetFailureAccessibilityRole
+	let descriptor: WidgetAccessibilityDescriptor
+}
+
+struct WidgetFailureAccessibilityPreferenceKey: PreferenceKey {
+	static let defaultValue = [WidgetFailureAccessibilityNode]()
+	static func reduce(value: inout [WidgetFailureAccessibilityNode], nextValue: () -> [WidgetFailureAccessibilityNode]) {
+		value.append(contentsOf: nextValue())
+	}
+}
+
+struct WidgetHeaderPresentation {
+	let titleKey: String
+	let title: String
+	let scope: String
+
+	init(
+		entry: AgentDeckWidgetEntry,
+		family: WidgetFamily,
+		quotaScopeClient: WidgetClient? = nil,
+		bundle: Bundle? = nil
+	) {
+		titleKey = switch entry.kind {
+		case .magnitude: "Usage"
+		case .composition: "Breakdown"
+		case .trust: "Attribution"
+		case .rhythm: "Activity"
+		case .quota: "Quota"
+		}
+		title = WidgetCopy.text(titleKey, bundle: bundle)
+		scope = switch entry.kind {
+		case .magnitude, .composition:
+			family == .systemSmall
+				? WidgetCopy.period(entry.period, bundle: bundle)
+				: "\(WidgetCopy.client(entry.client, bundle: bundle)) · \(WidgetCopy.period(entry.period, bundle: bundle))"
+		case .trust: WidgetCopy.period(.today, bundle: bundle)
+		case .rhythm: WidgetCopy.period(.thirtyDays, bundle: bundle)
+		case .quota: WidgetCopy.client(quotaScopeClient ?? entry.client, bundle: bundle)
+		}
+	}
+}
+
+struct WidgetFailureSurfaceSemantics {
+	let title: String
+	let footer: String
+	let accessibilityNodes: [WidgetFailureAccessibilityNode]
+	let usesMotion = false
+
+	init(entry: AgentDeckWidgetEntry, family: WidgetFamily, failure: WidgetLoadFailure, bundle: Bundle? = nil) {
+		let header = WidgetHeaderPresentation(entry: entry, family: family, bundle: bundle)
+		let presentation = failure.presentation
+		title = WidgetCopy.text(presentation.titleKey, bundle: bundle)
+		footer = WidgetCopy.text(presentation.footerKey, bundle: bundle)
+		accessibilityNodes = [
+			WidgetFailureAccessibilityNode(
+				role: .header,
+				descriptor: WidgetAccessibility.metric(label: header.title, values: [header.scope])
+			),
+			WidgetFailureAccessibilityNode(
+				role: .body,
+				descriptor: WidgetAccessibility.metric(label: title, values: [])
+			),
+			WidgetFailureAccessibilityNode(
+				role: .footer,
+				descriptor: WidgetAccessibility.metric(label: footer, values: [])
+			),
+		]
+	}
+}
+
 private extension View {
 	func widgetAccessibility(_ descriptor: WidgetAccessibilityDescriptor) -> some View {
 		accessibilityElement(children: .ignore)
 			.accessibilityLabel(Text(descriptor.label))
 			.accessibilityValue(Text(descriptor.value))
+	}
+
+	@ViewBuilder
+	func widgetFailureGeometry(_ role: WidgetFailureAccessibilityRole?) -> some View {
+		if let role {
+			background {
+				GeometryReader { proxy in
+					Color.clear.preference(
+						key: WidgetFailureGeometryPreferenceKey.self,
+						value: [role: proxy.frame(in: .named("WidgetFailureFrame"))]
+					)
+				}
+			}
+		} else {
+			self
+		}
 	}
 }
 
@@ -115,12 +219,15 @@ struct AgentDeckWidgetView: View {
 	@Environment(\.widgetFamily) private var environmentFamily
 	@Environment(\.colorScheme) private var colorScheme
 	@Environment(\.dynamicTypeSize) private var dynamicTypeSize
+	@Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
 	let entry: AgentDeckWidgetEntry
 	let familyOverride: WidgetFamily?
+	let reduceMotionOverride: Bool?
 
-	init(entry: AgentDeckWidgetEntry, familyOverride: WidgetFamily? = nil) {
+	init(entry: AgentDeckWidgetEntry, familyOverride: WidgetFamily? = nil, reduceMotionOverride: Bool? = nil) {
 		self.entry = entry
 		self.familyOverride = familyOverride
+		self.reduceMotionOverride = reduceMotionOverride
 	}
 
 	private var family: WidgetFamily {
@@ -137,13 +244,22 @@ struct AgentDeckWidgetView: View {
 			case .placeholder:
 				widgetContent(model).redacted(reason: .placeholder)
 			case .unavailable:
-				UnavailableWidget(kind: entry.kind)
+				if let failure = model.loadFailure {
+					TypedUnavailableWidget(entry: entry, family: family, failure: failure)
+				} else {
+					UnavailableWidget(kind: entry.kind)
+				}
 			case .data:
 				widgetContent(model)
 			}
 		}
 		.containerBackground(colorScheme == .dark ? WidgetPalette.surfaceDark : Color.white, for: .widget)
 		.accessibilityElement(children: .contain)
+		.transaction { transaction in
+			if reduceMotionOverride ?? accessibilityReduceMotion {
+				transaction.animation = nil
+			}
+		}
 	}
 
 	@ViewBuilder private func widgetContent(_ model: WidgetSurfaceModel) -> some View {
@@ -171,6 +287,8 @@ private struct WidgetFrame<Content: View>: View {
 	let quotaObservedAt: String?
 	let quotaReason: DesktopQuotaReasonV1?
 	let quotaScopeClient: WidgetClient?
+	let fixedFooterText: String?
+	let failureSemantics: WidgetFailureSurfaceSemantics?
 	let content: Content
 
 	init(
@@ -180,6 +298,8 @@ private struct WidgetFrame<Content: View>: View {
 		quotaObservedAt: String? = nil,
 		quotaReason: DesktopQuotaReasonV1? = nil,
 		quotaScopeClient: WidgetClient? = nil,
+		fixedFooterText: String? = nil,
+		failureSemantics: WidgetFailureSurfaceSemantics? = nil,
 		@ViewBuilder content: () -> Content
 	) {
 		self.entry = entry
@@ -188,16 +308,31 @@ private struct WidgetFrame<Content: View>: View {
 		self.quotaObservedAt = quotaObservedAt
 		self.quotaReason = quotaReason
 		self.quotaScopeClient = quotaScopeClient
+		self.fixedFooterText = fixedFooterText
+		self.failureSemantics = failureSemantics
 		self.content = content()
 	}
 
 	var body: some View {
 		VStack(alignment: .leading, spacing: 0) {
-			WidgetHeader(entry: entry, family: family, quotaScopeClient: quotaScopeClient)
+			WidgetHeader(
+				entry: entry,
+				family: family,
+				quotaScopeClient: quotaScopeClient,
+				failureAccessibilityNode: failureSemantics?.accessibilityNodes[0],
+				failureGeometryRole: failureSemantics == nil ? nil : .header
+			)
 			content.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-			WidgetFooter(entry: entry, qualifiers: qualifiers, quotaObservedAt: quotaObservedAt, quotaReason: quotaReason)
+				.widgetFailureGeometry(failureSemantics == nil ? nil : .body)
+			WidgetFooter(
+				entry: entry, qualifiers: qualifiers, quotaObservedAt: quotaObservedAt,
+				quotaReason: quotaReason, fixedText: fixedFooterText,
+				failureAccessibilityNode: failureSemantics?.accessibilityNodes[2],
+				failureGeometryRole: failureSemantics == nil ? nil : .footer
+			)
 		}
 		.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+		.coordinateSpace(name: "WidgetFailureFrame")
 	}
 }
 
@@ -205,51 +340,38 @@ private struct WidgetHeader: View {
 	let entry: AgentDeckWidgetEntry
 	let family: WidgetFamily
 	var quotaScopeClient: WidgetClient? = nil
+	var failureAccessibilityNode: WidgetFailureAccessibilityNode? = nil
+	var failureGeometryRole: WidgetFailureAccessibilityRole? = nil
 
 	var body: some View {
+		let presentation = WidgetHeaderPresentation(
+			entry: entry, family: family, quotaScopeClient: quotaScopeClient
+		)
 		HStack(spacing: 5) {
 			Image(systemName: icon)
 				.font(.system(size: 11, weight: .semibold))
 				.foregroundStyle(WidgetPalette.accent)
 				.accessibilityHidden(true)
-			Text(WidgetCopy.text(titleKey))
+			Text(presentation.title)
 				.font(.system(size: 10.5, weight: .semibold))
 				.foregroundStyle(.secondary)
 				.lineLimit(1)
 			Spacer(minLength: 4)
-			Text(scopeText)
+			Text(presentation.scope)
 				.font(.system(size: 9))
 				.foregroundStyle(.tertiary)
 				.lineLimit(1)
 				.minimumScaleFactor(0.82)
 		}
 		.padding(.bottom, 6)
-		.widgetAccessibility(WidgetAccessibility.metric(label: WidgetCopy.text(titleKey), values: [scopeText]))
-	}
-
-	private var titleKey: String {
-		switch entry.kind {
-		case .magnitude: "Usage"
-		case .composition: "Breakdown"
-		case .trust: "Attribution"
-		case .rhythm: "Activity"
-		case .quota: "Quota"
-		}
-	}
-
-	private var scopeText: String {
-		switch entry.kind {
-		case .magnitude, .composition:
-			let period = WidgetCopy.period(entry.period)
-			guard family != .systemSmall else { return period }
-			return "\(WidgetCopy.client(entry.client)) · \(period)"
-		case .trust:
-			return WidgetCopy.period(.today)
-		case .rhythm:
-			return WidgetCopy.period(.thirtyDays)
-		case .quota:
-			return WidgetCopy.client(quotaScopeClient ?? entry.client)
-		}
+		.widgetAccessibility(
+			failureAccessibilityNode?.descriptor ?? WidgetAccessibility.metric(label: presentation.title, values: [presentation.scope])
+		)
+		.preference(
+			key: WidgetFailureAccessibilityPreferenceKey.self,
+			value: failureAccessibilityNode.map { [$0] } ?? []
+		)
+		.widgetFailureGeometry(failureGeometryRole)
 	}
 
 	private var icon: String {
@@ -437,11 +559,14 @@ private struct WidgetFooter: View {
 	let qualifiers: [WidgetQualifier]
 	let quotaObservedAt: String?
 	let quotaReason: DesktopQuotaReasonV1?
+	var fixedText: String? = nil
+	var failureAccessibilityNode: WidgetFailureAccessibilityNode? = nil
+	var failureGeometryRole: WidgetFailureAccessibilityRole? = nil
 
 	var body: some View {
 		let presentation = WidgetFooterPresentation(
 			qualifiers: qualifiers, relativeTime: relativeTime,
-			unavailableText: quotaReason.map(quotaReasonText)
+			unavailableText: fixedText ?? quotaReason.map(quotaReasonText)
 		)
 		HStack(spacing: 5) {
 			Text(presentation.updateText)
@@ -457,10 +582,17 @@ private struct WidgetFooter: View {
 		.lineLimit(1)
 		.minimumScaleFactor(0.75)
 		.padding(.top, 6)
-		.widgetAccessibility(WidgetAccessibility.metric(
-			label: presentation.updateText,
-			values: [presentation.qualifierText.isEmpty ? nil : presentation.qualifierText]
-		))
+		.widgetAccessibility(
+			failureAccessibilityNode?.descriptor ?? WidgetAccessibility.metric(
+				label: presentation.updateText,
+				values: [presentation.qualifierText.isEmpty ? nil : presentation.qualifierText]
+			)
+		)
+		.preference(
+			key: WidgetFailureAccessibilityPreferenceKey.self,
+			value: failureAccessibilityNode.map { [$0] } ?? []
+		)
+		.widgetFailureGeometry(failureGeometryRole)
 	}
 
 	private var relativeTime: String? {
@@ -473,6 +605,40 @@ private struct WidgetFooter: View {
 		let formatter = RelativeDateTimeFormatter()
 		formatter.unitsStyle = .full
 		return formatter.localizedString(for: generated, relativeTo: entry.date)
+	}
+}
+
+private struct TypedUnavailableWidget: View {
+	let entry: AgentDeckWidgetEntry
+	let family: WidgetFamily
+	let failure: WidgetLoadFailure
+
+	var body: some View {
+		let semantics = WidgetFailureSurfaceSemantics(entry: entry, family: family, failure: failure)
+		WidgetFrame(
+			entry: entry,
+			qualifiers: [],
+			family: family,
+			fixedFooterText: semantics.footer,
+			failureSemantics: semantics
+		) {
+			VStack(spacing: 8) {
+				Image(systemName: "exclamationmark.triangle")
+					.font(.system(size: 18, weight: .semibold))
+					.foregroundStyle(WidgetPalette.warn)
+					.accessibilityHidden(true)
+				Text(semantics.title)
+					.font(.system(size: 12, weight: .semibold))
+					.multilineTextAlignment(.center)
+					.lineLimit(2)
+			}
+			.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+			.widgetAccessibility(semantics.accessibilityNodes[1].descriptor)
+			.preference(
+				key: WidgetFailureAccessibilityPreferenceKey.self,
+				value: [semantics.accessibilityNodes[1]]
+			)
+		}
 	}
 }
 

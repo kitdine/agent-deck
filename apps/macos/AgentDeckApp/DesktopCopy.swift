@@ -33,6 +33,14 @@ enum DesktopCopy {
 	static let retry = "Retry"
 	static let refreshNow = "Refresh now"
 	static let refreshTimedOut = "Refresh timed out; showing the previous snapshot"
+	static let refreshAction = "Refresh"
+	static let refreshingAction = "Refreshing…"
+	static let updatedAction = "Updated"
+	static let refreshFailedAction = "Refresh failed. Retry"
+	static let refreshFailedShowingPrevious = "Refresh failed · showing previous data"
+	static let firstRefreshFailed = "First refresh failed · no data is available yet"
+	static let firstRefreshEmpty = "No data available yet"
+	static let widgetPublicationFailed = "Menu-bar data is current · Widgets may be out of date"
 	static let appName = "AgentDeck"
 	static let badgedOffline = "AgentDeck — offline"
 	static let badgedFailing = "AgentDeck — data could not be read"
@@ -219,7 +227,7 @@ enum DesktopCopy {
 	static let settingsLoginItemApproval = "Waiting for approval in System Settings"
 	static let settingsPeriodicRefresh = "Periodic refresh"
 	static let settingsPeriodicRefreshNote =
-		"Refreshes at the time the snapshot suggests; when off, only opening the panel or refreshing manually updates it"
+		"Refreshes about once a minute while AgentDeck is running; when off, startup and manual refresh still update data"
 	static let settingsMenuBarValue = "Shows"
 	static let settingsMenuBarValueNote = "Switch to icon only when sharing your screen"
 	static let settingsMenuBarValueCost = "Cost"
@@ -321,7 +329,9 @@ enum DesktopCopy {
 		loading, scanWaiting, scanChecking, scanImporting, scanStatistics, scanFinished,
 		scanUsageProgress, scanSessionProgress, scanSkipped,
 		offline, failing, partial, emptyToday, emptySnapshot,
-		freshnessUpdated, freshnessLastUpdated, retry, refreshNow, refreshTimedOut, appName,
+		freshnessUpdated, freshnessLastUpdated, retry, refreshNow, refreshTimedOut,
+		refreshAction, refreshingAction, updatedAction, refreshFailedAction,
+		refreshFailedShowingPrevious, firstRefreshFailed, firstRefreshEmpty, widgetPublicationFailed, appName,
 		badgedOffline, badgedFailing, qualifierList,
 		clientFilter, periodFilter, clientAll, periodToday, period7d, period30d,
 		costIncomplete, costIncompleteAttribution, heroCounts,

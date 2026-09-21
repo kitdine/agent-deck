@@ -45,6 +45,34 @@ struct WidgetUsageSnapshotV1: Codable, Equatable, Sendable {
 	}
 }
 
+enum WidgetUnreadableCategory: String, Equatable, Sendable {
+	case io
+	case decode
+	case oversized
+	case unsafeFile
+}
+
+enum WidgetLoadFailure: Error, Equatable, Sendable {
+	case missing
+	case containerUnavailable
+	case unreadable(category: WidgetUnreadableCategory)
+	case unsupportedSchemaVersion(found: Int)
+}
+
+enum WidgetLoadOutcome: Equatable, Sendable {
+	case placeholder
+	case loaded(WidgetDesktopSnapshotV1)
+	case failed(WidgetLoadFailure)
+}
+
+private struct WidgetSnapshotSchemaHeader: Decodable {
+	let schemaVersion: Int
+
+	enum CodingKeys: String, CodingKey {
+		case schemaVersion = "schema_version"
+	}
+}
+
 struct WidgetSnapshotReader: Sendable {
 	static var appGroupIdentifier: String {
 		guard let identifier = Bundle.main.object(
@@ -74,14 +102,33 @@ struct WidgetSnapshotReader: Sendable {
 
 	func read() throws -> WidgetDesktopSnapshotV1 {
 		let url = directoryURL.appendingPathComponent(Self.fileName, isDirectory: false)
-		let snapshot = try JSONDecoder().decode(WidgetDesktopSnapshotV1.self, from: Data(contentsOf: url))
-		guard snapshot.schemaVersion == WidgetDesktopSnapshotV1.schemaVersion else {
-			throw WidgetSnapshotError.unsupportedSchemaVersion(snapshot.schemaVersion)
+		let data: Data
+		do {
+			data = try AppGroupSnapshotBytes.readBounded(at: url)
+		} catch let error as AppGroupSnapshotByteReadError {
+			switch error {
+			case .missing: throw WidgetLoadFailure.missing
+			case .unsafeFile: throw WidgetLoadFailure.unreadable(category: .unsafeFile)
+			case .oversized: throw WidgetLoadFailure.unreadable(category: .oversized)
+			case .unreadable: throw WidgetLoadFailure.unreadable(category: .io)
+			}
+		} catch {
+			throw WidgetLoadFailure.unreadable(category: .io)
 		}
-		return snapshot
-	}
-}
 
-enum WidgetSnapshotError: Error, Equatable, Sendable {
-	case unsupportedSchemaVersion(Int)
+		let header: WidgetSnapshotSchemaHeader
+		do {
+			header = try JSONDecoder().decode(WidgetSnapshotSchemaHeader.self, from: data)
+		} catch {
+			throw WidgetLoadFailure.unreadable(category: .decode)
+		}
+		guard header.schemaVersion == WidgetDesktopSnapshotV1.schemaVersion else {
+			throw WidgetLoadFailure.unsupportedSchemaVersion(found: header.schemaVersion)
+		}
+		do {
+			return try JSONDecoder().decode(WidgetDesktopSnapshotV1.self, from: data)
+		} catch {
+			throw WidgetLoadFailure.unreadable(category: .decode)
+		}
+	}
 }

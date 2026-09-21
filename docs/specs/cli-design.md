@@ -1875,7 +1875,7 @@ from the top-level automation `schema_version`. The v1 data object contains one
 coherent refresh result with:
 
 - `generated_at` and `next_refresh_at` UTC RFC 3339 timestamps; v1 suggests a
-  five-minute refresh interval but does not schedule or run a background task;
+  one-minute refresh interval but does not schedule or run a background task;
 - `provider.available` and privacy-bounded routes containing only client,
   provider name, selected time, and whether the selected route used a wrapper;
 - `usage.available`, the current local-day half-open range, bounded token/count
@@ -1951,10 +1951,13 @@ write action; it holds no state of its own that matters.
   database directly, opens no port, and makes no network request. The Go helper
   and the existing AgentDeck state stay authoritative; everything the app holds
   is a disposable projection of them.
-- **Menu-bar surface.** Four filtered panels — provider, usage, sessions, and
-  health — plus an unfiltered rhythm block, a notice strip carrying health
-  detail, and a provider footer. Two filters (client and period) govern every
-  filtered panel. The three work-signal modules read the selected
+- **Menu-bar surface.** Five panels — quota, usage, breakdown, attribution, and
+  sessions — plus an unfiltered rhythm block, a notice strip carrying refresh,
+  Widget-publication, schema and health detail, and a provider footer. Client
+  and period filters govern the applicable data panels. Successful-data age,
+  full-refresh attempt, and Widget publication state remain independent: prior
+  data stays visible while running or failed, and a Widget publication failure
+  never marks current menu-bar data stale or badged. The three work-signal modules read the selected
   Client-by-Period wire items and render captured summary cards plus Activity,
   Workflow, and Tooling detail views. Each family independently retains the
   `Not captured yet` form only when that family is unavailable; an otherwise
@@ -1978,19 +1981,36 @@ write action; it holds no state of its own that matters.
 - **The one write.** Switching the active provider is the only action that
   changes anything outside the app, and it goes through the same CLI path a
   terminal switch uses. Every other surface is read-only.
+- **Refresh scheduling.** Startup remains unconditional. Opt-in periodic full
+  refresh is off by default and schedules from terminal completion plus 60
+  seconds; a monotonic evaluator runs every 30 seconds, so accepted active-app
+  requests occur in the 60–90 second window without overlap or catch-up replay.
+  Manual and provider-switch requests remain available while periodic refresh
+  is off. Quota refresh has its own single-flight lane and cannot block the full
+  deadline evaluator.
 - **Settings.** Exactly four preferences: periodic refresh (off by default,
   because it is background work the user did not ask for), the menu-bar value
   (cost, tokens, or icon), the menu-bar scope (all clients, or follow the
   panel filter), and start at login. The login-item control renders what
   `SMAppService` reports, never what the toggle intended, so a refusal is
   visible rather than silently assumed.
-- **Widget.** A sandboxed WidgetKit extension offering four families —
-  magnitude, composition, trust, and rhythm — at all three system sizes, twelve
-  configurations in total. It reads only a redacted App Group projection the
-  app writes; it never runs the helper, reaches the databases, or sees a source
-  path. The signed application and Widget use
-  `N2FZ2FNRTU.group.com.kitdine.agentdeck`; macOS approves both host and Widget
-  container access, and all twelve configurations render data.
+- **Widget.** A sandboxed WidgetKit extension offering five kinds — magnitude,
+  composition, trust, rhythm, and quota — at all three system sizes, fifteen
+  configurations in total. It reads only a redacted App Group projection through
+  the shared bounded 8 MiB reader; missing, container, unreadable and unsupported
+  version outcomes stay typed and local. Each provider emits one entry at its
+  actual invocation time and clamps the next request to 3–5 minutes, using four
+  minutes for absent, malformed or failed-load hints. The host publisher writes
+  every accepted projection, reloads only semantically affected kinds, reloads
+  none for an empty diff, and uses one all-kind recovery after an unknown
+  baseline. The Widget never runs the helper, reaches the databases, probes host
+  presence, or sees a source path. The signed application and Widget declare
+  `N2FZ2FNRTU.group.com.kitdine.agentdeck`; automated build, sandbox, localization
+  and render tests cover all five kinds and three sizes. Installed WidgetKit
+  registration/container access, real callback timing, representative intent
+  configuration, and real-data rendering across all fifteen configurations remain
+  native acceptance gaps until performed under explicit installation/GUI authority
+  or covered by an explicit user waiver.
 - **Localization.** English and Simplified Chinese ship together.
 - **State.** The app creates no state root, applies no migration, and changes
   no committed SQLite contents. Uninstalling it leaves `~/.agentdeck` intact.

@@ -2465,6 +2465,14 @@
         }
       }
     },
+    "First refresh failed · no data is available yet": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"First refresh failed · no data is available yet"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"首次刷新失败 · 还没有可显示的数据"}}}},
+    "Menu-bar data is current · Widgets may be out of date": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Menu-bar data is current · Widgets may be out of date"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"菜单栏数据已更新 · 小组件可能仍是旧数据"}}}},
+    "No data available yet": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"No data available yet"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"还没有可显示的数据"}}}},
+    "Refresh": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Refresh"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"刷新"}}}},
+    "Refresh failed. Retry": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Refresh failed. Retry"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"刷新失败。重试"}}}},
+    "Refresh failed · showing previous data": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Refresh failed · showing previous data"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"刷新失败 · 正在显示上次数据"}}}},
+    "Refreshing…": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Refreshing…"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"刷新中…"}}}},
+    "Updated": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Updated"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"已更新"}}}},
     "Refresh now": {
       "localizations": {
         "en": {
@@ -2497,18 +2505,18 @@
         }
       }
     },
-    "Refreshes at the time the snapshot suggests; when off, only opening the panel or refreshing manually updates it": {
+    "Refreshes about once a minute while AgentDeck is running; when off, startup and manual refresh still update data": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Refreshes at the time the snapshot suggests; when off, only opening the panel or refreshing manually updates it"
+            "value": "Refreshes about once a minute while AgentDeck is running; when off, startup and manual refresh still update data"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "按快照给出的下次刷新时间刷新；关闭时只在打开面板和手动刷新时更新"
+            "value": "AgentDeck 运行时约每分钟刷新一次；关闭后，启动与手动刷新仍会更新数据"
           }
         }
       }
