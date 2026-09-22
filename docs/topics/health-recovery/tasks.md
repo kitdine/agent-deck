@@ -20,7 +20,7 @@ Git delivery, integration, retirement and release remain separate boundaries.
 | Document | Draft | Review |
 | --- | --- | --- |
 | requirements.md | [x] | [x] |
-| ux/cli-health-recovery.md | [ ] | [ ] |
+| ux/cli-health-recovery.md | [x] | [x] |
 | ux/menubar-health-recovery.md | [ ] | [ ] |
 | architecture.md | [ ] | [ ] |
 | tasks.md | [x] | [ ] |
@@ -63,11 +63,14 @@ the planning carrier before this document passes decomposition review.
 
 ## Current handoff
 
-The requirements boundary passed Review Round 1 and its exact-state document
-gate is VERIFIED. The next design work is either
-`ux/cli-health-recovery.md` or `ux/menubar-health-recovery.md`; architecture and
-implementation remain blocked on their declared dependencies. Git delivery,
-integration, retirement and release remain separate boundaries.
+The requirements boundary passed Review Round 1 and its signed delivered
+document gate is VERIFIED. CLI framework Re-review Round 2 passed for content
+state `urn:ce:agent-deck:content-state:health-recovery:ux-cli-health-recovery:7537f52:1d95ea77b6fff6ac58ad65424f1b546a4d9f262e7bd70a7e53978fc49a2fa7de`;
+all five Round 1 findings are closed and the document gate is VERIFIED. The
+document awaits separately authorized Git delivery. `ux/menubar-health-recovery.md`
+is the next parallel design subject. Architecture and implementation remain
+blocked on their declared dependencies. Git delivery, integration, retirement
+and release remain separate boundaries.
 
 ## Review boundary
 
