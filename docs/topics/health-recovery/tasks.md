@@ -21,7 +21,7 @@ Git delivery, integration, retirement and release remain separate boundaries.
 | --- | --- | --- |
 | requirements.md | [x] | [x] |
 | ux/cli-health-recovery.md | [x] | [x] |
-| ux/menubar-health-recovery.md | [ ] | [ ] |
+| ux/menubar-health-recovery.md | [x] | [x] |
 | architecture.md | [ ] | [ ] |
 | tasks.md | [x] | [ ] |
 
@@ -67,10 +67,15 @@ The requirements boundary passed Review Round 1 and its signed delivered
 document gate is VERIFIED. CLI framework Re-review Round 2 passed for content
 state `urn:ce:agent-deck:content-state:health-recovery:ux-cli-health-recovery:7537f52:1d95ea77b6fff6ac58ad65424f1b546a4d9f262e7bd70a7e53978fc49a2fa7de`;
 all five Round 1 findings are closed and the document gate is VERIFIED. The
-document awaits separately authorized Git delivery. `ux/menubar-health-recovery.md`
-is the next parallel design subject. Architecture and implementation remain
-blocked on their declared dependencies. Git delivery, integration, retirement
-and release remain separate boundaries.
+document was delivered by signed commit `bc6df888edb9dd342129865184ff0ca426819675`;
+its completed task state is unchanged. `ux/menubar-health-recovery.md` framework
+Re-review Round 3 passed for content state
+`urn:ce:agent-deck:content-state:health-recovery:ux-menubar-health-recovery:bc6df88:6a83f9435c75f17b4ebfb6769855e0be0a06099a8b51d73f222f709bad08a9c0`
+and closed `MBHR-R1-F1`; it supersedes the unbound Round 2 entry, and the
+document gate is VERIFIED. The document awaits separately authorized Git
+delivery together with its shared prototype changes. Architecture and
+implementation remain blocked on their declared dependencies. Git delivery,
+integration, retirement and release remain separate boundaries.
 
 ## Review boundary
 

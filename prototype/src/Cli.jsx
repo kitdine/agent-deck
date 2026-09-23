@@ -3,6 +3,7 @@ import { CliScan } from "./ScanProgress.jsx";
 import { StageControls, useStagePrefs } from "./Stage.jsx";
 import { WORK_SIGNALS } from "./data.js";
 import { catalogs } from "./i18n.js";
+import { CLI_HEALTH_RECOVERY } from "./healthRecovery.js";
 
 // CLI 原型。终端里没有布局可调，能被设计的只有三件事：分节、对齐列、以及
 // 一个数字读不出来时写什么。所以这里渲染的是逐字符的真实输出，不是示意图。
@@ -202,22 +203,38 @@ export function CliSurface() {
   const stage = useStagePrefs();
   const { lang, theme } = stage;
   const dict = catalogs[lang];
-  const [active, setActive] = useState(new URLSearchParams(window.location.search).has("scan") ? "scan" : SAMPLES[0].id);
+  const initialActive = new URLSearchParams(window.location.search).has("scan")
+    ? "scan"
+    : new URLSearchParams(window.location.search).has("health") ? "recovery" : SAMPLES[0].id;
+  const [active, setActive] = useState(initialActive);
   const sample = SAMPLES.find((item) => item.id === active);
+  const recoveryKey = stage.health === "baseline" ? "stateLive" : stage.health;
+  const recovery = CLI_HEALTH_RECOVERY[recoveryKey];
 
   return (
     <main className="stage" data-theme={theme}>
-      <StageControls prefs={stage} showState={false} />
+      <StageControls prefs={stage} showState={false} showQuota={false} showHealth />
       <div className="stage-body cli-body">
         <nav className="cli-tabs">
           <button type="button" data-cli-scan-tab className={active === "scan" ? "active" : ""} onClick={() => setActive("scan")}>scan</button>
+          <button type="button" data-cli-recovery-tab className={active === "recovery" ? "active" : ""} onClick={() => setActive("recovery")}>recovery</button>
           {SAMPLES.map((item) => (
             <button type="button" key={item.id} className={item.id === active ? "active" : ""} onClick={() => setActive(item.id)}>
               {item.id}
             </button>
           ))}
         </nav>
-        {active === "scan" ? <CliScan stage={stage} /> : <>
+        {active === "scan" ? <CliScan stage={stage} /> : active === "recovery" ? <>
+        <p className="cli-note">{dict.states.healthRecoveryCliNote}</p>
+        <div className="terminal" data-cli-health-state={recoveryKey}>
+          <div className="terminal-bar"><i /><i /><i /><span>text</span></div>
+          <pre tabIndex={0}><code><b>$ {recovery.command}</b>{"\n"}{recovery.text}</code></pre>
+        </div>
+        <div className="terminal">
+          <div className="terminal-bar"><i /><i /><i /><span>required JSON fields · container owned by architecture</span></div>
+          <pre tabIndex={0}><code>{recovery.json}</code></pre>
+        </div>
+        </> : <>
         <p className="cli-note">{sample.note[lang]}</p>
         <div className="terminal">
           <div className="terminal-bar">
@@ -226,7 +243,7 @@ export function CliSurface() {
             <i />
             <span>{dict.sessions.signals} — agentdeck</span>
           </div>
-          <pre>
+          <pre tabIndex={0}>
             <code>
               <b>$ {sample.command}</b>
               {"\n"}
@@ -249,7 +266,7 @@ export function CliSurface() {
             <i />
             <span>--format json</span>
           </div>
-          <pre>
+          <pre tabIndex={0}>
             <code>{JSON_SAMPLE}</code>
           </pre>
         </div>

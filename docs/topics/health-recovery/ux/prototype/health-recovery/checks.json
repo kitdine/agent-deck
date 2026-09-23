@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "subject": "health-recovery menu-bar and delivered CLI prototype",
+  "recorded_on": "2026-09-22",
+  "prototype_build": "pass",
+  "popover_probe": { "checks": 56, "failed": 0 },
+  "cli_probe": { "checks": 24, "failed": 0 },
+  "localized_check_labels": {
+    "languages": ["en", "zh-Hans"],
+    "scenarios": ["stateLive", "scanLive", "extensionStale"],
+    "raw_wire_names_visible": 0
+  },
+  "axe": [
+    { "surface": "menubar-extension-stale-en-light-420", "scope": ".popover", "wcag": "2A/2AA", "violations": 0, "incomplete": 0 },
+    { "surface": "menubar-legacy-zh-dark-280", "scope": ".popover", "wcag": "2A/2AA", "violations": 0, "incomplete": 0 },
+    { "surface": "menubar-combined-en-dark-420", "scope": ".popover", "wcag": "2A/2AA", "violations": 0, "incomplete": 0 },
+    { "surface": "cli-extension-stale-en-dark", "scope": ".cli-body", "wcag": "2A/2AA", "violations": 0, "incomplete": 0 }
+  ],
+  "layout_gauges": [
+    { "surface": "menubar-legacy-zh-dark-280", "result": "NO OVERFLOW" },
+    { "surface": "menubar-combined-en-light-420", "result": "NO OVERFLOW" }
+  ],
+  "limitations": [
+    "Browser evidence does not prove native VoiceOver or Dynamic Type behavior.",
+    "Browser clipboard simulation does not prove AppKit pasteboard behavior.",
+    "Prototype data does not prove real lock liveness or SQLite transaction semantics."
+  ]
+}
