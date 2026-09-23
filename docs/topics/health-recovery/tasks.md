@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-09-21
-updated: 2026-09-21
+updated: 2026-09-22
 ---
 
 # Health Recovery — Tasks
@@ -22,7 +22,7 @@ Git delivery, integration, retirement and release remain separate boundaries.
 | requirements.md | [x] | [x] |
 | ux/cli-health-recovery.md | [x] | [x] |
 | ux/menubar-health-recovery.md | [x] | [x] |
-| architecture.md | [ ] | [ ] |
+| architecture.md | [x] | [x] |
 | tasks.md | [x] | [ ] |
 
 The document set keeps CLI and menu-bar interaction contracts independently
@@ -72,9 +72,15 @@ its completed task state is unchanged. `ux/menubar-health-recovery.md` framework
 Re-review Round 3 passed for content state
 `urn:ce:agent-deck:content-state:health-recovery:ux-menubar-health-recovery:bc6df88:6a83f9435c75f17b4ebfb6769855e0be0a06099a8b51d73f222f709bad08a9c0`
 and closed `MBHR-R1-F1`; it supersedes the unbound Round 2 entry, and the
-document gate is VERIFIED. The document awaits separately authorized Git
-delivery together with its shared prototype changes. Architecture and
-implementation remain blocked on their declared dependencies. Git delivery,
+document gate is VERIFIED; it was delivered by signed commit
+`29694de77343bfa623ad04fa21c0e581564cda32` together with its shared prototype
+changes. `architecture.md` Re-review Round 4 passed for content state
+`urn:ce:agent-deck:content-state:health-recovery:architecture:29694de:87b6094fbb40f55784ebd5a2f9deb2872613e2e9a22096a35afed7a43b9ceef7`;
+every finding recorded in [`reviews/architecture.md`](reviews/architecture.md)
+is closed and the document gate is VERIFIED. The document awaits separately
+authorized Git delivery. Final UX reconciliation and `tasks.md` decomposition
+are next.
+Implementation remains blocked on its declared dependencies. Git delivery,
 integration, retirement and release remain separate boundaries.
 
 ## Review boundary
