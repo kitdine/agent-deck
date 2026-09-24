@@ -179,11 +179,46 @@ func (s Service) Check(ctx context.Context, full bool) (Report, error) {
 	}
 	extensionReport, err := extension.Doctor(ctx, database, s.Home, s.Workdir)
 	if err != nil {
+		var inventoryUnreadable *extension.ErrExtensionInventoryUnreadable
+		if errors.As(err, &inventoryUnreadable) {
+			report.add(Check{
+				Name:               "extensions",
+				Status:             "error",
+				Code:               "extension_inventory_unreadable",
+				Resource:           "extension_inventory",
+				Reason:             "extension_inventory_unreadable",
+				ActionKind:         "manual_prerequisite",
+				ManualPrerequisite: "prereq_extension_inventory_unreadable",
+			})
+			return report, nil
+		}
 		return Report{}, err
 	}
-	extensionProblems := len(extensionReport.Diagnostics) + len(extensionReport.MissingPaths) + len(extensionReport.DuplicateIDs) + len(extensionReport.DriftedIDs) + len(extensionReport.ManagementAnomalies)
-	if extensionProblems > 0 {
-		report.add(Check{Name: "extensions", Status: "warning", Code: "extension_diagnostics", Count: extensionProblems, Recovery: "agentdeck extension doctor"})
+	if extensionReport.Reason != "" {
+		recovery := ""
+		if extensionReport.RecoveryCommand != nil {
+			recovery = *extensionReport.RecoveryCommand
+		}
+		diagCmd := ""
+		if recovery == "" {
+			diagCmd = "agentdeck extension doctor"
+		}
+		manualPrereq := ""
+		if extensionReport.ManualPrerequisite != nil {
+			manualPrereq = *extensionReport.ManualPrerequisite
+		}
+		report.add(Check{
+			Name:               "extensions",
+			Status:             "warning",
+			Code:               extensionReport.Reason,
+			Count:              extensionReport.CountForReason(),
+			Recovery:           recovery,
+			Resource:           "extension_inventory",
+			Reason:             extensionReport.Reason,
+			ActionKind:         ActionKind(extensionReport.ActionKind),
+			DiagnosticCommand:  diagCmd,
+			ManualPrerequisite: manualPrereq,
+		})
 	} else {
 		report.add(Check{Name: "extensions", Status: "ok"})
 	}

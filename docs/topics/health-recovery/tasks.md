@@ -93,7 +93,7 @@ or conflicting contracts. Reconciliation is complete and verified.
 | Task | Dev | Review |
 | --- | --- | --- |
 | 1. `lock-recovery-foundation` | [x] | [x] |
-| 2. `extension-inventory-recovery` | [ ] | [ ] |
+| 2. `extension-inventory-recovery` | [x] | [x] |
 | 3. `desktop-wire-and-shared-contracts` | [ ] | [ ] |
 | 4. `menubar-health-presentation` | [ ] | [ ] |
 | 5. `health-recovery-acceptance` | [ ] | [ ] |

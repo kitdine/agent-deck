@@ -1058,10 +1058,16 @@
         "command": "string",
         "data": {
           "diagnostics": [],
+          "discovery_status": "string",
           "drifted_ids": [],
           "duplicate_ids": [],
+          "fingerprint_sync_incomplete": "boolean",
           "management_anomalies": [],
-          "missing_paths": []
+          "manual_prerequisite": null,
+          "missing_paths": [],
+          "native_unavailable": [],
+          "recovery_command": null,
+          "stale_inventory": []
         },
         "generated_at": "string",
         "partial": "boolean",

@@ -3772,3 +3772,355 @@ func TestRenderDoctorTextLockLines(t *testing.T) {
 		})
 	}
 }
+
+func TestExtensionDoctorCLI(t *testing.T) {
+	state := t.TempDir()
+	home := t.TempDir()
+	workdir := t.TempDir()
+	t.Setenv("HOME", home)
+
+	ctx := context.Background()
+	db, err := store.Open(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 1. Stale inventory
+	if err = db.ReplaceExtensions(ctx, []store.Extension{
+		{ID: "codex:mcp:user:computer-use", Client: "codex", Kind: "mcp", Scope: "user", NativeID: "computer-use", Fingerprint: "fp1"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+
+	var stdout, stderr bytes.Buffer
+	args := []string{"--state-dir", state, "extension", "doctor"}
+	cmd, err := executeCommand(args, bytes.NewReader(nil), &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("extension doctor text failed: %v, stderr: %s", err, stderr.String())
+	}
+	_ = cmd
+
+	textOut := stdout.String()
+	for _, expected := range []string{
+		"status: warning",
+		"stale inventory (1):",
+		"  - codex:mcp:user:computer-use",
+		"next: Synchronize AgentDeck's extension inventory with current native discovery.",
+		"recovery: agentdeck extension scan",
+		"effect: Updates AgentDeck's derived extension inventory and extension scan fingerprint only; does not modify Codex or Claude configuration or installed extensions.",
+	} {
+		if !strings.Contains(textOut, expected) {
+			t.Fatalf("extension doctor text missing %q; got:\n%s", expected, textOut)
+		}
+	}
+
+	// 2. JSON mode
+	stdout.Reset()
+	stderr.Reset()
+	args = []string{"--state-dir", state, "--format", "json", "extension", "doctor"}
+	_, err = executeCommand(args, bytes.NewReader(nil), &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("extension doctor json failed: %v", err)
+	}
+
+	var envelope struct {
+		Command string                 `json:"command"`
+		Data    map[string]interface{} `json:"data"`
+	}
+	if err = json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+		t.Fatalf("unmarshal json: %v, raw: %s", err, stdout.String())
+	}
+	if envelope.Data["discovery_status"] != "ok" {
+		t.Fatalf("expected discovery_status ok, got %#v", envelope.Data["discovery_status"])
+	}
+	if envelope.Data["reason"] != "extension_stale_inventory" {
+		t.Fatalf("expected reason extension_stale_inventory, got %#v", envelope.Data["reason"])
+	}
+	if envelope.Data["action_kind"] != "synchronize_inventory" {
+		t.Fatalf("expected action_kind synchronize_inventory, got %#v", envelope.Data["action_kind"])
+	}
+	if envelope.Data["recovery_command"] != "agentdeck extension scan" {
+		t.Fatalf("expected recovery_command agentdeck extension scan, got %#v", envelope.Data["recovery_command"])
+	}
+	staleList, ok := envelope.Data["stale_inventory"].([]interface{})
+	if !ok || len(staleList) != 1 || staleList[0] != "codex:mcp:user:computer-use" {
+		t.Fatalf("expected stale_inventory with computer-use, got %#v", envelope.Data["stale_inventory"])
+	}
+	missingList, ok := envelope.Data["missing_paths"].([]interface{})
+	if !ok || len(missingList) != 1 || missingList[0] != "codex:mcp:user:computer-use" {
+		t.Fatalf("expected missing_paths compatibility, got %#v", envelope.Data["missing_paths"])
+	}
+
+	// 3. Healthy after scan
+	stdout.Reset()
+	stderr.Reset()
+	args = []string{"--state-dir", state, "extension", "scan"}
+	_, err = executeCommand(args, bytes.NewReader(nil), &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("extension scan failed: %v", err)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	args = []string{"--state-dir", state, "extension", "doctor"}
+	_, err = executeCommand(args, bytes.NewReader(nil), &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("extension doctor healthy failed: %v", err)
+	}
+	healthyOut := stdout.String()
+	for _, expected := range []string{
+		"status: ok",
+		"diagnostics: none",
+		"stale inventory: none",
+		"duplicate ids: none",
+		"drifted ids: none",
+		"management anomalies: none",
+	} {
+		if !strings.Contains(healthyOut, expected) {
+			t.Fatalf("healthy doctor text missing %q; got:\n%s", expected, healthyOut)
+		}
+	}
+	_ = workdir
+}
+
+func TestExtensionScanSyncIncompleteCLI(t *testing.T) {
+	state := t.TempDir()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	// Direct test of ErrExtensionSyncIncomplete error details and rendering
+	err := &extension.ErrExtensionSyncIncomplete{}
+	code := errorCode(err)
+	if code != "extension_sync_incomplete" {
+		t.Fatalf("errorCode = %q, want extension_sync_incomplete", code)
+	}
+	details := errorDetails(err)
+	det, ok := details.(*commandExtensionSyncErrorDetails)
+	if !ok {
+		t.Fatalf("unexpected details type %T", details)
+	}
+	if det.Resource != "extension_inventory" || det.Reason != "extension_fingerprint_update_failed" || det.ActionKind != "diagnose" || !det.InventoryCommitted {
+		t.Fatalf("unexpected details: %#v", det)
+	}
+
+	var buf bytes.Buffer
+	renderCommandErrorText(&buf, err)
+	out := buf.String()
+	for _, expected := range []string{
+		"extension_sync_incomplete: extension inventory changed but extension scan fingerprint update failed",
+		"resource: extension_inventory",
+		"next: Run read-only diagnostics before taking recovery action.",
+		"diagnose: agentdeck extension doctor",
+	} {
+		if !strings.Contains(out, expected) {
+			t.Fatalf("renderCommandErrorText missing %q; got:\n%s", expected, out)
+		}
+	}
+
+	// 4. Controlled fault injection during scan (EIR-R2-F2)
+	// Write a mock extension to disk so native discovery finds it and commits it to database during scan.
+	claudePath := filepath.Join(home, ".claude.json")
+	if err := os.WriteFile(claudePath, []byte(`{"mcpServers":{"test-mcp":{"command":"echo"}}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	origPersist := extensionScanFingerprintPersist
+	defer func() { extensionScanFingerprintPersist = origPersist }()
+
+	extensionScanFingerprintPersist = func(ctx context.Context, database *store.Store, fingerprint string) error {
+		return errors.New("simulated fingerprint persistence failure")
+	}
+
+	// Verify typed error returned from executeCommand under injected failure
+	var failStdout, failStderr bytes.Buffer
+	_, scanErr := executeCommand([]string{"--state-dir", state, "extension", "scan"}, bytes.NewReader(nil), &failStdout, &failStderr)
+	if scanErr == nil {
+		t.Fatal("expected error on scan command under fingerprint persistence failure, got nil")
+	}
+	var syncIncompleteErr *extension.ErrExtensionSyncIncomplete
+	if !errors.As(scanErr, &syncIncompleteErr) {
+		t.Fatalf("expected *extension.ErrExtensionSyncIncomplete, got %T: %v", scanErr, scanErr)
+	}
+
+	// Verify command exit code 1 and text error details
+	failStdout.Reset()
+	failStderr.Reset()
+	failExitCode := execute([]string{"--state-dir", state, "extension", "scan"}, bytes.NewReader(nil), &failStdout, &failStderr)
+	if failExitCode != 1 {
+		t.Fatalf("expected exit code 1 on fingerprint writer failure, got %d\nstderr: %s", failExitCode, failStderr.String())
+	}
+	failErrOutput := failStderr.String()
+	for _, expected := range []string{
+		"extension_sync_incomplete: extension inventory changed but extension scan fingerprint update failed",
+		"resource: extension_inventory",
+		"next: Run read-only diagnostics before taking recovery action.",
+		"diagnose: agentdeck extension doctor",
+	} {
+		if !strings.Contains(failErrOutput, expected) {
+			t.Fatalf("failStderr missing %q; got:\n%s", expected, failErrOutput)
+		}
+	}
+
+	// Verify JSON error envelope under fault injection
+	var jsonFailStdout, jsonFailStderr bytes.Buffer
+	jsonExitCode := execute([]string{"--state-dir", state, "--format", "json", "extension", "scan"}, bytes.NewReader(nil), &jsonFailStdout, &jsonFailStderr)
+	if jsonExitCode != 1 {
+		t.Fatalf("expected exit code 1 on json failure, got %d", jsonExitCode)
+	}
+	var jsonEnvelope map[string]any
+	if err := json.Unmarshal(jsonFailStderr.Bytes(), &jsonEnvelope); err != nil {
+		t.Fatalf("failed to parse json error output: %v\noutput: %s", err, jsonFailStderr.String())
+	}
+	errObj, _ := jsonEnvelope["error"].(map[string]any)
+	if errObj["code"] != "extension_sync_incomplete" {
+		t.Fatalf("expected error.code == extension_sync_incomplete, got %v", errObj["code"])
+	}
+	detailsObj, _ := errObj["details"].(map[string]any)
+	if detailsObj["inventory_committed"] != true || detailsObj["reason"] != "extension_fingerprint_update_failed" {
+		t.Fatalf("unexpected detailsObj: %#v", detailsObj)
+	}
+
+	// 5. Verify database: inventory WAS committed (inventory_committed: true) despite fingerprint failure
+	ctx := context.Background()
+	db, openErr := store.Open(ctx, state)
+	if openErr != nil {
+		t.Fatal(openErr)
+	}
+	defer db.Close()
+	items, listErr := db.ListExtensions(ctx)
+	if listErr != nil {
+		t.Fatal(listErr)
+	}
+	if len(items) != 1 || items[0].ID != "claude:mcp:user:test-mcp" {
+		t.Fatalf("expected 1 committed extension claude:mcp:user:test-mcp, got %#v", items)
+	}
+
+	// Verify setting persisted and doctor reports extension_fingerprint_update_failed
+	markerVal, _, settingErr := db.Setting(ctx, "extension.sync_incomplete")
+	if settingErr != nil {
+		t.Fatal(settingErr)
+	}
+	if markerVal != "true" {
+		t.Fatalf("expected extension.sync_incomplete == true, got %q", markerVal)
+	}
+	rep, docErr := extension.Doctor(ctx, db, home, "")
+	if docErr != nil {
+		t.Fatal(docErr)
+	}
+	if rep.Reason != "extension_fingerprint_update_failed" || !rep.FingerprintSyncIncomplete {
+		t.Fatalf("doctor failed to observe sync_incomplete marker: %#v", rep)
+	}
+
+	// 6. Restore writer and verify subsequent successful scan clears extension.sync_incomplete marker (EIR-R1-F1, EIR-R2-F2)
+	extensionScanFingerprintPersist = origPersist
+	var scanStdout, scanStderr bytes.Buffer
+	succExitCode := execute([]string{"--state-dir", state, "extension", "scan"}, bytes.NewReader(nil), &scanStdout, &scanStderr)
+	if succExitCode != 0 {
+		t.Fatalf("extension scan command failed: exitCode=%d\nstderr: %s", succExitCode, scanStderr.String())
+	}
+	markerVal, _, settingErr = db.Setting(ctx, "extension.sync_incomplete")
+	if settingErr != nil {
+		t.Fatal(settingErr)
+	}
+	if markerVal != "" {
+		t.Fatalf("expected extension.sync_incomplete cleared after successful scan, got %q", markerVal)
+	}
+	repAfterScan, docErr := extension.Doctor(ctx, db, home, "")
+	if docErr != nil {
+		t.Fatal(docErr)
+	}
+	if repAfterScan.Reason == "extension_fingerprint_update_failed" || repAfterScan.FingerprintSyncIncomplete {
+		t.Fatalf("doctor still reporting sync incomplete after successful scan: %#v", repAfterScan)
+	}
+
+	// 7. Unreadable/corrupted database exits 1 with extension_inventory_unreadable (EIR-R1-F2)
+	if _, err := db.Exec(ctx, "DROP TABLE extensions"); err != nil {
+		t.Fatal(err)
+	}
+	var docStdout, docStderr bytes.Buffer
+	docExitCode := execute([]string{"--state-dir", state, "extension", "doctor"}, bytes.NewReader(nil), &docStdout, &docStderr)
+	if docExitCode != 1 {
+		t.Fatalf("expected exit code 1 on corrupted database, got %d", docExitCode)
+	}
+	_, docErr = executeCommand([]string{"--state-dir", state, "extension", "doctor"}, bytes.NewReader(nil), &docStdout, &docStderr)
+	if docErr == nil {
+		t.Fatal("expected error on corrupted database, got nil")
+	}
+	if code := errorCode(docErr); code != "extension_inventory_unreadable" {
+		t.Fatalf("expected errorCode extension_inventory_unreadable, got %q", code)
+	}
+}
+
+func TestDoctorTextExtensionsRow(t *testing.T) {
+	// Stale inventory
+	staleReport := doctor.Report{
+		Status:   "warning",
+		Mode:     "full",
+		Warnings: 1,
+		Checks: []doctor.Check{
+			{
+				Name:       "extensions",
+				Status:     "warning",
+				Code:       "extension_stale_inventory",
+				Count:      1,
+				Resource:   "extension_inventory",
+				Reason:     "extension_stale_inventory",
+				ActionKind: "synchronize_inventory",
+				Recovery:   "agentdeck extension scan",
+			},
+		},
+	}
+	var buf bytes.Buffer
+	if err := renderDoctorText(&buf, staleReport); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	for _, want := range []string{
+		"extensions: warning (extension_stale_inventory; count=1)",
+		"recovery: agentdeck extension scan",
+		"effect: Updates AgentDeck's derived extension inventory and extension scan fingerprint only; does not modify native client configuration.",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("missing %q in doctor output:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "diagnose:") {
+		t.Fatalf("unexpected diagnose: in doctor output:\n%s", out)
+	}
+
+	// Native unavailable
+	natReport := doctor.Report{
+		Status:   "warning",
+		Mode:     "full",
+		Warnings: 1,
+		Checks: []doctor.Check{
+			{
+				Name:              "extensions",
+				Status:            "warning",
+				Code:              "extension_native_unavailable",
+				Count:             1,
+				Resource:          "extension_inventory",
+				Reason:            "extension_native_unavailable",
+				ActionKind:        "manual_prerequisite",
+				DiagnosticCommand: "agentdeck extension doctor",
+			},
+		},
+	}
+	buf.Reset()
+	if err := renderDoctorText(&buf, natReport); err != nil {
+		t.Fatal(err)
+	}
+	out = buf.String()
+	for _, want := range []string{
+		"extensions: warning (extension_native_unavailable; count=1)",
+		"diagnose: agentdeck extension doctor",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("missing %q in doctor output:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "recovery:") {
+		t.Fatalf("unexpected recovery: in doctor output:\n%s", out)
+	}
+}

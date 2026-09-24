@@ -1262,3 +1262,111 @@ func TestCheckReportsBothLocksIndependentlyUnderContention(t *testing.T) {
 		t.Fatalf("unexpected check order: permIdx=%d, stateIdx=%d, scanIdx=%d", permIdx, stateIdx, scanIdx)
 	}
 }
+
+func TestCheckExtensionsAggregateRow(t *testing.T) {
+	ctx := context.Background()
+	state := t.TempDir()
+	database, err := store.Open(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	// 1. Stale inventory fixture
+	if err = database.ReplaceExtensions(ctx, []store.Extension{
+		{ID: "codex:mcp:user:computer-use", Client: "codex", Kind: "mcp", Scope: "user", NativeID: "computer-use", Fingerprint: "fp1"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	service := Service{
+		StateRoot: state,
+		Home:      t.TempDir(),
+		Workdir:   t.TempDir(),
+	}
+	report, err := service.Check(ctx, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var extCheck *Check
+	for _, c := range report.Checks {
+		if c.Name == "extensions" {
+			ch := c
+			extCheck = &ch
+			break
+		}
+	}
+	if extCheck == nil {
+		t.Fatal("extensions check missing")
+	}
+	if extCheck.Status != "warning" || extCheck.Code != "extension_stale_inventory" {
+		t.Fatalf("unexpected extensions check: %#v", extCheck)
+	}
+	if extCheck.Resource != "extension_inventory" || extCheck.Reason != "extension_stale_inventory" {
+		t.Fatalf("unexpected extensions resource/reason: %#v", extCheck)
+	}
+	if extCheck.ActionKind != "synchronize_inventory" || extCheck.Recovery != "agentdeck extension scan" {
+		t.Fatalf("unexpected action/recovery: %#v", extCheck)
+	}
+	if extCheck.DiagnosticCommand != "" {
+		t.Fatalf("expected empty diagnostic_command when recovery_command is set, got %q", extCheck.DiagnosticCommand)
+	}
+
+	// 2. Clear stale extensions -> healthy
+	if err = database.ReplaceExtensions(ctx, []store.Extension{}); err != nil {
+		t.Fatal(err)
+	}
+	report, err = service.Check(ctx, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range report.Checks {
+		if c.Name == "extensions" {
+			if c.Status != "ok" {
+				t.Fatalf("expected extensions ok, got %#v", c)
+			}
+			break
+		}
+	}
+
+	// 3. Fingerprint sync incomplete marker
+	if err = database.SetSetting(ctx, "extension.sync_incomplete", "true"); err != nil {
+		t.Fatal(err)
+	}
+	report, err = service.Check(ctx, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range report.Checks {
+		if c.Name == "extensions" {
+			if c.Status != "warning" || c.Code != "extension_fingerprint_update_failed" || c.ActionKind != "diagnose" || c.Recovery != "" || c.DiagnosticCommand != "agentdeck extension doctor" || c.Count != 1 {
+				t.Fatalf("expected fingerprint_update_failed check, got %#v", c)
+			}
+			break
+		}
+	}
+
+	// 4. Unreadable/corrupted extensions table -> extensions error row (never ok)
+	if _, err = database.Exec(ctx, "DROP TABLE extensions"); err != nil {
+		t.Fatal(err)
+	}
+	report, err = service.Check(ctx, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var unreadableCheck *Check
+	for _, c := range report.Checks {
+		if c.Name == "extensions" {
+			ch := c
+			unreadableCheck = &ch
+			break
+		}
+	}
+	if unreadableCheck == nil {
+		t.Fatal("extensions check missing after dropping settings table")
+	}
+	if unreadableCheck.Status != "error" || unreadableCheck.Code != "extension_inventory_unreadable" || unreadableCheck.Reason != "extension_inventory_unreadable" || unreadableCheck.ActionKind != "manual_prerequisite" || unreadableCheck.ManualPrerequisite != "prereq_extension_inventory_unreadable" {
+		t.Fatalf("expected extension_inventory_unreadable check, got %#v", unreadableCheck)
+	}
+}

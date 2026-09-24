@@ -12,6 +12,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -25,6 +26,36 @@ const (
 )
 
 var ErrReadOnly = errors.New("extension_read_only")
+
+type ErrExtensionSyncIncomplete struct{}
+
+func (e *ErrExtensionSyncIncomplete) Error() string {
+	return "extension_sync_incomplete: extension inventory changed but extension scan fingerprint update failed"
+}
+
+type ErrExtensionInventoryUnreadable struct {
+	Err error
+}
+
+func (e *ErrExtensionInventoryUnreadable) Error() string {
+	return "extension_inventory_unreadable: AgentDeck extension inventory database is unreadable or malformed"
+}
+
+func (e *ErrExtensionInventoryUnreadable) Unwrap() error {
+	return e.Err
+}
+
+type ExtensionDiscoverer interface {
+	Discover(home, workdir string) ([]store.Extension, []string, error)
+}
+
+type defaultDiscoverer struct{}
+
+func (d defaultDiscoverer) Discover(home, workdir string) ([]store.Extension, []string, error) {
+	return discover(home, workdir)
+}
+
+var DefaultDiscoverer ExtensionDiscoverer = defaultDiscoverer{}
 
 type Result struct {
 	Found       int            `json:"found"`
@@ -55,11 +86,38 @@ type DTO struct {
 }
 
 type DoctorReport struct {
-	Diagnostics         []string `json:"diagnostics"`
-	MissingPaths        []string `json:"missing_paths"`
-	DuplicateIDs        []string `json:"duplicate_ids"`
-	DriftedIDs          []string `json:"drifted_ids"`
-	ManagementAnomalies []string `json:"management_anomalies"`
+	DiscoveryStatus           string   `json:"discovery_status"`
+	Diagnostics               []string `json:"diagnostics"`
+	StaleInventory            []string `json:"stale_inventory"`
+	MissingPaths              []string `json:"missing_paths"`
+	DuplicateIDs              []string `json:"duplicate_ids"`
+	DriftedIDs                []string `json:"drifted_ids"`
+	ManagementAnomalies       []string `json:"management_anomalies"`
+	NativeUnavailable         []string `json:"native_unavailable"`
+	FingerprintSyncIncomplete bool     `json:"fingerprint_sync_incomplete"`
+	Reason                    string   `json:"reason,omitempty"`
+	ActionKind                string   `json:"action_kind,omitempty"`
+	RecoveryCommand           *string  `json:"recovery_command"`
+	ManualPrerequisite        *string  `json:"manual_prerequisite"`
+}
+
+func (r DoctorReport) CountForReason() int {
+	switch r.Reason {
+	case "extension_duplicate_id":
+		return len(r.DuplicateIDs)
+	case "extension_management_anomaly":
+		return len(r.ManagementAnomalies)
+	case "extension_managed_drift":
+		return len(r.DriftedIDs)
+	case "extension_stale_inventory":
+		return len(r.StaleInventory)
+	case "extension_native_unavailable":
+		return len(r.NativeUnavailable)
+	case "extension_fingerprint_update_failed", "extension_discovery_failed", "extension_state_missing", "extension_inventory_unreadable":
+		return 1
+	default:
+		return 0
+	}
 }
 
 type nativeExtension struct {
@@ -86,7 +144,14 @@ func CanonicalID(client, kind, scope, nativeID string) (string, error) {
 }
 
 func Scan(ctx context.Context, db *store.Store, home, workdir string) (Result, error) {
-	values, diagnostics, err := discover(home, workdir)
+	return ScanWithDiscoverer(ctx, db, DefaultDiscoverer, home, workdir)
+}
+
+func ScanWithDiscoverer(ctx context.Context, db *store.Store, discoverer ExtensionDiscoverer, home, workdir string) (Result, error) {
+	if discoverer == nil {
+		discoverer = DefaultDiscoverer
+	}
+	values, diagnostics, err := discoverer.Discover(home, workdir)
 	if err != nil {
 		return Result{}, err
 	}
@@ -98,7 +163,11 @@ func Scan(ctx context.Context, db *store.Store, home, workdir string) (Result, e
 	for _, item := range previous {
 		old[item.ID] = item
 	}
-	result := Result{Found: len(values), Diagnostics: nonNil(diagnostics), Summary: map[string]int{}}
+	sanitizedDiags := make([]string, 0, len(diagnostics))
+	for _, d := range diagnostics {
+		sanitizedDiags = append(sanitizedDiags, SanitizeDiagnostic(d))
+	}
+	result := Result{Found: len(values), Diagnostics: nonNil(sanitizedDiags), Summary: map[string]int{}}
 	for _, item := range values {
 		result.Summary[item.Client+":"+item.Kind+":"+item.Scope]++
 		if before, found := old[item.ID]; !found {
@@ -141,24 +210,71 @@ func SetEnabled(context.Context, *store.Store, string, bool) error {
 }
 
 func Doctor(ctx context.Context, db *store.Store, home, workdir string) (DoctorReport, error) {
+	return DoctorWithDiscoverer(ctx, db, DefaultDiscoverer, home, workdir)
+}
+
+func DoctorWithDiscoverer(ctx context.Context, db *store.Store, discoverer ExtensionDiscoverer, home, workdir string) (DoctorReport, error) {
 	report := DoctorReport{
-		Diagnostics:         []string{},
-		MissingPaths:        []string{},
-		DuplicateIDs:        []string{},
-		DriftedIDs:          []string{},
-		ManagementAnomalies: []string{},
+		DiscoveryStatus: "ok",
+		Diagnostics:     []string{},
 	}
-	current, diagnostics, discoveryErr := discover(home, workdir)
+	if discoverer == nil {
+		discoverer = DefaultDiscoverer
+	}
+	current, diagnostics, discoveryErr := discoverer.Discover(home, workdir)
 	if discoveryErr != nil {
-		report.Diagnostics = append(report.Diagnostics, discoveryErr.Error())
+		report.DiscoveryStatus = "failed"
+		report.Diagnostics = []string{SanitizeDiagnostic(discoveryErr.Error())}
 	} else {
-		report.Diagnostics = append(report.Diagnostics, diagnostics...)
+		for _, d := range diagnostics {
+			report.Diagnostics = append(report.Diagnostics, SanitizeDiagnostic(d))
+		}
+	}
+
+	if db == nil {
+		report.Reason = "extension_state_missing"
+		report.StaleInventory = nil
+		report.MissingPaths = nil
+		report.DuplicateIDs = nil
+		report.DriftedIDs = nil
+		report.ManagementAnomalies = nil
+		report.NativeUnavailable = nil
+		applyReasonAction(&report)
+		return report, nil
 	}
 
 	stored, err := db.ListExtensions(ctx)
 	if err != nil {
-		return report, err
+		report.Reason = "extension_inventory_unreadable"
+		applyReasonAction(&report)
+		return report, &ErrExtensionInventoryUnreadable{Err: err}
 	}
+
+	syncIncomplete, _, err := db.Setting(ctx, "extension.sync_incomplete")
+	if err != nil {
+		report.Reason = "extension_inventory_unreadable"
+		applyReasonAction(&report)
+		return report, &ErrExtensionInventoryUnreadable{Err: err}
+	}
+
+	if discoveryErr != nil {
+		report.Reason = "extension_discovery_failed"
+		report.StaleInventory = nil
+		report.MissingPaths = nil
+		report.DuplicateIDs = nil
+		report.DriftedIDs = nil
+		report.ManagementAnomalies = nil
+		report.NativeUnavailable = nil
+		applyReasonAction(&report)
+		return report, nil
+	}
+
+	report.StaleInventory = []string{}
+	report.MissingPaths = []string{}
+	report.DuplicateIDs = []string{}
+	report.DriftedIDs = []string{}
+	report.ManagementAnomalies = []string{}
+	report.NativeUnavailable = []string{}
 	currentByID := make(map[string]store.Extension, len(current))
 	for _, value := range current {
 		if _, exists := currentByID[value.ID]; exists {
@@ -170,23 +286,160 @@ func Doctor(ctx context.Context, db *store.Store, home, workdir string) (DoctorR
 		if value.Managed && value.AdoptedFingerprint == "" {
 			report.ManagementAnomalies = append(report.ManagementAnomalies, value.ID)
 		}
-		if discoveryErr != nil {
-			continue
-		}
 		live, exists := currentByID[value.ID]
 		if !exists {
-			report.MissingPaths = append(report.MissingPaths, value.ID)
+			report.StaleInventory = append(report.StaleInventory, value.ID)
 			continue
 		}
-		if value.Managed && value.AdoptedFingerprint != live.Fingerprint {
+		if len(live.Diagnostics) > 0 {
+			report.NativeUnavailable = append(report.NativeUnavailable, value.ID)
+		} else if value.Managed && live.Fingerprint != "" && value.AdoptedFingerprint != live.Fingerprint {
 			report.DriftedIDs = append(report.DriftedIDs, value.ID)
 		}
 	}
-	sort.Strings(report.MissingPaths)
+	sort.Strings(report.StaleInventory)
+	report.MissingPaths = report.StaleInventory
 	sort.Strings(report.DuplicateIDs)
 	sort.Strings(report.DriftedIDs)
 	sort.Strings(report.ManagementAnomalies)
+	sort.Strings(report.NativeUnavailable)
+
+	if syncIncomplete == "true" {
+		report.FingerprintSyncIncomplete = true
+	}
+
+	classifyReport(&report)
+	applyReasonAction(&report)
 	return report, nil
+}
+
+func DoctorFromStateRoot(ctx context.Context, stateRoot, home, workdir string) (DoctorReport, error) {
+	return DoctorFromStateRootWithDiscoverer(ctx, stateRoot, home, workdir, DefaultDiscoverer)
+}
+
+func DoctorFromStateRootWithDiscoverer(ctx context.Context, stateRoot, home, workdir string, discoverer ExtensionDiscoverer) (DoctorReport, error) {
+	if discoverer == nil {
+		discoverer = DefaultDiscoverer
+	}
+	dbPath := filepath.Join(stateRoot, "agentdeck.sqlite3")
+	if _, statErr := os.Stat(dbPath); errors.Is(statErr, fs.ErrNotExist) {
+		return handleStateMissing(home, workdir, discoverer)
+	} else if statErr != nil {
+		if _, rootErr := os.Stat(stateRoot); errors.Is(rootErr, fs.ErrNotExist) {
+			return handleStateMissing(home, workdir, discoverer)
+		}
+	}
+	db, err := store.OpenReadOnly(ctx, stateRoot)
+	if err != nil {
+		var ahead *store.SchemaAhead
+		if errors.As(err, &ahead) {
+			return DoctorReport{}, ahead
+		}
+		if errors.Is(err, fs.ErrNotExist) {
+			return handleStateMissing(home, workdir, discoverer)
+		}
+		report := DoctorReport{Reason: "extension_inventory_unreadable"}
+		applyReasonAction(&report)
+		return report, &ErrExtensionInventoryUnreadable{Err: err}
+	}
+	defer db.Close()
+	return DoctorWithDiscoverer(ctx, db, discoverer, home, workdir)
+}
+
+func handleStateMissing(home, workdir string, discoverer ExtensionDiscoverer) (DoctorReport, error) {
+	_, diags, discoveryErr := discoverer.Discover(home, workdir)
+	report := DoctorReport{
+		Reason: "extension_state_missing",
+	}
+	if discoveryErr != nil {
+		report.DiscoveryStatus = "failed"
+		report.Diagnostics = []string{SanitizeDiagnostic(discoveryErr.Error())}
+	} else {
+		report.DiscoveryStatus = "ok"
+		report.Diagnostics = make([]string, 0, len(diags))
+		for _, d := range diags {
+			report.Diagnostics = append(report.Diagnostics, SanitizeDiagnostic(d))
+		}
+	}
+	applyReasonAction(&report)
+	return report, nil
+}
+
+func classifyReport(report *DoctorReport) {
+	if report.Reason != "" {
+		return
+	}
+	switch {
+	case report.DiscoveryStatus == "failed":
+		report.Reason = "extension_discovery_failed"
+	case len(report.DuplicateIDs) > 0:
+		report.Reason = "extension_duplicate_id"
+	case len(report.ManagementAnomalies) > 0:
+		report.Reason = "extension_management_anomaly"
+	case len(report.DriftedIDs) > 0:
+		report.Reason = "extension_managed_drift"
+	case len(report.StaleInventory) > 0:
+		report.Reason = "extension_stale_inventory"
+	case len(report.NativeUnavailable) > 0:
+		report.Reason = "extension_native_unavailable"
+	case report.FingerprintSyncIncomplete:
+		report.Reason = "extension_fingerprint_update_failed"
+	}
+}
+
+func applyReasonAction(report *DoctorReport) {
+	switch report.Reason {
+	case "extension_state_missing":
+		if report.DiscoveryStatus == "ok" {
+			report.ActionKind = "synchronize_inventory"
+			report.RecoveryCommand = strPtr("agentdeck extension scan")
+			report.ManualPrerequisite = nil
+		} else {
+			report.ActionKind = "manual_prerequisite"
+			report.RecoveryCommand = nil
+			report.ManualPrerequisite = strPtr("prereq_extension_discovery_failed")
+		}
+	case "extension_inventory_unreadable":
+		report.ActionKind = "manual_prerequisite"
+		report.RecoveryCommand = nil
+		report.ManualPrerequisite = strPtr("prereq_extension_inventory_unreadable")
+	case "extension_discovery_failed":
+		report.ActionKind = "manual_prerequisite"
+		report.RecoveryCommand = nil
+		report.ManualPrerequisite = strPtr("prereq_extension_discovery_failed")
+	case "extension_duplicate_id":
+		report.ActionKind = "manual_prerequisite"
+		report.RecoveryCommand = nil
+		report.ManualPrerequisite = strPtr("prereq_extension_duplicate_id")
+	case "extension_management_anomaly":
+		report.ActionKind = "manual_prerequisite"
+		report.RecoveryCommand = nil
+		report.ManualPrerequisite = strPtr("prereq_extension_management_anomaly")
+	case "extension_managed_drift":
+		report.ActionKind = "manual_prerequisite"
+		report.RecoveryCommand = nil
+		report.ManualPrerequisite = strPtr("prereq_extension_managed_drift")
+	case "extension_stale_inventory":
+		report.ActionKind = "synchronize_inventory"
+		report.RecoveryCommand = strPtr("agentdeck extension scan")
+		report.ManualPrerequisite = nil
+	case "extension_native_unavailable":
+		report.ActionKind = "manual_prerequisite"
+		report.RecoveryCommand = nil
+		report.ManualPrerequisite = strPtr("prereq_extension_native_unavailable")
+	case "extension_fingerprint_update_failed":
+		report.ActionKind = "diagnose"
+		report.RecoveryCommand = nil
+		report.ManualPrerequisite = nil
+	default:
+		report.ActionKind = ""
+		report.RecoveryCommand = nil
+		report.ManualPrerequisite = nil
+	}
+}
+
+func strPtr(s string) *string {
+	return &s
 }
 
 func dto(value store.Extension) DTO {
@@ -203,7 +456,7 @@ func dto(value store.Extension) DTO {
 		Diagnostics:  nonNil(value.Diagnostics),
 		Fingerprint:  value.Fingerprint,
 		Managed:      value.Managed,
-		Drift:        value.Managed && value.AdoptedFingerprint != value.Fingerprint,
+		Drift:        value.Managed && value.Fingerprint != "" && value.AdoptedFingerprint != value.Fingerprint,
 	}
 }
 
@@ -266,9 +519,15 @@ func discover(home, workdir string) ([]store.Extension, []string, error) {
 			diagnostics = append(diagnostics, err.Error())
 			continue
 		}
-		fingerprint, err := fingerprint(candidate.sourcePath)
-		if err != nil {
-			return nil, diagnostics, fmt.Errorf("fingerprint %s: %w", id, err)
+		itemDiags := []string{}
+		fp, fpErr := fingerprint(candidate.sourcePath)
+		if fpErr != nil {
+			if strings.Contains(fpErr.Error(), "unreadable") {
+				itemDiags = append(itemDiags, "source_unreadable")
+			} else {
+				itemDiags = append(itemDiags, "source_unavailable")
+			}
+			fp = ""
 		}
 		values = append(values, store.Extension{
 			ID:           id,
@@ -280,8 +539,8 @@ func discover(home, workdir string) ([]store.Extension, []string, error) {
 			Version:      candidate.version,
 			Enabled:      candidate.enabled,
 			Capabilities: []string{ReadOnlyCapability},
-			Diagnostics:  []string{},
-			Fingerprint:  fingerprint,
+			Diagnostics:  itemDiags,
+			Fingerprint:  fp,
 		})
 	}
 	sort.Slice(values, func(i, j int) bool { return values[i].ID < values[j].ID })
@@ -589,4 +848,12 @@ func fingerprint(path string) (string, error) {
 		_, _ = hash.Write(contents)
 	}
 	return hex.EncodeToString(hash.Sum(nil)), nil
+}
+
+var ansiRegex = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
+
+func SanitizeDiagnostic(raw string) string {
+	s := ansiRegex.ReplaceAllString(raw, "")
+	fields := strings.Fields(s)
+	return strings.Join(fields, " ")
 }
