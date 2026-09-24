@@ -322,6 +322,13 @@ struct DesktopHealthSnapshotV1: Codable, Sendable {
     let checks: [DesktopHealthCheckV1]
 }
 
+enum HealthActionKind: String, Codable, Sendable {
+    case diagnose
+    case retry
+    case synchronizeInventory = "synchronize_inventory"
+    case manualPrerequisite = "manual_prerequisite"
+}
+
 struct DesktopHealthCheckV1: Codable, Sendable {
     let name: String
     let status: String
@@ -329,6 +336,11 @@ struct DesktopHealthCheckV1: Codable, Sendable {
     let count: Int?
     let supportedCount: Int?
     let recoveryCommand: String?
+    let resource: String?
+    let reason: String?
+    let actionKind: HealthActionKind?
+    let diagnosticCommand: String?
+    let manualPrerequisite: String?
 
     enum CodingKeys: String, CodingKey {
         case name
@@ -337,6 +349,11 @@ struct DesktopHealthCheckV1: Codable, Sendable {
         case count
         case supportedCount = "supported_count"
         case recoveryCommand = "recovery_command"
+        case resource
+        case reason
+        case actionKind = "action_kind"
+        case diagnosticCommand = "diagnostic_command"
+        case manualPrerequisite = "manual_prerequisite"
     }
 }
 
@@ -411,7 +428,7 @@ func verifyFixture(at path: String) throws -> DesktopWireEnvelopeV1 {
               !envelope.data.provider.available, !envelope.data.usage.available,
               !envelope.data.sessions.available, envelope.data.health.available,
               envelope.warnings.contains("sessions_unavailable"),
-              schema?.count == 99, schema?.supportedCount == 23,
+              schema?.count == 99, schema?.supportedCount == 30,
               schema?.recoveryCommand == nil, hook?.count == 2,
               hook?.supportedCount == nil, hook?.recoveryCommand == nil
         else { throw DesktopWireError.invalidEnvelope("invalid schema-ahead fixture") }

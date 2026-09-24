@@ -998,6 +998,13 @@ public struct DesktopHealthSnapshotV1: Codable, Equatable, Sendable {
     public let checks: [DesktopHealthCheckV1]
 }
 
+public enum HealthActionKind: String, Codable, Equatable, Sendable {
+    case diagnose
+    case retry
+    case synchronizeInventory = "synchronize_inventory"
+    case manualPrerequisite = "manual_prerequisite"
+}
+
 public struct DesktopHealthCheckV1: Codable, Equatable, Sendable {
     public let name: String
     public let status: String
@@ -1005,6 +1012,32 @@ public struct DesktopHealthCheckV1: Codable, Equatable, Sendable {
     public let count: Int?
     public let supportedCount: Int?
     public let recoveryCommand: String?
+    public let resource: String?
+    public let reason: String?
+    public let actionKind: HealthActionKind?
+    public let diagnosticCommand: String?
+    public let manualPrerequisite: String?
+
+    public static let validResources: Set<String> = [
+        "state", "scan", "extension_inventory", "unknown"
+    ]
+
+    public static let validReasons: Set<String> = [
+        "lock_live", "lock_legacy", "lock_owner_unknown", "lock_reclaimable",
+        "extension_state_missing", "extension_discovery_failed", "extension_stale_inventory",
+        "extension_duplicate_id", "extension_managed_drift", "extension_management_anomaly",
+        "extension_native_unavailable", "extension_inventory_unreadable", "extension_fingerprint_update_failed"
+    ]
+
+    public static let validManualPrerequisites: Set<String> = [
+        "prereq_legacy_lock_removal",
+        "prereq_extension_discovery_failed",
+        "prereq_extension_inventory_unreadable",
+        "prereq_extension_duplicate_id",
+        "prereq_extension_managed_drift",
+        "prereq_extension_management_anomaly",
+        "prereq_extension_native_unavailable"
+    ]
 
     enum CodingKeys: String, CodingKey {
         case name
@@ -1013,6 +1046,107 @@ public struct DesktopHealthCheckV1: Codable, Equatable, Sendable {
         case count
         case supportedCount = "supported_count"
         case recoveryCommand = "recovery_command"
+        case resource
+        case reason
+        case actionKind = "action_kind"
+        case diagnosticCommand = "diagnostic_command"
+        case manualPrerequisite = "manual_prerequisite"
+    }
+
+    public init(
+        name: String,
+        status: String,
+        code: String? = nil,
+        count: Int? = nil,
+        supportedCount: Int? = nil,
+        recoveryCommand: String? = nil,
+        resource: String? = nil,
+        reason: String? = nil,
+        actionKind: HealthActionKind? = nil,
+        diagnosticCommand: String? = nil,
+        manualPrerequisite: String? = nil
+    ) {
+        self.name = name
+        self.status = status
+        self.code = code
+        self.count = count
+        self.supportedCount = supportedCount
+        self.recoveryCommand = recoveryCommand
+        self.resource = resource
+        self.reason = reason
+        self.actionKind = actionKind
+        self.diagnosticCommand = diagnosticCommand
+        self.manualPrerequisite = manualPrerequisite
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.name = try container.decode(String.self, forKey: .name)
+        let decodedStatus = try container.decode(String.self, forKey: .status)
+        self.code = try container.decodeIfPresent(String.self, forKey: .code)
+        self.count = try container.decodeIfPresent(Int.self, forKey: .count)
+        self.supportedCount = try container.decodeIfPresent(Int.self, forKey: .supportedCount)
+        let decodedRecovery = try container.decodeIfPresent(String.self, forKey: .recoveryCommand)
+        let decodedResource = try container.decodeIfPresent(String.self, forKey: .resource)
+        let decodedReason = try container.decodeIfPresent(String.self, forKey: .reason)
+        let decodedActionKindRaw = try container.decodeIfPresent(String.self, forKey: .actionKind)
+        self.diagnosticCommand = try container.decodeIfPresent(String.self, forKey: .diagnosticCommand)
+        let decodedManualPrereq = try container.decodeIfPresent(String.self, forKey: .manualPrerequisite)
+
+        if let prereq = decodedManualPrereq, Self.validManualPrerequisites.contains(prereq) {
+            self.manualPrerequisite = prereq
+        } else {
+            self.manualPrerequisite = nil
+        }
+
+        var failClosed = false
+        if let res = decodedResource {
+            if !Self.validResources.contains(res) {
+                failClosed = true
+            }
+        }
+        if let reas = decodedReason {
+            if !Self.validReasons.contains(reas) {
+                failClosed = true
+            }
+        }
+        var parsedActionKind: HealthActionKind? = nil
+        if let actRaw = decodedActionKindRaw {
+            if let parsed = HealthActionKind(rawValue: actRaw) {
+                parsedActionKind = parsed
+            } else {
+                failClosed = true
+            }
+        }
+
+        if failClosed {
+            self.status = "warning"
+            self.actionKind = nil
+            self.recoveryCommand = nil
+            self.resource = decodedResource
+            self.reason = decodedReason
+        } else {
+            self.status = decodedStatus
+            self.actionKind = parsedActionKind
+            self.recoveryCommand = decodedRecovery
+            self.resource = decodedResource
+            self.reason = decodedReason
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(name, forKey: .name)
+        try container.encode(status, forKey: .status)
+        try container.encodeIfPresent(code, forKey: .code)
+        try container.encodeIfPresent(count, forKey: .count)
+        try container.encodeIfPresent(supportedCount, forKey: .supportedCount)
+        try container.encodeIfPresent(recoveryCommand, forKey: .recoveryCommand)
+        try container.encodeIfPresent(resource, forKey: .resource)
+        try container.encodeIfPresent(reason, forKey: .reason)
+        try container.encodeIfPresent(actionKind?.rawValue, forKey: .actionKind)
+        try container.encodeIfPresent(diagnosticCommand, forKey: .diagnosticCommand)
+        try container.encodeIfPresent(manualPrerequisite, forKey: .manualPrerequisite)
     }
 }
 

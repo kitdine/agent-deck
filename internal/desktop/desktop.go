@@ -216,12 +216,17 @@ type HealthSnapshot struct {
 }
 
 type HealthCheck struct {
-	Name           string `json:"name"`
-	Status         string `json:"status"`
-	Code           string `json:"code,omitempty"`
-	Count          int    `json:"count,omitempty"`
-	SupportedCount int    `json:"supported_count,omitempty"`
-	Recovery       string `json:"recovery_command,omitempty"`
+	Name               string  `json:"name"`
+	Status             string  `json:"status"`
+	Code               string  `json:"code,omitempty"`
+	Count              int     `json:"count,omitempty"`
+	SupportedCount     int     `json:"supported_count,omitempty"`
+	Recovery           string  `json:"recovery_command,omitempty"`
+	Resource           *string `json:"resource,omitempty"`
+	Reason             *string `json:"reason,omitempty"`
+	ActionKind         *string `json:"action_kind,omitempty"`
+	DiagnosticCommand  *string `json:"diagnostic_command,omitempty"`
+	ManualPrerequisite *string `json:"manual_prerequisite,omitempty"`
 }
 
 type Service struct {
@@ -885,10 +890,31 @@ func (s Service) loadHealth(ctx context.Context, result *Result) {
 func healthSnapshot(report doctor.Report) HealthSnapshot {
 	checks := make([]HealthCheck, 0, len(report.Checks))
 	for _, check := range report.Checks {
-		checks = append(checks, HealthCheck{
+		hc := HealthCheck{
 			Name: check.Name, Status: check.Status, Code: check.Code,
 			Count: check.Count, SupportedCount: check.SupportedCount, Recovery: check.Recovery,
-		})
+		}
+		if check.Resource != "" {
+			res := check.Resource
+			hc.Resource = &res
+		}
+		if check.Reason != "" {
+			reason := check.Reason
+			hc.Reason = &reason
+		}
+		if check.ActionKind != "" && check.ActionKind != "null" {
+			actionKind := string(check.ActionKind)
+			hc.ActionKind = &actionKind
+		}
+		if check.DiagnosticCommand != "" {
+			diag := check.DiagnosticCommand
+			hc.DiagnosticCommand = &diag
+		}
+		if check.ManualPrerequisite != "" {
+			prereq := check.ManualPrerequisite
+			hc.ManualPrerequisite = &prereq
+		}
+		checks = append(checks, hc)
 	}
 	return HealthSnapshot{
 		Available: true, Status: report.Status, Healthy: report.Healthy,
