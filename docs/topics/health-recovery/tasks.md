@@ -92,7 +92,7 @@ or conflicting contracts. Reconciliation is complete and verified.
 
 | Task | Dev | Review |
 | --- | --- | --- |
-| 1. `lock-recovery-foundation` | [ ] | [ ] |
+| 1. `lock-recovery-foundation` | [x] | [x] |
 | 2. `extension-inventory-recovery` | [ ] | [ ] |
 | 3. `desktop-wire-and-shared-contracts` | [ ] | [ ] |
 | 4. `menubar-health-presentation` | [ ] | [ ] |
@@ -149,6 +149,10 @@ reclassification, doctor read-only lock checks for both `state.lock` and
 - `cmd/agentdeck/quota.go` is touched only to document/verify that
   `runDesktopQuotaRefresh` continues to return plain `ErrStateBusy`, yielding
   `resource: unknown`.
+- `desktop/fixtures/v1/*` and
+  `cmd/agentdeck/testdata/snapshot-performance/synthetic-snapshot.json` for
+  canonical producer output fixture updates reflecting the additive `scan_lock`
+  row.
 
 **Required result**
 

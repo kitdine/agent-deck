@@ -1961,3 +1961,172 @@ func TestSetSettingsRollsBackTheWholeBatchWhenALaterKeyFails(t *testing.T) {
 		}
 	}
 }
+
+func TestClassifyLockMatrix(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "test.lock")
+	modernToken := fmt.Sprintf("v1:%d:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", os.Getpid())
+
+	// 1. Absent file
+	reason, err := ClassifyLock(path, nil)
+	if !errors.Is(err, fs.ErrNotExist) || reason != "" {
+		t.Fatalf("absent file = (%v, %v), want ('', ErrNotExist)", reason, err)
+	}
+
+	// 2. Legacy / corrupted tokens
+	for _, legacyToken := range []string{
+		"",
+		"legacy-nonce",
+		"v0:1234:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		"v1:notanint:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		"v1:1234:shorthex",
+		"v1:1234:nothex-zzzzzzzzzzzzzzzzzzzzzzzz",
+	} {
+		if err := os.WriteFile(path, []byte(legacyToken), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		// Ensure age is far in past - age must not change classification
+		oldTime := time.Now().Add(-24 * time.Hour)
+		_ = os.Chtimes(path, oldTime, oldTime)
+		reason, err = ClassifyLock(path, nil)
+		if err != nil || reason != LockReasonLegacy {
+			t.Fatalf("token %q = (%v, %v), want (lock_legacy, nil)", legacyToken, reason, err)
+		}
+	}
+
+	// 3. Modern token with injected processAlive
+	if err := os.WriteFile(path, []byte(modernToken), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Live
+	reason, err = ClassifyLock(path, func(int) (bool, bool) { return true, true })
+	if err != nil || reason != LockReasonLive {
+		t.Fatalf("live check = (%v, %v), want (lock_live, nil)", reason, err)
+	}
+
+	// Reclaimable
+	reason, err = ClassifyLock(path, func(int) (bool, bool) { return false, true })
+	if err != nil || reason != LockReasonReclaimable {
+		t.Fatalf("dead check = (%v, %v), want (lock_reclaimable, nil)", reason, err)
+	}
+
+	// Unknown
+	reason, err = ClassifyLock(path, func(int) (bool, bool) { return false, false })
+	if err != nil || reason != LockReasonOwnerUnknown {
+		t.Fatalf("unknown check = (%v, %v), want (lock_owner_unknown, nil)", reason, err)
+	}
+
+	// 4. Unreadable file (permission error)
+	if err := os.Chmod(path, 0000); err == nil {
+		reason, err = ClassifyLock(path, nil)
+		_ = os.Chmod(path, 0o600)
+		if err != nil || reason != LockReasonOwnerUnknown {
+			t.Fatalf("unreadable file = (%v, %v), want (lock_owner_unknown, nil)", reason, err)
+		}
+	}
+}
+
+func TestAcquireLockReturnsErrLockContention(t *testing.T) {
+	root := t.TempDir()
+	ctx := context.Background()
+	lock, err := AcquireLock(ctx, root, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lock.Release()
+
+	_, err = AcquireLock(ctx, root, 0)
+	if err == nil {
+		t.Fatal("expected error on busy lock, got nil")
+	}
+	if !errors.Is(err, ErrStateBusy) {
+		t.Fatalf("expected errors.Is(err, ErrStateBusy), got %v", err)
+	}
+	var contention *ErrLockContention
+	if !errors.As(err, &contention) {
+		t.Fatalf("expected errors.As(err, &contention), got %v", err)
+	}
+	if contention.Resource != "state" {
+		t.Fatalf("contention.Resource = %q, want 'state'", contention.Resource)
+	}
+	if contention.Reason != string(LockReasonLive) {
+		t.Fatalf("contention.Reason = %q, want 'lock_live'", contention.Reason)
+	}
+	if contention.ActionKind == nil || *contention.ActionKind != "retry" {
+		t.Fatalf("contention.ActionKind = %v, want 'retry'", contention.ActionKind)
+	}
+	if contention.RecoveryCommand != nil {
+		t.Fatalf("contention.RecoveryCommand = %v, want nil", contention.RecoveryCommand)
+	}
+}
+
+func TestAcquireScanLockReturnsErrLockContention(t *testing.T) {
+	root := t.TempDir()
+	ctx := context.Background()
+	scanPath := filepath.Join(root, "scan.lock")
+	if err := os.WriteFile(scanPath, []byte("legacy-token"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := AcquireScanLock(ctx, root, 0)
+	if err == nil {
+		t.Fatal("expected error on busy scan lock, got nil")
+	}
+	if !errors.Is(err, ErrStateBusy) {
+		t.Fatalf("expected errors.Is(err, ErrStateBusy), got %v", err)
+	}
+	var contention *ErrLockContention
+	if !errors.As(err, &contention) {
+		t.Fatalf("expected errors.As(err, &contention), got %v", err)
+	}
+	if contention.Resource != "scan" {
+		t.Fatalf("contention.Resource = %q, want 'scan'", contention.Resource)
+	}
+	if contention.Reason != string(LockReasonLegacy) {
+		t.Fatalf("contention.Reason = %q, want 'lock_legacy'", contention.Reason)
+	}
+	if contention.ActionKind == nil || *contention.ActionKind != "manual_prerequisite" {
+		t.Fatalf("contention.ActionKind = %v, want 'manual_prerequisite'", contention.ActionKind)
+	}
+}
+
+func TestAcquireQuotaRefreshLockReturnsPlainErrStateBusy(t *testing.T) {
+	root := t.TempDir()
+	ctx := context.Background()
+	lock, err := AcquireQuotaRefreshLock(ctx, root, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lock.Release()
+
+	_, err = AcquireQuotaRefreshLock(ctx, root, 0)
+	if err == nil {
+		t.Fatal("expected error on busy quota-refresh lock, got nil")
+	}
+	if !errors.Is(err, ErrStateBusy) {
+		t.Fatalf("expected errors.Is(err, ErrStateBusy), got %v", err)
+	}
+	var contention *ErrLockContention
+	if errors.As(err, &contention) {
+		t.Fatalf("AcquireQuotaRefreshLock must return plain ErrStateBusy, got %v", contention)
+	}
+}
+
+func TestWrapLockContentionFallsBackToOwnerUnknownOnStatRace(t *testing.T) {
+	root := t.TempDir()
+	err := wrapLockContention(root, "state.lock", "state", ErrStateBusy)
+	var contention *ErrLockContention
+	if !errors.As(err, &contention) {
+		t.Fatalf("expected ErrLockContention, got %v", err)
+	}
+	if contention.Resource != "state" {
+		t.Fatalf("contention.Resource = %q, want 'state'", contention.Resource)
+	}
+	if contention.Reason != string(LockReasonOwnerUnknown) {
+		t.Fatalf("contention.Reason = %q, want 'lock_owner_unknown'", contention.Reason)
+	}
+	if contention.ActionKind != nil {
+		t.Fatalf("contention.ActionKind = %v, want nil", contention.ActionKind)
+	}
+}

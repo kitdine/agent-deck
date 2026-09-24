@@ -388,11 +388,81 @@ func execute(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 0
 	}
 	if jsonOutputRequested(args) {
-		_ = json.NewEncoder(stderr).Encode(output.NewError(automationCommandName(command), errorCode(err), err.Error(), time.Now()))
+		envelope := output.NewErrorWithDetails(automationCommandName(command), errorCode(err), errorMessage(err), errorDetails(err), time.Now())
+		_ = json.NewEncoder(stderr).Encode(envelope)
 	} else {
-		_, _ = fmt.Fprintln(stderr, err)
+		renderCommandErrorText(stderr, err)
 	}
 	return errorExitCode(err)
+}
+
+type commandLockErrorDetails struct {
+	Resource        string  `json:"resource"`
+	Reason          string  `json:"reason"`
+	ActionKind      *string `json:"action_kind"`
+	RecoveryCommand *string `json:"recovery_command"`
+}
+
+func errorDetails(err error) any {
+	var contention *store.ErrLockContention
+	if errors.As(err, &contention) {
+		return &commandLockErrorDetails{
+			Resource:        contention.Resource,
+			Reason:          contention.Reason,
+			ActionKind:      contention.ActionKind,
+			RecoveryCommand: contention.RecoveryCommand,
+		}
+	}
+	if errors.Is(err, store.ErrStateBusy) {
+		return map[string]any{
+			"resource": "unknown",
+		}
+	}
+	return nil
+}
+
+func errorMessage(err error) string {
+	var contention *store.ErrLockContention
+	if errors.As(err, &contention) {
+		switch contention.Resource {
+		case "state":
+			return "AgentDeck state is busy."
+		case "scan":
+			return "AgentDeck scan is busy."
+		}
+	}
+	if errors.Is(err, store.ErrStateBusy) {
+		return "AgentDeck is busy."
+	}
+	return err.Error()
+}
+
+func renderCommandErrorText(w io.Writer, err error) {
+	var contention *store.ErrLockContention
+	if errors.As(err, &contention) {
+		switch contention.Resource {
+		case "state":
+			fmt.Fprintln(w, "state_busy: AgentDeck state is busy.")
+			fmt.Fprintln(w, "  resource: state")
+			fmt.Fprintln(w, "  next: Wait for the current state operation to finish, then retry this command.")
+			fmt.Fprintln(w, "  diagnose: agentdeck doctor")
+			return
+		case "scan":
+			fmt.Fprintln(w, "state_busy: AgentDeck scan is busy.")
+			fmt.Fprintln(w, "  resource: scan")
+			fmt.Fprintln(w, "  next: Wait for the current scan to finish, then retry this command.")
+			fmt.Fprintln(w, "  diagnose: agentdeck doctor")
+			return
+		}
+	}
+	if errors.Is(err, store.ErrStateBusy) {
+		fmt.Fprintln(w, "state_busy: AgentDeck is busy.")
+		fmt.Fprintln(w, "  resource: unknown")
+		fmt.Fprintln(w, "  next: Run read-only diagnostics before taking recovery action.")
+		fmt.Fprintln(w, "  diagnose: agentdeck doctor")
+		return
+	}
+	fmt.Fprintln(w, err)
 }
 
 func jsonOutputRequested(args []string) bool {
@@ -4941,6 +5011,40 @@ func renderDoctorText(w io.Writer, report doctor.Report) error {
 		if check.Code == store.ErrSchemaAhead.Code {
 			if _, err := fmt.Fprintln(w, "  recovery: upgrade AgentDeck to open it"); err != nil {
 				return err
+			}
+		} else if check.Name == "state_lock" || check.Name == "scan_lock" {
+			switch check.Reason {
+			case "lock_live":
+				if check.Resource == "scan" {
+					if _, err := fmt.Fprintln(w, "  next: Let the current scan finish, then retry the failed command."); err != nil {
+						return err
+					}
+				} else {
+					if _, err := fmt.Fprintln(w, "  next: Let the current state operation finish, then retry the failed command."); err != nil {
+						return err
+					}
+				}
+			case "lock_legacy":
+				if _, err := fmt.Fprintln(w, "  next: Confirm that no AgentDeck process is using this state directory."); err != nil {
+					return err
+				}
+				lockFile := "state.lock"
+				if check.Resource == "scan" || check.Name == "scan_lock" {
+					lockFile = "scan.lock"
+				}
+				if _, err := fmt.Fprintf(w, "  manual prerequisite: Remove %s only after that confirmation.\n", lockFile); err != nil {
+					return err
+				}
+			case "lock_owner_unknown":
+				if check.Resource == "scan" {
+					if _, err := fmt.Fprintln(w, "  next: Do not remove scan.lock. Stop the owning AgentDeck process through its normal lifecycle or wait and diagnose again."); err != nil {
+						return err
+					}
+				} else {
+					if _, err := fmt.Fprintln(w, "  next: Do not remove state.lock. Stop the owning AgentDeck process through its normal lifecycle or wait and diagnose again."); err != nil {
+						return err
+					}
+				}
 			}
 		} else if check.Recovery != "" {
 			if _, err := fmt.Fprintf(w, "  recovery: %s\n", check.Recovery); err != nil {

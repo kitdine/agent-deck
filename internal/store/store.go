@@ -166,6 +166,46 @@ var (
 	ErrLockLost      = &Error{Code: "lock_lost"}
 )
 
+// LockReason describes the classified state of a lock file.
+type LockReason string
+
+const (
+	LockReasonLive         LockReason = "lock_live"
+	LockReasonLegacy       LockReason = "lock_legacy"
+	LockReasonOwnerUnknown LockReason = "lock_owner_unknown"
+	LockReasonReclaimable  LockReason = "lock_reclaimable"
+)
+
+// ErrLockContention wraps ErrStateBusy when a named lock acquisition times out,
+// carrying typed metadata about the contended resource and lock liveness.
+type ErrLockContention struct {
+	Resource        string
+	Reason          string
+	ActionKind      *string
+	RecoveryCommand *string
+}
+
+func (e *ErrLockContention) Error() string {
+	return fmt.Sprintf("%s: timed out waiting for %s lock", ErrStateBusy.Code, e.Resource)
+}
+
+func (e *ErrLockContention) Unwrap() error {
+	return ErrStateBusy
+}
+
+func lockActionKind(reason string) *string {
+	switch reason {
+	case string(LockReasonLive):
+		s := "retry"
+		return &s
+	case string(LockReasonLegacy):
+		s := "manual_prerequisite"
+		return &s
+	default:
+		return nil
+	}
+}
+
 var lockWait = 5 * time.Second
 
 type Error struct {
@@ -549,13 +589,35 @@ type Lock struct {
 }
 
 func AcquireLock(ctx context.Context, stateRoot string, timeout time.Duration) (*Lock, error) {
-	return acquireNamedLock(ctx, stateRoot, "state.lock", timeout)
+	lock, err := acquireNamedLock(ctx, stateRoot, "state.lock", timeout)
+	if err != nil && errors.Is(err, ErrStateBusy) {
+		return nil, wrapLockContention(stateRoot, "state.lock", "state", err)
+	}
+	return lock, err
 }
 
 // AcquireScanLock serializes foreground scans without blocking state mutations
 // or read commands that use the short-lived state lock.
 func AcquireScanLock(ctx context.Context, stateRoot string, timeout time.Duration) (*Lock, error) {
-	return acquireNamedLock(ctx, stateRoot, "scan.lock", timeout)
+	lock, err := acquireNamedLock(ctx, stateRoot, "scan.lock", timeout)
+	if err != nil && errors.Is(err, ErrStateBusy) {
+		return nil, wrapLockContention(stateRoot, "scan.lock", "scan", err)
+	}
+	return lock, err
+}
+
+func wrapLockContention(stateRoot, name, resource string, baseErr error) error {
+	path := filepath.Join(stateRoot, name)
+	reason, err := ClassifyLock(path, lockProcessAlive)
+	reasonStr := string(reason)
+	if err != nil || reasonStr == "" {
+		reasonStr = string(LockReasonOwnerUnknown)
+	}
+	return &ErrLockContention{
+		Resource:   resource,
+		Reason:     reasonStr,
+		ActionKind: lockActionKind(reasonStr),
+	}
 }
 
 // AcquireQuotaRefreshLock serializes the complete subscription-quota refresh
@@ -576,7 +638,10 @@ func acquireNamedLock(ctx context.Context, stateRoot, name string, timeout time.
 	return acquireNamedLockWithProcessCheck(ctx, stateRoot, name, timeout, lockProcessAlive)
 }
 
-type lockProcessCheck func(int) (alive, known bool)
+// LockProcessCheck determines whether the process with the given PID is alive and known.
+type LockProcessCheck func(int) (alive, known bool)
+
+type lockProcessCheck = LockProcessCheck
 
 func acquireNamedLockWithProcessCheck(ctx context.Context, stateRoot, name string, timeout time.Duration, processAlive lockProcessCheck) (*Lock, error) {
 	return acquireNamedLockWithChecks(ctx, stateRoot, name, timeout, processAlive, tryLockReclaimFile)
@@ -623,6 +688,44 @@ func acquireNamedLockWithChecks(ctx context.Context, stateRoot, name string, tim
 		case <-time.After(min(25*time.Millisecond, time.Until(deadline))):
 		}
 	}
+}
+
+// ClassifyLock inspects the lock file at path without mutating it or holding locks.
+func ClassifyLock(path string, check LockProcessCheck) (LockReason, error) {
+	_, err := os.Stat(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return "", fs.ErrNotExist
+	}
+	if err != nil {
+		return LockReasonOwnerUnknown, nil
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return "", fs.ErrNotExist
+		}
+		return LockReasonOwnerUnknown, nil
+	}
+	defer file.Close()
+	contents, err := io.ReadAll(file)
+	if err != nil {
+		return LockReasonOwnerUnknown, nil
+	}
+	pid, ok := lockOwnerPID(string(contents))
+	if !ok {
+		return LockReasonLegacy, nil
+	}
+	if check == nil {
+		check = lockProcessAlive
+	}
+	alive, known := check(pid)
+	if !known {
+		return LockReasonOwnerUnknown, nil
+	}
+	if alive {
+		return LockReasonLive, nil
+	}
+	return LockReasonReclaimable, nil
 }
 
 func reclaimLockFromDeadProcess(path string, processAlive lockProcessCheck, tryReclaimLock reclaimFileLock) (bool, error) {

@@ -5183,6 +5183,10 @@
           "status": "ok"
         },
         {
+          "name": "scan_lock",
+          "status": "ok"
+        },
+        {
           "name": "schema",
           "status": "ok",
           "count": 30

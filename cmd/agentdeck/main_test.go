@@ -3472,3 +3472,303 @@ func TestHookRefusalLifecycleBothClients(t *testing.T) {
 		})
 	}
 }
+
+func TestLockContentionErrorTextAndJSON(t *testing.T) {
+	ctx := context.Background()
+	state := filepath.Join(t.TempDir(), "state")
+	db, err := store.Open(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	lock, err := store.AcquireLock(ctx, state, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lock.Release()
+
+	var stdout, stderr bytes.Buffer
+	exit := execute([]string{"--state-dir", state, "session", "purge-index"}, bytes.NewReader(nil), &stdout, &stderr)
+	if exit != 1 {
+		t.Fatalf("exit = %d, want 1; stderr = %s", exit, stderr.String())
+	}
+	wantText := "state_busy: AgentDeck state is busy.\n  resource: state\n  next: Wait for the current state operation to finish, then retry this command.\n  diagnose: agentdeck doctor\n"
+	if stderr.String() != wantText {
+		t.Fatalf("text stderr = %q, want %q", stderr.String(), wantText)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	exit = execute([]string{"--state-dir", state, "--format=json", "session", "purge-index"}, bytes.NewReader(nil), &stdout, &stderr)
+	if exit != 1 {
+		t.Fatalf("exit = %d, want 1; stderr = %s", exit, stderr.String())
+	}
+	var env struct {
+		SchemaVersion int `json:"schema_version"`
+		Error         struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+			Details struct {
+				Resource        string  `json:"resource"`
+				Reason          string  `json:"reason"`
+				ActionKind      *string `json:"action_kind"`
+				RecoveryCommand *string `json:"recovery_command"`
+			} `json:"details"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(stderr.Bytes(), &env); err != nil {
+		t.Fatalf("unmarshal json error: %v; output: %s", err, stderr.String())
+	}
+	if env.Error.Code != "state_busy" {
+		t.Fatalf("code = %q, want 'state_busy'", env.Error.Code)
+	}
+	if env.Error.Message != "AgentDeck state is busy." {
+		t.Fatalf("message = %q, want 'AgentDeck state is busy.'", env.Error.Message)
+	}
+	if env.Error.Details.Resource != "state" {
+		t.Fatalf("resource = %q, want 'state'", env.Error.Details.Resource)
+	}
+	if env.Error.Details.Reason != "lock_live" {
+		t.Fatalf("reason = %q, want 'lock_live'", env.Error.Details.Reason)
+	}
+	if env.Error.Details.ActionKind == nil || *env.Error.Details.ActionKind != "retry" {
+		t.Fatalf("action_kind = %v, want 'retry'", env.Error.Details.ActionKind)
+	}
+	if env.Error.Details.RecoveryCommand != nil {
+		t.Fatalf("recovery_command = %v, want nil", env.Error.Details.RecoveryCommand)
+	}
+
+	// Also verify lock_owner_unknown emits action_kind: null
+	unknownContention := &store.ErrLockContention{
+		Resource: "scan",
+		Reason:   "lock_owner_unknown",
+	}
+	unknownDetails := errorDetails(unknownContention)
+	unknownBytes, err := json.Marshal(unknownDetails)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(unknownBytes, []byte(`"action_kind":null`)) {
+		t.Fatalf("expected action_kind:null in JSON, got: %s", string(unknownBytes))
+	}
+}
+
+func TestScanLockContentionErrorTextAndJSON(t *testing.T) {
+	state := filepath.Join(t.TempDir(), "state")
+	if err := os.MkdirAll(state, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(state, "scan.lock"), []byte("legacy-token"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	contentionErr := &store.ErrLockContention{
+		Resource:   "scan",
+		Reason:     "lock_legacy",
+		ActionKind: func() *string { s := "manual_prerequisite"; return &s }(),
+	}
+
+	var stderr bytes.Buffer
+	renderCommandErrorText(&stderr, contentionErr)
+	wantText := "state_busy: AgentDeck scan is busy.\n  resource: scan\n  next: Wait for the current scan to finish, then retry this command.\n  diagnose: agentdeck doctor\n"
+	if stderr.String() != wantText {
+		t.Fatalf("text stderr = %q, want %q", stderr.String(), wantText)
+	}
+
+	details := errorDetails(contentionErr)
+	data, err := json.Marshal(details)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var detailsMap map[string]any
+	if err := json.Unmarshal(data, &detailsMap); err != nil {
+		t.Fatal(err)
+	}
+	if detailsMap["resource"] != "scan" {
+		t.Fatalf("resource = %v, want 'scan'", detailsMap["resource"])
+	}
+	if detailsMap["reason"] != "lock_legacy" {
+		t.Fatalf("reason = %v, want 'lock_legacy'", detailsMap["reason"])
+	}
+	if detailsMap["action_kind"] != "manual_prerequisite" {
+		t.Fatalf("action_kind = %v, want 'manual_prerequisite'", detailsMap["action_kind"])
+	}
+}
+
+func TestQuotaRefreshLockYieldsUnknownResource(t *testing.T) {
+	ctx := context.Background()
+	state := filepath.Join(t.TempDir(), "state")
+	db, err := store.Open(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	lock, err := store.AcquireQuotaRefreshLock(ctx, state, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lock.Release()
+
+	// 1. JSON mode via desktop quota-refresh --manual
+	var stdout, stderr bytes.Buffer
+	exit := execute([]string{"--state-dir", state, "--format=json", "desktop", "quota-refresh", "--manual"}, bytes.NewReader(nil), &stdout, &stderr)
+	if exit != 1 {
+		t.Fatalf("exit = %d, want 1; stderr = %s", exit, stderr.String())
+	}
+	var env struct {
+		Error struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+			Details struct {
+				Resource string `json:"resource"`
+			} `json:"details"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(stderr.Bytes(), &env); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+	if env.Error.Code != "state_busy" {
+		t.Fatalf("code = %q, want 'state_busy'", env.Error.Code)
+	}
+	if env.Error.Message != "AgentDeck is busy." {
+		t.Fatalf("message = %q, want 'AgentDeck is busy.'", env.Error.Message)
+	}
+	if env.Error.Details.Resource != "unknown" {
+		t.Fatalf("resource = %q, want 'unknown'", env.Error.Details.Resource)
+	}
+	if bytes.Contains(stderr.Bytes(), []byte("action_kind")) || bytes.Contains(stderr.Bytes(), []byte("reason")) {
+		t.Fatalf("expected reason and action_kind omitted for unknown resource, got: %s", stderr.String())
+	}
+
+	// 2. Text mode test of renderCommandErrorText with unclassified ErrStateBusy
+	stderr.Reset()
+	renderCommandErrorText(&stderr, store.ErrStateBusy)
+	wantText := "state_busy: AgentDeck is busy.\n  resource: unknown\n  next: Run read-only diagnostics before taking recovery action.\n  diagnose: agentdeck doctor\n"
+	if stderr.String() != wantText {
+		t.Fatalf("text stderr = %q, want %q", stderr.String(), wantText)
+	}
+}
+
+func TestSchemaAheadPrecedenceOverStateBusy(t *testing.T) {
+	ctx := context.Background()
+	state := filepath.Join(t.TempDir(), "state")
+	if err := os.MkdirAll(state, 0700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(state, "agentdeck.sqlite3")
+	database, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = database.ExecContext(ctx, "CREATE TABLE schema_metadata (singleton INTEGER PRIMARY KEY CHECK(singleton = 1), version INTEGER NOT NULL CHECK(version >= 0)); INSERT INTO schema_metadata(singleton, version) VALUES (1, ?)", store.CurrentSchemaVersion+1); err != nil {
+		database.Close()
+		t.Fatal(err)
+	}
+	if err = database.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	lock, err := store.AcquireLock(ctx, state, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lock.Release()
+
+	var stdout, stderr bytes.Buffer
+	exit := execute([]string{"--state-dir", state, "--format=json", "provider", "list"}, bytes.NewReader(nil), &stdout, &stderr)
+	if exit != 1 {
+		t.Fatalf("exit = %d, want 1; stderr = %s", exit, stderr.String())
+	}
+	var env struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(stderr.Bytes(), &env); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+	if env.Error.Code != "schema_ahead" {
+		t.Fatalf("code = %q, want 'schema_ahead'", env.Error.Code)
+	}
+}
+
+func TestRenderDoctorTextLockLines(t *testing.T) {
+	cases := []struct {
+		name     string
+		check    doctor.Check
+		wantSub  []string
+		avoidSub []string
+	}{
+		{
+			name:    "state_lock live",
+			check:   doctor.Check{Name: "state_lock", Status: "warning", Code: "lock_live", Resource: "state", Reason: "lock_live", ActionKind: "retry"},
+			wantSub: []string{"state_lock: warning (lock_live)", "next: Let the current state operation finish, then retry the failed command."},
+		},
+		{
+			name:    "scan_lock live",
+			check:   doctor.Check{Name: "scan_lock", Status: "warning", Code: "lock_live", Resource: "scan", Reason: "lock_live", ActionKind: "retry"},
+			wantSub: []string{"scan_lock: warning (lock_live)", "next: Let the current scan finish, then retry the failed command."},
+		},
+		{
+			name:    "state_lock legacy",
+			check:   doctor.Check{Name: "state_lock", Status: "warning", Code: "lock_legacy", Resource: "state", Reason: "lock_legacy", ActionKind: "manual_prerequisite", ManualPrerequisite: "prereq_legacy_lock_removal"},
+			wantSub: []string{"state_lock: warning (lock_legacy)", "next: Confirm that no AgentDeck process is using this state directory.", "manual prerequisite: Remove state.lock only after that confirmation."},
+		},
+		{
+			name:     "scan_lock legacy",
+			check:    doctor.Check{Name: "scan_lock", Status: "warning", Code: "lock_legacy", Resource: "scan", Reason: "lock_legacy", ActionKind: "manual_prerequisite", ManualPrerequisite: "prereq_legacy_lock_removal"},
+			wantSub:  []string{"scan_lock: warning (lock_legacy)", "next: Confirm that no AgentDeck process is using this state directory.", "manual prerequisite: Remove scan.lock only after that confirmation."},
+			avoidSub: []string{"Remove state.lock"},
+		},
+		{
+			name:    "state_lock owner_unknown",
+			check:   doctor.Check{Name: "state_lock", Status: "warning", Code: "lock_owner_unknown", Resource: "state", Reason: "lock_owner_unknown", ActionKind: "null"},
+			wantSub: []string{"state_lock: warning (lock_owner_unknown)", "next: Do not remove state.lock. Stop the owning AgentDeck process through its normal lifecycle or wait and diagnose again."},
+		},
+		{
+			name:    "scan_lock owner_unknown",
+			check:   doctor.Check{Name: "scan_lock", Status: "warning", Code: "lock_owner_unknown", Resource: "scan", Reason: "lock_owner_unknown", ActionKind: "null"},
+			wantSub: []string{"scan_lock: warning (lock_owner_unknown)", "next: Do not remove scan.lock. Stop the owning AgentDeck process through its normal lifecycle or wait and diagnose again."},
+		},
+		{
+			name:     "state_lock reclaimable ok",
+			check:    doctor.Check{Name: "state_lock", Status: "ok", Code: "lock_reclaimable", Resource: "state", Reason: "lock_reclaimable"},
+			wantSub:  []string{"state_lock: ok (lock_reclaimable)"},
+			avoidSub: []string{"next:", "manual prerequisite:"},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			report := doctor.Report{
+				Status:   "healthy",
+				Mode:     "quick",
+				Checks:   []doctor.Check{tc.check},
+				Problems: 0,
+				Warnings: 0,
+				Errors:   0,
+			}
+			var buf bytes.Buffer
+			if err := renderDoctorText(&buf, report); err != nil {
+				t.Fatal(err)
+			}
+			out := buf.String()
+			for _, want := range tc.wantSub {
+				if !strings.Contains(out, want) {
+					t.Fatalf("renderDoctorText missing %q; got:\n%s", want, out)
+				}
+			}
+			for _, avoid := range tc.avoidSub {
+				if strings.Contains(out, avoid) {
+					t.Fatalf("renderDoctorText unexpectedly contains %q; got:\n%s", avoid, out)
+				}
+			}
+		})
+	}
+}

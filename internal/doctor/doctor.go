@@ -3,6 +3,7 @@ package doctor
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -22,12 +23,26 @@ import (
 )
 
 type Check struct {
-	Name           string `json:"name"`
-	Status         string `json:"status"`
-	Code           string `json:"code,omitempty"`
-	Count          int    `json:"count,omitempty"`
-	SupportedCount int    `json:"supported_count,omitempty"`
-	Recovery       string `json:"recovery_command,omitempty"`
+	Name               string     `json:"name"`
+	Status             string     `json:"status"`
+	Code               string     `json:"code,omitempty"`
+	Count              int        `json:"count,omitempty"`
+	SupportedCount     int        `json:"supported_count,omitempty"`
+	Recovery           string     `json:"recovery_command,omitempty"`
+	Resource           string     `json:"resource,omitempty"`
+	Reason             string     `json:"reason,omitempty"`
+	ActionKind         ActionKind `json:"action_kind,omitempty"`
+	DiagnosticCommand  string     `json:"diagnostic_command,omitempty"`
+	ManualPrerequisite string     `json:"manual_prerequisite,omitempty"`
+}
+
+type ActionKind string
+
+func (a ActionKind) MarshalJSON() ([]byte, error) {
+	if a == "null" {
+		return []byte("null"), nil
+	}
+	return json.Marshal(string(a))
 }
 
 type Report struct {
@@ -42,11 +57,12 @@ type Report struct {
 }
 
 type Service struct {
-	StateRoot string
-	Home      string
-	Workdir   string
-	Vault     provider.CredentialVault
-	Now       func() time.Time
+	StateRoot        string
+	Home             string
+	Workdir          string
+	Vault            provider.CredentialVault
+	Now              func() time.Time
+	LockProcessCheck store.LockProcessCheck
 }
 
 func (s Service) Check(ctx context.Context, full bool) (Report, error) {
@@ -209,24 +225,63 @@ func (s Service) checkProjectAttributionGate(
 }
 
 func (s Service) checkLock(report *Report) {
-	info, err := os.Stat(filepath.Join(s.StateRoot, "state.lock"))
+	s.checkNamedLock(report, "state_lock", "state.lock", "state")
+	s.checkNamedLock(report, "scan_lock", "scan.lock", "scan")
+}
+
+func (s Service) checkNamedLock(report *Report, checkName, fileName, resource string) {
+	path := filepath.Join(s.StateRoot, fileName)
+	reason, err := store.ClassifyLock(path, s.LockProcessCheck)
 	if errors.Is(err, fs.ErrNotExist) {
-		report.add(Check{Name: "state_lock", Status: "ok"})
+		report.add(Check{Name: checkName, Status: "ok"})
 		return
 	}
-	if err != nil {
-		report.add(Check{Name: "state_lock", Status: "warning", Code: "lock_unreadable"})
-		return
+	switch reason {
+	case store.LockReasonLive:
+		report.add(Check{
+			Name:       checkName,
+			Status:     "warning",
+			Code:       string(reason),
+			Resource:   resource,
+			Reason:     string(reason),
+			ActionKind: "retry",
+		})
+	case store.LockReasonLegacy:
+		report.add(Check{
+			Name:               checkName,
+			Status:             "warning",
+			Code:               string(reason),
+			Resource:           resource,
+			Reason:             string(reason),
+			ActionKind:         "manual_prerequisite",
+			ManualPrerequisite: "prereq_legacy_lock_removal",
+		})
+	case store.LockReasonOwnerUnknown:
+		report.add(Check{
+			Name:       checkName,
+			Status:     "warning",
+			Code:       string(reason),
+			Resource:   resource,
+			Reason:     string(reason),
+			ActionKind: "null",
+		})
+	case store.LockReasonReclaimable:
+		report.add(Check{
+			Name:     checkName,
+			Status:   "ok",
+			Code:     string(reason),
+			Resource: resource,
+			Reason:   string(reason),
+		})
+	default:
+		report.add(Check{
+			Name:     checkName,
+			Status:   "warning",
+			Code:     string(store.LockReasonOwnerUnknown),
+			Resource: resource,
+			Reason:   string(store.LockReasonOwnerUnknown),
+		})
 	}
-	now := time.Now
-	if s.Now != nil {
-		now = s.Now
-	}
-	if now().Sub(info.ModTime()) > 10*time.Minute {
-		report.add(Check{Name: "state_lock", Status: "warning", Code: "stale_lock"})
-		return
-	}
-	report.add(Check{Name: "state_lock", Status: "warning", Code: "state_busy"})
 }
 
 func (s Service) checkProviders(ctx context.Context, database *store.Store, report *Report, full bool) error {
