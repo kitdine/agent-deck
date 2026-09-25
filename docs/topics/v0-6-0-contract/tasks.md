@@ -210,15 +210,21 @@ source review passed; its record and topic handoff were delivered by signed
 docs-only commit `543d074d9b97d62050a5ad8b36e75c373c33c9ee` / tree
 `43d9fb2b7231f52b90001853db4e448bee364d91`. Its five-criterion topic
 gate is VERIFIED for that immutable ContentState recorded on the WorkUnit.
-The old `3e7ab8b` gate is not relabeled.
+Round 7 batch documentation was delivered by signed commit
+`032d867994339a297e9d562935eba66f7c618f5f` / tree
+`9bc339cd58906bf8b2321cf7e44f5c85be64e353` and pushed as the current
+source branch head. The old `3e7ab8b` gate is not relabeled.
 
 The actual remote target is `origin/main`
-`a396c2f2158f579e70da3aaf9bd0bff084fc1f1a` / tree
-`0372bc4a929a62b7b26e73f6c8307f7704169a53`, which is the source merge
-base and ancestor. This local reference class is direct fast-forward with no
-target-only product change or textual conflict. Local `main` also has the
-separate, protected-branch rule commit `e84ce1f` that is not on remote main;
-do not treat it as integrated, and refresh the target comparison if it lands.
+`6aafb5a5ae9500896b79aa5ddeee2e420bfa9d13` / tree
+`47b7e3f6262845e42803c1130a404cd7c26e3202`. Its PR #8 merge parents
+are the prior target `a396c2f` and the signed rule commit `e84ce1f`; the result
+tree equals the rule commit tree. The current target and source share merge base
+`a396c2f`. Only `.agent-instructions/beads.md` and `project-rules.md` changed
+on the target side, with no overlapping committed source paths. The class is
+clean three-way with no textual conflict, not the earlier fast-forward class.
+These actor/trailer instructions do not change the health runtime or tests;
+refresh the target comparison again if remote main advances before delivery.
 
 This batch adds cause-specific lock and extension diagnosis, explicit bounded
 inventory synchronization, additive Go/Swift desktop wire and bilingual
@@ -229,11 +235,11 @@ order remains BLOCKED/no-waiver, and real installed-client observation remains
 SIMULATED; neither is a technical PASS.
 
 `v0-6-0-contract:integration:health-recovery` is the batch WorkUnit. Round 7
-independent integration review passed; its two required criteria are queried
-for each exact source/status candidate, with the current target on the WorkUnit.
-The source-record commit changes no product or tests. No batch integration
-commit, push, PR, merge, retirement, contract closure or release has been
-performed. Aggregate `assemble` remains open for this batch and cost transparency.
+independent integration review passed against the former target; the main-only
+rule change receives a scoped impact assessment and new exact-target evidence
+before PR delivery. Its current target is recorded on the WorkUnit. No PR,
+feature merge, retirement, contract closure or release has been performed.
+Aggregate `assemble` remains open for this batch and cost transparency.
 
 ### Historical fourth batch candidate — desktop-refresh — 2026-09-20
 

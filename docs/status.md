@@ -187,9 +187,9 @@ Main contains four assembled areas: schema-version-signal,
 snapshot-performance, subscription-quota and desktop-refresh. `health-recovery`
 is the fifth direct-to-main integration candidate at signed product source
 `6c15672` with Round 2 source-record delivery `543d074`; its topic acceptance
-gate is VERIFIED for that immutable review/status commit, and
-Round 7 integration review and its exact candidate gate passed; PR delivery
-and merge remain separate. Cost transparency
+gate is VERIFIED for that immutable review/status commit. Round 7 integration
+review passed, and its target-specific gate is recorded on the WorkUnit after
+the protected main update; PR delivery and merge remain separate. Cost transparency
 remains selected but has no delivered topic. Aggregate assembly and version
 closure remain open.
 
@@ -200,7 +200,7 @@ closure remain open.
 | [Snapshot Performance](topics/snapshot-performance/tasks.md) | `v0.6.0` | Second assembly batch — integrated through PR #4 at main `4dd10f4`; 6/6 documents and 3/3 tasks remain reviewed and delivered. Cold-import and unchanged-refresh CPU targets, the final 20-sample campaign, V01-V19 completeness and manual/native checks retain their explicit accepted-exception status; they are not reported as technical passes. Retirement and release remain separate. | One shared scan runtime, reusable snapshot computation and truthful CLI/menu-bar progress with preserved failure and scope semantics. |
 | [Subscription Quota](topics/subscription-quota/tasks.md) | `v0.6.0` | Third assembly batch — integrated through PR #5 at current main `7f84749`; seven Tasks remain reviewed and delivered, and the merge-result integration gate is VERIFIED 2/2. The fail-closed hosted-XCTest HOME boundary remains part of the delivered result; deferred P2 carriers are planning dispositions, not technical resolutions. Retirement and release remain separate. | Codex and Claude account discovery, bounded quota/reset snapshots, menu-bar and Settings presentation, reminders and truthful unavailable-field handling. |
 | [Desktop Refresh](topics/desktop-refresh/tasks.md) | `v0.6.0` | Fourth assembly batch — integrated through PR #6 at main `4bc0756` with merge-result gate VERIFIED 2/2. Real timing, installed Widget callbacks/intents, sleep/wake and accessibility/gallery observations remain BLOCKED with no waiver; retirement and release remain separate. | Completion-driven app refresh, bounded Widget loading, truthful aging/failure/recovery presentation, semantic targeted reload and 3–5 minute Widget timeline requests. |
-| [Health Recovery](topics/health-recovery/tasks.md) | `v0.6.0` | Fifth assembly batch candidate — 5/5 Tasks delivered; signed PR repair `6c15672` passed independent Round 2 review, delivered in source-record commit `543d074` with immutable topic gate VERIFIED 5/5. Remote main `a396c2f` is its merge base and ancestor. Round 7 integration review passed; its exact gate is rebound per candidate, while batch commit, PR and merge remain pending. Real VoiceOver remains BLOCKED/no-waiver; real-client observation remains SIMULATED. | Cause-specific lock and extension health diagnosis, safe recovery actions, additive desktop wire and bilingual menu-bar presentation. |
+| [Health Recovery](topics/health-recovery/tasks.md) | `v0.6.0` | Fifth assembly batch candidate — 5/5 Tasks delivered; signed PR repair `6c15672` passed independent Round 2 review, delivered in source-record commit `543d074` with immutable topic gate VERIFIED 5/5. Current remote main `6aafb5a` and source checkpoint `032d867` share base `a396c2f`; the main-only actor-rule change makes this a clean three-way candidate. Round 7 integration review passed, with target-specific evidence tracked on its WorkUnit; PR and merge remain pending. Real VoiceOver remains BLOCKED/no-waiver; real-client observation remains SIMULATED. | Cause-specific lock and extension health diagnosis, safe recovery actions, additive desktop wire and bilingual menu-bar presentation. |
 
 #### Retired into `v0.5.0`
 

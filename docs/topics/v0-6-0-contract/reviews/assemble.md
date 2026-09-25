@@ -751,3 +751,24 @@ tree `43d9fb2b7231f52b90001853db4e448bee364d91`. It preserves the reviewed
 `6c15672` product and tests; the health-recovery topic gate is VERIFIED 5/5 at
 the immutable source-record ContentState. The integration WorkUnit must bind
 this updated source and the final batch-document blobs before delivery.
+
+### Round 7 target-baseline impact assessment — PR #8
+
+PR #8 merged the signed `e84ce1f` actor-rule commit into remote main as
+`6aafb5a5ae9500896b79aa5ddeee2e420bfa9d13` / tree
+`47b7e3f6262845e42803c1130a404cd7c26e3202`. Its parents are the prior
+reviewed target `a396c2f` and `e84ce1f`; GitHub reports a valid merge
+signature. The source batch checkpoint remains signed `032d867` / tree
+`9bc339cd58906bf8b2321cf7e44f5c85be64e353`.
+
+The new target and source share base `a396c2f`. Target-only committed changes
+are `.agent-instructions/beads.md` and `project-rules.md`; the source commits
+touch neither path, so this is a clean three-way candidate without textual
+conflict. The target-side changes add the Antigravity Beads actor and trailer
+guidance. They do not change the health CLI, Go/Swift wire, tests, dependencies
+or runtime configuration. Round 7 product-interaction findings and native
+limitations remain applicable; its earlier fast-forward classification and
+target-bound evidence are not reused as facts about the new target. A new
+target-specific ContentState and explicit preservation assessment now bind
+this candidate; the integration WorkUnit target is authoritative. Refresh
+that assessment if remote main changes again before PR delivery.
