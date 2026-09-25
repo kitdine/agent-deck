@@ -704,3 +704,50 @@ remote CI/branch protection、PR 与 merge-result identity 尚未产生。两项
 Task checkpoint：ad-v060c-assemble-dev / batch desktop-refresh；content_state=v0-6-0-contract:integration:desktop-refresh:review-r6:78cae14434c5fae66e5a30366a19b349ea427ec099b876596f9db136c2cb5720；gate=VERIFIED；aggregate open。
 提交建议：提交本轮 Round 6 评审记录与同批 `docs/status.md`、contract `tasks.md` 同步；source 产品交付已固定在签名提交 `cc4151b`，不得夹带其他任务或产品改动。
 推送建议：取得独立推送授权并确认 checkpoint commit 的完整 message、贡献者 trailers、SSH 签名与远端目标后，推送 `feature/desktop-refresh`；PR creation 与 feature-to-main merge 仍需各自授权及成功 CI/branch protection。
+
+## Round 7 — 2026-09-25 — health-recovery
+
+## 📋 health-recovery 第五批集成评审
+
+📊 总体评分：9/10
+
+✅ 结论：PASS
+
+### 🔴 严重问题（必须修复）
+
+无。
+
+### 🟡 建议改进（本轮同样必须关闭）
+
+无。
+
+### 🟢 优点
+
+- 目标 `origin/main` 是签名源提交的祖先；批次直接沿用已集成的四个主题，没有目标侧产品改动或手工冲突解决。
+- 源主题的五项 Task 已交付；修复提交 `6c15672` 的独立 Round 2 评审 PASS，主题新候选门禁 VERIFIED 5/5，旧 `3e7ab8b` 证据没有被改写。
+- CLI 的锁分类、schema-ahead 优先级和普通配额锁的 unknown 资源路径保持区分；扩展诊断与显式同步、桌面 wire、Swift 动作校验及菜单栏通知同既有 schema/Hook、刷新和配额消费者兼容。
+
+### 📝 总结
+
+- Reviewed state：目标 `origin/main` `a396c2f2158f579e70da3aaf9bd0bff084fc1f1a` / tree `0372bc4a929a62b7b26e73f6c8307f7704169a53`；源 `feature/health-recovery` 签名 HEAD `6c15672c20ed57a631a7da7e9c7930dc66333fe2` / tree `9af754df84bfac8c376566cf72aa718d985bd4f8`。初始批次候选 ContentState `v0-6-0-contract:integration:health-recovery:candidate:db108ce4c8ebb8eafaec4f67d2689f28dd32ba5bef319a89d0427c117fc93582` 绑定当时的 `docs/status.md` 与 contract `tasks.md` blob；本评审记录和随后的状态同步需要新的最终绑定。
+- Reviewer：冷上下文独立集成审阅者，主代理核对结论。Method：Git 祖先与源/目标变更核查、源主题评审和 CEv1 lineage 对账、受影响运行时消费路径与文档契约交互检查；生产代码、测试和配置只读。Scope：第五批健康恢复集成；成本透明及本地未进入远端的 `main@e84ce1f` 不在本批。
+- Evidence：`git merge-base --is-ancestor origin/main feature/health-recovery` PASS；远端引用回读仍为目标 `a396c2f` 与源 `6c15672`。源主题最终候选 `urn:ce:agent-deck:content-state:health-recovery:topic:pr-repair-review-final:56386979b685f8654ecbad26a7be65d434d8f457fd3dbfb673631bd46e838e47` 门禁 VERIFIED 5/5；同代码状态的全套 Go 和隔离 macOS XCTest 证据复用。`bash scripts/check-topic-docs.sh`、`make check-whitespace`、`git diff --check` PASS；项目没有专用的 health-recovery 集成检查器。
+- Finding disposition：本轮无任务内发现。真实 VoiceOver 顺序仍为 BLOCKED/no-waiver，真实安装客户端观察仍为 SIMULATED；此前桌面刷新和配额的接受限制保留原有归属，不被本批改写。若远端 main 在交付前变化，需重新分类目标与评估交互。
+- Completion gate：VERIFIED（2/2）。CEv1 对本轮初始精确候选的 `integration-readiness` 与 `source-continuity` 均找到目标绑定的 pass evidence；后者显式汇总源主题最终五项证据。门禁结论写入记录后须对最终 review/status blob 再绑定；WorkUnit 的最终目标 ID 是权威。Review PASS 和候选门禁不代替提交、PR 或合并授权。
+
+Task checkpoint：`ad-v060c-assemble-dev` / 第五批 `health-recovery`；内容状态为本轮源 `6c15672`、目标 `a396c2f` 及最终 `docs/status.md`、contract `tasks.md`、本评审记录的精确候选；门禁 VERIFIED 2/2，aggregate 仍开放。
+提交建议：先按独立范围提交源主题 Round 2 评审记录与 `health-recovery/tasks.md`，再提交本批 `docs/status.md`、contract `tasks.md` 与本记录；两次均排除并行的规则和 Hook 改动，检查贡献者、签名及新提交状态的证据绑定。
+推送建议：上述签名提交及各自精确门禁 VERIFIED 后，取得独立推送授权再更新 `origin/feature/health-recovery`；PR 创建与合并仍须分别授权，并在远端 main 变化时重评目标。
+
+### 下一步指令
+
+`提交：v0-6-0-contract / assemble（第五批 health-recovery）`
+
+### Round 7 source-record delivery receipt
+
+The independent source Round 2 record and topic handoff were delivered by
+SSH-signed docs-only commit `543d074d9b97d62050a5ad8b36e75c373c33c9ee` /
+tree `43d9fb2b7231f52b90001853db4e448bee364d91`. It preserves the reviewed
+`6c15672` product and tests; the health-recovery topic gate is VERIFIED 5/5 at
+the immutable source-record ContentState. The integration WorkUnit must bind
+this updated source and the final batch-document blobs before delivery.

@@ -50,13 +50,13 @@ completed feature topic or an approved implementation decomposition.
 | Selected area | Planning carrier | Topic / current readiness |
 | --- | --- | --- |
 | Schema compatibility and Hook failure visibility | `ad-schema-compatibility` | `schema-version-signal`; integrated through PR #3 at main `f2b7d23`, with its reviewed manual acceptance waivers retained |
-| Menu-bar and Widget refresh | `ad-desktop-refresh` | `desktop-refresh`; 5/5 tasks reviewed and delivered at signed source `cc4151b`, with commit-bound Task 5 evidence VERIFIED 5/5 and native acceptance rows retained as BLOCKED/no-waiver; fourth direct-to-main integration candidate |
+| Menu-bar and Widget refresh | `ad-desktop-refresh` | `desktop-refresh`; integrated through PR #6 at main `4bc0756`, with merge-result gate VERIFIED 2/2 and native acceptance retained as BLOCKED/no-waiver |
 | Snapshot performance | `ad-snapshot-performance` | `snapshot-performance`; integrated through PR #4 at main `4dd10f4`, with the reviewed performance and native acceptance exceptions retained |
 | Cost and price transparency | `ad-cost-transparency` | Topic decomposition/delivery pending; distinguish actual-spend and API-equivalent estimates, with separate catalog/model/tier audits |
-| Actionable health recovery | `ad-health-recovery` | Topic decomposition/delivery pending; cause-specific lock guidance and stale extension inventory, retaining the original bug carriers |
+| Actionable health recovery | `ad-health-recovery` | `health-recovery`; 5/5 tasks delivered, signed PR repair `6c15672` independently reviewed in Round 2 with exact candidate topic gate VERIFIED 5/5; fifth integration batch candidate, retaining both origin bugs |
 | Codex/Claude subscription accounts, quota, reset and alerts | `ad-subscription-quota` | `subscription-quota`; integrated through PR #5 at main `7f84749`, with fail-closed hosted-XCTest isolation preserved and deferred P2 dispositions kept explicit |
 
-Bind the two remaining areas to their actual reviewed topics before assembly;
+Bind the one remaining area to its actual reviewed topic before assembly;
 do not invent topic directories or implementation tasks for them in this file.
 If an area yields more than one coherent topic, update this list explicitly.
 Adding, excluding or deferring selected scope requires an explicit operator
@@ -200,7 +200,42 @@ installation remain separate exact-SHA workflows requiring explicit authority.
 
 ## Current handoff
 
-### Fourth batch candidate — desktop-refresh — 2026-09-20
+### Fifth batch candidate — health-recovery — 2026-09-25
+
+`health-recovery` is selected in the reviewed assembly list. Its five Tasks are
+reviewed and delivered; the signed source repair is
+`feature/health-recovery` `6c15672c20ed57a631a7da7e9c7930dc66333fe2` / tree
+`9af754df84bfac8c376566cf72aa718d985bd4f8`. The independent Round 2
+source review passed; its record and topic handoff were delivered by signed
+docs-only commit `543d074d9b97d62050a5ad8b36e75c373c33c9ee` / tree
+`43d9fb2b7231f52b90001853db4e448bee364d91`. Its five-criterion topic
+gate is VERIFIED for that immutable ContentState recorded on the WorkUnit.
+The old `3e7ab8b` gate is not relabeled.
+
+The actual remote target is `origin/main`
+`a396c2f2158f579e70da3aaf9bd0bff084fc1f1a` / tree
+`0372bc4a929a62b7b26e73f6c8307f7704169a53`, which is the source merge
+base and ancestor. This local reference class is direct fast-forward with no
+target-only product change or textual conflict. Local `main` also has the
+separate, protected-branch rule commit `e84ce1f` that is not on remote main;
+do not treat it as integrated, and refresh the target comparison if it lands.
+
+This batch adds cause-specific lock and extension diagnosis, explicit bounded
+inventory synchronization, additive Go/Swift desktop wire and bilingual
+menu-bar copy actions. Integration review must inspect the resulting CLI and
+desktop health contracts against the inherited schema/Hook, refresh and quota
+consumers, despite the ancestry-only merge class. The native VoiceOver reading
+order remains BLOCKED/no-waiver, and real installed-client observation remains
+SIMULATED; neither is a technical PASS.
+
+`v0-6-0-contract:integration:health-recovery` is the batch WorkUnit. Round 7
+independent integration review passed; its two required criteria are queried
+for each exact source/status candidate, with the current target on the WorkUnit.
+The source-record commit changes no product or tests. No batch integration
+commit, push, PR, merge, retirement, contract closure or release has been
+performed. Aggregate `assemble` remains open for this batch and cost transparency.
+
+### Historical fourth batch candidate — desktop-refresh — 2026-09-20
 
 `desktop-refresh` is delivered on `feature/desktop-refresh` at signed commit
 `cc4151bdcae0689dd025da763b2a3b84eab10d54` / tree
