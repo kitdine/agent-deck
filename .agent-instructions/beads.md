@@ -13,13 +13,14 @@ this repository. If that binding is unavailable, resolve the operator's actual
 installation rather than guessing from old Hook output, provisioning a new store,
 or changing services as part of an ordinary task.
 
-Every agent read or write must identify its actor. Use `codex` or `claude-code`;
+Every agent read or write must identify its actor. Use `codex`, `claude-code`, or `antigravity`;
 do not substitute the human operator or fabricate an actor identity.
 
 ```bash
 beads_cli="$HOME/.local/state/agentdeck-beads/bin/agentdeck-bd"
 env BEADS_ACTOR=codex "$beads_cli" ready --label agent-task --json
 env BEADS_ACTOR=claude-code "$beads_cli" list --status in_review --json
+env BEADS_ACTOR=antigravity "$beads_cli" list --status in_review --json
 ```
 
 Use the actor-qualified wrapper for all command examples below. Subcommand names
@@ -235,6 +236,7 @@ contributors to the exact staged scope:
    ```text
    codex       -> Co-Authored-By: Codex <noreply@openai.com>
    claude-code -> Co-Authored-By: Claude <noreply@anthropic.com>
+   antigravity -> Co-Authored-By: Antigravity <noreply@google.com>
    ```
 
    Preserve supported historical attribution. Respect higher-priority runtime
