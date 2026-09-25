@@ -743,8 +743,10 @@ final class MenuBarViewModelTests: XCTestCase {
 			["name": "extensions", "status": "warning", "resource": "extension_inventory", "reason": "extension_stale_inventory", "action_kind": "synchronize_inventory", "recovery_command": "dangerous command"],
 			["name": "extensions", "status": "warning", "resource": "extension_inventory", "reason": "extension_discovery_failed", "action_kind": "manual_prerequisite", "manual_prerequisite": "unknown_key"],
 			["name": "extensions", "status": "warning", "resource": "extension_inventory", "reason": "future_reason", "action_kind": "diagnose", "diagnostic_command": "agentdeck doctor"],
+			["name": "extensions", "status": "warning", "resource": "extension_inventory", "reason": "lock_legacy", "action_kind": "manual_prerequisite", "manual_prerequisite": "prereq_legacy_lock_removal"],
+			["name": "state_lock", "status": "warning", "resource": "extension_inventory", "reason": "extension_stale_inventory", "action_kind": "synchronize_inventory", "recovery_command": "agentdeck extension scan"],
 		]
-		let health: [String: Any] = ["available": true, "status": "warning", "healthy": false, "problems": 3, "warnings": 3, "errors": 0, "checks": checks]
+		let health: [String: Any] = ["available": true, "status": "warning", "healthy": false, "problems": checks.count, "warnings": checks.count, "errors": 0, "checks": checks]
 		let model = await readyModel(envelope: WireFixture.envelope(health: health))
 		XCTAssertTrue(model.healthDetail.rows.allSatisfy { $0.actionContent == nil && $0.actionLabel == nil })
 	}

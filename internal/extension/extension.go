@@ -276,11 +276,18 @@ func DoctorWithDiscoverer(ctx context.Context, db *store.Store, discoverer Exten
 	report.ManagementAnomalies = []string{}
 	report.NativeUnavailable = []string{}
 	currentByID := make(map[string]store.Extension, len(current))
+	nativeUnavailable := make(map[string]struct{})
 	for _, value := range current {
 		if _, exists := currentByID[value.ID]; exists {
 			report.DuplicateIDs = append(report.DuplicateIDs, value.ID)
 		}
 		currentByID[value.ID] = value
+		if len(value.Diagnostics) > 0 {
+			nativeUnavailable[value.ID] = struct{}{}
+		}
+	}
+	for id := range nativeUnavailable {
+		report.NativeUnavailable = append(report.NativeUnavailable, id)
 	}
 	for _, value := range stored {
 		if value.Managed && value.AdoptedFingerprint == "" {
@@ -291,9 +298,7 @@ func DoctorWithDiscoverer(ctx context.Context, db *store.Store, discoverer Exten
 			report.StaleInventory = append(report.StaleInventory, value.ID)
 			continue
 		}
-		if len(live.Diagnostics) > 0 {
-			report.NativeUnavailable = append(report.NativeUnavailable, value.ID)
-		} else if value.Managed && live.Fingerprint != "" && value.AdoptedFingerprint != live.Fingerprint {
+		if len(live.Diagnostics) == 0 && value.Managed && live.Fingerprint != "" && value.AdoptedFingerprint != live.Fingerprint {
 			report.DriftedIDs = append(report.DriftedIDs, value.ID)
 		}
 	}

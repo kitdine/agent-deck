@@ -1495,7 +1495,13 @@ final class MenuBarViewModel {
 	}
 
 	private func healthAction(_ check: DesktopHealthCheckV1) -> (label: String, content: String)? {
-		guard let reason = check.reason, DesktopCopy.healthReasonKeys[reason] != nil else { return nil }
+		guard check.status != "ok", let reason = check.reason, DesktopCopy.healthReasonKeys[reason] != nil else { return nil }
+		if reason.hasPrefix("lock_") {
+			guard (check.name == "state_lock" && check.resource == "state")
+				|| (check.name == "scan_lock" && check.resource == "scan") else { return nil }
+		} else {
+			guard check.name == "extensions", check.resource == "extension_inventory" else { return nil }
+		}
 		switch check.actionKind {
 		case .synchronizeInventory:
 			guard ["extension_stale_inventory", "extension_state_missing"].contains(reason),

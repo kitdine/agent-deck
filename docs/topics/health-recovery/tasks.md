@@ -626,10 +626,15 @@ Task 4. `tasks.md` decomposition Re-review Round 3 passed with every finding
 recorded in [`reviews/tasks.md`](reviews/tasks.md) closed; its document gate is
 VERIFIED and was delivered through its separately authorized Git boundary.
 The five implementation tasks and their Development Gates were created. Tasks
-1–4 now have Dev and Review marked complete in the matrix above; Task 5 is the
-active cross-surface acceptance boundary. Its automated and native evidence is
-classified in the table above. Task 5 Review, Git delivery, topic integration,
-retirement, and release remain separate boundaries.
+1–5 have Dev and Review marked complete in the matrix above. Task 5 passed
+independent Review Round 1 and was delivered by signed commit `3e7ab8b`;
+its task gate and the containing topic acceptance gate were VERIFIED for that
+committed state. The subsequent PR-review repairs form a new candidate and do
+not inherit those gate results. The automated and native evidence for the delivered
+commit is classified in the table above:
+real VoiceOver speech remains BLOCKED without a waiver, and real-client
+observation remains SIMULATED. Topic integration, retirement, and release remain
+separate boundaries.
 
 ## Review boundary
 

@@ -874,6 +874,29 @@ func TestDoctorPriorityHierarchyTableDriven(t *testing.T) {
 	}
 }
 
+func TestDoctorReportsNativeUnavailableBeforeFirstInventoryScan(t *testing.T) {
+	ctx := context.Background()
+	db, err := store.Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	id := "codex:skill:user:unavailable"
+	report, err := DoctorWithDiscoverer(ctx, db, syntheticDiscoverer{
+		values: []store.Extension{{ID: id, Diagnostics: []string{"source_unavailable"}}},
+	}, t.TempDir(), t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Reason != "extension_native_unavailable" || len(report.NativeUnavailable) != 1 || report.NativeUnavailable[0] != id {
+		t.Fatalf("unavailable first discovery = %#v", report)
+	}
+	if report.ActionKind != "manual_prerequisite" || report.RecoveryCommand != nil {
+		t.Fatalf("unsafe first-discovery action = %#v", report)
+	}
+}
+
 func TestUnresolvableNativePathNativeUnavailableResilience(t *testing.T) {
 	root, home, workdir := t.TempDir(), t.TempDir(), t.TempDir()
 	skillPath := filepath.Join(home, ".codex", "skills", "resilient")
