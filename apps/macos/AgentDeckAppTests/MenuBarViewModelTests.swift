@@ -726,7 +726,10 @@ final class MenuBarViewModelTests: XCTestCase {
 		XCTAssertEqual(rows[2].actionContent, "agentdeck extension doctor")
 		XCTAssertEqual(rows[2].effect, t(DesktopCopy.healthEffectIncomplete))
 		XCTAssertEqual(rows[3].actionLabel, t(DesktopCopy.healthCopySafety))
-		XCTAssertFalse(try XCTUnwrap(rows[3].actionContent).contains("rm "))
+		let safety = try XCTUnwrap(rows[3].actionContent)
+		let expectedSafety = try XCTUnwrap(DesktopCopy.healthPrerequisiteKeys["prereq_legacy_lock_removal"])
+		XCTAssertEqual(safety, t(expectedSafety))
+		XCTAssertNil(rows[3].recovery)
 		XCTAssertEqual(model.notices.filter(\.opensHealthDetail).count, 4)
 		let original = model.healthDetail
 		model.copyHealthAction(rows[1])

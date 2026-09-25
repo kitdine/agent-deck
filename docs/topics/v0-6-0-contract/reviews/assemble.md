@@ -772,3 +772,26 @@ target-bound evidence are not reused as facts about the new target. A new
 target-specific ContentState and explicit preservation assessment now bind
 this candidate; the integration WorkUnit target is authoritative. Refresh
 that assessment if remote main changes again before PR delivery.
+
+### PR #9 CI1 repair handoff — 2026-09-25
+
+At signed PR head `e121f6c`, both `verify` jobs passed and both `desktop` jobs
+failed only `MenuBarViewModelTests.testHealthRecoveryActionsAreClassifiedAndCopyDoesNotChangeHealth`
+at line 729. The assertion searched for `"rm "` anywhere in localized safety
+prose; the approved English sentence begins `First confirm ...`, whose
+`confirm ` substring satisfies that search. The observed failure is a test
+assertion defect, not an executable deletion action in the product. The
+architecture requires a manual-prerequisite explanation and no recovery
+command for a legacy lock.
+
+The bounded repair asserts the exact localized safety prerequisite for
+`prereq_legacy_lock_removal` and that the health row has no executable
+`recovery` command. The source model and localization are unchanged. Under
+`AGENTDECK_TEST_LOCALE=en`, the isolated `bash scripts/test-macos-app.sh` suite
+passed, including the previously failing test; `git diff --check` passed.
+An initial direct focused Xcode invocation could not start because the local
+sandbox denied CoreSimulator initialization; it supplied no test verdict and
+was not treated as a product failure. The two failing CI jobs showed the same
+assertion, with no second failing test. This is a repair candidate, not a
+new review verdict or a claim that PR-head CI has passed; commit, push and
+fresh target-bound CEv1/CI checks remain pending.
