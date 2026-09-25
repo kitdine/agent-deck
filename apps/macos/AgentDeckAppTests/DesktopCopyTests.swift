@@ -48,7 +48,8 @@ final class DesktopCopyTests: XCTestCase {
 			let keys = [
 				DesktopCopy.healthCopySync, DesktopCopy.healthCopyDiagnostic, DesktopCopy.healthCopySafety,
 				DesktopCopy.healthCopied, DesktopCopy.healthEffectStale, DesktopCopy.healthEffectIncomplete,
-			] + Array(DesktopCopy.healthReasonKeys.values) + Array(DesktopCopy.healthPrerequisiteKeys.values)
+				DesktopCopy.healthUnknownCheck, DesktopCopy.healthAffectedCount,
+			] + Array(DesktopCopy.healthCheckNameKeys.values) + Array(DesktopCopy.healthReasonKeys.values) + Array(DesktopCopy.healthPrerequisiteKeys.values)
 			for key in keys {
 				let value = localized.localizedString(forKey: key, value: "missing", table: nil)
 				XCTAssertNotEqual(value, "missing", "\(language): \(key)")

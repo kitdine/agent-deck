@@ -553,20 +553,20 @@ tests, and the isolated macOS suite runs the listed XCTest cases.
 | --- | --- | --- | --- | --- |
 | 1 | Live state owner | R1 | cmd/agentdeck.TestHealthRecoveryAcceptanceAcrossCLIAndDesktop; cmd/agentdeck.TestLockContentionErrorTextAndJSON | PERFORMED / PASS (isolated CLI and lock) |
 | 2 | Live scan owner | R2 | cmd/agentdeck.TestHealthRecoveryAcceptanceAcrossCLIAndDesktop; store.TestAcquireScanLockReturnsErrLockContention | PERFORMED / PASS (isolated CLI and lock) |
-| 3 | Legacy lock | R3 | store.TestClassifyLockMatrix; cmd/agentdeck.TestRenderDoctorTextLockLines | SIMULATED (controlled legacy token) |
+| 3 | Legacy lock | R3 | store.TestClassifyLockMatrix; scanruntime.TestDetachedWorkerStartupReportsLegacyScanLock; cmd/agentdeck.TestRenderDoctorTextLockLines | SIMULATED (controlled legacy token and detached worker) |
 | 4 | Unknown or unreadable owner | R3 | store.TestClassifyLockMatrix; cmd/agentdeck.TestLockContentionErrorTextAndJSON | SIMULATED (unknown liveness and unreadable fixture) |
 | 5 | Reclaimable modern lock | R4 | store.TestAcquireNamedLockReclaimsDeadOwner; doctor.TestCheckReportsLockClassificationAndLifecycle | SIMULATED (dead-owner fixture with real acquisition) |
 | 6 | Doctor under both locks | R5 | cmd/agentdeck.TestHealthRecoveryAcceptanceAcrossCLIAndDesktop; doctor.TestCheckReportsBothLocksIndependentlyUnderContention | PERFORMED / PASS (isolated read-only CLI) |
 | 7 | Future schema plus contention | R6 | cmd/agentdeck.TestSchemaAheadPrecedenceOverStateBusy; store.TestOpenPreservesStateBusyWhenSchemaAheadProbeIsInconclusive | PERFORMED / PASS (isolated future-schema database) |
 | 8 | Stale persisted identity | R7 | cmd/agentdeck.TestHealthRecoveryAcceptanceAcrossCLIAndDesktop; extension.TestSyntheticDiscoveryAndPriorityClassification | PERFORMED / PASS (isolated CLI and inventory) |
-| 9 | Native path unavailable | R10 | extension.TestUnresolvableNativePathNativeUnavailableResilience | SIMULATED (unresolvable native path fixture) |
+| 9 | Native path unavailable | R10 | extension.TestUnresolvableNativePathNativeUnavailableResilience; store.TestAdoptExtensionRejectsUnavailableFingerprint | SIMULATED (unresolvable native path and empty-fingerprint fixture) |
 | 10 | Explicit extension sync | R8 | cmd/agentdeck.TestHealthRecoveryAcceptanceAcrossCLIAndDesktop; cmd/agentdeck.TestExtensionDoctorCLI | PERFORMED / PASS (isolated CLI and byte-checked client config) |
 | 11 | Discovery failure | R9 | extension.TestDiscoveryFailedAndDatabaseUnreadablePriority | SIMULATED (discovery failure injection) |
 | 12 | Invalid canonical ID | R10 | extension.TestInvalidCanonicalIDInformational | SIMULATED (invalid candidate fixture) |
 | 13 | Duplicate, drift, anomaly | R10 | extension.TestDoctorPriorityHierarchyTableDriven | SIMULATED (multi-condition discovery fixture) |
-| 14 | Post-commit fingerprint failure | R8 | cmd/agentdeck.TestExtensionScanSyncIncompleteCLI; extension.TestFingerprintFailurePreservesInventoryAndManagement | SIMULATED (fingerprint writer fault injection) |
+| 14 | Post-commit fingerprint failure | R8 | cmd/agentdeck.TestExtensionScanSyncIncompleteCLI; cmd/agentdeck.TestExtensionScanFingerprintWriterClearsMarkerAtomically; extension.TestFingerprintFailurePreservesInventoryAndManagement | SIMULATED (fingerprint writer and marker-clear fault injection) |
 | 15 | Structured CLI and desktop wire | R11 | cmd/agentdeck.TestHealthRecoveryAcceptanceAcrossCLIAndDesktop; desktop.TestHealthSnapshotPopulatesAdditiveFieldsFromDoctorChecks; DesktopWireTests | PERFORMED / PASS (isolated CLI and hosted decoder) |
-| 16 | macOS recovery presentation | R12 | MenuBarViewModelTests health actions; MenuBarChromeTests native focus and bilingual 280/420 pt layout | PERFORMED / PASS (hosted XCTest); manual VoiceOver remains BLOCKED |
+| 16 | macOS recovery presentation | R12 | MenuBarViewModelTests health actions, bilingual check labels and affected-count accessibility text; MenuBarChromeTests native focus and bilingual 280/420 pt layout | PERFORMED / PASS (hosted XCTest); manual VoiceOver remains BLOCKED |
 
 Native acceptance is kept separate from the automated row above:
 
@@ -636,6 +636,11 @@ evidence for the delivered Task 5 commit is classified in the table above:
 real VoiceOver speech remains BLOCKED without a waiver, and real-client
 observation remains SIMULATED. Topic integration, retirement, and release remain
 separate boundaries.
+
+PR #9's first GitHub Codex review on `a5a35fb` raised six P2 integration
+findings. Their local repair candidate and verification are recorded in the
+version contract's `reviews/assemble.md`; the previous topic gate remains bound
+to its signed source-review commit, not this unreviewed repair candidate.
 
 ## Review boundary
 

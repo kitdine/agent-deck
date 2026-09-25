@@ -620,6 +620,24 @@ func wrapLockContention(stateRoot, name, resource string, baseErr error) error {
 	}
 }
 
+// InspectScanLockContention reports a contended scan lock after a detached
+// worker failed to expose its socket. It does not acquire or remove the lock.
+func InspectScanLockContention(stateRoot string) *ErrLockContention {
+	reason, err := ClassifyLock(filepath.Join(stateRoot, "scan.lock"), lockProcessAlive)
+	if errors.Is(err, fs.ErrNotExist) || reason == LockReasonReclaimable {
+		return nil
+	}
+	if err != nil || reason == "" {
+		reason = LockReasonOwnerUnknown
+	}
+	reasonStr := string(reason)
+	return &ErrLockContention{
+		Resource:   "scan",
+		Reason:     reasonStr,
+		ActionKind: lockActionKind(reasonStr),
+	}
+}
+
 // AcquireQuotaRefreshLock serializes the complete subscription-quota refresh
 // cycle across helper processes. The cycle includes external client probes and
 // the subsequent window replacement, so it deliberately has its own lock

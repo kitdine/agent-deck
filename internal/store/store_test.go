@@ -433,6 +433,32 @@ func TestAdoptExtensionReturnsMatchingFingerprint(t *testing.T) {
 	}
 }
 
+func TestAdoptExtensionRejectsUnavailableFingerprint(t *testing.T) {
+	ctx := context.Background()
+	state, err := Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer state.Close()
+	id := "codex:skill:user:unavailable"
+	if err := state.ReplaceExtensions(ctx, []Extension{{
+		ID: id, Client: "codex", Kind: "skill", Scope: "user", NativeID: "unavailable",
+		Fingerprint: "", Diagnostics: []string{"source_unavailable"},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := state.AdoptExtension(ctx, id); !errors.Is(err, ErrExtensionFingerprintUnavailable) {
+		t.Fatalf("adopt without fingerprint = %v, want ErrExtensionFingerprintUnavailable", err)
+	}
+	stored, err := state.ExtensionByID(ctx, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.Managed || stored.AdoptedFingerprint != "" {
+		t.Fatalf("unavailable extension became managed: %#v", stored)
+	}
+}
+
 func TestReplaceExtensionsDoesNotRefreshUnchangedInventory(t *testing.T) {
 	ctx := context.Background()
 	state, err := Open(ctx, t.TempDir())

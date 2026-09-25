@@ -26,7 +26,9 @@ control, progress animation, raw terminal input, daemon or new recovery command.
 
 The CLI must not kill a process, delete a lock, mutate native client
 configuration or manage extension installation. It does not redesign unrelated
-doctor checks or extension adopt/release/enable/disable behavior.
+doctor checks or extension release/enable/disable behavior; adoption of an
+inventory row without a native fingerprint is refused until the source is
+restored and rescanned.
 
 ## User jobs
 
@@ -122,6 +124,12 @@ state_busy: AgentDeck is busy.
   next: Run read-only diagnostics before taking recovery action.
   diagnose: agentdeck doctor
 ```
+
+When a classified `state` or `scan` lock is legacy or has unknown ownership,
+the immediate text uses the safe manual or fail-closed next step shown by doctor
+below instead of the live-owner wait-and-retry sentence. It still offers
+`agentdeck doctor` as read-only diagnosis and never prints an executable lock
+deletion command.
 
 ### Doctor lock checks
 

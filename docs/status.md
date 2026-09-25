@@ -192,6 +192,9 @@ review passed, and its target-specific gate is recorded on the WorkUnit after
 the protected main update; PR delivery and merge remain separate. Cost transparency
 remains selected but has no delivered topic. Aggregate assembly and version
 closure remain open.
+PR #9's first Codex review raised six P2 findings; their scoped dispositions
+are tracked in the integration record. Merge readiness depends on exact-head
+CI, independent review and CEv1 evidence for the delivered candidate.
 
 | Topic | Version | Status | Purpose |
 | --- | --- | --- | --- |

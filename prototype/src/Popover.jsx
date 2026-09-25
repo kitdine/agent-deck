@@ -1234,7 +1234,7 @@ function HealthDetail({ lang, state, healthRecovery, onBack }) {
           const expanded = check.code === "schema_ahead" || check.code === "hook_deliveries_dropped" || !!detail;
           return (
           <div className={`list-row${expanded ? " expanded" : ""}`} data-health-code={check.code ?? "ok"} key={`${check.name}.${check.code ?? "ok"}`}>
-            <b>{dict.status.checks[check.name]}</b>
+            <b>{dict.status.checks[check.name] ?? dict.status.checks.other}</b>
             <small />
             <strong className={check.status === "failed" ? "tone-text-bad" : check.status === "warning" ? "tone-text-warn" : "tone-text-good"}>
               {dict.status.checkStatus[check.status]}

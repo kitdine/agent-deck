@@ -174,6 +174,26 @@ Visible Health check labels are localized independently from stable wire names:
 | `extensions` | `Extension inventory` | `扩展库存` |
 | `database` | `Core database` | `核心数据库` |
 | `hook_deliveries` | `Hook deliveries` | `Hook 投递` |
+| `state` | `State` | `状态` |
+| `schema` | `Database schema` | `数据库结构` |
+| `database_integrity` | `Database integrity` | `数据库完整性` |
+| `pending_operations` | `Pending operations` | `待处理操作` |
+| `provider_operation_state` | `Provider operation state` | `服务商操作状态` |
+| `provider_configuration` | `Provider configuration` | `服务商配置` |
+| `provider_credentials` | `Provider credentials` | `服务商凭据` |
+| `project_attribution_gate` | `Project attribution gate` | `项目归因门禁` |
+| `sessions` | `Session index` | `会话索引` |
+| `session_sources` | `Session sources` | `会话来源` |
+| `usage` | `Usage index` | `用量索引` |
+| `usage_sources` | `Usage sources` | `用量来源` |
+| `prices` | `Price catalog` | `价格目录` |
+| `price_provenance` | `Price provenance` | `价格来源` |
+| `unpriced_models` | `Unpriced models` | `未计价模型` |
+
+An unknown future check name uses `Other health check` / `其他运行状况检查`
+instead of showing its raw wire token. Positive counts on classified health
+reasons are spoken as `Affected: <count>` / `受影响：<count> 项` in the disclosure's
+accessible label; schema-version counts keep their separate version meaning.
 
 The full localized cause, next, effect and prerequisite paragraphs live in
 `prototype/src/i18n.js` and are rendered in the specimens below. Machine tokens,

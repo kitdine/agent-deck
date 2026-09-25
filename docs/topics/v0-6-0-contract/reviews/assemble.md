@@ -795,3 +795,27 @@ was not treated as a product failure. The two failing CI jobs showed the same
 assertion, with no second failing test. This is a repair candidate, not a
 new review verdict or a claim that PR-head CI has passed; commit, push and
 fresh target-bound CEv1/CI checks remain pending.
+
+### PR #9 Codex review Round 1 repair candidate — 2026-09-25
+
+GitHub Codex review `5317975244` on signed head `a5a35fb` returned six P2
+comments. Each was checked against the current source and approved health
+contracts before repair:
+
+- **PR9-R1-F1** ([discussion](https://github.com/kitdine/agent-deck/pull/9#discussion_r4104770094)) confirmed: the detached scan worker can fail on `scan.lock` before binding a socket, while the foreground discards its stderr and reports a generic startup timeout. `scanruntime.Client` now uses store-owned read-only classification after that timeout; a real helper-process regression asserts typed `scan`/`lock_legacy` contention.
+- **PR9-R1-F2** ([discussion](https://github.com/kitdine/agent-deck/pull/9#discussion_r4104770103)) confirmed: fingerprint persistence and clearing `extension.sync_incomplete` were separate writes. They now share one `SetSettings` transaction. A trigger-induced marker-clear failure proves the fingerprint rolls back and the old marker survives; a later success updates both.
+- **PR9-R1-F3** ([discussion](https://github.com/kitdine/agent-deck/pull/9#discussion_r4104770112)) confirmed: adoption stored an empty fingerprint from an unavailable inventory row. Store adoption now rejects that row before management metadata is written; the regression checks the row stays unmanaged.
+- **PR9-R1-F4** ([discussion](https://github.com/kitdine/agent-deck/pull/9#discussion_r4104770119)) confirmed against the reviewed menu-bar UX table: the native mapper localized only three of six required labels, and other doctor checks also exposed wire names. Current check names now have bilingual labels; unknown future names use localized generic copy. The prototype dictionary, Swift catalog and bilingual tests agree.
+- **PR9-R1-F5** ([discussion](https://github.com/kitdine/agent-deck/pull/9#discussion_r4104770126)) confirmed: the disclosure's replacement accessibility text omitted a classified row's affected count. It now speaks a localized affected-count phrase for classified reasons. Schema `count` is a version number and deliberately keeps its separate semantics; tests cover both cases.
+- **PR9-R1-F6** ([discussion](https://github.com/kitdine/agent-deck/pull/9#discussion_r4104770135)) confirmed: unreadable-inventory CLI text printed the internal prerequisite key. Text now gives bounded English operator prose; JSON retains the stable key. The corrupted-database CLI test checks both sides.
+
+Classification: all six findings belong to the PR change; none is waived or
+carried as technically fixed without code. The local candidate has no production
+execution of deletion commands. Verification: focused scan/store/CLI tests PASS;
+full Go suite PASS after the final CLI text assertion (`agentdeck-go-test.oIBxfV`); affected-package Go race PASS
+(`agentdeck-go-test.uh6Sz7`); `make vet` PASS; isolated macOS XCTest TEST
+SUCCEEDED after an initial test-only count-meaning and localization-inventory
+repair; prototype `npm run build`, topic docs, whitespace, JSON catalog and diff
+checks PASS. Native VoiceOver speech remains BLOCKED/no-waiver and real-client
+observation SIMULATED. This is a repair candidate; it has no new independent
+re-review verdict, signed commit, remote CI result or exact-state CEv1 gate yet.

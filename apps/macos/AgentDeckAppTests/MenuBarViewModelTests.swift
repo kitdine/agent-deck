@@ -721,6 +721,7 @@ final class MenuBarViewModelTests: XCTestCase {
 		XCTAssertNil(rows[0].actionLabel)
 		XCTAssertEqual(rows[1].actionLabel, t(DesktopCopy.healthCopySync))
 		XCTAssertEqual(rows[1].actionContent, "agentdeck extension scan")
+		XCTAssertTrue(rows[1].accessibilityText(expanded: false).contains(t(DesktopCopy.healthAffectedCount, 2)))
 		XCTAssertEqual(rows[1].effect, t(DesktopCopy.healthEffectStale))
 		XCTAssertEqual(rows[2].actionLabel, t(DesktopCopy.healthCopyDiagnostic))
 		XCTAssertEqual(rows[2].actionContent, "agentdeck extension doctor")
@@ -739,6 +740,32 @@ final class MenuBarViewModelTests: XCTestCase {
 		try await Task.sleep(for: .milliseconds(1_700))
 		XCTAssertNil(model.copiedHealthRowID)
 		XCTAssertEqual(model.healthDetail, original)
+	}
+
+	func testHealthCheckNamesAndAffectedCountsAreLocalized() async {
+		let names = ["state_permissions", "database", "hook_deliveries", "future_check"]
+		let checks: [[String: Any]] = names.map { ["name": $0, "status": "warning", "count": 2] } + [[
+			"name": "extensions", "status": "warning", "resource": "extension_inventory",
+			"reason": "extension_stale_inventory", "action_kind": "synchronize_inventory",
+			"recovery_command": "agentdeck extension scan", "count": 2,
+		]]
+		let health: [String: Any] = [
+			"available": true, "status": "warning", "healthy": false,
+			"problems": checks.count, "warnings": checks.count, "errors": 0, "checks": checks,
+		]
+		let previousLocale = ProcessInfo.processInfo.environment["AGENTDECK_TEST_LOCALE"]
+		defer {
+			if let previousLocale { setenv("AGENTDECK_TEST_LOCALE", previousLocale, 1) }
+			else { unsetenv("AGENTDECK_TEST_LOCALE") }
+		}
+		for language in ["en", "zh-Hans"] {
+			setenv("AGENTDECK_TEST_LOCALE", language, 1)
+			let rows = await readyModel(envelope: WireFixture.envelope(health: health)).healthDetail.rows
+			let expected = names.map { t(DesktopCopy.healthCheckNameKeys[$0] ?? DesktopCopy.healthUnknownCheck) } + [t(DesktopCopy.healthExtensions)]
+			XCTAssertEqual(rows.map(\.name), expected)
+			XCTAssertTrue(rows.dropLast().allSatisfy { !$0.accessibilityText(expanded: false).contains(t(DesktopCopy.healthAffectedCount, 2)) })
+			XCTAssertTrue(rows.last?.accessibilityText(expanded: false).contains(t(DesktopCopy.healthAffectedCount, 2)) == true)
+		}
 	}
 
 	func testUnknownAndMismatchedHealthActionsFailClosed() async {

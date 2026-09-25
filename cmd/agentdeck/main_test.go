@@ -3573,10 +3573,19 @@ func TestScanLockContentionErrorTextAndJSON(t *testing.T) {
 
 	var stderr bytes.Buffer
 	renderCommandErrorText(&stderr, contentionErr)
-	wantText := "state_busy: AgentDeck scan is busy.\n  resource: scan\n  next: Wait for the current scan to finish, then retry this command.\n  diagnose: agentdeck doctor\n"
+	wantText := "state_busy: AgentDeck scan is busy.\n  resource: scan\n  next: Confirm that no AgentDeck process is using this state directory.\n  manual prerequisite: Remove scan.lock only after that confirmation.\n  diagnose: agentdeck doctor\n"
 	if stderr.String() != wantText {
 		t.Fatalf("text stderr = %q, want %q", stderr.String(), wantText)
 	}
+
+	contentionErr.Reason = "lock_owner_unknown"
+	stderr.Reset()
+	renderCommandErrorText(&stderr, contentionErr)
+	wantText = "state_busy: AgentDeck scan is busy.\n  resource: scan\n  next: Do not remove scan.lock. Stop the owning AgentDeck process through its normal lifecycle or wait and diagnose again.\n  diagnose: agentdeck doctor\n"
+	if stderr.String() != wantText {
+		t.Fatalf("unknown-owner text stderr = %q, want %q", stderr.String(), wantText)
+	}
+	contentionErr.Reason = "lock_legacy"
 
 	details := errorDetails(contentionErr)
 	data, err := json.Marshal(details)
@@ -3884,6 +3893,56 @@ func TestExtensionDoctorCLI(t *testing.T) {
 	_ = workdir
 }
 
+func TestExtensionScanFingerprintWriterClearsMarkerAtomically(t *testing.T) {
+	ctx := context.Background()
+	state, home, workdir := t.TempDir(), t.TempDir(), t.TempDir()
+	if err := os.WriteFile(filepath.Join(home, ".claude.json"), []byte(`{"mcpServers":{"test-mcp":{"command":"echo"}}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	db, err := store.Open(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := db.SetSettings(ctx, map[string]string{
+		"watch.fingerprint.extension": "old-fingerprint",
+		"extension.sync_incomplete":   "true",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.DB.ExecContext(ctx, `CREATE TRIGGER reject_sync_marker_clear BEFORE UPDATE OF value ON settings
+		WHEN NEW.key = 'extension.sync_incomplete' AND NEW.value = ''
+		BEGIN SELECT RAISE(ABORT, 'blocked marker clear'); END`); err != nil {
+		t.Fatal(err)
+	}
+	var incomplete *extension.ErrExtensionSyncIncomplete
+	if err := extensionScanFingerprintWriter(ctx, db, home, workdir); !errors.As(err, &incomplete) {
+		t.Fatalf("marker clear failure = %v, want ErrExtensionSyncIncomplete", err)
+	}
+	fingerprint, _, err := db.Setting(ctx, "watch.fingerprint.extension")
+	if err != nil || fingerprint != "old-fingerprint" {
+		t.Fatalf("fingerprint after rollback = %q, %v", fingerprint, err)
+	}
+	marker, _, err := db.Setting(ctx, "extension.sync_incomplete")
+	if err != nil || marker != "true" {
+		t.Fatalf("sync marker after rollback = %q, %v", marker, err)
+	}
+	if _, err := db.DB.ExecContext(ctx, "DROP TRIGGER reject_sync_marker_clear"); err != nil {
+		t.Fatal(err)
+	}
+	if err := extensionScanFingerprintWriter(ctx, db, home, workdir); err != nil {
+		t.Fatal(err)
+	}
+	fingerprint, _, err = db.Setting(ctx, "watch.fingerprint.extension")
+	if err != nil || fingerprint == "old-fingerprint" {
+		t.Fatalf("fingerprint after successful scan = %q, %v", fingerprint, err)
+	}
+	marker, _, err = db.Setting(ctx, "extension.sync_incomplete")
+	if err != nil || marker != "" {
+		t.Fatalf("sync marker after successful scan = %q, %v", marker, err)
+	}
+}
+
 func TestExtensionScanSyncIncompleteCLI(t *testing.T) {
 	state := t.TempDir()
 	home := t.TempDir()
@@ -4042,6 +4101,9 @@ func TestExtensionScanSyncIncompleteCLI(t *testing.T) {
 	docExitCode := execute([]string{"--state-dir", state, "extension", "doctor"}, bytes.NewReader(nil), &docStdout, &docStderr)
 	if docExitCode != 1 {
 		t.Fatalf("expected exit code 1 on corrupted database, got %d", docExitCode)
+	}
+	if got := docStderr.String(); !strings.Contains(got, "manual prerequisite: Check AgentDeck state permissions and database health") || strings.Contains(got, "prereq_extension_inventory_unreadable") {
+		t.Fatalf("unreadable inventory guidance = %q", got)
 	}
 	_, docErr = executeCommand([]string{"--state-dir", state, "extension", "doctor"}, bytes.NewReader(nil), &docStdout, &docStderr)
 	if docErr == nil {

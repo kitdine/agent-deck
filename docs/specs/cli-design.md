@@ -2454,6 +2454,10 @@ step, and labels `agentdeck doctor` as `diagnose:`. JSON error details carry
 uses `lock_live` / `retry` with no recovery command. An unclassified caller
 uses `resource: unknown`. Neither output exposes lock tokens or suggests
 deleting a live or uncertain lock.
+If a detached scan worker cannot expose its socket because `scan.lock` remains
+held, the foreground scan reports that lock's classified `state_busy` details
+instead of an unclassified worker-startup timeout. This fallback inspects the
+lock read-only after the socket wait; it does not acquire or remove it.
 
 `agentdeck doctor` reports `state_lock` and `scan_lock` independently and
 in that order. `lock_live` is a retry warning; `lock_legacy` is a warning
@@ -2475,6 +2479,10 @@ discovery-dependent collections are null rather than empty, and no stored ID
 is called stale. Missing state reports `extension_state_missing`; unreadable
 inventory exits `1` with `extension_inventory_unreadable` and a manual
 prerequisite, without a scan command.
+Its text output explains the prerequisite in bounded English prose; JSON keeps
+the stable `prereq_extension_inventory_unreadable` key. An extension row whose
+native fingerprint is unavailable cannot be adopted until its source is
+restored and a subsequent scan records a fingerprint.
 
 The aggregate `extensions` row presents the highest-priority reason while
 extension doctor retains the per-condition collections. A persisted identity

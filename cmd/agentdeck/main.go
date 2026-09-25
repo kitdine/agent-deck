@@ -489,13 +489,25 @@ func renderCommandErrorText(w io.Writer, err error) {
 		case "state":
 			fmt.Fprintln(w, "state_busy: AgentDeck state is busy.")
 			fmt.Fprintln(w, "  resource: state")
-			fmt.Fprintln(w, "  next: Wait for the current state operation to finish, then retry this command.")
-			fmt.Fprintln(w, "  diagnose: agentdeck doctor")
-			return
 		case "scan":
 			fmt.Fprintln(w, "state_busy: AgentDeck scan is busy.")
 			fmt.Fprintln(w, "  resource: scan")
-			fmt.Fprintln(w, "  next: Wait for the current scan to finish, then retry this command.")
+		}
+		if contention.Resource == "state" || contention.Resource == "scan" {
+			lockFile := contention.Resource + ".lock"
+			switch contention.Reason {
+			case "lock_legacy":
+				fmt.Fprintln(w, "  next: Confirm that no AgentDeck process is using this state directory.")
+				fmt.Fprintf(w, "  manual prerequisite: Remove %s only after that confirmation.\n", lockFile)
+			case "lock_owner_unknown":
+				fmt.Fprintf(w, "  next: Do not remove %s. Stop the owning AgentDeck process through its normal lifecycle or wait and diagnose again.\n", lockFile)
+			default:
+				if contention.Resource == "scan" {
+					fmt.Fprintln(w, "  next: Wait for the current scan to finish, then retry this command.")
+				} else {
+					fmt.Fprintln(w, "  next: Wait for the current state operation to finish, then retry this command.")
+				}
+			}
 			fmt.Fprintln(w, "  diagnose: agentdeck doctor")
 			return
 		}
@@ -513,7 +525,7 @@ func renderCommandErrorText(w io.Writer, err error) {
 		fmt.Fprintln(w, "extension_inventory_unreadable: AgentDeck extension inventory database is unreadable or malformed.")
 		fmt.Fprintln(w, "  resource: extension_inventory")
 		fmt.Fprintln(w, "  next: Resolve the unreadable or malformed AgentDeck database before extension diagnosis can run.")
-		fmt.Fprintln(w, "  manual prerequisite: prereq_extension_inventory_unreadable")
+		fmt.Fprintln(w, "  manual prerequisite: Check AgentDeck state permissions and database health before retrying extension diagnostics.")
 		return
 	}
 	if errors.Is(err, store.ErrStateBusy) {
@@ -3016,7 +3028,10 @@ func validateOptionalClient(client string) error {
 }
 
 var extensionScanFingerprintPersist = func(ctx context.Context, database *store.Store, fingerprint string) error {
-	return database.SetSetting(ctx, "watch.fingerprint.extension", fingerprint)
+	return database.SetSettings(ctx, map[string]string{
+		"watch.fingerprint.extension": fingerprint,
+		"extension.sync_incomplete":   "",
+	})
 }
 
 func extensionScanFingerprintWriter(ctx context.Context, database *store.Store, home, workdir string) error {
@@ -3026,11 +3041,11 @@ func extensionScanFingerprintWriter(ctx context.Context, database *store.Store, 
 		return &extension.ErrExtensionSyncIncomplete{}
 	}
 	if setErr := extensionScanFingerprintPersist(ctx, database, fingerprint); setErr != nil {
+		if errors.Is(setErr, store.ErrSettingsSecureFilesFailed) {
+			return setErr
+		}
 		_ = database.SetSetting(ctx, "extension.sync_incomplete", "true")
 		return &extension.ErrExtensionSyncIncomplete{}
-	}
-	if clearErr := database.SetSetting(ctx, "extension.sync_incomplete", ""); clearErr != nil {
-		return fmt.Errorf("clear extension sync incomplete marker: %w", clearErr)
 	}
 	return nil
 }

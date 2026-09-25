@@ -994,6 +994,41 @@ func TestReceiptJournalKeepsInstalledStateAfterDirectorySyncFailure(t *testing.T
 	}
 }
 
+func TestDetachedWorkerStartupReportsLegacyScanLock(t *testing.T) {
+	state := t.TempDir()
+	if err := os.WriteFile(filepath.Join(state, "scan.lock"), []byte("legacy-token"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	var worker *exec.Cmd
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	_, err := (Client{
+		StateRoot: state,
+		Home:      t.TempDir(),
+		Launch: func(_ context.Context, root string) error {
+			worker = exec.Command(os.Args[0], "-test.run=^TestScanRuntimeWorkerHelper$")
+			worker.Env = append(os.Environ(), scanWorkerHelperEnv+"=1", scanWorkerStateEnv+"="+root)
+			worker.Stdout = io.Discard
+			worker.Stderr = io.Discard
+			return worker.Start()
+		},
+	}).Request(ctx, ScopeBoth)
+	if worker == nil {
+		t.Fatal("detached worker was not launched")
+	}
+	if waitErr := worker.Wait(); waitErr == nil {
+		t.Fatal("legacy scan lock unexpectedly allowed worker startup")
+	}
+	var contention *store.ErrLockContention
+	if !errors.As(err, &contention) || !errors.Is(err, store.ErrStateBusy) {
+		t.Fatalf("foreground scan error = %v, want classified state_busy", err)
+	}
+	if contention.Resource != "scan" || contention.Reason != "lock_legacy" ||
+		contention.ActionKind == nil || *contention.ActionKind != "manual_prerequisite" {
+		t.Fatalf("foreground scan classification = %#v", contention)
+	}
+}
+
 func TestClientLaunchesDetachedWorkerHelper(t *testing.T) {
 	state := t.TempDir()
 	home := t.TempDir()

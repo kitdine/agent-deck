@@ -297,7 +297,12 @@ struct HealthCheckRow: Identifiable, Equatable, Sendable {
 
 	var hasDisclosure: Bool { cause != nil || recoveryProse != nil || effect != nil || actionContent != nil || !(recovery ?? "").isEmpty }
 	func accessibilityText(expanded: Bool) -> String {
-		([name, status] + (expanded ? [reasonLabel, cause, recoveryProse, effect].compactMap { $0 } : [])).joined(separator: ", ")
+		var summary = [name]
+		if let count, count > 0, reasonLabel != nil {
+			summary.append(t(DesktopCopy.healthAffectedCount, Int64(count)))
+		}
+		summary.append(status)
+		return (summary + (expanded ? [reasonLabel, cause, recoveryProse, effect].compactMap { $0 } : [])).joined(separator: ", ")
 	}
 }
 
@@ -1448,12 +1453,7 @@ final class MenuBarViewModel {
 	}
 
 	private func healthName(_ check: DesktopHealthCheckV1) -> String {
-		switch check.name {
-		case "state_lock": return t(DesktopCopy.healthStateLock)
-		case "scan_lock": return t(DesktopCopy.healthScanLock)
-		case "extensions": return t(DesktopCopy.healthExtensions)
-		default: return check.name
-		}
+		t(DesktopCopy.healthCheckNameKeys[check.name] ?? DesktopCopy.healthUnknownCheck)
 	}
 
 	private func healthNoticeCopy(_ check: DesktopHealthCheckV1) -> String {

@@ -174,6 +174,31 @@ enum DesktopCopy {
 	static let healthStateLock = "State lock"
 	static let healthScanLock = "Scan lock"
 	static let healthExtensions = "Extension inventory"
+	static let healthUnknownCheck = "Other health check"
+	static let healthAffectedCount = "Affected: %1$lld"
+	static let healthCheckNameKeys: [String: String] = [
+		"state": "State",
+		"state_permissions": "State file permissions",
+		"state_lock": healthStateLock,
+		"scan_lock": healthScanLock,
+		"hook_deliveries": "Hook deliveries",
+		"database": "Core database",
+		"schema": "Database schema",
+		"database_integrity": "Database integrity",
+		"pending_operations": "Pending operations",
+		"provider_operation_state": "Provider operation state",
+		"provider_configuration": "Provider configuration",
+		"provider_credentials": "Provider credentials",
+		"project_attribution_gate": "Project attribution gate",
+		"sessions": "Session index",
+		"session_sources": "Session sources",
+		"extensions": healthExtensions,
+		"usage": "Usage index",
+		"usage_sources": "Usage sources",
+		"prices": "Price catalog",
+		"price_provenance": "Price provenance",
+		"unpriced_models": "Unpriced models",
+	]
 	static let healthNoticeStateLive = "AgentDeck state is busy"
 	static let healthNoticeScanLive = "AgentDeck scan is running"
 	static let healthNoticeLegacy = "Legacy lock needs confirmation"
@@ -436,11 +461,12 @@ enum DesktopCopy {
 		rhythmQuietestNote, rhythmPeakNote, rhythmActiveValue, rhythmCell, calendarTitle,
 		healthNotice, healthTitle, healthBack, healthSource, healthStatusOK,
 		healthStatusWarning, healthStatusFailed, healthCopyRecovery, healthCopied,
-		healthCopySync, healthCopyDiagnostic, healthCopySafety, healthStateLock, healthScanLock, healthExtensions,
+		healthCopySync, healthCopyDiagnostic, healthCopySafety,
+		healthUnknownCheck, healthAffectedCount,
 		healthNoticeStateLive, healthNoticeScanLive, healthNoticeLegacy, healthNoticeOwnerUnknown,
 		healthNoticeStale, healthNoticeIncomplete, healthCauseStateLive, healthCauseScanLive,
 		healthEffectStale, healthEffectIncomplete,
-	] + Array(healthReasonKeys.values) + Array(healthCauseKeys.values) + Array(healthNextKeys.values) + Array(healthPrerequisiteKeys.values) + [
+	] + Array(healthCheckNameKeys.values) + Array(healthReasonKeys.values) + Array(healthCauseKeys.values) + Array(healthNextKeys.values) + Array(healthPrerequisiteKeys.values) + [
 		noticeMore,
 		warningProviderUnavailable, warningProviderCandidatesUnavailable,
 		warningUsageUnavailable, warningSessionsUnavailable,
