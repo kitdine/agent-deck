@@ -40,6 +40,29 @@ final class DesktopCopyTests: XCTestCase {
 		XCTAssertEqual(Set(DesktopCopy.allKeys).count, DesktopCopy.allKeys.count)
 	}
 
+	func testHealthRecoveryCopyAndPrerequisitesShipInBothLanguages() throws {
+		XCTAssertEqual(DesktopCopy.healthPrerequisiteKeys.count, 7)
+		XCTAssertEqual(Set(DesktopCopy.healthPrerequisiteKeys.keys), Set(DesktopCopy.healthPrerequisiteReasons.keys))
+		for language in ["en", "zh-Hans"] {
+			let localized = try bundle(language)
+			let keys = [
+				DesktopCopy.healthCopySync, DesktopCopy.healthCopyDiagnostic, DesktopCopy.healthCopySafety,
+				DesktopCopy.healthCopied, DesktopCopy.healthEffectStale, DesktopCopy.healthEffectIncomplete,
+			] + Array(DesktopCopy.healthReasonKeys.values) + Array(DesktopCopy.healthPrerequisiteKeys.values)
+			for key in keys {
+				let value = localized.localizedString(forKey: key, value: "missing", table: nil)
+				XCTAssertNotEqual(value, "missing", "\(language): \(key)")
+				XCTAssertFalse(value.isEmpty)
+			}
+			for key in DesktopCopy.healthPrerequisiteKeys.values {
+				let value = localized.localizedString(forKey: key, value: nil, table: nil)
+				XCTAssertFalse(value.hasPrefix("rm "))
+				XCTAssertFalse(value.contains(" rm -"))
+			}
+			XCTAssertTrue(localized.localizedString(forKey: DesktopCopy.healthEffectIncomplete, value: nil, table: nil).contains(language == "en" ? "not rolled back" : "没有回滚"))
+		}
+	}
+
 	func testPeriodicRefreshNoteMatchesReviewedOneMinuteCopy() throws {
 		let expected = [
 			"en": "Refreshes about once a minute while AgentDeck is running; when off, startup and manual refresh still update data",

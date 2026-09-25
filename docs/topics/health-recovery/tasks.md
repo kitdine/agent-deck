@@ -95,7 +95,7 @@ or conflicting contracts. Reconciliation is complete and verified.
 | 1. `lock-recovery-foundation` | [x] | [x] |
 | 2. `extension-inventory-recovery` | [x] | [x] |
 | 3. `desktop-wire-and-shared-contracts` | [x] | [x] |
-| 4. `menubar-health-presentation` | [ ] | [ ] |
+| 4. `menubar-health-presentation` | [x] | [x] |
 | 5. `health-recovery-acceptance` | [ ] | [ ] |
 
 Implementation Beads tasks are created only after this document passes review.

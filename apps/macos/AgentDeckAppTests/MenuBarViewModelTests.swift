@@ -1,3 +1,4 @@
+import AppKit
 import XCTest
 @testable import AgentDeck
 @testable import AgentDeckShared
@@ -315,6 +316,47 @@ final class MenuBarViewModelTests: XCTestCase {
 		XCTAssertEqual(warningNotices.last?.id, "warning.more")
 		XCTAssertEqual(warningNotices.last?.text, t(DesktopCopy.noticeMore, Int64(1)))
 		XCTAssertTrue(warningNotices.last?.opensHealthDetail ?? false)
+	}
+
+	func testClassifiedWarningKeepsUnclassifiedErrorVisible() async {
+		let health: [String: Any] = [
+			"available": true, "status": "error", "healthy": false,
+			"problems": 2, "warnings": 1, "errors": 1,
+			"checks": [
+				["name": "extensions", "status": "warning", "resource": "extension_inventory",
+				 "reason": "extension_stale_inventory", "action_kind": "synchronize_inventory",
+				 "recovery_command": "agentdeck extension scan"],
+				["name": "provider_configuration", "status": "error"],
+			],
+		]
+		let model = await readyModel(envelope: WireFixture.envelope(health: health))
+		XCTAssertEqual(model.notices.map(\.id), ["health.recovery.0", "health"])
+		XCTAssertEqual(model.notices.map(\.severity), [.warning, .error])
+		XCTAssertEqual(model.notices.last?.text, t(DesktopCopy.healthNotice, Int64(1)))
+	}
+
+	func testClassifiedErrorLeavesUnclassifiedWarningAtWarningSeverity() async {
+		let health: [String: Any] = [
+			"available": true, "status": "unhealthy", "healthy": false,
+			"problems": 2, "warnings": 1, "errors": 1,
+			"checks": [
+				["name": "extensions", "status": "error", "resource": "extension_inventory",
+				 "reason": "extension_inventory_unreadable", "action_kind": "manual_prerequisite",
+				 "manual_prerequisite": "prereq_extension_inventory_unreadable"],
+				["name": "provider_configuration", "status": "warning"],
+			],
+		]
+		let model = await readyModel(envelope: WireFixture.envelope(health: health))
+		XCTAssertEqual(model.notices.map(\.id), ["health.recovery.0", "health"])
+		XCTAssertEqual(model.notices.map(\.severity), [.error, .warning])
+		XCTAssertEqual(model.notices.last?.text, t(DesktopCopy.healthNotice, Int64(1)))
+	}
+
+	func testSchemaErrorLeavesHookWarningAtWarningSeverity() async {
+		let model = await readyModel(envelope: WireFixture.schemaSignal(refusals: true))
+		XCTAssertEqual(model.notices.map(\.id), ["schema", "health"])
+		XCTAssertEqual(model.notices.map(\.severity), [.error, .warning])
+		XCTAssertEqual(model.notices.last?.text, t(DesktopCopy.healthNotice, Int64(1)))
 	}
 
 	func testUnrecognizedWarningCodeIsShownVerbatimRatherThanDropped() async {
@@ -664,6 +706,47 @@ final class MenuBarViewModelTests: XCTestCase {
 		XCTAssertEqual(model.healthDetail.rows[1].status, t(DesktopCopy.healthStatusWarning))
 		XCTAssertEqual(model.healthDetail.rows[2].status, t(DesktopCopy.healthStatusFailed))
 		XCTAssertEqual(model.healthDetail.rows[2].recovery, "agentdeck usage price update")
+	}
+
+	func testHealthRecoveryActionsAreClassifiedAndCopyDoesNotChangeHealth() async throws {
+		let checks: [[String: Any]] = [
+			["name": "state_lock", "status": "warning", "resource": "state", "reason": "lock_live", "action_kind": "retry"],
+			["name": "extensions", "status": "warning", "resource": "extension_inventory", "reason": "extension_stale_inventory", "action_kind": "synchronize_inventory", "recovery_command": "agentdeck extension scan", "count": 2],
+			["name": "extensions", "status": "failed", "resource": "extension_inventory", "reason": "extension_fingerprint_update_failed", "action_kind": "diagnose", "diagnostic_command": "agentdeck extension doctor"],
+			["name": "state_lock", "status": "warning", "resource": "state", "reason": "lock_legacy", "action_kind": "manual_prerequisite", "manual_prerequisite": "prereq_legacy_lock_removal"],
+		]
+		let health: [String: Any] = ["available": true, "status": "error", "healthy": false, "problems": 4, "warnings": 3, "errors": 1, "checks": checks]
+		let model = await readyModel(envelope: WireFixture.envelope(health: health))
+		let rows = model.healthDetail.rows
+		XCTAssertNil(rows[0].actionLabel)
+		XCTAssertEqual(rows[1].actionLabel, t(DesktopCopy.healthCopySync))
+		XCTAssertEqual(rows[1].actionContent, "agentdeck extension scan")
+		XCTAssertEqual(rows[1].effect, t(DesktopCopy.healthEffectStale))
+		XCTAssertEqual(rows[2].actionLabel, t(DesktopCopy.healthCopyDiagnostic))
+		XCTAssertEqual(rows[2].actionContent, "agentdeck extension doctor")
+		XCTAssertEqual(rows[2].effect, t(DesktopCopy.healthEffectIncomplete))
+		XCTAssertEqual(rows[3].actionLabel, t(DesktopCopy.healthCopySafety))
+		XCTAssertFalse(try XCTUnwrap(rows[3].actionContent).contains("rm "))
+		XCTAssertEqual(model.notices.filter(\.opensHealthDetail).count, 4)
+		let original = model.healthDetail
+		model.copyHealthAction(rows[1])
+		XCTAssertEqual(NSPasteboard.general.string(forType: .string), "agentdeck extension scan")
+		XCTAssertEqual(model.copiedHealthRowID, rows[1].id)
+		XCTAssertEqual(model.healthDetail, original)
+		try await Task.sleep(for: .milliseconds(1_700))
+		XCTAssertNil(model.copiedHealthRowID)
+		XCTAssertEqual(model.healthDetail, original)
+	}
+
+	func testUnknownAndMismatchedHealthActionsFailClosed() async {
+		let checks: [[String: Any]] = [
+			["name": "extensions", "status": "warning", "resource": "extension_inventory", "reason": "extension_stale_inventory", "action_kind": "synchronize_inventory", "recovery_command": "dangerous command"],
+			["name": "extensions", "status": "warning", "resource": "extension_inventory", "reason": "extension_discovery_failed", "action_kind": "manual_prerequisite", "manual_prerequisite": "unknown_key"],
+			["name": "extensions", "status": "warning", "resource": "extension_inventory", "reason": "future_reason", "action_kind": "diagnose", "diagnostic_command": "agentdeck doctor"],
+		]
+		let health: [String: Any] = ["available": true, "status": "warning", "healthy": false, "problems": 3, "warnings": 3, "errors": 0, "checks": checks]
+		let model = await readyModel(envelope: WireFixture.envelope(health: health))
+		XCTAssertTrue(model.healthDetail.rows.allSatisfy { $0.actionContent == nil && $0.actionLabel == nil })
 	}
 
 	// MARK: Menu-bar item
