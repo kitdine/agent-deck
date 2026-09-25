@@ -629,9 +629,10 @@ The five implementation tasks and their Development Gates were created. Tasks
 1–5 have Dev and Review marked complete in the matrix above. Task 5 passed
 independent Review Round 1 and was delivered by signed commit `3e7ab8b`;
 its task gate and the containing topic acceptance gate were VERIFIED for that
-committed state. The subsequent PR-review repairs form a new candidate and do
-not inherit those gate results. The automated and native evidence for the delivered
-commit is classified in the table above:
+committed state. The subsequent PR-review repairs at signed `6c15672` passed
+independent Review Round 2; their exact-state CEv1 result must be queried
+separately and cannot be inferred from the prior gate. The automated and native
+evidence for the delivered Task 5 commit is classified in the table above:
 real VoiceOver speech remains BLOCKED without a waiver, and real-client
 observation remains SIMULATED. Topic integration, retirement, and release remain
 separate boundaries.

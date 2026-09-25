@@ -45,3 +45,33 @@ Task 5 是本 topic 最后一项实现任务；任务经授权提交交付后，
 ### 下一步指令
 
 `提交：health-recovery / health-recovery-acceptance`
+
+## Round 2 — 2026-09-25
+
+## 📋 health-recovery / PR 修复独立复评
+
+📊 总体评分：9/10
+
+✅ 结论：PASS
+
+### 🔴 严重问题（必须修复）
+
+无。
+
+### 🟡 建议改进（本轮同样必须关闭）
+
+无。
+
+### 🟢 优点
+
+- `DoctorWithDiscoverer` 现在从实时候选收集 `source_unavailable`，首次扫描前的不可用扩展不会因为库存尚空而漏报；新增测试直接覆盖空库存。
+- 菜单栏复制动作要求非健康状态及匹配的检查名称、资源和原因，并保留命令及手动前提键的既有精确校验；测试覆盖锁原因落在扩展行和扩展原因落在锁行。
+- `tasks.md` 当前交接区分已交付的 Task 5 提交与后续 PR 修复候选，没有把旧 CEv1 门禁冒称为新提交的门禁。
+
+### 📝 总结
+
+- Reviewed state：`feature/health-recovery` signed HEAD `6c15672c20ed57a631a7da7e9c7930dc66333fe2`，tree `9af754df84bfac8c376566cf72aa718d985bd4f8`；检查范围为 `3e7ab8b..6c15672` 的五个修复文件和其锁、扩展、桌面健康消费路径。本记录自身不在该提交树内。
+- Reviewer：独立冷上下文审阅者，主代理核对结论。Method：源码及契约逐项核查、空库存与矛盾 wire 组合检查、已有验证证据复用；未委派修改。Scope：PR 修复的 Go、Swift 和主题交接，原有不相关规则与 Hook 改动排除。
+- Evidence：独立审阅的聚焦 Go 用例 PASS；同一代码状态的 `scripts/run-go-test.sh ./...` PASS（日志 `agentdeck-go-test.qpX8U6`），隔离 `bash scripts/test-macos-app.sh` TEST SUCCEEDED（`Test-AgentDeck-2026.09.25_03-16-38--0700.xcresult`），`bash scripts/check-topic-docs.sh`、空白及 diff 检查 PASS。提交后只改变 Git 封装，受测 Go/Swift 文件与依赖未再改变。
+- Finding disposition：上一轮本地 PR 评审提出的首次库存漏报、矛盾 wire 复制动作与交接状态过期均在 `6c15672` 关闭；本轮无新增任务内发现。真实 VoiceOver 朗读仍为 BLOCKED/no-waiver，真实客户端环境仍为 SIMULATED；自动化证据不能替代这两项原生验收。
+- Completion gate：VERIFIED（5/5）。CEv1 对本轮初始精确候选查询确认五项必需准则各有目标绑定的 pass evidence；旧提交 `3e7ab8b` 的证据经过逐项影响评估，未变的锁与 wire 准则显式保留，扩展、菜单栏及验收准则以本轮新证据替换。此门禁状态写入后须将本记录的新 blob 再绑定到最终 ContentState；WorkUnit 的目标 ID 是最终权威。真实 VoiceOver 与真实客户端观察不因此变成技术 PASS。
