@@ -96,7 +96,7 @@ or conflicting contracts. Reconciliation is complete and verified.
 | 2. `extension-inventory-recovery` | [x] | [x] |
 | 3. `desktop-wire-and-shared-contracts` | [x] | [x] |
 | 4. `menubar-health-presentation` | [x] | [x] |
-| 5. `health-recovery-acceptance` | [ ] | [ ] |
+| 5. `health-recovery-acceptance` | [x] | [x] |
 
 Implementation Beads tasks are created only after this document passes review.
 Use one work-product task per anchor and the existing document task lifecycle;
@@ -540,6 +540,61 @@ Depends on Tasks 1–4.
 
 **Excluded:** release, tag, push, deployment, out-of-scope refactorings.
 
+### Task 5 Acceptance Evidence
+
+The table binds all 16 architecture acceptance rows to executable checks and
+the 12 requirement rows (R1–R12, in the order of requirements.md). PERFORMED /
+PASS means an isolated command or hosted app actually ran. SIMULATED means a
+passing deterministic fault, liveness, or discovery fixture; it does not
+claim a real native failure was reproduced. The Go suite runs the listed Go
+tests, and the isolated macOS suite runs the listed XCTest cases.
+
+| # | Architecture scenario | Requirements | Evidence | Boundary |
+| --- | --- | --- | --- | --- |
+| 1 | Live state owner | R1 | cmd/agentdeck.TestHealthRecoveryAcceptanceAcrossCLIAndDesktop; cmd/agentdeck.TestLockContentionErrorTextAndJSON | PERFORMED / PASS (isolated CLI and lock) |
+| 2 | Live scan owner | R2 | cmd/agentdeck.TestHealthRecoveryAcceptanceAcrossCLIAndDesktop; store.TestAcquireScanLockReturnsErrLockContention | PERFORMED / PASS (isolated CLI and lock) |
+| 3 | Legacy lock | R3 | store.TestClassifyLockMatrix; cmd/agentdeck.TestRenderDoctorTextLockLines | SIMULATED (controlled legacy token) |
+| 4 | Unknown or unreadable owner | R3 | store.TestClassifyLockMatrix; cmd/agentdeck.TestLockContentionErrorTextAndJSON | SIMULATED (unknown liveness and unreadable fixture) |
+| 5 | Reclaimable modern lock | R4 | store.TestAcquireNamedLockReclaimsDeadOwner; doctor.TestCheckReportsLockClassificationAndLifecycle | SIMULATED (dead-owner fixture with real acquisition) |
+| 6 | Doctor under both locks | R5 | cmd/agentdeck.TestHealthRecoveryAcceptanceAcrossCLIAndDesktop; doctor.TestCheckReportsBothLocksIndependentlyUnderContention | PERFORMED / PASS (isolated read-only CLI) |
+| 7 | Future schema plus contention | R6 | cmd/agentdeck.TestSchemaAheadPrecedenceOverStateBusy; store.TestOpenPreservesStateBusyWhenSchemaAheadProbeIsInconclusive | PERFORMED / PASS (isolated future-schema database) |
+| 8 | Stale persisted identity | R7 | cmd/agentdeck.TestHealthRecoveryAcceptanceAcrossCLIAndDesktop; extension.TestSyntheticDiscoveryAndPriorityClassification | PERFORMED / PASS (isolated CLI and inventory) |
+| 9 | Native path unavailable | R10 | extension.TestUnresolvableNativePathNativeUnavailableResilience | SIMULATED (unresolvable native path fixture) |
+| 10 | Explicit extension sync | R8 | cmd/agentdeck.TestHealthRecoveryAcceptanceAcrossCLIAndDesktop; cmd/agentdeck.TestExtensionDoctorCLI | PERFORMED / PASS (isolated CLI and byte-checked client config) |
+| 11 | Discovery failure | R9 | extension.TestDiscoveryFailedAndDatabaseUnreadablePriority | SIMULATED (discovery failure injection) |
+| 12 | Invalid canonical ID | R10 | extension.TestInvalidCanonicalIDInformational | SIMULATED (invalid candidate fixture) |
+| 13 | Duplicate, drift, anomaly | R10 | extension.TestDoctorPriorityHierarchyTableDriven | SIMULATED (multi-condition discovery fixture) |
+| 14 | Post-commit fingerprint failure | R8 | cmd/agentdeck.TestExtensionScanSyncIncompleteCLI; extension.TestFingerprintFailurePreservesInventoryAndManagement | SIMULATED (fingerprint writer fault injection) |
+| 15 | Structured CLI and desktop wire | R11 | cmd/agentdeck.TestHealthRecoveryAcceptanceAcrossCLIAndDesktop; desktop.TestHealthSnapshotPopulatesAdditiveFieldsFromDoctorChecks; DesktopWireTests | PERFORMED / PASS (isolated CLI and hosted decoder) |
+| 16 | macOS recovery presentation | R12 | MenuBarViewModelTests health actions; MenuBarChromeTests native focus and bilingual 280/420 pt layout | PERFORMED / PASS (hosted XCTest); manual VoiceOver remains BLOCKED |
+
+Native acceptance is kept separate from the automated row above:
+
+| Native boundary | Evidence | Status |
+| --- | --- | --- |
+| Keyboard focus and 1.6-second copy feedback | Hosted MenuBarChromeTests clicks the identified NSButton and checks first responder, accessibility value, and timer | PERFORMED / PASS (isolated HOME) |
+| Clipboard content and health-state stability | Hosted MenuBarViewModelTests checks exact copied command, unchanged health rows, and timer expiry | PERFORMED / PASS (isolated HOME) |
+| Spoken VoiceOver reading order and live announcement | Requires a human-operated VoiceOver session against the installed app; XCTest checks labels and announcement call only | BLOCKED (no real VoiceOver session evidence; no waiver) |
+| Real client configuration and installed extensions | Isolated CLI fixture byte-compares the client file before and after sync; no production client files are touched | SIMULATED (real-environment observation outstanding; no waiver) |
+
+Verification receipt for the Task 5 implementation candidate at HEAD
+`a6f316e47b3b0faf7b92e924dfe72cef00a4c17f`:
+
+- `cmd/agentdeck/acceptance_test.go` SHA-256
+  `b6c915006a2a608624334fc8163f7c7399ad8d79a2d05a6c4783b9021de4822a`;
+  targeted ordinary and race runs passed after gofmt.
+- `scripts/run-go-test.sh ./...` PASS; log
+  `/var/folders/x1/pbx8jlln5lb46wtp8_nq0khh0000gn/T/agentdeck-go-test.Aa3rIq`.
+- `scripts/run-go-test.sh -race ./...` PASS; log
+  `/var/folders/x1/pbx8jlln5lb46wtp8_nq0khh0000gn/T/agentdeck-go-test.wjEpDv`.
+- Isolated `bash scripts/test-macos-app.sh` PASS: Shared 81, App 129
+  (1 conditional skip), Widget 45; result bundle
+  `apps/macos/build/DerivedData/Logs/Test/Test-AgentDeck-2026.09.24_23-14-05--0700.xcresult`.
+- `bash scripts/check-topic-docs.sh`, `make check-whitespace`,
+  `git diff --check`, and `gofmt -l cmd/agentdeck/acceptance_test.go` PASS.
+  The documentation status tick and evidence table do not change the tested
+  Go or macOS behavior.
+
 ## Current handoff
 
 The requirements boundary passed Review Round 1 and its signed delivered
@@ -569,13 +624,12 @@ wrapper matrix; and the final UX reconciliation explicitly records Effect and
 Partial commit derivations, with matching copy and test requirements added to
 Task 4. `tasks.md` decomposition Re-review Round 3 passed with every finding
 recorded in [`reviews/tasks.md`](reviews/tasks.md) closed; its document gate is
-VERIFIED and it awaits separately authorized Git delivery. The five
-implementation Beads tasks and their Development authorization Gates may now be
-created.
-
-Implementation remains blocked on its declared dependencies and implementation
-gate approval. Git delivery, integration, retirement and release remain separate
-boundaries.
+VERIFIED and was delivered through its separately authorized Git boundary.
+The five implementation tasks and their Development Gates were created. Tasks
+1–4 now have Dev and Review marked complete in the matrix above; Task 5 is the
+active cross-surface acceptance boundary. Its automated and native evidence is
+classified in the table above. Task 5 Review, Git delivery, topic integration,
+retirement, and release remain separate boundaries.
 
 ## Review boundary
 
