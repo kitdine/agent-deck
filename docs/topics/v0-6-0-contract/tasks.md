@@ -19,7 +19,7 @@ ratifies that document set when this draft is reviewed.
 
 | Document | Draft | Review |
 | --- | --- | --- |
-| tasks.md | [x] | [x] |
+| tasks.md | [x] | [ ] |
 | requirements.md | n/a | n/a |
 | architecture.md | n/a | n/a |
 | `ux/` | n/a | n/a |
@@ -226,11 +226,13 @@ Its five P2 findings are closed by the operator's explicit 2026-09-19 decision
 that this round repairs only P0/P1; they are carried as the deferred Lane C
 Beads candidates named in `docs/roadmap.md`.
 
-The topic's seven Tasks remain 7/7 reviewed and delivered. Its integration
-result needs its own target-bound CEv1 roll-up; the earlier Round 5 candidate
-state is not relabeled. Aggregate `assemble` stays open for the three other
-selected v0.6.0 areas, and this contract's task 2/version closure, retirement,
-and release remain unfinished.
+The topic's seven Tasks remain 7/7 reviewed and delivered. Its actual PR #5
+merge-result gate is VERIFIED 2/2 at
+`v0-6-0-contract:integration:subscription-quota:merge:7f84749f8bfa96496602560df0b4d5da09e6fd9d`;
+the earlier Round 5 candidate state is not relabeled. At this historical
+checkpoint, aggregate `assemble` stayed open for the three other selected
+v0.6.0 areas, and this contract's task 2/version closure, retirement, and
+release remained unfinished.
 
 ### Fifth batch candidate — health-recovery — 2026-09-25
 
