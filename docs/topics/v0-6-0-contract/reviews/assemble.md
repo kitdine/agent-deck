@@ -867,3 +867,29 @@ checks PASS. The operator's two-round renewed-review ceiling is reached. This
 is a repair candidate, not a third re-review PASS. VoiceOver remains
 user-waived and untested; real-client observation remains SIMULATED. Signed
 delivery and fresh PR-head CI remain pending.
+
+### PR #9 post-review CI repair candidate — 2026-09-26
+
+On signed `73f03f8a6a6d7b20c8c4807e7952adb0f1109041`, one of two `verify`
+jobs failed during `make verify`'s race suite while the other `verify` job and
+both `desktop` jobs passed. The sole failure was
+`TestDesktopQuotaRefreshReturnsDueAlertsForTheAppToDeliver`: an unacknowledged
+alert's ID differed between two refreshes. A focused `-race -count=10` run
+reproduced the failure locally. Its fake provider assigned a new reset instant
+as each probe's `observedAt + 3h`, changing the occurrence ID when the two
+refreshes crossed a second boundary. The production alert identity correctly
+uses the provider's reset instant; the test fixture now keeps one fixed reset
+instant across refreshes. The same focused race command passed ten runs after
+that correction (`agentdeck-go-test.x54XOi`). This is a test-fixture defect,
+not a health-recovery product failure. No third Codex review is requested under
+the operator's two-round ceiling. Signed delivery and fresh exact-head CI are
+pending.
+
+Local replay of the original `make verify` command passed its self-test and
+ordinary full Go suite (`agentdeck-go-test.zT4vcx`). Its full repository race
+stage hit the local runner's 10-minute per-package ceiling in `cmd/agentdeck`
+and `internal/backup`, with the tests active at timeout running for about one
+and three seconds respectively; no data race was reported. This does not
+establish a full local race PASS. The focused 10-run race result above is the
+repair reproducer, and the new PR-head CI remains the exact original-command
+verification gate.
