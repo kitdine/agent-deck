@@ -6,7 +6,7 @@ AGENTDECK_APP_GROUP = N2FZ2FNRTU.group.com.kitdine.agentdeck
 // Distribution inputs. The defaults are what an unsigned local build and an
 // isolated distribution test need; a real release overrides them on the
 // xcodebuild invocation and never by editing this file.
-AGENTDECK_MARKETING_VERSION = 0.5.0
+AGENTDECK_MARKETING_VERSION = 0.6.0
 // Local and isolated-test default only. A manually dispatched release preflight
 // assigns the distributable candidate build and injects it without editing this file.
 AGENTDECK_PROJECT_VERSION = 1
