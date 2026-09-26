@@ -566,7 +566,7 @@ tests, and the isolated macOS suite runs the listed XCTest cases.
 | 13 | Duplicate, drift, anomaly | R10 | extension.TestDoctorPriorityHierarchyTableDriven | SIMULATED (multi-condition discovery fixture) |
 | 14 | Post-commit fingerprint failure | R8 | cmd/agentdeck.TestExtensionScanSyncIncompleteCLI; cmd/agentdeck.TestExtensionScanFingerprintWriterClearsMarkerAtomically; extension.TestFingerprintFailurePreservesInventoryAndManagement | SIMULATED (fingerprint writer and marker-clear fault injection) |
 | 15 | Structured CLI and desktop wire | R11 | cmd/agentdeck.TestHealthRecoveryAcceptanceAcrossCLIAndDesktop; desktop.TestHealthSnapshotPopulatesAdditiveFieldsFromDoctorChecks; DesktopWireTests | PERFORMED / PASS (isolated CLI and hosted decoder) |
-| 16 | macOS recovery presentation | R12 | MenuBarViewModelTests health actions, bilingual check labels and affected-count accessibility text; MenuBarChromeTests native focus and bilingual 280/420 pt layout | PERFORMED / PASS (hosted XCTest); manual VoiceOver remains BLOCKED |
+| 16 | macOS recovery presentation | R12 | MenuBarViewModelTests health actions, bilingual check labels and affected-count accessibility text; MenuBarChromeTests native focus and bilingual 280/420 pt layout | PERFORMED / PASS (hosted XCTest); manual VoiceOver is user-waived, not tested |
 
 Native acceptance is kept separate from the automated row above:
 
@@ -574,7 +574,7 @@ Native acceptance is kept separate from the automated row above:
 | --- | --- | --- |
 | Keyboard focus and 1.6-second copy feedback | Hosted MenuBarChromeTests clicks the identified NSButton and checks first responder, accessibility value, and timer | PERFORMED / PASS (isolated HOME) |
 | Clipboard content and health-state stability | Hosted MenuBarViewModelTests checks exact copied command, unchanged health rows, and timer expiry | PERFORMED / PASS (isolated HOME) |
-| Spoken VoiceOver reading order and live announcement | Requires a human-operated VoiceOver session against the installed app; XCTest checks labels and announcement call only | BLOCKED (no real VoiceOver session evidence; no waiver) |
+| Spoken VoiceOver reading order and live announcement | Requires a human-operated VoiceOver session against the installed app; XCTest checks labels and announcement call only | USER-WAIVED / NOT TESTED (2026-09-25 operator direction; not a technical PASS) |
 | Real client configuration and installed extensions | Isolated CLI fixture byte-compares the client file before and after sync; no production client files are touched | SIMULATED (real-environment observation outstanding; no waiver) |
 
 Verification receipt for the Task 5 implementation candidate at HEAD
@@ -633,7 +633,7 @@ committed state. The subsequent PR-review repairs at signed `6c15672` passed
 independent Review Round 2; their exact-state CEv1 result must be queried
 separately and cannot be inferred from the prior gate. The automated and native
 evidence for the delivered Task 5 commit is classified in the table above:
-real VoiceOver speech remains BLOCKED without a waiver, and real-client
+real VoiceOver speech is user-waived and untested, and real-client
 observation remains SIMULATED. Topic integration, retirement, and release remain
 separate boundaries.
 

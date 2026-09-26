@@ -817,5 +817,13 @@ full Go suite PASS after the final CLI text assertion (`agentdeck-go-test.oIBxfV
 SUCCEEDED after an initial test-only count-meaning and localization-inventory
 repair; prototype `npm run build`, topic docs, whitespace, JSON catalog and diff
 checks PASS. Native VoiceOver speech remains BLOCKED/no-waiver and real-client
-observation SIMULATED. This is a repair candidate; it has no new independent
-re-review verdict, signed commit, remote CI result or exact-state CEv1 gate yet.
+observation SIMULATED. This was a repair candidate at the verification checkpoint;
+it had no new independent re-review verdict, signed commit, remote CI result or
+exact-state CEv1 gate at that point.
+
+The six-finding repair was subsequently committed as signed `51ec026a36412c7faeb8a6b373e324c06bab43f9`.
+On 2026-09-25 the operator explicitly waived manual VoiceOver acceptance for
+this topic. Spoken reading order and live announcements remain NOT TESTED, not
+technical PASS; hosted XCTest evidence retains its narrower scope. Real-client
+observation remains SIMULATED. PR-head CI, renewed code review and exact-state
+CEv1 evidence must be evaluated against the pushed candidate.
