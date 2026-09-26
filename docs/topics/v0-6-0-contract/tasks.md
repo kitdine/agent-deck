@@ -19,7 +19,7 @@ ratifies that document set when this draft is reviewed.
 
 | Document | Draft | Review |
 | --- | --- | --- |
-| tasks.md | [x] | [ ] |
+| tasks.md | [x] | [x] |
 | requirements.md | n/a | n/a |
 | architecture.md | n/a | n/a |
 | `ux/` | n/a | n/a |
