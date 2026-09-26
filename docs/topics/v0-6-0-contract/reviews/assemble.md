@@ -984,3 +984,63 @@ Beads records PR delivery on `ad-v060c-assemble-dev`; the two origin bugs and
 remains open for cost transparency. Manual VoiceOver is user-waived and NOT
 TESTED, not a technical PASS; installed real-client observation remains
 SIMULATED. Topic retirement and v0.6.0 release are separate boundaries.
+
+## Round 8 — 2026-09-26 — five-area aggregate candidate
+
+### 📋 v0.6.0 整体集成评审
+
+📊 总体评分：9/10
+
+✅ 评审结论：PASS
+
+Reviewer: GitHub Codex independent PR #11 reviews through final reviewed head
+`7c486b2`, with Codex verification of the five exact merge-result gates and
+current main/source ancestry. Method: inspect version membership, reviewed
+batch lineage, PR conflicts and changed interfaces, then verify the actual
+final-head CI and the disposition of all PR review comments. Scope: aggregate
+`assemble` candidate after the operator's five-area decision. The version-level
+contract Task, technical release preflight, RC1 tag and publication are excluded.
+
+### 🔴 严重问题 — 必须修复
+
+无。
+
+### 🟡 改进问题 — 必须关闭
+
+The first independent PR review found six P2 documentation/record issues; the
+second found two more. Each was checked against the owning source or record and
+repaired in signed commits on PR #11. The third review of `7c486b2` reported
+no major issues and added no inline suggestion. No in-scope finding remains
+open; the earlier subscription-quota P2 Lane C carriers keep their prior
+operator disposition and are not recast as resolved by this assembly.
+
+### 🟢 优点
+
+- Roadmap, contract matrix and project status now agree on exactly five areas;
+  cost transparency retains an independent, unversioned planning carrier.
+- All five selected feature topics are already in main with preserved ancestry.
+  Their exact integration WorkUnits each return VERIFIED 2/2 at the recorded
+  merge-result ContentState. Historical desktop candidate impacts and one
+  health candidate invalidation do not affect those valid merge-result passes.
+- The PR's only non-document behavior change is the separately reviewed cask
+  preflight syntax. The real isolated Homebrew migration test and distribution
+  check passed, and its Lane A Task gate is VERIFIED 4/4 at `c80a054`.
+
+### 📝 总结
+
+Reviewed state: main `228d89f01cceb87510127180b7dde537fc7f169a` /
+source PR #11 `c80a05441e89348fa81dbb176e1c5016f72a23eb`, tree
+`2d16fc5448ab6306f155c4582ec5273211cb89bd` before this review-record
+append. Main is an ancestor of the source, so the planned feature-to-main PR
+merge needs no manual conflict resolution; check the actual result after merge.
+Four source-head CI jobs (`verify` twice, `desktop` twice) are SUCCESS. Local
+`check-topic-docs.sh`, whitespace and diff checks passed. Earlier native and
+performance gaps retain their recorded statuses; health VoiceOver is waived
+but untested, and installed real-client observation remains SIMULATED.
+
+Completion gate: VERIFIED (4/4) for candidate
+`v0-6-0-contract:assemble:candidate:f70a136ff190a1fc31b336a26eadf7afe0daed572bf8f14e69ba115cfbf85621`.
+The fixed-template query has no missing, invalidated or unresolved item and
+rolls up the five exact integration gates plus the scoped cask fix gate. This
+receipt changes the review blob, so final candidate preservation must be bound
+before delivery. PR merge-result identity and version Task closure remain separate.
