@@ -1,11 +1,14 @@
 import { useEffect, useState } from "react";
 import { catalogs } from "./i18n.js";
+import { HEALTH_RECOVERY_STATES } from "./healthRecovery.js";
 
 const STATES = ["normal", "empty", "aged", "partial", "pending", "unavailable", "schema", "schemaStacked"];
 
 // 额度读取状态是独立的标本轴。它不能并进 STATES：用量数据状态与额度读取状态
 // 可以同时发生，合成一个控件就无法检验“用量过期 + 额度也过期”。
 const QUOTAS = ["normal", "bothOfficial", "codexPlus", "prose", "parseFailed", "stale", "neverProbed", "readingOff"];
+const REFRESHES = ["idle", "refreshing", "failed", "storageFailed", "wake", "recovered", "firstFailure"];
+const WIDGET_REFRESHES = ["fresh", "aging", "old", "hostAbsent", "unchanged", "changed", "missing", "containerUnavailable", "readFailed", "unsupported", "recovered"];
 const WIDGET_CLIENTS = ["codex", "claude"];
 
 // 菜单栏图标可以贴在屏幕任意水平位置，而弹层朝左还是朝右正是由此决定。
@@ -25,6 +28,9 @@ export function useStagePrefs() {
   const [state, setState] = useState(STATES.includes(params.get("state")) ? params.get("state") : "normal");
   const [width, setWidth] = useState(WIDTHS.includes(params.get("width")) ? params.get("width") : "420");
   const [quota, setQuota] = useState(QUOTAS.includes(params.get("quota")) ? params.get("quota") : "normal");
+  const [refresh, setRefresh] = useState(REFRESHES.includes(params.get("refresh")) ? params.get("refresh") : "idle");
+  const [health, setHealth] = useState(HEALTH_RECOVERY_STATES.includes(params.get("health")) ? params.get("health") : "baseline");
+  const [widgetRefresh, setWidgetRefresh] = useState(WIDGET_REFRESHES.includes(params.get("widgetRefresh")) ? params.get("widgetRefresh") : "fresh");
   const [widgetClient, setWidgetClient] = useState(
     WIDGET_CLIENTS.includes(params.get("widgetClient")) ? params.get("widgetClient") : "codex",
   );
@@ -35,12 +41,12 @@ export function useStagePrefs() {
     document.documentElement.setAttribute("lang", lang === "zh" ? "zh-Hans" : "en");
   }, [theme, lang]);
 
-  return { lang, setLang, theme, setTheme, state, setState, width, setWidth, quota, setQuota, widgetClient, setWidgetClient, anchor, setAnchor };
+  return { lang, setLang, theme, setTheme, state, setState, width, setWidth, quota, setQuota, refresh, setRefresh, health, setHealth, widgetRefresh, setWidgetRefresh, widgetClient, setWidgetClient, anchor, setAnchor };
 }
 
-function Group({ label, value, options, onChange }) {
+function Group({ label, value, options, onChange, axis }) {
   return (
-    <div className="stage-group">
+    <div className="stage-group" data-stage-axis={axis}>
       <span>{label}</span>
       <div>
         {options.map(([key, text]) => (
@@ -59,8 +65,8 @@ function Group({ label, value, options, onChange }) {
   );
 }
 
-export function StageControls({ prefs, showState = true, showWidth = true, showQuota = true, showWidgetClient = false, showAnchor = false }) {
-  const { lang, setLang, theme, setTheme, state, setState, width, setWidth, quota, setQuota, widgetClient, setWidgetClient, anchor, setAnchor } = prefs;
+export function StageControls({ prefs, showState = true, showWidth = true, showQuota = true, showRefresh = false, showHealth = false, showWidgetRefresh = false, showWidgetClient = false, showAnchor = false }) {
+  const { lang, setLang, theme, setTheme, state, setState, width, setWidth, quota, setQuota, refresh, setRefresh, health, setHealth, widgetRefresh, setWidgetRefresh, widgetClient, setWidgetClient, anchor, setAnchor } = prefs;
   const dict = catalogs[lang];
   const surface = new URLSearchParams(window.location.search).get("surface");
   const link = (target, text) => {
@@ -100,6 +106,31 @@ export function StageControls({ prefs, showState = true, showWidth = true, showQ
             onChange={setQuota}
           />
         )}
+        {showRefresh && (
+          <Group
+            label={dict.states.refresh}
+            value={refresh}
+            options={REFRESHES.map((key) => [key, dict.states.refreshVariants[key]])}
+            onChange={setRefresh}
+          />
+        )}
+        {showHealth && (
+          <Group
+            axis="health"
+            label={dict.states.healthRecovery}
+            value={health}
+            options={HEALTH_RECOVERY_STATES.map((key) => [key, dict.states.healthRecoveryVariants[key]])}
+            onChange={setHealth}
+          />
+        )}
+        {showWidgetRefresh && (
+          <Group
+            label={dict.states.widgetRefresh}
+            value={widgetRefresh}
+            options={WIDGET_REFRESHES.map((key) => [key, dict.states.widgetRefreshVariants[key]])}
+            onChange={setWidgetRefresh}
+          />
+        )}
         {showWidgetClient && (
           <Group
             label={dict.states.widgetClient}
@@ -134,6 +165,7 @@ export function StageControls({ prefs, showState = true, showWidth = true, showQ
           onChange={setTheme}
         />
         <Group
+          axis="language"
           label={dict.states.language}
           value={lang}
           options={[
@@ -147,4 +179,4 @@ export function StageControls({ prefs, showState = true, showWidth = true, showQ
   );
 }
 
-export { STATES, WIDTHS };
+export { HEALTH_RECOVERY_STATES, STATES, WIDTHS };

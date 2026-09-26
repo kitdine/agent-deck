@@ -1,3 +1,4 @@
+import AppKit
 import XCTest
 @testable import AgentDeck
 @testable import AgentDeckShared
@@ -62,7 +63,7 @@ final class MenuBarViewModelTests: XCTestCase {
 		await model.coordinator.refresh()
 		host.behavior = .failure(HelperExecutionError.timedOut)
 		await model.coordinator.refresh()
-		XCTAssertEqual(Array(model.notices.prefix(2).map(\.id)), ["failing", "schema"])
+		XCTAssertEqual(Array(model.notices.prefix(2).map(\.id)), ["schema", "refresh.failed"])
 		XCTAssertEqual(model.menuBarAccessibilityLabel, t(DesktopCopy.badgedFailing))
 		host.behavior = .envelope(WireFixture.envelope())
 		await model.coordinator.refresh()
@@ -82,7 +83,7 @@ final class MenuBarViewModelTests: XCTestCase {
 		XCTAssertNotNil(model.freshnessText)
 		host.behavior = .failure(HelperExecutionError.missingEmbeddedHelper)
 		await model.coordinator.refresh()
-		XCTAssertEqual(Array(model.notices.prefix(2).map(\.id)), ["offline", "schema"])
+		XCTAssertEqual(Array(model.notices.prefix(2).map(\.id)), ["schema", "refresh.failed"])
 		XCTAssertEqual(model.menuBarAccessibilityLabel, t(DesktopCopy.badgedOffline))
 	}
 
@@ -142,7 +143,7 @@ final class MenuBarViewModelTests: XCTestCase {
 
 		XCTAssertEqual(model.surface, .dataSurface)
 		XCTAssertTrue(model.qualifiers.contains(.failing))
-		XCTAssertEqual(model.errorCopy, t(DesktopCopy.refreshTimedOut))
+		XCTAssertEqual(model.errorCopy, t(DesktopCopy.refreshFailedShowingPrevious))
 		XCTAssertNotNil(model.hero)
 	}
 
@@ -153,7 +154,7 @@ final class MenuBarViewModelTests: XCTestCase {
 		await Task.yield()
 
 		XCTAssertEqual(model.surface, .errorSurface)
-		XCTAssertEqual(model.errorCopy, t(DesktopCopy.refreshTimedOut))
+		XCTAssertEqual(model.errorCopy, t(DesktopCopy.firstRefreshFailed))
 		XCTAssertTrue(model.notices.isEmpty, "an error surface has no snapshot to qualify")
 		XCTAssertTrue(model.showsScanProgressStatus)
 		XCTAssertEqual(model.scanProgressStageText, t(DesktopCopy.scanFinished))
@@ -172,6 +173,68 @@ final class MenuBarViewModelTests: XCTestCase {
 		XCTAssertTrue(model.showsScanProgressStatus)
 		XCTAssertEqual(model.scanProgressStageText, t(DesktopCopy.scanFinished))
 		XCTAssertTrue(model.scanProgressCountsText?.contains(t(DesktopCopy.failing)) == true)
+	}
+
+	func testRefreshPresentationMatrixKeepsAgeAttemptAndPublicationIndependent() async throws {
+		let envelope = WireFixture.envelope()
+		let host = StubDesktopHost(behavior: .envelope(envelope))
+		let model = await makeModel(host: host)
+
+		await model.coordinator.refresh()
+		XCTAssertEqual(model.refreshActionState, .succeeded)
+		XCTAssertEqual(model.refreshActionText, t(DesktopCopy.updatedAction))
+		XCTAssertEqual(model.refreshAnnouncement, t(DesktopCopy.updatedAction))
+		XCTAssertNotNil(model.freshnessText)
+
+		host.behavior = .suspendedEnvelope(envelope)
+		let running = Task { await model.coordinator.refresh() }
+		while host.refreshCount < 2 { await Task.yield() }
+		XCTAssertEqual(model.refreshActionState, .running)
+		XCTAssertEqual(model.refreshActionText, t(DesktopCopy.refreshingAction))
+		XCTAssertNotNil(model.freshnessText, "running must preserve successful-data age")
+		XCTAssertNil(model.refreshAnnouncement, "scan progress remains the one detailed live region")
+		host.resume()
+		await running.value
+
+		host.behavior = .failure(HelperExecutionError.timedOut)
+		await model.coordinator.refresh()
+		XCTAssertEqual(model.refreshActionState, .failed)
+		XCTAssertEqual(model.refreshActionText, t(DesktopCopy.retry))
+		XCTAssertEqual(model.refreshActionAccessibilityLabel, t(DesktopCopy.refreshFailedAction))
+		XCTAssertEqual(model.notices.first?.id, "refresh.failed")
+		XCTAssertEqual(model.notices.first?.text, t(DesktopCopy.refreshFailedShowingPrevious))
+		XCTAssertNotNil(model.freshnessText, "failure must preserve successful-data age")
+
+		let firstFailure = await makeModel(host: StubDesktopHost(behavior: .failure(HelperExecutionError.timedOut)))
+		await firstFailure.coordinator.refresh()
+		XCTAssertEqual(firstFailure.surface, .errorSurface)
+		XCTAssertNil(firstFailure.freshnessText)
+		XCTAssertEqual(firstFailure.refreshActionState, .failed)
+		XCTAssertEqual(firstFailure.errorCopy, t(DesktopCopy.firstRefreshFailed))
+		XCTAssertEqual(firstFailure.errorBodyCopy, t(DesktopCopy.firstRefreshEmpty))
+	}
+
+	func testWidgetPublicationFailureKeepsFreshMenuDataUnbadgedAndUsesOneNotice() async throws {
+		let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+		defer { try? FileManager.default.removeItem(at: directory) }
+		let store = AppGroupSnapshotStore(
+			directoryURL: directory,
+			atomicReplace: { _, _ in throw MenuBarPublicationError.failed }
+		)
+		let model = await makeModel(
+			host: StubDesktopHost(behavior: .envelope(WireFixture.envelope())),
+			snapshotStore: store
+		)
+
+		await model.coordinator.refresh()
+
+		XCTAssertEqual(model.surface, .dataSurface)
+		XCTAssertFalse(model.qualifiers.contains(.stale))
+		XCTAssertFalse(model.qualifiers.contains(.failing))
+		XCTAssertFalse(model.menuBarBadged)
+		XCTAssertEqual(model.refreshActionState, .succeeded)
+		XCTAssertEqual(model.notices.filter { $0.id == "widget.publication" }.count, 1)
+		XCTAssertEqual(model.notices.first?.text, t(DesktopCopy.widgetPublicationFailed))
 	}
 
 	// MARK: Filter propagation
@@ -239,7 +302,7 @@ final class MenuBarViewModelTests: XCTestCase {
 
 		XCTAssertEqual(
 			model.notices.map(\.id),
-			["failing", "partial", "health", "warning.sessions_unavailable"]
+			["refresh.failed", "health", "warning.sessions_unavailable", "partial"]
 		)
 		XCTAssertTrue(model.notices.contains { $0.opensHealthDetail })
 	}
@@ -253,6 +316,47 @@ final class MenuBarViewModelTests: XCTestCase {
 		XCTAssertEqual(warningNotices.last?.id, "warning.more")
 		XCTAssertEqual(warningNotices.last?.text, t(DesktopCopy.noticeMore, Int64(1)))
 		XCTAssertTrue(warningNotices.last?.opensHealthDetail ?? false)
+	}
+
+	func testClassifiedWarningKeepsUnclassifiedErrorVisible() async {
+		let health: [String: Any] = [
+			"available": true, "status": "error", "healthy": false,
+			"problems": 2, "warnings": 1, "errors": 1,
+			"checks": [
+				["name": "extensions", "status": "warning", "resource": "extension_inventory",
+				 "reason": "extension_stale_inventory", "action_kind": "synchronize_inventory",
+				 "recovery_command": "agentdeck extension scan"],
+				["name": "provider_configuration", "status": "error"],
+			],
+		]
+		let model = await readyModel(envelope: WireFixture.envelope(health: health))
+		XCTAssertEqual(model.notices.map(\.id), ["health.recovery.0", "health"])
+		XCTAssertEqual(model.notices.map(\.severity), [.warning, .error])
+		XCTAssertEqual(model.notices.last?.text, t(DesktopCopy.healthNotice, Int64(1)))
+	}
+
+	func testClassifiedErrorLeavesUnclassifiedWarningAtWarningSeverity() async {
+		let health: [String: Any] = [
+			"available": true, "status": "unhealthy", "healthy": false,
+			"problems": 2, "warnings": 1, "errors": 1,
+			"checks": [
+				["name": "extensions", "status": "error", "resource": "extension_inventory",
+				 "reason": "extension_inventory_unreadable", "action_kind": "manual_prerequisite",
+				 "manual_prerequisite": "prereq_extension_inventory_unreadable"],
+				["name": "provider_configuration", "status": "warning"],
+			],
+		]
+		let model = await readyModel(envelope: WireFixture.envelope(health: health))
+		XCTAssertEqual(model.notices.map(\.id), ["health.recovery.0", "health"])
+		XCTAssertEqual(model.notices.map(\.severity), [.error, .warning])
+		XCTAssertEqual(model.notices.last?.text, t(DesktopCopy.healthNotice, Int64(1)))
+	}
+
+	func testSchemaErrorLeavesHookWarningAtWarningSeverity() async {
+		let model = await readyModel(envelope: WireFixture.schemaSignal(refusals: true))
+		XCTAssertEqual(model.notices.map(\.id), ["schema", "health"])
+		XCTAssertEqual(model.notices.map(\.severity), [.error, .warning])
+		XCTAssertEqual(model.notices.last?.text, t(DesktopCopy.healthNotice, Int64(1)))
 	}
 
 	func testUnrecognizedWarningCodeIsShownVerbatimRatherThanDropped() async {
@@ -604,6 +708,79 @@ final class MenuBarViewModelTests: XCTestCase {
 		XCTAssertEqual(model.healthDetail.rows[2].recovery, "agentdeck usage price update")
 	}
 
+	func testHealthRecoveryActionsAreClassifiedAndCopyDoesNotChangeHealth() async throws {
+		let checks: [[String: Any]] = [
+			["name": "state_lock", "status": "warning", "resource": "state", "reason": "lock_live", "action_kind": "retry"],
+			["name": "extensions", "status": "warning", "resource": "extension_inventory", "reason": "extension_stale_inventory", "action_kind": "synchronize_inventory", "recovery_command": "agentdeck extension scan", "count": 2],
+			["name": "extensions", "status": "failed", "resource": "extension_inventory", "reason": "extension_fingerprint_update_failed", "action_kind": "diagnose", "diagnostic_command": "agentdeck extension doctor"],
+			["name": "state_lock", "status": "warning", "resource": "state", "reason": "lock_legacy", "action_kind": "manual_prerequisite", "manual_prerequisite": "prereq_legacy_lock_removal"],
+		]
+		let health: [String: Any] = ["available": true, "status": "error", "healthy": false, "problems": 4, "warnings": 3, "errors": 1, "checks": checks]
+		let model = await readyModel(envelope: WireFixture.envelope(health: health))
+		let rows = model.healthDetail.rows
+		XCTAssertNil(rows[0].actionLabel)
+		XCTAssertEqual(rows[1].actionLabel, t(DesktopCopy.healthCopySync))
+		XCTAssertEqual(rows[1].actionContent, "agentdeck extension scan")
+		XCTAssertTrue(rows[1].accessibilityText(expanded: false).contains(t(DesktopCopy.healthAffectedCount, 2)))
+		XCTAssertEqual(rows[1].effect, t(DesktopCopy.healthEffectStale))
+		XCTAssertEqual(rows[2].actionLabel, t(DesktopCopy.healthCopyDiagnostic))
+		XCTAssertEqual(rows[2].actionContent, "agentdeck extension doctor")
+		XCTAssertEqual(rows[2].effect, t(DesktopCopy.healthEffectIncomplete))
+		XCTAssertEqual(rows[3].actionLabel, t(DesktopCopy.healthCopySafety))
+		let safety = try XCTUnwrap(rows[3].actionContent)
+		let expectedSafety = try XCTUnwrap(DesktopCopy.healthPrerequisiteKeys["prereq_legacy_lock_removal"])
+		XCTAssertEqual(safety, t(expectedSafety))
+		XCTAssertNil(rows[3].recovery)
+		XCTAssertEqual(model.notices.filter(\.opensHealthDetail).count, 4)
+		let original = model.healthDetail
+		model.copyHealthAction(rows[1])
+		XCTAssertEqual(NSPasteboard.general.string(forType: .string), "agentdeck extension scan")
+		XCTAssertEqual(model.copiedHealthRowID, rows[1].id)
+		XCTAssertEqual(model.healthDetail, original)
+		try await Task.sleep(for: .milliseconds(1_700))
+		XCTAssertNil(model.copiedHealthRowID)
+		XCTAssertEqual(model.healthDetail, original)
+	}
+
+	func testHealthCheckNamesAndAffectedCountsAreLocalized() async {
+		let names = ["state_permissions", "database", "hook_deliveries", "future_check"]
+		let checks: [[String: Any]] = names.map { ["name": $0, "status": "warning", "count": 2] } + [[
+			"name": "extensions", "status": "warning", "resource": "extension_inventory",
+			"reason": "extension_stale_inventory", "action_kind": "synchronize_inventory",
+			"recovery_command": "agentdeck extension scan", "count": 2,
+		]]
+		let health: [String: Any] = [
+			"available": true, "status": "warning", "healthy": false,
+			"problems": checks.count, "warnings": checks.count, "errors": 0, "checks": checks,
+		]
+		let previousLocale = ProcessInfo.processInfo.environment["AGENTDECK_TEST_LOCALE"]
+		defer {
+			if let previousLocale { setenv("AGENTDECK_TEST_LOCALE", previousLocale, 1) }
+			else { unsetenv("AGENTDECK_TEST_LOCALE") }
+		}
+		for language in ["en", "zh-Hans"] {
+			setenv("AGENTDECK_TEST_LOCALE", language, 1)
+			let rows = await readyModel(envelope: WireFixture.envelope(health: health)).healthDetail.rows
+			let expected = names.map { t(DesktopCopy.healthCheckNameKeys[$0] ?? DesktopCopy.healthUnknownCheck) } + [t(DesktopCopy.healthExtensions)]
+			XCTAssertEqual(rows.map(\.name), expected)
+			XCTAssertTrue(rows.dropLast().allSatisfy { !$0.accessibilityText(expanded: false).contains(t(DesktopCopy.healthAffectedCount, 2)) })
+			XCTAssertTrue(rows.last?.accessibilityText(expanded: false).contains(t(DesktopCopy.healthAffectedCount, 2)) == true)
+		}
+	}
+
+	func testUnknownAndMismatchedHealthActionsFailClosed() async {
+		let checks: [[String: Any]] = [
+			["name": "extensions", "status": "warning", "resource": "extension_inventory", "reason": "extension_stale_inventory", "action_kind": "synchronize_inventory", "recovery_command": "dangerous command"],
+			["name": "extensions", "status": "warning", "resource": "extension_inventory", "reason": "extension_discovery_failed", "action_kind": "manual_prerequisite", "manual_prerequisite": "unknown_key"],
+			["name": "extensions", "status": "warning", "resource": "extension_inventory", "reason": "future_reason", "action_kind": "diagnose", "diagnostic_command": "agentdeck doctor"],
+			["name": "extensions", "status": "warning", "resource": "extension_inventory", "reason": "lock_legacy", "action_kind": "manual_prerequisite", "manual_prerequisite": "prereq_legacy_lock_removal"],
+			["name": "state_lock", "status": "warning", "resource": "extension_inventory", "reason": "extension_stale_inventory", "action_kind": "synchronize_inventory", "recovery_command": "agentdeck extension scan"],
+		]
+		let health: [String: Any] = ["available": true, "status": "warning", "healthy": false, "problems": checks.count, "warnings": checks.count, "errors": 0, "checks": checks]
+		let model = await readyModel(envelope: WireFixture.envelope(health: health))
+		XCTAssertTrue(model.healthDetail.rows.allSatisfy { $0.actionContent == nil && $0.actionLabel == nil })
+	}
+
 	// MARK: Menu-bar item
 
 	func testMenuBarValueModesChangeWhatTheItemRenders() async {
@@ -648,4 +825,8 @@ final class MenuBarViewModelTests: XCTestCase {
 		XCTAssertTrue(model.menuBarBadged)
 		XCTAssertEqual(model.menuBarAccessibilityLabel, t(DesktopCopy.badgedFailing))
 	}
+}
+
+private enum MenuBarPublicationError: Error {
+	case failed
 }

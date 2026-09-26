@@ -46,6 +46,7 @@ import {
   formatWeekdayDate,
   relativeTime,
 } from "./i18n.js";
+import { HEALTH_RECOVERY } from "./healthRecovery.js";
 
 // 额度排在第一位，并且是默认页：一个被排到首位却不是默认打开的 tab，等于
 // 用位置说它最重要、又用默认值说它不是。
@@ -95,8 +96,22 @@ export const SURFACE_STATES = ["normal", "empty", "aged", "partial", "pending", 
 // 本条件的两种排布：仅此一项问题，以及叠加其他问题。
 const SCHEMA_STATES = ["schema", "schemaStacked"];
 
+function refreshPresentation(scenario, state) {
+  const ordinaryAge = state === "aged" ? 512 : 0;
+  switch (scenario) {
+    case "refreshing": return { status: "refreshing", issue: null, age: 4 };
+    case "failed": return { status: "failed", issue: "retainedFailure", age: 18 };
+    case "storageFailed": return { status: "idle", issue: "storageFailure", age: 0 };
+    case "wake": return { status: "refreshing", issue: null, age: 487 };
+    case "recovered": return { status: "success", issue: null, age: 0 };
+    case "firstFailure": return { status: "failed", issue: "firstFailure", age: 0 };
+    default: return { status: "idle", issue: null, age: ordinaryAge };
+  }
+}
+
 // schema 两态的健康负载与其余六态不同：它们是本条件下 doctor 的实测返回及其叠加变体。
-function healthOf(state) {
+function healthOf(state, recovery = "baseline") {
+  if (recovery !== "baseline" && HEALTH_RECOVERY[recovery]) return HEALTH_RECOVERY[recovery];
   if (state === "schema") return HEALTH_SCHEMA;
   if (state === "schemaStacked") return HEALTH_SCHEMA_STACKED;
   return HEALTH;
@@ -1102,25 +1117,39 @@ function Legend({ dict }) {
 
 // 提示条统一放在内容区顶部：它是内容的一部分，跟着内容滚，
 // 既不像浮层那样压住下面的数据，也不去挤已经很窄的 footer。
-function Notices({ lang, state, refreshFailed, onOpenHealth }) {
+function Notices({ lang, state, healthRecovery, refreshIssue, onOpenHealth }) {
   const dict = useDict(lang);
   const schema = SCHEMA_STATES.includes(state);
-  const health = healthOf(state);
+  const health = healthOf(state, healthRecovery);
   const failing = health.checks.filter((check) => check.status !== "ok");
   const rows = [];
-  if (state === "unavailable") rows.push({ key: "unreadable", tone: "bad", text: dict.status.unreadable });
+  if (state === "unavailable" && refreshIssue !== "firstFailure") rows.push({ key: "unreadable", tone: "bad", text: dict.status.unreadable });
+  if (refreshIssue === "retainedFailure") rows.push({ key: "refresh", tone: "bad", text: dict.status.refreshRetained, announce: false });
+  if (refreshIssue === "storageFailure") rows.push({ key: "storage", tone: "warn", text: dict.status.storageFailed, announce: false });
+  if (refreshIssue === "firstFailure") rows.push({ key: "first-refresh", tone: "bad", text: dict.status.firstRefreshFailed, announce: false });
   // 刷新不上的快照没法断言这个条件此刻还成立，只能断言取快照时成立，所以它排在因由前面。
   if (state === "schemaStacked") rows.push({ key: "offline", tone: "bad", text: dict.status.offline });
   // 因由排在症状前面，而症状不再单独成行：partial 说的是这一条已经解释过的事。
   if (schema) {
     rows.push({ key: "schema", tone: "bad", text: dict.status.schemaSignalNotice, action: onOpenHealth });
   }
-  if (!schema && (state === "partial" || refreshFailed)) {
+  if (healthRecovery !== "baseline") {
+    const scenarios = healthRecovery === "combined" ? ["stateLive", "extensionStale"] : [healthRecovery];
+    for (const scenario of scenarios) {
+      rows.push({
+        key: `health-recovery.${scenario}`,
+        tone: scenario === "syncIncomplete" ? "bad" : "warn",
+        text: dict.status.healthRecoveryNotices[scenario],
+        action: onOpenHealth,
+      });
+    }
+  }
+  if (!schema && state === "partial") {
     rows.push({ key: "partial", tone: "warn", text: dict.status.partial });
   }
   // 计数条只在还有别的东西可数时才是信息：problems === 1 时它说的正是上面那一行。
   const countIsRedundant = schema && failing.length <= 1;
-  if (failing.length > 0 && state !== "unavailable" && !countIsRedundant) {
+  if (failing.length > 0 && state !== "unavailable" && !countIsRedundant && healthRecovery === "baseline") {
     rows.push({
       key: "health",
       tone: schema ? "bad" : "warn",
@@ -1143,7 +1172,7 @@ function Notices({ lang, state, refreshFailed, onOpenHealth }) {
             <CaretRight size={12} />
           </button>
         ) : (
-          <div key={row.key} className={`notice tone-${row.tone}`} role="status">
+          <div key={row.key} className={`notice tone-${row.tone}`} role={row.announce === false ? undefined : "status"}>
             <WarningCircle size={13} weight="fill" />
             <span>{row.text}</span>
           </div>
@@ -1155,9 +1184,38 @@ function Notices({ lang, state, refreshFailed, onOpenHealth }) {
 
 // 健康详情做成二级页面，和工作信号详情同一套模式：
 // 展开式的行内列表要么挡住内容，要么把 footer 顶变形，这里两个问题都不存在。
-function HealthDetail({ lang, state, onBack }) {
+function recoveryDetail(check, dict) {
+  const key = check.code === "lock_live" ? `${check.resource}Live` : check.code;
+  return dict.status.healthRecoveryDetails[key] ?? null;
+}
+
+function HealthCopyAction({ check, detail, dict }) {
+  const [copied, setCopied] = useState(false);
+  const command = check.recovery_command ?? check.diagnostic_command ?? null;
+  const copyValue = check.copy_kind === "manual_prerequisite" ? detail?.manual : command;
+  if (!copyValue) return null;
+  const label = check.copy_kind === "manual_prerequisite"
+    ? dict.status.copySafetySteps
+    : check.action_kind === "synchronize_inventory"
+      ? dict.status.copySyncCommand
+      : dict.status.copyDiagnosticCommand;
+  const copy = async () => {
+    await navigator.clipboard?.writeText(copyValue);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1600);
+  };
+  return (
+    <div className="health-copy-action" data-action-kind={check.action_kind ?? "none"}>
+      {command && <code>{command}</code>}
+      <button type="button" onClick={copy}>{label}</button>
+      <span role="status" aria-live="polite">{copied ? dict.status.copied : ""}</span>
+    </div>
+  );
+}
+
+function HealthDetail({ lang, state, healthRecovery, onBack }) {
   const dict = useDict(lang);
-  const health = healthOf(state);
+  const health = healthOf(state, healthRecovery);
   return (
     <section className="panel">
       <div className="detail-head">
@@ -1171,9 +1229,12 @@ function HealthDetail({ lang, state, onBack }) {
         </span>
       </div>
       <div className="card">
-        {health.checks.map((check) => (
-          <div className={`list-row${check.code === "schema_ahead" || check.code === "hook_deliveries_dropped" ? " expanded" : ""}`} key={check.name}>
-            <b>{dict.status.checks[check.name]}</b>
+        {health.checks.map((check) => {
+          const detail = recoveryDetail(check, dict);
+          const expanded = check.code === "schema_ahead" || check.code === "hook_deliveries_dropped" || !!detail;
+          return (
+          <div className={`list-row${expanded ? " expanded" : ""}`} data-health-code={check.code ?? "ok"} key={`${check.name}.${check.code ?? "ok"}`}>
+            <b>{dict.status.checks[check.name] ?? dict.status.checks.other}</b>
             <small />
             <strong className={check.status === "failed" ? "tone-text-bad" : check.status === "warning" ? "tone-text-warn" : "tone-text-good"}>
               {dict.status.checkStatus[check.status]}
@@ -1192,8 +1253,18 @@ function HealthDetail({ lang, state, onBack }) {
                 <p>{dict.status.schemaSignalHookDropped(check.count)}</p>
               </div>
             )}
+            {detail && (
+              <div className="row-detail health-recovery-detail">
+                <p>{detail.cause}</p>
+                <p>{detail.next}</p>
+                {detail.effect && <p>{detail.effect}</p>}
+                {detail.manual && <p><strong>{dict.status.manualPrerequisite}</strong> {detail.manual}</p>}
+                <HealthCopyAction check={check} detail={detail} dict={dict} />
+              </div>
+            )}
           </div>
-        ))}
+          );
+        })}
       </div>
       <p className="detail-note">{dict.status.healthNote}</p>
     </section>
@@ -1292,7 +1363,7 @@ function ConfirmDialog({ pending, lang, onCancel, onConfirm }) {
 
 /* ------------------------------------------------------------------ Popover */
 
-export function Popover({ lang, state = "normal", quotaState = "normal", embedded = false, width = "420", scan = null, onClientChange }) {
+export function Popover({ lang, state = "normal", quotaState = "normal", refreshScenario = "idle", healthRecovery = "baseline", embedded = false, width = "420", scan = null, onClientChange }) {
   const dict = useDict(lang);
   const [client, setClientState] = useState("all");
   const setClient = (value) => {
@@ -1315,8 +1386,10 @@ export function Popover({ lang, state = "normal", quotaState = "normal", embedde
   // 页脚的 provider 与额度面板读同一个对象：一个说 official 另一个说 aigocode
   // 是这份原型最该防的同屏矛盾。
   const quotaRoutes = quota(quotaVariant).routes ?? PROVIDER.routes;
-  const [refreshStatus, setRefreshStatus] = useState("idle");
-  const [ageMinutes, setAgeMinutes] = useState(state === "aged" ? 512 : 0);
+  const initialRefresh = refreshPresentation(refreshScenario, state);
+  const [refreshStatus, setRefreshStatus] = useState(initialRefresh.status);
+  const [refreshIssue, setRefreshIssue] = useState(initialRefresh.issue);
+  const [ageMinutes, setAgeMinutes] = useState(initialRefresh.age);
   const [providerMenu, setProviderMenu] = useState(false);
   const [pending, setPending] = useState(null);
   const [healthOpen, setHealthOpen] = useState(false);
@@ -1379,8 +1452,12 @@ export function Popover({ lang, state = "normal", quotaState = "normal", embedde
   );
 
   useEffect(() => {
-    setAgeMinutes(state === "aged" ? 512 : 0);
-  }, [state]);
+    const next = refreshPresentation(refreshScenario, state);
+    setRefreshStatus(next.status);
+    setRefreshIssue(next.issue);
+    setAgeMinutes(next.age);
+    attempts.current = ["failed", "storageFailed", "firstFailure"].includes(refreshScenario) ? 1 : 0;
+  }, [refreshScenario, state]);
 
   // 弹层锚在某一次布局中的按钮上；切额度状态、切宽度或滚动后那个坐标都失效。
   // 与其让明细漂在旧位置，直接关闭，下一次打开再从当前 rect 计算。
@@ -1416,7 +1493,8 @@ export function Popover({ lang, state = "normal", quotaState = "normal", embedde
   }, [creditsFlyout, cancelCreditsClose, closeCreditsSoon]);
 
   const view = useMemo(() => scope(client, period), [client, period]);
-  const unavailable = state === "unavailable";
+  const unavailable = state === "unavailable" || refreshIssue === "firstFailure";
+  const effectiveState = unavailable ? "unavailable" : state;
   // schema 态：快照是新的、也读得到，读不到的是核心库。所以时间戳照常显示，
   // 而每一个数据域都空——两件事在这一态里同时为真，unavailable 态里不是。
   const schema = SCHEMA_STATES.includes(state);
@@ -1429,20 +1507,27 @@ export function Popover({ lang, state = "normal", quotaState = "normal", embedde
   };
 
   const refresh = useCallback(() => {
-    if (scan) { scan.restart(); return; }
+    if (scan) {
+      if (!scan.active) scan.restart();
+      return;
+    }
+    if (refreshStatus === "refreshing") return;
     window.clearTimeout(timer.current);
     attempts.current += 1;
     setRefreshStatus("refreshing");
+    setRefreshIssue(null);
     timer.current = window.setTimeout(() => {
       if (attempts.current === 1) {
         setRefreshStatus("failed");
+        setRefreshIssue(unavailable ? "firstFailure" : "retainedFailure");
         return;
       }
       setRefreshStatus("success");
+      setRefreshIssue(null);
       setAgeMinutes(0);
       timer.current = window.setTimeout(() => setRefreshStatus("idle"), 1600);
     }, 1100);
-  }, [scan]);
+  }, [scan, refreshStatus, unavailable]);
 
   const choose = (item) => {
     setProviderMenu(false);
@@ -1477,6 +1562,18 @@ export function Popover({ lang, state = "normal", quotaState = "normal", embedde
     : quotaRoutes.map((route) => `${dict.clients[route.client]} ${route.provider}`).join(" · ");
 
   const visibleRefreshStatus = scan ? (scan.active ? "refreshing" : scan.phase === "completed" ? "success" : "idle") : refreshStatus;
+  const refreshAnnouncement =
+    refreshIssue === "retainedFailure"
+      ? dict.status.refreshRetained
+      : refreshIssue === "storageFailure"
+        ? dict.status.storageFailed
+        : refreshIssue === "firstFailure"
+          ? dict.status.firstRefreshFailed
+          : visibleRefreshStatus === "refreshing"
+            ? dict.refreshing
+            : visibleRefreshStatus === "success"
+              ? dict.updated
+              : "";
   if (scan && !scan.hasSnapshot) return <ScanEmptyPopover scan={scan} lang={lang} width={width} />;
 
   return (
@@ -1489,6 +1586,7 @@ export function Popover({ lang, state = "normal", quotaState = "normal", embedde
       }`}
       style={{ "--popover-w": `${width}px` }}
       data-width={width}
+      data-health-scenario={healthRecovery}
       aria-label={dict.app}
     >
       {creditsFlyout && (
@@ -1516,23 +1614,16 @@ export function Popover({ lang, state = "normal", quotaState = "normal", embedde
               {visibleRefreshStatus === "success" ? dict.status.justNow : relativeTime(ageMinutes, lang)}
             </span>
           )}
-          {visibleRefreshStatus === "failed" ? (
-          <div className="refresh failed" role="status">
-            <WarningCircle size={14} weight="fill" />
-            <span>{dict.refreshFailed}</span>
-            <button type="button" onClick={refresh}>
-              {dict.retry}
-            </button>
-          </div>
-        ) : (
           <button
             type="button"
-            className="refresh"
+            className={`refresh${visibleRefreshStatus === "failed" ? " failed" : ""}`}
             onClick={refresh}
-            disabled={scan ? scan.active : visibleRefreshStatus === "refreshing"}
-            aria-label={`${dict.refresh} ⌘R`}
+            aria-disabled={scan ? scan.active : visibleRefreshStatus === "refreshing"}
+            aria-label={visibleRefreshStatus === "failed" ? dict.refreshRetryLabel : `${dict.refresh} ⌘R`}
           >
-            {visibleRefreshStatus === "refreshing" ? (
+            {visibleRefreshStatus === "failed" ? (
+              <WarningCircle size={14} weight="fill" />
+            ) : visibleRefreshStatus === "refreshing" ? (
               <SpinnerGap size={15} className="spin" />
             ) : visibleRefreshStatus === "success" ? (
               <Check size={15} weight="bold" />
@@ -1540,15 +1631,21 @@ export function Popover({ lang, state = "normal", quotaState = "normal", embedde
               <ArrowClockwise size={15} />
             )}
             <span>
-              {visibleRefreshStatus === "refreshing"
+              {visibleRefreshStatus === "failed"
+                ? dict.retry
+                : visibleRefreshStatus === "refreshing"
                 ? dict.refreshing
                 : visibleRefreshStatus === "success"
                   ? dict.updated
                   : dict.refresh}
             </span>
           </button>
-          )}
         </div>
+        {!scan && (
+          <span className="visually-hidden" role="status" aria-live="polite" aria-atomic="true">
+            {refreshAnnouncement}
+          </span>
+        )}
       </header>
 
       {scan && <ScanStatus scan={scan} lang={lang} />}
@@ -1643,23 +1740,23 @@ export function Popover({ lang, state = "normal", quotaState = "normal", embedde
 
       <div className="scroll" onScroll={() => setCreditsFlyout(null)}>
         {healthOpen ? (
-          <HealthDetail lang={lang} state={state} onBack={() => setHealthOpen(false)} />
+          <HealthDetail lang={lang} state={state} healthRecovery={healthRecovery} onBack={() => setHealthOpen(false)} />
         ) : schema ? (
           <>
-            <Notices lang={lang} state={state} refreshFailed={visibleRefreshStatus === "failed"} onOpenHealth={() => setHealthOpen(true)} />
+            <Notices lang={lang} state={effectiveState} healthRecovery={healthRecovery} refreshIssue={refreshIssue} onOpenHealth={() => setHealthOpen(true)} />
             <SchemaPanel lang={lang} label={dict.tabs[tab]} />
           </>
         ) : unavailable ? (
           <>
-            <Notices lang={lang} state={state} refreshFailed={visibleRefreshStatus === "failed"} onOpenHealth={() => setHealthOpen(true)} />
+            <Notices lang={lang} state={effectiveState} healthRecovery={healthRecovery} refreshIssue={refreshIssue} onOpenHealth={() => setHealthOpen(true)} />
             <div className="unavailable">
               <WarningCircle size={26} />
-              <p>{dict.status.unavailable}</p>
+              <p>{refreshIssue === "firstFailure" ? dict.status.noDataYet : dict.status.unavailable}</p>
             </div>
           </>
         ) : (
           <>
-            <Notices lang={lang} state={state} refreshFailed={visibleRefreshStatus === "failed"} onOpenHealth={() => setHealthOpen(true)} />
+            <Notices lang={lang} state={effectiveState} healthRecovery={healthRecovery} refreshIssue={refreshIssue} onOpenHealth={() => setHealthOpen(true)} />
             {tab === "usage" && <UsagePanel view={view} lang={lang} state={state} />}
             {tab === "breakdown" && <BreakdownPanel view={view} lang={lang} state={state} />}
             {tab === "attribution" && <AttributionPanel view={view} lang={lang} state={state} />}

@@ -82,7 +82,7 @@ function MenuBarMenu({ lang, prefs, onPrefs, onSettings, onClose }) {
 export function App() {
   const stage = useStagePrefs();
   const scan = useScanScenario();
-  const { lang, theme, state, width, quota, anchor } = stage;
+  const { lang, theme, state, width, quota, refresh, health, anchor } = stage;
   const dict = catalogs[lang];
   const params = new URLSearchParams(window.location.search);
   const [open, setOpen] = useState(true);
@@ -119,7 +119,7 @@ export function App() {
 
   return (
     <main className="stage" data-theme={theme}>
-      <StageControls prefs={stage} showAnchor />
+      <StageControls prefs={stage} showAnchor showRefresh showHealth />
       {scan.enabled && <ScanStageControls scan={scan} lang={lang} attached={open} />}
       <div className="stage-body" data-anchor={anchor}>
         <div className="menubar-strip">
@@ -155,7 +155,7 @@ export function App() {
           </div>
           <p className="hint">{dict.menu.hint}</p>
         </div>
-        {open && <Popover lang={lang} state={state} quotaState={quota} width={width} scan={scan.enabled ? scan : null} onClientChange={setClient} />}
+        {open && <Popover lang={lang} state={state} quotaState={quota} refreshScenario={refresh} healthRecovery={health} width={width} scan={scan.enabled ? scan : null} onClientChange={setClient} />}
       </div>
       {settings && (
         <div className="window-backdrop" onMouseDown={() => setSettings(false)}>

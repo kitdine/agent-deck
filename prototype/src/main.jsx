@@ -9,6 +9,7 @@ import { runContract } from "./contract.js";
 import { runMeasure } from "./measure.js";
 import { runProbe } from "./probe.js";
 import { runScanProbe } from "./scan-probe.js";
+import { runHealthRecoveryProbe } from "./health-recovery-probe.js";
 
 const surface = new URLSearchParams(window.location.search).get("surface");
 const Surface =
@@ -18,6 +19,7 @@ runContract();
 runMeasure();
 runProbe();
 runScanProbe();
+runHealthRecoveryProbe();
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>

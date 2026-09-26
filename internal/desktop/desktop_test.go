@@ -64,6 +64,152 @@ func TestHealthSnapshotCopiesSupportedCountAndOmitsZero(t *testing.T) {
 	}
 }
 
+func TestHealthSnapshotPopulatesAdditiveFieldsFromDoctorChecks(t *testing.T) {
+	report := doctor.Report{
+		Status: "unhealthy", Healthy: false, Problems: 4, Warnings: 3, Errors: 1,
+		Checks: []doctor.Check{
+			// 1. Lock check with manual_prerequisite
+			{
+				Name:               "state_lock",
+				Status:             "warning",
+				Code:               "lock_legacy",
+				Resource:           "state",
+				Reason:             "lock_legacy",
+				ActionKind:         "manual_prerequisite",
+				ManualPrerequisite: "prereq_legacy_lock_removal",
+			},
+			// 2. Lock check with retry
+			{
+				Name:       "scan_lock",
+				Status:     "warning",
+				Code:       "lock_live",
+				Resource:   "scan",
+				Reason:     "lock_live",
+				ActionKind: "retry",
+			},
+			// 3. Lock check with action_kind null -> hc.ActionKind is nil
+			{
+				Name:       "state_lock",
+				Status:     "warning",
+				Code:       "lock_owner_unknown",
+				Resource:   "state",
+				Reason:     "lock_owner_unknown",
+				ActionKind: "null",
+			},
+			// 4. Extension check with stale inventory -> synchronize_inventory and recovery command
+			{
+				Name:       "extensions",
+				Status:     "warning",
+				Code:       "extension_stale_inventory",
+				Count:      2,
+				Recovery:   "agentdeck extension scan",
+				Resource:   "extension_inventory",
+				Reason:     "extension_stale_inventory",
+				ActionKind: "synchronize_inventory",
+			},
+			// 5. Extension check with unreadable inventory -> error with manual_prerequisite
+			{
+				Name:               "extensions",
+				Status:             "error",
+				Code:               "extension_inventory_unreadable",
+				Resource:           "extension_inventory",
+				Reason:             "extension_inventory_unreadable",
+				ActionKind:         "manual_prerequisite",
+				ManualPrerequisite: "prereq_extension_inventory_unreadable",
+			},
+			// 6. Healthy check -> omits all additive fields
+			{
+				Name:   "state_permissions",
+				Status: "ok",
+			},
+		},
+	}
+
+	snapshot := healthSnapshot(report)
+	if !snapshot.Available || len(snapshot.Checks) != 6 {
+		t.Fatalf("unexpected snapshot: %#v", snapshot)
+	}
+
+	// 1. Verify state_lock legacy
+	c0 := snapshot.Checks[0]
+	if c0.Resource == nil || *c0.Resource != "state" || c0.Reason == nil || *c0.Reason != "lock_legacy" ||
+		c0.ActionKind == nil || *c0.ActionKind != "manual_prerequisite" ||
+		c0.ManualPrerequisite == nil || *c0.ManualPrerequisite != "prereq_legacy_lock_removal" {
+		t.Fatalf("unexpected c0: %#v", c0)
+	}
+
+	// 2. Verify scan_lock live
+	c1 := snapshot.Checks[1]
+	if c1.Resource == nil || *c1.Resource != "scan" || c1.Reason == nil || *c1.Reason != "lock_live" ||
+		c1.ActionKind == nil || *c1.ActionKind != "retry" || c1.ManualPrerequisite != nil {
+		t.Fatalf("unexpected c1: %#v", c1)
+	}
+
+	// 3. Verify state_lock lock_owner_unknown action_kind is nil
+	c2 := snapshot.Checks[2]
+	if c2.Resource == nil || *c2.Resource != "state" || c2.Reason == nil || *c2.Reason != "lock_owner_unknown" ||
+		c2.ActionKind != nil {
+		t.Fatalf("unexpected c2 (ActionKind should be nil): %#v", c2)
+	}
+
+	// 4. Verify extension stale inventory
+	c3 := snapshot.Checks[3]
+	if c3.Resource == nil || *c3.Resource != "extension_inventory" || c3.Reason == nil || *c3.Reason != "extension_stale_inventory" ||
+		c3.ActionKind == nil || *c3.ActionKind != "synchronize_inventory" || c3.Recovery != "agentdeck extension scan" || c3.Count != 2 {
+		t.Fatalf("unexpected c3: %#v", c3)
+	}
+
+	// 5. Verify extension unreadable
+	c4 := snapshot.Checks[4]
+	if c4.Status != "error" || c4.Resource == nil || *c4.Resource != "extension_inventory" ||
+		c4.Reason == nil || *c4.Reason != "extension_inventory_unreadable" ||
+		c4.ActionKind == nil || *c4.ActionKind != "manual_prerequisite" ||
+		c4.ManualPrerequisite == nil || *c4.ManualPrerequisite != "prereq_extension_inventory_unreadable" {
+		t.Fatalf("unexpected c4: %#v", c4)
+	}
+
+	// 6. Verify healthy check omits additive fields
+	c5 := snapshot.Checks[5]
+	if c5.Resource != nil || c5.Reason != nil || c5.ActionKind != nil || c5.DiagnosticCommand != nil || c5.ManualPrerequisite != nil {
+		t.Fatalf("healthy check has non-nil additive fields: %#v", c5)
+	}
+
+	// JSON serialization assertions
+	encoded, err := json.Marshal(snapshot.Checks)
+	if err != nil {
+		t.Fatal(err)
+	}
+	jsonStr := string(encoded)
+
+	// Ensure tags are serialized correctly
+	for _, expected := range []string{
+		`"resource":"state"`,
+		`"reason":"lock_legacy"`,
+		`"action_kind":"manual_prerequisite"`,
+		`"manual_prerequisite":"prereq_legacy_lock_removal"`,
+		`"resource":"scan"`,
+		`"reason":"lock_live"`,
+		`"action_kind":"retry"`,
+		`"resource":"extension_inventory"`,
+		`"reason":"extension_stale_inventory"`,
+		`"action_kind":"synchronize_inventory"`,
+		`"recovery_command":"agentdeck extension scan"`,
+	} {
+		if !strings.Contains(jsonStr, expected) {
+			t.Fatalf("JSON missing %s:\n%s", expected, jsonStr)
+		}
+	}
+
+	// Privacy assertion: no private paths, nonces, or tokens are serialized in health checks
+	for _, forbidden := range []string{
+		"token", "nonce", "Users", ".lock", "flock",
+	} {
+		if strings.Contains(jsonStr, forbidden) {
+			t.Fatalf("JSON contains forbidden/sensitive token %q:\n%s", forbidden, jsonStr)
+		}
+	}
+}
+
 func TestSnapshotsRedactPrivateDomainFields(t *testing.T) {
 	providerData := providerSnapshot([]provider.CurrentSelection{{
 		Client: "codex", Provider: "example", Credential: "private-reference",
@@ -186,6 +332,12 @@ func TestBuildMissingStateIsPartialWithoutCreatingDatabases(t *testing.T) {
 	}
 	if !result.Partial {
 		t.Fatalf("Build partial = false: %#v", result)
+	}
+	if got, want := result.Snapshot.NextRefreshAt, now.Add(time.Minute).Format(time.RFC3339Nano); got != want {
+		t.Fatalf("NextRefreshAt = %q, want %q", got, want)
+	}
+	if result.Snapshot.WireVersion != WireVersion {
+		t.Fatalf("WireVersion = %d, want %d", result.Snapshot.WireVersion, WireVersion)
 	}
 	for _, name := range []string{"agentdeck.sqlite3", "sessions.sqlite3"} {
 		if _, statErr := os.Stat(filepath.Join(root, name)); !errors.Is(statErr, os.ErrNotExist) {

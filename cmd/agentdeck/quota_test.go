@@ -330,6 +330,8 @@ type fakeQuotaRefresh struct{ codexCalls, claudeCalls int }
 func withFakeQuotaRefresh(t *testing.T, used float64) *fakeQuotaRefresh {
 	t.Helper()
 	fake := &fakeQuotaRefresh{}
+	// One provider window keeps the same reset instant across refreshes.
+	resetAt := time.Now().UTC().Add(3 * time.Hour).Truncate(time.Second)
 	previousService := quotaRefreshService
 	quotaRefreshService = func(stateRoot, home string) desktop.Service {
 		return desktop.Service{
@@ -338,7 +340,7 @@ func withFakeQuotaRefresh(t *testing.T, used float64) *fakeQuotaRefresh {
 				fake.codexCalls++
 				return quota.CodexResult{AccountID: "acct", Plan: "pro", Windows: []quota.Observation{{
 					Client: quota.ClientCodex, AccountID: "acct", WindowKey: "codex", Source: quota.SourceCodex,
-					ObservedAt: observedAt, WindowMinutes: 300, UsedPercent: used, ResetsAt: observedAt.Add(3 * time.Hour),
+					ObservedAt: observedAt, WindowMinutes: 300, UsedPercent: used, ResetsAt: resetAt,
 				}}}, nil
 			},
 			QuotaProbeClaudeProse: func(_ context.Context, _ time.Time, _ time.Duration) (quota.ClaudeProseResult, error) {

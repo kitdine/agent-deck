@@ -375,6 +375,9 @@ func runDesktopQuotaRefresh(ctx context.Context, opts *commandOptions, manual bo
 		return err
 	}
 	defer core.Close()
+	// AcquireQuotaRefreshLock intentionally returns plain ErrStateBusy without wrapping
+	// it in ErrLockContention. On contention, the command error path projects it as
+	// resource: unknown in schema-version-1 CLI output.
 	refreshLock, err := store.AcquireQuotaRefreshLock(ctx, stateRoot, quotaRefreshLockTimeout)
 	if err != nil {
 		return err

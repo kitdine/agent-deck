@@ -1,4 +1,5 @@
 import AgentDeckShared
+import AppKit
 import Foundation
 import Observation
 
@@ -49,6 +50,13 @@ struct MenuBarNotice: Identifiable, Equatable, Sendable {
 	let text: String
 	let severity: NoticeSeverity
 	let opensHealthDetail: Bool
+}
+
+enum MenuBarRefreshActionState: Equatable, Sendable {
+	case idle
+	case running
+	case succeeded
+	case failed
 }
 
 struct FilterOption: Identifiable, Equatable, Sendable {
@@ -282,10 +290,19 @@ struct HealthCheckRow: Identifiable, Equatable, Sendable {
 	let supportedCount: Int?
 	let cause: String?
 	let recoveryProse: String?
+	var reasonLabel: String? = nil
+	var effect: String? = nil
+	var actionLabel: String? = nil
+	var actionContent: String? = nil
 
-	var hasDisclosure: Bool { cause != nil || recoveryProse != nil || !(recovery ?? "").isEmpty }
+	var hasDisclosure: Bool { cause != nil || recoveryProse != nil || effect != nil || actionContent != nil || !(recovery ?? "").isEmpty }
 	func accessibilityText(expanded: Bool) -> String {
-		([name, status] + (expanded ? [cause, recoveryProse].compactMap { $0 } : [])).joined(separator: ", ")
+		var summary = [name]
+		if let count, count > 0, reasonLabel != nil {
+			summary.append(t(DesktopCopy.healthAffectedCount, Int64(count)))
+		}
+		summary.append(status)
+		return (summary + (expanded ? [reasonLabel, cause, recoveryProse, effect].compactMap { $0 } : [])).joined(separator: ", ")
 	}
 }
 
@@ -308,6 +325,8 @@ final class MenuBarViewModel {
 	var selectedPeriod = "today"
 	var selectedPanel: MenuBarPanel = .quota
 	var showsHealthDetail = false
+	private(set) var copiedHealthRowID: String?
+	@ObservationIgnored private var healthCopyGeneration = UUID()
 	var pendingConfirmation: ProviderSwitchTarget?
 	private(set) var collapsedSectionIDs = Set<String>()
 
@@ -336,10 +355,50 @@ final class MenuBarViewModel {
 	var qualifiers: [DesktopPresentationQualifier] { presentation.qualifiers }
 
 	var isRefreshing: Bool {
-		if case .refreshing = coordinator.state {
-			return true
+		refreshActionState == .running
+	}
+
+	var refreshActionState: MenuBarRefreshActionState {
+		switch coordinator.fullAttempt {
+		case .idle: .idle
+		case .running: .running
+		case .succeeded: .succeeded
+		case .failed: .failed
 		}
-		return false
+	}
+
+	var refreshActionText: String {
+		switch refreshActionState {
+		case .idle: t(DesktopCopy.refreshAction)
+		case .running: t(DesktopCopy.refreshingAction)
+		case .succeeded: t(DesktopCopy.updatedAction)
+		case .failed: t(DesktopCopy.retry)
+		}
+	}
+
+	var refreshActionAccessibilityLabel: String {
+		refreshActionState == .failed ? t(DesktopCopy.refreshFailedAction) : refreshActionText
+	}
+
+	var refreshActionSymbol: String {
+		switch refreshActionState {
+		case .idle: "arrow.clockwise"
+		case .running: "hourglass"
+		case .succeeded: "checkmark"
+		case .failed: "exclamationmark.triangle"
+		}
+	}
+
+	var refreshAnnouncement: String? {
+		guard !showsScanProgressStatus else { return nil }
+		return switch refreshActionState {
+		case .idle: nil
+		case .running: t(DesktopCopy.refreshingAction)
+		case .succeeded: t(DesktopCopy.updatedAction)
+		case .failed: presentation.snapshot == nil
+			? t(DesktopCopy.firstRefreshFailed)
+			: t(DesktopCopy.refreshFailedShowingPrevious)
+		}
 	}
 
 	var showsScanProgressStatus: Bool {
@@ -422,10 +481,12 @@ final class MenuBarViewModel {
 	}
 
 	var errorCopy: String {
-		if case .degraded(_, .helper(.timedOut)) = coordinator.state {
-			return t(DesktopCopy.refreshTimedOut)
-		}
-		return qualifiers.contains(.failing) ? t(DesktopCopy.failing) : t(DesktopCopy.offline)
+		guard presentation.snapshot != nil else { return t(DesktopCopy.firstRefreshFailed) }
+		return t(DesktopCopy.refreshFailedShowingPrevious)
+	}
+
+	var errorBodyCopy: String? {
+		presentation.snapshot == nil ? t(DesktopCopy.firstRefreshEmpty) : nil
 	}
 
 	var hasSchemaSignal: Bool { snapshot?.health.checks.contains { $0.code == "schema_ahead" } ?? false }
@@ -437,24 +498,50 @@ final class MenuBarViewModel {
 	var notices: [MenuBarNotice] {
 		guard let envelope = presentation.snapshot else { return [] }
 		var result = [MenuBarNotice]()
-		if qualifiers.contains(.offline) {
-			result.append(MenuBarNotice(id: "offline", text: t(DesktopCopy.offline), severity: .error, opensHealthDetail: false))
-		} else if qualifiers.contains(.failing) {
-			result.append(MenuBarNotice(id: "failing", text: errorCopy, severity: .error, opensHealthDetail: false))
-		}
 		if hasSchemaSignal {
 			result.append(MenuBarNotice(id: "schema", text: t(DesktopCopy.schemaSignalNotice), severity: .error, opensHealthDetail: true))
 		}
-		if qualifiers.contains(.partial), !hasSchemaSignal {
-			result.append(MenuBarNotice(id: "partial", text: t(DesktopCopy.partial), severity: .warning, opensHealthDetail: false))
+		if case .failed = coordinator.fullAttempt {
+			result.append(MenuBarNotice(
+				id: "refresh.failed",
+				text: t(DesktopCopy.refreshFailedShowingPrevious),
+				severity: .error,
+				opensHealthDetail: false
+			))
+		} else {
+			switch coordinator.widgetPublication {
+			case .failedBeforeCommit, .indeterminateAfterCommit:
+				result.append(MenuBarNotice(
+					id: "widget.publication",
+					text: t(DesktopCopy.widgetPublicationFailed),
+					severity: .warning,
+					opensHealthDetail: false
+				))
+			default:
+				break
+			}
 		}
 		let health = envelope.data.health
-		if health.available, health.problems > (hasSchemaSignal ? 1 : 0) {
+		let recoveryChecks = health.checks.filter { $0.status != "ok" && healthReasonCopy($0.reason) != nil }
+		let schemaChecks = hasSchemaSignal ? health.checks.filter { $0.status != "ok" && $0.code == "schema_ahead" } : []
+		let remainingChecks = health.checks.filter { check in
+			check.status != "ok" && healthReasonCopy(check.reason) == nil
+				&& !(hasSchemaSignal && check.code == "schema_ahead")
+		}
+		if health.available {
+			for (index, check) in recoveryChecks.enumerated() {
+				result.append(MenuBarNotice(id: "health.recovery.\(index)", text: healthNoticeCopy(check), severity: healthSeverity(check.status) ?? .warning, opensHealthDetail: true))
+			}
+		}
+		let remainingCount = max(remainingChecks.count, health.problems - recoveryChecks.count - schemaChecks.count)
+		let representedErrors = (recoveryChecks + schemaChecks).filter { $0.status == "error" }.count
+		if health.available, remainingCount > 0 {
 			result.append(
 				MenuBarNotice(
 					id: "health",
-					text: t(DesktopCopy.healthNotice, Int64(health.problems)),
-					severity: health.errors > 0 ? .error : .warning,
+					text: t(DesktopCopy.healthNotice, Int64(remainingCount)),
+					severity: remainingChecks.contains { healthSeverity($0.status) == .error }
+						|| health.errors > representedErrors ? .error : .warning,
 					opensHealthDetail: true
 				)
 			)
@@ -472,6 +559,9 @@ final class MenuBarViewModel {
 					opensHealthDetail: true
 				)
 			)
+		}
+		if qualifiers.contains(.partial), !hasSchemaSignal {
+			result.append(MenuBarNotice(id: "partial", text: t(DesktopCopy.partial), severity: .warning, opensHealthDetail: false))
 		}
 		return result
 	}
@@ -1332,21 +1422,27 @@ final class MenuBarViewModel {
 	var healthDetail: HealthDetailModel {
 		let checks = snapshot?.health.checks ?? []
 		let rows = checks.enumerated().map { index, check in
-			HealthCheckRow(
+			let action = healthAction(check)
+			return HealthCheckRow(
 				id: "check.\(index).\(check.name)",
-				name: check.name,
+				name: healthName(check),
 				status: healthStatusLabel(check.status),
 				severity: healthSeverity(check.status),
-				recovery: check.recoveryCommand,
+				recovery: check.reason == nil ? check.recoveryCommand : nil,
 				code: check.code, count: check.count, supportedCount: check.supportedCount,
 				cause: healthCause(check),
-				recoveryProse: check.code == "schema_ahead" ? t(DesktopCopy.schemaSignalRecovery) : nil
+				recoveryProse: check.code == "schema_ahead" ? t(DesktopCopy.schemaSignalRecovery) : healthNextCopy(check.reason),
+				reasonLabel: healthReasonCopy(check.reason),
+				effect: healthEffectCopy(check.reason),
+				actionLabel: action?.label,
+				actionContent: action?.content
 			)
 		}
 		return HealthDetailModel(rows: rows, source: t(DesktopCopy.healthSource))
 	}
 
 	private func healthCause(_ check: DesktopHealthCheckV1) -> String? {
+		if let reason = check.reason, let copy = healthCauseCopy(reason, resource: check.resource) { return copy }
 		if check.code == "schema_ahead", let stored = check.count, let supported = check.supportedCount {
 			return t(DesktopCopy.schemaSignalCause, Int64(stored), Int64(supported))
 		}
@@ -1354,6 +1450,95 @@ final class MenuBarViewModel {
 			return t(DesktopCopy.schemaSignalHookDropped, Int64(count))
 		}
 		return nil
+	}
+
+	private func healthName(_ check: DesktopHealthCheckV1) -> String {
+		t(DesktopCopy.healthCheckNameKeys[check.name] ?? DesktopCopy.healthUnknownCheck)
+	}
+
+	private func healthNoticeCopy(_ check: DesktopHealthCheckV1) -> String {
+		switch (check.reason, check.resource) {
+		case ("lock_live", "scan"): return t(DesktopCopy.healthNoticeScanLive)
+		case ("lock_live", _): return t(DesktopCopy.healthNoticeStateLive)
+		case ("lock_legacy", _): return t(DesktopCopy.healthNoticeLegacy)
+		case ("lock_owner_unknown", _): return t(DesktopCopy.healthNoticeOwnerUnknown)
+		case ("extension_stale_inventory", _): return t(DesktopCopy.healthNoticeStale)
+		case ("extension_fingerprint_update_failed", _): return t(DesktopCopy.healthNoticeIncomplete)
+		default: return check.reason.flatMap { healthCauseCopy($0, resource: check.resource) }
+			?? healthReasonCopy(check.reason) ?? t(DesktopCopy.healthStatusWarning)
+		}
+	}
+
+	private func healthReasonCopy(_ reason: String?) -> String? {
+		guard let reason else { return nil }
+		guard let key = DesktopCopy.healthReasonKeys[reason] else { return nil }
+		return t(key)
+	}
+
+	private func healthCauseCopy(_ reason: String, resource: String?) -> String? {
+		if reason == "lock_live" { return t(resource == "scan" ? DesktopCopy.healthCauseScanLive : DesktopCopy.healthCauseStateLive) }
+		guard let key = DesktopCopy.healthCauseKeys[reason] else { return nil }
+		return t(key)
+	}
+
+	private func healthNextCopy(_ reason: String?) -> String? {
+		guard let reason, let key = DesktopCopy.healthNextKeys[reason] else { return nil }
+		return t(key)
+	}
+
+	private func healthEffectCopy(_ reason: String?) -> String? {
+		switch reason {
+		case "extension_stale_inventory": t(DesktopCopy.healthEffectStale)
+		case "extension_fingerprint_update_failed": t(DesktopCopy.healthEffectIncomplete)
+		default: nil
+		}
+	}
+
+	private func healthAction(_ check: DesktopHealthCheckV1) -> (label: String, content: String)? {
+		guard check.status != "ok", let reason = check.reason, DesktopCopy.healthReasonKeys[reason] != nil else { return nil }
+		if reason.hasPrefix("lock_") {
+			guard (check.name == "state_lock" && check.resource == "state")
+				|| (check.name == "scan_lock" && check.resource == "scan") else { return nil }
+		} else {
+			guard check.name == "extensions", check.resource == "extension_inventory" else { return nil }
+		}
+		switch check.actionKind {
+		case .synchronizeInventory:
+			guard ["extension_stale_inventory", "extension_state_missing"].contains(reason),
+				check.resource == "extension_inventory" else { return nil }
+			guard check.recoveryCommand == "agentdeck extension scan" else { return nil }
+			return (t(DesktopCopy.healthCopySync), check.recoveryCommand!)
+		case .diagnose:
+			guard reason == "extension_fingerprint_update_failed", check.resource == "extension_inventory" else { return nil }
+			guard let command = check.diagnosticCommand,
+				command == "agentdeck extension doctor" else { return nil }
+			return (t(DesktopCopy.healthCopyDiagnostic), command)
+		case .manualPrerequisite:
+			guard let prerequisite = check.manualPrerequisite,
+				DesktopCopy.healthPrerequisiteReasons[prerequisite]?.contains(reason) == true,
+				let key = DesktopCopy.healthPrerequisiteKeys[prerequisite] else { return nil }
+			return (t(DesktopCopy.healthCopySafety), t(key))
+		case .retry, .none: return nil
+		}
+	}
+
+	func copyHealthAction(_ row: HealthCheckRow) {
+		guard let content = row.actionContent, row.actionLabel != nil else { return }
+		NSPasteboard.general.clearContents()
+		guard NSPasteboard.general.setString(content, forType: .string) else { return }
+		let generation = UUID()
+		healthCopyGeneration = generation
+		copiedHealthRowID = row.id
+		NSAccessibility.post(
+			element: NSApp,
+			notification: .announcementRequested,
+			userInfo: [.announcement: t(DesktopCopy.healthCopied), .priority: NSAccessibilityPriorityLevel.medium.rawValue]
+		)
+		Task { @MainActor [weak self] in
+			try? await Task.sleep(for: .milliseconds(1_600))
+			guard let self, self.healthCopyGeneration == generation else { return }
+			self.copiedHealthRowID = nil
+		}
 	}
 
 	func healthStatusLabel(_ status: String) -> String {
@@ -1407,7 +1592,7 @@ final class MenuBarViewModel {
 	// MARK: Actions
 
 	func refresh() {
-		Task { await coordinator.refresh(replacingActiveRefresh: true) }
+		Task { await coordinator.requestFullRefresh(trigger: .manual) }
 	}
 
 	func sectionIsExpanded(_ id: String) -> Bool {

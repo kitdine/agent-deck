@@ -20,7 +20,7 @@ to rename equivalent tools or assume one transport on every machine.
 | --- | --- | --- |
 | CEv1 query and authorized record operations | `neo4j` | Required evidence remains unresolved under Evidence's failure/fallback rules; never silently skip the gate |
 | Optional durable project knowledge | `neo4j-mem` | Continue from repository sources; memory availability does not control CEv1 gates |
-| Indexed symbol/call-path lookup | `codegraph` | Use `rg`/`fd` for the needed scope; do not create an index without authorization |
+| Indexed symbol/call-path lookup | `codegraph` | Follow the workspace-bound index policy below; use `rg`/`fd` for the needed scope when unavailable or unsuitable |
 
 Distinguish configuration, installation, current-session tool exposure, and
 successful operation. A reachable backend does not prove that the current client
@@ -35,10 +35,45 @@ schema, namespace, authorization, target-state binding, and data-gap handling
 remain under Evidence. A NOT_VERIFIED result for missing graph records is not a
 transport outage; a successful RPC is not proof of a VERIFIED gate.
 
-For indexed code, use the project's CodeGraph routing before broad structural
-search. If it does not cover the requested script or metadata, inspect the named
-source directly. Graph relationships guide investigation but do not prove runtime
-configuration, SQL behavior, or client integration.
+## CodeGraph workspace indexes
+
+Use CodeGraph before broad structural search for repository-wide symbol
+relationships, call paths, change impact, and affected-test discovery. Use the
+index belonging to the selected workflow workspace, never an index found in
+another checkout of the same Git repository.
+
+The canonical main workspace's `.codegraph/` directory is the project opt-in
+marker for entry-time topic index preparation. Each indexed topic worktree owns
+a separate `<worktree>/.codegraph/` directory. Shared parser or blob caches may
+be supported by CodeGraph internally, but the project does not share, copy, or
+symlink mutable index directories across worktrees.
+
+Before an index-backed query, resolve the verified workspace root. Synchronize
+only when source, tests, dependencies, generated files, or other indexed inputs
+have changed since the index state being reused:
+
+```bash
+workspace_root=$(git rev-parse --show-toplevel)
+codegraph sync "$workspace_root"
+codegraph explore --path "$workspace_root" "<question>"
+```
+
+Pass `--path "$workspace_root"` for CLI exploration so the query cannot silently
+select the canonical main checkout. When an MCP CodeGraph tool can select a
+project path, bind it to the same verified workspace. If the exposed MCP tool
+cannot distinguish worktrees, use the path-qualified CLI instead.
+
+Do not repeat `sync` for an unchanged content state. Do not run `status`, `sync`,
+and a second search method merely to reconfirm the same successful query.
+CodeGraph results locate source and relationships; verify reflection, dependency
+injection, configuration-driven behavior, SQL, generated code, queues, RPC
+boundaries, and framework behavior against source and tests.
+
+If the selected workspace has no prepared index, the CLI is unavailable, or one
+index operation fails, report the limitation once and use one precise `rg`/`fd`
+locator followed by focused source reads. Do not initialize an index outside
+WORKSPACE_ENTRY unless the user separately authorizes that local workspace
+change.
 
 ## Hooks / 钩子
 
@@ -190,7 +225,7 @@ The `.gitignore` patterns use `dir/*` so these files can be re-included.
 | `.claude/settings.json`, `.codex/hooks.json` | Tracked repository Hook registrations; they are not the entire user/plugin configuration |
 | `.claude/settings.local.json` | Local permissions and overrides; not a shared product contract |
 | `.claude/RESUME.md` | Local session checkpoint, not project handoff authority; do not act on an expired checkpoint reference |
-| `.codegraph/` | Optional local index; its absence is not an instruction to generate one |
+| `.codegraph/` | Derived per-workspace index. The canonical main instance opts the project into WORKSPACE_ENTRY preparation; topic instances must remain independent, local, ignored, and uncommitted. |
 | `output/` | Local generated exports, kept out of the source distribution |
 
 Resolve local state through its owning runtime; do not read authentication or

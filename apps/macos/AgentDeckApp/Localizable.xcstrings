@@ -1,6 +1,326 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "State": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "State"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "状态"
+          }
+        }
+      }
+    },
+    "State file permissions": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "State file permissions"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "状态文件权限"
+          }
+        }
+      }
+    },
+    "Hook deliveries": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hook deliveries"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hook 投递"
+          }
+        }
+      }
+    },
+    "Core database": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Core database"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "核心数据库"
+          }
+        }
+      }
+    },
+    "Database schema": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Database schema"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "数据库结构"
+          }
+        }
+      }
+    },
+    "Database integrity": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Database integrity"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "数据库完整性"
+          }
+        }
+      }
+    },
+    "Pending operations": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pending operations"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "待处理操作"
+          }
+        }
+      }
+    },
+    "Provider operation state": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Provider operation state"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "服务商操作状态"
+          }
+        }
+      }
+    },
+    "Provider configuration": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Provider configuration"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "服务商配置"
+          }
+        }
+      }
+    },
+    "Provider credentials": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Provider credentials"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "服务商凭据"
+          }
+        }
+      }
+    },
+    "Project attribution gate": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Project attribution gate"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "项目归因门禁"
+          }
+        }
+      }
+    },
+    "Session index": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Session index"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "会话索引"
+          }
+        }
+      }
+    },
+    "Session sources": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Session sources"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "会话来源"
+          }
+        }
+      }
+    },
+    "Usage index": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Usage index"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用量索引"
+          }
+        }
+      }
+    },
+    "Usage sources": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Usage sources"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用量来源"
+          }
+        }
+      }
+    },
+    "Price catalog": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Price catalog"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "价格目录"
+          }
+        }
+      }
+    },
+    "Price provenance": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Price provenance"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "价格来源"
+          }
+        }
+      }
+    },
+    "Unpriced models": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unpriced models"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未计价模型"
+          }
+        }
+      }
+    },
+    "Other health check": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Other health check"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "其他运行状况检查"
+          }
+        }
+      }
+    },
+    "Affected: %1$lld": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Affected: %1$lld"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "受影响：%1$lld 项"
+          }
+        }
+      }
+    },
   "This AgentDeck is older than its database, so local data cannot be read": {
     "localizations": {
       "en": {
@@ -2465,6 +2785,14 @@
         }
       }
     },
+    "First refresh failed · no data is available yet": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"First refresh failed · no data is available yet"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"首次刷新失败 · 还没有可显示的数据"}}}},
+    "Menu-bar data is current · Widgets may be out of date": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Menu-bar data is current · Widgets may be out of date"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"菜单栏数据已更新 · 小组件可能仍是旧数据"}}}},
+    "No data available yet": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"No data available yet"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"还没有可显示的数据"}}}},
+    "Refresh": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Refresh"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"刷新"}}}},
+    "Refresh failed. Retry": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Refresh failed. Retry"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"刷新失败。重试"}}}},
+    "Refresh failed · showing previous data": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Refresh failed · showing previous data"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"刷新失败 · 正在显示上次数据"}}}},
+    "Refreshing…": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Refreshing…"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"刷新中…"}}}},
+    "Updated": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Updated"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"已更新"}}}},
     "Refresh now": {
       "localizations": {
         "en": {
@@ -2497,18 +2825,18 @@
         }
       }
     },
-    "Refreshes at the time the snapshot suggests; when off, only opening the panel or refreshing manually updates it": {
+    "Refreshes about once a minute while AgentDeck is running; when off, startup and manual refresh still update data": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Refreshes at the time the snapshot suggests; when off, only opening the panel or refreshing manually updates it"
+            "value": "Refreshes about once a minute while AgentDeck is running; when off, startup and manual refresh still update data"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "按快照给出的下次刷新时间刷新；关闭时只在打开面板和手动刷新时更新"
+            "value": "AgentDeck 运行时约每分钟刷新一次；关闭后，启动与手动刷新仍会更新数据"
           }
         }
       }
@@ -3726,7 +4054,61 @@
           }
         }
       }
-    }
+    },
+    "Copy sync command": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Copy sync command"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"复制同步命令"}}}},
+    "Copy diagnostic command": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Copy diagnostic command"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"复制诊断命令"}}}},
+    "Copy safety steps": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Copy safety steps"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"复制安全步骤"}}}},
+    "State lock": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"State lock"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"状态锁"}}}},
+    "Scan lock": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Scan lock"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"扫描锁"}}}},
+    "Extension inventory": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Extension inventory"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"扩展库存"}}}},
+    "AgentDeck state is busy": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"AgentDeck state is busy"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"AgentDeck 状态正在被占用"}}}},
+    "AgentDeck scan is running": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"AgentDeck scan is running"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"AgentDeck 扫描正在运行"}}}},
+    "Legacy lock needs confirmation": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Legacy lock needs confirmation"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"旧式锁需要确认"}}}},
+    "Lock ownership is unknown": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Lock ownership is unknown"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"锁的归属未知"}}}},
+    "Extension inventory is out of date": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Extension inventory is out of date"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"扩展库存已过期"}}}},
+    "Inventory updated, but its scan fingerprint did not": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Inventory updated, but its scan fingerprint did not"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"库存已更新，但扫描指纹未更新"}}}},
+    "Another AgentDeck state operation is still running.": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Another AgentDeck state operation is still running."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"另一个 AgentDeck 状态操作仍在运行。"}}}},
+    "Another AgentDeck scan is still running.": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Another AgentDeck scan is still running."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"另一个 AgentDeck 扫描仍在运行。"}}}},
+    "Updates only AgentDeck's derived extension inventory and scan fingerprint; client configuration and installed extensions stay unchanged.": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Updates only AgentDeck's derived extension inventory and scan fingerprint; client configuration and installed extensions stay unchanged."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"只更新 AgentDeck 的派生扩展库存与扫描指纹；不修改客户端配置或已安装扩展。"}}}},
+    "Client configuration did not change, and inventory was not rolled back.": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Client configuration did not change, and inventory was not rolled back."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"客户端配置未改变，库存也没有回滚。"}}}},
+    "Active lock": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Active lock"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"活动锁"}}}},
+    "Legacy lock": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Legacy lock"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"旧式锁"}}}},
+    "Lock owner unknown": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Lock owner unknown"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"锁的所有者未知"}}}},
+    "Reclaimable lock": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Reclaimable lock"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"可自动回收的锁"}}}},
+    "Extension state missing": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Extension state missing"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"扩展状态缺失"}}}},
+    "Extension inventory unreadable": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Extension inventory unreadable"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"扩展库存无法读取"}}}},
+    "Extension discovery failed": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Extension discovery failed"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"扩展发现失败"}}}},
+    "Duplicate extension identity": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Duplicate extension identity"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"扩展身份重复"}}}},
+    "Extension management anomaly": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Extension management anomaly"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"扩展管理记录异常"}}}},
+    "Managed extension drift": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Managed extension drift"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"托管扩展发生偏移"}}}},
+    "Stale extension inventory": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Stale extension inventory"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"陈旧的扩展库存"}}}},
+    "Native extension unavailable": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Native extension unavailable"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"原生扩展不可用"}}}},
+    "Scan fingerprint update failed": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Scan fingerprint update failed"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"扫描指纹更新失败"}}}},
+    "This lock has no verifiable modern owner information.": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"This lock has no verifiable modern owner information."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"此锁没有可验证的现代所有者信息。"}}}},
+    "AgentDeck cannot safely prove whether this lock still has an owner.": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"AgentDeck cannot safely prove whether this lock still has an owner."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"AgentDeck 无法安全确认此锁是否仍有所有者。"}}}},
+    "Stored extension identities are absent from successful live discovery.": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Stored extension identities are absent from successful live discovery."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"成功的实时发现中已不存在部分已存扩展身份。"}}}},
+    "Native extension discovery did not finish, so stale inventory cannot be determined.": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Native extension discovery did not finish, so stale inventory cannot be determined."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"原生扩展发现未完成，因此无法判断库存是否陈旧。"}}}},
+    "The inventory transaction committed, but the later scan fingerprint did not update.": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"The inventory transaction committed, but the later scan fingerprint did not update."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"库存事务已经提交，但后续扫描指纹没有更新。"}}}},
+    "Wait for the operation to finish, then retry the failed command.": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Wait for the operation to finish, then retry the failed command."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"等待操作结束，然后重试失败的命令。"}}}},
+    "AgentDeck will not remove it automatically.": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"AgentDeck will not remove it automatically."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"AgentDeck 不会自动删除它。"}}}},
+    "Do not remove the lock; stop its process normally, or wait and diagnose again.": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Do not remove the lock; stop its process normally, or wait and diagnose again."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"不要删除此锁；通过正常方式停止所属进程，或等待后再次诊断。"}}}},
+    "Synchronize AgentDeck's extension inventory, then refresh health again.": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Synchronize AgentDeck's extension inventory, then refresh health again."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"同步 AgentDeck 的扩展库存，然后再次刷新健康状态。"}}}},
+    "Resolve discovery first, then refresh health again; no sync command is offered now.": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Resolve discovery first, then refresh health again; no sync command is offered now."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"先解决发现错误，再次刷新健康状态；此时不提供同步命令。"}}}},
+    "Diagnose the committed inventory before deciding whether to retry sync.": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Diagnose the committed inventory before deciding whether to retry sync."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"先诊断已提交库存的健康状态，再决定是否重试同步。"}}}},
+    "First confirm that no AgentDeck process is using this state directory; only then may you remove the legacy lock.": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"First confirm that no AgentDeck process is using this state directory; only then may you remove the legacy lock."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"先确认没有 AgentDeck 进程正在使用此状态目录；确认后才可移除旧式锁。"}}}},
+    "Resolve native extension discovery errors, then refresh health before synchronizing inventory.": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Resolve native extension discovery errors, then refresh health before synchronizing inventory."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"先解决原生扩展发现错误，再刷新健康状态，然后同步库存。"}}}},
+    "Check AgentDeck state permissions and database health before retrying extension diagnostics.": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Check AgentDeck state permissions and database health before retrying extension diagnostics."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"检查 AgentDeck 状态权限与数据库健康状况，然后重试扩展诊断。"}}}},
+    "Inspect duplicate extension identities and resolve the conflict before synchronizing inventory.": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Inspect duplicate extension identities and resolve the conflict before synchronizing inventory."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"检查重复的扩展身份并解决冲突，然后同步库存。"}}}},
+    "Review the managed extension's current source and intended version before changing inventory.": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Review the managed extension's current source and intended version before changing inventory."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"检查托管扩展的当前来源及预期版本，然后再更改库存。"}}}},
+    "Review the managed extension record and its missing adoption fingerprint before changing inventory.": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Review the managed extension record and its missing adoption fingerprint before changing inventory."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"检查托管扩展记录及缺失的接管指纹，然后再更改库存。"}}}},
+    "Restore native extension access, then refresh health before synchronizing inventory.": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Restore native extension access, then refresh health before synchronizing inventory."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"恢复原生扩展访问，然后刷新健康状态，再同步库存。"}}}},
+    "The lock owner is gone; AgentDeck can reclaim it on the next operation.": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"The lock owner is gone; AgentDeck can reclaim it on the next operation."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"锁的所有者已离开；AgentDeck 可在下次操作时自动回收此锁。"}}}},
+    "AgentDeck has no persisted extension inventory yet.": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"AgentDeck has no persisted extension inventory yet."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"AgentDeck 尚无已保存的扩展库存。"}}}},
+    "The extension inventory could not be read safely.": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"The extension inventory could not be read safely."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"无法安全读取扩展库存。"}}}},
+    "Live discovery found duplicate extension identities.": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Live discovery found duplicate extension identities."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"实时发现检测到重复的扩展身份。"}}}},
+    "A managed extension record has no adoption fingerprint.": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"A managed extension record has no adoption fingerprint."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"一条托管扩展记录缺少接管指纹。"}}}},
+    "A managed extension differs from its adopted fingerprint.": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"A managed extension differs from its adopted fingerprint."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"托管扩展与其接管指纹不一致。"}}}},
+    "An installed extension is unavailable to native discovery.": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"An installed extension is unavailable to native discovery."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"已安装的扩展无法被原生发现读取。"}}}}
   },
   "version": "1.0"
 }

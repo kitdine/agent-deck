@@ -61,6 +61,31 @@ Relocation requires explicit authorization and a check that no uncommitted work
 would be moved or lost. Another session using that worktree is coordination
 context, not an exclusive lock or a reason to invent a duplicate checkout.
 
+### CodeGraph preparation
+
+The canonical main workspace opts this repository into CodeGraph workspace
+preparation by containing its own `.codegraph/` directory. When that opt-in is
+present, topic workspace entry must prepare a separate index for the selected
+worktree:
+
+- If `<topic-worktree>/.codegraph/` is absent, run
+  `codegraph init <topic-worktree>` after the worktree path and branch have been
+  verified.
+- If the worktree index already exists, run at most one
+  `codegraph sync <topic-worktree>` for the workspace-entry content state.
+- Never copy or symlink the canonical main index into a topic worktree.
+- Never initialize indexes for inactive worktrees merely because they exist.
+- Treat the index as derived local state; do not stage or commit it.
+
+This preparation is an idempotent local workspace-binding action authorized by
+`进入工作` / `Enter work`. A missing CLI or failed index operation does not make
+an otherwise valid worktree unusable: report the degraded capability once and
+continue with Toolchain's scoped source-inspection fallback. Do not claim
+CodeGraph-backed results until the selected worktree's own index succeeds.
+
+Record no second workspace registry in CodeGraph. The verified workflow binding
+and live worktree path remain authoritative.
+
 Topic entry does not require implementation readiness and does not claim a task.
 Resolve the next design or implementation subject from the topic's actual state.
 Conversely, a topic-scoped Development command does not create a missing

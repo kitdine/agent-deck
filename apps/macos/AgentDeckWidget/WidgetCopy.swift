@@ -21,6 +21,10 @@ enum WidgetCopy {
 		"Low", "High", "90-day context", "Updated now", "Updated %@", "Last updated %@", "unpriced",
 		"Not read", "Not applicable", "No quota window to show", "Account attribution unconfirmed", "Quota window", "5h window", "7d window",
 		"Reset not reported",
+		"No Widget data yet", "Open AgentDeck to refresh",
+		"Widget storage unavailable", "Open AgentDeck to retry",
+		"Widget data could not be read", "Will retry on the next refresh",
+		"Widget data is from a newer AgentDeck", "Upgrade AgentDeck to refresh",
 	]
 
 	static func text(_ key: String, bundle: Bundle? = nil) -> String {

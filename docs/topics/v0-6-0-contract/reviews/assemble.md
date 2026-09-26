@@ -688,3 +688,298 @@ aggregate `assemble` task remains open until the other selected areas are
 integrated or receive an explicit membership decision.
 
 完成门禁：VERIFIED（2/2；target `v0-6-0-contract:integration:subscription-quota:merge:7f84749f8bfa96496602560df0b4d5da09e6fd9d`）。`integration-readiness` 与 `source-continuity` 都具有同一 merge result 的 PASS evidence；旧候选 evidence 保持其原始 ContentState 不变。
+
+## Round 6 — 2026-09-21 — desktop-refresh
+
+## 📋 desktop-refresh 集成评审
+
+Checklist: 54/54 complete. Incomplete: None.
+
+📊 总体评分：9.5/10
+
+✅ 评审结论：PASS
+
+Reviewer: Codex。Method: `ln-12-delivery-reviewer` Blue-only initial
+integration review；项目规则禁止未获请求的委派，因此 independent review panel 为
+None，subagent rounds consumed 为 0。Scope: 第四批 `desktop-refresh` 的
+direct-to-main fast-forward candidate、与已集成 subscription-quota/App lifecycle
+边界的交互、App Group publication/Widget reader、Go wire hint、菜单栏与 Widget
+failure/recovery presentation，以及同批 contract/status 同步。其余两个未完成方向、
+aggregate `assemble`、push、PR、merge、retirement、version closure 与 release 不在本轮。
+
+Reviewed state: target main
+`7f84749f8bfa96496602560df0b4d5da09e6fd9d` / tree
+`41cc1390c6a4949c4fbe5cde087925be12f356b7`；source
+`cc4151bdcae0689dd025da763b2a3b84eab10d54` / tree
+`246ced1b44ae26df83159a548bf37ed9d4bea75d`。Main is the exact merge base and
+ancestor, so the operation class is direct fast-forward with no conflict resolution.
+Synchronized two-document candidate fingerprint:
+`78cae14434c5fae66e5a30366a19b349ea427ec099b876596f9db136c2cb5720`.
+
+### 🔴 严重问题 — 必须修复
+
+无。
+
+### 🟡 建议改进 — 推荐
+
+无。
+
+### 🟢 优点
+
+- Source Task 5 的 signed commit、五项 commit-bound criteria 与 topic 五项汇总
+  criteria 均保持 target-bound PASS；当前 main 是 source 的精确祖先，没有 target-side
+  divergence、手写冲突解法或需要重审的中间 result tree。
+- `DesktopRefreshCoordinator` 保留 subscription quota 的单一 quota lane 与 full lane
+  arbitration；scheduler、publisher、bounded App Group reader、semantic per-kind reload、
+  typed Widget load/timeline 和 presentation recovery 沿已评审 owning boundaries 接入，
+  没有恢复 legacy `reloadAllTimelines` 或 Widget production `Data(contentsOf:)` 路径。
+- stable English/Chinese contracts 与 integration checker 继续区分 automated coverage
+  和 installed/native evidence。真实 60–90 秒 cycles、WidgetKit callbacks/intents、
+  sleep/wake、VoiceOver、Increase Contrast 与 gallery 仍为 BLOCKED/no-waiver，未被
+  integration PASS 改写为技术通过。
+
+### 📝 总结
+
+本轮未发现 change-caused actionable finding。受影响交互按 CodeGraph 定位后直接核对
+`AgentDeckApplicationDelegate`、`DesktopRefreshCoordinator`、
+`WidgetSnapshotPublisher`、App Group store/reader、Widget timeline 和 Go wire producer；
+source continuity 则由精确签名 commit、Task/topic gates 与当前 main 祖先关系支持。
+
+Evidence:
+
+- `git merge-base main HEAD` 返回 `7f84749...`，且
+  `git merge-base --is-ancestor main HEAD` 成功；`main...HEAD` 为 85 路径的完整
+  desktop-refresh delivery，无 target-only change 或 conflict resolution。
+- `git verify-commit HEAD` 报 Good ED25519 signature；commit subject/body 与精确
+  `Co-Authored-By: Codex <noreply@openai.com>` trailer 完整。
+- `make check-desktop-refresh-integration` 与 `make check-widget-sandbox` PASS。
+  Task 5 exact commit 已记录的 App 121（1 skip）、Widget 45/45、Go desktop normal/race、
+  topic-docs、whitespace 与 diff checks 在产品、测试、依赖和 toolchain 未变化时复用，
+  不因 integration phase 重跑 broad suites。
+- CEv1 source Task gate VERIFIED 5/5，desktop-refresh topic gate VERIFIED 5/5；本轮
+  integration WorkUnit 的 `integration-readiness` 与 `source-continuity` 绑定同步后的
+  exact candidate，missing、invalidated 与 unresolved 均为空。
+
+Residual uncertainty: 真实 native acceptance 行仍 BLOCKED/no-waiver；分支未 push，
+remote CI/branch protection、PR 与 merge-result identity 尚未产生。两项均被准确保留为
+后续边界，不构成本地 fast-forward candidate 的评审 finding。aggregate `assemble`
+仍对 cost transparency 和 health recovery 两个方向保持开放。
+
+完成门禁：VERIFIED（2/2；ContentState
+`v0-6-0-contract:integration:desktop-refresh:review-r6:78cae14434c5fae66e5a30366a19b349ea427ec099b876596f9db136c2cb5720`）。
+
+Task checkpoint：ad-v060c-assemble-dev / batch desktop-refresh；content_state=v0-6-0-contract:integration:desktop-refresh:review-r6:78cae14434c5fae66e5a30366a19b349ea427ec099b876596f9db136c2cb5720；gate=VERIFIED；aggregate open。
+提交建议：提交本轮 Round 6 评审记录与同批 `docs/status.md`、contract `tasks.md` 同步；source 产品交付已固定在签名提交 `cc4151b`，不得夹带其他任务或产品改动。
+推送建议：取得独立推送授权并确认 checkpoint commit 的完整 message、贡献者 trailers、SSH 签名与远端目标后，推送 `feature/desktop-refresh`；PR creation 与 feature-to-main merge 仍需各自授权及成功 CI/branch protection。
+
+## Round 7 — 2026-09-25 — health-recovery
+
+## 📋 health-recovery 第五批集成评审
+
+📊 总体评分：9/10
+
+✅ 结论：PASS
+
+### 🔴 严重问题（必须修复）
+
+无。
+
+### 🟡 建议改进（本轮同样必须关闭）
+
+无。
+
+### 🟢 优点
+
+- 目标 `origin/main` 是签名源提交的祖先；批次直接沿用已集成的四个主题，没有目标侧产品改动或手工冲突解决。
+- 源主题的五项 Task 已交付；修复提交 `6c15672` 的独立 Round 2 评审 PASS，主题新候选门禁 VERIFIED 5/5，旧 `3e7ab8b` 证据没有被改写。
+- CLI 的锁分类、schema-ahead 优先级和普通配额锁的 unknown 资源路径保持区分；扩展诊断与显式同步、桌面 wire、Swift 动作校验及菜单栏通知同既有 schema/Hook、刷新和配额消费者兼容。
+
+### 📝 总结
+
+- Reviewed state：目标 `origin/main` `a396c2f2158f579e70da3aaf9bd0bff084fc1f1a` / tree `0372bc4a929a62b7b26e73f6c8307f7704169a53`；源 `feature/health-recovery` 签名 HEAD `6c15672c20ed57a631a7da7e9c7930dc66333fe2` / tree `9af754df84bfac8c376566cf72aa718d985bd4f8`。初始批次候选 ContentState `v0-6-0-contract:integration:health-recovery:candidate:db108ce4c8ebb8eafaec4f67d2689f28dd32ba5bef319a89d0427c117fc93582` 绑定当时的 `docs/status.md` 与 contract `tasks.md` blob；本评审记录和随后的状态同步需要新的最终绑定。
+- Reviewer：冷上下文独立集成审阅者，主代理核对结论。Method：Git 祖先与源/目标变更核查、源主题评审和 CEv1 lineage 对账、受影响运行时消费路径与文档契约交互检查；生产代码、测试和配置只读。Scope：第五批健康恢复集成；成本透明及本地未进入远端的 `main@e84ce1f` 不在本批。
+- Evidence：`git merge-base --is-ancestor origin/main feature/health-recovery` PASS；远端引用回读仍为目标 `a396c2f` 与源 `6c15672`。源主题最终候选 `urn:ce:agent-deck:content-state:health-recovery:topic:pr-repair-review-final:56386979b685f8654ecbad26a7be65d434d8f457fd3dbfb673631bd46e838e47` 门禁 VERIFIED 5/5；同代码状态的全套 Go 和隔离 macOS XCTest 证据复用。`bash scripts/check-topic-docs.sh`、`make check-whitespace`、`git diff --check` PASS；项目没有专用的 health-recovery 集成检查器。
+- Finding disposition：本轮无任务内发现。真实 VoiceOver 顺序仍为 BLOCKED/no-waiver，真实安装客户端观察仍为 SIMULATED；此前桌面刷新和配额的接受限制保留原有归属，不被本批改写。若远端 main 在交付前变化，需重新分类目标与评估交互。
+- Completion gate：VERIFIED（2/2）。CEv1 对本轮初始精确候选的 `integration-readiness` 与 `source-continuity` 均找到目标绑定的 pass evidence；后者显式汇总源主题最终五项证据。门禁结论写入记录后须对最终 review/status blob 再绑定；WorkUnit 的最终目标 ID 是权威。Review PASS 和候选门禁不代替提交、PR 或合并授权。
+
+Task checkpoint：`ad-v060c-assemble-dev` / 第五批 `health-recovery`；内容状态为本轮源 `6c15672`、目标 `a396c2f` 及最终 `docs/status.md`、contract `tasks.md`、本评审记录的精确候选；门禁 VERIFIED 2/2，aggregate 仍开放。
+提交建议：先按独立范围提交源主题 Round 2 评审记录与 `health-recovery/tasks.md`，再提交本批 `docs/status.md`、contract `tasks.md` 与本记录；两次均排除并行的规则和 Hook 改动，检查贡献者、签名及新提交状态的证据绑定。
+推送建议：上述签名提交及各自精确门禁 VERIFIED 后，取得独立推送授权再更新 `origin/feature/health-recovery`；PR 创建与合并仍须分别授权，并在远端 main 变化时重评目标。
+
+### 下一步指令
+
+`提交：v0-6-0-contract / assemble（第五批 health-recovery）`
+
+### Round 7 source-record delivery receipt
+
+The independent source Round 2 record and topic handoff were delivered by
+SSH-signed docs-only commit `543d074d9b97d62050a5ad8b36e75c373c33c9ee` /
+tree `43d9fb2b7231f52b90001853db4e448bee364d91`. It preserves the reviewed
+`6c15672` product and tests; the health-recovery topic gate is VERIFIED 5/5 at
+the immutable source-record ContentState. The integration WorkUnit must bind
+this updated source and the final batch-document blobs before delivery.
+
+### Round 7 target-baseline impact assessment — PR #8
+
+PR #8 merged the signed `e84ce1f` actor-rule commit into remote main as
+`6aafb5a5ae9500896b79aa5ddeee2e420bfa9d13` / tree
+`47b7e3f6262845e42803c1130a404cd7c26e3202`. Its parents are the prior
+reviewed target `a396c2f` and `e84ce1f`; GitHub reports a valid merge
+signature. The source batch checkpoint remains signed `032d867` / tree
+`9bc339cd58906bf8b2321cf7e44f5c85be64e353`.
+
+The new target and source share base `a396c2f`. Target-only committed changes
+are `.agent-instructions/beads.md` and `project-rules.md`; the source commits
+touch neither path, so this is a clean three-way candidate without textual
+conflict. The target-side changes add the Antigravity Beads actor and trailer
+guidance. They do not change the health CLI, Go/Swift wire, tests, dependencies
+or runtime configuration. Round 7 product-interaction findings and native
+limitations remain applicable; its earlier fast-forward classification and
+target-bound evidence are not reused as facts about the new target. A new
+target-specific ContentState and explicit preservation assessment now bind
+this candidate; the integration WorkUnit target is authoritative. Refresh
+that assessment if remote main changes again before PR delivery.
+
+### PR #9 CI1 repair handoff — 2026-09-25
+
+At signed PR head `e121f6c`, both `verify` jobs passed and both `desktop` jobs
+failed only `MenuBarViewModelTests.testHealthRecoveryActionsAreClassifiedAndCopyDoesNotChangeHealth`
+at line 729. The assertion searched for `"rm "` anywhere in localized safety
+prose; the approved English sentence begins `First confirm ...`, whose
+`confirm ` substring satisfies that search. The observed failure is a test
+assertion defect, not an executable deletion action in the product. The
+architecture requires a manual-prerequisite explanation and no recovery
+command for a legacy lock.
+
+The bounded repair asserts the exact localized safety prerequisite for
+`prereq_legacy_lock_removal` and that the health row has no executable
+`recovery` command. The source model and localization are unchanged. Under
+`AGENTDECK_TEST_LOCALE=en`, the isolated `bash scripts/test-macos-app.sh` suite
+passed, including the previously failing test; `git diff --check` passed.
+An initial direct focused Xcode invocation could not start because the local
+sandbox denied CoreSimulator initialization; it supplied no test verdict and
+was not treated as a product failure. The two failing CI jobs showed the same
+assertion, with no second failing test. This is a repair candidate, not a
+new review verdict or a claim that PR-head CI has passed; commit, push and
+fresh target-bound CEv1/CI checks remain pending.
+
+### PR #9 Codex review Round 1 repair candidate — 2026-09-25
+
+GitHub Codex review `5317975244` on signed head `a5a35fb` returned six P2
+comments. Each was checked against the current source and approved health
+contracts before repair:
+
+- **PR9-R1-F1** ([discussion](https://github.com/kitdine/agent-deck/pull/9#discussion_r4104770094)) confirmed: the detached scan worker can fail on `scan.lock` before binding a socket, while the foreground discards its stderr and reports a generic startup timeout. `scanruntime.Client` now uses store-owned read-only classification after that timeout; a real helper-process regression asserts typed `scan`/`lock_legacy` contention.
+- **PR9-R1-F2** ([discussion](https://github.com/kitdine/agent-deck/pull/9#discussion_r4104770103)) confirmed: fingerprint persistence and clearing `extension.sync_incomplete` were separate writes. They now share one `SetSettings` transaction. A trigger-induced marker-clear failure proves the fingerprint rolls back and the old marker survives; a later success updates both.
+- **PR9-R1-F3** ([discussion](https://github.com/kitdine/agent-deck/pull/9#discussion_r4104770112)) confirmed: adoption stored an empty fingerprint from an unavailable inventory row. Store adoption now rejects that row before management metadata is written; the regression checks the row stays unmanaged.
+- **PR9-R1-F4** ([discussion](https://github.com/kitdine/agent-deck/pull/9#discussion_r4104770119)) confirmed against the reviewed menu-bar UX table: the native mapper localized only three of six required labels, and other doctor checks also exposed wire names. Current check names now have bilingual labels; unknown future names use localized generic copy. The prototype dictionary, Swift catalog and bilingual tests agree.
+- **PR9-R1-F5** ([discussion](https://github.com/kitdine/agent-deck/pull/9#discussion_r4104770126)) confirmed: the disclosure's replacement accessibility text omitted a classified row's affected count. It now speaks a localized affected-count phrase for classified reasons. Schema `count` is a version number and deliberately keeps its separate semantics; tests cover both cases.
+- **PR9-R1-F6** ([discussion](https://github.com/kitdine/agent-deck/pull/9#discussion_r4104770135)) confirmed: unreadable-inventory CLI text printed the internal prerequisite key. Text now gives bounded English operator prose; JSON retains the stable key. The corrupted-database CLI test checks both sides.
+
+Classification: all six findings belong to the PR change; none is waived or
+carried as technically fixed without code. The local candidate has no production
+execution of deletion commands. Verification: focused scan/store/CLI tests PASS;
+full Go suite PASS after the final CLI text assertion (`agentdeck-go-test.oIBxfV`); affected-package Go race PASS
+(`agentdeck-go-test.uh6Sz7`); `make vet` PASS; isolated macOS XCTest TEST
+SUCCEEDED after an initial test-only count-meaning and localization-inventory
+repair; prototype `npm run build`, topic docs, whitespace, JSON catalog and diff
+checks PASS. Native VoiceOver speech remains BLOCKED/no-waiver and real-client
+observation SIMULATED. This was a repair candidate at the verification checkpoint;
+it had no new independent re-review verdict, signed commit, remote CI result or
+exact-state CEv1 gate at that point.
+
+The six-finding repair was subsequently committed as signed `51ec026a36412c7faeb8a6b373e324c06bab43f9`.
+On 2026-09-25 the operator explicitly waived manual VoiceOver acceptance for
+this topic. Spoken reading order and live announcements remain NOT TESTED, not
+technical PASS; hosted XCTest evidence retains its narrower scope. Real-client
+observation remains SIMULATED. PR-head CI, renewed code review and exact-state
+CEv1 evidence must be evaluated against the pushed candidate.
+
+### PR #9 Codex review Round 2 repair candidate — 2026-09-25
+
+The first renewed Codex review after green PR-head CI completed on signed
+`c11276a572e082b5a803b26fe2ca53cd0bbaef9f` as review `5324844205` and
+raised four P2 comments. Each was reproduced against the current source:
+
+- **PR9-R2-F1** ([discussion](https://github.com/kitdine/agent-deck/pull/9#discussion_r4110396191)) confirmed: the old diagnostic sanitizer handled only simple ANSI CSI escapes. OSC, private CSI, C1/DEL and invalid UTF-8 could reach terminal text. The shared sanitizer now strips terminal sequences, replaces invalid UTF-8 and collapses controls into one-line spacing; focused cases cover each class.
+- **PR9-R2-F2** ([discussion](https://github.com/kitdine/agent-deck/pull/9#discussion_r4110396192)) confirmed: successful extension watcher scans persisted the fingerprint without clearing the prior incomplete marker. The watcher now uses the same atomic extension fingerprint-and-marker write as manual scans; a trigger-induced rollback test covers failure and retry.
+- **PR9-R2-F3** ([discussion](https://github.com/kitdine/agent-deck/pull/9#discussion_r4110396195)) confirmed: `ClassifyLock` could open a FIFO or symlink and used an unbounded read. It now rejects non-regular paths as owner-unknown and bounds regular token reads; tests cover a FIFO, symlink, directory and oversized regular file.
+- **PR9-R2-F4** ([discussion](https://github.com/kitdine/agent-deck/pull/9#discussion_r4110396196)) confirmed: three definitions sharing one canonical ID appended that ID twice. The report now lists each duplicate identity once, so `CountForReason` counts affected IDs; a triple-definition regression checks the collection and count.
+
+Final local candidate checks: full Go suite PASS (`agentdeck-go-test.CBCstM`),
+four-finding focused race PASS (`agentdeck-go-test.KWIoi8`), `make vet` PASS,
+topic-doc and whitespace checks PASS. An earlier overbroad affected-package
+race run (`agentdeck-go-test.oZZxUU`) passed `internal/extension` and
+`internal/store` but hit Go's 10-minute package timeout in `cmd/agentdeck`;
+the test active at timeout had run for two seconds and no data race was
+reported. This timeout is retained as a verification limitation, not called
+a product failure or an all-package race PASS. This remains a repair candidate,
+not an independent re-review verdict. The operator-waived VoiceOver session
+remains untested and real-client observation remains SIMULATED. Signed delivery,
+PR-head CI and the second renewed Codex review remain pending.
+
+### PR #9 Codex review Round 3 repair candidate — 2026-09-25
+
+The second and final renewed Codex review completed on signed, CI-green
+`53244aa8cd1d9271c13f786aaf7555de338678b5` as review `5324976870`. It
+raised three P2 comments, each confirmed in source and repaired locally:
+
+- **PR9-R3-F1** ([discussion](https://github.com/kitdine/agent-deck/pull/9#discussion_r4110495824)) confirmed: a watcher fingerprint transaction failure after an inventory commit left a previously empty incomplete marker empty. The watcher now best-effort sets it on failure while preserving the secure-files-after-commit exception; a trigger regression checks the old fingerprint survives and the marker becomes true.
+- **PR9-R3-F2** ([discussion](https://github.com/kitdine/agent-deck/pull/9#discussion_r4110495827)) confirmed: discovery failure returned before projecting an existing incomplete marker into the independent JSON flag. The flag is now set immediately after reading the setting; the primary reason remains `extension_discovery_failed` in the regression.
+- **PR9-R3-F3** ([discussion](https://github.com/kitdine/agent-deck/pull/9#discussion_r4110495829)) confirmed: marker-only extension-doctor text hid the partial-commit cause and repeated the already-running diagnostic command as `next:`. Text now reports the cause/effect and gives a post-diagnosis step; the CLI regression rejects the circular instruction.
+
+Final local checks: full Go suite PASS (`agentdeck-go-test.Jc7SDI`), focused
+race PASS (`agentdeck-go-test.wYAvyO`), `make vet`, topic-doc and whitespace
+checks PASS. The operator's two-round renewed-review ceiling is reached. This
+is a repair candidate, not a third re-review PASS. VoiceOver remains
+user-waived and untested; real-client observation remains SIMULATED. Signed
+delivery and fresh PR-head CI remain pending.
+
+### PR #9 post-review CI repair candidate — 2026-09-26
+
+On signed `73f03f8a6a6d7b20c8c4807e7952adb0f1109041`, one of two `verify`
+jobs failed during `make verify`'s race suite while the other `verify` job and
+both `desktop` jobs passed. The sole failure was
+`TestDesktopQuotaRefreshReturnsDueAlertsForTheAppToDeliver`: an unacknowledged
+alert's ID differed between two refreshes. A focused `-race -count=10` run
+reproduced the failure locally. Its fake provider assigned a new reset instant
+as each probe's `observedAt + 3h`, changing the occurrence ID when the two
+refreshes crossed a second boundary. The production alert identity correctly
+uses the provider's reset instant; the test fixture now keeps one fixed reset
+instant across refreshes. The same focused race command passed ten runs after
+that correction (`agentdeck-go-test.x54XOi`). This is a test-fixture defect,
+not a health-recovery product failure. No third Codex review is requested under
+the operator's two-round ceiling. Signed delivery and fresh exact-head CI are
+pending.
+
+Local replay of the original `make verify` command passed its self-test and
+ordinary full Go suite (`agentdeck-go-test.zT4vcx`). Its full repository race
+stage hit the local runner's 10-minute per-package ceiling in `cmd/agentdeck`
+and `internal/backup`, with the tests active at timeout running for about one
+and three seconds respectively; no data race was reported. This does not
+establish a full local race PASS. The focused 10-run race result above is the
+repair reproducer, and the new PR-head CI remains the exact original-command
+verification gate.
+
+### PR #9 final review and merge receipt — 2026-09-26
+
+The final manual Codex review completed on signed source
+`d040bd180466a2b9b3683769ed091718e854d38b` without new findings
+([review summary](https://github.com/kitdine/agent-deck/pull/9#issuecomment-5844703363));
+there were no P0/P1 blockers or P2/P3 items to defer into Beads. Both PR-head
+`verify` and both `desktop` jobs passed. The actual main-side merge commit
+`3f29e26c70d7848febc237f4cb130cf7748e7bf5` has parents `6aafb5a` and
+`d040bd1`, and tree `4ce5b2b1d73798f130a092e8456b253eae2aee8d` exactly
+matches the verified GitHub merge preview. Relative to the source tree, only
+main's Beads and project-rules governance files differ; no product overlap or
+manual conflict resolution was introduced. GitHub marks the merge signature
+valid, and merged-main `verify` and `desktop` CI both passed.
+
+CEv1 source topic gate is VERIFIED 5/5 at the exact `d040bd1` state; the
+integration WorkUnit is VERIFIED 2/2 at merge-result ContentState
+`v0-6-0-contract:integration:health-recovery:merge-result:3f29e26c70d7848febc237f4cb130cf7748e7bf5`.
+Beads records PR delivery on `ad-v060c-assemble-dev`; the two origin bugs and
+`ad-health-recovery` planning item are closed. The aggregate `assemble` task
+remains open for cost transparency. Manual VoiceOver is user-waived and NOT
+TESTED, not a technical PASS; installed real-client observation remains
+SIMULATED. Topic retirement and v0.6.0 release are separate boundaries.

@@ -389,6 +389,18 @@ a:focus-visible {
   white-space: nowrap;
 }
 
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .brand {
   display: flex;
   align-items: center;
@@ -414,23 +426,19 @@ a:focus-visible {
   font-size: 12px;
 }
 
-.refresh:hover:not(:disabled) {
+.refresh:hover:not(:disabled):not([aria-disabled="true"]) {
   background: var(--surface-2);
   color: var(--text);
+}
+
+.refresh[aria-disabled="true"] {
+  cursor: default;
+  opacity: 0.72;
 }
 
 .refresh.failed {
   color: var(--bad);
   gap: 6px;
-}
-
-.refresh.failed button {
-  border: 0;
-  padding: 2px 4px;
-  background: transparent;
-  color: var(--accent);
-  font-size: 12px;
-  font-weight: 600;
 }
 
 .spin {
@@ -618,6 +626,34 @@ a:focus-visible {
   overflow: hidden;
   clip-path: inset(50%);
   white-space: nowrap;
+}
+
+/* 失败态还要容纳真实数据年龄与 Retry。两者都不能被删掉来换空间，
+   所以窄宽只压缩品牌、间距和按钮 padding；完整标签仍由控件自己提供。 */
+.popover.narrow > header {
+  gap: 4px;
+  padding-inline: 9px;
+}
+
+.popover.narrow > header .brand {
+  gap: 4px;
+}
+
+.popover.narrow > header .brand strong {
+  font-size: 13px;
+}
+
+.popover.narrow > header .header-right {
+  gap: 4px;
+  min-width: 0;
+}
+
+.popover.narrow > header .freshness {
+  font-size: 10px;
+}
+
+.popover.narrow > header .refresh.failed {
+  gap: 3px;
 }
 
 .popover.narrow .tabs button .tab-label {
@@ -1093,6 +1129,46 @@ a:focus-visible {
   color: var(--dim);
   font-size: 11px;
   line-height: 1.45;
+}
+
+.health-copy-action {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px 10px;
+  align-items: center;
+  margin-top: 7px;
+}
+
+.health-copy-action code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font: 10px/1.45 ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+}
+
+.health-copy-action button {
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  background: var(--surface-2);
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.health-copy-action [role="status"] {
+  grid-column: 1 / -1;
+  min-height: 14px;
+  color: var(--good);
+  font-size: 10px;
+}
+
+.popover[data-width="280"] .health-copy-action {
+  grid-template-columns: 1fr;
+}
+
+.popover[data-width="280"] .health-copy-action button {
+  justify-self: stretch;
 }
 
 .provider-menu .menu-note {
@@ -1678,6 +1754,31 @@ a:focus-visible {
   margin-top: 6px;
   color: var(--dim);
   font-size: 9px;
+}
+
+.widget-load-failure {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-width: 0;
+  color: var(--muted);
+  text-align: center;
+}
+
+.widget-load-failure svg {
+  flex: 0 0 auto;
+  color: var(--warn);
+}
+
+.widget-load-failure strong {
+  max-width: 100%;
+  font-size: 11px;
+  font-weight: 560;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
 }
 
 .w-headline {
@@ -2690,6 +2791,11 @@ button.notice:hover {
   font-size: 12px;
   line-height: 1.65;
   color: var(--text);
+}
+
+.terminal pre:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
 .terminal code {

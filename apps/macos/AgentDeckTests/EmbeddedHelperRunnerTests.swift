@@ -336,6 +336,7 @@ final class EmbeddedHelperRunnerTests: XCTestCase {
 		await transport.waitForInvocationCount(2)
 		await transport.complete(.indeterminate)
 		await waitUntil { controller.state == .indeterminate(target) }
+		await waitUntil { refresher.calls == 1 }
 		let targets = await transport.targets()
 		XCTAssertEqual(targets, [target, target])
 		XCTAssertEqual(refresher.calls, 1)

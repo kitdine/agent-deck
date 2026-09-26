@@ -88,10 +88,14 @@ final class DesktopPreferences {
 
 	private let defaults: UserDefaults
 	@ObservationIgnored private let registrar: any LoginItemRegistering
+	@ObservationIgnored var periodicRefreshDidChange: (@MainActor (Bool) -> Void)?
 
 	/// Off by default: it is background work the user did not ask for.
 	var periodicRefreshEnabled: Bool {
-		didSet { defaults.set(periodicRefreshEnabled, forKey: Key.periodicRefresh) }
+		didSet {
+			defaults.set(periodicRefreshEnabled, forKey: Key.periodicRefresh)
+			periodicRefreshDidChange?(periodicRefreshEnabled)
+		}
 	}
 
 	var menuBarValue: MenuBarValueMode {

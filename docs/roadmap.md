@@ -148,25 +148,10 @@ is selected into v0.6.0 with quota, reset information and reminders.
 - [ ] Revisit ChatGPT app project attribution only if the app exposes a stable,
   reachable project configuration surface.
 
-- [ ] Give `state_busy` actionable recovery guidance, now selected for v0.6.0
-  design under health-recovery. `internal/store/store.go`
-  returns one hardcoded `timed out waiting for state lock` for both locks, so the
-  message never says whether `state.lock` or `scan.lock` is held, never points at
-  `agentdeck doctor`, and states no safe recovery path. Deferred from the `rc.5`
-  follow-up queue on 2026-09-04 as Lane C, carried by
-  `ad-bug-state-busy-recovery-guidance`: the lock defect itself is already fixed
-  (`rc.5` reclaims an ownerless lock), and what remains is not a contract the
-  implementation failed to meet. `cli-design.md` fixes only the code's meaning and
-  exit status, so a repair has to decide new user-visible behaviour — at least
-  three decisions, which is why this is not a Lane A fix. First, whether the
-  message names the specific lock, and how that reads against the existing rule
-  that messages never render filesystem-path text, since a lock name is a file
-  name under the state root. Second, whether it points at `agentdeck doctor`,
-  which would also require widening `doctor`'s `checkLock`: it stats only
-  `state.lock`, so a `scan.lock` holder currently answers `state_lock ok` and the
-  pointer would mislead. Third, what the safe recovery path actually is now that
-  ownerless reclamation is automatic. Promote into a bounded design before
-  development rather than repairing the copy in place.
+- [x] Give `state_busy` cause-specific, safe recovery guidance. The selected
+  `health-recovery` topic resolved the `state.lock`/`scan.lock`, read-only doctor
+  and live-owner safety decisions. It was integrated through PR #9 at main
+  `3f29e26`; origin issue `ad-bug-state-busy-recovery-guidance` is closed.
 
 - [ ] Reinstall the status-line route when a reading-off call's RestoreStatusLine
   succeeds but the subsequent settings save fails before committing. Core state

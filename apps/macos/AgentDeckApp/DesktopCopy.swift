@@ -33,6 +33,14 @@ enum DesktopCopy {
 	static let retry = "Retry"
 	static let refreshNow = "Refresh now"
 	static let refreshTimedOut = "Refresh timed out; showing the previous snapshot"
+	static let refreshAction = "Refresh"
+	static let refreshingAction = "Refreshing…"
+	static let updatedAction = "Updated"
+	static let refreshFailedAction = "Refresh failed. Retry"
+	static let refreshFailedShowingPrevious = "Refresh failed · showing previous data"
+	static let firstRefreshFailed = "First refresh failed · no data is available yet"
+	static let firstRefreshEmpty = "No data available yet"
+	static let widgetPublicationFailed = "Menu-bar data is current · Widgets may be out of date"
 	static let appName = "AgentDeck"
 	static let badgedOffline = "AgentDeck — offline"
 	static let badgedFailing = "AgentDeck — data could not be read"
@@ -160,6 +168,95 @@ enum DesktopCopy {
 	static let healthStatusFailed = "Failed"
 	static let healthCopyRecovery = "Copy recovery command"
 	static let healthCopied = "Copied"
+	static let healthCopySync = "Copy sync command"
+	static let healthCopyDiagnostic = "Copy diagnostic command"
+	static let healthCopySafety = "Copy safety steps"
+	static let healthStateLock = "State lock"
+	static let healthScanLock = "Scan lock"
+	static let healthExtensions = "Extension inventory"
+	static let healthUnknownCheck = "Other health check"
+	static let healthAffectedCount = "Affected: %1$lld"
+	static let healthCheckNameKeys: [String: String] = [
+		"state": "State",
+		"state_permissions": "State file permissions",
+		"state_lock": healthStateLock,
+		"scan_lock": healthScanLock,
+		"hook_deliveries": "Hook deliveries",
+		"database": "Core database",
+		"schema": "Database schema",
+		"database_integrity": "Database integrity",
+		"pending_operations": "Pending operations",
+		"provider_operation_state": "Provider operation state",
+		"provider_configuration": "Provider configuration",
+		"provider_credentials": "Provider credentials",
+		"project_attribution_gate": "Project attribution gate",
+		"sessions": "Session index",
+		"session_sources": "Session sources",
+		"extensions": healthExtensions,
+		"usage": "Usage index",
+		"usage_sources": "Usage sources",
+		"prices": "Price catalog",
+		"price_provenance": "Price provenance",
+		"unpriced_models": "Unpriced models",
+	]
+	static let healthNoticeStateLive = "AgentDeck state is busy"
+	static let healthNoticeScanLive = "AgentDeck scan is running"
+	static let healthNoticeLegacy = "Legacy lock needs confirmation"
+	static let healthNoticeOwnerUnknown = "Lock ownership is unknown"
+	static let healthNoticeStale = "Extension inventory is out of date"
+	static let healthNoticeIncomplete = "Inventory updated, but its scan fingerprint did not"
+	static let healthCauseStateLive = "Another AgentDeck state operation is still running."
+	static let healthCauseScanLive = "Another AgentDeck scan is still running."
+	static let healthEffectStale = "Updates only AgentDeck's derived extension inventory and scan fingerprint; client configuration and installed extensions stay unchanged."
+	static let healthEffectIncomplete = "Client configuration did not change, and inventory was not rolled back."
+	static let healthReasonKeys: [String: String] = [
+		"lock_live": "Active lock", "lock_legacy": "Legacy lock", "lock_owner_unknown": "Lock owner unknown",
+		"lock_reclaimable": "Reclaimable lock", "extension_state_missing": "Extension state missing",
+		"extension_inventory_unreadable": "Extension inventory unreadable", "extension_discovery_failed": "Extension discovery failed",
+		"extension_duplicate_id": "Duplicate extension identity", "extension_management_anomaly": "Extension management anomaly",
+		"extension_managed_drift": "Managed extension drift", "extension_stale_inventory": "Stale extension inventory",
+		"extension_native_unavailable": "Native extension unavailable", "extension_fingerprint_update_failed": "Scan fingerprint update failed",
+	]
+	static let healthCauseKeys: [String: String] = [
+		"lock_legacy": "This lock has no verifiable modern owner information.",
+		"lock_owner_unknown": "AgentDeck cannot safely prove whether this lock still has an owner.",
+		"lock_reclaimable": "The lock owner is gone; AgentDeck can reclaim it on the next operation.",
+		"extension_state_missing": "AgentDeck has no persisted extension inventory yet.",
+		"extension_inventory_unreadable": "The extension inventory could not be read safely.",
+		"extension_stale_inventory": "Stored extension identities are absent from successful live discovery.",
+		"extension_discovery_failed": "Native extension discovery did not finish, so stale inventory cannot be determined.",
+		"extension_duplicate_id": "Live discovery found duplicate extension identities.",
+		"extension_management_anomaly": "A managed extension record has no adoption fingerprint.",
+		"extension_managed_drift": "A managed extension differs from its adopted fingerprint.",
+		"extension_native_unavailable": "An installed extension is unavailable to native discovery.",
+		"extension_fingerprint_update_failed": "The inventory transaction committed, but the later scan fingerprint did not update.",
+	]
+	static let healthNextKeys: [String: String] = [
+		"lock_live": "Wait for the operation to finish, then retry the failed command.",
+		"lock_legacy": "AgentDeck will not remove it automatically.",
+		"lock_owner_unknown": "Do not remove the lock; stop its process normally, or wait and diagnose again.",
+		"extension_stale_inventory": "Synchronize AgentDeck's extension inventory, then refresh health again.",
+		"extension_discovery_failed": "Resolve discovery first, then refresh health again; no sync command is offered now.",
+		"extension_fingerprint_update_failed": "Diagnose the committed inventory before deciding whether to retry sync.",
+	]
+	static let healthPrerequisiteKeys: [String: String] = [
+		"prereq_legacy_lock_removal": "First confirm that no AgentDeck process is using this state directory; only then may you remove the legacy lock.",
+		"prereq_extension_discovery_failed": "Resolve native extension discovery errors, then refresh health before synchronizing inventory.",
+		"prereq_extension_inventory_unreadable": "Check AgentDeck state permissions and database health before retrying extension diagnostics.",
+		"prereq_extension_duplicate_id": "Inspect duplicate extension identities and resolve the conflict before synchronizing inventory.",
+		"prereq_extension_managed_drift": "Review the managed extension's current source and intended version before changing inventory.",
+		"prereq_extension_management_anomaly": "Review the managed extension record and its missing adoption fingerprint before changing inventory.",
+		"prereq_extension_native_unavailable": "Restore native extension access, then refresh health before synchronizing inventory.",
+	]
+	static let healthPrerequisiteReasons: [String: Set<String>] = [
+		"prereq_legacy_lock_removal": ["lock_legacy"],
+		"prereq_extension_discovery_failed": ["extension_discovery_failed", "extension_state_missing"],
+		"prereq_extension_inventory_unreadable": ["extension_inventory_unreadable"],
+		"prereq_extension_duplicate_id": ["extension_duplicate_id"],
+		"prereq_extension_managed_drift": ["extension_managed_drift"],
+		"prereq_extension_management_anomaly": ["extension_management_anomaly"],
+		"prereq_extension_native_unavailable": ["extension_native_unavailable"],
+	]
 	static let noticeMore = "and %lld more"
 
 	// Warning codes.
@@ -219,7 +316,7 @@ enum DesktopCopy {
 	static let settingsLoginItemApproval = "Waiting for approval in System Settings"
 	static let settingsPeriodicRefresh = "Periodic refresh"
 	static let settingsPeriodicRefreshNote =
-		"Refreshes at the time the snapshot suggests; when off, only opening the panel or refreshing manually updates it"
+		"Refreshes about once a minute while AgentDeck is running; when off, startup and manual refresh still update data"
 	static let settingsMenuBarValue = "Shows"
 	static let settingsMenuBarValueNote = "Switch to icon only when sharing your screen"
 	static let settingsMenuBarValueCost = "Cost"
@@ -321,7 +418,9 @@ enum DesktopCopy {
 		loading, scanWaiting, scanChecking, scanImporting, scanStatistics, scanFinished,
 		scanUsageProgress, scanSessionProgress, scanSkipped,
 		offline, failing, partial, emptyToday, emptySnapshot,
-		freshnessUpdated, freshnessLastUpdated, retry, refreshNow, refreshTimedOut, appName,
+		freshnessUpdated, freshnessLastUpdated, retry, refreshNow, refreshTimedOut,
+		refreshAction, refreshingAction, updatedAction, refreshFailedAction,
+		refreshFailedShowingPrevious, firstRefreshFailed, firstRefreshEmpty, widgetPublicationFailed, appName,
 		badgedOffline, badgedFailing, qualifierList,
 		clientFilter, periodFilter, clientAll, periodToday, period7d, period30d,
 		costIncomplete, costIncompleteAttribution, heroCounts,
@@ -362,6 +461,12 @@ enum DesktopCopy {
 		rhythmQuietestNote, rhythmPeakNote, rhythmActiveValue, rhythmCell, calendarTitle,
 		healthNotice, healthTitle, healthBack, healthSource, healthStatusOK,
 		healthStatusWarning, healthStatusFailed, healthCopyRecovery, healthCopied,
+		healthCopySync, healthCopyDiagnostic, healthCopySafety,
+		healthUnknownCheck, healthAffectedCount,
+		healthNoticeStateLive, healthNoticeScanLive, healthNoticeLegacy, healthNoticeOwnerUnknown,
+		healthNoticeStale, healthNoticeIncomplete, healthCauseStateLive, healthCauseScanLive,
+		healthEffectStale, healthEffectIncomplete,
+	] + Array(healthCheckNameKeys.values) + Array(healthReasonKeys.values) + Array(healthCauseKeys.values) + Array(healthNextKeys.values) + Array(healthPrerequisiteKeys.values) + [
 		noticeMore,
 		warningProviderUnavailable, warningProviderCandidatesUnavailable,
 		warningUsageUnavailable, warningSessionsUnavailable,

@@ -10,6 +10,7 @@ import (
 )
 
 var ErrExtensionNotFound = errors.New("extension_not_found")
+var ErrExtensionFingerprintUnavailable = errors.New("extension fingerprint unavailable")
 
 type Extension struct {
 	ID, Client, Kind, Scope, NativeID, SourcePath, Version string
@@ -108,6 +109,9 @@ func (s *Store) AdoptExtension(ctx context.Context, id string) (Extension, error
 	v, err := s.ExtensionByID(ctx, id)
 	if err != nil {
 		return Extension{}, err
+	}
+	if v.Fingerprint == "" {
+		return Extension{}, fmt.Errorf("%w for %s; restore the native source and rescan before adoption", ErrExtensionFingerprintUnavailable, id)
 	}
 	if _, err = s.DB.ExecContext(ctx, `INSERT INTO extension_management(extension_id,fingerprint,adopted_at) VALUES(?,?,?) ON CONFLICT(extension_id) DO UPDATE SET fingerprint=excluded.fingerprint,adopted_at=excluded.adopted_at`, id, v.Fingerprint, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
 		return Extension{}, err

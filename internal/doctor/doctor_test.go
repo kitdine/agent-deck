@@ -1,9 +1,11 @@
 package doctor
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -32,7 +34,7 @@ func TestCheckMissingStateIsReadOnly(t *testing.T) {
 	}
 }
 
-func TestCheckReportsStateLockLifecycleUsingInjectedClock(t *testing.T) {
+func TestCheckReportsLockClassificationAndLifecycle(t *testing.T) {
 	ctx := context.Background()
 	state := filepath.Join(t.TempDir(), "state")
 	database, err := store.Open(ctx, state)
@@ -44,52 +46,99 @@ func TestCheckReportsStateLockLifecycleUsingInjectedClock(t *testing.T) {
 	}
 
 	now := time.Date(2026, time.July, 23, 12, 0, 0, 0, time.UTC)
-	service := Service{StateRoot: state, Home: t.TempDir(), Workdir: t.TempDir(), Now: func() time.Time { return now }}
 	lock := filepath.Join(state, "state.lock")
+	scanLock := filepath.Join(state, "scan.lock")
+	modernToken := "v1:4242:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
 	for _, test := range []struct {
-		name       string
-		modifiedAt time.Time
-		status     string
-		code       string
-		problems   int
+		name         string
+		writeToken   string
+		processCheck store.LockProcessCheck
+		targetScan   bool
+		wantCheck    Check
+		problems     int
 	}{
-		{name: "absent", status: "ok", problems: 2},
-		{name: "live", modifiedAt: now.Add(-9 * time.Minute), status: "warning", code: "state_busy", problems: 3},
-		{name: "stale", modifiedAt: now.Add(-11 * time.Minute), status: "warning", code: "stale_lock", problems: 3},
+		{
+			name:      "absent",
+			wantCheck: Check{Name: "state_lock", Status: "ok"},
+			problems:  2,
+		},
+		{
+			name:         "live",
+			writeToken:   modernToken,
+			processCheck: func(int) (bool, bool) { return true, true },
+			wantCheck:    Check{Name: "state_lock", Status: "warning", Code: "lock_live", Resource: "state", Reason: "lock_live", ActionKind: "retry"},
+			problems:     3,
+		},
+		{
+			name:       "legacy",
+			writeToken: "synthetic-non-v1-token",
+			wantCheck:  Check{Name: "state_lock", Status: "warning", Code: "lock_legacy", Resource: "state", Reason: "lock_legacy", ActionKind: "manual_prerequisite", ManualPrerequisite: "prereq_legacy_lock_removal"},
+			problems:   3,
+		},
+		{
+			name:         "owner_unknown",
+			writeToken:   modernToken,
+			processCheck: func(int) (bool, bool) { return false, false },
+			wantCheck:    Check{Name: "state_lock", Status: "warning", Code: "lock_owner_unknown", Resource: "state", Reason: "lock_owner_unknown", ActionKind: "null"},
+			problems:     3,
+		},
+		{
+			name:         "reclaimable_informational_ok",
+			writeToken:   modernToken,
+			processCheck: func(int) (bool, bool) { return false, true },
+			wantCheck:    Check{Name: "state_lock", Status: "ok", Code: "lock_reclaimable", Resource: "state", Reason: "lock_reclaimable"},
+			problems:     2,
+		},
+		{
+			name:         "scan_lock_live",
+			writeToken:   modernToken,
+			targetScan:   true,
+			processCheck: func(int) (bool, bool) { return true, true },
+			wantCheck:    Check{Name: "scan_lock", Status: "warning", Code: "lock_live", Resource: "scan", Reason: "lock_live", ActionKind: "retry"},
+			problems:     3,
+		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			if err := os.Remove(lock); err != nil && !os.IsNotExist(err) {
-				t.Fatal(err)
+			_ = os.Remove(lock)
+			_ = os.Remove(scanLock)
+			targetFile := lock
+			if test.targetScan {
+				targetFile = scanLock
 			}
-			if !test.modifiedAt.IsZero() {
-				if err := os.WriteFile(lock, []byte("synthetic-lock"), 0o600); err != nil {
-					t.Fatal(err)
-				}
-				if err := os.Chtimes(lock, test.modifiedAt, test.modifiedAt); err != nil {
+			if test.writeToken != "" {
+				if err := os.WriteFile(targetFile, []byte(test.writeToken), 0o600); err != nil {
 					t.Fatal(err)
 				}
 			}
 			var beforeLock [32]byte
 			var beforeLockMode os.FileMode
 			var beforeLockModTime time.Time
-			if !test.modifiedAt.IsZero() {
-				beforeLock, beforeLockMode = fileDigest(t, lock), fileMode(t, lock)
-				beforeLockModTime = fileModTime(t, lock)
+			if test.writeToken != "" {
+				beforeLock, beforeLockMode = fileDigest(t, targetFile), fileMode(t, targetFile)
+				beforeLockModTime = fileModTime(t, targetFile)
+			}
+			service := Service{
+				StateRoot:        state,
+				Home:             t.TempDir(),
+				Workdir:          t.TempDir(),
+				Now:              func() time.Time { return now },
+				LockProcessCheck: test.processCheck,
 			}
 			report, err := service.Check(ctx, false)
 			if err != nil {
 				t.Fatal(err)
 			}
 			assertDiagnosticReport(t, report,
-				Check{Name: "state_lock", Status: test.status, Code: test.code},
+				test.wantCheck,
 				reportContract{Mode: "quick", Status: "degraded", Healthy: false, Problems: test.problems, Warnings: test.problems},
 			)
-			if test.modifiedAt.IsZero() {
-				if _, err := os.Stat(lock); !os.IsNotExist(err) {
-					t.Fatalf("doctor created absent state lock: %v", err)
+			if test.writeToken == "" {
+				if _, err := os.Stat(targetFile); !os.IsNotExist(err) {
+					t.Fatalf("doctor created absent lock: %v", err)
 				}
-			} else if fileDigest(t, lock) != beforeLock || fileMode(t, lock) != beforeLockMode || !fileModTime(t, lock).Equal(beforeLockModTime) {
-				t.Fatal("doctor changed the observed state lock bytes, mode, or modification time")
+			} else if fileDigest(t, targetFile) != beforeLock || fileMode(t, targetFile) != beforeLockMode || !fileModTime(t, targetFile).Equal(beforeLockModTime) {
+				t.Fatal("doctor changed the observed lock bytes, mode, or modification time")
 			}
 		})
 	}
@@ -1115,5 +1164,209 @@ func TestHookRefusalCheckLifetimeAndReadOnly(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+func TestCheckActionKindJSONSerialization(t *testing.T) {
+	// 1. Omitted when empty (healthy / absent lock)
+	c1 := Check{Name: "state_lock", Status: "ok"}
+	b1, err := json.Marshal(c1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(b1, []byte("action_kind")) {
+		t.Fatalf("expected action_kind omitted, got: %s", string(b1))
+	}
+
+	// 2. Serialized as string for retry
+	c2 := Check{Name: "state_lock", Status: "warning", ActionKind: "retry"}
+	b2, err := json.Marshal(c2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(b2, []byte(`"action_kind":"retry"`)) {
+		t.Fatalf("expected action_kind:retry, got: %s", string(b2))
+	}
+
+	// 3. Serialized as null for lock_owner_unknown
+	c3 := Check{Name: "state_lock", Status: "warning", ActionKind: "null"}
+	b3, err := json.Marshal(c3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(b3, []byte(`"action_kind":null`)) {
+		t.Fatalf("expected action_kind:null, got: %s", string(b3))
+	}
+}
+
+func TestCheckReportsBothLocksIndependentlyUnderContention(t *testing.T) {
+	ctx := context.Background()
+	state := filepath.Join(t.TempDir(), "state")
+	database, err := store.Open(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = database.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	stateLockPath := filepath.Join(state, "state.lock")
+	scanLockPath := filepath.Join(state, "scan.lock")
+
+	modernToken := "v1:4242:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	if err := os.WriteFile(stateLockPath, []byte(modernToken), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(scanLockPath, []byte("legacy-token"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	service := Service{
+		StateRoot: state,
+		Home:      t.TempDir(),
+		Workdir:   t.TempDir(),
+		LockProcessCheck: func(int) (bool, bool) {
+			return true, true
+		},
+	}
+	report, err := service.Check(ctx, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var stateCheck, scanCheck *Check
+	var stateIdx, scanIdx, permIdx int = -1, -1, -1
+	for i, c := range report.Checks {
+		switch c.Name {
+		case "state_permissions":
+			permIdx = i
+		case "state_lock":
+			stateIdx = i
+			ch := c
+			stateCheck = &ch
+		case "scan_lock":
+			scanIdx = i
+			ch := c
+			scanCheck = &ch
+		}
+	}
+	if stateCheck == nil || scanCheck == nil {
+		t.Fatalf("expected both state_lock and scan_lock present, got state=%v, scan=%v", stateCheck, scanCheck)
+	}
+	if stateCheck.Status != "warning" || stateCheck.Code != "lock_live" || stateCheck.ActionKind != "retry" {
+		t.Fatalf("unexpected stateCheck: %#v", stateCheck)
+	}
+	if scanCheck.Status != "warning" || scanCheck.Code != "lock_legacy" || scanCheck.ActionKind != "manual_prerequisite" {
+		t.Fatalf("unexpected scanCheck: %#v", scanCheck)
+	}
+	if permIdx != 0 || stateIdx != 1 || scanIdx != 2 {
+		t.Fatalf("unexpected check order: permIdx=%d, stateIdx=%d, scanIdx=%d", permIdx, stateIdx, scanIdx)
+	}
+}
+
+func TestCheckExtensionsAggregateRow(t *testing.T) {
+	ctx := context.Background()
+	state := t.TempDir()
+	database, err := store.Open(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+
+	// 1. Stale inventory fixture
+	if err = database.ReplaceExtensions(ctx, []store.Extension{
+		{ID: "codex:mcp:user:computer-use", Client: "codex", Kind: "mcp", Scope: "user", NativeID: "computer-use", Fingerprint: "fp1"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	service := Service{
+		StateRoot: state,
+		Home:      t.TempDir(),
+		Workdir:   t.TempDir(),
+	}
+	report, err := service.Check(ctx, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var extCheck *Check
+	for _, c := range report.Checks {
+		if c.Name == "extensions" {
+			ch := c
+			extCheck = &ch
+			break
+		}
+	}
+	if extCheck == nil {
+		t.Fatal("extensions check missing")
+	}
+	if extCheck.Status != "warning" || extCheck.Code != "extension_stale_inventory" {
+		t.Fatalf("unexpected extensions check: %#v", extCheck)
+	}
+	if extCheck.Resource != "extension_inventory" || extCheck.Reason != "extension_stale_inventory" {
+		t.Fatalf("unexpected extensions resource/reason: %#v", extCheck)
+	}
+	if extCheck.ActionKind != "synchronize_inventory" || extCheck.Recovery != "agentdeck extension scan" {
+		t.Fatalf("unexpected action/recovery: %#v", extCheck)
+	}
+	if extCheck.DiagnosticCommand != "" {
+		t.Fatalf("expected empty diagnostic_command when recovery_command is set, got %q", extCheck.DiagnosticCommand)
+	}
+
+	// 2. Clear stale extensions -> healthy
+	if err = database.ReplaceExtensions(ctx, []store.Extension{}); err != nil {
+		t.Fatal(err)
+	}
+	report, err = service.Check(ctx, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range report.Checks {
+		if c.Name == "extensions" {
+			if c.Status != "ok" {
+				t.Fatalf("expected extensions ok, got %#v", c)
+			}
+			break
+		}
+	}
+
+	// 3. Fingerprint sync incomplete marker
+	if err = database.SetSetting(ctx, "extension.sync_incomplete", "true"); err != nil {
+		t.Fatal(err)
+	}
+	report, err = service.Check(ctx, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range report.Checks {
+		if c.Name == "extensions" {
+			if c.Status != "warning" || c.Code != "extension_fingerprint_update_failed" || c.ActionKind != "diagnose" || c.Recovery != "" || c.DiagnosticCommand != "agentdeck extension doctor" || c.Count != 1 {
+				t.Fatalf("expected fingerprint_update_failed check, got %#v", c)
+			}
+			break
+		}
+	}
+
+	// 4. Unreadable/corrupted extensions table -> extensions error row (never ok)
+	if _, err = database.Exec(ctx, "DROP TABLE extensions"); err != nil {
+		t.Fatal(err)
+	}
+	report, err = service.Check(ctx, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var unreadableCheck *Check
+	for _, c := range report.Checks {
+		if c.Name == "extensions" {
+			ch := c
+			unreadableCheck = &ch
+			break
+		}
+	}
+	if unreadableCheck == nil {
+		t.Fatal("extensions check missing after dropping settings table")
+	}
+	if unreadableCheck.Status != "error" || unreadableCheck.Code != "extension_inventory_unreadable" || unreadableCheck.Reason != "extension_inventory_unreadable" || unreadableCheck.ActionKind != "manual_prerequisite" || unreadableCheck.ManualPrerequisite != "prereq_extension_inventory_unreadable" {
+		t.Fatalf("expected extension_inventory_unreadable check, got %#v", unreadableCheck)
 	}
 }

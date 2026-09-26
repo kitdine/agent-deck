@@ -1,0 +1,61 @@
+{
+  "kind": "desktop-refresh-menubar-specimen-v1",
+  "files": [
+    {
+      "path": "prototype/src/App.jsx",
+      "sha256": "53cd953aef4a7ab4ce4122041e0a9235f8f50fda927e12054c1cb9ff117a66da"
+    },
+    {
+      "path": "prototype/src/Popover.jsx",
+      "sha256": "6a295c271098750581dcc898b487e495c668b88f5c800a81a155bb46d4103ed8"
+    },
+    {
+      "path": "prototype/src/Stage.jsx",
+      "sha256": "b7c086db1760ebe6563a2d183e5db6330343ac3a09770a068a0e229191090371"
+    },
+    {
+      "path": "prototype/src/i18n.js",
+      "sha256": "fd996fbb6c5bba8efa4fa22c25e74cd731ed12f4ac3d980b0e57cc72b69ebd09"
+    },
+    {
+      "path": "prototype/src/styles.css",
+      "sha256": "718d66a6a96a46955a7a4133e38e122532a3f568e04d90d09f238f6ecb07179b"
+    },
+    {
+      "path": "docs/topics/desktop-refresh/ux/prototype/menubar-refresh/checks.json",
+      "sha256": "401b138fa24646a43c42607c45eb465c2b0da70731fcf7102fc46c272e76b453"
+    },
+    {
+      "path": "docs/topics/desktop-refresh/ux/prototype/menubar-refresh/running-prior-en-light-420.png",
+      "sha256": "b389e7554ee40780b21974b2b98be5690257a786822ce9bee36bf211af9515dc"
+    },
+    {
+      "path": "docs/topics/desktop-refresh/ux/prototype/menubar-refresh/wake-catchup-zh-dark-280.png",
+      "sha256": "13dd07875e6a8eb687a1ed7c78f621f16ea1d216c0c85cac6c38cd1314830779"
+    },
+    {
+      "path": "docs/topics/desktop-refresh/ux/prototype/menubar-refresh/failed-prior-en-light-280.png",
+      "sha256": "47200ff6262608e45b65264f5746adc9a8fc10eaec3891dfbc4e3e4e1eca6644"
+    },
+    {
+      "path": "docs/topics/desktop-refresh/ux/prototype/menubar-refresh/first-failure-zh-dark-420.png",
+      "sha256": "4212dc6e3754d9d1586e5126ef7b5f0480fcc5c8b38dd47291b6f111212ce417"
+    },
+    {
+      "path": "docs/topics/desktop-refresh/ux/prototype/menubar-refresh/storage-failure-en-dark-420.png",
+      "sha256": "4bfb8ce3bff1de9010a1eb602113cd9f19a380f62638f18736607f8e768fadd9"
+    },
+    {
+      "path": "docs/topics/desktop-refresh/ux/prototype/menubar-refresh/recovered-zh-light-280.png",
+      "sha256": "0065d90be3f095b9e7f1577f4686526226e9a13fda65f3a9ea959715eb390e1c"
+    },
+    {
+      "path": "docs/topics/desktop-refresh/ux/prototype/menubar-refresh/settings-periodic-en-light.png",
+      "sha256": "d62d9b14754e41ca45ebc5b366b8b8ca02fe9d10cce18e479c62dd89ea6e929b"
+    },
+    {
+      "path": "docs/topics/desktop-refresh/ux/prototype/menubar-refresh/settings-periodic-zh-dark.png",
+      "sha256": "1dec20190d0e61d4626d8478a9950d6930bbd3e68b4892a3bc753099c9b60e47"
+    }
+  ]
+}

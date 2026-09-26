@@ -6,6 +6,7 @@ import XCTest
 
 @MainActor
 final class MenuBarChromeTests: XCTestCase {
+	private static var retainedFocusWindows = [NSWindow]()
 	func testStandaloneReloadIncludesEveryWidgetKind() {
 		XCTAssertEqual(AgentDeckMain.widgetKinds, [
 			"com.kitdine.agentdeck.widget.magnitude",
@@ -50,6 +51,120 @@ final class MenuBarChromeTests: XCTestCase {
 		}
 	}
 
+	func testRefreshFailureAndFirstUseRenderAtNativeWidthsInBothLanguagesAndThemes() async throws {
+		let oldWidth = ProcessInfo.processInfo.environment["AGENTDECK_TEST_WIDTH"]
+		let oldLocale = ProcessInfo.processInfo.environment["AGENTDECK_TEST_LOCALE"]
+		defer {
+			if let oldWidth { setenv("AGENTDECK_TEST_WIDTH", oldWidth, 1) } else { unsetenv("AGENTDECK_TEST_WIDTH") }
+			if let oldLocale { setenv("AGENTDECK_TEST_LOCALE", oldLocale, 1) } else { unsetenv("AGENTDECK_TEST_LOCALE") }
+		}
+		for (language, scheme) in [("en", ColorScheme.light), ("zh-Hans", .dark)] {
+			setenv("AGENTDECK_TEST_LOCALE", language, 1)
+			for width in [280, 420] {
+				setenv("AGENTDECK_TEST_WIDTH", String(width), 1)
+				let retainedHost = StubDesktopHost(behavior: .envelope(WireFixture.envelope()))
+				let retained = await makeModel(host: retainedHost)
+				await retained.coordinator.refresh()
+				retainedHost.behavior = .failure(HelperExecutionError.timedOut)
+				await retained.coordinator.refresh()
+				let first = await makeModel(host: StubDesktopHost(behavior: .failure(HelperExecutionError.timedOut)))
+				await first.coordinator.refresh()
+
+				for (name, model) in [("retained", retained), ("first", first)] {
+					let view = MenuBarSurfaceView(model: model).preferredColorScheme(scheme)
+					let hosting = NSHostingView(rootView: view)
+					hosting.frame = NSRect(x: 0, y: 0, width: CGFloat(width), height: 760)
+					hosting.layoutSubtreeIfNeeded()
+					hosting.displayIfNeeded()
+					XCTAssertLessThanOrEqual(hosting.fittingSize.width, CGFloat(width) + 1)
+					let png = try renderedViewPNG(hosting)
+					XCTAssertGreaterThan(png.count, 4_000)
+					add(renderingAttachment(png, named: "Refresh \(name) — \(language) — \(width)"))
+				}
+			}
+		}
+	}
+
+	func testRefreshControlIdentitySurvivesErrorRunningSuccessAndFailure() async throws {
+		let host = StubDesktopHost(behavior: .failure(HelperExecutionError.timedOut))
+		let model = await makeModel(host: host)
+		await model.coordinator.refresh()
+		let capture = RefreshControlIdentityCapture()
+		let view = RefreshControlIdentityProbe(
+			content: MenuBarSurfaceView(model: model),
+			capture: capture
+		)
+		let hosting = NSHostingView(rootView: view)
+		hosting.frame = NSRect(x: 0, y: 0, width: 420, height: 760)
+		let window = NSWindow(contentRect: hosting.frame, styleMask: [.titled], backing: .buffered, defer: false)
+		let container = NSView(frame: hosting.frame)
+		container.addSubview(hosting)
+		let otherButton = NSButton(title: "Other", target: nil, action: nil)
+		otherButton.frame = NSRect(x: 0, y: 0, width: 80, height: 24)
+		container.addSubview(otherButton)
+		window.contentView = container
+		window.makeKeyAndOrderFront(nil)
+		Self.retainedFocusWindows.append(window)
+
+		func renderState() throws -> UUID {
+			hosting.layoutSubtreeIfNeeded()
+			hosting.displayIfNeeded()
+			RunLoop.current.run(until: Date().addingTimeInterval(0.02))
+			hosting.layoutSubtreeIfNeeded()
+			return try XCTUnwrap(capture.identity)
+		}
+
+		_ = try renderState()
+		let button = try XCTUnwrap(findRefreshButton(in: hosting))
+		XCTAssertEqual(button.keyEquivalent, "r")
+		XCTAssertEqual(button.keyEquivalentModifierMask, NSEvent.ModifierFlags.command)
+		XCTAssertTrue(window.makeFirstResponder(button))
+		XCTAssertTrue(window.firstResponder === button, "Retry must receive actual AppKit first-responder focus")
+		let errorIdentity = try renderState()
+		host.behavior = .suspendedEnvelope(WireFixture.envelope())
+		let success = Task { await model.coordinator.refresh() }
+		while host.refreshCount < 2 { await Task.yield() }
+		XCTAssertEqual(model.refreshActionState, .running)
+		let runningIdentity = try renderState()
+		XCTAssertEqual(runningIdentity, errorIdentity)
+		XCTAssertTrue(findRefreshButton(in: hosting) === button, "running must keep the same native control")
+		host.resume()
+		await success.value
+		XCTAssertEqual(model.refreshActionState, .succeeded)
+		let successIdentity = try renderState()
+		XCTAssertEqual(successIdentity, errorIdentity)
+		XCTAssertTrue(window.firstResponder === button, "focus must return when the control becomes enabled after success")
+		XCTAssertTrue(window.makeFirstResponder(otherButton))
+		model.selectedPanel = .usage
+		_ = try renderState()
+		XCTAssertTrue(window.firstResponder === otherButton, "an unrelated enabled-state update must not consume a stale restore request")
+		XCTAssertTrue(window.makeFirstResponder(button))
+
+		host.behavior = .suspendedFailure(HelperExecutionError.timedOut)
+		let failure = Task { await model.coordinator.refresh() }
+		while host.refreshCount < 3 { await Task.yield() }
+		XCTAssertEqual(model.refreshActionState, .running)
+		XCTAssertEqual(try renderState(), errorIdentity)
+		host.resume()
+		await failure.value
+		XCTAssertEqual(model.refreshActionState, .failed)
+		let failureIdentity = try renderState()
+		XCTAssertEqual(failureIdentity, errorIdentity)
+		XCTAssertTrue(window.firstResponder === button, "focus must remain on Retry after failure")
+	}
+
+	private func findRefreshButton(in view: NSView) -> NSButton? {
+		if let button = view as? NSButton,
+			button.identifier?.rawValue.hasPrefix("menubar.refresh.") == true
+		{
+			return button
+		}
+		for child in view.subviews {
+			if let result = findRefreshButton(in: child) { return result }
+		}
+		return nil
+	}
+
 	func testSchemaHealthProseRendersExpandedAndCollapsed() async throws {
 		let model = await makeModel(host: StubDesktopHost(behavior: .envelope(WireFixture.schemaSignal(refusals: true))))
 		await model.coordinator.refresh()
@@ -76,6 +191,98 @@ final class MenuBarChromeTests: XCTestCase {
 				add(renderingAttachment(png, named: "Schema Health — \(language) — \(name)"))
 			}
 		}
+	}
+
+	func testHealthRecoveryActionFitsNarrowAndWidePopoverInBothLanguages() throws {
+		let oldLocale = ProcessInfo.processInfo.environment["AGENTDECK_TEST_LOCALE"]
+		defer {
+			if let oldLocale { setenv("AGENTDECK_TEST_LOCALE", oldLocale, 1) }
+			else { unsetenv("AGENTDECK_TEST_LOCALE") }
+		}
+		for language in ["en", "zh-Hans"] {
+			setenv("AGENTDECK_TEST_LOCALE", language, 1)
+			let row = HealthCheckRow(
+				id: "extension.stale", name: t(DesktopCopy.healthExtensions),
+				status: t(DesktopCopy.healthStatusWarning), severity: .warning,
+				recovery: nil, code: "extension_stale_inventory", count: 2, supportedCount: nil,
+				cause: t(DesktopCopy.healthCauseKeys["extension_stale_inventory"]!),
+				recoveryProse: t(DesktopCopy.healthNextKeys["extension_stale_inventory"]!),
+				reasonLabel: t(DesktopCopy.healthReasonKeys["extension_stale_inventory"]!),
+				effect: t(DesktopCopy.healthEffectStale),
+				actionLabel: t(DesktopCopy.healthCopySync),
+				actionContent: "agentdeck extension scan"
+			)
+			for width in [280, 420] {
+				let view = HealthCheckRowView(row: row)
+					.frame(width: CGFloat(width))
+					.foregroundStyle(Color.black)
+					.background(Color.white)
+					.environment(\.colorScheme, .light)
+				let hosting = NSHostingView(rootView: view)
+				hosting.frame = NSRect(x: 0, y: 0, width: CGFloat(width), height: 400)
+				hosting.layoutSubtreeIfNeeded()
+				XCTAssertLessThanOrEqual(hosting.fittingSize.width, CGFloat(width) + 1)
+				let button = try XCTUnwrap(findHealthCopyButton(in: hosting, rowID: row.id))
+				if width == 280 {
+					XCTAssertGreaterThan(button.frame.width, 200, "the stacked copy target fills the narrow row")
+				} else {
+					XCTAssertLessThan(button.frame.width, 200, "the command and copy target share the wide row")
+				}
+				let png = try renderedViewPNG(hosting)
+				XCTAssertGreaterThan(png.count, 2_000)
+				add(renderingAttachment(png, named: "Health recovery — \(language) — \(width) pt"))
+			}
+		}
+	}
+
+	func testHealthRecoveryCopyRetainsNativeFocusAndAccessibleFeedback() async throws {
+		let health: [String: Any] = [
+			"available": true, "status": "warning", "healthy": false,
+			"problems": 1, "warnings": 1, "errors": 0,
+			"checks": [[
+				"name": "extensions", "status": "warning", "resource": "extension_inventory",
+				"reason": "extension_stale_inventory", "action_kind": "synchronize_inventory",
+				"recovery_command": "agentdeck extension scan",
+			]],
+		]
+		let model = await makeModel(host: StubDesktopHost(behavior: .envelope(WireFixture.envelope(health: health))))
+		await model.coordinator.refresh()
+		let row = try XCTUnwrap(model.healthDetail.rows.first)
+		let hosting = NSHostingView(rootView: HealthCheckRowView(row: row, model: model).frame(width: 420))
+		hosting.frame = NSRect(x: 0, y: 0, width: 420, height: 300)
+		let window = NSWindow(contentRect: hosting.frame, styleMask: [.titled], backing: .buffered, defer: false)
+		window.contentView = hosting
+		window.makeKeyAndOrderFront(nil)
+		Self.retainedFocusWindows.append(window)
+		hosting.layoutSubtreeIfNeeded()
+		let button = try XCTUnwrap(findHealthCopyButton(in: hosting, rowID: row.id))
+		XCTAssertEqual(button.accessibilityLabel(), t(DesktopCopy.healthCopySync))
+		XCTAssertTrue(window.makeFirstResponder(button))
+		button.performClick(nil)
+		try await Task.sleep(for: .milliseconds(20))
+		hosting.layoutSubtreeIfNeeded()
+		XCTAssertEqual(model.copiedHealthRowID, row.id)
+		XCTAssertTrue(findHealthCopyButton(in: hosting, rowID: row.id) === button)
+		XCTAssertTrue(window.firstResponder === button)
+		XCTAssertEqual(button.title, t(DesktopCopy.healthCopied))
+		XCTAssertEqual(button.accessibilityValue() as? String, t(DesktopCopy.healthCopied))
+		try await Task.sleep(for: .milliseconds(1_700))
+		hosting.layoutSubtreeIfNeeded()
+		XCTAssertTrue(window.firstResponder === button)
+		XCTAssertEqual(button.title, t(DesktopCopy.healthCopySync))
+	}
+
+	private func findHealthCopyButton(in view: NSView, rowID: String) -> NSButton? {
+		if let button = view as? NSButton,
+			button.identifier?.rawValue == "health.copy.\(rowID)",
+			!button.isHidden, button.frame.width > 0
+		{
+			return button
+		}
+		for child in view.subviews {
+			if let button = findHealthCopyButton(in: child, rowID: rowID) { return button }
+		}
+		return nil
 	}
 
 	func testPopoverHeightUsesTheStatusItemScreensVisibleFrame() {
@@ -675,6 +882,21 @@ final class MenuBarChromeTests: XCTestCase {
 
 		let neverProbed = try client(observedAt: nil)
 		XCTAssertEqual(panel.primaryReason(neverProbed), .neverProbed, "no observed_at at all is still never probed")
+	}
+}
+
+@MainActor
+private final class RefreshControlIdentityCapture {
+	var identity: UUID?
+}
+
+private struct RefreshControlIdentityProbe<Content: View>: View {
+	let content: Content
+	let capture: RefreshControlIdentityCapture
+
+	var body: some View {
+		content
+			.onPreferenceChange(RefreshControlIdentityPreferenceKey.self) { capture.identity = $0 }
 	}
 }
 

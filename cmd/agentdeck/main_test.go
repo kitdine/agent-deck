@@ -3472,3 +3472,798 @@ func TestHookRefusalLifecycleBothClients(t *testing.T) {
 		})
 	}
 }
+
+func TestLockContentionErrorTextAndJSON(t *testing.T) {
+	ctx := context.Background()
+	state := filepath.Join(t.TempDir(), "state")
+	db, err := store.Open(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	lock, err := store.AcquireLock(ctx, state, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lock.Release()
+
+	var stdout, stderr bytes.Buffer
+	exit := execute([]string{"--state-dir", state, "session", "purge-index"}, bytes.NewReader(nil), &stdout, &stderr)
+	if exit != 1 {
+		t.Fatalf("exit = %d, want 1; stderr = %s", exit, stderr.String())
+	}
+	wantText := "state_busy: AgentDeck state is busy.\n  resource: state\n  next: Wait for the current state operation to finish, then retry this command.\n  diagnose: agentdeck doctor\n"
+	if stderr.String() != wantText {
+		t.Fatalf("text stderr = %q, want %q", stderr.String(), wantText)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	exit = execute([]string{"--state-dir", state, "--format=json", "session", "purge-index"}, bytes.NewReader(nil), &stdout, &stderr)
+	if exit != 1 {
+		t.Fatalf("exit = %d, want 1; stderr = %s", exit, stderr.String())
+	}
+	var env struct {
+		SchemaVersion int `json:"schema_version"`
+		Error         struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+			Details struct {
+				Resource        string  `json:"resource"`
+				Reason          string  `json:"reason"`
+				ActionKind      *string `json:"action_kind"`
+				RecoveryCommand *string `json:"recovery_command"`
+			} `json:"details"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(stderr.Bytes(), &env); err != nil {
+		t.Fatalf("unmarshal json error: %v; output: %s", err, stderr.String())
+	}
+	if env.Error.Code != "state_busy" {
+		t.Fatalf("code = %q, want 'state_busy'", env.Error.Code)
+	}
+	if env.Error.Message != "AgentDeck state is busy." {
+		t.Fatalf("message = %q, want 'AgentDeck state is busy.'", env.Error.Message)
+	}
+	if env.Error.Details.Resource != "state" {
+		t.Fatalf("resource = %q, want 'state'", env.Error.Details.Resource)
+	}
+	if env.Error.Details.Reason != "lock_live" {
+		t.Fatalf("reason = %q, want 'lock_live'", env.Error.Details.Reason)
+	}
+	if env.Error.Details.ActionKind == nil || *env.Error.Details.ActionKind != "retry" {
+		t.Fatalf("action_kind = %v, want 'retry'", env.Error.Details.ActionKind)
+	}
+	if env.Error.Details.RecoveryCommand != nil {
+		t.Fatalf("recovery_command = %v, want nil", env.Error.Details.RecoveryCommand)
+	}
+
+	// Also verify lock_owner_unknown emits action_kind: null
+	unknownContention := &store.ErrLockContention{
+		Resource: "scan",
+		Reason:   "lock_owner_unknown",
+	}
+	unknownDetails := errorDetails(unknownContention)
+	unknownBytes, err := json.Marshal(unknownDetails)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(unknownBytes, []byte(`"action_kind":null`)) {
+		t.Fatalf("expected action_kind:null in JSON, got: %s", string(unknownBytes))
+	}
+}
+
+func TestScanLockContentionErrorTextAndJSON(t *testing.T) {
+	state := filepath.Join(t.TempDir(), "state")
+	if err := os.MkdirAll(state, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(state, "scan.lock"), []byte("legacy-token"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	contentionErr := &store.ErrLockContention{
+		Resource:   "scan",
+		Reason:     "lock_legacy",
+		ActionKind: func() *string { s := "manual_prerequisite"; return &s }(),
+	}
+
+	var stderr bytes.Buffer
+	renderCommandErrorText(&stderr, contentionErr)
+	wantText := "state_busy: AgentDeck scan is busy.\n  resource: scan\n  next: Confirm that no AgentDeck process is using this state directory.\n  manual prerequisite: Remove scan.lock only after that confirmation.\n  diagnose: agentdeck doctor\n"
+	if stderr.String() != wantText {
+		t.Fatalf("text stderr = %q, want %q", stderr.String(), wantText)
+	}
+
+	contentionErr.Reason = "lock_owner_unknown"
+	stderr.Reset()
+	renderCommandErrorText(&stderr, contentionErr)
+	wantText = "state_busy: AgentDeck scan is busy.\n  resource: scan\n  next: Do not remove scan.lock. Stop the owning AgentDeck process through its normal lifecycle or wait and diagnose again.\n  diagnose: agentdeck doctor\n"
+	if stderr.String() != wantText {
+		t.Fatalf("unknown-owner text stderr = %q, want %q", stderr.String(), wantText)
+	}
+	contentionErr.Reason = "lock_legacy"
+
+	details := errorDetails(contentionErr)
+	data, err := json.Marshal(details)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var detailsMap map[string]any
+	if err := json.Unmarshal(data, &detailsMap); err != nil {
+		t.Fatal(err)
+	}
+	if detailsMap["resource"] != "scan" {
+		t.Fatalf("resource = %v, want 'scan'", detailsMap["resource"])
+	}
+	if detailsMap["reason"] != "lock_legacy" {
+		t.Fatalf("reason = %v, want 'lock_legacy'", detailsMap["reason"])
+	}
+	if detailsMap["action_kind"] != "manual_prerequisite" {
+		t.Fatalf("action_kind = %v, want 'manual_prerequisite'", detailsMap["action_kind"])
+	}
+}
+
+func TestQuotaRefreshLockYieldsUnknownResource(t *testing.T) {
+	ctx := context.Background()
+	state := filepath.Join(t.TempDir(), "state")
+	db, err := store.Open(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	lock, err := store.AcquireQuotaRefreshLock(ctx, state, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lock.Release()
+
+	// 1. JSON mode via desktop quota-refresh --manual
+	var stdout, stderr bytes.Buffer
+	exit := execute([]string{"--state-dir", state, "--format=json", "desktop", "quota-refresh", "--manual"}, bytes.NewReader(nil), &stdout, &stderr)
+	if exit != 1 {
+		t.Fatalf("exit = %d, want 1; stderr = %s", exit, stderr.String())
+	}
+	var env struct {
+		Error struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+			Details struct {
+				Resource string `json:"resource"`
+			} `json:"details"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(stderr.Bytes(), &env); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+	if env.Error.Code != "state_busy" {
+		t.Fatalf("code = %q, want 'state_busy'", env.Error.Code)
+	}
+	if env.Error.Message != "AgentDeck is busy." {
+		t.Fatalf("message = %q, want 'AgentDeck is busy.'", env.Error.Message)
+	}
+	if env.Error.Details.Resource != "unknown" {
+		t.Fatalf("resource = %q, want 'unknown'", env.Error.Details.Resource)
+	}
+	if bytes.Contains(stderr.Bytes(), []byte("action_kind")) || bytes.Contains(stderr.Bytes(), []byte("reason")) {
+		t.Fatalf("expected reason and action_kind omitted for unknown resource, got: %s", stderr.String())
+	}
+
+	// 2. Text mode test of renderCommandErrorText with unclassified ErrStateBusy
+	stderr.Reset()
+	renderCommandErrorText(&stderr, store.ErrStateBusy)
+	wantText := "state_busy: AgentDeck is busy.\n  resource: unknown\n  next: Run read-only diagnostics before taking recovery action.\n  diagnose: agentdeck doctor\n"
+	if stderr.String() != wantText {
+		t.Fatalf("text stderr = %q, want %q", stderr.String(), wantText)
+	}
+}
+
+func TestSchemaAheadPrecedenceOverStateBusy(t *testing.T) {
+	ctx := context.Background()
+	state := filepath.Join(t.TempDir(), "state")
+	if err := os.MkdirAll(state, 0700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(state, "agentdeck.sqlite3")
+	database, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = database.ExecContext(ctx, "CREATE TABLE schema_metadata (singleton INTEGER PRIMARY KEY CHECK(singleton = 1), version INTEGER NOT NULL CHECK(version >= 0)); INSERT INTO schema_metadata(singleton, version) VALUES (1, ?)", store.CurrentSchemaVersion+1); err != nil {
+		database.Close()
+		t.Fatal(err)
+	}
+	if err = database.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	lock, err := store.AcquireLock(ctx, state, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lock.Release()
+
+	var stdout, stderr bytes.Buffer
+	exit := execute([]string{"--state-dir", state, "--format=json", "provider", "list"}, bytes.NewReader(nil), &stdout, &stderr)
+	if exit != 1 {
+		t.Fatalf("exit = %d, want 1; stderr = %s", exit, stderr.String())
+	}
+	var env struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(stderr.Bytes(), &env); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+	if env.Error.Code != "schema_ahead" {
+		t.Fatalf("code = %q, want 'schema_ahead'", env.Error.Code)
+	}
+}
+
+func TestRenderDoctorTextLockLines(t *testing.T) {
+	cases := []struct {
+		name     string
+		check    doctor.Check
+		wantSub  []string
+		avoidSub []string
+	}{
+		{
+			name:    "state_lock live",
+			check:   doctor.Check{Name: "state_lock", Status: "warning", Code: "lock_live", Resource: "state", Reason: "lock_live", ActionKind: "retry"},
+			wantSub: []string{"state_lock: warning (lock_live)", "next: Let the current state operation finish, then retry the failed command."},
+		},
+		{
+			name:    "scan_lock live",
+			check:   doctor.Check{Name: "scan_lock", Status: "warning", Code: "lock_live", Resource: "scan", Reason: "lock_live", ActionKind: "retry"},
+			wantSub: []string{"scan_lock: warning (lock_live)", "next: Let the current scan finish, then retry the failed command."},
+		},
+		{
+			name:    "state_lock legacy",
+			check:   doctor.Check{Name: "state_lock", Status: "warning", Code: "lock_legacy", Resource: "state", Reason: "lock_legacy", ActionKind: "manual_prerequisite", ManualPrerequisite: "prereq_legacy_lock_removal"},
+			wantSub: []string{"state_lock: warning (lock_legacy)", "next: Confirm that no AgentDeck process is using this state directory.", "manual prerequisite: Remove state.lock only after that confirmation."},
+		},
+		{
+			name:     "scan_lock legacy",
+			check:    doctor.Check{Name: "scan_lock", Status: "warning", Code: "lock_legacy", Resource: "scan", Reason: "lock_legacy", ActionKind: "manual_prerequisite", ManualPrerequisite: "prereq_legacy_lock_removal"},
+			wantSub:  []string{"scan_lock: warning (lock_legacy)", "next: Confirm that no AgentDeck process is using this state directory.", "manual prerequisite: Remove scan.lock only after that confirmation."},
+			avoidSub: []string{"Remove state.lock"},
+		},
+		{
+			name:    "state_lock owner_unknown",
+			check:   doctor.Check{Name: "state_lock", Status: "warning", Code: "lock_owner_unknown", Resource: "state", Reason: "lock_owner_unknown", ActionKind: "null"},
+			wantSub: []string{"state_lock: warning (lock_owner_unknown)", "next: Do not remove state.lock. Stop the owning AgentDeck process through its normal lifecycle or wait and diagnose again."},
+		},
+		{
+			name:    "scan_lock owner_unknown",
+			check:   doctor.Check{Name: "scan_lock", Status: "warning", Code: "lock_owner_unknown", Resource: "scan", Reason: "lock_owner_unknown", ActionKind: "null"},
+			wantSub: []string{"scan_lock: warning (lock_owner_unknown)", "next: Do not remove scan.lock. Stop the owning AgentDeck process through its normal lifecycle or wait and diagnose again."},
+		},
+		{
+			name:     "state_lock reclaimable ok",
+			check:    doctor.Check{Name: "state_lock", Status: "ok", Code: "lock_reclaimable", Resource: "state", Reason: "lock_reclaimable"},
+			wantSub:  []string{"state_lock: ok (lock_reclaimable)"},
+			avoidSub: []string{"next:", "manual prerequisite:"},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			report := doctor.Report{
+				Status:   "healthy",
+				Mode:     "quick",
+				Checks:   []doctor.Check{tc.check},
+				Problems: 0,
+				Warnings: 0,
+				Errors:   0,
+			}
+			var buf bytes.Buffer
+			if err := renderDoctorText(&buf, report); err != nil {
+				t.Fatal(err)
+			}
+			out := buf.String()
+			for _, want := range tc.wantSub {
+				if !strings.Contains(out, want) {
+					t.Fatalf("renderDoctorText missing %q; got:\n%s", want, out)
+				}
+			}
+			for _, avoid := range tc.avoidSub {
+				if strings.Contains(out, avoid) {
+					t.Fatalf("renderDoctorText unexpectedly contains %q; got:\n%s", avoid, out)
+				}
+			}
+		})
+	}
+}
+
+func TestExtensionDoctorCLI(t *testing.T) {
+	state := t.TempDir()
+	home := t.TempDir()
+	workdir := t.TempDir()
+	t.Setenv("HOME", home)
+
+	ctx := context.Background()
+	db, err := store.Open(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 1. Stale inventory
+	if err = db.ReplaceExtensions(ctx, []store.Extension{
+		{ID: "codex:mcp:user:computer-use", Client: "codex", Kind: "mcp", Scope: "user", NativeID: "computer-use", Fingerprint: "fp1"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+
+	var stdout, stderr bytes.Buffer
+	args := []string{"--state-dir", state, "extension", "doctor"}
+	cmd, err := executeCommand(args, bytes.NewReader(nil), &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("extension doctor text failed: %v, stderr: %s", err, stderr.String())
+	}
+	_ = cmd
+
+	textOut := stdout.String()
+	for _, expected := range []string{
+		"status: warning",
+		"stale inventory (1):",
+		"  - codex:mcp:user:computer-use",
+		"next: Synchronize AgentDeck's extension inventory with current native discovery.",
+		"recovery: agentdeck extension scan",
+		"effect: Updates AgentDeck's derived extension inventory and extension scan fingerprint only; does not modify Codex or Claude configuration or installed extensions.",
+	} {
+		if !strings.Contains(textOut, expected) {
+			t.Fatalf("extension doctor text missing %q; got:\n%s", expected, textOut)
+		}
+	}
+
+	// 2. JSON mode
+	stdout.Reset()
+	stderr.Reset()
+	args = []string{"--state-dir", state, "--format", "json", "extension", "doctor"}
+	_, err = executeCommand(args, bytes.NewReader(nil), &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("extension doctor json failed: %v", err)
+	}
+
+	var envelope struct {
+		Command string                 `json:"command"`
+		Data    map[string]interface{} `json:"data"`
+	}
+	if err = json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+		t.Fatalf("unmarshal json: %v, raw: %s", err, stdout.String())
+	}
+	if envelope.Data["discovery_status"] != "ok" {
+		t.Fatalf("expected discovery_status ok, got %#v", envelope.Data["discovery_status"])
+	}
+	if envelope.Data["reason"] != "extension_stale_inventory" {
+		t.Fatalf("expected reason extension_stale_inventory, got %#v", envelope.Data["reason"])
+	}
+	if envelope.Data["action_kind"] != "synchronize_inventory" {
+		t.Fatalf("expected action_kind synchronize_inventory, got %#v", envelope.Data["action_kind"])
+	}
+	if envelope.Data["recovery_command"] != "agentdeck extension scan" {
+		t.Fatalf("expected recovery_command agentdeck extension scan, got %#v", envelope.Data["recovery_command"])
+	}
+	staleList, ok := envelope.Data["stale_inventory"].([]interface{})
+	if !ok || len(staleList) != 1 || staleList[0] != "codex:mcp:user:computer-use" {
+		t.Fatalf("expected stale_inventory with computer-use, got %#v", envelope.Data["stale_inventory"])
+	}
+	missingList, ok := envelope.Data["missing_paths"].([]interface{})
+	if !ok || len(missingList) != 1 || missingList[0] != "codex:mcp:user:computer-use" {
+		t.Fatalf("expected missing_paths compatibility, got %#v", envelope.Data["missing_paths"])
+	}
+
+	// 3. Healthy after scan
+	stdout.Reset()
+	stderr.Reset()
+	args = []string{"--state-dir", state, "extension", "scan"}
+	_, err = executeCommand(args, bytes.NewReader(nil), &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("extension scan failed: %v", err)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	args = []string{"--state-dir", state, "extension", "doctor"}
+	_, err = executeCommand(args, bytes.NewReader(nil), &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("extension doctor healthy failed: %v", err)
+	}
+	healthyOut := stdout.String()
+	for _, expected := range []string{
+		"status: ok",
+		"diagnostics: none",
+		"stale inventory: none",
+		"duplicate ids: none",
+		"drifted ids: none",
+		"management anomalies: none",
+	} {
+		if !strings.Contains(healthyOut, expected) {
+			t.Fatalf("healthy doctor text missing %q; got:\n%s", expected, healthyOut)
+		}
+	}
+	_ = workdir
+}
+
+func TestExtensionScanFingerprintWriterClearsMarkerAtomically(t *testing.T) {
+	ctx := context.Background()
+	state, home, workdir := t.TempDir(), t.TempDir(), t.TempDir()
+	if err := os.WriteFile(filepath.Join(home, ".claude.json"), []byte(`{"mcpServers":{"test-mcp":{"command":"echo"}}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	db, err := store.Open(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := db.SetSettings(ctx, map[string]string{
+		"watch.fingerprint.extension": "old-fingerprint",
+		"extension.sync_incomplete":   "true",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.DB.ExecContext(ctx, `CREATE TRIGGER reject_sync_marker_clear BEFORE UPDATE OF value ON settings
+		WHEN NEW.key = 'extension.sync_incomplete' AND NEW.value = ''
+		BEGIN SELECT RAISE(ABORT, 'blocked marker clear'); END`); err != nil {
+		t.Fatal(err)
+	}
+	var incomplete *extension.ErrExtensionSyncIncomplete
+	if err := extensionScanFingerprintWriter(ctx, db, home, workdir); !errors.As(err, &incomplete) {
+		t.Fatalf("marker clear failure = %v, want ErrExtensionSyncIncomplete", err)
+	}
+	fingerprint, _, err := db.Setting(ctx, "watch.fingerprint.extension")
+	if err != nil || fingerprint != "old-fingerprint" {
+		t.Fatalf("fingerprint after rollback = %q, %v", fingerprint, err)
+	}
+	marker, _, err := db.Setting(ctx, "extension.sync_incomplete")
+	if err != nil || marker != "true" {
+		t.Fatalf("sync marker after rollback = %q, %v", marker, err)
+	}
+	if _, err := db.DB.ExecContext(ctx, "DROP TRIGGER reject_sync_marker_clear"); err != nil {
+		t.Fatal(err)
+	}
+	if err := extensionScanFingerprintWriter(ctx, db, home, workdir); err != nil {
+		t.Fatal(err)
+	}
+	fingerprint, _, err = db.Setting(ctx, "watch.fingerprint.extension")
+	if err != nil || fingerprint == "old-fingerprint" {
+		t.Fatalf("fingerprint after successful scan = %q, %v", fingerprint, err)
+	}
+	marker, _, err = db.Setting(ctx, "extension.sync_incomplete")
+	if err != nil || marker != "" {
+		t.Fatalf("sync marker after successful scan = %q, %v", marker, err)
+	}
+}
+
+func TestPersistWatchFingerprintClearsExtensionMarkerAtomically(t *testing.T) {
+	ctx := context.Background()
+	db, err := store.Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := db.SetSettings(ctx, map[string]string{
+		"watch.fingerprint.extension": "old",
+		"extension.sync_incomplete":   "true",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.DB.ExecContext(ctx, `CREATE TRIGGER reject_watch_marker_clear BEFORE UPDATE OF value ON settings
+		WHEN NEW.key = 'extension.sync_incomplete' AND NEW.value = ''
+		BEGIN SELECT RAISE(ABORT, 'blocked marker clear'); END`); err != nil {
+		t.Fatal(err)
+	}
+	if err := persistWatchFingerprint(ctx, db, "extension", "new"); err == nil {
+		t.Fatal("watch fingerprint committed despite marker-clear failure")
+	}
+	for key, want := range map[string]string{
+		"watch.fingerprint.extension": "old",
+		"extension.sync_incomplete":   "true",
+	} {
+		got, _, err := db.Setting(ctx, key)
+		if err != nil || got != want {
+			t.Fatalf("%s after rollback = %q, %v; want %q", key, got, err, want)
+		}
+	}
+	if _, err := db.DB.ExecContext(ctx, "DROP TRIGGER reject_watch_marker_clear"); err != nil {
+		t.Fatal(err)
+	}
+	if err := persistWatchFingerprint(ctx, db, "extension", "new"); err != nil {
+		t.Fatal(err)
+	}
+	for key, want := range map[string]string{
+		"watch.fingerprint.extension": "new",
+		"extension.sync_incomplete":   "",
+	} {
+		got, _, err := db.Setting(ctx, key)
+		if err != nil || got != want {
+			t.Fatalf("%s after watch success = %q, %v; want %q", key, got, err, want)
+		}
+	}
+	if _, err := db.DB.ExecContext(ctx, `CREATE TRIGGER reject_watch_fingerprint BEFORE UPDATE OF value ON settings
+		WHEN NEW.key = 'watch.fingerprint.extension' AND NEW.value = 'failure'
+		BEGIN SELECT RAISE(ABORT, 'blocked fingerprint update'); END`); err != nil {
+		t.Fatal(err)
+	}
+	if err := persistWatchFingerprint(ctx, db, "extension", "failure"); err == nil {
+		t.Fatal("watch fingerprint failure was not returned")
+	}
+	for key, want := range map[string]string{
+		"watch.fingerprint.extension": "new",
+		"extension.sync_incomplete":   "true",
+	} {
+		got, _, err := db.Setting(ctx, key)
+		if err != nil || got != want {
+			t.Fatalf("%s after watch failure = %q, %v; want %q", key, got, err, want)
+		}
+	}
+}
+
+func TestExtensionScanSyncIncompleteCLI(t *testing.T) {
+	state := t.TempDir()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	// Direct test of ErrExtensionSyncIncomplete error details and rendering
+	err := &extension.ErrExtensionSyncIncomplete{}
+	code := errorCode(err)
+	if code != "extension_sync_incomplete" {
+		t.Fatalf("errorCode = %q, want extension_sync_incomplete", code)
+	}
+	details := errorDetails(err)
+	det, ok := details.(*commandExtensionSyncErrorDetails)
+	if !ok {
+		t.Fatalf("unexpected details type %T", details)
+	}
+	if det.Resource != "extension_inventory" || det.Reason != "extension_fingerprint_update_failed" || det.ActionKind != "diagnose" || !det.InventoryCommitted {
+		t.Fatalf("unexpected details: %#v", det)
+	}
+
+	var buf bytes.Buffer
+	renderCommandErrorText(&buf, err)
+	out := buf.String()
+	for _, expected := range []string{
+		"extension_sync_incomplete: extension inventory changed but extension scan fingerprint update failed",
+		"resource: extension_inventory",
+		"next: Run read-only diagnostics before taking recovery action.",
+		"diagnose: agentdeck extension doctor",
+	} {
+		if !strings.Contains(out, expected) {
+			t.Fatalf("renderCommandErrorText missing %q; got:\n%s", expected, out)
+		}
+	}
+
+	// 4. Controlled fault injection during scan (EIR-R2-F2)
+	// Write a mock extension to disk so native discovery finds it and commits it to database during scan.
+	claudePath := filepath.Join(home, ".claude.json")
+	if err := os.WriteFile(claudePath, []byte(`{"mcpServers":{"test-mcp":{"command":"echo"}}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	origPersist := extensionScanFingerprintPersist
+	defer func() { extensionScanFingerprintPersist = origPersist }()
+
+	extensionScanFingerprintPersist = func(ctx context.Context, database *store.Store, fingerprint string) error {
+		return errors.New("simulated fingerprint persistence failure")
+	}
+
+	// Verify typed error returned from executeCommand under injected failure
+	var failStdout, failStderr bytes.Buffer
+	_, scanErr := executeCommand([]string{"--state-dir", state, "extension", "scan"}, bytes.NewReader(nil), &failStdout, &failStderr)
+	if scanErr == nil {
+		t.Fatal("expected error on scan command under fingerprint persistence failure, got nil")
+	}
+	var syncIncompleteErr *extension.ErrExtensionSyncIncomplete
+	if !errors.As(scanErr, &syncIncompleteErr) {
+		t.Fatalf("expected *extension.ErrExtensionSyncIncomplete, got %T: %v", scanErr, scanErr)
+	}
+
+	// Verify command exit code 1 and text error details
+	failStdout.Reset()
+	failStderr.Reset()
+	failExitCode := execute([]string{"--state-dir", state, "extension", "scan"}, bytes.NewReader(nil), &failStdout, &failStderr)
+	if failExitCode != 1 {
+		t.Fatalf("expected exit code 1 on fingerprint writer failure, got %d\nstderr: %s", failExitCode, failStderr.String())
+	}
+	failErrOutput := failStderr.String()
+	for _, expected := range []string{
+		"extension_sync_incomplete: extension inventory changed but extension scan fingerprint update failed",
+		"resource: extension_inventory",
+		"next: Run read-only diagnostics before taking recovery action.",
+		"diagnose: agentdeck extension doctor",
+	} {
+		if !strings.Contains(failErrOutput, expected) {
+			t.Fatalf("failStderr missing %q; got:\n%s", expected, failErrOutput)
+		}
+	}
+
+	// Verify JSON error envelope under fault injection
+	var jsonFailStdout, jsonFailStderr bytes.Buffer
+	jsonExitCode := execute([]string{"--state-dir", state, "--format", "json", "extension", "scan"}, bytes.NewReader(nil), &jsonFailStdout, &jsonFailStderr)
+	if jsonExitCode != 1 {
+		t.Fatalf("expected exit code 1 on json failure, got %d", jsonExitCode)
+	}
+	var jsonEnvelope map[string]any
+	if err := json.Unmarshal(jsonFailStderr.Bytes(), &jsonEnvelope); err != nil {
+		t.Fatalf("failed to parse json error output: %v\noutput: %s", err, jsonFailStderr.String())
+	}
+	errObj, _ := jsonEnvelope["error"].(map[string]any)
+	if errObj["code"] != "extension_sync_incomplete" {
+		t.Fatalf("expected error.code == extension_sync_incomplete, got %v", errObj["code"])
+	}
+	detailsObj, _ := errObj["details"].(map[string]any)
+	if detailsObj["inventory_committed"] != true || detailsObj["reason"] != "extension_fingerprint_update_failed" {
+		t.Fatalf("unexpected detailsObj: %#v", detailsObj)
+	}
+
+	// 5. Verify database: inventory WAS committed (inventory_committed: true) despite fingerprint failure
+	ctx := context.Background()
+	db, openErr := store.Open(ctx, state)
+	if openErr != nil {
+		t.Fatal(openErr)
+	}
+	defer db.Close()
+	items, listErr := db.ListExtensions(ctx)
+	if listErr != nil {
+		t.Fatal(listErr)
+	}
+	if len(items) != 1 || items[0].ID != "claude:mcp:user:test-mcp" {
+		t.Fatalf("expected 1 committed extension claude:mcp:user:test-mcp, got %#v", items)
+	}
+
+	// Verify setting persisted and doctor reports extension_fingerprint_update_failed
+	markerVal, _, settingErr := db.Setting(ctx, "extension.sync_incomplete")
+	if settingErr != nil {
+		t.Fatal(settingErr)
+	}
+	if markerVal != "true" {
+		t.Fatalf("expected extension.sync_incomplete == true, got %q", markerVal)
+	}
+	rep, docErr := extension.Doctor(ctx, db, home, "")
+	if docErr != nil {
+		t.Fatal(docErr)
+	}
+	if rep.Reason != "extension_fingerprint_update_failed" || !rep.FingerprintSyncIncomplete {
+		t.Fatalf("doctor failed to observe sync_incomplete marker: %#v", rep)
+	}
+	var doctorText bytes.Buffer
+	if err := renderExtensionDoctor(&doctorText, rep); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"fingerprint sync: incomplete",
+		"cause: A prior extension scan committed inventory but could not persist its scan fingerprint.",
+		"effect: Extension health may be stale until a later successful scan updates the fingerprint.",
+		"next: Check AgentDeck state permissions, then retry agentdeck extension scan and run this diagnosis again.",
+	} {
+		if !strings.Contains(doctorText.String(), want) {
+			t.Fatalf("doctor text missing %q: %s", want, doctorText.String())
+		}
+	}
+	if strings.Contains(doctorText.String(), "Run read-only diagnostics") {
+		t.Fatalf("doctor text repeated a circular diagnostic step: %s", doctorText.String())
+	}
+
+	// 6. Restore writer and verify subsequent successful scan clears extension.sync_incomplete marker (EIR-R1-F1, EIR-R2-F2)
+	extensionScanFingerprintPersist = origPersist
+	var scanStdout, scanStderr bytes.Buffer
+	succExitCode := execute([]string{"--state-dir", state, "extension", "scan"}, bytes.NewReader(nil), &scanStdout, &scanStderr)
+	if succExitCode != 0 {
+		t.Fatalf("extension scan command failed: exitCode=%d\nstderr: %s", succExitCode, scanStderr.String())
+	}
+	markerVal, _, settingErr = db.Setting(ctx, "extension.sync_incomplete")
+	if settingErr != nil {
+		t.Fatal(settingErr)
+	}
+	if markerVal != "" {
+		t.Fatalf("expected extension.sync_incomplete cleared after successful scan, got %q", markerVal)
+	}
+	repAfterScan, docErr := extension.Doctor(ctx, db, home, "")
+	if docErr != nil {
+		t.Fatal(docErr)
+	}
+	if repAfterScan.Reason == "extension_fingerprint_update_failed" || repAfterScan.FingerprintSyncIncomplete {
+		t.Fatalf("doctor still reporting sync incomplete after successful scan: %#v", repAfterScan)
+	}
+
+	// 7. Unreadable/corrupted database exits 1 with extension_inventory_unreadable (EIR-R1-F2)
+	if _, err := db.Exec(ctx, "DROP TABLE extensions"); err != nil {
+		t.Fatal(err)
+	}
+	var docStdout, docStderr bytes.Buffer
+	docExitCode := execute([]string{"--state-dir", state, "extension", "doctor"}, bytes.NewReader(nil), &docStdout, &docStderr)
+	if docExitCode != 1 {
+		t.Fatalf("expected exit code 1 on corrupted database, got %d", docExitCode)
+	}
+	if got := docStderr.String(); !strings.Contains(got, "manual prerequisite: Check AgentDeck state permissions and database health") || strings.Contains(got, "prereq_extension_inventory_unreadable") {
+		t.Fatalf("unreadable inventory guidance = %q", got)
+	}
+	_, docErr = executeCommand([]string{"--state-dir", state, "extension", "doctor"}, bytes.NewReader(nil), &docStdout, &docStderr)
+	if docErr == nil {
+		t.Fatal("expected error on corrupted database, got nil")
+	}
+	if code := errorCode(docErr); code != "extension_inventory_unreadable" {
+		t.Fatalf("expected errorCode extension_inventory_unreadable, got %q", code)
+	}
+}
+
+func TestDoctorTextExtensionsRow(t *testing.T) {
+	// Stale inventory
+	staleReport := doctor.Report{
+		Status:   "warning",
+		Mode:     "full",
+		Warnings: 1,
+		Checks: []doctor.Check{
+			{
+				Name:       "extensions",
+				Status:     "warning",
+				Code:       "extension_stale_inventory",
+				Count:      1,
+				Resource:   "extension_inventory",
+				Reason:     "extension_stale_inventory",
+				ActionKind: "synchronize_inventory",
+				Recovery:   "agentdeck extension scan",
+			},
+		},
+	}
+	var buf bytes.Buffer
+	if err := renderDoctorText(&buf, staleReport); err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	for _, want := range []string{
+		"extensions: warning (extension_stale_inventory; count=1)",
+		"recovery: agentdeck extension scan",
+		"effect: Updates AgentDeck's derived extension inventory and extension scan fingerprint only; does not modify native client configuration.",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("missing %q in doctor output:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "diagnose:") {
+		t.Fatalf("unexpected diagnose: in doctor output:\n%s", out)
+	}
+
+	// Native unavailable
+	natReport := doctor.Report{
+		Status:   "warning",
+		Mode:     "full",
+		Warnings: 1,
+		Checks: []doctor.Check{
+			{
+				Name:              "extensions",
+				Status:            "warning",
+				Code:              "extension_native_unavailable",
+				Count:             1,
+				Resource:          "extension_inventory",
+				Reason:            "extension_native_unavailable",
+				ActionKind:        "manual_prerequisite",
+				DiagnosticCommand: "agentdeck extension doctor",
+			},
+		},
+	}
+	buf.Reset()
+	if err := renderDoctorText(&buf, natReport); err != nil {
+		t.Fatal(err)
+	}
+	out = buf.String()
+	for _, want := range []string{
+		"extensions: warning (extension_native_unavailable; count=1)",
+		"diagnose: agentdeck extension doctor",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("missing %q in doctor output:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "recovery:") {
+		t.Fatalf("unexpected recovery: in doctor output:\n%s", out)
+	}
+}

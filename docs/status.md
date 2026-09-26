@@ -183,20 +183,25 @@ refresh, snapshot performance, cost transparency, health recovery, and
 Codex/Claude subscription accounts, quota, reset information and reminders.
 Structured session search is excluded. Active version membership is owned by
 [the v0.6.0 contract](topics/v0-6-0-contract/tasks.md), delivered through PR #2.
-This integration includes schema-version-signal, snapshot-performance, and
-subscription-quota as the first three of six selected areas; the other three
-areas and aggregate assembly/version closure remain open. Subscription-quota
-merged through PR #5 at `7f84749`; its initial `verify` test failure retried
-SUCCESS without a reproduced cause, and its final five P2 review findings are
-explicitly deferred as Lane C candidates in `roadmap.md`, not represented as
-resolved technical defects.
+Main contains five assembled areas: schema-version-signal,
+snapshot-performance, subscription-quota, desktop-refresh and health-recovery.
+Health recovery was integrated through PR #9 at main `3f29e26`; its exact
+source topic gate is VERIFIED 5/5 and merge-result integration gate VERIFIED
+2/2. The final Codex review on source `d040bd1` found no further issues, and
+PR-head and merged-main CI passed. Manual VoiceOver acceptance was user-waived
+and remains untested; installed real-client observation remains SIMULATED.
+Cost transparency remains selected without a delivered topic, so aggregate
+assembly and version closure remain open. Review and merge details are in the
+[integration record](topics/v0-6-0-contract/reviews/assemble.md).
 
 | Topic | Version | Status | Purpose |
 | --- | --- | --- | --- |
 | [`v0.5.0` Contract Closure](topics/v0-5-0-contract/tasks.md) | `v0.5.0` | Released — contract complete, independently reviewed, and committed at `a547362`; `cli-design.md` is at version 28 and both contract Tasks are 2/2 implemented and reviewed. Six release candidates culminated in `v0.5.0-rc.6`, and stable `v0.5.0` published the exact `acb8384` commit. The schema-version-signal documents and decomposition are now committed; this contract directory remains live pending its separately scoped retirement. No v0.5.0 product work remains. | Version-wide specification raise and documentation reconciliation after every selected topic's tasks pass review. |
 | [Schema Version Signal](topics/schema-version-signal/tasks.md) | `v0.6.0` | First assembly batch — 4/4 documents and 6/6 tasks reviewed and delivered; source `58df42d`. This integration carries the product, stable contracts and worktree-status governance correction. Task 5 manual text-size/layout and VoiceOver/interaction acceptance remain user-waived, not tested. See the [integration record](topics/v0-6-0-contract/reviews/assemble.md); retirement and release remain separate. | Stable schema-ahead reporting across doctor, CLI, desktop and Hook delivery, with actionable recovery and preserved independent session availability. |
-| [Snapshot Performance](topics/snapshot-performance/tasks.md) | `v0.6.0` | Second assembly batch — 6/6 documents and 3/3 tasks reviewed and delivered; PR #4 merged at `4dd10f4`. Cold-import and unchanged-refresh CPU targets, the final 20-sample campaign, V01-V19 completeness and manual/native checks retain their explicit accepted-exception status; they are not reported as technical passes. Retirement and release remain separate. | One shared scan runtime, reusable snapshot computation and truthful CLI/menu-bar progress with preserved failure and scope semantics. |
-| [Subscription Quota](topics/subscription-quota/tasks.md) | `v0.6.0` | Third assembly batch — 6/6 documents and 7/7 tasks reviewed and delivered; PR #5 merged at `7f84749` after all four final protected checks succeeded. One initial `verify` failure on an unchanged quota-alert test retried SUCCESS without a reproduced cause. The final review's five P2 findings are deferred as explicit Lane C carriers in `roadmap.md`; topic integration evidence remains target-bound to the merge result. Retirement and release remain separate. | Opt-in Codex/Claude subscription account visibility, quota windows, reset information, status-line capture, and threshold/reset reminders. |
+| [Snapshot Performance](topics/snapshot-performance/tasks.md) | `v0.6.0` | Second assembly batch — integrated through PR #4 at main `4dd10f4`; 6/6 documents and 3/3 tasks remain reviewed and delivered. Cold-import and unchanged-refresh CPU targets, the final 20-sample campaign, V01-V19 completeness and manual/native checks retain their explicit accepted-exception status; they are not reported as technical passes. Retirement and release remain separate. | One shared scan runtime, reusable snapshot computation and truthful CLI/menu-bar progress with preserved failure and scope semantics. |
+| [Subscription Quota](topics/subscription-quota/tasks.md) | `v0.6.0` | Third assembly batch — integrated through PR #5 at current main `7f84749`; seven Tasks remain reviewed and delivered, and the merge-result integration gate is VERIFIED 2/2. The fail-closed hosted-XCTest HOME boundary remains part of the delivered result; deferred P2 carriers are planning dispositions, not technical resolutions. Retirement and release remain separate. | Codex and Claude account discovery, bounded quota/reset snapshots, menu-bar and Settings presentation, reminders and truthful unavailable-field handling. |
+| [Desktop Refresh](topics/desktop-refresh/tasks.md) | `v0.6.0` | Fourth assembly batch — integrated through PR #6 at main `4bc0756` with merge-result gate VERIFIED 2/2. Real timing, installed Widget callbacks/intents, sleep/wake and accessibility/gallery observations remain BLOCKED with no waiver; retirement and release remain separate. | Completion-driven app refresh, bounded Widget loading, truthful aging/failure/recovery presentation, semantic targeted reload and 3–5 minute Widget timeline requests. |
+| [Health Recovery](topics/health-recovery/tasks.md) | `v0.6.0` | Fifth assembly batch — integrated through PR #9 at main `3f29e26` with source topic gate VERIFIED 5/5 and merge-result gate VERIFIED 2/2. Final Codex review and PR/main CI passed. Manual VoiceOver is user-waived and untested, not a technical PASS; installed real-client observation remains SIMULATED. Retirement and release remain separate. | Cause-specific lock and extension health diagnosis, safe recovery actions, additive desktop wire and bilingual menu-bar presentation. |
 
 #### Retired into `v0.5.0`
 

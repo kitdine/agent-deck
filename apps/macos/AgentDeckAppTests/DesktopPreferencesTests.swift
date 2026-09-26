@@ -85,6 +85,17 @@ final class DesktopPreferencesTests: XCTestCase {
 		XCTAssertEqual(second.quotaProbeInterval, .thirtyMinutes)
 	}
 
+	func testPeriodicPreferenceNotifiesSchedulerInBothDirections() {
+		let preferences = DesktopPreferences(defaults: isolatedDefaults(), registrar: StubLoginItemRegistrar())
+		var observed = [Bool]()
+		preferences.periodicRefreshDidChange = { observed.append($0) }
+
+		preferences.periodicRefreshEnabled = true
+		preferences.periodicRefreshEnabled = false
+
+		XCTAssertEqual(observed, [true, false])
+	}
+
 	func testQuotaProbeIntervalFallsBackToFiveMinutesForAnUnrecognizedStoredValue() {
 		let defaults = isolatedDefaults()
 		defaults.set(7, forKey: "quota.probeIntervalMinutes")

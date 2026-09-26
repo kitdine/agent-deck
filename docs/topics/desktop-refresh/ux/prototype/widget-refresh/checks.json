@@ -1,0 +1,101 @@
+{
+  "date": "2026-09-19",
+  "kind": "desktop-refresh-widget-browser-verification",
+  "not_native_acceptance": true,
+  "browser": "agent-browser",
+  "axe_version": "4.12.1",
+  "coverage": {
+    "widget_kinds": 5,
+    "sizes_per_kind": 3,
+    "frames_per_scenario": 15,
+    "scenarios": 9
+  },
+  "scenarios": [
+    {
+      "name": "aging-en-light",
+      "query": "surface=widgets&widgetRefresh=aging&lang=en&theme=light",
+      "screenshot": "aging-en-light.png",
+      "generic_age_labels": 12,
+      "overflow_frames": 0,
+      "axe_violations": ["color-contrast"]
+    },
+    {
+      "name": "host-absent-zh-dark",
+      "query": "surface=widgets&widgetRefresh=hostAbsent&lang=zh&theme=dark",
+      "screenshot": "host-absent-zh-dark.png",
+      "generic_old_labels": 12,
+      "product_host_labels": 0,
+      "overflow_frames": 0,
+      "axe_violations": ["color-contrast"]
+    },
+    {
+      "name": "unchanged-en-dark",
+      "query": "surface=widgets&widgetRefresh=unchanged&lang=en&theme=dark",
+      "screenshot": "unchanged-en-dark.png",
+      "generic_age_labels": 12,
+      "product_unchanged_labels": 0,
+      "overflow_frames": 0,
+      "axe_violations": ["color-contrast"]
+    },
+    {
+      "name": "changed-zh-light",
+      "query": "surface=widgets&widgetRefresh=changed&lang=zh&theme=light",
+      "screenshot": "changed-zh-light.png",
+      "generic_fresh_labels": 12,
+      "overflow_frames": 0,
+      "axe_violations": ["color-contrast"]
+    },
+    {
+      "name": "missing-en-light",
+      "query": "surface=widgets&widgetRefresh=missing&lang=en&theme=light",
+      "screenshot": "missing-en-light.png",
+      "typed_failure_frames": 15,
+      "overflow_frames": 0,
+      "axe_violations": []
+    },
+    {
+      "name": "container-unavailable-zh-dark",
+      "query": "surface=widgets&widgetRefresh=containerUnavailable&lang=zh&theme=dark",
+      "screenshot": "container-unavailable-zh-dark.png",
+      "typed_failure_frames": 15,
+      "overflow_frames": 0,
+      "axe_violations": []
+    },
+    {
+      "name": "read-failed-en-dark",
+      "query": "surface=widgets&widgetRefresh=readFailed&lang=en&theme=dark",
+      "screenshot": "read-failed-en-dark.png",
+      "typed_failure_frames": 15,
+      "overflow_frames": 0,
+      "axe_violations": []
+    },
+    {
+      "name": "unsupported-zh-light",
+      "query": "surface=widgets&widgetRefresh=unsupported&lang=zh&theme=light",
+      "screenshot": "unsupported-zh-light.png",
+      "typed_failure_frames": 15,
+      "overflow_frames": 0,
+      "axe_violations": []
+    },
+    {
+      "name": "recovered-en-light",
+      "query": "surface=widgets&widgetRefresh=recovered&lang=en&theme=light",
+      "screenshot": "recovered-en-light.png",
+      "generic_fresh_labels": 12,
+      "overflow_frames": 0,
+      "axe_violations": ["color-contrast"]
+    }
+  ],
+  "quota_clock": {
+    "frames": 3,
+    "rule": "Readable quota frames retain the oldest displayed quota observation/reason and never use Widget reread time."
+  },
+  "known_out_of_scope_violation": {
+    "id": "color-contrast",
+    "target": ".w-note > small",
+    "text": "Cost remains visibly incomplete",
+    "measured_ratio": "4.16:1",
+    "required_ratio": "4.5:1",
+    "reason": "Existing data-widget cost-completeness note and colors are unchanged by the refresh framework; new failure surfaces report zero violations."
+  }
+}

@@ -142,11 +142,13 @@ Use only the exact Git action authorized by the user or an explicitly confirmed
 workflow delivery ceiling. Commit, push, tag, release, and history rewriting
 remain separate authorization boundaries under `AGENTS.md`.
 
-Every Codex-assisted commit requires an English Conventional Commit subject,
-a non-empty body explaining what changed and why, and this exact trailer:
+Every agent-assisted commit requires an English Conventional Commit subject,
+a non-empty body explaining what changed and why, and the applicable trailer:
 
 ```text
 Co-Authored-By: Codex <noreply@openai.com>
+Co-Authored-By: Claude <noreply@anthropic.com>
+Co-Authored-By: Antigravity <noreply@google.com>
 ```
 
 Use additional established identities only for material contributors. For staged

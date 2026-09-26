@@ -43,6 +43,9 @@ URL 参数：`lang=zh|en`、`theme=dark|light`、
 `width=420|280`、`tab=usage|breakdown|attribution|sessions|quota`、
 `sessions=readable|unavailable`、`signal=activity|workflow|tooling`、
 `quota=normal|bothOfficial|codexPlus|prose|parseFailed|stale|neverProbed`、
+`refresh=idle|refreshing|failed|storageFailed|wake|recovered|firstFailure`、
+`health=baseline|stateLive|scanLive|legacy|ownerUnknown|extensionStale|discoveryFailed|syncIncomplete|combined`、
+`widgetRefresh=fresh|aging|old|hostAbsent|unchanged|changed|missing|containerUnavailable|readFailed|unsupported|recovered`、
 `widgetClient=codex|claude`、`anchor=left|center|right`、`settings=1`。
 
 subscription-quota 新增两个**可见**的舞台开关，不要求评审者手写参数：
@@ -219,3 +222,62 @@ CLI 中英各 11 项；另有 128 组布局/状态组合、浏览器 AX 和 scop
 [menu-bar scan](../docs/topics/snapshot-performance/ux/menubar-scan.md) 和
 [specimen manifest](../docs/topics/snapshot-performance/ux/prototype/scan/manifest.json)。
 原生辅助功能、真实进程生存期和性能验收仍由实现承担。
+
+## 菜单栏刷新可信性标本（desktop-refresh）
+
+Popover 页新增可见的 `刷新状态 / Refresh state` 舞台轴；它与 `state=` 和
+`quota=` 正交，分别描述刷新尝试、用量数据与额度读取。`refresh` 可为 idle、
+refreshing、failed、storageFailed、wake、recovered、firstFailure。舞台控制不是产品
+UI，URL 参数用于稳定深链与自动化。
+
+这组标本保留成功数据年龄，不用刷新尝试时间替换它；失败后继续显示旧数据并给出
+Retry，首次失败不制造零值，App Group 写失败明确说明菜单栏已更新但 Widget 可能仍旧。
+280 pt 下刷新按钮沿用图标化规则，但完整无障碍名称保留。普通刷新使用一个 polite、
+atomic live region；已有 scan live region 出现时不重复播报。
+
+设计、六张截图、浏览器检查与内容哈希见
+[`ux/menubar-refresh.md`](../docs/topics/desktop-refresh/ux/menubar-refresh.md) 和
+[`menubar-refresh/manifest.json`](../docs/topics/desktop-refresh/ux/prototype/menubar-refresh/manifest.json)。
+架构通过后的 final-surface reconciliation 另加入中英两张 Settings 标本，验证周期刷新
+说明改为「运行时约每分钟；关闭后启动与手动仍更新」，控件与布局不变。
+这些是浏览器标本，不替代原生 VoiceOver、Dynamic Type、AppKit focus、真实睡眠恢复或
+WidgetKit 调度验收。
+
+## 健康诊断与恢复标本（health-recovery）
+
+Popover 与 CLI 共用 `src/healthRecovery.js` 中的一份 resource/reason/action
+模型。Popover 页新增可见的 `健康恢复 / Health recovery` 舞台轴；CLI 页新增
+`recovery` 页签。`health=` 可为 baseline、stateLive、scanLive、legacy、
+ownerUnknown、extensionStale、discoveryFailed、syncIncomplete、combined。
+
+菜单栏只复制同步命令、诊断命令或不含破坏命令的安全前置步骤，从不在原型中执行恢复。
+CLI text 仍是单一英文逐字符输出；JSON 面板只展示设计已冻结的必需字段，最终容器仍由
+architecture 决定。语言开关只改变原型舞台与菜单栏。两端由同一稳定 token
+模型驱动，因此 `lock_live`、`extension_stale_inventory`、
+`extension_fingerprint_update_failed` 与 `action_kind` 不得各自翻译或重命名。
+
+加 `healthProbe=1` 运行健康恢复交互检查。Popover probe 逐态进入 Health、核对 reason、
+安全动作数量、复制反馈与返回路径；CLI probe 逐态核对 text、required JSON fields 与共享 reason。
+结果写入 `window.healthRecoveryProbeResult`，失败列表必须为空。不要与 `probe=1` 或
+`scanProbe=1` 同时运行。
+
+设计、截图、浏览器检查和内容哈希见
+[`ux/menubar-health-recovery.md`](../docs/topics/health-recovery/ux/menubar-health-recovery.md)。
+这些浏览器 specimen 不证明原生 VoiceOver、Dynamic Type、AppKit pasteboard、真实锁生命周期
+或 SQLite transaction 行为；后续实现验收必须分别覆盖。
+
+## Widget 刷新可信性标本（desktop-refresh）
+
+Widgets 页新增 `小组件刷新 / Widget refresh` 舞台轴，与用量、额度和菜单栏刷新状态
+独立。它覆盖新鲜、老化、过期、host 缺席、发布有/无变化、四类读取失败与恢复。
+舞台标签不是产品 chip；host 缺席与无变化不会进入 Widget 卡片文案。
+
+所有五种 kind × 三种 size 继续使用同一 frame。可读数据只更新真实 footer 年龄；
+quota 保持最旧 observation 的独立时钟。missing、container unavailable、read/decode
+failure、unsupported schema 在 15 张卡片上都替换数据，不显示零值或旧值。
+
+设计、九张截图、浏览器检查与内容哈希见
+[`ux/widget-refresh.md`](../docs/topics/desktop-refresh/ux/widget-refresh.md) 和
+[`widget-refresh/manifest.json`](../docs/topics/desktop-refresh/ux/prototype/widget-refresh/manifest.json)。
+浏览器标本不证明 WidgetKit 真实调度、原生 Dynamic Type/VoiceOver、App Group 故障注入
+或真实睡眠恢复。
