@@ -53,7 +53,7 @@ completed feature topic or an approved implementation decomposition.
 | Menu-bar and Widget refresh | `ad-desktop-refresh` | `desktop-refresh`; integrated through PR #6 at main `4bc0756`, with merge-result gate VERIFIED 2/2 and native acceptance retained as BLOCKED/no-waiver |
 | Snapshot performance | `ad-snapshot-performance` | `snapshot-performance`; integrated through PR #4 at main `4dd10f4`, with the reviewed performance and native acceptance exceptions retained |
 | Cost and price transparency | `ad-cost-transparency` | Topic decomposition/delivery pending; distinguish actual-spend and API-equivalent estimates, with separate catalog/model/tier audits |
-| Actionable health recovery | `ad-health-recovery` | `health-recovery`; 5/5 tasks delivered, signed PR repair `6c15672` independently reviewed in Round 2 with exact candidate topic gate VERIFIED 5/5; fifth integration batch candidate, retaining both origin bugs |
+| Actionable health recovery | `ad-health-recovery` | `health-recovery`; integrated through PR #9 at main `3f29e26`, with exact source topic gate VERIFIED 5/5, merge-result gate VERIFIED 2/2, final Codex review without findings, green PR/main CI, VoiceOver user-waived and real-client observation SIMULATED; both origin bugs closed |
 | Codex/Claude subscription accounts, quota, reset and alerts | `ad-subscription-quota` | `subscription-quota`; integrated through PR #5 at main `7f84749`, with fail-closed hosted-XCTest isolation preserved and deferred P2 dispositions kept explicit |
 
 Bind the one remaining area to its actual reviewed topic before assembly;
