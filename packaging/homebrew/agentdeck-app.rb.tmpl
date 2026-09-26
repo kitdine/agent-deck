@@ -24,20 +24,19 @@ cask "@CASK_TOKEN@" do
   # migration instead of failing on a link collision the user cannot read.
   conflicts_with cask: [@CONFLICTING_CASKS@]
 
-  preflight do
+  preflight_steps do
     ["agentdeck", "agentdeck-rc"].each do |conflicting_formula|
-      next unless (HOMEBREW_CELLAR/conflicting_formula).directory?
-
-      # `odie` raises SystemExit, which bypasses Homebrew's Cask rollback and
-      # leaves a Caskroom receipt behind. A regular exception is unwound by the
-      # installer before it reports the refusal.
-      raise <<~ERROR
-        The CLI-only #{conflicting_formula} formula is installed and already owns
-        the `agentdeck` command. Migrate rather than installing both:
-          brew uninstall #{conflicting_formula}
-          brew install --cask @CASK_TOKEN@
-        Your AgentDeck state in ~/.agentdeck is untouched by that migration.
-      ERROR
+      if_path_exists "{{HOMEBREW_CELLAR}}/#{conflicting_formula}" do
+        # A failed install step unwinds through Homebrew's Cask rollback. The
+        # real-brew regression checks that no Caskroom receipt survives.
+        run "/bin/sh", args: ["-c", <<~SH]
+          echo 'The CLI-only #{conflicting_formula} formula is installed and already owns the agentdeck command. Migrate rather than installing both:' >&2
+          echo '  brew uninstall #{conflicting_formula}' >&2
+          echo '  brew install --cask @CASK_TOKEN@' >&2
+          echo 'Your AgentDeck state in ~/.agentdeck is untouched by that migration.' >&2
+          exit 1
+        SH
+      end
     end
   end
 
