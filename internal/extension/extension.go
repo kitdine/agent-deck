@@ -257,6 +257,7 @@ func DoctorWithDiscoverer(ctx context.Context, db *store.Store, discoverer Exten
 		applyReasonAction(&report)
 		return report, &ErrExtensionInventoryUnreadable{Err: err}
 	}
+	report.FingerprintSyncIncomplete = syncIncomplete == "true"
 
 	if discoveryErr != nil {
 		report.Reason = "extension_discovery_failed"
@@ -313,10 +314,6 @@ func DoctorWithDiscoverer(ctx context.Context, db *store.Store, discoverer Exten
 	sort.Strings(report.DriftedIDs)
 	sort.Strings(report.ManagementAnomalies)
 	sort.Strings(report.NativeUnavailable)
-
-	if syncIncomplete == "true" {
-		report.FingerprintSyncIncomplete = true
-	}
 
 	classifyReport(&report)
 	applyReasonAction(&report)

@@ -529,6 +529,10 @@ func TestSyntheticDiscoveryAndPriorityClassification(t *testing.T) {
 	if err = db.SetSetting(ctx, "extension.sync_incomplete", "true"); err != nil {
 		t.Fatal(err)
 	}
+	rep, err = DoctorWithDiscoverer(ctx, db, discFail, "", "")
+	if err != nil || rep.Reason != "extension_discovery_failed" || !rep.FingerprintSyncIncomplete {
+		t.Fatalf("discovery failure hid incomplete fingerprint marker: %#v, %v", rep, err)
+	}
 	rep, err = DoctorWithDiscoverer(ctx, db, healthyDisc, "", "")
 	if err != nil || rep.Reason != "extension_fingerprint_update_failed" || rep.ActionKind != "diagnose" || !rep.FingerprintSyncIncomplete {
 		t.Fatalf("fingerprint sync incomplete report = %#v, %v", rep, err)

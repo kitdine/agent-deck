@@ -197,6 +197,9 @@ are tracked in the integration record. Merge readiness depends on exact-head
 CI, independent review and CEv1 evidence for the delivered candidate.
 The renewed review on `c11276a` raised four more P2 findings; their local
 repair candidate is tracked in the same record, pending delivery and new CI.
+The final renewed review on `53244aa` raised three further P2 findings. Their
+repair candidate remains pending exact-head CI; the two-round review limit is
+reached, so no third Codex review is planned.
 
 | Topic | Version | Status | Purpose |
 | --- | --- | --- | --- |

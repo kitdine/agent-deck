@@ -3988,6 +3988,23 @@ func TestPersistWatchFingerprintClearsExtensionMarkerAtomically(t *testing.T) {
 			t.Fatalf("%s after watch success = %q, %v; want %q", key, got, err, want)
 		}
 	}
+	if _, err := db.DB.ExecContext(ctx, `CREATE TRIGGER reject_watch_fingerprint BEFORE UPDATE OF value ON settings
+		WHEN NEW.key = 'watch.fingerprint.extension' AND NEW.value = 'failure'
+		BEGIN SELECT RAISE(ABORT, 'blocked fingerprint update'); END`); err != nil {
+		t.Fatal(err)
+	}
+	if err := persistWatchFingerprint(ctx, db, "extension", "failure"); err == nil {
+		t.Fatal("watch fingerprint failure was not returned")
+	}
+	for key, want := range map[string]string{
+		"watch.fingerprint.extension": "new",
+		"extension.sync_incomplete":   "true",
+	} {
+		got, _, err := db.Setting(ctx, key)
+		if err != nil || got != want {
+			t.Fatalf("%s after watch failure = %q, %v; want %q", key, got, err, want)
+		}
+	}
 }
 
 func TestExtensionScanSyncIncompleteCLI(t *testing.T) {
@@ -4116,6 +4133,23 @@ func TestExtensionScanSyncIncompleteCLI(t *testing.T) {
 	}
 	if rep.Reason != "extension_fingerprint_update_failed" || !rep.FingerprintSyncIncomplete {
 		t.Fatalf("doctor failed to observe sync_incomplete marker: %#v", rep)
+	}
+	var doctorText bytes.Buffer
+	if err := renderExtensionDoctor(&doctorText, rep); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"fingerprint sync: incomplete",
+		"cause: A prior extension scan committed inventory but could not persist its scan fingerprint.",
+		"effect: Extension health may be stale until a later successful scan updates the fingerprint.",
+		"next: Check AgentDeck state permissions, then retry agentdeck extension scan and run this diagnosis again.",
+	} {
+		if !strings.Contains(doctorText.String(), want) {
+			t.Fatalf("doctor text missing %q: %s", want, doctorText.String())
+		}
+	}
+	if strings.Contains(doctorText.String(), "Run read-only diagnostics") {
+		t.Fatalf("doctor text repeated a circular diagnostic step: %s", doctorText.String())
 	}
 
 	// 6. Restore writer and verify subsequent successful scan clears extension.sync_incomplete marker (EIR-R1-F1, EIR-R2-F2)

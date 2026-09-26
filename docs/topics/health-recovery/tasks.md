@@ -644,6 +644,9 @@ to its signed source-review commit, not this unreviewed repair candidate.
 The renewed review on `c11276a` raised four further P2 findings; their scoped
 repair candidate is recorded in that same integration record. No earlier CEv1
 result is claimed for the new candidate.
+The final renewed review on `53244aa` raised three additional P2 findings;
+their local repair candidate and the two-round review ceiling are recorded in
+the integration record. No independent review verdict is inferred for that fix.
 
 ## Review boundary
 

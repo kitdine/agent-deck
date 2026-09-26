@@ -3287,7 +3287,11 @@ func newWatchCommand(opts *commandOptions) *cobra.Command {
 
 func persistWatchFingerprint(ctx context.Context, database *store.Store, domain, value string) error {
 	if domain == "extension" {
-		return extensionScanFingerprintPersist(ctx, database, value)
+		err := extensionScanFingerprintPersist(ctx, database, value)
+		if err != nil && !errors.Is(err, store.ErrSettingsSecureFilesFailed) {
+			_ = database.SetSetting(ctx, "extension.sync_incomplete", "true")
+		}
+		return err
 	}
 	return database.SetSetting(ctx, "watch.fingerprint."+domain, value)
 }
@@ -5242,6 +5246,17 @@ func renderExtensionDoctor(w io.Writer, value extension.DoctorReport) error {
 			return err
 		}
 	}
+	if value.FingerprintSyncIncomplete {
+		if _, err := fmt.Fprintln(w, "fingerprint sync: incomplete"); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintln(w, "cause: A prior extension scan committed inventory but could not persist its scan fingerprint."); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintln(w, "effect: Extension health may be stale until a later successful scan updates the fingerprint."); err != nil {
+			return err
+		}
+	}
 
 	next := extensionDoctorNextProse(value)
 	if next != "" {
@@ -5289,7 +5304,7 @@ func extensionDoctorNextProse(value extension.DoctorReport) string {
 	case "extension_managed_drift":
 		return "Use the existing agentdeck extension adopt/release ownership commands to reconcile the drifted fingerprint."
 	case "extension_fingerprint_update_failed":
-		return "Run read-only diagnostics before taking recovery action."
+		return "Check AgentDeck state permissions, then retry agentdeck extension scan and run this diagnosis again."
 	case "extension_inventory_unreadable":
 		return "Resolve the unreadable or malformed AgentDeck database before extension diagnosis can run."
 	default:

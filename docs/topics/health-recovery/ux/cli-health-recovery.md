@@ -314,6 +314,11 @@ with code `extension_sync_incomplete`, reason
 Text says that inventory changed but its scan fingerprint did not, then uses
 `diagnose: agentdeck extension doctor`; follow-up diagnosis reads the committed
 inventory and determines health before the user decides whether to retry scan.
+That diagnosis also prints the incomplete-fingerprint cause and effect. If it
+is the only active reason, `next:` asks the user to check AgentDeck state
+permissions, retry the scan, and diagnose again; it does not tell the user to
+run the diagnostic command they are already running. Discovery failure keeps
+the independent JSON `fingerprint_sync_incomplete: true` flag visible.
 Neither mode says that native client configuration changed or that inventory was
 rolled back.
 

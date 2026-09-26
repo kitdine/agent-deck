@@ -850,3 +850,20 @@ a product failure or an all-package race PASS. This remains a repair candidate,
 not an independent re-review verdict. The operator-waived VoiceOver session
 remains untested and real-client observation remains SIMULATED. Signed delivery,
 PR-head CI and the second renewed Codex review remain pending.
+
+### PR #9 Codex review Round 3 repair candidate — 2026-09-25
+
+The second and final renewed Codex review completed on signed, CI-green
+`53244aa8cd1d9271c13f786aaf7555de338678b5` as review `5324976870`. It
+raised three P2 comments, each confirmed in source and repaired locally:
+
+- **PR9-R3-F1** ([discussion](https://github.com/kitdine/agent-deck/pull/9#discussion_r4110495824)) confirmed: a watcher fingerprint transaction failure after an inventory commit left a previously empty incomplete marker empty. The watcher now best-effort sets it on failure while preserving the secure-files-after-commit exception; a trigger regression checks the old fingerprint survives and the marker becomes true.
+- **PR9-R3-F2** ([discussion](https://github.com/kitdine/agent-deck/pull/9#discussion_r4110495827)) confirmed: discovery failure returned before projecting an existing incomplete marker into the independent JSON flag. The flag is now set immediately after reading the setting; the primary reason remains `extension_discovery_failed` in the regression.
+- **PR9-R3-F3** ([discussion](https://github.com/kitdine/agent-deck/pull/9#discussion_r4110495829)) confirmed: marker-only extension-doctor text hid the partial-commit cause and repeated the already-running diagnostic command as `next:`. Text now reports the cause/effect and gives a post-diagnosis step; the CLI regression rejects the circular instruction.
+
+Final local checks: full Go suite PASS (`agentdeck-go-test.Jc7SDI`), focused
+race PASS (`agentdeck-go-test.wYAvyO`), `make vet`, topic-doc and whitespace
+checks PASS. The operator's two-round renewed-review ceiling is reached. This
+is a repair candidate, not a third re-review PASS. VoiceOver remains
+user-waived and untested; real-client observation remains SIMULATED. Signed
+delivery and fresh PR-head CI remain pending.
