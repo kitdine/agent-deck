@@ -622,9 +622,9 @@ Task checkpoint：ad-v060c-assemble-dev / batch subscription-quota；content_sta
 提交建议：提交 Round 5 复评记录及同批 contract handoff 同步；产品修复已在签名提交 `f837666`，不得夹带其他任务或产品改动。
 推送建议：取得独立推送授权并确认新的复评文档提交消息、贡献者 trailer、SSH 签名及远端基线后，推送 `feature/subscription-quota`；feature-to-main assembly/PR/merge 仍需各自授权和成功 CI/branch protection。
 
-### PR #5 delivery receipt — 2026-09-19
+## PR #5 delivery receipt — 2026-09-19
 
-#### 📋 subscription-quota 集成交付核验
+### 📋 subscription-quota 集成交付核验
 
 📊 总体评分：9.5/10
 
@@ -647,11 +647,11 @@ three-way conflict resolution plus repaired source, then feature-to-main merge.
 The merge preserves the reviewed main parent and source parent; it is not a
 post-hoc reimplementation of the Round 5 candidate.
 
-#### 🔴 严重问题 — 必须修复
+### 🔴 严重问题 — 必须修复
 
 无。
 
-#### 🟡 建议改进 — 已由用户决定延期
+### 🟡 建议改进 — 已由用户决定延期
 
 The final Codex review (round 13) found no P0/P1 issue. The user explicitly
 instructed: repair review findings only at P0/P1; otherwise merge and record P2
@@ -669,7 +669,7 @@ findings for later work. The following in-scope P2 findings are therefore
 - `R13-F5` -> `ad-bug-quota-portable-restore-account-bound-state` /
   `docs/roadmap.md` Backlog: portable restore account-bound cache.
 
-#### 📝 交付与验证
+### 📝 交付与验证
 
 - GitHub reports PR #5 `MERGED`, `CLEAN`, and `MERGEABLE` before delivery;
   all four final protected checks (`verify` ×2, `desktop` ×2) completed SUCCESS
