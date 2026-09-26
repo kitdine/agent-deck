@@ -73,3 +73,47 @@ Reviewed state: PR #11 head `d47812c747c2b66e4c97a6f8b88a51de46b727b5`.
 The cask behavior and direct regression checks remain unchanged in this repair.
 Completion gate: NOT_VERIFIED; the Lane A review criterion awaits re-review and
 the exact committed-content gate has not yet been recorded.
+
+## Review — Round 2 — 2026-09-26
+
+📊 总体评分：9/10
+
+✅ 复评结论：PASS
+
+Reviewer: GitHub Codex independent PR #11 re-reviews at `688c87e` and
+`7c486b2`, with maintainer verification of the exact fix record and unchanged
+cask/test blobs. Method: compare both Round 1 findings with the repaired record,
+check the final PR comments, and reuse the local Homebrew migration and
+distribution results plus four successful final-head CI jobs.
+
+### 🔴 严重问题 — 必须修复
+
+无。
+
+### 🟡 改进问题 — 必须关闭
+
+- `CASK-R1-F1` CLOSED: Round 1 is now the actual failed independent review, not
+  an empty stub; this Round 2 is appended only after the later re-reviews.
+- `CASK-R1-F2` CLOSED: the record keeps command, environment and observed
+  RED/GREEN output, and explicitly labels local raw logs as temporary.
+- The final `7c486b2` Codex review reports no major issues and adds no inline
+  suggestions. The two Round 2 suggestions concerned other documents and were
+  repaired without changing the cask behavior or this record's evidence.
+
+### 🟢 优点
+
+The structured `preflight_steps` checks both CLI-only formula channels and
+retains readable migration guidance. The real isolated Homebrew migration
+test exercised refusal and rollback; no installed user state was modified.
+
+### 📝 总结
+
+Reviewed state: PR #11 head `7c486b246e855991a06f4667e169b48ed2e5f0e6`;
+cask template and direct test are unchanged since signed `55d86db`, and this
+record's pre-review blob is `09dfd075fd1e83df726527c9408287f7075c63f5`.
+The result is a review PASS for the scoped Lane A repair. Completion gate:
+VERIFIED (4/4) for candidate
+`fix:cask-preflight-deprecated:state:c5ffd28dd704a12fb9a2e7f287a0643d3db0fb77a340302b10b29455002f9264`.
+The fixed-template query has no missing, invalidated or unresolved item. This
+gate receipt changes the record blob, so a final target-bound preservation
+assessment is still required before the Beads bug can close.
