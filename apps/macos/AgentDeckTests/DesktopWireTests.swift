@@ -24,6 +24,11 @@ final class DesktopWireTests: XCTestCase {
         XCTAssertTrue(legacy.data.health.checks.isEmpty)
         let oldCheck = try JSONDecoder().decode(DesktopHealthCheckV1.self, from: Data(#"{"name":"database","status":"ok","count":23}"#.utf8))
         XCTAssertNil(oldCheck.supportedCount)
+        XCTAssertNil(oldCheck.resource)
+        XCTAssertNil(oldCheck.reason)
+        XCTAssertNil(oldCheck.actionKind)
+        XCTAssertNil(oldCheck.diagnosticCommand)
+        XCTAssertNil(oldCheck.manualPrerequisite)
         XCTAssertTrue(legacy.data.health.checks.allSatisfy { $0.supportedCount == nil })
     }
 
@@ -35,6 +40,13 @@ final class DesktopWireTests: XCTestCase {
         XCTAssertTrue(complete.warnings.isEmpty)
         XCTAssertTrue(complete.data.provider.available)
         XCTAssertTrue(complete.data.sessions.available)
+		let legacyLock = try XCTUnwrap(complete.data.health.checks.first { $0.reason == "lock_legacy" })
+		XCTAssertEqual(legacyLock.name, "state_lock")
+		XCTAssertEqual(legacyLock.status, "warning")
+		XCTAssertEqual(legacyLock.resource, "state")
+		XCTAssertEqual(legacyLock.actionKind, .manualPrerequisite)
+		XCTAssertEqual(legacyLock.manualPrerequisite, "prereq_legacy_lock_removal")
+		XCTAssertNil(legacyLock.recoveryCommand)
 		XCTAssertEqual(complete.data.provider.candidates.count, 1)
 		// One option per client per route. The fixture seeds a current route for
 		// both clients, so the built-in candidate offers codex and claude, each
@@ -471,4 +483,206 @@ final class DesktopWireTests: XCTestCase {
 		object["data"] = data
 		return try JSONSerialization.data(withJSONObject: object)
 	}
+
+    func testDecodingLockChecks() throws {
+        // 1. lock_live
+        let liveData = Data(#"""
+        {
+            "name": "state_lock",
+            "status": "warning",
+            "code": "lock_live",
+            "resource": "state",
+            "reason": "lock_live",
+            "action_kind": "retry"
+        }
+        """#.utf8)
+        let liveCheck = try JSONDecoder().decode(DesktopHealthCheckV1.self, from: liveData)
+        XCTAssertEqual(liveCheck.status, "warning")
+        XCTAssertEqual(liveCheck.resource, "state")
+        XCTAssertEqual(liveCheck.reason, "lock_live")
+        XCTAssertEqual(liveCheck.actionKind, .retry)
+        XCTAssertNil(liveCheck.manualPrerequisite)
+        XCTAssertNil(liveCheck.recoveryCommand)
+
+        // 2. lock_legacy
+        let legacyData = Data(#"""
+        {
+            "name": "state_lock",
+            "status": "warning",
+            "code": "lock_legacy",
+            "resource": "state",
+            "reason": "lock_legacy",
+            "action_kind": "manual_prerequisite",
+            "manual_prerequisite": "prereq_legacy_lock_removal"
+        }
+        """#.utf8)
+        let legacyCheck = try JSONDecoder().decode(DesktopHealthCheckV1.self, from: legacyData)
+        XCTAssertEqual(legacyCheck.status, "warning")
+        XCTAssertEqual(legacyCheck.resource, "state")
+        XCTAssertEqual(legacyCheck.reason, "lock_legacy")
+        XCTAssertEqual(legacyCheck.actionKind, .manualPrerequisite)
+        XCTAssertEqual(legacyCheck.manualPrerequisite, "prereq_legacy_lock_removal")
+        XCTAssertNil(legacyCheck.recoveryCommand)
+
+        // 3. lock_owner_unknown
+        let unknownData = Data(#"""
+        {
+            "name": "state_lock",
+            "status": "warning",
+            "code": "lock_owner_unknown",
+            "resource": "state",
+            "reason": "lock_owner_unknown"
+        }
+        """#.utf8)
+        let unknownCheck = try JSONDecoder().decode(DesktopHealthCheckV1.self, from: unknownData)
+        XCTAssertEqual(unknownCheck.status, "warning")
+        XCTAssertEqual(unknownCheck.resource, "state")
+        XCTAssertEqual(unknownCheck.reason, "lock_owner_unknown")
+        XCTAssertNil(unknownCheck.actionKind)
+        XCTAssertNil(unknownCheck.manualPrerequisite)
+        XCTAssertNil(unknownCheck.recoveryCommand)
+
+        // 4. lock_reclaimable
+        let reclaimData = Data(#"""
+        {
+            "name": "scan_lock",
+            "status": "ok",
+            "code": "lock_reclaimable",
+            "resource": "scan",
+            "reason": "lock_reclaimable"
+        }
+        """#.utf8)
+        let reclaimCheck = try JSONDecoder().decode(DesktopHealthCheckV1.self, from: reclaimData)
+        XCTAssertEqual(reclaimCheck.status, "ok")
+        XCTAssertEqual(reclaimCheck.resource, "scan")
+        XCTAssertEqual(reclaimCheck.reason, "lock_reclaimable")
+        XCTAssertNil(reclaimCheck.actionKind)
+        XCTAssertNil(reclaimCheck.manualPrerequisite)
+        XCTAssertNil(reclaimCheck.recoveryCommand)
+    }
+
+    func testDecodingExtensionChecksAllNineReasons() throws {
+        let reasonsAndPrereqs: [(String, HealthActionKind, String?, String?, String?)] = [
+            // (reason, expectedActionKind, expectedRecovery, expectedDiag, expectedPrereq)
+            ("extension_state_missing", .synchronizeInventory, "agentdeck extension scan", nil, nil),
+            ("extension_discovery_failed", .manualPrerequisite, nil, "agentdeck extension doctor", "prereq_extension_discovery_failed"),
+            ("extension_stale_inventory", .synchronizeInventory, "agentdeck extension scan", nil, nil),
+            ("extension_duplicate_id", .manualPrerequisite, nil, "agentdeck extension doctor", "prereq_extension_duplicate_id"),
+            ("extension_managed_drift", .manualPrerequisite, nil, "agentdeck extension doctor", "prereq_extension_managed_drift"),
+            ("extension_management_anomaly", .manualPrerequisite, nil, "agentdeck extension doctor", "prereq_extension_management_anomaly"),
+            ("extension_native_unavailable", .manualPrerequisite, nil, "agentdeck extension doctor", "prereq_extension_native_unavailable"),
+            ("extension_inventory_unreadable", .manualPrerequisite, nil, nil, "prereq_extension_inventory_unreadable"),
+            ("extension_fingerprint_update_failed", .diagnose, nil, "agentdeck extension doctor", nil),
+        ]
+
+        for (reason, actionKind, recovery, diag, prereq) in reasonsAndPrereqs {
+            var jsonDict: [String: Any] = [
+                "name": "extensions",
+                "status": reason == "extension_inventory_unreadable" ? "error" : "warning",
+                "code": reason,
+                "resource": "extension_inventory",
+                "reason": reason,
+                "action_kind": actionKind.rawValue
+            ]
+            if let recovery {
+                jsonDict["recovery_command"] = recovery
+            }
+            if let diag {
+                jsonDict["diagnostic_command"] = diag
+            }
+            if let prereq {
+                jsonDict["manual_prerequisite"] = prereq
+            }
+
+            let data = try JSONSerialization.data(withJSONObject: jsonDict)
+            let check = try JSONDecoder().decode(DesktopHealthCheckV1.self, from: data)
+
+            XCTAssertEqual(check.resource, "extension_inventory", "reason: \(reason)")
+            XCTAssertEqual(check.reason, reason, "reason: \(reason)")
+            XCTAssertEqual(check.actionKind, actionKind, "reason: \(reason)")
+            XCTAssertEqual(check.recoveryCommand, recovery, "reason: \(reason)")
+            XCTAssertEqual(check.diagnosticCommand, diag, "reason: \(reason)")
+            XCTAssertEqual(check.manualPrerequisite, prereq, "reason: \(reason)")
+        }
+    }
+
+    func testUnknownTokenDecodingFailsClosed() throws {
+        // Unknown resource token -> status falls back to warning, actionKind = nil, recoveryCommand = nil
+        let unknownResourceJSON = Data(#"""
+        {
+            "name": "state_lock",
+            "status": "ok",
+            "code": "lock_live",
+            "resource": "alien_resource",
+            "reason": "lock_live",
+            "action_kind": "retry",
+            "recovery_command": "agentdeck retry"
+        }
+        """#.utf8)
+        let check1 = try JSONDecoder().decode(DesktopHealthCheckV1.self, from: unknownResourceJSON)
+        XCTAssertEqual(check1.status, "warning")
+        XCTAssertNil(check1.actionKind)
+        XCTAssertNil(check1.recoveryCommand)
+
+        // Unknown reason token -> status falls back to warning, actionKind = nil, recoveryCommand = nil
+        let unknownReasonJSON = Data(#"""
+        {
+            "name": "state_lock",
+            "status": "ok",
+            "code": "future_code",
+            "resource": "state",
+            "reason": "future_reason_code",
+            "action_kind": "retry",
+            "recovery_command": "agentdeck retry"
+        }
+        """#.utf8)
+        let check2 = try JSONDecoder().decode(DesktopHealthCheckV1.self, from: unknownReasonJSON)
+        XCTAssertEqual(check2.status, "warning")
+        XCTAssertNil(check2.actionKind)
+        XCTAssertNil(check2.recoveryCommand)
+
+        // Unknown action_kind token -> status falls back to warning, actionKind = nil, recoveryCommand = nil
+        let unknownActionJSON = Data(#"""
+        {
+            "name": "state_lock",
+            "status": "ok",
+            "code": "lock_live",
+            "resource": "state",
+            "reason": "lock_live",
+            "action_kind": "auto_execute_unsupported",
+            "recovery_command": "agentdeck run"
+        }
+        """#.utf8)
+        let check3 = try JSONDecoder().decode(DesktopHealthCheckV1.self, from: unknownActionJSON)
+        XCTAssertEqual(check3.status, "warning")
+        XCTAssertNil(check3.actionKind)
+        XCTAssertNil(check3.recoveryCommand)
+
+        // Unknown manual_prerequisite key -> unrecognized key is not emitted (manualPrerequisite = nil)
+        let unknownPrereqJSON = Data(#"""
+        {
+            "name": "state_lock",
+            "status": "warning",
+            "code": "lock_legacy",
+            "resource": "state",
+            "reason": "lock_legacy",
+            "action_kind": "manual_prerequisite",
+            "manual_prerequisite": "prereq_unknown_future_instruction"
+        }
+        """#.utf8)
+        let check4 = try JSONDecoder().decode(DesktopHealthCheckV1.self, from: unknownPrereqJSON)
+        XCTAssertNil(check4.manualPrerequisite)
+        XCTAssertEqual(check4.actionKind, .manualPrerequisite)
+    }
+
+    func testHealthCheckPrivacyAssertions() throws {
+        let fixture = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
+        let check = try XCTUnwrap(fixture.data.health.checks.first { $0.reason == "lock_legacy" })
+        let encoded = try JSONEncoder().encode(check)
+        let jsonStr = String(decoding: encoded, as: UTF8.self)
+
+        for sensitive in ["token", "nonce", "Users", ".lock", "pid", "flock"] {
+            XCTAssertFalse(jsonStr.contains(sensitive), "Health check wire payload contains sensitive string '\(sensitive)'")
+        }
+    }
 }

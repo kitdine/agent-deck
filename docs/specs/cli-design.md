@@ -2279,7 +2279,9 @@ failure that has no more specific classification.
 | `credential_key_version_unsupported` | The credential key version is unsupported. | 1 |
 | `credential_ciphertext_invalid` | Stored credential ciphertext is invalid or cannot be authenticated. | 1 |
 | `machine_identity_unavailable` | The stable local machine identity cannot be obtained. | 1 |
-| `state_busy` | Another process holds the required state lock. | 1 |
+| `state_busy` | Another process holds a classified core-state or scan lock; the resource remains explicit when known. | 1 |
+| `extension_sync_incomplete` | Extension inventory committed, but its scan fingerprint update failed; diagnosis is required before retry. | 1 |
+| `extension_inventory_unreadable` | Extension inventory cannot be diagnosed from an unreadable or malformed core database. | 1 |
 | `schema_ahead` | The database schema version is newer than this binary supports. | 1 |
 | `unsupported_wire_version` | A desktop request uses an unsupported wire version. | 2 |
 | `invalid_recent_limit` | A desktop request uses an invalid recent-item limit. | 2 |
@@ -2410,13 +2412,13 @@ rendered doctor report still exits `0`, even when its findings are unhealthy;
 this is distinct from an ordinary command's schema-ahead error envelope.
 
 Quick and full mode share the schema-state matrix. With this binary supporting
-schema 26, schema 12 reports a `schema_outdated` schema check with `count: 12`,
-`supported_count: 26` and recovery command `agentdeck state migrate`. A complete
-supported schema reports an `ok` schema check with `count: 26`; its optional
+schema 30, schema 12 reports a `schema_outdated` schema check with `count: 12`,
+`supported_count: 30` and recovery command `agentdeck state migrate`. A complete
+supported schema reports an `ok` schema check with `count: 30`; its optional
 `supported_count` is omitted. A database claiming the supported version but
 missing `usage_tool_calls` reports `schema_incompatible`. A future schema, for
 example 99, reports a `database` check with code `schema_ahead`, `count: 99`,
-`supported_count: 26`, and no recovery command, in a partial report. These
+`supported_count: 30`, and no recovery command, in a partial report. These
 numbers describe stored/binary support, not product release versions. Text and
 JSON never expose raw SQL, SQLite query text, or driver errors. A successful
 explicit migration has normal text output and JSON `migrated: true`, and
@@ -2442,6 +2444,72 @@ open. Read-only callers never clear, chmod or repair it. Upgrading a binary so
 that it supports the recorded version suppresses the warning without deleting
 the record: successful-open clearing and version-based presentation suppression
 are different events, not two deletion triggers.
+
+### Health recovery and extension inventory
+
+A lock refusal retains `error.code: state_busy` and exit `1`. Text names
+`resource: state` or `resource: scan` when known, gives a wait-and-retry
+step, and labels `agentdeck doctor` as `diagnose:`. JSON error details carry
+`resource`, `reason`, `action_kind`, and `recovery_command`; a live owner
+uses `lock_live` / `retry` with no recovery command. An unclassified caller
+uses `resource: unknown`. Neither output exposes lock tokens or suggests
+deleting a live or uncertain lock.
+If a detached scan worker cannot expose its socket because `scan.lock` remains
+held, the foreground scan reports that lock's classified `state_busy` details
+instead of an unclassified worker-startup timeout. This fallback inspects the
+lock read-only after the socket wait; it does not acquire or remove it.
+
+`agentdeck doctor` reports `state_lock` and `scan_lock` independently and
+in that order. `lock_live` is a retry warning; `lock_legacy` is a warning
+with manual prerequisite `prereq_legacy_lock_removal` only after ownership
+confirmation; `lock_owner_unknown` has no action command. A modern
+`lock_reclaimable` observation is informational `ok` because normal
+acquisition reclaims it. Age alone never authorizes removal. A definite
+future-schema probe takes `schema_ahead` precedence over concurrent
+`state_busy`; an inconclusive probe preserves the lock error. Doctor is
+read-only even while both locks exist.
+
+`agentdeck extension doctor` also uses read-only state access. It does not
+acquire `state.lock`, migrate the database, or synchronize inventory. Its
+JSON retains `missing_paths` for compatibility and adds
+`discovery_status`, `stale_inventory`, `native_unavailable`,
+`fingerprint_sync_incomplete`, `reason`, `action_kind`,
+`recovery_command`, and `manual_prerequisite`. When live discovery fails,
+discovery-dependent collections are null rather than empty, and no stored ID
+is called stale. Missing state reports `extension_state_missing`; unreadable
+inventory exits `1` with `extension_inventory_unreadable` and a manual
+prerequisite, without a scan command.
+Its text output explains the prerequisite in bounded English prose; JSON keeps
+the stable `prereq_extension_inventory_unreadable` key. An extension row whose
+native fingerprint is unavailable cannot be adopted until its source is
+restored and a subsequent scan records a fingerprint.
+
+The aggregate `extensions` row presents the highest-priority reason while
+extension doctor retains the per-condition collections. A persisted identity
+absent from successful live discovery yields `extension_stale_inventory`,
+`action_kind: synchronize_inventory`, and
+`recovery_command: agentdeck extension scan`. That command updates only
+AgentDeck's derived extension inventory and scan fingerprint, never Codex or
+Claude configuration, plugin manifests, or installed extensions. Duplicate
+IDs, managed drift, management anomalies, and native unavailability have
+cause-specific prerequisites. Discovery failure withholds the scan
+recommendation. A read-only command is labeled `diagnose:`, never repair.
+
+`agentdeck extension scan` replaces the inventory only after successful
+discovery. A following doctor or desktop refresh confirms recovery. If its
+fingerprint update fails after inventory commit, exit `1` carries
+`extension_sync_incomplete`, reason
+`extension_fingerprint_update_failed`, action `diagnose`, null recovery
+command, and `inventory_committed: true`. Text labels
+`agentdeck extension doctor` as diagnosis and never claims rollback. A
+later successful scan clears the incomplete-sync marker.
+
+Desktop wire version 1 adds `resource`, `reason`, `action_kind`,
+`diagnostic_command`, and `manual_prerequisite` to health checks while
+retaining recovery and count fields. Missing additive fields decode safely;
+unknown values fail closed without a copyable recovery action. The menu bar
+only copies classified commands or localized safety prose. A notice clears
+only after a later accepted snapshot proves the condition cleared.
 
 `--full` additionally performs full SQLite integrity checks and traverses all
 indexed sources. Neither mode accesses the network, prints credentials, or

@@ -18,11 +18,16 @@ type Envelope struct {
 type Error struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
+	Details any    `json:"details,omitempty"`
 }
 
 func NewError(command, code, message string, now time.Time) Envelope {
+	return NewErrorWithDetails(command, code, message, nil, now)
+}
+
+func NewErrorWithDetails(command, code, message string, details any, now time.Time) Envelope {
 	envelope := New(command, nil, now)
-	envelope.Error = &Error{Code: code, Message: message}
+	envelope.Error = &Error{Code: code, Message: message, Details: details}
 	return envelope
 }
 

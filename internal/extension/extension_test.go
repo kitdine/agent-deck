@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/kitdine/agent-deck/internal/store"
 )
@@ -168,12 +169,15 @@ func TestFingerprintFailurePreservesInventoryAndManagement(t *testing.T) {
 	if err = os.Symlink(filepath.Join(root, "missing"), filepath.Join(skillPath, "broken")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = Scan(context.Background(), db, home, workdir); err == nil {
-		t.Fatal("scan accepted an unreadable fingerprint source")
+	if _, err = Scan(context.Background(), db, home, workdir); err != nil {
+		t.Fatalf("scan failed on unreadable fingerprint source: %v", err)
 	}
 	value, err := Show(context.Background(), db, id)
 	if err != nil || !value.Managed || value.Drift {
 		t.Fatalf("preserved extension = %#v, %v", value, err)
+	}
+	if len(value.Diagnostics) == 0 {
+		t.Fatalf("expected diagnostics on candidate with unreadable fingerprint source, got %#v", value.Diagnostics)
 	}
 }
 
@@ -414,5 +418,617 @@ func TestSkillSymlinkLifecyclePreservesAdoptionAndInventory(t *testing.T) {
 			}
 			assertPreserved("cycle recovery")
 		})
+	}
+}
+
+type syntheticDiscoverer struct {
+	values      []store.Extension
+	diagnostics []string
+	err         error
+}
+
+func (s syntheticDiscoverer) Discover(home, workdir string) ([]store.Extension, []string, error) {
+	return s.values, s.diagnostics, s.err
+}
+
+func TestSanitizeDiagnostic(t *testing.T) {
+	for _, test := range []struct{ raw, want string }{
+		{"\x1b[31mError:\x1b[0m   line 1\n\n\t  line 2   \r\n", "Error: line 1 line 2"},
+		{"before\x1b]8;;https://example.invalid\aafter", "before after"},
+		{"before\x1b]0;changed title\x1b\\after", "before after"},
+		{"before\x1b[?25lafter", "before after"},
+		{"before\u009b?25lafter", "before after"},
+		{"before\x9b?25lafter", "before after"},
+		{"before\x9d0;title\x9cafter", "before after"},
+		{"before\x1bPpayload\x1b\\after", "before after"},
+		{"a\x00\x7fb\xc0\xaf\u0085c", "a b�� c"},
+		{"safe\x1b]unterminated", "safe"},
+	} {
+		if got := SanitizeDiagnostic(test.raw); got != test.want {
+			t.Errorf("SanitizeDiagnostic(%q) = %q, want %q", test.raw, got, test.want)
+		}
+	}
+}
+
+func TestSyntheticDiscoveryAndPriorityClassification(t *testing.T) {
+	ctx := context.Background()
+	state := t.TempDir()
+	db, err := store.Open(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	// 1. Missing state root / database: tested via DoctorFromStateRoot with nonexistent dir
+	missingReport, err := DoctorFromStateRoot(ctx, filepath.Join(state, "missing"), t.TempDir(), t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if missingReport.Reason != "extension_state_missing" || missingReport.ActionKind != "synchronize_inventory" || missingReport.RecoveryCommand == nil || *missingReport.RecoveryCommand != "agentdeck extension scan" {
+		t.Fatalf("state missing report = %#v", missingReport)
+	}
+
+	// 2. Discovery failed
+	discFail := syntheticDiscoverer{err: fmt.Errorf("scanner failure")}
+	rep, err := DoctorWithDiscoverer(ctx, db, discFail, "", "")
+	if err != nil || rep.DiscoveryStatus != "failed" || rep.Reason != "extension_discovery_failed" || rep.ActionKind != "manual_prerequisite" || rep.ManualPrerequisite == nil || *rep.ManualPrerequisite != "prereq_extension_discovery_failed" {
+		t.Fatalf("discovery failure report = %#v, %v", rep, err)
+	}
+	if rep.StaleInventory != nil || rep.DuplicateIDs != nil || rep.NativeUnavailable != nil {
+		t.Fatalf("expected nil collections on discovery failure, got: %#v", rep)
+	}
+
+	// 3. Duplicate IDs
+	dupDisc := syntheticDiscoverer{values: []store.Extension{
+		{ID: "codex:skill:user:dup", Client: "codex", Kind: "skill", Scope: "user", NativeID: "dup"},
+		{ID: "codex:skill:user:dup", Client: "codex", Kind: "skill", Scope: "user", NativeID: "dup"},
+		{ID: "codex:skill:user:dup", Client: "codex", Kind: "skill", Scope: "user", NativeID: "dup"},
+	}}
+	rep, err = DoctorWithDiscoverer(ctx, db, dupDisc, "", "")
+	if err != nil || rep.Reason != "extension_duplicate_id" || rep.ActionKind != "manual_prerequisite" || rep.ManualPrerequisite == nil || *rep.ManualPrerequisite != "prereq_extension_duplicate_id" {
+		t.Fatalf("duplicate IDs report = %#v, %v", rep, err)
+	}
+	if len(rep.DuplicateIDs) != 1 || rep.DuplicateIDs[0] != "codex:skill:user:dup" || rep.CountForReason() != 1 {
+		t.Fatalf("duplicate identity count = %#v, want one affected identity", rep)
+	}
+
+	// 4. Stale inventory
+	if err = db.ReplaceExtensions(ctx, []store.Extension{
+		{ID: "codex:mcp:user:computer-use", Client: "codex", Kind: "mcp", Scope: "user", NativeID: "computer-use", Fingerprint: "fp1"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	emptyDisc := syntheticDiscoverer{values: []store.Extension{}}
+	rep, err = DoctorWithDiscoverer(ctx, db, emptyDisc, "", "")
+	if err != nil || rep.Reason != "extension_stale_inventory" || rep.ActionKind != "synchronize_inventory" || rep.RecoveryCommand == nil || *rep.RecoveryCommand != "agentdeck extension scan" || rep.ManualPrerequisite != nil {
+		t.Fatalf("stale inventory report = %#v, %v", rep, err)
+	}
+	if len(rep.StaleInventory) != 1 || rep.StaleInventory[0] != "codex:mcp:user:computer-use" {
+		t.Fatalf("stale inventory list = %#v", rep.StaleInventory)
+	}
+	if len(rep.MissingPaths) != 1 || rep.MissingPaths[0] != "codex:mcp:user:computer-use" {
+		t.Fatalf("missing paths compatibility = %#v", rep.MissingPaths)
+	}
+
+	// 5. Native unavailable
+	natUnavailDisc := syntheticDiscoverer{values: []store.Extension{
+		{ID: "codex:mcp:user:computer-use", Client: "codex", Kind: "mcp", Scope: "user", NativeID: "computer-use", Fingerprint: "", Diagnostics: []string{"source_unavailable"}},
+	}}
+	rep, err = DoctorWithDiscoverer(ctx, db, natUnavailDisc, "", "")
+	if err != nil || rep.Reason != "extension_native_unavailable" || rep.ActionKind != "manual_prerequisite" || rep.ManualPrerequisite == nil || *rep.ManualPrerequisite != "prereq_extension_native_unavailable" {
+		t.Fatalf("native unavailable report = %#v, %v", rep, err)
+	}
+	if len(rep.NativeUnavailable) != 1 || rep.NativeUnavailable[0] != "codex:mcp:user:computer-use" {
+		t.Fatalf("native unavailable list = %#v", rep.NativeUnavailable)
+	}
+
+	// 6. Fingerprint sync incomplete marker
+	healthyDisc := syntheticDiscoverer{values: []store.Extension{
+		{ID: "codex:mcp:user:computer-use", Client: "codex", Kind: "mcp", Scope: "user", NativeID: "computer-use", Fingerprint: "fp1"},
+	}}
+	if err = db.SetSetting(ctx, "extension.sync_incomplete", "true"); err != nil {
+		t.Fatal(err)
+	}
+	rep, err = DoctorWithDiscoverer(ctx, db, discFail, "", "")
+	if err != nil || rep.Reason != "extension_discovery_failed" || !rep.FingerprintSyncIncomplete {
+		t.Fatalf("discovery failure hid incomplete fingerprint marker: %#v, %v", rep, err)
+	}
+	rep, err = DoctorWithDiscoverer(ctx, db, healthyDisc, "", "")
+	if err != nil || rep.Reason != "extension_fingerprint_update_failed" || rep.ActionKind != "diagnose" || !rep.FingerprintSyncIncomplete {
+		t.Fatalf("fingerprint sync incomplete report = %#v, %v", rep, err)
+	}
+	// Clear marker
+	if err = db.SetSetting(ctx, "extension.sync_incomplete", ""); err != nil {
+		t.Fatal(err)
+	}
+	rep, err = DoctorWithDiscoverer(ctx, db, healthyDisc, "", "")
+	if err != nil || rep.Reason != "" || rep.ActionKind != "" || rep.FingerprintSyncIncomplete {
+		t.Fatalf("healthy report = %#v, %v", rep, err)
+	}
+
+	// Priority ordering test: duplicate_id vs stale_inventory (duplicate_id must win)
+	dupAndStaleDisc := syntheticDiscoverer{values: []store.Extension{
+		{ID: "codex:skill:user:dup", Client: "codex", Kind: "skill", Scope: "user", NativeID: "dup"},
+		{ID: "codex:skill:user:dup", Client: "codex", Kind: "skill", Scope: "user", NativeID: "dup"},
+	}}
+	rep, err = DoctorWithDiscoverer(ctx, db, dupAndStaleDisc, "", "")
+	if err != nil || rep.Reason != "extension_duplicate_id" {
+		t.Fatalf("priority: expected duplicate_id to win over stale_inventory, got %#v", rep)
+	}
+	if len(rep.StaleInventory) != 1 {
+		t.Fatalf("expected stale inventory to still be enumerated, got %#v", rep.StaleInventory)
+	}
+}
+
+func TestDiscoveryFailedAndDatabaseUnreadablePriority(t *testing.T) {
+	ctx := context.Background()
+	failDisc := syntheticDiscoverer{err: fmt.Errorf("scanner failure")}
+
+	// Case 1: db == nil and discovery failed -> extension_state_missing (Condition 1 > Condition 3)
+	repMissing, err := DoctorWithDiscoverer(ctx, nil, failDisc, "", "")
+	if err != nil {
+		t.Fatalf("expected nil error on db == nil, got %v", err)
+	}
+	if repMissing.Reason != "extension_state_missing" {
+		t.Fatalf("expected extension_state_missing, got %q", repMissing.Reason)
+	}
+	if repMissing.DiscoveryStatus != "failed" {
+		t.Fatalf("expected discovery_status == failed, got %q", repMissing.DiscoveryStatus)
+	}
+	if repMissing.ActionKind != "manual_prerequisite" || repMissing.ManualPrerequisite == nil || *repMissing.ManualPrerequisite != "prereq_extension_discovery_failed" {
+		t.Fatalf("unexpected action mapping: %#v", repMissing)
+	}
+	if repMissing.StaleInventory != nil || repMissing.DuplicateIDs != nil {
+		t.Fatalf("expected nil collections, got: %#v", repMissing)
+	}
+
+	// Case 2: corrupted database and discovery failed -> extension_inventory_unreadable (Condition 2 > Condition 3)
+	state := t.TempDir()
+	db, err := store.Open(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(ctx, "DROP TABLE extensions"); err != nil {
+		t.Fatal(err)
+	}
+
+	repUnreadable, err := DoctorWithDiscoverer(ctx, db, failDisc, "", "")
+	if err == nil {
+		t.Fatal("expected error on unreadable db with failing discovery, got nil")
+	}
+	var unreadableErr *ErrExtensionInventoryUnreadable
+	if !errors.As(err, &unreadableErr) {
+		t.Fatalf("expected ErrExtensionInventoryUnreadable, got %v (%T)", err, err)
+	}
+	if repUnreadable.Reason != "extension_inventory_unreadable" {
+		t.Fatalf("expected extension_inventory_unreadable, got %q", repUnreadable.Reason)
+	}
+	if repUnreadable.DiscoveryStatus != "failed" {
+		t.Fatalf("expected discovery_status == failed, got %q", repUnreadable.DiscoveryStatus)
+	}
+	if repUnreadable.ActionKind != "manual_prerequisite" || repUnreadable.ManualPrerequisite == nil || *repUnreadable.ManualPrerequisite != "prereq_extension_inventory_unreadable" {
+		t.Fatalf("unexpected action mapping: %#v", repUnreadable)
+	}
+
+	// Case 3: healthy db and discovery failed -> extension_discovery_failed (Condition 3)
+	stateHealthy := t.TempDir()
+	dbHealthy, err := store.Open(ctx, stateHealthy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dbHealthy.Close()
+
+	repHalting, err := DoctorWithDiscoverer(ctx, dbHealthy, failDisc, "", "")
+	if err != nil {
+		t.Fatalf("expected nil error on healthy db with failing discovery, got %v", err)
+	}
+	if repHalting.Reason != "extension_discovery_failed" {
+		t.Fatalf("expected extension_discovery_failed, got %q", repHalting.Reason)
+	}
+	if repHalting.DiscoveryStatus != "failed" {
+		t.Fatalf("expected discovery_status == failed, got %q", repHalting.DiscoveryStatus)
+	}
+	if repHalting.ActionKind != "manual_prerequisite" || repHalting.ManualPrerequisite == nil || *repHalting.ManualPrerequisite != "prereq_extension_discovery_failed" {
+		t.Fatalf("unexpected action mapping: %#v", repHalting)
+	}
+	if repHalting.StaleInventory != nil || repHalting.DuplicateIDs != nil || repHalting.DriftedIDs != nil || repHalting.ManagementAnomalies != nil || repHalting.NativeUnavailable != nil {
+		t.Fatalf("expected nil collections on discovery failure, got: %#v", repHalting)
+	}
+}
+
+func TestDoctorPriorityHierarchyTableDriven(t *testing.T) {
+	ctx := context.Background()
+
+	tests := []struct {
+		name                 string
+		setupDB              func(t *testing.T, db *store.Store)
+		discoverer           ExtensionDiscoverer
+		expectedReason       string
+		expectedActionKind   string
+		expectedRecoveryCmd  *string
+		expectedManualPrereq *string
+		verifyCounts         func(t *testing.T, rep DoctorReport)
+	}{
+		{
+			name: "All conditions 4 through 9 present simultaneously -> duplicate_id wins",
+			setupDB: func(t *testing.T, db *store.Store) {
+				if err := db.ReplaceExtensions(ctx, []store.Extension{
+					{
+						ID: "codex:skill:user:anomaly", Client: "codex", Kind: "skill", Scope: "user", NativeID: "anomaly",
+					},
+					{
+						ID: "codex:skill:user:drift", Client: "codex", Kind: "skill", Scope: "user", NativeID: "drift",
+					},
+					{
+						ID: "codex:skill:user:stale", Client: "codex", Kind: "skill", Scope: "user", NativeID: "stale",
+					},
+					{
+						ID: "codex:skill:user:unavail", Client: "codex", Kind: "skill", Scope: "user", NativeID: "unavail",
+					},
+				}); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := db.Exec(ctx, "INSERT INTO extension_management(extension_id, fingerprint, adopted_at) VALUES (?, ?, ?)", "codex:skill:user:anomaly", "", time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := db.Exec(ctx, "INSERT INTO extension_management(extension_id, fingerprint, adopted_at) VALUES (?, ?, ?)", "codex:skill:user:drift", "orig_fp", time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+					t.Fatal(err)
+				}
+				if err := db.SetSetting(ctx, "extension.sync_incomplete", "true"); err != nil {
+					t.Fatal(err)
+				}
+			},
+			discoverer: syntheticDiscoverer{values: []store.Extension{
+				// Condition 4: Duplicate IDs
+				{ID: "codex:skill:user:dup", Client: "codex", Kind: "skill", Scope: "user", NativeID: "dup"},
+				{ID: "codex:skill:user:dup", Client: "codex", Kind: "skill", Scope: "user", NativeID: "dup"},
+				// Matching Condition 5
+				{ID: "codex:skill:user:anomaly", Client: "codex", Kind: "skill", Scope: "user", NativeID: "anomaly"},
+				// Matching Condition 6
+				{ID: "codex:skill:user:drift", Client: "codex", Kind: "skill", Scope: "user", NativeID: "drift", Managed: true, Fingerprint: "new_fp"},
+				// Matching Condition 8
+				{ID: "codex:skill:user:unavail", Client: "codex", Kind: "skill", Scope: "user", NativeID: "unavail", Diagnostics: []string{"unreachable"}},
+			}},
+			expectedReason:       "extension_duplicate_id",
+			expectedActionKind:   "manual_prerequisite",
+			expectedManualPrereq: strPtr("prereq_extension_duplicate_id"),
+			verifyCounts: func(t *testing.T, rep DoctorReport) {
+				if len(rep.DuplicateIDs) != 1 {
+					t.Errorf("DuplicateIDs count = %d, want 1", len(rep.DuplicateIDs))
+				}
+				if len(rep.ManagementAnomalies) != 1 {
+					t.Errorf("ManagementAnomalies count = %d, want 1", len(rep.ManagementAnomalies))
+				}
+				if len(rep.DriftedIDs) != 1 {
+					t.Errorf("DriftedIDs count = %d, want 1", len(rep.DriftedIDs))
+				}
+				if len(rep.StaleInventory) != 1 {
+					t.Errorf("StaleInventory count = %d, want 1", len(rep.StaleInventory))
+				}
+				if len(rep.NativeUnavailable) != 1 {
+					t.Errorf("NativeUnavailable count = %d, want 1", len(rep.NativeUnavailable))
+				}
+				if !rep.FingerprintSyncIncomplete {
+					t.Errorf("FingerprintSyncIncomplete = false, want true")
+				}
+			},
+		},
+		{
+			name: "Conditions 5 through 9 present (no duplicate) -> management_anomaly wins",
+			setupDB: func(t *testing.T, db *store.Store) {
+				if err := db.ReplaceExtensions(ctx, []store.Extension{
+					{
+						ID: "codex:skill:user:anomaly", Client: "codex", Kind: "skill", Scope: "user", NativeID: "anomaly",
+					},
+					{
+						ID: "codex:skill:user:drift", Client: "codex", Kind: "skill", Scope: "user", NativeID: "drift",
+					},
+					{
+						ID: "codex:skill:user:stale", Client: "codex", Kind: "skill", Scope: "user", NativeID: "stale",
+					},
+					{
+						ID: "codex:skill:user:unavail", Client: "codex", Kind: "skill", Scope: "user", NativeID: "unavail",
+					},
+				}); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := db.Exec(ctx, "INSERT INTO extension_management(extension_id, fingerprint, adopted_at) VALUES (?, ?, ?)", "codex:skill:user:anomaly", "", time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := db.Exec(ctx, "INSERT INTO extension_management(extension_id, fingerprint, adopted_at) VALUES (?, ?, ?)", "codex:skill:user:drift", "orig_fp", time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+					t.Fatal(err)
+				}
+				if err := db.SetSetting(ctx, "extension.sync_incomplete", "true"); err != nil {
+					t.Fatal(err)
+				}
+			},
+			discoverer: syntheticDiscoverer{values: []store.Extension{
+				{ID: "codex:skill:user:anomaly", Client: "codex", Kind: "skill", Scope: "user", NativeID: "anomaly"},
+				{ID: "codex:skill:user:drift", Client: "codex", Kind: "skill", Scope: "user", NativeID: "drift", Managed: true, Fingerprint: "new_fp"},
+				{ID: "codex:skill:user:unavail", Client: "codex", Kind: "skill", Scope: "user", NativeID: "unavail", Diagnostics: []string{"unreachable"}},
+			}},
+			expectedReason:       "extension_management_anomaly",
+			expectedActionKind:   "manual_prerequisite",
+			expectedManualPrereq: strPtr("prereq_extension_management_anomaly"),
+		},
+		{
+			name: "Conditions 6 through 9 present -> managed_drift wins",
+			setupDB: func(t *testing.T, db *store.Store) {
+				if err := db.ReplaceExtensions(ctx, []store.Extension{
+					{
+						ID: "codex:skill:user:drift", Client: "codex", Kind: "skill", Scope: "user", NativeID: "drift",
+					},
+					{
+						ID: "codex:skill:user:stale", Client: "codex", Kind: "skill", Scope: "user", NativeID: "stale",
+					},
+					{
+						ID: "codex:skill:user:unavail", Client: "codex", Kind: "skill", Scope: "user", NativeID: "unavail",
+					},
+				}); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := db.Exec(ctx, "INSERT INTO extension_management(extension_id, fingerprint, adopted_at) VALUES (?, ?, ?)", "codex:skill:user:drift", "orig_fp", time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+					t.Fatal(err)
+				}
+				if err := db.SetSetting(ctx, "extension.sync_incomplete", "true"); err != nil {
+					t.Fatal(err)
+				}
+			},
+			discoverer: syntheticDiscoverer{values: []store.Extension{
+				{ID: "codex:skill:user:drift", Client: "codex", Kind: "skill", Scope: "user", NativeID: "drift", Managed: true, Fingerprint: "new_fp"},
+				{ID: "codex:skill:user:unavail", Client: "codex", Kind: "skill", Scope: "user", NativeID: "unavail", Diagnostics: []string{"unreachable"}},
+			}},
+			expectedReason:       "extension_managed_drift",
+			expectedActionKind:   "manual_prerequisite",
+			expectedManualPrereq: strPtr("prereq_extension_managed_drift"),
+		},
+		{
+			name: "Conditions 7 through 9 present -> stale_inventory wins",
+			setupDB: func(t *testing.T, db *store.Store) {
+				if err := db.ReplaceExtensions(ctx, []store.Extension{
+					{
+						ID: "codex:skill:user:stale", Client: "codex", Kind: "skill", Scope: "user", NativeID: "stale",
+					},
+					{
+						ID: "codex:skill:user:unavail", Client: "codex", Kind: "skill", Scope: "user", NativeID: "unavail",
+					},
+				}); err != nil {
+					t.Fatal(err)
+				}
+				if err := db.SetSetting(ctx, "extension.sync_incomplete", "true"); err != nil {
+					t.Fatal(err)
+				}
+			},
+			discoverer: syntheticDiscoverer{values: []store.Extension{
+				{ID: "codex:skill:user:unavail", Client: "codex", Kind: "skill", Scope: "user", NativeID: "unavail", Diagnostics: []string{"unreachable"}},
+			}},
+			expectedReason:      "extension_stale_inventory",
+			expectedActionKind:  "synchronize_inventory",
+			expectedRecoveryCmd: strPtr("agentdeck extension scan"),
+		},
+		{
+			name: "Conditions 8 and 9 present -> native_unavailable wins",
+			setupDB: func(t *testing.T, db *store.Store) {
+				if err := db.ReplaceExtensions(ctx, []store.Extension{
+					{
+						ID: "codex:skill:user:unavail", Client: "codex", Kind: "skill", Scope: "user", NativeID: "unavail",
+					},
+				}); err != nil {
+					t.Fatal(err)
+				}
+				if err := db.SetSetting(ctx, "extension.sync_incomplete", "true"); err != nil {
+					t.Fatal(err)
+				}
+			},
+			discoverer: syntheticDiscoverer{values: []store.Extension{
+				{ID: "codex:skill:user:unavail", Client: "codex", Kind: "skill", Scope: "user", NativeID: "unavail", Diagnostics: []string{"unreachable"}},
+			}},
+			expectedReason:       "extension_native_unavailable",
+			expectedActionKind:   "manual_prerequisite",
+			expectedManualPrereq: strPtr("prereq_extension_native_unavailable"),
+		},
+		{
+			name: "Condition 9 only present -> fingerprint_update_failed wins",
+			setupDB: func(t *testing.T, db *store.Store) {
+				if err := db.ReplaceExtensions(ctx, []store.Extension{
+					{
+						ID: "codex:skill:user:ok", Client: "codex", Kind: "skill", Scope: "user", NativeID: "ok",
+					},
+				}); err != nil {
+					t.Fatal(err)
+				}
+				if err := db.SetSetting(ctx, "extension.sync_incomplete", "true"); err != nil {
+					t.Fatal(err)
+				}
+			},
+			discoverer: syntheticDiscoverer{values: []store.Extension{
+				{ID: "codex:skill:user:ok", Client: "codex", Kind: "skill", Scope: "user", NativeID: "ok"},
+			}},
+			expectedReason:     "extension_fingerprint_update_failed",
+			expectedActionKind: "diagnose",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			s := t.TempDir()
+			db, err := store.Open(ctx, s)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer db.Close()
+			if tc.setupDB != nil {
+				tc.setupDB(t, db)
+			}
+			rep, err := DoctorWithDiscoverer(ctx, db, tc.discoverer, "", "")
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if rep.Reason != tc.expectedReason {
+				t.Errorf("reason = %q, want %q", rep.Reason, tc.expectedReason)
+			}
+			if rep.ActionKind != tc.expectedActionKind {
+				t.Errorf("action_kind = %q, want %q", rep.ActionKind, tc.expectedActionKind)
+			}
+			if tc.expectedRecoveryCmd != nil {
+				if rep.RecoveryCommand == nil || *rep.RecoveryCommand != *tc.expectedRecoveryCmd {
+					t.Errorf("recovery_command = %v, want %v", rep.RecoveryCommand, *tc.expectedRecoveryCmd)
+				}
+			} else if rep.RecoveryCommand != nil {
+				t.Errorf("recovery_command = %v, want nil", *rep.RecoveryCommand)
+			}
+			if tc.expectedManualPrereq != nil {
+				if rep.ManualPrerequisite == nil || *rep.ManualPrerequisite != *tc.expectedManualPrereq {
+					t.Errorf("manual_prerequisite = %v, want %v", rep.ManualPrerequisite, *tc.expectedManualPrereq)
+				}
+			} else if rep.ManualPrerequisite != nil {
+				t.Errorf("manual_prerequisite = %v, want nil", *rep.ManualPrerequisite)
+			}
+			if tc.verifyCounts != nil {
+				tc.verifyCounts(t, rep)
+			}
+		})
+	}
+}
+
+func TestDoctorReportsNativeUnavailableBeforeFirstInventoryScan(t *testing.T) {
+	ctx := context.Background()
+	db, err := store.Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	id := "codex:skill:user:unavailable"
+	report, err := DoctorWithDiscoverer(ctx, db, syntheticDiscoverer{
+		values: []store.Extension{{ID: id, Diagnostics: []string{"source_unavailable"}}},
+	}, t.TempDir(), t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Reason != "extension_native_unavailable" || len(report.NativeUnavailable) != 1 || report.NativeUnavailable[0] != id {
+		t.Fatalf("unavailable first discovery = %#v", report)
+	}
+	if report.ActionKind != "manual_prerequisite" || report.RecoveryCommand != nil {
+		t.Fatalf("unsafe first-discovery action = %#v", report)
+	}
+}
+
+func TestUnresolvableNativePathNativeUnavailableResilience(t *testing.T) {
+	root, home, workdir := t.TempDir(), t.TempDir(), t.TempDir()
+	skillPath := filepath.Join(home, ".codex", "skills", "resilient")
+	if err := os.MkdirAll(skillPath, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillPath, "SKILL.md"), []byte("content"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	db, err := store.Open(context.Background(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	if _, err = Scan(context.Background(), db, home, workdir); err != nil {
+		t.Fatal(err)
+	}
+
+	id := "codex:skill:user:resilient"
+	if _, err = Adopt(context.Background(), db, id); err != nil {
+		t.Fatal(err)
+	}
+
+	// Break source by pointing a symlink inside the skill to a missing path
+	if err = os.Symlink(filepath.Join(root, "nonexistent"), filepath.Join(skillPath, "broken_link")); err != nil {
+		t.Fatal(err)
+	}
+
+	// Discovery and scan must not abort!
+	res, scanErr := Scan(context.Background(), db, home, workdir)
+	if scanErr != nil {
+		t.Fatalf("Scan failed unexpectedly: %v", scanErr)
+	}
+	if res.Found != 1 {
+		t.Fatalf("expected 1 found, got %d", res.Found)
+	}
+
+	// Doctor must classify as extension_native_unavailable, NOT extension_managed_drift
+	rep, err := Doctor(context.Background(), db, home, workdir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Reason != "extension_native_unavailable" {
+		t.Fatalf("expected extension_native_unavailable, got %q", rep.Reason)
+	}
+	if len(rep.DriftedIDs) != 0 {
+		t.Fatalf("expected 0 drifted IDs, got %#v", rep.DriftedIDs)
+	}
+	if len(rep.NativeUnavailable) != 1 || rep.NativeUnavailable[0] != id {
+		t.Fatalf("expected %s in native unavailable, got %#v", id, rep.NativeUnavailable)
+	}
+}
+
+func TestInvalidCanonicalIDInformational(t *testing.T) {
+	ctx := context.Background()
+	state := t.TempDir()
+	db, err := store.Open(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	disc := syntheticDiscoverer{
+		values:      []store.Extension{},
+		diagnostics: []string{"invalid extension identity"},
+	}
+	rep, err := DoctorWithDiscoverer(ctx, db, disc, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.DiscoveryStatus != "ok" {
+		t.Fatalf("expected discovery_status ok, got %q", rep.DiscoveryStatus)
+	}
+	if rep.Reason != "" {
+		t.Fatalf("expected empty reason, got %q", rep.Reason)
+	}
+	if len(rep.Diagnostics) != 1 || rep.Diagnostics[0] != "invalid extension identity" {
+		t.Fatalf("expected sanitized diagnostic, got %#v", rep.Diagnostics)
+	}
+	if rep.CountForReason() != 0 {
+		t.Fatalf("expected CountForReason = 0, got %d", rep.CountForReason())
+	}
+}
+
+func TestSettingUnreadableReturnsErrExtensionInventoryUnreadable(t *testing.T) {
+	ctx := context.Background()
+	state := t.TempDir()
+	db, err := store.Open(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	// Drop settings table to simulate unreadable/corrupted settings table
+	if _, err := db.Exec(ctx, "DROP TABLE settings"); err != nil {
+		t.Fatal(err)
+	}
+
+	rep, docErr := Doctor(ctx, db, "", "")
+	if docErr == nil {
+		t.Fatal("expected error on unreadable settings table, got nil")
+	}
+	var unreadable *ErrExtensionInventoryUnreadable
+	if !errors.As(docErr, &unreadable) {
+		t.Fatalf("expected *ErrExtensionInventoryUnreadable, got %T: %v", docErr, docErr)
+	}
+	if rep.Reason != "extension_inventory_unreadable" {
+		t.Fatalf("expected extension_inventory_unreadable, got %q", rep.Reason)
+	}
+	if rep.ActionKind != "manual_prerequisite" {
+		t.Fatalf("expected manual_prerequisite, got %q", rep.ActionKind)
+	}
+	if rep.ManualPrerequisite == nil || *rep.ManualPrerequisite != "prereq_extension_inventory_unreadable" {
+		t.Fatalf("unexpected manual_prerequisite: %#v", rep.ManualPrerequisite)
 	}
 }

@@ -183,13 +183,23 @@ refresh, snapshot performance, cost transparency, health recovery, and
 Codex/Claude subscription accounts, quota, reset information and reminders.
 Structured session search is excluded. Active version membership is owned by
 [the v0.6.0 contract](topics/v0-6-0-contract/tasks.md), delivered through PR #2.
-Main contains the first three assembled areas: schema-version-signal,
-snapshot-performance and subscription-quota. `desktop-refresh` is the fourth
-direct-to-main integration candidate at signed source `cc4151b`; its Round 6
-integration review passed for the exact local candidate, but it is not yet
-pushed or merged. Cost transparency and
-health recovery remain selected but unfinished, and aggregate assembly/version
+Main contains four assembled areas: schema-version-signal,
+snapshot-performance, subscription-quota and desktop-refresh. `health-recovery`
+is the fifth direct-to-main integration candidate at signed product source
+`6c15672` with Round 2 source-record delivery `543d074`; its topic acceptance
+gate is VERIFIED for that immutable review/status commit. Round 7 integration
+review passed, and its target-specific gate is recorded on the WorkUnit after
+the protected main update; PR delivery and merge remain separate. Cost transparency
+remains selected but has no delivered topic. Aggregate assembly and version
 closure remain open.
+PR #9's first Codex review raised six P2 findings; their scoped dispositions
+are tracked in the integration record. Merge readiness depends on exact-head
+CI, independent review and CEv1 evidence for the delivered candidate.
+The renewed review on `c11276a` raised four more P2 findings; their local
+repair candidate is tracked in the same record, pending delivery and new CI.
+The final renewed review on `53244aa` raised three further P2 findings. Their
+repair candidate remains pending exact-head CI; the two-round review limit is
+reached, so no third Codex review is planned.
 
 | Topic | Version | Status | Purpose |
 | --- | --- | --- | --- |
@@ -197,7 +207,8 @@ closure remain open.
 | [Schema Version Signal](topics/schema-version-signal/tasks.md) | `v0.6.0` | First assembly batch — 4/4 documents and 6/6 tasks reviewed and delivered; source `58df42d`. This integration carries the product, stable contracts and worktree-status governance correction. Task 5 manual text-size/layout and VoiceOver/interaction acceptance remain user-waived, not tested. See the [integration record](topics/v0-6-0-contract/reviews/assemble.md); retirement and release remain separate. | Stable schema-ahead reporting across doctor, CLI, desktop and Hook delivery, with actionable recovery and preserved independent session availability. |
 | [Snapshot Performance](topics/snapshot-performance/tasks.md) | `v0.6.0` | Second assembly batch — integrated through PR #4 at main `4dd10f4`; 6/6 documents and 3/3 tasks remain reviewed and delivered. Cold-import and unchanged-refresh CPU targets, the final 20-sample campaign, V01-V19 completeness and manual/native checks retain their explicit accepted-exception status; they are not reported as technical passes. Retirement and release remain separate. | One shared scan runtime, reusable snapshot computation and truthful CLI/menu-bar progress with preserved failure and scope semantics. |
 | [Subscription Quota](topics/subscription-quota/tasks.md) | `v0.6.0` | Third assembly batch — integrated through PR #5 at current main `7f84749`; seven Tasks remain reviewed and delivered, and the merge-result integration gate is VERIFIED 2/2. The fail-closed hosted-XCTest HOME boundary remains part of the delivered result; deferred P2 carriers are planning dispositions, not technical resolutions. Retirement and release remain separate. | Codex and Claude account discovery, bounded quota/reset snapshots, menu-bar and Settings presentation, reminders and truthful unavailable-field handling. |
-| [Desktop Refresh](topics/desktop-refresh/tasks.md) | `v0.6.0` | Fourth assembly batch candidate — 5/5 Tasks reviewed and delivered at signed source `cc4151b`; current main `7f84749` is its merge base and ancestor, so the local class is direct fast-forward with no conflict resolution. Round 6 integration review passed and its exact candidate gate is VERIFIED 2/2. Real timing, installed Widget callbacks/intents, sleep/wake and accessibility/gallery observations remain BLOCKED with no waiver. Push, PR, merge, retirement and release remain separate. | Completion-driven app refresh, bounded Widget loading, truthful aging/failure/recovery presentation, semantic targeted reload and 3–5 minute Widget timeline requests. |
+| [Desktop Refresh](topics/desktop-refresh/tasks.md) | `v0.6.0` | Fourth assembly batch — integrated through PR #6 at main `4bc0756` with merge-result gate VERIFIED 2/2. Real timing, installed Widget callbacks/intents, sleep/wake and accessibility/gallery observations remain BLOCKED with no waiver; retirement and release remain separate. | Completion-driven app refresh, bounded Widget loading, truthful aging/failure/recovery presentation, semantic targeted reload and 3–5 minute Widget timeline requests. |
+| [Health Recovery](topics/health-recovery/tasks.md) | `v0.6.0` | Fifth assembly batch candidate — 5/5 Tasks delivered; signed PR repair `6c15672` passed independent Round 2 review, delivered in source-record commit `543d074` with immutable topic gate VERIFIED 5/5. Current remote main `6aafb5a` and source checkpoint `032d867` share base `a396c2f`; the main-only actor-rule change makes this a clean three-way candidate. Round 7 integration review passed, with target-specific evidence tracked on its WorkUnit; PR and merge remain pending. Real VoiceOver is user-waived and untested, not a technical PASS; real-client observation remains SIMULATED. | Cause-specific lock and extension health diagnosis, safe recovery actions, additive desktop wire and bilingual menu-bar presentation. |
 
 #### Retired into `v0.5.0`
 

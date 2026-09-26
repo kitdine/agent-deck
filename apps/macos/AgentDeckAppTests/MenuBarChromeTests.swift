@@ -193,6 +193,98 @@ final class MenuBarChromeTests: XCTestCase {
 		}
 	}
 
+	func testHealthRecoveryActionFitsNarrowAndWidePopoverInBothLanguages() throws {
+		let oldLocale = ProcessInfo.processInfo.environment["AGENTDECK_TEST_LOCALE"]
+		defer {
+			if let oldLocale { setenv("AGENTDECK_TEST_LOCALE", oldLocale, 1) }
+			else { unsetenv("AGENTDECK_TEST_LOCALE") }
+		}
+		for language in ["en", "zh-Hans"] {
+			setenv("AGENTDECK_TEST_LOCALE", language, 1)
+			let row = HealthCheckRow(
+				id: "extension.stale", name: t(DesktopCopy.healthExtensions),
+				status: t(DesktopCopy.healthStatusWarning), severity: .warning,
+				recovery: nil, code: "extension_stale_inventory", count: 2, supportedCount: nil,
+				cause: t(DesktopCopy.healthCauseKeys["extension_stale_inventory"]!),
+				recoveryProse: t(DesktopCopy.healthNextKeys["extension_stale_inventory"]!),
+				reasonLabel: t(DesktopCopy.healthReasonKeys["extension_stale_inventory"]!),
+				effect: t(DesktopCopy.healthEffectStale),
+				actionLabel: t(DesktopCopy.healthCopySync),
+				actionContent: "agentdeck extension scan"
+			)
+			for width in [280, 420] {
+				let view = HealthCheckRowView(row: row)
+					.frame(width: CGFloat(width))
+					.foregroundStyle(Color.black)
+					.background(Color.white)
+					.environment(\.colorScheme, .light)
+				let hosting = NSHostingView(rootView: view)
+				hosting.frame = NSRect(x: 0, y: 0, width: CGFloat(width), height: 400)
+				hosting.layoutSubtreeIfNeeded()
+				XCTAssertLessThanOrEqual(hosting.fittingSize.width, CGFloat(width) + 1)
+				let button = try XCTUnwrap(findHealthCopyButton(in: hosting, rowID: row.id))
+				if width == 280 {
+					XCTAssertGreaterThan(button.frame.width, 200, "the stacked copy target fills the narrow row")
+				} else {
+					XCTAssertLessThan(button.frame.width, 200, "the command and copy target share the wide row")
+				}
+				let png = try renderedViewPNG(hosting)
+				XCTAssertGreaterThan(png.count, 2_000)
+				add(renderingAttachment(png, named: "Health recovery — \(language) — \(width) pt"))
+			}
+		}
+	}
+
+	func testHealthRecoveryCopyRetainsNativeFocusAndAccessibleFeedback() async throws {
+		let health: [String: Any] = [
+			"available": true, "status": "warning", "healthy": false,
+			"problems": 1, "warnings": 1, "errors": 0,
+			"checks": [[
+				"name": "extensions", "status": "warning", "resource": "extension_inventory",
+				"reason": "extension_stale_inventory", "action_kind": "synchronize_inventory",
+				"recovery_command": "agentdeck extension scan",
+			]],
+		]
+		let model = await makeModel(host: StubDesktopHost(behavior: .envelope(WireFixture.envelope(health: health))))
+		await model.coordinator.refresh()
+		let row = try XCTUnwrap(model.healthDetail.rows.first)
+		let hosting = NSHostingView(rootView: HealthCheckRowView(row: row, model: model).frame(width: 420))
+		hosting.frame = NSRect(x: 0, y: 0, width: 420, height: 300)
+		let window = NSWindow(contentRect: hosting.frame, styleMask: [.titled], backing: .buffered, defer: false)
+		window.contentView = hosting
+		window.makeKeyAndOrderFront(nil)
+		Self.retainedFocusWindows.append(window)
+		hosting.layoutSubtreeIfNeeded()
+		let button = try XCTUnwrap(findHealthCopyButton(in: hosting, rowID: row.id))
+		XCTAssertEqual(button.accessibilityLabel(), t(DesktopCopy.healthCopySync))
+		XCTAssertTrue(window.makeFirstResponder(button))
+		button.performClick(nil)
+		try await Task.sleep(for: .milliseconds(20))
+		hosting.layoutSubtreeIfNeeded()
+		XCTAssertEqual(model.copiedHealthRowID, row.id)
+		XCTAssertTrue(findHealthCopyButton(in: hosting, rowID: row.id) === button)
+		XCTAssertTrue(window.firstResponder === button)
+		XCTAssertEqual(button.title, t(DesktopCopy.healthCopied))
+		XCTAssertEqual(button.accessibilityValue() as? String, t(DesktopCopy.healthCopied))
+		try await Task.sleep(for: .milliseconds(1_700))
+		hosting.layoutSubtreeIfNeeded()
+		XCTAssertTrue(window.firstResponder === button)
+		XCTAssertEqual(button.title, t(DesktopCopy.healthCopySync))
+	}
+
+	private func findHealthCopyButton(in view: NSView, rowID: String) -> NSButton? {
+		if let button = view as? NSButton,
+			button.identifier?.rawValue == "health.copy.\(rowID)",
+			!button.isHidden, button.frame.width > 0
+		{
+			return button
+		}
+		for child in view.subviews {
+			if let button = findHealthCopyButton(in: child, rowID: rowID) { return button }
+		}
+		return nil
+	}
+
 	func testPopoverHeightUsesTheStatusItemScreensVisibleFrame() {
 		let shorterSecondaryDisplay = MenuBarGeometry.height(visibleFrameHeight: 600)
 		let tallerMainDisplay = MenuBarGeometry.height(visibleFrameHeight: 1_200)

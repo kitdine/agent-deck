@@ -75,6 +75,10 @@
           "status": "ok"
         },
         {
+          "name": "scan_lock",
+          "status": "ok"
+        },
+        {
           "name": "hook_deliveries",
           "status": "warning",
           "code": "hook_deliveries_dropped",

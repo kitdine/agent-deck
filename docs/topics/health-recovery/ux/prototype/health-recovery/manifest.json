@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "subject": "health-recovery shared menu-bar and CLI prototype",
+  "head": "bc6df888edb9dd342129865184ff0ca426819675",
+  "recorded_on": "2026-09-22",
+  "source": {
+    "prototype/src/healthRecovery.js": "3600b8b05a6661a1ffc37a65da8641b07e5c217613704e024c8c5c0dbee1c779",
+    "prototype/src/Stage.jsx": "2f6d18584560c61441ba723b63db2f88e587157170a38d03c04e2891561705b1",
+    "prototype/src/App.jsx": "e21154ad370c2af724d02c2f26f4b3b103547e7f4b6ad779166c0fbaafbaad65",
+    "prototype/src/Popover.jsx": "245dfe8553902589eec96d55a90ac0325cc32fa3fa04520c6dce3029af419573",
+    "prototype/src/Cli.jsx": "ab0fd95265ec32066a080d9062b0638be315e576efbb466ed242b43f772be997",
+    "prototype/src/i18n.js": "26d3cf70c9e01457127652812d8abfb8a877b8ea00bfd63c1705c5a41100e74f",
+    "prototype/src/styles.css": "e25653c4346d6343dbf9f93e73648a1a3f0ed642edd65117ccf8f9d964d16aae",
+    "prototype/src/health-recovery-probe.js": "1213d1d292cb450f938dbdad68ad17d05e37790f0e5cb8f09d62dea5a0f1a5e6",
+    "prototype/src/main.jsx": "d37ec1b401a19b7894011ceabe4beea01906b5f10c3e2dd02323e62888086f00",
+    "prototype/README.md": "cf36d969b681308d324fdb21b420733452f76ad94fe48fdf9a0b30b3dee7a6f9",
+    "docs/topics/health-recovery/ux/menubar-health-recovery.md": "496bdf233d127d9f0633cdbbaf1cecafcd69b2128f86667f8bcea9c260b32640",
+    "checks.json": "470242221b9a4bd33bd681670dc3fafe33fb90060b11585f498be156c0bd43f6"
+  },
+  "specimens": [
+    {
+      "file": "menubar-extension-stale-en-light-420.png",
+      "url": "?health=extensionStale&lang=en&theme=light&width=420",
+      "sha256": "eccf94ef4c99d0eb72e1c94367cbf864f5db319f004ed1b41e5d52258356ac45"
+    },
+    {
+      "file": "menubar-legacy-zh-dark-280.png",
+      "url": "?health=legacy&lang=zh&theme=dark&width=280",
+      "sha256": "42f06a83b453dd1115d7b2819308a780240716789c31f705b4cbbda3735d01bf"
+    },
+    {
+      "file": "menubar-combined-en-dark-420.png",
+      "url": "?health=combined&lang=en&theme=dark&width=420",
+      "sha256": "b75f11bcf1b85015db6b2e8ef5e8a3310b9c2b628e12c6e76067f0188649c9bd"
+    },
+    {
+      "file": "cli-extension-stale-en-dark.png",
+      "url": "?surface=cli&health=extensionStale&theme=dark&lang=en",
+      "sha256": "27e9ecf33f5aa192797ff5bb8bc98986ca4262bf9f1be0d6748e0a8b5cf81283"
+    },
+    {
+      "file": "cli-sync-incomplete-en-light.png",
+      "url": "?surface=cli&health=syncIncomplete&theme=light&lang=en",
+      "sha256": "3969fca0fd1c56c92f32f861845146a9145e7ea7130fb87c8c1170cea44065de"
+    }
+  ]
+}

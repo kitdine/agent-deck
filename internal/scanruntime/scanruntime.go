@@ -309,6 +309,11 @@ func (c Client) connectOrLaunch(ctx context.Context, endpoint, stateRoot string)
 		}
 		select {
 		case <-startupCtx.Done():
+			if ctx.Err() == nil {
+				if contention := store.InspectScanLockContention(stateRoot); contention != nil {
+					return nil, contention
+				}
+			}
 			return nil, fmt.Errorf("scan worker did not become ready: %w", startupCtx.Err())
 		case <-ticker.C:
 		}

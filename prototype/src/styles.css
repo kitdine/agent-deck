@@ -1131,6 +1131,46 @@ a:focus-visible {
   line-height: 1.45;
 }
 
+.health-copy-action {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px 10px;
+  align-items: center;
+  margin-top: 7px;
+}
+
+.health-copy-action code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font: 10px/1.45 ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+}
+
+.health-copy-action button {
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  background: var(--surface-2);
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.health-copy-action [role="status"] {
+  grid-column: 1 / -1;
+  min-height: 14px;
+  color: var(--good);
+  font-size: 10px;
+}
+
+.popover[data-width="280"] .health-copy-action {
+  grid-template-columns: 1fr;
+}
+
+.popover[data-width="280"] .health-copy-action button {
+  justify-self: stretch;
+}
+
 .provider-menu .menu-note {
   margin: 0;
   padding: 10px 12px;
@@ -2751,6 +2791,11 @@ button.notice:hover {
   font-size: 12px;
   line-height: 1.65;
   color: var(--text);
+}
+
+.terminal pre:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
 .terminal code {

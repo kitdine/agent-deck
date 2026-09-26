@@ -138,6 +138,9 @@ func buildCompleteFixture(t *testing.T) string {
 		{client: "claude", id: "claude-month", project: "/Users/example/private/notes", model: "claude-opus-5", first: "2026-07-25T09:00:00Z", last: "2026-07-25T10:00:00Z"},
 	})
 	seedQuota(t, root)
+	if err := os.WriteFile(filepath.Join(root, "state.lock"), []byte("legacy-lock"), 0o600); err != nil {
+		t.Fatalf("WriteFile legacy state lock: %v", err)
+	}
 	return encodeFixture(t, buildFixtureResult(t, root))
 }
 

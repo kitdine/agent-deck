@@ -638,7 +638,7 @@ struct HealthDetailView: View {
 				ScrollView(.vertical) {
 					VStack(alignment: .leading, spacing: MenuBarGeometry.betweenRows) {
 						ForEach(model.healthDetail.rows) { row in
-							HealthCheckRowView(row: row)
+								HealthCheckRowView(row: row, model: model)
 						}
 					Text(model.healthDetail.source)
 						.font(.caption)
@@ -657,10 +657,12 @@ struct HealthDetailView: View {
 
 struct HealthCheckRowView: View {
 	let row: HealthCheckRow
+	var model: MenuBarViewModel? = nil
 	@State private var isExpanded: Bool
 
-	init(row: HealthCheckRow, initiallyExpanded: Bool = true) {
+	init(row: HealthCheckRow, model: MenuBarViewModel? = nil, initiallyExpanded: Bool = true) {
 		self.row = row
+		self.model = model
 		_isExpanded = State(initialValue: initiallyExpanded)
 	}
 
@@ -689,10 +691,15 @@ struct HealthCheckRowView: View {
 					}
 				}
 				if isExpanded {
-					VStack(alignment: .leading, spacing: MenuBarGeometry.withinRow) {
-						if let cause = row.cause { proseRow(cause) }
-						if let recovery = row.recoveryProse { proseRow(recovery) }
-						if let command = row.recovery, !command.isEmpty { recoveryRow(command) }
+						VStack(alignment: .leading, spacing: MenuBarGeometry.withinRow) {
+							if let reason = row.reasonLabel { proseRow(reason) }
+							if let cause = row.cause { proseRow(cause) }
+							if let recovery = row.recoveryProse { proseRow(recovery) }
+							if let effect = row.effect { proseRow(effect) }
+							if let content = row.actionContent, let label = row.actionLabel {
+								actionRow(content: content, label: label)
+							}
+							if let command = row.recovery, !command.isEmpty { recoveryRow(command) }
 					}
 					.padding(.leading, MenuBarGeometry.rowMinimumHeight)
 					.padding(.bottom, MenuBarGeometry.withinRow)
@@ -711,7 +718,11 @@ struct HealthCheckRowView: View {
 			} else {
 				Image(systemName: "checkmark.circle").foregroundStyle(.secondary)
 			}
-			Text(row.name).font(.body)
+				Text(row.name).font(.body)
+				if let count = row.count, count > 0 {
+					Text(String(count)).font(.caption.weight(.semibold))
+						.padding(.horizontal, 5).background(DesktopVisualTheme.surfaceRaised, in: Capsule())
+				}
 			Spacer()
 			Text(row.status).font(.body).foregroundStyle(.secondary)
 		}
@@ -741,6 +752,106 @@ struct HealthCheckRowView: View {
 			.buttonStyle(.borderless)
 			.font(.caption)
 		}
+	}
+
+	private func actionRow(content: String, label: String) -> some View {
+		let copied = model?.copiedHealthRowID == row.id
+		return HealthActionLayout {
+			actionContent(content)
+			HealthCopyButton(rowID: row.id, label: label, copied: copied) {
+				model?.copyHealthAction(row)
+			}
+		}
+	}
+
+		@ViewBuilder
+		private func actionContent(_ content: String) -> some View {
+			Text(content)
+				.font(row.actionLabel == t(DesktopCopy.healthCopySafety) ? .caption : .system(.caption, design: .monospaced))
+				.fixedSize(horizontal: false, vertical: true)
+				.textSelection(.enabled)
+		}
+
+}
+
+private struct HealthActionLayout: Layout {
+	private let spacing: CGFloat = 8
+
+	private func stacked(width: CGFloat, subviews: Subviews) -> Bool {
+		let contentWidth = subviews[0].sizeThatFits(.unspecified).width
+		let buttonWidth = subviews[1].sizeThatFits(.unspecified).width
+		return width < 320 || contentWidth + buttonWidth + spacing > width
+	}
+
+	func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+		let idealWidth = subviews[0].sizeThatFits(.unspecified).width
+			+ subviews[1].sizeThatFits(.unspecified).width + spacing
+		let width = proposal.width ?? idealWidth
+		if stacked(width: width, subviews: subviews) {
+			let content = subviews[0].sizeThatFits(ProposedViewSize(width: width, height: nil))
+			let button = subviews[1].sizeThatFits(ProposedViewSize(width: width, height: nil))
+			return CGSize(width: width, height: content.height + spacing + button.height)
+		}
+		let button = subviews[1].sizeThatFits(.unspecified)
+		let content = subviews[0].sizeThatFits(ProposedViewSize(width: width - button.width - spacing, height: nil))
+		return CGSize(width: width, height: max(content.height, button.height))
+	}
+
+	func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+		if stacked(width: bounds.width, subviews: subviews) {
+			let content = subviews[0].sizeThatFits(ProposedViewSize(width: bounds.width, height: nil))
+			subviews[0].place(at: bounds.origin, proposal: ProposedViewSize(width: bounds.width, height: content.height))
+			subviews[1].place(
+				at: CGPoint(x: bounds.minX, y: bounds.minY + content.height + spacing),
+				proposal: ProposedViewSize(width: bounds.width, height: 28)
+			)
+		} else {
+			let button = subviews[1].sizeThatFits(.unspecified)
+			let contentWidth = bounds.width - button.width - spacing
+			subviews[0].place(at: bounds.origin, proposal: ProposedViewSize(width: contentWidth, height: bounds.height))
+			subviews[1].place(
+				at: CGPoint(x: bounds.maxX - button.width, y: bounds.minY),
+				proposal: ProposedViewSize(width: button.width, height: 28)
+			)
+		}
+	}
+}
+
+/// AppKit keeps one focusable control while SwiftUI updates its feedback text.
+private struct HealthCopyButton: NSViewRepresentable {
+	let rowID: String
+	let label: String
+	let copied: Bool
+	let action: () -> Void
+
+	final class Coordinator: NSObject {
+		var action: () -> Void
+		init(action: @escaping () -> Void) { self.action = action }
+		@objc func performCopy(_ sender: NSButton) { action() }
+	}
+
+	func makeCoordinator() -> Coordinator { Coordinator(action: action) }
+
+	func makeNSView(context: Context) -> NSButton {
+		let button = NSButton(title: label, target: context.coordinator, action: #selector(Coordinator.performCopy(_:)))
+		button.identifier = NSUserInterfaceItemIdentifier("health.copy.\(rowID)")
+		button.isBordered = false
+		button.focusRingType = .default
+		button.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+		return button
+	}
+
+	func updateNSView(_ button: NSButton, context: Context) {
+		context.coordinator.action = action
+		button.title = copied ? t(DesktopCopy.healthCopied) : label
+		button.setAccessibilityLabel(label)
+		button.setAccessibilityValue(copied ? t(DesktopCopy.healthCopied) : "")
+	}
+
+	func sizeThatFits(_ proposal: ProposedViewSize, nsView: NSButton, context: Context) -> CGSize? {
+		let font = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
+		let labelWidth = (label as NSString).size(withAttributes: [.font: font]).width + 20
+		return CGSize(width: proposal.width ?? labelWidth, height: 28)
 	}
 }
 

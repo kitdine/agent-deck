@@ -7844,8 +7844,8 @@
       "available": true,
       "status": "degraded",
       "healthy": false,
-      "problems": 2,
-      "warnings": 2,
+      "problems": 3,
+      "warnings": 3,
       "errors": 0,
       "checks": [
         {
@@ -7854,6 +7854,15 @@
         },
         {
           "name": "state_lock",
+          "status": "warning",
+          "code": "lock_legacy",
+          "resource": "state",
+          "reason": "lock_legacy",
+          "action_kind": "manual_prerequisite",
+          "manual_prerequisite": "prereq_legacy_lock_removal"
+        },
+        {
+          "name": "scan_lock",
           "status": "ok"
         },
         {

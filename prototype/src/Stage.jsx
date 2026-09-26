@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { catalogs } from "./i18n.js";
+import { HEALTH_RECOVERY_STATES } from "./healthRecovery.js";
 
 const STATES = ["normal", "empty", "aged", "partial", "pending", "unavailable", "schema", "schemaStacked"];
 
@@ -28,6 +29,7 @@ export function useStagePrefs() {
   const [width, setWidth] = useState(WIDTHS.includes(params.get("width")) ? params.get("width") : "420");
   const [quota, setQuota] = useState(QUOTAS.includes(params.get("quota")) ? params.get("quota") : "normal");
   const [refresh, setRefresh] = useState(REFRESHES.includes(params.get("refresh")) ? params.get("refresh") : "idle");
+  const [health, setHealth] = useState(HEALTH_RECOVERY_STATES.includes(params.get("health")) ? params.get("health") : "baseline");
   const [widgetRefresh, setWidgetRefresh] = useState(WIDGET_REFRESHES.includes(params.get("widgetRefresh")) ? params.get("widgetRefresh") : "fresh");
   const [widgetClient, setWidgetClient] = useState(
     WIDGET_CLIENTS.includes(params.get("widgetClient")) ? params.get("widgetClient") : "codex",
@@ -39,12 +41,12 @@ export function useStagePrefs() {
     document.documentElement.setAttribute("lang", lang === "zh" ? "zh-Hans" : "en");
   }, [theme, lang]);
 
-  return { lang, setLang, theme, setTheme, state, setState, width, setWidth, quota, setQuota, refresh, setRefresh, widgetRefresh, setWidgetRefresh, widgetClient, setWidgetClient, anchor, setAnchor };
+  return { lang, setLang, theme, setTheme, state, setState, width, setWidth, quota, setQuota, refresh, setRefresh, health, setHealth, widgetRefresh, setWidgetRefresh, widgetClient, setWidgetClient, anchor, setAnchor };
 }
 
-function Group({ label, value, options, onChange }) {
+function Group({ label, value, options, onChange, axis }) {
   return (
-    <div className="stage-group">
+    <div className="stage-group" data-stage-axis={axis}>
       <span>{label}</span>
       <div>
         {options.map(([key, text]) => (
@@ -63,8 +65,8 @@ function Group({ label, value, options, onChange }) {
   );
 }
 
-export function StageControls({ prefs, showState = true, showWidth = true, showQuota = true, showRefresh = false, showWidgetRefresh = false, showWidgetClient = false, showAnchor = false }) {
-  const { lang, setLang, theme, setTheme, state, setState, width, setWidth, quota, setQuota, refresh, setRefresh, widgetRefresh, setWidgetRefresh, widgetClient, setWidgetClient, anchor, setAnchor } = prefs;
+export function StageControls({ prefs, showState = true, showWidth = true, showQuota = true, showRefresh = false, showHealth = false, showWidgetRefresh = false, showWidgetClient = false, showAnchor = false }) {
+  const { lang, setLang, theme, setTheme, state, setState, width, setWidth, quota, setQuota, refresh, setRefresh, health, setHealth, widgetRefresh, setWidgetRefresh, widgetClient, setWidgetClient, anchor, setAnchor } = prefs;
   const dict = catalogs[lang];
   const surface = new URLSearchParams(window.location.search).get("surface");
   const link = (target, text) => {
@@ -112,6 +114,15 @@ export function StageControls({ prefs, showState = true, showWidth = true, showQ
             onChange={setRefresh}
           />
         )}
+        {showHealth && (
+          <Group
+            axis="health"
+            label={dict.states.healthRecovery}
+            value={health}
+            options={HEALTH_RECOVERY_STATES.map((key) => [key, dict.states.healthRecoveryVariants[key]])}
+            onChange={setHealth}
+          />
+        )}
         {showWidgetRefresh && (
           <Group
             label={dict.states.widgetRefresh}
@@ -154,6 +165,7 @@ export function StageControls({ prefs, showState = true, showWidth = true, showQ
           onChange={setTheme}
         />
         <Group
+          axis="language"
           label={dict.states.language}
           value={lang}
           options={[
@@ -167,4 +179,4 @@ export function StageControls({ prefs, showState = true, showWidth = true, showQ
   );
 }
 
-export { STATES, WIDTHS };
+export { HEALTH_RECOVERY_STATES, STATES, WIDTHS };

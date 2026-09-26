@@ -44,6 +44,7 @@ URL 参数：`lang=zh|en`、`theme=dark|light`、
 `sessions=readable|unavailable`、`signal=activity|workflow|tooling`、
 `quota=normal|bothOfficial|codexPlus|prose|parseFailed|stale|neverProbed`、
 `refresh=idle|refreshing|failed|storageFailed|wake|recovered|firstFailure`、
+`health=baseline|stateLive|scanLive|legacy|ownerUnknown|extensionStale|discoveryFailed|syncIncomplete|combined`、
 `widgetRefresh=fresh|aging|old|hostAbsent|unchanged|changed|missing|containerUnavailable|readFailed|unsupported|recovered`、
 `widgetClient=codex|claude`、`anchor=left|center|right`、`settings=1`。
 
@@ -241,6 +242,29 @@ atomic live region；已有 scan live region 出现时不重复播报。
 说明改为「运行时约每分钟；关闭后启动与手动仍更新」，控件与布局不变。
 这些是浏览器标本，不替代原生 VoiceOver、Dynamic Type、AppKit focus、真实睡眠恢复或
 WidgetKit 调度验收。
+
+## 健康诊断与恢复标本（health-recovery）
+
+Popover 与 CLI 共用 `src/healthRecovery.js` 中的一份 resource/reason/action
+模型。Popover 页新增可见的 `健康恢复 / Health recovery` 舞台轴；CLI 页新增
+`recovery` 页签。`health=` 可为 baseline、stateLive、scanLive、legacy、
+ownerUnknown、extensionStale、discoveryFailed、syncIncomplete、combined。
+
+菜单栏只复制同步命令、诊断命令或不含破坏命令的安全前置步骤，从不在原型中执行恢复。
+CLI text 仍是单一英文逐字符输出；JSON 面板只展示设计已冻结的必需字段，最终容器仍由
+architecture 决定。语言开关只改变原型舞台与菜单栏。两端由同一稳定 token
+模型驱动，因此 `lock_live`、`extension_stale_inventory`、
+`extension_fingerprint_update_failed` 与 `action_kind` 不得各自翻译或重命名。
+
+加 `healthProbe=1` 运行健康恢复交互检查。Popover probe 逐态进入 Health、核对 reason、
+安全动作数量、复制反馈与返回路径；CLI probe 逐态核对 text、required JSON fields 与共享 reason。
+结果写入 `window.healthRecoveryProbeResult`，失败列表必须为空。不要与 `probe=1` 或
+`scanProbe=1` 同时运行。
+
+设计、截图、浏览器检查和内容哈希见
+[`ux/menubar-health-recovery.md`](../docs/topics/health-recovery/ux/menubar-health-recovery.md)。
+这些浏览器 specimen 不证明原生 VoiceOver、Dynamic Type、AppKit pasteboard、真实锁生命周期
+或 SQLite transaction 行为；后续实现验收必须分别覆盖。
 
 ## Widget 刷新可信性标本（desktop-refresh）
 
