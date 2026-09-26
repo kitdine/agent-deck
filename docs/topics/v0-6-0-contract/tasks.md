@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-09-08
-updated: 2026-09-19
+updated: 2026-09-26
 ---
 
 # v0.6.0 Contract — Tasks
@@ -40,24 +40,29 @@ files or product content between worktrees as a substitute for authorized merges
 
 ## Assembly list
 
-The selection is inherited from the operator's 2026-09-05 v0.6.0 decision in
+The selection was established by the operator's 2026-09-05 v0.6.0 decision in
 [Roadmap](../../roadmap.md#v060--trusted-usage-and-subscription-visibility),
-coordinated by `ad-v060-iteration`. This contract proposes to carry that complete
-selection; its review establishes the active version membership authority.
-Unfinished areas remain selected, not silently deferred. A carrier is not a
-completed feature topic or an approved implementation decomposition.
+and narrowed by the operator on 2026-09-26 to defer cost transparency outside
+this version. Beads coordination remains under `ad-v060-iteration`. This
+contract owns the five retained areas; the membership change requires its own
+review and evidence before aggregate assembly or version closure is complete.
+An area remains selected until an explicit scope decision such as the one
+recorded above; readiness alone never defers it. A carrier is not a completed
+feature topic or an approved implementation decomposition.
 
 | Selected area | Planning carrier | Topic / current readiness |
 | --- | --- | --- |
 | Schema compatibility and Hook failure visibility | `ad-schema-compatibility` | `schema-version-signal`; integrated through PR #3 at main `f2b7d23`, with its reviewed manual acceptance waivers retained |
 | Menu-bar and Widget refresh | `ad-desktop-refresh` | `desktop-refresh`; integrated through PR #6 at main `4bc0756`, with merge-result gate VERIFIED 2/2 and native acceptance retained as BLOCKED/no-waiver |
 | Snapshot performance | `ad-snapshot-performance` | `snapshot-performance`; integrated through PR #4 at main `4dd10f4`, with the reviewed performance and native acceptance exceptions retained |
-| Cost and price transparency | `ad-cost-transparency` | Topic decomposition/delivery pending; distinguish actual-spend and API-equivalent estimates, with separate catalog/model/tier audits |
 | Actionable health recovery | `ad-health-recovery` | `health-recovery`; integrated through PR #9 at main `3f29e26`, with exact source topic gate VERIFIED 5/5, merge-result gate VERIFIED 2/2, final Codex review without findings, green PR/main CI, VoiceOver user-waived and real-client observation SIMULATED; both origin bugs closed |
 | Codex/Claude subscription accounts, quota, reset and alerts | `ad-subscription-quota` | `subscription-quota`; integrated through PR #5 at main `7f84749`, with fail-closed hosted-XCTest isolation preserved and deferred P2 dispositions kept explicit |
 
-Bind the one remaining area to its actual reviewed topic before assembly;
-do not invent topic directories or implementation tasks for them in this file.
+The five retained areas are integrated into main. `ad-cost-transparency`
+remains an independent planning carrier with no assigned release version; its
+catalog, model and request-tier investigations remain separate until design
+evidence establishes their boundaries.
+Do not invent topic directories or implementation tasks in this file.
 If an area yields more than one coherent topic, update this list explicitly.
 Adding, excluding or deferring selected scope requires an explicit operator
 decision recorded here; readiness alone does not change membership.
@@ -68,7 +73,7 @@ Unsupported critical fields remain unavailable with a reason and a disposition,
 never zero or silently removed. No reset action, account login switching,
 automatic updater or plaintext credential storage is introduced here.
 
-Structured session search, credits conversion, Context Efficiency, Linux, a
+Cost transparency, structured session search, credits conversion, Context Efficiency, Linux, a
 public adapter protocol, full extension observability and multi-device
 aggregation remain excluded from this version selection. Prior withdrawal
 decisions remain in force.
@@ -311,3 +316,14 @@ integrated through PR #3 at `f2b7d23`, `snapshot-performance` through PR #4 at
 Their integration histories, exact result identities and retained limitations
 remain in [the batch integration review](reviews/assemble.md), Beads and CEv1;
 this fourth-batch preparation does not relabel or replace that evidence.
+
+### Scope decision and RC1 preparation — 2026-09-26
+
+The operator removed cost transparency from the v0.6.0 membership without
+assigning it to another version. The five retained areas are integrated into
+main through health-recovery PR #9 and its status follow-up PR #10 at
+`228d89f01cceb87510127180b7dde537fc7f169a`. Health recovery's source
+topic gate is VERIFIED 5/5 and its final postmerge-status integration gate is
+VERIFIED 2/2. These are batch results; the aggregate `assemble` and this
+contract's version-level closure still need their own review and exact-state
+evidence. Release preflight, RC1 tag and publication remain separate boundaries.
