@@ -167,3 +167,57 @@ Task checkpoint：ad-v060c-doc-tasks-design；content_state=b118f97e0d1ec83d61a7
 下一步指令：提交：v0-6-0-contract / tasks.md（含 reviews/tasks.md）
 
 WORKFLOW_WORKSPACE: agent-deck.v0-6-0-contract
+
+## Round 3 — 2026-09-26 — five-area membership
+
+### 📋 v0.6.0 契约文档复评
+
+📊 总体评分：9/10
+
+✅ 复评结论：PASS
+
+Reviewer: GitHub Codex independent PR #11 reviews on `d47812c`, `688c87e`,
+and final `7c486b2`, with maintainer verification of the current document and
+source boundaries. Method: inspect the version selection, matrix, roadmap and
+main ancestry; resolve the first review's stale Review-cell finding; reuse the
+unchanged feature integration gates without treating native waivers as tests.
+Scope: the single-document set and five-area membership in `tasks.md`. The two
+implementation Tasks, release preflight, tag and publication are separate.
+
+### 🔴 严重问题 — 必须修复
+
+无。
+
+### 🟡 改进问题 — 必须关闭
+
+`V060C-R3-F1` ([PR comment](https://github.com/kitdine/agent-deck/pull/11#discussion_r4111740808))
+CLOSED: the previous six-area Round 2 could not support an already-checked
+Review cell for the new five-area plan. The cell was cleared at `688c87e`; this
+round now reviews the narrowed plan before restoring the mark. No new finding
+remains in the final `7c486b2` independent review.
+
+### 🟢 优点
+
+- The Documents matrix still has one required `tasks.md`; requirements, UX and
+  architecture remain owned by the five feature topics.
+- The roadmap, assembly list and project status select the same five delivered
+  areas. `ad-cost-transparency` retains its investigations without a version.
+- Historical batch exceptions stay explicit: desktop native/performance gaps
+  are not technical PASS, and health VoiceOver remains waived but untested.
+
+### 📝 总结
+
+Reviewed state: PR #11 head `7c486b246e855991a06f4667e169b48ed2e5f0e6`
+and `tasks.md` blob `cbe91256457173f1463d5e75fc8b896f375f561d` before
+this review-cell synchronization. The synchronization changes only that cell;
+its resulting blob requires a new exact-state document gate. The five integration
+WorkUnits each return VERIFIED 2/2 at their recorded merge-result state; older
+desktop candidate impacts and one health candidate invalidation do not appear
+in the valid evidence for those merge-result criteria. `bash scripts/check-topic-docs.sh`,
+`make check-whitespace` and `git diff --check` pass on the final candidate.
+
+Completion gate: VERIFIED (3/3) for
+`v0-6-0-contract:tasks.md:state:1dc4e38d78dd1c994be2ea64fc14e1e98fdb130e93e6ee92d136876fb22537c5`.
+The fixed-template CEv1 query returned target-matching document-set, contract
+and L0 evidence with no missing, invalidated or unresolved item. This document
+gate does not close either implementation Task or authorize release preflight.

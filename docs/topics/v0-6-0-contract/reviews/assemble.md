@@ -622,6 +622,74 @@ Task checkpoint：ad-v060c-assemble-dev / batch subscription-quota；content_sta
 提交建议：提交 Round 5 复评记录及同批 contract handoff 同步；产品修复已在签名提交 `f837666`，不得夹带其他任务或产品改动。
 推送建议：取得独立推送授权并确认新的复评文档提交消息、贡献者 trailer、SSH 签名及远端基线后，推送 `feature/subscription-quota`；feature-to-main assembly/PR/merge 仍需各自授权和成功 CI/branch protection。
 
+## PR #5 delivery receipt — 2026-09-19
+
+### 📋 subscription-quota 集成交付核验
+
+📊 总体评分：9.5/10
+
+✅ 交付核验：PASS
+
+Reviewer: Codex automated PR review plus maintainer disposition. Method: reuse
+Round 5's independent integration review for the pre-merge conflict-resolution
+and hosted-XCTest boundary; verify the actual GitHub merge, final protected CI,
+and final review carrier disposition. Scope: third batch's feature-to-main
+assembly only; the remaining three selected v0.6.0 areas, aggregate `assemble`,
+version closure, retirement and release are excluded.
+
+Reviewed result: target parent
+`4dd10f4bf0bfcea2b4cceede5ac9f24465f6a656` / source head
+`f2b4ebb4c0c57e93b1c967f6764672b46905345c`; GitHub PR #5 merged at
+`2026-09-19T12:34:17Z` as two-parent merge
+`7f84749f8bfa96496602560df0b4d5da09e6fd9d`, result tree
+`41cc1390c6a4949c4fbe5cde087925be12f356b7`. Operation class: reviewed
+three-way conflict resolution plus repaired source, then feature-to-main merge.
+The merge preserves the reviewed main parent and source parent; it is not a
+post-hoc reimplementation of the Round 5 candidate.
+
+### 🔴 严重问题 — 必须修复
+
+无。
+
+### 🟡 建议改进 — 已由用户决定延期
+
+The final Codex review (round 13) found no P0/P1 issue. The user explicitly
+instructed: repair review findings only at P0/P1; otherwise merge and record P2
+findings for later work. The following in-scope P2 findings are therefore
+**CLOSED by explicit user decision** and carried as deferred Lane C candidates:
+
+- `R13-F1` -> `ad-bug-quota-reading-off-route-not-restored-on-save-failure` /
+  `docs/roadmap.md` Backlog: reading-off route compensation.
+- `R13-F2` -> `ad-bug-quota-statusline-cross-installation-conflict` /
+  `docs/roadmap.md` Backlog: cross-state-dir managed-route conflict.
+- `R13-F3` -> `ad-bug-quota-parse-failure-source-misattribution` /
+  `docs/roadmap.md` Backlog: parse-failure source attribution.
+- `R13-F4` -> `ad-bug-widget-large-quota-header-client-label` /
+  `docs/roadmap.md` Backlog: large-widget client label.
+- `R13-F5` -> `ad-bug-quota-portable-restore-account-bound-state` /
+  `docs/roadmap.md` Backlog: portable restore account-bound cache.
+
+### 📝 交付与验证
+
+- GitHub reports PR #5 `MERGED`, `CLEAN`, and `MERGEABLE` before delivery;
+  all four final protected checks (`verify` ×2, `desktop` ×2) completed SUCCESS
+  on source head `f2b4ebb`.
+- The first execution of one `verify` job failed only at
+  `TestDesktopQuotaRefreshReturnsDueAlertsForTheAppToDeliver`; that test and its
+  production path were unchanged by the docs-only final head. The retried job
+  completed SUCCESS. This is retained as an unreproduced transient CI event, not
+  misrepresented as a diagnosed or fixed defect.
+- Round 5 candidate evidence remains attached to its original
+  `f837666` ContentState. The separately recorded merge-result roll-up is
+  VERIFIED 2/2 at `v0-6-0-contract:integration:subscription-quota:merge:7f84749f8bfa96496602560df0b4d5da09e6fd9d`;
+  prior candidate observations are not relabeled.
+
+Residual uncertainty: P2 carriers are deferred, not technical resolutions. The
+aggregate `assemble` task remains open until the other selected areas are
+integrated or receive an explicit membership decision.
+
+完成门禁：VERIFIED（2/2；target `v0-6-0-contract:integration:subscription-quota:merge:7f84749f8bfa96496602560df0b4d5da09e6fd9d`）。`integration-readiness` 与 `source-continuity` 都具有同一 merge result 的 PASS evidence；旧候选 evidence 保持其原始 ContentState 不变。
+
 ## Round 6 — 2026-09-21 — desktop-refresh
 
 ## 📋 desktop-refresh 集成评审
@@ -916,3 +984,63 @@ Beads records PR delivery on `ad-v060c-assemble-dev`; the two origin bugs and
 remains open for cost transparency. Manual VoiceOver is user-waived and NOT
 TESTED, not a technical PASS; installed real-client observation remains
 SIMULATED. Topic retirement and v0.6.0 release are separate boundaries.
+
+## Round 8 — 2026-09-26 — five-area aggregate candidate
+
+### 📋 v0.6.0 整体集成评审
+
+📊 总体评分：9/10
+
+✅ 评审结论：PASS
+
+Reviewer: GitHub Codex independent PR #11 reviews through final reviewed head
+`7c486b2`, with Codex verification of the five exact merge-result gates and
+current main/source ancestry. Method: inspect version membership, reviewed
+batch lineage, PR conflicts and changed interfaces, then verify the actual
+final-head CI and the disposition of all PR review comments. Scope: aggregate
+`assemble` candidate after the operator's five-area decision. The version-level
+contract Task, technical release preflight, RC1 tag and publication are excluded.
+
+### 🔴 严重问题 — 必须修复
+
+无。
+
+### 🟡 改进问题 — 必须关闭
+
+The first independent PR review found six P2 documentation/record issues; the
+second found two more. Each was checked against the owning source or record and
+repaired in signed commits on PR #11. The third review of `7c486b2` reported
+no major issues and added no inline suggestion. No in-scope finding remains
+open; the earlier subscription-quota P2 Lane C carriers keep their prior
+operator disposition and are not recast as resolved by this assembly.
+
+### 🟢 优点
+
+- Roadmap, contract matrix and project status now agree on exactly five areas;
+  cost transparency retains an independent, unversioned planning carrier.
+- All five selected feature topics are already in main with preserved ancestry.
+  Their exact integration WorkUnits each return VERIFIED 2/2 at the recorded
+  merge-result ContentState. Historical desktop candidate impacts and one
+  health candidate invalidation do not affect those valid merge-result passes.
+- The PR's only non-document behavior change is the separately reviewed cask
+  preflight syntax. The real isolated Homebrew migration test and distribution
+  check passed, and its Lane A Task gate is VERIFIED 4/4 at `c80a054`.
+
+### 📝 总结
+
+Reviewed state: main `228d89f01cceb87510127180b7dde537fc7f169a` /
+source PR #11 `c80a05441e89348fa81dbb176e1c5016f72a23eb`, tree
+`2d16fc5448ab6306f155c4582ec5273211cb89bd` before this review-record
+append. Main is an ancestor of the source, so the planned feature-to-main PR
+merge needs no manual conflict resolution; check the actual result after merge.
+Four source-head CI jobs (`verify` twice, `desktop` twice) are SUCCESS. Local
+`check-topic-docs.sh`, whitespace and diff checks passed. Earlier native and
+performance gaps retain their recorded statuses; health VoiceOver is waived
+but untested, and installed real-client observation remains SIMULATED.
+
+Completion gate: VERIFIED (4/4) for candidate
+`v0-6-0-contract:assemble:candidate:f70a136ff190a1fc31b336a26eadf7afe0daed572bf8f14e69ba115cfbf85621`.
+The fixed-template query has no missing, invalidated or unresolved item and
+rolls up the five exact integration gates plus the scoped cask fix gate. This
+receipt changes the review blob, so final candidate preservation must be bound
+before delivery. PR merge-result identity and version Task closure remain separate.

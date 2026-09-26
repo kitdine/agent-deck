@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-08-25
-updated: 2026-09-05
+updated: 2026-09-26
 ---
 
 # AgentDeck Roadmap and Backlog
@@ -16,17 +16,19 @@ Re-planned by the operator on 2026-09-05 after stable v0.5.0. This decision
 reuses the version number with a new scope; the old cancelled cost-truthfulness
 epic remains historical. The iteration entry is `ad-v060-iteration`.
 
-These are six selected feature areas for topic design, not an approved
+These are five selected feature areas for topic design, not an approved
 implementation breakdown. Beads carries planning coordination; this section
 owns the selection. A version-contract topic assembles the delivered topics
 later. Do not create development tasks before each topic's tasks.md passes.
+On 2026-09-26 the operator moved cost and price transparency out of v0.6.0;
+`ad-cost-transparency` remains an independent planning carrier without an
+assigned delivery version.
 
 | Feature | Planning carrier | Reason and boundary |
 | --- | --- | --- |
 | Schema compatibility and Hook failure visibility | `ad-schema-compatibility` | Prevent permanent schema refusal from silently losing Hook observations; reuse the existing schema-version-signal document tasks. |
 | Menu-bar and Widget refresh | `ad-desktop-refresh` | Make freshness and errors truthful; target approximately 1 minute for the menu bar and 3–5 minutes for widgets with change-driven updates. |
 | Snapshot performance | `ad-snapshot-performance` | Reduce repeated aggregation before increasing refresh frequency; verify invalidation and output equivalence. |
-| Cost and price transparency | `ad-cost-transparency` | Distinguish actual-spend estimates from API-equivalent estimates; audit catalog, model mapping, and request price tiers separately. |
 | Actionable health recovery | `ad-health-recovery` | Resolve lock recovery guidance and stale extension inventory with cause-specific actions; retain the two origin bugs. |
 | Codex/Claude subscription accounts, quota, reset and alerts | `ad-subscription-quota` | Make subscription capacity actionable, including Codex reset-count information, reset times, and opt-in reminders. |
 
@@ -43,14 +45,15 @@ login switching, automatic app updater, or plaintext credential persistence is
 included.
 
 Design subscription-source feasibility early alongside schema and performance
-work. Refresh delivery depends on snapshot performance; subscription reminder
-presentation coordinates with refresh and billing labels with cost transparency,
-without treating those coordination points as blanket design blockers.
+work. Refresh delivery depends on snapshot performance. Subscription reminder
+presentation retains truthful billing labels; later cost-transparency design
+may refine those labels but does not block this version.
 
-Structured session search is excluded from v0.6.0 and remains an unscheduled
-candidate. Credits conversion, Context Efficiency, Linux, a public adapter
-protocol, full extension observability and multi-device aggregation remain
-later candidates. Existing withdrawal decisions remain effective.
+Cost transparency and structured session search are excluded from v0.6.0 and
+remain unassigned candidates. Credits conversion, Context Efficiency, Linux,
+a public adapter protocol, full extension observability and multi-device
+aggregation remain later candidates. Existing withdrawal decisions remain
+effective.
 
 The old v0.7.0 subscription epic/plan/Gate are superseded by this selection;
 their historical records remain parked. The remaining old version rows are
@@ -65,7 +68,7 @@ development starts.
 
 | Version | Theme | Scope |
 | --- | --- | --- |
-| `v0.6.0` | Trusted usage and subscription visibility | The six feature areas selected above; subscription quota includes Codex reset-count information. |
+| `v0.6.0` | Trusted usage and subscription visibility | The five feature areas selected above; subscription quota includes Codex reset-count information. |
 | `v0.8.0` | Boundary consolidation and Linux | Versioned client adapter contract, Linux machine identity, de-darwin PTY tests, Linux CI matrix and release artifacts. |
 | `v0.9.0` | Observability completion | Extension enabled state, cross-client duplication and drift, source authenticity, structured session search filters, wrapper health probing, richer desktop session window. |
 | `v1.0.0` | Multi-device and trust | Device dimension, backup merge import, read-only aggregation views, CLI archive signing and notarization. |
@@ -98,12 +101,12 @@ labelled as planning intake for a version is only scheduled for separate design
 and disposition while that version is planned; it is not yet part of that
 version's delivery scope.
 
-Pricing intake selected for v0.6.0 and remaining candidates (keep them separate
+Pricing intake moved out of v0.6.0 and remaining candidates (keep them separate
 until design evidence justifies merging them):
 
 The earlier v0.6.0 cost-truthfulness release was cancelled and its attribution
 scope shipped in v0.5.0. The new v0.6.0 selection above supersedes that release
-sequence. Pricing investigations below belong to its cost-transparency design;
+sequence. Pricing investigations below belong to the future cost-transparency design;
 credits and Context Efficiency remain unscheduled. The attribution defect is
 no longer a Backlog candidate:
 it was delivered by the archived
@@ -113,7 +116,8 @@ topic. That topic corrects the current contract that reserves `exact` for
 `estimated`; a determinable event classified as `inferred` is not publishable.
 There is no later attribution item to reconcile from this checklist.
 
-Pricing catalogs and tiers remain independent investigations within v0.6.0.
+Pricing catalogs and tiers remain independent investigations within the
+unassigned cost-transparency candidate.
 Credits and Context Efficiency remain later candidates. Subscription discovery
 is selected into v0.6.0 with quota, reset information and reminders.
 

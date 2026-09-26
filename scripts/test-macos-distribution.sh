@@ -49,7 +49,9 @@ grep -F 'conflicts_with cask: ["agentdeck-app-rc"]' "$stable_cask" >/dev/null
 # Homebrew accepts only casks in conflicts_with, so the formula exclusion is a
 # preflight refusal and must name both CLI channels.
 grep -F '["agentdeck", "agentdeck-rc"].each do |conflicting_formula|' "$stable_cask" >/dev/null
-grep -F 'HOMEBREW_CELLAR/conflicting_formula' "$stable_cask" >/dev/null
+grep -F 'preflight_steps do' "$stable_cask" >/dev/null
+grep -F 'if_path_exists "{{HOMEBREW_CELLAR}}/#{conflicting_formula}" do' "$stable_cask" >/dev/null
+grep -F 'run "/bin/sh", args: ["-c", <<~SH]' "$stable_cask" >/dev/null
 grep -F 'app "AgentDeck.app"' "$stable_cask" >/dev/null
 grep -F 'binary "#{appdir}/AgentDeck.app/Contents/Helpers/agentdeck"' "$stable_cask" >/dev/null
 grep -F 'etc/bash_completion.d/agentdeck' "$stable_cask" >/dev/null

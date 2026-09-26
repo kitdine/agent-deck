@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-08-25
-updated: 2026-09-14
+updated: 2026-09-26
 ---
 
 # AgentDeck Project Status
@@ -175,11 +175,11 @@ claimed. The separately delivered Beads observer Fix keeps its existing review,
 real-client acceptance and immutable gates. Further instruction changes require
 one complete per-document proposal and approval.
 
-Next iteration planning: **v0.6.0**, re-selected on 2026-09-05. The six feature
-areas and their boundaries are recorded in
+Version scope: **v0.6.0**, re-selected on 2026-09-05 and narrowed on
+2026-09-26. Its five areas and their boundaries are recorded in
 [the roadmap](roadmap.md#v060--trusted-usage-and-subscription-visibility), with
 Beads coordination under `ad-v060-iteration`: schema/Hook visibility, desktop
-refresh, snapshot performance, cost transparency, health recovery, and
+refresh, snapshot performance, health recovery, and
 Codex/Claude subscription accounts, quota, reset information and reminders.
 Structured session search is excluded. Active version membership is owned by
 [the v0.6.0 contract](topics/v0-6-0-contract/tasks.md), delivered through PR #2.
@@ -190,8 +190,9 @@ source topic gate is VERIFIED 5/5 and merge-result integration gate VERIFIED
 2/2. The final Codex review on source `d040bd1` found no further issues, and
 PR-head and merged-main CI passed. Manual VoiceOver acceptance was user-waived
 and remains untested; installed real-client observation remains SIMULATED.
-Cost transparency remains selected without a delivered topic, so aggregate
-assembly and version closure remain open. Review and merge details are in the
+Cost transparency is now an unassigned planning candidate outside v0.6.0.
+All five selected areas are integrated; aggregate assembly review/evidence and
+version-contract closure remain open. Review and merge details are in the
 [integration record](topics/v0-6-0-contract/reviews/assemble.md).
 
 | Topic | Version | Status | Purpose |
