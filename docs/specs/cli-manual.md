@@ -808,7 +808,9 @@ envelope 写入 stderr 并退出 `2`。省略 `--format json` 或选择 text/NDJ
 
 成功响应使用标准 envelope、`command: "desktop.snapshot"` 和独立的
 `data.wire_version: 1`。`data` 始终包含 `provider`、`usage`、`sessions`、
-`health` 四个 section 及各自的 `available`。`sessions.work_signals` additively
+`health`、`subscription` 五个 section 及各自的 `available`。旧 wire-v1 payload
+缺少 `subscription` 时解码为 unavailable，不提高 `wire_version`。
+`sessions.work_signals` additively
 包含 `activity`、`workflow`、`tooling` 三个 family；每个 family 都有自己的
 `available` 与按 `period`、`client` keyed 的 bounded `items[]`。producer 固定生成
 `today|7d|30d` x `all|codex|claude` positions；Activity 保持四个 category 的固定顺序，
@@ -860,8 +862,9 @@ v0.5.0 随发布提供 `AgentDeck.app`，一个 macOS 26 菜单栏应用，其�
   Client x Period item，渲染 captured summary cards 与 Activity、Workflow、Tooling
   details；每族只有在自身 unavailable 时保留 `Not captured yet`，可读但无该族数据的
   scope 使用 empty 或 `—`，不隐藏同 scope 已捕获的 sibling families。
-- **唯一的写操作**：切换当前 provider 是唯一会改变应用之外状态的动作，且
-  走与终端切换相同的 CLI 路径。其余表面全部只读。
+- **显式写操作**：切换当前 provider 与更改 quota/提醒设置走内嵌 helper 的
+  受管 CLI 路径；健康恢复按钮只复制命令或安全步骤，不替用户执行。阅读面板
+  与 `desktop snapshot` 保持只读。
 - **刷新调度**：启动刷新不受偏好影响。周期完整刷新默认关闭；开启后从每次终态完成
   加 60 秒计算单调 deadline，并由 30 秒 evaluator 评估，因此活跃应用的请求窗口为
   60–90 秒，且不会重叠或回放错过的周期。关闭周期刷新时，手动刷新与 provider switch
@@ -895,7 +898,7 @@ brew install --cask kitdine/tap/agentdeck-app
 Cask 安装 `AgentDeck.app`，并把内嵌 helper 与打包在 bundle 内的三种 shell
 completion 暴露出来，因此 Cask 安装同时提供 `agentdeck` 命令。全局
 `agentdeck` 命令只能由一个安装拥有：若已装有 CLI-only formula，Cask 会在
-preflight 阶段拒绝安装并给出两步迁移——
+`preflight_steps` 阶段拒绝安装并给出两步迁移——
 
 ```bash
 brew uninstall agentdeck
@@ -915,7 +918,7 @@ Extension ID 是稳定资源标识，继续使用位置参数。
 | `extension scan` | 扫描 Codex/Claude 原生 plugin、MCP 和 skill；报告 found/added/updated/removed/unchanged 和排序汇总 | 无 | 无 | `agentdeck extension scan` |
 | `extension list` | 列出发现的 extensions | `--client`、`--kind`：可选过滤 | 无 | `agentdeck extension list --client codex --kind skill` |
 | `extension show <id>` | 显示 extension metadata 和 diagnostics | `id`：extension ID | `id` 必填 | `agentdeck extension show codex:skill:user:sample` |
-| `extension doctor` | 检查 drift、duplicate 和 missing path | 无 | 无 | `agentdeck extension doctor` |
+| `extension doctor` | 只读分类陈旧库存、重复身份、管理漂移、原生路径不可用、发现失败和指纹同步不完整；输出原因与安全后续步骤 | 无 | 无 | `agentdeck extension doctor` |
 | `extension adopt <id>` | 记录 AgentDeck 管理 metadata，不复制原生内容 | `id` | `id` 必填 | `agentdeck extension adopt codex:skill:user:sample` |
 | `extension release <id>` | 释放管理 metadata，不删除原生 extension | `id` | `id` 必填 | `agentdeck extension release codex:skill:user:sample` |
 | `extension enable <id>` | 请求启用；adapter 无可靠写入契约时返回 `extension_read_only` | `id` | `id` 必填 | `agentdeck extension enable codex:skill:user:sample` |
@@ -960,11 +963,11 @@ restore 为目标机器创建新 key，并在一个 transaction 中替换 snapsh
 release/support identity，不是运行时领域 instant，因此保持固定 UTC 格式，并在字段名中
 明确标出 UTC。
 
-Doctor quick/full 使用同一 core schema 契约。以当前支持 schema 26 的二进制为例：
-旧 schema 12 报告 `schema_outdated`、`count=12`、`supported_count=26` 和可复制的
-`agentdeck state migrate`；完整受支持 schema 报告 `ok`、`count=26`；声明受支持版本
+Doctor quick/full 使用同一 core schema 契约。以当前支持 schema 30 的二进制为例：
+旧 schema 12 报告 `schema_outdated`、`count=12`、`supported_count=30` 和可复制的
+`agentdeck state migrate`；完整受支持 schema 报告 `ok`、`count=30`；声明受支持版本
 却缺少 `usage_tool_calls` 时报告 `schema_incompatible`。未来 schema 99 报告
-`database` check，`code=schema_ahead`、`count=99`、`supported_count=26`，没有
+`database` check，`code=schema_ahead`、`count=99`、`supported_count=30`，没有
 `recovery_command`；text 提示升级 AgentDeck。这里的数字是数据库 schema，不是产品版本。
 
 缺失状态或无法打开 core 库而提前结束时，JSON envelope 设置 `partial: true`，
