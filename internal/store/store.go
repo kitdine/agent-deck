@@ -710,12 +710,16 @@ func acquireNamedLockWithChecks(ctx context.Context, stateRoot, name string, tim
 
 // ClassifyLock inspects the lock file at path without mutating it or holding locks.
 func ClassifyLock(path string, check LockProcessCheck) (LockReason, error) {
-	_, err := os.Stat(path)
+	const maxLockTokenBytes = 64
+	info, err := os.Lstat(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return "", fs.ErrNotExist
 	}
-	if err != nil {
+	if err != nil || !info.Mode().IsRegular() {
 		return LockReasonOwnerUnknown, nil
+	}
+	if info.Size() > maxLockTokenBytes {
+		return LockReasonLegacy, nil
 	}
 	file, err := os.Open(path)
 	if err != nil {
@@ -725,9 +729,16 @@ func ClassifyLock(path string, check LockProcessCheck) (LockReason, error) {
 		return LockReasonOwnerUnknown, nil
 	}
 	defer file.Close()
-	contents, err := io.ReadAll(file)
+	info, err = file.Stat()
+	if err != nil || !info.Mode().IsRegular() {
+		return LockReasonOwnerUnknown, nil
+	}
+	contents, err := io.ReadAll(io.LimitReader(file, maxLockTokenBytes+1))
 	if err != nil {
 		return LockReasonOwnerUnknown, nil
+	}
+	if len(contents) > maxLockTokenBytes {
+		return LockReasonLegacy, nil
 	}
 	pid, ok := lockOwnerPID(string(contents))
 	if !ok {

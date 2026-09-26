@@ -3943,6 +3943,53 @@ func TestExtensionScanFingerprintWriterClearsMarkerAtomically(t *testing.T) {
 	}
 }
 
+func TestPersistWatchFingerprintClearsExtensionMarkerAtomically(t *testing.T) {
+	ctx := context.Background()
+	db, err := store.Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if err := db.SetSettings(ctx, map[string]string{
+		"watch.fingerprint.extension": "old",
+		"extension.sync_incomplete":   "true",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.DB.ExecContext(ctx, `CREATE TRIGGER reject_watch_marker_clear BEFORE UPDATE OF value ON settings
+		WHEN NEW.key = 'extension.sync_incomplete' AND NEW.value = ''
+		BEGIN SELECT RAISE(ABORT, 'blocked marker clear'); END`); err != nil {
+		t.Fatal(err)
+	}
+	if err := persistWatchFingerprint(ctx, db, "extension", "new"); err == nil {
+		t.Fatal("watch fingerprint committed despite marker-clear failure")
+	}
+	for key, want := range map[string]string{
+		"watch.fingerprint.extension": "old",
+		"extension.sync_incomplete":   "true",
+	} {
+		got, _, err := db.Setting(ctx, key)
+		if err != nil || got != want {
+			t.Fatalf("%s after rollback = %q, %v; want %q", key, got, err, want)
+		}
+	}
+	if _, err := db.DB.ExecContext(ctx, "DROP TRIGGER reject_watch_marker_clear"); err != nil {
+		t.Fatal(err)
+	}
+	if err := persistWatchFingerprint(ctx, db, "extension", "new"); err != nil {
+		t.Fatal(err)
+	}
+	for key, want := range map[string]string{
+		"watch.fingerprint.extension": "new",
+		"extension.sync_incomplete":   "",
+	} {
+		got, _, err := db.Setting(ctx, key)
+		if err != nil || got != want {
+			t.Fatalf("%s after watch success = %q, %v; want %q", key, got, err, want)
+		}
+	}
+}
+
 func TestExtensionScanSyncIncompleteCLI(t *testing.T) {
 	state := t.TempDir()
 	home := t.TempDir()

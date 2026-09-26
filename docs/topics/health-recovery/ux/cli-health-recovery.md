@@ -57,9 +57,8 @@ restored and rescanned.
 
 Visible-width fitting is needed only for wrapping prose. Stable identifiers and
 commands are copyable byte-for-byte even when the terminal wraps them visually.
-Before text rendering, every externally sourced discovery diagnostic must pass
-through a shared single-line terminal sanitizer. This is a required new contract,
-not a claim about the current extension-doctor renderer. The sanitizer normalizes
+Before text rendering, every externally sourced discovery diagnostic passes
+through a shared single-line terminal sanitizer. The sanitizer normalizes
 invalid UTF-8 to the replacement character and replaces each contiguous run of
 CR, LF, tab, C0/C1, DEL, ESC, ANSI or OSC control content with one ASCII space,
 then trims surrounding spaces. Text output never receives raw external control

@@ -53,7 +53,7 @@ To provide typed data for CLI commands that fail during lock acquisition or scan
   - If the classifier itself cannot open or stat the lock file at timeout (e.g., it was removed and recreated mid-check), `Resource` keeps its known value (`state` or `scan`) but `Reason`/`ActionKind` fall back to `lock_owner_unknown`/`null` rather than failing the command differently.
   - The CLI projects `Resource`/`Reason`/`ActionKind`/`RecoveryCommand` into text/JSON `error.details` via `errors.As(err, &lockContention)`. An error that is a plain `ErrStateBusy` rather than the wrapped type — the quota-refresh and derived-snapshot-cache lock domains above, or any future unclassified caller — yields `resource: unknown` with `reason` and `action_kind` omitted.
 - **`ErrExtensionSyncIncomplete`**: A new typed error (exit code 1) returned by `agentdeck extension scan` when the inventory commits but the subsequent fingerprint write fails. It yields `reason: extension_fingerprint_update_failed`, `action_kind: diagnose`, `recovery_command: nil`, and `inventory_committed: true`.
-  - **Persisted marker.** Doctor has no other way to learn that a prior scan's post-commit fingerprint write failed, so the scan command persists that fact as an AgentDeck-owned setting, `extension.sync_incomplete`. A successful scan writes `watch.fingerprint.extension` and clears the marker in one `database.SetSettings` transaction; neither value can commit alone. If fingerprint computation or the transaction fails after inventory commit, the command best-effort writes `extension.sync_incomplete = "true"` and returns `ErrExtensionSyncIncomplete` even if that marker write also fails. A post-commit file-permission hardening error remains a separate error because both settings were already committed; it must not falsely claim that the fingerprint write failed.
+  - **Persisted marker.** Doctor has no other way to learn that a prior scan's post-commit fingerprint write failed, so the scan command persists that fact as an AgentDeck-owned setting, `extension.sync_incomplete`. A successful manual or watcher extension scan writes `watch.fingerprint.extension` and clears the marker in one `database.SetSettings` transaction; neither value can commit alone. If manual fingerprint computation or the transaction fails after inventory commit, the command best-effort writes `extension.sync_incomplete = "true"` and returns `ErrExtensionSyncIncomplete` even if that marker write also fails. A post-commit file-permission hardening error remains a separate error because both settings were already committed; it must not falsely claim that the fingerprint write failed.
   - The read-only extension doctor entry (see "Read-Only Extension Doctor" below) reads this setting alongside its discovery-based classification. When set, it reports `extension_fingerprint_update_failed` as an additional condition independent of live discovery — this reason is never produced from the discovery comparison itself, only from this marker.
 
 ## Execution and Ownership Boundaries
@@ -61,6 +61,10 @@ To provide typed data for CLI commands that fail during lock acquisition or scan
 ### Lock Contention and Liveness
 
 The `internal/store` package natively owns all named locks via `acquireNamedLock*`. A modern lock token has the form `v1:<pid>:<32-hex-random>`, written by `newLockToken` and parsed by the existing `lockOwnerPID(token) (pid int, ok bool)`; `ok` is `false` for anything that does not match that exact shape, which is the deterministic legacy test below. Liveness itself is answered by the existing platform-specific `lockProcessAlive(pid) (alive, known bool)` (`syscall.Kill(pid, 0)` on Darwin: `nil`/`EPERM` -> `(true, true)`, `ESRCH` -> `(false, true)`, anything else, and every call on an unsupported platform, -> `(false, false)`).
+
+Read-only classification rejects non-regular paths, including symlinks and
+FIFOs, as `lock_owner_unknown`. It bounds regular-file reads to the token size;
+oversized regular tokens remain `lock_legacy` under the malformed-token rule.
 
 **Classifier (`ClassifyLock`, new exported function on `internal/store`, reused by both the acquisition timeout path and doctor).** Given a lock file's path:
 
@@ -175,7 +179,7 @@ Rules that apply across the table:
 | `discovery_status` (new) | `"ok"` or `"failed"`, mirrors whether `discoveryErr` was non-nil | new field |
 | `stale_inventory` (new) | canonical IDs absent from rediscovery | new, additive |
 | `missing_paths` | identical contents to `stale_inventory` | retained; existing consumers keep working unmodified |
-| `duplicate_ids` | unchanged | unchanged |
+| `duplicate_ids` | unique canonical IDs with more than one live definition; each affected identity appears once | existing field; count reflects identities, not excess definitions |
 | `drifted_ids` | unchanged | unchanged |
 | `management_anomalies` | unchanged | unchanged |
 | `native_unavailable` (new) | canonical IDs rediscovered with a non-empty per-item `Diagnostics` | new field |

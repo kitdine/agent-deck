@@ -3267,7 +3267,7 @@ func newWatchCommand(opts *commandOptions) *cobra.Command {
 				if err := openCore(ctx); err != nil {
 					return err
 				}
-				return database.SetSetting(ctx, "watch.fingerprint."+domain, value)
+				return persistWatchFingerprint(ctx, database, domain, value)
 			},
 		}
 		ctx, stop := signal.NotifyContext(command.Context(), os.Interrupt, syscall.SIGTERM)
@@ -3283,6 +3283,13 @@ func newWatchCommand(opts *commandOptions) *cobra.Command {
 	command.Flags().DurationVar(&interval, "interval", time.Minute, "Polling interval")
 	command.Flags().StringVar(&domainsValue, "domains", "usage,session,extension", "Comma-separated domains to watch")
 	return command
+}
+
+func persistWatchFingerprint(ctx context.Context, database *store.Store, domain, value string) error {
+	if domain == "extension" {
+		return extensionScanFingerprintPersist(ctx, database, value)
+	}
+	return database.SetSetting(ctx, "watch.fingerprint."+domain, value)
 }
 
 func renderWatchText(w io.Writer, event watch.Event) error {

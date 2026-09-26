@@ -432,11 +432,21 @@ func (s syntheticDiscoverer) Discover(home, workdir string) ([]store.Extension, 
 }
 
 func TestSanitizeDiagnostic(t *testing.T) {
-	raw := "\x1b[31mError:\x1b[0m   line 1\n\n\t  line 2   \r\n"
-	got := SanitizeDiagnostic(raw)
-	want := "Error: line 1 line 2"
-	if got != want {
-		t.Fatalf("SanitizeDiagnostic(%q) = %q, want %q", raw, got, want)
+	for _, test := range []struct{ raw, want string }{
+		{"\x1b[31mError:\x1b[0m   line 1\n\n\t  line 2   \r\n", "Error: line 1 line 2"},
+		{"before\x1b]8;;https://example.invalid\aafter", "before after"},
+		{"before\x1b]0;changed title\x1b\\after", "before after"},
+		{"before\x1b[?25lafter", "before after"},
+		{"before\u009b?25lafter", "before after"},
+		{"before\x9b?25lafter", "before after"},
+		{"before\x9d0;title\x9cafter", "before after"},
+		{"before\x1bPpayload\x1b\\after", "before after"},
+		{"a\x00\x7fb\xc0\xaf\u0085c", "a b�� c"},
+		{"safe\x1b]unterminated", "safe"},
+	} {
+		if got := SanitizeDiagnostic(test.raw); got != test.want {
+			t.Errorf("SanitizeDiagnostic(%q) = %q, want %q", test.raw, got, test.want)
+		}
 	}
 }
 
@@ -472,10 +482,14 @@ func TestSyntheticDiscoveryAndPriorityClassification(t *testing.T) {
 	dupDisc := syntheticDiscoverer{values: []store.Extension{
 		{ID: "codex:skill:user:dup", Client: "codex", Kind: "skill", Scope: "user", NativeID: "dup"},
 		{ID: "codex:skill:user:dup", Client: "codex", Kind: "skill", Scope: "user", NativeID: "dup"},
+		{ID: "codex:skill:user:dup", Client: "codex", Kind: "skill", Scope: "user", NativeID: "dup"},
 	}}
 	rep, err = DoctorWithDiscoverer(ctx, db, dupDisc, "", "")
 	if err != nil || rep.Reason != "extension_duplicate_id" || rep.ActionKind != "manual_prerequisite" || rep.ManualPrerequisite == nil || *rep.ManualPrerequisite != "prereq_extension_duplicate_id" {
 		t.Fatalf("duplicate IDs report = %#v, %v", rep, err)
+	}
+	if len(rep.DuplicateIDs) != 1 || rep.DuplicateIDs[0] != "codex:skill:user:dup" || rep.CountForReason() != 1 {
+		t.Fatalf("duplicate identity count = %#v, want one affected identity", rep)
 	}
 
 	// 4. Stale inventory

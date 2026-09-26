@@ -2053,6 +2053,49 @@ func TestClassifyLockMatrix(t *testing.T) {
 	}
 }
 
+func TestClassifyLockRejectsNonRegularAndBoundsLargeTokens(t *testing.T) {
+	root := t.TempDir()
+	regular := filepath.Join(root, "regular.lock")
+	if err := os.WriteFile(regular, []byte("v1:42:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	symlink := filepath.Join(root, "symlink.lock")
+	if err := os.Symlink(regular, symlink); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{symlink, root} {
+		if reason, err := ClassifyLock(path, nil); err != nil || reason != LockReasonOwnerUnknown {
+			t.Fatalf("non-regular %s = (%q, %v), want owner unknown", path, reason, err)
+		}
+	}
+	if err := os.WriteFile(regular, []byte(strings.Repeat("x", 1<<20)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if reason, err := ClassifyLock(regular, nil); err != nil || reason != LockReasonLegacy {
+		t.Fatalf("oversized regular token = (%q, %v), want legacy", reason, err)
+	}
+	if runtime.GOOS == "windows" {
+		return
+	}
+	fifo := filepath.Join(root, "fifo.lock")
+	if err := exec.Command("mkfifo", fifo).Run(); err != nil {
+		t.Skipf("mkfifo unavailable: %v", err)
+	}
+	done := make(chan LockReason, 1)
+	go func() {
+		reason, _ := ClassifyLock(fifo, nil)
+		done <- reason
+	}()
+	select {
+	case reason := <-done:
+		if reason != LockReasonOwnerUnknown {
+			t.Fatalf("FIFO = %q, want owner unknown", reason)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("FIFO classification blocked")
+	}
+}
+
 func TestAcquireLockReturnsErrLockContention(t *testing.T) {
 	root := t.TempDir()
 	ctx := context.Background()

@@ -827,3 +827,26 @@ this topic. Spoken reading order and live announcements remain NOT TESTED, not
 technical PASS; hosted XCTest evidence retains its narrower scope. Real-client
 observation remains SIMULATED. PR-head CI, renewed code review and exact-state
 CEv1 evidence must be evaluated against the pushed candidate.
+
+### PR #9 Codex review Round 2 repair candidate — 2026-09-25
+
+The first renewed Codex review after green PR-head CI completed on signed
+`c11276a572e082b5a803b26fe2ca53cd0bbaef9f` as review `5324844205` and
+raised four P2 comments. Each was reproduced against the current source:
+
+- **PR9-R2-F1** ([discussion](https://github.com/kitdine/agent-deck/pull/9#discussion_r4110396191)) confirmed: the old diagnostic sanitizer handled only simple ANSI CSI escapes. OSC, private CSI, C1/DEL and invalid UTF-8 could reach terminal text. The shared sanitizer now strips terminal sequences, replaces invalid UTF-8 and collapses controls into one-line spacing; focused cases cover each class.
+- **PR9-R2-F2** ([discussion](https://github.com/kitdine/agent-deck/pull/9#discussion_r4110396192)) confirmed: successful extension watcher scans persisted the fingerprint without clearing the prior incomplete marker. The watcher now uses the same atomic extension fingerprint-and-marker write as manual scans; a trigger-induced rollback test covers failure and retry.
+- **PR9-R2-F3** ([discussion](https://github.com/kitdine/agent-deck/pull/9#discussion_r4110396195)) confirmed: `ClassifyLock` could open a FIFO or symlink and used an unbounded read. It now rejects non-regular paths as owner-unknown and bounds regular token reads; tests cover a FIFO, symlink, directory and oversized regular file.
+- **PR9-R2-F4** ([discussion](https://github.com/kitdine/agent-deck/pull/9#discussion_r4110396196)) confirmed: three definitions sharing one canonical ID appended that ID twice. The report now lists each duplicate identity once, so `CountForReason` counts affected IDs; a triple-definition regression checks the collection and count.
+
+Final local candidate checks: full Go suite PASS (`agentdeck-go-test.CBCstM`),
+four-finding focused race PASS (`agentdeck-go-test.KWIoi8`), `make vet` PASS,
+topic-doc and whitespace checks PASS. An earlier overbroad affected-package
+race run (`agentdeck-go-test.oZZxUU`) passed `internal/extension` and
+`internal/store` but hit Go's 10-minute package timeout in `cmd/agentdeck`;
+the test active at timeout had run for two seconds and no data race was
+reported. This timeout is retained as a verification limitation, not called
+a product failure or an all-package race PASS. This remains a repair candidate,
+not an independent re-review verdict. The operator-waived VoiceOver session
+remains untested and real-client observation remains SIMULATED. Signed delivery,
+PR-head CI and the second renewed Codex review remain pending.

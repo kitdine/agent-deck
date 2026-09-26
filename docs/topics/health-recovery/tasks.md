@@ -641,6 +641,9 @@ PR #9's first GitHub Codex review on `a5a35fb` raised six P2 integration
 findings. Their local repair candidate and verification are recorded in the
 version contract's `reviews/assemble.md`; the previous topic gate remains bound
 to its signed source-review commit, not this unreviewed repair candidate.
+The renewed review on `c11276a` raised four further P2 findings; their scoped
+repair candidate is recorded in that same integration record. No earlier CEv1
+result is claimed for the new candidate.
 
 ## Review boundary
 

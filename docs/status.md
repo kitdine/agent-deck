@@ -195,6 +195,8 @@ closure remain open.
 PR #9's first Codex review raised six P2 findings; their scoped dispositions
 are tracked in the integration record. Merge readiness depends on exact-head
 CI, independent review and CEv1 evidence for the delivered candidate.
+The renewed review on `c11276a` raised four more P2 findings; their local
+repair candidate is tracked in the same record, pending delivery and new CI.
 
 | Topic | Version | Status | Purpose |
 | --- | --- | --- | --- |

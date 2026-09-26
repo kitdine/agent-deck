@@ -12,9 +12,10 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/kitdine/agent-deck/internal/store"
 	"github.com/pelletier/go-toml/v2"
@@ -276,10 +277,14 @@ func DoctorWithDiscoverer(ctx context.Context, db *store.Store, discoverer Exten
 	report.ManagementAnomalies = []string{}
 	report.NativeUnavailable = []string{}
 	currentByID := make(map[string]store.Extension, len(current))
+	duplicateIDs := make(map[string]struct{})
 	nativeUnavailable := make(map[string]struct{})
 	for _, value := range current {
 		if _, exists := currentByID[value.ID]; exists {
-			report.DuplicateIDs = append(report.DuplicateIDs, value.ID)
+			if _, reported := duplicateIDs[value.ID]; !reported {
+				report.DuplicateIDs = append(report.DuplicateIDs, value.ID)
+				duplicateIDs[value.ID] = struct{}{}
+			}
 		}
 		currentByID[value.ID] = value
 		if len(value.Diagnostics) > 0 {
@@ -855,10 +860,100 @@ func fingerprint(path string) (string, error) {
 	return hex.EncodeToString(hash.Sum(nil)), nil
 }
 
-var ansiRegex = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
-
 func SanitizeDiagnostic(raw string) string {
-	s := ansiRegex.ReplaceAllString(raw, "")
-	fields := strings.Fields(s)
+	var clean strings.Builder
+	for i := 0; i < len(raw); {
+		if raw[i] >= 0x80 && raw[i] <= 0x9f {
+			clean.WriteByte(' ')
+			switch raw[i] {
+			case 0x9b:
+				i = skipDiagnosticCSI(raw, i+1)
+			case 0x9d:
+				i = skipDiagnosticString(raw, i+1, true)
+			case 0x90, 0x98, 0x9e, 0x9f:
+				i = skipDiagnosticString(raw, i+1, false)
+			default:
+				i++
+			}
+			continue
+		}
+		r, size := utf8.DecodeRuneInString(raw[i:])
+		if r == utf8.RuneError && size == 1 {
+			clean.WriteRune('\uFFFD')
+			i++
+			continue
+		}
+		switch r {
+		case '\x1b':
+			clean.WriteByte(' ')
+			i = skipDiagnosticEscape(raw, i+size)
+		case '\u009b':
+			clean.WriteByte(' ')
+			i = skipDiagnosticCSI(raw, i+size)
+		case '\u009d':
+			clean.WriteByte(' ')
+			i = skipDiagnosticString(raw, i+size, true)
+		case '\u0090', '\u0098', '\u009e', '\u009f':
+			clean.WriteByte(' ')
+			i = skipDiagnosticString(raw, i+size, false)
+		default:
+			if unicode.IsControl(r) || unicode.IsSpace(r) {
+				clean.WriteByte(' ')
+			} else {
+				clean.WriteRune(r)
+			}
+			i += size
+		}
+	}
+	fields := strings.Fields(clean.String())
 	return strings.Join(fields, " ")
+}
+
+func skipDiagnosticEscape(s string, i int) int {
+	if i >= len(s) {
+		return i
+	}
+	switch s[i] {
+	case '[':
+		return skipDiagnosticCSI(s, i+1)
+	case ']':
+		return skipDiagnosticString(s, i+1, true)
+	case 'P', 'X', '^', '_':
+		return skipDiagnosticString(s, i+1, false)
+	default:
+		for i < len(s) && s[i] >= 0x20 && s[i] <= 0x2f {
+			i++
+		}
+		if i < len(s) {
+			i++
+		}
+		return i
+	}
+}
+
+func skipDiagnosticCSI(s string, i int) int {
+	for i < len(s) {
+		if s[i] >= 0x40 && s[i] <= 0x7e {
+			return i + 1
+		}
+		i++
+	}
+	return i
+}
+
+func skipDiagnosticString(s string, i int, osc bool) int {
+	for i < len(s) {
+		if s[i] == 0x9c {
+			return i + 1
+		}
+		if s[i] == '\x1b' && i+1 < len(s) && s[i+1] == '\\' {
+			return i + 2
+		}
+		r, size := utf8.DecodeRuneInString(s[i:])
+		if r == '\u009c' || (osc && r == '\a') {
+			return i + size
+		}
+		i += size
+	}
+	return i
 }
