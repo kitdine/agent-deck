@@ -837,23 +837,25 @@ contract tests 与后续 `AgentDeckShared` Swift `Codable` decoder tests 必须�
 
 **没有更新检查。** 早期版本曾在此规定一个 opt-in 的 GitHub latest stable
 release 检查，v0.5.0 在实现之前将其撤回，且没有任何替代物。桌面应用不发起
-任何网络请求——这是一条边界性质，不只是少了一个功能：整个桌面表面只通过
-CLI 读取本地状态。没有任何菜单项、偏好或文案提到更新，应用也从不下载、
-安装、替换、重启或请求提权。
+更新请求。Swift 应用不直接发起 HTTP 或读取客户端凭据；开启订阅配额读取后，
+内嵌 CLI 的探测会启动已认证的 Codex/Claude 客户端，客户端可能与厂商服务
+通信。没有任何菜单项、偏好或文案提到应用更新，应用也从不下载、安装、
+替换、重启或请求提权。
 
 ### 桌面应用
 
-v0.5.0 随发布提供 `AgentDeck.app`，一个 macOS 26 菜单栏应用，其唯一数据源
-是内嵌的本 CLI 副本。它是一个阅读表面加一个写操作。
+v0.5.0 随发布提供 `AgentDeck.app`，一个 macOS 26 菜单栏应用；v0.6.0
+沿用内嵌 CLI 作为数据与受管写入边界。应用以阅读为主，显式写操作包括
+provider 切换和配额/提醒设置。
 
 - **边界**：应用先消费内嵌 helper 的 version-1 `scan` NDJSON stream，再解码
   `desktop snapshot` 的 wire-v1 envelope。helper 运行期间显示等待、检查、已提交
   导入计数和统计阶段；已有 snapshot 保持可见，只有完整新 envelope 校验通过后才
   原子替换。scan/event/snapshot 失败保留旧数据与 retry；关闭 popover 只分离显示，
   worker 继续，重开后读取当前 coordinator state。它不解析 text 输出、不直接读
-  数据库、不监听端口、不联网。Go
-  helper 与既有 AgentDeck 状态始终是权威，应用持有的一切都是它们的可丢弃
-  投影。
+  数据库、不监听端口，也不直接发起 HTTP 或读取凭据。可选的配额刷新会让
+  Go helper 启动已认证客户端探测，可能产生客户端的厂商网络流量。Go helper
+  与既有 AgentDeck 状态始终是权威，应用持有的一切都是它们的可丢弃投影。
 - **菜单栏表面**：quota、usage、breakdown、attribution、sessions 五个面板，加上
   不受筛选的 rhythm 区块、承载刷新、Widget 发布、schema 与 health 详情的通知条，
   以及 provider 页脚。成功数据时间、完整刷新尝试与 Widget 发布状态相互独立：
