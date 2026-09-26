@@ -893,3 +893,26 @@ and three seconds respectively; no data race was reported. This does not
 establish a full local race PASS. The focused 10-run race result above is the
 repair reproducer, and the new PR-head CI remains the exact original-command
 verification gate.
+
+### PR #9 final review and merge receipt — 2026-09-26
+
+The final manual Codex review completed on signed source
+`d040bd180466a2b9b3683769ed091718e854d38b` without new findings
+([review summary](https://github.com/kitdine/agent-deck/pull/9#issuecomment-5844703363));
+there were no P0/P1 blockers or P2/P3 items to defer into Beads. Both PR-head
+`verify` and both `desktop` jobs passed. The actual main-side merge commit
+`3f29e26c70d7848febc237f4cb130cf7748e7bf5` has parents `6aafb5a` and
+`d040bd1`, and tree `4ce5b2b1d73798f130a092e8456b253eae2aee8d` exactly
+matches the verified GitHub merge preview. Relative to the source tree, only
+main's Beads and project-rules governance files differ; no product overlap or
+manual conflict resolution was introduced. GitHub marks the merge signature
+valid, and merged-main `verify` and `desktop` CI both passed.
+
+CEv1 source topic gate is VERIFIED 5/5 at the exact `d040bd1` state; the
+integration WorkUnit is VERIFIED 2/2 at merge-result ContentState
+`v0-6-0-contract:integration:health-recovery:merge-result:3f29e26c70d7848febc237f4cb130cf7748e7bf5`.
+Beads records PR delivery on `ad-v060c-assemble-dev`; the two origin bugs and
+`ad-health-recovery` planning item are closed. The aggregate `assemble` task
+remains open for cost transparency. Manual VoiceOver is user-waived and NOT
+TESTED, not a technical PASS; installed real-client observation remains
+SIMULATED. Topic retirement and v0.6.0 release are separate boundaries.
