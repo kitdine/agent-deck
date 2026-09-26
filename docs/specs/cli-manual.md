@@ -869,10 +869,12 @@ v0.5.0 随发布提供 `AgentDeck.app`，一个 macOS 26 菜单栏应用，其�
   加 60 秒计算单调 deadline，并由 30 秒 evaluator 评估，因此活跃应用的请求窗口为
   60–90 秒，且不会重叠或回放错过的周期。关闭周期刷新时，手动刷新与 provider switch
   仍可用；quota 使用独立 single-flight lane，不能阻塞完整刷新 deadline。
-- **设置**：恰好四项偏好——周期刷新（默认关闭，因为那是用户没有要求的后台
+- **设置**：常规偏好包括周期刷新（默认关闭，因为那是用户没有要求的后台
   工作）、菜单栏显示值（cost / tokens / icon）、菜单栏范围（全部 client 或
-  跟随面板筛选）、开机启动。开机启动控件渲染的是 `SMAppService` 报告的状态，
-  而非开关的意图，因此系统拒绝是可见的而不是被默认成功。
+  跟随面板筛选）与开机启动。开机启动控件渲染的是 `SMAppService` 报告的状态，
+  而非开关的意图，因此系统拒绝是可见的而不是被默认成功。配额设置另有
+  读取开关、读取间隔、状态行授权、提醒开关、阈值和重置通知六项控件；依赖
+  读取或系统通知权限的控件会显示不可用状态，不将关闭或失败解释为零配额。
 - **Widget**：沙箱化的 WidgetKit 扩展，提供 magnitude、composition、trust、
   rhythm、quota 五种 kind，每种三种系统尺寸，共十五种配置。它只通过共享的
   8 MiB bounded reader 读取应用写出的脱敏 App Group 投影；missing、container、
