@@ -1,7 +1,7 @@
 ---
 status: historical
 created: 2026-09-26
-retired: 2026-09-26
+retired: 2026-09-27
 ---
 
 # 缺陷：Homebrew cask 预检语法阻断 RC1 发布验证
