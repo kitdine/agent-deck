@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-09-08
-updated: 2026-09-26
+updated: 2026-09-27
 ---
 
 # v0.6.0 Contract — Tasks
