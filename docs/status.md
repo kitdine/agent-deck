@@ -191,8 +191,11 @@ source topic gate is VERIFIED 5/5 and merge-result integration gate VERIFIED
 PR-head and merged-main CI passed. Manual VoiceOver acceptance was user-waived
 and remains untested; installed real-client observation remains SIMULATED.
 Cost transparency is now an unassigned planning candidate outside v0.6.0.
-All five selected areas are integrated; aggregate assembly review/evidence and
-version-contract closure remain open. Review and merge details are in the
+All five selected areas are integrated. Aggregate `assemble` passed Round 8
+review and its actual PR #11 merge-result CEv1 gate is VERIFIED 4/4 at main
+`c9cd12c`; merged-main `verify` and `desktop` CI passed. Version-contract Task 2,
+technical preflight and RC1 publication remain open. Review and merge details
+are in the
 [integration record](topics/v0-6-0-contract/reviews/assemble.md).
 
 | Topic | Version | Status | Purpose |

@@ -133,7 +133,7 @@ exceptions as accepted limitations, not technical passing results.
 
 | Task | Dev | Review |
 | --- | --- | --- |
-| 1. `assemble` | [ ] | [ ] |
+| 1. `assemble` | [x] | [x] |
 | 2. `v0-6-0-contract` | [ ] | [ ] |
 
 ### 1. `assemble`
@@ -322,10 +322,21 @@ this fourth-batch preparation does not relabel or replace that evidence.
 ### Scope decision and RC1 preparation — 2026-09-26
 
 The operator removed cost transparency from the v0.6.0 membership without
-assigning it to another version. The five retained areas are integrated into
+assigning it to another version. The five retained areas were integrated into
 main through health-recovery PR #9 and its status follow-up PR #10 at
 `228d89f01cceb87510127180b7dde537fc7f169a`. Health recovery's source
 topic gate is VERIFIED 5/5 and its final postmerge-status integration gate is
-VERIFIED 2/2. These are batch results; the aggregate `assemble` and this
-contract's version-level closure still need their own review and exact-state
-evidence. Release preflight, RC1 tag and publication remain separate boundaries.
+VERIFIED 2/2. These were batch results, not the later aggregate result.
+
+### Aggregate delivery — PR #11 — 2026-09-26
+
+PR #11 merged signed source `c4c4cd05c75cd2beafcd84b454867ffa0c84aab3`
+into main `228d89f01cceb87510127180b7dde537fc7f169a` as two-parent merge
+`c9cd12c84a4c361ffb853d823348d3374057a5e6`. The result tree
+`51325ca9f518031e11a9e6d22c06c91a39ef2c19` exactly equals the source
+tree, with no manual conflict resolution. The final source and merged-main
+`verify`/`desktop` CI passed. Round 8 aggregate review passed, and CEv1
+`v0-6-0-contract:assemble` is VERIFIED 4/4 at the actual merge-result state.
+The five feature integrations retain their own exact gates and acceptance
+limits. Task 1 is delivered; Task 2 version-level closure, isolated real-state
+evidence, technical preflight, RC1 tag and publication remain separate.
