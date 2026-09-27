@@ -134,7 +134,7 @@ exceptions as accepted limitations, not technical passing results.
 | Task | Dev | Review |
 | --- | --- | --- |
 | 1. `assemble` | [x] | [x] |
-| 2. `v0-6-0-contract` | [ ] | [ ] |
+| 2. `v0-6-0-contract` | [x] | [x] |
 
 ### 1. `assemble`
 
@@ -340,3 +340,32 @@ tree, with no manual conflict resolution. The final source and merged-main
 The five feature integrations retain their own exact gates and acceptance
 limits. Task 1 is delivered; Task 2 version-level closure, isolated real-state
 evidence, technical preflight, RC1 tag and publication remain separate.
+
+### Task 2 development handoff — 2026-09-27
+
+The version-contract candidate starts from PR #12 main
+`3aa48a4bf6356703b2fd283296f53d03e00b2887` / tree
+`cc8f160fdb26b384131f6e60067c9481e3f78cf9`, with aggregate `assemble`
+review PASS and exact merge-result CEv1 VERIFIED 4/4. All five selected feature
+areas have their own reviewed merge-result gates; cost transparency remains
+outside this version without a replacement version.
+
+The already integrated `cli-design.md` version 30 has one v0.6.0 history row
+covering the five areas, the `runtime_error` to `schema_ahead` narrowing at
+ordinary exit 1, additive desktop wire v1 fields and the retained acceptance
+limits. `cli-manual.md` documents current core schema 30, the five wire-v1
+sections, opt-in quota settings and client probes, health recovery and the
+Homebrew cask migration. `docs/README.md` points at version 30. Source identity
+checks find core schema 30, Go and Swift desktop wire 1, and macOS marketing
+version 0.6.0. CLI build version is injected from the release tag by `Makefile`;
+the Homebrew cask renderer derives its stable/RC token and version from the
+tag. No release tag, build number or artifact is allocated by this Task.
+
+The native and performance exceptions remain their recorded limitations:
+desktop-refresh real timing and installed Widget/accessibility observations
+remain BLOCKED without waiver; health-recovery VoiceOver is user-waived but
+untested and installed real-client observation remains SIMULATED. No feature
+topic is retired as part of this candidate. The version contract is ready for
+independent Task 2 review and its own exact-content CEv1 gate; L4 technical
+preflight, isolated real-state evidence, tag and publication are later release
+boundaries.
