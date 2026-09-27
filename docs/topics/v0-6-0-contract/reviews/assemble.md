@@ -1044,3 +1044,20 @@ The fixed-template query has no missing, invalidated or unresolved item and
 rolls up the five exact integration gates plus the scoped cask fix gate. This
 receipt changes the review blob, so final candidate preservation must be bound
 before delivery. PR merge-result identity and version Task closure remain separate.
+
+### PR #11 merge-result delivery receipt — 2026-09-26
+
+GitHub merged source `c4c4cd05c75cd2beafcd84b454867ffa0c84aab3` into
+target `228d89f01cceb87510127180b7dde537fc7f169a` as signed two-parent
+merge `c9cd12c84a4c361ffb853d823348d3374057a5e6`. Result tree
+`51325ca9f518031e11a9e6d22c06c91a39ef2c19` equals the reviewed source
+tree. All four final PR checks passed; merged-main run `36256366898` completed
+`verify` and `desktop` successfully. No manual conflict resolution or changed
+product/test content was introduced by the merge.
+
+The actual merge-result WorkUnit target
+`v0-6-0-contract:assemble:merge-result:c9cd12c84a4c361ffb853d823348d3374057a5e6`
+is VERIFIED 4/4 with no missing, invalidated or unresolved evidence. Its
+lineage reuses the signed source candidate, five exact batch integrations and
+the separately reviewed Lane A cask fix. This delivers aggregate Task 1;
+version Task 2 and release publication are still open.

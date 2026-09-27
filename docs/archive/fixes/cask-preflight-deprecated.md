@@ -1,6 +1,7 @@
 ---
-status: active
+status: historical
 created: 2026-09-26
+retired: 2026-09-27
 ---
 
 # 缺陷：Homebrew cask 预检语法阻断 RC1 发布验证
@@ -117,3 +118,15 @@ VERIFIED (4/4) for candidate
 The fixed-template query has no missing, invalidated or unresolved item. This
 gate receipt changes the record blob, so a final target-bound preservation
 assessment is still required before the Beads bug can close.
+
+## Delivery — 2026-09-26
+
+The bounded repair and independent re-review were delivered through PR #11.
+Signed source commit `55d86db9ccfff9434841d6936065231095cad65f`
+introduced the cask template, direct regression check and fix record; the
+final source head was `c4c4cd05c75cd2beafcd84b454867ffa0c84aab3`.
+GitHub merged it into main as `c9cd12c84a4c361ffb853d823348d3374057a5e6`,
+whose tree equals the source tree. The merged-main `verify` and `desktop`
+CI passed, and the exact merge-result CEv1 Task gate is VERIFIED 4/4 at
+`fix:cask-preflight-deprecated:merge-result:c9cd12c84a4c361ffb853d823348d3374057a5e6`.
+The installed release and RC1 publication remain separate actions.
