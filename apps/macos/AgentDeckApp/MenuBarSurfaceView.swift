@@ -189,11 +189,12 @@ struct MenuBarSurfaceView: View {
 				if model.showsScanProgressStatus {
 					scanProgressStatus
 				}
-				if model.presentedPanel != .quota {
+				Group {
 					clientTabs
 					hero
 					periodSwitcher
 				}
+				.preference(key: SharedUsageContextPresencePreferenceKey.self, value: true)
 				panelSwitcher
 			}
 			.padding(.horizontal, MenuBarGeometry.padding)
@@ -430,6 +431,13 @@ struct RefreshControlIdentityPreferenceKey: PreferenceKey {
 	}
 }
 
+struct SharedUsageContextPresencePreferenceKey: PreferenceKey {
+	static let defaultValue = false
+	static func reduce(value: inout Bool, nextValue: () -> Bool) {
+		value = value || nextValue()
+	}
+}
+
 private struct StableRefreshControl: View {
 	@Bindable var model: MenuBarViewModel
 	let reduceMotion: Bool
@@ -442,6 +450,7 @@ private struct StableRefreshControl: View {
 			identity: identity
 		)
 		.frame(minWidth: MenuBarGeometry.rowMinimumHeight, minHeight: MenuBarGeometry.rowMinimumHeight)
+		.fixedSize(horizontal: true, vertical: true)
 		.preference(key: RefreshControlIdentityPreferenceKey.self, value: identity)
 	}
 }

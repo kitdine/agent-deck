@@ -176,6 +176,27 @@ final class MenuBarChromeTests: XCTestCase {
 		let frame = controller.view.convert(button.bounds, from: button)
 		XCTAssertLessThan(frame.minY, 40, "the header was displaced away from the top edge: \(frame)")
 		XCTAssertLessThanOrEqual(frame.height, MenuBarGeometry.rowMinimumHeight + 1, "the header absorbed the popover's spare height: \(frame)")
+		XCTAssertLessThanOrEqual(frame.width, 96, "the refresh control expanded across the header instead of hugging its icon and title: \(frame)")
+	}
+
+	func testQuotaPanelKeepsTheSharedClientHeroAndPeriodContext() async throws {
+		let model = await makeModel(host: StubDesktopHost(behavior: .envelope(WireFixture.envelope())))
+		await model.coordinator.refresh()
+		model.selectedPanel = .quota
+		let capture = SharedUsageContextPresenceCapture()
+		let view = SharedUsageContextPresenceProbe(
+			content: MenuBarSurfaceView(model: model, height: 760),
+			capture: capture
+		)
+		let controller = NSHostingController(rootView: view)
+		controller.view.frame = NSRect(x: 0, y: 0, width: 420, height: 760)
+		controller.view.layoutSubtreeIfNeeded()
+		controller.view.displayIfNeeded()
+		for _ in 0..<10 {
+			await Task.yield()
+			controller.view.layoutSubtreeIfNeeded()
+		}
+		XCTAssertTrue(capture.isPresent, "quota must retain the prototype's shared client, hero, and period context above the panel switcher")
 	}
 
 	func testQuotaTabIsHiddenWhenReadingIsOffAndFallsBackToUsage() async throws {
@@ -921,6 +942,21 @@ final class MenuBarChromeTests: XCTestCase {
 @MainActor
 private final class RefreshControlIdentityCapture {
 	var identity: UUID?
+}
+
+@MainActor
+private final class SharedUsageContextPresenceCapture {
+	var isPresent = false
+}
+
+private struct SharedUsageContextPresenceProbe<Content: View>: View {
+	let content: Content
+	let capture: SharedUsageContextPresenceCapture
+
+	var body: some View {
+		content
+			.onPreferenceChange(SharedUsageContextPresencePreferenceKey.self) { capture.isPresent = $0 }
+	}
 }
 
 private struct RefreshControlIdentityProbe<Content: View>: View {
