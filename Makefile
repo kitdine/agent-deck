@@ -116,6 +116,7 @@ check-install:
 
 check-privacy:
 	@bash scripts/check-privacy.sh
+	@bash scripts/test-check-privacy.sh
 
 # The static half of the widget's privacy proof. It is a gate rather than a
 # one-off, so it runs from the aggregate release check and not only from the
