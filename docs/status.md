@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-08-25
-updated: 2026-09-27
+updated: 2026-09-28
 ---
 
 # AgentDeck Project Status
@@ -21,7 +21,18 @@ is recorded in `roadmap.md`.
 
 ### Release
 
-- **Latest prerelease:** [`v0.5.0-rc.6`](https://github.com/kitdine/agent-deck/releases/tag/v0.5.0-rc.6)
+- **Latest prerelease:** [`v0.6.0-rc.1`](https://github.com/kitdine/agent-deck/releases/tag/v0.6.0-rc.1)
+  at main commit `033cae825f20c3643cb3fe151c2d6e083210a8c9`, tree
+  `68a6f75065008052e9ab4133119bb76f5eb3f3b1`, published 2026-09-28.
+  [Preflight run 36381152185](https://github.com/kitdine/agent-deck/actions/runs/36381152185)
+  and [release run 36382246912](https://github.com/kitdine/agent-deck/actions/runs/36382246912)
+  succeeded; the release has six CLI and desktop assets. The RC formula and
+  Cask updates reached the Homebrew tap through PR #30 and PR #31. On the local
+  macOS host, the RC Cask replaced the stable Cask without `--zap`; the App,
+  embedded helper and linked CLI report the release commit, the notarized App
+  passes Gatekeeper, and it launched. Further RC acceptance and any stable
+  release decision remain separate.
+- **Prior v0.5.0 prerelease:** [`v0.5.0-rc.6`](https://github.com/kitdine/agent-deck/releases/tag/v0.5.0-rc.6)
   at commit `acb8384073f59a3cb07b06ad4cebc670e0d9419d`, tree `9ab5d243`,
   published 2026-09-04. [Release run 33857667232](https://github.com/kitdine/agent-deck/actions/runs/33857667232)
   succeeded on all four jobs and published all six CLI and desktop artifacts.
@@ -193,9 +204,12 @@ and remains untested; installed real-client observation remains SIMULATED.
 Cost transparency is now an unassigned planning candidate outside v0.6.0.
 All five selected areas are integrated. Aggregate `assemble` passed Round 8
 review and its actual PR #11 merge-result CEv1 gate is VERIFIED 4/4 at main
-`c9cd12c`; merged-main `verify` and `desktop` CI passed. Version-contract Task 2,
-technical preflight and RC1 publication remain open. Review and merge details
-are in the
+`c9cd12c`; merged-main `verify` and `desktop` CI passed. Version-contract Task 2
+passed Review Round 1 and was delivered through PR #13; the contract Topic gate
+is VERIFIED 3/3 at its main result. The bounded privacy-scan repair reached main
+through PR #14, and its merge-result gate is VERIFIED 4/4. The same-SHA RC1
+preflight and publication above have completed; the stable release decision is
+still open. Review and merge details are in the
 [integration record](topics/v0-6-0-contract/reviews/assemble.md).
 
 | Topic | Version | Status | Purpose |
