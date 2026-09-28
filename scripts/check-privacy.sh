@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -uo pipefail
 
-pattern='AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----|sk-[A-Za-z0-9_-]{20,}|ghp_[A-Za-z0-9]{36}'
+pattern='AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----|(^|[^[:alnum:]_])sk-[A-Za-z0-9_-]{20,}|ghp_[A-Za-z0-9]{36}'
 files="$(mktemp "${TMPDIR:-/tmp}/agentdeck-privacy.XXXXXX")" || {
 	printf '%s\n' 'privacy scan failed: unable to create repository file list' >&2
 	exit 2
