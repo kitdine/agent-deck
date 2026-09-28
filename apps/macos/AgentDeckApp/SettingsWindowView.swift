@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct SettingsWindowView: View {
@@ -96,6 +97,26 @@ struct SettingsWindowView: View {
 				}
 				Divider()
 				SettingsRow(
+					label: t(DesktopCopy.settingsQuotaClients),
+					note: t(DesktopCopy.settingsQuotaClientsHint),
+					status: nil
+				) {
+					HStack(spacing: 12) {
+						ForEach(["codex", "claude"], id: \.self) { client in
+							QuotaClientCheckbox(
+								title: client == "codex" ? "Codex" : "Claude",
+								identifier: NSUserInterfaceItemIdentifier("quota-client-\(client)"),
+								isOn: Binding(
+									get: { quotaSettings.clientEnabled(client) },
+									set: { enabled in Task { await quotaSettings.setClient(client, enabled: enabled) } }
+								)
+							)
+						}
+					}
+					.disabled(!quotaSettings.readingControlsEnabled || !preferences.quotaProbeEnabled)
+				}
+				Divider()
+				SettingsRow(
 					label: t(DesktopCopy.settingsQuotaInterval),
 					note: t(DesktopCopy.settingsQuotaIntervalHint),
 					status: nil
@@ -137,7 +158,7 @@ struct SettingsWindowView: View {
 					// Dependency shown as disabled, not hidden (ux/settings-quota.md):
 					// the status-line route needs reading on, and the reason is
 					// legible from the group above it.
-					.disabled(!preferences.quotaProbeEnabled)
+					.disabled(!quotaSettings.statuslineControlEnabled)
 					.accessibilityLabel(t(DesktopCopy.settingsQuotaStatusline))
 				}
 				Divider()
@@ -247,6 +268,49 @@ struct SettingsWindowView: View {
 				.font(.caption.weight(.semibold))
 				.foregroundStyle(DesktopVisualTheme.dim)
 			content()
+		}
+	}
+}
+
+private struct QuotaClientCheckbox: NSViewRepresentable {
+	let title: String
+	let identifier: NSUserInterfaceItemIdentifier
+	@Binding var isOn: Bool
+	@Environment(\.isEnabled) private var isEnabled
+
+	func makeCoordinator() -> Coordinator {
+		Coordinator(isOn: $isOn)
+	}
+
+	func makeNSView(context: Context) -> NSButton {
+		let button = NSButton(
+			checkboxWithTitle: title,
+			target: context.coordinator,
+			action: #selector(Coordinator.changed(_:))
+		)
+		button.identifier = identifier
+		button.setAccessibilityRole(.checkBox)
+		button.setAccessibilityLabel(title)
+		return button
+	}
+
+	func updateNSView(_ button: NSButton, context: Context) {
+		context.coordinator.isOn = $isOn
+		button.state = isOn ? .on : .off
+		button.setAccessibilityValue(NSNumber(value: isOn))
+		button.isEnabled = isEnabled
+	}
+
+	@MainActor
+	final class Coordinator: NSObject {
+		var isOn: Binding<Bool>
+
+		init(isOn: Binding<Bool>) {
+			self.isOn = isOn
+		}
+
+		@objc func changed(_ sender: NSButton) {
+			isOn.wrappedValue = sender.state == .on
 		}
 	}
 }

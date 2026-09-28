@@ -165,6 +165,39 @@ final class MenuBarChromeTests: XCTestCase {
 		return nil
 	}
 
+	func testFixedHeightPopoverPinsHeaderToTheTopEdge() async throws {
+		let model = await makeModel(host: StubDesktopHost(behavior: .envelope(WireFixture.envelope())))
+		await model.coordinator.refresh()
+		let controller = NSHostingController(rootView: MenuBarSurfaceView(model: model, height: 760))
+		controller.view.frame = NSRect(x: 0, y: 0, width: 420, height: 760)
+		controller.view.layoutSubtreeIfNeeded()
+		controller.view.displayIfNeeded()
+		let button = try XCTUnwrap(findRefreshButton(in: controller.view))
+		let frame = controller.view.convert(button.bounds, from: button)
+		XCTAssertLessThan(frame.minY, 40, "the header was displaced away from the top edge: \(frame)")
+		XCTAssertLessThanOrEqual(frame.height, MenuBarGeometry.rowMinimumHeight + 1, "the header absorbed the popover's spare height: \(frame)")
+	}
+
+	func testQuotaTabIsHiddenWhenReadingIsOffAndFallsBackToUsage() async throws {
+		let base = WireFixture.envelope()
+		let readingOff = base.replacingSubscription(
+			DesktopSubscriptionSnapshotV1(available: true, reading: false, clients: [])
+		)
+		let host = StubDesktopHost(behavior: .envelope(readingOff))
+		let model = await makeModel(host: host)
+		await model.coordinator.refresh()
+
+		XCTAssertFalse(model.panelTabs.contains { $0.id == .quota })
+		XCTAssertEqual(model.presentedPanel, .usage)
+
+		host.behavior = .envelope(base.replacingSubscription(
+			DesktopSubscriptionSnapshotV1(available: true, reading: true, clients: [])
+		))
+		await model.coordinator.refresh()
+		XCTAssertTrue(model.panelTabs.contains { $0.id == .quota })
+		XCTAssertEqual(model.presentedPanel, .quota, "the remembered quota selection should return when reading is re-enabled")
+	}
+
 	func testSchemaHealthProseRendersExpandedAndCollapsed() async throws {
 		let model = await makeModel(host: StubDesktopHost(behavior: .envelope(WireFixture.schemaSignal(refusals: true))))
 		await model.coordinator.refresh()

@@ -494,7 +494,8 @@ func TestRestoreClearsStatusLineConsentAsMachineLocal(t *testing.T) {
 	}
 	defer database.Close()
 	if err := quota.SaveSettings(ctx, database, quota.Settings{
-		ProbeEnabled: true, ProbeInterval: 5 * time.Minute, AlertThresholds: []float64{75, 90}, ResetNotice: true,
+		ProbeEnabled: true, ProbeClients: []quota.Client{quota.ClientCodex, quota.ClientClaude},
+		ProbeInterval: 5 * time.Minute, AlertThresholds: []float64{75, 90}, ResetNotice: true,
 		StatusLineConsent: true,
 	}); err != nil {
 		t.Fatal(err)

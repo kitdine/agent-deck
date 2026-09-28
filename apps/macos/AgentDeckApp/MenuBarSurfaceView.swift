@@ -143,7 +143,7 @@ struct MenuBarSurfaceView: View {
 		}
 		.environment(\.schemaSignal, model.hasSchemaSignal)
 		.frame(width: MenuBarGeometry.width)
-		.frame(height: height)
+		.frame(height: height, alignment: .top)
 		.modifier(AcceptanceAppearance())
 		.tint(DesktopVisualTheme.accent)
 		.foregroundStyle(DesktopVisualTheme.text)
@@ -189,7 +189,7 @@ struct MenuBarSurfaceView: View {
 				if model.showsScanProgressStatus {
 					scanProgressStatus
 				}
-				if model.selectedPanel != .quota {
+				if model.presentedPanel != .quota {
 					clientTabs
 					hero
 					periodSwitcher
@@ -249,7 +249,10 @@ struct MenuBarSurfaceView: View {
 				reduceMotion: reduceMotion
 			)
 		}
-		.frame(minHeight: MenuBarGeometry.rowMinimumHeight)
+		.frame(
+			minHeight: MenuBarGeometry.rowMinimumHeight,
+			maxHeight: MenuBarGeometry.rowMinimumHeight
+		)
 		.accessibilityValue(model.qualifierSummary ?? "")
 		.overlay(alignment: .topLeading) {
 			if let announcement = model.refreshAnnouncement {
@@ -359,9 +362,9 @@ struct MenuBarSurfaceView: View {
 				} label: {
 					HStack(spacing: MenuBarGeometry.withinRow) {
 						Image(systemName: tab.symbol)
-							.foregroundStyle(model.selectedPanel == tab.id ? DesktopVisualTheme.accent : DesktopVisualTheme.muted)
+							.foregroundStyle(model.presentedPanel == tab.id ? DesktopVisualTheme.accent : DesktopVisualTheme.muted)
 						Text(tab.title).lineLimit(1)
-							.foregroundStyle(model.selectedPanel == tab.id ? DesktopVisualTheme.text : DesktopVisualTheme.muted)
+								.foregroundStyle(model.presentedPanel == tab.id ? DesktopVisualTheme.text : DesktopVisualTheme.muted)
 						if tab.marked {
 							Image(systemName: NoticeSeverity.warning.symbol)
 								.foregroundStyle(DesktopVisualTheme.warning)
@@ -372,9 +375,9 @@ struct MenuBarSurfaceView: View {
 					.contentShape(Rectangle())
 				}
 				.buttonStyle(.borderless)
-				.desktopSelectedSegment(model.selectedPanel == tab.id)
+				.desktopSelectedSegment(model.presentedPanel == tab.id)
 				.accessibilityLabel(tab.accessibilityLabel)
-				.accessibilityAddTraits(model.selectedPanel == tab.id ? [.isSelected, .isButton] : .isButton)
+				.accessibilityAddTraits(model.presentedPanel == tab.id ? [.isSelected, .isButton] : .isButton)
 			}
 		}
 		.padding(2)
@@ -398,7 +401,7 @@ struct MenuBarSurfaceView: View {
 
 	@ViewBuilder
 		private var panel: some View {
-			switch model.selectedPanel {
+			switch model.presentedPanel {
 			case .quota:
 				QuotaPanelView(clients: model.quotaClients)
 			case .usage:

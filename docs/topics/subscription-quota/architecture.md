@@ -36,13 +36,19 @@ than trusted once:
 
 ## C1 — The gate
 
-**Contract.** A client is probed only when quota reading is on *and* its current
-provider is `official`. The two conditions are ordered, not interchangeable:
+**Contract.** A client is probed only when quota reading is on, that client is
+selected in `quota.probe.clients`, *and* its current provider is `official`.
+The conditions are ordered, not interchangeable:
 `quotaProbe` off suppresses every probe for both clients regardless of provider,
 and the provider check runs only for clients that survive it. `requirements.md`
 clauses 1 and 3 are these two conditions, and they carry different reasons —
 `probe_disabled` for the switch, `not_official` for the provider — because a
 user who turned reading off is owed a different sentence than a user on a relay.
+
+The selected-client list defaults to Codex then Claude, must contain at least
+one unique known client, and persists while the parent switch is off. Snapshot,
+alert, and widget projections omit deselected clients rather than assigning them
+an unavailable reason.
 
 Resolution uses `provider.Service.Current` (`internal/provider/service.go:692`),
 which returns the latest completed selection per client without decrypting
@@ -598,7 +604,7 @@ configured client (`codex` or `claude`) through the Widget configuration/AppInte
 and project only that client. Small projects its window with the highest used
 share; medium projects all of that client's windows. Neither falls back to the
 other client when the configured one has no usable observation. Large projects
-both clients, filtered to those with at least one usable window, in
+the selected clients, filtered to those with at least one usable window, in
 Codex-then-Claude order, split into equal halves **of the full card height**,
 each half centring its own content; a client with no usable window produces no
 block; with a single client the block keeps its content height and centres rather

@@ -324,9 +324,9 @@ can fail.
 1. **Reading is off by default.** On a fresh installation the reading switch is
    off, and in that state no probe subprocess is spawned for either client by
    any trigger, including a user-initiated refresh; `~/.claude/settings.json` is
-   not written; and no reminder is evaluated. Every surface presents quota as
-   reading-off with that reason — not as unavailable, not as not-applicable, not
-   as zero, and not as a blank panel.
+   not written; and no reminder is evaluated. The menu-bar quota tab is hidden;
+   other surfaces must not present retained quota as unavailable, not-applicable,
+   zero, or a blank panel.
 2. **Turning reading off retains without displaying.** Given stored
    observations, turning the switch off displays no figure from them and probes
    nothing, and does not delete them. Turning it back on displays those same
@@ -336,6 +336,9 @@ can fail.
    other than `official`, no probe subprocess is spawned for that client, and its
    quota is presented as not applicable with that reason — not as unavailable,
    and not as zero.
+   The operator also selects at least one of Codex and Claude. Only selected
+   clients are probed, projected, alerted, or offered to widgets; the selection
+   remains stored while the parent reading switch is off.
 4. **Codex fields.** With `official` selected for Codex, the surface shows the
    plan, the used share and reset instant for each returned window, and the
    remaining reset allowance. A window the account does not have is absent, not

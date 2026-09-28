@@ -333,6 +333,8 @@ enum DesktopCopy {
 	static let settingsQuotaProbe = "Read quota"
 	static let settingsQuotaProbeHint =
 		"Only for clients whose provider is official. Invokes your already-signed-in client command; reads no credential"
+	static let settingsQuotaClients = "Clients"
+	static let settingsQuotaClientsHint = "Choose which signed-in clients AgentDeck may read; at least one stays selected"
 	static let settingsQuotaInterval = "Read interval"
 	static let settingsQuotaIntervalHint =
 		"A manual refresh reads quota with the snapshot; background refresh keeps this separate, slower interval"
@@ -491,6 +493,7 @@ enum DesktopCopy {
 		settingsMenuBarScope, settingsMenuBarScopeNote, settingsMenuBarScopeAll,
 		settingsMenuBarScopeFollow,
 		settingsGroupQuota, settingsQuotaProbe, settingsQuotaProbeHint,
+		settingsQuotaClients, settingsQuotaClientsHint,
 		settingsQuotaInterval, settingsQuotaIntervalHint,
 		settingsQuotaInterval5m, settingsQuotaInterval15m, settingsQuotaInterval30m,
 		settingsQuotaStatusline, settingsQuotaStatuslineHint,

@@ -16,6 +16,7 @@ import (
 // default.
 const (
 	settingProbeEnabled      = "quota.probe"
+	settingProbeClients      = "quota.probe.clients"
 	settingProbeInterval     = "quota.interval"
 	settingAlertsEnabled     = "quota.alerts"
 	settingAlertThresholds   = "quota.thresholds"
@@ -32,6 +33,7 @@ var AlertThresholdChoices = []float64{75, 90}
 // Settings is the subscription-quota settings group.
 type Settings struct {
 	ProbeEnabled      bool
+	ProbeClients      []Client
 	ProbeInterval     time.Duration
 	AlertsEnabled     bool
 	AlertThresholds   []float64
@@ -44,7 +46,14 @@ type Settings struct {
 // thresholds, and the reset notice on beneath the still-off alerts switch, as
 // the prototype's defaults have it.
 func DefaultSettings() Settings {
-	return Settings{ProbeInterval: 5 * time.Minute, AlertThresholds: []float64{75, 90}, ResetNotice: true}
+	return Settings{
+		ProbeClients: []Client{ClientCodex, ClientClaude}, ProbeInterval: 5 * time.Minute,
+		AlertThresholds: []float64{75, 90}, ResetNotice: true,
+	}
+}
+
+func (s Settings) ClientEnabled(client Client) bool {
+	return slices.Contains(s.ProbeClients, client)
 }
 
 // AlertConfig projects the alert half for DueAlerts.
@@ -58,6 +67,22 @@ func (s Settings) AlertConfig() AlertConfig {
 func (s Settings) Validate() error {
 	if s.StatusLineConsent && !s.ProbeEnabled {
 		return errors.New("status-line consent requires quota reading to be on")
+	}
+	if s.StatusLineConsent && !s.ClientEnabled(ClientClaude) {
+		return errors.New("status-line consent requires Claude quota reading")
+	}
+	if len(s.ProbeClients) == 0 {
+		return errors.New("at least one quota client is required")
+	}
+	seenClients := make(map[Client]bool, len(s.ProbeClients))
+	for _, client := range s.ProbeClients {
+		if client != ClientCodex && client != ClientClaude {
+			return fmt.Errorf("unsupported quota client %q", client)
+		}
+		if seenClients[client] {
+			return fmt.Errorf("duplicate quota client %q", client)
+		}
+		seenClients[client] = true
 	}
 	if !slices.Contains(ProbeIntervals, s.ProbeInterval) {
 		return fmt.Errorf("quota interval %s is not one of 5m, 15m, 30m", s.ProbeInterval)
@@ -114,6 +139,7 @@ func LoadSettings(ctx context.Context, r SettingReader) (Settings, error) {
 		apply func(string) error
 	}{
 		{settingProbeEnabled, switchInto(&s.ProbeEnabled)},
+		{settingProbeClients, func(value string) (err error) { s.ProbeClients, err = ParseProbeClients(value); return err }},
 		{settingProbeInterval, func(value string) (err error) { s.ProbeInterval, err = ParseProbeInterval(value); return err }},
 		{settingAlertsEnabled, switchInto(&s.AlertsEnabled)},
 		{settingAlertThresholds, func(value string) (err error) { s.AlertThresholds, err = ParseAlertThresholds(value); return err }},
@@ -137,12 +163,42 @@ func SaveSettings(ctx context.Context, w SettingStore, s Settings) error {
 	}
 	return w.SetSettings(ctx, map[string]string{
 		settingProbeEnabled:      FormatSwitch(s.ProbeEnabled),
+		settingProbeClients:      FormatProbeClients(s.ProbeClients),
 		settingProbeInterval:     s.ProbeInterval.String(),
 		settingAlertsEnabled:     FormatSwitch(s.AlertsEnabled),
 		settingAlertThresholds:   FormatAlertThresholds(s.AlertThresholds),
 		settingResetNotice:       FormatSwitch(s.ResetNotice),
 		settingStatusLineConsent: FormatSwitch(s.StatusLineConsent),
 	})
+}
+
+func ParseProbeClients(value string) ([]Client, error) {
+	seen := map[Client]bool{}
+	for _, part := range strings.Split(value, ",") {
+		client := Client(strings.TrimSpace(part))
+		if client != ClientCodex && client != ClientClaude {
+			return nil, fmt.Errorf("%q is not codex, claude, or codex,claude", value)
+		}
+		if seen[client] {
+			return nil, fmt.Errorf("%q repeats quota client %q", value, client)
+		}
+		seen[client] = true
+	}
+	clients := make([]Client, 0, len(seen))
+	for _, client := range []Client{ClientCodex, ClientClaude} {
+		if seen[client] {
+			clients = append(clients, client)
+		}
+	}
+	return clients, nil
+}
+
+func FormatProbeClients(clients []Client) string {
+	parts := make([]string, 0, len(clients))
+	for _, client := range clients {
+		parts = append(parts, string(client))
+	}
+	return strings.Join(parts, ",")
 }
 
 // ParseSwitch accepts "on" or "off".

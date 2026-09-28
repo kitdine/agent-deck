@@ -41,13 +41,16 @@ func TestLoadSettingsAppliesProductDefaultsWhenAbsent(t *testing.T) {
 	if !reflect.DeepEqual(got, DefaultSettings()) {
 		t.Fatalf("defaults = %+v, want %+v", got, DefaultSettings())
 	}
+	if !reflect.DeepEqual(got.ProbeClients, []Client{ClientCodex, ClientClaude}) {
+		t.Fatalf("default probe clients = %v, want Codex and Claude remembered", got.ProbeClients)
+	}
 }
 
 func TestSaveSettingsRoundTrips(t *testing.T) {
 	stored := mapSettings{}
 	want := Settings{
 		ProbeEnabled: true, ProbeInterval: 15 * time.Minute, AlertsEnabled: true,
-		AlertThresholds: []float64{90}, ResetNotice: false, StatusLineConsent: true,
+		ProbeClients: []Client{ClientCodex}, AlertThresholds: []float64{90}, ResetNotice: false,
 	}
 	if err := SaveSettings(context.Background(), stored, want); err != nil {
 		t.Fatalf("SaveSettings: %v", err)
@@ -72,6 +75,14 @@ func TestLoadSettingsRejectsAMalformedStoredValue(t *testing.T) {
 func TestSettingsValidateRejectsUnreachableStates(t *testing.T) {
 	for name, mutate := range map[string]func(*Settings){
 		"consent while reading off": func(s *Settings) { s.StatusLineConsent = true },
+		"consent without Claude": func(s *Settings) {
+			s.ProbeEnabled = true
+			s.ProbeClients = []Client{ClientCodex}
+			s.StatusLineConsent = true
+		},
+		"no selected clients":       func(s *Settings) { s.ProbeClients = nil },
+		"unknown selected client":   func(s *Settings) { s.ProbeClients = []Client{"other"} },
+		"duplicate selected client": func(s *Settings) { s.ProbeClients = []Client{ClientCodex, ClientCodex} },
 		"interval outside choices":  func(s *Settings) { s.ProbeEnabled = true; s.ProbeInterval = 10 * time.Minute },
 		"threshold outside choices": func(s *Settings) { s.AlertThresholds = []float64{80} },
 		"no thresholds":             func(s *Settings) { s.AlertThresholds = nil },
@@ -83,6 +94,18 @@ func TestSettingsValidateRejectsUnreachableStates(t *testing.T) {
 		}
 		if err := SaveSettings(context.Background(), mapSettings{}, s); err == nil {
 			t.Errorf("%s: SaveSettings accepted %+v", name, s)
+		}
+	}
+}
+
+func TestParseProbeClientsCanonicalizesTheSelectedSubset(t *testing.T) {
+	got, err := ParseProbeClients("claude,codex")
+	if err != nil || !reflect.DeepEqual(got, []Client{ClientCodex, ClientClaude}) {
+		t.Fatalf("ParseProbeClients = (%v, %v), want [codex claude]", got, err)
+	}
+	for _, value := range []string{"", "other", "codex,codex"} {
+		if _, err := ParseProbeClients(value); err == nil {
+			t.Errorf("ParseProbeClients(%q) succeeded", value)
 		}
 	}
 }

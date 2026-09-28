@@ -323,7 +323,7 @@ func (s Service) Build(ctx context.Context, request Request) (Result, error) {
 // must not silently discard it either (GS-R1-F5): a future caller (task 6)
 // can read it directly instead of re-deriving C1's full gate — including its
 // observed-provider cross-check — from scratch.
-func (s Service) RefreshQuota(ctx context.Context, core *store.Store, home string, trigger quota.Trigger, probeEnabled bool, interval, maxBackoff time.Duration) map[quota.Client]quota.Reason {
+func (s Service) RefreshQuota(ctx context.Context, core *store.Store, home string, trigger quota.Trigger, probeEnabled bool, probeClients []quota.Client, interval, maxBackoff time.Duration) map[quota.Client]quota.Reason {
 	scheduler := quota.Scheduler{
 		Store: quota.NewStore(core.DB), Interval: interval, MaxBackoff: maxBackoff, Now: s.now,
 		ProbeCodex: s.QuotaProbeCodex, ProbeClaudeProse: s.QuotaProbeClaudeProse,
@@ -340,13 +340,20 @@ func (s Service) RefreshQuota(ctx context.Context, core *store.Store, home strin
 	usageService := usage.New(core, home)
 	outcome := make(map[quota.Client]quota.Reason, 2)
 	for _, client := range []quota.Client{quota.ClientCodex, quota.ClientClaude} {
+		clientEnabled := false
+		for _, selected := range probeClients {
+			if selected == client {
+				clientEnabled = true
+				break
+			}
+		}
 		if selectionReadFailed {
 			outcome[client] = quota.ReasonProbeFailed
 			continue
 		}
 		recordedOfficial, selectedAt := quotaCurrentSelection(selections, client)
 		observedKnown, observedOfficial := quotaObservedOfficial(ctx, usageService, client, selectedAt)
-		allowed, reason := quota.Allowed(probeEnabled, recordedOfficial, observedKnown, observedOfficial)
+		allowed, reason := quota.Allowed(probeEnabled && clientEnabled, recordedOfficial, observedKnown, observedOfficial)
 		outcome[client] = reason
 		scheduler.Run(ctx, client, trigger, allowed)
 	}

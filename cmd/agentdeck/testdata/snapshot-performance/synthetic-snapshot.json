@@ -7478,6 +7478,7 @@
     },
     "subscription": {
       "available": true,
+      "reading": false,
       "clients": [
         {
           "client": "codex",

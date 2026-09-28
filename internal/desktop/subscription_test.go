@@ -115,6 +115,23 @@ func TestBuildSubscriptionReportsTheGateAndNeverProbedAsClientStates(t *testing.
 	}
 }
 
+func TestBuildSubscriptionIncludesOnlySelectedClientsAndReadingState(t *testing.T) {
+	core := openSubscriptionStore(t)
+	saveQuotaSettings(t, core, func(s *quota.Settings) {
+		s.ProbeEnabled = true
+		s.ProbeClients = []quota.Client{quota.ClientCodex}
+	})
+	recordOfficial(t, core, "codex", "claude")
+
+	subscription, err := Service{Home: t.TempDir()}.BuildSubscription(context.Background(), core, time.Now())
+	if err != nil {
+		t.Fatalf("BuildSubscription: %v", err)
+	}
+	if !subscription.Reading || len(subscription.Clients) != 1 || subscription.Clients[0].Client != "codex" {
+		t.Fatalf("subscription = %+v, want reading on with Codex only", subscription)
+	}
+}
+
 func TestBuildSubscriptionCarriesFiguresInVendorOrderWithTheTightestWindow(t *testing.T) {
 	core := openSubscriptionStore(t)
 	saveQuotaSettings(t, core, func(s *quota.Settings) { s.ProbeEnabled = true })

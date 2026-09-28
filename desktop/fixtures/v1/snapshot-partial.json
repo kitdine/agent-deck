@@ -87,6 +87,7 @@
     },
     "subscription": {
       "available": false,
+      "reading": true,
       "clients": []
     }
   },

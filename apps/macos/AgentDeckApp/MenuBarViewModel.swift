@@ -604,7 +604,9 @@ final class MenuBarViewModel {
 	}
 
 	var panelTabs: [PanelTab] {
-		MenuBarPanel.allCases.map { panel in
+		MenuBarPanel.allCases.filter { panel in
+			panel != .quota || snapshot?.subscription.reading == true
+		}.map { panel in
 			let marked = panelHasUnavailableData(panel)
 			return PanelTab(
 				id: panel,
@@ -614,6 +616,10 @@ final class MenuBarViewModel {
 				accessibilityLabel: marked ? t(DesktopCopy.panelUnavailableMark, panel.title) : panel.title
 			)
 		}
+	}
+
+	var presentedPanel: MenuBarPanel {
+		panelTabs.contains { $0.id == selectedPanel } ? selectedPanel : .usage
 	}
 
 	private func panelHasUnavailableData(_ panel: MenuBarPanel) -> Bool {

@@ -122,6 +122,56 @@ final class EmbeddedHelperRunnerTests: XCTestCase {
 		XCTAssertTrue(invocations.allSatisfy { $0.environment["PATH"] == "/tmp/untrusted-path" })
 	}
 
+	func testSnapshotWaitsForItsCompletedScanWorkerToReleaseTheLock() async throws {
+		let temporaryDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+		defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
+		let bundleURL = try makeEmbeddedHelperBundle(in: temporaryDirectory)
+		let home = temporaryDirectory.appendingPathComponent("home", isDirectory: true)
+		let state = home.appendingPathComponent(".agentdeck", isDirectory: true)
+		try FileManager.default.createDirectory(at: state, withIntermediateDirectories: true)
+		let lock = state.appendingPathComponent("scan.lock")
+		try Data("v1:123:fixture".utf8).write(to: lock)
+		let process = ScanLockReleasingProcess(lockURL: lock, snapshot: try desktopFixtureData("snapshot-complete.json"))
+		let runner = EmbeddedHelperRunner(
+			appBundleURL: bundleURL,
+			process: process,
+			environment: ["HOME": home.path, "PATH": "/usr/bin:/bin"],
+			timeout: .seconds(2)
+		)
+
+		_ = try await runner.snapshot()
+
+		let snapshotObservedLock = await process.snapshotObservedLock()
+		XCTAssertFalse(snapshotObservedLock, "desktop snapshot ran while its own completed scan worker still held scan.lock")
+	}
+
+	func testSnapshotStillReportsAScanLockHeldBeyondTheReleaseGrace() async throws {
+		let temporaryDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+		defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
+		let bundleURL = try makeEmbeddedHelperBundle(in: temporaryDirectory)
+		let home = temporaryDirectory.appendingPathComponent("home", isDirectory: true)
+		let state = home.appendingPathComponent(".agentdeck", isDirectory: true)
+		try FileManager.default.createDirectory(at: state, withIntermediateDirectories: true)
+		let lock = state.appendingPathComponent("scan.lock")
+		try Data("v1:456:external".utf8).write(to: lock)
+		let process = ScanLockReleasingProcess(
+			lockURL: lock,
+			snapshot: try desktopFixtureData("snapshot-complete.json"),
+			releaseDelay: nil
+		)
+		let runner = EmbeddedHelperRunner(
+			appBundleURL: bundleURL,
+			process: process,
+			environment: ["HOME": home.path, "PATH": "/usr/bin:/bin"],
+			timeout: .seconds(4)
+		)
+
+		_ = try await runner.snapshot()
+
+		let snapshotObservedLock = await process.snapshotObservedLock()
+		XCTAssertTrue(snapshotObservedLock, "a continuing scan lock must remain visible after the bounded grace period")
+	}
+
 	func testDefaultEnvironmentFindsSupportedClientInstallLocations() async throws {
 		let temporaryDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
 		defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
@@ -491,6 +541,51 @@ private actor BlockingSwitchTransport: ProviderSwitching {
 	func targets() -> [ProviderSwitchTarget] {
 		invocations
 	}
+}
+
+private actor ScanLockReleasingProcess: EmbeddedHelperProcess {
+	private let lockURL: URL
+	private let snapshot: Data
+	private let releaseDelay: Duration?
+	private var calls = 0
+	private var sawLockDuringSnapshot = false
+
+	init(lockURL: URL, snapshot: Data, releaseDelay: Duration? = .milliseconds(50)) {
+		self.lockURL = lockURL
+		self.snapshot = snapshot
+		self.releaseDelay = releaseDelay
+	}
+
+	func run(executableURL _: URL, arguments _: [String], environment _: [String: String], timeout _: Duration) async throws -> HelperProcessOutput {
+		HelperProcessOutput(exitStatus: 1, stdout: Data(), stderr: Data("unexpected non-stream invocation".utf8))
+	}
+
+	func runLines(
+		executableURL _: URL,
+		arguments _: [String],
+		environment _: [String: String],
+		timeout _: Duration,
+		maximumLineBytes _: Int,
+		maximumLines _: Int
+	) async throws -> HelperProcessLinesOutput {
+		calls += 1
+		if calls == 1 {
+			if let releaseDelay {
+				let lockURL = lockURL
+				Task {
+					try? await Task.sleep(for: releaseDelay)
+					try? FileManager.default.removeItem(at: lockURL)
+				}
+			}
+			let lines = [UInt8](successfulScanStream()).split(separator: 0x0A).map { Data($0) }
+			return HelperProcessLinesOutput(exitStatus: 0, stdoutLines: lines, stdoutBytes: successfulScanStream().count)
+		}
+		sawLockDuringSnapshot = FileManager.default.fileExists(atPath: lockURL.path)
+		let lines = try snapshotChunkLines(snapshot, chunkBytes: 8 * 1024)
+		return HelperProcessLinesOutput(exitStatus: 0, stdoutLines: lines, stdoutBytes: lines.reduce(0) { $0 + $1.count })
+	}
+
+	func snapshotObservedLock() -> Bool { sawLockDuringSnapshot }
 }
 
 @MainActor

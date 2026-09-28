@@ -56,10 +56,16 @@ footer and the panel cannot claim different providers.
 
 ## The tab strip, which this topic changes
 
-**Quota is the first tab, and it is the tab the panel opens on.** Those two are
+**Quota is the first tab, and it is the tab the panel opens on when quota
+reading is enabled.** Those two are
 one decision, not two: a tab placed first but not selected by default would use
 position to say it matters most and the default to say it does not. The order is
 quota, usage, breakdown, attribution, sessions.
+
+When quota reading is off, the quota tab is absent and the presented panel falls
+back to usage while retaining the user's quota selection for a later re-enable.
+When reading is on, cards exist only for the selected Codex/Claude clients;
+deselected clients are not rendered as unavailable.
 
 The strip was a four-column grid. A fifth tab wrapped onto a second row, which
 costs more vertical space than the labels are worth. The rule is now:
@@ -272,12 +278,11 @@ Rendering the gate as "unavailable" would tell the user something is broken when
 nothing is; rendering the user's own switch as either of the other two would
 hide the fact that the fix is one setting away.
 
-With reading off the card keeps its shape rather than disappearing — the client
-name, `未读取`, and its reason. A tab that empties itself teaches the user the
-feature is gone; a tab that says why teaches them where the switch is. Retained
-observations are not rendered in this state, per `requirements.md` clause 2:
-they exist so that turning the switch back on is instant, not so that a figure
-survives the decision to stop reading it.
+With reading off the menu-bar tab and cards are absent. Retained observations
+are not rendered in this state, per `requirements.md` clause 2; they exist so
+that turning the switch back on is instant, not so that a figure survives the
+decision to stop reading it. Other surfaces may still use `probe_disabled` when
+they need to explain why quota is absent.
 
 **Claude figures carry their attribution limitation on its own line, directly
 under the header.** It is a property of every figure on that card, not of a

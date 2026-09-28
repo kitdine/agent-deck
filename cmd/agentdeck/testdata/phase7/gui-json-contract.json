@@ -708,7 +708,8 @@
                 "tightest_window_key": null,
                 "windows": []
               }
-            ]
+            ],
+            "reading": "boolean"
           },
           "usage": {
             "attribution_reasons": {
