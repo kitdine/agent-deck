@@ -3609,6 +3609,38 @@
         }
       }
     },
+    "Clients": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Clients"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "客户端"
+          }
+        }
+      }
+    },
+    "Choose which signed-in clients AgentDeck may read; at least one stays selected": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose which signed-in clients AgentDeck may read; at least one stays selected"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择 AgentDeck 可以读取的已登录客户端；至少保留一个选项"
+          }
+        }
+      }
+    },
     "Only for clients whose provider is official. Invokes your already-signed-in client command; reads no credential": {
       "localizations": {
         "en": {

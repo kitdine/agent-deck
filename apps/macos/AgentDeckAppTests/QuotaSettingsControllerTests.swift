@@ -63,6 +63,25 @@ final class QuotaSettingsControllerTests: XCTestCase {
 		XCTAssertEqual(calls[0].reading, true)
 	}
 
+	func testClientSelectionPersistsAndTheLastClientCannotBeDeselected() async {
+		let transport = StubQuotaSettingsTransport(settings: DesktopQuotaSettingsValuesV1(
+			reading: true, clients: ["codex", "claude"], interval: .fiveMinutes,
+			alerts: false, thresholds: [75, 90], resetNotice: true, statusline: false
+		))
+		let controller = makeQuotaSettingsController(transport: transport)
+		await controller.load()
+
+		await controller.setClient("claude", enabled: false)
+		XCTAssertEqual(controller.settings?.clients, ["codex"])
+		let afterClaude = await transport.applyCalls
+		XCTAssertEqual(afterClaude.last?.clients, ["codex"])
+
+		await controller.setClient("codex", enabled: false)
+		XCTAssertEqual(controller.settings?.clients, ["codex"])
+		let afterLastClient = await transport.applyCalls
+		XCTAssertEqual(afterLastClient.count, afterClaude.count, "the last selected client must remain remembered")
+	}
+
 	/// requirements.md's default-off contract: a control moved before `load()`
 	/// returns must not invent an on value for alerts/thresholds/reset-notice —
 	/// it sends the quiet defaults alongside the one field the user actually
@@ -468,6 +487,64 @@ final class QuotaSettingsControllerTests: XCTestCase {
 		XCTAssertEqual(controller.settings?.resetNotice, true)
 		XCTAssertNil(controller.settingsRow)
 	}
+
+	func testQueuedClientChangeRefreshesOnlyAfterItsOwnWritePersists() async {
+		let transport = SuspendingQuotaSettingsTransport()
+		let refreshCalls = ActorCounter()
+		let controller = makeQuotaSettingsController(
+			transport: transport,
+			refreshQuotaSnapshot: { await refreshCalls.increment() }
+		)
+		await controller.load()
+
+		let first = Task { await controller.setInterval(.fifteenMinutes) }
+		await transport.waitForApplyCount(1)
+		let client = Task { await controller.setClient("claude", enabled: false) }
+		await Task.yield()
+		let beforeFirstCompletion = await refreshCalls.count
+		XCTAssertEqual(beforeFirstCompletion, 0, "a queued client change must not refresh old settings")
+
+		await transport.completeNext(.success)
+		await transport.waitForApplyCount(2)
+		let beforeClientCompletion = await refreshCalls.count
+		XCTAssertEqual(beforeClientCompletion, 0, "the first write is not the queued client change")
+		await transport.completeNext(.success)
+		await first.value
+		await client.value
+
+		XCTAssertEqual(controller.settings?.clients, ["codex"])
+		let finalRefreshCount = await refreshCalls.count
+		XCTAssertEqual(finalRefreshCount, 1)
+	}
+
+	func testQueuedReadingChangeRefreshesOnlyAfterItsOwnWritePersists() async {
+		let transport = SuspendingQuotaSettingsTransport()
+		let refreshCalls = ActorCounter()
+		let controller = makeQuotaSettingsController(
+			transport: transport,
+			refreshQuotaSnapshot: { await refreshCalls.increment() }
+		)
+		await controller.load()
+
+		let first = Task { await controller.setInterval(.fifteenMinutes) }
+		await transport.waitForApplyCount(1)
+		let reading = Task { await controller.setReading(true) }
+		await Task.yield()
+		let beforeFirstCompletion = await refreshCalls.count
+		XCTAssertEqual(beforeFirstCompletion, 0, "a queued reading change must not refresh old settings")
+
+		await transport.completeNext(.success)
+		await transport.waitForApplyCount(2)
+		let beforeReadingCompletion = await refreshCalls.count
+		XCTAssertEqual(beforeReadingCompletion, 0, "the first write is not the queued reading change")
+		await transport.completeNext(.success)
+		await first.value
+		await reading.value
+
+		XCTAssertEqual(controller.settings?.reading, true)
+		let finalRefreshCount = await refreshCalls.count
+		XCTAssertEqual(finalRefreshCount, 1)
+	}
 }
 
 private actor SuspendingQuotaSettingsTransport: QuotaSettingsTransport {
@@ -498,7 +575,7 @@ private actor SuspendingQuotaSettingsTransport: QuotaSettingsTransport {
 			return
 		}
 		settings = DesktopQuotaSettingsValuesV1(
-			reading: desired.reading, interval: desired.interval, alerts: desired.alerts,
+			reading: desired.reading, clients: desired.clients, interval: desired.interval, alerts: desired.alerts,
 			thresholds: desired.thresholds, resetNotice: desired.resetNotice, statusline: settings.statusline
 		)
 		continuation.resume(returning: .decoded(DesktopQuotaSettingsResultV1(settings: settings, statuslineRestore: nil)))
@@ -545,7 +622,7 @@ private actor SuspendingBothQuotaSettingsTransport: QuotaSettingsTransport {
 			return
 		}
 		settings = DesktopQuotaSettingsValuesV1(
-			reading: desired.reading, interval: desired.interval, alerts: desired.alerts,
+			reading: desired.reading, clients: desired.clients, interval: desired.interval, alerts: desired.alerts,
 			thresholds: desired.thresholds, resetNotice: desired.resetNotice, statusline: settings.statusline
 		)
 		continuation.resume(returning: .decoded(DesktopQuotaSettingsResultV1(settings: settings, statuslineRestore: nil)))
@@ -558,7 +635,7 @@ private actor SuspendingBothQuotaSettingsTransport: QuotaSettingsTransport {
 			return
 		}
 		settings = DesktopQuotaSettingsValuesV1(
-			reading: settings.reading, interval: settings.interval, alerts: settings.alerts,
+			reading: settings.reading, clients: settings.clients, interval: settings.interval, alerts: settings.alerts,
 			thresholds: settings.thresholds, resetNotice: settings.resetNotice, statusline: true
 		)
 		continuation.resume(returning: .decoded(DesktopQuotaStatusLineResultV1(consent: true, result: DesktopUsageHookResultV1(outcome: .configured))))
@@ -583,7 +660,7 @@ private actor SupersededLoadQuotaSettingsTransport: QuotaSettingsTransport {
 	func applyQuotaSettings(_ desired: DesktopQuotaSettingsDesiredV1) async -> DesktopQuotaTransportOutcome<DesktopQuotaSettingsResultV1> {
 		applyCalls.append(desired)
 		current = DesktopQuotaSettingsValuesV1(
-			reading: desired.reading, interval: desired.interval, alerts: desired.alerts,
+			reading: desired.reading, clients: desired.clients, interval: desired.interval, alerts: desired.alerts,
 			thresholds: desired.thresholds, resetNotice: desired.resetNotice, statusline: current.statusline
 		)
 		return .decoded(DesktopQuotaSettingsResultV1(settings: current, statuslineRestore: nil))
@@ -779,6 +856,52 @@ final class QuotaAlertNotifierTests: XCTestCase {
 
 @MainActor
 final class SettingsWindowLayoutTests: XCTestCase {
+	func testQuotaClientChoicesStayVisibleButDisabledWhenMasterReadingIsOff() async throws {
+		let preferences = DesktopPreferences(defaults: isolatedDefaults(), registrar: StubLoginItemRegistrar())
+		let transport = StubQuotaSettingsTransport(settings: DesktopQuotaSettingsValuesV1(
+			reading: false, clients: ["codex", "claude"], interval: .fiveMinutes,
+			alerts: false, thresholds: [75, 90], resetNotice: true, statusline: false
+		))
+		let quotaSettings = makeQuotaSettingsController(preferences: preferences, transport: transport)
+		let controller = SettingsWindowController(preferences: preferences, quotaSettings: quotaSettings)
+		controller.show()
+		let window = try XCTUnwrap(controller.window)
+		defer { window.close() }
+		await quotaSettings.load()
+		settle(window)
+
+		let hosting = try XCTUnwrap(window.contentViewController?.view)
+		let codex = try XCTUnwrap(findButton(in: hosting, identifier: "quota-client-codex"))
+		let claude = try XCTUnwrap(findButton(in: hosting, identifier: "quota-client-claude"))
+		XCTAssertEqual(codex.title, "Codex")
+		XCTAssertEqual(claude.title, "Claude")
+		XCTAssertEqual(codex.accessibilityRole(), .checkBox)
+		XCTAssertEqual(claude.accessibilityRole(), .checkBox)
+		XCTAssertEqual(codex.accessibilityLabel(), "Codex")
+		XCTAssertEqual(claude.accessibilityLabel(), "Claude")
+		XCTAssertFalse(codex.isEnabled)
+		XCTAssertFalse(claude.isEnabled)
+		XCTAssertEqual(codex.state, .on, "the remembered selection remains checked while disabled")
+		XCTAssertEqual(claude.state, .on)
+
+		await quotaSettings.setReading(true)
+		settle(window)
+		XCTAssertTrue(codex.isEnabled)
+		XCTAssertTrue(claude.isEnabled)
+
+		claude.performClick(nil)
+		for _ in 0..<50 {
+			if await transport.applyCalls.count >= 2 { break }
+			await Task.yield()
+		}
+		settle(window)
+		XCTAssertEqual(claude.state, .off)
+		XCTAssertEqual((claude.accessibilityValue() as? NSNumber)?.intValue, 0)
+		XCTAssertEqual(quotaSettings.settings?.clients, ["codex"])
+		let calls = await transport.applyCalls
+		XCTAssertEqual(calls.last?.clients, ["codex"], "the mounted checkbox action must reach the settings transport")
+	}
+
 	/// MA-F3: the denied-permission warning and its action appear after the
 	/// window was sized. The window must grow to hold them instead of letting
 	/// SwiftUI overlap the warning, the action, and the threshold control.
@@ -815,5 +938,13 @@ final class SettingsWindowLayoutTests: XCTestCase {
 			window.contentView?.layoutSubtreeIfNeeded()
 			RunLoop.main.run(until: Date().addingTimeInterval(0.05))
 		}
+	}
+
+	private func findButton(in view: NSView, identifier: String) -> NSButton? {
+		if let button = view as? NSButton, button.identifier?.rawValue == identifier { return button }
+		for child in view.subviews {
+			if let button = findButton(in: child, identifier: identifier) { return button }
+		}
+		return nil
 	}
 }

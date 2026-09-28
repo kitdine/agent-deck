@@ -49,6 +49,12 @@ observations already read are discarded: they are kept and simply stop being
 displayed, so turning the switch back on is instant rather than a wait for the
 next probe.
 
+The client selector is retained configuration beneath that kill switch. Codex
+and Claude are multi-select choices, at least one remains selected, and turning
+the parent off remembers the selection. Claude status-line consent requires both
+the parent and Claude selection; deselecting Claude restores an installed route
+just like turning the parent off.
+
 That last part is deliberately not in the hint copy. A hint that tried to carry
 the retention rule as well as the scope and the credential promise would be
 three sentences under a switch, and the fact it would be explaining is one the
@@ -62,7 +68,8 @@ The group's controls are not siblings; they form a chain:
 
 ```
 读取额度 (quotaProbe)
-├── 启用 Claude 状态栏通路 (quotaStatusline)
+├── 客户端 [Codex] [Claude] (quotaProbeClients)
+├── 启用 Claude 状态栏通路 (quotaStatusline; requires Claude)
 └── 额度提醒 (quotaAlerts)
     ├── 提醒阈值 (quotaThresholds)
     └── 窗口重置时提醒 (quotaResetNotice)
@@ -122,6 +129,8 @@ systems with their own opinions.
 | `settings.quota` | 订阅额度 | Subscription quota |
 | `settings.quotaProbe` | 读取额度 | Read quota |
 | `settings.quotaProbeHint` | 只对 provider 为 official 的客户端读取；调用本机已登录的客户端命令，不读取任何凭证 | Only for clients whose provider is official. Invokes your already-signed-in client command; reads no credential |
+| `settings.quotaClients` | 客户端 | Clients |
+| `settings.quotaClientsHint` | 选择 AgentDeck 可以读取的已登录客户端；至少保留一个选项 | Choose which signed-in clients AgentDeck may read; at least one stays selected |
 | `settings.quotaInterval` | 读取间隔 | Read interval |
 | `settings.quotaIntervalHint` | 手动刷新时随快照一起读取；后台刷新按此间隔单独计时 | A manual refresh reads quota with the snapshot; background refresh keeps this separate, slower interval |
 | `settings.quotaStatusline` | 启用 Claude 状态栏通路 | Enable the Claude status-line route |

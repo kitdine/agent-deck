@@ -399,7 +399,7 @@ func runDesktopQuotaRefresh(ctx context.Context, opts *commandOptions, manual bo
 	if manual {
 		trigger = quota.TriggerManual
 	}
-	outcome := quotaRefreshService(stateRoot, home).RefreshQuota(ctx, core, home, trigger, settings.ProbeEnabled, settings.ProbeInterval, quotaMaxBackoff)
+	outcome := quotaRefreshService(stateRoot, home).RefreshQuota(ctx, core, home, trigger, settings.ProbeEnabled, settings.ProbeClients, settings.ProbeInterval, quotaMaxBackoff)
 
 	warnings := []string{}
 	// outcome's empty reason means this cycle's C1 gate passed for that
@@ -477,17 +477,18 @@ func runDesktopQuotaAlertsAck(ctx context.Context, opts *commandOptions, ids []s
 }
 
 type desktopQuotaSettingsView struct {
-	Reading     bool      `json:"reading"`
-	Interval    string    `json:"interval"`
-	Alerts      bool      `json:"alerts"`
-	Thresholds  []float64 `json:"thresholds"`
-	ResetNotice bool      `json:"reset_notice"`
-	StatusLine  bool      `json:"statusline"`
+	Reading     bool           `json:"reading"`
+	Clients     []quota.Client `json:"clients"`
+	Interval    string         `json:"interval"`
+	Alerts      bool           `json:"alerts"`
+	Thresholds  []float64      `json:"thresholds"`
+	ResetNotice bool           `json:"reset_notice"`
+	StatusLine  bool           `json:"statusline"`
 }
 
 func quotaSettingsView(s quota.Settings) desktopQuotaSettingsView {
 	return desktopQuotaSettingsView{
-		Reading: s.ProbeEnabled, Interval: s.ProbeInterval.String(), Alerts: s.AlertsEnabled,
+		Reading: s.ProbeEnabled, Clients: s.ProbeClients, Interval: s.ProbeInterval.String(), Alerts: s.AlertsEnabled,
 		Thresholds: s.AlertThresholds, ResetNotice: s.ResetNotice, StatusLine: s.StatusLineConsent,
 	}
 }
@@ -498,7 +499,7 @@ type desktopQuotaSettingsResult struct {
 }
 
 func newDesktopQuotaSettingsCommand(opts *commandOptions) *cobra.Command {
-	var reading, interval, alerts, thresholds, resetNotice string
+	var reading, clients, interval, alerts, thresholds, resetNotice string
 	command := &cobra.Command{
 		Use:   "quota-settings",
 		Short: "Show or change subscription-quota settings",
@@ -512,6 +513,11 @@ func newDesktopQuotaSettingsCommand(opts *commandOptions) *cobra.Command {
 				var err error
 				if flags.Changed("reading") {
 					if next.ProbeEnabled, err = quota.ParseSwitch(reading); err != nil {
+						return err
+					}
+				}
+				if flags.Changed("clients") {
+					if next.ProbeClients, err = quota.ParseProbeClients(clients); err != nil {
 						return err
 					}
 				}
@@ -540,6 +546,7 @@ func newDesktopQuotaSettingsCommand(opts *commandOptions) *cobra.Command {
 		},
 	}
 	command.Flags().StringVar(&reading, "reading", "", "Quota reading: on or off")
+	command.Flags().StringVar(&clients, "clients", "", "Quota clients: codex, claude, or codex,claude")
 	command.Flags().StringVar(&interval, "interval", "", "Background probe interval: 5m, 15m, or 30m")
 	command.Flags().StringVar(&alerts, "alerts", "", "Quota alerts: on or off")
 	command.Flags().StringVar(&thresholds, "thresholds", "", "Alert thresholds: 75, 90, or 75,90")
@@ -578,7 +585,9 @@ func runDesktopQuotaSettings(ctx context.Context, opts *commandOptions, apply fu
 	}
 
 	var restore *usagehook.Result
-	if current.ProbeEnabled && !next.ProbeEnabled {
+	readingTurnedOff := current.ProbeEnabled && !next.ProbeEnabled
+	claudeTurnedOff := current.StatusLineConsent && current.ClientEnabled(quota.ClientClaude) && !next.ClientEnabled(quota.ClientClaude)
+	if readingTurnedOff || claudeTurnedOff {
 		manager, err := quotaStatusLineManager(opts, stateRoot)
 		if err != nil {
 			return err
@@ -701,6 +710,9 @@ func runDesktopQuotaStatusLine(ctx context.Context, opts *commandOptions, operat
 	case "enable":
 		if !settings.ProbeEnabled {
 			return &inputError{err: errors.New("the status-line route requires quota reading to be on")}
+		}
+		if !settings.ClientEnabled(quota.ClientClaude) {
+			return &inputError{err: errors.New("the status-line route requires Claude quota reading")}
 		}
 		if result, err = manager.SetupStatusLine(); err != nil {
 			return err

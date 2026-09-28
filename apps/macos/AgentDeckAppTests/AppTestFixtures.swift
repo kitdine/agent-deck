@@ -602,13 +602,14 @@ actor StubQuotaSettingsTransport: QuotaSettingsTransport {
 	func applyQuotaSettings(_ desired: DesktopQuotaSettingsDesiredV1) async -> DesktopQuotaTransportOutcome<DesktopQuotaSettingsResultV1> {
 		applyCalls.append(desired)
 		let wasReading = settings.reading
+		let disabledClaude = settings.clients.contains("claude") && !desired.clients.contains("claude")
 		settings = DesktopQuotaSettingsValuesV1(
-			reading: desired.reading, interval: desired.interval, alerts: desired.alerts,
+			reading: desired.reading, clients: desired.clients, interval: desired.interval, alerts: desired.alerts,
 			thresholds: desired.thresholds, resetNotice: desired.resetNotice,
-			// Mirrors runDesktopQuotaSettings: turning reading off clears consent.
-			statusline: (wasReading && !desired.reading) ? false : settings.statusline
+			// Mirrors runDesktopQuotaSettings: turning reading off or disabling Claude clears consent.
+			statusline: (wasReading && !desired.reading) || disabledClaude ? false : settings.statusline
 		)
-		let restore: DesktopUsageHookResultV1? = (wasReading && !desired.reading && statuslineOutcome != .configured)
+		let restore: DesktopUsageHookResultV1? = ((wasReading && !desired.reading) || disabledClaude) && statuslineOutcome != .configured
 			? DesktopUsageHookResultV1(outcome: statuslineOutcome)
 			: nil
 		return .decoded(DesktopQuotaSettingsResultV1(settings: settings, statuslineRestore: restore))
@@ -619,7 +620,7 @@ actor StubQuotaSettingsTransport: QuotaSettingsTransport {
 		let succeeded = statuslineOutcome != .failed
 		let consent = enabled ? succeeded : false
 		settings = DesktopQuotaSettingsValuesV1(
-			reading: settings.reading, interval: settings.interval, alerts: settings.alerts,
+			reading: settings.reading, clients: settings.clients, interval: settings.interval, alerts: settings.alerts,
 			thresholds: settings.thresholds, resetNotice: settings.resetNotice, statusline: consent
 		)
 		return .decoded(DesktopQuotaStatusLineResultV1(consent: consent, result: DesktopUsageHookResultV1(outcome: statuslineOutcome)))

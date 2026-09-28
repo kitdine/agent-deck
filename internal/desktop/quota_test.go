@@ -50,7 +50,7 @@ func TestRefreshQuotaProbeDisabledDoesNothing(t *testing.T) {
 		Now:             func() time.Time { return time.Date(2026, 9, 10, 10, 0, 0, 0, time.UTC) },
 		QuotaProbeCodex: fakes.codex, QuotaProbeClaudeProse: fakes.claude,
 	}
-	service.RefreshQuota(context.Background(), core, service.Home, quota.TriggerBackground, false, 5*time.Minute, time.Hour)
+	service.RefreshQuota(context.Background(), core, service.Home, quota.TriggerBackground, false, []quota.Client{quota.ClientCodex, quota.ClientClaude}, 5*time.Minute, time.Hour)
 
 	if fakes.codexCalls != 0 || fakes.claudeCalls != 0 {
 		t.Fatalf("codexCalls=%d claudeCalls=%d, want 0/0 with probing disabled", fakes.codexCalls, fakes.claudeCalls)
@@ -72,7 +72,7 @@ func TestRefreshQuotaProbesBothClientsWhenOfficialAndEnabled(t *testing.T) {
 		Now:             func() time.Time { return time.Date(2026, 9, 10, 10, 0, 0, 0, time.UTC) },
 		QuotaProbeCodex: fakes.codex, QuotaProbeClaudeProse: fakes.claude,
 	}
-	service.RefreshQuota(context.Background(), core, service.Home, quota.TriggerBackground, true, 5*time.Minute, time.Hour)
+	service.RefreshQuota(context.Background(), core, service.Home, quota.TriggerBackground, true, []quota.Client{quota.ClientCodex, quota.ClientClaude}, 5*time.Minute, time.Hour)
 
 	if fakes.codexCalls != 1 || fakes.claudeCalls != 1 {
 		t.Fatalf("codexCalls=%d claudeCalls=%d, want 1/1 when both clients are official and probing is enabled", fakes.codexCalls, fakes.claudeCalls)
@@ -83,6 +83,24 @@ func TestRefreshQuotaProbesBothClientsWhenOfficialAndEnabled(t *testing.T) {
 		if err != nil || !ok || !env.Applicable {
 			t.Fatalf("%s envelope = (%+v, %v, %v), want an applicable envelope", client, env, ok, err)
 		}
+	}
+}
+
+func TestRefreshQuotaProbesOnlySelectedClients(t *testing.T) {
+	root := t.TempDir()
+	seedSelections(t, root)
+	core := openWritableQuotaTestStore(t, root)
+	fakes := &fakeQuotaProbes{}
+	service := Service{
+		StateRoot: root, Home: t.TempDir(), Workdir: t.TempDir(),
+		Now:             func() time.Time { return time.Date(2026, 9, 10, 10, 0, 0, 0, time.UTC) },
+		QuotaProbeCodex: fakes.codex, QuotaProbeClaudeProse: fakes.claude,
+	}
+
+	service.RefreshQuota(context.Background(), core, service.Home, quota.TriggerBackground, true, []quota.Client{quota.ClientCodex}, 5*time.Minute, time.Hour)
+
+	if fakes.codexCalls != 1 || fakes.claudeCalls != 0 {
+		t.Fatalf("codexCalls=%d claudeCalls=%d, want 1/0 for Codex-only selection", fakes.codexCalls, fakes.claudeCalls)
 	}
 }
 
@@ -103,7 +121,7 @@ func TestRefreshQuotaSuppressesClientWithoutOfficialSelection(t *testing.T) {
 		Now:             func() time.Time { return time.Date(2026, 9, 10, 10, 0, 0, 0, time.UTC) },
 		QuotaProbeCodex: fakes.codex, QuotaProbeClaudeProse: fakes.claude,
 	}
-	service.RefreshQuota(context.Background(), core, service.Home, quota.TriggerBackground, true, 5*time.Minute, time.Hour)
+	service.RefreshQuota(context.Background(), core, service.Home, quota.TriggerBackground, true, []quota.Client{quota.ClientCodex, quota.ClientClaude}, 5*time.Minute, time.Hour)
 
 	if fakes.codexCalls != 1 {
 		t.Fatalf("codexCalls = %d, want 1 for the client with a completed official selection", fakes.codexCalls)
@@ -129,21 +147,21 @@ func TestRefreshQuotaManualTriggerBypassesInterval(t *testing.T) {
 		Now:             func() time.Time { return now },
 		QuotaProbeCodex: fakes.codex, QuotaProbeClaudeProse: fakes.claude,
 	}
-	service.RefreshQuota(context.Background(), core, service.Home, quota.TriggerBackground, true, 5*time.Minute, time.Hour)
+	service.RefreshQuota(context.Background(), core, service.Home, quota.TriggerBackground, true, []quota.Client{quota.ClientCodex, quota.ClientClaude}, 5*time.Minute, time.Hour)
 	if fakes.codexCalls != 1 {
 		t.Fatalf("codexCalls after the first background probe = %d, want 1", fakes.codexCalls)
 	}
 
 	// A background trigger one second later must not re-probe...
 	service.Now = func() time.Time { return now.Add(time.Second) }
-	service.RefreshQuota(context.Background(), core, service.Home, quota.TriggerBackground, true, 5*time.Minute, time.Hour)
+	service.RefreshQuota(context.Background(), core, service.Home, quota.TriggerBackground, true, []quota.Client{quota.ClientCodex, quota.ClientClaude}, 5*time.Minute, time.Hour)
 	if fakes.codexCalls != 1 {
 		t.Fatalf("codexCalls after an immediate background refresh = %d, want still 1", fakes.codexCalls)
 	}
 
 	// ...but a manual trigger at the same instant does (C9: the interval
 	// does not gate a user-initiated refresh).
-	service.RefreshQuota(context.Background(), core, service.Home, quota.TriggerManual, true, 5*time.Minute, time.Hour)
+	service.RefreshQuota(context.Background(), core, service.Home, quota.TriggerManual, true, []quota.Client{quota.ClientCodex, quota.ClientClaude}, 5*time.Minute, time.Hour)
 	if fakes.codexCalls != 2 {
 		t.Fatalf("codexCalls after an immediate manual refresh = %d, want 2", fakes.codexCalls)
 	}
@@ -163,7 +181,7 @@ func TestRefreshQuotaRetainsObservationsWhenDisabledAfterASuccess(t *testing.T) 
 		Now:             func() time.Time { return now },
 		QuotaProbeCodex: fakes.codex, QuotaProbeClaudeProse: fakes.claude,
 	}
-	service.RefreshQuota(context.Background(), core, service.Home, quota.TriggerBackground, true, 5*time.Minute, time.Hour)
+	service.RefreshQuota(context.Background(), core, service.Home, quota.TriggerBackground, true, []quota.Client{quota.ClientCodex, quota.ClientClaude}, 5*time.Minute, time.Hour)
 
 	quotaStore := quota.NewStore(core.DB)
 	before, ok, err := quotaStore.Envelope(context.Background(), quota.ClientCodex)
@@ -172,7 +190,7 @@ func TestRefreshQuotaRetainsObservationsWhenDisabledAfterASuccess(t *testing.T) 
 	}
 
 	service.Now = func() time.Time { return now.Add(time.Hour) }
-	service.RefreshQuota(context.Background(), core, service.Home, quota.TriggerBackground, false, 5*time.Minute, time.Hour)
+	service.RefreshQuota(context.Background(), core, service.Home, quota.TriggerBackground, false, []quota.Client{quota.ClientCodex, quota.ClientClaude}, 5*time.Minute, time.Hour)
 
 	if fakes.codexCalls != 1 {
 		t.Fatalf("codexCalls after disabling = %d, want still 1 (no probe while disabled)", fakes.codexCalls)
@@ -218,13 +236,13 @@ func TestRefreshQuotaIgnoresStaleObservedProviderPredatingCurrentSelection(t *te
 		Now:             func() time.Time { return selectedAt.Add(time.Minute) },
 		QuotaProbeCodex: fakes.codex, QuotaProbeClaudeProse: fakes.claude,
 	}
-	service.RefreshQuota(context.Background(), core, service.Home, quota.TriggerBackground, true, 5*time.Minute, time.Hour)
+	service.RefreshQuota(context.Background(), core, service.Home, quota.TriggerBackground, true, []quota.Client{quota.ClientCodex, quota.ClientClaude}, 5*time.Minute, time.Hour)
 	if fakes.codexCalls != 1 {
 		t.Fatalf("codexCalls after a background refresh past a stale disagreeing observation = %d, want 1", fakes.codexCalls)
 	}
 
 	service.Now = func() time.Time { return selectedAt.Add(2 * time.Minute) }
-	service.RefreshQuota(context.Background(), core, service.Home, quota.TriggerManual, true, 5*time.Minute, time.Hour)
+	service.RefreshQuota(context.Background(), core, service.Home, quota.TriggerManual, true, []quota.Client{quota.ClientCodex, quota.ClientClaude}, 5*time.Minute, time.Hour)
 	if fakes.codexCalls != 2 {
 		t.Fatalf("codexCalls after a manual refresh past a stale disagreeing observation = %d, want 2", fakes.codexCalls)
 	}
@@ -259,7 +277,7 @@ func TestRefreshQuotaSuppressesOnCurrentDisagreeingObservation(t *testing.T) {
 		Now:             func() time.Time { return selectedAt.Add(2 * time.Minute) },
 		QuotaProbeCodex: fakes.codex, QuotaProbeClaudeProse: fakes.claude,
 	}
-	service.RefreshQuota(context.Background(), core, service.Home, quota.TriggerBackground, true, 5*time.Minute, time.Hour)
+	service.RefreshQuota(context.Background(), core, service.Home, quota.TriggerBackground, true, []quota.Client{quota.ClientCodex, quota.ClientClaude}, 5*time.Minute, time.Hour)
 	if fakes.codexCalls != 0 {
 		t.Fatalf("codexCalls = %d, want 0: a disagreeing observation newer than the current selection must still suppress the probe", fakes.codexCalls)
 	}
@@ -284,7 +302,7 @@ func TestRefreshQuotaSkipsProbingAndReportsProbeFailedWhenSelectionReadFails(t *
 		Now:             func() time.Time { return time.Date(2026, 9, 12, 10, 0, 0, 0, time.UTC) },
 		QuotaProbeCodex: fakes.codex, QuotaProbeClaudeProse: fakes.claude,
 	}
-	outcome := service.RefreshQuota(context.Background(), core, service.Home, quota.TriggerBackground, true, 5*time.Minute, time.Hour)
+	outcome := service.RefreshQuota(context.Background(), core, service.Home, quota.TriggerBackground, true, []quota.Client{quota.ClientCodex, quota.ClientClaude}, 5*time.Minute, time.Hour)
 
 	if fakes.codexCalls != 0 || fakes.claudeCalls != 0 {
 		t.Fatalf("codexCalls=%d claudeCalls=%d, want 0/0: an unreadable provider-selection table must skip probing, not proceed on a false non-official gate", fakes.codexCalls, fakes.claudeCalls)
@@ -312,7 +330,7 @@ func TestRefreshQuotaReturnsGateOutcomePerClient(t *testing.T) {
 		Now:             func() time.Time { return time.Date(2026, 9, 12, 10, 0, 0, 0, time.UTC) },
 		QuotaProbeCodex: fakes.codex, QuotaProbeClaudeProse: fakes.claude,
 	}
-	outcome := service.RefreshQuota(context.Background(), core, service.Home, quota.TriggerBackground, true, 5*time.Minute, time.Hour)
+	outcome := service.RefreshQuota(context.Background(), core, service.Home, quota.TriggerBackground, true, []quota.Client{quota.ClientCodex, quota.ClientClaude}, 5*time.Minute, time.Hour)
 	if outcome[quota.ClientCodex] != quota.ReasonNotOfficial {
 		t.Fatalf("outcome[codex] = %q, want %q", outcome[quota.ClientCodex], quota.ReasonNotOfficial)
 	}

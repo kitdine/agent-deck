@@ -86,6 +86,17 @@ export function SettingsWindow({ lang, prefs, onChange, onClose, embedded = fals
   }, [onClose, embedded]);
 
   const set = (key) => (value) => onChange({ ...prefs, [key]: value });
+  const toggleQuotaClient = (client) => (enabled) => {
+    const selected = new Set(prefs.quotaClients);
+    if (enabled) selected.add(client);
+    else if (selected.size > 1) selected.delete(client);
+    const quotaClients = ["codex", "claude"].filter((value) => selected.has(value));
+    onChange({
+      ...prefs,
+      quotaClients,
+      quotaStatusline: client === "claude" && !quotaClients.includes("claude") ? false : prefs.quotaStatusline,
+    });
+  };
 
   // SMAppService 真的会拒绝注册，而失败行的两条契约——"出现时被宣布"和"在下一次
   // 成功修改时清除，而不是定时消失"——只有真走一遍开关才验得到。第一次开启被拒，
@@ -227,6 +238,24 @@ export function SettingsWindow({ lang, prefs, onChange, onClose, embedded = fals
               describedBy={hintId("quotaProbe")}
             />
           </Field>
+          <Field id="quotaClients" label={dict.settings.quotaClients} hint={dict.settings.quotaClientsHint}>
+            <div className="settings-checks">
+              {[
+                ["codex", "Codex"],
+                ["claude", "Claude"],
+              ].map(([client, label]) => (
+                <label key={client}>
+                  <input
+                    type="checkbox"
+                    checked={prefs.quotaClients.includes(client)}
+                    disabled={!prefs.quotaProbe}
+                    onChange={(event) => toggleQuotaClient(client)(event.target.checked)}
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+          </Field>
           <Field id="quotaInterval" label={dict.settings.quotaInterval} hint={dict.settings.quotaIntervalHint}>
             <Segmented
               value={prefs.quotaInterval}
@@ -264,7 +293,7 @@ export function SettingsWindow({ lang, prefs, onChange, onClose, embedded = fals
               onChange={toggleQuotaStatusline}
               label={dict.settings.quotaStatusline}
               describedBy={hintId("quotaStatusline")}
-              disabled={!prefs.quotaProbe}
+              disabled={!prefs.quotaProbe || !prefs.quotaClients.includes("claude")}
             />
           </Field>
           <Field id="quotaAlerts" label={dict.settings.quotaAlerts} hint={dict.settings.quotaAlertsHint}>
@@ -312,6 +341,7 @@ export const DEFAULT_PREFS = {
   // 三个额度开关默认全关：requirements.md 的 opt-in 契约写在这里，
   // 不写在文档的散文里——默认值是唯一会被真机读到的那一份。
   quotaProbe: false,
+  quotaClients: ["codex", "claude"],
   quotaStatuslineWriteRefused: false,
   quotaStatuslineRestoreIncomplete: false,
   quotaInterval: "5m",

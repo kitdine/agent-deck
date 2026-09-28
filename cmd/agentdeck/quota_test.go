@@ -569,6 +569,30 @@ func TestDesktopQuotaSettingsTurningReadingOffRestoresTheStatusLineAndKeepsObser
 	}
 }
 
+func TestDesktopQuotaSettingsDisablingClaudeRestoresItsStatusLineRoute(t *testing.T) {
+	home := t.TempDir()
+	withTestHome(t, home)
+	state := filepath.Join(t.TempDir(), "state")
+	writeClaudeSettings(t, home, `{"statusLine":{"type":"command","command":"printf prior"}}`)
+
+	runJSON(t, "--state-dir", state, "--format", "json", "desktop", "quota-settings", "--reading", "on")
+	runJSON(t, "--state-dir", state, "--format", "json", "desktop", "quota-statusline", "enable")
+	data := runJSON(t, "--state-dir", state, "--format", "json", "desktop", "quota-settings", "--clients", "codex")
+
+	settings, _ := data["settings"].(map[string]any)
+	clients, _ := settings["clients"].([]any)
+	if len(clients) != 1 || clients[0] != "codex" || settings["statusline"] != false {
+		t.Fatalf("settings = %v, want Codex selected and Claude statusline consent cleared", settings)
+	}
+	restore, _ := data["statusline_restore"].(map[string]any)
+	if restore == nil || restore["outcome"] == "restore_incomplete" || restore["outcome"] == "failed" {
+		t.Fatalf("statusline_restore = %v, want a completed restore", restore)
+	}
+	if got := claudeStatusLineCommand(t, home); got != "printf prior" {
+		t.Fatalf("statusLine after disabling Claude = %q, want the prior command restored", got)
+	}
+}
+
 func TestDesktopQuotaSettingsReadingOffReportsRestoreIncompleteWhenTheFileChanged(t *testing.T) {
 	home := t.TempDir()
 	withTestHome(t, home)

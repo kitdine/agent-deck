@@ -1209,14 +1209,28 @@ public func decodeProviderUseEnvelopeV1(_ data: Data) throws -> ProviderUseEnvel
 /// producer could not build it; every per-client state, including the gate and
 /// reading off, is a client record.
 public struct DesktopSubscriptionSnapshotV1: Codable, Equatable, Sendable {
-	public static let unavailable = DesktopSubscriptionSnapshotV1(available: false, clients: [])
+	/// A legacy/missing additive section preserves the pre-field presentation:
+	/// quota remains visible but unavailable. Only an explicit reading=false
+	/// from the current producer hides the tab.
+	public static let unavailable = DesktopSubscriptionSnapshotV1(available: false, reading: true, clients: [])
 
 	public let available: Bool
+	public let reading: Bool
 	public let clients: [DesktopSubscriptionClientV1]
 
-	public init(available: Bool, clients: [DesktopSubscriptionClientV1]) {
+	private enum CodingKeys: String, CodingKey { case available, reading, clients }
+
+	public init(available: Bool, reading: Bool = true, clients: [DesktopSubscriptionClientV1]) {
 		self.available = available
+		self.reading = reading
 		self.clients = clients
+	}
+
+	public init(from decoder: Decoder) throws {
+		let container = try decoder.container(keyedBy: CodingKeys.self)
+		available = try container.decode(Bool.self, forKey: .available)
+		reading = try container.decodeIfPresent(Bool.self, forKey: .reading) ?? true
+		clients = try container.decode([DesktopSubscriptionClientV1].self, forKey: .clients)
 	}
 }
 

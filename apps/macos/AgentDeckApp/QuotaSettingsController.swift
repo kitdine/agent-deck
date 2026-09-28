@@ -144,6 +144,7 @@ final class QuotaSettingsController {
 	private(set) var notificationsDenied = false
 	@ObservationIgnored private var desiredSettings: DesktopQuotaSettingsDesiredV1?
 	@ObservationIgnored private var pendingSettings: DesktopQuotaSettingsDesiredV1?
+	@ObservationIgnored private var pendingSnapshotRefresh = false
 	@ObservationIgnored private var pendingStatusline: Bool?
 	@ObservationIgnored private var writeGeneration = 0
 	/// Codex PR #5 third review, P1: `quota-settings` and `quota-statusline`
@@ -196,6 +197,14 @@ final class QuotaSettingsController {
 		settings?.reading == true && settings?.alerts == true
 	}
 
+	func clientEnabled(_ client: String) -> Bool {
+		settings?.clients.contains(client) == true
+	}
+
+	var statuslineControlEnabled: Bool {
+		settings?.reading == true && clientEnabled("claude")
+	}
+
 	/// Codex PR #5 twelfth review, P2: currentDesired() falls back to
 	/// product defaults for alerts/thresholds/resetNotice only while
 	/// `settings` (core state's own last read) is nil -- a reading/interval
@@ -238,18 +247,24 @@ final class QuotaSettingsController {
 		var desired = currentDesired()
 		desired.reading = on
 		stage(desired)
+		pendingSnapshotRefresh = true
 		await applySettings(desired)
-		// Codex PR #5 tenth review, P2: neither core settings nor this
-		// controller's own local mirror refresh the desktop snapshot or App
-		// Group projection on their own. Without this, turning reading off
-		// leaves retained figures visible indefinitely, and turning it back
-		// on leaves surfaces stuck on the reading-off presentation, until
-		// periodic refresh (independently opt-in and off by default)
-		// happens to run. Only trigger it once the write actually
-		// persisted (settingsRow == nil), not on a still-queued/failed one.
-		if settingsRow == nil {
-			await refreshQuotaSnapshot?()
+	}
+
+	func setClient(_ client: String, enabled: Bool) async {
+		guard client == "codex" || client == "claude" else { return }
+		var desired = currentDesired()
+		var selected = Set(desired.clients)
+		if enabled {
+			selected.insert(client)
+		} else {
+			guard selected.count > 1 else { return }
+			selected.remove(client)
 		}
+		desired.clients = ["codex", "claude"].filter(selected.contains)
+		stage(desired)
+		pendingSnapshotRefresh = true
+		await applySettings(desired)
 	}
 
 	func setInterval(_ interval: QuotaProbeInterval) async {
@@ -337,6 +352,7 @@ final class QuotaSettingsController {
 		if let desiredSettings { return desiredSettings }
 		return DesktopQuotaSettingsDesiredV1(
 			reading: preferences.quotaProbeEnabled,
+			clients: settings?.clients ?? ["codex", "claude"],
 			interval: DesktopQuotaIntervalV1(preferences.quotaProbeInterval),
 			alerts: settings?.alerts ?? false,
 			thresholds: settings?.thresholds ?? [75, 90],
@@ -369,6 +385,7 @@ final class QuotaSettingsController {
 				pendingSettings = nil
 				guard case let .decoded(result) = await transport.applyQuotaSettings(request) else {
 					settingsRow = SettingsRowStatus(text: t(DesktopCopy.settingsQuotaWriteFailed), severity: .error)
+					if pendingSettings == nil { pendingSnapshotRefresh = false }
 					continue
 				}
 				settingsRow = nil
@@ -382,6 +399,10 @@ final class QuotaSettingsController {
 				// to replace it.
 				if pendingSettings == nil {
 					adopt(result.settings)
+					if pendingSnapshotRefresh {
+						pendingSnapshotRefresh = false
+						await refreshQuotaSnapshot?()
+					}
 				}
 			} else if let on = pendingStatusline {
 				pendingStatusline = nil
@@ -410,7 +431,7 @@ final class QuotaSettingsController {
 		desiredSettings = desired
 		preferences.quotaAlertsEnabled = desired.alerts
 		settings = DesktopQuotaSettingsValuesV1(
-			reading: desired.reading, interval: desired.interval, alerts: desired.alerts,
+			reading: desired.reading, clients: desired.clients, interval: desired.interval, alerts: desired.alerts,
 			thresholds: desired.thresholds, resetNotice: desired.resetNotice,
 			statusline: settings?.statusline ?? false
 		)
@@ -438,11 +459,12 @@ final class QuotaSettingsController {
 		// generation check).
 		let base = settings ?? DesktopQuotaSettingsValuesV1(
 			reading: preferences.quotaProbeEnabled,
+			clients: ["codex", "claude"],
 			interval: DesktopQuotaIntervalV1(preferences.quotaProbeInterval),
 			alerts: false, thresholds: [75, 90], resetNotice: true, statusline: false
 		)
 		settings = DesktopQuotaSettingsValuesV1(
-			reading: base.reading, interval: base.interval, alerts: base.alerts,
+			reading: base.reading, clients: base.clients, interval: base.interval, alerts: base.alerts,
 			thresholds: base.thresholds, resetNotice: base.resetNotice, statusline: consent
 		)
 	}
@@ -454,7 +476,7 @@ final class QuotaSettingsController {
 	private func adopt(_ values: DesktopQuotaSettingsValuesV1) {
 		settings = values
 		desiredSettings = DesktopQuotaSettingsDesiredV1(
-			reading: values.reading, interval: values.interval, alerts: values.alerts,
+			reading: values.reading, clients: values.clients, interval: values.interval, alerts: values.alerts,
 			thresholds: values.thresholds, resetNotice: values.resetNotice
 		)
 		preferences.quotaProbeEnabled = values.reading

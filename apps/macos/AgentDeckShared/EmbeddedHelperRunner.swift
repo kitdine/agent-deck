@@ -521,6 +521,7 @@ public struct EmbeddedHelperRunner: Sendable {
 			throw error
 		}
 		try await scanIndexes(executableURL: executableURL, refreshID: refreshID, progress: progress)
+		try await waitForCompletedScanWorkerToReleaseLock()
 		let requestStartedAt = Date()
 		let output: HelperProcessLinesOutput
         do {
@@ -674,6 +675,23 @@ public struct EmbeddedHelperRunner: Sendable {
 		} catch {
 			DesktopLogger.recordHelperRequestFailure(id: refreshID, stage: stage, error: .malformedOutput, durationMilliseconds: elapsedMilliseconds(since: startedAt))
 			throw HelperExecutionError.malformedOutput
+		}
+	}
+
+	/// `scan` returns its terminal result before the detached worker's listener
+	/// reaches its idle shutdown check. That worker still owns scan.lock for a
+	/// short grace period; taking the health snapshot immediately would report
+	/// this refresh's own completed scan as an external conflict. Wait only for
+	/// that bounded handoff. A genuinely continuing scan remains visible after
+	/// the grace period and is still reported by doctor.
+	private func waitForCompletedScanWorkerToReleaseLock() async throws {
+		let lockPath = URL(fileURLWithPath: stateRoot, isDirectory: true)
+			.appendingPathComponent("scan.lock", isDirectory: false).path
+		let clock = ContinuousClock()
+		let deadline = clock.now.advanced(by: .seconds(2))
+		while FileManager.default.fileExists(atPath: lockPath), clock.now < deadline {
+			if Task.isCancelled { throw HelperExecutionError.cancelled }
+			try await Task.sleep(for: .milliseconds(25))
 		}
 	}
 
@@ -1145,6 +1163,7 @@ public enum DesktopQuotaIntervalV1: String, Codable, Equatable, Sendable {
 
 public struct DesktopQuotaSettingsValuesV1: Codable, Equatable, Sendable {
 	public let reading: Bool
+	public let clients: [String]
 	public let interval: DesktopQuotaIntervalV1
 	public let alerts: Bool
 	public let thresholds: [Double]
@@ -1152,17 +1171,29 @@ public struct DesktopQuotaSettingsValuesV1: Codable, Equatable, Sendable {
 	public let statusline: Bool
 
 	enum CodingKeys: String, CodingKey {
-		case reading, alerts, thresholds, statusline, interval
+		case reading, clients, alerts, thresholds, statusline, interval
 		case resetNotice = "reset_notice"
 	}
 
-	public init(reading: Bool, interval: DesktopQuotaIntervalV1, alerts: Bool, thresholds: [Double], resetNotice: Bool, statusline: Bool) {
+	public init(reading: Bool, clients: [String] = ["codex", "claude"], interval: DesktopQuotaIntervalV1, alerts: Bool, thresholds: [Double], resetNotice: Bool, statusline: Bool) {
 		self.reading = reading
+		self.clients = clients
 		self.interval = interval
 		self.alerts = alerts
 		self.thresholds = thresholds
 		self.resetNotice = resetNotice
 		self.statusline = statusline
+	}
+
+	public init(from decoder: Decoder) throws {
+		let container = try decoder.container(keyedBy: CodingKeys.self)
+		reading = try container.decode(Bool.self, forKey: .reading)
+		clients = try container.decodeIfPresent([String].self, forKey: .clients) ?? ["codex", "claude"]
+		interval = try container.decode(DesktopQuotaIntervalV1.self, forKey: .interval)
+		alerts = try container.decode(Bool.self, forKey: .alerts)
+		thresholds = try container.decode([Double].self, forKey: .thresholds)
+		resetNotice = try container.decode(Bool.self, forKey: .resetNotice)
+		statusline = try container.decode(Bool.self, forKey: .statusline)
 	}
 }
 
@@ -1234,13 +1265,15 @@ private struct DesktopQuotaEnvelopeV1<Data: Codable & Equatable & Sendable>: Cod
 /// moved.
 public struct DesktopQuotaSettingsDesiredV1: Equatable, Sendable {
 	public var reading: Bool
+	public var clients: [String]
 	public var interval: DesktopQuotaIntervalV1
 	public var alerts: Bool
 	public var thresholds: [Double]
 	public var resetNotice: Bool
 
-	public init(reading: Bool, interval: DesktopQuotaIntervalV1, alerts: Bool, thresholds: [Double], resetNotice: Bool) {
+	public init(reading: Bool, clients: [String] = ["codex", "claude"], interval: DesktopQuotaIntervalV1, alerts: Bool, thresholds: [Double], resetNotice: Bool) {
 		self.reading = reading
+		self.clients = clients
 		self.interval = interval
 		self.alerts = alerts
 		self.thresholds = thresholds
@@ -1373,6 +1406,7 @@ extension EmbeddedHelperRunner: QuotaSettingsTransport {
 	public func applyQuotaSettings(_ desired: DesktopQuotaSettingsDesiredV1) async -> DesktopQuotaTransportOutcome<DesktopQuotaSettingsResultV1> {
 		await runQuotaSettings(arguments: [
 			"--reading", desired.reading ? "on" : "off",
+			"--clients", desired.clients.joined(separator: ","),
 			"--interval", desired.interval.flagValue,
 			"--alerts", desired.alerts ? "on" : "off",
 			"--thresholds", desired.thresholds.map { String(format: $0.truncatingRemainder(dividingBy: 1) == 0 ? "%.0f" : "%g", $0) }.joined(separator: ","),

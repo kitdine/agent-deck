@@ -2604,6 +2604,19 @@ button.notice:hover {
   padding-top: 1px;
 }
 
+.settings-checks {
+  display: flex;
+  gap: 12px;
+}
+
+.settings-checks label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text);
+  font-size: 12px;
+}
+
 .switch {
   position: relative;
   width: 38px;

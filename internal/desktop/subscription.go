@@ -17,6 +17,7 @@ import (
 // gate and reading off, is a client record rather than a missing section.
 type SubscriptionSnapshot struct {
 	Available bool                 `json:"available"`
+	Reading   bool                 `json:"reading"`
 	Clients   []SubscriptionClient `json:"clients"`
 }
 
@@ -93,7 +94,7 @@ type SubscriptionResetCredit struct {
 }
 
 func unavailableSubscription() SubscriptionSnapshot {
-	return SubscriptionSnapshot{Clients: []SubscriptionClient{}}
+	return SubscriptionSnapshot{Reading: true, Clients: []SubscriptionClient{}}
 }
 
 // ReadingOffSubscription is the section before any state exists: every
@@ -104,7 +105,7 @@ func ReadingOffSubscription() SubscriptionSnapshot {
 		entry, _ := subscriptionClient(context.Background(), nil, client, false, quota.ReasonProbeDisabled, 0, time.Time{})
 		clients = append(clients, entry)
 	}
-	return SubscriptionSnapshot{Available: true, Clients: clients}
+	return SubscriptionSnapshot{Available: true, Reading: false, Clients: clients}
 }
 
 func (s Service) loadSubscription(ctx context.Context, core *store.Store, now time.Time, result *Result) {
@@ -152,8 +153,8 @@ func (s Service) BuildSubscription(ctx context.Context, core *store.Store, now t
 	}
 	usageService := usage.New(core, s.Home)
 	quotaStore := quota.NewStore(core.DB)
-	clients := make([]SubscriptionClient, 0, 2)
-	for _, client := range []quota.Client{quota.ClientCodex, quota.ClientClaude} {
+	clients := make([]SubscriptionClient, 0, len(settings.ProbeClients))
+	for _, client := range settings.ProbeClients {
 		recordedOfficial, selectedAt := quotaCurrentSelection(selections, client)
 		observedKnown, observedOfficial := quotaObservedOfficial(ctx, usageService, client, selectedAt)
 		allowed, reason := quota.Allowed(settings.ProbeEnabled, recordedOfficial, observedKnown, observedOfficial)
@@ -163,7 +164,7 @@ func (s Service) BuildSubscription(ctx context.Context, core *store.Store, now t
 		}
 		clients = append(clients, entry)
 	}
-	return SubscriptionSnapshot{Available: true, Clients: clients}, nil
+	return SubscriptionSnapshot{Available: true, Reading: settings.ProbeEnabled, Clients: clients}, nil
 }
 
 // subscriptionClient projects one client. Reading off keeps applicable true

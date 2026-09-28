@@ -1383,6 +1383,8 @@ export function Popover({ lang, state = "normal", quotaState = "normal", refresh
   });
   // 额度状态由舞台上方独立开关传入；它与 usage 的 state 正交。
   const quotaVariant = quotaState;
+  const visibleTabs = quotaVariant === "readingOff" ? TABS.filter((item) => item.key !== "quota") : TABS;
+  const presentedTab = quotaVariant === "readingOff" && tab === "quota" ? "usage" : tab;
   // 页脚的 provider 与额度面板读同一个对象：一个说 official 另一个说 aigocode
   // 是这份原型最该防的同屏矛盾。
   const quotaRoutes = quota(quotaVariant).routes ?? PROVIDER.routes;
@@ -1713,23 +1715,23 @@ export function Popover({ lang, state = "normal", quotaState = "normal", refresh
       </div>
 
       <nav className="tabs" role="tablist" aria-label={dict.tabs.usage}>
-        {TABS.map(({ key, Icon }) => (
+        {visibleTabs.map(({ key, Icon }) => (
           <button
             type="button"
             key={key}
             data-tab={key}
             role="tab"
-            aria-selected={tab === key}
+            aria-selected={presentedTab === key}
             aria-label={dict.tabs[key]}
             title={dict.tabs[key]}
-            className={tab === key ? "active" : ""}
+            className={presentedTab === key ? "active" : ""}
             onClick={() => {
               setTab(key);
               setSignal(null);
               setCreditsFlyout(null);
             }}
           >
-            <Icon size={14} weight={tab === key ? "fill" : "regular"} />
+            <Icon size={14} weight={presentedTab === key ? "fill" : "regular"} />
             <span className="tab-label">{dict.tabs[key]}</span>
             {((state === "partial" && key === "attribution") || schema) && (
               <i className="tab-warn" aria-label={schema ? dict.status.schemaSignalSectionUnavailable : dict.status.partial} />
@@ -1744,7 +1746,7 @@ export function Popover({ lang, state = "normal", quotaState = "normal", refresh
         ) : schema ? (
           <>
             <Notices lang={lang} state={effectiveState} healthRecovery={healthRecovery} refreshIssue={refreshIssue} onOpenHealth={() => setHealthOpen(true)} />
-            <SchemaPanel lang={lang} label={dict.tabs[tab]} />
+            <SchemaPanel lang={lang} label={dict.tabs[presentedTab]} />
           </>
         ) : unavailable ? (
           <>
@@ -1757,10 +1759,10 @@ export function Popover({ lang, state = "normal", quotaState = "normal", refresh
         ) : (
           <>
             <Notices lang={lang} state={effectiveState} healthRecovery={healthRecovery} refreshIssue={refreshIssue} onOpenHealth={() => setHealthOpen(true)} />
-            {tab === "usage" && <UsagePanel view={view} lang={lang} state={state} />}
-            {tab === "breakdown" && <BreakdownPanel view={view} lang={lang} state={state} />}
-            {tab === "attribution" && <AttributionPanel view={view} lang={lang} state={state} />}
-            {tab === "quota" && (
+            {presentedTab === "usage" && <UsagePanel view={view} lang={lang} state={state} />}
+            {presentedTab === "breakdown" && <BreakdownPanel view={view} lang={lang} state={state} />}
+            {presentedTab === "attribution" && <AttributionPanel view={view} lang={lang} state={state} />}
+            {presentedTab === "quota" && (
               <QuotaPanel
                 lang={lang}
                 variant={quotaVariant}
@@ -1770,7 +1772,7 @@ export function Popover({ lang, state = "normal", quotaState = "normal", refresh
                 creditsOpenFor={creditsFlyout?.client ?? null}
               />
             )}
-            {tab === "sessions" && (
+            {presentedTab === "sessions" && (
               <SessionsPanel view={view} lang={lang} state={state} signal={signal} onSignal={setSignal} />
             )}
             <RhythmBlock lang={lang} state={state} />
