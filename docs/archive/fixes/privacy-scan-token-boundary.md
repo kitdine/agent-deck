@@ -1,6 +1,7 @@
 ---
-status: active
+status: historical
 created: 2026-09-28
+retired: 2026-09-28
 ---
 
 # 缺陷：隐私扫描将 cask/task 标识误认成密钥
