@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/kitdine/agent-deck/internal/providermeta"
@@ -307,17 +308,7 @@ var migrations = []migration{
 	// resets_at for a threshold notice and its observed_reset_at for a reset
 	// notice, in epoch seconds, so instance tolerance and pruning are plain
 	// integer comparisons. It holds no account identifier and no quota figure.
-	{version: 29, statements: []string{
-		`CREATE TABLE quota_alert_notices (
-			client TEXT NOT NULL,
-			window_key TEXT NOT NULL,
-			kind TEXT NOT NULL,
-			threshold REAL NOT NULL DEFAULT 0,
-			instance_unix INTEGER NOT NULL,
-			notified_at TEXT NOT NULL,
-			PRIMARY KEY (client, window_key, kind, threshold, instance_unix)
-		)`,
-	}},
+	{version: 29, apply: ensureQuotaAlertNotices},
 	// failure_observed_at is the real instant of the most recent failed probe
 	// attempt, independent of failure_at/backoff_until (wire-and-cli task,
 	// WC-R2-F1). recordFailure writes it on every failure, manual or
@@ -327,6 +318,94 @@ var migrations = []migration{
 	{version: 30, statements: []string{
 		`ALTER TABLE quota_envelopes ADD COLUMN failure_observed_at TEXT NOT NULL DEFAULT ''`,
 	}},
+}
+
+const createQuotaAlertNotices = `CREATE TABLE quota_alert_notices (
+	client TEXT NOT NULL,
+	window_key TEXT NOT NULL,
+	kind TEXT NOT NULL,
+	threshold REAL NOT NULL DEFAULT 0,
+	instance_unix INTEGER NOT NULL,
+	notified_at TEXT NOT NULL,
+	PRIMARY KEY (client, window_key, kind, threshold, instance_unix)
+)`
+
+type quotaAlertNoticeColumn struct {
+	name         string
+	typeName     string
+	notNull      int
+	defaultValue string
+	primaryKey   int
+}
+
+var quotaAlertNoticeColumns = []quotaAlertNoticeColumn{
+	{name: "client", typeName: "TEXT", notNull: 1, primaryKey: 1},
+	{name: "window_key", typeName: "TEXT", notNull: 1, primaryKey: 2},
+	{name: "kind", typeName: "TEXT", notNull: 1, primaryKey: 3},
+	{name: "threshold", typeName: "REAL", notNull: 1, defaultValue: "0", primaryKey: 4},
+	{name: "instance_unix", typeName: "INTEGER", notNull: 1, primaryKey: 5},
+	{name: "notified_at", typeName: "TEXT", notNull: 1},
+}
+
+var errIncompatibleQuotaAlertNoticesSchema = errors.New("existing quota_alert_notices schema is incompatible")
+
+// ensureQuotaAlertNotices accepts the exact table created by the unshipped
+// subscription-quota branch when that branch still called it schema 26. The
+// assembled v0.6.0 line renumbered the same table to 29 after other migrations
+// had claimed 24-26. Only the exact old shape is safe to adopt; another object
+// or column layout remains an unknown schema and must fail closed.
+func ensureQuotaAlertNotices(ctx context.Context, tx *sql.Tx) error {
+	var objectType string
+	var schemaSQL sql.NullString
+	err := tx.QueryRowContext(ctx, `SELECT type,sql FROM sqlite_master WHERE name='quota_alert_notices'`).Scan(&objectType, &schemaSQL)
+	if errors.Is(err, sql.ErrNoRows) {
+		_, err = tx.ExecContext(ctx, createQuotaAlertNotices)
+		return err
+	}
+	if err != nil {
+		return err
+	}
+	if objectType != "table" || !schemaSQL.Valid || normalizeSQLiteSchema(schemaSQL.String) != normalizeSQLiteSchema(createQuotaAlertNotices) {
+		return errIncompatibleQuotaAlertNoticesSchema
+	}
+
+	rows, err := tx.QueryContext(ctx, `PRAGMA table_info(quota_alert_notices)`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	actual := make([]quotaAlertNoticeColumn, 0, len(quotaAlertNoticeColumns))
+	for rows.Next() {
+		var cid int
+		var column quotaAlertNoticeColumn
+		var defaultValue sql.NullString
+		if err = rows.Scan(&cid, &column.name, &column.typeName, &column.notNull, &defaultValue, &column.primaryKey); err != nil {
+			return err
+		}
+		if cid != len(actual) {
+			return errIncompatibleQuotaAlertNoticesSchema
+		}
+		if defaultValue.Valid {
+			column.defaultValue = defaultValue.String
+		}
+		actual = append(actual, column)
+	}
+	if err = rows.Err(); err != nil {
+		return err
+	}
+	if len(actual) != len(quotaAlertNoticeColumns) {
+		return errIncompatibleQuotaAlertNoticesSchema
+	}
+	for index := range quotaAlertNoticeColumns {
+		if actual[index] != quotaAlertNoticeColumns[index] {
+			return errIncompatibleQuotaAlertNoticesSchema
+		}
+	}
+	return nil
+}
+
+func normalizeSQLiteSchema(value string) string {
+	return strings.Join(strings.Fields(value), " ")
 }
 
 var derivedSnapshotGenerationTables = []string{

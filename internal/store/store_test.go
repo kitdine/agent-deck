@@ -562,6 +562,110 @@ func TestMigrationsRejectUnknownNewerSchema(t *testing.T) {
 	assertSchemaAhead(t, err, CurrentSchemaVersion+1)
 }
 
+func seedPreassemblyQuotaState(t *testing.T, tableSQL string) string {
+	t.Helper()
+	ctx := context.Background()
+	state := filepath.Join(t.TempDir(), "state")
+	if err := os.MkdirAll(state, platform.DirectoryMode); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(state, "agentdeck.sqlite3")
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacyMigrations := make([]migration, 0, 26)
+	for _, item := range migrations {
+		if item.version <= 26 {
+			legacyMigrations = append(legacyMigrations, item)
+		}
+	}
+	if err = migrate(ctx, db, legacyMigrations); err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	if _, err = db.ExecContext(ctx, tableSQL); err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	if err = db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return state
+}
+
+func TestMigrationsAdoptExactPreassemblyQuotaAlertTable(t *testing.T) {
+	ctx := context.Background()
+	state := seedPreassemblyQuotaState(t, `CREATE TABLE quota_alert_notices (
+		client TEXT NOT NULL,
+		window_key TEXT NOT NULL,
+		kind TEXT NOT NULL,
+		threshold REAL NOT NULL DEFAULT 0,
+		instance_unix INTEGER NOT NULL,
+		notified_at TEXT NOT NULL,
+		PRIMARY KEY (client, window_key, kind, threshold, instance_unix)
+	); INSERT INTO quota_alert_notices(client,window_key,kind,threshold,instance_unix,notified_at)
+	VALUES ('codex','five-hour','threshold',80,123,'2026-09-28T00:00:00Z')`)
+
+	migrated, err := Open(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer migrated.Close()
+	if version, versionErr := migrated.SchemaVersion(ctx); versionErr != nil || version != CurrentSchemaVersion {
+		t.Fatalf("schema version = %d, %v, want %d", version, versionErr, CurrentSchemaVersion)
+	}
+	var notices int
+	if err = migrated.DB.QueryRowContext(ctx, `SELECT count(*) FROM quota_alert_notices WHERE client='codex' AND window_key='five-hour' AND kind='threshold' AND threshold=80 AND instance_unix=123`).Scan(&notices); err != nil || notices != 1 {
+		t.Fatalf("preserved notices = %d, %v, want 1", notices, err)
+	}
+	var failureObservedAtColumns int
+	if err = migrated.DB.QueryRowContext(ctx, `SELECT count(*) FROM pragma_table_info('quota_envelopes') WHERE name='failure_observed_at'`).Scan(&failureObservedAtColumns); err != nil || failureObservedAtColumns != 1 {
+		t.Fatalf("failure_observed_at columns = %d, %v, want 1", failureObservedAtColumns, err)
+	}
+}
+
+func TestMigrationsRejectMismatchedPreassemblyQuotaAlertTable(t *testing.T) {
+	tests := []struct {
+		name     string
+		tableSQL string
+	}{
+		{name: "missing columns", tableSQL: `CREATE TABLE quota_alert_notices (client TEXT PRIMARY KEY)`},
+		{name: "extra check", tableSQL: `CREATE TABLE quota_alert_notices (
+			client TEXT NOT NULL,
+			window_key TEXT NOT NULL,
+			kind TEXT NOT NULL,
+			threshold REAL NOT NULL DEFAULT 0,
+			instance_unix INTEGER NOT NULL,
+			notified_at TEXT NOT NULL,
+			PRIMARY KEY (client, window_key, kind, threshold, instance_unix),
+			CHECK (client = 'claude')
+		)`},
+		{name: "extra unique", tableSQL: `CREATE TABLE quota_alert_notices (
+			client TEXT NOT NULL,
+			window_key TEXT NOT NULL,
+			kind TEXT NOT NULL,
+			threshold REAL NOT NULL DEFAULT 0,
+			instance_unix INTEGER NOT NULL,
+			notified_at TEXT NOT NULL,
+			PRIMARY KEY (client, window_key, kind, threshold, instance_unix),
+			UNIQUE (notified_at)
+		)`},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			state := seedPreassemblyQuotaState(t, test.tableSQL)
+			migrated, err := Open(context.Background(), state)
+			if migrated != nil {
+				migrated.Close()
+			}
+			if !errors.Is(err, errIncompatibleQuotaAlertNoticesSchema) {
+				t.Fatalf("Open error = %v, want incompatible legacy quota alert schema", err)
+			}
+		})
+	}
+}
+
 func TestV10MigrationCanonicalizesUsageEventAndSessionTimes(t *testing.T) {
 	ctx := context.Background()
 	state := filepath.Join(t.TempDir(), "state")
