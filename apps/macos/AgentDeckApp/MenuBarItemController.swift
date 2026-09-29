@@ -124,8 +124,13 @@ final class MenuBarItemController: NSObject, NSMenuDelegate {
 			)
 			popover.contentSize = NSSize(width: MenuBarGeometry.width, height: height)
 			popover.show(relativeTo: sender.bounds, of: sender, preferredEdge: .minY)
-			popover.contentViewController?.view.window?.makeKey()
+			MenuBarItemController.activatePopoverWindow(popover.contentViewController?.view.window)
 		}
+	}
+
+	static func activatePopoverWindow(_ window: NSWindow?) {
+		window?.makeKey()
+		window?.makeFirstResponder(nil)
 	}
 
 	func closePopover() {

@@ -313,10 +313,12 @@ export function runProbe() {
     quotaVariant("bothOfficial");
     await wait(80);
     const allowance = card("codex")?.querySelector(".quota-allowance");
+    check("官方重置次数只显示剩余次数，不显示不可用总数", !allowance?.querySelector("small"));
     hover(allowance);
     await wait(60);
     check("悬停官方重置次数直接弹出明细", !!$(".quota-flyout"));
     check("明细弹层里逐条列出重置次数", ($$(".quota-credits li").length ?? 0) > 0);
+    check("重置明细不重复显示不可用总数", !$(".quota-flyout-note"));
 
     // 触发行 → 通路 → 明细 → 继续阅读 → 离开。这一段是 SQ-MB-R1-F1 的回归。
     // 关键是走真实坐标：先前这里紧接着派发 leave(触发行) 与 hover(明细)，

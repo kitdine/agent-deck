@@ -3972,8 +3972,6 @@
     "Status-line route not enabled": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Status-line route not enabled"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"状态栏通路未启用"}}}},
     "Show reset credit details": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Show reset credit details"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"显示重置额度详情"}}}},
     "This client does not report it": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"This client does not report it"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"该客户端不提供此字段"}}}},
-    "Total %lld": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Total %lld"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"共 %lld 次"}}}},
-    "Total: %@": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Total: %@"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"总数：%@"}}}},
     "Unavailable": {"localizations":{"en":{"stringUnit":{"state":"translated","value":"Unavailable"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"不可用"}}}},
     "Could not save this setting. Check the AgentDeck helper and try again.": {
       "localizations": {
