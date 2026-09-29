@@ -199,6 +199,33 @@ final class MenuBarChromeTests: XCTestCase {
 		XCTAssertTrue(capture.isPresent, "quota must retain the prototype's shared client, hero, and period context above the panel switcher")
 	}
 
+	func testMenuBarPopoverActivationClearsInitialResponderAcrossQuotaInsertion() async throws {
+		let host = StubDesktopHost(behavior: .envelope(WireFixture.envelope()))
+		let model = await makeModel(host: host)
+		model.selectedPanel = .quota
+		let hosting = NSHostingView(rootView: MenuBarSurfaceView(model: model, height: 760))
+		hosting.frame = NSRect(x: 0, y: 0, width: 420, height: 760)
+		let container = NSView(frame: hosting.frame)
+		container.addSubview(hosting)
+		let sentinel = NSButton(title: "Initial responder", target: nil, action: nil)
+		sentinel.frame = NSRect(x: 0, y: 0, width: 120, height: 24)
+		container.addSubview(sentinel)
+		let window = NSWindow(contentRect: hosting.frame, styleMask: [.titled], backing: .buffered, defer: false)
+		window.contentView = container
+		window.makeKeyAndOrderFront(nil)
+		Self.retainedFocusWindows.append(window)
+
+		XCTAssertTrue(window.makeFirstResponder(sentinel))
+		MenuBarItemController.activatePopoverWindow(window)
+		XCTAssertTrue(window.firstResponder === window)
+
+		await model.coordinator.refresh()
+		hosting.layoutSubtreeIfNeeded()
+		hosting.displayIfNeeded()
+		XCTAssertTrue(window.firstResponder === window, "inserting quota rows after refresh must not claim initial focus")
+		XCTAssertTrue(window.childWindows?.filter(\.isVisible).isEmpty ?? true)
+	}
+
 	func testQuotaTabIsHiddenWhenReadingIsOffAndFallsBackToUsage() async throws {
 		let base = WireFixture.envelope()
 		let readingOff = base.replacingSubscription(
@@ -868,7 +895,7 @@ final class MenuBarChromeTests: XCTestCase {
 		XCTAssertNotEqual(panel.windowResetLabel(present, now: Date(timeIntervalSince1970: 0)), t(DesktopCopy.quotaReasonNotReported))
 	}
 
-	func testQuotaCardShowsMissingPlanAndResetTotalReasons() throws {
+	func testQuotaCardShowsMissingPlanAndOnlyTheUsefulResetRemainingCount() throws {
 		let panel = QuotaPanelView(clients: [])
 		let client = try JSONDecoder().decode(
 			DesktopSubscriptionClientV1.self,
@@ -908,8 +935,7 @@ final class MenuBarChromeTests: XCTestCase {
 			])
 		)
 		let summary = panel.allowanceSummary(allowance)
-		XCTAssertTrue(summary.contains(t(DesktopCopy.quotaLeft, Int64(3))))
-		XCTAssertTrue(summary.contains(t(DesktopCopy.quotaTotalReason, t(DesktopCopy.quotaReasonNotReported))))
+		XCTAssertEqual(summary, t(DesktopCopy.quotaLeft, Int64(3)))
 	}
 
 	// Codex PR #5 fifth review, P2: a successful probe that legitimately

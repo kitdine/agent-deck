@@ -660,9 +660,6 @@ function QuotaClient({ entry, lang, now, narrow, openCredits, closeCredits, cred
               {dict.quota.allowanceRemaining(entry.reset_allowance.remaining)}
               {credits.length > 0 && <CaretRight size={11} weight="bold" />}
             </b>
-            {entry.reset_allowance.total == null && (
-              <small>{dict.quota.allowanceTotalUnknown}</small>
-            )}
           </div>
         </>
       ) : (
@@ -739,8 +736,6 @@ function CreditsFlyout({ entry, lang, now, top, side, onClose, nodeRef }) {
           </li>
         ))}
       </ul>
-      {/* 总数未提供是这一层的事实，不是脚注：厂商只列当前可见的额度。 */}
-      <p className="quota-flyout-note">{dict.quota.allowanceTotalUnknown}</p>
     </div>
   );
 }

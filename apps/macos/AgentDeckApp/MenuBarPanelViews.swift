@@ -1478,10 +1478,7 @@ struct QuotaPanelView: View {
 	}
 
 	func allowanceSummary(_ allowance: DesktopResetAllowanceV1) -> String {
-		let remaining = allowance.remaining.map { t(DesktopCopy.quotaLeft, Int64($0)) } ?? t(DesktopCopy.quotaUnavailable)
-		let total = allowance.total.map { t(DesktopCopy.quotaTotal, Int64($0)) }
-			?? t(DesktopCopy.quotaTotalReason, reasonLabel(allowance.totalReason ?? .notReported))
-		return remaining + " · " + total
+		allowance.remaining.map { t(DesktopCopy.quotaLeft, Int64($0)) } ?? t(DesktopCopy.quotaUnavailable)
 	}
 
 	// Codex PR #5 ninth review, P2: this used to require client == "codex",
