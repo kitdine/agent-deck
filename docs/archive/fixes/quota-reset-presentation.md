@@ -1,6 +1,7 @@
 ---
-status: active
+status: historical
 created: 2026-09-29
+retired: 2026-09-29
 ---
 
 # 缺陷：额度重置详情初次误弹且展示无用总数字段
