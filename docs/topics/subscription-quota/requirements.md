@@ -12,7 +12,7 @@ see `docs/archive/topics/v0-6-0-contract/tasks.md`. Selection is not an implemen
 decomposition, and it does not authorize a merge.
 
 Promoted from the operator's **2026-09-05 v0.6.0 planning decision**
-(`docs/roadmap.md:33`, with its scope paragraphs at `:35-45`), not from a
+(`docs/roadmap.md#v060--trusted-usage-and-subscription-visibility`), not from a
 measured defect. The capability does not exist today, so this document records
 a goal, the current limitation, and the source feasibility that was actually
 verified — never a runtime measurement of behavior that has never run.
@@ -75,7 +75,7 @@ subprocess rather than a pipe.
 | `accountId` | an opaque identifier | Account isolation key |
 | `spendControlReached`, `rateLimitReachedType`, `individualLimit`, `rateLimitUpsell` | present, unset in this sample | Refusal and upsell conditions |
 
-`docs/roadmap.md:36-39` wrote the official reset allowance as conditional —
+`docs/archive/topics/v0-6-0-contract/tasks.md#assembly-list` records the official reset allowance as conditional —
 "any official total, used or remaining reset allowance **if it exists**". It
 exists. `availableCount` is the remaining count, and each credit carries its
 own status. A *total* and a *used* count are not directly returned; only
