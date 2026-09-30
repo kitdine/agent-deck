@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-08-25
-updated: 2026-09-28
+updated: 2026-09-30
 ---
 
 # AgentDeck Project Status
@@ -21,7 +21,41 @@ is recorded in `roadmap.md`.
 
 ### Release
 
-- **Latest prerelease:** [`v0.6.0-rc.1`](https://github.com/kitdine/agent-deck/releases/tag/v0.6.0-rc.1)
+- **Latest stable — released and closed with known issues:**
+  [`v0.6.0`](https://github.com/kitdine/agent-deck/releases/tag/v0.6.0),
+  commit `a5e969d7ad60cfaaee7fec13cbe1704d4cdb2c52`, tree
+  `1e72b162f52fc5da4f7e2be6f01d3c5f4619f4ac`, published 2026-09-30.
+  [Release run 36670496654](https://github.com/kitdine/agent-deck/actions/runs/36670496654)
+  passed release, Homebrew, desktop and Cask jobs and published all six assets.
+  It reuses exact-SHA [preflight 36577488245](https://github.com/kitdine/agent-deck/actions/runs/36577488245)
+  and the verified isolated-real-state evidence; no unchanged L4 suite was rerun.
+- Homebrew formal-channel PR [#40](https://github.com/kitdine/homebrew-tap/pull/40)
+  and [#41](https://github.com/kitdine/homebrew-tap/pull/41) merged as
+  `7e08abc36b1414cff4dd345cde5af320e66a405d` and
+  `cf768ed85cd4ed6049ea3b94867c0a60140e2be4`. Normal local migration, without
+  `--zap`, removed `agentdeck-app-rc` and installed `agentdeck-app 0.6.0`.
+  App/helper/CLI identities agree; signatures, notarization ticket and
+  Gatekeeper pass. The database and credential key hashes were unchanged
+  before launch, and local data backups remain available.
+- Normal Cask installation did **not** register the nested Widget. PlugInKit
+  returned no matches after launch; `chronod` refused configured timeline
+  reloads as an unknown/bad extension. The earlier direct-ZIP update included
+  manual registration and did not verify this normal installation path.
+  `ad-bug-cask-widget-registration-missing` owns the next-release follow-up.
+  Manual registration restored the installed-path record as a workaround only.
+- The recorded technical CEv1 gate for `urn:ce:agent-deck:work-unit:v0-6-0` at
+  `urn:ce:agent-deck:state:v0-6-0:main:a5e969d7ad60cfaaee7fec13cbe1704d4cdb2c52`:
+  remains **FAILED** on normal-Cask `local-install`. Isolated state, same-SHA preflight and
+  artifact publication remain valid. The earlier direct-ZIP/manual-registration
+  installation PASS is superseded and is not relabelled PASS. On 2026-09-30,
+  the operator directed that the already published v0.6.0 be closed with known
+  defects transferred to the next release. Release coordination is closed on
+  that explicit disposition; the failed technical observation remains history.
+- **Latest prerelease:** [`v0.6.0-rc.5`](https://github.com/kitdine/agent-deck/releases/tag/v0.6.0-rc.5)
+  uses the same `a5e969d7` source. Its recorded local recovery after isolating
+  development registrations and reinstalling the official ZIP is distinct
+  from normal Cask installation proof.
+- **Earlier v0.6.0 prerelease:** [`v0.6.0-rc.1`](https://github.com/kitdine/agent-deck/releases/tag/v0.6.0-rc.1)
   at main commit `033cae825f20c3643cb3fe151c2d6e083210a8c9`, tree
   `68a6f75065008052e9ab4133119bb76f5eb3f3b1`, published 2026-09-28.
   [Preflight run 36381152185](https://github.com/kitdine/agent-deck/actions/runs/36381152185)
@@ -30,8 +64,8 @@ is recorded in `roadmap.md`.
   Cask updates reached the Homebrew tap through PR #30 and PR #31. On the local
   macOS host, the RC Cask replaced the stable Cask without `--zap`; the App,
   embedded helper and linked CLI report the release commit, the notarized App
-  passes Gatekeeper, and it launched. Further RC acceptance and any stable
-  release decision remain separate.
+  passes Gatekeeper, and it launched. Those were the RC1 checkpoint facts;
+  stable publication and the current installation blocker are above.
 - **Prior v0.5.0 prerelease:** [`v0.5.0-rc.6`](https://github.com/kitdine/agent-deck/releases/tag/v0.5.0-rc.6)
   at commit `acb8384073f59a3cb07b06ad4cebc670e0d9419d`, tree `9ab5d243`,
   published 2026-09-04. [Release run 33857667232](https://github.com/kitdine/agent-deck/actions/runs/33857667232)
@@ -120,7 +154,7 @@ is recorded in `roadmap.md`.
   recovery guidance for `state_busy`, and the schema-version signal — the
   defect whose repair requires deciding new user-visible behaviour, which is
   why it is a topic rather than a fix.
-- **Latest stable:** [`v0.5.0`](https://github.com/kitdine/agent-deck/releases/tag/v0.5.0)
+- **Previous stable:** [`v0.5.0`](https://github.com/kitdine/agent-deck/releases/tag/v0.5.0)
   at commit `acb8384073f59a3cb07b06ad4cebc670e0d9419d`, tree `9ab5d243`,
   published 2026-09-04. [Release run 33889905280](https://github.com/kitdine/agent-deck/actions/runs/33889905280)
   passed all four jobs: same-SHA release gating and CLI publication, stable
@@ -131,7 +165,7 @@ is recorded in `roadmap.md`.
   for `agentdeck-app` merged as `ca54bc8`. The generated formula and Cask hashes
   match the published assets. `main` protection now requires pull requests for
   administrators too and rejects force-pushes and branch deletion.
-- **Previous stable:** [`v0.4.1`](https://github.com/kitdine/agent-deck/releases/tag/v0.4.1)
+- **Earlier stable:** [`v0.4.1`](https://github.com/kitdine/agent-deck/releases/tag/v0.4.1)
   at commit `3b709a8fb09494a8d8fdd37ee154e3baedbce9ea`, published 2026-08-13.
   It is a patch on `v0.4.0`: Codex `cache_write_input_tokens` is backfilled into
   a new `cache_write_tokens` column and already-indexed Codex sources are
@@ -192,8 +226,8 @@ Version scope: **v0.6.0**, re-selected on 2026-09-05 and narrowed on
 Beads coordination under `ad-v060-iteration`: schema/Hook visibility, desktop
 refresh, snapshot performance, health recovery, and
 Codex/Claude subscription accounts, quota, reset information and reminders.
-Structured session search is excluded. Active version membership is owned by
-[the v0.6.0 contract](topics/v0-6-0-contract/tasks.md), delivered through PR #2.
+Structured session search is excluded. Released version membership is preserved in
+[the v0.6.0 contract](archive/topics/v0-6-0-contract/tasks.md), delivered through PR #2.
 Main contains five assembled areas: schema-version-signal,
 snapshot-performance, subscription-quota, desktop-refresh and health-recovery.
 Health recovery was integrated through PR #9 at main `3f29e26`; its exact
@@ -207,15 +241,23 @@ review and its actual PR #11 merge-result CEv1 gate is VERIFIED 4/4 at main
 `c9cd12c`; merged-main `verify` and `desktop` CI passed. Version-contract Task 2
 passed Review Round 1 and was delivered through PR #13; the contract Topic gate
 is VERIFIED 3/3 at its main result. The bounded privacy-scan repair reached main
-through PR #14, and its merge-result gate is VERIFIED 4/4. The same-SHA RC1
-preflight and publication above have completed; the stable release decision is
-still open. Review and merge details are in the
-[integration record](topics/v0-6-0-contract/reviews/assemble.md).
+through PR #14, and its merge-result gate is VERIFIED 4/4. Stable `v0.6.0` and
+its Homebrew channels are published. The operator closed this release with
+known defects assigned to the next release; failed installation evidence is
+retained without reopening delivered contract Tasks. Review and merge details are in the
+[integration record](archive/topics/v0-6-0-contract/reviews/assemble.md).
+
+Next iteration: the operator selected concentrated defect repair in `v0.6.5`.
+The reconciled queue has nineteen unique Bugs, three unimplemented feature
+candidates and six retained version-planning records; obsolete/duplicate
+records were closed with provenance. The [roadmap](roadmap.md#v065--concentrated-defect-repair)
+owns priorities and the proposed one-issue/one-PR workflow. This closeout does
+not start those fixes or convert known technical failures into acceptance PASS.
 
 | Topic | Version | Status | Purpose |
 | --- | --- | --- | --- |
 | [`v0.5.0` Contract Closure](topics/v0-5-0-contract/tasks.md) | `v0.5.0` | Released — contract complete, independently reviewed, and committed at `a547362`; `cli-design.md` is at version 28 and both contract Tasks are 2/2 implemented and reviewed. Six release candidates culminated in `v0.5.0-rc.6`, and stable `v0.5.0` published the exact `acb8384` commit. The schema-version-signal documents and decomposition are now committed; this contract directory remains live pending its separately scoped retirement. No v0.5.0 product work remains. | Version-wide specification raise and documentation reconciliation after every selected topic's tasks pass review. |
-| [Schema Version Signal](topics/schema-version-signal/tasks.md) | `v0.6.0` | First assembly batch — 4/4 documents and 6/6 tasks reviewed and delivered; source `58df42d`. This integration carries the product, stable contracts and worktree-status governance correction. Task 5 manual text-size/layout and VoiceOver/interaction acceptance remain user-waived, not tested. See the [integration record](topics/v0-6-0-contract/reviews/assemble.md); retirement and release remain separate. | Stable schema-ahead reporting across doctor, CLI, desktop and Hook delivery, with actionable recovery and preserved independent session availability. |
+| [Schema Version Signal](topics/schema-version-signal/tasks.md) | `v0.6.0` | First assembly batch — 4/4 documents and 6/6 tasks reviewed and delivered; source `58df42d`. This integration carries the product, stable contracts and worktree-status governance correction. Task 5 manual text-size/layout and VoiceOver/interaction acceptance remain user-waived, not tested. See the [integration record](archive/topics/v0-6-0-contract/reviews/assemble.md); retirement and release remain separate. | Stable schema-ahead reporting across doctor, CLI, desktop and Hook delivery, with actionable recovery and preserved independent session availability. |
 | [Snapshot Performance](topics/snapshot-performance/tasks.md) | `v0.6.0` | Second assembly batch — integrated through PR #4 at main `4dd10f4`; 6/6 documents and 3/3 tasks remain reviewed and delivered. Cold-import and unchanged-refresh CPU targets, the final 20-sample campaign, V01-V19 completeness and manual/native checks retain their explicit accepted-exception status; they are not reported as technical passes. Retirement and release remain separate. | One shared scan runtime, reusable snapshot computation and truthful CLI/menu-bar progress with preserved failure and scope semantics. |
 | [Subscription Quota](topics/subscription-quota/tasks.md) | `v0.6.0` | Third assembly batch — integrated through PR #5 at current main `7f84749`; seven Tasks remain reviewed and delivered, and the merge-result integration gate is VERIFIED 2/2. The fail-closed hosted-XCTest HOME boundary remains part of the delivered result; deferred P2 carriers are planning dispositions, not technical resolutions. Retirement and release remain separate. | Codex and Claude account discovery, bounded quota/reset snapshots, menu-bar and Settings presentation, reminders and truthful unavailable-field handling. |
 | [Desktop Refresh](topics/desktop-refresh/tasks.md) | `v0.6.0` | Fourth assembly batch — integrated through PR #6 at main `4bc0756` with merge-result gate VERIFIED 2/2. Real timing, installed Widget callbacks/intents, sleep/wake and accessibility/gallery observations remain BLOCKED with no waiver; retirement and release remain separate. | Completion-driven app refresh, bounded Widget loading, truthful aging/failure/recovery presentation, semantic targeted reload and 3–5 minute Widget timeline requests. |

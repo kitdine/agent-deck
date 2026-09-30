@@ -1,5 +1,6 @@
 ---
-status: active
+status: historical
+retired: 2026-09-30
 topic: v0-6-0-contract
 subject: assemble
 ---

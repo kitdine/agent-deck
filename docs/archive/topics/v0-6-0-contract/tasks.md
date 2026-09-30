@@ -1,10 +1,17 @@
 ---
-status: active
+status: historical
+retired: 2026-09-30
 created: 2026-09-08
-updated: 2026-09-27
+updated: 2026-09-30
 ---
 
 # v0.6.0 Contract — Tasks
+
+Retired after v0.6.0 publication and operator-directed closeout. Historical
+reviews, pending instructions and acceptance exceptions are retained as
+provenance; they do not dispatch new work. Current state is in
+[Project Status](../../../status.md); next iteration selection is in
+[Roadmap](../../../roadmap.md#v065--concentrated-defect-repair).
 
 Target version: `v0.6.0`. This draft establishes version membership and the
 integration/contract-closure boundary. It implements no feature and authorizes
@@ -41,7 +48,7 @@ files or product content between worktrees as a substitute for authorized merges
 ## Assembly list
 
 The selection was established by the operator's 2026-09-05 v0.6.0 decision in
-[Roadmap](../../roadmap.md#v060--trusted-usage-and-subscription-visibility),
+[Roadmap](../../../roadmap.md#v060--trusted-usage-and-subscription-visibility),
 and narrowed by the operator on 2026-09-26 to defer cost transparency outside
 this version. Beads coordination remains under `ad-v060-iteration`. This
 contract owns the five retained areas; the membership change requires its own
@@ -204,6 +211,37 @@ Technical preflight, signing/notarization, tags, RC/stable publication and local
 installation remain separate exact-SHA workflows requiring explicit authority.
 
 ## Current handoff
+
+### Stable publication and release closeout — 2026-09-30
+
+Both contract Tasks are reviewed and delivered; this handoff does not change
+their historical reviews or manufacture new feature acceptance. Stable
+[`v0.6.0`](https://github.com/kitdine/agent-deck/releases/tag/v0.6.0) publishes
+main `a5e969d7ad60cfaaee7fec13cbe1704d4cdb2c52` / tree
+`1e72b162f52fc5da4f7e2be6f01d3c5f4619f4ac`. Same-SHA preflight
+`36577488245` is reusable; release `36670496654` passed all four jobs and
+published six assets. Homebrew formal-channel PRs #40/#41 merged; the local
+normal Cask migration installed `agentdeck-app 0.6.0` and removed the RC receipt
+without `--zap`. Database and key hashes were unchanged before launch.
+
+Normal Cask installation still leaves the nested Widget unregistered and
+`chronod` refuses configured timeline reloads. The earlier ZIP/manual-register
+acceptance did not cover this route. The technical gate for release WorkUnit
+`urn:ce:agent-deck:work-unit:v0-6-0` records **FAILED** normal-Cask `local-install`
+evidence at the exact published main state; other release evidence remains
+valid. `ad-bug-cask-widget-registration-missing` owns the next-release follow-up.
+Manual local registration is a workaround, not installation PASS. See
+[Project Status](../../../status.md#release) for current release delivery state.
+
+On 2026-09-30 the operator explicitly directed closure of the already published
+v0.6.0, with known defects handled by the next release. Version coordination is
+therefore closed by disposition, not by manufacturing technical PASS. Retain
+the failed installation observation and earlier native/performance exceptions.
+Next-version defect triage is a proposal in
+[Roadmap](../../../roadmap.md#v065--concentrated-defect-repair); the version number
+was subsequently selected as v0.6.5. This does not reopen completed contract
+Tasks or start next-version implementation. The operator authorised full local
+project closeout and Git delivery on 2026-09-30.
 
 ### Delivered batch — subscription-quota — 2026-09-19
 

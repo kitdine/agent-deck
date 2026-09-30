@@ -11,7 +11,7 @@ updated: 2026-09-10
 Reduce the work needed to refresh AgentDeck's desktop data while preserving the
 meaning of every value, attribution decision, availability flag and failure.
 This is the `ad-snapshot-performance` planning entry selected by the
-[v0.6.0 contract](../v0-6-0-contract/tasks.md). Its origin is the performance
+[v0.6.0 contract](../../archive/topics/v0-6-0-contract/tasks.md). Its origin is the performance
 portion of `ad-bug-widget-refresh-stale`; that bug also has refresh and UI work
 owned elsewhere. This topic does not close that entire origin bug.
 
