@@ -235,12 +235,16 @@ full feature-document lifecycle for a small repair are the avoidable weight.
 | Reuse one serial repair worktree and switch per-issue branches | Lowest checkout/index footprint | One local mutable issue at a time. Every switch requires a clean tree and verified binding; returning to PR findings requires restoring the correct branch/state. A reviewer must not accidentally inspect the next branch. |
 | Short-lived per-issue worktrees, with at most two active | Stable branch/path/review binding, easier overlapping work and returning to findings | Some setup cost, but merged issue workspaces must not accumulate. Shared tool caches may be reused under existing rules; mutable indexes/build artifacts remain correctly scoped. |
 
-Recommendation: begin with **one active issue worktree at a time**, adding a
-second only for explicit parallel work. Keep that checkout through repair,
-local review and PR review, then clean it after verified merge under authorised
-cleanup. This keeps independence/bindings straightforward without retaining
-nineteen workspaces. Serial reuse is a viable later optimisation once explicit
-Fix entry/rebind/return-to-review rules are adopted.
+Recommendation: use **one reusable serial Fix worktree** while canonical main
+stays clean. One issue still gets its own branch and PR; keep the current
+checkout frozen through local and GitHub review, repair and verified merge
+before selecting the next issue. At each issue boundary verify a clean tree,
+refresh the base and validate/rebind that issue's branch and workspace identity.
+Never force-switch, reset dirty content or reuse another actor's active slot.
+Use independent short-lived issue worktrees, at most two active, only when the
+operator explicitly requests parallel work. Neither mode requires a separate
+worktree for the independent reviewer; that reviewer needs cold context and
+the exact frozen content state.
 
 Current Branching documents ordinary topic entry but does not fully define a
 reusable Lane A slot. This proposal does not silently change its runtime or
