@@ -5,7 +5,21 @@ created: 2026-07-22
 
 # Archived Documents
 
-Last updated: 2026-09-07
+Last updated: 2026-09-30
+
+## 2026-09-30 retirement: v0.6.0 version contract
+
+[`v0-6-0-contract`](topics/v0-6-0-contract/tasks.md) preserves the delivered
+assembly and version-contract Tasks, their complete reviews, exact evidence
+identities and operator-directed release closeout. Stable v0.6.0 and its
+Homebrew channels were published; normal Cask Widget registration remains a
+known defect assigned to the next iteration. Failed technical observations and
+native/performance exceptions are retained, not relabelled PASS.
+
+Current release state is in [Project Status](../status.md#release); the
+operator selected one concentrated [v0.6.5 defects iteration](../roadmap.md#v065--concentrated-defect-repair).
+The archived worktree bindings, pending instructions and older handoffs are
+provenance rather than a new dispatch source.
 
 ## 2026-09-07 closeout: workflow-instruction optimization
 

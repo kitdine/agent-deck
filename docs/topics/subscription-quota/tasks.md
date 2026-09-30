@@ -1,12 +1,12 @@
 ---
 status: active
 created: 2026-09-08
-updated: 2026-09-17
+updated: 2026-09-30
 ---
 
 # Subscription Quota — Tasks
 
-Target version: `v0.6.0`, selected in `docs/topics/v0-6-0-contract/tasks.md`
+Target version: `v0.6.0`, selected in `docs/archive/topics/v0-6-0-contract/tasks.md`
 under the carrier `ad-subscription-quota`. This decomposition authorizes no
 merge, push, PR, tag, or release.
 
@@ -828,7 +828,7 @@ preference files, task 4 owns control-path behavior and task 7 owns presentation
 - The specification revision described in `requirements.md` — Contract changes —
   narrowing `docs/specs/cli-design.md:53-55`. Read the then-current revision;
   do not prescribe a revision number, following task 2 (`v0-6-0-contract`) in
-  `docs/topics/v0-6-0-contract/tasks.md`, which owns that instruction.
+  `docs/archive/topics/v0-6-0-contract/tasks.md`, which owns that instruction.
 
 **Verification:** L2 for the Swift surfaces against the documents, plus the
 manual acceptance below. Where the implementation and a ux document disagree,
