@@ -90,6 +90,15 @@ the same actor or workspace remain distinct; record a session correlation and
 bounded collaboration scope when ambiguity matters. A workspace binding is not
 a lease or exclusive ownership claim.
 
+For [serial Lane A reuse](branching.md#serial-lane-a-fix-workspace-entry), resolve
+the outgoing and incoming Bug's active assignment/handoff before switching the
+slot. Handoff identifies `agent-deck.fix.<slug>`, `fix/<slug>`, the exact frozen
+commit/content state, pending reviews/findings and whether the slot is released.
+Do not infer slot release from `closed`, a clean checkout or an actor name alone.
+An unfinished-issue suspension preserves its pending lifecycle and needs the
+operator's explicit selection/handoff authority under Branching; it is not a
+false completion. Keep the existing Bug as carrier, not a new per-stage task.
+
 Beads is the cross-worktree dispatch view. Follow
 [Status ownership across worktrees](../docs/documentation-workflow.md#status-ownership-across-worktrees);
 a task handoff does not require a parallel global-status update or `main` commit.

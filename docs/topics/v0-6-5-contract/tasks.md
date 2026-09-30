@@ -107,9 +107,11 @@ is selected. New decisions return to their owning Lane B topic before code work.
 
 ## One issue, one PR and serial workspace entry
 
-The [roadmap workspace proposal](../../roadmap.md#worktree-decision--proposed)
-is not yet an executable reusable-slot policy. Task 1 below proposes to adopt
-one reusable serial Fix worktree in the rule owner before the first repair.
+The selected serial policy is implemented in
+[Branching](../../../.agent-instructions/branching.md#serial-lane-a-fix-workspace-entry)
+with default slot `.worktrees/fix`, entry `进入工作：fix / <slug>` and per-issue
+binding `agent-deck.fix.<slug>`. Task 1's independent review has passed;
+its delivery remains a prerequisite before the first repair uses these new rules.
 The contract workspace remains distinct. An independent reviewer needs cold
 context and the frozen content state, not a permanent extra checkout. No parallel
 issue work or subagent invocation is authorized by this plan.
@@ -155,7 +157,7 @@ aggregate release does not waive any per-issue review.
 
 | Task | Dev | Review |
 | --- | --- | --- |
-| 1. `fix-workspace-policy` | [ ] | [ ] |
+| 1. `fix-workspace-policy` | [x] | [x] |
 | 2. `assemble` | [ ] | [ ] |
 | 3. `v0-6-5-contract` | [ ] | [ ] |
 
@@ -278,11 +280,18 @@ commit, push, PR, merge, real installation or publication is executed by design.
 ## Current handoff
 
 Decomposition review passed in [tasks review](reviews/tasks.md), Round 1.
-All three implementation Tasks and all nineteen Bugs remain unimplemented by
-this document task. Next implementation subject: `v0-6-5-contract / fix-workspace-policy`;
-its own dispatch, stage authority and evidence prerequisites still apply.
+Task 1 passed [independent review](reviews/fix-workspace-policy.md), Round 1; its dispatch is
+`ad-fix-workspace-policy` and task WorkUnit is
+`v0-6-5-contract:fix-workspace-policy`. The boundary comprises Branching,
+Toolchain, Beads, the roadmap pointer and this task matrix. L0 checks and exact
+candidate identity are handed off through the task. Authorized Task 1 delivery
+remains pending; Tasks 2/3 and all nineteen Bugs remain unimplemented here. No release
+line, Fix slot, issue branch or Git delivery was created by this implementation.
 The document WorkUnit is `v0-6-5-contract:tasks.md`, with required criteria for
 decomposition/membership coverage, release-base and authority consistency, and
 document-set/verification readiness. The review record binds HEAD plus the final
 document blob and records the separate document gate. No aggregate task, topic
-or release completion is claimed by this document PASS.
+or release completion is claimed by this document PASS. The earlier document
+PASS remains provenance for the decomposition; Task 1's implementation/status
+changes require their own review and target-state gate rather than relabelling
+the earlier document evidence.

@@ -221,33 +221,19 @@ second independently maintained task matrix for every Beads issue.
    then publish v0.6.5 from the verified release-line candidate through the authorised release workflow and forward-propagate it to main. Internal order
    or parallel PRs do not create separate release batches.
 
-### Worktree decision — PROPOSED
+### Worktree decision
 
-An issue, branch and PR do not require a permanently retained worktree. The
-Git checkout is only one part of the cost: copied build outputs/indexes and a
-full feature-document lifecycle for a small repair are the avoidable weight.
+The selected mode is one reusable serial Fix workspace, one issue branch and
+one PR per repair. Execution rules have one owner:
+[Serial Lane A Fix workspace entry](../.agent-instructions/branching.md#serial-lane-a-fix-workspace-entry).
+They define entry/reentry, release bases, issue bindings, safe switch boundaries,
+owner conflicts, CodeGraph preparation and late-review return. The independent
+reviewer needs cold context and frozen content, not a permanent extra worktree.
 
-| Option | Benefit | Constraint |
-| --- | --- | --- |
-| Reuse one serial repair worktree and switch per-issue branches | Lowest checkout/index footprint | One local mutable issue at a time. Every switch requires a clean tree and verified binding; returning to PR findings requires restoring the correct branch/state. A reviewer must not accidentally inspect the next branch. |
-| Short-lived per-issue worktrees, with at most two active | Stable branch/path/review binding, easier overlapping work and returning to findings | Some setup cost, but merged issue workspaces must not accumulate. Shared tool caches may be reused under existing rules; mutable indexes/build artifacts remain correctly scoped. |
-
-Recommendation: use **one reusable serial Fix worktree** while canonical main
-stays clean. One issue still gets its own branch and PR; keep the current
-checkout frozen through local and GitHub review, repair and verified merge
-before selecting the next issue. At each issue boundary verify a clean tree,
-refresh the base and validate/rebind that issue's branch and workspace identity.
-Never force-switch, reset dirty content or reuse another actor's active slot.
-Use independent short-lived issue worktrees, at most two active, only when the
-operator explicitly requests parallel work. Neither mode requires a separate
-worktree for the independent reviewer; that reviewer needs cold context and
-the exact frozen content state.
-
-Current Branching documents ordinary topic entry but does not fully define a
-reusable Lane A slot. This proposal does not silently change its runtime or
-the shared workflow Skill. Before the first v0.6.5 repair, adopt the chosen
-Fix workspace policy with the repository rule owner; resolve a valid binding
-before product work and do not switch another active actor's checkout.
+[The v0.6.5 contract](topics/v0-6-5-contract/tasks.md) owns adoption readiness and
+version execution; this roadmap does not approve that task's implementation or
+mirror its progress. Use the rules only after their required review and delivery.
+Parallel issue work remains a separately authorized choice.
 
 
 ## Backlog
