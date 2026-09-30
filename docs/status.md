@@ -21,7 +21,7 @@ is recorded in `roadmap.md`.
 
 ### Release
 
-- **Latest stable — released and closed with known issues:**
+- **Latest stable — published; project coordination closed with known issues:**
   [`v0.6.0`](https://github.com/kitdine/agent-deck/releases/tag/v0.6.0),
   commit `a5e969d7ad60cfaaee7fec13cbe1704d4cdb2c52`, tree
   `1e72b162f52fc5da4f7e2be6f01d3c5f4619f4ac`, published 2026-09-30.
@@ -49,8 +49,10 @@ is recorded in `roadmap.md`.
   artifact publication remain valid. The earlier direct-ZIP/manual-registration
   installation PASS is superseded and is not relabelled PASS. On 2026-09-30,
   the operator directed that the already published v0.6.0 be closed with known
-  defects transferred to the next release. Release coordination is closed on
-  that explicit disposition; the failed technical observation remains history.
+  defects transferred to the next release. Release/project coordination is closed on
+  that explicit disposition. The technical evidence boundary remains failed,
+  not VERIFIED or technically complete; this does not reopen published work
+  or dispatch a v0.6.0 repair instead of the selected next-version fix.
 - **Latest prerelease:** [`v0.6.0-rc.5`](https://github.com/kitdine/agent-deck/releases/tag/v0.6.0-rc.5)
   uses the same `a5e969d7` source. Its recorded local recovery after isolating
   development registrations and reinstalling the official ZIP is distinct

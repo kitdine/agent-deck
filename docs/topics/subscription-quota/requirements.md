@@ -1,14 +1,14 @@
 ---
 status: active
 created: 2026-09-08
-updated: 2026-09-09
+updated: 2026-09-30
 ---
 
 # Subscription Quota — Requirements
 
 Version membership is decided by the `v0-6-0-contract` topic's assembly list.
 This topic is already selected there as the carrier `ad-subscription-quota`;
-see `docs/topics/v0-6-0-contract/tasks.md`. Selection is not an implementation
+see `docs/archive/topics/v0-6-0-contract/tasks.md`. Selection is not an implementation
 decomposition, and it does not authorize a merge.
 
 Promoted from the operator's **2026-09-05 v0.6.0 planning decision**
@@ -221,8 +221,8 @@ consequence; it does not get to narrow this decision further.
   `planType` for Claude, reset allowance for Claude, and a *total* or *used*
   reset count for either are not available. They render as unavailable naming
   why. They are never `0`, never blank, and never silently dropped from the
-  surface — `docs/roadmap.md:40-42` and
-  `docs/topics/v0-6-0-contract/tasks.md:64-65`.
+  surface — `docs/roadmap.md#v060--trusted-usage-and-subscription-visibility` and
+  `docs/archive/topics/v0-6-0-contract/tasks.md#assembly-list`.
 
 - **Freshness is always visible, and stale is never shown as current.** Every
   displayed figure carries the instant it was observed. When the last probe
@@ -272,7 +272,7 @@ consequence; it does not get to narrow this decision further.
   and changes nothing about it.
 - **No plaintext credential persistence**, and no new credential storage of any
   kind. Nothing this topic reads is a secret.
-- **No automatic updater**, per `docs/topics/v0-6-0-contract/tasks.md:65-66`.
+- **No automatic updater**, per `docs/archive/topics/v0-6-0-contract/tasks.md#assembly-list`.
 - **No reconciliation against an invoice.** Quota share and money remain
   separate; a percentage is not a bill, and this topic adds no path between
   them.
@@ -308,7 +308,7 @@ working around it. The revision must:
   measurement, and that no vendor field read here is a published contract.
 
 The specification is at `version: 28` in this worktree. The revision number is
-deliberately not prescribed here: `docs/topics/v0-6-0-contract/tasks.md:164-165`
+deliberately not prescribed here: `docs/archive/topics/v0-6-0-contract/tasks.md#2-v0-6-0-contract`
 requires reading the then-current revision at contract-closure time, because
 other v0.6.0 topics also edit this file.
 

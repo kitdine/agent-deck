@@ -22,13 +22,11 @@ Re-planned by the operator on 2026-09-05 after stable v0.5.0. This decision
 reuses the version number with a new scope; the old cancelled cost-truthfulness
 epic remains historical. The iteration entry is `ad-v060-iteration`.
 
-These are five selected feature areas for topic design, not an approved
-implementation breakdown. Beads carries planning coordination; this section
-owns the selection. A version-contract topic assembles the delivered topics
-later. Do not create development tasks before each topic's tasks.md passes.
-On 2026-09-26 the operator moved cost and price transparency out of v0.6.0;
-`ad-cost-transparency` remains an independent planning carrier without an
-assigned delivery version.
+The five areas below were selected on 2026-09-05, subsequently designed,
+reviewed and assembled, and shipped in v0.6.0. Their delivered membership and
+exceptions are preserved in the archived version contract; this section no
+longer dispatches design or assembly work. Cost and price transparency was
+removed on 2026-09-26 and remains a deferred, unversioned feature candidate.
 
 | Feature | Planning carrier | Reason and boundary |
 | --- | --- | --- |
@@ -38,22 +36,12 @@ assigned delivery version.
 | Actionable health recovery | `ad-health-recovery` | Resolve lock recovery guidance and stale extension inventory with cause-specific actions; retain the two origin bugs. |
 | Codex/Claude subscription accounts, quota, reset and alerts | `ad-subscription-quota` | Make subscription capacity actionable, including Codex reset-count information, reset times, and opt-in reminders. |
 
-Subscription design must verify each field's source and supported semantics.
-Codex reset counts are explicitly in scope: distinguish any official total,
-used or remaining reset allowance from natural quota-window resets and locally
-observed reset events. Unsupported fields report unavailable with a reason,
-never zero or an invented count. A missing critical source is a named delivery
-gap requiring disposition, not permission to silently remove this feature.
-Account/plan discovery, quota retrieval and reminder evaluation may have separate
-sources. Authentication, staleness, polling budgets, account isolation and
-notification deduplication are part of the design. No reset action, account
-login switching, automatic app updater, or plaintext credential persistence is
-included.
-
-Design subscription-source feasibility early alongside schema and performance
-work. Refresh delivery depends on snapshot performance. Subscription reminder
-presentation retains truthful billing labels; later cost-transparency design
-may refine those labels but does not block this version.
+The delivered subscription contract distinguishes supported reset allowances,
+natural quota-window resets and locally observed resets. Unsupported fields
+remain unavailable with a reason. Account isolation, polling budgets and
+notification deduplication are guaranteed by the living CLI design/manual;
+remaining defects are in the v0.6.5 inventory. No reset action, account login
+switching, automatic updater or plaintext credential storage was selected.
 
 Cost transparency and structured session search are excluded from v0.6.0 and
 remain unassigned candidates. Credits conversion, Context Efficiency, Linux,
@@ -62,7 +50,7 @@ aggregation remain later candidates. Existing withdrawal decisions remain
 effective.
 
 The old v0.7.0 subscription epic/plan/Gate are superseded by this selection;
-their historical records remain parked. The remaining old version rows are
+their obsolete coordination records are closed and retained as history. The remaining old version rows are
 directional candidates rather than a required release order.
 
 ## Roadmap
@@ -191,6 +179,15 @@ does not prove it resolved.
 
 ### One issue, one PR: bounded repair workflow
 
+Patching the published v0.6 line follows Branching's released-version route:
+select/create `release/v0.6.x` from the peeled `v0.6.0` commit
+`a5e969d7ad60cfaaee7fec13cbe1704d4cdb2c52`. Each repair branch starts from the
+current `release/v0.6.x` head and its PR targets that release line, not whatever
+new feature content main contains later. Publish v0.6.5 from the verified release
+candidate and forward-propagate the delivered patch line to main under the
+existing integration classification/review rules. Current main is kept clean;
+only necessary, authorised branch operations occur in the Fix workspace.
+
 Beads remains the issue/dispatch authority. Put the exact Beads ID, reproducer,
 scope, local review pointer, test/evidence state and disposition into each PR.
 If a corresponding GitHub issue exists, link it as well; do not manufacture a
@@ -214,14 +211,14 @@ second independently maintained task matrix for every Beads issue.
    repairs after review require current-head reassessment. Do not request
    cloud `@codex fix` unless write/delegation authority is separately granted.
 5. **Delivery.** Fix verified findings, pass applicable CI and evidence gates,
-   then merge the issue PR. Confirm the delivered boundary before closing the
+   then merge the issue PR into `release/v0.6.x`. Confirm the delivered boundary before closing the
    Beads issue; admin dispositions say duplicate/superseded/not-a-defect rather
    than claiming a product fix. Keep per-issue traceability in the version list.
 6. **Single release.** Merge ready issue PRs throughout this one iteration.
    Afterwards reconcile the final selected list and run release-owned preflight
    once for the final aggregate state, reusing unaffected per-issue evidence.
    Validate normal installation, account/state safety and configured Widgets,
-   then publish v0.6.5 through the authorised release workflow. Internal order
+   then publish v0.6.5 from the verified release-line candidate through the authorised release workflow and forward-propagate it to main. Internal order
    or parallel PRs do not create separate release batches.
 
 ### Worktree decision — PROPOSED
@@ -318,46 +315,12 @@ is selected into v0.6.0 with quota, reset information and reminders.
   and live-owner safety decisions. It was integrated through PR #9 at main
   `3f29e26`; origin issue `ad-bug-state-busy-recovery-guidance` is closed.
 
-- [ ] Reinstall the status-line route when a reading-off call's RestoreStatusLine
-  succeeds but the subsequent settings save fails before committing. Core state
-  keeps recording `ProbeEnabled=true`/`StatusLineConsent=true` while the route is
-  actually gone, so the next load claims capture enabled with nothing installed.
-  Deferred as Lane C from PR #5 (feature/subscription-quota) review round 13 on
-  2026-09-18, carried by `ad-bug-quota-reading-off-route-not-restored-on-save-failure`.
-  Mirrors the already-fixed quota-statusline disable path's own compensation.
-
-- [ ] Detect a currently-installed status-line route that belongs to a
-  DIFFERENT AgentDeck installation (a different `--state-dir`) before `SetupStatusLine`
-  records it as an ordinary chainable prior command. `PriorStatusLineCommand`
-  deliberately refuses to chain to any managed AgentDeck command, so silently
-  recording another installation's own route this way blanks the user's Claude
-  status line for as long as the newer installation stays active, with no error.
-  Deferred as Lane C from PR #5 review round 13 on 2026-09-18, carried by
-  `ad-bug-quota-statusline-cross-installation-conflict`.
-
-- [ ] Attribute a Claude prose parse failure's projected `source` to the probe
-  route that actually failed (prose), not to the last successfully retained
-  window's route (which can be status-line). The wire and menu-bar header
-  currently misreport which route produced the newer failure. Deferred as Lane C
-  from PR #5 review round 13 on 2026-09-18, carried by
-  `ad-bug-quota-parse-failure-source-misattribution`.
-
-- [ ] Return `.all` (not the configured single client) as the large quota
-  widget's scope label, since `presentedQuotaClients(.systemLarge)` always shows
-  both clients regardless of the widget's configured intent -- the header
-  currently names only one client while the body shows both. Deferred as Lane C
-  from PR #5 review round 13 on 2026-09-18, carried by
-  `ad-bug-widget-large-quota-header-client-label`.
-
-- [ ] Clear account-bound quota state (`quota_windows`, `quota_envelopes`, and
-  the alert-notice ledger) during portable-backup restore, not only status-line
-  consent (already fixed in review round 12). Restoring onto a machine signed
-  into a different Codex account currently keeps presenting the source
-  machine's quota figures as the target account's own, since the restored
-  provider selection still passes the official-provider gate and Codex
-  attribution is hard-coded confirmed. Deferred as Lane C from PR #5 review
-  round 13 on 2026-09-18, carried by
-  `ad-bug-quota-portable-restore-account-bound-state`.
+The five quota/status-line/portable-restore findings formerly deferred from
+PR #5 Round 13 were promoted to the single
+[v0.6.5 inventory](#unique-bug-inventory-and-applied-priority). Their current
+priority and dispatch disposition live there and in Beads; original review
+provenance remains in the issue histories. They are no longer duplicate
+unchecked Lane C entries in this unversioned Backlog.
 
 ## Withdrawn Candidates
 
