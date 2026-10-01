@@ -203,3 +203,97 @@ Task checkpoint: `fix:cask-widget-registration-missing`，上述 ContentState，
 提交、推送、PR、合并和发布尚未执行。
 
 冻结 fix record 前缀长度：8622 bytes；当前文件的此前缀必须与独立评审冻结内容一致。
+
+## Review — Round 3 — 2026-10-01
+
+## 📋 GitHub Codex Review
+
+📊 总体评分：8/10
+
+✅ 结论：FAIL
+
+Reviewer: GitHub `chatgpt-codex-connector`，独立 PR code review。
+Method: PR #23 current-head review；主代理运行决定性复现后采纳。
+Reviewed state: `5b64468d2feb88d7d8339876dd747800dda4e996`。
+Scope: 已交付到 PR 的同一 Widget 修复及相关 desktop-refresh 契约。
+Completion gate: FAILED；此前该状态的 VERIFIED 被新失败证据纠正。
+
+### 🔴 严重问题 — 必须修复
+
+- **CWR-R3-F1 / P2 / OPEN** — `AgentDeckApp.swift:224` 在注册成功后直接调用
+  `WidgetCenter.shared.reloadAllTimelines()`，绕过已有 semantic kind-scoped
+  `WidgetTimelineReloader`。决定性复现：
+  `bash scripts/check-desktop-refresh-integration.sh` 在该提交退出 1，报告
+  `legacy unconditional Widget reload remains`。CI 的 desktop job 未运行这条
+  既有检查，因而四个绿色检查没有覆盖该违约。
+  GitHub finding: https://github.com/kitdine/agent-deck/pull/23#discussion_r4156254506
+  修复要求：通过已有 adapter 请求全部 `AppGroupWidgetKind.allCases`，并让
+  desktop CI 执行既有 integration checker。
+
+### 🟡 改进建议 — 推荐
+
+无其他建议。
+
+### 🟢 优点
+
+GitHub review 已绑定准确提交；push/PR 两轮 verify/desktop 共四项 CI 都通过，
+但不能以此否定独立检查的明确失败。保留 Round 2 的历史结果，不重写其结论。
+
+### 📝 总结
+
+CWR-R3-F1 修复候选已把调用接入 `WidgetTimelineReloader.live`，使用 canonical
+`AppGroupWidgetKind.allCases`；新增 CI step 运行原 checker，未修改 checker 的断言。
+修复后 checker PASS，Release 编译验证正在执行。待新 head 独立 GitHub 复评后关闭
+本项；当前不合并 PR。旧 native/Intent/卸载证据按未受影响边界保留，未宣称新 head
+已完成复评或正常公证发行验收。
+
+
+## Review — Round 4 — 2026-10-01
+
+## 📋 GitHub finding 修复的独立确认
+
+📊 总体评分：9/10
+
+✅ 结论：PASS
+
+Reviewer: 独立冷上下文 Codex，`startup_reload_repair_review`。
+Method: 仅比较 HEAD `5b64468d2feb88d7d8339876dd747800dda4e996` 与 App/CI/record
+三个 dirty 文件；直接项目评审，不启动完整审计或重复 broad suites。
+Reviewed state: 独立复算 dirty-diff SHA-256
+`c41e047ca53f62486cf14f26685e38f0bf84be14ad381dbbba399721a02f161b`。
+Scope: CWR-R3-F1 的 kind-scoped adapter 和 CI wiring 修复；不扩大为发布验收。
+Completion gate: VERIFIED，四项 scoped criterion；
+ContentState: `fix:cask-widget-registration-missing:candidate:72ae03a811fb9a4e781a2d03e086ad6122a64284ddc047191967526b21aeba07`。
+新 Release/integration/独立 review 证据与未变 native/installer 边界分开绑定；旧提交
+的 regression/review 证据已失效，旧失败历史保留。
+该状态使用 `/private/tmp/agentdeck-cwr-r4-manifest.txt`；fix record 第一 14569 bytes
+为冻结前缀，随后追加的本轮评审/门禁元数据不形成循环指纹。
+
+### 🔴 严重问题 — 必须修复
+
+无未关闭代码项。
+
+- **CWR-R3-F1 → CLOSED（独立确认的修复候选）**：注册成功后调用现有 Sendable
+  `WidgetTimelineReloader.live`，传入全部五种 canonical kind；adapter 的
+  `reloadTimelines(ofKind:)` identifier 与五个现有 `AppIntentConfiguration`
+  精确一致。新 desktop CI step 执行现有 Make target 和未削弱的 checker。
+  后续仍等待 GitHub 对新 head 的实际 review，不以本地确认代替该步骤。
+
+### 🟡 改进建议 — 推荐
+
+无新 CWR-R4-Fn findings。
+
+### 🟢 优点
+
+- 未修改注册成功/失败处理、当前用户边界、配置参数或卸载/用户数据契约。
+- 复用既有 adapter 和 canonical kind owner，没有新增 reload 实现。
+- 独立运行 `make check-desktop-refresh-integration` PASS、`git diff --check` 退出 0，
+  并检查新 Release log 的 `BUILD SUCCEEDED`。
+
+### 📝 总结
+
+精确候选通过小范围独立确认。此前 Shared/App/Widget tests、Intent 发现、原生
+entry/render 和安装/卸载证据仅对未变边界进行 scope-aware 复用，不宣称已经原生
+执行这条新 reload 调用。正常公证 Cask/Gatekeeper 仍在 v0.6.5 Release 边界。
+主代理负责绑定新证据并取得新 head 的 GitHub 复评、CI 和合并结果；旧提交的
+Round 3 FAIL 和失败门禁保留，不覆盖历史。

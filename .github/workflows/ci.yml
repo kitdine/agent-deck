@@ -54,5 +54,7 @@ jobs:
         run: make build-macos-app
       - name: Check the widget sandbox boundary
         run: make check-widget-sandbox
+      - name: Check desktop refresh integration contract
+        run: make check-desktop-refresh-integration
       - name: Check desktop distribution in isolation
         run: make check-macos-distribution

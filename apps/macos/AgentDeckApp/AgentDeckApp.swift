@@ -221,7 +221,7 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 						NSLog("AgentDeck Widget registration failed: status %d", process.terminationStatus)
 						return
 					}
-					WidgetCenter.shared.reloadAllTimelines()
+					WidgetTimelineReloader.live.reload(kinds: Set(AppGroupWidgetKind.allCases))
 				} catch {
 					NSLog("AgentDeck Widget registration failed: %@", String(describing: error))
 				}
