@@ -69,6 +69,14 @@ CodeGraph results locate source and relationships; verify reflection, dependency
 injection, configuration-driven behavior, SQL, generated code, queues, RPC
 boundaries, and framework behavior against source and tests.
 
+For the reusable serial Fix slot, [Branching](branching.md#serial-lane-a-fix-workspace-entry)
+owns entry and branch changes. The physical path may remain unchanged while its
+issue branch and workflow ID change. Verify both against the current binding;
+synchronize that slot's own index once after a branch change before an indexed
+query. Reuse an unchanged branch/content index without another sync. Index
+failure follows the scoped fallback below and never justifies using the prior
+issue's stale index or another workspace's index.
+
 If the selected workspace has no prepared index, the CLI is unavailable, or one
 index operation fails, report the limitation once and use one precise `rg`/`fd`
 locator followed by focused source reads. Do not initialize an index outside

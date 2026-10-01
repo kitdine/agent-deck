@@ -108,6 +108,95 @@ task ownership nor exclusive write access. Coordinate overlapping edits and Git
 operations using the applicable task and delivery authorities, and bind reviews
 and verification to the actual content state.
 
+## Serial Lane A Fix workspace entry
+
+`进入工作：fix / <slug>` or `Enter work: fix / <slug>` selects
+`fix/<slug>`, not `feature/fix`. Use a lowercase kebab-case slug matched to
+the existing Bug and fix record. Entry does not settle its Lane or claim it;
+product work requires the Bug's explicit stage authority and confirmed Lane.
+A Lane B topic uses ordinary topic entry instead.
+
+### Slot, source and binding
+
+The default serial slot is `<canonical-main>/.worktrees/fix`. Its physical
+identity is `agent-deck.fix-slot`; each issue's workflow binding has
+`workspace_id: agent-deck.fix.<slug>`, `scope: fix / <slug>`, branch
+`fix/<slug>`, the actual slot path, common Git repository identity, creation
+base and this section as `policy_source`. The slot identity is descriptive,
+not a second registry or a task lease. Do not use one generic workflow ID for
+different issues. Retain creation provenance on reentry and record the actual
+current HEAD/content state separately; reentry does not change the branch base.
+
+Resolve the oldest affected supported release and its existing release line
+before creation. For v0.6.5, use `release/v0.6.x`, originally based on peeled
+`v0.6.0` commit `a5e969d7ad60cfaaee7fec13cbe1704d4cdb2c52`.
+A new issue branch starts from the selected current release-line head, never
+the contract branch or newer main. Record the exact ref/commit and any cached
+remote uncertainty. Entry may create the missing issue branch and slot, but
+does not create the release line: if that line is absent, request its explicit
+creation authority first. Do not fetch, pull, merge, reset or push as entry
+side effects; resolve stale refs through a separately authorized refresh.
+
+If `fix/<slug>` already has a registered worktree, reuse that valid location;
+do not force a duplicate checkout or relocate old work into the slot. Apply the
+same root-containment, ownership and frozen-review rules there. An external
+location requires the client to be opened/rebound at a writable root containing
+it. If only the branch exists, attach/reuse the designated slot without changing
+that branch's history. If both are absent, create them at the verified release
+base. An occupied non-worktree path, unrelated checkout, mismatched repository
+or conflicting slot binding is a named blocker; do not delete or repurpose it.
+
+### Entry and issue boundaries
+
+Before any checkout or binding mutation, inspect the live worktree inventory,
+slot branch/HEAD, current binding and tracked/untracked changes, then resolve
+the exact Bug and relevant active-owner/handoff context through Beads. The actor
+name alone cannot distinguish sessions. A missing handoff or conflicting active
+session blocks reuse; neither an expired-looking timestamp nor a clean tree
+authorizes taking over another actor's checkout.
+
+- Same issue/branch: reuse a compatible binding and existing edits without
+  moving or discarding them. Identify edit ownership before product changes;
+  dirty content is part of the observed state, not proof of task ownership.
+- Different issue: switch only at a clean tracked/untracked boundary after the
+  previous repair has completed review, findings, authorized delivery and
+  integration/disposition, with no outstanding slot owner or mutable work.
+  Explicit suspension/handoff can release an unfinished issue only when its
+  exact committed state, pending work and return route are preserved and the
+  operator authorizes selecting the other issue. Ordinary entry cannot bypass
+  an unfinished boundary. Do not stash, force-switch, reset or clean to pass it.
+- Existing branch collision: a branch checked out elsewhere follows reuse above;
+  an incompatible binding/path is reported, not overwritten. Never reset an
+  existing issue branch to the latest release head merely because the base moved.
+- Late review findings: preserve the next issue's work and ownership. Return to
+  the original branch only through its entry command and a clean, released slot;
+  verify the reviewed commit/content and rebind its issue identity. A finding
+  against an older state requires reassessment against the current issue branch.
+  Do not repair it in the next issue's branch or silently checkout detached HEAD.
+
+An authorized entry command permits the safe issue checkout and local binding
+writes required above; it grants no delivery or destructive authority. Perform
+binding replacement only after the checkout succeeds and the actual path,
+branch, common repository and writable-root containment are verified. A partial
+failure leaves entry incomplete: preserve the successful operation, report the
+missing step and never emit WORKSPACE_READY for a stale binding.
+
+Prepare only this selected workspace's CodeGraph index under the topic-entry
+rules. After an issue-branch change, synchronize the slot's own index once before
+querying it; never copy another worktree's index. Then emit the shared workflow's
+current-token workspace-ready declaration and derive the next Design/Implement
+subject from the actual Bug/fix state. Subsequent issue commands carry the
+unfenced marker `WORKFLOW_WORKSPACE: agent-deck.fix.<slug>`. An Implementation command
+does not create, switch or repair a missing binding; return the corresponding
+entry command as its prerequisite.
+
+Exit leaves the checkout, branch and binding intact. Record unfinished work and
+release/transfer ownership only through supported Beads handoff. A task closing
+does not remove the slot, branch or index; cleanup needs separate authorization.
+Hold the checkout frozen through local independent and GitHub review, repair and
+verified merge/disposition. Reviewers bind to immutable content and cold context;
+the policy creates neither a reviewer process nor delegation authority.
+
 ## Merging is a contract topic action
 
 Completing feature work does not merge it. The version-contract topic selects
