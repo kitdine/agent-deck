@@ -143,4 +143,5 @@ if [[ $configuration == Release ]]; then
   done
 fi
 
+bash "$repo_root/scripts/check-macos-widget-intents.sh" "$app"
 printf '%s\n' "Unsigned $configuration AgentDeck.app built at $app"
