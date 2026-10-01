@@ -1,6 +1,7 @@
 ---
-status: active
+status: historical
 created: 2026-10-01
+retired: 2026-10-01
 ---
 
 # 缺陷：正常 Cask 安装后 Widget 未注册且配置化 timeline 不可用
@@ -337,3 +338,68 @@ GitHub 复评已明确绑定 `188f07417a` 并无新 code finding；CWR-R3-F1 已
 CI step 已添加 `command -v rg` 缺失分支及 `brew install ripgrep`，仅此步骤设置
 `HOMEBREW_NO_AUTO_UPDATE=1`，不升级已有工具、不删除断言。等待新 head 的 GitHub
 复评和 actual CI 成功后关闭 CWR-R5-F1；当前仍不合并 PR。
+
+
+## Review — Round 6 — 2026-10-01
+
+## 📋 GitHub current-head 交付复评
+
+📊 总体评分：9/10
+
+✅ 结论：PASS
+
+Reviewer: GitHub `chatgpt-codex-connector`，主代理核验 actual head/CI/线程和集成树。
+Method: `d26bd7bc48175a7530454f1492fc8605eea87446` 的实际 GitHub code review；
+保留并核对此前独立 cold-context 结果及未变 source 的验证，未重复 local broad suites。
+Reviewed state: 上述 signed commit，tree `302a070ab0eedc34e3189864f38cf60f6da941ac`。
+Completion gate: VERIFIED，ContentState
+`fix:cask-widget-registration-missing:commit:d26bd7bc48175a7530454f1492fc8605eea87446`，4/4 scoped criteria。
+Scope: PR #23 的同一 Bug 修复及必要 CI prerequisite；不扩大为 Release gate。
+
+### 🔴 严重问题 — 必须修复
+
+无未关闭项。
+
+- **CWR-R3-F1 → CLOSED**：`188f074` 修复接入 canonical adapter；GitHub 对
+  `188f074` 和 `d26bd7b` 的后续 review 均回复未发现主要问题。原线程已回复修复
+  及 CI 结果并 resolved，未以 outdated 代替处置。
+- **CWR-R5-F1 → CLOSED**：缺失的 ripgrep 前置依赖已在 CI step 明确声明。
+  `d26bd7b` 的 push/PR 两轮 verify、desktop 共四项 actual checks 全部 SUCCESS；
+  checker 和断言未被削弱，Swift/tests/distribution/integration 均从真实 runner 通过。
+- CWR-R1-F1、CWR-R1-F2 的历史关闭与测试/原生边界保留；无新 in-scope finding。
+
+### 🟡 改进建议 — 推荐
+
+无其他项。首轮 unconditional reload 和 CI 缺少 rg 的 FAIL 历史与旧门禁保留。
+
+### 🟢 优点
+
+- 三个增量 signed commits 保留修复 ancestry，均有完整说明与 Codex trailer。
+- PR code review 绑定准确 current head，不把 running/eyes 或旧 head review 当完成。
+- 独立 source 复评、actual CI、签名和 CEv1 状态分别核对，未以一个系统替代另一系统。
+
+### 📝 总结
+
+GitHub review comment: https://github.com/kitdine/agent-deck/pull/23#issuecomment-5934463722
+PR CI: https://github.com/kitdine/agent-deck/actions/runs/36882923037
+Push CI: https://github.com/kitdine/agent-deck/actions/runs/36882913505
+原 finding resolution: https://github.com/kitdine/agent-deck/pull/23#discussion_r4157275512
+
+合并前 target 为 `a5e969d7ad60cfaaee7fec13cbe1704d4cdb2c52`，source 为 `d26bd7b`。
+GitHub virtual merge `e318b11f6c4a5a8ce055367c57b847bc5669820d` 的两个 parents 正确，
+result tree 与 source 完全相同，无 target-only 更改、冲突或新生产交互。
+实际合并结果须在执行后再次按其 refs/parents/tree 核验；该 virtual identity 不冒充实际 merge。
+
+本记录按 Fix records 在已授权提交和 scoped evidence finalization 后退休，完整保留
+六轮历史；Bug 的最终 closed 仍待实际 PR merge/disposition 核验。归档只是记录生命周期，
+不构成 v0.6.5 release、公证或 normal发行 Gatekeeper PASS。
+
+历史 ContentState 的冻结 prefix/blob recipe 适用于其当时 Git state；退休 header 和后续
+review append 形成新的 doc 状态。重建早期 prefix 时使用对应历史 commit/保存前缀，
+不把退休后的当前文件 header 当成旧 source identity。
+
+Task checkpoint: `fix:cask-widget-registration-missing` / signed `d26bd7b`，独立及 GitHub
+PASS、actual CI SUCCESS、scoped CEv1 VERIFIED。提交建议：仅本轮退休记录的 move/header/
+Round 6 append；推送建议：保留同一 PR #23，最终 metadata head 复评和 CI 完成后以
+ancestry-preserving merge 合入 `release/v0.6.x`。Git delivery 已由用户明确授权，
+这些建议不新增 release、main forward-propagation 或工作区清理权限。
