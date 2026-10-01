@@ -128,6 +128,8 @@ for pair in "agentdeck-app:$stable_cask" "agentdeck-app-rc:$rc_cask"; do
   token=${pair%%:*}
   rendered=${pair##*:}
   cp "$rendered" "$fixture_tap/Casks/$token.rb"
+  env HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_ANALYTICS=1 \
+    brew ruby "$root/scripts/test-cask-widget-registration.rb" "$fixture_tap/Casks/$token.rb"
   load_log="$temporary/brew-info-$token.log"
   if ! env HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_ANALYTICS=1 \
        brew info --cask "agentdeck-fixture/cask-fixture/$token" >"$load_log" 2>&1; then
