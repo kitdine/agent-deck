@@ -55,6 +55,12 @@ jobs:
       - name: Check the widget sandbox boundary
         run: make check-widget-sandbox
       - name: Check desktop refresh integration contract
-        run: make check-desktop-refresh-integration
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+        run: |
+          if ! command -v rg >/dev/null 2>&1; then
+            brew install ripgrep
+          fi
+          make check-desktop-refresh-integration
       - name: Check desktop distribution in isolation
         run: make check-macos-distribution

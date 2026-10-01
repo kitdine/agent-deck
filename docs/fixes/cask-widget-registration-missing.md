@@ -297,3 +297,43 @@ entry/render 和安装/卸载证据仅对未变边界进行 scope-aware 复用�
 执行这条新 reload 调用。正常公证 Cask/Gatekeeper 仍在 v0.6.5 Release 边界。
 主代理负责绑定新证据并取得新 head 的 GitHub 复评、CI 和合并结果；旧提交的
 Round 3 FAIL 和失败门禁保留，不覆盖历史。
+
+## Review — Round 5 — 2026-10-01
+
+## 📋 GitHub 复评及 CI readiness
+
+📊 总体评分：8/10
+
+✅ 结论：FAIL
+
+Reviewer: GitHub Codex 对 `188f07417abad48fda94392132d7aea3a5267980` 完成 code review，
+回复未发现主要问题；主代理按真实 CI 结果评估整体交付 readiness。
+Method: 精确 head 的独立 GitHub code review，加 PR-run desktop 失败日志判别。
+Scope: CWR-R3-F1 修复后的同一 PR；新增 CI checker 的运行依赖。
+Reviewed state: `188f07417abad48fda94392132d7aea3a5267980`。
+Completion gate: FAILED（remote desktop CI），不把本地验证或 code review PASS 当成 CI PASS。
+
+### 🔴 严重问题 — 必须修复
+
+- **CWR-R5-F1 / P2 / OPEN** — 当前 macOS runner 没有 `rg`。PR workflow
+  `36879634057` / desktop job `110427799778` 在新 integration step 报告
+  `scripts/check-desktop-refresh-integration.sh: line 20: rg: command not found`，
+  assertion 退出 1；push 对应 job 同样失败。Swift 编译及 unit tests 已通过，
+  不是 Widget repair 的编译故障。最小修复：在该 CI step 明确安装缺失的 ripgrep，
+  不改变 checker、断言或产品依赖。
+
+### 🟡 改进建议 — 推荐
+
+无其他项。首次下载 job 日志因终端 escape 输出保护失败，使用 gh 的指定参数保存
+原始日志并清理 ANSI 后定位；没有把日志读取限制当成产品缺陷。
+
+### 🟢 优点
+
+GitHub 复评已明确绑定 `188f07417a` 并无新 code finding；CWR-R3-F1 已关闭。
+此前源码修复和 Release 检查保持有效，CI tooling prerequisite 单独处理。
+
+### 📝 总结
+
+CI step 已添加 `command -v rg` 缺失分支及 `brew install ripgrep`，仅此步骤设置
+`HOMEBREW_NO_AUTO_UPDATE=1`，不升级已有工具、不删除断言。等待新 head 的 GitHub
+复评和 actual CI 成功后关闭 CWR-R5-F1；当前仍不合并 PR。
