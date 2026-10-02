@@ -457,6 +457,10 @@ def current_document_review(root: Path, document: str, review: str, changed: lis
         return False
     try:
         data = (root / document).read_bytes()
+        validated_bytes = {
+            os.path.normpath(document): data,
+            os.path.normpath(review): (root / review).read_bytes(),
+        }
     except OSError:
         return False
     # A bare manifest identity is resolved through the reviewed document's
@@ -510,16 +514,21 @@ def current_document_review(root: Path, document: str, review: str, changed: lis
                             for path, digest in bindings]
             if not bindings:
                 return False
-            specimen_paths.add(manifest.relative_to(root.resolve()).as_posix())
+            manifest_path = manifest.relative_to(root.resolve()).as_posix()
+            specimen_paths.add(manifest_path)
+            validated_bytes[manifest_path] = raw_manifest
             for path, digest in bindings:
                 if not isinstance(path, str) or not path or Path(path).is_absolute() or ".." in Path(path).parts:
                     return False
+                path = os.path.normpath(path)
                 target = (root / path).resolve()
                 if not target.is_relative_to(root.resolve()) or not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest, re.I):
                     return False
-                if hashlib.sha256(target.read_bytes()).hexdigest() != digest.lower():
+                content = target.read_bytes()
+                if hashlib.sha256(content).hexdigest() != digest.lower():
                     return False
                 specimen_paths.add(path)
+                validated_bytes[path] = content
         except (OSError, ValueError, KeyError, TypeError):
             return False
     # Explicit source identities remain independent of unrelated prototype work.
@@ -530,36 +539,40 @@ def current_document_review(root: Path, document: str, review: str, changed: lis
                 line, re.I,
             )
             for path, digest in identities:
-                path = path.strip()
+                path = os.path.normpath(path.strip())
                 digest = digest.rstrip(".;；,，。")
                 target = (root / path).resolve()
                 if not target.is_relative_to(root.resolve()) or not re.fullmatch(r"[0-9a-f]{64}", digest, re.I):
                     return False
                 try:
-                    if hashlib.sha256(target.read_bytes()).hexdigest() != digest.lower():
+                    content = target.read_bytes()
+                    if hashlib.sha256(content).hexdigest() != digest.lower():
                         return False
                 except OSError:
                     return False
                 specimen_paths.add(path)
+                validated_bytes[path] = content
     # A matching working copy does not prove that a staged candidate matches.
     # Preserve XY metadata so an MM file, staged deletion or rename source
     # cannot advance based on bytes that the next commit would not contain.
     staged = getattr(changed, "staged", {})
-    bound_staged = sorted(set(staged).intersection(specimen_paths | {document, review}))
-    if bound_staged:
-        if any(staged[path] in "DU" for path in bound_staged):
+    bound_staged = sorted(set(staged).intersection(validated_bytes))
+    for path in bound_staged:
+        if staged[path] in "DU":
             return False
         timeout = remaining_timeout(changed.deadline)
         if timeout is None:
             return False
         try:
+            # cat-file reads the raw index blob without clean filters or EOL
+            # conversion; :path is a literal index object, not a pathspec.
             result = subprocess.run(
-                ["git", "-C", str(root), "--literal-pathspecs", "diff", "--quiet", "--no-ext-diff", "--no-textconv", "--", *bound_staged],
+                ["git", "-C", str(root), "cat-file", "blob", ":" + path],
                 capture_output=True, timeout=timeout,
             )
         except (OSError, subprocess.SubprocessError):
             return False
-        if result.returncode != 0:
+        if result.returncode != 0 or result.stdout != validated_bytes[path]:
             return False
     if any(path == bound or (bound.endswith("/") and path.startswith(bound))
            for bound in specimen_paths for path in changed if path not in staged):

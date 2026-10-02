@@ -1236,7 +1236,7 @@ class HookBatchRegressionTest(unittest.TestCase):
         specimen = 'docs/topics/example/ux/prototype/view/screen.png'
         source = 'prototype/src/[view]*.js'
         files = {document: b'[manifest](prototype/view/manifest.json)\n', source: b'source', specimen: b'specimen'}
-        files[manifest] = json.dumps({'files': [{'path': p, 'sha256': hashlib.sha256(files[p]).hexdigest()} for p in [source, specimen]]}).encode()
+        files[manifest] = json.dumps({'files': [{'path': p.replace('prototype/src/', 'prototype/./src/'), 'sha256': hashlib.sha256(files[p]).hexdigest()} for p in [source, specimen]]}).encode()
         blob = hashlib.sha1(b'blob ' + str(len(files[document])).encode() + b'\0' + files[document]).hexdigest()
         files[review] = f'## Round 1\nGit blob {blob}\nprototype manifest SHA-256 {hashlib.sha256(files[manifest]).hexdigest()}\nVerdict: PASS\nCompletion gate: VERIFIED\n'.encode()
         for path, data in files.items():
@@ -1259,6 +1259,27 @@ class HookBatchRegressionTest(unittest.TestCase):
                 git('rm', '--cached', '-q', '--', path)
                 self.assertFalse(current(), 'staged deletion is not reviewed content')
                 git('reset', '-q', 'HEAD', '--', path)
+
+    def test_index_raw_bytes_are_not_clean_converted(self):
+        import hashlib, subprocess
+        def git(*args):
+            return subprocess.run(['git', '-C', str(self.root), *args], check=True, capture_output=True)
+        git('init', '-q')
+        (self.root / '.gitattributes').write_text('*.md text\n')
+        document = 'docs/topics/example/requirements.md'
+        review = 'docs/topics/example/reviews/requirements.md'
+        data = b'reviewed\r\n'
+        target = self.root / document
+        target.parent.mkdir(parents=True)
+        target.write_bytes(data)
+        record = self.root / review
+        record.parent.mkdir()
+        blob = hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest()
+        record.write_bytes(f'## Round 1\r\nGit blob {blob}\r\nVerdict: PASS\r\nCompletion gate: VERIFIED\r\n'.encode())
+        git('add', '.')
+        self.assertNotEqual(git('cat-file', 'blob', ':' + document).stdout, data)
+        changed = MODULE.changed_paths(self.root, MODULE.time.monotonic() + 5)
+        self.assertFalse(MODULE.current_document_review(self.root, document, review, changed))
 
     def test_scoped_fingerprint_preserves_decoded_filename_bytes(self):
         import os

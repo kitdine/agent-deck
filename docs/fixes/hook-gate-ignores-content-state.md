@@ -717,3 +717,62 @@ Hook SHA256 `214f9f6203a8a839db6e17444f76532d5530df27ebabab2990d727a5c101fe13`�
 Evidence: `output/hook-batch-evidence/index-final-matrix.py` SHA256 `64a6e33ead4ec22267503c8d25fb5cc79a544254a85cd5a31f145ce29882f9fd`；log SHA256 `136bb72dc2aeb7d0a2e506b4986c24a478e572f372f795dabda49ff5c45a3a8e`。既有1130矩阵重跑日志index-paired-matrix.log，均为ignored本地证据。
 Reviewed HEAD `68bf59d513d8f6c00ef95284279902b919d45656` plus scoped candidate。
 Completion gate: VERIFIED 3/3 at candidate `3b0f881568212cbf9b0fd64443d42fdf6e0bc878c4e58f1251a539dc110c94cd` through Neo4j MCP; prior source failure retained.
+
+## Review — Round 23
+
+## 📋 原始index字节与路径身份远端复评
+
+📊 综合评分：8/10
+
+✅ Verdict: FAIL
+
+### 🔴 严重问题 — 必须修复
+
+- GH31-F15（P2）：git diff有check-in转换，--no-textconv不能禁止clean/EOL转换；原始index与评审字节不同时可返回一致。
+- GH31-F16（P2）：prototype/./path可读同一文件但不能与porcelain规范路径匹配，漏掉staged分叉。
+
+### 🟡 改进建议
+
+使用原始字节证明，不继续通过diff语义推断；统一同一绑定路径的身份。
+
+### 🟢 优点
+
+前轮index矩阵保留，新增Git属性转换/路径别名维度。
+
+### 📝 总结
+
+Reviewer: GitHub Codex5390938000，HEAD `eb97d9416d06379d124409d891f00f17d55976af`。
+Main真实Git RED2（github-round23-red.log），修复为cat-file blob :path原始index逐字节比较先前hash验证过的字节缓存；每次读取守同一deadline。
+绑定路径在校验/缓存/staged交集中统一lexical normpath；resolve仍用于root containment。
+86tests、63index+1130parser矩阵通过，待rawindex补充冷矩阵复评。
+Completion gate: FAILED for prior gate-identity source。
+
+## Review — Round 24
+
+## 📋 原始index完整配对矩阵复评
+
+📊 综合评分：10/10
+
+✅ Verdict: PASS
+
+### 🔴 严重问题 — 必须修复
+
+无。GH31-F15/F16已关闭；原始index通过cat-file逐字节证明，路径别名规范化后参与相同校验。
+
+### 🟡 改进建议
+
+无。
+
+### 🟢 优点
+
+真实Git正反对照覆盖转换与路径身份，未扩展语法契约。
+
+### 📝 总结
+
+Reviewer: 独立 `hook_batch_review`；Main读取隔离脚本并亲自重跑52项补充矩阵，0failures。
+Method/Scope: 52项rawindex矩阵（18aliases、6EOL、12filter、4index flags、12literal paths）及既有63index/1130parser矩阵均通过，共1245检查；86tests及L0通过。
+覆盖document/review/source CRLF、clean转换、modern/legacy/direct路径别名、Unicode/newline/metachar路径、assume-unchanged/skip-worktree分叉。
+Hook SHA256 `1be64d1500ddaf3e065141f754a72646d61e378fca176012f49bd433249f0968`；tests SHA256 `62a151539d45b1459f8b29947498fa2d294f1e8a9e92a9290524e50f8b692e20`。
+Evidence: ignored `output/hook-batch-evidence/raw-index-final-matrix.py`及log；历史RED与失败source保留。
+Reviewed HEAD `eb97d9416d06379d124409d891f00f17d55976af` plus scoped candidate。
+Completion gate: VERIFIED 3/3 at candidate `4807538496972d96490f6a6488358a0bda6c285e59fbdaa1d8fb40b871f75803` through Neo4j MCP; old failed sources retained.
