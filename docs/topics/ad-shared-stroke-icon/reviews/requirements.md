@@ -1,8 +1,7 @@
 ---
-status: historical
+status: active
 topic: ad-shared-stroke-icon
 subject: requirements.md
-retired: 2026-10-02
 ---
 
 ## Round 1 — 2026-10-02

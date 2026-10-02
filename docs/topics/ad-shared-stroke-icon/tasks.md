@@ -1,7 +1,6 @@
 ---
-status: historical
+status: active
 created: 2026-10-02
-retired: 2026-10-02
 ---
 
 # 图标更新任务
@@ -37,9 +36,15 @@ retired: 2026-10-02
 实际代码评审、CEv1 和 GitHub/CI 状态见 reviews/ad-shared-stroke-icon.md。
 用户后续人肉检查若发现问题，按新的明确反馈处理；本任务不启动第二 issue。
 
-## Source closure
+## Source checkpoint
 
 签名实现提交 `ff1c03cf558b3a7b73022e1fc80b30ee56b8a453`；
 该提交的文档门禁各1/1、Task4/4、topic closure1/1均经Neo4j MCP VERIFIED。
-完整源码topic作为整体归档；PR远端Review/CI/merge及实际merge evidence仍由
-issue29与Beads `ad-shared-stroke-icon` 跟踪，归档不是已合并或已发布声明。
+源码与证据已提交，但完整交付边界尚未完成；topic 保持 active。
+PR远端Review/CI/merge及实际merge evidence由issue29与Beads
+`ad-shared-stroke-icon` 跟踪，全部交付门禁完成后才能归档。
+不得为提前归档伪造交付完成或越过一issue一PR边界。
+
+父任务已确认：本PR保留active topic完成交付；merge后将本topic整体归档
+作为后续已授权集成文档事项交接。不得提前归档、直推release或另开第二PR。
+未归档不代表菜单栏实测通过，也不允许跳过本PR剩余交付门禁。

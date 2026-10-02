@@ -1,7 +1,6 @@
 ---
-status: historical
+status: active
 created: 2026-10-02
-retired: 2026-10-02
 ---
 
 # AD 共笔图标接入

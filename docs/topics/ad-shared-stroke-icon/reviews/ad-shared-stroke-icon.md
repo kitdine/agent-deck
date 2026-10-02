@@ -1,8 +1,7 @@
 ---
-status: historical
+status: active
 topic: ad-shared-stroke-icon
 subject: ad-shared-stroke-icon
-retired: 2026-10-02
 ---
 
 ## Round 1 — 2026-10-02
@@ -78,3 +77,77 @@ GitHub当前head review与CI仍为后续独立交付条件，尚未开始。
 不发布、不部署、不启动第二issue。
 
 冷评追加核验：用户延期记录准确，20个产品/测试/来源文件未变；独立评审再次PASS。
+
+## Round 2 — 2026-10-02
+
+## 📋 GitHub 当前 head 评审
+
+📊 综合评分：7/10
+
+✅ Verdict: FAIL
+
+### 🔴 严重问题 — 必须修复
+
+GH30-F1（P1），`docs/archive/topics/ad-shared-stroke-icon/tasks.md:45`：
+mandatory GitHub review/CI/merge尚未完成，却提前归档整个topic。
+风险：活动交付状态被移出权威位置，违反Documentation Workflow交付边界。
+Evidence: GitHub review comment `4163920599`，reviewed head
+`4da120fe15d1f73b441bc275132c032733c6f324`；主代理核验当前路由规则后确认。
+💡 修复：恢复`docs/topics/ad-shared-stroke-icon/`与active状态，删除提前归档索引，
+恢复provenance指向活动记录，保留提交和所有评审历史；不改变产品资产。
+Disposition: GH30-F1 -> repaired in candidate，等待冷独立复评确认。
+
+### 🟡 改进建议
+
+无。
+
+### 🟢 优点
+
+资产与菜单栏模板技术检查未出现新的产品发现。
+
+### 📝 总结
+
+Reviewer: GitHub Codex + 主代理直接复核；Method: 当前head自动review与规则核验。
+Completion gate: FAILED，旧head的review/closure证据由本轮失败观察否定。
+用户延后的真实菜单栏视觉验收不受此流程修复改变，仍未验证。
+
+## Round 3 — 2026-10-02
+
+## 📋 生命周期修复冷独立复评
+
+📊 综合评分：10/10
+
+✅ Verdict: PASS
+
+### 🔴 严重问题 — 必须修复
+
+无。GH30-F1 CLOSED：topic五份文件恢复active、retired字段与提前归档索引移除，
+来源链接恢复活动目录；当前完整交付门禁仍明确待完成。
+
+### 🟡 改进建议
+
+无。归档作为合并完成后的后续集成文档事项，由父任务纳入已授权批次；
+此次不提前声称完成，不直推release、不另开PR。
+
+### 🟢 优点
+
+采用forward repair保留已推送历史和Round1/2；产品资产、源代码、测试均未改变。
+用户明确延后但未验证的系统菜单栏边界未改变。
+
+### 📝 总结
+
+Reviewer: 全新冷上下文 `icon_delivery_rereview`；主代理直接复核。
+Method: 当前diff、删除/新建路径、规则与L0检查。Scope: 生命周期修复文档。
+Reviewed HEAD `4da120fe15d1f73b441bc275132c032733c6f324`；独立范围fingerprint
+`9568c0f876ec0e6911d5bcbfad97353c7a8119dbc3d0433f55b8d575056fcaf6`，
+主代理核验一致；加入本轮记录和状态投影不改变产品内容。
+Evidence: `check-topic-docs.sh`、`make check-whitespace`、`git diff --check`均通过；
+`git diff 4da120fe -- apps prototype`为空，复用有效的原产品测试。
+Completion gate: VERIFIED，修复候选Task4/4、两文档各1/1经Neo4j MCP查询通过；
+目标`ad-shared-stroke-icon:state:d42b7107bf4be45dcafb6fc2a4647c3c93b8427ce932680cc1ee1d194978aa9b`。
+旧head FAILED保留，新head远端交付门禁仍需重新执行。
+
+### Task checkpoint
+
+提交建议：修复候选门禁通过后执行已授权的追加签名提交，不改写历史。
+推送建议：正常push同一PR，重新取得新head GitHub Review/CI后才合并。
