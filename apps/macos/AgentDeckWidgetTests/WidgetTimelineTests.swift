@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+import WidgetKit
 
 final class WidgetTimelineTests: XCTestCase {
 	func testPlaceholderContainsNoSnapshotOrRealValue() {
@@ -345,4 +346,25 @@ final class WidgetTimelineTests: XCTestCase {
 		XCTAssertEqual(model.quotaScopeClient(family: .systemMedium), .codex)
 		XCTAssertEqual(model.quotaScopeClient(family: .systemLarge), .all, "large already shows both clients, each labeled in its own block")
 	}
+	func testConfiguredQuotaIntentHeaderMatchesDisplayedClientsForEveryFamily() throws {
+		let snapshot = try widgetFixture("snapshot-complete")
+		let bundle = Bundle(for: WidgetTimelineTests.self)
+		let english = try XCTUnwrap(Bundle(path: XCTUnwrap(bundle.path(forResource: "en", ofType: "lproj"))))
+		for configured in QuotaWidgetClient.allCases {
+			var intent = QuotaWidgetIntent()
+			intent.client = configured
+			let provider = QuotaTimelineProvider(loader: WidgetSnapshotLoader(readSnapshot: { snapshot }))
+			let entry = provider.entry(client: try XCTUnwrap(intent.client).widgetClient)
+			let model = WidgetSurfaceModel(entry: entry, now: entry.date)
+			for family in [WidgetFamily.systemSmall, .systemMedium, .systemLarge] {
+				let scope = model.quotaScopeClient(family: family)
+				let header = WidgetHeaderPresentation(entry: entry, family: family, quotaScopeClient: scope, bundle: english)
+				let expected = family == .systemLarge ? WidgetClient.all : configured.widgetClient
+				XCTAssertEqual(scope, expected)
+				XCTAssertEqual(header.scope, family == .systemLarge ? "All clients" : WidgetCopy.client(expected, bundle: english))
+				XCTAssertEqual(model.presentedQuotaClients(family: family).map(\.client), family == .systemLarge ? ["codex", "claude"] : [configured.rawValue])
+			}
+		}
+	}
+
 }
