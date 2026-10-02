@@ -1,6 +1,7 @@
 ---
-status: active
+status: historical
 created: 2026-10-02
+retired: 2026-10-02
 ---
 
 # 缺陷：原型 stat chip 缺少原生缩放，节律峰值显示两小时短格式
@@ -150,3 +151,17 @@ Completion gate：由 CEv1 WorkUnit
 保存候选、不可变提交及实际合并内容的目标绑定结果。
 Residual risks：低于原生最小字号仍可能 ellipsis，符合修复边界；原型浏览器证据
 不替代原生 UI，菜单栏图标真机验收仍 user-deferred。
+
+## Delivery
+
+本项 SSH 签名提交暨同批最终产品 head：
+`5a96475d9e1cbe79f8f856b7a6c6e6d00d093721`。
+[PR #33](https://github.com/kitdine/agent-deck/pull/33) 在精确 head 的 Codex Review
+无发现及 CI `verify` / `desktop` 全部成功后转 ready，实际 merge commit 为
+`951b16dcb036c8e2b24ca3b2fcb0a2e367324efa`。
+实核 parents 为 `4c0cbd6270589812d618c02754eb1c0ac5dd9a5b` 与上述 head；
+tree `2182087b84f63dc5497d975b104c7100668c8f95` 与已评审产品 tree 相同。
+两项产品提交的 SSH 签名、完整消息及 Codex trailer 已验证；GitHub 报告实际 merge
+PGP 签名 `verified: true, reason: valid`。本项实际 merge CEv1 VERIFIED 6/6。
+按用户明确约束，记录保持 active 直至实际合并；现在才归档，保留 FAIL、CLOSED
+和后续 PASS 历史。原生菜单栏图标验收仍 user-deferred；本批没有发版或部署。

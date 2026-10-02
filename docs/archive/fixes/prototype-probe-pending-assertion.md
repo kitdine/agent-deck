@@ -1,6 +1,7 @@
 ---
-status: active
+status: historical
 created: 2026-10-02
+retired: 2026-10-02
 ---
 
 # 缺陷：默认交互探针在普通详情上断言待采集，无法发出 ALL PASS
@@ -90,3 +91,17 @@ Completion gate：由 CEv1 WorkUnit
 `urn:ce:agent-deck:work-unit:fix:prototype-probe-pending-assertion`
 保存候选、不可变提交及实际合并内容的目标绑定结果。
 Residual risks：仅原型浏览器验收；菜单栏图标真机验收仍 user-deferred。
+
+## Delivery
+
+本项 SSH 签名提交：`5bf15930ee037e09839974a69903a10560bdf514`；同批最终产品
+head：`5a96475d9e1cbe79f8f856b7a6c6e6d00d093721`。
+[PR #33](https://github.com/kitdine/agent-deck/pull/33) 在精确 head 的 Codex Review
+无发现及 CI `verify` / `desktop` 全部成功后转 ready，实际 merge commit 为
+`951b16dcb036c8e2b24ca3b2fcb0a2e367324efa`。
+实核 parents 为 `4c0cbd6270589812d618c02754eb1c0ac5dd9a5b` 与上述 head；
+tree `2182087b84f63dc5497d975b104c7100668c8f95` 与已评审产品 tree 相同。
+两项产品提交的 SSH 签名、完整消息及 Codex trailer 已验证；GitHub 报告实际 merge
+PGP 签名 `verified: true, reason: valid`。本项实际 merge CEv1 VERIFIED 5/5。
+按用户明确约束，记录保持 active 直至实际合并；现在才归档，并保留全部评审历史。
+原生菜单栏图标验收仍 user-deferred；本批没有发版或部署。
