@@ -998,14 +998,16 @@ func (m *Manager) SetupStatusLine() (Result, error) {
 		return result, nil
 	}
 	if currentFound && jsonEquivalent(currentRaw, m.desiredStatusLineEntry()) {
-		// Exact match only: managedStatusLineCommand alone recognizes any
-		// AgentDeck installation's route regardless of --state-dir (by
-		// design, for RestoreStatusLine's safety), so using it here would
-		// report Unchanged for a *different* state dir's registration and
-		// leave this instance's own route never actually installed. A
-		// managed entry that is not an exact match falls through below,
-		// recording it as the prior value like any other rewrite.
+
 		result.Outcome, result.Configuration = OutcomeUnchanged, ConfigurationConfigured
+		return result, nil
+	}
+
+	if command, ok := decodeStatusLineCommandEntry(currentRaw); ok && managedStatusLineCommand(command) {
+		// A managed route cannot be chained as a prior command. Preserve its
+		// owner and our prior record instead of silently taking over capture.
+		result.Outcome, result.Configuration = OutcomeFailed, ConfigurationModified
+		result.Error = "statusLine already contains a managed AgentDeck route; disable it from its owning installation before enabling capture here, check " + path + " manually"
 		return result, nil
 	}
 
