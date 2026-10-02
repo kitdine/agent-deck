@@ -757,7 +757,7 @@ func runDesktopQuotaStatusLine(ctx context.Context, opts *commandOptions, operat
 		// in that case would make the stored StatusLineConsent=true
 		// disagree with the route actually left on disk.
 		if operation == "enable" && result.Outcome == usagehook.OutcomeConfigured && !errors.Is(err, store.ErrSettingsSecureFilesFailed) {
-			rollback, rollbackErr := manager.RestoreStatusLine()
+			rollback, rollbackErr := manager.RollbackStatusLineSetup()
 			switch {
 			case rollbackErr != nil:
 				return errors.Join(err, fmt.Errorf("roll back quota status-line route: %w", rollbackErr))

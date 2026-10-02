@@ -137,10 +137,11 @@ func osFileOperations() fileOperations {
 }
 
 type Manager struct {
-	environment       Environment
-	files             fileOperations
-	ownsFile          func(fs.FileInfo) bool
-	statusLineRestore *statusLineRestoreReceipt
+	environment             Environment
+	files                   fileOperations
+	ownsFile                func(fs.FileInfo) bool
+	statusLineRestore       *statusLineRestoreReceipt
+	statusLineSetupPrevious json.RawMessage
 }
 
 type statusLineRestoreReceipt struct {
@@ -915,37 +916,90 @@ func (m *Manager) desiredStatusLineEntry() json.RawMessage {
 	return encoded
 }
 
-// managedStatusLineCommand mirrors managedHookCommand's suffix/prefix check
-// for the "quota capture" marker, so a value that looks like AgentDeck's own
-// command is recognized independent of the exact --state-dir prefix.
+// managedStatusLineCommand recognizes only generated command shapes. Quoted
+// path contents are data, including spaces, apostrophes and option-like text.
 func managedStatusLineCommand(command string) bool {
-	trimmed := strings.TrimSpace(command)
-	const marker = " quota capture"
-	if !strings.HasSuffix(trimmed, marker) {
+	_, ok := managedStatusLineStateDir(command)
+	return ok
+}
+
+func managedStatusLineStateDir(command string) (string, bool) {
+	rest := strings.TrimSpace(command)
+	executable, rest, quoted, ok := statusLineShellWord(rest)
+	if !ok || !(executable == "agentdeck" && !quoted || quoted && filepath.IsAbs(executable) && filepath.Base(executable) == "agentdeck") {
+		return "", false
+	}
+	var args []string
+	for rest != "" {
+		if rest[0] != ' ' && rest[0] != '\t' {
+			return "", false
+		}
+		rest = strings.TrimLeft(rest, " \t")
+		word, tail, _, valid := statusLineShellWord(rest)
+		if !valid {
+			return "", false
+		}
+		args = append(args, word)
+		rest = tail
+	}
+	if len(args) == 2 && args[0] == "quota" && args[1] == "capture" {
+		return "", true
+	}
+	if len(args) == 4 && args[0] == "--state-dir" && args[1] != "" && args[2] == "quota" && args[3] == "capture" {
+		return args[1], true
+	}
+	return "", false
+}
+
+// statusLineShellWord accepts plain historical words or the single-quote
+// encoding emitted by shellQuote, including its '\"'\"' apostrophe escape.
+// It does not interpret shell expansion, operators or arbitrary quoting.
+func statusLineShellWord(input string) (word, rest string, quoted, ok bool) {
+	if input == "" {
+		return "", "", false, false
+	}
+	if input[0] != '\'' {
+		end := strings.IndexAny(input, " \t\r\n")
+		if end < 0 {
+			end = len(input)
+		}
+		word = input[:end]
+		return word, input[end:], false, word != "" && !strings.ContainsAny(word, "'\"\\;$`|&<>()")
+	}
+	rest = input
+	for {
+		end := strings.IndexByte(rest[1:], '\'')
+		if end < 0 {
+			return "", "", true, false
+		}
+		word += rest[1 : 1+end]
+		rest = rest[end+2:]
+		if !strings.HasPrefix(rest, "\"'\"'") {
+			return word, rest, true, true
+		}
+		word += "'"
+		rest = rest[3:]
+	}
+}
+
+func (m *Manager) sameStatusLineState(command string) bool {
+	oldState, ok := managedStatusLineStateDir(command)
+	if !ok {
 		return false
 	}
-	prefix := strings.TrimSpace(strings.TrimSuffix(trimmed, marker))
-	executable := prefix
-	stateDir := ""
-	if split := strings.Index(prefix, " --state-dir "); split >= 0 {
-		executable = strings.TrimSpace(prefix[:split])
-		stateDir = strings.TrimSpace(prefix[split+len(" --state-dir "):])
-	}
-	if !managedAgentDeckExecutable(executable) {
+	ownCommand, _ := decodeStatusLineCommandEntry(m.desiredStatusLineEntry())
+	ownState, ok := managedStatusLineStateDir(ownCommand)
+	if !ok {
 		return false
 	}
-	if stateDir == "" {
-		return executable == prefix
+	if oldState == "" {
+		oldState = filepath.Join(m.environment.Home, ".agentdeck")
 	}
-	// A second option or command fragment after --state-dir is never one of
-	// the exact route shapes AgentDeck generates.
-	if strings.Contains(stateDir, " --") {
-		return false
+	if ownState == "" {
+		ownState = filepath.Join(m.environment.Home, ".agentdeck")
 	}
-	if strings.HasPrefix(stateDir, "'") && strings.HasSuffix(stateDir, "'") {
-		return true
-	}
-	return !strings.ContainsAny(stateDir, " \t\r\n")
+	state := m.environment.StateDir
+	return filepath.IsAbs(oldState) && filepath.IsAbs(ownState) && filepath.IsAbs(state) && filepath.Clean(oldState) == filepath.Clean(state) && filepath.Clean(ownState) == filepath.Clean(state)
 }
 
 // managedAgentDeckExecutable recognizes both the PATH-based command used by
@@ -983,6 +1037,7 @@ func decodeStatusLineCommandEntry(raw json.RawMessage) (command string, ok bool)
 // registered reports Unchanged rather than re-capturing itself as the prior
 // value.
 func (m *Manager) SetupStatusLine() (Result, error) {
+	m.statusLineSetupPrevious = nil
 	path := m.path(ClientClaude)
 	result := Result{Client: ClientClaude, Path: path, Trust: TrustNotApplicable}
 
@@ -998,26 +1053,34 @@ func (m *Manager) SetupStatusLine() (Result, error) {
 		return result, nil
 	}
 	if currentFound && jsonEquivalent(currentRaw, m.desiredStatusLineEntry()) {
-
 		result.Outcome, result.Configuration = OutcomeUnchanged, ConfigurationConfigured
 		return result, nil
 	}
 
+	preservePrior := false
 	if command, ok := decodeStatusLineCommandEntry(currentRaw); ok && managedStatusLineCommand(command) {
-		// A managed route cannot be chained as a prior command. Preserve its
-		// owner and our prior record instead of silently taking over capture.
-		result.Outcome, result.Configuration = OutcomeFailed, ConfigurationModified
-		result.Error = "statusLine already contains a managed AgentDeck route; disable it from its owning installation before enabling capture here, check " + path + " manually"
-		return result, nil
+		ownCommand, _ := decodeStatusLineCommandEntry(m.desiredStatusLineEntry())
+		canonical, _ := json.Marshal(statusLineCommandEntry{Type: "command", Command: command})
+		if command != ownCommand && jsonEquivalent(currentRaw, canonical) && m.sameStatusLineState(command) {
+			prior, found, priorErr := m.readStatusLinePrior()
+			priorCommand, isCommand := decodeStatusLineCommandEntry(prior.Value)
+			preservePrior = priorErr == nil && found && !(prior.Existed && isCommand && managedStatusLineCommand(priorCommand))
+		}
+		if !preservePrior {
+			result.Outcome, result.Configuration = OutcomeFailed, ConfigurationModified
+			result.Error = "statusLine already contains a managed AgentDeck route; disable it from its owning installation before enabling capture here, or inspect its state directory and prior record, check " + path + " manually"
+			return result, nil
+		}
 	}
-
-	prior := statusLinePriorRecord{Existed: currentFound}
-	if currentFound {
-		prior.Value = currentRaw
-	}
-	if err := m.writeStatusLinePrior(prior); err != nil {
-		result.Outcome, result.Configuration, result.Error = OutcomeFailed, ConfigurationInvalid, err.Error()
-		return result, nil
+	if !preservePrior {
+		prior := statusLinePriorRecord{Existed: currentFound}
+		if currentFound {
+			prior.Value = currentRaw
+		}
+		if err := m.writeStatusLinePrior(prior); err != nil {
+			result.Outcome, result.Configuration, result.Error = OutcomeFailed, ConfigurationInvalid, err.Error()
+			return result, nil
+		}
 	}
 
 	updated, err := setTopLevelValue(snap.original, statusLineKey, m.desiredStatusLineEntry())
@@ -1030,11 +1093,64 @@ func (m *Manager) SetupStatusLine() (Result, error) {
 	if !snap.exists {
 		mode = privateFileMode.Perm()
 	}
-	if err := m.writeAtomic(path, updated, mode); err != nil {
+	if err := m.writeAtomicChecked(path, updated, mode, func() error {
+		latest, err := m.readSnapshot(path)
+		if err != nil {
+			return err
+		}
+		if latest.exists != snap.exists || latest.mode != snap.mode || !bytes.Equal(latest.original, snap.original) {
+			return errors.New("statusLine configuration changed during setup; left untouched")
+		}
+		return nil
+	}); err != nil {
 		result.Outcome, result.Configuration, result.Error = OutcomeFailed, ConfigurationInvalid, err.Error()
 		return result, nil
 	}
+	if preservePrior {
+		m.statusLineSetupPrevious = append(json.RawMessage(nil), currentRaw...)
+	}
 	result.Outcome, result.Configuration = OutcomeConfigured, ConfigurationConfigured
+	return result, nil
+}
+
+// RollbackStatusLineSetup undoes a newly installed route if consent persistence
+// fails. A same-state executable migration restores its previous route, not the
+// third-party prior, since existing durable consent may still be enabled.
+func (m *Manager) RollbackStatusLineSetup() (Result, error) {
+	if m.statusLineSetupPrevious == nil {
+		return m.RestoreStatusLine()
+	}
+	path := m.path(ClientClaude)
+	result := Result{Client: ClientClaude, Path: path, Trust: TrustNotApplicable}
+	snap, err := m.readSnapshot(path)
+	if err != nil {
+		result.Outcome, result.Configuration, result.Error = OutcomeFailed, ConfigurationInvalid, err.Error()
+		return result, nil
+	}
+	current, found, err := topLevelValueSpanRaw(snap.original, statusLineKey)
+	if err != nil || !snap.exists || !found || !jsonEquivalent(current, m.desiredStatusLineEntry()) {
+		result.Outcome, result.Configuration, result.Error = OutcomeFailed, ConfigurationModified, "statusLine changed after migration; left untouched"
+		return result, nil
+	}
+	updated, err := setTopLevelValue(snap.original, statusLineKey, m.statusLineSetupPrevious)
+	if err == nil {
+		err = m.writeAtomicChecked(path, updated, snap.mode.Perm(), func() error {
+			latest, e := m.readSnapshot(path)
+			if e != nil {
+				return e
+			}
+			if !latest.exists || latest.mode != snap.mode || !bytes.Equal(latest.original, snap.original) {
+				return errors.New("statusLine changed during migration rollback; left untouched")
+			}
+			return nil
+		})
+	}
+	if err != nil {
+		result.Outcome, result.Configuration, result.Error = OutcomeFailed, ConfigurationInvalid, err.Error()
+		return result, nil
+	}
+	m.statusLineSetupPrevious = nil
+	result.Outcome, result.Configuration = OutcomeRemoved, ConfigurationConfigured
 	return result, nil
 }
 
