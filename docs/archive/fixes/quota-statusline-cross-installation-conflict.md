@@ -1,6 +1,7 @@
 ---
-status: active
+status: historical
 created: 2026-10-02
+retired: 2026-10-02
 ---
 
 # 缺陷：另一安装的 statusLine 路由被覆盖为不可执行的 prior
@@ -64,3 +65,5 @@ Findings：无。历史版本已有 prior 链及并发 setup 的读写竞争未�
 交付前检查：完整 Go 首轮仅 `internal/scanruntime` 两项隔离 Unix socket 测试遭 sandbox bind 拒绝；受控权限重跑同一 suite 全通过，日志 `/tmp/agentdeck-cross-install-full-authorized.log`。`make vet build-all` 通过，含 darwin arm64/amd64 CLI，日志 `/tmp/agentdeck-cross-install-vet-build.log`。`make check-whitespace` 和 `git diff --check` 通过。
 
 最终 affected race（`./internal/usagehook ./cmd/agentdeck`）通过，日志 `/tmp/agentdeck-cross-install-race.log`。产品三个 blob 与独立评审完全一致。Task CEv1 `fix:quota-statusline-cross-installation-conflict` 在上述 scoped candidate 上查询 VERIFIED，四项 required criteria（failure-first regression、preservation、verification、independent review）齐备，无 missing/invalidated/unresolved。这是本轮后续 evidence 收口，不改变原评审时门禁历史。
+
+归档边界：实现提交 `c05edf99e2f5f7a260cf6d18a8e49df46971b58e` 已核验 SSH 签名、四文件范围及 exact commit CEv1 VERIFIED 4/4。按 Fix records 生命周期归档完整 Round 1；远程当前 head review、CI 与实际 merge 仍为 Bug 关闭前提，其最终证据由 CEv1 和 Beads 交接持有。
