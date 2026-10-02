@@ -2140,7 +2140,7 @@ a:focus-visible {
 }
 
 .w-note small {
-  color: var(--dim);
+  color: var(--muted);
   font-size: 9px;
 }
 

@@ -281,3 +281,12 @@ failure、unsupported schema 在 15 张卡片上都替换数据，不显示零�
 [`widget-refresh/manifest.json`](../docs/topics/desktop-refresh/ux/prototype/widget-refresh/manifest.json)。
 浏览器标本不证明 WidgetKit 真实调度、原生 Dynamic Type/VoiceOver、App Group 故障注入
 或真实睡眠恢复。
+
+### Widget 成本说明对比度回归
+
+开发服务器启动后，打开 `?surface=widgets&theme=light&lang=en&widgetContrast=1`
+（再以 `theme=dark` 运行）。页面底部 `#widget-contrast-out` 输出固定
+axe-core 4.12.1 的 scoped `color-contrast` 结果；缺失说明、未完成检查和
+违规都返回 `FAIL`。测试仅覆盖 `.w-note > small`，不代表整个页面无障碍通过。
+使用 `widgetRefresh=fresh|aging|old|hostAbsent|unchanged|changed|recovered`
+逐个验证可读数据态。原生 Increase Contrast 另行验收，浏览器结果不替代它。
