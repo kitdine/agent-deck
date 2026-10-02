@@ -137,9 +137,16 @@ func osFileOperations() fileOperations {
 }
 
 type Manager struct {
-	environment Environment
-	files       fileOperations
-	ownsFile    func(fs.FileInfo) bool
+	environment       Environment
+	files             fileOperations
+	ownsFile          func(fs.FileInfo) bool
+	statusLineRestore *statusLineRestoreReceipt
+}
+
+type statusLineRestoreReceipt struct {
+	removed  json.RawMessage
+	restored json.RawMessage
+	found    bool
 }
 
 func New(environment Environment) *Manager {
@@ -1053,6 +1060,7 @@ func (m *Manager) SetupStatusLine() (Result, error) {
 // check is needed rather than overwriting a value the user may have edited
 // deliberately").
 func (m *Manager) RestoreStatusLine() (Result, error) {
+	m.statusLineRestore = nil
 	path := m.path(ClientClaude)
 	result := Result{Client: ClientClaude, Path: path, Trust: TrustNotApplicable}
 
@@ -1097,6 +1105,11 @@ func (m *Manager) RestoreStatusLine() (Result, error) {
 			return result, nil
 		}
 		result.Outcome, result.Configuration = OutcomeRemoved, ConfigurationAbsent
+		m.statusLineRestore = &statusLineRestoreReceipt{removed: append(json.RawMessage(nil), currentRaw...)}
+		if priorFound && prior.Existed {
+			m.statusLineRestore.restored = append(json.RawMessage(nil), prior.Value...)
+			m.statusLineRestore.found = true
+		}
 		return result, nil
 	}
 
@@ -1138,6 +1151,59 @@ func (m *Manager) RestoreStatusLine() (Result, error) {
 	result.Outcome = OutcomeRestoreIncomplete
 	result.Configuration = ConfigurationModified
 	result.Error = "statusLine is no longer AgentDeck's command; left untouched, check " + path + " manually"
+	return result, nil
+}
+
+// ReinstallRestoredStatusLine compensates only this manager's last successful
+// exact-route removal. It preserves the prior record and refuses to overwrite
+// a statusLine subsequently written by the user or another installation.
+func (m *Manager) ReinstallRestoredStatusLine() (Result, error) {
+	path := m.path(ClientClaude)
+	result := Result{Client: ClientClaude, Path: path, Trust: TrustNotApplicable, Outcome: OutcomeSkipped}
+	receipt := m.statusLineRestore
+	if receipt == nil {
+		return result, nil
+	}
+	snap, err := m.readSnapshot(path)
+	if err != nil {
+		result.Outcome, result.Configuration, result.Error = OutcomeFailed, ConfigurationInvalid, err.Error()
+		return result, nil
+	}
+	if !snap.exists {
+		result.Outcome, result.Configuration, result.Error = OutcomeFailed, ConfigurationAbsent, "statusLine configuration disappeared after removal; left untouched"
+		return result, nil
+	}
+	raw, found, err := topLevelValueSpanRaw(snap.original, statusLineKey)
+	if err != nil {
+		result.Outcome, result.Configuration, result.Error = OutcomeFailed, ConfigurationInvalid, err.Error()
+		return result, nil
+	}
+	if found && jsonEquivalent(raw, receipt.removed) {
+		result.Outcome, result.Configuration = OutcomeUnchanged, ConfigurationConfigured
+		return result, nil
+	}
+	if found != receipt.found || (found && !jsonEquivalent(raw, receipt.restored)) {
+		result.Outcome, result.Configuration, result.Error = OutcomeFailed, ConfigurationModified, "statusLine changed after removal; left untouched"
+		return result, nil
+	}
+	updated, err := setTopLevelValue(snap.original, statusLineKey, receipt.removed)
+	if err == nil {
+		err = m.writeAtomicChecked(path, updated, snap.mode.Perm(), func() error {
+			latest, err := m.readSnapshot(path)
+			if err != nil {
+				return err
+			}
+			if !latest.exists || latest.mode != snap.mode || !bytes.Equal(latest.original, snap.original) {
+				return errors.New("statusLine configuration changed during compensation; left untouched")
+			}
+			return nil
+		})
+	}
+	if err != nil {
+		result.Outcome, result.Configuration, result.Error = OutcomeFailed, ConfigurationInvalid, err.Error()
+		return result, nil
+	}
+	result.Outcome, result.Configuration = OutcomeConfigured, ConfigurationConfigured
 	return result, nil
 }
 
@@ -1474,6 +1540,10 @@ func (m *Manager) readSnapshot(path string) (snapshot, error) {
 }
 
 func (m *Manager) writeAtomic(path string, contents []byte, mode fs.FileMode) error {
+	return m.writeAtomicChecked(path, contents, mode, nil)
+}
+
+func (m *Manager) writeAtomicChecked(path string, contents []byte, mode fs.FileMode, beforeReplace func() error) error {
 	directory := filepath.Dir(path)
 	if err := m.files.mkdirAll(directory, privateDirMode); err != nil {
 		return fmt.Errorf("create hook configuration directory: %w", err)
@@ -1506,6 +1576,11 @@ func (m *Manager) writeAtomic(path string, contents []byte, mode fs.FileMode) er
 	}
 	if err := temporary.Close(); err != nil {
 		return fmt.Errorf("close hook configuration temporary file: %w", err)
+	}
+	if beforeReplace != nil {
+		if err := beforeReplace(); err != nil {
+			return err
+		}
 	}
 	if err := m.files.rename(temporaryPath, path); err != nil {
 		return fmt.Errorf("replace hook configuration: %w", err)

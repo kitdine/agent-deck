@@ -585,6 +585,7 @@ func runDesktopQuotaSettings(ctx context.Context, opts *commandOptions, apply fu
 	}
 
 	var restore *usagehook.Result
+	var restoreManager *usagehook.Manager
 	readingTurnedOff := current.ProbeEnabled && !next.ProbeEnabled
 	claudeTurnedOff := current.StatusLineConsent && current.ClientEnabled(quota.ClientClaude) && !next.ClientEnabled(quota.ClientClaude)
 	if readingTurnedOff || claudeTurnedOff {
@@ -614,6 +615,9 @@ func runDesktopQuotaSettings(ctx context.Context, opts *commandOptions, apply fu
 				return err
 			}
 			restore = &result
+			if result.Outcome == usagehook.OutcomeRemoved {
+				restoreManager = manager
+			}
 		}
 		if restore == nil || restore.Outcome != usagehook.OutcomeFailed {
 			next.StatusLineConsent = false
@@ -645,6 +649,15 @@ func runDesktopQuotaSettings(ctx context.Context, opts *commandOptions, apply fu
 		// skip the settingsRow==nil-gated snapshot refresh that a real
 		// reading/interval change is supposed to trigger.
 		if !errors.Is(err, store.ErrSettingsSecureFilesFailed) {
+			if restoreManager != nil {
+				reinstall, reinstallErr := restoreManager.ReinstallRestoredStatusLine()
+				if reinstallErr != nil {
+					return errors.Join(err, fmt.Errorf("restore quota status-line route: %w", reinstallErr))
+				}
+				if reinstall.Outcome == usagehook.OutcomeFailed {
+					return errors.Join(err, fmt.Errorf("restore quota status-line route: %s", reinstall.Error))
+				}
+			}
 			return err
 		}
 		if writeErr := writeResult(opts.stdout, opts.format, "desktop.quota-settings", desktopQuotaSettingsResult{Settings: quotaSettingsView(next), StatusLineRestore: restore}); writeErr != nil {
