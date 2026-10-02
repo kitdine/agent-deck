@@ -512,8 +512,22 @@ def current_document_review(root: Path, document: str, review: str, changed: lis
     # Explicit source identities remain independent of unrelated prototype work.
     for line in section.splitlines():
         if re.search(r"sha-?256|digest|指纹|摘要|manifest", line, re.I):
-            paths = re.findall(r"(?<![\w/.-])((?:docs/[A-Za-z0-9_./-]*/)?prototype/.*?)(?=\s+(?:sha-?256|digest|指纹|摘要|manifest)\b)", line, re.I)
-            specimen_paths.update(path.strip() for path in paths)
+            identities = re.findall(
+                r"(?<![\w/.-])((?:docs/[A-Za-z0-9_./-]*/)?prototype/.*?)\s+(?:sha-?256|digest|指纹|摘要|manifest)\b\s*[:：=]?\s*(\S*)",
+                line, re.I,
+            )
+            for path, digest in identities:
+                path = path.strip()
+                digest = digest.rstrip(".;；,，。")
+                target = (root / path).resolve()
+                if not target.is_relative_to(root.resolve()) or not re.fullmatch(r"[0-9a-f]{64}", digest, re.I):
+                    return False
+                try:
+                    if hashlib.sha256(target.read_bytes()).hexdigest() != digest.lower():
+                        return False
+                except OSError:
+                    return False
+                specimen_paths.add(path)
     if any(path == bound or (bound.endswith("/") and path.startswith(bound))
            for bound in specimen_paths for path in changed):
         return False
@@ -542,7 +556,7 @@ def retired_lifecycle_terms(description: str) -> list[str]:
         # backticked state tokens, which are common in genuine declarations.
         states = LIVE_STATUSES | RETIRED_STATUS_NAMES | {"closed"}
         line = re.sub(
-            r"""(`+)(.*?)\1|"[^"\n]*"|'[^'\n]*'|“[^”\n]*”|‘[^’\n]*’""",
+            r"""(`+)(.*?)\1|"[^"\n]*"|(?<!\w)'(?:[^'\n]|(?<=\w)'(?=\w))*'(?!\w)|“[^”\n]*”|(?<!\w)‘(?:[^’\n]|(?<=\w)’(?=\w))*’(?!\w)""",
             lambda match: match.group(2) if match.group(1) and match.group(2) in states else " ",
             line,
         )

@@ -1102,13 +1102,21 @@ class HookBatchRegressionTest(unittest.TestCase):
         record = self.root / review
         record.parent.mkdir()
         blob = hashlib.sha1(b'blob 4\0doc\n').hexdigest()
+        source = self.root / 'prototype/src/view.js'
+        source.parent.mkdir(parents=True)
+        source.write_bytes(b'current')
+        source_hash = hashlib.sha256(b'current').hexdigest()
         for identity, changed, expected in [
             ('', ['prototype/unrelated.txt'], True),
             ('prototype manifest SHA-256 abc', ['prototype/src/view.js'], False),
             ('prototype/my view.js SHA-256 abc', ['prototype/my view.js'], False),
-            ('prototype/src/view.js SHA256 abc', ['prototype/unrelated.txt'], True),
-            ('prototype/src/view.js SHA256 abc', ['prototype/src/view.js'], False),
+            (f'prototype/src/view.js SHA256 {source_hash}', ['prototype/unrelated.txt'], True),
+            (f'prototype/src/view.js SHA256 {source_hash}', ['prototype/src/view.js'], False),
             ('prototype=abc', ['prototype/src/view.js'], False),
+            ('prototype/src/view.js SHA256 ' + '0' * 64, [], False),
+            ('prototype/src/view.js SHA256 abc', [], False),
+            ('prototype/src/view.js SHA256', [], False),
+            (f'prototype/src/view.js SHA256 {source_hash}.', [], True),
         ]:
             record.write_text(f'## Round 1\n文档 blob {blob}\n{identity}\nVerdict: PASS\nCompletion gate: VERIFIED\n')
             with self.subTest(identity=identity, changed=changed):
@@ -1210,6 +1218,12 @@ class HookBatchRegressionTest(unittest.TestCase):
             record.write_text(f'## Round 1\nGit blob {blob}\nprototype manifest SHA-256 {digest}\n')
             with self.subTest(malformed=malformed):
                 self.assertFalse(MODULE.current_document_review(self.root, document, review, []))
+
+    def test_contractions_do_not_quote_intervening_declarations(self):
+        self.assertEqual(MODULE.retired_lifecycle_terms("Don't skip. Lifecycle: open -> drafting -> closed. It's required."), ['drafting'])
+        self.assertEqual(MODULE.retired_lifecycle_terms("'Old. Lifecycle: open -> drafting -> closed. It's history.'"), [])
+        self.assertEqual(MODULE.retired_lifecycle_terms("‘It’s history. Lifecycle: open -> drafting -> closed.’"), [])
+        self.assertEqual(MODULE.retired_lifecycle_terms("Don’t skip. Lifecycle: open -> drafting -> closed. It’s required."), ['drafting'])
 
     def test_scoped_fingerprint_preserves_decoded_filename_bytes(self):
         import os

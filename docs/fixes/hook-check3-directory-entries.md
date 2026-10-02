@@ -483,3 +483,178 @@ Method/Scope: 最终Hook/tests；83tests、12项两schema内容/缺失/错误has
 Hook SHA256 `443e807bab11c3bfadb55bfa5283ee58d4c80cd630369db7662218b4027e847a`；tests SHA256 `1d3df1ee45f226fe14d12081baa40ae35110abf163c7f70e99b313046746ee5b`。
 Reviewed HEAD `8431acd4d75e2df4588a4989e3ca443e076e3b6c` plus scoped candidate。
 Completion gate: VERIFIED 3/3 at candidate `6e9f94987f01773f0dfef9577c1c3c0db18c3d65e1543febe1eab152a3199b99` through Neo4j MCP. Superseded positive snapshot probes are not reused.
+
+## Review — Round 15
+
+## 📋 单文件身份入口自查
+
+📊 综合评分：8/10
+
+✅ Verdict: FAIL
+
+### 🔴 严重问题 — 必须修复
+
+HB1-F5（P2）：直接 `prototype/path SHA256 <hash>` 身份也必须比较当前字节，旧实现只检查dirty。
+Main新增2个RED后实现完整SHA256与root containment校验；83tests/L0通过，等待独立复评。
+
+### 🟡 改进建议
+
+无。
+
+### 🟢 优点
+
+主动检查同类入口，未仅修manifest一条路径。
+
+### 📝 总结
+
+Reviewer: 主代理有界自查（不是独立PASS）；HEAD `11c04e5c1c0c5ca9d9170063b0a625cdb270a5a4`。
+Evidence: direct-identity-red.log两失败，随后83tests GREEN。
+Completion gate: FAILED for this source gate-identity task；远端已启动的旧head评审不能替代新修复复评。
+
+## Review — Round 16
+
+## 📋 单文件身份解析冷复评
+
+📊 综合评分：8.5/10
+
+✅ Verdict: FAIL
+
+### 🔴 严重问题 — 必须修复
+
+HB1-F6（P2）：直接身份省略digest时整条声明被忽略。HB1-F7（P3）：匹配hash后的英文句号被当成hash内容。
+Main独立复现RED2（round16-red.log）；捕获缺省值并拒绝，接受句尾标点。83tests GREEN。
+
+### 🟡 改进建议
+
+无。
+
+### 🟢 优点
+
+HB1-F5的完整hash比较有效，含空格路径匹配正确。
+
+### 📝 总结
+
+Reviewer: 独立 `hook_batch_review`；Main直接复现。Scope: 单文件身份解析。
+Reviewed Hook SHA256 `1fb9c63470e64481da1d8d2972dff5eb081aac7236fe98f2062d6fdb104f9d40`。
+Completion gate: NOT_VERIFIED for repair candidate，等待独立复评。
+
+## Review — Round 17
+
+## 📋 单文件内容身份最终复评
+
+📊 综合评分：9/10
+
+✅ Verdict: PASS
+
+### 🔴 严重问题 — 必须修复
+
+无。HB1-F5/F6/F7 CLOSED；此前所有HB1/GH31发现继续关闭。
+
+### 🟡 改进建议
+
+无。
+
+### 🟢 优点
+
+manifest与单文件两条入口都校验当前内容，缺失或不明身份保守跳过。
+
+### 📝 总结
+
+Reviewer: 独立 `hook_batch_review`；Main直接核验83tests与L0、hash。
+Method/Scope: 最终单文件身份补丁；独立8探针覆盖空格path、缺digest、句尾标点、错hash、dirty与已提交变化，PASS。
+Hook SHA256 `32a220088ece8c45e09f78de033597cdc53a0801c55e00725abd6de17f2c9800`；tests SHA256 `1f63ecf78e0cb9e949e87f26a3789157a77046d6a0197c819d5bb841a6b2a4ae`。
+Reviewed HEAD `11c04e5c1c0c5ca9d9170063b0a625cdb270a5a4` plus scoped candidate。
+Completion gate: pending exact candidate query; prior failed state remains historical.
+
+## Review — Round 18
+
+## 📋 远端单文件与撇号复评
+
+📊 综合评分：8/10
+
+✅ Verdict: FAIL
+
+### 🔴 严重问题 — 必须修复
+
+GH31-F12（P2）是已主动记录/修复的HB1-F5单文件hash问题别名。
+GH31-F13（P2）：Don't与It's之间的真实声明被当成引用遮蔽。
+Main RED1后区分词内apostrophe与真实单引号，并保留真正引用中含缩写的对照；84tests通过。
+
+### 🟡 改进建议
+
+无。
+
+### 🟢 优点
+
+单文件问题已在远端结果到达前完成独立R17复评；无绕过当前head门禁。
+
+### 📝 总结
+
+Reviewer: GitHub Codex5390661673，HEAD `11c04e5c1c0c5ca9d9170063b0a625cdb270a5a4`。
+Evidence: github-round18-red.log；source gates FAILED，修复候选待独立复评。
+
+## Review — Round 19
+
+## 📋 弯引号缩写边界复评
+
+📊 综合评分：8.5/10
+
+✅ Verdict: FAIL
+
+### 🔴 严重问题 — 必须修复
+
+HB1-F8（P2）：`‘It’s history. Lifecycle: open -> drafting -> closed.’` 内部弯撇号被当成闭引号。
+Main RED1后同样采用词内apostrophe边界；ASCII/curly缩写声明及真正引用对照通过，84tests GREEN。
+
+### 🟡 改进建议
+
+父任务明确要求推送前完整现有语法正反对照检查；不增加新语法或大重构。
+
+### 🟢 优点
+
+GH31-F13 ASCII缩写和直接文件身份修复保持有效。
+
+### 📝 总结
+
+Reviewer: 独立 `hook_batch_review`；Main直接复现round19-red.log。
+Completion gate: NOT_VERIFIED for repair candidate，完整契约矩阵复评待完成。
+
+### 本轮冻结的解析契约与对照范围
+
+- 文档身份：最新非围栏轮次内唯一完整40/64hex Git blob；支持document/文档/Git及精确repo/topic-relative文档path标签。不匹配、缺失、歧义不得沿用门禁。
+- 聚合样稿：prototype/Specimen manifest完整SHA256，经已评审文档唯一local manifest链接定位；支持现有files(path,sha256)与source映射/specimens(file,sha256)两布局。manifest自身与每一实际文件字节hash均匹配才有效；unknown、missing、bad hash、越界均跳过诊断。
+- 单文件样稿：明确prototype路径（含空格）及完整SHA256/digest身份；比较当前字节，缺失/不匹配不得因git status为空而通过；普通句尾标点不改变hash。
+- 生命周期：明确Lifecycle/生命周期/状态流转标签，标准无序/有序list、平衡粗斜体（label或整句），有效状态箭头序列；自然语言普通动词、历史/引用/围栏/blockquote不报警，ASCII/curly词内缩写不吞掉真实声明。
+- Git路径：NUL分隔、全量untracked文件、rename/copy destination、空格/特殊字符/文件系统字节surrogateescape到fingerprint往返。无真实DB或产品数据。
+- 全部四份仓库manifest用于schema/source布局检查，不能把其历史hash自动视为当前；实际过期快照必须拒绝。每类配应报警/不应报警案例，未知格式不扩大支持承诺。
+
+## Review — Round 20
+
+## 📋 冻结解析契约完整正反矩阵复评
+
+📊 综合评分：9.5/10
+
+✅ Verdict: PASS
+
+### 🔴 严重问题 — 必须修复
+
+无。HB1-F1..F8、GH31-F1..F13全部关闭；GH31-F12为HB1-F5别名。
+
+### 🟡 改进建议
+
+无。保持现有支持契约，不引入新语法或大重构。
+
+### 🟢 优点
+
+一次完整正反矩阵覆盖已知入口，主代理能独立重跑同一诊断而不是仅引用评审报告。
+
+### 📝 总结
+
+Reviewer: 冷独立 `hook_batch_review`；Main读取临时脚本确认隔离边界后直接重跑，结果一致。
+Method/Scope: 冻结R19契约全部入口，1130checks/0failures：manifest251、schema22、direct77、document8、lifecycle756、apostrophe11、gitbytes3、actual-stale2。仓库direct/discovery84tests PASS，L0通过。
+四份真实manifest保留拓扑但在临时目录复制当前文件并重算hash建立有效正例；逐项dirty、committed-stale、missing为反例。实际过期snapshot评审为false，未将历史hash视为当前。
+原始Git bytes通过真实隔离子进程输出验证，APFS仍未声称支持创建非法UTF8文件。
+Hook SHA256 `bf757f6fb31424ba760bd9d43f4bbaea5352160e646f14a1353869812538aa8f`；tests SHA256 `77c399eb4377301a63e02ad615c213a95f8d9a02336a6894803999098f511da1`。
+Evidence: `output/hook-batch-evidence/final-paired-matrix.py` SHA256 `34353915bcb2db3335e347f8f22daede39d6742eb3f69e99c4a89e7781104311`；log SHA256 `b519b6577855bbaf5e088e08d4e9363875cc365cfbdc8ea06eccd6470ebb061a`。均忽略的本地证据，不写生产数据。
+Reviewed HEAD `11c04e5c1c0c5ca9d9170063b0a625cdb270a5a4` plus scoped candidate。
+Completion gate: VERIFIED 3/3 at candidate `048bac3b670a19a194e42ee401fd5bcd6f28e812e5ecce46dfefaf95be6939da` through Neo4j MCP; no historical failed observations reused as pass.
