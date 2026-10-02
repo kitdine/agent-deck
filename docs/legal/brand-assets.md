@@ -1,10 +1,59 @@
 ---
 status: active
 created: 2026-08-27
-updated: 2026-08-27
+updated: 2026-10-02
 ---
 
 # Brand Asset Provenance
+
+## Current AD shared-stroke mark
+
+The operator selected the orange AD shared-stroke mark with a dark app tile
+and two cuts in the D ring. Issue #29 imports exact PNG bytes from
+`AgentDeck-Icon-Review-v1.zip` (Library
+`libfile_18670278130c8191a708e0c61daa5d14`), SHA-256
+`83e01d3bd0956fb6b31209415cd20400194efb6661c67f9f8a74005a4b944ac0`.
+The consumer downloaded and visually inspected the package and selected original
+`libfile_484da62ba9a881919f9256dd38b0f638` on 2026-10-02.
+
+The package records AI-assisted extraction and monochrome conversion of the
+selected artwork, followed by mechanical PNG sizing. This import performs no
+redesign or resampling. The existing Xcode PNG catalog compiles the app icon;
+no layered Icon Composer source is supplied or required by this pipeline.
+
+| Current asset | Repository path | SHA-256 |
+| --- | --- | --- |
+| App 1024px | `apps/macos/AgentDeckApp/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png` | `c523c4c37131bf0cddb5b330ae757385595c4fa728ad2adb4b9be53775fb948e` |
+| App runtime 512px | `apps/macos/AgentDeckApp/Resources/AgentDeckAppIcon.png` | `5cfa870ae21886da2e8aedb29ca0cde1933897b81642c47e5737688aaf12610f` |
+| Template 18px | `apps/macos/AgentDeckApp/Assets.xcassets/AgentDeckMenuBarIcon.imageset/AgentDeckMenuBarIcon.png` | `0a7fe203e27cf1db01d9c1936b8487979cb826cb2871c36b21ed2664f2fce8a8` |
+| Template runtime 36px | `apps/macos/AgentDeckApp/Resources/AgentDeckMenuBarIcon.png` | `47e3fa62dc13f9becfab61a7fded34a711237a442fb127346d20bfeb988c4255` |
+| Active prototype symbol | `prototype/public/agentdeck-ad.png` | `2ca8d907a414f296bf09dd0f4a27c72f424016243efe04bb142a0120b6b6e6f1` |
+
+App catalog sizes are the supplied 16/32/128/256/512pt 1x/2x derivatives.
+Runtime PNG copies match their 512px app and 36px template sources. The menu
+bar continues to render at 18pt with `isTemplate = true`; system appearance
+owns its tint. Active prototype references use the supplied transparent symbol.
+Historical prototypes and the original robot artwork remain unchanged.
+
+Small-size limitation: the D cuts weaken at 16px. Static previews and technical
+decode checks do not establish native display acceptance. See the [icon review record](../topics/ad-shared-stroke-icon/reviews/ad-shared-stroke-icon.md)
+for the checks actually performed.
+
+### Rights boundary
+
+This provenance is not a legal opinion, trademark clearance, uniqueness claim,
+registration, or third-party license grant. The supplied limited similarity
+screening did not complete visual inspection of Scalebranding #414379 because
+its image was blocked. No trademark database search or global clearance is
+claimed. The historical release-checkpoint guidance below remains applicable
+to the current mark.
+
+## Preserved historical record
+
+The following records the former robot mark, not the current AD assets.
+Paths and hashes below refer to the historical revision described there.
+
+# Historical robot asset provenance
 
 This document records the evidence chain for AgentDeck's current robot mark.
 It is a provenance record, not a legal opinion, a trademark registration, or a
