@@ -1236,6 +1236,13 @@ func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceR
 	if err = validateCaptured(); err != nil {
 		return r, err
 	}
+	// Reserve the writer before affectedSessions establishes a read snapshot.
+	// A concurrent core-store commit would otherwise make SQLite's deferred
+	// read-to-write upgrade fail with BUSY_SNAPSHOT, bypassing busy_timeout.
+	// This zero-row write changes no source data or shared-pool transaction mode.
+	if _, err = tx.ExecContext(ctx, "UPDATE usage_source_files SET cursor=cursor WHERE 0"); err != nil {
+		return r, err
+	}
 	affected, err := affectedSessions(ctx, tx, path)
 	if err != nil {
 		return r, err
