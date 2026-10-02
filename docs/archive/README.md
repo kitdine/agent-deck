@@ -5,7 +5,14 @@ created: 2026-07-22
 
 # Archived Documents
 
-Last updated: 2026-09-07
+Last updated: 2026-10-02
+
+## 2026-10-02 source closeout: AD shared-stroke icon
+
+[AD icon adoption](topics/ad-shared-stroke-icon/tasks.md) preserves the approved
+artwork mapping, source reviews, technical evidence and the operator's explicit
+deferral of native menu-bar visual acceptance. Signed source `ff1c03c` and exact
+source task/topic gates passed; issue #29 retains remote delivery status.
 
 ## 2026-09-07 closeout: workflow-instruction optimization
 

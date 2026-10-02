@@ -1,6 +1,7 @@
 ---
-status: active
+status: historical
 created: 2026-10-02
+retired: 2026-10-02
 ---
 
 # 图标更新任务
@@ -35,3 +36,10 @@ created: 2026-10-02
 此项未验证、不阻塞本轮交付；16px 仅记录离屏像素验证。
 实际代码评审、CEv1 和 GitHub/CI 状态见 reviews/ad-shared-stroke-icon.md。
 用户后续人肉检查若发现问题，按新的明确反馈处理；本任务不启动第二 issue。
+
+## Source closure
+
+签名实现提交 `ff1c03cf558b3a7b73022e1fc80b30ee56b8a453`；
+该提交的文档门禁各1/1、Task4/4、topic closure1/1均经Neo4j MCP VERIFIED。
+完整源码topic作为整体归档；PR远端Review/CI/merge及实际merge evidence仍由
+issue29与Beads `ad-shared-stroke-icon` 跟踪，归档不是已合并或已发布声明。

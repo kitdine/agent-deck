@@ -1,7 +1,8 @@
 ---
-status: active
+status: historical
 topic: ad-shared-stroke-icon
 subject: ad-shared-stroke-icon
+retired: 2026-10-02
 ---
 
 ## Round 1 — 2026-10-02
