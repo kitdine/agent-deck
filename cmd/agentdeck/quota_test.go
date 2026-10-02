@@ -1172,3 +1172,28 @@ func TestDesktopQuotaRefreshUsesCrossProcessLock(t *testing.T) {
 		t.Fatal("a second refresh crossed the held quota-refresh lock")
 	}
 }
+
+func TestDesktopQuotaStatusLineMigrationSaveFailureKeepsOriginalRoute(t *testing.T) {
+	home := t.TempDir()
+	withTestHome(t, home)
+	state := filepath.Join(t.TempDir(), "state")
+	writeClaudeSettings(t, home, `{"statusLine":{"type":"command","command":"printf prior"}}`)
+	previousExecutable := quotaExecutable
+	quotaExecutable = func() (string, error) { return "/old/agentdeck", nil }
+	t.Cleanup(func() { quotaExecutable = previousExecutable })
+	runJSON(t, "--state-dir", state, "--format", "json", "desktop", "quota-settings", "--reading", "on")
+	runJSON(t, "--state-dir", state, "--format", "json", "desktop", "quota-statusline", "enable")
+	installed := claudeStatusLineCommand(t, home)
+	quotaExecutable = func() (string, error) { return "/new/agentdeck", nil }
+	previousSave := saveQuotaStatusLineSettings
+	wantErr := errors.New("migration precommit failure")
+	saveQuotaStatusLineSettings = func(context.Context, quota.SettingStore, quota.Settings) error { return wantErr }
+	t.Cleanup(func() { saveQuotaStatusLineSettings = previousSave })
+	err := run([]string{"--state-dir", state, "--format", "json", "desktop", "quota-statusline", "enable"}, bytes.NewReader(nil), &bytes.Buffer{})
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("error=%v", err)
+	}
+	if got := claudeStatusLineCommand(t, home); got != installed {
+		t.Fatalf("route=%q; want original enabled route %q", got, installed)
+	}
+}
