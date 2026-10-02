@@ -283,3 +283,60 @@ ContentState `hook-consistency-batch:state:a379d740284d9a4a3fa4a9327524efdab615c
 
 提交建议：修复候选门禁通过后追加已授权签名提交。
 推送建议：普通push同一PR，重新获得最终head远端评审及CI后才合并。
+
+## Review — Round 8
+
+## 📋 当前提交远端复评
+
+📊 综合评分：8/10
+
+✅ Verdict: FAIL
+
+### 🔴 严重问题 — 必须修复
+
+- GH31-F5（P2）：bare prototype manifest 未解析 topic 内 specimen 路径；真实 widget/menubar 文档的 PNG 或 manifest 改变仍返回 current。
+- GH31-F6（P2）：单标记 `*Lifecycle:*` 与 `_生命周期_` 漏报。
+
+### 🟡 改进建议
+
+无。
+
+### 🟢 优点
+
+此前 GH31-F1..F4 的四条讨论已带修复证据解决；本轮保留新增失败而不沿用旧 PASS。
+
+### 📝 总结
+
+Reviewer: GitHub Codex review 5390278946，exact HEAD `45026665dc8810811eca00ba40ca4e8e208d22e2`。
+Method/Scope: 当前提交远端独立审查；主代理直接新增隔离回归复现6个失败子场景，见 `output/hook-batch-evidence/github-round8-red.log`。
+主代理修复：从已评审文档的本地链接解析唯一 manifest、校验声明的完整 SHA256，并关联 manifest 自身和 files 路径；不明绑定保守跳过诊断。平衡单/双 emphasis 标签均识别。
+82 tests、L0通过；真实 widget/menubar 两份文档 current=true，逐个已绑定 specimen/manifest dirty 时 false。
+Completion gate: FAILED for affected source Tasks at4502666；修复候选待独立复评与新状态门禁。
+
+## Review — Round 9
+
+## 📋 Manifest 与 italic 修复复评
+
+📊 综合评分：9/10
+
+✅ Verdict: PASS
+
+### 🔴 严重问题 — 必须修复
+
+无。GH31-F5/F6 CLOSED；此前 HB1-F1..F3、GH31-F1..F4 继续关闭。
+
+### 🟡 改进建议
+
+无。
+
+### 🟢 优点
+
+绑定真实文档链接和 manifest 内容，且未扩大到无关 specimen；隔离测试与真实文档只读探针一致。
+
+### 📝 总结
+
+Reviewer: 独立 `hook_batch_review`，只读复评；主代理直接核对文件哈希、82项测试、真实两份文档所有specimen路径及L0。
+Method/Scope: 新修复代码与回归；独立36项真实manifest探针及6项标签/引用探针通过。
+Hook SHA256 `3f0597f27cbbc4188c14f4c0d00df73850ba18c26422f1f6893f9d851af0f94a`；tests SHA256 `22cc29a93c0512a7ae5d5c056313e3417afca1bfdd32ee195549119f690208c1`。
+Reviewed HEAD `45026665dc8810811eca00ba40ca4e8e208d22e2` plus exact scoped candidate。
+Completion gate: VERIFIED 3/3 at candidate `20411e2ba7d74753d0efef12f60a482afe77fa83ca61f79cec866c0215e087c4` through Neo4j MCP; prior4502666 failures preserved. Signed source requires explicit target-bound reuse assessment.

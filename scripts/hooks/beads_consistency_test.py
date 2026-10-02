@@ -1061,7 +1061,9 @@ class HookBatchRegressionTest(unittest.TestCase):
 
     def test_emphasized_lifecycle_labels_are_still_declarations(self):
         for text in ['- **Lifecycle:** open -> drafting -> closed',
-                     '__生命周期__：open → repairing → closed']:
+                     '__生命周期__：open → repairing → closed',
+                     '- *Lifecycle:* open -> drafting -> closed',
+                     '_生命周期_：open → repairing → closed']:
             with self.subTest(text=text):
                 self.assertTrue(MODULE.retired_lifecycle_terms(text))
 
@@ -1122,6 +1124,33 @@ class HookBatchRegressionTest(unittest.TestCase):
             record.write_text(f'## Round 1\n{label} blob {blob}\n')
             with self.subTest(label=label):
                 self.assertEqual(MODULE.current_document_review(self.root, document, review, []), expected)
+
+    def test_bound_topic_manifest_and_entries_invalidate_review(self):
+        import hashlib
+        document = 'docs/topics/example/ux/view.md'
+        review = 'docs/topics/example/reviews/ux-view.md'
+        manifest = 'docs/topics/example/ux/prototype/view/manifest.json'
+        specimen = 'docs/topics/example/ux/prototype/view/view.png'
+        source = 'prototype/src/view.js'
+        data = b'[manifest](prototype/view/manifest.json)\n'
+        path = self.root / document
+        path.parent.mkdir(parents=True)
+        path.write_bytes(data)
+        record = self.root / review
+        record.parent.mkdir()
+        mp = self.root / manifest
+        mp.parent.mkdir(parents=True)
+        mp.write_text(json.dumps({'files': [{'path': specimen}, {'path': source}]}))
+        blob = hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest()
+        digest = hashlib.sha256(mp.read_bytes()).hexdigest()
+        record.write_text(f'## Round 1\n{document} blob {blob}\nprototype manifest SHA-256 {digest}\n')
+        for changed, expected in [([], True), ([manifest], False), ([specimen], False),
+                                  ([source], False), (['prototype/unrelated.js'], True),
+                                  (['docs/topics/other/ux/prototype/view.png'], True)]:
+            with self.subTest(changed=changed):
+                self.assertEqual(MODULE.current_document_review(self.root, document, review, changed), expected)
+        mp.write_text('{}')
+        self.assertFalse(MODULE.current_document_review(self.root, document, review, []))
 
     def test_scoped_fingerprint_preserves_decoded_filename_bytes(self):
         import os

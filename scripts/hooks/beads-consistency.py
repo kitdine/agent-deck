@@ -442,24 +442,59 @@ def current_document_review(root: Path, document: str, review: str, changed: lis
     ))
     if len(blobs) != 1:
         return False
-    # Only a specimen identity bound by this round can invalidate its gate.
-    # A document-only review is independent of unrelated prototype work.
-    specimen_paths = set()
-    for line in section.splitlines():
-        if re.search(r"sha-?256|digest|指纹|摘要|manifest|prototype=", line, re.I):
-            paths = re.findall(r"prototype/.*?(?=\s+(?:sha-?256|digest|指纹|摘要|manifest)\b)", line, re.I)
-            if paths:
-                specimen_paths.update(path.strip() for path in paths)
-            else:
-                specimen_paths.update(re.findall(r"prototype/[A-Za-z0-9_./-]*", line))
-            if "prototype=" in line or re.search(r"\bprototype\s+(?:manifest|指纹|摘要)", line, re.I):
-                specimen_paths.add("prototype/")
-    if any(path == bound or (bound.endswith("/") and path.startswith(bound))
-           for bound in specimen_paths for path in changed):
-        return False
     try:
         data = (root / document).read_bytes()
     except OSError:
+        return False
+    # A bare manifest identity is resolved through the reviewed document's
+    # local manifest links. Unknown/ambiguous bindings cannot prove currency.
+    manifest_hashes = set(re.findall(
+        r"\bprototype\s+manifest\s+SHA-?256\s*[:：=]?\s*([0-9a-f]{64})\b",
+        section, re.I,
+    ))
+    bare_manifest = bool(re.search(r"\bprototype\s+(?:manifest|指纹|摘要)|prototype=", section, re.I))
+    specimen_paths: set[str] = set()
+    if bare_manifest:
+        if len(manifest_hashes) != 1:
+            return False
+        expected_manifest = next(iter(manifest_hashes)).lower()
+        manifests = set()
+        for link in re.findall(r"\]\(([^)]+)\)", data.decode("utf-8", errors="replace")):
+            link = link.strip().strip("<>")
+            if not link.endswith("manifest.json") or ":" in link or link.startswith("/"):
+                continue
+            target = (root / document).parent / link
+            if link.startswith(("docs/", "prototype/")) and (root / link).is_file():
+                target = root / link
+            target = target.resolve()
+            if not target.is_relative_to(root.resolve()):
+                return False
+            manifests.add(target)
+        if len(manifests) != 1:
+            return False
+        manifest = next(iter(manifests))
+        try:
+            raw_manifest = manifest.read_bytes()
+            if hashlib.sha256(raw_manifest).hexdigest() != expected_manifest:
+                return False
+            entries = json.loads(raw_manifest)["files"]
+            if not isinstance(entries, list) or not entries:
+                return False
+            specimen_paths.add(manifest.relative_to(root.resolve()).as_posix())
+            for entry in entries:
+                path = entry["path"]
+                if not isinstance(path, str) or not path or Path(path).is_absolute() or ".." in Path(path).parts:
+                    return False
+                specimen_paths.add(path)
+        except (OSError, ValueError, KeyError, TypeError):
+            return False
+    # Explicit source identities remain independent of unrelated prototype work.
+    for line in section.splitlines():
+        if re.search(r"sha-?256|digest|指纹|摘要|manifest", line, re.I):
+            paths = re.findall(r"(?<![\w/.-])((?:docs/[A-Za-z0-9_./-]*/)?prototype/.*?)(?=\s+(?:sha-?256|digest|指纹|摘要|manifest)\b)", line, re.I)
+            specimen_paths.update(path.strip() for path in paths)
+    if any(path == bound or (bound.endswith("/") and path.startswith(bound))
+           for bound in specimen_paths for path in changed):
         return False
     expected = next(iter(blobs)).lower()
     payload = b"blob " + str(len(data)).encode("ascii") + b"\0" + data
@@ -495,7 +530,8 @@ def retired_lifecycle_terms(description: str) -> list[str]:
             # negated, historical and explanatory mentions are not commands.
             declaration = re.match(
                 r"^\s*(?:[-*]\s+)?(?:lifecycle|状态流转|生命周期)\s*[:：]\s*(.+)$",
-                clause.replace("**", "").replace("__", ""), re.I,
+                re.sub(r"(\*{1,2}|_{1,2})(lifecycle|状态流转|生命周期)([:：]?)\1",
+                       r"\2\3", clause, flags=re.I), re.I,
             )
             if not declaration:
                 continue
