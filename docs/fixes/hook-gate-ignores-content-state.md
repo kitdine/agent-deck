@@ -658,3 +658,62 @@ Hook SHA256 `bf757f6fb31424ba760bd9d43f4bbaea5352160e646f14a1353869812538aa8f`�
 Evidence: `output/hook-batch-evidence/final-paired-matrix.py` SHA256 `34353915bcb2db3335e347f8f22daede39d6742eb3f69e99c4a89e7781104311`；log SHA256 `b519b6577855bbaf5e088e08d4e9363875cc365cfbdc8ea06eccd6470ebb061a`。均忽略的本地证据，不写生产数据。
 Reviewed HEAD `11c04e5c1c0c5ca9d9170063b0a625cdb270a5a4` plus scoped candidate。
 Completion gate: VERIFIED 3/3 at candidate `048bac3b670a19a194e42ee401fd5bcd6f28e812e5ecce46dfefaf95be6939da` through Neo4j MCP; no historical failed observations reused as pass.
+
+## Review — Round 21
+
+## 📋 Git index候选内容远端复评
+
+📊 综合评分：8/10
+
+✅ Verdict: FAIL
+
+### 🔴 严重问题 — 必须修复
+
+GH31-F14（P2）：MM文档工作树字节匹配评审但index是未评审内容，旧路径列表丢失XY后仍建议awaiting_commit。
+Main真实隔离Git RED1（github-round21-red.log），补文档/review/manifest/source/specimen的index-WT分叉、stageddelete与匹配stagedaddition对照。
+
+### 🟡 改进建议
+
+在已冻结语法矩阵外加入Git候选层次维度；不增加产品语法或扩大到生产数据。
+
+### 🟢 优点
+
+原1130语法检查仍通过；本轮识别并补上不同内容层的缺口。
+
+### 📝 总结
+
+Reviewer: GitHub Codex5390789116，HEAD `68bf59d513d8f6c00ef95284279902b919d45656`。
+Main修复保留同次porcelain的XY/rename-source/deadline；对绑定已staged路径验证index与工作树一致（禁externaldiff/textconv），拒绝D/U、超时和不一致。
+匹配的stagedaddition可通过，不以含糊工作树检查替代index验证；未staged specimen保留既有保守dirty守卫。
+85tests与原1130矩阵PASS；待新index维度完整冷复评。
+Completion gate: FAILED for prior gate-identity source；其余历史检查不自动当新head通过。
+
+## Review — Round 22
+
+## 📋 Index候选完整冷矩阵复评
+
+📊 综合评分：9.5/10
+
+✅ Verdict: PASS
+
+### 🔴 严重问题 — 必须修复
+
+无。GH31-F14 CLOSED；此前HB1/GH31全部发现继续关闭。
+
+### 🟡 改进建议
+
+无。
+
+### 🟢 优点
+
+index与工作树两层均有真实Git正反对照，scope过滤保留all_changed元数据，原语法契约矩阵无回归。
+
+### 📝 总结
+
+Reviewer: 独立 `hook_batch_review`；Main读取临时脚本确认隔离后亲自重跑。
+Method/Scope: 63项index矩阵、原1130项完整语法矩阵全部0failures；85项direct/discovery测试及L0通过。
+新增覆盖六类绑定文件的index分叉/删除/rename source、匹配staged additions、scope诊断、rawbyte元数据、过期deadline/Git错误。literal `*`/`[]`对照通过；该字面路径flag未声称存在修复前RED。
+Hook SHA256 `214f9f6203a8a839db6e17444f76532d5530df27ebabab2990d727a5c101fe13`；tests SHA256 `bd6ca59e34a0ca6dd1d93e71a721d4ae9be718b19946363944200a53b6de6666`。
+Evidence: `output/hook-batch-evidence/index-final-matrix.py` SHA256 `64a6e33ead4ec22267503c8d25fb5cc79a544254a85cd5a31f145ce29882f9fd`；log SHA256 `136bb72dc2aeb7d0a2e506b4986c24a478e572f372f795dabda49ff5c45a3a8e`。既有1130矩阵重跑日志index-paired-matrix.log，均为ignored本地证据。
+Reviewed HEAD `68bf59d513d8f6c00ef95284279902b919d45656` plus scoped candidate。
+Completion gate: VERIFIED 3/3 at candidate `3b0f881568212cbf9b0fd64443d42fdf6e0bc878c4e58f1251a539dc110c94cd` through Neo4j MCP; prior source failure retained.

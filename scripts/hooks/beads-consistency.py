@@ -358,6 +358,15 @@ def bd_json(args: list[str], deadline: float) -> Any:
     return parsed
 
 
+class ChangedPaths(list[str]):
+    """Literal changed paths plus index state from the same porcelain read."""
+
+    def __init__(self, deadline: float):
+        super().__init__()
+        self.staged: dict[str, str] = {}
+        self.deadline = deadline
+
+
 def changed_paths(root: Path, deadline: float) -> list[str]:
     timeout = remaining_timeout(deadline)
     if timeout is None:
@@ -375,7 +384,7 @@ def changed_paths(root: Path, deadline: float) -> list[str]:
         return []
     if out.returncode != 0:
         return []
-    paths: list[str] = []
+    paths = ChangedPaths(deadline)
     entries = iter(out.stdout.split("\0"))
     for entry in entries:
         if len(entry) < 4:
@@ -383,8 +392,12 @@ def changed_paths(root: Path, deadline: float) -> list[str]:
         # Porcelain -z gives literal destination paths; a rename/copy's next
         # NUL field is its source, not another changed destination.
         paths.append(entry[3:])
+        if entry[0] not in " ?!":
+            paths.staged[entry[3:]] = entry[0]
         if "R" in entry[:2] or "C" in entry[:2]:
-            next(entries, None)
+            source = next(entries, None)
+            if source and entry[0] == "R":
+                paths.staged[source] = "D"
     return paths
 
 
@@ -528,8 +541,28 @@ def current_document_review(root: Path, document: str, review: str, changed: lis
                 except OSError:
                     return False
                 specimen_paths.add(path)
+    # A matching working copy does not prove that a staged candidate matches.
+    # Preserve XY metadata so an MM file, staged deletion or rename source
+    # cannot advance based on bytes that the next commit would not contain.
+    staged = getattr(changed, "staged", {})
+    bound_staged = sorted(set(staged).intersection(specimen_paths | {document, review}))
+    if bound_staged:
+        if any(staged[path] in "DU" for path in bound_staged):
+            return False
+        timeout = remaining_timeout(changed.deadline)
+        if timeout is None:
+            return False
+        try:
+            result = subprocess.run(
+                ["git", "-C", str(root), "--literal-pathspecs", "diff", "--quiet", "--no-ext-diff", "--no-textconv", "--", *bound_staged],
+                capture_output=True, timeout=timeout,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return False
+        if result.returncode != 0:
+            return False
     if any(path == bound or (bound.endswith("/") and path.startswith(bound))
-           for bound in specimen_paths for path in changed):
+           for bound in specimen_paths for path in changed if path not in staged):
         return False
     expected = next(iter(blobs)).lower()
     payload = b"blob " + str(len(data)).encode("ascii") + b"\0" + data

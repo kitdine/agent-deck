@@ -1225,6 +1225,41 @@ class HookBatchRegressionTest(unittest.TestCase):
         self.assertEqual(MODULE.retired_lifecycle_terms("‘It’s history. Lifecycle: open -> drafting -> closed.’"), [])
         self.assertEqual(MODULE.retired_lifecycle_terms("Don’t skip. Lifecycle: open -> drafting -> closed. It’s required."), ['drafting'])
 
+    def test_index_candidate_must_match_reviewed_worktree_bytes(self):
+        import hashlib, subprocess
+        def git(*args):
+            return subprocess.run(['git', '-C', str(self.root), '--literal-pathspecs', *args], check=True, capture_output=True)
+        git('init', '-q')
+        document = 'docs/topics/example/ux/view.md'
+        review = 'docs/topics/example/reviews/ux-view.md'
+        manifest = 'docs/topics/example/ux/prototype/view/manifest.json'
+        specimen = 'docs/topics/example/ux/prototype/view/screen.png'
+        source = 'prototype/src/[view]*.js'
+        files = {document: b'[manifest](prototype/view/manifest.json)\n', source: b'source', specimen: b'specimen'}
+        files[manifest] = json.dumps({'files': [{'path': p, 'sha256': hashlib.sha256(files[p]).hexdigest()} for p in [source, specimen]]}).encode()
+        blob = hashlib.sha1(b'blob ' + str(len(files[document])).encode() + b'\0' + files[document]).hexdigest()
+        files[review] = f'## Round 1\nGit blob {blob}\nprototype manifest SHA-256 {hashlib.sha256(files[manifest]).hexdigest()}\nVerdict: PASS\nCompletion gate: VERIFIED\n'.encode()
+        for path, data in files.items():
+            target = self.root / path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(data)
+        def current():
+            return MODULE.current_document_review(self.root, document, review, MODULE.changed_paths(self.root, MODULE.time.monotonic() + 5))
+        git('add', '.')
+        self.assertTrue(current(), 'matching staged additions are valid')
+        git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test', '-c', 'commit.gpgsign=false', 'commit', '-qm', 'fixture')
+        for path, data in files.items():
+            with self.subTest(path=path):
+                (self.root / path).write_bytes(b'unreviewed index')
+                git('add', '--', path)
+                (self.root / path).write_bytes(data)
+                self.assertFalse(current(), 'MM index bytes are unreviewed')
+                git('reset', '-q', 'HEAD', '--', path)
+                self.assertTrue(current())
+                git('rm', '--cached', '-q', '--', path)
+                self.assertFalse(current(), 'staged deletion is not reviewed content')
+                git('reset', '-q', 'HEAD', '--', path)
+
     def test_scoped_fingerprint_preserves_decoded_filename_bytes(self):
         import os
         scope = {'topic': 'example', 'subject': 'ux/' + os.fsdecode(b'bad-\xff.md')}
