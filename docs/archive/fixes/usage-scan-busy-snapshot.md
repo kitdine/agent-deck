@@ -1,5 +1,6 @@
 ---
-status: active
+status: historical
+retired: 2026-10-02
 created: 2026-10-02
 ---
 
@@ -73,3 +74,7 @@ Completion gate：VERIFIED 4/4，`fix:usage-scan-busy-snapshot:candidate:ab5ec48
 Task：`fix:usage-scan-busy-snapshot`；精确产品/测试身份与 VERIFIED gate 如上。
 提交建议：按既有授权提交这两个代码/测试文件及本 fix carrier。
 推送建议：核验签名及内容后普通推送独立 fix 分支，创建目标 release/v0.6.x 的 draft PR；exact-head GitHub review/CI 与 exact-merge integration gate 仍为关闭前提。
+
+## 交付记录
+
+修复提交 `0171a75a328d2b23e9b1c8f1ac36a530f2233fe4` 的 SSH 签名、完整消息、三文件范围与精确产品/测试 blob 已核验；commit-bound Task CEv1 VERIFIED 4/4。按 Lane A 生命周期归档，保留全部评审和验证记录。远端当前 head review/CI、实际 merge 与 per-Bug integration gate 由 Beads/CEv1 继续跟踪，归档不表示 Bug 已关闭或版本已发布。
