@@ -955,6 +955,99 @@ class SkillReportInteropTest(unittest.TestCase):
         self.assertEqual(MODULE.ownerless_findings(
             mock.Mock(read_text=mock.Mock(return_value=body))), ["XY-R11-F1"])
 
+class HookBatchRegressionTest(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.root = Path(self.directory.name)
+
+    def test_untracked_directory_documents_are_visible_with_literal_paths(self):
+        import subprocess
+        subprocess.run(['git', 'init', '-q', str(self.root)], check=True)
+        document = 'docs/topics/example/ux/new 中文 -> view.md'
+        path = self.root / document
+        path.parent.mkdir(parents=True)
+        path.write_text('new document\n')
+        with mock.patch.object(MODULE, 'bd_json', return_value=[{
+            'id': 'new-document', 'title': '文档：example / ux/new 中文 -> view.md'
+        }]):
+            notes = MODULE.findings(self.root, MODULE.time.monotonic() + 15,
+                                    scope={'topic': 'example', 'subject': ''})
+        self.assertTrue(any(document in n and 'new-document' in n for n in notes), notes)
+
+    def test_ordinary_verbs_and_quoted_retired_names_are_not_lifecycle_claims(self):
+        for description in [
+            'Could not tell drafting a document from repairing a review.',
+            'The checker wrongly reports the quoted words `drafting` and `repairing`.',
+            'Historical lifecycle: open -> drafting -> repairing -> closed.',
+        ]:
+            with self.subTest(description=description), \
+                 mock.patch.object(MODULE, 'changed_paths', return_value=['unrelated']), \
+                 mock.patch.object(MODULE, 'bd_json', return_value=[{'id': 'bug', 'description': description}]):
+                notes = MODULE.findings(self.root, 123.0)
+            self.assertFalse(any('retired status' in n for n in notes), notes)
+
+    def test_document_gate_requires_current_latest_round_blob(self):
+        import hashlib
+        doc = self.root / 'docs/topics/example/ux/view.md'
+        review = self.root / 'docs/topics/example/reviews/ux-view.md'
+        doc.parent.mkdir(parents=True)
+        review.parent.mkdir()
+        original = b'original reviewed document\n'
+        doc.write_bytes(original)
+        blob = hashlib.sha1(b'blob ' + str(len(original)).encode() + b'\0' + original).hexdigest()
+        def query(args, deadline):
+            if args == ['list', '--status', 'in_review']:
+                return [{'id': 'doc-task', 'title': '文档：example / ux/view.md'}]
+            return []
+        scenarios = [
+            (original, f'文档 blob `{blob}`', True),
+            (b'reworked after PASS\n', f'文档 blob `{blob}`', False),
+            (original, '', False),
+            (original, f'文档 blob `{blob[:8]}`', False),
+        ]
+        for content, identity, expect in scenarios:
+            doc.write_bytes(content)
+            review.write_text(f'## Round 1\n文档 blob `{blob}`\nVerdict: PASS\nCompletion gate: VERIFIED\n'
+                              f'## Round 2\n{identity}\nVerdict: PASS\nCompletion gate: VERIFIED\n')
+            with self.subTest(identity=identity, content=content), \
+                 mock.patch.object(MODULE, 'changed_paths', return_value=[str(review.relative_to(self.root)), str(doc.relative_to(self.root))]), \
+                 mock.patch.object(MODULE, 'bd_json', side_effect=query):
+                notes = MODULE.findings(self.root, 123.0)
+            self.assertEqual(any('awaiting_commit' in n for n in notes), expect, notes)
+
+    def test_nul_status_keeps_rename_destination_and_newline_filename(self):
+        output = 'R  docs/topics/a/new -> name.md\0docs/topics/a/old.md\0?? docs/topics/a/line\nbreak.md\0'
+        with mock.patch.object(MODULE.subprocess, 'run', return_value=mock.Mock(returncode=0, stdout=output)):
+            paths = MODULE.changed_paths(self.root, MODULE.time.monotonic() + 5)
+        self.assertEqual(paths, ['docs/topics/a/new -> name.md', 'docs/topics/a/line\nbreak.md'])
+
+    def test_current_lifecycle_declarations_still_report_both_arrow_forms(self):
+        for text in ['Lifecycle: open -> drafting -> in_review -> repairing -> closed.',
+                     '生命周期：open → drafting → repairing → closed。']:
+            self.assertEqual(MODULE.retired_lifecycle_terms(text), ['drafting', 'repairing'])
+
+    def test_quoted_fenced_and_negated_lifecycles_remain_nonblocking(self):
+        for text in ["'Old contract. Lifecycle: open -> drafting -> closed.'",
+                     '"Old contract. Lifecycle: open -> drafting -> closed. End quote."',
+                     '`Old contract. Lifecycle: open -> drafting -> closed.`',
+                     'Report: "Old contract. Lifecycle: open -> drafting -> closed."',
+                     '```text\nLifecycle: open -> drafting -> closed\n```',
+                     '~~~text\n生命周期：open → repairing → closed\n~~~',
+                     '"Lifecycle: open -> drafting -> closed."',
+                     '> Lifecycle: open -> drafting -> closed.',
+                     'Do not use lifecycle: open -> drafting -> closed.',
+                     'Historical lifecycle: open -> drafting -> closed.']:
+            with self.subTest(text=text):
+                self.assertEqual(MODULE.retired_lifecycle_terms(text), [])
+
+    def test_unrelated_qualification_does_not_hide_lifecycle_declaration(self):
+        for text in ['Lifecycle: open -> drafting -> closed. Do not skip review.',
+                     'Author requirements.md. Lifecycle: open -> drafting -> closed.',
+                     'This repairs an obsolete checker. Lifecycle: open -> drafting -> closed.']:
+            with self.subTest(text=text):
+                self.assertEqual(MODULE.retired_lifecycle_terms(text), ['drafting'])
+
 
 if __name__ == "__main__":
     unittest.main()

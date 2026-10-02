@@ -36,7 +36,7 @@ owns its tint. Active prototype references use the supplied transparent symbol.
 Historical prototypes and the original robot artwork remain unchanged.
 
 Small-size limitation: the D cuts weaken at 16px. Static previews and technical
-decode checks do not establish native display acceptance. See the [icon review record](../topics/ad-shared-stroke-icon/reviews/ad-shared-stroke-icon.md)
+decode checks do not establish native display acceptance. See the [icon review record](../archive/topics/ad-shared-stroke-icon/reviews/ad-shared-stroke-icon.md)
 for the checks actually performed.
 
 ### Rights boundary

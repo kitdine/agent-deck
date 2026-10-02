@@ -364,7 +364,7 @@ def changed_paths(root: Path, deadline: float) -> list[str]:
         return []
     try:
         out = subprocess.run(
-            ["git", "-C", str(root), "status", "--porcelain"],
+            ["git", "-C", str(root), "status", "--porcelain=v1", "-z", "--untracked-files=all"],
             capture_output=True,
             text=True,
             timeout=timeout,
@@ -374,14 +374,19 @@ def changed_paths(root: Path, deadline: float) -> list[str]:
     if out.returncode != 0:
         return []
     paths: list[str] = []
-    for line in out.stdout.splitlines():
-        if len(line) > 3:
-            # Rename entries are "old -> new"; the destination is what changed.
-            paths.append(line[3:].split(" -> ")[-1].strip())
+    entries = iter(out.stdout.split("\0"))
+    for entry in entries:
+        if len(entry) < 4:
+            continue
+        # Porcelain -z gives literal destination paths; a rename/copy's next
+        # NUL field is its source, not another changed destination.
+        paths.append(entry[3:])
+        if "R" in entry[:2] or "C" in entry[:2]:
+            next(entries, None)
     return paths
 
 
-def latest_review_state(path: Path) -> tuple[str | None, str | None]:
+def latest_review_section(path: Path) -> str:
     """Return the latest round's verdict and completion gate.
 
     Read the whole latest round, including nested Skill report headings and
@@ -390,7 +395,7 @@ def latest_review_state(path: Path) -> tuple[str | None, str | None]:
     try:
         text = path.read_text(encoding="utf-8", errors="replace")
     except OSError:
-        return None, None
+        return ""
     # Fenced examples are not declarations of the current review state.
     visible: list[str] = []
     fence = ""
@@ -409,12 +414,79 @@ def latest_review_state(path: Path) -> tuple[str | None, str | None]:
     rounds = list(REVIEW_ROUND.finditer(text))
     if not rounds:
         rounds = list(re.finditer(r"^##\s+📋", text, re.MULTILINE))
-    section = text[rounds[-1].start():] if rounds else text
+    return text[rounds[-1].start():] if rounds else text
+
+
+def latest_review_state(path: Path) -> tuple[str | None, str | None]:
+    section = latest_review_section(path)
     verdicts = {value.upper() for value in VERDICT.findall(section)}
     gates = {value.upper() for value in COMPLETION_GATE.findall(section)}
     if len(verdicts) != 1 or len(gates) > 1:
         return None, None
     return next(iter(verdicts)), next(iter(gates)) if gates else None
+
+
+def current_document_review(root: Path, document: str, review: str) -> bool:
+    """Only interpret document gates whose latest round names its exact blob.
+
+    Historical free-form fingerprints and truncated hashes are not proof of
+    the current subject. This diagnostic never evaluates CEv1 itself.
+    """
+    section = latest_review_section(root / review)
+    blobs = set(re.findall(
+        r"(?:文档|document)\s+blob\s*[:：=]?\s*([0-9a-f]{40}|[0-9a-f]{64})\b",
+        section, re.IGNORECASE,
+    ))
+    if len(blobs) != 1:
+        return False
+    try:
+        data = (root / document).read_bytes()
+    except OSError:
+        return False
+    expected = next(iter(blobs)).lower()
+    payload = b"blob " + str(len(data)).encode("ascii") + b"\0" + data
+    digest = hashlib.sha1(payload) if len(expected) == 40 else hashlib.sha256(payload)
+    return digest.hexdigest() == expected
+
+
+def retired_lifecycle_terms(description: str) -> list[str]:
+    """Recognize affirmative lifecycle declarations, not mentions of words."""
+    hits: set[str] = set()
+    fence = ""
+    for line in description.splitlines():
+        marker = re.match(r"^ {0,3}(`{3,}|~{3,})(.*)$", line)
+        if marker:
+            run, tail = marker.groups()
+            if not fence:
+                fence = run
+            elif run[0] == fence[0] and len(run) >= len(fence) and not tail.strip():
+                fence = ""
+            continue
+        if fence or line.lstrip().startswith(">"):
+            continue
+        # Mask quoted prose before splitting sentences. Keep individually
+        # backticked state tokens, which are common in genuine declarations.
+        states = LIVE_STATUSES | RETIRED_STATUS_NAMES | {"closed"}
+        line = re.sub(
+            r"""(`+)(.*?)\1|"[^"\n]*"|'[^'\n]*'|“[^”\n]*”|‘[^’\n]*’""",
+            lambda match: match.group(2) if match.group(1) and match.group(2) in states else " ",
+            line,
+        )
+        for clause in re.split(r"[.;。；]", line):
+            # Require a declaration at the start of its clause. Quoted,
+            # negated, historical and explanatory mentions are not commands.
+            declaration = re.match(
+                r"^\s*(?:[-*]\s+)?(?:lifecycle|状态流转|生命周期)\s*[:：]\s*(.+)$",
+                clause, re.I,
+            )
+            if not declaration:
+                continue
+            tokens = [part.strip().strip("`* ") for part in re.split(r"->|→|⇒", declaration.group(1))]
+            if len(tokens) < 2 or any(token not in LIVE_STATUSES | RETIRED_STATUS_NAMES | {"closed"} for token in tokens):
+                continue
+            hits.update(RETIRED_STATUS_NAMES.intersection(tokens))
+
+    return sorted(hits)
 
 
 def latest_verdict(path: Path) -> str | None:
@@ -703,6 +775,7 @@ def findings(root: Path, deadline: float, scope: dict[str, str] | None = None) -
         # Keyed by the record each task is reviewed under, so a verdict reaches
         # exactly the one task whose subject it is.
         by_record: dict[tuple[str, str], set[tuple[str, str]]] = {}
+        documents: dict[tuple[str, str], str] = {}
         reviewed = {review_subject(path) for path in touched_reviews}
         for status, beads in by_status.items():
             for bead in beads:
@@ -712,6 +785,7 @@ def findings(root: Path, deadline: float, scope: dict[str, str] | None = None) -
                 subject = doc_subject_of(bead)
                 if subject:
                     topic, document = subject
+                    documents[(topic, record_stem(document))] = f"docs/topics/{topic}/{document}"
                     by_record.setdefault((topic, record_stem(document)), set()).add(identity)
                     continue
                 anchor = anchor_of(bead)
@@ -731,6 +805,12 @@ def findings(root: Path, deadline: float, scope: dict[str, str] | None = None) -
             if len(candidates) != 1:
                 continue
             task_id, status = next(iter(candidates))
+            document = documents.get((topic, stem))
+            if document and (
+                not current_document_review(root, document, rel)
+                or any(path.startswith("prototype/") for path in all_changed)
+            ):
+                continue
             if gate in {"VERIFIED", "NOT_REQUIRED"} and status == "in_review":
                 notes.append(
                     f"{rel} records Verdict: PASS, but its subject's task "
@@ -860,13 +940,12 @@ def findings(root: Path, deadline: float, scope: dict[str, str] | None = None) -
     #    the contract: `.agent-instructions/beads.md` replaced them, and every
     #    copy already stamped into a description stayed behind, unreferenced by
     #    anything that would notice. Closed tasks are history and are left alone.
-    stale_terms = tuple(sorted(RETIRED_STATUS_NAMES))
     live = (bd_json(["list", "--status", ",".join(sorted(LIVE_STATUSES))], deadline) or []) if scope is None else []
     for bead in live:
         if not isinstance(bead, dict):
             continue
         description = str(bead.get("description") or "")
-        hits = [term for term in stale_terms if re.search(rf"\b{term}\b", description)]
+        hits = retired_lifecycle_terms(description)
         if not hits:
             continue
         notes.append(
