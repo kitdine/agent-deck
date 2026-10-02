@@ -7400,6 +7400,7 @@
           "client": "codex",
           "session_id": "codex-contract",
           "project": "13",
+          "model": "gpt-5.6",
           "first_at": "2026-08-13T08:00:00Z",
           "last_at": "2026-08-13T08:00:05Z"
         },

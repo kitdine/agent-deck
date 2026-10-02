@@ -1762,6 +1762,15 @@ Session scanning reads Codex and Claude source logs read-only and stores only:
 - final user-visible assistant replies;
 - normalized searchable text and FTS5 snippets.
 
+Codex session identity accepts canonical `session_meta.payload.id` before legacy
+`payload.session_id`, top-level `session_id`, and `sessionId`. Other payload IDs
+are not session IDs. Established session identity applies before extracting
+ID-less messages. A real `cwd` takes precedence over a `project` fallback; the
+source directory is used only when neither exists. Source cursors retain the
+parser's identity and metadata provenance so append and full scans agree. The
+parser-version upgrade reparses old source projections transactionally on the
+next scan without modifying logs, usage data, or user exclusions.
+
 It must not index system prompts, developer-only instructions, hidden
 reasoning, tool arguments, tool results, credentials, authentication fields,
 attachments, images, binaries, or shell environment data.
