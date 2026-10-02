@@ -285,7 +285,7 @@ def report_fingerprint(root: Path, scope: dict[str, str], notes: list[str]) -> s
         files.update(path.rglob("*.md") if rel.endswith("/") else [path])
     digest = hashlib.sha256(json.dumps(notes).encode())
     for path in sorted(files):
-        digest.update(str(path.relative_to(root)).encode())
+        digest.update(os.fsencode(path.relative_to(root)))
         try:
             digest.update(path.read_bytes())
         except OSError:
@@ -367,6 +367,8 @@ def changed_paths(root: Path, deadline: float) -> list[str]:
             ["git", "-C", str(root), "status", "--porcelain=v1", "-z", "--untracked-files=all"],
             capture_output=True,
             text=True,
+            encoding=sys.getfilesystemencoding(),
+            errors="surrogateescape",
             timeout=timeout,
         )
     except (OSError, subprocess.SubprocessError):
@@ -426,18 +428,34 @@ def latest_review_state(path: Path) -> tuple[str | None, str | None]:
     return next(iter(verdicts)), next(iter(gates)) if gates else None
 
 
-def current_document_review(root: Path, document: str, review: str) -> bool:
+def current_document_review(root: Path, document: str, review: str, changed: list[str]) -> bool:
     """Only interpret document gates whose latest round names its exact blob.
 
     Historical free-form fingerprints and truncated hashes are not proof of
     the current subject. This diagnostic never evaluates CEv1 itself.
     """
     section = latest_review_section(root / review)
+    relative = "/".join(Path(document).parts[3:])
     blobs = set(re.findall(
-        r"(?:文档|document)\s+blob\s*[:：=]?\s*([0-9a-f]{40}|[0-9a-f]{64})\b",
+        rf"(?<![\w/.-])(?:文档|document|{re.escape(document)}|{re.escape(relative)})\s+blob\s*[:：=]?\s*([0-9a-f]{{40}}|[0-9a-f]{{64}})\b",
         section, re.IGNORECASE,
     ))
     if len(blobs) != 1:
+        return False
+    # Only a specimen identity bound by this round can invalidate its gate.
+    # A document-only review is independent of unrelated prototype work.
+    specimen_paths = set()
+    for line in section.splitlines():
+        if re.search(r"sha-?256|digest|指纹|摘要|manifest|prototype=", line, re.I):
+            paths = re.findall(r"prototype/.*?(?=\s+(?:sha-?256|digest|指纹|摘要|manifest)\b)", line, re.I)
+            if paths:
+                specimen_paths.update(path.strip() for path in paths)
+            else:
+                specimen_paths.update(re.findall(r"prototype/[A-Za-z0-9_./-]*", line))
+            if "prototype=" in line or re.search(r"\bprototype\s+(?:manifest|指纹|摘要)", line, re.I):
+                specimen_paths.add("prototype/")
+    if any(path == bound or (bound.endswith("/") and path.startswith(bound))
+           for bound in specimen_paths for path in changed):
         return False
     try:
         data = (root / document).read_bytes()
@@ -477,7 +495,7 @@ def retired_lifecycle_terms(description: str) -> list[str]:
             # negated, historical and explanatory mentions are not commands.
             declaration = re.match(
                 r"^\s*(?:[-*]\s+)?(?:lifecycle|状态流转|生命周期)\s*[:：]\s*(.+)$",
-                clause, re.I,
+                clause.replace("**", "").replace("__", ""), re.I,
             )
             if not declaration:
                 continue
@@ -806,10 +824,7 @@ def findings(root: Path, deadline: float, scope: dict[str, str] | None = None) -
                 continue
             task_id, status = next(iter(candidates))
             document = documents.get((topic, stem))
-            if document and (
-                not current_document_review(root, document, rel)
-                or any(path.startswith("prototype/") for path in all_changed)
-            ):
+            if document and not current_document_review(root, document, rel, all_changed):
                 continue
             if gate in {"VERIFIED", "NOT_REQUIRED"} and status == "in_review":
                 notes.append(

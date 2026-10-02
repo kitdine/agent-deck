@@ -1048,6 +1048,88 @@ class HookBatchRegressionTest(unittest.TestCase):
             with self.subTest(text=text):
                 self.assertEqual(MODULE.retired_lifecycle_terms(text), ['drafting'])
 
+    def test_invalid_filename_bytes_do_not_crash_status_reader(self):
+        import os, subprocess
+        run = subprocess.run
+        def raw_git_output(args, **kwargs):
+            # APFS rejects non-UTF8 filenames. Emit the same raw porcelain
+            # bytes from an isolated child to exercise real subprocess decode.
+            return run([sys.executable, '-c',
+                        "import sys; sys.stdout.buffer.write(b'?? bad-\\xff.md\\x00')"], **kwargs)
+        with mock.patch.object(MODULE.subprocess, 'run', side_effect=raw_git_output):
+            self.assertIn(os.fsdecode(b'bad-\xff.md'), MODULE.changed_paths(self.root, MODULE.time.monotonic() + 5))
+
+    def test_emphasized_lifecycle_labels_are_still_declarations(self):
+        for text in ['- **Lifecycle:** open -> drafting -> closed',
+                     '__生命周期__：open → repairing → closed']:
+            with self.subTest(text=text):
+                self.assertTrue(MODULE.retired_lifecycle_terms(text))
+
+    def test_path_qualified_document_identity_and_unrelated_prototype_edit(self):
+        import hashlib
+        document = 'docs/topics/example/requirements.md'
+        review = 'docs/topics/example/reviews/requirements.md'
+        path = self.root / document
+        path.parent.mkdir(parents=True)
+        path.write_bytes(b'doc\n')
+        record = self.root / review
+        record.parent.mkdir()
+        blob = hashlib.sha1(b'blob 4\0doc\n').hexdigest()
+        def query(args, deadline):
+            return [{'id': 'doc-task', 'title': '文档：example / requirements.md'}] if args == ['list', '--status', 'in_review'] else []
+        for label in [f'`{document}` blob `{blob}`', f'文档 blob `{blob}`']:
+            record.write_text(f'## Round 1\nReviewed state: {label}\nVerdict: PASS\nCompletion gate: VERIFIED\n')
+            with self.subTest(label=label), \
+                 mock.patch.object(MODULE, 'changed_paths', return_value=[review, 'prototype/unrelated.txt']), \
+                 mock.patch.object(MODULE, 'bd_json', side_effect=query):
+                notes = MODULE.findings(self.root, 123.0)
+            self.assertTrue(any('awaiting_commit' in note for note in notes), notes)
+
+    def test_only_bound_specimen_paths_invalidate_document_review(self):
+        import hashlib
+        document = 'docs/topics/example/requirements.md'
+        review = 'docs/topics/example/reviews/requirements.md'
+        path = self.root / document
+        path.parent.mkdir(parents=True)
+        path.write_bytes(b'doc\n')
+        record = self.root / review
+        record.parent.mkdir()
+        blob = hashlib.sha1(b'blob 4\0doc\n').hexdigest()
+        for identity, changed, expected in [
+            ('', ['prototype/unrelated.txt'], True),
+            ('prototype manifest SHA-256 abc', ['prototype/src/view.js'], False),
+            ('prototype/my view.js SHA-256 abc', ['prototype/my view.js'], False),
+            ('prototype/src/view.js SHA256 abc', ['prototype/unrelated.txt'], True),
+            ('prototype/src/view.js SHA256 abc', ['prototype/src/view.js'], False),
+            ('prototype=abc', ['prototype/src/view.js'], False),
+        ]:
+            record.write_text(f'## Round 1\n文档 blob {blob}\n{identity}\nVerdict: PASS\nCompletion gate: VERIFIED\n')
+            with self.subTest(identity=identity, changed=changed):
+                self.assertEqual(MODULE.current_document_review(self.root, document, review, changed), expected)
+
+    def test_document_blob_labels_are_bounded_and_accept_topic_relative_paths(self):
+        import hashlib
+        document = 'docs/topics/example/ux/view.md'
+        review = 'docs/topics/example/reviews/ux-view.md'
+        path = self.root / document
+        path.parent.mkdir(parents=True)
+        path.write_bytes(b'doc\n')
+        record = self.root / review
+        record.parent.mkdir()
+        blob = hashlib.sha1(b'blob 4\0doc\n').hexdigest()
+        for label, expected in [('other/' + document, False), ('ux/view.md', True),
+                                (document, True), ('view.md', False)]:
+            record.write_text(f'## Round 1\n{label} blob {blob}\n')
+            with self.subTest(label=label):
+                self.assertEqual(MODULE.current_document_review(self.root, document, review, []), expected)
+
+    def test_scoped_fingerprint_preserves_decoded_filename_bytes(self):
+        import os
+        scope = {'topic': 'example', 'subject': 'ux/' + os.fsdecode(b'bad-\xff.md')}
+        first = MODULE.report_fingerprint(self.root, scope, ['fixture'])
+        self.assertEqual(len(first), 64)
+        self.assertEqual(first, MODULE.report_fingerprint(self.root, scope, ['fixture']))
+
 
 if __name__ == "__main__":
     unittest.main()
