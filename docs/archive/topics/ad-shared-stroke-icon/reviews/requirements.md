@@ -1,7 +1,8 @@
 ---
-status: active
+status: historical
+retired: 2026-10-02
 topic: ad-shared-stroke-icon
-subject: tasks.md
+subject: requirements.md
 ---
 
 ## Round 1 — 2026-10-02
@@ -29,7 +30,7 @@ subject: tasks.md
 
 Reviewer: Codex 主代理；Method: 冷上下文独立只读 `icon_plan_review` 报告，
 主代理直接核验源码、ZIP、文档和 `check-topic-docs.sh`。Scope: 本文及资源映射。
-HEAD `26662ba018444eb7758aba995fa678d47da5aa77`；当前文档 blob `fd2032def408c2741730eb856c4d1f9b2b81fa0b`。
+HEAD `26662ba018444eb7758aba995fa678d47da5aa77`；当前文档 blob `4e9be439e84ef0741a404e1cc35cee528bb2ac51`。
 初始独立报告确认10个AppIcon、2个模板、2个runtime副本及18pt/徽标/About加载。
 后续当前prototype三个引用使用同一包的透明符号，历史prototype保留。
 用户明确延后真实菜单栏验收，已在 requirements.md 原话留痕；不改变代码设计。

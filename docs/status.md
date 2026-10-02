@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-08-25
-updated: 2026-09-28
+updated: 2026-10-02
 ---
 
 # AgentDeck Project Status
@@ -13,6 +13,13 @@ membership is decided by the applicable `vX-Y-Z-contract` topic; the Version
 column below is its current execution-status projection. Later version direction
 is recorded in `roadmap.md`.
 ## Current State
+
+- Patch-line integration: the approved [AD shared-stroke icon](archive/topics/ad-shared-stroke-icon/tasks.md)
+  was delivered by [PR #30](https://github.com/kitdine/agent-deck/pull/30) to
+  `release/v0.6.x` at `b864ce41b8d6ce22c475fbc42db6c5cad6b19f6b` and its
+  topic is retired after exact-merge evidence finalization. Native menu-bar
+  visual acceptance remains user-deferred and unverified. This is a patch-line
+  integration record, not a new release or aggregate v0.6.5 completion.
 
 - Repository Hook maintenance: [Beads Stop session scope](archive/fixes/beads-stop-session-scope.md#review--round-2--2026-09-07)
   was delivered in signed commit `2d53d8e` after independent re-review and real-client

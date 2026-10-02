@@ -1,5 +1,6 @@
 ---
-status: active
+status: historical
+retired: 2026-10-02
 topic: ad-shared-stroke-icon
 subject: ad-shared-stroke-icon
 ---

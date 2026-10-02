@@ -1,5 +1,6 @@
 ---
-status: active
+status: historical
+retired: 2026-10-02
 created: 2026-10-02
 ---
 
@@ -48,3 +49,19 @@ PR远端Review/CI/merge及实际merge evidence由issue29与Beads
 父任务已确认：本PR保留active topic完成交付；merge后将本topic整体归档
 作为后续已授权集成文档事项交接。不得提前归档、直推release或另开第二PR。
 未归档不代表菜单栏实测通过，也不允许跳过本PR剩余交付门禁。
+
+## Delivered boundary — 2026-10-02
+
+PR [#30](https://github.com/kitdine/agent-deck/pull/30) merged into
+`release/v0.6.x` as `b864ce41b8d6ce22c475fbc42db6c5cad6b19f6b`.
+Parents: `26662ba018444eb7758aba995fa678d47da5aa77` and
+`1325fea7c2ef62191a5f1e715de233e1329b7438`; result tree
+`14c97b27b62e0c743720b74402087680a072496b` equals the reviewed source.
+GitHub issue #29 and Beads `ad-shared-stroke-icon` are closed.
+The exact-merge ContentState `ad-shared-stroke-icon:commit:b864ce41b8d6ce22c475fbc42db6c5cad6b19f6b`
+was re-queried through Neo4j MCP: Task 4/4, documents 1/1 each, Topic 1/1,
+integration 3/3 VERIFIED, with no missing criteria or unresolved impacts.
+The slot-release handoff is `dcb5a767-a3df-5f2f-b572-152a207e0111`.
+This whole-topic retirement follows that completed boundary and preserves all
+review rounds. Native system-menu-bar visual acceptance remains explicitly
+user-deferred and unverified. This does not complete or release v0.6.5.

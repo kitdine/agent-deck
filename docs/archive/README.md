@@ -5,7 +5,14 @@ created: 2026-07-22
 
 # Archived Documents
 
-Last updated: 2026-09-07
+Last updated: 2026-10-02
+
+## 2026-10-02 retirement: approved AD shared-stroke icon
+
+[AD shared-stroke icon](topics/ad-shared-stroke-icon/tasks.md) preserves the
+approved asset provenance, complete review history and PR #30 delivery at
+`b864ce41`. All required exact-merge gates passed before retirement. Native
+system-menu-bar visual acceptance remains user-deferred and unverified.
 
 ## 2026-09-07 closeout: workflow-instruction optimization
 
