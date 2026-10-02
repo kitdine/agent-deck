@@ -393,6 +393,18 @@ func Restore(ctx context.Context, archivePath, targetRoot, passphrase string, ma
 		_ = database.Close()
 		return Manifest{}, err
 	}
+	// Quota observations and notification history belong to the source
+	// machine's login, not to its portable provider/settings configuration.
+	// The target may use another account, and a failed probe must never leave
+	// the source account's last-known figures visible there. Clear both clients,
+	// including Claude whose observations have no account identifier. Any error
+	// follows Restore's existing rollback of the newly created target files.
+	for _, table := range []string{"quota_windows", "quota_envelopes", "quota_alert_notices"} {
+		if _, err = database.DB.ExecContext(ctx, "DELETE FROM "+table); err != nil {
+			_ = database.Close()
+			return Manifest{}, err
+		}
+	}
 	// Codex PR #5 twelfth review, P2: quota.statusline asserts a capture
 	// route this restore never installs -- ~/.claude/settings.json and the
 	// prior-command sidecar are both machine-local and neither is carried by
