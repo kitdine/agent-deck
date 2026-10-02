@@ -1,6 +1,7 @@
 ---
-status: active
+status: historical
 created: 2026-10-02
+retired: 2026-10-02
 ---
 
 # 缺陷：reading-off 撤下路由后设置保存失败未恢复
@@ -130,3 +131,5 @@ Task checkpoint：`fix:quota-reading-off-route-not-restored-on-save-failure`，�
 | `/tmp/agentdeck-quota-route-final-vet.log` | pass | `205919bcb16cbc1b00590db5da121019b7d46ed23bf1de2fa52a2cdb071417f8` |
 | `/tmp/agentdeck-quota-route-final-build.log` | pass | `e23d869f1476686a39d05474392101daa7e8b560a834e4c6d573786a6d27103c` |
 | `/tmp/agentdeck-quota-route-final-whitespace.log` | pass | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
+
+交付记录：实现 commit `95e83fdc1a84b3049811d1404757f9d5fb918de5` 已 SSH 签名，实际 tree `b72617652f3ba87b22ce19165719055fbe883d70` 等于 verified staged tree，消息/body/Codex trailer/五文件 scope 均核验。对应 immutable commit task gate VERIFIED4/4。按 Fix records 在授权提交与 required evidence finalization 后归档，保留全部两个 Review Round。此归档不关闭 Bug；远端 current-head review、CI、实际 merge 与 slot release 仍在同一 session 内完成，最终交付证据由同 Bug Beads 交接和 CEv1 per-Bug integration boundary 保存，不传播 main。
