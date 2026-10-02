@@ -427,3 +427,59 @@ Method/Scope: 最终代码/测试，83tests、snapshot-performance真实两份re
 Hook SHA256 `b4422982101b34571fb57e274f970a3f4a62c10df2e92e47ddfa2c27d4509318`；tests SHA256 `46e563e8c3af1949d7e1b76aebfd411eee8f838d989a48ed49be0401c50dfb4c`。
 Reviewed HEAD `acb02cd40d6fd278b9f56389a123f065b3b779de` plus scoped five-file candidate。
 Completion gate: VERIFIED 3/3 at candidate `97cafcf8a817ca81512634b3a711e5c5231d591dce34d81e0ceef44ea7a895a8` through Neo4j MCP; historical source failures retained. Signed source needs target-bound reuse assessment.
+
+## Review — Round 13
+
+## 📋 内容身份完整性远端复评
+
+📊 综合评分：7/10
+
+✅ Verdict: FAIL
+
+### 🔴 严重问题 — 必须修复
+
+- GH31-F10（P2）：仅看git status无法发现已提交的specimen/source变化。必须逐项验证manifest的SHA256。
+- GH31-F11（P2）：整句加粗/斜体生命周期声明漏报。
+
+### 🟡 改进建议
+
+无。
+
+### 🟢 优点
+
+本轮发现改变了前轮证据的解释；保留历史，不将旧probe结果继续作为通过依据。
+
+### 📝 总结
+
+Reviewer: GitHub Codex5390551074，HEAD `8431acd4d75e2df4588a4989e3ca443e076e3b6c`。
+重要纠正：前轮snapshot-performance unchanged/current=true只验证了解析兼容性，不能证明内容当前；其manifest14/28项实际已变。该正向结论已被本轮否定，正确结果应false。
+Main隔离RED4（github-round13-red.log），修复为files与legacy两schema逐项读文件校验完整SHA256；整句/标签/状态平衡强调在quote masking后归一化。
+83tests与L0通过，待冷独立复评。Completion gate: FAILED for affected prior source。
+
+## Review — Round 14
+
+## 📋 完整manifest身份与声明复评
+
+📊 综合评分：9/10
+
+✅ Verdict: PASS
+
+### 🔴 严重问题 — 必须修复
+
+无。GH31-F10/F11 CLOSED；此前HB1/GH31发现继续关闭。
+
+### 🟡 改进建议
+
+无。
+
+### 🟢 优点
+
+校验当前文件字节而非仅依赖dirty列表，旧已提交内容变化不能复用原样稿门禁。
+
+### 📝 总结
+
+Reviewer: 冷独立 `hook_batch_review`；main直接核对测试、文件hash、实际过期snapshot两个文档均false。
+Method/Scope: 最终Hook/tests；83tests、12项两schema内容/缺失/错误hash/越界probe、84项声明/引用probe PASS；L0通过。
+Hook SHA256 `443e807bab11c3bfadb55bfa5283ee58d4c80cd630369db7662218b4027e847a`；tests SHA256 `1d3df1ee45f226fe14d12081baa40ae35110abf163c7f70e99b313046746ee5b`。
+Reviewed HEAD `8431acd4d75e2df4588a4989e3ca443e076e3b6c` plus scoped candidate。
+Completion gate: VERIFIED 3/3 at candidate `6e9f94987f01773f0dfef9577c1c3c0db18c3d65e1543febe1eab152a3199b99` through Neo4j MCP. Superseded positive snapshot probes are not reused.

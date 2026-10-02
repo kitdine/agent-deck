@@ -1066,7 +1066,9 @@ class HookBatchRegressionTest(unittest.TestCase):
                      '_生命周期_：open → repairing → closed',
                      '+ Lifecycle: open -> drafting -> closed',
                      '1. Lifecycle: open -> drafting -> closed',
-                     '***Lifecycle:*** open -> drafting -> closed']:
+                     '***Lifecycle:*** open -> drafting -> closed',
+                     '- **Lifecycle: open -> drafting -> closed**',
+                     '_生命周期：open → repairing → closed_']:
             with self.subTest(text=text):
                 self.assertTrue(MODULE.retired_lifecycle_terms(text))
 
@@ -1143,7 +1145,12 @@ class HookBatchRegressionTest(unittest.TestCase):
         record.parent.mkdir()
         mp = self.root / manifest
         mp.parent.mkdir(parents=True)
-        mp.write_text(json.dumps({'files': [{'path': specimen}, {'path': source}]}))
+        for entry in [specimen, source]:
+            target = self.root / entry
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(b'bound')
+        entry_hash = hashlib.sha256(b'bound').hexdigest()
+        mp.write_text(json.dumps({'files': [{'path': specimen, 'sha256': entry_hash}, {'path': source, 'sha256': entry_hash}]}))
         blob = hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest()
         digest = hashlib.sha256(mp.read_bytes()).hexdigest()
         record.write_text(f'## Round 1\n{document} blob {blob}\nprototype manifest SHA-256 {digest}\n')
@@ -1152,6 +1159,10 @@ class HookBatchRegressionTest(unittest.TestCase):
                                   (['docs/topics/other/ux/prototype/view.png'], True)]:
             with self.subTest(changed=changed):
                 self.assertEqual(MODULE.current_document_review(self.root, document, review, changed), expected)
+        for entry in [specimen, source]:
+            (self.root / entry).write_bytes(b'committed change')
+            self.assertFalse(MODULE.current_document_review(self.root, document, review, []))
+            (self.root / entry).write_bytes(b'bound')
         mp.write_text('{}')
         self.assertFalse(MODULE.current_document_review(self.root, document, review, []))
 
@@ -1165,8 +1176,14 @@ class HookBatchRegressionTest(unittest.TestCase):
         path.write_bytes(b'[manifest](prototype/view/manifest.json)\n')
         mp = self.root / manifest
         mp.parent.mkdir(parents=True)
-        mp.write_text(json.dumps({'source': {'prototype/src/view.js': 'digest', 'checks.json': 'digest'},
-                                  'specimens': [{'file': 'screen.png', 'sha256': 'digest'}]}))
+        entry_hash = hashlib.sha256(b'bound').hexdigest()
+        bound = ['prototype/src/view.js', str(Path(manifest).parent / 'checks.json'), str(Path(manifest).parent / 'screen.png')]
+        for entry in bound:
+            target = self.root / entry
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(b'bound')
+        mp.write_text(json.dumps({'source': {'prototype/src/view.js': entry_hash, 'checks.json': entry_hash},
+                                  'specimens': [{'file': 'screen.png', 'sha256': entry_hash}]}))
         record = self.root / review
         record.parent.mkdir()
         data = path.read_bytes()
@@ -1180,6 +1197,11 @@ class HookBatchRegressionTest(unittest.TestCase):
                                       (['prototype/unrelated.js'], True)]:
                 with self.subTest(label=label, changed=changed):
                     self.assertEqual(MODULE.current_document_review(self.root, document, review, changed), expected)
+
+        for entry in bound:
+            (self.root / entry).write_bytes(b'committed change')
+            self.assertFalse(MODULE.current_document_review(self.root, document, review, []))
+            (self.root / entry).write_bytes(b'bound')
 
         for malformed in [{'source': {}, 'specimens': [{'file': ''}]},
                           {'source': {'': 'hash'}, 'specimens': []}]:

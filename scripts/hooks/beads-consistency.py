@@ -482,24 +482,29 @@ def current_document_review(root: Path, document: str, review: str, changed: lis
                 entries = payload["files"]
                 if not isinstance(entries, list):
                     return False
-                paths = [entry["path"] for entry in entries]
+                bindings = [(entry["path"], entry["sha256"]) for entry in entries]
             else:
                 sources, specimens = payload["source"], payload["specimens"]
                 if not isinstance(sources, dict) or not isinstance(specimens, list):
                     return False
-                paths = list(sources) + [entry["file"] for entry in specimens]
-                if any(not isinstance(path, str) or not path.strip() for path in paths):
+                bindings = list(sources.items()) + [(entry["file"], entry["sha256"]) for entry in specimens]
+                if any(not isinstance(path, str) or not path.strip() for path, _ in bindings):
                     return False
                 # Legacy manifests mix repository source paths with local
                 # checks/specimen names, relative to their own directory.
-                paths = [path if path.startswith(("prototype/", "docs/")) else
-                         (manifest.parent.relative_to(root.resolve()) / path).as_posix()
-                         for path in paths]
-            if not paths:
+                bindings = [(path if path.startswith(("prototype/", "docs/")) else
+                             (manifest.parent.relative_to(root.resolve()) / path).as_posix(), digest)
+                            for path, digest in bindings]
+            if not bindings:
                 return False
             specimen_paths.add(manifest.relative_to(root.resolve()).as_posix())
-            for path in paths:
+            for path, digest in bindings:
                 if not isinstance(path, str) or not path or Path(path).is_absolute() or ".." in Path(path).parts:
+                    return False
+                target = (root / path).resolve()
+                if not target.is_relative_to(root.resolve()) or not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest, re.I):
+                    return False
+                if hashlib.sha256(target.read_bytes()).hexdigest() != digest.lower():
                     return False
                 specimen_paths.add(path)
         except (OSError, ValueError, KeyError, TypeError):
@@ -542,6 +547,14 @@ def retired_lifecycle_terms(description: str) -> list[str]:
             line,
         )
         line = re.sub(r"^\s*(?:[-+*]|[0-9]+[.)])\s+", "", line)
+        # Remove balanced Markdown emphasis after quote masking, including
+        # a whole declaration or individual label/state spans.
+        emphasis = r"(?<!\w)(\*{1,3}|_{1,3})(\S(?:.*?\S)?)\1(?!\w)"
+        while True:
+            normalized = re.sub(emphasis, r"\2", line)
+            if normalized == line:
+                break
+            line = normalized
         for clause in re.split(r"[.;。；]", line):
             # Require a declaration at the start of its clause. Quoted,
             # negated, historical and explanatory mentions are not commands.
