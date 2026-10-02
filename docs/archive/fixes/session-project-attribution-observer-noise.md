@@ -1,6 +1,7 @@
 ---
-status: active
+status: historical
 created: 2026-10-01
+retired: 2026-10-01
 ---
 
 # 缺陷：Codex 会话丢失项目元数据并退化为日志日期项目
@@ -69,10 +70,19 @@ message 不携带 session ID 时，原提取器在应用流内 fallback 之前�
 
 ## 交接状态
 
-Round 5 PASS，最终必需检查通过。任务进入待签名提交交付，仍在同一 issue/工作区。
+Round 5 PASS，最终必需检查通过。实现已签名提交 `446509a2f770663898cec3d734f9bad2985a83ac`，
+tree `0abc31092f36fa8fb7027394c8f168787c8058e3`；实际 subject/body/trailer、七个
+文件 blob 和 SSH 签名均已核验；工作区干净，未触碰其他 worktree。
 CEv1 Task `fix:session-project-attribution-observer-noise`，target
 `fix:session-project-attribution-observer-noise:candidate:round5` VERIFIED 4/4，
 missing/invalidated/unresolved 均为空。GitHub 当前 head review、CI 及 merge 待执行。
+
+提交后的 immutable target `fix:session-project-attribution-observer-noise:commit:446509a2f770663898cec3d734f9bad2985a83ac`
+也 VERIFIED 4/4；四项 target-bound roll-up 经 scope-aware preserves assessment
+复用 Round 5 证据。归档仅完成本地 authorized commit/evidence 边界，不声称 PR
+已经 merge；Bug 保留 awaiting_commit。后续 PR/head review/CI/actual merge、
+Task/Integration gate 和 slot 交接由该 Beads Bug 及 CEv1 记录最终状态。
+归档无需 archive index entry，沿用现有 Fix records 约定。
 
 ## Review — Round 1
 
