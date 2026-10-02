@@ -78,3 +78,70 @@ Task：`fix:usage-scan-busy-snapshot`；精确产品/测试身份与 VERIFIED ga
 ## 交付记录
 
 修复提交 `0171a75a328d2b23e9b1c8f1ac36a530f2233fe4` 的 SSH 签名、完整消息、三文件范围与精确产品/测试 blob 已核验；commit-bound Task CEv1 VERIFIED 4/4。按 Lane A 生命周期归档，保留全部评审和验证记录。远端当前 head review/CI、实际 merge 与 per-Bug integration gate 由 Beads/CEv1 继续跟踪，归档不表示 Bug 已关闭或版本已发布。
+
+## Review — Round 2
+
+### 📋 GitHub 当前 head 评审报告
+
+📊 总体评分：7/10（主代理基于已复现发现的评估）
+
+✅ 评审结论：FAIL
+
+### 🔴 严重问题——必须修复
+
+- GH28-F1 / P2：`usage.go` 写锁预约之前的 validateCaptured 无法覆盖随后锁等待期间的重写/截断；可提交旧事件和游标。来源 PR28 review comment `4163477138`。修复：取得 writer 后再校验捕获范围。Disposition：已修复 candidate，待独立复评。
+- GH28-F2 / P2：锁竞争期间 context 取消被 SQLite busy_timeout 延迟约五秒。来源 PR28 review comment `4163477150`。修复：固定连接，仅在发布锁获取期间关闭阻塞 busy handler，以原 timeout 为总预算进行可取消重试，归池前恢复原 timeout。Disposition：已修复 candidate，待独立复评。
+
+### 🟡 建议改进——推荐
+
+无额外建议。
+
+### 🟢 优点
+
+原有 cold/append/rewrite 的 517 保护仍有效；本轮加强等待窗口安全与取消响应。
+
+### 📝 总结
+
+Reviewer：GitHub Codex，评审 head `4bafbd35a7326028419e7c992f29740fb622ea9e`；主代理验证发现。
+Method：远端代码评审和本地隔离 fixture 复现。Scope：源发布写锁等待新增窗口。
+Evidence：`/tmp/agentdeck-usage-busy-review-red-final.log`，rewrite/truncate 返回成功且发布旧事件；cancel 约 5.1 秒。首版 fixture 缺 turn/model，修正后正常等待对照通过，三个缺陷断言仍失败。
+Completion gate：NOT_VERIFIED；旧状态证据不授权新 candidate 或旧 head 合并。本轮等待修复后独立复评及新 head CI。
+
+## Review — Round 3
+
+### 📋 独立冷上下文复评报告
+
+📊 总体评分：9.5/10
+
+✅ 复评结论：PASS
+
+### 🔴 严重问题——必须修复
+
+无新发现。GH28-F1 CLOSED：writer 获取后重新校验，等待期间的 rewrite/truncate 中止发布。GH28-F2 CLOSED：仅预约锁使用 SQLite timeout=0 的有界可取消重试，等待预算保持原 timeout；取消无需等待五秒。
+
+### 🟡 建议改进——推荐
+
+无。
+
+### 🟢 优点
+
+固定连接隔离临时 busy_timeout；清理在归池前恢复原值，恢复失败则弃用连接。重试仅执行零行写锁预约，不重复任何发布数据操作。
+新增回归覆盖两个真实负向窗口、正常等待、零超时、短超时和成功/失败后的 timeout 恢复；publication 仍为一个原子事务。
+
+### 📝 总结
+
+Reviewer：`usage_wait_cold_review`，新的冷上下文独立角色、默认模型层级。主代理直接复核源码、blob 与日志。
+Method：只读调用链、Go database/sql 与 vendored SQLite 清理同步检查；独立 focused race 和旧产品负对照 overlay。
+Scope：`usage.go`、`publication_lock.go`、`publication_lock_test.go`。
+Reviewed state：HEAD `4bafbd35a7326028419e7c992f29740fb622ea9e`；三个 blob 分别为 `7fe76f1cb8f29bd8a24c187549d0085ef3f70def`、`2c4ab1834f11a028361a9d06ae1934f4786eba7b`、`35aef6975b68d013005f7fe47a119afde3de89be`。
+Evidence：独立 targeted race PASS，`/tmp/usage-publication-cold-review.log`；负对照在 rewrite/truncate 错误发布一事件、cancel 5.1096 秒，`/tmp/usage-publication-cold-review-negative.log`。主代理 targeted race PASS，`/tmp/agentdeck-usage-busy-final-targeted.log`。`git diff --check` PASS。
+限制：未对底层 PRAGMA 恢复失败做故障注入；弃用连接路径经源码检查。所有运行验证使用隔离 fixture。
+Completion gate：VERIFIED 4/4，`fix:usage-scan-busy-snapshot:candidate:4bafbd35:7fe76f1c-2c4ab183-35aef697`；无 missing/invalidated/unresolved。旧 head 门禁为 FAILED，新状态使用本轮重新验证和复评事实。
+
+本轮最终验证：完整 `scripts/run-go-test.sh ./...` PASS（`/tmp/agentdeck-usage-busy-r3-full.log`）；`scripts/run-go-test.sh -race ./internal/usage ./internal/scanruntime` PASS（`/tmp/agentdeck-usage-busy-r3-race.log`）；`make vet build-all` PASS（`/tmp/agentdeck-usage-busy-r3-build.log`）；whitespace/diff checks PASS。本轮两项 socket fixture 与新产品状态一并在已批准环境中通过，无残留失败。
+
+### Task checkpoint
+
+Task：`fix:usage-scan-busy-snapshot`，Round3 exact candidate VERIFIED 4/4。
+提交建议：三个 usage 产品/测试文件和本记录；四文件范围。
+推送建议：签名核验后普通推送同一 PR28，重新请求 current-head GitHub review 并等待全部 CI；不使用旧 head 的远端结果。

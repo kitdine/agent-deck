@@ -1225,22 +1225,14 @@ func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceR
 			return r, err
 		}
 	}
-	tx, err := s.Store.DB.BeginTx(ctx, nil)
+	tx, release, err := beginSourcePublication(ctx, s.Store.DB)
 	if err != nil {
 		return r, err
 	}
-	defer tx.Rollback()
-	// Re-validate immediately before publication: identity/size alone cannot
-	// see a same-size rewrite, but it closes the window a rewrite+growth could
-	// otherwise use between the check above and this transaction's writes.
+	defer release()
+	// Lock acquisition can wait while the source is rewritten or truncated.
+	// Validate after that wait, immediately before publishing the captured data.
 	if err = validateCaptured(); err != nil {
-		return r, err
-	}
-	// Reserve the writer before affectedSessions establishes a read snapshot.
-	// A concurrent core-store commit would otherwise make SQLite's deferred
-	// read-to-write upgrade fail with BUSY_SNAPSHOT, bypassing busy_timeout.
-	// This zero-row write changes no source data or shared-pool transaction mode.
-	if _, err = tx.ExecContext(ctx, "UPDATE usage_source_files SET cursor=cursor WHERE 0"); err != nil {
 		return r, err
 	}
 	affected, err := affectedSessions(ctx, tx, path)
