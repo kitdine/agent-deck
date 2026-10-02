@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -924,6 +925,194 @@ func TestDesktopQuotaStatusLineDisableReinstallsRouteWhenConsentSaveFails(t *tes
 	}
 	if got := claudeStatusLineCommand(t, home); got != installed {
 		t.Fatalf("statusLine = %q, want the removed route reinstalled as %q since core state still records consent=true", got, installed)
+	}
+}
+
+func TestDesktopQuotaSettingsReadingOffReinstallsRouteWhenSettingsSaveFails(t *testing.T) {
+	home := t.TempDir()
+	withTestHome(t, home)
+	state := filepath.Join(t.TempDir(), "state")
+	writeClaudeSettings(t, home, `{"statusLine":{"type":"command","command":"printf prior"},"unrelated":{"keep":true}}`)
+	runJSON(t, "--state-dir", state, "--format", "json", "desktop", "quota-settings", "--reading", "on")
+	runJSON(t, "--state-dir", state, "--format", "json", "desktop", "quota-statusline", "enable")
+	installed := claudeStatusLineCommand(t, home)
+	ctx := context.Background()
+	database, err := store.Open(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := quota.LoadSettings(ctx, database)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	if _, _, _, err := quota.NewStore(database.DB).Record(ctx, quota.Observation{
+		Client: quota.ClientClaude, WindowKey: quota.ClaudeWindowFiveHour, Source: quota.SourceClaudeStatusLine,
+		ObservedAt: now, WindowMinutes: 300, UsedPercent: 10, ResetsAt: now.Add(time.Hour),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	database.Close()
+	wantErr := errors.New("injected settings write failure")
+	previousSave := saveQuotaSettings
+	saveQuotaSettings = func(context.Context, quota.SettingStore, quota.Settings) error { return wantErr }
+	t.Cleanup(func() { saveQuotaSettings = previousSave })
+	err = run([]string{"--state-dir", state, "--format", "json", "desktop", "quota-settings", "--reading", "off"}, bytes.NewReader(nil), &bytes.Buffer{})
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("error = %v, want original save failure", err)
+	}
+	database, err = store.Open(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	after, err := quota.LoadSettings(ctx, database)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(before, after) {
+		t.Fatalf("settings changed: before=%+v after=%+v", before, after)
+	}
+	windows, err := quota.NewStore(database.DB).Windows(ctx, quota.ClientClaude)
+	if err != nil || len(windows) != 1 || windows[0].UsedPercent != 10 {
+		t.Fatalf("observations = %+v, %v", windows, err)
+	}
+	if got := claudeStatusLineCommand(t, home); got != installed {
+		t.Fatalf("statusLine = %q, want removed route reinstalled as %q while settings retain consent", got, installed)
+	}
+	contents, err := os.ReadFile(filepath.Join(home, ".claude", "settings.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(contents, []byte(`"unrelated":{"keep":true}`)) {
+		t.Fatalf("unrelated config lost: %s", contents)
+	}
+	// A later successful disable must still restore the original third-party route.
+	saveQuotaSettings = previousSave
+	database.Close()
+	runJSON(t, "--state-dir", state, "--format", "json", "desktop", "quota-settings", "--reading", "off")
+	if got := claudeStatusLineCommand(t, home); got != "printf prior" {
+		t.Fatalf("prior = %q", got)
+	}
+}
+
+func TestDesktopQuotaSettingsRemovalSaveFailureBoundaries(t *testing.T) {
+	for _, operation := range []struct{ name, flag, value string }{{"reading-off", "--reading", "off"}, {"claude-disable", "--clients", "codex"}} {
+		for _, scenario := range []string{"precommit", "postcommit", "third-party-after", "other-install-after", "compensation-failure", "absent", "modified", "restore-failure"} {
+			t.Run(operation.name+"/"+scenario, func(t *testing.T) {
+				home := t.TempDir()
+				withTestHome(t, home)
+				state := filepath.Join(t.TempDir(), "state")
+				writeClaudeSettings(t, home, `{"statusLine":{"type":"command","command":"printf prior"},"keep":true}`)
+				runJSON(t, "--state-dir", state, "--format", "json", "desktop", "quota-settings", "--reading", "on")
+				runJSON(t, "--state-dir", state, "--format", "json", "desktop", "quota-statusline", "enable")
+				installed := claudeStatusLineCommand(t, home)
+				path := filepath.Join(home, ".claude", "settings.json")
+				if scenario == "absent" {
+					writeClaudeSettings(t, home, `{"keep":true}`)
+				}
+				if scenario == "modified" {
+					b, err := json.Marshal(map[string]any{"statusLine": map[string]any{"type": "command", "command": installed, "padding": 1}, "keep": true})
+					if err != nil {
+						t.Fatal(err)
+					}
+					writeClaudeSettings(t, home, string(b))
+				}
+				if scenario == "restore-failure" {
+					if err := os.WriteFile(filepath.Join(state, "usagehook-statusline-prior.json"), []byte(`{"existed":true}`), 0600); err != nil {
+						t.Fatal(err)
+					}
+				}
+				originalSave := saveQuotaSettings
+				wantErr := errors.New("injected precommit failure")
+				calls := 0
+				saveQuotaSettings = func(ctx context.Context, db quota.SettingStore, settings quota.Settings) error {
+					calls++
+					switch scenario {
+					case "postcommit":
+						if err := originalSave(ctx, db, settings); err != nil {
+							return err
+						}
+						return fmt.Errorf("%w: injected chmod failure", store.ErrSettingsSecureFilesFailed)
+					case "third-party-after":
+						writeClaudeSettings(t, home, `{"statusLine":{"type":"command","command":"printf later"},"keep":true}`)
+					case "other-install-after":
+						writeClaudeSettings(t, home, `{"statusLine":{"type":"command","command":"agentdeck --state-dir /other quota capture"},"keep":true}`)
+					case "compensation-failure":
+						if err := os.Remove(path); err != nil {
+							t.Fatal(err)
+						}
+						if err := os.Mkdir(path, 0700); err != nil {
+							t.Fatal(err)
+						}
+					}
+					return wantErr
+				}
+				t.Cleanup(func() { saveQuotaSettings = originalSave })
+				var out, stderr bytes.Buffer
+				opts := &commandOptions{stateDir: state, format: "json", stdout: &out, stderr: &stderr}
+				cmd := newDesktopQuotaSettingsCommand(opts)
+				cmd.SetArgs([]string{operation.flag, operation.value})
+				err := cmd.Execute()
+				if scenario == "restore-failure" {
+					if err == nil || !strings.Contains(err.Error(), "restore failed") || calls != 0 {
+						t.Fatalf("restore failure: %v, saves=%d", err, calls)
+					}
+				} else if scenario == "postcommit" {
+					if err != nil || !strings.Contains(stderr.String(), "advisory:") {
+						t.Fatalf("postcommit: %v, stderr=%s", err, &stderr)
+					}
+					var result map[string]any
+					if err := json.Unmarshal(out.Bytes(), &result); err != nil {
+						t.Fatal(err)
+					}
+				} else if !errors.Is(err, wantErr) {
+					t.Fatalf("error=%v, want original failure", err)
+				}
+				if scenario == "compensation-failure" {
+					if !strings.Contains(err.Error(), "restore quota status-line route") {
+						t.Fatalf("missing compensation failure: %v", err)
+					}
+				} else {
+					want := installed
+					switch scenario {
+					case "postcommit":
+						want = "printf prior"
+					case "third-party-after":
+						want = "printf later"
+					case "other-install-after":
+						want = "agentdeck --state-dir /other quota capture"
+					case "absent", "modified":
+						want = ""
+					}
+					if got := claudeStatusLineCommand(t, home); got != want {
+						t.Fatalf("route=%q want=%q", got, want)
+					}
+				}
+				db, err := store.Open(context.Background(), state)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer db.Close()
+				settings, err := quota.LoadSettings(context.Background(), db)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if scenario == "postcommit" {
+					if settings.StatusLineConsent {
+						t.Fatal("postcommit consent remained enabled")
+					}
+					if operation.name == "reading-off" && settings.ProbeEnabled {
+						t.Fatal("postcommit reading remained enabled")
+					}
+					if operation.name == "claude-disable" && settings.ClientEnabled(quota.ClientClaude) {
+						t.Fatal("postcommit Claude remained enabled")
+					}
+				} else if !settings.ProbeEnabled || !settings.StatusLineConsent || !settings.ClientEnabled(quota.ClientClaude) {
+					t.Fatalf("precommit settings changed: %+v", settings)
+				}
+			})
+		}
 	}
 }
 
