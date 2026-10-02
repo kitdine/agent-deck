@@ -1,5 +1,5 @@
 ---
-status: active
+status: historical
 created: 2026-10-02
 retired: 2026-10-02
 ---
@@ -136,3 +136,5 @@ Evidence：`scripts/run-go-test.sh ./internal/usagehook ./cmd/agentdeck -run 'St
 完成门禁：NOT_VERIFIED（本轮完成时新候选 full/race 和 CEv1 尚待收口）；不继承旧 head 的失败后历史 gate。限制：快照检查到 rename 不是跨进程事务，不声称解决所有竞争；未真实用户状态验收。所有原 findings 关闭且无新增项，建议待 exact candidate gate 完成后按原授权增量提交、推送新 head 并重新请求远程 review/CI。
 
 Round 3 后续收口：新候选 full `./...`、affected race `./internal/usagehook ./cmd/agentdeck`、vet `./...`、build-all 全部通过，完整日志 `/tmp/agentdeck-cross-install-r2-full.log`、`/tmp/agentdeck-cross-install-r2-race.log`、`/tmp/agentdeck-cross-install-r2-vet-build.log`。CEv1 在 Round 3 上述精确五 blob candidate 查询 VERIFIED 4/4，无 missing、invalidated 或 unresolved；旧 f7d6bc4 head 因 Round 2 findings 已另记 FAILED，未覆盖历史证据。Task checkpoint：awaiting_commit；范围为四个增量生产/测试文件及完整 Fix record，贡献者 Codex，review-only 角色不计作者。远程新 head review/CI、合并和 slot 释放仍待完成。
+
+第二次归档边界：增量修复提交 `ffd77469fd6b433a5f16ff0978233e2b0db09343` SSH 签名与 exact commit CEv1 VERIFIED 4/4 已核验；完整保留 Round 1–3。归档只改变文档位置与生命周期说明，产品 blobs 不变。远程新 head 评审、CI、实际 merge 及 slot 释放仍是交付关闭前提，由 CEv1 和 Beads 保留最终交接。
