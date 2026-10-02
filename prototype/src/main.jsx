@@ -15,6 +15,10 @@ const surface = new URLSearchParams(window.location.search).get("surface");
 const Surface =
   surface === "widgets" ? WidgetGallery : surface === "states" ? StateBoard : surface === "cli" ? CliSurface : App;
 
+if (import.meta.env.DEV && new URLSearchParams(window.location.search).get("widgetContrast") === "1") {
+  import("./widget-contrast-probe.js").then(({ runWidgetContrastProbe }) => runWidgetContrastProbe());
+}
+
 runContract();
 runMeasure();
 runProbe();
