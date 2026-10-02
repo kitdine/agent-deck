@@ -284,7 +284,7 @@ failure、unsupported schema 在 15 张卡片上都替换数据，不显示零�
 
 ### Widget 成本说明对比度回归
 
-开发服务器启动后，打开 `?surface=widgets&theme=light&lang=en&widgetContrast=1`
+该探针仅在开发服务器启用，不进入普通构建或单文件导出。开发服务器启动后，打开 `?surface=widgets&theme=light&lang=en&widgetContrast=1`
 （再以 `theme=dark` 运行）。页面底部 `#widget-contrast-out` 输出固定
 axe-core 4.12.1 的 scoped `color-contrast` 结果；缺失说明、未完成检查和
 违规都返回 `FAIL`。测试仅覆盖 `.w-note > small`，不代表整个页面无障碍通过。

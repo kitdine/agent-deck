@@ -367,4 +367,25 @@ final class WidgetTimelineTests: XCTestCase {
 		}
 	}
 
+	func testLargeQuotaHeaderNamesSoleDisplayedClientRegardlessOfIntent() throws {
+		let original = try widgetFixture("snapshot-complete")
+		for selected in QuotaWidgetClient.allCases {
+			var object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(original)) as? [String: Any])
+			var subscription = try XCTUnwrap(object["subscription"] as? [String: Any])
+			let clients = try XCTUnwrap(subscription["clients"] as? [[String: Any]])
+			subscription["clients"] = clients.filter { $0["client"] as? String == selected.rawValue }
+			object["subscription"] = subscription
+			let snapshot = try JSONDecoder().decode(WidgetDesktopSnapshotV1.self, from: JSONSerialization.data(withJSONObject: object))
+			for configured in QuotaWidgetClient.allCases {
+				var intent = QuotaWidgetIntent()
+				intent.client = configured
+				let entry = AgentDeckWidgetEntry(date: Date(), snapshot: snapshot, kind: .quota,
+					client: try XCTUnwrap(intent.client).widgetClient, period: .today, isPlaceholder: false)
+				let model = WidgetSurfaceModel(entry: entry, now: entry.date)
+				XCTAssertEqual(model.presentedQuotaClients(family: .systemLarge).map(\.client), [selected.rawValue])
+				XCTAssertEqual(model.quotaScopeClient(family: .systemLarge), selected.widgetClient)
+			}
+		}
+	}
+
 }
