@@ -27,6 +27,10 @@ export function runProbe() {
 
   window.setTimeout(async () => {
     try {
+    // 每条路径从明确的普通状态开始；待采集在下面单独进入并验证。
+    const stateButton = (state) => $(`.stage-group button[data-value="${state}"]`);
+    click(stateButton("normal"));
+    await wait(60);
     // 客户端筛选联动四个面板
     const before = $(".hero strong").textContent;
     click($$(".segmented.clients button")[1]);
@@ -119,16 +123,31 @@ export function runProbe() {
     await wait(60);
     check("工作信号可进入详情", !!$(".detail-head"));
     check("详情态下所属 tab 仍选中（v6 会四个全灰）", tabButton("sessions").classList.contains("active"));
-    check("详情里标注了待采集", !!$(".pending-banner"));
+    check("普通详情不误标待采集", !$(".pending-banner"));
     click($(".detail-head button"));
     await wait(60);
     check("能返回会话总览", !$(".detail-head") && !!$(".signal-grid"));
 
+    click(stateButton("pending"));
+    await wait(60);
+    check("待采集路径确实选择了 pending 状态", stateButton("pending")?.classList.contains("active"));
+    for (let index = 0; index < 3; index += 1) {
+      // 返回后 React 会重建总览，不能复用上一次的已卸载节点。
+      click($$(".signal-card")[index]);
+      await wait(60);
+      check("待采集详情显示完整本地化提示", $(".pending-banner span")?.textContent === dict().sessions.pendingHint);
+      click($(".detail-head button"));
+      await wait(60);
+    }
+    check("待采集总览保留三种信号入口", $$(".signal-card").length === 3);
+    click(stateButton("normal"));
+    await wait(60);
+
     // 刷新：第一次失败保留旧数据并给重试
     click($(".refresh"));
     await wait(1400);
-    check("刷新失败时保留数据并给重试", !!$(".refresh.failed button") && !!$(".hero strong"));
-    click($(".refresh.failed button"));
+    check("刷新失败时保留数据并给重试", !!$("button.refresh.failed") && !!$(".hero strong"));
+    click($("button.refresh.failed"));
     await wait(1500);
     check("重试后恢复", !$(".refresh.failed"));
 
@@ -364,11 +383,10 @@ export function runProbe() {
 
     quotaVariant("readingOff");
     await wait(80);
-    const offText = $(".panel")?.textContent ?? "";
-    check("读取关闭时两端都收成一行", $$(".quota-client").length === 2 && !$(".data-row"));
-    check("读取关闭说的是「未读取」，不是不可用或不适用", offText.includes(dict().quota.readingOff));
-    check("读取关闭时不再渲染任何百分比", !/\d%/.test(offText));
-    check("去设置开启的提示只出现一次", $$(".quota-alerts-note").length === 1);
+    check("读取关闭时隐藏额度 tab", !tabButton("quota"));
+    check("读取关闭从额度页返回用量页", tabButton("usage")?.classList.contains("active"));
+    check("读取关闭不保留额度卡或额度百分比", !$(".quota-client") && !$(".quota-track"));
+    check("读取关闭仍保留用量数据", !!$(".hero strong") && !!$(".bars"));
 
     const box = document.createElement("pre");
     box.id = "probe-out";

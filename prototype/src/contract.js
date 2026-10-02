@@ -22,9 +22,55 @@ export function runContract() {
   const lang = params.get("lang") === "en" ? "en" : "zh";
   const dict = catalogs[lang];
 
-  window.setTimeout(() => {
+  window.setTimeout(async () => {
     const results = [];
     const check = (name, condition) => results.push(`${condition ? "PASS" : "FAIL"}  ${name}`);
+    const report = () => {
+      const box = document.createElement("pre");
+      box.id = "contract-out";
+      box.style.cssText = "position:fixed;inset:0;z-index:9999;margin:0;padding:16px;overflow:auto;background:#000;color:#0f0;font:12px ui-monospace;white-space:pre-wrap";
+      const failed = results.filter((line) => line.startsWith("FAIL")).length;
+      box.textContent = `${results.join("\n")}\n\n${failed === 0 ? "ALL PASS" : failed + " FAILED"}`;
+      document.body.appendChild(box);
+    };
+
+    if (params.get("surface") !== "widgets") {
+      await document.fonts.ready;
+      const chips = [...document.querySelectorAll('[data-testid="rhythm-summary"] [data-stat-chip]')];
+      check("Popover 节律保留四个 stat chip", chips.length === 4);
+      // 当前网格的最大单元是 15 时；原生 hourWindow 显示该小时及下一小时。
+      // 期望独立于标本的峰值选择与 formatter，不能沿用它的两小时派生范围。
+      const expected = lang === "en" ? "3:00\u202fPM–4:00\u202fPM" : "15:00–16:00";
+      const peak = document.querySelector('[data-testid="rhythm-summary"] [data-stat-chip="peak-window"] [data-stat-line="value"]');
+      check("Popover peak 与原生本地化一小时窗口同形", peak?.textContent === expected);
+      const lines = [...document.querySelectorAll('[data-testid="menubar-popover"] [data-stat-line]')];
+      check("Popover stat chip 的文字在正常布局中完整可见", lines.length >= 8 && lines.every((line) => line.scrollWidth <= line.clientWidth + 1));
+      // 收窄真实行宽，证明文字会缩小而非直接 ellipsis；再越过原生最小比例，
+      // 证明它会停止缩小。这只改本轮探针的 DOM，结束后恢复实际布局。
+      for (const kind of ["label", "value", "note"]) {
+        const line = lines.find((node) => node.dataset.statLine === kind);
+        if (!line) continue;
+        const base = kind === "value" ? 12 : 10;
+        const minimum = kind === "value" ? 0.7 : 0.72;
+        const range = document.createRange();
+        range.selectNodeContents(line);
+        const originalWidth = line.style.width;
+        const originalFont = line.style.fontSize;
+        line.style.fontSize = `${base}px`;
+        const natural = range.getBoundingClientRect().width;
+        line.style.width = `${natural * 0.85}px`;
+        await new Promise((resolve) => window.setTimeout(resolve, 100));
+        const fitted = parseFloat(getComputedStyle(line).fontSize);
+        check(`Popover ${kind} 收窄后缩放并保留完整文字`, fitted < base && fitted >= base * minimum - 0.01 && line.scrollWidth <= line.clientWidth + 1);
+        line.style.width = `${natural * 0.5}px`;
+        await new Promise((resolve) => window.setTimeout(resolve, 100));
+        check(`Popover ${kind} 不低于原生最小缩放比例`, Math.abs(parseFloat(getComputedStyle(line).fontSize) - base * minimum) < 0.05);
+        line.style.width = originalWidth;
+        line.style.fontSize = originalFont;
+      }
+      report();
+      return;
+    }
     const card = (size) =>
       [...document.querySelectorAll(`.widget-${size}`)].find((node) =>
         (node.getAttribute("aria-label") ?? "").startsWith(dict.widgets.kinds.magnitude.title),
@@ -102,7 +148,6 @@ export function runContract() {
     );
     check("small / medium 有 Codex / Claude 两个配置选项", widgetClientGroup?.querySelectorAll("button").length === 2);
 
-    const params = new URLSearchParams(window.location.search);
     const quotaVariant = params.get("quota") ?? "normal";
     const configuredClient = params.get("widgetClient") ?? "codex";
     const largeClients = [...qLarge.querySelectorAll(".w-quota-client")];
@@ -230,12 +275,6 @@ export function runContract() {
       [...document.querySelectorAll(".w-quota-row span")].every((node) => !clipped(node)),
     );
 
-    const box = document.createElement("pre");
-    box.id = "contract-out";
-    box.style.cssText =
-      "position:fixed;inset:0;z-index:9999;margin:0;padding:16px;overflow:auto;background:#000;color:#0f0;font:12px ui-monospace;white-space:pre-wrap";
-    const failed = results.filter((line) => line.startsWith("FAIL")).length;
-    box.textContent = `${results.join("\n")}\n\n${failed === 0 ? "ALL PASS" : failed + " FAILED"}`;
-    document.body.appendChild(box);
+    report();
   }, 600);
 }

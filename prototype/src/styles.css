@@ -806,6 +806,16 @@ a:focus-visible {
   font-size: 10px;
 }
 
+.stat-grid span,
+.stat-grid strong,
+.stat-grid small {
+  display: block;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .stat-grid strong {
   font-size: 12px;
   font-weight: 600;
