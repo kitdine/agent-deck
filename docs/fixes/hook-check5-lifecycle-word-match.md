@@ -340,3 +340,90 @@ Method/Scope: 新修复代码与回归；独立36项真实manifest探针及6项�
 Hook SHA256 `3f0597f27cbbc4188c14f4c0d00df73850ba18c26422f1f6893f9d851af0f94a`；tests SHA256 `22cc29a93c0512a7ae5d5c056313e3417afca1bfdd32ee195549119f690208c1`。
 Reviewed HEAD `45026665dc8810811eca00ba40ca4e8e208d22e2` plus exact scoped candidate。
 Completion gate: VERIFIED 3/3 at candidate `20411e2ba7d74753d0efef12f60a482afe77fa83ca61f79cec866c0215e087c4` through Neo4j MCP; prior4502666 failures preserved. Signed source requires explicit target-bound reuse assessment.
+
+## Review — Round 10
+
+## 📋 既有格式兼容性远端复评
+
+📊 综合评分：8/10
+
+✅ Verdict: FAIL
+
+### 🔴 严重问题 — 必须修复
+
+- GH31-F7（P2）：health-recovery 的 source/specimens manifest 不能按 files 解析。
+- GH31-F8（P2）：Markdown `+` 列表标记漏报；同时补足有序列表与三标记强调的同类路径。
+- GH31-F9（P2）：snapshot-performance 现有 Git blob 与 Specimen manifest 标签不兼容。
+
+### 🟡 改进建议
+
+无。
+
+### 🟢 优点
+
+此前六条远端发现已闭合；保留新发现并检查仓库全部四份现有 manifest 格式。
+
+### 📝 总结
+
+Reviewer: GitHub Codex review5390403094，exact HEAD `acb02cd40d6fd278b9f56389a123f065b3b779de`。
+Main直接复现7失败子场景（github-round10-red.log），修复后83tests通过。
+支持files和source/specimens布局，来源仓库路径与manifest相对checks/specimen路径分别绑定。
+真实snapshot-performance两份PASS/VERIFIED评审在未改动时current=true。
+真实health-recovery最新轮声明hash不匹配且本身FAIL，仍不得沿用其旧门禁。
+Completion gate: FAILED at affected old source；修复候选待独立复评与新状态门禁。
+
+## Review — Round 11
+
+## 📋 全仓库 manifest 格式冷复评
+
+📊 综合评分：8.5/10
+
+✅ Verdict: FAIL
+
+### 🔴 严重问题 — 必须修复
+
+HB1-F4（P3）：legacy source空key或specimen空file在相对路径拼接后变为非空目录。
+主代理两个隔离回归均RED（round11-red.log）；改为拼接前拒绝空/纯空白路径。
+
+### 🟡 改进建议
+
+无。
+
+### 🟢 优点
+
+GH31-F7/F8/F9 CLOSED；独立85项探针覆盖现有全部四份manifest、全部源/标本路径及无关文件隔离。
+
+### 📝 总结
+
+Reviewer: 冷独立 `hook_batch_review`，只读格式兼容性复评。
+Reviewed Hook SHA256 `b2683eb11f21c529528f8e4c410ffa5df12c953c0a708bbe59aab85e101bc148`。
+Main直接重跑83tests与L0；修复后83tests通过，等待独立复评。
+Completion gate: NOT_VERIFIED，候选仍有未复评修复。
+
+## Review — Round 12
+
+## 📋 最终格式兼容性复评
+
+📊 综合评分：9/10
+
+✅ Verdict: PASS
+
+### 🔴 严重问题 — 必须修复
+
+无。HB1-F4 CLOSED；HB1-F1..F3、GH31-F1..F9继续关闭。
+
+### 🟡 改进建议
+
+无。
+
+### 🟢 优点
+
+兼容现有两种manifest布局及实际review标签，同时未知/畸形绑定保守跳过诊断。
+
+### 📝 总结
+
+Reviewer: 独立 `hook_batch_review`，主代理直接核对测试、哈希与L0。
+Method/Scope: 最终代码/测试，83tests、snapshot-performance真实两份review探针PASS；复用仍适用85项manifest探针，空路径修复只拒绝不合法输入。
+Hook SHA256 `b4422982101b34571fb57e274f970a3f4a62c10df2e92e47ddfa2c27d4509318`；tests SHA256 `46e563e8c3af1949d7e1b76aebfd411eee8f838d989a48ed49be0401c50dfb4c`。
+Reviewed HEAD `acb02cd40d6fd278b9f56389a123f065b3b779de` plus scoped five-file candidate。
+Completion gate: VERIFIED 3/3 at candidate `97cafcf8a817ca81512634b3a711e5c5231d591dce34d81e0ceef44ea7a895a8` through Neo4j MCP; historical source failures retained. Signed source needs target-bound reuse assessment.

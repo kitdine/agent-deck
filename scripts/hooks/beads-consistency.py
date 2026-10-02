@@ -437,7 +437,7 @@ def current_document_review(root: Path, document: str, review: str, changed: lis
     section = latest_review_section(root / review)
     relative = "/".join(Path(document).parts[3:])
     blobs = set(re.findall(
-        rf"(?<![\w/.-])(?:文档|document|{re.escape(document)}|{re.escape(relative)})\s+blob\s*[:：=]?\s*([0-9a-f]{{40}}|[0-9a-f]{{64}})\b",
+        rf"(?<![\w/.-])(?:文档|document|git|{re.escape(document)}|{re.escape(relative)})\s+blob\s*[:：=]?\s*([0-9a-f]{{40}}|[0-9a-f]{{64}})\b",
         section, re.IGNORECASE,
     ))
     if len(blobs) != 1:
@@ -449,10 +449,10 @@ def current_document_review(root: Path, document: str, review: str, changed: lis
     # A bare manifest identity is resolved through the reviewed document's
     # local manifest links. Unknown/ambiguous bindings cannot prove currency.
     manifest_hashes = set(re.findall(
-        r"\bprototype\s+manifest\s+SHA-?256\s*[:：=]?\s*([0-9a-f]{64})\b",
+        r"\b(?:prototype|specimen)\s+manifest\s+SHA-?256\s*[:：=]?\s*([0-9a-f]{64})\b",
         section, re.I,
     ))
-    bare_manifest = bool(re.search(r"\bprototype\s+(?:manifest|指纹|摘要)|prototype=", section, re.I))
+    bare_manifest = bool(re.search(r"\b(?:prototype|specimen)\s+(?:manifest|指纹|摘要)|prototype=", section, re.I))
     specimen_paths: set[str] = set()
     if bare_manifest:
         if len(manifest_hashes) != 1:
@@ -477,12 +477,28 @@ def current_document_review(root: Path, document: str, review: str, changed: lis
             raw_manifest = manifest.read_bytes()
             if hashlib.sha256(raw_manifest).hexdigest() != expected_manifest:
                 return False
-            entries = json.loads(raw_manifest)["files"]
-            if not isinstance(entries, list) or not entries:
+            payload = json.loads(raw_manifest)
+            if "files" in payload:
+                entries = payload["files"]
+                if not isinstance(entries, list):
+                    return False
+                paths = [entry["path"] for entry in entries]
+            else:
+                sources, specimens = payload["source"], payload["specimens"]
+                if not isinstance(sources, dict) or not isinstance(specimens, list):
+                    return False
+                paths = list(sources) + [entry["file"] for entry in specimens]
+                if any(not isinstance(path, str) or not path.strip() for path in paths):
+                    return False
+                # Legacy manifests mix repository source paths with local
+                # checks/specimen names, relative to their own directory.
+                paths = [path if path.startswith(("prototype/", "docs/")) else
+                         (manifest.parent.relative_to(root.resolve()) / path).as_posix()
+                         for path in paths]
+            if not paths:
                 return False
             specimen_paths.add(manifest.relative_to(root.resolve()).as_posix())
-            for entry in entries:
-                path = entry["path"]
+            for path in paths:
                 if not isinstance(path, str) or not path or Path(path).is_absolute() or ".." in Path(path).parts:
                     return False
                 specimen_paths.add(path)
@@ -525,12 +541,13 @@ def retired_lifecycle_terms(description: str) -> list[str]:
             lambda match: match.group(2) if match.group(1) and match.group(2) in states else " ",
             line,
         )
+        line = re.sub(r"^\s*(?:[-+*]|[0-9]+[.)])\s+", "", line)
         for clause in re.split(r"[.;。；]", line):
             # Require a declaration at the start of its clause. Quoted,
             # negated, historical and explanatory mentions are not commands.
             declaration = re.match(
-                r"^\s*(?:[-*]\s+)?(?:lifecycle|状态流转|生命周期)\s*[:：]\s*(.+)$",
-                re.sub(r"(\*{1,2}|_{1,2})(lifecycle|状态流转|生命周期)([:：]?)\1",
+                r"^\s*(?:lifecycle|状态流转|生命周期)\s*[:：]\s*(.+)$",
+                re.sub(r"(\*{1,3}|_{1,3})(lifecycle|状态流转|生命周期)([:：]?)\1",
                        r"\2\3", clause, flags=re.I), re.I,
             )
             if not declaration:

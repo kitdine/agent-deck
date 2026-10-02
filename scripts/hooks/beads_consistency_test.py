@@ -1063,7 +1063,10 @@ class HookBatchRegressionTest(unittest.TestCase):
         for text in ['- **Lifecycle:** open -> drafting -> closed',
                      '__生命周期__：open → repairing → closed',
                      '- *Lifecycle:* open -> drafting -> closed',
-                     '_生命周期_：open → repairing → closed']:
+                     '_生命周期_：open → repairing → closed',
+                     '+ Lifecycle: open -> drafting -> closed',
+                     '1. Lifecycle: open -> drafting -> closed',
+                     '***Lifecycle:*** open -> drafting -> closed']:
             with self.subTest(text=text):
                 self.assertTrue(MODULE.retired_lifecycle_terms(text))
 
@@ -1120,7 +1123,7 @@ class HookBatchRegressionTest(unittest.TestCase):
         record.parent.mkdir()
         blob = hashlib.sha1(b'blob 4\0doc\n').hexdigest()
         for label, expected in [('other/' + document, False), ('ux/view.md', True),
-                                (document, True), ('view.md', False)]:
+                                (document, True), ('Git', True), ('view.md', False)]:
             record.write_text(f'## Round 1\n{label} blob {blob}\n')
             with self.subTest(label=label):
                 self.assertEqual(MODULE.current_document_review(self.root, document, review, []), expected)
@@ -1151,6 +1154,40 @@ class HookBatchRegressionTest(unittest.TestCase):
                 self.assertEqual(MODULE.current_document_review(self.root, document, review, changed), expected)
         mp.write_text('{}')
         self.assertFalse(MODULE.current_document_review(self.root, document, review, []))
+
+    def test_legacy_manifest_sources_and_relative_specimens(self):
+        import hashlib
+        document = 'docs/topics/example/ux/view.md'
+        review = 'docs/topics/example/reviews/ux-view.md'
+        manifest = 'docs/topics/example/ux/prototype/view/manifest.json'
+        path = self.root / document
+        path.parent.mkdir(parents=True)
+        path.write_bytes(b'[manifest](prototype/view/manifest.json)\n')
+        mp = self.root / manifest
+        mp.parent.mkdir(parents=True)
+        mp.write_text(json.dumps({'source': {'prototype/src/view.js': 'digest', 'checks.json': 'digest'},
+                                  'specimens': [{'file': 'screen.png', 'sha256': 'digest'}]}))
+        record = self.root / review
+        record.parent.mkdir()
+        data = path.read_bytes()
+        blob = hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest()
+        digest = hashlib.sha256(mp.read_bytes()).hexdigest()
+        for label in ['prototype', 'Specimen']:
+            record.write_text(f'## Round 1\nGit blob {blob}\n{label} manifest SHA-256: {digest}\n')
+            for changed, expected in [([], True), ([manifest], False), (['prototype/src/view.js'], False),
+                                      (['docs/topics/example/ux/prototype/view/checks.json'], False),
+                                      (['docs/topics/example/ux/prototype/view/screen.png'], False),
+                                      (['prototype/unrelated.js'], True)]:
+                with self.subTest(label=label, changed=changed):
+                    self.assertEqual(MODULE.current_document_review(self.root, document, review, changed), expected)
+
+        for malformed in [{'source': {}, 'specimens': [{'file': ''}]},
+                          {'source': {'': 'hash'}, 'specimens': []}]:
+            mp.write_text(json.dumps(malformed))
+            digest = hashlib.sha256(mp.read_bytes()).hexdigest()
+            record.write_text(f'## Round 1\nGit blob {blob}\nprototype manifest SHA-256 {digest}\n')
+            with self.subTest(malformed=malformed):
+                self.assertFalse(MODULE.current_document_review(self.root, document, review, []))
 
     def test_scoped_fingerprint_preserves_decoded_filename_bytes(self):
         import os
