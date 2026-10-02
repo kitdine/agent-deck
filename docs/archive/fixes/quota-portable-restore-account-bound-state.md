@@ -1,5 +1,6 @@
 ---
-status: active
+status: historical
+retired: 2026-10-02
 created: 2026-10-02
 ---
 
@@ -77,3 +78,7 @@ Completion gate：VERIFIED 4/4，`fix:quota-portable-restore-account-bound-state
 Task：`fix:quota-portable-restore-account-bound-state`，精确受评身份如上。
 提交建议：完整验证和精确状态门禁已通过，按既有用户授权提交代码、测试与本记录。
 推送建议：核验签名及提交内容后，普通推送至独立 fix 分支并创建目标为 `release/v0.6.x` 的 draft PR。
+
+## 交付记录
+
+修复提交 `c75d8b2cd1f0e6e921bd5313c0bf59037ae4118c` 已核验 SSH 签名、完整消息、三文件范围和冻结产品/测试 blob；commit-bound Task CEv1 VERIFIED 4/4。按既有 Lane A 生命周期归档，保留完整评审历史。远端 PR review/CI、实际 merge 与 per-Bug integration gate 仍是 Bug 关闭前提，由 Beads 交接及 CEv1 exact-result 记录跟踪；归档本身不声明远端集成完成。
