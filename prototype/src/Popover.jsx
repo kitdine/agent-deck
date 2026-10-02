@@ -1602,7 +1602,7 @@ export function Popover({ lang, state = "normal", quotaState = "normal", refresh
       )}
       <header>
         <div className="brand">
-          <img src="/agentdeck-robot.png" alt="" width={22} height={22} />
+          <img src="/agentdeck-ad.png" alt="" width={22} height={22} />
           <strong>{dict.app}</strong>
         </div>
         <div className="header-right">

@@ -136,7 +136,7 @@ export function App() {
                 setMenu(true);
               }}
             >
-              <img src="/agentdeck-robot.png" alt="" width={17} height={17} />
+              <img src="/agentdeck-ad.png" alt="" width={17} height={17} />
               {schema && <WarningCircle className="menubar-badge" size={11} weight="fill" aria-hidden="true" />}
               {prefs.menubarValue !== "icon" && value !== "" && <strong>{value}</strong>}
             </button>

@@ -69,7 +69,7 @@ export function ScanStatus({ scan, lang, empty = false }) {
 
 export function ScanEmptyPopover({ scan, lang, width }) {
   return <section className="popover scan-empty" style={{ "--popover-w": width + "px" }} data-width={width} data-scan-snapshot="none" aria-label="AgentDeck">
-    <header><div className="brand"><img src="/agentdeck-robot.png" alt="" width={22} height={22} /><strong>AgentDeck</strong></div></header>
+    <header><div className="brand"><img src="/agentdeck-ad.png" alt="" width={22} height={22} /><strong>AgentDeck</strong></div></header>
     <div className="scan-loading-body"><ScanStatus scan={scan} lang={lang} empty /></div>
   </section>;
 }
