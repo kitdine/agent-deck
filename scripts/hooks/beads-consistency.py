@@ -453,6 +453,17 @@ def current_document_review(root: Path, document: str, review: str, changed: lis
         rf"(?<![\w/.-])(?:文档|document|git|{re.escape(document)}|{re.escape(relative)})\s+blob\s*[:：=]?\s*([0-9a-f]{{40}}|[0-9a-f]{{64}})\b",
         section, re.IGNORECASE,
     ))
+    # Existing records distinguish the entry subject from the final blob
+    # after approval-status synchronization. Only accept the bounded pair.
+    entry_final = re.finditer(
+        r"(?P<prefix>[^\n]*?)入口文档\s+blob\s*[:：=]?\s*[0-9a-f]{40}(?:[0-9a-f]{24})?\b[^\n]*?仅同步审批状态后的最终\s+blob\s*[:：=]?\s*([0-9a-f]{40}|[0-9a-f]{64})\b",
+        section, re.I,
+    )
+    for pair in entry_final:
+        qualifiers = re.findall(r"(?<![\w/.-])([\w./-]+\.md)\b", pair.group("prefix"))
+        if any(path not in {document, relative} for path in qualifiers):
+            return False
+        blobs.add(pair.group(2))
     if len(blobs) != 1:
         return False
     try:
@@ -556,9 +567,26 @@ def current_document_review(root: Path, document: str, review: str, changed: lis
     # Preserve XY metadata so an MM file, staged deletion or rename source
     # cannot advance based on bytes that the next commit would not contain.
     staged = getattr(changed, "staged", {})
-    bound_staged = sorted(set(staged).intersection(validated_bytes))
+    bound_index = set(staged).intersection(validated_bytes)
+    if isinstance(changed, ChangedPaths):
+        timeout = remaining_timeout(changed.deadline)
+        if timeout is None:
+            return False
+        try:
+            flags = subprocess.run(
+                ["git", "-C", str(root), "--literal-pathspecs", "ls-files", "-v", "-z", "--", *validated_bytes],
+                capture_output=True, timeout=timeout,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return False
+        if flags.returncode != 0:
+            return False
+        for entry in os.fsdecode(flags.stdout).split("\0"):
+            if len(entry) > 2 and (entry[0].islower() or entry[0] == "S"):
+                bound_index.add(entry[2:])
+    bound_staged = sorted(bound_index)
     for path in bound_staged:
-        if staged[path] in "DU":
+        if staged.get(path) in {"D", "U"}:
             return False
         timeout = remaining_timeout(changed.deadline)
         if timeout is None:
@@ -574,6 +602,7 @@ def current_document_review(root: Path, document: str, review: str, changed: lis
             return False
         if result.returncode != 0 or result.stdout != validated_bytes[path]:
             return False
+    specimen_paths.discard(os.path.normpath(document))
     if any(path == bound or (bound.endswith("/") and path.startswith(bound))
            for bound in specimen_paths for path in changed if path not in staged):
         return False
@@ -607,6 +636,8 @@ def retired_lifecycle_terms(description: str) -> list[str]:
             line,
         )
         line = re.sub(r"^\s*(?:[-+*]|[0-9]+[.)])\s+", "", line)
+        line = re.sub(r"^\s*#{1,6}\s+", "", line)
+        line = re.sub(r"^\[[ xX]\]\s+", "", line)
         # Remove balanced Markdown emphasis after quote masking, including
         # a whole declaration or individual label/state spans.
         emphasis = r"(?<!\w)(\*{1,3}|_{1,3})(\S(?:.*?\S)?)\1(?!\w)"

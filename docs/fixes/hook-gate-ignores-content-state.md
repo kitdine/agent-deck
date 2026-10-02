@@ -776,3 +776,88 @@ Hook SHA256 `1be64d1500ddaf3e065141f754a72646d61e378fca176012f49bd433249f0968`�
 Evidence: ignored `output/hook-batch-evidence/raw-index-final-matrix.py`及log；历史RED与失败source保留。
 Reviewed HEAD `eb97d9416d06379d124409d891f00f17d55976af` plus scoped candidate。
 Completion gate: VERIFIED 3/3 at candidate `4807538496972d96490f6a6488358a0bda6c285e59fbdaa1d8fb40b871f75803` through Neo4j MCP; old failed sources retained.
+
+## Review — Round 25
+
+## 📋 隐藏index及既有Markdown身份约定复评
+
+📊 综合评分：8/10
+
+✅ Verdict: FAIL
+
+### 🔴 严重问题 — 必须修复
+
+- GH31-F17（P2）：assume-unchanged/skip-worktree隐藏旧index、新评审工作树方向，porcelain交集无法发现。
+- GH31-F18（P2）：Markdown heading/checklist前缀使肯定生命周期声明漏报。
+- GH31-F19（P2）：legacy manifest包含被评审文档自身，已验证的文档被独立specimen dirtiness误拒。
+- GH31-F20（P2）：仓库现存入口文档/仅同步审批状态后的最终blob身份写法未识别。
+
+### 🟡 改进建议
+
+补齐双向index身份与现存文档格式的正反对照，保持最小解析边界。
+
+### 🟢 优点
+
+原1245矩阵与历史RED保留，不将旧source的CI成功视为评审通过。
+
+### 📝 总结
+
+Reviewer: GitHub Codex5391123959，HEAD `dc87adbf8f7e14a0cc99a3b65b99806f6ac111f6`；CI36998985977 success。
+Main复现4tests/7RED（github-round25-red.log），修复后90tests通过；补充独立配对复评待完成。
+R24中flags维度仅证明旧工作树/新index方向，不证明相反方向；此前覆盖完整性的含义据此明确限缩。
+修复读取绑定路径ls-files -v -z隐藏标志并验证原始index；document仍保留字节/index验证但不计独立dirty specimen；处理标准heading/checklist及现存明确entry/final pair。
+Completion gate: FAILED for affected gate/lifecycle exact source; no merge。
+
+## Review — Round 26
+
+## 📋 入口/最终身份限定冷复评
+
+📊 综合评分：9/10
+
+✅ Verdict: FAIL
+
+### 🔴 严重问题 — 必须修复
+
+- HB1-F9（P2）：entry/final pair前有显式其他文档路径时仍接受，身份限定不足。
+
+### 🟡 改进建议
+
+仅接受无限定的现存Reviewed-state写法或当前文档的明确路径限定。
+
+### 🟢 优点
+
+新增258项配对矩阵中257通过；hidden48已覆盖六类绑定路径、两个flag、两个分叉方向；selfmanifest8、Markdown192通过。
+
+### 📝 总结
+
+Reviewer: 独立hook_batch_review。Main读取/tmp/hook-r25-matrix.py确认隔离；新增foreign-subject断言RED1后修复，完整258矩阵与90tests待复评确认。
+历史R24 flags覆盖已限缩，R26双向矩阵替代覆盖声明。F17/F18/F19已通过；F20身份限定待修复复评。
+Completion gate: pending repaired candidate; prior source FAILED retained。
+
+## Review — Round 27
+
+## 📋 隐藏index与文档限定最终复评
+
+📊 综合评分：10/10
+
+✅ Verdict: PASS
+
+### 🔴 严重问题 — 必须修复
+
+无。GH31-F17..20与HB1-F9全部关闭。
+
+### 🟡 改进建议
+
+无。
+
+### 🟢 优点
+
+新增矩阵覆盖隐藏index双方向、self-document manifest、Markdownprefix与当前/foreign/mixed文档限定。
+
+### 📝 总结
+
+Reviewer: 独立hook_batch_review；Main读取临时脚本后亲自重跑262checks全部通过。原1130parser+63index+52rawindex也在最终代码重跑通过，共1507checks；90tests及L0通过。
+Hook SHA256 `cb3b86e283c8c388775bf01601cb6088bddfd0df64183a3a0c4790a1f888745c`；tests SHA256 `3edf97965aeea3a73c3ee0642a4b5964e13fbc3926642b12e86a2d5680fdc103`。
+Evidence: ignored output/hook-batch-evidence/r27-final-matrix.py及log；r27-parser/index/raw日志；R25/R26失败先行证据保留。
+Reviewed HEAD `dc87adbf8f7e14a0cc99a3b65b99806f6ac111f6` plus scoped candidate；未扩大产品契约。
+Completion gate: VERIFIED 3/3 at candidate `43102e40518e17a4b1aecb0a9dc4e31b4ea6ad2b34e5fdaae35107618beeb437` through Neo4j MCP; failed historical sources retained.

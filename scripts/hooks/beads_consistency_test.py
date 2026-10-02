@@ -1281,6 +1281,77 @@ class HookBatchRegressionTest(unittest.TestCase):
         changed = MODULE.changed_paths(self.root, MODULE.time.monotonic() + 5)
         self.assertFalse(MODULE.current_document_review(self.root, document, review, changed))
 
+    def test_hidden_index_old_document_rejects_new_review(self):
+        import hashlib, subprocess
+        def git(*args):
+            return subprocess.run(['git', '-C', str(self.root), *args], check=True, capture_output=True)
+        git('init', '-q')
+        document = 'docs/topics/example/requirements.md'
+        review = 'docs/topics/example/reviews/requirements.md'
+        target = self.root / document
+        target.parent.mkdir(parents=True)
+        target.write_bytes(b'old')
+        git('add', '.')
+        git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test', '-c', 'commit.gpgsign=false', 'commit', '-qm', 'fixture')
+        record = self.root / review
+        record.parent.mkdir()
+        data = b'new reviewed'
+        blob = hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest()
+        record.write_text(f'## Round 1\nGit blob {blob}\nVerdict: PASS\nCompletion gate: VERIFIED\n')
+        git('add', review)
+        for flag in ['assume-unchanged', 'skip-worktree']:
+            with self.subTest(flag=flag):
+                target.write_bytes(b'old')
+                git('update-index', '--' + flag, document)
+                target.write_bytes(data)
+                changed = MODULE.changed_paths(self.root, MODULE.time.monotonic() + 5)
+                self.assertNotIn(document, changed)
+                self.assertFalse(MODULE.current_document_review(self.root, document, review, changed))
+                git('update-index', '--no-' + flag, document)
+
+    def test_markdown_heading_and_checklist_lifecycle(self):
+        for prefix in ['### ', '- [ ] ', '- [x] ']:
+            with self.subTest(prefix=prefix):
+                self.assertEqual(MODULE.retired_lifecycle_terms(prefix + 'Lifecycle: open -> drafting -> closed'), ['drafting'])
+                self.assertEqual(MODULE.retired_lifecycle_terms(prefix + 'Historical lifecycle: open -> drafting -> closed'), [])
+
+    def test_manifest_reviewed_document_is_not_dirty_specimen(self):
+        import hashlib
+        document = 'docs/topics/example/requirements.md'
+        review = 'docs/topics/example/reviews/requirements.md'
+        target = self.root / document
+        target.parent.mkdir(parents=True)
+        data = b'[manifest](prototype/manifest.json)\n'
+        target.write_bytes(data)
+        manifest = target.parent / 'prototype/manifest.json'
+        manifest.parent.mkdir()
+        manifest.write_text(json.dumps({'source': {document: hashlib.sha256(data).hexdigest()}, 'specimens': []}))
+        record = self.root / review
+        record.parent.mkdir()
+        blob = hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest()
+        record.write_text(f'## Round 1\nGit blob {blob}\nprototype manifest SHA-256 {hashlib.sha256(manifest.read_bytes()).hexdigest()}\n')
+        self.assertTrue(MODULE.current_document_review(self.root, document, review, [document, review]))
+        target.write_bytes(data + b'changed')
+        self.assertFalse(MODULE.current_document_review(self.root, document, review, [document, review]))
+
+    def test_scoped_entry_final_blob_uses_final_identity(self):
+        import hashlib
+        document = 'docs/topics/example/tasks.md'
+        review = 'docs/topics/example/reviews/tasks.md'
+        target = self.root / document
+        target.parent.mkdir(parents=True)
+        data = b'final approved'
+        target.write_bytes(data)
+        blob = hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest()
+        record = self.root / review
+        record.parent.mkdir()
+        record.write_text(f'## Round 1\n入口文档 blob {"a" * 40}；仅同步审批状态后的最终 blob {blob}。\n')
+        self.assertTrue(MODULE.current_document_review(self.root, document, review, [document, review]))
+        record.write_text(f'## Round 1\n另一个 docs/topics/other/tasks.md 入口文档 blob {"a" * 40}；仅同步审批状态后的最终 blob {blob}。\n')
+        self.assertFalse(MODULE.current_document_review(self.root, document, review, [document, review]))
+        target.write_bytes(b'stale')
+        self.assertFalse(MODULE.current_document_review(self.root, document, review, [document, review]))
+
     def test_scoped_fingerprint_preserves_decoded_filename_bytes(self):
         import os
         scope = {'topic': 'example', 'subject': 'ux/' + os.fsdecode(b'bad-\xff.md')}
