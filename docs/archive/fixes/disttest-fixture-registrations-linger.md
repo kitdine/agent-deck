@@ -1,6 +1,7 @@
 ---
 status: historical
 created: 2026-10-02
+updated: 2026-10-03
 retired: 2026-10-03
 ---
 
@@ -14,8 +15,9 @@ Bug：`ad-bug-disttest-fixture-registrations-linger`。既有标识隔离修复�
 
 基线为 `67a3248b6cf3e244ee7facef3597ad8b31ea8803`，工作区
 `agent-deck.fix.disttest-fixture-registrations-linger`，分支
-`fix/disttest-fixture-registrations-linger`。主 writer session 为
-`01a0ffa3-b8f5-7c01-8b5a-d855b1a6f559`。
+`fix/disttest-fixture-registrations-linger`。初始主 writer session 为
+`01a0ffa3-b8f5-7c01-8b5a-d855b1a6f559`；其正常退出后，由新 session
+`01a10042-437b-70a3-b50d-239e932f8d2b` 承接本批最终交付。
 
 ## 根因
 
@@ -71,7 +73,7 @@ Bug：`ad-bug-disttest-fixture-registrations-linger`。既有标识隔离修复�
 真实 Mach-O 构建/签名/DMG 挂载与注册生命周期、格式检查。Go 产品、依赖、并发和
 wire 契约未改变，故不重复本地 Go 全量/race/vet/cross-build；交付仍要求 exact-head CI。
 
-Completion gate: VERIFIED
+产品完成门禁：VERIFIED；归档候选门禁另见最后的主 writer finalization。
 
 WorkUnit：`fix:disttest-fixture-registrations-linger`，独立任务，无 containing topic。
 独立冷复评已 PASS，产品 merge-bound 任务门禁 VERIFIED 5/5；产品 PR #36 已交付。
@@ -347,3 +349,138 @@ Completion gate: NOT_VERIFIED
 
 本候选只修复未来时态并追加本 finding 历史。归档 head 变化后必须重新绑定 CEv1、
 请求 exact-head Codex review 并通过该 head 的 CI，之后才可执行归档 merge。
+
+## 归档反馈与复评候选 — 2026-10-03
+
+以下为 Round 4 产生之前的修复历史；当时的 active/pending 状态不代表最终状态，
+当前 disposition 与门禁见后续 Round 4 和主 writer finalization。
+
+`DFR-ARCH-R2-F1`，P2，GitHub thread `PRRT_kwDOTe7lus6okFbq` / discussion
+`4171750733`，review `PRR_kwDOTe7lus8AAAABQc8x_A` 明确 reviewed commit `da102021c2`。
+主 writer 实际读回 thread 与源码，确认：若直接退休该 head，最新适用 Round 3 仍 FAIL，
+`DFR-ARCH-R1-F1` 等待 CLOSED，确实会 strand finding。原第一条 thread 已 outdated，
+但尚 unresolved；outdated 不等于 CLOSED。
+
+为修复该归档生命周期缺口，本 carrier **已暂时恢复 active 并返回 docs/fixes/**，
+供全新空上下文只读冷复评。产品 PR #36 已交付的事实、两轮产品 review 与 Round 3 FAIL
+保持历史原样；没有修改产品。旧未来 merge 陈述已变成明确要求，但两项 finding 的最终
+CLOSED 与后续 PASS 必须来自独立复评，不由 writer 自发宣布。
+
+本候选的退休条件：实际独立复评通过，主 writer 核验原始报告并把合法后续 round 与
+两项 disposition 写回该 carrier，相关 CEv1 绑定完成后，才再次移入 docs/archive/fixes。
+归档 PR #37 的实际 merge 仍未发生；新的交付 head 仍须通过 exact-head GitHub review/CI。
+
+
+## Review — Round 4：归档 carrier 独立文档复评 — 2026-10-03
+
+## 📋 第五批唯一 Bug 归档与 closure 准备复评报告
+
+📊 总体评分：9/10
+
+✅ Verdict: PASS
+
+两项原 P2 finding 均在本候选中关闭；未发现新增范围内 finding。此结论仅覆盖候选文档修复，不宣告归档交付、GitHub thread resolution 或任务完成。
+
+### 🔴 严重问题 — 必须修复
+
+无。原两项 finding 的逐项 disposition 见下文。
+
+### 🟡 建议改进 — 推荐
+
+无新增 finding。后续报告回写、证据绑定和交付核验属于尚待执行的 finalization 条件。
+
+### 🟢 优点
+
+**DFR-ARCH-R1-F1 — CLOSED**
+
+- 原始反馈：thread `PRRT_kwDOTe7lus6oj8tW`，discussion `4171695831`；原 review 明确指向 `1d3fc3f715`。
+- 实际源码：[carrier 第 298 行起](/tmp/agentdeck-disttest-fifth/archive-cold-snapshot/docs/fixes/disttest-fixture-registrations-linger.md:298)保留产品 merge message 的真实偏差，并在第 302–304 行写明后续归档提交及 merge **必须**满足要求、归档 merge **尚未发生**、须在实际 merge 后核验。
+- 第 348–349、364–366 行把 CEv1、后续审查及新 head 的 GitHub review/CI 写为要求，没有宣告这些未来步骤已通过。
+- 原缺陷是把未来 merge message 合规性写成事实；当前文字已消除该错误。关闭依据是候选源码，而非 thread 的 outdated 状态。
+
+**DFR-ARCH-R2-F1 — CLOSED**
+
+- 原始反馈：thread `PRRT_kwDOTe7lus6okFbq`，discussion `4171750733`；原 review 明确指向 `da102021c2`，要求“完成并记录复评，或先保持 carrier active”。
+- 实际文件位于 `docs/fixes/disttest-fixture-registrations-linger.md`，frontmatter 为 `status: active`；旧归档路径不存在，`retired:` 已移除。
+- [第 310 行起](/tmp/agentdeck-disttest-fifth/archive-cold-snapshot/docs/fixes/disttest-fixture-registrations-linger.md:310)保留 Round 3 `Verdict: FAIL` 和 F1 等待独立确认的历史，没有改写为历史 PASS。
+- [第 359 行起](/tmp/agentdeck-disttest-fifth/archive-cold-snapshot/docs/fixes/disttest-fixture-registrations-linger.md:359)明确记录恢复 active，并规定真实独立复评、writer 核验、后续 round 与两项 disposition 回写、相关 CEv1 绑定完成后，才可再次退休。
+- 因此，当前候选没有把待办 finding 留在 historical carrier 中。候选在复评前保留 FAIL 和待关闭状态是准确记录；本报告现在实际产生后，writer 才能记录新的 PASS。
+
+文档第 294–296 行保留此前移入归档的历史，第 359–366 行记录随后恢复 active 的修复，二者构成时间顺序，不构成当前生命周期矛盾。
+
+### 📝 总结
+
+**Reviewed state**
+
+| 项目 | 内容身份 |
+|---|---|
+| 复评基线 | `da102021c2f83458a069d09f1de1b9eb6eed5945` |
+| immutable 候选 tree | `825738602e97d9cfdbe08f80016411ec5f9feefd` |
+| 唯一候选文档 | `docs/fixes/disttest-fixture-registrations-linger.md` |
+| document blob | `2cfaa14f5321b3ee5dd8d57c03fc64e2aced8a5a` |
+
+**Reviewer 实际 session：** `01a10022-d965-72c3-a12c-76b12d79c779`，由本进程的当前 session/thread 环境标识读取。模型、推理与 tier 按本次任务指定为 `gpt-6.1-sol / xhigh / default`；未读取历史 session 核验配置。
+
+**Method：** 单 reviewer，只读文档复评；直接读取候选、原始反馈、规定的生命周期和复评格式规则；以内存计算核对 Git blob、index/tree、diff 回退、commit 对象及保存的 GitHub 原始数据。未委派，未激活 workflow phase，未生成 token。
+
+**Scope：** 仅本 Bug 的归档 carrier、两项反馈修复及 closure 准备。产品文件仅进行身份核对，没有重新审查产品行为或运行产品/native tests。
+
+**Evidence**
+
+| 实际核对 | 结果 |
+|---|---|
+| `archive-cold.index` 与 `archive-cold-tree.txt` | index 校验及 tree 重建匹配候选 tree；文档 blob 匹配 |
+| `archive-cold.diff` 反向应用 | 匹配当前候选；重建基线 tree `3af15a52616629ddcdef100c9b85375da166c964`，与实际 `da102021…` commit 对象一致 |
+| 保存的 product merge API 与 scoped 文件 | 三个产品/test/Makefile blob 均与 `41f43651…` 对应原始数据一致 |
+| 将候选文档 blob 换回产品原始 blob | 重建 tree 为 `3b2c8e2d99014036a2548253ca88c5d12343ccc2`，与产品提交及 merge tree 相同，确认差异只在 carrier |
+| 两个 archive 逻辑 commit 对象 | 对象哈希分别匹配 `1d3fc3f715…`、`da102021c2…`；subject、body、精确 Codex trailer 均存在；保存的签名日志为 Good |
+| 产品 merge 对象与原始 API | 对象哈希匹配 `41f43651…`；parents/tree、verification payload 相符；签名文本归一化尾部空行后相符，原始 API 为 `verified: true / valid` |
+| `product-review.json` | 完成 comment `5965299752` 明确 reviewed commit `391c9f15b3`；保存的 inline threads 为空 |
+| 产品 CI 原始数据 | 两个 run 的四个 job ID 与 head `391c9f15…` 绑定；最终 jobs 均 completed/success。较早 check-runs 快照仍为 in_progress，未误当作最终成功数据 |
+
+产品 blobs：
+
+- Makefile：`36d68403abf01e61cc01bcab25444a5a70eb5758`
+- distribution 脚本：`7b861b689dfecf9fc9d839f31453e4e1643f9c75`
+- cleanup 测试：`61227a91ce33e35361bfb3225804a2fc479211b0`
+
+**Completion gate: NOT_VERIFIED**
+
+本 reviewer 未查询或写入 CEv1。文档中产品 merge-bound 的历史 VERIFIED 声明，不替代当前归档候选的完成门禁。
+
+**全部 disposition：** `DFR-ARCH-R1-F1 CLOSED`；`DFR-ARCH-R2-F1 CLOSED`；still open：无；regressed：无；新 findings：无。保存的原始数据中，两项 GitHub thread 仍 unresolved；本报告关闭的是候选中的缺陷，没有修改远端 thread 状态。
+
+**后续 artifact finalization 的精确条件：**
+
+1. 主 writer 核验本实际报告与上述候选身份，追加合法 Round 4、PASS 和两项 CLOSED 依据；保留先前 FAIL、finding 历史及本独立报告的 `NOT_VERIFIED`。writer 后续实际门禁结果应另行记录。
+2. 对包含真实报告及 dispositions 的内容完成相关 CEv1 绑定和要求的门禁，再执行退休。最终归档内容改为 historical、加入实际 retired 日期；路径及 blob 变化须纳入最终交付状态绑定。
+3. 新交付 head 必须取得该 head 的 GitHub review/CI 结果，并处理两项 thread 的实际 closure；本报告不能代替后续 head 的审查结果。
+4. 归档 merge 实际发生后，才核验其 commit 身份、tree、parents、签名及 subject/body/trailer，并记录真实结果。不得预写未来 merge 或未来合规 PASS。
+
+**产品 M1 偏差保留：** 实际 `41f43651…` 使用默认 merge subject，遗漏 `Co-Authored-By: Codex <noreply@openai.com>`。该偏差已由对象和原始 API 确认，不能因逻辑提交合规或后续归档 merge 合规而抹除。
+
+**Task checkpoint：** 本候选文档复评 PASS；任务完成边界仍未验证。提交建议仅覆盖 writer 最终化后的单一 carrier；推送建议以最终 CEv1、明确交付权限及 PR #37 的实际分支核验为前提。本文仅作为 stdout/last-message 报告，未执行任何写入或交付动作。
+
+## 主 writer finalization — 2026-10-03
+
+新 session `01a10042-437b-70a3-b50d-239e932f8d2b` 直接核验上述完整原始报告，
+SHA-256 `43df9b7487499fcb5f7a853135aa61f403cb2cbcdaff3b1e6bbe8cc1f739c68b`；
+原始 events 确认独立 session `01a10022` 实际完成，未修改 raw report。
+核验范围包括候选 tree/blob、active 路径、两条 GitHub 原始反馈、产品未变 blobs，
+以及产品 merge 的实际 parents/tree、PGP signature 与 verification payload。
+原始核验回执：`/tmp/agentdeck-disttest-fifth/main-round4-verification.json`。
+
+采用独立 Round 4 PASS 9/10。`DFR-ARCH-R1-F1 CLOSED`：源码将未来 merge
+合规改为要求，并明确实际 merge 后核验；`DFR-ARCH-R2-F1 CLOSED`：复评时保持
+carrier active，现在已把真实完整 PASS 和逐项 closure 写回，未留下归档中的待办 finding。
+所有旧 FAIL、原待关闭状态及失效观察保留为历史；当前开放 finding 为 0。
+独立报告自身的 `Completion gate: NOT_VERIFIED` 保持原样；主 writer 门禁独立记录。
+归档 PR #37 尚未 merge，新的最终 head 必须通过 GitHub review/CI 才能交付。
+
+主 writer 实际门禁：`fix:disttest-fixture-registrations-linger:state:archive-final-active-fb52b31f`
+为 **VERIFIED 5/5**，missing criteria 与 unresolved candidate impacts 均为空；
+原始 MCP 结果在 `/tmp/agentdeck-disttest-fifth/ce-archive-final-active.json`。
+该门禁覆盖完整 Round 4 和两项 closure 的 active-final tree `fb52b31f`。
+在此实际 PASS、closure 和门禁完成之后，本记录再次合法退休为 historical；
+最终 archive 路径、blob、staged/committed tree 须另行目标绑定，PR #37 review/CI/merge
+仍按后续实际结果核验。本段不把候选门禁当成未来归档交付完成。
