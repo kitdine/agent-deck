@@ -1,6 +1,7 @@
 ---
-status: active
+status: historical
 created: 2026-10-02
+retired: 2026-10-03
 ---
 
 # 缺陷：分发测试退出后留下隔离 fixture 的 LaunchServices 注册
@@ -73,8 +74,8 @@ wire 契约未改变，故不重复本地 Go 全量/race/vet/cross-build；交�
 Completion gate: VERIFIED
 
 WorkUnit：`fix:disttest-fixture-registrations-linger`，独立任务，无 containing topic。
-独立冷复评已 PASS，当前候选任务门禁 VERIFIED 5/5；Git 交付尚未完成。
-此记录在产品 PR 实际合并前保持 active。
+独立冷复评已 PASS，产品 merge-bound 任务门禁 VERIFIED 5/5；产品 PR #36 已交付。
+此记录仅在实际产品 merge 后退休，退休文档通过单独 PR 交付。
 `v0.6.5` contract/assemble 未完成；原生菜单栏图标验收仍为 user-deferred。
 
 ## Review — Round 1
@@ -272,3 +273,34 @@ Task checkpoint：`fix:disttest-fixture-registrations-linger`，独立 task，�
 `release/v0.6.x`，exact-head Codex review/CI 通过后才 merge；仅 merge 后独立文档 PR 归档。
 用户已授权上述动作。新候选只追加核验后的本轮报告与门禁状态，复用代码和原生证据；
 实际提交前将当前 carrier 格式及 target-bound CEv1 再绑定到最终 staged tree。
+
+## 交付与退休 — 2026-10-03
+
+- 产品逻辑提交：`391c9f15b38f05b69c23c97bd1346f4c752e207e`，tree
+  `3b2c8e2d99014036a2548253ca88c5d12343ccc2`。实际 subject/body/精确 Codex trailer
+  已检查，SSH ED25519 签名验证通过；只含本 issue 的四个文件。
+- 产品 PR：[#36](https://github.com/kitdine/agent-deck/pull/36)，实际 merge
+  `41f43651cb5b436b7ff374fe46b39e21f92e2e0a`。parents 为 release 基线
+  `67a3248b6cf3e244ee7facef3597ad8b31ea8803` 和上述产品提交；tree 与产品提交相同。
+  实时 release/fix/PR head refs 与实际 Git 对象逐一匹配。GitHub PGP signature 及
+  verification payload 与本地实际 commit object 匹配且 `verified: true / valid`。
+- GitHub Codex：请求 `5965272302`，完成 `5965299752`，明确 reviewed commit
+  `391c9f15b3`；无 inline threads/findings。两套 CI 的四项 check-runs 全部 success，
+  对应该 exact head；`make verify` 的 full Go/race/vet 与 desktop build/tests/distribution
+  均已在 CI 通过。证据：`product-review.json`、`product-ci-final.json` 和
+  `product-merge-verification.json`，均在 `/tmp/agentdeck-disttest-fifth/`。
+- Merge-bound CEv1 为 VERIFIED 5/5。`DFR-R1-F1 CLOSED`，当前没有开放 findings。
+  旧候选的失效观察和 FAIL 保留为历史；没有 unresolved current impact。
+- 本记录在上述实际 merge 和门禁完成之后移到 `docs/archive/fixes/`，保留两轮独立
+  review 和原始 finding 历史；无 archive-index 条目。该退休仅用独立文档 PR，
+  不直接 push release，不改产品源码，不删除任何 branch/worktree。
+
+交付元数据偏差：产品 GitHub merge message 的 subject 为默认 merge 形式，且遗漏
+`Co-Authored-By: Codex <noreply@openai.com>`。这不是签名或产品 tree 的失败；源逻辑提交
+具备规定的 Conventional Commit subject、完整 body、trailer 和 SSH 签名。
+按用户禁止改史的约束保留实际 merge，不声称所有 commit message 都满足规则。
+后续退休逻辑提交及 merge 使用完整 subject/body/trailer，此偏差保留在最终交接中。
+
+归档文档 PR 的实际交付和最终任务状态由本 scope 的 CEv1、Beads 及最终回执记录；
+不在该文件中制造自身未来 commit/merge 身份。`v0.6.5` contract/assemble 仍未完成，
+原生菜单栏图标仍 user-deferred，其他三个候选 Bug 均不在本批。
