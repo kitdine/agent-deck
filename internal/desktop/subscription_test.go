@@ -277,6 +277,50 @@ func TestBuildSubscriptionPropagatesProviderSelectionReadFailures(t *testing.T) 
 	}
 }
 
+func TestBuildSubscriptionFailureOnlyProjectionNamesAttemptSource(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		client     quota.Client
+		retained   bool
+		failure    quota.Reason
+		wantSource string
+	}{
+		{"claude parse after statusline", quota.ClientClaude, true, quota.ReasonParseFailed, "claude_usage_prose"},
+		{"claude first parse", quota.ClientClaude, false, quota.ReasonParseFailed, "claude_usage_prose"},
+		{"claude first probe", quota.ClientClaude, false, quota.ReasonProbeFailed, "claude_usage_prose"},
+		{"codex first parse", quota.ClientCodex, false, quota.ReasonParseFailed, "codex_app_server"},
+		{"codex first probe", quota.ClientCodex, false, quota.ReasonProbeFailed, "codex_app_server"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			core := openSubscriptionStore(t)
+			saveQuotaSettings(t, core, func(s *quota.Settings) { s.ProbeEnabled = true })
+			recordOfficial(t, core, string(tc.client))
+			failureAt := time.Date(2026, 9, 10, 11, 0, 0, 0, time.UTC)
+			if tc.retained {
+				recordQuotaWindow(t, core, quota.Observation{
+					Client: tc.client, WindowKey: quota.ClaudeWindowFiveHour, Source: quota.SourceClaudeStatusLine,
+					ObservedAt: failureAt.Add(-time.Minute), WindowMinutes: 300, UsedPercent: 30,
+				})
+			}
+			qs := quota.NewStore(core.DB)
+			if err := qs.PutEnvelopeFailure(context.Background(), tc.client, tc.failure, time.Time{}, time.Time{}, failureAt); err != nil {
+				t.Fatalf("PutEnvelopeFailure: %v", err)
+			}
+			subscription, err := Service{Home: t.TempDir()}.BuildSubscription(context.Background(), core, failureAt)
+			if err != nil {
+				t.Fatalf("BuildSubscription: %v", err)
+			}
+			client := subscriptionFor(t, subscription, string(tc.client))
+			if client.Source == nil || *client.Source != tc.wantSource {
+				t.Errorf("source = %v, want failed attempt route %s", client.Source, tc.wantSource)
+			}
+			if client.ObservedAt == nil || *client.ObservedAt != failureAt.Format(time.RFC3339Nano) || !reasonIs(client.Failure, tc.failure) || len(client.Windows) != 0 {
+				t.Fatalf("client = %+v, want failure-only projection at attempt instant", client)
+			}
+		})
+	}
+}
+
 func TestBuildSubscriptionFailureStates(t *testing.T) {
 	core := openSubscriptionStore(t)
 	saveQuotaSettings(t, core, func(s *quota.Settings) { s.ProbeEnabled = true })
