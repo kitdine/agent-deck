@@ -36,6 +36,10 @@ import time
 from pathlib import Path
 from typing import Any
 
+# Import only the pure parser; CI never imports or executes this Hook.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from review_record import latest_review_state
+
 # This hook encodes one repository's task-title grammar and Beads deployment, so
 # it must stay inert anywhere else. Identify that repository by a file it owns,
 # never by its path: a checkout lives wherever its owner cloned it, and a path
@@ -69,20 +73,6 @@ LIVE_STATUSES = frozenset(
 DOC_TITLE = re.compile(r"^文档：\s*([^/\s]+)\s*/\s*(.+)$")
 TASK_TITLE = re.compile(r"^任务：\s*(.+)$")
 
-# A review record's verdict line, e.g. "- Verdict: PASS".
-VERDICT = re.compile(
-    r"^[ \t]*(?:[-*]\s+|✅\s*)?(?:Verdict|结论|裁决|评审结论|复评结论)"
-    r"\s*[:：]\s*(PASS|FAIL|REOPEN)\b", re.IGNORECASE | re.MULTILINE
-)
-COMPLETION_GATE = re.compile(
-    r"^[ \t]*(?:[-*]\s+)?(?:Completion gate|完成门禁|证据门禁|验收门禁)"
-    r"\s*[:：]\s*(VERIFIED|NOT_VERIFIED|FAILED|BLOCKED|NOT_REQUIRED)\b",
-    re.IGNORECASE | re.MULTILINE,
-)
-REVIEW_ROUND = re.compile(
-    r"^##\s+(?:(?:Review\s*[—–-]\s*)?Round\s+\d+\b|(?:评审|复评)\s*[—–-]?\s*第?\d+轮)",
-    re.IGNORECASE | re.MULTILINE,
-)
 # A finding ID as `.agent-instructions/review-records.md` defines it: A6-F1,
 # DW-R11-F2, D1-F1. The audit that produced that rule found 103 of them across
 # every review record.
@@ -379,42 +369,6 @@ def changed_paths(root: Path, deadline: float) -> list[str]:
             # Rename entries are "old -> new"; the destination is what changed.
             paths.append(line[3:].split(" -> ")[-1].strip())
     return paths
-
-
-def latest_review_state(path: Path) -> tuple[str | None, str | None]:
-    """Return the latest round's verdict and completion gate.
-
-    Read the whole latest round, including nested Skill report headings and
-    metadata after the verdict. Never borrow a result from an earlier round.
-    """
-    try:
-        text = path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return None, None
-    # Fenced examples are not declarations of the current review state.
-    visible: list[str] = []
-    fence = ""
-    for line in text.splitlines():
-        marker = re.match(r"^ {0,3}(`{3,}|~{3,})(.*)$", line)
-        if marker:
-            run, tail = marker.groups()
-            if not fence:
-                fence = run
-            elif run[0] == fence[0] and len(run) >= len(fence) and not tail.strip():
-                fence = ""
-            continue
-        if not fence:
-            visible.append(line.replace("**", "").replace("__", "").replace("`", ""))
-    text = "\n".join(visible)
-    rounds = list(REVIEW_ROUND.finditer(text))
-    if not rounds:
-        rounds = list(re.finditer(r"^##\s+📋", text, re.MULTILINE))
-    section = text[rounds[-1].start():] if rounds else text
-    verdicts = {value.upper() for value in VERDICT.findall(section)}
-    gates = {value.upper() for value in COMPLETION_GATE.findall(section)}
-    if len(verdicts) != 1 or len(gates) > 1:
-        return None, None
-    return next(iter(verdicts)), next(iter(gates)) if gates else None
 
 
 def latest_verdict(path: Path) -> str | None:
