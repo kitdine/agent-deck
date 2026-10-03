@@ -21,7 +21,75 @@ set -euo pipefail
 
 root=$(cd "$(dirname "$0")/.." && pwd)
 temporary=$(mktemp -d "${TMPDIR:-/private/tmp}/agentdeck-macos-distribution.XXXXXX")
-trap 'rm -rf "$temporary"' EXIT
+temporary=$(cd "$temporary" && pwd -P)
+fixture_root=
+stub_mount=
+stub_dmg_attached=0
+lsregister=${AGENTDECK_LSREGISTER:-/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister}
+
+unregister_fixture_bundles() {
+  local directory=$1 fixture failed=0
+  local paths="$temporary/fixture-paths.list" error_log="$temporary/unregister-error.log"
+  # Stay inside this run's directory, do not follow links, and unregister the
+  # nested extensions before their hosts while their Info.plists still exist.
+  if ! find "$directory" -depth -type d \( -name '*.app' -o -name '*.appex' \) -print0 >"$paths"; then
+    echo "failed to enumerate distribution fixtures: $directory" >&2
+    return 1
+  fi
+  while IFS= read -r -d '' fixture; do
+    if ! "$lsregister" -u "$fixture" 2>"$error_log"; then
+      # LaunchServices returns kLSApplicationNotFoundErr for copies it never
+      # registered. Accept that result only after proving this exact path absent.
+      if grep -F ': -10814' "$error_log" >/dev/null && \
+         "$lsregister" -dump | AGENTDECK_FIXTURE_PATH="$fixture" awk '
+           BEGIN { fixture=ENVIRON["AGENTDECK_FIXTURE_PATH"] }
+           /^path:[[:space:]]/ {
+             path=$0
+             sub(/^path:[[:space:]]*/, "", path)
+             sub(/ \(0x[[:xdigit:]]+\)$/, "", path)
+             if (path == fixture) present=1
+           }
+           END { exit present ? 1 : 0 }
+         '; then
+        continue
+      fi
+      cat "$error_log" >&2
+      echo "failed to unregister distribution fixture: $fixture" >&2
+      failed=1
+    fi
+  done <"$paths"
+  return "$failed"
+}
+
+cleanup_distribution_fixtures() {
+  local run_status=$? cleanup_status=0
+  trap - EXIT
+  if [[ -d $temporary ]] && ! unregister_fixture_bundles "$temporary"; then
+    cleanup_status=1
+  fi
+  if [[ $stub_dmg_attached -eq 1 ]]; then
+    if ! hdiutil detach -quiet "$stub_mount"; then
+      echo "failed to detach distribution fixture: $stub_mount" >&2
+      cleanup_status=1
+    fi
+  fi
+  if [[ -n $fixture_root ]] && ! rm -rf "$fixture_root"; then
+    cleanup_status=1
+  fi
+  if [[ $cleanup_status -eq 0 ]]; then
+    rm -rf "$temporary" || cleanup_status=1
+  else
+    echo "distribution fixtures retained for cleanup: $temporary" >&2
+  fi
+  if [[ $run_status -ne 0 ]]; then
+    exit "$run_status"
+  fi
+  exit "$cleanup_status"
+}
+
+trap cleanup_distribution_fixtures EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 cask_template="$root/packaging/homebrew/agentdeck-app.rb.tmpl"
 dmg_sha=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
@@ -115,13 +183,13 @@ if ! command -v brew >/dev/null 2>&1; then
   exit 1
 fi
 homebrew_taps="$(brew --repository)/Library/Taps"
-fixture_root="$homebrew_taps/agentdeck-fixture"
-fixture_tap="$fixture_root/homebrew-cask-fixture"
-if [[ -e $fixture_root ]]; then
-  echo "a previous run left $fixture_root behind; remove it before retrying" >&2
+candidate_fixture_root="$homebrew_taps/agentdeck-fixture"
+if [[ -e $candidate_fixture_root ]]; then
+  echo "a previous run left $candidate_fixture_root behind; remove it before retrying" >&2
   exit 1
 fi
-trap 'rm -rf "$fixture_root" "$temporary"' EXIT
+fixture_root=$candidate_fixture_root
+fixture_tap="$fixture_root/homebrew-cask-fixture"
 mkdir -p "$fixture_tap/Casks"
 
 for pair in "agentdeck-app:$stable_cask" "agentdeck-app-rc:$rc_cask"; do
@@ -155,13 +223,13 @@ for pair in "agentdeck-app:$stable_cask" "agentdeck-app-rc:$rc_cask"; do
   grep -F 'brew install --cask ' "$load_log" >/dev/null
 done
 rm -rf "$fixture_root"
-trap 'rm -rf "$temporary"' EXIT
+fixture_root=
 
 # The fixtures below are real bundles that macOS registers. The packaging script
 # writes them into a DMG and section 6 mounts it, and `hdiutil attach` registers
 # whatever identifier the image carries: `-nobrowse` withholds the mount from
-# Finder, not the registration, and the `trap rm -rf` deletes the files without
-# ever unregistering them. A fixture declaring the shipping identifier therefore
+# Finder, not the registration. The EXIT cleanup unregisters this run's copies
+# before deleting them. A fixture declaring the shipping identifier previously
 # claimed the installed AgentDeck.app's LaunchServices record under a build
 # number this script invented, WidgetKit validated its timeline archive against
 # that wrong host version, and every widget on the machine stopped refreshing.
@@ -422,11 +490,14 @@ stub_mount="$temporary/stub-dmg-mount"
 mkdir -p "$stub_mount"
 hdiutil attach -quiet -readonly -nobrowse -mountpoint "$stub_mount" \
   "$stub_dist/AgentDeck_v1.2.3_universal.dmg"
+stub_dmg_attached=1
 stub_dmg_has_ticket=0
 if [[ -f "$stub_mount/AgentDeck.app/Contents/CodeResources.staple-marker" ]]; then
   stub_dmg_has_ticket=1
 fi
+unregister_fixture_bundles "$stub_mount"
 hdiutil detach -quiet "$stub_mount"
+stub_dmg_attached=0
 if [[ $stub_dmg_has_ticket -ne 1 ]]; then
   echo "the Cask DMG was assembled before the bundle was stapled" >&2
   exit 1
