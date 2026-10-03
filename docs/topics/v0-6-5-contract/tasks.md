@@ -124,6 +124,20 @@ independently reviewing the changed version scope before implementation. This
 supersedes the earlier recommendation to assign the doctor API to an unspecified
 later version. It selects no other feature or Bug and does not close the origin.
 
+The real user subsequently approved the exact bounded primary-version-contract
+proposal on 2026-10-03 (decision source: `Sentinel_986c24bbd3b081918c2d40986edea07c`,
+“批准1”, reaffirmed in the independent resume instruction). The
+[primary Version Number Semantics](../../specs/cli-design.md#version-number-semantics)
+now expressly except only the declared read-only LaunchServices doctor/health
+checks, codes, optional diagnostic fields and consequent warning counts from
+the MINOR/PATCH output guarantee for v0.6.5. Scripts relying on fixed output or
+counts may require adaptation; release documentation must disclose this.
+Commands/flags, exit codes, databases, persisted formats and existing-check
+semantics remain unchanged. All other subjects retain the general version rule.
+Approval resolves the decision Gate only; this amendment still needs independent
+re-review and exact-state evidence, and the feature's own contracts must pass
+before implementation.
+
 The version carrier remains this contract topic. The feature carrier is a
 separate ordinary Lane B topic, `launchservices-recovery`, with its own
 `feature/launchservices-recovery` workspace created from the verified patch-line
@@ -325,12 +339,15 @@ commit, push, PR, merge, real installation or publication is executed by design.
 
 ## Current scope-amendment handoff
 
-The 2026-10-03 bounded doctor exception passed independent cold-context review
-in [tasks review](reviews/tasks.md), Round 2. Document evidence and authorized
-delivery are handled at this amendment's exact-state boundary; earlier PASS and
-delivery facts below remain provenance. The new feature's own contracts are
-still pending. No implementation task, Bug closure, aggregate assembly or release
-completion follows from this version-scope approval.
+The real user's approved bounded primary-contract exception is reconciled into
+Version Number Semantics. Fresh local cold-context re-review passed in
+[Tasks review](reviews/tasks.md), Round 4; Round 3 FAIL and invalidated older
+evidence remain historical facts. The selected v0.6.5 membership is retained.
+The final exact-state evidence and authorized signed delivery are handled at
+this document boundary. PR #40 remains Draft and unmerged until a new exact-head
+GitHub review and required CI pass. Review the feature's own contracts before
+implementation. No implementation task, Bug closure, aggregate assembly or
+release completion is claimed.
 
 ## Earlier planning handoff — historical 2026-09-30
 

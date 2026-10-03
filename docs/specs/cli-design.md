@@ -468,6 +468,20 @@ text that keeps its typed code and exit code. A patch release must be safe to
 downgrade from — schema, persisted formats, and the stdout contract stay
 byte-compatible with the prior release.
 
+The operator-approved `v0.6.5` `launchservices-recovery` feature is a single
+explicit exception to the MINOR and PATCH output rules above, limited to
+read-only LaunchServices doctor diagnostics and their health presentation.
+After the feature's requirements, surfaces, architecture and decomposition pass
+independent review, the release may add only the declared diagnostic
+checks/codes, optional diagnostic fields and consequent doctor/health warning
+counts. Those diagnostic outputs are not byte-compatible with v0.6.0 for an
+affected machine; release documentation must state that exception. This does
+not permit command/flag changes, exit-code changes, database or persisted-format
+changes, different existing-check semantics, unrelated count changes or any
+other new feature in a patch release. The general MINOR/PATCH rule continues to
+apply to every other subject. Doctor does not automatically unregister or clean
+system registrations, restart daemons or rebuild system databases.
+
 Rewording an error message, including replacing leaked internal text with
 actionable guidance, is PATCH; adding or renaming the typed `code` in the JSON
 error envelope is MINOR, because "Output and Errors" pins typed error codes
