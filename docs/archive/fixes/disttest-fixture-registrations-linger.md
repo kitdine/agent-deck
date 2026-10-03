@@ -289,7 +289,7 @@ Task checkpoint：`fix:disttest-fixture-registrations-linger`，独立 task，�
   对应该 exact head；`make verify` 的 full Go/race/vet 与 desktop build/tests/distribution
   均已在 CI 通过。证据：`product-review.json`、`product-ci-final.json` 和
   `product-merge-verification.json`，均在 `/tmp/agentdeck-disttest-fifth/`。
-- Merge-bound CEv1 为 VERIFIED 5/5。`DFR-R1-F1 CLOSED`，当前没有开放 findings。
+- 产品 merge-bound CEv1 为 VERIFIED 5/5。`DFR-R1-F1 CLOSED`，产品修复无开放 findings。
   旧候选的失效观察和 FAIL 保留为历史；没有 unresolved current impact。
 - 本记录在上述实际 merge 和门禁完成之后移到 `docs/archive/fixes/`，保留两轮独立
   review 和原始 finding 历史；无 archive-index 条目。该退休仅用独立文档 PR，
@@ -299,8 +299,51 @@ Task checkpoint：`fix:disttest-fixture-registrations-linger`，独立 task，�
 `Co-Authored-By: Codex <noreply@openai.com>`。这不是签名或产品 tree 的失败；源逻辑提交
 具备规定的 Conventional Commit subject、完整 body、trailer 和 SSH 签名。
 按用户禁止改史的约束保留实际 merge，不声称所有 commit message 都满足规则。
-后续退休逻辑提交及 merge 使用完整 subject/body/trailer，此偏差保留在最终交接中。
+后续退休逻辑提交及归档 merge **必须**满足完整 subject/body/trailer 要求。
+归档 merge 尚未发生；是否符合要求须在实际 merge 后按 commit 对象核验，
+核验结果及上述产品 merge 偏差记录在最终交接中。
 
 归档文档 PR 的实际交付和最终任务状态由本 scope 的 CEv1、Beads 及最终回执记录；
 不在该文件中制造自身未来 commit/merge 身份。`v0.6.5` contract/assemble 仍未完成，
 原生菜单栏图标仍 user-deferred，其他三个候选 Bug 均不在本批。
+
+## Review — Round 3：归档文档审查
+
+## 📋 PR #37 exact-head 归档记录审查
+
+📊 总体评分：8/10
+
+✅ Verdict: FAIL
+
+### 🔴 严重问题 — 必须修复
+
+`DFR-ARCH-R1-F1`，P2，`docs/archive/fixes/disttest-fixture-registrations-linger.md:302`。
+旧陈述把未来归档 merge 的完整 message 当作已发生事实；在该 reviewed head 上
+归档 PR 尚未合并，无法核验，且与下一段不制造未来 merge 身份的承诺冲突。
+
+Evidence：GitHub thread `PRRT_kwDOTe7lus6oj8tW` / discussion `4171695831`，
+review `PRR_kwDOTe7lus8AAAABQc4t7w` 明确 reviewed commit `1d3fc3f715`。
+主 writer 已实际读回 thread、review 和本地源码，确认发现成立。
+
+💡 修复：改为明确未来要求，标明尚未发生并等待实际 merge 后核验。
+Disposition：已在待审查候选中完成文案修复；CLOSED 等新 exact-head 独立审查确认，
+不因 writer 修复自行宣布 review PASS。
+
+### 🟡 建议改进 — 推荐
+
+无其他已核验 findings。
+
+### 🟢 优点
+
+产品 merge 的签名、tree、refs 和元数据偏差有实际证据；未为修正文案改写历史。
+
+### 📝 总结
+
+Reviewed state：`1d3fc3f715fa3cd845c8555fc11b50e49f19a93f`，tree
+`0d04621490dfd9d52fb6f6610fd009a0fdfe8802`。
+Reviewer：GitHub Codex；Method：exact-head 只读审查，主 writer 直接来源核验。
+Scope：归档 carrier 的交付陈述；产品代码、测试及 Makefile 无变更。
+Completion gate: NOT_VERIFIED
+
+本候选只修复未来时态并追加本 finding 历史。归档 head 变化后必须重新绑定 CEv1、
+请求 exact-head Codex review 并通过该 head 的 CI，之后才可执行归档 merge。
