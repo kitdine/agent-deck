@@ -374,6 +374,51 @@ final class DesktopRefreshCoordinatorTests: XCTestCase {
 		XCTAssertEqual(try store.read(), AppGroupDesktopSnapshotV1(envelope: complete))
 	}
 
+	func testUnavailableContainerRecordsFullAndQuotaPublicationFailures() async throws {
+		let complete = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
+		let quota = RecordingQuotaRefresher()
+		let coordinator = DesktopRefreshCoordinator(
+			host: ScriptedSnapshotRefresher(responses: [.snapshot(complete)]),
+			quotaRefresher: quota,
+			snapshotStore: nil
+		)
+		XCTAssertEqual(coordinator.widgetPublication, .neverPublished)
+		await coordinator.startInitialRefresh().value
+		XCTAssertEqual(coordinator.state, .ready(complete))
+		XCTAssertEqual(coordinator.widgetPublication, .failedBeforeCommit(generation: 1, issue: .storageUnavailable))
+		let subscription = DesktopSubscriptionSnapshotV1(available: true, clients: [])
+		await quota.setSubscription(subscription)
+		await coordinator.requestQuotaRefresh(manual: false)
+		let updated = complete.replacingSubscription(subscription)
+		XCTAssertEqual(coordinator.state, .ready(updated))
+		XCTAssertEqual(coordinator.latestSnapshot, updated)
+		XCTAssertEqual(coordinator.widgetPublication, .failedBeforeCommit(generation: 2, issue: .storageUnavailable))
+		let calls = await quota.recordedManualValues()
+		XCTAssertEqual(calls, [false, false])
+		let presentation = DesktopPresentationState.derive(from: coordinator.state)
+		XCTAssertFalse(presentation.qualifiers.contains(.stale))
+		XCTAssertFalse(presentation.isBadged)
+	}
+
+	func testUsableContainerPublishesAfterCoordinatorRecreation() async throws {
+		let complete = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
+		let unavailable = DesktopRefreshCoordinator(
+			host: ScriptedSnapshotRefresher(responses: [.snapshot(complete)]), snapshotStore: nil
+		)
+		await unavailable.refresh()
+		XCTAssertEqual(unavailable.widgetPublication, .failedBeforeCommit(generation: 1, issue: .storageUnavailable))
+		let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+		defer { try? FileManager.default.removeItem(at: directory) }
+		let store = AppGroupSnapshotStore(directoryURL: directory)
+		let recovered = DesktopRefreshCoordinator(
+			host: ScriptedSnapshotRefresher(responses: [.snapshot(complete)]), snapshotStore: store
+		)
+		await recovered.refresh()
+		XCTAssertEqual(recovered.widgetPublication, .succeeded(generation: 1, affectedKinds: Set(AppGroupWidgetKind.allCases)))
+		XCTAssertEqual(try store.read(), AppGroupDesktopSnapshotV1(envelope: complete))
+		XCTAssertEqual(recovered.state, .ready(complete))
+	}
+
 	func testCacheWriteFailureKeepsFreshMenuDataAndRecordsPublicationFailure() async throws {
 		let complete = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-complete.json"))
 		let temporaryDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
