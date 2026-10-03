@@ -1,6 +1,7 @@
 ---
-status: active
+status: historical
 created: 2026-10-03
+retired: 2026-10-03
 ---
 
 # 缺陷：App Group 容器不可用时菜单栏不报告 Widget 发布失败
@@ -64,3 +65,12 @@ nil 分支先推进 generation 后记录现有 typed failure；有效 publisher 
 - Task: `ad-bug-widget-publisher-unavailable-silent`；独立 PASS，exact candidate gate VERIFIED，无修复项。
 - 提交建议：以该 Task 的代码、测试和本 Fix 载体组成一个 signed logical commit；仅上述路径，不含 binding、contract topic 或全局 status。
 - 推送建议：两项 logical commits 完成对象/SSH 签名检查并把可复用证据绑定最终 immutable HEAD 后，普通 push 本批 fix 分支；draft PR 指向 `release/v0.6.x`，待 exact-head GitHub Codex review/CI 通过再 merge commit。
+
+## Delivery and retirement — 2026-10-03 UTC
+
+- Logical commit: `37a824e8f80afe0d97768856d25595009c2dbc2a`，actual subject/body/Codex trailer、four-path scope 与 SSH signature 已核实。
+- Reviewed/pushed batch HEAD: `1b75cd6966641cc5e144332772393b3f1572002d`；[PR #34](https://github.com/kitdine/agent-deck/pull/34) 指向 `release/v0.6.x`。
+- GitHub Codex review: [exact-head report](https://github.com/kitdine/agent-deck/pull/34#issuecomment-5964149712) 明确 reviewed `1b75cd6966`，无 review/inline findings。Push 与 PR 的四个 desktop/verify CI checks 均 SUCCESS，全部 head SHA 匹配；证据在 `/tmp/agentdeck-health-source-20261002/product-checks-final.json`。
+- Actual merge: `62863c804f4af665af767c5a54ecc366c74609c8`；parents `71f6f2145b6936dea67ff81baed045687cc6f1e2`、`1b75cd6966641cc5e144332772393b3f1572002d`；tree `74542556a484fa35afc15316e583abe9b2ae3b47` 与 source 相同，GitHub signature verified/valid；API 与 fetched Git object、remote release ref 已比较。
+- WorkUnit `fix:widget-publisher-unavailable-silent`，merge ContentState `fix:widget-publisher-unavailable-silent:merge:62863c804f4af665af767c5a54ecc366c74609c8` 的 gate VERIFIED 7/7，无 missing/invalidated/unresolved。15 protected blobs 对 Git object 完全匹配，使用明确 target-bound roll-up 与 scope-aware preserves assessment；无产品检查重跑。
+- 本退役严格在 product merge 与 required evidence finalization 后发生；归档按另一个合法 PR 交付，无直接 shared-release push。历史 review 与证据身份保留；本批仍不代表 v0.6.5 contract/assemble 或 deferred 原生验收完成。
