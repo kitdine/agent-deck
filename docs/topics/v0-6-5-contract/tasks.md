@@ -1,12 +1,17 @@
 ---
 status: active
 created: 2026-09-30
-updated: 2026-09-30
+updated: 2026-10-03
 ---
 
 # v0.6.5 Contract — Tasks
 
 Target: one concentrated defect-repair iteration and one final `v0.6.5` release.
+The operator's 2026-10-03 decision adds one bounded Lane B exception:
+`launchservices-recovery`, originating in
+`ad-bug-lsregister-collision-no-recovery-path`, ships with v0.6.5 after its own
+requirements, terminal surface, architecture and decomposition pass independent
+review. All other membership and feature exclusions remain in force.
 Origin: the operator's version selection in [Roadmap](../../roadmap.md#v065--concentrated-defect-repair)
 and explicit request to design this version contract. Input is sufficient for
 version decomposition; individual Bug causes, lanes and implementation scopes
@@ -38,9 +43,12 @@ exact-state evidence; no status is inferred from another system's checkbox.
 - Published product baseline: peeled `v0.6.0` commit
   `a5e969d7ad60cfaaee7fec13cbe1704d4cdb2c52`. The contract's newer main base
   contains closeout/governance history; it is not the repair product baseline.
-- `release/v0.6.x` is absent from the inspected local and cached origin refs on
-  2026-09-30. No fetch was performed. Resolve live refs before authorized creation
-  or delivery; create a missing release line from the exact peeled tag above.
+- The original 2026-09-30 intake found no release line. On 2026-10-03 a read-only
+  remote-ref query confirmed `release/v0.6.x` at
+  `24623ec8bf0e172bf8e630ebe203163e76634403`. The local release ref remains older;
+  it is not a valid source for this entry. The operator explicitly selected the
+  current patch-line baseline for this scoped doctor topic. Re-resolve the target
+  for integration; this observation grants no release/publication authority.
 - Each `fix/<slug>` starts from the then-current verified release-line head and
   targets `release/v0.6.x` by PR. Release publication uses the final verified
   release-line candidate, followed by authorized forward propagation to main.
@@ -78,7 +86,7 @@ dependencies. Do not start a Bug under this document-design command.
 | P2 | `ad-bug-hook-gate-ignores-content-state` | Current-source fixtures detect stale review evidence and changed subjects. | L2 shared Hook contract; cross-runtime fixtures |
 | P2 | `ad-bug-hook-check3-directory-entries` | New untracked-directory entries expose relevant Markdown to the scoped observer. | L1 Hook fixtures; both runtimes |
 | P2 | `ad-bug-hook-check5-lifecycle-word-match` | Distinguish obsolete lifecycle assertions from quotations and ordinary language. | L1 Hook fixtures; both runtimes |
-| P2 | `ad-bug-lsregister-collision-no-recovery-path` | Bounded existing-contract recovery guidance; a new doctor API is a separate product decision. | L0 guidance; raise if executable behavior changes |
+| P2 | `ad-bug-lsregister-collision-no-recovery-path` | Operator-selected Lane B `launchservices-recovery`: new read-only doctor diagnosis and truthful manual recovery guidance, with independently reviewed feature contracts before implementation. | L2 doctor/health/output core contract, failure-first fixtures and isolated macOS read-only acceptance |
 | P3 | `ad-bug-footer-routes-narrow-truncation` | Real native 280 pt reproduction and existing-policy check before repair or Lane B decision. | L1 native surface |
 | P3 | `ad-bug-disttest-fixture-registrations-linger` | Bounded fixture registration cleanup with production identifiers unaffected. | L3 distribution lifecycle |
 
@@ -102,8 +110,55 @@ lifecycle matrix. Material membership changes return this contract to review.
 Excluded: `ad-cost-transparency`, `ad-antigravity-support`,
 `ad-auxiliary-session-classification`, and future v0.8/v0.9/v1.0 feature plans.
 No default auxiliary-session filtering, usage deletion, project/worktree grouping
-policy, new doctor API, global locking redesign, or unrelated feature expansion
-is selected. New decisions return to their owning Lane B topic before code work.
+policy, global locking redesign, or unrelated feature expansion is selected.
+New doctor APIs remain excluded except the explicitly selected
+`launchservices-recovery` contract. New decisions return to their owning Lane B
+topic before code work.
+
+### Approved operator decision — 2026-10-03
+
+The real user selected P2 option 2 and explicitly stated “v0.6.5一起做”. The
+current full-flow instruction authorizes adjusting the repair-only scope,
+membership treatment and new-doctor-API exclusion, recording that decision and
+independently reviewing the changed version scope before implementation. This
+supersedes the earlier recommendation to assign the doctor API to an unspecified
+later version. It selects no other feature or Bug and does not close the origin.
+
+The real user subsequently approved the exact bounded primary-version-contract
+proposal on 2026-10-03 (decision source: `Sentinel_986c24bbd3b081918c2d40986edea07c`,
+“批准1”, reaffirmed in the independent resume instruction). The
+[primary Version Number Semantics](../../specs/cli-design.md#version-number-semantics)
+now expressly except only the declared read-only LaunchServices doctor/health
+checks, codes, optional diagnostic fields and consequent warning counts from
+the MINOR/PATCH output guarantee for v0.6.5. Scripts relying on fixed output or
+counts may require adaptation; release documentation must disclose this.
+Commands/flags, exit codes, databases, persisted formats and existing-check
+semantics remain unchanged. All other subjects retain the general version rule.
+Approval resolves the decision Gate only; this amendment still needs independent
+re-review and exact-state evidence, and the feature's own contracts must pass
+before implementation.
+
+The version carrier remains this contract topic. The feature carrier is a
+separate ordinary Lane B topic, `launchservices-recovery`, with its own
+`feature/launchservices-recovery` workspace created from the verified patch-line
+commit above. It never uses the serial Lane A Fix slot. Its design must define
+host/appex identity, actual conflict versus legitimate copies/stale/unknown
+registrations, bounded enumeration and failure semantics, quick/full inclusion,
+stable check/code/output and health behavior, manual guidance versus executable
+`recovery_command`, and fixture/live read-only acceptance. Existing
+`extension_duplicate_id` inventory semantics cannot be reused for OS resources.
+
+Doctor remains read-only. No automatic unregister, system-registration cleanup,
+daemon restart, real database rebuild, user-data write or new OS privilege is
+selected. Native P3 footer and full-popover acceptance remain separate. This
+amendment does not waive any independent contract, implementation, review,
+exact-state CEv1 or remote delivery gate. A design PASS is not defect recovery.
+
+Deliver this limited version-contract amendment from its own carrier. Import
+only the reviewed version-document scope if the patch-line PR needs it; do not
+merge the contract branch or unrelated main plans into the release line. The
+new topic's ordinary PR targets `release/v0.6.x`; no direct shared-release push,
+squash, rebase or cherry-pick is authorized. Release/publication remains separate.
 
 ## One issue, one PR and serial workspace entry
 
@@ -124,8 +179,11 @@ For each retained Bug:
    Keep the original issue as dispatch carrier; do not create separate Repair or
    Re-review tasks. False/duplicate/already-fixed findings receive administrative
    evidence and disposition, without a fabricated code PR.
-2. Resolve a valid issue binding and authorized `fix/<slug>` branch from the
-   current patch-line head. Claim only that issue under its actual stage command.
+2. For Lane A, resolve a valid issue binding and authorized `fix/<slug>` branch
+   from the current patch-line head. Lane B uses its ordinary feature workspace
+   and reviewed requirements/surface/architecture/tasks progression; it must not
+   claim implementation or turn draft contracts into product behavior. Claim
+   only the approved work product under its actual stage authority.
    Establish a failing regression, implement the bounded repair, and freeze its
    source/content state with impact-selected verification.
 3. Obtain local independent review of that frozen state and applicable CEv1
@@ -143,7 +201,9 @@ For each retained Bug:
    actual release target and record resulting evidence before authorized merge.
    Preserve ancestry; no squash, cross-line rebase or cherry-pick without an
    explicit exception. Verify delivered result before closing the Bug.
-6. Freeze the serial slot through review, repairs and verified delivery. Before
+6. Freeze the owning workspace through review, repairs and verified delivery.
+   Lane B retains its distinct feature binding; the following serial-slot rules
+   apply only to Lane A. Before
    the next issue, ensure a clean tree, no conflicting active owner or unresolved
    local edits, the correct updated release base, and a new verified binding.
    Never force-switch or reset dirty work. A late finding returns to its issue's
@@ -277,7 +337,19 @@ Record the exact release/propagation result and unresolved handoff; do not close
 coordination while required propagation remains. No fetch, branch creation,
 commit, push, PR, merge, real installation or publication is executed by design.
 
-## Current handoff
+## Current scope-amendment handoff
+
+The real user's approved bounded primary-contract exception is reconciled into
+Version Number Semantics. Fresh local cold-context re-review passed in
+[Tasks review](reviews/tasks.md), Round 4; Round 3 FAIL and invalidated older
+evidence remain historical facts. The selected v0.6.5 membership is retained.
+The final exact-state evidence and authorized signed delivery are handled at
+this document boundary. PR #40 remains Draft and unmerged until a new exact-head
+GitHub review and required CI pass. Review the feature's own contracts before
+implementation. No implementation task, Bug closure, aggregate assembly or
+release completion is claimed.
+
+## Earlier planning handoff — historical 2026-09-30
 
 Decomposition review passed in [tasks review](reviews/tasks.md), Round 1.
 Task 1 passed [independent review](reviews/fix-workspace-policy.md), Round 1; its dispatch is

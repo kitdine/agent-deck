@@ -64,3 +64,178 @@ WorkUnit：`v0-6-5-contract:tasks.md`；dispatch：`ad-v0-6-5-contract-doc-tasks
 提交建议：文档门禁 VERIFIED 后，只提交本工作树的 tasks.md 和本评审记录；需独立提交授权。
 推送建议：文档门禁 VERIFIED 且授权提交、签名及归因核验后，推送 feature/v0-6-5-contract 到 origin 同名分支；计划 PR 目标 main，推送/PR 仍需各自授权。
 下一项：`开发：v0-6-5-contract / fix-workspace-policy`，先解析其 dispatch 和阶段前提；本评审不执行下一阶段。
+
+## Round 2 — 2026-10-03
+
+## 📋 v0.6.5 版本范围修订独立评审（V065-LS-R2）
+
+📊 总体评分：9/10
+
+✅ 评审结论：PASS（仅限本次范围修订）
+
+Reviewer：独立冷上下文 Codex CLI 审查角色。
+Method：只读文档审查、现行权威核对、Git 身份与基线核验、场景走查及必要的既有源码核对。未参与修订写作，未委派。
+Scope：仅 `docs/topics/v0-6-5-contract/tasks.md` 的 scope amendment；其他文件仅作为依据。
+
+### 🔴 严重问题 — 必须修复
+
+无。未发现需要记录为 `V065-LS-R2-Fn` 的可执行修复项。
+
+### 🟡 建议改进 — 推荐
+
+无。新功能的具体字段、分类规则与输出值属于后续独立契约设计，本轮不替其作出决定。
+
+### 🟢 优点
+
+- 第 10–14、89、114–125 行准确记录用户选择：仅将原 P2 Bug 对应的 `launchservices-recovery` 纳入 v0.6.5，调整 repair-only 与 new-doctor-API 排除项；其他成员和排除范围保留。
+- 第 38–60、127–147 行区分版本载体与 Lane B 功能载体，选用已核验补丁线基线，并禁止将契约分支及无关 main 内容整体带入 release。
+- 第 130–141 行将身份、真实冲突与合法副本、残留及未知注册、枚举失败、quick/full、输出与 health、人工指导及验收列为设计必答项，同时保留只读边界。
+- 第 12–14、168–178 行保留 requirements、surface、architecture、decomposition 的独立审批前置条件。版本文档 PASS 不批准尚未存在的新功能契约，也不批准产品实现。
+- 第 100–108、175–200、328–350 行保留原 Bug 的交付处置、独立审查、CEv1、Git 和发布边界。旧 intake、评审与 handoff 已明确作为历史来源，没有被当作当前 Bug 状态。
+
+### 📝 总结
+
+**精确审查身份：**
+
+- Workspace：`/Users/jobshen/go/src/github.com/kitdine/agent-deck/.worktrees/v0-6-5-contract`
+- HEAD：`1b4d145544f89ce4fabb597d1f3bed88d48ab3cc`
+- 工作树文档 blob：`6e48a92a92e75e678cc512d40c491251159e0c99`
+
+三者与委派冻结身份一致；初始状态仅目标 tasks.md 有未提交改动。
+
+**Evidence：**
+
+- 已读取本地 AGENTS.md、文档工作流、审查记录、相关 Branching／Beads／Evidence 规则及 development-workflow 的审查呈现契约。
+- 本地 `feature/launchservices-recovery` 与 `origin/release/v0.6.x` 均指向 `24623ec8bf0e172bf8e630ebe203163e76634403`；本地 release ref 为旧的 `b864ce41b8d6ce22c475fbc42db6c5cad6b19f6b`。所选基线具有已发布 v0.6.0 的祖先关系。
+- 冻结 HEAD 的 `internal/extension/extension.go:280`、`:383`、`:417` 确认 `extension_duplicate_id` 属于扩展清单 ID 重复语义，支持本修订禁止将其直接复用于 OS 资源的边界。
+- `bash scripts/check-topic-docs.sh`：exit 0。
+- 目标 `git diff --check`：exit 0。
+- `make check-whitespace`：exit 2；只读沙箱禁止创建临时文件清单，未取得该检查的通过证据。
+
+**剩余风险与边界：**本轮未重新查询远端实时 HEAD、Beads 或 CEv1，未执行产品测试及 macOS 注册验收。后续集成仍须重新解析目标；新主题契约及其实现、审查、CI、merge-commit 和归档边界均需各自完成。
+
+**委派时尚未执行 CEv1 查询。**此处表示委派明确的“待主写者处理”，不是 CEv1 查询结果。本次 PASS 仅认可版本范围修订，不关闭 Bug、Task、Topic 或交付边界。
+
+自动审批拒绝了独立审查工作状态的持久化写入，理由是本次只授权只读检查。写入未发生，也未重试；本报告直接返回，由主写者处理权威记录。
+
+### 主 writer 收口
+
+独立 reviewer session `01a10171-159e-7f82-b3ef-0e85ff00900b`，实际 metadata 为 custom / gpt-6.1-sol / xhigh / on-request / read-only，与主 session 的 provider 相同；CLI 正常 exit 0。服务端计费与响应 tier 未验证。主 writer 复核冻结文档及 release 基线祖先关系；接受本轮无 finding 的限定 PASS。
+
+最终同步仅勾选 Documents Review 并替换当前交接为已批准、待证据/交付，未改本轮评审的 membership、doctor 边界、排除项、authority 或新 topic 前置契约。独立评审结论适用于同步后的文档；旧 Round 1 不被复用于新增 scope。主 writer 补齐必要 L0 和 canonical exact-state CEv1 后才推进 document delivery。
+
+最终同步文档 blob：`1943d78dfc16850b41a1a8ae05f9b7bb40dac40e`。
+ContentState：`v0-6-5-contract:tasks.md:state:7452e56ea15dab3f86164763aec5d6fc8ed6b49b6b774ea671def5a3d25d803b`。
+完成门禁：VERIFIED，3/3 required criteria；missing、invalidated、unresolved 均为空。
+主 writer 的最终 make check-whitespace、git diff --check、check-topic-docs.sh 均 exit 0，八个本地链接目标存在。
+9 个追加节点及 16 条关系经标准 MCP templates 写入、关系 preflight 和精确 payload read-back 核实，数量匹配。
+coverage/authority 通过明确保留评估及 target-bound roll-up 复用本轮冷评审；readiness 使用最终 L0。历史 Round 1 未用于本次新增 scope。
+WorkUnit 当前没有已登记的 parent/children；不推断版本 topic、aggregate assembly 或 Release 完成。
+详细收据：`/tmp/agentdeck-doctor-v065/version-final-validation.json`、`version-final-gate.json`，冷评审报告与 CLI receipt 位于同目录。
+
+Task checkpoint：`ad-v0-6-5-contract-doc-tasks-design` / `v0-6-5-contract:tasks.md`，门禁 VERIFIED。
+提交建议：仅此 worktree 的 tasks.md 和本评审记录；本轮真实用户已授予必要 signed commit 交付权限。
+推送建议：actual commit message/body/tree/Codex trailer/SSH signature 核实后，ordinary push 同名 feature 分支，Draft PR 目标 main；当前真实用户已授权 exact-head Codex review、required CI 和 merge-commit，发布仍排除。
+下一项：新 `launchservices-recovery` requirements 及其独立契约 progression；本 PASS 不批准任何新 doctor 产品实现，也不关闭 origin Bug。
+
+## Round 3 — 2026-10-03
+
+## 📋 v0.6.5 doctor 范围远端 finding 核实与修复交接
+
+📊 总体评分：5/10
+
+✅ 评审结论：FAIL
+
+Reviewer：GitHub Codex exact-head review 提供独立发现；主 writer 按当前源逐项核实并拥有此记录的 FAIL 与状态收口。尚无本轮本地冷上下文复评 PASS。
+Method：检查 PR #40 的实际 reviewed head、两项 inline finding、主 CLI 版本契约、记录元数据规则及当前 parser 的隔离失败先行复现。不是重新开展全仓审计。
+Scope：版本 tasks.md 的新 doctor v0.6.5 成员边界及其 Round 2 review；产品、测试、Hook 配置代码只读。
+Reviewed source：HEAD `b0c640204e8cacf08f18f31eb67a9693da30dcf1`；输入 tasks.md blob `1943d78dfc16850b41a1a8ae05f9b7bb40dac40e`、review blob `2f996bbb83f1732aa0a7dd37470a06f42ac097db`。修复候选通过新的 HEAD/scoped blob 身份与 CEv1 收口，不能沿用旧 VERIFIED。
+
+### 🔴 严重问题 — 必须修复
+
+**V065-LS-R3-F1 — P1，OPEN** — `docs/specs/cli-design.md:456` / `tasks.md:89`。
+- 行为风险：新增 doctor check/code、健康计数及 text/JSON 对相同机器的语义改变，与主契约的 MINOR 条件及 PATCH stdout 字节兼容保证冲突。只修改版本成员/排除项不能使这两个主张一致。
+- 证据：主契约 :456–469 原文明确覆盖 stdout/JSON 语义、相同输入的计数和 promised behavior；doctor.Report 的 Checks、Problems、Warnings、Errors 及 CLI 两种 renderer 确实对这些值进行公开输出。远端 finding `4172996224`，reviewed head `b0c640204e`。此前本地 Round 2 漏检了这个主契约前提。
+💡 修复边界：保持真实用户已选的 v0.6.5，不重新询问后续版本。先决定与独立评审仅此 topic 的主版本契约例外，或证明一个仍满足现有字节保证的完整诊断设计；再完成新 requirements/surface/architecture/tasks。临时具体例外候选位于 `/tmp/agentdeck-doctor-v065/primary-version-contract-proposal.md`，尚未获明确确认、未写入 stable spec。产品实现保持停止。
+Disposition：本记录 OPEN；同一 Beads carrier `ad-v0-6-5-contract-doc-tasks-design`，待这项实质主契约决定及复评。原 Bug remains open。
+
+**V065-LS-R3-F2 — P1，CLOSED IN REPAIR** — `reviews/tasks.md:117` / `scripts/hooks/beads-consistency.py:384`。
+- 行为风险：Round 2 将委派时未查询的说明写成另一条 live completion gate，又在主 writer 收口写 VERIFIED，导致 parser 对同一轮得到两个值并返回 `(None, None)`。
+- 证据：远端 finding `4172996226`；当前 parser 和 regex constants 的隔离 AST 执行在原记录上确实返回 `(None, None)`。没有运行 Hook entry point、Beads/helper 或真实-session Hook。
+💡 修复：将委派时说明重新标记为未执行查询的历史说明，保留唯一的本轮最终 gate 声明；raw delegate report 在 /tmp 保持不变。
+Disposition：V065-LS-R3-F2 CLOSED；修复后单独解析 Round 2 得 `('PASS', 'VERIFIED')`。这个结果只证明元数据可解析，不推翻 V065-LS-R3-F1，也不是整个修订的复评 PASS。失败/修复直接证据见 `/tmp/agentdeck-doctor-v065/gate-metadata-reproducer.json`。
+
+### 🟡 建议改进 — 推荐
+
+无额外 finding。
+
+### 🟢 优点
+
+唯一 writer 的 workspace、已签名 commit 与 Draft PR 身份清楚；未将计划 PASS 变成 doctor 产品代码，未误关 origin。既有排除项和 v0.6.5 用户决定仍保留。
+
+### 📝 总结
+
+本轮 FAIL 仅因未解决的主版本兼容契约。PR #40 exact head 的 required CI verify/desktop 均成功，不能覆盖该语义 finding，因此保持 Draft、禁止 merge。检查只收敛到两个决定性 finding，未重跑无关产品/前批测试。旧 Round 2 VERIFIED 是历史观察，新增发现使其 authority/coverage 不再可用于当前 candidate 或交付。
+
+本轮 native 只读前证据也保持边界：managed sandbox 的 lsregister/public API 结果无法当作真实用户注册库；Finder 对照及同一临时 native probe 的 ordinary-user 实验实锤这个差异。普通用户 public API 返回四个 host URL，而 appex 不属于该 application-only API 的肯定范围；真实 dump 在 5 秒预算超时。尚未成立真实冲突、可枚举 appex、恢复或 native 验收 PASS，不继续盲探。
+
+提交建议：不提交或推送未解决主契约的 Task 完成边界；保留现有已签名 b0c6402 与待修复候选，后续按明确决定及复评继续，禁止改史。
+推送建议：PR #40 现有 head 保持冻结；全部 finding 与 exact-state gates 通过后才发布新的 reviewed head、重新请求 Codex review/CI，再考虑 merge。
+下一项：仅等待主版本契约限定例外的决定并复评，保持 v0.6.5 与唯一 writer 交接；不实施 doctor、不启动其它 Bug。
+
+完成门禁：FAILED。
+当前 ContentState：`v0-6-5-contract:tasks.md:state:6d0b6a565203bccc2f8bc8aba1a8b9c41fb72868171e92a951de8e7277675616`。
+主版本 authority criterion 有当前 fail；三个 required criteria 不具备完整通过证据，旧 Round 2 coverage/authority observations 已通过追加 invalidates 明确撤销复用。7 个新节点、10 条关系经标准 templates、关系 preflight 和 exact payload read-back 核实，未覆盖旧事实。
+本地 F2 metadata 修复仍待独立复评随最终新 head 确认；不存在整个修订的 PASS/交付完成或 origin closure。
+
+## Round 4 — 2026-10-03
+
+## 📋 PR #40 限定主版本契约修复独立复评
+
+📊 总体评分：9/10
+
+✅ 复评结论：PASS
+
+Reviewer：全新本地只读 Codex CLI `01a101e3-cf47-7630-a810-ee413bb4e4e9`；未参与候选写作，未委派。主 writer `01a101d7-cbe1-7692-b209-c1b6190fb27d` 复核冻结身份、实际 CLI exit 0、报告、源契约及状态同步并拥有本记录和门禁。
+Method：冷上下文完整限定修订审查、现行权威核对、限定源码追踪、隔离 AST 解析、文档集与链接检查；不是仅复用旧 PASS。实际 source 为 `exec`，provider metadata 为 `custom`，显式模型 `gpt-6.1-sol`、reasoning `xhigh`、on-request/read-only；配置沿用既有 provider，服务端计费和实际 response tier 未验证。
+Scope：主版本规则的精确例外、整个 Lane B 版本成员修订及其评审元数据。产品、测试、Hook 配置只读。
+Reviewed state：HEAD `b0c640204e8cacf08f18f31eb67a9693da30dcf1`；tasks.md blob `4803580be45d187f21b9cffc76696a3d63f7737d`；主规范 blob `62ef70fd0c736e78b8c3890fc3ba8a3988913b22`；输入 review blob `bdfa301d5f5001c9235a9655735b1528a5815768`。
+
+### 🔴 严重问题 — 必须修复
+
+无未关闭、回归或新增的范围内 finding。
+
+- **V065-LS-R3-F1 / GitHub 4172996224 — CLOSED**：真实用户 `Sentinel_986c24bbd3b081918c2d40986edea07c` 原文“批准1”，明确批准原精确提案；本次真实用户续接及 FULL_FLOW_AUTO 再次确认。主规范 Version Number Semantics 已落实唯一的 v0.6.5 LaunchServices doctor/health 例外，版本 tasks 引用该规则和批准来源。新增检查、codes、可选诊断字段及相应警告计数可改变输出；发布文档必须披露固定输出/计数脚本可能需要适配。命令/flags、退出码、数据库、持久化格式、既有检查语义及其他版本规则仍不变。审批解决决定，独立复评验证其落实；没有把审批当 PASS。
+- **V065-LS-R3-F2 / GitHub 4172996226 — CLOSED**：保留委派未查询 CEv1 的历史说明，Round 2 只有一个 live gate 值。独立 reviewer 隔离执行 regex assignments 和 `latest_review_state`，修复样本得到 `('PASS', 'VERIFIED')`；恢复原冲突标签的内存样本得到 `(None, None)`；完整输入记录仍得到 `('FAIL', 'FAILED')`，证明 Round 3 没有被抹除。未导入 Hook、运行其 entry point 或调用 Beads/helper。
+
+### 🟡 建议改进 — 推荐
+
+无新增可执行改进项。Round 1/2 没有其他 finding；Round 3 两项均已逐项复核，没有开放替代链或无 carrier 的延期。
+
+### 🟢 优点
+
+- 主版本规则明确限定例外并要求发布说明，承认公开输出兼容影响，没有扩大到其他主题或新功能。
+- 新 feature 的 requirements、surface、architecture、decomposition 仍须各自独立通过；没有提前批准实现或恢复。
+- Round 3 FAIL、旧证据失效、旧 CLI SIGTERM exit 1 和拒绝历史保留。旧自然 Stop 未验证，未改称正常 quit。
+- doctor 只读系统注册；无自动注销/cleanup、daemon restart、真实数据库重建、用户数据写入、新 OS 权限或 P3 扩展。原 Bug 保持 open。
+
+### 📝 总结
+
+本轮 PASS 仅认可限定版本契约修订就绪；两个远端 P1 在当前修复候选上均可关闭。主 writer 通过源 diff 核对例外边界，复核原 carrier 的 guarded claim 和只读交接，没有把 reviewer 报告当作产品恢复证据。
+
+Evidence：
+
+- 独立 reviewer HEAD/blob 全部匹配冻结 packet；实际本地 CLI 正常 exit 0。报告 `/tmp/agentdeck-doctor-v065-resume/pr40-r4-cold-review.md`，原始 JSONL 与 stderr 同目录保留；不是 GitHub 执行或 task-created 记录。
+- reviewer 的隔离 AST 断言 exit 0；文档集检查 exit 0；八个本地链接目标及新增主版本锚点存在；已发布 v0.6.0 到所选 patch-line 基线的祖先关系 exit 0。
+- reviewer 没有执行需要临时文件的 make check-whitespace，也没有单独保存组合 diff 子命令退出码。这两项由主 writer 的最终 L0 receipt 补齐，不从组合调用推断通过。
+- 主 writer 的矩阵勾选和当前交接同步只记录本轮 PASS/待证据交付；成员、主契约、功能前置条件和排除范围未改变。对该同步进行 scope-aware 复核，独立 PASS 适用于同步后的文档。
+
+完成门禁：VERIFIED。
+主 writer 的 canonical exact-state 查询返回 3/3 required criteria pass，missing/unresolved 为空。当前 ContentState 为 `v0-6-5-contract:tasks.md:state:7a4b39110c7ef8f734b685d297a1a248b0e9480e34036697d86538925f5f6859`，最终 tasks.md blob `f018cb60ba88dca78caf7c8de1b1e4ae5bc43a49`，主规范 blob 未变。原 Round 3 状态仍 FAILED，旧四条 observations 仍 invalidated，返回的历史 invalidated 列表非空但不包含本轮有效证据；本轮使用新独立观察及 status-only preserves/target-bound roll-up，未复活旧 PASS。
+两个候选 ContentState 已核实；追加 9 个节点及 19 条关系经标准 MCP templates、19/19 relation preflight 和精确 kind/payload/endpoints read-back 确认。最终 L0 三项均有单独 exit 0 收据；本轮记录在门禁查询前唯一解析为 PASS/NOT_VERIFIED，查询后只更新本轮唯一 gate 元数据，再检查最终解析。详细收据 `/tmp/agentdeck-doctor-v065-resume/pr40-r4-final-validation.json` 与 `pr40-r4-final-gate.json`；未经查询的 reviewer 没有自行声明 gate。
+WorkUnit：`v0-6-5-contract:tasks.md`；dispatch：`ad-v0-6-5-contract-doc-tasks-design`；required criteria 为 coverage、authority、readiness；没有登记 parent，不推断版本 Topic/Release 完成。
+
+Task checkpoint：原文档任务的本轮复评 PASS、完成门禁 VERIFIED；只关闭本次文档修复完成边界，实际交付尚待新 signed commit、远端 exact-head review/CI 及 merge。
+提交建议：门禁通过后只提交本工作树的主版本规范、tasks.md 和本评审记录，生成新的 signed logical commit，保留 b0c6402 和原历史。
+推送建议：实际 commit tree/full message/Codex trailer/SSH signature 核实后 ordinary push 同名 feature 分支；PR #40 必须取得新 exact-head GitHub Codex review 和全部 required CI，才能 ancestry-preserving merge commit。真实用户已授权这条完整交付链，发布/部署仍排除。
+下一项：完成本轮证据及 PR40 交付，再推进独立 `launchservices-recovery` 功能契约；不从本 PASS 关闭 origin 或开始其他批次。
