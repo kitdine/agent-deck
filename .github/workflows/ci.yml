@@ -9,29 +9,124 @@ on:
 permissions:
   contents: read
 
+# Cancel stale runs for the same event/ref without cancelling push against PR.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  classify:
+    runs-on: macos-15
+    outputs:
+      docs_only: ${{ steps.diff.outputs.docs_only }}
+      base: ${{ steps.diff.outputs.base }}
+      head: ${{ steps.diff.outputs.head }}
+      doc_base: ${{ steps.diff.outputs.doc_base }}
+      doc_head: ${{ steps.diff.outputs.doc_head }}
+      doc_scope_known: ${{ steps.diff.outputs.doc_scope_known }}
+      doc_reason: ${{ steps.diff.outputs.doc_reason }}
+    steps:
+      - name: Check out repository and diff history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Classify using the trusted base script
+        id: diff
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          trusted="$(mktemp)"
+          trap 'rm -f "$trusted"' EXIT
+          if [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]] &&
+             [[ "$BASE_SHA" != 0000000000000000000000000000000000000000 ]] &&
+             git show "$BASE_SHA:scripts/ci/classify_diff.py" > "$trusted"; then
+            python3 "$trusted" --event "$GITHUB_EVENT_PATH" \
+              --event-name "$EVENT_NAME" --output "$GITHUB_OUTPUT"
+          else
+            echo 'docs_only=false' >> "$GITHUB_OUTPUT"
+            echo 'No trusted classifier/base; run full verification.'
+          fi
+          python3 scripts/ci/doc_scope.py --event "$GITHUB_EVENT_PATH" \
+            --event-name "$EVENT_NAME" --output "$GITHUB_OUTPUT"
+
+  documentation:
+    needs: classify
+    if: ${{ !cancelled() }}
+    runs-on: macos-15
+    steps:
+      - name: Check out documentation candidate
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.classify.outputs.doc_head || github.event.pull_request.head.sha || github.sha }}
+      - name: Test CI classification and review-record tools
+        run: make check-ci-docs-tools
+      - name: Document L0, links, document set and review records
+        if: ${{ !cancelled() }}
+        env:
+          DOC_SCOPE_KNOWN: ${{ needs.classify.outputs.doc_scope_known }}
+          DOC_REASON: ${{ needs.classify.outputs.doc_reason }}
+          DIFF_BASE: ${{ needs.classify.outputs.doc_base }}
+          DIFF_HEAD: ${{ needs.classify.outputs.doc_head }}
+        run: |
+          if [[ "$DOC_SCOPE_KNOWN" != true || -z "$DIFF_BASE" || -z "$DIFF_HEAD" ]]; then
+            echo "范围未知: $DOC_REASON; document gate is blocked." >&2
+            exit 1
+          fi
+          python3 scripts/check-docs.py --base "$DIFF_BASE" --head "$DIFF_HEAD"
+
   verify:
+    needs: [classify, documentation]
+    if: ${{ !cancelled() }}
     runs-on: macos-15
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Set up Go
+        if: ${{ needs.classify.result != 'success' || needs.classify.outputs.docs_only != 'true' }}
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
           cache: true
+      - name: Documents-only success
+        if: ${{ needs.classify.result == 'success' && needs.classify.outputs.docs_only == 'true' }}
+        env:
+          DOCUMENTATION_RESULT: ${{ needs.documentation.result }}
+        run: |
+          test "$DOCUMENTATION_RESULT" = success
+          echo 'Document L0, links, document set and review-record checks passed.'
       - name: Verify
+        if: ${{ needs.classify.result != 'success' || needs.classify.outputs.docs_only != 'true' }}
         run: make verify
+      - name: Require documentation checks
+        if: ${{ !cancelled() }}
+        env:
+          DOCUMENTATION_RESULT: ${{ needs.documentation.result }}
+        run: test "$DOCUMENTATION_RESULT" = success
 
   desktop:
+    needs: [classify, documentation]
+    if: ${{ !cancelled() }}
     # The desktop surfaces need the macOS 26 SDK, so they get their own runner
     # and their own job: a Swift toolchain failure must not be reported as a Go
     # verification failure, and the Go gate must not wait on Xcode.
-    runs-on: macos-26
+    runs-on: ${{ needs.classify.result == 'success' && needs.classify.outputs.docs_only == 'true' && 'ubuntu-latest' || 'macos-26' }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+      - name: Documents-only success
+        if: ${{ needs.classify.result == 'success' && needs.classify.outputs.docs_only == 'true' }}
+        env:
+          DOCUMENTATION_RESULT: ${{ needs.documentation.result }}
+        run: |
+          test "$DOCUMENTATION_RESULT" = success
+          echo 'Documents-only L0 checks passed; desktop product checks are not applicable.'
       - name: Select the pinned Xcode
+        if: ${{ needs.classify.result != 'success' || needs.classify.outputs.docs_only != 'true' }}
         run: |
           xcode=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
           if [[ -z $xcode ]]; then
@@ -42,17 +137,27 @@ jobs:
           sudo xcode-select --switch "$xcode/Contents/Developer"
           xcodebuild -version
       - name: Set up Go
+        if: ${{ needs.classify.result != 'success' || needs.classify.outputs.docs_only != 'true' }}
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
           cache: true
       - name: Build Swift targets and run Swift unit tests
+        if: ${{ needs.classify.result != 'success' || needs.classify.outputs.docs_only != 'true' }}
         # Also validates the Go/Swift wire fixtures: the standalone verifier and
         # the Swift test targets both decode the committed fixture set.
         run: make test-macos-app
       - name: Build the app without publishing it
+        if: ${{ needs.classify.result != 'success' || needs.classify.outputs.docs_only != 'true' }}
         run: make build-macos-app
       - name: Check the widget sandbox boundary
+        if: ${{ needs.classify.result != 'success' || needs.classify.outputs.docs_only != 'true' }}
         run: make check-widget-sandbox
       - name: Check desktop distribution in isolation
+        if: ${{ needs.classify.result != 'success' || needs.classify.outputs.docs_only != 'true' }}
         run: make check-macos-distribution
+      - name: Require documentation checks
+        if: ${{ !cancelled() }}
+        env:
+          DOCUMENTATION_RESULT: ${{ needs.documentation.result }}
+        run: test "$DOCUMENTATION_RESULT" = success

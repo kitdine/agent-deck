@@ -27,6 +27,14 @@ set -uo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 topics_dir="$root/docs/topics"
+if [ "${1:-}" = --archive ]; then
+	topics_dir="$root/docs/archive/topics"
+	shift
+	if [ "$#" -eq 0 ]; then
+		printf '%s\n' '--archive requires explicit retired topic names' >&2
+		exit 2
+	fi
+fi
 
 if [ ! -d "$topics_dir" ]; then
 	printf '%s\n' 'topic audit failed: docs/topics is missing' >&2
@@ -39,7 +47,24 @@ note() {
 	found=1
 }
 
-for topic_path in "$topics_dir"/*/; do
+# Optional topic names scope CI to complete affected document sets. No arguments
+# retains the original all-active-topics audit for explicit workflow use.
+if [ "$#" -gt 0 ]; then
+	for topic in "$@"; do
+		if [[ ! "$topic" =~ ^[a-z0-9][a-z0-9-]*$ ]] || [ ! -d "$topics_dir/$topic" ]; then
+			printf 'invalid or missing topic: %s\n' "$topic" >&2
+			exit 2
+		fi
+	done
+else
+	set -- "$topics_dir"/*/
+fi
+
+for selected in "$@"; do
+	case "$selected" in
+	"$topics_dir"/*/) topic_path="$selected" ;;
+	*) topic_path="$topics_dir/$selected/" ;;
+	esac
 	topic="$(basename "$topic_path")"
 	tasks="$topic_path/tasks.md"
 

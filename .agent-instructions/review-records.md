@@ -26,6 +26,12 @@ docs/topics/<topic>/reviews/<task-anchor>.md
 - Each review pass appends a `## Round N` section to that one file, so the whole
   history — first pass, reopen, re-review — stays in one place and in round order.
 
+A comprehensive batch review retains each document's existing carrier and
+record-local round history, with a clear per-document conclusion and dependency
+coverage. It may reuse one independent report by precise references, but a
+batch-level PASS must not hide a failed or unreviewed document. See the batch
+readiness and scope rules in [Documentation Workflow](../docs/documentation-workflow.md).
+
 Lane A reviews append rounds to the existing fix record. Follow
 [Fix records](../docs/documentation-workflow.md#fix-records) for its location
 and lifecycle; do not create a separate topic or review file.
@@ -137,6 +143,21 @@ The reader accepts `Verdict` or `结论`/`裁决`/`评审结论`/`复评结论`,
 `Completion gate` or `完成门禁`/`证据门禁`/`验收门禁`, with `:` or `：`.
 Do not put live verdict/gate declarations in fenced examples, omit required
 metadata, or emit contradictory declarations within one round.
+
+`python3 scripts/check-review-records.py <changed-record.md> ...` is a
+read-only structural validator using the same pure parser as the consistency
+Hook. It does not execute the Hook entry point, query Beads or CEv1, or issue
+semantic PASS. It checks complete changed rounds for conflicting live verdict/gate
+values (`--base <sha>` preserves unchanged historical rounds) and enforces
+canonical verdict/gate fields on changed review rounds. An unchanged historical
+final round without a canonical gate, including link-only maintenance, is
+reported as uncertified rather than requiring a historical rewrite. Static
+structure success never certifies CE. Historical REOPEN is read as FAIL;
+Review/Re-review and emoji-prefixed Round headings are supported. Fenced,
+indented and inline-code quotations do not supply live declarations; backticks
+around legitimate field values remain accepted. Preserve historical format and
+observations; correct contradictory live labels without inventing a gate result. Final gate synchronization updates the round's single live
+field and rechecks the parser, rather than appending a second declaration.
 
 For Re-review, account for every previous finding as closed, still open,
 regressed, superseded, or closed by explicit user decision; also record new

@@ -1,6 +1,6 @@
 ---
 status: active
-updated: 2026-09-08
+updated: 2026-10-03
 ---
 
 # Documentation Workflow
@@ -124,6 +124,25 @@ A version-contract topic uses `tasks.md` to select and reconcile feature topics.
 It does not originate feature requirements, UX, or architecture; route new
 product decisions to their owning feature topic.
 
+Related candidate documents may be reviewed together once the complete relevant
+set is ready. One independent comprehensive review can cover a coherent design
+batch, provided it states a separate conclusion, reviewed content identity and
+dependencies for every document. Follow the dependency order below as artifact
+readiness, not a requirement for one remote delivery cycle per document. A
+coherent batch may be delivered together under explicit delivery authorization.
+
+Review scope includes the affected primary product contract (normally
+`docs/specs/cli-design.md`), compatibility rules, adjacent implementation and
+consumers needed to verify claims. A changed-file list or `tasks.md` alone does
+not establish that scope. Product implementation retains its independent review,
+real evidence gates and permission boundaries.
+
+Mechanical record/status closure uses the shared parser, local-link checks and
+`git diff --check` to confirm an already reviewed result. It does not issue a new
+semantic PASS. Material changes require re-review of the affected documents and
+dependencies; reuse unaffected reviews with an explicit impact assessment rather
+than restarting the entire batch.
+
 #### The specimen requirement
 
 A UX document includes rendered specimens of the states it defines and the
@@ -164,16 +183,53 @@ references across topic-root and UX Markdown files. It excludes review and
 prototype files from the on-disk document inventory and excludes recognized
 cross-topic surface references. It also flags files shorter than ten lines as
 possible stubs. These are structural checks, not proof of semantic completeness.
+Its exit codes are 0 for clean, 1 for gaps, and 2 for harness failure.
 
-The checker scans all active topics and currently has no topic-selection flag.
+Without arguments the checker scans all active topics. Pass topic names to
+check the complete affected sets, for example
+`bash scripts/check-topic-docs.sh v0-6-5-contract`. For a whole-topic retirement,
+`bash scripts/check-topic-docs.sh --archive <topic>` checks its archived matrix
+and document set. Removed topics without a retained directory are checked for
+remaining content and incoming links, not passed as missing selectors.
 Attribute its findings to their topics; report unrelated gaps without repairing
 or claiming unrelated work. Missing drafts are expected during design but must
 be resolved before the document set can pass review. Do not add filler to evade
 a checker result or silently waive a required check; report any mismatch between
 a valid lifecycle case and the checker for scoped resolution.
 
-Keep this check in the documentation workflow, not in product build or release
-aggregates. Its exit codes are 0 for clean, 1 for gaps, and 2 for harness failure.
+Keep this check in the documentation workflow and documentation CI, not in
+product build or release aggregates. `python3 scripts/check-docs.py` checks the
+local uncommitted Markdown patch for L0 whitespace/diff hygiene, local links,
+complete affected topic document sets and review-record structure. CI supplies
+`--base <sha> --head <sha>` for the established diff. External links are not
+fetched; semantic review and real evidence gates remain independent.
+
+CI uses a conservative diff classifier from the trusted base: only added or
+modified regular, non-executable Markdown in declared documentation locations
+qualifies. Renames, deletes, mixed changes, fixtures, generated inputs,
+executable specimens, unknown paths or an unavailable base/classifier run the
+original product checks. The required `verify` and `desktop` jobs still finish
+with explicit documentation-only success paths after L0 succeeds. Push and PR
+runs remain separate; stale runs on the same event/ref may be cancelled.
+Document checks and the CI/parser regression suite also run for mixed changes
+and first deployment without a base classifier. A known range checks changed
+Markdown, both sides of rename/copy/delete/type changes, complete affected topic
+sets, and supported incoming links to changed targets and headings. For a new
+branch, document attribution may use the unique merge-base of HEAD and the
+trusted event repository's default-branch ref/SHA from complete checkout history;
+product routing remains full. Missing identity/history or ambiguous ancestry
+reports “范围未知” and blocks the document gate. `--all` remains an explicit
+manual inventory audit, never the normal CI fallback. Both required jobs
+propagate document-check failures. The docs-only desktop success path uses a
+lightweight Ubuntu runner; product checks retain the pinned macOS runner.
+
+The link checker supports simple inline/reference links, repo-root-relative
+paths, heading/HTML-id anchors and valid `Lx`/`Lx-Ly` source-line ranges. It
+excludes fenced, inline and indented code, reports unsupported complex nested or
+escaped link syntax, and never fetches external URLs. It does not claim to parse
+all Markdown syntax. Static CI structure success is separate from independent
+product review, real CE evidence and delivery authority; product `make verify`
+retains its Go verification responsibilities.
 
 #### Creating a topic
 

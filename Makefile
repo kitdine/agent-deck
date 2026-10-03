@@ -82,6 +82,11 @@ build-macos-release: build-all
 package-macos-app:
 	bash scripts/package-macos-app.sh "$(MACOS_APP)" "$(VERSION)" "$(DIST_DIR)"
 
+.PHONY: check-ci-docs-tools
+check-ci-docs-tools:
+	python3 -m unittest discover -s scripts/ci -p '*_test.py'
+	python3 -m unittest discover -s scripts/hooks -p '*_test.py'
+
 check-go-test-runner:
 	bash scripts/test-run-go-test.sh
 
@@ -133,8 +138,8 @@ check-whitespace:
 	@bash scripts/check-whitespace.sh
 
 # The topic-document audit is NOT a make target. It is a documentation-workflow
-# tool that reads only docs/topics/**, participates in no build, `verify`, or
-# release path, and a make alias for it only implied otherwise. Run it directly:
+# tool that reads only docs/topics/** and participates in documentation CI,
+# not product build or release paths. Run it directly:
 # `bash scripts/check-topic-docs.sh`; see docs/documentation-workflow.md.
 
 check-release-distribution:
