@@ -1,6 +1,7 @@
 ---
-status: active
+status: historical
 created: 2026-10-03
+retired: 2026-10-03
 ---
 
 # 缺陷：解析失败投影错误地沿用上一次成功探测的来源
@@ -63,3 +64,11 @@ Beads: `ad-bug-quota-parse-failure-source-misattribution`。release 基线 `71f6
 - Task: `ad-bug-quota-parse-failure-source-misattribution`；独立 PASS，exact candidate gate VERIFIED，无修复项。
 - 提交建议：以该 Task 的代码、测试和本 Fix 载体组成一个 signed logical commit；仅上述路径，不含 binding、contract topic 或全局 status。
 - 推送建议：两项 logical commits 完成对象/SSH 签名检查并把可复用证据绑定最终 immutable HEAD 后，普通 push 本批 fix 分支；draft PR 指向 `release/v0.6.x`，待 exact-head GitHub Codex review/CI 通过再 merge commit。
+
+## Delivery and retirement — 2026-10-03 UTC
+
+- Logical commit / reviewed pushed batch HEAD: `1b75cd6966641cc5e144332772393b3f1572002d`；actual subject/body/Codex trailer、three-path scope 与 SSH signature 已核实。
+- [PR #34](https://github.com/kitdine/agent-deck/pull/34) 指向 `release/v0.6.x`。GitHub Codex [exact-head report](https://github.com/kitdine/agent-deck/pull/34#issuecomment-5964149712) 明确 reviewed `1b75cd6966`，无 review/inline findings；push 与 PR 的四项 desktop/verify CI 均 SUCCESS，head SHA 完全匹配。
+- Actual merge: `62863c804f4af665af767c5a54ecc366c74609c8`；parents `71f6f2145b6936dea67ff81baed045687cc6f1e2`、`1b75cd6966641cc5e144332772393b3f1572002d`；tree `74542556a484fa35afc15316e583abe9b2ae3b47` 与 source 相同，GitHub signature verified/valid；API、fetched Git object 与 remote release ref 已核。
+- WorkUnit `fix:quota-parse-failure-source-misattribution`，merge ContentState `fix:quota-parse-failure-source-misattribution:merge:62863c804f4af665af767c5a54ecc366c74609c8` 的 gate VERIFIED 6/6，无 missing/invalidated/unresolved。15 protected blobs 与 committed Git object 匹配；复用使用显式 target-bound roll-up 与 scope-aware preserves assessment，不重跑未变产品。
+- 本退役在 product merge 和 required evidence finalization 之后发生，另行通过合法 documentation PR 交付，无直接 shared-release push。保留全部 review/history；整体 v0.6.5 contract/assemble、deferred 原生验收保持未完成。
