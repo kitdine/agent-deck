@@ -2055,9 +2055,12 @@ public final class DesktopRefreshCoordinator {
 	}
 
 	private func publishWidgetSnapshot(_ envelope: DesktopWireEnvelopeV1) async {
-		guard let snapshotPublisher else { return }
 		widgetPublicationGeneration &+= 1
 		let publicationGeneration = widgetPublicationGeneration
+		guard let snapshotPublisher else {
+			widgetPublication = .failedBeforeCommit(generation: publicationGeneration, issue: .storageUnavailable)
+			return
+		}
 		let result = await snapshotPublisher.publish(
 			AppGroupDesktopSnapshotV1(envelope: envelope),
 			generation: publicationGeneration

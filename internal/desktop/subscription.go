@@ -249,7 +249,13 @@ func subscriptionClient(ctx context.Context, qs *quota.Store, client quota.Clien
 		// (WC-R2-F1) — requirements.md clause 6's "observation instant of the
 		// failed attempt".
 		out.ObservedAt = timeText(rec.FailureObservedAt)
-		out.Source = sourceText(source)
+		// The envelope records only these probe routes. Retained windows name
+		// the last successful observation, not this failure-only attempt.
+		failureSource := quota.SourceCodex
+		if client == quota.ClientClaude {
+			failureSource = quota.SourceClaudeProse
+		}
+		out.Source = sourceText(failureSource)
 		absent(rec.Failure)
 		return out, nil
 	}
