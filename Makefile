@@ -150,6 +150,7 @@ check-release-distribution:
 # fully temporary prefix and verifies that a preflight refusal rolls back. Both
 # fail when `brew` is absent rather than skipping Homebrew's own verdict.
 check-macos-distribution:
+	python3 -B scripts/test-macos-distribution-cleanup.py
 	bash scripts/test-macos-distribution.sh
 	bash scripts/test-cask-migration.sh
 
