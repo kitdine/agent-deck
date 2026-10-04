@@ -86,12 +86,13 @@ func newDesktopCommand(opts *commandOptions) *cobra.Command {
 				return err
 			}
 			result, err := (desktop.Service{
-				StateRoot: stateRoot,
-				Home:      home,
-				Workdir:   workdir,
-				Vault:     newCredentialVault(stateRoot),
-				Now:       desktopNow,
-				Location:  displayLocation(),
+				RegistrationProbe: doctorRegistrationProbe,
+				StateRoot:         stateRoot,
+				Home:              home,
+				Workdir:           workdir,
+				Vault:             newCredentialVault(stateRoot),
+				Now:               desktopNow,
+				Location:          displayLocation(),
 			}).Build(cmd.Context(), desktop.Request{WireVersion: wireVersion, RecentLimit: recentLimit})
 			if err != nil {
 				return err

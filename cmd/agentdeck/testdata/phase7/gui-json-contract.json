@@ -526,6 +526,13 @@
                 "status": "string"
               },
               {
+                "code": "string",
+                "name": "string",
+                "reason": "string",
+                "resource": "string",
+                "status": "string"
+              },
+              {
                 "count": "number",
                 "name": "string",
                 "status": "string"
@@ -958,6 +965,29 @@
               "count": "number",
               "name": "string",
               "recovery_command": "string",
+              "status": "string"
+            },
+            {
+              "code": "string",
+              "name": "string",
+              "reason": "string",
+              "registration_details": {
+                "applicability_reason": "string",
+                "applicable": "boolean",
+                "complete": "boolean",
+                "host": {
+                  "complete": "boolean",
+                  "entries": [],
+                  "source": "string"
+                },
+                "scope": "string",
+                "widget": {
+                  "complete": "boolean",
+                  "entries": [],
+                  "source": "string"
+                }
+              },
+              "resource": "string",
               "status": "string"
             },
             {

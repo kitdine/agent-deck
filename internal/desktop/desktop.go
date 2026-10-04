@@ -230,6 +230,10 @@ type HealthCheck struct {
 }
 
 type Service struct {
+	// RegistrationProbe keeps deterministic fixture generation separate from native acceptance.
+	// Nil uses the production read-only probe.
+	RegistrationProbe func(context.Context, bool) doctor.RegistrationDetails
+
 	StateRoot string
 	Home      string
 	Workdir   string
@@ -885,7 +889,7 @@ func sessionProjectGroup(value string) (identity, label string) {
 
 func (s Service) loadHealth(ctx context.Context, result *Result) {
 	report, err := (doctor.Service{
-		StateRoot: s.StateRoot, Home: s.Home, Workdir: s.Workdir, Vault: s.Vault,
+		StateRoot: s.StateRoot, Home: s.Home, Workdir: s.Workdir, Vault: s.Vault, RegistrationProbe: s.RegistrationProbe,
 	}).Check(ctx, false)
 	if err != nil {
 		result.warn("health_unavailable")

@@ -37,6 +37,9 @@ import (
 )
 
 func TestMain(m *testing.M) {
+	doctorRegistrationProbe = func(context.Context, bool) doctor.RegistrationDetails {
+		return doctor.RegistrationDetails{Applicable: false, ApplicabilityReason: "canonical_host_absent"}
+	}
 	machineIdentity = func(context.Context) (string, error) { return "synthetic-machine", nil }
 	os.Exit(m.Run())
 }

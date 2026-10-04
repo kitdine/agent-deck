@@ -7474,6 +7474,13 @@
         {
           "name": "extensions",
           "status": "ok"
+        },
+        {
+          "name": "launchservices",
+          "status": "ok",
+          "code": "launchservices_not_applicable",
+          "resource": "launchservices_registration",
+          "reason": "launchservices_not_applicable"
         }
       ]
     },

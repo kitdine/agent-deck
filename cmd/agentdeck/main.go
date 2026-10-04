@@ -47,6 +47,10 @@ import (
 )
 
 var userHomeDir = os.UserHomeDir
+
+// Nil in production; tests keep OS registration evidence separate from CLI contracts.
+var doctorRegistrationProbe func(context.Context, bool) doctor.RegistrationDetails
+
 var sleepForHookReconciliation = time.Sleep
 var detectInvokingShell = shellconfig.DetectInvokingShell
 var newShellConfigManager = shellconfig.New
@@ -3420,7 +3424,7 @@ func newDoctorCommand(opts *commandOptions) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		report, err := (doctor.Service{StateRoot: stateDir, Home: home, Workdir: workdir, Vault: newCredentialVault(stateDir)}).Check(command.Context(), full)
+		report, err := (doctor.Service{StateRoot: stateDir, Home: home, Workdir: workdir, Vault: newCredentialVault(stateDir), RegistrationProbe: doctorRegistrationProbe}).Check(command.Context(), full)
 		if err != nil {
 			return err
 		}
@@ -5131,6 +5135,11 @@ func renderDoctorText(w io.Writer, report doctor.Report) error {
 		}
 		if _, err := fmt.Fprintln(w); err != nil {
 			return err
+		}
+		if check.RegistrationDetails != nil {
+			if err := doctor.WriteRegistrationText(w, check.RegistrationDetails, check.Code); err != nil {
+				return err
+			}
 		}
 		if check.Code == store.ErrSchemaAhead.Code {
 			if _, err := fmt.Fprintln(w, "  recovery: upgrade AgentDeck to open it"); err != nil {

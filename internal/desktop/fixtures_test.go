@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kitdine/agent-deck/internal/doctor"
 	"github.com/kitdine/agent-deck/internal/hookrefusal"
 	"github.com/kitdine/agent-deck/internal/output"
 	"github.com/kitdine/agent-deck/internal/session"
@@ -105,7 +106,9 @@ func fixtureStateRoot(t *testing.T) string {
 
 func buildFixtureResult(t *testing.T, root string) Result {
 	t.Helper()
-	result, err := (Service{
+	result, err := (Service{RegistrationProbe: func(context.Context, bool) doctor.RegistrationDetails {
+		return doctor.RegistrationDetails{Applicable: false, ApplicabilityReason: "canonical_host_absent"}
+	},
 		StateRoot: root, Home: t.TempDir(), Workdir: t.TempDir(),
 		Now: func() time.Time { return fixtureNow }, Location: time.UTC,
 	}).Build(context.Background(), Request{WireVersion: 1, RecentLimit: 5})
