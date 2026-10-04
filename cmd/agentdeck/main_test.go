@@ -489,11 +489,15 @@ func TestSessionShowActivityReadsOnlySafeMetadataOnDemand(t *testing.T) {
 	}
 	for _, want := range []string{
 		"SUMMARY", "2 calls", "2 completed", "DURATION", "total 3s (3,000 ms)", "average 1.5s (1,500 ms)",
-		"SHOWING", "1-1 of 2", "NEXT PAGE", "agentdeck --state-dir", "--client 'codex'", "--activity", "--page 2", "--limit 1",
+		"SHOWING", "1-1 of 2", "NEXT PAGE",
 	} {
 		if !strings.Contains(pagedText.String(), want) {
 			t.Fatalf("paged activity text missing %q: %s", want, pagedText.String())
 		}
+	}
+	wantNext := fmt.Sprintf("agentdeck --state-dir '%s' session show 'activity-session' --client 'codex' --activity --page 2 --limit 1", state)
+	if !sessionShowNextPageMatches(pagedText.String(), wantNext) {
+		t.Fatalf("paged activity next command does not match %q:\n%s", wantNext, pagedText.String())
 	}
 	var paged bytes.Buffer
 	if err := run([]string{"--state-dir", state, "--format", "json", "session", "show", "activity-session", "--activity", "--page", "1", "--limit", "1"}, bytes.NewReader(nil), &paged); err != nil {
