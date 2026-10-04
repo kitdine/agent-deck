@@ -1,7 +1,8 @@
 ---
-status: active
+status: historical
 created: 2026-10-03
 updated: 2026-10-03
+retired: 2026-10-04
 ---
 
 # LaunchServices Recovery — Requirements

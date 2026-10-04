@@ -1,14 +1,15 @@
 ---
-status: active
+status: historical
 created: 2026-10-04
 updated: 2026-10-04
+retired: 2026-10-04
 ---
 
 # LaunchServices Recovery — Architecture
 
 Complete candidate for independent batch review, not implementation approval.
 Inputs: [requirements.md](requirements.md), [CLI framework/final](ux/cli.md),
-and the approved exception in [CLI contract](../../specs/cli-design.md).
+and the approved exception in [CLI contract](../../../specs/cli-design.md).
 
 ## Current interfaces and proposed integration
 

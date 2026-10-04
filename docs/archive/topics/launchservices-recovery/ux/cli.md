@@ -1,7 +1,8 @@
 ---
-status: active
+status: historical
 created: 2026-10-04
 updated: 2026-10-04
+retired: 2026-10-04
 ---
 
 # LaunchServices Recovery — CLI
@@ -9,8 +10,8 @@ updated: 2026-10-04
 Candidate framework and final surface; awaiting independent batch review.
 Requirements are [requirements.md](../requirements.md); each requested field is
 provisioned by [architecture.md](../architecture.md). The primary product
-prototype is [Cli.jsx](../../../../prototype/src/Cli.jsx), `launchservices` tab.
-Its specimen data is [launchservices.js](../../../../prototype/src/launchservices.js).
+prototype is [Cli.jsx](../../../../../prototype/src/Cli.jsx), `launchservices` tab.
+Its specimen data is [launchservices.js](../../../../../prototype/src/launchservices.js).
 
 ## Hierarchy and states
 

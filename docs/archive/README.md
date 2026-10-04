@@ -5,7 +5,18 @@ created: 2026-07-22
 
 # Archived Documents
 
-Last updated: 2026-10-02
+Last updated: 2026-10-04
+
+## 2026-10-04 retirement: LaunchServices diagnosis
+
+[LaunchServices diagnosis](topics/launchservices-recovery/tasks.md) preserves the
+complete design/implementation review history and PR #42 delivery at `f84e58a9`
+to `release/v0.6.x`. The stable Doctor contract is reconciled. Original refresh
+performance remains failed with explicit delivery risk acceptance;
+[issue #43](https://github.com/kitdine/agent-deck/issues/43) carries deferred repair
+and does not block this closeout. WidgetTimeline, collision causality and actual
+recovery are unverified.
+Footer P3 and aggregate v0.6.5/release work remain open.
 
 ## 2026-10-02 retirement: approved AD shared-stroke icon
 

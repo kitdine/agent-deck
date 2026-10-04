@@ -1,7 +1,8 @@
 ---
-status: active
+status: historical
 topic: launchservices-recovery
 subject: tasks.md
+retired: 2026-10-04
 ---
 
 ## Round 1 — 2026-10-04

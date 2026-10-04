@@ -1,7 +1,8 @@
 ---
-status: active
+status: historical
 topic: launchservices-recovery
 subject: registration-acquisition
+retired: 2026-10-04
 ---
 
 ## Round 1 — batched implementation review and scoped re-review
