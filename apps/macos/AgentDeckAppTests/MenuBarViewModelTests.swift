@@ -799,6 +799,19 @@ final class MenuBarViewModelTests: XCTestCase {
 		XCTAssertTrue(model.healthDetail.rows.allSatisfy { $0.actionContent == nil && $0.actionLabel == nil })
 	}
 
+	func testLaunchServicesRecognitionPreservesNoticesAndDisablesActions() async {
+		for state in ["consistent", "not_applicable", "conflict", "stale", "unknown"] {
+			let warning = !["consistent", "not_applicable"].contains(state)
+			let health: [String: Any] = ["available": true, "status": warning ? "degraded" : "healthy", "healthy": !warning, "problems": warning ? 1 : 0, "warnings": warning ? 1 : 0, "errors": 0, "checks": [["name": "launchservices", "status": warning ? "warning" : "ok", "code": "launchservices_\(state)", "resource": "launchservices_registration", "reason": "launchservices_\(state)"]]]
+			let model = await readyModel(envelope: WireFixture.envelope(health: health))
+			XCTAssertEqual(model.notices.filter { $0.id == "health" }.count, warning ? 1 : 0)
+			XCTAssertEqual(model.healthDetail.rows.count, 1)
+			XCTAssertEqual(model.healthDetail.rows.first?.severity, warning ? .warning : nil)
+			XCTAssertNil(model.healthDetail.rows.first?.actionContent)
+			XCTAssertNil(model.healthDetail.rows.first?.actionLabel)
+		}
+	}
+
 	// MARK: Menu-bar item
 
 	func testMenuBarValueModesChangeWhatTheItemRenders() async {
