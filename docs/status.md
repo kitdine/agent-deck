@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-08-25
-updated: 2026-10-02
+updated: 2026-10-04
 ---
 
 # AgentDeck Project Status
@@ -20,6 +20,20 @@ is recorded in `roadmap.md`.
   topic is retired after exact-merge evidence finalization. Native menu-bar
   visual acceptance remains user-deferred and unverified. This is a patch-line
   integration record, not a new release or aggregate v0.6.5 completion.
+
+- Patch-line integration: [LaunchServices diagnosis](archive/topics/launchservices-recovery/tasks.md)
+  was delivered through [PR #42](https://github.com/kitdine/agent-deck/pull/42)
+  to `release/v0.6.x` at `f84e58a9`, from signed source `4f1283ad`.
+  Its stable Doctor contract is reconciled and the topic is retired as a whole.
+  Exact-source and merged-line CI passed. Original complete-refresh performance
+  targets remain failed; the user accepted this bounded delivery on 2026-10-04
+  and deferred repair to [issue #43](https://github.com/kitdine/agent-deck/issues/43).
+  Added snapshot cost and first-cache variation
+  remain recorded in the [acceptance history](archive/topics/launchservices-recovery/reviews/registration-acceptance.md).
+  WidgetTimeline, collision causality and actual recovery remain unverified.
+  Footer P3 `ad-bug-footer-routes-narrow-truncation` remains open for native
+  280 pt confirmation. This records this feature's patch-line closeout; main
+  propagation, aggregate v0.6.5 completion and publication remain separate.
 
 - Repository Hook maintenance: [Beads Stop session scope](archive/fixes/beads-stop-session-scope.md#review--round-2--2026-09-07)
   was delivered in signed commit `2d53d8e` after independent re-review and real-client

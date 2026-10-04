@@ -1,7 +1,8 @@
 ---
-status: active
+status: historical
 created: 2026-10-03
 updated: 2026-10-04
+retired: 2026-10-04
 ---
 
 # LaunchServices Recovery — Tasks
@@ -37,13 +38,17 @@ unchecked Draft cells; no empty placeholders are created.
 | safe-health-projection | [x] | [x] |
 | registration-acceptance | [x] | [x] |
 
-The coherent design batch passed independent scoped re-review and its document
-gates. The approved local implementation and test work is produced. Cold implementation R3 covered the initial candidate. A bounded source-order
-repair has passed targeted independent re-review; its repaired exact-state gates are VERIFIED. New signed-head remote checks
-remain pending; earlier results retain their historical content identity.
-Registration acceptance has a reviewed explicit delivery-only risk disposition.
-Raw overall-refresh performance remains failed; task gates are VERIFIED through
-explicit delivery acceptance and preserved R3 evidence. Signed initial commit and Draft PR #42 exist; final CI/review/merge remain pending.
+The coherent design and implementation batches passed independent review and
+applicable exact-state gates. Product delivery completed through PR #42 at
+`f84e58a9ed8085b37d8bea605070ead5d837fc5f`, with reviewed signed source
+`4f1283ad19cdbfdc49344f51aac53dd4f81fb190` and identical merge tree
+`7aa9b7485b1b3e9c38a73fe77e302c0651e99af6`. Final source and postmerge CI
+passed. The source-normalization repair passed targeted independent re-review;
+the remote P2 was resolved with no new findings. Four immutable Task gates are
+VERIFIED 3/3; the product merge Topic gate is VERIFIED 2/2. Those results cover
+their named states, rather than automatically certifying later document changes.
+Registration acceptance uses the explicit delivery-only risk disposition;
+original whole-refresh performance remains FAIL.
 
 ### registration-acquisition
 
@@ -106,37 +111,47 @@ review. No release or deployment is authorized.
   batch. Existing commands/flags/exits/databases/persisted formats/check semantics
   remain fixed. Only the approved diagnostic addition/count effects are selected.
 
-## Current handoff
+## Closure and retained boundaries
 
-The initial signed R3 candidate has reviewed user acceptance of the disclosed
-overall-refresh performance limit. A minimal source-normalization repair has passed targeted independent re-review
-and affected checks. Repaired Task gates are VERIFIED; current delivery awaits the new signed
-head CI/review. Full findings and dispositions remain in the review record.
-[Registration acceptance](reviews/registration-acceptance.md) preserves the
-original failed targets, native baseline/candidate measurements, first-cache
-variation, added snapshot cost and the user's delivery-only decision. The
-performance result remains FAIL; scanner repair and a future waiver are outside
-this scope. Repaired Task gates are VERIFIED, with acceptance explicitly based on the user-approved
-delivery exception. New repaired-state synchronization preserves that scoped evidence;
-performance is not marked passing.
+The approved read-only diagnosis and manual safety guidance were delivered by
+PR #42 into `release/v0.6.x`. Eight scoped Beads work-product tasks and the origin
+`ad-bug-lsregister-collision-no-recovery-path` are closed after direct delivery
+readback. This closes diagnostic/recovery discoverability, without claiming
+actual system recovery. The final remote review and PR/push CI are bound to
+signed source `4f1283ad`; postmerge verify and desktop CI succeeded at `f84e58a9`.
 
-Final Go suite, scoped race/vet, both Darwin builds and arm64 size passed for
-R3. Authorized hosted native tests had 139 pass, one opt-in schema skip and no
-failures; source/test identities and existing logs were verified for reuse.
-Earlier narrower harness failures and all raw performance measurements remain
-in the acceptance/implementation records and preserved local evidence. The ordering repair adds focused failure-first coverage and reruns affected Go
-checks. Unchanged native acquisition/Swift inputs allow scoped evidence reuse;
-no new native registration or performance campaign is required.
+This authorized document closure reconciles the stable [Doctor contract](../../../specs/cli-design.md#launchservices-registration-diagnosis),
+the integrated [project status](../../../status.md) and whole-topic retirement.
+The topic's requirements, UX, architecture, matrices and complete review history
+travel together; historical content identities remain facts about their original
+paths and states. Current review and evidence bindings cover the closure batch.
 
-Read-only doctor diagnostics and manual advice preserve host/appex separation,
-500ms/1.5s total probe budgets,64-entry/512KiB limits, conservative unknowns and
-path-free desktop health. No automatic recovery, production registration change,
-WidgetTimeline or collision-causality acceptance is claimed. Authorized temporary
-test registrations/files were cleaned; production entries were unchanged.
+[Registration acceptance](reviews/registration-acceptance.md) retains failed
+original targets, native baseline/candidate measurements, first-cache variation,
+201–222 ms added snapshot cost and the user's 2026-10-04 06:19UTC delivery-only
+risk acceptance. The user deferred performance repair on 2026-10-04 to
+[issue #43](https://github.com/kitdine/agent-deck/issues/43), which does not block
+this closeout. Performance remains FAIL, with no future waiver or scanner repair
+included here.
 
-The real user authorized signed logical delivery of this coherent candidate,
-ordinary feature push and a Draft PR into `release/v0.6.x`, followed by exact-head
-CI and independent review before normal merge. Delivery and origin closure
-remain pending; unrelated P3 and aggregate release work stay open. After this
-task finishes, provide a clean handoff for the parent to arrange subsequent
-local CLI work; do not start another product task or CLI here.
+Final R3 Go, scoped race/vet, both Darwin builds and arm64 size checks passed.
+Hosted native evidence had 139 pass, one opt-in schema skip and no failures;
+unchanged source/test identities were verified for reuse. The two-file ordering
+repair has separate failure-first, full Go, affected race/vet and independent
+review evidence. Earlier harness failures and all raw performance measurements
+remain in the review histories and preserved evidence. This document-only
+closure reuses unchanged product evidence and does not rerun a native campaign.
+
+Diagnosis preserves host/appex separation, total 500 ms/1.5 s probe budgets,
+64-entry/512 KiB source limits, conservative unknowns and path-free desktop health.
+No automatic recovery, production registration change, WidgetTimeline or
+collision-causality acceptance is claimed. Authorized temporary test
+registrations/files were cleaned; production entries were unchanged.
+
+Footer P3 `ad-bug-footer-routes-narrow-truncation` stays open. Native 280 pt
+confirmation with real route names precedes its Lane A/B disposition and valid
+workspace binding. Its closed schema-signal document relation is `relates-to`,
+not a blocking dependency. No P3 design, implementation or acceptance occurred.
+Main propagation, version assembly and release publication remain separately
+scoped. After this closure, the parent arranges later local CLI work; this task
+does not start another product writer or change runtime/model routing.

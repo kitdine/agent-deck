@@ -1,7 +1,8 @@
 ---
-status: active
+status: historical
 topic: launchservices-recovery
 subject: registration-acceptance
+retired: 2026-10-04
 ---
 
 ## Round 1 — acceptance boundary remains open
@@ -68,7 +69,7 @@ and harness. These are bounded diagnostic observations, not a completed
 
 ### Performance result — failed targets remain failed
 
-The original targets in [snapshot-performance requirements](../../snapshot-performance/requirements.md)
+The original targets in [snapshot-performance requirements](../../../../topics/snapshot-performance/requirements.md)
 remain unchanged: complete cold import/recomputation wall time <=10s; unchanged
 refresh wall time <=1s, combined client/helper/worker CPU <=500ms and executing
 helper/worker RSS <=100MiB. CPU/RSS budgets apply to unchanged refresh; cold
