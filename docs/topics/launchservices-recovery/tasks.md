@@ -38,11 +38,12 @@ unchecked Draft cells; no empty placeholders are created.
 | registration-acceptance | [x] | [x] |
 
 The coherent design batch passed independent scoped re-review and its document
-gates. The approved local implementation and test work is produced. Cold implementation R3 PASS and exact-state gates verify the first three tasks.
+gates. The approved local implementation and test work is produced. Cold implementation R3 covered the initial candidate. A bounded source-order
+repair has passed targeted independent re-review; its repaired exact-state gates are VERIFIED. New signed-head remote checks
+remain pending; earlier results retain their historical content identity.
 Registration acceptance has a reviewed explicit delivery-only risk disposition.
 Raw overall-refresh performance remains failed; task gates are VERIFIED through
-explicit delivery acceptance and preserved R3 evidence. Authorized Git/PR
-delivery remains pending.
+explicit delivery acceptance and preserved R3 evidence. Signed initial commit and Draft PR #42 exist; final CI/review/merge remain pending.
 
 ### registration-acquisition
 
@@ -86,8 +87,9 @@ L3: built quick/full ordinary-user reads against isolated AgentDeck state,
 source/control/metadata comparison and cold/warm bounded timing; existing
 snapshot refresh performance targets remain in force. Report fixture versus
 native evidence and unperformed collision/timeline/system recovery. Independent
-implementation review and scoped CE gates precede completion. Delivery remains
-with the parent; this session performs no commit/push/PR/merge/release.
+implementation review and scoped CE gates precede completion. The later explicit delivery authorization covers signed commits, ordinary
+feature push, Draft PR and normal merge after exact-head CI and independent
+review. No release or deployment is authorized.
 
 ## Working context and authority
 
@@ -106,22 +108,25 @@ with the parent; this session performs no commit/push/PR/merge/release.
 
 ## Current handoff
 
-The unchanged R3 product/test candidate has independent code review PASS and
-reviewed user acceptance of the disclosed overall-refresh performance limit.
+The initial signed R3 candidate has reviewed user acceptance of the disclosed
+overall-refresh performance limit. A minimal source-normalization repair has passed targeted independent re-review
+and affected checks. Repaired Task gates are VERIFIED; current delivery awaits the new signed
+head CI/review. Full findings and dispositions remain in the review record.
 [Registration acceptance](reviews/registration-acceptance.md) preserves the
 original failed targets, native baseline/candidate measurements, first-cache
 variation, added snapshot cost and the user's delivery-only decision. The
 performance result remains FAIL; scanner repair and a future waiver are outside
-this scope. Task gates are VERIFIED, with acceptance explicitly based on the user-approved
-delivery exception. Final metadata synchronization reuses this exact evidence;
+this scope. Repaired Task gates are VERIFIED, with acceptance explicitly based on the user-approved
+delivery exception. New repaired-state synchronization preserves that scoped evidence;
 performance is not marked passing.
 
 Final Go suite, scoped race/vet, both Darwin builds and arm64 size passed for
 R3. Authorized hosted native tests had 139 pass, one opt-in schema skip and no
 failures; source/test identities and existing logs were verified for reuse.
 Earlier narrower harness failures and all raw performance measurements remain
-in the acceptance/implementation records and preserved local evidence. No new
-product/native test matrix is required for this record-only disposition.
+in the acceptance/implementation records and preserved local evidence. The ordering repair adds focused failure-first coverage and reruns affected Go
+checks. Unchanged native acquisition/Swift inputs allow scoped evidence reuse;
+no new native registration or performance campaign is required.
 
 Read-only doctor diagnostics and manual advice preserve host/appex separation,
 500ms/1.5s total probe budgets,64-entry/512KiB limits, conservative unknowns and

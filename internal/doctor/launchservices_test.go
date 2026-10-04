@@ -124,6 +124,55 @@ func TestRegistrationAccountingAndSkippedPaths(t *testing.T) {
 	}
 }
 
+func TestRegistrationNotApplicableNormalizesEvidence(t *testing.T) {
+	for _, hostAbsent := range []bool{false, true} {
+		t.Run(fmt.Sprintf("host_absent=%v", hostAbsent), func(t *testing.T) {
+			var previous []byte
+			for _, reversed := range []bool{false, true} {
+				d := registrationFixture()
+				d.Applicable = false
+				d.ApplicabilityReason = "gui_host_absent"
+				for _, src := range []*RegistrationSource{&d.Host, &d.Widget} {
+					a := src.Entries[0]
+					b := a
+					b.Path = "/z-other" + a.Path
+					b.Canonical = false
+					src.Entries = []RegistrationEntry{b, a, b}
+					if reversed {
+						src.Entries = []RegistrationEntry{a, b, a}
+					}
+				}
+				if hostAbsent {
+					d.Host.Entries = nil
+				}
+				c := registrationCheck(d)
+				if c.Code != "launchservices_not_applicable" || c.Status != "ok" || c.RegistrationDetails.Complete || c.RegistrationDetails.ApplicabilityReason != "gui_host_absent" || c.Recovery != "" || c.ActionKind != "" {
+					t.Fatalf("changed non-applicable semantics: %#v", c)
+				}
+				for _, src := range []RegistrationSource{c.RegistrationDetails.Host, c.RegistrationDetails.Widget} {
+					if hostAbsent && src.Source == "host_application_urls" {
+						if src.Entries == nil || len(src.Entries) != 0 {
+							t.Fatalf("empty host must remain an array: %#v", src)
+						}
+						continue
+					}
+					if len(src.Entries) != 2 || src.Entries[0].Path >= src.Entries[1].Path || !src.Complete || src.Reason != "" {
+						t.Fatalf("evidence not normalized or source semantics changed: %#v", src)
+					}
+				}
+				raw, err := json.Marshal(c)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if previous != nil && !bytes.Equal(previous, raw) {
+					t.Fatalf("source order changes JSON:\n%s\n%s", previous, raw)
+				}
+				previous = raw
+			}
+		})
+	}
+}
+
 func TestNativeRegistrationReadOnlyAcceptance(t *testing.T) {
 	if os.Getenv("AGENTDECK_NATIVE_REGISTRATION_ACCEPTANCE") != "1" {
 		t.Skip("ordinary-user native acceptance is explicit")

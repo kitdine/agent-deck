@@ -125,3 +125,80 @@ test registration cleanup returned the exact six-ID baseline; the separate
 acceptance record preserves the -10814 Widget-only unregister failure and the
 successful host removal/final readbacks. Representative App/client refresh
 performance remains open; this does not reopen the R3 code findings.
+
+## Round 4 — 2026-10-04 remote PR review
+
+Verdict: FAIL
+Completion gate: NOT_VERIFIED
+
+Reviewer: remote Codex; Method: independent GitHub PR review.
+Reviewed state: signed commit `175e76c453e986b4cdea5a6253f4ee48a2a75670`,
+tree `92fa271f8e6c2973ea15074d1694f8a9ba51c79e`, PR #42, review
+`5404692861`, comment `4176485169`. Scope: feature diff against
+`release/v0.6.x`; main independently verified the finding against the source.
+
+ICR4-F1 — P2: `internal/doctor/launchservices.go` skips source deduplication
+and lexical sorting when the canonical host is absent. Returned Widget entries
+still reach local JSON, so OS enumeration order changes the output. In-scope
+carrier: `ad-launchservices-recovery-registration-acquisition`. Repair only
+normalizes both sources before applicability classification; it changes no
+acquisition, budgets, metadata, safe desktop DTO, scanner or performance target.
+
+Evidence: `review-not-applicable-failure-first.log` fails both the host-empty
+and populated-source regression cases on the signed head plus test-only change.
+Prior ICR-F1/F2/F3/F4 remain closed. The new finding remains open until targeted
+independent re-review and exact-state verification; R3 PASS does not cover it.
+Raw performance FAIL and the explicit delivery-only decision are preserved.
+
+## Round 5 — 2026-10-04 scoped ordering repair re-review
+
+Verdict: PASS
+Completion gate: VERIFIED
+
+Reviewer: `/root/limited_delivery_review`, independent cold read-only role.
+Method: targeted two-file source/diff review, direct R3 manifest comparison and
+completed verification-log readback; no product/status/evidence writes by reviewer.
+Reviewed state: HEAD `175e76c453e986b4cdea5a6253f4ee48a2a75670` plus
+`repair-r4-product-manifest.json`; two-file patch SHA-256
+`d3311351e4730e9c22ff3164151938c76b8845cba0311cda7513cc8e492d35ec`.
+Production SHA-256 `b24b2c561ba3a768e37befc6d3d03de6e166dd61f29a5ba433ef8fe4c8d1d2d6`;
+test SHA-256 `07a9c6691a6d0e41148b95970dcda199158f94076dc7b26a7d59b264af608fa2`.
+The other 22 R3 product/test inputs match their prior identities directly.
+
+ICR4-F1 CLOSED: both source arrays are normalized before applicability;
+duplicate paths collapse and lexical order is stable. Empty host evidence stays
+an array, source completeness/reasons are preserved, and not-applicable remains
+ok with unchanged applicability reason and no action. Failure-first regression
+fails before the repair and passes after it for both populated-source and
+host-empty/Widget-present cases, including reordered JSON equality.
+ICR-F1/F2/F3/F4 remain closed; no new in-scope finding.
+
+Verification: affected functional packages and ordinary-permission full Go
+suite PASS; pure classification race PASS; existing CLI race PASS (578.911s),
+desktop race PASS (77.589s), complete doctor race PASS in the normal-permission
+rerun (52.210s); scoped vet PASS using the approved temporary Go cache. The
+initial overall race result remains FAIL: one unchanged native JXA case hit its
+1s deadline under concurrent suites, outside modified registrationCheck. Its
+isolated race rerun passed at 0.86s with the same deadline. No DATA RACE report.
+Restricted full Go socket-bind/helper failures and the initial native timeout
+remain in raw logs; normal full Go and the isolated/full doctor race recoveries
+are recorded separately. The redundant fresh CLI/desktop race run is pending;
+its completion is not claimed here.
+
+Main directly matched source/log fingerprints, source causal paths and completed
+results in `ordering-repair-evidence.json`. Unchanged native acquisition, Swift
+privacy/UI and budget inputs support scoped reuse; no new native registration,
+performance campaign, recovery, WidgetTimeline or collision-causality PASS.
+Original refresh performance FAIL, baseline and user delivery-only acceptance
+remain unchanged. Exact repaired-state gates and new signed-head remote CI/review
+are required before final delivery.
+
+Main evaluated the exact repaired candidate CEv1 gates: all four Tasks VERIFIED,
+three required criteria each, no missing criteria or unresolved impacts. The
+normalization delta is directly covered; historical raw failures are retained.
+Final record/Git binding uses explicit target-bound preservation.
+
+After the scoped review, the ordinary-permission affected race run completed
+PASS for all three packages with no DATA RACE. Main verified the complete log
+and unchanged product manifest in `ordering-race-followup.json`. The initial
+overall race FAIL and its isolated recovery remain retained separately.

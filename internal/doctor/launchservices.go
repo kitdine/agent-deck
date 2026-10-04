@@ -71,6 +71,18 @@ type RegistrationEntry struct {
 
 func registrationCheck(d RegistrationDetails) Check {
 	d.Scope = registrationScope
+	for _, src := range []*RegistrationSource{&d.Host, &d.Widget} {
+		seen := map[string]bool{}
+		entries := make([]RegistrationEntry, 0, len(src.Entries))
+		for _, entry := range src.Entries {
+			if !seen[entry.Path] {
+				seen[entry.Path] = true
+				entries = append(entries, entry)
+			}
+		}
+		sort.Slice(entries, func(i, j int) bool { return entries[i].Path < entries[j].Path })
+		src.Entries = entries
+	}
 	code := "launchservices_consistent"
 	status := "ok"
 	if !d.Applicable {
@@ -78,28 +90,17 @@ func registrationCheck(d RegistrationDetails) Check {
 	} else {
 		conflict, stale := false, false
 		for _, src := range []*RegistrationSource{&d.Host, &d.Widget} {
-			if src.Entries == nil {
-				src.Entries = []RegistrationEntry{}
-			}
-			seen := map[string]bool{}
-			entries := make([]RegistrationEntry, 0, len(src.Entries))
 			var canonical *RegistrationEntry
 			for _, entry := range src.Entries {
-				if seen[entry.Path] {
-					continue
-				}
-				seen[entry.Path] = true
-				entries = append(entries, entry)
 				if entry.Canonical && entry.State == "canonical" {
 					copy := entry
 					canonical = &copy
 				}
 			}
-			src.Entries = entries
-			if len(entries) >= registrationEntryLimit {
+			if len(src.Entries) >= registrationEntryLimit {
 				sourceFailure(src, "entry_limit")
 			}
-			if len(entries) == 0 {
+			if len(src.Entries) == 0 {
 				sourceFailure(src, "empty_result")
 			}
 			if canonical == nil {
@@ -130,7 +131,6 @@ func registrationCheck(d RegistrationDetails) Check {
 					sourceFailure(src, "invalid_metadata")
 				}
 			}
-			sort.Slice(src.Entries, func(i, j int) bool { return src.Entries[i].Path < src.Entries[j].Path })
 		}
 		d.Complete = d.Host.Complete && d.Widget.Complete
 		switch {
@@ -144,12 +144,6 @@ func registrationCheck(d RegistrationDetails) Check {
 		if code != "launchservices_consistent" {
 			status = "warning"
 		}
-	}
-	if d.Host.Entries == nil {
-		d.Host.Entries = []RegistrationEntry{}
-	}
-	if d.Widget.Entries == nil {
-		d.Widget.Entries = []RegistrationEntry{}
 	}
 	return Check{Name: "launchservices", Status: status, Code: code, Resource: "launchservices_registration", Reason: code, RegistrationDetails: &d}
 }
