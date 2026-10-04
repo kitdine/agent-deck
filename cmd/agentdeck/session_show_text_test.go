@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -221,6 +222,103 @@ func TestRenderSessionShowTextPaginationUsesBoundedContinuation(t *testing.T) {
 			t.Fatalf("pagination line width %d exceeds 48: %q", got, line)
 		}
 	}
+}
+
+func TestRenderSessionShowTextNextPageAllowsFlagValueContinuation(t *testing.T) {
+	t.Setenv("COLUMNS", "100")
+	const want = "agentdeck --state-dir '/state-xxx' session show 'activity-session' --client 'codex' --activity --page 2 --limit 1"
+	page := session.Pagination{Page: 1, Limit: 1, Total: 2, Shown: 1, HasMore: true, NextPage: 2}
+	next := sessionNextCommand("/state-xxx", "show", "codex", "activity-session", true, false, page)
+	if next != want {
+		t.Fatalf("generated next command = %q, want %q", next, want)
+	}
+	var output strings.Builder
+	if err := renderSessionShowText(&output, session.Result{Metadata: session.Metadata{Client: "codex", SessionID: "activity-session"}}, map[string]session.Pagination{
+		"documents": {Page: 1, Limit: 1, Total: 2, Shown: 1, HasMore: true, NextPage: 2},
+	}, next, nil, nil, false, "", false); err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSuffix(output.String(), "\n"), "\n")
+	flagValueContinuation := false
+	for index, line := range lines {
+		if got := runewidth.StringWidth(line); got > 100 {
+			t.Fatalf("pagination line width %d exceeds 100: %q", got, line)
+		}
+		if strings.HasSuffix(line, "--client") && index+1 < len(lines) && strings.HasPrefix(strings.TrimSpace(lines[index+1]), "'codex' ") {
+			flagValueContinuation = true
+		}
+	}
+	if !flagValueContinuation {
+		t.Fatalf("fixture did not put the client flag and value on adjacent continuation lines:\n%s", output.String())
+	}
+	if !sessionShowNextPageMatches(output.String(), want) {
+		t.Fatalf("pagination next command does not match %q:\n%s", want, output.String())
+	}
+
+	for _, state := range []string{"/state-xxx", filepath.Join(t.TempDir(), strings.Repeat("state-", 16), "state")} {
+		wantCommand := fmt.Sprintf("agentdeck --state-dir '%s' session show 'activity-session' --client 'codex' --activity --page 2 --limit 1", state)
+		generated := sessionNextCommand(state, "show", "codex", "activity-session", true, false, page)
+		if generated != wantCommand {
+			t.Fatalf("generated next command = %q, want %q", generated, wantCommand)
+		}
+		for _, test := range []struct {
+			name    string
+			command string
+			matches bool
+		}{
+			{name: "generated", command: generated, matches: true},
+			{name: "wrong_state_value", command: sessionNextCommand(state+"-wrong", "show", "codex", "activity-session", true, false, page)},
+			{name: "missing_state_value", command: strings.Replace(generated, "'"+state+"' ", "", 1)},
+			{name: "missing_state_flag", command: sessionNextCommand("", "show", "codex", "activity-session", true, false, page)},
+		} {
+			t.Run(test.name+fmt.Sprintf("-state-length-%d", len(state)), func(t *testing.T) {
+				var output strings.Builder
+				if err := renderSessionShowText(&output, session.Result{Metadata: session.Metadata{Client: "codex", SessionID: "activity-session"}}, map[string]session.Pagination{"documents": page}, test.command, nil, nil, false, "", false); err != nil {
+					t.Fatal(err)
+				}
+				for _, line := range strings.Split(output.String(), "\n") {
+					if got := runewidth.StringWidth(line); got > 100 {
+						t.Fatalf("pagination line width %d exceeds 100: %q", got, line)
+					}
+				}
+				if test.matches && len(state) > 80 && strings.Contains(output.String(), "'"+state+"'") {
+					t.Fatal("temporary-state fixture did not hard-wrap its path word")
+				}
+				matches := sessionShowNextPageMatches(output.String(), wantCommand)
+				if matches != test.matches {
+					t.Fatalf("next command match = %t, want %t for %q:\n%s", matches, test.matches, wantCommand, output.String())
+				}
+			})
+		}
+	}
+}
+
+// Match the complete expected command, allowing display continuations between
+// arguments or within a hard-wrapped path word without discarding path characters.
+func sessionShowNextPageMatches(text, want string) bool {
+	_, field, found := strings.Cut(text, "NEXT PAGE")
+	if !found {
+		return false
+	}
+	field, _, _ = strings.Cut(field, "\n\n")
+	field = strings.TrimSpace(field)
+	for index := 0; index < len(want); index++ {
+		if want[index] == ' ' {
+			if field == "" || !strings.ContainsRune(" \t\n", rune(field[0])) {
+				return false
+			}
+			field = strings.TrimLeft(field, " \t\n")
+			continue
+		}
+		if strings.HasPrefix(field, "\n") {
+			field = strings.TrimLeft(field, "\n \t")
+		}
+		if field == "" || field[0] != want[index] {
+			return false
+		}
+		field = field[1:]
+	}
+	return field == ""
 }
 
 func TestRenderSessionShowTextNamesDisplayZoneForRecordTimestamps(t *testing.T) {
