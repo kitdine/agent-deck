@@ -612,3 +612,210 @@ Source: operator-local `/tmp/agentdeck-reconcile-main-20261005/routing-rereview-
 Finalization boundary: this transcription and matching document status synchronization add no product, policy, membership or acceptance decision. The delivery operator separately assesses and binds the metadata delta, preserving the reviewed freeze and all old failures. Any semantic change requires a focused independent re-review.
 
 Main operator gate finalization: the report originally cited a saved NOT_VERIFIED query. After recording the independent assessment at the exact reviewed frozen state, the actual MCP gate returned VERIFIED with all required criteria satisfied and no missing criteria or unresolved impacts. Receipt: operator-local `/tmp/agentdeck-reconcile-main-20261005/integration-delivery/reviewed-ce-receipts.json`. The canonical field above now records that later query for the reviewed state; the report’s earlier observation remains historical. Final synchronized and committed targets require separate state-bound queries, not relabeling this review.
+
+
+## Round 6 — 2026-10-05
+
+## 📋 Exact-head remote review of PR #46
+
+📊 Overall score: 7/10 (delivery operator assessment; remote review supplied no score)
+
+✅ Verdict: FAIL
+
+### 🔴 Serious issues — must fix
+
+- **4183868495 — P2 — OPEN at this state.** `scripts/hooks/beads-consistency.py`, document-binding extraction: an inline-code Git blob example is accepted as an authoritative binding. The independently confirmed isolated AST probe returned true for the example and live binding, false without a binding. This can incorrectly recommend `awaiting_commit`. Bounded remedy: mask inline examples while retaining legitimate code-formatted hashes and paths, with regression coverage.
+- **4183868507 — P2 — OPEN at this state.** `docs/status.md:21` describes signed local delivery as pending despite the already signed and pushed commit. This misstates the current checkpoint. Bounded remedy: distinguish completed original delivery/CI from repair, append delivery, new-head CI and supervisor checks.
+
+### 🟡 Suggested improvements — recommended
+
+None beyond the two required findings.
+
+### 🟢 Strengths
+
+The signed two-parent ancestry and all eight original exact-head CI jobs are retained as completed evidence; they do not waive the findings.
+
+### 📝 Summary
+
+Reviewer: GitHub `chatgpt-codex-connector`, review `5414346115`, actual API state COMMENTED. The delivery operator records FAIL because both verified P2 findings block this integration; this is not an invented GitHub CHANGES_REQUESTED state.
+Method: original remote review and saved main-operator isolated reproducer/commit inspection.
+Scope: bounded partial integration, not aggregate assembly or release.
+Reviewed state: commit `5d130e3347333f45fdd79a5e664e998aea147ad7`, tree `d7ffc278aacee1cb85b7ee719e03f9303599fe8e`; parents `868519d13902ad1f59c9688c252f92d6297c9d15` and `8b1f82b09664f32337dbb9ed9f3e4f14cc2b4d30`.
+Evidence: [remote review](https://github.com/kitdine/agent-deck/pull/46#pullrequestreview-5414346115), [4183868495](https://github.com/kitdine/agent-deck/pull/46#discussion_r4183868495), [4183868507](https://github.com/kitdine/agent-deck/pull/46#discussion_r4183868507). Saved operator-local receipts: `/tmp/agentdeck-reconcile-main-20261005/integration-delivery/remote-failure-ce-receipts.json` and `remote-review-complete.json`.
+
+Completion gate: FAILED
+
+The actual original commit-bound integration FAILED remains historical. Its unchanged tasks.md document gate remained verified. No new tasks.md review is implied.
+
+### Next instruction
+
+Historical repair scope: 4183868495 and 4183868507 only. Later rounds below record their actual disposition.
+
+
+## Round 7 — 2026-10-05
+
+## 📋 PR #46 narrow repair — independent local review
+
+📊 Overall score: 7/10
+
+✅ Verdict: FAIL
+
+Completion gate: FAILED
+
+### 🔴 Serious issues — must fix
+
+**PR46-COLD-R1-F1 — P2: Block masking destroys a multiline inline-code delimiter before inline masking.**
+
+- **Disposition:** Original finding **4183868495 remains partially open**.
+- **Location:** `scripts/hooks/beads-consistency.py:400,409–410`.
+- **Evidence:** For document bytes `b"reviewed\n"`, the Git blob is `8f1188e8bde9a1f689e8575eea578c4ed46e7f8e`. This review body returns **True**, although its only identity is inside inline code:
+
+```text
+## Round 1
+Example: `Git blob 8f1188e8bde9a1f689e8575eea578c4ed46e7f8e
+    `
+Verdict: PASS
+Completion gate: VERIFIED
+```
+
+A tab before the closing backtick also reproduces it. An ordinary unindented closing line correctly returns **False**.
+
+`latest_review_section()` first applies `visible_markdown()`, which blanks the indented closing delimiter. The subsequent `mask_inline_code()` sees an unmatched opening backtick and leaves `Git blob` visible. The shared parser uses the opposite order, `visible_markdown(mask_inline_code(text))`, and correctly masks this example.
+
+- **Behavior risk:** The document currency check accepts a non-authoritative example. With the existing caller conditions, lines 951–958 can consequently recommend `awaiting_commit`.
+- **Test gap:** Added scenarios at `scripts/hooks/beads_consistency_test.py:1005–1013` cover multiline code but omit an indented closing delimiter.
+
+💡 **Minimal repair:** Derive the inline mask from the original latest section before block masking removes delimiters. Keep the visible text and mask aligned through identical formatting removals; retain code-formatted hash/path support. Add four-space and tab closing-delimiter regressions, alongside the existing authoritative-label positive controls.
+
+### 🟡 Suggested improvements — recommended
+
+None.
+
+### 🟢 Strengths
+
+- **4183868507 — P2: repaired in this candidate.** `docs/status.md:17–30` separates the completed signed `5d130e3` delivery and its eight successful CI checks from repair verification, evidence, append delivery, new-head CI, supervisor checks, and remote merge. Aggregate Tasks 2/3 remain open. It introduces no new remote-review requirement.
+- The original single-line inline-code reproducer now returns **False**. Plain labels and prose labels with code-formatted hashes return **True**.
+- Mask indexing remains aligned through backtick removal; the reproduced defect concerns transformation order.
+
+### 📝 Summary
+
+**Reviewer/method:** Independent local, read-only assessment. Inspected implementation, shared parser, tests, and status before consulting supplied finding/evidence artifacts. Probes executed AST-extracted functions with in-memory file mocks and `PYTHONDONTWRITEBYTECODE=1`; no Hook entry point or production state was executed.
+
+**Exact reviewed candidate:**
+
+- Base HEAD: `5d130e3347333f45fdd79a5e664e998aea147ad7`
+- Base tree: `d7ffc278aacee1cb85b7ee719e03f9303599fe8e`
+- Merge parents:
+  - `868519d13902ad1f59c9688c252f92d6297c9d15`
+  - `8b1f82b09664f32337dbb9ed9f3e4f14cc2b4d30`
+- Candidate manifest SHA-256: `0ea17a13658df58b6bc7fdf705e7bdd7eb6d8e33cf81f4e8482a96c597a3ccd2`
+- Scoped diff SHA-256: `112749ff2c67b1e7d4dc2f8542ed298aa67bd14228116d9ba455fc1102d98f38`
+
+| Path | Candidate Git blob | Mode |
+| --- | --- | --- |
+| `docs/status.md` | `01b3f3bdaa196cea701cae833ae3c735f74a66ee` | `100644` |
+| `scripts/hooks/beads-consistency.py` | `60065ec75165ae05d46370d714eb4184f807398e` | `100755` |
+| `scripts/hooks/beads_consistency_test.py` | `15cab790cd6456328d831a871a041371f80e80b5` | `100644` |
+
+**Identity verification:** Before and after review, all three files matched manifest bytes, SHA-256, size, Git blobs, filesystem/Git modes, and base blobs. HEAD, parents, scoped diff, and changed-path set matched; the index remained unchanged.
+
+**Existing evidence:** Inspected successful logs for 4 focused blob tests, 49 Hook tests, 91 CI/document-tool tests, document structure, whitespace, and diff checks. These do not cover the demonstrated masking-order failure. Historical signature and exact-head CI artifacts support the status correction.
+
+**Scope/limits:** Narrow repair semantics and affected parser interactions only. Broader verification stopped after the decisive reproducer. No Go/race/vet reruns, network requests, HANDOFF reading, repository writes, Beads/CE operations, or formal review-record changes. No certification of the overall integration or release.
+
+The old integration gate remains **FAILED** and old document gate **VERIFIED** as supplied; neither is rewritten by this review. No new-target gate query was performed. The candidate’s local semantic failure is independent of its **NOT_VERIFIED** completion gate.
+
+### Next instruction
+
+**Repair: PR46-COLD-R1-F1 only.** Correct masking order, add the two delimiter regressions, and preserve the existing trust policy and status correction. Then verify the affected final candidate and return it for local review.
+
+Reviewer: independent local Codex reviewer, session `01a10cb7-de3e-7273-9c27-721c86fbdcf2`, verified from the corresponding first CLI event. Repair author: `01a10cad-9c7a-7802-bf90-a5c1a3b562dc`; delivery transcription is a separate role.
+Method: verbatim independent report above, with source SHA-256 `3ee499ff9ffac05d9fb605c4efe5d3d8f584de3e04db2e9679a95ea25a10207f`. Source is operator-local `/tmp/agentdeck-reconcile-main-20261005/p2-repair-cold-clean-final.txt`; no portable artifact availability is claimed.
+Scope: three-path repair at manifest `0ea17a13658df58b6bc7fdf705e7bdd7eb6d8e33cf81f4e8482a96c597a3ccd2`, based on the signed merge identified in Round 6. All earlier rounds and failures remain unchanged.
+
+
+
+Main operator gate finalization: the independent report originally recorded no new-target query. The later actual MCP query for R1 manifest `0ea17a13658df58b6bc7fdf705e7bdd7eb6d8e33cf81f4e8482a96c597a3ccd2` returned FAILED after recording its independent failure. The canonical field reflects that later query; the source report remains unchanged. Receipt: operator-local `/tmp/agentdeck-reconcile-main-20261005/p2-delivery/reviewed-ce-receipts.json`.
+
+## Round 8 — 2026-10-05
+
+## 📋 PR #46 bounded independent re-review
+
+📊 Overall score: 9/10
+
+✅ Verdict: PASS
+
+Completion gate: VERIFIED
+
+### 🔴 Serious issues — must fix
+
+None within the bounded re-review scope.
+
+### 🟡 Suggested improvements — recommended
+
+None.
+
+### 🟢 Strengths
+
+**PR46-COLD-R1-F1 — P2: CLOSED in this candidate.**
+
+At `scripts/hooks/beads-consistency.py:400,413–423`, inline masking now receives the original latest section before block filtering removes delimiters. Block visibility derives from original indentation, preserving a leading code-formatted path. Both views remove formatting at identical offsets.
+
+Independent in-memory probes confirmed:
+
+- Four-space and tab-indented closing backticks: **rejected**.
+- Prose label plus code-formatted hash: **accepted**.
+- Beginning code-formatted path plus prose `blob` label: **accepted**.
+- Bold/Chinese labels, entry/final pairs, block exclusions, quoted examples, and latest-round isolation: expected results.
+
+All **13 focused probes passed**. Tests at `scripts/hooks/beads_consistency_test.py:1011–1012` cover both reported failures; line 1028 now keeps assertions inside their subtests.
+
+**Original 4183868495:** closed within the reviewed repair scope, including the residual multiline case.
+
+**Original 4183868507:** prior repaired disposition reused. `docs/status.md` is byte-for-byte unchanged from R1.
+
+### 📝 Summary
+
+**Scope and method:** Independent read-only re-review of PR46-COLD-R1-F1 and affected masking, formatting, and round-selection interactions. Inspected actual R1→R2 changes and current source/tests. Executed AST-extracted functions with in-memory file mocks; no Hook entry point or production-state access.
+
+**Exact reviewed identity:**
+
+- Base HEAD: `5d130e3347333f45fdd79a5e664e998aea147ad7`
+- Parents: `868519d13902ad1f59c9688c252f92d6297c9d15`, `8b1f82b09664f32337dbb9ed9f3e4f14cc2b4d30`
+- Manifest SHA-256: `565bd0bc35bdeb36a4a3f6f1be8aa8a3b5db1e2e4c733f208b4d663758e291ce`
+- Scoped diff SHA-256: `ba7be6024917ce0b64aca5ed13b7a940190368bce7218ebfb5c9d4e67f908f13`
+
+| Path | Candidate Git blob | Mode |
+| --- | --- | --- |
+| `docs/status.md` | `01b3f3bdaa196cea701cae833ae3c735f74a66ee` | `100644` |
+| `scripts/hooks/beads-consistency.py` | `6dca6d4485eb8123ebc88a1870ccb51d4635931c` | `100755` |
+| `scripts/hooks/beads_consistency_test.py` | `7cc170e6afa6d2d50e3ab75f0f07861bd3049ebb` | `100644` |
+
+**Before/after verification:** Manifest hash, file bytes/SHA-256/size, candidate and base blobs, filesystem/Git modes, HEAD/parents, changed-path set, empty staged diff, and complete scoped diff all matched. Supplied R1→R2 diff matched the actual snapshot difference. No candidate drift occurred.
+
+**Reused evidence:** Saved final logs show 4 focused blob tests, **49 CI-tool tests and 91 Hook tests**, document structure, whitespace, and diff checks passing. Historical logs retain both original reproducer failures and the intermediate leading-formatted-path failure; the final candidate resolves those cases. No full suite was rerun.
+
+**Limits:** This PASS closes the bounded semantic repair only. The original R1 FAIL remains historical evidence. No new CE binding/query occurred; old integration/document gate facts remain unchanged. No repository, CE, Beads, configuration, or review-record writes; no delivery actions or remote review request.
+
+### Task checkpoint
+
+The bounded repair passes for the identity above. The task/integration boundary remains open pending actual candidate-bound evidence.
+
+- **Commit recommendation:** Wait for the required candidate-bound gate and operator authorization.
+- **Push recommendation:** Wait for that gate and applicable signed-delivery checks.
+
+No further semantic repair is required by this re-review.
+
+Reviewer: independent local Codex reviewer, session `01a10cb7-de3e-7273-9c27-721c86fbdcf2`, verified from the corresponding first CLI event. Repair author: `01a10cad-9c7a-7802-bf90-a5c1a3b562dc`; delivery transcription is a separate role.
+Method: verbatim independent report above, with source SHA-256 `6bcdb74d94ba00a835e24f211d83f4e04cae45ab21b8cc690354ac82fe662d47`. Source is operator-local `/tmp/agentdeck-reconcile-main-20261005/p2-repair-r2-rereview-final.txt`; no portable artifact availability is claimed.
+Scope: three-path repair at manifest `565bd0bc35bdeb36a4a3f6f1be8aa8a3b5db1e2e4c733f208b4d663758e291ce`, based on the signed merge identified in Round 6. All earlier rounds and failures remain unchanged.
+
+Record clarification: Round 7's source swaps the suite names for its saved 49/91 counts. Actual retained commands/logs identify 49 CI/document-tool tests and 91 Hook tests; this annotation preserves the original wording without endorsing that transposition.
+
+R2 closes `4183868495`, including `PR46-COLD-R1-F1`, and retains the independently reviewed `4183868507` correction. Earlier closed import/routing findings keep their Round 5 dispositions; no changed import, tasks.md contract, Go, dependency or native surface is re-reviewed here. Attempts `01a10cb4` and `01a10cb6` had no semantic verdict and are not review rounds. Per-process plugin-injection isolation applied only to the effective cold reviewer, not the delivery runtime.
+
+Delivery policy update: the real user explicitly waived any new remote GitHub review. Original findings remain real history; no new-head remote approval is claimed. Draft PR #46 remains the sole PR, with no new remote comments requested. New-head automatic CI and the parent operator's exact-head/parent check remain required before any remote merge. Tasks 2/3, topic and release remain open.
+
+Finalization boundary: the independent PASS is bound only to the R2 freeze. Appending these histories and updating the status projection is a separately assessed metadata synchronization, with its own target identity and CE roll-ups. This record embeds no digest of itself. All historical red and intermediate failed checks remain in the original artifact directories.
+
+Main operator gate finalization: the source report originally had no new CE query. The later actual R2 frozen-state query returned VERIFIED for all five required criteria, with no missing criteria, invalidated evidence or unresolved impacts. The unchanged document query returned VERIFIED for three criteria; the original commit integration still returned FAILED. Receipt: operator-local `/tmp/agentdeck-reconcile-main-20261005/p2-delivery/reviewed-ce-receipts.json`. The canonical field refers to that reviewed freeze, not this record synchronization or a future commit. Those identities require separate roll-ups and queries. The original reviewer recommendations remain historical; current commit/push authority is explicit, subject to the final exact-state gates and delivery checks.

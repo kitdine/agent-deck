@@ -38,7 +38,7 @@ from typing import Any
 
 # Import only the pure parser; CI never imports or executes this Hook.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from review_record import latest_review_state, review_sections, visible_markdown
+from review_record import latest_review_state, mask_inline_code, review_sections, visible_markdown
 
 # This hook encodes one repository's task-title grammar and Beads deployment, so
 # it must stay inert anywhere else. Identify that repository by a file it owns,
@@ -397,7 +397,7 @@ def latest_review_section(path: Path) -> str:
         section = review_sections(path.read_text(encoding="utf-8", errors="replace"))[-1]
     except OSError:
         return ""
-    return visible_markdown(section).replace("**", "").replace("__", "").replace("`", "")
+    return section
 
 
 def current_document_review(root: Path, document: str, review: str, changed: list[str]) -> bool:
@@ -407,22 +407,39 @@ def current_document_review(root: Path, document: str, review: str, changed: lis
     the current subject. This diagnostic never evaluates CEv1 itself.
     """
     section = latest_review_section(root / review)
+    # Mask inline spans before block masking can erase an indented closing
+    # delimiter. Normalize both views at identical offsets to retain formatted
+    # hashes/paths without turning code-only blob labels into prose.
+    masked = mask_inline_code(section)
+    visible = visible_markdown(section)
+    # Block indentation comes from the original text, not spaces introduced by
+    # masking a leading code-formatted path.
+    masked = "".join(mask if raw == shown else shown
+                     for raw, shown, mask in zip(section, visible, masked))
+    section = visible
+    formatting = {i for match in re.finditer(r"\*\*|__|`", section)
+                  for i in range(match.start(), match.end())}
+    masked = "".join(char for i, char in enumerate(masked) if i not in formatting)
+    section = "".join(char for i, char in enumerate(section) if i not in formatting)
     relative = "/".join(Path(document).parts[3:])
-    blobs = set(re.findall(
-        rf"(?<![\w/.-])(?:文档|document|git|{re.escape(document)}|{re.escape(relative)})\s+blob\s*[:：=]?\s*([0-9a-f]{{40}}|[0-9a-f]{{64}})\b",
+    blobs = {match.group("hash") for match in re.finditer(
+        rf"(?<![\w/.-])(?:文档|document|git|{re.escape(document)}|{re.escape(relative)})\s+(?P<label>blob)\s*[:：=]?\s*(?P<hash>[0-9a-f]{{40}}|[0-9a-f]{{64}})\b",
         section, re.IGNORECASE,
-    ))
+    ) if masked[match.start("label"):match.end("label")].strip()}
     # Existing records distinguish the entry subject from the final blob
     # after approval-status synchronization. Only accept the bounded pair.
     entry_final = re.finditer(
-        r"(?P<prefix>[^\n]*?)入口文档\s+blob\s*[:：=]?\s*[0-9a-f]{40}(?:[0-9a-f]{24})?\b[^\n]*?仅同步审批状态后的最终\s+blob\s*[:：=]?\s*([0-9a-f]{40}|[0-9a-f]{64})\b",
+        r"(?P<prefix>[^\n]*?)入口文档\s+(?P<entry_label>blob)\s*[:：=]?\s*[0-9a-f]{40}(?:[0-9a-f]{24})?\b[^\n]*?仅同步审批状态后的最终\s+(?P<final_label>blob)\s*[:：=]?\s*(?P<hash>[0-9a-f]{40}|[0-9a-f]{64})\b",
         section, re.I,
     )
     for pair in entry_final:
+        if any(not masked[pair.start(label):pair.end(label)].strip()
+               for label in ("entry_label", "final_label")):
+            continue
         qualifiers = re.findall(r"(?<![\w/.-])([\w./-]+\.md)\b", pair.group("prefix"))
         if any(path not in {document, relative} for path in qualifiers):
             return False
-        blobs.add(pair.group(2))
+        blobs.add(pair.group("hash"))
     if len(blobs) != 1:
         return False
     try:

@@ -14,13 +14,21 @@ column below is its current execution-status projection. Later version direction
 is recorded in `roadmap.md`.
 ## Current State
 
-- Approved release-to-main reconciliation is prepared in the isolated
-  `feature/reconcile-release-main` candidate from main `868519d` and
-  release/v0.6.x `8b1f82b`. It retains main governance and release history;
+- Approved release-to-main reconciliation has a completed signed local
+  two-parent merge `5d130e3347333f45fdd79a5e664e998aea147ad7` on
+  `feature/reconcile-release-main`, from main `868519d` and
+  release/v0.6.x `8b1f82b`, pushed as [Draft PR #46](https://github.com/kitdine/agent-deck/pull/46).
+  It retains main governance and release history;
   bounded independent review is recorded in the [partial integration record](topics/v0-6-5-contract/reviews/assemble.md).
-  Exact-head CI, signed delivery, supervisor pre-merge check and remote merge remain pending. Normal current-iteration feature/fix PRs target main; publication and
+  All eight CI jobs passed for that delivered head, but its subsequent
+  [remote review](https://github.com/kitdine/agent-deck/pull/46#pullrequestreview-5414346115)
+  left that integration state blocked. The bounded repair now has passing
+  affected checks and independent local re-review, recorded in integration
+  Rounds 6–8. Exact-state evidence gates, signed append delivery and new-head CI
+  remain delivery prerequisites, followed by the supervisor's exact-head and
+  parent check before remote merge. Normal current-iteration feature/fix PRs target main; publication and
   explicit supported-release maintenance are separate. This partial propagation
-  does not complete v0.6.5 assembly or publish a release.
+  leaves aggregate Tasks 2/3 and v0.6.5 assembly open and does not publish a release.
 
 - Patch-line integration: the approved [AD shared-stroke icon](archive/topics/ad-shared-stroke-icon/tasks.md)
   was delivered by [PR #30](https://github.com/kitdine/agent-deck/pull/30) to

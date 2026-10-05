@@ -1002,6 +1002,17 @@ class HookBatchRegressionTest(unittest.TestCase):
             return []
         scenarios = [
             (original, f'文档 blob `{blob}`', True),
+            (original, f'Git blob {blob}', True),
+            (original, f'**document blob** ``{blob}``', True),
+            (original, f'`ux/view.md` blob `{blob}`', True),
+            (original, f'Example: `Git blob {blob}`', False),
+            (original, f'Example: ``Git blob `{blob}` ``', False),
+            (original, f'Example: `Git blob\n{blob}`', False),
+            (original, f'Example: `Git blob {blob}\n    `', False),
+            (original, f'Example: `Git blob {blob}\n\t`', False),
+            (original, f'`文档 blob` `{blob}`', False),
+            (original, f'`ux/view.md blob {blob}`', False),
+            (original, f'Example: `Git blob {"a" * 40}`\nGit blob `{blob}`', True),
             (b'reworked after PASS\n', f'文档 blob `{blob}`', False),
             (original, '', False),
             (original, f'文档 blob `{blob[:8]}`', False),
@@ -1014,7 +1025,7 @@ class HookBatchRegressionTest(unittest.TestCase):
                  mock.patch.object(MODULE, 'changed_paths', return_value=[str(review.relative_to(self.root)), str(doc.relative_to(self.root))]), \
                  mock.patch.object(MODULE, 'bd_json', side_effect=query):
                 notes = MODULE.findings(self.root, 123.0)
-            self.assertEqual(any('awaiting_commit' in n for n in notes), expect, notes)
+                self.assertEqual(any('awaiting_commit' in n for n in notes), expect, notes)
 
     def test_current_blob_and_verdict_share_re_review_round_boundaries(self):
         import hashlib
@@ -1367,6 +1378,14 @@ class HookBatchRegressionTest(unittest.TestCase):
         record.parent.mkdir()
         record.write_text(f'## Round 1\n入口文档 blob {"a" * 40}；仅同步审批状态后的最终 blob {blob}。\n')
         self.assertTrue(MODULE.current_document_review(self.root, document, review, [document, review]))
+        for identity, expected in [
+            (f'入口文档 blob `{"a" * 40}`；仅同步审批状态后的最终 blob `{blob}`。', True),
+            (f'`入口文档 blob {"a" * 40}；仅同步审批状态后的最终 blob {blob}`', False),
+            (f'入口文档 blob {"a" * 40}；`仅同步审批状态后的最终 blob {blob}`', False),
+        ]:
+            with self.subTest(identity=identity):
+                record.write_text(f'## Round 1\n{identity}\n')
+                self.assertEqual(MODULE.current_document_review(self.root, document, review, []), expected)
         record.write_text(f'## Round 1\n另一个 docs/topics/other/tasks.md 入口文档 blob {"a" * 40}；仅同步审批状态后的最终 blob {blob}。\n')
         self.assertFalse(MODULE.current_document_review(self.root, document, review, [document, review]))
         target.write_bytes(b'stale')
