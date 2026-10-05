@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-08-25
-updated: 2026-09-30
+updated: 2026-10-05
 ---
 
 # AgentDeck Project Status
@@ -13,6 +13,44 @@ membership is decided by the applicable `vX-Y-Z-contract` topic; the Version
 column below is its current execution-status projection. Later version direction
 is recorded in `roadmap.md`.
 ## Current State
+
+- Approved release-to-main reconciliation has a completed signed local
+  two-parent merge `5d130e3347333f45fdd79a5e664e998aea147ad7` on
+  `feature/reconcile-release-main`, from main `868519d` and
+  release/v0.6.x `8b1f82b`, pushed as [Draft PR #46](https://github.com/kitdine/agent-deck/pull/46).
+  It retains main governance and release history;
+  bounded independent review is recorded in the [partial integration record](topics/v0-6-5-contract/reviews/assemble.md).
+  All eight CI jobs passed for that delivered head, but its subsequent
+  [remote review](https://github.com/kitdine/agent-deck/pull/46#pullrequestreview-5414346115)
+  left that integration state blocked. The bounded repair now has passing
+  affected checks and independent local re-review, recorded in integration
+  Rounds 6–8. Exact-state evidence gates, signed append delivery and new-head CI
+  remain delivery prerequisites, followed by the supervisor's exact-head and
+  parent check before remote merge. Normal current-iteration feature/fix PRs target main; publication and
+  explicit supported-release maintenance are separate. This partial propagation
+  leaves aggregate Tasks 2/3 and v0.6.5 assembly open and does not publish a release.
+
+- Patch-line integration: the approved [AD shared-stroke icon](archive/topics/ad-shared-stroke-icon/tasks.md)
+  was delivered by [PR #30](https://github.com/kitdine/agent-deck/pull/30) to
+  `release/v0.6.x` at `b864ce41b8d6ce22c475fbc42db6c5cad6b19f6b` and its
+  topic is retired after exact-merge evidence finalization. Native menu-bar
+  visual acceptance remains user-deferred and unverified. This is a patch-line
+  integration record, not a new release or aggregate v0.6.5 completion.
+
+- Patch-line integration: [LaunchServices diagnosis](archive/topics/launchservices-recovery/tasks.md)
+  was delivered through [PR #42](https://github.com/kitdine/agent-deck/pull/42)
+  to `release/v0.6.x` at `f84e58a9`, from signed source `4f1283ad`.
+  Its stable Doctor contract is reconciled and the topic is retired as a whole.
+  Exact-source and merged-line CI passed. Original complete-refresh performance
+  targets remain failed; the user accepted this bounded delivery on 2026-10-04
+  and deferred repair to [issue #43](https://github.com/kitdine/agent-deck/issues/43).
+  Added snapshot cost and first-cache variation
+  remain recorded in the [acceptance history](archive/topics/launchservices-recovery/reviews/registration-acceptance.md).
+  WidgetTimeline, collision causality and actual recovery remain unverified.
+  Footer P3 has a bounded original-sample/measured-environment administrative
+  not-a-defect disposition in the [P3 carrier](fixes/footer-routes-narrow-truncation.md);
+  its import is part of the pending candidate, not a product fix or full native PASS. This records this feature's patch-line closeout; main
+  propagation, aggregate v0.6.5 completion and publication remain separate.
 
 - Repository Hook maintenance: [Beads Stop session scope](archive/fixes/beads-stop-session-scope.md#review--round-2--2026-09-07)
   was delivered in signed commit `2d53d8e` after independent re-review and real-client

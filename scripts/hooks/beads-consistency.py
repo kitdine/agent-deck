@@ -38,7 +38,7 @@ from typing import Any
 
 # Import only the pure parser; CI never imports or executes this Hook.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from review_record import latest_review_state
+from review_record import latest_review_state, mask_inline_code, review_sections, visible_markdown
 
 # This hook encodes one repository's task-title grammar and Beads deployment, so
 # it must stay inert anywhere else. Identify that repository by a file it owns,
@@ -275,7 +275,7 @@ def report_fingerprint(root: Path, scope: dict[str, str], notes: list[str]) -> s
         files.update(path.rglob("*.md") if rel.endswith("/") else [path])
     digest = hashlib.sha256(json.dumps(notes).encode())
     for path in sorted(files):
-        digest.update(str(path.relative_to(root)).encode())
+        digest.update(os.fsencode(path.relative_to(root)))
         try:
             digest.update(path.read_bytes())
         except OSError:
@@ -348,27 +348,296 @@ def bd_json(args: list[str], deadline: float) -> Any:
     return parsed
 
 
+class ChangedPaths(list[str]):
+    """Literal changed paths plus index state from the same porcelain read."""
+
+    def __init__(self, deadline: float):
+        super().__init__()
+        self.staged: dict[str, str] = {}
+        self.deadline = deadline
+
+
 def changed_paths(root: Path, deadline: float) -> list[str]:
     timeout = remaining_timeout(deadline)
     if timeout is None:
         return []
     try:
         out = subprocess.run(
-            ["git", "-C", str(root), "status", "--porcelain"],
+            ["git", "-C", str(root), "status", "--porcelain=v1", "-z", "--untracked-files=all"],
             capture_output=True,
             text=True,
+            encoding=sys.getfilesystemencoding(),
+            errors="surrogateescape",
             timeout=timeout,
         )
     except (OSError, subprocess.SubprocessError):
         return []
     if out.returncode != 0:
         return []
-    paths: list[str] = []
-    for line in out.stdout.splitlines():
-        if len(line) > 3:
-            # Rename entries are "old -> new"; the destination is what changed.
-            paths.append(line[3:].split(" -> ")[-1].strip())
+    paths = ChangedPaths(deadline)
+    entries = iter(out.stdout.split("\0"))
+    for entry in entries:
+        if len(entry) < 4:
+            continue
+        # Porcelain -z gives literal destination paths; a rename/copy's next
+        # NUL field is its source, not another changed destination.
+        paths.append(entry[3:])
+        if entry[0] not in " ?!":
+            paths.staged[entry[3:]] = entry[0]
+        if "R" in entry[:2] or "C" in entry[:2]:
+            source = next(entries, None)
+            if source and entry[0] == "R":
+                paths.staged[source] = "D"
     return paths
+
+
+def latest_review_section(path: Path) -> str:
+    """Read metadata from the same latest round as the shared verdict parser."""
+    try:
+        section = review_sections(path.read_text(encoding="utf-8", errors="replace"))[-1]
+    except OSError:
+        return ""
+    return section
+
+
+def current_document_review(root: Path, document: str, review: str, changed: list[str]) -> bool:
+    """Only interpret document gates whose latest round names its exact blob.
+
+    Historical free-form fingerprints and truncated hashes are not proof of
+    the current subject. This diagnostic never evaluates CEv1 itself.
+    """
+    section = latest_review_section(root / review)
+    # Mask inline spans before block masking can erase an indented closing
+    # delimiter. Normalize both views at identical offsets to retain formatted
+    # hashes/paths without turning code-only blob labels into prose.
+    masked = mask_inline_code(section)
+    visible = visible_markdown(section)
+    # Block indentation comes from the original text, not spaces introduced by
+    # masking a leading code-formatted path.
+    masked = "".join(mask if raw == shown else shown
+                     for raw, shown, mask in zip(section, visible, masked))
+    section = visible
+    formatting = {i for match in re.finditer(r"\*\*|__|`", section)
+                  for i in range(match.start(), match.end())}
+    masked = "".join(char for i, char in enumerate(masked) if i not in formatting)
+    section = "".join(char for i, char in enumerate(section) if i not in formatting)
+    relative = "/".join(Path(document).parts[3:])
+    blobs = {match.group("hash") for match in re.finditer(
+        rf"(?<![\w/.-])(?:文档|document|git|{re.escape(document)}|{re.escape(relative)})\s+(?P<label>blob)\s*[:：=]?\s*(?P<hash>[0-9a-f]{{40}}|[0-9a-f]{{64}})\b",
+        section, re.IGNORECASE,
+    ) if masked[match.start("label"):match.end("label")].strip()}
+    # Existing records distinguish the entry subject from the final blob
+    # after approval-status synchronization. Only accept the bounded pair.
+    entry_final = re.finditer(
+        r"(?P<prefix>[^\n]*?)入口文档\s+(?P<entry_label>blob)\s*[:：=]?\s*[0-9a-f]{40}(?:[0-9a-f]{24})?\b[^\n]*?仅同步审批状态后的最终\s+(?P<final_label>blob)\s*[:：=]?\s*(?P<hash>[0-9a-f]{40}|[0-9a-f]{64})\b",
+        section, re.I,
+    )
+    for pair in entry_final:
+        if any(not masked[pair.start(label):pair.end(label)].strip()
+               for label in ("entry_label", "final_label")):
+            continue
+        qualifiers = re.findall(r"(?<![\w/.-])([\w./-]+\.md)\b", pair.group("prefix"))
+        if any(path not in {document, relative} for path in qualifiers):
+            return False
+        blobs.add(pair.group("hash"))
+    if len(blobs) != 1:
+        return False
+    try:
+        data = (root / document).read_bytes()
+        validated_bytes = {
+            os.path.normpath(document): data,
+            os.path.normpath(review): (root / review).read_bytes(),
+        }
+    except OSError:
+        return False
+    # A bare manifest identity is resolved through the reviewed document's
+    # local manifest links. Unknown/ambiguous bindings cannot prove currency.
+    manifest_hashes = set(re.findall(
+        r"\b(?:prototype|specimen)\s+manifest\s+SHA-?256\s*[:：=]?\s*([0-9a-f]{64})\b",
+        section, re.I,
+    ))
+    bare_manifest = bool(re.search(r"\b(?:prototype|specimen)\s+(?:manifest|指纹|摘要)|prototype=", section, re.I))
+    specimen_paths: set[str] = set()
+    if bare_manifest:
+        if len(manifest_hashes) != 1:
+            return False
+        expected_manifest = next(iter(manifest_hashes)).lower()
+        manifests = set()
+        for link in re.findall(r"\]\(([^)]+)\)", data.decode("utf-8", errors="replace")):
+            link = link.strip().strip("<>")
+            if not link.endswith("manifest.json") or ":" in link or link.startswith("/"):
+                continue
+            target = (root / document).parent / link
+            if link.startswith(("docs/", "prototype/")) and (root / link).is_file():
+                target = root / link
+            target = target.resolve()
+            if not target.is_relative_to(root.resolve()):
+                return False
+            manifests.add(target)
+        if len(manifests) != 1:
+            return False
+        manifest = next(iter(manifests))
+        try:
+            raw_manifest = manifest.read_bytes()
+            if hashlib.sha256(raw_manifest).hexdigest() != expected_manifest:
+                return False
+            payload = json.loads(raw_manifest)
+            if "files" in payload:
+                entries = payload["files"]
+                if not isinstance(entries, list):
+                    return False
+                bindings = [(entry["path"], entry["sha256"]) for entry in entries]
+            else:
+                sources, specimens = payload["source"], payload["specimens"]
+                if not isinstance(sources, dict) or not isinstance(specimens, list):
+                    return False
+                bindings = list(sources.items()) + [(entry["file"], entry["sha256"]) for entry in specimens]
+                if any(not isinstance(path, str) or not path.strip() for path, _ in bindings):
+                    return False
+                # Legacy manifests mix repository source paths with local
+                # checks/specimen names, relative to their own directory.
+                bindings = [(path if path.startswith(("prototype/", "docs/")) else
+                             (manifest.parent.relative_to(root.resolve()) / path).as_posix(), digest)
+                            for path, digest in bindings]
+            if not bindings:
+                return False
+            manifest_path = manifest.relative_to(root.resolve()).as_posix()
+            specimen_paths.add(manifest_path)
+            validated_bytes[manifest_path] = raw_manifest
+            for path, digest in bindings:
+                if not isinstance(path, str) or not path or Path(path).is_absolute() or ".." in Path(path).parts:
+                    return False
+                path = os.path.normpath(path)
+                target = (root / path).resolve()
+                if not target.is_relative_to(root.resolve()) or not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest, re.I):
+                    return False
+                content = target.read_bytes()
+                if hashlib.sha256(content).hexdigest() != digest.lower():
+                    return False
+                specimen_paths.add(path)
+                validated_bytes[path] = content
+        except (OSError, ValueError, KeyError, TypeError):
+            return False
+    # Explicit source identities remain independent of unrelated prototype work.
+    for line in section.splitlines():
+        if re.search(r"sha-?256|digest|指纹|摘要|manifest", line, re.I):
+            identities = re.findall(
+                r"(?<![\w/.-])((?:docs/[A-Za-z0-9_./-]*/)?prototype/.*?)\s+(?:sha-?256|digest|指纹|摘要|manifest)\b\s*[:：=]?\s*(\S*)",
+                line, re.I,
+            )
+            for path, digest in identities:
+                path = os.path.normpath(path.strip())
+                digest = digest.rstrip(".;；,，。")
+                target = (root / path).resolve()
+                if not target.is_relative_to(root.resolve()) or not re.fullmatch(r"[0-9a-f]{64}", digest, re.I):
+                    return False
+                try:
+                    content = target.read_bytes()
+                    if hashlib.sha256(content).hexdigest() != digest.lower():
+                        return False
+                except OSError:
+                    return False
+                specimen_paths.add(path)
+                validated_bytes[path] = content
+    # A matching working copy does not prove that a staged candidate matches.
+    # Preserve XY metadata so an MM file, staged deletion or rename source
+    # cannot advance based on bytes that the next commit would not contain.
+    staged = getattr(changed, "staged", {})
+    bound_index = set(staged).intersection(validated_bytes)
+    if isinstance(changed, ChangedPaths):
+        timeout = remaining_timeout(changed.deadline)
+        if timeout is None:
+            return False
+        try:
+            flags = subprocess.run(
+                ["git", "-C", str(root), "--literal-pathspecs", "ls-files", "-v", "-z", "--", *validated_bytes],
+                capture_output=True, timeout=timeout,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return False
+        if flags.returncode != 0:
+            return False
+        for entry in os.fsdecode(flags.stdout).split("\0"):
+            if len(entry) > 2 and (entry[0].islower() or entry[0] == "S"):
+                bound_index.add(entry[2:])
+    bound_staged = sorted(bound_index)
+    for path in bound_staged:
+        if staged.get(path) in {"D", "U"}:
+            return False
+        timeout = remaining_timeout(changed.deadline)
+        if timeout is None:
+            return False
+        try:
+            # cat-file reads the raw index blob without clean filters or EOL
+            # conversion; :path is a literal index object, not a pathspec.
+            result = subprocess.run(
+                ["git", "-C", str(root), "cat-file", "blob", ":" + path],
+                capture_output=True, timeout=timeout,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return False
+        if result.returncode != 0 or result.stdout != validated_bytes[path]:
+            return False
+    specimen_paths.discard(os.path.normpath(document))
+    if any(path == bound or (bound.endswith("/") and path.startswith(bound))
+           for bound in specimen_paths for path in changed if path not in staged):
+        return False
+    expected = next(iter(blobs)).lower()
+    payload = b"blob " + str(len(data)).encode("ascii") + b"\0" + data
+    digest = hashlib.sha1(payload) if len(expected) == 40 else hashlib.sha256(payload)
+    return digest.hexdigest() == expected
+
+
+def retired_lifecycle_terms(description: str) -> list[str]:
+    """Recognize affirmative lifecycle declarations, not mentions of words."""
+    hits: set[str] = set()
+    fence = ""
+    for line in description.splitlines():
+        marker = re.match(r"^ {0,3}(`{3,}|~{3,})(.*)$", line)
+        if marker:
+            run, tail = marker.groups()
+            if not fence:
+                fence = run
+            elif run[0] == fence[0] and len(run) >= len(fence) and not tail.strip():
+                fence = ""
+            continue
+        if fence or line.lstrip().startswith(">"):
+            continue
+        # Mask quoted prose before splitting sentences. Keep individually
+        # backticked state tokens, which are common in genuine declarations.
+        states = LIVE_STATUSES | RETIRED_STATUS_NAMES | {"closed"}
+        line = re.sub(
+            r"""(`+)(.*?)\1|"[^"\n]*"|(?<!\w)'(?:[^'\n]|(?<=\w)'(?=\w))*'(?!\w)|“[^”\n]*”|(?<!\w)‘(?:[^’\n]|(?<=\w)’(?=\w))*’(?!\w)""",
+            lambda match: match.group(2) if match.group(1) and match.group(2) in states else " ",
+            line,
+        )
+        line = re.sub(r"^\s*(?:[-+*]|[0-9]+[.)])\s+", "", line)
+        line = re.sub(r"^\s*#{1,6}\s+", "", line)
+        line = re.sub(r"^\[[ xX]\]\s+", "", line)
+        # Remove balanced Markdown emphasis after quote masking, including
+        # a whole declaration or individual label/state spans.
+        emphasis = r"(?<!\w)(\*{1,3}|_{1,3})(\S(?:.*?\S)?)\1(?!\w)"
+        while True:
+            normalized = re.sub(emphasis, r"\2", line)
+            if normalized == line:
+                break
+            line = normalized
+        for clause in re.split(r"[.;。；]", line):
+            # Require a declaration at the start of its clause. Quoted,
+            # negated, historical and explanatory mentions are not commands.
+            declaration = re.match(
+                r"^\s*(?:lifecycle|状态流转|生命周期)\s*[:：]\s*(.+)$",
+                re.sub(r"(\*{1,3}|_{1,3})(lifecycle|状态流转|生命周期)([:：]?)\1",
+                       r"\2\3", clause, flags=re.I), re.I,
+            )
+            if not declaration:
+                continue
+            tokens = [part.strip().strip("`* ") for part in re.split(r"->|→|⇒", declaration.group(1))]
+            if len(tokens) < 2 or any(token not in LIVE_STATUSES | RETIRED_STATUS_NAMES | {"closed"} for token in tokens):
+                continue
+            hits.update(RETIRED_STATUS_NAMES.intersection(tokens))
+
+    return sorted(hits)
 
 
 def latest_verdict(path: Path) -> str | None:
@@ -657,6 +926,7 @@ def findings(root: Path, deadline: float, scope: dict[str, str] | None = None) -
         # Keyed by the record each task is reviewed under, so a verdict reaches
         # exactly the one task whose subject it is.
         by_record: dict[tuple[str, str], set[tuple[str, str]]] = {}
+        documents: dict[tuple[str, str], str] = {}
         reviewed = {review_subject(path) for path in touched_reviews}
         for status, beads in by_status.items():
             for bead in beads:
@@ -666,6 +936,7 @@ def findings(root: Path, deadline: float, scope: dict[str, str] | None = None) -
                 subject = doc_subject_of(bead)
                 if subject:
                     topic, document = subject
+                    documents[(topic, record_stem(document))] = f"docs/topics/{topic}/{document}"
                     by_record.setdefault((topic, record_stem(document)), set()).add(identity)
                     continue
                 anchor = anchor_of(bead)
@@ -685,6 +956,9 @@ def findings(root: Path, deadline: float, scope: dict[str, str] | None = None) -
             if len(candidates) != 1:
                 continue
             task_id, status = next(iter(candidates))
+            document = documents.get((topic, stem))
+            if document and not current_document_review(root, document, rel, all_changed):
+                continue
             if gate in {"VERIFIED", "NOT_REQUIRED"} and status == "in_review":
                 notes.append(
                     f"{rel} records Verdict: PASS, but its subject's task "
@@ -814,13 +1088,12 @@ def findings(root: Path, deadline: float, scope: dict[str, str] | None = None) -
     #    the contract: `.agent-instructions/beads.md` replaced them, and every
     #    copy already stamped into a description stayed behind, unreferenced by
     #    anything that would notice. Closed tasks are history and are left alone.
-    stale_terms = tuple(sorted(RETIRED_STATUS_NAMES))
     live = (bd_json(["list", "--status", ",".join(sorted(LIVE_STATUSES))], deadline) or []) if scope is None else []
     for bead in live:
         if not isinstance(bead, dict):
             continue
         description = str(bead.get("description") or "")
-        hits = [term for term in stale_terms if re.search(rf"\b{term}\b", description)]
+        hits = retired_lifecycle_terms(description)
         if not hits:
             continue
         notes.append(

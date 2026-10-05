@@ -24,7 +24,7 @@ import (
 )
 
 const (
-	ParserVersion                  = 5
+	ParserVersion                  = 6
 	CodeSessionNotFound            = "session_not_found"
 	replaceDocumentsSourcePath     = "agentdeck://replace-documents"
 	replaceDocumentsSourceIdentity = "synthetic:replace-documents"
@@ -48,13 +48,14 @@ type Document struct {
 	Text      string `json:"text"`
 }
 type Metadata struct {
-	Client     string `json:"client"`
-	SessionID  string `json:"session_id"`
-	Project    string `json:"project"`
-	SourcePath string `json:"source_path"`
-	Model      string `json:"model"`
-	FirstAt    string `json:"first_at"`
-	LastAt     string `json:"last_at"`
+	Client          string `json:"client"`
+	SessionID       string `json:"session_id"`
+	Project         string `json:"project"`
+	SourcePath      string `json:"source_path"`
+	Model           string `json:"model"`
+	FirstAt         string `json:"first_at"`
+	LastAt          string `json:"last_at"`
+	projectPriority int
 }
 type Result struct {
 	Metadata
@@ -437,6 +438,12 @@ func plannedReadRange(ctx context.Context, executor sessionExecutor, src source)
 		}
 	}
 	appendOnly := found && state.identity == src.identity && state.parserVersion == ParserVersion && src.size > state.cursor && oldPrefix == state.prefixHash
+	if appendOnly {
+		appendOnly, err = canAppendSession(ctx, executor, state, src.client)
+		if err != nil {
+			return ingest.ReadRange{}, false, err
+		}
+	}
 	start := int64(0)
 	if appendOnly {
 		start = state.cursor - int64(len(state.partial))
@@ -458,7 +465,7 @@ type source struct {
 }
 
 type sourceState struct {
-	path, identity, prefixHash                                   string
+	path, identity, prefixHash, parserContext                    string
 	cursor, size, modifiedAt, changedAt, priority, parserVersion int64
 	partial                                                      []byte
 }
@@ -590,6 +597,20 @@ func prepareSourceUpdate(ctx context.Context, executor sessionExecutor, src sour
 		}
 	}
 	update.appendOnly = found && state.identity == identity && state.parserVersion == ParserVersion && info.Size() > state.cursor && oldPrefix == state.prefixHash
+	// An append may omit both session ID and cwd. Recover the established
+	// session from this source, never from another source or a filename.
+	var previousMeta Metadata
+	if update.appendOnly {
+		previousMeta = decodeParserContext(state.parserContext)
+		// Missing/malformed context is never evidence for a guessed identity.
+		update.appendOnly, err = canAppendSession(ctx, executor, update.precondition.state, src.client)
+		if err != nil {
+			return sourceUpdate{}, false, err
+		}
+		if !update.appendOnly {
+			previousMeta = Metadata{}
+		}
+	}
 	var partial []byte
 	var sharedStream *ingest.Stream
 	var sharedSource *ingest.Source
@@ -606,16 +627,16 @@ func prepareSourceUpdate(ctx context.Context, executor sessionExecutor, src sour
 				offset, previous = state.cursor, state.partial
 			}
 			beforeSharedSessionReduction()
-			update.results, partial, err = parsePreparedStream(ctx, src.client, path, stream, offset, previous)
+			update.results, partial, err = parsePreparedStream(ctx, src.client, path, stream, offset, previous, &previousMeta)
 		} else if update.appendOnly {
-			update.results, partial, err = parseRange(src.client, path, state.cursor, state.partial)
+			update.results, partial, err = parseRange(src.client, path, state.cursor, state.partial, &previousMeta)
 		} else {
-			update.results, partial, err = parseRange(src.client, path, 0, nil)
+			update.results, partial, err = parseRange(src.client, path, 0, nil, &previousMeta)
 		}
 	} else if update.appendOnly {
-		update.results, partial, err = parseRange(src.client, path, state.cursor, state.partial)
+		update.results, partial, err = parseRange(src.client, path, state.cursor, state.partial, &previousMeta)
 	} else {
-		update.results, partial, err = parseRange(src.client, path, 0, nil)
+		update.results, partial, err = parseRange(src.client, path, 0, nil, &previousMeta)
 	}
 	if err != nil {
 		return sourceUpdate{}, false, err
@@ -646,6 +667,23 @@ func prepareSourceUpdate(ctx context.Context, executor sessionExecutor, src sour
 	} else {
 		update.state = sourceState{path: path, identity: identity, cursor: info.Size(), size: info.Size(), modifiedAt: info.ModTime().UnixNano(), changedAt: changedAt, prefixHash: prefix, priority: int64(src.priority), parserVersion: ParserVersion, partial: partial}
 	}
+	// A multi-session source needs its earlier per-session metadata as well as
+	// the tail ID. Keep those uncommon sources on ordered full reparsing.
+	ambiguous := len(update.results) > 1
+	if update.appendOnly {
+		seedID := decodeParserContext(state.parserContext).SessionID
+		for _, result := range update.results {
+			ambiguous = ambiguous || result.SessionID != seedID
+		}
+	}
+	if ambiguous {
+		previousMeta = Metadata{}
+	}
+	encoded, err := json.Marshal(parserContext{Metadata: previousMeta, ProjectPriority: previousMeta.projectPriority})
+	if err != nil {
+		return sourceUpdate{}, false, err
+	}
+	update.state.parserContext = string(encoded)
 	return update, true, nil
 }
 
@@ -703,7 +741,7 @@ func validateSourceUpdate(ctx context.Context, executor sessionExecutor, update 
 }
 
 func sameSourceState(left, right sourceState) bool {
-	return left.path == right.path && left.identity == right.identity && left.prefixHash == right.prefixHash && left.cursor == right.cursor && left.size == right.size && left.modifiedAt == right.modifiedAt && left.changedAt == right.changedAt && left.priority == right.priority && left.parserVersion == right.parserVersion && bytes.Equal(left.partial, right.partial)
+	return left.path == right.path && left.identity == right.identity && left.prefixHash == right.prefixHash && left.cursor == right.cursor && left.size == right.size && left.modifiedAt == right.modifiedAt && left.changedAt == right.changedAt && left.priority == right.priority && left.parserVersion == right.parserVersion && left.parserContext == right.parserContext && bytes.Equal(left.partial, right.partial)
 }
 
 func applySourceUpdate(ctx context.Context, executor sessionExecutor, update sourceUpdate) (int, error) {
@@ -731,6 +769,16 @@ func applySourceUpdate(ctx context.Context, executor sessionExecutor, update sou
 			return 0, err
 		}
 		if excluded {
+			// A stronger late cwd may now match an exclusion. Remove this
+			// session's earlier fallback projection in the same cursor transaction.
+			if update.appendOnly {
+				if _, err := executor.ExecContext(ctx, "DELETE FROM session_documents WHERE source_path=? AND client=? AND session_id=?", update.path, r.Client, r.SessionID); err != nil {
+					return 0, err
+				}
+				if _, err := executor.ExecContext(ctx, "DELETE FROM session_metadata WHERE source_path=? AND client=? AND session_id=?", update.path, r.Client, r.SessionID); err != nil {
+					return 0, err
+				}
+			}
 			continue
 		}
 		if err = insertResult(ctx, executor, r); err != nil {
@@ -744,7 +792,7 @@ func applySourceUpdate(ctx context.Context, executor sessionExecutor, update sou
 func loadSource(ctx context.Context, executor sessionExecutor, path string) (sourceState, bool, error) {
 	var s sourceState
 	s.path = path
-	err := executor.QueryRowContext(ctx, "SELECT identity,cursor,partial_line,size,modified_at,changed_at,prefix_hash,priority,parser_version FROM session_sources WHERE source_path=?", path).Scan(&s.identity, &s.cursor, &s.partial, &s.size, &s.modifiedAt, &s.changedAt, &s.prefixHash, &s.priority, &s.parserVersion)
+	err := executor.QueryRowContext(ctx, "SELECT identity,cursor,partial_line,size,modified_at,changed_at,prefix_hash,priority,parser_version,parser_context FROM session_sources WHERE source_path=?", path).Scan(&s.identity, &s.cursor, &s.partial, &s.size, &s.modifiedAt, &s.changedAt, &s.prefixHash, &s.priority, &s.parserVersion, &s.parserContext)
 	if errors.Is(err, sql.ErrNoRows) {
 		return s, false, nil
 	}
@@ -752,14 +800,14 @@ func loadSource(ctx context.Context, executor sessionExecutor, path string) (sou
 }
 func loadSourceByIdentity(ctx context.Context, executor sessionExecutor, identity string) (sourceState, bool, error) {
 	var s sourceState
-	err := executor.QueryRowContext(ctx, "SELECT source_path,identity,cursor,partial_line,size,modified_at,changed_at,prefix_hash,priority,parser_version FROM session_sources WHERE identity=?", identity).Scan(&s.path, &s.identity, &s.cursor, &s.partial, &s.size, &s.modifiedAt, &s.changedAt, &s.prefixHash, &s.priority, &s.parserVersion)
+	err := executor.QueryRowContext(ctx, "SELECT source_path,identity,cursor,partial_line,size,modified_at,changed_at,prefix_hash,priority,parser_version,parser_context FROM session_sources WHERE identity=?", identity).Scan(&s.path, &s.identity, &s.cursor, &s.partial, &s.size, &s.modifiedAt, &s.changedAt, &s.prefixHash, &s.priority, &s.parserVersion, &s.parserContext)
 	if errors.Is(err, sql.ErrNoRows) {
 		return s, false, nil
 	}
 	return s, err == nil, err
 }
 func moveSource(ctx context.Context, executor sessionExecutor, old, new string) error {
-	if _, err := executor.ExecContext(ctx, "INSERT INTO session_sources(source_path,identity,cursor,partial_line,size,modified_at,changed_at,prefix_hash,priority,parser_version,scanned_at) SELECT ?,identity,cursor,partial_line,size,modified_at,changed_at,prefix_hash,priority,parser_version,scanned_at FROM session_sources WHERE source_path=?", new, old); err != nil {
+	if _, err := executor.ExecContext(ctx, "INSERT INTO session_sources(source_path,identity,cursor,partial_line,size,modified_at,changed_at,prefix_hash,priority,parser_version,scanned_at,parser_context) SELECT ?,identity,cursor,partial_line,size,modified_at,changed_at,prefix_hash,priority,parser_version,scanned_at,parser_context FROM session_sources WHERE source_path=?", new, old); err != nil {
 		return err
 	}
 	if _, err := executor.ExecContext(ctx, "UPDATE session_documents SET source_path=? WHERE source_path=?; UPDATE session_metadata SET source_path=? WHERE source_path=?; DELETE FROM session_sources WHERE source_path=?", new, old, new, old, old); err != nil {
@@ -777,7 +825,7 @@ func deleteSource(ctx context.Context, executor sessionExecutor, path string) er
 	return nil
 }
 func saveSource(ctx context.Context, executor sessionExecutor, s sourceState) error {
-	_, err := executor.ExecContext(ctx, "INSERT INTO session_sources(source_path,identity,cursor,partial_line,size,modified_at,changed_at,prefix_hash,priority,parser_version,scanned_at) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(source_path) DO UPDATE SET identity=excluded.identity,cursor=excluded.cursor,partial_line=excluded.partial_line,size=excluded.size,modified_at=excluded.modified_at,changed_at=excluded.changed_at,prefix_hash=excluded.prefix_hash,priority=excluded.priority,parser_version=excluded.parser_version,scanned_at=excluded.scanned_at", s.path, s.identity, s.cursor, s.partial, s.size, s.modifiedAt, s.changedAt, s.prefixHash, s.priority, s.parserVersion, time.Now().UTC().Format(time.RFC3339Nano))
+	_, err := executor.ExecContext(ctx, "INSERT INTO session_sources(source_path,identity,cursor,partial_line,size,modified_at,changed_at,prefix_hash,priority,parser_version,scanned_at,parser_context) VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(source_path) DO UPDATE SET identity=excluded.identity,cursor=excluded.cursor,partial_line=excluded.partial_line,size=excluded.size,modified_at=excluded.modified_at,changed_at=excluded.changed_at,prefix_hash=excluded.prefix_hash,priority=excluded.priority,parser_version=excluded.parser_version,scanned_at=excluded.scanned_at,parser_context=excluded.parser_context", s.path, s.identity, s.cursor, s.partial, s.size, s.modifiedAt, s.changedAt, s.prefixHash, s.priority, s.parserVersion, time.Now().UTC().Format(time.RFC3339Nano), s.parserContext)
 	return err
 }
 func removeMissingSources(ctx context.Context, db *sql.DB, seen map[string]bool) error {
@@ -955,23 +1003,53 @@ func fileIdentity(info fs.FileInfo) (string, error) {
 	return identity, nil
 }
 
-// parseRange consumes only complete JSONL records.  The unterminated suffix is
-// returned byte-for-byte so a later append resumes it without indexing a
-// partial prompt or reply.
-func parsePreparedStream(ctx context.Context, client, path string, stream ingest.Stream, offset int64, previous []byte) ([]Result, []byte, error) {
+// Context belongs to the source cursor, including excluded sessions. Deriving
+// it from the visible index loses both the last ID and cwd provenance.
+type parserContext struct {
+	Metadata
+	ProjectPriority int `json:"project_priority"`
+}
+
+func decodeParserContext(encoded string) Metadata {
+	var value parserContext
+	if json.Unmarshal([]byte(encoded), &value) != nil {
+		return Metadata{}
+	}
+	value.Metadata.projectPriority = value.ProjectPriority
+	return value.Metadata
+}
+
+func canAppendSession(ctx context.Context, executor sessionExecutor, state sourceState, client string) (bool, error) {
+	seed := decodeParserContext(state.parserContext)
+	if seed.SessionID == "" || seed.Client != client {
+		return false, nil
+	}
+	// Eligibility describes the previous projection, before a possible rename.
+	seed.SourcePath = state.path
+	if seed.Project == "" {
+		seed.Project = NormalizeProject(filepath.Dir(state.path))
+	}
+	// Excluded sources did not publish their earlier documents. A stronger late
+	// cwd can make them eligible, so retain a full replay range for those sources.
+	isExcluded, err := excluded(ctx, executor, seed)
+	return !isExcluded, err
+}
+
+func parsePreparedStream(ctx context.Context, client, path string, stream ingest.Stream, offset int64, previous []byte, contextMeta *Metadata) ([]Result, []byte, error) {
 	start := offset - int64(len(previous))
 	if start < 0 || offset > stream.Source.Size {
 		return nil, nil, ingest.ErrSourceChanged
 	}
 	byID := map[string]*Result{}
-	currentID := ""
+	seed := *contextMeta
+	currentID := seed.SessionID
 	for batch := range stream.Batches {
 		for _, record := range batch.Records {
 			if record.Offset < start || record.Malformed {
 				continue
 			}
 			v := record.Value
-			id, doc, meta := extract(client, v)
+			id, doc, meta := extract(client, v, currentID)
 			if id != "" {
 				currentID = id
 			}
@@ -991,6 +1069,9 @@ func parsePreparedStream(ctx context.Context, client, path string, stream ingest
 			result := byID[id]
 			if result == nil {
 				result = &Result{Metadata: Metadata{Client: client, SessionID: id, SourcePath: filepath.Clean(path)}}
+				if id == seed.SessionID {
+					mergeMeta(&result.Metadata, seed)
+				}
 				byID[id] = result
 			}
 			mergeMeta(&result.Metadata, meta)
@@ -1003,6 +1084,9 @@ func parsePreparedStream(ctx context.Context, client, path string, stream ingest
 	if err != nil {
 		return nil, nil, err
 	}
+	if last := byID[currentID]; last != nil {
+		*contextMeta = last.Metadata
+	}
 	out := make([]Result, 0, len(byID))
 	for _, result := range byID {
 		if result.Project == "" {
@@ -1013,7 +1097,9 @@ func parsePreparedStream(ctx context.Context, client, path string, stream ingest
 	return out, tail, nil
 }
 
-func parseRange(client, path string, offset int64, previous []byte) ([]Result, []byte, error) {
+// parseRange consumes only complete JSONL records. The unterminated suffix is
+// returned byte-for-byte so a later append resumes without indexing partial text.
+func parseRange(client, path string, offset int64, previous []byte, initial ...*Metadata) ([]Result, []byte, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, nil, err
@@ -1033,13 +1119,17 @@ func parseRange(client, path string, offset int64, previous []byte) ([]Result, [
 	}
 	complete, partial := data[:last+1], append([]byte(nil), data[last+1:]...)
 	byID := map[string]*Result{}
-	currentID := ""
+	var seed Metadata
+	if len(initial) > 0 {
+		seed = *initial[0]
+	}
+	currentID := seed.SessionID
 	for _, line := range bytes.Split(complete, []byte{'\n'}) {
 		var v map[string]any
 		if len(line) == 0 || json.Unmarshal(line, &v) != nil {
 			continue
 		}
-		id, doc, meta := extract(client, v)
+		id, doc, meta := extract(client, v, currentID)
 		if id != "" {
 			currentID = id
 		}
@@ -1059,12 +1149,18 @@ func parseRange(client, path string, offset int64, previous []byte) ([]Result, [
 		r := byID[id]
 		if r == nil {
 			r = &Result{Metadata: Metadata{Client: client, SessionID: id, SourcePath: filepath.Clean(path)}}
+			if id == seed.SessionID {
+				mergeMeta(&r.Metadata, seed)
+			}
 			byID[id] = r
 		}
 		mergeMeta(&r.Metadata, meta)
 		if doc.Kind != "" {
 			r.Documents = append(r.Documents, doc)
 		}
+	}
+	if last := byID[currentID]; last != nil && len(initial) > 0 {
+		*initial[0] = last.Metadata
 	}
 	out := make([]Result, 0, len(byID))
 	for _, r := range byID {
@@ -1091,7 +1187,7 @@ func parseFile(client, path string) ([]Result, error) {
 		if json.Unmarshal(scanner.Bytes(), &v) != nil {
 			continue
 		}
-		id, doc, meta := extract(client, v)
+		id, doc, meta := extract(client, v, currentID)
 		if id != "" {
 			currentID = id
 		}
@@ -1147,21 +1243,30 @@ func fixtureDocument(client, id string, v map[string]any) Document {
 	}
 	return Document{}
 }
-func extract(client string, v map[string]any) (string, Document, Metadata) {
+func extract(client string, v map[string]any, currentID string) (string, Document, Metadata) {
 	if client == "codex" {
-		return extractCodex(v)
+		return extractCodex(v, currentID)
 	}
-	return extractClaude(v)
+	return extractClaude(v, currentID)
 }
-func extractCodex(v map[string]any) (string, Document, Metadata) {
+func extractCodex(v map[string]any, fallback ...string) (string, Document, Metadata) {
 	p, _ := v["payload"].(map[string]any)
 	typ, _ := v["type"].(string)
-	id := str(p["session_id"])
+	id := ""
+	if typ == "session_meta" {
+		id = str(p["id"])
+	}
+	if id == "" {
+		id = str(p["session_id"])
+	}
 	if id == "" {
 		id = str(v["session_id"])
 	}
 	if id == "" {
 		id = str(v["sessionId"])
+	}
+	if id == "" && len(fallback) > 0 {
+		id = fallback[0]
 	}
 	m := meta("codex", id, p, v)
 	// Explicit fixture protocol is intentionally accepted as an adapter contract.
@@ -1202,11 +1307,14 @@ func extractCodex(v map[string]any) (string, Document, Metadata) {
 	d.EventAt = normalizedEventAt(str(v["timestamp"]), str(p["timestamp"]))
 	return id, d, m
 }
-func extractClaude(v map[string]any) (string, Document, Metadata) {
+func extractClaude(v map[string]any, fallback ...string) (string, Document, Metadata) {
 	typ := str(v["type"])
 	id := str(v["sessionId"])
 	if id == "" {
 		id = str(v["session_id"])
+	}
+	if id == "" && len(fallback) > 0 {
+		id = fallback[0]
 	}
 	m := meta("claude", id, v, v)
 	if typ != "user" && typ != "assistant" {
@@ -1273,7 +1381,12 @@ func textContent(raw any, want string) (string, bool) {
 	return b.String(), b.Len() > 0
 }
 func meta(client, id string, a, b map[string]any) Metadata {
-	return Metadata{Client: client, SessionID: id, Project: NormalizeProject(first(str(a["cwd"]), str(a["project"]), str(b["cwd"]), str(b["project"]))), Model: first(str(a["model"]), str(b["model"])), FirstAt: first(str(a["timestamp"]), str(b["timestamp"])), LastAt: first(str(a["timestamp"]), str(b["timestamp"]))}
+	project := first(str(a["cwd"]), str(b["cwd"]))
+	priority := 2
+	if project == "" {
+		project, priority = first(str(a["project"]), str(b["project"])), 1
+	}
+	return Metadata{Client: client, SessionID: id, Project: NormalizeProject(project), projectPriority: priority, Model: first(str(a["model"]), str(b["model"])), FirstAt: first(str(a["timestamp"]), str(b["timestamp"])), LastAt: first(str(a["timestamp"]), str(b["timestamp"]))}
 }
 func first(v ...string) string {
 	for _, s := range v {
@@ -1293,8 +1406,9 @@ func NormalizeProject(v string) string {
 	return filepath.Clean(v)
 }
 func mergeMeta(dst *Metadata, src Metadata) {
-	if dst.Project == "" {
+	if src.Project != "" && (dst.Project == "" || src.projectPriority > dst.projectPriority) {
 		dst.Project = src.Project
+		dst.projectPriority = src.projectPriority
 	}
 	if dst.Model == "" {
 		dst.Model = src.Model

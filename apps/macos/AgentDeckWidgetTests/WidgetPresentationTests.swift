@@ -610,6 +610,34 @@ final class WidgetPresentationTests: XCTestCase {
 	}
 
 	@MainActor
+	func testConfiguredQuotaIntentRenderingsAtNativeSizesAreAttached() throws {
+		let snapshot = try widgetFixture("snapshot-complete")
+		let now = try XCTUnwrap(WidgetTimelinePolicy.date(snapshot.generatedAt))
+		for configured in QuotaWidgetClient.allCases {
+			var intent = QuotaWidgetIntent()
+			intent.client = configured
+			for family in [WidgetFamily.systemSmall, .systemMedium, .systemLarge] {
+				for scheme in [ColorScheme.light, .dark] {
+					let entry = AgentDeckWidgetEntry(date: now, snapshot: snapshot, kind: .quota,
+						client: try XCTUnwrap(intent.client).widgetClient, period: .today, isPlaceholder: false)
+					let size = WidgetLayoutContract.canvas(family)
+					let view = AgentDeckWidgetView(entry: entry, familyOverride: family)
+						.environment(\.colorScheme, scheme)
+						.frame(width: size.width, height: size.height)
+						.background(scheme == .dark ? Color.black : Color.white)
+					let png = try renderedViewPNG(view, size: NSSize(width: size.width, height: size.height))
+					let image = try XCTUnwrap(NSBitmapImageRep(data: png))
+					XCTAssertEqual(image.size, NSSize(width: size.width, height: size.height))
+					let attachment = XCTAttachment(data: png, uniformTypeIdentifier: "public.png")
+					attachment.name = "Configured quota — \(configured.rawValue) \(familyName(family)) \(scheme)"
+					attachment.lifetime = .keepAlways
+					add(attachment)
+				}
+			}
+		}
+	}
+
+	@MainActor
 	private func renderedViewPNG<Content: View>(_ content: Content, size: NSSize) throws -> Data {
 		let hosting = NSHostingView(rootView: content)
 		hosting.frame = NSRect(origin: .zero, size: size)

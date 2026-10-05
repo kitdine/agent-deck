@@ -356,6 +356,13 @@ jobs:
           test -d "$app"
           test -x "$app/Contents/Helpers/agentdeck"
           test -d "$app/Contents/PlugIns/AgentDeckWidget.appex"
+          bash scripts/check-macos-widget-intents.sh "$app"
+          open "$app"
+          for attempt in {1..10}; do
+            if bash scripts/check-macos-widget-registration.sh "$app"; then break; fi
+            sleep 1
+          done
+          bash scripts/check-macos-widget-registration.sh "$app"
           "$(brew --prefix)/bin/agentdeck" version | grep -F "Release Version: $RELEASE_TAG"
           bash --noprofile --norc -c 'source "$1"; complete -p agentdeck >/dev/null' \
             _ "$(brew --prefix)/etc/bash_completion.d/agentdeck"
@@ -363,6 +370,7 @@ jobs:
 
           brew uninstall --cask "$test_tap/$cask_token"
           test ! -e "$app"
+          pluginkit -m -A -D -vv -i com.kitdine.agentdeck.widget | grep -F '(no matches)'
           test -d "$HOME/.agentdeck" || true
       - name: Check out Homebrew tap
         uses: actions/checkout@v4

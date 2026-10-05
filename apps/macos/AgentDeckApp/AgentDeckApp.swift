@@ -202,6 +202,32 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 	}
 
 	func applicationDidFinishLaunching(_ notification: Notification) {
+		#if !DEBUG
+		// Homebrew's install-step sandbox cannot contact PlugInKit. Register only
+		// this signed host's own nested extension, after normal App launch.
+		let extensionURL = Bundle.main.bundleURL.appendingPathComponent("Contents/PlugIns/AgentDeckWidget.appex")
+		if FileManager.default.fileExists(atPath: extensionURL.path) {
+			Task.detached(priority: .utility) {
+				let process = Process()
+				process.executableURL = URL(fileURLWithPath: "/usr/bin/pluginkit")
+				process.arguments = ["-a", extensionURL.path]
+				do {
+					try process.run()
+					DispatchQueue.global().asyncAfter(deadline: .now() + 5) {
+						if process.isRunning { process.terminate() }
+					}
+					process.waitUntilExit()
+					guard process.terminationStatus == 0 else {
+						NSLog("AgentDeck Widget registration failed: status %d", process.terminationStatus)
+						return
+					}
+					WidgetTimelineReloader.live.reload(kinds: Set(AppGroupWidgetKind.allCases))
+				} catch {
+					NSLog("AgentDeck Widget registration failed: %@", String(describing: error))
+				}
+			}
+		}
+		#endif
 		installMainMenu()
 		itemController = MenuBarItemController(model: model) { [weak self] in
 			self?.settingsController.show()

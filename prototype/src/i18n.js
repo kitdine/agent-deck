@@ -877,6 +877,17 @@ export function formatHourRangeShort(start, end, lang) {
   return lang === "zh" ? `${start}–${end % 24} 时` : `${start}–${end % 24}h`;
 }
 
+// 与原生 DesktopFormat.hourWindow 同形：本地化的单小时窗口。
+export function formatHourWindow(hour, lang) {
+  const formatter = new Intl.DateTimeFormat(catalogs[lang].locale, {
+    hour: lang === "zh" ? "2-digit" : "numeric", minute: "2-digit", timeZone: "UTC",
+  });
+  const time = (value) => formatter.formatToParts(new Date(Date.UTC(2000, 0, 1, value)))
+    .map((part, index, parts) => part.type === "literal" && parts[index + 1]?.type === "dayPeriod" ? "\u202f" : part.value)
+    .join("");
+  return `${time(hour)}–${time(hour + 1)}`;
+}
+
 export function relativeTime(minutes, lang) {
   const dict = catalogs[lang];
   if (minutes < 1) return dict.status.justNow;

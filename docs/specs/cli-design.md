@@ -1,6 +1,7 @@
 ---
 status: active
-version: 30
+version: 31
+updated: 2026-10-04
 created: 2026-07-14
 ---
 
@@ -1776,6 +1777,15 @@ Session scanning reads Codex and Claude source logs read-only and stores only:
 - final user-visible assistant replies;
 - normalized searchable text and FTS5 snippets.
 
+Codex session identity accepts canonical `session_meta.payload.id` before legacy
+`payload.session_id`, top-level `session_id`, and `sessionId`. Other payload IDs
+are not session IDs. Established session identity applies before extracting
+ID-less messages. A real `cwd` takes precedence over a `project` fallback; the
+source directory is used only when neither exists. Source cursors retain the
+parser's identity and metadata provenance so append and full scans agree. The
+parser-version upgrade reparses old source projections transactionally on the
+next scan without modifying logs, usage data, or user exclusions.
+
 It must not index system prompts, developer-only instructions, hidden
 reasoning, tool arguments, tool results, credentials, authentication fields,
 attachments, images, binaries, or shell environment data.
@@ -2459,6 +2469,89 @@ that it supports the recorded version suppresses the warning without deleting
 the record: successful-open clearing and version-based presentation suppression
 are different events, not two deletion triggers.
 
+### LaunchServices registration diagnosis
+
+On the normal completed doctor path, quick and full mode append one
+`launchservices` check with resource `launchservices_registration`. Existing
+state/database/extension early returns, partial envelopes, `checks_skipped`,
+check order and exit semantics remain unchanged. Diagnostic warnings still use
+the existing success envelope and exit `0`; no new command or flag is added.
+
+The diagnostic distinguishes the installed host application from its Widget
+extension. Host enumeration uses public NSWorkspace application URLs with a
+readable Finder positive control. Widget enumeration uses targeted PlugInKit
+matches for `com.kitdine.agentdeck.widget`; the host API is never an extension
+absence test. Canonical bundles are `/Applications/AgentDeck.app` and its nested
+`Contents/PlugIns/AgentDeckWidget.appex`. This is the
+`returned_host_urls_and_targeted_widget_matches` scope, not an exhaustive
+LaunchServices database scan or proof of which bundle the OS selected.
+
+| Code and reason | Check status | Meaning |
+| --- | --- | --- |
+| `launchservices_consistent` | `ok` | Both sources are complete, nonempty, include readable canonical bundles and contain only matching live copies. Consistency is limited to the returned-source scope. |
+| `launchservices_conflict` | `warning` | Complete evidence includes a live copy whose version or build differs from its source's canonical bundle. This is a possible registration conflict, not Widget failure causality. |
+| `launchservices_stale` | `warning` | Complete evidence includes a returned path that is missing, without a differing live build. This is observed stale evidence, not an exhaustive inventory. |
+| `launchservices_unknown` | `warning` | A required source, control or metadata read is incomplete or inconclusive. Positive observations remain visible. |
+| `launchservices_not_applicable` | `ok` | Unsupported platform or genuinely absent canonical host; this makes no OS-health claim. |
+
+Unknown takes precedence over conflict, then stale, then consistent. Empty
+Widget results, a missing canonical Widget, timeout, cancellation, failed
+control, unsupported enumeration, unrecognized output, denied reads, malformed
+metadata and reached limits cannot establish consistency. Only genuine
+host-not-exist permits `gui_host_absent`; denied or invalid host metadata remains
+unknown. Non-Darwin reports `unsupported_platform` without native probing.
+Compare both nonempty version and build strings against each source's canonical
+bundle with its expected identifier. Normalize absolute paths and resolve live
+symlinks, deduplicate identities and sort entries lexically in every state,
+including non-applicability. Aliases or multiple same-build copies alone are not
+version conflicts. Missing returned paths remain stale observations.
+
+Optional local doctor JSON `registration_details` contains `applicable`,
+optional `applicability_reason`, `scope`, `complete`, `host` and `widget`.
+Each source has `source`, `complete`, optional `reason` and `entries` (an array,
+including when empty). Source names are `host_application_urls` and
+`widget_pluginkit`. Entries contain `path`, `canonical`, `state` and optional
+`version`/`build`; states are `canonical`, `matching_build`, `different_build`,
+`missing`, `unreadable_metadata` and `invalid_metadata`. Stable source reasons
+are `timeout`, `cancelled`, `control_failed`, `enumeration_failed`,
+`unknown_format`, `output_limit`, `entry_limit`, `empty_result`,
+`unreadable_metadata`, `invalid_metadata` and `canonical_missing`. The first
+source failure is retained. Raw probe stdout/stderr and OS error prose do not
+reach output; none of these fields are persisted.
+
+Quick/full acquisition shares a total monotonic budget of 500 ms / 1.5 s,
+including applicability, child startup, metadata, cancellation, wait and reap;
+children do not receive independent fresh budgets. All potentially blocking
+native path/metadata operations run in owned terminable children, with time
+reserved inside the budget for cancellation and wait. Reaching 64 unique entries
+per source is incomplete. Combined stdout/stderr and metadata each have a
+256 KiB cap per source, totaling at most 512 KiB including detection bytes.
+Unknown formats, overflow and expiry yield unknown evidence. Every started
+child is waited and owned work is joined. OS scheduling is not a hard real-time
+guarantee; observed overshoot is a failed timing observation, never excluded
+from the budget. Existing complete-refresh performance targets remain unchanged.
+
+Text presents scope/completeness, source reasons, quoted entries, manual next
+steps and the diagnostic limitation. Paths/version/build use escaped data;
+terminal controls cannot become commands. One warning check contributes one
+warning regardless of entry count. Conflict/stale advice requires confirming
+which copy is obsolete, protecting the canonical app and Widget and quitting
+obsolete copies normally before manually unregistering or removing only the
+verified obsolete registration by its exact path. Unknown advice asks the user
+to inspect the canonical bundles and incomplete source and rerun
+`agentdeck doctor --full`. No generated unregister command, wildcard, reset,
+daemon restart, database rebuild or elevation is supplied. A later diagnosis
+confirms observed registrations only; the Widget must be checked separately.
+
+The desktop wire-v1 health DTO retains its existing safe fields and counts and
+recognizes the new resource and five reasons. It excludes registration paths,
+versions/builds, source details and raw output. This check sets no recovery,
+count or action metadata and enables no copyable action. Consistent and
+not-applicable preserve `ok` with no warning notice; conflict, stale and unknown
+preserve warnings. Future unknown tokens retain existing fail-closed handling.
+No GUI layout or automatic recovery is introduced. Diagnosis does not certify
+WidgetTimeline operation, collision causality or actual system recovery.
+
 ### Health recovery and extension inventory
 
 A lock refusal retains `error.code: state_busy` and exit `1`. Text names
@@ -2753,6 +2846,7 @@ here changes; do not create a dated copy of this file.
 
 | Version | Date | Contract change |
 | --- | --- | --- |
+| 31 | 2026-10-04 | Reconciles the delivered v0.6.5 LaunchServices doctor addition: bounded separate host/Widget sources, conservative five-state classification, deterministic local evidence and manual safety guidance, with a path-free desktop health projection. The approved exception permits the new doctor/health checks, codes, optional details and consequent warning counts; other commands, exits, database formats and existing-check semantics remain unchanged. Complete-refresh targets are unchanged; accepted performance limits and unverified Widget causality/recovery remain explicit in the topic record. |
 | 30 | 2026-09-26 | Reconciles the v0.6.0 contract over its five retained integrated areas: schema/Hook failure visibility, bounded snapshot performance, subscription quota and reset reporting, desktop/Widget refresh, and cause-specific health recovery. Future-schema ordinary command refusal uses `schema_ahead` at exit 1; desktop wire v1 adds subscription and health metadata without replacing existing sections; quota remains opt-in and distinguishes unavailable values from zero; refresh keeps coherent snapshots and bounded Widget reads; lock and extension recovery preserve read-only doctor and safe action semantics. Manual VoiceOver for health recovery is user-waived and untested, and other recorded native/performance exceptions remain explicit. Cost transparency is outside v0.6.0 with no replacement version assigned. |
 | 29 | 2026-09-08 | Reconciles schema-version-signal: narrows future core-schema refusal to `schema_ahead` at unchanged ordinary-error exit 1; defines lock-failure probe precedence, stored/supported version pairs and additive `supported_count` at desktop wire v1; makes doctor short-circuit reports partial with `checks_skipped`; documents the bounded silent Hook refusal diagnostic, successful-read-write-open clearing versus upgrade suppression, and App-side schema attribution. No product release version is assigned. |
 | 28 | 2026-09-01 | Closes the `v0.5.0` contract across its five selected lines. The desktop wire contract (version 25) and Work Signals (version 27) already have their own rows; this entry adds the version-level statement and the three lines that had none. **Compatibility break:** `runtime_error` is narrowed — the provider, credential, backup-absent, backup-unreadable, and session not-found conditions a `v0.4.x` consumer received as `runtime_error` now return `provider_not_found`, `credential_not_found`, `backup_not_found`, `backup_unreadable`, and `session_not_found` at unchanged exit codes, and not-found messages no longer carry `database/sql`, driver, path, or errno text; see Error-Code Compatibility. `runtime_error` remains as the documented residual. **Switch effectiveness:** one client-neutral Hook delivery operation persists every accepted Codex or Claude delivery before any route effect, route quality is derived at read time from the event, the positioned route, and the prior effective state rather than read back from storage, and only Claude's `no key -> first key` transition applies to a running session while rotation and removal retain the prior route until restart. **Attribution precision:** a determinable effective route resolves as `exact`, every event carries exactly one of six reasons — `exact_run`, `effective_route`, `ambiguous_route`, `timeline_snapshot`, `before_adoption`, `coverage_gap` — `usage summary` exposes all six initialized keys in JSON, and `unattributed_catalog_base_cost` reports the calculable catalog base for `before_adoption` and `coverage_gap` separately from real provider spend, which no unattributed event may enter. **Desktop application:** `v0.5.0` ships the signed menu-bar application, its settings window, and the WidgetKit extension against the unchanged wire version 1; everything the version added to that wire is additive. |

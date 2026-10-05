@@ -472,7 +472,7 @@ final class MenuBarChromeTests: XCTestCase {
 		XCTAssertGreaterThanOrEqual(
 			alphaBounds(in: normalRendering.bitmap).height,
 			28,
-			"the prototype robot is wider than it is tall and must not be stretched into a square"
+			"the approved AD template must retain its visible silhouette at 18pt"
 		)
 		XCTAssertNotEqual(normalRendering.png, badgedRendering.png)
 		XCTAssertGreaterThanOrEqual(

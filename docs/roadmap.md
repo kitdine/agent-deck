@@ -179,14 +179,15 @@ does not prove it resolved.
 
 ### One issue, one PR: bounded repair workflow
 
-Patching the published v0.6 line follows Branching's released-version route:
-select/create `release/v0.6.x` from the peeled `v0.6.0` commit
-`a5e969d7ad60cfaaee7fec13cbe1704d4cdb2c52`. Each repair branch starts from the
-current `release/v0.6.x` head and its PR targets that release line, not whatever
-new feature content main contains later. Publish v0.6.5 from the verified release
-candidate and forward-propagate the delivered patch line to main under the
-existing integration classification/review rules. Current main is kept clean;
-only necessary, authorised branch operations occur in the Fix workspace.
+Current-iteration feature and fix PRs integrate into verified `main` first.
+Release publication and explicitly scoped supported-release maintenance are
+separately authorized operations. Maintenance may start on the oldest affected
+supported release line and then propagate to main with preserved ancestry and
+integration review. The superseded 2026-09-30 release-first decision established
+`release/v0.6.x` from v0.6.0 `a5e969d7ad60cfaaee7fec13cbe1704d4cdb2c52`;
+completed patch-line deliveries remain true history. The 2026-10-05 approved
+reconciliation returns that history to main without requiring publication first.
+Keep canonical main untouched while preparing authorized isolated candidates.
 
 Beads remains the issue/dispatch authority. Put the exact Beads ID, reproducer,
 scope, local review pointer, test/evidence state and disposition into each PR.
@@ -211,14 +212,16 @@ second independently maintained task matrix for every Beads issue.
    repairs after review require current-head reassessment. Do not request
    cloud `@codex fix` unless write/delegation authority is separately granted.
 5. **Delivery.** Fix verified findings, pass applicable CI and evidence gates,
-   then merge the issue PR into `release/v0.6.x`. Confirm the delivered boundary before closing the
+   then merge the current-iteration issue PR into `main`. Confirm the delivered boundary before closing the
    Beads issue; admin dispositions say duplicate/superseded/not-a-defect rather
    than claiming a product fix. Keep per-issue traceability in the version list.
 6. **Single release.** Merge ready issue PRs throughout this one iteration.
    Afterwards reconcile the final selected list and run release-owned preflight
    once for the final aggregate state, reusing unaffected per-issue evidence.
    Validate normal installation, account/state safety and configured Widgets,
-   then publish v0.6.5 from the verified release-line candidate through the authorised release workflow and forward-propagate it to main. Internal order
+   then publish v0.6.5 from the separately authorized verified candidate through
+   the release workflow. Main integration precedes publication; supported-release
+   maintenance retains its explicit propagation obligations. Internal order
    or parallel PRs do not create separate release batches.
 
 ### Worktree decision
@@ -226,7 +229,8 @@ second independently maintained task matrix for every Beads issue.
 The selected mode is one reusable serial Fix workspace, one issue branch and
 one PR per repair. Execution rules have one owner:
 [Serial Lane A Fix workspace entry](../.agent-instructions/branching.md#serial-lane-a-fix-workspace-entry).
-They define entry/reentry, release bases, issue bindings, safe switch boundaries,
+They define entry/reentry, verified current-main bases by default (supported-release
+bases only for explicitly selected maintenance), issue bindings, safe switch boundaries,
 owner conflicts, CodeGraph preparation and late-review return. The independent
 reviewer needs cold context and frozen content, not a permanent extra worktree.
 

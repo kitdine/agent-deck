@@ -610,6 +610,11 @@ func TestSnapshotPerformanceFullRecomputationInvalidatesAndRebuildsDerivedCache(
 }
 
 func runSnapshotPerformanceWorker(t *testing.T) {
+	if os.Getenv("AGENTDECK_NATIVE_REGISTRATION_ACCEPTANCE") == "1" {
+		oldProbe := doctorRegistrationProbe
+		doctorRegistrationProbe = nil
+		t.Cleanup(func() { doctorRegistrationProbe = oldProbe })
+	}
 	action := os.Getenv("AGENTDECK_SNAPSHOT_PERFORMANCE_ACTION")
 	behavior := os.Getenv("AGENTDECK_SNAPSHOT_PERFORMANCE_TEST_BEHAVIOR")
 	if behavior == "hang_snapshot" && action == "snapshot" {
@@ -1015,11 +1020,12 @@ func captureSnapshotPerformanceReference(t *testing.T, state, home string) snaps
 	desktopNow = func() time.Time { return snapshotPerformanceNow }
 	t.Cleanup(func() { desktopNow = oldNow })
 	result, err := (desktop.Service{
-		StateRoot: state,
-		Home:      home,
-		Workdir:   filepath.Join(home, "work"),
-		Now:       desktopNow,
-		Location:  time.UTC,
+		RegistrationProbe: doctorRegistrationProbe,
+		StateRoot:         state,
+		Home:              home,
+		Workdir:           filepath.Join(home, "work"),
+		Now:               desktopNow,
+		Location:          time.UTC,
 	}).Build(context.Background(), desktop.Request{WireVersion: desktop.WireVersion, RecentLimit: 20})
 	if err != nil {
 		t.Fatalf("Build: %v", err)

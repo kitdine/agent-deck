@@ -239,3 +239,271 @@ Task checkpoint：原文档任务的本轮复评 PASS、完成门禁 VERIFIED；
 提交建议：门禁通过后只提交本工作树的主版本规范、tasks.md 和本评审记录，生成新的 signed logical commit，保留 b0c6402 和原历史。
 推送建议：实际 commit tree/full message/Codex trailer/SSH signature 核实后 ordinary push 同名 feature 分支；PR #40 必须取得新 exact-head GitHub Codex review 和全部 required CI，才能 ancestry-preserving merge commit。真实用户已授权这条完整交付链，发布/部署仍排除。
 下一项：完成本轮证据及 PR40 交付，再推进独立 `launchservices-recovery` 功能契约；不从本 PASS 关闭 origin 或开始其他批次。
+
+## Round 5 — 2026-10-05
+
+## 📋 P3 行政处置指针补充评审（V065-P3-R5）
+
+📊 总体评分：9/10
+
+✅ 评审结论：PASS（仅 P3 一行补充，复用未受影响的版本契约评审）
+
+Reviewer：全新冷上下文 local Codex exec `01a10a97-e1da-7bf2-a125-0f7fcb14dc7c`，
+custom/cpa、gpt-6.1-sol/xhigh、read-only、local request service_tier=default，
+CLI 0.160.0，自然 exit 0；未 resume/fork 作者或 QA，未写记录/状态/CEv1/Beads。
+主 executor `01a10a8f-0f6c-7aa0-b230-7fb286b520bc` 复核并拥有本轮 verdict。
+Method：冻结身份、原始 issue 契约、13 源 blob、14 离屏图及实际 popover、
+字形检测、后到用户确认与历史记录的只读核对；完整报告追加于
+[P3 行政 carrier](../../../fixes/footer-routes-narrow-truncation.md)。
+Scope：tasks.md 的 P3 指针/限定处置；不重新审计十九 Bug，不改成员、排除项、
+doctor 契约或所有 Documents/Tasks 聚合矩阵。无产品或 Git 操作。
+
+### 🔴 严重问题 — 必须修复
+
+无。`V065-P3-R5-Fn` findings：无。
+Round 3 FAIL、V065-LS-R3-F1/F2 与 Round 4 关闭处置保持原文；本轮未复活旧 PASS。
+
+### 🟡 建议改进 — 推荐
+
+无。
+
+### 🟢 优点
+
+- P3 仍在原十九项会员清单，行政证据有唯一指针，没有制造产品修复或代码 PR。
+- 限定 not-a-defect 有原字串、可见 middle-ellipsis 正对照和实际可见 popover 支持；
+  五态、生产入口与全布局限制完整保留，不以不能复现一次关闭。
+- 独立评审、CEv1、Beads 行政决定和未授权 Git 交付分开，不推进 aggregate completion。
+
+### 📝 总结
+
+Reviewed state：HEAD `787cf40c4ba36d59d8deba92c32cf282e66d9c99`；
+tasks.md blob `00e596bb1d6b131d28864683c1bdbbf97086309b`；
+P3 carrier 冻结 blob `6d786ef8b19fb4670add7a8b5bd080124a46bb0f`。
+报告/source 收据：`/tmp/agentdeck-p3-disposition-20261005/reviewer-report.md`、
+`candidate.json`、`input-verification.json`；原始报告 SHA-256
+`3aaf859204c0dea6ae532243d5be9c68ed39e2ca2e06c8d94028e66c7a8b5343`。
+主 executor 冻结读回及两核心 App 源 blob 均一致，接受无 finding 的限定 PASS。
+后续记录追加及门禁字段收口不改变冻结 tasks.md 或行政处置正文。
+
+Evidence：`bash scripts/check-topic-docs.sh` exit 0；脚本无 scoped option，
+本轮只解释 owning topic 的结果，未修其他 topic。最终 L0 收据与门禁详情保留在
+同一 operator-local 目录。没有 Go/native 新测试、App run 或 Hook replay。
+旧 state `944fdd319fe18333154907931523e9b53090ad3bc81d116dbc54db9c655ee1bc`
+的三个 criteria 仍 VERIFIED；新增目标最初 NOT_VERIFIED/missing_target_state，
+没有把旧 observations 改成新内容。coverage/authority 仅在明确 scoped preserves
+与 target-bound roll-up 后复用，readiness 使用新文档 L0。
+
+WorkUnit：`v0-6-5-contract:tasks.md`；dispatch：`ad-v0-6-5-contract-doc-tasks-design`。
+required criteria：coverage、authority、readiness；无已登记直接 parent/children。
+ContentState：`v0-6-5-contract:tasks.md:state:f041ba70cad2cfff4111a15bb3c4f598592a31416abca4eb588a187a1b9b61ea`。
+完成门禁：VERIFIED。
+canonical gate 返回 3/3 required criteria pass，target_matches/applicable=true，
+missing/unresolved 为空；历史 Round 2 invalidation 列表非空并保留。7 个新增节点
+和 12 条关系经标准 templates、12/12 preflight 与 exact payload/endpoints read-back
+核实。详见 operator-local `final-gate.json` 与 `ce-*-readback.json`。
+P3 行政 carrier 的无产品 gate 判断不豁免此文档门禁。历史 invalidated observations
+仍保留；不查询版本/Topic/Release，也不声明它们完成。
+
+Task checkpoint：仅本次文档补充评审 PASS，交付边界保持开放。
+提交建议：文档门禁已 VERIFIED；仅三份 P3 相关文档，仍需新的显式 Git 授权。
+推送建议：等待授权提交及真实对象核验和单独推送授权。
+Beads 最终读回：原 P3 已按限定行政决定 closed，原描述/notes/priority/labels
+保留；匹配文档 task 为 awaiting_commit、无指派，本次修订没有被记成交付。
+最小后续步骤：仅等待显式三文件 Git 交付授权；不启动另一产品任务。
+
+## Round 6 — 2026-10-05
+
+## 📋 A — Independent document review: v0.6.5 contract routing amendment
+
+📊 Overall score: **8/10**
+
+✅ Verdict: **FAIL**
+
+### 🔴 Serious issues — must fix
+
+**V065-ROUTE-R6-F1 — P2 — OPEN: the serial-workspace instructions still require a release base after adopting main-first routing.**
+
+Locations:
+
+- [tasks.md:213](../tasks.md): before the next issue, require “the correct updated release base”.
+- [tasks.md:248](../tasks.md): Task 1 defines entry/reentry using an “exact release base”.
+- Related consumer: [roadmap.md:232](../../../roadmap.md) still describes the rules as defining “release bases”.
+
+**Behavior risk:** after completing a normal current-iteration repair, an operator following step 6 can select or require the release-line base for the next issue, contradicting the newly approved main-first route. This is an active operational instruction, not merely retained historical provenance.
+
+**Evidence:** tasks.md lines 52–56 and 185–199 require verified current main for ordinary iteration work, reserving a release-line base for explicitly selected supported-release maintenance. The amended Branching authority makes the same distinction. The unconditional release-base requirement in step 6 does not.
+
+💡 **Minimal remedy:** use “verified selected base” in the active serial-entry/switch requirements and identify main as the normal route, with the explicit maintenance exception. Align the roadmap’s corresponding description. Preserve genuine historical release-base statements, prior reviews and completed patch-line deliveries.
+
+### 🟡 Suggested improvements — recommended
+
+None beyond the mandatory finding.
+
+### 🟢 Strengths
+
+- The nineteen-member inventory, administrative disposition requirements and feature exclusions remain intact.
+- Partial release-to-main propagation is distinguished from aggregate assembly, contract closure and publication.
+- P3 remains an original-sample/measured-environment administrative disposition. The document does not claim a product repair, production-entry acceptance, five-state acceptance or general native-layout PASS.
+- The approved doctor compatibility exception remains narrow and retains disclosure requirements.
+- The document Review cell and aggregate Tasks 2/3 remain open.
+
+### 📝 Summary
+
+**Reviewer:** independent reviewer in this conversation; not author/preparer.
+**Method:** read-only comparison of current contract, Branching, roadmap, status, primary CLI contract, review history and retained evidence. No tests or state mutations.
+
+**Reviewed state:**
+
+```text
+HEAD:
+868519d13902ad1f59c9688c252f92d6297c9d15
+
+tasks.md Git blob:
+22dc83782cca34f1eea2da159fc5711da8549d47
+
+HEAD+blob digest:
+8f8e35b9aa0b62d635258e551162f50c9ddb9dae57b64fc8ef88df47cfb421d8
+
+WorkUnit:
+v0-6-5-contract:tasks.md
+
+Target ContentState:
+v0-6-5-contract:tasks.md:state:8f8e35b9aa0b62d635258e551162f50c9ddb9dae57b64fc8ef88df47cfb421d8
+```
+
+Namespace: `github.com/kitdine/agent-deck`.
+
+**Required criteria assessment:**
+
+| Criterion suffix | Assessment |
+|---|---|
+| `authority` | Not satisfied by this review: V065-ROUTE-R6-F1 leaves conflicting active base-selection instructions. |
+| `coverage` | Membership, exclusions, P3 boundaries and aggregate decomposition remain covered; operational routing needs the finding repaired. |
+| `readiness` | Existing exact-target structural evidence is supported. This does not establish semantic approval. |
+
+Completion gate: NOT_VERIFIED
+
+This is the actual saved provider result in documentFinal.json (operator-local provenance: `/tmp/agentdeck-reconcile-main-20261005/integration-evidence-prep/documentFinal.json`; not a portable evidence link), not a new query or a reviewer-issued gate. It reports readiness evidence, missing `authority` and `coverage`, and no unresolved candidate impacts. Historical invalidations remain visible.
+
+**Prior findings disposition:**
+
+| Finding/history | Current disposition |
+|---|---|
+| `V065-LS-R3-F1` | Remains CLOSED through the explicit approved exception and Round 4 repair/re-review. The current CLI contract preserves that exception. |
+| `V065-LS-R3-F2` | Remains CLOSED through the recorded metadata repair and Round 4 verification. Round 3 FAIL remains preserved. |
+| Round 5 P3-only PASS | Retained for its earlier bounded state; does not approve the main-first amendment. |
+| `V065-ROUTE-R6-F1` | OPEN; the sole new document finding. |
+
+**Evidence:** the latest retained `python3 scripts/check-docs.py` receipt reports exit 0 against the main-relative working candidate, including document-set and review-record checks. Its source digest was checked. No checker was rerun.
+
+**Repair scope:** V065-ROUTE-R6-F1 only. Keep the document Review cell open; repair and independently reassess the resulting exact document state before recording passing authority/coverage evidence.
+Reviewer: independent read-only reviewer, session `01a10bcd-e2b8-7011-a249-995b1ee1a9ac` from supervisor CLI event receipt. Main delivery operator owns this transcription.
+Method: preserve the independently reported assessment and exact reviewed identity; source report SHA-256 `e77610cc14f9e165894f52e7efebc576a85461684dd2edf7e1056a3e84e6b84f`.
+Scope: changed routing document; earlier P3-only round is not routing approval.
+Source: operator-local `/tmp/agentdeck-reconcile-main-20261005/integration-overall-cold-final.txt`; complete original retained unchanged. Runtime settings are not independently attested by this record.
+
+The later saved old-target query in `routing-repair-checkpoint/documentOldFailed.json` reports FAILED after the actual independent failure was recorded. That later observation does not replace the earlier saved query quoted above.
+
+## Round 7 — 2026-10-05
+
+## 📋 A — Independent document re-review: v0.6.5 contract routing repair
+
+📊 Overall score: **9/10**
+
+✅ Verdict: **PASS**
+
+### 🔴 Serious issues — must fix
+
+None. `V065-ROUTE-R6-F1` is **CLOSED in the reviewed candidate**.
+
+### 🟡 Suggested improvements — recommended
+
+None.
+
+### 🟢 Strengths
+
+The repair resolves the three active routing statements without changing policy:
+
+- [tasks.md:213](../tasks.md) now requires the verified selected base, defaulting to current main.
+- [tasks.md:249](../tasks.md) applies the same distinction to entry/reentry.
+- [roadmap.md:232](../../../roadmap.md) accurately describes its authoritative consumer.
+
+These agree with [Branching:130](../../../../.agent-instructions/branching.md): normal iteration fixes start from verified current main; explicitly selected supported-release maintenance starts from the appropriate supported line and subsequently propagates.
+
+Branching’s “Patching a released version” and oldest-supported-line rules remain applicable to that maintenance route. They do not contradict normal iteration routing. Existing-branch reentry still preserves creation provenance and prohibits resetting a branch merely because its base moved.
+
+### 📝 Summary
+
+**Method:** independent read-only content comparison, authority/consumer inspection, manifest recomputation and saved evidence inspection. The earlier independent assessment was reused only for verified unchanged content.
+
+**Reviewed identity**
+
+```text
+Namespace:
+github.com/kitdine/agent-deck
+
+WorkUnit:
+v0-6-5-contract:tasks.md
+
+HEAD:
+868519d13902ad1f59c9688c252f92d6297c9d15
+
+tasks.md blob:
+d43a0b89fc7c2c333237e037b0fb655b6582a235
+
+HEAD+blob digest:
+aea795ba639dcb51448f7bf685a0ad7e822f89f0c20d1cf2d3cfb865b6e7e0ed
+
+ContentState:
+v0-6-5-contract:tasks.md:state:aea795ba639dcb51448f7bf685a0ad7e822f89f0c20d1cf2d3cfb865b6e7e0ed
+```
+
+The digest was independently calculated using the established `head=<HEAD>;document=<blob>` recipe.
+
+**Required criteria**
+
+| Criterion | Re-review assessment |
+|---|---|
+| `authority` | PASS. Active instructions consistently distinguish normal main-based iteration from explicitly selected supported-release maintenance. No new policy decision is introduced. |
+| `coverage` | PASS. Nineteen-member inventory, administrative dispositions, exclusions, serial-workspace scenarios, aggregate decomposition and release boundaries remain intact. |
+| `readiness` | Supported by the saved current-target structural check and unchanged document-set/decomposition requirements. |
+
+**Complete finding dispositions**
+
+| Finding/history | Disposition |
+|---|---|
+| `V065-LS-R3-F1` | Remains CLOSED. The primary CLI contract retains the explicitly approved, bounded doctor/health compatibility exception and disclosure requirement. |
+| `V065-LS-R3-F2` | Remains CLOSED. The repaired metadata and historical Round 3 FAIL remain unchanged. |
+| Round 1/2 findings | No additional findings requiring disposition were recorded. Historical invalidations remain historical facts. |
+| Round 5 P3-only PASS | Preserved for its original scope/state; not reused as approval of changed routing. |
+| `V065-ROUTE-R6-F1` — P2 | **CLOSED.** The exact three-statement repair removes the unconditional release-base requirement and aligns its roadmap consumer. |
+| New findings | None. |
+
+Historical release entries and doctor delivery remain provenance. The P3 disposition still covers only the original sample/measured environment; it does not establish a product fix, production-entry acceptance, five-state acceptance or general native-layout PASS. Aggregate Tasks 2/3 remain open.
+
+**Evidence:** the saved post-repair `python3 scripts/check-docs.py` receipt reports exit **0**, explicitly limiting itself to structural validation. Its log SHA-256 independently matches:
+
+```text
+bb5d4deddd07d22c32c5c91415517fb8747c65558e0bcbd9146c70b613c74359
+```
+
+No checker or test was rerun. Earlier whitespace receipts remain earlier observations; inspection of the exact new delta found no introduced whitespace defect.
+
+Completion gate: VERIFIED
+
+This is the latest actual **saved provider query** in routing-repair-checkpoint/documentFinal.json (operator-local provenance: `/tmp/agentdeck-reconcile-main-20261005/routing-repair-checkpoint/documentFinal.json`; not a portable evidence link). It has current-target readiness evidence, missing `authority` and `coverage`, and no unresolved candidate impacts. This report supplies an independent assessment; it does not change that provider result.
+
+The old document target `8f8e35b9…` has a separately saved **FAILED** result after the original independent failure was recorded. That failure remains bound to the old target.
+
+**Task checkpoint:** document review passes at the identity above. The main operator may append this disposition to the existing document review history and record passing `authority`/`coverage` evidence. Any matrix/status synchronization changes the content identity and requires accurate scope assessment and target binding.
+
+**Commit recommendation:** wait for synchronization and the actual required current-target gate.
+**Push recommendation:** wait for those prerequisites and separately authorized delivery.
+Reviewer: independent read-only reviewer, session `01a10bdc-a145-7730-9344-60e52547efde` from supervisor CLI event receipt. Main delivery operator owns this transcription.
+Method: preserve the independently reported assessment and exact reviewed identity; source report SHA-256 `836885d2d9f2f2366620693b55dea832692928429d575ee8ae64fd6e224e77f5`.
+Scope: document routing repair and unchanged decomposition, membership and exclusions.
+Source: operator-local `/tmp/agentdeck-reconcile-main-20261005/routing-rereview-final.txt`; complete original retained unchanged. Runtime settings are not independently attested by this record.
+
+Finalization boundary: the Review checkbox and handoff are synchronized to this independent PASS; scope, policy and membership are unchanged. New document identity and target-bound reuse are recorded separately by the delivery operator. This round identifies the frozen state actually reviewed, not an invented final manifest.
+
+Main operator gate finalization: the report originally cited a saved NOT_VERIFIED query. After recording the independent assessment at the exact reviewed frozen state, the actual MCP gate returned VERIFIED with all required criteria satisfied and no missing criteria or unresolved impacts. Receipt: operator-local `/tmp/agentdeck-reconcile-main-20261005/integration-delivery/reviewed-ce-receipts.json`. The canonical field above now records that later query for the reviewed state; the report’s earlier observation remains historical. Final synchronized and committed targets require separate state-bound queries, not relabeling this review.

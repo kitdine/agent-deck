@@ -127,22 +127,24 @@ not a second registry or a task lease. Do not use one generic workflow ID for
 different issues. Retain creation provenance on reentry and record the actual
 current HEAD/content state separately; reentry does not change the branch base.
 
-Resolve the oldest affected supported release and its existing release line
-before creation. For v0.6.5, use `release/v0.6.x`, originally based on peeled
-`v0.6.0` commit `a5e969d7ad60cfaaee7fec13cbe1704d4cdb2c52`.
-A new issue branch starts from the selected current release-line head, never
-the contract branch or newer main. Record the exact ref/commit and any cached
-remote uncertainty. Entry may create the missing issue branch and slot, but
-does not create the release line: if that line is absent, request its explicit
-creation authority first. Do not fetch, pull, merge, reset or push as entry
-side effects; resolve stale refs through a separately authorized refresh.
+Normal current-iteration fixes start from the verified current `main` head and
+PRs target `main`. Record the exact selected ref/commit and any cached remote
+uncertainty. Published-release maintenance is a separate, explicitly scoped
+route: resolve the oldest affected supported release and its existing release
+line, start from that line's verified head and target it by PR, then propagate
+the repair to main under the integration rules. The historical v0.6.x line was
+created from peeled v0.6.0 `a5e969d7ad60cfaaee7fec13cbe1704d4cdb2c52`;
+that provenance does not force new iteration work onto the release line.
+Entry may create the authorized issue branch and slot, but does not create a
+release line without explicit authority. Do not fetch, pull, merge, reset or
+push as entry side effects; refresh stale refs only under separate authority.
 
 If `fix/<slug>` already has a registered worktree, reuse that valid location;
 do not force a duplicate checkout or relocate old work into the slot. Apply the
 same root-containment, ownership and frozen-review rules there. An external
 location requires the client to be opened/rebound at a writable root containing
 it. If only the branch exists, attach/reuse the designated slot without changing
-that branch's history. If both are absent, create them at the verified release
+that branch's history. If both are absent, create them at the verified selected
 base. An occupied non-worktree path, unrelated checkout, mismatched repository
 or conflicting slot binding is a named blocker; do not delete or repurpose it.
 
@@ -167,7 +169,7 @@ authorizes taking over another actor's checkout.
   an unfinished boundary. Do not stash, force-switch, reset or clean to pass it.
 - Existing branch collision: a branch checked out elsewhere follows reuse above;
   an incompatible binding/path is reported, not overwritten. Never reset an
-  existing issue branch to the latest release head merely because the base moved.
+  existing issue branch to a newer base merely because the selected line moved.
 - Late review findings: preserve the next issue's work and ownership. Return to
   the original branch only through its entry command and a clean, released slot;
   verify the reviewed commit/content and rebind its issue identity. A finding

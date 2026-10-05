@@ -19,13 +19,17 @@ import (
 	"github.com/kitdine/agent-deck/internal/store"
 )
 
+func deterministicRegistration(context.Context, bool) RegistrationDetails {
+	return RegistrationDetails{Applicable: false, ApplicabilityReason: "canonical_host_absent"}
+}
+
 func doctorVault(stateRoot string) *credentialvault.Vault {
 	return credentialvault.New(stateRoot, func(context.Context) (string, error) { return "synthetic-machine", nil })
 }
 
 func TestCheckMissingStateIsReadOnly(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "missing")
-	report, err := (Service{StateRoot: root}).Check(context.Background(), false)
+	report, err := (Service{RegistrationProbe: deterministicRegistration, StateRoot: root}).Check(context.Background(), false)
 	if err != nil || !report.Partial || report.Healthy || report.Problems != 1 || report.Checks[0].Code != "state_missing" {
 		t.Fatalf("Check = %#v, %v", report, err)
 	}
@@ -118,7 +122,7 @@ func TestCheckReportsLockClassificationAndLifecycle(t *testing.T) {
 				beforeLock, beforeLockMode = fileDigest(t, targetFile), fileMode(t, targetFile)
 				beforeLockModTime = fileModTime(t, targetFile)
 			}
-			service := Service{
+			service := Service{RegistrationProbe: deterministicRegistration,
 				StateRoot:        state,
 				Home:             t.TempDir(),
 				Workdir:          t.TempDir(),
@@ -160,7 +164,7 @@ func TestCheckReportsInsecureStatePermissionsWithoutRepairingThem(t *testing.T) 
 		t.Fatal(err)
 	}
 
-	report, err := (Service{StateRoot: state, Home: t.TempDir(), Workdir: t.TempDir()}).Check(ctx, false)
+	report, err := (Service{RegistrationProbe: deterministicRegistration, StateRoot: state, Home: t.TempDir(), Workdir: t.TempDir()}).Check(ctx, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -253,7 +257,7 @@ func TestCheckClassifiesDatabaseFailuresWithoutMutatingPersistentState(t *testin
 				beforeCore, beforeCoreMode = fileDigest(t, core), fileMode(t, core)
 			}
 
-			report, err := (Service{StateRoot: state}).Check(ctx, false)
+			report, err := (Service{RegistrationProbe: deterministicRegistration, StateRoot: state}).Check(ctx, false)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -313,7 +317,7 @@ func TestCheckQuickAndFullPreserveExistingDatabasesAndEntries(t *testing.T) {
 		t.Run(map[bool]string{false: "quick", true: "full"}[full], func(t *testing.T) {
 			beforeCore, beforeSession := fileDigest(t, core), fileDigest(t, sessionDB)
 			beforeCoreMode, beforeSessionMode := fileMode(t, core), fileMode(t, sessionDB)
-			report, err := (Service{StateRoot: state, Home: t.TempDir(), Workdir: t.TempDir()}).Check(ctx, full)
+			report, err := (Service{RegistrationProbe: deterministicRegistration, StateRoot: state, Home: t.TempDir(), Workdir: t.TempDir()}).Check(ctx, full)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -369,7 +373,7 @@ func TestCheckOlderAndFutureSchemasAreSafeAndReadable(t *testing.T) {
 	if err = database.Close(); err != nil {
 		t.Fatal(err)
 	}
-	report, err := (Service{StateRoot: state, Home: t.TempDir(), Workdir: t.TempDir(), Vault: doctorVault(state)}).Check(ctx, true)
+	report, err := (Service{RegistrationProbe: deterministicRegistration, StateRoot: state, Home: t.TempDir(), Workdir: t.TempDir(), Vault: doctorVault(state)}).Check(ctx, true)
 	older := findCheck(report, "schema", "schema_outdated")
 	if err != nil || report.Partial || older == nil || older.Count != 12 || older.SupportedCount != store.CurrentSchemaVersion {
 		t.Fatalf("schema 12 report = %#v, %v", report, err)
@@ -386,7 +390,7 @@ func TestCheckOlderAndFutureSchemasAreSafeAndReadable(t *testing.T) {
 	if err = database.Close(); err != nil {
 		t.Fatal(err)
 	}
-	report, err = (Service{StateRoot: future}).Check(ctx, false)
+	report, err = (Service{RegistrationProbe: deterministicRegistration, StateRoot: future}).Check(ctx, false)
 	ahead := findCheck(report, "database", store.ErrSchemaAhead.Code)
 	if err != nil || !report.Partial || ahead == nil || ahead.Count != 99 || ahead.SupportedCount != store.CurrentSchemaVersion || ahead.Recovery != "" {
 		t.Fatalf("future schema report = %#v, %v", report, err)
@@ -425,7 +429,7 @@ func TestCheckUsageSchemaMatrixNeverLeaksSQL(t *testing.T) {
 					}
 				}
 				database.Close()
-				report, err := (Service{StateRoot: state, Home: t.TempDir(), Workdir: t.TempDir(), Vault: doctorVault(state)}).Check(ctx, full)
+				report, err := (Service{RegistrationProbe: deterministicRegistration, StateRoot: state, Home: t.TempDir(), Workdir: t.TempDir(), Vault: doctorVault(state)}).Check(ctx, full)
 				if err != nil || len(report.Checks) == 0 {
 					t.Fatalf("full=%t report=%#v err=%v", full, report, err)
 				}
@@ -468,7 +472,7 @@ func TestQuickCheckSkipsDeepPriceDiagnostics(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	service := Service{
+	service := Service{RegistrationProbe: deterministicRegistration,
 		StateRoot: root,
 		Home:      t.TempDir(),
 		Workdir:   t.TempDir(),
@@ -540,7 +544,7 @@ func TestFullCheckReportsProblemsWithoutChangingDatabases(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := fileDigest(t, filepath.Join(root, "agentdeck.sqlite3"))
-	report, err := (Service{StateRoot: root, Home: t.TempDir(), Workdir: t.TempDir(), Vault: doctorVault(root), Now: func() time.Time { return time.Unix(1000, 0) }}).Check(ctx, true)
+	report, err := (Service{RegistrationProbe: deterministicRegistration, StateRoot: root, Home: t.TempDir(), Workdir: t.TempDir(), Vault: doctorVault(root), Now: func() time.Time { return time.Unix(1000, 0) }}).Check(ctx, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -580,7 +584,7 @@ func TestProviderCheckAcceptsOfficialAfterBearer(t *testing.T) {
 		t.Fatal(err)
 	}
 	report := Report{}
-	if err := (Service{StateRoot: state, Home: home, Vault: vault}).checkProviders(ctx, database, &report, false); err != nil {
+	if err := (Service{RegistrationProbe: deterministicRegistration, StateRoot: state, Home: home, Vault: vault}).checkProviders(ctx, database, &report, false); err != nil {
 		t.Fatal(err)
 	}
 	if hasCode(report, "provider_config_drift") {
@@ -679,7 +683,7 @@ func TestProjectAttributionGateDiagnostics(t *testing.T) {
 			test.setup(t, state, database)
 
 			report := Report{}
-			(Service{StateRoot: state}).checkProjectAttributionGate(ctx, database, &report)
+			(Service{RegistrationProbe: deterministicRegistration, StateRoot: state}).checkProjectAttributionGate(ctx, database, &report)
 			check := findCheck(report, "project_attribution_gate", test.code)
 			if check == nil || check.Status != "warning" ||
 				check.Recovery != "rerun the intended agentdeck provider use command" {
@@ -713,7 +717,7 @@ func TestProviderCheckValidatesEveryNamedCredential(t *testing.T) {
 		t.Fatal(err)
 	}
 	report := Report{}
-	if err = (Service{StateRoot: state, Home: t.TempDir(), Vault: vault}).checkProviders(ctx, database, &report, false); err != nil {
+	if err = (Service{RegistrationProbe: deterministicRegistration, StateRoot: state, Home: t.TempDir(), Vault: vault}).checkProviders(ctx, database, &report, false); err != nil {
 		t.Fatal(err)
 	}
 	for _, check := range report.Checks {
@@ -744,7 +748,7 @@ func TestProviderCheckTreatsZeroNamedCredentialsAsMissing(t *testing.T) {
 		t.Fatal(err)
 	}
 	report := Report{}
-	if err = (Service{StateRoot: state, Home: t.TempDir(), Vault: vault}).checkProviders(ctx, database, &report, false); err != nil {
+	if err = (Service{RegistrationProbe: deterministicRegistration, StateRoot: state, Home: t.TempDir(), Vault: vault}).checkProviders(ctx, database, &report, false); err != nil {
 		t.Fatal(err)
 	}
 	for _, check := range report.Checks {
@@ -775,7 +779,7 @@ func TestFullProviderCheckAuthenticatesCredentialCiphertext(t *testing.T) {
 		t.Fatal(err)
 	}
 	report := Report{}
-	if err = (Service{StateRoot: state, Home: t.TempDir(), Vault: vault}).checkProviders(ctx, database, &report, true); err != nil {
+	if err = (Service{RegistrationProbe: deterministicRegistration, StateRoot: state, Home: t.TempDir(), Vault: vault}).checkProviders(ctx, database, &report, true); err != nil {
 		t.Fatal(err)
 	}
 	check := findCheck(report, "provider_credential_authentication", credentialvault.ErrCiphertextInvalid.Error())
@@ -818,7 +822,7 @@ func TestFullProviderCheckAuthenticatesValidCandidatesAfterQuickFailure(t *testi
 	}
 
 	report := Report{}
-	if err = (Service{StateRoot: state, Home: t.TempDir(), Vault: vault}).checkProviders(ctx, database, &report, true); err != nil {
+	if err = (Service{RegistrationProbe: deterministicRegistration, StateRoot: state, Home: t.TempDir(), Vault: vault}).checkProviders(ctx, database, &report, true); err != nil {
 		t.Fatal(err)
 	}
 	quick := findCheck(report, "provider_credential_key", credentialvault.ErrKeyVersionUnsupported.Error())
@@ -863,7 +867,7 @@ func TestFullProviderCheckAcceptsMixedCredentialKeyVersions(t *testing.T) {
 	}
 
 	report := Report{}
-	if err = (Service{StateRoot: state, Home: t.TempDir(), Vault: vault}).checkProviders(ctx, database, &report, true); err != nil {
+	if err = (Service{RegistrationProbe: deterministicRegistration, StateRoot: state, Home: t.TempDir(), Vault: vault}).checkProviders(ctx, database, &report, true); err != nil {
 		t.Fatal(err)
 	}
 	if check := findCheck(report, "provider_credential_key", credentialvault.ErrKeyMachineMismatch.Error()); check != nil {
@@ -909,7 +913,7 @@ func TestFullProviderCheckWithholdsRotationRecoveryForCrossVersionKeyID(t *testi
 	}
 
 	report := Report{}
-	if err = (Service{StateRoot: state, Home: t.TempDir(), Vault: vault}).checkProviders(ctx, database, &report, true); err != nil {
+	if err = (Service{RegistrationProbe: deterministicRegistration, StateRoot: state, Home: t.TempDir(), Vault: vault}).checkProviders(ctx, database, &report, true); err != nil {
 		t.Fatal(err)
 	}
 	if check := findCheck(report, "provider_credential_key", credentialvault.ErrKeyMachineMismatch.Error()); check == nil {
@@ -938,7 +942,7 @@ func TestQuickProviderCheckFailsClosedWithoutRegeneratingCredentialKey(t *testin
 		t.Fatal(err)
 	}
 	report := Report{}
-	if err = (Service{StateRoot: state, Home: t.TempDir(), Vault: vault}).checkProviders(ctx, database, &report, false); err != nil {
+	if err = (Service{RegistrationProbe: deterministicRegistration, StateRoot: state, Home: t.TempDir(), Vault: vault}).checkProviders(ctx, database, &report, false); err != nil {
 		t.Fatal(err)
 	}
 	if !hasCode(report, credentialvault.ErrKeyMissing.Error()) {
@@ -973,7 +977,7 @@ func TestQuickProviderCheckReportsMissingKeyWithMalformedOnlyCiphertext(t *testi
 	}
 
 	report := Report{}
-	if err = (Service{StateRoot: state, Home: t.TempDir(), Vault: vault}).checkProviders(ctx, database, &report, false); err != nil {
+	if err = (Service{RegistrationProbe: deterministicRegistration, StateRoot: state, Home: t.TempDir(), Vault: vault}).checkProviders(ctx, database, &report, false); err != nil {
 		t.Fatal(err)
 	}
 	malformed := findCheck(report, "provider_credential_key", credentialvault.ErrCiphertextInvalid.Error())
@@ -1004,7 +1008,7 @@ func TestQuickProviderCheckOffersTargetedRecoveryForMalformedCiphertext(t *testi
 	}
 
 	report := Report{}
-	if err = (Service{StateRoot: state, Home: t.TempDir(), Vault: vault}).checkProviders(ctx, database, &report, false); err != nil {
+	if err = (Service{RegistrationProbe: deterministicRegistration, StateRoot: state, Home: t.TempDir(), Vault: vault}).checkProviders(ctx, database, &report, false); err != nil {
 		t.Fatal(err)
 	}
 	check := findCheck(report, "provider_credential_key", credentialvault.ErrCiphertextInvalid.Error())
@@ -1132,7 +1136,7 @@ func TestHookRefusalCheckLifetimeAndReadOnly(t *testing.T) {
 				}
 				before, _ := os.ReadFile(path)
 				info, _ := os.Stat(path)
-				report, err := (Service{StateRoot: root}).Check(context.Background(), full)
+				report, err := (Service{RegistrationProbe: deterministicRegistration, StateRoot: root}).Check(context.Background(), full)
 				if err != nil || !report.Partial {
 					t.Fatalf("report = %+v, %v", report, err)
 				}
@@ -1220,7 +1224,7 @@ func TestCheckReportsBothLocksIndependentlyUnderContention(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	service := Service{
+	service := Service{RegistrationProbe: deterministicRegistration,
 		StateRoot: state,
 		Home:      t.TempDir(),
 		Workdir:   t.TempDir(),
@@ -1279,7 +1283,7 @@ func TestCheckExtensionsAggregateRow(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	service := Service{
+	service := Service{RegistrationProbe: deterministicRegistration,
 		StateRoot: state,
 		Home:      t.TempDir(),
 		Workdir:   t.TempDir(),

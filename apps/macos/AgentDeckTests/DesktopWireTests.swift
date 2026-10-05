@@ -3,6 +3,23 @@ import XCTest
 @testable import AgentDeckShared
 
 final class DesktopWireTests: XCTestCase {
+    func testLaunchServicesStatusesSurviveFullSnapshotDecoding() throws {
+        for state in ["consistent", "not_applicable", "conflict", "stale", "unknown"] {
+            let warning = !["consistent", "not_applicable"].contains(state)
+            var fixture = try XCTUnwrap(JSONSerialization.jsonObject(with: desktopFixtureData("snapshot-complete.json")) as? [String: Any])
+            var data = try XCTUnwrap(fixture["data"] as? [String: Any])
+            data["health"] = ["available": true, "status": warning ? "degraded" : "healthy", "healthy": !warning, "problems": warning ? 1 : 0, "warnings": warning ? 1 : 0, "errors": 0, "checks": [["name": "launchservices", "status": warning ? "warning" : "ok", "code": "launchservices_\(state)", "resource": "launchservices_registration", "reason": "launchservices_\(state)"]]]
+            fixture["data"] = data
+            let envelope = try decodeDesktopWireEnvelopeV1(JSONSerialization.data(withJSONObject: fixture))
+            let health = envelope.data.health
+            XCTAssertTrue(health.available)
+            XCTAssertEqual(health.warnings, warning ? 1 : 0)
+            XCTAssertEqual(health.checks.first?.status, warning ? "warning" : "ok")
+            XCTAssertNil(health.checks.first?.actionKind)
+            XCTAssertNil(health.checks.first?.recoveryCommand)
+            XCTAssertNil(health.checks.first?.diagnosticCommand)
+        }
+    }
     func testSchemaAheadFixtureDecodesVersionsAndHookRefusals() throws {
         let envelope = try decodeDesktopWireEnvelopeV1(desktopFixtureData("snapshot-schema-ahead.json"))
         XCTAssertEqual(envelope.data.wireVersion, 1)
