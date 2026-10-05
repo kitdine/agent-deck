@@ -258,10 +258,17 @@ struct WidgetSurfaceModel {
 	/// an `.all`-configured widget down to one client (presentedQuotaClients'
 	/// own selection), so the header must name that client rather than
 	/// keep claiming "All clients" while showing only one of them. Large
-	/// keeps the configured client unchanged: it labels each client inside
-	/// its own per-client block instead.
+	/// labels the clients actually present in the snapshot, independently of intent.
 	func quotaScopeClient(family: WidgetFamily) -> WidgetClient {
-		guard family != .systemLarge, entry.client == .all,
+		if family == .systemLarge {
+			let shown = presentedQuotaClients(family: family)
+			if shown.count == 1, let client = shown.first,
+				let resolved = WidgetClient(rawValue: client.client) {
+				return resolved
+			}
+			return .all
+		}
+		guard entry.client == .all,
 			let shown = presentedQuotaClients(family: family).first ?? quotaClients.first,
 			let resolved = WidgetClient(rawValue: shown.client)
 		else {

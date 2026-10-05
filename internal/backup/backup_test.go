@@ -7,9 +7,11 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -530,6 +532,178 @@ func TestRestoreClearsStatusLineConsentAsMachineLocal(t *testing.T) {
 	}
 	if !settings.ProbeEnabled {
 		t.Fatal("ProbeEnabled = false after restore, want the unrelated reading switch preserved")
+	}
+}
+
+func TestRestoreDiscardsAccountBoundQuotaState(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 10, 2, 6, 0, 0, 0, time.UTC)
+	state := filepath.Join(t.TempDir(), "source")
+	database, err := store.Open(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	vault := testBackupVault(t, "source-machine")
+	providers := providerpkg.Service{Store: database, Vault: vault}
+	if _, err = providers.Add(ctx, providerpkg.Definition{Name: "synthetic", Endpoint: "https://example.invalid", CredentialRef: "synthetic-ref", Multiplier: "1", Clients: []providerpkg.Client{providerpkg.ClientCodex}}, "synthetic-secret"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = database.DB.ExecContext(ctx, `INSERT INTO usage_events(event_key,client,session_id,event_id,event_at,model,input_tokens,source_path,source_offset) VALUES('fixture','codex','session','event',?,'model',123,'synthetic.jsonl',0)`, now.Format(time.RFC3339)); err != nil {
+		t.Fatal(err)
+	}
+	settings := quota.Settings{ProbeEnabled: true, ProbeClients: []quota.Client{quota.ClientCodex, quota.ClientClaude}, ProbeInterval: 5 * time.Minute, AlertThresholds: []float64{75, 90}, ResetNotice: true, StatusLineConsent: true}
+	if err = quota.SaveSettings(ctx, database, settings); err != nil {
+		t.Fatal(err)
+	}
+	sourceQuota := quota.NewStore(database.DB)
+	for _, client := range []quota.Client{quota.ClientCodex, quota.ClientClaude} {
+		src := quota.SourceCodex
+		if client == quota.ClientClaude {
+			src = quota.SourceClaudeStatusLine
+		}
+		obs := quota.Observation{Client: client, AccountID: "account-A", WindowKey: "five_hour", Source: src, ObservedAt: now, WindowMinutes: 300, UsedPercent: 91, ResetsAt: now.Add(time.Hour)}
+		if _, _, _, err = sourceQuota.Record(ctx, obs); err != nil {
+			t.Fatal(err)
+		}
+		if err = sourceQuota.PutEnvelope(ctx, quota.EnvelopeRecord{Client: client, AccountID: "account-A", Applicable: true, Source: src, ObservedAt: now, Plan: "source-plan", ResetAllowance: quota.ResetAllowance{Remaining: 3, HasRemaining: true}, Billing: quota.Billing{Balance: 42, HasBalance: true}}); err != nil {
+			t.Fatal(err)
+		}
+		if err = sourceQuota.PutEnvelopeFailure(ctx, client, quota.ReasonProbeFailed, now, now.Add(time.Hour), now); err != nil {
+			t.Fatal(err)
+		}
+		if _, err = database.DB.ExecContext(ctx, `INSERT INTO quota_alert_notices(client,window_key,kind,threshold,instance_unix,notified_at) VALUES(?,'five_hour','threshold',90,?,?)`, string(client), obs.ResetsAt.Unix(), now.Format(time.RFC3339)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	archive := filepath.Join(t.TempDir(), "portable.adb")
+	if _, err = (Service{Core: database, StateRoot: state, Vault: vault}).Create(ctx, archive, "passphrase", false); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(t.TempDir(), "target")
+	if _, err = Restore(ctx, archive, target, "passphrase", syntheticMachineIdentity("target-machine")); err != nil {
+		t.Fatal(err)
+	}
+	restored, err := store.Open(ctx, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer restored.Close()
+	for _, table := range []string{"quota_windows", "quota_envelopes", "quota_alert_notices"} {
+		var count int
+		if err = restored.DB.QueryRowContext(ctx, "SELECT count(*) FROM "+table).Scan(&count); err != nil {
+			t.Fatal(err)
+		}
+		if count != 0 {
+			t.Errorf("restored %s has %d source-account rows, want none", table, count)
+		}
+		if err = database.DB.QueryRowContext(ctx, "SELECT count(*) FROM "+table).Scan(&count); err != nil {
+			t.Fatal(err)
+		}
+		if count != 2 {
+			t.Errorf("source %s count = %d, want 2 unchanged", table, count)
+		}
+	}
+	gotSettings, err := quota.LoadSettings(ctx, restored)
+	if err != nil {
+		t.Fatal(err)
+	}
+	settings.StatusLineConsent = false
+	if !reflect.DeepEqual(gotSettings, settings) {
+		t.Errorf("settings = %#v, want %#v", gotSettings, settings)
+	}
+	assertRestoredCredential(t, ctx, target, "target-machine", "synthetic", "default", "synthetic-secret")
+	var tokens int
+	if err = restored.DB.QueryRowContext(ctx, "SELECT input_tokens FROM usage_events WHERE event_key='fixture'").Scan(&tokens); err != nil || tokens != 123 {
+		t.Fatalf("usage tokens = %d, %v", tokens, err)
+	}
+	targetQuota := quota.NewStore(restored.DB)
+	assertNoSource := func(stage string) {
+		t.Helper()
+		for _, client := range []quota.Client{quota.ClientCodex, quota.ClientClaude} {
+			windows, e := targetQuota.Windows(ctx, client)
+			if e != nil {
+				t.Fatal(e)
+			}
+			if len(windows) != 0 {
+				t.Errorf("%s: %s exposes source windows: %#v", stage, client, windows)
+			}
+			rec, _, e := targetQuota.Envelope(ctx, client)
+			if e != nil {
+				t.Fatal(e)
+			}
+			if rec.Plan != "" || rec.ResetAllowance.HasRemaining || rec.Billing.HasBalance {
+				t.Errorf("%s: %s exposes source envelope: %#v", stage, client, rec)
+			}
+		}
+	}
+	assertNoSource("before probe")
+	scheduler := quota.Scheduler{Store: targetQuota, Interval: 5 * time.Minute, Now: func() time.Time { return now.Add(time.Minute) }, ProbeCodex: func(context.Context, time.Time, time.Duration) (quota.CodexResult, error) {
+		return quota.CodexResult{}, errors.New("synthetic offline")
+	}}
+	scheduler.Run(ctx, quota.ClientCodex, quota.TriggerManual, true)
+	assertNoSource("failed target probe")
+	scheduler.ProbeCodex = func(_ context.Context, at time.Time, _ time.Duration) (quota.CodexResult, error) {
+		return quota.CodexResult{AccountID: "account-B", Plan: "target-plan", Windows: []quota.Observation{{Client: quota.ClientCodex, AccountID: "account-B", WindowKey: "five_hour", Source: quota.SourceCodex, ObservedAt: at, WindowMinutes: 300, UsedPercent: 17, ResetsAt: now.Add(time.Hour)}}}, nil
+	}
+	scheduler.Run(ctx, quota.ClientCodex, quota.TriggerManual, true)
+	windows, err := targetQuota.Windows(ctx, quota.ClientCodex)
+	if err != nil || len(windows) != 1 || windows[0].UsedPercent != 17 || windows[0].HasObservedResetAt {
+		t.Fatalf("target B windows = %#v, %v", windows, err)
+	}
+	rec, ok, err := targetQuota.Envelope(ctx, quota.ClientCodex)
+	if err != nil || !ok || rec.Plan != "target-plan" || rec.Failure != "" || rec.ResetAllowance.HasRemaining || rec.Billing.HasBalance {
+		t.Fatalf("target B envelope = %#v, %v", rec, err)
+	}
+}
+
+func TestRestoreRollsBackQuotaCleanupFailure(t *testing.T) {
+	ctx := context.Background()
+	state := filepath.Join(t.TempDir(), "source")
+	database, err := store.Open(ctx, state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if _, err = database.DB.ExecContext(ctx, `INSERT INTO quota_envelopes(client) VALUES('codex');
+ CREATE TRIGGER reject_quota_cleanup BEFORE DELETE ON quota_envelopes BEGIN SELECT RAISE(ABORT, 'synthetic cleanup failure'); END;`); err != nil {
+		t.Fatal(err)
+	}
+	archive := filepath.Join(t.TempDir(), "portable.adb")
+	if _, err = (Service{Core: database, StateRoot: state, Vault: testBackupVault(t, "source-machine")}).Create(ctx, archive, "passphrase", false); err != nil {
+		t.Fatal(err)
+	}
+	for _, existing := range []bool{false, true} {
+		t.Run(fmt.Sprintf("existing=%t", existing), func(t *testing.T) {
+			target := filepath.Join(t.TempDir(), "target")
+			if existing {
+				if err := os.Mkdir(target, 0755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Chmod(target, 0755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if _, err := Restore(ctx, archive, target, "passphrase", syntheticMachineIdentity("target-machine")); err == nil || !strings.Contains(err.Error(), "synthetic cleanup failure") {
+				t.Fatalf("Restore error = %v", err)
+			}
+			if existing {
+				entries, err := os.ReadDir(target)
+				if err != nil || len(entries) != 0 {
+					t.Fatalf("target rollback: %v, %v", entries, err)
+				}
+				info, err := os.Stat(target)
+				if err != nil || info.Mode().Perm() != 0755 {
+					t.Fatalf("target mode rollback: %v, %v", info, err)
+				}
+			} else if _, err := os.Stat(target); !errors.Is(err, fs.ErrNotExist) {
+				t.Fatalf("new target remains: %v", err)
+			}
+		})
+	}
+	var count int
+	if err = database.DB.QueryRowContext(ctx, "SELECT count(*) FROM quota_envelopes").Scan(&count); err != nil || count != 1 {
+		t.Fatalf("source changed: %d, %v", count, err)
 	}
 }
 

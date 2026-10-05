@@ -540,52 +540,6 @@ func TestSetupStatusLineRecordsExistingPriorCommand(t *testing.T) {
 	}
 }
 
-// Codex PR #5 P2: settings.json already registered under a *different*
-// --state-dir (a stale or another profile's AgentDeck route).
-// managedStatusLineCommand alone recognizes it as "AgentDeck's own" and
-// would report Unchanged without ever installing this instance's own route.
-func TestSetupStatusLineReconfiguresARouteRegisteredForADifferentStateDir(t *testing.T) {
-	manager, home := newTestManager(t)
-	otherStateDir := t.TempDir()
-	path := configPath(home, ClientClaude)
-	writeDocument(t, path, map[string]json.RawMessage{
-		"statusLine": json.RawMessage(`{"type":"command","command":"agentdeck --state-dir ` + otherStateDir + ` quota capture"}`),
-	}, privateFileMode)
-
-	result, err := manager.SetupStatusLine()
-	if err != nil {
-		t.Fatalf("SetupStatusLine: %v", err)
-	}
-	if result.Outcome != OutcomeConfigured {
-		t.Fatalf("Outcome = %v, want configured -- a different state dir's route is not this instance's own", result.Outcome)
-	}
-
-	document := readDocument(t, path)
-	var entry statusLineCommandEntry
-	if err := json.Unmarshal(document[statusLineKey], &entry); err != nil {
-		t.Fatalf("decode statusLine: %v", err)
-	}
-	if entry.Command != "agentdeck quota capture" {
-		t.Fatalf("statusLine command = %q, want this instance's own desired entry", entry.Command)
-	}
-	// Codex PR #5 third review, P1: the other state dir's own AgentDeck route
-	// is still recorded internally (SetupStatusLine's "record whatever was
-	// there before" contract, unchanged), but PriorStatusLineCommand must
-	// refuse to hand back a managed AgentDeck command as something to chain
-	// to at runtime -- doing so is what let two installations registering
-	// over each other chain A -> B -> A recursively.
-	prior, found, err := manager.readStatusLinePrior()
-	if err != nil || !found || !prior.Existed {
-		t.Fatalf("readStatusLinePrior = (%+v, %v, %v), want the other state dir's entry recorded", prior, found, err)
-	}
-	if command, ok := decodeStatusLineCommandEntry(prior.Value); !ok || command != "agentdeck --state-dir "+otherStateDir+" quota capture" {
-		t.Fatalf("recorded prior command = (%q, %v), want the other state dir's entry", command, ok)
-	}
-	if command, ok := manager.PriorStatusLineCommand(); ok {
-		t.Fatalf("PriorStatusLineCommand = (%q, %v), want ok=false -- must never chain to another AgentDeck installation's own route", command, ok)
-	}
-}
-
 func TestAbsoluteEmbeddedHelperStatusLineIsManagedAndNeverChained(t *testing.T) {
 	manager, home := newTestManager(t)
 	path := configPath(home, ClientClaude)
@@ -863,9 +817,8 @@ func TestRestoreStatusLineLeavesADifferentInstallationsActiveRouteUntouched(t *t
 	if _, err := managerA.SetupStatusLine(); err != nil {
 		t.Fatalf("A SetupStatusLine: %v", err)
 	}
-	if _, err := managerB.SetupStatusLine(); err != nil {
-		t.Fatalf("B SetupStatusLine: %v", err)
-	}
+	// Model an existing route installed by an older version or external writer.
+	writeDocument(t, path, map[string]json.RawMessage{statusLineKey: managerB.desiredStatusLineEntry()}, privateFileMode)
 	activeBefore := readDocument(t, path)[statusLineKey]
 
 	restore, err := managerA.RestoreStatusLine()
@@ -1120,4 +1073,187 @@ func mustJSON(t *testing.T, value any) json.RawMessage {
 		t.Fatalf("encode JSON: %v", err)
 	}
 	return encoded
+}
+
+func TestReinstallRestoredStatusLine(t *testing.T) {
+	for _, prior := range []string{`{}`, `{"statusLine":{"type":"command","command":"printf prior"}}`} {
+		t.Run(prior, func(t *testing.T) {
+			manager, home := newTestManager(t)
+			path := configPath(home, ClientClaude)
+			if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, []byte(prior), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if result, err := manager.SetupStatusLine(); err != nil || result.Outcome != OutcomeConfigured {
+				t.Fatalf("setup=%+v, %v", result, err)
+			}
+			priorPath, err := manager.statusLinePriorPath()
+			if err != nil {
+				t.Fatal(err)
+			}
+			priorBefore, err := os.ReadFile(priorPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result, err := manager.RestoreStatusLine(); err != nil || result.Outcome != OutcomeRemoved {
+				t.Fatalf("restore=%+v, %v", result, err)
+			}
+			contents, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			contents, err = setTopLevelValue(contents, "unrelated", json.RawMessage(`{"later":true}`))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, contents, 0600); err != nil {
+				t.Fatal(err)
+			}
+			if result, err := manager.ReinstallRestoredStatusLine(); err != nil || result.Outcome != OutcomeConfigured {
+				t.Fatalf("reinstall=%+v, %v", result, err)
+			}
+			after, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Contains(after, []byte(`"later":true`)) {
+				t.Fatalf("unrelated data lost: %s", after)
+			}
+			priorAfter, err := os.ReadFile(priorPath)
+			if err != nil || !bytes.Equal(priorBefore, priorAfter) {
+				t.Fatalf("prior changed: %s, %v", priorAfter, err)
+			}
+			if result, err := manager.ReinstallRestoredStatusLine(); err != nil || result.Outcome != OutcomeUnchanged {
+				t.Fatalf("idempotent reinstall=%+v, %v", result, err)
+			}
+			if result, err := manager.RestoreStatusLine(); err != nil || result.Outcome != OutcomeRemoved {
+				t.Fatalf("second restore=%+v, %v", result, err)
+			}
+			after, err = os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, found, err := topLevelValueSpanRaw(after, statusLineKey)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want, wantFound, _ := topLevelValueSpanRaw([]byte(prior), statusLineKey)
+			if found != wantFound || (found && !jsonEquivalent(got, want)) {
+				t.Fatalf("prior not retained: %s", after)
+			}
+		})
+	}
+}
+
+func TestReinstallRestoredStatusLineRequiresSuccessfulRemoval(t *testing.T) {
+	manager, _ := newTestManager(t)
+	if result, err := manager.ReinstallRestoredStatusLine(); err != nil || result.Outcome != OutcomeSkipped {
+		t.Fatalf("without restore=%+v, %v", result, err)
+	}
+	if _, err := manager.RestoreStatusLine(); err != nil {
+		t.Fatal(err)
+	}
+	if result, err := manager.ReinstallRestoredStatusLine(); err != nil || result.Outcome != OutcomeSkipped {
+		t.Fatalf("absent restore=%+v, %v", result, err)
+	}
+}
+
+func TestReinstallRestoredStatusLinePreservesLaterRoutesAndReportsWriteFailure(t *testing.T) {
+	for _, later := range []string{"printf later", "agentdeck --state-dir /other quota capture", "write-failure"} {
+		t.Run(later, func(t *testing.T) {
+			manager, home := newTestManager(t)
+			if result, err := manager.SetupStatusLine(); err != nil || result.Outcome != OutcomeConfigured {
+				t.Fatalf("setup=%+v, %v", result, err)
+			}
+			if result, err := manager.RestoreStatusLine(); err != nil || result.Outcome != OutcomeRemoved {
+				t.Fatalf("restore=%+v, %v", result, err)
+			}
+			path := configPath(home, ClientClaude)
+			if later == "write-failure" {
+				manager.files.rename = func(string, string) error { return errors.New("injected rename failure") }
+			} else {
+				contents, err := json.Marshal(map[string]any{"statusLine": statusLineCommandEntry{Type: "command", Command: later}, "keep": true})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(path, contents, 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			before, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result, err := manager.ReinstallRestoredStatusLine(); err != nil || result.Outcome != OutcomeFailed || result.Error == "" {
+				t.Fatalf("reinstall=%+v, %v", result, err)
+			}
+			after, err := os.ReadFile(path)
+			if err != nil || !bytes.Equal(before, after) {
+				t.Fatalf("file changed=%s, %v", after, err)
+			}
+		})
+	}
+}
+
+func TestReinstallRestoredStatusLinePreservesWritesDuringCompensation(t *testing.T) {
+	for _, laterCommand := range []string{"printf later", "agentdeck --state-dir /other quota capture"} {
+		t.Run(laterCommand, func(t *testing.T) {
+			manager, home := newTestManager(t)
+			if result, err := manager.SetupStatusLine(); err != nil || result.Outcome != OutcomeConfigured {
+				t.Fatalf("setup=%+v, %v", result, err)
+			}
+			if result, err := manager.RestoreStatusLine(); err != nil || result.Outcome != OutcomeRemoved {
+				t.Fatalf("restore=%+v, %v", result, err)
+			}
+			path := configPath(home, ClientClaude)
+			later := []byte(`{"statusLine":{"type":"command","command":"` + laterCommand + `"},"unrelated":{"later":true}}`)
+			originalCreateTemp := manager.files.createTemp
+			manager.files.createTemp = func(dir, pattern string) (temporaryFile, error) {
+				// Deterministic third-party write after the compensation snapshot read,
+				// before its final replacement; all paths belong to t.TempDir().
+				if err := os.WriteFile(path, later, 0600); err != nil {
+					t.Fatal(err)
+				}
+				return originalCreateTemp(dir, pattern)
+			}
+			result, err := manager.ReinstallRestoredStatusLine()
+			if err != nil || result.Outcome != OutcomeFailed {
+				t.Fatalf("reinstall=%+v, %v", result, err)
+			}
+			after, readErr := os.ReadFile(path)
+			if readErr != nil {
+				t.Fatal(readErr)
+			}
+			if !bytes.Equal(after, later) {
+				t.Fatalf("later route/config overwritten: result=%+v err=%v got=%s want=%s", result, err, after, later)
+			}
+		})
+	}
+}
+
+func TestReinstallRestoredStatusLineRejectsDeletedSettings(t *testing.T) {
+	manager, home := newTestManager(t)
+	if result, err := manager.SetupStatusLine(); err != nil || result.Outcome != OutcomeConfigured {
+		t.Fatalf("setup=%+v, %v", result, err)
+	}
+	if result, err := manager.RestoreStatusLine(); err != nil || result.Outcome != OutcomeRemoved {
+		t.Fatalf("restore=%+v, %v", result, err)
+	}
+	path := configPath(home, ClientClaude)
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	result, err := manager.ReinstallRestoredStatusLine()
+	if err != nil || result.Outcome != OutcomeFailed {
+		t.Fatalf("reinstall=%+v, %v", result, err)
+	}
+	info, statErr := os.Stat(path)
+	if statErr == nil {
+		t.Fatalf("deleted settings silently recreated: result=%+v err=%v mode=%04o", result, err, info.Mode().Perm())
+	}
+	if !os.IsNotExist(statErr) {
+		t.Fatal(statErr)
+	}
 }

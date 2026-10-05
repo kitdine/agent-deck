@@ -483,12 +483,20 @@ Three grounds, in order of weight:
    pair, and maintain it. This topic supplies one cause and one consumer. A
    classification contract that exists to express a single fact is a contract
    that will be wrong the first time a second cause appears.
-3. **The derivation is exact, not heuristic.** The four codes are not guessed
-   at: when `OpenReadOnly` fails, `internal/desktop/desktop.go:254-255` emits
-   `provider_unavailable` and `usage_unavailable` unconditionally, and
-   `loadSessions` (`:484`, `:494`) emits `sessions_unavailable` when the
-   separate session store is also unreadable. The app matching the check code
-   and suppressing that fixed set reproduces the producer's behavior exactly.
+3. **The derivation is exact for D2's two core-store warnings.** When
+   `OpenReadOnly` fails, `Service.Build` in `internal/desktop/desktop.go` emits
+   `provider_unavailable` and `usage_unavailable` unconditionally. Matching the
+   check code and suppressing those two warnings follows the producer's exact
+   causal relation, as D2 requires.
+
+   `sessions_unavailable` is not a consequence of that failure. `loadSessions`
+   runs outside the core-store open branch. `OpenSessionsReadOnly` in
+   `internal/store/store.go` opens the separate `sessions.sqlite3` and checks
+   its two session tables, not the core schema version. When that store is
+   readable, sessions still render while the core store is refused; when its
+   own open or list fails, the independent warning remains visible under D2.
+   A failed core-store open alone neither emits that warning nor justifies
+   suppressing it.
 
 **One correction the surface should absorb at stage 7.**
 `provider_candidates_unavailable` cannot occur under this condition.

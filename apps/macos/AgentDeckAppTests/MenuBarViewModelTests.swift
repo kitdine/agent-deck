@@ -5,12 +5,18 @@ import XCTest
 
 @MainActor
 final class MenuBarViewModelTests: XCTestCase {
+	private func healthySnapshotStore() -> AppGroupSnapshotStore {
+		let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+		addTeardownBlock { try? FileManager.default.removeItem(at: directory) }
+		return AppGroupSnapshotStore(directoryURL: directory)
+	}
+
 	private func readyModel(
 		envelope: DesktopWireEnvelopeV1 = WireFixture.envelope(),
 		preferences: DesktopPreferences? = nil
 	) async -> MenuBarViewModel {
 		let host = StubDesktopHost(behavior: .envelope(envelope))
-		let model = await makeModel(host: host, preferences: preferences)
+		let model = await makeModel(host: host, preferences: preferences, snapshotStore: healthySnapshotStore())
 		await model.coordinator.refresh()
 		return model
 	}
@@ -59,7 +65,7 @@ final class MenuBarViewModelTests: XCTestCase {
 
 	func testSchemaSignalFailurePrecedenceAndHealthyReset() async {
 		let host = StubDesktopHost(behavior: .envelope(WireFixture.schemaSignal()))
-		let model = await makeModel(host: host)
+		let model = await makeModel(host: host, snapshotStore: healthySnapshotStore())
 		await model.coordinator.refresh()
 		host.behavior = .failure(HelperExecutionError.timedOut)
 		await model.coordinator.refresh()
@@ -212,6 +218,18 @@ final class MenuBarViewModelTests: XCTestCase {
 		XCTAssertEqual(firstFailure.refreshActionState, .failed)
 		XCTAssertEqual(firstFailure.errorCopy, t(DesktopCopy.firstRefreshFailed))
 		XCTAssertEqual(firstFailure.errorBodyCopy, t(DesktopCopy.firstRefreshEmpty))
+	}
+
+	func testUnavailableContainerUsesExistingWidgetNoticeForFreshMenuData() async {
+		let envelope = WireFixture.envelope()
+		let model = await makeModel(host: StubDesktopHost(behavior: .envelope(envelope)), snapshotStore: nil)
+		await model.coordinator.refresh()
+		XCTAssertEqual(model.presentation.surface, .dataSurface)
+		XCTAssertFalse(model.presentation.qualifiers.contains(.stale))
+		XCTAssertFalse(model.presentation.isBadged)
+		let notices = model.notices.filter { $0.id == "widget.publication" }
+		XCTAssertEqual(notices.count, 1)
+		XCTAssertEqual(notices.first?.text, t(DesktopCopy.widgetPublicationFailed))
 	}
 
 	func testWidgetPublicationFailureKeepsFreshMenuDataUnbadgedAndUsesOneNotice() async throws {
@@ -779,6 +797,19 @@ final class MenuBarViewModelTests: XCTestCase {
 		let health: [String: Any] = ["available": true, "status": "warning", "healthy": false, "problems": checks.count, "warnings": checks.count, "errors": 0, "checks": checks]
 		let model = await readyModel(envelope: WireFixture.envelope(health: health))
 		XCTAssertTrue(model.healthDetail.rows.allSatisfy { $0.actionContent == nil && $0.actionLabel == nil })
+	}
+
+	func testLaunchServicesRecognitionPreservesNoticesAndDisablesActions() async {
+		for state in ["consistent", "not_applicable", "conflict", "stale", "unknown"] {
+			let warning = !["consistent", "not_applicable"].contains(state)
+			let health: [String: Any] = ["available": true, "status": warning ? "degraded" : "healthy", "healthy": !warning, "problems": warning ? 1 : 0, "warnings": warning ? 1 : 0, "errors": 0, "checks": [["name": "launchservices", "status": warning ? "warning" : "ok", "code": "launchservices_\(state)", "resource": "launchservices_registration", "reason": "launchservices_\(state)"]]]
+			let model = await readyModel(envelope: WireFixture.envelope(health: health))
+			XCTAssertEqual(model.notices.filter { $0.id == "health" }.count, warning ? 1 : 0)
+			XCTAssertEqual(model.healthDetail.rows.count, 1)
+			XCTAssertEqual(model.healthDetail.rows.first?.severity, warning ? .warning : nil)
+			XCTAssertNil(model.healthDetail.rows.first?.actionContent)
+			XCTAssertNil(model.healthDetail.rows.first?.actionLabel)
+		}
 	}
 
 	// MARK: Menu-bar item

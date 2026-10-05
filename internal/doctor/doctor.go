@@ -23,17 +23,18 @@ import (
 )
 
 type Check struct {
-	Name               string     `json:"name"`
-	Status             string     `json:"status"`
-	Code               string     `json:"code,omitempty"`
-	Count              int        `json:"count,omitempty"`
-	SupportedCount     int        `json:"supported_count,omitempty"`
-	Recovery           string     `json:"recovery_command,omitempty"`
-	Resource           string     `json:"resource,omitempty"`
-	Reason             string     `json:"reason,omitempty"`
-	ActionKind         ActionKind `json:"action_kind,omitempty"`
-	DiagnosticCommand  string     `json:"diagnostic_command,omitempty"`
-	ManualPrerequisite string     `json:"manual_prerequisite,omitempty"`
+	Name                string               `json:"name"`
+	Status              string               `json:"status"`
+	Code                string               `json:"code,omitempty"`
+	Count               int                  `json:"count,omitempty"`
+	SupportedCount      int                  `json:"supported_count,omitempty"`
+	Recovery            string               `json:"recovery_command,omitempty"`
+	Resource            string               `json:"resource,omitempty"`
+	Reason              string               `json:"reason,omitempty"`
+	ActionKind          ActionKind           `json:"action_kind,omitempty"`
+	DiagnosticCommand   string               `json:"diagnostic_command,omitempty"`
+	ManualPrerequisite  string               `json:"manual_prerequisite,omitempty"`
+	RegistrationDetails *RegistrationDetails `json:"registration_details,omitempty"`
 }
 
 type ActionKind string
@@ -57,12 +58,13 @@ type Report struct {
 }
 
 type Service struct {
-	StateRoot        string
-	Home             string
-	Workdir          string
-	Vault            provider.CredentialVault
-	Now              func() time.Time
-	LockProcessCheck store.LockProcessCheck
+	StateRoot         string
+	Home              string
+	Workdir           string
+	Vault             provider.CredentialVault
+	Now               func() time.Time
+	LockProcessCheck  store.LockProcessCheck
+	RegistrationProbe func(context.Context, bool) RegistrationDetails
 }
 
 func (s Service) Check(ctx context.Context, full bool) (Report, error) {
@@ -222,6 +224,11 @@ func (s Service) Check(ctx context.Context, full bool) (Report, error) {
 	} else {
 		report.add(Check{Name: "extensions", Status: "ok"})
 	}
+	probe := s.RegistrationProbe
+	if probe == nil {
+		probe = probeRegistration
+	}
+	report.add(boundedRegistrationCheck(ctx, full, probe))
 	return report, nil
 }
 

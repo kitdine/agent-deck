@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-09-30
-updated: 2026-10-03
+updated: 2026-10-05
 ---
 
 # v0.6.5 Contract — Tasks
@@ -42,22 +42,24 @@ exact-state evidence; no status is inferred from another system's checkbox.
   `f4d9f44e3517f323872b2179f10c4dd45c506acb`.
 - Published product baseline: peeled `v0.6.0` commit
   `a5e969d7ad60cfaaee7fec13cbe1704d4cdb2c52`. The contract's newer main base
-  contains closeout/governance history; it is not the repair product baseline.
+  contains closeout/governance history. This is creation provenance, not the
+  current integration base; new iteration work selects verified current main.
 - The original 2026-09-30 intake found no release line. On 2026-10-03 a read-only
   remote-ref query confirmed `release/v0.6.x` at
-  `24623ec8bf0e172bf8e630ebe203163e76634403`. The local release ref remains older;
-  it is not a valid source for this entry. The operator explicitly selected the
-  current patch-line baseline for this scoped doctor topic. Re-resolve the target
-  for integration; this observation grants no release/publication authority.
-- Each `fix/<slug>` starts from the then-current verified release-line head and
-  targets `release/v0.6.x` by PR. Release publication uses the final verified
-  release-line candidate, followed by authorized forward propagation to main.
+  `24623ec8bf0e172bf8e630ebe203163e76634403`. At that entry the local release ref was older and was not a valid source.
+  The operator selected that patch-line baseline for the doctor topic. These
+  are historical entry facts, not a live routing instruction.
+- Under the 2026-10-05 approved correction, normal current-iteration feature/fix
+  branches start from verified current main and PRs target main. Publication is
+  separately authorized; it is not a prerequisite for main propagation.
+  Explicit supported-release maintenance may instead use the oldest affected
+  supported release line and subsequently propagate with preserved ancestry.
 - The contract branch carries planning documents, not an intermediate product
-  integration tree. Its authorized plan PR targets main. Do not merge newer main
-  wholesale into the patch line to bring this plan or governance there. Before
-  each repair, identify the effective execution authorities and explicitly scope
-  any required governance backport under Branching; do not assume the old tag
-  already contains the closeout rules or copy unreviewed instruction files.
+  integration tree. The approved `feature/reconcile-release-main` workspace
+  prepares release history propagation from main `868519d13902ad1f59c9688c252f92d6297c9d15`
+  and release `8b1f82b09664f32337dbb9ed9f3e4f14cc2b4d30`. This is partial
+  propagation under `assemble`, not complete membership assembly or publication.
+  Keep main governance; do not merge newer main wholesale into an older release.
 
 ## Selected Bug inventory
 
@@ -87,7 +89,7 @@ dependencies. Do not start a Bug under this document-design command.
 | P2 | `ad-bug-hook-check3-directory-entries` | New untracked-directory entries expose relevant Markdown to the scoped observer. | L1 Hook fixtures; both runtimes |
 | P2 | `ad-bug-hook-check5-lifecycle-word-match` | Distinguish obsolete lifecycle assertions from quotations and ordinary language. | L1 Hook fixtures; both runtimes |
 | P2 | `ad-bug-lsregister-collision-no-recovery-path` | Operator-selected Lane B `launchservices-recovery`: new read-only doctor diagnosis and truthful manual recovery guidance, with independently reviewed feature contracts before implementation. | L2 doctor/health/output core contract, failure-first fixtures and isolated macOS read-only acceptance |
-| P3 | `ad-bug-footer-routes-narrow-truncation` | Real native 280 pt reproduction and existing-policy check before repair or Lane B decision. | L1 native surface |
+| P3 | `ad-bug-footer-routes-narrow-truncation` | Real native 280 pt reproduction and existing-policy check before repair or Lane B decision. 2026-10-05 bounded administrative evidence/disposition: [P3 carrier](../../fixes/footer-routes-narrow-truncation.md); no implemented repair or general native layout PASS. | L1 native surface; L0 administrative documents |
 | P3 | `ad-bug-disttest-fixture-registrations-linger` | Bounded fixture registration cleanup with production identifiers unaffected. | L3 distribution lifecycle |
 
 Levels are initial impact routes, not a substitute for per-issue scope discovery.
@@ -134,14 +136,14 @@ the MINOR/PATCH output guarantee for v0.6.5. Scripts relying on fixed output or
 counts may require adaptation; release documentation must disclose this.
 Commands/flags, exit codes, databases, persisted formats and existing-check
 semantics remain unchanged. All other subjects retain the general version rule.
-Approval resolves the decision Gate only; this amendment still needs independent
-re-review and exact-state evidence, and the feature's own contracts must pass
-before implementation.
+Approval resolved the decision Gate; the amendment subsequently passed independent
+re-review and exact-state evidence through PR #40. The feature followed its own
+contract and implementation gates before its historical PR #42 delivery.
 
 The version carrier remains this contract topic. The feature carrier is a
-separate ordinary Lane B topic, `launchservices-recovery`, with its own
+separate ordinary Lane B topic, `launchservices-recovery`, historically with its own
 `feature/launchservices-recovery` workspace created from the verified patch-line
-commit above. It never uses the serial Lane A Fix slot. Its design must define
+commit above. It never used the serial Lane A Fix slot. Its reviewed design defines
 host/appex identity, actual conflict versus legitimate copies/stale/unknown
 registrations, bounded enumeration and failure semantics, quick/full inclusion,
 stable check/code/output and health behavior, manual guidance versus executable
@@ -154,11 +156,12 @@ selected. Native P3 footer and full-popover acceptance remain separate. This
 amendment does not waive any independent contract, implementation, review,
 exact-state CEv1 or remote delivery gate. A design PASS is not defect recovery.
 
-Deliver this limited version-contract amendment from its own carrier. Import
-only the reviewed version-document scope if the patch-line PR needs it; do not
-merge the contract branch or unrelated main plans into the release line. The
-new topic's ordinary PR targets `release/v0.6.x`; no direct shared-release push,
-squash, rebase or cherry-pick is authorized. Release/publication remains separate.
+The limited version-contract amendment was delivered through PR #40; the doctor
+feature was delivered through PR #42 to `release/v0.6.x` and subsequently retired
+under its own records. Preserve that release-line history and the approved
+compatibility exception. Current work propagates the delivered history to main;
+normal new feature PRs target main. No direct shared-release push, squash, rebase
+or cherry-pick is selected. Release/publication remains separately authorized.
 
 ## One issue, one PR and serial workspace entry
 
@@ -180,7 +183,8 @@ For each retained Bug:
    Re-review tasks. False/duplicate/already-fixed findings receive administrative
    evidence and disposition, without a fabricated code PR.
 2. For Lane A, resolve a valid issue binding and authorized `fix/<slug>` branch
-   from the current patch-line head. Lane B uses its ordinary feature workspace
+   from the verified current main head (or an explicitly selected supported-release
+   maintenance base). Lane B uses its ordinary feature workspace
    and reviewed requirements/surface/architecture/tasks progression; it must not
    claim implementation or turn draft contracts into product behavior. Claim
    only the approved work product under its actual stage authority.
@@ -191,21 +195,23 @@ For each retained Bug:
    A producer's self-check is not independent PASS. Reviewer invocation still
    needs actual Review/delegation authority; this design does not dispatch one.
 4. Under separate delivery authority, commit/push/create the issue PR targeting
-   `release/v0.6.x`. Include the exact Beads ID, reproducer, scope, fix/review
+   `main` for current-iteration work. An explicitly scoped supported-release
+   maintenance PR targets its selected release line. Include the exact Beads ID, reproducer, scope, fix/review
    pointers, verification state and retained risks; link a GitHub issue if one
    exists. Request GitHub `@codex review` only when explicitly authorized. Await
    actual current-head review; an eyes reaction is not completion. Do not invoke
    cloud `@codex fix` without separate write/delegation authority.
 5. Resolve actionable findings, applicable CI/protection and evidence gates for
    the final head; reassess material changes. Classify integration against the
-   actual release target and record resulting evidence before authorized merge.
+   actual selected target and record resulting evidence before authorized merge.
    Preserve ancestry; no squash, cross-line rebase or cherry-pick without an
    explicit exception. Verify delivered result before closing the Bug.
 6. Freeze the owning workspace through review, repairs and verified delivery.
    Lane B retains its distinct feature binding; the following serial-slot rules
    apply only to Lane A. Before
    the next issue, ensure a clean tree, no conflicting active owner or unresolved
-   local edits, the correct updated release base, and a new verified binding.
+   local edits, the verified selected base (current main by default; a supported-release
+   base only for explicitly selected maintenance), and a new verified binding.
    Never force-switch or reset dirty work. A late finding returns to its issue's
    branch and exact state; it cannot be repaired in the next issue's checkout.
 
@@ -240,7 +246,8 @@ status. Update this task's matrix and create `reviews/fix-workspace-policy.md`
 when reviewed. No shared Skill/runtime source, Hook implementation or product
 code is included; if they are required, stop and obtain the distinct scope.
 
-Define entry/reentry for `fix / <slug>`: source ref and exact release base, reuse
+Define entry/reentry for `fix / <slug>`: source ref and exact verified selected base
+(current main by default; a supported-release base only for explicitly selected maintenance), reuse
 of one designated writable slot, collision/active-owner handling, clean-tree
 switch boundaries, separate branch per issue, issue-specific binding identity,
 per-slot CodeGraph init/sync after branch changes, late-review return and
@@ -257,11 +264,11 @@ and authority/binding consistency for its exact candidate/delivered state.
 
 ### 2. `assemble`
 
-**Depends on:** reviewed/delivered Task 1 and this contract plan; explicit release
-line and per-issue workspace/delivery authority. Individual Bugs proceed only
+**Depends on:** reviewed/delivered Task 1 and this contract plan; explicit
+per-issue workspace/delivery authority and selected integration base. Individual Bugs proceed only
 after their own triage, lane, review and evidence prerequisites.
 
-**Result:** the release line contains all retained repairs, with every inventory
+**Result:** main contains all retained repairs, with every inventory
 item accounted for and every actual integration reviewed at its result state.
 
 **Files:** owning `docs/fixes/<slug>.md` or Lane B topic files and affected product
@@ -269,10 +276,12 @@ files are determined by each Bug's approved scope; this contract's membership an
 `reviews/assemble.md` retain source/target/result identities, merge class,
 interactions and per-issue dispositions. Reconcile integrated status with actual
 authorized integration, not a separate task-progress projection. Product repairs
-go directly to the patch line, never through the contract branch.
+go to main for this iteration, never through the contract branch. Explicit
+supported-release maintenance retains its separate line and propagation route.
 
-Create/select the authorized release line at the published baseline, resolve
-execution-governance compatibility, then follow the issue flow above. Record
+Select verified current main for the iteration and follow the issue flow above.
+The approved release-to-main reconciliation is one partial propagation batch;
+it neither completes this task nor starts issue #43 or another repair batch. Record
 interactions across account-bound state, session indexing, scan publication,
 health/wire consumers, Widget installation and Hook evidence. Do not equate no
 textual conflict with behavioral compatibility. Record review/evidence pointers
@@ -282,8 +291,8 @@ only affected dependencies on subsequent merges.
 **Verification:** each issue uses its actual L0–L3 impact scope; integrations use
 Branching's parent/result classification and CEv1 integration boundaries.
 Aggregate task criteria: complete membership dispositions, per-issue review and
-delivery continuity, and verified integration interactions at the final release
-candidate. No partial issue batch marks this aggregate Task complete. Release
+delivery continuity, and verified integration interactions at the final main
+integration candidate. No partial issue batch marks this aggregate Task complete. Release
 preflight is reserved for the later final release boundary.
 
 ### 3. `v0-6-5-contract`
@@ -292,7 +301,7 @@ preflight is reserved for the later final release boundary.
 undisposed selected Bug. Explicit deferrals retain their decision and risks.
 
 **Result:** the final patch candidate, shipped contracts and version documentation
-agree, with separate release readiness and forward-propagation handoff.
+agree, with main integration and separately authorized release readiness.
 
 **Files:** reconcile this matrix, `reviews/v0-6-5-contract.md`, affected
 `docs/specs/cli-design.md` and `cli-manual.md`, `docs/status.md`, `docs/README.md`
@@ -314,7 +323,7 @@ topic gates, reusing applicable issue/integration evidence. Check product paths
 only for changed assumptions or missing criteria. Contract completion is not
 Release VERIFIED, publication, or a waiver of native/performance gaps.
 
-## Final release and forward propagation
+## Final release and supported-release propagation
 
 After assembly and closure, obtain separate release preparation/publication
 authority. Resolve the Release WorkUnit, final candidate SHA, required preflight
@@ -330,24 +339,25 @@ Cask local-install evidence and historical native/performance exceptions; only
 new exact-state evidence can establish v0.6.5 acceptance. Simulated checks,
 waivers and unrun native checks remain explicitly identified.
 
-Publish one `v0.6.5` from the verified release line only under tag/publication
-authority. Plan and execute separately authorized release-line → main → affected
-feature-line propagation, retaining ancestry and reviewing actual interactions.
-Record the exact release/propagation result and unresolved handoff; do not close
-coordination while required propagation remains. No fetch, branch creation,
-commit, push, PR, merge, real installation or publication is executed by design.
+Publish one `v0.6.5` from the verified, separately selected release candidate
+only under tag/publication authority, after current-iteration main integration.
+Explicit supported-release maintenance uses separately authorized release-line
+→ main → affected feature-line propagation, preserving ancestry and reviewing
+actual interactions. Historical patch-line deliveries and their evidence remain
+unchanged. No publication is a prerequisite for the current reconciliation.
 
-## Current scope-amendment handoff
+## Current integration handoff — 2026-10-05
 
-The real user's approved bounded primary-contract exception is reconciled into
-Version Number Semantics. Fresh local cold-context re-review passed in
-[Tasks review](reviews/tasks.md), Round 4; Round 3 FAIL and invalidated older
-evidence remain historical facts. The selected v0.6.5 membership is retained.
-The final exact-state evidence and authorized signed delivery are handled at
-this document boundary. PR #40 remains Draft and unmerged until a new exact-head
-GitHub review and required CI pass. Review the feature's own contracts before
-implementation. No implementation task, Bug closure, aggregate assembly or
-release completion is claimed.
+The routing correction and bounded P3 disposition have passed independent document
+and bounded integration re-review. See [Tasks review](reviews/tasks.md) and
+[partial integration review](reviews/assemble.md) for the exact reviewed states.
+This synchronization records that result; current-target evidence and signed
+local delivery remain separate boundaries. Exact-head hosted CI/review, the
+supervisor check before remote merge, and post-merge evidence remain pending.
+
+Aggregate assemble, topic and release completion remain open. The P3 carrier
+retains only the original sample/measured-environment administrative disposition;
+the deferred performance issue #43 remains outside this propagation scope.
 
 ## Earlier planning handoff — historical 2026-09-30
 

@@ -23,5 +23,17 @@ export default defineConfig({
     allowedHosts: ["terminal.local"],
     warmup: { clientFiles: ["./src/main.jsx"] },
   },
-  plugins: [react()],
+  plugins: [react(), {
+    name: "exclude-widget-test-probe",
+    apply: "build",
+    generateBundle(_options, bundle) {
+      for (const output of Object.values(bundle)) {
+        if (output.type !== "chunk") continue;
+        const testModule = Object.keys(output.modules).find((id) =>
+          id.includes("/node_modules/axe-core/") || id.endsWith("/src/widget-contrast-probe.js"),
+        );
+        if (testModule) this.error(`Test-only module entered the production bundle: ${testModule}`);
+      }
+    },
+  }],
 });

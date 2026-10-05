@@ -955,6 +955,430 @@ class SkillReportInteropTest(unittest.TestCase):
         self.assertEqual(MODULE.ownerless_findings(
             mock.Mock(read_text=mock.Mock(return_value=body))), ["XY-R11-F1"])
 
+class HookBatchRegressionTest(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.root = Path(self.directory.name)
+
+    def test_untracked_directory_documents_are_visible_with_literal_paths(self):
+        import subprocess
+        subprocess.run(['git', 'init', '-q', str(self.root)], check=True)
+        document = 'docs/topics/example/ux/new 中文 -> view.md'
+        path = self.root / document
+        path.parent.mkdir(parents=True)
+        path.write_text('new document\n')
+        with mock.patch.object(MODULE, 'bd_json', return_value=[{
+            'id': 'new-document', 'title': '文档：example / ux/new 中文 -> view.md'
+        }]):
+            notes = MODULE.findings(self.root, MODULE.time.monotonic() + 15,
+                                    scope={'topic': 'example', 'subject': ''})
+        self.assertTrue(any(document in n and 'new-document' in n for n in notes), notes)
+
+    def test_ordinary_verbs_and_quoted_retired_names_are_not_lifecycle_claims(self):
+        for description in [
+            'Could not tell drafting a document from repairing a review.',
+            'The checker wrongly reports the quoted words `drafting` and `repairing`.',
+            'Historical lifecycle: open -> drafting -> repairing -> closed.',
+        ]:
+            with self.subTest(description=description), \
+                 mock.patch.object(MODULE, 'changed_paths', return_value=['unrelated']), \
+                 mock.patch.object(MODULE, 'bd_json', return_value=[{'id': 'bug', 'description': description}]):
+                notes = MODULE.findings(self.root, 123.0)
+            self.assertFalse(any('retired status' in n for n in notes), notes)
+
+    def test_document_gate_requires_current_latest_round_blob(self):
+        import hashlib
+        doc = self.root / 'docs/topics/example/ux/view.md'
+        review = self.root / 'docs/topics/example/reviews/ux-view.md'
+        doc.parent.mkdir(parents=True)
+        review.parent.mkdir()
+        original = b'original reviewed document\n'
+        doc.write_bytes(original)
+        blob = hashlib.sha1(b'blob ' + str(len(original)).encode() + b'\0' + original).hexdigest()
+        def query(args, deadline):
+            if args == ['list', '--status', 'in_review']:
+                return [{'id': 'doc-task', 'title': '文档：example / ux/view.md'}]
+            return []
+        scenarios = [
+            (original, f'文档 blob `{blob}`', True),
+            (b'reworked after PASS\n', f'文档 blob `{blob}`', False),
+            (original, '', False),
+            (original, f'文档 blob `{blob[:8]}`', False),
+        ]
+        for content, identity, expect in scenarios:
+            doc.write_bytes(content)
+            review.write_text(f'## Round 1\n文档 blob `{blob}`\nVerdict: PASS\nCompletion gate: VERIFIED\n'
+                              f'## Round 2\n{identity}\nVerdict: PASS\nCompletion gate: VERIFIED\n')
+            with self.subTest(identity=identity, content=content), \
+                 mock.patch.object(MODULE, 'changed_paths', return_value=[str(review.relative_to(self.root)), str(doc.relative_to(self.root))]), \
+                 mock.patch.object(MODULE, 'bd_json', side_effect=query):
+                notes = MODULE.findings(self.root, 123.0)
+            self.assertEqual(any('awaiting_commit' in n for n in notes), expect, notes)
+
+    def test_current_blob_and_verdict_share_re_review_round_boundaries(self):
+        import hashlib
+        document = 'docs/topics/example/tasks.md'
+        review = 'docs/topics/example/reviews/tasks.md'
+        doc = self.root / document
+        record = self.root / review
+        doc.parent.mkdir(parents=True)
+        record.parent.mkdir()
+        data = b'current document\n'
+        doc.write_bytes(data)
+        blob = hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest()
+        old = f'## Round 1\ndocument blob `{blob}`\nVerdict: PASS\nCompletion gate: VERIFIED\n'
+        for heading in ['## Re-review — Round 2', '## ✅ Round 2', '## 复评 — 第2轮']:
+            with self.subTest(heading=heading):
+                record.write_text(old + heading + '\nVerdict: PASS\nCompletion gate: VERIFIED\n')
+                self.assertEqual(MODULE.latest_review_state(record), ('PASS', 'VERIFIED'))
+                self.assertFalse(MODULE.current_document_review(self.root, document, review, []))
+                record.write_text(old + heading + f'\ndocument blob `{blob}`\nVerdict: PASS\nCompletion gate: VERIFIED\n')
+                self.assertTrue(MODULE.current_document_review(self.root, document, review, []))
+
+    def test_nul_status_keeps_rename_destination_and_newline_filename(self):
+        output = 'R  docs/topics/a/new -> name.md\0docs/topics/a/old.md\0?? docs/topics/a/line\nbreak.md\0'
+        with mock.patch.object(MODULE.subprocess, 'run', return_value=mock.Mock(returncode=0, stdout=output)):
+            paths = MODULE.changed_paths(self.root, MODULE.time.monotonic() + 5)
+        self.assertEqual(paths, ['docs/topics/a/new -> name.md', 'docs/topics/a/line\nbreak.md'])
+
+    def test_current_lifecycle_declarations_still_report_both_arrow_forms(self):
+        for text in ['Lifecycle: open -> drafting -> in_review -> repairing -> closed.',
+                     '生命周期：open → drafting → repairing → closed。']:
+            self.assertEqual(MODULE.retired_lifecycle_terms(text), ['drafting', 'repairing'])
+
+    def test_quoted_fenced_and_negated_lifecycles_remain_nonblocking(self):
+        for text in ["'Old contract. Lifecycle: open -> drafting -> closed.'",
+                     '"Old contract. Lifecycle: open -> drafting -> closed. End quote."',
+                     '`Old contract. Lifecycle: open -> drafting -> closed.`',
+                     'Report: "Old contract. Lifecycle: open -> drafting -> closed."',
+                     '```text\nLifecycle: open -> drafting -> closed\n```',
+                     '~~~text\n生命周期：open → repairing → closed\n~~~',
+                     '"Lifecycle: open -> drafting -> closed."',
+                     '> Lifecycle: open -> drafting -> closed.',
+                     'Do not use lifecycle: open -> drafting -> closed.',
+                     'Historical lifecycle: open -> drafting -> closed.']:
+            with self.subTest(text=text):
+                self.assertEqual(MODULE.retired_lifecycle_terms(text), [])
+
+    def test_unrelated_qualification_does_not_hide_lifecycle_declaration(self):
+        for text in ['Lifecycle: open -> drafting -> closed. Do not skip review.',
+                     'Author requirements.md. Lifecycle: open -> drafting -> closed.',
+                     'This repairs an obsolete checker. Lifecycle: open -> drafting -> closed.']:
+            with self.subTest(text=text):
+                self.assertEqual(MODULE.retired_lifecycle_terms(text), ['drafting'])
+
+    def test_invalid_filename_bytes_do_not_crash_status_reader(self):
+        import os, subprocess
+        run = subprocess.run
+        def raw_git_output(args, **kwargs):
+            # APFS rejects non-UTF8 filenames. Emit the same raw porcelain
+            # bytes from an isolated child to exercise real subprocess decode.
+            return run([sys.executable, '-c',
+                        "import sys; sys.stdout.buffer.write(b'?? bad-\\xff.md\\x00')"], **kwargs)
+        with mock.patch.object(MODULE.subprocess, 'run', side_effect=raw_git_output):
+            self.assertIn(os.fsdecode(b'bad-\xff.md'), MODULE.changed_paths(self.root, MODULE.time.monotonic() + 5))
+
+    def test_emphasized_lifecycle_labels_are_still_declarations(self):
+        for text in ['- **Lifecycle:** open -> drafting -> closed',
+                     '__生命周期__：open → repairing → closed',
+                     '- *Lifecycle:* open -> drafting -> closed',
+                     '_生命周期_：open → repairing → closed',
+                     '+ Lifecycle: open -> drafting -> closed',
+                     '1. Lifecycle: open -> drafting -> closed',
+                     '***Lifecycle:*** open -> drafting -> closed',
+                     '- **Lifecycle: open -> drafting -> closed**',
+                     '_生命周期：open → repairing → closed_']:
+            with self.subTest(text=text):
+                self.assertTrue(MODULE.retired_lifecycle_terms(text))
+
+    def test_path_qualified_document_identity_and_unrelated_prototype_edit(self):
+        import hashlib
+        document = 'docs/topics/example/requirements.md'
+        review = 'docs/topics/example/reviews/requirements.md'
+        path = self.root / document
+        path.parent.mkdir(parents=True)
+        path.write_bytes(b'doc\n')
+        record = self.root / review
+        record.parent.mkdir()
+        blob = hashlib.sha1(b'blob 4\0doc\n').hexdigest()
+        def query(args, deadline):
+            return [{'id': 'doc-task', 'title': '文档：example / requirements.md'}] if args == ['list', '--status', 'in_review'] else []
+        for label in [f'`{document}` blob `{blob}`', f'文档 blob `{blob}`']:
+            record.write_text(f'## Round 1\nReviewed state: {label}\nVerdict: PASS\nCompletion gate: VERIFIED\n')
+            with self.subTest(label=label), \
+                 mock.patch.object(MODULE, 'changed_paths', return_value=[review, 'prototype/unrelated.txt']), \
+                 mock.patch.object(MODULE, 'bd_json', side_effect=query):
+                notes = MODULE.findings(self.root, 123.0)
+            self.assertTrue(any('awaiting_commit' in note for note in notes), notes)
+
+    def test_only_bound_specimen_paths_invalidate_document_review(self):
+        import hashlib
+        document = 'docs/topics/example/requirements.md'
+        review = 'docs/topics/example/reviews/requirements.md'
+        path = self.root / document
+        path.parent.mkdir(parents=True)
+        path.write_bytes(b'doc\n')
+        record = self.root / review
+        record.parent.mkdir()
+        blob = hashlib.sha1(b'blob 4\0doc\n').hexdigest()
+        source = self.root / 'prototype/src/view.js'
+        source.parent.mkdir(parents=True)
+        source.write_bytes(b'current')
+        source_hash = hashlib.sha256(b'current').hexdigest()
+        for identity, changed, expected in [
+            ('', ['prototype/unrelated.txt'], True),
+            ('prototype manifest SHA-256 abc', ['prototype/src/view.js'], False),
+            ('prototype/my view.js SHA-256 abc', ['prototype/my view.js'], False),
+            (f'prototype/src/view.js SHA256 {source_hash}', ['prototype/unrelated.txt'], True),
+            (f'prototype/src/view.js SHA256 {source_hash}', ['prototype/src/view.js'], False),
+            ('prototype=abc', ['prototype/src/view.js'], False),
+            ('prototype/src/view.js SHA256 ' + '0' * 64, [], False),
+            ('prototype/src/view.js SHA256 abc', [], False),
+            ('prototype/src/view.js SHA256', [], False),
+            (f'prototype/src/view.js SHA256 {source_hash}.', [], True),
+        ]:
+            record.write_text(f'## Round 1\n文档 blob {blob}\n{identity}\nVerdict: PASS\nCompletion gate: VERIFIED\n')
+            with self.subTest(identity=identity, changed=changed):
+                self.assertEqual(MODULE.current_document_review(self.root, document, review, changed), expected)
+
+    def test_document_blob_labels_are_bounded_and_accept_topic_relative_paths(self):
+        import hashlib
+        document = 'docs/topics/example/ux/view.md'
+        review = 'docs/topics/example/reviews/ux-view.md'
+        path = self.root / document
+        path.parent.mkdir(parents=True)
+        path.write_bytes(b'doc\n')
+        record = self.root / review
+        record.parent.mkdir()
+        blob = hashlib.sha1(b'blob 4\0doc\n').hexdigest()
+        for label, expected in [('other/' + document, False), ('ux/view.md', True),
+                                (document, True), ('Git', True), ('view.md', False)]:
+            record.write_text(f'## Round 1\n{label} blob {blob}\n')
+            with self.subTest(label=label):
+                self.assertEqual(MODULE.current_document_review(self.root, document, review, []), expected)
+
+    def test_bound_topic_manifest_and_entries_invalidate_review(self):
+        import hashlib
+        document = 'docs/topics/example/ux/view.md'
+        review = 'docs/topics/example/reviews/ux-view.md'
+        manifest = 'docs/topics/example/ux/prototype/view/manifest.json'
+        specimen = 'docs/topics/example/ux/prototype/view/view.png'
+        source = 'prototype/src/view.js'
+        data = b'[manifest](prototype/view/manifest.json)\n'
+        path = self.root / document
+        path.parent.mkdir(parents=True)
+        path.write_bytes(data)
+        record = self.root / review
+        record.parent.mkdir()
+        mp = self.root / manifest
+        mp.parent.mkdir(parents=True)
+        for entry in [specimen, source]:
+            target = self.root / entry
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(b'bound')
+        entry_hash = hashlib.sha256(b'bound').hexdigest()
+        mp.write_text(json.dumps({'files': [{'path': specimen, 'sha256': entry_hash}, {'path': source, 'sha256': entry_hash}]}))
+        blob = hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest()
+        digest = hashlib.sha256(mp.read_bytes()).hexdigest()
+        record.write_text(f'## Round 1\n{document} blob {blob}\nprototype manifest SHA-256 {digest}\n')
+        for changed, expected in [([], True), ([manifest], False), ([specimen], False),
+                                  ([source], False), (['prototype/unrelated.js'], True),
+                                  (['docs/topics/other/ux/prototype/view.png'], True)]:
+            with self.subTest(changed=changed):
+                self.assertEqual(MODULE.current_document_review(self.root, document, review, changed), expected)
+        for entry in [specimen, source]:
+            (self.root / entry).write_bytes(b'committed change')
+            self.assertFalse(MODULE.current_document_review(self.root, document, review, []))
+            (self.root / entry).write_bytes(b'bound')
+        mp.write_text('{}')
+        self.assertFalse(MODULE.current_document_review(self.root, document, review, []))
+
+    def test_legacy_manifest_sources_and_relative_specimens(self):
+        import hashlib
+        document = 'docs/topics/example/ux/view.md'
+        review = 'docs/topics/example/reviews/ux-view.md'
+        manifest = 'docs/topics/example/ux/prototype/view/manifest.json'
+        path = self.root / document
+        path.parent.mkdir(parents=True)
+        path.write_bytes(b'[manifest](prototype/view/manifest.json)\n')
+        mp = self.root / manifest
+        mp.parent.mkdir(parents=True)
+        entry_hash = hashlib.sha256(b'bound').hexdigest()
+        bound = ['prototype/src/view.js', str(Path(manifest).parent / 'checks.json'), str(Path(manifest).parent / 'screen.png')]
+        for entry in bound:
+            target = self.root / entry
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(b'bound')
+        mp.write_text(json.dumps({'source': {'prototype/src/view.js': entry_hash, 'checks.json': entry_hash},
+                                  'specimens': [{'file': 'screen.png', 'sha256': entry_hash}]}))
+        record = self.root / review
+        record.parent.mkdir()
+        data = path.read_bytes()
+        blob = hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest()
+        digest = hashlib.sha256(mp.read_bytes()).hexdigest()
+        for label in ['prototype', 'Specimen']:
+            record.write_text(f'## Round 1\nGit blob {blob}\n{label} manifest SHA-256: {digest}\n')
+            for changed, expected in [([], True), ([manifest], False), (['prototype/src/view.js'], False),
+                                      (['docs/topics/example/ux/prototype/view/checks.json'], False),
+                                      (['docs/topics/example/ux/prototype/view/screen.png'], False),
+                                      (['prototype/unrelated.js'], True)]:
+                with self.subTest(label=label, changed=changed):
+                    self.assertEqual(MODULE.current_document_review(self.root, document, review, changed), expected)
+
+        for entry in bound:
+            (self.root / entry).write_bytes(b'committed change')
+            self.assertFalse(MODULE.current_document_review(self.root, document, review, []))
+            (self.root / entry).write_bytes(b'bound')
+
+        for malformed in [{'source': {}, 'specimens': [{'file': ''}]},
+                          {'source': {'': 'hash'}, 'specimens': []}]:
+            mp.write_text(json.dumps(malformed))
+            digest = hashlib.sha256(mp.read_bytes()).hexdigest()
+            record.write_text(f'## Round 1\nGit blob {blob}\nprototype manifest SHA-256 {digest}\n')
+            with self.subTest(malformed=malformed):
+                self.assertFalse(MODULE.current_document_review(self.root, document, review, []))
+
+    def test_contractions_do_not_quote_intervening_declarations(self):
+        self.assertEqual(MODULE.retired_lifecycle_terms("Don't skip. Lifecycle: open -> drafting -> closed. It's required."), ['drafting'])
+        self.assertEqual(MODULE.retired_lifecycle_terms("'Old. Lifecycle: open -> drafting -> closed. It's history.'"), [])
+        self.assertEqual(MODULE.retired_lifecycle_terms("‘It’s history. Lifecycle: open -> drafting -> closed.’"), [])
+        self.assertEqual(MODULE.retired_lifecycle_terms("Don’t skip. Lifecycle: open -> drafting -> closed. It’s required."), ['drafting'])
+
+    def test_index_candidate_must_match_reviewed_worktree_bytes(self):
+        import hashlib, subprocess
+        def git(*args):
+            return subprocess.run(['git', '-C', str(self.root), '--literal-pathspecs', *args], check=True, capture_output=True)
+        git('init', '-q')
+        document = 'docs/topics/example/ux/view.md'
+        review = 'docs/topics/example/reviews/ux-view.md'
+        manifest = 'docs/topics/example/ux/prototype/view/manifest.json'
+        specimen = 'docs/topics/example/ux/prototype/view/screen.png'
+        source = 'prototype/src/[view]*.js'
+        files = {document: b'[manifest](prototype/view/manifest.json)\n', source: b'source', specimen: b'specimen'}
+        files[manifest] = json.dumps({'files': [{'path': p.replace('prototype/src/', 'prototype/./src/'), 'sha256': hashlib.sha256(files[p]).hexdigest()} for p in [source, specimen]]}).encode()
+        blob = hashlib.sha1(b'blob ' + str(len(files[document])).encode() + b'\0' + files[document]).hexdigest()
+        files[review] = f'## Round 1\nGit blob {blob}\nprototype manifest SHA-256 {hashlib.sha256(files[manifest]).hexdigest()}\nVerdict: PASS\nCompletion gate: VERIFIED\n'.encode()
+        for path, data in files.items():
+            target = self.root / path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(data)
+        def current():
+            return MODULE.current_document_review(self.root, document, review, MODULE.changed_paths(self.root, MODULE.time.monotonic() + 5))
+        git('add', '.')
+        self.assertTrue(current(), 'matching staged additions are valid')
+        git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test', '-c', 'commit.gpgsign=false', 'commit', '-qm', 'fixture')
+        for path, data in files.items():
+            with self.subTest(path=path):
+                (self.root / path).write_bytes(b'unreviewed index')
+                git('add', '--', path)
+                (self.root / path).write_bytes(data)
+                self.assertFalse(current(), 'MM index bytes are unreviewed')
+                git('reset', '-q', 'HEAD', '--', path)
+                self.assertTrue(current())
+                git('rm', '--cached', '-q', '--', path)
+                self.assertFalse(current(), 'staged deletion is not reviewed content')
+                git('reset', '-q', 'HEAD', '--', path)
+
+    def test_index_raw_bytes_are_not_clean_converted(self):
+        import hashlib, subprocess
+        def git(*args):
+            return subprocess.run(['git', '-C', str(self.root), *args], check=True, capture_output=True)
+        git('init', '-q')
+        (self.root / '.gitattributes').write_text('*.md text\n')
+        document = 'docs/topics/example/requirements.md'
+        review = 'docs/topics/example/reviews/requirements.md'
+        data = b'reviewed\r\n'
+        target = self.root / document
+        target.parent.mkdir(parents=True)
+        target.write_bytes(data)
+        record = self.root / review
+        record.parent.mkdir()
+        blob = hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest()
+        record.write_bytes(f'## Round 1\r\nGit blob {blob}\r\nVerdict: PASS\r\nCompletion gate: VERIFIED\r\n'.encode())
+        git('add', '.')
+        self.assertNotEqual(git('cat-file', 'blob', ':' + document).stdout, data)
+        changed = MODULE.changed_paths(self.root, MODULE.time.monotonic() + 5)
+        self.assertFalse(MODULE.current_document_review(self.root, document, review, changed))
+
+    def test_hidden_index_old_document_rejects_new_review(self):
+        import hashlib, subprocess
+        def git(*args):
+            return subprocess.run(['git', '-C', str(self.root), *args], check=True, capture_output=True)
+        git('init', '-q')
+        document = 'docs/topics/example/requirements.md'
+        review = 'docs/topics/example/reviews/requirements.md'
+        target = self.root / document
+        target.parent.mkdir(parents=True)
+        target.write_bytes(b'old')
+        git('add', '.')
+        git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test', '-c', 'commit.gpgsign=false', 'commit', '-qm', 'fixture')
+        record = self.root / review
+        record.parent.mkdir()
+        data = b'new reviewed'
+        blob = hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest()
+        record.write_text(f'## Round 1\nGit blob {blob}\nVerdict: PASS\nCompletion gate: VERIFIED\n')
+        git('add', review)
+        for flag in ['assume-unchanged', 'skip-worktree']:
+            with self.subTest(flag=flag):
+                target.write_bytes(b'old')
+                git('update-index', '--' + flag, document)
+                target.write_bytes(data)
+                changed = MODULE.changed_paths(self.root, MODULE.time.monotonic() + 5)
+                self.assertNotIn(document, changed)
+                self.assertFalse(MODULE.current_document_review(self.root, document, review, changed))
+                git('update-index', '--no-' + flag, document)
+
+    def test_markdown_heading_and_checklist_lifecycle(self):
+        for prefix in ['### ', '- [ ] ', '- [x] ']:
+            with self.subTest(prefix=prefix):
+                self.assertEqual(MODULE.retired_lifecycle_terms(prefix + 'Lifecycle: open -> drafting -> closed'), ['drafting'])
+                self.assertEqual(MODULE.retired_lifecycle_terms(prefix + 'Historical lifecycle: open -> drafting -> closed'), [])
+
+    def test_manifest_reviewed_document_is_not_dirty_specimen(self):
+        import hashlib
+        document = 'docs/topics/example/requirements.md'
+        review = 'docs/topics/example/reviews/requirements.md'
+        target = self.root / document
+        target.parent.mkdir(parents=True)
+        data = b'[manifest](prototype/manifest.json)\n'
+        target.write_bytes(data)
+        manifest = target.parent / 'prototype/manifest.json'
+        manifest.parent.mkdir()
+        manifest.write_text(json.dumps({'source': {document: hashlib.sha256(data).hexdigest()}, 'specimens': []}))
+        record = self.root / review
+        record.parent.mkdir()
+        blob = hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest()
+        record.write_text(f'## Round 1\nGit blob {blob}\nprototype manifest SHA-256 {hashlib.sha256(manifest.read_bytes()).hexdigest()}\n')
+        self.assertTrue(MODULE.current_document_review(self.root, document, review, [document, review]))
+        target.write_bytes(data + b'changed')
+        self.assertFalse(MODULE.current_document_review(self.root, document, review, [document, review]))
+
+    def test_scoped_entry_final_blob_uses_final_identity(self):
+        import hashlib
+        document = 'docs/topics/example/tasks.md'
+        review = 'docs/topics/example/reviews/tasks.md'
+        target = self.root / document
+        target.parent.mkdir(parents=True)
+        data = b'final approved'
+        target.write_bytes(data)
+        blob = hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest()
+        record = self.root / review
+        record.parent.mkdir()
+        record.write_text(f'## Round 1\n入口文档 blob {"a" * 40}；仅同步审批状态后的最终 blob {blob}。\n')
+        self.assertTrue(MODULE.current_document_review(self.root, document, review, [document, review]))
+        record.write_text(f'## Round 1\n另一个 docs/topics/other/tasks.md 入口文档 blob {"a" * 40}；仅同步审批状态后的最终 blob {blob}。\n')
+        self.assertFalse(MODULE.current_document_review(self.root, document, review, [document, review]))
+        target.write_bytes(b'stale')
+        self.assertFalse(MODULE.current_document_review(self.root, document, review, [document, review]))
+
+    def test_scoped_fingerprint_preserves_decoded_filename_bytes(self):
+        import os
+        scope = {'topic': 'example', 'subject': 'ux/' + os.fsdecode(b'bad-\xff.md')}
+        first = MODULE.report_fingerprint(self.root, scope, ['fixture'])
+        self.assertEqual(len(first), 64)
+        self.assertEqual(first, MODULE.report_fingerprint(self.root, scope, ['fixture']))
+
 
 if __name__ == "__main__":
     unittest.main()

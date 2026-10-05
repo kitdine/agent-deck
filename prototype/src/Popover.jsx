@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ScanStatus, ScanEmptyPopover } from "./ScanProgress.jsx";
 import {
   ArrowClockwise,
@@ -39,7 +39,7 @@ import {
   formatDate,
   formatDuration,
   formatHourRange,
-  formatHourRangeShort,
+  formatHourWindow,
   formatNumber,
   formatShare,
   formatTokens,
@@ -145,18 +145,51 @@ function Row({ label, dot, value, share, tone, lang }) {
   );
 }
 
-function StatGrid({ items }) {
+function ScaledStatText({ as: Tag, children, size, minimumScale, className, lineKind }) {
+  const ref = useRef(null);
+  useLayoutEffect(() => {
+    const node = ref.current;
+    let active = true;
+    const fit = () => {
+      if (!active || !node.clientWidth) return;
+      node.style.fontSize = `${size}px`;
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      if (range.getBoundingClientRect().width <= node.clientWidth) return;
+      // 固定 letter-spacing 不随字号缩放，单次宽度比会留下几个像素截断。
+      // 在原生允许的字号区间中量真实文本，最小字号仍放不下时保留 ellipsis。
+      let lower = size * minimumScale;
+      let upper = size;
+      for (let step = 0; step < 8; step += 1) {
+        const candidate = (lower + upper) / 2;
+        node.style.fontSize = `${candidate}px`;
+        if (range.getBoundingClientRect().width <= node.clientWidth) lower = candidate;
+        else upper = candidate;
+      }
+      node.style.fontSize = `${lower}px`;
+    };
+    fit();
+    const observer = new ResizeObserver(fit);
+    observer.observe(node);
+    document.fonts.ready.then(fit);
+    return () => { active = false; observer.disconnect(); };
+  }, [children, size, minimumScale]);
+  return <Tag ref={ref} data-stat-line={lineKind} className={className} style={{ fontSize: size }}>{children}</Tag>;
+}
+
+function StatGrid({ items, testId }) {
   return (
     <div
       className="stat-grid"
+      data-testid={testId}
       data-dense={items.length > 3 ? "1" : undefined}
       style={{ "--columns": items.length }}
     >
       {items.map((item) => (
-        <div key={item.label}>
-          <span>{item.label}</span>
-          <strong className={item.tone ? `tone-text-${item.tone}` : undefined}>{item.value}</strong>
-          {item.note && <small>{item.note}</small>}
+        <div key={item.id ?? item.label} data-stat-chip={item.id}>
+          <ScaledStatText as="span" lineKind="label" size={10} minimumScale={0.72}>{item.label}</ScaledStatText>
+          <ScaledStatText as="strong" lineKind="value" size={12} minimumScale={0.7} className={item.tone ? `tone-text-${item.tone}` : undefined}>{item.value}</ScaledStatText>
+          {item.note && <ScaledStatText as="small" lineKind="note" size={10} minimumScale={0.72}>{item.note}</ScaledStatText>}
         </div>
       ))}
     </div>
@@ -1011,6 +1044,7 @@ function SchemaPanel({ lang, label }) {
 function RhythmBlock({ lang, state }) {
   const dict = useDict(lang);
   const data = rhythm.all; // 固定近 30 天全部客户端，不受上方筛选影响
+  const peak = data.cells.reduce((best, cell) => cell.intensity > best.intensity ? cell : best, data.cells[0]);
   const [hover, setHover] = useState(null);
   const calendar = useMemo(() => scope("all", "30d").daily, []);
   const maxDaily = Math.max(...calendar.map((item) => item.value), 0.0001);
@@ -1028,11 +1062,12 @@ function RhythmBlock({ lang, state }) {
         <small>{dict.rhythm.scope}</small>
       </div>
       <StatGrid
+        testId="rhythm-summary"
         items={[
-          { label: dict.rhythm.active, value: `${data.activeDays} / 30`, tone: "accent" },
-          { label: dict.rhythm.busiest, value: dict.rhythm.weekdays[data.busiestDay] },
-          { label: dict.rhythm.quietest, value: dict.rhythm.weekdays[data.quietestDay] },
-          { label: dict.rhythm.peak, value: formatHourRangeShort(data.peakStart, data.peakEnd, lang) },
+          { id: "active", label: dict.rhythm.active, value: `${data.activeDays} / 30`, tone: "accent" },
+          { id: "busiest", label: dict.rhythm.busiest, value: dict.rhythm.weekdays[data.busiestDay] },
+          { id: "quietest", label: dict.rhythm.quietest, value: dict.rhythm.weekdays[data.quietestDay] },
+          { id: "peak-window", label: dict.rhythm.peak, value: formatHourWindow(peak.hour, lang) },
         ]}
       />
 
@@ -1576,6 +1611,7 @@ export function Popover({ lang, state = "normal", quotaState = "normal", refresh
   return (
     <section
       ref={rootRef}
+      data-testid="menubar-popover"
       data-scan-enabled={scan ? "true" : undefined}
       data-scan-snapshot={scan ? (scan.published ? "new" : "previous") : undefined}
       className={`popover${embedded ? " embedded" : ""}${String(width) === "280" ? " narrow" : ""}${
@@ -1602,7 +1638,7 @@ export function Popover({ lang, state = "normal", quotaState = "normal", refresh
       )}
       <header>
         <div className="brand">
-          <img src="/agentdeck-robot.png" alt="" width={22} height={22} />
+          <img src="/agentdeck-ad.png" alt="" width={22} height={22} />
           <strong>{dict.app}</strong>
         </div>
         <div className="header-right">

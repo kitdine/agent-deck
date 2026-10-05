@@ -1019,14 +1019,16 @@ public struct DesktopHealthCheckV1: Codable, Equatable, Sendable {
     public let manualPrerequisite: String?
 
     public static let validResources: Set<String> = [
-        "state", "scan", "extension_inventory", "unknown"
+        "state", "scan", "extension_inventory", "unknown", "launchservices_registration"
     ]
 
     public static let validReasons: Set<String> = [
         "lock_live", "lock_legacy", "lock_owner_unknown", "lock_reclaimable",
         "extension_state_missing", "extension_discovery_failed", "extension_stale_inventory",
         "extension_duplicate_id", "extension_managed_drift", "extension_management_anomaly",
-        "extension_native_unavailable", "extension_inventory_unreadable", "extension_fingerprint_update_failed"
+        "extension_native_unavailable", "extension_inventory_unreadable", "extension_fingerprint_update_failed",
+        "launchservices_consistent", "launchservices_conflict", "launchservices_stale",
+        "launchservices_unknown", "launchservices_not_applicable"
     ]
 
     public static let validManualPrerequisites: Set<String> = [
