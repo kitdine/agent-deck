@@ -1,5 +1,6 @@
 ---
-status: active
+status: historical
+retired: 2026-10-07
 topic: v0-6-5-contract
 subject: assemble
 ---
@@ -375,15 +376,15 @@ I directly read and hash-checked the original R17 manifest and R26 red/green/mat
 
 **Rule interpretation**
 
-[Review Records, lines 137–160](../../../../.agent-instructions/review-records.md) requires boundary-derived metadata, preserves historical observations, and prohibits inventing gate results. These explicitly qualified documentary assessments satisfy that distinction.
+[Review Records, lines 137–160](../../../../../.agent-instructions/review-records.md) requires boundary-derived metadata, preserves historical observations, and prohibits inventing gate results. These explicitly qualified documentary assessments satisfy that distinction.
 
-Crucially, [Evidence, lines 47–66](../../../../.agent-instructions/evidence.md) requires the exact-target provider query **“Before claiming a required boundary complete.”** It does not expressly require a provider response exclusively for every dated statement that evidence remains unverified. Its NOT_VERIFIED definition at line 86 includes missing or insufficient evidence. The annotations make no completion claim and do not portray their assessment as the missing provider response. I therefore find no existing-rule conflict requiring policy clarification.
+Crucially, [Evidence, lines 47–66](../../../../../.agent-instructions/evidence.md) requires the exact-target provider query **“Before claiming a required boundary complete.”** It does not expressly require a provider response exclusively for every dated statement that evidence remains unverified. Its NOT_VERIFIED definition at line 86 includes missing or insufficient evidence. The annotations make no completion claim and do not portray their assessment as the missing provider response. I therefore find no existing-rule conflict requiring policy clarification.
 
 **Completion limitations**
 
-The saved `check-docs` receipt reports structural success; I inspected it but did not rerun checks. Structural acceptance remains separate from semantic review and CE certification under [Review Records, lines 147–167](../../../../.agent-instructions/review-records.md).
+The saved `check-docs` receipt reports structural success; I inspected it but did not rerun checks. Structural acceptance remains separate from semantic review and CE certification under [Review Records, lines 147–167](../../../../../.agent-instructions/review-records.md).
 
-Historical exact-target gaps remain unresolved by this correction. R27, this review, and current integration evidence cannot retroactively fill them. Prior Go/vet executions remain unaffected by this documentation delta; reuse for a new target still requires the applicable assessment and target-bound evidence under [Evidence, lines 68–80](../../../../.agent-instructions/evidence.md). Current integration CE/query and overall completion remain separate and unestablished here.
+Historical exact-target gaps remain unresolved by this correction. R27, this review, and current integration evidence cannot retroactively fill them. Prior Go/vet executions remain unaffected by this documentation delta; reuse for a new target still requires the applicable assessment and target-bound evidence under [Evidence, lines 68–80](../../../../../.agent-instructions/evidence.md). Current integration CE/query and overall completion remain separate and unestablished here.
 
 No files, indexes, CE records, Beads state, or configuration were written; no tests or delivery actions were executed.
 

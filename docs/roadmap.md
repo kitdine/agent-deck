@@ -152,7 +152,7 @@ these features or renumber the future directions.
 
 At the 2026-09-30 intake all nineteen retained Bugs were labelled `v0.6.5`,
 open and unclaimed; that historical state is not the current repair queue. The
-2026-10-06 [contract ledger](topics/v0-6-5-contract/tasks.md#current-member-dispositions)
+2026-10-06 [contract ledger](archive/topics/v0-6-5-contract/tasks.md#current-member-dispositions)
 records eighteen delivered repairs and one bounded administrative not-a-defect,
 with all nineteen Beads carriers closed. Aggregate Task2/3 evidence and release
 readiness remain separate. Reproduce a new current signal before reopening or
@@ -244,7 +244,7 @@ bases only for explicitly selected maintenance), issue bindings, safe switch bou
 owner conflicts, CodeGraph preparation and late-review return. The independent
 reviewer needs cold context and frozen content, not a permanent extra worktree.
 
-[The v0.6.5 contract](topics/v0-6-5-contract/tasks.md) owns adoption readiness and
+[The v0.6.5 contract](archive/topics/v0-6-5-contract/tasks.md) owns adoption readiness and
 version execution; this roadmap does not approve that task's implementation or
 mirror its progress. Use the rules only after their required review and delivery.
 Parallel issue work remains a separately authorized choice.

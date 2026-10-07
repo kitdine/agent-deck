@@ -243,7 +243,7 @@ class DocumentationChecksTest(unittest.TestCase):
             self.assertEqual(len(DOCS.link_errors(source, root)), 2)
 
     def test_topic_audit_checks_complete_selected_set(self):
-        result = subprocess.run(['bash', 'scripts/check-topic-docs.sh', 'v0-6-5-contract'],
+        result = subprocess.run(['bash', 'scripts/check-topic-docs.sh', '--archive', 'v0-6-5-contract'],
                                 cwd=ROOT, capture_output=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 

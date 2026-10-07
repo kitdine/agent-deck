@@ -1,5 +1,6 @@
 ---
-status: active
+status: historical
+retired: 2026-10-07
 topic: v0-6-5-contract
 subject: fix-workspace-policy
 ---

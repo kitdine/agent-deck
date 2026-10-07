@@ -1,5 +1,6 @@
 ---
-status: active
+status: historical
+retired: 2026-10-07
 topic: v0-6-5-contract
 subject: tasks.md
 ---
@@ -254,7 +255,7 @@ CLI 0.160.0，自然 exit 0；未 resume/fork 作者或 QA，未写记录/状态
 主 executor `01a10a8f-0f6c-7aa0-b230-7fb286b520bc` 复核并拥有本轮 verdict。
 Method：冻结身份、原始 issue 契约、13 源 blob、14 离屏图及实际 popover、
 字形检测、后到用户确认与历史记录的只读核对；完整报告追加于
-[P3 行政 carrier](../../../fixes/footer-routes-narrow-truncation.md)。
+[P3 行政 carrier](../../../../fixes/footer-routes-narrow-truncation.md)。
 Scope：tasks.md 的 P3 指针/限定处置；不重新审计十九 Bug，不改成员、排除项、
 doctor 契约或所有 Documents/Tasks 聚合矩阵。无产品或 Git 操作。
 
@@ -327,7 +328,7 @@ Locations:
 
 - [tasks.md:213](../tasks.md): before the next issue, require “the correct updated release base”.
 - [tasks.md:248](../tasks.md): Task 1 defines entry/reentry using an “exact release base”.
-- Related consumer: [roadmap.md:232](../../../roadmap.md) still describes the rules as defining “release bases”.
+- Related consumer: [roadmap.md:232](../../../../roadmap.md) still describes the rules as defining “release bases”.
 
 **Behavior risk:** after completing a normal current-iteration repair, an operator following step 6 can select or require the release-line base for the next issue, contradicting the newly approved main-first route. This is an active operational instruction, not merely retained historical provenance.
 
@@ -426,9 +427,9 @@ The repair resolves the three active routing statements without changing policy:
 
 - [tasks.md:213](../tasks.md) now requires the verified selected base, defaulting to current main.
 - [tasks.md:249](../tasks.md) applies the same distinction to entry/reentry.
-- [roadmap.md:232](../../../roadmap.md) accurately describes its authoritative consumer.
+- [roadmap.md:232](../../../../roadmap.md) accurately describes its authoritative consumer.
 
-These agree with [Branching:130](../../../../.agent-instructions/branching.md): normal iteration fixes start from verified current main; explicitly selected supported-release maintenance starts from the appropriate supported line and subsequently propagates.
+These agree with [Branching:130](../../../../../.agent-instructions/branching.md): normal iteration fixes start from verified current main; explicitly selected supported-release maintenance starts from the appropriate supported line and subsequently propagates.
 
 Branching’s “Patching a released version” and oldest-supported-line rules remain applicable to that maintenance route. They do not contradict normal iteration routing. Existing-branch reentry still preserves creation provenance and prohibits resetting a branch merely because its base moved.
 

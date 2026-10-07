@@ -5,7 +5,16 @@ created: 2026-07-22
 
 # Archived Documents
 
-Last updated: 2026-10-04
+Last updated: 2026-10-07
+
+## 2026-10-07 retirement: v0.6.5 version contract
+
+[`v0-6-5-contract`](topics/v0-6-5-contract/tasks.md) preserves the nineteen-member
+accounting, approved narrow PR24 schema exception, all independent review
+rounds and failure/acceptance limits. PR #47 delivered the contract at
+`c2dea1e`; exact-merge Task2/Task3/document/Topic gates passed and coordination
+closed. RC release/install verification remains separate; configured Widget
+acceptance is pending the operator after RC installation.
 
 ## 2026-10-04 retirement: LaunchServices diagnosis
 
