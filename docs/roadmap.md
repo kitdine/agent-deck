@@ -106,6 +106,12 @@ do not silently expand the defects release. Auxiliary-session classification
 has therefore been split out as a feature rather than attached to the metadata
 repair. Version-number semantics remain in the stable CLI design contract.
 
+The operator's 2026-10-07 B decision retains v0.6.5 and permits only PR24's
+already-delivered `session_sources.parser_context` column and additive migration
+as a narrow schema exception. The [primary version contract](specs/cli-design.md#version-number-semantics)
+owns its exact scope and mandatory compatibility checks. This does not select
+another schema change, feature, product repair or release operation.
+
 ### Reconciliation actually performed
 
 The normal work queue changed from 40 unresolved records to **28: 19 unique
@@ -144,9 +150,13 @@ these features or renumber the future directions.
 
 ### Unique Bug inventory and applied priority
 
-All nineteen retained Bugs are labelled `v0.6.5` and unclaimed. `open` means
-scheduled intake, not a reproduced current defect, approved Lane, or finished
-repair. Reproduce historical findings before writing production changes.
+At the 2026-09-30 intake all nineteen retained Bugs were labelled `v0.6.5`,
+open and unclaimed; that historical state is not the current repair queue. The
+2026-10-06 [contract ledger](topics/v0-6-5-contract/tasks.md#current-member-dispositions)
+records eighteen delivered repairs and one bounded administrative not-a-defect,
+with all nineteen Beads carriers closed. Aggregate Task2/3 evidence and release
+readiness remain separate. Reproduce a new current signal before reopening or
+implementing another repair.
 
 P1 addresses broken installed functionality, incorrect project/data ownership,
 cross-account state, external configuration consistency and scan failure. P2

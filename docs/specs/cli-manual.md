@@ -986,6 +986,32 @@ Doctor quick/full 使用同一 core schema 契约。以当前支持 schema 30 �
 该版本的二进制会停止显示警告，但不等于删除文件；doctor 等只读入口不会清除它。
 记录不进入备份，并发下的计数不是精确投递账本。
 
+Doctor 正常完成路径还会追加只读 `launchservices` check（resource
+`launchservices_registration`）；已有提前返回、partial、check 顺序及退出语义保持。
+Host 使用 NSWorkspace URLs 与 Finder 正对照，Widget 单独使用 targeted PlugInKit；
+这不是全库扫描，也不证明 OS 实际选中了哪一份。
+
+五个 code 为 `launchservices_consistent`、`launchservices_conflict`、
+`launchservices_stale`、`launchservices_unknown` 和 `launchservices_not_applicable`。
+consistent/not-applicable 是 ok，其余是 warning；unknown 优先于 conflict、stale、
+consistent。缺失或不完整的 source/control/metadata 不能报告一致。Quick/full 共享
+总获取预算 500ms/1.5s；详细状态、limits 与 optional `registration_details` 见
+[稳定契约](cli-design.md#launchservices-registration-diagnosis)。Desktop health 不传递
+本地 paths/builds/raw details。建议是手工安全指导，没有自动 unregister、清理、
+daemon 重启、真实数据库重建或可执行的 OS `recovery_command`。
+
+这是主版本规则已批准的 v0.6.5 Doctor-output 例外，固定输出/count 的脚本需要适配。
+它不扩展为其他 schema/数据格式变更豁免，也不代表安装、Widget timeline 或真实系统
+恢复验收；性能失败与版本兼容性限制仍由对应契约记录承担。
+
+2026-10-07 批准的另一项狭窄 v0.6.5 版本合同例外只覆盖 PR24 已交付的
+`sessions.sqlite3` 中 `session_sources.parser_context TEXT NOT NULL DEFAULT ''`
+列及其从 v0.6.0 的增量迁移。它是可重建 session 索引的 parser checkpoint，
+不改变 core schema、账户/provider/credential 数据或外部客户端配置。
+该决定不免除升级、v0.6.0 回读和往返兼容性验证；旧版本可忽略额外列并重解析索引。
+其他 schema/持久化格式变化仍受一般版本规则约束。真实数据与安装升级、Widget 验收及
+同 SHA 发布 preflight 仍是独立边界，详见[版本合同](cli-design.md#version-number-semantics)。
+
 ### Watch 扫描规则
 
 - Usage、session、extension 使用独立 domain checkpoint；成功执行相应 standalone scan

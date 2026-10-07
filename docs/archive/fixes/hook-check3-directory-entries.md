@@ -1,26 +1,27 @@
 ---
-status: active
+status: historical
+retired: 2026-10-07
 created: 2026-10-02
 ---
 
-# 缺陷：文档改动后旧 PASS 门禁被用于当前状态
+# 缺陷：Hook 漏掉未跟踪目录中的文档
 
 ## 现象
 
-Beads `ad-bug-hook-gate-ignores-content-state`，用户明确授权 Lane A 与三个关联 Hook issue 共用一个 PR。
+Beads `ad-bug-hook-check3-directory-entries`，用户明确授权 Lane A 与三个关联 Hook issue 共用一个 PR。
 Base `b864ce41b8d6ce22c475fbc42db6c5cad6b19f6b`，branch `fix/hook-consistency-batch`。
-隔离回归 `test_document_gate_requires_current_latest_round_blob` 在未修改 Hook 的基线失败。
+隔离回归 `test_untracked_directory_documents_are_visible_with_literal_paths` 在未修改 Hook 的基线失败。
 
 ## 根因
 
-Check 1 interpreted the last Markdown PASS/gate without verifying the document blob. A changed subject plus dirty review produced an incorrect awaiting_commit instruction.
+git status default porcelain collapsed untracked directories and quoted non-ASCII paths. Markdown suffix filtering hid nested documents.
 
 ## 修复边界
 
-For document tasks require one full current document blob in the latest non-fenced review round; unknown/ambiguous identities or changed prototype specimens do not authorize a dispatch diagnosis. Task implementation ownership matching is unchanged.
+Request all untracked files and NUL porcelain; preserve literal destinations and consume rename/copy source fields. Continue existing document scope and tasks.md decomposition guard.
 代码限 `scripts/hooks/beads-consistency.py` 和对应 Python tests。
 不访问真实产品数据、不写 Beads/CEv1 backend、不改变产品或阶段授权契约。
-本 issue 保留独立 WorkUnit `fix:hook-gate-ignores-content-state`、回归和关闭证据。
+本 issue 保留独立 WorkUnit `fix:hook-check3-directory-entries`、回归和关闭证据。
 同 PR 另含已完成图标 topic 的整体归档及集成指针，不提前归档本修复。
 
 ## 验证
@@ -568,7 +569,7 @@ Hook SHA256 `32a220088ece8c45e09f78de033597cdc53a0801c55e00725abd6de17f2c9800`�
 Reviewed HEAD `11c04e5c1c0c5ca9d9170063b0a625cdb270a5a4` plus scoped candidate。
 Completion gate: NOT_VERIFIED
 
-2026-10-05 回顾性证据缺口注释：本字段是对本记录 WorkUnit `fix:hook-gate-ignores-content-state`（namespace `github.com/kitdine/agent-deck`）的现时文档评估，不是历史或本次实际 provider 查询结果，也不表示已完成历史或当前证据边界。
+2026-10-05 回顾性证据缺口注释：本字段是对本记录 WorkUnit `fix:hook-check3-directory-entries`（namespace `github.com/kitdine/agent-deck`）的现时文档评估，不是历史或本次实际 provider 查询结果，也不表示已完成历史或当前证据边界。
 R17 原收据目录为 `/Users/jobshen/go/src/github.com/kitdine/agent-deck/.worktrees/fix/output/hook-batch-evidence/`；`round17-candidate.json`（SHA-256 `f35509abe9b7aa4b66ba172471ef2aa57da2893252fcf34c5d447cecae4a8ff6`）记录候选 fingerprint `4d5784daa281fb45b987ef870326002eb3e28942a7c7848c3d961396c2dd043d`，但未提供已解析的精确目标 ContentState ID 或对应 gate-result envelope。所查收据不能确立历史查询结果；这不证明历史查询从未发生。原 PASS、Reviewed HEAD、范围哈希及此前失败历史保持不变。
 
 本轮原 pending 声明逐字保留如下：
@@ -846,7 +847,7 @@ Reviewer: 独立hook_batch_review。Main读取/tmp/hook-r25-matrix.py确认隔�
 历史R24 flags覆盖已限缩，R26双向矩阵替代覆盖声明。F17/F18/F19已通过；F20身份限定待修复复评。
 Completion gate: NOT_VERIFIED
 
-2026-10-05 回顾性证据缺口注释：本字段是对本记录 WorkUnit `fix:hook-gate-ignores-content-state`（namespace `github.com/kitdine/agent-deck`）的现时文档评估，不是历史或本次实际 provider 查询结果，也不表示已完成历史或当前证据边界。
+2026-10-05 回顾性证据缺口注释：本字段是对本记录 WorkUnit `fix:hook-check3-directory-entries`（namespace `github.com/kitdine/agent-deck`）的现时文档评估，不是历史或本次实际 provider 查询结果，也不表示已完成历史或当前证据边界。
 此评估仅针对 R26 待验证的修复候选；其完整内容身份、ContentState ID 和精确目标 gate-result envelope 尚未由所查收据确立。原收据目录为 `/Users/jobshen/go/src/github.com/kitdine/agent-deck/.worktrees/fix/output/hook-batch-evidence/`：
 
 - `r26-red.log`（SHA-256 `0f5867bcf6be968b5baa41ef65462183f804ab5e0af2b21ea82a69e82b0163ed`）：90 tests、1 failure。

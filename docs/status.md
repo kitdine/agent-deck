@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-08-25
-updated: 2026-10-05
+updated: 2026-10-07
 ---
 
 # AgentDeck Project Status
@@ -14,21 +14,9 @@ column below is its current execution-status projection. Later version direction
 is recorded in `roadmap.md`.
 ## Current State
 
-- Approved release-to-main reconciliation has a completed signed local
-  two-parent merge `5d130e3347333f45fdd79a5e664e998aea147ad7` on
-  `feature/reconcile-release-main`, from main `868519d` and
-  release/v0.6.x `8b1f82b`, pushed as [Draft PR #46](https://github.com/kitdine/agent-deck/pull/46).
-  It retains main governance and release history;
-  bounded independent review is recorded in the [partial integration record](topics/v0-6-5-contract/reviews/assemble.md).
-  All eight CI jobs passed for that delivered head, but its subsequent
-  [remote review](https://github.com/kitdine/agent-deck/pull/46#pullrequestreview-5414346115)
-  left that integration state blocked. The bounded repair now has passing
-  affected checks and independent local re-review, recorded in integration
-  Rounds 6–8. Exact-state evidence gates, signed append delivery and new-head CI
-  remain delivery prerequisites, followed by the supervisor's exact-head and
-  parent check before remote merge. Normal current-iteration feature/fix PRs target main; publication and
-  explicit supported-release maintenance are separate. This partial propagation
-  leaves aggregate Tasks 2/3 and v0.6.5 assembly open and does not publish a release.
+- Release history is now propagated into main through [PR #46](https://github.com/kitdine/agent-deck/pull/46) at `71e8047e0dd8d638be8587ff1a016c38a9cea635`, tree `cef4236123e512252d340e07b2cbcd7dae7d1842`, with parents main `868519d13902ad1f59c9688c252f92d6297c9d15` and reviewed source `909d731847362d2d6453c7a5ede9870a0c35079e`. Release `8b1f82b09664f32337dbb9ed9f3e4f14cc2b4d30` is an ancestor. Actual [postmerge CI37383050159](https://github.com/kitdine/agent-deck/actions/runs/37383050159) attempt1 succeeded in all four jobs. The completed 5/5 [limited integration](topics/v0-6-5-contract/reviews/assemble.md) preserves original failed rounds and the final-head remote-review waiver; it does not pass aggregate Task2/3.
+
+- The approved [version closeout](topics/v0-6-5-contract/tasks.md#current-b-closeout--2026-10-07) has accounted for eighteen delivered repairs and one bounded administrative disposition. Task2 and document cold reviews passed in `feature/v0-6-5-closeout`; synchronized gates returned VERIFIED6/6 and3/3. The final contract/document independent re-review passed, with pre-retirement required gates verified and five delivered supporting fix records retired. Final content evidence and the open delivery boundary are tracked in the [contract review](topics/v0-6-5-contract/reviews/v0-6-5-contract.md). Twelve original evidence snapshots remain unrecovered and have explicit criterion-specific assessments. This is an uncommitted documentation candidate, not a release.
 
 - Patch-line integration: the approved [AD shared-stroke icon](archive/topics/ad-shared-stroke-icon/tasks.md)
   was delivered by [PR #30](https://github.com/kitdine/agent-deck/pull/30) to
@@ -49,8 +37,7 @@ is recorded in `roadmap.md`.
   WidgetTimeline, collision causality and actual recovery remain unverified.
   Footer P3 has a bounded original-sample/measured-environment administrative
   not-a-defect disposition in the [P3 carrier](fixes/footer-routes-narrow-truncation.md);
-  its import is part of the pending candidate, not a product fix or full native PASS. This records this feature's patch-line closeout; main
-  propagation, aggregate v0.6.5 completion and publication remain separate.
+  its carrier is present in main through PR46, without a product fix or full native PASS. This records the feature's patch-line closeout and completed main propagation; aggregate v0.6.5 completion and publication remain separate.
 
 - Repository Hook maintenance: [Beads Stop session scope](archive/fixes/beads-stop-session-scope.md#review--round-2--2026-09-07)
   was delivered in signed commit `2d53d8e` after independent re-review and real-client
@@ -260,7 +247,7 @@ claimed. The separately delivered Beads observer Fix keeps its existing review,
 real-client acceptance and immutable gates. Further instruction changes require
 one complete per-document proposal and approval.
 
-Version scope: **v0.6.0**, re-selected on 2026-09-05 and narrowed on
+Historical integrated version scope: **v0.6.0**, re-selected on 2026-09-05 and narrowed on
 2026-09-26. Its five areas and their boundaries are recorded in
 [the roadmap](roadmap.md#v060--trusted-usage-and-subscription-visibility), with
 Beads coordination under `ad-v060-iteration`: schema/Hook visibility, desktop
@@ -288,14 +275,17 @@ retained without reopening delivered contract Tasks. Review and merge details ar
 [integration record](archive/topics/v0-6-0-contract/reviews/assemble.md).
 
 Next iteration: the operator selected concentrated defect repair in `v0.6.5`.
-The reconciled queue has nineteen unique Bugs, three unimplemented feature
-candidates and six retained version-planning records; obsolete/duplicate
-records were closed with provenance. The [roadmap](roadmap.md#v065--concentrated-defect-repair)
-owns priorities and the proposed one-issue/one-PR workflow. This closeout does
-not start those fixes or convert known technical failures into acceptance PASS.
+The nineteen-member intake is historical: eighteen repairs and one bounded
+administrative disposition have been delivered/accounted for in main. The
+[contract ledger](topics/v0-6-5-contract/tasks.md#current-member-dispositions)
+owns their actual assembly/evidence state; three unimplemented feature candidates
+and retained version-planning records remain separate. The [roadmap](roadmap.md#v065--concentrated-defect-repair)
+owns membership/priorities. Aggregate review, final contract and release readiness
+remain separate; no historical technical failure is converted into acceptance PASS.
 
 | Topic | Version | Status | Purpose |
 | --- | --- | --- | --- |
+| [v0.6.5 Contract](topics/v0-6-5-contract/tasks.md) | `v0.6.5` | Task2 accounting and final contract/document reviews passed; required pre-retirement evidence passed and five supporting fix carriers retired. See the [contract review](topics/v0-6-5-contract/reviews/v0-6-5-contract.md) and current contract matrix. Documentation/evidence closeout remains uncommitted and awaits separately authorized delivery; no release. | Nineteen-member accounting and final contract, with preserved native/performance limits and separate delivery authority. |
 | [`v0.5.0` Contract Closure](topics/v0-5-0-contract/tasks.md) | `v0.5.0` | Released — contract complete, independently reviewed, and committed at `a547362`; `cli-design.md` is at version 28 and both contract Tasks are 2/2 implemented and reviewed. Six release candidates culminated in `v0.5.0-rc.6`, and stable `v0.5.0` published the exact `acb8384` commit. The schema-version-signal documents and decomposition are now committed; this contract directory remains live pending its separately scoped retirement. No v0.5.0 product work remains. | Version-wide specification raise and documentation reconciliation after every selected topic's tasks pass review. |
 | [Schema Version Signal](topics/schema-version-signal/tasks.md) | `v0.6.0` | First assembly batch — 4/4 documents and 6/6 tasks reviewed and delivered; source `58df42d`. This integration carries the product, stable contracts and worktree-status governance correction. Task 5 manual text-size/layout and VoiceOver/interaction acceptance remain user-waived, not tested. See the [integration record](archive/topics/v0-6-0-contract/reviews/assemble.md); retirement and release remain separate. | Stable schema-ahead reporting across doctor, CLI, desktop and Hook delivery, with actionable recovery and preserved independent session availability. |
 | [Snapshot Performance](topics/snapshot-performance/tasks.md) | `v0.6.0` | Second assembly batch — integrated through PR #4 at main `4dd10f4`; 6/6 documents and 3/3 tasks remain reviewed and delivered. Cold-import and unchanged-refresh CPU targets, the final 20-sample campaign, V01-V19 completeness and manual/native checks retain their explicit accepted-exception status; they are not reported as technical passes. Retirement and release remain separate. | One shared scan runtime, reusable snapshot computation and truthful CLI/menu-bar progress with preserved failure and scope semantics. |

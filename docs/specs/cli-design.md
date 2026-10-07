@@ -1,7 +1,7 @@
 ---
 status: active
-version: 31
-updated: 2026-10-04
+version: 32
+updated: 2026-10-07
 created: 2026-07-14
 ---
 
@@ -469,8 +469,8 @@ text that keeps its typed code and exit code. A patch release must be safe to
 downgrade from — schema, persisted formats, and the stdout contract stay
 byte-compatible with the prior release.
 
-The operator-approved `v0.6.5` `launchservices-recovery` feature is a single
-explicit exception to the MINOR and PATCH output rules above, limited to
+The operator-approved `v0.6.5` `launchservices-recovery` feature is an
+explicit output exception to the MINOR and PATCH rules above, limited to
 read-only LaunchServices doctor diagnostics and their health presentation.
 After the feature's requirements, surfaces, architecture and decomposition pass
 independent review, the release may add only the declared diagnostic
@@ -482,6 +482,29 @@ changes, different existing-check semantics, unrelated count changes or any
 other new feature in a patch release. The general MINOR/PATCH rule continues to
 apply to every other subject. Doctor does not automatically unregister or clean
 system registrations, restart daemons or rebuild system databases.
+
+The operator's 2026-10-07 B decision retains `v0.6.5` and adds one separate,
+narrow exception to the schema-migration and byte-compatible-schema rules:
+the already-delivered PR #24 addition of
+`session_sources.parser_context TEXT NOT NULL DEFAULT ''` in
+`sessions.sqlite3`, including its CREATE TABLE declaration and additive ALTER
+TABLE upgrade from published v0.6.0 (`a5e969d7ad60cfaaee7fec13cbe1704d4cdb2c52`).
+This source parser checkpoint supports the existing session-attribution repair;
+it does not authorize another schema migration, a core-schema or credential
+change, new commands/flags/exit codes, other persisted-format changes, or a
+general schema exception for patch releases. All non-excepted subjects retain
+the general MINOR/PATCH rule. Release documentation must disclose this addition.
+
+The exception does not waive compatibility or safety: isolated synthetic-data
+verification must establish upgrade, v0.6.0 readback and old/new round trips,
+preservation of session documents and exclusions, and isolation from core
+account/provider/credential data and external-client configuration. Older
+binaries may ignore the extra checkpoint column and reparse the rebuildable
+index; equality of parser checkpoints across versions is not promised. Failed
+or unverified compatibility keeps the contract boundary open. This decision
+does not authorize product repairs, production migration or installation, OS
+registration, or release acceptance; same-SHA preflight and real-data/install/
+Widget acceptance retain their separate requirements.
 
 Rewording an error message, including replacing leaked internal text with
 actionable guidance, is PATCH; adding or renaming the typed `code` in the JSON

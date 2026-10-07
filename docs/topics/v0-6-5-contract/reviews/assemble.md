@@ -19,6 +19,72 @@ identity and narrower scope. Independent reports are transcribed below; recorded
 scores for reports lacking a score are the main operator's evidence assessment,
 not an invented reviewer score. Earlier delivery advice is historical.
 
+## Aggregate Task2 evidence ledger — 2026-10-06
+
+This new accounting belongs to `v0-6-5-contract:assemble`. Rounds1–8 below
+retain their original narrower integration scope and failures. This ledger is
+producer evidence prepared for cold independent aggregate review, not a verdict.
+Source/delivery matrix: [current member dispositions](../tasks.md#current-member-dispositions).
+
+### Original-evidence recovery and criterion impact
+
+One effective bounded filename/digest search checked 898 files, maximum20MiB
+each, in `/private/tmp`, the current macOS temporary root and this repository
+including worktrees. An initial invalid fd regex was rejected before searching;
+its empty result was discarded. None of the twelve originals below was recovered.
+Detailed candidate paths, evidence IDs and limits are in operator-local
+`/tmp/agentdeck-v065-closeout-20261006/recovery/recovery-results.json`. Earlier
+bounded immutable-file history checks also did not recover the three snapshots.
+No missing identity is populated from a later candidate or similar output.
+
+| Original | Expected raw identity | Recovery result | Current assembly impact and required boundary |
+| --- | --- | --- | --- |
+| `/private/tmp/agentdeck-cwr-r3-release-build.log` | raw digest not recorded; URI + original Evidence/ContentState identity retained | original not recovered | Blocks renewed local build/install/timeline claims about the missing original. Current assembly may reuse the preserved original bounded gate/review plus actual immutable delivery and same-main hosted build/test evidence; no installed-candidate or Release PASS is inferred. A new real install/registration/timeline campaign is excluded and remains a release-owned prerequisite. |
+| `/private/tmp/agentdeck-cwr-lifecycle.log` | raw digest not recorded; URI + original Evidence/ContentState identity retained | original not recovered | Blocks renewed local build/install/timeline claims about the missing original. Current assembly may reuse the preserved original bounded gate/review plus actual immutable delivery and same-main hosted build/test evidence; no installed-candidate or Release PASS is inferred. A new real install/registration/timeline campaign is excluded and remains a release-owned prerequisite. |
+| `/private/tmp/agentdeck-cwr-native-final.ndjson` | `559990491c03e18f3de5269506d3030a929718adc93e042af869b59a5cd616a9` | original not recovered | Blocks renewed local build/install/timeline claims about the missing original. Current assembly may reuse the preserved original bounded gate/review plus actual immutable delivery and same-main hosted build/test evidence; no installed-candidate or Release PASS is inferred. A new real install/registration/timeline campaign is excluded and remains a release-owned prerequisite. |
+| `/tmp/agentdeck-quota-route-delivery-evidence.json` | `f47b7a33246139b5ed129387eee0c6d09f441053c73917d56a4c2bcfaf7245f5` | original not recovered | Missing candidate/delivery JSON or staged diff is not reconstructed. Immutable Git trees/parents and actual final-head review/CI establish delivery; current isolated compensation/save-failure tests support behavior. Original four-criterion gate remains historical and does not pass the aggregate. |
+| `/tmp/agentdeck-quota-route-staged.diff` | raw digest not recorded; URI + original Evidence/ContentState identity retained | original not recovered | Missing candidate/delivery JSON or staged diff is not reconstructed. Immutable Git trees/parents and actual final-head review/CI establish delivery; current isolated compensation/save-failure tests support behavior. Original four-criterion gate remains historical and does not pass the aggregate. |
+| `/tmp/agentdeck-quota-route-final-evidence.json` | `ac5a9f6031c554c3f322b1d72558d25267341f8423d5d50438dd9af2dd78a6c0` | original not recovered | Missing candidate/delivery JSON or staged diff is not reconstructed. Immutable Git trees/parents and actual final-head review/CI establish delivery; current isolated compensation/save-failure tests support behavior. Original four-criterion gate remains historical and does not pass the aggregate. |
+| `/private/tmp/agentdeck-spa-r4-green.log` | raw digest not recorded; URI + original Evidence/ContentState identity retained | original not recovered | Missing historical regression/reviewer raw log remains a traceability limit. Current canonical/reparse regression results and actual same-main full/race CI support current behavior; the independent canonical review and exact source/merge remain preserved. New results are separate observations, not restored Round5 receipts. |
+| `/private/tmp/agentdeck-cold-review/final-repros.log` | `sha256:15e0af61c40acadda6884824e491c25381e3a50f10ec770f04614f921e5157b9` | original not recovered | Missing historical regression/reviewer raw log remains a traceability limit. Current canonical/reparse regression results and actual same-main full/race CI support current behavior; the independent canonical review and exact source/merge remain preserved. New results are separate observations, not restored Round5 receipts. |
+| `/private/tmp/agentdeck-spa-final-all.log` | `sha256:2b46bfdd9dc07bfa53ea6ad81e5f792af946ec7bbf08faf1d96aaebefe6e7a86` | original not recovered | Missing historical regression/reviewer raw log remains a traceability limit. Current canonical/reparse regression results and actual same-main full/race CI support current behavior; the independent canonical review and exact source/merge remain preserved. New results are separate observations, not restored Round5 receipts. |
+| `/Users/jobshen/go/src/github.com/kitdine/agent-deck/.worktrees/launchservices-recovery/docs/topics/launchservices-recovery/reviews/ux-cli.md` | `6d8fb3a4e253d0b3b0ef089b5f4c83cbb85b8694c7996b58d0a70987102665fb` | original not recovered | Original early full-review snapshot is unavailable; the later committed qualified review body has a different full digest and is not substituted. Signed feature delivery, scoped implementation/closure reviews and actual Topic evidence remain inputs. The new independent aggregate/contract reviews must assess their applicability; no early PASS or transcript is fabricated. |
+| `/Users/jobshen/go/src/github.com/kitdine/agent-deck/.worktrees/launchservices-recovery/docs/topics/launchservices-recovery/reviews/architecture.md` | `9592efaba41e48c3e7a7e9218b6a5bebfc2b324a47220fdd94b9889ed17b1f0f` | original not recovered | Original early full-review snapshot is unavailable; the later committed qualified review body has a different full digest and is not substituted. Signed feature delivery, scoped implementation/closure reviews and actual Topic evidence remain inputs. The new independent aggregate/contract reviews must assess their applicability; no early PASS or transcript is fabricated. |
+| `/Users/jobshen/go/src/github.com/kitdine/agent-deck/.worktrees/launchservices-recovery/docs/topics/launchservices-recovery/reviews/tasks.md` | `e7aa69853590e8472958ab2ccbd3db51ff42791d23f54a065d93871130b09730` | original not recovered | Original early full-review snapshot is unavailable; the later committed qualified review body has a different full digest and is not substituted. Signed feature delivery, scoped implementation/closure reviews and actual Topic evidence remain inputs. The new independent aggregate/contract reviews must assess their applicability; no early PASS or transcript is fabricated. |
+
+These are explicit proposed applicability assessments for the declared aggregate
+criteria, subject to independent review. Raw unavailability alone is not rewritten
+as a failed historical observation, and historical VERIFIED is not relabelled
+as new target evidence. No new waiver lowers an acceptance criterion. Where the
+current criterion requires a fresh native or production observation, it remains
+uncovered and cannot be executed under this authorization.
+
+### Current verification and reusable delivery evidence
+
+- Current base `71e8047e0dd8d638be8587ff1a016c38a9cea635`, focused isolated Go regression run:15 top-level tests and42 subtests passed across session, usagehook and CLI. Log SHA256 `da6d00933178ba1658f1d1ce9d2ae0dfa4eedf4dd96e110e3c0658c1231b1f67`; local Go1.27.1/darwin-amd64. Full command and recipe are in `/tmp/agentdeck-v065-closeout-20261006/current-regressions-exact.json`. Existing tests cover canonical/cwd/reparse, exclusion/movement, compensation concurrent-write/deleted-file rejection and both save-failure entry points. No production settings were accessed.
+- Actual main hosted run37383050159 is reused, not rerun: `make verify` executed full Go, full race and vet under hosted Go1.26.0; desktop ran Swift tests/build, Widget sandbox and distribution fixtures. XCTest reports App140 executed/one opt-in skip/zero failures and Widget48/zero failures; the skip is not native acceptance. Raw verify log SHA256 `999971b86921f42996cd6677c949b61ddcf45528a9da24f534380757899ecd09`, desktop log `08428fc623c0def759c3debfca81a6cda527e4c32bff9587f52a4f69a6bb799e`, retained under `/tmp/agentdeck-v065-closeout-20261006/hosted/`. Hosted installer fixtures are distinct from production local installation.
+- All member source/merge ancestry and final-head Codex no-major-issues comments were read from original Git/API results. PR46 final source has an explicit remote-review waiver, not new remote approval; its old-head review5414346115 and original failures remain. PR44 earlier failed postmerge CI remains historical, followed by the actual PR45/8b1f82b success.
+- Footer administrative disposition remains exactly bounded. Existing visible-popover PNG `d1ee76b04edbe65f0f8feb459d8da99dfd12add3f860b44e395038eea21c30a1` and capture JSON `3b3f4332441a6683cb6cb455781dc41df4af07fcb4a3470a9db43903261d43d5` matched retained bytes; original manual-click confirmation is present. No new rendering, native campaign, input or OS operation occurred.
+- CodeGraph entry indexed this worktree separately. Its natural-language Go-test locator returned unrelated Swift symbols, so focused Go source/test-name inspection was used; no CodeGraph-derived runtime claim is made. Required L0 and independent aggregate review remain to be recorded for the final frozen candidate.
+
+### Final candidate interaction assessment
+
+The executable/dependency scope `cmd/internal/apps/prototype/desktop/go.mod/go.sum/vendor` is byte-equivalent to the fixed release parent and unchanged in this documentation-only candidate. Current-main Hook/CI differences were already independently reviewed by PR46 at its final scope; this assessment explicitly checks their integration rather than inheriting an unconditional product PASS.
+
+| Interaction | Evidence and preserved contract |
+| --- | --- |
+| Account-bound restore and external route compensation | PR25/26/27 exact chain, isolated post-read concurrent/deleted-file guard and save-failure regressions; preserved prior/unrelated fields and account-bound cache semantics. No new live account/config claim. |
+| Session indexing and scan publication | PR24 canonical ID/cwd/reparse, PR28 scoped publication writer reservation, exact-main full/race CI and current attribution regressions; raw log/usage preservation remains contractual. No global-lock redesign. |
+| Widget publication, quota source and presentation consumers | PR23/32/34 source/merge continuity, full hosted Swift/shared fixtures, previous valid rendered-prototype evidence; unavailable container records failed-before-commit and failed attempt keeps its own source. Native installation/contrast/timeline acceptance remains separate. |
+| Prototype probe/stat-chip | PR33 built-preview and formatter fixtures retained; two old local carrier references were independently recovered by matching immutable Git SHA256. Browser evidence remains limited to prototype semantics. |
+| Doctor and safe health projection | PR42 plus PR44/45 actual contract/closure evidence and compatibility exception; read-only bounded probes and path-free desktop projections. Actual recovery/collision causality/WidgetTimeline and performance FAIL/#43 remain excluded. |
+| Hook/parser, CI and archive import | PR31 final90-unit/1507-paired checks plus PR46 semantic repair/cold re-review, actual same-main documentation check; classifier/product routes, current-round blob semantics and historical FAIL preservation coexist. No checker/Hook/config edit occurs here. |
+| Distribution and ancillary approved icon | PR36/37 fixture-only unregister-before-delete evidence and same-main hosted isolated distribution checks; production registrations untouched. PR30 icon delivery remains separately approved provenance, not a twentieth Bug or a claim of deferred native icon acceptance. |
+
+Every row is a scoped evidence-applicability claim awaiting aggregate independent
+review. Product defects, new native/production prerequisites or a need for new
+waiver stop only that criterion and retain the remaining independent work.
+
 ## Round 1 — 2026-10-05
 
 ## 📋 Original independent integration review
@@ -819,3 +885,148 @@ Delivery policy update: the real user explicitly waived any new remote GitHub re
 Finalization boundary: the independent PASS is bound only to the R2 freeze. Appending these histories and updating the status projection is a separately assessed metadata synchronization, with its own target identity and CE roll-ups. This record embeds no digest of itself. All historical red and intermediate failed checks remain in the original artifact directories.
 
 Main operator gate finalization: the source report originally had no new CE query. The later actual R2 frozen-state query returned VERIFIED for all five required criteria, with no missing criteria, invalidated evidence or unresolved impacts. The unchanged document query returned VERIFIED for three criteria; the original commit integration still returned FAILED. Receipt: operator-local `/tmp/agentdeck-reconcile-main-20261005/p2-delivery/reviewed-ce-receipts.json`. The canonical field refers to that reviewed freeze, not this record synchronization or a future commit. Those identities require separate roll-ups and queries. The original reviewer recommendations remain historical; current commit/push authority is explicit, subject to the final exact-state gates and delivery checks.
+
+## Round 9 — 2026-10-06
+
+## 📋 Task2 aggregate / tasks.md 独立评审
+
+📊 总体评分：9/10
+
+✅ **Task2 aggregate verdict：PASS**
+✅ **tasks.md 文档 verdict：PASS，9/10**
+**两个 completion gates 均保持 NOT_VERIFIED；本报告不宣称 Task2 已完成。**
+
+### 🔴 严重问题 — 必须修复
+
+无。未发现本次冻结文档候选的可行动阻塞缺陷。
+
+### 🟡 改进建议 — 推荐
+
+无。缺失历史原件是明确的证据可追溯性限制，但在下述适用性边界内，不构成本次 aggregate review 的未关闭 finding。
+
+### 🟢 优点
+
+- 十九个成员均有明确 disposition：十八项已交付修复、一项限定 footer 行政 not-a-defect，没有把后者计为产品修复。
+- 独立核对 member ledger 中全部 carrier SHA-256；全部带 source/merge 的成员均通过实际 Git ancestor 检查，进入 `71e8047`。
+- 核对实际 PR 元数据、current-head Codex 评论及 source/result check-runs。PR44 历史 postmerge verify failure 与 PR45 后续成功保持区分；PR46 的有限 integration 未被升级为 aggregate PASS。
+- `assemble.md` Round1 起的全部历史内容与 HEAD 字节一致；新增 ledger 没有改写 Rounds1–8。
+- Task3 保持未开始，Topic、Release、生产安装及原生验收未提前关闭。
+
+### 📝 总结
+
+**独立性与范围**
+
+本 reviewer 以独立冷上下文、只读方式审阅。未参与候选编写，未调用 memory/work_state、其他 agent、Hook、Beads 或 CE 写入；未修改文件、Git、安装或 OS 注册。采用文档/契约维度及现有证据适用性评审，没有重做已覆盖的产品实现评审。
+
+**准确身份**
+
+工作目录：`/Users/jobshen/go/src/github.com/kitdine/agent-deck/.worktrees/v0-6-5-closeout`
+分支：`feature/v0-6-5-closeout`
+HEAD：`71e8047e0dd8d638be8587ff1a016c38a9cea635`
+
+冻结 manifest digest 独立复算：
+
+`b8db81f556ac43c155334732dd85ece01621642438753370104cc065eaf5c00f`
+
+四个文档在审阅前后均匹配冻结 bytes、SHA-256 和 Git blob：
+
+| 文档 | Git blob |
+|---|---|
+| tasks.md | `1346191797aaf5dafbf9e9e029cd13c2a80f03a7` |
+| reviews/assemble.md | `5a9164d1df578c0eecdaeca114c4c843e3858321` |
+| docs/status.md | `b9f7f0264085ff22772846928886f3732eacd121` |
+| docs/roadmap.md | `0fda495f369356980f43ece0dcecaf52bc65d84e` |
+
+所有 manifest 所列支持文件 digest 均匹配。未发现漂移。
+
+**缺失原件的独立适用性判断**
+
+1. **Cask/native 三份原件：不阻塞本次 aggregate acceptance，但不能支持新的安装/native PASS。**
+   原 canonical Cask review Round2 明确记录独立解析五种配置、57 个接收结果以及安装路径核对；Round4 明确仅对未变 native/installer 边界复用，并明确没有原生执行新 reload 调用。当前 release parent 到 main 的 `cmd/internal/apps/prototype/desktop/go.mod/go.sum/vendor` 范围 diff 为空。本次候选也只改文档。由此可以复用已交付、限定范围的历史评审及交付连续性；hosted build/fixtures 只补充当前构建/回归支持，不能替代真实安装或 timeline 观察。最终 L4、正常 Cask/Gatekeeper、实际安装与配置化 Widget 验收仍由 Release 边界承担。
+
+2. **quota route 三份原件与 session 三份原件：不阻塞本次 aggregate acceptance。**
+   不将不存在的 JSON/diff/log 重建为历史 receipt。实际 Git source/merge、current-head review、CI 和 canonical review 提供交付连续性；本次另行产生的隔离回归覆盖 compensation 并发写入/删除保护、两个 save-failure 入口及 canonical/cwd/reparse。新结果与历史结果没有混写。
+
+3. **LaunchServices 三份早期完整 review snapshots：不阻塞本次 assembly，但不能声称已恢复早期完整报告。**
+   当前 committed qualified review bodies 保留设计缺陷及修复结论、准确设计身份和限定适用范围；实际 feature/closure 交付、review 和 CI 连续性另有记录。本次 aggregate 复用的是这些现存、可识别的交付和评审事实，不把其不同 digest 的正文冒充缺失原件，也不重新认证早期完整报告内容。
+
+这些判断基于当前 Branching 的未变父证据复用规则与 Evidence 的 scope-aware applicability 要求，**不是新 waiver**。performance FAIL、排除的 #43、WidgetTimeline/实际 recovery/collision causality、native contrast 与 footer 扩展验收均未被转为 PASS。
+
+**文档的独立判断**
+
+- **Authority：PASS。** tasks.md 保持版本 membership/任务分解权威，Beads、CEv1、review 和 delivery 分离；历史 workspace/base 与当前 closeout 明确区分。
+- **Coverage：PASS。** 十九个成员、Task1/2/3 依赖、兼容性例外、排除项、行政 disposition 及后续 Release 边界都有覆盖。
+- **Readiness：PASS。** 文档集明确为版本契约仅 tasks.md；Task2 的产出与验收要求足以供后续 evidence binding 使用，Task3 仍以 Task2 gate 为前置条件。文档 PASS 不等于 Task2 gate VERIFIED。
+
+**Evidence**
+
+- 复用 `task2-review-docs.log` 中 document structural check PASS，以及已有 whitespace/diff-check 记录。
+- 独立执行 `bash scripts/check-topic-docs.sh v0-6-5-contract`，退出 0。
+- 独立核对当前回归原始 log：15 个 top-level PASS、42 个 nested PASS，无 FAIL；log digest 与 manifest 一致。
+- 实际 hosted run `37383050159`：HEAD 精确为 `71e8047…`，attempt1、success；原日志包含 full Go、race、vet；App140/一项既有 skip/零失败，Widget48/零失败，sandbox/distribution fixtures PASS。原 verify/desktop log digest 与 ledger 一致。
+- 现有 hosted 工具链与本地回归工具链保持分别记录，没有宣称二者相同。
+- 结构检查与回归不承担语义或 CE gate 的替代职责。
+
+**Completion gate 与后续边界**
+
+已检查提供的实际初始 gate envelopes：
+
+- Task2：`v0-6-5-contract:assemble:state:candidate:b8db81f556ac43c155334732dd85ece01621642438753370104cc065eaf5c00f`，**NOT_VERIFIED，六项 criteria 缺少当前目标证据**。
+- document：`v0-6-5-contract:tasks.md:state:2d747e2c25d3539ee68809d70059d904e3f403a7efe9638f6dea7f07270e51dd`，**NOT_VERIFIED，authority/readiness/coverage 三项缺少当前目标证据**。
+
+### Task checkpoint
+
+**Review PASS；Task boundary 保持 open。**
+
+提交建议：等待主代理完成准确状态的评审转录、合法 evidence binding 和实际 required gate 查询；仍需独立 Git 提交授权。
+推送建议：等待上述 gate 与已授权提交边界；本报告不授权推送。
+
+下一步仅为主代理记录本次独立结论、完成必要状态同步后，对最终内容身份绑定适用证据并查询 document/Task2 gates。若记录或状态同步改变文档身份，不能把本次冻结身份直接重标为新状态。**Task2 实际 gate VERIFIED 前不得进入 Task3；无需重复本次已完成的独立评审。**
+
+Reviewer: independent cold role `/root/task2_cold_review`, fresh context (`fork_turns: none`), requested gpt-6-astra/low under the real user configuration. Main writer owns this transcription and independently checked its Git/API/log/manifest claims. No independent account/Fast attestation is inferred.
+Method: scoped aggregate/document evidence-applicability review; retained report transcription SHA-256 `d2f64b1eb4a8f4b138138dcdb0be890e4a8ba471f6ad15fe8516f4bb67c00ca3`.
+Scope: exact four-document/support freeze `b8db81f556ac43c155334732dd85ece01621642438753370104cc065eaf5c00f`; source `/tmp/agentdeck-v065-closeout-20261006/task2-cold-review.md` is operator-local provenance.
+
+Verdict: PASS
+Completion gate: VERIFIED
+
+The preserved source report records its initial NOT_VERIFIED envelope. The canonical field now records the later actual query described below. Each subsequent status/record synchronization requires its own target-bound evidence and query; no old observation is relabelled.
+
+Main gate finalization: actual frozen Task2 query returned VERIFIED6/6, and document query VERIFIED3/3. After explicit review/status-only preservation assessments, synchronized candidate48568ca64e1c133382f6601c01a552b186c46106aca156378b94cf348b4e2153 also returned VERIFIED6/6, with no missing or unresolved impacts. The canonical field records this actual later query; original initial NOT_VERIFIED envelopes remain intact. Further gate-label/status synchronization requires a new exact target, not relabelling.
+
+## Round 10 — 2026-10-07
+
+## 📋 B 范围下 Task2 证据适用性
+
+📊 综合评分：8/10
+
+Verdict: PASS
+
+### 🔴 严重问题 — 必须修复
+
+无本 Task2 范围 finding。
+
+### 🟡 建议改进 — 推荐
+
+无。
+
+### 🟢 优点
+
+独立冷评确认 B 不改变十九成员、产品、测试、依赖或交付事实。旧核账/ancestor/review/CI及有界缺失原件判断保留，未重做核账。Task3 的状态 finding 不改写 Task2 verdict。
+
+### 📝 总结
+
+Reviewer: independent cold `/root/b_contract_cold_review`, fork:none; requested gpt-6.1-sol/xhigh. Upstream actual model/account/Fast remain unverified. Main verified claims and owns this transcription.
+Method: bounded current contract/finding review, source/vendor Git blob and log/snapshot/hash checks; no product test rerun, Hook, memory/work_state or delivery action.
+Reviewed state: HEAD71e8047e0dd8d638be8587ff1a016c38a9cea635; candidate62acfd2f9c21ee4243cfb4e36ff1f3df793c4fe87ef3d50be3a654ce44fa0258; tasks.md blob f4555ca7da4ee921bc1139dc86872a0774b369d9; document digest c6bc32b4067269085159b6fc10a5fc6813120659cf9685762d527c859cc77dde.
+Evidence: operator-local `/tmp/agentdeck-v065-b-20261007/cold-review-r3.md`, SHA-256 `6e4fdf8dfa4b8732c30bf20ba409c1d639cb8aa1dc5672e3f9c159ed4ae8f1db`; main independently matched source identities, ten named-stage logs/snapshots and current statement. Reviewer verified all9 subjects/17 supports before and after.
+
+Scope: bounded reuse assessment of unchanged Task2 accounting; prior full independent aggregate Round9 remains the substantive review, with the current Task3 cold review providing a separate B-impact assessment.
+
+Completion gate: VERIFIED
+
+Actual ready Task2 target returned VERIFIED6/6 after scope-aware preservation and target-bound rollups. A later correction appended proper raw ready.json source-URI digests (SHA256 ef3076a049c6db3abb6262257ee75ce762ecc50d902d2edbe9581b1f559d6d06), superseding only six new provenance entries; readback still VERIFIED6/6, no unresolved impacts. No old observation was overwritten.
+
+### Task checkpoint
+
+Task2 remains reviewed/awaiting delivery. 提交建议：等待最终准确目标 gate 和独立提交授权。推送建议：等待上述条件及独立推送授权。Task3/document remain open; no Topic/Release completion inferred.
