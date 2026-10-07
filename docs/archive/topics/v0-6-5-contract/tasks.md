@@ -1,5 +1,6 @@
 ---
-status: active
+status: historical
+retired: 2026-10-07
 created: 2026-09-30
 updated: 2026-10-07
 ---
@@ -12,7 +13,7 @@ The operator's 2026-10-03 decision adds one bounded Lane B exception:
 `ad-bug-lsregister-collision-no-recovery-path`, ships with v0.6.5 after its own
 requirements, terminal surface, architecture and decomposition pass independent
 review. All other membership and feature exclusions remain in force.
-Origin: the operator's version selection in [Roadmap](../../roadmap.md#v065--concentrated-defect-repair)
+Origin: the operator's version selection in [Roadmap](../../../roadmap.md#v065--concentrated-defect-repair)
 and explicit request to design this version contract. Input is sufficient for
 version decomposition; individual Bug causes, lanes and implementation scopes
 still require current-state triage. This reviewed plan selects membership and
@@ -31,7 +32,7 @@ This is a version-contract topic, not a new product feature. Its only design
 document is `tasks.md`; Bug repairs retain their own Lane A fix records or Lane B
 topic contracts. The decomposition reviewer ratifies this document set.
 Review history belongs in `reviews/tasks.md` when review occurs. This file owns
-unmerged version execution status; [Project Status](../../status.md) continues
+unmerged version execution status; [Project Status](../../../status.md) continues
 to describe the integrated baseline. Beads owns issue dispatch, and CEv1 owns
 exact-state evidence; no status is inferred from another system's checkbox.
 
@@ -89,12 +90,12 @@ dependencies. Do not start a Bug under this document-design command.
 | P2 | `ad-bug-hook-check3-directory-entries` | New untracked-directory entries expose relevant Markdown to the scoped observer. | L1 Hook fixtures; both runtimes |
 | P2 | `ad-bug-hook-check5-lifecycle-word-match` | Distinguish obsolete lifecycle assertions from quotations and ordinary language. | L1 Hook fixtures; both runtimes |
 | P2 | `ad-bug-lsregister-collision-no-recovery-path` | Operator-selected Lane B `launchservices-recovery`: new read-only doctor diagnosis and truthful manual recovery guidance, with independently reviewed feature contracts before implementation. | L2 doctor/health/output core contract, failure-first fixtures and isolated macOS read-only acceptance |
-| P3 | `ad-bug-footer-routes-narrow-truncation` | Real native 280 pt reproduction and existing-policy check before repair or Lane B decision. 2026-10-05 bounded administrative evidence/disposition: [P3 carrier](../../fixes/footer-routes-narrow-truncation.md); no implemented repair or general native layout PASS. | L1 native surface; L0 administrative documents |
+| P3 | `ad-bug-footer-routes-narrow-truncation` | Real native 280 pt reproduction and existing-policy check before repair or Lane B decision. 2026-10-05 bounded administrative evidence/disposition: [P3 carrier](../../../fixes/footer-routes-narrow-truncation.md); no implemented repair or general native layout PASS. | L1 native surface; L0 administrative documents |
 | P3 | `ad-bug-disttest-fixture-registrations-linger` | Bounded fixture registration cleanup with production identifiers unaffected. | L3 distribution lifecycle |
 
 Levels are initial impact routes, not a substitute for per-issue scope discovery.
 Each implementation plan names exact files, regression and affected subsystem.
-Apply [Project Rules](../../../.agent-instructions/project-rules.md#testing-and-verification--测试与验证),
+Apply [Project Rules](../../../../.agent-instructions/project-rules.md#testing-and-verification--测试与验证),
 including `scripts/run-go-test.sh` for Go tests and the full Go suite when a core
 contract changes. Shared Hook changes need their own relevant runtime fixtures;
 documentation changes alone do not require product test suites.
@@ -129,7 +130,7 @@ later version. It selects no other feature or Bug and does not close the origin.
 The real user subsequently approved the exact bounded primary-version-contract
 proposal on 2026-10-03 (decision source: `Sentinel_986c24bbd3b081918c2d40986edea07c`,
 “批准1”, reaffirmed in the independent resume instruction). The
-[primary Version Number Semantics](../../specs/cli-design.md#version-number-semantics)
+[primary Version Number Semantics](../../../specs/cli-design.md#version-number-semantics)
 now expressly except only the declared read-only LaunchServices doctor/health
 checks, codes, optional diagnostic fields and consequent warning counts from
 the MINOR/PATCH output guarantee for v0.6.5. Scripts relying on fixed output or
@@ -166,7 +167,7 @@ or cherry-pick is selected. Release/publication remains separately authorized.
 ## One issue, one PR and serial workspace entry
 
 The selected serial policy is implemented in
-[Branching](../../../.agent-instructions/branching.md#serial-lane-a-fix-workspace-entry)
+[Branching](../../../../.agent-instructions/branching.md#serial-lane-a-fix-workspace-entry)
 with default slot `.worktrees/fix`, entry `进入工作：fix / <slug>` and per-issue
 binding `agent-deck.fix.<slug>`. Task 1 was independently reviewed and delivered through PR #22 into main
 at `59aa33a33b3568bd3d6e7e9840103086cf0ccfd8`. Its earlier pending-delivery
@@ -179,7 +180,7 @@ issue work or subagent invocation is authorized by this plan.
 For each retained Bug:
 
 1. Reproduce against its supported release context, verify existing contract and
-   current cause, and settle the Lane under [Beads](../../../.agent-instructions/beads.md).
+   current cause, and settle the Lane under [Beads](../../../../.agent-instructions/beads.md).
    Lane A uses one `docs/fixes/<slug>.md`; new behavior uses reviewed Lane B inputs.
    Keep the original issue as dispatch carrier; do not create separate Repair or
    Re-review tasks. False/duplicate/already-fixed findings receive administrative
@@ -378,25 +379,25 @@ download link. Applicable gates below name their historical delivered targets.
 
 | Priority | Existing Bug | Disposition and carrier | Actual source / merge | Historical required gate |
 | --- | --- | --- | --- | --- |
-| P1 | `ad-bug-cask-widget-registration-missing` | delivered bounded repair; [PR #23](https://github.com/kitdine/agent-deck/pull/23); [carrier](../../archive/fixes/cask-widget-registration-missing.md) | `39212a5d9fe15c4cea6651517b4675163ef576cb` / `6f22e76da9f720fed8d00f5a031e796bcb4f6cd6` | `fix:cask-widget-registration-missing`, 4/4 at `fix:cask-widget-registration-missing:merge:6f22e76da9f720fed8d00f5a031e796bcb4f6cd6` |
-| P1 | `ad-bug-session-project-attribution-observer-noise` | delivered bounded repair; [PR #24](https://github.com/kitdine/agent-deck/pull/24); [carrier](../../archive/fixes/session-project-attribution-observer-noise.md) | `3821613a8dbe2d71a0df3f6d988ad4011b74ea4b` / `6e8c1c4d2942782152f5e6b5de89b0942fc57ce4` | `fix:session-project-attribution-observer-noise`, 4/4 at `fix:session-project-attribution-observer-noise:merge:6e8c1c4d2942782152f5e6b5de89b0942fc57ce4` |
-| P1 | `ad-bug-quota-portable-restore-account-bound-state` | delivered bounded repair; [PR #27](https://github.com/kitdine/agent-deck/pull/27); [carrier](../../archive/fixes/quota-portable-restore-account-bound-state.md) | `482cb353d40c3fd2f347e4a9aca5fd2c887257ca` / `ab5ec486e67edb5fd48745b54a302697b1db7ae9` | `fix:quota-portable-restore-account-bound-state`, 4/4 at `fix:quota-portable-restore-account-bound-state:commit:ab5ec486e67edb5fd48745b54a302697b1db7ae9` |
-| P1 | `ad-bug-quota-statusline-cross-installation-conflict` | delivered bounded repair; [PR #26](https://github.com/kitdine/agent-deck/pull/26); [carrier](../../archive/fixes/quota-statusline-cross-installation-conflict.md) | `58515d5ce2320e624b8ba92e3ccf830b5e1307b4` / `e6e37d97ec7fb25e1da7b4efcf440d0cc33abf39` | `fix:quota-statusline-cross-installation-conflict`, 4/4 at `fix:quota-statusline-cross-installation-conflict:commit:e6e37d97ec7fb25e1da7b4efcf440d0cc33abf39` |
-| P1 | `ad-bug-quota-reading-off-route-not-restored-on-save-failure` | delivered bounded repair; [PR #25](https://github.com/kitdine/agent-deck/pull/25); [carrier](../../archive/fixes/quota-reading-off-route-not-restored-on-save-failure.md) | `9b442318fdb4c5fb8e7b0d0746f8d93ffbdefa1c` / `570cc9e2c818f6a4da38365194c3cd5c7bcf4e93` | `fix:quota-reading-off-route-not-restored-on-save-failure`, 4/4 at `fix:quota-reading-off-route-not-restored-on-save-failure:commit:570cc9e2c818f6a4da38365194c3cd5c7bcf4e93` |
-| P1 | `ad-bug-usage-scan-busy-snapshot` | delivered bounded repair; [PR #28](https://github.com/kitdine/agent-deck/pull/28); [carrier](../../archive/fixes/usage-scan-busy-snapshot.md) | `78e68d141773e89ca322a9a83704804679c37229` / `26662ba018444eb7758aba995fa678d47da5aa77` | `fix:usage-scan-busy-snapshot`, 4/4 at `fix:usage-scan-busy-snapshot:commit:26662ba018444eb7758aba995fa678d47da5aa77` |
-| P2 | `ad-bug-widget-publisher-unavailable-silent` | delivered bounded repair; [PR #34](https://github.com/kitdine/agent-deck/pull/34); followups #35; [carrier](../../archive/fixes/widget-publisher-unavailable-silent.md) | `1b75cd6966641cc5e144332772393b3f1572002d` / `62863c804f4af665af767c5a54ecc366c74609c8` | `fix:widget-publisher-unavailable-silent`, 7/7 at `fix:widget-publisher-unavailable-silent:delivered:67a3248b6cf3e244ee7facef3597ad8b31ea8803` |
-| P2 | `ad-bug-quota-parse-failure-source-misattribution` | delivered bounded repair; [PR #34](https://github.com/kitdine/agent-deck/pull/34); followups #35; [carrier](../../archive/fixes/quota-parse-failure-source-misattribution.md) | `1b75cd6966641cc5e144332772393b3f1572002d` / `62863c804f4af665af767c5a54ecc366c74609c8` | `fix:quota-parse-failure-source-misattribution`, 6/6 at `fix:quota-parse-failure-source-misattribution:delivered:67a3248b6cf3e244ee7facef3597ad8b31ea8803` |
-| P2 | `ad-bug-widget-large-quota-header-client-label` | delivered bounded repair; [PR #32](https://github.com/kitdine/agent-deck/pull/32); [carrier](../../archive/fixes/widget-large-quota-header-client-label.md) | `f42cf93130f7a26291e7efe2cafc9533ca73951f` / `4c0cbd6270589812d618c02754eb1c0ac5dd9a5b` | `fix:widget-large-quota-header-client-label`, 3/3 at `urn:agentdeck:widget-batch:merge:4c0cbd6270589812d618c02754eb1c0ac5dd9a5b` |
-| P2 | `ad-bug-widget-cost-incomplete-contrast` | delivered bounded repair; [PR #32](https://github.com/kitdine/agent-deck/pull/32); [carrier](../../archive/fixes/widget-cost-incomplete-contrast.md) | `f42cf93130f7a26291e7efe2cafc9533ca73951f` / `4c0cbd6270589812d618c02754eb1c0ac5dd9a5b` | `fix:widget-cost-incomplete-contrast`, 3/3 at `urn:agentdeck:widget-batch:merge:4c0cbd6270589812d618c02754eb1c0ac5dd9a5b` |
-| P2 | `ad-bug-prototype-probe-pending-assertion` | delivered bounded repair; [PR #33](https://github.com/kitdine/agent-deck/pull/33); [carrier](../../archive/fixes/prototype-probe-pending-assertion.md) | `5a96475d9e1cbe79f8f856b7a6c6e6d00d093721` / `951b16dcb036c8e2b24ca3b2fcb0a2e367324efa` | `urn:ce:agent-deck:work-unit:fix:prototype-probe-pending-assertion`, 5/5 at `urn:ce:agent-deck:content-state:git:951b16dcb036c8e2b24ca3b2fcb0a2e367324efa` |
-| P2 | `ad-bug-prototype-statchip-fidelity` | delivered bounded repair; [PR #33](https://github.com/kitdine/agent-deck/pull/33); [carrier](../../archive/fixes/prototype-statchip-fidelity.md) | `5a96475d9e1cbe79f8f856b7a6c6e6d00d093721` / `951b16dcb036c8e2b24ca3b2fcb0a2e367324efa` | `urn:ce:agent-deck:work-unit:fix:prototype-statchip-fidelity`, 6/6 at `urn:ce:agent-deck:content-state:git:951b16dcb036c8e2b24ca3b2fcb0a2e367324efa` |
-| P2 | `ad-bug-arch-sessions-unavailable-not-a-consequence` | delivered bounded repair; [PR #38](https://github.com/kitdine/agent-deck/pull/38); followups #39; [carrier](../../archive/fixes/arch-sessions-unavailable-not-a-consequence.md) | `c426b249098a844f5ec61fa97c2fdfac2aa1e151` / `132fca40c16928c9e7846a298bc8e583ff700c84` | `fix:arch-sessions-unavailable-not-a-consequence`, 5/5 at `fix:arch-sessions-unavailable-not-a-consequence:state:archive-merge-24623ec8` |
-| P2 | `ad-bug-hook-gate-ignores-content-state` | delivered bounded repair; [PR #31](https://github.com/kitdine/agent-deck/pull/31); [carrier](../../archive/fixes/hook-gate-ignores-content-state.md) | `c9e59d775d6842e0c8b3be09ce3358c5001cc9f9` / `2eed6aff500c0691e8f02ad80976bc8e5dff2b58` | `fix:hook-gate-ignores-content-state`, 3/3 at `hook-consistency-batch:commit:2eed6aff500c0691e8f02ad80976bc8e5dff2b58` |
-| P2 | `ad-bug-hook-check3-directory-entries` | delivered bounded repair; [PR #31](https://github.com/kitdine/agent-deck/pull/31); [carrier](../../archive/fixes/hook-check3-directory-entries.md) | `c9e59d775d6842e0c8b3be09ce3358c5001cc9f9` / `2eed6aff500c0691e8f02ad80976bc8e5dff2b58` | `fix:hook-check3-directory-entries`, 3/3 at `hook-consistency-batch:commit:2eed6aff500c0691e8f02ad80976bc8e5dff2b58` |
-| P2 | `ad-bug-hook-check5-lifecycle-word-match` | delivered bounded repair; [PR #31](https://github.com/kitdine/agent-deck/pull/31); [carrier](../../archive/fixes/hook-check5-lifecycle-word-match.md) | `c9e59d775d6842e0c8b3be09ce3358c5001cc9f9` / `2eed6aff500c0691e8f02ad80976bc8e5dff2b58` | `fix:hook-check5-lifecycle-word-match`, 3/3 at `hook-consistency-batch:commit:2eed6aff500c0691e8f02ad80976bc8e5dff2b58` |
-| P2 | `ad-bug-lsregister-collision-no-recovery-path` | delivered Lane B diagnosis/guidance; [PR #42](https://github.com/kitdine/agent-deck/pull/42); followups #44/#45; [carrier](../../archive/topics/launchservices-recovery/tasks.md) | `4f1283ad19cdbfdc49344f51aac53dd4f81fb190` / `f84e58a9ed8085b37d8bea605070ead5d837fc5f` | `launchservices-recovery`, 2/2 at `launchservices-recovery:state:31e761c02810898d7e362348f6be2fce2e47b60c8167e01c69f02a4be0df16f6` |
-| P3 | `ad-bug-footer-routes-narrow-truncation` | bounded administrative not-a-defect; no product repair; followups #46; [carrier](../../fixes/footer-routes-narrow-truncation.md) | PR46 source `909d731847362d2d6453c7a5ede9870a0c35079e` / merge `71e8047e0dd8d638be8587ff1a016c38a9cea635` | no product WorkUnit; applicable `v0-6-5-contract:tasks.md` document gate |
-| P3 | `ad-bug-disttest-fixture-registrations-linger` | delivered bounded repair; [PR #36](https://github.com/kitdine/agent-deck/pull/36); followups #37; [carrier](../../archive/fixes/disttest-fixture-registrations-linger.md) | `391c9f15b38f05b69c23c97bd1346f4c752e207e` / `41f43651cb5b436b7ff374fe46b39e21f92e2e0a` | `fix:disttest-fixture-registrations-linger`, 5/5 at `fix:disttest-fixture-registrations-linger:state:archive-final-merge-4b4b67a6` |
+| P1 | `ad-bug-cask-widget-registration-missing` | delivered bounded repair; [PR #23](https://github.com/kitdine/agent-deck/pull/23); [carrier](../../fixes/cask-widget-registration-missing.md) | `39212a5d9fe15c4cea6651517b4675163ef576cb` / `6f22e76da9f720fed8d00f5a031e796bcb4f6cd6` | `fix:cask-widget-registration-missing`, 4/4 at `fix:cask-widget-registration-missing:merge:6f22e76da9f720fed8d00f5a031e796bcb4f6cd6` |
+| P1 | `ad-bug-session-project-attribution-observer-noise` | delivered bounded repair; [PR #24](https://github.com/kitdine/agent-deck/pull/24); [carrier](../../fixes/session-project-attribution-observer-noise.md) | `3821613a8dbe2d71a0df3f6d988ad4011b74ea4b` / `6e8c1c4d2942782152f5e6b5de89b0942fc57ce4` | `fix:session-project-attribution-observer-noise`, 4/4 at `fix:session-project-attribution-observer-noise:merge:6e8c1c4d2942782152f5e6b5de89b0942fc57ce4` |
+| P1 | `ad-bug-quota-portable-restore-account-bound-state` | delivered bounded repair; [PR #27](https://github.com/kitdine/agent-deck/pull/27); [carrier](../../fixes/quota-portable-restore-account-bound-state.md) | `482cb353d40c3fd2f347e4a9aca5fd2c887257ca` / `ab5ec486e67edb5fd48745b54a302697b1db7ae9` | `fix:quota-portable-restore-account-bound-state`, 4/4 at `fix:quota-portable-restore-account-bound-state:commit:ab5ec486e67edb5fd48745b54a302697b1db7ae9` |
+| P1 | `ad-bug-quota-statusline-cross-installation-conflict` | delivered bounded repair; [PR #26](https://github.com/kitdine/agent-deck/pull/26); [carrier](../../fixes/quota-statusline-cross-installation-conflict.md) | `58515d5ce2320e624b8ba92e3ccf830b5e1307b4` / `e6e37d97ec7fb25e1da7b4efcf440d0cc33abf39` | `fix:quota-statusline-cross-installation-conflict`, 4/4 at `fix:quota-statusline-cross-installation-conflict:commit:e6e37d97ec7fb25e1da7b4efcf440d0cc33abf39` |
+| P1 | `ad-bug-quota-reading-off-route-not-restored-on-save-failure` | delivered bounded repair; [PR #25](https://github.com/kitdine/agent-deck/pull/25); [carrier](../../fixes/quota-reading-off-route-not-restored-on-save-failure.md) | `9b442318fdb4c5fb8e7b0d0746f8d93ffbdefa1c` / `570cc9e2c818f6a4da38365194c3cd5c7bcf4e93` | `fix:quota-reading-off-route-not-restored-on-save-failure`, 4/4 at `fix:quota-reading-off-route-not-restored-on-save-failure:commit:570cc9e2c818f6a4da38365194c3cd5c7bcf4e93` |
+| P1 | `ad-bug-usage-scan-busy-snapshot` | delivered bounded repair; [PR #28](https://github.com/kitdine/agent-deck/pull/28); [carrier](../../fixes/usage-scan-busy-snapshot.md) | `78e68d141773e89ca322a9a83704804679c37229` / `26662ba018444eb7758aba995fa678d47da5aa77` | `fix:usage-scan-busy-snapshot`, 4/4 at `fix:usage-scan-busy-snapshot:commit:26662ba018444eb7758aba995fa678d47da5aa77` |
+| P2 | `ad-bug-widget-publisher-unavailable-silent` | delivered bounded repair; [PR #34](https://github.com/kitdine/agent-deck/pull/34); followups #35; [carrier](../../fixes/widget-publisher-unavailable-silent.md) | `1b75cd6966641cc5e144332772393b3f1572002d` / `62863c804f4af665af767c5a54ecc366c74609c8` | `fix:widget-publisher-unavailable-silent`, 7/7 at `fix:widget-publisher-unavailable-silent:delivered:67a3248b6cf3e244ee7facef3597ad8b31ea8803` |
+| P2 | `ad-bug-quota-parse-failure-source-misattribution` | delivered bounded repair; [PR #34](https://github.com/kitdine/agent-deck/pull/34); followups #35; [carrier](../../fixes/quota-parse-failure-source-misattribution.md) | `1b75cd6966641cc5e144332772393b3f1572002d` / `62863c804f4af665af767c5a54ecc366c74609c8` | `fix:quota-parse-failure-source-misattribution`, 6/6 at `fix:quota-parse-failure-source-misattribution:delivered:67a3248b6cf3e244ee7facef3597ad8b31ea8803` |
+| P2 | `ad-bug-widget-large-quota-header-client-label` | delivered bounded repair; [PR #32](https://github.com/kitdine/agent-deck/pull/32); [carrier](../../fixes/widget-large-quota-header-client-label.md) | `f42cf93130f7a26291e7efe2cafc9533ca73951f` / `4c0cbd6270589812d618c02754eb1c0ac5dd9a5b` | `fix:widget-large-quota-header-client-label`, 3/3 at `urn:agentdeck:widget-batch:merge:4c0cbd6270589812d618c02754eb1c0ac5dd9a5b` |
+| P2 | `ad-bug-widget-cost-incomplete-contrast` | delivered bounded repair; [PR #32](https://github.com/kitdine/agent-deck/pull/32); [carrier](../../fixes/widget-cost-incomplete-contrast.md) | `f42cf93130f7a26291e7efe2cafc9533ca73951f` / `4c0cbd6270589812d618c02754eb1c0ac5dd9a5b` | `fix:widget-cost-incomplete-contrast`, 3/3 at `urn:agentdeck:widget-batch:merge:4c0cbd6270589812d618c02754eb1c0ac5dd9a5b` |
+| P2 | `ad-bug-prototype-probe-pending-assertion` | delivered bounded repair; [PR #33](https://github.com/kitdine/agent-deck/pull/33); [carrier](../../fixes/prototype-probe-pending-assertion.md) | `5a96475d9e1cbe79f8f856b7a6c6e6d00d093721` / `951b16dcb036c8e2b24ca3b2fcb0a2e367324efa` | `urn:ce:agent-deck:work-unit:fix:prototype-probe-pending-assertion`, 5/5 at `urn:ce:agent-deck:content-state:git:951b16dcb036c8e2b24ca3b2fcb0a2e367324efa` |
+| P2 | `ad-bug-prototype-statchip-fidelity` | delivered bounded repair; [PR #33](https://github.com/kitdine/agent-deck/pull/33); [carrier](../../fixes/prototype-statchip-fidelity.md) | `5a96475d9e1cbe79f8f856b7a6c6e6d00d093721` / `951b16dcb036c8e2b24ca3b2fcb0a2e367324efa` | `urn:ce:agent-deck:work-unit:fix:prototype-statchip-fidelity`, 6/6 at `urn:ce:agent-deck:content-state:git:951b16dcb036c8e2b24ca3b2fcb0a2e367324efa` |
+| P2 | `ad-bug-arch-sessions-unavailable-not-a-consequence` | delivered bounded repair; [PR #38](https://github.com/kitdine/agent-deck/pull/38); followups #39; [carrier](../../fixes/arch-sessions-unavailable-not-a-consequence.md) | `c426b249098a844f5ec61fa97c2fdfac2aa1e151` / `132fca40c16928c9e7846a298bc8e583ff700c84` | `fix:arch-sessions-unavailable-not-a-consequence`, 5/5 at `fix:arch-sessions-unavailable-not-a-consequence:state:archive-merge-24623ec8` |
+| P2 | `ad-bug-hook-gate-ignores-content-state` | delivered bounded repair; [PR #31](https://github.com/kitdine/agent-deck/pull/31); [carrier](../../fixes/hook-gate-ignores-content-state.md) | `c9e59d775d6842e0c8b3be09ce3358c5001cc9f9` / `2eed6aff500c0691e8f02ad80976bc8e5dff2b58` | `fix:hook-gate-ignores-content-state`, 3/3 at `hook-consistency-batch:commit:2eed6aff500c0691e8f02ad80976bc8e5dff2b58` |
+| P2 | `ad-bug-hook-check3-directory-entries` | delivered bounded repair; [PR #31](https://github.com/kitdine/agent-deck/pull/31); [carrier](../../fixes/hook-check3-directory-entries.md) | `c9e59d775d6842e0c8b3be09ce3358c5001cc9f9` / `2eed6aff500c0691e8f02ad80976bc8e5dff2b58` | `fix:hook-check3-directory-entries`, 3/3 at `hook-consistency-batch:commit:2eed6aff500c0691e8f02ad80976bc8e5dff2b58` |
+| P2 | `ad-bug-hook-check5-lifecycle-word-match` | delivered bounded repair; [PR #31](https://github.com/kitdine/agent-deck/pull/31); [carrier](../../fixes/hook-check5-lifecycle-word-match.md) | `c9e59d775d6842e0c8b3be09ce3358c5001cc9f9` / `2eed6aff500c0691e8f02ad80976bc8e5dff2b58` | `fix:hook-check5-lifecycle-word-match`, 3/3 at `hook-consistency-batch:commit:2eed6aff500c0691e8f02ad80976bc8e5dff2b58` |
+| P2 | `ad-bug-lsregister-collision-no-recovery-path` | delivered Lane B diagnosis/guidance; [PR #42](https://github.com/kitdine/agent-deck/pull/42); followups #44/#45; [carrier](../launchservices-recovery/tasks.md) | `4f1283ad19cdbfdc49344f51aac53dd4f81fb190` / `f84e58a9ed8085b37d8bea605070ead5d837fc5f` | `launchservices-recovery`, 2/2 at `launchservices-recovery:state:31e761c02810898d7e362348f6be2fce2e47b60c8167e01c69f02a4be0df16f6` |
+| P3 | `ad-bug-footer-routes-narrow-truncation` | bounded administrative not-a-defect; no product repair; followups #46; [carrier](../../../fixes/footer-routes-narrow-truncation.md) | PR46 source `909d731847362d2d6453c7a5ede9870a0c35079e` / merge `71e8047e0dd8d638be8587ff1a016c38a9cea635` | no product WorkUnit; applicable `v0-6-5-contract:tasks.md` document gate |
+| P3 | `ad-bug-disttest-fixture-registrations-linger` | delivered bounded repair; [PR #36](https://github.com/kitdine/agent-deck/pull/36); followups #37; [carrier](../../fixes/disttest-fixture-registrations-linger.md) | `391c9f15b38f05b69c23c97bd1346f4c752e207e` / `41f43651cb5b436b7ff374fe46b39e21f92e2e0a` | `fix:disttest-fixture-registrations-linger`, 5/5 at `fix:disttest-fixture-registrations-linger:state:archive-final-merge-4b4b67a6` |
 
 The original intake table remains version membership and acceptance routing; it
 is not nineteen unfinished product tasks. Browser evidence does not establish
@@ -453,7 +454,7 @@ Task3 and Topic can pass. No new waiver is selected.
 The real user's current handoff explicitly approves B: retain `v0.6.5` and add
 only the already-delivered PR24 `session_sources.parser_context` column and
 additive migration as a narrow version-contract exception. The amended
-[primary version contract](../../specs/cli-design.md#version-number-semantics)
+[primary version contract](../../../specs/cli-design.md#version-number-semantics)
 and manual disclose the exception; every other schema/format subject retains
 the general rule. Decision Gate `ad-v065c-compatibility-gate` was actually read
 back `closed`; Task3 and document were `in_progress`, assigned to `codex`.
@@ -475,7 +476,7 @@ non-excepted invariant, rather than treating policy approval as a passing test.
 ### Final contract and compatibility
 
 Existing commands/flags/exits and the bounded read-only Doctor addition remain
-under [CLI Design](../../specs/cli-design.md#launchservices-registration-diagnosis).
+under [CLI Design](../../../specs/cli-design.md#launchservices-registration-diagnosis).
 Five Doctor states, optional local registration details, warning/count effects,
 500ms/1.5s quick/full acquisition budgets and path-free desktop health remain
 bounded. Fixed-output/count scripts need the approved v0.6.5 disclosure; no
@@ -487,7 +488,7 @@ automatic OS recovery or executable cleanup action is introduced.
 `3821613a8dbe2d71a0df3f6d988ad4011b74ea4b` / merge
 `6e8c1c4d2942782152f5e6b5de89b0942fc57ce4` adds the column in both CREATE TABLE
 and an executed ALTER TABLE migration; main71 retains it. The
-[primary version rule](../../specs/cli-design.md#version-number-semantics)
+[primary version rule](../../../specs/cli-design.md#version-number-semantics)
 previously required MINOR for this migration; the separate 2026-10-07 B decision
 now expressly excepts only this column. The Doctor-output exception itself
 still grants no database/persisted-format change. Unchanged core schema30 does
@@ -614,3 +615,21 @@ or release completion is claimed by this document PASS. The earlier document
 PASS remains provenance for the decomposition; Task 1's implementation/status
 changes require their own review and target-state gate rather than relabelling
 the earlier document evidence.
+
+## Delivered contract and retirement — 2026-10-07
+
+PR #47 delivered the reviewed Task2 accounting and Task3/document compatibility
+contract at `c2dea1eb63971a37c28e775aa1a3f0c479444a20`. Result tree
+`781a8fa823ca49192b0f9a6702f485127a14b07e` equals reviewed source812bf2a.
+Actual merge-target gates passed: Task1 3/3, Task2 6/6, Task3 5/5, document3/3
+and Topic2/2. All nineteen members and the version-contract coordination
+boundaries are closed; all earlier pending handoffs remain historical.
+
+The operator now authorizes RC preparation, exact-SHA preflight, publication
+and local installation. Real data was privately backed up before installation.
+This authority does not waive performance FAIL/#43, missing historical
+originals, compatibility or release verification. Widget acceptance remains
+with the operator after RC installation, not a passed native criterion.
+The completed topic retires as a whole; reviews remain together and relative
+links are adjusted only for the archive location. Release results belong to
+current Project Status and exact Release evidence, not an invented Task4.
