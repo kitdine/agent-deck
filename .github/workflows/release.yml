@@ -10,6 +10,15 @@ on:
         description: Stable or rc.N release tag whose Homebrew formula should be verified and proposed
         required: true
         type: string
+      diagnose_cask:
+        description: Run isolated traced acceptance against existing published assets only
+        required: false
+        default: false
+        type: boolean
+      target_sha:
+        description: Exact published commit required by isolated Cask diagnostics
+        required: false
+        type: string
 
 permissions:
   actions: read
@@ -107,7 +116,7 @@ jobs:
       ${{ always() &&
           ((github.event_name == 'push' && needs.release.result == 'success' &&
             (!contains(github.ref_name, '-') || contains(github.ref_name, '-rc.'))) ||
-           github.event_name == 'workflow_dispatch') }}
+           (github.event_name == 'workflow_dispatch' && !inputs.diagnose_cask)) }}
     needs: release
     permissions:
       contents: read
@@ -385,3 +394,83 @@ jobs:
         run: |
           bash scripts/update-homebrew-tap-pr.sh \
             homebrew-tap "$RUNNER_TEMP/${{ steps.cask.outputs.token }}.rb" "$RELEASE_TAG" cask
+
+  cask-diagnostics:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.diagnose_cask }}
+    permissions:
+      contents: read
+    runs-on: macos-26
+    timeout-minutes: 12
+    env:
+      RELEASE_TAG: ${{ inputs.tag }}
+      TARGET_SHA: ${{ inputs.target_sha }}
+    steps:
+      - name: Check out the published target
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Require exact published identity
+        run: |
+          set -euxo pipefail
+          [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$ ]]
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+      - name: Render the unchanged published Cask
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euxo pipefail
+          gh release download "$RELEASE_TAG" \
+            --pattern "AgentDeck_${RELEASE_TAG}_desktop_checksums.txt" \
+            --dir "$RUNNER_TEMP"
+          bash scripts/render-homebrew-cask.sh \
+            packaging/homebrew/agentdeck-app.rb.tmpl "$RELEASE_TAG" \
+            "$RUNNER_TEMP/AgentDeck_${RELEASE_TAG}_desktop_checksums.txt" \
+            "$RUNNER_TEMP/agentdeck-app-rc.rb"
+      - name: Trace normal Cask installation
+        run: |
+          set -euxo pipefail
+          test_tap="agentdeck/diagnostic-${GITHUB_RUN_ID}"
+          brew tap-new "$test_tap"
+          tap_root=$(brew --repository "$test_tap")
+          mkdir -p "$tap_root/Casks"
+          cp "$RUNNER_TEMP/agentdeck-app-rc.rb" "$tap_root/Casks/agentdeck-app-rc.rb"
+          brew install --cask "$test_tap/agentdeck-app-rc"
+      - name: Trace bundle and intent checks
+        run: |
+          set -euxo pipefail
+          app="/Applications/AgentDeck.app"
+          test -d "$app"
+          test -x "$app/Contents/Helpers/agentdeck"
+          test -d "$app/Contents/PlugIns/AgentDeckWidget.appex"
+          bash scripts/check-macos-widget-intents.sh "$app"
+      - name: Trace normal first launch
+        run: |
+          set -euxo pipefail
+          open /Applications/AgentDeck.app
+      - name: Trace installed registration
+        run: |
+          set -euxo pipefail
+          app="/Applications/AgentDeck.app"
+          for attempt in {1..10}; do
+            if bash scripts/check-macos-widget-registration.sh "$app"; then break; fi
+            sleep 1
+          done
+          bash scripts/check-macos-widget-registration.sh "$app"
+      - name: Trace CLI completion and Gatekeeper checks
+        run: |
+          set -euxo pipefail
+          app="/Applications/AgentDeck.app"
+          "$(brew --prefix)/bin/agentdeck" version | grep -F "Release Version: $RELEASE_TAG"
+          bash --noprofile --norc -c 'source "$1"; complete -p agentdeck >/dev/null' \
+            _ "$(brew --prefix)/etc/bash_completion.d/agentdeck"
+          spctl --assess --type execute --verbose=4 "$app"
+      - name: Trace normal Cask uninstall
+        run: |
+          set -euxo pipefail
+          brew uninstall --cask "agentdeck/diagnostic-${GITHUB_RUN_ID}/agentdeck-app-rc"
+          test ! -e /Applications/AgentDeck.app
+          pluginkit -m -A -D -vv -i com.kitdine.agentdeck.widget | grep -F '(no matches)'
+          test -d "$HOME/.agentdeck" || true
