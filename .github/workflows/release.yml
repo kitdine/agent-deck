@@ -460,6 +460,14 @@ jobs:
             sleep 1
           done
           cat "$RUNNER_TEMP/agentdeck-open.log"
+          /usr/sbin/screencapture -x "$RUNNER_TEMP/agentdeck-first-launch.png" || true
+          /usr/bin/osascript <<'APPLESCRIPT' || true
+          tell application "System Events"
+            tell process "CoreServicesUIAgent"
+              get {name of windows, name of buttons of windows, value of static texts of windows}
+            end tell
+          end tell
+          APPLESCRIPT
           ps -ax -o pid,ppid,comm | grep -E 'AgentDeck|/open$|syspolicyd|CoreServicesUIAgent|launchservicesd' || true
           app_pid=$(pgrep -x AgentDeck | head -1 || true)
           if [[ -n "$app_pid" ]]; then
@@ -495,3 +503,11 @@ jobs:
           test ! -e /Applications/AgentDeck.app
           pluginkit -m -A -D -vv -i com.kitdine.agentdeck.widget | grep -F '(no matches)'
           test -d "$HOME/.agentdeck" || true
+      - name: Retain isolated first-launch screen
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cask-first-launch-${{ github.run_id }}
+          path: ${{ runner.temp }}/agentdeck-first-launch.png
+          if-no-files-found: ignore
+          retention-days: 3
