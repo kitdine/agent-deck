@@ -1,5 +1,6 @@
 ---
-status: active
+status: historical
+retired: 2026-10-07
 created: 2026-10-02
 ---
 

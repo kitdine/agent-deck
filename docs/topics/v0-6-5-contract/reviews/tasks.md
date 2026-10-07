@@ -507,3 +507,153 @@ Source: operator-local `/tmp/agentdeck-reconcile-main-20261005/routing-rereview-
 Finalization boundary: the Review checkbox and handoff are synchronized to this independent PASS; scope, policy and membership are unchanged. New document identity and target-bound reuse are recorded separately by the delivery operator. This round identifies the frozen state actually reviewed, not an invented final manifest.
 
 Main operator gate finalization: the report originally cited a saved NOT_VERIFIED query. After recording the independent assessment at the exact reviewed frozen state, the actual MCP gate returned VERIFIED with all required criteria satisfied and no missing criteria or unresolved impacts. Receipt: operator-local `/tmp/agentdeck-reconcile-main-20261005/integration-delivery/reviewed-ce-receipts.json`. The canonical field above now records that later query for the reviewed state; the report’s earlier observation remains historical. Final synchronized and committed targets require separate state-bound queries, not relabeling this review.
+
+## Round 7 — 2026-10-06
+
+## 📋 当前收口 tasks.md 独立文档评审
+
+📊 综合评分：9/10
+
+✅ Verdict: PASS
+
+### 🔴 严重问题 — 必须修复
+
+无。
+
+### 🟡 建议改进 — 推荐
+
+无。
+
+### 🟢 优点
+
+十九成员处置、三项任务依赖、兼容性例外、版本/交付/Release 边界和缺失原件适用性明确；未提前关闭 Task3 或 Topic。
+
+### 📝 总结
+
+Reviewer: 独立冷上下文 `/root/task2_cold_review`，未参与写作；主执行者负责本轮转录。
+Method: 同一全面批次中的逐文档 authority/coverage/readiness 审查；完整原始报告见 [Task2 Round9](assemble.md#round-9--2026-10-06)，SHA-256 `d2f64b1eb4a8f4b138138dcdb0be890e4a8ba471f6ad15fe8516f4bb67c00ca3`。
+Scope: `docs/topics/v0-6-5-contract/tasks.md` 文档，不以文档 PASS 代替 Task2/Topic gate。
+Reviewed state: HEAD `71e8047e0dd8d638be8587ff1a016c38a9cea635` + document blob `1346191797aaf5dafbf9e9e029cd13c2a80f03a7`; document ContentState `v0-6-5-contract:tasks.md:state:2d747e2c25d3539ee68809d70059d904e3f403a7efe9638f6dea7f07270e51dd`。
+Evidence: reviewer 复算四文档及支持文件指纹、核对原始回归/CI/交付与十九 carrier SHA，并独立执行 `bash scripts/check-topic-docs.sh v0-6-5-contract` exit0；现行 document structural、whitespace、diff 检查均支持冻结输入。
+Completion gate: VERIFIED
+
+三个准则的独立结论：authority PASS，coverage PASS，readiness PASS。源初始 gate 仍缺当前目标三项 evidence；最新同步内容须另行精确绑定，历史 PASS/FAIL 和缺失原件限制保持。
+
+### Task checkpoint
+
+文档 Review PASS，evidence/delivery 边界开放。提交建议：等待主执行者完成同步身份与 required gate，并取得单独提交授权。推送建议：等待上述边界与单独推送授权。
+
+Main gate finalization: actual reviewed document target2d747e2c and synchronized target58e8c853 both returned VERIFIED3/3 after the independent assessment and exact-state binding. Initial missing-evidence envelopes remain historical. The canonical field records the later actual query; subsequent synchronization retains a separately bound identity.
+
+## Round 8 — 2026-10-06
+
+## 📋 最终契约候选文档独立评审
+
+📊 综合评分：6/10
+
+✅ Verdict: FAIL
+
+### 🔴 严重问题 — 必须修复
+
+当前文档 readiness 依赖尚未解决的兼容性决策；`V065-COMPAT-R1-F1` 保持 OPEN，完整风险、身份和有界解决在 [契约评审](v0-6-5-contract.md#round-1--2026-10-06)。不改写主版本规则或历史已交付观察来产生当前 PASS。
+
+### 🟡 建议改进 — 推荐
+
+无。
+
+### 🟢 优点
+
+Authority/coverage 符合，准确声明决策边界和剩余发布验收；五个 carrier 保持原位。
+
+### 📝 总结
+
+Reviewer: 独立冷角色 `/root/task3_cold_contract`，当前契约 R1 与 F2-only R2；主执行者转录逐文档结论。
+Method: 版本政策/真实 SQL 差异/冻结候选证据及状态规则核对，未重跑广泛产品验证。
+Scope: 当前 tasks.md 最终契约就绪性；不否定原 Task2 核账/交付范围。
+Reviewed state: HEAD71e8047e0dd8d638be8587ff1a016c38a9cea635；初始七文档48dfb9d30a88025641884dad82430786d7e3017553da41a9d0d7b63d20f91086；R2 e9b1b6627aa93f43f5ce49e238fb2832fce55f47928462f7f74632c2bc42dafa 的 tasks.md 未变。
+Evidence: 上述完整独立报告、精确 session-schema diff 与安全临时 fixture 日志；结构检查 PASS 不能覆盖语义失败。
+Completion gate: FAILED
+
+Authority/coverage 可支持当前真实的未完成计划；readiness FAIL。Documents Review 保持未勾选，旧3/3保留在原目标，当前语义批准不能重贴。下一步为外部兼容性决策；不授权产品修复/豁免或 Git 交付。
+
+Main gate finalization: actual synchronized candidatefc4c2f41ee5e4e7341a54879d603e3e5f07c77d37864ca738f9677918cddf35f returned Task3 FAILED5-required and Topic FAILED2-required; current document readiness also returned FAILED. Task2 accounting separately returned VERIFIED6/6 after explicit new-finding scope assessment. Missing lifecycle/coherence scope remains open, F1 unresolved, F2 CLOSED. Original initial NOT_VERIFIED envelopes and all historical FAILs remain unchanged. Further label synchronization has its own exact target; no new waiver, retirement or delivery is inferred.
+
+## Round 9 — 2026-10-07
+
+## 📋 B 例外后的 tasks.md 就绪性冷评
+
+📊 综合评分：8/10
+
+Verdict: FAIL
+
+### 🔴 严重问题 — 必须修复
+
+`V065-B-R3-F1` OPEN：document checkpoint 文字与实际阶段不符，完整风险/证据/修复边界见 [契约 Round3](v0-6-5-contract.md#round-3--2026-10-07)。
+
+### 🟡 建议改进 — 推荐
+
+无。另有当前 scoped local-link/discovery verification evidence gap，未发现 broken link。
+
+### 🟢 优点
+
+Authority/coverage PASS；旧兼容性 finding 已由明确 B 决策与真实隔离验证关闭，状态摘要 finding 未回归；Task2复用、缺失原件及发布/native限制准确保留。
+
+### 📝 总结
+
+Readiness FAIL；本轮保留 Documents Review 未勾选，直到唯一 finding 与 L0 缺口解决。
+
+Reviewer: independent cold `/root/b_contract_cold_review`, fork:none; requested gpt-6.1-sol/xhigh. Upstream actual model/account/Fast remain unverified. Main verified claims and owns this transcription.
+Method: bounded current contract/finding review, source/vendor Git blob and log/snapshot/hash checks; no product test rerun, Hook, memory/work_state or delivery action.
+Reviewed state: HEAD71e8047e0dd8d638be8587ff1a016c38a9cea635; candidate62acfd2f9c21ee4243cfb4e36ff1f3df793c4fe87ef3d50be3a654ce44fa0258; tasks.md blob f4555ca7da4ee921bc1139dc86872a0774b369d9; document digest c6bc32b4067269085159b6fc10a5fc6813120659cf9685762d527c859cc77dde.
+Evidence: operator-local `/tmp/agentdeck-v065-b-20261007/cold-review-r3.md`, SHA-256 `6e4fdf8dfa4b8732c30bf20ba409c1d639cb8aa1dc5672e3f9c159ed4ae8f1db`; main independently matched source identities, ten named-stage logs/snapshots and current statement. Reviewer verified all9 subjects/17 supports before and after.
+
+Scope: tasks.md document readiness; complete independent report and dispositions in Task3 Round3.
+
+Completion gate: FAILED
+
+Actual ready document target returned FAILED after R3 evidence. Initial NOT_VERIFIED3 remains historical; no later content is relabelled.
+
+### 下一步指令
+
+仅修正 V065-B-R3-F1 并补齐当前 scoped L0 后复评。
+
+## Round 10 — 2026-10-07
+
+## 📋 最终 tasks.md 退休前有界复评
+
+📊 综合评分：9/10
+
+Verdict: PASS
+
+### 🔴 严重问题 — 必须修复
+
+无；V065-B-R3-F1 CLOSED，旧 F1/F2 保持 CLOSED无回归。
+
+### 🟡 建议改进 — 推荐
+
+无。当前 scoped L0 缺口已补齐。
+
+### 🟢 优点
+
+Authority/coverage/readiness 均 PASS；记录原结论/模型请求边界/历史FAIL及残余限制准确，条件退休未先行。完整独立报告见 [契约 Round4](v0-6-5-contract.md#round-4--2026-10-07)。
+
+### 📝 总结
+
+Reviewer: same independent cold-origin `/root/b_contract_cold_review`, requested gpt-6.1-sol/xhigh; no upstream actual-model/account/Fast attestation. Main owns the authoritative transcription.
+Method: selective lifecycle/record repair re-review, current checker-path/log/manifest/history-prefix/carrier-hash inspection; unchanged behavioral evidence reused.
+Reviewed state: HEAD71e8047e0dd8d638be8587ff1a016c38a9cea635; candidate68bfb0eaa5e38e792591d8d759221bedbbc82e24655f28e6385936d8bc1cd8f4; tasks.md blob5ebd8e70fb1c8c9f82addb1727721a238c2c3b2b; document digestc4b7f6d2740b72b07ad9d07653821b4870d8b4bac600cb1365373d90ef95fb55.
+Evidence: operator-local `/tmp/agentdeck-v065-b-20261007/cold-review-r4.md`, SHA256 3641aae917ba4086ccac4d0f2de0b9d65d1e72b8ae0662dbd28f1ca4e80789d4. Main verified9 subjects/20 supports with zero drift; scoped check-docs exit0/log SHA256 bb5d4deddd07d22c32c5c91415517fb8747c65558e0bcbd9146c70b613c74359.
+
+Scope: exact tasks.md pre-retirement readiness; task matrix synchronization after this independent verdict is separately assessed metadata.
+
+Completion gate: VERIFIED
+
+Source actual document gate has3 missing current-target observations. Main binding/query is required before checkpoint; no Task2/Topic/Release inference.
+
+### Task checkpoint
+
+Document review PASS. 提交建议：等待 exact-target required gate和单独提交授权。推送建议：等待以上条件及单独推送授权。
+
+Main exact-state finalization: pre-retirement candidate d32c4b9786efdd7d29a111b2b461deabc9defbb4304af33ca76ec8554e074c2f returned Task2 VERIFIED6/6, document VERIFIED3/3 and Task3 VERIFIED5/5, with no missing or unresolved criteria. Document target623ab43a2064b29c4cfad464b4cafdb695c317e4f112257a5371ce01f9565cdd. Initial repaired-target NOT_VERIFIED envelopes remain unchanged. The canonical field records this actual later query, not a claim about a future target.
+
+Only after these gates passed, five delivered fix carriers were moved to docs/archive/fixes with historical/retired frontmatter. Every body/review-history byte was preserved; five current task links were updated. Main retirement/body/link assessment and final scoped L0/target roll-up remain explicit independent obligations; no new product/native acceptance or delivery is inferred. Raw prerequisite and retirement identities are retained in operator-local pre-retirement-gates.json and retirement-results.json.
