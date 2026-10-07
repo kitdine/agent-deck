@@ -449,7 +449,28 @@ jobs:
       - name: Trace normal first launch
         run: |
           set -euxo pipefail
-          open /Applications/AgentDeck.app
+          open /Applications/AgentDeck.app >"$RUNNER_TEMP/agentdeck-open.log" 2>&1 &
+          launcher_pid=$!
+          for attempt in {1..30}; do
+            if ! kill -0 "$launcher_pid" 2>/dev/null; then
+              wait "$launcher_pid"
+              cat "$RUNNER_TEMP/agentdeck-open.log"
+              exit 0
+            fi
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/agentdeck-open.log"
+          ps -ax -o pid,ppid,comm | grep -E 'AgentDeck|/open$|syspolicyd|CoreServicesUIAgent|launchservicesd' || true
+          app_pid=$(pgrep -x AgentDeck | head -1 || true)
+          if [[ -n "$app_pid" ]]; then
+            sample "$app_pid" 3 -file "$RUNNER_TEMP/agentdeck-sample.txt" || true
+            head -120 "$RUNNER_TEMP/agentdeck-sample.txt" || true
+          fi
+          /usr/bin/log show --last 2m --style compact \
+            --predicate 'process == "AgentDeck" OR process == "open" OR process == "CoreServicesUIAgent" OR process == "syspolicyd"' \
+            | tail -120 || true
+          kill "$launcher_pid" || true
+          exit 124
       - name: Trace installed registration
         run: |
           set -euxo pipefail
