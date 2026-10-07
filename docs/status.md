@@ -16,7 +16,7 @@ is recorded in `roadmap.md`.
 
 - Release history is now propagated into main through [PR #46](https://github.com/kitdine/agent-deck/pull/46) at `71e8047e0dd8d638be8587ff1a016c38a9cea635`, tree `cef4236123e512252d340e07b2cbcd7dae7d1842`, with parents main `868519d13902ad1f59c9688c252f92d6297c9d15` and reviewed source `909d731847362d2d6453c7a5ede9870a0c35079e`. Release `8b1f82b09664f32337dbb9ed9f3e4f14cc2b4d30` is an ancestor. Actual [postmerge CI37383050159](https://github.com/kitdine/agent-deck/actions/runs/37383050159) attempt1 succeeded in all four jobs. The completed 5/5 [limited integration](archive/topics/v0-6-5-contract/reviews/assemble.md) preserves original failed rounds and the final-head remote-review waiver; it does not pass aggregate Task2/3.
 
-- The [v0.6.5 version contract](archive/topics/v0-6-5-contract/tasks.md) was delivered through [PR #47](https://github.com/kitdine/agent-deck/pull/47) at `c2dea1eb63971a37c28e775aa1a3f0c479444a20`. Its nineteen-member accounting, final contract/document independent reviews and exact-merge required gates passed; the completed topic and reviews are retired together. The operator selected RC publication and local installation. Same-SHA release verification remains required, and installed Widget acceptance is pending the operator after installation. Historical performance/native limits and missing-original assessments remain.
+- The [v0.6.5 version contract](archive/topics/v0-6-5-contract/tasks.md) was delivered through [PR #47](https://github.com/kitdine/agent-deck/pull/47) at `c2dea1eb63971a37c28e775aa1a3f0c479444a20`. Its nineteen-member accounting, final contract/document independent reviews and exact-merge required gates passed; the completed topic and reviews are retired together. `v0.6.5-rc.1` publication and normal local Cask installation are verified for `5e6d162366f1b82f3056de594c707c33d4a1aee2`. Installed Widget acceptance remains pending the operator. Historical performance/native limits and missing-original assessments remain.
 
 - Patch-line integration: the approved [AD shared-stroke icon](archive/topics/ad-shared-stroke-icon/tasks.md)
   was delivered by [PR #30](https://github.com/kitdine/agent-deck/pull/30) to
@@ -46,6 +46,35 @@ is recorded in `roadmap.md`.
 
 ### Release
 
+- **Latest prerelease — published and locally installed; operator Widget acceptance pending:**
+  [`v0.6.5-rc.1`](https://github.com/kitdine/agent-deck/releases/tag/v0.6.5-rc.1),
+  commit `5e6d162366f1b82f3056de594c707c33d4a1aee2`, App/Widget build `22`.
+  All six published assets and the installed embedded helper's exact tag/SHA
+  are verified. Signing, notarization ticket, stapling and Gatekeeper passed.
+  Exact-SHA [preflight 37655090184](https://github.com/kitdine/agent-deck/actions/runs/37655090184)
+  and isolated-real-state evidence are reused.
+- The original Release run's publication, desktop and Formula jobs succeeded;
+  its Cask attempts stalled and were cancelled. Follow-up isolated diagnostics
+  proved the normal first-download confirmation blocked first launch.
+  [PR #49](https://github.com/kitdine/agent-deck/pull/49) delivered
+  scoped confirmation handling after signature/Gatekeeper verification and removed
+  temporary diagnostics. [Published RC Cask run 37697811490](https://github.com/kitdine/agent-deck/actions/runs/37697811490)
+  then passed the exact annotated tag/preflight gates and complete Cask acceptance.
+  Cancelled and failed diagnostic attempts retain their original outcomes.
+- RC-only tap [Formula PR #42](https://github.com/kitdine/homebrew-tap/pull/42)
+  and [Cask PR #43](https://github.com/kitdine/homebrew-tap/pull/43) merged.
+  Normal local channel migration installed `kitdine/tap/agentdeck-app-rc` at
+  `/Applications/AgentDeck.app`; App-owned first-launch registration has one
+  exact installed Widget path. A private recovery backup precedes installation.
+  An unused one-file acceptance tap was backed up and normally retired to resolve
+  duplicate Cask names. Account/provider/credential, key/client configuration,
+  exclusions and existing usage-history guards passed; both databases have
+  integrity `ok`, core schema `30`. Normal startup scan/quota refresh appended
+  usage and updated caches, so whole-database hash immutability is not claimed.
+- The exact-tag Release gate has six verified required criteria. It remains
+  **NOT_VERIFIED** solely for operator `widget-acceptance`; registration,
+  signing and installation checks do not provide visible/timeline acceptance.
+
 - **Latest stable — published; project coordination closed with known issues:**
   [`v0.6.0`](https://github.com/kitdine/agent-deck/releases/tag/v0.6.0),
   commit `a5e969d7ad60cfaaee7fec13cbe1704d4cdb2c52`, tree
@@ -66,7 +95,8 @@ is recorded in `roadmap.md`.
   returned no matches after launch; `chronod` refused configured timeline
   reloads as an unknown/bad extension. The earlier direct-ZIP update included
   manual registration and did not verify this normal installation path.
-  `ad-bug-cask-widget-registration-missing` owns the next-release follow-up.
+  `ad-bug-cask-widget-registration-missing` carried the next-release follow-up,
+  now delivered and verified on the normal `v0.6.5-rc.1` installation path.
   Manual registration restored the installed-path record as a workaround only.
 - The recorded technical CEv1 gate for `urn:ce:agent-deck:work-unit:v0-6-0` at
   `urn:ce:agent-deck:state:v0-6-0:main:a5e969d7ad60cfaaee7fec13cbe1704d4cdb2c52`:
@@ -78,7 +108,7 @@ is recorded in `roadmap.md`.
   that explicit disposition. The technical evidence boundary remains failed,
   not VERIFIED or technically complete; this does not reopen published work
   or dispatch a v0.6.0 repair instead of the selected next-version fix.
-- **Latest prerelease:** [`v0.6.0-rc.5`](https://github.com/kitdine/agent-deck/releases/tag/v0.6.0-rc.5)
+- **Previous v0.6.0 prerelease:** [`v0.6.0-rc.5`](https://github.com/kitdine/agent-deck/releases/tag/v0.6.0-rc.5)
   uses the same `a5e969d7` source. Its recorded local recovery after isolating
   development registrations and reinstalling the official ZIP is distinct
   from normal Cask installation proof.
@@ -285,7 +315,7 @@ remain separate; no historical technical failure is converted into acceptance PA
 
 | Topic | Version | Status | Purpose |
 | --- | --- | --- | --- |
-| [v0.6.5 Contract](archive/topics/v0-6-5-contract/tasks.md) | `v0.6.5` | Contract delivered in PR #47; all three tasks and document reviewed, exact-merge gates passed, coordination closed and topic retired. RC release/install verification is selected separately; Widget acceptance remains pending the operator. | Nineteen-member accounting and final contract, preserving native/performance limits. |
+| [v0.6.5 Contract](archive/topics/v0-6-5-contract/tasks.md) | `v0.6.5` | Contract delivered in PR #47; all three tasks and document reviewed, exact-merge gates passed, coordination closed and topic retired. RC publication and normal local installation are verified; Widget acceptance remains pending the operator. | Nineteen-member accounting and final contract, preserving native/performance limits. |
 | [`v0.5.0` Contract Closure](topics/v0-5-0-contract/tasks.md) | `v0.5.0` | Released — contract complete, independently reviewed, and committed at `a547362`; `cli-design.md` is at version 28 and both contract Tasks are 2/2 implemented and reviewed. Six release candidates culminated in `v0.5.0-rc.6`, and stable `v0.5.0` published the exact `acb8384` commit. The schema-version-signal documents and decomposition are now committed; this contract directory remains live pending its separately scoped retirement. No v0.5.0 product work remains. | Version-wide specification raise and documentation reconciliation after every selected topic's tasks pass review. |
 | [Schema Version Signal](topics/schema-version-signal/tasks.md) | `v0.6.0` | First assembly batch — 4/4 documents and 6/6 tasks reviewed and delivered; source `58df42d`. This integration carries the product, stable contracts and worktree-status governance correction. Task 5 manual text-size/layout and VoiceOver/interaction acceptance remain user-waived, not tested. See the [integration record](archive/topics/v0-6-0-contract/reviews/assemble.md); retirement and release remain separate. | Stable schema-ahead reporting across doctor, CLI, desktop and Hook delivery, with actionable recovery and preserved independent session availability. |
 | [Snapshot Performance](topics/snapshot-performance/tasks.md) | `v0.6.0` | Second assembly batch — integrated through PR #4 at main `4dd10f4`; 6/6 documents and 3/3 tasks remain reviewed and delivered. Cold-import and unchanged-refresh CPU targets, the final 20-sample campaign, V01-V19 completeness and manual/native checks retain their explicit accepted-exception status; they are not reported as technical passes. Retirement and release remain separate. | One shared scan runtime, reusable snapshot computation and truthful CLI/menu-bar progress with preserved failure and scope semantics. |
