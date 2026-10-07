@@ -1,0 +1,163 @@
+# Recover only distribution of an already published RC; never rebuild or retag.
+name: Published RC Cask
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing annotated RC tag to verify and propose
+        required: true
+        type: string
+      target_sha:
+        description: Exact published commit with successful same-SHA preflight
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  cask:
+    permissions:
+      actions: read
+      contents: read
+    runs-on: macos-26
+    timeout-minutes: 12
+    env:
+      RELEASE_TAG: ${{ inputs.tag }}
+      TARGET_SHA: ${{ inputs.target_sha }}
+    steps:
+      - name: Check out AgentDeck
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Require the exact annotated published target
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$ ]]
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          bash scripts/release-notes-from-tag.sh \
+            origin "$RELEASE_TAG" "$TARGET_SHA" "$RUNNER_TEMP/release-notes.md"
+          gh release view "$RELEASE_TAG" --json isDraft,isPrerelease \
+            --jq '.isDraft == false and .isPrerelease == true' | grep -Fx true
+          preflight_run_id=$(gh api --method GET \
+            "/repos/$GITHUB_REPOSITORY/actions/workflows/release-preflight.yml/runs?event=workflow_dispatch&status=success&head_sha=$TARGET_SHA&per_page=100" \
+            --jq '.workflow_runs[0].id // empty')
+          test -n "$preflight_run_id"
+          evidence_dir="$RUNNER_TEMP/release-preflight"
+          gh run download "$preflight_run_id" \
+            --name "release-preflight-$TARGET_SHA" --dir "$evidence_dir"
+          ruby scripts/release-preflight-manifest.rb verify \
+            "$evidence_dir" "$GITHUB_REPOSITORY" "$TARGET_SHA" "$preflight_run_id"
+      - name: Download desktop checksums
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "$RELEASE_TAG" \
+            --pattern "AgentDeck_${RELEASE_TAG}_desktop_checksums.txt" \
+            --dir "$RUNNER_TEMP"
+      - name: Select Homebrew cask
+        id: cask
+        run: |
+          if [[ "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            cask_token=agentdeck-app
+          elif [[ "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-rc\.(0|[1-9][0-9]*)$ ]]; then
+            cask_token=agentdeck-app-rc
+          else
+            echo "unsupported Homebrew release tag: $RELEASE_TAG" >&2
+            exit 2
+          fi
+          echo "token=$cask_token" >>"$GITHUB_OUTPUT"
+      - name: Render Homebrew cask
+        run: |
+          bash scripts/render-homebrew-cask.sh \
+            packaging/homebrew/agentdeck-app.rb.tmpl \
+            "$RELEASE_TAG" \
+            "$RUNNER_TEMP/AgentDeck_${RELEASE_TAG}_desktop_checksums.txt" \
+            "$RUNNER_TEMP/${{ steps.cask.outputs.token }}.rb"
+      - name: Verify cask install, completions, and uninstall
+        run: |
+          cask_token="${{ steps.cask.outputs.token }}"
+          test_tap="agentdeck/cask-${GITHUB_RUN_ID}"
+          brew tap-new "$test_tap"
+          tap_root=$(brew --repository "$test_tap")
+          mkdir -p "$tap_root/Casks"
+          cp "$RUNNER_TEMP/$cask_token.rb" "$tap_root/Casks/$cask_token.rb"
+          brew install --cask "$test_tap/$cask_token"
+
+          app="/Applications/AgentDeck.app"
+          test -d "$app"
+          test -x "$app/Contents/Helpers/agentdeck"
+          test -d "$app/Contents/PlugIns/AgentDeckWidget.appex"
+          bash scripts/check-macos-widget-intents.sh "$app"
+          codesign --verify --deep --strict /Applications/AgentDeck.app
+          spctl --assess --type execute --verbose=4 /Applications/AgentDeck.app
+          open "$app" >"$RUNNER_TEMP/agentdeck-open.log" 2>&1 &
+          launcher_pid=$!
+          trap 'kill "$launcher_pid" 2>/dev/null || true' EXIT
+          /usr/bin/osascript <<'APPLESCRIPT'
+          tell application "System Events"
+            repeat 15 times
+              tell process "CoreServicesUIAgent"
+                if (count of windows) is 1 then
+                  set confirmation to window 1
+                  set messages to value of static texts of confirmation
+                  if messages contains "“AgentDeck” is an app downloaded from the Internet. Are you sure you want to open it?" then
+                    if not (exists button "Open" of confirmation) then error "AgentDeck confirmation has no Open button"
+                    click button "Open" of confirmation
+                    return "Confirmed only AgentDeck's normal first-launch dialog"
+                  end if
+                end if
+              end tell
+              delay 1
+            end repeat
+            return "No matching AgentDeck confirmation observed; launcher outcome remains required"
+          end tell
+          APPLESCRIPT
+          launcher_finished=false
+          for attempt in {1..30}; do
+            if ! kill -0 "$launcher_pid" 2>/dev/null; then
+              wait "$launcher_pid"
+              launcher_finished=true
+              break
+            fi
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/agentdeck-open.log"
+          if [[ "$launcher_finished" != true ]]; then
+            echo "normal AgentDeck first launch did not finish" >&2
+            exit 124
+          fi
+          trap - EXIT
+          for attempt in {1..10}; do
+            if bash scripts/check-macos-widget-registration.sh "$app"; then break; fi
+            sleep 1
+          done
+          bash scripts/check-macos-widget-registration.sh "$app"
+          "$(brew --prefix)/bin/agentdeck" version | grep -F "Release Version: $RELEASE_TAG"
+          bash --noprofile --norc -c 'source "$1"; complete -p agentdeck >/dev/null' \
+            _ "$(brew --prefix)/etc/bash_completion.d/agentdeck"
+          spctl --assess --type execute --verbose=4 "$app"
+
+          brew uninstall --cask "$test_tap/$cask_token"
+          test ! -e "$app"
+          pluginkit -m -A -D -vv -i com.kitdine.agentdeck.widget | grep -F '(no matches)'
+          test -d "$HOME/.agentdeck" || true
+      - name: Check out Homebrew tap
+        uses: actions/checkout@v4
+        with:
+          repository: kitdine/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: homebrew-tap
+          fetch-depth: 0
+      - name: Open cask update pull request
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          bash scripts/update-homebrew-tap-pr.sh \
+            homebrew-tap "$RUNNER_TEMP/${{ steps.cask.outputs.token }}.rb" "$RELEASE_TAG" cask

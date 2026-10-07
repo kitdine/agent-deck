@@ -357,7 +357,45 @@ jobs:
           test -x "$app/Contents/Helpers/agentdeck"
           test -d "$app/Contents/PlugIns/AgentDeckWidget.appex"
           bash scripts/check-macos-widget-intents.sh "$app"
-          open "$app"
+          codesign --verify --deep --strict /Applications/AgentDeck.app
+          spctl --assess --type execute --verbose=4 /Applications/AgentDeck.app
+          open "$app" >"$RUNNER_TEMP/agentdeck-open.log" 2>&1 &
+          launcher_pid=$!
+          trap 'kill "$launcher_pid" 2>/dev/null || true' EXIT
+          /usr/bin/osascript <<'APPLESCRIPT'
+          tell application "System Events"
+            repeat 15 times
+              tell process "CoreServicesUIAgent"
+                if (count of windows) is 1 then
+                  set confirmation to window 1
+                  set messages to value of static texts of confirmation
+                  if messages contains "“AgentDeck” is an app downloaded from the Internet. Are you sure you want to open it?" then
+                    if not (exists button "Open" of confirmation) then error "AgentDeck confirmation has no Open button"
+                    click button "Open" of confirmation
+                    return "Confirmed only AgentDeck's normal first-launch dialog"
+                  end if
+                end if
+              end tell
+              delay 1
+            end repeat
+            return "No matching AgentDeck confirmation observed; launcher outcome remains required"
+          end tell
+          APPLESCRIPT
+          launcher_finished=false
+          for attempt in {1..30}; do
+            if ! kill -0 "$launcher_pid" 2>/dev/null; then
+              wait "$launcher_pid"
+              launcher_finished=true
+              break
+            fi
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/agentdeck-open.log"
+          if [[ "$launcher_finished" != true ]]; then
+            echo "normal AgentDeck first launch did not finish" >&2
+            exit 124
+          fi
+          trap - EXIT
           for attempt in {1..10}; do
             if bash scripts/check-macos-widget-registration.sh "$app"; then break; fi
             sleep 1
