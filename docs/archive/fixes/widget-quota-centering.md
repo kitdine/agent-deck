@@ -1,9 +1,20 @@
 ---
-status: active
+status: historical
 created: 2026-10-07
+retired: 2026-10-08
 ---
 
 # 缺陷：额度 Widget 正文未在各自范围内垂直居中
+
+## 交付与退役 — 2026-10-08
+
+用户已明确授权提交、推送、PR、代码审查、合并、RC 发布及本地安装。产品修复由 [PR #51](https://github.com/kitdine/agent-deck/pull/51) 交付至 `release/v0.6.x`：最终源码提交 `33a20a8b20103f53b65cce808fa6c4cf3e9d8b5c`、合并提交 `0d2aa6077007a8a5d7c0a37366b83949486fbf9a`，实际树均为 `2a4ceaa8568ef3ca21dd0ac82966eba4e1450c61`。最终 exact-head GitHub review 无新 finding，CI 4/4 通过；源码 SSH 签名与 merge 的 GitHub GPG `valid` 已核对。
+
+精确合并目标 `fix:widget-quota-centering:state:commit-0d2aa6077007a8a5d7c0a37366b83949486fbf9a` 已取得 CEv1 VERIFIED（7/7，missing、invalidated、unresolved 均空）。通过显式 Change、逐项 preserves 和 target-bound roll-up 复用相同树的 26 项原生测试及独立复评，没有改写旧 `d382866` 的 FAILED 观察。原始查询收据为 `/private/tmp/agentdeck-quota-centering/cev1-pr51-merge-gate.json`。
+
+依据已交付的修复边界退役本载体，保留下方全部历史。**WQC-D-F1 — CLOSED in archive candidate：** [PR #52 comment 4216224193](https://github.com/kitdine/agent-deck/pull/52#discussion_r4216224193) 指出的 active fix 已移至 `docs/archive/fixes/`，设置 historical/retired，并修复本载体相对链接；不新增 archive-index 条目。
+
+RC2 发布与本地安装仍属后续交付边界；本载体退役不冒充它们已完成。PR #52 的三项红色 CI 已定位为 main workflow 检出旧 release head 而缺少文档工具；Go 与 desktop 产品步骤成功，仅文档依赖门禁失败。最小修正通过 [PR #53](https://github.com/kitdine/agent-deck/pull/53) 在 main 处理，保持 release→main 前传方向。长扫描性能 Bug 继续 deferred，本批不实施。
 
 ## 现象
 
@@ -13,7 +24,7 @@ Beads：`ad-bug-widget-quota-centering`。工作区 `agent-deck.fix.widget-quota
 
 ## 根因
 
-[`QuotaWidgetView`](../../apps/macos/AgentDeckWidget/WidgetViews.swift) 只在双客户端 large 分支中创建居中弹性槽。single 分支直接返回客户端块，外层 `WidgetFrame` 的 `.topLeading` 把它贴在正文顶部。
+[`QuotaWidgetView`](../../../apps/macos/AgentDeckWidget/WidgetViews.swift) 只在双客户端 large 分支中创建居中弹性槽。single 分支直接返回客户端块，外层 `WidgetFrame` 的 `.topLeading` 把它贴在正文顶部。
 
 安装版本提交 `5e6d162366f1b82f3056de594c707c33d4a1aee2`、main、远端 main 和修复基点的 `WidgetViews.swift` blob 均为 `e1e55f37fee1976cd958bd1c4c42557ac55e12ac`，排除了本地代码与安装源码不同这一解释。既有测试虽然在名称中提到单端，却只检查单端布局枚举；实际 midpoint 断言仅覆盖双端。
 
@@ -21,7 +32,7 @@ Beads：`ad-bug-widget-quota-centering`。工作区 `agent-deck.fix.widget-quota
 
 仅修改额度 Widget 的单槽垂直布局并扩展既有几何 preference 观测；标题、页脚、窗口数据和客户端筛选不变。真实 SwiftUI 渲染断言覆盖 Codex/Claude、一窗/多窗、small/medium/large，保留双端等高半区居中的既有验证。
 
-长扫描性能问题另由 `ad-bug-menubar-long-scan-timeout` 延期跟踪，已纳入 [`roadmap.md`](../roadmap.md) 的下一版本规划候选；本次不修改扫描、超时或后台工作状态。
+长扫描性能问题另由 `ad-bug-menubar-long-scan-timeout` 延期跟踪，已纳入 [`roadmap.md`](../../roadmap.md) 的下一版本规划候选；本次不修改扫描、超时或后台工作状态。
 
 ## 验证
 
