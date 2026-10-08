@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-08-25
-updated: 2026-09-30
+updated: 2026-10-08
 ---
 
 # AgentDeck Roadmap and Backlog
@@ -97,6 +97,13 @@ as practical in one iteration, with one issue/branch/PR per repair and one
 aggregate version acceptance/publication. The order below is execution order,
 not a proposal to publish separate repair releases. No bug implementation is
 started by this planning/coordination change.
+
+The selected scope is delivered through the archived version contract. On
+2026-10-08 the operator accepted RC2 and selected its exact source for stable
+`v0.6.5` promotion. Current publication and distribution evidence belongs to
+[Project Status](status.md#release). The inventory below preserves intake and
+delivery provenance; deferred performance and feature candidates remain later
+work.
 
 Restore existing contracts and preserve data, schema and external-client
 configuration ownership. A proposed new command, typed code, persisted format,

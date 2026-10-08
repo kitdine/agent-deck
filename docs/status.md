@@ -16,7 +16,7 @@ is recorded in `roadmap.md`.
 
 - Release history is now propagated into main through [PR #46](https://github.com/kitdine/agent-deck/pull/46) at `71e8047e0dd8d638be8587ff1a016c38a9cea635`, tree `cef4236123e512252d340e07b2cbcd7dae7d1842`, with parents main `868519d13902ad1f59c9688c252f92d6297c9d15` and reviewed source `909d731847362d2d6453c7a5ede9870a0c35079e`. Release `8b1f82b09664f32337dbb9ed9f3e4f14cc2b4d30` is an ancestor. Actual [postmerge CI37383050159](https://github.com/kitdine/agent-deck/actions/runs/37383050159) attempt1 succeeded in all four jobs. The completed 5/5 [limited integration](archive/topics/v0-6-5-contract/reviews/assemble.md) preserves original failed rounds and the final-head remote-review waiver; it does not pass aggregate Task2/3.
 
-- The [v0.6.5 version contract](archive/topics/v0-6-5-contract/tasks.md) was delivered through [PR #47](https://github.com/kitdine/agent-deck/pull/47) at `c2dea1eb63971a37c28e775aa1a3f0c479444a20`. Its nineteen-member accounting, final contract/document independent reviews and exact-merge required gates passed; the completed topic and reviews are retired together. The quota Widget centering repair was delivered through [PR #51](https://github.com/kitdine/agent-deck/pull/51) and propagated to main by [PR #52](https://github.com/kitdine/agent-deck/pull/52), retaining main's Cask and CI fixes. `v0.6.5-rc.2` is published and normally installed from `819bd4365aef59242a6a38034c379931548d4671`; the operator accepted its current Widget centering and normal refresh. Historical performance/native limits and missing-original assessments remain.
+- The [v0.6.5 version contract](archive/topics/v0-6-5-contract/tasks.md) was delivered through [PR #47](https://github.com/kitdine/agent-deck/pull/47) at `c2dea1eb63971a37c28e775aa1a3f0c479444a20`. Its nineteen-member accounting, final contract/document independent reviews and exact-merge required gates passed; the completed topic and reviews are retired together. The quota Widget centering repair was delivered through [PR #51](https://github.com/kitdine/agent-deck/pull/51) and propagated to main by [PR #52](https://github.com/kitdine/agent-deck/pull/52), retaining main's Cask and CI fixes. Stable `v0.6.5` is published and normally installed from the accepted RC2 source `819bd4365aef59242a6a38034c379931548d4671`; reviewed stable tap updates are delivered. The operator's RC2 Widget centering and normal-refresh acceptance is retained within its unchanged-source scope. Historical performance/native limits and missing-original assessments remain.
 
 - Patch-line integration: the approved [AD shared-stroke icon](archive/topics/ad-shared-stroke-icon/tasks.md)
   was delivered by [PR #30](https://github.com/kitdine/agent-deck/pull/30) to
@@ -45,6 +45,50 @@ is recorded in `roadmap.md`.
   Beads coordination was closed after the local store recovered.
 
 ### Release
+
+- **Latest stable — published and normally installed; Release gate VERIFIED 8/8:**
+  [`v0.6.5`](https://github.com/kitdine/agent-deck/releases/tag/v0.6.5),
+  commit `819bd4365aef59242a6a38034c379931548d4671`, tree
+  `c8f69335498ef71e5dfca9e08db571edef1dd8cc`, App/Widget build `23`.
+  The operator selected stable promotion after accepting RC2 on 2026-10-08.
+  The annotated stable tag preserves the complete release notes and points at
+  exactly the accepted RC2 source; later main commits contain RC2 closeout documents.
+- Same-SHA [preflight 37751426827](https://github.com/kitdine/agent-deck/actions/runs/37751426827),
+  its verified manifest and private isolated-real-state evidence are reused.
+  [Release run 37767321047](https://github.com/kitdine/agent-deck/actions/runs/37767321047)
+  passed all four jobs: stable CLI publication, Formula installation/completions,
+  universal desktop signing/notarization/stapling/Gatekeeper and desktop publication,
+  and normal stable Cask installation, App-owned Widget registration and uninstall.
+  GitHub marks this non-draft, non-prerelease release as latest; all six assets
+  are published. Unchanged product L4 was not rerun for the channel change.
+- Stable-only tap [Formula PR #46](https://github.com/kitdine/homebrew-tap/pull/46)
+  and [Cask PR #47](https://github.com/kitdine/homebrew-tap/pull/47) merged as
+  `f2468d7321ccf339dfd5067cb044993a69d9b4bd` and
+  `c3c2008227cb32a0940b5a0f3c022139fb10dd92`. Actual merge parents preserve the
+  reviewed heads; both objects have valid GitHub signatures, meaningful bodies
+  and Codex trailers. Delivered metadata matches the rendered templates and
+  published digests; the RC channels remain available.
+- After a private SQLite/key/client-input recovery backup, normal official Cask
+  migration removed `agentdeck-app-rc` without `--zap` and installed
+  `kitdine/tap/agentdeck-app 0.6.5` at `/Applications/AgentDeck.app`.
+  App, Widget, helper and default `/usr/local/bin/agentdeck` agree with the
+  tag/source/build. All three executables are universal and match the published
+  ZIP byte for byte. Strict signatures, notarization ticket, stapling, Gatekeeper,
+  intents and one exact App-owned Widget registration passed; the App started normally.
+- Protected key/auth/client inputs, provider/credential tables and exclusions
+  are unchanged. All `112317` prior event identities/token histories are preserved;
+  both database integrity checks pass. Normal startup ingestion added eleven
+  events at the final guard capture. Whole-database hash immutability is not claimed.
+  Homebrew completed installation, then returned an unrelated automatic-cleanup
+  warning when it could not read `/usr/local/bin/1password-mcp`; the installed
+  AgentDeck checks above passed. The private recovery backup is retained.
+- The stable Release gate is **VERIFIED 8/8**, including real local installation;
+  missing, invalidated and unresolved sets are empty. The installed-state evidence
+  records actual binary identities, environment and data guards and rolls up to
+  the exact stable release target. Existing RC2 operator acceptance is reused
+  only for unchanged source behavior; no new stable visual/timeline acceptance
+  is inferred. Long-scan performance remains deferred under
+  [issue #43](https://github.com/kitdine/agent-deck/issues/43).
 
 - **Latest prerelease — published, normally installed and operator accepted:**
   [`v0.6.5-rc.2`](https://github.com/kitdine/agent-deck/releases/tag/v0.6.5-rc.2),
@@ -104,7 +148,7 @@ is recorded in `roadmap.md`.
   **NOT_VERIFIED** solely for operator `widget-acceptance`; registration,
   signing and installation checks do not provide visible/timeline acceptance.
 
-- **Latest stable — published; project coordination closed with known issues:**
+- **Previous stable — published; project coordination closed with known issues:**
   [`v0.6.0`](https://github.com/kitdine/agent-deck/releases/tag/v0.6.0),
   commit `a5e969d7ad60cfaaee7fec13cbe1704d4cdb2c52`, tree
   `1e72b162f52fc5da4f7e2be6f01d3c5f4619f4ac`, published 2026-09-30.
