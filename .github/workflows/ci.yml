@@ -60,7 +60,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ needs.classify.outputs.doc_head || github.event.pull_request.head.sha || github.sha }}
+          # Keep the event candidate, including the PR merge tree. A release
+          # head can predate the document tools required by the base workflow.
       - name: Test CI classification and review-record tools
         run: make check-ci-docs-tools
       - name: Document L0, links, document set and review records
