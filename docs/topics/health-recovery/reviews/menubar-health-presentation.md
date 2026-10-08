@@ -6,6 +6,9 @@ subject: menubar-health-presentation
 
 # Health Recovery Menubar Health Presentation Review
 
+> 2026-10-08 原件清理处置：用户授权移除了已合入 main 的全部 19 个附加工作树及其中的历史测试/构建产物。本记录中指向这些工作树内生成物的引用仅保留为历史溯源，不再作为可访问的原件入口。Git 中的源码、测试和本记录的历史结论保留；后续验证若需要已清理的原件，须重新取证，不以旧路径或哈希推定原件仍可读取。
+
+
 ## Round 1 — 2026-09-24
 
 ## 📋 health-recovery / menubar-health-presentation 评审
