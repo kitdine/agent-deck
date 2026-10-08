@@ -14,7 +14,24 @@ retired: 2026-10-08
 
 依据已交付的修复边界退役本载体，保留下方全部历史。**WQC-D-F1 — CLOSED in archive candidate：** [PR #52 comment 4216224193](https://github.com/kitdine/agent-deck/pull/52#discussion_r4216224193) 指出的 active fix 已移至 `docs/archive/fixes/`，设置 historical/retired，并修复本载体相对链接；不新增 archive-index 条目。
 
-RC2 发布与本地安装仍属后续交付边界；本载体退役不冒充它们已完成。PR #52 的三项红色 CI 已定位为 main workflow 检出旧 release head 而缺少文档工具；Go 与 desktop 产品步骤成功，仅文档依赖门禁失败。最小修正通过 [PR #53](https://github.com/kitdine/agent-deck/pull/53) 在 main 处理，保持 release→main 前传方向。长扫描性能 Bug 继续 deferred，本批不实施。
+本载体退役时，RC2 发布与本地安装仍属后续交付边界；下述完成记录承接该边界。PR #52 的三项红色 CI 已定位为 main workflow 检出旧 release head 而缺少文档工具；Go 与 desktop 产品步骤成功，仅文档依赖门禁失败。最小修正通过 [PR #53](https://github.com/kitdine/agent-deck/pull/53) 在 main 处理，保持 release→main 前传方向。长扫描性能 Bug 继续 deferred，本批不实施。
+
+归档交付审查意见处置（GitHub review `5453579690`，精确提交 `a3f5130dd03425377709d43a81b8e842f39512bc`）：
+
+- **WQC-D-F2 — CLOSED by explicit user decision。** [Comment 4216498634](https://github.com/kitdine/agent-deck/pull/54#discussion_r4216498634) 要求还原三处历史字段格式。2026-10-08 用户明确纠正：“冒号 就有应该在 外面……解析器没有任何问题”，要求保留 `**Completion gate**： value`。按该明确决定保留三个最小 Markdown 修正；不修改解析器。旧 `74d3cea` 与 `a3f5130` 在移除加粗标记后全文 SHA-256 一致（收据 `/private/tmp/agentdeck-quota-centering/review-format-preservation.json`），历史 verdict、gate outcome、finding 和叙述均未改。main 当前检查器对原格式的跨线检查确实失败，对外侧冒号格式通过；`archive-crossline-l0.log` 保留通过结果。主会话一度提出兼容错误标记的测试，现已撤销，解析器从未修改。
+- **WQC-D-F3 — CLOSED as disproven。** [Comment 4216498641](https://github.com/kitdine/agent-deck/pull/54#discussion_r4216498641) 指称同一提交缺少签名与 Codex trailer。实际 `git cat-file commit a3f5130` 含 `gpgsig -----BEGIN SSH SIGNATURE-----` 和 exact `Co-Authored-By: Codex <noreply@openai.com>`；本地 `verify-commit` 已成功。GitHub Git Commit API 对同一完整 SHA 返回 `verified: true`、`reason: valid`，其 payload 同样包含 trailer。无需重建或改写已签名历史。
+
+### RC2 发布、安装与实机验收 — 2026-10-08
+
+归档 [PR #54](https://github.com/kitdine/agent-deck/pull/54) 合并为 `44650cecd639fe1c8caa99451a425aa500b85ba9`；最终 [PR #52](https://github.com/kitdine/agent-deck/pull/52) exact-head 审查无新问题，全部 CI 成功，正常前传 main 为 `819bd4365aef59242a6a38034c379931548d4671`，tree `c8f69335498ef71e5dfca9e08db571edef1dd8cc`，GitHub GPG `valid`。产品和测试 blob 保持 `cdb376d` / `b4d794f`；仅载体退役、三处经用户确认的冒号标记及 main 交付工具变化。精确 main 修复门禁 VERIFIED 7/7；原 `d382866` FAILED 和全部旧评审事实保留。
+
+[v0.6.5-rc.2](https://github.com/kitdine/agent-deck/releases/tag/v0.6.5-rc.2) 的注释标签指向上述 main 提交。精确 SHA [预检 37751426827](https://github.com/kitdine/agent-deck/actions/runs/37751426827) 两项成功，CLI 双架构校验和及 manifest 验证通过，macOS build `23`；私有真实数据副本的五个命令全部成功，数据库完整/逻辑内容与源 key/client guards 不变。[发布 37754880201](https://github.com/kitdine/agent-deck/actions/runs/37754880201) 四项成功并发布六个资产。RC-only tap PR44/45 经实际 diff、版本和资产 digest 审查后正常合并，实际 merge 的 GPG/body/Codex trailer 已核对。
+
+正常官方 Cask 升级至 `/Applications/AgentDeck.app`，没有 zap、手工复制 App 或手工 Widget 注册。App/Widget 版本为 `0.6.5-rc.2`、build `23`；helper/linked CLI 均报告完整 `819bd436`，helper SHA-256 `6d12b50ea33644373cf30b79827ee486aa6e720c028f20080e00d59dc3349358`。App、helper、Widget 三个 binary 均含 x86_64/arm64。严格签名、stapler、Gatekeeper、intent identifiers 和 App-owned 唯一安装路径注册均通过。安装前的私有恢复副本及 guards 保留；七组 credential/provider/exclusion 表和 key/auth/config hashes 不变，两库 integrity `ok`，原有 `112197` 条 event identity/token history 全部保留，最终正常运行新增四条事件。未宣称整库字节/hash 不变。
+
+用户在 RC2/build23 已安装启动后，对“当前 Widget 正文是否已在各自区域居中，且能正常刷新”明确回复 **“居中 刷新正常”**。这是实际当前配置的可见/时间线验收，不以 fixture、签名或注册代替。Release WorkUnit `v0.6.5-rc.2` 在 `urn:ce:agent-deck:content-state:release:819bd4365aef59242a6a38034c379931548d4671` 已 VERIFIED 7/7，missing、invalidated、unresolved 均空；查询收据 `/private/tmp/agentdeck-quota-centering/rc2-final-release-gate.json`。
+
+用户另明确指出 `awaiting_commit` 仅为待提交。主会话此前把发布/安装等待混入该状态，解释错误；已按产品修复实际提交合并及精确门禁关闭 `ad-bug-widget-quota-centering` 并解除负责人，fix WorkUnit 完成。RC 发布/安装使用其独立既有 WorkUnit。性能 Bug 仍 `deferred` / P1 / next-release，未开始下一批。这里的当前 Widget 验收不改写 RC1 未完成的 operator gate、历史完整刷新性能失败、原始样本缺失或未运行的 VoiceOver 检查。
 
 ## 现象
 
