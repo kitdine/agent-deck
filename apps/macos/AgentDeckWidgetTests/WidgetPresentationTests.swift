@@ -132,7 +132,12 @@ final class WidgetPresentationTests: XCTestCase {
 					let png = try renderedViewPNG(view, size: NSSize(width: size.width, height: size.height))
 					let slot = try XCTUnwrap(capture.frames["slot.\(configured.rawValue)"], context)
 					let content = try XCTUnwrap(capture.frames["content.\(configured.rawValue)"], context)
-					XCTAssertEqual(capture.frames.count, 2, "single client must have exactly one slot and content: \(context)")
+					XCTAssertEqual(
+						capture.frames.keys.filter {
+							($0.hasPrefix("slot.") || $0.hasPrefix("content.")) && !$0.hasSuffix(".absolute")
+						}.count, 2,
+						"single client must have exactly one slot and content: \(context)"
+					)
 					XCTAssertGreaterThan(slot.height, size.height / 2, "single slot must use the full body: \(context)")
 					XCTAssertLessThan(content.height, slot.height, "centering assertion must have spare space: \(context)")
 					XCTAssertEqual(content.midY, slot.midY, accuracy: 1, context)
@@ -143,6 +148,102 @@ final class WidgetPresentationTests: XCTestCase {
 				}
 			}
 		}
+	}
+
+	@MainActor
+	func testOverflowingSingleQuotaWidgetKeepsLeadingContentAtBodyTop() throws {
+		let original = try widgetFixture("snapshot-complete")
+		for configured in [WidgetClient.codex, .claude] {
+			var object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(original)) as? [String: Any])
+			var subscription = try XCTUnwrap(object["subscription"] as? [String: Any])
+			let clients = try XCTUnwrap(subscription["clients"] as? [[String: Any]])
+			var client = try XCTUnwrap(clients.first { $0["client"] as? String == configured.rawValue })
+			let template = try XCTUnwrap((client["windows"] as? [[String: Any]])?.first)
+			client["windows"] = (0 ..< 12).map { index in
+				var window = template
+				window["key"] = "additional-\(index)"
+				return window
+			}
+			client["tightest_window_key"] = "additional-0"
+			subscription["clients"] = [client]
+			object["subscription"] = subscription
+			let snapshot = try JSONDecoder().decode(WidgetDesktopSnapshotV1.self, from: JSONSerialization.data(withJSONObject: object))
+			let entry = AgentDeckWidgetEntry(
+				date: try XCTUnwrap(WidgetTimelinePolicy.date(snapshot.generatedAt)), snapshot: snapshot,
+				kind: .quota, client: configured, period: .today, isPlaceholder: false
+			)
+			for family in [WidgetFamily.systemMedium, .systemLarge] {
+				let context = "\(configured.rawValue) \(familyName(family)) overflowing windows"
+				let model = WidgetSurfaceModel(entry: entry, now: entry.date)
+				let presented = try XCTUnwrap(model.presentedQuotaClients(family: family).first)
+				XCTAssertEqual(model.quotaWindows(for: presented, family: family).count, 12)
+				let capture = QuotaGeometryCapture()
+				let size = WidgetLayoutContract.canvas(family)
+				let view = QuotaGeometryProbe(
+					content: AgentDeckWidgetView(entry: entry, familyOverride: family)
+						.frame(width: size.width, height: size.height)
+						.background(GeometryReader { proxy in
+							Color.clear.preference(
+								key: QuotaWidgetGeometryPreferenceKey.self,
+								value: ["canvas": proxy.frame(in: .global)]
+							)
+						}), capture: capture
+				)
+				_ = try renderedViewPNG(view, size: NSSize(width: size.width, height: size.height))
+				let canvas = try XCTUnwrap(capture.frames["canvas"], context)
+				let content = try XCTUnwrap(capture.frames["content.\(configured.rawValue).absolute"], context)
+				let slot = try XCTUnwrap(capture.frames["slot.\(configured.rawValue).absolute"], context)
+				XCTAssertGreaterThan(content.height, canvas.height, "fixture must exceed the card: \(context)")
+				XCTAssertLessThan(slot.height, canvas.height, "body must leave room for header/footer: \(context)")
+				XCTAssertEqual(content.minY, slot.minY, accuracy: 1, "overflow must start at its own body top: \(context)")
+				XCTAssertGreaterThanOrEqual(content.minY, canvas.minY, "leading rows must remain in the card: \(context), content=\(content), canvas=\(canvas)")
+			}
+		}
+	}
+
+	@MainActor
+	func testClaudeMediumOverflowKeepsAttributionVisible() throws {
+		let original = try widgetFixture("snapshot-complete")
+		var object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(original)) as? [String: Any])
+		var subscription = try XCTUnwrap(object["subscription"] as? [String: Any])
+		let clients = try XCTUnwrap(subscription["clients"] as? [[String: Any]])
+		var client = try XCTUnwrap(clients.first { $0["client"] as? String == "claude" })
+		let template = try XCTUnwrap((client["windows"] as? [[String: Any]])?.first)
+		client["windows"] = (0 ..< 3).map { index in
+			var window = template
+			window["key"] = "additional-\(index)"
+			return window
+		}
+		client["tightest_window_key"] = "additional-0"
+		client["attribution_confirmed"] = false
+		subscription["clients"] = [client]
+		object["subscription"] = subscription
+		let snapshot = try JSONDecoder().decode(WidgetDesktopSnapshotV1.self, from: JSONSerialization.data(withJSONObject: object))
+		let entry = AgentDeckWidgetEntry(
+			date: try XCTUnwrap(WidgetTimelinePolicy.date(snapshot.generatedAt)), snapshot: snapshot,
+			kind: .quota, client: .claude, period: .today, isPlaceholder: false
+		)
+		let capture = QuotaGeometryCapture()
+		let size = WidgetLayoutContract.canvas(.systemMedium)
+		let view = QuotaGeometryProbe(
+			content: AgentDeckWidgetView(entry: entry, familyOverride: .systemMedium)
+				.frame(width: size.width, height: size.height)
+				.background(GeometryReader { proxy in
+					Color.clear.preference(key: QuotaWidgetGeometryPreferenceKey.self, value: ["canvas": proxy.frame(in: .global)])
+				}), capture: capture
+		)
+		let png = try renderedViewPNG(view, size: NSSize(width: size.width, height: size.height))
+		let attribution = try XCTUnwrap(capture.frames["attribution.claude.absolute"])
+		let canvas = try XCTUnwrap(capture.frames["canvas"])
+		let slot = try XCTUnwrap(capture.frames["slot.claude.absolute"])
+		XCTAssertGreaterThanOrEqual(attribution.minY, canvas.minY, "attribution=\(attribution), canvas=\(canvas)")
+		XCTAssertLessThanOrEqual(attribution.maxY, canvas.maxY, "attribution=\(attribution), canvas=\(canvas)")
+		XCTAssertGreaterThanOrEqual(attribution.minY, slot.minY, "attribution must be inside clipped body")
+		XCTAssertLessThanOrEqual(attribution.maxY, slot.maxY, "attribution must be inside clipped body")
+		let attachment = XCTAttachment(data: png, uniformTypeIdentifier: "public.png")
+		attachment.name = "Claude medium three-window attribution"
+		attachment.lifetime = .keepAlways
+		add(attachment)
 	}
 
 	func testLargeQuotaWidgetRetainsEveryUnavailableClientReason() throws {

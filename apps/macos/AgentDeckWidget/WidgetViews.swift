@@ -444,11 +444,27 @@ private struct QuotaWidgetView: View {
 			.frame(maxHeight: .infinity)
 			.coordinateSpace(name: "quota-large-body")
 		} else {
-			clientBlock(clients[0])
-				.background(quotaGeometry("content.\(clients[0].client)"))
-				.frame(maxHeight: .infinity, alignment: .center)
+			GeometryReader { slot in
+				ViewThatFits(in: .vertical) {
+					clientBlock(clients[0])
+						.fixedSize(horizontal: false, vertical: true)
+						.background(quotaGeometry("content.\(clients[0].client)"))
+						.frame(maxHeight: .infinity, alignment: .center)
+					VStack(alignment: .leading, spacing: 5) {
+						clientBlock(clients[0], includesAttribution: false)
+							.fixedSize(horizontal: false, vertical: true)
+							.background(quotaGeometry("content.\(clients[0].client)"))
+							.frame(minHeight: 0, maxHeight: .infinity, alignment: .topLeading)
+							.clipped()
+						if needsQuotaAttribution(clients[0]) { quotaAttribution(clients[0]) }
+					}
+					.frame(minHeight: 0, maxHeight: .infinity, alignment: .topLeading)
+				}
+				.frame(width: slot.size.width, height: slot.size.height, alignment: .topLeading)
 				.background(quotaGeometry("slot.\(clients[0].client)"))
-				.coordinateSpace(name: "quota-large-body")
+			}
+			.clipped()
+			.coordinateSpace(name: "quota-large-body")
 		}
 	}
 
@@ -456,12 +472,15 @@ private struct QuotaWidgetView: View {
 		GeometryReader { proxy in
 			Color.clear.preference(
 				key: QuotaWidgetGeometryPreferenceKey.self,
-				value: [id: proxy.frame(in: .named("quota-large-body"))]
+				value: [
+					id: proxy.frame(in: .named("quota-large-body")),
+					"\(id).absolute": proxy.frame(in: .global),
+				]
 			)
 		}
 	}
 
-	private func clientBlock(_ client: DesktopSubscriptionClientV1) -> some View {
+	private func clientBlock(_ client: DesktopSubscriptionClientV1, includesAttribution: Bool = true) -> some View {
 		let selected = model.quotaWindows(for: client, family: family)
 		return VStack(alignment: .leading, spacing: 5) {
 			HStack {
@@ -496,11 +515,19 @@ private struct QuotaWidgetView: View {
 					}
 				}
 			}
-			if client.client == "claude", !client.attributionConfirmed, client.failure != .probeDisabled {
-				Text(WidgetCopy.text("Account attribution unconfirmed")).font(.system(size: 8.5)).foregroundStyle(.secondary).lineLimit(1)
-			}
+			if includesAttribution, needsQuotaAttribution(client) { quotaAttribution(client) }
 		}
 		.frame(maxWidth: .infinity, alignment: .leading)
+	}
+
+	private func needsQuotaAttribution(_ client: DesktopSubscriptionClientV1) -> Bool {
+		client.client == "claude" && !client.attributionConfirmed && client.failure != .probeDisabled
+	}
+
+	private func quotaAttribution(_ client: DesktopSubscriptionClientV1) -> some View {
+		Text(WidgetCopy.text("Account attribution unconfirmed"))
+			.font(.system(size: 8.5)).foregroundStyle(.secondary).lineLimit(1)
+			.background(quotaGeometry("attribution.\(client.client)"))
 	}
 
 }

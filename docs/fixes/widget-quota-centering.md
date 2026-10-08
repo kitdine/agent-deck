@@ -118,3 +118,116 @@ namespace 为 `github.com/kitdine/agent-deck`，WorkUnit 为 `fix:widget-quota-c
 评审后原始目标 `fix:widget-quota-centering:state:post-review-dee6f1aa7bda3530e71ec09f271e10ddd362a7e6d94dd7d2bbeada898d8394f0` 已取得 VERIFIED：7 required、7 passing top-level evidence，missing、invalidated、unresolved 均为空。请求节点的完整 payload 和关系 endpoint/kind/profile 已读回核对；两批节点为 9/9、25/25，两批关系为 7/7、43/43，关系写入前预检全部 ok。MCP write 返回更新统计而非 query RETURN，处理数以 exact-ID readback 确认，没有重放成功写入。
 
 该结果覆盖本记录更新前的 carrier `3aac5e8b8190d4922a244e70f1141e3fb9c86ffc`。本节只同步已取得的门禁状态；随后对新的文档状态执行严格 L0、记录 Change/ImpactAssessment 与新目标绑定，并将最终精确状态的 MCP 查询完整结果保存到 `/private/tmp/agentdeck-quota-centering/cev1-final-gate.json`。此路径是原始查询收据，不是本地 fallback 或第二证据权威；最终状态以其 `target_content_state` 和结果 envelope 为准。
+
+## Review — Round 2
+
+## 📋 PR #51 多窗口边界评审 — 2026-10-08
+
+📊 综合评分：7/10（被评审提交 `d382866`）
+
+✅ 结论：FAIL
+
+- **Reviewer：** GitHub `chatgpt-codex-connector[bot]` exact-head review `5451726560`；主会话以真实渲染验证并裁决。
+- **Method：** 单一界面边界 finding 的聚焦反例与负对照；CI 4/4 作为既有证据，不替代 finding 处置。
+- **Scope：** single-client medium/large 的任意合法窗口数量及首行在正文范围内的可见性；没有进入 scanner、账号或新 UI 控件。
+- **Reviewed state：** commit `d382866c2b532f4eeb8e01837d97f45931211486`，tree `e3d984a39e28d8bef6e901e6eb4771f7a4cb86fc`，产品 blob `c41771781424fa2f2741b362a54ad7446a0c8873`。临时几何观测只增加 absolute 坐标，不改变被诊断的布局。
+- **Completion gate：** FAILED（该提交的布局边界被新反例否定；原有已通过观察保留为历史，不覆盖它们）。
+
+### 🔴 严重问题 — 必须修复
+
+**WQC-R2-F1 — P2；`apps/macos/AgentDeckWidget/WidgetViews.swift:449`；single 槽没有限定为真实可用正文，多窗口时首行落在卡片上方。**
+
+- **行为风险：** medium/large 必须接受 `quotaWindows` 返回的所有已报告窗口；`WidgetDomain.swift:315-321` 明确任意窗口数。仅覆盖一/两窗口不能保证不把领先数据放到卡片外。
+- **证据：** [GitHub comment 4214984015](https://github.com/kitdine/agent-deck/pull/51#discussion_r4214984015)。12 窗口、两客户端分别作为单端、两尺寸的实际 viewport RED 共四项失败；Codex medium 的 content height 482、card height 155、content minY -162，large minY -62.5。Claude 对应 -169.5/-70。实际卡片 minY 为 0。
+- **限定根因：** relative slot 会随 intrinsic minimum 膨胀至 482/497，不能代表可用正文。只将 `.center` 改成 `.topLeading` 的负对照仍得到相同负坐标，因此仅改 alignment 不足以完成修复。首个 relative-slot fixture guard 的失败不是有效 RED，不把它计作反例成功。
+- **处置：** 此 reviewed commit 上 OPEN；限定 working repair 已完成，等待独立复评和新的 exact-head GitHub review。原 Round 1 PASS 仍是其所观察的一/两窗口候选历史。
+
+💡 **限定修复：** single 正文槽按真实可用尺寸布局；内容能容纳时居中，不能容纳时从槽顶部显示；保护固定标题、页脚，保持模型和 ForEach 的所有窗口。用 actual card/content geometry 检测越界，不用膨胀后的 slot 当 viewport。采用平台 [ViewThatFits](https://developer.apple.com/documentation/swiftui/viewthatfits) 选择第一个能容纳的子视图，2026-10-08 已读取 Apple 官方定义。
+
+### 🟡 改进建议 — 推荐
+
+无。
+
+### 🟢 优点
+
+既有正常内容的 12 个几何场景和双端居中检查可直接保留；新增失败信号指向真实卡片边界。
+
+### 📝 总结
+
+必须修复 WQC-R2-F1 后再合并。此前 CI 全通过并不能关闭该 finding。无新版本已发布，未安装未合并候选。
+
+工作区修复就绪证据：产品 blob `be2dfc52956d72d4ad864d4e57b9d07a694fd000`，测试 blob `05cb9b3a6366940b720b29687df36558857086f4`。`overflow-viewport-red.log` SHA-256 `57bcbe4cdc58fb06ea025b9f1015c2861fb494f571d9667c6c556add8265b229`；top 对照 `12f8204c42f42ae7860bdd737f3308680973027ca6b72cd7cf38460c638346bf`；修复 suite `overflow-fit-green.log` `c62c160776bfcfb066938e621a33d85dc57d8387a278670ab817d8d097104129`，exit 0、25 tests、0 failures，均为隔离 HOME/state。
+
+第一版 minHeight 双 frame 修复仍在 actual viewport 断言失败，已放弃；最终使用显式 GeometryReader 槽和 ViewThatFits，不提高时间预算、削弱断言或限制 windows 数量。新增 absolute geometry ID 是仓库拥有的观测契约；正常单端检查仍确认只有一个语义 slot/content，双端实现未改。
+
+本次用户全流程授权已涵盖 finding 修复与复评。旧提交上的修复范围仅 WQC-R2-F1；当前 working candidate 完成上述修复，下一操作是独立复评，不重复已执行的修复。Task 和交付边界仍打开。
+
+## Review — Round 3
+
+## 📋 PR #51 溢出修复选择性复评 — 2026-10-08
+
+📊 综合评分：10/10（最终修复代码与回归保护）
+
+✅ 结论：PASS
+
+Checklist: 54/54 complete；Incomplete: None。
+
+- **Reviewer：** `/root/quota_centering_cold_review`，独立只读角色；主会话核对直接结果并负责 finding 处置。
+- **Method：** 同一 Task 的唯一选择性 follow-up，累计两轮；没有嵌套代理或第三轮。原样复用未改变的来源，重新核对改变的边界；独立角色未重复 suite，完成一次 closure。
+- **Scope：** single 有限正文槽、正常居中、溢出顶部保留、裁剪及归属提示可见性；没有扩大到双端溢出、窗口展示重设计、scanner、安装或发布。
+- **Reviewed state：** HEAD `d382866c2b532f4eeb8e01837d97f45931211486` 加 working correction；产品 blob `cdb376d43eb0cb6762d1ae8226885badd44d68be`、测试 blob `b4d794f335fa25c1cb892c17c6fa4ce16034b116`、评审前 carrier `5237f540ac0735d3513220dfb1365de6f0a42f00`、roadmap `41822be0f3da6e5d5ab4b872a2267f0ce218aa09`。独立角色和主会话均核对实际最终代码。
+- **Completion gate：** VERIFIED。本轮 corrected evidence 已实际取得7/7通过；旧提交 FAILED 保留。以下门禁收据与最终状态绑定承接本报告的 metadata 同步。
+
+### 🔴 严重问题 — 必须修复
+
+当前无 OPEN finding。
+
+**WQC-R2-F1 → CLOSED in candidate。** 有限 GeometryReader 槽阻止 intrinsic minimum 撑大整个正文；平台 ViewThatFits 首选能容纳的居中 candidate，溢出 candidate 从正文顶部显示。四个 12 窗口 actual viewport 反例现通过；正常 12 场景及原双端几何检查仍通过，模型和 ForEach 没有 row cap。
+
+**WQC-R3-F1 — P2 — CLOSED in candidate；初始裁切修复隐藏了 Claude medium 三窗口的归属提示。**
+
+- **位置：** `WidgetViews.swift` overflow candidate 内部的末尾归属提示。
+- **行为风险与因果：** 初始 `be2dfc…` 将提示放在整体被裁切的窗口块末尾。相同三窗口场景的旧 `d382866` 布局通过，初始新 candidate 提示 CGRect `(0,156,136,10)` 超出卡片 `(0,0,338,155)`，更不在实际 clipped body 内；这是改变造成的 C6 归属提示可见性回归。
+- **证据：** `attribution-old-control.log` exit 0；`attribution-new-red.log` exit 65 的真实 Text 位置失败。没有以观测 ID 数量冒充可见性或 AX 证明。
+- **已执行的限定纠正：** overflow 的可裁切窗口块使用 `includesAttribution: false`；同一 predicate/helper 在可见正文末端输出一次提示。normal/dual 默认保持 `true` 和原位置，文案、条件、字体和颜色均未改。最终 Text 同时处于 card 与实际 clipped slot 内。
+
+💡 **纠正依据：** 保留既有 Widget UX 的可见归属提示；继续复用已验证的 [ViewThatFits](https://developer.apple.com/documentation/swiftui/viewthatfits) 和单一提示 helper，未增加自定义布局框架或依赖。
+
+### 🟡 改进建议 — 推荐
+
+无。
+
+### 🟢 优点
+
+两个新增测试方法分别提供“首行被裁切”和“归属提示消失”的独立失败信号，包含旧/新负对照；正常居中与双端证据保留。
+
+### 📝 总结
+
+最终相关 suite exit 0，26 tests、0 failures；原生测试仍使用隔离 HOME/state 和既有 helper 清理。字段如下：
+
+| 验收 | 直接证据 | 结果 |
+| --- | --- | --- |
+| 正常内容居中 | 既有 12 场景 midpoint 检查 | PASS |
+| 12 窗口保留首行于有限正文 | 四个 actual card/content/slot absolute 几何场景 | PASS |
+| 模型/ForEach 保留所有窗口 | count 12 和未截断的窗口集合 | PASS |
+| header/footer 受保护 | 正文内部裁剪、正文有限高度 | PASS |
+| Claude 提示可见 | C3 old/new controls；最终同时处于 card/slot | PASS |
+| 不新增重复提示 | overflow block 排除提示，仅外部同一 helper 输出；normal/dual 默认不变 | PASS（静态组合与平台单一 child 合同） |
+
+覆盖 ledger：SCOPE 1–8 P；TRACE 1–6/8 P、7/9 C；DESIGN 6–11 P、1–5 C；VERIFY 1–14 P、15 C；CLOSE 2–9/11 P、1/10 C。P 为 PROVEN，C 为 CLEARED，共 54/54，没有 PENDING/UNPROVEN。未改变的条件复用首轮来源；变更处按最终源码和原始结果核对。
+
+证据保留于 `/private/tmp/agentdeck-quota-centering/`：viewport RED `57bcbe4cdc58fb06ea025b9f1015c2861fb494f571d9667c6c556add8265b229`；top control `12f8204c42f42ae7860bdd737f3308680973027ca6b72cd7cf38460c638346bf`；C3 old control `6299ad8efa6e77168ae4d3cc13094614163e9a6985ac15e753696ddf6af27418`；C3 RED `080c1e3b56e260e994bf63c937ff6227d878134e8c911a03ec876cb78846bc21`；最终 `attribution-fit-green.log` SHA-256 `75e22794600407d95b9adc16227fc719a6dec2c2ab597b03992eb00893fd2f24`。
+
+测试决策：KEEP 正常/双端测试，ADD actual viewport 与 C3 归属提示方法，UPDATE 观测 ID 过滤；相比旧提交新增两个不同失败信号的测试。文档决策为同一 carrier 追加历史和新处置，不创建第二报告。
+
+限制与收窄：dictionary key count 证明的是观测 ID 集合，不能单独证明 AX tree 唯一性；Round 2 中“语义 slot/content”只指其布局观测，不作 AX 证明。唯一提示依据分支组合和平台单一 child 合同；未运行实机 VoiceOver。有限视口会裁剪末尾窗口，但模型及 ForEach 保留全部，不宣称 12 个窗口可同时可见。fixture 不等同于安装版 WidgetKit。独立角色的 xcresult summary 因 TestReport 缓存写入限制不可用，未换权限重试；结论来自原始日志，不将失败工具作产品 finding。
+
+### Task checkpoint
+
+- Task `ad-bug-widget-quota-centering` / WorkUnit `fix:widget-quota-centering`；两个 finding 均已在上述最终代码关闭，Review PASS。
+- 新内容的 task gate 已实际 VERIFIED7/7；本报告同步后以最终精确状态收据确认，再到 awaiting_commit。
+- 提交建议：门禁 VERIFIED 后，按用户已经明确授予的全流程交付授权追加新的逻辑修复提交，不改写已推送的 `d382866`。
+- 推送建议：检查实际消息/body/Codex trailer/SSH signature后普通推送，再请求 exact-head GitHub review；不在旧 review 上直接 merge。
+- 后续：相同 PR 修复关闭后继续已授权的 merge、前传 main、同 SHA preflight、RC 和本地安装，不启动性能实现。
+
+本轮 CEv1 修复目标 `fix:widget-quota-centering:state:repair-ee8b6db3e99c59eed43677171840b2d596c67a809ffc81f7e936d10cf13008f8` 已实际 VERIFIED7/7（23/23节点、39/39关系读回，预检全部ok，missing/invalidated/unresolved空）。它以新cdb376/b4d794原生26结果和本次独立复评为依据，未复用被反例否定的旧代码检查。metadata同步后的最终gate详情保留于 `/private/tmp/agentdeck-quota-centering/cev1-repair-final-gate.json`；不覆盖旧commit失败记录，不进行graph retarget冒充，也不重复产品测试。
