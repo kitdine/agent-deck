@@ -65,7 +65,7 @@ Checklist: 54/54 complete；Incomplete: None。
 - **Method：** 用户明确授权的一次初始独立评审，`fork_turns=none`；合并 UI/layout 与 tests/oracles 问题为一个 lens，默认会话模型层级，无覆写或嵌套委派。主会话完成一次最终 closure；没有第二轮或复跑未变产品测试。
 - **Scope：** `WidgetViews.swift` 单槽居中、`WidgetPresentationTests.swift` 真实几何回归、修复载体及 `roadmap.md` 中用户授权的延期规划边界。支持路径为既有 model、`WidgetFrame`、quota view、renderer 和 preference。排除性能实现、数据/账号操作、安装、发布、集成和 CEv1 后台操作。
 - **Reviewed state：** dirty candidate；base/HEAD 均为 `8b1f82b09664f32337dbb9ed9f3e4f14cc2b4d30`。冻结 manifest SHA-256 `b3d0e8918b7d55cda6b815a88d171b7fde80369b13ea0693f8c8a83ae09f27e1`；源码 blob `c41771781424fa2f2741b362a54ad7446a0c8873`，测试 blob `a9242b824152cd300628abc305fb7d52e17df74b`，评审前载体 blob `4cf9ec942ce2b87b1d9588d851611ef9e98021bb`，roadmap blob `41822be0f3da6e5d5ab4b872a2267f0ce218aa09`。独立角色和主会话分别核对一致。本轮只追加评审记录，未修改评审过的产品、测试或规划内容。
-- **Completion gate：** VERIFIED。2026-10-08 session reload 后 MCP 只读 Cypher 实际成功，`fix:widget-quota-centering` 注册后的首次证据门禁已通过 7/7；门禁详情及最终文档同步后的精确状态见下述恢复记录。Review 当时的 BLOCKED 是历史传输能力缺失；代码 Review PASS 与证据门禁仍分别判断。
+- **Completion gate**： VERIFIED。2026-10-08 session reload 后 MCP 只读 Cypher 实际成功，`fix:widget-quota-centering` 注册后的首次证据门禁已通过 7/7；门禁详情及最终文档同步后的精确状态见下述恢复记录。Review 当时的 BLOCKED 是历史传输能力缺失；代码 Review PASS 与证据门禁仍分别判断。
 
 ### 🔴 严重问题 — 必须修复
 
@@ -142,7 +142,7 @@ namespace 为 `github.com/kitdine/agent-deck`，WorkUnit 为 `fix:widget-quota-c
 - **Method：** 单一界面边界 finding 的聚焦反例与负对照；CI 4/4 作为既有证据，不替代 finding 处置。
 - **Scope：** single-client medium/large 的任意合法窗口数量及首行在正文范围内的可见性；没有进入 scanner、账号或新 UI 控件。
 - **Reviewed state：** commit `d382866c2b532f4eeb8e01837d97f45931211486`，tree `e3d984a39e28d8bef6e901e6eb4771f7a4cb86fc`，产品 blob `c41771781424fa2f2741b362a54ad7446a0c8873`。临时几何观测只增加 absolute 坐标，不改变被诊断的布局。
-- **Completion gate：** FAILED（该提交的布局边界被新反例否定；原有已通过观察保留为历史，不覆盖它们）。
+- **Completion gate**： FAILED（该提交的布局边界被新反例否定；原有已通过观察保留为历史，不覆盖它们）。
 
 ### 🔴 严重问题 — 必须修复
 
@@ -187,7 +187,7 @@ Checklist: 54/54 complete；Incomplete: None。
 - **Method：** 同一 Task 的唯一选择性 follow-up，累计两轮；没有嵌套代理或第三轮。原样复用未改变的来源，重新核对改变的边界；独立角色未重复 suite，完成一次 closure。
 - **Scope：** single 有限正文槽、正常居中、溢出顶部保留、裁剪及归属提示可见性；没有扩大到双端溢出、窗口展示重设计、scanner、安装或发布。
 - **Reviewed state：** HEAD `d382866c2b532f4eeb8e01837d97f45931211486` 加 working correction；产品 blob `cdb376d43eb0cb6762d1ae8226885badd44d68be`、测试 blob `b4d794f335fa25c1cb892c17c6fa4ce16034b116`、评审前 carrier `5237f540ac0735d3513220dfb1365de6f0a42f00`、roadmap `41822be0f3da6e5d5ab4b872a2267f0ce218aa09`。独立角色和主会话均核对实际最终代码。
-- **Completion gate：** VERIFIED。本轮 corrected evidence 已实际取得7/7通过；旧提交 FAILED 保留。以下门禁收据与最终状态绑定承接本报告的 metadata 同步。
+- **Completion gate**： VERIFIED。本轮 corrected evidence 已实际取得7/7通过；旧提交 FAILED 保留。以下门禁收据与最终状态绑定承接本报告的 metadata 同步。
 
 ### 🔴 严重问题 — 必须修复
 
