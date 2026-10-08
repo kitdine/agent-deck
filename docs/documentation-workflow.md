@@ -204,6 +204,10 @@ complete affected topic document sets and review-record structure. CI supplies
 `--base <sha> --head <sha>` for the established diff. External links are not
 fetched; semantic review and real evidence gates remain independent.
 
+Artifact references must follow [Evidence's durable-reference rules](../.agent-instructions/evidence.md#durable-artifact-references).
+A structural link-check pass does not establish that an external or local
+artifact has a suitable retention commitment or will survive worktree cleanup.
+
 CI uses a conservative diff classifier from the trusted base: only added or
 modified regular, non-executable Markdown in declared documentation locations
 qualifies. Renames, deletes, mixed changes, fixtures, generated inputs,

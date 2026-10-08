@@ -194,8 +194,13 @@ work product is a document; recommendations do not authorize commit or push.
 
 Use a short coordination comment to explain the transition and link the applicable
 review round, WorkUnit, and content identity. Such a comment is a historical
-handoff pointer, not another maintained copy of findings, criteria, test output,
-or current review/evidence status. The referenced authorities remain decisive.
+handoff pointer, not another maintained copy of the full review, criteria, raw
+test output or current review/evidence status. It may preserve concise,
+self-contained diagnostic facts or disposition reasons needed after temporary
+outputs are cleaned up. Use stable record/commit/comment identifiers and follow
+[Evidence's durable-reference rules](evidence.md#durable-artifact-references);
+do not use comments to preserve pointers to disposable artifacts. The referenced
+authorities remain decisive.
 
 New review records use PASS/FAIL; historical REOPEN records remain unchanged.
 A `round-N` label counts review returns on that task, not the global review-round
