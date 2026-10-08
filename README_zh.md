@@ -11,12 +11,13 @@ AgentDeck 面向需要使用多个 Codex 或 Claude provider 的开发者。它�
 数据源。内置 Codex
 `official` provider 复用 Codex 已有的 OpenAI 或 ChatGPT 登录状态。
 
-> **稳定版本：** [`v0.4.1`](https://github.com/kitdine/agent-deck/releases/tag/v0.4.1)
-> 已发布 Darwin arm64 和 amd64 版本，对应 commit
-> `3b709a8fb09494a8d8fdd37ee154e3baedbce9ea`。同 SHA preflight、release artifact、
-> 稳定版 Homebrew formula、formula test 以及 bash、zsh、fish completion 均已通过
-> 验证。从 `v0.4.0` 升级会重新扫描已索引的 Codex source 以回填 cache-write token，
-> 因此历史 cache-write 数据会发生变化。当前开发状态见[项目状态](docs/status.md)。
+> **稳定版本：** [`v0.6.5`](https://github.com/kitdine/agent-deck/releases/tag/v0.6.5)
+> 从已验收的 RC2 提升，对应 commit
+> `819bd4365aef59242a6a38034c379931548d4671`。包含会话、额度、扫描与 Widget 修复、
+> 正常 Cask 安装后的 Widget 注册，以及只读 LaunchServices 诊断。Core schema 保持 30；
+> 会话索引增加已批准的 `parser_context` 检查点列。兼容性与备份说明见
+> [发布说明](https://github.com/kitdine/agent-deck/releases/tag/v0.6.5)，分发验证与已知限制见
+> [项目状态](docs/status.md#release)。
 
 ```bash
 make build
@@ -90,9 +91,19 @@ brew install kitdine/tap/agentdeck
 agentdeck version
 ```
 
-当前稳定 formula 为 `v0.4.1`，安装 release binary，并在 Homebrew 标准目录下安装
+稳定 formula 安装 release binary，并在 Homebrew 标准目录下安装
 bash、zsh、fish completion 脚本，但不会修改 shell rc 文件。下方源码安装流程还支持
 由 AgentDeck 管理 rc 文件中的启用配置。
+
+需要原生菜单栏应用与 Widget 时，改为安装桌面 Cask：
+
+```bash
+brew install --cask kitdine/tap/agentdeck-app
+```
+
+Cask 已包含 CLI 与 completion，同一时间只安装一个 AgentDeck 渠道。从 RC 桌面渠道
+切换时，先卸载 `agentdeck-app-rc`（不要使用 `--zap`），再安装 `agentdeck-app`；
+升级前保留私有恢复备份。Homebrew 不会删除 `~/.agentdeck/` 下的用户状态。
 
 ## 从源码安装
 

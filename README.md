@@ -12,14 +12,15 @@ live in SQLite, protected by a private machine-bound key file; client session
 logs remain read-only source data. The built-in Codex `official` provider uses
 Codex's existing OpenAI or ChatGPT login.
 
-> **Stable release:** [`v0.4.1`](https://github.com/kitdine/agent-deck/releases/tag/v0.4.1)
-> is published for Darwin arm64 and amd64 at commit
-> `3b709a8fb09494a8d8fdd37ee154e3baedbce9ea`. Its same-SHA preflight,
-> release artifacts, stable Homebrew formula, formula test, and bash, zsh, and
-> fish completions passed verification. Upgrading from `v0.4.0` re-scans indexed
-> Codex sources to backfill cache-write tokens, so historical cache-write
-> figures change. See the
-> [project status](docs/status.md) for current development status.
+> **Stable release:** [`v0.6.5`](https://github.com/kitdine/agent-deck/releases/tag/v0.6.5)
+> promotes the accepted RC2 source at commit
+> `819bd4365aef59242a6a38034c379931548d4671`. It includes session, quota,
+> scan and Widget repairs, normal Cask Widget registration, and read-only
+> LaunchServices diagnosis. Core schema remains 30; the session index adds the
+> approved `parser_context` checkpoint column. See the
+> [release notes](https://github.com/kitdine/agent-deck/releases/tag/v0.6.5) for
+> compatibility and backup guidance, and [project status](docs/status.md#release)
+> for distribution verification and known limitations.
 
 ```bash
 make build
@@ -104,6 +105,17 @@ The stable formula installs bash, zsh, and fish completion scripts in
 Homebrew's standard completion directories without editing shell rc files.
 Command completion is separate from the optional project-attribution wrappers
 described below.
+
+For the native menu-bar app and Widgets, install the desktop Cask instead:
+
+```bash
+brew install --cask kitdine/tap/agentdeck-app
+```
+
+The Cask includes the CLI and completions. Install one AgentDeck channel at a
+time. To switch from the RC desktop channel, uninstall `agentdeck-app-rc`
+without `--zap`, then install `agentdeck-app`; keep a private recovery backup.
+Homebrew does not remove AgentDeck's user state under `~/.agentdeck/`.
 
 After a release-candidate tap PR is merged, opt into that channel with:
 
