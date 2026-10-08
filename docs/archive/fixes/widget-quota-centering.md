@@ -1,9 +1,20 @@
 ---
-status: active
+status: historical
 created: 2026-10-07
+retired: 2026-10-08
 ---
 
 # 缺陷：额度 Widget 正文未在各自范围内垂直居中
+
+## 交付与退役 — 2026-10-08
+
+用户已明确授权提交、推送、PR、代码审查、合并、RC 发布及本地安装。产品修复由 [PR #51](https://github.com/kitdine/agent-deck/pull/51) 交付至 `release/v0.6.x`：最终源码提交 `33a20a8b20103f53b65cce808fa6c4cf3e9d8b5c`、合并提交 `0d2aa6077007a8a5d7c0a37366b83949486fbf9a`，实际树均为 `2a4ceaa8568ef3ca21dd0ac82966eba4e1450c61`。最终 exact-head GitHub review 无新 finding，CI 4/4 通过；源码 SSH 签名与 merge 的 GitHub GPG `valid` 已核对。
+
+精确合并目标 `fix:widget-quota-centering:state:commit-0d2aa6077007a8a5d7c0a37366b83949486fbf9a` 已取得 CEv1 VERIFIED（7/7，missing、invalidated、unresolved 均空）。通过显式 Change、逐项 preserves 和 target-bound roll-up 复用相同树的 26 项原生测试及独立复评，没有改写旧 `d382866` 的 FAILED 观察。原始查询收据为 `/private/tmp/agentdeck-quota-centering/cev1-pr51-merge-gate.json`。
+
+依据已交付的修复边界退役本载体，保留下方全部历史。**WQC-D-F1 — CLOSED in archive candidate：** [PR #52 comment 4216224193](https://github.com/kitdine/agent-deck/pull/52#discussion_r4216224193) 指出的 active fix 已移至 `docs/archive/fixes/`，设置 historical/retired，并修复本载体相对链接；不新增 archive-index 条目。
+
+RC2 发布与本地安装仍属后续交付边界；本载体退役不冒充它们已完成。PR #52 的三项红色 CI 已定位为 main workflow 检出旧 release head 而缺少文档工具；Go 与 desktop 产品步骤成功，仅文档依赖门禁失败。最小修正通过 [PR #53](https://github.com/kitdine/agent-deck/pull/53) 在 main 处理，保持 release→main 前传方向。长扫描性能 Bug 继续 deferred，本批不实施。
 
 ## 现象
 
@@ -13,7 +24,7 @@ Beads：`ad-bug-widget-quota-centering`。工作区 `agent-deck.fix.widget-quota
 
 ## 根因
 
-[`QuotaWidgetView`](../../apps/macos/AgentDeckWidget/WidgetViews.swift) 只在双客户端 large 分支中创建居中弹性槽。single 分支直接返回客户端块，外层 `WidgetFrame` 的 `.topLeading` 把它贴在正文顶部。
+[`QuotaWidgetView`](../../../apps/macos/AgentDeckWidget/WidgetViews.swift) 只在双客户端 large 分支中创建居中弹性槽。single 分支直接返回客户端块，外层 `WidgetFrame` 的 `.topLeading` 把它贴在正文顶部。
 
 安装版本提交 `5e6d162366f1b82f3056de594c707c33d4a1aee2`、main、远端 main 和修复基点的 `WidgetViews.swift` blob 均为 `e1e55f37fee1976cd958bd1c4c42557ac55e12ac`，排除了本地代码与安装源码不同这一解释。既有测试虽然在名称中提到单端，却只检查单端布局枚举；实际 midpoint 断言仅覆盖双端。
 
@@ -21,7 +32,7 @@ Beads：`ad-bug-widget-quota-centering`。工作区 `agent-deck.fix.widget-quota
 
 仅修改额度 Widget 的单槽垂直布局并扩展既有几何 preference 观测；标题、页脚、窗口数据和客户端筛选不变。真实 SwiftUI 渲染断言覆盖 Codex/Claude、一窗/多窗、small/medium/large，保留双端等高半区居中的既有验证。
 
-长扫描性能问题另由 `ad-bug-menubar-long-scan-timeout` 延期跟踪，已纳入 [`roadmap.md`](../roadmap.md) 的下一版本规划候选；本次不修改扫描、超时或后台工作状态。
+长扫描性能问题另由 `ad-bug-menubar-long-scan-timeout` 延期跟踪，已纳入 [`roadmap.md`](../../roadmap.md) 的下一版本规划候选；本次不修改扫描、超时或后台工作状态。
 
 ## 验证
 
@@ -54,7 +65,7 @@ Checklist: 54/54 complete；Incomplete: None。
 - **Method：** 用户明确授权的一次初始独立评审，`fork_turns=none`；合并 UI/layout 与 tests/oracles 问题为一个 lens，默认会话模型层级，无覆写或嵌套委派。主会话完成一次最终 closure；没有第二轮或复跑未变产品测试。
 - **Scope：** `WidgetViews.swift` 单槽居中、`WidgetPresentationTests.swift` 真实几何回归、修复载体及 `roadmap.md` 中用户授权的延期规划边界。支持路径为既有 model、`WidgetFrame`、quota view、renderer 和 preference。排除性能实现、数据/账号操作、安装、发布、集成和 CEv1 后台操作。
 - **Reviewed state：** dirty candidate；base/HEAD 均为 `8b1f82b09664f32337dbb9ed9f3e4f14cc2b4d30`。冻结 manifest SHA-256 `b3d0e8918b7d55cda6b815a88d171b7fde80369b13ea0693f8c8a83ae09f27e1`；源码 blob `c41771781424fa2f2741b362a54ad7446a0c8873`，测试 blob `a9242b824152cd300628abc305fb7d52e17df74b`，评审前载体 blob `4cf9ec942ce2b87b1d9588d851611ef9e98021bb`，roadmap blob `41822be0f3da6e5d5ab4b872a2267f0ce218aa09`。独立角色和主会话分别核对一致。本轮只追加评审记录，未修改评审过的产品、测试或规划内容。
-- **Completion gate：** VERIFIED。2026-10-08 session reload 后 MCP 只读 Cypher 实际成功，`fix:widget-quota-centering` 注册后的首次证据门禁已通过 7/7；门禁详情及最终文档同步后的精确状态见下述恢复记录。Review 当时的 BLOCKED 是历史传输能力缺失；代码 Review PASS 与证据门禁仍分别判断。
+- **Completion gate**： VERIFIED。2026-10-08 session reload 后 MCP 只读 Cypher 实际成功，`fix:widget-quota-centering` 注册后的首次证据门禁已通过 7/7；门禁详情及最终文档同步后的精确状态见下述恢复记录。Review 当时的 BLOCKED 是历史传输能力缺失；代码 Review PASS 与证据门禁仍分别判断。
 
 ### 🔴 严重问题 — 必须修复
 
@@ -131,7 +142,7 @@ namespace 为 `github.com/kitdine/agent-deck`，WorkUnit 为 `fix:widget-quota-c
 - **Method：** 单一界面边界 finding 的聚焦反例与负对照；CI 4/4 作为既有证据，不替代 finding 处置。
 - **Scope：** single-client medium/large 的任意合法窗口数量及首行在正文范围内的可见性；没有进入 scanner、账号或新 UI 控件。
 - **Reviewed state：** commit `d382866c2b532f4eeb8e01837d97f45931211486`，tree `e3d984a39e28d8bef6e901e6eb4771f7a4cb86fc`，产品 blob `c41771781424fa2f2741b362a54ad7446a0c8873`。临时几何观测只增加 absolute 坐标，不改变被诊断的布局。
-- **Completion gate：** FAILED（该提交的布局边界被新反例否定；原有已通过观察保留为历史，不覆盖它们）。
+- **Completion gate**： FAILED（该提交的布局边界被新反例否定；原有已通过观察保留为历史，不覆盖它们）。
 
 ### 🔴 严重问题 — 必须修复
 
@@ -176,7 +187,7 @@ Checklist: 54/54 complete；Incomplete: None。
 - **Method：** 同一 Task 的唯一选择性 follow-up，累计两轮；没有嵌套代理或第三轮。原样复用未改变的来源，重新核对改变的边界；独立角色未重复 suite，完成一次 closure。
 - **Scope：** single 有限正文槽、正常居中、溢出顶部保留、裁剪及归属提示可见性；没有扩大到双端溢出、窗口展示重设计、scanner、安装或发布。
 - **Reviewed state：** HEAD `d382866c2b532f4eeb8e01837d97f45931211486` 加 working correction；产品 blob `cdb376d43eb0cb6762d1ae8226885badd44d68be`、测试 blob `b4d794f335fa25c1cb892c17c6fa4ce16034b116`、评审前 carrier `5237f540ac0735d3513220dfb1365de6f0a42f00`、roadmap `41822be0f3da6e5d5ab4b872a2267f0ce218aa09`。独立角色和主会话均核对实际最终代码。
-- **Completion gate：** VERIFIED。本轮 corrected evidence 已实际取得7/7通过；旧提交 FAILED 保留。以下门禁收据与最终状态绑定承接本报告的 metadata 同步。
+- **Completion gate**： VERIFIED。本轮 corrected evidence 已实际取得7/7通过；旧提交 FAILED 保留。以下门禁收据与最终状态绑定承接本报告的 metadata 同步。
 
 ### 🔴 严重问题 — 必须修复
 
