@@ -377,7 +377,7 @@ known defects assigned to the next release; failed installation evidence is
 retained without reopening delivered contract Tasks. Review and merge details are in the
 [integration record](archive/topics/v0-6-0-contract/reviews/assemble.md).
 
-Next iteration: the operator selected concentrated defect repair in `v0.6.5`.
+Completed defect-repair iteration: the operator selected `v0.6.5`.
 The nineteen-member intake is historical: eighteen repairs and one bounded
 administrative disposition have been delivered/accounted for in main. The
 [contract ledger](archive/topics/v0-6-5-contract/tasks.md#current-member-dispositions)
@@ -386,9 +386,14 @@ and retained version-planning records remain separate. The [roadmap](roadmap.md#
 owns membership/priorities. Aggregate review, final contract and release readiness
 remain separate; no historical technical failure is converted into acceptance PASS.
 
+Next proposed iteration: [v0.7.0](roadmap.md#v070--scan-performance-pricing-redesign-and-work-sessions-proposed),
+tracked by `ad-v070-iteration`. The operator's four-theme planning intake and
+open-ended pricing redesign live in the roadmap; implementation decomposition
+and active version-contract membership are not yet approved.
+
 | Topic | Version | Status | Purpose |
 | --- | --- | --- | --- |
-| [v0.6.5 Contract](archive/topics/v0-6-5-contract/tasks.md) | `v0.6.5` | Contract delivered in PR #47; all three tasks and document reviewed, exact-merge gates passed, coordination closed and topic retired. RC publication and normal local installation are verified; Widget acceptance remains pending the operator. | Nineteen-member accounting and final contract, preserving native/performance limits. |
+| [v0.6.5 Contract](archive/topics/v0-6-5-contract/tasks.md) | `v0.6.5` | Contract delivered in PR #47; all three tasks and document reviewed, exact-merge gates passed, coordination closed and topic retired. Stable publication and normal local installation are complete, with the recorded Release gate VERIFIED 8/8. The operator accepted RC2 Widget centering and normal refresh for the unchanged stable source; other historical native/performance limits remain. | Nineteen-member accounting and final contract, preserving native/performance limits. |
 | [`v0.5.0` Contract Closure](topics/v0-5-0-contract/tasks.md) | `v0.5.0` | Released — contract complete, independently reviewed, and committed at `a547362`; `cli-design.md` is at version 28 and both contract Tasks are 2/2 implemented and reviewed. Six release candidates culminated in `v0.5.0-rc.6`, and stable `v0.5.0` published the exact `acb8384` commit. The schema-version-signal documents and decomposition are now committed; this contract directory remains live pending its separately scoped retirement. No v0.5.0 product work remains. | Version-wide specification raise and documentation reconciliation after every selected topic's tasks pass review. |
 | [Schema Version Signal](topics/schema-version-signal/tasks.md) | `v0.6.0` | First assembly batch — 4/4 documents and 6/6 tasks reviewed and delivered; source `58df42d`. This integration carries the product, stable contracts and worktree-status governance correction. Task 5 manual text-size/layout and VoiceOver/interaction acceptance remain user-waived, not tested. See the [integration record](archive/topics/v0-6-0-contract/reviews/assemble.md); retirement and release remain separate. | Stable schema-ahead reporting across doctor, CLI, desktop and Hook delivery, with actionable recovery and preserved independent session availability. |
 | [Snapshot Performance](topics/snapshot-performance/tasks.md) | `v0.6.0` | Second assembly batch — integrated through PR #4 at main `4dd10f4`; 6/6 documents and 3/3 tasks remain reviewed and delivered. Cold-import and unchanged-refresh CPU targets, the final 20-sample campaign, V01-V19 completeness and manual/native checks retain their explicit accepted-exception status; they are not reported as technical passes. Retirement and release remain separate. | One shared scan runtime, reusable snapshot computation and truthful CLI/menu-bar progress with preserved failure and scope semantics. |

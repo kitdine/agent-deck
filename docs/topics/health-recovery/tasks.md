@@ -6,6 +6,9 @@ updated: 2026-09-22
 
 # Health Recovery — Tasks
 
+> 2026-10-08 artifact disposition: the operator authorized removal of all 19 additional worktrees already integrated into main, including their historical test/build outputs. References in this record to generated artifacts in those worktrees are historical provenance, not retrievable artifact references. Tracked source, tests and historical conclusions remain. A later verification requiring a deleted original must obtain new evidence; an old path or digest does not establish retrievability.
+
+
 This is the topic-local execution and status authority for `health-recovery`.
 Its planning carrier is `ad-health-recovery`; the retained defect origins are
 `ad-bug-state-busy-recovery-guidance` and

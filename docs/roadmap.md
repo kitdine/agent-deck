@@ -26,7 +26,7 @@ The five areas below were selected on 2026-09-05, subsequently designed,
 reviewed and assembled, and shipped in v0.6.0. Their delivered membership and
 exceptions are preserved in the archived version contract; this section no
 longer dispatches design or assembly work. Cost and price transparency was
-removed on 2026-09-26 and remains a deferred, unversioned feature candidate.
+removed on 2026-09-26 and is now a proposed v0.7.0 member below.
 
 | Feature | Planning carrier | Reason and boundary |
 | --- | --- | --- |
@@ -67,6 +67,7 @@ development starts.
 | --- | --- | --- |
 | `v0.6.0` | Trusted usage and subscription visibility | The five feature areas selected above; subscription quota includes Codex reset-count information. |
 | `v0.6.5` | Concentrated defect repair | Nineteen unique Bugs, prioritised P1/P2/P3; one issue/PR per repair, local independent and GitHub Codex review, then one aggregate release. Feature candidates remain separate. |
+| `v0.7.0` (proposed) | Scan performance, pricing redesign and work sessions | Long-scan performance, models.dev pricing and subscription credits estimates, auxiliary-session isolation, and Codex work-signal repair; proposed on 2026-10-08, with pricing scope open for redesign. |
 | `v0.8.0` | Boundary consolidation and Linux | Versioned client adapter contract, Linux machine identity, de-darwin PTY tests, Linux CI matrix and release artifacts. |
 | `v0.9.0` | Observability completion | Extension enabled state, cross-client duplication and drift, source authenticity, structured session search filters, wrapper health probing, richer desktop session window. |
 | `v1.0.0` | Multi-device and trust | Device dimension, backup merge import, read-only aggregation views, CLI archive signing and notarization. |
@@ -257,11 +258,110 @@ mirror its progress. Use the rules only after their required review and delivery
 Parallel issue work remains a separately authorized choice.
 
 
+## v0.7.0 — Scan performance, pricing redesign and work sessions (proposed)
+
+On 2026-10-08 the operator requested a task design for four areas after stable
+v0.6.5. This is planning intake, not an approved implementation matrix or a
+release commitment. The historical `ad-v070` and `ad-v070-plan` concern the
+superseded subscription-quota plan; keep them closed and unchanged. Use
+`ad-v070-iteration` for this proposal and retain existing issue identities.
+A later `v0-7-0-contract` topic will own approved active membership; it does
+not originate the feature topics' requirements, UX or architecture.
+
+### Proposed scope and decisions
+
+| Area | Carrier | Boundary |
+| --- | --- | --- |
+| Long-scan performance | `ad-bug-menubar-long-scan-timeout` | Explain full rereads and queued requests, bound repeated scan work, and distinguish waiting/progress from failure. Preserve usage/session equivalence, cancellation and ownership. |
+| Price-system and subscription-analysis redesign | `ad-cost-transparency` | At minimum: migrate pricing to models.dev with multi-tier support; add subscription credits estimates; resolve auto-code-review calculation; handle A/B experiment models in billing and presentation. The whole topic requires fresh design; scope stays open. |
+| Auxiliary-session isolation | `ad-auxiliary-session-classification` | Identify auxiliary work without deleting sources or suppressing its usage/cost. The operator selected default isolation from work-session counts, project counts and durations, with a switch to inspect/include it. |
+| Codex work-signal ingestion | `ad-bug-codex-work-signals-missing` | Restore Activity/Workflow/Tooling for current Codex message envelopes and recover historical derivations. Proposed Lane A; lane confirmation and implementation remain separate. |
+
+The auxiliary-session default is selected. Classification evidence, override
+persistence, switch placement and cross-surface behavior remain design decisions.
+Proposed rules: retain unknown origins in the ordinary work view; explain
+auxiliary classifications; offer Work/Auxiliary/All scopes; keep total usage and
+cost complete and label their scope when it differs from work KPIs. A project
+directory name alone must not silently establish auxiliary identity. Disabling
+the filter must restore the complete underlying collection.
+
+### Price-system redesign: minimum intake, not a frozen scope
+
+The operator clarified on 2026-10-08 that `ad-cost-transparency` itself may be
+incomplete and the entire topic needs careful redesign later. Its prior title,
+description and acceptance are historical inputs, not a ceiling on this version.
+Credits are now expressly included, superseding the old tracker exclusion.
+The user's minimum requested content is:
+
+1. **Rebuild pricing around models.dev.** The reported motivation is GPT
+   multi-tier billing missing from the current LiteLLM representation. Validate
+   the proposed source's coverage, tier schema and dates against actual model
+   pricing and request evidence. A source swap alone is not acceptance.
+2. **Add credits estimates for subscription analysis and monetary estimates.**
+   Define sources, rules, applicable plans/models, uncertainty and the relationship
+   to displayed money. Estimated credits must remain distinguishable from actual
+   subscription debits or invoices.
+3. **Resolve auto-code-review calculation.** Preserve this user-supplied name.
+   The old `codex-auto-review` / `gpt-5.4` mapping is an investigation lead;
+   do not equate the names or hard-code a model without evidence.
+4. **Handle A/B-rollout models in pricing and presentation.** Preserve observed
+   identities and distinguish display names, proven aliases, experimental IDs,
+   supported prices and explicit unknown/fallback states.
+
+This list is deliberately non-exhaustive. Revisit amount semantics, model/rate
+correctness, request-level tier evidence, source/version freshness, historical
+recalculation, privacy and upgrade compatibility during requirements/UX/
+architecture design. Legacy `272K` and model-price examples are hypotheses.
+LiteLLM investigation now supports migration comparison, not the target design.
+Context Efficiency remains undecided; it is not silently included or permanently
+excluded. No implementation count, effort or schedule estimate is established.
+
+Antigravity, Linux, automatic updating and multi-device work remain outside the
+currently proposed four-theme version scope.
+
+### Design agenda and prospective delivery units
+
+These units order discovery and acceptance; they are not Development-ready
+Beads tasks. Create implementation dispatch only after the owning topic's
+required requirements, UX, architecture and decomposition are approved.
+
+| Unit | Deliverable and dependency | Observable acceptance | Verification boundary |
+| --- | --- | --- | --- |
+| P1. Scan baseline and budgets | Profile first import, forced/parser-version rebuild, unchanged scan, one-file append and queued requests; separate discovery, parsing, SQL and snapshot costs. Start from `internal/ingest/ingest.go`, usage/session ingestion and the embedded helper. | Reproducible input near the observed 5,071-file scale; input identity and repeated p50/p95, CPU, memory, bytes-read and queue-wait measurements. Establish the original reread trigger or preserve uncertainty. Approve numerical latency/resource budgets before performance implementation. | Isolated benchmarks and receipts; no rebuild of the live user databases. |
+| W1. Codex work-signal compatibility | Restore real user-turn reduction for current/legacy envelopes in `internal/usage/usage.go`, with `internal/activity` and signal consumers. Owned by `ad-bug-codex-work-signals-missing`. | Classified turns and consistent Activity/Workflow/Tooling. Cover messages before/after turn context, append boundaries, duplicate envelopes, injected context and pending turns. Preserve true zero versus unavailable. | L2: isolated JSONL-to-SQLite regressions, affected usage/activity/session/desktop tests and Go core regression. |
+| W2. Historical signal recovery | Define targeted replay/version invalidation for W1; budget it using P1. Same Bug, not a second issue. Preserve source ownership and idempotence. | Previously indexed affected sources gain correct derivations; a second scan creates no duplicates. Existing event identities/token totals, credentials, providers, exclusions and sources are preserved. Unaffected sources avoid unnecessary replay. | L3: replay, rewrite, crash/cancellation, ownership and privacy checks on isolated copies. |
+| P2. Scan and waiting behavior | Apply measured fixes from P1, including W2's recovery cost. Define long-running/queued/failed/cancelled UX and helper contracts. | No-op scans parse no transcript bodies; append reads are bounded to changed data and documented anchors. Full/incremental results agree. A healthy background scan crossing 120 seconds is not reported as failed solely because a requester timed out. Approved resource/latency budgets pass repeated measurements. | L3: affected race checks, scale tests, native progress and cancellation acceptance. |
+| C0. Re-design the whole pricing topic | Re-open requirements discovery around the four minimum inputs above, existing issue history and actual pricing/subscription/model evidence. Produce coherent requirements, UX, architecture and only then implementation decomposition. | All four minimum items have explicit contracts and acceptance; additional discovered requirements have a disposition. Validate source/tier/credits/model mappings, unknown handling and historical-data implications. No fixed package count or effort estimate before this work. | Design evidence and independent review first; select L2/L3 for actual changes after scope is known. |
+| A1. Auxiliary identity and filters | Define evidence-backed user/auxiliary/unknown classification and the selected default. Keep canonical session identity/project attribution separate. | User work is retained, known observer samples isolated, unknown samples visible, and switching reversible. Replay/late metadata preserves identity and classification provenance. | L2; L3 for persisted migration. Mixed/duplicate sources and late-metadata fixtures. |
+| A2. Work-view consistency | Apply A1 to session lists, work/project counts and duration aggregates; coordinate with W1 and the redesigned pricing topic for signal/cost scope labels. | Work KPIs share the selected scope. Work + Auxiliary reconciles with All under documented unknown handling. Total usage/cost stays complete. Different time/event scopes are explained rather than forced into equal counts. | L2 plus CLI/native mixed-session acceptance and cross-surface comparisons. |
+| V1. Version reconciliation and acceptance | After selected deliveries pass their own gates, reconcile the v0.7.0 contract, upgrade compatibility and release criteria. | Combined scale tests cover scan/replay/filter/pricing; normal upgrade preserves original event identities and protected inputs. Operator accepts native signals, filtering and cost explanations. Historical waivers remain historical. | Separately authorized version assembly and L4 release validation; reuse unchanged valid evidence. |
+
+Recommended dependencies: P1 informs W2/P2's budget; W1 → W2 and W2 is included
+in P2's acceptance. C0 precedes any pricing implementation decomposition.
+A1 → A2, with A2 consuming W1 and the pricing topic's settled scope semantics.
+V1 waits for selected deliveries. Start with P1/W1; pricing and auxiliary
+requirements may be explored independently. This is dependency guidance,
+not parallel-agent authority or an effort estimate.
+Proposed feature owners are `scan-performance`, `cost-transparency` and
+`auxiliary-session-classification`; the work-signal Bug keeps a bounded repair
+carrier. Existing deferred carriers remain unclaimed until their work starts.
+
+The current-message Bug was reproduced on v0.6.5 source: Codex usage and tool
+calls are stored but no Codex `usage_work_signals` rows exist. The parser notes
+only legacy `event_msg/user_message`; a current transcript contains
+`response_item/message(role=user)` and no legacy messages. Workflow/tooling
+joins require classified rows. A controlled one-event/one-edit comparison
+produced no signal for the current envelope, versus a classified activity,
+2-second first edit and one tool call for the legacy envelope. The Bug carries
+the evidence; this planning record does not claim a product repair.
+
+
+
 ## Backlog
 
 The operator selected long-scan performance as a main priority for the next
-version on 2026-10-07; the version number and implementation plan remain
-undecided. `ad-bug-menubar-long-scan-timeout` is deferred (Lane C). An installed
+version on 2026-10-07 and proposed v0.7.0 on 2026-10-08 as recorded above;
+the implementation plan remains unapproved. `ad-bug-menubar-long-scan-timeout` is deferred (Lane C). An installed
 v0.6.5-rc.1 round processed 5,071 files in 1,540,148 ms while menu-bar requests
 hit their 120-second timeout; the background round ultimately completed.
 Investigate full/rebuild and incremental scan cost, queued requests, and the
@@ -281,8 +381,9 @@ until design evidence justifies merging them):
 
 The earlier v0.6.0 cost-truthfulness release was cancelled and its attribution
 scope shipped in v0.5.0. The new v0.6.0 selection above supersedes that release
-sequence. Pricing investigations below belong to the future cost-transparency design;
-credits and Context Efficiency remain unscheduled. The attribution defect is
+sequence. Pricing investigations below belong to the proposed v0.7.0 cost-transparency design;
+credits are now explicitly included in that redesign; Context Efficiency remains
+undecided. The attribution defect is
 no longer a Backlog candidate:
 it was delivered by the archived
 [`usage-attribution-precision`](archive/topics/usage-attribution-precision/tasks.md)
@@ -292,8 +393,9 @@ topic. That topic corrects the current contract that reserves `exact` for
 There is no later attribution item to reconcile from this checklist.
 
 Pricing catalogs and tiers remain independent investigations within the
-unassigned cost-transparency candidate.
-Credits and Context Efficiency remain later candidates. Subscription discovery
+cost-transparency candidate proposed for v0.7.0.
+Credits are part of the new minimum intake; Context Efficiency is undecided.
+Subscription discovery
 is selected into v0.6.0 with quota, reset information and reminders.
 
 - [ ] Model the two public-API price tiers for the GPT-5.6 family around the
@@ -306,8 +408,8 @@ is selected into v0.6.0 with quota, reset information and reminders.
   prices. Keep upstream catalog data, catalog retrieval/versioning, parsing, and
   model-name matching as distinct hypotheses until evidence identifies the
   failing layer.
-- [ ] Treat `codex-auto-review` as a separately auditable fallback-classification
-  candidate whose currently public model mapping is `gpt-5.4`; retain the
+- [ ] Resolve the user-reported `auto-code-review` calculation problem; the old
+  `codex-auto-review` / `gpt-5.4` mapping is an unverified historical lead. Retain the
   [OpenAI credit rate card](https://help.openai.com/en/articles/11481834-chatgpt-rate-card-business-enterpriseedu-credit-based-pricing)
   as the cited public source and define freshness/fallback behavior during
   design.

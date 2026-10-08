@@ -134,8 +134,9 @@ work_unit ──requires──▶ criterion ◀──satisfies── evidence �
   by the profile. Only applicable passing evidence satisfies a criterion.
 - The ContentState records the relevant commit/tree or scoped fingerprint and
   required dependency, configuration, toolchain, environment, or specimen
-  identity. Keep raw logs, diffs, plans, and artifacts outside the graph; retain
-  their URI and digest with the concise check result.
+  identity. Keep raw logs, diffs, plans, and artifacts outside the graph. Record
+  the necessary check facts directly; cite an original's URI and digest only
+  when it meets the durable-reference rules below.
 - Preserve established digest recipes for existing subjects. For an uncommitted
   document, the established form is SHA-256 of `head=<HEAD-SHA>;document=<blob>`;
   append `;prototype=<manifest_sha256>` when the specimen is part of the state.
@@ -157,6 +158,52 @@ Bind evidence after required local status synchronization reaches its final
 content state. If synchronization changes a reviewed document or specimen,
 evidence for the earlier state cannot simply be relabeled; add the correct
 state/evidence or an explicit permitted reuse assessment.
+
+### Durable artifact references
+
+These rules apply to formal project documents, review records, retained Beads
+comments and CEv1 records. Storage location does not change a reference's
+retention requirements.
+
+- Do not cite temporary or scheduled-for-deletion artifacts as references.
+  This includes `/tmp` and `/private/tmp` outputs, worktree-local generated
+  files, build caches and retention-bound CI artifacts. Writing the path as
+  plain text, calling it temporary, or copying it into Beads or Neo4j does not
+  make it an acceptable reference.
+- Capture the minimum facts needed to understand the observation directly in
+  its owning record: inspected content identity, method or reproducible command,
+  relevant measurements or failure details, result and limitations. A future
+  reader must not need a temporary file to understand the finding or conclusion.
+  A reproduction command may create fresh temporary output; it must not imply
+  that a previous temporary output remains available for inspection.
+- Retain an original only when the summary cannot adequately support its use,
+  such as a necessary visual specimen. Before citing it, verify access, content
+  identity and a defined retention commitment covering the record's intended
+  use. Use a pinned Git object or another verified durable location; a URL,
+  object ID or checksum alone does not establish retention. Do not archive every
+  test run, log or build by default.
+- Beads may retain concise, self-contained diagnostic or disposition facts and
+  stable pointers under its coordination rules. CEv1 retains structured check
+  facts, content identities and evidence relationships under the shared profile.
+  Neither is a raw-log or binary attachment dump, nor a substitute for the
+  authoritative review record.
+- Before authorized cleanup, inspect references to the artifacts in that cleanup
+  scope. Preserve necessary facts and any essential original under the rules
+  above; do not require preservation of unrelated process output. Update live
+  pointers to verified durable replacements, or retire those pointers when the
+  original is unnecessary. Do not leave a record claiming an original is retained
+  at a location being deleted.
+- For existing historical records or immutable observations, preserve the
+  original content identity, finding and verdict. Add a dated correction or
+  disposition identifying the obsolete citation by its owning record/section;
+  do not rewrite historical observations or repeat a dead path as a usable
+  reference. If necessary facts cannot be recovered, state that limitation
+  rather than inventing a replacement account. Follow the provider profile for
+  any supported reference correction; do not overwrite immutable CEv1 evidence.
+- Cleanup does not by itself turn a historical passing observation into a
+  failure. However, a later verification or reuse decision that requires an
+  unavailable original must obtain adequate new evidence or report the gap;
+  the old verdict or digest cannot establish present retrievability.
 
 ### Failure handling and provider compatibility
 

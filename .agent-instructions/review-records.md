@@ -137,6 +137,13 @@ metadata rather than replacing it to normalize formatting:
 - Completion gate: `VERIFIED`, `NOT_VERIFIED`, `FAILED`, `BLOCKED`, or
   `NOT_REQUIRED`, obtained from the applicable evidence boundary.
 
+Keep findings and conclusions self-contained: state the relevant observation,
+reasoning, measurements and limitations in the record rather than delegating
+them to a temporary log or screenshot. Cite originals only under
+[Evidence's durable-reference rules](evidence.md#durable-artifact-references).
+These rules also govern cleanup of existing artifact references; preserve
+historical verdicts while making retrieval limitations explicit.
+
 Place evidence metadata in the report's summary when suitable. Keep machine
 values, finding IDs, paths, and quoted evidence unchanged when localizing prose.
 The reader accepts `Verdict` or `结论`/`裁决`/`评审结论`/`复评结论`, and

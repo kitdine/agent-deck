@@ -149,6 +149,15 @@ a token for an ordinary permission pause.
 - System and developer instructions, and the user's explicit instructions,
   take precedence over skill guidance.
 
+## Durable Record References / 持久记录引用
+
+Formal records must remain understandable without temporary artifacts. Do not
+cite temporary or scheduled-for-deletion outputs as references, including
+worktree-local generated files and expiring CI artifacts. Record necessary facts
+directly; place essential originals in verified durable storage before citing
+them. Follow [Evidence's reference rules](.agent-instructions/evidence.md#durable-artifact-references),
+including when references are stored in Beads comments or Neo4j.
+
 ## Runtime Contract / 运行时契约
 
 Required capabilities and command wrappers are summarized below. Read

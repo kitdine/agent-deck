@@ -6,6 +6,9 @@ updated: 2026-09-08
 
 # Schema Version Signal — Tasks
 
+> 2026-10-08 artifact disposition: the operator authorized removal of all 19 additional worktrees already integrated into main, including their historical test/build outputs. References in this record to generated artifacts in those worktrees are historical provenance, not retrievable artifact references. Tracked source, tests and historical conclusions remain. A later verification requiring a deleted original must obtain new evidence; an old path or digest does not establish retrievability.
+
+
 This file is the only status authority for this topic.
 
 ## Documents
