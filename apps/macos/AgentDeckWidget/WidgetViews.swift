@@ -445,6 +445,10 @@ private struct QuotaWidgetView: View {
 			.coordinateSpace(name: "quota-large-body")
 		} else {
 			clientBlock(clients[0])
+				.background(quotaGeometry("content.\(clients[0].client)"))
+				.frame(maxHeight: .infinity, alignment: .center)
+				.background(quotaGeometry("slot.\(clients[0].client)"))
+				.coordinateSpace(name: "quota-large-body")
 		}
 	}
 

@@ -94,6 +94,16 @@ Direction decisions that shape this roadmap:
 
 ## Backlog
 
+The operator selected long-scan performance as a main priority for the next
+version on 2026-10-07; the version number and implementation plan remain
+undecided. `ad-bug-menubar-long-scan-timeout` is deferred (Lane C). An installed
+v0.6.5-rc.1 round processed 5,071 files in 1,540,148 ms while menu-bar requests
+hit their 120-second timeout; the background round ultimately completed.
+Investigate full/rebuild and incremental scan cost, queued requests, and the
+presentation of ongoing work versus genuine failure. The trigger for that
+full reread remains unconfirmed. This planning candidate does not start
+performance implementation during the Widget centering repair.
+
 These candidates have no approved implementation plan. Promote each into a
 bounded plan before development; do not expand an active plan opportunistically.
 Candidates that carry a delivery version live in the Roadmap above. An item

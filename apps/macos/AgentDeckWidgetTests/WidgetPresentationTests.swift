@@ -99,6 +99,52 @@ final class WidgetPresentationTests: XCTestCase {
 		XCTAssertEqual(claudeContent.midY, claudeSlot.midY, accuracy: 1)
 	}
 
+	@MainActor
+	func testSingleClientQuotaWidgetsCenterContentWithinTheirWholeBody() throws {
+		let original = try widgetFixture("snapshot-complete")
+		for configured in [WidgetClient.codex, .claude] {
+			for windowCount in [1, 2] {
+				var object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(original)) as? [String: Any])
+				var subscription = try XCTUnwrap(object["subscription"] as? [String: Any])
+				let clients = try XCTUnwrap(subscription["clients"] as? [[String: Any]])
+				var client = try XCTUnwrap(clients.first { $0["client"] as? String == configured.rawValue })
+				let windows = try XCTUnwrap(client["windows"] as? [[String: Any]])
+				XCTAssertGreaterThanOrEqual(windows.count, windowCount)
+				client["windows"] = Array(windows.prefix(windowCount))
+				client["tightest_window_key"] = windows[0]["key"]
+				subscription["clients"] = [client]
+				object["subscription"] = subscription
+				let snapshot = try JSONDecoder().decode(WidgetDesktopSnapshotV1.self, from: JSONSerialization.data(withJSONObject: object))
+				let entry = AgentDeckWidgetEntry(
+					date: try XCTUnwrap(WidgetTimelinePolicy.date(snapshot.generatedAt)), snapshot: snapshot,
+					kind: .quota, client: configured, period: .today, isPlaceholder: false
+				)
+				for family in [WidgetFamily.systemSmall, .systemMedium, .systemLarge] {
+					let context = "\(configured.rawValue) \(familyName(family)) \(windowCount) windows"
+					let model = WidgetSurfaceModel(entry: entry, now: entry.date)
+					XCTAssertEqual(model.presentedQuotaClients(family: family).map(\.client), [configured.rawValue], context)
+					let capture = QuotaGeometryCapture()
+					let size = WidgetLayoutContract.canvas(family)
+					let view = QuotaGeometryProbe(
+						content: AgentDeckWidgetView(entry: entry, familyOverride: family)
+							.frame(width: size.width, height: size.height), capture: capture
+					)
+					let png = try renderedViewPNG(view, size: NSSize(width: size.width, height: size.height))
+					let slot = try XCTUnwrap(capture.frames["slot.\(configured.rawValue)"], context)
+					let content = try XCTUnwrap(capture.frames["content.\(configured.rawValue)"], context)
+					XCTAssertEqual(capture.frames.count, 2, "single client must have exactly one slot and content: \(context)")
+					XCTAssertGreaterThan(slot.height, size.height / 2, "single slot must use the full body: \(context)")
+					XCTAssertLessThan(content.height, slot.height, "centering assertion must have spare space: \(context)")
+					XCTAssertEqual(content.midY, slot.midY, accuracy: 1, context)
+					let attachment = XCTAttachment(data: png, uniformTypeIdentifier: "public.png")
+					attachment.name = "Centered quota — \(context)"
+					attachment.lifetime = .keepAlways
+					add(attachment)
+				}
+			}
+		}
+	}
+
 	func testLargeQuotaWidgetRetainsEveryUnavailableClientReason() throws {
 		let original = try widgetFixture("snapshot-complete")
 		var object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(original)) as? [String: Any])
