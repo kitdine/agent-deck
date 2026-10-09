@@ -1,11 +1,12 @@
 ---
-status: active
+status: historical
 created: 2026-10-09
+retired: 2026-10-09
 ---
 
 # 缺陷：Codex 工作信号缺失，活动、工作流和工具摘要显示不可用
 
-## 已交付历史与当前修复
+## 已交付历史与归档
 
 本修复已于 2026-10-09 授权提交并推送，交付提交为
 `3fba41a6f93655c2cc75fd18ed9ea4cba54d4bbb`，Git tree 为
@@ -17,10 +18,12 @@ created: 2026-10-09
 本记录曾在提交 `869f18e45ca609d95226f1c1c43586ca4d316780` 中按
 Fix records 生命周期归档，初次归档日期为 2026-10-09。随后 GitHub 对
 `c264260087f4a3de2ff45b9aec28b9e983c9ab90` 的评审发现新的
-`CWS-R4-F1`，该目标的门禁现为 FAILED；原 Bug 与 WorkUnit 已返回修复。
-因此本记录重新启用于 `docs/fixes/`，保留全部交付与评审历史，待本次候选
-完成独立复评和证据最终化后再退休。下文旧的“等待授权提交”和下一步指令
-只描述当时状态；当前工作与后续集成由原 Bug
+`CWS-R4-F1`，该被评目标的门禁为 FAILED；原 Bug 与 WorkUnit 返回修复，
+本记录曾重新启用于 `docs/fixes/`。之后提交
+`f0944cd0c268414452860abccb64d4ca426cb85e` 修复该问题，通过第四次
+GitHub 复评并最终化为 CEv1 VERIFIED 5/5，本记录按同一生命周期再次退休。
+全部历史 FAIL、归档、重新启用与修复事实保留。下文旧的“等待授权提交”和
+下一步指令只描述当时状态；当前工作与后续集成由原 Bug
 `ad-bug-codex-work-signals-missing` 与
 [PR #58](https://github.com/kitdine/agent-deck/pull/58) 承接。
 
@@ -485,3 +488,57 @@ Tooling 与 individual/desktop batch 一致；模拟 Version 7 后重解析恢�
 
 用户已明确限制自动流程：接下来的 GitHub 复评若仍未通过，保留现场并停止，
 不再自动开启下一轮修复；通过后继续原授权的合并及相关 contract 同步。
+
+## Review — Round 5
+
+## 📋 Codex 纯字符串消息兼容复评 — 2026-10-09
+
+📊 总体评分：9/10（本记录的汇总评价；GitHub Codex 未提供数值评分）
+
+✅ 复评结论：PASS
+
+### 🔴 严重问题 — 必须修复
+
+无。
+
+### 🟡 建议改进 — 推荐
+
+无。
+
+### 🟢 优点
+
+**CWS-R4-F1 · CLOSED**：提交
+`f0944cd0c268414452860abccb64d4ca426cb85e` 增加直接/嵌套字符串 content
+分支，仍执行共同的注入上下文过滤；两个持久化案例从缺少信号转为 PASS，
+保留事件/工具行并得到正确 classified 归属和三类摘要。Version 7 恢复后
+投影一致，无变化扫描不再 replaced；字符串注入没有替换真实中性意图。
+GitHub 第四次复评对该提交
+[返回未发现主要问题](https://github.com/kitdine/agent-deck/pull/58#issuecomment-6083345290)，
+没有新增行内 finding；原 P2 线程已基于实际修复及该结果关闭。
+
+`CWS-R1-F1` 和原交付的 `CWS-GH-R1-F1` 关闭事实保留，历次 FAIL 与
+初次归档、后续重新启用的原因均保留，不重写为连续 PASS。
+
+### 📝 总结
+
+- Reviewed state：提交 `f0944cd0c268414452860abccb64d4ca426cb85e`，tree
+  `bd5991b7a401f779e50671d95ec19253011bf434`；helper blob
+  `77ceaa7d12e8031fb691f55d9e69dd51d89e7881`，测试 blob
+  `e79e86f8183230885a10ffd7d3278fff03caebaa`。
+- Reviewer：独立的 GitHub Codex 云端评审角色；完成时间
+  `2026-10-09T14:52:14Z`。本地 Codex 只整理外部结果并核实仓库事实。
+- Method / Scope：核对字符串、注入、回合归属和恢复边界；核对 GitHub
+  完成摘要及具体意见，区分旧线程重定位与新 finding，逐项关闭原 P2。
+- Evidence：本轮 scoped 字符串/注入/恢复、完整 Go、usage race、vet 与
+  darwin/arm64、darwin/amd64 构建 PASS，代码和测试 blob 与检查状态一致。
+  文档追加报告及退休 metadata 只同步已经完成的结果，其最终内容通过
+  新的 ContentState 与明确复用评估绑定；不把旧失败或观察重标为新 PASS。
+- 完成门禁：VERIFIED
+- 限制：真实历史规模性能和安装版原生 UI 仍待 v0.7.0 联合验收；外部
+  “未发现主要问题”不等同于 GitHub APPROVED。该结果与所有已有及新增
+  行内意见的核对共同支持本次 finding 闭环。
+
+Task checkpoint：`fix:codex-work-signals-missing`，无 containing topic gate。
+提交建议：只同步本归档载体的实际复评结果、证据状态与退休 metadata。
+推送建议：同一修复分支；用户已授权在最终检查通过后合并 PR #58，随后
+同步相关 v0.7.0 contract 内容；若后续复评新增未解决意见，按用户限制停止。
