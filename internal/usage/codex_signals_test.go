@@ -30,6 +30,8 @@ func TestCodexInjectedContextDoesNotReplaceUserIntent(t *testing.T) {
 		codexSignalUser(t, "2026-10-08T12:00:00Z", "look at the parser"),
 		codexSignalUser(t, "2026-10-08T12:00:00Z", "# AGENTS.md instructions for /fixture\n<INSTRUCTIONS>fix every crash</INSTRUCTIONS>"),
 		codexSignalUser(t, "2026-10-08T12:00:00Z", "<environment_context>fix the failing environment</environment_context>"),
+		codexSignalJSON(t, "2026-10-08T12:00:00Z", "response_item", map[string]any{"type": "message", "role": "user", "content": "# AGENTS.md instructions for /fixture\n<INSTRUCTIONS>fix every crash</INSTRUCTIONS>"}),
+		codexSignalJSON(t, "2026-10-08T12:00:00Z", "response_item", map[string]any{"item": map[string]any{"type": "message", "role": "user", "content": "<environment_context>fix the failing environment</environment_context>"}}),
 	}
 	writeSource(t, source, append(lines, codexSignalOutput(t, filepath.Join(root, "parser.go"))...)...)
 	if _, err := service.Scan(ctx); err != nil {
@@ -171,6 +173,74 @@ func TestCodexResponseMessagePersistsWorkSignal(t *testing.T) {
 	batch, err := service.SignalsBatch(ctx, []SignalOptions{options})
 	if err != nil || !reflect.DeepEqual(batch, []SignalReport{report}) {
 		t.Fatalf("individual and desktop batch projections differ: err=%v", err)
+	}
+}
+
+func TestCodexStringMessagePersistsWorkSignal(t *testing.T) {
+	for _, nested := range []bool{false, true} {
+		t.Run(map[bool]string{false: "direct", true: "nested"}[nested], func(t *testing.T) {
+			ctx := context.Background()
+			root := t.TempDir()
+			service, database, home := newSignalService(t, root)
+			source := filepath.Join(home, ".codex", "sessions", "string-signals.jsonl")
+			message := map[string]any{"type": "message", "role": "user", "content": "fix the crash in the parser"}
+			if nested {
+				message = map[string]any{"item": message}
+			}
+			lines := []string{
+				`{"timestamp":"2026-10-08T12:00:00Z","type":"session_meta","payload":{"id":"s"}}`,
+				`{"timestamp":"2026-10-08T12:00:00Z","type":"turn_context","payload":{"turn_id":"t1","model":"gpt-5"}}`,
+				codexSignalJSON(t, "2026-10-08T12:00:00Z", "response_item", message),
+			}
+			writeSource(t, source, append(lines, codexSignalOutput(t, filepath.Join(root, "parser.go"))...)...)
+			if _, err := service.Scan(ctx); err != nil {
+				t.Fatal(err)
+			}
+			var events, calls int
+			if err := database.DB.QueryRowContext(ctx, `SELECT (SELECT COUNT(*) FROM usage_events),(SELECT COUNT(*) FROM usage_tool_calls)`).Scan(&events, &calls); err != nil {
+				t.Fatal(err)
+			}
+			if events != 1 || calls != 1 {
+				t.Fatalf("fixture events=%d calls=%d, want one of each", events, calls)
+			}
+			state, kind, sub, class, owner := signalRow(t, database, "codex", "s", 1)
+			if state != signalStateClassified || kind != "debugging" || sub != "repair" || class != "fault" || owner != source {
+				t.Fatalf("state=%q kind=%q sub=%q class=%q owner=%q, want classified debugging/repair owned by %q", state, kind, sub, class, owner, source)
+			}
+			options := SignalOptions{Period: "today", Client: "codex", IncludeSub: true,
+				From: time.Date(2026, 10, 8, 0, 0, 0, 0, time.UTC), To: time.Date(2026, 10, 9, 0, 0, 0, 0, time.UTC)}
+			report, err := service.Signals(ctx, options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if report.Activity == nil || !report.Activity.Available || report.Activity.CostBasis != CostBasisTurn ||
+				report.Workflow == nil || !report.Workflow.Available || report.Workflow.FirstEditSeconds == nil || *report.Workflow.FirstEditSeconds != 2 ||
+				report.Tooling == nil || !report.Tooling.Available || report.Tooling.Calls != 1 {
+				t.Fatalf("string message lost signal projections: %+v", report)
+			}
+			batch, err := service.SignalsBatch(ctx, []SignalOptions{options})
+			if err != nil || !reflect.DeepEqual(batch, []SignalReport{report}) {
+				t.Fatalf("individual and desktop batch projections differ: err=%v", err)
+			}
+			if _, err := database.DB.ExecContext(ctx, `DELETE FROM usage_work_signals WHERE client='codex'; UPDATE usage_source_files SET parser_version=7,turn_id='t1' WHERE path=?`, source); err != nil {
+				t.Fatal(err)
+			}
+			inventory, err := service.Inventory(ctx)
+			if err != nil || !inventory.ParserVersionReread || !reflect.DeepEqual(inventory.Mutated, []string{source}) {
+				t.Fatalf("string history inventory=%+v err=%v", inventory, err)
+			}
+			if _, err := service.ScanInventory(ctx, inventory); err != nil {
+				t.Fatal(err)
+			}
+			recovered, err := service.Signals(ctx, options)
+			if err != nil || !reflect.DeepEqual(recovered, report) {
+				t.Fatalf("string history recovery changed projections: err=%v", err)
+			}
+			unchanged, err := service.Scan(ctx)
+			if err != nil || unchanged["replaced"] != 0 {
+				t.Fatalf("string history replay was not stable: result=%v err=%v", unchanged, err)
+			}
+		})
 	}
 }
 

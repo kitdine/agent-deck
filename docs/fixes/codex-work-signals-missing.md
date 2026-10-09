@@ -1,12 +1,11 @@
 ---
-status: historical
+status: active
 created: 2026-10-09
-retired: 2026-10-09
 ---
 
 # 缺陷：Codex 工作信号缺失，活动、工作流和工具摘要显示不可用
 
-## 交付与归档
+## 已交付历史与当前修复
 
 本修复已于 2026-10-09 授权提交并推送，交付提交为
 `3fba41a6f93655c2cc75fd18ed9ea4cba54d4bbb`，Git tree 为
@@ -15,10 +14,13 @@ retired: 2026-10-09
 的 CEv1 门禁已最终化为 VERIFIED 5/5；归档前回读仍为 VERIFIED，无缺失、
 失效证据或未决影响。
 
-按 `docs/documentation-workflow.md` 的 Fix records 生命周期，本记录移至
-`docs/archive/fixes/` 并标为 historical。下文保留原开发、修复和独立评审的
-历史事实，其中“等待授权提交”及旧下一步指令描述的是当时状态，不再作为
-当前执行指令。后续 GitHub 反馈和集成协调由原 Bug
+本记录曾在提交 `869f18e45ca609d95226f1c1c43586ca4d316780` 中按
+Fix records 生命周期归档，初次归档日期为 2026-10-09。随后 GitHub 对
+`c264260087f4a3de2ff45b9aec28b9e983c9ab90` 的评审发现新的
+`CWS-R4-F1`，该目标的门禁现为 FAILED；原 Bug 与 WorkUnit 已返回修复。
+因此本记录重新启用于 `docs/fixes/`，保留全部交付与评审历史，待本次候选
+完成独立复评和证据最终化后再退休。下文旧的“等待授权提交”和下一步指令
+只描述当时状态；当前工作与后续集成由原 Bug
 `ad-bug-codex-work-signals-missing` 与
 [PR #58](https://github.com/kitdine/agent-deck/pull/58) 承接。
 
@@ -413,3 +415,73 @@ Task checkpoint：`ad-bug-codex-work-signals-missing`，WorkUnit
 提交建议：仅交付本归档记录的复评事实与证据状态；用户已授权自动修复交付。
 推送建议：同一 `origin/fix/codex-work-signals-missing`；最终 CI、GitHub
 复评及必要证据门禁通过后按用户授权集成至 main。
+
+## Review — Round 4
+
+## 📋 Codex 纯字符串消息兼容评审 — 2026-10-09
+
+📊 总体评分：8/10（本记录的汇总评价；GitHub Codex 未提供数值评分）
+
+✅ 评审结论：FAIL
+
+### 🔴 严重问题 — 必须修复
+
+**CWS-R4-F1 · P2 · OPEN（被评状态）**：
+`internal/usage/codex_signals.go:100` 只将用户消息 content 断言为 `[]any`。
+有效的纯字符串得到 nil slice，继而返回无信号。会话索引的
+`extractCodex` / `textContent` 明确接受 user/input_text 的字符串形式，
+所以同一会话可被检索，却仍缺少 Activity、Workflow、Tooling 归属。
+- Carrier：`ad-bug-codex-work-signals-missing`；本条保持同一 Bug、工作区与 WorkUnit。
+- Evidence：GitHub 评审 `5470498471` 的
+  [P2 意见](https://github.com/kitdine/agent-deck/pull/58#discussion_r4230474952)，
+  被评提交 `c264260087f4a3de2ff45b9aec28b9e983c9ab90`。
+  本地失败先行的直接/嵌套持久化案例均已有 1 条用量和 1 次工具调用，
+  信号查询均为 `sql: no rows in result set`。
+💡 修复边界：接收直接/嵌套 message 的字符串 content，沿用现有注入上下文
+过滤与回合归属；不改变 token、来源所有权、parser-version 或存储字段。
+
+### 🟡 建议改进 — 推荐
+
+无。
+
+### 🟢 优点
+
+`CWS-R1-F1` 与 `CWS-GH-R1-F1` 的既有关闭事实保留。后者记录的是原交付
+状态的归档，新的生产兼容问题使当前修复重新启用；不是抹去原归档事实。
+
+### 📝 总结
+
+- Reviewed state：提交 `c264260087f4a3de2ff45b9aec28b9e983c9ab90`，tree
+  `ee660e2fd950879f8eb7f6b38606a922b4b8640d`。
+- Reviewer：GitHub Codex（`chatgpt-codex-connector[bot]`），评审
+  `5470498471`；本地 Codex 只核实源代码、复现与记录该外部 finding。
+- Method / Scope：对照既有 session 输入契约与 usage helper；CodeGraph 用于
+  已索引的会话契约，目标 helper/测试查询未命中后按项目降级规则读取指定
+  两文件；新持久化用例用于运行证明，不把图关系当成证明。
+- Evidence：失败先行命令为
+  `scripts/run-go-test.sh ./internal/usage -run '^TestCodexStringMessagePersistsWorkSignal$'`；
+  direct/nested 两案例均 FAIL，原因是缺少信号而非语法、fixture 或环境问题。
+- 完成门禁：FAILED
+- 限制：本轮实际 GitHub 反馈包含 P2；不依据前轮对主要严重级别的概述忽略
+  低级别意见。每个 in-scope finding 仍须闭环后才能合并。
+
+## 修复 — CWS-R4-F1
+
+当前候选在 `codexSignalMessage` 的 block-array 分支前增加字符串分支，
+仍进入同一个 `codexInjectedContext` 检查。生产变化仅四行；Session 的
+既有字符串契约、其他 envelope 和 Version 8 的定向恢复边界不变。
+
+新增直接/嵌套字符串消息的持久化回归，核对一条事件、一条工具记录、
+classified debugging/repair 信号及 source owner，验证 Activity、Workflow、
+Tooling 与 individual/desktop batch 一致；模拟 Version 7 后重解析恢复相同
+投影，随后无变化扫描不再 replaced。既有注入上下文回归补充直接/嵌套
+字符串注入，保持真实中性意图；原数组案例和其他回归保留。
+
+针对性字符串、注入上下文和历史恢复检查已转为 PASS，完整
+`scripts/run-go-test.sh ./...`、`scripts/run-go-test.sh -race ./internal/usage`
+及 `GOCACHE=/private/tmp/agent-deck-go-build make vet build-all` 全部 PASS，
+含 darwin/arm64 与 darwin/amd64 构建。该候选仍需独立 GitHub 复评，
+不能由本修复自行关闭 finding。
+
+用户已明确限制自动流程：接下来的 GitHub 复评若仍未通过，保留现场并停止，
+不再自动开启下一轮修复；通过后继续原授权的合并及相关 contract 同步。

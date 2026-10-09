@@ -97,6 +97,10 @@ func codexSignalMessage(recordType string, payload map[string]any) (string, bool
 		if item["type"] != "message" || item["role"] != "user" {
 			return "", false
 		}
+		if value, ok := item["content"].(string); ok {
+			text = value
+			break
+		}
 		content, _ := item["content"].([]any)
 		var parts []string
 		for _, raw := range content {
