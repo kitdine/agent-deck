@@ -15,11 +15,11 @@ only reports; it never writes to Beads. A detected mismatch may block Stop once.
 
 UserPromptSubmit records explicit session scope; Stop checks only that scope.
 Unattributed work is left for the explicit --audit command, which never blocks.
-It never writes to Beads. A disagreement holds the turn open in both runtimes so
-the agent reconciles it before finishing — Claude Code through the blocker JSON,
-Codex through the stderr exit-code-2 transport it accepts. Either way the report
-must reach the actor that can act on it, which a user-facing message alone does
-not.
+It never writes to Beads. Claude Code holds the turn through blocker JSON and
+Codex through stderr/exit code 2. OpenCode V2 consumes the JSON through the native
+adapter and queues a post-execution synthetic continuation; it does not have an
+equivalent pre-completion Stop gate. The report must reach the actor that can act
+on it, which a user-facing message alone does not accomplish.
 """
 
 from __future__ import annotations
@@ -171,9 +171,14 @@ def repository_identity(root: Path) -> str:
 
 
 def workflow_router(runtime: str) -> Any | None:
-    hook = Path(os.environ.get("AGENTDECK_WORKFLOW_HOOK", str(
-        Path.home() / f".{runtime}/hooks/development-workflow/workflow_hook.py"
-    )))
+    # OpenCode uses the same installed, runtime-neutral command matcher, not a
+    # copy of its phase Hook or an invented .opencode/hooks installation.
+    default = (
+        Path.home() / ".agentdeck/hooks/development-workflow/workflow_hook.py"
+        if runtime == "opencode"
+        else Path.home() / f".{runtime}/hooks/development-workflow/workflow_hook.py"
+    )
+    hook = Path(os.environ.get("AGENTDECK_WORKFLOW_HOOK", str(default)))
     try:
         spec = importlib.util.spec_from_file_location("beads_workflow_router", hook)
         if spec is None or spec.loader is None:
@@ -1195,7 +1200,7 @@ def emit_output(output: dict[str, Any], event_name: object, runtime: str) -> int
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--runtime", choices=("codex", "claude"), required=True)
+    parser.add_argument("--runtime", choices=("codex", "claude", "opencode"), required=True)
     parser.add_argument("--audit", action="store_true", help="Explicit non-blocking repository-wide coordination audit")
     args = parser.parse_args()
 
