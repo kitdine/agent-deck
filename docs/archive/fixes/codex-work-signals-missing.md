@@ -351,3 +351,65 @@ ContentState 由 CEv1 的本轮记录绑定，任务等待授权提交。
 合并仍需各自授权。
 
 下一步指令：`提交：fix / codex-work-signals-missing`
+
+## Review — Round 3
+
+## 📋 Codex 工作信号修复归档复评 — 2026-10-09
+
+📊 总体评分：9/10（本记录的汇总评价；GitHub Codex 未提供数值评分）
+
+✅ 复评结论：PASS
+
+### 🔴 严重问题 — 必须修复
+
+无。本轮处置的 `CWS-GH-R1-F1` 已关闭。
+
+### 🟡 建议改进 — 推荐
+
+无。
+
+### 🟢 优点
+
+**CWS-GH-R1-F1 · CLOSED**：GitHub 首轮评审
+`5469766539` 针对提交 `3fba41a6f93655c2cc75fd18ed9ea4cba54d4bbb`
+提出 P1：交付提交与证据已最终化，但修复记录仍在 `docs/fixes/` 且
+`status: active`，旧的等待提交 checkpoint 仍会被当前文档发现机制读取。
+原 finding 是 [PR #58 的归档意见](https://github.com/kitdine/agent-deck/pull/58#discussion_r4229892182)，
+与 `docs/documentation-workflow.md` 的 Fix records 归档要求一致。
+
+提交 `869f18e45ca609d95226f1c1c43586ca4d316780` 将记录移至
+`docs/archive/fixes/`，设置 `status: historical` 和 `retired: 2026-10-09`，
+保存原交付 commit/tree/CEv1 来源，并明确旧 checkpoint 为历史状态。
+原开发、失败、修复与 Round 2 独立 PASS 内容保留；Fix records 明确不要求
+归档索引条目。GitHub Codex 对该新提交完成复评，
+[返回未发现主要问题](https://github.com/kitdine/agent-deck/pull/58#issuecomment-6081195363)。
+
+**CWS-R1-F1 · CLOSED**：原 token 通知与回合归属修复保持 Round 2 已验证
+内容；本轮没有重新打开该 finding，也未改变生产代码、测试或依赖。
+
+### 📝 总结
+
+- Reviewed state：GitHub 复评提交
+  `869f18e45ca609d95226f1c1c43586ca4d316780`，Git tree
+  `97069df2fee4d23a4019cc9121e3ed5141664535`；六个生产/测试 scoped blobs
+  及 go.mod、go.sum、vendor/modules.txt 与原交付状态一致。
+- Reviewer：GitHub Codex（`chatgpt-codex-connector[bot]`），独立的 GitHub
+  云端评审角色，未参与实现或归档修正。本地 Codex 仅核实仓库事实、整理
+  外部报告及同步记录，没有以本地自评替代该外部结果。
+- Method / Scope：保存首轮 P1 的观察、风险、证据及归档补救；逐项核对
+  归档路径、frontmatter、交付来源、历史保留和当前文档入口；GitHub 复评
+  绑定上述提交。新一轮人工评分仅汇总本记录，不冒充 GitHub 输出。
+- Evidence：`python3 scripts/check-docs.py`、基于原提交的归档记录结构检查、
+  `make check-whitespace` 和 `git diff --check` PASS；生产、测试、依赖未变，
+  复用既有完整 Go、usage race、vet 与双架构构建证据。本轮追加报告只保存
+  已发生的评审事实；包含报告的最终内容另由 CEv1 绑定，不重标旧观察。
+- 完成门禁：VERIFIED
+- 限制：GitHub 原生 code review 主要报告 P0/P1；其无主要问题反馈不等同于
+  GitHub APPROVED，也不扩展为真实历史规模性能或安装版原生 UI 验收。
+  后续交付及集成事实由原 Bug 和 PR #58 的记录承接。
+
+Task checkpoint：`ad-bug-codex-work-signals-missing`，WorkUnit
+`fix:codex-work-signals-missing`，无 containing topic gate。
+提交建议：仅交付本归档记录的复评事实与证据状态；用户已授权自动修复交付。
+推送建议：同一 `origin/fix/codex-work-signals-missing`；最终 CI、GitHub
+复评及必要证据门禁通过后按用户授权集成至 main。
