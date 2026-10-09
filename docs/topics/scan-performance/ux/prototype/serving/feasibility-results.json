@@ -1,0 +1,864 @@
+{
+  "kind": "scan-performance-isolated-mechanism-probe-v1",
+  "corpus": {
+    "files": 5314,
+    "bytes": 3446641930,
+    "capture_seconds": 24.206866628999705,
+    "content_multiset_sha256": "4d6dbf6751c267360598756c40d6d428ab982f2eba862300883f2a965b5c87e8"
+  },
+  "binary_sha256": "4e1b83f0687bfdd0b6d38490f0e910bd31e85dc3645d8ddf152f624d927c0734",
+  "initial_import": {
+    "exit": 0,
+    "wall_ms": 85117.01337900013,
+    "binary_sha256": "4e1b83f0687bfdd0b6d38490f0e910bd31e85dc3645d8ddf152f624d927c0734",
+    "stages": null
+  },
+  "paired_unchanged_refresh": [
+    {
+      "scan_ms": 494.66575999999986,
+      "snapshot_ms": 261.49275000000125,
+      "total_ms": 756.1585100000011,
+      "payload_sha256": "b5b9a147d2fb76c302cc8e7058b5ec67ab493bf7625d348a46db38335f5a13ae"
+    },
+    {
+      "scan_ms": 510.6469920000018,
+      "snapshot_ms": 326.8446170000025,
+      "total_ms": 837.4916090000042,
+      "payload_sha256": "cda0d041cca3ba4c29d9b9eee76d63bf3faad8f7d37985c0124306235d8e934b"
+    },
+    {
+      "scan_ms": 490.7555600000014,
+      "snapshot_ms": 287.74955000000045,
+      "total_ms": 778.5051100000019,
+      "payload_sha256": "1e8a338b4c7d196c1f4e75ee51ac8ddfffabe2be6a4822c708cea65ac961e6f0"
+    }
+  ],
+  "unchanged_refresh_ms": {
+    "n": 3,
+    "min": 756.1585100000011,
+    "median": 778.5051100000019,
+    "p95": 837.4916090000042,
+    "p99": 837.4916090000042,
+    "max": 837.4916090000042
+  },
+  "prepared_read_ms": {
+    "n": 300,
+    "min": 1.4126410000026226,
+    "median": 2.1540919999970356,
+    "p95": 3.1152430000001914,
+    "p99": 4.734747000002244,
+    "max": 31.048821000000316
+  },
+  "disk_restore_identity_decode_ms": {
+    "n": 30,
+    "min": 3.7778330000001006,
+    "median": 4.098808000002464,
+    "p95": 4.626645999996981,
+    "p99": 5.355628999997862,
+    "max": 5.355628999997862
+  },
+  "file_event_updates": [
+    {
+      "trigger": "explicit_signal_after_notification_timeout",
+      "append_to_publication_ms": 11566.983928000001,
+      "scan_ms": 9183.829455,
+      "snapshot_ms": 347.0378980000023,
+      "total_ms": 9530.867353000001,
+      "payload_sha256": "5dd783ea22c0055d21b27318b3ffe380323c32f7ad8f1a35b2230340514211e9",
+      "exact_marker_accounting": true
+    },
+    {
+      "trigger": "filesystem_event",
+      "append_to_publication_ms": 9196.869716000001,
+      "scan_ms": 8897.587573,
+      "snapshot_ms": 273.2314800000022,
+      "total_ms": 9170.819053000003,
+      "payload_sha256": "cbc862d2657513a934f6041c9d03176afec828fda86f6de2186f0f68e77afce1",
+      "exact_marker_accounting": true
+    },
+    {
+      "trigger": "filesystem_event",
+      "append_to_publication_ms": 9526.065112000004,
+      "scan_ms": 9145.715298000003,
+      "snapshot_ms": 351.01614300000074,
+      "total_ms": 9496.731441000004,
+      "payload_sha256": "111f5c4aba03aa905675a62ac00290f5998c5c3e75c0cbf2b74036eed881b04e",
+      "exact_marker_accounting": true
+    }
+  ],
+  "prepared_read_during_update_ms": {
+    "n": 90,
+    "min": 1.433681999998953,
+    "median": 1.9395259999982954,
+    "p95": 2.32650300000023,
+    "p99": 3.361530000001949,
+    "max": 3.361530000001949
+  },
+  "filesystem_notification_failures": [
+    {
+      "stimulus": 1,
+      "timeout_ms": 2000
+    }
+  ],
+  "node_peak_rss_bytes": 145895424,
+  "idle_probe": {
+    "duration_ms": 3062.4505260000005,
+    "cpu_ms": 0.256
+  },
+  "marker_accounting": {
+    "events": 3,
+    "tokens": 399
+  },
+  "output_byte_equivalence": true,
+  "scope": "Existing stock Go CLI scan+snapshot vs experimental prepared serving; finite real corpus plus three synthetic append stimuli. HTTP data delivery, not native click-to-frame. Not the proposed incremental engine or real OTel producer.",
+  "first_screen": {
+    "all_data_visible": true,
+    "groups": {
+      "memory": {
+        "max": 38,
+        "median": 33.3999999910593,
+        "min": 32.29999999701977,
+        "n": 100,
+        "p95": 34.1000000089407,
+        "p99": 34.29999999701977
+      },
+      "refresh": {
+        "max": 2966.4000000059605,
+        "median": 966.7999999970198,
+        "min": 866.5,
+        "n": 3,
+        "p95": 2966.4000000059605,
+        "p99": 2966.4000000059605
+      },
+      "restore": {
+        "max": 34.29999999701977,
+        "median": 33.20000000298023,
+        "min": 32.29999999701977,
+        "n": 30,
+        "p95": 34.29999999701977,
+        "p99": 34.29999999701977
+      }
+    },
+    "kind": "browser-first-usable-data-frame",
+    "method": "handler entry to second requestAnimationFrame after real usage totals are bound; small experiment panel, not full prototype/native App",
+    "values": [
+      {
+        "click_to_first_data_frame_ms": 38,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 32.400000005960464,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.5,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.400000005960464,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.29999999701977,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.1000000089407,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.29999999701977,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.20000000298023,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 32.599999994039536,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 34,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.400000005960464,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.599999994039536,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 32.6000000089407,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.79999999701977,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.599999994039536,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.29999999701977,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.1000000089407,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.599999994039536,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.1000000089407,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.3999999910593,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.5,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.29999999701977,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.1000000089407,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.599999994039536,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 32.29999999701977,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 34.1000000089407,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 32.79999999701977,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.400000005960464,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.70000000298023,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.5,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 32.400000005960464,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 34.099999994039536,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 33,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.400000005960464,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.5,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 32.5,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.5,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.79999999701977,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.5,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.3999999910593,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.1000000089407,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 32.79999999701977,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.70000000298023,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.400000005960464,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 32.400000005960464,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 34.20000000298023,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.29999999701977,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.1000000089407,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.599999994039536,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.29999999701977,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.20000000298023,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 32.70000000298023,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.8999999910593,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 32.599999994039536,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.29999999701977,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.8999999910593,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 32.70000000298023,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.599999994039536,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.70000000298023,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 32.5,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.29999999701977,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 34.20000000298023,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 32.599999994039536,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.79999999701977,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.6000000089407,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.599999994039536,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 32.79999999701977,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.599999994039536,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 32.79999999701977,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 32.79999999701977,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 34.1000000089407,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 32.5,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.5,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 34.099999994039536,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 32.29999999701977,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.6000000089407,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 34,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 32.5,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.5,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.8999999910593,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 32.900000005960464,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 32.900000005960464,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 34.29999999701977,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 32.8999999910593,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 32.900000005960464,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 34.20000000298023,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.29999999701977,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 32.80000001192093,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.79999999701977,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.5,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 32.8999999910593,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.599999994039536,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 32.79999999701977,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.599999994039536,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.5,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 32.400000005960464,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.29999999701977,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 34.1000000089407,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.400000005960464,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 33,
+        "data_visible": true,
+        "mode": "memory"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.400000005960464,
+        "data_visible": true,
+        "mode": "restore"
+      },
+      {
+        "click_to_first_data_frame_ms": 32.29999999701977,
+        "data_visible": true,
+        "mode": "restore"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.29999999701977,
+        "data_visible": true,
+        "mode": "restore"
+      },
+      {
+        "click_to_first_data_frame_ms": 34.20000000298023,
+        "data_visible": true,
+        "mode": "restore"
+      },
+      {
+        "click_to_first_data_frame_ms": 32.3999999910593,
+        "data_visible": true,
+        "mode": "restore"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.599999994039536,
+        "data_visible": true,
+        "mode": "restore"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.900000005960464,
+        "data_visible": true,
+        "mode": "restore"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.400000005960464,
+        "data_visible": true,
+        "mode": "restore"
+      },
+      {
+        "click_to_first_data_frame_ms": 32.3999999910593,
+        "data_visible": true,
+        "mode": "restore"
+      },
+      {
+        "click_to_first_data_frame_ms": 34.20000000298023,
+        "data_visible": true,
+        "mode": "restore"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.20000000298023,
+        "data_visible": true,
+        "mode": "restore"
+      },
+      {
+        "click_to_first_data_frame_ms": 33,
+        "data_visible": true,
+        "mode": "restore"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.5,
+        "data_visible": true,
+        "mode": "restore"
+      },
+      {
+        "click_to_first_data_frame_ms": 32.599999994039536,
+        "data_visible": true,
+        "mode": "restore"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.20000000298023,
+        "data_visible": true,
+        "mode": "restore"
+      },
+      {
+        "click_to_first_data_frame_ms": 34.29999999701977,
+        "data_visible": true,
+        "mode": "restore"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.1000000089407,
+        "data_visible": true,
+        "mode": "restore"
+      },
+      {
+        "click_to_first_data_frame_ms": 32.5,
+        "data_visible": true,
+        "mode": "restore"
+      },
+      {
+        "click_to_first_data_frame_ms": 34.29999999701977,
+        "data_visible": true,
+        "mode": "restore"
+      },
+      {
+        "click_to_first_data_frame_ms": 32.599999994039536,
+        "data_visible": true,
+        "mode": "restore"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.19999998807907,
+        "data_visible": true,
+        "mode": "restore"
+      },
+      {
+        "click_to_first_data_frame_ms": 34.1000000089407,
+        "data_visible": true,
+        "mode": "restore"
+      },
+      {
+        "click_to_first_data_frame_ms": 32.5,
+        "data_visible": true,
+        "mode": "restore"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.20000000298023,
+        "data_visible": true,
+        "mode": "restore"
+      },
+      {
+        "click_to_first_data_frame_ms": 34.20000000298023,
+        "data_visible": true,
+        "mode": "restore"
+      },
+      {
+        "click_to_first_data_frame_ms": 32.5,
+        "data_visible": true,
+        "mode": "restore"
+      },
+      {
+        "click_to_first_data_frame_ms": 33.20000000298023,
+        "data_visible": true,
+        "mode": "restore"
+      },
+      {
+        "click_to_first_data_frame_ms": 34.20000000298023,
+        "data_visible": true,
+        "mode": "restore"
+      },
+      {
+        "click_to_first_data_frame_ms": 32.8999999910593,
+        "data_visible": true,
+        "mode": "restore"
+      },
+      {
+        "click_to_first_data_frame_ms": 33,
+        "data_visible": true,
+        "mode": "restore"
+      },
+      {
+        "click_to_first_data_frame_ms": 2966.4000000059605,
+        "data_visible": true,
+        "mode": "refresh"
+      },
+      {
+        "click_to_first_data_frame_ms": 966.7999999970198,
+        "data_visible": true,
+        "mode": "refresh"
+      },
+      {
+        "click_to_first_data_frame_ms": 866.5,
+        "data_visible": true,
+        "mode": "refresh"
+      }
+    ]
+  },
+  "append_worker_profiles": [
+    {
+      "discovery_ms": 41,
+      "usage_ms": 2485,
+      "session_ms": 4310,
+      "derived_cache_ms": 4369,
+      "total_ms": 9053,
+      "worker_cpu_time_ms": 8813,
+      "worker_peak_rss_bytes": 708755456
+    },
+    {
+      "discovery_ms": 49,
+      "usage_ms": 2272,
+      "session_ms": 3888,
+      "derived_cache_ms": 4439,
+      "total_ms": 8793,
+      "worker_cpu_time_ms": 8490,
+      "worker_peak_rss_bytes": 719085568
+    },
+    {
+      "discovery_ms": 47,
+      "usage_ms": 2256,
+      "session_ms": 4212,
+      "derived_cache_ms": 4415,
+      "total_ms": 9044,
+      "worker_cpu_time_ms": 8960,
+      "worker_peak_rss_bytes": 721674240
+    }
+  ],
+  "environment": {
+    "go": "go1.27.1 darwin/amd64",
+    "node": "v26.11.1",
+    "os": "Darwin x86_64",
+    "page_cache": "not purged; OS page-cache warm",
+    "native_app": "not measured"
+  },
+  "limitations": [
+    "Browser experiment is a small three-value panel, not the complete shared prototype or native App. Handler entry to second rAF is the reported frame proxy.",
+    "Three unchanged and three append samples are feasibility screening, not a final 20-sample native/representative performance campaign.",
+    "First filesystem notification timed out at 2 seconds; it was separately tested through an explicit signal. Only two later stimuli used actual filesystem notifications.",
+    "Existing stock Go pipeline is reused. No optimized incremental projections, native lifecycle, actual OTel producer or full cross-source reconciliation was implemented or proved.",
+    "Worker RSS values are process-lifetime peaks. Node peak RSS is only the experimental server, not the total future Go engine.",
+    "Private corpus/database/snapshot originals are removed after this test; the digest identifies this input but does not provide retained raw data. Reproduction requires a newly authorized corpus."
+  ],
+  "method": {
+    "baseline": "stock CLI scan then desktop snapshot on same isolated state",
+    "candidate": "prepared identical snapshot bytes; HTTP read includes hash and JSON availability check",
+    "restore": "read file + core/session epoch check + checksum + JSON decode",
+    "append": "three synthetic token-count records, each 111 input + 22 output, on the fixed real corpus",
+    "resource": "Go receipt stage counters and Node resourceUsage; 3-second idle sample only"
+  },
+  "harness_sha256": "229dc3a4d75a0d16b3a099f127404d1e4b2b5082aa9ec15feb74dfaa86e97511"
+}

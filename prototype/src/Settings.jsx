@@ -1,9 +1,10 @@
 import { useEffect, useRef } from "react";
 import { WarningCircle, X } from "@phosphor-icons/react";
 import { catalogs } from "./i18n.js";
+import { TelemetrySettings } from "./TelemetrySettings.jsx";
 
 // 设置是独立窗口，不是 popover 里的一页——macOS 上 ⌘, 打开的东西从来不长在弹出面板里。
-// 这里的每一项都对应实现里真实存在的偏好键，没有凭空加开关。
+// OTel 是 scan-performance 的设计候选；其他控件继续对应现有偏好。
 
 // 解释文字要成为控件的 accessible description，就得有一个稳定、与语言无关的 ID：
 // 屏幕阅读器读的是 aria-describedby 指向的节点，不是视觉上排在下面的那一行。
@@ -67,7 +68,7 @@ function Field({ id, label, hint, children, error, errorTone = "bad" }) {
   );
 }
 
-export function SettingsWindow({ lang, prefs, onChange, onClose, embedded = false }) {
+export function SettingsWindow({ lang, prefs, onChange, onClose, embedded = false, telemetryScenario = "unconfigured", eventDriven = false }) {
   const dict = catalogs[lang];
   const windowRef = useRef(null);
   const loginRefusedOnce = useRef(false);
@@ -185,11 +186,11 @@ export function SettingsWindow({ lang, prefs, onChange, onClose, embedded = fals
               describedBy={hintId("launchAtLogin")}
             />
           </Field>
-          <Field id="periodicRefresh" label={dict.settings.periodicRefresh} hint={dict.settings.periodicRefreshHint}>
+          <Field id="periodicRefresh" label={eventDriven ? (lang === "zh" ? "自动更新本地数据" : "Automatically update local data") : dict.settings.periodicRefresh} hint={eventDriven ? (lang === "zh" ? "日志变化时更新，无需设置周期。关闭后仍可手动更新；OTel 采集单独控制。" : "Update when logs change, without an interval. Manual updates remain available when off; OTel is controlled separately.") : dict.settings.periodicRefreshHint}>
             <Switch
               checked={prefs.periodicRefresh}
               onChange={set("periodicRefresh")}
-              label={dict.settings.periodicRefresh}
+              label={eventDriven ? (lang === "zh" ? "自动更新本地数据" : "Automatically update local data") : dict.settings.periodicRefresh}
               describedBy={hintId("periodicRefresh")}
             />
           </Field>
@@ -223,6 +224,8 @@ export function SettingsWindow({ lang, prefs, onChange, onClose, embedded = fals
             />
           </Field>
         </div>
+
+        <TelemetrySettings lang={lang} enabled={!!prefs.otelEnabled} onEnabled={set("otelEnabled")} scenario={telemetryScenario} />
 
         {/* 订阅额度。三个开关的层级是有依赖的，不是并列：
             不读取额度 → 状态栏通路与提醒都无从谈起；
@@ -335,6 +338,7 @@ export function SettingsWindow({ lang, prefs, onChange, onClose, embedded = fals
 export const DEFAULT_PREFS = {
   launchAtLogin: false,
   periodicRefresh: false,
+  otelEnabled: false,
   menubarValue: "cost",
   menubarScope: "all",
   loginItemRefused: false,

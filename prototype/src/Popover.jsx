@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ScanStatus, ScanEmptyPopover } from "./ScanProgress.jsx";
+import { ServingStatus, ServingEmptyPopover } from "./ServingSnapshot.jsx";
 import {
   ArrowClockwise,
   ArrowsClockwise,
@@ -1393,7 +1394,7 @@ function ConfirmDialog({ pending, lang, onCancel, onConfirm }) {
 
 /* ------------------------------------------------------------------ Popover */
 
-export function Popover({ lang, state = "normal", quotaState = "normal", refreshScenario = "idle", healthRecovery = "baseline", embedded = false, width = "420", scan = null, onClientChange }) {
+export function Popover({ lang, state = "normal", quotaState = "normal", refreshScenario = "idle", healthRecovery = "baseline", embedded = false, width = "420", scan = null, serving = null, onClientChange }) {
   const dict = useDict(lang);
   const [client, setClientState] = useState("all");
   const setClient = (value) => {
@@ -1526,11 +1527,13 @@ export function Popover({ lang, state = "normal", quotaState = "normal", refresh
 
   const view = useMemo(() => scope(client, period), [client, period]);
   const unavailable = state === "unavailable" || refreshIssue === "firstFailure";
+  const mixed = serving?.phase === "mixed";
+  const missingPeriod = (serving?.phase === "midnight" && period === "today") || (mixed && period === "7d");
   const effectiveState = unavailable ? "unavailable" : state;
   // schema 态：快照是新的、也读得到，读不到的是核心库。所以时间戳照常显示，
   // 而每一个数据域都空——两件事在这一态里同时为真，unavailable 态里不是。
   const schema = SCHEMA_STATES.includes(state);
-  const noData = unavailable || schema;
+  const noData = unavailable || schema || missingPeriod;
 
   const showToast = (message) => {
     window.clearTimeout(toastTimer.current);
@@ -1593,7 +1596,7 @@ export function Popover({ lang, state = "normal", quotaState = "normal", refresh
     ? dict.status.schemaSignalFooter
     : quotaRoutes.map((route) => `${dict.clients[route.client]} ${route.provider}`).join(" · ");
 
-  const visibleRefreshStatus = scan ? (scan.active ? "refreshing" : scan.phase === "completed" ? "success" : "idle") : refreshStatus;
+  const visibleRefreshStatus = serving && !schema ? (serving.phase === "failed" ? "failed" : serving.active ? "refreshing" : "idle") : scan ? (scan.active ? "refreshing" : scan.phase === "completed" ? "success" : "idle") : refreshStatus;
   const refreshAnnouncement =
     refreshIssue === "retainedFailure"
       ? dict.status.refreshRetained
@@ -1607,6 +1610,7 @@ export function Popover({ lang, state = "normal", quotaState = "normal", refresh
               ? dict.updated
               : "";
   if (scan && !scan.hasSnapshot) return <ScanEmptyPopover scan={scan} lang={lang} width={width} />;
+  if (serving && !serving.hasSnapshot && !schema) return <ServingEmptyPopover serving={serving} lang={lang} width={width} />;
 
   return (
     <section
@@ -1614,6 +1618,7 @@ export function Popover({ lang, state = "normal", quotaState = "normal", refresh
       data-testid="menubar-popover"
       data-scan-enabled={scan ? "true" : undefined}
       data-scan-snapshot={scan ? (scan.published ? "new" : "previous") : undefined}
+      data-serving-snapshot={serving ? (serving.phase === "memory" ? "current" : "retained") : undefined}
       className={`popover${embedded ? " embedded" : ""}${String(width) === "280" ? " narrow" : ""}${
         creditsFlyout ? " flyout-open" : ""
       }`}
@@ -1644,13 +1649,13 @@ export function Popover({ lang, state = "normal", quotaState = "normal", refresh
         <div className="header-right">
           {!unavailable && (
             <span className="freshness">
-              {visibleRefreshStatus === "success" ? dict.status.justNow : relativeTime(ageMinutes, lang)}
+              {visibleRefreshStatus === "success" ? dict.status.justNow : relativeTime(serving?.ageMinutes ?? ageMinutes, lang)}
             </span>
           )}
           <button
             type="button"
             className={`refresh${visibleRefreshStatus === "failed" ? " failed" : ""}`}
-            onClick={refresh}
+            onClick={serving ? serving.requestRefresh : refresh}
             aria-disabled={scan ? scan.active : visibleRefreshStatus === "refreshing"}
             aria-label={visibleRefreshStatus === "failed" ? dict.refreshRetryLabel : `${dict.refresh} ⌘R`}
           >
@@ -1674,7 +1679,7 @@ export function Popover({ lang, state = "normal", quotaState = "normal", refresh
             </span>
           </button>
         </div>
-        {!scan && (
+        {!scan && !serving && (
           <span className="visually-hidden" role="status" aria-live="polite" aria-atomic="true">
             {refreshAnnouncement}
           </span>
@@ -1682,6 +1687,7 @@ export function Popover({ lang, state = "normal", quotaState = "normal", refresh
       </header>
 
       {scan && <ScanStatus scan={scan} lang={lang} />}
+      {serving && !schema && <ServingStatus serving={serving} lang={lang} period={period} />}
       <div className="segmented clients" role="tablist" aria-label={dict.clients.all}>
         {["all", "codex", "claude"].map((key) => (
           <button
@@ -1719,11 +1725,11 @@ export function Popover({ lang, state = "normal", quotaState = "normal", refresh
             {noData
               ? schema
                 ? dict.status.schemaSignalSectionUnavailable
-                : dict.status.unavailable
-              : `${formatNumber(state === "empty" ? 0 : view.totals.events, lang)} ${dict.hero.events} · ${formatNumber(
+                : missingPeriod ? (lang === "zh" ? "正在准备所选日期" : "Preparing this date window") : dict.status.unavailable
+              : `${formatNumber(state === "empty" ? 0 : view.totals.events, lang)} ${dict.hero.events} · ${mixed ? "—" : formatNumber(
                   state === "empty" ? 0 : view.totals.sessions,
                   lang,
-                )} ${dict.hero.sessions} · ${formatNumber(state === "empty" ? 0 : view.sessions.projects, lang)} ${
+                )} ${dict.hero.sessions} · ${mixed ? "—" : formatNumber(state === "empty" ? 0 : view.sessions.projects, lang)} ${
                   dict.hero.projects
                 }`}
           </span>
@@ -1779,6 +1785,10 @@ export function Popover({ lang, state = "normal", quotaState = "normal", refresh
             <Notices lang={lang} state={effectiveState} healthRecovery={healthRecovery} refreshIssue={refreshIssue} onOpenHealth={() => setHealthOpen(true)} />
             <SchemaPanel lang={lang} label={dict.tabs[presentedTab]} />
           </>
+        ) : mixed && (missingPeriod || ["sessions", "quota"].includes(presentedTab)) ? (
+          <div className="unavailable" data-domain-unavailable={missingPeriod ? period : presentedTab}><p>{lang === "zh" ? "该窗口或数据域尚未准备好，完成后会自动显示" : "This window or data domain is not ready; it will appear when prepared"}</p></div>
+        ) : missingPeriod && presentedTab !== "quota" ? (
+          <div className="unavailable"><p>{lang === "zh" ? "所选日期的数据准备好后会自动显示" : "Data for this date window will appear when ready"}</p></div>
         ) : unavailable ? (
           <>
             <Notices lang={lang} state={effectiveState} healthRecovery={healthRecovery} refreshIssue={refreshIssue} onOpenHealth={() => setHealthOpen(true)} />
@@ -1806,7 +1816,7 @@ export function Popover({ lang, state = "normal", quotaState = "normal", refresh
             {presentedTab === "sessions" && (
               <SessionsPanel view={view} lang={lang} state={state} signal={signal} onSignal={setSignal} />
             )}
-            <RhythmBlock lang={lang} state={state} />
+            {!mixed && <RhythmBlock lang={lang} state={state} />}
           </>
         )}
       </div>

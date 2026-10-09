@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { CliScan } from "./ScanProgress.jsx";
+import { EngineCli } from "./ServingSnapshot.jsx";
 import { StageControls, useStagePrefs } from "./Stage.jsx";
 import { WORK_SIGNALS } from "./data.js";
 import { catalogs } from "./i18n.js";
@@ -204,7 +205,7 @@ export function CliSurface() {
   const stage = useStagePrefs();
   const { lang, theme } = stage;
   const dict = catalogs[lang];
-  const initialActive = new URLSearchParams(window.location.search).has("launchservices") ? "launchservices" : new URLSearchParams(window.location.search).has("scan")
+  const initialActive = new URLSearchParams(window.location.search).has("engine") ? "engine" : new URLSearchParams(window.location.search).has("launchservices") ? "launchservices" : new URLSearchParams(window.location.search).has("scan")
     ? "scan"
     : new URLSearchParams(window.location.search).has("health") ? "recovery" : SAMPLES[0].id;
   const [active, setActive] = useState(initialActive);
@@ -219,6 +220,7 @@ export function CliSurface() {
       <StageControls prefs={stage} showState={false} showQuota={false} showHealth />
       <div className="stage-body cli-body">
         <nav className="cli-tabs">
+          <button type="button" className={active === "engine" ? "active" : ""} onClick={() => setActive("engine")}>engine</button>
           <button type="button" className={active === "launchservices" ? "active" : ""} onClick={() => setActive("launchservices")}>launchservices</button>
           <button type="button" data-cli-scan-tab className={active === "scan" ? "active" : ""} onClick={() => setActive("scan")}>scan</button>
           <button type="button" data-cli-recovery-tab className={active === "recovery" ? "active" : ""} onClick={() => setActive("recovery")}>recovery</button>
@@ -228,7 +230,7 @@ export function CliSurface() {
             </button>
           ))}
         </nav>
-        {active === "launchservices" ? <>
+        {active === "engine" ? <EngineCli stage={stage} /> : active === "launchservices" ? <>
           <label>Registration state <select value={registrationState} onChange={(event) => setRegistrationState(event.target.value)}>{Object.keys(LAUNCHSERVICES).map((state) => <option key={state}>{state}</option>)}</select></label>
           <p className="cli-note">Candidate character specimens. Existing checks abbreviated; no native health or recovery acceptance.</p>
           <div className="terminal" data-cli-launchservices={registrationState}><div className="terminal-bar"><i /><i /><i /><span>text</span></div><pre tabIndex={0}><code><b>$ agentdeck doctor</b>{"\n"}{registration.text}</code></pre></div>

@@ -1,0 +1,243 @@
+{
+  "kind": "scan-performance-serving-specimen-v5-round1-repair",
+  "baseline_head": "32df0ae1223796f1e43bbd45a40f1efb9f7ff56e",
+  "files": [
+    {
+      "path": "docs/topics/scan-performance/ux/prototype/serving/checks.json",
+      "sha256": "ade01135b773d265a1d4aa1ce7c3b5bad9771e997b3285112d28099339937ca8"
+    },
+    {
+      "path": "docs/topics/scan-performance/ux/prototype/serving/cli-app-en-dark.png",
+      "sha256": "4ebe7a7c7a6671de768f52d83d7b5d23e76bc722562cc0a499428b036115c532"
+    },
+    {
+      "path": "docs/topics/scan-performance/ux/prototype/serving/cli-mismatch-en-dark.png",
+      "sha256": "18316ecb169fdce35d625fdcba872566e82999a1031e3468d5ad364239f2b2e7"
+    },
+    {
+      "path": "docs/topics/scan-performance/ux/prototype/serving/cli-stored_partial-en-dark.png",
+      "sha256": "896e925e60b52d3f20da923d177a19367d3859c5f84cca89c8c4fc777ce73fe7"
+    },
+    {
+      "path": "docs/topics/scan-performance/ux/prototype/serving/cli-telemetry-en-light.png",
+      "sha256": "3ddd12b3d196c283b456ca285b9fe589fa18d67df8bf27dcc869d51a43c4688d"
+    },
+    {
+      "path": "docs/topics/scan-performance/ux/prototype/serving/cli-telemetry_unknown-en-dark.png",
+      "sha256": "7cf35a2cffb10cc22ea27f573e166075c5b54a9b31f79ee36b5d3faed8788500"
+    },
+    {
+      "path": "docs/topics/scan-performance/ux/prototype/serving/disk-zh-dark-420.png",
+      "sha256": "c2e8722d050c948deca0b09fa579430545098e9e871fb73454a2a458063ca70b"
+    },
+    {
+      "path": "docs/topics/scan-performance/ux/prototype/serving/failed-en-dark-280.png",
+      "sha256": "48d90f5d81cc6a9abbbf13b200ec5a16627b750202a49e31d7db6886c3af4c80"
+    },
+    {
+      "path": "docs/topics/scan-performance/ux/prototype/serving/feasibility-results.json",
+      "sha256": "e82e8cff083dbf0d13695abd864a59c065540446dc3d2f0b99ff35d5b351fe43"
+    },
+    {
+      "path": "docs/topics/scan-performance/ux/prototype/serving/first-loading-results.json",
+      "sha256": "39c3e5c739fc60216d60232d547ab2ac02a00a9c1fb62348fd58770e9b498237"
+    },
+    {
+      "path": "docs/topics/scan-performance/ux/prototype/serving/first-zh-dark-280.png",
+      "sha256": "73aaef705f3c704987fde4d06d79c7785229b61f34ebc386651b26fe9fb2d6bd"
+    },
+    {
+      "path": "docs/topics/scan-performance/ux/prototype/serving/midnight-zh-light-420.png",
+      "sha256": "e7186fe09d424774713b56dd9cb986eb721756bed16cae48d4db662721f7df50"
+    },
+    {
+      "path": "docs/topics/scan-performance/ux/prototype/serving/mixed-en-dark-280.png",
+      "sha256": "e5ef0e54924b2b4142ecb178769bdcd3a7f0a19e9d8849f57403fd7e9a5794d1"
+    },
+    {
+      "path": "docs/topics/scan-performance/ux/prototype/serving/mixed-en-dark-420.png",
+      "sha256": "4e75b93ae7a98ef4f63909462d342a7e95c48d222ae4fac9de7c7703a6882425"
+    },
+    {
+      "path": "docs/topics/scan-performance/ux/prototype/serving/mixed-en-light-280.png",
+      "sha256": "faeb44c68b95d6a6dda4a3600c96e1fe01b4098c5b34270fdd4766a9e121f88e"
+    },
+    {
+      "path": "docs/topics/scan-performance/ux/prototype/serving/mixed-en-light-420.png",
+      "sha256": "6682830ef2041bf65e69bf83b74537b97488c3f91d61bf7579dde80413947253"
+    },
+    {
+      "path": "docs/topics/scan-performance/ux/prototype/serving/mixed-zh-dark-280.png",
+      "sha256": "3a075611f99a3ba1526422b6e4f5d1b2a77ac935825b92c8affad028874bfde2"
+    },
+    {
+      "path": "docs/topics/scan-performance/ux/prototype/serving/mixed-zh-dark-420.png",
+      "sha256": "c72d27ee4b6742f52cfba5135c3e5720f5fb2bc9dac0f2809e1c014cb95f75c2"
+    },
+    {
+      "path": "docs/topics/scan-performance/ux/prototype/serving/mixed-zh-light-280.png",
+      "sha256": "acfb38f6370a3750e9cedfc10c856e8e4e45b6d4ae5abbf6abd7117271918639"
+    },
+    {
+      "path": "docs/topics/scan-performance/ux/prototype/serving/mixed-zh-light-420.png",
+      "sha256": "22d43d891e5845abca951051206b2f534a97c698b0ee70a1bcacf21129e627c8"
+    },
+    {
+      "path": "docs/topics/scan-performance/ux/prototype/serving/native-ab-results.json",
+      "sha256": "8bf85f67b9f8ce9f5bcdb1eb4bda8ac6b25df04d9f3ebe0a5aa2a4d13dee0eb7"
+    },
+    {
+      "path": "docs/topics/scan-performance/ux/prototype/serving/partial-en-light-420.png",
+      "sha256": "0d88cef1668db991ee61a27b999b1d790d753ce0e99caf6d0ee44ed7ca40275c"
+    },
+    {
+      "path": "docs/topics/scan-performance/ux/prototype/serving/rebuilding-en-light-280.png",
+      "sha256": "d325cb49fd8dc3920f3cc1f8964ef4f02915f4c837e2e9cf3c8e678d6cbecf76"
+    },
+    {
+      "path": "docs/topics/scan-performance/ux/prototype/serving/repair-checks.json",
+      "sha256": "600c3f0e4daa1602629f21f8c49f80069602b72c40cd5e284c8d439aa09e793a"
+    },
+    {
+      "path": "docs/topics/scan-performance/ux/prototype/serving/settings-otel-off-zh-dark.png",
+      "sha256": "d0d081ea44bcb5edc9a618d976965075d1f31dd2b7ecac51041198e0b3f7bbca"
+    },
+    {
+      "path": "docs/topics/scan-performance/ux/prototype/serving/settings-otel-preview-en-light.png",
+      "sha256": "2e06f776c1e6575672050b805f256f2598a2db79778dc2a663ad3007487446a2"
+    },
+    {
+      "path": "docs/topics/scan-performance/ux/prototype/serving/settings-otel-small-zh-light.png",
+      "sha256": "e9d4d7277fafc4acfae44f136e5ee1cceb2aa502715979ccc12804725c83d48d"
+    },
+    {
+      "path": "docs/topics/scan-performance/ux/prototype/serving/settings-otel-unconfigured-zh-dark.png",
+      "sha256": "af197830010be56326d4efc45fb1fd3d105091f8eeb6bab719f8eb86ec977609"
+    },
+    {
+      "path": "docs/topics/scan-performance/ux/prototype/serving/settings-unknown-en-dark.png",
+      "sha256": "56c80baadd6948ad08f32ed40092a009b4d31ec80a3a39f219a9b4078ef1bf96"
+    },
+    {
+      "path": "docs/topics/scan-performance/ux/prototype/serving/settings-unknown-en-light.png",
+      "sha256": "1736988fe4de052e2a24fc6773adb46f64a1236ce07a94ecb922b28e3674d016"
+    },
+    {
+      "path": "docs/topics/scan-performance/ux/prototype/serving/settings-unknown-zh-dark.png",
+      "sha256": "8e1722ea0a3d575f6bac6fa9793efc018c4e9cee5e18b98845f54457ac911b61"
+    },
+    {
+      "path": "docs/topics/scan-performance/ux/prototype/serving/settings-unknown-zh-light.png",
+      "sha256": "4925034c165a43b82e72bec20094ac9c37834743735d144b80b29838b3506df9"
+    },
+    {
+      "path": "prototype/index.html",
+      "sha256": "a6201105351c1e3148a070cde1b2e4dc315a3a5cd71a06eedb66d3d9a4aa12aa"
+    },
+    {
+      "path": "prototype/package-lock.json",
+      "sha256": "56f872c28922069fb98f32bb1b077bdf0280e594ee7f77e80489853569ae5881"
+    },
+    {
+      "path": "prototype/package.json",
+      "sha256": "d8810459f5e2271850114125fbd3f1b33f02d8a02b6578cf34243c77597cbd4f"
+    },
+    {
+      "path": "prototype/public/agentdeck-ad.png",
+      "sha256": "2ca8d907a414f296bf09dd0f4a27c72f424016243efe04bb142a0120b6b6e6f1"
+    },
+    {
+      "path": "prototype/src/App.jsx",
+      "sha256": "770a9f22bb86e361ed01ea67cd75cbcf465c7add69c4522a0d6b6ca2e887b136"
+    },
+    {
+      "path": "prototype/src/Cli.jsx",
+      "sha256": "c1947824844a503f7da696397840d197cc2985802f62dc821c8853426c401ed7"
+    },
+    {
+      "path": "prototype/src/Popover.jsx",
+      "sha256": "0cbc34da161c9f982d93dc99b6592956c18fbf958d36dc2fd9bd0a14ba304dda"
+    },
+    {
+      "path": "prototype/src/ScanProgress.jsx",
+      "sha256": "4fdd922205304af459f440c8bd5e22a5656edb1db5f3255c7760d171b87071bf"
+    },
+    {
+      "path": "prototype/src/ServingSnapshot.jsx",
+      "sha256": "4842a23305b6bc9156ba57c9d4821ff5e56921a7e0003db14c16ea0a3f34a72e"
+    },
+    {
+      "path": "prototype/src/Settings.jsx",
+      "sha256": "9d4ae7165397595d714815ae967fb9a4b4fc8948f2f0162d7ef73ce824331c7f"
+    },
+    {
+      "path": "prototype/src/Stage.jsx",
+      "sha256": "abd719102d4232067d724099e477ece02fccc2389a356894cb999a047b0250a2"
+    },
+    {
+      "path": "prototype/src/TelemetrySettings.jsx",
+      "sha256": "1ca872b890eacbb3adb6269916c45aa64f38cca3a8a99e9b9d588a52959d7823"
+    },
+    {
+      "path": "prototype/src/data.js",
+      "sha256": "169a17913ea94de4a447ec09e70e9edd0949c7cbd8d8aa0de6a81dfe91d8b9d7"
+    },
+    {
+      "path": "prototype/src/healthRecovery.js",
+      "sha256": "3600b8b05a6661a1ffc37a65da8641b07e5c217613704e024c8c5c0dbee1c779"
+    },
+    {
+      "path": "prototype/src/i18n.js",
+      "sha256": "719e508c4c4bb6649fd3d56a08405072f37a4b05d0d81ede66ef898b64fed401"
+    },
+    {
+      "path": "prototype/src/main.jsx",
+      "sha256": "82cc1abba90cf3b7d7bbce3f6e5b67f1cccaaed25a4a32ea27e58b9693abaedb"
+    },
+    {
+      "path": "prototype/src/scan-probe.js",
+      "sha256": "ddcdbaecd4d779525a96e3aa740141fd36651c4d2b45f7d90f1eb9c981ba8b01"
+    },
+    {
+      "path": "prototype/src/styles.css",
+      "sha256": "a850b86354a15693a7730d0a87b9dd8214f43631e64bfcdc75d5c6dc0010d1ca"
+    },
+    {
+      "path": "prototype/tools/scan-performance-db-bootstrap.mjs",
+      "sha256": "4fabc6cce6e044bca4652fd5918c57b4a3a2f7b44f590e00e582b8cd412ba830"
+    },
+    {
+      "path": "prototype/tools/scan-performance-feasibility.mjs",
+      "sha256": "229dc3a4d75a0d16b3a099f127404d1e4b2b5082aa9ec15feb74dfaa86e97511"
+    },
+    {
+      "path": "prototype/tools/scan-performance-firstload-patch.py",
+      "sha256": "8c80d036fc601f32cc3fea261cf5fb7b4f92d2eaa15f457e97b143422b35b0ae"
+    },
+    {
+      "path": "prototype/tools/scan-performance-firstload.mjs",
+      "sha256": "9d044e83b542dedf30fa3e18447e2545f5b2f3a3f59a34e123f8709ac1754884"
+    },
+    {
+      "path": "prototype/tools/scan-performance-history-today.mjs",
+      "sha256": "07a5d43c82287e1cf24324b300f54ce778beb779c34a05f2c30a3232ff2e5da8"
+    },
+    {
+      "path": "prototype/tools/scan-performance-native-ab.py",
+      "sha256": "47696f48731db062ad1bec91222fb3393b295414de909d6b2c093abf608a9a35"
+    },
+    {
+      "path": "prototype/tools/scan-performance-native-input.mjs",
+      "sha256": "c7429daf707adb7d9c1e1d4be86d3a7b99bc10beaf9eda7b6e1e15a1f5b7aeef"
+    },
+    {
+      "path": "prototype/tools/scan-performance-repair-check.mjs",
+      "sha256": "58ae10b373c7494d32a18ce164c915957f4c1693c527c0539cb6cde26f6242e4"
+    },
+    {
+      "path": "prototype/vite.config.mjs",
+      "sha256": "c4ac0720af7ee64c2960e581501f6203008f29ff4c7ead4271c7f2526acd2482"
+    }
+  ],
+  "performance_scope": "Prior performance results unchanged; new captures/checks are synthetic UX repair only"
+}

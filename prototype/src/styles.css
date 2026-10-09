@@ -3224,3 +3224,23 @@ button.notice:hover {
 .scan-terminal { width:100%; }
 .popover[data-scan-enabled] .header-right .freshness { display:none; }
 @media (prefers-reduced-motion: reduce) { .scan-status .spin { animation:none; } }
+
+.serving-status { margin:10px 12px 0; padding:10px 12px; border:1px solid var(--line); border-radius:var(--radius); background:var(--surface); flex:0 0 auto; }
+.serving-status > div { display:flex; align-items:flex-start; gap:8px; font-size:12px; line-height:1.5; color:var(--text); }
+.serving-status svg { flex:0 0 auto; margin-top:1px; }
+.serving-status p { margin:6px 0 0; color:var(--muted); font-size:11px; line-height:1.5; overflow-wrap:anywhere; }
+.serving-error > div { color:var(--bad); }
+.serving-status button { margin-top:8px; padding:5px 12px; color:var(--text); background:var(--surface-2); border:1px solid var(--line); border-radius:6px; font:inherit; font-size:12px; }
+.scan-loading-body .serving-status { width:100%; margin:0; }
+[data-engine-cli] pre, [data-engine-json] { white-space:pre-wrap; overflow-wrap:anywhere; }
+.engine-terminal { font-family:ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace; font-size:12px; }
+.engine-terminal pre { font-family:inherit; }
+.telemetry-details { font-size:12px; line-height:1.6; color:var(--muted); }
+.telemetry-details p { margin:8px 0; overflow-wrap:anywhere; }
+.telemetry-details [role="status"] { color:var(--text); font-weight:600; }
+.telemetry-preview-button { font:inherit; padding:6px 10px; color:var(--text); background:var(--surface-2); border:1px solid var(--line); border-radius:6px; }
+.telemetry-details pre { white-space:pre-wrap; overflow-wrap:anywhere; font-size:11px; border:1px solid var(--line); padding:10px; border-radius:6px; color:var(--text); }
+.telemetry-settings .settings-label small { display:block; }
+.settings-window:not(.embedded):has(.telemetry-settings) { display:flex; flex-direction:column; max-height:calc(100dvh - 96px); max-width:calc(100vw - 32px); }
+.settings-window:not(.embedded):has(.telemetry-settings) > header { flex-shrink:0; }
+.settings-window:not(.embedded):has(.telemetry-settings) .settings-body { overflow-y:auto; min-height:0; }

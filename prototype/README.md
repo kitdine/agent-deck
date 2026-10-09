@@ -2,6 +2,33 @@
 
 产品全部界面的唯一设计真相：菜单栏面板、小组件、设置窗口，以及 CLI 的逐字符输出。
 
+## 数据准备与可选引擎标本（scan-performance）
+
+入口 `?serving=rebuilding`，可见舞台支持 memory、disk、rebuilding、partial、first、failed、
+midnight、invalid；发布按钮只模拟准备好的 publication。已有数据在后台更新时保持可读，
+首次/无效状态不制造数字，midnight 的 today 不复用昨日值。沿用双语、主题与 420/280 宽度。
+`?surface=cli&engine=app` 提供拟新增 engine/telemetry 命令的逐字符标本；旧 scan 标本不变。
+额外常驻引擎是有条件的扩展，不是默认快开方案或已经证明的性能收益；第一阶段复用现有常驻 App 与有限 helper。
+serving 与 scan 同时指定时 serving 优先。默认额度页和全部现有面板仍是原产品界面。
+
+设计见 [menu-bar](../docs/topics/scan-performance/ux/menubar.md)、
+[CLI](../docs/topics/scan-performance/ux/cli.md)，源码/图像身份与检查见
+[manifest](../docs/topics/scan-performance/ux/prototype/serving/manifest.json)。
+合成标本不运行引擎、不修改配置、不接收 OTel、不证明 native 首帧速度或生命周期。
+
+OTel 设置入口 `?serving=rebuilding&settings=1&telemetry=unconfigured`：默认关闭的采集开关、
+连接状态、配置预览与保留已有数据。窗口外舞台支持 waiting/ready/capture_only/disconnected/paused。
+scan-performance 中的本地自动更新按文件事件定义，不要求用户设定周期；额度探测独立。
+真实日志隔离机制实验为 `tools/scan-performance-feasibility.mjs`，其数据仅在授权私有副本中处理；
+它的浏览器 rAF 数字已从产品首屏性能证据中撤回；不据此计算 native 加速比。
+原生隔离实验为 `tools/scan-performance-native-ab.py` 与 `tools/scan-performance-native-input.mjs`。
+数据准备、真实首帧与 OTel 的不同验证边界记录在专题 performance-evaluation.md。
+首次空库当天优先、已有库今天只读和历史待采集today的隔离对照见
+[首次加载评估](../docs/topics/scan-performance/performance-evaluation.md#首次加载与已有历史数据的对照)。
+对应harness为 `tools/scan-performance-firstload.mjs` / `scan-performance-firstload-patch.py`、
+`scan-performance-db-bootstrap.mjs`、`scan-performance-history-today.mjs`。
+这是引擎数据准备证据，不是原型浏览器或真实popover的首帧证据。
+
 它在 2026-08-20 从 `docs/topics/desktop-app/ux/prototype/interactive-v7/` 移到仓库根，
 因为一份原型是整个产品表面的标本，不是某一个 topic 的资产。`work-signals` 需要同一份
 标本，而在第二个 topic 下再放一份拷贝，等于制造第二个设计真相。
@@ -290,3 +317,12 @@ axe-core 4.12.1 的 scoped `color-contrast` 结果；缺失说明、未完成检
 违规都返回 `FAIL`。测试仅覆盖 `.w-note > small`，不代表整个页面无障碍通过。
 使用 `widgetRefresh=fresh|aging|old|hostAbsent|unchanged|changed|recovered`
 逐个验证可读数据态。原生 Increase Contrast 另行验收，浏览器结果不替代它。
+
+## scan-performance Round 1 修复标本
+
+`?serving=mixed&tab=usage`：today usage已准备、会话/项目未知、7d未准备、30d仅部分；
+舞台发布保留client/period/panel。`?serving=rebuilding&settings=1&telemetry=unknown`：
+接收开关默认off，启用后状态未知，不从静默推出未配置/断连。
+`?surface=cli&engine=stored_partial` / `engine=telemetry_unknown`：覆盖stored-only部分来源与未知producer。
+CLI标本公共envelope及JSON错误stderr已修正。合成检查为`tools/scan-performance-repair-check.mjs`，
+只做文案/状态/交互，不测浏览器性能，不代表native/provider运行验收。

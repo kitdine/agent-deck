@@ -1,0 +1,488 @@
+{
+  "kind": "scan-performance-first-loading-matrix-v1",
+  "base_head": "32df0ae1223796f1e43bbd45a40f1efb9f7ff56e",
+  "first_install": {
+    "kind": "firstload-today-priority-pilot-v1",
+    "capture": {
+      "files": 5336,
+      "bytes": 3457009079,
+      "capture_ms": 18536.44537,
+      "corpus_digest": "058ac968e0fbb1d7e097d205590a786fc891e3786ac8da2b46d6831faf8610c6",
+      "corpus_digest_algorithm": "SHA256 of sorted size:content-SHA256 entries joined by LF; no final LF",
+      "day": "2026-10-09",
+      "timeZone": "America/New_York",
+      "start": "2026-10-09T04:00:00.000Z",
+      "end": "2026-10-10T04:00:00.000Z",
+      "original_mtime_preserved": true
+    },
+    "selection": {
+      "method": "cold only: local-day mtime hints plus Codex UTC-date directories intersecting local today",
+      "hinted_files": 112,
+      "hinted_bytes": 38255070,
+      "in_memory_manifest_selection_ms": 2.615784000000005,
+      "discovery_included_in_scan": true
+    },
+    "helper_sha256": "472429cfe86a89f5a560b5f2e763e586466423e44c50ee0b3b354302ae129d86",
+    "experimental_discover_sha256": "406a12eb383b4b40872ebbf92d284728cdd5121544743a39831199e7ee53ee1a",
+    "first_install": [
+      {
+        "pair": 0,
+        "variant": "full",
+        "scan_ms": 77602.391193,
+        "snapshot_ms": 646.2132169999968,
+        "data_ready_ms": 78248.60441,
+        "source_files": 5336,
+        "source_bytes": 3457009079,
+        "today_projection_sha256": "66d3503d55c7358d6e5caaa1c1fcdaae15b037c2343c6617d93d5f89bb0d24f5",
+        "snapshot_sha256": "3a2c5c6c8e1b255dbcf8103b4dd0ac0448cd7f6490d16892400a892b042e4bfe",
+        "today_matches_full": true
+      },
+      {
+        "pair": 0,
+        "variant": "today_hints",
+        "scan_ms": 1133.2061689999973,
+        "snapshot_ms": 420.56629899999825,
+        "data_ready_ms": 1553.7724679999956,
+        "source_files": 112,
+        "source_bytes": 38255070,
+        "today_projection_sha256": "66d3503d55c7358d6e5caaa1c1fcdaae15b037c2343c6617d93d5f89bb0d24f5",
+        "snapshot_sha256": "586dd224e5dba2ea66ec263352499643b192bccf1e3f5c8c44a12e059f80987c",
+        "today_matches_full": true
+      },
+      {
+        "pair": 1,
+        "variant": "today_hints",
+        "scan_ms": 1242.1933310000022,
+        "snapshot_ms": 407.81598700000905,
+        "data_ready_ms": 1650.0093180000113,
+        "source_files": 112,
+        "source_bytes": 38255070,
+        "today_projection_sha256": "66d3503d55c7358d6e5caaa1c1fcdaae15b037c2343c6617d93d5f89bb0d24f5",
+        "snapshot_sha256": "6cc32c2f5644ade75b0405bbbbd302db0c5d373ba128049f9798ccab375a0260",
+        "today_matches_full": true
+      },
+      {
+        "pair": 1,
+        "variant": "full",
+        "scan_ms": 74832.269136,
+        "snapshot_ms": 605.3276980000082,
+        "data_ready_ms": 75437.59683400001,
+        "source_files": 5336,
+        "source_bytes": 3457009079,
+        "today_projection_sha256": "66d3503d55c7358d6e5caaa1c1fcdaae15b037c2343c6617d93d5f89bb0d24f5",
+        "snapshot_sha256": "947e1da167e23df260901bad313a7c42e0874db481e73623a3e1918e111aa8a5",
+        "today_matches_full": true
+      },
+      {
+        "pair": 2,
+        "variant": "full",
+        "scan_ms": 74311.41667199999,
+        "snapshot_ms": 502.4928009999858,
+        "data_ready_ms": 74813.90947299998,
+        "source_files": 5336,
+        "source_bytes": 3457009079,
+        "today_projection_sha256": "66d3503d55c7358d6e5caaa1c1fcdaae15b037c2343c6617d93d5f89bb0d24f5",
+        "snapshot_sha256": "d8e91afd89c6fd833f44274316f1452cb717d0eeb5c7142dafdc940080096e8b",
+        "today_matches_full": true
+      },
+      {
+        "pair": 2,
+        "variant": "today_hints",
+        "scan_ms": 1061.366302999988,
+        "snapshot_ms": 364.4960049999936,
+        "data_ready_ms": 1425.8623079999816,
+        "source_files": 112,
+        "source_bytes": 38255070,
+        "today_projection_sha256": "66d3503d55c7358d6e5caaa1c1fcdaae15b037c2343c6617d93d5f89bb0d24f5",
+        "snapshot_sha256": "0377572f7cbb9db3078dd37577ea346c021d04321eee05fa973b72bd7e68b52f",
+        "today_matches_full": true
+      }
+    ],
+    "existing_db": [
+      {
+        "pair": 0,
+        "mode": "current_refresh",
+        "scan_ms": 2454.45457099998,
+        "snapshot_ms": 653.5346349999891,
+        "data_ready_ms": 3107.9892059999693,
+        "today_matches_full": true
+      },
+      {
+        "pair": 0,
+        "mode": "readonly_snapshot",
+        "scan_ms": 0,
+        "snapshot_ms": 455.4790989999892,
+        "data_ready_ms": 455.4790989999892,
+        "today_matches_full": true
+      },
+      {
+        "pair": 1,
+        "mode": "readonly_snapshot",
+        "scan_ms": 0,
+        "snapshot_ms": 494.33357799999067,
+        "data_ready_ms": 494.33357799999067,
+        "today_matches_full": true
+      },
+      {
+        "pair": 1,
+        "mode": "current_refresh",
+        "scan_ms": 482.1498370000045,
+        "snapshot_ms": 438.67576400001417,
+        "data_ready_ms": 920.8256010000187,
+        "today_matches_full": true
+      },
+      {
+        "pair": 2,
+        "mode": "current_refresh",
+        "scan_ms": 468.02825999999186,
+        "snapshot_ms": 678.5349679999927,
+        "data_ready_ms": 1146.5632279999845,
+        "today_matches_full": true
+      },
+      {
+        "pair": 2,
+        "mode": "readonly_snapshot",
+        "scan_ms": 0,
+        "snapshot_ms": 567.1341679999896,
+        "data_ready_ms": 567.1341679999896,
+        "today_matches_full": true
+      },
+      {
+        "pair": 3,
+        "mode": "readonly_snapshot",
+        "scan_ms": 0,
+        "snapshot_ms": 597.2238530000031,
+        "data_ready_ms": 597.2238530000031,
+        "today_matches_full": true
+      },
+      {
+        "pair": 3,
+        "mode": "current_refresh",
+        "scan_ms": 587.8105990000186,
+        "snapshot_ms": 613.5867839999846,
+        "data_ready_ms": 1201.3973830000032,
+        "today_matches_full": true
+      },
+      {
+        "pair": 4,
+        "mode": "current_refresh",
+        "scan_ms": 537.3605919999827,
+        "snapshot_ms": 562.607548,
+        "data_ready_ms": 1099.9681399999827,
+        "today_matches_full": true
+      },
+      {
+        "pair": 4,
+        "mode": "readonly_snapshot",
+        "scan_ms": 0,
+        "snapshot_ms": 544.1215629999933,
+        "data_ready_ms": 544.1215629999933,
+        "today_matches_full": true
+      }
+    ],
+    "limitations": [
+      "Data readiness from CLI scan entry through complete snapshot JSON; not native popover/frame or full process launch",
+      "Day hints prioritize sources, not proof of complete day coverage; compare to full oracle on this corpus",
+      "Whole selected files are parsed to retain cumulative-token/session context; old files modified today are included",
+      "Other periods/history from hinted-only state are incomplete and must not be advertised as complete",
+      "Hint filter only runs against fresh empty isolated databases; never enable on existing database because missing sources could imply removal",
+      "Page cache not purged; 3 fresh-state pairs are pilot, not final tail acceptance",
+      "No OTel producer or event-update improvement measured"
+    ]
+  },
+  "existing_db_bootstrap": {
+    "kind": "existing-db-today-bootstrap-pilot-v1",
+    "samples": [
+      {
+        "condition": "derived_cache_present",
+        "pair": 0,
+        "mode": "full_snapshot",
+        "data_ready_ms": 6932.474207,
+        "today_totals_equal": true,
+        "cache_removed": false,
+        "result_scope": "complete desktop snapshot"
+      },
+      {
+        "condition": "derived_cache_present",
+        "pair": 0,
+        "mode": "today_query",
+        "data_ready_ms": 106.76545000000078,
+        "today_totals_equal": true,
+        "cache_removed": false,
+        "result_scope": "today usage statistics only; not a full popover envelope"
+      },
+      {
+        "condition": "derived_cache_present",
+        "pair": 1,
+        "mode": "today_query",
+        "data_ready_ms": 94.15602200000012,
+        "today_totals_equal": true,
+        "cache_removed": false,
+        "result_scope": "today usage statistics only; not a full popover envelope"
+      },
+      {
+        "condition": "derived_cache_present",
+        "pair": 1,
+        "mode": "full_snapshot",
+        "data_ready_ms": 6653.582927,
+        "today_totals_equal": true,
+        "cache_removed": false,
+        "result_scope": "complete desktop snapshot"
+      },
+      {
+        "condition": "derived_cache_present",
+        "pair": 2,
+        "mode": "full_snapshot",
+        "data_ready_ms": 5418.712106000001,
+        "today_totals_equal": true,
+        "cache_removed": false,
+        "result_scope": "complete desktop snapshot"
+      },
+      {
+        "condition": "derived_cache_present",
+        "pair": 2,
+        "mode": "today_query",
+        "data_ready_ms": 81.96543999999994,
+        "today_totals_equal": true,
+        "cache_removed": false,
+        "result_scope": "today usage statistics only; not a full popover envelope"
+      },
+      {
+        "condition": "derived_cache_absent",
+        "pair": 0,
+        "mode": "full_snapshot",
+        "data_ready_ms": 4626.675235999999,
+        "today_totals_equal": true,
+        "cache_removed": true,
+        "result_scope": "complete desktop snapshot"
+      },
+      {
+        "condition": "derived_cache_absent",
+        "pair": 0,
+        "mode": "today_query",
+        "data_ready_ms": 104.46526600000288,
+        "today_totals_equal": true,
+        "cache_removed": false,
+        "result_scope": "today usage statistics only; not a full popover envelope"
+      },
+      {
+        "condition": "derived_cache_absent",
+        "pair": 1,
+        "mode": "today_query",
+        "data_ready_ms": 103.96802599999864,
+        "today_totals_equal": true,
+        "cache_removed": false,
+        "result_scope": "today usage statistics only; not a full popover envelope"
+      },
+      {
+        "condition": "derived_cache_absent",
+        "pair": 1,
+        "mode": "full_snapshot",
+        "data_ready_ms": 4541.793798999999,
+        "today_totals_equal": true,
+        "cache_removed": false,
+        "result_scope": "complete desktop snapshot"
+      },
+      {
+        "condition": "derived_cache_absent",
+        "pair": 2,
+        "mode": "full_snapshot",
+        "data_ready_ms": 4753.920319999997,
+        "today_totals_equal": true,
+        "cache_removed": false,
+        "result_scope": "complete desktop snapshot"
+      },
+      {
+        "condition": "derived_cache_absent",
+        "pair": 2,
+        "mode": "today_query",
+        "data_ready_ms": 82.20439800000167,
+        "today_totals_equal": true,
+        "cache_removed": false,
+        "result_scope": "today usage statistics only; not a full popover envelope"
+      }
+    ],
+    "counts_checked": [
+      "tokens",
+      "events",
+      "sessions",
+      "known_catalog_base_cost",
+      "known_provider_cost"
+    ],
+    "snapshot_cache": "complete serving envelope absent throughout; derived cache presence varied explicitly",
+    "limits": [
+      "CLI data preparation, not native frame",
+      "today_query covers usage totals/models/trend, not complete quota/provider/session/work-signals UI",
+      "No log changes; all required today events already committed; unimported today data is a separate scenario",
+      "3 pilot pairs per derived-cache condition; OS page cache warm; no final p95 claim"
+    ],
+    "helper_sha256": "472429cfe86a89f5a560b5f2e763e586466423e44c50ee0b3b354302ae129d86"
+  },
+  "pending_today": {
+    "kind": "history-pending-today-pilot-v1",
+    "samples": [
+      {
+        "pair": 0,
+        "mode": "current_full_refresh",
+        "scan_wait_ms": 14685.714850999997,
+        "presentation_ms": 716.5558670000028,
+        "data_ready_ms": 15402.270718,
+        "today_totals_equal": true,
+        "available_scope": "full desktop snapshot"
+      },
+      {
+        "pair": 0,
+        "mode": "today_usage_first",
+        "scan_wait_ms": 5761.182680999991,
+        "presentation_ms": 171.57921300000453,
+        "data_ready_ms": 5932.761893999996,
+        "today_totals_equal": true,
+        "available_scope": "today usage only; sessions/work signals/other panels may still be pending",
+        "remaining_full_refresh_ms": 8265.178862999994
+      },
+      {
+        "pair": 1,
+        "mode": "today_usage_first",
+        "scan_wait_ms": 5261.9331660000025,
+        "presentation_ms": 132.8405369999964,
+        "data_ready_ms": 5394.773702999999,
+        "today_totals_equal": true,
+        "available_scope": "today usage only; sessions/work signals/other panels may still be pending",
+        "remaining_full_refresh_ms": 8125.513397000002
+      },
+      {
+        "pair": 1,
+        "mode": "current_full_refresh",
+        "scan_wait_ms": 12883.498734999972,
+        "presentation_ms": 717.6977540000225,
+        "data_ready_ms": 13601.196488999994,
+        "today_totals_equal": true,
+        "available_scope": "full desktop snapshot"
+      }
+    ],
+    "seeded_historical_files": 5224,
+    "newly_available_today_files": 112,
+    "today_was_empty_before": true,
+    "seeded_state_had_full_today": false,
+    "helper_sha256": "472429cfe86a89f5a560b5f2e763e586466423e44c50ee0b3b354302ae129d86",
+    "limits": [
+      "Data preparation only; no native frame",
+      "2 pilot pairs; no final p95 claim",
+      "usage first exposes today usage, not a full popover or complete session/work-signal result",
+      "Fixture setup/history import and SQLite backup excluded because historical data is the precondition",
+      "Sources and original mtimes frozen; new files represent pending day input, not production changes"
+    ]
+  },
+  "pending_today_same_root_check": {
+    "same_state_root_today_ready_ms": 15544.510007,
+    "usage_changes": {
+      "files": 5336,
+      "ignored_non_usage": 8742,
+      "imported": 859,
+      "malformed": 0,
+      "removed": 0,
+      "replaced": 63,
+      "source_resets": 0,
+      "unsupported": 0,
+      "unsupported_usage": 0,
+      "updated": 63
+    },
+    "today_totals_equal": true,
+    "purpose": "discriminate clone/namespace effects; not an extra paired sample"
+  },
+  "pending_today_same_root_profile": {
+    "profiles": [
+      {
+        "usage_duration_ms": 12045,
+        "stages": {
+          "discovery_ms": 340,
+          "usage_ms": 12045,
+          "session_ms": 0,
+          "derived_cache_ms": 0,
+          "total_ms": 0,
+          "worker_cpu_time_ms": 0,
+          "worker_peak_rss_bytes": 0
+        }
+      }
+    ]
+  },
+  "pending_today_stage_profiles": {
+    "history-0-current_full_refresh": [
+      {
+        "discovery_ms": 261,
+        "usage_ms": 5853,
+        "session_ms": 7572,
+        "derived_cache_ms": 5872,
+        "total_ms": 14520,
+        "worker_cpu_time_ms": 13115,
+        "worker_peak_rss_bytes": 651640832
+      }
+    ],
+    "history-0-today_usage_first": [
+      {
+        "discovery_ms": 106,
+        "usage_ms": 4719,
+        "session_ms": 0,
+        "derived_cache_ms": 0,
+        "total_ms": 0,
+        "worker_cpu_time_ms": 0,
+        "worker_peak_rss_bytes": 0
+      },
+      {
+        "discovery_ms": 99,
+        "usage_ms": 91,
+        "session_ms": 204,
+        "derived_cache_ms": 4,
+        "total_ms": 658,
+        "worker_cpu_time_ms": 890,
+        "worker_peak_rss_bytes": 561541120
+      }
+    ]
+  },
+  "extended_today_correctness": {
+    "checks": {
+      "session_today_equal": true,
+      "today_usage_summary_equal": true,
+      "today_hourly_quality_pricing_equal": true
+    },
+    "method": "Both full and hinted snapshots recomputed during same local hour; earlier mismatch was through_hour and bucket length only; common buckets had matched"
+  },
+  "environment": {
+    "go": "1.27.1 darwin/amd64",
+    "node": "26.11.1",
+    "os": "macOS 26.7.1",
+    "timezone": "America/New_York",
+    "page_cache": "not purged",
+    "quota": "off; no producer/model/network requests"
+  },
+  "interpretation": {
+    "first_install": "same frozen corpus, same binary, fresh empty state, 3 interleaved full/day-hint pairs; pilot data readiness only",
+    "existing_db": "today events already committed; read-only day query without rescanning; 3 pilot pairs per derived-file condition",
+    "pending_today": "5224 historical files seeded; 112 current-day files subsequently available; 2 pairs in SQLite backups; same original state-root check is substantially slower and remains unresolved",
+    "gate": "No verified native first frame, final performance gate, or stable sub-2-second event-update result; do not generalize clone timing to production"
+  },
+  "measurements_not_counted": [
+    "First firstload script run misread usage.changes.files, discarded; output-contract corrected from source",
+    "One-off concurrent exploratory existing-DB queries were not included in paired summaries",
+    "Old vs later hourly frame differed by through_hour/bucket count; recomputed both in same hour and all today hourly/quality/pricing matched"
+  ],
+  "harness_files": [
+    {
+      "path": "prototype/tools/scan-performance-firstload.mjs",
+      "sha256": "9d044e83b542dedf30fa3e18447e2545f5b2f3a3f59a34e123f8709ac1754884"
+    },
+    {
+      "path": "prototype/tools/scan-performance-firstload-patch.py",
+      "sha256": "8c80d036fc601f32cc3fea261cf5fb7b4f92d2eaa15f457e97b143422b35b0ae"
+    },
+    {
+      "path": "prototype/tools/scan-performance-db-bootstrap.mjs",
+      "sha256": "4fabc6cce6e044bca4652fd5918c57b4a3a2f7b44f590e00e582b8cd412ba830"
+    },
+    {
+      "path": "prototype/tools/scan-performance-history-today.mjs",
+      "sha256": "07a5d43c82287e1cf24324b300f54ce778beb779c34a05f2c30a3232ff2e5da8"
+    }
+  ],
+  "privacy": "Only timings, source counts/bytes, resource profiles, hashes and correctness booleans retained. Original sources/config/production DB unchanged."
+}

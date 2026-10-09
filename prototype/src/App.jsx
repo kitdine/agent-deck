@@ -6,6 +6,8 @@ import { scope } from "./data.js";
 import { catalogs, formatCost, formatTokens } from "./i18n.js";
 import { StageControls, useStagePrefs } from "./Stage.jsx";
 import { ScanStageControls, useScanScenario } from "./ScanProgress.jsx";
+import { ServingStageControls, useServingScenario } from "./ServingSnapshot.jsx";
+import { TELEMETRY_SCENARIOS, TelemetryStageControls } from "./TelemetrySettings.jsx";
 
 // 菜单栏图标：左键开关 popover，右键或双击弹出原生风格菜单。
 // 设置 / 检查更新 / 关于 / 退出 都在这个菜单里，所以 popover 底部不必再堆入口。
@@ -82,12 +84,14 @@ function MenuBarMenu({ lang, prefs, onPrefs, onSettings, onClose }) {
 export function App() {
   const stage = useStagePrefs();
   const scan = useScanScenario();
+  const serving = useServingScenario();
   const { lang, theme, state, width, quota, refresh, health, anchor } = stage;
   const dict = catalogs[lang];
   const params = new URLSearchParams(window.location.search);
   const [open, setOpen] = useState(true);
   const [menu, setMenu] = useState(false);
   const [settings, setSettings] = useState(params.get("settings") === "1");
+  const [telemetryScenario, setTelemetryScenario] = useState(TELEMETRY_SCENARIOS.includes(params.get("telemetry")) ? params.get("telemetry") : "unknown");
   const [prefs, setPrefs] = useState(DEFAULT_PREFS);
   const [client, setClient] = useState("all");
 
@@ -109,7 +113,7 @@ export function App() {
   // schema 态下没有可显示的数值，因此标题为空——与「仅图标」偏好逐字节相同。
   // 一个永久条件不能和一个偏好长得一样，所以角标是这一态唯一还看得见的信号。
   const value =
-    (state === "unavailable" || (scan.enabled && !scan.hasSnapshot))
+    (state === "unavailable" || (scan.enabled && !scan.hasSnapshot) || (serving.enabled && !serving.hasSnapshot && !schema))
       ? "—"
       : schema
         ? ""
@@ -120,7 +124,9 @@ export function App() {
   return (
     <main className="stage" data-theme={theme}>
       <StageControls prefs={stage} showAnchor showRefresh showHealth />
-      {scan.enabled && <ScanStageControls scan={scan} lang={lang} attached={open} />}
+      {scan.enabled && !serving.enabled && <ScanStageControls scan={scan} lang={lang} attached={open} />}
+      {serving.enabled && <ServingStageControls serving={serving} lang={lang} />}
+      {!settings && params.has("telemetry") && <TelemetryStageControls lang={lang} scenario={telemetryScenario} onScenario={setTelemetryScenario} />}
       <div className="stage-body" data-anchor={anchor}>
         <div className="menubar-strip">
           <div className="menubar-item-wrap">
@@ -155,12 +161,13 @@ export function App() {
           </div>
           <p className="hint">{dict.menu.hint}</p>
         </div>
-        {open && <Popover lang={lang} state={state} quotaState={quota} refreshScenario={refresh} healthRecovery={health} width={width} scan={scan.enabled ? scan : null} onClientChange={setClient} />}
+        {open && <Popover lang={lang} state={serving.enabled && ["partial", "mixed"].includes(serving.phase) ? "partial" : state} quotaState={quota} refreshScenario={refresh} healthRecovery={health} width={width} scan={scan.enabled && !serving.enabled ? scan : null} serving={serving.enabled ? serving : null} onClientChange={setClient} />}
       </div>
       {settings && (
         <div className="window-backdrop" onMouseDown={() => setSettings(false)}>
           <div onMouseDown={(event) => event.stopPropagation()}>
-            <SettingsWindow lang={lang} prefs={prefs} onChange={setPrefs} onClose={() => setSettings(false)} />
+            <TelemetryStageControls lang={lang} scenario={telemetryScenario} onScenario={setTelemetryScenario} />
+            <SettingsWindow lang={lang} prefs={prefs} onChange={setPrefs} onClose={() => setSettings(false)} telemetryScenario={telemetryScenario} eventDriven={serving.enabled} />
           </div>
         </div>
       )}
