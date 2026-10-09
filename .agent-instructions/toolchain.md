@@ -92,6 +92,7 @@ UserPromptSubmit (scope capture) and Stop (scoped diagnostics):
 | --- | --- | --- |
 | Claude Code | `.claude/settings.json` | Blocker JSON |
 | Codex | `.codex/hooks.json` | stderr and exit code 2 |
+| OpenCode V2 | `.opencode/plugins/beads-consistency/index.js` | Post-execution synthetic diagnostic; at most one automatic continuation per admitted user prompt |
 
 These entries are part of the effective Hook chain, which can also include
 user-level and plugin registrations. Check the active runtime's full applicable
@@ -114,6 +115,61 @@ python3 scripts/hooks/beads-consistency.py --runtime codex --audit
 ```
 
 Use `--runtime claude` for that client. This audit does not create or claim work.
+Use `--runtime opencode` for OpenCode's explicit audit. Its adapter receives
+native `session.prompt` events and `session.execution.succeeded` bus events;
+it does not read Codex's `hooks.json`. V2 has no equivalent pre-completion Stop
+blocker here: the initial reply can already be visible when a synthetic system
+diagnostic is queued. A continuation is not a new user command or phase grant.
+Only a session whose real prompt this plugin observed, whose delivered prompt
+ID still matches, and whose location has not moved can receive a diagnostic.
+The adapter checks AUTHORIZATION_WAIT before running the observer and avoids
+recursive automatic continuations. Errors are reported without claiming a gate
+passed. Ended event streams require a fresh location/plugin load; no service-wide
+restart or reload is performed automatically.
+
+OpenCode's scope observer imports the installed neutral parser at
+`~/.agentdeck/hooks/development-workflow/workflow_hook.py`, with the same
+`AGENTDECK_WORKFLOW_HOOK` override as isolated fixtures. This is read-only parser
+reuse, not installation or execution of the shared workflow enforcement Hook.
+If the parser is absent, requests remain unclassified as on the other runtimes.
+
+### OpenCode Skill entry
+
+For agent-facing Beads commands, OpenCode uses `BEADS_ACTOR=opencode` regardless
+of its selected model/provider. [Beads](beads.md#local-deployment) owns the mapping,
+wrapper and handoff rules. The automatic observer's `consistency-hook` identity
+is not an interactive agent identity. Discovery of a Skill or a synthetic
+diagnostic does not grant task ownership or permission to impersonate Codex.
+
+This repository has no separate project-owned Skill package to copy. OpenCode V2
+discovers the operator's existing shared packages through `~/.claude/skills` and
+`~/.agents/skills`; when only a Codex installation exists, explicitly configure
+its Skill source directory using V2's `skills` array. Do not duplicate packages
+into this repository or install machine-specific links in tracked content.
+`AGENTS.md` is already the native project instruction entry. Resolve discovery
+in the selected workspace, not a home-directory API response or another worktree.
+Discovery proves availability only; client-specific tools or instructions inside
+a Skill may still require a scoped adapter. Shared workflow/handoff enforcement
+Hooks currently accept only Codex and Claude; this project plugin neither ports
+them nor creates a second phase parser. Skill-led phases remain available without
+those optional enforcement Hooks.
+
+Verify the adapter with `make check-opencode-hooks` (Node 22+, isolated native
+API fixtures) and the affected Python suite with
+`python3 -m unittest discover -s scripts/hooks -p '*_test.py'`. CI runs both.
+Plugin `active` status confirms real-client loading only. For opt-in transport
+acceptance, run `make check-opencode-hooks-e2e` with an installed OpenCode V2 CLI.
+It uses a private real server, an isolated database/configuration/Hook state,
+a loopback HTTP model, and simulated Beads findings. The production adapter and
+Python scope/deduplication machinery remain real. It checks native prompt and
+execution events, synthetic admission, a second model request containing the
+diagnostic, bounded continuation, and scope clearing on an unrelated new request.
+It stops only the private server and removes its own fixture files; it does not
+restart the shared service, query real Beads, or run real-session Hooks directly.
+This proves the client transport with test dependencies, not a live model's
+judgment or real Beads reconciliation. CI's ordinary test target remains isolated
+and does not require an OpenCode installation.
+
 Repeated scoped reports are suppressed while their notes and relevant document
 content remain unchanged; resolved and subsequently recurring mismatches are
 reported again. Silence means no attributable new diagnostic, not workflow PASS
@@ -224,13 +280,15 @@ A generated next instruction never grants authority to run the next phase.
 
 ## Local-only runtime files / 仅本地的运行时文件
 
-The repository includes only these two runtime registration files under
-`.claude/` and `.codex/`: `.claude/settings.json` and `.codex/hooks.json`.
+The repository includes `.claude/settings.json`, `.codex/hooks.json`, and the
+OpenCode plugin package under `.opencode/plugins/beads-consistency/` as runtime
+registrations. Other runtime state under these directories remains local.
 The `.gitignore` patterns use `dir/*` so these files can be re-included.
 
 | Path | Role |
 | --- | --- |
 | `.claude/settings.json`, `.codex/hooks.json` | Tracked repository Hook registrations; they are not the entire user/plugin configuration |
+| `.opencode/plugins/beads-consistency/` | Tracked native V2 registration; implementation and isolated Node tests live under `scripts/hooks/` |
 | `.claude/settings.local.json` | Local permissions and overrides; not a shared product contract |
 | `.claude/RESUME.md` | Local session checkpoint, not project handoff authority; do not act on an expired checkpoint reference |
 | `.codegraph/` | Derived per-workspace index. The canonical main instance opts the project into WORKSPACE_ENTRY preparation; topic instances must remain independent, local, ignored, and uncommitted. |

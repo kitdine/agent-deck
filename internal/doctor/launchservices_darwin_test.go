@@ -153,7 +153,9 @@ func TestRegistrationCanonicalAbsenceDoesNotUseUnsafeNSErrorRef(t *testing.T) {
 	}
 	inaccessible := filepath.Join(blocked, "Missing.app")
 	script = strings.ReplaceAll(registrationScript, "'/Applications/AgentDeck.app'", strconv.Quote(inaccessible))
-	output, reason = registrationCommand(ctx, "/usr/bin/osascript", "-l", "JavaScript", "-e", script, "host", "null")
+	secondCtx, secondCancel := context.WithTimeout(context.Background(), time.Second)
+	defer secondCancel()
+	output, reason = registrationCommand(secondCtx, "/usr/bin/osascript", "-l", "JavaScript", "-e", script, "host", "null")
 	if reason != "" || !decodeRegistration(output, &result) || result.Absent || result.Complete {
 		t.Fatalf("unreadable canonical host confused with absence: %s %s", reason, output)
 	}
