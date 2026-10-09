@@ -4,6 +4,34 @@ topic: v0-7-0-contract
 subject: tasks.md
 ---
 
+## 当前修复移交 — 2026-10-08
+
+### V070-PR-F1 — P2 — 已修复，待独立复评
+
+- 来源：用户于 2026-10-08 明确要求移除提前 contract 文档 PR/合并，
+  contract 整体 PR/合并须等待 assemble 和版本契约收尾任务通过评审及证据门禁。
+- 确认：提交 `a170d5547a650fb7fd05231cfbd01fd15ca40906` 中
+  `tasks.md:213`–`216` 明确允许文档通过后提前 PR 到 main；
+  `assemble` 的 reviewed/delivered membership 与收尾的 authorized delivery
+  还可能把提前合并误作前置条件。该安排不符合用户明确的交付边界。
+- 风险：只完成文档评审即合并整个 contract 分支，绕过版本集成与契约收尾边界。
+- 修复：文档可授权提交/推送到主题分支；整体 PR/合并等待两个实施任务的
+  独立评审和 VERIFIED 门禁。同步去除 assemble/收尾对早期 contract 合并的
+  隐含依赖；批次契约记录留在 contract 工作区，成员 PR 仍按 assemble 集成 main。
+- 状态：修复候选已完成，Review 清空，等待独立复评；本阶段不签发新的 PASS。
+  下方 Round 1、原始证据及授权提交/推送均为历史事实，不代表新候选已获批准。
+- 范围：仅 `tasks.md` 与本评审记录；无产品代码、测试、配置或全局规范修改。
+- 验证：`python3 scripts/check-docs.py`、`make check-whitespace`、
+  `git diff --check` 均通过；仅两份主题文档改变。
+  候选 HEAD 为 `a170d5547a650fb7fd05231cfbd01fd15ca40906`，document blob 为
+  `7f7fb77d408b400972af61f08fa16721bf689284`，按既有 recipe 计算 fingerprint
+  `f425236f4dd5af001b0751619c2297fb875e22834820ceb6cd3ddf1fc039658c`。
+- CEv1 修复候选：`urn:cev1:github.com/kitdine/agent-deck:content-state:f425236f4dd5af001b0751619c2297fb875e22834820ceb6cd3ddf1fc039658c`。
+  固定模板查询结果 NOT_VERIFIED；原证据 target_matches=false，未复用旧 PASS。
+  缺少 scope、document_set、l0 的新目标证据；本节保存了可供复评核验的本地 L0
+  结果，独立语义复评仍待执行。invalidated/unresolved 列表为空，不代表语义批准。
+  允许范围仅本 finding 的两份文档与必要协调/证据；不授权 Git 交付。
+
 ## Round 1 — 2026-10-08
 
 ## 📋 版本契约任务计划评审
@@ -105,3 +133,81 @@ Task checkpoint：`ad-v0-7-0-contract-doc-tasks-design`；上述最终 fingerpri
 
 下一实施任务为 `assemble`，当前尚缺契约文档授权交付及至少一个完整成员的
 集成就绪结果。两个实施任务均未完成，不声明版本或 containing-unit gate 通过。
+
+## Round 2 — 2026-10-09
+
+## 📋 交付边界修复复评
+
+📊 综合评分：9/10
+
+✅ 复评结论：PASS
+
+- Reviewer: Codex，独立复评角色；本会话未参与候选设计或修复，无子代理。
+- Method: 冷上下文单评审者，逐项核对修复移交、实际差异、项目权威和实时
+  Beads 交接；仅同步评审记录和文档状态，不修复产品或计划语义。
+- Scope: V070-PR-F1，文档交付、成员集成、整体 PR/合并及两个实施任务的依赖。
+- Reviewed state: HEAD `a170d5547a650fb7fd05231cfbd01fd15ca40906`；输入
+  document blob `7f7fb77d408b400972af61f08fa16721bf689284`，fingerprint
+  `f425236f4dd5af001b0751619c2297fb875e22834820ceb6cd3ddf1fc039658c`，
+  与修复移交一致。最终状态仅同步 Documents Review 和本轮状态入口。
+
+### 🔴 严重问题 — 必须修复
+
+无。
+
+### 🟡 改进建议 — 建议处理
+
+无。
+
+### 🟢 优点
+
+- V070-PR-F1 — CLOSED：`tasks.md` 的 Entry conditions 明确文档只可授权
+  提交/推送主题分支，整体 PR/合并等待 `assemble` 和 `v0-7-0-contract`
+  两个实施任务独立评审与 VERIFIED 门禁，并保留单独的交付授权。
+- `assemble` 前置条件要求主题分支上的已评审契约提交，收尾要求成员集成
+  main 和主题分支上的聚合记录提交；两处均排除提前 contract 合并依赖。
+- 成员 PR 直接进入 main，批次与集成评审记录留在 contract 工作区；不以
+  成员 PR 偷渡提前 contract 交付。历史 Round 1 和已交付提交保持原样。
+
+### 📝 总结
+
+唯一历史 finding V070-PR-F1 已关闭；无仍开放、回归或新增阻断问题。
+版本成员、专题边界及产品验收要求未变。结论只覆盖本次文档修复，两个实施
+任务尚未开始，不证明功能、集成或版本完成。未执行 Git 交付。
+
+#### Evidence
+
+- 实际文档 blob 与修复移交一致；差异仅涉及交付边界、相关前置条件和状态。
+- 当前 Beads 任务为 `ad-v0-7-0-contract-doc-tasks-design`，修复评论
+  `bfbdb11b-1a1e-5bc9-8d36-d92741de325f` 已释放所有权；复评领取后为
+  `in_review/codex`。文档任务与两个实施任务不同，不跨越整个主题门禁。
+- 初次固定模板查询为 NOT_VERIFIED：scope、document_set、l0 缺少新目标
+  证据；旧证据 target_matches=false，invalidated/unresolved 均为空。
+- 最终状态的 L0 结果与 CEv1 身份在下方完成证据记录；Review 状态同步不改变
+  被评审的交付政策。原修复检查不冒充最终文档的验证结果。
+
+#### Completion evidence
+
+Completion gate: VERIFIED
+
+最终 document blob：`6453f7177f9d6fa1be09978f509bf75e8133e6ed`。
+最终 fingerprint：`5607b238d4a89ac5ef49fe61d36ec71b892615e8d3b6f8cd76dbd658a36f52a4`，
+采用既有 `sha256(head=<HEAD>;document=<Git-blob-ID>)` recipe。
+ContentState：`urn:cev1:github.com/kitdine/agent-deck:content-state:5607b238d4a89ac5ef49fe61d36ec71b892615e8d3b6f8cd76dbd658a36f52a4`。
+最终文档状态的 `python3 scripts/check-docs.py`、`make check-whitespace` 和
+`git diff --check` 全部通过。四个新节点写入并逐项读回，六条关系预检均为 ok，
+写入计数与提交数量一致；固定 `gate-status.cypher` 回读 VERIFIED，三个 required
+criterion 均有 exact-target pass，missing/invalidated/unresolved 列表为空。
+历史交付 WorkUnit 元数据保留原提交事实，本轮不声称新候选已交付；图中无直接
+父子边，文档任务也不等于尚未开始的两个实施任务，不查询或声明整个版本完成。
+
+Task checkpoint：`ad-v0-7-0-contract-doc-tasks-design`；上述最终 fingerprint；VERIFIED。
+
+提交建议：显式授权后，仅提交本主题 `tasks.md` 和 `reviews/tasks.md` 的修复及
+复评记录，保留应有贡献归因。
+
+推送建议：显式授权并完成提交对象、签名和远端检查后，推送
+`feature/v0-7-0-contract`；此边界不创建整体 PR 或合并 main。
+
+下一实施任务为 `assemble`；须先授权交付本次契约文档，并具备至少一个完整
+成员的集成就绪结果。整体 PR/合并仍等待两个实施任务通过独立评审及适用门禁。

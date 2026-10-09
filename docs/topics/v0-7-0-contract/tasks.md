@@ -212,8 +212,13 @@ none silently waives v0.7.0 acceptance.
 
 Contract membership can be reviewed while selected features are still being
 designed. After this document passes review and its applicable evidence gate,
-an explicitly authorized contract PR may deliver the plan to `main`. That does
-not deliver the features or start assembly.
+the document task may be committed and pushed to `feature/v0-7-0-contract`
+under explicit authorization. This preserves the reviewed plan on its branch;
+it does not create an early contract-document PR or merge the contract into
+`main`. Contract-wide PR creation and merge must wait until both `assemble`
+and `v0-7-0-contract` have completed independent review and their applicable
+evidence gates are VERIFIED. PR creation and merge still require explicit
+authorization at that boundary.
 
 Accept whole coherent, completed topics/fixes in incremental batches. For each:
 resolve live source/target commits and trees, reviewed matrices and records,
@@ -222,9 +227,12 @@ overlapping contracts, persisted state, configuration, pricing/classification
 and scan/replay assumptions. Classify the actual merge through Branching; no
 textual conflict is not proof of compatibility.
 
-Feature/fix PRs target `main` directly. Prepare the integration record and this
-contract's batch update with the product change in its source worktree; preserve
-ancestry and carry accepted limitations. No feature is first merged into the
+Feature/fix PRs target `main` directly under `assemble`; they are distinct from
+the final contract-wide PR. Keep this contract's batch ledger and integration
+review in the contract workspace until its final delivery boundary. A member PR
+may carry its own product/compatibility records and the integrated status
+projection, but must not use those records to deliver the contract branch early.
+Preserve ancestry and accepted limitations. No feature is first merged into the
 contract branch. Any base refresh, PR, merge or delivery requires its own explicit
 authority. Record partial assembly without ticking the aggregate Task complete.
 
@@ -241,8 +249,10 @@ are satisfied. The present document task is not either implementation task.
 
 ### 1. `assemble`
 
-**Prerequisites:** reviewed/delivered contract membership and at least one whole
+**Prerequisites:** reviewed contract membership with VERIFIED document evidence,
+recorded by an authorized commit on the contract branch, and at least one whole
 selected member with independently reviewed delivery and applicable evidence.
+An earlier contract PR or merge into `main` is not a prerequisite.
 Remaining selected members may still be unfinished; partial batches are allowed.
 
 **Result:** all selected members are integrated into `main` with verified
@@ -271,7 +281,9 @@ Numerical budgets come from the reviewed owning feature, not this draft.
 ### 2. `v0-7-0-contract`
 
 **Depends on:** complete selected assembly/dispositions and its independent
-review, applicable evidence and authorized delivery.
+review and VERIFIED evidence, with member integrations delivered to `main` and
+the aggregate assembly records committed on the contract branch under explicit
+authorization. This does not require an earlier contract-wide PR or merge.
 
 **Result:** integrated behavior, version-level documentation and compatibility
 claims agree; the contract completion gate is resolved for the actual content.
@@ -320,8 +332,11 @@ or release acceptance.
 
 ## Review status
 
-The document passed independent [Round 1](reviews/tasks.md#round-1--2026-10-08)
-on 2026-10-08. The Documents matrix reflects that review; both implementation
-tasks remain unstarted. The review record owns the exact reviewed content and
-completion-evidence result. Document delivery still requires explicit authority;
-`assemble` additionally requires a whole selected member ready for integration.
+The historical [Round 1](reviews/tasks.md#round-1--2026-10-08) and document
+delivery at `a170d5547a650fb7fd05231cfbd01fd15ca40906` remain recorded. The
+operator's 2026-10-08 correction of the contract PR/merge boundary passed
+independent [Round 2](reviews/tasks.md#round-2--2026-10-09) re-review.
+Both implementation tasks remain unstarted. Current evidence and finding
+disposition belong to the review record. Document commits/pushes may precede
+assembly; the contract-wide PR/merge waits for both implementation tasks to
+pass review and their applicable evidence gates.
