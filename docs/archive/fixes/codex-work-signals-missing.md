@@ -1,9 +1,26 @@
 ---
-status: active
+status: historical
 created: 2026-10-09
+retired: 2026-10-09
 ---
 
 # 缺陷：Codex 工作信号缺失，活动、工作流和工具摘要显示不可用
+
+## 交付与归档
+
+本修复已于 2026-10-09 授权提交并推送，交付提交为
+`3fba41a6f93655c2cc75fd18ed9ea4cba54d4bbb`，Git tree 为
+`29eec830f28aeb807f5740cf38e6a7bdf1cca1bb`。对应不可变 ContentState
+`fix:codex-work-signals-missing:commit:3fba41a6f93655c2cc75fd18ed9ea4cba54d4bbb`
+的 CEv1 门禁已最终化为 VERIFIED 5/5；归档前回读仍为 VERIFIED，无缺失、
+失效证据或未决影响。
+
+按 `docs/documentation-workflow.md` 的 Fix records 生命周期，本记录移至
+`docs/archive/fixes/` 并标为 historical。下文保留原开发、修复和独立评审的
+历史事实，其中“等待授权提交”及旧下一步指令描述的是当时状态，不再作为
+当前执行指令。后续 GitHub 反馈和集成协调由原 Bug
+`ad-bug-codex-work-signals-missing` 与
+[PR #58](https://github.com/kitdine/agent-deck/pull/58) 承接。
 
 ## 现象
 
