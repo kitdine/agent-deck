@@ -1,7 +1,7 @@
 ---
 status: active
 created: 2026-10-08
-updated: 2026-10-08
+updated: 2026-10-09
 ---
 
 # v0.7.0 Contract — Tasks
@@ -76,7 +76,7 @@ this contract to review; readiness or elapsed time cannot silently reduce scope.
 | Long scans, incremental cost and waiting behavior | `ad-bug-menubar-long-scan-timeout` | Proposed feature topic `scan-performance`; carrier is deferred/unassigned. The timeout symptom is established; the cause of the unusually expensive full read is not. Requirements, budgets, UX, architecture and decomposition need fresh design. |
 | Pricing-system redesign and subscription estimates | `ad-cost-transparency` | Proposed feature topic `cost-transparency`; carrier is deferred/unassigned. Re-design the whole topic around the four minimum inputs below; its old description and decomposition are not an approved scope ceiling. |
 | Auxiliary-session identity and work-view isolation | `ad-auxiliary-session-classification` | Proposed feature topic `auxiliary-session-classification`; carrier is deferred/unassigned. Default isolation with a switch is selected; classification, unknown treatment, persistence and surface contracts still belong to feature design. |
-| Codex Activity/Workflow/Tooling compatibility and historical recovery | `ad-bug-codex-work-signals-missing` | Existing Bug; proposed Lane A, not confirmed by this document. Confirm the lane before bounded repair; use a fix record if restoring the existing turn contract suffices, or an owning Lane B topic if a new product rule is necessary. |
+| Codex Activity/Workflow/Tooling compatibility and historical recovery | `ad-bug-codex-work-signals-missing` | Confirmed Lane A fix delivered to `main` by [PR #58](https://github.com/kitdine/agent-deck/pull/58), merge `b450704bc43807487a51a777a90dc4f8793d30dc`. Current/legacy, direct/nested, string/block content and targeted Version 7 recovery passed independent review and exact merge-state CEv1 VERIFIED 5/5. Real-history resource cost and installed native surfaces remain joint acceptance with `scan-performance`; the area remains selected. |
 
 The proposed topic names identify intended owners, not existing worktrees,
 approved documents or implementation tasks. Do not duplicate origin Bugs merely
@@ -116,6 +116,14 @@ token totals, session identity, credentials, providers, exclusions and logs.
 Prove second-scan stability and unaffected-source skipping. Its resource cost
 must fit the approved scan budgets and the performance topic's acceptance.
 Do not fix an unavailable work signal by changing prices or auxiliary filters.
+
+The bounded repair above is now integrated. Its Version 8 replay mechanism,
+second-scan stability, original event/token/source/run ownership and CLI/desktop
+producer agreement were verified on isolated persisted fixtures. The complete
+failure, repair, archive and reopening history is retained in the
+[delivered fix record](https://github.com/kitdine/agent-deck/blob/b450704bc43807487a51a777a90dc4f8793d30dc/docs/archive/fixes/codex-work-signals-missing.md).
+This integration does not certify real-user history scale, numerical scan budgets
+or installed native UI; those remain part of the selected combined acceptance.
 
 ### Pricing redesign: required intake and scope discovery
 
@@ -238,6 +246,34 @@ authority. Record partial assembly without ticking the aggregate Task complete.
 
 ## Tasks
 
+### Recorded integration batch — 2026-10-09
+
+- Member: complete bounded Lane A repair `fix:codex-work-signals-missing`,
+  original Bug `ad-bug-codex-work-signals-missing`, PR #58.
+- Source: `fix/codex-work-signals-missing` at
+  `b07848fe920dcaa2d93f9d11e4e92188f6ee6261`, tree
+  `bc1e7612f5c844fc9634ac1a2060831c01e38f49`.
+- Actual target before merge: `main` at
+  `ecd2bd1076498db042df32ab7f9d6c8f88ae1c06`, tree
+  `5f05e187243e94806c30ed67b509ba84f3b53915`. Main advanced from the original
+  base through PR #59's OpenCode hook integration before PR #58 landed.
+- Result: merge `b450704bc43807487a51a777a90dc4f8793d30dc`, tree
+  `f31e51805a2c4fe83bc921035ce1579f6afc75f6`; clean three-way merge with the
+  actual target/source as its two parents, preserving ancestry.
+- Interactions: the concurrent base changed hooks/runtime registration and
+  governance, with no overlap in the six Go production/test blobs, archived
+  carrier or three dependency blobs. The actual merged repair blobs match the
+  independently reviewed source; Codex parsing, projections and ownership
+  contracts are unchanged by that concurrent integration.
+- Evidence: final GitHub code review found no major issues, both recorded
+  threads are resolved, PR/push CI passed, and immutable main-merge ContentState
+  `fix:codex-work-signals-missing:commit:b450704bc43807487a51a777a90dc4f8793d30dc`
+  is VERIFIED 5/5 through explicit impact assessment and target-bound reuse.
+- Progress: this is partial assembly. The other three selected areas and the
+  joint scale/native/combined acceptance remain open. Both aggregate Task
+  checkboxes below remain unchecked; no contract-wide PR or version closure is
+  implied. The contract checkout remains on its planning branch.
+
 | Task | Dev | Review |
 | --- | --- | --- |
 | 1. `assemble` | [ ] | [ ] |
@@ -336,7 +372,19 @@ The historical [Round 1](reviews/tasks.md#round-1--2026-10-08) and document
 delivery at `a170d5547a650fb7fd05231cfbd01fd15ca40906` remain recorded. The
 operator's 2026-10-08 correction of the contract PR/merge boundary passed
 independent [Round 2](reviews/tasks.md#round-2--2026-10-09) re-review.
-Both implementation tasks remain unstarted. Current evidence and finding
+`assemble` now records the Codex repair as its first partial integration batch;
+`v0-7-0-contract` closure is unstarted. Current evidence and finding
 disposition belong to the review record. Document commits/pushes may precede
 assembly; the contract-wide PR/merge waits for both implementation tasks to
 pass review and their applicable evidence gates.
+
+### Integration status synchronization — 2026-10-09
+
+This update records the delivered Codex member and partial assembly facts only.
+It preserves the reviewed membership, acceptance boundaries, document set and
+contract-wide PR/merge policy; historical Round 2 evidence retains its original
+content identity and the delivered document task stays closed. Exact candidate
+evidence reuses the unchanged scope and document-set decisions through an
+explicit impact assessment, with fresh scoped L0 checks. The operator separately
+authorized this document's commit and push on 2026-10-09. Aggregate assembly and
+contract closure remain open.
