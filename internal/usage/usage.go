@@ -35,6 +35,9 @@ var bundledCatalog []byte
 const (
 	bundledCatalogSourceURL       = "bundled://agentdeck/model-prices.json"
 	legacyBundledCatalogSourceURL = "bundled://config/model-prices.json"
+	// ParserVersion 8 restores current Codex user envelopes and pending cursor
+	// context. Only Codex version 7 sources require this replay; the Claude
+	// parser is unchanged, so its version 7 sources remain compatible.
 	// ParserVersion 7 captures each transcript's opening record as the
 	// session's process start. It is only readable from offset zero, so version 6
 	// sources must be re-read: an incremental scan skips a file whose size and
@@ -45,7 +48,7 @@ const (
 	// read-shaped shell flag used by workflow rework metrics. Version 5 sources
 	// must be re-read after schema v21 replaces the reserved signal table, or an
 	// upgraded store would expose empty signals until every source changed.
-	ParserVersion      = 7
+	ParserVersion      = 8
 	usageParserVersion = ParserVersion
 	// sessionStartLayout is RFC3339 with the fraction always written to nine
 	// digits. time.RFC3339Nano drops trailing zeros, which makes its lexical
@@ -863,7 +866,7 @@ func (s *Service) Inventory(ctx context.Context) (Inventory, error) {
 		switch {
 		case !found:
 			inventory.Added = append(inventory.Added, entry.Path)
-		case previous.parserVersion != ParserVersion:
+		case usageParserOutdated(entry.Client, previous.parserVersion):
 			inventory.Mutated = append(inventory.Mutated, entry.Path)
 			if entry.Stable && previous.identity == entry.Identity && previous.size == entry.Size && previous.modified == entry.ModifiedAt && previous.changedAt == entry.ChangedAt {
 				parserVersionRereads++
@@ -941,7 +944,7 @@ func (s *Service) plannedAppendStart(ctx context.Context, entry InventoryEntry) 
 	if err != nil {
 		return 0, err
 	}
-	if identity != entry.Identity || parserVersion != ParserVersion || cursor <= 0 || cursor >= entry.Size {
+	if identity != entry.Identity || usageParserOutdated(entry.Client, parserVersion) || cursor <= 0 || cursor >= entry.Size {
 		return 0, nil
 	}
 	file, err := s.open(entry.Path)
@@ -1058,8 +1061,17 @@ func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceR
 			return r, fmt.Errorf("invalid Codex cumulative usage cursor for %q: %w", path, err)
 		}
 	}
+	restoredCodexCursor := false
+	if found && client == "codex" {
+		var cursorErr error
+		restoredCodexCursor, cursorErr = restoreCodexSignalCursor(&state)
+		if cursorErr != nil {
+			return r, cursorErr
+		}
+	}
 	activityParser := activity.NewParser(client, path)
 	activityParser.SetContext(state.session, state.turn, state.model)
+	activityParser.SetTurnIndex(state.turnIndex)
 	if client == "claude" && state.turn == claudePendingTurnMarker {
 		state.claudePending = true
 		activityParser.SetClaudePending(true)
@@ -1070,7 +1082,7 @@ func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceR
 	// pending row forever — which is the scan boundary Decision 11 exists to
 	// survive, failing in the one place it was written to protect.
 	var priorTurnIndex sql.NullInt64
-	if found {
+	if found && !restoredCodexCursor {
 		turnErr := s.Store.DB.QueryRowContext(ctx, `SELECT MAX(turn_index) FROM (SELECT turn_index FROM usage_events WHERE source_path=? UNION ALL SELECT turn_index FROM usage_tool_calls WHERE source_path=? UNION ALL SELECT turn_index FROM usage_work_signals WHERE client=? AND session_id=? AND state='classified')`, path, path, client, state.session).Scan(&priorTurnIndex)
 		if turnErr != nil {
 			return r, turnErr
@@ -1081,7 +1093,7 @@ func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceR
 		}
 	}
 	activityParser.SetMachineIdentity(s.activityMachineIdentity(ctx))
-	parserOutdated := found && parserVersion != ParserVersion
+	parserOutdated := found && usageParserOutdated(client, parserVersion)
 	stableMetadata := found && !parserOutdated && entry.Stable && oldChanged != 0 && oldChanged == entry.ChangedAt && oldIdentity == entry.Identity && oldSize == entry.Size && oldModified == entry.ModifiedAt
 	if !forceRebuild && stableMetadata {
 		if s.Coordinator != nil {
@@ -1332,7 +1344,11 @@ func (s *Service) scanFileMode(ctx context.Context, entry InventoryEntry, forceR
 	// so a rewrite that lost the opening records cannot move a session's start
 	// later and widen its span into a segment the process never ran in.
 	startedAt := earlierSessionStart(priorStarted, state.startedAt)
-	_, err = tx.ExecContext(ctx, `INSERT INTO usage_source_files(path,identity,size,cursor,prefix_hash,session_id,turn_id,model,session_started_at,parser_version,codex_cumulative_json,imported,replaced,malformed,unsupported,modified_at,changed_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(path) DO UPDATE SET identity=excluded.identity,size=excluded.size,cursor=excluded.cursor,prefix_hash=excluded.prefix_hash,session_id=excluded.session_id,turn_id=excluded.turn_id,model=excluded.model,session_started_at=excluded.session_started_at,parser_version=excluded.parser_version,codex_cumulative_json=excluded.codex_cumulative_json,imported=usage_source_files.imported+excluded.imported,replaced=usage_source_files.replaced+excluded.replaced,malformed=usage_source_files.malformed+excluded.malformed,unsupported=usage_source_files.unsupported+excluded.unsupported,modified_at=excluded.modified_at,changed_at=excluded.changed_at`, path, entry.Identity, entry.Size, cursor, hash(anchor), state.session, state.turn, state.model, startedAt, ParserVersion, string(cumulativeBytes), r["imported"], r["replaced"], r["malformed"], r["unsupported"], entry.ModifiedAt, entry.ChangedAt)
+	storedTurn := state.turn
+	if client == "codex" {
+		storedTurn = storedCodexTurn(state)
+	}
+	_, err = tx.ExecContext(ctx, `INSERT INTO usage_source_files(path,identity,size,cursor,prefix_hash,session_id,turn_id,model,session_started_at,parser_version,codex_cumulative_json,imported,replaced,malformed,unsupported,modified_at,changed_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(path) DO UPDATE SET identity=excluded.identity,size=excluded.size,cursor=excluded.cursor,prefix_hash=excluded.prefix_hash,session_id=excluded.session_id,turn_id=excluded.turn_id,model=excluded.model,session_started_at=excluded.session_started_at,parser_version=excluded.parser_version,codex_cumulative_json=excluded.codex_cumulative_json,imported=usage_source_files.imported+excluded.imported,replaced=usage_source_files.replaced+excluded.replaced,malformed=usage_source_files.malformed+excluded.malformed,unsupported=usage_source_files.unsupported+excluded.unsupported,modified_at=excluded.modified_at,changed_at=excluded.changed_at`, path, entry.Identity, entry.Size, cursor, hash(anchor), state.session, storedTurn, state.model, startedAt, ParserVersion, string(cumulativeBytes), r["imported"], r["replaced"], r["malformed"], r["unsupported"], entry.ModifiedAt, entry.ChangedAt)
 	if err != nil {
 		return r, err
 	}
@@ -1396,10 +1412,13 @@ type parseState struct {
 	// it trails the hook by 2.078 seconds, while first_at trails it by 26.6.
 	// Only a scan that reads from offset zero can see it, so it is carried
 	// forward from the stored value on every incremental scan.
-	startedAt       string
-	turnIndex       int
-	claudePending   bool
-	codexCumulative map[string]map[string]int64
+	startedAt            string
+	turnIndex            int
+	claudePending        bool
+	codexCumulative      map[string]map[string]int64
+	codexHasSignal       bool
+	codexOutput          bool
+	codexAwaitingContext bool
 	// signals accumulates the reduction of each turn-opening message seen in
 	// this scan. Only the reduction is kept, per Decision 2; the text does not
 	// leave the parse call that read it.
@@ -1527,6 +1546,7 @@ func parse(client string, v map[string]any, state *parseState, path string, offs
 			}
 			if session != "" && session != state.session {
 				state.turn, state.turnIndex = "", 0
+				state.codexHasSignal, state.codexOutput, state.codexAwaitingContext = false, false, false
 			}
 			state.session = session
 			return Event{}, false
@@ -1535,17 +1555,26 @@ func parse(client string, v map[string]any, state *parseState, path string, offs
 			turn, _ := p["turn_id"].(string)
 			if turn != "" && turn != state.turn {
 				state.turnIndex++
+				state.codexOutput, state.codexAwaitingContext = false, false
 			}
 			state.turn = turn
 			state.model, _ = p["model"].(string)
 			return Event{}, false
 		}
-		if typ == "event_msg" && state.session != "" && state.turn != "" {
-			if inner, _ := p["type"].(string); inner == "user_message" {
-				text, _ := p["message"].(string)
-				state.note(client, stringValue(v, "timestamp"), text, state.turnIndex)
+		if state.session != "" {
+			if text, user := codexSignalMessage(typ, p); user {
+				index := state.turnIndex
+				if state.turn == "" || state.codexOutput || state.codexAwaitingContext {
+					index++
+					state.codexAwaitingContext = true
+				}
+				state.codexHasSignal = true
+				state.note(client, stringValue(v, "timestamp"), text, index)
 				return Event{}, false
 			}
+		}
+		if state.turn != "" && codexHasOutput(typ, p) {
+			state.codexOutput = true
 		}
 		if typ != "event_msg" || state.session == "" || state.turn == "" || state.model == "" {
 			return Event{}, false
@@ -1561,6 +1590,9 @@ func parse(client string, v map[string]any, state *parseState, path string, offs
 		if u["input_tokens"] == 0 && u["cached_input_tokens"] == 0 && u["output_tokens"] == 0 && u["cache_write_tokens"] == 0 {
 			return Event{}, true
 		}
+		// token_count also carries rate-limit and empty-usage notifications.
+		// Only an accepted nonzero usage delta proves assistant output.
+		state.codexOutput = true
 		timestamp := stringValue(v, "timestamp")
 		lastUsage, _ := info["last_token_usage"].(map[string]any)
 		return Event{Key: codexEventKey(*state, timestamp, lastUsage, info["total_token_usage"]), Client: client, SessionID: state.session, EventID: state.turn, EventAt: timestamp, Model: state.model, SourcePath: path, SourceOffset: offset, TurnIndex: state.turnIndex, Tokens: u}, true

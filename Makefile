@@ -82,10 +82,18 @@ build-macos-release: build-all
 package-macos-app:
 	bash scripts/package-macos-app.sh "$(MACOS_APP)" "$(VERSION)" "$(DIST_DIR)"
 
-.PHONY: check-ci-docs-tools
+.PHONY: check-ci-docs-tools check-opencode-hooks check-opencode-hooks-e2e
 check-ci-docs-tools:
 	python3 -m unittest discover -s scripts/ci -p '*_test.py'
 	python3 -m unittest discover -s scripts/hooks -p '*_test.py'
+
+check-opencode-hooks:
+	node --test scripts/hooks/opencode-beads.test.mjs
+
+# Opt-in: requires an installed OpenCode V2 CLI. Uses a private server and
+# loopback model/Beads fixtures, never the user's service or task store.
+check-opencode-hooks-e2e:
+	python3 scripts/hooks/opencode-beads-e2e.py
 
 check-go-test-runner:
 	bash scripts/test-run-go-test.sh

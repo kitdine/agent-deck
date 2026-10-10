@@ -13,20 +13,48 @@ this repository. If that binding is unavailable, resolve the operator's actual
 installation rather than guessing from old Hook output, provisioning a new store,
 or changing services as part of an ordinary task.
 
-Every agent read or write must identify its actor. Use `codex`, `claude-code`, or `antigravity`;
-do not substitute the human operator or fabricate an actor identity.
+Every agent read or write must explicitly identify the invoking client, not the
+selected model or provider. This project's authorized actor mapping is:
+
+| Invoking client | `BEADS_ACTOR` |
+| --- | --- |
+| Codex | `codex` |
+| Claude Code | `claude-code` |
+| Antigravity | `antigravity` |
+| OpenCode, with any model/provider | `opencode` |
+
+OpenCode using an OpenAI model is still `opencode`, not `codex`; using a Claude
+model is still `opencode`, not `claude-code`. Do not substitute the human operator,
+reuse another client's identity, or fabricate a new actor from the session/model.
+Actor names identify client roles, not authentication principals, permission
+grants, unique sessions, or Git contributor/trailer identities.
+
+The current operator-owned wrapper checks only that `BEADS_ACTOR` is non-empty;
+its error-message examples are not an allowlist. Acceptance by the executable
+does not authorize an arbitrary identity: this table owns agent identity policy.
+No wrapper, store, account, or service reconfiguration is needed for `opencode`.
 
 ```bash
 beads_cli="$HOME/.local/state/agentdeck-beads/bin/agentdeck-bd"
 env BEADS_ACTOR=codex "$beads_cli" ready --label agent-task --json
 env BEADS_ACTOR=claude-code "$beads_cli" list --status in_review --json
 env BEADS_ACTOR=antigravity "$beads_cli" list --status in_review --json
+env BEADS_ACTOR=opencode "$beads_cli" list --status in_review --json
 ```
 
 Use the actor-qualified wrapper for all command examples below. Subcommand names
 in prose are not permission to use bare `bd`. Keep any existing Dolt/UI listeners
 loopback-bound; do not expose them or change network configuration to make a task
 or check succeed.
+
+The repository's automatic read-only consistency observer is separate: it uses
+an explicitly inherited `BEADS_ACTOR`, or defaults to `consistency-hook` when
+none is provided. That internal audit identity is not an agent task-owner or a
+permitted identity for interactive claims, comments, status changes, or delivery.
+Do not rename or transfer existing `codex`/`claude-code` assignments merely
+because work continues in OpenCode. Verify the current task and session handoff
+under the procedure below before any ownership transfer; retain phase status and
+record session/workspace correlation separately from the actor.
 
 ## Automatic backup warnings
 

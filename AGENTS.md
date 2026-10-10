@@ -179,7 +179,7 @@ providers.
 | CEv1 provider, normally Neo4j MCP | Evidence gates and authorized records | Follow Evidence's scoped failure/fallback rules; never silently skip a required gate or bypass MCP access |
 | Project-memory provider | Optional durable project context | Continue from repository sources; memory availability does not control evidence gates |
 | CodeGraph | Indexed symbols and call paths | Follow Toolchain's workspace-bound index policy. When the canonical main workspace has opted in, topic entry may initialize or synchronize that topic worktree's own index. Never query, copy, or symlink another workspace's index; use scoped source inspection when unavailable or unsuitable. |
-| Repository Beads consistency Hook | Stop-time coordination diagnostics | Validate the subject, content state, and active scope before reconciling; a report alone does not authorize unrelated work |
+| Repository Beads consistency Hook | Stop-time coordination diagnostics; OpenCode V2 uses post-execution synthetic continuation | Validate the subject, content state, and active scope before reconciling; a report alone does not authorize unrelated work |
 
 CodeGraph indexes are bound to one workspace's content state. Branching owns
 entry-time preparation for topic worktrees; Toolchain owns synchronization,

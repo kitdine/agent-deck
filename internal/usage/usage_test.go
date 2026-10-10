@@ -4934,7 +4934,7 @@ func TestScanRecoversClaudeSessionStartOnUpgradeAndKeepsItAcrossRewrite(t *testi
 	}
 
 	// Rewind to a version-6 store: scanned, but with no start captured.
-	if _, err = database.Exec(ctx, `UPDATE usage_source_files SET parser_version=?, session_started_at='' WHERE path=?`, usageParserVersion-1, source); err != nil {
+	if _, err = database.Exec(ctx, `UPDATE usage_source_files SET parser_version=6, session_started_at='' WHERE path=?`, source); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = database.Exec(ctx, `UPDATE usage_sessions SET started_at=''`); err != nil {

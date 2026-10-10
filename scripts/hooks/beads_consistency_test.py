@@ -19,6 +19,17 @@ SPEC.loader.exec_module(MODULE)
 
 
 class ProjectWorkspacePolicyTest(unittest.TestCase):
+    def test_opencode_actor_is_client_bound_not_model_or_hook_identity(self) -> None:
+        beads = (ROOT / ".agent-instructions/beads.md").read_text(encoding="utf-8")
+        toolchain = (ROOT / ".agent-instructions/toolchain.md").read_text(encoding="utf-8")
+        self.assertIn("| OpenCode, with any model/provider | `opencode` |", beads)
+        self.assertIn('env BEADS_ACTOR=opencode "$beads_cli" list --status in_review --json', beads)
+        self.assertIn("not `codex`", beads)
+        self.assertIn("not `claude-code`", beads)
+        self.assertIn("That internal audit identity is not an agent task-owner", beads)
+        self.assertIn("Do not rename or transfer existing", beads)
+        self.assertIn("OpenCode uses `BEADS_ACTOR=opencode`", toolchain)
+
     def test_development_requires_project_entry_without_global_skill_mandate(self) -> None:
         agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
         branching = (ROOT / ".agent-instructions/branching.md").read_text(
@@ -60,8 +71,8 @@ class SessionScopeTest(unittest.TestCase):
         with mock.patch.object(MODULE, "selected_scope", return_value={"topic": "current", "subject": "tasks.md"}):
             self.event("UserPromptSubmit", prompt="评审：current / tasks.md", **kwargs)
 
-    def test_current_scope_blocks_in_both_runtimes(self) -> None:
-        for runtime in ("codex", "claude"):
+    def test_current_scope_reports_in_all_runtimes(self) -> None:
+        for runtime in ("codex", "claude", "opencode"):
             with self.subTest(runtime=runtime):
                 self.select(runtime=runtime)
                 with mock.patch.object(MODULE, "findings", return_value=["current mismatch"]) as scan:
@@ -100,6 +111,7 @@ class SessionScopeTest(unittest.TestCase):
         with mock.patch.object(MODULE, "findings") as scan:
             self.event("Stop", session="b")
             self.event("Stop", runtime="claude")
+            self.event("Stop", runtime="opencode")
             self.event("Stop", turn="old")
             scan.assert_not_called()
 
@@ -175,6 +187,7 @@ class SessionScopeTest(unittest.TestCase):
         event = {"turn_id": "turn", "prompt_id": "prompt"}
         self.assertEqual(MODULE.event_turn(event, "codex"), "turn")
         self.assertEqual(MODULE.event_turn(event, "claude"), "prompt")
+        self.assertEqual(MODULE.event_turn(event, "opencode"), "prompt")
         self.assertIsNone(MODULE.event_turn({"turn_id": 123}, "codex"))
 
     def test_explicit_audit_is_nonblocking_without_session_state(self) -> None:
@@ -199,6 +212,24 @@ class SessionScopeTest(unittest.TestCase):
         self.assertTrue(MODULE.in_scope("docs/topics/current/reviews/alpha.md", scope))
         self.assertFalse(MODULE.in_scope("docs/topics/current/reviews/beta.md", scope))
         self.assertFalse(MODULE.in_scope("docs/topics/other/reviews/alpha.md", scope))
+
+    def test_opencode_uses_installed_parser_without_executing_phase_hook(self) -> None:
+        parser = self.root / ".agentdeck/hooks/development-workflow/workflow_hook.py"
+        parser.parent.mkdir(parents=True)
+        parser.write_text(
+            "INVOCATION_PREFIXES = ()\n"
+            "COMMAND_ROUTES = {'评审': 'REVIEW'}\n"
+            "def route_prompt(prompt):\n"
+            "    return 'REVIEW' if prompt.startswith('评审：') else None\n"
+        )
+        with (
+            mock.patch.object(Path, "home", return_value=self.root),
+            mock.patch.dict(MODULE.os.environ),
+        ):
+            MODULE.os.environ.pop("AGENTDECK_WORKFLOW_HOOK", None)
+            self.assertEqual(MODULE.selected_scope("评审：current / tasks.md", "opencode"),
+                             {"topic": "current", "subject": "tasks.md"})
+            self.assertIsNone(MODULE.selected_scope("Explain hooks", "opencode"))
 
 
 class ReviewTaskOwnershipTest(unittest.TestCase):
