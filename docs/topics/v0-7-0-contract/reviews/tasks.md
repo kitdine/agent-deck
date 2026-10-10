@@ -211,3 +211,144 @@ Task checkpoint：`ad-v0-7-0-contract-doc-tasks-design`；上述最终 fingerpri
 
 下一实施任务为 `assemble`；须先授权交付本次契约文档，并具备至少一个完整
 成员的集成就绪结果。整体 PR/合并仍等待两个实施任务通过独立评审及适用门禁。
+
+## Round 3 — 2026-10-09
+
+## 📋 版本候选登记与当前契约计划独立复评
+
+📊 综合评分：9/10
+
+✅ 复评结论：PASS
+
+- Reviewer: OpenCode 独立子代理，模型 `openai/gpt-6.1-sol`，与主会话同模型；
+  冷上下文 session `ses_ede6bff4bffeFLzW5XlLLAo8F6`。
+- Method: 一轮只读独立复评；主代理参与过候选登记的位置纠正，不冒充独立
+  reviewer。独立子代理只收集材料，主代理对原文、历史 finding、固定 Git
+  元数据和验证结果直接核验后签发本记录，并负责 CEv1 与 Beads。
+- Scope: 当前完整 `tasks.md`、`V070-PR-F1` 的闭合/回归情况、OpenCode 版本
+  feature 登记、四成员与部分集成、依赖/验收及整体交付边界；不审未启动的
+  功能设计/实现，不授权修复或 Git 交付。
+- Reviewed input: HEAD `9a000b39244c2fc61708bf6f8aee9eed592b876c`；
+  document blob `8941ef59ad0745bc566b0e9494cc82b712c6d9e9`；
+  正文 SHA-256 `a0866441b44b4a30fc2ba21bd0ba865ca0750f04b9179763399922c66f49f612`；
+  fingerprint `9f41a32a8418fdf1b09a953f43f0e2064cff6efaf1a560c2a1b397eae3630884`。
+  起止身份匹配；冻结材料只用于此次只读检查，不作为持久引用。
+
+### 🔴 严重问题 — 必须修复
+
+无。没有仍开放、回归或新增的 in-scope finding。
+
+### 🟡 改进建议 — 建议处理
+
+无。未将尚未授权的功能架构、预算、账户接入或实现分解当作本版本登记的
+缺陷，也未把候选登记误认成第五个已批准的实施成员。
+
+### 🟢 优点
+
+- `V070-PR-F1` — CLOSED，无回归、无替代项。输入 `tasks.md:249–257`
+  保留文档只可授权提交/推送主题分支、整体 PR/合并等待两个 aggregate Task
+  独立评审及 VERIFIED 的边界；`:316–320`、`:347–350` 没有恢复提前
+  contract 合并依赖，`:266–273` 区分成员集成与 contract 最终交付。
+- 输入 `tasks.md:66–92` 只登记 `opencode-support` 的 v0.7.0 意向，明确
+  不创建功能目录、分支/工作树、设计文档或实施派工；环境工具链迁移不冒充
+  OpenCode 产品支持。实际没有 `docs/topics/opencode-support/`。
+- 四个既有选定成员、价格最低输入、辅助隔离和扫描/恢复联合验收要求均保留；
+  输入 `:205–239` 把具体功能预算及实现契约留给 owning feature。
+- 输入 `:277–308` 的 Codex 部分集成有明确 source/target/result 身份和剩余
+  验收限制，两个 aggregate Task 仍未勾选；发布仍须另行授权和 L4 证据。
+
+### 📝 总结
+
+| Finding | 本轮处置 | 当前依据 |
+| --- | --- | --- |
+| V070-PR-F1 | CLOSED；无回归 | 文档交付、成员集成、整体交付和两个实施任务前置条件仍符合用户既有边界 |
+
+没有新增 finding。主代理核对了独立材料中的关键原文；本轮 PASS 仅评价
+版本计划与登记边界，不能证明任何未设计的功能、整体版本或实际账户额度
+已经可用。输入中的 Version 7 来源恢复和 Version 8 parser/replay 机制不是
+同一语义，未构成可证实矛盾。
+
+用户另行选择保留主工作区 Codex PR #58 的 roadmap/status 同步；主工作区
+仍有这两份其他任务的未提交更新，但没有 OpenCode 登记目录或引用残留。
+其他操作在复评期间将 main 快进到 PR #58 并撤下这两处原有文字；主代理
+按用户明确的保留选择恢复原有 Codex 状态文字，不引入 OpenCode 登记，
+不修改产品或版本计划语义。没有继续维护环境准备记录，没有进行 Git 交付。
+
+#### Evidence
+
+- 复用已完整加载的工作区、Branching、Documentation Workflow、Project Rules、
+  Review Records 和既有 Round 1/2；不改写历史记录或重新签发旧状态的结论。
+- 主代理以固定 SHA 查询 GitHub merge `b450704bc43807487a51a777a90dc4f8793d30dc`：
+  tree `f31e51805a2c4fe83bc921035ce1579f6afc75f6`，两父提交分别为
+  `ecd2bd1076498db042df32ab7f9d6c8f88ae1c06` 与
+  `b07848fe920dcaa2d93f9d11e4e92188f6ee6261`，与计划的集成记录一致。
+  没有为本计划重复生产回归、安装或实时 CI 认证。
+- 实时 document carrier 为 `ad-v0-7-0-contract-doc-tasks-design`。历史闭合
+  和 `9a000b3` 交付评论明确排除后来的未提交 OpenCode 登记；本轮复用同一
+  carrier，从 closed/unassigned 受保护地恢复到 in_review/opencode，不创建
+  新 Task。评论首次只读查询超时，扩大执行窗口后成功；没有重启服务或
+  重放写入来掩盖错误。
+- 最终 task 状态转为 awaiting_commit、清空 reviewer assignment 的写入已获
+  DB 响应；交接评论 `409fd24d-5498-51b2-8b38-36d5ec3e8635` 已确认写入。
+  随后的实时回读先超时，扩大一次窗口后返回 Dolt Unix socket i/o timeout /
+  invalid connection。仅最后回读受限；没有重复状态/评论写入，没有重启服务。
+  该故障未否定 CEv1；当时尚未核验数据库恢复后的 live 状态。
+  后续用户授权文档提交/推送时，既有 wrapper 回读成功，确认该载体为
+  awaiting_commit、未指派；没有重放任何状态或评论写入。
+- scope、document_set、l0 三项 required criterion 与既有命名和 requires
+  关系一致。初次固定 gate 查询为 NOT_VERIFIED / missing_target_state；三项
+  都缺当前目标证据，旧 observations 的 target_matches=false。invalidated 与
+  unresolved 列表为空，不把这当作新目标通过。
+- 独立子代理检查了输入状态的主题文档集、文档结构和 diff；主代理的最终状态
+  检查和 status-only 同步后的内容身份将在完成证据处记录。
+- 复评期间其他操作将目标分支 HEAD 推进到
+  `251c4d76ba8f3f8b9291ec8361a8c7a142951bbc`（合入 main）。主代理没有
+  执行该 merge。与独立冻结输入逐字对比，当前 `tasks.md` 只改变 Documents
+  Review 及登记段落的复评状态/记录链接，没有改变成员、候选意向、任务、
+  验收或交付边界。两 HEAD 之间的 Branching、Documentation Workflow、
+  Review Records、Evidence、主产品契约和文档检查脚本未改变；新增运行时
+  wiring 与已记录的 Codex 修复不改变本计划判断。采用显式 preserves 与
+  target-bound roll-up，不因为 HEAD 变化重开独立复评或把旧观察直接改绑。
+- 主代理以固定 SHA 读取归档修复记录，blob
+  `c8b48d8fa1272a2e23b05abb0202ed8d1e31eab4`：正文明确 parser version
+  提升至 8、Version 7 的 Codex 来源定向恢复、其他来源不受影响；支持本轮
+  对两种版本语义的核验。仍不重复证明原生/真实规模的未完成验收。
+
+#### Completion evidence
+
+Completion gate: VERIFIED
+
+WorkUnit: `urn:cev1:github.com/kitdine/agent-deck:work-unit:v0-7-0-contract:tasks.md`。
+当前 PASS 已成立；最终状态 HEAD
+`251c4d76ba8f3f8b9291ec8361a8c7a142951bbc`，document blob
+`2c7de9282d78a59ea36e7fde7b1ae43b888d8c9f`，fingerprint
+`ac404374b1c1783f1a52586a9ba4e55b5d5771aafad76c37978d054745b19aea`，
+ContentState
+`urn:cev1:github.com/kitdine/agent-deck:content-state:ac404374b1c1783f1a52586a9ba4e55b5d5771aafad76c37978d054745b19aea`。
+采用既有 `sha256(head=<HEAD>;document=<blob>)` recipe。最终 HEAD 上的
+`python3 scripts/check-docs.py` 通过（包括 whitespace、diff、主题文档集和链接），
+`python3 scripts/check-review-records.py --base HEAD docs/topics/v0-7-0-contract/reviews/tasks.md`
+通过。状态同步只影响复评标记和入口文字；独立输入 scope observation 仍绑定原
+输入，通过显式 change/preserves 和 final-state roll-up 复用。document_set 与
+l0 为当前目标的直接证据，没有重标旧 observation。
+
+八个新节点写入后逐项读回确认八个身份/属性；十一条关系预检全部 ok，MCP
+报告十一条关系创建。固定 `gate-status.cypher` 回读当前 exact target 为
+VERIFIED，scope、document_set、l0 三项各有一条有效当前目标证据，missing、
+invalidated 和 unresolved 均为空。旧 WorkUnit 的历史交付元数据不被改写成
+新候选已交付，不查询或声明版本 aggregate completion。
+
+#### Task checkpoint
+
+Task: `ad-v0-7-0-contract-doc-tasks-design`；内容只包括本主题 `tasks.md` 的
+候选登记/复评状态和 `reviews/tasks.md` Round 3；不包含 main 的其他更新。
+当前 required gate VERIFIED 3/3，待显式授权的文档交付；本轮不自动提交。
+
+提交建议：最终 required gate VERIFIED 后，经显式授权提交本主题两份文档；
+历史贡献与本轮主代理/独立 reviewer 的角色需按项目规则分别核对。
+
+推送建议：显式授权并核对提交对象、签名及必要检查后，仅推送
+`feature/v0-7-0-contract`；不创建整体 PR，不合并 main。
+
+后续仍由既有 `assemble` 与版本收尾任务承接四个选定成员。OpenCode 仍只是
+登记项，本次文档复评不授予其设计/开发，不声称 aggregate Task 或版本完成。

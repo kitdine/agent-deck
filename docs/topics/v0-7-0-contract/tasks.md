@@ -63,6 +63,35 @@ Historical v0.6.0 subscription-plan carriers `ad-v070` / `ad-v070-plan` are
 superseded records, not this iteration's dispatch or approval. Preserve their
 history and use `ad-v070-iteration` for this plan's coordination.
 
+## Feature registration — 2026-10-09 (not started)
+
+The operator proposed `opencode-support` for `v0.7.0`. This is a version-local
+feature registration only: feature design and development have not started.
+Do not create `docs/topics/opencode-support/`, a feature branch/worktree,
+requirements/UX/architecture/decomposition documents, or implementation dispatch
+from this registration. The existing planning reference is `ad-opencode-support`;
+this entry grants no task claim or phase authorization.
+
+| Proposed feature | Target version | Recorded intent | State |
+| --- | --- | --- | --- |
+| OpenCode V2 support (`opencode-support`) | `v0.7.0` | Read project/session/provider/model/token usage and investigate ChatGPT account quota. Keep local usage, estimated reference cost and shared account quota distinct. | Registered only; no feature design or development |
+
+API versus offline access, credentials/account isolation, token/cache semantics,
+duplicate accounting, worktree attribution, affected surfaces and acceptance
+remain decisions for a separately authorized feature design. No real credential
+access, service change, provider/login management, extension inventory, backup,
+Antigravity/Linux/multi-device support, or Git delivery is authorized here.
+Project Hook/Skill adaptation is already separate tooling work, not evidence
+that this proposed product feature is implemented.
+
+The four previously reviewed selected areas below are not silently replaced or
+expanded by this candidate registration. Historical review records retain their
+original content identities. The registration and current contract document
+passed independent [Round 3](reviews/tasks.md#round-3--2026-10-09) re-review;
+the Documents review checkbox refers to this document only, not feature design
+or development. Formal membership changes follow this contract's existing
+authorization and review boundary.
+
 ## Selected membership
 
 The following four areas are selected in this draft for contract review.
