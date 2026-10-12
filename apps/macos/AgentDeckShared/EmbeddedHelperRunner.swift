@@ -520,8 +520,13 @@ public struct EmbeddedHelperRunner: Sendable {
 			)
 			throw error
 		}
+		let scanInterval = DesktopPerformanceInterval()
 		try await scanIndexes(executableURL: executableURL, refreshID: refreshID, progress: progress)
+		DesktopLogger.recordPerformance(scanInterval.sample(.scanRequest))
+		let drainInterval = DesktopPerformanceInterval()
 		try await waitForCompletedScanWorkerToReleaseLock()
+		DesktopLogger.recordPerformance(drainInterval.sample(.workerDrain))
+		let requestInterval = DesktopPerformanceInterval()
 		let requestStartedAt = Date()
 		let output: HelperProcessLinesOutput
         do {
@@ -565,6 +570,7 @@ public struct EmbeddedHelperRunner: Sendable {
 			stderrTruncated: output.stderrTruncated,
 			errorCode: desktopHelperErrorCode(stderr: output.stderr)
 		)
+		DesktopLogger.recordPerformance(requestInterval.sample(.snapshotRequest))
 		guard !output.stdoutLineTruncated, !output.stderrTruncated else {
 			DesktopLogger.recordRefreshFailure(
 				id: refreshID,
@@ -583,8 +589,10 @@ public struct EmbeddedHelperRunner: Sendable {
         }
 
 		do {
+			let decodeInterval = DesktopPerformanceInterval()
 			let payload = try decodeDesktopSnapshotStream(output.stdoutLines)
 			let envelope = try decodeDesktopWireEnvelopeV1(payload)
+			DesktopLogger.recordPerformance(decodeInterval.sample(.snapshotDecode))
 			DesktopLogger.recordRefreshFinish(
 				id: refreshID,
 				durationMilliseconds: elapsedMilliseconds(since: refreshStartedAt),
@@ -654,6 +662,12 @@ public struct EmbeddedHelperRunner: Sendable {
 				throw HelperExecutionError.outputLimitExceeded
 			}
 			guard output.exitStatus == 0 else {
+				// Only codes/counts enter the trace; raw helper output stays private.
+				let lines: [Data] = output.stderr.split(separator: 10)
+				let line = lines.last ?? output.stderr
+				let code = (try? JSONDecoder().decode(DesktopHelperErrorProbe.self, from: line))?.error?.code ?? "unclassified"
+				DesktopPerformanceTrace.recordFailure(DesktopPerformanceFailure(stage: .scanRequest, code: code,
+					exitStatus: output.exitStatus, stdoutBytes: output.stdoutBytes, stderrBytes: output.stderr.count))
 				throw HelperExecutionError.nonZeroExit(output.exitStatus)
 			}
 			_ = try decodeDesktopScanEventStream(output.stdoutLines)
@@ -1912,7 +1926,9 @@ public final class DesktopRefreshCoordinator {
 		let defaultPriority: QuotaRequestPriority = trigger.quotaIsManual ? .manual : .periodic
 		let priority = QuotaRequestPriority.merged(pendingQuotaPriority, defaultPriority)
 		pendingQuotaPriority = nil
+		let quotaInterval = DesktopPerformanceInterval()
 		_ = await runQuotaOperation(priority: priority, mode: .deferToFull(generation: currentGeneration))
+		DesktopLogger.recordPerformance(quotaInterval.sample(.quota))
 		fullQuotaPhaseCompleted = true
 		guard currentGeneration == generation, !Task.isCancelled else { return }
 
@@ -2046,11 +2062,13 @@ public final class DesktopRefreshCoordinator {
 			return
 		}
 
+		let publicationInterval = DesktopPerformanceInterval()
 		latestSnapshot = envelope
 		scanProgress = nil
 		state = .ready(envelope)
 		fullAttempt = .succeeded(generation: generation, completedAt: wallNow())
 		await publishWidgetSnapshot(envelope)
+		DesktopLogger.recordPerformance(publicationInterval.sample(.publication))
 		scheduleSuccessReset(generation: generation)
 	}
 

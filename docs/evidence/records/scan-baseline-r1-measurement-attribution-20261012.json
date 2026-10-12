@@ -1,0 +1,16 @@
+{
+  "id": "scan-baseline-r1-measurement-attribution-20261012",
+  "kind": "evidence",
+  "profile": "agentdeck-git-evidence/v1",
+  "namespace": "github.com/kitdine/agent-deck",
+  "actor": "opencode",
+  "recorded_at": "2026-10-12T03:13:36Z",
+  "contract": "scan-baseline-contract-r1-20261012",
+  "state": "scan-baseline-state-r1-20261012",
+  "criterion": "measurement-attribution",
+  "outcome": "fail",
+  "method": "Independent scoped review and focused checks; full facts and commands in docs/topics/scan-performance/reviews/baseline-and-open-path.md",
+  "facts": "SP-R1-F1 actual Python loop AST statements rewrite controlled source while simulated worker lock remains, before first restore_state idle check; both observation booleans true. SP-R1-F2 start -> old baselineFrame including synchronous OCR -> await refresh -> new frame end includes old OCR despite exclusion claim. No claim of measured real-corpus corruption or quantified OCR share.",
+  "depends_on": [],
+  "supersedes": []
+}

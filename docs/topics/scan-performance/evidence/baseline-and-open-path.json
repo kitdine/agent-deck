@@ -1,0 +1,1724 @@
+{
+  "kind": "scan-performance-task1-e0-record-v1",
+  "work_unit_id": "scan-performance:baseline-and-open-path",
+  "repository": "github.com/kitdine/agent-deck",
+  "head": "14078ec7c2ca9fb19e22a30177dfc5ece2729c48",
+  "scope": "baseline-and-open-path only; no serving/bootstrap/projection/parser/statistics change",
+  "engine_initial": {
+    "kind": "scan-performance-e0-v1",
+    "input": {
+      "kind": "captured_jsonl_plus_synthetic_delta_source",
+      "files": 5365,
+      "bytes": 3473828548,
+      "corpus_sha256": "94ffd266985c64f6025e9a2c2975e417d90d9ade33d673391f886e40cc272ee7",
+      "digest_recipe": "SHA256(sorted size:content-SHA256 joined by LF without final LF)",
+      "delta_sha256": "63694376973799b5ebd23a7569aa4a2d49d9d97384984a2b317f1608a8a77dc4",
+      "frozen_at_utc": "2026-10-10T04:20:58Z",
+      "capture_consistency": "per-file bounded prefix at its initial size; not a global filesystem snapshot"
+    },
+    "identity": {
+      "helper_sha256": "0b7a668d4a540dd8708ef9bb1392c09a5cbb32306cb493e7a17a3a6dc305121f",
+      "app_executable_sha256": "46662cc4f72522a7f723627b9cb93dd2533d9ca74789ceb128694607b584d2a5",
+      "harness_sha256": "bf12514b2901a42bd38a593700473d440dcd9bc5cd47de984cc4787c5eaab9cf",
+      "timezone": "America/New_York",
+      "locale": "en",
+      "default_panel": "quota",
+      "otel": "off",
+      "head": "14078ec7c2ca9fb19e22a30177dfc5ece2729c48",
+      "files_sha256": {
+        "go.mod": "b702f0c0cd98a623e9591401d7c69e121912287c2d11691c33865dbfa801dc4c",
+        "go.sum": "343429c5d5a5ff09170bab9aea46b0910312c29e8dabae84f7156290d98840b7",
+        "vendor/modules.txt": "d8f450522dbc13b563b4384c5a68b50efd6e47d3d0ffd898c0179f21809b9cd2",
+        "apps/macos/Package.swift": "c70870c6d6f599840e6ede0c354ad3b8f11dfd427b114da9386f9aa70be62983",
+        "apps/macos/AgentDeck.xcodeproj/project.pbxproj": "cbfa7b0355cf6ef9454072a234792e071d2f109d7a63b29f29ec13716ef5af63",
+        "cmd/agentdeck/main.go": "5736fbc548727fa0a2e03757ffba633b98cd8892fd7636995e0c26692b126ebf",
+        "internal/scanruntime/scanruntime.go": "57b03682129beee86b76493f7be07dbd8d3033fab6c390d7364b7cee11bca555",
+        "internal/scanruntime/profile_test.go": "c25cf36eedf3730f17cb2485a8c9800a13b39fd5d1cba30dbb28bfc0dc8f3191",
+        "internal/ingest/ingest.go": "27f4ed28504a75cc43180bc2f16776bff0097b9276cbfdc65b023442d47221e5",
+        "internal/ingest/metrics.go": "b609a456498d00924f6a272538c7712d185feb2d44611e9801c5b51e461c099e",
+        "internal/usage/usage.go": "c4ef2c722e258855b3ebe85aecb3a130bc7e808e45675b0b9e125a77428eb142",
+        "internal/session/session.go": "a4b29e080985c0097b549af3efed2c5cf1e56f218773039eb732925f8f7f6b2e",
+        "internal/store/store.go": "4ea9e5fabcdd3795440be4835a02c1c769201189c28e0ae3fedea490de65acb0",
+        "internal/desktop/desktop.go": "967a4958f59d5f5fee78feb9ca653dcc7a8f8d247fbf0be05fd354416dd217a8",
+        "internal/desktop/derived_cache.go": "fad5c2034d99bbb27c82e81f209a52c1c34f161a1b8199716325b7dab742d6b6",
+        "apps/macos/AgentDeckShared/DesktopLog.swift": "16972717f6fa608846ee29912502fbae978c5cb0266b7b1f052e039f6d3cc8f5",
+        "apps/macos/AgentDeckShared/EmbeddedHelperRunner.swift": "1300661eca961bd9e215c8df2aaa0c92efc95b9d62c22cd7efc1ca285a8ab66f",
+        "apps/macos/AgentDeckApp/AgentDeckApp.swift": "ee7f5f4451b74df609c28841a41f1b9dfbd6479148ba24b176eaf22d59ae7676",
+        "apps/macos/AgentDeckApp/MenuBarItemController.swift": "ae8c29575ba51946b728beb7ad61180bac0e05ef83d332e292a010810cfd32a7",
+        "apps/macos/AgentDeckApp/MenuBarViewModel.swift": "cebbbc8eba7932ecc21c833663897096c35c36e1e49efdb1efe7e4b18259c73c"
+      },
+      "macos": "26.7.1",
+      "architecture": "x86_64",
+      "toolchain": {
+        "go": "go version go1.27.1 darwin/amd64",
+        "xcode": "Xcode 26.4\nBuild version 17E192",
+        "swift": "Apple Swift version 6.3 (swiftlang-6.3.0.123.5 clang-2100.0.123.102)\nTarget: x86_64-apple-macosx26.0"
+      },
+      "worker_profile": "AGENTDECK_SCAN_PROFILE=1; aggregate atomic counters, no source identifiers",
+      "home_alias": "Foundation-standardized /tmp alias for CLI and App; one fixed source path across samples",
+      "debug_delegate_lifetime": "retained through NSApplication.run in isolated baseline mode",
+      "launch_transport": "LaunchServices open -n -W with explicit isolated environment",
+      "click_stimulus": "NSApplication activation then status-item performClick action; not a global physical mouse event",
+      "versions": {
+        "usage_parser": 8,
+        "session_parser": 6,
+        "core_schema": 30
+      },
+      "business_window": {
+        "start": "2026-10-10T00:00:00-04:00",
+        "end": "2026-10-11T00:00:00-04:00"
+      },
+      "database_schemas": {
+        "sessions.sqlite3": {
+          "pragma_user_version": 0,
+          "ddl_sha256": "a86dd1a00b0f8c6992bd388b69b150f8f66e8bd376212e6f1f0b6d25109ff6ff"
+        },
+        "agentdeck.sqlite3": {
+          "pragma_user_version": 0,
+          "ddl_sha256": "7fe77e33de0b9ca8afc73390622c409625c240fb1497f3b3b0184cb1ea55ac42"
+        }
+      }
+    },
+    "samples": [
+      {
+        "pair": 0,
+        "condition": "empty",
+        "starting_database_sha256": {},
+        "native_not_run": true,
+        "scan_ms": 138545.4756,
+        "snapshot_ms": 497.953483,
+        "data_ready_ms": 139043.429083,
+        "scan": {
+          "discovery_ms": 93,
+          "usage_ms": 124935,
+          "session_ms": 128820,
+          "derived_cache_ms": 8444,
+          "total_ms": 137903,
+          "worker_cpu_time_ms": 219201,
+          "worker_peak_rss_bytes": 370204672,
+          "ingestion": {
+            "average_open_readers": 2.7779030853110287,
+            "budget_wait_ms": 108373.321802,
+            "decode_ms": 37563.757381,
+            "peak_open_readers": 12,
+            "read_bytes": 3473828548,
+            "read_calls": 13333,
+            "read_ms": 19463.740361,
+            "session_send_ms": 20571.30046,
+            "source_lifetime_ms": 381309.194695,
+            "usage_send_ms": 301941.940051
+          }
+        },
+        "snapshot_sha256": "efb577b9f5f2e4f92df5d1a4c8b9af981c46c2e72e3ccd500aa65bb4705113fd"
+      },
+      {
+        "pair": 0,
+        "condition": "today_imported",
+        "starting_database_sha256": {
+          "sessions.sqlite3": "7f3b7bc8a767cc0b50d468a05ca2dc13276c31906461a64d1e73ba8e6af40d9f",
+          "agentdeck.sqlite3": "620547ab455d0cd907557e3b042825f4d48638514769245463ae65b6f3bb97f3"
+        },
+        "native_not_run": true,
+        "scan_ms": 7661.65274,
+        "snapshot_ms": 458.486728,
+        "data_ready_ms": 8120.139468,
+        "scan": {
+          "discovery_ms": 70,
+          "usage_ms": 137,
+          "session_ms": 146,
+          "derived_cache_ms": 6940,
+          "total_ms": 7471,
+          "worker_cpu_time_ms": 8468,
+          "worker_peak_rss_bytes": 309858304,
+          "ingestion": {
+            "average_open_readers": 0,
+            "budget_wait_ms": 0,
+            "decode_ms": 0,
+            "peak_open_readers": 0,
+            "read_bytes": 0,
+            "read_calls": 0,
+            "read_ms": 0,
+            "session_send_ms": 0,
+            "source_lifetime_ms": 0,
+            "usage_send_ms": 0
+          }
+        },
+        "snapshot_sha256": "1a3508704d9518c325adcc081d833ef20052485e90835e0ce7a590c62262aa72"
+      },
+      {
+        "pair": 0,
+        "condition": "history_today_missing",
+        "starting_database_sha256": {
+          "sessions.sqlite3": "c7f845527066494c97222a199b0f053736864b1ce8e7866386cf40a7f1f018b9",
+          "agentdeck.sqlite3": "47a1bb648d08f9901e677f75565f30f74759a1607e097b96516dd2a97882a9db"
+        },
+        "native_not_run": true,
+        "scan_ms": 14869.748273,
+        "snapshot_ms": 484.877441,
+        "data_ready_ms": 15354.625714,
+        "scan": {
+          "discovery_ms": 68,
+          "usage_ms": 4390,
+          "session_ms": 6884,
+          "derived_cache_ms": 7120,
+          "total_ms": 14680,
+          "worker_cpu_time_ms": 15798,
+          "worker_peak_rss_bytes": 650874880,
+          "ingestion": {
+            "average_open_readers": 0.31555640861452877,
+            "budget_wait_ms": 4248.448673,
+            "decode_ms": 53.017501,
+            "peak_open_readers": 2,
+            "read_bytes": 3879096,
+            "read_calls": 8,
+            "read_ms": 23.465302,
+            "session_send_ms": 4083.05562,
+            "source_lifetime_ms": 4419.547597,
+            "usage_send_ms": 258.424509
+          }
+        },
+        "snapshot_sha256": "9e2ad3ed3a8dc85716189a5f555d4db6610288340f19d9bfa5849dc4144cebd4"
+      },
+      {
+        "pair": 0,
+        "condition": "imported_warm_engine",
+        "starting_database_sha256": {
+          "sessions.sqlite3": "54937303d7ac924db86496ec143b388a6543f068e1c035c8aedaa4bb78f2c443",
+          "agentdeck.sqlite3": "b0c1a137c579ead242ddbbd1d1ac02757a2be793932eac51f43dd56f0a6ca502"
+        },
+        "native_not_run": true,
+        "scan_ms": 7949.728163,
+        "snapshot_ms": 460.112658,
+        "data_ready_ms": 8409.840821,
+        "scan": {
+          "discovery_ms": 64,
+          "usage_ms": 152,
+          "session_ms": 162,
+          "derived_cache_ms": 7224,
+          "total_ms": 7764,
+          "worker_cpu_time_ms": 8737,
+          "worker_peak_rss_bytes": 306450432,
+          "ingestion": {
+            "average_open_readers": 0,
+            "budget_wait_ms": 0,
+            "decode_ms": 0,
+            "peak_open_readers": 0,
+            "read_bytes": 0,
+            "read_calls": 0,
+            "read_ms": 0,
+            "session_send_ms": 0,
+            "source_lifetime_ms": 0,
+            "usage_send_ms": 0
+          }
+        },
+        "snapshot_sha256": "f8627bee7c6211008f1b5be451d59b7a8ebf93d0f671d2f7468ba2f309dffe39",
+        "original_condition": "saved_display"
+      },
+      {
+        "pair": 1,
+        "condition": "imported_warm_engine",
+        "starting_database_sha256": {
+          "sessions.sqlite3": "f4a88c79e4a4ad1ccf1cc41df24f3eb6a6ca31bbc7526789777f1ee4b4f33242",
+          "agentdeck.sqlite3": "446756eae4f305a9b50ef1006244e60f27ddc980f281fed3a6041d6ca0e7abee"
+        },
+        "native_not_run": true,
+        "scan_ms": 7713.827793,
+        "snapshot_ms": 453.183402,
+        "data_ready_ms": 8167.011195,
+        "scan": {
+          "discovery_ms": 65,
+          "usage_ms": 147,
+          "session_ms": 158,
+          "derived_cache_ms": 6990,
+          "total_ms": 7527,
+          "worker_cpu_time_ms": 8579,
+          "worker_peak_rss_bytes": 306507776,
+          "ingestion": {
+            "average_open_readers": 0,
+            "budget_wait_ms": 0,
+            "decode_ms": 0,
+            "peak_open_readers": 0,
+            "read_bytes": 0,
+            "read_calls": 0,
+            "read_ms": 0,
+            "session_send_ms": 0,
+            "source_lifetime_ms": 0,
+            "usage_send_ms": 0
+          }
+        },
+        "snapshot_sha256": "a039d0ae310ac2e63f7d5d548b61c5332e2ef5ac9be6a8df8235e4b7349f235a",
+        "original_condition": "saved_display"
+      },
+      {
+        "pair": 1,
+        "condition": "history_today_missing",
+        "starting_database_sha256": {
+          "sessions.sqlite3": "c7f845527066494c97222a199b0f053736864b1ce8e7866386cf40a7f1f018b9",
+          "agentdeck.sqlite3": "47a1bb648d08f9901e677f75565f30f74759a1607e097b96516dd2a97882a9db"
+        },
+        "native_not_run": true,
+        "scan_ms": 14506.263889,
+        "snapshot_ms": 459.426615,
+        "data_ready_ms": 14965.690504,
+        "scan": {
+          "discovery_ms": 62,
+          "usage_ms": 3916,
+          "session_ms": 6359,
+          "derived_cache_ms": 7204,
+          "total_ms": 14304,
+          "worker_cpu_time_ms": 15319,
+          "worker_peak_rss_bytes": 713994240,
+          "ingestion": {
+            "average_open_readers": 0.29059201569896487,
+            "budget_wait_ms": 3785.19302,
+            "decode_ms": 46.916571,
+            "peak_open_readers": 2,
+            "read_bytes": 3879096,
+            "read_calls": 8,
+            "read_ms": 18.851705,
+            "session_send_ms": 3623.872867,
+            "source_lifetime_ms": 3941.811784,
+            "usage_send_ms": 250.489901
+          }
+        },
+        "snapshot_sha256": "0f98ac890307f08307edb0b9cdc7d49e86a67856d498252a5a7777e130d6f142"
+      },
+      {
+        "pair": 1,
+        "condition": "today_imported",
+        "starting_database_sha256": {
+          "sessions.sqlite3": "29cf66bea74adbcc2c933435059f063dcf51c9fcf7949d990579e129d725f0fb",
+          "agentdeck.sqlite3": "dce58ca23c6c7326259c689f0e3527ae7276e3f42931ca8806c38134f4bf437f"
+        },
+        "native_not_run": true,
+        "scan_ms": 8485.081849,
+        "snapshot_ms": 473.924243,
+        "data_ready_ms": 8959.006092,
+        "scan": {
+          "discovery_ms": 82,
+          "usage_ms": 167,
+          "session_ms": 178,
+          "derived_cache_ms": 7598,
+          "total_ms": 8257,
+          "worker_cpu_time_ms": 9379,
+          "worker_peak_rss_bytes": 305213440,
+          "ingestion": {
+            "average_open_readers": 0,
+            "budget_wait_ms": 0,
+            "decode_ms": 0,
+            "peak_open_readers": 0,
+            "read_bytes": 0,
+            "read_calls": 0,
+            "read_ms": 0,
+            "session_send_ms": 0,
+            "source_lifetime_ms": 0,
+            "usage_send_ms": 0
+          }
+        },
+        "snapshot_sha256": "ea082f0c06b5f6a4e4378465c4babcfd48e0771226976fca2e8163d0ed27f1e4"
+      },
+      {
+        "pair": 1,
+        "condition": "empty",
+        "starting_database_sha256": {},
+        "native_not_run": true,
+        "scan_ms": 141576.131776,
+        "snapshot_ms": 1082.084351,
+        "data_ready_ms": 142658.216127,
+        "scan": {
+          "discovery_ms": 63,
+          "usage_ms": 124664,
+          "session_ms": 129616,
+          "derived_cache_ms": 11088,
+          "total_ms": 141442,
+          "worker_cpu_time_ms": 224159,
+          "worker_peak_rss_bytes": 440123392,
+          "ingestion": {
+            "average_open_readers": 2.833946072564462,
+            "budget_wait_ms": 106420.254079,
+            "decode_ms": 37374.828998,
+            "peak_open_readers": 12,
+            "read_bytes": 3473828548,
+            "read_calls": 13333,
+            "read_ms": 19692.733393,
+            "session_send_ms": 20582.321033,
+            "source_lifetime_ms": 398750.407504,
+            "usage_send_ms": 319351.799909
+          }
+        },
+        "snapshot_sha256": "a1ec34ddfd5740f2f109dfccea3a0fe88152d3dbd33a0e98c9736d02e9a696f4"
+      },
+      {
+        "pair": 2,
+        "condition": "empty",
+        "starting_database_sha256": {},
+        "native_not_run": true,
+        "scan_ms": 145661.565896,
+        "snapshot_ms": 634.186456,
+        "data_ready_ms": 146295.75235199998,
+        "scan": {
+          "discovery_ms": 78,
+          "usage_ms": 127961,
+          "session_ms": 132064,
+          "derived_cache_ms": 12562,
+          "total_ms": 145460,
+          "worker_cpu_time_ms": 230242,
+          "worker_peak_rss_bytes": 397643776,
+          "ingestion": {
+            "average_open_readers": 2.890575807593247,
+            "budget_wait_ms": 108670.401923,
+            "decode_ms": 38235.543731,
+            "peak_open_readers": 12,
+            "read_bytes": 3473828548,
+            "read_calls": 13333,
+            "read_ms": 20070.72281,
+            "session_send_ms": 21083.150267,
+            "source_lifetime_ms": 418056.213951,
+            "usage_send_ms": 336927.003958
+          }
+        },
+        "snapshot_sha256": "13b3e3ddfc840518bb2f7fbb1620907867c7cc97d75228ebb29e6dbc6fb9a6ef"
+      },
+      {
+        "pair": 2,
+        "condition": "today_imported",
+        "starting_database_sha256": {
+          "sessions.sqlite3": "77d892c81717f42d7da31d394db49854b262a68a61e86f0630f85cbb999d0395",
+          "agentdeck.sqlite3": "dbf1e3cbfdf90e788db89e57727e832ffd86a4d61d457f4e3d4711f9c77088ce"
+        },
+        "native_not_run": true,
+        "scan_ms": 13290.329059,
+        "snapshot_ms": 697.092641,
+        "data_ready_ms": 13987.421699999999,
+        "scan": {
+          "discovery_ms": 141,
+          "usage_ms": 253,
+          "session_ms": 270,
+          "derived_cache_ms": 12191,
+          "total_ms": 13098,
+          "worker_cpu_time_ms": 13981,
+          "worker_peak_rss_bytes": 307208192,
+          "ingestion": {
+            "average_open_readers": 0,
+            "budget_wait_ms": 0,
+            "decode_ms": 0,
+            "peak_open_readers": 0,
+            "read_bytes": 0,
+            "read_calls": 0,
+            "read_ms": 0,
+            "session_send_ms": 0,
+            "source_lifetime_ms": 0,
+            "usage_send_ms": 0
+          }
+        },
+        "snapshot_sha256": "d87eac90445fe7da6f9a35074370cb79aad917fc0f1b3df93b0d291d2c2f1057"
+      },
+      {
+        "pair": 2,
+        "condition": "history_today_missing",
+        "starting_database_sha256": {
+          "sessions.sqlite3": "c7f845527066494c97222a199b0f053736864b1ce8e7866386cf40a7f1f018b9",
+          "agentdeck.sqlite3": "47a1bb648d08f9901e677f75565f30f74759a1607e097b96516dd2a97882a9db"
+        },
+        "native_not_run": true,
+        "scan_ms": 28063.899903,
+        "snapshot_ms": 901.986054,
+        "data_ready_ms": 28965.885957000002,
+        "scan": {
+          "discovery_ms": 141,
+          "usage_ms": 8163,
+          "session_ms": 13511,
+          "derived_cache_ms": 12778,
+          "total_ms": 27843,
+          "worker_cpu_time_ms": 28094,
+          "worker_peak_rss_bytes": 704868352,
+          "ingestion": {
+            "average_open_readers": 0.31388057242536327,
+            "budget_wait_ms": 7812.704928,
+            "decode_ms": 133.002551,
+            "peak_open_readers": 2,
+            "read_bytes": 3879096,
+            "read_calls": 8,
+            "read_ms": 36.645033,
+            "session_send_ms": 7211.327011,
+            "source_lifetime_ms": 8252.20558,
+            "usage_send_ms": 867.502093
+          }
+        },
+        "snapshot_sha256": "223c7283ce5bf84b982a8bfe6cc2715517c9791d4bea630cd92c7cff3945945a"
+      },
+      {
+        "pair": 2,
+        "condition": "imported_warm_engine",
+        "starting_database_sha256": {
+          "sessions.sqlite3": "75d4eb0c3f62299b6c0cbee8915766c9b76917c322d17a3465eb145f6b325c77",
+          "agentdeck.sqlite3": "d613e154edd11452be14b0e013024677e25978bb528d7c190b77a3d11b82df0a"
+        },
+        "native_not_run": true,
+        "scan_ms": 14709.55155,
+        "snapshot_ms": 929.98116,
+        "data_ready_ms": 15639.53271,
+        "scan": {
+          "discovery_ms": 145,
+          "usage_ms": 253,
+          "session_ms": 270,
+          "derived_cache_ms": 13471,
+          "total_ms": 14411,
+          "worker_cpu_time_ms": 14998,
+          "worker_peak_rss_bytes": 306495488,
+          "ingestion": {
+            "average_open_readers": 0,
+            "budget_wait_ms": 0,
+            "decode_ms": 0,
+            "peak_open_readers": 0,
+            "read_bytes": 0,
+            "read_calls": 0,
+            "read_ms": 0,
+            "session_send_ms": 0,
+            "source_lifetime_ms": 0,
+            "usage_send_ms": 0
+          }
+        },
+        "snapshot_sha256": "1d12d0718e0039f592d3a8c9a50991e2e79c32434b377cb000ad9074d76844a5",
+        "original_condition": "saved_display"
+      }
+    ],
+    "probes": [
+      {
+        "condition": "empty",
+        "elapsed_ms": 109902.859285,
+        "scan": {
+          "discovery_ms": 57,
+          "usage_ms": 96667,
+          "session_ms": 100745,
+          "derived_cache_ms": 8328,
+          "total_ms": 109713,
+          "worker_cpu_time_ms": 173663,
+          "worker_peak_rss_bytes": 372596736,
+          "ingestion": {
+            "average_open_readers": 2.7899656538058926,
+            "budget_wait_ms": 82986.303934,
+            "decode_ms": 28300.73073,
+            "peak_open_readers": 12,
+            "read_bytes": 3473828548,
+            "read_calls": 13333,
+            "read_ms": 13942.636848,
+            "session_send_ms": 16605.157486,
+            "source_lifetime_ms": 304312.181169,
+            "usage_send_ms": 243959.47619
+          }
+        }
+      },
+      {
+        "condition": "today_imported_readonly",
+        "elapsed_ms": 477.703706,
+        "snapshot_sha256": "83772e25148b0e9aa6fb0b94a6715a153f1b2d83e0626c70f75d247b53afdcf3"
+      }
+    ],
+    "limitations": [
+      "Pilot baseline; not E1 or >=100 native-tail acceptance",
+      "Native endpoint is visible NSPopover AppKit bitmap draw, validated by in-memory numeric OCR; not compositor photon timing",
+      "Polling contributes up to 10ms to first data readiness; OCR is excluded from native frame elapsed time",
+      "No configured official quota credentials in the isolated home; default quota surface is exercised, no live quota network timing",
+      "Saved display uses the current App Group publication; current App does not restore it at startup",
+      "Parallel worker durations overlap and must not be summed",
+      "Page cache is not purged; worker peak RSS is lifetime peak",
+      "Synthetic delta refresh is explicit; watcher/event delivery belongs to later tasks"
+    ],
+    "saved_display_seed": {
+      "not_run": "cli_only_no_native_claim"
+    },
+    "record_correction": "CLI-only fourth condition had no native/saved-display claim; original label preserved. Synthetic source in this initial capture lacked turn_id and was ignored by existing parser; real-source measurements retain this original identity."
+  },
+  "native_bound_baseline": {
+    "kind": "scan-performance-e0-v1",
+    "input": {
+      "kind": "reused_frozen_capture_plus_synthetic_delta_source",
+      "files": 5365,
+      "bytes": 3473828576,
+      "corpus_sha256": "aafe23063c3e858f076694b611b14e1309383b1ad2c26f26b1c4eedb1822e1d2",
+      "digest_recipe": "SHA256(sorted size:content-SHA256 joined by LF without final LF)",
+      "delta_sha256": "26445bec3da07581cd32c8e7f158b90b196d655fa06f50f78440b15856d256eb",
+      "frozen_at_utc": "2026-10-10T05:43:16Z",
+      "capture_consistency": "per-file bounded prefix at its initial size; not a global filesystem snapshot"
+    },
+    "identity": {
+      "helper_sha256": "0b7a668d4a540dd8708ef9bb1392c09a5cbb32306cb493e7a17a3a6dc305121f",
+      "app_executable_sha256": "d360892c7e185a9fe7a2a664c7401a831fc8ae87b462c189628fb5905a5731f0",
+      "harness_sha256": "d3655bdfd0052394d47ba3c73093e0f4bb9bc4dedefd906e3ca8042b57eedb92",
+      "timezone": "America/New_York",
+      "locale": "en",
+      "default_panel": "quota",
+      "otel": "off",
+      "head": "14078ec7c2ca9fb19e22a30177dfc5ece2729c48",
+      "files_sha256": {
+        "go.mod": "b702f0c0cd98a623e9591401d7c69e121912287c2d11691c33865dbfa801dc4c",
+        "go.sum": "343429c5d5a5ff09170bab9aea46b0910312c29e8dabae84f7156290d98840b7",
+        "vendor/modules.txt": "d8f450522dbc13b563b4384c5a68b50efd6e47d3d0ffd898c0179f21809b9cd2",
+        "apps/macos/Package.swift": "c70870c6d6f599840e6ede0c354ad3b8f11dfd427b114da9386f9aa70be62983",
+        "apps/macos/AgentDeck.xcodeproj/project.pbxproj": "cbfa7b0355cf6ef9454072a234792e071d2f109d7a63b29f29ec13716ef5af63",
+        "cmd/agentdeck/main.go": "5736fbc548727fa0a2e03757ffba633b98cd8892fd7636995e0c26692b126ebf",
+        "internal/scanruntime/scanruntime.go": "57b03682129beee86b76493f7be07dbd8d3033fab6c390d7364b7cee11bca555",
+        "internal/scanruntime/profile_test.go": "cb64d0faef3716acb686c10514a47f953459d7d8c6758f9ec56b7db9a816ca12",
+        "internal/ingest/ingest.go": "27f4ed28504a75cc43180bc2f16776bff0097b9276cbfdc65b023442d47221e5",
+        "internal/ingest/metrics.go": "b609a456498d00924f6a272538c7712d185feb2d44611e9801c5b51e461c099e",
+        "internal/usage/usage.go": "c4ef2c722e258855b3ebe85aecb3a130bc7e808e45675b0b9e125a77428eb142",
+        "internal/session/session.go": "a4b29e080985c0097b549af3efed2c5cf1e56f218773039eb732925f8f7f6b2e",
+        "internal/store/store.go": "4ea9e5fabcdd3795440be4835a02c1c769201189c28e0ae3fedea490de65acb0",
+        "internal/desktop/desktop.go": "967a4958f59d5f5fee78feb9ca653dcc7a8f8d247fbf0be05fd354416dd217a8",
+        "internal/desktop/derived_cache.go": "fad5c2034d99bbb27c82e81f209a52c1c34f161a1b8199716325b7dab742d6b6",
+        "apps/macos/AgentDeckShared/DesktopLog.swift": "16972717f6fa608846ee29912502fbae978c5cb0266b7b1f052e039f6d3cc8f5",
+        "apps/macos/AgentDeckShared/EmbeddedHelperRunner.swift": "1300661eca961bd9e215c8df2aaa0c92efc95b9d62c22cd7efc1ca285a8ab66f",
+        "apps/macos/AgentDeckApp/AgentDeckApp.swift": "ee7f5f4451b74df609c28841a41f1b9dfbd6479148ba24b176eaf22d59ae7676",
+        "apps/macos/AgentDeckApp/MenuBarItemController.swift": "17f7ffacf0e766ce469eec211cc5f3f5f6d0e36d25285e16f0dc97d4cf5d4805",
+        "apps/macos/AgentDeckApp/MenuBarViewModel.swift": "cebbbc8eba7932ecc21c833663897096c35c36e1e49efdb1efe7e4b18259c73c"
+      },
+      "macos": "26.7.1",
+      "architecture": "x86_64",
+      "toolchain": {
+        "go": "go version go1.27.1 darwin/amd64",
+        "xcode": "Xcode 26.4\nBuild version 17E192",
+        "swift": "Apple Swift version 6.3 (swiftlang-6.3.0.123.5 clang-2100.0.123.102)\nTarget: x86_64-apple-macosx26.0"
+      },
+      "worker_profile": "AGENTDECK_SCAN_PROFILE=1; aggregate atomic counters, no source identifiers",
+      "home_alias": "Foundation-standardized /tmp alias for CLI and App; one fixed source path across samples",
+      "debug_delegate_lifetime": "retained through NSApplication.run in isolated baseline mode",
+      "launch_transport": "LaunchServices open -n -W with explicit isolated environment",
+      "click_stimulus": "NSApplication activation then status-item performClick action; not a global physical mouse event",
+      "versions": {
+        "usage_parser": 8,
+        "session_parser": 6,
+        "core_schema": 30
+      },
+      "business_window": {
+        "start": "2026-10-10T00:00:00-04:00",
+        "end": "2026-10-11T00:00:00-04:00"
+      },
+      "database_schemas": {
+        "sessions.sqlite3": {
+          "pragma_user_version": 0,
+          "ddl_sha256": "a86dd1a00b0f8c6992bd388b69b150f8f66e8bd376212e6f1f0b6d25109ff6ff"
+        },
+        "agentdeck.sqlite3": {
+          "pragma_user_version": 0,
+          "ddl_sha256": "7fe77e33de0b9ca8afc73390622c409625c240fb1497f3b3b0184cb1ea55ac42"
+        }
+      }
+    },
+    "samples": [
+      {
+        "pair": 0,
+        "condition": "empty",
+        "starting_database_sha256": {},
+        "version": 1,
+        "frames": [],
+        "droppedStages": 0,
+        "latestDataChanged": false,
+        "nativeEnvironment": {
+          "hasScreens": true,
+          "statusButtonHasWindow": true,
+          "appIsActive": false
+        },
+        "readyClickRequired": false,
+        "helperFailures": [],
+        "initialClickRouted": false,
+        "failure": "embedded_helper_timed_out",
+        "initialDataPresent": false,
+        "executed_app_sha256": "d360892c7e185a9fe7a2a664c7401a831fc8ae87b462c189628fb5905a5731f0",
+        "executed_helper_sha256": "0b7a668d4a540dd8708ef9bb1392c09a5cbb32306cb493e7a17a3a6dc305121f",
+        "whole_process_ms": 121399.186553,
+        "whole_process_is_launch_latency": false,
+        "observed_stage_summary": {
+          "presentation": {
+            "count": 33,
+            "total_nanoseconds": 500183,
+            "maximum_nanoseconds": 319557
+          },
+          "quota": {
+            "count": 1,
+            "total_nanoseconds": 300967508,
+            "maximum_nanoseconds": 300967508
+          }
+        },
+        "observed_stage_summary_complete": true,
+        "individual_stage_events_retained": false
+      },
+      {
+        "pair": 0,
+        "condition": "today_imported",
+        "starting_database_sha256": {
+          "sessions.sqlite3": "8f3bf89f3fc609a8f796d3209c45e51d7917b6419450ca74fe821289f69f8655",
+          "agentdeck.sqlite3": "9c8bb98ce8c249284420777cd9e6e682f58ffeb729f779ce4030decb8df7d7dd"
+        },
+        "frames": [
+          {
+            "panel": "quota",
+            "elapsedNanoseconds": 13390288202,
+            "valid": true
+          },
+          {
+            "panel": "quota",
+            "elapsedNanoseconds": 1426052612,
+            "valid": true
+          },
+          {
+            "panel": "usage",
+            "elapsedNanoseconds": 3000515532,
+            "valid": true
+          },
+          {
+            "panel": "breakdown",
+            "elapsedNanoseconds": 1886141920,
+            "valid": true
+          },
+          {
+            "panel": "attribution",
+            "elapsedNanoseconds": 2033606363,
+            "valid": true
+          },
+          {
+            "panel": "sessions",
+            "elapsedNanoseconds": 2167067539,
+            "valid": true
+          },
+          {
+            "panel": "update_previous",
+            "elapsedNanoseconds": 993025983,
+            "valid": true
+          },
+          {
+            "panel": "update_latest",
+            "elapsedNanoseconds": 28149701146,
+            "valid": true
+          }
+        ],
+        "droppedStages": 3834,
+        "readyClickRequired": false,
+        "initialDataPresent": false,
+        "nativeEnvironment": {
+          "hasScreens": true,
+          "statusButtonHasWindow": true,
+          "appIsActive": true
+        },
+        "initialClickRouted": true,
+        "helperFailures": [],
+        "latestDataChanged": true,
+        "version": 1,
+        "launchToDataNanoseconds": 13390288202,
+        "executed_app_sha256": "d360892c7e185a9fe7a2a664c7401a831fc8ae87b462c189628fb5905a5731f0",
+        "executed_helper_sha256": "0b7a668d4a540dd8708ef9bb1392c09a5cbb32306cb493e7a17a3a6dc305121f",
+        "whole_process_ms": 63311.00978,
+        "whole_process_is_launch_latency": false,
+        "observed_stage_summary": {
+          "presentation": {
+            "count": 1016,
+            "total_nanoseconds": 827830590,
+            "maximum_nanoseconds": 1865075
+          },
+          "popoverOpen": {
+            "count": 2,
+            "total_nanoseconds": 1180500522,
+            "maximum_nanoseconds": 1007830789
+          },
+          "quota": {
+            "count": 1,
+            "total_nanoseconds": 323278696,
+            "maximum_nanoseconds": 323278696
+          },
+          "scanRequest": {
+            "count": 1,
+            "total_nanoseconds": 9584695288,
+            "maximum_nanoseconds": 9584695288
+          },
+          "workerDrain": {
+            "count": 1,
+            "total_nanoseconds": 1018759923,
+            "maximum_nanoseconds": 1018759923
+          },
+          "snapshotRequest": {
+            "count": 1,
+            "total_nanoseconds": 563911232,
+            "maximum_nanoseconds": 563911232
+          },
+          "snapshotDecode": {
+            "count": 1,
+            "total_nanoseconds": 21929531,
+            "maximum_nanoseconds": 21929531
+          },
+          "publication": {
+            "count": 1,
+            "total_nanoseconds": 3054751068,
+            "maximum_nanoseconds": 3054751068
+          }
+        },
+        "observed_stage_summary_complete": false,
+        "individual_stage_events_retained": false
+      },
+      {
+        "pair": 0,
+        "condition": "history_today_missing",
+        "starting_database_sha256": {
+          "sessions.sqlite3": "c7f845527066494c97222a199b0f053736864b1ce8e7866386cf40a7f1f018b9",
+          "agentdeck.sqlite3": "7195d44e64f2f61fa03e4c346d48214c203ffe2ca6675e22fb5b44a6227c189a"
+        },
+        "nativeEnvironment": {
+          "hasScreens": true,
+          "appIsActive": true,
+          "statusButtonHasWindow": true
+        },
+        "initialDataPresent": false,
+        "helperFailures": [],
+        "initialClickRouted": false,
+        "launchToDataNanoseconds": 32520545341,
+        "version": 1,
+        "latestDataChanged": true,
+        "frames": [
+          {
+            "panel": "quota",
+            "valid": true,
+            "elapsedNanoseconds": 32520545341
+          },
+          {
+            "panel": "quota",
+            "valid": true,
+            "elapsedNanoseconds": 2650965735
+          },
+          {
+            "panel": "usage",
+            "valid": true,
+            "elapsedNanoseconds": 3209023270
+          },
+          {
+            "panel": "breakdown",
+            "valid": true,
+            "elapsedNanoseconds": 2804099844
+          },
+          {
+            "panel": "attribution",
+            "valid": true,
+            "elapsedNanoseconds": 2120388730
+          },
+          {
+            "panel": "sessions",
+            "valid": true,
+            "elapsedNanoseconds": 2210102696
+          },
+          {
+            "panel": "update_previous",
+            "valid": true,
+            "elapsedNanoseconds": 976382015
+          },
+          {
+            "panel": "update_latest",
+            "valid": true,
+            "elapsedNanoseconds": 24549109495
+          }
+        ],
+        "droppedStages": 3970,
+        "readyClickRequired": true,
+        "executed_app_sha256": "d360892c7e185a9fe7a2a664c7401a831fc8ae87b462c189628fb5905a5731f0",
+        "executed_helper_sha256": "0b7a668d4a540dd8708ef9bb1392c09a5cbb32306cb493e7a17a3a6dc305121f",
+        "whole_process_ms": 82968.554165,
+        "whole_process_is_launch_latency": false,
+        "observed_stage_summary": {
+          "presentation": {
+            "count": 1016,
+            "total_nanoseconds": 1077581857,
+            "maximum_nanoseconds": 2437347
+          },
+          "quota": {
+            "count": 1,
+            "total_nanoseconds": 251763497,
+            "maximum_nanoseconds": 251763497
+          },
+          "scanRequest": {
+            "count": 1,
+            "total_nanoseconds": 27503108365,
+            "maximum_nanoseconds": 27503108365
+          },
+          "workerDrain": {
+            "count": 1,
+            "total_nanoseconds": 1049468522,
+            "maximum_nanoseconds": 1049468522
+          },
+          "snapshotRequest": {
+            "count": 1,
+            "total_nanoseconds": 694078525,
+            "maximum_nanoseconds": 694078525
+          },
+          "snapshotDecode": {
+            "count": 1,
+            "total_nanoseconds": 27820896,
+            "maximum_nanoseconds": 27820896
+          },
+          "publication": {
+            "count": 1,
+            "total_nanoseconds": 61747726,
+            "maximum_nanoseconds": 61747726
+          },
+          "popoverOpen": {
+            "count": 2,
+            "total_nanoseconds": 3002513479,
+            "maximum_nanoseconds": 1738849491
+          }
+        },
+        "observed_stage_summary_complete": false,
+        "individual_stage_events_retained": false
+      },
+      {
+        "pair": 0,
+        "condition": "saved_display",
+        "starting_database_sha256": {
+          "sessions.sqlite3": "0fea4b14f82dde21fd8cc241acffc4a8f8718de89af9433ac81a840d8dce9f8a",
+          "agentdeck.sqlite3": "6a3ab5ec84d4c25d7f122a133f502bf9b7444ac2bf4a05b0c906bc1a3e85b541"
+        },
+        "launchToDataNanoseconds": 13827050536,
+        "helperFailures": [],
+        "nativeEnvironment": {
+          "hasScreens": true,
+          "appIsActive": true,
+          "statusButtonHasWindow": true
+        },
+        "initialClickRouted": true,
+        "readyClickRequired": false,
+        "droppedStages": 3834,
+        "frames": [
+          {
+            "valid": true,
+            "elapsedNanoseconds": 13827050536,
+            "panel": "quota"
+          },
+          {
+            "valid": true,
+            "elapsedNanoseconds": 1443204982,
+            "panel": "quota"
+          },
+          {
+            "valid": true,
+            "elapsedNanoseconds": 2760922256,
+            "panel": "usage"
+          },
+          {
+            "valid": true,
+            "elapsedNanoseconds": 1954910199,
+            "panel": "breakdown"
+          },
+          {
+            "valid": true,
+            "elapsedNanoseconds": 2013955314,
+            "panel": "attribution"
+          },
+          {
+            "valid": true,
+            "elapsedNanoseconds": 2198538133,
+            "panel": "sessions"
+          },
+          {
+            "valid": true,
+            "elapsedNanoseconds": 1188134742,
+            "panel": "update_previous"
+          },
+          {
+            "elapsedNanoseconds": 26365635058,
+            "panel": "update_latest",
+            "valid": true
+          }
+        ],
+        "initialDataPresent": false,
+        "latestDataChanged": true,
+        "version": 1,
+        "executed_app_sha256": "d360892c7e185a9fe7a2a664c7401a831fc8ae87b462c189628fb5905a5731f0",
+        "executed_helper_sha256": "0b7a668d4a540dd8708ef9bb1392c09a5cbb32306cb493e7a17a3a6dc305121f",
+        "whole_process_ms": 61573.333544,
+        "whole_process_is_launch_latency": false,
+        "observed_stage_summary": {
+          "presentation": {
+            "count": 1016,
+            "total_nanoseconds": 759952101,
+            "maximum_nanoseconds": 1461348
+          },
+          "popoverOpen": {
+            "count": 2,
+            "total_nanoseconds": 1174841441,
+            "maximum_nanoseconds": 988055671
+          },
+          "quota": {
+            "count": 1,
+            "total_nanoseconds": 422772500,
+            "maximum_nanoseconds": 422772500
+          },
+          "scanRequest": {
+            "count": 1,
+            "total_nanoseconds": 10074110265,
+            "maximum_nanoseconds": 10074110265
+          },
+          "workerDrain": {
+            "count": 1,
+            "total_nanoseconds": 1006970235,
+            "maximum_nanoseconds": 1006970235
+          },
+          "snapshotRequest": {
+            "count": 1,
+            "total_nanoseconds": 568368437,
+            "maximum_nanoseconds": 568368437
+          },
+          "snapshotDecode": {
+            "count": 1,
+            "total_nanoseconds": 19818062,
+            "maximum_nanoseconds": 19818062
+          },
+          "publication": {
+            "count": 1,
+            "total_nanoseconds": 2793331414,
+            "maximum_nanoseconds": 2793331414
+          }
+        },
+        "observed_stage_summary_complete": false,
+        "individual_stage_events_retained": false
+      }
+    ],
+    "probes": [
+      {
+        "condition": "empty",
+        "elapsed_ms": 18338.461206,
+        "scan": {
+          "discovery_ms": 71,
+          "usage_ms": 4187,
+          "session_ms": 7196,
+          "derived_cache_ms": 10226,
+          "total_ms": 18148,
+          "worker_cpu_time_ms": 17698,
+          "worker_peak_rss_bytes": 687308800,
+          "ingestion": {
+            "average_open_readers": 0.2641528273672021,
+            "budget_wait_ms": 3227.378933,
+            "decode_ms": 51.320679,
+            "peak_open_readers": 2,
+            "read_bytes": 3879124,
+            "read_calls": 8,
+            "read_ms": 20.359144,
+            "session_send_ms": 3768.955841,
+            "source_lifetime_ms": 4602.393985,
+            "usage_send_ms": 760.277768
+          }
+        }
+      },
+      {
+        "condition": "today_imported_readonly",
+        "elapsed_ms": 598.850691,
+        "snapshot_sha256": "52ed96e1ca5c8bf21ee35b1c60bb418b515b8271eca49e0054d6905a1f3bd4f0"
+      }
+    ],
+    "limitations": [
+      "Pilot baseline; not E1 or >=100 native-tail acceptance",
+      "Native endpoint is visible NSPopover AppKit bitmap draw, validated by in-memory numeric OCR; not compositor photon timing",
+      "Polling contributes up to 10ms to first data readiness; OCR is excluded from native frame elapsed time",
+      "No configured official quota credentials in the isolated home; default quota surface is exercised, no live quota network timing",
+      "Saved display uses the current App Group publication; current App does not restore it at startup",
+      "Parallel worker durations overlap and must not be summed",
+      "Page cache is not purged; worker peak RSS is lifetime peak",
+      "Synthetic delta refresh is explicit; watcher/event delivery belongs to later tasks"
+    ],
+    "saved_display_seed": {
+      "version": 1,
+      "frames": [
+        {
+          "panel": "quota",
+          "elapsedNanoseconds": 4383595716,
+          "valid": true
+        },
+        {
+          "panel": "quota",
+          "elapsedNanoseconds": 1250584973,
+          "valid": true
+        },
+        {
+          "panel": "usage",
+          "elapsedNanoseconds": 2851367770,
+          "valid": true
+        },
+        {
+          "panel": "breakdown",
+          "elapsedNanoseconds": 1866809740,
+          "valid": true
+        },
+        {
+          "panel": "attribution",
+          "elapsedNanoseconds": 1997362087,
+          "valid": true
+        },
+        {
+          "panel": "sessions",
+          "elapsedNanoseconds": 2230289039,
+          "valid": true
+        }
+      ],
+      "helperFailures": [],
+      "nativeEnvironment": {
+        "statusButtonHasWindow": true,
+        "appIsActive": true,
+        "hasScreens": true
+      },
+      "latestDataChanged": false,
+      "launchToDataNanoseconds": 4383595716,
+      "initialClickRouted": true,
+      "droppedStages": 1960,
+      "readyClickRequired": false,
+      "initialDataPresent": false,
+      "executed_app_sha256": "d360892c7e185a9fe7a2a664c7401a831fc8ae87b462c189628fb5905a5731f0",
+      "executed_helper_sha256": "0b7a668d4a540dd8708ef9bb1392c09a5cbb32306cb493e7a17a3a6dc305121f",
+      "whole_process_ms": 23623.579547,
+      "whole_process_is_launch_latency": false,
+      "observed_stage_summary": {
+        "presentation": {
+          "count": 1016,
+          "total_nanoseconds": 753910561,
+          "maximum_nanoseconds": 1499194
+        },
+        "popoverOpen": {
+          "count": 2,
+          "total_nanoseconds": 1061325138,
+          "maximum_nanoseconds": 892417772
+        },
+        "quota": {
+          "count": 1,
+          "total_nanoseconds": 319278413,
+          "maximum_nanoseconds": 319278413
+        },
+        "scanRequest": {
+          "count": 1,
+          "total_nanoseconds": 816106732,
+          "maximum_nanoseconds": 816106732
+        },
+        "workerDrain": {
+          "count": 1,
+          "total_nanoseconds": 1028401183,
+          "maximum_nanoseconds": 1028401183
+        },
+        "snapshotRequest": {
+          "count": 1,
+          "total_nanoseconds": 491289708,
+          "maximum_nanoseconds": 491289708
+        },
+        "snapshotDecode": {
+          "count": 1,
+          "total_nanoseconds": 17764784,
+          "maximum_nanoseconds": 17764784
+        },
+        "publication": {
+          "count": 1,
+          "total_nanoseconds": 2864003300,
+          "maximum_nanoseconds": 2864003300
+        }
+      },
+      "observed_stage_summary_complete": false,
+      "individual_stage_events_retained": false
+    },
+    "reuse_assessment": {
+      "preserved": [
+        "source/data correctness",
+        "visible numeric frame validation",
+        "cold 120s helper timeout",
+        "old/new data separation"
+      ],
+      "not_reused": [
+        "truncated individual native stage attribution"
+      ],
+      "change": "Final capture aggregates presentation in a fixed eight-stage map; default click, helper, parser and statistics behavior unchanged."
+    }
+  },
+  "native_final_aggregate_verifier": {
+    "kind": "scan-performance-e0-v1",
+    "input": {
+      "kind": "reused_frozen_capture_plus_synthetic_delta_source",
+      "files": 5365,
+      "bytes": 3473828576,
+      "corpus_sha256": "f6f0e572e5d3b4fff867bede5e35b7afdf88c9e5f2b716d4ac4922dc4dfeb49d",
+      "digest_recipe": "SHA256(sorted size:content-SHA256 joined by LF without final LF)",
+      "delta_sha256": "dff10b4ec6cae2c1d2c6d95887bb8472ed7b85950d1973158057e02322b566be",
+      "frozen_at_utc": "2026-10-10T05:55:49Z",
+      "capture_consistency": "per-file bounded prefix at its initial size; not a global filesystem snapshot"
+    },
+    "identity": {
+      "helper_sha256": "0b7a668d4a540dd8708ef9bb1392c09a5cbb32306cb493e7a17a3a6dc305121f",
+      "app_executable_sha256": "0a440f3267c546e274f08aac1ad110d50108394e32cf566f30dcf3a9cdaa5f62",
+      "harness_sha256": "c8912191e8dc77d60565804f3a65ca70312609a4962a54f373a80cf51faaec77",
+      "timezone": "America/New_York",
+      "locale": "en",
+      "default_panel": "quota",
+      "otel": "off",
+      "head": "14078ec7c2ca9fb19e22a30177dfc5ece2729c48",
+      "files_sha256": {
+        "go.mod": "b702f0c0cd98a623e9591401d7c69e121912287c2d11691c33865dbfa801dc4c",
+        "go.sum": "343429c5d5a5ff09170bab9aea46b0910312c29e8dabae84f7156290d98840b7",
+        "vendor/modules.txt": "d8f450522dbc13b563b4384c5a68b50efd6e47d3d0ffd898c0179f21809b9cd2",
+        "apps/macos/Package.swift": "c70870c6d6f599840e6ede0c354ad3b8f11dfd427b114da9386f9aa70be62983",
+        "apps/macos/AgentDeck.xcodeproj/project.pbxproj": "cbfa7b0355cf6ef9454072a234792e071d2f109d7a63b29f29ec13716ef5af63",
+        "cmd/agentdeck/main.go": "5736fbc548727fa0a2e03757ffba633b98cd8892fd7636995e0c26692b126ebf",
+        "internal/scanruntime/scanruntime.go": "57b03682129beee86b76493f7be07dbd8d3033fab6c390d7364b7cee11bca555",
+        "internal/scanruntime/profile_test.go": "cb64d0faef3716acb686c10514a47f953459d7d8c6758f9ec56b7db9a816ca12",
+        "internal/ingest/ingest.go": "27f4ed28504a75cc43180bc2f16776bff0097b9276cbfdc65b023442d47221e5",
+        "internal/ingest/metrics.go": "b609a456498d00924f6a272538c7712d185feb2d44611e9801c5b51e461c099e",
+        "internal/usage/usage.go": "c4ef2c722e258855b3ebe85aecb3a130bc7e808e45675b0b9e125a77428eb142",
+        "internal/session/session.go": "a4b29e080985c0097b549af3efed2c5cf1e56f218773039eb732925f8f7f6b2e",
+        "internal/store/store.go": "4ea9e5fabcdd3795440be4835a02c1c769201189c28e0ae3fedea490de65acb0",
+        "internal/desktop/desktop.go": "967a4958f59d5f5fee78feb9ca653dcc7a8f8d247fbf0be05fd354416dd217a8",
+        "internal/desktop/derived_cache.go": "fad5c2034d99bbb27c82e81f209a52c1c34f161a1b8199716325b7dab742d6b6",
+        "apps/macos/AgentDeckShared/DesktopLog.swift": "c1396b3920c938f390283b913d893204429060088b40f3d4c1ddd7ce434c48e5",
+        "apps/macos/AgentDeckShared/EmbeddedHelperRunner.swift": "1300661eca961bd9e215c8df2aaa0c92efc95b9d62c22cd7efc1ca285a8ab66f",
+        "apps/macos/AgentDeckApp/AgentDeckApp.swift": "ee7f5f4451b74df609c28841a41f1b9dfbd6479148ba24b176eaf22d59ae7676",
+        "apps/macos/AgentDeckApp/MenuBarItemController.swift": "1d8937e5f3f6ed932ca9b3449a5cbd62f81e353a16ff99dfb7d1f61ccd3cf541",
+        "apps/macos/AgentDeckApp/MenuBarViewModel.swift": "cebbbc8eba7932ecc21c833663897096c35c36e1e49efdb1efe7e4b18259c73c"
+      },
+      "macos": "26.7.1",
+      "architecture": "x86_64",
+      "toolchain": {
+        "go": "go version go1.27.1 darwin/amd64",
+        "xcode": "Xcode 26.4\nBuild version 17E192",
+        "swift": "Apple Swift version 6.3 (swiftlang-6.3.0.123.5 clang-2100.0.123.102)\nTarget: x86_64-apple-macosx26.0"
+      },
+      "worker_profile": "AGENTDECK_SCAN_PROFILE=1; aggregate atomic counters, no source identifiers",
+      "home_alias": "Foundation-standardized /tmp alias for CLI and App; one fixed source path across samples",
+      "debug_delegate_lifetime": "retained through NSApplication.run in isolated baseline mode",
+      "launch_transport": "LaunchServices open -n -W with explicit isolated environment",
+      "click_stimulus": "NSApplication activation then status-item performClick action; not a global physical mouse event",
+      "versions": {
+        "usage_parser": 8,
+        "session_parser": 6,
+        "core_schema": 30
+      },
+      "business_window": {
+        "start": "2026-10-10T00:00:00-04:00",
+        "end": "2026-10-11T00:00:00-04:00"
+      },
+      "database_schemas": {
+        "sessions.sqlite3": {
+          "pragma_user_version": 0,
+          "ddl_sha256": "a86dd1a00b0f8c6992bd388b69b150f8f66e8bd376212e6f1f0b6d25109ff6ff"
+        },
+        "agentdeck.sqlite3": {
+          "pragma_user_version": 0,
+          "ddl_sha256": "7fe77e33de0b9ca8afc73390622c409625c240fb1497f3b3b0184cb1ea55ac42"
+        }
+      }
+    },
+    "samples": [
+      {
+        "pair": 0,
+        "condition": "today_imported",
+        "starting_database_sha256": {
+          "sessions.sqlite3": "dbeadad30accd66734731e565e66fb30cbd4c645f1a311b1fc197eefe294a171",
+          "agentdeck.sqlite3": "fdc9a55911250dfe743d48a57b018dde9dba716493cebd45671b0faced8a3e3b"
+        },
+        "version": 1,
+        "latestDataChanged": true,
+        "droppedStages": 0,
+        "helperFailures": [],
+        "frames": [
+          {
+            "elapsedNanoseconds": 14097399147,
+            "panel": "quota",
+            "valid": true
+          },
+          {
+            "elapsedNanoseconds": 1468256450,
+            "panel": "quota",
+            "valid": true
+          },
+          {
+            "elapsedNanoseconds": 4790271958,
+            "panel": "usage",
+            "valid": true
+          },
+          {
+            "elapsedNanoseconds": 2103962045,
+            "panel": "breakdown",
+            "valid": true
+          },
+          {
+            "elapsedNanoseconds": 2070023607,
+            "panel": "attribution",
+            "valid": true
+          },
+          {
+            "elapsedNanoseconds": 2183408414,
+            "panel": "sessions",
+            "valid": true
+          },
+          {
+            "elapsedNanoseconds": 969921386,
+            "panel": "update_previous",
+            "valid": true
+          },
+          {
+            "elapsedNanoseconds": 25773257782,
+            "panel": "update_latest",
+            "valid": true
+          }
+        ],
+        "stageAggregates": [
+          {
+            "maximumNanoseconds": 1311280540,
+            "totalNanoseconds": 5637667266,
+            "stage": "popoverOpen",
+            "count": 6
+          },
+          {
+            "maximumNanoseconds": 7619848,
+            "totalNanoseconds": 4825178181,
+            "stage": "presentation",
+            "count": 5021
+          },
+          {
+            "maximumNanoseconds": 3329787706,
+            "totalNanoseconds": 4199363223,
+            "stage": "publication",
+            "count": 2
+          },
+          {
+            "maximumNanoseconds": 865474772,
+            "totalNanoseconds": 1230402294,
+            "stage": "quota",
+            "count": 2
+          },
+          {
+            "maximumNanoseconds": 19529402125,
+            "totalNanoseconds": 29649043036,
+            "stage": "scanRequest",
+            "count": 2
+          },
+          {
+            "maximumNanoseconds": 21622504,
+            "totalNanoseconds": 37043111,
+            "stage": "snapshotDecode",
+            "count": 2
+          },
+          {
+            "maximumNanoseconds": 651361981,
+            "totalNanoseconds": 1260399111,
+            "stage": "snapshotRequest",
+            "count": 2
+          },
+          {
+            "maximumNanoseconds": 1014806499,
+            "totalNanoseconds": 2017944566,
+            "stage": "workerDrain",
+            "count": 2
+          }
+        ],
+        "nativeEnvironment": {
+          "statusButtonHasWindow": true,
+          "appIsActive": true,
+          "hasScreens": true
+        },
+        "launchToDataNanoseconds": 14097399147,
+        "initialClickRouted": true,
+        "readyClickRequired": false,
+        "initialDataPresent": false,
+        "executed_app_sha256": "0a440f3267c546e274f08aac1ad110d50108394e32cf566f30dcf3a9cdaa5f62",
+        "executed_helper_sha256": "0b7a668d4a540dd8708ef9bb1392c09a5cbb32306cb493e7a17a3a6dc305121f",
+        "whole_process_ms": 64248.152103,
+        "whole_process_is_launch_latency": false,
+        "individual_stage_events_retained": false
+      },
+      {
+        "pair": 0,
+        "condition": "saved_display",
+        "starting_database_sha256": {
+          "sessions.sqlite3": "e38e9d820e1390e2cb4cf2d3bd16baf3e6dde2c65016048fadc8d8f517c20777",
+          "agentdeck.sqlite3": "dfd70d915a78710a3ff7670eb888f9df061adc0e2b11ad9319d1dcdf7309a6b1"
+        },
+        "version": 1,
+        "helperFailures": [],
+        "stageAggregates": [
+          {
+            "stage": "popoverOpen",
+            "maximumNanoseconds": 1239742115,
+            "totalNanoseconds": 6080984439,
+            "count": 6
+          },
+          {
+            "stage": "presentation",
+            "maximumNanoseconds": 1839426,
+            "totalNanoseconds": 4117611816,
+            "count": 4790
+          },
+          {
+            "stage": "publication",
+            "maximumNanoseconds": 930670328,
+            "totalNanoseconds": 981604383,
+            "count": 2
+          },
+          {
+            "stage": "quota",
+            "maximumNanoseconds": 862438276,
+            "totalNanoseconds": 1036907354,
+            "count": 2
+          },
+          {
+            "stage": "scanRequest",
+            "maximumNanoseconds": 18961000347,
+            "totalNanoseconds": 28912676186,
+            "count": 2
+          },
+          {
+            "stage": "snapshotDecode",
+            "maximumNanoseconds": 23945370,
+            "totalNanoseconds": 41376736,
+            "count": 2
+          },
+          {
+            "stage": "snapshotRequest",
+            "maximumNanoseconds": 1051966192,
+            "totalNanoseconds": 1573555903,
+            "count": 2
+          },
+          {
+            "stage": "workerDrain",
+            "maximumNanoseconds": 1084599067,
+            "totalNanoseconds": 2090112228,
+            "count": 2
+          }
+        ],
+        "nativeEnvironment": {
+          "hasScreens": true,
+          "statusButtonHasWindow": true,
+          "appIsActive": true
+        },
+        "readyClickRequired": true,
+        "droppedStages": 0,
+        "initialClickRouted": false,
+        "latestDataChanged": true,
+        "frames": [
+          {
+            "panel": "quota",
+            "elapsedNanoseconds": 13954593728,
+            "valid": true
+          },
+          {
+            "panel": "quota",
+            "elapsedNanoseconds": 1992549618,
+            "valid": true
+          },
+          {
+            "panel": "usage",
+            "elapsedNanoseconds": 1846946025,
+            "valid": true
+          },
+          {
+            "panel": "breakdown",
+            "elapsedNanoseconds": 1997399635,
+            "valid": true
+          },
+          {
+            "panel": "attribution",
+            "elapsedNanoseconds": 1842934592,
+            "valid": true
+          },
+          {
+            "panel": "sessions",
+            "elapsedNanoseconds": 2159976716,
+            "valid": true
+          },
+          {
+            "panel": "update_previous",
+            "elapsedNanoseconds": 946868460,
+            "valid": true
+          },
+          {
+            "panel": "update_latest",
+            "elapsedNanoseconds": 25474320866,
+            "valid": true
+          }
+        ],
+        "initialDataPresent": false,
+        "launchToDataNanoseconds": 13954593728,
+        "executed_app_sha256": "0a440f3267c546e274f08aac1ad110d50108394e32cf566f30dcf3a9cdaa5f62",
+        "executed_helper_sha256": "0b7a668d4a540dd8708ef9bb1392c09a5cbb32306cb493e7a17a3a6dc305121f",
+        "whole_process_ms": 59966.761071,
+        "whole_process_is_launch_latency": false,
+        "individual_stage_events_retained": false
+      }
+    ],
+    "probes": [
+      {
+        "condition": "empty",
+        "elapsed_ms": 15096.857496,
+        "scan": {
+          "discovery_ms": 66,
+          "usage_ms": 3936,
+          "session_ms": 6819,
+          "derived_cache_ms": 7110,
+          "total_ms": 14540,
+          "worker_cpu_time_ms": 15483,
+          "worker_peak_rss_bytes": 561262592,
+          "ingestion": {
+            "average_open_readers": 0.31023693617856557,
+            "budget_wait_ms": 3040.817554,
+            "decode_ms": 48.128129,
+            "peak_open_readers": 2,
+            "read_bytes": 3879124,
+            "read_calls": 8,
+            "read_ms": 17.192985,
+            "session_send_ms": 3539.781241,
+            "source_lifetime_ms": 4321.587339,
+            "usage_send_ms": 714.724073
+          }
+        }
+      },
+      {
+        "condition": "today_imported_readonly",
+        "elapsed_ms": 808.942252,
+        "snapshot_sha256": "690701aad53e0e121448c26660c163a5e8b6c75c0e79aac60cd9fd201c3f2e5a"
+      }
+    ],
+    "limitations": [
+      "Pilot baseline; not E1 or >=100 native-tail acceptance",
+      "Native endpoint is visible NSPopover AppKit bitmap draw, validated by in-memory numeric OCR; not compositor photon timing",
+      "Polling contributes up to 10ms to first data readiness; OCR is excluded from native frame elapsed time",
+      "No configured official quota credentials in the isolated home; default quota surface is exercised, no live quota network timing",
+      "Saved display uses the current App Group publication; current App does not restore it at startup",
+      "Parallel worker durations overlap and must not be summed",
+      "Page cache is not purged; worker peak RSS is lifetime peak",
+      "Synthetic delta refresh is explicit; watcher/event delivery belongs to later tasks"
+    ],
+    "saved_display_seed": {
+      "initialDataPresent": false,
+      "stageAggregates": [
+        {
+          "totalNanoseconds": 5554663189,
+          "stage": "popoverOpen",
+          "count": 6,
+          "maximumNanoseconds": 1171518152
+        },
+        {
+          "totalNanoseconds": 2683599273,
+          "stage": "presentation",
+          "count": 2972,
+          "maximumNanoseconds": 1920450
+        },
+        {
+          "totalNanoseconds": 3194074223,
+          "stage": "publication",
+          "count": 1,
+          "maximumNanoseconds": 3194074223
+        },
+        {
+          "totalNanoseconds": 312887088,
+          "stage": "quota",
+          "count": 1,
+          "maximumNanoseconds": 312887088
+        },
+        {
+          "totalNanoseconds": 899870815,
+          "stage": "scanRequest",
+          "count": 1,
+          "maximumNanoseconds": 899870815
+        },
+        {
+          "totalNanoseconds": 20021532,
+          "stage": "snapshotDecode",
+          "count": 1,
+          "maximumNanoseconds": 20021532
+        },
+        {
+          "totalNanoseconds": 589727770,
+          "stage": "snapshotRequest",
+          "count": 1,
+          "maximumNanoseconds": 589727770
+        },
+        {
+          "totalNanoseconds": 1011073644,
+          "stage": "workerDrain",
+          "count": 1,
+          "maximumNanoseconds": 1011073644
+        }
+      ],
+      "version": 1,
+      "helperFailures": [],
+      "latestDataChanged": false,
+      "launchToDataNanoseconds": 4517237509,
+      "droppedStages": 0,
+      "frames": [
+        {
+          "valid": true,
+          "elapsedNanoseconds": 4517237509,
+          "panel": "quota"
+        },
+        {
+          "valid": true,
+          "elapsedNanoseconds": 1440938849,
+          "panel": "quota"
+        },
+        {
+          "valid": true,
+          "elapsedNanoseconds": 3086658411,
+          "panel": "usage"
+        },
+        {
+          "valid": true,
+          "elapsedNanoseconds": 2149505188,
+          "panel": "breakdown"
+        },
+        {
+          "valid": true,
+          "elapsedNanoseconds": 2017248470,
+          "panel": "attribution"
+        },
+        {
+          "valid": true,
+          "elapsedNanoseconds": 2237409756,
+          "panel": "sessions"
+        }
+      ],
+      "initialClickRouted": true,
+      "readyClickRequired": false,
+      "nativeEnvironment": {
+        "appIsActive": true,
+        "statusButtonHasWindow": true,
+        "hasScreens": true
+      },
+      "executed_app_sha256": "0a440f3267c546e274f08aac1ad110d50108394e32cf566f30dcf3a9cdaa5f62",
+      "executed_helper_sha256": "0b7a668d4a540dd8708ef9bb1392c09a5cbb32306cb493e7a17a3a6dc305121f",
+      "whole_process_ms": 25541.908319,
+      "whole_process_is_launch_latency": false,
+      "individual_stage_events_retained": false
+    }
+  },
+  "instrumentation_calibration": {
+    "kind": "instrumentation-profile-abba-v1",
+    "corpus_bytes": 16652592,
+    "corpus_sha256": "a88dd6c1164bb0baa0e255c1ead11791b171a57231f42b45dba2f2986e9f836c",
+    "helper_sha256": "0b7a668d4a540dd8708ef9bb1392c09a5cbb32306cb493e7a17a3a6dc305121f",
+    "samples": [
+      {
+        "pair": 0,
+        "profile": false,
+        "scan_ms": 703.669099,
+        "tokens": {
+          "cache_creation_tokens": 0,
+          "cache_read_tokens": 0,
+          "cache_write_1h_tokens": 0,
+          "cache_write_5m_tokens": 0,
+          "cache_write_tokens": 0,
+          "cached_input_tokens": 0,
+          "input_tokens": 1000,
+          "output_tokens": 10
+        }
+      },
+      {
+        "pair": 0,
+        "profile": true,
+        "scan_ms": 749.627571,
+        "tokens": {
+          "cache_creation_tokens": 0,
+          "cache_read_tokens": 0,
+          "cache_write_1h_tokens": 0,
+          "cache_write_5m_tokens": 0,
+          "cache_write_tokens": 0,
+          "cached_input_tokens": 0,
+          "input_tokens": 1000,
+          "output_tokens": 10
+        }
+      },
+      {
+        "pair": 1,
+        "profile": true,
+        "scan_ms": 851.349454,
+        "tokens": {
+          "cache_creation_tokens": 0,
+          "cache_read_tokens": 0,
+          "cache_write_1h_tokens": 0,
+          "cache_write_5m_tokens": 0,
+          "cache_write_tokens": 0,
+          "cached_input_tokens": 0,
+          "input_tokens": 1000,
+          "output_tokens": 10
+        }
+      },
+      {
+        "pair": 1,
+        "profile": false,
+        "scan_ms": 886.33887,
+        "tokens": {
+          "cache_creation_tokens": 0,
+          "cache_read_tokens": 0,
+          "cache_write_1h_tokens": 0,
+          "cache_write_5m_tokens": 0,
+          "cache_write_tokens": 0,
+          "cached_input_tokens": 0,
+          "input_tokens": 1000,
+          "output_tokens": 10
+        }
+      },
+      {
+        "pair": 2,
+        "profile": false,
+        "scan_ms": 674.981323,
+        "tokens": {
+          "cache_creation_tokens": 0,
+          "cache_read_tokens": 0,
+          "cache_write_1h_tokens": 0,
+          "cache_write_5m_tokens": 0,
+          "cache_write_tokens": 0,
+          "cached_input_tokens": 0,
+          "input_tokens": 1000,
+          "output_tokens": 10
+        }
+      },
+      {
+        "pair": 2,
+        "profile": true,
+        "scan_ms": 663.642424,
+        "tokens": {
+          "cache_creation_tokens": 0,
+          "cache_read_tokens": 0,
+          "cache_write_1h_tokens": 0,
+          "cache_write_5m_tokens": 0,
+          "cache_write_tokens": 0,
+          "cached_input_tokens": 0,
+          "input_tokens": 1000,
+          "output_tokens": 10
+        }
+      }
+    ],
+    "limitation": "Synthetic single-source pilot; concurrent native large-corpus measurement; no representative-corpus overhead claim"
+  },
+  "acceptance_boundary": {
+    "invalid_frames_excluded": true,
+    "no_latency_for_failed_cold_case": true,
+    "no_E1_or_P01_pass_claim": true,
+    "native_tail_100_not_run": true,
+    "heavy_final_20_not_run": true,
+    "quota_network_not_measured": true,
+    "photons_not_measured": true,
+    "endpoints_include_bitmap_readback": true,
+    "concurrent_development_load_not_controlled": true
+  },
+  "repair_r1_applicability": {
+    "recorded_on": "2026-10-11",
+    "review_record": "docs/topics/scan-performance/reviews/baseline-and-open-path.md",
+    "historical_observations_unchanged": true,
+    "precedence": "This correction narrows earlier reuse_assessment and OCR-exclusion claims; it does not relabel their input, implementation or measurements.",
+    "SP-R1-F1": {
+      "not_reused": "native_bound_baseline samples after its cold helper timeout are not accepted as isolated comparative baseline samples: source/mtime rollback preceded the worker-idle barrier, and historical lock/read overlap was not observed.",
+      "preserved": "The classified cold timeout and absence of a successful cold numeric frame remain historical observations. CLI-only scans completed before handoff, so the recorded source-read and engine results remain scoped historical observations, not measurements of the repaired harness. The final aggregate verifier did not include a cold condition; its non-update endpoints remain historical, not new-state proof."
+    },
+    "SP-R1-F2": {
+      "not_reused": "All historical native update_latest durations include the previous frame's synchronous OCR and are excluded from OCR-free update comparisons, including 25773257782 and 25474320866 ns in native_final_aggregate_verifier.",
+      "preserved": "Old/new numeric validation, latestDataChanged and individual non-update bitmap endpoints remain observations of their original states, subject to F1 and the earlier stage-truncation limitation. No OCR cost is guessed or subtracted."
+    },
+    "SP-R1-F3": {
+      "correction": "native_final_aggregate_verifier.identity.click_stimulus describes performClick incorrectly. The hash-bound verifier posted App-local leftMouseDown/leftMouseUp at the status button; activation followed initial routing. This was not global physical input.",
+      "limitation": "Earlier source identities are retained; the final implementation's stimulus is not retroactively assigned to every earlier pilot. New measurements must carry matching harness and native stimulus identities."
+    }
+  },
+  "verification": {
+    "full_go": "scripts/run-go-test.sh -p 1 ./... PASS on final production Go; one prior parallel LaunchServices 1s timeout not reproduced",
+    "race": "scanruntime/ingest package race PASS; final valid-fixture and CLI diagnostics targeted race PASS",
+    "native": "53 shared/coordinator/chrome tests PASS; final log-policy aggregation/privacy tests PASS including 5000 presentation calls",
+    "vet": "go vet -mod=vendor ./cmd/agentdeck ./internal/scanruntime ./internal/ingest PASS",
+    "build": "Debug native build and darwin arm64/amd64 CLI builds PASS",
+    "fixture_oracle": "initial usage imported=1; append imported=1; final native latestDataChanged and old/new numeric frames verified"
+  }
+}

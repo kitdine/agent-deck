@@ -69,6 +69,10 @@ enum AgentDeckMain {
 	]
 
 	static func main() {
+		let processEntryUptime = DispatchTime.now().uptimeNanoseconds
+		#if DEBUG
+		if ProcessInfo.processInfo.environment["AGENTDECK_NATIVE_BASELINE"] == "1" { DesktopPerformanceTrace.start() }
+		#endif
 		if Array(CommandLine.arguments.dropFirst()) == [widgetReloadArgument] {
 			for kind in widgetKinds {
 				WidgetCenter.shared.reloadTimelines(ofKind: kind)
@@ -78,14 +82,28 @@ enum AgentDeckMain {
 		}
 		let application = NSApplication.shared
 		let delegate = AgentDeckApplicationDelegate()
+		#if DEBUG
+		delegate.baselineProcessEntryUptime = processEntryUptime
+		#endif
 		application.delegate = delegate
 		application.setActivationPolicy(.accessory)
+		#if DEBUG
+		if ProcessInfo.processInfo.environment["AGENTDECK_NATIVE_BASELINE"] == "1" {
+			// The standalone instrumentation owns its delegate for the whole run;
+			// NSApplication's delegate reference does not provide that ownership.
+			withExtendedLifetime(delegate) { application.run() }
+			return
+		}
+		#endif
 		application.run()
 	}
 }
 
 @MainActor
 final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
+	#if DEBUG
+	var baselineProcessEntryUptime: UInt64 = 0
+	#endif
 	private let preferences: DesktopPreferences
 	private let refreshCoordinator: DesktopRefreshCoordinator
 	private let switchController: SwitchController
@@ -131,14 +149,17 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 		case .real:
 			break
 		case .isolated(let testHome):
+			var isolatedEnvironment = [
+				"HOME": testHome.path, "LANG": "en_US_POSIX", "LC_ALL": "en_US_POSIX", "PATH": "/usr/bin:/bin",
+			]
+			if ProcessInfo.processInfo.environment["AGENTDECK_NATIVE_BASELINE"] == "1" {
+				isolatedEnvironment["TZ"] = ProcessInfo.processInfo.environment["TZ"] ?? "America/New_York"
+				isolatedEnvironment["TMPDIR"] = ProcessInfo.processInfo.environment["TMPDIR"] ?? NSTemporaryDirectory()
+				isolatedEnvironment["AGENTDECK_SCAN_PROFILE"] = "1"
+			}
 			runner = EmbeddedHelperRunner(
 				appBundleURL: Bundle.main.bundleURL,
-				environment: [
-					"HOME": testHome.path,
-					"LANG": "en_US_POSIX",
-					"LC_ALL": "en_US_POSIX",
-					"PATH": "/usr/bin:/bin",
-				]
+				environment: isolatedEnvironment
 			)
 			snapshotStore = AppGroupSnapshotStore(
 				directoryURL: testHome.appendingPathComponent("app-group", isDirectory: true)
@@ -238,6 +259,16 @@ final class AgentDeckApplicationDelegate: NSObject, NSApplicationDelegate {
 		}
 		#if DEBUG
 		presentAcceptanceWindowIfRequested()
+		if ProcessInfo.processInfo.environment["AGENTDECK_NATIVE_BASELINE"] == "1" {
+			guard case let .isolated(home) = resolveDebugHome(environment: ProcessInfo.processInfo.environment),
+				automaticRefreshEnabled, let itemController else {
+				preconditionFailure("Native baseline requires a standalone isolated Debug launch")
+			}
+			Task { @MainActor in
+				await itemController.captureNativeBaseline(home: home, processEntryUptime: baselineProcessEntryUptime)
+				NSApp.terminate(nil)
+			}
+		}
 		#endif
 	}
 

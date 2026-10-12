@@ -1,0 +1,16 @@
+{
+  "id": "scan-baseline-r1-baseline-identity-20261012",
+  "kind": "evidence",
+  "profile": "agentdeck-git-evidence/v1",
+  "namespace": "github.com/kitdine/agent-deck",
+  "actor": "opencode",
+  "recorded_at": "2026-10-12T03:13:36Z",
+  "contract": "scan-baseline-contract-r1-20261012",
+  "state": "scan-baseline-state-r1-20261012",
+  "criterion": "baseline-identity",
+  "outcome": "fail",
+  "method": "Independent scoped review and focused checks; full facts and commands in docs/topics/scan-performance/reviews/baseline-and-open-path.md",
+  "facts": "Final aggregate verifier hashes match current declared source and harness, but stimulus identity says performClick while current verifier posts mouseDown/mouseUp. SP-R1-F3.",
+  "depends_on": [],
+  "supersedes": []
+}

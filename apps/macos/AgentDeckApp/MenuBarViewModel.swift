@@ -347,7 +347,10 @@ final class MenuBarViewModel {
 	// MARK: Surface and qualifiers
 
 	var presentation: DesktopPresentationState {
-		DesktopPresentationState.derive(from: coordinator.state, now: now())
+		let interval = DesktopPerformanceInterval()
+		let result = DesktopPresentationState.derive(from: coordinator.state, now: now())
+		DesktopLogger.recordPerformance(interval.sample(.presentation))
+		return result
 	}
 
 	var surface: DesktopPresentationSurface { presentation.surface }

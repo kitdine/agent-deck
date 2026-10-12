@@ -1655,10 +1655,20 @@ func requestScanRoundWithProgress(ctx context.Context, opts *commandOptions, sco
 		Executable: scanRuntimeExecutable(),
 		ForceLocal: scanRuntimeForceLocal(),
 	}
+	var result scanruntime.Result
 	if onProgress != nil {
-		return client.RequestWithProgress(ctx, scope, onProgress)
+		result, err = client.RequestWithProgress(ctx, scope, onProgress)
+	} else {
+		result, err = client.Request(ctx, scope)
 	}
-	return client.Request(ctx, scope)
+	if os.Getenv("AGENTDECK_SCAN_PROFILE") == "1" && err == nil {
+		// Private diagnostics are opt-in and never alter v1 stdout or outcomes.
+		_ = json.NewEncoder(opts.stderr).Encode(struct {
+			Type   string                   `json:"type"`
+			Stages scanruntime.StageProfile `json:"stages"`
+		}{Type: "scan_performance", Stages: result.Stages})
+	}
+	return result, err
 }
 
 func scanRuntimeLocalTestMode() bool {

@@ -1,0 +1,13 @@
+{
+  "profile": "agentdeck-git-evidence/v1",
+  "namespace": "github.com/kitdine/agent-deck",
+  "actor": "opencode",
+  "recorded_at": "2026-10-12T03:53:03Z",
+  "id": "scan-baseline-repair1-preserves-privacy-20261012",
+  "kind": "impact",
+  "evidence": "scan-baseline-r1-privacy-20261012",
+  "state": "scan-baseline-state-repair1-20261012",
+  "decision": "preserves",
+  "reason": "Old Go/Shared production and test/dependency content identical at repair target. New CGImages and recognized strings remain memory-only; Result adds only fixed clickStimulus, no image/OCR/raw-helper serialization. New report contains hashes, numerical stages, classified failures and environment booleans. User explicitly authorized fresh read-only capture of three JSONL roots; no credentials or original input modified. Original privacy/redaction tests reused with target-bound preservation; their historical no-real-HOME-collection statement remains about that prior observation, not this capture.",
+  "resolves": []
+}

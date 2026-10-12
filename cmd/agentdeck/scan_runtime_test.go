@@ -13,6 +13,56 @@ import (
 	"github.com/kitdine/agent-deck/internal/store"
 )
 
+func TestScanPerformanceDiagnosticsPreserveStdoutAndRedactSources(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	path := filepath.Join(home, ".codex", "sessions", "private-session.jsonl")
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(`{"type":"session_meta","payload":{"id":"private-session","cwd":"/private-project"}}`+"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, enabled := range []string{"", "1"} {
+		t.Setenv("AGENTDECK_SCAN_PROFILE", enabled)
+		var stdout, stderr bytes.Buffer
+		if exit := execute([]string{"--state-dir", t.TempDir(), "--format", "json", "scan"}, bytes.NewReader(nil), &stdout, &stderr); exit != 0 {
+			t.Fatalf("scan exit=%d stderr=%q", exit, stderr.String())
+		}
+		var envelope struct {
+			Data map[string]json.RawMessage `json:"data"`
+		}
+		if err := json.Unmarshal(stdout.Bytes(), &envelope); err != nil {
+			t.Fatal(err)
+		}
+		if len(envelope.Data) != 3 || envelope.Data["scope"] == nil || envelope.Data["usage"] == nil || envelope.Data["session"] == nil {
+			t.Fatalf("profiling changed v1 stdout shape: %s", stdout.String())
+		}
+		if enabled == "" {
+			if bytes.Contains(stderr.Bytes(), []byte("scan_performance")) {
+				t.Fatalf("default scan emitted profiling: %q", stderr.String())
+			}
+			continue
+		}
+		var profile struct {
+			Type   string                   `json:"type"`
+			Stages scanruntime.StageProfile `json:"stages"`
+		}
+		lines := bytes.Split(bytes.TrimSpace(stderr.Bytes()), []byte("\n"))
+		if err := json.Unmarshal(lines[len(lines)-1], &profile); err != nil {
+			t.Fatal(err)
+		}
+		if profile.Type != "scan_performance" || profile.Stages.Ingestion["read_bytes"] <= 0 {
+			t.Fatalf("profile=%#v", profile)
+		}
+		for _, secret := range []string{home, "private-session", "private-project"} {
+			if bytes.Contains(stderr.Bytes(), []byte(secret)) {
+				t.Fatalf("diagnostics contain source data: %q", stderr.String())
+			}
+		}
+	}
+}
+
 func TestScanCommandReturnsOneCompletedSharedRound(t *testing.T) {
 	state := t.TempDir()
 	home := t.TempDir()

@@ -89,6 +89,8 @@ type StageProfile struct {
 	TotalMS            int64 `json:"total_ms"`
 	WorkerCPUTimeMS    int64 `json:"worker_cpu_time_ms"`
 	WorkerPeakRSSBytes int64 `json:"worker_peak_rss_bytes"`
+	// Opt-in aggregate diagnostics; worker times overlap, not additive wall time.
+	Ingestion map[string]float64 `json:"ingestion,omitempty"`
 }
 
 type processResources struct {
@@ -864,7 +866,11 @@ func (r *round) executeProduction(ctx context.Context, stateRoot string, lockHel
 		defer sessions.Close()
 	}
 
-	coordinator := ingest.NewCoordinator(sources, ingest.Options{RequirePlans: true})
+	var metrics *ingest.Metrics
+	if os.Getenv("AGENTDECK_SCAN_PROFILE") == "1" {
+		metrics = &ingest.Metrics{}
+	}
+	coordinator := ingest.NewCoordinator(sources, ingest.Options{RequirePlans: true, Metrics: metrics})
 	defer coordinator.Close()
 	var usageService *usage.Service
 	var usageInventory usage.Inventory
@@ -913,6 +919,7 @@ func (r *round) executeProduction(ctx context.Context, stateRoot string, lockHel
 		coordinator.ConsumerDone(ingest.ConsumerSession)
 	}
 	r.setProgressStage("importing")
+	ingestionStarted := time.Now()
 	coordinator.Start(ctx)
 	var wait sync.WaitGroup
 	wait.Add(1)
@@ -985,6 +992,12 @@ func (r *round) executeProduction(ctx context.Context, stateRoot string, lockHel
 		}()
 	}
 	wait.Wait()
+	if metrics != nil {
+		coordinator.Close()
+		r.mu.Lock()
+		r.result.Stages.Ingestion = metrics.Report(time.Since(ingestionStarted))
+		r.mu.Unlock()
+	}
 }
 
 func sealSkippedSources(coordinator *ingest.Coordinator, sources []ingest.Source, consumer string) error {

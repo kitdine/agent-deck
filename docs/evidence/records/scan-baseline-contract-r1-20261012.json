@@ -1,0 +1,40 @@
+{
+  "profile": "agentdeck-git-evidence/v1",
+  "namespace": "github.com/kitdine/agent-deck",
+  "actor": "opencode",
+  "recorded_at": "2026-10-12T03:05:16Z",
+  "id": "scan-baseline-contract-r1-20261012",
+  "kind": "contract",
+  "release": "v0.7.0",
+  "work_unit_id": "scan-performance:baseline-and-open-path",
+  "unit_kind": "task",
+  "criteria": [
+    "baseline-identity",
+    "measurement-attribution",
+    "source-impact-map",
+    "privacy",
+    "independent-review"
+  ],
+  "children": [],
+  "source": "docs/topics/scan-performance/tasks.md section 1; design delivered c37698444edaaa4067e08e8f71d6e45dd77cb396; Beads ad-scan-performance-baseline-and-open-path. Four Task1 criteria plus required independent review. No E1/Task2 performance acceptance. Tasks/review status excluded from behavior scope; bounded Task1 contract hash bound in context.",
+  "scope": [
+    "internal",
+    "cmd/agentdeck",
+    "apps/macos",
+    "go.mod",
+    "go.sum",
+    "vendor/modules.txt",
+    "scripts/scan-performance-baseline.py",
+    "scripts/run-go-test.sh",
+    "docs/topics/scan-performance/requirements.md",
+    "docs/topics/scan-performance/architecture.md",
+    "docs/topics/scan-performance/performance-evaluation.md",
+    "docs/topics/scan-performance/evidence/baseline-and-open-path.json"
+  ],
+  "context": {
+    "python": "3.14.8",
+    "platform": "darwin",
+    "method": "independent source and redacted E0 review; isolated focused verification",
+    "task_contract_sha256": "43a9e56a338af8324c513083a8d09a0a1472ff01a722e51d56de1b8f902e2a61"
+  }
+}

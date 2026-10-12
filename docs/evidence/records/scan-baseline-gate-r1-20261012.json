@@ -1,0 +1,11 @@
+{
+  "profile": "agentdeck-git-evidence/v1",
+  "namespace": "github.com/kitdine/agent-deck",
+  "actor": "opencode",
+  "recorded_at": "2026-10-12T03:05:16Z",
+  "id": "scan-baseline-gate-r1-20261012",
+  "kind": "gate",
+  "contract": "scan-baseline-contract-r1-20261012",
+  "state": "scan-baseline-state-r1-20261012",
+  "children": {}
+}

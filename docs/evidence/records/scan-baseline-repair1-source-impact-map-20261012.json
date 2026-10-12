@@ -1,0 +1,18 @@
+{
+  "profile": "agentdeck-git-evidence/v1",
+  "namespace": "github.com/kitdine/agent-deck",
+  "actor": "opencode",
+  "recorded_at": "2026-10-12T03:53:03Z",
+  "id": "scan-baseline-repair1-source-impact-map-20261012",
+  "kind": "evidence",
+  "contract": "scan-baseline-contract-repair1-20261012",
+  "state": "scan-baseline-state-repair1-20261012",
+  "criterion": "source-impact-map",
+  "outcome": "pass",
+  "method": "Scope-aware reuse of independent Round1 source-impact-map observation plus repair-boundary inspection",
+  "facts": "Exact original-state versus repair-state file comparison found no changes to internal/, cmd/agentdeck/, Go dependency files, AgentDeckShared/ or AgentDeckTests/. Only old scoped MenuBarItemController, harness and E0 applicability changed; new focused regression/replacement E0 added. Parser/statistics/ingestion counters, stdout and source/version impact map unchanged. Reuse original independent source-map and focused Go observations through target-bound preservation; no full Go/race re-execution claimed.",
+  "depends_on": [
+    "scan-baseline-r1-source-impact-map-20261012"
+  ],
+  "supersedes": []
+}

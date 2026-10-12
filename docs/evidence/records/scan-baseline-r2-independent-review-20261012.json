@@ -1,0 +1,16 @@
+{
+  "id": "scan-baseline-r2-independent-review-20261012",
+  "kind": "evidence",
+  "profile": "agentdeck-git-evidence/v1",
+  "namespace": "github.com/kitdine/agent-deck",
+  "actor": "opencode",
+  "recorded_at": "2026-10-12T07:20:23Z",
+  "contract": "scan-baseline-contract-repair1-20261012",
+  "state": "scan-baseline-state-repair1-20261012",
+  "criterion": "independent-review",
+  "outcome": "pass",
+  "method": "Independent REREVIEW Round2: source disposition, regression inspection, content-state comparison and replacement E0 identity/sample consistency checks",
+  "facts": "Carrier docs/topics/scan-performance/reviews/baseline-and-open-path.md Round2. SP-R1-F1/F2/F3 CLOSED: worker barrier precedes all sample fixture mutation, both update endpoints precede synchronous OCR, native/harness stimulus matches with mismatch rejection. Five criteria unchanged; scope revision adds only regression and replacement E0. All declared current source/harness hashes match. Six complete samples and two empty popover_invisible samples, excluded with null update endpoints, verified; exit1 and limitations retained. No new in-scope finding. Existing exact-state six regression tests/build/two hosted App tests and unaffected Round1 evidence reused, no repeated runtime experiment. Task1 baseline PASS only; Task2/7 native/performance acceptance remains open.",
+  "depends_on": [],
+  "supersedes": []
+}
